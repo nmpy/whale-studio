@@ -1,4 +1,7 @@
+
 // src/app/t/[trackingId]/route.ts
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
 // GET /t/[trackingId]
 //
 // トラッキングリダイレクトエンドポイント。
@@ -8,7 +11,6 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-
 export async function GET(
   req: NextRequest,
   { params }: { params: { trackingId: string } }
