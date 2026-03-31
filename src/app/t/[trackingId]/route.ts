@@ -5,10 +5,7 @@ export const fetchCache = 'force-no-store'
 export const runtime = 'nodejs'
 
 // src/app/t/[trackingId]/route.ts
-export const dynamic = 'force-dynamic'
-export const revalidate = 0
 // GET /t/[trackingId]
-//
 // トラッキングリダイレクトエンドポイント。
 // 1. tracking_events にクリックを記録
 // 2. ブラウザに _tid cookie を設定（24h）
