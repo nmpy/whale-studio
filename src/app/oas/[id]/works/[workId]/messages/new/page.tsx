@@ -1,0 +1,54 @@
+"use client";
+
+// src/app/oas/[id]/works/[workId]/messages/new/page.tsx
+
+import { useEffect, useState } from "react";
+import { useParams, useRouter } from "next/navigation";
+import { workApi, messageApi, getDevToken } from "@/lib/api-client";
+import { useToast } from "@/components/Toast";
+import { MessageForm, EMPTY_MESSAGE_FORM, formStateToMsgBody, type MessageFormState } from "../_form";
+
+export default function NewMessagePage() {
+  const params  = useParams<{ id: string; workId: string }>();
+  const oaId    = params.id;
+  const workId  = params.workId;
+  const router  = useRouter();
+  const { showToast } = useToast();
+
+  const [workTitle, setWorkTitle]   = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    workApi.get(getDevToken(), workId)
+      .then((w) => setWorkTitle(w.title))
+      .catch(() => {});
+  }, [workId]);
+
+  async function handleSubmit(form: MessageFormState) {
+    setSubmitting(true);
+    try {
+      await messageApi.create(getDevToken(), {
+        work_id: workId,
+        ...formStateToMsgBody(form),
+      });
+      showToast("メッセージを追加しました", "success");
+      router.push(`/oas/${oaId}/works/${workId}/messages`);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "追加に失敗しました", "error");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <MessageForm
+      oaId={oaId}
+      workId={workId}
+      workTitle={workTitle}
+      initialForm={EMPTY_MESSAGE_FORM}
+      isNew={true}
+      submitting={submitting}
+      onSubmit={handleSubmit}
+    />
+  );
+}

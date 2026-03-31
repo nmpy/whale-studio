@@ -1,0 +1,524 @@
+// prisma/schema.prisma
+// LINE謎解きBot制作ツール — 分岐型エンディング対応スキーマ
+//
+// ⚠ SQLite は Prisma の enum をサポートしないため、enum は String に変換しています。
+//   アプリ層の型ガード（src/types/index.ts）で "draft"|"active"|"paused" などを強制します。
+//   PostgreSQL に切り替える際は provider を "postgresql" に戻し、
+//   enum ブロックを復元して `prisma migrate dev` を実行してください。
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  // ローカル開発: "sqlite"  / 本番: "postgresql"
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ────────────────────────────────────────────────
+// OAs — LINE 公式アカウント設定
+// ────────────────────────────────────────────────
+model Oa {
+  id                 String   @id @default(uuid())
+  title              String
+  description        String?
+  channelId          String   @map("channel_id")
+  channelSecret      String   @map("channel_secret")
+  channelAccessToken String   @map("channel_access_token")
+  /// "draft" | "active" | "paused"
+  publishStatus      String   @default("draft") @map("publish_status")
+  /// LINE リッチメニュー ID（LINE API で作成・適用したとき保存する）
+  richMenuId         String?  @map("rich_menu_id")
+  /// Google Sheets スプレッドシート ID（設定時は Sheets からシナリオを読み込む）
+  spreadsheetId  String?  @map("spreadsheet_id")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  works             Work[]
+  richMenus         RichMenu[]
+  friendAddSettings FriendAddSettings?
+  snsPosts          SnsPost[]
+  riddles           Riddle[]
+  segments          Segment[]
+  trackings         Tracking[]
+  userTrackings     UserTracking[]
+  hintLogs          HintLog[]
+
+  @@index([title])
+  @@index([publishStatus])
+  @@index([createdAt])
+  @@map("oas")
+}
+
+// ────────────────────────────────────────────────
+// Works — 作品（謎解きシナリオ）
+// ────────────────────────────────────────────────
+model Work {
+  id            String   @id @default(uuid())
+  oaId          String   @map("oa_id")
+  title         String
+  description   String?
+  /// "draft" | "active" | "paused"
+  publishStatus String   @default("draft") @map("publish_status")
+  sortOrder     Int      @default(0) @map("sort_order")
+  /// システムメッセージ（開始/エラー等）送信者として使うキャラクター（任意）
+  systemCharacterId String? @map("system_character_id")
+  /// あいさつメッセージ。未開始ユーザーが話しかけたときに送信される導入文（任意）。
+  /// 未設定の場合はシステムデフォルト文にフォールバックする。
+  welcomeMessage    String? @map("welcome_message")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  oa              Oa             @relation(fields: [oaId], references: [id], onDelete: Cascade)
+  characters      Character[]    @relation("WorkCharacters")
+  systemCharacter Character?     @relation("WorkSystemCharacter", fields: [systemCharacterId], references: [id], onDelete: SetNull)
+  phases          Phase[]
+  messages        Message[]
+  transitions     Transition[]
+  userProgress    UserProgress[]
+
+  @@index([oaId])
+  @@index([publishStatus])
+  @@index([sortOrder])
+  @@map("works")
+}
+
+// ────────────────────────────────────────────────
+// Characters — 登場キャラクター設定
+// ────────────────────────────────────────────────
+model Character {
+  id           String   @id @default(uuid())
+  workId       String   @map("work_id")
+  name         String
+  /// "text" | "image"
+  iconType     String   @default("text") @map("icon_type")
+  iconText     String?  @map("icon_text")
+  iconImageUrl String?  @map("icon_image_url")
+  iconColor    String?  @map("icon_color")
+  sortOrder    Int      @default(0) @map("sort_order")
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  work          Work      @relation("WorkCharacters", fields: [workId], references: [id], onDelete: Cascade)
+  messages      Message[]
+  worksAsSystem Work[]    @relation("WorkSystemCharacter")
+
+  @@index([workId])
+  @@index([name])
+  @@index([sortOrder])
+  @@index([isActive])
+  @@map("characters")
+}
+
+// ────────────────────────────────────────────────
+// Phases — 物語進行の単位（フェーズ）
+// ────────────────────────────────────────────────
+model Phase {
+  id          String   @id @default(uuid())
+  workId      String   @map("work_id")
+  /// "start" | "normal" | "ending"
+  phaseType   String   @default("normal") @map("phase_type")
+  name        String
+  description String?
+  sortOrder   Int      @default(0) @map("sort_order")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  work            Work           @relation(fields: [workId], references: [id], onDelete: Cascade)
+  messages        Message[]
+  transitionsFrom Transition[]   @relation("TransitionFrom")
+  transitionsTo   Transition[]   @relation("TransitionTo")
+  userProgress    UserProgress[]
+
+  @@index([workId])
+  @@index([phaseType])
+  @@index([name])
+  @@index([sortOrder])
+  @@index([isActive])
+  @@map("phases")
+}
+
+// ────────────────────────────────────────────────
+// Transitions — フェーズ間の遷移（分岐選択肢）
+// ────────────────────────────────────────────────
+model Transition {
+  id          String   @id @default(uuid())
+  workId      String   @map("work_id")
+  fromPhaseId String   @map("from_phase_id")
+  toPhaseId   String   @map("to_phase_id")
+  /// ユーザーに表示される選択肢ラベル（例: 「右の扉を開ける」）
+  label       String
+  /// オプション: 一致キーワードなど Bot が判定に使う条件（テキスト部分一致）
+  condition   String?
+  /// フラグ条件式（例: "flags.has_key == true" / "flags.score >= 10" / "!flags.used"）
+  /// 空の場合は常に有効。現在のユーザーフラグがこの条件を満たす場合のみ遷移を表示・実行できる。
+  flagCondition String? @map("flag_condition")
+  /// 遷移実行時に UserProgress.flags へマージする JSON オブジェクト
+  /// 例: {"score": 10, "has_key": true} → 既存フラグに上書きマージされる
+  setFlags    String   @default("{}") @map("set_flags")
+  sortOrder   Int      @default(0) @map("sort_order")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  work      Work  @relation(fields: [workId], references: [id], onDelete: Cascade)
+  fromPhase Phase @relation("TransitionFrom", fields: [fromPhaseId], references: [id], onDelete: Cascade)
+  toPhase   Phase @relation("TransitionTo", fields: [toPhaseId], references: [id], onDelete: Cascade)
+
+  @@index([workId])
+  @@index([fromPhaseId])
+  @@index([toPhaseId])
+  @@map("transitions")
+}
+
+// ────────────────────────────────────────────────
+// UserProgress — ユーザー別シナリオ進行状態
+// ────────────────────────────────────────────────
+model UserProgress {
+  id               String   @id @default(uuid())
+  /// LINE ユーザー ID（本番）またはテスト用任意 ID
+  lineUserId       String   @map("line_user_id")
+  workId           String   @map("work_id")
+  currentPhaseId   String?  @map("current_phase_id")
+  reachedEnding    Boolean  @default(false) @map("reached_ending")
+  /// JSON 文字列。任意フラグを保存できる（例: {"hint_used": true, "score": 10}）
+  /// SQLite は JSON 型非対応のため String で保持し、アプリ層で parse/stringify する
+  flags            String   @default("{}") @map("flags")
+  lastInteractedAt DateTime @default(now()) @map("last_interacted_at")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  work         Work   @relation(fields: [workId], references: [id], onDelete: Cascade)
+  currentPhase Phase? @relation(fields: [currentPhaseId], references: [id], onDelete: SetNull)
+
+  /// 1ユーザー × 1作品 = 1進行状態
+  @@unique([lineUserId, workId])
+  @@index([lineUserId])
+  @@index([workId])
+  @@index([lastInteractedAt])
+  @@map("user_progress")
+}
+
+// ────────────────────────────────────────────────
+// Messages — 配信・表示メッセージ
+// ────────────────────────────────────────────────
+model Message {
+  id          String   @id @default(uuid())
+  workId      String   @map("work_id")
+  phaseId     String?  @map("phase_id")
+  characterId String?  @map("character_id")
+  /// "text" | "image" | "riddle" | "video" | "carousel" | "voice"
+  messageType    String   @default("text") @map("message_type")
+  body           String?
+  assetUrl       String?  @map("asset_url")
+  /// 応答キーワード（Bot がこのキーワードを受信したときに送信する）
+  triggerKeyword String?  @map("trigger_keyword")
+  /// 送信対象セグメント（"all" | "not_started" | "in_progress" | "completed"）
+  targetSegment  String?  @map("target_segment")
+  /// 通知メッセージ（テキスト以外の種別で使用。LINE の通知欄に表示される）
+  notifyText     String?  @map("notify_text")
+  /// 謎 ID（messageType = "riddle" のとき参照する謎）
+  riddleId       String?  @map("riddle_id")
+  /// クイックリプライ設定（JSON 配列 / null = 未設定）
+  /// 構造: [{ label, action, value? }]
+  /// action: "text" | "url" | "next" | "hint" | "custom"
+  quickReplies   String?  @map("quick_replies")
+  sortOrder      Int      @default(0) @map("sort_order")
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  work      Work       @relation(fields: [workId], references: [id], onDelete: Cascade)
+  phase     Phase?     @relation(fields: [phaseId], references: [id], onDelete: SetNull)
+  character Character? @relation(fields: [characterId], references: [id], onDelete: SetNull)
+
+  @@index([workId])
+  @@index([phaseId])
+  @@index([characterId])
+  @@index([messageType])
+  @@index([sortOrder])
+  @@index([isActive])
+  @@map("messages")
+}
+
+// ────────────────────────────────────────────────
+// FriendAddSettings — 友だち追加設定（OA 1:1）
+// ────────────────────────────────────────────────
+model FriendAddSettings {
+  id             String   @id @default(uuid())
+  oaId           String   @unique @map("oa_id")
+  /// 管理用キャンペーン名（任意）
+  campaignName   String?  @map("campaign_name")
+  /// 友だち追加 URL（必須）
+  addUrl         String   @map("add_url")
+  /// QR コード画像 URL（任意・当面未使用）
+  qrCodeUrl      String?  @map("qr_code_url")
+  /// SNS シェア用 OGP 画像 URL（任意）
+  shareImageUrl  String?  @map("share_image_url")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  oa Oa @relation(fields: [oaId], references: [id], onDelete: Cascade)
+
+  @@map("friend_add_settings")
+}
+
+// ────────────────────────────────────────────────
+// SnsPost — SNS 投稿管理（OA 1:N）
+// ────────────────────────────────────────────────
+model SnsPost {
+  id        String   @id @default(uuid())
+  oaId      String   @map("oa_id")
+  /// "x" | "instagram" | "line" | "other"
+  platform  String
+  text      String
+  imageUrl  String?  @map("image_url")
+  targetUrl String?  @map("target_url")
+  order     Int      @default(0)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  oa Oa @relation(fields: [oaId], references: [id], onDelete: Cascade)
+
+  @@index([oaId])
+  @@index([order])
+  @@map("sns_posts")
+}
+
+// ────────────────────────────────────────────────
+// RichMenu — カスタムリッチメニュー
+// ────────────────────────────────────────────────
+model RichMenu {
+  id             String   @id @default(uuid())
+  oaId           String   @map("oa_id")
+  name           String
+  chatBarText    String   @default("メニュー") @map("chat_bar_text")
+  /// "full" (2500×1686) | "compact" (2500×843)
+  size           String   @default("compact") @map("size")
+  imageUrl       String?  @map("image_url")
+  lineRichMenuId String?  @map("line_rich_menu_id")
+  /// Google Spreadsheet の richmenu_id（スプレッドシート同期時のキー）
+  spreadsheetRichMenuId String? @map("spreadsheet_richmenu_id")
+  /// 表示フェーズ: "start" | "playing" | "cleared" | "none"（常時）
+  visiblePhase          String? @map("visible_phase")
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  oa    Oa             @relation(fields: [oaId], references: [id], onDelete: Cascade)
+  areas RichMenuArea[]
+
+  @@index([oaId])
+  @@index([isActive])
+  @@index([spreadsheetRichMenuId])
+  @@index([visiblePhase])
+  @@map("rich_menus")
+}
+
+// ────────────────────────────────────────────────
+// RichMenuArea — リッチメニューエリア（タップ領域）
+// ────────────────────────────────────────────────
+model RichMenuArea {
+  id          String   @id @default(uuid())
+  richMenuId  String   @map("rich_menu_id")
+  x           Int      @default(0)
+  y           Int      @default(0)
+  width       Int      @default(833)
+  height      Int      @default(843)
+  /// "message" | "postback" | "uri"
+  actionType  String   @default("message") @map("action_type")
+  actionLabel String   @default("") @map("action_label")
+  /// message type: text to send; postback displayText
+  actionText  String?  @map("action_text")
+  /// postback type: postback data string
+  actionData  String?  @map("action_data")
+  /// uri type: URL to open
+  actionUri   String?  @map("action_uri")
+  sortOrder   Int      @default(0) @map("sort_order")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  richMenu RichMenu @relation(fields: [richMenuId], references: [id], onDelete: Cascade)
+
+  @@index([richMenuId])
+  @@index([sortOrder])
+  @@map("rich_menu_areas")
+}
+
+// ────────────────────────────────────────────────
+// Riddle — 謎（問題）管理
+// ────────────────────────────────────────────────
+model Riddle {
+  id                 String   @id @default(uuid())
+  oaId               String   @map("oa_id")
+  title              String
+  /// "text" | "image" | "video" | "carousel"
+  questionType       String   @default("text") @map("question_type")
+  /// テキスト問題の本文（questionType = "text" のとき使用）
+  questionText       String?  @map("question_text")
+  /// 画像問題の URL（questionType = "image" のとき使用）
+  questionImageUrl   String?  @map("question_image_url")
+  /// 動画問題の URL（questionType = "video" のとき使用）
+  questionVideoUrl   String?  @map("question_video_url")
+  /// カルーセルカード JSON 配列文字列（questionType = "carousel" のとき使用）
+  /// SQLite は JSON 非対応のため String で保持する
+  questionCarousel   String?  @map("question_carousel")
+  answerText         String   @map("answer_text")
+  /// "exact" | "partial" | "case_insensitive" | "normalize_width" | "normalize_kana"
+  matchCondition     String   @default("exact") @map("match_condition")
+  correctMessage     String   @map("correct_message")
+  wrongMessage       String   @map("wrong_message")
+  /// "draft" | "published"
+  status             String   @default("draft")
+  /// ヒント JSON 配列（Hint[] 型）。SQLite は JSON 非対応のため String で保持する
+  hints              String   @default("[]") @map("hints")
+  /// デフォルト応答キャラクター（任意）
+  characterId        String?  @map("character_id")
+  /// 送信対象セグメント識別子（任意。未設定 = 全ユーザー対象）
+  targetSegment      String?  @map("target_segment")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  oa       Oa        @relation(fields: [oaId], references: [id], onDelete: Cascade)
+  hintLogs HintLog[]
+
+  @@index([oaId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("riddles")
+}
+
+// ────────────────────────────────────────────────
+// Segment — オーディエンスセグメント
+// ────────────────────────────────────────────────
+model Segment {
+  id         String   @id @default(uuid())
+  oaId       String   @map("oa_id")
+  name       String
+  /// "phase" | "friend_7d" | "inactive_7d"
+  filterType String   @default("friend_7d") @map("filter_type")
+  /// filterType = "phase" のとき対象フェーズ ID
+  phaseId    String?  @map("phase_id")
+  /// "active" | "inactive"
+  status     String   @default("active")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  oa         Oa       @relation(fields: [oaId], references: [id], onDelete: Cascade)
+
+  @@index([oaId])
+  @@index([status])
+  @@map("segments")
+}
+
+// ────────────────────────────────────────────────
+// Tracking — トラッキングリンク管理
+// ────────────────────────────────────────────────
+model Tracking {
+  id         String   @id @default(uuid())
+  oaId       String   @map("oa_id")
+  name       String
+  trackingId String   @unique @map("tracking_id")
+  targetUrl  String   @map("target_url")
+  utmEnabled Boolean  @default(true) @map("utm_enabled")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  oa            Oa             @relation(fields: [oaId], references: [id], onDelete: Cascade)
+  events        TrackingEvent[]
+  userTrackings UserTracking[]
+
+  @@index([oaId])
+  @@map("trackings")
+}
+
+// ────────────────────────────────────────────────
+// TrackingEvent — クリックイベントログ
+// ────────────────────────────────────────────────
+model TrackingEvent {
+  id         String   @id @default(uuid())
+  trackingId String   @map("tracking_id")
+  ip         String?
+  userAgent  String?  @map("user_agent")
+  referer    String?
+  clickedAt  DateTime @default(now()) @map("clicked_at")
+
+  tracking Tracking @relation(fields: [trackingId], references: [trackingId], onDelete: Cascade)
+
+  @@index([trackingId])
+  @@index([clickedAt])
+  @@map("tracking_events")
+}
+
+// ────────────────────────────────────────────────
+// UserTracking — LINE ユーザー × トラッキング紐づけ
+// ────────────────────────────────────────────────
+model UserTracking {
+  id         String   @id @default(uuid())
+  oaId       String   @map("oa_id")
+  lineUserId String   @map("line_user_id")
+  trackingId String   @map("tracking_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  tracking Tracking @relation(fields: [trackingId], references: [trackingId], onDelete: Cascade)
+  oa       Oa       @relation(fields: [oaId], references: [id], onDelete: Cascade)
+
+  /// 1ユーザー × 1OA = 1トラッキング帰属（最新のクリックを上書き）
+  @@unique([oaId, lineUserId])
+  @@index([trackingId])
+  @@map("user_trackings")
+}
+
+// ────────────────────────────────────────────────
+// WorkspaceMember — OA（ワークスペース）へのメンバーアクセス
+// ────────────────────────────────────────────────
+// MVP では workspace_id = oa_id として運用する。
+// 将来 Workspace モデルを追加する際は、@relation と FK 制約を追加する。
+model WorkspaceMember {
+  id          String   @id @default(uuid())
+  /// workspace_id は現在 Oa.id と同値（MVP）
+  workspaceId String   @map("workspace_id")
+  userId      String   @map("user_id")
+  /// "owner" | "editor" | "viewer"
+  role        String   @default("viewer")
+  invitedBy   String?  @map("invited_by")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@unique([workspaceId, userId])
+  @@index([workspaceId])
+  @@index([userId])
+  @@index([role])
+  @@map("workspace_members")
+}
+
+// ────────────────────────────────────────────────
+// HintLog — ヒントイベントログ
+// ────────────────────────────────────────────────
+model HintLog {
+  id          String   @id @default(uuid())
+  oaId        String   @map("oa_id")
+  workId      String   @map("work_id")
+  phaseId     String?  @map("phase_id")
+  riddleId    String   @map("riddle_id")
+  lineUserId  String   @map("line_user_id")
+  hintStep    Int      @map("hint_step")
+  /// "hint_shown" | "quick_reply_tapped"
+  eventType   String   @map("event_type")
+  /// quick_reply_tapped の場合: "next_hint" | "repeat_hint" | "cancel_hint" | "custom"
+  actionType  String?  @map("action_type")
+  actionValue String?  @map("action_value")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  oa     Oa     @relation(fields: [oaId], references: [id], onDelete: Cascade)
+  riddle Riddle @relation(fields: [riddleId], references: [id], onDelete: Cascade)
+
+  @@index([oaId])
+  @@index([workId])
+  @@index([riddleId])
+  @@index([lineUserId])
+  @@map("hint_logs")
+}
