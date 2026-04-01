@@ -15,6 +15,11 @@ function parseQuickReplies(raw: string | null) {
   try { return JSON.parse(raw); } catch { return null; }
 }
 
+function parseAnswerMatchType(raw: string | null): string[] {
+  if (!raw) return ["exact"];
+  try { return JSON.parse(raw); } catch { return ["exact"]; }
+}
+
 function toResponse(m: {
   id: string; workId: string; phaseId: string | null; characterId: string | null;
   messageType: string; kind: string; body: string | null; assetUrl: string | null;
@@ -22,30 +27,42 @@ function toResponse(m: {
   notifyText: string | null; riddleId: string | null;
   quickReplies: string | null;
   altText?: string | null; flexPayloadJson?: string | null;
+  puzzleType?: string | null; answer?: string | null; puzzleHintText?: string | null;
+  answerMatchType?: string | null; correctAction?: string | null;
+  correctText?: string | null; incorrectText?: string | null;
+  correctNextPhaseId?: string | null;
   sortOrder: number; isActive: boolean; createdAt: Date; updatedAt: Date;
   phase?: { id: string; name: string; phaseType: string } | null;
   character?: { id: string; name: string; iconType: string; iconText: string | null; iconImageUrl: string | null; iconColor: string | null } | null;
 }) {
   return {
-    id:                m.id,
-    work_id:           m.workId,
-    phase_id:          m.phaseId,
-    character_id:      m.characterId,
-    message_type:      m.messageType,
-    kind:              m.kind,
-    body:              m.body,
-    asset_url:         m.assetUrl,
-    trigger_keyword:   m.triggerKeyword,
-    target_segment:    m.targetSegment,
-    notify_text:       m.notifyText,
-    riddle_id:         m.riddleId,
-    quick_replies:     parseQuickReplies(m.quickReplies),
-    alt_text:          m.altText ?? null,
-    flex_payload_json: m.flexPayloadJson ?? null,
-    sort_order:        m.sortOrder,
-    is_active:         m.isActive,
-    created_at:        m.createdAt,
-    updated_at:        m.updatedAt,
+    id:                   m.id,
+    work_id:              m.workId,
+    phase_id:             m.phaseId,
+    character_id:         m.characterId,
+    message_type:         m.messageType,
+    kind:                 m.kind,
+    body:                 m.body,
+    asset_url:            m.assetUrl,
+    trigger_keyword:      m.triggerKeyword,
+    target_segment:       m.targetSegment,
+    notify_text:          m.notifyText,
+    riddle_id:            m.riddleId,
+    quick_replies:        parseQuickReplies(m.quickReplies),
+    alt_text:             m.altText ?? null,
+    flex_payload_json:    m.flexPayloadJson ?? null,
+    puzzle_type:          m.puzzleType ?? null,
+    answer:               m.answer ?? null,
+    puzzle_hint_text:     m.puzzleHintText ?? null,
+    answer_match_type:    parseAnswerMatchType(m.answerMatchType ?? null),
+    correct_action:       m.correctAction ?? null,
+    correct_text:         m.correctText ?? null,
+    incorrect_text:       m.incorrectText ?? null,
+    correct_next_phase_id: m.correctNextPhaseId ?? null,
+    sort_order:           m.sortOrder,
+    is_active:            m.isActive,
+    created_at:           m.createdAt,
+    updated_at:           m.updatedAt,
     ...(m.phase     !== undefined && {
       phase: m.phase ? { id: m.phase.id, name: m.phase.name, phase_type: m.phase.phaseType } : null,
     }),
@@ -144,22 +161,30 @@ export const POST = withAuth(async (req, _ctx, user) => {
 
     const message = await prisma.message.create({
       data: {
-        workId:          data.work_id,
-        phaseId:         data.phase_id      ?? null,
-        characterId:     data.character_id  ?? null,
-        messageType:     data.message_type,
-        kind:            data.kind,
-        body:            data.body          ?? null,
-        assetUrl:        data.asset_url     ?? null,
-        triggerKeyword:  data.trigger_keyword ?? null,
-        targetSegment:   data.target_segment  ?? null,
-        notifyText:      data.notify_text     ?? null,
-        riddleId:        data.riddle_id       ?? null,
-        quickReplies:    data.quick_replies ? JSON.stringify(data.quick_replies) : null,
-        altText:         data.alt_text          ?? null,
-        flexPayloadJson: data.flex_payload_json ?? null,
-        sortOrder:       data.sort_order,
-        isActive:        data.is_active,
+        workId:             data.work_id,
+        phaseId:            data.phase_id      ?? null,
+        characterId:        data.character_id  ?? null,
+        messageType:        data.message_type,
+        kind:               data.kind,
+        body:               data.body          ?? null,
+        assetUrl:           data.asset_url     ?? null,
+        triggerKeyword:     data.trigger_keyword ?? null,
+        targetSegment:      data.target_segment  ?? null,
+        notifyText:         data.notify_text     ?? null,
+        riddleId:           data.riddle_id       ?? null,
+        quickReplies:       data.quick_replies ? JSON.stringify(data.quick_replies) : null,
+        altText:            data.alt_text          ?? null,
+        flexPayloadJson:    data.flex_payload_json ?? null,
+        puzzleType:         data.puzzle_type        ?? null,
+        answer:             data.answer             ?? null,
+        puzzleHintText:     data.puzzle_hint_text   ?? null,
+        answerMatchType:    data.answer_match_type ? JSON.stringify(data.answer_match_type) : JSON.stringify(["exact"]),
+        correctAction:      data.correct_action      ?? null,
+        correctText:        data.correct_text        ?? null,
+        incorrectText:      data.incorrect_text      ?? null,
+        correctNextPhaseId: data.correct_next_phase_id ?? null,
+        sortOrder:          data.sort_order,
+        isActive:           data.is_active,
       },
       include: {
         phase: {

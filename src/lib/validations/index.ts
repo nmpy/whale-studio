@@ -215,13 +215,19 @@ export const quickReplyItemSchema = z.object({
 // ────────────────────────────────────────────────
 // Message
 // ────────────────────────────────────────────────
+/** puzzle answer_match_type 配列スキーマ */
+const answerMatchTypeSchema = z
+  .array(z.enum(["exact", "ignore_punctuation", "normalize_width"]))
+  .min(1, "少なくとも1つのマッチ方式を選択してください")
+  .default(["exact"]);
+
 export const createMessageSchema = z.object({
   work_id:          uuidSchema,
   phase_id:         uuidSchema.optional().nullable(),
   character_id:     uuidSchema.optional().nullable(),
   message_type:     z.enum(["text", "image", "riddle", "video", "carousel", "voice", "flex"]).default("text"),
-  /** メッセージ役割種別: "start" | "normal" | "response" | "hint" */
-  kind:             z.enum(["start", "normal", "response", "hint"]).default("normal"),
+  /** メッセージ役割種別: "start" | "normal" | "response" | "hint" | "puzzle" */
+  kind:             z.enum(["start", "normal", "response", "hint", "puzzle"]).default("normal"),
   body:             z.string().max(10000).optional(),
   asset_url:        urlSchema,
   trigger_keyword:  z.string().max(200).optional().nullable(),
@@ -231,27 +237,52 @@ export const createMessageSchema = z.object({
   quick_replies:    z.array(quickReplyItemSchema).max(13, "クイックリプライは最大13件までです").optional().nullable(),
   alt_text:         z.string().max(400).optional().nullable(),
   flex_payload_json: z.string().max(50000).optional().nullable(),
+  // Puzzle fields
+  puzzle_type:           z.enum(["text", "image", "video", "carousel"]).optional().nullable(),
+  answer:                z.string().max(500).optional().nullable(),
+  puzzle_hint_text:      z.string().max(1000).optional().nullable(),
+  answer_match_type:     answerMatchTypeSchema,
+  correct_action:        z.enum(["text", "text_and_transition", "transition"]).optional().nullable(),
+  correct_text:          z.string().max(2000).optional().nullable(),
+  incorrect_text:        z.string().max(2000).optional().nullable(),
+  correct_next_phase_id: uuidSchema.optional().nullable(),
   sort_order:       sortSchema,
   is_active:        z.boolean().default(true),
 }).superRefine((val, ctx) => {
-  if (val.message_type === "text" && !val.body) {
-    ctx.addIssue({ code: "custom", path: ["body"], message: "text型の場合は本文が必要です" });
-  }
-  if ((val.message_type === "image" || val.message_type === "video" || val.message_type === "voice") && !val.asset_url) {
-    ctx.addIssue({ code: "custom", path: ["asset_url"], message: `${val.message_type}型の場合は asset_url が必要です` });
-  }
-  if (val.message_type === "riddle" && !val.riddle_id) {
-    ctx.addIssue({ code: "custom", path: ["riddle_id"], message: "riddle型の場合は riddle_id が必要です" });
-  }
-  if (val.message_type === "flex") {
-    if (!val.alt_text?.trim()) {
-      ctx.addIssue({ code: "custom", path: ["alt_text"], message: "altTextを入力してください" });
+  if (val.kind === "puzzle") {
+    if (!val.answer?.trim()) {
+      ctx.addIssue({ code: "custom", path: ["answer"], message: "puzzle の場合、正解（answer）は必須です" });
     }
-    if (!val.flex_payload_json?.trim()) {
-      ctx.addIssue({ code: "custom", path: ["flex_payload_json"], message: "Flex Message JSONを入力してください" });
-    } else {
-      try { JSON.parse(val.flex_payload_json); } catch {
-        ctx.addIssue({ code: "custom", path: ["flex_payload_json"], message: "JSONの形式が正しくありません" });
+    if (!val.puzzle_type) {
+      ctx.addIssue({ code: "custom", path: ["puzzle_type"], message: "puzzle の場合、出題形式（puzzle_type）は必須です" });
+    }
+    if (
+      (val.correct_action === "transition" || val.correct_action === "text_and_transition") &&
+      !val.correct_next_phase_id
+    ) {
+      ctx.addIssue({ code: "custom", path: ["correct_next_phase_id"], message: "遷移系の correct_action には遷移先フェーズが必須です" });
+    }
+  } else {
+    // 通常メッセージのバリデーション
+    if (val.message_type === "text" && !val.body) {
+      ctx.addIssue({ code: "custom", path: ["body"], message: "text型の場合は本文が必要です" });
+    }
+    if ((val.message_type === "image" || val.message_type === "video" || val.message_type === "voice") && !val.asset_url) {
+      ctx.addIssue({ code: "custom", path: ["asset_url"], message: `${val.message_type}型の場合は asset_url が必要です` });
+    }
+    if (val.message_type === "riddle" && !val.riddle_id) {
+      ctx.addIssue({ code: "custom", path: ["riddle_id"], message: "riddle型の場合は riddle_id が必要です" });
+    }
+    if (val.message_type === "flex") {
+      if (!val.alt_text?.trim()) {
+        ctx.addIssue({ code: "custom", path: ["alt_text"], message: "altTextを入力してください" });
+      }
+      if (!val.flex_payload_json?.trim()) {
+        ctx.addIssue({ code: "custom", path: ["flex_payload_json"], message: "Flex Message JSONを入力してください" });
+      } else {
+        try { JSON.parse(val.flex_payload_json); } catch {
+          ctx.addIssue({ code: "custom", path: ["flex_payload_json"], message: "JSONの形式が正しくありません" });
+        }
       }
     }
   }
@@ -267,7 +298,7 @@ export const updateMessageSchema = z.object({
   character_id:      uuidSchema.optional().nullable(),
   message_type:      z.enum(["text", "image", "riddle", "video", "carousel", "voice", "flex"]).optional(),
   /** メッセージ役割種別 */
-  kind:              z.enum(["start", "normal", "response", "hint"]).optional(),
+  kind:              z.enum(["start", "normal", "response", "hint", "puzzle"]).optional(),
   body:              z.string().max(10000).optional().nullable(),
   asset_url:         z.string().url().optional().nullable(),
   trigger_keyword:   z.string().max(200).optional().nullable(),
@@ -277,18 +308,37 @@ export const updateMessageSchema = z.object({
   quick_replies:     z.array(quickReplyItemSchema).max(13, "クイックリプライは最大13件までです").optional().nullable(),
   alt_text:          z.string().max(400).optional().nullable(),
   flex_payload_json: z.string().max(50000).optional().nullable(),
+  // Puzzle fields
+  puzzle_type:           z.enum(["text", "image", "video", "carousel"]).optional().nullable(),
+  answer:                z.string().max(500).optional().nullable(),
+  puzzle_hint_text:      z.string().max(1000).optional().nullable(),
+  answer_match_type:     z.array(z.enum(["exact", "ignore_punctuation", "normalize_width"])).optional(),
+  correct_action:        z.enum(["text", "text_and_transition", "transition"]).optional().nullable(),
+  correct_text:          z.string().max(2000).optional().nullable(),
+  incorrect_text:        z.string().max(2000).optional().nullable(),
+  correct_next_phase_id: uuidSchema.optional().nullable(),
   sort_order:        z.number().int().min(0).optional(),
   is_active:         z.boolean().optional(),
 }).superRefine((val, ctx) => {
-  if (val.message_type === "text" && val.body === null) {
-    ctx.addIssue({ code: "custom", path: ["body"], message: "text型の場合、body を null にはできません" });
+  if (val.kind !== "puzzle") {
+    if (val.message_type === "text" && val.body === null) {
+      ctx.addIssue({ code: "custom", path: ["body"], message: "text型の場合、body を null にはできません" });
+    }
+    if ((val.message_type === "image" || val.message_type === "video" || val.message_type === "voice") && val.asset_url === null) {
+      ctx.addIssue({ code: "custom", path: ["asset_url"], message: `${val.message_type}型の場合、asset_url を null にはできません` });
+    }
+    if (val.message_type === "flex" && val.flex_payload_json) {
+      try { JSON.parse(val.flex_payload_json); } catch {
+        ctx.addIssue({ code: "custom", path: ["flex_payload_json"], message: "JSONの形式が正しくありません" });
+      }
+    }
   }
-  if ((val.message_type === "image" || val.message_type === "video" || val.message_type === "voice") && val.asset_url === null) {
-    ctx.addIssue({ code: "custom", path: ["asset_url"], message: `${val.message_type}型の場合、asset_url を null にはできません` });
-  }
-  if (val.message_type === "flex" && val.flex_payload_json) {
-    try { JSON.parse(val.flex_payload_json); } catch {
-      ctx.addIssue({ code: "custom", path: ["flex_payload_json"], message: "JSONの形式が正しくありません" });
+  if (val.kind === "puzzle") {
+    if (
+      (val.correct_action === "transition" || val.correct_action === "text_and_transition") &&
+      val.correct_next_phase_id === null
+    ) {
+      ctx.addIssue({ code: "custom", path: ["correct_next_phase_id"], message: "遷移系の correct_action には遷移先フェーズが必須です" });
     }
   }
 });

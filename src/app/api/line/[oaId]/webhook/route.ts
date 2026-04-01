@@ -517,6 +517,48 @@ async function handleTextEvent({
     return;
   }
 
+  // ─ startTrigger 照合（progress の有無に関わらず最優先で評価）─
+  //
+  //  β仕様: startTrigger に一致したら progress をリセットして最初から開始。
+  //  未開始・進行中・エンディング到達済みいずれの状態でも同じ挙動。
+  //  優先順位: startTrigger > triggerKeyword > transition
+  //
+  const startPhaseForTrigger = await prisma.phase.findFirst({
+    where:   { workId: work.id, phaseType: "start", isActive: true },
+    orderBy: { sortOrder: "asc" },
+    include: {
+      transitionsFrom: {
+        where:   { isActive: true },
+        orderBy: { sortOrder: "asc" },
+        take: 1,
+      },
+    },
+  });
+
+  if (startPhaseForTrigger?.startTrigger) {
+    const triggerNorm  = normKw(startPhaseForTrigger.startTrigger);
+    const triggerLoose = normKwLoose(startPhaseForTrigger.startTrigger);
+    const inputNorm    = normKw(text);
+    const inputLoose   = normKwLoose(text);
+
+    if (inputNorm === triggerNorm || inputLoose === triggerLoose) {
+      console.log(
+        `[Webhook][STEP] startTrigger マッチ（progress有無問わず）`,
+        `trigger="${startPhaseForTrigger.startTrigger}"`,
+        `userId=${userId}`,
+      );
+      await handleStartTrigger({
+        oa, work, systemSender, userId, replyToken,
+        startPhase: startPhaseForTrigger,
+      });
+      return;
+    } else {
+      console.log(
+        `[Webhook][STEP] startTrigger 不一致 trigger="${startPhaseForTrigger.startTrigger}" input="${text}"`,
+      );
+    }
+  }
+
   // ─ 進行状態を取得 ─
   console.log(`[Webhook][STEP] progress取得前 userId=${userId} workId=${work.id}`);
   const progress = await prisma.userProgress.findUnique({
@@ -526,47 +568,8 @@ async function handleTextEvent({
   });
   console.log(`[Webhook][STEP] progress取得後 found=${!!progress} reachedEnding=${progress?.reachedEnding ?? "-"} currentPhaseId=${progress?.currentPhaseId ?? "-"}`);
 
-  // ─ 未開始 — Phase.startTrigger 照合 → なければ自動開始 ─
+  // ─ 未開始 → β 自動開始 ─
   if (!progress) {
-    // startPhase を取得（startTrigger + 最初の遷移先も JOIN）
-    const startPhase = await prisma.phase.findFirst({
-      where:   { workId: work.id, phaseType: "start", isActive: true },
-      orderBy: { sortOrder: "asc" },
-      include: {
-        transitionsFrom: {
-          where:   { isActive: true },
-          orderBy: { sortOrder: "asc" },
-          take: 1,
-        },
-      },
-    });
-
-    if (startPhase?.startTrigger) {
-      // Phase.startTrigger に対して NFKC 正規化マッチ
-      const triggerNorm  = normKw(startPhase.startTrigger);
-      const triggerLoose = normKwLoose(startPhase.startTrigger);
-      const inputNorm    = normKw(text);
-      const inputLoose   = normKwLoose(text);
-
-      if (inputNorm === triggerNorm || inputLoose === triggerLoose) {
-        console.log(
-          `[Webhook][STEP] Phase.startTrigger マッチ`,
-          `trigger="${startPhase.startTrigger}"`,
-          `userId=${userId}`,
-        );
-        await handleStartTrigger({
-          oa, work, systemSender, userId, replyToken,
-          startPhase,
-        });
-        return;
-      } else {
-        console.log(
-          `[Webhook][STEP] startTrigger 不一致 trigger="${startPhase.startTrigger}" input="${text}"`,
-        );
-      }
-    }
-
-    // startTrigger 未設定 or 不一致 → β 自動開始
     console.log(`[Webhook][STEP] 未開始ユーザー → 自動開始 userId=${userId}`);
     await handleStart({ oa, work, systemSender, userId, replyToken });
     return;
@@ -632,6 +635,28 @@ async function handleTextEvent({
       return;
     }
     // メッセージ変換結果が 0 件（画像URLなしなど）の場合は Transition へフォールバック
+  }
+
+  // ─ パズル照合（triggerKeyword の後・Transition の前に評価）─
+  const puzzleResult = await matchPuzzleAnswer(work.id, progress.currentPhaseId, text);
+  if (puzzleResult !== null) {
+    if (puzzleResult.type === "correct") {
+      await handlePuzzleCorrect({
+        oa, work, systemSender, userId, replyToken,
+        progress,
+        puzzle: puzzleResult.puzzle,
+      });
+    } else {
+      // パズルあり・不正解
+      const incorrectMsg = puzzleResult.incorrectText?.trim()
+        ?? "答えが違います。もう一度考えてみてください。";
+      await replyToLine(replyToken, [{
+        type:   "text",
+        text:   incorrectMsg,
+        sender: systemSender,
+      }], token);
+    }
+    return;
   }
 
   // ─ 現在の flags を取得してフラグ条件付き遷移マッチング ─
@@ -853,9 +878,12 @@ async function handleStartTrigger({
     `via=${firstTransition ? `transition→${firstTransition.toPhaseId.slice(0, 8)}` : "startPhase itself"}`,
   );
 
-  // progress 作成（未開始 → 初期フェーズへ）
-  const progress = await prisma.userProgress.create({
-    data: {
+  // progress upsert（未開始なら新規作成 / 開始済みなら最初からリセット）
+  const progress = await prisma.userProgress.upsert({
+    where: {
+      lineUserId_workId: { lineUserId: userId, workId: work.id },
+    },
+    create: {
       lineUserId:       userId,
       workId:           work.id,
       currentPhaseId:   initialPhaseId,
@@ -863,8 +891,14 @@ async function handleStartTrigger({
       flags:            "{}",
       lastInteractedAt: new Date(),
     },
+    update: {
+      currentPhaseId:   initialPhaseId,
+      reachedEnding:    false,
+      flags:            "{}",
+      lastInteractedAt: new Date(),
+    },
   });
-  console.log(`[Webhook][STEP] handleStartTrigger: progress作成 progressId=${progress.id}`);
+  console.log(`[Webhook][STEP] handleStartTrigger: progress upsert progressId=${progress.id}`);
 
   // 初期フェーズの phaseType を取得してリッチメニューを切り替え
   const initialPhase = await prisma.phase.findUnique({
@@ -1030,6 +1064,179 @@ function normKwLoose(s: string): string {
   return normKw(s).replace(/[。！？!?．…\s]+$/u, "").trimEnd();
 }
 
+// ──────────────────────────────────────────────────────────
+// パズル（謎）照合
+// ──────────────────────────────────────────────────────────
+
+type PuzzleRecord = {
+  id:                 string;
+  answer:             string;
+  answerMatchType:    string | null;
+  correctAction:      string | null;
+  correctText:        string | null;
+  incorrectText:      string | null;
+  correctNextPhaseId: string | null;
+};
+
+type PuzzleMatchResult =
+  | null                                                        // このフェーズにパズルなし（遷移照合へ進む）
+  | { type: "incorrect"; incorrectText: string | null }         // パズルあり・不正解
+  | { type: "correct";   puzzle: PuzzleRecord };               // 正解
+
+/**
+ * 句読点・記号類を除去する（ignore_punctuation マッチ用）
+ */
+function removePunct(s: string): string {
+  return s.replace(/[!?,.　\u0020\t、。，．・：；！？…‥〜ー\u3000-\u303F]+/gu, "").trim();
+}
+
+/**
+ * 入力テキストとパズルの答えを answer_match_type に基づいて照合する
+ */
+function checkPuzzleAnswer(
+  input:      string,
+  answer:     string,
+  matchTypes: string[],
+): boolean {
+  const inputNorm  = normKw(input);
+  const answerNorm = normKw(answer);
+
+  for (const mt of matchTypes) {
+    if (mt === "exact" || mt === "normalize_width") {
+      // normalize_width は NFKC で解決済み
+      if (inputNorm === answerNorm) return true;
+    }
+    if (mt === "ignore_punctuation") {
+      if (removePunct(inputNorm) === removePunct(answerNorm)) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * DB の answerMatchType（JSON 文字列）を string[] に変換する
+ */
+function parsePuzzleMatchType(raw: string | null): string[] {
+  if (!raw) return ["exact"];
+  try { return JSON.parse(raw); } catch { return ["exact"]; }
+}
+
+/**
+ * 現在フェーズのパズルメッセージを照合する。
+ * - パズルが 0 件 → null（遷移照合へフォールバック）
+ * - パズルあり・正解 → { type:"correct", puzzle }
+ * - パズルあり・不正解 → { type:"incorrect", incorrectText }
+ */
+async function matchPuzzleAnswer(
+  workId:      string,
+  phaseId:     string,
+  inputText:   string,
+): Promise<PuzzleMatchResult> {
+  const puzzles = await prisma.message.findMany({
+    where: {
+      workId,
+      phaseId,
+      kind:     "puzzle",
+      isActive: true,
+      answer:   { not: null },
+    },
+    select: {
+      id:                 true,
+      answer:             true,
+      answerMatchType:    true,
+      correctAction:      true,
+      correctText:        true,
+      incorrectText:      true,
+      correctNextPhaseId: true,
+    },
+    orderBy: { sortOrder: "asc" },
+  });
+
+  if (puzzles.length === 0) return null; // パズルなし → 遷移照合へ
+
+  for (const puzzle of puzzles) {
+    if (!puzzle.answer) continue;
+    const matchTypes = parsePuzzleMatchType(puzzle.answerMatchType);
+    if (checkPuzzleAnswer(inputText, puzzle.answer, matchTypes)) {
+      console.log(
+        `[Webhook][puzzle] 正解 puzzleId=${puzzle.id.slice(0, 8)}`,
+        `input="${inputText}"`,
+        `answer="${puzzle.answer}"`,
+        `matchTypes=${JSON.stringify(matchTypes)}`,
+      );
+      return { type: "correct", puzzle: puzzle as PuzzleRecord };
+    }
+  }
+
+  console.log(
+    `[Webhook][puzzle] 不正解 input="${inputText}"`,
+    `puzzles=${puzzles.length}件`,
+    puzzles.map((p) => `answer="${p.answer}"`).join(", "),
+  );
+  return { type: "incorrect", incorrectText: puzzles[0]?.incorrectText ?? null };
+}
+
+/**
+ * パズル正解時の処理。
+ * correct_action に応じて:
+ *   "text"             → correctText を返信するのみ
+ *   "transition"       → correctNextPhase へ遷移してフェーズメッセージを返信
+ *   "text_and_transition" → correctText ＋ 遷移先フェーズメッセージを一括返信
+ */
+async function handlePuzzleCorrect({
+  oa, work, systemSender, userId, replyToken,
+  progress, puzzle,
+}: Omit<HandlerCommon, "work"> & {
+  work:     NonNullable<WorkRecord>;
+  progress: { id: string; flags: string };
+  puzzle:   PuzzleRecord;
+}) {
+  const token  = oa.channelAccessToken;
+  const action = puzzle.correctAction ?? "text";
+
+  const messagesToSend: import("@/lib/line").LineMessage[] = [];
+
+  // ─ correctText を先頭に追加（text / text_and_transition）─
+  if ((action === "text" || action === "text_and_transition") && puzzle.correctText) {
+    messagesToSend.push({ type: "text", text: puzzle.correctText, sender: systemSender });
+  }
+
+  // ─ フェーズ遷移（transition / text_and_transition）─
+  if (action === "transition" || action === "text_and_transition") {
+    if (puzzle.correctNextPhaseId) {
+      const nextPhase = await prisma.phase.findUnique({ where: { id: puzzle.correctNextPhaseId } });
+      if (nextPhase) {
+        const isEnding = nextPhase.phaseType === "ending";
+        const updated  = await prisma.userProgress.update({
+          where: { id: progress.id },
+          data: {
+            currentPhaseId:   nextPhase.id,
+            reachedEnding:    isEnding,
+            lastInteractedAt: new Date(),
+          },
+        });
+        console.log(
+          `[Webhook][puzzle] 遷移 → phaseId=${nextPhase.id.slice(0, 8)}`,
+          `phaseType=${nextPhase.phaseType}`,
+          `isEnding=${isEnding}`,
+        );
+        await switchRichMenuForUser(oa, userId, nextPhase.phaseType);
+        const state     = await buildRuntimeState(updated);
+        const nextMsgs  = buildPhaseMessages(state.phase, { systemSender });
+        messagesToSend.push(...nextMsgs);
+      }
+    }
+  }
+
+  // ─ フォールバック: メッセージが組み立てられなかった場合 ─
+  if (messagesToSend.length === 0) {
+    messagesToSend.push({ type: "text", text: "正解！", sender: systemSender });
+  }
+
+  // LINE reply は最大 5 件
+  await replyToLine(replyToken, messagesToSend.slice(0, 5), token);
+}
+
 /**
  * ユーザー入力に対して triggerKeyword が一致する Message レコードを返す。
  *
@@ -1051,13 +1258,13 @@ async function matchTriggerKeyword(
   if (!currentPhaseId) return [];
 
   // phaseId 一致 または null（全体共通）のキーワード付きメッセージを取得
-  // kind="start" は未開始ユーザー専用なので除外（handleStartTrigger で処理）
+  // kind="start" は未開始ユーザー専用 / kind="puzzle" はパズル照合で処理するので除外
   const candidates = await prisma.message.findMany({
     where: {
       workId,
       isActive:       true,
       triggerKeyword: { not: null },
-      kind:           { not: "start" },
+      kind:           { notIn: ["start", "puzzle"] },
       OR: [
         { phaseId: currentPhaseId },
         { phaseId: null },

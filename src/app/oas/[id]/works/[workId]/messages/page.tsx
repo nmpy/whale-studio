@@ -72,6 +72,7 @@ const KIND_META: Record<string, { label: string; icon: string; bg: string; color
   start:    { label: "開始演出", icon: "🎬", bg: "#fef3c7", color: "#92400e" },
   response: { label: "応答",     icon: "💬", bg: "#f0fdf4", color: "#166534" },
   hint:     { label: "ヒント",   icon: "💡", bg: "#faf5ff", color: "#7e22ce" },
+  puzzle:   { label: "謎",       icon: "🧩", bg: "#fff7ed", color: "#c2410c" },
 };
 
 export default function MessagesPage() {
@@ -447,7 +448,22 @@ export default function MessagesPage() {
 
                         {/* 本文 */}
                         <td style={{ padding: "12px 14px", maxWidth: 280 }}>
-                          {msg.message_type === "image" ? (
+                          {msg.kind === "puzzle" ? (
+                            <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                              {"answer" in msg && (msg as { answer?: string | null }).answer ? (
+                                <span style={{ fontSize: 12, color: "#374151" }}>
+                                  答え: <span style={{ fontWeight: 600 }}>{(msg as { answer?: string | null }).answer}</span>
+                                </span>
+                              ) : (
+                                <span style={{ fontSize: 11, color: "#f97316" }}>答え未設定</span>
+                              )}
+                              {"puzzle_type" in msg && (msg as { puzzle_type?: string | null }).puzzle_type && (
+                                <span style={{ fontSize: 10, color: "#9ca3af" }}>
+                                  {(msg as { puzzle_type?: string | null }).puzzle_type}
+                                </span>
+                              )}
+                            </div>
+                          ) : msg.message_type === "image" ? (
                             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                               {msg.asset_url ? (
                                 // eslint-disable-next-line @next/next/no-img-element

@@ -42,17 +42,9 @@ const HUB_CARDS = [
     key: "messages",
     icon: "💬",
     title: "メッセージ",
-    desc: "フェーズごとに送信するメッセージを管理します",
+    desc: "フェーズごとに送信するメッセージ・謎チャレンジを管理します",
     color: "#06C755",
     bg: "#E6F7ED",
-  },
-  {
-    key: "riddles",
-    icon: "🔍",
-    title: "謎",
-    desc: "Bot が出題する謎（問題）を管理します",
-    color: "#dc2626",
-    bg: "#fef2f2",
   },
   {
     key: "scenario",

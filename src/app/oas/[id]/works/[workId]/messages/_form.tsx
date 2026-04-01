@@ -58,7 +58,9 @@ const EMPTY_CAROUSEL_CARD: MessageCarouselCard = {
 
 // ── FormState ────────────────────────────────────────────
 
-export type MessageKind = "start" | "normal" | "response" | "hint";
+export type MessageKind = "start" | "normal" | "response" | "hint" | "puzzle";
+export type AnswerMatchType = "exact" | "ignore_punctuation" | "normalize_width";
+export type CorrectAction   = "text" | "text_and_transition" | "transition";
 
 export interface MessageFormState {
   trigger_keyword: string;
@@ -78,6 +80,15 @@ export interface MessageFormState {
   flex_json:       string;
   sort_order:      number;
   is_active:       boolean;
+  // ── 謎（puzzle）専用フィールド ──
+  puzzle_type:           string;
+  answer:                string;
+  puzzle_hint_text:      string;
+  answer_match_type:     AnswerMatchType[];
+  correct_action:        CorrectAction;
+  correct_text:          string;
+  incorrect_text:        string;
+  correct_next_phase_id: string;
 }
 
 export const EMPTY_MESSAGE_FORM: MessageFormState = {
@@ -97,26 +108,43 @@ export const EMPTY_MESSAGE_FORM: MessageFormState = {
   flex_json:       "",
   sort_order:      0,
   is_active:       true,
+  // puzzle defaults
+  puzzle_type:           "",
+  answer:                "",
+  puzzle_hint_text:      "",
+  answer_match_type:     ["exact"],
+  correct_action:        "text",
+  correct_text:          "",
+  incorrect_text:        "",
+  correct_next_phase_id: "",
 };
 
 // ── コンバーター ──────────────────────────────────────────
 
 export function msgToFormState(msg: {
-  trigger_keyword?:  string | null;
-  target_segment?:   string | null;
-  phase_id?:         string | null;
-  character_id?:     string | null;
-  message_type?:     string;
-  kind?:             string | null;
-  body?:             string | null;
-  asset_url?:        string | null;
-  notify_text?:      string | null;
-  riddle_id?:        string | null;
-  quick_replies?:    QuickReplyItem[] | null;
-  alt_text?:         string | null;
-  flex_payload_json?: string | null;
-  sort_order?:       number;
-  is_active?:        boolean;
+  trigger_keyword?:      string | null;
+  target_segment?:       string | null;
+  phase_id?:             string | null;
+  character_id?:         string | null;
+  message_type?:         string;
+  kind?:                 string | null;
+  body?:                 string | null;
+  asset_url?:            string | null;
+  notify_text?:          string | null;
+  riddle_id?:            string | null;
+  quick_replies?:        QuickReplyItem[] | null;
+  alt_text?:             string | null;
+  flex_payload_json?:    string | null;
+  puzzle_type?:          string | null;
+  answer?:               string | null;
+  puzzle_hint_text?:     string | null;
+  answer_match_type?:    string[] | null;
+  correct_action?:       string | null;
+  correct_text?:         string | null;
+  incorrect_text?:       string | null;
+  correct_next_phase_id?: string | null;
+  sort_order?:           number;
+  is_active?:            boolean;
 }): MessageFormState {
   // Parse carousel items from body JSON if message_type is carousel
   let carousel_items: MessageCarouselCard[] = [];
@@ -130,55 +158,95 @@ export function msgToFormState(msg: {
   }
 
   return {
-    trigger_keyword: msg.trigger_keyword ?? "",
-    target_segment:  msg.target_segment  ?? "",
-    phase_id:        msg.phase_id        ?? "",
-    character_id:    msg.character_id    ?? "",
-    message_type:    (msg.message_type as ExtendedMessageType) ?? "text",
-    kind:            (msg.kind as MessageKind) ?? "normal",
-    body:            msg.message_type === "carousel" ? "" : (msg.body ?? ""),
-    asset_url:       msg.asset_url       ?? "",
-    notify_text:     msg.notify_text     ?? "",
-    riddle_id:       msg.riddle_id       ?? "",
+    trigger_keyword:       msg.trigger_keyword ?? "",
+    target_segment:        msg.target_segment  ?? "",
+    phase_id:              msg.phase_id        ?? "",
+    character_id:          msg.character_id    ?? "",
+    message_type:          (msg.message_type as ExtendedMessageType) ?? "text",
+    kind:                  (msg.kind as MessageKind) ?? "normal",
+    body:                  msg.message_type === "carousel" ? "" : (msg.body ?? ""),
+    asset_url:             msg.asset_url       ?? "",
+    notify_text:           msg.notify_text     ?? "",
+    riddle_id:             msg.riddle_id       ?? "",
     carousel_items,
-    quick_replies:   msg.quick_replies   ?? [],
-    alt_text:        msg.alt_text         ?? "",
-    flex_json:       msg.flex_payload_json ?? "",
-    sort_order:      msg.sort_order      ?? 0,
-    is_active:       msg.is_active       ?? true,
+    quick_replies:         msg.quick_replies   ?? [],
+    alt_text:              msg.alt_text         ?? "",
+    flex_json:             msg.flex_payload_json ?? "",
+    sort_order:            msg.sort_order      ?? 0,
+    is_active:             msg.is_active       ?? true,
+    puzzle_type:           msg.puzzle_type     ?? "",
+    answer:                msg.answer          ?? "",
+    puzzle_hint_text:      msg.puzzle_hint_text ?? "",
+    answer_match_type:     (msg.answer_match_type ?? ["exact"]) as AnswerMatchType[],
+    correct_action:        (msg.correct_action ?? "text") as CorrectAction,
+    correct_text:          msg.correct_text    ?? "",
+    incorrect_text:        msg.incorrect_text  ?? "",
+    correct_next_phase_id: msg.correct_next_phase_id ?? "",
   };
 }
 
 export function formStateToMsgBody(form: MessageFormState) {
+  const isPuzzle = form.kind === "puzzle";
   return {
     trigger_keyword:  form.trigger_keyword || null,
     target_segment:   form.target_segment  || null,
     phase_id:         form.phase_id        || null,
     character_id:     form.character_id    || null,
-    message_type:     form.message_type,
+    message_type:     isPuzzle ? "text" : form.message_type, // puzzle は DB 側 text 扱い
     kind:             form.kind,
     body:
-      form.message_type === "carousel"
+      isPuzzle
+        ? undefined // puzzle は本文不要
+        : form.message_type === "carousel"
         ? JSON.stringify(form.carousel_items)
         : form.message_type === "text"
         ? form.body || undefined
         : undefined,
-    asset_url:         form.asset_url   || undefined,
-    notify_text:       form.message_type !== "text" && form.message_type !== "flex"
+    asset_url:         isPuzzle ? undefined : form.asset_url || undefined,
+    notify_text:       !isPuzzle && form.message_type !== "text" && form.message_type !== "flex"
       ? form.notify_text || undefined
       : undefined,
     riddle_id:         form.riddle_id   || null,
-    quick_replies:     form.quick_replies.length > 0 ? form.quick_replies : null,
-    alt_text:          form.message_type === "flex" ? form.alt_text || null : null,
-    flex_payload_json: form.message_type === "flex" ? form.flex_json || null : null,
+    quick_replies:     isPuzzle ? null : (form.quick_replies.length > 0 ? form.quick_replies : null),
+    alt_text:          !isPuzzle && form.message_type === "flex" ? form.alt_text || null : null,
+    flex_payload_json: !isPuzzle && form.message_type === "flex" ? form.flex_json || null : null,
     sort_order:        form.sort_order,
     is_active:         form.is_active,
+    // puzzle fields
+    puzzle_type:           isPuzzle ? form.puzzle_type || null : null,
+    answer:                isPuzzle ? form.answer || null : null,
+    puzzle_hint_text:      isPuzzle ? form.puzzle_hint_text || null : null,
+    answer_match_type:     isPuzzle ? form.answer_match_type : ["exact"],
+    correct_action:        isPuzzle ? form.correct_action || null : null,
+    correct_text:          isPuzzle ? form.correct_text || null : null,
+    incorrect_text:        isPuzzle ? form.incorrect_text || null : null,
+    correct_next_phase_id: isPuzzle ? form.correct_next_phase_id || null : null,
   };
 }
 
 // ── バリデーション ────────────────────────────────────────
 
 export function validateMessageForm(form: MessageFormState): string | null {
+  // ── 謎（puzzle）バリデーション ──
+  if (form.kind === "puzzle") {
+    if (!form.answer.trim()) return "答えは必須です";
+    if (form.answer_match_type.length === 0) return "照合方法を1つ以上選択してください";
+    if (!form.correct_action) return "正解時アクションを選択してください";
+    if (
+      (form.correct_action === "text" || form.correct_action === "text_and_transition") &&
+      !form.correct_text.trim()
+    ) {
+      return "正解メッセージは必須です（アクション: テキスト返信）";
+    }
+    if (
+      (form.correct_action === "transition" || form.correct_action === "text_and_transition") &&
+      !form.correct_next_phase_id
+    ) {
+      return "遷移先フェーズを選択してください";
+    }
+    return null;
+  }
+  // ── 通常メッセージバリデーション ──
   if (form.message_type === "text" && !form.body.trim()) {
     return "テキスト本文は必須です";
   }
@@ -591,6 +659,30 @@ function PreviewPanel({ form, characters, riddles }: PreviewPanelProps) {
 
   // ── バブル内コンテンツ ──
   const bubbleContent = (() => {
+    // puzzle は message_type に関係なく専用プレビューを表示
+    if (form.kind === "puzzle") {
+      return (
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+          <span style={{ fontSize: 22 }}>🧩</span>
+          <div>
+            <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 2 }}>謎チャレンジ</div>
+            {form.puzzle_type && (
+              <div style={{ fontSize: 10, color: "#9ca3af", marginBottom: 3 }}>{form.puzzle_type}</div>
+            )}
+            <div style={{ fontSize: 12, color: "#374151" }}>
+              答え:{" "}
+              {form.answer
+                ? <span style={{ fontWeight: 600, color: "#111" }}>{form.answer}</span>
+                : <span style={{ color: "#aaa", fontStyle: "italic" }}>未設定</span>
+              }
+            </div>
+            <div style={{ fontSize: 11, color: "#6b7280", marginTop: 3 }}>
+              照合: {form.answer_match_type.join(", ")}
+            </div>
+          </div>
+        </div>
+      );
+    }
     switch (form.message_type) {
       case "text":
         return form.body
@@ -806,6 +898,8 @@ export function MessageForm({
   const [error, setError]     = useState<string | null>(null);
   const [flexHelpOpen, setFlexHelpOpen] = useState(false);
 
+  const isPuzzle = form.kind === "puzzle";
+
   const [phases, setPhases]         = useState<PhaseWithCounts[]>([]);
   const [characters, setCharacters] = useState<Character[]>([]);
   const [riddles, setRiddles]       = useState<Riddle[]>([]);
@@ -855,6 +949,18 @@ export function MessageForm({
     onSubmit(form);
   }
 
+  // ── answer_match_type トグル ────────────────────────────
+  function toggleMatchType(mt: AnswerMatchType) {
+    const current = form.answer_match_type;
+    if (current.includes(mt)) {
+      // 最低1つは残す
+      if (current.length <= 1) return;
+      set("answer_match_type", current.filter((x) => x !== mt));
+    } else {
+      set("answer_match_type", [...current, mt]);
+    }
+  }
+
   // ── レンダリング ──────────────────────────────────────────
 
   const mtype = form.message_type;
@@ -897,15 +1003,51 @@ export function MessageForm({
           )}
 
           {/* ════════════════════════════════════════
+              トップレベル: メッセージ / 謎 切り替え
+          ════════════════════════════════════════ */}
+          <div className="card" style={{ marginBottom: 16 }}>
+            <div style={sectionHeader}>種類</div>
+            <div style={{ display: "flex", gap: 10 }}>
+              {(
+                [
+                  { value: false, label: "💬 メッセージ", desc: "テキスト・画像などのメッセージ" },
+                  { value: true,  label: "🧩 謎",         desc: "答え合わせ付きのインライン謎" },
+                ] as const
+              ).map(({ value, label, desc }) => (
+                <button
+                  key={String(value)}
+                  type="button"
+                  onClick={() => set("kind", value ? "puzzle" : "normal")}
+                  style={{
+                    flex: 1,
+                    padding: "10px 14px",
+                    borderRadius: 8,
+                    border: isPuzzle === value ? "2px solid #06C755" : "2px solid #e5e5e5",
+                    background: isPuzzle === value ? "#E6F7ED" : "#fff",
+                    color: isPuzzle === value ? "#06C755" : "#6b7280",
+                    cursor: "pointer",
+                    textAlign: "left",
+                    transition: "all 0.15s",
+                  }}
+                >
+                  <div style={{ fontWeight: 600, fontSize: 14 }}>{label}</div>
+                  <div style={{ fontSize: 11, color: isPuzzle === value ? "#059669" : "#9ca3af", marginTop: 2 }}>{desc}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* ════════════════════════════════════════
               セクション 1: トリガー設定
           ════════════════════════════════════════ */}
           <div className="card" style={{ marginBottom: 16 }}>
             <div style={sectionHeader}>トリガー設定</div>
 
-            {/* メッセージ種別 */}
+            {/* メッセージ役割 (puzzle 以外) */}
+            {!isPuzzle && (
             <div className="form-group">
               <label style={fieldLabel} htmlFor="msg_kind">
-                メッセージ種別
+                メッセージ役割
               </label>
               <select
                 id="msg_kind"
@@ -925,8 +1067,10 @@ export function MessageForm({
                 {form.kind === "hint" && "ヒント用メッセージです（将来拡張）。"}
               </div>
             </div>
+            )}
 
-            {/* 応答キーワード */}
+            {/* 応答キーワード（puzzle は不要） */}
+            {!isPuzzle && (
             <div className="form-group">
               <label style={fieldLabel} htmlFor="trigger_keyword">
                 応答キーワード
@@ -947,6 +1091,7 @@ export function MessageForm({
                 {form.kind === "start" ? "kind=start では Phase.startTrigger を使います" : "このキーワードを受信したとき送信します（kind=response 推奨）"}
               </div>
             </div>
+            )}
 
             {/* 送信対象セグメント */}
             <div className="form-group">
@@ -1045,8 +1190,172 @@ export function MessageForm({
           </div>
 
           {/* ════════════════════════════════════════
-              セクション 3: 1通目のメッセージ
+              セクション 3a: 謎（puzzle）設定
           ════════════════════════════════════════ */}
+          {isPuzzle && (
+          <div className="card" style={{ marginBottom: 16 }}>
+            <div style={sectionHeader}>🧩 謎の設定</div>
+
+            {/* puzzle_type */}
+            <div className="form-group">
+              <label style={fieldLabel} htmlFor="puzzle_type">謎の種類（任意）</label>
+              <input
+                id="puzzle_type"
+                type="text"
+                className="form-input"
+                value={form.puzzle_type}
+                onChange={(e) => set("puzzle_type", e.target.value)}
+                placeholder="例: 暗号解読、並べ替え、虫食い…"
+                maxLength={100}
+              />
+              <div style={hintText}>管理用のメモ。ユーザーには表示されません</div>
+            </div>
+
+            {/* answer */}
+            <div className="form-group">
+              <label style={fieldLabel} htmlFor="puzzle_answer">
+                答え <span style={{ color: "#dc2626" }}>*</span>
+              </label>
+              <input
+                id="puzzle_answer"
+                type="text"
+                className="form-input"
+                value={form.answer}
+                onChange={(e) => set("answer", e.target.value)}
+                placeholder="例: 桜"
+                maxLength={200}
+              />
+            </div>
+
+            {/* answer_match_type */}
+            <div className="form-group">
+              <label style={fieldLabel}>照合方法 <span style={{ color: "#dc2626" }}>*</span></label>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {(
+                  [
+                    { value: "exact" as const,             label: "完全一致",     desc: "NFKC正規化後に完全一致するか確認します" },
+                    { value: "normalize_width" as const,   label: "全角半角を無視", desc: "全角・半角の違いを無視して照合します" },
+                    { value: "ignore_punctuation" as const, label: "句読点を無視",  desc: "句点・読点・記号を除去して照合します" },
+                  ]
+                ).map(({ value, label, desc }) => (
+                  <label key={value} style={{ display: "flex", alignItems: "flex-start", gap: 8, cursor: "pointer" }}>
+                    <input
+                      type="checkbox"
+                      checked={form.answer_match_type.includes(value)}
+                      onChange={() => toggleMatchType(value)}
+                      style={{ marginTop: 2 }}
+                    />
+                    <div>
+                      <span style={{ fontSize: 13, fontWeight: 500, color: "#374151" }}>{label}</span>
+                      <div style={hintText}>{desc}</div>
+                    </div>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {/* incorrect_text */}
+            <div className="form-group">
+              <label style={fieldLabel} htmlFor="incorrect_text">不正解メッセージ（任意）</label>
+              <input
+                id="incorrect_text"
+                type="text"
+                className="form-input"
+                value={form.incorrect_text}
+                onChange={(e) => set("incorrect_text", e.target.value)}
+                placeholder="例: 答えが違います。もう一度考えてみてください。"
+                maxLength={400}
+              />
+              <div style={hintText}>空欄の場合: 「答えが違います。もう一度考えてみてください。」が使われます</div>
+            </div>
+
+            {/* puzzle_hint_text */}
+            <div className="form-group">
+              <label style={fieldLabel} htmlFor="puzzle_hint_text">ヒントテキスト（任意）</label>
+              <textarea
+                id="puzzle_hint_text"
+                className="form-input"
+                style={{ minHeight: 70, resize: "vertical" }}
+                value={form.puzzle_hint_text}
+                onChange={(e) => set("puzzle_hint_text", e.target.value)}
+                placeholder="ユーザーがヒントを求めたときに送信するテキスト"
+                maxLength={1000}
+              />
+            </div>
+
+            {/* correct_action */}
+            <div className="form-group">
+              <label style={fieldLabel}>正解時アクション <span style={{ color: "#dc2626" }}>*</span></label>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {(
+                  [
+                    { value: "text" as const,              label: "テキスト返信のみ",     desc: "正解メッセージを返信してフェーズはそのまま" },
+                    { value: "transition" as const,        label: "フェーズ遷移のみ",      desc: "指定フェーズへ遷移してそのフェーズのメッセージを送信" },
+                    { value: "text_and_transition" as const, label: "テキスト＋フェーズ遷移", desc: "正解メッセージを送信しつつ次フェーズへ遷移" },
+                  ]
+                ).map(({ value, label, desc }) => (
+                  <label key={value} style={{ display: "flex", alignItems: "flex-start", gap: 8, cursor: "pointer" }}>
+                    <input
+                      type="radio"
+                      name="correct_action"
+                      value={value}
+                      checked={form.correct_action === value}
+                      onChange={() => set("correct_action", value)}
+                      style={{ marginTop: 3 }}
+                    />
+                    <div>
+                      <span style={{ fontSize: 13, fontWeight: 500, color: "#374151" }}>{label}</span>
+                      <div style={hintText}>{desc}</div>
+                    </div>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {/* correct_text */}
+            {(form.correct_action === "text" || form.correct_action === "text_and_transition") && (
+            <div className="form-group">
+              <label style={fieldLabel} htmlFor="correct_text">
+                正解メッセージ <span style={{ color: "#dc2626" }}>*</span>
+              </label>
+              <textarea
+                id="correct_text"
+                className="form-input"
+                style={{ minHeight: 80, resize: "vertical" }}
+                value={form.correct_text}
+                onChange={(e) => set("correct_text", e.target.value)}
+                placeholder="例: 正解！よく気づきましたね。"
+                maxLength={1000}
+              />
+            </div>
+            )}
+
+            {/* correct_next_phase_id */}
+            {(form.correct_action === "transition" || form.correct_action === "text_and_transition") && (
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label style={fieldLabel} htmlFor="correct_next_phase">
+                遷移先フェーズ <span style={{ color: "#dc2626" }}>*</span>
+              </label>
+              <select
+                id="correct_next_phase"
+                className="form-input"
+                value={form.correct_next_phase_id}
+                onChange={(e) => set("correct_next_phase_id", e.target.value)}
+              >
+                <option value="">— フェーズを選択 —</option>
+                {phases.map((ph) => (
+                  <option key={ph.id} value={ph.id}>{ph.name}</option>
+                ))}
+              </select>
+            </div>
+            )}
+          </div>
+          )}
+
+          {/* ════════════════════════════════════════
+              セクション 3b: 1通目のメッセージ（puzzle のときは非表示）
+          ════════════════════════════════════════ */}
+          {!isPuzzle && (
           <div className="card" style={{ marginBottom: 16 }}>
             <div style={sectionHeader}>1通目のメッセージ</div>
 
@@ -1541,14 +1850,17 @@ export function MessageForm({
               </>
             )}
           </div>
+          )} {/* /!isPuzzle */}
 
           {/* ════════════════════════════════════════
-              セクション 4: クイックリプライ設定（任意）
+              セクション 4: クイックリプライ設定（puzzle のときは非表示）
           ════════════════════════════════════════ */}
+          {!isPuzzle && (
           <QuickReplyEditor
             items={form.quick_replies}
             onChange={(items) => set("quick_replies", items)}
           />
+          )}
 
           {/* ── アクション ── */}
           <div

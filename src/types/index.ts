@@ -37,7 +37,7 @@ export type IconType      = "image" | "text";
 export type MessageType   = "text" | "image" | "riddle" | "video" | "carousel" | "voice" | "flex";
 export type PhaseType     = "start" | "normal" | "ending";
 /** メッセージの役割種別 */
-export type MessageKind   = "start" | "normal" | "response" | "hint";
+export type MessageKind   = "start" | "normal" | "response" | "hint" | "puzzle";
 
 // ────────────────────────────────────────────────
 // Domain models（DB行そのまま — snake_case）
@@ -148,6 +148,23 @@ export interface Message {
   alt_text: string | null;
   /** Flex Message JSON ペイロード */
   flex_payload_json: string | null;
+  // ── Puzzle（謎）専用フィールド ──
+  /** 出題形式（kind="puzzle" のとき使用） */
+  puzzle_type: string | null;
+  /** 正解テキスト */
+  answer: string | null;
+  /** ヒントテキスト */
+  puzzle_hint_text: string | null;
+  /** 表記ゆれ許容設定（配列: ["exact","ignore_punctuation","normalize_width"]） */
+  answer_match_type: string[];
+  /** 正解時の挙動: "text" | "text_and_transition" | "transition" */
+  correct_action: string | null;
+  /** 正解時メッセージ */
+  correct_text: string | null;
+  /** 不正解時メッセージ */
+  incorrect_text: string | null;
+  /** 正解後遷移先フェーズ ID */
+  correct_next_phase_id: string | null;
   sort_order: number;
   is_active: boolean;
   created_at: string;
@@ -284,6 +301,15 @@ export interface CreateMessageBody {
   quick_replies?: QuickReplyItem[] | null;
   alt_text?: string | null;
   flex_payload_json?: string | null;
+  // Puzzle fields
+  puzzle_type?: string | null;
+  answer?: string | null;
+  puzzle_hint_text?: string | null;
+  answer_match_type?: string[];
+  correct_action?: string | null;
+  correct_text?: string | null;
+  incorrect_text?: string | null;
+  correct_next_phase_id?: string | null;
   sort_order?: number;
   is_active?: boolean;
 }
@@ -303,6 +329,15 @@ export interface UpdateMessageBody {
   quick_replies?: QuickReplyItem[] | null;
   alt_text?: string | null;
   flex_payload_json?: string | null;
+  // Puzzle fields
+  puzzle_type?: string | null;
+  answer?: string | null;
+  puzzle_hint_text?: string | null;
+  answer_match_type?: string[];
+  correct_action?: string | null;
+  correct_text?: string | null;
+  incorrect_text?: string | null;
+  correct_next_phase_id?: string | null;
   sort_order?: number;
   is_active?: boolean;
 }

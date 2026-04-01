@@ -132,11 +132,12 @@ model Phase {
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
-  work            Work           @relation(fields: [workId], references: [id], onDelete: Cascade)
-  messages        Message[]
-  transitionsFrom Transition[]   @relation("TransitionFrom")
-  transitionsTo   Transition[]   @relation("TransitionTo")
-  userProgress    UserProgress[]
+  work             Work           @relation(fields: [workId], references: [id], onDelete: Cascade)
+  messages         Message[]
+  transitionsFrom  Transition[]   @relation("TransitionFrom")
+  transitionsTo    Transition[]   @relation("TransitionTo")
+  userProgress     UserProgress[]
+  puzzleNextFor    Message[]      @relation("MessageCorrectNextPhase")
 
   @@index([workId])
   @@index([phaseType])
@@ -241,14 +242,34 @@ model Message {
   altText          String?  @map("alt_text")
   /// Flex Message の JSON ペイロード（messageType = "flex" のとき使用）
   flexPayloadJson  String?  @map("flex_payload_json")
+
+  // ── Puzzle（謎）専用フィールド ─────────────────────────────
+  /// 出題形式: "text" | "image" | "video" | "carousel"（kind="puzzle" のとき使用）
+  puzzleType         String?  @map("puzzle_type")
+  /// 正解テキスト（kind="puzzle" のとき必須）
+  answer             String?  @map("answer")
+  /// ヒントテキスト（任意）
+  puzzleHintText     String?  @map("puzzle_hint_text")
+  /// 表記ゆれ許容設定（JSON配列文字列: ["exact","ignore_punctuation","normalize_width"]）
+  answerMatchType    String   @default("[\"exact\"]") @map("answer_match_type")
+  /// 正解時の挙動: "text" | "text_and_transition" | "transition"
+  correctAction      String?  @map("correct_action")
+  /// 正解時メッセージ（任意）
+  correctText        String?  @map("correct_text")
+  /// 不正解時メッセージ（任意）
+  incorrectText      String?  @map("incorrect_text")
+  /// 正解後の遷移先フェーズ（correct_action が transition 系のとき必須）
+  correctNextPhaseId String?  @map("correct_next_phase_id")
+
   sortOrder        Int      @default(0) @map("sort_order")
   isActive       Boolean  @default(true) @map("is_active")
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
 
-  work      Work       @relation(fields: [workId], references: [id], onDelete: Cascade)
-  phase     Phase?     @relation(fields: [phaseId], references: [id], onDelete: SetNull)
-  character Character? @relation(fields: [characterId], references: [id], onDelete: SetNull)
+  work              Work       @relation(fields: [workId], references: [id], onDelete: Cascade)
+  phase             Phase?     @relation(fields: [phaseId], references: [id], onDelete: SetNull)
+  character         Character? @relation(fields: [characterId], references: [id], onDelete: SetNull)
+  correctNextPhase  Phase?     @relation("MessageCorrectNextPhase", fields: [correctNextPhaseId], references: [id], onDelete: SetNull)
 
   @@index([workId])
   @@index([phaseId])

@@ -30,6 +30,10 @@ type PrismaMessageWithRelations = {
   notifyText: string | null; riddleId: string | null;
   quickReplies: string | null;
   altText: string | null; flexPayloadJson: string | null;
+  puzzleType: string | null; answer: string | null; puzzleHintText: string | null;
+  answerMatchType: string | null; correctAction: string | null;
+  correctText: string | null; incorrectText: string | null;
+  correctNextPhaseId: string | null;
   sortOrder: number; isActive: boolean; createdAt: Date; updatedAt: Date;
   phase:     { id: string; name: string; phaseType: string } | null;
   character: {
@@ -43,28 +47,41 @@ function parseQuickReplies(raw: string | null) {
   try { return JSON.parse(raw); } catch { return null; }
 }
 
+function parseAnswerMatchType(raw: string | null): string[] {
+  if (!raw) return ["exact"];
+  try { return JSON.parse(raw); } catch { return ["exact"]; }
+}
+
 // ── snake_case 変換（GET / PATCH 共通） ─────────────────────
 function toResponse(m: PrismaMessageWithRelations) {
   return {
-    id:                m.id,
-    work_id:           m.workId,
-    phase_id:          m.phaseId,
-    character_id:      m.characterId,
-    message_type:      m.messageType,
-    kind:              m.kind,
-    body:              m.body,
-    asset_url:         m.assetUrl,
-    trigger_keyword:   m.triggerKeyword,
-    target_segment:    m.targetSegment,
-    notify_text:       m.notifyText,
-    riddle_id:         m.riddleId,
-    quick_replies:     parseQuickReplies(m.quickReplies),
-    alt_text:          m.altText,
-    flex_payload_json: m.flexPayloadJson,
-    sort_order:        m.sortOrder,
-    is_active:         m.isActive,
-    created_at:        m.createdAt,
-    updated_at:        m.updatedAt,
+    id:                    m.id,
+    work_id:               m.workId,
+    phase_id:              m.phaseId,
+    character_id:          m.characterId,
+    message_type:          m.messageType,
+    kind:                  m.kind,
+    body:                  m.body,
+    asset_url:             m.assetUrl,
+    trigger_keyword:       m.triggerKeyword,
+    target_segment:        m.targetSegment,
+    notify_text:           m.notifyText,
+    riddle_id:             m.riddleId,
+    quick_replies:         parseQuickReplies(m.quickReplies),
+    alt_text:              m.altText,
+    flex_payload_json:     m.flexPayloadJson,
+    puzzle_type:           m.puzzleType,
+    answer:                m.answer,
+    puzzle_hint_text:      m.puzzleHintText,
+    answer_match_type:     parseAnswerMatchType(m.answerMatchType),
+    correct_action:        m.correctAction,
+    correct_text:          m.correctText,
+    incorrect_text:        m.incorrectText,
+    correct_next_phase_id: m.correctNextPhaseId,
+    sort_order:            m.sortOrder,
+    is_active:             m.isActive,
+    created_at:            m.createdAt,
+    updated_at:            m.updatedAt,
     phase: m.phase
       ? { id: m.phase.id, name: m.phase.name, phase_type: m.phase.phaseType }
       : null,
@@ -165,6 +182,16 @@ export const PATCH = withAuth<{ id: string }>(async (req, { params }, user) => {
         }),
         ...(data.alt_text          !== undefined && { altText:         data.alt_text }),
         ...(data.flex_payload_json !== undefined && { flexPayloadJson: data.flex_payload_json }),
+        ...(data.puzzle_type       !== undefined && { puzzleType:      data.puzzle_type }),
+        ...(data.answer            !== undefined && { answer:          data.answer }),
+        ...(data.puzzle_hint_text  !== undefined && { puzzleHintText:  data.puzzle_hint_text }),
+        ...(data.answer_match_type !== undefined && {
+          answerMatchType: JSON.stringify(data.answer_match_type),
+        }),
+        ...(data.correct_action       !== undefined && { correctAction:      data.correct_action }),
+        ...(data.correct_text         !== undefined && { correctText:        data.correct_text }),
+        ...(data.incorrect_text       !== undefined && { incorrectText:      data.incorrect_text }),
+        ...(data.correct_next_phase_id !== undefined && { correctNextPhaseId: data.correct_next_phase_id }),
         ...(data.sort_order        !== undefined && { sortOrder:       data.sort_order }),
         ...(data.is_active         !== undefined && { isActive:        data.is_active }),
       },
