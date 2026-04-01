@@ -94,10 +94,13 @@ export default function CharacterListPage() {
             { label: "キャラクター一覧" },
           ]} />
           <h2>キャラクター一覧</h2>
+          <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 3 }}>
+            {oaTitle ? `${oaTitle} のキャラクターを管理します` : "メッセージ送信者のキャラクターを管理します"}
+          </p>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
           <Link href={`/oas/${oaId}/edit`} className="btn btn-ghost">設定</Link>
-          <Link href={`/oas/${oaId}/characters/new`} className="btn btn-primary">+ キャラクター追加</Link>
+          <Link href={`/oas/${oaId}/characters/new`} className="btn btn-primary">＋ キャラクター追加</Link>
         </div>
       </div>
 
@@ -167,36 +170,45 @@ export default function CharacterListPage() {
                   <tr key={c.id}>
                     <td><IconPreview character={c} /></td>
                     <td style={{ fontWeight: 600 }}>{c.name}</td>
-                    <td style={{ fontSize: 12, color: "#6b7280" }}>
+                    <td style={{ fontSize: 11, color: "var(--text-secondary)" }}>
                       {c.icon_type === "text"
                         ? `テキスト「${c.icon_text ?? ""}」`
                         : "画像URL"}
                     </td>
-                    <td style={{ textAlign: "center", color: "#6b7280" }}>{c.sort_order}</td>
+                    <td style={{ textAlign: "center", color: "var(--text-muted)", fontSize: 12 }}>{c.sort_order}</td>
                     <td>
-                      <span className={`badge ${c.is_active ? "badge-active" : "badge-paused"}`}>
-                        {c.is_active ? "有効" : "無効"}
+                      <span style={{
+                        display: "inline-flex", alignItems: "center", gap: 4,
+                        padding: "2px 9px", borderRadius: "var(--radius-full)",
+                        fontSize: 11, fontWeight: 700,
+                        background: c.is_active ? "#dcfce7" : "var(--gray-100)",
+                        color:      c.is_active ? "#166534" : "var(--text-muted)",
+                      }}>
+                        {c.is_active
+                          ? <><span style={{ width: 5, height: 5, borderRadius: "50%", background: "#22c55e", display: "inline-block" }} />有効</>
+                          : "無効"
+                        }
                       </span>
                     </td>
                     <td>
-                      <div style={{ display: "flex", gap: 6 }}>
+                      <div style={{ display: "flex", gap: 5 }}>
                         <Link
                           href={`/oas/${oaId}/characters/${c.id}/edit`}
                           className="btn btn-ghost"
-                          style={{ padding: "4px 10px", fontSize: 12 }}
+                          style={{ padding: "5px 12px", fontSize: 12 }}
                         >
                           編集
                         </Link>
                         <button
                           className="btn btn-ghost"
-                          style={{ padding: "4px 10px", fontSize: 12 }}
+                          style={{ padding: "5px 12px", fontSize: 12 }}
                           onClick={() => toggleActive(c)}
                         >
                           {c.is_active ? "無効化" : "有効化"}
                         </button>
                         <button
                           className="btn btn-danger"
-                          style={{ padding: "4px 10px", fontSize: 12 }}
+                          style={{ padding: "5px 10px", fontSize: 12 }}
                           onClick={() => handleDelete(c.id, c.name)}
                         >
                           削除
@@ -208,7 +220,7 @@ export default function CharacterListPage() {
               </tbody>
             </table>
           </div>
-          <div style={{ padding: "10px 16px", fontSize: 12, color: "#9ca3af", borderTop: "1px solid #e5e5e5" }}>
+          <div style={{ padding: "10px 16px", fontSize: 11, color: "var(--text-muted)", borderTop: "1px solid var(--border-light)" }}>
             {characters.length} 件
           </div>
         </div>

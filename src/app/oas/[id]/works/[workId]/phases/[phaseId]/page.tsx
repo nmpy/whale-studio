@@ -533,7 +533,7 @@ export default function PhaseDetailPage() {
                     {/* アクション */}
                     <div style={{ display: "flex", gap: 4, flexShrink: 0, alignItems: "flex-start" }}>
                       <Link
-                        href={`/oas/${oaId}/works/${workId}/messages/${msg.id}/edit`}
+                        href={`/oas/${oaId}/works/${workId}/messages/${msg.id}`}
                         className="btn btn-ghost"
                         style={{ padding: "3px 8px", fontSize: 11 }}
                       >

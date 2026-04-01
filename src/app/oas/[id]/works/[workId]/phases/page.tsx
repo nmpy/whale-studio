@@ -12,16 +12,16 @@ import { useToast } from "@/components/Toast";
 import { HelpAccordion } from "@/components/HelpAccordion";
 import type { PhaseWithCounts, PhaseType } from "@/types";
 
-const PHASE_TYPE_META: Record<PhaseType, { label: string; color: string; bg: string }> = {
-  start:  { label: "開始",         color: "#16a34a", bg: "#f0fdf4" },
-  normal: { label: "通常",         color: "#2563eb", bg: "#eff6ff" },
-  ending: { label: "エンディング", color: "#9333ea", bg: "#faf5ff" },
+const PHASE_TYPE_META: Record<PhaseType, { label: string; color: string; bg: string; dot: string }> = {
+  start:  { label: "開始",         color: "#166534", bg: "#dcfce7", dot: "#22c55e" },
+  normal: { label: "通常",         color: "#1d4ed8", bg: "#dbeafe", dot: "#3b82f6" },
+  ending: { label: "エンディング", color: "#7e22ce", bg: "#ede9fe", dot: "#a855f7" },
 };
 
-const PHASE_TYPE_OPTIONS: { value: PhaseType; label: string; color: string; bg: string }[] = [
-  { value: "start",   label: "開始",         color: "#16a34a", bg: "#f0fdf4" },
-  { value: "normal",  label: "通常",         color: "#2563eb", bg: "#eff6ff" },
-  { value: "ending",  label: "エンディング", color: "#9333ea", bg: "#faf5ff" },
+const PHASE_TYPE_OPTIONS: { value: PhaseType; label: string; color: string; bg: string; dot: string }[] = [
+  { value: "start",   label: "開始",         color: "#166534", bg: "#dcfce7", dot: "#22c55e" },
+  { value: "normal",  label: "通常",         color: "#1d4ed8", bg: "#dbeafe", dot: "#3b82f6" },
+  { value: "ending",  label: "エンディング", color: "#7e22ce", bg: "#ede9fe", dot: "#a855f7" },
 ];
 
 interface PhaseForm {
@@ -144,8 +144,8 @@ export default function PhasesPage() {
             { label: "フェーズ管理" },
           ]} />
           <h2>フェーズ管理</h2>
-          <p style={{ fontSize: 13, color: "#6b7280", marginTop: 4 }}>
-            シナリオの進行段階（フェーズ）を管理します。
+          <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 3 }}>
+            シナリオの進行段階（フェーズ）を管理します
           </p>
         </div>
         {!showAddForm && (
@@ -181,15 +181,15 @@ export default function PhasesPage() {
 
       {/* ── フェーズ追加フォーム ── */}
       {showAddForm && (
-        <div className="card" style={{ maxWidth: 640, marginBottom: 16, borderColor: "#2563eb", borderWidth: 2 }}>
-          <p style={{ fontWeight: 600, marginBottom: 12, color: "#2563eb", fontSize: 13 }}>
-            新しいフェーズを追加
+        <div className="card" style={{ maxWidth: 640, marginBottom: 16, borderColor: "var(--color-info)", borderWidth: 2 }}>
+          <p style={{ fontWeight: 700, marginBottom: 12, color: "var(--color-info)", fontSize: 13 }}>
+            ＋ 新しいフェーズを追加
           </p>
           <form onSubmit={handleAddPhase}>
             <div className="form-group">
               <label>フェーズ種別 <span style={{ color: "#ef4444" }}>*</span></label>
               <div className="radio-group">
-                {PHASE_TYPE_OPTIONS.map(({ value, label, color, bg }) => {
+                {PHASE_TYPE_OPTIONS.map(({ value, label, color, bg, dot }) => {
                   const disabled = value === "start" && hasStartPhase;
                   return (
                     <label key={value} style={{
@@ -201,10 +201,15 @@ export default function PhasesPage() {
                         checked={addForm.phase_type === value}
                         disabled={disabled}
                         onChange={() => !disabled && setAddForm({ ...addForm, phase_type: value })} />
-                      <span style={{ fontSize: 12, fontWeight: 600, color, background: bg, padding: "2px 8px", borderRadius: 10 }}>
+                      <span style={{
+                        display: "inline-flex", alignItems: "center", gap: 4,
+                        fontSize: 12, fontWeight: 700, color, background: bg,
+                        padding: "2px 9px", borderRadius: "var(--radius-full)",
+                      }}>
+                        <span style={{ width: 6, height: 6, borderRadius: "50%", background: dot, display: "inline-block" }} />
                         {label}
                       </span>
-                      {disabled && <span style={{ fontSize: 11, color: "#9ca3af" }}>（既に存在）</span>}
+                      {disabled && <span style={{ fontSize: 11, color: "var(--text-muted)" }}>（既に存在）</span>}
                     </label>
                   );
                 })}
@@ -279,13 +284,13 @@ export default function PhasesPage() {
         <div className="card" style={{ padding: 0 }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
             <thead>
-              <tr style={{ borderBottom: "2px solid #e5e5e5", background: "#f9fafb" }}>
+              <tr style={{ borderBottom: "1px solid var(--border)", background: "var(--gray-50)" }}>
                 {["タイプ", "フェーズ名", "説明", "メッセ", "遷移", "状態", ""].map((h, i) => (
                   <th
                     key={i}
                     style={{
                       padding: "10px 14px", textAlign: "left",
-                      fontWeight: 600, color: "#374151", fontSize: 12, whiteSpace: "nowrap",
+                      fontWeight: 600, color: "var(--text-muted)", fontSize: 11, whiteSpace: "nowrap",
                     }}
                   >
                     {h}
@@ -301,24 +306,26 @@ export default function PhasesPage() {
                   return (
                     <tr
                       key={phase.id}
-                      style={{ borderBottom: "1px solid #f3f4f6" }}
-                      onMouseEnter={(e) => (e.currentTarget.style.background = "#f9fafb")}
+                      style={{ borderBottom: "1px solid var(--border-light)" }}
+                      onMouseEnter={(e) => (e.currentTarget.style.background = "var(--gray-50)")}
                       onMouseLeave={(e) => (e.currentTarget.style.background = "")}
                     >
                       {/* タイプ */}
                       <td style={{ padding: "12px 14px", whiteSpace: "nowrap" }}>
                         <span style={{
-                          display: "inline-block", padding: "2px 8px", borderRadius: 12,
-                          fontSize: 11, fontWeight: 600,
+                          display: "inline-flex", alignItems: "center", gap: 4,
+                          padding: "2px 9px", borderRadius: "var(--radius-full)",
+                          fontSize: 11, fontWeight: 700,
                           background: meta.bg, color: meta.color,
                         }}>
+                          <span style={{ width: 5, height: 5, borderRadius: "50%", background: meta.dot, display: "inline-block" }} />
                           {meta.label}
                         </span>
                       </td>
 
                       {/* フェーズ名 */}
-                      <td style={{ padding: "12px 14px", fontWeight: 500, color: "#111827" }}>
-                        <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                      <td style={{ padding: "12px 14px", fontWeight: 600, color: "var(--text-primary)" }}>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                           <span>{phase.name}</span>
                           {phase.phase_type === "start" && (
                             phase.start_trigger ? (
@@ -326,16 +333,16 @@ export default function PhasesPage() {
                                 display: "inline-flex", alignItems: "center", gap: 3,
                                 fontSize: 10, fontWeight: 600, color: "#065f46",
                                 background: "#d1fae5", border: "1px solid #6ee7b7",
-                                borderRadius: 8, padding: "1px 6px", width: "fit-content",
+                                borderRadius: "var(--radius-full)", padding: "1px 7px", width: "fit-content",
                               }}>
                                 🔑 {phase.start_trigger}
                               </span>
                             ) : (
                               <span style={{
                                 display: "inline-flex", alignItems: "center", gap: 3,
-                                fontSize: 10, color: "#9ca3af",
-                                background: "#f3f4f6", borderRadius: 8,
-                                padding: "1px 6px", width: "fit-content",
+                                fontSize: 10, color: "var(--text-muted)",
+                                background: "var(--gray-100)", borderRadius: "var(--radius-full)",
+                                padding: "1px 7px", width: "fit-content",
                               }}>
                                 🔑 トリガー未設定（自動開始）
                               </span>
@@ -345,43 +352,48 @@ export default function PhasesPage() {
                       </td>
 
                       {/* 説明 */}
-                      <td style={{ padding: "12px 14px", maxWidth: 240, color: "#6b7280" }}>
+                      <td style={{ padding: "12px 14px", maxWidth: 240, color: "var(--text-secondary)" }}>
                         <span style={{
                           display: "-webkit-box", WebkitLineClamp: 1,
                           WebkitBoxOrient: "vertical", overflow: "hidden",
+                          fontSize: 12,
                         }}>
                           {phase.description || "—"}
                         </span>
                       </td>
 
                       {/* メッセ数 */}
-                      <td style={{ padding: "12px 14px", textAlign: "center", color: "#6b7280" }}>
+                      <td style={{ padding: "12px 14px", textAlign: "center", fontWeight: 700, color: phase._count.messages > 0 ? "var(--text-primary)" : "var(--text-muted)" }}>
                         {phase._count.messages}
                       </td>
 
                       {/* 遷移数 */}
-                      <td style={{ padding: "12px 14px", textAlign: "center", color: "#6b7280" }}>
+                      <td style={{ padding: "12px 14px", textAlign: "center", fontWeight: 700, color: phase._count.transitionsFrom > 0 ? "var(--text-primary)" : "var(--text-muted)" }}>
                         {phase._count.transitionsFrom}
                       </td>
 
                       {/* 状態 */}
                       <td style={{ padding: "12px 14px", whiteSpace: "nowrap" }}>
                         <span style={{
-                          display: "inline-block", padding: "2px 8px", borderRadius: 12,
-                          fontSize: 11, fontWeight: 600,
-                          background: phase.is_active ? "#dcfce7" : "#f3f4f6",
-                          color:      phase.is_active ? "#16a34a" : "#6b7280",
+                          display: "inline-flex", alignItems: "center", gap: 4,
+                          padding: "2px 9px", borderRadius: "var(--radius-full)",
+                          fontSize: 11, fontWeight: 700,
+                          background: phase.is_active ? "#dcfce7" : "var(--gray-100)",
+                          color:      phase.is_active ? "#166534" : "var(--text-muted)",
                         }}>
-                          {phase.is_active ? "有効" : "無効"}
+                          {phase.is_active
+                            ? <><span style={{ width: 5, height: 5, borderRadius: "50%", background: "#22c55e", display: "inline-block" }} />有効</>
+                            : "無効"
+                          }
                         </span>
                       </td>
 
-                      {/* 編集 */}
+                      {/* 詳細 */}
                       <td style={{ padding: "12px 14px", textAlign: "right", whiteSpace: "nowrap" }}>
                         <Link
                           href={`/oas/${oaId}/works/${workId}/phases/${phase.id}`}
                           className="btn btn-ghost"
-                          style={{ padding: "4px 12px", fontSize: 12 }}
+                          style={{ padding: "5px 14px", fontSize: 12 }}
                         >
                           詳細
                         </Link>
@@ -391,7 +403,7 @@ export default function PhasesPage() {
                 })}
             </tbody>
           </table>
-          <div style={{ padding: "8px 14px", fontSize: 12, color: "#9ca3af", textAlign: "right" }}>
+          <div style={{ padding: "10px 16px", fontSize: 11, color: "var(--text-muted)", textAlign: "right", borderTop: "1px solid var(--border-light)" }}>
             {phases.length} 件
           </div>
         </div>

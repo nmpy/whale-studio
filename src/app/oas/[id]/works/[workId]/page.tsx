@@ -14,10 +14,10 @@ import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
 import { ViewerBanner } from "@/components/PermissionGuard";
 
 // ── ステータス表示 ───────────────────────────────────────
-const STATUS_META: Record<string, { label: string; color: string; bg: string }> = {
-  draft:  { label: "下書き", color: "#6b7280", bg: "#f3f4f6" },
-  active: { label: "公開中", color: "#16a34a", bg: "#dcfce7" },
-  paused: { label: "停止中", color: "#d97706", bg: "#fef3c7" },
+const STATUS_META: Record<string, { label: string; color: string; bg: string; dot: string }> = {
+  draft:  { label: "下書き", color: "#6b7280", bg: "#f3f4f6", dot: "#9ca3af" },
+  active: { label: "公開中", color: "#166534", bg: "#dcfce7", dot: "#22c55e" },
+  paused: { label: "停止中", color: "#92400e", bg: "#fef3c7", dot: "#f59e0b" },
 };
 
 // ── ハブカード定義 ────────────────────────────────────────
@@ -137,10 +137,12 @@ export default function WorkHubPage() {
             <h2 style={{ margin: 0 }}>{work?.title ?? "作品"}</h2>
             {statusMeta && (
               <span style={{
-                display: "inline-block", padding: "2px 8px", borderRadius: 12,
-                fontSize: 11, fontWeight: 600,
+                display: "inline-flex", alignItems: "center", gap: 5,
+                padding: "3px 10px", borderRadius: "var(--radius-full)",
+                fontSize: 11, fontWeight: 700,
                 background: statusMeta.bg, color: statusMeta.color,
               }}>
+                <span style={{ width: 6, height: 6, borderRadius: "50%", background: statusMeta.dot, display: "inline-block" }} />
                 {statusMeta.label}
               </span>
             )}
@@ -183,20 +185,27 @@ export default function WorkHubPage() {
       {/* ── カウント表示 ── */}
       {work && (
         <div style={{
-          display: "flex", gap: 16, marginBottom: 24, flexWrap: "wrap",
+          display: "flex", gap: 10, marginBottom: 24, flexWrap: "wrap",
+          padding: "14px 18px",
+          background: "var(--surface)",
+          border: "1px solid var(--border-light)",
+          borderRadius: "var(--radius-md)",
+          boxShadow: "var(--shadow-xs)",
         }}>
           {[
-            { label: "キャラクター", value: work._count.characters },
-            { label: "フェーズ",     value: work._count.phases },
-            { label: "メッセージ",   value: work._count.messages },
-          ].map(({ label, value }) => (
+            { label: "プレイヤー",   value: work._count.userProgress.toLocaleString(), icon: "👥", highlight: work._count.userProgress > 0 },
+            { label: "キャラクター", value: work._count.characters, icon: "🎭", highlight: false },
+            { label: "フェーズ",     value: work._count.phases,     icon: "🗂",  highlight: false },
+            { label: "メッセージ",   value: work._count.messages,   icon: "💬", highlight: false },
+          ].map(({ label, value, icon, highlight }) => (
             <div key={label} style={{
-              background: "#fff", border: "1px solid #e5e5e5", borderRadius: 8,
-              padding: "10px 18px", display: "flex", flexDirection: "column",
-              alignItems: "center", gap: 2, minWidth: 80,
+              display: "flex", alignItems: "center", gap: 8,
+              paddingRight: 18,
+              borderRight: "1px solid var(--border-light)",
             }}>
-              <span style={{ fontSize: 20, fontWeight: 700, color: "#111827" }}>{value}</span>
-              <span style={{ fontSize: 11, color: "#6b7280" }}>{label}</span>
+              <span style={{ fontSize: 16 }}>{icon}</span>
+              <span style={{ fontSize: 20, fontWeight: 800, color: highlight ? "var(--color-info)" : "var(--text-primary)", lineHeight: 1 }}>{value}</span>
+              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{label}</span>
             </div>
           ))}
         </div>
@@ -205,8 +214,8 @@ export default function WorkHubPage() {
       {/* ── ハブカード ── */}
       <div style={{
         display: "grid",
-        gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))",
-        gap: 16,
+        gridTemplateColumns: "repeat(auto-fill, minmax(270px, 1fr))",
+        gap: 14,
       }}>
         {HUB_CARDS.map((card) => (
           <Link
@@ -215,39 +224,47 @@ export default function WorkHubPage() {
             style={{ textDecoration: "none" }}
           >
             <div
-              className="card"
               style={{
-                padding: "20px 22px",
+                background: "var(--surface)",
+                border: "1px solid var(--border-light)",
+                borderRadius: "var(--radius-md)",
+                padding: "18px 20px",
                 cursor: "pointer",
-                transition: "box-shadow 0.15s, transform 0.1s",
+                transition: "box-shadow 0.15s, border-color 0.15s, transform 0.1s",
                 display: "flex",
                 alignItems: "flex-start",
-                gap: 16,
+                gap: 14,
+                boxShadow: "var(--shadow-xs)",
               }}
               onMouseEnter={(e) => {
-                (e.currentTarget as HTMLDivElement).style.boxShadow = "0 4px 12px rgba(0,0,0,0.08)";
-                (e.currentTarget as HTMLDivElement).style.transform = "translateY(-1px)";
+                const el = e.currentTarget as HTMLDivElement;
+                el.style.boxShadow = "var(--shadow-md)";
+                el.style.borderColor = "var(--gray-300)";
+                el.style.transform = "translateY(-2px)";
               }}
               onMouseLeave={(e) => {
-                (e.currentTarget as HTMLDivElement).style.boxShadow = "";
-                (e.currentTarget as HTMLDivElement).style.transform = "";
+                const el = e.currentTarget as HTMLDivElement;
+                el.style.boxShadow = "var(--shadow-xs)";
+                el.style.borderColor = "var(--border-light)";
+                el.style.transform = "";
               }}
             >
               <div style={{
-                width: 44, height: 44, borderRadius: 10, flexShrink: 0,
+                width: 44, height: 44, borderRadius: "var(--radius-sm)", flexShrink: 0,
                 background: card.bg, display: "flex", alignItems: "center",
                 justifyContent: "center", fontSize: 22,
               }}>
                 {card.icon}
               </div>
-              <div>
-                <div style={{ fontWeight: 600, fontSize: 15, color: card.color, marginBottom: 4 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 700, fontSize: 14, color: card.color, marginBottom: 4 }}>
                   {card.title}
                 </div>
-                <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>
+                <div style={{ fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.6 }}>
                   {card.desc}
                 </div>
               </div>
+              <span style={{ color: "var(--text-muted)", fontSize: 16, alignSelf: "center", flexShrink: 0 }}>›</span>
             </div>
           </Link>
         ))}

@@ -265,7 +265,13 @@ function FlowTree({ phases, transitions, oaId, workId }: FlowTreeProps) {
                     marginTop: 10, paddingTop: 10,
                     borderTop: "1px solid #f3f4f6",
                   }}>
-                    <MetaChip icon="💬" value={phase._count.messages} label="メッセージ" />
+                    <Link
+                      href={`/oas/${oaId}/works/${workId}/messages?phase_id=${phase.id}`}
+                      style={{ textDecoration: "none" }}
+                      title="このフェーズのメッセージ一覧を見る"
+                    >
+                      <MetaChip icon="💬" value={phase._count.messages} label="メッセージ" linked />
+                    </Link>
                     <MetaChip icon="⤵" value={outgoing.length} label="分岐" />
                     {!phase.is_active && (
                       <span style={{
@@ -476,15 +482,21 @@ function FlowTree({ phases, transitions, oaId, workId }: FlowTreeProps) {
 }
 
 // ── MetaChip — メタ情報アイコン＋数値 ──────────────
-function MetaChip({ icon, value, label }: { icon: string; value: number; label: string }) {
+function MetaChip({ icon, value, label, linked }: { icon: string; value: number; label: string; linked?: boolean }) {
   return (
     <span style={{
       display: "inline-flex", alignItems: "center", gap: 4,
-      fontSize: 12, color: "#6b7280",
+      fontSize: 12, color: linked ? "#2563eb" : "#6b7280",
+      padding: linked ? "2px 8px" : "0",
+      borderRadius: linked ? 6 : 0,
+      background: linked ? "#eff6ff" : "transparent",
+      border: linked ? "1px solid #bfdbfe" : "none",
+      transition: "background 0.15s",
     }}>
       <span style={{ fontSize: 13 }}>{icon}</span>
-      <strong style={{ color: "#374151", fontWeight: 700 }}>{value}</strong>
+      <strong style={{ color: linked ? "#1d4ed8" : "#374151", fontWeight: 700 }}>{value}</strong>
       <span>{label}</span>
+      {linked && <span style={{ fontSize: 10, opacity: 0.7 }}>→</span>}
     </span>
   );
 }

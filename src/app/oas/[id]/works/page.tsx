@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import Link from "next/link";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { oaApi, workApi, getDevToken, type WorkListItem } from "@/lib/api-client";
@@ -9,23 +9,163 @@ import { useToast } from "@/components/Toast";
 import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
 import { ViewerBanner } from "@/components/PermissionGuard";
 
-const STATUS_LABEL: Record<string, string> = {
-  draft:  "下書き",
-  active: "公開中",
-  paused: "停止中",
+const STATUS_META: Record<string, { label: string; color: string; bg: string; dot: string }> = {
+  draft:  { label: "下書き",  color: "#6b7280", bg: "#f3f4f6", dot: "#9ca3af" },
+  active: { label: "公開中",  color: "#166534", bg: "#dcfce7", dot: "#22c55e" },
+  paused: { label: "停止中",  color: "#92400e", bg: "#fef3c7", dot: "#f59e0b" },
 };
 
-function formatDateTime(iso: string) {
-  return new Date(iso).toLocaleString("ja-JP", {
-    year: "numeric", month: "2-digit", day: "2-digit",
-    hour: "2-digit", minute: "2-digit",
-  });
+function formatDate(iso: string) {
+  const d = new Date(iso);
+  return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}`;
 }
 
+/* ── ワークカード ─────────────────────────────────────────────────────── */
+function WorkCard({
+  work, oaId, role,
+  onDelete,
+}: {
+  work: WorkListItem;
+  oaId: string;
+  role: string | null;
+  onDelete: (id: string, title: string) => void;
+}) {
+  const [hovered, setHovered] = useState(false);
+  const st = STATUS_META[work.publish_status] ?? STATUS_META.draft;
+
+  return (
+    <div
+      style={{
+        background: "var(--surface)",
+        border: `1px solid ${hovered ? "var(--gray-300)" : "var(--border-light)"}`,
+        borderRadius: "var(--radius-md)",
+        padding: "20px 22px",
+        boxShadow: hovered ? "var(--shadow-md)" : "var(--shadow-xs)",
+        transition: "border-color 0.15s, box-shadow 0.15s",
+        position: "relative",
+      }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      {/* ── ヘッダー行 ── */}
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 12, marginBottom: 14 }}>
+        {/* 状態バッジ（ドット付き） */}
+        <span style={{
+          display: "inline-flex", alignItems: "center", gap: 5,
+          fontSize: 11, fontWeight: 700,
+          color: st.color, background: st.bg,
+          padding: "3px 9px", borderRadius: "var(--radius-full)",
+          whiteSpace: "nowrap", flexShrink: 0,
+        }}>
+          <span style={{ width: 6, height: 6, borderRadius: "50%", background: st.dot, display: "inline-block" }} />
+          {st.label}
+        </span>
+
+        {/* タイトル */}
+        <Link
+          href={`/oas/${oaId}/works/${work.id}`}
+          style={{
+            fontSize: 15, fontWeight: 700,
+            color: "var(--text-primary)",
+            textDecoration: "none",
+            flex: 1,
+            lineHeight: 1.3,
+          }}
+        >
+          {work.title}
+        </Link>
+
+        {/* アクション */}
+        <div style={{ display: "flex", gap: 5, flexShrink: 0 }}>
+          <Link
+            href={`/oas/${oaId}/works/${work.id}`}
+            className="btn btn-primary"
+            style={{ padding: "5px 14px", fontSize: 12 }}
+          >
+            管理する
+          </Link>
+          <Link
+            href={`/playground?work_id=${work.id}&oa_id=${oaId}`}
+            className="btn btn-ghost"
+            style={{ padding: "5px 12px", fontSize: 12 }}
+          >
+            ▶ テスト
+          </Link>
+          {role === "owner" && (
+            <button
+              className="btn btn-danger"
+              style={{ padding: "5px 10px", fontSize: 12 }}
+              onClick={() => onDelete(work.id, work.title)}
+            >
+              削除
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* ── メタ情報チップ ── */}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+        {[
+          { icon: "👥", value: work._count.userProgress.toLocaleString(), label: "プレイヤー", highlight: work._count.userProgress > 0 },
+          { icon: "🗂",  value: work._count.phases,                         label: "フェーズ", highlight: false },
+          { icon: "💬", value: work._count.messages,                        label: "メッセージ", highlight: false },
+          { icon: "🎭", value: work._count.characters,                      label: "キャラクター", highlight: false },
+        ].map((chip) => (
+          <span key={chip.label} style={{
+            display: "inline-flex", alignItems: "center", gap: 4,
+            fontSize: 11,
+            color: chip.highlight ? "var(--color-info)" : "var(--text-secondary)",
+            background: chip.highlight ? "#eff6ff" : "var(--gray-50)",
+            border: `1px solid ${chip.highlight ? "#bfdbfe" : "var(--border-light)"}`,
+            padding: "3px 10px",
+            borderRadius: "var(--radius-full)",
+          }}>
+            <span>{chip.icon}</span>
+            <strong style={{ fontWeight: 700 }}>{chip.value}</strong>
+            <span style={{ color: "var(--text-muted)" }}>{chip.label}</span>
+          </span>
+        ))}
+
+        {/* 更新日 */}
+        <span style={{
+          marginLeft: "auto",
+          fontSize: 11, color: "var(--text-muted)",
+          alignSelf: "center",
+        }}>
+          更新: {formatDate(work.updated_at)}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/* ── スケルトンカード ─────────────────────────────────────────────────── */
+function SkeletonCard() {
+  return (
+    <div style={{
+      background: "var(--surface)",
+      border: "1px solid var(--border-light)",
+      borderRadius: "var(--radius-md)",
+      padding: "20px 22px",
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
+        <div className="skeleton" style={{ width: 56, height: 24, borderRadius: 12 }} />
+        <div className="skeleton" style={{ width: 180, height: 18, flex: 1 }} />
+        <div className="skeleton" style={{ width: 72, height: 30, borderRadius: 6 }} />
+      </div>
+      <div style={{ display: "flex", gap: 8 }}>
+        {[80, 70, 90, 90].map((w, i) => (
+          <div key={i} className="skeleton" style={{ width: w, height: 24, borderRadius: 12 }} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ── メインページ ─────────────────────────────────────────────────────── */
 export default function WorkListPage() {
   const params  = useParams<{ id: string }>();
   const oaId    = params.id;
-  const router  = useRouter();
   const { showToast } = useToast();
   const { role } = useWorkspaceRole(oaId);
 
@@ -65,8 +205,12 @@ export default function WorkListPage() {
     }
   }
 
+  const sorted = [...works].sort((a, b) => a.sort_order - b.sort_order);
+  const activeCount = works.filter((w) => w.publish_status === "active").length;
+
   return (
     <>
+      {/* ── ページヘッダー ── */}
       <div className="page-header">
         <div>
           <Breadcrumb items={[
@@ -74,14 +218,18 @@ export default function WorkListPage() {
             ...(oaTitle ? [{ label: oaTitle }] : []),
           ]} />
           <h2>作品リスト</h2>
-          <p style={{ fontSize: 13, color: "#6b7280", marginTop: 4 }}>
-            謎解きシナリオ（Bot）を管理します。
+          <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 3 }}>
+            {oaTitle ? `${oaTitle} の謎解きシナリオを管理します` : "謎解きシナリオを管理します"}
           </p>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
-          <Link href={`/oas/${oaId}/settings`} className="btn btn-ghost">設定</Link>
-          {role !== 'viewer' && (
-            <Link href={`/oas/${oaId}/works/new`} className="btn btn-primary">+ 作品を追加</Link>
+          <Link href={`/oas/${oaId}/settings`} className="btn btn-ghost">
+            ⚙ 設定
+          </Link>
+          {role !== "viewer" && (
+            <Link href={`/oas/${oaId}/works/new`} className="btn btn-primary">
+              ＋ 作品を追加
+            </Link>
           )}
         </div>
       </div>
@@ -89,7 +237,7 @@ export default function WorkListPage() {
       <ViewerBanner role={role} />
 
       {error && (
-        <div className="alert alert-error">
+        <div className="alert alert-error" style={{ marginBottom: 16 }}>
           {error}
           <button onClick={load} style={{ marginLeft: 12, textDecoration: "underline", background: "none", border: "none", cursor: "pointer", color: "inherit" }}>
             再読み込み
@@ -97,26 +245,41 @@ export default function WorkListPage() {
         </div>
       )}
 
-      {loading ? (
-        <div className="card" style={{ padding: 0 }}>
-          <table>
-            <thead>
-              <tr>
-                {["作品名", "状態", "プレイヤー数", "最終更新日時", ""].map((h) => <th key={h}>{h}</th>)}
-              </tr>
-            </thead>
-            <tbody>
-              {[1, 2, 3].map((i) => (
-                <tr key={i}>
-                  {[220, 70, 80, 120, 120].map((w, j) => (
-                    <td key={j}><div className="skeleton" style={{ width: w, height: 14 }} /></td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      {/* ── 統計サマリー ── */}
+      {!loading && works.length > 0 && (
+        <div style={{
+          display: "flex", gap: 10, marginBottom: 20,
+          padding: "14px 18px",
+          background: "var(--surface)",
+          border: "1px solid var(--border-light)",
+          borderRadius: "var(--radius-md)",
+          boxShadow: "var(--shadow-xs)",
+        }}>
+          {[
+            { label: "総作品数", value: works.length, color: "var(--text-primary)" },
+            { label: "公開中", value: activeCount, color: "var(--color-success)" },
+            {
+              label: "総プレイヤー数",
+              value: works.reduce((s, w) => s + w._count.userProgress, 0).toLocaleString(),
+              color: "var(--color-info)",
+            },
+          ].map((s) => (
+            <div key={s.label} style={{ display: "flex", alignItems: "center", gap: 6, paddingRight: 18, borderRight: "1px solid var(--border-light)" }}>
+              <span style={{ fontSize: 18, fontWeight: 800, color: s.color }}>{s.value}</span>
+              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{s.label}</span>
+            </div>
+          ))}
         </div>
-      ) : works.length === 0 ? (
+      )}
+
+      {/* ── コンテンツ ── */}
+      {loading ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <SkeletonCard />
+          <SkeletonCard />
+          <SkeletonCard />
+        </div>
+      ) : sorted.length === 0 ? (
         <div className="card">
           <div className="empty-state">
             <div className="empty-state-icon">🎭</div>
@@ -125,85 +288,26 @@ export default function WorkListPage() {
               「作品を追加」から謎解きシナリオを作成しましょう。<br />
               1つのアカウントに複数の作品を管理できます。
             </p>
-            {role !== 'viewer' && (
+            {role !== "viewer" && (
               <Link href={`/oas/${oaId}/works/new`} className="btn btn-primary" style={{ marginTop: 8 }}>
-                + 最初の作品を追加
+                ＋ 最初の作品を追加する
               </Link>
             )}
           </div>
         </div>
       ) : (
-        <div className="card" style={{ padding: 0 }}>
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>作品名</th>
-                  <th>状態</th>
-                  <th style={{ textAlign: "center" }}>プレイヤー数</th>
-                  <th>最終更新</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {works
-                  .sort((a, b) => a.sort_order - b.sort_order)
-                  .map((w) => (
-                  <tr
-                    key={w.id}
-                    onClick={() => router.push(`/oas/${oaId}/works/${w.id}`)}
-                    style={{ cursor: "pointer" }}
-                    onMouseEnter={(e) => (e.currentTarget.style.background = "#f9fafb")}
-                    onMouseLeave={(e) => (e.currentTarget.style.background = "")}
-                  >
-                    <td style={{ fontWeight: 600, color: "#1a2030", fontSize: 14 }}>
-                      {w.title}
-                    </td>
-                    <td>
-                      <span className={`badge badge-${w.publish_status}`}>
-                        {STATUS_LABEL[w.publish_status] ?? w.publish_status}
-                      </span>
-                    </td>
-                    <td style={{ textAlign: "center", fontWeight: 600, color: "#374151" }}>
-                      {w._count.userProgress}
-                    </td>
-                    <td style={{ fontSize: 12, color: "#a0aec0", whiteSpace: "nowrap" }}>
-                      {formatDateTime(w.updated_at)}
-                    </td>
-                    <td onClick={(e) => e.stopPropagation()}>
-                      <div style={{ display: "flex", gap: 6 }}>
-                        <Link
-                          href={`/oas/${oaId}/works/${w.id}`}
-                          className="btn btn-ghost"
-                          style={{ padding: "5px 14px", fontSize: 12 }}
-                        >
-                          編集
-                        </Link>
-                        <Link
-                          href={`/playground?work_id=${w.id}&oa_id=${oaId}`}
-                          className="btn btn-ghost"
-                          style={{ padding: "5px 12px", fontSize: 12 }}
-                        >
-                          ▶ テスト
-                        </Link>
-                        {role === 'owner' && (
-                          <button
-                            className="btn btn-danger"
-                            style={{ padding: "5px 12px", fontSize: 12 }}
-                            onClick={() => handleDelete(w.id, w.title)}
-                          >
-                            削除
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <div style={{ padding: "10px 16px", fontSize: 12, color: "#a0aec0", borderTop: "1px solid #f0f4f8", textAlign: "right" }}>
-            {works.length} 件
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {sorted.map((w) => (
+            <WorkCard
+              key={w.id}
+              work={w}
+              oaId={oaId}
+              role={role}
+              onDelete={handleDelete}
+            />
+          ))}
+          <div style={{ textAlign: "right", fontSize: 11, color: "var(--text-muted)", paddingTop: 4 }}>
+            全 {works.length} 件
           </div>
         </div>
       )}
