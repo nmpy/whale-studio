@@ -925,6 +925,7 @@ async function handleStartTrigger({
       assetUrl:        true,
       altText:         true,
       flexPayloadJson: true,
+      quickReplies:    true,
       sortOrder:       true,
       character: {
         select: { name: true, iconImageUrl: true },
@@ -1278,6 +1279,7 @@ async function matchTriggerKeyword(
       assetUrl:        true,
       altText:         true,
       flexPayloadJson: true,
+      quickReplies:    true,
       sortOrder:       true,
       character: {
         select: { name: true, iconImageUrl: true },

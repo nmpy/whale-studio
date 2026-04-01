@@ -3,7 +3,7 @@
 // API ルート間で共有する状態構築ロジックを集約する。
 
 import { prisma } from "@/lib/prisma";
-import type { RuntimeState, PhaseType, MessageType, IconType } from "@/types";
+import type { RuntimeState, PhaseType, MessageType, IconType, QuickReplyItem } from "@/types";
 
 // ── 型（Prisma 返り値の最小セット）───────────────
 type RawProgress = {
@@ -211,6 +211,7 @@ export async function buildRuntimeState(
             },
           },
         },
+        // quickReplies は include ではなく select フィールドとして自動取得される
       },
       transitionsFrom: {
         where:   { isActive: true },
@@ -241,25 +242,38 @@ export async function buildRuntimeState(
       phase_type:  phase.phaseType as PhaseType,
       name:        phase.name,
       description: phase.description,
-      messages:    phase.messages.map((m) => ({
-        id:                m.id,
-        message_type:      m.messageType as MessageType,
-        body:              m.body,
-        asset_url:         m.assetUrl,
-        alt_text:          m.altText          ?? null,
-        flex_payload_json: m.flexPayloadJson  ?? null,
-        sort_order:        m.sortOrder,
-        character:         m.character
-          ? {
-              id:             m.character.id,
-              name:           m.character.name,
-              icon_type:      m.character.iconType as IconType,
-              icon_text:      m.character.iconText,
-              icon_color:     m.character.iconColor,
-              icon_image_url: m.character.iconImageUrl,
-            }
-          : null,
-      })),
+      messages:    phase.messages.map((m) => {
+        // DB の quickReplies (JSON 文字列) を QuickReplyItem[] に parse
+        let quickReplies: QuickReplyItem[] | null = null;
+        if (m.quickReplies) {
+          try {
+            const parsed = JSON.parse(m.quickReplies);
+            if (Array.isArray(parsed)) quickReplies = parsed as QuickReplyItem[];
+          } catch {
+            console.warn(`[buildRuntimeState] quickReplies parse error msgId=${m.id}`);
+          }
+        }
+        return {
+          id:                m.id,
+          message_type:      m.messageType as MessageType,
+          body:              m.body,
+          asset_url:         m.assetUrl,
+          alt_text:          m.altText          ?? null,
+          flex_payload_json: m.flexPayloadJson  ?? null,
+          quick_replies:     quickReplies,
+          sort_order:        m.sortOrder,
+          character:         m.character
+            ? {
+                id:             m.character.id,
+                name:           m.character.name,
+                icon_type:      m.character.iconType as IconType,
+                icon_text:      m.character.iconText,
+                icon_color:     m.character.iconColor,
+                icon_image_url: m.character.iconImageUrl,
+              }
+            : null,
+        };
+      }),
       transitions: isEnding
         ? null
         : availableTransitions.map((t) => ({

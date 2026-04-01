@@ -389,6 +389,8 @@ export interface RuntimePhaseMessage {
   alt_text:          string | null;
   /** Flex Message JSON ペイロード（message_type = "flex" のとき使用） */
   flex_payload_json: string | null;
+  /** メッセージ個別のクイックリプライ（設定時は遷移 quickReply より優先） */
+  quick_replies:     QuickReplyItem[] | null;
   sort_order:        number;
   character: {
     id:             string;

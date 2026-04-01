@@ -7,7 +7,7 @@
 //   - RuntimePhase → LINE メッセージ変換
 
 import crypto from "crypto";
-import type { RuntimePhase } from "@/types";
+import type { RuntimePhase, QuickReplyItem } from "@/types";
 
 // ────────────────────────────────────────────────
 // 型
@@ -24,13 +24,19 @@ export type LineSender = {
 /** LINE クイックリプライ アクション */
 export type LineQuickReplyItem = {
   type: "action";
-  action: {
-    type: "message";
-    /** ボタン表示テキスト（最大 20 文字） */
-    label: string;
-    /** タップ時に送信するテキスト */
-    text: string;
-  };
+  action:
+    | {
+        type:  "message";
+        /** ボタン表示テキスト（最大 20 文字） */
+        label: string;
+        /** タップ時に送信するテキスト */
+        text:  string;
+      }
+    | {
+        type:  "uri";
+        label: string;
+        uri:   string;
+      };
 };
 
 /** LINE クイックリプライ */
@@ -284,6 +290,35 @@ export function buildQuickReply(labels: string[]): LineQuickReply {
   };
 }
 
+/**
+ * QuickReplyItem[] から LineQuickReply を生成する共通ヘルパー。
+ * - action: "text" / "next" / "hint" → message アクション（タップ時にテキスト送信）
+ * - action: "url"                     → uri アクション（URL を開く）
+ * - action: "custom"                  → message アクション（postback は未対応のため text で代替）
+ * - items が空の場合は undefined を返す
+ */
+export function buildQuickReplyFromItems(
+  items: QuickReplyItem[],
+): LineQuickReply | undefined {
+  if (!items || items.length === 0) return undefined;
+
+  const lineItems: LineQuickReplyItem[] = items
+    .slice(0, QUICK_REPLY_MAX)
+    .flatMap((item): LineQuickReplyItem[] => {
+      const label = item.label.slice(0, 20);
+      if (item.action === "url") {
+        if (!item.value) return [];
+        return [{ type: "action", action: { type: "uri", label, uri: item.value } }];
+      }
+      // text / next / hint / custom → message アクション
+      const text = item.value?.trim() || item.label;
+      return [{ type: "action", action: { type: "message", label, text } }];
+    });
+
+  if (lineItems.length === 0) return undefined;
+  return { items: lineItems };
+}
+
 // ────────────────────────────────────────────────
 // メッセージ変換
 // ────────────────────────────────────────────────
@@ -326,6 +361,11 @@ export function buildPhaseMessages(
 
   // ── DB Message 行を 1 件ずつ独立した吹き出しに変換 ──
   for (const msg of phase.messages) {
+    // メッセージ個別 quickReply（設定されていれば phase-level 遷移より優先）
+    const msgQr = msg.quick_replies?.length
+      ? buildQuickReplyFromItems(msg.quick_replies)
+      : undefined;
+
     if (msg.message_type === "text" && msg.body) {
       const lineMsg: LineTextMessage = {
         type: "text",
@@ -334,6 +374,7 @@ export function buildPhaseMessages(
       if (msg.character) {
         lineMsg.sender = buildSender(msg.character);
       }
+      if (msgQr) lineMsg.quickReply = msgQr;
       messages.push(lineMsg);
     }
 
@@ -382,21 +423,22 @@ export function buildPhaseMessages(
     // 遷移未設定 — β: システム文言を出さずメッセージのみ表示
     // （シナリオ制作中の場合でも没入感を損なわないよう何も追加しない）
   } else {
-    // クイックリプライを最後のテキストメッセージに付与
-    const qr = buildQuickReply(phase.transitions.map((t) => t.label));
+    // 遷移 quickReply を、個別 quickReply が未設定の最後のテキストメッセージに付与
+    const transitionQr = buildQuickReply(phase.transitions.map((t) => t.label));
 
-    // 後ろから最初のテキストメッセージを探してクイックリプライを付与
     let attached = false;
     for (let i = messages.length - 1; i >= 0; i--) {
-      if (messages[i].type === "text") {
-        (messages[i] as LineTextMessage).quickReply = qr;
+      const m = messages[i];
+      if (m.type === "text" && !(m as LineTextMessage).quickReply) {
+        (m as LineTextMessage).quickReply = transitionQr;
         attached = true;
         break;
       }
     }
-    // テキストメッセージが 1 件もない場合（全部画像など）はシステム送信者でナビを追加
+    // 全テキストメッセージに個別 quickReply が設定済み or テキストが 0 件の場合は
+    // システム送信者でナビを追加
     if (!attached) {
-      messages.push({ type: "text", text: "続きを選んでください。", quickReply: qr, sender: opts.systemSender });
+      messages.push({ type: "text", text: "続きを選んでください。", quickReply: transitionQr, sender: opts.systemSender });
     }
   }
 
@@ -413,7 +455,7 @@ export function truncateText(text: string, max = LINE_TEXT_MAX): string {
 // triggerKeyword マッチ時のメッセージ変換
 // ────────────────────────────────────────────────
 
-/** `Message` テーブルの行（triggerKeyword マッチ結果）を LINE メッセージ配列に変換する */
+/** `Message` テーブルの行（triggerKeyword マッチ / kind="start" メッセージ）を LINE メッセージ配列に変換する */
 export type KeywordMessageRecord = {
   id:              string;
   messageType:     string;
@@ -421,6 +463,8 @@ export type KeywordMessageRecord = {
   assetUrl:        string | null;
   altText:         string | null;
   flexPayloadJson: string | null;
+  /** DB の quickReplies カラム（JSON 文字列）。parse して LineQuickReply に変換する */
+  quickReplies:    string | null;
   sortOrder:       number;
   character: {
     name:         string;
@@ -429,9 +473,9 @@ export type KeywordMessageRecord = {
 };
 
 /**
- * triggerKeyword にマッチした Message レコード群を LINE メッセージ配列に変換する。
- * クイックリプライ・エンディング追記は行わない（フェーズ進行なし）。
- * systemSender はキャラクターが未設定のメッセージに適用する。
+ * triggerKeyword にマッチした / kind="start" の Message レコード群を LINE メッセージ配列に変換する。
+ * - メッセージ個別の quickReplies（DB JSON 文字列）を parse して LINE quickReply に変換する
+ * - systemSender はキャラクターが未設定のメッセージに適用する
  */
 export function buildKeywordMessages(
   records:      KeywordMessageRecord[],
@@ -444,8 +488,21 @@ export function buildKeywordMessages(
       ? buildSender({ name: msg.character.name, icon_image_url: msg.character.iconImageUrl })
       : systemSender;
 
+    // DB の quickReplies (JSON 文字列) を parse
+    let msgQr: LineQuickReply | undefined;
+    if (msg.quickReplies) {
+      try {
+        const items = JSON.parse(msg.quickReplies) as QuickReplyItem[];
+        msgQr = buildQuickReplyFromItems(items);
+      } catch {
+        console.warn(`[buildKeywordMessages] quickReplies JSON parse error msgId=${msg.id}`);
+      }
+    }
+
     if (msg.messageType === "text" && msg.body) {
-      messages.push({ type: "text", text: msg.body, sender });
+      const lineMsg: LineTextMessage = { type: "text", text: msg.body, sender };
+      if (msgQr) lineMsg.quickReply = msgQr;
+      messages.push(lineMsg);
     } else if (msg.messageType === "image" && msg.assetUrl) {
       const lineMsg: LineImageMessage = {
         type:               "image",

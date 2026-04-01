@@ -67,6 +67,7 @@ function buildRuntimePhaseFromSheets(
       asset_url:         msg.asset_url,
       alt_text:          null,
       flex_payload_json: null,
+      quick_replies:     null,
       sort_order:        msg.sort_order,
       character:    char
         ? {
