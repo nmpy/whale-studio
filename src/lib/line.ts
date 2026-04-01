@@ -59,6 +59,18 @@ export type LineImageMessage = {
   previewImageUrl: string;
   /** キャラクター送信者情報（任意） */
   sender?: LineSender;
+  /** クイックリプライ選択肢（任意） */
+  quickReply?: LineQuickReply;
+};
+
+export type LineVideoMessage = {
+  type: "video";
+  originalContentUrl: string;
+  previewImageUrl: string;
+  /** キャラクター送信者情報（任意） */
+  sender?: LineSender;
+  /** クイックリプライ選択肢（任意） */
+  quickReply?: LineQuickReply;
 };
 
 export type LineFlexMessage = {
@@ -69,9 +81,11 @@ export type LineFlexMessage = {
   contents: Record<string, unknown>;
   /** キャラクター送信者情報（任意） */
   sender?: LineSender;
+  /** クイックリプライ選択肢（任意） */
+  quickReply?: LineQuickReply;
 };
 
-export type LineMessage = LineTextMessage | LineImageMessage | LineFlexMessage;
+export type LineMessage = LineTextMessage | LineImageMessage | LineVideoMessage | LineFlexMessage;
 
 // LINE Webhook イベント（最小限の型定義）
 export type LineEvent = {
@@ -203,10 +217,21 @@ export async function replyToLine(
   if (!replyToken || messages.length === 0) return;
 
   // 最大 LINE_MSG_MAX 件に切り詰める
+  const sliced = messages.slice(0, LINE_MSG_MAX);
   const payload = {
     replyToken,
-    messages: messages.slice(0, LINE_MSG_MAX),
+    messages: sliced,
   };
+
+  // 送信直前ログ: 各メッセージの type / quickReply 有無を確認
+  console.log(
+    `[replyToLine] 送信 msgs=${sliced.length}件`,
+    sliced.map((m, i) => {
+      const hasQr = !!(m as { quickReply?: unknown }).quickReply;
+      const extra = m.type === "image" ? ` url=${(m as LineImageMessage).originalContentUrl.slice(0, 40)}` : "";
+      return `[${i}] type=${m.type} quickReply=${hasQr}${extra}`;
+    }).join(" / ")
+  );
 
   try {
     const res = await fetch(LINE_REPLY_URL, {
@@ -384,9 +409,19 @@ export function buildPhaseMessages(
         originalContentUrl: msg.asset_url,
         previewImageUrl:    msg.asset_url,
       };
-      if (msg.character) {
-        lineMsg.sender = buildSender(msg.character);
-      }
+      if (msg.character) lineMsg.sender = buildSender(msg.character);
+      if (msgQr) lineMsg.quickReply = msgQr;
+      messages.push(lineMsg);
+    }
+
+    if (msg.message_type === "video" && msg.asset_url) {
+      const lineMsg: LineVideoMessage = {
+        type:               "video",
+        originalContentUrl: msg.asset_url,
+        previewImageUrl:    msg.asset_url,
+      };
+      if (msg.character) lineMsg.sender = buildSender(msg.character);
+      if (msgQr) lineMsg.quickReply = msgQr;
       messages.push(lineMsg);
     }
 
@@ -403,9 +438,8 @@ export function buildPhaseMessages(
           altText:  msg.alt_text,
           contents,
         };
-        if (msg.character) {
-          lineMsg.sender = buildSender(msg.character);
-        }
+        if (msg.character) lineMsg.sender = buildSender(msg.character);
+        if (msgQr) lineMsg.quickReply = msgQr;
         messages.push(lineMsg);
       }
     }
@@ -423,19 +457,19 @@ export function buildPhaseMessages(
     // 遷移未設定 — β: システム文言を出さずメッセージのみ表示
     // （シナリオ制作中の場合でも没入感を損なわないよう何も追加しない）
   } else {
-    // 遷移 quickReply を、個別 quickReply が未設定の最後のテキストメッセージに付与
+    // 遷移 quickReply を、個別 quickReply が未設定の最後のメッセージ（型不問）に付与
     const transitionQr = buildQuickReply(phase.transitions.map((t) => t.label));
 
     let attached = false;
     for (let i = messages.length - 1; i >= 0; i--) {
-      const m = messages[i];
-      if (m.type === "text" && !(m as LineTextMessage).quickReply) {
-        (m as LineTextMessage).quickReply = transitionQr;
+      const m = messages[i] as { quickReply?: LineQuickReply };
+      if (!m.quickReply) {
+        m.quickReply = transitionQr;
         attached = true;
         break;
       }
     }
-    // 全テキストメッセージに個別 quickReply が設定済み or テキストが 0 件の場合は
+    // 全メッセージに個別 quickReply が設定済み or メッセージが 0 件の場合は
     // システム送信者でナビを追加
     if (!attached) {
       messages.push({ type: "text", text: "続きを選んでください。", quickReply: transitionQr, sender: opts.systemSender });
@@ -510,6 +544,16 @@ export function buildKeywordMessages(
         previewImageUrl:    msg.assetUrl,
       };
       if (sender) lineMsg.sender = sender;
+      if (msgQr) lineMsg.quickReply = msgQr;
+      messages.push(lineMsg);
+    } else if (msg.messageType === "video" && msg.assetUrl) {
+      const lineMsg: LineVideoMessage = {
+        type:               "video",
+        originalContentUrl: msg.assetUrl,
+        previewImageUrl:    msg.assetUrl,
+      };
+      if (sender) lineMsg.sender = sender;
+      if (msgQr) lineMsg.quickReply = msgQr;
       messages.push(lineMsg);
     } else if (msg.messageType === "flex" && msg.altText && msg.flexPayloadJson) {
       try {
@@ -520,6 +564,7 @@ export function buildKeywordMessages(
           contents,
         };
         if (sender) lineMsg.sender = sender;
+        if (msgQr) lineMsg.quickReply = msgQr;
         messages.push(lineMsg);
       } catch {
         console.warn(`[buildKeywordMessages] Flex JSON parse error msgId=${msg.id}`);

@@ -38,6 +38,11 @@ export const MESSAGE_TYPE_OPTIONS: {
   { value: "flex",     label: "Flex",         icon: "🪄", desc: "Flex Message" },
 ];
 
+/** 謎の配信形式セレクター用（riddle / voice / flex は謎では使用しない） */
+const PUZZLE_DELIVERY_TYPE_OPTIONS = MESSAGE_TYPE_OPTIONS.filter(
+  (opt) => ["text", "image", "video", "carousel"].includes(opt.value)
+);
+
 // ── カルーセルカード型 ────────────────────────────────────
 
 export interface MessageCarouselCard {
@@ -192,21 +197,22 @@ export function formStateToMsgBody(form: MessageFormState) {
     target_segment:   form.target_segment  || null,
     phase_id:         form.phase_id        || null,
     character_id:     form.character_id    || null,
-    message_type:     isPuzzle ? "text" : form.message_type, // puzzle は DB 側 text 扱い
+    // puzzle も message_type をそのまま使う（画像・動画・カルーセル謎に対応）
+    message_type:     form.message_type,
     kind:             form.kind,
     body:
-      isPuzzle
-        ? undefined // puzzle は本文不要
-        : form.message_type === "carousel"
+      form.message_type === "carousel"
         ? JSON.stringify(form.carousel_items)
         : form.message_type === "text"
         ? form.body || undefined
         : undefined,
-    asset_url:         isPuzzle ? undefined : form.asset_url || undefined,
-    notify_text:       !isPuzzle && form.message_type !== "text" && form.message_type !== "flex"
+    asset_url:         (form.message_type === "image" || form.message_type === "video" || form.message_type === "voice")
+      ? form.asset_url || undefined
+      : undefined,
+    notify_text:       form.message_type !== "text" && form.message_type !== "flex"
       ? form.notify_text || undefined
       : undefined,
-    riddle_id:         form.riddle_id   || null,
+    riddle_id:         !isPuzzle ? (form.riddle_id || null) : null,
     quick_replies:     isPuzzle ? null : (form.quick_replies.length > 0 ? form.quick_replies : null),
     alt_text:          !isPuzzle && form.message_type === "flex" ? form.alt_text || null : null,
     flex_payload_json: !isPuzzle && form.message_type === "flex" ? form.flex_json || null : null,
@@ -229,6 +235,20 @@ export function formStateToMsgBody(form: MessageFormState) {
 export function validateMessageForm(form: MessageFormState): string | null {
   // ── 謎（puzzle）バリデーション ──
   if (form.kind === "puzzle") {
+    // 謎の問題コンテンツ（配信形式ごと）
+    if (form.message_type === "text" && !form.body.trim()) {
+      return "謎の本文は必須です";
+    }
+    if (form.message_type === "image" && !form.asset_url.trim()) {
+      return "画像 URL は必須です";
+    }
+    if (form.message_type === "video" && !form.asset_url.trim()) {
+      return "動画 URL は必須です";
+    }
+    if (form.message_type === "carousel" && form.carousel_items.length === 0) {
+      return "カードを1枚以上追加してください";
+    }
+    // 謎の答え・アクション設定
     if (!form.answer.trim()) return "答えは必須です";
     if (form.answer_match_type.length === 0) return "照合方法を1つ以上選択してください";
     if (!form.correct_action) return "正解時アクションを選択してください";
@@ -659,27 +679,83 @@ function PreviewPanel({ form, characters, riddles }: PreviewPanelProps) {
 
   // ── バブル内コンテンツ ──
   const bubbleContent = (() => {
-    // puzzle は message_type に関係なく専用プレビューを表示
+    // puzzle は配信形式（message_type）ごとのコンテンツ + 謎バッジを表示
     if (form.kind === "puzzle") {
+      let puzzleContentEl: React.ReactNode;
+      switch (form.message_type) {
+        case "image":
+          puzzleContentEl = form.asset_url ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={form.asset_url} alt="謎画像プレビュー"
+              style={{ maxWidth: 200, maxHeight: 160, borderRadius: 8, objectFit: "cover", display: "block" }}
+              onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
+          ) : (
+            <div style={{ width: 160, height: 100, background: "#e5e7eb", borderRadius: 8,
+              display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, color: "#9ca3af" }}>🖼</div>
+          );
+          break;
+        case "video":
+          puzzleContentEl = (
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ fontSize: 24 }}>🎬</span>
+              <div>
+                <div style={{ fontSize: 12, color: "#6b7280" }}>動画</div>
+                {form.asset_url && <div style={{ fontSize: 10, color: "#9ca3af", maxWidth: 150, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{form.asset_url}</div>}
+              </div>
+            </div>
+          );
+          break;
+        case "carousel":
+          puzzleContentEl = form.carousel_items.length === 0
+            ? <span style={{ color: "#aaa", fontStyle: "italic", fontSize: 12 }}>カードを追加してください</span>
+            : (
+              <div style={{ overflowX: "auto", display: "flex", gap: 8, paddingBottom: 4 }}>
+                {form.carousel_items.map((card, idx) => (
+                  <div key={idx} style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 8, width: 130, flexShrink: 0, overflow: "hidden" }}>
+                    {card.image_url
+                      ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={card.image_url} alt="" style={{ width: "100%", height: 70, objectFit: "cover", display: "block" }}
+                          onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
+                      )
+                      : <div style={{ width: "100%", height: 50, background: "#e5e7eb", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, color: "#9ca3af" }}>🖼</div>
+                    }
+                    <div style={{ padding: "5px 7px" }}>
+                      <div style={{ fontSize: 10, fontWeight: 600, color: "#111", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{card.title || `カード ${idx + 1}`}</div>
+                      {card.button_label && <div style={{ marginTop: 4, padding: "2px 6px", background: "#06C755", color: "#fff", borderRadius: 4, fontSize: 9, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{card.button_label}</div>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            );
+          break;
+        default: // text
+          puzzleContentEl = form.body
+            ? <span style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{form.body}</span>
+            : <span style={{ color: "#aaa", fontStyle: "italic" }}>謎の本文を入力してください</span>;
+      }
       return (
-        <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
-          <span style={{ fontSize: 22 }}>🧩</span>
-          <div>
-            <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 2 }}>謎チャレンジ</div>
+        <div>
+          {/* 謎バッジ */}
+          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6, flexWrap: "wrap" }}>
+            <span style={{
+              fontSize: 10, fontWeight: 700, background: "#fff7ed", color: "#c2410c",
+              border: "1px solid #fed7aa", padding: "1px 7px", borderRadius: 10,
+            }}>
+              🧩 謎チャレンジ
+            </span>
             {form.puzzle_type && (
-              <div style={{ fontSize: 10, color: "#9ca3af", marginBottom: 3 }}>{form.puzzle_type}</div>
+              <span style={{ fontSize: 10, color: "#9ca3af" }}>{form.puzzle_type}</span>
             )}
-            <div style={{ fontSize: 12, color: "#374151" }}>
-              答え:{" "}
-              {form.answer
-                ? <span style={{ fontWeight: 600, color: "#111" }}>{form.answer}</span>
-                : <span style={{ color: "#aaa", fontStyle: "italic" }}>未設定</span>
-              }
-            </div>
-            <div style={{ fontSize: 11, color: "#6b7280", marginTop: 3 }}>
-              照合: {form.answer_match_type.join(", ")}
-            </div>
           </div>
+          {/* コンテンツ */}
+          {puzzleContentEl}
+          {/* 答え（管理用ヒント） */}
+          {form.answer && (
+            <div style={{ fontSize: 10, color: "#9ca3af", marginTop: 5 }}>
+              答え: <span style={{ fontWeight: 600, color: "#6b7280" }}>{form.answer}</span>
+            </div>
+          )}
         </div>
       );
     }
@@ -1196,6 +1272,40 @@ export function MessageForm({
           <div className="card" style={{ marginBottom: 16 }}>
             <div style={sectionHeader}>🧩 謎の設定</div>
 
+            {/* ── 配信形式（puzzle 用） ── */}
+            <div className="form-group">
+              <label style={fieldLabel}>配信形式</label>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {PUZZLE_DELIVERY_TYPE_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => set("message_type", opt.value as ExtendedMessageType)}
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      gap: 3,
+                      padding: "10px 14px",
+                      borderRadius: 8,
+                      cursor: "pointer",
+                      fontSize: 12,
+                      fontWeight: 500,
+                      transition: "all 0.15s",
+                      minWidth: 72,
+                      border: mtype === opt.value ? "2px solid #06C755" : "2px solid #e5e5e5",
+                      background: mtype === opt.value ? "#E6F7ED" : "#fff",
+                      color: mtype === opt.value ? "#06C755" : "#6b7280",
+                    }}
+                  >
+                    <span style={{ fontSize: 20 }}>{opt.icon}</span>
+                    <span>{opt.label}</span>
+                  </button>
+                ))}
+              </div>
+              <div style={hintText}>謎の問題をどの形式で送信するか選択してください</div>
+            </div>
+
             {/* puzzle_type */}
             <div className="form-group">
               <label style={fieldLabel} htmlFor="puzzle_type">謎の種類（任意）</label>
@@ -1350,7 +1460,150 @@ export function MessageForm({
             </div>
             )}
           </div>
-          )}
+          )} {/* /isPuzzle section 3a */}
+
+          {/* ════════════════════════════════════════
+              セクション 3c: 謎の問題コンテンツ（puzzle のみ・配信形式に応じて切り替え）
+          ════════════════════════════════════════ */}
+          {isPuzzle && (
+          <div className="card" style={{ marginBottom: 16 }}>
+            <div style={sectionHeader}>📨 謎の問題コンテンツ</div>
+
+            {/* ── テキスト ── */}
+            {mtype === "text" && (
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label style={fieldLabel} htmlFor="puzzle_body">
+                  本文 <span style={{ color: "#dc2626" }}>*</span>
+                </label>
+                <textarea
+                  id="puzzle_body"
+                  className="form-input"
+                  style={{ minHeight: 100, resize: "vertical" }}
+                  value={form.body}
+                  onChange={(e) => set("body", e.target.value)}
+                  placeholder="謎の問題文を入力してください"
+                  maxLength={5000}
+                />
+                <div style={{ ...hintText, textAlign: "right" }}>
+                  {form.body.length} / 5000
+                </div>
+              </div>
+            )}
+
+            {/* ── 画像 ── */}
+            {mtype === "image" && (
+              <>
+                <div className="form-group">
+                  <label style={fieldLabel} htmlFor="puzzle_asset_url_image">
+                    画像 URL <span style={{ color: "#dc2626" }}>*</span>
+                  </label>
+                  <input
+                    id="puzzle_asset_url_image"
+                    type="url"
+                    className="form-input"
+                    value={form.asset_url}
+                    onChange={(e) => set("asset_url", e.target.value)}
+                    placeholder="https://example.com/puzzle.png"
+                    style={{ fontFamily: "monospace", fontSize: 13 }}
+                  />
+                  {form.asset_url && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={form.asset_url}
+                      alt="プレビュー"
+                      style={{ marginTop: 8, maxWidth: 240, maxHeight: 140, objectFit: "contain", borderRadius: 6, border: "1px solid #e5e5e5", display: "block" }}
+                      onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                    />
+                  )}
+                </div>
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label style={fieldLabel} htmlFor="puzzle_notify_image">通知メッセージ（任意）</label>
+                  <input id="puzzle_notify_image" type="text" className="form-input" value={form.notify_text}
+                    onChange={(e) => set("notify_text", e.target.value)} placeholder="例: 謎が届きました" maxLength={200} />
+                </div>
+              </>
+            )}
+
+            {/* ── 動画 ── */}
+            {mtype === "video" && (
+              <>
+                <div className="form-group">
+                  <label style={fieldLabel} htmlFor="puzzle_asset_url_video">
+                    動画 URL <span style={{ color: "#dc2626" }}>*</span>
+                  </label>
+                  <input
+                    id="puzzle_asset_url_video"
+                    type="url"
+                    className="form-input"
+                    value={form.asset_url}
+                    onChange={(e) => set("asset_url", e.target.value)}
+                    placeholder="https://example.com/puzzle.mp4"
+                    style={{ fontFamily: "monospace", fontSize: 13 }}
+                  />
+                </div>
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label style={fieldLabel} htmlFor="puzzle_notify_video">通知メッセージ（任意）</label>
+                  <input id="puzzle_notify_video" type="text" className="form-input" value={form.notify_text}
+                    onChange={(e) => set("notify_text", e.target.value)} placeholder="例: 謎が届きました" maxLength={200} />
+                </div>
+              </>
+            )}
+
+            {/* ── カルーセル ── */}
+            {mtype === "carousel" && (
+              <>
+                <div className="form-group">
+                  <label style={fieldLabel}>
+                    カード <span style={{ color: "#dc2626" }}>*</span>
+                    <span style={{ fontSize: 11, color: "#9ca3af", fontWeight: 400, marginLeft: 6 }}>
+                      ({form.carousel_items.length} / 10枚)
+                    </span>
+                  </label>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 10 }}>
+                    {form.carousel_items.map((card, index) => (
+                      <div key={index} style={{ padding: "14px 16px", border: "1px solid #e5e5e5", borderRadius: 8, background: "#fafafa" }}>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                          <span style={{ fontSize: 12, fontWeight: 600, color: "#374151" }}>カード {index + 1}</span>
+                          <button type="button" className="btn btn-ghost" style={{ padding: "2px 8px", fontSize: 11, color: "#ef4444", borderColor: "#fecaca" }} onClick={() => removeCard(index)}>削除</button>
+                        </div>
+                        <div className="form-group" style={{ marginBottom: 8 }}>
+                          <label style={{ ...fieldLabel, fontSize: 12 }}>タイトル</label>
+                          <input type="text" className="form-input" value={card.title} onChange={(e) => updateCard(index, "title", e.target.value)} placeholder="カードのタイトル" maxLength={100} style={{ fontSize: 13 }} />
+                        </div>
+                        <div className="form-group" style={{ marginBottom: 8 }}>
+                          <label style={{ ...fieldLabel, fontSize: 12 }}>本文（任意）</label>
+                          <textarea className="form-input" value={card.body} onChange={(e) => updateCard(index, "body", e.target.value)} placeholder="カードの説明文" maxLength={500} rows={2} style={{ fontSize: 13, resize: "vertical" }} />
+                        </div>
+                        <div className="form-group" style={{ marginBottom: 8 }}>
+                          <label style={{ ...fieldLabel, fontSize: 12 }}>画像 URL（任意）</label>
+                          <input type="url" className="form-input" value={card.image_url} onChange={(e) => updateCard(index, "image_url", e.target.value)} placeholder="https://example.com/image.png" style={{ fontFamily: "monospace", fontSize: 12 }} />
+                        </div>
+                        <div className="form-group" style={{ marginBottom: 8 }}>
+                          <label style={{ ...fieldLabel, fontSize: 12 }}>ボタンラベル（任意）</label>
+                          <input type="text" className="form-input" value={card.button_label} onChange={(e) => updateCard(index, "button_label", e.target.value)} placeholder="例: 詳しく見る" maxLength={50} style={{ fontSize: 13 }} />
+                        </div>
+                        <div className="form-group" style={{ marginBottom: 0 }}>
+                          <label style={{ ...fieldLabel, fontSize: 12 }}>ボタン URL（任意）</label>
+                          <input type="url" className="form-input" value={card.button_url} onChange={(e) => updateCard(index, "button_url", e.target.value)} placeholder="https://example.com/" style={{ fontFamily: "monospace", fontSize: 12 }} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  {form.carousel_items.length < 10 && (
+                    <button type="button" className="btn btn-ghost" style={{ fontSize: 13, padding: "6px 14px" }} onClick={addCard}>
+                      ＋ カードを追加
+                    </button>
+                  )}
+                </div>
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label style={fieldLabel} htmlFor="puzzle_notify_carousel">通知メッセージ（任意）</label>
+                  <input id="puzzle_notify_carousel" type="text" className="form-input" value={form.notify_text}
+                    onChange={(e) => set("notify_text", e.target.value)} placeholder="例: 謎が届きました" maxLength={200} />
+                </div>
+              </>
+            )}
+          </div>
+          )} {/* /isPuzzle section 3c */}
 
           {/* ════════════════════════════════════════
               セクション 3b: 1通目のメッセージ（puzzle のときは非表示）
