@@ -237,46 +237,6 @@ async function handleWebhook(req: NextRequest, oaId: string) {
     console.warn("[Webhook] 署名なし — 開発環境のためスキップします");
   }
 
-  // ── [ECHO] テキストメッセージ受信確認用エコー返信 ──
-  // ★ 動作確認用。確認が取れたら下の return ごと削除する。
-  for (const ev of webhookBody.events) {
-    if (
-      ev.type === "message" &&
-      ev.message?.type === "text" &&
-      typeof ev.message.text === "string" &&
-      typeof ev.replyToken === "string"
-    ) {
-      const msgText    = ev.message.text;
-      const replyToken = ev.replyToken;
-      const echoText   = `受信しました: ${msgText}`;
-
-      console.log(`[Webhook][ECHO] message.text="${msgText}" replyToken=${replyToken}`);
-      console.log(`[Webhook][ECHO] reply送信前 echoText="${echoText}"`);
-
-      try {
-        await replyToLine(
-          replyToken,
-          [{ type: "text", text: echoText }],
-          oa.channelAccessToken,
-        );
-        console.log(`[Webhook][ECHO] reply送信後 — 成功`);
-      } catch (err) {
-        const e = err as Record<string, unknown> | null | undefined;
-        console.error(`[Webhook][ECHO] reply送信エラー`, {
-          name:    e?.name,
-          message: e?.message,
-          code:    e?.code,
-          raw:     String(err),
-        });
-      }
-
-      // リプライトークンは 1 回しか使えないため、ここで処理を終了する
-      // ★ 作品ロジックを有効にするときはこの return を削除する
-      return NextResponse.json({ ok: true });
-    }
-  }
-  // ── [ECHO] ここまで ──
-
   // ── 5. follow イベント処理（友達追加 → トラッキング帰属）──
   const followEvents = webhookBody.events.filter(
     (e): e is LineEvent & { source: { userId: string } } =>
