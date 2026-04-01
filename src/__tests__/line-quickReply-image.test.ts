@@ -22,7 +22,7 @@ import type { KeywordMessageRecord } from "@/lib/line";
 // ────────────────────────────────────────────────
 
 const QR_ITEMS_JSON = JSON.stringify([
-  { label: "次へ", action: "message", value: "次へ" },
+  { label: "次へ", action: "text", value: "次へ" },
 ]);
 
 function makePhase(overrides: Partial<RuntimePhase>): RuntimePhase {
@@ -51,7 +51,7 @@ describe("buildPhaseMessages — 個別 quickReply", () => {
         asset_url:         "https://example.com/puzzle.png",
         alt_text:          null,
         flex_payload_json: null,
-        quick_replies:     [{ label: "次へ", action: "message", value: "次へ" }],
+        quick_replies:     [{ label: "次へ", action: "text", value: "次へ" }],
         sort_order:        0,
         character:         null,
       }],
@@ -77,7 +77,7 @@ describe("buildPhaseMessages — 個別 quickReply", () => {
         asset_url:         "https://example.com/video.mp4",
         alt_text:          null,
         flex_payload_json: null,
-        quick_replies:     [{ label: "続ける", action: "message", value: "続ける" }],
+        quick_replies:     [{ label: "続ける", action: "text", value: "続ける" }],
         sort_order:        0,
         character:         null,
       }],
@@ -111,7 +111,7 @@ describe("buildPhaseMessages — 遷移 quickReply", () => {
         character:         null,
       }],
       transitions: [
-        { id: "t1", label: "先へ進む", to_phase: { id: "p2", name: "次のフェーズ", phase_type: "normal" }, condition: null, sort_order: 0 },
+        { id: "t1", label: "先へ進む", to_phase: { id: "p2", name: "次のフェーズ", phase_type: "normal" }, condition: null, sort_order: 0, set_flags: "{}" },
       ],
     });
 
@@ -140,7 +140,7 @@ describe("buildPhaseMessages — 遷移 quickReply", () => {
         },
       ],
       transitions: [
-        { id: "t1", label: "次へ", to_phase: { id: "p2", name: "次", phase_type: "normal" }, condition: null, sort_order: 0 },
+        { id: "t1", label: "次へ", to_phase: { id: "p2", name: "次", phase_type: "normal" }, condition: null, sort_order: 0, set_flags: "{}" },
       ],
     });
 
@@ -161,11 +161,11 @@ describe("buildPhaseMessages — 遷移 quickReply", () => {
       messages: [{
         id: "msg-img", message_type: "image", body: null,
         asset_url: "https://example.com/img.png", alt_text: null, flex_payload_json: null,
-        quick_replies: [{ label: "はい", action: "message", value: "はい" }], // 個別 QR あり
+        quick_replies: [{ label: "はい", action: "text", value: "はい" }], // 個別 QR あり
         sort_order: 0, character: null,
       }],
       transitions: [
-        { id: "t1", label: "次へ", to_phase: { id: "p2", name: "次", phase_type: "normal" }, condition: null, sort_order: 0 },
+        { id: "t1", label: "次へ", to_phase: { id: "p2", name: "次", phase_type: "normal" }, condition: null, sort_order: 0, set_flags: "{}" },
       ],
     });
 

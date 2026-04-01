@@ -10,9 +10,19 @@ import { requireRole, getOaIdFromWorkId } from "@/lib/rbac";
 import { createMessageSchema, messageQuerySchema, formatZodErrors } from "@/lib/validations";
 import { ZodError } from "zod";
 
-function parseQuickReplies(raw: string | null) {
+function parseQuickReplies(raw: string | null, msgId?: string) {
   if (!raw) return null;
-  try { return JSON.parse(raw); } catch { return null; }
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) {
+      console.warn(`[parseQuickReplies] quick_replies は配列ではありません id=${msgId ?? "?"} raw=${raw.slice(0, 80)}`);
+      return null;
+    }
+    return parsed;
+  } catch {
+    console.warn(`[parseQuickReplies] JSON パース失敗 id=${msgId ?? "?"} raw=${raw.slice(0, 80)}`);
+    return null;
+  }
 }
 
 function parseAnswerMatchType(raw: string | null): string[] {
@@ -48,7 +58,7 @@ function toResponse(m: {
     target_segment:       m.targetSegment,
     notify_text:          m.notifyText,
     riddle_id:            m.riddleId,
-    quick_replies:        parseQuickReplies(m.quickReplies),
+    quick_replies:        parseQuickReplies(m.quickReplies, m.id),
     alt_text:             m.altText ?? null,
     flex_payload_json:    m.flexPayloadJson ?? null,
     puzzle_type:          m.puzzleType ?? null,
@@ -159,6 +169,13 @@ export const POST = withAuth(async (req, _ctx, user) => {
       if (character.workId !== data.work_id) return badRequest("指定したキャラクターはこの作品に属していません");
     }
 
+    // DB 保存前ログ（quick_replies の内容と JSON 化後の文字列を確認）
+    const quickRepliesJson = data.quick_replies ? JSON.stringify(data.quick_replies) : null;
+    console.log(
+      `[POST /api/messages] 保存前 quick_replies: count=${data.quick_replies?.length ?? 0}`,
+      quickRepliesJson ?? "null"
+    );
+
     const message = await prisma.message.create({
       data: {
         workId:             data.work_id,
@@ -172,7 +189,7 @@ export const POST = withAuth(async (req, _ctx, user) => {
         targetSegment:      data.target_segment  ?? null,
         notifyText:         data.notify_text     ?? null,
         riddleId:           data.riddle_id       ?? null,
-        quickReplies:       data.quick_replies ? JSON.stringify(data.quick_replies) : null,
+        quickReplies:       quickRepliesJson,
         altText:            data.alt_text          ?? null,
         flexPayloadJson:    data.flex_payload_json ?? null,
         puzzleType:         data.puzzle_type        ?? null,

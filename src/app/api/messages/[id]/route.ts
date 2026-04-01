@@ -42,9 +42,19 @@ type PrismaMessageWithRelations = {
   } | null;
 };
 
-function parseQuickReplies(raw: string | null) {
+function parseQuickReplies(raw: string | null, msgId?: string) {
   if (!raw) return null;
-  try { return JSON.parse(raw); } catch { return null; }
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) {
+      console.warn(`[parseQuickReplies] quick_replies は配列ではありません id=${msgId ?? "?"} raw=${raw.slice(0, 80)}`);
+      return null;
+    }
+    return parsed;
+  } catch {
+    console.warn(`[parseQuickReplies] JSON パース失敗 id=${msgId ?? "?"} raw=${raw.slice(0, 80)}`);
+    return null;
+  }
 }
 
 function parseAnswerMatchType(raw: string | null): string[] {
@@ -67,7 +77,7 @@ function toResponse(m: PrismaMessageWithRelations) {
     target_segment:        m.targetSegment,
     notify_text:           m.notifyText,
     riddle_id:             m.riddleId,
-    quick_replies:         parseQuickReplies(m.quickReplies),
+    quick_replies:         parseQuickReplies(m.quickReplies, m.id),
     alt_text:              m.altText,
     flex_payload_json:     m.flexPayloadJson,
     puzzle_type:           m.puzzleType,
@@ -162,6 +172,15 @@ export const PATCH = withAuth<{ id: string }>(async (req, { params }, user) => {
       return badRequest(`message_type が ${nextType} の場合、asset_url は必須です`, {
         asset_url: [`${nextType}型の場合は asset_url が必要です`],
       });
+    }
+
+    // DB 保存前ログ（quick_replies の内容と JSON 化後の文字列を確認）
+    if (data.quick_replies !== undefined) {
+      const quickRepliesJson = data.quick_replies ? JSON.stringify(data.quick_replies) : null;
+      console.log(
+        `[PATCH /api/messages/${params.id}] 保存前 quick_replies: count=${data.quick_replies?.length ?? 0}`,
+        quickRepliesJson ?? "null"
+      );
     }
 
     const updated = await prisma.message.update({
