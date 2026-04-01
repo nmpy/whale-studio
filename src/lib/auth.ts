@@ -177,6 +177,33 @@ type Handler<T = Record<string, string>> = (
 
 export function withAuth<T = Record<string, string>>(handler: Handler<T>) {
   return async (req: NextRequest, ctx: { params: T }): Promise<NextResponse> => {
+    const method   = req.method;
+    const pathname = req.nextUrl.pathname;
+
+    // ── BYPASS_AUTH を withAuth の先頭で直接評価（getAuthUser に入る前）──
+    // getAuthUser 内でも同じチェックをしているが、
+    // バンドルキャッシュ等の問題で getAuthUser が古いコードを使っている場合でも
+    // こちらで確実に通過させる。
+    const bypassRaw = process.env.BYPASS_AUTH;
+    const bypassOn  = bypassRaw?.trim().toLowerCase() === "true";
+    console.log(
+      `[withAuth] ENTRY method=${method} path=${pathname}`,
+      `BYPASS_AUTH_raw=${JSON.stringify(bypassRaw)} BYPASS_AUTH_resolved=${bypassOn}`
+    );
+
+    if (bypassOn) {
+      console.warn(`[withAuth] ⚠️ BYPASS_AUTH=true — 認証スキップ method=${method} path=${pathname}`);
+      try {
+        return await handler(req, ctx, { id: "bypass-admin" });
+      } catch (err) {
+        console.error(`[withAuth] BYPASS handler error method=${method} path=${pathname}:`, err);
+        return NextResponse.json(
+          { success: false, error: { code: "INTERNAL_SERVER_ERROR", message: "サーバーエラーが発生しました" } },
+          { status: 500 }
+        );
+      }
+    }
+
     try {
       const user = await getAuthUser(req);
       if (!user) {

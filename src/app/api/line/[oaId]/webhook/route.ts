@@ -175,18 +175,47 @@ async function handleWebhook(req: NextRequest, oaId: string) {
   }
 
   // ── 3. OA 取得 ──
-  console.log(`[Webhook][STEP] OA取得前 oaId=${oaId}`);
-  const oa = await prisma.oa.findUnique({ where: { id: oaId } });
+  // Webhook URL の [oaId] は LINE チャンネル ID（例: 613zlngs）。
+  // DB の Oa.id は UUID のため、channelId カラムで検索する。
+  // LINE が @ 付きで送ってくる場合に備えて @ プレフィックスを除去して正規化する。
+  const rawOaId        = oaId;
+  const normalizedOaId = oaId.startsWith("@") ? oaId.slice(1) : oaId;
+
   console.log(
-    `[Webhook][STEP] OA取得後 oaId=${oaId}`,
-    oa
-      ? `found title="${oa.title}" channel_secret=${oa.channelSecret ? "あり" : "なし"} channel_access_token=${oa.channelAccessToken ? "あり" : "なし"}`
-      : "not found"
+    `[Webhook][STEP] OA取得前`,
+    `rawOaId=${rawOaId}`,
+    `normalizedOaId=${normalizedOaId}`,
+    `検索カラム=channelId`
   );
 
-  if (!oa) {
-    // 存在しない OA ID への Webhook は処理しないが 200 を返す
-    console.warn(`[Webhook] OA が存在しません oaId=${oaId} — 200 を返します`);
+  // channelId で検索（@ 付き・なし両方を試す）
+  const oa =
+    await prisma.oa.findFirst({ where: { channelId: normalizedOaId } }) ??
+    await prisma.oa.findFirst({ where: { channelId: `@${normalizedOaId}` } });
+
+  if (oa) {
+    console.log(
+      `[Webhook][STEP] OA取得後 found`,
+      `id=${oa.id}`,
+      `title="${oa.title}"`,
+      `channelId="${oa.channelId}"`,
+      `channel_secret=${oa.channelSecret ? "あり" : "なし"}`,
+      `channel_access_token=${oa.channelAccessToken ? "あり" : "なし"}`
+    );
+  } else {
+    // not found — 近傍の channelId を列挙して差分を確認しやすくする
+    const candidates = await prisma.oa.findMany({
+      select: { id: true, title: true, channelId: true },
+      take: 5,
+      orderBy: { createdAt: "desc" },
+    });
+    console.warn(
+      `[Webhook] OA が見つかりません`,
+      `rawOaId=${rawOaId}`,
+      `normalizedOaId=${normalizedOaId}`,
+      `DB内の最新5件のchannelId=`,
+      candidates.map((c) => `"${c.channelId}"(id=${c.id.slice(0, 8)})`).join(", ")
+    );
     return NextResponse.json({ ok: true });
   }
 
@@ -255,7 +284,7 @@ async function handleWebhook(req: NextRequest, oaId: string) {
 
   if (followEvents.length > 0) {
     await Promise.allSettled(
-      followEvents.map((e) => attributeFollowToTracking(oaId, e.source.userId))
+      followEvents.map((e) => attributeFollowToTracking(oa.id, e.source.userId))
     );
   }
 
@@ -354,7 +383,7 @@ async function handleWebhook(req: NextRequest, oaId: string) {
 
   // ── 6. (Prisma モード) アクティブな作品を取得（systemCharacter + welcomeMessage も JOIN）──
   const work = await prisma.work.findFirst({
-    where:   { oaId: oaId, publishStatus: "active" },
+    where:   { oaId: oa.id, publishStatus: "active" },
     orderBy: { sortOrder: "asc" },
     include: {
       systemCharacter: {

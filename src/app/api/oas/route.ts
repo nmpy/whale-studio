@@ -10,6 +10,13 @@ import { createOaSchema, oaQuerySchema, formatZodErrors } from "@/lib/validation
 import { getWorkspaceRole } from "@/lib/rbac";
 import { ZodError } from "zod";
 
+// ── モジュールロード時ログ ──────────────────────────────────
+// このログが Vercel に出ない場合は古いキャッシュが使われている。
+// BYPASS_AUTH の実値をここで記録することで、env var の反映も同時に確認できる。
+console.log(
+  `[/api/oas] module loaded BYPASS_AUTH_raw=${JSON.stringify(process.env.BYPASS_AUTH)}`
+);
+
 // ── GET /api/oas ─────────────────────────────────
 export const GET = withAuth(async (req, _ctx, user) => {
   try {
