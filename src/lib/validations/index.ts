@@ -207,9 +207,15 @@ export const transitionQuerySchema = z.object({
 // ────────────────────────────────────────────────
 /** クイックリプライ 1件のスキーマ（LINE 仕様: max 13件 / label max 20文字） */
 export const quickReplyItemSchema = z.object({
-  label:  z.string().min(1, "ラベルは1文字以上必要です").max(20, "ラベルは20文字以内にしてください"),
-  action: z.enum(["text", "url", "next", "hint", "custom"]),
-  value:  z.string().max(500).optional(),
+  label:         z.string().min(1, "ラベルは1文字以上必要です").max(20, "ラベルは20文字以内にしてください"),
+  action:        z.enum(["text", "url", "next", "hint", "custom"]),
+  value:         z.string().max(500).optional(),
+  /** action="hint" のときにボットが返信するヒント本文 */
+  hint_text:     z.string().max(2000).optional(),
+  /** action="hint" のときにヒント本文の後に続けて送信する回答誘導メッセージ */
+  hint_followup: z.string().max(500).optional(),
+  /** false のときは LINE QR に含めない（OFF 状態） */
+  enabled:       z.boolean().optional(),
 });
 
 // ────────────────────────────────────────────────

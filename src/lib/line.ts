@@ -328,6 +328,7 @@ export function buildQuickReplyFromItems(
   if (!items || items.length === 0) return undefined;
 
   const lineItems: LineQuickReplyItem[] = items
+    .filter((item) => item.enabled !== false)   // enabled=false のアイテムを除外
     .slice(0, QUICK_REPLY_MAX)
     .flatMap((item): LineQuickReplyItem[] => {
       const label = item.label.slice(0, 20);

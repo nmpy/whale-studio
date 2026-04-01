@@ -14,19 +14,26 @@ export type QuickReplyAction = "text" | "url" | "next" | "hint" | "custom";
 
 /**
  * クイックリプライ 1件
- * - label : 表示ラベル（LINE 仕様 max 20文字）
- * - action: アクション種別
- * - value : アクションに応じた値（任意）
- *   - text   → 送信するテキスト（省略時は label と同じ）
- *   - url    → 開く URL
- *   - next   → トリガーキーワード（省略時はシステムデフォルト）
- *   - hint   → ヒントキーワード（省略時はデフォルトヒント）
- *   - custom → 任意のポストバックデータ
+ * - label     : 表示ラベル（LINE 仕様 max 20文字）
+ * - action    : アクション種別
+ * - value     : アクションに応じた値（任意）
+ *   - text      → 送信するテキスト（省略時は label と同じ）
+ *   - url       → 開く URL
+ *   - next      → トリガーキーワード（省略時はシステムデフォルト）
+ *   - hint      → ヒントキー（例: "hint1" / "hint2"）。タップ時に送信されるテキスト
+ *   - custom    → 任意のポストバックデータ
+ * - hint_text : action="hint" のときにボットが返信するヒント本文（最大 2000 文字）
  */
 export interface QuickReplyItem {
-  label:  string;
-  action: QuickReplyAction;
-  value?: string;
+  label:           string;
+  action:          QuickReplyAction;
+  value?:          string;
+  /** action="hint" のとき、ユーザーがタップした際にボットが返信するヒント本文 */
+  hint_text?:      string;
+  /** action="hint" のとき、hint_text の後に続けて送信する回答誘導メッセージ */
+  hint_followup?:  string;
+  /** false のとき LINE に表示しない / hint 照合対象外にする（省略 = true） */
+  enabled?:        boolean;
 }
 /**
  * キャラクターアイコン種別。

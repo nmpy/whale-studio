@@ -3,7 +3,7 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { phaseApi, characterApi, riddleApi, getDevToken } from "@/lib/api-client";
 import { Breadcrumb } from "@/components/Breadcrumb";
@@ -372,9 +372,9 @@ const QR_ACTION_OPTIONS: { value: QuickReplyAction; label: string; icon: string;
     value: "hint",
     label: "ヒント",
     icon: "💡",
-    hint: "タップするとヒントメッセージを送信します",
-    valueLabel: "ヒントキーワード（任意）",
-    valuePlaceholder: "省略時はデフォルトヒント",
+    hint: "タップするとヒント本文をボットが返信します",
+    valueLabel: "ヒントキー",
+    valuePlaceholder: "例: hint1（省略可）",
   },
   {
     value: "custom",
@@ -389,6 +389,53 @@ const QR_ACTION_OPTIONS: { value: QuickReplyAction; label: string; icon: string;
 /** 空のクイックリプライ雛形 */
 const EMPTY_QR: QuickReplyItem = { label: "", action: "text", value: "" };
 
+/** ヒントボタンのテンプレートプリセット（丸数字） */
+const HINT_TEMPLATES = [
+  { label: "ヒント①", value: "hint1" },
+  { label: "ヒント②", value: "hint2" },
+  { label: "ヒント③", value: "hint3" },
+] as const;
+
+// ────────────────────────────────────────────────────────
+// ヒントプレビューコンポーネント
+// ────────────────────────────────────────────────────────
+
+function QrHintPreview({ hintText, hintFollowup }: { hintText?: string; hintFollowup?: string }) {
+  if (!hintText?.trim() && !hintFollowup?.trim()) return null;
+  const bubble: React.CSSProperties = {
+    background: "#fff",
+    border: "1px solid #e5e7eb",
+    borderRadius: "0 10px 10px 10px",
+    padding: "8px 10px",
+    fontSize: 12,
+    lineHeight: 1.5,
+    color: "#374151",
+    whiteSpace: "pre-wrap",
+    wordBreak: "break-word",
+    maxWidth: 220,
+  };
+  return (
+    <div style={{
+      background: "#f0fdf4",
+      border: "1px solid #bbf7d0",
+      borderRadius: 8,
+      padding: "10px 12px",
+      marginTop: 8,
+    }}>
+      <div style={{ fontSize: 10, color: "#16a34a", fontWeight: 700, marginBottom: 7, letterSpacing: 0.5 }}>
+        💬 ユーザーへの返信プレビュー
+      </div>
+      {hintText?.trim() && <div style={bubble}>{hintText}</div>}
+      {hintFollowup?.trim() && (
+        <>
+          <div style={{ textAlign: "center", color: "#9ca3af", fontSize: 10, margin: "5px 0" }}>▼</div>
+          <div style={bubble}>{hintFollowup}</div>
+        </>
+      )}
+    </div>
+  );
+}
+
 // ────────────────────────────────────────────────────────
 // QuickReplyEditor コンポーネント
 // ────────────────────────────────────────────────────────
@@ -399,7 +446,10 @@ interface QuickReplyEditorProps {
 }
 
 function QuickReplyEditor({ items, onChange }: QuickReplyEditorProps) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen]               = useState(false);
+  const [expandedSet, setExpandedSet] = useState<Set<number>>(new Set());
+  const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
+  const dragSrcRef                    = useRef<number | null>(null);
 
   // 自動展開: 既存データがある場合は初期表示で開く
   useEffect(() => {
@@ -409,17 +459,90 @@ function QuickReplyEditor({ items, onChange }: QuickReplyEditorProps) {
 
   function addItem() {
     if (items.length >= 13) return;
+    const newIdx = items.length;
     onChange([...items, { ...EMPTY_QR }]);
+    setExpandedSet((prev) => new Set([...prev, newIdx]));
     setOpen(true);
   }
 
   function updateItem(index: number, patch: Partial<QuickReplyItem>) {
-    onChange(items.map((item, i) => i === index ? { ...item, ...patch } : item));
+    onChange(items.map((item, i) => (i === index ? { ...item, ...patch } : item)));
   }
 
   function removeItem(index: number) {
     onChange(items.filter((_, i) => i !== index));
+    setExpandedSet((prev) => {
+      const next = new Set<number>();
+      prev.forEach((n) => {
+        if (n < index) next.add(n);
+        else if (n > index) next.add(n - 1);
+      });
+      return next;
+    });
   }
+
+  function toggleExpand(index: number) {
+    setExpandedSet((prev) => {
+      const next = new Set(prev);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
+      return next;
+    });
+  }
+
+  // ── ドラッグ & ドロップ ──
+  function handleDragStart(e: React.DragEvent, index: number) {
+    dragSrcRef.current = index;
+    e.dataTransfer.effectAllowed = "move";
+  }
+  function handleDragOver(e: React.DragEvent, index: number) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    setDragOverIdx(index);
+  }
+  function handleDrop(e: React.DragEvent, dropIdx: number) {
+    e.preventDefault();
+    const srcIdx = dragSrcRef.current;
+    if (srcIdx === null || srcIdx === dropIdx) {
+      setDragOverIdx(null);
+      return;
+    }
+    const next = [...items];
+    const [moved] = next.splice(srcIdx, 1);
+    next.splice(dropIdx, 0, moved);
+    onChange(next);
+    // expandedSet のインデックスを更新
+    setExpandedSet((prev) => {
+      const updated = new Set<number>();
+      prev.forEach((n) => {
+        if (n === srcIdx) {
+          updated.add(dropIdx);
+        } else if (srcIdx < dropIdx && n > srcIdx && n <= dropIdx) {
+          updated.add(n - 1);
+        } else if (srcIdx > dropIdx && n < srcIdx && n >= dropIdx) {
+          updated.add(n + 1);
+        } else {
+          updated.add(n);
+        }
+      });
+      return updated;
+    });
+    dragSrcRef.current = null;
+    setDragOverIdx(null);
+  }
+  function handleDragEnd() {
+    dragSrcRef.current = null;
+    setDragOverIdx(null);
+  }
+
+  // アクション別バッジ色マップ
+  const actionBadge: Record<QuickReplyAction, { bg: string; color: string }> = {
+    text:   { bg: "#dcfce7", color: "#15803d" },
+    url:    { bg: "#dbeafe", color: "#1d4ed8" },
+    next:   { bg: "#ede9fe", color: "#7c3aed" },
+    hint:   { bg: "#fef9c3", color: "#92400e" },
+    custom: { bg: "#f1f5f9", color: "#475569" },
+  };
 
   const headerStyle: React.CSSProperties = {
     display: "flex",
@@ -428,6 +551,8 @@ function QuickReplyEditor({ items, onChange }: QuickReplyEditorProps) {
     cursor: "pointer",
     userSelect: "none",
   };
+
+  const enabledCount = items.filter((i) => i.enabled !== false).length;
 
   return (
     <div className="card" style={{ marginBottom: 16 }}>
@@ -443,7 +568,7 @@ function QuickReplyEditor({ items, onChange }: QuickReplyEditorProps) {
               fontSize: 10, fontWeight: 700, background: "#06C755", color: "#fff",
               borderRadius: 10, padding: "1px 7px",
             }}>
-              {items.length}件
+              {enabledCount}/{items.length}件
             </span>
           )}
         </div>
@@ -454,122 +579,305 @@ function QuickReplyEditor({ items, onChange }: QuickReplyEditorProps) {
 
       {open && (
         <div style={{ marginTop: 14 }}>
-          {/* ヒント */}
           <p style={{ ...hintText, marginBottom: 14 }}>
-            メッセージの下に表示される選択肢ボタンです。LINE 仕様: 最大13件 / ラベル最大20文字
+            メッセージの下に表示される選択肢ボタンです。LINE 仕様: 最大13件 / ラベル最大20文字。⠿ をドラッグして並び替え可能。
           </p>
 
           {/* アイテム一覧 */}
           {items.length > 0 && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 14 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 14 }}>
               {items.map((item, index) => {
-                const actionDef = QR_ACTION_OPTIONS.find((o) => o.value === item.action);
-                // 値フィールドは全アクション種別で常に表示（ヒント目的の変数宣言除去）
+                const isExpanded = expandedSet.has(index);
+                const isEnabled  = item.enabled !== false;
+                const isDragOver = dragOverIdx === index;
+                const actionDef  = QR_ACTION_OPTIONS.find((o) => o.value === item.action);
+                const badge      = actionBadge[item.action];
 
                 return (
                   <div
                     key={index}
+                    draggable
+                    onDragStart={(e) => handleDragStart(e, index)}
+                    onDragOver={(e)  => handleDragOver(e, index)}
+                    onDrop={(e)      => handleDrop(e, index)}
+                    onDragEnd={handleDragEnd}
                     style={{
-                      padding: "12px 14px",
-                      border: "1px solid #e5e7eb",
+                      border:     isDragOver ? "2px dashed #06C755" : "1px solid #e5e7eb",
                       borderRadius: 8,
-                      background: "#fafafa",
+                      background: isEnabled ? "#fafafa" : "#f1f5f9",
+                      opacity:    isEnabled ? 1 : 0.6,
+                      transition: "border 0.1s, opacity 0.15s",
                     }}
                   >
-                    {/* ヘッダー行: 番号 + 削除 */}
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-                      <span style={{ fontSize: 12, fontWeight: 600, color: "#374151" }}>
-                        #{index + 1}
+                    {/* ── カード折り畳みヘッダー ── */}
+                    <div style={{
+                      display: "flex", alignItems: "center", gap: 7,
+                      padding: "9px 12px",
+                    }}>
+                      {/* ドラッグハンドル */}
+                      <span
+                        style={{ color: "#9ca3af", fontSize: 15, cursor: "grab", userSelect: "none", lineHeight: 1 }}
+                        title="ドラッグして並び替え"
+                      >
+                        ⠿
                       </span>
+
+                      {/* 展開トグル領域 */}
+                      <div
+                        style={{ flex: 1, display: "flex", alignItems: "center", gap: 6, minWidth: 0, cursor: "pointer" }}
+                        onClick={() => toggleExpand(index)}
+                      >
+                        {/* アクションバッジ */}
+                        <span style={{
+                          fontSize: 10, fontWeight: 700,
+                          background: badge.bg, color: badge.color,
+                          borderRadius: 4, padding: "1px 6px",
+                          whiteSpace: "nowrap", flexShrink: 0,
+                        }}>
+                          {actionDef?.icon} {actionDef?.label}
+                        </span>
+                        {/* ラベルテキスト */}
+                        <span style={{
+                          fontSize: 13, fontWeight: 500, color: "#374151",
+                          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                        }}>
+                          {item.label || <span style={{ color: "#9ca3af" }}>（ラベル未設定）</span>}
+                        </span>
+                        {/* ヒント設定済みインジケーター */}
+                        {item.action === "hint" && item.hint_text && (
+                          <span style={{ fontSize: 11, color: "#b45309", flexShrink: 0 }} title="ヒント本文設定済み">💡</span>
+                        )}
+                        {/* 展開アイコン */}
+                        <span style={{ fontSize: 10, color: "#9ca3af", marginLeft: "auto", flexShrink: 0 }}>
+                          {isExpanded ? "▲" : "▼"}
+                        </span>
+                      </div>
+
+                      {/* ON/OFF トグル */}
+                      <label
+                        onClick={(e) => e.stopPropagation()}
+                        style={{ display: "flex", alignItems: "center", gap: 4, cursor: "pointer", userSelect: "none", flexShrink: 0 }}
+                        title={isEnabled ? "クリックで無効化" : "クリックで有効化"}
+                      >
+                        <div style={{
+                          position: "relative", width: 30, height: 17,
+                          background: isEnabled ? "#06C755" : "#d1d5db",
+                          borderRadius: 9, transition: "background 0.2s",
+                        }}>
+                          <div style={{
+                            position: "absolute", top: 2,
+                            left: isEnabled ? 15 : 2,
+                            width: 13, height: 13,
+                            borderRadius: "50%", background: "#fff",
+                            boxShadow: "0 1px 2px rgba(0,0,0,0.2)",
+                            transition: "left 0.18s",
+                            pointerEvents: "none",
+                          }} />
+                          <input
+                            type="checkbox"
+                            checked={isEnabled}
+                            onChange={(e) => updateItem(index, { enabled: e.target.checked ? undefined : false })}
+                            style={{ position: "absolute", opacity: 0, width: 0, height: 0 }}
+                          />
+                        </div>
+                        <span style={{ fontSize: 10, color: "#6b7280", width: 22 }}>
+                          {isEnabled ? "ON" : "OFF"}
+                        </span>
+                      </label>
+
+                      {/* 削除ボタン */}
                       <button
                         type="button"
-                        onClick={() => removeItem(index)}
+                        onClick={(e) => { e.stopPropagation(); removeItem(index); }}
                         style={{
-                          fontSize: 11, padding: "2px 8px", border: "1px solid #fecaca",
-                          borderRadius: 6, background: "#fff5f5", color: "#ef4444",
-                          cursor: "pointer", lineHeight: 1.5,
+                          fontSize: 11, padding: "2px 7px",
+                          border: "1px solid #fecaca", borderRadius: 5,
+                          background: "#fff5f5", color: "#ef4444",
+                          cursor: "pointer", flexShrink: 0,
                         }}
                       >
                         削除
                       </button>
                     </div>
 
-                    {/* ラベル */}
-                    <div className="form-group" style={{ marginBottom: 8 }}>
-                      <label style={{ ...fieldLabel, fontSize: 12 }}>
-                        表示ラベル <span style={{ color: "#dc2626" }}>*</span>
-                        <span style={{ fontWeight: 400, color: "#9ca3af", marginLeft: 4 }}>
-                          ({item.label.length}/20)
-                        </span>
-                      </label>
-                      <input
-                        type="text"
-                        className="form-input"
-                        value={item.label}
-                        onChange={(e) => updateItem(index, { label: e.target.value })}
-                        placeholder="例: 次へ進む"
-                        maxLength={20}
-                        style={{ fontSize: 13 }}
-                      />
-                    </div>
+                    {/* ── 展開コンテンツ ── */}
+                    {isExpanded && (
+                      <div style={{ padding: "0 12px 12px", borderTop: "1px solid #e5e7eb" }}>
 
-                    {/* アクション種別 */}
-                    <div className="form-group" style={{ marginBottom: 8 }}>
-                      <label style={{ ...fieldLabel, fontSize: 12 }}>アクション種別</label>
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                        {QR_ACTION_OPTIONS.map((opt) => (
-                          <button
-                            key={opt.value}
-                            type="button"
-                            onClick={() => updateItem(index, { action: opt.value })}
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: 4,
-                              padding: "5px 10px",
-                              borderRadius: 6,
-                              fontSize: 12,
-                              fontWeight: 500,
-                              cursor: "pointer",
-                              transition: "all 0.12s",
-                              border: item.action === opt.value
-                                ? "2px solid #06C755"
-                                : "2px solid #e5e7eb",
-                              background: item.action === opt.value ? "#E6F7ED" : "#fff",
-                              color: item.action === opt.value ? "#15803d" : "#6b7280",
-                            }}
-                          >
-                            <span style={{ fontSize: 13 }}>{opt.icon}</span>
-                            {opt.label}
-                          </button>
-                        ))}
+                        {/* ラベル */}
+                        <div className="form-group" style={{ marginTop: 10, marginBottom: 8 }}>
+                          <label style={{ ...fieldLabel, fontSize: 12 }}>
+                            表示ラベル <span style={{ color: "#dc2626" }}>*</span>
+                            <span style={{ fontWeight: 400, color: "#9ca3af", marginLeft: 4 }}>
+                              ({item.label.length}/20)
+                            </span>
+                          </label>
+                          <input
+                            type="text"
+                            className="form-input"
+                            value={item.label}
+                            onChange={(e) => updateItem(index, { label: e.target.value })}
+                            placeholder="例: 次へ進む"
+                            maxLength={20}
+                            style={{ fontSize: 13 }}
+                          />
+                        </div>
+
+                        {/* アクション種別 */}
+                        <div className="form-group" style={{ marginBottom: 8 }}>
+                          <label style={{ ...fieldLabel, fontSize: 12 }}>アクション種別</label>
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                            {QR_ACTION_OPTIONS.map((opt) => (
+                              <button
+                                key={opt.value}
+                                type="button"
+                                onClick={() => updateItem(index, { action: opt.value })}
+                                style={{
+                                  display: "flex", alignItems: "center", gap: 4,
+                                  padding: "5px 10px", borderRadius: 6,
+                                  fontSize: 12, fontWeight: 500, cursor: "pointer",
+                                  transition: "all 0.12s",
+                                  border: item.action === opt.value ? "2px solid #06C755" : "2px solid #e5e7eb",
+                                  background: item.action === opt.value ? "#E6F7ED" : "#fff",
+                                  color: item.action === opt.value ? "#15803d" : "#6b7280",
+                                }}
+                              >
+                                <span style={{ fontSize: 13 }}>{opt.icon}</span>
+                                {opt.label}
+                              </button>
+                            ))}
+                          </div>
+                          {actionDef && (
+                            <div style={{ ...hintText, marginTop: 5 }}>{actionDef.hint}</div>
+                          )}
+                        </div>
+
+                        {/* ── アクション別フィールド ── */}
+                        {item.action === "hint" ? (
+                          <>
+                            {/* ヒントキー（テンプレート + 自由入力） */}
+                            <div className="form-group" style={{ marginBottom: 8 }}>
+                              <label style={{ ...fieldLabel, fontSize: 12 }}>
+                                ボタンID
+                                <span style={{ fontWeight: 400, color: "#9ca3af", marginLeft: 4 }}>（任意）</span>
+                              </label>
+                              <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                                {HINT_TEMPLATES.map((t) => {
+                                  const isActive = item.value === t.value && item.label === t.label;
+                                  return (
+                                    <button
+                                      key={t.value}
+                                      type="button"
+                                      onClick={() => updateItem(index, { label: t.label, value: t.value })}
+                                      style={{
+                                        fontSize: 11, padding: "4px 9px",
+                                        border: isActive ? "1.5px solid #f59e0b" : "1.5px solid #e5e7eb",
+                                        borderRadius: 6,
+                                        background: isActive ? "#fffbeb" : "#f9fafb",
+                                        color: isActive ? "#b45309" : "#6b7280",
+                                        cursor: "pointer", fontWeight: isActive ? 700 : 400,
+                                        whiteSpace: "nowrap",
+                                      }}
+                                    >
+                                      {t.label}
+                                    </button>
+                                  );
+                                })}
+                                <input
+                                  type="text"
+                                  className="form-input"
+                                  value={item.value ?? ""}
+                                  onChange={(e) => updateItem(index, { value: e.target.value || undefined })}
+                                  placeholder="hint1（任意）"
+                                  maxLength={500}
+                                  style={{ fontSize: 13, flex: 1, minWidth: 80 }}
+                                />
+                              </div>
+                              <div style={{ ...hintText, marginTop: 4 }}>
+                                省略するとラベルテキストで照合します。複数ヒントを区別したい場合に設定してください。
+                              </div>
+                            </div>
+
+                            {/* ヒント本文 */}
+                            <div className="form-group" style={{ marginBottom: 8 }}>
+                              <label style={{ ...fieldLabel, fontSize: 12 }}>
+                                ヒント本文
+                                <span style={{ color: "#dc2626", marginLeft: 3 }}>*</span>
+                                <span style={{ fontWeight: 400, color: "#9ca3af", marginLeft: 4 }}>
+                                  ({(item.hint_text ?? "").length}/2000)
+                                </span>
+                              </label>
+                              <textarea
+                                className="form-input"
+                                value={item.hint_text ?? ""}
+                                onChange={(e) => updateItem(index, { hint_text: e.target.value || undefined })}
+                                placeholder="ユーザーがこのボタンをタップしたときに返信するヒント本文を入力してください"
+                                maxLength={2000}
+                                rows={3}
+                                style={{ fontSize: 13, resize: "vertical", lineHeight: 1.5 }}
+                              />
+                            </div>
+
+                            {/* 回答誘導メッセージ（hint_followup） */}
+                            <div className="form-group" style={{ marginBottom: 8 }}>
+                              <label style={{ ...fieldLabel, fontSize: 12 }}>
+                                回答誘導メッセージ
+                                <span style={{ fontWeight: 400, color: "#9ca3af", marginLeft: 4 }}>（任意）</span>
+                                <span style={{ fontWeight: 400, color: "#9ca3af", marginLeft: 4 }}>
+                                  ({(item.hint_followup ?? "").length}/500)
+                                </span>
+                              </label>
+                              <input
+                                type="text"
+                                className="form-input"
+                                value={item.hint_followup ?? ""}
+                                onChange={(e) => updateItem(index, { hint_followup: e.target.value || undefined })}
+                                placeholder="例: もう少しヒントが必要なら「ヒント②」を押してね"
+                                maxLength={500}
+                                style={{ fontSize: 13 }}
+                              />
+                              <div style={{ ...hintText, marginTop: 4 }}>
+                                設定するとヒント本文の直後に続けて送信されます
+                              </div>
+                            </div>
+
+                            {/* ヒントプレビュー */}
+                            <QrHintPreview hintText={item.hint_text} hintFollowup={item.hint_followup} />
+                          </>
+                        ) : item.action === "url" ? (
+                          <div className="form-group" style={{ marginBottom: 0 }}>
+                            <label style={{ ...fieldLabel, fontSize: 12 }}>
+                              URL <span style={{ color: "#dc2626" }}>*</span>
+                            </label>
+                            <input
+                              type="url"
+                              className="form-input"
+                              value={item.value ?? ""}
+                              onChange={(e) => updateItem(index, { value: e.target.value || undefined })}
+                              placeholder="https://example.com"
+                              maxLength={500}
+                              style={{ fontSize: 13, fontFamily: "monospace" }}
+                            />
+                          </div>
+                        ) : (
+                          <div className="form-group" style={{ marginBottom: 0 }}>
+                            <label style={{ ...fieldLabel, fontSize: 12 }}>
+                              {actionDef?.valueLabel ?? "値"}
+                              <span style={{ fontWeight: 400, color: "#9ca3af", marginLeft: 4 }}>（任意）</span>
+                            </label>
+                            <input
+                              type="text"
+                              className="form-input"
+                              value={item.value ?? ""}
+                              onChange={(e) => updateItem(index, { value: e.target.value || undefined })}
+                              placeholder={actionDef?.valuePlaceholder}
+                              maxLength={500}
+                              style={{ fontSize: 13 }}
+                            />
+                          </div>
+                        )}
                       </div>
-                      {actionDef && (
-                        <div style={{ ...hintText, marginTop: 5 }}>{actionDef.hint}</div>
-                      )}
-                    </div>
-
-                    {/* 値（アクション種別に応じたラベル） */}
-                    <div className="form-group" style={{ marginBottom: 0 }}>
-                      <label style={{ ...fieldLabel, fontSize: 12 }}>
-                        {actionDef?.valueLabel ?? "値"}
-                        {item.action !== "url" && (
-                          <span style={{ fontWeight: 400, color: "#9ca3af", marginLeft: 4 }}>（任意）</span>
-                        )}
-                        {item.action === "url" && (
-                          <span style={{ color: "#dc2626", marginLeft: 4 }}>*</span>
-                        )}
-                      </label>
-                      <input
-                        type={item.action === "url" ? "url" : "text"}
-                        className="form-input"
-                        value={item.value ?? ""}
-                        onChange={(e) => updateItem(index, { value: e.target.value || undefined })}
-                        placeholder={actionDef?.valuePlaceholder}
-                        maxLength={500}
-                        style={{ fontSize: 13, fontFamily: item.action === "url" ? "monospace" : undefined }}
-                      />
-                    </div>
+                    )}
                   </div>
                 );
               })}

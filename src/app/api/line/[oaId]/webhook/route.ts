@@ -613,6 +613,20 @@ async function handleTextEvent({
     return;
   }
 
+  // ─ hint quickReply 照合（triggerKeyword より先に評価）─
+  const hintResult = await matchHintQuickReply(work.id, progress.currentPhaseId, text);
+  if (hintResult !== null) {
+    console.log(`[Webhook][STEP] hint quickReply マッチ userId=${userId} hintText="${hintResult.hintText.slice(0, 40)}"`);
+    const hintMsgs = [
+      { type: "text" as const, text: hintResult.hintText, sender: systemSender },
+      ...(hintResult.hintFollowup
+        ? [{ type: "text" as const, text: hintResult.hintFollowup, sender: systemSender }]
+        : []),
+    ];
+    await replyToLine(replyToken, hintMsgs, token);
+    return;
+  }
+
   // ─ triggerKeyword 照合（フェーズ進行なし・Transition より先に評価）─
   const keywordMatched = await matchTriggerKeyword(work.id, progress.currentPhaseId, text);
   if (keywordMatched.length > 0) {
@@ -1100,6 +1114,80 @@ function normKw(s: string): string {
  */
 function normKwLoose(s: string): string {
   return normKw(s).replace(/[。！？!?．…\s]+$/u, "").trimEnd();
+}
+
+// ──────────────────────────────────────────────────────────
+// ヒント quickReply 照合
+// ──────────────────────────────────────────────────────────
+
+/**
+ * 現在フェーズのメッセージに設定された action="hint" quick reply と
+ * ユーザー入力テキストを照合する。
+ *
+ * マッチ判定:
+ *   - item.value（省略時は item.label）を normKw で正規化して比較
+ *   - NFKC 正規化 + 末尾句読点ゆるい比較の両方を試みる
+ *
+ * @returns マッチした hint_text（設定済み）、"ヒントはまだ設定されていません"（hint_text 未設定）、null（マッチなし）
+ */
+async function matchHintQuickReply(
+  workId:         string,
+  currentPhaseId: string,
+  inputText:      string,
+): Promise<{ hintText: string; hintFollowup?: string } | null> {
+  // 現在フェーズのアクティブなメッセージの quickReplies を取得
+  const messages = await prisma.message.findMany({
+    where: {
+      workId,
+      phaseId:  currentPhaseId,
+      isActive: true,
+      quickReplies: { not: null },
+    },
+    select: { id: true, quickReplies: true },
+    orderBy: { sortOrder: "asc" },
+  });
+
+  if (messages.length === 0) return null;
+
+  const inputNorm  = normKw(inputText);
+  const inputLoose = normKwLoose(inputText);
+
+  for (const msg of messages) {
+    if (!msg.quickReplies) continue;
+
+    let items: import("@/types").QuickReplyItem[];
+    try {
+      const parsed = JSON.parse(msg.quickReplies);
+      if (!Array.isArray(parsed)) continue;
+      items = parsed as import("@/types").QuickReplyItem[];
+    } catch {
+      continue;
+    }
+
+    for (const item of items) {
+      if (item.action !== "hint") continue;
+      if (item.enabled === false) continue; // 無効アイテムはスキップ
+
+      // value が設定されていればそちらを照合キーとして使う。なければ label を使う
+      const matchKey    = item.value?.trim() || item.label;
+      const matchNorm   = normKw(matchKey);
+      const matchLoose  = normKwLoose(matchKey);
+
+      if (inputNorm === matchNorm || inputLoose === matchLoose) {
+        const hintText     = item.hint_text?.trim() || "ヒントはまだ設定されていません。";
+        const hintFollowup = item.hint_followup?.trim() || undefined;
+        console.log(
+          `[Webhook][hint] マッチ msgId=${msg.id.slice(0, 8)}`,
+          `key="${matchKey}"`,
+          `hint_text="${hintText.slice(0, 30)}..."`,
+          hintFollowup ? `hint_followup="${hintFollowup.slice(0, 20)}..."` : "",
+        );
+        return { hintText, hintFollowup };
+      }
+    }
+  }
+
+  return null; // マッチなし
 }
 
 // ──────────────────────────────────────────────────────────
