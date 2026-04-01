@@ -614,6 +614,41 @@ export const trackingQuerySchema = z.object({
 });
 
 // ────────────────────────────────────────────────
+// GlobalCommand スキーマ
+// ────────────────────────────────────────────────
+
+const globalCommandActionTypeSchema = z.enum(["HINT", "RESET", "HELP", "REPEAT", "CUSTOM"]);
+
+export const createGlobalCommandSchema = z.object({
+  oa_id:       uuidSchema,
+  keyword:     z.string().min(1, "キーワードを入力してください").max(100),
+  action_type: globalCommandActionTypeSchema,
+  payload:     z.string().max(2000).nullable().optional(),
+  is_active:   z.boolean().default(true),
+  sort_order:  z.number().int().min(0).default(0),
+}).superRefine((data, ctx) => {
+  if (data.action_type === "CUSTOM" && !data.payload?.trim()) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["payload"],
+      message: "CUSTOM アクションにはメッセージテキスト（payload）が必要です",
+    });
+  }
+});
+
+export const updateGlobalCommandSchema = z.object({
+  keyword:     z.string().min(1).max(100).optional(),
+  action_type: globalCommandActionTypeSchema.optional(),
+  payload:     z.string().max(2000).nullable().optional(),
+  is_active:   z.boolean().optional(),
+  sort_order:  z.number().int().min(0).optional(),
+});
+
+export const globalCommandQuerySchema = z.object({
+  oa_id: uuidSchema,
+});
+
+// ────────────────────────────────────────────────
 // ユーティリティ：バリデーションエラーを整形
 // ────────────────────────────────────────────────
 export function formatZodErrors(error: z.ZodError): Record<string, string[]> {

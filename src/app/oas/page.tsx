@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { oaApi, workApi, getDevToken, type OaListItem, type OaListMeta, type WorkListItem } from "@/lib/api-client";
 import { useToast } from "@/components/Toast";
@@ -148,24 +148,282 @@ function SummaryBar({ items, worksMap }: { items: OaListItem[]; worksMap: Record
   );
 }
 
+/* ── サポートエリア ───────────────────────────────────────────────────── */
+function SupportArea() {
+  const cardBase: React.CSSProperties = {
+    display: "flex",
+    alignItems: "flex-start",
+    gap: 14,
+    padding: "16px 18px",
+    background: "var(--color-bg-default)",
+    border: "1px solid var(--color-border-soft)",
+    borderRadius: 12,
+    textDecoration: "none",
+    color: "inherit",
+    cursor: "pointer",
+    textAlign: "left",
+    width: "100%",
+    transition: "border-color .15s, background .15s",
+  };
+
+  function CardIcon({ bg, children }: { bg: string; children: React.ReactNode }) {
+    return (
+      <span style={{
+        display: "flex", alignItems: "center", justifyContent: "center",
+        width: 34, height: 34, borderRadius: 8,
+        background: bg, fontSize: 16, flexShrink: 0,
+      }}>
+        {children}
+      </span>
+    );
+  }
+
+  function CardBody({ title, desc }: { title: string; desc: string }) {
+    return (
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: 12, fontWeight: 600, color: "var(--color-text-primary)", marginBottom: 2 }}>
+          {title}
+        </div>
+        <div style={{ fontSize: 11, color: "var(--color-text-muted)", lineHeight: 1.5 }}>
+          {desc}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ marginTop: 52, paddingTop: 28, borderTop: "1px solid var(--color-border-soft)" }}>
+      <p style={{
+        fontSize: 11, fontWeight: 600, color: "var(--color-text-muted)",
+        textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 14,
+      }}>
+        サポート
+      </p>
+
+      <div style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
+        gap: 10,
+      }}>
+        {/* 使い方ガイド */}
+        <a
+          href="/guide.pdf"
+          target="_blank"
+          rel="noopener noreferrer"
+          style={cardBase}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.borderColor = "var(--color-primary)";
+            e.currentTarget.style.background  = "var(--color-primary-soft)";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.borderColor = "var(--color-border-soft)";
+            e.currentTarget.style.background  = "var(--color-bg-default)";
+          }}
+        >
+          <CardIcon bg="var(--color-primary-soft)">📄</CardIcon>
+          <CardBody
+            title="使い方ガイド"
+            desc="セットアップ〜シナリオ公開までの手順をまとめたPDFです"
+          />
+        </a>
+
+        {/* グローバルコマンドのヒント */}
+        <div
+          style={{ ...cardBase, cursor: "default" }}
+          onMouseEnter={(e) => {
+            (e.currentTarget as HTMLDivElement).style.borderColor = "#d1d5db";
+            (e.currentTarget as HTMLDivElement).style.background  = "var(--color-bg-subtle)";
+          }}
+          onMouseLeave={(e) => {
+            (e.currentTarget as HTMLDivElement).style.borderColor = "var(--color-border-soft)";
+            (e.currentTarget as HTMLDivElement).style.background  = "var(--color-bg-default)";
+          }}
+        >
+          <CardIcon bg="#ecfeff">⌨️</CardIcon>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: "var(--color-text-primary)", marginBottom: 2 }}>
+              グローバルコマンド
+            </div>
+            <div style={{ fontSize: 11, color: "var(--color-text-muted)", lineHeight: 1.5 }}>
+              ヒント・リセットなど常時反応するキーワードは、各アカウントの
+              {" "}
+              <span style={{ color: "var(--color-primary)", fontWeight: 600 }}>設定 → グローバルコマンド</span>
+              {" "}から登録できます
+            </div>
+          </div>
+        </div>
+
+        {/* フィードバック */}
+        <button
+          type="button"
+          style={cardBase}
+          onClick={() => window.dispatchEvent(new CustomEvent("open-feedback-modal"))}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.borderColor = "var(--color-primary)";
+            e.currentTarget.style.background  = "var(--color-primary-soft)";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.borderColor = "var(--color-border-soft)";
+            e.currentTarget.style.background  = "var(--color-bg-default)";
+          }}
+        >
+          <CardIcon bg="#f0fdf4">💬</CardIcon>
+          <CardBody
+            title="フィードバックを送る"
+            desc="気になる点・改善要望・バグ報告などお気軽にどうぞ"
+          />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ── 行アクション（⋯ ケバブメニュー付き）──────────────────────────────── */
+function RowActions({
+  oaId,
+  isOwner,
+  onDelete,
+}: {
+  oaId:     string;
+  isOwner:  boolean;
+  onDelete: () => void;
+}) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    function onOutside(e: MouseEvent) {
+      if (!menuRef.current?.contains(e.target as Node)) setMenuOpen(false);
+    }
+    document.addEventListener("mousedown", onOutside);
+    return () => document.removeEventListener("mousedown", onOutside);
+  }, [menuOpen]);
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 4, justifyContent: "flex-end" }}>
+      {/* 主操作 */}
+      <Link
+        href={`/oas/${oaId}/works`}
+        className="btn btn-primary"
+        style={{ padding: "4px 10px", fontSize: 11, whiteSpace: "nowrap" }}
+      >
+        作品管理
+      </Link>
+      <Link
+        href={`/oas/${oaId}/settings`}
+        className="btn btn-ghost"
+        style={{ padding: "4px 10px", fontSize: 11, whiteSpace: "nowrap" }}
+      >
+        設定
+      </Link>
+
+      {/* 危険操作：ケバブメニュー（owner のみ） */}
+      {isOwner && (
+        <div style={{ position: "relative" }} ref={menuRef}>
+          <button
+            type="button"
+            onClick={() => setMenuOpen((o) => !o)}
+            title="その他の操作"
+            aria-label="その他の操作"
+            style={{
+              display: "flex", alignItems: "center", justifyContent: "center",
+              width: 26, height: 26,
+              background: menuOpen ? "#f3f4f6" : "transparent",
+              border: `1px solid ${menuOpen ? "#e5e7eb" : "transparent"}`,
+              borderRadius: 6,
+              cursor: "pointer",
+              color: "#9ca3af",
+              fontSize: 14,
+              letterSpacing: "0.05em",
+              lineHeight: 1,
+              transition: "background .15s, border-color .15s, color .15s",
+              flexShrink: 0,
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background   = "#f3f4f6";
+              e.currentTarget.style.borderColor  = "#e5e7eb";
+              e.currentTarget.style.color        = "#374151";
+            }}
+            onMouseLeave={(e) => {
+              if (!menuOpen) {
+                e.currentTarget.style.background  = "transparent";
+                e.currentTarget.style.borderColor = "transparent";
+                e.currentTarget.style.color       = "#9ca3af";
+              }
+            }}
+          >
+            ⋯
+          </button>
+
+          {menuOpen && (
+            <div
+              role="menu"
+              style={{
+                position: "absolute",
+                right: 0,
+                top: "calc(100% + 4px)",
+                zIndex: 50,
+                minWidth: 112,
+                background: "#ffffff",
+                border: "1px solid #e5e7eb",
+                borderRadius: 8,
+                boxShadow: "0 4px 12px rgba(0,0,0,.10), 0 1px 4px rgba(0,0,0,.06)",
+                padding: "4px 0",
+              }}
+            >
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => { setMenuOpen(false); onDelete(); }}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 7,
+                  width: "100%",
+                  textAlign: "left",
+                  padding: "7px 14px",
+                  fontSize: 12,
+                  fontWeight: 500,
+                  color: "#dc2626",
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  transition: "background .1s",
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = "#fef2f2")}
+                onMouseLeave={(e) => (e.currentTarget.style.background = "none")}
+              >
+                <span style={{ fontSize: 13 }}>🗑</span>
+                削除
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ── スケルトン行 ─────────────────────────────────────────────────────── */
 function SkeletonRows() {
   return (
     <>
-      {[220, 180, 200].map((w, i) => (
+      {[160, 140, 180].map((w, i) => (
         <tr key={i}>
           <td>
-            <div className="skeleton" style={{ width: w, height: 14, marginBottom: 6 }} />
-            <div className="skeleton" style={{ width: 100, height: 11 }} />
+            <div className="skeleton" style={{ width: w, height: 13, marginBottom: 5 }} />
+            <div className="skeleton" style={{ width: 88, height: 10 }} />
           </td>
-          <td><div className="skeleton" style={{ width: 52, height: 22, borderRadius: 11 }} /></td>
-          <td><div className="skeleton" style={{ width: 110, height: 14 }} /></td>
-          <td style={{ textAlign: "center" }}><div className="skeleton" style={{ width: 32, height: 18, margin: "0 auto" }} /></td>
-          <td><div className="skeleton" style={{ width: 72, height: 11 }} /></td>
+          <td><div className="skeleton" style={{ width: 48, height: 20, borderRadius: 10 }} /></td>
+          <td><div className="skeleton" style={{ width: 96, height: 13 }} /></td>
+          <td style={{ textAlign: "center" }}><div className="skeleton" style={{ width: 28, height: 16, margin: "0 auto" }} /></td>
+          <td><div className="skeleton" style={{ width: 66, height: 11 }} /></td>
           <td>
-            <div style={{ display: "flex", gap: 4 }}>
-              <div className="skeleton" style={{ width: 58, height: 28, borderRadius: 6 }} />
-              <div className="skeleton" style={{ width: 44, height: 28, borderRadius: 6 }} />
+            <div style={{ display: "flex", gap: 4, justifyContent: "flex-end" }}>
+              <div className="skeleton" style={{ width: 54, height: 26, borderRadius: 6 }} />
+              <div className="skeleton" style={{ width: 38, height: 26, borderRadius: 6 }} />
+              <div className="skeleton" style={{ width: 26, height: 26, borderRadius: 6 }} />
             </div>
           </td>
         </tr>
@@ -231,32 +489,36 @@ export default function OaListPage() {
         style={{
           display: "inline-flex", alignItems: "center", gap: 4,
           fontSize: 11, color: "var(--color-info)",
-          padding: "3px 8px",
+          padding: "2px 7px",
           background: "#eff6ff",
           border: "1px dashed #bfdbfe",
           borderRadius: "var(--radius-full)",
           textDecoration: "none",
+          whiteSpace: "nowrap",
         }}
       >
         ＋ 作品を追加
       </Link>
     );
     return (
-      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
         {ws.map((w) => (
           <Link
             key={w.id}
             href={`/oas/${oaId}/works/${w.id}`}
+            title={w.title}
             style={{
-              display: "inline-flex", alignItems: "center", gap: 4,
+              display: "flex", alignItems: "center", gap: 4,
               fontSize: 12, color: "var(--text-primary)",
               textDecoration: "none",
-              padding: "2px 0",
               lineHeight: 1.4,
+              minWidth: 0,
             }}
           >
-            <span style={{ color: "var(--text-muted)", fontSize: 11 }}>🎭</span>
-            {w.title}
+            <span style={{ color: "var(--text-muted)", fontSize: 10, flexShrink: 0 }}>🎭</span>
+            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {w.title}
+            </span>
           </Link>
         ))}
       </div>
@@ -324,14 +586,20 @@ export default function OaListPage() {
       ) : (
         <div className="card" style={{ padding: 0 }}>
           <div className="table-wrap">
-            <table style={{ tableLayout: "fixed", width: "100%" }}>
+            <table className="table-compact" style={{ tableLayout: "fixed", width: "100%" }}>
               <colgroup>
-                <col style={{ width: "29%" }} />
-                <col style={{ width: "76px" }} />
+                {/* アカウント名: 可変・広め */}
+                <col style={{ width: "27%" }} />
+                {/* 状態 */}
+                <col style={{ width: "60px" }} />
+                {/* 作品: 可変 */}
                 <col style={{ width: "21%" }} />
-                <col style={{ width: "72px" }} />
-                <col style={{ width: "96px" }} />
-                <col style={{ width: "160px" }} />
+                {/* P数 */}
+                <col style={{ width: "50px" }} />
+                {/* 登録/更新 */}
+                <col style={{ width: "80px" }} />
+                {/* アクション */}
+                <col style={{ width: "128px" }} />
               </colgroup>
               <thead>
                 <tr>
@@ -339,7 +607,7 @@ export default function OaListPage() {
                   <th>状態</th>
                   <th>作品</th>
                   <th style={{ textAlign: "center" }}>P数</th>
-                  <th>登録 / 更新</th>
+                  <th>更新日</th>
                   <th></th>
                 </tr>
               </thead>
@@ -349,117 +617,130 @@ export default function OaListPage() {
                 ) : (
                   items.map((oa) => (
                     <tr key={oa.id}>
-                      {/* アカウント名 */}
-                      <td>
-                        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                      {/* ── アカウント名 ── */}
+                      <td style={{ minWidth: 0 }}>
+                        {/* 名前 + ロールバッジ */}
+                        <div style={{ display: "flex", alignItems: "center", gap: 5, minWidth: 0 }}>
                           <Link
                             href={`/oas/${oa.id}/works`}
-                            style={{ fontWeight: 700, fontSize: 13, color: "var(--text-primary)", textDecoration: "none" }}
+                            title={oa.title}
+                            style={{
+                              fontWeight: 700, fontSize: 13,
+                              color: "var(--text-primary)",
+                              textDecoration: "none",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                              minWidth: 0,
+                            }}
                           >
                             {oa.title}
                           </Link>
                           {(oa.my_role === "owner" || oa.my_role === "editor" || oa.my_role === "viewer") && (
-                            <RoleBadge role={oa.my_role as Role} />
+                            <span style={{ flexShrink: 0 }}>
+                              <RoleBadge role={oa.my_role as Role} />
+                            </span>
                           )}
                         </div>
+                        {/* 説明 */}
                         {oa.description && (
-                          <div style={{
-                            fontSize: 11, color: "var(--text-muted)", marginTop: 2,
-                            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                          }}>
+                          <div
+                            title={oa.description}
+                            style={{
+                              fontSize: 11, color: "var(--text-muted)", marginTop: 2,
+                              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                            }}
+                          >
                             {oa.description}
                           </div>
                         )}
-                        <div style={{ display: "flex", flexWrap: "wrap", gap: "3px 6px", marginTop: 5 }}>
+                        {/* Ch ID / OA ID チップ */}
+                        <div style={{ display: "flex", flexWrap: "nowrap", gap: 4, marginTop: 4, minWidth: 0, overflow: "hidden" }}>
                           {oa.channel_id && (
-                            <span style={{
-                              fontSize: 10, color: "var(--text-muted)",
-                              background: "var(--gray-50)",
-                              border: "1px solid var(--border-light)",
-                              borderRadius: 4,
-                              padding: "1px 6px",
-                              whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%",
-                              fontFamily: "monospace",
-                            }}>
-                              Ch: {oa.channel_id}
+                            <span
+                              title={`Channel ID: ${oa.channel_id}`}
+                              style={{
+                                fontSize: 10, color: "var(--text-muted)",
+                                background: "var(--gray-50)",
+                                border: "1px solid var(--border-light)",
+                                borderRadius: 4,
+                                padding: "1px 5px",
+                                fontFamily: "monospace",
+                                whiteSpace: "nowrap",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                maxWidth: 96,
+                                flexShrink: 1,
+                                display: "inline-block",
+                              }}
+                            >
+                              {oa.channel_id.length > 10
+                                ? `${oa.channel_id.slice(0, 4)}…${oa.channel_id.slice(-4)}`
+                                : oa.channel_id}
                             </span>
                           )}
                           {oa.line_oa_id && (
-                            <span style={{
-                              fontSize: 10, color: "var(--text-muted)",
-                              background: "var(--gray-50)",
-                              border: "1px solid var(--border-light)",
-                              borderRadius: 4,
-                              padding: "1px 6px",
-                              whiteSpace: "nowrap",
-                            }}>
+                            <span
+                              title={`OA ID: @${oa.line_oa_id}`}
+                              style={{
+                                fontSize: 10, color: "var(--text-muted)",
+                                background: "var(--gray-50)",
+                                border: "1px solid var(--border-light)",
+                                borderRadius: 4,
+                                padding: "1px 5px",
+                                whiteSpace: "nowrap",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                maxWidth: 80,
+                                flexShrink: 1,
+                                display: "inline-block",
+                              }}
+                            >
                               @{oa.line_oa_id}
                             </span>
                           )}
                         </div>
                       </td>
 
-                      {/* 状態バッジ */}
+                      {/* ── 状態バッジ ── */}
                       <td>
                         <span className={`badge badge-${oa.publish_status}`}>
                           {STATUS_LABEL[oa.publish_status] ?? oa.publish_status}
                         </span>
                       </td>
 
-                      {/* 作品 */}
-                      <td>
+                      {/* ── 作品 ── */}
+                      <td style={{ minWidth: 0 }}>
                         <WorksCell oaId={oa.id} />
                       </td>
 
-                      {/* プレイヤー数 */}
+                      {/* ── プレイヤー数 ── */}
                       <td style={{ textAlign: "center" }}>
                         <span style={{
-                          fontWeight: 800, fontSize: 15,
+                          fontWeight: 800, fontSize: 14,
                           color: totalPlayers(oa.id) > 0 ? "var(--color-info)" : "var(--text-disabled)",
                         }}>
                           {totalPlayers(oa.id).toLocaleString()}
                         </span>
                       </td>
 
-                      {/* 日付 */}
+                      {/* ── 更新日 ── */}
                       <td>
                         <div style={{ fontSize: 11, color: "var(--text-secondary)", whiteSpace: "nowrap" }}>
-                          {formatDate(oa.created_at)}
+                          {formatDate(oa.updated_at ?? oa.created_at)}
                         </div>
-                        {oa.updated_at && (
-                          <div style={{ fontSize: 10, color: "var(--text-muted)", whiteSpace: "nowrap", marginTop: 2 }}>
-                            ↻ {formatDate(oa.updated_at)}
-                          </div>
-                        )}
+                        <div style={{ fontSize: 10, color: "var(--text-muted)", whiteSpace: "nowrap", marginTop: 1 }}>
+                          {formatDate(oa.created_at)} 作成
+                        </div>
                       </td>
 
-                      {/* アクション */}
-                      <td>
-                        <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
-                          <Link
-                            href={`/oas/${oa.id}/works`}
-                            className="btn btn-primary"
-                            style={{ padding: "4px 10px", fontSize: 11 }}
-                          >
-                            作品管理
-                          </Link>
-                          <Link
-                            href={`/oas/${oa.id}/settings`}
-                            className="btn btn-ghost"
-                            style={{ padding: "4px 10px", fontSize: 11 }}
-                          >
-                            設定
-                          </Link>
-                          {oa.my_role === "owner" && (
-                            <button
-                              className="btn btn-danger"
-                              style={{ padding: "4px 10px", fontSize: 11 }}
-                              onClick={() => handleDelete(oa.id, oa.title)}
-                            >
-                              削除
-                            </button>
-                          )}
-                        </div>
+                      {/* ── アクション（主操作 ＋ ⋯メニュー） ── */}
+                      <td style={{ paddingRight: 12 }}>
+                        <RowActions
+                          oaId={oa.id}
+                          isOwner={oa.my_role === "owner"}
+                          onDelete={() => handleDelete(oa.id, oa.title)}
+                        />
                       </td>
                     </tr>
                   ))
@@ -489,6 +770,9 @@ export default function OaListPage() {
           )}
         </div>
       )}
+
+      {/* ── サポートエリア ── */}
+      <SupportArea />
     </>
   );
 }

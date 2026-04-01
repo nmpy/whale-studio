@@ -839,3 +839,40 @@ export interface SegmentAnalytics {
   dropout_count:     number;
   dropout_rate:      number;
 }
+
+// ────────────────────────────────────────────────
+// GlobalCommand — フェーズ横断グローバルコマンド
+// ────────────────────────────────────────────────
+
+/** action_type の選択肢 */
+export type GlobalCommandActionType = "HINT" | "RESET" | "HELP" | "REPEAT" | "CUSTOM";
+
+export interface GlobalCommand {
+  id:          string;
+  oa_id:       string;
+  keyword:     string;
+  action_type: GlobalCommandActionType;
+  /** CUSTOM 用メッセージ / HELP 用ガイドテキスト（任意） */
+  payload:     string | null;
+  is_active:   boolean;
+  sort_order:  number;
+  created_at:  string;
+  updated_at:  string;
+}
+
+export interface CreateGlobalCommandBody {
+  oa_id:       string;
+  keyword:     string;
+  action_type: GlobalCommandActionType;
+  payload?:    string | null;
+  is_active?:  boolean;
+  sort_order?: number;
+}
+
+export interface UpdateGlobalCommandBody {
+  keyword?:     string;
+  action_type?: GlobalCommandActionType;
+  payload?:     string | null;
+  is_active?:   boolean;
+  sort_order?:  number;
+}

@@ -3,7 +3,7 @@
 // src/components/AppHeader.tsx
 // グローバルヘッダー。フィードバックボタンを右上に常設。
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { usePathname } from "next/navigation";
 import dynamic from "next/dynamic";
 
@@ -13,6 +13,13 @@ const FeedbackModal = dynamic(() => import("@/components/FeedbackModal"), { ssr:
 export default function AppHeader() {
   const pathname = usePathname();
   const [feedbackOpen, setFeedbackOpen] = useState(false);
+
+  // サポートエリアなど外部コンポーネントからモーダルを開けるようにする
+  useEffect(() => {
+    const handler = () => setFeedbackOpen(true);
+    window.addEventListener("open-feedback-modal", handler);
+    return () => window.removeEventListener("open-feedback-modal", handler);
+  }, []);
 
   return (
     <>

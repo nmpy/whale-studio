@@ -114,8 +114,8 @@ export default function FeedbackModal({ pathname, onClose }: Props) {
 
     setSubmitting(true);
     try {
-      const pageUrl  = typeof window !== "undefined" ? window.location.href : pathname;
-      const oaMatch  = pathname.match(/\/oas\/([^/]+)/);
+      const pageUrl   = typeof window !== "undefined" ? window.location.href : pathname;
+      const oaMatch   = pathname.match(/\/oas\/([^/]+)/);
       const workMatch = pathname.match(/\/works\/([^/]+)/);
 
       const body = {
@@ -127,26 +127,65 @@ export default function FeedbackModal({ pathname, onClose }: Props) {
         user_name:  "",
         user_email: "",
         oa_id:      oaMatch?.[1]  ?? null,
-        oa_name:    null,          // 将来: OA名取得後に付与
+        oa_name:    null,
         work_id:    workMatch?.[1] ?? null,
-        work_name:  null,          // 将来: 作品名取得後に付与
+        work_name:  null,
       };
 
-      const res = await fetch("/api/feedback", {
-        method:  "POST",
-        headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify(body),
-      });
+      // ── API 呼び出し ──
+      let res: Response;
+      try {
+        res = await fetch("/api/feedback", {
+          method:  "POST",
+          headers: { "Content-Type": "application/json" },
+          body:    JSON.stringify(body),
+        });
+      } catch (networkErr) {
+        // fetch 自体が失敗（オフライン・DNS エラーなど）
+        console.error("[FeedbackModal] ネットワークエラー:", networkErr);
+        showToast("送信できませんでした（ネットワークエラー）。接続を確認してください。", "error");
+        return;
+      }
 
-      const json = await res.json() as { ok: boolean; error?: string };
+      // ── レスポンス解析 ──
+      let json: { ok: boolean; error?: string; dev_skip?: boolean };
+      try {
+        json = await res.json() as { ok: boolean; error?: string; dev_skip?: boolean };
+      } catch {
+        console.error("[FeedbackModal] レスポンス JSON パース失敗 status=" + res.status);
+        showToast(`送信エラー（HTTP ${res.status}）。しばらく後にもう一度お試しください。`, "error");
+        return;
+      }
 
-      if (!json.ok) throw new Error(json.error ?? "送信失敗");
+      if (!json.ok) {
+        // サーバー側エラー（GAS 未設定・GAS 処理失敗など）
+        const errMsg = json.error ?? "送信に失敗しました";
+        console.error("[FeedbackModal] API エラー:", errMsg);
 
-      showToast("フィードバックを送信しました。ありがとうございます！", "success");
+        // GAS 未設定エラーはユーザー向けメッセージを分かりやすく変換
+        if (errMsg.includes("GAS_FEEDBACK_WEBHOOK_URL")) {
+          showToast("送信先が設定されていません。管理者にお問い合わせください。", "error");
+        } else if (errMsg.startsWith("ネットワークエラー")) {
+          showToast("スプレッドシートへの接続に失敗しました。しばらく後に再試行してください。", "error");
+        } else {
+          showToast(`送信に失敗しました: ${errMsg}`, "error");
+        }
+        return;
+      }
+
+      // ── 成功 ──
+      if (json.dev_skip) {
+        // 開発モードバイパス：成功表示はするがスプレッドシートには送られていないことを示す
+        showToast("（開発モード）送信内容はサーバーコンソールに出力されました", "success");
+      } else {
+        showToast("フィードバックを送信しました。ありがとうございます！", "success");
+      }
       onClose();
+
     } catch (err) {
-      console.error("[FeedbackModal] submit error:", err);
-      showToast("送信に失敗しました。もう一度お試しください。", "error");
+      // 予期しない例外
+      console.error("[FeedbackModal] 予期しない例外:", err);
+      showToast("送信中にエラーが発生しました。もう一度お試しください。", "error");
     } finally {
       setSubmitting(false);
     }

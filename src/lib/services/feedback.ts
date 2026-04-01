@@ -26,59 +26,116 @@ export interface FeedbackPayload {
 }
 
 export interface FeedbackResult {
-  ok:     boolean;
-  error?: string;
+  ok:       boolean;
+  error?:   string;
+  /** 開発モードのコンソール出力のみ（URLが未設定の dev 環境）*/
+  dev_skip?: boolean;
 }
 
 /**
  * フィードバックを GAS Web App 経由でスプレッドシートに送信する。
  *
- * GAS スクリプト例:
+ * 環境変数:
+ *   GAS_FEEDBACK_WEBHOOK_URL  — Google Apps Script Web App の実行 URL（必須）
+ *   FEEDBACK_DEV_SKIP=true    — 開発中に URL なしでモーダルをテストしたい場合のみ設定
+ *
+ * GAS スクリプト例（doPost）:
  * ```javascript
  * function doPost(e) {
- *   const d = JSON.parse(e.postData.contents);
- *   SpreadsheetApp.getActiveSpreadsheet()
- *     .getSheetByName("feedback")
- *     .appendRow([
- *       d.id, d.created_at, d.user_name, d.user_email,
- *       d.page_name, d.page_url,
- *       d.oa_id, d.oa_name, d.work_id, d.work_name,
- *       d.category, d.content,
- *       d.status, d.memo, d.user_agent,
- *     ]);
- *   return ContentService
- *     .createTextOutput(JSON.stringify({ ok: true }))
- *     .setMimeType(ContentService.MimeType.JSON);
+ *   try {
+ *     const d = JSON.parse(e.postData.contents);
+ *     SpreadsheetApp.getActiveSpreadsheet()
+ *       .getSheetByName("feedback")
+ *       .appendRow([
+ *         d.id, d.created_at, d.user_name, d.user_email,
+ *         d.page_name, d.page_url,
+ *         d.oa_id ?? "", d.oa_name ?? "", d.work_id ?? "", d.work_name ?? "",
+ *         d.category, d.content,
+ *         d.status, d.memo, d.user_agent,
+ *       ]);
+ *     return ContentService
+ *       .createTextOutput(JSON.stringify({ ok: true }))
+ *       .setMimeType(ContentService.MimeType.JSON);
+ *   } catch (err) {
+ *     return ContentService
+ *       .createTextOutput(JSON.stringify({ ok: false, error: String(err) }))
+ *       .setMimeType(ContentService.MimeType.JSON);
+ *   }
  * }
  * ```
- *
- * 環境変数 GAS_FEEDBACK_WEBHOOK_URL が未設定の場合はコンソール出力のみ（開発用）。
  */
 export async function submitFeedback(payload: FeedbackPayload): Promise<FeedbackResult> {
-  const gasUrl = process.env.GAS_FEEDBACK_WEBHOOK_URL;
+  const gasUrl = process.env.GAS_FEEDBACK_WEBHOOK_URL?.trim();
+  const isDev  = process.env.NODE_ENV === "development";
 
+  // ── URL 未設定の処理 ───────────────────────────────────────────────────────
   if (!gasUrl) {
-    console.log("[feedback] GAS_FEEDBACK_WEBHOOK_URL 未設定 → コンソール出力のみ");
-    console.log("[feedback]", JSON.stringify(payload, null, 2));
-    return { ok: true };
+    // FEEDBACK_DEV_SKIP=true のときのみ開発用コンソール出力に逃がす
+    if (isDev && process.env.FEEDBACK_DEV_SKIP === "true") {
+      console.warn(
+        "[feedback] ⚠️  FEEDBACK_DEV_SKIP=true — スプレッドシートには送信しません（開発バイパス）"
+      );
+      console.log("[feedback] payload:\n" + JSON.stringify(payload, null, 2));
+      return { ok: true, dev_skip: true };
+    }
+
+    // それ以外は必ずエラーを返す（「保存されていないのに成功」を防ぐ）
+    const msg = "GAS_FEEDBACK_WEBHOOK_URL が設定されていません。.env.local を確認してください。";
+    console.error("[feedback] ❌ " + msg);
+    return { ok: false, error: msg };
   }
+
+  // ── GAS への送信 ───────────────────────────────────────────────────────────
+  console.info(
+    `[feedback] → 送信開始 id=${payload.id} category=${payload.category} page=${payload.page_name}`
+  );
 
   try {
     const res = await fetch(gasUrl, {
-      method:  "POST",
-      headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify(payload),
+      method:   "POST",
+      headers:  { "Content-Type": "application/json" },
+      body:     JSON.stringify(payload),
+      redirect: "follow",   // GAS は 302 リダイレクトを返すことがあるため必須
     });
 
+    const rawText = await res.text().catch(() => "");
+
+    // HTTP レベルのエラー
     if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      console.error("[feedback] GAS 送信失敗:", res.status, text);
-      return { ok: false, error: `GAS returned ${res.status}` };
+      console.error(
+        `[feedback] ❌ GAS HTTP エラー: status=${res.status} body=${rawText.slice(0, 300)}`
+      );
+      return { ok: false, error: `GAS returned HTTP ${res.status}` };
     }
 
+    // GAS ボディを JSON パース（失敗してもHTTPが200なら成功扱いにする）
+    let gasBody: { ok?: boolean; error?: string } = {};
+    try {
+      gasBody = JSON.parse(rawText) as { ok?: boolean; error?: string };
+    } catch {
+      // GAS が空レスポンスや非JSON を返した場合（HTTP 200 なら書き込み成功とみなす）
+      console.warn(
+        `[feedback] ⚠️  GAS レスポンスが JSON でないが HTTP ${res.status} のため成功とみなします: ${rawText.slice(0, 100)}`
+      );
+      console.info(`[feedback] ✅ 送信完了（non-JSON） id=${payload.id}`);
+      return { ok: true };
+    }
+
+    // GAS 側で明示的に { ok: false } を返した場合
+    if (gasBody.ok === false) {
+      console.error(
+        `[feedback] ❌ GAS 処理エラー: ${gasBody.error ?? "(詳細なし)"}`
+      );
+      return { ok: false, error: gasBody.error ?? "スプレッドシートへの書き込みに失敗しました" };
+    }
+
+    console.info(`[feedback] ✅ 送信完了 id=${payload.id}`);
     return { ok: true };
+
   } catch (err) {
-    console.error("[feedback] GAS 送信エラー:", err);
-    return { ok: false, error: err instanceof Error ? err.message : "Unknown error" };
+    // ネットワークエラー / タイムアウト など
+    const msg = err instanceof Error ? err.message : "Unknown error";
+    console.error(`[feedback] ❌ GAS fetch 例外: ${msg}`, err);
+    return { ok: false, error: `ネットワークエラー: ${msg}` };
   }
 }

@@ -517,6 +517,19 @@ async function handleTextEvent({
     return;
   }
 
+  // ─ ① グローバルコマンド判定（フェーズ分岐より最優先）─
+  const globalCmd = await findGlobalCommand(oa.id, text);
+  if (globalCmd) {
+    console.log(
+      `[Webhook][global] コマンドマッチ`,
+      `keyword="${globalCmd.keyword}"`,
+      `action_type="${globalCmd.actionType}"`,
+      `userId=${userId}`,
+    );
+    await handleGlobalCommand({ oa, work, systemSender, userId, replyToken, command: globalCmd });
+    return;
+  }
+
   // ─ startTrigger 照合（progress の有無に関わらず最優先で評価）─
   //
   //  β仕様: startTrigger に一致したら progress をリセットして最初から開始。
@@ -1095,6 +1108,162 @@ async function attributeFollowToTracking(
   } catch (e) {
     console.warn("[Webhook] トラッキング帰属エラー:", e);
   }
+}
+
+// ──────────────────────────────────────────────────────────
+// グローバルコマンド
+// ──────────────────────────────────────────────────────────
+
+type GlobalCommandRecord = {
+  id:         string;
+  keyword:    string;
+  actionType: string;
+  payload:    string | null;
+};
+
+/**
+ * OA に登録されたグローバルコマンドとユーザー入力を照合する。
+ * - NFKC 正規化 + 末尾句読点ゆるい比較の両方を試みる
+ * - sortOrder 昇順で最初にマッチしたコマンドを返す
+ */
+async function findGlobalCommand(
+  oaId:      string,
+  inputText: string,
+): Promise<GlobalCommandRecord | null> {
+  const commands = await prisma.globalCommand.findMany({
+    where:   { oaId, isActive: true },
+    select:  { id: true, keyword: true, actionType: true, payload: true },
+    orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+  });
+  if (commands.length === 0) return null;
+
+  const inputNorm  = normKw(inputText);
+  const inputLoose = normKwLoose(inputText);
+
+  for (const cmd of commands) {
+    const kwNorm  = normKw(cmd.keyword);
+    const kwLoose = normKwLoose(cmd.keyword);
+    if (inputNorm === kwNorm || inputLoose === kwLoose) {
+      return cmd;
+    }
+  }
+  return null;
+}
+
+/**
+ * グローバルコマンドを実行する。
+ *
+ * HINT   — 現在フェーズのパズルヒントを返す（未設定なら payload / デフォルト文）
+ * RESET  — progress をリセットして最初から開始
+ * HELP   — payload に設定したガイドテキスト（未設定はデフォルト文）を返す
+ * REPEAT — 現在フェーズのメッセージを再送（handleContinue と同等）
+ * CUSTOM — payload のテキストを返す
+ */
+async function handleGlobalCommand({
+  oa, work, systemSender, userId, replyToken, command,
+}: HandlerCommon & { command: GlobalCommandRecord }) {
+  const token = oa.channelAccessToken;
+
+  switch (command.actionType) {
+    // ── RESET: progress をリセットして最初から ──
+    case "RESET": {
+      if (!work) break;
+      await handleStart({ oa, work, systemSender, userId, replyToken });
+      return;
+    }
+
+    // ── HELP: ガイドテキストを返す ──
+    case "HELP": {
+      const helpText = command.payload?.trim() ||
+        "【ヘルプ】\n「ヒント」→ ヒントを表示\n「やめる」→ 最初からやり直し\n「もう一度」→ メッセージ再送";
+      await replyToLine(replyToken, [{
+        type: "text", text: helpText, sender: systemSender,
+      }], token);
+      return;
+    }
+
+    // ── REPEAT: 現在フェーズのメッセージを再送 ──
+    case "REPEAT": {
+      if (!work) break;
+      const progress = await prisma.userProgress.findUnique({
+        where: { lineUserId_workId: { lineUserId: userId, workId: work.id } },
+      });
+      if (!progress) {
+        await handleStart({ oa, work, systemSender, userId, replyToken });
+        return;
+      }
+      const state = await buildRuntimeState(progress);
+      const msgs  = buildPhaseMessages(state.phase, { systemSender });
+      if (msgs.length > 0) {
+        await replyToLine(replyToken, msgs, token);
+      } else {
+        await replyToLine(replyToken, [{
+          type: "text",
+          text: "現在のメッセージを再送できませんでした。「はじめる」でスタートしてください。",
+          sender: systemSender,
+        }], token);
+      }
+      return;
+    }
+
+    // ── HINT: 現在フェーズのパズルヒントを返す ──
+    case "HINT": {
+      if (!work) break;
+      const progress = await prisma.userProgress.findUnique({
+        where: { lineUserId_workId: { lineUserId: userId, workId: work.id } },
+      });
+      if (!progress?.currentPhaseId) {
+        await replyToLine(replyToken, [{
+          type: "text",
+          text: "現在進行中のシナリオがありません。「はじめる」と送ってスタートしてください。",
+          sender: systemSender,
+        }], token);
+        return;
+      }
+      // 現在フェーズのパズルメッセージからヒントテキストを取得
+      const puzzleMsg = await prisma.message.findFirst({
+        where: {
+          workId:   work.id,
+          phaseId:  progress.currentPhaseId,
+          kind:     "puzzle",
+          isActive: true,
+          puzzleHintText: { not: null },
+        },
+        orderBy: { sortOrder: "asc" },
+      });
+      const hintText =
+        puzzleMsg?.puzzleHintText?.trim() ||
+        command.payload?.trim() ||
+        "このフェーズにはヒントが設定されていません。";
+      console.log(
+        `[Webhook][global/HINT] phaseId=${progress.currentPhaseId}`,
+        `hint="${hintText.slice(0, 40)}"`,
+      );
+      await replyToLine(replyToken, [{
+        type: "text", text: hintText, sender: systemSender,
+      }], token);
+      return;
+    }
+
+    // ── CUSTOM: payload テキストをそのまま返す ──
+    case "CUSTOM": {
+      const customText = command.payload?.trim();
+      if (customText) {
+        await replyToLine(replyToken, [{
+          type: "text", text: customText, sender: systemSender,
+        }], token);
+        return;
+      }
+      break;
+    }
+  }
+
+  // フォールバック（CUSTOM に payload がない等）
+  await replyToLine(replyToken, [{
+    type: "text",
+    text: "このコマンドは現在利用できません。",
+    sender: systemSender,
+  }], token);
 }
 
 // ──────────────────────────────────────────────────────────

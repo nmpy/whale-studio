@@ -50,6 +50,9 @@ import type {
   AnalyticsData,
   SegmentAnalytics,
   CreateHintLogBody,
+  GlobalCommand,
+  CreateGlobalCommandBody,
+  UpdateGlobalCommandBody,
 } from "@/types";
 
 // ────────────────────────────────────────────────
@@ -964,6 +967,56 @@ export const hintLogApi = {
       method:  "POST",
       headers: authHeaders(token),
       body:    JSON.stringify(body),
+    });
+    return parseResponse(res);
+  },
+};
+
+// ────────────────────────────────────────────────
+// GlobalCommand API
+// ────────────────────────────────────────────────
+export const globalCommandApi = {
+  /** OA に紐づくグローバルコマンド一覧 */
+  async list(token: string, oaId: string): Promise<GlobalCommand[]> {
+    const res = await fetch(`/api/global-commands?oa_id=${oaId}`, {
+      headers: authHeaders(token),
+    });
+    return parseResponse(res);
+  },
+
+  /** グローバルコマンド詳細 */
+  async get(token: string, id: string): Promise<GlobalCommand> {
+    const res = await fetch(`/api/global-commands/${id}`, {
+      headers: authHeaders(token),
+    });
+    return parseResponse(res);
+  },
+
+  /** 新規作成 */
+  async create(token: string, body: CreateGlobalCommandBody): Promise<GlobalCommand> {
+    const res = await fetch("/api/global-commands", {
+      method:  "POST",
+      headers: authHeaders(token),
+      body:    JSON.stringify(body),
+    });
+    return parseResponse(res);
+  },
+
+  /** 更新 */
+  async update(token: string, id: string, body: UpdateGlobalCommandBody): Promise<GlobalCommand> {
+    const res = await fetch(`/api/global-commands/${id}`, {
+      method:  "PATCH",
+      headers: authHeaders(token),
+      body:    JSON.stringify(body),
+    });
+    return parseResponse(res);
+  },
+
+  /** 削除 */
+  async delete(token: string, id: string): Promise<void> {
+    const res = await fetch(`/api/global-commands/${id}`, {
+      method:  "DELETE",
+      headers: authHeaders(token),
     });
     return parseResponse(res);
   },

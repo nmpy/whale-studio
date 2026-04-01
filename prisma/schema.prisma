@@ -46,6 +46,7 @@ model Oa {
   trackings         Tracking[]
   userTrackings     UserTracking[]
   hintLogs          HintLog[]
+  globalCommands    GlobalCommand[]
 
   @@index([title])
   @@index([publishStatus])
@@ -529,6 +530,30 @@ model WorkspaceMember {
   @@index([userId])
   @@index([role])
   @@map("workspace_members")
+}
+
+// ────────────────────────────────────────────────
+// GlobalCommand — グローバルコマンド（どのフェーズでも共通で反応するキーワード）
+// ────────────────────────────────────────────────
+model GlobalCommand {
+  id         String   @id @default(uuid())
+  oaId       String   @map("oa_id")
+  keyword    String
+  /// "HINT" | "RESET" | "HELP" | "REPEAT" | "CUSTOM"
+  actionType String   @map("action_type")
+  /// CUSTOM 用メッセージテキスト / HELP 用ガイドテキスト（任意）
+  /// JSON は不要。プレーンテキストをそのまま格納。
+  payload    String?
+  isActive   Boolean  @default(true) @map("is_active")
+  sortOrder  Int      @default(0) @map("sort_order")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  oa Oa @relation(fields: [oaId], references: [id], onDelete: Cascade)
+
+  @@index([oaId])
+  @@index([actionType])
+  @@map("global_commands")
 }
 
 // ────────────────────────────────────────────────

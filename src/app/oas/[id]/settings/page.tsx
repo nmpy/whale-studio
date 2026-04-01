@@ -66,6 +66,14 @@ const HUB_ITEM_DEFS = [
     color: "#dc2626",
     bg:    "#fef2f2",
   },
+  {
+    key:   "global-commands",
+    icon:  "⌨️",
+    title: "グローバルコマンド",
+    desc:  "どのフェーズでも反応するキーワード（ヒント・リセット等）を設定",
+    color: "#0891b2",
+    bg:    "#ecfeff",
+  },
 ] as const;
 
 export default function OaSettingsPage() {
@@ -88,8 +96,8 @@ export default function OaSettingsPage() {
             { label: "設定" },
           ]} />
           <h2>アカウント設定</h2>
-          <p style={{ fontSize: 13, color: "#6b7280", marginTop: 4 }}>
-            このアカウントの機能を選択してください。
+          <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 3 }}>
+            {oaTitle ? `${oaTitle} の各機能を管理します` : "このアカウントの機能を選択してください"}
           </p>
         </div>
       </div>

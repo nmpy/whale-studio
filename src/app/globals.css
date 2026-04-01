@@ -43,6 +43,22 @@
   --color-warning: #d97706;
   --color-info:    #2563eb;
 
+  /* ── Whale Studio ブランドパレット (green × black × gray) ── */
+  --color-primary:        #2F6F5E;
+  --color-primary-hover:  #285E50;
+  --color-primary-soft:   #EAF4F1;
+
+  --color-text-primary:   #1A1A1A;
+  --color-text-secondary: #666666;
+  --color-text-muted:     #999999;
+
+  --color-bg-default:     #FFFFFF;
+  --color-bg-subtle:      #F7F7F7;
+  --color-bg-soft:        #F2F5F4;
+
+  --color-border-default: #E5E5E5;
+  --color-border-soft:    #EEEEEE;
+
   /* Radius */
   --radius-xs: 4px;
   --radius-sm: 8px;
@@ -200,6 +216,11 @@ td { font-size: var(--font-size-base); }
 tr:last-child td { border-bottom: none; }
 tbody tr { transition: background 0.12s; }
 tbody tr:hover td { background: var(--brand-subtle); }
+
+/* コンパクトテーブル（アカウントリスト等） */
+.table-compact th,
+.table-compact td { padding: 9px 12px; }
+.table-compact th { padding-top: 8px; padding-bottom: 8px; }
 
 /* ── バッジ ──────────────────────────────────────────────────────────── */
 .badge {
