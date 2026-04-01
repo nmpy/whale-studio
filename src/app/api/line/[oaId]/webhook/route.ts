@@ -207,8 +207,8 @@ async function handleWebhook(req: NextRequest, oaId: string) {
     console.warn("[Webhook] 署名なし — 開発環境のためスキップします");
   }
 
-  // ── [DEBUG] テキストメッセージに固定エコー返信 ──
-  // ★ 動作確認用の一時処理 — 確認が終わったら削除する
+  // ── [ECHO] テキストメッセージ受信確認用エコー返信 ──
+  // ★ 動作確認用。確認が取れたら下の return ごと削除する。
   for (const ev of webhookBody.events) {
     if (
       ev.type === "message" &&
@@ -216,16 +216,36 @@ async function handleWebhook(req: NextRequest, oaId: string) {
       typeof ev.message.text === "string" &&
       typeof ev.replyToken === "string"
     ) {
-      const echoText = `受信しました: ${ev.message.text}`;
-      console.log(`[Webhook][DEBUG] エコー返信を送信 replyToken=${ev.replyToken} text="${echoText}"`);
-      await replyToLine(
-        ev.replyToken,
-        [{ type: "text", text: echoText }],
-        oa.channelAccessToken,
-      );
+      const msgText    = ev.message.text;
+      const replyToken = ev.replyToken;
+      const echoText   = `受信しました: ${msgText}`;
+
+      console.log(`[Webhook][ECHO] message.text="${msgText}" replyToken=${replyToken}`);
+      console.log(`[Webhook][ECHO] reply送信前 echoText="${echoText}"`);
+
+      try {
+        await replyToLine(
+          replyToken,
+          [{ type: "text", text: echoText }],
+          oa.channelAccessToken,
+        );
+        console.log(`[Webhook][ECHO] reply送信後 — 成功`);
+      } catch (err) {
+        const e = err as Record<string, unknown> | null | undefined;
+        console.error(`[Webhook][ECHO] reply送信エラー`, {
+          name:    e?.name,
+          message: e?.message,
+          code:    e?.code,
+          raw:     String(err),
+        });
+      }
+
+      // リプライトークンは 1 回しか使えないため、ここで処理を終了する
+      // ★ 作品ロジックを有効にするときはこの return を削除する
+      return NextResponse.json({ ok: true });
     }
   }
-  // ── [DEBUG] ここまで ──
+  // ── [ECHO] ここまで ──
 
   // ── 5. follow イベント処理（友達追加 → トラッキング帰属）──
   const followEvents = webhookBody.events.filter(

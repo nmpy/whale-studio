@@ -57,8 +57,11 @@ import type {
 // ────────────────────────────────────────────────
 
 /**
- * 開発環境用のダミートークンを返す。
- * 本番では Supabase セッションから access_token を取得して渡すこと。
+ * API 呼び出し用のトークンを返す。
+ *
+ * 暫定: "dev-token" を返す（サーバー側の BYPASS_AUTH=true と組み合わせて使用）。
+ * 本命: サーバーが Supabase cookie を直接読むため、ここで返す値は無視される。
+ *       将来的にはブラウザの Supabase セッションから access_token を取得する形に置き換える。
  */
 export function getDevToken(): string {
   return "dev-token";
