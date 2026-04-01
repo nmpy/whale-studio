@@ -142,6 +142,7 @@ export const PATCH = withAuth<{ id: string }>(async (req, { params }, user) => {
     if (!check.ok) return check.response;
 
     const body = await req.json();
+    console.log(`[PATCH /api/messages/${params.id}] raw body:`, JSON.stringify(body, null, 2));
     const data = updateMessageSchema.parse(body);
 
     // Phase 存在・所属確認（変更時）
@@ -219,7 +220,11 @@ export const PATCH = withAuth<{ id: string }>(async (req, { params }, user) => {
 
     return ok(toResponse(updated));
   } catch (err) {
-    if (err instanceof ZodError) return badRequest("入力値が不正です", formatZodErrors(err));
+    if (err instanceof ZodError) {
+      const details = formatZodErrors(err);
+      console.error(`[PATCH /api/messages/${params.id}] ZodError:`, JSON.stringify(details, null, 2));
+      return badRequest("入力値が不正です", details);
+    }
     return serverError(err);
   }
 });

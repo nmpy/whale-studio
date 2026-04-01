@@ -192,7 +192,7 @@ export function msgToFormState(msg: {
 
 export function formStateToMsgBody(form: MessageFormState) {
   const isPuzzle = form.kind === "puzzle";
-  return {
+  const payload = {
     trigger_keyword:  form.trigger_keyword || null,
     target_segment:   form.target_segment  || null,
     phase_id:         form.phase_id        || null,
@@ -219,7 +219,7 @@ export function formStateToMsgBody(form: MessageFormState) {
     sort_order:        form.sort_order,
     is_active:         form.is_active,
     // puzzle fields
-    puzzle_type:           isPuzzle ? form.puzzle_type || null : null,
+    puzzle_type:           isPuzzle ? (form.message_type as "text" | "image" | "video" | "carousel") || null : null,
     answer:                isPuzzle ? form.answer || null : null,
     puzzle_hint_text:      isPuzzle ? form.puzzle_hint_text || null : null,
     answer_match_type:     isPuzzle ? form.answer_match_type : ["exact"],
@@ -228,6 +228,8 @@ export function formStateToMsgBody(form: MessageFormState) {
     incorrect_text:        isPuzzle ? form.incorrect_text || null : null,
     correct_next_phase_id: isPuzzle ? form.correct_next_phase_id || null : null,
   };
+  console.log("[formStateToMsgBody] payload:", JSON.stringify(payload, null, 2));
+  return payload;
 }
 
 // ── バリデーション ────────────────────────────────────────

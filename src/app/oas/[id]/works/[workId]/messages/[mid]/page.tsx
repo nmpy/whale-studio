@@ -5,7 +5,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { workApi, messageApi, getDevToken } from "@/lib/api-client";
+import { workApi, messageApi, getDevToken, ValidationError } from "@/lib/api-client";
 import { useToast } from "@/components/Toast";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { MessageForm, msgToFormState, formStateToMsgBody, EMPTY_MESSAGE_FORM, type MessageFormState } from "../_form";
@@ -49,7 +49,11 @@ export default function EditMessagePage() {
       showToast("メッセージを保存しました", "success");
       router.push(`/oas/${oaId}/works/${workId}/messages`);
     } catch (err) {
-      showToast(err instanceof Error ? err.message : "保存に失敗しました", "error");
+      const msg = err instanceof ValidationError
+        ? err.toDetailString()
+        : err instanceof Error ? err.message : "保存に失敗しました";
+      console.error("[EditMessagePage] save error:", msg, err);
+      showToast(msg, "error");
     } finally {
       setSubmitting(false);
     }
@@ -73,7 +77,7 @@ export default function EditMessagePage() {
       { label: "アカウントリスト", href: "/oas" },
       { label: "作品リスト", href: `/oas/${oaId}/works` },
       ...(workTitle ? [{ label: workTitle, href: `/oas/${oaId}/works/${workId}` }] : []),
-      { label: "メッセージ管理", href: `/oas/${oaId}/works/${workId}/messages` },
+      { label: "メッセージ・謎", href: `/oas/${oaId}/works/${workId}/messages` },
       { label: "編集" },
     ]} />
   );

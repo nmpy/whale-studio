@@ -143,6 +143,7 @@ export const GET = withAuth(async (req, _ctx, user) => {
 export const POST = withAuth(async (req, _ctx, user) => {
   try {
     const body = await req.json();
+    console.log("[POST /api/messages] raw body:", JSON.stringify(body, null, 2));
     const data = createMessageSchema.parse(body);
 
     // Work 存在確認
@@ -218,7 +219,11 @@ export const POST = withAuth(async (req, _ctx, user) => {
 
     return created(toResponse(message));
   } catch (err) {
-    if (err instanceof ZodError) return badRequest("入力値が不正です", formatZodErrors(err));
+    if (err instanceof ZodError) {
+      const details = formatZodErrors(err);
+      console.error("[POST /api/messages] ZodError:", JSON.stringify(details, null, 2));
+      return badRequest("入力値が不正です", details);
+    }
     return serverError(err);
   }
 });

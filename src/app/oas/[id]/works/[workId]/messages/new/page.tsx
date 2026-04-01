@@ -4,7 +4,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { workApi, messageApi, getDevToken } from "@/lib/api-client";
+import { workApi, messageApi, getDevToken, ValidationError } from "@/lib/api-client";
 import { useToast } from "@/components/Toast";
 import { MessageForm, EMPTY_MESSAGE_FORM, formStateToMsgBody, type MessageFormState } from "../_form";
 
@@ -34,7 +34,11 @@ export default function NewMessagePage() {
       showToast("メッセージを追加しました", "success");
       router.push(`/oas/${oaId}/works/${workId}/messages`);
     } catch (err) {
-      showToast(err instanceof Error ? err.message : "追加に失敗しました", "error");
+      const msg = err instanceof ValidationError
+        ? err.toDetailString()
+        : err instanceof Error ? err.message : "追加に失敗しました";
+      console.error("[NewMessagePage] save error:", msg, err);
+      showToast(msg, "error");
     } finally {
       setSubmitting(false);
     }
