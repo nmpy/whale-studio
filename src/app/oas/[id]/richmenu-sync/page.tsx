@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
+import { Breadcrumb } from "@/components/Breadcrumb";
 import { getDevToken } from "@/lib/api-client";
 import { useToast } from "@/components/Toast";
 
@@ -104,11 +105,11 @@ export default function RichMenuSyncPage() {
       {/* ── ページヘッダー ── */}
       <div className="page-header">
         <div>
-          <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 4 }}>
-            <Link href="/oas">OA 一覧</Link>{" / "}
-            <Link href={`/oas/${oaId}/works`}>作品一覧</Link>
-            {" / Google Sheets リッチメニュー同期"}
-          </div>
+          <Breadcrumb items={[
+            { label: "アカウントリスト", href: "/oas" },
+            { label: "作品リスト", href: `/oas/${oaId}/works` },
+            { label: "Google Sheets リッチメニュー同期" },
+          ]} />
           <h2>Google Sheets → LINE リッチメニュー同期</h2>
           <p style={{ fontSize: 13, color: "#6b7280", marginTop: 4 }}>
             Google Spreadsheet の RichMenus / RichMenuItems シートを読み込み、

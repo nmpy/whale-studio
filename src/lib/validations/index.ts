@@ -209,19 +209,21 @@ export const quickReplyItemSchema = z.object({
 // Message
 // ────────────────────────────────────────────────
 export const createMessageSchema = z.object({
-  work_id:         uuidSchema,
-  phase_id:        uuidSchema.optional().nullable(),
-  character_id:    uuidSchema.optional().nullable(),
-  message_type:    z.enum(["text", "image", "riddle", "video", "carousel", "voice"]).default("text"),
-  body:            z.string().max(10000).optional(),
-  asset_url:       urlSchema,
-  trigger_keyword: z.string().max(200).optional().nullable(),
-  target_segment:  z.string().max(100).optional().nullable(),
-  notify_text:     z.string().max(500).optional(),
-  riddle_id:       uuidSchema.optional().nullable(),
-  quick_replies:   z.array(quickReplyItemSchema).max(13, "クイックリプライは最大13件までです").optional().nullable(),
-  sort_order:      sortSchema,
-  is_active:       z.boolean().default(true),
+  work_id:          uuidSchema,
+  phase_id:         uuidSchema.optional().nullable(),
+  character_id:     uuidSchema.optional().nullable(),
+  message_type:     z.enum(["text", "image", "riddle", "video", "carousel", "voice", "flex"]).default("text"),
+  body:             z.string().max(10000).optional(),
+  asset_url:        urlSchema,
+  trigger_keyword:  z.string().max(200).optional().nullable(),
+  target_segment:   z.string().max(100).optional().nullable(),
+  notify_text:      z.string().max(500).optional(),
+  riddle_id:        uuidSchema.optional().nullable(),
+  quick_replies:    z.array(quickReplyItemSchema).max(13, "クイックリプライは最大13件までです").optional().nullable(),
+  alt_text:         z.string().max(400).optional().nullable(),
+  flex_payload_json: z.string().max(50000).optional().nullable(),
+  sort_order:       sortSchema,
+  is_active:        z.boolean().default(true),
 }).superRefine((val, ctx) => {
   if (val.message_type === "text" && !val.body) {
     ctx.addIssue({ code: "custom", path: ["body"], message: "text型の場合は本文が必要です" });
@@ -232,6 +234,18 @@ export const createMessageSchema = z.object({
   if (val.message_type === "riddle" && !val.riddle_id) {
     ctx.addIssue({ code: "custom", path: ["riddle_id"], message: "riddle型の場合は riddle_id が必要です" });
   }
+  if (val.message_type === "flex") {
+    if (!val.alt_text?.trim()) {
+      ctx.addIssue({ code: "custom", path: ["alt_text"], message: "altTextを入力してください" });
+    }
+    if (!val.flex_payload_json?.trim()) {
+      ctx.addIssue({ code: "custom", path: ["flex_payload_json"], message: "Flex Message JSONを入力してください" });
+    } else {
+      try { JSON.parse(val.flex_payload_json); } catch {
+        ctx.addIssue({ code: "custom", path: ["flex_payload_json"], message: "JSONの形式が正しくありません" });
+      }
+    }
+  }
 });
 
 /**
@@ -240,18 +254,20 @@ export const createMessageSchema = z.object({
  * 既存レコードとの整合性は route handler 側で確認する。
  */
 export const updateMessageSchema = z.object({
-  phase_id:        uuidSchema.optional().nullable(),
-  character_id:    uuidSchema.optional().nullable(),
-  message_type:    z.enum(["text", "image", "riddle", "video", "carousel", "voice"]).optional(),
-  body:            z.string().max(10000).optional().nullable(),
-  asset_url:       z.string().url().optional().nullable(),
-  trigger_keyword: z.string().max(200).optional().nullable(),
-  target_segment:  z.string().max(100).optional().nullable(),
-  notify_text:     z.string().max(500).optional().nullable(),
-  riddle_id:       uuidSchema.optional().nullable(),
-  quick_replies:   z.array(quickReplyItemSchema).max(13, "クイックリプライは最大13件までです").optional().nullable(),
-  sort_order:      z.number().int().min(0).optional(),
-  is_active:       z.boolean().optional(),
+  phase_id:          uuidSchema.optional().nullable(),
+  character_id:      uuidSchema.optional().nullable(),
+  message_type:      z.enum(["text", "image", "riddle", "video", "carousel", "voice", "flex"]).optional(),
+  body:              z.string().max(10000).optional().nullable(),
+  asset_url:         z.string().url().optional().nullable(),
+  trigger_keyword:   z.string().max(200).optional().nullable(),
+  target_segment:    z.string().max(100).optional().nullable(),
+  notify_text:       z.string().max(500).optional().nullable(),
+  riddle_id:         uuidSchema.optional().nullable(),
+  quick_replies:     z.array(quickReplyItemSchema).max(13, "クイックリプライは最大13件までです").optional().nullable(),
+  alt_text:          z.string().max(400).optional().nullable(),
+  flex_payload_json: z.string().max(50000).optional().nullable(),
+  sort_order:        z.number().int().min(0).optional(),
+  is_active:         z.boolean().optional(),
 }).superRefine((val, ctx) => {
   if (val.message_type === "text" && val.body === null) {
     ctx.addIssue({ code: "custom", path: ["body"], message: "text型の場合、body を null にはできません" });
@@ -259,13 +275,18 @@ export const updateMessageSchema = z.object({
   if ((val.message_type === "image" || val.message_type === "video" || val.message_type === "voice") && val.asset_url === null) {
     ctx.addIssue({ code: "custom", path: ["asset_url"], message: `${val.message_type}型の場合、asset_url を null にはできません` });
   }
+  if (val.message_type === "flex" && val.flex_payload_json) {
+    try { JSON.parse(val.flex_payload_json); } catch {
+      ctx.addIssue({ code: "custom", path: ["flex_payload_json"], message: "JSONの形式が正しくありません" });
+    }
+  }
 });
 
 export const messageQuerySchema = z.object({
   work_id:        uuidSchema,
   phase_id:       uuidSchema.optional(),
   character_id:   uuidSchema.optional(),
-  message_type:   z.enum(["text", "image", "riddle", "video", "carousel", "voice"]).optional(),
+  message_type:   z.enum(["text", "image", "riddle", "video", "carousel", "voice", "flex"]).optional(),
   is_active:      z.coerce.boolean().optional(),
   with_relations: z.coerce.boolean().default(false),
 });

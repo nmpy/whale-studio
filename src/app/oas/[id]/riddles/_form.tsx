@@ -331,7 +331,7 @@ export function RiddleForm({
       <div className="page-header">
         <div>
           <Breadcrumb items={[
-            { label: "OA一覧", href: "/oas" },
+            { label: "アカウントリスト", href: "/oas" },
             { label: "謎管理", href: `/oas/${oaId}/riddles` },
             { label: isNew ? "新規作成" : "編集" },
           ]} />

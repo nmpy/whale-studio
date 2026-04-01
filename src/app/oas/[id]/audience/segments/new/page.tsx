@@ -83,8 +83,8 @@ export default function NewSegmentPage() {
       <div className="page-header">
         <div>
           <Breadcrumb items={[
-            { label: "OA一覧", href: "/oas" },
-            { label: "OA設定", href: `/oas/${oaId}/settings` },
+            { label: "アカウントリスト", href: "/oas" },
+            { label: "設定", href: `/oas/${oaId}/settings` },
             { label: "オーディエンス", href: `/oas/${oaId}/audience?tab=segments` },
             { label: "新規作成" },
           ]} />

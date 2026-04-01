@@ -70,8 +70,8 @@ export default function EditMessagePage() {
 
   const breadcrumb = (
     <Breadcrumb items={[
-      { label: "OA一覧", href: "/oas" },
-      { label: "作品一覧", href: `/oas/${oaId}/works` },
+      { label: "アカウントリスト", href: "/oas" },
+      { label: "作品リスト", href: `/oas/${oaId}/works` },
       ...(workTitle ? [{ label: workTitle, href: `/oas/${oaId}/works/${workId}` }] : []),
       { label: "メッセージ管理", href: `/oas/${oaId}/works/${workId}/messages` },
       { label: "編集" },

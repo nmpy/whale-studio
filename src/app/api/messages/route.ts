@@ -21,27 +21,30 @@ function toResponse(m: {
   triggerKeyword: string | null; targetSegment: string | null;
   notifyText: string | null; riddleId: string | null;
   quickReplies: string | null;
+  altText?: string | null; flexPayloadJson?: string | null;
   sortOrder: number; isActive: boolean; createdAt: Date; updatedAt: Date;
   phase?: { id: string; name: string; phaseType: string } | null;
   character?: { id: string; name: string; iconType: string; iconText: string | null; iconImageUrl: string | null; iconColor: string | null } | null;
 }) {
   return {
-    id:              m.id,
-    work_id:         m.workId,
-    phase_id:        m.phaseId,
-    character_id:    m.characterId,
-    message_type:    m.messageType,
-    body:            m.body,
-    asset_url:       m.assetUrl,
-    trigger_keyword: m.triggerKeyword,
-    target_segment:  m.targetSegment,
-    notify_text:     m.notifyText,
-    riddle_id:       m.riddleId,
-    quick_replies:   parseQuickReplies(m.quickReplies),
-    sort_order:      m.sortOrder,
-    is_active:       m.isActive,
-    created_at:      m.createdAt,
-    updated_at:      m.updatedAt,
+    id:                m.id,
+    work_id:           m.workId,
+    phase_id:          m.phaseId,
+    character_id:      m.characterId,
+    message_type:      m.messageType,
+    body:              m.body,
+    asset_url:         m.assetUrl,
+    trigger_keyword:   m.triggerKeyword,
+    target_segment:    m.targetSegment,
+    notify_text:       m.notifyText,
+    riddle_id:         m.riddleId,
+    quick_replies:     parseQuickReplies(m.quickReplies),
+    alt_text:          m.altText ?? null,
+    flex_payload_json: m.flexPayloadJson ?? null,
+    sort_order:        m.sortOrder,
+    is_active:         m.isActive,
+    created_at:        m.createdAt,
+    updated_at:        m.updatedAt,
     ...(m.phase     !== undefined && {
       phase: m.phase ? { id: m.phase.id, name: m.phase.name, phase_type: m.phase.phaseType } : null,
     }),
@@ -150,9 +153,11 @@ export const POST = withAuth(async (req, _ctx, user) => {
         targetSegment:  data.target_segment  ?? null,
         notifyText:     data.notify_text     ?? null,
         riddleId:       data.riddle_id       ?? null,
-        quickReplies:   data.quick_replies ? JSON.stringify(data.quick_replies) : null,
-        sortOrder:      data.sort_order,
-        isActive:       data.is_active,
+        quickReplies:    data.quick_replies ? JSON.stringify(data.quick_replies) : null,
+        altText:         data.alt_text          ?? null,
+        flexPayloadJson: data.flex_payload_json ?? null,
+        sortOrder:       data.sort_order,
+        isActive:        data.is_active,
       },
       include: {
         phase: {

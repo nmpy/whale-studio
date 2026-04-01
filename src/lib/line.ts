@@ -55,7 +55,17 @@ export type LineImageMessage = {
   sender?: LineSender;
 };
 
-export type LineMessage = LineTextMessage | LineImageMessage;
+export type LineFlexMessage = {
+  type: "flex";
+  /** 通知欄・未対応端末向けの代替テキスト */
+  altText: string;
+  /** Flex Message コンテナ（bubble / carousel） */
+  contents: Record<string, unknown>;
+  /** キャラクター送信者情報（任意） */
+  sender?: LineSender;
+};
+
+export type LineMessage = LineTextMessage | LineImageMessage | LineFlexMessage;
 
 // LINE Webhook イベント（最小限の型定義）
 export type LineEvent = {
@@ -337,6 +347,26 @@ export function buildPhaseMessages(
         lineMsg.sender = buildSender(msg.character);
       }
       messages.push(lineMsg);
+    }
+
+    if (msg.message_type === "flex" && msg.alt_text && msg.flex_payload_json) {
+      let contents: Record<string, unknown> | null = null;
+      try {
+        contents = JSON.parse(msg.flex_payload_json) as Record<string, unknown>;
+      } catch {
+        console.warn(`[buildPhaseMessages] Flex JSON parse error msgId=${msg.id}`);
+      }
+      if (contents) {
+        const lineMsg: LineFlexMessage = {
+          type:     "flex",
+          altText:  msg.alt_text,
+          contents,
+        };
+        if (msg.character) {
+          lineMsg.sender = buildSender(msg.character);
+        }
+        messages.push(lineMsg);
+      }
     }
   }
 

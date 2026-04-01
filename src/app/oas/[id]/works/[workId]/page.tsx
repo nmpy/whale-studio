@@ -6,6 +6,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
+import { Breadcrumb } from "@/components/Breadcrumb";
 import { workApi, oaApi, getDevToken } from "@/lib/api-client";
 import type { WorkListItem } from "@/lib/api-client";
 import { HelpAccordion } from "@/components/HelpAccordion";
@@ -121,7 +122,7 @@ export default function WorkHubPage() {
       <>
         <div className="page-header">
           <h2>作品</h2>
-          <Link href={`/oas/${oaId}/works`} className="btn btn-ghost">← 作品一覧に戻る</Link>
+          <Link href={`/oas/${oaId}/works`} className="btn btn-ghost">← 作品リストに戻る</Link>
         </div>
         <div className="alert alert-error">{error}</div>
       </>
@@ -135,13 +136,11 @@ export default function WorkHubPage() {
       {/* ── ページヘッダー ── */}
       <div className="page-header">
         <div>
-          <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 4 }}>
-            <Link href="/oas">OA 一覧</Link>
-            {oaTitle && (
-              <> / <Link href={`/oas/${oaId}/works`}>{oaTitle}</Link></>
-            )}
-            {work && <> / {work.title}</>}
-          </div>
+          <Breadcrumb items={[
+            { label: "アカウントリスト", href: "/oas" },
+            ...(oaTitle ? [{ label: oaTitle, href: `/oas/${oaId}/works` }] : []),
+            ...(work ? [{ label: work.title }] : []),
+          ]} />
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <h2 style={{ margin: 0 }}>{work?.title ?? "作品"}</h2>
             {statusMeta && (

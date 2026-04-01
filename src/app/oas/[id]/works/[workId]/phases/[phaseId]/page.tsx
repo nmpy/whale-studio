@@ -293,8 +293,8 @@ export default function PhaseDetailPage() {
       <>
         <div className="page-header">
           <Breadcrumb items={[
-            { label: "OA一覧", href: "/oas" },
-            { label: "作品一覧", href: `/oas/${oaId}/works` },
+            { label: "アカウントリスト", href: "/oas" },
+            { label: "作品リスト", href: `/oas/${oaId}/works` },
             { label: "シナリオフロー" },
           ]} />
           <h2>フェーズ編集</h2>
@@ -316,8 +316,8 @@ export default function PhaseDetailPage() {
       <>
         <div className="page-header">
           <Breadcrumb items={[
-            { label: "OA一覧", href: "/oas" },
-            { label: "作品一覧", href: `/oas/${oaId}/works` },
+            { label: "アカウントリスト", href: "/oas" },
+            { label: "作品リスト", href: `/oas/${oaId}/works` },
             { label: "シナリオフロー" },
           ]} />
           <h2>フェーズ編集</h2>
@@ -337,8 +337,8 @@ export default function PhaseDetailPage() {
       <div className="page-header">
         <div>
           <Breadcrumb items={[
-            { label: "OA一覧", href: "/oas" },
-            { label: "作品一覧", href: `/oas/${oaId}/works` },
+            { label: "アカウントリスト", href: "/oas" },
+            { label: "作品リスト", href: `/oas/${oaId}/works` },
             ...(workTitle ? [{ label: workTitle, href: `/oas/${oaId}/works/${workId}` }] : []),
             { label: "シナリオフロー", href: `/oas/${oaId}/works/${workId}/scenario` },
             { label: phase!.name || "フェーズ設定" },

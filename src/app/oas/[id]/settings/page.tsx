@@ -84,12 +84,12 @@ export default function OaSettingsPage() {
       <div className="page-header">
         <div>
           <Breadcrumb items={[
-            { label: "OA一覧", href: "/oas" },
-            { label: "OA設定" },
+            { label: "アカウントリスト", href: "/oas" },
+            { label: "設定" },
           ]} />
-          <h2>OA 設定</h2>
+          <h2>アカウント設定</h2>
           <p style={{ fontSize: 13, color: "#6b7280", marginTop: 4 }}>
-            このアカウントの機能を選択してください
+            このアカウントの機能を選択してください。
           </p>
         </div>
       </div>

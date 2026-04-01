@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import { Breadcrumb } from "@/components/Breadcrumb";
 import { oaApi, segmentApi, workApi, phaseApi, getDevToken } from "@/lib/api-client";
 import { useToast } from "@/components/Toast";
 import type { SegmentFilterType, PhaseWithCounts } from "@/types";
@@ -138,12 +139,12 @@ export default function EditSegmentPage() {
     <>
       <div className="page-header">
         <div>
-          <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 4 }}>
-            <Link href="/oas">OA 一覧</Link>
-            {oaTitle && <> / <Link href={`/oas/${oaId}/works`}>{oaTitle}</Link></>}
-            {" / "}<Link href={`/oas/${oaId}/audience?tab=segments`}>オーディエンス</Link>
-            {" / セグメントを編集"}
-          </div>
+          <Breadcrumb items={[
+            { label: "アカウントリスト", href: "/oas" },
+            ...(oaTitle ? [{ label: oaTitle, href: `/oas/${oaId}/works` }] : []),
+            { label: "オーディエンス", href: `/oas/${oaId}/audience?tab=segments` },
+            { label: "セグメントを編集" },
+          ]} />
           <h2>セグメントを編集</h2>
         </div>
         <Link href={`/oas/${oaId}/audience?tab=segments`} className="btn btn-ghost">← 一覧に戻る</Link>

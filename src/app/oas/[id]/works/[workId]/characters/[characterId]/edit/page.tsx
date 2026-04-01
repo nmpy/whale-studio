@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import { Breadcrumb } from "@/components/Breadcrumb";
 import { characterApi, getDevToken } from "@/lib/api-client";
 import { useToast } from "@/components/Toast";
 
@@ -106,12 +107,12 @@ export default function WorkCharacterEditPage() {
     <>
       <div className="page-header">
         <div>
-          <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 4 }}>
-            <Link href="/oas">OA 一覧</Link>{" / "}
-            <Link href={`/oas/${oaId}/works`}>作品一覧</Link>{" / "}
-            <Link href={`/oas/${oaId}/works/${workId}/characters`}>キャラクター</Link>
-            {" / 編集"}
-          </div>
+          <Breadcrumb items={[
+            { label: "アカウントリスト", href: "/oas" },
+            { label: "作品リスト", href: `/oas/${oaId}/works` },
+            { label: "キャラクター", href: `/oas/${oaId}/works/${workId}/characters` },
+            { label: "編集" },
+          ]} />
           <h2>{form!.name}</h2>
         </div>
         <Link href={`/oas/${oaId}/works/${workId}/characters`} className="btn btn-ghost">← 一覧に戻る</Link>

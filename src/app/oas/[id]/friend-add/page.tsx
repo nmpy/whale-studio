@@ -163,8 +163,8 @@ export default function FriendAddPage() {
       <>
         <div className="page-header">
           <Breadcrumb items={[
-            { label: "OA一覧", href: "/oas" },
-            { label: "OA設定", href: `/oas/${oaId}/settings` },
+            { label: "アカウントリスト", href: "/oas" },
+            { label: "設定", href: `/oas/${oaId}/settings` },
             { label: "友だち追加" },
           ]} />
           <h2>友だち追加設定</h2>
@@ -187,8 +187,8 @@ export default function FriendAddPage() {
       <>
         <div className="page-header">
           <Breadcrumb items={[
-            { label: "OA一覧", href: "/oas" },
-            { label: "OA設定", href: `/oas/${oaId}/settings` },
+            { label: "アカウントリスト", href: "/oas" },
+            { label: "設定", href: `/oas/${oaId}/settings` },
             { label: "友だち追加" },
           ]} />
           <h2>友だち追加設定</h2>
@@ -203,13 +203,13 @@ export default function FriendAddPage() {
       <div className="page-header">
         <div>
           <Breadcrumb items={[
-            { label: "OA一覧", href: "/oas" },
-            { label: "OA設定", href: `/oas/${oaId}/settings` },
+            { label: "アカウントリスト", href: "/oas" },
+            { label: "設定", href: `/oas/${oaId}/settings` },
             { label: "友だち追加" },
           ]} />
           <h2>友だち追加設定</h2>
           <p style={{ fontSize: 13, color: "#6b7280", marginTop: 4 }}>
-            LINE 公式アカウントへの友だち追加 URL・シェア用画像を管理します
+            LINE公式アカウントへの友だち追加URL・シェア用画像を管理します。
           </p>
         </div>
       </div>

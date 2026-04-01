@@ -71,7 +71,7 @@ function PlaygroundInner() {
     })();
   }, []);
 
-  // ── 作品一覧ロード（OA 選択時）────────────────
+  // ── 作品リストロード（OA 選択時）────────────────
   useEffect(() => {
     if (!selectedOaId) return;
     setWorksLoading(true);
@@ -210,7 +210,7 @@ function PlaygroundInner() {
       <div className="page-header">
         <div>
           <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 4 }}>
-            <Link href="/oas">OA 一覧</Link>
+            <Link href="/oas">アカウントリスト</Link>
             {" / シナリオテスト"}
           </div>
           <h2>🎮 シナリオテスト</h2>

@@ -61,8 +61,8 @@ export default function WorkNewPage() {
       <div className="page-header">
         <div>
           <Breadcrumb items={[
-            { label: "OA一覧", href: "/oas" },
-            { label: "作品一覧", href: `/oas/${oaId}/works` },
+            { label: "アカウントリスト", href: "/oas" },
+            { label: "作品リスト", href: `/oas/${oaId}/works` },
             { label: "新規作成" },
           ]} />
           <h2>作品を追加</h2>

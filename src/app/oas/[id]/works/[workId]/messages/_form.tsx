@@ -18,7 +18,8 @@ export type ExtendedMessageType =
   | "riddle"
   | "video"
   | "carousel"
-  | "voice";
+  | "voice"
+  | "flex";
 
 // ── 定数 ────────────────────────────────────────────────
 
@@ -34,6 +35,7 @@ export const MESSAGE_TYPE_OPTIONS: {
   { value: "video",    label: "動画",         icon: "🎬", desc: "動画メッセージ" },
   { value: "carousel", label: "カルーセル",   icon: "🎠", desc: "カルーセルメッセージ" },
   { value: "voice",    label: "ボイス",       icon: "🎙", desc: "ボイスメッセージ" },
+  { value: "flex",     label: "Flex",         icon: "🪄", desc: "Flex Message" },
 ];
 
 // ── カルーセルカード型 ────────────────────────────────────
@@ -68,6 +70,8 @@ export interface MessageFormState {
   riddle_id:       string;
   carousel_items:  MessageCarouselCard[];
   quick_replies:   QuickReplyItem[];
+  alt_text:        string;
+  flex_json:       string;
   sort_order:      number;
   is_active:       boolean;
 }
@@ -84,6 +88,8 @@ export const EMPTY_MESSAGE_FORM: MessageFormState = {
   riddle_id:       "",
   carousel_items:  [],
   quick_replies:   [],
+  alt_text:        "",
+  flex_json:       "",
   sort_order:      0,
   is_active:       true,
 };
@@ -91,18 +97,20 @@ export const EMPTY_MESSAGE_FORM: MessageFormState = {
 // ── コンバーター ──────────────────────────────────────────
 
 export function msgToFormState(msg: {
-  trigger_keyword?: string | null;
-  target_segment?:  string | null;
-  phase_id?:        string | null;
-  character_id?:    string | null;
-  message_type?:    string;
-  body?:            string | null;
-  asset_url?:       string | null;
-  notify_text?:     string | null;
-  riddle_id?:       string | null;
-  quick_replies?:   QuickReplyItem[] | null;
-  sort_order?:      number;
-  is_active?:       boolean;
+  trigger_keyword?:  string | null;
+  target_segment?:   string | null;
+  phase_id?:         string | null;
+  character_id?:     string | null;
+  message_type?:     string;
+  body?:             string | null;
+  asset_url?:        string | null;
+  notify_text?:      string | null;
+  riddle_id?:        string | null;
+  quick_replies?:    QuickReplyItem[] | null;
+  alt_text?:         string | null;
+  flex_payload_json?: string | null;
+  sort_order?:       number;
+  is_active?:        boolean;
 }): MessageFormState {
   // Parse carousel items from body JSON if message_type is carousel
   let carousel_items: MessageCarouselCard[] = [];
@@ -127,6 +135,8 @@ export function msgToFormState(msg: {
     riddle_id:       msg.riddle_id       ?? "",
     carousel_items,
     quick_replies:   msg.quick_replies   ?? [],
+    alt_text:        msg.alt_text         ?? "",
+    flex_json:       msg.flex_payload_json ?? "",
     sort_order:      msg.sort_order      ?? 0,
     is_active:       msg.is_active       ?? true,
   };
@@ -134,23 +144,27 @@ export function msgToFormState(msg: {
 
 export function formStateToMsgBody(form: MessageFormState) {
   return {
-    trigger_keyword: form.trigger_keyword || null,
-    target_segment:  form.target_segment  || null,
-    phase_id:        form.phase_id        || null,
-    character_id:    form.character_id    || null,
-    message_type:    form.message_type,
+    trigger_keyword:  form.trigger_keyword || null,
+    target_segment:   form.target_segment  || null,
+    phase_id:         form.phase_id        || null,
+    character_id:     form.character_id    || null,
+    message_type:     form.message_type,
     body:
       form.message_type === "carousel"
         ? JSON.stringify(form.carousel_items)
         : form.message_type === "text"
         ? form.body || undefined
         : undefined,
-    asset_url:   form.asset_url   || undefined,
-    notify_text: form.message_type !== "text" ? form.notify_text || undefined : undefined,
-    riddle_id:   form.riddle_id   || null,
-    quick_replies: form.quick_replies.length > 0 ? form.quick_replies : null,
-    sort_order:  form.sort_order,
-    is_active:   form.is_active,
+    asset_url:         form.asset_url   || undefined,
+    notify_text:       form.message_type !== "text" && form.message_type !== "flex"
+      ? form.notify_text || undefined
+      : undefined,
+    riddle_id:         form.riddle_id   || null,
+    quick_replies:     form.quick_replies.length > 0 ? form.quick_replies : null,
+    alt_text:          form.message_type === "flex" ? form.alt_text || null : null,
+    flex_payload_json: form.message_type === "flex" ? form.flex_json || null : null,
+    sort_order:        form.sort_order,
+    is_active:         form.is_active,
   };
 }
 
@@ -179,6 +193,13 @@ export function validateMessageForm(form: MessageFormState): string | null {
   }
   if (form.message_type === "carousel" && form.carousel_items.length === 0) {
     return "カードを1枚以上追加してください";
+  }
+  if (form.message_type === "flex") {
+    if (!form.alt_text.trim()) return "altTextを入力してください";
+    if (!form.flex_json.trim()) return "Flex Message JSONを入力してください";
+    try { JSON.parse(form.flex_json); } catch {
+      return "JSONの形式が正しくありません";
+    }
   }
   return null;
 }
@@ -611,6 +632,19 @@ function PreviewPanel({ form, characters, riddles }: PreviewPanelProps) {
             </div>
           </div>
         );
+      case "flex":
+        return (
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+            <span style={{ fontSize: 20 }}>🪄</span>
+            <div>
+              <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 2 }}>Flex Message</div>
+              {form.alt_text
+                ? <div style={{ fontSize: 13, color: "#111", fontWeight: 500 }}>{form.alt_text}</div>
+                : <span style={{ color: "#aaa", fontStyle: "italic", fontSize: 12 }}>代替テキストを入力してください</span>
+              }
+            </div>
+          </div>
+        );
       case "carousel":
         return form.carousel_items.length === 0
           ? <span style={{ color: "#aaa", fontStyle: "italic", fontSize: 12 }}>カードを追加してください</span>
@@ -760,8 +794,9 @@ export function MessageForm({
   oaId, workId, workTitle, initialForm, isNew,
   submitting, deleting, onSubmit, onDelete,
 }: MessageFormProps) {
-  const [form, setForm]   = useState<MessageFormState>(initialForm);
-  const [error, setError] = useState<string | null>(null);
+  const [form, setForm]       = useState<MessageFormState>(initialForm);
+  const [error, setError]     = useState<string | null>(null);
+  const [flexHelpOpen, setFlexHelpOpen] = useState(false);
 
   const [phases, setPhases]         = useState<PhaseWithCounts[]>([]);
   const [characters, setCharacters] = useState<Character[]>([]);
@@ -822,8 +857,8 @@ export function MessageForm({
       <div className="page-header">
         <div>
           <Breadcrumb items={[
-            { label: "OA一覧", href: "/oas" },
-            { label: "作品一覧", href: `/oas/${oaId}/works` },
+            { label: "アカウントリスト", href: "/oas" },
+            { label: "作品リスト", href: `/oas/${oaId}/works` },
             ...(workTitle ? [{ label: workTitle }] : []),
             { label: "メッセージ管理", href: `/oas/${oaId}/works/${workId}/messages` },
             { label: isNew ? "新規作成" : "編集" },
@@ -1038,6 +1073,130 @@ export function MessageForm({
                   {form.body.length} / 5000
                 </div>
               </div>
+            )}
+
+            {/* ── Flex Message ── */}
+            {mtype === "flex" && (
+              <>
+                <div className="form-group">
+                  <label style={fieldLabel} htmlFor="flex_alt_text">
+                    代替テキスト <span style={{ color: "#dc2626" }}>*</span>
+                  </label>
+                  <input
+                    id="flex_alt_text"
+                    type="text"
+                    className="form-input"
+                    value={form.alt_text}
+                    onChange={(e) => set("alt_text", e.target.value)}
+                    placeholder="通知や未対応環境向けに表示するテキストを入力してください"
+                    maxLength={400}
+                  />
+                  <div style={hintText}>LINE 通知欄や未対応端末に表示されるテキストです</div>
+                </div>
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label style={fieldLabel} htmlFor="flex_json">
+                    Flex Message JSON <span style={{ color: "#dc2626" }}>*</span>
+                  </label>
+                  <textarea
+                    id="flex_json"
+                    className="form-input"
+                    style={{ minHeight: 180, resize: "vertical", fontFamily: "monospace", fontSize: 12 }}
+                    value={form.flex_json}
+                    onChange={(e) => set("flex_json", e.target.value)}
+                    placeholder={'Flex MessageのJSONを入力してください\n例: {"type":"bubble","body":{"type":"box","layout":"vertical","contents":[{"type":"text","text":"Hello"}]}}'}
+                    spellCheck={false}
+                  />
+                  {form.flex_json.trim() && (() => {
+                    try { JSON.parse(form.flex_json); return null; } catch {
+                      return (
+                        <div style={{ marginTop: 4, fontSize: 12, color: "#dc2626", display: "flex", alignItems: "center", gap: 4 }}>
+                          ⚠️ JSONの形式が正しくありません
+                        </div>
+                      );
+                    }
+                  })()}
+                  <div style={hintText}>{"type: \"bubble\" または \"carousel\" を指定できます"}</div>
+                </div>
+
+                {/* ── Flex Message 説明トグル ── */}
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => setFlexHelpOpen((v) => !v)}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      padding: 0,
+                      cursor: "pointer",
+                      fontSize: 13,
+                      color: "#4b5563",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 4,
+                    }}
+                  >
+                    <span>{flexHelpOpen ? "▼" : "▶"}</span>
+                    <span>Flex Messageの例を見る</span>
+                  </button>
+                  {flexHelpOpen && (
+                    <div style={{
+                      marginTop: 10,
+                      padding: "12px 14px",
+                      background: "#f8fafc",
+                      border: "1px solid #e2e8f0",
+                      borderRadius: 8,
+                      fontSize: 12,
+                      color: "#374151",
+                      lineHeight: 1.7,
+                    }}>
+                      <p style={{ margin: "0 0 8px", fontWeight: 600 }}>作品紹介カードの例（bubble）</p>
+                      <pre style={{
+                        margin: 0,
+                        overflowX: "auto",
+                        fontFamily: "monospace",
+                        fontSize: 11,
+                        background: "#1e293b",
+                        color: "#e2e8f0",
+                        padding: "10px 12px",
+                        borderRadius: 6,
+                        whiteSpace: "pre",
+                      }}>{`{
+  "type": "bubble",
+  "body": {
+    "type": "box",
+    "layout": "vertical",
+    "contents": [
+      {
+        "type": "text",
+        "text": "既読無視しないで。",
+        "weight": "bold",
+        "size": "xl"
+      },
+      {
+        "type": "text",
+        "text": "未読のまま止まったチャット。",
+        "size": "sm",
+        "color": "#666666"
+      }
+    ]
+  },
+  "footer": {
+    "type": "button",
+    "style": "primary",
+    "action": {
+      "type": "postback",
+      "label": "体験をはじめる",
+      "data": "action=start_work&work_id=1"
+    }
+  }
+}`}</pre>
+                      <p style={{ margin: "8px 0 0", color: "#6b7280", fontSize: 11 }}>
+                        上記 JSON をそのままコピーして貼り付け、テキストや色をカスタマイズしてください。
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </>
             )}
 
             {/* ── 画像 ── */}

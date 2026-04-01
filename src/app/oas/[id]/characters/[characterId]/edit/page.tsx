@@ -73,7 +73,7 @@ export default function CharacterEditPage() {
 
   const breadcrumb = (
     <Breadcrumb items={[
-      { label: "OA一覧", href: "/oas" },
+      { label: "アカウントリスト", href: "/oas" },
       { label: "キャラクター一覧", href: `/oas/${oaId}/characters` },
       { label: "編集" },
     ]} />

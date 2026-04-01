@@ -121,43 +121,77 @@ export async function POST(
   req: NextRequest,
   { params }: { params: { oaId: string } }
 ) {
+  // ── 全体を try/catch で包む: いかなる例外でも必ず 200 を返す ──
+  try {
+    return await handleWebhook(req, params.oaId);
+  } catch (err) {
+    console.error(
+      `[Webhook] 予期しない例外 oaId=${params.oaId}`,
+      "\n--- エラー内容全文 ---\n",
+      err instanceof Error
+        ? `${err.name}: ${err.message}\n${err.stack ?? ""}`
+        : String(err),
+      "\n----------------------"
+    );
+    return NextResponse.json({ ok: true });
+  }
+}
+
+async function handleWebhook(req: NextRequest, oaId: string) {
+  // ── デバッグ: oaId を最初に記録 ──
+  console.log(`[Webhook] 受信 oaId=${oaId}`);
+
   // ── 1. Raw body 取得（署名検証に必要）──
   const rawBody  = await req.text();
   const signature = req.headers.get("x-line-signature") ?? "";
 
-  // ── 2. OA 取得 ──
-  const oa = await prisma.oa.findUnique({ where: { id: params.oaId } });
-  if (!oa) {
-    // 存在しない OA ID への Webhook は 404
-    return NextResponse.json({ error: "OA not found" }, { status: 404 });
-  }
-
-  // ── 3. 署名検証 ──
-  if (signature) {
-    // ヘッダーがあれば必ず検証（開発・本番共通）
-    if (!verifyLineSignature(rawBody, signature, oa.channelSecret)) {
-      console.warn(`[Webhook] 署名検証失敗 oaId=${params.oaId}`);
-      return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
-    }
-  } else if (!isDev) {
-    // 本番では署名必須
-    return NextResponse.json({ error: "Missing signature" }, { status: 401 });
-  } else {
-    // 開発環境 + 署名なし → スキップ（curl テスト用）
-    console.warn("[Webhook] 署名なし — 開発環境のためスキップします");
-  }
-
-  // ── 4. JSON パース ──
+  // ── 2. JSON パース（疎通確認を早期に返すために署名検証より先に行う）──
   let webhookBody: LineWebhookBody;
   try {
     webhookBody = JSON.parse(rawBody) as LineWebhookBody;
   } catch {
-    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+    console.warn(`[Webhook] JSON パース失敗 oaId=${oaId} body=${rawBody.slice(0, 200)}`);
+    return NextResponse.json({ ok: true });
   }
 
-  // events が空のとき（LINE の疎通確認）は即 200 を返す
+  // events が空のとき（LINE の疎通確認）は署名検証をスキップして即 200 を返す
   if (!webhookBody.events || webhookBody.events.length === 0) {
+    console.log(`[Webhook] 疎通確認（events 空） oaId=${oaId}`);
     return NextResponse.json({ ok: true });
+  }
+
+  // ── 3. OA 取得 ──
+  const oa = await prisma.oa.findUnique({ where: { id: oaId } });
+
+  // デバッグ: OA 取得結果・シークレット / トークンの有無
+  console.log(
+    `[Webhook] OA 取得結果 oaId=${oaId}`,
+    oa
+      ? `found title="${oa.title}" channel_secret=${oa.channelSecret ? "あり" : "なし"} channel_access_token=${oa.channelAccessToken ? "あり" : "なし"}`
+      : "not found"
+  );
+
+  if (!oa) {
+    // 存在しない OA ID への Webhook は処理しないが 200 を返す
+    console.warn(`[Webhook] OA が存在しません oaId=${oaId} — 200 を返します`);
+    return NextResponse.json({ ok: true });
+  }
+
+  // ── 4. 署名検証 ──
+  // 署名不一致・署名欠落の場合でも LINE 仕様に従い 200 を返す
+  // （LINEはレスポンスコードが 200 以外だと再送を行うため）
+  if (signature) {
+    if (!verifyLineSignature(rawBody, signature, oa.channelSecret)) {
+      console.warn(`[Webhook] 署名検証失敗 oaId=${oaId} — イベントを処理せず 200 を返します`);
+      return NextResponse.json({ ok: true });
+    }
+  } else if (!isDev) {
+    // 本番で署名なし → 不審なリクエストのため処理しないが 200 は返す
+    console.warn(`[Webhook] 署名ヘッダー欠落 oaId=${oaId} — イベントを処理せず 200 を返します`);
+    return NextResponse.json({ ok: true });
+  } else {
+    // 開発環境 + 署名なし → スキップ（curl テスト用）
+    console.warn("[Webhook] 署名なし — 開発環境のためスキップします");
   }
 
   // ── 5. follow イベント処理（友達追加 → トラッキング帰属）──
@@ -168,7 +202,7 @@ export async function POST(
 
   if (followEvents.length > 0) {
     await Promise.allSettled(
-      followEvents.map((e) => attributeFollowToTracking(params.oaId, e.source.userId))
+      followEvents.map((e) => attributeFollowToTracking(oaId, e.source.userId))
     );
   }
 
@@ -267,7 +301,7 @@ export async function POST(
 
   // ── 6. (Prisma モード) アクティブな作品を取得（systemCharacter + welcomeMessage も JOIN）──
   const work = await prisma.work.findFirst({
-    where:   { oaId: params.oaId, publishStatus: "active" },
+    where:   { oaId: oaId, publishStatus: "active" },
     orderBy: { sortOrder: "asc" },
     include: {
       systemCharacter: {

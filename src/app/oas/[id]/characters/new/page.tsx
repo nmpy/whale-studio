@@ -58,7 +58,7 @@ export default function CharacterNewPage() {
       <div className="page-header">
         <div>
           <Breadcrumb items={[
-            { label: "OA一覧", href: "/oas" },
+            { label: "アカウントリスト", href: "/oas" },
             { label: "キャラクター一覧", href: `/oas/${oaId}/characters` },
             { label: "新規作成" },
           ]} />

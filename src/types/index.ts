@@ -34,7 +34,7 @@ export interface QuickReplyItem {
  * - "text"  … テキストアイコン型（非推奨・既存データ読み取り互換のみ。新規作成は "image" 固定）
  */
 export type IconType      = "image" | "text";
-export type MessageType   = "text" | "image" | "riddle" | "video" | "carousel" | "voice";
+export type MessageType   = "text" | "image" | "riddle" | "video" | "carousel" | "voice" | "flex";
 export type PhaseType     = "start" | "normal" | "ending";
 
 // ────────────────────────────────────────────────
@@ -136,6 +136,10 @@ export interface Message {
   riddle_id: string | null;
   /** クイックリプライ設定（null = 未設定） */
   quick_replies: QuickReplyItem[] | null;
+  /** Flex Message 代替テキスト */
+  alt_text: string | null;
+  /** Flex Message JSON ペイロード */
+  flex_payload_json: string | null;
   sort_order: number;
   is_active: boolean;
   created_at: string;
@@ -262,6 +266,8 @@ export interface CreateMessageBody {
   notify_text?: string;
   riddle_id?: string | null;
   quick_replies?: QuickReplyItem[] | null;
+  alt_text?: string | null;
+  flex_payload_json?: string | null;
   sort_order?: number;
   is_active?: boolean;
 }
@@ -277,6 +283,8 @@ export interface UpdateMessageBody {
   notify_text?: string | null;
   riddle_id?: string | null;
   quick_replies?: QuickReplyItem[] | null;
+  alt_text?: string | null;
+  flex_payload_json?: string | null;
   sort_order?: number;
   is_active?: boolean;
 }
@@ -320,11 +328,15 @@ export interface UserProgress {
 // Runtime — シナリオ実行時レスポンス
 // ────────────────────────────────────────────────
 export interface RuntimePhaseMessage {
-  id:           string;
-  message_type: MessageType;
-  body:         string | null;
-  asset_url:    string | null;
-  sort_order:   number;
+  id:                string;
+  message_type:      MessageType;
+  body:              string | null;
+  asset_url:         string | null;
+  /** Flex Message 代替テキスト（message_type = "flex" のとき使用） */
+  alt_text:          string | null;
+  /** Flex Message JSON ペイロード（message_type = "flex" のとき使用） */
+  flex_payload_json: string | null;
+  sort_order:        number;
   character: {
     id:             string;
     name:           string;

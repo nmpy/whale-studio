@@ -61,11 +61,13 @@ function buildRuntimePhaseFromSheets(
   const runtimeMessages: RuntimePhaseMessage[] = messages.map((msg) => {
     const char = msg.character_id ? findCharacterById(data, msg.character_id) : null;
     return {
-      id:           msg.message_id,
-      message_type: msg.message_type as MessageType,
-      body:         msg.body,
-      asset_url:    msg.asset_url,
-      sort_order:   msg.sort_order,
+      id:                msg.message_id,
+      message_type:      msg.message_type as MessageType,
+      body:              msg.body,
+      asset_url:         msg.asset_url,
+      alt_text:          null,
+      flex_payload_json: null,
+      sort_order:        msg.sort_order,
       character:    char
         ? {
             id:             char.character_id,

@@ -2,10 +2,11 @@
 // パンくずナビゲーション共通コンポーネント
 // 使い方:
 //   <Breadcrumb items={[
-//     { label: "OA一覧", href: "/oas" },
-//     { label: "作品一覧", href: `/oas/${oaId}/works` },
+//     { label: "アカウントリスト", href: "/oas" },
+//     { label: "作品リスト", href: `/oas/${oaId}/works` },
 //     { label: "メッセージ管理" },   // href なし → 現在ページ（リンクなし）
 //   ]} />
+// ※ 先頭に「TOP」(href="/") が自動で追加されます
 
 import Link from "next/link";
 
@@ -19,20 +20,22 @@ interface BreadcrumbProps {
 }
 
 export function Breadcrumb({ items }: BreadcrumbProps) {
+  const allItems: BreadcrumbItem[] = [{ label: "TOP", href: "/" }, ...items];
+
   return (
     <nav className="breadcrumb" aria-label="パンくずリスト">
-      {items.map((item, i) => {
-        const isLast = i === items.length - 1;
+      {allItems.map((item, i) => {
+        const isLast = i === allItems.length - 1;
         return (
           <span key={i} style={{ display: "contents" }}>
             {i > 0 && (
-              <span style={{ color: "#d1d5db", userSelect: "none" }}>/</span>
+              <span style={{ color: "#9ca3af", userSelect: "none" }}>＞</span>
             )}
             {isLast || !item.href ? (
               <span
                 style={
                   isLast
-                    ? { color: "#374151", fontWeight: 500 }
+                    ? { color: "#111827", fontWeight: 700 }
                     : { color: "#6b7280" }
                 }
                 aria-current={isLast ? "page" : undefined}
@@ -40,7 +43,7 @@ export function Breadcrumb({ items }: BreadcrumbProps) {
                 {item.label}
               </span>
             ) : (
-              <Link href={item.href}>{item.label}</Link>
+              <Link href={item.href} style={{ color: "#4b5563" }}>{item.label}</Link>
             )}
           </span>
         );

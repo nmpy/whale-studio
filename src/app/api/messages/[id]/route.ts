@@ -29,6 +29,7 @@ type PrismaMessageWithRelations = {
   triggerKeyword: string | null; targetSegment: string | null;
   notifyText: string | null; riddleId: string | null;
   quickReplies: string | null;
+  altText: string | null; flexPayloadJson: string | null;
   sortOrder: number; isActive: boolean; createdAt: Date; updatedAt: Date;
   phase:     { id: string; name: string; phaseType: string } | null;
   character: {
@@ -45,22 +46,24 @@ function parseQuickReplies(raw: string | null) {
 // ── snake_case 変換（GET / PATCH 共通） ─────────────────────
 function toResponse(m: PrismaMessageWithRelations) {
   return {
-    id:              m.id,
-    work_id:         m.workId,
-    phase_id:        m.phaseId,
-    character_id:    m.characterId,
-    message_type:    m.messageType,
-    body:            m.body,
-    asset_url:       m.assetUrl,
-    trigger_keyword: m.triggerKeyword,
-    target_segment:  m.targetSegment,
-    notify_text:     m.notifyText,
-    riddle_id:       m.riddleId,
-    quick_replies:   parseQuickReplies(m.quickReplies),
-    sort_order:      m.sortOrder,
-    is_active:       m.isActive,
-    created_at:      m.createdAt,
-    updated_at:      m.updatedAt,
+    id:                m.id,
+    work_id:           m.workId,
+    phase_id:          m.phaseId,
+    character_id:      m.characterId,
+    message_type:      m.messageType,
+    body:              m.body,
+    asset_url:         m.assetUrl,
+    trigger_keyword:   m.triggerKeyword,
+    target_segment:    m.targetSegment,
+    notify_text:       m.notifyText,
+    riddle_id:         m.riddleId,
+    quick_replies:     parseQuickReplies(m.quickReplies),
+    alt_text:          m.altText,
+    flex_payload_json: m.flexPayloadJson,
+    sort_order:        m.sortOrder,
+    is_active:         m.isActive,
+    created_at:        m.createdAt,
+    updated_at:        m.updatedAt,
     phase: m.phase
       ? { id: m.phase.id, name: m.phase.name, phase_type: m.phase.phaseType }
       : null,
@@ -158,8 +161,10 @@ export const PATCH = withAuth<{ id: string }>(async (req, { params }, user) => {
         ...(data.quick_replies   !== undefined && {
           quickReplies: data.quick_replies ? JSON.stringify(data.quick_replies) : null,
         }),
-        ...(data.sort_order      !== undefined && { sortOrder:      data.sort_order }),
-        ...(data.is_active       !== undefined && { isActive:       data.is_active }),
+        ...(data.alt_text          !== undefined && { altText:         data.alt_text }),
+        ...(data.flex_payload_json !== undefined && { flexPayloadJson: data.flex_payload_json }),
+        ...(data.sort_order        !== undefined && { sortOrder:       data.sort_order }),
+        ...(data.is_active         !== undefined && { isActive:        data.is_active }),
       },
       include: MESSAGE_INCLUDE,
     });

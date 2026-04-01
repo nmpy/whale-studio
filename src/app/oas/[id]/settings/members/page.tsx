@@ -130,7 +130,7 @@ export default function MembersPage() {
       <div className="page-header">
         <div>
           <nav style={{ fontSize: 12, color: "#9ca3af", marginBottom: 6 }}>
-            <Link href="/oas" style={{ color: "#6b7280" }}>OA一覧</Link>
+            <Link href="/oas" style={{ color: "#6b7280" }}>アカウントリスト</Link>
             {" › "}
             <Link href={`/oas/${oaId}/settings`} style={{ color: "#6b7280" }}>設定</Link>
             {" › "}

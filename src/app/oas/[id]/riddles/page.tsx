@@ -157,7 +157,7 @@ export default function RiddlesPage() {
       <>
         <div className="page-header">
           <Breadcrumb items={[
-            { label: "OA一覧", href: "/oas" },
+            { label: "アカウントリスト", href: "/oas" },
             { label: "謎管理" },
           ]} />
           <h2>謎管理</h2>
@@ -181,7 +181,7 @@ export default function RiddlesPage() {
       <>
         <div className="page-header">
           <Breadcrumb items={[
-            { label: "OA一覧", href: "/oas" },
+            { label: "アカウントリスト", href: "/oas" },
             { label: "謎管理" },
           ]} />
           <h2>謎管理</h2>
@@ -199,12 +199,12 @@ export default function RiddlesPage() {
       <div className="page-header">
         <div>
           <Breadcrumb items={[
-            { label: "OA一覧", href: "/oas" },
+            { label: "アカウントリスト", href: "/oas" },
             { label: "謎管理" },
           ]} />
           <h2>謎管理</h2>
           <p style={{ fontSize: 13, color: "#6b7280", marginTop: 4 }}>
-            LINE Bot が使用する謎（問題）を管理します
+            LINE Bot が使用する謎（問題）を管理します。
           </p>
         </div>
         <Link href={`/oas/${oaId}/riddles/new`} className="btn btn-primary">

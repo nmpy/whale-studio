@@ -101,8 +101,8 @@ export default function WorkEditPage() {
   // ── ローディング / エラー ─────────────────────────
   const breadcrumb = (
     <Breadcrumb items={[
-      { label: "OA一覧", href: "/oas" },
-      { label: "作品一覧", href: `/oas/${oaId}/works` },
+      { label: "アカウントリスト", href: "/oas" },
+      { label: "作品リスト", href: `/oas/${oaId}/works` },
       ...(workForm ? [{ label: workForm.title, href: `/oas/${oaId}/works/${workId}` }] : []),
       { label: "作品情報" },
     ]} />

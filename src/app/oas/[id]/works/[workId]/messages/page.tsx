@@ -5,11 +5,11 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { workApi, messageApi, getDevToken } from "@/lib/api-client";
+import { workApi, messageApi, phaseApi, getDevToken } from "@/lib/api-client";
 import { useToast } from "@/components/Toast";
 import { HelpAccordion } from "@/components/HelpAccordion";
 import { Breadcrumb } from "@/components/Breadcrumb";
-import type { MessageWithRelations, MessageType } from "@/types";
+import type { MessageWithRelations, MessageType, PhaseWithCounts } from "@/types";
 
 const MESSAGE_TYPE_LABEL: Record<MessageType, string> = {
   text:     "テキスト",
@@ -18,6 +18,7 @@ const MESSAGE_TYPE_LABEL: Record<MessageType, string> = {
   video:    "動画",
   carousel: "カルーセル",
   voice:    "ボイス",
+  flex:     "Flex",
 };
 
 const MESSAGE_TYPE_ICON: Record<MessageType, string> = {
@@ -27,19 +28,14 @@ const MESSAGE_TYPE_ICON: Record<MessageType, string> = {
   video:    "🎬",
   carousel: "🎠",
   voice:    "🎙",
+  flex:     "🪄",
 };
 
-function PhaseTag({ phase }: { phase: MessageWithRelations["phase"] }) {
-  if (!phase) return <span style={{ color: "#9ca3af", fontSize: 11 }}>—</span>;
-  return (
-    <span style={{
-      display: "inline-block", padding: "1px 7px", borderRadius: 10,
-      fontSize: 11, background: "#eff6ff", color: "#2563eb", fontWeight: 500,
-    }}>
-      {phase.name}
-    </span>
-  );
-}
+const PHASE_TYPE_LABEL: Record<string, string> = {
+  start:   "開始",
+  normal:  "通常",
+  ending:  "エンディング",
+};
 
 function CharTag({ character }: { character: MessageWithRelations["character"] }) {
   if (!character) return <span style={{ color: "#9ca3af", fontSize: 11 }}>—</span>;
@@ -60,6 +56,17 @@ function CharTag({ character }: { character: MessageWithRelations["character"] }
   );
 }
 
+interface PhaseGroup {
+  phase: PhaseWithCounts | null;
+  messages: MessageWithRelations[];
+}
+
+const PHASE_TYPE_COLOR: Record<string, { bg: string; color: string; border: string }> = {
+  start:   { bg: "#eff6ff", color: "#1d4ed8", border: "#bfdbfe" },
+  normal:  { bg: "#f0fdf4", color: "#166534", border: "#bbf7d0" },
+  ending:  { bg: "#fdf4ff", color: "#7e22ce", border: "#e9d5ff" },
+};
+
 export default function MessagesPage() {
   const params  = useParams<{ id: string; workId: string }>();
   const oaId    = params.id;
@@ -71,6 +78,7 @@ export default function MessagesPage() {
   const [savingWelcome, setSavingWelcome] = useState(false);
   const [welcomeOpen, setWelcomeOpen] = useState(false);
   const [messages, setMessages]       = useState<MessageWithRelations[]>([]);
+  const [phases, setPhases]           = useState<PhaseWithCounts[]>([]);
   const [loading, setLoading]         = useState(true);
   const [loadError, setLoadError]     = useState<string | null>(null);
 
@@ -81,11 +89,13 @@ export default function MessagesPage() {
     Promise.all([
       workApi.get(token, workId),
       messageApi.list(token, workId, { with_relations: true }) as Promise<MessageWithRelations[]>,
+      phaseApi.list(token, workId),
     ])
-      .then(([w, list]) => {
+      .then(([w, list, phaseList]) => {
         setWorkTitle(w.title);
         setWelcomeMsg(w.welcome_message ?? "");
         setMessages(list);
+        setPhases(phaseList.sort((a, b) => a.sort_order - b.sort_order));
       })
       .catch((e) => setLoadError(e instanceof Error ? e.message : "読み込みに失敗しました"))
       .finally(() => setLoading(false));
@@ -105,10 +115,32 @@ export default function MessagesPage() {
     }
   }
 
+  // フェーズごとにメッセージをグルーピング
+  function buildPhaseGroups(): PhaseGroup[] {
+    const phaseIds = new Set(phases.map((p) => p.id));
+    const groups: PhaseGroup[] = phases
+      .map((ph) => ({
+        phase: ph,
+        messages: messages
+          .filter((m) => m.phase?.id === ph.id)
+          .sort((a, b) => a.sort_order - b.sort_order),
+      }))
+      .filter((g) => g.messages.length > 0);
+
+    const unassigned = messages
+      .filter((m) => !m.phase || !phaseIds.has(m.phase.id))
+      .sort((a, b) => a.sort_order - b.sort_order);
+
+    if (unassigned.length > 0) {
+      groups.push({ phase: null, messages: unassigned });
+    }
+    return groups;
+  }
+
   const breadcrumb = (
     <Breadcrumb items={[
-      { label: "OA一覧", href: "/oas" },
-      { label: "作品一覧", href: `/oas/${oaId}/works` },
+      { label: "アカウントリスト", href: "/oas" },
+      { label: "作品リスト", href: `/oas/${oaId}/works` },
       ...(workTitle ? [{ label: workTitle, href: `/oas/${oaId}/works/${workId}` }] : []),
       { label: "メッセージ管理" },
     ]} />
@@ -145,6 +177,8 @@ export default function MessagesPage() {
     );
   }
 
+  const phaseGroups = buildPhaseGroups();
+
   return (
     <>
       {/* ── ページヘッダー ── */}
@@ -153,7 +187,7 @@ export default function MessagesPage() {
           {breadcrumb}
           <h2>メッセージ管理</h2>
           <p style={{ fontSize: 13, color: "#6b7280", marginTop: 4 }}>
-            フェーズごとに送信するメッセージを管理します
+            フェーズごとに送信するメッセージを管理します。
           </p>
         </div>
         <Link href={`/oas/${oaId}/works/${workId}/messages/new`} className="btn btn-primary">
@@ -184,7 +218,6 @@ export default function MessagesPage() {
 
       {/* ══ あいさつメッセージ（アコーディオン） ══ */}
       <div className="card" style={{ maxWidth: 640, marginBottom: 24, padding: 0, overflow: "hidden" }}>
-        {/* ── ヘッダー（常時表示） ── */}
         <button
           type="button"
           onClick={() => setWelcomeOpen((o) => !o)}
@@ -240,7 +273,6 @@ export default function MessagesPage() {
           </span>
         </button>
 
-        {/* ── アコーディオン本体 ── */}
         <div style={{
           overflow: "hidden",
           maxHeight: welcomeOpen ? "800px" : "0",
@@ -312,113 +344,150 @@ export default function MessagesPage() {
           </div>
         </div>
       ) : (
-        <div className="card" style={{ padding: 0, overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-            <thead>
-              <tr style={{ borderBottom: "2px solid #e5e5e5", background: "#f9fafb" }}>
-                {["種別", "本文", "フェーズ", "キャラクター", "状態", "順序", ""].map((h, i) => (
-                  <th
-                    key={i}
-                    style={{
-                      padding: "10px 14px", textAlign: "left",
-                      fontWeight: 600, color: "#374151", fontSize: 12, whiteSpace: "nowrap",
-                    }}
-                  >
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {messages
-                .sort((a, b) => a.sort_order - b.sort_order)
-                .map((msg) => (
-                  <tr
-                    key={msg.id}
-                    style={{ borderBottom: "1px solid #f3f4f6" }}
-                    onMouseEnter={(e) => (e.currentTarget.style.background = "#f9fafb")}
-                    onMouseLeave={(e) => (e.currentTarget.style.background = "")}
-                  >
-                    {/* 種別 */}
-                    <td style={{ padding: "12px 14px", whiteSpace: "nowrap" }}>
-                      <span style={{
-                        display: "inline-flex", alignItems: "center", gap: 4,
-                        fontSize: 11, color: "#6b7280",
-                      }}>
-                        {MESSAGE_TYPE_ICON[msg.message_type]}
-                        {MESSAGE_TYPE_LABEL[msg.message_type]}
-                      </span>
-                    </td>
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          {phaseGroups.map((group, gi) => {
+            const ph = group.phase;
+            const typeKey = ph?.phase_type ?? "";
+            const typeColor = PHASE_TYPE_COLOR[typeKey] ?? { bg: "#f9fafb", color: "#374151", border: "#e5e7eb" };
 
-                    {/* 本文 */}
-                    <td style={{ padding: "12px 14px", maxWidth: 280 }}>
-                      {msg.message_type === "image" ? (
-                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                          {msg.asset_url ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img
-                              src={msg.asset_url}
-                              alt="画像"
-                              style={{ width: 48, height: 36, objectFit: "cover", borderRadius: 4, border: "1px solid #e5e5e5" }}
-                              onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
-                            />
-                          ) : null}
-                          <span style={{ fontSize: 11, color: "#9ca3af" }}>画像メッセージ</span>
-                        </div>
-                      ) : (
-                        <span style={{
-                          display: "-webkit-box", WebkitLineClamp: 2,
-                          WebkitBoxOrient: "vertical", overflow: "hidden",
-                          fontSize: 13, color: "#374151", wordBreak: "break-all",
-                        }}>
-                          {msg.body || <span style={{ color: "#9ca3af" }}>—</span>}
-                        </span>
-                      )}
-                    </td>
+            return (
+              <div key={ph?.id ?? "__unassigned"} className="card" style={{ padding: 0, overflow: "hidden" }}>
+                {/* フェーズヘッダー */}
+                <div style={{
+                  padding: "10px 18px",
+                  background: ph ? typeColor.bg : "#fafafa",
+                  borderBottom: `1px solid ${ph ? typeColor.border : "#e5e7eb"}`,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                }}>
+                  <span style={{
+                    fontWeight: 700, fontSize: 14,
+                    color: ph ? typeColor.color : "#9ca3af",
+                  }}>
+                    {ph ? ph.name : "フェーズ未設定"}
+                  </span>
+                  {ph?.phase_type && (
+                    <span style={{
+                      fontSize: 10, fontWeight: 600,
+                      padding: "1px 7px", borderRadius: 10,
+                      background: "rgba(255,255,255,0.7)",
+                      color: typeColor.color,
+                      border: `1px solid ${typeColor.border}`,
+                    }}>
+                      {PHASE_TYPE_LABEL[ph.phase_type] ?? ph.phase_type}
+                    </span>
+                  )}
+                  <span style={{ marginLeft: "auto", fontSize: 11, color: "#9ca3af" }}>
+                    {group.messages.length} 件
+                  </span>
+                </div>
 
-                    {/* フェーズ */}
-                    <td style={{ padding: "12px 14px", whiteSpace: "nowrap" }}>
-                      <PhaseTag phase={msg.phase} />
-                    </td>
-
-                    {/* キャラクター */}
-                    <td style={{ padding: "12px 14px", whiteSpace: "nowrap" }}>
-                      <CharTag character={msg.character} />
-                    </td>
-
-                    {/* 状態 */}
-                    <td style={{ padding: "12px 14px", whiteSpace: "nowrap" }}>
-                      <span style={{
-                        display: "inline-block", padding: "2px 8px", borderRadius: 12,
-                        fontSize: 11, fontWeight: 600,
-                        background: msg.is_active ? "#dcfce7" : "#f3f4f6",
-                        color:      msg.is_active ? "#16a34a" : "#6b7280",
-                      }}>
-                        {msg.is_active ? "有効" : "無効"}
-                      </span>
-                    </td>
-
-                    {/* 順序 */}
-                    <td style={{ padding: "12px 14px", color: "#9ca3af", fontSize: 12, textAlign: "center" }}>
-                      {msg.sort_order}
-                    </td>
-
-                    {/* 編集 */}
-                    <td style={{ padding: "12px 14px", textAlign: "right", whiteSpace: "nowrap" }}>
-                      <Link
-                        href={`/oas/${oaId}/works/${workId}/messages/${msg.id}`}
-                        className="btn btn-ghost"
-                        style={{ padding: "4px 12px", fontSize: 12 }}
+                {/* テーブル */}
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ borderBottom: "1px solid #f0f0f0", background: "#fcfcfc" }}>
+                      {["種別", "本文", "キャラクター", "状態", "順序", ""].map((h, i) => (
+                        <th
+                          key={i}
+                          style={{
+                            padding: "8px 14px", textAlign: "left",
+                            fontWeight: 600, color: "#6b7280", fontSize: 11,
+                            whiteSpace: "nowrap", letterSpacing: ".04em", textTransform: "uppercase",
+                          }}
+                        >
+                          {h}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {group.messages.map((msg) => (
+                      <tr
+                        key={msg.id}
+                        style={{ borderBottom: "1px solid #f3f4f6" }}
+                        onMouseEnter={(e) => (e.currentTarget.style.background = "#f9fafb")}
+                        onMouseLeave={(e) => (e.currentTarget.style.background = "")}
                       >
-                        編集
-                      </Link>
-                    </td>
-                  </tr>
-                ))}
-            </tbody>
-          </table>
-          <div style={{ padding: "8px 14px", fontSize: 12, color: "#9ca3af", textAlign: "right" }}>
-            {messages.length} 件
+                        {/* 種別 */}
+                        <td style={{ padding: "12px 14px", whiteSpace: "nowrap" }}>
+                          <span style={{
+                            display: "inline-flex", alignItems: "center", gap: 4,
+                            fontSize: 11, color: "#6b7280",
+                          }}>
+                            {MESSAGE_TYPE_ICON[msg.message_type]}
+                            {MESSAGE_TYPE_LABEL[msg.message_type]}
+                          </span>
+                        </td>
+
+                        {/* 本文 */}
+                        <td style={{ padding: "12px 14px", maxWidth: 280 }}>
+                          {msg.message_type === "image" ? (
+                            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                              {msg.asset_url ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                  src={msg.asset_url}
+                                  alt="画像"
+                                  style={{ width: 48, height: 36, objectFit: "cover", borderRadius: 4, border: "1px solid #e5e5e5" }}
+                                  onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                                />
+                              ) : null}
+                              <span style={{ fontSize: 11, color: "#9ca3af" }}>画像メッセージ</span>
+                            </div>
+                          ) : (
+                            <span style={{
+                              display: "-webkit-box", WebkitLineClamp: 2,
+                              WebkitBoxOrient: "vertical", overflow: "hidden",
+                              fontSize: 13, color: "#374151", wordBreak: "break-all",
+                            }}>
+                              {msg.body || <span style={{ color: "#9ca3af" }}>—</span>}
+                            </span>
+                          )}
+                        </td>
+
+                        {/* キャラクター */}
+                        <td style={{ padding: "12px 14px", whiteSpace: "nowrap" }}>
+                          <CharTag character={msg.character} />
+                        </td>
+
+                        {/* 状態 */}
+                        <td style={{ padding: "12px 14px", whiteSpace: "nowrap" }}>
+                          <span style={{
+                            display: "inline-block", padding: "2px 8px", borderRadius: 12,
+                            fontSize: 11, fontWeight: 600,
+                            background: msg.is_active ? "#dcfce7" : "#f3f4f6",
+                            color:      msg.is_active ? "#16a34a" : "#6b7280",
+                          }}>
+                            {msg.is_active ? "有効" : "無効"}
+                          </span>
+                        </td>
+
+                        {/* 順序 */}
+                        <td style={{ padding: "12px 14px", color: "#9ca3af", fontSize: 12, textAlign: "center" }}>
+                          {msg.sort_order}
+                        </td>
+
+                        {/* 編集 */}
+                        <td style={{ padding: "12px 14px", textAlign: "right", whiteSpace: "nowrap" }}>
+                          <Link
+                            href={`/oas/${oaId}/works/${workId}/messages/${msg.id}`}
+                            className="btn btn-ghost"
+                            style={{ padding: "4px 12px", fontSize: 12 }}
+                          >
+                            編集
+                          </Link>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            );
+          })}
+
+          <div style={{ fontSize: 12, color: "#9ca3af", textAlign: "right", padding: "0 4px 4px" }}>
+            合計 {messages.length} 件
           </div>
         </div>
       )}

@@ -224,8 +224,8 @@ export default function SnsPage() {
       <>
         <div className="page-header">
           <Breadcrumb items={[
-            { label: "OA一覧", href: "/oas" },
-            { label: "OA設定", href: `/oas/${oaId}/settings` },
+            { label: "アカウントリスト", href: "/oas" },
+            { label: "設定", href: `/oas/${oaId}/settings` },
             { label: "SNS連携" },
           ]} />
           <h2>X 投稿管理</h2>
@@ -248,8 +248,8 @@ export default function SnsPage() {
       <>
         <div className="page-header">
           <Breadcrumb items={[
-            { label: "OA一覧", href: "/oas" },
-            { label: "OA設定", href: `/oas/${oaId}/settings` },
+            { label: "アカウントリスト", href: "/oas" },
+            { label: "設定", href: `/oas/${oaId}/settings` },
             { label: "SNS連携" },
           ]} />
           <h2>X 投稿管理</h2>
@@ -272,8 +272,8 @@ export default function SnsPage() {
       <div className="page-header">
         <div>
           <Breadcrumb items={[
-            { label: "OA一覧", href: "/oas" },
-            { label: "OA設定", href: `/oas/${oaId}/settings` },
+            { label: "アカウントリスト", href: "/oas" },
+            { label: "設定", href: `/oas/${oaId}/settings` },
             { label: "SNS連携" },
           ]} />
           <h2>X 投稿管理</h2>

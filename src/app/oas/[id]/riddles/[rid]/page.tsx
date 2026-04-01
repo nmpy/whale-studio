@@ -69,7 +69,7 @@ export default function EditRiddlePage() {
       <>
         <div className="page-header">
           <Breadcrumb items={[
-            { label: "OA一覧", href: "/oas" },
+            { label: "アカウントリスト", href: "/oas" },
             { label: "謎管理", href: `/oas/${oaId}/riddles` },
             { label: "編集" },
           ]} />
@@ -92,7 +92,7 @@ export default function EditRiddlePage() {
       <>
         <div className="page-header">
           <Breadcrumb items={[
-            { label: "OA一覧", href: "/oas" },
+            { label: "アカウントリスト", href: "/oas" },
             { label: "謎管理", href: `/oas/${oaId}/riddles` },
             { label: "編集" },
           ]} />

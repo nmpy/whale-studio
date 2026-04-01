@@ -102,7 +102,7 @@ export default function OaEditPage() {
       <>
         <div className="page-header">
           <div>
-            <Breadcrumb items={[{ label: "OA一覧", href: "/oas" }, { label: "OA設定" }]} />
+            <Breadcrumb items={[{ label: "アカウントリスト", href: "/oas" }, { label: "設定" }]} />
             <h2>OA 編集</h2>
           </div>
         </div>
@@ -123,7 +123,7 @@ export default function OaEditPage() {
       <>
         <div className="page-header">
           <div>
-            <Breadcrumb items={[{ label: "OA一覧", href: "/oas" }, { label: "OA設定" }]} />
+            <Breadcrumb items={[{ label: "アカウントリスト", href: "/oas" }, { label: "設定" }]} />
             <h2>OA 編集</h2>
           </div>
         </div>
@@ -136,7 +136,7 @@ export default function OaEditPage() {
     <>
       <div className="page-header">
         <div>
-          <Breadcrumb items={[{ label: "OA一覧", href: "/oas" }, { label: "OA設定" }]} />
+          <Breadcrumb items={[{ label: "アカウントリスト", href: "/oas" }, { label: "設定" }]} />
           <h2>{form!.title}</h2>
         </div>
       </div>

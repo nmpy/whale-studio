@@ -6,6 +6,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
+import { Breadcrumb } from "@/components/Breadcrumb";
 import { workApi, phaseApi, getDevToken } from "@/lib/api-client";
 import { useToast } from "@/components/Toast";
 import { HelpAccordion } from "@/components/HelpAccordion";
@@ -106,7 +107,6 @@ export default function PhasesPage() {
       <>
         <div className="page-header">
           <h2>フェーズ管理</h2>
-          <Link href={`/oas/${oaId}/works/${workId}`} className="btn btn-ghost">← 作品に戻る</Link>
         </div>
         <div className="card" style={{ padding: 0 }}>
           {[1, 2, 3].map((i) => (
@@ -126,7 +126,6 @@ export default function PhasesPage() {
       <>
         <div className="page-header">
           <h2>フェーズ管理</h2>
-          <Link href={`/oas/${oaId}/works/${workId}`} className="btn btn-ghost">← 作品に戻る</Link>
         </div>
         <div className="alert alert-error">{loadError}</div>
       </>
@@ -138,14 +137,15 @@ export default function PhasesPage() {
       {/* ── ページヘッダー ── */}
       <div className="page-header">
         <div>
-          <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 4 }}>
-            <Link href={`/oas/${oaId}/works`}>作品一覧</Link>
-            {workTitle && <> / <Link href={`/oas/${oaId}/works/${workId}`}>{workTitle}</Link></>}
-            {" / フェーズ管理"}
-          </div>
+          <Breadcrumb items={[
+            { label: "アカウントリスト", href: "/oas" },
+            { label: "作品リスト", href: `/oas/${oaId}/works` },
+            ...(workTitle ? [{ label: workTitle, href: `/oas/${oaId}/works/${workId}` }] : []),
+            { label: "フェーズ管理" },
+          ]} />
           <h2>フェーズ管理</h2>
           <p style={{ fontSize: 13, color: "#6b7280", marginTop: 4 }}>
-            シナリオの進行段階（フェーズ）を管理します
+            シナリオの進行段階（フェーズ）を管理します。
           </p>
         </div>
         {!showAddForm && (

@@ -106,8 +106,8 @@ export default function WorkCharacterListPage() {
       <div className="page-header">
         <div>
           <Breadcrumb items={[
-            { label: "OA一覧", href: "/oas" },
-            { label: "作品一覧", href: `/oas/${oaId}/works` },
+            { label: "アカウントリスト", href: "/oas" },
+            { label: "作品リスト", href: `/oas/${oaId}/works` },
             ...(workTitle ? [{ label: workTitle, href: `/oas/${oaId}/works/${workId}` }] : []),
             { label: "キャラクター管理" },
           ]} />

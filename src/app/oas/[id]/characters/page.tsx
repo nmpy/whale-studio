@@ -90,13 +90,13 @@ export default function CharacterListPage() {
       <div className="page-header">
         <div>
           <Breadcrumb items={[
-            { label: "OA一覧", href: "/oas" },
+            { label: "アカウントリスト", href: "/oas" },
             { label: "キャラクター一覧" },
           ]} />
           <h2>キャラクター一覧</h2>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
-          <Link href={`/oas/${oaId}/edit`} className="btn btn-ghost">OA設定</Link>
+          <Link href={`/oas/${oaId}/edit`} className="btn btn-ghost">設定</Link>
           <Link href={`/oas/${oaId}/characters/new`} className="btn btn-primary">+ キャラクター追加</Link>
         </div>
       </div>

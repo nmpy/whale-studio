@@ -6,6 +6,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams, useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import { Breadcrumb } from "@/components/Breadcrumb";
 import {
   oaApi, workApi, segmentApi, trackingApi, analyticsApi, segmentAnalyticsApi, getDevToken,
 } from "@/lib/api-client";
@@ -263,18 +264,17 @@ export default function WorkAudiencePage() {
       {/* ヘッダー */}
       <div className="page-header">
         <div>
-          <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 4 }}>
-            <Link href="/oas">OA 一覧</Link>
-            {oaTitle && <> / <Link href={`/oas/${oaId}/works`}>{oaTitle}</Link></>}
-            {workTitle && <> / <Link href={`/oas/${oaId}/works/${workId}`}>{workTitle}</Link></>}
-            {" / オーディエンス"}
-          </div>
+          <Breadcrumb items={[
+            { label: "アカウントリスト", href: "/oas" },
+            ...(oaTitle ? [{ label: oaTitle, href: `/oas/${oaId}/works` }] : []),
+            ...(workTitle ? [{ label: workTitle, href: `/oas/${oaId}/works/${workId}` }] : []),
+            { label: "オーディエンス" },
+          ]} />
           <h2>オーディエンス</h2>
           <p style={{ fontSize: 13, color: "#6b7280", marginTop: 4 }}>
-            全体・現在・フロー・ユーザー・流入を一画面で把握できます
+            全体・現在・フロー・ユーザー・流入を一画面で把握できます。
           </p>
         </div>
-        <Link href={`/oas/${oaId}/works/${workId}`} className="btn btn-ghost">← 作品に戻る</Link>
       </div>
 
       <HelpAccordion items={[
@@ -849,7 +849,7 @@ export default function WorkAudiencePage() {
                       </div>
                       <div style={{ marginTop: 10, padding: "8px 12px", background: "#eff6ff", borderRadius: 8, fontSize: 12, color: "#1d4ed8", display: "flex", gap: 6, alignItems: "flex-start" }}>
                         <span style={{ flexShrink: 0 }}>ℹ️</span>
-                        <span>クリック数・流入元の詳細分析は <strong>LINE 公式アカウントマネージャー</strong> のアクセス解析でご確認ください。</span>
+                        <span>クリック数・流入元の詳細分析は <strong>LINE公式アカウントマネージャー</strong> のアクセス解析でご確認ください。</span>
                       </div>
                     </div>
                   </div>

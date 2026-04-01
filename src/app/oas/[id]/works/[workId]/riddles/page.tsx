@@ -5,6 +5,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
+import { Breadcrumb } from "@/components/Breadcrumb";
 import { workApi, riddleApi, getDevToken } from "@/lib/api-client";
 import type { Riddle } from "@/types";
 
@@ -164,11 +165,12 @@ export default function WorkRiddlesPage() {
     <>
       <div className="page-header">
         <div>
-          <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 4 }}>
-            <Link href={`/oas/${oaId}/works`}>作品一覧</Link>
-            {workTitle && <> / <Link href={`/oas/${oaId}/works/${workId}`}>{workTitle}</Link></>}
-            {" / 謎"}
-          </div>
+          <Breadcrumb items={[
+            { label: "アカウントリスト", href: "/oas" },
+            { label: "作品リスト", href: `/oas/${oaId}/works` },
+            ...(workTitle ? [{ label: workTitle, href: `/oas/${oaId}/works/${workId}` }] : []),
+            { label: "謎" },
+          ]} />
           <h2>謎一覧</h2>
           <p style={{ fontSize: 13, color: "#6b7280", marginTop: 4 }}>
             この OA に登録された謎問題の一覧です。

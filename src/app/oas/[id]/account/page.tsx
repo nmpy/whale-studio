@@ -7,6 +7,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import { Breadcrumb } from "@/components/Breadcrumb";
 import { oaApi, getDevToken } from "@/lib/api-client";
 import { MaskedField } from "@/components/MaskedField";
 import { useToast } from "@/components/Toast";
@@ -91,12 +92,21 @@ export default function OaAccountPage() {
   }
 
   // ── ローディング ──────────────────────────────
+  const breadcrumbItems = [
+    { label: "アカウントリスト", href: "/oas" },
+    ...(oaTitle ? [{ label: oaTitle, href: `/oas/${oaId}/works` }] : []),
+    { label: "設定", href: `/oas/${oaId}/settings` },
+    { label: "アカウント情報" },
+  ];
+
   if (!form && !loadError) {
     return (
       <>
         <div className="page-header">
-          <h2>アカウント情報</h2>
-          <Link href={`/oas/${oaId}/settings`} className="btn btn-ghost">← OA設定に戻る</Link>
+          <div>
+            <Breadcrumb items={breadcrumbItems} />
+            <h2>アカウント情報</h2>
+          </div>
         </div>
         <div className="card" style={{ maxWidth: 560 }}>
           {[1, 2, 3, 4, 5].map((i) => (
@@ -114,8 +124,10 @@ export default function OaAccountPage() {
     return (
       <>
         <div className="page-header">
-          <h2>アカウント情報</h2>
-          <Link href={`/oas/${oaId}/settings`} className="btn btn-ghost">← OA設定に戻る</Link>
+          <div>
+            <Breadcrumb items={breadcrumbItems} />
+            <h2>アカウント情報</h2>
+          </div>
         </div>
         <div className="alert alert-error">{loadError}</div>
       </>
@@ -126,18 +138,12 @@ export default function OaAccountPage() {
     <>
       <div className="page-header">
         <div>
-          <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 4 }}>
-            <Link href="/oas">OA 一覧</Link>
-            {oaTitle && <> / <Link href={`/oas/${oaId}/works`}>{oaTitle}</Link></>}
-            {" / "}<Link href={`/oas/${oaId}/settings`}>OA 設定</Link>
-            {" / アカウント情報"}
-          </div>
+          <Breadcrumb items={breadcrumbItems} />
           <h2>アカウント情報</h2>
           <p style={{ fontSize: 13, color: "#6b7280", marginTop: 4 }}>
-            アカウント名・LINE 接続情報・接続ステータスを管理します
+            アカウント名・LINE接続情報・接続ステータスを管理します。
           </p>
         </div>
-        <Link href={`/oas/${oaId}/settings`} className="btn btn-ghost">← OA設定に戻る</Link>
       </div>
 
       <div className="card" style={{ maxWidth: 560 }}>

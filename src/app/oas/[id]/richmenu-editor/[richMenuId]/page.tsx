@@ -446,7 +446,7 @@ export default function RichMenuEditorPage() {
       <>
         <div className="page-header">
           <Breadcrumb items={[
-            { label: "OA一覧", href: "/oas" },
+            { label: "アカウントリスト", href: "/oas" },
             { label: "リッチメニュー" },
             { label: "編集" },
           ]} />
@@ -466,7 +466,7 @@ export default function RichMenuEditorPage() {
       <div className="page-header">
         <div>
           <Breadcrumb items={[
-            { label: "OA一覧", href: "/oas" },
+            { label: "アカウントリスト", href: "/oas" },
             { label: "リッチメニュー" },
             { label: "編集" },
           ]} />

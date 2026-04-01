@@ -74,7 +74,7 @@ export default function OaNewPage() {
       <div className="page-header">
         <div>
           <Breadcrumb items={[
-            { label: "OA一覧", href: "/oas" },
+            { label: "アカウントリスト", href: "/oas" },
             { label: "新規作成" },
           ]} />
           <h2>OA 新規作成</h2>

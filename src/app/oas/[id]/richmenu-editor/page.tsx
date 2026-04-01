@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
+import { Breadcrumb } from "@/components/Breadcrumb";
 import { richMenuEditorApi, oaApi, getDevToken } from "@/lib/api-client";
 import { useToast } from "@/components/Toast";
 import type { RichMenuWithAreas } from "@/types";
@@ -100,11 +101,11 @@ export default function RichMenuEditorListPage() {
     <>
       <div className="page-header">
         <div>
-          <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 4 }}>
-            <Link href="/oas">OA 一覧</Link>{" / "}
-            <Link href={`/oas/${oaId}/works`}>{oaTitle || "作品一覧"}</Link>
-            {" / リッチメニューエディター"}
-          </div>
+          <Breadcrumb items={[
+            { label: "アカウントリスト", href: "/oas" },
+            { label: oaTitle || "作品リスト", href: `/oas/${oaId}/works` },
+            { label: "リッチメニューエディター" },
+          ]} />
           <h2>🎨 リッチメニューエディター</h2>
           <p style={{ fontSize: 13, color: "#6b7280", marginTop: 4 }}>
             カスタムリッチメニューを自由に作成・編集できます。

@@ -284,13 +284,13 @@ export default function TrackingsPage() {
       <div className="page-header">
         <div>
           <Breadcrumb items={[
-            { label: "OA一覧", href: "/oas" },
-            { label: "OA設定", href: `/oas/${oaId}/settings` },
+            { label: "アカウントリスト", href: "/oas" },
+            { label: "設定", href: `/oas/${oaId}/settings` },
             { label: "トラッキング" },
           ]} />
           <h2>トラッキング管理</h2>
           <p style={{ fontSize: 13, color: "#6b7280", marginTop: 4 }}>
-            /t/[ID] の中間URLでクリック数・流入ユーザーを計測します
+            /t/[ID] の中間URLでクリック数・流入ユーザーを計測します。
           </p>
         </div>
       </div>

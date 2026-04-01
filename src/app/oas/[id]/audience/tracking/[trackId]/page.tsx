@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import { Breadcrumb } from "@/components/Breadcrumb";
 import { oaApi, trackingApi, getDevToken } from "@/lib/api-client";
 import { useToast } from "@/components/Toast";
 
@@ -151,12 +152,12 @@ export default function EditTrackingPage() {
     <>
       <div className="page-header">
         <div>
-          <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 4 }}>
-            <Link href="/oas">OA 一覧</Link>
-            {oaTitle && <> / <Link href={`/oas/${oaId}/works`}>{oaTitle}</Link></>}
-            {" / "}<Link href={`/oas/${oaId}/audience?tab=tracking`}>オーディエンス</Link>
-            {" / トラッキングを編集"}
-          </div>
+          <Breadcrumb items={[
+            { label: "アカウントリスト", href: "/oas" },
+            ...(oaTitle ? [{ label: oaTitle, href: `/oas/${oaId}/works` }] : []),
+            { label: "オーディエンス", href: `/oas/${oaId}/audience?tab=tracking` },
+            { label: "トラッキングを編集" },
+          ]} />
           <h2>トラッキングを編集</h2>
         </div>
         <Link href={`/oas/${oaId}/audience?tab=tracking`} className="btn btn-ghost">← 一覧に戻る</Link>

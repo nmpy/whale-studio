@@ -8,8 +8,8 @@ const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 const notoSansJP = Noto_Sans_JP({ subsets: ["latin"], variable: "--font-noto" });
 
 export const metadata: Metadata = {
-  title: "管理ツール",
-  description: "LINE謎解きBot 管理 / X アカウント分析",
+  title: "WHALE STUDIO | LINEでつくる物語体験 β版",
+  description: "WHALE STUDIO | LINEでつくる物語体験 β版 管理ツール",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import { Breadcrumb } from "@/components/Breadcrumb";
 import { oaApi, workApi, getDevToken, type WorkListItem } from "@/lib/api-client";
 import { useToast } from "@/components/Toast";
 import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
@@ -68,17 +69,17 @@ export default function WorkListPage() {
     <>
       <div className="page-header">
         <div>
-          <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 4 }}>
-            <Link href="/oas">OA 一覧</Link>
-            {oaTitle && ` / ${oaTitle}`}
-          </div>
-          <h2>作品一覧</h2>
+          <Breadcrumb items={[
+            { label: "アカウントリスト", href: "/oas" },
+            ...(oaTitle ? [{ label: oaTitle }] : []),
+          ]} />
+          <h2>作品リスト</h2>
           <p style={{ fontSize: 13, color: "#6b7280", marginTop: 4 }}>
-            謎解きシナリオ（Bot）を管理します
+            謎解きシナリオ（Bot）を管理します。
           </p>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
-          <Link href={`/oas/${oaId}/settings`} className="btn btn-ghost">OA 設定</Link>
+          <Link href={`/oas/${oaId}/settings`} className="btn btn-ghost">設定</Link>
           {role !== 'viewer' && (
             <Link href={`/oas/${oaId}/works/new`} className="btn btn-primary">+ 作品を追加</Link>
           )}
@@ -122,7 +123,7 @@ export default function WorkListPage() {
             <p className="empty-state-title">作品がまだありません</p>
             <p className="empty-state-desc">
               「作品を追加」から謎解きシナリオを作成しましょう。<br />
-              1つの OA に複数の作品を管理できます。
+              1つのアカウントに複数の作品を管理できます。
             </p>
             {role !== 'viewer' && (
               <Link href={`/oas/${oaId}/works/new`} className="btn btn-primary" style={{ marginTop: 8 }}>

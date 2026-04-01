@@ -242,12 +242,14 @@ export async function buildRuntimeState(
       name:        phase.name,
       description: phase.description,
       messages:    phase.messages.map((m) => ({
-        id:           m.id,
-        message_type: m.messageType as MessageType,
-        body:         m.body,
-        asset_url:    m.assetUrl,
-        sort_order:   m.sortOrder,
-        character:    m.character
+        id:                m.id,
+        message_type:      m.messageType as MessageType,
+        body:              m.body,
+        asset_url:         m.assetUrl,
+        alt_text:          m.altText          ?? null,
+        flex_payload_json: m.flexPayloadJson  ?? null,
+        sort_order:        m.sortOrder,
+        character:         m.character
           ? {
               id:             m.character.id,
               name:           m.character.name,
