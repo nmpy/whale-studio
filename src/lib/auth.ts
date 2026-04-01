@@ -280,6 +280,18 @@ export function withRole<T = Record<string, string>>(
   handler: RoleHandler<T>
 ) {
   return withAuth<T>(async (req, ctx, user) => {
+    // ── BYPASS_AUTH=true のときは権限チェックをスキップ ──
+    // withAuth の bypass 分岐で user.id が "bypass-admin" に固定される。
+    // workspace_members を参照せず、最高権限（owner）として即通過させる。
+    if (user.id === "bypass-admin") {
+      console.warn(
+        `[withRole] ⚠️ BYPASS_AUTH — 権限チェックスキップ`,
+        `path=${req.method} ${req.nextUrl.pathname}`,
+        `minRole=${minRole} → bypass as owner`
+      );
+      return handler(req, ctx, user, "owner");
+    }
+
     const workspaceId = await workspaceIdFn(ctx);
 
     const role = await getWorkspaceRole(workspaceId, user.id);

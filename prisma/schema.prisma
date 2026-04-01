@@ -23,6 +23,9 @@ model Oa {
   title              String
   description        String?
   channelId          String   @map("channel_id")
+  /// LINE公式アカウントの Basic ID（例: 613zlngs）。Webhook URL の識別子として使う。
+  /// channelId（数値の API 認証用）とは別物。LINE Developers「Basic information」で確認できる。
+  lineOaId           String?  @unique @map("line_oa_id")
   channelSecret      String   @map("channel_secret")
   channelAccessToken String   @map("channel_access_token")
   /// "draft" | "active" | "paused"

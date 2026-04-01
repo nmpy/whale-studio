@@ -21,6 +21,7 @@ export default function OaNewPage() {
 
   const [title, setTitle]                         = useState("");
   const [description, setDescription]             = useState("");
+  const [lineOaId, setLineOaId]                   = useState("");
   const [channelId, setChannelId]                 = useState("");
   const [channelSecret, setChannelSecret]         = useState("");
   const [channelAccessToken, setChannelAccessToken] = useState("");
@@ -42,6 +43,7 @@ export default function OaNewPage() {
     const clientErrors: Record<string, string[]> = {};
     if (!title.trim())               clientErrors.title = ["作品名を入力してください"];
     if (title.length > 100)          clientErrors.title = ["作品名は100文字以内で入力してください"];
+    if (!lineOaId.trim())             clientErrors.line_oa_id = ["LINE OA IDを入力してください"];
     if (!channelId.trim())           clientErrors.channel_id = ["Channel IDを入力してください"];
     if (!channelSecret.trim())       clientErrors.channel_secret = ["Channel Secretを入力してください"];
     if (!channelAccessToken.trim())  clientErrors.channel_access_token = ["Channel Access Tokenを入力してください"];
@@ -56,6 +58,7 @@ export default function OaNewPage() {
         title:                title.trim(),
         description:          description.trim() || undefined,
         channel_id:           channelId.trim(),
+        line_oa_id:           lineOaId.trim() || undefined,
         channel_secret:       channelSecret.trim(),
         channel_access_token: channelAccessToken.trim(),
         publish_status:       publishStatus,
@@ -138,13 +141,41 @@ export default function OaNewPage() {
           </div>
 
           <div className="form-group">
-            <label htmlFor="channel_id">Channel ID <span style={{ color: "#ef4444" }}>*</span></label>
+            <label htmlFor="line_oa_id">
+              LINE OA ID <span style={{ color: "#ef4444" }}>*</span>
+              <span style={{ fontSize: 11, color: "#6b7280", fontWeight: 400, marginLeft: 6 }}>
+                Webhook URL に使う識別子
+              </span>
+            </label>
+            <input
+              id="line_oa_id"
+              type="text"
+              value={lineOaId}
+              onChange={(e) => { setLineOaId(e.target.value.replace(/^@/, "")); clearError("line_oa_id"); }}
+              placeholder="例: 613zlngs（@ は不要）"
+            />
+            <p style={{ fontSize: 11, color: "#6b7280", marginTop: 3 }}>
+              LINE Developers → Basic information → Basic ID（@マークの後の文字列）
+            </p>
+            <p style={{ fontSize: 11, color: "#9ca3af", marginTop: 2 }}>
+              Webhook URL: {`https://<your-domain>/api/line/`}<strong>{lineOaId || "<line_oa_id>"}</strong>{`/webhook`}
+            </p>
+            {errors.line_oa_id?.map((m) => <p key={m} className="field-error">{m}</p>)}
+          </div>
+
+          <div className="form-group">
+            <label htmlFor="channel_id">
+              Channel ID <span style={{ color: "#ef4444" }}>*</span>
+              <span style={{ fontSize: 11, color: "#6b7280", fontWeight: 400, marginLeft: 6 }}>
+                数値の API 認証用 ID
+              </span>
+            </label>
             <input
               id="channel_id"
               type="text"
               value={channelId}
               onChange={(e) => { setChannelId(e.target.value); clearError("channel_id"); }}
-              placeholder="例: 1234567890"
+              placeholder="例: 2009623906"
               required
             />
             {errors.channel_id?.map((m) => <p key={m} className="field-error">{m}</p>)}

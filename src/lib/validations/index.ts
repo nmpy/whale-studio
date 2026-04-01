@@ -18,6 +18,8 @@ export const createOaSchema = z.object({
   title:                z.string().min(1, "作品名は必須です").max(100, "作品名は100文字以内で入力してください"),
   description:          z.string().max(500).optional(),
   channel_id:           z.string().min(1, "Channel IDは必須です"),
+  // LINE OA Basic ID（例: 613zlngs）。Webhook URL の [oaId] 部分として使う。@ は含まない。
+  line_oa_id:           z.string().max(50).optional(),
   channel_secret:       z.string().min(1, "Channel Secretは必須です"),
   channel_access_token: z.string().min(1, "Access Tokenは必須です"),
   publish_status:       z.enum(["draft", "active", "paused"]).default("draft"),
@@ -25,6 +27,7 @@ export const createOaSchema = z.object({
 
 export const updateOaSchema = createOaSchema.partial().omit({ publish_status: true }).extend({
   publish_status: z.enum(["draft", "active", "paused"]).optional(),
+  line_oa_id:     z.string().max(50).optional().nullable(),
   spreadsheet_id: z.string().min(20).max(100).optional().nullable(),
 });
 

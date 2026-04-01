@@ -12,6 +12,7 @@ import type { PublishStatus } from "@/types";
 interface FormState {
   title: string;
   description: string;
+  line_oa_id: string;
   channel_id: string;
   channel_secret: string;
   channel_access_token: string;
@@ -44,6 +45,7 @@ export default function OaEditPage() {
         setForm({
           title:                oa.title,
           description:          oa.description ?? "",
+          line_oa_id:           oa.line_oa_id ?? "",
           channel_id:           oa.channel_id,
           channel_secret:       oa.channel_secret,
           channel_access_token: oa.channel_access_token,
@@ -81,6 +83,7 @@ export default function OaEditPage() {
       await oaApi.update(getDevToken(), oaId, {
         title:                form.title.trim(),
         description:          form.description.trim() || undefined,
+        line_oa_id:           form.line_oa_id.trim() || null,
         channel_id:           form.channel_id.trim(),
         channel_secret:       form.channel_secret.trim(),
         channel_access_token: form.channel_access_token.trim(),
@@ -196,7 +199,37 @@ export default function OaEditPage() {
           </p>
 
           <div className="form-group">
-            <label htmlFor="channel_id">Channel ID <span style={{ color: "#ef4444" }}>*</span></label>
+            <label htmlFor="line_oa_id">
+              LINE OA ID
+              <span style={{ fontSize: 11, color: "#6b7280", fontWeight: 400, marginLeft: 6 }}>
+                Webhook URL 識別子
+              </span>
+            </label>
+            <input
+              id="line_oa_id"
+              type="text"
+              value={form!.line_oa_id}
+              onChange={(e) => setField("line_oa_id", e.target.value.replace(/^@/, ""))}
+              placeholder="例: 613zlngs（@ は不要）"
+            />
+            <p style={{ fontSize: 11, color: "#6b7280", marginTop: 3 }}>
+              LINE Developers → Basic information → Basic ID（@マークの後の文字列）
+            </p>
+            {form!.line_oa_id && (
+              <p style={{ fontSize: 11, color: "#9ca3af", marginTop: 2 }}>
+                Webhook URL: {`https://<your-domain>/api/line/`}<strong>{form!.line_oa_id}</strong>{`/webhook`}
+              </p>
+            )}
+            {errors.line_oa_id?.map((m) => <p key={m} className="field-error">{m}</p>)}
+          </div>
+
+          <div className="form-group">
+            <label htmlFor="channel_id">
+              Channel ID <span style={{ color: "#ef4444" }}>*</span>
+              <span style={{ fontSize: 11, color: "#6b7280", fontWeight: 400, marginLeft: 6 }}>
+                数値の API 認証用 ID
+              </span>
+            </label>
             <input
               id="channel_id"
               type="text"

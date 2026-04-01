@@ -45,6 +45,8 @@ export interface Oa {
   title: string;
   description: string | null;
   channel_id: string;
+  /** LINE公式アカウントの Basic ID（例: 613zlngs）。Webhook URL 識別子として使う。 */
+  line_oa_id: string | null;
   channel_secret: string;
   channel_access_token: string;
   publish_status: PublishStatus;
@@ -153,6 +155,7 @@ export interface CreateOaBody {
   title: string;
   description?: string;
   channel_id: string;
+  line_oa_id?: string;
   channel_secret: string;
   channel_access_token: string;
   publish_status?: PublishStatus;
@@ -162,6 +165,7 @@ export interface UpdateOaBody {
   title?: string;
   description?: string;
   channel_id?: string;
+  line_oa_id?: string | null;
   channel_secret?: string;
   channel_access_token?: string;
   publish_status?: PublishStatus;

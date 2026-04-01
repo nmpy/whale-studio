@@ -175,8 +175,8 @@ async function handleWebhook(req: NextRequest, oaId: string) {
   }
 
   // ── 3. OA 取得 ──
-  // Webhook URL の [oaId] は LINE チャンネル ID（例: 613zlngs）。
-  // DB の Oa.id は UUID のため、channelId カラムで検索する。
+  // Webhook URL の [oaId] は LINE OA Basic ID（例: 613zlngs）。
+  // DB の lineOaId カラムで検索する（channelId は数値の API 認証用で別物）。
   // LINE が @ 付きで送ってくる場合に備えて @ プレフィックスを除去して正規化する。
   const rawOaId        = oaId;
   const normalizedOaId = oaId.startsWith("@") ? oaId.slice(1) : oaId;
@@ -185,27 +185,28 @@ async function handleWebhook(req: NextRequest, oaId: string) {
     `[Webhook][STEP] OA取得前`,
     `rawOaId=${rawOaId}`,
     `normalizedOaId=${normalizedOaId}`,
-    `検索カラム=channelId`
+    `検索カラム=lineOaId`
   );
 
-  // channelId で検索（@ 付き・なし両方を試す）
+  // lineOaId で検索（@ 付き・なし両方を試す）
   const oa =
-    await prisma.oa.findFirst({ where: { channelId: normalizedOaId } }) ??
-    await prisma.oa.findFirst({ where: { channelId: `@${normalizedOaId}` } });
+    await prisma.oa.findFirst({ where: { lineOaId: normalizedOaId } }) ??
+    await prisma.oa.findFirst({ where: { lineOaId: `@${normalizedOaId}` } });
 
   if (oa) {
     console.log(
       `[Webhook][STEP] OA取得後 found`,
       `id=${oa.id}`,
       `title="${oa.title}"`,
+      `lineOaId="${oa.lineOaId}"`,
       `channelId="${oa.channelId}"`,
       `channel_secret=${oa.channelSecret ? "あり" : "なし"}`,
       `channel_access_token=${oa.channelAccessToken ? "あり" : "なし"}`
     );
   } else {
-    // not found — 近傍の channelId を列挙して差分を確認しやすくする
+    // not found — 近傍の lineOaId / channelId を列挙して差分を確認しやすくする
     const candidates = await prisma.oa.findMany({
-      select: { id: true, title: true, channelId: true },
+      select: { id: true, title: true, lineOaId: true, channelId: true },
       take: 5,
       orderBy: { createdAt: "desc" },
     });
@@ -213,8 +214,8 @@ async function handleWebhook(req: NextRequest, oaId: string) {
       `[Webhook] OA が見つかりません`,
       `rawOaId=${rawOaId}`,
       `normalizedOaId=${normalizedOaId}`,
-      `DB内の最新5件のchannelId=`,
-      candidates.map((c) => `"${c.channelId}"(id=${c.id.slice(0, 8)})`).join(", ")
+      `DB内の最新5件:`,
+      candidates.map((c) => `lineOaId="${c.lineOaId ?? "(未設定)"}" channelId="${c.channelId}"(id=${c.id.slice(0, 8)})`).join(" / ")
     );
     return NextResponse.json({ ok: true });
   }
