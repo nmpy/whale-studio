@@ -150,7 +150,7 @@ export default function MessagesPage() {
       { label: "アカウントリスト", href: "/oas" },
       { label: "作品リスト", href: `/oas/${oaId}/works` },
       ...(workTitle ? [{ label: workTitle, href: `/oas/${oaId}/works/${workId}` }] : []),
-      { label: "メッセージ管理" },
+      { label: "メッセージ・謎" },
     ]} />
   );
 
@@ -158,7 +158,7 @@ export default function MessagesPage() {
     return (
       <>
         <div className="page-header">
-          <div>{breadcrumb}<h2>メッセージ管理</h2></div>
+          <div>{breadcrumb}<h2>メッセージ・謎</h2></div>
         </div>
         <div className="card" style={{ padding: 0 }}>
           {[1, 2, 3].map((i) => (
@@ -178,7 +178,7 @@ export default function MessagesPage() {
     return (
       <>
         <div className="page-header">
-          <div>{breadcrumb}<h2>メッセージ管理</h2></div>
+          <div>{breadcrumb}<h2>メッセージ・謎</h2></div>
         </div>
         <div className="alert alert-error">{loadError}</div>
       </>
@@ -193,7 +193,7 @@ export default function MessagesPage() {
       <div className="page-header">
         <div>
           {breadcrumb}
-          <h2>メッセージ管理</h2>
+          <h2>メッセージ・謎</h2>
           <p style={{ fontSize: 13, color: "#6b7280", marginTop: 4 }}>
             フェーズごとに送信するメッセージを管理します。
           </p>

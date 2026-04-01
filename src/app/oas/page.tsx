@@ -13,14 +13,12 @@ const STATUS_LABEL: Record<string, string> = {
   paused: "停止中",
 };
 
-function formatDatetime(iso: string): string {
+function formatDate(iso: string): string {
   const d = new Date(iso);
   const y = d.getFullYear();
   const mo = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
-  const h = String(d.getHours()).padStart(2, "0");
-  const min = String(d.getMinutes()).padStart(2, "0");
-  return `${y}/${mo}/${day} ${h}:${min}`;
+  return `${y}/${mo}/${day}`;
 }
 
 export default function OaListPage() {
@@ -123,7 +121,7 @@ export default function OaListPage() {
           <table>
             <thead>
               <tr>
-                {["アカウント名", "状態", "作品", "総プレイヤー数", "作成日時", "最終更新日", ""].map((h) => (
+                {["アカウント名", "状態", "作品", "プレイヤー", "登録/更新", ""].map((h) => (
                   <th key={h}>{h}</th>
                 ))}
               </tr>
@@ -131,7 +129,7 @@ export default function OaListPage() {
             <tbody>
               {[1, 2, 3].map((i) => (
                 <tr key={i}>
-                  {[200, 60, 140, 60, 100, 100, 160].map((w, j) => (
+                  {[220, 60, 130, 50, 90, 140].map((w, j) => (
                     <td key={j}><div className="skeleton" style={{ width: w, height: 14 }} /></td>
                   ))}
                 </tr>
@@ -156,24 +154,31 @@ export default function OaListPage() {
       ) : (
         <div className="card" style={{ padding: 0 }}>
           <div className="table-wrap">
-            <table>
+            <table style={{ tableLayout: "fixed", width: "100%" }}>
+              <colgroup>
+                <col style={{ width: "30%" }} />
+                <col style={{ width: "72px" }} />
+                <col style={{ width: "22%" }} />
+                <col style={{ width: "72px" }} />
+                <col style={{ width: "100px" }} />
+                <col style={{ width: "152px" }} />
+              </colgroup>
               <thead>
                 <tr>
                   <th>アカウント名</th>
                   <th>状態</th>
                   <th>作品</th>
-                  <th style={{ textAlign: "center" }}>総プレイヤー数</th>
-                  <th>作成日時</th>
-                  <th>最終更新日</th>
+                  <th style={{ textAlign: "center" }}>P数</th>
+                  <th>登録/更新</th>
                   <th></th>
                 </tr>
               </thead>
               <tbody>
                 {items.map((oa) => (
                   <tr key={oa.id}>
-                    {/* アカウント名 + 権限バッジ + 説明 */}
+                    {/* アカウント名 + バッジ + Channel ID / OA ID */}
                     <td>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                         <Link href={`/oas/${oa.id}/works`} style={{ fontWeight: 600, fontSize: 13 }}>
                           {oa.title}
                         </Link>
@@ -182,10 +187,21 @@ export default function OaListPage() {
                         )}
                       </div>
                       {oa.description && (
-                        <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 1, maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                           {oa.description}
                         </div>
                       )}
+                      {/* Channel ID + OA ID — 2行目に小さく表示 */}
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: "3px 8px", marginTop: 4 }}>
+                        <span style={{ fontSize: 10, color: "#6b7280", background: "#f3f4f6", borderRadius: 3, padding: "1px 5px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%" }}>
+                          Ch: {oa.channel_id || "—"}
+                        </span>
+                        {oa.line_oa_id && (
+                          <span style={{ fontSize: 10, color: "#6b7280", background: "#f3f4f6", borderRadius: 3, padding: "1px 5px", whiteSpace: "nowrap" }}>
+                            @{oa.line_oa_id}
+                          </span>
+                        )}
+                      </div>
                     </td>
 
                     {/* 状態 */}
@@ -195,49 +211,51 @@ export default function OaListPage() {
                       </span>
                     </td>
 
-                    {/* 作品名 + 件数 */}
+                    {/* 作品名 */}
                     <td>
                       <WorksCell oaId={oa.id} />
                     </td>
 
                     {/* 総プレイヤー数 */}
                     <td style={{ textAlign: "center" }}>
-                      <span style={{ fontWeight: 700, fontSize: 14, color: "#111827" }}>
+                      <span style={{ fontWeight: 700, fontSize: 13, color: "#111827" }}>
                         {totalPlayers(oa.id).toLocaleString()}
                       </span>
                     </td>
 
-                    {/* 作成日時 */}
-                    <td style={{ fontSize: 12, color: "#6b7280", whiteSpace: "nowrap" }}>
-                      {formatDatetime(oa.created_at)}
-                    </td>
-
-                    {/* 最終更新日 */}
-                    <td style={{ fontSize: 12, color: "#6b7280", whiteSpace: "nowrap" }}>
-                      {oa.updated_at ? formatDatetime(oa.updated_at) : "—"}
+                    {/* 登録日 / 更新日（縦2段） */}
+                    <td>
+                      <div style={{ fontSize: 11, color: "#6b7280", whiteSpace: "nowrap" }}>
+                        {formatDate(oa.created_at)}
+                      </div>
+                      {oa.updated_at && (
+                        <div style={{ fontSize: 11, color: "#9ca3af", whiteSpace: "nowrap", marginTop: 2 }}>
+                          ↻ {formatDate(oa.updated_at)}
+                        </div>
+                      )}
                     </td>
 
                     {/* アクション */}
                     <td>
-                      <div style={{ display: "flex", gap: 6 }}>
+                      <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
                         <Link
                           href={`/oas/${oa.id}/works`}
                           className="btn btn-primary"
-                          style={{ padding: "4px 10px", fontSize: 12 }}
+                          style={{ padding: "3px 9px", fontSize: 11 }}
                         >
                           作品管理
                         </Link>
                         <Link
                           href={`/oas/${oa.id}/settings`}
                           className="btn btn-ghost"
-                          style={{ padding: "4px 10px", fontSize: 12 }}
+                          style={{ padding: "3px 9px", fontSize: 11 }}
                         >
                           設定
                         </Link>
                         {oa.my_role === "owner" && (
                           <button
                             className="btn btn-danger"
-                            style={{ padding: "4px 10px", fontSize: 12 }}
+                            style={{ padding: "3px 9px", fontSize: 11 }}
                             onClick={() => handleDelete(oa.id, oa.title)}
                           >
                             削除

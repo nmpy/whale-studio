@@ -41,7 +41,7 @@ const HUB_CARDS = [
   {
     key: "messages",
     icon: "💬",
-    title: "メッセージ",
+    title: "メッセージ・謎",
     desc: "フェーズごとに送信するメッセージ・謎チャレンジを管理します",
     color: "#06C755",
     bg: "#E6F7ED",
@@ -130,7 +130,7 @@ export default function WorkHubPage() {
         <div>
           <Breadcrumb items={[
             { label: "アカウントリスト", href: "/oas" },
-            ...(oaTitle ? [{ label: oaTitle, href: `/oas/${oaId}/works` }] : []),
+            { label: "作品リスト", href: `/oas/${oaId}/works` },
             ...(work ? [{ label: work.title }] : []),
           ]} />
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
