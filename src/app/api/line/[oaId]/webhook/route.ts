@@ -661,11 +661,44 @@ async function handleTextEvent({
 
   // ─ 現在の flags を取得してフラグ条件付き遷移マッチング ─
   const currentFlags = safeParseFlags(progress.flags);
+
+  // ── [transition] 診断ログ ──
+  console.log(
+    `[Webhook][transition] currentPhaseId=${progress.currentPhaseId}`,
+    `input="${text}"`,
+    `candidates=${currentPhase.transitionsFrom.length}件`,
+  );
+  for (const t of currentPhase.transitionsFrom) {
+    console.log(
+      `[Webhook][transition]   candidate`,
+      `id=${t.id.slice(0, 8)}`,
+      `label="${t.label}"`,
+      `condition=${t.condition ? `"${t.condition}"` : "なし"}`,
+      `flagCondition=${t.flagCondition ? `"${t.flagCondition}"` : "なし"}`,
+      `toPhaseId=${t.toPhaseId.slice(0, 8)}`,
+      `isActive=${t.isActive}`,
+    );
+  }
+
   const matched = matchTransition(currentPhase.transitionsFrom, {
     label: text,
     flags: currentFlags,
   });
-  console.log(`[Webhook][STEP] 遷移マッチング結果 matched=${!!matched} label="${text}"`);
+
+  if (matched) {
+    console.log(
+      `[Webhook][transition] matched ✓`,
+      `label="${matched.label}"`,
+      `toPhaseId=${matched.toPhaseId.slice(0, 8)}`,
+    );
+  } else {
+    const inputNormDbg = text.trim().toLowerCase().normalize("NFKC");
+    console.log(
+      `[Webhook][transition] not matched ✗`,
+      `inputNorm="${inputNormDbg}"`,
+      `labelNorms=[${currentPhase.transitionsFrom.map((t) => `"${t.label.trim().toLowerCase().normalize("NFKC")}"`).join(", ")}]`,
+    );
+  }
 
   // ─ マッチなし → 現在の選択肢をクイックリプライで再表示 ─
   if (!matched) {
@@ -704,7 +737,12 @@ async function handleTextEvent({
       lastInteractedAt: new Date(),
     },
   });
-  console.log(`[Webhook][STEP] progress更新後 updatedId=${updated.id}`);
+  console.log(
+    `[Webhook][transition] progress updated`,
+    `progressId=${updated.id}`,
+    `currentPhaseId=${updated.currentPhaseId}`,
+    `reachedEnding=${updated.reachedEnding}`,
+  );
 
   // visible_phase によるリッチメニュー切り替え
   await switchRichMenuForUser(oa, userId, toPhase.phaseType);
@@ -898,7 +936,14 @@ async function handleStartTrigger({
       lastInteractedAt: new Date(),
     },
   });
-  console.log(`[Webhook][STEP] handleStartTrigger: progress upsert progressId=${progress.id}`);
+  console.log(
+    `[Webhook][STEP] handleStartTrigger: progress upsert完了`,
+    `progressId=${progress.id}`,
+    `currentPhaseId=${progress.currentPhaseId}`,
+    `initialPhaseId=${initialPhaseId}`,
+    `hasTransition=${!!firstTransition}`,
+    `transitionTarget=${firstTransition?.toPhaseId ?? "なし（startPhase自身）"}`,
+  );
 
   // 初期フェーズの phaseType を取得してリッチメニューを切り替え
   const initialPhase = await prisma.phase.findUnique({
@@ -1273,6 +1318,8 @@ async function matchTriggerKeyword(
     },
     select: {
       id:              true,
+      phaseId:         true,
+      kind:            true,
       triggerKeyword:  true,
       messageType:     true,
       body:            true,
@@ -1287,6 +1334,22 @@ async function matchTriggerKeyword(
     },
     orderBy: { sortOrder: "asc" },
   });
+
+  console.log(
+    `[Webhook][kw] matchTriggerKeyword`,
+    `currentPhaseId=${currentPhaseId}`,
+    `input="${inputText}"`,
+    `candidates=${candidates.length}件`,
+  );
+  for (const c of candidates) {
+    console.log(
+      `[Webhook][kw]   candidate`,
+      `id=${c.id.slice(0, 8)}`,
+      `phaseId=${c.phaseId?.slice(0, 8) ?? "null（全体共通）"}`,
+      `kind=${c.kind ?? "-"}`,
+      `triggerKeyword="${c.triggerKeyword}"`,
+    );
+  }
 
   if (candidates.length === 0) return [];
 
