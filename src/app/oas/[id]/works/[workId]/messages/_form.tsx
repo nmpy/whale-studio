@@ -1157,9 +1157,9 @@ function PreviewPanel({ form, characters, riddles }: PreviewPanelProps) {
 
   return (
     <div style={{
-      width: 300, flexShrink: 0,
       border: "1px solid #d1d5db", borderRadius: 14,
-      overflow: "hidden", boxShadow: "0 2px 8px rgba(0,0,0,0.07)",
+      overflow: "hidden",
+      boxShadow: "0 4px 20px rgba(0,0,0,0.10), 0 1px 4px rgba(0,0,0,0.06)",
       background: "#fff",
     }}>
       {/* トークヘッダー（プレイグラウンドと同一デザイン） */}
@@ -1351,6 +1351,22 @@ export function MessageForm({
 
   return (
     <>
+      {/* ── レスポンシブ: 768px以下で縦並び ── */}
+      <style>{`
+        .msg-form-layout { display: flex; gap: 24px; align-items: flex-start; }
+        .msg-form-col    { flex: 1; min-width: 0; }
+        .msg-preview-col {
+          flex-shrink: 0; width: 340px;
+          position: sticky; top: 24px;
+          max-height: calc(100vh - 48px);
+          overflow-y: auto;
+        }
+        @media (max-width: 768px) {
+          .msg-form-layout  { flex-direction: column; }
+          .msg-preview-col  { position: static; width: 100%; max-height: none; order: -1; }
+        }
+      `}</style>
+
       {/* ── ページヘッダー ── */}
       <div className="page-header">
         <div>
@@ -1366,18 +1382,11 @@ export function MessageForm({
       </div>
 
       {/* ── 2カラムレイアウト ── */}
-      <div
-        style={{
-          display: "flex",
-          gap: 24,
-          alignItems: "flex-start",
-          flexWrap: "wrap",
-        }}
-      >
+      <div className="msg-form-layout">
         {/* ── 左カラム: フォーム ── */}
         <form
           onSubmit={handleSubmit}
-          style={{ flex: 1, minWidth: 0 }}
+          className="msg-form-col"
         >
           {/* エラーアラート */}
           {error && (
@@ -2449,8 +2458,25 @@ export function MessageForm({
           </div>
         </form>
 
-        {/* ── 右カラム: LINEプレビュー ── */}
-        <div style={{ flexShrink: 0 }}>
+        {/* ── 右カラム: LINEプレビュー（sticky） ── */}
+        <div className="msg-preview-col">
+          {/* ラベル */}
+          <div style={{
+            display: "flex", alignItems: "center", gap: 6,
+            marginBottom: 8,
+          }}>
+            <span style={{
+              fontSize: 11, fontWeight: 700, color: "#06C755",
+              background: "#E6F7ED", borderRadius: 6,
+              padding: "2px 8px", border: "1px solid #06C75533",
+              letterSpacing: 0.5,
+            }}>
+              LINE プレビュー
+            </span>
+            <span style={{ fontSize: 10, color: "#9ca3af" }}>
+              編集内容がリアルタイム反映されます
+            </span>
+          </div>
           <PreviewPanel
             form={form}
             characters={characters}
