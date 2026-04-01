@@ -11,8 +11,7 @@ generator client {
 }
 
 datasource db {
-  // ローカル開発: "sqlite"  / 本番: "postgresql"
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 

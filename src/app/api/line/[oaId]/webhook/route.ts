@@ -125,14 +125,15 @@ export async function POST(
   try {
     return await handleWebhook(req, params.oaId);
   } catch (err) {
-    console.error(
-      `[Webhook] 予期しない例外 oaId=${params.oaId}`,
-      "\n--- エラー内容全文 ---\n",
-      err instanceof Error
-        ? `${err.name}: ${err.message}\n${err.stack ?? ""}`
-        : String(err),
-      "\n----------------------"
-    );
+    const e = err as Record<string, unknown> | null | undefined;
+    console.error("[Webhook ERROR]", {
+      name:    e?.name,
+      message: e?.message,
+      stack:   e?.stack,
+      code:    e?.code,      // Prisma エラーコード (P2002 など)
+      meta:    e?.meta,      // Prisma エラーメタ情報
+      raw:     String(err),
+    });
     return NextResponse.json({ ok: true });
   }
 }
@@ -154,6 +155,19 @@ async function handleWebhook(req: NextRequest, oaId: string) {
     return NextResponse.json({ ok: true });
   }
 
+  // ── デバッグ: events の詳細を全件ログ出力 ──
+  console.log(`[Webhook] events件数=${webhookBody.events?.length ?? 0} oaId=${oaId}`);
+  for (const ev of webhookBody.events ?? []) {
+    console.log(
+      `[Webhook][event]`,
+      `type=${ev.type}`,
+      `replyToken=${ev.replyToken ? "あり" : "なし"}`,
+      `message.type=${ev.message?.type ?? "-"}`,
+      `message.text=${ev.message?.text != null ? `"${ev.message.text}"` : "-"}`,
+      `postback.data=${ev.postback?.data ?? "-"}`,
+    );
+  }
+
   // events が空のとき（LINE の疎通確認）は署名検証をスキップして即 200 を返す
   if (!webhookBody.events || webhookBody.events.length === 0) {
     console.log(`[Webhook] 疎通確認（events 空） oaId=${oaId}`);
@@ -161,11 +175,10 @@ async function handleWebhook(req: NextRequest, oaId: string) {
   }
 
   // ── 3. OA 取得 ──
+  console.log(`[Webhook][STEP] OA取得前 oaId=${oaId}`);
   const oa = await prisma.oa.findUnique({ where: { id: oaId } });
-
-  // デバッグ: OA 取得結果・シークレット / トークンの有無
   console.log(
-    `[Webhook] OA 取得結果 oaId=${oaId}`,
+    `[Webhook][STEP] OA取得後 oaId=${oaId}`,
     oa
       ? `found title="${oa.title}" channel_secret=${oa.channelSecret ? "あり" : "なし"} channel_access_token=${oa.channelAccessToken ? "あり" : "なし"}`
       : "not found"
@@ -193,6 +206,26 @@ async function handleWebhook(req: NextRequest, oaId: string) {
     // 開発環境 + 署名なし → スキップ（curl テスト用）
     console.warn("[Webhook] 署名なし — 開発環境のためスキップします");
   }
+
+  // ── [DEBUG] テキストメッセージに固定エコー返信 ──
+  // ★ 動作確認用の一時処理 — 確認が終わったら削除する
+  for (const ev of webhookBody.events) {
+    if (
+      ev.type === "message" &&
+      ev.message?.type === "text" &&
+      typeof ev.message.text === "string" &&
+      typeof ev.replyToken === "string"
+    ) {
+      const echoText = `受信しました: ${ev.message.text}`;
+      console.log(`[Webhook][DEBUG] エコー返信を送信 replyToken=${ev.replyToken} text="${echoText}"`);
+      await replyToLine(
+        ev.replyToken,
+        [{ type: "text", text: echoText }],
+        oa.channelAccessToken,
+      );
+    }
+  }
+  // ── [DEBUG] ここまで ──
 
   // ── 5. follow イベント処理（友達追加 → トラッキング帰属）──
   const followEvents = webhookBody.events.filter(
@@ -443,14 +476,17 @@ async function handleTextEvent({
   }
 
   // ─ 進行状態を取得 ─
+  console.log(`[Webhook][STEP] progress取得前 userId=${userId} workId=${work.id}`);
   const progress = await prisma.userProgress.findUnique({
     where: {
       lineUserId_workId: { lineUserId: userId, workId: work.id },
     },
   });
+  console.log(`[Webhook][STEP] progress取得後 found=${!!progress} reachedEnding=${progress?.reachedEnding ?? "-"} currentPhaseId=${progress?.currentPhaseId ?? "-"}`);
 
   // ─ 未開始 — あいさつメッセージ（設定があれば）＋開始案内 ─
   if (!progress) {
+    console.log(`[Webhook][STEP] メッセージ送信前 (未開始ウェルカム) userId=${userId}`);
     await replyToLine(replyToken, buildWelcomeMessages(work, systemSender), token);
     return;
   }
@@ -461,12 +497,14 @@ async function handleTextEvent({
     const msgs = state.phase
       ? buildPhaseMessages(state.phase, { systemSender })
       : [{ type: "text" as const, text: `すでにエンディングに到達しています。\n「はじめる」と送ると最初から楽しめます。`, sender: systemSender }];
+    console.log(`[Webhook][STEP] メッセージ送信前 (エンディング済み) userId=${userId}`);
     await replyToLine(replyToken, msgs, token);
     return;
   }
 
   // ─ 現在フェーズなし（異常状態） ─
   if (!progress.currentPhaseId) {
+    console.log(`[Webhook][STEP] メッセージ送信前 (currentPhaseIdなし) userId=${userId}`);
     await replyToLine(replyToken, [{
       type:   "text",
       text:   "「はじめる」と送ってシナリオをスタートしてください。",
@@ -476,6 +514,7 @@ async function handleTextEvent({
   }
 
   // ─ 遷移マッチング ─
+  console.log(`[Webhook][STEP] currentPhase取得前 phaseId=${progress.currentPhaseId}`);
   const currentPhase = await prisma.phase.findUnique({
     where:   { id: progress.currentPhaseId },
     include: {
@@ -485,8 +524,10 @@ async function handleTextEvent({
       },
     },
   });
+  console.log(`[Webhook][STEP] currentPhase取得後 found=${!!currentPhase} transitions=${currentPhase?.transitionsFrom.length ?? "-"}`);
 
   if (!currentPhase) {
+    console.log(`[Webhook][STEP] メッセージ送信前 (currentPhaseなし) userId=${userId}`);
     await replyToLine(replyToken, [{
       type:   "text",
       text:   "「はじめる」と送ってシナリオをスタートしてください。",
@@ -501,6 +542,7 @@ async function handleTextEvent({
     label: text,
     flags: currentFlags,
   });
+  console.log(`[Webhook][STEP] 遷移マッチング結果 matched=${!!matched} label="${text}"`);
 
   // ─ マッチなし → 現在の選択肢をクイックリプライで再表示 ─
   if (!matched) {
@@ -508,6 +550,7 @@ async function handleTextEvent({
       .filter((t) => t.isActive)
       .map((t) => t.label);
     const qr = availableLabels.length > 0 ? buildQuickReply(availableLabels) : undefined;
+    console.log(`[Webhook][STEP] メッセージ送信前 (マッチなし) availableLabels=${JSON.stringify(availableLabels)}`);
     await replyToLine(replyToken, [{
       type:       "text",
       text:       availableLabels.length > 0
@@ -520,12 +563,15 @@ async function handleTextEvent({
   }
 
   // ─ 遷移先フェーズへ移動 + setFlags を適用 ─
+  console.log(`[Webhook][STEP] 遷移先phase取得前 toPhaseId=${matched.toPhaseId}`);
   const toPhase = await prisma.phase.findUnique({ where: { id: matched.toPhaseId } });
+  console.log(`[Webhook][STEP] 遷移先phase取得後 found=${!!toPhase} phaseType=${toPhase?.phaseType ?? "-"}`);
   if (!toPhase) return;
 
   const isEnding = toPhase.phaseType === "ending";
   const newFlags = applySetFlags(currentFlags, matched.setFlags);
 
+  console.log(`[Webhook][STEP] progress更新前 progressId=${progress.id} toPhaseId=${toPhase.id} isEnding=${isEnding}`);
   const updated = await prisma.userProgress.update({
     where: { id: progress.id },
     data: {
@@ -535,12 +581,14 @@ async function handleTextEvent({
       lastInteractedAt: new Date(),
     },
   });
+  console.log(`[Webhook][STEP] progress更新後 updatedId=${updated.id}`);
 
   // visible_phase によるリッチメニュー切り替え
   await switchRichMenuForUser(oa, userId, toPhase.phaseType);
 
   const state = await buildRuntimeState(updated);
   const msgs  = buildPhaseMessages(state.phase, { systemSender });
+  console.log(`[Webhook][STEP] メッセージ送信前 (遷移後) msgs件数=${msgs.length} userId=${userId}`);
   await replyToLine(replyToken, msgs, token);
 }
 
@@ -581,12 +629,15 @@ async function handleStart({
 }: Omit<HandlerCommon, "work"> & { work: NonNullable<WorkRecord> }) {
   const token = oa.channelAccessToken;
 
+  console.log(`[Webhook][STEP] handleStart: startPhase取得前 workId=${work.id} userId=${userId}`);
   const startPhase = await prisma.phase.findFirst({
     where:   { workId: work.id, phaseType: "start", isActive: true },
     orderBy: { sortOrder: "asc" },
   });
+  console.log(`[Webhook][STEP] handleStart: startPhase取得後 found=${!!startPhase} phaseId=${startPhase?.id ?? "-"}`);
 
   if (!startPhase) {
+    console.log(`[Webhook][STEP] メッセージ送信前 (startPhaseなし) userId=${userId}`);
     await replyToLine(replyToken, [{
       type:   "text",
       text:   "まだシナリオの準備中です。もうしばらくお待ちください。",
@@ -595,6 +646,7 @@ async function handleStart({
     return;
   }
 
+  console.log(`[Webhook][STEP] handleStart: progress upsert前 userId=${userId} workId=${work.id}`);
   const progress = await prisma.userProgress.upsert({
     where: {
       lineUserId_workId: { lineUserId: userId, workId: work.id },
@@ -614,10 +666,11 @@ async function handleStart({
       lastInteractedAt: new Date(),
     },
   });
+  console.log(`[Webhook][STEP] handleStart: progress upsert後 progressId=${progress.id}`);
 
   const state = await buildRuntimeState(progress);
-  // prefix なし: 開始テキストは作品の開始フェーズメッセージで表現する
   const msgs  = buildPhaseMessages(state.phase, { systemSender });
+  console.log(`[Webhook][STEP] メッセージ送信前 (開始) msgs件数=${msgs.length} userId=${userId}`);
   await replyToLine(replyToken, msgs, token);
 }
 
