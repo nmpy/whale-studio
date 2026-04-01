@@ -318,7 +318,30 @@ export default function PhasesPage() {
 
                       {/* フェーズ名 */}
                       <td style={{ padding: "12px 14px", fontWeight: 500, color: "#111827" }}>
-                        {phase.name}
+                        <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                          <span>{phase.name}</span>
+                          {phase.phase_type === "start" && (
+                            phase.start_trigger ? (
+                              <span style={{
+                                display: "inline-flex", alignItems: "center", gap: 3,
+                                fontSize: 10, fontWeight: 600, color: "#065f46",
+                                background: "#d1fae5", border: "1px solid #6ee7b7",
+                                borderRadius: 8, padding: "1px 6px", width: "fit-content",
+                              }}>
+                                🔑 {phase.start_trigger}
+                              </span>
+                            ) : (
+                              <span style={{
+                                display: "inline-flex", alignItems: "center", gap: 3,
+                                fontSize: 10, color: "#9ca3af",
+                                background: "#f3f4f6", borderRadius: 8,
+                                padding: "1px 6px", width: "fit-content",
+                              }}>
+                                🔑 トリガー未設定（自動開始）
+                              </span>
+                            )
+                          )}
+                        </div>
                       </td>
 
                       {/* 説明 */}

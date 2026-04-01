@@ -134,6 +134,36 @@ export const POST = withAuth<{ id: string }>(async (_req, { params }) => {
       areas:       lineAreas,
     };
     console.log(`[apply] config 構築完了 size=2500x${sizeH} areas=${lineAreas.length}`);
+
+    // ── デバッグ: DB エリア一覧（変換前）──
+    console.log(`[apply][DEBUG] DB areas (変換前):`);
+    for (const [i, a] of menu.areas.entries()) {
+      console.log(
+        `[apply][DEBUG]   [${i}] bounds=(${a.x},${a.y} ${a.width}x${a.height})`,
+        `actionType="${a.actionType}"`,
+        `label="${a.actionLabel}"`,
+        `text=${a.actionText !== null ? `"${a.actionText}"` : "null"}`,
+        `uri=${a.actionUri  !== null ? `"${a.actionUri}"` : "null"}`,
+        `data=${a.actionData !== null ? `"${a.actionData}"` : "null"}`,
+        `sortOrder=${a.sortOrder}`
+      );
+    }
+
+    // ── デバッグ: LINE areas 一覧（変換後）──
+    console.log(`[apply][DEBUG] LINE areas (変換後):`);
+    for (const [i, area] of lineAreas.entries()) {
+      const { bounds, action } = area;
+      console.log(
+        `[apply][DEBUG]   [${i}] bounds=(${bounds.x},${bounds.y} ${bounds.width}x${bounds.height})`,
+        `action.type="${action.type}"`,
+        action.type === "message"  ? `text="${action.text}"` :
+        action.type === "uri"      ? `uri="${action.uri}"` :
+        action.type === "postback" ? `data="${action.data}" displayText="${action.displayText ?? ""}"` : ""
+      );
+    }
+
+    // ── デバッグ: LINE API 送信 JSON 全体 ──
+    console.log(`[apply][DEBUG] LINE API送信JSON:`, JSON.stringify(config, null, 2));
   } catch (err) {
     return applyError("LINE設定の構築", err);
   }

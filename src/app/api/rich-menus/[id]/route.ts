@@ -75,7 +75,43 @@ export const PATCH = withAuth<{ id: string }>(async (req, { params }) => {
     if (!existing) return notFound("リッチメニュー");
 
     const body = await req.json();
-    const data = updateRichMenuSchema.parse(body);
+
+    // ── デバッグ: 受信ボディのエリア一覧を出力 ──
+    console.log(`[rich-menus PATCH] 受信ボディ raw areas件数=${Array.isArray(body?.areas) ? body.areas.length : "なし(areas未指定)"}`);
+    if (Array.isArray(body?.areas)) {
+      for (const [i, a] of (body.areas as Record<string, unknown>[]).entries()) {
+        console.log(
+          `[rich-menus PATCH][raw]   [${i}]`,
+          `action_type="${a.action_type}"`,
+          `action_label="${a.action_label}"`,
+          `action_text=${a.action_text !== null && a.action_text !== undefined ? `"${a.action_text}"` : String(a.action_text)}`,
+          `action_uri=${a.action_uri  !== null && a.action_uri  !== undefined ? `"${a.action_uri}"` : String(a.action_uri)}`,
+          `action_data=${a.action_data !== null && a.action_data !== undefined ? `"${a.action_data}"` : String(a.action_data)}`
+        );
+      }
+    }
+
+    let data: ReturnType<typeof updateRichMenuSchema.parse>;
+    try {
+      data = updateRichMenuSchema.parse(body);
+    } catch (zodErr) {
+      console.error("[rich-menus PATCH] Zod バリデーションエラー:", JSON.stringify(zodErr));
+      throw zodErr;
+    }
+
+    // ── デバッグ: Zod parse 後のエリア一覧を出力 ──
+    if (data.areas !== undefined) {
+      console.log(`[rich-menus PATCH] Zod parse後 areas件数=${data.areas.length}`);
+      for (const [i, a] of data.areas.entries()) {
+        console.log(
+          `[rich-menus PATCH][parsed] [${i}]`,
+          `action_type="${a.action_type}"`,
+          `action_label="${a.action_label}"`,
+          `action_text=${a.action_text !== null && a.action_text !== undefined ? `"${a.action_text}"` : String(a.action_text)}`,
+          `action_uri=${a.action_uri  !== null && a.action_uri  !== undefined ? `"${a.action_uri}"` : String(a.action_uri)}`
+        );
+      }
+    }
 
     const menu = await prisma.$transaction(async (tx) => {
       await tx.richMenu.update({

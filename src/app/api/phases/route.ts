@@ -15,19 +15,21 @@ import { ZodError } from "zod";
 
 function toResponse(p: {
   id: string; workId: string; phaseType: string; name: string; description: string | null;
+  startTrigger: string | null;
   sortOrder: number; isActive: boolean; createdAt: Date; updatedAt: Date;
   _count?: { messages: number; transitionsFrom: number };
 }) {
   return {
-    id:          p.id,
-    work_id:     p.workId,
-    phase_type:  p.phaseType,
-    name:        p.name,
-    description: p.description,
-    sort_order:  p.sortOrder,
-    is_active:   p.isActive,
-    created_at:  p.createdAt,
-    updated_at:  p.updatedAt,
+    id:            p.id,
+    work_id:       p.workId,
+    phase_type:    p.phaseType,
+    name:          p.name,
+    description:   p.description,
+    start_trigger: p.startTrigger,
+    sort_order:    p.sortOrder,
+    is_active:     p.isActive,
+    created_at:    p.createdAt,
+    updated_at:    p.updatedAt,
     ...(p._count !== undefined && { _count: p._count }),
   };
 }
@@ -98,12 +100,13 @@ export const POST = withAuth(async (req, _ctx, user) => {
 
     const phase = await prisma.phase.create({
       data: {
-        workId:      data.work_id,
-        phaseType:   data.phase_type,
-        name:        data.name,
-        description: data.description,
-        sortOrder:   data.sort_order,
-        isActive:    data.is_active,
+        workId:       data.work_id,
+        phaseType:    data.phase_type,
+        name:         data.name,
+        description:  data.description,
+        startTrigger: data.start_trigger ?? null,
+        sortOrder:    data.sort_order,
+        isActive:     data.is_active,
       },
       include: { _count: { select: { messages: true, transitionsFrom: true } } },
     });

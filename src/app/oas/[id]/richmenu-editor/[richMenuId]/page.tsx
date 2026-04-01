@@ -385,13 +385,15 @@ export default function RichMenuEditorPage() {
     }
     setSaving(true);
     try {
-      await richMenuEditorApi.update(getDevToken(), menuId, {
+      const saved = await richMenuEditorApi.update(getDevToken(), menuId, {
         name:          menuName,
         chat_bar_text: chatBarText,
         size,
         image_url:     imageUrl.trim() || null,
         areas:         areas.map(draftToBody),
       });
+      // DB に保存された値でローカル state を上書き（保存漏れ・型変換ズレを即検知）
+      setAreas(saved.areas.map(areaToDraft));
       showToast("保存しました", "success");
     } catch (e) {
       showToast(e instanceof Error ? e.message : "保存に失敗しました", "error");
@@ -420,14 +422,15 @@ export default function RichMenuEditorPage() {
     if (!confirm("現在の設定を LINE に適用します。このチャンネルのデフォルトメニューと置き換わります。")) return;
     setApplying(true);
     try {
-      // まず保存してから適用
-      await richMenuEditorApi.update(getDevToken(), menuId, {
+      // まず保存してから適用（保存結果で state を同期し、apply は DB の最新値を使う）
+      const saved = await richMenuEditorApi.update(getDevToken(), menuId, {
         name:          menuName,
         chat_bar_text: chatBarText,
         size,
         image_url:     imageUrl.trim() || null,
         areas:         areas.map(draftToBody),
       });
+      setAreas(saved.areas.map(areaToDraft));
       const result = await richMenuEditorApi.apply(getDevToken(), menuId);
       setLineMenuId(result.line_rich_menu_id);
       showToast("LINE に適用しました！", "success");

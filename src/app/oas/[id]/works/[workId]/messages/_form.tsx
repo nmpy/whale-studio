@@ -58,12 +58,16 @@ const EMPTY_CAROUSEL_CARD: MessageCarouselCard = {
 
 // ── FormState ────────────────────────────────────────────
 
+export type MessageKind = "start" | "normal" | "response" | "hint";
+
 export interface MessageFormState {
   trigger_keyword: string;
   target_segment:  string;
   phase_id:        string;
   character_id:    string;
   message_type:    ExtendedMessageType;
+  /** メッセージ役割種別 */
+  kind:            MessageKind;
   body:            string;
   asset_url:       string;
   notify_text:     string;
@@ -82,6 +86,7 @@ export const EMPTY_MESSAGE_FORM: MessageFormState = {
   phase_id:        "",
   character_id:    "",
   message_type:    "text",
+  kind:            "normal",
   body:            "",
   asset_url:       "",
   notify_text:     "",
@@ -102,6 +107,7 @@ export function msgToFormState(msg: {
   phase_id?:         string | null;
   character_id?:     string | null;
   message_type?:     string;
+  kind?:             string | null;
   body?:             string | null;
   asset_url?:        string | null;
   notify_text?:      string | null;
@@ -129,6 +135,7 @@ export function msgToFormState(msg: {
     phase_id:        msg.phase_id        ?? "",
     character_id:    msg.character_id    ?? "",
     message_type:    (msg.message_type as ExtendedMessageType) ?? "text",
+    kind:            (msg.kind as MessageKind) ?? "normal",
     body:            msg.message_type === "carousel" ? "" : (msg.body ?? ""),
     asset_url:       msg.asset_url       ?? "",
     notify_text:     msg.notify_text     ?? "",
@@ -149,6 +156,7 @@ export function formStateToMsgBody(form: MessageFormState) {
     phase_id:         form.phase_id        || null,
     character_id:     form.character_id    || null,
     message_type:     form.message_type,
+    kind:             form.kind,
     body:
       form.message_type === "carousel"
         ? JSON.stringify(form.carousel_items)
@@ -894,10 +902,35 @@ export function MessageForm({
           <div className="card" style={{ marginBottom: 16 }}>
             <div style={sectionHeader}>トリガー設定</div>
 
+            {/* メッセージ種別 */}
+            <div className="form-group">
+              <label style={fieldLabel} htmlFor="msg_kind">
+                メッセージ種別
+              </label>
+              <select
+                id="msg_kind"
+                className="form-input"
+                value={form.kind}
+                onChange={(e) => set("kind", e.target.value as MessageKind)}
+              >
+                <option value="normal">通常（フェーズ遷移時に送信）</option>
+                <option value="start">開始演出（startTrigger 一致時に送信）</option>
+                <option value="response">応答（trigger_keyword 一致時に返信）</option>
+                <option value="hint">ヒント（将来拡張）</option>
+              </select>
+              <div style={hintText}>
+                {form.kind === "start" && "開始フェーズの startTrigger が一致したとき送信されます。フェーズに kind=start のメッセージがない場合は通常メッセージにフォールバックします。"}
+                {form.kind === "response" && "trigger_keyword が一致したときのみ返信します。フェーズは進みません。"}
+                {form.kind === "normal" && "フェーズ遷移時またはフェーズ表示時に送信されます。"}
+                {form.kind === "hint" && "ヒント用メッセージです（将来拡張）。"}
+              </div>
+            </div>
+
             {/* 応答キーワード */}
             <div className="form-group">
               <label style={fieldLabel} htmlFor="trigger_keyword">
                 応答キーワード
+                {form.kind === "start" && <span style={{ fontSize: 11, color: "#9ca3af", marginLeft: 6 }}>（kind=start では使用しません）</span>}
               </label>
               <input
                 id="trigger_keyword"
@@ -907,8 +940,12 @@ export function MessageForm({
                 onChange={(e) => set("trigger_keyword", e.target.value)}
                 placeholder="例: スタート"
                 maxLength={100}
+                disabled={form.kind === "start"}
+                style={form.kind === "start" ? { opacity: 0.5 } : undefined}
               />
-              <div style={hintText}>このキーワードを受信したとき送信します</div>
+              <div style={hintText}>
+                {form.kind === "start" ? "kind=start では Phase.startTrigger を使います" : "このキーワードを受信したとき送信します（kind=response 推奨）"}
+              </div>
             </div>
 
             {/* 送信対象セグメント */}

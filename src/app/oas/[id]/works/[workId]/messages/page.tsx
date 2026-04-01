@@ -67,6 +67,13 @@ const PHASE_TYPE_COLOR: Record<string, { bg: string; color: string; border: stri
   ending:  { bg: "#fdf4ff", color: "#7e22ce", border: "#e9d5ff" },
 };
 
+const KIND_META: Record<string, { label: string; icon: string; bg: string; color: string }> = {
+  normal:   { label: "通常",     icon: "📨", bg: "#f0f9ff", color: "#0369a1" },
+  start:    { label: "開始演出", icon: "🎬", bg: "#fef3c7", color: "#92400e" },
+  response: { label: "応答",     icon: "💬", bg: "#f0fdf4", color: "#166534" },
+  hint:     { label: "ヒント",   icon: "💡", bg: "#faf5ff", color: "#7e22ce" },
+};
+
 export default function MessagesPage() {
   const params  = useParams<{ id: string; workId: string }>();
   const oaId    = params.id;
@@ -387,7 +394,7 @@ export default function MessagesPage() {
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                   <thead>
                     <tr style={{ borderBottom: "1px solid #f0f0f0", background: "#fcfcfc" }}>
-                      {["種別", "本文", "キャラクター", "状態", "順序", ""].map((h, i) => (
+                      {["種別", "役割", "本文", "キャラクター", "状態", "順序", ""].map((h, i) => (
                         <th
                           key={i}
                           style={{
@@ -418,6 +425,24 @@ export default function MessagesPage() {
                             {MESSAGE_TYPE_ICON[msg.message_type]}
                             {MESSAGE_TYPE_LABEL[msg.message_type]}
                           </span>
+                        </td>
+
+                        {/* 役割（kind） */}
+                        <td style={{ padding: "12px 14px", whiteSpace: "nowrap" }}>
+                          {(() => {
+                            const k = msg.kind ?? "normal";
+                            const meta = KIND_META[k] ?? KIND_META.normal;
+                            return (
+                              <span style={{
+                                display: "inline-flex", alignItems: "center", gap: 3,
+                                fontSize: 10, fontWeight: 600,
+                                background: meta.bg, color: meta.color,
+                                borderRadius: 8, padding: "2px 7px",
+                              }}>
+                                {meta.icon} {meta.label}
+                              </span>
+                            );
+                          })()}
                         </td>
 
                         {/* 本文 */}

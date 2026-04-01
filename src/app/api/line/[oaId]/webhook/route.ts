@@ -526,8 +526,47 @@ async function handleTextEvent({
   });
   console.log(`[Webhook][STEP] progress取得後 found=${!!progress} reachedEnding=${progress?.reachedEnding ?? "-"} currentPhaseId=${progress?.currentPhaseId ?? "-"}`);
 
-  // ─ 未開始 — 最初のメッセージで自動開始（β: 「はじめる」要求なし）─
+  // ─ 未開始 — Phase.startTrigger 照合 → なければ自動開始 ─
   if (!progress) {
+    // startPhase を取得（startTrigger + 最初の遷移先も JOIN）
+    const startPhase = await prisma.phase.findFirst({
+      where:   { workId: work.id, phaseType: "start", isActive: true },
+      orderBy: { sortOrder: "asc" },
+      include: {
+        transitionsFrom: {
+          where:   { isActive: true },
+          orderBy: { sortOrder: "asc" },
+          take: 1,
+        },
+      },
+    });
+
+    if (startPhase?.startTrigger) {
+      // Phase.startTrigger に対して NFKC 正規化マッチ
+      const triggerNorm  = normKw(startPhase.startTrigger);
+      const triggerLoose = normKwLoose(startPhase.startTrigger);
+      const inputNorm    = normKw(text);
+      const inputLoose   = normKwLoose(text);
+
+      if (inputNorm === triggerNorm || inputLoose === triggerLoose) {
+        console.log(
+          `[Webhook][STEP] Phase.startTrigger マッチ`,
+          `trigger="${startPhase.startTrigger}"`,
+          `userId=${userId}`,
+        );
+        await handleStartTrigger({
+          oa, work, systemSender, userId, replyToken,
+          startPhase,
+        });
+        return;
+      } else {
+        console.log(
+          `[Webhook][STEP] startTrigger 不一致 trigger="${startPhase.startTrigger}" input="${text}"`,
+        );
+      }
+    }
+
+    // startTrigger 未設定 or 不一致 → β 自動開始
     console.log(`[Webhook][STEP] 未開始ユーザー → 自動開始 userId=${userId}`);
     await handleStart({ oa, work, systemSender, userId, replyToken });
     return;
@@ -774,6 +813,113 @@ async function handleStart({
   await replyToLine(replyToken, msgs, token);
 }
 
+// ─ start フェーズトリガー発火時の開始処理 ────────────────────
+//
+// Phase.startTrigger が設定された startPhase に対して未開始ユーザーが
+// トリガーキーワードを送信した場合に呼ばれる。
+//
+// 処理フロー:
+//   1. progress を作成し、初期フェーズ（startPhase の最初の遷移先 or startPhase 自体）へセット
+//   2. visible_phase に対応したリッチメニューへ切り替え
+//   3. startPhase に紐づく kind="start" メッセージを送信（開始演出として機能）
+//      kind="start" が 0 件の場合は startPhase の通常メッセージへフォールバック
+//
+type StartPhaseWithTransitions = {
+  id:              string;
+  phaseType:       string;
+  startTrigger:    string | null;
+  transitionsFrom: { toPhaseId: string; sortOrder: number }[];
+};
+
+async function handleStartTrigger({
+  oa, work, systemSender, userId, replyToken,
+  startPhase,
+}: Omit<HandlerCommon, "work"> & {
+  work:       NonNullable<WorkRecord>;
+  startPhase: StartPhaseWithTransitions;
+}) {
+  const token = oa.channelAccessToken;
+
+  // 初期フェーズの決定:
+  //   startPhase に遷移が設定されていればその最初の toPhase へ進む（序章など）
+  //   遷移がなければ startPhase 自体を初期フェーズとする
+  const firstTransition = startPhase.transitionsFrom[0];
+  const initialPhaseId  = firstTransition?.toPhaseId ?? startPhase.id;
+
+  console.log(
+    `[Webhook][STEP] handleStartTrigger`,
+    `userId=${userId}`,
+    `initialPhaseId=${initialPhaseId}`,
+    `via=${firstTransition ? `transition→${firstTransition.toPhaseId.slice(0, 8)}` : "startPhase itself"}`,
+  );
+
+  // progress 作成（未開始 → 初期フェーズへ）
+  const progress = await prisma.userProgress.create({
+    data: {
+      lineUserId:       userId,
+      workId:           work.id,
+      currentPhaseId:   initialPhaseId,
+      reachedEnding:    false,
+      flags:            "{}",
+      lastInteractedAt: new Date(),
+    },
+  });
+  console.log(`[Webhook][STEP] handleStartTrigger: progress作成 progressId=${progress.id}`);
+
+  // 初期フェーズの phaseType を取得してリッチメニューを切り替え
+  const initialPhase = await prisma.phase.findUnique({
+    where:  { id: initialPhaseId },
+    select: { phaseType: true },
+  });
+  if (initialPhase) {
+    await switchRichMenuForUser(oa, userId, initialPhase.phaseType);
+  }
+
+  // kind="start" メッセージを startPhase から取得して送信（物語演出として）
+  const startKindMessages = await prisma.message.findMany({
+    where: {
+      workId:   work.id,
+      phaseId:  startPhase.id,
+      kind:     "start",
+      isActive: true,
+    },
+    select: {
+      id:              true,
+      triggerKeyword:  true,
+      messageType:     true,
+      body:            true,
+      assetUrl:        true,
+      altText:         true,
+      flexPayloadJson: true,
+      sortOrder:       true,
+      character: {
+        select: { name: true, iconImageUrl: true },
+      },
+    },
+    orderBy: { sortOrder: "asc" },
+  });
+
+  console.log(
+    `[Webhook][STEP] handleStartTrigger: kind="start" msgs=${startKindMessages.length}件 userId=${userId}`
+  );
+
+  if (startKindMessages.length > 0) {
+    const msgs = buildKeywordMessages(startKindMessages, systemSender);
+    if (msgs.length > 0) {
+      await replyToLine(replyToken, msgs, token);
+      return;
+    }
+  }
+
+  // kind="start" が 0 件 → startPhase の通常メッセージへフォールバック
+  console.log(`[Webhook][STEP] handleStartTrigger: kind=start 0件 → 通常 startPhase メッセージへフォールバック`);
+  const state = await buildRuntimeState(progress);
+  const msgs  = buildPhaseMessages(state.phase, { systemSender });
+  if (msgs.length > 0) {
+    await replyToLine(replyToken, msgs, token);
+  }
+}
+
 // ─ 現在の進行状態を表示（つづきから）──────────────────────
 async function handleContinue({
   oa, work, systemSender, userId, replyToken,
@@ -905,11 +1051,13 @@ async function matchTriggerKeyword(
   if (!currentPhaseId) return [];
 
   // phaseId 一致 または null（全体共通）のキーワード付きメッセージを取得
+  // kind="start" は未開始ユーザー専用なので除外（handleStartTrigger で処理）
   const candidates = await prisma.message.findMany({
     where: {
       workId,
       isActive:       true,
       triggerKeyword: { not: null },
+      kind:           { not: "start" },
       OR: [
         { phaseId: currentPhaseId },
         { phaseId: null },

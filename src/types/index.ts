@@ -36,6 +36,8 @@ export interface QuickReplyItem {
 export type IconType      = "image" | "text";
 export type MessageType   = "text" | "image" | "riddle" | "video" | "carousel" | "voice" | "flex";
 export type PhaseType     = "start" | "normal" | "ending";
+/** メッセージの役割種別 */
+export type MessageKind   = "start" | "normal" | "response" | "hint";
 
 // ────────────────────────────────────────────────
 // Domain models（DB行そのまま — snake_case）
@@ -97,6 +99,8 @@ export interface Phase {
   phase_type: PhaseType;
   name: string;
   description: string | null;
+  /** 開始トリガーキーワード（phaseType="start" のみ有効） */
+  start_trigger: string | null;
   sort_order: number;
   is_active: boolean;
   created_at: string;
@@ -126,6 +130,8 @@ export interface Message {
   phase_id: string | null;
   character_id: string | null;
   message_type: MessageType;
+  /** メッセージ役割種別: "start" | "normal" | "response" | "hint" */
+  kind: MessageKind;
   body: string | null;
   asset_url: string | null;
   /** 応答キーワード */
@@ -222,6 +228,8 @@ export interface CreatePhaseBody {
   phase_type?: PhaseType;
   name: string;
   description?: string;
+  /** 開始トリガーキーワード（phaseType="start" のみ有効） */
+  start_trigger?: string | null;
   sort_order?: number;
   is_active?: boolean;
 }
@@ -230,6 +238,8 @@ export interface UpdatePhaseBody {
   phase_type?: PhaseType;
   name?: string;
   description?: string | null;
+  /** 開始トリガーキーワード（null で削除） */
+  start_trigger?: string | null;
   sort_order?: number;
   is_active?: boolean;
 }
@@ -263,6 +273,8 @@ export interface CreateMessageBody {
   phase_id?: string | null;
   character_id?: string | null;
   message_type?: MessageType;
+  /** メッセージ役割種別 */
+  kind?: MessageKind;
   body?: string;
   asset_url?: string;
   trigger_keyword?: string | null;
@@ -280,6 +292,8 @@ export interface UpdateMessageBody {
   phase_id?: string | null;
   character_id?: string | null;
   message_type?: MessageType;
+  /** メッセージ役割種別 */
+  kind?: MessageKind;
   body?: string | null;
   asset_url?: string | null;
   trigger_keyword?: string | null;

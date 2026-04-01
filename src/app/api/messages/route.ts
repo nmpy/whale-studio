@@ -17,7 +17,7 @@ function parseQuickReplies(raw: string | null) {
 
 function toResponse(m: {
   id: string; workId: string; phaseId: string | null; characterId: string | null;
-  messageType: string; body: string | null; assetUrl: string | null;
+  messageType: string; kind: string; body: string | null; assetUrl: string | null;
   triggerKeyword: string | null; targetSegment: string | null;
   notifyText: string | null; riddleId: string | null;
   quickReplies: string | null;
@@ -32,6 +32,7 @@ function toResponse(m: {
     phase_id:          m.phaseId,
     character_id:      m.characterId,
     message_type:      m.messageType,
+    kind:              m.kind,
     body:              m.body,
     asset_url:         m.assetUrl,
     trigger_keyword:   m.triggerKeyword,
@@ -143,16 +144,17 @@ export const POST = withAuth(async (req, _ctx, user) => {
 
     const message = await prisma.message.create({
       data: {
-        workId:         data.work_id,
-        phaseId:        data.phase_id      ?? null,
-        characterId:    data.character_id  ?? null,
-        messageType:    data.message_type,
-        body:           data.body          ?? null,
-        assetUrl:       data.asset_url     ?? null,
-        triggerKeyword: data.trigger_keyword ?? null,
-        targetSegment:  data.target_segment  ?? null,
-        notifyText:     data.notify_text     ?? null,
-        riddleId:       data.riddle_id       ?? null,
+        workId:          data.work_id,
+        phaseId:         data.phase_id      ?? null,
+        characterId:     data.character_id  ?? null,
+        messageType:     data.message_type,
+        kind:            data.kind,
+        body:            data.body          ?? null,
+        assetUrl:        data.asset_url     ?? null,
+        triggerKeyword:  data.trigger_keyword ?? null,
+        targetSegment:   data.target_segment  ?? null,
+        notifyText:      data.notify_text     ?? null,
+        riddleId:        data.riddle_id       ?? null,
         quickReplies:    data.quick_replies ? JSON.stringify(data.quick_replies) : null,
         altText:         data.alt_text          ?? null,
         flexPayloadJson: data.flex_payload_json ?? null,

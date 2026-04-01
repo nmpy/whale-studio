@@ -120,20 +120,24 @@ export const characterQuerySchema = z.object({
 // Phase
 // ────────────────────────────────────────────────
 export const createPhaseSchema = z.object({
-  work_id:     uuidSchema,
-  phase_type:  z.enum(["start", "normal", "ending"]).default("normal"),
-  name:        z.string().min(1, "フェーズ名は必須です").max(100),
-  description: z.string().max(500).optional(),
-  sort_order:  sortSchema,
-  is_active:   z.boolean().default(true),
+  work_id:       uuidSchema,
+  phase_type:    z.enum(["start", "normal", "ending"]).default("normal"),
+  name:          z.string().min(1, "フェーズ名は必須です").max(100),
+  description:   z.string().max(500).optional(),
+  /** 開始トリガーキーワード（phaseType="start" のみ有効） */
+  start_trigger: z.string().max(200).optional().nullable(),
+  sort_order:    sortSchema,
+  is_active:     z.boolean().default(true),
 });
 
 export const updatePhaseSchema = z.object({
-  phase_type:  z.enum(["start", "normal", "ending"]).optional(),
-  name:        z.string().min(1).max(100).optional(),
-  description: z.string().max(500).optional().nullable(),
-  sort_order:  z.number().int().min(0).optional(),
-  is_active:   z.boolean().optional(),
+  phase_type:    z.enum(["start", "normal", "ending"]).optional(),
+  name:          z.string().min(1).max(100).optional(),
+  description:   z.string().max(500).optional().nullable(),
+  /** 開始トリガーキーワード（null で削除） */
+  start_trigger: z.string().max(200).optional().nullable(),
+  sort_order:    z.number().int().min(0).optional(),
+  is_active:     z.boolean().optional(),
 });
 
 export const phaseQuerySchema = z.object({
@@ -216,6 +220,8 @@ export const createMessageSchema = z.object({
   phase_id:         uuidSchema.optional().nullable(),
   character_id:     uuidSchema.optional().nullable(),
   message_type:     z.enum(["text", "image", "riddle", "video", "carousel", "voice", "flex"]).default("text"),
+  /** メッセージ役割種別: "start" | "normal" | "response" | "hint" */
+  kind:             z.enum(["start", "normal", "response", "hint"]).default("normal"),
   body:             z.string().max(10000).optional(),
   asset_url:        urlSchema,
   trigger_keyword:  z.string().max(200).optional().nullable(),
@@ -260,6 +266,8 @@ export const updateMessageSchema = z.object({
   phase_id:          uuidSchema.optional().nullable(),
   character_id:      uuidSchema.optional().nullable(),
   message_type:      z.enum(["text", "image", "riddle", "video", "carousel", "voice", "flex"]).optional(),
+  /** メッセージ役割種別 */
+  kind:              z.enum(["start", "normal", "response", "hint"]).optional(),
   body:              z.string().max(10000).optional().nullable(),
   asset_url:         z.string().url().optional().nullable(),
   trigger_keyword:   z.string().max(200).optional().nullable(),

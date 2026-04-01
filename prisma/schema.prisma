@@ -124,6 +124,9 @@ model Phase {
   phaseType   String   @default("normal") @map("phase_type")
   name        String
   description String?
+  /// 開始トリガーキーワード（未開始ユーザーがこのキーワードを送信するとシナリオ開始）
+  /// phaseType="start" のフェーズのみ有効。
+  startTrigger String? @map("start_trigger")
   sortOrder   Int      @default(0) @map("sort_order")
   isActive    Boolean  @default(true) @map("is_active")
   createdAt   DateTime @default(now()) @map("created_at")
@@ -214,6 +217,12 @@ model Message {
   characterId String?  @map("character_id")
   /// "text" | "image" | "riddle" | "video" | "carousel" | "voice"
   messageType    String   @default("text") @map("message_type")
+  /// メッセージ種別: "start" | "normal" | "response" | "hint"
+  /// start    = 開始トリガー一致時に送信（kind="start" のメッセージのみ送信）
+  /// normal   = フェーズ遷移時に通常送信
+  /// response = 応答キーワード（trigger_keyword）一致時に返信
+  /// hint     = ヒント用（将来拡張）
+  kind           String   @default("normal") @map("kind")
   body           String?
   assetUrl       String?  @map("asset_url")
   /// 応答キーワード（Bot がこのキーワードを受信したときに送信する）

@@ -25,7 +25,7 @@ const MESSAGE_INCLUDE = {
 
 type PrismaMessageWithRelations = {
   id: string; workId: string; phaseId: string | null; characterId: string | null;
-  messageType: string; body: string | null; assetUrl: string | null;
+  messageType: string; kind: string; body: string | null; assetUrl: string | null;
   triggerKeyword: string | null; targetSegment: string | null;
   notifyText: string | null; riddleId: string | null;
   quickReplies: string | null;
@@ -51,6 +51,7 @@ function toResponse(m: PrismaMessageWithRelations) {
     phase_id:          m.phaseId,
     character_id:      m.characterId,
     message_type:      m.messageType,
+    kind:              m.kind,
     body:              m.body,
     asset_url:         m.assetUrl,
     trigger_keyword:   m.triggerKeyword,
@@ -152,6 +153,7 @@ export const PATCH = withAuth<{ id: string }>(async (req, { params }, user) => {
         ...(data.phase_id        !== undefined && { phaseId:        data.phase_id }),
         ...(data.character_id    !== undefined && { characterId:    data.character_id }),
         ...(data.message_type    !== undefined && { messageType:    data.message_type }),
+        ...(data.kind            !== undefined && { kind:           data.kind }),
         ...(data.body            !== undefined && { body:           data.body }),
         ...(data.asset_url       !== undefined && { assetUrl:       data.asset_url }),
         ...(data.trigger_keyword !== undefined && { triggerKeyword: data.trigger_keyword }),

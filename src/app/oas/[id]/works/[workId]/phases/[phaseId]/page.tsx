@@ -58,7 +58,7 @@ export default function PhaseDetailPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
 
   // ── フェーズ編集フォーム ──
-  const [phaseForm, setPhaseForm]     = useState<{ phase_type: PhaseType; name: string; description: string; sort_order: number; is_active: boolean } | null>(null);
+  const [phaseForm, setPhaseForm]     = useState<{ phase_type: PhaseType; name: string; description: string; start_trigger: string; sort_order: number; is_active: boolean } | null>(null);
   const [phaseErrors, setPhaseErrors] = useState<Record<string, string[]>>({});
   const [savingPhase, setSavingPhase] = useState(false);
 
@@ -115,11 +115,12 @@ export default function PhaseDetailPage() {
       const p = await phaseApi.get(getDevToken(), phaseId);
       setPhase(p);
       setPhaseForm({
-        phase_type:  p.phase_type,
-        name:        p.name,
-        description: p.description ?? "",
-        sort_order:  p.sort_order,
-        is_active:   p.is_active,
+        phase_type:    p.phase_type,
+        name:          p.name,
+        description:   p.description ?? "",
+        start_trigger: p.start_trigger ?? "",
+        sort_order:    p.sort_order,
+        is_active:     p.is_active,
       });
     } catch (e) {
       setLoadError(e instanceof Error ? e.message : "フェーズの読み込みに失敗しました");
@@ -169,11 +170,12 @@ export default function PhaseDetailPage() {
     setSavingPhase(true);
     try {
       const updated = await phaseApi.update(getDevToken(), phaseId, {
-        phase_type:  phaseForm.phase_type,
-        name:        phaseForm.name.trim(),
-        description: phaseForm.description.trim() || undefined,
-        sort_order:  phaseForm.sort_order,
-        is_active:   phaseForm.is_active,
+        phase_type:    phaseForm.phase_type,
+        name:          phaseForm.name.trim(),
+        description:   phaseForm.description.trim() || undefined,
+        start_trigger: phaseForm.start_trigger.trim() || null,
+        sort_order:    phaseForm.sort_order,
+        is_active:     phaseForm.is_active,
       });
       setPhase(updated);
       showToast("フェーズを保存しました", "success");
@@ -390,6 +392,27 @@ export default function PhaseDetailPage() {
                 onChange={(e) => setPhaseForm({ ...phaseForm, description: e.target.value })}
                 maxLength={500} style={{ minHeight: 60 }} />
             </div>
+
+            {/* 開始トリガー（start フェーズのみ表示） */}
+            {phaseForm.phase_type === "start" && (
+              <div className="form-group">
+                <label htmlFor="phase-start-trigger">
+                  開始トリガーキーワード（任意）
+                </label>
+                <input
+                  id="phase-start-trigger"
+                  type="text"
+                  value={phaseForm.start_trigger}
+                  onChange={(e) => setPhaseForm({ ...phaseForm, start_trigger: e.target.value })}
+                  placeholder="例: はじめる"
+                  maxLength={200}
+                />
+                <p style={{ fontSize: 11, color: "#6b7280", marginTop: 4 }}>
+                  未開始ユーザーがこのキーワードを送信するとシナリオが開始されます。
+                  未設定の場合は任意のメッセージで自動開始します。
+                </p>
+              </div>
+            )}
 
             <div style={{ display: "flex", gap: 24, flexWrap: "wrap" }}>
               <div className="form-group" style={{ flexShrink: 0 }}>
