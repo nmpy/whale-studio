@@ -526,13 +526,6 @@ async function handleTextEvent({
   const startPhaseForTrigger = await prisma.phase.findFirst({
     where:   { workId: work.id, phaseType: "start", isActive: true },
     orderBy: { sortOrder: "asc" },
-    include: {
-      transitionsFrom: {
-        where:   { isActive: true },
-        orderBy: { sortOrder: "asc" },
-        take: 1,
-      },
-    },
   });
 
   if (startPhaseForTrigger?.startTrigger) {
@@ -882,16 +875,16 @@ async function handleStart({
 // トリガーキーワードを送信した場合に呼ばれる。
 //
 // 処理フロー:
-//   1. progress を作成し、初期フェーズ（startPhase の最初の遷移先 or startPhase 自体）へセット
+//   1. progress を startPhase.id（序章）にリセット／作成
 //   2. visible_phase に対応したリッチメニューへ切り替え
 //   3. startPhase に紐づく kind="start" メッセージを送信（開始演出として機能）
 //      kind="start" が 0 件の場合は startPhase の通常メッセージへフォールバック
+//   ※ ユーザーが次のメッセージを送ると matchTransition で startPhase の遷移が発火する
 //
-type StartPhaseWithTransitions = {
-  id:              string;
-  phaseType:       string;
-  startTrigger:    string | null;
-  transitionsFrom: { toPhaseId: string; sortOrder: number }[];
+type StartPhaseRecord = {
+  id:           string;
+  phaseType:    string;
+  startTrigger: string | null;
 };
 
 async function handleStartTrigger({
@@ -899,21 +892,23 @@ async function handleStartTrigger({
   startPhase,
 }: Omit<HandlerCommon, "work"> & {
   work:       NonNullable<WorkRecord>;
-  startPhase: StartPhaseWithTransitions;
+  startPhase: StartPhaseRecord;
 }) {
   const token = oa.channelAccessToken;
 
   // 初期フェーズの決定:
-  //   startPhase に遷移が設定されていればその最初の toPhase へ進む（序章など）
-  //   遷移がなければ startPhase 自体を初期フェーズとする
-  const firstTransition = startPhase.transitionsFrom[0];
-  const initialPhaseId  = firstTransition?.toPhaseId ?? startPhase.id;
+  //   handleStart と同様に startPhase 自体を初期フェーズとする。
+  //   startPhase の遷移（"わかった、助けるよ" → 謎解きパート1 など）は
+  //   ユーザーが次のメッセージを送ることで matchTransition によって発火させる。
+  //   ※ 以前は firstTransition.toPhaseId へ自動スキップしていたが、
+  //      startPhase の遷移が照合されなくなるため廃止。
+  const initialPhaseId = startPhase.id;
 
   console.log(
     `[Webhook][STEP] handleStartTrigger`,
     `userId=${userId}`,
     `initialPhaseId=${initialPhaseId}`,
-    `via=${firstTransition ? `transition→${firstTransition.toPhaseId.slice(0, 8)}` : "startPhase itself"}`,
+    `（startPhase.id に留まる）`,
   );
 
   // progress upsert（未開始なら新規作成 / 開始済みなら最初からリセット）
@@ -940,9 +935,6 @@ async function handleStartTrigger({
     `[Webhook][STEP] handleStartTrigger: progress upsert完了`,
     `progressId=${progress.id}`,
     `currentPhaseId=${progress.currentPhaseId}`,
-    `initialPhaseId=${initialPhaseId}`,
-    `hasTransition=${!!firstTransition}`,
-    `transitionTarget=${firstTransition?.toPhaseId ?? "なし（startPhase自身）"}`,
   );
 
   // 初期フェーズの phaseType を取得してリッチメニューを切り替え
