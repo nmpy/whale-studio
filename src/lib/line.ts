@@ -379,12 +379,8 @@ export function buildPhaseMessages(
       sender: opts.systemSender,
     });
   } else if (phase.transitions.length === 0) {
-    // 遷移未設定（シナリオ不備）
-    messages.push({
-      type:   "text",
-      text:   "次の展開の準備中です。しばらくお待ちください。",
-      sender: opts.systemSender,
-    });
+    // 遷移未設定 — β: システム文言を出さずメッセージのみ表示
+    // （シナリオ制作中の場合でも没入感を損なわないよう何も追加しない）
   } else {
     // クイックリプライを最後のテキストメッセージに付与
     const qr = buildQuickReply(phase.transitions.map((t) => t.label));
@@ -411,4 +407,68 @@ export function buildPhaseMessages(
 export function truncateText(text: string, max = LINE_TEXT_MAX): string {
   if (text.length <= max) return text;
   return text.slice(0, max - 3) + "…";
+}
+
+// ────────────────────────────────────────────────
+// triggerKeyword マッチ時のメッセージ変換
+// ────────────────────────────────────────────────
+
+/** `Message` テーブルの行（triggerKeyword マッチ結果）を LINE メッセージ配列に変換する */
+export type KeywordMessageRecord = {
+  id:              string;
+  messageType:     string;
+  body:            string | null;
+  assetUrl:        string | null;
+  altText:         string | null;
+  flexPayloadJson: string | null;
+  sortOrder:       number;
+  character: {
+    name:         string;
+    iconImageUrl: string | null;
+  } | null;
+};
+
+/**
+ * triggerKeyword にマッチした Message レコード群を LINE メッセージ配列に変換する。
+ * クイックリプライ・エンディング追記は行わない（フェーズ進行なし）。
+ * systemSender はキャラクターが未設定のメッセージに適用する。
+ */
+export function buildKeywordMessages(
+  records:      KeywordMessageRecord[],
+  systemSender?: LineSender,
+): LineMessage[] {
+  const messages: LineMessage[] = [];
+
+  for (const msg of records) {
+    const sender: LineSender | undefined = msg.character
+      ? buildSender({ name: msg.character.name, icon_image_url: msg.character.iconImageUrl })
+      : systemSender;
+
+    if (msg.messageType === "text" && msg.body) {
+      messages.push({ type: "text", text: msg.body, sender });
+    } else if (msg.messageType === "image" && msg.assetUrl) {
+      const lineMsg: LineImageMessage = {
+        type:               "image",
+        originalContentUrl: msg.assetUrl,
+        previewImageUrl:    msg.assetUrl,
+      };
+      if (sender) lineMsg.sender = sender;
+      messages.push(lineMsg);
+    } else if (msg.messageType === "flex" && msg.altText && msg.flexPayloadJson) {
+      try {
+        const contents = JSON.parse(msg.flexPayloadJson) as Record<string, unknown>;
+        const lineMsg: LineFlexMessage = {
+          type:     "flex",
+          altText:  msg.altText,
+          contents,
+        };
+        if (sender) lineMsg.sender = sender;
+        messages.push(lineMsg);
+      } catch {
+        console.warn(`[buildKeywordMessages] Flex JSON parse error msgId=${msg.id}`);
+      }
+    }
+  }
+
+  return messages.slice(0, LINE_MSG_MAX);
 }

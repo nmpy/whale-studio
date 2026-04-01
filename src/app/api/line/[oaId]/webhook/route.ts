@@ -34,9 +34,9 @@ import { prisma } from "@/lib/prisma";
 import {
   verifyLineSignature,
   isStartCommand, isResetCommand, isContinueCommand,
-  replyToLine, buildPhaseMessages, buildQuickReply,
+  replyToLine, buildPhaseMessages, buildQuickReply, buildKeywordMessages,
   RICHMENU_ACTIONS,
-  type LineWebhookBody, type LineEvent, type LineSender,
+  type LineWebhookBody, type LineEvent, type LineSender, type KeywordMessageRecord,
 } from "@/lib/line";
 import { buildRuntimeState, matchTransition, applySetFlags, safeParseFlags } from "@/lib/runtime";
 import { linkRichMenuToUser } from "@/lib/line-richmenu";
@@ -238,12 +238,16 @@ async function handleWebhook(req: NextRequest, oaId: string) {
   }
 
   // ── 5. follow イベント処理（友達追加 → トラッキング帰属）──
+  // 自動開始は work 取得後（後述）に行う
   const followEvents = webhookBody.events.filter(
-    (e): e is LineEvent & { source: { userId: string } } =>
-      e.type === "follow" && typeof e.source?.userId === "string"
+    (e): e is LineEvent & { source: { userId: string }; replyToken: string } =>
+      e.type === "follow" &&
+      typeof e.source?.userId === "string" &&
+      typeof e.replyToken === "string"
   );
 
   if (followEvents.length > 0) {
+    // トラッキング帰属（fire-and-forget）
     await Promise.allSettled(
       followEvents.map((e) => attributeFollowToTracking(oa.id, e.source.userId))
     );
@@ -343,6 +347,21 @@ async function handleWebhook(req: NextRequest, oaId: string) {
   }
 
   // ── 6. (Prisma モード) アクティブな作品を取得（systemCharacter + welcomeMessage も JOIN）──
+
+  // デバッグ: OA に紐づく全作品の件数・status を確認
+  const allWorks = await prisma.work.findMany({
+    where:   { oaId: oa.id },
+    select:  { id: true, title: true, publishStatus: true, sortOrder: true },
+    orderBy: { sortOrder: "asc" },
+  });
+  console.log(
+    `[Webhook][DEBUG] work検索 oaId=${oa.id}`,
+    `全件数=${allWorks.length}`,
+    allWorks.length > 0
+      ? allWorks.map((w) => `id=${w.id.slice(0, 8)} title="${w.title}" publishStatus="${w.publishStatus}" sortOrder=${w.sortOrder}`).join(" / ")
+      : "(作品なし)"
+  );
+
   const work = await prisma.work.findFirst({
     where:   { oaId: oa.id, publishStatus: "active" },
     orderBy: { sortOrder: "asc" },
@@ -352,6 +371,9 @@ async function handleWebhook(req: NextRequest, oaId: string) {
       },
     },
   });
+  console.log(
+    `[Webhook][DEBUG] activeWork=${work ? `id=${work.id.slice(0, 8)} title="${work.title}"` : "null (active な作品なし)"}`
+  );
   // welcomeMessage は work フィールドとして直接取得済み
 
   // システムキャラクター sender を構築（設定されていれば画像URL型のみ）
@@ -363,6 +385,16 @@ async function handleWebhook(req: NextRequest, oaId: string) {
           : {}),
       }
     : undefined;
+
+  // ── 6-b. follow 自動開始（β: 友だち追加直後に作品を開始）──
+  if (followEvents.length > 0 && work) {
+    await Promise.allSettled(
+      followEvents.map((e) => {
+        console.log(`[Webhook] follow → 自動開始 userId=${e.source.userId}`);
+        return handleStart({ oa, work, systemSender, userId: e.source.userId, replyToken: e.replyToken });
+      })
+    );
+  }
 
   // ── 7. 各イベントを並列処理（エラーが出ても他のイベントに影響させない）──
   await Promise.allSettled([
@@ -494,10 +526,10 @@ async function handleTextEvent({
   });
   console.log(`[Webhook][STEP] progress取得後 found=${!!progress} reachedEnding=${progress?.reachedEnding ?? "-"} currentPhaseId=${progress?.currentPhaseId ?? "-"}`);
 
-  // ─ 未開始 — あいさつメッセージ（設定があれば）＋開始案内 ─
+  // ─ 未開始 — 最初のメッセージで自動開始（β: 「はじめる」要求なし）─
   if (!progress) {
-    console.log(`[Webhook][STEP] メッセージ送信前 (未開始ウェルカム) userId=${userId}`);
-    await replyToLine(replyToken, buildWelcomeMessages(work, systemSender), token);
+    console.log(`[Webhook][STEP] 未開始ユーザー → 自動開始 userId=${userId}`);
+    await handleStart({ oa, work, systemSender, userId, replyToken });
     return;
   }
 
@@ -544,6 +576,23 @@ async function handleTextEvent({
       sender: systemSender,
     }], token);
     return;
+  }
+
+  // ─ triggerKeyword 照合（フェーズ進行なし・Transition より先に評価）─
+  const keywordMatched = await matchTriggerKeyword(work.id, progress.currentPhaseId, text);
+  if (keywordMatched.length > 0) {
+    console.log(
+      `[Webhook][STEP] triggerKeyword マッチ`,
+      `userId=${userId}`,
+      `messages=${keywordMatched.length}件`,
+      keywordMatched.map((m) => `id=${m.id.slice(0, 8)} kw="${m.triggerKeyword}" body="${(m.body ?? "").slice(0, 20)}"`).join(" / ")
+    );
+    const msgs = buildKeywordMessages(keywordMatched, systemSender);
+    if (msgs.length > 0) {
+      await replyToLine(replyToken, msgs, token);
+      return;
+    }
+    // メッセージ変換結果が 0 件（画像URLなしなど）の場合は Transition へフォールバック
   }
 
   // ─ 現在の flags を取得してフラグ条件付き遷移マッチング ─
@@ -679,8 +728,49 @@ async function handleStart({
   console.log(`[Webhook][STEP] handleStart: progress upsert後 progressId=${progress.id}`);
 
   const state = await buildRuntimeState(progress);
+
+  // ── デバッグ: phase 内容とトランジションを詳細出力 ──
+  if (state.phase) {
+    console.log(
+      `[Webhook][DEBUG] startPhase詳細`,
+      `phaseId=${state.phase.id}`,
+      `phaseType=${state.phase.phase_type}`,
+      `messages件数=${state.phase.messages.length}`,
+      `transitions=${state.phase.transitions === null ? "null(ending)" : `${state.phase.transitions.length}件`}`
+    );
+    // メッセージ内容（先頭40文字）
+    for (const m of state.phase.messages) {
+      console.log(
+        `[Webhook][DEBUG]   msg id=${m.id.slice(0, 8)}`,
+        `type=${m.message_type}`,
+        `sortOrder=${m.sort_order}`,
+        `body="${(m.body ?? "").slice(0, 40)}"`
+      );
+    }
+    // 遷移一覧
+    if (state.phase.transitions && state.phase.transitions.length > 0) {
+      for (const t of state.phase.transitions) {
+        console.log(
+          `[Webhook][DEBUG]   transition label="${t.label}"`,
+          `→ toPhase="${t.to_phase.name}"(${t.to_phase.phase_type})`,
+          `sortOrder=${t.sort_order}`
+        );
+      }
+    } else if (state.phase.transitions !== null) {
+      console.warn(
+        `[Webhook][DEBUG] ⚠️ transitions=[] — startPhaseに有効な遷移がありません。`,
+        `管理画面でstartPhaseに遷移（次のフェーズへのボタン）を追加してください。`
+      );
+    }
+  } else {
+    console.warn(`[Webhook][DEBUG] buildRuntimeState が phase=null を返しました progressId=${progress.id}`);
+  }
+
   const msgs  = buildPhaseMessages(state.phase, { systemSender });
-  console.log(`[Webhook][STEP] メッセージ送信前 (開始) msgs件数=${msgs.length} userId=${userId}`);
+  console.log(
+    `[Webhook][STEP] メッセージ送信前 (開始) msgs件数=${msgs.length} userId=${userId}`,
+    msgs.map((m, i) => `[${i}]type=${m.type} text="${"text" in m ? String(m.text ?? "").slice(0, 30) : "(non-text)"}"`).join(" / ")
+  );
   await replyToLine(replyToken, msgs, token);
 }
 
@@ -773,4 +863,107 @@ async function attributeFollowToTracking(
   } catch (e) {
     console.warn("[Webhook] トラッキング帰属エラー:", e);
   }
+}
+
+// ──────────────────────────────────────────────────────────
+// triggerKeyword 照合
+// ──────────────────────────────────────────────────────────
+
+/**
+ * テキスト入力を正規化する（前後空白除去 + NFKC 全角→半角）
+ */
+function normKw(s: string): string {
+  return s.trim().normalize("NFKC");
+}
+
+/**
+ * 末尾の句読点・感嘆符・疑問符を除去した「ゆるい」正規化
+ * 例: "既読無視しないで。" → "既読無視しないで"
+ */
+function normKwLoose(s: string): string {
+  return normKw(s).replace(/[。！？!?．…\s]+$/u, "").trimEnd();
+}
+
+/**
+ * ユーザー入力に対して triggerKeyword が一致する Message レコードを返す。
+ *
+ * 検索範囲:
+ *   - phaseId が currentPhaseId に一致する（フェーズ限定キーワード）
+ *   - または phaseId が null（全フェーズ共通キーワード）
+ *
+ * マッチ条件（いずれかを満たせばマッチ）:
+ *   1. NFKC 正規化後の完全一致
+ *   2. 末尾句読点除去後の完全一致（例: 句点ありキーワード vs 句点なし入力）
+ *
+ * 返り値: sortOrder 昇順のマッチ済み Message レコード（0件の場合は空配列）
+ */
+async function matchTriggerKeyword(
+  workId:         string,
+  currentPhaseId: string | null,
+  inputText:      string,
+): Promise<(KeywordMessageRecord & { triggerKeyword: string })[]> {
+  if (!currentPhaseId) return [];
+
+  // phaseId 一致 または null（全体共通）のキーワード付きメッセージを取得
+  const candidates = await prisma.message.findMany({
+    where: {
+      workId,
+      isActive:       true,
+      triggerKeyword: { not: null },
+      OR: [
+        { phaseId: currentPhaseId },
+        { phaseId: null },
+      ],
+    },
+    select: {
+      id:              true,
+      triggerKeyword:  true,
+      messageType:     true,
+      body:            true,
+      assetUrl:        true,
+      altText:         true,
+      flexPayloadJson: true,
+      sortOrder:       true,
+      character: {
+        select: { name: true, iconImageUrl: true },
+      },
+    },
+    orderBy: { sortOrder: "asc" },
+  });
+
+  if (candidates.length === 0) return [];
+
+  const inputNorm  = normKw(inputText);
+  const inputLoose = normKwLoose(inputText);
+
+  // マッチしたキーワード文字列を収集（同一キーワードで複数メッセージ可）
+  const matchedKeywords = new Set<string>();
+  for (const msg of candidates) {
+    const kw      = msg.triggerKeyword!;
+    const kwNorm  = normKw(kw);
+    const kwLoose = normKwLoose(kw);
+
+    if (inputNorm === kwNorm || inputLoose === kwLoose) {
+      matchedKeywords.add(kw);
+      console.log(
+        `[Webhook][kw] マッチ keyword="${kw}"`,
+        `input="${inputText}"`,
+        `normMatch=${inputNorm === kwNorm}`,
+        `looseMatch=${inputLoose === kwLoose}`
+      );
+    } else {
+      console.log(
+        `[Webhook][kw] スキップ keyword="${kw}"`,
+        `normKw="${kwNorm}" vs inputNorm="${inputNorm}"`,
+        `looseKw="${kwLoose}" vs inputLoose="${inputLoose}"`
+      );
+    }
+  }
+
+  if (matchedKeywords.size === 0) return [];
+
+  return candidates.filter(
+    (m): m is typeof m & { triggerKeyword: string } =>
+      m.triggerKeyword !== null && matchedKeywords.has(m.triggerKeyword)
+  );
 }
