@@ -73,19 +73,7 @@ export type LineVideoMessage = {
   quickReply?: LineQuickReply;
 };
 
-export type LineFlexMessage = {
-  type: "flex";
-  /** 通知欄・未対応端末向けの代替テキスト */
-  altText: string;
-  /** Flex Message コンテナ（bubble / carousel） */
-  contents: Record<string, unknown>;
-  /** キャラクター送信者情報（任意） */
-  sender?: LineSender;
-  /** クイックリプライ選択肢（任意） */
-  quickReply?: LineQuickReply;
-};
-
-export type LineMessage = LineTextMessage | LineImageMessage | LineVideoMessage | LineFlexMessage;
+export type LineMessage = LineTextMessage | LineImageMessage | LineVideoMessage;
 
 // LINE Webhook イベント（最小限の型定義）
 export type LineEvent = {
@@ -426,23 +414,15 @@ export function buildPhaseMessages(
       messages.push(lineMsg);
     }
 
-    if (msg.message_type === "flex" && msg.alt_text && msg.flex_payload_json) {
-      let contents: Record<string, unknown> | null = null;
-      try {
-        contents = JSON.parse(msg.flex_payload_json) as Record<string, unknown>;
-      } catch {
-        console.warn(`[buildPhaseMessages] Flex JSON parse error msgId=${msg.id}`);
-      }
-      if (contents) {
-        const lineMsg: LineFlexMessage = {
-          type:     "flex",
-          altText:  msg.alt_text,
-          contents,
-        };
-        if (msg.character) lineMsg.sender = buildSender(msg.character);
-        if (msgQr) lineMsg.quickReply = msgQr;
-        messages.push(lineMsg);
-      }
+    // flex → alt_text をテキストとして送信（既存 DB データの後方互換）
+    if ((msg.message_type as string) === "flex" && msg.alt_text) {
+      const lineMsg: LineTextMessage = {
+        type: "text",
+        text: msg.alt_text,
+      };
+      if (msg.character) lineMsg.sender = buildSender(msg.character);
+      if (msgQr) lineMsg.quickReply = msgQr;
+      messages.push(lineMsg);
     }
   }
 
@@ -551,20 +531,11 @@ export function buildKeywordMessages(
       if (sender) lineMsg.sender = sender;
       if (msgQr) lineMsg.quickReply = msgQr;
       messages.push(lineMsg);
-    } else if (msg.messageType === "flex" && msg.altText && msg.flexPayloadJson) {
-      try {
-        const contents = JSON.parse(msg.flexPayloadJson) as Record<string, unknown>;
-        const lineMsg: LineFlexMessage = {
-          type:     "flex",
-          altText:  msg.altText,
-          contents,
-        };
-        if (sender) lineMsg.sender = sender;
-        if (msgQr) lineMsg.quickReply = msgQr;
-        messages.push(lineMsg);
-      } catch {
-        console.warn(`[buildKeywordMessages] Flex JSON parse error msgId=${msg.id}`);
-      }
+    // flex → alt_text をテキストとして送信（既存 DB データの後方互換）
+    } else if ((msg.messageType as string) === "flex" && msg.altText) {
+      const lineMsg: LineTextMessage = { type: "text", text: msg.altText, sender };
+      if (msgQr) lineMsg.quickReply = msgQr;
+      messages.push(lineMsg);
     }
   }
 

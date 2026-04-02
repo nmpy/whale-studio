@@ -174,12 +174,149 @@ export function matchTransition<
 }
 
 // ── ランタイム状態の構築 ─────────────────────────
+
+/**
+ * フェーズ付き情報を取得するヘルパー。
+ * 戻り値の型を PhaseRow として使い回す。
+ */
+async function fetchPhaseWithIncludes(id: string) {
+  return prisma.phase.findUnique({
+    where: { id },
+    include: {
+      messages: {
+        where:   { isActive: true },
+        orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+        include: {
+          character: {
+            select: {
+              id: true, name: true, iconType: true, iconText: true, iconColor: true,
+              iconImageUrl: true,
+            },
+          },
+        },
+      },
+      transitionsFrom: {
+        where:   { isActive: true },
+        orderBy: [{ sortOrder: "asc" }],
+        include: {
+          toPhase: { select: { id: true, name: true, phaseType: true } },
+        },
+      },
+    },
+  });
+}
+
+/** fetchPhaseWithIncludes の非 null 戻り値型 */
+type PhaseRow = NonNullable<Awaited<ReturnType<typeof fetchPhaseWithIncludes>>>;
+
+/**
+ * フェーズの Prisma include 定義（route.ts から PHASE_INCLUDE として再利用可能）。
+ * as const を避けて orderBy が readonly にならないようにする。
+ */
+export function buildPhaseInclude() {
+  return {
+    messages: {
+      where:   { isActive: true } as const,
+      orderBy: [{ sortOrder: "asc" as const }, { createdAt: "asc" as const }] as { sortOrder?: "asc" | "desc"; createdAt?: "asc" | "desc" }[],
+      include: {
+        character: {
+          select: {
+            id: true, name: true, iconType: true, iconText: true, iconColor: true,
+            iconImageUrl: true,
+          },
+        },
+      },
+    },
+    transitionsFrom: {
+      where:   { isActive: true } as const,
+      orderBy: [{ sortOrder: "asc" as const }] as { sortOrder?: "asc" | "desc" }[],
+      include: {
+        toPhase: { select: { id: true, name: true, phaseType: true } },
+      },
+    },
+  };
+}
+
+// 後方互換エクスポート
+export const PHASE_INCLUDE = buildPhaseInclude();
+
+/**
+ * プリフェッチ済みの PhaseRow から RuntimeState.phase を組み立てる（DB クエリなし）。
+ * buildRuntimeState / buildRuntimeStateWithPhase の共通処理。
+ */
+function phaseRowToRuntimePhase(
+  phase:  PhaseRow,
+  flags:  Record<string, unknown>,
+): import("@/types").RuntimePhase {
+  const isEnding = phase.phaseType === "ending";
+
+  const availableTransitions = phase.transitionsFrom.filter(
+    (t) => evaluateCondition(flags, t.flagCondition)
+  );
+
+  return {
+    id:          phase.id,
+    phase_type:  phase.phaseType as PhaseType,
+    name:        phase.name,
+    description: phase.description,
+    messages:    phase.messages.map((m) => {
+      let quickReplies: QuickReplyItem[] | null = null;
+      if (m.quickReplies) {
+        try {
+          const parsed = JSON.parse(m.quickReplies);
+          if (Array.isArray(parsed)) quickReplies = parsed as QuickReplyItem[];
+        } catch {
+          console.warn(`[buildRuntimeState] quickReplies parse error msgId=${m.id}`);
+        }
+      }
+      return {
+        id:                m.id,
+        message_type:      m.messageType as MessageType,
+        body:              m.body,
+        asset_url:         m.assetUrl,
+        alt_text:          m.altText          ?? null,
+        flex_payload_json: m.flexPayloadJson  ?? null,
+        quick_replies:     quickReplies,
+        sort_order:        m.sortOrder,
+        character:         m.character
+          ? {
+              id:             m.character.id,
+              name:           m.character.name,
+              icon_type:      m.character.iconType as IconType,
+              icon_text:      m.character.iconText,
+              icon_color:     m.character.iconColor,
+              icon_image_url: m.character.iconImageUrl,
+            }
+          : null,
+      };
+    }),
+    transitions: isEnding
+      ? null
+      : availableTransitions.map((t) => ({
+          id:        t.id,
+          label:     t.label,
+          condition: t.condition,
+          set_flags: t.setFlags,
+          sort_order: t.sortOrder,
+          to_phase: {
+            id:         t.toPhase.id,
+            name:       t.toPhase.name,
+            phase_type: t.toPhase.phaseType as PhaseType,
+          },
+        })),
+  };
+}
+
 /**
  * Prisma の UserProgress レコードから RuntimeState を構築する。
  * 現在フェーズのメッセージ・遷移を JOIN して返す。
+ *
+ * @param preloadedPhase  既にフェッチ済みの PhaseRow を渡すと DB クエリをスキップする。
+ *                        省略時は currentPhaseId で自動フェッチする。
  */
 export async function buildRuntimeState(
-  progress: RawProgress
+  progress:      RawProgress,
+  preloadedPhase?: PhaseRow | null,
 ): Promise<RuntimeState> {
   const progressOut = {
     id:                 progress.id,
@@ -197,98 +334,17 @@ export async function buildRuntimeState(
     return { progress: progressOut, phase: null };
   }
 
-  const phase = await prisma.phase.findUnique({
-    where: { id: progress.currentPhaseId },
-    include: {
-      messages: {
-        where:   { isActive: true },
-        orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
-        include: {
-          character: {
-            select: {
-              id: true, name: true, iconType: true, iconText: true, iconColor: true,
-              iconImageUrl: true,
-            },
-          },
-        },
-        // quickReplies は include ではなく select フィールドとして自動取得される
-      },
-      transitionsFrom: {
-        where:   { isActive: true },
-        orderBy: [{ sortOrder: "asc" }],
-        include: {
-          toPhase: { select: { id: true, name: true, phaseType: true } },
-        },
-      },
-    },
-  });
+  const phase = preloadedPhase ?? await fetchPhaseWithIncludes(progress.currentPhaseId);
 
   if (!phase) {
     return { progress: progressOut, phase: null };
   }
 
-  const isEnding = phase.phaseType === "ending";
-  const flags    = safeParseFlags(progress.flags);
-
-  // flagCondition を満たす遷移のみ返す（LINE / Playground ともに同じ表示範囲）
-  const availableTransitions = phase.transitionsFrom.filter(
-    (t) => evaluateCondition(flags, t.flagCondition)
-  );
+  const flags = safeParseFlags(progress.flags);
 
   return {
     progress: progressOut,
-    phase: {
-      id:          phase.id,
-      phase_type:  phase.phaseType as PhaseType,
-      name:        phase.name,
-      description: phase.description,
-      messages:    phase.messages.map((m) => {
-        // DB の quickReplies (JSON 文字列) を QuickReplyItem[] に parse
-        let quickReplies: QuickReplyItem[] | null = null;
-        if (m.quickReplies) {
-          try {
-            const parsed = JSON.parse(m.quickReplies);
-            if (Array.isArray(parsed)) quickReplies = parsed as QuickReplyItem[];
-          } catch {
-            console.warn(`[buildRuntimeState] quickReplies parse error msgId=${m.id}`);
-          }
-        }
-        return {
-          id:                m.id,
-          message_type:      m.messageType as MessageType,
-          body:              m.body,
-          asset_url:         m.assetUrl,
-          alt_text:          m.altText          ?? null,
-          flex_payload_json: m.flexPayloadJson  ?? null,
-          quick_replies:     quickReplies,
-          sort_order:        m.sortOrder,
-          character:         m.character
-            ? {
-                id:             m.character.id,
-                name:           m.character.name,
-                icon_type:      m.character.iconType as IconType,
-                icon_text:      m.character.iconText,
-                icon_color:     m.character.iconColor,
-                icon_image_url: m.character.iconImageUrl,
-              }
-            : null,
-        };
-      }),
-      transitions: isEnding
-        ? null
-        : availableTransitions.map((t) => ({
-            id:        t.id,
-            label:     t.label,
-            condition: t.condition,
-            set_flags: t.setFlags,
-            sort_order: t.sortOrder,
-            to_phase: {
-              id:         t.toPhase.id,
-              name:       t.toPhase.name,
-              phase_type: t.toPhase.phaseType as PhaseType,
-            },
-          })),
-    },
+    phase:    phaseRowToRuntimePhase(phase, flags),
   };
 }
 

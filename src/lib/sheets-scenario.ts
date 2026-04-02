@@ -360,11 +360,12 @@ export async function handleTextEventSheets({
     },
   });
 
-  await switchRichMenuForUser(oa, userId, toPhaseRow.phase_type);
-
   const state = await buildRuntimeStateFromSheets(data, updated);
   const msgs  = buildPhaseMessages(state.phase, { systemSender });
   await replyToLine(replyToken, msgs, token);
+
+  // リッチメニュー切り替えは返信後にバックグラウンド実行（体感速度に影響しない）
+  void switchRichMenuForUser(oa, userId, toPhaseRow.phase_type);
 }
 
 export async function handlePostbackEventSheets({
@@ -416,11 +417,12 @@ async function handleStartSheets({
     update: { currentPhaseId: startPhase.phase_id, reachedEnding: false, flags: "{}", lastInteractedAt: new Date() },
   });
 
-  await switchRichMenuForUser(oa, userId, startPhase.phase_type);
-
   const state = await buildRuntimeStateFromSheets(data, progress);
   const msgs  = buildPhaseMessages(state.phase, { systemSender });
   await replyToLine(replyToken, msgs, token);
+
+  // リッチメニュー切り替えは返信後にバックグラウンド実行
+  void switchRichMenuForUser(oa, userId, startPhase.phase_type);
 }
 
 async function handleContinueSheets({

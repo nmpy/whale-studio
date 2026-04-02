@@ -18,8 +18,7 @@ export type ExtendedMessageType =
   | "riddle"
   | "video"
   | "carousel"
-  | "voice"
-  | "flex";
+  | "voice";
 
 // ── 定数 ────────────────────────────────────────────────
 
@@ -31,11 +30,9 @@ export const MESSAGE_TYPE_OPTIONS: {
 }[] = [
   { value: "text",     label: "テキスト",     icon: "💬", desc: "テキストメッセージ" },
   { value: "image",    label: "画像",         icon: "🖼",  desc: "画像メッセージ" },
-  { value: "riddle",   label: "謎",           icon: "🔍", desc: "謎チャレンジメッセージ" },
   { value: "video",    label: "動画",         icon: "🎬", desc: "動画メッセージ" },
   { value: "carousel", label: "カルーセル",   icon: "🎠", desc: "カルーセルメッセージ" },
   { value: "voice",    label: "ボイス",       icon: "🎙", desc: "ボイスメッセージ" },
-  { value: "flex",     label: "Flex",         icon: "🪄", desc: "Flex Message" },
 ];
 
 /** 謎の配信形式セレクター用（riddle / voice / flex は謎では使用しない） */
@@ -81,8 +78,6 @@ export interface MessageFormState {
   riddle_id:       string;
   carousel_items:  MessageCarouselCard[];
   quick_replies:   QuickReplyItem[];
-  alt_text:        string;
-  flex_json:       string;
   sort_order:      number;
   is_active:       boolean;
   // ── 謎（puzzle）専用フィールド ──
@@ -109,8 +104,6 @@ export const EMPTY_MESSAGE_FORM: MessageFormState = {
   riddle_id:       "",
   carousel_items:  [],
   quick_replies:   [],
-  alt_text:        "",
-  flex_json:       "",
   sort_order:      0,
   is_active:       true,
   // puzzle defaults
@@ -138,8 +131,6 @@ export function msgToFormState(msg: {
   notify_text?:          string | null;
   riddle_id?:            string | null;
   quick_replies?:        QuickReplyItem[] | null;
-  alt_text?:             string | null;
-  flex_payload_json?:    string | null;
   puzzle_type?:          string | null;
   answer?:               string | null;
   puzzle_hint_text?:     string | null;
@@ -175,8 +166,6 @@ export function msgToFormState(msg: {
     riddle_id:             msg.riddle_id       ?? "",
     carousel_items,
     quick_replies:         msg.quick_replies   ?? [],
-    alt_text:              msg.alt_text         ?? "",
-    flex_json:             msg.flex_payload_json ?? "",
     sort_order:            msg.sort_order      ?? 0,
     is_active:             msg.is_active       ?? true,
     puzzle_type:           msg.puzzle_type     ?? "",
@@ -212,13 +201,11 @@ export function formStateToMsgBody(form: MessageFormState) {
     asset_url:         (form.message_type === "image" || form.message_type === "video" || form.message_type === "voice")
       ? form.asset_url || undefined
       : undefined,
-    notify_text:       form.message_type !== "text" && form.message_type !== "flex"
+    notify_text:       form.message_type !== "text"
       ? form.notify_text || undefined
       : undefined,
     riddle_id:         !isPuzzle ? (form.riddle_id || null) : null,
     quick_replies:     form.quick_replies.length > 0 ? form.quick_replies : null,
-    alt_text:          !isPuzzle && form.message_type === "flex" ? form.alt_text || null : null,
-    flex_payload_json: !isPuzzle && form.message_type === "flex" ? form.flex_json || null : null,
     sort_order:        form.sort_order,
     is_active:         form.is_active,
     // puzzle fields
@@ -303,13 +290,6 @@ export function validateMessageForm(form: MessageFormState): string | null {
   }
   if (form.message_type === "carousel" && form.carousel_items.length === 0) {
     return "カードを1枚以上追加してください";
-  }
-  if (form.message_type === "flex") {
-    if (!form.alt_text.trim()) return "altTextを入力してください";
-    if (!form.flex_json.trim()) return "Flex Message JSONを入力してください";
-    try { JSON.parse(form.flex_json); } catch {
-      return "JSONの形式が正しくありません";
-    }
   }
   return null;
 }
@@ -1130,19 +1110,6 @@ function PreviewPanel({ form, characters, riddles }: PreviewPanelProps) {
             </div>
           </div>
         );
-      case "flex":
-        return (
-          <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
-            <span style={{ fontSize: 20 }}>🪄</span>
-            <div>
-              <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 2 }}>Flex Message</div>
-              {form.alt_text
-                ? <div style={{ fontSize: 13, color: "#111", fontWeight: 500 }}>{form.alt_text}</div>
-                : <span style={{ color: "#aaa", fontStyle: "italic", fontSize: 12 }}>代替テキストを入力してください</span>
-              }
-            </div>
-          </div>
-        );
       case "carousel":
         return form.carousel_items.length === 0
           ? <span style={{ color: "#aaa", fontStyle: "italic", fontSize: 12 }}>カードを追加してください</span>
@@ -1294,7 +1261,6 @@ export function MessageForm({
 }: MessageFormProps) {
   const [form, setForm]       = useState<MessageFormState>(initialForm);
   const [error, setError]     = useState<string | null>(null);
-  const [flexHelpOpen, setFlexHelpOpen] = useState(false);
 
   const isPuzzle = form.kind === "puzzle";
 
@@ -1408,41 +1374,6 @@ export function MessageForm({
               {error}
             </div>
           )}
-
-          {/* ════════════════════════════════════════
-              トップレベル: メッセージ / 謎 切り替え
-          ════════════════════════════════════════ */}
-          <div className="card" style={{ marginBottom: 16 }}>
-            <div style={sectionHeader}>種類</div>
-            <div style={{ display: "flex", gap: 10 }}>
-              {(
-                [
-                  { value: false, label: "💬 メッセージ", desc: "テキスト・画像などのメッセージ" },
-                  { value: true,  label: "🧩 謎",         desc: "答え合わせ付きのインライン謎" },
-                ] as const
-              ).map(({ value, label, desc }) => (
-                <button
-                  key={String(value)}
-                  type="button"
-                  onClick={() => set("kind", value ? "puzzle" : "normal")}
-                  style={{
-                    flex: 1,
-                    padding: "10px 14px",
-                    borderRadius: 8,
-                    border: isPuzzle === value ? "2px solid #06C755" : "2px solid #e5e5e5",
-                    background: isPuzzle === value ? "#E6F7ED" : "#fff",
-                    color: isPuzzle === value ? "#06C755" : "#6b7280",
-                    cursor: "pointer",
-                    textAlign: "left",
-                    transition: "all 0.15s",
-                  }}
-                >
-                  <div style={{ fontWeight: 600, fontSize: 14 }}>{label}</div>
-                  <div style={{ fontSize: 11, color: isPuzzle === value ? "#059669" : "#9ca3af", marginTop: 2 }}>{desc}</div>
-                </button>
-              ))}
-            </div>
-          </div>
 
           {/* ════════════════════════════════════════
               セクション 1: トリガー設定
@@ -1860,130 +1791,6 @@ export function MessageForm({
                   {form.body.length} / 5000
                 </div>
               </div>
-            )}
-
-            {/* ── Flex Message ── */}
-            {mtype === "flex" && (
-              <>
-                <div className="form-group">
-                  <label style={fieldLabel} htmlFor="flex_alt_text">
-                    代替テキスト <span style={{ color: "#dc2626" }}>*</span>
-                  </label>
-                  <input
-                    id="flex_alt_text"
-                    type="text"
-                    className="form-input"
-                    value={form.alt_text}
-                    onChange={(e) => set("alt_text", e.target.value)}
-                    placeholder="通知や未対応環境向けに表示するテキストを入力してください"
-                    maxLength={400}
-                  />
-                  <div style={hintText}>LINE 通知欄や未対応端末に表示されるテキストです</div>
-                </div>
-                <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label style={fieldLabel} htmlFor="flex_json">
-                    Flex Message JSON <span style={{ color: "#dc2626" }}>*</span>
-                  </label>
-                  <textarea
-                    id="flex_json"
-                    className="form-input"
-                    style={{ minHeight: 180, resize: "vertical", fontFamily: "monospace", fontSize: 12 }}
-                    value={form.flex_json}
-                    onChange={(e) => set("flex_json", e.target.value)}
-                    placeholder={'Flex MessageのJSONを入力してください\n例: {"type":"bubble","body":{"type":"box","layout":"vertical","contents":[{"type":"text","text":"Hello"}]}}'}
-                    spellCheck={false}
-                  />
-                  {form.flex_json.trim() && (() => {
-                    try { JSON.parse(form.flex_json); return null; } catch {
-                      return (
-                        <div style={{ marginTop: 4, fontSize: 12, color: "#dc2626", display: "flex", alignItems: "center", gap: 4 }}>
-                          ⚠️ JSONの形式が正しくありません
-                        </div>
-                      );
-                    }
-                  })()}
-                  <div style={hintText}>{"type: \"bubble\" または \"carousel\" を指定できます"}</div>
-                </div>
-
-                {/* ── Flex Message 説明トグル ── */}
-                <div>
-                  <button
-                    type="button"
-                    onClick={() => setFlexHelpOpen((v) => !v)}
-                    style={{
-                      background: "none",
-                      border: "none",
-                      padding: 0,
-                      cursor: "pointer",
-                      fontSize: 13,
-                      color: "#4b5563",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 4,
-                    }}
-                  >
-                    <span>{flexHelpOpen ? "▼" : "▶"}</span>
-                    <span>Flex Messageの例を見る</span>
-                  </button>
-                  {flexHelpOpen && (
-                    <div style={{
-                      marginTop: 10,
-                      padding: "12px 14px",
-                      background: "#f8fafc",
-                      border: "1px solid #e2e8f0",
-                      borderRadius: 8,
-                      fontSize: 12,
-                      color: "#374151",
-                      lineHeight: 1.7,
-                    }}>
-                      <p style={{ margin: "0 0 8px", fontWeight: 600 }}>作品紹介カードの例（bubble）</p>
-                      <pre style={{
-                        margin: 0,
-                        overflowX: "auto",
-                        fontFamily: "monospace",
-                        fontSize: 11,
-                        background: "#1e293b",
-                        color: "#e2e8f0",
-                        padding: "10px 12px",
-                        borderRadius: 6,
-                        whiteSpace: "pre",
-                      }}>{`{
-  "type": "bubble",
-  "body": {
-    "type": "box",
-    "layout": "vertical",
-    "contents": [
-      {
-        "type": "text",
-        "text": "既読無視しないで。",
-        "weight": "bold",
-        "size": "xl"
-      },
-      {
-        "type": "text",
-        "text": "未読のまま止まったチャット。",
-        "size": "sm",
-        "color": "#666666"
-      }
-    ]
-  },
-  "footer": {
-    "type": "button",
-    "style": "primary",
-    "action": {
-      "type": "postback",
-      "label": "体験をはじめる",
-      "data": "action=start_work&work_id=1"
-    }
-  }
-}`}</pre>
-                      <p style={{ margin: "8px 0 0", color: "#6b7280", fontSize: 11 }}>
-                        上記 JSON をそのままコピーして貼り付け、テキストや色をカスタマイズしてください。
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </>
             )}
 
             {/* ── 画像 ── */}

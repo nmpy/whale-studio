@@ -164,7 +164,10 @@ export default function FeedbackModal({ pathname, onClose }: Props) {
 
         // GAS 未設定エラーはユーザー向けメッセージを分かりやすく変換
         if (errMsg.includes("GAS_FEEDBACK_WEBHOOK_URL")) {
-          showToast("送信先が設定されていません。管理者にお問い合わせください。", "error");
+          showToast(
+            "送信先が未設定です。サーバーの環境変数 GAS_FEEDBACK_WEBHOOK_URL を設定し、再起動してください。",
+            "error"
+          );
         } else if (errMsg.startsWith("ネットワークエラー")) {
           showToast("スプレッドシートへの接続に失敗しました。しばらく後に再試行してください。", "error");
         } else {

@@ -65,23 +65,39 @@ export interface FeedbackResult {
  * ```
  */
 export async function submitFeedback(payload: FeedbackPayload): Promise<FeedbackResult> {
-  const gasUrl = process.env.GAS_FEEDBACK_WEBHOOK_URL?.trim();
-  const isDev  = process.env.NODE_ENV === "development";
+  const gasUrl  = process.env.GAS_FEEDBACK_WEBHOOK_URL?.trim();
+  const devSkip = process.env.FEEDBACK_DEV_SKIP === "true";
+
+  // ── 起動時診断ログ（毎リクエストで env の読み取り状態を確認できる） ──────────
+  console.info(
+    `[feedback] 設定確認: GAS_URL=${gasUrl ? "設定済み" : "未設定(空)"} ` +
+    `FEEDBACK_DEV_SKIP=${devSkip} NODE_ENV=${process.env.NODE_ENV}`
+  );
 
   // ── URL 未設定の処理 ───────────────────────────────────────────────────────
   if (!gasUrl) {
-    // FEEDBACK_DEV_SKIP=true のときのみ開発用コンソール出力に逃がす（NODE_ENV 問わず有効）
-    if (process.env.FEEDBACK_DEV_SKIP === "true") {
+    // FEEDBACK_DEV_SKIP=true のときのみ開発用コンソール出力に逃がす
+    // ※ NODE_ENV に関わらず有効（本番Vercelでも FEEDBACK_DEV_SKIP=true を設定すれば動く）
+    if (devSkip) {
       console.warn(
-        "[feedback] ⚠️  FEEDBACK_DEV_SKIP=true — スプレッドシートには送信しません（開発バイパス）"
+        "[feedback] ⚠️  FEEDBACK_DEV_SKIP=true — スプレッドシートには送信しません（バイパス）\n" +
+        "[feedback] 本番反映するには GAS_FEEDBACK_WEBHOOK_URL を設定してください"
       );
       console.log("[feedback] payload:\n" + JSON.stringify(payload, null, 2));
       return { ok: true, dev_skip: true };
     }
 
-    // それ以外は必ずエラーを返す（「保存されていないのに成功」を防ぐ）
-    const msg = "GAS_FEEDBACK_WEBHOOK_URL が設定されていません。.env.local を確認してください。";
-    console.error("[feedback] ❌ " + msg);
+    // GAS URL も FEEDBACK_DEV_SKIP も未設定 → エラー
+    const msg =
+      "GAS_FEEDBACK_WEBHOOK_URL が設定されていません。" +
+      ".env.local (ローカル) または Vercel 環境変数 (本番) に設定してください。" +
+      "設定後はサーバーを再起動してください。";
+    console.error(
+      "[feedback] ❌ " + msg + "\n" +
+      "[feedback] 確認: GAS_URL=" + String(gasUrl) +
+      " / FEEDBACK_DEV_SKIP=" + String(devSkip) +
+      " / NODE_ENV=" + process.env.NODE_ENV
+    );
     return { ok: false, error: msg };
   }
 

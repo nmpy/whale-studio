@@ -17,7 +17,6 @@ const MESSAGE_TYPE_LABEL: Record<MessageType, string> = {
   video:    "動画",
   carousel: "カルーセル",
   voice:    "ボイス",
-  flex:     "Flex",
 };
 
 const MESSAGE_TYPE_ICON: Record<MessageType, string> = {
@@ -27,7 +26,6 @@ const MESSAGE_TYPE_ICON: Record<MessageType, string> = {
   video:    "🎬",
   carousel: "🎠",
   voice:    "🎙",
-  flex:     "🪄",
 };
 
 const PHASE_TYPE_LABEL: Record<string, string> = {

@@ -38,7 +38,7 @@ import {
   RICHMENU_ACTIONS,
   type LineWebhookBody, type LineEvent, type LineSender, type KeywordMessageRecord,
 } from "@/lib/line";
-import { buildRuntimeState, matchTransition, applySetFlags, safeParseFlags } from "@/lib/runtime";
+import { buildRuntimeState, matchTransition, applySetFlags, safeParseFlags, PHASE_INCLUDE } from "@/lib/runtime";
 import { linkRichMenuToUser } from "@/lib/line-richmenu";
 import {
   loadSheetsData,
@@ -139,6 +139,7 @@ export async function POST(
 }
 
 async function handleWebhook(req: NextRequest, oaId: string) {
+  const t0 = Date.now();
   // ── デバッグ: oaId を最初に記録 ──
   console.log(`[Webhook] 受信 oaId=${oaId}`);
 
@@ -188,10 +189,15 @@ async function handleWebhook(req: NextRequest, oaId: string) {
     `検索カラム=lineOaId`
   );
 
-  // lineOaId で検索（@ 付き・なし両方を試す）
-  const oa =
-    await prisma.oa.findFirst({ where: { lineOaId: normalizedOaId } }) ??
-    await prisma.oa.findFirst({ where: { lineOaId: `@${normalizedOaId}` } });
+  // lineOaId で検索（@ 付き・なし両方を OR で同時に試す）
+  const tOa = Date.now();
+  const oa = await prisma.oa.findFirst({
+    where: { OR: [
+      { lineOaId: normalizedOaId },
+      { lineOaId: `@${normalizedOaId}` },
+    ]},
+  });
+  console.log(`[perf][OA取得] ${Date.now() - tOa}ms`);
 
   if (oa) {
     console.log(
@@ -348,20 +354,7 @@ async function handleWebhook(req: NextRequest, oaId: string) {
 
   // ── 6. (Prisma モード) アクティブな作品を取得（systemCharacter + welcomeMessage も JOIN）──
 
-  // デバッグ: OA に紐づく全作品の件数・status を確認
-  const allWorks = await prisma.work.findMany({
-    where:   { oaId: oa.id },
-    select:  { id: true, title: true, publishStatus: true, sortOrder: true },
-    orderBy: { sortOrder: "asc" },
-  });
-  console.log(
-    `[Webhook][DEBUG] work検索 oaId=${oa.id}`,
-    `全件数=${allWorks.length}`,
-    allWorks.length > 0
-      ? allWorks.map((w) => `id=${w.id.slice(0, 8)} title="${w.title}" publishStatus="${w.publishStatus}" sortOrder=${w.sortOrder}`).join(" / ")
-      : "(作品なし)"
-  );
-
+  const tWork = Date.now();
   const work = await prisma.work.findFirst({
     where:   { oaId: oa.id, publishStatus: "active" },
     orderBy: { sortOrder: "asc" },
@@ -371,9 +364,7 @@ async function handleWebhook(req: NextRequest, oaId: string) {
       },
     },
   });
-  console.log(
-    `[Webhook][DEBUG] activeWork=${work ? `id=${work.id.slice(0, 8)} title="${work.title}"` : "null (active な作品なし)"}`
-  );
+  console.log(`[perf][Work取得] ${Date.now() - tWork}ms activeWork=${work ? `"${work.title}"` : "null"}`);
   // welcomeMessage は work フィールドとして直接取得済み
 
   // システムキャラクター sender を構築（設定されていれば画像URL型のみ）
@@ -423,6 +414,7 @@ async function handleWebhook(req: NextRequest, oaId: string) {
   ]);
 
   // LINE には常に 200 OK を返す
+  console.log(`[perf][webhook合計] ${Date.now() - t0}ms`);
   return NextResponse.json({ ok: true });
 }
 
@@ -517,8 +509,27 @@ async function handleTextEvent({
     return;
   }
 
-  // ─ ① グローバルコマンド判定（フェーズ分岐より最優先）─
-  const globalCmd = await findGlobalCommand(oa.id, text);
+  // ─ ① globalCmd + startTrigger + progress を並列取得 ─
+  //   いずれも workId / oaId があれば独立して取得できるため同時発行する
+  const tParallel1 = Date.now();
+  const [globalCmd, startPhaseForTrigger, progress] = await Promise.all([
+    findGlobalCommand(oa.id, text),
+    prisma.phase.findFirst({
+      where:   { workId: work.id, phaseType: "start", isActive: true },
+      orderBy: { sortOrder: "asc" },
+    }),
+    prisma.userProgress.findUnique({
+      where: { lineUserId_workId: { lineUserId: userId, workId: work.id } },
+    }),
+  ]);
+  console.log(
+    `[perf][globalCmd+startTrigger+progress] ${Date.now() - tParallel1}ms`,
+    `globalCmd=${globalCmd?.keyword ?? "null"}`,
+    `startTrigger=${startPhaseForTrigger?.startTrigger ?? "null"}`,
+    `progress=${progress ? `found reachedEnding=${progress.reachedEnding}` : "null"}`,
+  );
+
+  // ─ globalCmd 判定（最優先）─
   if (globalCmd) {
     console.log(
       `[Webhook][global] コマンドマッチ`,
@@ -530,17 +541,12 @@ async function handleTextEvent({
     return;
   }
 
-  // ─ startTrigger 照合（progress の有無に関わらず最優先で評価）─
+  // ─ startTrigger 照合 ─
   //
   //  β仕様: startTrigger に一致したら progress をリセットして最初から開始。
   //  未開始・進行中・エンディング到達済みいずれの状態でも同じ挙動。
   //  優先順位: startTrigger > triggerKeyword > transition
   //
-  const startPhaseForTrigger = await prisma.phase.findFirst({
-    where:   { workId: work.id, phaseType: "start", isActive: true },
-    orderBy: { sortOrder: "asc" },
-  });
-
   if (startPhaseForTrigger?.startTrigger) {
     const triggerNorm  = normKw(startPhaseForTrigger.startTrigger);
     const triggerLoose = normKwLoose(startPhaseForTrigger.startTrigger);
@@ -565,13 +571,6 @@ async function handleTextEvent({
     }
   }
 
-  // ─ 進行状態を取得 ─
-  console.log(`[Webhook][STEP] progress取得前 userId=${userId} workId=${work.id}`);
-  const progress = await prisma.userProgress.findUnique({
-    where: {
-      lineUserId_workId: { lineUserId: userId, workId: work.id },
-    },
-  });
   console.log(`[Webhook][STEP] progress取得後 found=${!!progress} reachedEnding=${progress?.reachedEnding ?? "-"} currentPhaseId=${progress?.currentPhaseId ?? "-"}`);
 
   // ─ 未開始 → β 自動開始 ─
@@ -598,18 +597,34 @@ async function handleTextEvent({
     return;
   }
 
-  // ─ 遷移マッチング ─
-  console.log(`[Webhook][STEP] currentPhase取得前 phaseId=${progress.currentPhaseId}`);
-  const currentPhase = await prisma.phase.findUnique({
-    where:   { id: progress.currentPhaseId },
-    include: {
-      transitionsFrom: {
-        where:   { isActive: true },
-        orderBy: [{ sortOrder: "asc" }],
+  // ─ currentPhase + hint/kw/puzzle を並列取得 ─
+  //   currentPhaseId が確定しているため同時発行できる。
+  //   transitionsFrom に toPhase を include することで後続の toPhase クエリを省略する。
+  const tParallel2 = Date.now();
+  const [currentPhase, hintResult, keywordMatched, puzzleResult] = await Promise.all([
+    prisma.phase.findUnique({
+      where:   { id: progress.currentPhaseId },
+      include: {
+        transitionsFrom: {
+          where:   { isActive: true },
+          orderBy: [{ sortOrder: "asc" }],
+          include: {
+            toPhase: { select: { id: true, name: true, phaseType: true } },
+          },
+        },
       },
-    },
-  });
-  console.log(`[Webhook][STEP] currentPhase取得後 found=${!!currentPhase} transitions=${currentPhase?.transitionsFrom.length ?? "-"}`);
+    }),
+    matchHintQuickReply(work.id, progress.currentPhaseId, text),
+    matchTriggerKeyword(work.id, progress.currentPhaseId, text),
+    matchPuzzleAnswer(work.id, progress.currentPhaseId, text),
+  ]);
+  console.log(
+    `[perf][currentPhase+hint+kw+puzzle] ${Date.now() - tParallel2}ms`,
+    `currentPhase=${!!currentPhase}`,
+    `hint=${hintResult !== null}`,
+    `kw=${keywordMatched.length}件`,
+    `puzzle=${puzzleResult === null ? "null" : puzzleResult.type}`,
+  );
 
   if (!currentPhase) {
     console.log(`[Webhook][STEP] メッセージ送信前 (currentPhaseなし) userId=${userId}`);
@@ -621,8 +636,7 @@ async function handleTextEvent({
     return;
   }
 
-  // ─ hint quickReply 照合（triggerKeyword より先に評価）─
-  const hintResult = await matchHintQuickReply(work.id, progress.currentPhaseId, text);
+  // ─ hint quickReply 照合（最優先）─
   if (hintResult !== null) {
     console.log(`[Webhook][STEP] hint quickReply マッチ userId=${userId} hintText="${hintResult.hintText.slice(0, 40)}"`);
     const hintMsgs = [
@@ -635,8 +649,7 @@ async function handleTextEvent({
     return;
   }
 
-  // ─ triggerKeyword 照合（フェーズ進行なし・Transition より先に評価）─
-  const keywordMatched = await matchTriggerKeyword(work.id, progress.currentPhaseId, text);
+  // ─ triggerKeyword 照合 ─
   if (keywordMatched.length > 0) {
     console.log(
       `[Webhook][STEP] triggerKeyword マッチ`,
@@ -652,8 +665,7 @@ async function handleTextEvent({
     // メッセージ変換結果が 0 件（画像URLなしなど）の場合は Transition へフォールバック
   }
 
-  // ─ パズル照合（triggerKeyword の後・Transition の前に評価）─
-  const puzzleResult = await matchPuzzleAnswer(work.id, progress.currentPhaseId, text);
+  // ─ パズル照合 ─
   if (puzzleResult !== null) {
     if (puzzleResult.type === "correct") {
       await handlePuzzleCorrect({
@@ -722,38 +734,42 @@ async function handleTextEvent({
   }
 
   // ─ 遷移先フェーズへ移動 + setFlags を適用 ─
-  console.log(`[Webhook][STEP] 遷移先phase取得前 toPhaseId=${matched.toPhaseId}`);
-  const toPhase = await prisma.phase.findUnique({ where: { id: matched.toPhaseId } });
-  console.log(`[Webhook][STEP] 遷移先phase取得後 found=${!!toPhase} phaseType=${toPhase?.phaseType ?? "-"}`);
-  if (!toPhase) return;
+  // transitionsFrom に toPhase を include 済みのため追加クエリ不要
+  const toPhaseRef = matched.toPhase;
+  const isEnding   = toPhaseRef.phaseType === "ending";
+  const newFlags   = applySetFlags(currentFlags, matched.setFlags);
 
-  const isEnding = toPhase.phaseType === "ending";
-  const newFlags = applySetFlags(currentFlags, matched.setFlags);
+  console.log(`[Webhook][STEP] progress更新 + 遷移先phase取得（並列） progressId=${progress.id} toPhaseId=${toPhaseRef.id}`);
 
-  console.log(`[Webhook][STEP] progress更新前 progressId=${progress.id} toPhaseId=${toPhase.id} isEnding=${isEnding}`);
-  const updated = await prisma.userProgress.update({
-    where: { id: progress.id },
-    data: {
-      currentPhaseId:   toPhase.id,
-      reachedEnding:    isEnding,
-      flags:            JSON.stringify(newFlags),
-      lastInteractedAt: new Date(),
-    },
-  });
-  console.log(
-    `[Webhook][transition] progress updated`,
-    `progressId=${updated.id}`,
-    `currentPhaseId=${updated.currentPhaseId}`,
-    `reachedEnding=${updated.reachedEnding}`,
-  );
+  // progress 更新と遷移先フェーズのメッセージ取得を並列発行
+  const tTransition = Date.now();
+  const [updated, toPhaseRow] = await Promise.all([
+    prisma.userProgress.update({
+      where: { id: progress.id },
+      data: {
+        currentPhaseId:   toPhaseRef.id,
+        reachedEnding:    isEnding,
+        flags:            JSON.stringify(newFlags),
+        lastInteractedAt: new Date(),
+      },
+    }),
+    prisma.phase.findUnique({
+      where:   { id: toPhaseRef.id },
+      include: PHASE_INCLUDE,
+    }),
+  ]);
+  console.log(`[perf][progress更新+phase取得] ${Date.now() - tTransition}ms`);
 
-  // visible_phase によるリッチメニュー切り替え
-  await switchRichMenuForUser(oa, userId, toPhase.phaseType);
-
-  const state = await buildRuntimeState(updated);
+  // プリフェッチ済みフェーズを渡すことで buildRuntimeState の追加クエリを省略
+  const tReply = Date.now();
+  const state = await buildRuntimeState(updated, toPhaseRow);
   const msgs  = buildPhaseMessages(state.phase, { systemSender });
   console.log(`[Webhook][STEP] メッセージ送信前 (遷移後) msgs件数=${msgs.length} userId=${userId}`);
   await replyToLine(replyToken, msgs, token);
+  console.log(`[perf][reply] ${Date.now() - tReply}ms`);
+
+  // リッチメニュー切り替えは返信後にバックグラウンド実行（体感速度に影響しない）
+  void switchRichMenuForUser(oa, userId, toPhaseRef.phaseType);
 }
 
 // ──────────────────────────────────────────────────────────
@@ -793,12 +809,13 @@ async function handleStart({
 }: Omit<HandlerCommon, "work"> & { work: NonNullable<WorkRecord> }) {
   const token = oa.channelAccessToken;
 
+  const tStart = Date.now();
   console.log(`[Webhook][STEP] handleStart: startPhase取得前 workId=${work.id} userId=${userId}`);
   const startPhase = await prisma.phase.findFirst({
     where:   { workId: work.id, phaseType: "start", isActive: true },
     orderBy: { sortOrder: "asc" },
   });
-  console.log(`[Webhook][STEP] handleStart: startPhase取得後 found=${!!startPhase} phaseId=${startPhase?.id ?? "-"}`);
+  console.log(`[perf][handleStart/startPhase] ${Date.now() - tStart}ms found=${!!startPhase}`);
 
   if (!startPhase) {
     console.log(`[Webhook][STEP] メッセージ送信前 (startPhaseなし) userId=${userId}`);
@@ -810,29 +827,37 @@ async function handleStart({
     return;
   }
 
-  console.log(`[Webhook][STEP] handleStart: progress upsert前 userId=${userId} workId=${work.id}`);
-  const progress = await prisma.userProgress.upsert({
-    where: {
-      lineUserId_workId: { lineUserId: userId, workId: work.id },
-    },
-    create: {
-      lineUserId:       userId,
-      workId:           work.id,
-      currentPhaseId:   startPhase.id,
-      reachedEnding:    false,
-      flags:            "{}",
-      lastInteractedAt: new Date(),
-    },
-    update: {
-      currentPhaseId:   startPhase.id,
-      reachedEnding:    false,
-      flags:            "{}",
-      lastInteractedAt: new Date(),
-    },
-  });
-  console.log(`[Webhook][STEP] handleStart: progress upsert後 progressId=${progress.id}`);
+  // progress upsert と startPhase のメッセージ取得を並列発行
+  const tUpsert = Date.now();
+  const [progress, startPhaseRow] = await Promise.all([
+    prisma.userProgress.upsert({
+      where: {
+        lineUserId_workId: { lineUserId: userId, workId: work.id },
+      },
+      create: {
+        lineUserId:       userId,
+        workId:           work.id,
+        currentPhaseId:   startPhase.id,
+        reachedEnding:    false,
+        flags:            "{}",
+        lastInteractedAt: new Date(),
+      },
+      update: {
+        currentPhaseId:   startPhase.id,
+        reachedEnding:    false,
+        flags:            "{}",
+        lastInteractedAt: new Date(),
+      },
+    }),
+    prisma.phase.findUnique({
+      where:   { id: startPhase.id },
+      include: PHASE_INCLUDE,
+    }),
+  ]);
+  console.log(`[perf][handleStart/upsert+phaseRow] ${Date.now() - tUpsert}ms progressId=${progress.id}`);
 
-  const state = await buildRuntimeState(progress);
+  // プリフェッチ済みフェーズを渡すことで buildRuntimeState の追加クエリを省略
+  const state = await buildRuntimeState(progress, startPhaseRow);
 
   // ── デバッグ: phase 内容とトランジションを詳細出力 ──
   if (state.phase) {
@@ -876,7 +901,12 @@ async function handleStart({
     `[Webhook][STEP] メッセージ送信前 (開始) msgs件数=${msgs.length} userId=${userId}`,
     msgs.map((m, i) => `[${i}]type=${m.type} text="${"text" in m ? String(m.text ?? "").slice(0, 30) : "(non-text)"}"`).join(" / ")
   );
+  const tReplyStart = Date.now();
   await replyToLine(replyToken, msgs, token);
+  console.log(`[perf][handleStart/reply] ${Date.now() - tReplyStart}ms total=${Date.now() - tStart}ms`);
+
+  // リッチメニュー切り替えは返信後にバックグラウンド実行
+  void switchRichMenuForUser(oa, userId, startPhase.phaseType);
 }
 
 // ─ start フェーズトリガー発火時の開始処理 ────────────────────
@@ -947,15 +977,6 @@ async function handleStartTrigger({
     `currentPhaseId=${progress.currentPhaseId}`,
   );
 
-  // 初期フェーズの phaseType を取得してリッチメニューを切り替え
-  const initialPhase = await prisma.phase.findUnique({
-    where:  { id: initialPhaseId },
-    select: { phaseType: true },
-  });
-  if (initialPhase) {
-    await switchRichMenuForUser(oa, userId, initialPhase.phaseType);
-  }
-
   // kind="start" メッセージを startPhase から取得して送信（物語演出として）
   const startKindMessages = await prisma.message.findMany({
     where: {
@@ -989,6 +1010,8 @@ async function handleStartTrigger({
     const msgs = buildKeywordMessages(startKindMessages, systemSender);
     if (msgs.length > 0) {
       await replyToLine(replyToken, msgs, token);
+      // リッチメニュー切り替えは返信後にバックグラウンド実行
+      void switchRichMenuForUser(oa, userId, startPhase.phaseType);
       return;
     }
   }
@@ -1000,6 +1023,8 @@ async function handleStartTrigger({
   if (msgs.length > 0) {
     await replyToLine(replyToken, msgs, token);
   }
+  // リッチメニュー切り替えは返信後にバックグラウンド実行
+  void switchRichMenuForUser(oa, userId, startPhase.phaseType);
 }
 
 // ─ 現在の進行状態を表示（つづきから）──────────────────────
@@ -1493,7 +1518,6 @@ async function handlePuzzleCorrect({
           `phaseType=${nextPhase.phaseType}`,
           `isEnding=${isEnding}`,
         );
-        await switchRichMenuForUser(oa, userId, nextPhase.phaseType);
         const state     = await buildRuntimeState(updated);
         const nextMsgs  = buildPhaseMessages(state.phase, { systemSender });
         messagesToSend.push(...nextMsgs);
@@ -1506,8 +1530,20 @@ async function handlePuzzleCorrect({
     messagesToSend.push({ type: "text", text: "正解！", sender: systemSender });
   }
 
-  // LINE reply は最大 5 件
+  // LINE reply は最大 5 件（返信後にリッチメニュー切り替えをバックグラウンド実行）
   await replyToLine(replyToken, messagesToSend.slice(0, 5), token);
+
+  // 遷移が発生した場合のみリッチメニューを切り替え（fire-and-forget）
+  if ((puzzle.correctAction === "transition" || puzzle.correctAction === "text_and_transition")
+      && puzzle.correctNextPhaseId) {
+    const nextPhaseRow = await prisma.phase.findUnique({
+      where:  { id: puzzle.correctNextPhaseId },
+      select: { phaseType: true },
+    }).catch(() => null);
+    if (nextPhaseRow) {
+      void switchRichMenuForUser(oa, userId, nextPhaseRow.phaseType);
+    }
+  }
 }
 
 /**

@@ -231,7 +231,7 @@ export const createMessageSchema = z.object({
   work_id:          uuidSchema,
   phase_id:         uuidSchema.optional().nullable(),
   character_id:     uuidSchema.optional().nullable(),
-  message_type:     z.enum(["text", "image", "riddle", "video", "carousel", "voice", "flex"]).default("text"),
+  message_type:     z.enum(["text", "image", "riddle", "video", "carousel", "voice"]).default("text"),
   /** メッセージ役割種別: "start" | "normal" | "response" | "hint" | "puzzle" */
   kind:             z.enum(["start", "normal", "response", "hint", "puzzle"]).default("normal"),
   body:             z.string().max(10000).optional(),
@@ -279,18 +279,6 @@ export const createMessageSchema = z.object({
     if (val.message_type === "riddle" && !val.riddle_id) {
       ctx.addIssue({ code: "custom", path: ["riddle_id"], message: "riddle型の場合は riddle_id が必要です" });
     }
-    if (val.message_type === "flex") {
-      if (!val.alt_text?.trim()) {
-        ctx.addIssue({ code: "custom", path: ["alt_text"], message: "altTextを入力してください" });
-      }
-      if (!val.flex_payload_json?.trim()) {
-        ctx.addIssue({ code: "custom", path: ["flex_payload_json"], message: "Flex Message JSONを入力してください" });
-      } else {
-        try { JSON.parse(val.flex_payload_json); } catch {
-          ctx.addIssue({ code: "custom", path: ["flex_payload_json"], message: "JSONの形式が正しくありません" });
-        }
-      }
-    }
   }
 });
 
@@ -302,7 +290,7 @@ export const createMessageSchema = z.object({
 export const updateMessageSchema = z.object({
   phase_id:          uuidSchema.optional().nullable(),
   character_id:      uuidSchema.optional().nullable(),
-  message_type:      z.enum(["text", "image", "riddle", "video", "carousel", "voice", "flex"]).optional(),
+  message_type:      z.enum(["text", "image", "riddle", "video", "carousel", "voice"]).optional(),
   /** メッセージ役割種別 */
   kind:              z.enum(["start", "normal", "response", "hint", "puzzle"]).optional(),
   body:              z.string().max(10000).optional().nullable(),
@@ -333,11 +321,6 @@ export const updateMessageSchema = z.object({
     if ((val.message_type === "image" || val.message_type === "video" || val.message_type === "voice") && val.asset_url === null) {
       ctx.addIssue({ code: "custom", path: ["asset_url"], message: `${val.message_type}型の場合、asset_url を null にはできません` });
     }
-    if (val.message_type === "flex" && val.flex_payload_json) {
-      try { JSON.parse(val.flex_payload_json); } catch {
-        ctx.addIssue({ code: "custom", path: ["flex_payload_json"], message: "JSONの形式が正しくありません" });
-      }
-    }
   }
   if (val.kind === "puzzle") {
     if (
@@ -353,7 +336,7 @@ export const messageQuerySchema = z.object({
   work_id:        uuidSchema,
   phase_id:       uuidSchema.optional(),
   character_id:   uuidSchema.optional(),
-  message_type:   z.enum(["text", "image", "riddle", "video", "carousel", "voice", "flex"]).optional(),
+  message_type:   z.enum(["text", "image", "riddle", "video", "carousel", "voice"]).optional(),
   is_active:      z.coerce.boolean().optional(),
   with_relations: z.coerce.boolean().default(false),
 });
