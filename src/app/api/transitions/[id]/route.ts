@@ -9,6 +9,7 @@ import { ok, noContent, badRequest, notFound, serverError } from "@/lib/api-resp
 import { withAuth } from "@/lib/auth";
 import { updateTransitionSchema, formatZodErrors } from "@/lib/validations";
 import { ZodError } from "zod";
+import { activeCache, CACHE_KEY } from "@/lib/cache";
 
 function toResponse(
   t: {
@@ -89,6 +90,9 @@ export const PATCH = withAuth<{ id: string }>(async (req, { params }) => {
       include: { toPhase: { select: { id: true, name: true, phaseType: true } } },
     });
 
+    // キャッシュ無効化（遷移は fromPhase のキャッシュに含まれる）
+    await activeCache.delete(CACHE_KEY.phase(existing.fromPhaseId));
+
     return ok(toResponse(updated, updated.toPhase));
   } catch (err) {
     if (err instanceof ZodError) return badRequest("入力値が不正です", formatZodErrors(err));
@@ -103,6 +107,10 @@ export const DELETE = withAuth<{ id: string }>(async (_req, { params }) => {
     if (!existing) return notFound("遷移");
 
     await prisma.transition.delete({ where: { id: params.id } });
+
+    // キャッシュ無効化（fromPhase のキャッシュに遷移情報が含まれるため）
+    await activeCache.delete(CACHE_KEY.phase(existing.fromPhaseId));
+
     return noContent();
   } catch (err) {
     return serverError(err);

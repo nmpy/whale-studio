@@ -5,6 +5,7 @@ import { ok, noContent, badRequest, notFound, serverError } from "@/lib/api-resp
 import { withRole } from "@/lib/auth";
 import { updateOaSchema, formatZodErrors } from "@/lib/validations";
 import { ZodError } from "zod";
+import { activeCache, CACHE_KEY } from "@/lib/cache";
 
 // ── GET /api/oas/:id ─────────────────────────────
 export const GET = withRole<{ id: string }>(
@@ -64,6 +65,12 @@ export const PATCH = withRole<{ id: string }>(
           ...(data.spreadsheet_id       !== undefined && { spreadsheetId: data.spreadsheet_id }),
         },
       });
+
+      // キャッシュ無効化（旧・新 lineOaId 両方を削除）
+      if (existing.lineOaId) await activeCache.delete(CACHE_KEY.oa(existing.lineOaId));
+      if (updated.lineOaId && updated.lineOaId !== existing.lineOaId) {
+        await activeCache.delete(CACHE_KEY.oa(updated.lineOaId));
+      }
 
       return ok({
         id:             updated.id,

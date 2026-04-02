@@ -9,6 +9,7 @@ import { withAuth } from "@/lib/auth";
 import { requireRole, getOaIdFromWorkId } from "@/lib/rbac";
 import { createMessageSchema, messageQuerySchema, formatZodErrors } from "@/lib/validations";
 import { ZodError } from "zod";
+import { activeCache, CACHE_KEY } from "@/lib/cache";
 
 function parseQuickReplies(raw: string | null, msgId?: string) {
   if (!raw) return null;
@@ -216,6 +217,10 @@ export const POST = withAuth(async (req, _ctx, user) => {
         },
       },
     });
+
+    // キャッシュ無効化（新規メッセージが追加されたフェーズ / グローバルキーワード）
+    if (data.phase_id) await activeCache.delete(CACHE_KEY.phase(data.phase_id));
+    else await activeCache.delete(CACHE_KEY.globalKw(data.work_id));
 
     return created(toResponse(message));
   } catch (err) {

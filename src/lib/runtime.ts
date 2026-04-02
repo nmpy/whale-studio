@@ -178,8 +178,9 @@ export function matchTransition<
 /**
  * フェーズ付き情報を取得するヘルパー。
  * 戻り値の型を PhaseRow として使い回す。
+ * webhook/cache から再利用できるよう export する。
  */
-async function fetchPhaseWithIncludes(id: string) {
+export async function fetchPhaseWithIncludes(id: string) {
   return prisma.phase.findUnique({
     where: { id },
     include: {
@@ -206,8 +207,8 @@ async function fetchPhaseWithIncludes(id: string) {
   });
 }
 
-/** fetchPhaseWithIncludes の非 null 戻り値型 */
-type PhaseRow = NonNullable<Awaited<ReturnType<typeof fetchPhaseWithIncludes>>>;
+/** fetchPhaseWithIncludes の非 null 戻り値型（webhook / cache で共用）*/
+export type PhaseRow = NonNullable<Awaited<ReturnType<typeof fetchPhaseWithIncludes>>>;
 
 /**
  * フェーズの Prisma include 定義（route.ts から PHASE_INCLUDE として再利用可能）。

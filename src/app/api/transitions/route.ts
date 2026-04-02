@@ -8,6 +8,7 @@ import { ok, created, badRequest, notFound, serverError } from "@/lib/api-respon
 import { withAuth } from "@/lib/auth";
 import { createTransitionSchema, transitionQuerySchema, formatZodErrors } from "@/lib/validations";
 import { ZodError } from "zod";
+import { activeCache, CACHE_KEY } from "@/lib/cache";
 
 function toResponse(
   t: {
@@ -109,6 +110,9 @@ export const POST = withAuth(async (req) => {
       },
       include: { toPhase: { select: { id: true, name: true, phaseType: true } } },
     });
+
+    // キャッシュ無効化（fromPhase のキャッシュに遷移情報が含まれるため）
+    await activeCache.delete(CACHE_KEY.phase(data.from_phase_id));
 
     return created(toResponse(transition, transition.toPhase));
   } catch (err) {

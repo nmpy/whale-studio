@@ -13,6 +13,7 @@ import {
   formatZodErrors,
 } from "@/lib/validations";
 import { ZodError } from "zod";
+import { activeCache, CACHE_KEY } from "@/lib/cache";
 
 function toResponse(c: {
   id: string; oaId: string; keyword: string; actionType: string;
@@ -80,6 +81,9 @@ export const POST = withAuth(async (req: NextRequest, _ctx, user) => {
         sortOrder:  data.sort_order,
       },
     });
+
+    // キャッシュ無効化
+    await activeCache.delete(CACHE_KEY.globalCmd(data.oa_id));
 
     return created(toResponse(command));
   } catch (err) {

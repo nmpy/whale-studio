@@ -19,6 +19,7 @@ import { withAuth } from "@/lib/auth";
 import { requireRole } from "@/lib/rbac";
 import { updatePhaseSchema, formatZodErrors } from "@/lib/validations";
 import { ZodError } from "zod";
+import { activeCache, CACHE_KEY } from "@/lib/cache";
 
 function toResponse(p: {
   id: string; workId: string; phaseType: string; name: string; description: string | null;
@@ -114,6 +115,12 @@ export const PATCH = withAuth<{ id: string }>(async (req, { params }, user) => {
       include: { _count: { select: { messages: true, transitionsFrom: true } } },
     });
 
+    // キャッシュ無効化（フェーズ内容変更 + start 変更時は startPhase キャッシュも）
+    await activeCache.delete(CACHE_KEY.phase(params.id));
+    if (existing.phaseType === "start" || data.phase_type === "start") {
+      await activeCache.delete(CACHE_KEY.startPhase(existing.workId));
+    }
+
     return ok(toResponse(updated));
   } catch (err) {
     if (err instanceof ZodError) return badRequest("入力値が不正です", formatZodErrors(err));
@@ -140,6 +147,13 @@ export const DELETE = withAuth<{ id: string }>(async (_req, { params }, user) =>
     //   Message.phase_id    → SET NULL（メッセージは残り、フェーズ紐付けが外れる）
     //   Transition.fromPhaseId / toPhaseId → CASCADE（このフェーズを参照する遷移をすべて削除）
     await prisma.phase.delete({ where: { id: params.id } });
+
+    // キャッシュ無効化
+    await activeCache.delete(CACHE_KEY.phase(params.id));
+    if (existing.phaseType === "start") {
+      await activeCache.delete(CACHE_KEY.startPhase(existing.workId));
+    }
+
     return noContent();
   } catch (err) {
     return serverError(err);

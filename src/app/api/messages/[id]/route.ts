@@ -9,6 +9,7 @@ import { withAuth } from "@/lib/auth";
 import { requireRole } from "@/lib/rbac";
 import { updateMessageSchema, formatZodErrors } from "@/lib/validations";
 import { ZodError } from "zod";
+import { activeCache, CACHE_KEY } from "@/lib/cache";
 
 // ── リレーション include 定義（GET・PATCH 共通） ────────────
 const MESSAGE_INCLUDE = {
@@ -218,6 +219,17 @@ export const PATCH = withAuth<{ id: string }>(async (req, { params }, user) => {
       include: MESSAGE_INCLUDE,
     });
 
+    // キャッシュ無効化（フェーズ内容・グローバルキーワードが変化する可能性があるため両方）
+    // phaseId が変わった場合: 旧フェーズも新フェーズも無効化する
+    const prevPhaseId = existing.phaseId;
+    const nextPhaseId = data.phase_id !== undefined ? data.phase_id : existing.phaseId;
+    if (prevPhaseId) await activeCache.delete(CACHE_KEY.phase(prevPhaseId));
+    if (nextPhaseId && nextPhaseId !== prevPhaseId) await activeCache.delete(CACHE_KEY.phase(nextPhaseId));
+    // phaseId = null（グローバルキーワード）の変更
+    if (prevPhaseId === null || nextPhaseId === null) {
+      await activeCache.delete(CACHE_KEY.globalKw(existing.workId));
+    }
+
     return ok(toResponse(updated));
   } catch (err) {
     if (err instanceof ZodError) {
@@ -242,6 +254,11 @@ export const DELETE = withAuth<{ id: string }>(async (_req, { params }, user) =>
     if (!check.ok) return check.response;
 
     await prisma.message.delete({ where: { id: params.id } });
+
+    // キャッシュ無効化
+    if (existing.phaseId) await activeCache.delete(CACHE_KEY.phase(existing.phaseId));
+    else await activeCache.delete(CACHE_KEY.globalKw(existing.workId));
+
     return noContent();
   } catch (err) {
     return serverError(err);

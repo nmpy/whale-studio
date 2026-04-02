@@ -9,6 +9,7 @@ import { withAuth } from "@/lib/auth";
 import { requireRole } from "@/lib/rbac";
 import { updateWorkSchema, formatZodErrors } from "@/lib/validations";
 import { ZodError } from "zod";
+import { activeCache, CACHE_KEY } from "@/lib/cache";
 
 function toResponse(w: {
   id: string; oaId: string; title: string; description: string | null;
@@ -75,6 +76,9 @@ export const PATCH = withAuth<{ id: string }>(async (req, { params }, user) => {
         ...(data.welcome_message     !== undefined && { welcomeMessage:     data.welcome_message }),
       },
     });
+
+    // キャッシュ無効化
+    await activeCache.delete(CACHE_KEY.work(existing.oaId));
 
     return ok(toResponse(updated));
   } catch (err) {

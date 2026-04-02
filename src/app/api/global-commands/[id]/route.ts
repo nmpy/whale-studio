@@ -10,6 +10,7 @@ import { withAuth } from "@/lib/auth";
 import { requireRole } from "@/lib/rbac";
 import { updateGlobalCommandSchema, formatZodErrors } from "@/lib/validations";
 import { ZodError } from "zod";
+import { activeCache, CACHE_KEY } from "@/lib/cache";
 
 function toResponse(c: {
   id: string; oaId: string; keyword: string; actionType: string;
@@ -75,6 +76,9 @@ export const PATCH = withAuth(async (
       },
     });
 
+    // キャッシュ無効化
+    await activeCache.delete(CACHE_KEY.globalCmd(command.oaId));
+
     return ok(toResponse(updated));
   } catch (err) {
     if (err instanceof ZodError) return badRequest("入力値が不正です", formatZodErrors(err));
@@ -96,6 +100,10 @@ export const DELETE = withAuth(async (
     if (!check.ok) return check.response;
 
     await prisma.globalCommand.delete({ where: { id: params.id } });
+
+    // キャッシュ無効化
+    await activeCache.delete(CACHE_KEY.globalCmd(command.oaId));
+
     return ok({ deleted: true });
   } catch (err) {
     return serverError(err);
