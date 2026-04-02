@@ -61,85 +61,72 @@ function SummaryBar({ items, worksMap }: { items: OaListItem[]; worksMap: Record
 
 /* ── サポートエリア ───────────────────────────────────────────────────── */
 function SupportArea() {
-  const cardBase: React.CSSProperties = {
-    display: "flex",
-    alignItems: "flex-start",
-    gap: 14,
-    padding: "16px 18px",
-    background: "var(--color-bg-default)",
-    border: "1px solid var(--color-border-soft)",
-    borderRadius: 12,
-    textDecoration: "none",
-    color: "inherit",
-    cursor: "pointer",
-    textAlign: "left",
-    width: "100%",
-    transition: "border-color .15s, background .15s",
-  };
-
-  function CardIcon({ bg, children }: { bg: string; children: React.ReactNode }) {
-    return (
-      <span style={{
-        display: "flex", alignItems: "center", justifyContent: "center",
-        width: 34, height: 34, borderRadius: 8,
-        background: bg, fontSize: 16, flexShrink: 0,
-      }}>
-        {children}
-      </span>
-    );
-  }
-
-  function CardBody({ title, desc }: { title: string; desc: string }) {
-    return (
-      <div style={{ minWidth: 0 }}>
-        <div style={{ fontSize: 12, fontWeight: 600, color: "var(--color-text-primary)", marginBottom: 2 }}>
-          {title}
-        </div>
-        <div style={{ fontSize: 11, color: "var(--color-text-muted)", lineHeight: 1.5 }}>
-          {desc}
-        </div>
-      </div>
-    );
-  }
+  const [hovered, setHovered] = useState(false);
 
   return (
-    <div style={{ marginTop: 52, paddingTop: 28, borderTop: "1px solid var(--color-border-soft)" }}>
+    <div style={{ marginTop: 40, paddingTop: 24, borderTop: "1px solid var(--color-border-soft)" }}>
       <p style={{
         fontSize: 11, fontWeight: 600, color: "var(--color-text-muted)",
-        textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 14,
+        textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 12,
       }}>
         サポート
       </p>
 
+      {/* 横長ワイドボックス */}
       <div style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
-        gap: 10,
+        display: "flex",
+        alignItems: "center",
+        gap: 18,
+        padding: "18px 22px",
+        background: "var(--color-bg-default)",
+        border: "1px solid var(--color-border-soft)",
+        borderRadius: 12,
       }}>
-        {/* はじめての方へ・使い方ガイド */}
+        {/* アイコン */}
+        <span style={{
+          display: "flex", alignItems: "center", justifyContent: "center",
+          width: 40, height: 40, borderRadius: 10,
+          background: "var(--gray-100)", fontSize: 20, flexShrink: 0,
+        }}>
+          📄
+        </span>
+
+        {/* テキスト */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--color-text-primary)", marginBottom: 3 }}>
+            はじめての方へ — 使い方ガイド
+          </div>
+          <div style={{ fontSize: 11, color: "var(--color-text-muted)", lineHeight: 1.6 }}>
+            セットアップ・LINEチャンネル連携・シナリオ公開までの手順をまとめたPDFです。まずこちらをご確認ください。
+          </div>
+        </div>
+
+        {/* PDF ボタン */}
         <a
           href="/guide.pdf"
           target="_blank"
           rel="noopener noreferrer"
-          style={cardBase}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.borderColor = "#d1d5db";
-            e.currentTarget.style.background  = "var(--color-bg-subtle)";
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+            flexShrink: 0,
+            padding: "8px 18px",
+            fontSize: 12,
+            fontWeight: 600,
+            color: hovered ? "#fff" : "var(--color-text-primary)",
+            background: hovered ? "#374151" : "var(--gray-100)",
+            border: `1px solid ${hovered ? "#374151" : "var(--color-border-soft)"}`,
+            borderRadius: 8,
+            textDecoration: "none",
+            transition: "background .15s, color .15s, border-color .15s",
+            whiteSpace: "nowrap",
           }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.borderColor = "var(--color-border-soft)";
-            e.currentTarget.style.background  = "var(--color-bg-default)";
-          }}
+          onMouseEnter={() => setHovered(true)}
+          onMouseLeave={() => setHovered(false)}
         >
-          <CardIcon bg="var(--gray-100)">📄</CardIcon>
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: "var(--color-text-primary)", marginBottom: 2 }}>
-              はじめての方へ — 使い方ガイド
-            </div>
-            <div style={{ fontSize: 11, color: "var(--color-text-muted)", lineHeight: 1.5 }}>
-              セットアップ・LINEチャンネル連携・シナリオ公開までの手順をまとめたPDFです
-            </div>
-          </div>
+          <span style={{ fontSize: 14 }}>📥</span>
+          PDFを開く
         </a>
       </div>
     </div>
@@ -649,7 +636,9 @@ export default function OaListPage() {
       )}
 
       {/* ── お知らせ ── */}
-      <AnnouncementBanner />
+      <div style={{ marginTop: 32 }}>
+        <AnnouncementBanner />
+      </div>
 
       {/* ── サポートエリア ── */}
       <SupportArea />
