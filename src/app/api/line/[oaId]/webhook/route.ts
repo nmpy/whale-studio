@@ -581,14 +581,9 @@ async function handleTextEvent({
     return;
   }
 
-  // ─ エンディング到達済み ─
+  // ─ エンディング到達済み → 自動返信なし（シナリオ定義に委ねる） ─
   if (progress.reachedEnding) {
-    const state = await buildRuntimeState(progress);
-    const msgs = state.phase
-      ? buildPhaseMessages(state.phase, { systemSender })
-      : [{ type: "text" as const, text: `すでにエンディングに到達しています。\n「はじめる」と送ると最初から楽しめます。`, sender: systemSender }];
-    console.log(`[Webhook][STEP] メッセージ送信前 (エンディング済み) userId=${userId}`);
-    await replyToLine(replyToken, msgs, token);
+    console.log(`[Webhook][STEP] エンディング到達済み → 無視 userId=${userId}`);
     return;
   }
 
@@ -720,21 +715,9 @@ async function handleTextEvent({
     );
   }
 
-  // ─ マッチなし → 現在の選択肢をクイックリプライで再表示 ─
+  // ─ マッチなし → 無視（制作者定義の fallback に委ねる） ─
   if (!matched) {
-    const availableLabels = currentPhase.transitionsFrom
-      .filter((t) => t.isActive)
-      .map((t) => t.label);
-    const qr = availableLabels.length > 0 ? buildQuickReply(availableLabels) : undefined;
-    console.log(`[Webhook][STEP] メッセージ送信前 (マッチなし) availableLabels=${JSON.stringify(availableLabels)}`);
-    await replyToLine(replyToken, [{
-      type:       "text",
-      text:       availableLabels.length > 0
-        ? "うまく聞き取れませんでした。\n下のボタンから選んでください。"
-        : "その言葉には応答できません。",
-      quickReply: qr,
-      sender:     systemSender,
-    }], token);
+    console.log(`[Webhook][STEP] マッチなし → 無視 userId=${userId}`);
     return;
   }
 
@@ -1044,13 +1027,8 @@ async function handleContinue({
     return;
   }
 
-  // エンディング到達済み
+  // エンディング到達済み → 自動返信なし（シナリオ定義に委ねる）
   if (progress.reachedEnding) {
-    const state = await buildRuntimeState(progress);
-    const msgs  = state.phase
-      ? buildPhaseMessages(state.phase, { systemSender })
-      : [{ type: "text" as const, text: `すでにエンディングに到達しています。\n「はじめる」と送ると最初から楽しめます。`, sender: systemSender }];
-    await replyToLine(replyToken, msgs, token);
     return;
   }
 

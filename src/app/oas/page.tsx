@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { oaApi, workApi, getDevToken, type OaListItem, type OaListMeta, type WorkListItem } from "@/lib/api-client";
 import { useToast } from "@/components/Toast";
@@ -133,7 +133,7 @@ function SupportArea() {
   );
 }
 
-/* ── 行アクション（⋯ ケバブメニュー付き）──────────────────────────────── */
+/* ── 行アクション ────────────────────────────────────────────────────── */
 function RowActions({
   oaId,
   isOwner,
@@ -143,33 +143,8 @@ function RowActions({
   isOwner:  boolean;
   onDelete: () => void;
 }) {
-  const [menuOpen,   setMenuOpen]   = useState(false);
-  const [openUpward, setOpenUpward] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
-  const btnRef  = useRef<HTMLButtonElement>(null);
-
-  useEffect(() => {
-    if (!menuOpen) return;
-    function onOutside(e: MouseEvent) {
-      if (!menuRef.current?.contains(e.target as Node)) setMenuOpen(false);
-    }
-    document.addEventListener("mousedown", onOutside);
-    return () => document.removeEventListener("mousedown", onOutside);
-  }, [menuOpen]);
-
-  function handleToggle() {
-    if (!menuOpen && btnRef.current) {
-      const rect       = btnRef.current.getBoundingClientRect();
-      const spaceBelow = window.innerHeight - rect.bottom;
-      // メニュー高さの目安 40px + 余白
-      setOpenUpward(spaceBelow < 64);
-    }
-    setMenuOpen((o) => !o);
-  }
-
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 4, justifyContent: "flex-end" }}>
-      {/* 主操作 */}
       <Link
         href={`/oas/${oaId}/works`}
         className="btn btn-primary"
@@ -184,92 +159,15 @@ function RowActions({
       >
         設定
       </Link>
-
-      {/* 危険操作：ケバブメニュー（owner のみ） */}
       {isOwner && (
-        <div style={{ position: "relative" }} ref={menuRef}>
-          <button
-            ref={btnRef}
-            type="button"
-            onClick={handleToggle}
-            title="その他の操作"
-            aria-label="その他の操作"
-            style={{
-              display: "flex", alignItems: "center", justifyContent: "center",
-              width: 26, height: 26,
-              background: menuOpen ? "#f3f4f6" : "transparent",
-              border: `1px solid ${menuOpen ? "#e5e7eb" : "transparent"}`,
-              borderRadius: 6,
-              cursor: "pointer",
-              color: "#9ca3af",
-              fontSize: 14,
-              letterSpacing: "0.05em",
-              lineHeight: 1,
-              transition: "background .15s, border-color .15s, color .15s",
-              flexShrink: 0,
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.background   = "#f3f4f6";
-              e.currentTarget.style.borderColor  = "#e5e7eb";
-              e.currentTarget.style.color        = "#374151";
-            }}
-            onMouseLeave={(e) => {
-              if (!menuOpen) {
-                e.currentTarget.style.background  = "transparent";
-                e.currentTarget.style.borderColor = "transparent";
-                e.currentTarget.style.color       = "#9ca3af";
-              }
-            }}
-          >
-            ⋯
-          </button>
-
-          {menuOpen && (
-            <div
-              role="menu"
-              style={{
-                position: "absolute",
-                right: 0,
-                ...(openUpward
-                  ? { bottom: "calc(100% + 4px)" }
-                  : { top:    "calc(100% + 4px)" }),
-                zIndex: 50,
-                minWidth: 112,
-                background: "#ffffff",
-                border: "1px solid #e5e7eb",
-                borderRadius: 8,
-                boxShadow: "0 4px 12px rgba(0,0,0,.10), 0 1px 4px rgba(0,0,0,.06)",
-                padding: "4px 0",
-              }}
-            >
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => { setMenuOpen(false); onDelete(); }}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 7,
-                  width: "100%",
-                  textAlign: "left",
-                  padding: "7px 14px",
-                  fontSize: 12,
-                  fontWeight: 500,
-                  color: "#dc2626",
-                  background: "none",
-                  border: "none",
-                  cursor: "pointer",
-                  transition: "background .1s",
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = "#fef2f2")}
-                onMouseLeave={(e) => (e.currentTarget.style.background = "none")}
-              >
-                <span style={{ fontSize: 13 }}>🗑</span>
-                削除
-              </button>
-            </div>
-          )}
-        </div>
+        <button
+          type="button"
+          className="btn btn-danger"
+          style={{ padding: "4px 9px", fontSize: 11, whiteSpace: "nowrap" }}
+          onClick={onDelete}
+        >
+          削除
+        </button>
       )}
     </div>
   );
@@ -287,13 +185,13 @@ function SkeletonRows() {
           </td>
           <td><div className="skeleton" style={{ width: 48, height: 20, borderRadius: 10 }} /></td>
           <td><div className="skeleton" style={{ width: 96, height: 13 }} /></td>
-          <td style={{ textAlign: "center" }}><div className="skeleton" style={{ width: 28, height: 16, margin: "0 auto" }} /></td>
+          <td style={{ textAlign: "center" }}><div className="skeleton" style={{ width: 32, height: 16, margin: "0 auto" }} /></td>
           <td><div className="skeleton" style={{ width: 66, height: 11 }} /></td>
           <td>
             <div style={{ display: "flex", gap: 4, justifyContent: "flex-end" }}>
               <div className="skeleton" style={{ width: 54, height: 26, borderRadius: 6 }} />
               <div className="skeleton" style={{ width: 38, height: 26, borderRadius: 6 }} />
-              <div className="skeleton" style={{ width: 26, height: 26, borderRadius: 6 }} />
+              <div className="skeleton" style={{ width: 36, height: 26, borderRadius: 6 }} />
             </div>
           </td>
         </tr>
@@ -452,25 +350,25 @@ export default function OaListPage() {
           <div className="table-wrap">
             <table className="table-compact" style={{ tableLayout: "fixed", width: "100%" }}>
               <colgroup>
-                {/* アカウント名: 可変・広め */}
-                <col style={{ width: "27%" }} />
+                {/* アカウント名: 可変 */}
+                <col style={{ width: "22%" }} />
                 {/* 状態 */}
-                <col style={{ width: "60px" }} />
+                <col style={{ width: "56px" }} />
                 {/* 作品: 可変 */}
-                <col style={{ width: "21%" }} />
-                {/* P数 */}
-                <col style={{ width: "50px" }} />
+                <col style={{ width: "20%" }} />
+                {/* プレイヤー数 */}
+                <col style={{ width: "76px" }} />
                 {/* 登録/更新 */}
                 <col style={{ width: "80px" }} />
                 {/* アクション */}
-                <col style={{ width: "128px" }} />
+                <col style={{ width: "152px" }} />
               </colgroup>
               <thead>
                 <tr>
                   <th>アカウント名</th>
                   <th>状態</th>
                   <th>作品</th>
-                  <th style={{ textAlign: "center" }}>P数</th>
+                  <th style={{ textAlign: "center" }}>プレイヤー数</th>
                   <th>更新日</th>
                   <th></th>
                 </tr>
@@ -598,7 +496,7 @@ export default function OaListPage() {
                         </div>
                       </td>
 
-                      {/* ── アクション（主操作 ＋ ⋯メニュー） ── */}
+                      {/* ── アクション ── */}
                       <td style={{ paddingRight: 12 }}>
                         <RowActions
                           oaId={oa.id}

@@ -300,12 +300,8 @@ export async function handleTextEventSheets({
     return;
   }
 
+  // エンディング到達済み → 自動返信なし（シナリオ定義に委ねる）
   if (progress.reachedEnding) {
-    const state = await buildRuntimeStateFromSheets(data, progress);
-    const msgs = state.phase
-      ? buildPhaseMessages(state.phase, { systemSender })
-      : [{ type: "text" as const, text: `すでにエンディングに到達しています。\n「はじめる」と送ると最初から楽しめます。`, sender: systemSender }];
-    await replyToLine(replyToken, msgs, token);
     return;
   }
 
@@ -339,17 +335,8 @@ export async function handleTextEventSheets({
 
   const matched = matchTransition(transitionsForMatch, { label: text, flags: currentFlags });
 
+  // マッチなし → 無視（制作者定義の fallback に委ねる）
   if (!matched) {
-    const labels = currentTransitions.map((t) => t.label);
-    const qr = labels.length > 0 ? buildQuickReply(labels) : undefined;
-    await replyToLine(replyToken, [{
-      type:       "text",
-      text:       labels.length > 0
-        ? "うまく聞き取れませんでした。\n下のボタンから選んでください。"
-        : "その言葉には応答できません。",
-      quickReply: qr,
-      sender:     systemSender,
-    }], token);
     return;
   }
 
@@ -457,12 +444,8 @@ async function handleContinueSheets({
     return;
   }
 
+  // エンディング到達済み → 自動返信なし（シナリオ定義に委ねる）
   if (progress.reachedEnding) {
-    const state = await buildRuntimeStateFromSheets(data, progress);
-    const msgs  = state.phase
-      ? buildPhaseMessages(state.phase, { systemSender })
-      : [{ type: "text" as const, text: `すでにエンディングに到達しています。\n「はじめる」と送ると最初から楽しめます。`, sender: systemSender }];
-    await replyToLine(replyToken, msgs, token);
     return;
   }
 

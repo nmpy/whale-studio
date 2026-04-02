@@ -448,12 +448,7 @@ export function buildPhaseMessages(
 
   // ── エンディング or クイックリプライ付与 ──
   if (phase.transitions === null) {
-    // エンディングフェーズ — 作品のメッセージが終わったあと、再プレイ案内のみをシステム送信者で添える
-    messages.push({
-      type:   "text",
-      text:   "最後まで遊んでいただきありがとうございました。\n\n「はじめる」と送ると最初から楽しめます。",
-      sender: opts.systemSender,
-    });
+    // エンディングフェーズ — シナリオ定義のメッセージのみ送信（自動メッセージは送らない）
   } else if (phase.transitions.length === 0) {
     // 遷移未設定 — β: システム文言を出さずメッセージのみ表示
     // （シナリオ制作中の場合でも没入感を損なわないよう何も追加しない）
