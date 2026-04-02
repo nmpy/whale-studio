@@ -193,7 +193,7 @@ export default function WorkHubPage() {
           boxShadow: "var(--shadow-xs)",
         }}>
           {[
-            { label: "プレイヤー",   value: work._count.userProgress.toLocaleString(), icon: "👥", highlight: work._count.userProgress > 0 },
+            { label: "プレイヤー",   value: (work._count.userProgress ?? 0).toLocaleString(), icon: "👥", highlight: (work._count.userProgress ?? 0) > 0 },
             { label: "キャラクター", value: work._count.characters, icon: "🎭", highlight: false },
             { label: "フェーズ",     value: work._count.phases,     icon: "🗂",  highlight: false },
             { label: "メッセージ",   value: work._count.messages,   icon: "💬", highlight: false },

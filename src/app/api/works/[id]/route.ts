@@ -37,7 +37,7 @@ export const GET = withAuth<{ id: string }>(async (_req, { params }, user) => {
       where: { id: params.id },
       include: {
         _count: {
-          select: { characters: true, phases: true, messages: true },
+          select: { characters: true, phases: true, messages: true, userProgress: true },
         },
       },
     });

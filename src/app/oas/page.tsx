@@ -22,95 +22,6 @@ function formatDate(iso: string): string {
   return `${y}/${mo}/${day}`;
 }
 
-/* ── PDFガイドバナー ──────────────────────────────────────────────────── */
-function GuideBanner() {
-  const [dismissed, setDismissed] = useState(false);
-  if (dismissed) return null;
-  return (
-    <div style={{
-      display: "flex",
-      alignItems: "center",
-      gap: 16,
-      padding: "14px 20px",
-      background: "linear-gradient(135deg, #eef6ff 0%, #f0fdf4 100%)",
-      border: "1px solid #bfdbfe",
-      borderLeft: "4px solid var(--color-info)",
-      borderRadius: "var(--radius-md)",
-      marginBottom: 20,
-    }}>
-      {/* アイコン */}
-      <div style={{
-        width: 40, height: 40,
-        borderRadius: "var(--radius-sm)",
-        background: "#dbeafe",
-        display: "flex", alignItems: "center", justifyContent: "center",
-        flexShrink: 0,
-        fontSize: 20,
-      }}>
-        📄
-      </div>
-
-      {/* テキスト */}
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: "#1e40af", marginBottom: 2 }}>
-          はじめての方へ — 使い方ガイド
-        </div>
-        <div style={{ fontSize: 12, color: "#3b82f6", lineHeight: 1.5 }}>
-          セットアップ手順・LINEチャンネル連携・謎解きシナリオの作り方をまとめたPDFです。
-        </div>
-      </div>
-
-      {/* ダウンロードボタン */}
-      <a
-        href="/guide.pdf"
-        target="_blank"
-        rel="noopener noreferrer"
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 6,
-          padding: "8px 16px",
-          background: "#2563eb",
-          color: "#ffffff",
-          borderRadius: "var(--radius-sm)",
-          fontSize: 12,
-          fontWeight: 700,
-          textDecoration: "none",
-          whiteSpace: "nowrap",
-          flexShrink: 0,
-          transition: "background 0.15s",
-        }}
-        onMouseEnter={(e) => (e.currentTarget.style.background = "#1d4ed8")}
-        onMouseLeave={(e) => (e.currentTarget.style.background = "#2563eb")}
-      >
-        ↓ PDFを開く
-      </a>
-
-      {/* 閉じるボタン */}
-      <button
-        type="button"
-        onClick={() => setDismissed(true)}
-        aria-label="閉じる"
-        style={{
-          flexShrink: 0,
-          background: "none",
-          border: "none",
-          cursor: "pointer",
-          color: "#93c5fd",
-          fontSize: 18,
-          lineHeight: 1,
-          padding: "2px 4px",
-          borderRadius: 4,
-          transition: "color 0.15s",
-        }}
-        onMouseEnter={(e) => (e.currentTarget.style.color = "#2563eb")}
-        onMouseLeave={(e) => (e.currentTarget.style.color = "#93c5fd")}
-      >
-        ×
-      </button>
-    </div>
-  );
-}
 
 /* ── 統計サマリー ─────────────────────────────────────────────────────── */
 function SummaryBar({ items, worksMap }: { items: OaListItem[]; worksMap: Record<string, WorkListItem[]> }) {
@@ -205,51 +116,31 @@ function SupportArea() {
         gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
         gap: 10,
       }}>
-        {/* 使い方ガイド */}
+        {/* はじめての方へ・使い方ガイド */}
         <a
           href="/guide.pdf"
           target="_blank"
           rel="noopener noreferrer"
           style={cardBase}
           onMouseEnter={(e) => {
-            e.currentTarget.style.borderColor = "var(--color-primary)";
-            e.currentTarget.style.background  = "var(--color-primary-soft)";
+            e.currentTarget.style.borderColor = "#d1d5db";
+            e.currentTarget.style.background  = "var(--color-bg-subtle)";
           }}
           onMouseLeave={(e) => {
             e.currentTarget.style.borderColor = "var(--color-border-soft)";
             e.currentTarget.style.background  = "var(--color-bg-default)";
           }}
         >
-          <CardIcon bg="var(--color-primary-soft)">📄</CardIcon>
-          <CardBody
-            title="使い方ガイド"
-            desc="セットアップ〜シナリオ公開までの手順をまとめたPDFです"
-          />
-        </a>
-
-        {/* 共通メッセージのヒント */}
-        <div
-          style={{ ...cardBase, cursor: "default" }}
-          onMouseEnter={(e) => {
-            (e.currentTarget as HTMLDivElement).style.borderColor = "#d1d5db";
-            (e.currentTarget as HTMLDivElement).style.background  = "var(--color-bg-subtle)";
-          }}
-          onMouseLeave={(e) => {
-            (e.currentTarget as HTMLDivElement).style.borderColor = "var(--color-border-soft)";
-            (e.currentTarget as HTMLDivElement).style.background  = "var(--color-bg-default)";
-          }}
-        >
-          <CardIcon bg="#f0fdf4">💬</CardIcon>
+          <CardIcon bg="var(--gray-100)">📄</CardIcon>
           <div style={{ minWidth: 0 }}>
             <div style={{ fontSize: 12, fontWeight: 600, color: "var(--color-text-primary)", marginBottom: 2 }}>
-              共通メッセージ
+              はじめての方へ — 使い方ガイド
             </div>
             <div style={{ fontSize: 11, color: "var(--color-text-muted)", lineHeight: 1.5 }}>
-              ヒント・ヘルプなどフェーズに関係なく反応するメッセージは、
-              メッセージ作成画面の「メッセージ役割」から設定できます
+              セットアップ・LINEチャンネル連携・シナリオ公開までの手順をまとめたPDFです
             </div>
           </div>
-        </div>
+        </a>
       </div>
     </div>
   );
@@ -265,8 +156,10 @@ function RowActions({
   isOwner:  boolean;
   onDelete: () => void;
 }) {
-  const [menuOpen, setMenuOpen] = useState(false);
+  const [menuOpen,   setMenuOpen]   = useState(false);
+  const [openUpward, setOpenUpward] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const btnRef  = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -276,6 +169,16 @@ function RowActions({
     document.addEventListener("mousedown", onOutside);
     return () => document.removeEventListener("mousedown", onOutside);
   }, [menuOpen]);
+
+  function handleToggle() {
+    if (!menuOpen && btnRef.current) {
+      const rect       = btnRef.current.getBoundingClientRect();
+      const spaceBelow = window.innerHeight - rect.bottom;
+      // メニュー高さの目安 40px + 余白
+      setOpenUpward(spaceBelow < 64);
+    }
+    setMenuOpen((o) => !o);
+  }
 
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 4, justifyContent: "flex-end" }}>
@@ -299,8 +202,9 @@ function RowActions({
       {isOwner && (
         <div style={{ position: "relative" }} ref={menuRef}>
           <button
+            ref={btnRef}
             type="button"
-            onClick={() => setMenuOpen((o) => !o)}
+            onClick={handleToggle}
             title="その他の操作"
             aria-label="その他の操作"
             style={{
@@ -339,7 +243,9 @@ function RowActions({
               style={{
                 position: "absolute",
                 right: 0,
-                top: "calc(100% + 4px)",
+                ...(openUpward
+                  ? { bottom: "calc(100% + 4px)" }
+                  : { top:    "calc(100% + 4px)" }),
                 zIndex: 50,
                 minWidth: 112,
                 background: "#ffffff",
@@ -508,9 +414,6 @@ export default function OaListPage() {
 
   return (
     <>
-      {/* ── ガイドPDF導線 ── */}
-      <GuideBanner />
-
       {/* ── ページヘッダー ── */}
       <div className="page-header">
         <div>

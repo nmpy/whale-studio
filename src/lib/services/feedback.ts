@@ -70,8 +70,8 @@ export async function submitFeedback(payload: FeedbackPayload): Promise<Feedback
 
   // ── URL 未設定の処理 ───────────────────────────────────────────────────────
   if (!gasUrl) {
-    // FEEDBACK_DEV_SKIP=true のときのみ開発用コンソール出力に逃がす
-    if (isDev && process.env.FEEDBACK_DEV_SKIP === "true") {
+    // FEEDBACK_DEV_SKIP=true のときのみ開発用コンソール出力に逃がす（NODE_ENV 問わず有効）
+    if (process.env.FEEDBACK_DEV_SKIP === "true") {
       console.warn(
         "[feedback] ⚠️  FEEDBACK_DEV_SKIP=true — スプレッドシートには送信しません（開発バイパス）"
       );

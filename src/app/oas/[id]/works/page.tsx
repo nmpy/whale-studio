@@ -106,7 +106,7 @@ function WorkCard({
       {/* ── メタ情報チップ ── */}
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
         {[
-          { icon: "👥", value: work._count.userProgress.toLocaleString(), label: "プレイヤー", highlight: work._count.userProgress > 0 },
+          { icon: "👥", value: (work._count.userProgress ?? 0).toLocaleString(), label: "プレイヤー", highlight: (work._count.userProgress ?? 0) > 0 },
           { icon: "🗂",  value: work._count.phases,                         label: "フェーズ", highlight: false },
           { icon: "💬", value: work._count.messages,                        label: "メッセージ", highlight: false },
           { icon: "🎭", value: work._count.characters,                      label: "キャラクター", highlight: false },
@@ -260,7 +260,7 @@ export default function WorkListPage() {
             { label: "公開中", value: activeCount, color: "var(--color-success)" },
             {
               label: "総プレイヤー数",
-              value: works.reduce((s, w) => s + w._count.userProgress, 0).toLocaleString(),
+              value: works.reduce((s, w) => s + (w._count.userProgress ?? 0), 0).toLocaleString(),
               color: "var(--color-info)",
             },
           ].map((s) => (
