@@ -159,11 +159,11 @@ export default function GlobalCommandsPage() {
           <Breadcrumb items={[
             { label: "アカウントリスト",   href: "/oas" },
             { label: oaTitle || "…",       href: `/oas/${oaId}/settings` },
-            { label: "グローバルコマンド" },
+            { label: "共通メッセージ" },
           ]} />
-          <h2>グローバルコマンド</h2>
+          <h2>共通メッセージ</h2>
           <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 3 }}>
-            どのフェーズでも共通で反応するキーワードを設定します
+            フェーズに関係なく反応する共通キーワードとメッセージを設定します
           </p>
         </div>
         {!showAddForm && (
@@ -171,17 +171,17 @@ export default function GlobalCommandsPage() {
             className="btn btn-primary"
             onClick={() => { setShowAddForm(true); setAddForm(EMPTY_FORM); setAddErrors({}); }}
           >
-            ＋ コマンドを追加
+            ＋ 共通メッセージを追加
           </button>
         )}
       </div>
 
       {/* ── ヘルプ ── */}
       <HelpAccordion items={[
-        { icon: "✅", title: "グローバルコマンドとは？", points: [
+        { icon: "✅", title: "共通メッセージとは？", points: [
           "通常の遷移ロジックより「最優先」で評価されるキーワードです",
-          "どのフェーズにいても「ヒント」「やめる」などに反応できます",
-          "Webhook 処理順序: ① グローバルコマンド → ② フェーズ遷移 → ③ fallback",
+          "どのフェーズにいても「ヒント」「ヘルプ」などに反応できます",
+          "Webhook 処理順序: ① 共通メッセージ → ② フェーズ遷移 → ③ fallback",
         ]},
         { icon: "🎯", title: "アクション種別", points: [
           "HINT — 現在フェーズのパズルヒントテキストを表示（puzzleHintText フィールド）",
@@ -211,7 +211,7 @@ export default function GlobalCommandsPage() {
       {showAddForm && (
         <div className="card" style={{ maxWidth: 600, marginBottom: 16, borderColor: "var(--color-info)", borderWidth: 2 }}>
           <p style={{ fontWeight: 700, fontSize: 13, color: "var(--color-info)", marginBottom: 14 }}>
-            ＋ 新しいコマンドを追加
+            ＋ 新しい共通メッセージを追加
           </p>
           <form onSubmit={handleAdd}>
             {/* キーワード */}
@@ -322,7 +322,7 @@ export default function GlobalCommandsPage() {
               </button>
               <button type="submit" className="btn btn-primary" disabled={saving}>
                 {saving && <span className="spinner" />}
-                {saving ? "追加中..." : "コマンドを追加"}
+                {saving ? "追加中..." : "追加する"}
               </button>
             </div>
           </form>
@@ -345,9 +345,9 @@ export default function GlobalCommandsPage() {
         <div className="card">
           <div className="empty-state">
             <div className="empty-state-icon">⌨️</div>
-            <p className="empty-state-title">コマンドがまだありません</p>
+            <p className="empty-state-title">共通メッセージがまだありません</p>
             <p className="empty-state-desc">
-              「ヒント」「やめる」などのキーワードとアクションを登録すると、<br />
+              「ヒント」「ヘルプ」などのキーワードとアクションを登録すると、<br />
               どのフェーズでも共通で反応するようになります。
             </p>
             <button
@@ -355,7 +355,7 @@ export default function GlobalCommandsPage() {
               style={{ marginTop: 8 }}
               onClick={() => { setShowAddForm(true); setAddErrors({}); }}
             >
-              ＋ 最初のコマンドを追加
+              ＋ 最初の共通メッセージを追加
             </button>
           </div>
         </div>

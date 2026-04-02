@@ -63,7 +63,7 @@ const EMPTY_CAROUSEL_CARD: MessageCarouselCard = {
 
 // ── FormState ────────────────────────────────────────────
 
-export type MessageKind = "start" | "normal" | "response" | "hint" | "puzzle";
+export type MessageKind = "start" | "normal" | "response" | "hint" | "puzzle" | "global";
 export type AnswerMatchType = "exact" | "ignore_punctuation" | "normalize_width";
 export type CorrectAction   = "text" | "text_and_transition" | "transition";
 
@@ -191,15 +191,18 @@ export function msgToFormState(msg: {
 }
 
 export function formStateToMsgBody(form: MessageFormState) {
-  const isPuzzle = form.kind === "puzzle";
+  const isPuzzle  = form.kind === "puzzle";
+  const isGlobal  = form.kind === "global";
   const payload = {
     trigger_keyword:  form.trigger_keyword || null,
     target_segment:   form.target_segment  || null,
-    phase_id:         form.phase_id        || null,
+    // 共通メッセージはフェーズ不問のため phase_id を null にする
+    phase_id:         isGlobal ? null : (form.phase_id || null),
     character_id:     form.character_id    || null,
     // puzzle も message_type をそのまま使う（画像・動画・カルーセル謎に対応）
     message_type:     form.message_type,
-    kind:             form.kind,
+    // global は API に kind="response" + phase_id=null で送信
+    kind:             (isGlobal ? "response" : form.kind) as Exclude<MessageKind, "global">,
     body:
       form.message_type === "carousel"
         ? JSON.stringify(form.carousel_items)
@@ -235,6 +238,15 @@ export function formStateToMsgBody(form: MessageFormState) {
 // ── バリデーション ────────────────────────────────────────
 
 export function validateMessageForm(form: MessageFormState): string | null {
+  // ── 共通メッセージバリデーション ──
+  if (form.kind === "global") {
+    if (!form.trigger_keyword.trim()) {
+      return "共通メッセージにはキーワード（応答キーワード）が必須です";
+    }
+    if (form.message_type === "text" && !form.body.trim()) {
+      return "テキスト本文は必須です";
+    }
+  }
   // ── 謎（puzzle）バリデーション ──
   if (form.kind === "puzzle") {
     // 謎の問題コンテンツ（配信形式ごと）
@@ -1454,13 +1466,30 @@ export function MessageForm({
                 <option value="start">開始演出（startTrigger 一致時に送信）</option>
                 <option value="response">応答（trigger_keyword 一致時に返信）</option>
                 <option value="hint">ヒント（将来拡張）</option>
+                <option value="global">💬 共通メッセージ（フェーズ不問・常時反応）</option>
               </select>
               <div style={hintText}>
-                {form.kind === "start" && "開始フェーズの startTrigger が一致したとき送信されます。フェーズに kind=start のメッセージがない場合は通常メッセージにフォールバックします。"}
+                {form.kind === "start"    && "開始フェーズの startTrigger が一致したとき送信されます。フェーズに kind=start のメッセージがない場合は通常メッセージにフォールバックします。"}
                 {form.kind === "response" && "trigger_keyword が一致したときのみ返信します。フェーズは進みません。"}
-                {form.kind === "normal" && "フェーズ遷移時またはフェーズ表示時に送信されます。"}
-                {form.kind === "hint" && "ヒント用メッセージです（将来拡張）。"}
+                {form.kind === "normal"   && "フェーズ遷移時またはフェーズ表示時に送信されます。"}
+                {form.kind === "hint"     && "ヒント用メッセージです（将来拡張）。"}
+                {form.kind === "global"   && "どのフェーズにいても反応します。ヒント・ヘルプ・やり直し案内などに使います。キーワードは必須です。フェーズ設定は無視されます。"}
               </div>
+              {form.kind === "global" && (
+                <div style={{
+                  marginTop: 8,
+                  padding: "8px 12px",
+                  background: "#f0fdf4",
+                  border: "1px solid #bbf7d0",
+                  borderRadius: 6,
+                  fontSize: 11,
+                  color: "#166534",
+                  lineHeight: 1.6,
+                }}>
+                  💡 <strong>共通メッセージ</strong>：フェーズに依存しない返信です。
+                  「応答キーワード」を必ず設定してください。フェーズ設定は自動的に無視されます。
+                </div>
+              )}
             </div>
             )}
 
@@ -1477,13 +1506,15 @@ export function MessageForm({
                 className="form-input"
                 value={form.trigger_keyword}
                 onChange={(e) => set("trigger_keyword", e.target.value)}
-                placeholder="例: スタート"
+                placeholder={form.kind === "global" ? "例: ヒント、ヘルプ、やり直し" : "例: スタート"}
                 maxLength={100}
                 disabled={form.kind === "start"}
                 style={form.kind === "start" ? { opacity: 0.5 } : undefined}
               />
               <div style={hintText}>
-                {form.kind === "start" ? "kind=start では Phase.startTrigger を使います" : "このキーワードを受信したとき送信します（kind=response 推奨）"}
+                {form.kind === "start"  && "kind=start では Phase.startTrigger を使います"}
+                {form.kind === "global" && "⚠️ 共通メッセージではキーワードが必須です。このキーワードにどのフェーズでも反応します。"}
+                {form.kind !== "start" && form.kind !== "global" && "このキーワードを受信したとき送信します（kind=response 推奨）"}
               </div>
             </div>
             )}
@@ -1506,7 +1537,8 @@ export function MessageForm({
               </select>
             </div>
 
-            {/* フェーズ */}
+            {/* フェーズ（共通メッセージ時は非表示） */}
+            {form.kind !== "global" && (
             <div className="form-group" style={{ marginBottom: 0 }}>
               <label style={fieldLabel} htmlFor="phase_id">
                 フェーズ
@@ -1526,6 +1558,7 @@ export function MessageForm({
               </select>
               <div style={hintText}>フェーズ未指定の場合、全フェーズで適用されます</div>
             </div>
+            )}
           </div>
 
           {/* ════════════════════════════════════════

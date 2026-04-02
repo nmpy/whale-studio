@@ -66,14 +66,6 @@ const HUB_ITEM_DEFS = [
     color: "#dc2626",
     bg:    "#fef2f2",
   },
-  {
-    key:   "global-commands",
-    icon:  "⌨️",
-    title: "グローバルコマンド",
-    desc:  "どのフェーズでも反応するキーワード（ヒント・リセット等）を設定",
-    color: "#0891b2",
-    bg:    "#ecfeff",
-  },
 ] as const;
 
 export default function OaSettingsPage() {

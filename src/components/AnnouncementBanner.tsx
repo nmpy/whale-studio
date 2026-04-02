@@ -1,128 +1,188 @@
 "use client";
 
 // src/components/AnnouncementBanner.tsx
-// アカウント一覧ページ上部に表示するお知らせエリア。
-// 最新順で最大 3 件表示。important なものは先頭に浮かせる。
+// お知らせ一覧コンポーネント（リスト型UI）
 // 将来: ANNOUNCEMENTS を GET /api/announcements に差し替えるだけで DB 連携可能。
 
 import { useState } from "react";
 import { ANNOUNCEMENTS, type Announcement, type AnnouncementType } from "@/data/announcements";
 
-const TYPE_META: Record<AnnouncementType, {
-  label: string; icon: string; bg: string; color: string; border: string;
-}> = {
-  update:      { label: "アップデート", icon: "🎉", bg: "#eff6ff", color: "#1d4ed8", border: "#bfdbfe" },
-  bugfix:      { label: "不具合修正",   icon: "🔧", bg: "#f0fdf4", color: "#166534", border: "#bbf7d0" },
-  known_issue: { label: "既知の不具合", icon: "⚠️", bg: "#fffbeb", color: "#92400e", border: "#fde68a" },
-  info:        { label: "お知らせ",     icon: "📢", bg: "#f9fafb", color: "#374151", border: "#e5e7eb" },
+// ── 種別メタ情報 ───────────────────────────────────────────────────────────
+const TYPE_META: Record<AnnouncementType, { label: string; color: string; bg: string }> = {
+  update:      { label: "アップデート", color: "#1d4ed8", bg: "#eff6ff" },
+  bugfix:      { label: "不具合修正",   color: "#166534", bg: "#f0fdf4" },
+  known_issue: { label: "既知の不具合", color: "#92400e", bg: "#fffbeb" },
+  info:        { label: "お知らせ",     color: "#374151", bg: "#f3f4f6" },
 };
 
-const IMPORTANT_OVERRIDE = {
-  bg: "#fef2f2", color: "#991b1b", border: "#fecaca", icon: "🚨",
-};
+// ── タブ定義 ──────────────────────────────────────────────────────────────
+const TABS: { value: AnnouncementType | "all" | "important"; label: string }[] = [
+  { value: "all",       label: "すべて" },
+  { value: "update",    label: "アップデート" },
+  { value: "bugfix",    label: "不具合修正" },
+  { value: "known_issue", label: "既知の不具合" },
+  { value: "important", label: "重要" },
+];
 
-function AnnouncementItem({ item }: { item: Announcement }) {
+// ── 日付フォーマット ──────────────────────────────────────────────────────
+function formatDate(dateStr: string): string {
+  const [y, m, d] = dateStr.split("-");
+  return `${y}/${m}/${d}`;
+}
+
+// ── 1行アイテム ───────────────────────────────────────────────────────────
+function AnnouncementRow({ item, isLast }: { item: Announcement; isLast: boolean }) {
   const [expanded, setExpanded] = useState(false);
-  const meta = item.important
-    ? { ...TYPE_META[item.type], ...IMPORTANT_OVERRIDE }
-    : TYPE_META[item.type];
-
-  const body = item.body.length > 100 && !expanded
-    ? item.body.slice(0, 100) + "…"
-    : item.body;
+  const meta = TYPE_META[item.type];
+  const hasLongBody = item.body.length > 80;
+  const displayBody = expanded ? item.body : item.body.slice(0, 80) + (hasLongBody ? "…" : "");
 
   return (
     <div style={{
-      display: "flex",
-      gap: 12,
-      padding: "11px 16px",
-      background: meta.bg,
-      border: `1px solid ${meta.border}`,
-      borderLeft: item.important ? `4px solid ${meta.color}` : `1px solid ${meta.border}`,
-      borderRadius: 8,
+      borderBottom: isLast ? "none" : "1px solid var(--color-border-soft, #f0f0f0)",
     }}>
-      <span style={{ fontSize: 17, flexShrink: 0, lineHeight: 1.5 }}>{meta.icon}</span>
-
-      <div style={{ flex: 1, minWidth: 0 }}>
-        {/* ヘッダー行: バッジ・日付・タイトル */}
-        <div style={{
-          display: "flex", alignItems: "center", gap: 8,
-          flexWrap: "wrap", marginBottom: 3,
+      {/* ── メイン行 ── */}
+      <div style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 16,
+        padding: "13px 20px",
+        background: item.important ? "#fffcf5" : "transparent",
+        transition: "background .1s",
+      }}>
+        {/* 日付 */}
+        <span style={{
+          fontSize: 11,
+          color: "var(--color-text-muted, #999)",
+          whiteSpace: "nowrap",
+          flexShrink: 0,
+          fontVariantNumeric: "tabular-nums",
+          letterSpacing: "0.02em",
+          minWidth: 72,
         }}>
-          <span style={{
-            fontSize: 10, fontWeight: 700,
-            color: meta.color,
-            background: "rgba(255,255,255,0.65)",
-            border: `1px solid ${meta.border}`,
-            padding: "1px 7px", borderRadius: 10,
-            letterSpacing: "0.04em", flexShrink: 0,
-          }}>
-            {meta.label}
-          </span>
-          <span style={{ fontSize: 11, color: "#9ca3af", flexShrink: 0 }}>
-            {item.date}
-          </span>
-          <span style={{
-            fontSize: 13, fontWeight: 600,
-            color: item.important ? meta.color : "#111827",
-          }}>
-            {item.title}
-          </span>
-        </div>
+          {formatDate(item.date)}
+        </span>
 
-        {/* 本文 */}
-        <p style={{ fontSize: 12, color: "#374151", lineHeight: 1.7, margin: 0 }}>
-          {body}
-          {item.body.length > 100 && (
-            <button
-              type="button"
-              onClick={() => setExpanded((v) => !v)}
-              style={{
-                marginLeft: 6, fontSize: 11, color: "#6b7280",
-                background: "none", border: "none", cursor: "pointer",
-                padding: 0, textDecoration: "underline",
-              }}
-            >
-              {expanded ? "閉じる" : "続きを読む"}
-            </button>
-          )}
-        </p>
+        {/* 種別ラベル */}
+        <span style={{
+          fontSize: 10,
+          fontWeight: 700,
+          color: item.important ? "#92400e" : meta.color,
+          background: item.important ? "#fef3c7" : meta.bg,
+          padding: "2px 8px",
+          borderRadius: 4,
+          whiteSpace: "nowrap",
+          flexShrink: 0,
+          minWidth: 80,
+          textAlign: "center",
+          letterSpacing: "0.04em",
+        }}>
+          {item.important ? "🚨 重要" : meta.label}
+        </span>
+
+        {/* タイトル */}
+        <span style={{
+          fontSize: 13,
+          fontWeight: item.important ? 700 : 500,
+          color: item.important ? "#78350f" : "var(--color-text-primary, #1a1a1a)",
+          flex: 1,
+          minWidth: 0,
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}>
+          {item.title}
+        </span>
+
+        {/* 詳細展開ボタン */}
+        {hasLongBody && (
+          <button
+            type="button"
+            onClick={() => setExpanded((v) => !v)}
+            style={{
+              flexShrink: 0,
+              fontSize: 11,
+              color: "var(--color-text-muted, #999)",
+              background: "none",
+              border: "1px solid var(--color-border-default, #e5e5e5)",
+              borderRadius: 4,
+              cursor: "pointer",
+              padding: "2px 8px",
+              whiteSpace: "nowrap",
+              transition: "color .1s, border-color .1s",
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.color = "#374151"; e.currentTarget.style.borderColor = "#9ca3af"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.color = "var(--color-text-muted, #999)"; e.currentTarget.style.borderColor = "var(--color-border-default, #e5e5e5)"; }}
+          >
+            {expanded ? "閉じる ▲" : "詳細 ▼"}
+          </button>
+        )}
       </div>
+
+      {/* ── 展開：本文 ── */}
+      {expanded && (
+        <div style={{
+          padding: "0 20px 14px",
+          paddingLeft: 20 + 72 + 16 + 80 + 16, // date + gap + label + gap
+          fontSize: 12,
+          color: "#374151",
+          lineHeight: 1.75,
+        }}>
+          {item.body}
+        </div>
+      )}
     </div>
   );
 }
 
+// ── メインコンポーネント ──────────────────────────────────────────────────
 export function AnnouncementBanner() {
-  const [collapsed, setCollapsed] = useState(false);
+  const [activeTab, setActiveTab]   = useState<AnnouncementType | "all" | "important">("all");
+  const [collapsed, setCollapsed]   = useState(false);
 
-  // 重要を先頭、その後は日付降順。最大 3 件
-  const sorted = [...ANNOUNCEMENTS]
+  if (ANNOUNCEMENTS.length === 0) return null;
+
+  // フィルタリング
+  const filtered = ANNOUNCEMENTS
+    .filter((a) => {
+      if (activeTab === "all")       return true;
+      if (activeTab === "important") return a.important;
+      return a.type === activeTab;
+    })
     .sort((a, b) => {
       if (a.important !== b.important) return a.important ? -1 : 1;
       return b.date.localeCompare(a.date);
-    })
-    .slice(0, 3);
+    });
 
-  if (sorted.length === 0) return null;
-
-  const importantCount = sorted.filter((a) => a.important).length;
+  const importantCount = ANNOUNCEMENTS.filter((a) => a.important).length;
 
   return (
-    <section style={{ marginBottom: 24 }}>
-      {/* セクションヘッダー */}
+    <section style={{ marginBottom: 28 }}>
+      {/* ── セクションヘッダー ── */}
       <div style={{
-        display: "flex", alignItems: "center", gap: 8,
-        marginBottom: collapsed ? 0 : 10,
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        marginBottom: collapsed ? 0 : 12,
       }}>
-        <h3 style={{ fontSize: 13, fontWeight: 700, color: "#374151", margin: 0 }}>
-          📋 お知らせ
+        <h3 style={{
+          fontSize: 13,
+          fontWeight: 700,
+          color: "var(--color-text-primary, #1a1a1a)",
+          margin: 0,
+          letterSpacing: "0.02em",
+        }}>
+          お知らせ
         </h3>
         {importantCount > 0 && (
           <span style={{
-            fontSize: 10, fontWeight: 700,
-            color: "#991b1b", background: "#fef2f2",
-            border: "1px solid #fecaca",
-            padding: "1px 6px", borderRadius: 10,
+            fontSize: 10,
+            fontWeight: 700,
+            color: "#92400e",
+            background: "#fef3c7",
+            padding: "1px 7px",
+            borderRadius: 10,
+            border: "1px solid #fde68a",
           }}>
             重要 {importantCount}件
           </span>
@@ -131,21 +191,84 @@ export function AnnouncementBanner() {
           type="button"
           onClick={() => setCollapsed((c) => !c)}
           style={{
-            marginLeft: "auto", fontSize: 11, color: "#9ca3af",
-            background: "none", border: "none", cursor: "pointer",
+            marginLeft: "auto",
+            fontSize: 11,
+            color: "var(--color-text-muted, #999)",
+            background: "none",
+            border: "none",
+            cursor: "pointer",
             padding: "2px 6px",
+            borderRadius: 4,
           }}
         >
           {collapsed ? "▼ 表示する" : "▲ 閉じる"}
         </button>
       </div>
 
-      {/* お知らせ一覧 */}
       {!collapsed && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {sorted.map((item) => (
-            <AnnouncementItem key={item.id} item={item} />
-          ))}
+        <div style={{
+          background: "#fff",
+          border: "1px solid var(--color-border-default, #e5e5e5)",
+          borderRadius: 10,
+          overflow: "hidden",
+        }}>
+          {/* ── カテゴリタブ ── */}
+          <div style={{
+            display: "flex",
+            gap: 0,
+            padding: "10px 16px",
+            borderBottom: "1px solid var(--color-border-soft, #f0f0f0)",
+            background: "var(--color-bg-subtle, #f7f7f7)",
+            overflowX: "auto",
+          }}>
+            {TABS.map((tab) => {
+              const active = activeTab === tab.value;
+              return (
+                <button
+                  key={tab.value}
+                  type="button"
+                  onClick={() => setActiveTab(tab.value)}
+                  style={{
+                    padding: "4px 12px",
+                    fontSize: 11,
+                    fontWeight: active ? 700 : 400,
+                    color: active ? "var(--color-primary, #2F6F5E)" : "var(--color-text-muted, #999)",
+                    background: active ? "#fff" : "transparent",
+                    border: active ? "1px solid var(--color-border-default, #e5e5e5)" : "1px solid transparent",
+                    borderRadius: 6,
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
+                    transition: "all .1s",
+                    marginRight: 4,
+                  }}
+                >
+                  {tab.label}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* ── お知らせ一覧 ── */}
+          {filtered.length === 0 ? (
+            <div style={{
+              padding: "24px",
+              textAlign: "center",
+              fontSize: 12,
+              color: "var(--color-text-muted, #999)",
+            }}>
+              該当するお知らせはありません
+            </div>
+          ) : (
+            <div>
+              {filtered.map((item, i) => (
+                <AnnouncementRow
+                  key={item.id}
+                  item={item}
+                  isLast={i === filtered.length - 1}
+                />
+              ))}
+            </div>
+          )}
         </div>
       )}
     </section>

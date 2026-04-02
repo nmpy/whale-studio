@@ -227,7 +227,7 @@ function SupportArea() {
           />
         </a>
 
-        {/* グローバルコマンドのヒント */}
+        {/* 共通メッセージのヒント */}
         <div
           style={{ ...cardBase, cursor: "default" }}
           onMouseEnter={(e) => {
@@ -239,40 +239,17 @@ function SupportArea() {
             (e.currentTarget as HTMLDivElement).style.background  = "var(--color-bg-default)";
           }}
         >
-          <CardIcon bg="#ecfeff">⌨️</CardIcon>
+          <CardIcon bg="#f0fdf4">💬</CardIcon>
           <div style={{ minWidth: 0 }}>
             <div style={{ fontSize: 12, fontWeight: 600, color: "var(--color-text-primary)", marginBottom: 2 }}>
-              グローバルコマンド
+              共通メッセージ
             </div>
             <div style={{ fontSize: 11, color: "var(--color-text-muted)", lineHeight: 1.5 }}>
-              ヒント・リセットなど常時反応するキーワードは、各アカウントの
-              {" "}
-              <span style={{ color: "var(--color-primary)", fontWeight: 600 }}>設定 → グローバルコマンド</span>
-              {" "}から登録できます
+              ヒント・ヘルプなどフェーズに関係なく反応するメッセージは、
+              メッセージ作成画面の「メッセージ役割」から設定できます
             </div>
           </div>
         </div>
-
-        {/* フィードバック */}
-        <button
-          type="button"
-          style={cardBase}
-          onClick={() => window.dispatchEvent(new CustomEvent("open-feedback-modal"))}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.borderColor = "var(--color-primary)";
-            e.currentTarget.style.background  = "var(--color-primary-soft)";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.borderColor = "var(--color-border-soft)";
-            e.currentTarget.style.background  = "var(--color-bg-default)";
-          }}
-        >
-          <CardIcon bg="#f0fdf4">💬</CardIcon>
-          <CardBody
-            title="フィードバックを送る"
-            desc="気になる点・改善要望・バグ報告などお気軽にどうぞ"
-          />
-        </button>
       </div>
     </div>
   );
@@ -531,9 +508,6 @@ export default function OaListPage() {
 
   return (
     <>
-      {/* ── お知らせ ── */}
-      <AnnouncementBanner />
-
       {/* ── ガイドPDF導線 ── */}
       <GuideBanner />
 
@@ -770,6 +744,9 @@ export default function OaListPage() {
           )}
         </div>
       )}
+
+      {/* ── お知らせ ── */}
+      <AnnouncementBanner />
 
       {/* ── サポートエリア ── */}
       <SupportArea />

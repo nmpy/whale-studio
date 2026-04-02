@@ -146,7 +146,7 @@ export default function GlobalCommandEditPage() {
           <Breadcrumb items={[
             { label: "アカウントリスト",   href: "/oas" },
             { label: oaTitle || "…",       href: `/oas/${oaId}/settings` },
-            { label: "グローバルコマンド", href: `/oas/${oaId}/global-commands` },
+            { label: "共通メッセージ", href: `/oas/${oaId}/global-commands` },
             { label: form.keyword || "編集" },
           ]} />
           <h2>コマンドを編集</h2>
