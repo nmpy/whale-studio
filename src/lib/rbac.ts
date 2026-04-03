@@ -17,6 +17,13 @@ export async function getWorkspaceRole(
   workspaceId: string,
   userId: string
 ): Promise<Role | null> {
+  // BYPASS_AUTH=true 時のスタブ（withAuth が "bypass-admin" を返す）
+  // withRole は既に bypass しているが、withAuth + inline requireRole のルートも
+  // ここに到達するため、同様に owner として扱う。
+  if (userId === 'bypass-admin') {
+    return 'owner';
+  }
+
   // dev スタブ: Supabase 未設定 の開発環境では常に owner
   if (
     !process.env.NEXT_PUBLIC_SUPABASE_URL &&

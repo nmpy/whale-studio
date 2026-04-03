@@ -27,12 +27,15 @@ export const GET = withAuth(async (req, _ctx, user) => {
       limit:          searchParams.get("limit")          ?? 20,
     });
 
-    // dev スタブ（dev-user）の場合は全 OA を返す
+    // bypass-admin（BYPASS_AUTH=true 時）または dev-user の場合は全 OA を返す
     // 本番（Supabase 設定済み）では workspace_members に登録済みの OA のみ返す
     const isDevUser =
-      !process.env.NEXT_PUBLIC_SUPABASE_URL &&
-      process.env.NODE_ENV === "development" &&
-      user.id === "dev-user";
+      user.id === "bypass-admin" ||
+      (
+        !process.env.NEXT_PUBLIC_SUPABASE_URL &&
+        process.env.NODE_ENV === "development" &&
+        user.id === "dev-user"
+      );
 
     const memberFilter = isDevUser
       ? {}

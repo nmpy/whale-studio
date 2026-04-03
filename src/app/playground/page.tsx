@@ -17,24 +17,33 @@ const PHASE_TYPE_META: Record<PhaseType, { label: string; color: string; bg: str
 // チャット履歴エントリ型
 // ────────────────────────────────────────────────
 type ChatEntry =
-  | { kind: "bot";      msg: RuntimePhaseMessage; oaTitle: string }
-  | { kind: "user";     text: string }
+  | { kind: "bot";       msg: RuntimePhaseMessage; oaTitle: string }
+  | { kind: "user";      text: string }
   | { kind: "phase-sep"; name: string; phaseType: PhaseType };
 
-/** 現在フェーズ + extraMessages + sentMessages をログエントリに変換する */
+/**
+ * 現在フェーズ内の時系列アイテム（ユーザー入力とボット応答を挿入順で保持）
+ * extraMessages / sentMessages を統合した単一リスト。
+ */
+type CurrentChatItem =
+  | { kind: "bot";  msg: RuntimePhaseMessage }
+  | { kind: "user"; text: string };
+
+/** 現在フェーズ + currentItems をログエントリに変換する */
 function buildPhaseSnapshot(
-  phase:         RuntimeState["phase"] & {},
-  extras:        RuntimePhaseMessage[],
-  sents:         string[],
-  oaTitle:       string,
+  phase:        RuntimeState["phase"] & {},
+  items:        CurrentChatItem[],
+  oaTitle:      string,
 ): ChatEntry[] {
-  const entries: ChatEntry[] = [
+  return [
     { kind: "phase-sep", name: phase.name, phaseType: phase.phase_type },
     ...phase.messages.map((msg): ChatEntry => ({ kind: "bot", msg, oaTitle })),
-    ...extras.map((msg): ChatEntry => ({ kind: "bot", msg, oaTitle })),
-    ...sents.map((text): ChatEntry => ({ kind: "user", text })),
+    ...items.map((item): ChatEntry =>
+      item.kind === "bot"
+        ? { kind: "bot", msg: item.msg, oaTitle }
+        : { kind: "user", text: item.text }
+    ),
   ];
-  return entries;
 }
 
 // ────────────────────────────────────────────────
@@ -70,11 +79,8 @@ function PlaygroundInner() {
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState<string | null>(null);
 
-  // ── QR タップで追加表示されるメッセージ（target_message_id 用） ──
-  const [extraMessages, setExtraMessages] = useState<RuntimePhaseMessage[]>([]);
-
-  // ── ユーザーが送信したテキスト（チャットに表示） ──
-  const [sentMessages, setSentMessages] = useState<string[]>([]);
+  // ── 現在フェーズ内の時系列チャットアイテム（ユーザー入力 + ボット応答を挿入順で保持） ──
+  const [currentItems, setCurrentItems] = useState<CurrentChatItem[]>([]);
 
   // ── フェーズをまたいで蓄積するチャット履歴 ──
   const [chatLog, setChatLog] = useState<ChatEntry[]>([]);
@@ -131,8 +137,7 @@ function PlaygroundInner() {
       const s = await runtimeApi.getProgress(getDevToken(), userId, workId);
       setState(s);
       setMessage(null);
-      setExtraMessages([]);
-      setSentMessages([]);
+      setCurrentItems([]);
       setChatLog([]);
     } catch (e) {
       setError(e instanceof Error ? e.message : "状態の取得に失敗しました");
@@ -154,8 +159,7 @@ function PlaygroundInner() {
         work_id:      selectedWorkId,
       });
       setState(s);
-      setExtraMessages([]);
-      setSentMessages([]);
+      setCurrentItems([]);
       setChatLog([]);
       addLog("system", `▶ シナリオ開始: 「${s.phase?.name ?? "（不明）"}」`);
     } catch (e) {
@@ -174,11 +178,11 @@ function PlaygroundInner() {
     setError(null);
     setMessage(null);
     addLog("action", `→ 選択: 「${transition.label}」`);
-    // 現在フェーズをログに保存してから遷移
+    // 現在フェーズをログに保存してから遷移（ユーザーの遷移選択も吹き出し追加）
     const snapOaTitle = oas.find((o) => o.id === selectedOaId)?.title ?? "";
     const snapState   = state;
-    const snapExtra   = extraMessages;
-    const snapSent    = sentMessages;
+    // ユーザーが選んだ遷移ラベルを currentItems に付加したスナップショット用リスト
+    const snapItems: CurrentChatItem[] = [...currentItems, { kind: "user", text: transition.label }];
     try {
       const result: RuntimeAdvanceResult = await runtimeApi.advance(getDevToken(), {
         line_user_id:   lineUserId.trim(),
@@ -188,12 +192,11 @@ function PlaygroundInner() {
       if (snapState?.phase) {
         setChatLog((prev) => [
           ...prev,
-          ...buildPhaseSnapshot(snapState.phase!, snapExtra, snapSent, snapOaTitle),
+          ...buildPhaseSnapshot(snapState.phase!, snapItems, snapOaTitle),
         ]);
       }
       setState(result);
-      setExtraMessages([]);
-      setSentMessages([]);
+      setCurrentItems([]);
       if (result._message) {
         setMessage(result._message);
         addLog("system", result._message);
@@ -229,7 +232,6 @@ function PlaygroundInner() {
     // - ヒント本文・回答誘導メッセージをチャットに追加
     // - QR は消費しない（再表示のため）
     if (item.action === "hint") {
-      setSentMessages((prev) => [...prev, item.label]);
       const hintMsgs: RuntimePhaseMessage[] = [];
       const hintBody = item.hint_text?.trim() || "ヒントはまだ設定されていません。";
       hintMsgs.push({
@@ -256,17 +258,27 @@ function PlaygroundInner() {
           character: null,
         });
       }
-      setExtraMessages((prev) => [...prev, ...hintMsgs]);
+      // ユーザー吹き出し（ヒントボタンのラベル）→ ボット吹き出し（ヒント本文）を挿入順で追加
+      setCurrentItems((prev) => [
+        ...prev,
+        { kind: "user", text: item.label },
+        ...hintMsgs.map((m) => ({ kind: "bot" as const, msg: m })),
+      ]);
       addLog("system", `💡 ヒント: ${hintBody}`);
       return;
     }
 
     // target_message_id: チェーンを辿ってチャットに追加（フェーズ変更なし）
     if (item.target_type === "message" && item.target_message_id) {
+      // ユーザー吹き出しを即座に挿入
+      setCurrentItems((prev) => [...prev, { kind: "user", text: item.label }]);
       setLoading(true);
       try {
         const msgs = await runtimeApi.getMessage(getDevToken(), item.target_message_id);
-        setExtraMessages((prev) => [...prev, ...msgs]);
+        setCurrentItems((prev) => [
+          ...prev,
+          ...msgs.map((m) => ({ kind: "bot" as const, msg: m })),
+        ]);
         const summary = msgs.map((m) => m.body ?? "[非テキスト]").join(" → ");
         addLog("system", `💬 メッセージ返信: 「${summary}」`);
       } catch (e) {
@@ -286,8 +298,8 @@ function PlaygroundInner() {
       setMessage(null);
       const snapOaTitle2 = oas.find((o) => o.id === selectedOaId)?.title ?? "";
       const snapState2   = state;
-      const snapExtra2   = extraMessages;
-      const snapSent2    = sentMessages;
+      // ユーザーが押した QR ラベルを吹き出しに含めてスナップショット
+      const snapItems2: CurrentChatItem[] = [...currentItems, { kind: "user", text: item.label }];
       try {
         const result: RuntimeAdvanceResult = await runtimeApi.advance(getDevToken(), {
           line_user_id:    lineUserId.trim(),
@@ -297,12 +309,11 @@ function PlaygroundInner() {
         if (snapState2?.phase) {
           setChatLog((prev) => [
             ...prev,
-            ...buildPhaseSnapshot(snapState2.phase!, snapExtra2, snapSent2, snapOaTitle2),
+            ...buildPhaseSnapshot(snapState2.phase!, snapItems2, snapOaTitle2),
           ]);
         }
         setState(result);
-        setExtraMessages([]);
-        setSentMessages([]);
+        setCurrentItems([]);
         if (result._message) { setMessage(result._message); addLog("system", result._message); }
         if (result.phase) {
           addLog("system", `📍 フェーズ: 「${result.phase.name}」（${PHASE_TYPE_META[result.phase.phase_type].label}）`);
@@ -319,14 +330,17 @@ function PlaygroundInner() {
 
     // action="text" / "next" / "custom" → テキストとして advance
     const text = item.value ?? item.label;
+    // ユーザー吹き出しを即座に追加（楽観的更新）
+    const userItemQr: CurrentChatItem = { kind: "user", text: item.label };
+    setCurrentItems((prev) => [...prev, userItemQr]);
     setLoading(true);
     setError(null);
     setMessage(null);
     const prevPhaseIdQr  = state?.phase?.id;
     const snapOaTitle3   = oas.find((o) => o.id === selectedOaId)?.title ?? "";
     const snapState3     = state;
-    const snapExtra3     = extraMessages;
-    const snapSent3      = sentMessages;
+    // currentItems + userItem（state 更新前なので手動で付加）
+    const snapItems3: CurrentChatItem[] = [...currentItems, userItemQr];
     try {
       const result: RuntimeAdvanceResult = await runtimeApi.advance(getDevToken(), {
         line_user_id: lineUserId.trim(),
@@ -337,16 +351,18 @@ function PlaygroundInner() {
         if (snapState3?.phase) {
           setChatLog((prev) => [
             ...prev,
-            ...buildPhaseSnapshot(snapState3.phase!, snapExtra3, snapSent3, snapOaTitle3),
+            ...buildPhaseSnapshot(snapState3.phase!, snapItems3, snapOaTitle3),
           ]);
         }
         setState(result);
-        setExtraMessages([]);
-        setSentMessages([]);
+        setCurrentItems([]);
       } else {
         setState(result);
         if (result._response_messages && result._response_messages.length > 0) {
-          setExtraMessages((prev) => [...prev, ...result._response_messages!]);
+          setCurrentItems((prev) => [
+            ...prev,
+            ...result._response_messages!.map((m) => ({ kind: "bot" as const, msg: m })),
+          ]);
           const summary = result._response_messages.map((m) => m.body ?? "[非テキスト]").join(" → ");
           addLog("system", `💬 応答: 「${summary}」`);
         }
@@ -384,8 +400,9 @@ function PlaygroundInner() {
       }
     }
 
-    // ユーザー吹き出しを即座に追加
-    setSentMessages((prev) => [...prev, trimmed]);
+    // ユーザー吹き出しを即座に追加（楽観的更新）
+    const userItemText: CurrentChatItem = { kind: "user", text: trimmed };
+    setCurrentItems((prev) => [...prev, userItemText]);
     addLog("action", `✏️ テキスト送信: 「${trimmed}」`);
     setLoading(true);
     setError(null);
@@ -394,9 +411,8 @@ function PlaygroundInner() {
     const prevPhaseId  = state?.phase?.id;
     const snapOaTitle4 = oas.find((o) => o.id === selectedOaId)?.title ?? "";
     const snapState4   = state;
-    const snapExtra4   = extraMessages;
-    // sentMessages はこの時点では trimmed がまだ反映されていないため手動で追加
-    const snapSent4    = [...sentMessages, trimmed];
+    // currentItems + userItem（state 更新前なので手動で付加）
+    const snapItems4: CurrentChatItem[] = [...currentItems, userItemText];
     try {
       const result: RuntimeAdvanceResult = await runtimeApi.advance(getDevToken(), {
         line_user_id: lineUserId.trim(),
@@ -407,16 +423,18 @@ function PlaygroundInner() {
         if (snapState4?.phase) {
           setChatLog((prev) => [
             ...prev,
-            ...buildPhaseSnapshot(snapState4.phase!, snapExtra4, snapSent4, snapOaTitle4),
+            ...buildPhaseSnapshot(snapState4.phase!, snapItems4, snapOaTitle4),
           ]);
         }
         setState(result);
-        setExtraMessages([]);
-        setSentMessages([]);
+        setCurrentItems([]);
       } else {
         setState(result);
         if (result._response_messages && result._response_messages.length > 0) {
-          setExtraMessages((prev) => [...prev, ...result._response_messages!]);
+          setCurrentItems((prev) => [
+            ...prev,
+            ...result._response_messages!.map((m) => ({ kind: "bot" as const, msg: m })),
+          ]);
           const summary = result._response_messages.map((m) => m.body ?? "[非テキスト]").join(" → ");
           addLog("system", `💬 応答: 「${summary}」`);
         }
@@ -451,8 +469,7 @@ function PlaygroundInner() {
         work_id:      selectedWorkId,
       });
       setState(null);
-      setExtraMessages([]);
-      setSentMessages([]);
+      setCurrentItems([]);
       setChatLog([]);
       addLog("system", "🔄 進行状態をリセットしました");
     } catch (e) {
@@ -469,8 +486,7 @@ function PlaygroundInner() {
     setMessage(null);
     setError(null);
     setLog([]);
-    setExtraMessages([]);
-    setSentMessages([]);
+    setCurrentItems([]);
     setChatLog([]);
   }
 
@@ -482,16 +498,16 @@ function PlaygroundInner() {
   const currentPhase  = state?.phase;
   const selectedWork  = works.find((w) => w.id === selectedWorkId);
 
-  // アクティブ QR: 実際に表示済みメッセージ列の末尾メッセージに紐づく quick_replies のみ。
-  // extraMessages があればその末尾、なければ phase.messages の末尾。
+  // アクティブ QR: 表示済みメッセージ列の末尾ボットメッセージに紐づく quick_replies のみ。
+  // currentItems に bot アイテムがあればその末尾、なければ phase.messages の末尾。
   // activeQrMessageId と activeQrItems を single source of truth として管理する。
   const { activeQrMessageId, activeQrItems } = (() => {
     const empty = { activeQrMessageId: null as string | null, activeQrItems: null as QuickReplyItem[] | null };
     if (!state?.phase?.messages) return empty;
-    const lastDisplayed =
-      extraMessages.length > 0
-        ? extraMessages[extraMessages.length - 1]
-        : state.phase.messages[state.phase.messages.length - 1];
+    const lastBotItem = [...currentItems].reverse().find((x) => x.kind === "bot");
+    const lastDisplayed = lastBotItem
+      ? lastBotItem.msg
+      : state.phase.messages[state.phase.messages.length - 1];
     if (!lastDisplayed?.quick_replies?.length) return empty;
     const items = lastDisplayed.quick_replies.filter((q) => q.enabled !== false);
     if (items.length === 0) return empty;
@@ -754,8 +770,7 @@ function PlaygroundInner() {
                   loading={loading}
                   onAdvance={handleAdvance}
                   onQrTap={handleQrTap}
-                  extraMessages={extraMessages}
-                  sentMessages={sentMessages}
+                  currentItems={currentItems}
                   onSendText={handleSendText}
                   activeQrMessageId={activeQrMessageId}
                   activeQrItems={activeQrItems}
@@ -950,8 +965,7 @@ interface PhasePanelProps {
   loading:        boolean;
   onAdvance:      (t: RuntimeTransition) => void;
   onQrTap:        (item: QuickReplyItem) => void;
-  extraMessages:  RuntimePhaseMessage[];
-  sentMessages:   string[];
+  currentItems:   CurrentChatItem[];
   onSendText:     (text: string) => void;
   activeQrMessageId: string | null;
   activeQrItems:     QuickReplyItem[] | null;
@@ -959,7 +973,7 @@ interface PhasePanelProps {
   chatLog:           ChatEntry[];
 }
 
-function PhasePanel({ phase, loading, onAdvance, onQrTap, extraMessages, sentMessages, onSendText, activeQrMessageId, activeQrItems, oaTitle, chatLog }: PhasePanelProps) {
+function PhasePanel({ phase, loading, onAdvance, onQrTap, currentItems, onSendText, activeQrMessageId, activeQrItems, oaTitle, chatLog }: PhasePanelProps) {
   const [inputText, setInputText] = useState("");
 
   // フェーズ変更時に入力欄をクリア
@@ -1012,7 +1026,7 @@ function PhasePanel({ phase, loading, onAdvance, onQrTap, extraMessages, sentMes
   // 最新メッセージへスクロール
   useEffect(() => {
     chatBottomRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-  }, [visibleCount, isTyping, chatLog.length, extraMessages.length, sentMessages.length]);
+  }, [visibleCount, isTyping, chatLog.length, currentItems.length]);
 
   return (
     <div>
@@ -1091,19 +1105,20 @@ function PhasePanel({ phase, loading, onAdvance, onQrTap, extraMessages, sentMes
               )}
             </Fragment>
           ))}
-          {/* target_message_id / hint で追加されたメッセージ */}
-          {allShown && extraMessages.map((msg, i) => (
-            <Fragment key={`extra-${msg.id}-${i}`}>
-              <MessageBubble msg={msg} index={phase.messages.length + i} oaTitle={oaTitle} />
-              {msg.id === activeQrMessageId && activeQrItems && (
-                <QrButtons items={activeQrItems} onTap={onQrTap} loading={loading} />
-              )}
-            </Fragment>
-          ))}
-          {/* ユーザーが送信したテキスト */}
-          {allShown && sentMessages.map((text, i) => (
-            <UserMessageBubble key={`sent-${i}`} text={text} />
-          ))}
+          {/* currentItems: ユーザー入力とボット応答を挿入順でレンダリング */}
+          {allShown && currentItems.map((item, i) => {
+            if (item.kind === "bot") {
+              return (
+                <Fragment key={`ci-bot-${i}`}>
+                  <MessageBubble msg={item.msg} index={phase.messages.length + i} oaTitle={oaTitle} />
+                  {item.msg.id === activeQrMessageId && activeQrItems && (
+                    <QrButtons items={activeQrItems} onTap={onQrTap} loading={loading} />
+                  )}
+                </Fragment>
+              );
+            }
+            return <UserMessageBubble key={`ci-user-${i}`} text={item.text} />;
+          })}
           {/* 遷移 QR — message QR が非アクティブのとき、最後のメッセージ直下にインライン表示 */}
           {allShown && !activeQrItems?.length && phase.transitions !== null && (
             phase.transitions.length === 0 ? (

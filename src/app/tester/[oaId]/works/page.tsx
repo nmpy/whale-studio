@@ -189,9 +189,6 @@ export default function TesterWorkListPage() {
           </p>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
-          <Link href={`/tester/${oaId}/works/new`} className="btn btn-primary">
-            ＋ 作品を追加
-          </Link>
           <Link href={`/tester/${oaId}`} className="btn btn-ghost">
             ← アカウントリスト
           </Link>
