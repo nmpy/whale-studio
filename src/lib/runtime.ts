@@ -310,17 +310,19 @@ function buildEntryChain(
 
   // 4. 起点メッセージ: QR 分岐先でなく、チェーン中間でなく、かつ kind が response/hint でないもの
   //    kind="response" / "hint" はキーワードトリガーで表示するもの（フェーズ開始時は非表示）
+  //    triggerKeyword が設定されたメッセージもキーワード入力待ちのため起点にしない
   const entries = messages
     .filter(
       (m) =>
         !targetMsgIds.has(m.id) &&
         !midChainIds.has(m.id) &&
         m.kind !== "response" &&
-        m.kind !== "hint",
+        m.kind !== "hint" &&
+        !m.triggerKeyword?.trim(),
     )
     .sort((a, b) => a.sortOrder - b.sortOrder || a.createdAt.getTime() - b.createdAt.getTime());
 
-  // 5. 各起点からチェーンを辿り、QR または puzzle で停止
+  // 5. 各起点からチェーンを辿り、QR・puzzle・triggerKeyword で停止
   const result: import("@/types").RuntimePhaseMessage[] = [];
   const visited = new Set<string>(); // 循環ガード
 
@@ -331,8 +333,9 @@ function buildEntryChain(
       if (cur.kind === "response" || cur.kind === "hint") break;
       visited.add(cur.id);
       result.push(messageRowToRuntime(cur));
-      // QR を持つメッセージ、または puzzle フェーズで停止（ユーザーの選択・解答を待つ）
-      if (cur.quickReplies || cur.kind === "puzzle") break;
+      // QR を持つメッセージ、puzzle フェーズ、または triggerKeyword が設定されたメッセージで停止
+      // （ユーザーの選択・解答・キーワード入力を待つ）
+      if (cur.quickReplies || cur.kind === "puzzle" || cur.triggerKeyword?.trim()) break;
       // nextMessageId チェーンを辿る
       const nextId = cur.nextMessageId;
       if (!nextId) break;

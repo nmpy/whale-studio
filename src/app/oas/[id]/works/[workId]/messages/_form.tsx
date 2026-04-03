@@ -63,19 +63,25 @@ const EMPTY_CAROUSEL_CARD: MessageCarouselCard = {
 export interface AdditionalMessageSlot {
   /** 既存メッセージ ID（編集モードでチェーンを読み込んだ場合に設定される） */
   existingId?:    string;
+  /** この発話のキャラクター ID（空文字 = 1通目のキャラクターを引き継ぐ） */
+  character_id:   string;
   message_type:   ExtendedMessageType;
   body:           string;
   asset_url:      string;
   notify_text:    string;
   carousel_items: MessageCarouselCard[];
+  /** 前のメッセージ送信後この発話まで待機するミリ秒数。0 = 即時送信 */
+  lag_ms:         number;
 }
 
 const EMPTY_ADDITIONAL_SLOT: AdditionalMessageSlot = {
+  character_id:   "",
   message_type:   "text",
   body:           "",
   asset_url:      "",
   notify_text:    "",
   carousel_items: [],
+  lag_ms:         0,
 };
 
 // ── FormState ────────────────────────────────────────────
@@ -100,6 +106,8 @@ export interface MessageFormState {
   quick_replies:   QuickReplyItem[];
   /** 連続送信チェーン先メッセージ ID（空文字 = チェーンなし） */
   next_message_id: string;
+  /** 前のメッセージ送信後この発話まで待機するミリ秒数。0 = 即時送信 */
+  lag_ms:          number;
   sort_order:      number;
   is_active:       boolean;
   // ── 謎（puzzle）専用フィールド ──
@@ -130,6 +138,7 @@ export const EMPTY_MESSAGE_FORM: MessageFormState = {
   carousel_items:  [],
   quick_replies:   [],
   next_message_id: "",
+  lag_ms:          0,
   sort_order:      0,
   is_active:       true,
   // puzzle defaults
@@ -169,6 +178,7 @@ export function msgToFormState(msg: {
   incorrect_text?:          string | null;
   incorrect_quick_replies?: QuickReplyItem[] | null;
   correct_next_phase_id?:   string | null;
+  lag_ms?:                  number | null;
   sort_order?:              number;
   is_active?:               boolean;
 }): MessageFormState {
@@ -203,6 +213,7 @@ export function msgToFormState(msg: {
     carousel_items,
     quick_replies:         msg.quick_replies   ?? [],
     next_message_id:       msg.next_message_id ?? "",
+    lag_ms:                msg.lag_ms          ?? 0,
     sort_order:            msg.sort_order      ?? 0,
     is_active:             msg.is_active       ?? true,
     puzzle_type:           msg.puzzle_type     ?? "",
@@ -246,6 +257,7 @@ export function formStateToMsgBody(form: MessageFormState) {
     riddle_id:         !isPuzzle ? (form.riddle_id || null) : null,
     quick_replies:     form.quick_replies.length > 0 ? form.quick_replies : null,
     next_message_id:   form.next_message_id || null,
+    lag_ms:            form.lag_ms,
     sort_order:        form.sort_order,
     is_active:         form.is_active,
     // puzzle fields
@@ -704,8 +716,39 @@ function QuickReplyEditor({ items, onChange, responseMessages, phases, transitio
                     {/* ── 展開コンテンツ ── */}
                     {isExpanded && (
                       <div style={{ padding: "0 12px 12px", borderTop: "1px solid #e5e7eb" }}>
+
+                        {/* QRタップ時フロー説明 */}
+                        {!isHint && (
+                          <div style={{
+                            margin: "10px 0 12px",
+                            background: "#f8fafc",
+                            border: "1px solid #e2e8f0",
+                            borderRadius: 8,
+                            padding: "8px 12px",
+                            fontSize: 11,
+                            color: "#475569",
+                            lineHeight: 1.8,
+                          }}>
+                            <div style={{ fontWeight: 600, color: "#334155", marginBottom: 2 }}>QRタップ時の処理フロー</div>
+                            <div>
+                              <span style={{ fontWeight: 700, color: "#06C755" }}>Step 1</span>
+                              {" — ユーザー入力として「"}
+                              <span style={{ fontWeight: 600 }}>{item.label || "（ラベル未設定）"}</span>
+                              {"」を送信"}
+                            </div>
+                            <div>
+                              <span style={{ fontWeight: 700, color: "#1d4ed8" }}>Step 2</span>
+                              {" — 応答メッセージを返す（下記設定）"}
+                            </div>
+                            <div>
+                              <span style={{ fontWeight: 700, color: "#7c3aed" }}>Step 3</span>
+                              {" — 遷移先へ進む（下記設定）"}
+                            </div>
+                          </div>
+                        )}
+
                         {/* ボタンテキスト */}
-                        <div className="form-group" style={{ marginTop: 10, marginBottom: 10 }}>
+                        <div className="form-group" style={{ marginTop: isHint ? 10 : 0, marginBottom: 10 }}>
                           <label style={{ ...fieldLabel, fontSize: 12 }}>
                             ボタンテキスト <span style={{ color: "#dc2626" }}>*</span>
                             <span style={{ fontWeight: 400, color: "#9ca3af", marginLeft: 4 }}>({item.label.length}/20)</span>
@@ -725,11 +768,12 @@ function QuickReplyEditor({ items, onChange, responseMessages, phases, transitio
                           </div>
                         </div>
 
-                        {/* 応答メッセージ紐づけ（ヒントでない場合のみ） */}
+                        {/* Step 2: 応答メッセージ（ヒントでない場合のみ） */}
                         {!isHint && (responseMessages?.length ?? 0) > 0 && (
                           <div className="form-group" style={{ marginBottom: 10 }}>
                             <label style={{ ...fieldLabel, fontSize: 12 }}>
-                              応答メッセージ
+                              <span style={{ fontWeight: 700, color: "#1d4ed8", fontSize: 11, marginRight: 6 }}>Step 2</span>
+                              返す内容（応答メッセージ）
                               <span style={{ fontWeight: 400, color: "#9ca3af", marginLeft: 4 }}>（任意）</span>
                             </label>
                             {/* フェーズフィルタ */}
@@ -770,17 +814,18 @@ function QuickReplyEditor({ items, onChange, responseMessages, phases, transitio
                                 })}
                             </select>
                             <div style={{ ...hintText, marginTop: 4 }}>
-                              このボタンタップ時のユーザー入力（ラベル）を受け取る応答メッセージを指定します。
-                              保存時に応答キーワードへ自動マージされます。
+                              QRタップ直後に bot が返す返答メッセージです。kind=response のメッセージを指定してください。
+                              どのフェーズのメッセージも選択できます。
                             </div>
                           </div>
                         )}
 
-                        {/* 遷移先設定（ヒントでない場合のみ） */}
+                        {/* Step 3: 遷移先（ヒントでない場合のみ） */}
                         {!isHint && (
                           <div className="form-group" style={{ marginBottom: 10 }}>
                             <label style={{ ...fieldLabel, fontSize: 12 }}>
-                              遷移先
+                              <span style={{ fontWeight: 700, color: "#7c3aed", fontSize: 11, marginRight: 6 }}>Step 3</span>
+                              遷移先（その後どこへ進むか）
                               <span style={{ fontWeight: 400, color: "#9ca3af", marginLeft: 4 }}>（任意）</span>
                             </label>
                             {/* 3-way セグメントボタン */}
@@ -896,12 +941,12 @@ function QuickReplyEditor({ items, onChange, responseMessages, phases, transitio
 
                             {getQrTransitionType(item) === "none" && (
                               <div style={{ ...hintText }}>
-                                遷移先なし — キーワードマッチング / 応答メッセージ紐づけで処理されます
+                                遷移先なし — Step 2 の応答メッセージだけを返して終了します
                               </div>
                             )}
                             {getQrTransitionType(item) !== "none" && (
                               <div style={{ ...hintText, marginTop: 4 }}>
-                                タップ後、応答メッセージを返してからこの遷移先へ進みます
+                                Step 2 の応答メッセージを返した後、ここへ進みます。どのフェーズも選択可能です。
                               </div>
                             )}
                           </div>
@@ -1864,14 +1909,15 @@ function PreviewPanel({ form, characters, riddles }: PreviewPanelProps) {
 // ────────────────────────────────────────────────────────
 
 function AdditionalMessageBlock({
-  index, slot, onChange, onRemove, oaId, workId,
+  index, slot, onChange, onRemove, oaId, workId, characters,
 }: {
-  index:    number;
-  slot:     AdditionalMessageSlot;
-  onChange: (slot: AdditionalMessageSlot) => void;
-  onRemove: () => void;
-  oaId:     string;
-  workId:   string;
+  index:      number;
+  slot:       AdditionalMessageSlot;
+  onChange:   (slot: AdditionalMessageSlot) => void;
+  onRemove:   () => void;
+  oaId:       string;
+  workId:     string;
+  characters: Character[];
 }) {
   const bodyRef = useRef<HTMLTextAreaElement>(null);
 
@@ -1917,6 +1963,21 @@ function AdditionalMessageBlock({
       </div>
 
       <div style={{ padding: "12px 14px" }}>
+        {/* 発話キャラクター */}
+        <div className="form-group">
+          <label style={fieldLabel}>発話キャラクター</label>
+          <select
+            className="form-input"
+            value={slot.character_id}
+            onChange={(e) => onChange({ ...slot, character_id: e.target.value })}
+          >
+            <option value="">— 1通目のキャラクターを引き継ぐ —</option>
+            {characters.map((ch) => (
+              <option key={ch.id} value={ch.id}>{ch.name}</option>
+            ))}
+          </select>
+        </div>
+
         {/* 種別選択 */}
         <div className="form-group">
           <label style={fieldLabel}>種別</label>
@@ -2080,7 +2141,7 @@ function AdditionalMessageBlock({
 
         {/* 通知メッセージ（テキスト以外） */}
         {mtype !== "text" && mtype !== "riddle" && (
-          <div className="form-group" style={{ marginTop: 10, marginBottom: 0 }}>
+          <div className="form-group" style={{ marginTop: 10 }}>
             <label style={fieldLabel}>通知メッセージ（任意）</label>
             <input
               type="text"
@@ -2092,6 +2153,22 @@ function AdditionalMessageBlock({
             />
           </div>
         )}
+
+        {/* 次のメッセージまでの待機時間 */}
+        <div className="form-group" style={{ marginTop: 10, marginBottom: 0 }}>
+          <label style={fieldLabel}>次の発話までの待機時間（ms）</label>
+          <input
+            type="number"
+            className="form-input"
+            style={{ maxWidth: 160 }}
+            value={slot.lag_ms}
+            onChange={(e) => onChange({ ...slot, lag_ms: Math.max(0, Number(e.target.value)) })}
+            min={0}
+            step={500}
+            placeholder="0"
+          />
+          <div style={hintText}>1秒 = 1000ms　0ms = 即時送信</div>
+        </div>
       </div>
     </div>
   );
@@ -2704,9 +2781,35 @@ export function MessageForm({
               セクション 3b: 送信メッセージ（puzzle のときは非表示）
           ════════════════════════════════════════ */}
           {!isPuzzle && (
-          <SectionAccordion title="送信メッセージ" required defaultOpen={true}>
-            {/* === 1通目のメッセージ === */}
-            <div style={{ fontSize: 12, fontWeight: 600, color: "#6b7280", marginBottom: 10 }}>1通目のメッセージ</div>
+          <SectionAccordion title="会話シーケンス" required defaultOpen={true}>
+            {/* === 1通目の発話 === */}
+            <div style={{
+              border: "1px solid #d1fae5", borderRadius: 10, background: "#f0fdf4",
+              marginBottom: 12, overflow: "hidden",
+            }}>
+              {/* 発話ヘッダー */}
+              <div style={{
+                display: "flex", alignItems: "center", gap: 8,
+                padding: "8px 14px", background: "#dcfce7", borderBottom: "1px solid #d1fae5",
+              }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: "#15803d" }}>💬 1通目の発話</span>
+              </div>
+
+              <div style={{ padding: "12px 14px" }}>
+                {/* 発話キャラクター（1通目） */}
+                <div className="form-group">
+                  <label style={fieldLabel}>発話キャラクター</label>
+                  <select
+                    className="form-input"
+                    value={form.character_id}
+                    onChange={(e) => set("character_id", e.target.value)}
+                  >
+                    <option value="">— キャラクターを指定しない —</option>
+                    {characters.map((ch) => (
+                      <option key={ch.id} value={ch.id}>{ch.name}</option>
+                    ))}
+                  </select>
+                </div>
 
             {/* 種別選択 */}
             <div className="form-group">
@@ -3075,6 +3178,24 @@ export function MessageForm({
               </>
             )}
 
+                {/* 次の発話までの待機時間（1通目） */}
+                <div className="form-group" style={{ marginTop: 10, marginBottom: 0 }}>
+                  <label style={fieldLabel}>次の発話までの待機時間（ms）</label>
+                  <input
+                    type="number"
+                    className="form-input"
+                    style={{ maxWidth: 160 }}
+                    value={form.lag_ms}
+                    onChange={(e) => set("lag_ms", Math.max(0, Number(e.target.value)))}
+                    min={0}
+                    step={500}
+                    placeholder="0"
+                  />
+                  <div style={hintText}>1秒 = 1000ms　0ms = 即時送信</div>
+                </div>
+              </div>{/* /padding */}
+            </div>{/* /1通目ラッパー */}
+
             {/* === 2通目以降 === */}
             {form.additionalMessages.map((slot, idx) => (
               <AdditionalMessageBlock
@@ -3083,6 +3204,7 @@ export function MessageForm({
                 slot={slot}
                 oaId={oaId}
                 workId={workId}
+                characters={characters}
                 onChange={(updated) => {
                   const next = form.additionalMessages.map((s, i) => i === idx ? updated : s);
                   set("additionalMessages", next);

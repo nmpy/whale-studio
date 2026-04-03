@@ -196,6 +196,8 @@ export interface Message {
   incorrect_quick_replies: QuickReplyItem[] | null;
   /** 正解後遷移先フェーズ ID */
   correct_next_phase_id: string | null;
+  /** 前のメッセージ送信後この発話まで待機するミリ秒数。0 = 即時送信 */
+  lag_ms: number;
   sort_order: number;
   is_active: boolean;
   created_at: string;
@@ -344,6 +346,8 @@ export interface CreateMessageBody {
   incorrect_text?: string | null;
   incorrect_quick_replies?: QuickReplyItem[] | null;
   correct_next_phase_id?: string | null;
+  /** 前のメッセージ送信後この発話まで待機するミリ秒数。0 = 即時送信 */
+  lag_ms?: number;
   sort_order?: number;
   is_active?: boolean;
 }
@@ -375,6 +379,8 @@ export interface UpdateMessageBody {
   incorrect_text?: string | null;
   incorrect_quick_replies?: QuickReplyItem[] | null;
   correct_next_phase_id?: string | null;
+  /** 前のメッセージ送信後この発話まで待機するミリ秒数。0 = 即時送信 */
+  lag_ms?: number;
   sort_order?: number;
   is_active?: boolean;
 }

@@ -245,6 +245,8 @@ model Message {
   altText          String?  @map("alt_text")
   /// Flex Message の JSON ペイロード（messageType = "flex" のとき使用）
   flexPayloadJson  String?  @map("flex_payload_json")
+  /// 前のメッセージ送信後、この発話（メッセージ）を送るまで待機するミリ秒数。0 = 即時送信
+  lagMs            Int      @default(0) @map("lag_ms")
 
   // ── Puzzle（謎）専用フィールド ─────────────────────────────
   /// 出題形式: "text" | "image" | "video" | "carousel"（kind="puzzle" のとき使用）

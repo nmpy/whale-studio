@@ -326,14 +326,19 @@ function matchHintFromPhase(
 }
 
 /**
- * キャッシュ済みフェーズデータから target_type="message" quickReply をインメモリで照合する。
- * ユーザーが送ったテキストがいずれかのクイックリプライの value/label と一致し、
- * かつ target_type="message" が設定されている場合に target_message_id を返す。
+ * キャッシュ済みフェーズデータから QR アイテムをインメモリで照合する（統合版）。
+ *
+ * ヒント以外の QR アイテムのうち、以下のいずれかが設定されているものだけを対象とする:
+ *   - response_message_id : Step2 で返す応答メッセージ
+ *   - target_message_id   : Step3 で送る遷移先メッセージ
+ *   - target_phase_id     : Step3 で遷移する遷移先フェーズ
+ *
+ * 上記のいずれも設定されていない QR（単純なラベル送信）は通常のキーワード照合に委ねる。
  */
-function matchMessageTargetQuickReply(
+function matchQrItem(
   phase:     PhaseRow,
   inputText: string,
-): string | null {
+): import("@/types").QuickReplyItem | null {
   const inputNorm  = normKw(inputText);
   const inputLoose = normKwLoose(inputText);
 
@@ -348,58 +353,23 @@ function matchMessageTargetQuickReply(
       continue;
     }
     for (const item of items) {
-      if (item.target_type !== "message") continue;
-      if (!item.target_message_id) continue;
+      if (item.action === "hint") continue;   // ヒントは matchHintFromPhase が処理
       if (item.enabled === false) continue;
+      // response/target の設定がない QR は通常フロー（keyword/transition）に委ねる
+      if (!item.response_message_id && !item.target_message_id && !item.target_phase_id) continue;
       const matchKey   = item.value?.trim() || item.label;
       const matchNorm  = normKw(matchKey);
       const matchLoose = normKwLoose(matchKey);
       if (inputNorm === matchNorm || inputLoose === matchLoose) {
         console.log(
-          `[cache][msgTarget] マッチ msgId=${msg.id.slice(0, 8)}`,
-          `key="${matchKey}" target_message_id=${item.target_message_id.slice(0, 8)}...`,
+          `[cache][qrItem] マッチ msgId=${msg.id.slice(0, 8)}`,
+          `key="${matchKey}"`,
+          `response_message_id=${item.response_message_id?.slice(0, 8) ?? "none"}`,
+          `target_type=${item.target_type ?? "none"}`,
+          `target_message_id=${item.target_message_id?.slice(0, 8) ?? "none"}`,
+          `target_phase_id=${item.target_phase_id?.slice(0, 8) ?? "none"}`,
         );
-        return item.target_message_id;
-      }
-    }
-  }
-  return null;
-}
-
-/**
- * キャッシュ済みフェーズデータから target_phase_id が設定された quickReply をインメモリで照合する。
- * ユーザーが送ったテキストがいずれかの QR の value/label に一致し、
- * かつ target_phase_id が設定されている場合にそのフェーズ ID を返す。
- */
-function matchQrPhaseTarget(
-  phase:     PhaseRow,
-  inputText: string,
-): string | null {
-  const inputNorm  = normKw(inputText);
-  const inputLoose = normKwLoose(inputText);
-
-  for (const msg of phase.messages) {
-    if (!msg.quickReplies) continue;
-    let items: import("@/types").QuickReplyItem[];
-    try {
-      const parsed = JSON.parse(msg.quickReplies);
-      if (!Array.isArray(parsed)) continue;
-      items = parsed as import("@/types").QuickReplyItem[];
-    } catch {
-      continue;
-    }
-    for (const item of items) {
-      if (!item.target_phase_id) continue;
-      if (item.enabled === false) continue;
-      const matchKey   = item.value?.trim() || item.label;
-      const matchNorm  = normKw(matchKey);
-      const matchLoose = normKwLoose(matchKey);
-      if (inputNorm === matchNorm || inputLoose === matchLoose) {
-        console.log(
-          `[cache][qrPhase] マッチ msgId=${msg.id.slice(0, 8)}`,
-          `key="${matchKey}" target_phase_id=${item.target_phase_id.slice(0, 8)}...`,
-        );
-        return item.target_phase_id;
+        return item;
       }
     }
   }
@@ -417,7 +387,7 @@ async function buildMessageChain(
     quickReplies: string | null; nextMessageId: string | null; sortOrder: number;
     character: { name: string; iconImageUrl: string | null } | null;
   },
-  _token: string,
+  vars: import("@/lib/line").PlaceholderVars = {},
 ): Promise<import("@/lib/line").LineMessage[]> {
   const records: typeof first[] = [first];
 
@@ -451,7 +421,7 @@ async function buildMessageChain(
     sortOrder:       r.sortOrder,
     character:       r.character,
   }));
-  return buildKeywordMessages(asKeywordRecords);
+  return buildKeywordMessages(asKeywordRecords, undefined, vars);
 }
 
 /**
@@ -569,6 +539,45 @@ function isAllowedUser(userId: string): boolean {
 /** テストモードが有効かどうか（ログ出力判定用） */
 function isTestModeActive(): boolean {
   return process.env.TEST_MODE === "true" && !!process.env.TEST_LINE_USER_ID?.trim();
+}
+
+// ────────────────────────────────────────────────
+// LINE ユーザープロフィール取得（プレースホルダ置換用）
+// ────────────────────────────────────────────────
+
+const LINE_PROFILE_URL  = "https://api.line.me/v2/bot/profile";
+const TTL_USER_PROFILE  = 5 * 60 * 1000; // 5 分
+
+type LineUserProfile = { displayName: string };
+
+/**
+ * LINE Profile API からユーザー表示名を取得する。
+ * 5 分間インメモリキャッシュし、API エラー時は null を返す（フォールバック: 空文字）。
+ */
+async function getLineUserProfile(
+  userId:      string,
+  accessToken: string,
+): Promise<LineUserProfile | null> {
+  const key = `line-profile:${userId}`;
+  const hit = await activeCache.get<LineUserProfile>(key);
+  if (hit) return hit;
+  try {
+    const res = await fetch(`${LINE_PROFILE_URL}/${encodeURIComponent(userId)}`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!res.ok) {
+      console.warn(`[profile] API error ${res.status} userId=${userId.slice(0, 8)}`);
+      return null;
+    }
+    const json = await res.json() as { displayName?: string };
+    if (!json.displayName) return null;
+    const profile: LineUserProfile = { displayName: json.displayName };
+    await activeCache.set(key, profile, TTL_USER_PROFILE);
+    return profile;
+  } catch (e) {
+    console.warn(`[profile] fetch error userId=${userId.slice(0, 8)}`, e);
+    return null;
+  }
 }
 
 // ── GET — LINE の疎通確認リクエストにも 200 を返す ──────
@@ -847,12 +856,32 @@ async function handleWebhook(req: NextRequest, oaId: string) {
       }
     : undefined;
 
-  // ── 6-b. follow 自動開始（β: 友だち追加直後に作品を開始）──
+  // ── 6-b. ユーザープロフィール一括取得（プレースホルダ置換用）──
+  // 全イベントの unique userId を集めてプロフィールを並列フェッチする（5 分キャッシュ）。
+  const allEventUserIds = [...new Set([
+    ...followEvents.map((e) => e.source.userId),
+    ...textEvents.map((e) => e.source.userId),
+    ...postbackEvents.map((e) => e.source.userId),
+  ])];
+  const profileMap = new Map<string, string>(); // userId → displayName
+  await Promise.allSettled(
+    allEventUserIds.map(async (uid) => {
+      const p = await getLineUserProfile(uid, oa.channelAccessToken);
+      if (p?.displayName) profileMap.set(uid, p.displayName);
+    })
+  );
+  /** ユーザー別のプレースホルダ変数を生成する */
+  const buildVars = (uid: string): import("@/lib/line").PlaceholderVars => ({
+    userName:    profileMap.get(uid) ?? "",
+    accountName: oa.title,
+  });
+
+  // ── 6-c. follow 自動開始（β: 友だち追加直後に作品を開始）──
   if (followEvents.length > 0 && work) {
     await Promise.allSettled(
       followEvents.map((e) => {
         console.log(`[Webhook] follow → 自動開始 userId=${e.source.userId}`);
-        return handleStart({ oa, work, systemSender, userId: e.source.userId, replyToken: e.replyToken });
+        return handleStart({ oa, work, systemSender, userId: e.source.userId, replyToken: e.replyToken, vars: buildVars(e.source.userId) });
       })
     );
   }
@@ -868,6 +897,7 @@ async function handleWebhook(req: NextRequest, oaId: string) {
         userId:       event.source.userId,
         text:         event.message.text.trim(),
         replyToken:   event.replyToken,
+        vars:         buildVars(event.source.userId),
       })
     ),
     // postback（リッチメニューアクション）
@@ -879,6 +909,7 @@ async function handleWebhook(req: NextRequest, oaId: string) {
         userId:       event.source.userId,
         data:         event.postback.data,
         replyToken:   event.replyToken,
+        vars:         buildVars(event.source.userId),
       })
     ),
   ]);
@@ -913,6 +944,8 @@ type HandlerCommon = {
   systemSender: LineSender | undefined;
   userId:       string;
   replyToken:   string;
+  /** メッセージ本文のプレースホルダ置換変数（user_name / account_name） */
+  vars:         import("@/lib/line").PlaceholderVars;
 };
 
 /**
@@ -949,6 +982,7 @@ async function handleTextEvent({
   userId,
   text,
   replyToken,
+  vars,
 }: HandlerCommon & { text: string }) {
   const token = oa.channelAccessToken;
   const t0e = Date.now();
@@ -969,19 +1003,19 @@ async function handleTextEvent({
 
   // ─ 「はじめる」系コマンド → 常に（再）開始 ─
   if (isStartCommand(text)) {
-    await handleStart({ oa, work, systemSender, userId, replyToken });
+    await handleStart({ oa, work, systemSender, userId, replyToken, vars });
     return;
   }
 
   // ─ 「リセット」コマンド → 開始と同様にリセット後スタート ─
   if (isResetCommand(text)) {
-    await handleStart({ oa, work, systemSender, userId, replyToken });
+    await handleStart({ oa, work, systemSender, userId, replyToken, vars });
     return;
   }
 
   // ─ 「つづきから」コマンド → 現在の進行状態を表示 ─
   if (isContinueCommand(text)) {
-    await handleContinue({ oa, work, systemSender, userId, replyToken });
+    await handleContinue({ oa, work, systemSender, userId, replyToken, vars });
     return;
   }
 
@@ -1021,7 +1055,7 @@ async function handleTextEvent({
       `action_type="${globalCmd.actionType}"`,
       `userId=${userId}`,
     );
-    await handleGlobalCommand({ oa, work, systemSender, userId, replyToken, command: globalCmd });
+    await handleGlobalCommand({ oa, work, systemSender, userId, replyToken, vars, command: globalCmd });
     return;
   }
 
@@ -1044,7 +1078,7 @@ async function handleTextEvent({
         `userId=${userId}`,
       );
       await handleStartTrigger({
-        oa, work, systemSender, userId, replyToken,
+        oa, work, systemSender, userId, replyToken, vars,
         startPhase: startPhaseForTrigger,
       });
       return;
@@ -1060,7 +1094,7 @@ async function handleTextEvent({
   // ─ 未開始 → β 自動開始 ─
   if (!progress) {
     console.log(`[Webhook][STEP] 未開始ユーザー → 自動開始 userId=${userId}`);
-    await handleStart({ oa, work, systemSender, userId, replyToken });
+    await handleStart({ oa, work, systemSender, userId, replyToken, vars });
     return;
   }
 
@@ -1096,11 +1130,10 @@ async function handleTextEvent({
     : [];
 
   // DB クエリなしでインメモリ照合
-  const hintResult           = currentPhase ? matchHintFromPhase(currentPhase, text)                                          : null;
-  const messageTargetId      = currentPhase ? matchMessageTargetQuickReply(currentPhase, text)                                : null;
-  const qrPhaseTargetId      = currentPhase ? matchQrPhaseTarget(currentPhase, text)                                         : null;
-  const keywordMatched       = currentPhase ? matchKeywordsInMemory(currentPhase.messages, globalKwMsgs, text)                : [];
-  const puzzleResult         = currentPhase ? matchPuzzleFromPhase(currentPhase, text, solvedPuzzleIds)                      : null;
+  const hintResult     = currentPhase ? matchHintFromPhase(currentPhase, text)                               : null;
+  const matchedQrItem  = currentPhase ? matchQrItem(currentPhase, text)                                      : null;
+  const keywordMatched = currentPhase ? matchKeywordsInMemory(currentPhase.messages, globalKwMsgs, text)     : [];
+  const puzzleResult   = currentPhase ? matchPuzzleFromPhase(currentPhase, text, solvedPuzzleIds)            : null;
 
   if (!currentPhase) {
     console.log(`[Webhook][STEP] メッセージ送信前 (currentPhaseなし) userId=${userId}`);
@@ -1136,66 +1169,108 @@ async function handleTextEvent({
     return;
   }
 
-  // ─ target_type="message" quickReply 照合（ヒント照合の次）─
-  // ℹ️ メッセージターゲット返答は userProgress を更新しない（フェーズ遷移しない）
-  if (messageTargetId !== null) {
-    console.log(`[Webhook][STEP] messageTarget quickReply マッチ userId=${userId} targetId=${messageTargetId.slice(0, 8)}`);
-    try {
-      const targetMsg = await prisma.message.findUnique({
-        where: { id: messageTargetId, isActive: true },
-        select: {
-          id: true, messageType: true, body: true, assetUrl: true,
-          altText: true, flexPayloadJson: true, quickReplies: true,
-          nextMessageId: true, sortOrder: true,
-          character: { select: { name: true, iconImageUrl: true } },
-        },
-      });
-      if (targetMsg) {
-        const msgChain = await buildMessageChain(targetMsg, token);
-        if (msgChain.length > 0) {
-          const tReplyMT = Date.now();
-          await replyToLine(replyToken, msgChain, token);
-          console.log(`[perf][event] path=messageTarget total=${Date.now() - t0e}ms reply:${Date.now() - tReplyMT}ms`);
-          return;
-        }
-      }
-    } catch (e) {
-      console.warn("[Webhook] messageTarget fetch error:", e);
-      // フォールバック: 通常フローへ
-    }
-  }
+  // ─ 統合 QR アイテム処理（ヒント照合の次）─
+  //
+  //  QR タップ時の処理フロー:
+  //    Step 1 — ユーザー入力として QR ラベルを送信（LINE が自動で行う）
+  //    Step 2 — response_message_id が設定されていれば応答メッセージを返す
+  //    Step 3 — target_message_id / target_phase_id が設定されていれば遷移先へ進む
+  //
+  if (matchedQrItem !== null) {
+    console.log(`[Webhook][STEP] qrItem マッチ userId=${userId}`,
+      `response_message_id=${matchedQrItem.response_message_id?.slice(0, 8) ?? "none"}`,
+      `target_type=${matchedQrItem.target_type ?? "none"}`,
+      `target_message_id=${matchedQrItem.target_message_id?.slice(0, 8) ?? "none"}`,
+      `target_phase_id=${matchedQrItem.target_phase_id?.slice(0, 8) ?? "none"}`,
+    );
 
-  // ─ target_phase_id QR フェーズ遷移（メッセージターゲット照合の次）─
-  // ℹ️ QR に設定された target_phase_id へ直接フェーズ遷移する
-  if (qrPhaseTargetId !== null) {
-    console.log(`[Webhook][STEP] qrPhaseTarget マッチ userId=${userId} toPhaseId=${qrPhaseTargetId.slice(0, 8)}`);
-    try {
-      const toPhaseRow = await getCachedPhase(qrPhaseTargetId);
-      if (toPhaseRow) {
-        const isEnding = toPhaseRow.phaseType === "ending";
-        const [updated] = await Promise.all([
-          prisma.userProgress.update({
+    // Step 2 用の DB セレクト（buildMessageChain に渡す形式）
+    const MSG_SELECT = {
+      id: true, messageType: true, body: true, assetUrl: true,
+      altText: true, flexPayloadJson: true, quickReplies: true,
+      nextMessageId: true, sortOrder: true,
+      character: { select: { name: true, iconImageUrl: true } },
+    } as const;
+
+    const qrMsgs: import("@/lib/line").LineMessage[] = [];
+
+    // ── Step 2: 応答メッセージ（返す内容）──
+    if (matchedQrItem.response_message_id) {
+      try {
+        const respMsg = await prisma.message.findUnique({
+          where: { id: matchedQrItem.response_message_id, isActive: true },
+          select: MSG_SELECT,
+        });
+        if (respMsg) {
+          const chain = await buildMessageChain(respMsg, vars);
+          qrMsgs.push(...chain);
+        }
+      } catch (e) {
+        console.warn("[Webhook] qrItem response_message fetch error:", e);
+      }
+    }
+
+    // ── Step 3a: 遷移先メッセージ（フェーズ遷移なし）──
+    if (matchedQrItem.target_type === "message" && matchedQrItem.target_message_id) {
+      try {
+        const targetMsg = await prisma.message.findUnique({
+          where: { id: matchedQrItem.target_message_id, isActive: true },
+          select: MSG_SELECT,
+        });
+        if (targetMsg) {
+          const chain = await buildMessageChain(targetMsg, vars);
+          qrMsgs.push(...chain);
+        }
+      } catch (e) {
+        console.warn("[Webhook] qrItem target_message fetch error:", e);
+      }
+      if (qrMsgs.length > 0) {
+        const tReplyQrMsg = Date.now();
+        await replyToLine(replyToken, qrMsgs.slice(0, 5), token);
+        console.log(`[perf][event] path=qrItem_message total=${Date.now() - t0e}ms reply:${Date.now() - tReplyQrMsg}ms`);
+        return;
+      }
+      // qrMsgs が空の場合はフォールスルー（keyword/transition へ）
+    }
+
+    // ── Step 3b: 遷移先フェーズ（フェーズ遷移あり）──
+    if (matchedQrItem.target_phase_id) {
+      try {
+        const toPhaseRow = await getCachedPhase(matchedQrItem.target_phase_id);
+        if (toPhaseRow) {
+          const isEnding = toPhaseRow.phaseType === "ending";
+          const updated  = await prisma.userProgress.update({
             where: { id: progress.id },
             data: {
-              currentPhaseId:   qrPhaseTargetId,
+              currentPhaseId:   matchedQrItem.target_phase_id,
               reachedEnding:    isEnding,
               lastInteractedAt: new Date(),
             },
-          }),
-        ]);
-        await setCachedProgress(updated);
-        const state = await buildRuntimeState(updated, toPhaseRow);
-        const msgs  = buildPhaseMessages(state.phase, { systemSender });
-        const tReplyQr = Date.now();
-        await replyToLine(replyToken, msgs, token);
-        console.log(`[perf][event] path=qrPhaseTarget total=${Date.now() - t0e}ms reply:${Date.now() - tReplyQr}ms`);
-        void switchRichMenuForUser(oa, userId, toPhaseRow.phaseType);
-        return;
+          });
+          await setCachedProgress(updated);
+          const state     = await buildRuntimeState(updated, toPhaseRow);
+          const phaseMsgs = buildPhaseMessages(state.phase, { systemSender, vars });
+          qrMsgs.push(...phaseMsgs);
+          const tReplyQrPh = Date.now();
+          await replyToLine(replyToken, qrMsgs.slice(0, 5), token);
+          console.log(`[perf][event] path=qrItem_phase total=${Date.now() - t0e}ms reply:${Date.now() - tReplyQrPh}ms`);
+          void switchRichMenuForUser(oa, userId, toPhaseRow.phaseType);
+          return;
+        }
+      } catch (e) {
+        console.warn("[Webhook] qrItem target_phase transition error:", e);
+        // フォールバック: 通常フローへ
       }
-    } catch (e) {
-      console.warn("[Webhook] qrPhaseTarget transition error:", e);
-      // フォールバック: 通常フローへ
     }
+
+    // ── response_message のみ（遷移先なし）──
+    if (qrMsgs.length > 0) {
+      const tReplyQrResp = Date.now();
+      await replyToLine(replyToken, qrMsgs.slice(0, 5), token);
+      console.log(`[perf][event] path=qrItem_response total=${Date.now() - t0e}ms reply:${Date.now() - tReplyQrResp}ms`);
+      return;
+    }
+    // qrMsgs が空（応答メッセージも遷移先も解決できなかった）→ フォールスルー
   }
 
   // ─ triggerKeyword 照合 ─
@@ -1210,10 +1285,10 @@ async function handleTextEvent({
     // nextMessageId チェーンを展開してすべてのメッセージをまとめて返信する
     const chainedMsgs: import("@/lib/line").LineMessage[] = [];
     for (const match of keywordMatched) {
-      const chain = await buildMessageChain(match, token);
+      const chain = await buildMessageChain(match, vars);
       chainedMsgs.push(...chain);
     }
-    const msgs = chainedMsgs.length > 0 ? chainedMsgs : buildKeywordMessages(keywordMatched, systemSender);
+    const msgs = chainedMsgs.length > 0 ? chainedMsgs : buildKeywordMessages(keywordMatched, systemSender, vars);
     if (msgs.length > 0) {
       const tReplyKw = Date.now();
       await replyToLine(replyToken, msgs, token);
@@ -1232,7 +1307,7 @@ async function handleTextEvent({
   if (puzzleResult !== null) {
     if (puzzleResult.type === "correct") {
       await handlePuzzleCorrect({
-        oa, work, systemSender, userId, replyToken,
+        oa, work, systemSender, userId, replyToken, vars,
         progress,
         puzzle: puzzleResult.puzzle,
       });
@@ -1345,7 +1420,7 @@ async function handleTextEvent({
 
   // プリフェッチ済みフェーズを渡すことで buildRuntimeState の追加クエリを省略
   const state = await buildRuntimeState(updated, toPhaseRow);
-  const msgs  = buildPhaseMessages(state.phase, { systemSender });
+  const msgs  = buildPhaseMessages(state.phase, { systemSender, vars });
   console.log(`[Webhook][STEP] メッセージ送信前 (遷移後) msgs件数=${msgs.length} userId=${userId}`);
   const tReply = Date.now();
   await replyToLine(replyToken, msgs, token);
@@ -1366,7 +1441,7 @@ async function handleTextEvent({
 // ──────────────────────────────────────────────────────────
 
 async function handlePostbackEvent({
-  oa, work, systemSender, userId, data, replyToken,
+  oa, work, systemSender, userId, data, replyToken, vars,
 }: HandlerCommon & { data: string }) {
   switch (data) {
     case RICHMENU_ACTIONS.START:
@@ -1379,11 +1454,11 @@ async function handlePostbackEvent({
         }], oa.channelAccessToken);
         return;
       }
-      await handleStart({ oa, work, systemSender, userId, replyToken });
+      await handleStart({ oa, work, systemSender, userId, replyToken, vars });
       break;
 
     case RICHMENU_ACTIONS.CONTINUE:
-      await handleContinue({ oa, work, systemSender, userId, replyToken });
+      await handleContinue({ oa, work, systemSender, userId, replyToken, vars });
       break;
 
     default:
@@ -1394,7 +1469,7 @@ async function handlePostbackEvent({
 
 // ─ シナリオ（再）開始 ─────────────────────────────────────
 async function handleStart({
-  oa, work, systemSender, userId, replyToken,
+  oa, work, systemSender, userId, replyToken, vars,
 }: Omit<HandlerCommon, "work"> & { work: NonNullable<WorkRecord> }) {
   const token = oa.channelAccessToken;
 
@@ -1482,7 +1557,7 @@ async function handleStart({
     console.warn(`[Webhook][DEBUG] buildRuntimeState が phase=null を返しました progressId=${progress.id}`);
   }
 
-  const msgs  = buildPhaseMessages(state.phase, { systemSender });
+  const msgs  = buildPhaseMessages(state.phase, { systemSender, vars });
   console.log(
     `[Webhook][STEP] メッセージ送信前 (開始) msgs件数=${msgs.length} userId=${userId}`,
     msgs.map((m, i) => `[${i}]type=${m.type} text="${"text" in m ? String(m.text ?? "").slice(0, 30) : "(non-text)"}"`).join(" / ")
@@ -1514,7 +1589,7 @@ type StartPhaseRecord = {
 };
 
 async function handleStartTrigger({
-  oa, work, systemSender, userId, replyToken,
+  oa, work, systemSender, userId, replyToken, vars,
   startPhase,
 }: Omit<HandlerCommon, "work"> & {
   work:       NonNullable<WorkRecord>;
@@ -1587,7 +1662,7 @@ async function handleStartTrigger({
 
   if (startKindMessages.length > 0) {
     const tBuild = Date.now();
-    const msgs = buildKeywordMessages(startKindMessages, systemSender);
+    const msgs = buildKeywordMessages(startKindMessages, systemSender, vars);
     const buildMs = Date.now() - tBuild;
     if (msgs.length > 0) {
       const tReply = Date.now();
@@ -1607,7 +1682,7 @@ async function handleStartTrigger({
   const tBuildFallback = Date.now();
   const cachedStartPhaseForTrigger = await getCachedPhase(initialPhaseId);
   const state = await buildRuntimeState(syntheticProgress, cachedStartPhaseForTrigger);
-  const msgs  = buildPhaseMessages(state.phase, { systemSender });
+  const msgs  = buildPhaseMessages(state.phase, { systemSender, vars });
   const buildFallbackMs = Date.now() - tBuildFallback;
   if (msgs.length > 0) {
     const tReply = Date.now();
@@ -1628,7 +1703,7 @@ async function handleStartTrigger({
 
 // ─ 現在の進行状態を表示（つづきから）──────────────────────
 async function handleContinue({
-  oa, work, systemSender, userId, replyToken,
+  oa, work, systemSender, userId, replyToken, vars,
 }: HandlerCommon) {
   const token = oa.channelAccessToken;
 
@@ -1659,7 +1734,7 @@ async function handleContinue({
     ? await getCachedPhase(progress.currentPhaseId)
     : null;
   const state = await buildRuntimeState(progress, cachedContinuePhase);
-  const msgs  = buildPhaseMessages(state.phase, { systemSender });
+  const msgs  = buildPhaseMessages(state.phase, { systemSender, vars });
   await replyToLine(replyToken, msgs, token);
 }
 
@@ -1763,7 +1838,7 @@ async function findGlobalCommand(
  * CUSTOM — payload のテキストを返す
  */
 async function handleGlobalCommand({
-  oa, work, systemSender, userId, replyToken, command,
+  oa, work, systemSender, userId, replyToken, vars, command,
 }: HandlerCommon & { command: GlobalCommandRecord }) {
   const token = oa.channelAccessToken;
 
@@ -1771,7 +1846,7 @@ async function handleGlobalCommand({
     // ── RESET: progress をリセットして最初から ──
     case "RESET": {
       if (!work) break;
-      await handleStart({ oa, work, systemSender, userId, replyToken });
+      await handleStart({ oa, work, systemSender, userId, replyToken, vars });
       return;
     }
 
@@ -1790,14 +1865,14 @@ async function handleGlobalCommand({
       if (!work) break;
       const progress = await getCachedProgress(userId, work.id);
       if (!progress) {
-        await handleStart({ oa, work, systemSender, userId, replyToken });
+        await handleStart({ oa, work, systemSender, userId, replyToken, vars });
         return;
       }
       const cachedRepeatPhase = progress.currentPhaseId
         ? await getCachedPhase(progress.currentPhaseId)
         : null;
       const state = await buildRuntimeState(progress, cachedRepeatPhase);
-      const msgs  = buildPhaseMessages(state.phase, { systemSender });
+      const msgs  = buildPhaseMessages(state.phase, { systemSender, vars });
       if (msgs.length > 0) {
         await replyToLine(replyToken, msgs, token);
       } else {
@@ -2082,7 +2157,7 @@ async function matchPuzzleAnswer(
  *   "text_and_transition" → correctText ＋ 遷移先フェーズメッセージを一括返信
  */
 async function handlePuzzleCorrect({
-  oa, work, systemSender, userId, replyToken,
+  oa, work, systemSender, userId, replyToken, vars,
   progress, puzzle,
 }: Omit<HandlerCommon, "work"> & {
   work:     NonNullable<WorkRecord>;
@@ -2132,7 +2207,7 @@ async function handlePuzzleCorrect({
           `isEnding=${isEnding}`,
         );
         const state     = await buildRuntimeState(updated, nextPhase);
-        const nextMsgs  = buildPhaseMessages(state.phase, { systemSender });
+        const nextMsgs  = buildPhaseMessages(state.phase, { systemSender, vars });
         messagesToSend.push(...nextMsgs);
       } else {
         // correctNextPhaseId が存在するが取得できなかった場合: solved だけ保存

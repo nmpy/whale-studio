@@ -49,7 +49,8 @@ export default function EditMessagePage() {
         const additionalBody = {
           work_id:      workId,
           phase_id:     mainBody.phase_id,
-          character_id: mainBody.character_id,
+          // スロット個別のキャラクター指定があればそちらを優先、なければ1通目を引き継ぐ
+          character_id: slot.character_id || mainBody.character_id,
           kind:         mainBody.kind,
           message_type: slot.message_type,
           body:         slot.message_type === "carousel"
@@ -58,6 +59,7 @@ export default function EditMessagePage() {
           asset_url:    (slot.message_type === "image" || slot.message_type === "video" || slot.message_type === "voice")
             ? (slot.asset_url || undefined) : undefined,
           notify_text:  slot.message_type !== "text" ? (slot.notify_text || undefined) : undefined,
+          lag_ms:       slot.lag_ms,
           sort_order:   mainBody.sort_order,
           is_active:    mainBody.is_active,
         };

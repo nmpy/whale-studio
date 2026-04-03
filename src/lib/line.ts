@@ -105,6 +105,28 @@ export type LineWebhookBody = {
 };
 
 // ────────────────────────────────────────────────
+// プレースホルダ置換
+// ────────────────────────────────────────────────
+
+/** メッセージ本文に埋め込むプレースホルダ変数 */
+export type PlaceholderVars = {
+  /** LINE ユーザーの表示名（プロフィール displayName） */
+  userName?:    string;
+  /** LINE 公式アカウント名（OA タイトル） */
+  accountName?: string;
+};
+
+/**
+ * テキスト内の `{{user_name}}` / `{{account_name}}` を実際の値へ置換する。
+ * 値が未設定（undefined）の場合は空文字へ置換し、プレースホルダ文字列が露出しないようにする。
+ */
+export function replacePlaceholders(text: string, vars: PlaceholderVars): string {
+  return text
+    .replace(/\{\{user_name\}\}/g,    vars.userName    ?? "")
+    .replace(/\{\{account_name\}\}/g, vars.accountName ?? "");
+}
+
+// ────────────────────────────────────────────────
 // 定数
 // ────────────────────────────────────────────────
 
@@ -356,6 +378,8 @@ export function buildPhaseMessages(
     prefix?: string;
     /** システムメッセージ（prefix / エラー等）の送信者。未指定なら OA デフォルト名義 */
     systemSender?: LineSender;
+    /** メッセージ本文のプレースホルダ置換変数（user_name / account_name） */
+    vars?: PlaceholderVars;
   } = {}
 ): LineMessage[] {
   if (!phase) {
@@ -367,11 +391,12 @@ export function buildPhaseMessages(
   }
 
   const messages: LineMessage[] = [];
+  const vars = opts.vars ?? {};
 
   // ── prefix テキスト（システム通知として独立した吹き出し） ──
   const prefixText = opts.prefix?.trim();
   if (prefixText) {
-    messages.push({ type: "text", text: prefixText, sender: opts.systemSender });
+    messages.push({ type: "text", text: replacePlaceholders(prefixText, vars), sender: opts.systemSender });
   }
 
   // ── DB Message 行を 1 件ずつ独立した吹き出しに変換 ──
@@ -384,7 +409,7 @@ export function buildPhaseMessages(
     if (msg.message_type === "text" && msg.body) {
       const lineMsg: LineTextMessage = {
         type: "text",
-        text: msg.body,
+        text: replacePlaceholders(msg.body, vars),
       };
       if (msg.character) {
         lineMsg.sender = buildSender(msg.character);
@@ -419,7 +444,7 @@ export function buildPhaseMessages(
     if ((msg.message_type as string) === "flex" && msg.alt_text) {
       const lineMsg: LineTextMessage = {
         type: "text",
-        text: msg.alt_text,
+        text: replacePlaceholders(msg.alt_text, vars),
       };
       if (msg.character) lineMsg.sender = buildSender(msg.character);
       if (msgQr) lineMsg.quickReply = msgQr;
@@ -491,8 +516,9 @@ export type KeywordMessageRecord = {
  * - systemSender はキャラクターが未設定のメッセージに適用する
  */
 export function buildKeywordMessages(
-  records:      KeywordMessageRecord[],
+  records:       KeywordMessageRecord[],
   systemSender?: LineSender,
+  vars:          PlaceholderVars = {},
 ): LineMessage[] {
   const messages: LineMessage[] = [];
 
@@ -513,7 +539,7 @@ export function buildKeywordMessages(
     }
 
     if (msg.messageType === "text" && msg.body) {
-      const lineMsg: LineTextMessage = { type: "text", text: msg.body, sender };
+      const lineMsg: LineTextMessage = { type: "text", text: replacePlaceholders(msg.body, vars), sender };
       if (msgQr) lineMsg.quickReply = msgQr;
       messages.push(lineMsg);
     } else if (msg.messageType === "image" && msg.assetUrl) {
@@ -536,7 +562,7 @@ export function buildKeywordMessages(
       messages.push(lineMsg);
     // flex → alt_text をテキストとして送信（既存 DB データの後方互換）
     } else if ((msg.messageType as string) === "flex" && msg.altText) {
-      const lineMsg: LineTextMessage = { type: "text", text: msg.altText, sender };
+      const lineMsg: LineTextMessage = { type: "text", text: replacePlaceholders(msg.altText, vars), sender };
       if (msgQr) lineMsg.quickReply = msgQr;
       messages.push(lineMsg);
     }
