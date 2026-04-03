@@ -38,6 +38,7 @@ function rowToRuntime(msg: MessageRow): RuntimePhaseMessage {
     alt_text:          msg.altText         ?? null,
     flex_payload_json: msg.flexPayloadJson ?? null,
     quick_replies:     quickReplies,
+    lag_ms:            msg.lagMs ?? 0,
     sort_order:        msg.sortOrder,
     character:         msg.character
       ? {

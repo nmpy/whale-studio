@@ -434,6 +434,8 @@ export interface RuntimePhaseMessage {
   flex_payload_json: string | null;
   /** メッセージ個別のクイックリプライ（設定時は遷移 quickReply より優先） */
   quick_replies:     QuickReplyItem[] | null;
+  /** 前のメッセージ送信後この発話まで待機するミリ秒数。0 = プレビューが自動計算 */
+  lag_ms:            number;
   sort_order:        number;
   character: {
     id:             string;

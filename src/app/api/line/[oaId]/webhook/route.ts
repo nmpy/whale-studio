@@ -34,7 +34,8 @@ import { prisma } from "@/lib/prisma";
 import {
   verifyLineSignature,
   isStartCommand, isResetCommand, isContinueCommand,
-  replyToLine, buildPhaseMessages, buildQuickReply, buildKeywordMessages, buildQuickReplyFromItems,
+  replyToLine, replyWithLagToLine,
+  buildPhaseMessages, buildQuickReply, buildKeywordMessages, buildQuickReplyFromItems,
   RICHMENU_ACTIONS,
   type LineWebhookBody, type LineEvent, type LineSender, type KeywordMessageRecord,
 } from "@/lib/line";
@@ -1263,7 +1264,7 @@ async function handleTextEvent({
           const phaseMsgs = buildPhaseMessages(state.phase, { systemSender, vars });
           qrMsgs.push(...phaseMsgs);
           const tReplyQrPh = Date.now();
-          await replyToLine(replyToken, qrMsgs.slice(0, 5), token);
+          await replyWithLagToLine(replyToken, qrMsgs.slice(0, 5), userId, token);
           console.log(`[perf][event] path=qrItem_phase total=${Date.now() - t0e}ms reply:${Date.now() - tReplyQrPh}ms`);
           void switchRichMenuForUser(oa, userId, toPhaseRow.phaseType);
           return;
@@ -1434,7 +1435,7 @@ async function handleTextEvent({
   const msgs  = buildPhaseMessages(state.phase, { systemSender, vars });
   console.log(`[Webhook][STEP] メッセージ送信前 (遷移後) msgs件数=${msgs.length} userId=${userId}`);
   const tReply = Date.now();
-  await replyToLine(replyToken, msgs, token);
+  await replyWithLagToLine(replyToken, msgs, userId, token);
   console.log(
     `[perf][event] path=transition total=${Date.now() - t0e}ms` +
     ` progress=${progressHit ? "HIT" : "MISS"}:${progressFindMs}ms` +
@@ -1574,7 +1575,7 @@ async function handleStart({
     msgs.map((m, i) => `[${i}]type=${m.type} text="${"text" in m ? String(m.text ?? "").slice(0, 30) : "(non-text)"}"`).join(" / ")
   );
   const tReplyStart = Date.now();
-  await replyToLine(replyToken, msgs, token);
+  await replyWithLagToLine(replyToken, msgs, userId, token);
   console.log(`[perf][handleStart/reply] ${Date.now() - tReplyStart}ms total=${Date.now() - tStart}ms`);
 
   // リッチメニュー切り替えは返信後にバックグラウンド実行
@@ -1677,7 +1678,7 @@ async function handleStartTrigger({
     const buildMs = Date.now() - tBuild;
     if (msgs.length > 0) {
       const tReply = Date.now();
-      await replyToLine(replyToken, msgs, token);
+      await replyWithLagToLine(replyToken, msgs, userId, token);
       console.log(
         `[perf][startTrigger] total=${Date.now() - t0st}ms` +
         ` upsert=${upsertMs}ms build=${buildMs}ms reply=${Date.now() - tReply}ms`,
@@ -1697,7 +1698,7 @@ async function handleStartTrigger({
   const buildFallbackMs = Date.now() - tBuildFallback;
   if (msgs.length > 0) {
     const tReply = Date.now();
-    await replyToLine(replyToken, msgs, token);
+    await replyWithLagToLine(replyToken, msgs, userId, token);
     console.log(
       `[perf][startTrigger] total=${Date.now() - t0st}ms` +
       ` upsert=${upsertMs}ms build=${buildFallbackMs}ms reply=${Date.now() - tReply}ms (fallback)`,
@@ -1746,7 +1747,7 @@ async function handleContinue({
     : null;
   const state = await buildRuntimeState(progress, cachedContinuePhase);
   const msgs  = buildPhaseMessages(state.phase, { systemSender, vars });
-  await replyToLine(replyToken, msgs, token);
+  await replyWithLagToLine(replyToken, msgs, userId, token);
 }
 
 // ────────────────────────────────────────────────
@@ -1885,7 +1886,7 @@ async function handleGlobalCommand({
       const state = await buildRuntimeState(progress, cachedRepeatPhase);
       const msgs  = buildPhaseMessages(state.phase, { systemSender, vars });
       if (msgs.length > 0) {
-        await replyToLine(replyToken, msgs, token);
+        await replyWithLagToLine(replyToken, msgs, userId, token);
       } else {
         await replyToLine(replyToken, [{
           type: "text",

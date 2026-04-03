@@ -535,6 +535,21 @@ function FlowTree({
     toMap[t.to_phase_id].push(t);
   }
 
+  // QR アイテムの target_phase_id による接続も「遷移あり」として考慮する
+  // kind="phase" の branch = QR タップで別フェーズへジャンプするケース
+  const qrFromSet = new Set<string>(); // QR 経由で他フェーズへ出ていく phaseId
+  const qrToSet   = new Set<string>(); // QR 経由で来られる phaseId
+  for (const [phaseId, entries] of Object.entries(msgQrData)) {
+    for (const entry of entries) {
+      for (const branch of entry.branches) {
+        if (branch.kind === "phase") {
+          qrFromSet.add(phaseId);
+          qrToSet.add(branch.phaseId);
+        }
+      }
+    }
+  }
+
   const sorted = [...phases].sort((a, b) => a.sort_order - b.sort_order);
 
   // ── D&D 状態 ──
@@ -655,10 +670,14 @@ function FlowTree({
   // ── 整合性チェック ──
   const startCount    = phases.filter((p) => p.phase_type === "start").length;
   const deadEndPhases = phases.filter(
-    (p) => p.phase_type !== "ending" && (fromMap[p.id] ?? []).length === 0
+    (p) => p.phase_type !== "ending"
+      && (fromMap[p.id] ?? []).length === 0
+      && !qrFromSet.has(p.id)   // QR 経由の遷移も考慮
   );
   const orphanPhases  = phases.filter(
-    (p) => p.phase_type !== "start" && (toMap[p.id] ?? []).length === 0
+    (p) => p.phase_type !== "start"
+      && (toMap[p.id] ?? []).length === 0
+      && !qrToSet.has(p.id)     // QR 経由の遷移も考慮
   );
   const hasWarnings = startCount === 0 || deadEndPhases.length > 0 || orphanPhases.length > 0;
 
@@ -711,7 +730,7 @@ function FlowTree({
           const meta       = PHASE_TYPE_META[phase.phase_type];
           const outgoing   = fromMap[phase.id] ?? [];
           const isLast     = phaseIdx === sorted.length - 1;
-          const hasNoOut   = phase.phase_type !== "ending" && outgoing.length === 0 && phases.length > 1;
+          const hasNoOut   = phase.phase_type !== "ending" && outgoing.length === 0 && !qrFromSet.has(phase.id) && phases.length > 1;
           const isDragOver = dragOverIdx === phaseIdx;
           const isSrc      = dragSrcRef.current === phaseIdx;
           const isExpanded = !!expandedIds[phase.id];

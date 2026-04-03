@@ -169,6 +169,7 @@ export const POST = withAuth(async (req) => {
             alt_text:          m.altText         ?? null,
             flex_payload_json: m.flexPayloadJson ?? null,
             quick_replies:     quickReplies,
+            lag_ms:            m.lagMs ?? 0,
             sort_order:        m.sortOrder,
             character:         m.character
               ? {

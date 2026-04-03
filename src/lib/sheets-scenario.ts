@@ -68,6 +68,7 @@ function buildRuntimePhaseFromSheets(
       alt_text:          null,
       flex_payload_json: null,
       quick_replies:     null,
+      lag_ms:            0,
       sort_order:        msg.sort_order,
       character:    char
         ? {

@@ -242,6 +242,7 @@ function PlaygroundInner() {
         alt_text: null,
         flex_payload_json: null,
         quick_replies: null,
+        lag_ms: 0,
         sort_order: 0,
         character: null,
       });
@@ -254,6 +255,7 @@ function PlaygroundInner() {
           alt_text: null,
           flex_payload_json: null,
           quick_replies: null,
+          lag_ms: 0,
           sort_order: 1,
           character: null,
         });
@@ -854,10 +856,24 @@ function FlagsPanel({ flags }: { flags: Record<string, unknown> }) {
 // ────────────────────────────────────────────────
 // helpers
 // ────────────────────────────────────────────────
+/**
+ * メッセージ表示前のタイピング演出時間を計算する。
+ *
+ * 優先順:
+ *   1. msg.lag_ms > 0  → 作品側で明示設定された値をそのまま使用
+ *   2. lag_ms = 0      → テキスト長から自動計算（上限 1500ms）
+ *
+ * 自動計算式: base 500ms + 文字数 × 15ms、上限 1500ms
+ *   - 短文（〜20字）: 500〜800ms
+ *   - 中文（30〜50字）: 950〜1250ms
+ *   - 長文（67字〜）: 1500ms（上限）
+ * 非テキスト（画像・動画等）: 700ms 固定
+ */
 function calcTypingDelay(msg: RuntimePhaseMessage): number {
-  if (msg.message_type !== "text") return 900;
+  if (msg.lag_ms > 0) return msg.lag_ms;
+  if (msg.message_type !== "text") return 700;
   const len = msg.body?.length ?? 0;
-  return Math.min(500 + len * 22, 2200);
+  return Math.min(500 + len * 15, 1500);
 }
 
 function sleep(ms: number) {
@@ -1038,7 +1054,7 @@ function PhasePanel({ phase, loading, onAdvance, onQrTap, currentItems, onSendTe
         if (cancelRef.current) return;
         setIsTyping(false);
         setVisibleCount(i + 1);
-        if (i < msgs.length - 1) await sleep(180);
+        if (i < msgs.length - 1) await sleep(120);
       }
       setAllShown(true);
     })();
@@ -1436,7 +1452,7 @@ function EndingMessages({ messages }: { messages: RuntimePhaseMessage[] }) {
         if (cancelRef.current) return;
         setIsTyping(false);
         setVisibleCount(i + 1);
-        if (i < messages.length - 1) await sleep(180);
+        if (i < messages.length - 1) await sleep(120);
       }
     })();
     return () => { cancelRef.current = true; };

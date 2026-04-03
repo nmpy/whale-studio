@@ -51,6 +51,8 @@ export type LineTextMessage = {
   sender?: LineSender;
   /** クイックリプライ選択肢（任意） */
   quickReply?: LineQuickReply;
+  /** @internal LINE API には送信しない。replyWithLagToLine のラグ制御に使用（ms） */
+  _lagMs?: number;
 };
 
 export type LineImageMessage = {
@@ -61,6 +63,8 @@ export type LineImageMessage = {
   sender?: LineSender;
   /** クイックリプライ選択肢（任意） */
   quickReply?: LineQuickReply;
+  /** @internal LINE API には送信しない。replyWithLagToLine のラグ制御に使用（ms） */
+  _lagMs?: number;
 };
 
 export type LineVideoMessage = {
@@ -71,6 +75,8 @@ export type LineVideoMessage = {
   sender?: LineSender;
   /** クイックリプライ選択肢（任意） */
   quickReply?: LineQuickReply;
+  /** @internal LINE API には送信しない。replyWithLagToLine のラグ制御に使用（ms） */
+  _lagMs?: number;
 };
 
 export type LineMessage = LineTextMessage | LineImageMessage | LineVideoMessage;
@@ -130,9 +136,24 @@ export function replacePlaceholders(text: string, vars: PlaceholderVars): string
 // 定数
 // ────────────────────────────────────────────────
 
-const LINE_REPLY_URL = "https://api.line.me/v2/bot/message/reply";
-const LINE_TEXT_MAX  = 5000; // LINE テキストメッセージの最大文字数
-const LINE_MSG_MAX   = 5;    // 1 回の reply で送れる最大メッセージ数
+const LINE_REPLY_URL     = "https://api.line.me/v2/bot/message/reply";
+const LINE_PUSH_URL      = "https://api.line.me/v2/bot/message/push";
+const LINE_TEXT_MAX      = 5000; // LINE テキストメッセージの最大文字数
+const LINE_MSG_MAX       = 5;    // 1 回の reply で送れる最大メッセージ数
+const DEFAULT_MSG_LAG_MS = 1000; // lag_ms 未設定時のメッセージ間待機時間（ms）
+const MAX_MSG_LAG_MS     = 2000; // lag_ms の上限値（ms）
+
+/** ms ミリ秒待機する */
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** LineMessage から内部フィールド（_lagMs）を除去して送信用オブジェクトを生成する */
+function stripInternalFields(msg: LineMessage): Record<string, unknown> {
+  const m = { ...msg } as Record<string, unknown>;
+  delete m._lagMs;
+  return m;
+}
 
 /** 「はじめる」に準じる（再）開始コマンド */
 const START_KEYWORDS = new Set([
@@ -228,9 +249,11 @@ export async function replyToLine(
 
   // 最大 LINE_MSG_MAX 件に切り詰める
   const sliced = messages.slice(0, LINE_MSG_MAX);
+  // _lagMs など内部フィールドを除去（LINE API は未知フィールドをエラーにする場合がある）
+  const cleanMessages = sliced.map(stripInternalFields);
   const payload = {
     replyToken,
-    messages: sliced,
+    messages: cleanMessages,
   };
 
   // 送信直前ログ: 各メッセージの type / quickReply 有無を確認
@@ -259,6 +282,87 @@ export async function replyToLine(
     }
   } catch (err) {
     console.error("[LINE Reply] ネットワークエラー:", err);
+  }
+}
+
+// ────────────────────────────────────────────────
+// Push API
+// ────────────────────────────────────────────────
+
+/**
+ * LINE Push API を呼び出してメッセージを送信する。
+ * 内部フィールド (_lagMs) を除去してから送信する。
+ * 失敗してもスローせず、コンソールにエラーを記録するだけにする。
+ */
+export async function pushToLine(
+  userId:             string,
+  messages:           LineMessage[],
+  channelAccessToken: string,
+): Promise<void> {
+  if (!userId || messages.length === 0) return;
+
+  const cleanMessages = messages.map(stripInternalFields);
+
+  console.log(
+    `[pushToLine] 送信 userId=${userId.slice(0, 8)} msgs=${cleanMessages.length}件`,
+    cleanMessages.map((m, i) => `[${i}] type=${(m as { type: string }).type}`).join(" / ")
+  );
+
+  try {
+    const res = await fetch(LINE_PUSH_URL, {
+      method:  "POST",
+      headers: {
+        Authorization:  `Bearer ${channelAccessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ to: userId, messages: cleanMessages }),
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => "(読み取り不能)");
+      console.error(`[LINE Push] HTTP ${res.status}:`, body);
+    }
+  } catch (err) {
+    console.error("[LINE Push] ネットワークエラー:", err);
+  }
+}
+
+/**
+ * 複数メッセージをラグ付きで送信する。
+ *
+ * - 1件目: Reply API（replyToken を使用・即送信）
+ * - 2件目以降: 各メッセージの _lagMs ms 待機後に Push API で 1 件ずつ送信
+ *   - _lagMs が未設定 → DEFAULT_MSG_LAG_MS (1000ms)
+ *   - _lagMs が設定済み → min(_lagMs, MAX_MSG_LAG_MS) (上限 2000ms)
+ *
+ * 1 件のみの場合は通常の replyToLine と同じ動作（Push API は使用しない）。
+ */
+export async function replyWithLagToLine(
+  replyToken:         string,
+  messages:           LineMessage[],
+  userId:             string,
+  channelAccessToken: string,
+): Promise<void> {
+  if (!replyToken || messages.length === 0) return;
+
+  const sliced = messages.slice(0, LINE_MSG_MAX);
+
+  // 1 件のみ → 通常の replyToLine と同じ（ラグなし）
+  if (sliced.length <= 1) {
+    await replyToLine(replyToken, sliced, channelAccessToken);
+    return;
+  }
+
+  // 1 件目を Reply API で即送信（replyToken の有効期限内に必ず呼ぶ）
+  const [first, ...rest] = sliced;
+  await replyToLine(replyToken, [first], channelAccessToken);
+
+  // 2 件目以降を Push API でラグ付き送信
+  for (const msg of rest) {
+    const rawLag = msg._lagMs ?? 0;
+    const delay  = rawLag > 0 ? Math.min(rawLag, MAX_MSG_LAG_MS) : DEFAULT_MSG_LAG_MS;
+    console.log(`[replyWithLagToLine] 次のメッセージまで ${delay}ms 待機`);
+    await sleep(delay);
+    await pushToLine(userId, [msg], channelAccessToken);
   }
 }
 
@@ -415,6 +519,7 @@ export function buildPhaseMessages(
         lineMsg.sender = buildSender(msg.character);
       }
       if (msgQr) lineMsg.quickReply = msgQr;
+      if (msg.lag_ms > 0) lineMsg._lagMs = msg.lag_ms;
       messages.push(lineMsg);
     }
 
@@ -426,6 +531,7 @@ export function buildPhaseMessages(
       };
       if (msg.character) lineMsg.sender = buildSender(msg.character);
       if (msgQr) lineMsg.quickReply = msgQr;
+      if (msg.lag_ms > 0) lineMsg._lagMs = msg.lag_ms;
       messages.push(lineMsg);
     }
 
@@ -437,6 +543,7 @@ export function buildPhaseMessages(
       };
       if (msg.character) lineMsg.sender = buildSender(msg.character);
       if (msgQr) lineMsg.quickReply = msgQr;
+      if (msg.lag_ms > 0) lineMsg._lagMs = msg.lag_ms;
       messages.push(lineMsg);
     }
 
@@ -448,6 +555,7 @@ export function buildPhaseMessages(
       };
       if (msg.character) lineMsg.sender = buildSender(msg.character);
       if (msgQr) lineMsg.quickReply = msgQr;
+      if (msg.lag_ms > 0) lineMsg._lagMs = msg.lag_ms;
       messages.push(lineMsg);
     }
   }

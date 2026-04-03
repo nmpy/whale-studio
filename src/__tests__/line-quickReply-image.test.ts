@@ -52,6 +52,7 @@ describe("buildPhaseMessages — 個別 quickReply", () => {
         alt_text:          null,
         flex_payload_json: null,
         quick_replies:     [{ label: "次へ", action: "text", value: "次へ" }],
+        lag_ms:            0,
         sort_order:        0,
         character:         null,
       }],
@@ -78,6 +79,7 @@ describe("buildPhaseMessages — 個別 quickReply", () => {
         alt_text:          null,
         flex_payload_json: null,
         quick_replies:     [{ label: "続ける", action: "text", value: "続ける" }],
+        lag_ms:            0,
         sort_order:        0,
         character:         null,
       }],
@@ -107,6 +109,7 @@ describe("buildPhaseMessages — 遷移 quickReply", () => {
         alt_text:          null,
         flex_payload_json: null,
         quick_replies:     null,
+        lag_ms:            0,
         sort_order:        0,
         character:         null,
       }],
@@ -131,12 +134,12 @@ describe("buildPhaseMessages — 遷移 quickReply", () => {
         {
           id: "msg-txt", message_type: "text", body: "本文です",
           asset_url: null, alt_text: null, flex_payload_json: null,
-          quick_replies: null, sort_order: 0, character: null,
+          quick_replies: null, lag_ms: 0, sort_order: 0, character: null,
         },
         {
           id: "msg-img", message_type: "image", body: null,
           asset_url: "https://example.com/img.png", alt_text: null, flex_payload_json: null,
-          quick_replies: null, sort_order: 1, character: null,
+          quick_replies: null, lag_ms: 0, sort_order: 1, character: null,
         },
       ],
       transitions: [
@@ -162,7 +165,7 @@ describe("buildPhaseMessages — 遷移 quickReply", () => {
         id: "msg-img", message_type: "image", body: null,
         asset_url: "https://example.com/img.png", alt_text: null, flex_payload_json: null,
         quick_replies: [{ label: "はい", action: "text", value: "はい" }], // 個別 QR あり
-        sort_order: 0, character: null,
+        lag_ms: 0, sort_order: 0, character: null,
       }],
       transitions: [
         { id: "t1", label: "次へ", to_phase: { id: "p2", name: "次", phase_type: "normal" }, condition: null, sort_order: 0, set_flags: "{}" },
