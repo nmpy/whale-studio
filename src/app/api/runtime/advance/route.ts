@@ -150,16 +150,25 @@ export const POST = withAuth(async (req) => {
           },
           orderBy: { sortOrder: "asc" },
         });
-        responseMessages = responseRows
-          .filter((m) => m.triggerKeyword && norm(m.triggerKeyword) === normLabel)
-          .map((m) => ({
+
+        // メッセージを RuntimePhaseMessage に変換するヘルパー（quickReplies を含む）
+        type ResponseRow = typeof responseRows[number];
+        function rowToRuntimeMsg(m: ResponseRow): import("@/types").RuntimePhaseMessage {
+          let quickReplies: import("@/types").QuickReplyItem[] | null = null;
+          if (m.quickReplies) {
+            try {
+              const parsed = JSON.parse(m.quickReplies);
+              if (Array.isArray(parsed)) quickReplies = parsed as import("@/types").QuickReplyItem[];
+            } catch { /* ignore */ }
+          }
+          return {
             id:                m.id,
             message_type:      m.messageType as import("@/types").MessageType,
             body:              m.body,
             asset_url:         m.assetUrl,
             alt_text:          m.altText         ?? null,
             flex_payload_json: m.flexPayloadJson ?? null,
-            quick_replies:     null,
+            quick_replies:     quickReplies,
             sort_order:        m.sortOrder,
             character:         m.character
               ? {
@@ -171,7 +180,42 @@ export const POST = withAuth(async (req) => {
                   icon_image_url: m.character.iconImageUrl,
                 }
               : null,
-          }));
+          };
+        }
+
+        const matched = responseRows.filter(
+          (m) => m.triggerKeyword && norm(m.triggerKeyword) === normLabel,
+        );
+
+        // LINE の buildMessageChain と同様に nextMessageId チェーンを辿る。
+        // QR を持つメッセージには停止しない（LINE 側と同じ挙動）。
+        // ただしテスト画面では /api/runtime/message が QR 手前で停止するため、
+        // ここでは各 triggerKeyword マッチメッセージのチェーンをすべて展開して返す。
+        const msgMap = new Map(responseRows.map((m) => [m.id, m]));
+        const visited = new Set<string>();
+        for (const first of matched) {
+          let cur: ResponseRow | undefined = first;
+          let depth = 0;
+          while (cur && !visited.has(cur.id) && depth < 5) {
+            visited.add(cur.id);
+            responseMessages.push(rowToRuntimeMsg(cur));
+            // QR を持つメッセージで停止（ユーザーの次の選択を待つ）
+            if (cur.quickReplies) break;
+            const nextId: string | null = cur.nextMessageId;
+            if (!nextId) break;
+            // nextMessageId が同フェーズ内にあれば辿る
+            cur = msgMap.get(nextId);
+            if (!cur) {
+              // フェーズをまたぐ場合は DB から取得
+              const fetched: ResponseRow | null = await prisma.message.findUnique({
+                where:   { id: nextId, isActive: true },
+                include: { character: { select: { id: true, name: true, iconType: true, iconText: true, iconColor: true, iconImageUrl: true } } },
+              });
+              cur = fetched ?? undefined;
+            }
+            depth++;
+          }
+        }
       }
 
       return ok({
