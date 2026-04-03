@@ -482,17 +482,15 @@ function PlaygroundInner() {
   const currentPhase  = state?.phase;
   const selectedWork  = works.find((w) => w.id === selectedWorkId);
 
-  // 現在アクティブな QR — 最後に届いたメッセージの quick_replies を使う。
-  // extraMessages があればその末尾、なければ phase.messages の末尾が入力待ち。
-  const { activeQrItems, activeQrMsgId } = (() => {
-    const empty = { activeQrItems: null as QuickReplyItem[] | null, activeQrMsgId: null as string | null };
-    if (!state?.phase?.messages) return empty;
-    const lastMsg = extraMessages.length > 0
-      ? extraMessages[extraMessages.length - 1]
-      : state.phase.messages[state.phase.messages.length - 1];
-    if (!lastMsg?.quick_replies?.length) return empty;
+  // 現在アクティブな QR — 表示中の最後のメッセージの quick_replies のみ。
+  // extraMessages があればその末尾、なければ phase.messages の末尾。
+  const activeQrItems = (() => {
+    if (!state?.phase?.messages) return null;
+    const displayed = extraMessages.length > 0 ? extraMessages : state.phase.messages;
+    const lastMsg = displayed[displayed.length - 1];
+    if (!lastMsg?.quick_replies?.length) return null;
     const items = lastMsg.quick_replies.filter((q) => q.enabled !== false);
-    return items.length > 0 ? { activeQrItems: items, activeQrMsgId: lastMsg.id } : empty;
+    return items.length > 0 ? items : null;
   })();
 
   return (
@@ -733,7 +731,6 @@ function PlaygroundInner() {
                   sentMessages={sentMessages}
                   onSendText={handleSendText}
                   activeQrItems={activeQrItems}
-                  activeQrMsgId={activeQrMsgId}
                   oaTitle={oas.find((o) => o.id === selectedOaId)?.title ?? ""}
                   chatLog={chatLog}
                 />
@@ -929,12 +926,11 @@ interface PhasePanelProps {
   sentMessages:   string[];
   onSendText:     (text: string) => void;
   activeQrItems:  QuickReplyItem[] | null;
-  activeQrMsgId:  string | null;
   oaTitle:        string;
   chatLog:        ChatEntry[];
 }
 
-function PhasePanel({ phase, loading, onAdvance, onQrTap, extraMessages, sentMessages, onSendText, activeQrItems, activeQrMsgId, oaTitle, chatLog }: PhasePanelProps) {
+function PhasePanel({ phase, loading, onAdvance, onQrTap, extraMessages, sentMessages, onSendText, activeQrItems, oaTitle, chatLog }: PhasePanelProps) {
   const [inputText, setInputText] = useState("");
 
   // フェーズ変更時に入力欄をクリア
@@ -1058,27 +1054,20 @@ function PhasePanel({ phase, loading, onAdvance, onQrTap, extraMessages, sentMes
             </p>
           )}
           {phase.messages.slice(0, visibleCount).map((msg, i) => (
-            <Fragment key={msg.id}>
-              <MessageBubble msg={msg} index={i} oaTitle={oaTitle} />
-              {/* メッセージ QR: このメッセージがアクティブ QR メッセージのとき直下に描画 */}
-              {allShown && msg.id === activeQrMsgId && activeQrItems && (
-                <QrButtons items={activeQrItems} onTap={onQrTap} loading={loading} />
-              )}
-            </Fragment>
+            <MessageBubble key={msg.id} msg={msg} index={i} oaTitle={oaTitle} />
           ))}
           {/* target_message_id / hint で追加されたメッセージ */}
           {allShown && extraMessages.map((msg, i) => (
-            <Fragment key={`extra-${msg.id}-${i}`}>
-              <MessageBubble msg={msg} index={phase.messages.length + i} oaTitle={oaTitle} />
-              {msg.id === activeQrMsgId && activeQrItems && (
-                <QrButtons items={activeQrItems} onTap={onQrTap} loading={loading} />
-              )}
-            </Fragment>
+            <MessageBubble key={`extra-${msg.id}-${i}`} msg={msg} index={phase.messages.length + i} oaTitle={oaTitle} />
           ))}
           {/* ユーザーが送信したテキスト */}
           {allShown && sentMessages.map((text, i) => (
             <UserMessageBubble key={`sent-${i}`} text={text} />
           ))}
+          {/* QR — 表示中の最後のメッセージに紐づくものを1セットのみ、全メッセージ表示後に描画 */}
+          {allShown && activeQrItems && (
+            <QrButtons items={activeQrItems} onTap={onQrTap} loading={loading} />
+          )}
           {/* 遷移 QR — message QR が非アクティブのとき、最後のメッセージ直下にインライン表示 */}
           {allShown && !activeQrItems?.length && phase.transitions !== null && (
             phase.transitions.length === 0 ? (
