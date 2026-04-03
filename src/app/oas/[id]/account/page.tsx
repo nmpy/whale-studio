@@ -1,15 +1,14 @@
 "use client";
 
 // src/app/oas/[id]/account/page.tsx
-// GET /api/oas/:id   → フォームプリフィル
-// PUT /api/oas/:id   → アカウント情報 + LINE接続情報の更新
-// PATCH /api/works/:id → あいさつメッセージ更新
+// GET /api/oas/:id → フォームプリフィル
+// PUT /api/oas/:id → アカウント情報 + LINE接続情報の更新
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Breadcrumb } from "@/components/Breadcrumb";
-import { oaApi, workApi, getDevToken } from "@/lib/api-client";
+import { oaApi, getDevToken } from "@/lib/api-client";
 import { MaskedField } from "@/components/MaskedField";
 import { useToast } from "@/components/Toast";
 import type { PublishStatus } from "@/types";
@@ -42,19 +41,9 @@ export default function OaAccountPage() {
   const [errors, setErrors]           = useState<Record<string, string[]>>({});
   const [submitting, setSubmitting]   = useState(false);
 
-  // ── あいさつメッセージ ──
-  const [primaryWorkId, setPrimaryWorkId]   = useState<string | null>(null);
-  const [welcomeMsg, setWelcomeMsg]         = useState<string>("");
-  const [welcomeOriginal, setWelcomeOriginal] = useState<string>("");
-  const [savingWelcome, setSavingWelcome]   = useState(false);
-
   useEffect(() => {
-    const token = getDevToken();
-    Promise.all([
-      oaApi.get(token, oaId),
-      workApi.list(token, oaId),
-    ])
-      .then(([oa, works]) => {
+    oaApi.get(getDevToken(), oaId)
+      .then((oa) => {
         setOaTitle(oa.title);
         setForm({
           title:                oa.title,
@@ -64,14 +53,6 @@ export default function OaAccountPage() {
           channel_access_token: oa.channel_access_token,
           publish_status:       oa.publish_status,
         });
-        // 1OA=1作品想定。先頭の作品をプライマリとして扱う
-        const primary = works[0] ?? null;
-        if (primary) {
-          setPrimaryWorkId(primary.id);
-          const wm = primary.welcome_message ?? "";
-          setWelcomeMsg(wm);
-          setWelcomeOriginal(wm);
-        }
       })
       .catch((e) => setLoadError(e instanceof Error ? e.message : "読み込みに失敗しました"));
   }, [oaId]);
@@ -108,23 +89,6 @@ export default function OaAccountPage() {
       showToast(err instanceof Error ? err.message : "保存に失敗しました", "error");
     } finally {
       setSubmitting(false);
-    }
-  }
-
-  async function handleSaveWelcome() {
-    if (!primaryWorkId) return;
-    setSavingWelcome(true);
-    try {
-      await workApi.update(getDevToken(), primaryWorkId, {
-        welcome_message: welcomeMsg.trim() || null,
-      });
-      const saved = welcomeMsg.trim();
-      setWelcomeOriginal(saved);
-      showToast("あいさつメッセージを保存しました", "success");
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : "保存に失敗しました", "error");
-    } finally {
-      setSavingWelcome(false);
     }
   }
 
@@ -170,8 +134,6 @@ export default function OaAccountPage() {
       </>
     );
   }
-
-  const welcomeDirty = welcomeMsg !== welcomeOriginal;
 
   return (
     <>
@@ -303,98 +265,6 @@ export default function OaAccountPage() {
           </div>
 
         </form>
-      </div>
-
-      {/* ══ あいさつメッセージ ══ */}
-      <div
-        id="welcome-message"
-        className="card"
-        style={{ maxWidth: 560, marginTop: 24 }}
-      >
-        {/* ヘッダー */}
-        <div style={{
-          display: "flex", alignItems: "center", gap: 10, marginBottom: 4,
-        }}>
-          <span style={{ fontWeight: 600, fontSize: 15, color: "#111827" }}>
-            あいさつメッセージ
-          </span>
-          {welcomeOriginal.trim() ? (
-            <span style={{
-              fontSize: 11, fontWeight: 600, color: "#16a34a",
-              background: "#dcfce7", padding: "1px 7px", borderRadius: 10,
-            }}>
-              設定済み
-            </span>
-          ) : (
-            <span style={{
-              fontSize: 11, color: "#6b7280",
-              background: "#f3f4f6", padding: "1px 7px", borderRadius: 10,
-            }}>
-              未設定
-            </span>
-          )}
-        </div>
-
-        <p style={{ fontSize: 12, color: "#6b7280", marginBottom: 14, lineHeight: 1.7 }}>
-          友だち追加時や謎解き未開始状態で話しかけたときに送信されるメッセージです。
-          このアカウント全体で共通して使われます。
-        </p>
-
-        <div className="alert alert-info" style={{ marginBottom: 16 }}>
-          <strong>💡 書き方のヒント</strong>
-          <ul style={{ margin: "4px 0 0", paddingLeft: 18, fontSize: 12, lineHeight: 1.8 }}>
-            <li>世界観の説明＋「はじめる」と送ると開始できる旨の案内が効果的です。</li>
-            <li>2〜3 文の短いテキストが読みやすいです。</li>
-            <li>空白で保存すると「未設定」に戻り、システムのデフォルト文が使われます。</li>
-          </ul>
-        </div>
-
-        {primaryWorkId ? (
-          <>
-            <div className="form-group" style={{ marginBottom: 14 }}>
-              <label htmlFor="welcome-msg">あいさつ文（最大 1000 文字）</label>
-              <textarea
-                id="welcome-msg"
-                value={welcomeMsg}
-                onChange={(e) => setWelcomeMsg(e.target.value)}
-                maxLength={1000}
-                rows={5}
-                placeholder={"例:\nようこそ、謎の館へ。\nあなたを待っていました……\n\n準備ができたら「はじめる」と送ってください。"}
-              />
-              <p style={{ fontSize: 11, color: "#9ca3af", marginTop: 4 }}>
-                {welcomeMsg.length} / 1000 文字
-              </p>
-            </div>
-
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-              {welcomeDirty && (
-                <button
-                  type="button"
-                  className="btn btn-ghost"
-                  onClick={() => setWelcomeMsg(welcomeOriginal)}
-                >
-                  変更を元に戻す
-                </button>
-              )}
-              <button
-                type="button"
-                className="btn btn-primary"
-                onClick={handleSaveWelcome}
-                disabled={savingWelcome || !welcomeDirty}
-              >
-                {savingWelcome && <span className="spinner" />}
-                {savingWelcome ? "保存中..." : "あいさつメッセージを保存"}
-              </button>
-            </div>
-          </>
-        ) : (
-          <div style={{
-            padding: "16px", background: "#f9fafb", borderRadius: 8,
-            fontSize: 13, color: "#6b7280", textAlign: "center",
-          }}>
-            作品が作成されると、ここであいさつメッセージを設定できます。
-          </div>
-        )}
       </div>
     </>
   );

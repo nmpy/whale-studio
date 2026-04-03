@@ -459,22 +459,30 @@ export function buildPhaseMessages(
     // 遷移未設定 — β: システム文言を出さずメッセージのみ表示
     // （シナリオ制作中の場合でも没入感を損なわないよう何も追加しない）
   } else {
-    // 遷移 quickReply を、個別 quickReply が未設定の最後のメッセージ（型不問）に付与
-    const transitionQr = buildQuickReply(phase.transitions.map((t) => t.label));
+    // LINE は最後のメッセージの quickReply のみ表示する仕様のため、
+    // すでに最後のメッセージにユーザー設定の quickReply がある場合は
+    // 遷移 quickReply を追加しない（ユーザー設定 QR が優先される）。
+    const lastMsg = messages.length > 0
+      ? (messages[messages.length - 1] as { quickReply?: LineQuickReply })
+      : null;
 
-    let attached = false;
-    for (let i = messages.length - 1; i >= 0; i--) {
-      const m = messages[i] as { quickReply?: LineQuickReply };
-      if (!m.quickReply) {
-        m.quickReply = transitionQr;
-        attached = true;
-        break;
+    if (!lastMsg?.quickReply) {
+      // 遷移 quickReply を、個別 quickReply が未設定の最後のメッセージ（型不問）に付与
+      const transitionQr = buildQuickReply(phase.transitions.map((t) => t.label));
+
+      let attached = false;
+      for (let i = messages.length - 1; i >= 0; i--) {
+        const m = messages[i] as { quickReply?: LineQuickReply };
+        if (!m.quickReply) {
+          m.quickReply = transitionQr;
+          attached = true;
+          break;
+        }
       }
-    }
-    // 全メッセージに個別 quickReply が設定済み or メッセージが 0 件の場合は
-    // システム送信者でナビを追加
-    if (!attached) {
-      messages.push({ type: "text", text: "続きを選んでください。", quickReply: transitionQr, sender: opts.systemSender });
+      // メッセージが 0 件の場合はシステム送信者でナビを追加
+      if (!attached) {
+        messages.push({ type: "text", text: "続きを選んでください。", quickReply: transitionQr, sender: opts.systemSender });
+      }
     }
   }
 
@@ -568,5 +576,21 @@ export function buildKeywordMessages(
     }
   }
 
-  return messages.slice(0, LINE_MSG_MAX);
+  // LINE は最後のメッセージの quickReply のみ表示する仕様のため、
+  // 中間メッセージに quickReply が設定されていたら最後のメッセージに移動する。
+  const sliced = messages.slice(0, LINE_MSG_MAX);
+  if (sliced.length > 1) {
+    const lastMsg = sliced[sliced.length - 1] as { quickReply?: LineQuickReply };
+    if (!lastMsg.quickReply) {
+      for (let i = sliced.length - 2; i >= 0; i--) {
+        const m = sliced[i] as { quickReply?: LineQuickReply };
+        if (m.quickReply) {
+          lastMsg.quickReply = m.quickReply;
+          delete m.quickReply;
+          break;
+        }
+      }
+    }
+  }
+  return sliced;
 }
