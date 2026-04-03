@@ -1236,10 +1236,31 @@ function PreviewPanel({ form, characters, riddles }: PreviewPanelProps) {
       );
     }
     switch (form.message_type) {
-      case "text":
-        return form.body
-          ? <span style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{form.body}</span>
-          : <span style={{ color: "#aaa", fontStyle: "italic" }}>テキストを入力してください</span>;
+      case "text": {
+        if (!form.body) {
+          return <span style={{ color: "#aaa", fontStyle: "italic" }}>テキストを入力してください</span>;
+        }
+        const PLACEHOLDER_MAP: Record<string, string> = {
+          "{{user_name}}":    "友だちの表示名",
+          "{{account_name}}": "アカウント名",
+        };
+        const parts = form.body.split(/({{user_name}}|{{account_name}})/g);
+        return (
+          <span style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+            {parts.map((part, i) =>
+              PLACEHOLDER_MAP[part] ? (
+                <span key={i} style={{
+                  display: "inline-block", fontSize: 11, fontWeight: 700,
+                  padding: "1px 7px", borderRadius: 12, margin: "0 1px",
+                  background: "#E6F7ED", color: "#059669", border: "1px solid #06C755",
+                }}>
+                  {PLACEHOLDER_MAP[part]}
+                </span>
+              ) : part
+            )}
+          </span>
+        );
+      }
       case "image":
         return form.asset_url ? (
           // eslint-disable-next-line @next/next/no-img-element
@@ -1435,6 +1456,7 @@ export function MessageForm({
 }: MessageFormProps) {
   const [form, setForm]       = useState<MessageFormState>(initialForm);
   const [error, setError]     = useState<string | null>(null);
+  const bodyTextareaRef       = useRef<HTMLTextAreaElement>(null);
 
   const isPuzzle = form.kind === "puzzle";
 
@@ -1465,6 +1487,23 @@ export function MessageForm({
 
   function set<K extends keyof MessageFormState>(k: K, v: MessageFormState[K]) {
     setForm((prev) => ({ ...prev, [k]: v }));
+  }
+
+  function insertAtCursor(placeholder: string) {
+    const el = bodyTextareaRef.current;
+    if (!el) {
+      set("body", form.body + placeholder);
+      return;
+    }
+    const start = el.selectionStart ?? form.body.length;
+    const end   = el.selectionEnd   ?? form.body.length;
+    const next  = form.body.slice(0, start) + placeholder + form.body.slice(end);
+    set("body", next);
+    // Restore cursor after React re-render
+    requestAnimationFrame(() => {
+      el.focus();
+      el.setSelectionRange(start + placeholder.length, start + placeholder.length);
+    });
   }
 
   // ── カルーセルカード操作 ────────────────────────────────
@@ -2010,6 +2049,7 @@ export function MessageForm({
                   本文 <span style={{ color: "#dc2626" }}>*</span>
                 </label>
                 <textarea
+                  ref={bodyTextareaRef}
                   id="body"
                   className="form-input"
                   style={{ minHeight: 100, resize: "vertical" }}
@@ -2018,8 +2058,27 @@ export function MessageForm({
                   placeholder="送信するテキストを入力してください"
                   maxLength={5000}
                 />
-                <div style={{ ...hintText, textAlign: "right" }}>
-                  {form.body.length} / 5000
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 4 }}>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    {[
+                      { label: "友だちの表示名", placeholder: "{{user_name}}" },
+                      { label: "アカウント名",   placeholder: "{{account_name}}" },
+                    ].map(({ label, placeholder }) => (
+                      <button
+                        key={placeholder}
+                        type="button"
+                        onClick={() => insertAtCursor(placeholder)}
+                        style={{
+                          fontSize: 12, padding: "2px 10px", borderRadius: 20,
+                          border: "1px solid #06C755", background: "#E6F7ED",
+                          color: "#059669", cursor: "pointer", fontWeight: 500,
+                        }}
+                      >
+                        + {label}
+                      </button>
+                    ))}
+                  </div>
+                  <div style={{ ...hintText }}>{form.body.length} / 5000</div>
                 </div>
               </div>
             )}
