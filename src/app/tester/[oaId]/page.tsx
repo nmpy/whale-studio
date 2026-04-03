@@ -2,13 +2,7 @@
 
 // src/app/tester/[oaId]/page.tsx
 //
-// テスターポータル — 指定 OA の作品リストのみ表示。
-//
-// 制限事項（β版）:
-//   - OA 追加ボタンなし
-//   - OA 切り替えなし
-//   - 削除ボタンなし
-//   - 表示データはこの oaId の作品のみ
+// テスターポータル — アカウントリスト形式で1件のOAを表示。
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
@@ -16,130 +10,41 @@ import Link from "next/link";
 import { oaApi, workApi, friendAddApi, getDevToken, type WorkListItem } from "@/lib/api-client";
 import type { FriendAddSettings } from "@/types";
 
-const STATUS_META: Record<string, { label: string; color: string; bg: string; dot: string }> = {
-  draft:  { label: "下書き", color: "#6b7280", bg: "#f3f4f6", dot: "#9ca3af" },
-  active: { label: "公開中", color: "#166534", bg: "#dcfce7", dot: "#22c55e" },
-  paused: { label: "停止中", color: "#92400e", bg: "#fef3c7", dot: "#f59e0b" },
+const STATUS_LABEL: Record<string, string> = {
+  draft:  "未設定",
+  active: "公開中",
+  paused: "停止中",
 };
 
-function formatDate(iso: string) {
+const STATUS_BADGE: Record<string, { color: string; bg: string }> = {
+  draft:  { color: "#6b7280", bg: "#f3f4f6" },
+  active: { color: "#166534", bg: "#dcfce7" },
+  paused: { color: "#92400e", bg: "#fef3c7" },
+};
+
+function formatDate(iso: string): string {
   const d = new Date(iso);
   return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}`;
 }
 
-/* ── スケルトン ─────────────────────────────────────────────── */
-function SkeletonCard() {
+/* ── スケルトン行 ─────────────────────────────────────────────── */
+function SkeletonRow() {
   return (
-    <div style={{
-      background: "var(--surface)",
-      border: "1px solid var(--border-light)",
-      borderRadius: "var(--radius-md)",
-      padding: "20px 22px",
-    }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
-        <div className="skeleton" style={{ width: 56, height: 24, borderRadius: 12 }} />
-        <div className="skeleton" style={{ width: 180, height: 18, flex: 1 }} />
-        <div className="skeleton" style={{ width: 72, height: 30, borderRadius: 6 }} />
-      </div>
-      <div style={{ display: "flex", gap: 8 }}>
-        {[80, 70, 90, 90].map((w, i) => (
-          <div key={i} className="skeleton" style={{ width: w, height: 24, borderRadius: 12 }} />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-/* ── 作品カード ─────────────────────────────────────────────── */
-function WorkCard({ work, oaId }: { work: WorkListItem; oaId: string }) {
-  const [hovered, setHovered] = useState(false);
-  const st = STATUS_META[work.publish_status] ?? STATUS_META.draft;
-
-  return (
-    <div
-      style={{
-        background: "var(--surface)",
-        border: `1px solid ${hovered ? "var(--gray-300)" : "var(--border-light)"}`,
-        borderRadius: "var(--radius-md)",
-        padding: "20px 22px",
-        boxShadow: hovered ? "var(--shadow-md)" : "var(--shadow-xs)",
-        transition: "border-color 0.15s, box-shadow 0.15s",
-      }}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-    >
-      {/* ── ヘッダー行 ── */}
-      <div style={{ display: "flex", alignItems: "flex-start", gap: 12, marginBottom: 14 }}>
-        {/* 状態バッジ */}
-        <span style={{
-          display: "inline-flex", alignItems: "center", gap: 5,
-          fontSize: 11, fontWeight: 700,
-          color: st.color, background: st.bg,
-          padding: "3px 9px", borderRadius: "var(--radius-full)",
-          whiteSpace: "nowrap", flexShrink: 0,
-        }}>
-          <span style={{ width: 6, height: 6, borderRadius: "50%", background: st.dot, display: "inline-block" }} />
-          {st.label}
-        </span>
-
-        {/* タイトル */}
-        <Link
-          href={`/tester/${oaId}/works/${work.id}`}
-          style={{
-            fontSize: 15, fontWeight: 700,
-            color: "var(--text-primary)",
-            textDecoration: "none",
-            flex: 1, lineHeight: 1.3,
-          }}
-        >
-          {work.title}
-        </Link>
-
-        {/* アクション */}
-        <div style={{ display: "flex", gap: 5, flexShrink: 0 }}>
-          <Link
-            href={`/tester/${oaId}/works/${work.id}`}
-            className="btn btn-primary"
-            style={{ padding: "5px 14px", fontSize: 12 }}
-          >
-            管理する
-          </Link>
-          <Link
-            href={`/playground?work_id=${work.id}&oa_id=${oaId}`}
-            className="btn btn-ghost"
-            style={{ padding: "5px 12px", fontSize: 12 }}
-          >
-            ▶ テスト
-          </Link>
+    <tr>
+      <td>
+        <div className="skeleton" style={{ width: 160, height: 13, marginBottom: 5 }} />
+        <div className="skeleton" style={{ width: 88, height: 10 }} />
+      </td>
+      <td><div className="skeleton" style={{ width: 48, height: 20, borderRadius: 10 }} /></td>
+      <td><div className="skeleton" style={{ width: 60, height: 13 }} /></td>
+      <td style={{ textAlign: "center" }}><div className="skeleton" style={{ width: 32, height: 16, margin: "0 auto" }} /></td>
+      <td><div className="skeleton" style={{ width: 66, height: 11 }} /></td>
+      <td>
+        <div style={{ display: "flex", gap: 4, justifyContent: "flex-end" }}>
+          <div className="skeleton" style={{ width: 54, height: 26, borderRadius: 6 }} />
         </div>
-      </div>
-
-      {/* ── メタ情報チップ ── */}
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-        {[
-          { icon: "👥", value: (work._count.userProgress ?? 0).toLocaleString(), label: "プレイヤー", highlight: (work._count.userProgress ?? 0) > 0 },
-          { icon: "🗂",  value: work._count.phases,                              label: "フェーズ",    highlight: false },
-          { icon: "💬", value: work._count.messages,                             label: "メッセージ",  highlight: false },
-          { icon: "🎭", value: work._count.characters,                           label: "キャラクター", highlight: false },
-        ].map((chip) => (
-          <span key={chip.label} style={{
-            display: "inline-flex", alignItems: "center", gap: 4,
-            fontSize: 11,
-            color:      chip.highlight ? "var(--color-info)"    : "var(--text-secondary)",
-            background: chip.highlight ? "#eff6ff"              : "var(--gray-50)",
-            border: `1px solid ${chip.highlight ? "#bfdbfe" : "var(--border-light)"}`,
-            padding: "3px 10px", borderRadius: "var(--radius-full)",
-          }}>
-            <span>{chip.icon}</span>
-            <strong style={{ fontWeight: 700 }}>{chip.value}</strong>
-            <span style={{ color: "var(--text-muted)" }}>{chip.label}</span>
-          </span>
-        ))}
-        <span style={{ marginLeft: "auto", fontSize: 11, color: "var(--text-muted)", alignSelf: "center" }}>
-          更新: {formatDate(work.updated_at)}
-        </span>
-      </div>
-    </div>
+      </td>
+    </tr>
   );
 }
 
@@ -148,21 +53,21 @@ export default function TesterHomePage() {
   const params = useParams<{ oaId: string }>();
   const oaId   = params.oaId;
 
-  const [oaTitle, setOaTitle]         = useState("");
-  const [works, setWorks]             = useState<WorkListItem[]>([]);
-  const [friendAdd, setFriendAdd]     = useState<FriendAddSettings | null>(null);
-  const [loading, setLoading]         = useState(true);
-  const [error, setError]             = useState<string | null>(null);
+  const [oa, setOa]               = useState<Awaited<ReturnType<typeof oaApi.get>> | null>(null);
+  const [works, setWorks]         = useState<WorkListItem[]>([]);
+  const [friendAdd, setFriendAdd] = useState<FriendAddSettings | null>(null);
+  const [loading, setLoading]     = useState(true);
+  const [error, setError]         = useState<string | null>(null);
 
   useEffect(() => {
     const token = getDevToken();
     Promise.all([
       oaApi.get(token, oaId),
       workApi.list(token, oaId),
-      friendAddApi.get(token, oaId).catch(() => null),   // 未登録でも 404 → null
+      friendAddApi.get(token, oaId).catch(() => null),
     ])
-      .then(([oa, list, fa]) => {
-        setOaTitle(oa.title);
+      .then(([oaData, list, fa]) => {
+        setOa(oaData);
         setWorks(list);
         setFriendAdd(fa);
       })
@@ -170,8 +75,10 @@ export default function TesterHomePage() {
       .finally(() => setLoading(false));
   }, [oaId]);
 
-  const sorted      = [...works].sort((a, b) => a.sort_order - b.sort_order);
-  const activeCount = works.filter((w) => w.publish_status === "active").length;
+  const totalPlayers = works.reduce((s, w) => s + (w._count.userProgress ?? 0), 0);
+  const activeCount  = works.filter((w) => w.publish_status === "active").length;
+
+  const badgeStyle = oa ? (STATUS_BADGE[oa.publish_status] ?? STATUS_BADGE.draft) : STATUS_BADGE.draft;
 
   return (
     <>
@@ -183,16 +90,14 @@ export default function TesterHomePage() {
         borderRadius: "var(--radius-md)",
         marginBottom: 20,
       }}>
-        {/* 1行目: モード表示 + アカウント名 */}
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
           <span style={{ fontSize: 15 }}>🔍</span>
           <span style={{ fontSize: 13, fontWeight: 700, color: "#92400e" }}>テスターモード</span>
           <span style={{ fontSize: 13, color: "#92400e" }}>—</span>
           <span style={{ fontSize: 13, color: "#92400e" }}>
-            このポータルは <strong>{oaTitle || oaId}</strong> の確認・テスト専用です。
+            このポータルは確認・テスト専用です。編集・削除はできません。
           </span>
         </div>
-        {/* 2行目: β版注意文 */}
         <div style={{
           display: "flex", flexDirection: "column", gap: 2,
           paddingLeft: 23,
@@ -207,78 +112,138 @@ export default function TesterHomePage() {
       {/* ── ページヘッダー ── */}
       <div className="page-header">
         <div>
-          {/* パンくずなし: OA リストへの導線を意図的に出さない */}
-          <h2 style={{ marginBottom: 4 }}>
-            {loading ? "読み込み中..." : oaTitle || oaId}
-          </h2>
+          <h2>アカウントリスト</h2>
           <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 3 }}>
-            作品リスト（テスター専用ビュー）
+            テスター専用ビュー — 閲覧・テスト実行のみ可能です
           </p>
         </div>
-        {/* OA 追加・設定ボタンは意図的に非表示 */}
       </div>
 
+      {/* ── エラー ── */}
       {error && (
         <div className="alert alert-error" style={{ marginBottom: 16 }}>{error}</div>
       )}
 
-      {/* ── 案内文 ── */}
-      {!loading && (
-        <p style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 16, lineHeight: 1.7 }}>
-          作品一覧から実際に作成・編集をお試しいただけます。
-        </p>
-      )}
+      {/* ── アカウントテーブル（1件） ── */}
+      <div className="card" style={{ padding: 0 }}>
+        <div className="table-wrap">
+          <table className="table-compact" style={{ tableLayout: "fixed", width: "100%" }}>
+            <colgroup>
+              <col style={{ width: "28%" }} />
+              <col style={{ width: "60px" }} />
+              <col style={{ width: "16%" }} />
+              <col style={{ width: "80px" }} />
+              <col style={{ width: "80px" }} />
+              <col style={{ width: "120px" }} />
+            </colgroup>
+            <thead>
+              <tr>
+                <th>アカウント名</th>
+                <th>状態</th>
+                <th>作品</th>
+                <th style={{ textAlign: "center" }}>プレイヤー数</th>
+                <th>更新日</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <SkeletonRow />
+              ) : oa ? (
+                <tr>
+                  {/* ── アカウント名 ── */}
+                  <td style={{ minWidth: 0 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 5, minWidth: 0 }}>
+                      <Link
+                        href={`/tester/${oaId}/works`}
+                        title={oa.title}
+                        style={{
+                          fontWeight: 700, fontSize: 13,
+                          color: "var(--text-primary)",
+                          textDecoration: "none",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                          minWidth: 0,
+                        }}
+                      >
+                        {oa.title}
+                      </Link>
+                    </div>
+                    {oa.description && (
+                      <div
+                        title={oa.description}
+                        style={{
+                          fontSize: 11, color: "var(--text-muted)", marginTop: 2,
+                          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                        }}
+                      >
+                        {oa.description}
+                      </div>
+                    )}
+                  </td>
 
-      {/* ── 統計サマリー ── */}
-      {!loading && works.length > 0 && (
-        <div style={{
-          display: "flex", gap: 10, marginBottom: 20,
-          padding: "14px 18px",
-          background: "var(--surface)",
-          border: "1px solid var(--border-light)",
-          borderRadius: "var(--radius-md)",
-          boxShadow: "var(--shadow-xs)",
-        }}>
-          {[
-            { label: "総作品数",     value: works.length,                                                                            color: "var(--text-primary)" },
-            { label: "公開中",       value: activeCount,                                                                              color: "var(--color-success)" },
-            { label: "総プレイヤー数", value: works.reduce((s, w) => s + (w._count.userProgress ?? 0), 0).toLocaleString(), color: "var(--color-info)" },
-          ].map((s) => (
-            <div key={s.label} style={{
-              display: "flex", alignItems: "center", gap: 6,
-              paddingRight: 18, borderRight: "1px solid var(--border-light)",
-            }}>
-              <span style={{ fontSize: 18, fontWeight: 800, color: s.color }}>{s.value}</span>
-              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{s.label}</span>
-            </div>
-          ))}
-        </div>
-      )}
+                  {/* ── 状態バッジ ── */}
+                  <td>
+                    <span style={{
+                      display: "inline-flex", alignItems: "center",
+                      fontSize: 11, fontWeight: 700,
+                      color: badgeStyle.color, background: badgeStyle.bg,
+                      padding: "2px 8px", borderRadius: "var(--radius-full)",
+                      whiteSpace: "nowrap",
+                    }}>
+                      {STATUS_LABEL[oa.publish_status] ?? oa.publish_status}
+                    </span>
+                  </td>
 
-      {/* ── コンテンツ ── */}
-      {loading ? (
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <SkeletonCard />
-          <SkeletonCard />
+                  {/* ── 作品 ── */}
+                  <td>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)" }}>
+                      {works.length}
+                    </span>
+                    <span style={{ fontSize: 11, color: "var(--text-muted)", marginLeft: 3 }}>
+                      件（公開中 {activeCount}）
+                    </span>
+                  </td>
+
+                  {/* ── プレイヤー数 ── */}
+                  <td style={{ textAlign: "center" }}>
+                    <span style={{
+                      fontWeight: 800, fontSize: 14,
+                      color: totalPlayers > 0 ? "var(--color-info)" : "var(--text-disabled)",
+                    }}>
+                      {totalPlayers.toLocaleString()}
+                    </span>
+                  </td>
+
+                  {/* ── 更新日 ── */}
+                  <td>
+                    <div style={{ fontSize: 11, color: "var(--text-secondary)", whiteSpace: "nowrap" }}>
+                      {formatDate(oa.updated_at ?? oa.created_at)}
+                    </div>
+                    <div style={{ fontSize: 10, color: "var(--text-muted)", whiteSpace: "nowrap", marginTop: 1 }}>
+                      {formatDate(oa.created_at)} 作成
+                    </div>
+                  </td>
+
+                  {/* ── アクション ── */}
+                  <td style={{ paddingRight: 12 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 4, justifyContent: "flex-end" }}>
+                      <Link
+                        href={`/tester/${oaId}/works`}
+                        className="btn btn-primary"
+                        style={{ padding: "4px 10px", fontSize: 11, whiteSpace: "nowrap" }}
+                      >
+                        作品管理
+                      </Link>
+                    </div>
+                  </td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
         </div>
-      ) : sorted.length === 0 ? (
-        <div className="card">
-          <div className="empty-state">
-            <div className="empty-state-icon">🎭</div>
-            <p className="empty-state-title">作品がまだありません</p>
-            <p className="empty-state-desc">このアカウントにはまだ作品が登録されていません。</p>
-          </div>
-        </div>
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          {sorted.map((w) => (
-            <WorkCard key={w.id} work={w} oaId={oaId} />
-          ))}
-          <div style={{ textAlign: "right", fontSize: 11, color: "var(--text-muted)", paddingTop: 4 }}>
-            全 {works.length} 件
-          </div>
-        </div>
-      )}
+      </div>
 
       {/* ── 友だち追加セクション ── */}
       {!loading && friendAdd?.add_url && (
