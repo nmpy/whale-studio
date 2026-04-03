@@ -1558,6 +1558,55 @@ export function MessageForm({
           )}
 
           {/* ════════════════════════════════════════
+              カテゴリ選択: メッセージ / 謎
+          ════════════════════════════════════════ */}
+          <div className="card" style={{ marginBottom: 16 }}>
+            <div style={sectionHeader}>送るものの種類</div>
+            <div style={{ display: "flex", gap: 12 }}>
+              {([
+                { value: "normal" as const, icon: "💬", label: "メッセージを送る",  desc: "テキストや画像など、通常の会話メッセージ" },
+                { value: "puzzle" as const, icon: "🧩", label: "謎・問題を出す", desc: "回答やヒントを含むインタラクティブなコンテンツ" },
+              ] as const).map((cat) => {
+                const isActive = cat.value === "puzzle" ? isPuzzle : !isPuzzle;
+                return (
+                  <button
+                    key={cat.value}
+                    type="button"
+                    onClick={() => {
+                      if (cat.value === "puzzle" && !isPuzzle) {
+                        set("kind", "puzzle");
+                      } else if (cat.value === "normal" && isPuzzle) {
+                        set("kind", "normal");
+                      }
+                    }}
+                    style={{
+                      flex: 1,
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      gap: 6,
+                      padding: "16px 12px",
+                      borderRadius: 10,
+                      cursor: "pointer",
+                      border: isActive ? "2px solid #06C755" : "2px solid #e5e7eb",
+                      background: isActive ? "#E6F7ED" : "#fff",
+                      transition: "all 0.15s",
+                    }}
+                  >
+                    <span style={{ fontSize: 28 }}>{cat.icon}</span>
+                    <span style={{ fontSize: 14, fontWeight: 700, color: isActive ? "#06C755" : "#374151" }}>
+                      {cat.label}
+                    </span>
+                    <span style={{ fontSize: 11, color: isActive ? "#059669" : "#6b7280", textAlign: "center" }}>
+                      {cat.desc}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* ════════════════════════════════════════
               セクション 1: トリガー設定
           ════════════════════════════════════════ */}
           <div className="card" style={{ marginBottom: 16 }}>

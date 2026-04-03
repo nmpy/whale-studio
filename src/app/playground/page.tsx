@@ -14,6 +14,30 @@ const PHASE_TYPE_META: Record<PhaseType, { label: string; color: string; bg: str
 };
 
 // ────────────────────────────────────────────────
+// チャット履歴エントリ型
+// ────────────────────────────────────────────────
+type ChatEntry =
+  | { kind: "bot";      msg: RuntimePhaseMessage; oaTitle: string }
+  | { kind: "user";     text: string }
+  | { kind: "phase-sep"; name: string; phaseType: PhaseType };
+
+/** 現在フェーズ + extraMessages + sentMessages をログエントリに変換する */
+function buildPhaseSnapshot(
+  phase:         RuntimeState["phase"] & {},
+  extras:        RuntimePhaseMessage[],
+  sents:         string[],
+  oaTitle:       string,
+): ChatEntry[] {
+  const entries: ChatEntry[] = [
+    { kind: "phase-sep", name: phase.name, phaseType: phase.phase_type },
+    ...phase.messages.map((msg): ChatEntry => ({ kind: "bot", msg, oaTitle })),
+    ...extras.map((msg): ChatEntry => ({ kind: "bot", msg, oaTitle })),
+    ...sents.map((text): ChatEntry => ({ kind: "user", text })),
+  ];
+  return entries;
+}
+
+// ────────────────────────────────────────────────
 // エントリポイント（Suspense ラッパー）
 // ────────────────────────────────────────────────
 export default function PlaygroundPage() {
@@ -46,17 +70,14 @@ function PlaygroundInner() {
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState<string | null>(null);
 
-  // ── LINE 演出用 ──
-  const [showRead, setShowRead] = useState(false);
-
   // ── QR タップで追加表示されるメッセージ（target_message_id 用） ──
   const [extraMessages, setExtraMessages] = useState<RuntimePhaseMessage[]>([]);
 
   // ── ユーザーが送信したテキスト（チャットに表示） ──
   const [sentMessages, setSentMessages] = useState<string[]>([]);
 
-  // ── 消費済み QR メッセージ ID（タップ済みの QR を再表示しないため） ──
-  const [consumedQrMsgIds, setConsumedQrMsgIds] = useState<Set<string>>(new Set());
+  // ── フェーズをまたいで蓄積するチャット履歴 ──
+  const [chatLog, setChatLog] = useState<ChatEntry[]>([]);
 
   // ── 操作ログ ──
   const [log, setLog] = useState<Array<{ type: "action" | "system" | "error"; text: string }>>([]);
@@ -112,7 +133,7 @@ function PlaygroundInner() {
       setMessage(null);
       setExtraMessages([]);
       setSentMessages([]);
-      setConsumedQrMsgIds(new Set());
+      setChatLog([]);
     } catch (e) {
       setError(e instanceof Error ? e.message : "状態の取得に失敗しました");
     } finally {
@@ -135,7 +156,7 @@ function PlaygroundInner() {
       setState(s);
       setExtraMessages([]);
       setSentMessages([]);
-      setConsumedQrMsgIds(new Set());
+      setChatLog([]);
       addLog("system", `▶ シナリオ開始: 「${s.phase?.name ?? "（不明）"}」`);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "開始に失敗しました";
@@ -149,22 +170,30 @@ function PlaygroundInner() {
   // ── アクション: 遷移選択 ──────────────────────
   async function handleAdvance(transition: RuntimeTransition) {
     if (!selectedWorkId || !lineUserId.trim()) return;
-    setShowRead(true);  // 既読を表示
     setLoading(true);
     setError(null);
     setMessage(null);
     addLog("action", `→ 選択: 「${transition.label}」`);
+    // 現在フェーズをログに保存してから遷移
+    const snapOaTitle = oas.find((o) => o.id === selectedOaId)?.title ?? "";
+    const snapState   = state;
+    const snapExtra   = extraMessages;
+    const snapSent    = sentMessages;
     try {
       const result: RuntimeAdvanceResult = await runtimeApi.advance(getDevToken(), {
         line_user_id:   lineUserId.trim(),
         work_id:        selectedWorkId,
         transition_id:  transition.id,
       });
-      setShowRead(false);
+      if (snapState?.phase) {
+        setChatLog((prev) => [
+          ...prev,
+          ...buildPhaseSnapshot(snapState.phase!, snapExtra, snapSent, snapOaTitle),
+        ]);
+      }
       setState(result);
       setExtraMessages([]);
       setSentMessages([]);
-      setConsumedQrMsgIds(new Set());
       if (result._message) {
         setMessage(result._message);
         addLog("system", result._message);
@@ -172,13 +201,11 @@ function PlaygroundInner() {
       if (result.phase) {
         addLog("system", `📍 フェーズ: 「${result.phase.name}」（${PHASE_TYPE_META[result.phase.phase_type].label}）`);
       }
-      // フラグ更新をログに記録
       if (transition.set_flags && transition.set_flags !== "{}") {
         addLog("system", `🎌 フラグ更新: ${transition.set_flags}`);
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : "遷移に失敗しました";
-      setShowRead(false);
       setError(msg);
       addLog("error", `エラー: ${msg}`);
     } finally {
@@ -236,7 +263,6 @@ function PlaygroundInner() {
 
     // target_message_id: チェーンを辿ってチャットに追加（フェーズ変更なし）
     if (item.target_type === "message" && item.target_message_id) {
-      if (activeQrMsgId) setConsumedQrMsgIds((prev) => new Set([...prev, activeQrMsgId]));
       setLoading(true);
       try {
         const msgs = await runtimeApi.getMessage(getDevToken(), item.target_message_id);
@@ -255,18 +281,25 @@ function PlaygroundInner() {
 
     // target_phase_id: フェーズへ直接ジャンプ
     if (item.target_phase_id) {
-      if (activeQrMsgId) setConsumedQrMsgIds((prev) => new Set([...prev, activeQrMsgId]));
-      setShowRead(true);
       setLoading(true);
       setError(null);
       setMessage(null);
+      const snapOaTitle2 = oas.find((o) => o.id === selectedOaId)?.title ?? "";
+      const snapState2   = state;
+      const snapExtra2   = extraMessages;
+      const snapSent2    = sentMessages;
       try {
         const result: RuntimeAdvanceResult = await runtimeApi.advance(getDevToken(), {
           line_user_id:    lineUserId.trim(),
           work_id:         selectedWorkId,
           target_phase_id: item.target_phase_id,
         });
-        setShowRead(false);
+        if (snapState2?.phase) {
+          setChatLog((prev) => [
+            ...prev,
+            ...buildPhaseSnapshot(snapState2.phase!, snapExtra2, snapSent2, snapOaTitle2),
+          ]);
+        }
         setState(result);
         setExtraMessages([]);
         setSentMessages([]);
@@ -276,7 +309,6 @@ function PlaygroundInner() {
         }
       } catch (e) {
         const errMsg = e instanceof Error ? e.message : "遷移に失敗しました";
-        setShowRead(false);
         setError(errMsg);
         addLog("error", `エラー: ${errMsg}`);
       } finally {
@@ -286,31 +318,39 @@ function PlaygroundInner() {
     }
 
     // action="text" / "next" / "custom" → テキストとして advance
-    if (activeQrMsgId) setConsumedQrMsgIds((prev) => new Set([...prev, activeQrMsgId]));
     const text = item.value ?? item.label;
-    setShowRead(true);
     setLoading(true);
     setError(null);
     setMessage(null);
-    const prevPhaseIdQr = state?.phase?.id;
+    const prevPhaseIdQr  = state?.phase?.id;
+    const snapOaTitle3   = oas.find((o) => o.id === selectedOaId)?.title ?? "";
+    const snapState3     = state;
+    const snapExtra3     = extraMessages;
+    const snapSent3      = sentMessages;
     try {
       const result: RuntimeAdvanceResult = await runtimeApi.advance(getDevToken(), {
         line_user_id: lineUserId.trim(),
         work_id:      selectedWorkId,
         label:        text,
       });
-      setShowRead(false);
-      setState(result);
       if (result.phase?.id !== prevPhaseIdQr) {
+        if (snapState3?.phase) {
+          setChatLog((prev) => [
+            ...prev,
+            ...buildPhaseSnapshot(snapState3.phase!, snapExtra3, snapSent3, snapOaTitle3),
+          ]);
+        }
+        setState(result);
         setExtraMessages([]);
         setSentMessages([]);
-        setConsumedQrMsgIds(new Set());
-      } else if (result._response_messages && result._response_messages.length > 0) {
-        setExtraMessages((prev) => [...prev, ...result._response_messages!]);
-        const summary = result._response_messages.map((m) => m.body ?? "[非テキスト]").join(" → ");
-        addLog("system", `💬 応答: 「${summary}」`);
+      } else {
+        setState(result);
+        if (result._response_messages && result._response_messages.length > 0) {
+          setExtraMessages((prev) => [...prev, ...result._response_messages!]);
+          const summary = result._response_messages.map((m) => m.body ?? "[非テキスト]").join(" → ");
+          addLog("system", `💬 応答: 「${summary}」`);
+        }
       }
-      // _matched: false + response メッセージあり or QR アクティブ時はエラーメッセージを抑制
       const suppressMsg =
         result._matched === false &&
         (!!result._response_messages?.length || !!activeQrItems?.length);
@@ -320,7 +360,6 @@ function PlaygroundInner() {
       }
     } catch (e) {
       const errMsg = e instanceof Error ? e.message : "遷移に失敗しました";
-      setShowRead(false);
       setError(errMsg);
       addLog("error", `エラー: ${errMsg}`);
     } finally {
@@ -348,32 +387,40 @@ function PlaygroundInner() {
     // ユーザー吹き出しを即座に追加
     setSentMessages((prev) => [...prev, trimmed]);
     addLog("action", `✏️ テキスト送信: 「${trimmed}」`);
-    setShowRead(true);
     setLoading(true);
     setError(null);
     setMessage(null);
 
-    const prevPhaseId = state?.phase?.id;
+    const prevPhaseId  = state?.phase?.id;
+    const snapOaTitle4 = oas.find((o) => o.id === selectedOaId)?.title ?? "";
+    const snapState4   = state;
+    const snapExtra4   = extraMessages;
+    // sentMessages はこの時点では trimmed がまだ反映されていないため手動で追加
+    const snapSent4    = [...sentMessages, trimmed];
     try {
       const result: RuntimeAdvanceResult = await runtimeApi.advance(getDevToken(), {
         line_user_id: lineUserId.trim(),
         work_id:      selectedWorkId,
         label:        trimmed,
       });
-      setShowRead(false);
-      setState(result);
-      // フェーズが変わった場合はユーザー吹き出し・追加メッセージをクリア
       if (result.phase?.id !== prevPhaseId) {
+        if (snapState4?.phase) {
+          setChatLog((prev) => [
+            ...prev,
+            ...buildPhaseSnapshot(snapState4.phase!, snapExtra4, snapSent4, snapOaTitle4),
+          ]);
+        }
+        setState(result);
         setExtraMessages([]);
         setSentMessages([]);
-        setConsumedQrMsgIds(new Set());
-      } else if (result._response_messages && result._response_messages.length > 0) {
-        // 同一フェーズで response メッセージがあれば追加表示
-        setExtraMessages((prev) => [...prev, ...result._response_messages!]);
-        const summary = result._response_messages.map((m) => m.body ?? "[非テキスト]").join(" → ");
-        addLog("system", `💬 応答: 「${summary}」`);
+      } else {
+        setState(result);
+        if (result._response_messages && result._response_messages.length > 0) {
+          setExtraMessages((prev) => [...prev, ...result._response_messages!]);
+          const summary = result._response_messages.map((m) => m.body ?? "[非テキスト]").join(" → ");
+          addLog("system", `💬 応答: 「${summary}」`);
+        }
       }
-      // _matched: false + response メッセージあり or QR アクティブ時はエラーメッセージを抑制
       const suppressMsg =
         result._matched === false &&
         (!!result._response_messages?.length || !!activeQrItems?.length);
@@ -382,7 +429,6 @@ function PlaygroundInner() {
         addLog("system", `📍 フェーズ: 「${result.phase.name}」（${PHASE_TYPE_META[result.phase.phase_type].label}）`);
       }
     } catch (e) {
-      setShowRead(false);
       const errMsg = e instanceof Error ? e.message : "送信に失敗しました";
       setError(errMsg);
       addLog("error", `エラー: ${errMsg}`);
@@ -407,7 +453,7 @@ function PlaygroundInner() {
       setState(null);
       setExtraMessages([]);
       setSentMessages([]);
-      setConsumedQrMsgIds(new Set());
+      setChatLog([]);
       addLog("system", "🔄 進行状態をリセットしました");
     } catch (e) {
       setError(e instanceof Error ? e.message : "リセットに失敗しました");
@@ -425,7 +471,7 @@ function PlaygroundInner() {
     setLog([]);
     setExtraMessages([]);
     setSentMessages([]);
-    setConsumedQrMsgIds(new Set());
+    setChatLog([]);
   }
 
   const isStarted     = !!state?.progress;
@@ -436,22 +482,17 @@ function PlaygroundInner() {
   const currentPhase  = state?.phase;
   const selectedWork  = works.find((w) => w.id === selectedWorkId);
 
-  // 現在アクティブな QR（現在の入力待ちポイント）
-  //
-  // phase.messages と extraMessages を結合した全シーケンスを後ろから探索し、
-  // consumedQrMsgIds に含まれていない最後の QR メッセージを入力待ちとみなす。
+  // 現在アクティブな QR — 最後に届いたメッセージの quick_replies を使う。
+  // extraMessages があればその末尾、なければ phase.messages の末尾が入力待ち。
   const { activeQrItems, activeQrMsgId } = (() => {
     const empty = { activeQrItems: null as QuickReplyItem[] | null, activeQrMsgId: null as string | null };
     if (!state?.phase?.messages) return empty;
-    const all = [...state.phase.messages, ...extraMessages];
-    const last = [...all].reverse().find(
-      (m) => m.quick_replies && m.quick_replies.length > 0 && !consumedQrMsgIds.has(m.id)
-    );
-    if (!last?.quick_replies) return empty;
-    const items = last.quick_replies.filter((q) => q.enabled !== false);
-    return items.length > 0
-      ? { activeQrItems: items, activeQrMsgId: last.id }
-      : empty;
+    const lastMsg = extraMessages.length > 0
+      ? extraMessages[extraMessages.length - 1]
+      : state.phase.messages[state.phase.messages.length - 1];
+    if (!lastMsg?.quick_replies?.length) return empty;
+    const items = lastMsg.quick_replies.filter((q) => q.enabled !== false);
+    return items.length > 0 ? { activeQrItems: items, activeQrMsgId: lastMsg.id } : empty;
   })();
 
   return (
@@ -686,7 +727,6 @@ function PlaygroundInner() {
                 <PhasePanel
                   phase={currentPhase}
                   loading={loading}
-                  showRead={showRead}
                   onAdvance={handleAdvance}
                   onQrTap={handleQrTap}
                   extraMessages={extraMessages}
@@ -695,6 +735,7 @@ function PlaygroundInner() {
                   activeQrItems={activeQrItems}
                   activeQrMsgId={activeQrMsgId}
                   oaTitle={oas.find((o) => o.id === selectedOaId)?.title ?? ""}
+                  chatLog={chatLog}
                 />
               )}
 
@@ -857,12 +898,31 @@ function QrButtons({ items, onTap, loading }: {
 }
 
 // ────────────────────────────────────────────────
+// PhaseSeparator — フェーズ区切り（履歴表示用）
+// ────────────────────────────────────────────────
+function PhaseSeparator({ name, phaseType }: { name: string; phaseType: PhaseType }) {
+  const meta = PHASE_TYPE_META[phaseType];
+  return (
+    <div style={{ textAlign: "center", margin: "10px 0", fontSize: 11, color: "rgba(0,0,0,0.45)" }}>
+      <span style={{
+        background: "rgba(255,255,255,0.55)",
+        padding: "3px 12px",
+        borderRadius: 10,
+        border: "1px solid rgba(0,0,0,0.08)",
+        color: meta.color,
+      }}>
+        {meta.label} — {name}
+      </span>
+    </div>
+  );
+}
+
+// ────────────────────────────────────────────────
 // PhasePanel — 通常フェーズ表示
 // ────────────────────────────────────────────────
 interface PhasePanelProps {
   phase:          RuntimeState["phase"] & {};
   loading:        boolean;
-  showRead:       boolean;
   onAdvance:      (t: RuntimeTransition) => void;
   onQrTap:        (item: QuickReplyItem) => void;
   extraMessages:  RuntimePhaseMessage[];
@@ -871,9 +931,10 @@ interface PhasePanelProps {
   activeQrItems:  QuickReplyItem[] | null;
   activeQrMsgId:  string | null;
   oaTitle:        string;
+  chatLog:        ChatEntry[];
 }
 
-function PhasePanel({ phase, loading, showRead, onAdvance, onQrTap, extraMessages, sentMessages, onSendText, activeQrItems, activeQrMsgId, oaTitle }: PhasePanelProps) {
+function PhasePanel({ phase, loading, onAdvance, onQrTap, extraMessages, sentMessages, onSendText, activeQrItems, activeQrMsgId, oaTitle, chatLog }: PhasePanelProps) {
   const [inputText, setInputText] = useState("");
 
   // フェーズ変更時に入力欄をクリア
@@ -926,7 +987,7 @@ function PhasePanel({ phase, loading, showRead, onAdvance, onQrTap, extraMessage
   // 最新メッセージへスクロール
   useEffect(() => {
     chatBottomRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-  }, [visibleCount, isTyping]);
+  }, [visibleCount, isTyping, chatLog.length, extraMessages.length, sentMessages.length]);
 
   return (
     <div>
@@ -961,8 +1022,25 @@ function PhasePanel({ phase, loading, showRead, onAdvance, onQrTap, extraMessage
           </span>
         </div>
 
-        {/* メッセージエリア */}
-        <div style={{ background: "#c4dde3", padding: "14px 12px 18px", maxHeight: 420, overflowY: "auto" }}>
+        {/* メッセージエリア（固定高さ・内部スクロール） */}
+        <div style={{ background: "#c4dde3", padding: "14px 12px 18px", height: 520, overflowY: "auto" }}>
+          {/* フェーズをまたいだ履歴（静的・アニメーションなし） */}
+          {chatLog.map((entry, i) => {
+            if (entry.kind === "phase-sep") {
+              return <PhaseSeparator key={`sep-${i}`} name={entry.name} phaseType={entry.phaseType} />;
+            }
+            if (entry.kind === "bot") {
+              return <MessageBubble key={`log-${i}`} msg={entry.msg} index={i} oaTitle={entry.oaTitle} />;
+            }
+            if (entry.kind === "user") {
+              return <UserMessageBubble key={`log-user-${i}`} text={entry.text} />;
+            }
+            return null;
+          })}
+          {/* 現在フェーズ区切り（履歴がある場合のみ） */}
+          {chatLog.length > 0 && (
+            <PhaseSeparator name={phase.name} phaseType={phase.phase_type} />
+          )}
           {phase.description && (
             <div style={{
               textAlign: "center", marginBottom: 10,
@@ -997,13 +1075,9 @@ function PhasePanel({ phase, loading, showRead, onAdvance, onQrTap, extraMessage
               )}
             </Fragment>
           ))}
-          {/* ユーザーが送信したテキスト（最後の1件に既読を表示） */}
+          {/* ユーザーが送信したテキスト */}
           {allShown && sentMessages.map((text, i) => (
-            <UserMessageBubble
-              key={`sent-${i}`}
-              text={text}
-              showRead={i === sentMessages.length - 1}
-            />
+            <UserMessageBubble key={`sent-${i}`} text={text} />
           ))}
           {/* 遷移 QR — message QR が非アクティブのとき、最後のメッセージ直下にインライン表示 */}
           {allShown && !activeQrItems?.length && phase.transitions !== null && (
@@ -1414,21 +1488,14 @@ function ImageMessage({ url }: { url: string }) {
 // ────────────────────────────────────────────────
 // UserMessageBubble — ユーザー送信テキスト（右側吹き出し）
 // ────────────────────────────────────────────────
-function UserMessageBubble({ text, showRead }: { text: string; showRead?: boolean }) {
+function UserMessageBubble({ text }: { text: string }) {
   return (
     <div style={{
       display: "flex",
       justifyContent: "flex-end",
       alignItems: "flex-end",
-      gap: 4,
       marginBottom: 8,
     }}>
-      {/* 既読（ユーザー送信メッセージにのみ表示） */}
-      {showRead && (
-        <span style={{ fontSize: 10, color: "rgba(0,0,0,0.45)", flexShrink: 0, lineHeight: 1, paddingBottom: 2 }}>
-          既読
-        </span>
-      )}
       <div style={{
         background: "#06C755",
         color: "#fff",
