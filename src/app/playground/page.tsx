@@ -269,7 +269,11 @@ function PlaygroundInner() {
         const summary = result._response_messages.map((m) => m.body ?? "[非テキスト]").join(" → ");
         addLog("system", `💬 応答: 「${summary}」`);
       }
-      if (result._message) { setMessage(result._message); addLog("system", result._message); }
+      // _matched: false + response メッセージあり or QR アクティブ時はエラーメッセージを抑制
+      const suppressMsg =
+        result._matched === false &&
+        (!!result._response_messages?.length || !!activeQrItems?.length);
+      if (result._message && !suppressMsg) { setMessage(result._message); addLog("system", result._message); }
       if (result.phase) {
         addLog("system", `📍 フェーズ: 「${result.phase.name}」（${PHASE_TYPE_META[result.phase.phase_type].label}）`);
       }
@@ -287,6 +291,18 @@ function PlaygroundInner() {
   async function handleSendText(text: string) {
     if (!text.trim() || !selectedWorkId || !lineUserId.trim() || loading) return;
     const trimmed = text.trim();
+
+    // QR アクティブ時: QR ラベルとの一致を先に確認 → 一致したら QR タップとして処理
+    if (activeQrItems?.length) {
+      const norm = (s: string) => s.trim().toLowerCase().normalize("NFKC");
+      const matched = activeQrItems.find(
+        (q) => norm(q.label) === norm(trimmed) || (q.value && norm(q.value) === norm(trimmed))
+      );
+      if (matched) {
+        handleQrTap(matched);
+        return;
+      }
+    }
 
     // ユーザー吹き出しを即座に追加
     setSentMessages((prev) => [...prev, trimmed]);
@@ -315,7 +331,11 @@ function PlaygroundInner() {
         const summary = result._response_messages.map((m) => m.body ?? "[非テキスト]").join(" → ");
         addLog("system", `💬 応答: 「${summary}」`);
       }
-      if (result._message) { setMessage(result._message); addLog("system", result._message); }
+      // _matched: false + response メッセージあり or QR アクティブ時はエラーメッセージを抑制
+      const suppressMsg =
+        result._matched === false &&
+        (!!result._response_messages?.length || !!activeQrItems?.length);
+      if (result._message && !suppressMsg) { setMessage(result._message); addLog("system", result._message); }
       if (result.phase) {
         addLog("system", `📍 フェーズ: 「${result.phase.name}」（${PHASE_TYPE_META[result.phase.phase_type].label}）`);
       }
@@ -369,6 +389,16 @@ function PlaygroundInner() {
   const isEnding      = state?.progress?.reached_ending ?? false;
   const currentPhase  = state?.phase;
   const selectedWork  = works.find((w) => w.id === selectedWorkId);
+
+  // 現在アクティブな QR（最後に表示されたメッセージの quick_replies）
+  // PhasePanel 内の visibleCount を加味しないが、phase.transitions の表示制御とテキスト入力ルーティングに使用
+  const activeQrItems: QuickReplyItem[] | null = (() => {
+    if (!state?.phase?.messages) return null;
+    const all = [...state.phase.messages, ...extraMessages];
+    const last = [...all].reverse().find((m) => m.quick_replies && m.quick_replies.length > 0);
+    if (!last?.quick_replies) return null;
+    return last.quick_replies.filter((q) => q.enabled !== false);
+  })();
 
   return (
     <div style={{ maxWidth: 960, margin: "0 auto" }}>
@@ -608,6 +638,7 @@ function PlaygroundInner() {
                   extraMessages={extraMessages}
                   sentMessages={sentMessages}
                   onSendText={handleSendText}
+                  activeQrItems={activeQrItems}
                 />
               )}
 
@@ -725,17 +756,18 @@ function TypingIndicator({ char }: { char: RuntimePhaseMessage["character"] }) {
 // PhasePanel — 通常フェーズ表示
 // ────────────────────────────────────────────────
 interface PhasePanelProps {
-  phase:         RuntimeState["phase"] & {};
-  loading:       boolean;
-  showRead:      boolean;
-  onAdvance:     (t: RuntimeTransition) => void;
-  onQrTap:       (item: QuickReplyItem) => void;
-  extraMessages: RuntimePhaseMessage[];
-  sentMessages:  string[];
-  onSendText:    (text: string) => void;
+  phase:          RuntimeState["phase"] & {};
+  loading:        boolean;
+  showRead:       boolean;
+  onAdvance:      (t: RuntimeTransition) => void;
+  onQrTap:        (item: QuickReplyItem) => void;
+  extraMessages:  RuntimePhaseMessage[];
+  sentMessages:   string[];
+  onSendText:     (text: string) => void;
+  activeQrItems:  QuickReplyItem[] | null;
 }
 
-function PhasePanel({ phase, loading, showRead, onAdvance, onQrTap, extraMessages, sentMessages, onSendText }: PhasePanelProps) {
+function PhasePanel({ phase, loading, showRead, onAdvance, onQrTap, extraMessages, sentMessages, onSendText, activeQrItems }: PhasePanelProps) {
   const [inputText, setInputText] = useState("");
 
   // フェーズ変更時に入力欄をクリア
@@ -982,8 +1014,8 @@ function PhasePanel({ phase, loading, showRead, onAdvance, onQrTap, extraMessage
         </div>
       </div>
 
-      {/* 遷移選択肢 — allShown になったら表示 */}
-      {allShown && phase.transitions !== null && (
+      {/* 遷移選択肢 — allShown かつ message QR が非アクティブのときのみ表示 */}
+      {allShown && phase.transitions !== null && !activeQrItems?.length && (
         <div className="card">
           <p style={{
             fontSize: 11, fontWeight: 600, color: "#9ca3af",
