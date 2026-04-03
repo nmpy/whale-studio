@@ -2,13 +2,13 @@
 
 // src/app/oas/[id]/works/[workId]/messages/page.tsx
 
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { TLink as Link } from "@/components/TLink";
-import { workApi, messageApi, phaseApi, getDevToken } from "@/lib/api-client";
+import { workApi, messageApi, phaseApi, transitionApi, getDevToken } from "@/lib/api-client";
 import { HelpAccordion } from "@/components/HelpAccordion";
 import { Breadcrumb } from "@/components/Breadcrumb";
-import type { MessageWithRelations, MessageType, PhaseWithCounts } from "@/types";
+import type { MessageWithRelations, MessageType, PhaseWithCounts, TransitionWithPhases, QuickReplyItem } from "@/types";
 
 const MESSAGE_TYPE_LABEL: Record<MessageType, string> = {
   text:     "テキスト",
@@ -73,6 +73,209 @@ const KIND_META: Record<string, { label: string; icon: string; bg: string; color
   puzzle:   { label: "謎",       icon: "🧩", bg: "#fff7ed", color: "#c2410c" },
 };
 
+// ── ブランチフロー ────────────────────────────────────────
+
+const BRANCH_CHIP_PALETTE = {
+  blue:   { bg: "#dbeafe", color: "#1e40af", border: "#bfdbfe" },
+  orange: { bg: "#fff7ed", color: "#c2410c", border: "#fed7aa" },
+  purple: { bg: "#f5f3ff", color: "#6d28d9", border: "#ddd6fe" },
+  gray:   { bg: "#f1f5f9", color: "#475569", border: "#e2e8f0" },
+  dim:    { bg: "#f9fafb", color: "#9ca3af", border: "#e5e7eb" },
+} as const;
+
+function BranchChip({
+  color, children, maxWidth = 200,
+}: {
+  color: keyof typeof BRANCH_CHIP_PALETTE;
+  children: React.ReactNode;
+  maxWidth?: number;
+}) {
+  const p = BRANCH_CHIP_PALETTE[color];
+  return (
+    <span style={{
+      display: "inline-flex", alignItems: "center", gap: 3,
+      fontSize: 11, fontWeight: 600,
+      padding: "2px 9px", borderRadius: 12,
+      background: p.bg, color: p.color, border: `1px solid ${p.border}`,
+      whiteSpace: "nowrap", maxWidth, overflow: "hidden", textOverflow: "ellipsis",
+      flexShrink: 0,
+    }}>
+      {children}
+    </span>
+  );
+}
+
+function BranchArrow() {
+  return <span style={{ fontSize: 10, color: "#94a3b8", flexShrink: 0 }}>→</span>;
+}
+
+/** メッセージ本文の短いプレビュー文字列 */
+function msgPreview(m: MessageWithRelations | undefined): string {
+  if (!m) return "";
+  if (m.body) return m.body.length > 28 ? m.body.slice(0, 28) + "…" : m.body;
+  if (m.message_type === "image")    return "🖼 画像";
+  if (m.message_type === "video")    return "🎬 動画";
+  if (m.message_type === "voice")    return "🎙 ボイス";
+  if (m.message_type === "carousel") return "🎠 カルーセル";
+  return "(メッセージ)";
+}
+
+const normKw = (s: string) => s.trim().toLowerCase().normalize("NFKC");
+
+/** QR ボタン 1 件分の「入力 → 応答 → 結果」行 */
+function BranchItemRow({
+  qr, phaseId, allMessages, transitions,
+}: {
+  qr:          QuickReplyItem;
+  phaseId:     string | null;
+  allMessages: MessageWithRelations[];
+  transitions: TransitionWithPhases[];
+}) {
+  const label   = qr.label || "（ラベル未設定）";
+  const keyword = normKw(qr.value || qr.label);
+
+  // ── ヒントボタン ──
+  if (qr.action === "hint") {
+    const hintBody = qr.hint_text
+      ? (qr.hint_text.length > 28 ? qr.hint_text.slice(0, 28) + "…" : qr.hint_text)
+      : "ヒント本文未設定";
+    return (
+      <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
+        <BranchChip color="blue">{label}</BranchChip>
+        <BranchArrow />
+        <BranchChip color="orange">💡 {hintBody}</BranchChip>
+        <BranchArrow />
+        <BranchChip color="gray">入力待ち継続</BranchChip>
+      </div>
+    );
+  }
+
+  // ── テキストアクション ──
+  // 応答メッセージ（同フェーズ・kind=response・trigger_keyword が一致）
+  const responseMessages = phaseId
+    ? allMessages.filter((m) =>
+        m.phase?.id === phaseId &&
+        m.kind === "response" &&
+        m.is_active &&
+        m.trigger_keyword &&
+        m.trigger_keyword.split("\n").map(normKw).some((k) => k === keyword)
+      )
+    : [];
+
+  // フェーズ遷移（label が一致）
+  const matchedTransitions = phaseId
+    ? transitions.filter(
+        (t) => t.from_phase_id === phaseId && t.is_active && normKw(t.label) === keyword
+      )
+    : [];
+
+  const firstResp  = responseMessages[0] ?? null;
+  const firstTrans = matchedTransitions[0] ?? null;
+
+  // 応答メッセージの次メッセージ（連続送信チェーン先）
+  const nextMsg = firstResp?.next_message_id
+    ? allMessages.find((m) => m.id === firstResp.next_message_id) ?? null
+    : null;
+
+  const hasResult = firstResp !== null || firstTrans !== null;
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
+      {/* 1. ユーザー入力（QR） */}
+      <BranchChip color="blue">{label}</BranchChip>
+
+      {/* 2. 応答メッセージ */}
+      {firstResp && (
+        <>
+          <BranchArrow />
+          <BranchChip color="orange">💬 {msgPreview(firstResp)}</BranchChip>
+          {responseMessages.length > 1 && (
+            <span style={{ fontSize: 10, color: "#9ca3af" }}>+{responseMessages.length - 1}件</span>
+          )}
+        </>
+      )}
+
+      {/* 3. 結果 */}
+      {firstTrans ? (
+        <>
+          <BranchArrow />
+          <BranchChip color="purple">→ {firstTrans.to_phase.name}</BranchChip>
+        </>
+      ) : nextMsg ? (
+        <>
+          <BranchArrow />
+          <BranchChip color="gray">→ {msgPreview(nextMsg)}</BranchChip>
+        </>
+      ) : firstResp ? (
+        <>
+          <BranchArrow />
+          <BranchChip color="gray">入力待ち継続</BranchChip>
+        </>
+      ) : !hasResult ? (
+        <>
+          <BranchArrow />
+          <BranchChip color="dim">応答なし</BranchChip>
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+/** メッセージ行の直下に挿入するブランチパネル（QR がある場合のみ描画） */
+function BranchRows({
+  msg, allMessages, transitions, colSpan,
+}: {
+  msg:         MessageWithRelations;
+  allMessages: MessageWithRelations[];
+  transitions: TransitionWithPhases[];
+  colSpan:     number;
+}) {
+  const qrs = (msg.quick_replies ?? []).filter(
+    (q) => q.enabled !== false
+  ) as QuickReplyItem[];
+  if (qrs.length === 0) return null;
+
+  return (
+    <tr style={{ borderBottom: "1px solid var(--border-light)" }}>
+      <td colSpan={colSpan} style={{ padding: 0 }}>
+        <div style={{
+          padding: "10px 18px 12px",
+          background: "#f8fafc",
+          borderTop: "1px dashed #e2e8f0",
+        }}>
+          <div style={{
+            fontSize: 10, fontWeight: 700, color: "#94a3b8",
+            letterSpacing: 0.5, marginBottom: 8,
+            display: "flex", alignItems: "center", gap: 5,
+          }}>
+            <span>↕</span>
+            <span>分岐フロー</span>
+            <span style={{
+              fontSize: 9, fontWeight: 700,
+              background: "#e2e8f0", color: "#64748b",
+              borderRadius: 8, padding: "0 5px",
+            }}>{qrs.length}件</span>
+            <span style={{ fontWeight: 400, color: "#cbd5e1" }}>
+              ユーザー入力 → 応答 → 結果
+            </span>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+            {qrs.map((qr, i) => (
+              <BranchItemRow
+                key={i}
+                qr={qr}
+                phaseId={msg.phase?.id ?? null}
+                allMessages={allMessages}
+                transitions={transitions}
+              />
+            ))}
+          </div>
+        </div>
+      </td>
+    </tr>
+  );
+}
+
 export default function MessagesPage() {
   const params  = useParams<{ id: string; workId: string }>();
   const oaId    = params.id;
@@ -80,10 +283,11 @@ export default function MessagesPage() {
   const [workTitle, setWorkTitle]     = useState("");
   const [welcomeMsg, setWelcomeMsg]   = useState<string | null>(null);
   const [welcomeOpen, setWelcomeOpen] = useState(false);
-  const [messages, setMessages]       = useState<MessageWithRelations[]>([]);
-  const [phases, setPhases]           = useState<PhaseWithCounts[]>([]);
-  const [loading, setLoading]         = useState(true);
-  const [loadError, setLoadError]     = useState<string | null>(null);
+  const [messages, setMessages]         = useState<MessageWithRelations[]>([]);
+  const [phases, setPhases]             = useState<PhaseWithCounts[]>([]);
+  const [transitions, setTransitions]   = useState<TransitionWithPhases[]>([]);
+  const [loading, setLoading]           = useState(true);
+  const [loadError, setLoadError]       = useState<string | null>(null);
 
   useEffect(() => {
     const token = getDevToken();
@@ -93,12 +297,14 @@ export default function MessagesPage() {
       workApi.get(token, workId),
       messageApi.list(token, workId, { with_relations: true }) as Promise<MessageWithRelations[]>,
       phaseApi.list(token, workId),
+      transitionApi.listByWork(token, workId),
     ])
-      .then(([w, list, phaseList]) => {
+      .then(([w, list, phaseList, transList]) => {
         setWorkTitle(w.title);
         setWelcomeMsg(w.welcome_message ?? "");
         setMessages(list);
         setPhases(phaseList.sort((a, b) => a.sort_order - b.sort_order));
+        setTransitions(transList);
       })
       .catch((e) => setLoadError(e instanceof Error ? e.message : "読み込みに失敗しました"))
       .finally(() => setLoading(false));
@@ -413,9 +619,9 @@ export default function MessagesPage() {
                   </thead>
                   <tbody>
                     {group.messages.map((msg) => (
+                      <Fragment key={msg.id}>
                       <tr
-                        key={msg.id}
-                        style={{ borderBottom: "1px solid var(--border-light)" }}
+                        style={{ borderBottom: msg.quick_replies?.length ? "none" : "1px solid var(--border-light)" }}
                         onMouseEnter={(e) => (e.currentTarget.style.background = "var(--gray-50)")}
                         onMouseLeave={(e) => (e.currentTarget.style.background = "")}
                       >
@@ -526,6 +732,13 @@ export default function MessagesPage() {
                           </Link>
                         </td>
                       </tr>
+                      <BranchRows
+                        msg={msg}
+                        allMessages={messages}
+                        transitions={transitions}
+                        colSpan={7}
+                      />
+                      </Fragment>
                     ))}
                   </tbody>
                 </table>

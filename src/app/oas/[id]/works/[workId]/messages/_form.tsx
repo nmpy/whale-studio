@@ -5,7 +5,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { phaseApi, characterApi, riddleApi, messageApi, getDevToken } from "@/lib/api-client";
+import { phaseApi, characterApi, riddleApi, messageApi, uploadApi, getDevToken } from "@/lib/api-client";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import type { PhaseWithCounts, Character, QuickReplyItem, QuickReplyAction } from "@/types";
 import type { Riddle } from "@/types";
@@ -317,6 +317,8 @@ interface MessageFormProps {
   deleting?:   boolean;
   onSubmit:    (form: MessageFormState) => void;
   onDelete?:   () => void;
+  /** 編集中メッセージの ID（新規作成時は undefined） */
+  messageId?:  string;
 }
 
 // ── スタイル定数 ──────────────────────────────────────────
@@ -394,13 +396,6 @@ const QR_ACTION_OPTIONS: { value: QuickReplyAction; label: string; icon: string;
 /** 空のクイックリプライ雛形 */
 const EMPTY_QR: QuickReplyItem = { label: "", action: "text", value: "" };
 
-/** ヒントボタンのテンプレートプリセット（丸数字） */
-const HINT_TEMPLATES = [
-  { label: "ヒント①", value: "hint1" },
-  { label: "ヒント②", value: "hint2" },
-  { label: "ヒント③", value: "hint3" },
-] as const;
-
 // ────────────────────────────────────────────────────────
 // ヒントプレビューコンポーネント
 // ────────────────────────────────────────────────────────
@@ -448,17 +443,17 @@ function QrHintPreview({ hintText, hintFollowup }: { hintText?: string; hintFoll
 interface QuickReplyEditorProps {
   items:    QuickReplyItem[];
   onChange: (items: QuickReplyItem[]) => void;
-  /** target_message_id ピッカー用 — 同じ作品の全メッセージ一覧 */
-  messages?: { id: string; body: string | null; kind: string; sort_order: number }[];
-  /** target_phase_id ピッカー用 — 同じ作品の全フェーズ一覧 */
-  phases?: { id: string; name: string; phase_type: string }[];
+  /** 同フェーズの kind=response メッセージ一覧（応答メッセージ紐づけ選択用） */
+  responseMessages?: { id: string; body: string | null }[];
 }
 
-function QuickReplyEditor({ items, onChange, messages = [], phases = [] }: QuickReplyEditorProps) {
+function QuickReplyEditor({ items, onChange, responseMessages }: QuickReplyEditorProps) {
   const [open, setOpen]               = useState(false);
   const [expandedSet, setExpandedSet] = useState<Set<number>>(new Set());
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
   const dragSrcRef                    = useRef<number | null>(null);
+  /** ドラッグを許可するのはハンドル経由のみ。このRefにindexをセットしてから dragStart する */
+  const dragHandleRef                 = useRef<number | null>(null);
 
   // 自動展開: 既存データがある場合は初期表示で開く
   useEffect(() => {
@@ -544,39 +539,19 @@ function QuickReplyEditor({ items, onChange, messages = [], phases = [] }: Quick
     setDragOverIdx(null);
   }
 
-  // アクション別バッジ色マップ
-  const actionBadge: Record<QuickReplyAction, { bg: string; color: string }> = {
-    text:   { bg: "#dcfce7", color: "#15803d" },
-    url:    { bg: "#dbeafe", color: "#1d4ed8" },
-    next:   { bg: "#ede9fe", color: "#7c3aed" },
-    hint:   { bg: "#fef9c3", color: "#92400e" },
-    custom: { bg: "#f1f5f9", color: "#475569" },
-  };
-
-  const headerStyle: React.CSSProperties = {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    cursor: "pointer",
-    userSelect: "none",
-  };
-
   const enabledCount = items.filter((i) => i.enabled !== false).length;
 
   return (
     <div className="card" style={{ marginBottom: 16 }}>
       {/* アコーディオンヘッダー */}
-      <div style={headerStyle} onClick={() => setOpen((v) => !v)}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer", userSelect: "none" }} onClick={() => setOpen((v) => !v)}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <span style={{ ...sectionHeader, marginBottom: 0, paddingBottom: 0, borderBottom: "none" }}>
             クイックリプライ設定
           </span>
           <span style={{ fontSize: 11, color: "#9ca3af", fontWeight: 400 }}>（任意）</span>
           {items.length > 0 && (
-            <span style={{
-              fontSize: 10, fontWeight: 700, background: "#06C755", color: "#fff",
-              borderRadius: 10, padding: "1px 7px",
-            }}>
+            <span style={{ fontSize: 10, fontWeight: 700, background: "#06C755", color: "#fff", borderRadius: 10, padding: "1px 7px" }}>
               {enabledCount}/{items.length}件
             </span>
           )}
@@ -599,17 +574,23 @@ function QuickReplyEditor({ items, onChange, messages = [], phases = [] }: Quick
                 const isExpanded = expandedSet.has(index);
                 const isEnabled  = item.enabled !== false;
                 const isDragOver = dragOverIdx === index;
-                const actionDef  = QR_ACTION_OPTIONS.find((o) => o.value === item.action);
-                const badge      = actionBadge[item.action];
+                const isHint     = item.action === "hint";
 
                 return (
                   <div
                     key={index}
                     draggable
-                    onDragStart={(e) => handleDragStart(e, index)}
+                    onDragStart={(e) => {
+                      // ハンドル以外からのドラッグは無効化
+                      if (dragHandleRef.current !== index) {
+                        e.preventDefault();
+                        return;
+                      }
+                      handleDragStart(e, index);
+                    }}
                     onDragOver={(e)  => handleDragOver(e, index)}
                     onDrop={(e)      => handleDrop(e, index)}
-                    onDragEnd={handleDragEnd}
+                    onDragEnd={() => { dragHandleRef.current = null; handleDragEnd(); }}
                     style={{
                       border:     isDragOver ? "2px dashed #06C755" : "1px solid #e5e7eb",
                       borderRadius: 8,
@@ -619,430 +600,154 @@ function QuickReplyEditor({ items, onChange, messages = [], phases = [] }: Quick
                     }}
                   >
                     {/* ── カード折り畳みヘッダー ── */}
-                    <div style={{
-                      display: "flex", alignItems: "center", gap: 7,
-                      padding: "9px 12px",
-                    }}>
-                      {/* ドラッグハンドル */}
+                    <div style={{ display: "flex", alignItems: "center", gap: 7, padding: "9px 12px" }}>
                       <span
-                        style={{ color: "#9ca3af", fontSize: 15, cursor: "grab", userSelect: "none", lineHeight: 1 }}
+                        onPointerDown={() => { dragHandleRef.current = index; }}
+                        onPointerUp={()   => { dragHandleRef.current = null;  }}
+                        style={{ color: "#9ca3af", fontSize: 15, cursor: "grab", userSelect: "none", lineHeight: 1, touchAction: "none" }}
                         title="ドラッグして並び替え"
-                      >
-                        ⠿
-                      </span>
+                      >⠿</span>
 
-                      {/* 展開トグル領域 */}
-                      <div
-                        style={{ flex: 1, display: "flex", alignItems: "center", gap: 6, minWidth: 0, cursor: "pointer" }}
-                        onClick={() => toggleExpand(index)}
-                      >
-                        {/* アクションバッジ */}
-                        <span style={{
-                          fontSize: 10, fontWeight: 700,
-                          background: badge.bg, color: badge.color,
-                          borderRadius: 4, padding: "1px 6px",
-                          whiteSpace: "nowrap", flexShrink: 0,
-                        }}>
-                          {actionDef?.icon} {actionDef?.label}
-                        </span>
-                        {/* ラベルテキスト */}
-                        <span style={{
-                          fontSize: 13, fontWeight: 500, color: "#374151",
-                          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                        }}>
-                          {item.label || (
-                            <span style={{ color: "#9ca3af" }}>
-                              {item.action === "text" ? "（テキスト未設定）" : "（ラベル未設定）"}
-                            </span>
-                          )}
-                        </span>
-                        {/* テキストアクション遷移先インジケーター */}
-                        {item.action === "text" && item.target_phase_id && (
-                          <span style={{
-                            fontSize: 10, fontWeight: 600, flexShrink: 0,
-                            color: "#7c3aed", background: "#f5f3ff",
-                            border: "1px solid #e9d5ff",
-                            borderRadius: 4, padding: "1px 6px", whiteSpace: "nowrap",
-                          }}>
-                            → {phases.find((p) => p.id === item.target_phase_id)?.name ?? "フェーズ"}
+                      <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 6, minWidth: 0, cursor: "pointer" }} onClick={() => toggleExpand(index)}>
+                        {isHint && (
+                          <span style={{ fontSize: 10, fontWeight: 700, background: "#fffbeb", color: "#b45309", borderRadius: 4, padding: "1px 6px", whiteSpace: "nowrap", flexShrink: 0 }}>
+                            💡 ヒント
                           </span>
                         )}
-                        {item.action === "text" && item.target_type === "message" && item.target_message_id && (
-                          <span style={{
-                            fontSize: 10, fontWeight: 600, flexShrink: 0,
-                            color: "#0ea5e9", background: "#f0f9ff",
-                            border: "1px solid #bae6fd",
-                            borderRadius: 4, padding: "1px 6px", whiteSpace: "nowrap",
-                          }}>
-                            → メッセージ返信
+                        {!isHint && item.response_message_id && (
+                          <span style={{ fontSize: 10, fontWeight: 700, background: "#eff6ff", color: "#1d4ed8", borderRadius: 4, padding: "1px 6px", whiteSpace: "nowrap", flexShrink: 0 }}>
+                            🔗 応答
                           </span>
                         )}
-                        {/* ヒント設定済みインジケーター */}
-                        {item.action === "hint" && item.hint_text && (
-                          <span style={{ fontSize: 11, color: "#b45309", flexShrink: 0 }} title="ヒント本文設定済み">💡</span>
-                        )}
-                        {/* 展開アイコン */}
-                        <span style={{ fontSize: 10, color: "#9ca3af", marginLeft: "auto", flexShrink: 0 }}>
-                          {isExpanded ? "▲" : "▼"}
+                        <span style={{ fontSize: 13, fontWeight: 500, color: "#374151", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {item.label || <span style={{ color: "#9ca3af" }}>（ラベル未設定）</span>}
                         </span>
+                        {isHint && item.hint_text && (
+                          <span style={{ fontSize: 11, color: "#b45309", flexShrink: 0 }} title="ヒント本文設定済み">💬</span>
+                        )}
+                        <span style={{ fontSize: 10, color: "#9ca3af", marginLeft: "auto", flexShrink: 0 }}>{isExpanded ? "▲" : "▼"}</span>
                       </div>
 
                       {/* ON/OFF トグル */}
-                      <label
-                        onClick={(e) => e.stopPropagation()}
-                        style={{ display: "flex", alignItems: "center", gap: 4, cursor: "pointer", userSelect: "none", flexShrink: 0 }}
-                        title={isEnabled ? "クリックで無効化" : "クリックで有効化"}
-                      >
-                        <div style={{
-                          position: "relative", width: 30, height: 17,
-                          background: isEnabled ? "#06C755" : "#d1d5db",
-                          borderRadius: 9, transition: "background 0.2s",
-                        }}>
-                          <div style={{
-                            position: "absolute", top: 2,
-                            left: isEnabled ? 15 : 2,
-                            width: 13, height: 13,
-                            borderRadius: "50%", background: "#fff",
-                            boxShadow: "0 1px 2px rgba(0,0,0,0.2)",
-                            transition: "left 0.18s",
-                            pointerEvents: "none",
-                          }} />
-                          <input
-                            type="checkbox"
-                            checked={isEnabled}
-                            onChange={(e) => updateItem(index, { enabled: e.target.checked ? undefined : false })}
-                            style={{ position: "absolute", opacity: 0, width: 0, height: 0 }}
-                          />
+                      <label onClick={(e) => e.stopPropagation()} style={{ display: "flex", alignItems: "center", gap: 4, cursor: "pointer", userSelect: "none", flexShrink: 0 }} title={isEnabled ? "クリックで無効化" : "クリックで有効化"}>
+                        <div style={{ position: "relative", width: 30, height: 17, background: isEnabled ? "#06C755" : "#d1d5db", borderRadius: 9, transition: "background 0.2s" }}>
+                          <div style={{ position: "absolute", top: 2, left: isEnabled ? 15 : 2, width: 13, height: 13, borderRadius: "50%", background: "#fff", boxShadow: "0 1px 2px rgba(0,0,0,0.2)", transition: "left 0.18s", pointerEvents: "none" }} />
+                          <input type="checkbox" checked={isEnabled} onChange={(e) => updateItem(index, { enabled: e.target.checked ? undefined : false })} style={{ position: "absolute", opacity: 0, width: 0, height: 0 }} />
                         </div>
-                        <span style={{ fontSize: 10, color: "#6b7280", width: 22 }}>
-                          {isEnabled ? "ON" : "OFF"}
-                        </span>
+                        <span style={{ fontSize: 10, color: "#6b7280", width: 22 }}>{isEnabled ? "ON" : "OFF"}</span>
                       </label>
 
-                      {/* 削除ボタン */}
-                      <button
-                        type="button"
-                        onClick={(e) => { e.stopPropagation(); removeItem(index); }}
-                        style={{
-                          fontSize: 11, padding: "2px 7px",
-                          border: "1px solid #fecaca", borderRadius: 5,
-                          background: "#fff5f5", color: "#ef4444",
-                          cursor: "pointer", flexShrink: 0,
-                        }}
-                      >
-                        削除
-                      </button>
+                      <button type="button" onClick={(e) => { e.stopPropagation(); removeItem(index); }} style={{ fontSize: 11, padding: "2px 7px", border: "1px solid #fecaca", borderRadius: 5, background: "#fff5f5", color: "#ef4444", cursor: "pointer", flexShrink: 0 }}>削除</button>
                     </div>
 
                     {/* ── 展開コンテンツ ── */}
                     {isExpanded && (
                       <div style={{ padding: "0 12px 12px", borderTop: "1px solid #e5e7eb" }}>
+                        {/* ボタンテキスト */}
+                        <div className="form-group" style={{ marginTop: 10, marginBottom: 10 }}>
+                          <label style={{ ...fieldLabel, fontSize: 12 }}>
+                            ボタンテキスト <span style={{ color: "#dc2626" }}>*</span>
+                            <span style={{ fontWeight: 400, color: "#9ca3af", marginLeft: 4 }}>({item.label.length}/20)</span>
+                          </label>
+                          <input type="text" className="form-input"
+                            value={item.label}
+                            onChange={(e) => {
+                              const t = e.target.value;
+                              updateItem(index, { label: t, value: t || undefined });
+                            }}
+                            placeholder="例: 話を聞く"
+                            maxLength={20}
+                            style={{ fontSize: 13 }}
+                          />
+                          <div style={{ ...hintText, marginTop: 4 }}>
+                            ボタンの表示文言・ユーザーが送信するテキスト・遷移トリガーとして使用されます
+                          </div>
+                        </div>
 
-                        {/* ラベル — テキストアクション以外のみ表示 */}
-                        {item.action !== "text" && (
-                          <div className="form-group" style={{ marginTop: 10, marginBottom: 8 }}>
+                        {/* 応答メッセージ紐づけ（ヒントでない場合のみ） */}
+                        {!isHint && (responseMessages?.length ?? 0) > 0 && (
+                          <div className="form-group" style={{ marginBottom: 10 }}>
                             <label style={{ ...fieldLabel, fontSize: 12 }}>
-                              表示ラベル <span style={{ color: "#dc2626" }}>*</span>
-                              <span style={{ fontWeight: 400, color: "#9ca3af", marginLeft: 4 }}>
-                                ({item.label.length}/20)
-                              </span>
+                              応答メッセージ
+                              <span style={{ fontWeight: 400, color: "#9ca3af", marginLeft: 4 }}>（任意）</span>
                             </label>
-                            <input
-                              type="text"
+                            <select
                               className="form-input"
-                              value={item.label}
-                              onChange={(e) => updateItem(index, { label: e.target.value })}
-                              placeholder="例: 次へ進む"
-                              maxLength={20}
+                              value={item.response_message_id ?? ""}
+                              onChange={(e) => updateItem(index, { response_message_id: e.target.value || undefined })}
                               style={{ fontSize: 13 }}
-                            />
+                            >
+                              <option value="">— 紐づけない —</option>
+                              {responseMessages!.map((m) => {
+                                const label = (m.body ?? "(本文なし)");
+                                return (
+                                  <option key={m.id} value={m.id}>
+                                    {label.length > 40 ? label.slice(0, 40) + "…" : label}
+                                  </option>
+                                );
+                              })}
+                            </select>
+                            <div style={{ ...hintText, marginTop: 4 }}>
+                              このボタンタップ時のユーザー入力（ラベル）を受け取る応答メッセージを指定します。
+                              保存時に応答キーワードへ自動マージされます。
+                            </div>
                           </div>
                         )}
 
-                        {/* アクション種別 */}
-                        <div className="form-group" style={{ marginBottom: 8 }}>
-                          <label style={{ ...fieldLabel, fontSize: 12 }}>アクション種別</label>
-                          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                            {QR_ACTION_OPTIONS.map((opt) => (
-                              <button
-                                key={opt.value}
-                                type="button"
-                                onClick={() => {
-                                  if (opt.value === "text") {
-                                    // text に切り替え: label を value に同期
-                                    updateItem(index, { action: "text", value: item.label || undefined });
-                                  } else {
-                                    updateItem(index, { action: opt.value, target_phase_id: undefined });
-                                  }
-                                }}
-                                style={{
-                                  display: "flex", alignItems: "center", gap: 4,
-                                  padding: "5px 10px", borderRadius: 6,
-                                  fontSize: 12, fontWeight: 500, cursor: "pointer",
-                                  transition: "all 0.12s",
-                                  border: item.action === opt.value ? "2px solid #06C755" : "2px solid #e5e7eb",
-                                  background: item.action === opt.value ? "#E6F7ED" : "#fff",
-                                  color: item.action === opt.value ? "#15803d" : "#6b7280",
-                                }}
-                              >
-                                <span style={{ fontSize: 13 }}>{opt.icon}</span>
-                                {opt.label}
-                              </button>
-                            ))}
-                          </div>
-                          {actionDef && (
-                            <div style={{ ...hintText, marginTop: 5 }}>{actionDef.hint}</div>
-                          )}
+                        {/* ヒントボタントグル */}
+                        <div style={{ marginBottom: isHint ? 10 : 0 }}>
+                          <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", userSelect: "none" }}>
+                            <div style={{ position: "relative", width: 30, height: 17, background: isHint ? "#f59e0b" : "#d1d5db", borderRadius: 9, transition: "background 0.2s" }}>
+                              <div style={{ position: "absolute", top: 2, left: isHint ? 15 : 2, width: 13, height: 13, borderRadius: "50%", background: "#fff", boxShadow: "0 1px 2px rgba(0,0,0,0.2)", transition: "left 0.18s", pointerEvents: "none" }} />
+                              <input type="checkbox" checked={isHint}
+                                onChange={(e) => updateItem(index, {
+                                  action: e.target.checked ? "hint" : "text",
+                                  ...(!e.target.checked ? { hint_text: undefined, hint_followup: undefined } : {}),
+                                  // ヒントON時は応答メッセージ紐づけをクリア
+                                  ...(e.target.checked ? { response_message_id: undefined } : {}),
+                                })}
+                                style={{ position: "absolute", opacity: 0, width: 0, height: 0 }}
+                              />
+                            </div>
+                            <span style={{ fontSize: 12, fontWeight: 500, color: isHint ? "#b45309" : "#6b7280" }}>
+                              💡 ヒントボタンにする
+                            </span>
+                          </label>
+                          {!isHint && <div style={{ ...hintText, marginTop: 4, marginLeft: 38 }}>ONにするとボタンタップ時にヒント本文を返信します</div>}
                         </div>
 
-                        {/* ── アクション別フィールド ── */}
-                        {item.action === "hint" ? (
+                        {/* ヒントフィールド */}
+                        {isHint && (
                           <>
-                            {/* ヒントキー（テンプレート + 自由入力） */}
                             <div className="form-group" style={{ marginBottom: 8 }}>
                               <label style={{ ...fieldLabel, fontSize: 12 }}>
-                                ボタンID
-                                <span style={{ fontWeight: 400, color: "#9ca3af", marginLeft: 4 }}>（任意）</span>
+                                ヒント本文 <span style={{ color: "#dc2626" }}>*</span>
+                                <span style={{ fontWeight: 400, color: "#9ca3af", marginLeft: 4 }}>({(item.hint_text ?? "").length}/2000)</span>
                               </label>
-                              <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-                                {HINT_TEMPLATES.map((t) => {
-                                  const isActive = item.value === t.value && item.label === t.label;
-                                  return (
-                                    <button
-                                      key={t.value}
-                                      type="button"
-                                      onClick={() => updateItem(index, { label: t.label, value: t.value })}
-                                      style={{
-                                        fontSize: 11, padding: "4px 9px",
-                                        border: isActive ? "1.5px solid #f59e0b" : "1.5px solid #e5e7eb",
-                                        borderRadius: 6,
-                                        background: isActive ? "#fffbeb" : "#f9fafb",
-                                        color: isActive ? "#b45309" : "#6b7280",
-                                        cursor: "pointer", fontWeight: isActive ? 700 : 400,
-                                        whiteSpace: "nowrap",
-                                      }}
-                                    >
-                                      {t.label}
-                                    </button>
-                                  );
-                                })}
-                                <input
-                                  type="text"
-                                  className="form-input"
-                                  value={item.value ?? ""}
-                                  onChange={(e) => updateItem(index, { value: e.target.value || undefined })}
-                                  placeholder="hint1（任意）"
-                                  maxLength={500}
-                                  style={{ fontSize: 13, flex: 1, minWidth: 80 }}
-                                />
-                              </div>
-                              <div style={{ ...hintText, marginTop: 4 }}>
-                                省略するとラベルテキストで照合します。複数ヒントを区別したい場合に設定してください。
-                              </div>
-                            </div>
-
-                            {/* ヒント本文 */}
-                            <div className="form-group" style={{ marginBottom: 8 }}>
-                              <label style={{ ...fieldLabel, fontSize: 12 }}>
-                                ヒント本文
-                                <span style={{ color: "#dc2626", marginLeft: 3 }}>*</span>
-                                <span style={{ fontWeight: 400, color: "#9ca3af", marginLeft: 4 }}>
-                                  ({(item.hint_text ?? "").length}/2000)
-                                </span>
-                              </label>
-                              <textarea
-                                className="form-input"
+                              <textarea className="form-input"
                                 value={item.hint_text ?? ""}
                                 onChange={(e) => updateItem(index, { hint_text: e.target.value || undefined })}
-                                placeholder="ユーザーがこのボタンをタップしたときに返信するヒント本文を入力してください"
-                                maxLength={2000}
-                                rows={3}
+                                placeholder="ユーザーがこのボタンをタップしたときに返信するヒント本文"
+                                maxLength={2000} rows={3}
                                 style={{ fontSize: 13, resize: "vertical", lineHeight: 1.5 }}
                               />
                             </div>
-
-                            {/* 回答誘導メッセージ（hint_followup） */}
                             <div className="form-group" style={{ marginBottom: 8 }}>
                               <label style={{ ...fieldLabel, fontSize: 12 }}>
                                 回答誘導メッセージ
                                 <span style={{ fontWeight: 400, color: "#9ca3af", marginLeft: 4 }}>（任意）</span>
-                                <span style={{ fontWeight: 400, color: "#9ca3af", marginLeft: 4 }}>
-                                  ({(item.hint_followup ?? "").length}/500)
-                                </span>
+                                <span style={{ fontWeight: 400, color: "#9ca3af", marginLeft: 4 }}>({(item.hint_followup ?? "").length}/500)</span>
                               </label>
-                              <input
-                                type="text"
-                                className="form-input"
+                              <input type="text" className="form-input"
                                 value={item.hint_followup ?? ""}
                                 onChange={(e) => updateItem(index, { hint_followup: e.target.value || undefined })}
                                 placeholder="例: もう少しヒントが必要なら「ヒント②」を押してね"
-                                maxLength={500}
-                                style={{ fontSize: 13 }}
+                                maxLength={500} style={{ fontSize: 13 }}
                               />
-                              <div style={{ ...hintText, marginTop: 4 }}>
-                                設定するとヒント本文の直後に続けて送信されます
-                              </div>
+                              <div style={{ ...hintText, marginTop: 4 }}>ヒント本文の直後に続けて送信されます</div>
                             </div>
-
-                            {/* ヒントプレビュー */}
                             <QrHintPreview hintText={item.hint_text} hintFollowup={item.hint_followup} />
                           </>
-                        ) : item.action === "url" ? (
-                          <div className="form-group" style={{ marginBottom: 0 }}>
-                            <label style={{ ...fieldLabel, fontSize: 12 }}>
-                              URL <span style={{ color: "#dc2626" }}>*</span>
-                            </label>
-                            <input
-                              type="url"
-                              className="form-input"
-                              value={item.value ?? ""}
-                              onChange={(e) => updateItem(index, { value: e.target.value || undefined })}
-                              placeholder="https://example.com"
-                              maxLength={500}
-                              style={{ fontSize: 13, fontFamily: "monospace" }}
-                            />
-                          </div>
-                        ) : item.action === "text" ? (
-                          <>
-                            {/* ── ボタンテキスト（表示文言・送信値・遷移トリガーを兼ねる）── */}
-                            <div className="form-group" style={{ marginTop: 10, marginBottom: 10 }}>
-                              <label style={{ ...fieldLabel, fontSize: 12 }}>
-                                ボタンテキスト <span style={{ color: "#dc2626" }}>*</span>
-                                <span style={{ fontWeight: 400, color: "#9ca3af", marginLeft: 4 }}>
-                                  ({item.label.length}/20)
-                                </span>
-                              </label>
-                              <input
-                                type="text"
-                                className="form-input"
-                                value={item.label}
-                                onChange={(e) => {
-                                  const t = e.target.value;
-                                  updateItem(index, { label: t, value: t || undefined });
-                                }}
-                                placeholder="例: 話を聞く"
-                                maxLength={20}
-                                style={{ fontSize: 13 }}
-                              />
-                              <div style={{ ...hintText, marginTop: 4 }}>
-                                ボタンの表示文言・ユーザーが送信するテキスト・遷移トリガーとして共通で使用されます
-                              </div>
-                            </div>
-
-                            {/* ── タップ時の遷移先 ── */}
-                            {(() => {
-                              const targetMode = item.target_phase_id
-                                ? "phase"
-                                : item.target_type === "message"
-                                ? "message"
-                                : "none";
-                              return (
-                                <div className="form-group" style={{ marginBottom: 0 }}>
-                                  <label style={{ ...fieldLabel, fontSize: 12 }}>タップ時の遷移先</label>
-                                  <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
-                                    {([
-                                      { key: "none",    icon: "🔀", label: "自動判定" },
-                                      { key: "phase",   icon: "📍", label: "フェーズを指定" },
-                                      { key: "message", icon: "💬", label: "メッセージを返信" },
-                                    ] as const).map((opt) => (
-                                      <button
-                                        key={opt.key}
-                                        type="button"
-                                        onClick={() => {
-                                          if (opt.key === "none") {
-                                            updateItem(index, { target_type: undefined, target_phase_id: undefined, target_message_id: undefined });
-                                          } else if (opt.key === "phase") {
-                                            updateItem(index, { target_type: undefined, target_message_id: undefined });
-                                          } else {
-                                            updateItem(index, { target_type: "message", target_phase_id: undefined });
-                                          }
-                                        }}
-                                        style={{
-                                          fontSize: 12, padding: "5px 12px", borderRadius: 6, cursor: "pointer",
-                                          border: targetMode === opt.key ? "2px solid #6366f1" : "2px solid #e5e7eb",
-                                          background: targetMode === opt.key ? "#eef2ff" : "#fff",
-                                          color: targetMode === opt.key ? "#4338ca" : "#6b7280",
-                                          fontWeight: targetMode === opt.key ? 700 : 400,
-                                        }}
-                                      >
-                                        {opt.icon} {opt.label}
-                                      </button>
-                                    ))}
-                                  </div>
-
-                                  {targetMode === "none" && (
-                                    <div style={{ ...hintText }}>
-                                      テキストを遷移条件としてフェーズ設定の遷移と照合します。
-                                    </div>
-                                  )}
-
-                                  {targetMode === "phase" && (
-                                    <>
-                                      <label style={{ ...fieldLabel, fontSize: 12 }}>
-                                        遷移先フェーズ <span style={{ color: "#dc2626" }}>*</span>
-                                      </label>
-                                      <select
-                                        className="form-input"
-                                        value={item.target_phase_id ?? ""}
-                                        onChange={(e) => updateItem(index, { target_phase_id: e.target.value || undefined })}
-                                        style={{ fontSize: 13 }}
-                                      >
-                                        <option value="">（フェーズを選択）</option>
-                                        {phases.map((p) => (
-                                          <option key={p.id} value={p.id}>
-                                            {p.name}
-                                          </option>
-                                        ))}
-                                      </select>
-                                      <div style={{ ...hintText, marginTop: 4 }}>
-                                        タップすると選択したフェーズへ直接遷移します。シナリオフローにも反映されます。
-                                      </div>
-                                    </>
-                                  )}
-
-                                  {targetMode === "message" && (
-                                    <>
-                                      <label style={{ ...fieldLabel, fontSize: 12 }}>
-                                        返信するメッセージ <span style={{ color: "#dc2626" }}>*</span>
-                                      </label>
-                                      <select
-                                        className="form-input"
-                                        value={item.target_message_id ?? ""}
-                                        onChange={(e) => updateItem(index, { target_message_id: e.target.value || undefined })}
-                                        style={{ fontSize: 13 }}
-                                      >
-                                        <option value="">（メッセージを選択）</option>
-                                        {messages.map((m) => (
-                                          <option key={m.id} value={m.id}>
-                                            [{m.kind}] {m.body ? m.body.slice(0, 40) : `(ID: ${m.id.slice(0, 8)}...)`}
-                                          </option>
-                                        ))}
-                                      </select>
-                                      <div style={{ ...hintText, marginTop: 4 }}>
-                                        フェーズ遷移せずに選択したメッセージを直接返信します。
-                                      </div>
-                                    </>
-                                  )}
-                                </div>
-                              );
-                            })()}
-                          </>
-                        ) : (
-                          <div className="form-group" style={{ marginBottom: 0 }}>
-                            <label style={{ ...fieldLabel, fontSize: 12 }}>
-                              {actionDef?.valueLabel ?? "値"}
-                              <span style={{ fontWeight: 400, color: "#9ca3af", marginLeft: 4 }}>（任意）</span>
-                            </label>
-                            <input
-                              type="text"
-                              className="form-input"
-                              value={item.value ?? ""}
-                              onChange={(e) => updateItem(index, { value: e.target.value || undefined })}
-                              placeholder={actionDef?.valuePlaceholder}
-                              maxLength={500}
-                              style={{ fontSize: 13 }}
-                            />
-                          </div>
                         )}
                       </div>
                     )}
@@ -1095,6 +800,452 @@ function QuickReplyEditor({ items, onChange, messages = [], phases = [] }: Quick
             }}
           >
             ＋ クイックリプライを追加
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── キーワードリストエディタ ──────────────────────────────
+//
+// 応答キーワードを「1行 = 1キーワード」のリスト形式で編集する。
+// 内部で行の配列を管理し、親には \n 区切りの文字列で渡す。
+
+function KeywordListEditor({ value, onChange, disabled, samePhaseQrLabels, currentMessageId, allMessagesForLink }: {
+  value:               string;
+  onChange:            (v: string) => void;
+  disabled?:           boolean;
+  samePhaseQrLabels?:  string[];
+  /** 編集中メッセージ ID（QR連携ラベル表示用） */
+  currentMessageId?:   string;
+  /** allMessages（QR.response_message_id 参照用） */
+  allMessagesForLink?: { id: string; quick_replies?: QuickReplyItem[] | null }[];
+}) {
+  const parse  = (v: string) => v.split("\n").map((k) => k.trim()).filter(Boolean);
+  const commit = (rows: string[]) => onChange(rows.filter(Boolean).join("\n"));
+
+  /** 親 value から parse した非空配列。初期値として使う */
+  const [rows, setRows] = useState<string[]>(() => {
+    const p = parse(value);
+    return p.length > 0 ? p : [""];
+  });
+
+  // QR連携ラベル: 同フェーズの他メッセージのQRで response_message_id が currentMessageId に一致するもの
+  const linkedQrLabels: string[] = currentMessageId
+    ? (allMessagesForLink ?? [])
+        .flatMap((m) =>
+          (m.quick_replies ?? [])
+            .filter((qr) => qr.response_message_id === currentMessageId && qr.label.trim())
+            .map((qr) => qr.label.trim())
+        )
+        .filter((label, i, arr) => arr.indexOf(label) === i)
+    : [];
+
+  /**
+   * 外部からの value 変更（フォームリセット・既存データ読み込み等）を検知して rows を同期する。
+   * 自分の commit が発火させた変更は無視する（lastCommittedRef で追跡）。
+   */
+  const lastCommittedRef = useRef(value);
+  useEffect(() => {
+    if (value !== lastCommittedRef.current) {
+      const p = parse(value);
+      setRows(p.length > 0 ? p : [""]);
+      lastCommittedRef.current = value;
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value]);
+
+  function updateRow(i: number, val: string) {
+    const next = [...rows];
+    next[i] = val;
+    setRows(next);
+    const committed = next.filter(Boolean).join("\n");
+    lastCommittedRef.current = committed;
+    onChange(committed);
+  }
+
+  function removeRow(i: number) {
+    const next = rows.filter((_, idx) => idx !== i);
+    const final = next.length > 0 ? next : [""];
+    setRows(final);
+    const committed = next.filter(Boolean).join("\n");
+    lastCommittedRef.current = committed;
+    onChange(committed);
+  }
+
+  function addRow() {
+    setRows((prev) => [...prev, ""]);
+    // 空行は親に push しない
+  }
+
+  function addFromQr(label: string) {
+    const trimmed = label.trim();
+    if (!trimmed) return;
+    const existing = rows.filter(Boolean);
+    if (existing.includes(trimmed)) return;
+    const next = [...existing, trimmed];
+    setRows(next);
+    const committed = next.join("\n");
+    lastCommittedRef.current = committed;
+    onChange(committed);
+  }
+
+  return (
+    <div>
+      {/* QR連携ラベル（読み取り専用 - 保存時に自動マージ） */}
+      {linkedQrLabels.length > 0 && (
+        <div style={{
+          marginBottom: 10, padding: "8px 10px",
+          background: "#eff6ff", border: "1px solid #bfdbfe",
+          borderRadius: 8,
+        }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: "#1d4ed8", marginBottom: 5 }}>
+            🔗 QRから自動連携（保存時にキーワードへ追加されます）
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+            {linkedQrLabels.map((label) => {
+              const alreadyManual = rows.filter(Boolean).some(
+                (k) => k.trim().toLowerCase().normalize("NFKC") === label.toLowerCase().normalize("NFKC")
+              );
+              return (
+                <span
+                  key={label}
+                  style={{
+                    fontSize: 11, padding: "2px 9px", borderRadius: 12,
+                    background: alreadyManual ? "#f0fdf4" : "#dbeafe",
+                    border: `1px solid ${alreadyManual ? "#bbf7d0" : "#93c5fd"}`,
+                    color: alreadyManual ? "#15803d" : "#1e40af",
+                    fontWeight: 500,
+                  }}
+                  title={alreadyManual ? "手動キーワードにも設定済み" : "QR連携ラベル"}
+                >
+                  {alreadyManual ? "✓ " : ""}{label}
+                </span>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        {rows.map((kw, i) => (
+          <div key={i} style={{ display: "flex", gap: 6, alignItems: "center" }}>
+            <input
+              type="text"
+              className="form-input"
+              value={kw}
+              onChange={(e) => updateRow(i, e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addRow(); } }}
+              placeholder={i === 0 ? "例: 虹" : "例: にじ、rainbow …"}
+              maxLength={100}
+              disabled={disabled}
+              style={{ fontSize: 13, flex: 1, ...(disabled ? { opacity: 0.5 } : {}) }}
+            />
+            {rows.length > 1 && !disabled && (
+              <button
+                type="button"
+                onClick={() => removeRow(i)}
+                style={{
+                  fontSize: 11, padding: "5px 10px", borderRadius: 6,
+                  border: "1px solid #fecaca", background: "#fff5f5",
+                  color: "#ef4444", cursor: "pointer", flexShrink: 0,
+                  whiteSpace: "nowrap",
+                }}
+              >削除</button>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {!disabled && (
+        <button
+          type="button"
+          onClick={addRow}
+          style={{
+            marginTop: 7, fontSize: 12, padding: "5px 12px",
+            border: "1.5px dashed #d1d5db", borderRadius: 6,
+            background: "#fff", color: "#6b7280", cursor: "pointer",
+          }}
+        >
+          ＋ キーワードを追加
+        </button>
+      )}
+
+      {/* QRピッカー */}
+      {(samePhaseQrLabels?.length ?? 0) > 0 && !disabled && (
+        <div style={{ marginTop: 7 }}>
+          <div style={{ fontSize: 11, color: "#9ca3af", marginBottom: 4 }}>クイックリプライから追加:</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+            {samePhaseQrLabels!.map((label) => (
+              <button
+                key={label}
+                type="button"
+                onClick={() => addFromQr(label)}
+                style={{
+                  fontSize: 11, padding: "2px 9px", borderRadius: 12,
+                  border: "1px solid #e5e7eb", background: "#f9fafb",
+                  color: "#374151", cursor: "pointer",
+                }}
+              >+ {label}</button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── 画像アップローダー ────────────────────────────────────
+//
+// Supabase Storage bucket "image" へアップロードし、public URL を form state に反映。
+// 既存の URL 文字列データとも互換（"URLで直接入力" モード）。
+
+const UPLOAD_ALLOWED_TYPES = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
+const UPLOAD_MAX_BYTES      = 5 * 1024 * 1024; // 5 MB
+
+interface ImageUploaderProps {
+  value:    string;   // 現在の asset_url（空文字 = 未設定）
+  onChange: (url: string) => void;
+  oaId:     string;
+  workId:   string;
+  disabled?: boolean;
+}
+
+function ImageUploader({ value, onChange, oaId, workId, disabled }: ImageUploaderProps) {
+  const [uploading,    setUploading]    = useState(false);
+  const [uploadError,  setUploadError]  = useState<string | null>(null);
+  const [dragOver,     setDragOver]     = useState(false);
+  const [showUrlInput, setShowUrlInput] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const hasImage = !!value.trim();
+
+  async function handleFile(file: File) {
+    setUploadError(null);
+
+    // クライアント側バリデーション（サーバーと同じ条件）
+    if (!UPLOAD_ALLOWED_TYPES.includes(file.type)) {
+      setUploadError(`JPEG / PNG / WebP のみ対応しています（受信: ${file.type}）`);
+      return;
+    }
+    if (file.size === 0) {
+      setUploadError("ファイルが空です");
+      return;
+    }
+    if (file.size > UPLOAD_MAX_BYTES) {
+      setUploadError(
+        `ファイルサイズは 5MB 以下にしてください（現在: ${(file.size / 1024 / 1024).toFixed(1)}MB）`
+      );
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const token = getDevToken();
+      const { url } = await uploadApi.uploadToStorage(token, file, { oaId, workId });
+      onChange(url);
+      setShowUrlInput(false);
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : "アップロードに失敗しました");
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
+
+  function handleInputChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (file) handleFile(file);
+  }
+
+  function handleDragOver(e: React.DragEvent) {
+    e.preventDefault();
+    if (!disabled && !uploading) setDragOver(true);
+  }
+  function handleDragLeave(e: React.DragEvent) {
+    e.preventDefault();
+    setDragOver(false);
+  }
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    setDragOver(false);
+    if (disabled || uploading) return;
+    const file = e.dataTransfer.files[0];
+    if (file) handleFile(file);
+  }
+
+  function handleClear() {
+    onChange("");
+    setUploadError(null);
+    setShowUrlInput(false);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
+  return (
+    <div>
+      {/* hidden file input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        onChange={handleInputChange}
+        disabled={disabled || uploading}
+        style={{ display: "none" }}
+      />
+
+      {/* ── URL 直接入力モード ── */}
+      {showUrlInput ? (
+        <div>
+          <input
+            type="url"
+            className="form-input"
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            placeholder="https://example.com/image.png"
+            disabled={disabled}
+            style={{ fontFamily: "monospace", fontSize: 13 }}
+            autoFocus
+          />
+          {value.trim() && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={value}
+              alt="プレビュー"
+              style={{
+                marginTop: 8, display: "block",
+                maxWidth: 260, maxHeight: 160, objectFit: "contain",
+                borderRadius: 8, border: "1px solid #e5e7eb", background: "#f9fafb",
+              }}
+              onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+            />
+          )}
+        </div>
+      ) : hasImage ? (
+        /* ── 画像プレビューモード ── */
+        <div style={{ position: "relative", display: "inline-block" }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={value}
+            alt="画像プレビュー"
+            style={{
+              maxWidth: 300, maxHeight: 200, objectFit: "contain", display: "block",
+              borderRadius: 10, border: "1px solid #e5e7eb", background: "#f9fafb",
+            }}
+            onError={(e) => {
+              const img = e.target as HTMLImageElement;
+              img.style.opacity = "0.25";
+              img.alt = "画像を読み込めません";
+            }}
+          />
+          {/* アップロード中オーバーレイ */}
+          {uploading && (
+            <div style={{
+              position: "absolute", inset: 0,
+              background: "rgba(255,255,255,0.82)",
+              display: "flex", flexDirection: "column",
+              alignItems: "center", justifyContent: "center",
+              borderRadius: 10, gap: 6,
+            }}>
+              <span style={{ fontSize: 22 }}>🔄</span>
+              <span style={{ fontSize: 12, color: "#374151", fontWeight: 500 }}>アップロード中...</span>
+            </div>
+          )}
+        </div>
+      ) : (
+        /* ── ドロップゾーン ── */
+        <div
+          onClick={() => !disabled && !uploading && fileInputRef.current?.click()}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+          role="button"
+          tabIndex={disabled ? -1 : 0}
+          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") fileInputRef.current?.click(); }}
+          style={{
+            border: `2px dashed ${dragOver ? "#06C755" : "#d1d5db"}`,
+            borderRadius: 12,
+            padding: "32px 20px",
+            textAlign: "center",
+            cursor: disabled || uploading ? "default" : "pointer",
+            background: dragOver ? "#f0fdf4" : "#fafafa",
+            transition: "border-color 0.15s, background 0.15s",
+            outline: "none",
+          }}
+        >
+          {uploading ? (
+            <>
+              <div style={{ fontSize: 30, marginBottom: 8 }}>🔄</div>
+              <div style={{ fontSize: 13, color: "#374151", fontWeight: 500 }}>アップロード中...</div>
+            </>
+          ) : (
+            <>
+              <div style={{ fontSize: 34, marginBottom: 8 }}>🖼</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: dragOver ? "#059669" : "#374151", marginBottom: 5 }}>
+                {dragOver ? "ここにドロップ" : "クリックまたはドラッグ&ドロップで画像を追加"}
+              </div>
+              <div style={{ fontSize: 11, color: "#9ca3af" }}>JPEG / PNG / WebP・最大 5MB</div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* エラー表示 */}
+      {uploadError && (
+        <div style={{
+          marginTop: 8, padding: "7px 11px",
+          background: "#fff5f5", border: "1px solid #fecaca",
+          borderRadius: 7, fontSize: 12, color: "#dc2626",
+          display: "flex", alignItems: "flex-start", gap: 6,
+        }}>
+          <span style={{ flexShrink: 0 }}>❌</span>
+          <span>{uploadError}</span>
+        </div>
+      )}
+
+      {/* 操作ボタン群 */}
+      {!disabled && !uploading && (
+        <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap", alignItems: "center" }}>
+          {hasImage && !showUrlInput && (
+            <>
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                style={{
+                  fontSize: 12, padding: "4px 12px",
+                  border: "1px solid #d1d5db", borderRadius: 6,
+                  background: "#fff", color: "#374151", cursor: "pointer",
+                  display: "flex", alignItems: "center", gap: 4,
+                }}
+              >
+                🔄 差し替え
+              </button>
+              <button
+                type="button"
+                onClick={handleClear}
+                style={{
+                  fontSize: 12, padding: "4px 12px",
+                  border: "1px solid #fecaca", borderRadius: 6,
+                  background: "#fff5f5", color: "#ef4444", cursor: "pointer",
+                }}
+              >
+                削除
+              </button>
+            </>
+          )}
+          {/* URL直接入力トグル */}
+          <button
+            type="button"
+            onClick={() => setShowUrlInput((v) => !v)}
+            style={{
+              fontSize: 11, padding: "3px 10px",
+              border: "1px solid #e5e7eb", borderRadius: 6,
+              background: showUrlInput ? "#f1f5f9" : "transparent",
+              color: "#6b7280", cursor: "pointer",
+            }}
+            title="既存の画像 URL を直接貼り付ける場合はこちら"
+          >
+            {showUrlInput ? "▲ アップロードに切り替え" : "🔗 URLで直接入力"}
           </button>
         </div>
       )}
@@ -1452,7 +1603,7 @@ function PreviewPanel({ form, characters, riddles }: PreviewPanelProps) {
 
 export function MessageForm({
   oaId, workId, workTitle, initialForm, isNew,
-  submitting, deleting, onSubmit, onDelete,
+  submitting, deleting, onSubmit, onDelete, messageId,
 }: MessageFormProps) {
   const [form, setForm]       = useState<MessageFormState>(initialForm);
   const [error, setError]     = useState<string | null>(null);
@@ -1463,7 +1614,11 @@ export function MessageForm({
   const [phases, setPhases]         = useState<PhaseWithCounts[]>([]);
   const [characters, setCharacters] = useState<Character[]>([]);
   const [riddles, setRiddles]       = useState<Riddle[]>([]);
-  const [allMessages, setAllMessages] = useState<{ id: string; body: string | null; kind: string; sort_order: number }[]>([]);
+  const [allMessages, setAllMessages] = useState<{
+    id: string; body: string | null; kind: string; sort_order: number;
+    phase_id?: string | null; quick_replies?: QuickReplyItem[] | null;
+    trigger_keyword?: string | null;
+  }[]>([]);
 
   useEffect(() => {
     const token = getDevToken();
@@ -1477,10 +1632,13 @@ export function MessageForm({
       setCharacters(ch);
       setRiddles(rd);
       setAllMessages(msgs.map((m) => ({
-        id: m.id,
-        body: m.body,
-        kind: m.kind,
-        sort_order: m.sort_order,
+        id:              m.id,
+        body:            m.body,
+        kind:            m.kind,
+        sort_order:      m.sort_order,
+        phase_id:        m.phase_id,
+        quick_replies:   m.quick_replies,
+        trigger_keyword: m.trigger_keyword,
       })));
     }).catch(() => {});
   }, [workId, oaId]);
@@ -1531,7 +1689,24 @@ export function MessageForm({
     const err = validateMessageForm(form);
     if (err) { setError(err); return; }
     setError(null);
-    onSubmit(form);
+
+    // 応答メッセージの場合: QR連携ラベルを trigger_keyword にマージして保存
+    let submitForm = form;
+    if (form.kind === "response" && messageId) {
+      const norm = (s: string) => s.trim().toLowerCase().normalize("NFKC");
+      const manual = form.trigger_keyword.split("\n").map((k) => k.trim()).filter(Boolean);
+      const linked = allMessages
+        .flatMap((m) => (m.quick_replies ?? []))
+        .filter((qr) => qr.response_message_id === messageId && qr.label.trim())
+        .map((qr) => qr.label.trim())
+        .filter((l, i, arr) => arr.indexOf(l) === i) // dedup linked
+        .filter((l) => !manual.some((e) => norm(e) === norm(l))); // exclude already-manual
+      if (linked.length > 0) {
+        submitForm = { ...form, trigger_keyword: [...manual, ...linked].join("\n") };
+      }
+    }
+
+    onSubmit(submitForm);
   }
 
   // ── answer_match_type トグル ────────────────────────────
@@ -1600,7 +1775,7 @@ export function MessageForm({
               カテゴリ選択: メッセージ / 謎
           ════════════════════════════════════════ */}
           <div className="card" style={{ marginBottom: 16 }}>
-            <div style={sectionHeader}>送るものの種類</div>
+            <div style={sectionHeader}>メッセージタイプ</div>
             <div style={{ display: "flex", gap: 12 }}>
               {([
                 { value: "normal" as const, icon: "💬", label: "メッセージを送る",  desc: "テキストや画像など、通常の会話メッセージ" },
@@ -1697,25 +1872,37 @@ export function MessageForm({
             {/* 応答キーワード（puzzle は不要） */}
             {!isPuzzle && (
             <div className="form-group">
-              <label style={fieldLabel} htmlFor="trigger_keyword">
+              <label style={fieldLabel}>
                 応答キーワード
-                {form.kind === "start" && <span style={{ fontSize: 11, color: "#9ca3af", marginLeft: 6 }}>（kind=start では使用しません）</span>}
+                {(form.kind === "response" || form.kind === "global") && (
+                  <span style={{ fontSize: 10, fontWeight: 700, background: "#fef2f2", color: "#dc2626", borderRadius: 4, padding: "1px 6px", marginLeft: 6 }}>必須</span>
+                )}
+                {form.kind === "start" && (
+                  <span style={{ fontSize: 11, color: "#9ca3af", marginLeft: 6 }}>（kind=start では使用しません）</span>
+                )}
               </label>
-              <input
-                id="trigger_keyword"
-                type="text"
-                className="form-input"
+              <KeywordListEditor
                 value={form.trigger_keyword}
-                onChange={(e) => set("trigger_keyword", e.target.value)}
-                placeholder={form.kind === "global" ? "例: ヒント、ヘルプ、やり直し" : "例: スタート"}
-                maxLength={100}
+                onChange={(v) => set("trigger_keyword", v)}
                 disabled={form.kind === "start"}
-                style={form.kind === "start" ? { opacity: 0.5 } : undefined}
+                samePhaseQrLabels={
+                  form.phase_id
+                    ? (() => {
+                        const existing = form.trigger_keyword.split("\n").map((k) => k.trim()).filter(Boolean);
+                        return allMessages
+                          .filter((m) => m.phase_id === form.phase_id && Array.isArray(m.quick_replies))
+                          .flatMap((m) => (m.quick_replies ?? []).map((qr) => qr.label).filter(Boolean))
+                          .filter((label, i, arr) => arr.indexOf(label) === i && !existing.includes(label));
+                      })()
+                    : []
+                }
+                currentMessageId={messageId}
+                allMessagesForLink={allMessages}
               />
-              <div style={hintText}>
+              <div style={{ ...hintText, marginTop: 6 }}>
                 {form.kind === "start"  && "kind=start では Phase.startTrigger を使います"}
-                {form.kind === "global" && "⚠️ 共通メッセージではキーワードが必須です。このキーワードにどのフェーズでも反応します。"}
-                {form.kind !== "start" && form.kind !== "global" && "このキーワードを受信したとき送信します（kind=response 推奨）"}
+                {form.kind === "global" && "⚠️ どのフェーズでも反応します。キーワードは必須です。"}
+                {form.kind !== "start" && form.kind !== "global" && "複数設定可。いずれかに一致したとき返信します（kind=response 推奨）"}
               </div>
             </div>
             )}
@@ -1883,27 +2070,15 @@ export function MessageForm({
             {mtype === "image" && (
               <>
                 <div className="form-group">
-                  <label style={fieldLabel} htmlFor="puzzle_asset_url_image">
-                    画像 URL <span style={{ color: "#dc2626" }}>*</span>
+                  <label style={fieldLabel}>
+                    画像 <span style={{ color: "#dc2626" }}>*</span>
                   </label>
-                  <input
-                    id="puzzle_asset_url_image"
-                    type="url"
-                    className="form-input"
+                  <ImageUploader
                     value={form.asset_url}
-                    onChange={(e) => set("asset_url", e.target.value)}
-                    placeholder="https://example.com/puzzle.png"
-                    style={{ fontFamily: "monospace", fontSize: 13 }}
+                    onChange={(url) => set("asset_url", url)}
+                    oaId={oaId}
+                    workId={workId}
                   />
-                  {form.asset_url && (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={form.asset_url}
-                      alt="プレビュー"
-                      style={{ marginTop: 8, maxWidth: 240, maxHeight: 140, objectFit: "contain", borderRadius: 6, border: "1px solid #e5e5e5", display: "block" }}
-                      onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
-                    />
-                  )}
                 </div>
                 <div className="form-group" style={{ marginBottom: 0 }}>
                   <label style={fieldLabel} htmlFor="puzzle_notify_image">通知メッセージ（任意）</label>
@@ -2087,35 +2262,15 @@ export function MessageForm({
             {mtype === "image" && (
               <>
                 <div className="form-group">
-                  <label style={fieldLabel} htmlFor="asset_url_image">
-                    画像 URL <span style={{ color: "#dc2626" }}>*</span>
+                  <label style={fieldLabel}>
+                    画像 <span style={{ color: "#dc2626" }}>*</span>
                   </label>
-                  <input
-                    id="asset_url_image"
-                    type="url"
-                    className="form-input"
+                  <ImageUploader
                     value={form.asset_url}
-                    onChange={(e) => set("asset_url", e.target.value)}
-                    placeholder="https://example.com/image.png"
-                    style={{ fontFamily: "monospace", fontSize: 13 }}
+                    onChange={(url) => set("asset_url", url)}
+                    oaId={oaId}
+                    workId={workId}
                   />
-                  {form.asset_url && (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={form.asset_url}
-                      alt="プレビュー"
-                      style={{
-                        marginTop: 8,
-                        maxWidth: 240,
-                        maxHeight: 140,
-                        objectFit: "contain",
-                        borderRadius: 6,
-                        border: "1px solid #e5e5e5",
-                        display: "block",
-                      }}
-                      onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
-                    />
-                  )}
                 </div>
                 <div className="form-group" style={{ marginBottom: 0 }}>
                   <label style={fieldLabel} htmlFor="notify_text_image">
@@ -2396,38 +2551,12 @@ export function MessageForm({
           <QuickReplyEditor
             items={form.quick_replies}
             onChange={(items) => set("quick_replies", items)}
-            messages={allMessages}
-            phases={phases}
+            responseMessages={
+              form.phase_id
+                ? allMessages.filter((m) => m.phase_id === form.phase_id && m.kind === "response" && m.id !== messageId)
+                : allMessages.filter((m) => m.kind === "response" && m.id !== messageId)
+            }
           />
-
-          {/* ════════════════════════════════════════
-              連続送信設定
-          ════════════════════════════════════════ */}
-          <div className="card" style={{ marginBottom: 16 }}>
-            <div style={sectionHeader}>🔗 連続送信</div>
-            <div className="form-group" style={{ marginBottom: 0 }}>
-              <label style={fieldLabel} htmlFor="next_message_id">
-                次に送信するメッセージ
-                <span style={{ fontWeight: 400, color: "#9ca3af", marginLeft: 4 }}>（任意）</span>
-              </label>
-              <select
-                id="next_message_id"
-                className="form-input"
-                value={form.next_message_id}
-                onChange={(e) => set("next_message_id", e.target.value)}
-              >
-                <option value="">（なし）</option>
-                {allMessages.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    [{m.kind}] {m.body ? m.body.slice(0, 50) : `(ID: ${m.id.slice(0, 8)}...)`}
-                  </option>
-                ))}
-              </select>
-              <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 4 }}>
-                設定すると、このメッセージが送信された直後に続けて指定メッセージも送信されます。
-              </div>
-            </div>
-          </div>
 
           {/* ════════════════════════════════════════
               謎の回答設定（puzzle のみ）
@@ -2570,8 +2699,6 @@ export function MessageForm({
               <QuickReplyEditor
                 items={form.incorrect_quick_replies}
                 onChange={(items) => set("incorrect_quick_replies", items)}
-                messages={allMessages}
-                phases={phases}
               />
             </div>
 

@@ -183,9 +183,11 @@ export const POST = withAuth(async (req) => {
           };
         }
 
-        const matched = responseRows.filter(
-          (m) => m.triggerKeyword && norm(m.triggerKeyword) === normLabel,
-        );
+        const matched = responseRows.filter((m) => {
+          if (!m.triggerKeyword) return false;
+          // 複数キーワード（\n 区切り）のいずれかと一致すれば OK
+          return m.triggerKeyword.split("\n").map((k: string) => norm(k.trim())).some((kw: string) => kw === normLabel);
+        });
 
         // LINE の buildMessageChain と同様に nextMessageId チェーンを辿る。
         // QR を持つメッセージには停止しない（LINE 側と同じ挙動）。

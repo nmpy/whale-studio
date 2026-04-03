@@ -493,9 +493,9 @@ function matchKeywordsInMemory(
   );
 
   return allCandidates.filter((msg) => {
-    const kwNorm  = normKw(msg.triggerKeyword);
-    const kwLoose = normKwLoose(msg.triggerKeyword);
-    return inputNorm === kwNorm || inputLoose === kwLoose;
+    // 複数キーワード（\n 区切り）のいずれかと一致すれば OK
+    const keywords = msg.triggerKeyword.split("\n").map((k) => k.trim()).filter(Boolean);
+    return keywords.some((kw) => inputNorm === normKw(kw) || inputLoose === normKwLoose(kw));
   }) as (KeywordMessageRecord & { triggerKeyword: string })[];
 }
 

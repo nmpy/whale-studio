@@ -124,6 +124,7 @@ export default function EditMessagePage() {
       deleting={deleting}
       onSubmit={handleSubmit}
       onDelete={handleDelete}
+      messageId={messageId}
     />
   );
 }

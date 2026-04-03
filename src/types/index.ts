@@ -48,6 +48,12 @@ export interface QuickReplyItem {
    * 設定されている場合、phase.transitions ではなくこの ID へ直接遷移する。
    */
   target_phase_id?: string;
+  /**
+   * このボタンをタップしたときのユーザー入力（ラベル）を受け取る応答メッセージの ID。
+   * 設定されると、応答メッセージの trigger_keyword にラベルが自動マージされる。
+   * action="hint" のときは使用しない。
+   */
+  response_message_id?: string;
 }
 /**
  * キャラクターアイコン種別。

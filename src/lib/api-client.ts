@@ -638,11 +638,33 @@ export const dashboardApi = {
  * POST /api/upload — multipart/form-data { file: File }
  */
 export const uploadApi = {
+  /** Cloudinary アップロード（既存） */
   async uploadImage(token: string, file: File): Promise<{ url: string }> {
     const body = new FormData();
     body.append("file", file);
     // Content-Type は FormData が自動設定するため Authorization のみ渡す
     const res = await fetch("/api/upload", {
+      method:  "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body,
+    });
+    return parseResponse(res);
+  },
+
+  /**
+   * Supabase Storage（bucket: image）へアップロードして public URL を返す。
+   * POST /api/upload/storage — multipart/form-data { file, oaId, workId }
+   */
+  async uploadToStorage(
+    token:  string,
+    file:   File,
+    meta:   { oaId: string; workId: string }
+  ): Promise<{ url: string }> {
+    const body = new FormData();
+    body.append("file",   file);
+    body.append("oaId",   meta.oaId);
+    body.append("workId", meta.workId);
+    const res = await fetch("/api/upload/storage", {
       method:  "POST",
       headers: { Authorization: `Bearer ${token}` },
       body,

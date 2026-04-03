@@ -658,6 +658,27 @@ function PlaygroundInner() {
 
         {/* ── 右ペイン: プレイ画面 ── */}
         <div>
+          {/* ── 開発中バナー ── */}
+          <div style={{
+            display: "flex",
+            alignItems: "flex-start",
+            gap: 8,
+            padding: "10px 14px",
+            marginBottom: 12,
+            background: "#fffbeb",
+            border: "1px solid #fcd34d",
+            borderRadius: 10,
+            fontSize: 12,
+            color: "#92400e",
+            lineHeight: 1.65,
+          }}>
+            <span style={{ fontSize: 15, flexShrink: 0, marginTop: 1 }}>⚠️</span>
+            <span>
+              現在開発中の機能のため、一部挙動が実機と異なる場合があります。
+              あらかじめご了承ください。
+            </span>
+          </div>
+
           {!selectedWorkId ? (
             <div className="card">
               <div className="empty-state" style={{ padding: "40px 0" }}>
