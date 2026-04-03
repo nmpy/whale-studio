@@ -289,7 +289,7 @@ function matchGlobalCmdInMemory(
 function matchHintFromPhase(
   phase:     PhaseRow,
   inputText: string,
-): { hintText: string; hintFollowup?: string } | null {
+): { hintText: string; hintFollowup?: string; qrItems: import("@/types").QuickReplyItem[] } | null {
   const inputNorm  = normKw(inputText);
   const inputLoose = normKwLoose(inputText);
 
@@ -306,17 +306,19 @@ function matchHintFromPhase(
     for (const item of items) {
       if (item.action !== "hint") continue;
       if (item.enabled === false) continue;
-      const matchKey   = item.value?.trim() || item.label;
-      const matchNorm  = normKw(matchKey);
-      const matchLoose = normKwLoose(matchKey);
-      if (inputNorm === matchNorm || inputLoose === matchLoose) {
+      // value と label の両方を照合キーとして試みる（LINE では label がそのまま送信される）
+      const keys = [item.value?.trim(), item.label].filter(Boolean) as string[];
+      const matched = keys.some(
+        (k) => normKw(k) === inputNorm || normKwLoose(k) === inputLoose,
+      );
+      if (matched) {
         const hintText     = item.hint_text?.trim() || "ヒントはまだ設定されていません。";
         const hintFollowup = item.hint_followup?.trim() || undefined;
         console.log(
           `[cache][hint] マッチ msgId=${msg.id.slice(0, 8)}`,
-          `key="${matchKey}" hint_text="${hintText.slice(0, 30)}..."`,
+          `key="${item.value ?? item.label}" hint_text="${hintText.slice(0, 30)}..."`,
         );
-        return { hintText, hintFollowup };
+        return { hintText, hintFollowup, qrItems: items };
       }
     }
   }
@@ -1114,12 +1116,15 @@ async function handleTextEvent({
   // ℹ️ ヒント返答は userProgress を更新しない（進行状態に影響しない）
   if (hintResult !== null) {
     console.log(`[Webhook][STEP] hint quickReply マッチ userId=${userId} hintText="${hintResult.hintText.slice(0, 40)}"`);
-    const hintMsgs = [
+    const hintMsgs: import("@/lib/line").LineMessage[] = [
       { type: "text" as const, text: hintResult.hintText, sender: systemSender },
       ...(hintResult.hintFollowup
-        ? [{ type: "text" as const, text: hintResult.hintFollowup, sender: systemSender }]
+        ? [{ type: "text" as const, text: hintResult.hintFollowup, sender: systemSender } as import("@/lib/line").LineMessage]
         : []),
     ];
+    // ヒント返答後もクイックリプライを再表示する（LINE では返答でQRが消えるため再付与）
+    const hintQr = buildQuickReplyFromItems(hintResult.qrItems);
+    if (hintQr) (hintMsgs[hintMsgs.length - 1] as import("@/lib/line").LineTextMessage).quickReply = hintQr;
     const tReplyHint = Date.now();
     await replyToLine(replyToken, hintMsgs, token);
     console.log(
@@ -1894,7 +1899,7 @@ async function matchHintQuickReply(
   workId:         string,
   currentPhaseId: string,
   inputText:      string,
-): Promise<{ hintText: string; hintFollowup?: string } | null> {
+): Promise<{ hintText: string; hintFollowup?: string; qrItems: import("@/types").QuickReplyItem[] } | null> {
   // 現在フェーズのアクティブなメッセージの quickReplies を取得
   const messages = await prisma.message.findMany({
     where: {
@@ -1928,21 +1933,22 @@ async function matchHintQuickReply(
       if (item.action !== "hint") continue;
       if (item.enabled === false) continue; // 無効アイテムはスキップ
 
-      // value が設定されていればそちらを照合キーとして使う。なければ label を使う
-      const matchKey    = item.value?.trim() || item.label;
-      const matchNorm   = normKw(matchKey);
-      const matchLoose  = normKwLoose(matchKey);
+      // value と label の両方を照合キーとして試みる（LINE では label がそのまま送信される）
+      const keys = [item.value?.trim(), item.label].filter(Boolean) as string[];
+      const matched = keys.some(
+        (k) => normKw(k) === inputNorm || normKwLoose(k) === inputLoose,
+      );
 
-      if (inputNorm === matchNorm || inputLoose === matchLoose) {
+      if (matched) {
         const hintText     = item.hint_text?.trim() || "ヒントはまだ設定されていません。";
         const hintFollowup = item.hint_followup?.trim() || undefined;
         console.log(
           `[Webhook][hint] マッチ msgId=${msg.id.slice(0, 8)}`,
-          `key="${matchKey}"`,
+          `key="${item.value ?? item.label}"`,
           `hint_text="${hintText.slice(0, 30)}..."`,
           hintFollowup ? `hint_followup="${hintFollowup.slice(0, 20)}..."` : "",
         );
-        return { hintText, hintFollowup };
+        return { hintText, hintFollowup, qrItems: items };
       }
     }
   }

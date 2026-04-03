@@ -324,8 +324,9 @@ export function buildQuickReplyFromItems(
         if (!item.value) return [];
         return [{ type: "action", action: { type: "uri", label, uri: item.value } }];
       }
-      // text / next / hint / custom → message アクション
-      const text = item.value?.trim() || item.label;
+      // hint → ユーザーに見える文言（label）をそのまま送信テキストにする
+      // text / next / custom → value 優先、なければ label
+      const text = item.action === "hint" ? item.label : (item.value?.trim() || item.label);
       return [{ type: "action", action: { type: "message", label, text } }];
     });
 

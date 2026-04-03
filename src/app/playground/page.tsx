@@ -198,10 +198,39 @@ function PlaygroundInner() {
     }
 
     // ヒント表示（API 呼び出しなし）
+    // - ユーザー吹き出しにラベルを表示（hint ID ではなく表示文言）
+    // - ヒント本文・回答誘導メッセージをチャットに追加
+    // - QR は消費しない（再表示のため）
     if (item.action === "hint") {
-      const hintText = item.hint_text ?? "（ヒントなし）";
-      setMessage(`💡 ${hintText}`);
-      addLog("system", `💡 ヒント: ${hintText}`);
+      setSentMessages((prev) => [...prev, item.label]);
+      const hintMsgs: RuntimePhaseMessage[] = [];
+      const hintBody = item.hint_text?.trim() || "ヒントはまだ設定されていません。";
+      hintMsgs.push({
+        id: `hint-${Date.now()}-body`,
+        message_type: "text",
+        body: hintBody,
+        asset_url: null,
+        alt_text: null,
+        flex_payload_json: null,
+        quick_replies: null,
+        sort_order: 0,
+        character: null,
+      });
+      if (item.hint_followup?.trim()) {
+        hintMsgs.push({
+          id: `hint-${Date.now()}-followup`,
+          message_type: "text",
+          body: item.hint_followup.trim(),
+          asset_url: null,
+          alt_text: null,
+          flex_payload_json: null,
+          quick_replies: null,
+          sort_order: 1,
+          character: null,
+        });
+      }
+      setExtraMessages((prev) => [...prev, ...hintMsgs]);
+      addLog("system", `💡 ヒント: ${hintBody}`);
       return;
     }
 
@@ -933,55 +962,97 @@ function PhasePanel({ phase, loading, showRead, onAdvance, onQrTap, extraMessage
         </div>
 
         {/* メッセージエリア */}
-        {phase.messages.length === 0 ? (
-          <div style={{ background: "#c4dde3", padding: "28px 16px", textAlign: "center" }}>
-            <p style={{ color: "rgba(0,0,0,0.35)", fontSize: 13 }}>
+        <div style={{ background: "#c4dde3", padding: "14px 12px 18px", maxHeight: 420, overflowY: "auto" }}>
+          {phase.description && (
+            <div style={{
+              textAlign: "center", marginBottom: 10,
+              fontSize: 11, color: "rgba(0,0,0,0.4)",
+              background: "rgba(255,255,255,0.45)",
+              borderRadius: 10, padding: "3px 12px",
+              display: "inline-block", marginLeft: "50%", transform: "translateX(-50%)",
+            }}>
+              {phase.description}
+            </div>
+          )}
+          {phase.messages.length === 0 && (
+            <p style={{ color: "rgba(0,0,0,0.35)", fontSize: 13, textAlign: "center", padding: "14px 0" }}>
               このフェーズにはメッセージがありません
             </p>
-          </div>
-        ) : (
-          <div style={{ background: "#c4dde3", padding: "14px 12px 18px", maxHeight: 420, overflowY: "auto" }}>
-            {phase.description && (
-              <div style={{
-                textAlign: "center", marginBottom: 10,
-                fontSize: 11, color: "rgba(0,0,0,0.4)",
-                background: "rgba(255,255,255,0.45)",
-                borderRadius: 10, padding: "3px 12px",
-                display: "inline-block", marginLeft: "50%", transform: "translateX(-50%)",
-              }}>
-                {phase.description}
+          )}
+          {phase.messages.slice(0, visibleCount).map((msg, i) => (
+            <Fragment key={msg.id}>
+              <MessageBubble msg={msg} index={i} oaTitle={oaTitle} />
+              {/* メッセージ QR: このメッセージがアクティブ QR メッセージのとき直下に描画 */}
+              {allShown && msg.id === activeQrMsgId && activeQrItems && (
+                <QrButtons items={activeQrItems} onTap={onQrTap} loading={loading} />
+              )}
+            </Fragment>
+          ))}
+          {/* target_message_id / hint で追加されたメッセージ */}
+          {allShown && extraMessages.map((msg, i) => (
+            <Fragment key={`extra-${msg.id}-${i}`}>
+              <MessageBubble msg={msg} index={phase.messages.length + i} oaTitle={oaTitle} />
+              {msg.id === activeQrMsgId && activeQrItems && (
+                <QrButtons items={activeQrItems} onTap={onQrTap} loading={loading} />
+              )}
+            </Fragment>
+          ))}
+          {/* ユーザーが送信したテキスト（最後の1件に既読を表示） */}
+          {allShown && sentMessages.map((text, i) => (
+            <UserMessageBubble
+              key={`sent-${i}`}
+              text={text}
+              showRead={i === sentMessages.length - 1}
+            />
+          ))}
+          {/* 遷移 QR — message QR が非アクティブのとき、最後のメッセージ直下にインライン表示 */}
+          {allShown && !activeQrItems?.length && phase.transitions !== null && (
+            phase.transitions.length === 0 ? (
+              <p style={{ color: "rgba(0,0,0,0.35)", fontSize: 11, textAlign: "center", padding: "8px 0" }}>
+                ⚠ このフェーズに遷移が設定されていません
+              </p>
+            ) : (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, justifyContent: "flex-end", padding: "6px 4px 10px" }}>
+                {phase.transitions.map((tr) => (
+                  <button
+                    key={tr.id}
+                    onClick={() => onAdvance(tr)}
+                    disabled={loading}
+                    title={tr.set_flags && tr.set_flags !== "{}" ? `✏️ ${tr.set_flags}` : undefined}
+                    style={{
+                      padding: "7px 14px",
+                      border: "1.5px solid #06C755",
+                      borderRadius: 20,
+                      background: loading ? "#f9fafb" : "#fff",
+                      color: "#06C755",
+                      cursor: loading ? "not-allowed" : "pointer",
+                      fontSize: 13, fontWeight: 600,
+                      whiteSpace: "nowrap",
+                      transition: "background 0.12s, color 0.12s",
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!loading) {
+                        e.currentTarget.style.background = "#06C755";
+                        e.currentTarget.style.color = "#fff";
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = "#fff";
+                      e.currentTarget.style.color = "#06C755";
+                    }}
+                  >
+                    {tr.label}
+                    {tr.set_flags && tr.set_flags !== "{}" && (
+                      <span style={{ marginLeft: 5, fontSize: 10, opacity: 0.7 }}>✏️</span>
+                    )}
+                  </button>
+                ))}
               </div>
-            )}
-            {phase.messages.slice(0, visibleCount).map((msg, i) => (
-              <Fragment key={msg.id}>
-                <MessageBubble msg={msg} index={i} oaTitle={oaTitle} />
-                {/* QR はこのメッセージがアクティブ QR メッセージのとき、直下に描画 */}
-                {allShown && msg.id === activeQrMsgId && activeQrItems && (
-                  <QrButtons items={activeQrItems} onTap={onQrTap} loading={loading} />
-                )}
-              </Fragment>
-            ))}
-            {/* target_message_id で追加されたメッセージ */}
-            {allShown && extraMessages.map((msg, i) => (
-              <Fragment key={`extra-${msg.id}-${i}`}>
-                <MessageBubble msg={msg} index={phase.messages.length + i} oaTitle={oaTitle} />
-                {msg.id === activeQrMsgId && activeQrItems && (
-                  <QrButtons items={activeQrItems} onTap={onQrTap} loading={loading} />
-                )}
-              </Fragment>
-            ))}
-            {/* ユーザーが送信したテキスト（最後の1件に既読を表示） */}
-            {allShown && sentMessages.map((text, i) => (
-              <UserMessageBubble
-                key={`sent-${i}`}
-                text={text}
-                showRead={i === sentMessages.length - 1}
-              />
-            ))}
-            {isTyping && <TypingIndicator char={nextTypingChar} />}
-            <div ref={chatBottomRef} />
-          </div>
-        )}
+            )
+          )}
+          {isTyping && <TypingIndicator char={nextTypingChar} />}
+          <div ref={chatBottomRef} />
+        </div>
 
         {/* テキスト入力バー（LINE 風） */}
         <div style={{
@@ -1048,65 +1119,6 @@ function PhasePanel({ phase, loading, showRead, onAdvance, onQrTap, extraMessage
         </div>
       </div>
 
-      {/* 遷移選択肢 — allShown かつ message QR が非アクティブのときのみ表示 */}
-      {allShown && phase.transitions !== null && !activeQrItems?.length && (
-        <div className="card">
-          <p style={{
-            fontSize: 11, fontWeight: 600, color: "#9ca3af",
-            marginBottom: 10, textAlign: "center", letterSpacing: "0.05em",
-          }}>
-            ── 選択してください ──
-          </p>
-          {phase.transitions.length === 0 ? (
-            <p style={{ color: "#ef4444", fontSize: 13, textAlign: "center" }}>
-              ⚠ このフェーズに遷移が設定されていません。管理画面から追加してください。
-            </p>
-          ) : (
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center" }}>
-              {phase.transitions.map((tr) => {
-                const toMeta = PHASE_TYPE_META[tr.to_phase.phase_type];
-                return (
-                  <button
-                    key={tr.id}
-                    onClick={() => onAdvance(tr)}
-                    disabled={loading}
-                    title={
-                      `→ ${toMeta.label}` +
-                      (tr.set_flags && tr.set_flags !== "{}" ? `  ✏️ ${tr.set_flags}` : "")
-                    }
-                    style={{
-                      padding: "8px 18px",
-                      border: `2px solid ${toMeta.color}`,
-                      borderRadius: 24,
-                      background: loading ? "#f9fafb" : toMeta.bg,
-                      color: toMeta.color,
-                      cursor: loading ? "not-allowed" : "pointer",
-                      fontSize: 13, fontWeight: 700,
-                      transition: "background 0.15s, transform 0.1s",
-                      whiteSpace: "nowrap",
-                    }}
-                    onMouseEnter={(e) => {
-                      if (!loading) {
-                        e.currentTarget.style.background = toMeta.color;
-                        e.currentTarget.style.color = "#fff";
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = toMeta.bg;
-                      e.currentTarget.style.color = toMeta.color;
-                    }}
-                  >
-                    {tr.label}
-                    {tr.set_flags && tr.set_flags !== "{}" && (
-                      <span style={{ marginLeft: 5, fontSize: 10, opacity: 0.8 }}>✏️</span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
     </div>
   );
 }
