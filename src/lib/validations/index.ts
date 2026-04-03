@@ -225,6 +225,11 @@ export const quickReplyItemSchema = z.object({
   target_message_id: z.string().uuid().optional(),
   /** action="text" のとき、タップ時に遷移するフェーズの ID */
   target_phase_id:   z.string().uuid().optional(),
+  /**
+   * このボタンをタップしたときのユーザー入力を受け取る応答メッセージの ID。
+   * 設定されると、応答メッセージの trigger_keyword にラベルが自動マージされる。
+   */
+  response_message_id: z.string().uuid().optional(),
 });
 
 // ────────────────────────────────────────────────

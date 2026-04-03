@@ -258,6 +258,12 @@ function PlaygroundInner() {
           character: null,
         });
       }
+      // LINE webhook と同様に、ヒント返信後も元の QR を最後のメッセージに再付与する。
+      // （LINE は返信でQRが消えるため再付与が必須。プレビューも同じ挙動にする）
+      // activeQrItems はこの render クロージャから取得できる。
+      if (activeQrItems && activeQrItems.length > 0) {
+        hintMsgs[hintMsgs.length - 1].quick_replies = activeQrItems;
+      }
       // ユーザー吹き出し（ヒントボタンのラベル）→ ボット吹き出し（ヒント本文）を挿入順で追加
       setCurrentItems((prev) => [
         ...prev,
