@@ -50,9 +50,37 @@ export const POST = withAuth(async (req) => {
       return ok({ ...state, _message: "このシナリオはすでにエンディングに到達しています。" });
     }
 
-    // 現在フェーズを取得
+    // ── 開始待機状態（currentPhaseId = null）: トリガーマッチングで開始 ──────
     if (!progress.currentPhaseId) {
-      return badRequest("現在のフェーズが設定されていません。シナリオを再開始してください。");
+      const startPhase = await prisma.phase.findFirst({
+        where:   { workId: progress.workId, phaseType: "start", isActive: true },
+        orderBy: { sortOrder: "asc" },
+      });
+      if (!startPhase) {
+        return badRequest("この作品には開始フェーズがありません。管理画面でシナリオを構成してください。");
+      }
+
+      // startTrigger が設定されている場合のみ一致チェック（NFKC + 大文字小文字無視）
+      if (startPhase.startTrigger && data.label) {
+        const norm = (s: string) => s.trim().toLowerCase().normalize("NFKC");
+        if (norm(startPhase.startTrigger) !== norm(data.label)) {
+          const state = await buildRuntimeState(progress);
+          return ok({
+            ...state,
+            start_triggers: [{ label: startPhase.startTrigger, trigger: startPhase.startTrigger }],
+            _matched: false,
+            _message: `「${startPhase.startTrigger}」を送信するとシナリオが始まります`,
+          });
+        }
+      }
+
+      // トリガー一致（または startTrigger 未設定）→ 開始フェーズへ移行
+      const updated = await prisma.userProgress.update({
+        where: { id: progress.id },
+        data:  { currentPhaseId: startPhase.id, lastInteractedAt: new Date() },
+      });
+      const state = await buildRuntimeState(updated);
+      return ok({ ...state, _matched: true });
     }
 
     const currentPhase = await prisma.phase.findUnique({

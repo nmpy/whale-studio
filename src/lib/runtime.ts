@@ -241,6 +241,99 @@ export function buildPhaseInclude() {
 // 後方互換エクスポート
 export const PHASE_INCLUDE = buildPhaseInclude();
 
+/** Prisma メッセージ行を RuntimePhaseMessage に変換するヘルパー */
+function messageRowToRuntime(
+  m: PhaseRow["messages"][number],
+): import("@/types").RuntimePhaseMessage {
+  let quickReplies: QuickReplyItem[] | null = null;
+  if (m.quickReplies) {
+    try {
+      const parsed = JSON.parse(m.quickReplies);
+      if (Array.isArray(parsed)) quickReplies = parsed as QuickReplyItem[];
+    } catch {
+      console.warn(`[buildRuntimeState] quickReplies parse error msgId=${m.id}`);
+    }
+  }
+  return {
+    id:                m.id,
+    message_type:      m.messageType as MessageType,
+    body:              m.body,
+    asset_url:         m.assetUrl,
+    alt_text:          m.altText         ?? null,
+    flex_payload_json: m.flexPayloadJson ?? null,
+    quick_replies:     quickReplies,
+    sort_order:        m.sortOrder,
+    character:         m.character
+      ? {
+          id:             m.character.id,
+          name:           m.character.name,
+          icon_type:      m.character.iconType as IconType,
+          icon_text:      m.character.iconText,
+          icon_color:     m.character.iconColor,
+          icon_image_url: m.character.iconImageUrl,
+        }
+      : null,
+  };
+}
+
+/**
+ * フェーズのメッセージ一覧から「フェーズ開始時に自動表示すべきメッセージ列」を構築する。
+ *
+ * ルール:
+ *   1. QRの target_message_id で参照されるメッセージは表示しない（QRタップ時のみ表示）
+ *   2. 他メッセージの nextMessageId で参照されるメッセージは起点にしない（チェーン中間）
+ *   3. 起点メッセージから nextMessageId を辿り、quick_replies を持つメッセージで停止
+ *      （QRを持つメッセージはそこで一時停止し、ユーザー入力を待つ）
+ */
+function buildEntryChain(
+  messages: PhaseRow["messages"],
+): import("@/types").RuntimePhaseMessage[] {
+  // 1. QR の target_message_id を収集（分岐先メッセージ ID セット）
+  const targetMsgIds = new Set<string>();
+  for (const m of messages) {
+    if (!m.quickReplies) continue;
+    try {
+      const items = JSON.parse(m.quickReplies) as QuickReplyItem[];
+      for (const item of items) {
+        if (item.target_message_id) targetMsgIds.add(item.target_message_id);
+      }
+    } catch { /* ignore */ }
+  }
+
+  // 2. nextMessageId で参照されているメッセージ ID セット（チェーン中間）
+  const midChainIds = new Set<string>(
+    messages.filter((m) => m.nextMessageId).map((m) => m.nextMessageId!)
+  );
+
+  // 3. ID → メッセージ マップ
+  const msgMap = new Map(messages.map((m) => [m.id, m]));
+
+  // 4. 起点メッセージ: QR 分岐先でなく、かつチェーン中間でないもの
+  const entries = messages
+    .filter((m) => !targetMsgIds.has(m.id) && !midChainIds.has(m.id))
+    .sort((a, b) => a.sortOrder - b.sortOrder || a.createdAt.getTime() - b.createdAt.getTime());
+
+  // 5. 各起点からチェーンを辿り、QRで停止
+  const result: import("@/types").RuntimePhaseMessage[] = [];
+  const visited = new Set<string>(); // 循環ガード
+
+  for (const entry of entries) {
+    let cur: PhaseRow["messages"][number] | undefined = entry;
+    while (cur && !visited.has(cur.id)) {
+      visited.add(cur.id);
+      result.push(messageRowToRuntime(cur));
+      // QRを持つメッセージで停止（ユーザーの選択を待つ）
+      if (cur.quickReplies) break;
+      // nextMessageId チェーンを辿る
+      const nextId = cur.nextMessageId;
+      if (!nextId) break;
+      cur = msgMap.get(nextId);
+    }
+  }
+
+  return result;
+}
+
 /**
  * プリフェッチ済みの PhaseRow から RuntimeState.phase を組み立てる（DB クエリなし）。
  * buildRuntimeState / buildRuntimeStateWithPhase の共通処理。
@@ -260,37 +353,7 @@ function phaseRowToRuntimePhase(
     phase_type:  phase.phaseType as PhaseType,
     name:        phase.name,
     description: phase.description,
-    messages:    phase.messages.map((m) => {
-      let quickReplies: QuickReplyItem[] | null = null;
-      if (m.quickReplies) {
-        try {
-          const parsed = JSON.parse(m.quickReplies);
-          if (Array.isArray(parsed)) quickReplies = parsed as QuickReplyItem[];
-        } catch {
-          console.warn(`[buildRuntimeState] quickReplies parse error msgId=${m.id}`);
-        }
-      }
-      return {
-        id:                m.id,
-        message_type:      m.messageType as MessageType,
-        body:              m.body,
-        asset_url:         m.assetUrl,
-        alt_text:          m.altText          ?? null,
-        flex_payload_json: m.flexPayloadJson  ?? null,
-        quick_replies:     quickReplies,
-        sort_order:        m.sortOrder,
-        character:         m.character
-          ? {
-              id:             m.character.id,
-              name:           m.character.name,
-              icon_type:      m.character.iconType as IconType,
-              icon_text:      m.character.iconText,
-              icon_color:     m.character.iconColor,
-              icon_image_url: m.character.iconImageUrl,
-            }
-          : null,
-      };
-    }),
+    messages:    buildEntryChain(phase.messages),
     transitions: isEnding
       ? null
       : availableTransitions.map((t) => ({

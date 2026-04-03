@@ -454,9 +454,19 @@ export interface RuntimePhase {
   transitions: RuntimeTransition[] | null;
 }
 
+/** 開始待機中に表示するトリガーボタン情報 */
+export interface StartTrigger {
+  /** QR ボタンに表示するラベル */
+  label:   string;
+  /** 押下時に advance へ送るテキスト */
+  trigger: string;
+}
+
 export interface RuntimeState {
-  progress: UserProgress | null;
-  phase:    RuntimePhase | null;
+  progress:        UserProgress | null;
+  phase:           RuntimePhase | null;
+  /** 開始待機中（currentPhaseId=null）のときのみ設定。押下で物語が始まるトリガー一覧 */
+  start_triggers?: StartTrigger[];
 }
 
 // ────────────────────────────────────────────────

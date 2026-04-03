@@ -1,10 +1,17 @@
 // src/app/api/runtime/start/route.ts
 // POST /api/runtime/start
 //
-// 指定ユーザーのシナリオを（再）開始する。
-// - 作品の start フェーズを特定し、currentPhaseId に設定する。
-// - UserProgress が既にあればリセット（上書き）する。
-// - 開始フェーズのメッセージ・遷移を含む RuntimeState を返す。
+// 指定ユーザーの進行状態をリセットし、開始待機状態にする。
+//
+// 実機LINE の挙動に準拠:
+//   - ユーザーが最初のメッセージを送るまで物語は始まらない
+//   - このエンドポイントは progress を初期化するだけ（currentPhaseId = null）
+//   - 実際の開始は /api/runtime/advance でトリガーテキストを送信して行う
+//
+// レスポンス:
+//   - progress: 初期化済み進行状態（currentPhaseId = null）
+//   - phase: null
+//   - start_triggers: 開始トリガーボタン情報（テスト画面の QR として表示）
 //
 // エラーケース:
 //   - work が存在しない
@@ -17,6 +24,7 @@ import { withAuth } from "@/lib/auth";
 import { startScenarioSchema, formatZodErrors } from "@/lib/validations";
 import { buildRuntimeState } from "@/lib/runtime";
 import { ZodError } from "zod";
+import type { StartTrigger } from "@/types";
 
 export const POST = withAuth(async (req) => {
   try {
@@ -27,9 +35,9 @@ export const POST = withAuth(async (req) => {
     const work = await prisma.work.findUnique({ where: { id: data.work_id } });
     if (!work) return notFound("作品");
 
-    // 開始フェーズを取得
+    // 開始フェーズを取得（startTrigger を start_triggers として返す）
     const startPhase = await prisma.phase.findFirst({
-      where: { workId: data.work_id, phaseType: "start", isActive: true },
+      where:   { workId: data.work_id, phaseType: "start", isActive: true },
       orderBy: { sortOrder: "asc" },
     });
     if (!startPhase) {
@@ -38,7 +46,7 @@ export const POST = withAuth(async (req) => {
       );
     }
 
-    // UserProgress を upsert（既存の進行状態をリセット）
+    // UserProgress を upsert（currentPhaseId = null の待機状態でリセット）
     const progress = await prisma.userProgress.upsert({
       where: {
         lineUserId_workId: {
@@ -47,23 +55,27 @@ export const POST = withAuth(async (req) => {
         },
       },
       create: {
-        lineUserId:      data.line_user_id,
-        workId:          data.work_id,
-        currentPhaseId:  startPhase.id,
-        reachedEnding:   false,
-        flags:           "{}",
+        lineUserId:       data.line_user_id,
+        workId:           data.work_id,
+        currentPhaseId:   null,       // 待機状態: フェーズ未設定
+        reachedEnding:    false,
+        flags:            "{}",
         lastInteractedAt: new Date(),
       },
       update: {
-        currentPhaseId:  startPhase.id,
-        reachedEnding:   false,
-        flags:           "{}",
+        currentPhaseId:   null,       // 待機状態にリセット
+        reachedEnding:    false,
+        flags:            "{}",
         lastInteractedAt: new Date(),
       },
     });
 
+    // start_triggers: startTrigger が設定されていればそれを、なければ「はじめる」をデフォルトとして返す
+    const triggerText = startPhase.startTrigger?.trim() || "はじめる";
+    const startTriggers: StartTrigger[] = [{ label: triggerText, trigger: triggerText }];
+
     const state = await buildRuntimeState(progress);
-    return ok(state);
+    return ok({ ...state, start_triggers: startTriggers });
   } catch (err) {
     if (err instanceof ZodError) return badRequest("入力値が不正です", formatZodErrors(err));
     return serverError(err);

@@ -4,7 +4,7 @@ import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { oaApi, workApi, runtimeApi, getDevToken, type WorkListItem, type OaListItem, type RuntimeAdvanceResult } from "@/lib/api-client";
-import type { RuntimeState, RuntimePhaseMessage, RuntimeTransition, PhaseType, QuickReplyItem } from "@/types";
+import type { RuntimeState, RuntimePhaseMessage, RuntimeTransition, PhaseType, QuickReplyItem, StartTrigger } from "@/types";
 
 // ── 定数 ──────────────────────────────────────────
 const PHASE_TYPE_META: Record<PhaseType, { label: string; color: string; bg: string }> = {
@@ -51,6 +51,9 @@ function PlaygroundInner() {
 
   // ── QR タップで追加表示されるメッセージ（target_message_id 用） ──
   const [extraMessages, setExtraMessages] = useState<RuntimePhaseMessage[]>([]);
+
+  // ── ユーザーが送信したテキスト（チャットに表示） ──
+  const [sentMessages, setSentMessages] = useState<string[]>([]);
 
   // ── 操作ログ ──
   const [log, setLog] = useState<Array<{ type: "action" | "system" | "error"; text: string }>>([]);
@@ -125,6 +128,7 @@ function PlaygroundInner() {
       });
       setState(s);
       setExtraMessages([]);
+      setSentMessages([]);
       addLog("system", `▶ シナリオ開始: 「${s.phase?.name ?? "（不明）"}」`);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "開始に失敗しました";
@@ -152,6 +156,7 @@ function PlaygroundInner() {
       setShowRead(false);
       setState(result);
       setExtraMessages([]);
+      setSentMessages([]);
       if (result._message) {
         setMessage(result._message);
         addLog("system", result._message);
@@ -192,13 +197,14 @@ function PlaygroundInner() {
       return;
     }
 
-    // target_message_id: 指定メッセージをチャットに追加（フェーズ変更なし）
+    // target_message_id: チェーンを辿ってチャットに追加（フェーズ変更なし）
     if (item.target_type === "message" && item.target_message_id) {
       setLoading(true);
       try {
-        const msg = await runtimeApi.getMessage(getDevToken(), item.target_message_id);
-        setExtraMessages((prev) => [...prev, msg]);
-        addLog("system", `💬 メッセージ返信: 「${msg.body ?? "[非テキスト]"}」`);
+        const msgs = await runtimeApi.getMessage(getDevToken(), item.target_message_id);
+        setExtraMessages((prev) => [...prev, ...msgs]);
+        const summary = msgs.map((m) => m.body ?? "[非テキスト]").join(" → ");
+        addLog("system", `💬 メッセージ返信: 「${summary}」`);
       } catch (e) {
         const errMsg = e instanceof Error ? e.message : "メッセージの取得に失敗しました";
         setError(errMsg);
@@ -224,6 +230,7 @@ function PlaygroundInner() {
         setShowRead(false);
         setState(result);
         setExtraMessages([]);
+        setSentMessages([]);
         if (result._message) { setMessage(result._message); addLog("system", result._message); }
         if (result.phase) {
           addLog("system", `📍 フェーズ: 「${result.phase.name}」（${PHASE_TYPE_META[result.phase.phase_type].label}）`);
@@ -245,6 +252,7 @@ function PlaygroundInner() {
     setLoading(true);
     setError(null);
     setMessage(null);
+    const prevPhaseIdQr = state?.phase?.id;
     try {
       const result: RuntimeAdvanceResult = await runtimeApi.advance(getDevToken(), {
         line_user_id: lineUserId.trim(),
@@ -253,7 +261,10 @@ function PlaygroundInner() {
       });
       setShowRead(false);
       setState(result);
-      setExtraMessages([]);
+      if (result.phase?.id !== prevPhaseIdQr) {
+        setExtraMessages([]);
+        setSentMessages([]);
+      }
       if (result._message) { setMessage(result._message); addLog("system", result._message); }
       if (result.phase) {
         addLog("system", `📍 フェーズ: 「${result.phase.name}」（${PHASE_TYPE_META[result.phase.phase_type].label}）`);
@@ -261,6 +272,47 @@ function PlaygroundInner() {
     } catch (e) {
       const errMsg = e instanceof Error ? e.message : "遷移に失敗しました";
       setShowRead(false);
+      setError(errMsg);
+      addLog("error", `エラー: ${errMsg}`);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // ── アクション: テキスト送信 ─────────────────
+  async function handleSendText(text: string) {
+    if (!text.trim() || !selectedWorkId || !lineUserId.trim() || loading) return;
+    const trimmed = text.trim();
+
+    // ユーザー吹き出しを即座に追加
+    setSentMessages((prev) => [...prev, trimmed]);
+    addLog("action", `✏️ テキスト送信: 「${trimmed}」`);
+    setShowRead(true);
+    setLoading(true);
+    setError(null);
+    setMessage(null);
+
+    const prevPhaseId = state?.phase?.id;
+    try {
+      const result: RuntimeAdvanceResult = await runtimeApi.advance(getDevToken(), {
+        line_user_id: lineUserId.trim(),
+        work_id:      selectedWorkId,
+        label:        trimmed,
+      });
+      setShowRead(false);
+      setState(result);
+      // フェーズが変わった場合はユーザー吹き出し・追加メッセージをクリア
+      if (result.phase?.id !== prevPhaseId) {
+        setExtraMessages([]);
+        setSentMessages([]);
+      }
+      if (result._message) { setMessage(result._message); addLog("system", result._message); }
+      if (result.phase) {
+        addLog("system", `📍 フェーズ: 「${result.phase.name}」（${PHASE_TYPE_META[result.phase.phase_type].label}）`);
+      }
+    } catch (e) {
+      setShowRead(false);
+      const errMsg = e instanceof Error ? e.message : "送信に失敗しました";
       setError(errMsg);
       addLog("error", `エラー: ${errMsg}`);
     } finally {
@@ -283,6 +335,7 @@ function PlaygroundInner() {
       });
       setState(null);
       setExtraMessages([]);
+      setSentMessages([]);
       addLog("system", "🔄 進行状態をリセットしました");
     } catch (e) {
       setError(e instanceof Error ? e.message : "リセットに失敗しました");
@@ -300,10 +353,13 @@ function PlaygroundInner() {
     setLog([]);
   }
 
-  const isStarted  = !!state?.progress;
-  const isEnding   = state?.progress?.reached_ending ?? false;
-  const currentPhase = state?.phase;
-  const selectedWork = works.find((w) => w.id === selectedWorkId);
+  const isStarted     = !!state?.progress;
+  // 開始待機中: progress はあるが phase がなく start_triggers が設定されている
+  const isPending     = isStarted && !state?.phase && (state?.start_triggers?.length ?? 0) > 0;
+  const startTriggers = state?.start_triggers ?? [];
+  const isEnding      = state?.progress?.reached_ending ?? false;
+  const currentPhase  = state?.phase;
+  const selectedWork  = works.find((w) => w.id === selectedWorkId);
 
   return (
     <div style={{ maxWidth: 960, margin: "0 auto" }}>
@@ -479,10 +535,18 @@ function PlaygroundInner() {
                 <div className="empty-state-icon">⏸️</div>
                 <p className="empty-state-title">シナリオ未開始</p>
                 <p className="empty-state-desc">
-                  「▶ シナリオを開始」ボタンを押すと、開始フェーズから始まります。
+                  「▶ シナリオを開始」ボタンを押すと、開始トリガーが表示されます。
                 </p>
               </div>
             </div>
+          ) : isPending ? (
+            /* ── 開始待機パネル ── */
+            <PendingPanel
+              triggers={startTriggers}
+              loading={loading}
+              onTriggerClick={handleSendText}
+              onSendText={handleSendText}
+            />
           ) : (
             <div>
               {/* 進行状況バー */}
@@ -533,6 +597,8 @@ function PlaygroundInner() {
                   onAdvance={handleAdvance}
                   onQrTap={handleQrTap}
                   extraMessages={extraMessages}
+                  sentMessages={sentMessages}
+                  onSendText={handleSendText}
                 />
               )}
 
@@ -656,9 +722,23 @@ interface PhasePanelProps {
   onAdvance:     (t: RuntimeTransition) => void;
   onQrTap:       (item: QuickReplyItem) => void;
   extraMessages: RuntimePhaseMessage[];
+  sentMessages:  string[];
+  onSendText:    (text: string) => void;
 }
 
-function PhasePanel({ phase, loading, showRead, onAdvance, onQrTap, extraMessages }: PhasePanelProps) {
+function PhasePanel({ phase, loading, showRead, onAdvance, onQrTap, extraMessages, sentMessages, onSendText }: PhasePanelProps) {
+  const [inputText, setInputText] = useState("");
+
+  // フェーズ変更時に入力欄をクリア
+  useEffect(() => {
+    setInputText("");
+  }, [phase.id]);
+
+  function handleSubmit() {
+    if (!inputText.trim() || loading) return;
+    onSendText(inputText.trim());
+    setInputText("");
+  }
   const meta = PHASE_TYPE_META[phase.phase_type];
   const cancelRef = useRef(false);
   const chatBottomRef = useRef<HTMLDivElement>(null);
@@ -768,8 +848,12 @@ function PhasePanel({ phase, loading, showRead, onAdvance, onQrTap, extraMessage
                 key={`extra-${msg.id}-${i}`}
                 msg={msg}
                 index={phase.messages.length + i}
-                showRead={showRead && i === extraMessages.length - 1}
+                showRead={showRead && i === extraMessages.length - 1 && sentMessages.length === 0}
               />
+            ))}
+            {/* ユーザーが送信したテキスト */}
+            {allShown && sentMessages.map((text, i) => (
+              <UserMessageBubble key={`sent-${i}`} text={text} />
             ))}
             {isTyping && <TypingIndicator char={nextTypingChar} />}
             {/* QR ボタン（LINE 風：チャット下部に表示） */}
@@ -823,6 +907,70 @@ function PhasePanel({ phase, loading, showRead, onAdvance, onQrTap, extraMessage
             <div ref={chatBottomRef} />
           </div>
         )}
+
+        {/* テキスト入力バー（LINE 風） */}
+        <div style={{
+          borderTop: "1px solid #e9ecef",
+          background: "#fff",
+          padding: "8px 12px",
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+        }}>
+          <div style={{
+            flex: 1,
+            display: "flex",
+            alignItems: "center",
+            background: "#f3f4f6",
+            borderRadius: 20,
+            padding: "6px 14px",
+          }}>
+            <input
+              type="text"
+              value={inputText}
+              onChange={(e) => setInputText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSubmit();
+                }
+              }}
+              placeholder="メッセージを入力..."
+              disabled={loading}
+              style={{
+                flex: 1,
+                border: "none",
+                outline: "none",
+                background: "transparent",
+                fontSize: 14,
+                color: "#111827",
+                minWidth: 0,
+              }}
+            />
+          </div>
+          <button
+            onClick={handleSubmit}
+            disabled={loading || !inputText.trim()}
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: "50%",
+              border: "none",
+              background: inputText.trim() && !loading ? "#06C755" : "#d1d5db",
+              color: "#fff",
+              cursor: inputText.trim() && !loading ? "pointer" : "not-allowed",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              flexShrink: 0,
+              fontSize: 16,
+              transition: "background 0.15s",
+            }}
+            aria-label="送信"
+          >
+            ➤
+          </button>
+        </div>
       </div>
 
       {/* 遷移選択肢 — allShown になったら表示 */}
@@ -884,6 +1032,157 @@ function PhasePanel({ phase, loading, showRead, onAdvance, onQrTap, extraMessage
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+// ────────────────────────────────────────────────
+// PendingPanel — 開始待機状態（トリガー QR 表示）
+// ────────────────────────────────────────────────
+interface PendingPanelProps {
+  triggers:       StartTrigger[];
+  loading:        boolean;
+  onTriggerClick: (text: string) => void;
+  onSendText:     (text: string) => void;
+}
+
+function PendingPanel({ triggers, loading, onTriggerClick, onSendText }: PendingPanelProps) {
+  const [inputText, setInputText] = useState("");
+
+  function handleSubmit() {
+    if (!inputText.trim() || loading) return;
+    onSendText(inputText.trim());
+    setInputText("");
+  }
+
+  return (
+    <div>
+      {/* LINE 風チャット UI */}
+      <div style={{
+        border: "1px solid #d1d5db",
+        borderRadius: 14,
+        overflow: "hidden",
+        marginBottom: 12,
+        boxShadow: "0 2px 8px rgba(0,0,0,0.07)",
+        background: "#fff",
+      }}>
+        {/* トークヘッダー */}
+        <div style={{
+          background: "#fff",
+          borderBottom: "1px solid #e9ecef",
+          padding: "10px 16px",
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+        }}>
+          <span style={{ fontSize: 20, color: "#9ca3af", lineHeight: 1, marginTop: -1 }}>‹</span>
+          <div style={{ flex: 1, textAlign: "center" }}>
+            <div style={{ fontWeight: 600, fontSize: 14, color: "#111827" }}>シナリオ待機中</div>
+          </div>
+          <span style={{
+            fontSize: 10, fontWeight: 600, color: "#6b7280",
+            background: "#f3f4f6", padding: "2px 7px", borderRadius: 8,
+            border: "1px solid #e5e7eb",
+          }}>
+            未開始
+          </span>
+        </div>
+
+        {/* 空のメッセージエリア */}
+        <div style={{
+          background: "#c4dde3",
+          padding: "28px 16px",
+          minHeight: 120,
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 6,
+        }}>
+          <p style={{ color: "rgba(0,0,0,0.4)", fontSize: 13, textAlign: "center" }}>
+            開始トリガーを押すと物語が始まります
+          </p>
+          {/* トリガー QR ボタン（LINE 風、チャット内下部） */}
+          {triggers.length > 0 && (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, justifyContent: "center", marginTop: 8 }}>
+              {triggers.map((t, i) => (
+                <button
+                  key={i}
+                  onClick={() => { onTriggerClick(t.trigger); }}
+                  disabled={loading}
+                  style={{
+                    padding: "7px 18px",
+                    border: "1.5px solid #06C755",
+                    borderRadius: 20,
+                    background: loading ? "#f9fafb" : "#fff",
+                    color: "#06C755",
+                    cursor: loading ? "not-allowed" : "pointer",
+                    fontSize: 13, fontWeight: 600,
+                    whiteSpace: "nowrap",
+                    transition: "background 0.12s, color 0.12s",
+                  }}
+                  onMouseEnter={(e) => { if (!loading) { e.currentTarget.style.background = "#06C755"; e.currentTarget.style.color = "#fff"; } }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = "#fff"; e.currentTarget.style.color = "#06C755"; }}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* テキスト入力バー */}
+        <div style={{
+          borderTop: "1px solid #e9ecef",
+          background: "#fff",
+          padding: "8px 12px",
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+        }}>
+          <div style={{
+            flex: 1,
+            display: "flex",
+            alignItems: "center",
+            background: "#f3f4f6",
+            borderRadius: 20,
+            padding: "6px 14px",
+          }}>
+            <input
+              type="text"
+              value={inputText}
+              onChange={(e) => setInputText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSubmit();
+                }
+              }}
+              placeholder="開始トリガーを入力..."
+              disabled={loading}
+              style={{
+                flex: 1, border: "none", outline: "none",
+                background: "transparent", fontSize: 14, color: "#111827", minWidth: 0,
+              }}
+            />
+          </div>
+          <button
+            onClick={handleSubmit}
+            disabled={loading || !inputText.trim()}
+            style={{
+              width: 36, height: 36, borderRadius: "50%", border: "none",
+              background: inputText.trim() && !loading ? "#06C755" : "#d1d5db",
+              color: "#fff",
+              cursor: inputText.trim() && !loading ? "pointer" : "not-allowed",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              flexShrink: 0, fontSize: 16, transition: "background 0.15s",
+            }}
+            aria-label="送信"
+          >
+            ➤
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -1022,6 +1321,34 @@ function ImageMessage({ url }: { url: string }) {
         display: "block", objectFit: "contain",
       }}
     />
+  );
+}
+
+// ────────────────────────────────────────────────
+// UserMessageBubble — ユーザー送信テキスト（右側吹き出し）
+// ────────────────────────────────────────────────
+function UserMessageBubble({ text }: { text: string }) {
+  return (
+    <div style={{
+      display: "flex",
+      justifyContent: "flex-end",
+      marginBottom: 8,
+    }}>
+      <div style={{
+        background: "#06C755",
+        color: "#fff",
+        borderRadius: "16px 4px 16px 16px",
+        padding: "8px 12px",
+        fontSize: 14,
+        lineHeight: 1.55,
+        maxWidth: 270,
+        wordBreak: "break-word",
+        whiteSpace: "pre-wrap",
+        boxShadow: "0 0.5px 1.5px rgba(0,0,0,0.1)",
+      }}>
+        {text}
+      </div>
+    </div>
   );
 }
 
