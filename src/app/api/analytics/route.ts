@@ -46,7 +46,7 @@ export const GET = withAuth(async (req: NextRequest) => {
     const work = await prisma.work.findUnique({ where: { id: work_id } });
     if (!work) return notFound("作品");
 
-    const [phases, allProgress, hintUsers] = await Promise.all([
+    const [phases, allProgress] = await Promise.all([
       prisma.phase.findMany({
         where: { workId: work_id },
         orderBy: { sortOrder: "asc" },
@@ -56,12 +56,18 @@ export const GET = withAuth(async (req: NextRequest) => {
         where: { workId: work_id },
         orderBy: { lastInteractedAt: "desc" },
       }),
-      prisma.hintLog.findMany({
-        where: { workId: work_id },
-        select: { lineUserId: true },
-        distinct: ["lineUserId"],
-      }),
     ]);
+
+    // ヒント使用率: ヒントQRを1回以上タップしたユーザー数 / 総プレイヤー数
+    // flags.hint_used === true が webhook によってセットされる
+    const hintUsers = allProgress.filter((p) => {
+      try {
+        const flags = JSON.parse(p.flags) as Record<string, unknown>;
+        return flags?.hint_used === true;
+      } catch {
+        return false;
+      }
+    });
 
     const now = new Date();
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());

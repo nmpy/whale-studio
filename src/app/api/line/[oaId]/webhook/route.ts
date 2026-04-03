@@ -1146,9 +1146,20 @@ async function handleTextEvent({
   }
 
   // ─ hint quickReply 照合（最優先）─
-  // ℹ️ ヒント返答は userProgress を更新しない（進行状態に影響しない）
+  // ℹ️ ヒント返答は進行状態（currentPhaseId / reachedEnding）を変えない。
+  //    ただしヒント使用率の集計のため、初回タップ時のみ flags.hint_used = true をセットする。
   if (hintResult !== null) {
     console.log(`[Webhook][STEP] hint quickReply マッチ userId=${userId} hintText="${hintResult.hintText.slice(0, 40)}"`);
+
+    // ヒント使用フラグを flags に記録（初回のみ書き込み。レスポンス遅延を避けるため fire-and-forget）
+    if (!currentFlags.hint_used) {
+      const newFlagsWithHint = applySetFlags(currentFlags, '{"hint_used": true}');
+      prisma.userProgress.update({
+        where: { id: progress.id },
+        data:  { flags: JSON.stringify(newFlagsWithHint) },
+      }).catch((e) => console.warn("[Webhook] hint_used flag update failed:", e));
+    }
+
     const hintMsgs: import("@/lib/line").LineMessage[] = [
       { type: "text" as const, text: hintResult.hintText, sender: systemSender },
       ...(hintResult.hintFollowup

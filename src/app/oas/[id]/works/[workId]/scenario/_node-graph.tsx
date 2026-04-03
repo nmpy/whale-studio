@@ -277,9 +277,16 @@ export function NodeGraph({ phases, transitions, allMessages, oaId, workId }: No
     mx: number; my: number; px: number; py: number;
   } | null>(null);
 
+  // ⑧ hover 中のノード ID
+  const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
+
   // クリックかドラッグかの判定
   const draggedRef  = useRef(false);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // ⑥ ドラッグ再描画最適化: rAF スロットル + 最終位置確定用 ref
+  const rafRef        = useRef<number | null>(null);
+  const pendingPosRef = useRef<{ nodeId: string; x: number; y: number } | null>(null);
 
   // zoom / pan の最新値を useEffect 外のホイールハンドラで使うため ref に同期
   const zoomRef = useRef(zoom);
@@ -287,8 +294,17 @@ export function NodeGraph({ phases, transitions, allMessages, oaId, workId }: No
   useEffect(() => { zoomRef.current = zoom; }, [zoom]);
   useEffect(() => { panRef.current  = pan;  }, [pan]);
 
-  // phases が変わったら位置リセット
-  useEffect(() => { setPositions({}); }, [phases]);
+  // フェーズが変わったとき、削除されたノードの位置だけ掃除する（手動ドラッグ位置を保持）
+  useEffect(() => {
+    const validIds = new Set(initialNodes.map(n => n.id));
+    setPositions(prev => {
+      const stale = Object.keys(prev).filter(id => !validIds.has(id));
+      if (stale.length === 0) return prev;
+      const next = { ...prev };
+      stale.forEach(id => delete next[id]);
+      return next;
+    });
+  }, [initialNodes]);
 
   // ── ホイールズーム（passive:false 必須） ─────────
   useEffect(() => {
@@ -328,7 +344,8 @@ export function NodeGraph({ phases, transitions, allMessages, oaId, workId }: No
   // ── マウスハンドラ ────────────────────────────────
   function handleNodeMouseDown(e: React.MouseEvent, nodeId: string) {
     e.stopPropagation();
-    draggedRef.current = false;
+    draggedRef.current  = false;
+    pendingPosRef.current = null; // 前回の未確定位置をクリア
     const pos = getPos(nodeId);
     setNodeStart({ nodeId, mx: e.clientX, my: e.clientY, nx: pos.x, ny: pos.y });
   }
@@ -341,13 +358,25 @@ export function NodeGraph({ phases, transitions, allMessages, oaId, workId }: No
     if (nodeStart) {
       const dx = (e.clientX - nodeStart.mx) / zoom;
       const dy = (e.clientY - nodeStart.my) / zoom;
-      if (Math.abs(e.clientX - nodeStart.mx) > 4 || Math.abs(e.clientY - nodeStart.my) > 4) {
+      if (Math.abs(e.clientX - nodeStart.mx) > 6 || Math.abs(e.clientY - nodeStart.my) > 6) {
         draggedRef.current = true;
       }
-      setPositions(prev => ({
-        ...prev,
-        [nodeStart.nodeId]: { x: nodeStart.nx + dx, y: nodeStart.ny + dy },
-      }));
+      const newX = nodeStart.nx + dx;
+      const newY = nodeStart.ny + dy;
+
+      // ⑥ 最新座標を ref に記録（mouseup 時の最終確定保存に使う）
+      pendingPosRef.current = { nodeId: nodeStart.nodeId, x: newX, y: newY };
+
+      // ⑥ rAF スロットル: 前回の未発火フレームをキャンセルして最新値で上書き
+      //    mousemove は 100-200 回/秒 発火するが setPositions は最大 60fps に抑える
+      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+      rafRef.current = requestAnimationFrame(() => {
+        if (pendingPosRef.current) {
+          const { nodeId, x, y } = pendingPosRef.current;
+          setPositions(prev => ({ ...prev, [nodeId]: { x, y } }));
+        }
+        rafRef.current = null;
+      });
     } else if (panStart) {
       setPan({
         x: panStart.px + e.clientX - panStart.mx,
@@ -357,9 +386,34 @@ export function NodeGraph({ phases, transitions, allMessages, oaId, workId }: No
   }
 
   function handleMouseUp() {
+    // ⑥ 未発火の rAF をキャンセルし、最終位置を同期保存（ドロップ時に座標が確定する）
+    if (rafRef.current !== null) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
+    if (pendingPosRef.current) {
+      const { nodeId, x, y } = pendingPosRef.current;
+      setPositions(prev => ({ ...prev, [nodeId]: { x, y } }));
+      pendingPosRef.current = null;
+    }
     setNodeStart(null);
     setPanStart(null);
   }
+
+  // ① マウスがコンテナ外に出てもドラッグ・パンを継続できるよう document 側で mouseup を購読
+  useEffect(() => {
+    if (!nodeStart && !panStart) return;
+    const onDocMouseUp = () => {
+      // ⑥ コンテナ外でドロップした場合も最終位置を確定保存
+      if (rafRef.current !== null) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
+      if (pendingPosRef.current) {
+        const { nodeId, x, y } = pendingPosRef.current;
+        setPositions(prev => ({ ...prev, [nodeId]: { x, y } }));
+        pendingPosRef.current = null;
+      }
+      setNodeStart(null);
+      setPanStart(null);
+    };
+    document.addEventListener("mouseup", onDocMouseUp);
+    return () => document.removeEventListener("mouseup", onDocMouseUp);
+  }, [nodeStart, panStart]);
 
   // ── Fit View ────────────────────────────────────
   function handleFitView() {
@@ -372,7 +426,7 @@ export function NodeGraph({ phases, transitions, allMessages, oaId, workId }: No
     const maxX = Math.max(...allR), maxY = Math.max(...allB);
     const cW = containerRef.current?.clientWidth  ?? 800;
     const cH = containerRef.current?.clientHeight ?? 680;
-    const fz  = Math.min((cW - 80) / (maxX - minX), (cH - 80) / (maxY - minY), 1.2);
+    const fz  = Math.min((cW - 80) / (maxX - minX), (cH - 80) / (maxY - minY), 2.0);
     setZoom(fz);
     setPan({
       x: (cW - (maxX - minX) * fz) / 2 - minX * fz,
@@ -419,14 +473,13 @@ export function NodeGraph({ phases, transitions, allMessages, oaId, workId }: No
         background: "#f1f5f9",
         border:     "1px solid #e2e8f0",
         borderRadius: 14,
-        cursor: isPanning ? "grabbing" : isDragging ? "grabbing" : "default",
+        cursor: isPanning ? "grabbing" : isDragging ? "grabbing" : "grab",
         userSelect: "none",
         touchAction: "none",
       }}
       onMouseDown={handleBgMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
-      onMouseLeave={handleMouseUp}
     >
       {/* ドットグリッド背景 */}
       <svg
@@ -522,8 +575,10 @@ export function NodeGraph({ phases, transitions, allMessages, oaId, workId }: No
 
       {/* HTMLノードレイヤー */}
       {initialNodes.map(initNode => {
-        const node   = nodeMap[initNode.id];
-        const isDrag = nodeStart?.nodeId === node.id;
+        const node     = nodeMap[initNode.id];
+        const isDrag   = nodeStart?.nodeId === node.id;
+        // ⑧ ドラッグ中（自ノード問わず）はバッジを非表示にする
+        const isHovered = hoveredNodeId === node.id && !nodeStart;
 
         const screenL = pan.x + node.x * zoom;
         const screenT = pan.y + node.y * zoom;
@@ -539,10 +594,12 @@ export function NodeGraph({ phases, transitions, allMessages, oaId, workId }: No
               top:      screenT,
               width:    screenW,
               height:   screenH,
-              zIndex:   isDrag ? 20 : node.type === "phase" ? 5 : 3,
+              zIndex:   isDrag ? 20 : isHovered ? 10 : node.type === "phase" ? 5 : 3,
               cursor:   isDrag ? "grabbing" : "grab",
             }}
             onMouseDown={e => handleNodeMouseDown(e, node.id)}
+            onMouseEnter={() => setHoveredNodeId(node.id)}
+            onMouseLeave={() => setHoveredNodeId(null)}
           >
             {/* ズームに合わせて内部をスケール */}
             <div style={{
@@ -564,6 +621,32 @@ export function NodeGraph({ phases, transitions, allMessages, oaId, workId }: No
                 )}
               </Link>
             </div>
+
+            {/* ⑧ hover 時の編集バッジ（scaling div の外 = screen 座標で常に読みやすいサイズ）*/}
+            {isHovered && (
+              <a
+                href={node.href}
+                style={{
+                  position:       "absolute",
+                  top:            5,
+                  right:          5,
+                  fontSize:       10,
+                  fontWeight:     700,
+                  background:     node.color,
+                  color:          "white",
+                  padding:        "2px 8px",
+                  borderRadius:   4,
+                  textDecoration: "none",
+                  lineHeight:     "16px",
+                  whiteSpace:     "nowrap",
+                  boxShadow:      "0 1px 4px rgba(0,0,0,0.22)",
+                  pointerEvents:  "auto",
+                }}
+                onMouseDown={e => e.stopPropagation()} // ドラッグ誤起動を防ぐ
+              >
+                ✏ 編集
+              </a>
+            )}
           </div>
         );
       })}
@@ -587,8 +670,8 @@ export function NodeGraph({ phases, transitions, allMessages, oaId, workId }: No
             onClick={action}
             title={title}
             style={{
-              width: 34, height: 34,
-              fontSize: 16, fontWeight: 700,
+              width: 40, height: 40,
+              fontSize: 18, fontWeight: 700,
               border: "none",
               borderBottom: label !== "↺" ? "1px solid #f1f5f9" : "none",
               background: "transparent",
