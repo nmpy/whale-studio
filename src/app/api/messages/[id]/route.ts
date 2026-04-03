@@ -34,6 +34,7 @@ type PrismaMessageWithRelations = {
   puzzleType: string | null; answer: string | null; puzzleHintText: string | null;
   answerMatchType: string | null; correctAction: string | null;
   correctText: string | null; incorrectText: string | null;
+  incorrectQuickReplies: string | null;
   correctNextPhaseId: string | null;
   sortOrder: number; isActive: boolean; createdAt: Date; updatedAt: Date;
   phase:     { id: string; name: string; phaseType: string } | null;
@@ -87,9 +88,10 @@ function toResponse(m: PrismaMessageWithRelations) {
     puzzle_hint_text:      m.puzzleHintText,
     answer_match_type:     parseAnswerMatchType(m.answerMatchType),
     correct_action:        m.correctAction,
-    correct_text:          m.correctText,
-    incorrect_text:        m.incorrectText,
-    correct_next_phase_id: m.correctNextPhaseId,
+    correct_text:            m.correctText,
+    incorrect_text:          m.incorrectText,
+    incorrect_quick_replies: parseQuickReplies(m.incorrectQuickReplies, m.id),
+    correct_next_phase_id:   m.correctNextPhaseId,
     sort_order:            m.sortOrder,
     is_active:             m.isActive,
     created_at:            m.createdAt,
@@ -213,7 +215,10 @@ export const PATCH = withAuth<{ id: string }>(async (req, { params }, user) => {
         }),
         ...(data.correct_action       !== undefined && { correctAction:      data.correct_action }),
         ...(data.correct_text         !== undefined && { correctText:        data.correct_text }),
-        ...(data.incorrect_text       !== undefined && { incorrectText:      data.incorrect_text }),
+        ...(data.incorrect_text       !== undefined && { incorrectText:         data.incorrect_text }),
+        ...(data.incorrect_quick_replies !== undefined && {
+          incorrectQuickReplies: data.incorrect_quick_replies ? JSON.stringify(data.incorrect_quick_replies) : null,
+        }),
         ...(data.correct_next_phase_id !== undefined && { correctNextPhaseId: data.correct_next_phase_id }),
         ...(data.sort_order        !== undefined && { sortOrder:       data.sort_order }),
         ...(data.is_active         !== undefined && { isActive:        data.is_active }),

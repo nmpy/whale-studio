@@ -43,6 +43,11 @@ export interface QuickReplyItem {
   target_type?:       "phase" | "message";
   /** target_type="message" のとき、返信するメッセージの ID */
   target_message_id?: string;
+  /**
+   * action="text" のとき、このボタンをタップした際に遷移するフェーズの ID。
+   * 設定されている場合、phase.transitions ではなくこの ID へ直接遷移する。
+   */
+  target_phase_id?: string;
 }
 /**
  * キャラクターアイコン種別。
@@ -181,6 +186,8 @@ export interface Message {
   correct_text: string | null;
   /** 不正解時メッセージ */
   incorrect_text: string | null;
+  /** 不正解時クイックリプライ（JSON / QuickReplyItem[]）*/
+  incorrect_quick_replies: QuickReplyItem[] | null;
   /** 正解後遷移先フェーズ ID */
   correct_next_phase_id: string | null;
   sort_order: number;
@@ -329,6 +336,7 @@ export interface CreateMessageBody {
   correct_action?: string | null;
   correct_text?: string | null;
   incorrect_text?: string | null;
+  incorrect_quick_replies?: QuickReplyItem[] | null;
   correct_next_phase_id?: string | null;
   sort_order?: number;
   is_active?: boolean;
@@ -359,6 +367,7 @@ export interface UpdateMessageBody {
   correct_action?: string | null;
   correct_text?: string | null;
   incorrect_text?: string | null;
+  incorrect_quick_replies?: QuickReplyItem[] | null;
   correct_next_phase_id?: string | null;
   sort_order?: number;
   is_active?: boolean;

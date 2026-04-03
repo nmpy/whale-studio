@@ -41,6 +41,7 @@ function toResponse(m: {
   puzzleType?: string | null; answer?: string | null; puzzleHintText?: string | null;
   answerMatchType?: string | null; correctAction?: string | null;
   correctText?: string | null; incorrectText?: string | null;
+  incorrectQuickReplies?: string | null;
   correctNextPhaseId?: string | null;
   sortOrder: number; isActive: boolean; createdAt: Date; updatedAt: Date;
   phase?: { id: string; name: string; phaseType: string } | null;
@@ -69,8 +70,9 @@ function toResponse(m: {
     answer_match_type:    parseAnswerMatchType(m.answerMatchType ?? null),
     correct_action:       m.correctAction ?? null,
     correct_text:         m.correctText ?? null,
-    incorrect_text:       m.incorrectText ?? null,
-    correct_next_phase_id: m.correctNextPhaseId ?? null,
+    incorrect_text:          m.incorrectText ?? null,
+    incorrect_quick_replies: parseQuickReplies(m.incorrectQuickReplies ?? null, m.id),
+    correct_next_phase_id:   m.correctNextPhaseId ?? null,
     sort_order:           m.sortOrder,
     is_active:            m.isActive,
     created_at:           m.createdAt,
@@ -201,9 +203,10 @@ export const POST = withAuth(async (req, _ctx, user) => {
         puzzleHintText:     data.puzzle_hint_text   ?? null,
         answerMatchType:    data.answer_match_type ? JSON.stringify(data.answer_match_type) : JSON.stringify(["exact"]),
         correctAction:      data.correct_action      ?? null,
-        correctText:        data.correct_text        ?? null,
-        incorrectText:      data.incorrect_text      ?? null,
-        correctNextPhaseId: data.correct_next_phase_id ?? null,
+        correctText:          data.correct_text        ?? null,
+        incorrectText:        data.incorrect_text      ?? null,
+        incorrectQuickReplies: data.incorrect_quick_replies ? JSON.stringify(data.incorrect_quick_replies) : null,
+        correctNextPhaseId:   data.correct_next_phase_id ?? null,
         sortOrder:          data.sort_order,
         isActive:           data.is_active,
       },

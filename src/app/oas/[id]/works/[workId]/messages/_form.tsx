@@ -89,8 +89,9 @@ export interface MessageFormState {
   answer_match_type:     AnswerMatchType[];
   correct_action:        CorrectAction;
   correct_text:          string;
-  incorrect_text:        string;
-  correct_next_phase_id: string;
+  incorrect_text:           string;
+  incorrect_quick_replies:  QuickReplyItem[];
+  correct_next_phase_id:    string;
 }
 
 export const EMPTY_MESSAGE_FORM: MessageFormState = {
@@ -116,8 +117,9 @@ export const EMPTY_MESSAGE_FORM: MessageFormState = {
   answer_match_type:     ["exact"],
   correct_action:        "text",
   correct_text:          "",
-  incorrect_text:        "",
-  correct_next_phase_id: "",
+  incorrect_text:          "",
+  incorrect_quick_replies: [],
+  correct_next_phase_id:   "",
 };
 
 // ── コンバーター ──────────────────────────────────────────
@@ -140,11 +142,12 @@ export function msgToFormState(msg: {
   puzzle_hint_text?:     string | null;
   answer_match_type?:    string[] | null;
   correct_action?:       string | null;
-  correct_text?:         string | null;
-  incorrect_text?:       string | null;
-  correct_next_phase_id?: string | null;
-  sort_order?:           number;
-  is_active?:            boolean;
+  correct_text?:            string | null;
+  incorrect_text?:          string | null;
+  incorrect_quick_replies?: QuickReplyItem[] | null;
+  correct_next_phase_id?:   string | null;
+  sort_order?:              number;
+  is_active?:               boolean;
 }): MessageFormState {
   // Parse carousel items from body JSON if message_type is carousel
   let carousel_items: MessageCarouselCard[] = [];
@@ -178,9 +181,10 @@ export function msgToFormState(msg: {
     puzzle_hint_text:      msg.puzzle_hint_text ?? "",
     answer_match_type:     (msg.answer_match_type ?? ["exact"]) as AnswerMatchType[],
     correct_action:        (msg.correct_action ?? "text") as CorrectAction,
-    correct_text:          msg.correct_text    ?? "",
-    incorrect_text:        msg.incorrect_text  ?? "",
-    correct_next_phase_id: msg.correct_next_phase_id ?? "",
+    correct_text:            msg.correct_text    ?? "",
+    incorrect_text:          msg.incorrect_text  ?? "",
+    incorrect_quick_replies: msg.incorrect_quick_replies ?? [],
+    correct_next_phase_id:   msg.correct_next_phase_id ?? "",
   };
 }
 
@@ -221,8 +225,9 @@ export function formStateToMsgBody(form: MessageFormState) {
     answer_match_type:     isPuzzle ? form.answer_match_type : ["exact"],
     correct_action:        isPuzzle ? form.correct_action || null : null,
     correct_text:          isPuzzle ? form.correct_text || null : null,
-    incorrect_text:        isPuzzle ? form.incorrect_text || null : null,
-    correct_next_phase_id: isPuzzle ? form.correct_next_phase_id || null : null,
+    incorrect_text:          isPuzzle ? form.incorrect_text || null : null,
+    incorrect_quick_replies: isPuzzle && form.incorrect_quick_replies.length > 0 ? form.incorrect_quick_replies : null,
+    correct_next_phase_id:   isPuzzle ? form.correct_next_phase_id || null : null,
   };
   console.log("[formStateToMsgBody] payload:", JSON.stringify(payload, null, 2));
   return payload;
@@ -445,9 +450,11 @@ interface QuickReplyEditorProps {
   onChange: (items: QuickReplyItem[]) => void;
   /** target_message_id ピッカー用 — 同じ作品の全メッセージ一覧 */
   messages?: { id: string; body: string | null; kind: string; sort_order: number }[];
+  /** target_phase_id ピッカー用 — 同じ作品の全フェーズ一覧 */
+  phases?: { id: string; name: string; phase_type: string }[];
 }
 
-function QuickReplyEditor({ items, onChange, messages = [] }: QuickReplyEditorProps) {
+function QuickReplyEditor({ items, onChange, messages = [], phases = [] }: QuickReplyEditorProps) {
   const [open, setOpen]               = useState(false);
   const [expandedSet, setExpandedSet] = useState<Set<number>>(new Set());
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
@@ -643,8 +650,33 @@ function QuickReplyEditor({ items, onChange, messages = [] }: QuickReplyEditorPr
                           fontSize: 13, fontWeight: 500, color: "#374151",
                           overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                         }}>
-                          {item.label || <span style={{ color: "#9ca3af" }}>（ラベル未設定）</span>}
+                          {item.label || (
+                            <span style={{ color: "#9ca3af" }}>
+                              {item.action === "text" ? "（テキスト未設定）" : "（ラベル未設定）"}
+                            </span>
+                          )}
                         </span>
+                        {/* テキストアクション遷移先インジケーター */}
+                        {item.action === "text" && item.target_phase_id && (
+                          <span style={{
+                            fontSize: 10, fontWeight: 600, flexShrink: 0,
+                            color: "#7c3aed", background: "#f5f3ff",
+                            border: "1px solid #e9d5ff",
+                            borderRadius: 4, padding: "1px 6px", whiteSpace: "nowrap",
+                          }}>
+                            → {phases.find((p) => p.id === item.target_phase_id)?.name ?? "フェーズ"}
+                          </span>
+                        )}
+                        {item.action === "text" && item.target_type === "message" && item.target_message_id && (
+                          <span style={{
+                            fontSize: 10, fontWeight: 600, flexShrink: 0,
+                            color: "#0ea5e9", background: "#f0f9ff",
+                            border: "1px solid #bae6fd",
+                            borderRadius: 4, padding: "1px 6px", whiteSpace: "nowrap",
+                          }}>
+                            → メッセージ返信
+                          </span>
+                        )}
                         {/* ヒント設定済みインジケーター */}
                         {item.action === "hint" && item.hint_text && (
                           <span style={{ fontSize: 11, color: "#b45309", flexShrink: 0 }} title="ヒント本文設定済み">💡</span>
@@ -706,24 +738,26 @@ function QuickReplyEditor({ items, onChange, messages = [] }: QuickReplyEditorPr
                     {isExpanded && (
                       <div style={{ padding: "0 12px 12px", borderTop: "1px solid #e5e7eb" }}>
 
-                        {/* ラベル */}
-                        <div className="form-group" style={{ marginTop: 10, marginBottom: 8 }}>
-                          <label style={{ ...fieldLabel, fontSize: 12 }}>
-                            表示ラベル <span style={{ color: "#dc2626" }}>*</span>
-                            <span style={{ fontWeight: 400, color: "#9ca3af", marginLeft: 4 }}>
-                              ({item.label.length}/20)
-                            </span>
-                          </label>
-                          <input
-                            type="text"
-                            className="form-input"
-                            value={item.label}
-                            onChange={(e) => updateItem(index, { label: e.target.value })}
-                            placeholder="例: 次へ進む"
-                            maxLength={20}
-                            style={{ fontSize: 13 }}
-                          />
-                        </div>
+                        {/* ラベル — テキストアクション以外のみ表示 */}
+                        {item.action !== "text" && (
+                          <div className="form-group" style={{ marginTop: 10, marginBottom: 8 }}>
+                            <label style={{ ...fieldLabel, fontSize: 12 }}>
+                              表示ラベル <span style={{ color: "#dc2626" }}>*</span>
+                              <span style={{ fontWeight: 400, color: "#9ca3af", marginLeft: 4 }}>
+                                ({item.label.length}/20)
+                              </span>
+                            </label>
+                            <input
+                              type="text"
+                              className="form-input"
+                              value={item.label}
+                              onChange={(e) => updateItem(index, { label: e.target.value })}
+                              placeholder="例: 次へ進む"
+                              maxLength={20}
+                              style={{ fontSize: 13 }}
+                            />
+                          </div>
+                        )}
 
                         {/* アクション種別 */}
                         <div className="form-group" style={{ marginBottom: 8 }}>
@@ -733,7 +767,14 @@ function QuickReplyEditor({ items, onChange, messages = [] }: QuickReplyEditorPr
                               <button
                                 key={opt.value}
                                 type="button"
-                                onClick={() => updateItem(index, { action: opt.value })}
+                                onClick={() => {
+                                  if (opt.value === "text") {
+                                    // text に切り替え: label を value に同期
+                                    updateItem(index, { action: "text", value: item.label || undefined });
+                                  } else {
+                                    updateItem(index, { action: opt.value, target_phase_id: undefined });
+                                  }
+                                }}
                                 style={{
                                   display: "flex", alignItems: "center", gap: 4,
                                   padding: "5px 10px", borderRadius: 6,
@@ -863,66 +904,128 @@ function QuickReplyEditor({ items, onChange, messages = [] }: QuickReplyEditorPr
                           </div>
                         ) : item.action === "text" ? (
                           <>
-                            <div className="form-group" style={{ marginBottom: 8 }}>
+                            {/* ── ボタンテキスト（表示文言・送信値・遷移トリガーを兼ねる）── */}
+                            <div className="form-group" style={{ marginTop: 10, marginBottom: 10 }}>
                               <label style={{ ...fieldLabel, fontSize: 12 }}>
-                                送信テキスト
-                                <span style={{ fontWeight: 400, color: "#9ca3af", marginLeft: 4 }}>（任意・省略時はラベルと同じ）</span>
+                                ボタンテキスト <span style={{ color: "#dc2626" }}>*</span>
+                                <span style={{ fontWeight: 400, color: "#9ca3af", marginLeft: 4 }}>
+                                  ({item.label.length}/20)
+                                </span>
                               </label>
                               <input
                                 type="text"
                                 className="form-input"
-                                value={item.value ?? ""}
-                                onChange={(e) => updateItem(index, { value: e.target.value || undefined })}
-                                placeholder="省略するとラベルテキストが送信されます"
-                                maxLength={500}
+                                value={item.label}
+                                onChange={(e) => {
+                                  const t = e.target.value;
+                                  updateItem(index, { label: t, value: t || undefined });
+                                }}
+                                placeholder="例: 話を聞く"
+                                maxLength={20}
                                 style={{ fontSize: 13 }}
                               />
-                            </div>
-                            {/* ── タップ時の遷移先 ── */}
-                            <div className="form-group" style={{ marginBottom: 0 }}>
-                              <label style={{ ...fieldLabel, fontSize: 12 }}>タップ時の動作</label>
-                              <div style={{ display: "flex", gap: 8, marginBottom: 6 }}>
-                                {(["phase", "message"] as const).map((t) => (
-                                  <button
-                                    key={t}
-                                    type="button"
-                                    onClick={() => updateItem(index, { target_type: t === "phase" ? undefined : t, target_message_id: undefined })}
-                                    style={{
-                                      fontSize: 12, padding: "4px 10px", borderRadius: 6, cursor: "pointer",
-                                      border: (item.target_type ?? "phase") === t ? "2px solid #6366f1" : "2px solid #e5e7eb",
-                                      background: (item.target_type ?? "phase") === t ? "#eef2ff" : "#fff",
-                                      color: (item.target_type ?? "phase") === t ? "#4338ca" : "#6b7280",
-                                      fontWeight: (item.target_type ?? "phase") === t ? 700 : 400,
-                                    }}
-                                  >
-                                    {t === "phase" ? "🔄 フェーズ遷移（通常）" : "💬 メッセージを返信"}
-                                  </button>
-                                ))}
+                              <div style={{ ...hintText, marginTop: 4 }}>
+                                ボタンの表示文言・ユーザーが送信するテキスト・遷移トリガーとして共通で使用されます
                               </div>
-                              {item.target_type === "message" && (
-                                <div>
-                                  <label style={{ ...fieldLabel, fontSize: 12 }}>
-                                    返信するメッセージ <span style={{ color: "#dc2626" }}>*</span>
-                                  </label>
-                                  <select
-                                    className="form-input"
-                                    value={item.target_message_id ?? ""}
-                                    onChange={(e) => updateItem(index, { target_message_id: e.target.value || undefined })}
-                                    style={{ fontSize: 13 }}
-                                  >
-                                    <option value="">（メッセージを選択）</option>
-                                    {messages.map((m) => (
-                                      <option key={m.id} value={m.id}>
-                                        [{m.kind}] {m.body ? m.body.slice(0, 40) : `(ID: ${m.id.slice(0, 8)}...)`}
-                                      </option>
-                                    ))}
-                                  </select>
-                                  <div style={{ ...hintText, marginTop: 4 }}>
-                                    ユーザーがタップしたとき、フェーズ遷移せずに選択したメッセージを直接返信します。
-                                  </div>
-                                </div>
-                              )}
                             </div>
+
+                            {/* ── タップ時の遷移先 ── */}
+                            {(() => {
+                              const targetMode = item.target_phase_id
+                                ? "phase"
+                                : item.target_type === "message"
+                                ? "message"
+                                : "none";
+                              return (
+                                <div className="form-group" style={{ marginBottom: 0 }}>
+                                  <label style={{ ...fieldLabel, fontSize: 12 }}>タップ時の遷移先</label>
+                                  <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
+                                    {([
+                                      { key: "none",    icon: "🔀", label: "自動判定" },
+                                      { key: "phase",   icon: "📍", label: "フェーズを指定" },
+                                      { key: "message", icon: "💬", label: "メッセージを返信" },
+                                    ] as const).map((opt) => (
+                                      <button
+                                        key={opt.key}
+                                        type="button"
+                                        onClick={() => {
+                                          if (opt.key === "none") {
+                                            updateItem(index, { target_type: undefined, target_phase_id: undefined, target_message_id: undefined });
+                                          } else if (opt.key === "phase") {
+                                            updateItem(index, { target_type: undefined, target_message_id: undefined });
+                                          } else {
+                                            updateItem(index, { target_type: "message", target_phase_id: undefined });
+                                          }
+                                        }}
+                                        style={{
+                                          fontSize: 12, padding: "5px 12px", borderRadius: 6, cursor: "pointer",
+                                          border: targetMode === opt.key ? "2px solid #6366f1" : "2px solid #e5e7eb",
+                                          background: targetMode === opt.key ? "#eef2ff" : "#fff",
+                                          color: targetMode === opt.key ? "#4338ca" : "#6b7280",
+                                          fontWeight: targetMode === opt.key ? 700 : 400,
+                                        }}
+                                      >
+                                        {opt.icon} {opt.label}
+                                      </button>
+                                    ))}
+                                  </div>
+
+                                  {targetMode === "none" && (
+                                    <div style={{ ...hintText }}>
+                                      テキストを遷移条件としてフェーズ設定の遷移と照合します。
+                                    </div>
+                                  )}
+
+                                  {targetMode === "phase" && (
+                                    <>
+                                      <label style={{ ...fieldLabel, fontSize: 12 }}>
+                                        遷移先フェーズ <span style={{ color: "#dc2626" }}>*</span>
+                                      </label>
+                                      <select
+                                        className="form-input"
+                                        value={item.target_phase_id ?? ""}
+                                        onChange={(e) => updateItem(index, { target_phase_id: e.target.value || undefined })}
+                                        style={{ fontSize: 13 }}
+                                      >
+                                        <option value="">（フェーズを選択）</option>
+                                        {phases.map((p) => (
+                                          <option key={p.id} value={p.id}>
+                                            {p.name}
+                                          </option>
+                                        ))}
+                                      </select>
+                                      <div style={{ ...hintText, marginTop: 4 }}>
+                                        タップすると選択したフェーズへ直接遷移します。シナリオフローにも反映されます。
+                                      </div>
+                                    </>
+                                  )}
+
+                                  {targetMode === "message" && (
+                                    <>
+                                      <label style={{ ...fieldLabel, fontSize: 12 }}>
+                                        返信するメッセージ <span style={{ color: "#dc2626" }}>*</span>
+                                      </label>
+                                      <select
+                                        className="form-input"
+                                        value={item.target_message_id ?? ""}
+                                        onChange={(e) => updateItem(index, { target_message_id: e.target.value || undefined })}
+                                        style={{ fontSize: 13 }}
+                                      >
+                                        <option value="">（メッセージを選択）</option>
+                                        {messages.map((m) => (
+                                          <option key={m.id} value={m.id}>
+                                            [{m.kind}] {m.body ? m.body.slice(0, 40) : `(ID: ${m.id.slice(0, 8)}...)`}
+                                          </option>
+                                        ))}
+                                      </select>
+                                      <div style={{ ...hintText, marginTop: 4 }}>
+                                        フェーズ遷移せずに選択したメッセージを直接返信します。
+                                      </div>
+                                    </>
+                                  )}
+                                </div>
+                              );
+                            })()}
                           </>
                         ) : (
                           <div className="form-group" style={{ marginBottom: 0 }}>
@@ -2186,6 +2289,7 @@ export function MessageForm({
             items={form.quick_replies}
             onChange={(items) => set("quick_replies", items)}
             messages={allMessages}
+            phases={phases}
           />
 
           {/* ════════════════════════════════════════
@@ -2347,6 +2451,20 @@ export function MessageForm({
                 maxLength={400}
               />
               <div style={hintText}>空欄の場合: 「答えが違います。もう一度考えてみてください。」が使われます</div>
+            </div>
+
+            {/* incorrect_quick_replies */}
+            <div className="form-group">
+              <label style={fieldLabel}>不正解時クイックリプライ（任意）</label>
+              <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 6 }}>
+                不正解メッセージに添付するクイックリプライボタン（最大13件）
+              </div>
+              <QuickReplyEditor
+                items={form.incorrect_quick_replies}
+                onChange={(items) => set("incorrect_quick_replies", items)}
+                messages={allMessages}
+                phases={phases}
+              />
             </div>
 
             {/* puzzle_hint_text */}

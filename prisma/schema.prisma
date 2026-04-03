@@ -260,7 +260,9 @@ model Message {
   /// 正解時メッセージ（任意）
   correctText        String?  @map("correct_text")
   /// 不正解時メッセージ（任意）
-  incorrectText      String?  @map("incorrect_text")
+  incorrectText         String?  @map("incorrect_text")
+  /// 不正解時クイックリプライ（JSON / QuickReplyItem[]）
+  incorrectQuickReplies String?  @map("incorrect_quick_replies")
   /// 正解後の遷移先フェーズ（correct_action が transition 系のとき必須）
   correctNextPhaseId String?  @map("correct_next_phase_id")
 

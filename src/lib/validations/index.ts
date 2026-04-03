@@ -223,6 +223,8 @@ export const quickReplyItemSchema = z.object({
   target_type:       z.enum(["phase", "message"]).optional(),
   /** target_type="message" のとき、返信するメッセージの ID */
   target_message_id: z.string().uuid().optional(),
+  /** action="text" のとき、タップ時に遷移するフェーズの ID */
+  target_phase_id:   z.string().uuid().optional(),
 });
 
 // ────────────────────────────────────────────────
@@ -259,7 +261,8 @@ export const createMessageSchema = z.object({
   answer_match_type:     answerMatchTypeSchema,
   correct_action:        z.enum(["text", "text_and_transition", "transition"]).optional().nullable(),
   correct_text:          z.string().max(2000).optional().nullable(),
-  incorrect_text:        z.string().max(2000).optional().nullable(),
+  incorrect_text:          z.string().max(2000).optional().nullable(),
+  incorrect_quick_replies: z.array(quickReplyItemSchema).max(13).optional().nullable(),
   correct_next_phase_id: uuidSchema.optional().nullable(),
   sort_order:       sortSchema,
   is_active:        z.boolean().default(true),
@@ -320,7 +323,8 @@ export const updateMessageSchema = z.object({
   answer_match_type:     z.array(z.enum(["exact", "ignore_punctuation", "normalize_width"])).optional(),
   correct_action:        z.enum(["text", "text_and_transition", "transition"]).optional().nullable(),
   correct_text:          z.string().max(2000).optional().nullable(),
-  incorrect_text:        z.string().max(2000).optional().nullable(),
+  incorrect_text:          z.string().max(2000).optional().nullable(),
+  incorrect_quick_replies: z.array(quickReplyItemSchema).max(13).optional().nullable(),
   correct_next_phase_id: uuidSchema.optional().nullable(),
   sort_order:        z.number().int().min(0).optional(),
   is_active:         z.boolean().optional(),

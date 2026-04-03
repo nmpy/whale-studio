@@ -6,7 +6,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { TLink as Link } from "@/components/TLink";
-import { workApi, phaseApi, transitionApi, getDevToken } from "@/lib/api-client";
+import { workApi, phaseApi, transitionApi, messageApi, getDevToken } from "@/lib/api-client";
+import type { QuickReplyItem } from "@/types";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { HelpAccordion } from "@/components/HelpAccordion";
 import type { PhaseWithCounts, TransitionWithPhases, PhaseType } from "@/types";
@@ -39,19 +40,58 @@ export default function ScenarioPage() {
   const [workTitle, setWorkTitle]     = useState("");
   const [phases, setPhases]           = useState<PhaseWithCounts[]>([]);
   const [transitions, setTransitions] = useState<TransitionWithPhases[]>([]);
+  const [qrEdges, setQrEdges]         = useState<{ fromPhaseId: string; toPhaseId: string; label: string }[]>([]);
+  const [msgQrEdges, setMsgQrEdges]   = useState<{ fromPhaseId: string; label: string; toMsgId: string; toMsgPreview: string }[]>([]);
   const [loading, setLoading]         = useState(true);
 
   const loadAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [work, phaseList, transitionList] = await Promise.all([
-        workApi.get(getDevToken(), workId),
-        phaseApi.list(getDevToken(), workId),
-        transitionApi.listByWork(getDevToken(), workId),
+      const token = getDevToken();
+      const [work, phaseList, transitionList, allMsgs] = await Promise.all([
+        workApi.get(token, workId),
+        phaseApi.list(token, workId),
+        transitionApi.listByWork(token, workId),
+        messageApi.list(token, workId),
       ]);
       setWorkTitle(work.title);
       setPhases(phaseList.sort((a, b) => a.sort_order - b.sort_order));
       setTransitions(transitionList.sort((a, b) => a.sort_order - b.sort_order));
+
+      // メッセージ ID → プレビュー文字列のマップ
+      const msgPreviewMap: Record<string, string> = {};
+      for (const msg of allMsgs) {
+        msgPreviewMap[msg.id] = msg.body
+          ? msg.body.slice(0, 30) + (msg.body.length > 30 ? "…" : "")
+          : `[${msg.kind}]`;
+      }
+
+      // QR items を走査してエッジを構築
+      const edges:    { fromPhaseId: string; toPhaseId: string; label: string }[] = [];
+      const msgEdges: { fromPhaseId: string; label: string; toMsgId: string; toMsgPreview: string }[] = [];
+      for (const msg of allMsgs) {
+        if (!msg.phase_id || !msg.quick_replies) continue;
+        const qrItems = msg.quick_replies as QuickReplyItem[];
+        for (const item of qrItems) {
+          if (item.enabled === false) continue;
+          if (item.target_phase_id) {
+            edges.push({
+              fromPhaseId: msg.phase_id,
+              toPhaseId:   item.target_phase_id,
+              label:       item.value?.trim() || item.label,
+            });
+          } else if (item.target_type === "message" && item.target_message_id) {
+            msgEdges.push({
+              fromPhaseId:  msg.phase_id,
+              label:        item.value?.trim() || item.label,
+              toMsgId:      item.target_message_id,
+              toMsgPreview: msgPreviewMap[item.target_message_id] ?? `(ID: ${item.target_message_id.slice(0, 8)}…)`,
+            });
+          }
+        }
+      }
+      setQrEdges(edges);
+      setMsgQrEdges(msgEdges);
     } catch { /* silent */ } finally {
       setLoading(false);
     }
@@ -121,7 +161,7 @@ export default function ScenarioPage() {
           </div>
         </div>
       ) : (
-        <FlowTree phases={phases} transitions={transitions} oaId={oaId} workId={workId} />
+        <FlowTree phases={phases} transitions={transitions} qrEdges={qrEdges} msgQrEdges={msgQrEdges} oaId={oaId} workId={workId} />
       )}
     </>
   );
@@ -131,16 +171,28 @@ export default function ScenarioPage() {
 interface FlowTreeProps {
   phases:      PhaseWithCounts[];
   transitions: TransitionWithPhases[];
+  qrEdges:     { fromPhaseId: string; toPhaseId: string; label: string }[];
+  msgQrEdges:  { fromPhaseId: string; label: string; toMsgId: string; toMsgPreview: string }[];
   oaId:        string;
   workId:      string;
 }
 
-function FlowTree({ phases, transitions, oaId, workId }: FlowTreeProps) {
+function FlowTree({ phases, transitions, qrEdges, msgQrEdges, oaId, workId }: FlowTreeProps) {
   const phaseMap = Object.fromEntries(phases.map((p) => [p.id, p]));
   const fromMap: Record<string, TransitionWithPhases[]> = {};
   for (const t of transitions) {
     if (!fromMap[t.from_phase_id]) fromMap[t.from_phase_id] = [];
     fromMap[t.from_phase_id].push(t);
+  }
+  const qrFromMap: Record<string, { fromPhaseId: string; toPhaseId: string; label: string }[]> = {};
+  for (const e of qrEdges) {
+    if (!qrFromMap[e.fromPhaseId]) qrFromMap[e.fromPhaseId] = [];
+    qrFromMap[e.fromPhaseId].push(e);
+  }
+  const msgQrFromMap: Record<string, { fromPhaseId: string; label: string; toMsgId: string; toMsgPreview: string }[]> = {};
+  for (const e of msgQrEdges) {
+    if (!msgQrFromMap[e.fromPhaseId]) msgQrFromMap[e.fromPhaseId] = [];
+    msgQrFromMap[e.fromPhaseId].push(e);
   }
   const toMap: Record<string, TransitionWithPhases[]> = {};
   for (const t of transitions) {
@@ -294,6 +346,109 @@ function FlowTree({ phases, transitions, oaId, workId }: FlowTreeProps) {
                     )}
                   </div>
                 </div>
+
+                {/* ── QR 遷移エッジ ── */}
+                {(qrFromMap[phase.id] ?? []).length > 0 && (
+                  <div style={{
+                    borderTop: "1px solid #f3f4f6",
+                    background: "#faf5ff",
+                    padding: "10px 20px 10px 28px",
+                  }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: "#7c3aed", marginBottom: 6, letterSpacing: 0.3 }}>
+                      🎯 クイックリプライ遷移
+                    </div>
+                    {(qrFromMap[phase.id] ?? []).map((edge, edgeIdx) => {
+                      const toPhase = phaseMap[edge.toPhaseId];
+                      const toMeta  = toPhase ? PHASE_TYPE_META[toPhase.phase_type] : null;
+                      return (
+                        <div key={edgeIdx} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                          {/* QR ラベルチップ */}
+                          <span style={{
+                            fontSize: 12, fontWeight: 700,
+                            color: "#7c3aed", background: "#f5f3ff",
+                            border: "1.5px solid #e9d5ff",
+                            padding: "3px 10px", borderRadius: 20,
+                            whiteSpace: "nowrap",
+                          }}>
+                            💬 {edge.label}
+                          </span>
+                          <span style={{ color: "#9ca3af", fontSize: 14 }}>→</span>
+                          {toPhase && toMeta ? (
+                            <Link href={`/oas/${oaId}/works/${workId}/phases/${toPhase.id}`} style={{ textDecoration: "none" }}>
+                              <span style={{
+                                display: "inline-flex", alignItems: "center", gap: 6,
+                                fontSize: 13, fontWeight: 600,
+                                background: "#fff",
+                                border: `1.5px solid ${toMeta.border}`,
+                                color: "#111827",
+                                padding: "3px 10px", borderRadius: 20,
+                                boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
+                              }}>
+                                <span style={{
+                                  fontSize: 10, fontWeight: 700,
+                                  color: toMeta.color, background: toMeta.bg,
+                                  padding: "1px 6px", borderRadius: 10,
+                                }}>
+                                  {toMeta.label}
+                                </span>
+                                {toPhase.name}
+                              </span>
+                            </Link>
+                          ) : (
+                            <span style={{ fontSize: 12, color: "#ef4444", background: "#fef2f2", border: "1px solid #fecaca", padding: "2px 8px", borderRadius: 20 }}>
+                              遷移先なし
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* ── QR メッセージ分岐 ── */}
+                {(msgQrFromMap[phase.id] ?? []).length > 0 && (
+                  <div style={{
+                    borderTop: "1px solid #f3f4f6",
+                    background: "#fff7ed",
+                    padding: "10px 20px 10px 28px",
+                  }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: "#c2410c", marginBottom: 6, letterSpacing: 0.3 }}>
+                      💬 クイックリプライ → メッセージ分岐
+                    </div>
+                    {(msgQrFromMap[phase.id] ?? []).map((edge, edgeIdx) => (
+                      <div key={edgeIdx} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                        {/* QR ラベルチップ */}
+                        <span style={{
+                          fontSize: 12, fontWeight: 700,
+                          color: "#c2410c", background: "#fff7ed",
+                          border: "1.5px solid #fed7aa",
+                          padding: "3px 10px", borderRadius: 20,
+                          whiteSpace: "nowrap",
+                        }}>
+                          💬 {edge.label}
+                        </span>
+                        <span style={{ color: "#9ca3af", fontSize: 14 }}>→</span>
+                        {/* メッセージプレビューチップ */}
+                        <span style={{
+                          display: "inline-flex", alignItems: "center", gap: 4,
+                          fontSize: 12, fontWeight: 500,
+                          background: "#fff",
+                          border: "1px solid #e5e7eb",
+                          color: "#374151",
+                          padding: "3px 10px", borderRadius: 20,
+                          boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
+                          maxWidth: 260,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}>
+                          <span style={{ fontSize: 10, color: "#9ca3af", flexShrink: 0 }}>💬</span>
+                          {edge.toMsgPreview}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
 
                 {/* ── 分岐ツリー ── */}
                 {outgoing.length > 0 && (

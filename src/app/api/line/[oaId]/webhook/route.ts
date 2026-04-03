@@ -34,7 +34,7 @@ import { prisma } from "@/lib/prisma";
 import {
   verifyLineSignature,
   isStartCommand, isResetCommand, isContinueCommand,
-  replyToLine, buildPhaseMessages, buildQuickReply, buildKeywordMessages,
+  replyToLine, buildPhaseMessages, buildQuickReply, buildKeywordMessages, buildQuickReplyFromItems,
   RICHMENU_ACTIONS,
   type LineWebhookBody, type LineEvent, type LineSender, type KeywordMessageRecord,
 } from "@/lib/line";
@@ -365,6 +365,46 @@ function matchMessageTargetQuickReply(
 }
 
 /**
+ * キャッシュ済みフェーズデータから target_phase_id が設定された quickReply をインメモリで照合する。
+ * ユーザーが送ったテキストがいずれかの QR の value/label に一致し、
+ * かつ target_phase_id が設定されている場合にそのフェーズ ID を返す。
+ */
+function matchQrPhaseTarget(
+  phase:     PhaseRow,
+  inputText: string,
+): string | null {
+  const inputNorm  = normKw(inputText);
+  const inputLoose = normKwLoose(inputText);
+
+  for (const msg of phase.messages) {
+    if (!msg.quickReplies) continue;
+    let items: import("@/types").QuickReplyItem[];
+    try {
+      const parsed = JSON.parse(msg.quickReplies);
+      if (!Array.isArray(parsed)) continue;
+      items = parsed as import("@/types").QuickReplyItem[];
+    } catch {
+      continue;
+    }
+    for (const item of items) {
+      if (!item.target_phase_id) continue;
+      if (item.enabled === false) continue;
+      const matchKey   = item.value?.trim() || item.label;
+      const matchNorm  = normKw(matchKey);
+      const matchLoose = normKwLoose(matchKey);
+      if (inputNorm === matchNorm || inputLoose === matchLoose) {
+        console.log(
+          `[cache][qrPhase] マッチ msgId=${msg.id.slice(0, 8)}`,
+          `key="${matchKey}" target_phase_id=${item.target_phase_id.slice(0, 8)}...`,
+        );
+        return item.target_phase_id;
+      }
+    }
+  }
+  return null;
+}
+
+/**
  * KeywordMessageRecord または単一メッセージ行を LINE メッセージ配列に変換し、
  * nextMessageId チェーンを DB から辿って追加する（再帰上限 5 件）。
  */
@@ -479,13 +519,14 @@ function matchPuzzleFromPhase(
       return {
         type:   "correct",
         puzzle: {
-          id:                 puzzle.id,
-          answer:             puzzle.answer,
-          answerMatchType:    puzzle.answerMatchType,
-          correctAction:      puzzle.correctAction,
-          correctText:        puzzle.correctText,
-          incorrectText:      puzzle.incorrectText,
-          correctNextPhaseId: puzzle.correctNextPhaseId,
+          id:                    puzzle.id,
+          answer:                puzzle.answer,
+          answerMatchType:       puzzle.answerMatchType,
+          correctAction:         puzzle.correctAction,
+          correctText:           puzzle.correctText,
+          incorrectText:         puzzle.incorrectText,
+          incorrectQuickReplies: puzzle.incorrectQuickReplies,
+          correctNextPhaseId:    puzzle.correctNextPhaseId,
         } as PuzzleRecord,
       };
     }
@@ -497,8 +538,9 @@ function matchPuzzleFromPhase(
     puzzles.map((p) => `answer="${p.answer}"`).join(", "),
   );
   return {
-    type:          "incorrect",
-    incorrectText: puzzles[0]?.incorrectText ?? null,
+    type:                  "incorrect",
+    incorrectText:         puzzles[0]?.incorrectText ?? null,
+    incorrectQuickReplies: puzzles[0]?.incorrectQuickReplies ?? null,
   };
 }
 
@@ -1047,6 +1089,7 @@ async function handleTextEvent({
   // DB クエリなしでインメモリ照合
   const hintResult           = currentPhase ? matchHintFromPhase(currentPhase, text)                              : null;
   const messageTargetId      = currentPhase ? matchMessageTargetQuickReply(currentPhase, text)                    : null;
+  const qrPhaseTargetId      = currentPhase ? matchQrPhaseTarget(currentPhase, text)                             : null;
   const keywordMatched       = currentPhase ? matchKeywordsInMemory(currentPhase.messages, globalKwMsgs, text)    : [];
   const puzzleResult         = currentPhase ? matchPuzzleFromPhase(currentPhase, text)                            : null;
 
@@ -1110,6 +1153,39 @@ async function handleTextEvent({
     }
   }
 
+  // ─ target_phase_id QR フェーズ遷移（メッセージターゲット照合の次）─
+  // ℹ️ QR に設定された target_phase_id へ直接フェーズ遷移する
+  if (qrPhaseTargetId !== null) {
+    console.log(`[Webhook][STEP] qrPhaseTarget マッチ userId=${userId} toPhaseId=${qrPhaseTargetId.slice(0, 8)}`);
+    try {
+      const toPhaseRow = await getCachedPhase(qrPhaseTargetId);
+      if (toPhaseRow) {
+        const isEnding = toPhaseRow.phaseType === "ending";
+        const [updated] = await Promise.all([
+          prisma.userProgress.update({
+            where: { id: progress.id },
+            data: {
+              currentPhaseId:   qrPhaseTargetId,
+              reachedEnding:    isEnding,
+              lastInteractedAt: new Date(),
+            },
+          }),
+        ]);
+        await setCachedProgress(updated);
+        const state = await buildRuntimeState(updated, toPhaseRow);
+        const msgs  = buildPhaseMessages(state.phase, { systemSender });
+        const tReplyQr = Date.now();
+        await replyToLine(replyToken, msgs, token);
+        console.log(`[perf][event] path=qrPhaseTarget total=${Date.now() - t0e}ms reply:${Date.now() - tReplyQr}ms`);
+        void switchRichMenuForUser(oa, userId, toPhaseRow.phaseType);
+        return;
+      }
+    } catch (e) {
+      console.warn("[Webhook] qrPhaseTarget transition error:", e);
+      // フォールバック: 通常フローへ
+    }
+  }
+
   // ─ triggerKeyword 照合 ─
   // ℹ️ キーワード返答は userProgress を更新しない（進行状態に影響しない）
   if (keywordMatched.length > 0) {
@@ -1152,11 +1228,24 @@ async function handleTextEvent({
       // ℹ️ パズル不正解は userProgress を更新しない（フェーズを進めない）
       const incorrectMsg = puzzleResult.incorrectText?.trim()
         ?? "答えが違います。もう一度考えてみてください。";
+      // 不正解時クイックリプライ（設定されていれば添付）
+      let incorrectQr: ReturnType<typeof buildQuickReplyFromItems> | undefined;
+      if (puzzleResult.incorrectQuickReplies) {
+        try {
+          const qrItems = JSON.parse(puzzleResult.incorrectQuickReplies);
+          if (Array.isArray(qrItems) && qrItems.length > 0) {
+            incorrectQr = buildQuickReplyFromItems(qrItems);
+          }
+        } catch {
+          console.warn("[Webhook][puzzle] incorrectQuickReplies JSON parse error");
+        }
+      }
       const tReplyPuzzle = Date.now();
       await replyToLine(replyToken, [{
-        type:   "text",
-        text:   incorrectMsg,
-        sender: systemSender,
+        type:        "text",
+        text:        incorrectMsg,
+        sender:      systemSender,
+        ...(incorrectQr && { quickReply: incorrectQr }),
       }], token);
       console.log(
         `[perf][event] path=puzzle_incorrect total=${Date.now() - t0e}ms` +
@@ -1862,19 +1951,20 @@ async function matchHintQuickReply(
 // ──────────────────────────────────────────────────────────
 
 type PuzzleRecord = {
-  id:                 string;
-  answer:             string;
-  answerMatchType:    string | null;
-  correctAction:      string | null;
-  correctText:        string | null;
-  incorrectText:      string | null;
-  correctNextPhaseId: string | null;
+  id:                    string;
+  answer:                string;
+  answerMatchType:       string | null;
+  correctAction:         string | null;
+  correctText:           string | null;
+  incorrectText:         string | null;
+  incorrectQuickReplies: string | null;
+  correctNextPhaseId:    string | null;
 };
 
 type PuzzleMatchResult =
-  | null                                                        // このフェーズにパズルなし（遷移照合へ進む）
-  | { type: "incorrect"; incorrectText: string | null }         // パズルあり・不正解
-  | { type: "correct";   puzzle: PuzzleRecord };               // 正解
+  | null                                                                                                    // このフェーズにパズルなし（遷移照合へ進む）
+  | { type: "incorrect"; incorrectText: string | null; incorrectQuickReplies: string | null }              // パズルあり・不正解
+  | { type: "correct";   puzzle: PuzzleRecord };                                                           // 正解
 
 /**
  * 句読点・記号類を除去する（ignore_punctuation マッチ用）
@@ -1934,13 +2024,14 @@ async function matchPuzzleAnswer(
       answer:   { not: null },
     },
     select: {
-      id:                 true,
-      answer:             true,
-      answerMatchType:    true,
-      correctAction:      true,
-      correctText:        true,
-      incorrectText:      true,
-      correctNextPhaseId: true,
+      id:                    true,
+      answer:                true,
+      answerMatchType:       true,
+      correctAction:         true,
+      correctText:           true,
+      incorrectText:         true,
+      incorrectQuickReplies: true,
+      correctNextPhaseId:    true,
     },
     orderBy: { sortOrder: "asc" },
   });
@@ -1966,7 +2057,11 @@ async function matchPuzzleAnswer(
     `puzzles=${puzzles.length}件`,
     puzzles.map((p) => `answer="${p.answer}"`).join(", "),
   );
-  return { type: "incorrect", incorrectText: puzzles[0]?.incorrectText ?? null };
+  return {
+    type:                  "incorrect",
+    incorrectText:         puzzles[0]?.incorrectText ?? null,
+    incorrectQuickReplies: puzzles[0]?.incorrectQuickReplies ?? null,
+  };
 }
 
 /**
