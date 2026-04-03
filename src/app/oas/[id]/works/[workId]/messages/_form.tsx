@@ -388,8 +388,8 @@ const QR_PHASE_TYPE_LABEL: Record<string, string> = {
 
 /** QR アイテムの遷移先種別を返す */
 function getQrTransitionType(item: QuickReplyItem): "none" | "message" | "phase" {
-  if (item.target_phase_id)                                     return "phase";
-  if (item.target_type === "message" && item.target_message_id) return "message";
+  if (item.target_type === "phase" || item.target_phase_id)  return "phase";
+  if (item.target_type === "message")                        return "message";
   return "none";
 }
 
@@ -501,6 +501,10 @@ function QuickReplyEditor({ items, onChange, responseMessages, phases, transitio
   const dragSrcRef                    = useRef<number | null>(null);
   /** ドラッグを許可するのはハンドル経由のみ。このRefにindexをセットしてから dragStart する */
   const dragHandleRef                 = useRef<number | null>(null);
+  /** 応答メッセージ選択のフェーズフィルタ（QR インデックス → フェーズ ID） */
+  const [responsePhaseFilters,    setResponsePhaseFilters]    = useState<Record<number, string>>({});
+  /** 遷移先メッセージ選択のフェーズフィルタ（QR インデックス → フェーズ ID） */
+  const [transitionPhaseFilters,  setTransitionPhaseFilters]  = useState<Record<number, string>>({});
 
   // 自動展開: 既存データがある場合は初期表示で開く
   useEffect(() => {
@@ -666,12 +670,12 @@ function QuickReplyEditor({ items, onChange, responseMessages, phases, transitio
                             🔗 応答
                           </span>
                         )}
-                        {!isHint && item.target_phase_id && (
+                        {!isHint && (item.target_type === "phase" || item.target_phase_id) && (
                           <span style={{ fontSize: 10, fontWeight: 700, background: "#f0fdf4", color: "#15803d", borderRadius: 4, padding: "1px 6px", whiteSpace: "nowrap", flexShrink: 0 }}>
                             ➡ フェーズ
                           </span>
                         )}
-                        {!isHint && item.target_type === "message" && item.target_message_id && (
+                        {!isHint && item.target_type === "message" && (
                           <span style={{ fontSize: 10, fontWeight: 700, background: "#faf5ff", color: "#7c3aed", borderRadius: 4, padding: "1px 6px", whiteSpace: "nowrap", flexShrink: 0 }}>
                             ➡ メッセージ
                           </span>
@@ -728,6 +732,22 @@ function QuickReplyEditor({ items, onChange, responseMessages, phases, transitio
                               応答メッセージ
                               <span style={{ fontWeight: 400, color: "#9ca3af", marginLeft: 4 }}>（任意）</span>
                             </label>
+                            {/* フェーズフィルタ */}
+                            {(phases ?? []).length > 0 && (
+                              <select
+                                className="form-input"
+                                value={responsePhaseFilters[index] ?? ""}
+                                onChange={(e) => setResponsePhaseFilters((prev) => ({ ...prev, [index]: e.target.value }))}
+                                style={{ fontSize: 12, marginBottom: 6, color: "#6b7280" }}
+                              >
+                                <option value="">— すべてのフェーズ —</option>
+                                {(phases ?? []).map((p) => (
+                                  <option key={p.id} value={p.id}>
+                                    [{QR_PHASE_TYPE_LABEL[p.phase_type] ?? p.phase_type}] {p.name}
+                                  </option>
+                                ))}
+                              </select>
+                            )}
                             <select
                               className="form-input"
                               value={item.response_message_id ?? ""}
@@ -735,17 +755,19 @@ function QuickReplyEditor({ items, onChange, responseMessages, phases, transitio
                               style={{ fontSize: 13 }}
                             >
                               <option value="">— 紐づけない —</option>
-                              {responseMessages!.map((m) => {
-                                const phase = (phases ?? []).find((p) => p.id === m.phase_id);
-                                const prefix = phase ? `[${phase.name}] ` : "";
-                                const body   = m.body ?? "(本文なし)";
-                                const full   = prefix + body;
-                                return (
-                                  <option key={m.id} value={m.id}>
-                                    {full.length > 50 ? full.slice(0, 50) + "…" : full}
-                                  </option>
-                                );
-                              })}
+                              {(responseMessages ?? [])
+                                .filter((m) => !responsePhaseFilters[index] || m.phase_id === responsePhaseFilters[index])
+                                .map((m) => {
+                                  const phase  = (phases ?? []).find((p) => p.id === m.phase_id);
+                                  const prefix = phase ? `[${phase.name}] ` : "";
+                                  const body   = m.body ?? "(本文なし)";
+                                  const full   = prefix + body;
+                                  return (
+                                    <option key={m.id} value={m.id}>
+                                      {full.length > 50 ? full.slice(0, 50) + "…" : full}
+                                    </option>
+                                  );
+                                })}
                             </select>
                             <div style={{ ...hintText, marginTop: 4 }}>
                               このボタンタップ時のユーザー入力（ラベル）を受け取る応答メッセージを指定します。
@@ -777,7 +799,8 @@ function QuickReplyEditor({ items, onChange, responseMessages, phases, transitio
                                       } else if (t === "message") {
                                         updateItem(index, { target_type: "message", target_phase_id: undefined });
                                       } else {
-                                        updateItem(index, { target_phase_id: item.target_phase_id ?? "", target_type: undefined, target_message_id: undefined });
+                                        // "phase": target_type="phase" をセットしてフェーズ選択欄を表示
+                                        updateItem(index, { target_type: "phase", target_message_id: undefined });
                                       }
                                     }}
                                     style={{
@@ -826,6 +849,22 @@ function QuickReplyEditor({ items, onChange, responseMessages, phases, transitio
                             {/* メッセージ選択 */}
                             {getQrTransitionType(item) === "message" && (
                               <>
+                                {/* フェーズフィルタ */}
+                                {(phases ?? []).length > 0 && (
+                                  <select
+                                    className="form-input"
+                                    value={transitionPhaseFilters[index] ?? ""}
+                                    onChange={(e) => setTransitionPhaseFilters((prev) => ({ ...prev, [index]: e.target.value }))}
+                                    style={{ fontSize: 12, marginBottom: 6, color: "#6b7280" }}
+                                  >
+                                    <option value="">— すべてのフェーズ —</option>
+                                    {(phases ?? []).map((p) => (
+                                      <option key={p.id} value={p.id}>
+                                        [{QR_PHASE_TYPE_LABEL[p.phase_type] ?? p.phase_type}] {p.name}
+                                      </option>
+                                    ))}
+                                  </select>
+                                )}
                                 <select
                                   className="form-input"
                                   value={item.target_message_id ?? ""}
@@ -833,17 +872,19 @@ function QuickReplyEditor({ items, onChange, responseMessages, phases, transitio
                                   style={{ fontSize: 13 }}
                                 >
                                   <option value="">— メッセージを選択 —</option>
-                                  {(transitionMessages ?? []).map((m) => {
-                                    const phase  = (phases ?? []).find((p) => p.id === m.phase_id);
-                                    const prefix = phase ? `[${phase.name}] ` : "";
-                                    const body   = m.body ?? "(本文なし)";
-                                    const full   = prefix + body;
-                                    return (
-                                      <option key={m.id} value={m.id}>
-                                        {full.length > 50 ? full.slice(0, 50) + "…" : full}
-                                      </option>
-                                    );
-                                  })}
+                                  {(transitionMessages ?? [])
+                                    .filter((m) => !transitionPhaseFilters[index] || m.phase_id === transitionPhaseFilters[index])
+                                    .map((m) => {
+                                      const phase  = (phases ?? []).find((p) => p.id === m.phase_id);
+                                      const prefix = phase ? `[${phase.name}] ` : "";
+                                      const body   = m.body ?? "(本文なし)";
+                                      const full   = prefix + body;
+                                      return (
+                                        <option key={m.id} value={m.id}>
+                                          {full.length > 50 ? full.slice(0, 50) + "…" : full}
+                                        </option>
+                                      );
+                                    })}
                                 </select>
                                 {(transitionMessages ?? []).length === 0 && (
                                   <div style={{ ...hintText, marginTop: 4, color: "#ef4444" }}>
