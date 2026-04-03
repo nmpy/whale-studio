@@ -58,6 +58,26 @@ const EMPTY_CAROUSEL_CARD: MessageCarouselCard = {
   button_url:   "",
 };
 
+// ── 追加メッセージスロット型 ──────────────────────────────
+
+export interface AdditionalMessageSlot {
+  /** 既存メッセージ ID（編集モードでチェーンを読み込んだ場合に設定される） */
+  existingId?:    string;
+  message_type:   ExtendedMessageType;
+  body:           string;
+  asset_url:      string;
+  notify_text:    string;
+  carousel_items: MessageCarouselCard[];
+}
+
+const EMPTY_ADDITIONAL_SLOT: AdditionalMessageSlot = {
+  message_type:   "text",
+  body:           "",
+  asset_url:      "",
+  notify_text:    "",
+  carousel_items: [],
+};
+
 // ── FormState ────────────────────────────────────────────
 
 export type MessageKind = "start" | "normal" | "response" | "hint" | "puzzle" | "global";
@@ -92,6 +112,8 @@ export interface MessageFormState {
   incorrect_text:           string;
   incorrect_quick_replies:  QuickReplyItem[];
   correct_next_phase_id:    string;
+  /** 2通目以降のメッセージ（チェーン送信） */
+  additionalMessages: AdditionalMessageSlot[];
 }
 
 export const EMPTY_MESSAGE_FORM: MessageFormState = {
@@ -120,6 +142,7 @@ export const EMPTY_MESSAGE_FORM: MessageFormState = {
   incorrect_text:          "",
   incorrect_quick_replies: [],
   correct_next_phase_id:   "",
+  additionalMessages:      [],
 };
 
 // ── コンバーター ──────────────────────────────────────────
@@ -191,6 +214,7 @@ export function msgToFormState(msg: {
     incorrect_text:          msg.incorrect_text  ?? "",
     incorrect_quick_replies: msg.incorrect_quick_replies ?? [],
     correct_next_phase_id:   msg.correct_next_phase_id ?? "",
+    additionalMessages:      [],
   };
 }
 
@@ -1794,6 +1818,291 @@ function PreviewPanel({ form, characters, riddles }: PreviewPanelProps) {
   );
 }
 
+// ────────────────────────────────────────────────────────
+// AdditionalMessageBlock — 2通目以降のメッセージブロック
+// ────────────────────────────────────────────────────────
+
+function AdditionalMessageBlock({
+  index, slot, onChange, onRemove, oaId, workId,
+}: {
+  index:    number;
+  slot:     AdditionalMessageSlot;
+  onChange: (slot: AdditionalMessageSlot) => void;
+  onRemove: () => void;
+  oaId:     string;
+  workId:   string;
+}) {
+  const bodyRef = useRef<HTMLTextAreaElement>(null);
+
+  function insertAtCursor(placeholder: string) {
+    const el = bodyRef.current;
+    if (!el) { onChange({ ...slot, body: slot.body + placeholder }); return; }
+    const start = el.selectionStart ?? slot.body.length;
+    const end   = el.selectionEnd   ?? slot.body.length;
+    const next  = slot.body.slice(0, start) + placeholder + slot.body.slice(end);
+    onChange({ ...slot, body: next });
+    requestAnimationFrame(() => {
+      el.focus();
+      const pos = start + placeholder.length;
+      el.setSelectionRange(pos, pos);
+    });
+  }
+
+  const mtype = slot.message_type;
+
+  return (
+    <div style={{
+      border: "1px solid #e5e7eb", borderRadius: 10, background: "#fafafa",
+      marginTop: 12, overflow: "hidden",
+    }}>
+      {/* ヘッダー */}
+      <div style={{
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+        padding: "10px 14px", background: "#f3f4f6", borderBottom: "1px solid #e5e7eb",
+      }}>
+        <span style={{ fontSize: 13, fontWeight: 600, color: "#374151" }}>
+          {index + 2}通目のメッセージ
+        </span>
+        <button
+          type="button"
+          onClick={onRemove}
+          style={{
+            fontSize: 11, padding: "2px 10px", border: "1px solid #fecaca",
+            borderRadius: 6, background: "#fff5f5", color: "#ef4444", cursor: "pointer",
+          }}
+        >
+          削除
+        </button>
+      </div>
+
+      <div style={{ padding: "12px 14px" }}>
+        {/* 種別選択 */}
+        <div className="form-group">
+          <label style={fieldLabel}>種別</label>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            {MESSAGE_TYPE_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => onChange({ ...slot, message_type: opt.value, body: "", asset_url: "", carousel_items: [] })}
+                style={{
+                  display: "flex", flexDirection: "column", alignItems: "center",
+                  gap: 3, padding: "8px 12px", borderRadius: 8, cursor: "pointer",
+                  fontSize: 11, fontWeight: 500, transition: "all 0.15s", minWidth: 64,
+                  border: mtype === opt.value ? "2px solid #06C755" : "2px solid #e5e5e5",
+                  background: mtype === opt.value ? "#E6F7ED" : "#fff",
+                  color: mtype === opt.value ? "#06C755" : "#6b7280",
+                }}
+              >
+                <span style={{ fontSize: 18 }}>{opt.icon}</span>
+                <span>{opt.label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* テキスト */}
+        {mtype === "text" && (
+          <div className="form-group" style={{ marginBottom: 0 }}>
+            <label style={fieldLabel}>本文</label>
+            <textarea
+              ref={bodyRef}
+              className="form-input"
+              style={{ minHeight: 80, resize: "vertical" }}
+              value={slot.body}
+              onChange={(e) => onChange({ ...slot, body: e.target.value })}
+              placeholder="送信するテキストを入力してください"
+              maxLength={5000}
+            />
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 4 }}>
+              <div style={{ display: "flex", gap: 6 }}>
+                {[
+                  { label: "友だちの表示名", placeholder: "{{user_name}}" },
+                  { label: "アカウント名",   placeholder: "{{account_name}}" },
+                ].map(({ label, placeholder }) => (
+                  <button
+                    key={placeholder}
+                    type="button"
+                    onClick={() => insertAtCursor(placeholder)}
+                    style={{
+                      fontSize: 11, padding: "2px 8px", borderRadius: 20,
+                      border: "1px solid #06C755", background: "#E6F7ED",
+                      color: "#059669", cursor: "pointer", fontWeight: 500,
+                    }}
+                  >
+                    + {label}
+                  </button>
+                ))}
+              </div>
+              <span style={{ fontSize: 11, color: "#9ca3af" }}>{slot.body.length} / 5000</span>
+            </div>
+          </div>
+        )}
+
+        {/* 画像 */}
+        {mtype === "image" && (
+          <div className="form-group" style={{ marginBottom: 0 }}>
+            <label style={fieldLabel}>画像</label>
+            <ImageUploader
+              value={slot.asset_url}
+              onChange={(url) => onChange({ ...slot, asset_url: url })}
+              oaId={oaId}
+              workId={workId}
+            />
+          </div>
+        )}
+
+        {/* 動画 */}
+        {mtype === "video" && (
+          <div className="form-group" style={{ marginBottom: 0 }}>
+            <label style={fieldLabel}>動画 URL</label>
+            <input
+              type="url"
+              className="form-input"
+              value={slot.asset_url}
+              onChange={(e) => onChange({ ...slot, asset_url: e.target.value })}
+              placeholder="https://example.com/video.mp4"
+              style={{ fontFamily: "monospace", fontSize: 13 }}
+            />
+          </div>
+        )}
+
+        {/* ボイス */}
+        {mtype === "voice" && (
+          <div className="form-group" style={{ marginBottom: 0 }}>
+            <label style={fieldLabel}>音声ファイル URL</label>
+            <input
+              type="url"
+              className="form-input"
+              value={slot.asset_url}
+              onChange={(e) => onChange({ ...slot, asset_url: e.target.value })}
+              placeholder="https://example.com/audio.m4a"
+              style={{ fontFamily: "monospace", fontSize: 13 }}
+            />
+          </div>
+        )}
+
+        {/* カルーセル */}
+        {mtype === "carousel" && (
+          <div className="form-group" style={{ marginBottom: 0 }}>
+            <label style={fieldLabel}>
+              カード
+              <span style={{ fontSize: 11, color: "#9ca3af", fontWeight: 400, marginLeft: 6 }}>
+                ({slot.carousel_items.length} / 10枚)
+              </span>
+            </label>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 8 }}>
+              {slot.carousel_items.map((card, ci) => (
+                <div key={ci} style={{ padding: "10px 12px", border: "1px solid #e5e5e5", borderRadius: 8, background: "#fff" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+                    <span style={{ fontSize: 12, fontWeight: 600 }}>カード {ci + 1}</span>
+                    <button type="button" className="btn btn-ghost"
+                      style={{ padding: "1px 6px", fontSize: 11, color: "#ef4444", borderColor: "#fecaca" }}
+                      onClick={() => onChange({ ...slot, carousel_items: slot.carousel_items.filter((_, ii) => ii !== ci) })}>
+                      削除
+                    </button>
+                  </div>
+                  {(["title", "body", "button_label"] as const).map((field) => (
+                    <div key={field} className="form-group" style={{ marginBottom: 6 }}>
+                      <label style={{ ...fieldLabel, fontSize: 11 }}>
+                        {field === "title" ? "タイトル" : field === "body" ? "本文（任意）" : "ボタンラベル（任意）"}
+                      </label>
+                      {field === "body" ? (
+                        <textarea className="form-input" rows={2}
+                          style={{ fontSize: 12, resize: "vertical" }}
+                          value={card[field]}
+                          onChange={(e) => {
+                            const updated = slot.carousel_items.map((c, ii) => ii === ci ? { ...c, [field]: e.target.value } : c);
+                            onChange({ ...slot, carousel_items: updated });
+                          }} />
+                      ) : (
+                        <input type="text" className="form-input" style={{ fontSize: 12 }}
+                          value={card[field]}
+                          onChange={(e) => {
+                            const updated = slot.carousel_items.map((c, ii) => ii === ci ? { ...c, [field]: e.target.value } : c);
+                            onChange({ ...slot, carousel_items: updated });
+                          }} />
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+            {slot.carousel_items.length < 10 && (
+              <button type="button" className="btn btn-ghost" style={{ fontSize: 12, padding: "5px 12px" }}
+                onClick={() => onChange({ ...slot, carousel_items: [...slot.carousel_items, { ...EMPTY_CAROUSEL_CARD }] })}>
+                ＋ カードを追加
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* 通知メッセージ（テキスト以外） */}
+        {mtype !== "text" && mtype !== "riddle" && (
+          <div className="form-group" style={{ marginTop: 10, marginBottom: 0 }}>
+            <label style={fieldLabel}>通知メッセージ（任意）</label>
+            <input
+              type="text"
+              className="form-input"
+              value={slot.notify_text}
+              onChange={(e) => onChange({ ...slot, notify_text: e.target.value })}
+              placeholder="例: メッセージが届きました"
+              maxLength={200}
+            />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ────────────────────────────────────────────────────────
+// SectionAccordion — 開閉できるセクションラッパー
+// ────────────────────────────────────────────────────────
+
+function SectionAccordion({
+  title, required, defaultOpen = true, badge, children,
+}: {
+  title: string;
+  required?: boolean;
+  defaultOpen?: boolean;
+  badge?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="card" style={{ marginBottom: 16 }}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        style={{
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          width: "100%", background: "none", border: "none", cursor: "pointer",
+          padding: 0, textAlign: "left",
+          marginBottom: open ? 12 : 0,
+          paddingBottom: open ? 6 : 0,
+          borderBottom: open ? "1px solid #e5e5e5" : "none",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <span style={{ fontWeight: 600, fontSize: 13, color: "#374151" }}>{title}</span>
+          {required && (
+            <span style={{
+              fontSize: 10, fontWeight: 700, background: "#fef2f2", color: "#dc2626",
+              borderRadius: 4, padding: "1px 6px",
+            }}>必須</span>
+          )}
+          {badge}
+        </div>
+        <span style={{ fontSize: 11, color: "#9ca3af", userSelect: "none", flexShrink: 0 }}>
+          {open ? "▲" : "▼"}
+        </span>
+      </button>
+      {open && <div>{children}</div>}
+    </div>
+  );
+}
+
 // ── メインコンポーネント ────────────────────────────────────
 
 export function MessageForm({
@@ -1969,8 +2278,7 @@ export function MessageForm({
           {/* ════════════════════════════════════════
               カテゴリ選択: メッセージ / 謎
           ════════════════════════════════════════ */}
-          <div className="card" style={{ marginBottom: 16 }}>
-            <div style={sectionHeader}>メッセージタイプ</div>
+          <SectionAccordion title="メッセージタイプ" defaultOpen={true}>
             <div style={{ display: "flex", gap: 12 }}>
               {([
                 { value: "normal" as const, icon: "💬", label: "メッセージを送る",  desc: "テキストや画像など、通常の会話メッセージ" },
@@ -2013,13 +2321,12 @@ export function MessageForm({
                 );
               })}
             </div>
-          </div>
+          </SectionAccordion>
 
           {/* ════════════════════════════════════════
               セクション 1: トリガー設定
           ════════════════════════════════════════ */}
-          <div className="card" style={{ marginBottom: 16 }}>
-            <div style={sectionHeader}>トリガー設定</div>
+          <SectionAccordion title="トリガー設定" defaultOpen={true}>
 
             {/* メッセージ役割 (puzzle 以外) */}
             {!isPuzzle && (
@@ -2132,13 +2439,12 @@ export function MessageForm({
               <div style={hintText}>フェーズ未指定の場合、全フェーズで適用されます</div>
             </div>
             )}
-          </div>
+          </SectionAccordion>
 
           {/* ════════════════════════════════════════
               セクション 2: 送信設定
           ════════════════════════════════════════ */}
-          <div className="card" style={{ marginBottom: 16 }}>
-            <div style={sectionHeader}>送信設定</div>
+          <SectionAccordion title="送信設定" defaultOpen={false}>
 
             {/* 応答キャラクター */}
             <div className="form-group">
@@ -2188,14 +2494,13 @@ export function MessageForm({
               </label>
               <div style={hintText}>無効にすると Bot はこのメッセージを送信しません</div>
             </div>
-          </div>
+          </SectionAccordion>
 
           {/* ════════════════════════════════════════
               セクション 3a: 謎の形式とコンテンツ（puzzle のみ）
           ════════════════════════════════════════ */}
           {isPuzzle && (
-          <div className="card" style={{ marginBottom: 16 }}>
-            <div style={sectionHeader}>🧩 謎の形式</div>
+          <SectionAccordion title="🧩 謎の形式" required defaultOpen={true}>
 
             {/* ── 形式選択 ── */}
             <div className="form-group">
@@ -2351,15 +2656,16 @@ export function MessageForm({
                 </div>
               </>
             )}
-          </div>
+          </SectionAccordion>
           )} {/* /isPuzzle section 3a (形式+コンテンツ) */}
 
           {/* ════════════════════════════════════════
-              セクション 3b: 1通目のメッセージ（puzzle のときは非表示）
+              セクション 3b: 送信メッセージ（puzzle のときは非表示）
           ════════════════════════════════════════ */}
           {!isPuzzle && (
-          <div className="card" style={{ marginBottom: 16 }}>
-            <div style={sectionHeader}>1通目のメッセージ</div>
+          <SectionAccordion title="送信メッセージ" required defaultOpen={true}>
+            {/* === 1通目のメッセージ === */}
+            <div style={{ fontSize: 12, fontWeight: 600, color: "#6b7280", marginBottom: 10 }}>1通目のメッセージ</div>
 
             {/* 種別選択 */}
             <div className="form-group">
@@ -2727,7 +3033,42 @@ export function MessageForm({
                 </div>
               </>
             )}
-          </div>
+
+            {/* === 2通目以降 === */}
+            {form.additionalMessages.map((slot, idx) => (
+              <AdditionalMessageBlock
+                key={idx}
+                index={idx}
+                slot={slot}
+                oaId={oaId}
+                workId={workId}
+                onChange={(updated) => {
+                  const next = form.additionalMessages.map((s, i) => i === idx ? updated : s);
+                  set("additionalMessages", next);
+                }}
+                onRemove={() => {
+                  set("additionalMessages", form.additionalMessages.filter((_, i) => i !== idx));
+                }}
+              />
+            ))}
+
+            {/* 追加ボタン */}
+            <button
+              type="button"
+              onClick={() => set("additionalMessages", [...form.additionalMessages, { ...EMPTY_ADDITIONAL_SLOT }])}
+              style={{
+                marginTop: 14, width: "100%", padding: "10px 0",
+                border: "2px dashed #d1d5db", borderRadius: 8, background: "#f9fafb",
+                color: "#6b7280", fontSize: 13, fontWeight: 600, cursor: "pointer",
+                display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                transition: "all 0.15s",
+              }}
+              onMouseOver={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "#06C755"; (e.currentTarget as HTMLButtonElement).style.color = "#059669"; }}
+              onMouseOut={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "#d1d5db"; (e.currentTarget as HTMLButtonElement).style.color = "#6b7280"; }}
+            >
+              ＋ メッセージを追加（{form.additionalMessages.length + 2}通目）
+            </button>
+          </SectionAccordion>
           )} {/* /!isPuzzle */}
 
           {/* ════════════════════════════════════════
@@ -2745,8 +3086,7 @@ export function MessageForm({
               謎の回答設定（puzzle のみ）
           ════════════════════════════════════════ */}
           {isPuzzle && (
-          <div className="card" style={{ marginBottom: 16 }}>
-            <div style={sectionHeader}>⚙️ 謎の回答設定</div>
+          <SectionAccordion title="⚙️ 謎の回答設定" required defaultOpen={true}>
 
             {/* answer */}
             <div className="form-group">
@@ -2901,7 +3241,7 @@ export function MessageForm({
                 maxLength={1000}
               />
             </div>
-          </div>
+          </SectionAccordion>
           )} {/* /isPuzzle 謎の回答設定 */}
 
           {/* ── アクション ── */}
