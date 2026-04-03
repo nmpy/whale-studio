@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { oaApi, workApi, runtimeApi, getDevToken, type WorkListItem, type OaListItem, type RuntimeAdvanceResult } from "@/lib/api-client";
@@ -758,6 +758,54 @@ function TypingIndicator({ char }: { char: RuntimePhaseMessage["character"] }) {
 }
 
 // ────────────────────────────────────────────────
+// QrButtons — QR ボタン列（メッセージ直下インライン表示用）
+// ────────────────────────────────────────────────
+function QrButtons({ items, onTap, loading }: {
+  items:   QuickReplyItem[];
+  onTap:   (q: QuickReplyItem) => void;
+  loading: boolean;
+}) {
+  return (
+    <div style={{
+      display: "flex", flexWrap: "wrap", gap: 6,
+      justifyContent: "flex-end",
+      padding: "6px 4px 10px",
+    }}>
+      {items.map((q, idx) => (
+        <button
+          key={idx}
+          onClick={() => onTap(q)}
+          disabled={loading}
+          style={{
+            padding: "7px 14px",
+            border: "1.5px solid #06C755",
+            borderRadius: 20,
+            background: loading ? "#f9fafb" : "#fff",
+            color: "#06C755",
+            cursor: loading ? "not-allowed" : "pointer",
+            fontSize: 13, fontWeight: 600,
+            whiteSpace: "nowrap",
+            transition: "background 0.12s, color 0.12s",
+          }}
+          onMouseEnter={(e) => {
+            if (!loading) {
+              e.currentTarget.style.background = "#06C755";
+              e.currentTarget.style.color = "#fff";
+            }
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = "#fff";
+            e.currentTarget.style.color = "#06C755";
+          }}
+        >
+          {q.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// ────────────────────────────────────────────────
 // PhasePanel — 通常フェーズ表示
 // ────────────────────────────────────────────────
 interface PhasePanelProps {
@@ -779,6 +827,15 @@ function PhasePanel({ phase, loading, showRead, onAdvance, onQrTap, extraMessage
   useEffect(() => {
     setInputText("");
   }, [phase.id]);
+
+  // 現在アクティブな QR を表示すべきメッセージの ID
+  // extraMessages が非空なら extraMessages 内の最後の QR メッセージ、
+  // 空なら phase.messages 内の最後の QR メッセージ
+  const activeQrMsgId: string | null = (() => {
+    if (!activeQrItems?.length) return null;
+    const src = extraMessages.length > 0 ? extraMessages : phase.messages;
+    return [...src].reverse().find((m) => m.quick_replies && m.quick_replies.length > 0)?.id ?? null;
+  })();
 
   function handleSubmit() {
     if (!inputText.trim() || loading) return;
@@ -881,66 +938,36 @@ function PhasePanel({ phase, loading, showRead, onAdvance, onQrTap, extraMessage
               </div>
             )}
             {phase.messages.slice(0, visibleCount).map((msg, i) => (
-              <MessageBubble
-                key={msg.id}
-                msg={msg}
-                index={i}
-                showRead={showRead && i === visibleCount - 1 && extraMessages.length === 0}
-              />
+              <Fragment key={msg.id}>
+                <MessageBubble
+                  msg={msg}
+                  index={i}
+                  showRead={showRead && i === visibleCount - 1 && extraMessages.length === 0 && msg.id !== activeQrMsgId}
+                />
+                {/* QR はこのメッセージがアクティブ QR メッセージのとき、直下に描画 */}
+                {allShown && msg.id === activeQrMsgId && activeQrItems && (
+                  <QrButtons items={activeQrItems} onTap={onQrTap} loading={loading} />
+                )}
+              </Fragment>
             ))}
             {/* target_message_id で追加されたメッセージ */}
             {allShown && extraMessages.map((msg, i) => (
-              <MessageBubble
-                key={`extra-${msg.id}-${i}`}
-                msg={msg}
-                index={phase.messages.length + i}
-                showRead={showRead && i === extraMessages.length - 1 && sentMessages.length === 0}
-              />
+              <Fragment key={`extra-${msg.id}-${i}`}>
+                <MessageBubble
+                  msg={msg}
+                  index={phase.messages.length + i}
+                  showRead={showRead && i === extraMessages.length - 1 && sentMessages.length === 0 && msg.id !== activeQrMsgId}
+                />
+                {msg.id === activeQrMsgId && activeQrItems && (
+                  <QrButtons items={activeQrItems} onTap={onQrTap} loading={loading} />
+                )}
+              </Fragment>
             ))}
             {/* ユーザーが送信したテキスト */}
             {allShown && sentMessages.map((text, i) => (
               <UserMessageBubble key={`sent-${i}`} text={text} />
             ))}
             {isTyping && <TypingIndicator char={nextTypingChar} />}
-            {/* QR ボタン（LINE 風：チャット下部に表示） */}
-            {allShown && activeQrItems && activeQrItems.length > 0 && (
-              <div style={{
-                display: "flex", flexWrap: "wrap", gap: 6,
-                justifyContent: "flex-end",
-                padding: "8px 4px 4px",
-              }}>
-                {activeQrItems.map((q, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => onQrTap(q)}
-                    disabled={loading}
-                    style={{
-                      padding: "7px 14px",
-                      border: "1.5px solid #06C755",
-                      borderRadius: 20,
-                      background: loading ? "#f9fafb" : "#fff",
-                      color: "#06C755",
-                      cursor: loading ? "not-allowed" : "pointer",
-                      fontSize: 13, fontWeight: 600,
-                      whiteSpace: "nowrap",
-                      transition: "background 0.12s, color 0.12s",
-                    }}
-                    onMouseEnter={(e) => {
-                      if (!loading) {
-                        e.currentTarget.style.background = "#06C755";
-                        e.currentTarget.style.color = "#fff";
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = "#fff";
-                      e.currentTarget.style.color = "#06C755";
-                    }}
-                  >
-                    {q.label}
-                  </button>
-                ))}
-              </div>
-            )}
             <div ref={chatBottomRef} />
           </div>
         )}
