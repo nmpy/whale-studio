@@ -223,8 +223,15 @@ export const PATCH = withAuth<{ id: string }>(async (req, { params }, user) => {
     // phaseId が変わった場合: 旧フェーズも新フェーズも無効化する
     const prevPhaseId = existing.phaseId;
     const nextPhaseId = data.phase_id !== undefined ? data.phase_id : existing.phaseId;
-    if (prevPhaseId) await activeCache.delete(CACHE_KEY.phase(prevPhaseId));
-    if (nextPhaseId && nextPhaseId !== prevPhaseId) await activeCache.delete(CACHE_KEY.phase(nextPhaseId));
+    if (prevPhaseId) {
+      await activeCache.delete(CACHE_KEY.phase(prevPhaseId));
+      // kind="start" メッセージの変更は startMsgs キャッシュも無効化する
+      await activeCache.delete(CACHE_KEY.startMsgs(prevPhaseId));
+    }
+    if (nextPhaseId && nextPhaseId !== prevPhaseId) {
+      await activeCache.delete(CACHE_KEY.phase(nextPhaseId));
+      await activeCache.delete(CACHE_KEY.startMsgs(nextPhaseId));
+    }
     // phaseId = null（グローバルキーワード）の変更
     if (prevPhaseId === null || nextPhaseId === null) {
       await activeCache.delete(CACHE_KEY.globalKw(existing.workId));
@@ -256,8 +263,13 @@ export const DELETE = withAuth<{ id: string }>(async (_req, { params }, user) =>
     await prisma.message.delete({ where: { id: params.id } });
 
     // キャッシュ無効化
-    if (existing.phaseId) await activeCache.delete(CACHE_KEY.phase(existing.phaseId));
-    else await activeCache.delete(CACHE_KEY.globalKw(existing.workId));
+    if (existing.phaseId) {
+      await activeCache.delete(CACHE_KEY.phase(existing.phaseId));
+      // kind="start" メッセージの削除は startMsgs キャッシュも無効化する
+      await activeCache.delete(CACHE_KEY.startMsgs(existing.phaseId));
+    } else {
+      await activeCache.delete(CACHE_KEY.globalKw(existing.workId));
+    }
 
     return noContent();
   } catch (err) {

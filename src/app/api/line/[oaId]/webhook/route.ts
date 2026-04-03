@@ -91,7 +91,7 @@ const isDev = process.env.NODE_ENV !== "production";
 // ── ビルド識別子（コールドスタート時に一度だけ出力）─────────
 // 旧ビルド vs 新ビルドを Vercel ログで切り分けるためのマーカー。
 // このログが出ていれば Phase-C キャッシュコードが動作中。
-console.log("[build] webhook cache=phase-c-v2 cache-provider=" + activeCache.constructor.name);
+console.log("[build] webhook cache=phase-c-v4 cache-provider=" + activeCache.constructor.name);
 
 // ────────────────────────────────────────────────
 // インメモリキャッシュヘルパー
@@ -194,6 +194,78 @@ async function getCachedGlobalKeywords(
   );
   await activeCache.set(key, result, TTL.GLOBAL_KW);
   return result;
+}
+
+/** startPhase に紐づく kind="start" メッセージ群をキャッシュ付きで取得 */
+async function getCachedStartMsgs(
+  workId:  string,
+  phaseId: string,
+): Promise<KeywordMessageRecord[]> {
+  const key = CACHE_KEY.startMsgs(phaseId);
+  const hit = await activeCache.get<KeywordMessageRecord[]>(key);
+  if (hit) return hit;
+  console.log(`[cache] startMsgs MISS phaseId=${phaseId.slice(0, 8)}`);
+  const msgs = await prisma.message.findMany({
+    where: {
+      workId,
+      phaseId,
+      kind:     "start",
+      isActive: true,
+    },
+    select: {
+      id:              true,
+      triggerKeyword:  true,
+      messageType:     true,
+      body:            true,
+      assetUrl:        true,
+      altText:         true,
+      flexPayloadJson: true,
+      quickReplies:    true,
+      sortOrder:       true,
+      character: {
+        select: { name: true, iconImageUrl: true },
+      },
+    },
+    orderBy: { sortOrder: "asc" },
+  });
+  await activeCache.set(key, msgs, TTL.START_MSGS);
+  return msgs;
+}
+
+// ── userProgress キャッシュ（TTL 10秒 / write-through）──────────────────
+//
+//  LINE の 1 ユーザー逐次配送モデルに基づき、短 TTL でキャッシュする。
+//  全 upsert / update の直後に setCachedProgress() を呼んでキャッシュを更新する。
+//  これにより read-after-write の整合性を保証する。
+
+/**
+ * userProgress をキャッシュ付きで取得する。
+ * キャッシュ MISS 時は DB から全フィールドを取得してキャッシュに保存する。
+ */
+type ProgressCached = NonNullable<Awaited<ReturnType<typeof prisma.userProgress.findUnique>>>;
+
+async function getCachedProgress(
+  userId: string,
+  workId: string,
+): Promise<ProgressCached | null> {
+  const key = CACHE_KEY.progress(userId, workId);
+  const hit = await activeCache.get<ProgressCached>(key);
+  if (hit) return hit;
+  console.log(`[cache] progress MISS userId=${userId.slice(0, 8)} workId=${workId.slice(0, 8)}`);
+  const r = await prisma.userProgress.findUnique({
+    where: { lineUserId_workId: { lineUserId: userId, workId } },
+  });
+  if (r) await activeCache.set(key, r, TTL.PROGRESS);
+  return r ?? null;
+}
+
+/**
+ * userProgress キャッシュを上書きする（upsert / update 直後に呼ぶ）。
+ * write-through によって次の read が必ず最新値を返せるようにする。
+ */
+async function setCachedProgress(progress: ProgressCached): Promise<void> {
+  const key = CACHE_KEY.progress(progress.lineUserId, progress.workId);
+  await activeCache.set(key, progress, TTL.PROGRESS);
 }
 
 /** キャッシュ済みグローバルコマンドとユーザー入力をインメモリで照合する */
@@ -743,10 +815,11 @@ async function handleTextEvent({
 }: HandlerCommon & { text: string }) {
   const token = oa.channelAccessToken;
   const t0e = Date.now();
-  // perf tracking (populated as we progress through the handler)
-  let progressFindMs = -1;
-  let phaseHit       = false;
-  let progressUpdateMs = -1;
+  // perf tracking（各パスの終端 [perf][event] で使用）
+  let progressFindMs   = -1;   // getCachedProgress の所要時間
+  let progressHit      = false; // true = キャッシュ HIT / false = DB MISS
+  let phaseHit         = false; // currentPhase キャッシュ HIT フラグ
+  let progressUpdateMs = -1;   // userProgress.update の所要時間（transition パスのみ）
 
   // ─ 公開中の作品がない ─
   if (!work) {
@@ -775,20 +848,30 @@ async function handleTextEvent({
     return;
   }
 
-  // ─ ① globalCmd(cache) + startTrigger(cache) + progress を並列取得 ─
+  // ─ ① globalCmd(cache) + startTrigger(cache) + progress(cache) を並列取得 ─
   //   キャッシュ HIT 時はほぼゼロコスト。MISS 時でも 3 クエリ並列発行。
+  //   progress は write-through キャッシュ（TTL 10秒）で DB ラウンドトリップを削減。
   const [cachedCmds, startPhaseForTrigger, progress] = await Promise.all([
     getCachedGlobalCmds(oa.id),
     getCachedStartPhase(work.id),
     (async () => {
-      const t = Date.now();
+      const t   = Date.now();
+      const key = CACHE_KEY.progress(userId, work.id);
+      // HIT/MISS を明示追跡（perf ログで可視化するためインライン展開）
+      const cached = await activeCache.get<ProgressCached>(key);
+      progressHit = cached !== null;
+      if (cached) {
+        progressFindMs = Date.now() - t;
+        return cached;
+      }
+      // MISS: DB から全フィールド取得してキャッシュに保存
+      console.log(`[cache] progress MISS userId=${userId.slice(0, 8)} workId=${work.id.slice(0, 8)}`);
       const r = await prisma.userProgress.findUnique({
-        where:  { lineUserId_workId: { lineUserId: userId, workId: work.id } },
-        // ホットパス select: buildRuntimeState には渡さないので必要最小限のカラムのみ取得
-        select: { id: true, reachedEnding: true, currentPhaseId: true, flags: true },
+        where: { lineUserId_workId: { lineUserId: userId, workId: work.id } },
       });
       progressFindMs = Date.now() - t;
-      return r;
+      if (r) await activeCache.set(key, r, TTL.PROGRESS);
+      return r ?? null;
     })(),
   ]);
   const globalCmd = matchGlobalCmdInMemory(cachedCmds, text);
@@ -898,8 +981,8 @@ async function handleTextEvent({
     await replyToLine(replyToken, hintMsgs, token);
     console.log(
       `[perf][event] path=hint total=${Date.now() - t0e}ms` +
+      ` progress=${progressHit ? "HIT" : "MISS"}:${progressFindMs}ms` +
       ` phase=${phaseHit ? "hit" : "miss"}` +
-      ` progress=findUnique:${progressFindMs}ms` +
       ` reply:${Date.now() - tReplyHint}ms`,
     );
     return;
@@ -920,8 +1003,8 @@ async function handleTextEvent({
       await replyToLine(replyToken, msgs, token);
       console.log(
         `[perf][event] path=keyword total=${Date.now() - t0e}ms` +
+        ` progress=${progressHit ? "HIT" : "MISS"}:${progressFindMs}ms` +
         ` phase=${phaseHit ? "hit" : "miss"}` +
-        ` progress=findUnique:${progressFindMs}ms` +
         ` reply:${Date.now() - tReplyKw}ms`,
       );
       return;
@@ -949,8 +1032,8 @@ async function handleTextEvent({
       }], token);
       console.log(
         `[perf][event] path=puzzle_incorrect total=${Date.now() - t0e}ms` +
+        ` progress=${progressHit ? "HIT" : "MISS"}:${progressFindMs}ms` +
         ` phase=${phaseHit ? "hit" : "miss"}` +
-        ` progress=findUnique:${progressFindMs}ms` +
         ` reply:${Date.now() - tReplyPuzzle}ms`,
       );
     }
@@ -1031,6 +1114,9 @@ async function handleTextEvent({
     getCachedPhase(toPhaseRef.id),
   ]);
 
+  // write-through: 更新後の progress をキャッシュに反映（次の read が最新値を返すため）
+  await setCachedProgress(updated);
+
   // プリフェッチ済みフェーズを渡すことで buildRuntimeState の追加クエリを省略
   const state = await buildRuntimeState(updated, toPhaseRow);
   const msgs  = buildPhaseMessages(state.phase, { systemSender });
@@ -1039,8 +1125,8 @@ async function handleTextEvent({
   await replyToLine(replyToken, msgs, token);
   console.log(
     `[perf][event] path=transition total=${Date.now() - t0e}ms` +
+    ` progress=${progressHit ? "HIT" : "MISS"}:${progressFindMs}ms` +
     ` phase=${phaseHit ? "hit" : "miss"}` +
-    ` progress=findUnique:${progressFindMs}ms` +
     (progressUpdateMs >= 0 ? ` update:${progressUpdateMs}ms` : "") +
     ` reply:${Date.now() - tReply}ms`,
   );
@@ -1127,6 +1213,9 @@ async function handleStart({
   ]);
   console.log(`[perf][handleStart/upsert+phaseRow] ${Date.now() - tUpsert}ms progressId=${progress.id}`);
 
+  // write-through: upsert 後の progress をキャッシュに反映
+  await setCachedProgress(progress);
+
   // プリフェッチ済みフェーズを渡すことで buildRuntimeState の追加クエリを省略
   const state = await buildRuntimeState(progress, startPhaseRow);
 
@@ -1205,7 +1294,8 @@ async function handleStartTrigger({
   work:       NonNullable<WorkRecord>;
   startPhase: StartPhaseRecord;
 }) {
-  const token = oa.channelAccessToken;
+  const token  = oa.channelAccessToken;
+  const t0st   = Date.now();
 
   // 初期フェーズの決定:
   //   handleStart と同様に startPhase 自体を初期フェーズとする。
@@ -1222,65 +1312,64 @@ async function handleStartTrigger({
     `（startPhase.id に留まる）`,
   );
 
-  // progress upsert（未開始なら新規作成 / 開始済みなら最初からリセット）
-  const progress = await prisma.userProgress.upsert({
-    where: {
-      lineUserId_workId: { lineUserId: userId, workId: work.id },
-    },
-    create: {
-      lineUserId:       userId,
-      workId:           work.id,
-      currentPhaseId:   initialPhaseId,
-      reachedEnding:    false,
-      flags:            "{}",
-      lastInteractedAt: new Date(),
-    },
-    update: {
-      currentPhaseId:   initialPhaseId,
-      reachedEnding:    false,
-      flags:            "{}",
-      lastInteractedAt: new Date(),
-    },
-  });
-  console.log(
-    `[Webhook][STEP] handleStartTrigger: progress upsert完了`,
-    `progressId=${progress.id}`,
-    `currentPhaseId=${progress.currentPhaseId}`,
-  );
-
-  // kind="start" メッセージを startPhase から取得して送信（物語演出として）
-  const startKindMessages = await prisma.message.findMany({
-    where: {
-      workId:   work.id,
-      phaseId:  startPhase.id,
-      kind:     "start",
-      isActive: true,
-    },
-    select: {
-      id:              true,
-      triggerKeyword:  true,
-      messageType:     true,
-      body:            true,
-      assetUrl:        true,
-      altText:         true,
-      flexPayloadJson: true,
-      quickReplies:    true,
-      sortOrder:       true,
-      character: {
-        select: { name: true, iconImageUrl: true },
+  // ── upsert + kind="start" メッセージ取得を並列発行（キャッシュ優先）──
+  const tUpsert = Date.now();
+  const [progress, startKindMessages] = await Promise.all([
+    prisma.userProgress.upsert({
+      where: {
+        lineUserId_workId: { lineUserId: userId, workId: work.id },
       },
-    },
-    orderBy: { sortOrder: "asc" },
-  });
-
+      create: {
+        lineUserId:       userId,
+        workId:           work.id,
+        currentPhaseId:   initialPhaseId,
+        reachedEnding:    false,
+        flags:            "{}",
+        lastInteractedAt: new Date(),
+      },
+      update: {
+        currentPhaseId:   initialPhaseId,
+        reachedEnding:    false,
+        flags:            "{}",
+        lastInteractedAt: new Date(),
+      },
+      select: { id: true },
+    }),
+    getCachedStartMsgs(work.id, startPhase.id),
+  ]);
+  const upsertMs = Date.now() - tUpsert;
   console.log(
-    `[Webhook][STEP] handleStartTrigger: kind="start" msgs=${startKindMessages.length}件 userId=${userId}`
+    `[Webhook][STEP] handleStartTrigger: upsert完了 progressId=${progress.id}`,
+    `kind="start" msgs=${startKindMessages.length}件 userId=${userId}`,
   );
+
+  // write-through: upsert で設定した状態をキャッシュに書き込む
+  // （select: {id} なので合成オブジェクトを作成。タイムスタンプは表示用のみで論理に影響しない）
+  const now = new Date();
+  const syntheticProgress: ProgressCached = {
+    id:               progress.id,
+    lineUserId:       userId,
+    workId:           work.id,
+    currentPhaseId:   initialPhaseId,
+    reachedEnding:    false,
+    flags:            "{}",
+    lastInteractedAt: now,
+    createdAt:        now,
+    updatedAt:        now,
+  };
+  await setCachedProgress(syntheticProgress);
 
   if (startKindMessages.length > 0) {
+    const tBuild = Date.now();
     const msgs = buildKeywordMessages(startKindMessages, systemSender);
+    const buildMs = Date.now() - tBuild;
     if (msgs.length > 0) {
+      const tReply = Date.now();
       await replyToLine(replyToken, msgs, token);
+      console.log(
+        `[perf][startTrigger] total=${Date.now() - t0st}ms` +
+        ` upsert=${upsertMs}ms build=${buildMs}ms reply=${Date.now() - tReply}ms`,
+      );
       // リッチメニュー切り替えは返信後にバックグラウンド実行
       void switchRichMenuForUser(oa, userId, startPhase.phaseType);
       return;
@@ -1289,11 +1378,23 @@ async function handleStartTrigger({
 
   // kind="start" が 0 件 → startPhase の通常メッセージへフォールバック
   console.log(`[Webhook][STEP] handleStartTrigger: kind=start 0件 → 通常 startPhase メッセージへフォールバック`);
+  const tBuildFallback = Date.now();
   const cachedStartPhaseForTrigger = await getCachedPhase(initialPhaseId);
-  const state = await buildRuntimeState(progress, cachedStartPhaseForTrigger);
+  const state = await buildRuntimeState(syntheticProgress, cachedStartPhaseForTrigger);
   const msgs  = buildPhaseMessages(state.phase, { systemSender });
+  const buildFallbackMs = Date.now() - tBuildFallback;
   if (msgs.length > 0) {
+    const tReply = Date.now();
     await replyToLine(replyToken, msgs, token);
+    console.log(
+      `[perf][startTrigger] total=${Date.now() - t0st}ms` +
+      ` upsert=${upsertMs}ms build=${buildFallbackMs}ms reply=${Date.now() - tReply}ms (fallback)`,
+    );
+  } else {
+    console.log(
+      `[perf][startTrigger] total=${Date.now() - t0st}ms` +
+      ` upsert=${upsertMs}ms build=${buildFallbackMs}ms reply=0ms (no-msgs)`,
+    );
   }
   // リッチメニュー切り替えは返信後にバックグラウンド実行
   void switchRichMenuForUser(oa, userId, startPhase.phaseType);
@@ -1314,9 +1415,7 @@ async function handleContinue({
     return;
   }
 
-  const progress = await prisma.userProgress.findUnique({
-    where: { lineUserId_workId: { lineUserId: userId, workId: work.id } },
-  });
+  const progress = await getCachedProgress(userId, work.id);
 
   // 未開始 — あいさつメッセージ（設定があれば）＋開始案内
   if (!progress) {
@@ -1463,9 +1562,7 @@ async function handleGlobalCommand({
     // ── REPEAT: 現在フェーズのメッセージを再送 ──
     case "REPEAT": {
       if (!work) break;
-      const progress = await prisma.userProgress.findUnique({
-        where: { lineUserId_workId: { lineUserId: userId, workId: work.id } },
-      });
+      const progress = await getCachedProgress(userId, work.id);
       if (!progress) {
         await handleStart({ oa, work, systemSender, userId, replyToken });
         return;
@@ -1490,10 +1587,7 @@ async function handleGlobalCommand({
     // ── HINT: 現在フェーズのパズルヒントを返す ──
     case "HINT": {
       if (!work) break;
-      const progress = await prisma.userProgress.findUnique({
-        where:  { lineUserId_workId: { lineUserId: userId, workId: work.id } },
-        select: { currentPhaseId: true },
-      });
+      const progress = await getCachedProgress(userId, work.id);
       if (!progress?.currentPhaseId) {
         await replyToLine(replyToken, [{
           type: "text",
@@ -1786,6 +1880,8 @@ async function handlePuzzleCorrect({
             lastInteractedAt: new Date(),
           },
         });
+        // write-through: パズル正解遷移後のキャッシュを更新
+        await setCachedProgress(updated);
         console.log(
           `[Webhook][puzzle] 遷移 → phaseId=${nextPhase.id.slice(0, 8)}`,
           `phaseType=${nextPhase.phaseType}`,

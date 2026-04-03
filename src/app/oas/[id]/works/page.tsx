@@ -8,6 +8,7 @@ import { oaApi, workApi, getDevToken, type WorkListItem } from "@/lib/api-client
 import { useToast } from "@/components/Toast";
 import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
 import { ViewerBanner } from "@/components/PermissionGuard";
+import { useTesterMode } from "@/hooks/useTesterMode";
 
 const STATUS_META: Record<string, { label: string; color: string; bg: string; dot: string }> = {
   draft:  { label: "下書き",  color: "#6b7280", bg: "#f3f4f6", dot: "#9ca3af" },
@@ -22,13 +23,14 @@ function formatDate(iso: string) {
 
 /* ── ワークカード ─────────────────────────────────────────────────────── */
 function WorkCard({
-  work, oaId, role,
+  work, oaId, role, isTester,
   onDelete,
 }: {
-  work: WorkListItem;
-  oaId: string;
-  role: string | null;
-  onDelete: (id: string, title: string) => void;
+  work:      WorkListItem;
+  oaId:      string;
+  role:      string | null;
+  isTester:  boolean;
+  onDelete:  (id: string, title: string) => void;
 }) {
   const [hovered, setHovered] = useState(false);
   const st = STATUS_META[work.publish_status] ?? STATUS_META.draft;
@@ -91,7 +93,7 @@ function WorkCard({
           >
             ▶ テスト
           </Link>
-          {role === "owner" && (
+          {role === "owner" && !isTester && (
             <button
               className="btn btn-danger"
               style={{ padding: "5px 10px", fontSize: 12 }}
@@ -168,6 +170,7 @@ export default function WorkListPage() {
   const oaId    = params.id;
   const { showToast } = useToast();
   const { role } = useWorkspaceRole(oaId);
+  const { isTester } = useTesterMode();
 
   const [oaTitle, setOaTitle] = useState("");
   const [works, setWorks]     = useState<WorkListItem[]>([]);
@@ -223,10 +226,12 @@ export default function WorkListPage() {
           </p>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
-          <Link href={`/oas/${oaId}/settings`} className="btn btn-ghost">
-            ⚙ 設定
-          </Link>
-          {role !== "viewer" && (
+          {!isTester && (
+            <Link href={`/oas/${oaId}/settings`} className="btn btn-ghost">
+              ⚙ 設定
+            </Link>
+          )}
+          {role !== "viewer" && !isTester && (
             <Link href={`/oas/${oaId}/works/new`} className="btn btn-primary">
               ＋ 作品を追加
             </Link>
@@ -235,6 +240,22 @@ export default function WorkListPage() {
       </div>
 
       <ViewerBanner role={role} />
+
+      {/* テスターモード時の注意文 */}
+      {isTester && (
+        <div style={{
+          display: "flex", alignItems: "center", gap: 8,
+          padding: "8px 14px",
+          background: "#fffbeb",
+          border: "1px solid #fde68a",
+          borderRadius: "var(--radius-md)",
+          marginBottom: 16,
+          fontSize: 12, color: "#b45309",
+        }}>
+          <span style={{ fontSize: 14, flexShrink: 0 }}>🔍</span>
+          <span>※ テスター環境のため、一部機能は制限されています。</span>
+        </div>
+      )}
 
       {error && (
         <div className="alert alert-error" style={{ marginBottom: 16 }}>
@@ -288,7 +309,7 @@ export default function WorkListPage() {
               「作品を追加」から謎解きシナリオを作成しましょう。<br />
               1つのアカウントに複数の作品を管理できます。
             </p>
-            {role !== "viewer" && (
+            {role !== "viewer" && !isTester && (
               <Link href={`/oas/${oaId}/works/new`} className="btn btn-primary" style={{ marginTop: 8 }}>
                 ＋ 最初の作品を追加する
               </Link>
@@ -303,6 +324,7 @@ export default function WorkListPage() {
               work={w}
               oaId={oaId}
               role={role}
+              isTester={isTester}
               onDelete={handleDelete}
             />
           ))}

@@ -77,7 +77,6 @@ export default function MessagesPage() {
   const params  = useParams<{ id: string; workId: string }>();
   const oaId    = params.id;
   const workId  = params.workId;
-
   const [workTitle, setWorkTitle]     = useState("");
   const [welcomeMsg, setWelcomeMsg]   = useState<string | null>(null);
   const [welcomeOpen, setWelcomeOpen] = useState(false);

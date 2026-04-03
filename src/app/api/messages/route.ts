@@ -219,8 +219,13 @@ export const POST = withAuth(async (req, _ctx, user) => {
     });
 
     // キャッシュ無効化（新規メッセージが追加されたフェーズ / グローバルキーワード）
-    if (data.phase_id) await activeCache.delete(CACHE_KEY.phase(data.phase_id));
-    else await activeCache.delete(CACHE_KEY.globalKw(data.work_id));
+    if (data.phase_id) {
+      await activeCache.delete(CACHE_KEY.phase(data.phase_id));
+      // kind="start" メッセージの追加は startMsgs キャッシュも無効化する
+      await activeCache.delete(CACHE_KEY.startMsgs(data.phase_id));
+    } else {
+      await activeCache.delete(CACHE_KEY.globalKw(data.work_id));
+    }
 
     return created(toResponse(message));
   } catch (err) {

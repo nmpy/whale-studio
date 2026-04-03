@@ -31,6 +31,16 @@ export const TTL = {
   START_PHASE: 2 * 60 * 1000,
   /** 作品共通キーワードメッセージ（phaseId = null）: 2 分 */
   GLOBAL_KW:   2 * 60 * 1000,
+  /** start フェーズの kind="start" メッセージ群（startTrigger 演出）: 2 分 */
+  START_MSGS:  2 * 60 * 1000,
+  /**
+   * userProgress（currentPhaseId / reachedEnding / flags）: 10 秒
+   *
+   * LINE は 1 ユーザーのメッセージを逐次配送するため、短 TTL + write-through で
+   * 整合性を保ちつつ findUnique の DB ラウンドトリップを大幅削減できる。
+   * upsert / update 直後は必ず setCachedProgress() で上書きすること。
+   */
+  PROGRESS:    10 * 1000,
 } as const;
 
 // ── 基本操作 ─────────────────────────────────────────────────
@@ -101,6 +111,8 @@ export const CACHE_KEY = {
   globalCmd:  (oaId:      string) => `globalcmd:${oaId}`,
   startPhase: (workId:    string) => `startphase:${workId}`,
   globalKw:   (workId:    string) => `work:global-kw:${workId}`,
+  startMsgs:  (phaseId:   string) => `startmsgs:${phaseId}`,
+  progress:   (userId:    string, workId: string) => `progress:${userId}:${workId}`,
 } as const;
 
 // ── 抽象インターフェース（Upstash Redis 等へ切り替え可能）────
@@ -130,16 +142,28 @@ export class MemoryCache implements ICache {
 }
 
 /**
- * アクティブなキャッシュインスタンス（デフォルト: MemoryCache）。
+ * アクティブなキャッシュインスタンス。環境変数で自動選択:
  *
- * Upstash Redis に切り替えるには、以下のように 2 行を変更する:
- *   import { UpstashCache } from "@/lib/cache-upstash";
- *   export const activeCache: ICache = new UpstashCache(
- *     process.env.UPSTASH_REDIS_REST_URL!,
- *     process.env.UPSTASH_REDIS_REST_TOKEN!,
- *   );
+ *   UPSTASH_REDIS_REST_URL + UPSTASH_REDIS_REST_TOKEN 設定済み
+ *     → UpstashCache（Upstash Redis REST API）
+ *   未設定
+ *     → MemoryCache（インメモリ Map、同一コンテナ内のみ有効）
  *
- * 注意: API ルートの `await activeCache.delete(key)` は Redis でも機能する。
- *       webhook 内の OA / Work の inline getCache/setCache は別途移行が必要（TODO）。
+ * Upstash Redis への切り替え手順（コード変更不要）:
+ *   1. https://console.upstash.com で Redis DB を作成
+ *   2. Vercel プロジェクトの Environment Variables に以下を追加:
+ *        UPSTASH_REDIS_REST_URL   = https://xxx.upstash.io
+ *        UPSTASH_REDIS_REST_TOKEN = AXxx...
+ *   3. Vercel に再デプロイ → ログで [cache] provider=UpstashCache を確認
  */
-export const activeCache: ICache = new MemoryCache();
+export const activeCache: ICache = (() => {
+  const url   = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (url && token) {
+    // serverExternalPackages により webpack バンドル対象外（runtime require）
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const mod = require("./cache-upstash") as { UpstashCache: new (u: string, t: string) => ICache };
+    return new mod.UpstashCache(url, token);
+  }
+  return new MemoryCache();
+})();
