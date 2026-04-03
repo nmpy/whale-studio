@@ -270,64 +270,6 @@ export default function WorkListPage() {
         </div>
       )}
 
-      {/* ── 友だち追加 ── */}
-      {!loading && friendAdd?.add_url && (
-        <div style={{
-          padding: "16px 20px",
-          background: "var(--surface)",
-          border: "1px solid var(--border-light)",
-          borderRadius: "var(--radius-md)",
-          boxShadow: "var(--shadow-xs)",
-          marginBottom: 20,
-          display: "flex",
-          alignItems: "flex-start",
-          gap: 20,
-          flexWrap: "wrap",
-        }}>
-          {/* テキスト + ボタン */}
-          <div style={{ flex: 1, minWidth: 180 }}>
-            <p style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", marginBottom: 8, letterSpacing: 0.5 }}>
-              🔗 友だち追加
-            </p>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
-              <a
-                href={friendAdd.add_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="btn btn-primary"
-                style={{ textDecoration: "none", fontSize: 13 }}
-              >
-                友だち追加URLを開く
-              </a>
-              {!isTester && (
-                <Link
-                  href={`/oas/${oaId}/friend-add`}
-                  className="btn btn-ghost"
-                  style={{ fontSize: 13 }}
-                >
-                  URL を変更
-                </Link>
-              )}
-            </div>
-            <p style={{ fontSize: 11, color: "var(--text-muted)", wordBreak: "break-all" }}>
-              {friendAdd.add_url}
-            </p>
-          </div>
-          {/* QRコード */}
-          <div style={{ flexShrink: 0, textAlign: "center" }}>
-            <p style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 6 }}>QRコードで追加</p>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={`https://api.qrserver.com/v1/create-qr-code/?size=120x120&margin=4&data=${encodeURIComponent(friendAdd.add_url)}`}
-              alt="友だち追加QRコード"
-              width={120}
-              height={120}
-              style={{ borderRadius: 8, border: "1px solid var(--border-light)", display: "block" }}
-            />
-          </div>
-        </div>
-      )}
-
       {/* ── 統計サマリー ── */}
       {!loading && works.length > 0 && (
         <div style={{
@@ -392,6 +334,64 @@ export default function WorkListPage() {
           ))}
           <div style={{ textAlign: "right", fontSize: 11, color: "var(--text-muted)", paddingTop: 4 }}>
             全 {works.length} 件
+          </div>
+        </div>
+      )}
+
+      {/* ── 友だち追加 ── */}
+      {!loading && friendAdd?.add_url && (
+        <div style={{
+          padding: "16px 20px",
+          background: "var(--surface)",
+          border: "1px solid var(--border-light)",
+          borderRadius: "var(--radius-md)",
+          boxShadow: "var(--shadow-xs)",
+          marginTop: 20,
+          display: "flex",
+          alignItems: "flex-start",
+          gap: 20,
+          flexWrap: "wrap",
+        }}>
+          {/* テキスト + ボタン */}
+          <div style={{ flex: 1, minWidth: 180 }}>
+            <p style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", marginBottom: 8, letterSpacing: 0.5 }}>
+              🔗 友だち追加
+            </p>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+              <a
+                href={friendAdd.add_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn btn-primary"
+                style={{ textDecoration: "none", fontSize: 13 }}
+              >
+                友だち追加URLを開く
+              </a>
+              {!isTester && (
+                <Link
+                  href={`/oas/${oaId}/friend-add`}
+                  className="btn btn-ghost"
+                  style={{ fontSize: 13 }}
+                >
+                  URL を変更
+                </Link>
+              )}
+            </div>
+            <p style={{ fontSize: 11, color: "var(--text-muted)", wordBreak: "break-all" }}>
+              {friendAdd.add_url}
+            </p>
+          </div>
+          {/* QRコード */}
+          <div style={{ flexShrink: 0, textAlign: "center" }}>
+            <p style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 6 }}>QRコードで追加</p>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={`https://api.qrserver.com/v1/create-qr-code/?size=120x120&margin=4&data=${encodeURIComponent(friendAdd.add_url)}`}
+              alt="友だち追加QRコード"
+              width={120}
+              height={120}
+              style={{ borderRadius: 8, border: "1px solid var(--border-light)", display: "block" }}
+            />
           </div>
         </div>
       )}
