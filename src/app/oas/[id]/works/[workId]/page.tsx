@@ -157,7 +157,7 @@ export default function WorkHubPage() {
           href={`/playground?work_id=${workId}&oa_id=${oaId}`}
           className="btn btn-ghost"
         >
-          ▶ テスト
+          ▶ プレビュー
         </Link>
       </div>
 
@@ -168,7 +168,7 @@ export default function WorkHubPage() {
       <HelpAccordion items={[
         { icon: "✅", title: "この画面でできること", points: [
           "シナリオを構成するキャラクター・フェーズ・メッセージをまとめて管理できます",
-          "公開ステータスの変更や、テスト実行への起点になります",
+          "公開ステータスの変更や、プレビュー機能への起点になります",
         ]},
         { icon: "👆", title: "まず最初に決めること", points: [
           "① キャラクターを作成（送信者の名前・アイコン）",
@@ -178,7 +178,7 @@ export default function WorkHubPage() {
         ]},
         { icon: "⚠️", title: "注意点", points: [
           "公開ステータスが「公開中」のときだけ LINE からのメッセージに反応します",
-          "公開前に必ずプレイグラウンドでテスト動作を確認してください",
+          "公開前に必ずプレビュー機能でシナリオの動作を確認してください",
         ]},
       ]} />
 

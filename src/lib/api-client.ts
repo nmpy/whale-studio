@@ -739,6 +739,12 @@ export const snsApi = {
 // ────────────────────────────────────────────────
 
 export const messageApi = {
+  /** メッセージ単件取得（GET /api/messages/:id） */
+  async get(token: string, id: string): Promise<MessageWithRelations> {
+    const res = await fetch(`/api/messages/${id}`, { headers: authHeaders(token) });
+    return parseResponse(res);
+  },
+
   async list(
     token: string,
     workId: string,

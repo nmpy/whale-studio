@@ -85,7 +85,7 @@ function WorkCard({ work, oaId }: { work: WorkListItem; oaId: string }) {
             className="btn btn-ghost"
             style={{ padding: "5px 12px", fontSize: 12 }}
           >
-            ▶ テスト
+            ▶ プレビュー
           </Link>
         </div>
       </div>
@@ -206,7 +206,7 @@ export default function TesterWorkListPage() {
         fontSize: 12, color: "#b45309",
       }}>
         <span style={{ fontSize: 14, flexShrink: 0 }}>🔍</span>
-        <span>テスターモード — 閲覧・テスト実行のみ可能です。編集・削除・作品追加は行えません。</span>
+        <span>テスターモードでは、アカウントや作品を自由に作成・編集してお試しいただけます。プレビュー機能で実際の LINE 体験も確認できます。</span>
       </div>
 
       {error && (

@@ -118,7 +118,7 @@ export default function TesterWorkHubPage() {
             href={`/playground?work_id=${workId}&oa_id=${oaId}`}
             className="btn btn-ghost"
           >
-            ▶ テスト
+            ▶ プレビュー
           </Link>
           <Link href={`/tester/${oaId}`} className="btn btn-ghost">
             ← 作品リスト
@@ -130,7 +130,7 @@ export default function TesterWorkHubPage() {
       <HelpAccordion items={[
         { icon: "✅", title: "この画面でできること", points: [
           "シナリオを構成するキャラクター・フェーズ・メッセージをまとめて管理できます",
-          "公開ステータスの変更や、テスト実行への起点になります",
+          "公開ステータスの変更や、プレビュー機能への起点になります",
         ]},
         { icon: "👆", title: "まず最初に決めること", points: [
           "① キャラクターを作成（送信者の名前・アイコン）",

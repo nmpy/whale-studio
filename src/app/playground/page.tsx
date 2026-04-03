@@ -539,11 +539,11 @@ function PlaygroundInner() {
         <div>
           <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 4 }}>
             <Link href="/oas">アカウントリスト</Link>
-            {" / シナリオテスト"}
+            {" / シナリオプレビュー"}
           </div>
-          <h2>🎮 シナリオテスト</h2>
+          <h2>🎮 シナリオプレビュー</h2>
           <p style={{ fontSize: 13, color: "#6b7280", marginTop: 4 }}>
-            作成したシナリオを API 経由でローカルテストできます。
+            作成したシナリオの動作を実際の LINE 体験としてプレビューできます。
           </p>
         </div>
       </div>
@@ -555,18 +555,18 @@ function PlaygroundInner() {
           {/* 作品選択 */}
           <div className="card" style={{ marginBottom: 12 }}>
             <p style={{ fontWeight: 600, marginBottom: 12, fontSize: 13, color: "#374151" }}>
-              テスト対象を選択
+              プレビュー対象を選択
             </p>
 
             <div className="form-group">
-              <label htmlFor="oa-select">OA</label>
+              <label htmlFor="oa-select">LINE公式アカウント</label>
               {oasLoading ? (
                 <div className="skeleton" style={{ height: 36 }} />
               ) : (
                 <select id="oa-select" value={selectedOaId}
                   onChange={(e) => { setSelectedOaId(e.target.value); handleWorkChange(""); }}
                   style={{ width: "100%" }}>
-                  <option value="">— OA を選択 —</option>
+                  <option value="">— アカウントを選択 —</option>
                   {oas.map((oa) => (
                     <option key={oa.id} value={oa.id}>{oa.title}</option>
                   ))}
@@ -593,7 +593,7 @@ function PlaygroundInner() {
 
             <div className="form-group" style={{ marginBottom: 0 }}>
               <label htmlFor="user-id">
-                テストユーザー ID
+                プレビューユーザー ID
                 <button
                   type="button"
                   onClick={() => setLineUserId(`test-${Math.random().toString(36).slice(2, 8)}`)}

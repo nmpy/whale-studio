@@ -43,7 +43,7 @@ export default function OaNewPage() {
     const clientErrors: Record<string, string[]> = {};
     if (!title.trim())               clientErrors.title = ["作品名を入力してください"];
     if (title.length > 100)          clientErrors.title = ["作品名は100文字以内で入力してください"];
-    if (!lineOaId.trim())             clientErrors.line_oa_id = ["LINE OA IDを入力してください"];
+    if (!lineOaId.trim())             clientErrors.line_oa_id = ["LINE公式アカウントIDを入力してください"];
     if (!channelId.trim())           clientErrors.channel_id = ["Channel IDを入力してください"];
     if (!channelSecret.trim())       clientErrors.channel_secret = ["Channel Secretを入力してください"];
     if (!channelAccessToken.trim())  clientErrors.channel_access_token = ["Channel Access Tokenを入力してください"];
@@ -142,7 +142,7 @@ export default function OaNewPage() {
 
           <div className="form-group">
             <label htmlFor="line_oa_id">
-              LINE OA ID <span style={{ color: "#ef4444" }}>*</span>
+              LINE公式アカウントID <span style={{ color: "#ef4444" }}>*</span>
               <span style={{ fontSize: 11, color: "#6b7280", fontWeight: 400, marginLeft: 6 }}>
                 Webhook URL に使う識別子
               </span>

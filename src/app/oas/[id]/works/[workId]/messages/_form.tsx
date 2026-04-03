@@ -160,13 +160,19 @@ export function msgToFormState(msg: {
     }
   }
 
+  // kind="response" かつ phase_id=null の場合は UI上の "global" 種別として復元する
+  const resolvedKind: MessageKind =
+    msg.kind === "response" && (msg.phase_id === null || msg.phase_id === undefined)
+      ? "global"
+      : (msg.kind as MessageKind) ?? "normal";
+
   return {
     trigger_keyword:       msg.trigger_keyword ?? "",
     target_segment:        msg.target_segment  ?? "",
     phase_id:              msg.phase_id        ?? "",
     character_id:          msg.character_id    ?? "",
     message_type:          (msg.message_type as ExtendedMessageType) ?? "text",
-    kind:                  (msg.kind as MessageKind) ?? "normal",
+    kind:                  resolvedKind,
     body:                  msg.message_type === "carousel" ? "" : (msg.body ?? ""),
     asset_url:             msg.asset_url       ?? "",
     notify_text:           msg.notify_text     ?? "",
@@ -456,12 +462,12 @@ function QrHintPreview({ hintText, hintFollowup }: { hintText?: string; hintFoll
 interface QuickReplyEditorProps {
   items:    QuickReplyItem[];
   onChange: (items: QuickReplyItem[]) => void;
-  /** 同フェーズの kind=response メッセージ一覧（応答メッセージ紐づけ選択用） */
-  responseMessages?: { id: string; body: string | null }[];
-  /** 遷移先フェーズ選択用 */
+  /** kind=response メッセージ一覧（全フェーズ対象・フェーズ名付き表示） */
+  responseMessages?: { id: string; body: string | null; phase_id?: string | null }[];
+  /** 全フェーズ一覧（フェーズ名表示用） */
   phases?: { id: string; name: string; phase_type: string }[];
-  /** 遷移先メッセージ選択用（全メッセージから現メッセージを除いたもの） */
-  transitionMessages?: { id: string; body: string | null; kind: string }[];
+  /** 遷移先メッセージ一覧（全フェーズ対象・フェーズ名付き表示） */
+  transitionMessages?: { id: string; body: string | null; kind: string; phase_id?: string | null }[];
 }
 
 function QuickReplyEditor({ items, onChange, responseMessages, phases, transitionMessages }: QuickReplyEditorProps) {
@@ -706,10 +712,13 @@ function QuickReplyEditor({ items, onChange, responseMessages, phases, transitio
                             >
                               <option value="">— 紐づけない —</option>
                               {responseMessages!.map((m) => {
-                                const label = (m.body ?? "(本文なし)");
+                                const phase = (phases ?? []).find((p) => p.id === m.phase_id);
+                                const prefix = phase ? `[${phase.name}] ` : "";
+                                const body   = m.body ?? "(本文なし)";
+                                const full   = prefix + body;
                                 return (
                                   <option key={m.id} value={m.id}>
-                                    {label.length > 40 ? label.slice(0, 40) + "…" : label}
+                                    {full.length > 50 ? full.slice(0, 50) + "…" : full}
                                   </option>
                                 );
                               })}
@@ -801,10 +810,13 @@ function QuickReplyEditor({ items, onChange, responseMessages, phases, transitio
                                 >
                                   <option value="">— メッセージを選択 —</option>
                                   {(transitionMessages ?? []).map((m) => {
-                                    const body = m.body ?? "(本文なし)";
+                                    const phase  = (phases ?? []).find((p) => p.id === m.phase_id);
+                                    const prefix = phase ? `[${phase.name}] ` : "";
+                                    const body   = m.body ?? "(本文なし)";
+                                    const full   = prefix + body;
                                     return (
                                       <option key={m.id} value={m.id}>
-                                        {body.length > 45 ? body.slice(0, 45) + "…" : body}
+                                        {full.length > 50 ? full.slice(0, 50) + "…" : full}
                                       </option>
                                     );
                                   })}
@@ -948,15 +960,16 @@ function QuickReplyEditor({ items, onChange, responseMessages, phases, transitio
 // 応答キーワードを「1行 = 1キーワード」のリスト形式で編集する。
 // 内部で行の配列を管理し、親には \n 区切りの文字列で渡す。
 
-function KeywordListEditor({ value, onChange, disabled, samePhaseQrLabels, currentMessageId, allMessagesForLink }: {
+function KeywordListEditor({ value, onChange, disabled, phases, currentMessageId, allMessagesForLink }: {
   value:               string;
   onChange:            (v: string) => void;
   disabled?:           boolean;
-  samePhaseQrLabels?:  string[];
+  /** 全フェーズ一覧（QRピッカーのフェーズ選択用） */
+  phases?:             { id: string; name: string; phase_type: string }[];
   /** 編集中メッセージ ID（QR連携ラベル表示用） */
   currentMessageId?:   string;
-  /** allMessages（QR.response_message_id 参照用） */
-  allMessagesForLink?: { id: string; quick_replies?: QuickReplyItem[] | null }[];
+  /** allMessages（QR連携ラベル + QRピッカー用） */
+  allMessagesForLink?: { id: string; phase_id?: string | null; quick_replies?: QuickReplyItem[] | null }[];
 }) {
   const parse  = (v: string) => v.split("\n").map((k) => k.trim()).filter(Boolean);
   const commit = (rows: string[]) => onChange(rows.filter(Boolean).join("\n"));
@@ -967,7 +980,21 @@ function KeywordListEditor({ value, onChange, disabled, samePhaseQrLabels, curre
     return p.length > 0 ? p : [""];
   });
 
-  // QR連携ラベル: 同フェーズの他メッセージのQRで response_message_id が currentMessageId に一致するもの
+  /** QRピッカーで選択中のフェーズ ID */
+  const [qrPickerPhaseId, setQrPickerPhaseId] = useState<string>("");
+
+  /** 選択フェーズの QR ラベル一覧（未追加のもののみ） */
+  const qrLabelsForSelectedPhase: string[] = qrPickerPhaseId
+    ? (allMessagesForLink ?? [])
+        .filter((m) => m.phase_id === qrPickerPhaseId && Array.isArray(m.quick_replies))
+        .flatMap((m) => (m.quick_replies ?? []).map((qr) => qr.label).filter(Boolean) as string[])
+        .filter((label, i, arr) =>
+          arr.indexOf(label) === i &&
+          !rows.filter(Boolean).some((r) => r.trim().toLowerCase().normalize("NFKC") === label.toLowerCase().normalize("NFKC"))
+        )
+    : [];
+
+  // QR連携ラベル: 他メッセージのQRで response_message_id が currentMessageId に一致するもの
   const linkedQrLabels: string[] = currentMessageId
     ? (allMessagesForLink ?? [])
         .flatMap((m) =>
@@ -1108,24 +1135,56 @@ function KeywordListEditor({ value, onChange, disabled, samePhaseQrLabels, curre
         </button>
       )}
 
-      {/* QRピッカー */}
-      {(samePhaseQrLabels?.length ?? 0) > 0 && !disabled && (
-        <div style={{ marginTop: 7 }}>
-          <div style={{ fontSize: 11, color: "#9ca3af", marginBottom: 4 }}>クイックリプライから追加:</div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-            {samePhaseQrLabels!.map((label) => (
-              <button
-                key={label}
-                type="button"
-                onClick={() => addFromQr(label)}
-                style={{
-                  fontSize: 11, padding: "2px 9px", borderRadius: 12,
-                  border: "1px solid #e5e7eb", background: "#f9fafb",
-                  color: "#374151", cursor: "pointer",
-                }}
-              >+ {label}</button>
-            ))}
+      {/* QRピッカー（全フェーズ対象） */}
+      {!disabled && (phases ?? []).length > 0 && (
+        <div style={{
+          marginTop: 10, padding: "10px 12px",
+          background: "#f8fafc", borderRadius: 8,
+          border: "1px solid #e5e7eb",
+        }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: "#6b7280", marginBottom: 8 }}>
+            クイックリプライから選択
           </div>
+          {/* フェーズ選択プルダウン */}
+          <select
+            value={qrPickerPhaseId}
+            onChange={(e) => setQrPickerPhaseId(e.target.value)}
+            style={{
+              width: "100%", fontSize: 12, padding: "5px 8px",
+              borderRadius: 6, border: "1px solid #d1d5db",
+              marginBottom: 8, background: "#fff",
+            }}
+          >
+            <option value="">— フェーズを選択 —</option>
+            {(phases ?? []).map((p) => (
+              <option key={p.id} value={p.id}>
+                [{QR_PHASE_TYPE_LABEL[p.phase_type] ?? p.phase_type}] {p.name}
+              </option>
+            ))}
+          </select>
+          {/* 選択フェーズのQRラベル一覧 */}
+          {qrPickerPhaseId && (
+            qrLabelsForSelectedPhase.length > 0 ? (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                {qrLabelsForSelectedPhase.map((label) => (
+                  <button
+                    key={label}
+                    type="button"
+                    onClick={() => addFromQr(label)}
+                    style={{
+                      fontSize: 11, padding: "2px 9px", borderRadius: 12,
+                      border: "1px solid #bfdbfe", background: "#eff6ff",
+                      color: "#1d4ed8", cursor: "pointer",
+                    }}
+                  >+ {label}</button>
+                ))}
+              </div>
+            ) : (
+              <div style={{ fontSize: 11, color: "#9ca3af" }}>
+                このフェーズにはクイックリプライが設定されていません
+              </div>
+            )
+          )}
         </div>
       )}
     </div>
@@ -2021,17 +2080,7 @@ export function MessageForm({
                 value={form.trigger_keyword}
                 onChange={(v) => set("trigger_keyword", v)}
                 disabled={form.kind === "start"}
-                samePhaseQrLabels={
-                  form.phase_id
-                    ? (() => {
-                        const existing = form.trigger_keyword.split("\n").map((k) => k.trim()).filter(Boolean);
-                        return allMessages
-                          .filter((m) => m.phase_id === form.phase_id && Array.isArray(m.quick_replies))
-                          .flatMap((m) => (m.quick_replies ?? []).map((qr) => qr.label).filter(Boolean))
-                          .filter((label, i, arr) => arr.indexOf(label) === i && !existing.includes(label));
-                      })()
-                    : []
-                }
+                phases={phases}
                 currentMessageId={messageId}
                 allMessagesForLink={allMessages}
               />
@@ -2687,11 +2736,7 @@ export function MessageForm({
           <QuickReplyEditor
             items={form.quick_replies}
             onChange={(items) => set("quick_replies", items)}
-            responseMessages={
-              form.phase_id
-                ? allMessages.filter((m) => m.phase_id === form.phase_id && m.kind === "response" && m.id !== messageId)
-                : allMessages.filter((m) => m.kind === "response" && m.id !== messageId)
-            }
+            responseMessages={allMessages.filter((m) => m.kind === "response" && m.id !== messageId)}
             phases={phases}
             transitionMessages={allMessages.filter((m) => m.id !== messageId)}
           />
@@ -2837,6 +2882,7 @@ export function MessageForm({
               <QuickReplyEditor
                 items={form.incorrect_quick_replies}
                 onChange={(items) => set("incorrect_quick_replies", items)}
+                responseMessages={allMessages.filter((m) => m.kind === "response" && m.id !== messageId)}
                 phases={phases}
                 transitionMessages={allMessages.filter((m) => m.id !== messageId)}
               />

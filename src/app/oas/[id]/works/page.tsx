@@ -92,7 +92,7 @@ function WorkCard({
             className="btn btn-ghost"
             style={{ padding: "5px 12px", fontSize: 12 }}
           >
-            ▶ テスト
+            ▶ プレビュー
           </Link>
           {role === "owner" && !isTester && (
             <button

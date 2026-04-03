@@ -200,7 +200,7 @@ export default function OaEditPage() {
 
           <div className="form-group">
             <label htmlFor="line_oa_id">
-              LINE OA ID
+              LINE公式アカウントID
               <span style={{ fontSize: 11, color: "#6b7280", fontWeight: 400, marginLeft: 6 }}>
                 Webhook URL 識別子
               </span>

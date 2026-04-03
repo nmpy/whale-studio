@@ -95,7 +95,7 @@ export default function TesterHomePage() {
           <span style={{ fontSize: 13, fontWeight: 700, color: "#92400e" }}>テスターモード</span>
           <span style={{ fontSize: 13, color: "#92400e" }}>—</span>
           <span style={{ fontSize: 13, color: "#92400e" }}>
-            このポータルは確認・テスト専用です。編集・削除はできません。
+            アカウントや作品を自由に作成・編集してお試しいただけます。
           </span>
         </div>
         <div style={{
@@ -104,8 +104,8 @@ export default function TesterHomePage() {
           fontSize: 12, color: "#b45309",
           lineHeight: 1.6,
         }}>
-          <span>※ このシステムはテスター用の β 版です。</span>
-          <span>一部機能は開発中のため、挙動が変わる可能性があります。</span>
+          <span>※ プレビュー機能で実際の LINE 体験をシミュレーションできます。</span>
+          <span>本番環境とは独立した確認用の環境です。</span>
         </div>
       </div>
 
@@ -114,7 +114,7 @@ export default function TesterHomePage() {
         <div>
           <h2>アカウントリスト</h2>
           <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 3 }}>
-            テスター専用ビュー — 閲覧・テスト実行のみ可能です
+            テスターモード — アカウントや作品を自由に作成・編集できます
           </p>
         </div>
       </div>

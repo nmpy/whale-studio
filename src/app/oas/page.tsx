@@ -441,7 +441,7 @@ export default function OaListPage() {
                           )}
                           {oa.line_oa_id && (
                             <span
-                              title={`OA ID: @${oa.line_oa_id}`}
+                              title={`アカウントID: @${oa.line_oa_id}`}
                               style={{
                                 fontSize: 10, color: "var(--text-muted)",
                                 background: "var(--gray-50)",

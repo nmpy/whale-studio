@@ -5,10 +5,8 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { useTesterRouter as useRouter } from "@/hooks/useTesterRouter";
-import { TLink as Link } from "@/components/TLink";
 import { workApi, messageApi, getDevToken, ValidationError } from "@/lib/api-client";
 import { useToast } from "@/components/Toast";
-import { Breadcrumb } from "@/components/Breadcrumb";
 import { MessageForm, msgToFormState, formStateToMsgBody, EMPTY_MESSAGE_FORM, type MessageFormState } from "../_form";
 
 export default function EditMessagePage() {
@@ -29,15 +27,11 @@ export default function EditMessagePage() {
     const token = getDevToken();
     Promise.all([
       workApi.get(token, workId),
-      messageApi.list(token, workId, { with_relations: false }) as Promise<import("@/types").Message[]>,
+      // GET /api/messages/:id で単件取得（リレーション込み）
+      messageApi.get(token, messageId),
     ])
-      .then(([w, list]) => {
+      .then(([w, msg]) => {
         setWorkTitle(w.title);
-        const msg = list.find((m) => m.id === messageId);
-        if (!msg) {
-          setLoadError("メッセージが見つかりません");
-          return;
-        }
         setInitialForm(msgToFormState(msg));
       })
       .catch((e) => setLoadError(e instanceof Error ? e.message : "読み込みに失敗しました"));
@@ -73,43 +67,49 @@ export default function EditMessagePage() {
     }
   }
 
-  const breadcrumb = (
-    <Breadcrumb items={[
-      { label: "アカウントリスト", href: "/oas" },
-      { label: "作品リスト", href: `/oas/${oaId}/works` },
-      ...(workTitle ? [{ label: workTitle, href: `/oas/${oaId}/works/${workId}` }] : []),
-      { label: "メッセージ・謎", href: `/oas/${oaId}/works/${workId}/messages` },
-      { label: "編集" },
-    ]} />
-  );
-
-  // ローディング
+  // ローディング（MessageForm 内部でも breadcrumb・title を管理するため、
+  // ここではシンプルなスケルトンのみ表示）
   if (!initialForm && !loadError) {
     return (
-      <>
+      <div style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 900, margin: "0 auto" }}>
+        {/* ページヘッダースケルトン */}
         <div className="page-header">
-          <div>{breadcrumb}<h2>メッセージを編集</h2></div>
+          <div>
+            <div className="skeleton" style={{ width: 320, height: 13, marginBottom: 6 }} />
+            <div className="skeleton" style={{ width: 200, height: 22 }} />
+          </div>
         </div>
-        <div className="card" style={{ maxWidth: 600 }}>
-          {[1, 2, 3, 4].map((i) => (
+        {/* フォームカードスケルトン */}
+        <div className="card">
+          {[1, 2, 3, 4, 5].map((i) => (
             <div key={i} className="form-group">
-              <div className="skeleton" style={{ width: 120, height: 13, marginBottom: 4 }} />
-              <div className="skeleton" style={{ height: 36 }} />
+              <div className="skeleton" style={{ width: 120, height: 13, marginBottom: 6 }} />
+              <div className="skeleton" style={{ height: 36, borderRadius: 6 }} />
             </div>
           ))}
         </div>
-      </>
+        <div className="card">
+          {[1, 2].map((i) => (
+            <div key={i} className="form-group">
+              <div className="skeleton" style={{ width: 100, height: 13, marginBottom: 6 }} />
+              <div className="skeleton" style={{ height: 80, borderRadius: 6 }} />
+            </div>
+          ))}
+        </div>
+      </div>
     );
   }
 
   if (loadError) {
     return (
-      <>
+      <div style={{ maxWidth: 900, margin: "0 auto" }}>
         <div className="page-header">
-          <div>{breadcrumb}<h2>メッセージを編集</h2></div>
+          <div>
+            <h2>メッセージを編集</h2>
+          </div>
         </div>
         <div className="alert alert-error">{loadError}</div>
-      </>
+      </div>
     );
   }
 
