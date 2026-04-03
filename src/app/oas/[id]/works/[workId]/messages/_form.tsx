@@ -350,6 +350,19 @@ const hintText = {
 // クイックリプライ — 定数
 // ────────────────────────────────────────────────────────
 
+const QR_PHASE_TYPE_LABEL: Record<string, string> = {
+  start:  "開始",
+  normal: "通常",
+  ending: "エンディング",
+};
+
+/** QR アイテムの遷移先種別を返す */
+function getQrTransitionType(item: QuickReplyItem): "none" | "message" | "phase" {
+  if (item.target_phase_id)                                     return "phase";
+  if (item.target_type === "message" && item.target_message_id) return "message";
+  return "none";
+}
+
 const QR_ACTION_OPTIONS: { value: QuickReplyAction; label: string; icon: string; hint: string; valuePlaceholder?: string; valueLabel?: string; }[] = [
   {
     value: "text",
@@ -445,9 +458,13 @@ interface QuickReplyEditorProps {
   onChange: (items: QuickReplyItem[]) => void;
   /** 同フェーズの kind=response メッセージ一覧（応答メッセージ紐づけ選択用） */
   responseMessages?: { id: string; body: string | null }[];
+  /** 遷移先フェーズ選択用 */
+  phases?: { id: string; name: string; phase_type: string }[];
+  /** 遷移先メッセージ選択用（全メッセージから現メッセージを除いたもの） */
+  transitionMessages?: { id: string; body: string | null; kind: string }[];
 }
 
-function QuickReplyEditor({ items, onChange, responseMessages }: QuickReplyEditorProps) {
+function QuickReplyEditor({ items, onChange, responseMessages, phases, transitionMessages }: QuickReplyEditorProps) {
   const [open, setOpen]               = useState(false);
   const [expandedSet, setExpandedSet] = useState<Set<number>>(new Set());
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
@@ -619,6 +636,16 @@ function QuickReplyEditor({ items, onChange, responseMessages }: QuickReplyEdito
                             🔗 応答
                           </span>
                         )}
+                        {!isHint && item.target_phase_id && (
+                          <span style={{ fontSize: 10, fontWeight: 700, background: "#f0fdf4", color: "#15803d", borderRadius: 4, padding: "1px 6px", whiteSpace: "nowrap", flexShrink: 0 }}>
+                            ➡ フェーズ
+                          </span>
+                        )}
+                        {!isHint && item.target_type === "message" && item.target_message_id && (
+                          <span style={{ fontSize: 10, fontWeight: 700, background: "#faf5ff", color: "#7c3aed", borderRadius: 4, padding: "1px 6px", whiteSpace: "nowrap", flexShrink: 0 }}>
+                            ➡ メッセージ
+                          </span>
+                        )}
                         <span style={{ fontSize: 13, fontWeight: 500, color: "#374151", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                           {item.label || <span style={{ color: "#9ca3af" }}>（ラベル未設定）</span>}
                         </span>
@@ -691,6 +718,115 @@ function QuickReplyEditor({ items, onChange, responseMessages }: QuickReplyEdito
                               このボタンタップ時のユーザー入力（ラベル）を受け取る応答メッセージを指定します。
                               保存時に応答キーワードへ自動マージされます。
                             </div>
+                          </div>
+                        )}
+
+                        {/* 遷移先設定（ヒントでない場合のみ） */}
+                        {!isHint && (
+                          <div className="form-group" style={{ marginBottom: 10 }}>
+                            <label style={{ ...fieldLabel, fontSize: 12 }}>
+                              遷移先
+                              <span style={{ fontWeight: 400, color: "#9ca3af", marginLeft: 4 }}>（任意）</span>
+                            </label>
+                            {/* 3-way セグメントボタン */}
+                            <div style={{ display: "flex", gap: 3, background: "#f3f4f6", borderRadius: 8, padding: 3, marginBottom: 8 }}>
+                              {(["none", "message", "phase"] as const).map((t) => {
+                                const current  = getQrTransitionType(item);
+                                const isActive = current === t;
+                                const lblMap   = { none: "なし", message: "メッセージ", phase: "フェーズ" } as const;
+                                return (
+                                  <button
+                                    key={t}
+                                    type="button"
+                                    onClick={() => {
+                                      if (t === "none") {
+                                        updateItem(index, { target_phase_id: undefined, target_message_id: undefined, target_type: undefined });
+                                      } else if (t === "message") {
+                                        updateItem(index, { target_type: "message", target_phase_id: undefined });
+                                      } else {
+                                        updateItem(index, { target_phase_id: item.target_phase_id ?? "", target_type: undefined, target_message_id: undefined });
+                                      }
+                                    }}
+                                    style={{
+                                      flex: 1, padding: "5px 0", fontSize: 12,
+                                      fontWeight: isActive ? 700 : 400,
+                                      border: "none", borderRadius: 6,
+                                      background: isActive ? "#fff" : "transparent",
+                                      color: isActive
+                                        ? (t === "phase" ? "#15803d" : t === "message" ? "#7c3aed" : "#374151")
+                                        : "#9ca3af",
+                                      cursor: "pointer",
+                                      boxShadow: isActive ? "0 1px 3px rgba(0,0,0,0.12)" : "none",
+                                      transition: "all 0.12s",
+                                    }}
+                                  >
+                                    {lblMap[t]}
+                                  </button>
+                                );
+                              })}
+                            </div>
+
+                            {/* フェーズ選択 */}
+                            {getQrTransitionType(item) === "phase" && (
+                              <>
+                                <select
+                                  className="form-input"
+                                  value={item.target_phase_id ?? ""}
+                                  onChange={(e) => updateItem(index, { target_phase_id: e.target.value || undefined })}
+                                  style={{ fontSize: 13 }}
+                                >
+                                  <option value="">— フェーズを選択 —</option>
+                                  {(phases ?? []).map((p) => (
+                                    <option key={p.id} value={p.id}>
+                                      [{QR_PHASE_TYPE_LABEL[p.phase_type] ?? p.phase_type}] {p.name}
+                                    </option>
+                                  ))}
+                                </select>
+                                {(phases ?? []).length === 0 && (
+                                  <div style={{ ...hintText, marginTop: 4, color: "#ef4444" }}>
+                                    フェーズが読み込まれていません。保存してから再度開いてください。
+                                  </div>
+                                )}
+                              </>
+                            )}
+
+                            {/* メッセージ選択 */}
+                            {getQrTransitionType(item) === "message" && (
+                              <>
+                                <select
+                                  className="form-input"
+                                  value={item.target_message_id ?? ""}
+                                  onChange={(e) => updateItem(index, { target_message_id: e.target.value || undefined })}
+                                  style={{ fontSize: 13 }}
+                                >
+                                  <option value="">— メッセージを選択 —</option>
+                                  {(transitionMessages ?? []).map((m) => {
+                                    const body = m.body ?? "(本文なし)";
+                                    return (
+                                      <option key={m.id} value={m.id}>
+                                        {body.length > 45 ? body.slice(0, 45) + "…" : body}
+                                      </option>
+                                    );
+                                  })}
+                                </select>
+                                {(transitionMessages ?? []).length === 0 && (
+                                  <div style={{ ...hintText, marginTop: 4, color: "#ef4444" }}>
+                                    メッセージが読み込まれていません。保存してから再度開いてください。
+                                  </div>
+                                )}
+                              </>
+                            )}
+
+                            {getQrTransitionType(item) === "none" && (
+                              <div style={{ ...hintText }}>
+                                遷移先なし — キーワードマッチング / 応答メッセージ紐づけで処理されます
+                              </div>
+                            )}
+                            {getQrTransitionType(item) !== "none" && (
+                              <div style={{ ...hintText, marginTop: 4 }}>
+                                タップ後、応答メッセージを返してからこの遷移先へ進みます
+                              </div>
+                            )}
                           </div>
                         )}
 
@@ -2556,6 +2692,8 @@ export function MessageForm({
                 ? allMessages.filter((m) => m.phase_id === form.phase_id && m.kind === "response" && m.id !== messageId)
                 : allMessages.filter((m) => m.kind === "response" && m.id !== messageId)
             }
+            phases={phases}
+            transitionMessages={allMessages.filter((m) => m.id !== messageId)}
           />
 
           {/* ════════════════════════════════════════
@@ -2699,6 +2837,8 @@ export function MessageForm({
               <QuickReplyEditor
                 items={form.incorrect_quick_replies}
                 onChange={(items) => set("incorrect_quick_replies", items)}
+                phases={phases}
+                transitionMessages={allMessages.filter((m) => m.id !== messageId)}
               />
             </div>
 

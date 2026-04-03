@@ -292,14 +292,32 @@ function PlaygroundInner() {
     }
 
     // target_phase_id: フェーズへ直接ジャンプ
+    // response_message_id が設定されている場合は応答メッセージを先に表示してからフェーズ遷移する
     if (item.target_phase_id) {
       setLoading(true);
       setError(null);
       setMessage(null);
       const snapOaTitle2 = oas.find((o) => o.id === selectedOaId)?.title ?? "";
       const snapState2   = state;
-      // ユーザーが押した QR ラベルを吹き出しに含めてスナップショット
-      const snapItems2: CurrentChatItem[] = [...currentItems, { kind: "user", text: item.label }];
+      // ユーザーが押した QR ラベルを吹き出しに含めてスナップショット（前フェーズ記録用）
+      let snapItems2: CurrentChatItem[] = [...currentItems, { kind: "user", text: item.label }];
+
+      // 応答メッセージが設定されていれば、フェーズ遷移前に表示してスナップショットへ含める
+      if (item.response_message_id) {
+        try {
+          const responseMsgs = await runtimeApi.getMessage(getDevToken(), item.response_message_id);
+          const responseBotItems = responseMsgs.map((m) => ({ kind: "bot" as const, msg: m }));
+          // 前フェーズのスナップショット（chatLog へ記録される）にも応答を含める
+          snapItems2 = [...snapItems2, ...responseBotItems];
+          // フェーズ遷移完了まで視覚的にチャットへ表示（遷移後 setCurrentItems([]) で消える）
+          setCurrentItems((prev) => [...prev, { kind: "user", text: item.label }, ...responseBotItems]);
+          const summary = responseMsgs.map((m) => m.body ?? "[非テキスト]").join(" → ");
+          addLog("system", `💬 応答: 「${summary}」`);
+        } catch {
+          // 応答メッセージ取得失敗は無視してフェーズ遷移を続行
+        }
+      }
+
       try {
         const result: RuntimeAdvanceResult = await runtimeApi.advance(getDevToken(), {
           line_user_id:    lineUserId.trim(),

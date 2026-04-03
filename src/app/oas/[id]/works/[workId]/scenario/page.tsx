@@ -957,6 +957,36 @@ function FlowTree({
                     {phase.is_active ? "有効" : "無効"}
                   </button>
 
+                  {/* 開始トリガー（開始フェーズのみ） */}
+                  {phase.phase_type === "start" && (
+                    phase.start_trigger ? (
+                      <span style={{
+                        display: "inline-flex", alignItems: "center", gap: 4,
+                        fontSize: 11, fontWeight: 600, color: "#065f46",
+                        background: "#d1fae5", border: "1px solid #6ee7b7",
+                        borderRadius: 20, padding: "2px 9px", whiteSpace: "nowrap",
+                      }}>
+                        🔑 {phase.start_trigger}
+                      </span>
+                    ) : (
+                      <Link
+                        href={`/oas/${oaId}/works/${workId}/phases/${phase.id}`}
+                        style={{ textDecoration: "none" }}
+                        title="開始トリガーを設定する"
+                      >
+                        <span style={{
+                          display: "inline-flex", alignItems: "center", gap: 4,
+                          fontSize: 11, color: "#9ca3af",
+                          background: "#f3f4f6", border: "1px solid #e5e7eb",
+                          borderRadius: 20, padding: "2px 9px", whiteSpace: "nowrap",
+                          cursor: "pointer",
+                        }}>
+                          🔑 トリガー未設定
+                        </span>
+                      </Link>
+                    )
+                  )}
+
                   {/* メッセージ数 */}
                   <Link
                     href={`/oas/${oaId}/works/${workId}/messages?phase_id=${phase.id}`}
@@ -984,6 +1014,23 @@ function FlowTree({
                 {/* ── ③ 展開コンテンツ ── */}
                 {isExpanded && (
                   <>
+                    {/* 説明 */}
+                    {phase.description && (
+                      <div style={{
+                        borderTop: "1px solid #f3f4f6",
+                        padding: "8px 16px 8px 48px",
+                        background: "#fafafa",
+                      }}>
+                        <p style={{
+                          fontSize: 12, color: "#6b7280",
+                          margin: 0, lineHeight: 1.6,
+                          whiteSpace: "pre-wrap", wordBreak: "break-all",
+                        }}>
+                          {phase.description}
+                        </p>
+                      </div>
+                    )}
+
                     {/* メッセージ一覧 */}
                     <div style={{ borderTop: "1px solid #f3f4f6", background: "#f8fafc" }}>
                       <div style={{
