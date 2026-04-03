@@ -15,6 +15,7 @@ import type {
   Message,
   MessageWithRelations,
   RuntimeState,
+  RuntimePhaseMessage,
   CreateOaBody,
   UpdateOaBody,
   CreateWorkBody,
@@ -502,9 +503,10 @@ export const characterApi = {
 // ────────────────────────────────────────────────
 
 export interface RuntimeAdvanceResult extends RuntimeState {
-  _matched?:    boolean;
-  _message?:    string;
-  _transition?: { id: string; label: string };
+  _matched?:           boolean;
+  _message?:           string;
+  _transition?:        { id: string; label: string };
+  _response_messages?: RuntimePhaseMessage[];
 }
 
 export const runtimeApi = {

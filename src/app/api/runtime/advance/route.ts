@@ -135,6 +135,45 @@ export const POST = withAuth(async (req) => {
       const availableLabels = currentPhase.transitionsFrom
         .filter((t) => t.isActive)
         .map((t) => `「${t.label}」`);
+
+      // kind="response" メッセージでキーワード一致するものを返す
+      let responseMessages: import("@/types").RuntimePhaseMessage[] = [];
+      if (data.label) {
+        const norm = (s: string) => s.trim().toLowerCase().normalize("NFKC");
+        const normLabel = norm(data.label);
+        const responseRows = await prisma.message.findMany({
+          where: { phaseId: progress.currentPhaseId!, kind: "response" },
+          include: {
+            character: {
+              select: { id: true, name: true, iconType: true, iconText: true, iconColor: true, iconImageUrl: true },
+            },
+          },
+          orderBy: { sortOrder: "asc" },
+        });
+        responseMessages = responseRows
+          .filter((m) => m.triggerKeyword && norm(m.triggerKeyword) === normLabel)
+          .map((m) => ({
+            id:                m.id,
+            message_type:      m.messageType as import("@/types").MessageType,
+            body:              m.body,
+            asset_url:         m.assetUrl,
+            alt_text:          m.altText         ?? null,
+            flex_payload_json: m.flexPayloadJson ?? null,
+            quick_replies:     null,
+            sort_order:        m.sortOrder,
+            character:         m.character
+              ? {
+                  id:             m.character.id,
+                  name:           m.character.name,
+                  icon_type:      m.character.iconType as import("@/types").IconType,
+                  icon_text:      m.character.iconText,
+                  icon_color:     m.character.iconColor,
+                  icon_image_url: m.character.iconImageUrl,
+                }
+              : null,
+          }));
+      }
+
       return ok({
         ...state,
         _message:
@@ -142,6 +181,7 @@ export const POST = withAuth(async (req) => {
             ? `選択肢に一致しませんでした。次のいずれかを選んでください: ${availableLabels.join(" / ")}`
             : "このフェーズには有効な遷移がありません。",
         _matched: false,
+        ...(responseMessages.length > 0 ? { _response_messages: responseMessages } : {}),
       });
     }
 

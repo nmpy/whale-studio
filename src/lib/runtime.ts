@@ -308,22 +308,31 @@ function buildEntryChain(
   // 3. ID → メッセージ マップ
   const msgMap = new Map(messages.map((m) => [m.id, m]));
 
-  // 4. 起点メッセージ: QR 分岐先でなく、かつチェーン中間でないもの
+  // 4. 起点メッセージ: QR 分岐先でなく、チェーン中間でなく、かつ kind が response/hint でないもの
+  //    kind="response" / "hint" はキーワードトリガーで表示するもの（フェーズ開始時は非表示）
   const entries = messages
-    .filter((m) => !targetMsgIds.has(m.id) && !midChainIds.has(m.id))
+    .filter(
+      (m) =>
+        !targetMsgIds.has(m.id) &&
+        !midChainIds.has(m.id) &&
+        m.kind !== "response" &&
+        m.kind !== "hint",
+    )
     .sort((a, b) => a.sortOrder - b.sortOrder || a.createdAt.getTime() - b.createdAt.getTime());
 
-  // 5. 各起点からチェーンを辿り、QRで停止
+  // 5. 各起点からチェーンを辿り、QR または puzzle で停止
   const result: import("@/types").RuntimePhaseMessage[] = [];
   const visited = new Set<string>(); // 循環ガード
 
   for (const entry of entries) {
     let cur: PhaseRow["messages"][number] | undefined = entry;
     while (cur && !visited.has(cur.id)) {
+      // kind="response"/"hint" はチェーン中間でも表示しない
+      if (cur.kind === "response" || cur.kind === "hint") break;
       visited.add(cur.id);
       result.push(messageRowToRuntime(cur));
-      // QRを持つメッセージで停止（ユーザーの選択を待つ）
-      if (cur.quickReplies) break;
+      // QR を持つメッセージ、または puzzle フェーズで停止（ユーザーの選択・解答を待つ）
+      if (cur.quickReplies || cur.kind === "puzzle") break;
       // nextMessageId チェーンを辿る
       const nextId = cur.nextMessageId;
       if (!nextId) break;

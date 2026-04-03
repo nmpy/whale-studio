@@ -264,6 +264,10 @@ function PlaygroundInner() {
       if (result.phase?.id !== prevPhaseIdQr) {
         setExtraMessages([]);
         setSentMessages([]);
+      } else if (result._response_messages && result._response_messages.length > 0) {
+        setExtraMessages((prev) => [...prev, ...result._response_messages!]);
+        const summary = result._response_messages.map((m) => m.body ?? "[非テキスト]").join(" → ");
+        addLog("system", `💬 応答: 「${summary}」`);
       }
       if (result._message) { setMessage(result._message); addLog("system", result._message); }
       if (result.phase) {
@@ -305,6 +309,11 @@ function PlaygroundInner() {
       if (result.phase?.id !== prevPhaseId) {
         setExtraMessages([]);
         setSentMessages([]);
+      } else if (result._response_messages && result._response_messages.length > 0) {
+        // 同一フェーズで response メッセージがあれば追加表示
+        setExtraMessages((prev) => [...prev, ...result._response_messages!]);
+        const summary = result._response_messages.map((m) => m.body ?? "[非テキスト]").join(" → ");
+        addLog("system", `💬 応答: 「${summary}」`);
       }
       if (result._message) { setMessage(result._message); addLog("system", result._message); }
       if (result.phase) {
