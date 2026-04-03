@@ -6,6 +6,13 @@ const nextConfig = {
 
   async rewrites() {
     return [
+      // テスターモード: /tester/{oaId}/works/new を
+      // /oas/{oaId}/works/new にリライト（URL バーは /tester/ のまま）。
+      // ※ :workId パターンより先に定義して "new" を捕捉する。
+      {
+        source: "/tester/:oaId/works/new",
+        destination: "/oas/:oaId/works/new",
+      },
       // テスターモード: /tester/{oaId}/works/{workId}/{path+} を
       // /oas/{oaId}/works/{workId}/{path} にリライト（URL バーは /tester/ のまま）。
       // /tester/[oaId]/works/[workId] 自体は Next.js の実ページが存在するため除外される。

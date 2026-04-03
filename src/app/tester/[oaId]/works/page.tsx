@@ -188,9 +188,14 @@ export default function TesterWorkListPage() {
             {oaTitle ? `${oaTitle} の謎解きシナリオ` : "謎解きシナリオ"}
           </p>
         </div>
-        <Link href={`/tester/${oaId}`} className="btn btn-ghost">
-          ← アカウントリスト
-        </Link>
+        <div style={{ display: "flex", gap: 8 }}>
+          <Link href={`/tester/${oaId}/works/new`} className="btn btn-primary">
+            ＋ 作品を追加
+          </Link>
+          <Link href={`/tester/${oaId}`} className="btn btn-ghost">
+            ← アカウントリスト
+          </Link>
+        </div>
       </div>
 
       {/* ── テスターモード注意文 ── */}

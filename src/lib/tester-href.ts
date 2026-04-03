@@ -25,7 +25,7 @@ export function toTesterHref(href: string, testerOaId: string | null): string {
 
   // /oas/{id}/works（末尾スラッシュなし）
   if (/^\/oas\/[^/]+\/works$/.test(href)) {
-    return `/tester/${testerOaId}`;
+    return `/tester/${testerOaId}/works`;
   }
 
   return href;

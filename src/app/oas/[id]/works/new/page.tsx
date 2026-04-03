@@ -1,11 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { useParams, useRouter } from "next/navigation";
-import Link from "next/link";
+import { useParams } from "next/navigation";
 import { workApi, getDevToken } from "@/lib/api-client";
 import { useToast } from "@/components/Toast";
 import { Breadcrumb } from "@/components/Breadcrumb";
+import { TLink as Link } from "@/components/TLink";
+import { useTesterRouter } from "@/hooks/useTesterRouter";
 import type { PublishStatus } from "@/types";
 
 const STATUS_OPTIONS: { value: PublishStatus; label: string }[] = [
@@ -17,7 +18,7 @@ const STATUS_OPTIONS: { value: PublishStatus; label: string }[] = [
 export default function WorkNewPage() {
   const params = useParams<{ id: string }>();
   const oaId   = params.id;
-  const router = useRouter();
+  const router = useTesterRouter();
   const { showToast } = useToast();
 
   const [title, setTitle]               = useState("");
