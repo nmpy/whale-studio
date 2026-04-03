@@ -74,8 +74,27 @@ export const POST = withAuth(async (req) => {
       return ok({ ...state, _message: "エンディングフェーズからは次へ進めません。" });
     }
 
-    // 遷移マッチング（現在の flags を考慮: flagCondition を満たす遷移のみ候補）
     const currentFlags = safeParseFlags(progress.flags);
+
+    // ── QR target_phase_id による直接フェーズジャンプ ────────
+    if (data.target_phase_id) {
+      const toPhase = await prisma.phase.findUnique({ where: { id: data.target_phase_id } });
+      if (!toPhase) return notFound("ジャンプ先フェーズ");
+
+      const isEnding = toPhase.phaseType === "ending";
+      const updated = await prisma.userProgress.update({
+        where: { id: progress.id },
+        data: {
+          currentPhaseId:   toPhase.id,
+          reachedEnding:    isEnding,
+          lastInteractedAt: new Date(),
+        },
+      });
+      const state = await buildRuntimeState(updated);
+      return ok({ ...state, _matched: true });
+    }
+
+    // 遷移マッチング（現在の flags を考慮: flagCondition を満たす遷移のみ候補）
     const matched = matchTransition(currentPhase.transitionsFrom, {
       label:        data.label,
       transitionId: data.transition_id,

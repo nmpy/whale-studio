@@ -499,11 +499,12 @@ function matchKeywordsInMemory(
 
 /** キャッシュ済みフェーズデータからパズル照合をインメモリで行う */
 function matchPuzzleFromPhase(
-  phase:     PhaseRow,
-  inputText: string,
+  phase:            PhaseRow,
+  inputText:        string,
+  solvedPuzzleIds:  string[] = [],
 ): PuzzleMatchResult {
   const puzzles = phase.messages.filter(
-    (m) => m.kind === "puzzle" && m.answer !== null,
+    (m) => m.kind === "puzzle" && m.answer !== null && !solvedPuzzleIds.includes(m.id),
   );
 
   if (puzzles.length === 0) return null;
@@ -1086,12 +1087,18 @@ async function handleTextEvent({
     getCachedGlobalKeywords(work.id),
   ]);
 
+  // フラグを早期に解析（解決済みパズル判定に使用）
+  const currentFlags    = safeParseFlags(progress.flags);
+  const solvedPuzzleIds = Array.isArray(currentFlags.solvedPuzzles)
+    ? (currentFlags.solvedPuzzles as string[])
+    : [];
+
   // DB クエリなしでインメモリ照合
-  const hintResult           = currentPhase ? matchHintFromPhase(currentPhase, text)                              : null;
-  const messageTargetId      = currentPhase ? matchMessageTargetQuickReply(currentPhase, text)                    : null;
-  const qrPhaseTargetId      = currentPhase ? matchQrPhaseTarget(currentPhase, text)                             : null;
-  const keywordMatched       = currentPhase ? matchKeywordsInMemory(currentPhase.messages, globalKwMsgs, text)    : [];
-  const puzzleResult         = currentPhase ? matchPuzzleFromPhase(currentPhase, text)                            : null;
+  const hintResult           = currentPhase ? matchHintFromPhase(currentPhase, text)                                          : null;
+  const messageTargetId      = currentPhase ? matchMessageTargetQuickReply(currentPhase, text)                                : null;
+  const qrPhaseTargetId      = currentPhase ? matchQrPhaseTarget(currentPhase, text)                                         : null;
+  const keywordMatched       = currentPhase ? matchKeywordsInMemory(currentPhase.messages, globalKwMsgs, text)                : [];
+  const puzzleResult         = currentPhase ? matchPuzzleFromPhase(currentPhase, text, solvedPuzzleIds)                      : null;
 
   if (!currentPhase) {
     console.log(`[Webhook][STEP] メッセージ送信前 (currentPhaseなし) userId=${userId}`);
@@ -1256,9 +1263,6 @@ async function handleTextEvent({
     }
     return;
   }
-
-  // ─ 現在の flags を取得してフラグ条件付き遷移マッチング ─
-  const currentFlags = safeParseFlags(progress.flags);
 
   // ── [transition] 診断ログ ──
   console.log(
@@ -2082,6 +2086,16 @@ async function handlePuzzleCorrect({
   const token  = oa.channelAccessToken;
   const action = puzzle.correctAction ?? "text";
 
+  // ─ 解決済みパズルを flags に記録（再解答防止）─
+  const prevFlags     = safeParseFlags(progress.flags);
+  const solvedPuzzles = Array.isArray(prevFlags.solvedPuzzles)
+    ? [...(prevFlags.solvedPuzzles as string[])]
+    : [];
+  if (!solvedPuzzles.includes(puzzle.id)) {
+    solvedPuzzles.push(puzzle.id);
+  }
+  const flagsWithSolved = { ...prevFlags, solvedPuzzles };
+
   const messagesToSend: import("@/lib/line").LineMessage[] = [];
 
   // ─ correctText を先頭に追加（text / text_and_transition）─
@@ -2100,6 +2114,7 @@ async function handlePuzzleCorrect({
           data: {
             currentPhaseId:   nextPhase.id,
             reachedEnding:    isEnding,
+            flags:            JSON.stringify(flagsWithSolved),
             lastInteractedAt: new Date(),
           },
         });
@@ -2113,8 +2128,31 @@ async function handlePuzzleCorrect({
         const state     = await buildRuntimeState(updated, nextPhase);
         const nextMsgs  = buildPhaseMessages(state.phase, { systemSender });
         messagesToSend.push(...nextMsgs);
+      } else {
+        // correctNextPhaseId が存在するが取得できなかった場合: solved だけ保存
+        const updated = await prisma.userProgress.update({
+          where: { id: progress.id },
+          data: { flags: JSON.stringify(flagsWithSolved), lastInteractedAt: new Date() },
+        });
+        await setCachedProgress(updated);
+        console.warn(`[Webhook][puzzle] correctNextPhaseId=${puzzle.correctNextPhaseId} が見つかりません（solved フラグのみ保存）`);
       }
+    } else {
+      // correctNextPhaseId 未設定: フェーズ遷移なし。solved フラグのみ保存して再解答を防ぐ
+      const updated = await prisma.userProgress.update({
+        where: { id: progress.id },
+        data: { flags: JSON.stringify(flagsWithSolved), lastInteractedAt: new Date() },
+      });
+      await setCachedProgress(updated);
+      console.warn(`[Webhook][puzzle] correctNextPhaseId 未設定 action=${action}（solved フラグのみ保存）`);
     }
+  } else {
+    // action = "text": フェーズ遷移なし。solved フラグを保存して再解答を防ぐ
+    const updated = await prisma.userProgress.update({
+      where: { id: progress.id },
+      data: { flags: JSON.stringify(flagsWithSolved), lastInteractedAt: new Date() },
+    });
+    await setCachedProgress(updated);
   }
 
   // ─ フォールバック: メッセージが組み立てられなかった場合 ─

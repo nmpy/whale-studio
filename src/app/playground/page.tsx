@@ -4,7 +4,7 @@ import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { oaApi, workApi, runtimeApi, getDevToken, type WorkListItem, type OaListItem, type RuntimeAdvanceResult } from "@/lib/api-client";
-import type { RuntimeState, RuntimePhaseMessage, RuntimeTransition, PhaseType } from "@/types";
+import type { RuntimeState, RuntimePhaseMessage, RuntimeTransition, PhaseType, QuickReplyItem } from "@/types";
 
 // ── 定数 ──────────────────────────────────────────
 const PHASE_TYPE_META: Record<PhaseType, { label: string; color: string; bg: string }> = {
@@ -48,6 +48,9 @@ function PlaygroundInner() {
 
   // ── LINE 演出用 ──
   const [showRead, setShowRead] = useState(false);
+
+  // ── QR タップで追加表示されるメッセージ（target_message_id 用） ──
+  const [extraMessages, setExtraMessages] = useState<RuntimePhaseMessage[]>([]);
 
   // ── 操作ログ ──
   const [log, setLog] = useState<Array<{ type: "action" | "system" | "error"; text: string }>>([]);
@@ -121,6 +124,7 @@ function PlaygroundInner() {
         work_id:      selectedWorkId,
       });
       setState(s);
+      setExtraMessages([]);
       addLog("system", `▶ シナリオ開始: 「${s.phase?.name ?? "（不明）"}」`);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "開始に失敗しました";
@@ -147,6 +151,7 @@ function PlaygroundInner() {
       });
       setShowRead(false);
       setState(result);
+      setExtraMessages([]);
       if (result._message) {
         setMessage(result._message);
         addLog("system", result._message);
@@ -168,6 +173,101 @@ function PlaygroundInner() {
     }
   }
 
+  // ── アクション: QR タップ ─────────────────────
+  async function handleQrTap(item: QuickReplyItem) {
+    if (!selectedWorkId || !lineUserId.trim()) return;
+    addLog("action", `🔘 QR: 「${item.label}」`);
+
+    // URL を開く
+    if (item.action === "url" && item.value) {
+      window.open(item.value, "_blank", "noopener,noreferrer");
+      return;
+    }
+
+    // ヒント表示（API 呼び出しなし）
+    if (item.action === "hint") {
+      const hintText = item.hint_text ?? "（ヒントなし）";
+      setMessage(`💡 ${hintText}`);
+      addLog("system", `💡 ヒント: ${hintText}`);
+      return;
+    }
+
+    // target_message_id: 指定メッセージをチャットに追加（フェーズ変更なし）
+    if (item.target_type === "message" && item.target_message_id) {
+      setLoading(true);
+      try {
+        const msg = await runtimeApi.getMessage(getDevToken(), item.target_message_id);
+        setExtraMessages((prev) => [...prev, msg]);
+        addLog("system", `💬 メッセージ返信: 「${msg.body ?? "[非テキスト]"}」`);
+      } catch (e) {
+        const errMsg = e instanceof Error ? e.message : "メッセージの取得に失敗しました";
+        setError(errMsg);
+        addLog("error", `エラー: ${errMsg}`);
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
+    // target_phase_id: フェーズへ直接ジャンプ
+    if (item.target_phase_id) {
+      setShowRead(true);
+      setLoading(true);
+      setError(null);
+      setMessage(null);
+      try {
+        const result: RuntimeAdvanceResult = await runtimeApi.advance(getDevToken(), {
+          line_user_id:    lineUserId.trim(),
+          work_id:         selectedWorkId,
+          target_phase_id: item.target_phase_id,
+        });
+        setShowRead(false);
+        setState(result);
+        setExtraMessages([]);
+        if (result._message) { setMessage(result._message); addLog("system", result._message); }
+        if (result.phase) {
+          addLog("system", `📍 フェーズ: 「${result.phase.name}」（${PHASE_TYPE_META[result.phase.phase_type].label}）`);
+        }
+      } catch (e) {
+        const errMsg = e instanceof Error ? e.message : "遷移に失敗しました";
+        setShowRead(false);
+        setError(errMsg);
+        addLog("error", `エラー: ${errMsg}`);
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
+    // action="text" / "next" / "custom" → テキストとして advance
+    const text = item.value ?? item.label;
+    setShowRead(true);
+    setLoading(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const result: RuntimeAdvanceResult = await runtimeApi.advance(getDevToken(), {
+        line_user_id: lineUserId.trim(),
+        work_id:      selectedWorkId,
+        label:        text,
+      });
+      setShowRead(false);
+      setState(result);
+      setExtraMessages([]);
+      if (result._message) { setMessage(result._message); addLog("system", result._message); }
+      if (result.phase) {
+        addLog("system", `📍 フェーズ: 「${result.phase.name}」（${PHASE_TYPE_META[result.phase.phase_type].label}）`);
+      }
+    } catch (e) {
+      const errMsg = e instanceof Error ? e.message : "遷移に失敗しました";
+      setShowRead(false);
+      setError(errMsg);
+      addLog("error", `エラー: ${errMsg}`);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   // ── アクション: リセット ──────────────────────
   async function handleReset() {
     if (!selectedWorkId || !lineUserId.trim()) return;
@@ -182,6 +282,7 @@ function PlaygroundInner() {
         work_id:      selectedWorkId,
       });
       setState(null);
+      setExtraMessages([]);
       addLog("system", "🔄 進行状態をリセットしました");
     } catch (e) {
       setError(e instanceof Error ? e.message : "リセットに失敗しました");
@@ -430,6 +531,8 @@ function PlaygroundInner() {
                   loading={loading}
                   showRead={showRead}
                   onAdvance={handleAdvance}
+                  onQrTap={handleQrTap}
+                  extraMessages={extraMessages}
                 />
               )}
 
@@ -547,13 +650,15 @@ function TypingIndicator({ char }: { char: RuntimePhaseMessage["character"] }) {
 // PhasePanel — 通常フェーズ表示
 // ────────────────────────────────────────────────
 interface PhasePanelProps {
-  phase:     RuntimeState["phase"] & {};
-  loading:   boolean;
-  showRead:  boolean;
-  onAdvance: (t: RuntimeTransition) => void;
+  phase:         RuntimeState["phase"] & {};
+  loading:       boolean;
+  showRead:      boolean;
+  onAdvance:     (t: RuntimeTransition) => void;
+  onQrTap:       (item: QuickReplyItem) => void;
+  extraMessages: RuntimePhaseMessage[];
 }
 
-function PhasePanel({ phase, loading, showRead, onAdvance }: PhasePanelProps) {
+function PhasePanel({ phase, loading, showRead, onAdvance, onQrTap, extraMessages }: PhasePanelProps) {
   const meta = PHASE_TYPE_META[phase.phase_type];
   const cancelRef = useRef(false);
   const chatBottomRef = useRef<HTMLDivElement>(null);
@@ -654,10 +759,67 @@ function PhasePanel({ phase, loading, showRead, onAdvance }: PhasePanelProps) {
                 key={msg.id}
                 msg={msg}
                 index={i}
-                showRead={showRead && i === visibleCount - 1}
+                showRead={showRead && i === visibleCount - 1 && extraMessages.length === 0}
+              />
+            ))}
+            {/* target_message_id で追加されたメッセージ */}
+            {allShown && extraMessages.map((msg, i) => (
+              <MessageBubble
+                key={`extra-${msg.id}-${i}`}
+                msg={msg}
+                index={phase.messages.length + i}
+                showRead={showRead && i === extraMessages.length - 1}
               />
             ))}
             {isTyping && <TypingIndicator char={nextTypingChar} />}
+            {/* QR ボタン（LINE 風：チャット下部に表示） */}
+            {allShown && (() => {
+              const allMsgs = [...phase.messages.slice(0, visibleCount), ...extraMessages];
+              const lastWithQr = [...allMsgs].reverse().find(
+                (m) => m.quick_replies && m.quick_replies.length > 0
+              );
+              if (!lastWithQr?.quick_replies) return null;
+              const enabledQr = lastWithQr.quick_replies.filter((q) => q.enabled !== false);
+              if (enabledQr.length === 0) return null;
+              return (
+                <div style={{
+                  display: "flex", flexWrap: "wrap", gap: 6,
+                  justifyContent: "flex-end",
+                  padding: "8px 4px 4px",
+                }}>
+                  {enabledQr.map((q, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => onQrTap(q)}
+                      disabled={loading}
+                      style={{
+                        padding: "7px 14px",
+                        border: "1.5px solid #06C755",
+                        borderRadius: 20,
+                        background: loading ? "#f9fafb" : "#fff",
+                        color: "#06C755",
+                        cursor: loading ? "not-allowed" : "pointer",
+                        fontSize: 13, fontWeight: 600,
+                        whiteSpace: "nowrap",
+                        transition: "background 0.12s, color 0.12s",
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!loading) {
+                          e.currentTarget.style.background = "#06C755";
+                          e.currentTarget.style.color = "#fff";
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = "#fff";
+                        e.currentTarget.style.color = "#06C755";
+                      }}
+                    >
+                      {q.label}
+                    </button>
+                  ))}
+                </div>
+              );
+            })()}
             <div ref={chatBottomRef} />
           </div>
         )}

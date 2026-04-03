@@ -12,6 +12,7 @@ import { withAuth } from "@/lib/auth";
 import { requireRole, getOaIdFromWorkId } from "@/lib/rbac";
 import { createPhaseSchema, phaseQuerySchema, formatZodErrors } from "@/lib/validations";
 import { ZodError } from "zod";
+import { activeCache, CACHE_KEY } from "@/lib/cache";
 
 function toResponse(p: {
   id: string; workId: string; phaseType: string; name: string; description: string | null;
@@ -110,6 +111,11 @@ export const POST = withAuth(async (req, _ctx, user) => {
       },
       include: { _count: { select: { messages: true, transitionsFrom: true } } },
     });
+
+    // start フェーズ作成時はキャッシュを無効化
+    if (phase.phaseType === "start") {
+      await activeCache.delete(CACHE_KEY.startPhase(phase.workId));
+    }
 
     return created(toResponse(phase));
   } catch (err) {

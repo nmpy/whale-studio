@@ -9,6 +9,7 @@ import { withAuth } from "@/lib/auth";
 import { requireRole } from "@/lib/rbac";
 import { createWorkSchema, workQuerySchema, formatZodErrors } from "@/lib/validations";
 import { ZodError } from "zod";
+import { activeCache, CACHE_KEY } from "@/lib/cache";
 
 function toResponse(w: {
   id: string; oaId: string; title: string; description: string | null;
@@ -93,6 +94,11 @@ export const POST = withAuth(async (req, _ctx, user) => {
         sortOrder:     data.sort_order,
       },
     });
+
+    // active 状態で作成した場合はキャッシュを無効化
+    if (work.publishStatus === "active") {
+      await activeCache.delete(CACHE_KEY.work(work.oaId));
+    }
 
     return created(toResponse(work));
   } catch (err) {

@@ -468,12 +468,14 @@ export interface StartScenarioBody {
 }
 
 export interface AdvanceScenarioBody {
-  line_user_id:   string;
-  work_id:        string;
+  line_user_id:    string;
+  work_id:         string;
   /** 選択した遷移のラベル文字列（またはキーワード） */
-  label?:         string;
+  label?:          string;
   /** 遷移 ID を直接指定（ラベルより優先） */
-  transition_id?: string;
+  transition_id?:  string;
+  /** QR の target_phase_id による直接フェーズジャンプ */
+  target_phase_id?: string;
 }
 
 export interface ResetScenarioBody {

@@ -548,6 +548,13 @@ export const runtimeApi = {
     });
     return parseResponse(res);
   },
+
+  /** QR の target_message_id を解決してメッセージ内容を返す（テスト画面用） */
+  async getMessage(token: string, messageId: string): Promise<import("@/types").RuntimePhaseMessage> {
+    const query = new URLSearchParams({ message_id: messageId });
+    const res = await fetch(`/api/runtime/message?${query}`, { headers: authHeaders(token) });
+    return parseResponse(res);
+  },
 };
 
 // ────────────────────────────────────────────────
