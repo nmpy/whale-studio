@@ -23,17 +23,26 @@ export type QuickReplyAction = "text" | "url" | "next" | "hint" | "custom";
  *   - hint      → ヒントキー（例: "hint1" / "hint2"）。タップ時に送信されるテキスト
  *   - custom    → 任意のポストバックデータ
  * - hint_text : action="hint" のときにボットが返信するヒント本文（最大 2000 文字）
+ * - target_type / target_message_id : action="text" のとき、タップ時に特定メッセージを返信
  */
 export interface QuickReplyItem {
-  label:           string;
-  action:          QuickReplyAction;
-  value?:          string;
+  label:              string;
+  action:             QuickReplyAction;
+  value?:             string;
   /** action="hint" のとき、ユーザーがタップした際にボットが返信するヒント本文 */
-  hint_text?:      string;
+  hint_text?:         string;
   /** action="hint" のとき、hint_text の後に続けて送信する回答誘導メッセージ */
-  hint_followup?:  string;
+  hint_followup?:     string;
   /** false のとき LINE に表示しない / hint 照合対象外にする（省略 = true） */
-  enabled?:        boolean;
+  enabled?:           boolean;
+  /**
+   * タップ時の遷移先種別。action="text" と組み合わせて使用。
+   * - "phase"   : 通常のフェーズ遷移（デフォルト動作）
+   * - "message" : 指定メッセージを直接返信（フェーズ遷移しない）
+   */
+  target_type?:       "phase" | "message";
+  /** target_type="message" のとき、返信するメッセージの ID */
+  target_message_id?: string;
 }
 /**
  * キャラクターアイコン種別。
@@ -151,6 +160,8 @@ export interface Message {
   riddle_id: string | null;
   /** クイックリプライ設定（null = 未設定） */
   quick_replies: QuickReplyItem[] | null;
+  /** 連続送信: このメッセージの後に続けて送信するメッセージ ID（null = チェーンなし） */
+  next_message_id: string | null;
   /** Flex Message 代替テキスト */
   alt_text: string | null;
   /** Flex Message JSON ペイロード */
@@ -306,6 +317,8 @@ export interface CreateMessageBody {
   notify_text?: string;
   riddle_id?: string | null;
   quick_replies?: QuickReplyItem[] | null;
+  /** 連続送信チェーン先メッセージ ID */
+  next_message_id?: string | null;
   alt_text?: string | null;
   flex_payload_json?: string | null;
   // Puzzle fields
@@ -334,6 +347,8 @@ export interface UpdateMessageBody {
   notify_text?: string | null;
   riddle_id?: string | null;
   quick_replies?: QuickReplyItem[] | null;
+  /** 連続送信チェーン先メッセージ ID */
+  next_message_id?: string | null;
   alt_text?: string | null;
   flex_payload_json?: string | null;
   // Puzzle fields

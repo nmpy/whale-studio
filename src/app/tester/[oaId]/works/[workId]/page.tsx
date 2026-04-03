@@ -22,9 +22,9 @@ const STATUS_META: Record<string, { label: string; color: string; bg: string; do
   paused: { label: "停止中", color: "#92400e", bg: "#fef3c7", dot: "#f59e0b" },
 };
 
-// 各機能カードの定義（href は /oas/ 配下の既存ページ）
+// 各機能カードの定義（href は tester URL → next.config rewrite で /oas/ ページへ）
 function hubCards(oaId: string, workId: string) {
-  const base = `/oas/${oaId}/works/${workId}`;
+  const base = `/tester/${oaId}/works/${workId}`;
   return [
     { key: "scenario",   icon: "🗺",  title: "シナリオフロー", desc: "フェーズ間の遷移フローを確認・編集します",                       color: "#059669", bg: "#ecfdf5", href: `${base}/scenario` },
     { key: "messages",   icon: "💬", title: "メッセージ・謎",  desc: "フェーズごとに送信するメッセージ・謎チャレンジを管理します",    color: "#06C755", bg: "#E6F7ED", href: `${base}/messages` },

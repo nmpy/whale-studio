@@ -475,6 +475,8 @@ export type KeywordMessageRecord = {
   flexPayloadJson: string | null;
   /** DB の quickReplies カラム（JSON 文字列）。parse して LineQuickReply に変換する */
   quickReplies:    string | null;
+  /** 連続送信チェーン先メッセージ ID（null = チェーンなし） */
+  nextMessageId:   string | null;
   sortOrder:       number;
   character: {
     name:         string;

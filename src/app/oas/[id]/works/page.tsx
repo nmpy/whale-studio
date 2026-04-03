@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { Breadcrumb } from "@/components/Breadcrumb";
-import { oaApi, workApi, getDevToken, type WorkListItem } from "@/lib/api-client";
+import { oaApi, workApi, friendAddApi, getDevToken, type WorkListItem } from "@/lib/api-client";
+import type { FriendAddSettings } from "@/types";
 import { useToast } from "@/components/Toast";
 import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
 import { ViewerBanner } from "@/components/PermissionGuard";
@@ -172,22 +173,25 @@ export default function WorkListPage() {
   const { role } = useWorkspaceRole(oaId);
   const { isTester } = useTesterMode();
 
-  const [oaTitle, setOaTitle] = useState("");
-  const [works, setWorks]     = useState<WorkListItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError]     = useState<string | null>(null);
+  const [oaTitle, setOaTitle]     = useState("");
+  const [works, setWorks]         = useState<WorkListItem[]>([]);
+  const [friendAdd, setFriendAdd] = useState<FriendAddSettings | null>(null);
+  const [loading, setLoading]     = useState(true);
+  const [error, setError]         = useState<string | null>(null);
 
   async function load() {
     setLoading(true);
     setError(null);
     try {
       const token = getDevToken();
-      const [oa, list] = await Promise.all([
+      const [oa, list, fa] = await Promise.all([
         oaApi.get(token, oaId),
         workApi.list(token, oaId),
+        friendAddApi.get(token, oaId).catch(() => null),  // 未設定でも 404 → null
       ]);
       setOaTitle(oa.title);
       setWorks(list);
+      setFriendAdd(fa);
     } catch (e) {
       setError(e instanceof Error ? e.message : "読み込みに失敗しました");
     } finally {
@@ -263,6 +267,64 @@ export default function WorkListPage() {
           <button onClick={load} style={{ marginLeft: 12, textDecoration: "underline", background: "none", border: "none", cursor: "pointer", color: "inherit" }}>
             再読み込み
           </button>
+        </div>
+      )}
+
+      {/* ── 友だち追加 ── */}
+      {!loading && friendAdd?.add_url && (
+        <div style={{
+          padding: "16px 20px",
+          background: "var(--surface)",
+          border: "1px solid var(--border-light)",
+          borderRadius: "var(--radius-md)",
+          boxShadow: "var(--shadow-xs)",
+          marginBottom: 20,
+          display: "flex",
+          alignItems: "flex-start",
+          gap: 20,
+          flexWrap: "wrap",
+        }}>
+          {/* テキスト + ボタン */}
+          <div style={{ flex: 1, minWidth: 180 }}>
+            <p style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", marginBottom: 8, letterSpacing: 0.5 }}>
+              🔗 友だち追加
+            </p>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+              <a
+                href={friendAdd.add_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn btn-primary"
+                style={{ textDecoration: "none", fontSize: 13 }}
+              >
+                友だち追加URLを開く
+              </a>
+              {!isTester && (
+                <Link
+                  href={`/oas/${oaId}/friend-add`}
+                  className="btn btn-ghost"
+                  style={{ fontSize: 13 }}
+                >
+                  URL を変更
+                </Link>
+              )}
+            </div>
+            <p style={{ fontSize: 11, color: "var(--text-muted)", wordBreak: "break-all" }}>
+              {friendAdd.add_url}
+            </p>
+          </div>
+          {/* QRコード */}
+          <div style={{ flexShrink: 0, textAlign: "center" }}>
+            <p style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 6 }}>QRコードで追加</p>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={`https://api.qrserver.com/v1/create-qr-code/?size=120x120&margin=4&data=${encodeURIComponent(friendAdd.add_url)}`}
+              alt="友だち追加QRコード"
+              width={120}
+              height={120}
+              style={{ borderRadius: 8, border: "1px solid var(--border-light)", display: "block" }}
+            />
+          </div>
         </div>
       )}
 

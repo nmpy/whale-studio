@@ -207,15 +207,22 @@ export const transitionQuerySchema = z.object({
 // ────────────────────────────────────────────────
 /** クイックリプライ 1件のスキーマ（LINE 仕様: max 13件 / label max 20文字） */
 export const quickReplyItemSchema = z.object({
-  label:         z.string().min(1, "ラベルは1文字以上必要です").max(20, "ラベルは20文字以内にしてください"),
-  action:        z.enum(["text", "url", "next", "hint", "custom"]),
-  value:         z.string().max(500).optional(),
+  label:             z.string().min(1, "ラベルは1文字以上必要です").max(20, "ラベルは20文字以内にしてください"),
+  action:            z.enum(["text", "url", "next", "hint", "custom"]),
+  value:             z.string().max(500).optional(),
   /** action="hint" のときにボットが返信するヒント本文 */
-  hint_text:     z.string().max(2000).optional(),
+  hint_text:         z.string().max(2000).optional(),
   /** action="hint" のときにヒント本文の後に続けて送信する回答誘導メッセージ */
-  hint_followup: z.string().max(500).optional(),
+  hint_followup:     z.string().max(500).optional(),
   /** false のときは LINE QR に含めない（OFF 状態） */
-  enabled:       z.boolean().optional(),
+  enabled:           z.boolean().optional(),
+  /**
+   * タップ時の遷移先種別（action="text" と組み合わせて使用）。
+   * "phase" = 通常のフェーズ遷移 / "message" = 特定メッセージを直接返信
+   */
+  target_type:       z.enum(["phase", "message"]).optional(),
+  /** target_type="message" のとき、返信するメッセージの ID */
+  target_message_id: z.string().uuid().optional(),
 });
 
 // ────────────────────────────────────────────────
@@ -241,6 +248,8 @@ export const createMessageSchema = z.object({
   notify_text:      z.string().max(500).optional(),
   riddle_id:        uuidSchema.optional().nullable(),
   quick_replies:    z.array(quickReplyItemSchema).max(13, "クイックリプライは最大13件までです").optional().nullable(),
+  /** 連続送信チェーン先メッセージ ID（null = チェーンなし） */
+  next_message_id:  uuidSchema.optional().nullable(),
   alt_text:         z.string().max(400).optional().nullable(),
   flex_payload_json: z.string().max(50000).optional().nullable(),
   // Puzzle fields
@@ -300,6 +309,8 @@ export const updateMessageSchema = z.object({
   notify_text:       z.string().max(500).optional().nullable(),
   riddle_id:         uuidSchema.optional().nullable(),
   quick_replies:     z.array(quickReplyItemSchema).max(13, "クイックリプライは最大13件までです").optional().nullable(),
+  /** 連続送信チェーン先メッセージ ID（null = チェーンなし） */
+  next_message_id:   uuidSchema.optional().nullable(),
   alt_text:          z.string().max(400).optional().nullable(),
   flex_payload_json: z.string().max(50000).optional().nullable(),
   // Puzzle fields

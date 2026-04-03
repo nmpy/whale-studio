@@ -243,21 +243,44 @@ export default function FriendAddPage() {
             {errors.add_url && <p className="field-error">{errors.add_url}</p>}
           </div>
 
-          {/* 友だち追加リンクプレビュー */}
+          {/* 友だち追加リンクプレビュー + QRコード */}
           {form.add_url && /^https?:\/\//.test(form.add_url) && (
             <div style={{
-              marginBottom: 20, padding: "10px 14px",
+              marginBottom: 20, padding: "16px",
               background: "#f0fdf4", border: "1px solid #86efac", borderRadius: 8,
-              fontSize: 12, color: "#15803d",
+              display: "flex", alignItems: "flex-start", gap: 16, flexWrap: "wrap",
             }}>
-              <a
-                href={form.add_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{ color: "#15803d", textDecoration: "underline" }}
-              >
-                友だち追加リンクを開く →
-              </a>
+              {/* テキスト + ボタン */}
+              <div style={{ flex: 1, minWidth: 160 }}>
+                <p style={{ fontSize: 11, fontWeight: 700, color: "#15803d", marginBottom: 6 }}>
+                  プレビュー
+                </p>
+                <a
+                  href={form.add_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn btn-primary"
+                  style={{ fontSize: 12, textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 4, marginBottom: 8 }}
+                >
+                  友だち追加URLを開く
+                </a>
+                <p style={{ fontSize: 11, color: "#15803d", wordBreak: "break-all", lineHeight: 1.5 }}>
+                  {form.add_url}
+                </p>
+              </div>
+
+              {/* QRコード */}
+              <div style={{ flexShrink: 0, textAlign: "center" }}>
+                <p style={{ fontSize: 11, color: "#15803d", marginBottom: 6 }}>QRコードで追加</p>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=120x120&margin=4&data=${encodeURIComponent(form.add_url)}`}
+                  alt="友だち追加QRコード"
+                  width={120}
+                  height={120}
+                  style={{ borderRadius: 8, border: "1px solid #86efac", display: "block" }}
+                />
+              </div>
             </div>
           )}
 

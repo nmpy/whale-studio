@@ -3,8 +3,9 @@
 // src/app/oas/[id]/works/[workId]/messages/[mid]/page.tsx
 
 import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
-import Link from "next/link";
+import { useParams } from "next/navigation";
+import { useTesterRouter as useRouter } from "@/hooks/useTesterRouter";
+import { TLink as Link } from "@/components/TLink";
 import { workApi, messageApi, getDevToken, ValidationError } from "@/lib/api-client";
 import { useToast } from "@/components/Toast";
 import { Breadcrumb } from "@/components/Breadcrumb";

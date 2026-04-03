@@ -239,6 +239,8 @@ model Message {
   /// 構造: [{ label, action, value? }]
   /// action: "text" | "url" | "next" | "hint" | "custom"
   quickReplies     String?  @map("quick_replies")
+  /// 連続送信: このメッセージの後に続けて送信するメッセージ ID（自己参照 FK / null = チェーンなし）
+  nextMessageId    String?  @map("next_message_id")
   /// Flex Message の代替テキスト（messageType = "flex" のとき使用）
   altText          String?  @map("alt_text")
   /// Flex Message の JSON ペイロード（messageType = "flex" のとき使用）
@@ -271,6 +273,9 @@ model Message {
   phase             Phase?     @relation(fields: [phaseId], references: [id], onDelete: SetNull)
   character         Character? @relation(fields: [characterId], references: [id], onDelete: SetNull)
   correctNextPhase  Phase?     @relation("MessageCorrectNextPhase", fields: [correctNextPhaseId], references: [id], onDelete: SetNull)
+  /// 連続送信チェーン（自己参照）
+  nextMessage       Message?   @relation("MessageChain", fields: [nextMessageId], references: [id], onDelete: SetNull)
+  prevMessages      Message[]  @relation("MessageChain")
 
   @@index([workId])
   @@index([phaseId])

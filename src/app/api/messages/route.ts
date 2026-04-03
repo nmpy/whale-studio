@@ -36,7 +36,7 @@ function toResponse(m: {
   messageType: string; kind: string; body: string | null; assetUrl: string | null;
   triggerKeyword: string | null; targetSegment: string | null;
   notifyText: string | null; riddleId: string | null;
-  quickReplies: string | null;
+  quickReplies: string | null; nextMessageId?: string | null;
   altText?: string | null; flexPayloadJson?: string | null;
   puzzleType?: string | null; answer?: string | null; puzzleHintText?: string | null;
   answerMatchType?: string | null; correctAction?: string | null;
@@ -60,6 +60,7 @@ function toResponse(m: {
     notify_text:          m.notifyText,
     riddle_id:            m.riddleId,
     quick_replies:        parseQuickReplies(m.quickReplies, m.id),
+    next_message_id:      m.nextMessageId ?? null,
     alt_text:             m.altText ?? null,
     flex_payload_json:    m.flexPayloadJson ?? null,
     puzzle_type:          m.puzzleType ?? null,
@@ -192,6 +193,7 @@ export const POST = withAuth(async (req, _ctx, user) => {
         notifyText:         data.notify_text     ?? null,
         riddleId:           data.riddle_id       ?? null,
         quickReplies:       quickRepliesJson,
+        nextMessageId:      data.next_message_id   ?? null,
         altText:            data.alt_text          ?? null,
         flexPayloadJson:    data.flex_payload_json ?? null,
         puzzleType:         data.puzzle_type        ?? null,

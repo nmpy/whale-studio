@@ -17,6 +17,7 @@
 
 import Link from "next/link";
 import { useTesterMode } from "@/hooks/useTesterMode";
+import { toTesterHref } from "@/lib/tester-href";
 
 export interface BreadcrumbItem {
   label: string;
@@ -27,21 +28,6 @@ interface BreadcrumbProps {
   items: BreadcrumbItem[];
 }
 
-/**
- * テスターモード時に /oas/* の href をテスター URL に変換する。
- * 変換対象外の URL はそのまま返す。
- */
-function remapTesterHref(href: string, testerOaId: string): string {
-  // /oas/{id}/works/{workId} → /tester/{testerOaId}/works/{workId}
-  const workMatch = href.match(/^\/oas\/[^/]+\/works\/([^/]+)(?:\/.*)?$/);
-  if (workMatch) return `/tester/${testerOaId}/works/${workMatch[1]}`;
-
-  // /oas/{id}/works → /tester/{testerOaId}
-  if (/^\/oas\/[^/]+\/works$/.test(href)) return `/tester/${testerOaId}`;
-
-  return href;
-}
-
 export function Breadcrumb({ items }: BreadcrumbProps) {
   const { isTester, testerOaId } = useTesterMode();
 
@@ -50,7 +36,7 @@ export function Breadcrumb({ items }: BreadcrumbProps) {
     ? items
         .filter((item) => item.href !== "/oas")          // 「アカウントリスト」を除去
         .map((item) => item.href
-          ? { ...item, href: remapTesterHref(item.href, testerOaId) }
+          ? { ...item, href: toTesterHref(item.href, testerOaId) }
           : item
         )
     : items;

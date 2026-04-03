@@ -195,6 +195,7 @@ describe("buildKeywordMessages — quickReply", () => {
       altText:         null,
       flexPayloadJson: null,
       quickReplies:    null,
+      nextMessageId:   null,
       sortOrder:       0,
       character:       null,
       ...overrides,

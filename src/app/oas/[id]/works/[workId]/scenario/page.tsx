@@ -5,7 +5,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import Link from "next/link";
+import { TLink as Link } from "@/components/TLink";
 import { workApi, phaseApi, transitionApi, getDevToken } from "@/lib/api-client";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { HelpAccordion } from "@/components/HelpAccordion";

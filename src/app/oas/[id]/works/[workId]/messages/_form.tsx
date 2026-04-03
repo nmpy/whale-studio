@@ -5,7 +5,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { phaseApi, characterApi, riddleApi, getDevToken } from "@/lib/api-client";
+import { phaseApi, characterApi, riddleApi, messageApi, getDevToken } from "@/lib/api-client";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import type { PhaseWithCounts, Character, QuickReplyItem, QuickReplyAction } from "@/types";
 import type { Riddle } from "@/types";
@@ -78,6 +78,8 @@ export interface MessageFormState {
   riddle_id:       string;
   carousel_items:  MessageCarouselCard[];
   quick_replies:   QuickReplyItem[];
+  /** 連続送信チェーン先メッセージ ID（空文字 = チェーンなし） */
+  next_message_id: string;
   sort_order:      number;
   is_active:       boolean;
   // ── 謎（puzzle）専用フィールド ──
@@ -104,6 +106,7 @@ export const EMPTY_MESSAGE_FORM: MessageFormState = {
   riddle_id:       "",
   carousel_items:  [],
   quick_replies:   [],
+  next_message_id: "",
   sort_order:      0,
   is_active:       true,
   // puzzle defaults
@@ -131,6 +134,7 @@ export function msgToFormState(msg: {
   notify_text?:          string | null;
   riddle_id?:            string | null;
   quick_replies?:        QuickReplyItem[] | null;
+  next_message_id?:      string | null;
   puzzle_type?:          string | null;
   answer?:               string | null;
   puzzle_hint_text?:     string | null;
@@ -166,6 +170,7 @@ export function msgToFormState(msg: {
     riddle_id:             msg.riddle_id       ?? "",
     carousel_items,
     quick_replies:         msg.quick_replies   ?? [],
+    next_message_id:       msg.next_message_id ?? "",
     sort_order:            msg.sort_order      ?? 0,
     is_active:             msg.is_active       ?? true,
     puzzle_type:           msg.puzzle_type     ?? "",
@@ -206,6 +211,7 @@ export function formStateToMsgBody(form: MessageFormState) {
       : undefined,
     riddle_id:         !isPuzzle ? (form.riddle_id || null) : null,
     quick_replies:     form.quick_replies.length > 0 ? form.quick_replies : null,
+    next_message_id:   form.next_message_id || null,
     sort_order:        form.sort_order,
     is_active:         form.is_active,
     // puzzle fields
@@ -437,9 +443,11 @@ function QrHintPreview({ hintText, hintFollowup }: { hintText?: string; hintFoll
 interface QuickReplyEditorProps {
   items:    QuickReplyItem[];
   onChange: (items: QuickReplyItem[]) => void;
+  /** target_message_id ピッカー用 — 同じ作品の全メッセージ一覧 */
+  messages?: { id: string; body: string | null; kind: string; sort_order: number }[];
 }
 
-function QuickReplyEditor({ items, onChange }: QuickReplyEditorProps) {
+function QuickReplyEditor({ items, onChange, messages = [] }: QuickReplyEditorProps) {
   const [open, setOpen]               = useState(false);
   const [expandedSet, setExpandedSet] = useState<Set<number>>(new Set());
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
@@ -853,6 +861,69 @@ function QuickReplyEditor({ items, onChange }: QuickReplyEditorProps) {
                               style={{ fontSize: 13, fontFamily: "monospace" }}
                             />
                           </div>
+                        ) : item.action === "text" ? (
+                          <>
+                            <div className="form-group" style={{ marginBottom: 8 }}>
+                              <label style={{ ...fieldLabel, fontSize: 12 }}>
+                                送信テキスト
+                                <span style={{ fontWeight: 400, color: "#9ca3af", marginLeft: 4 }}>（任意・省略時はラベルと同じ）</span>
+                              </label>
+                              <input
+                                type="text"
+                                className="form-input"
+                                value={item.value ?? ""}
+                                onChange={(e) => updateItem(index, { value: e.target.value || undefined })}
+                                placeholder="省略するとラベルテキストが送信されます"
+                                maxLength={500}
+                                style={{ fontSize: 13 }}
+                              />
+                            </div>
+                            {/* ── タップ時の遷移先 ── */}
+                            <div className="form-group" style={{ marginBottom: 0 }}>
+                              <label style={{ ...fieldLabel, fontSize: 12 }}>タップ時の動作</label>
+                              <div style={{ display: "flex", gap: 8, marginBottom: 6 }}>
+                                {(["phase", "message"] as const).map((t) => (
+                                  <button
+                                    key={t}
+                                    type="button"
+                                    onClick={() => updateItem(index, { target_type: t === "phase" ? undefined : t, target_message_id: undefined })}
+                                    style={{
+                                      fontSize: 12, padding: "4px 10px", borderRadius: 6, cursor: "pointer",
+                                      border: (item.target_type ?? "phase") === t ? "2px solid #6366f1" : "2px solid #e5e7eb",
+                                      background: (item.target_type ?? "phase") === t ? "#eef2ff" : "#fff",
+                                      color: (item.target_type ?? "phase") === t ? "#4338ca" : "#6b7280",
+                                      fontWeight: (item.target_type ?? "phase") === t ? 700 : 400,
+                                    }}
+                                  >
+                                    {t === "phase" ? "🔄 フェーズ遷移（通常）" : "💬 メッセージを返信"}
+                                  </button>
+                                ))}
+                              </div>
+                              {item.target_type === "message" && (
+                                <div>
+                                  <label style={{ ...fieldLabel, fontSize: 12 }}>
+                                    返信するメッセージ <span style={{ color: "#dc2626" }}>*</span>
+                                  </label>
+                                  <select
+                                    className="form-input"
+                                    value={item.target_message_id ?? ""}
+                                    onChange={(e) => updateItem(index, { target_message_id: e.target.value || undefined })}
+                                    style={{ fontSize: 13 }}
+                                  >
+                                    <option value="">（メッセージを選択）</option>
+                                    {messages.map((m) => (
+                                      <option key={m.id} value={m.id}>
+                                        [{m.kind}] {m.body ? m.body.slice(0, 40) : `(ID: ${m.id.slice(0, 8)}...)`}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  <div style={{ ...hintText, marginTop: 4 }}>
+                                    ユーザーがタップしたとき、フェーズ遷移せずに選択したメッセージを直接返信します。
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </>
                         ) : (
                           <div className="form-group" style={{ marginBottom: 0 }}>
                             <label style={{ ...fieldLabel, fontSize: 12 }}>
@@ -1267,6 +1338,7 @@ export function MessageForm({
   const [phases, setPhases]         = useState<PhaseWithCounts[]>([]);
   const [characters, setCharacters] = useState<Character[]>([]);
   const [riddles, setRiddles]       = useState<Riddle[]>([]);
+  const [allMessages, setAllMessages] = useState<{ id: string; body: string | null; kind: string; sort_order: number }[]>([]);
 
   useEffect(() => {
     const token = getDevToken();
@@ -1274,10 +1346,17 @@ export function MessageForm({
       phaseApi.list(token, workId),
       characterApi.list(token, workId),
       riddleApi.list(token, oaId),
-    ]).then(([ph, ch, rd]) => {
+      messageApi.list(token, workId),
+    ]).then(([ph, ch, rd, msgs]) => {
       setPhases(ph);
       setCharacters(ch);
       setRiddles(rd);
+      setAllMessages(msgs.map((m) => ({
+        id: m.id,
+        body: m.body,
+        kind: m.kind,
+        sort_order: m.sort_order,
+      })));
     }).catch(() => {});
   }, [workId, oaId]);
 
@@ -2106,7 +2185,37 @@ export function MessageForm({
           <QuickReplyEditor
             items={form.quick_replies}
             onChange={(items) => set("quick_replies", items)}
+            messages={allMessages}
           />
+
+          {/* ════════════════════════════════════════
+              連続送信設定
+          ════════════════════════════════════════ */}
+          <div className="card" style={{ marginBottom: 16 }}>
+            <div style={sectionHeader}>🔗 連続送信</div>
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label style={fieldLabel} htmlFor="next_message_id">
+                次に送信するメッセージ
+                <span style={{ fontWeight: 400, color: "#9ca3af", marginLeft: 4 }}>（任意）</span>
+              </label>
+              <select
+                id="next_message_id"
+                className="form-input"
+                value={form.next_message_id}
+                onChange={(e) => set("next_message_id", e.target.value)}
+              >
+                <option value="">（なし）</option>
+                {allMessages.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    [{m.kind}] {m.body ? m.body.slice(0, 50) : `(ID: ${m.id.slice(0, 8)}...)`}
+                  </option>
+                ))}
+              </select>
+              <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 4 }}>
+                設定すると、このメッセージが送信された直後に続けて指定メッセージも送信されます。
+              </div>
+            </div>
+          </div>
 
           {/* ════════════════════════════════════════
               謎の回答設定（puzzle のみ）

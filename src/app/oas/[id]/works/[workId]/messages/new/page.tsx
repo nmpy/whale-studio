@@ -3,7 +3,8 @@
 // src/app/oas/[id]/works/[workId]/messages/new/page.tsx
 
 import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
+import { useTesterRouter as useRouter } from "@/hooks/useTesterRouter";
 import { workApi, messageApi, getDevToken, ValidationError } from "@/lib/api-client";
 import { useToast } from "@/components/Toast";
 import { MessageForm, EMPTY_MESSAGE_FORM, formStateToMsgBody, type MessageFormState } from "../_form";

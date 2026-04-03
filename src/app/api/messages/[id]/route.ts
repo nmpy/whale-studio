@@ -29,7 +29,7 @@ type PrismaMessageWithRelations = {
   messageType: string; kind: string; body: string | null; assetUrl: string | null;
   triggerKeyword: string | null; targetSegment: string | null;
   notifyText: string | null; riddleId: string | null;
-  quickReplies: string | null;
+  quickReplies: string | null; nextMessageId: string | null;
   altText: string | null; flexPayloadJson: string | null;
   puzzleType: string | null; answer: string | null; puzzleHintText: string | null;
   answerMatchType: string | null; correctAction: string | null;
@@ -79,6 +79,7 @@ function toResponse(m: PrismaMessageWithRelations) {
     notify_text:           m.notifyText,
     riddle_id:             m.riddleId,
     quick_replies:         parseQuickReplies(m.quickReplies, m.id),
+    next_message_id:       m.nextMessageId,
     alt_text:              m.altText,
     flex_payload_json:     m.flexPayloadJson,
     puzzle_type:           m.puzzleType,
@@ -201,6 +202,7 @@ export const PATCH = withAuth<{ id: string }>(async (req, { params }, user) => {
         ...(data.quick_replies   !== undefined && {
           quickReplies: data.quick_replies ? JSON.stringify(data.quick_replies) : null,
         }),
+        ...(data.next_message_id !== undefined && { nextMessageId:   data.next_message_id }),
         ...(data.alt_text          !== undefined && { altText:         data.alt_text }),
         ...(data.flex_payload_json !== undefined && { flexPayloadJson: data.flex_payload_json }),
         ...(data.puzzle_type       !== undefined && { puzzleType:      data.puzzle_type }),

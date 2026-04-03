@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
-import Link from "next/link";
+import { TLink as Link } from "@/components/TLink";
 import {
   phaseApi, transitionApi, messageApi, phaseApi as phApi,
   workApi, getDevToken,

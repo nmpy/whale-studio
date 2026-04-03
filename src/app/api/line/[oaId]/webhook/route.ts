@@ -181,6 +181,7 @@ async function getCachedGlobalKeywords(
       altText:         true,
       flexPayloadJson: true,
       quickReplies:    true,
+      nextMessageId:   true,
       sortOrder:       true,
       triggerKeyword:  true,
       character: {
@@ -221,6 +222,7 @@ async function getCachedStartMsgs(
       altText:         true,
       flexPayloadJson: true,
       quickReplies:    true,
+      nextMessageId:   true,
       sortOrder:       true,
       character: {
         select: { name: true, iconImageUrl: true },
@@ -322,6 +324,95 @@ function matchHintFromPhase(
 }
 
 /**
+ * キャッシュ済みフェーズデータから target_type="message" quickReply をインメモリで照合する。
+ * ユーザーが送ったテキストがいずれかのクイックリプライの value/label と一致し、
+ * かつ target_type="message" が設定されている場合に target_message_id を返す。
+ */
+function matchMessageTargetQuickReply(
+  phase:     PhaseRow,
+  inputText: string,
+): string | null {
+  const inputNorm  = normKw(inputText);
+  const inputLoose = normKwLoose(inputText);
+
+  for (const msg of phase.messages) {
+    if (!msg.quickReplies) continue;
+    let items: import("@/types").QuickReplyItem[];
+    try {
+      const parsed = JSON.parse(msg.quickReplies);
+      if (!Array.isArray(parsed)) continue;
+      items = parsed as import("@/types").QuickReplyItem[];
+    } catch {
+      continue;
+    }
+    for (const item of items) {
+      if (item.target_type !== "message") continue;
+      if (!item.target_message_id) continue;
+      if (item.enabled === false) continue;
+      const matchKey   = item.value?.trim() || item.label;
+      const matchNorm  = normKw(matchKey);
+      const matchLoose = normKwLoose(matchKey);
+      if (inputNorm === matchNorm || inputLoose === matchLoose) {
+        console.log(
+          `[cache][msgTarget] マッチ msgId=${msg.id.slice(0, 8)}`,
+          `key="${matchKey}" target_message_id=${item.target_message_id.slice(0, 8)}...`,
+        );
+        return item.target_message_id;
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * KeywordMessageRecord または単一メッセージ行を LINE メッセージ配列に変換し、
+ * nextMessageId チェーンを DB から辿って追加する（再帰上限 5 件）。
+ */
+async function buildMessageChain(
+  first: {
+    id: string; messageType: string; body: string | null; assetUrl: string | null;
+    altText: string | null; flexPayloadJson: string | null;
+    quickReplies: string | null; nextMessageId: string | null; sortOrder: number;
+    character: { name: string; iconImageUrl: string | null } | null;
+  },
+  _token: string,
+): Promise<import("@/lib/line").LineMessage[]> {
+  const records: typeof first[] = [first];
+
+  // チェーンを最大 4 件追加（合計 5 件 = LINE 返信上限）
+  let current = first;
+  for (let i = 0; i < 4 && current.nextMessageId; i++) {
+    const next = await prisma.message.findUnique({
+      where: { id: current.nextMessageId, isActive: true },
+      select: {
+        id: true, messageType: true, body: true, assetUrl: true,
+        altText: true, flexPayloadJson: true, quickReplies: true,
+        nextMessageId: true, sortOrder: true,
+        character: { select: { name: true, iconImageUrl: true } },
+      },
+    });
+    if (!next) break;
+    records.push(next);
+    current = next;
+  }
+
+  // KeywordMessageRecord 互換形式に変換（nextMessageId なし・triggerKeyword なし）
+  const asKeywordRecords: import("@/lib/line").KeywordMessageRecord[] = records.map((r) => ({
+    id:              r.id,
+    messageType:     r.messageType,
+    body:            r.body,
+    assetUrl:        r.assetUrl,
+    altText:         r.altText,
+    flexPayloadJson: r.flexPayloadJson,
+    quickReplies:    r.quickReplies,
+    nextMessageId:   r.nextMessageId,
+    sortOrder:       r.sortOrder,
+    character:       r.character,
+  }));
+  return buildKeywordMessages(asKeywordRecords);
+}
+
+/**
  * フェーズ内のキーワードメッセージ + 作品共通キーワードをインメモリで照合する。
  * 元の matchTriggerKeyword（DB クエリ版）の in-memory 版。
  */
@@ -345,6 +436,7 @@ function matchKeywordsInMemory(
       altText:         m.altText,
       flexPayloadJson: m.flexPayloadJson,
       quickReplies:    m.quickReplies,
+      nextMessageId:   m.nextMessageId,
       sortOrder:       m.sortOrder,
       character:       m.character
         ? { name: m.character.name, iconImageUrl: m.character.iconImageUrl }
@@ -953,9 +1045,10 @@ async function handleTextEvent({
   ]);
 
   // DB クエリなしでインメモリ照合
-  const hintResult     = currentPhase ? matchHintFromPhase(currentPhase, text)                           : null;
-  const keywordMatched = currentPhase ? matchKeywordsInMemory(currentPhase.messages, globalKwMsgs, text) : [];
-  const puzzleResult   = currentPhase ? matchPuzzleFromPhase(currentPhase, text)                         : null;
+  const hintResult           = currentPhase ? matchHintFromPhase(currentPhase, text)                              : null;
+  const messageTargetId      = currentPhase ? matchMessageTargetQuickReply(currentPhase, text)                    : null;
+  const keywordMatched       = currentPhase ? matchKeywordsInMemory(currentPhase.messages, globalKwMsgs, text)    : [];
+  const puzzleResult         = currentPhase ? matchPuzzleFromPhase(currentPhase, text)                            : null;
 
   if (!currentPhase) {
     console.log(`[Webhook][STEP] メッセージ送信前 (currentPhaseなし) userId=${userId}`);
@@ -988,6 +1081,35 @@ async function handleTextEvent({
     return;
   }
 
+  // ─ target_type="message" quickReply 照合（ヒント照合の次）─
+  // ℹ️ メッセージターゲット返答は userProgress を更新しない（フェーズ遷移しない）
+  if (messageTargetId !== null) {
+    console.log(`[Webhook][STEP] messageTarget quickReply マッチ userId=${userId} targetId=${messageTargetId.slice(0, 8)}`);
+    try {
+      const targetMsg = await prisma.message.findUnique({
+        where: { id: messageTargetId, isActive: true },
+        select: {
+          id: true, messageType: true, body: true, assetUrl: true,
+          altText: true, flexPayloadJson: true, quickReplies: true,
+          nextMessageId: true, sortOrder: true,
+          character: { select: { name: true, iconImageUrl: true } },
+        },
+      });
+      if (targetMsg) {
+        const msgChain = await buildMessageChain(targetMsg, token);
+        if (msgChain.length > 0) {
+          const tReplyMT = Date.now();
+          await replyToLine(replyToken, msgChain, token);
+          console.log(`[perf][event] path=messageTarget total=${Date.now() - t0e}ms reply:${Date.now() - tReplyMT}ms`);
+          return;
+        }
+      }
+    } catch (e) {
+      console.warn("[Webhook] messageTarget fetch error:", e);
+      // フォールバック: 通常フローへ
+    }
+  }
+
   // ─ triggerKeyword 照合 ─
   // ℹ️ キーワード返答は userProgress を更新しない（進行状態に影響しない）
   if (keywordMatched.length > 0) {
@@ -997,7 +1119,13 @@ async function handleTextEvent({
       `messages=${keywordMatched.length}件`,
       keywordMatched.map((m) => `id=${m.id.slice(0, 8)} kw="${m.triggerKeyword}" body="${(m.body ?? "").slice(0, 20)}"`).join(" / ")
     );
-    const msgs = buildKeywordMessages(keywordMatched, systemSender);
+    // nextMessageId チェーンを展開してすべてのメッセージをまとめて返信する
+    const chainedMsgs: import("@/lib/line").LineMessage[] = [];
+    for (const match of keywordMatched) {
+      const chain = await buildMessageChain(match, token);
+      chainedMsgs.push(...chain);
+    }
+    const msgs = chainedMsgs.length > 0 ? chainedMsgs : buildKeywordMessages(keywordMatched, systemSender);
     if (msgs.length > 0) {
       const tReplyKw = Date.now();
       await replyToLine(replyToken, msgs, token);
@@ -1955,6 +2083,7 @@ async function matchTriggerKeyword(
       altText:         true,
       flexPayloadJson: true,
       quickReplies:    true,
+      nextMessageId:   true,
       sortOrder:       true,
       character: {
         select: { name: true, iconImageUrl: true },

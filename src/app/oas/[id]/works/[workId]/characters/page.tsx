@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import Link from "next/link";
+import { TLink as Link } from "@/components/TLink";
 import { workApi, characterApi, getDevToken } from "@/lib/api-client";
 import { useToast } from "@/components/Toast";
 import { HelpAccordion } from "@/components/HelpAccordion";
