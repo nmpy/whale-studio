@@ -61,8 +61,6 @@ function SummaryBar({ items, worksMap }: { items: OaListItem[]; worksMap: Record
 
 /* ── サポートエリア ───────────────────────────────────────────────────── */
 function SupportArea() {
-  const [hovered, setHovered] = useState(false);
-
   return (
     <div style={{ marginTop: 40, paddingTop: 24, borderTop: "1px solid var(--color-border-soft)" }}>
       <p style={{
@@ -101,33 +99,33 @@ function SupportArea() {
           </div>
         </div>
 
-        {/* PDF ボタン */}
-        <a
-          href="/guide.pdf"
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 6,
-            flexShrink: 0,
-            padding: "8px 18px",
-            fontSize: 12,
-            fontWeight: 600,
-            color: hovered ? "#fff" : "var(--color-text-primary)",
-            background: hovered ? "#374151" : "var(--gray-100)",
-            border: `1px solid ${hovered ? "#374151" : "var(--color-border-soft)"}`,
-            borderRadius: 8,
-            textDecoration: "none",
-            transition: "background .15s, color .15s, border-color .15s",
-            whiteSpace: "nowrap",
-          }}
-          onMouseEnter={() => setHovered(true)}
-          onMouseLeave={() => setHovered(false)}
-        >
-          <span style={{ fontSize: 14 }}>📥</span>
-          PDFを開く
-        </a>
+        {/* PDF ボタン（未実装のため非活性） */}
+        <div style={{ flexShrink: 0, textAlign: "center" }}>
+          <button
+            disabled
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              padding: "8px 18px",
+              fontSize: 12,
+              fontWeight: 600,
+              color: "var(--color-text-muted)",
+              background: "var(--gray-100)",
+              border: "1px solid var(--color-border-soft)",
+              borderRadius: 8,
+              cursor: "not-allowed",
+              opacity: 0.5,
+              whiteSpace: "nowrap",
+            }}
+          >
+            <span style={{ fontSize: 14 }}>📥</span>
+            PDFを開く
+          </button>
+          <p style={{ fontSize: 11, color: "#dc2626", marginTop: 5 }}>
+            ※実装前のため、ご利用いただけません
+          </p>
+        </div>
       </div>
     </div>
   );

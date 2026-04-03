@@ -275,6 +275,13 @@ export default function TesterHomePage() {
         </div>
       )}
 
+      {/* ── 案内文 ── */}
+      {!loading && (
+        <p style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 16, lineHeight: 1.7 }}>
+          作品一覧から実際に作成・編集をお試しいただけます。
+        </p>
+      )}
+
       {/* ── 統計サマリー ── */}
       {!loading && works.length > 0 && (
         <div style={{

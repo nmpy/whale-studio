@@ -6,13 +6,17 @@
 import { useState, useEffect } from "react";
 import { usePathname } from "next/navigation";
 import dynamic from "next/dynamic";
+import { useTesterMode } from "@/hooks/useTesterMode";
 
 // FeedbackModal は大きいので dynamic import でコード分割
 const FeedbackModal = dynamic(() => import("@/components/FeedbackModal"), { ssr: false });
 
 export default function AppHeader() {
   const pathname = usePathname();
+  const { isTester, testerOaId } = useTesterMode();
   const [feedbackOpen, setFeedbackOpen] = useState(false);
+
+  const homeHref = isTester && testerOaId ? `/tester/${testerOaId}` : "/";
 
   // サポートエリアなど外部コンポーネントからモーダルを開けるようにする
   useEffect(() => {
@@ -26,10 +30,17 @@ export default function AppHeader() {
       <header>
         <div className="container">
           <h1>
-            <a href="/">
+            <a href={homeHref}>
               <span className="header-brand">WHALE STUDIO</span>
               <span className="header-sep">|</span>
-              <span className="header-sub">LINEでつくる物語体験 β版</span>
+              <span className="header-sub">
+                LINEでつくる物語体験 β版
+                {isTester && (
+                  <span style={{ color: "#9ca3af", fontSize: 12, fontWeight: 400, marginLeft: 4 }}>
+                    （テスターモード）
+                  </span>
+                )}
+              </span>
             </a>
           </h1>
 
@@ -62,10 +73,10 @@ export default function AppHeader() {
               e.currentTarget.style.background  = "#f3f4f6";
               e.currentTarget.style.borderColor = "#e5e7eb";
             }}
-            aria-label="フィードバックを送る"
+            aria-label="気づいた点を送る"
           >
             <span style={{ fontSize: 14 }}>💬</span>
-            フィードバック
+            気づいた点を送る
           </button>
         </div>
       </header>
