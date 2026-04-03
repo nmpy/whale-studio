@@ -55,6 +55,9 @@ function PlaygroundInner() {
   // ── ユーザーが送信したテキスト（チャットに表示） ──
   const [sentMessages, setSentMessages] = useState<string[]>([]);
 
+  // ── 消費済み QR メッセージ ID（タップ済みの QR を再表示しないため） ──
+  const [consumedQrMsgIds, setConsumedQrMsgIds] = useState<Set<string>>(new Set());
+
   // ── 操作ログ ──
   const [log, setLog] = useState<Array<{ type: "action" | "system" | "error"; text: string }>>([]);
 
@@ -107,6 +110,9 @@ function PlaygroundInner() {
       const s = await runtimeApi.getProgress(getDevToken(), userId, workId);
       setState(s);
       setMessage(null);
+      setExtraMessages([]);
+      setSentMessages([]);
+      setConsumedQrMsgIds(new Set());
     } catch (e) {
       setError(e instanceof Error ? e.message : "状態の取得に失敗しました");
     } finally {
@@ -129,6 +135,7 @@ function PlaygroundInner() {
       setState(s);
       setExtraMessages([]);
       setSentMessages([]);
+      setConsumedQrMsgIds(new Set());
       addLog("system", `▶ シナリオ開始: 「${s.phase?.name ?? "（不明）"}」`);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "開始に失敗しました";
@@ -157,6 +164,7 @@ function PlaygroundInner() {
       setState(result);
       setExtraMessages([]);
       setSentMessages([]);
+      setConsumedQrMsgIds(new Set());
       if (result._message) {
         setMessage(result._message);
         addLog("system", result._message);
@@ -199,6 +207,7 @@ function PlaygroundInner() {
 
     // target_message_id: チェーンを辿ってチャットに追加（フェーズ変更なし）
     if (item.target_type === "message" && item.target_message_id) {
+      if (activeQrMsgId) setConsumedQrMsgIds((prev) => new Set([...prev, activeQrMsgId]));
       setLoading(true);
       try {
         const msgs = await runtimeApi.getMessage(getDevToken(), item.target_message_id);
@@ -217,6 +226,7 @@ function PlaygroundInner() {
 
     // target_phase_id: フェーズへ直接ジャンプ
     if (item.target_phase_id) {
+      if (activeQrMsgId) setConsumedQrMsgIds((prev) => new Set([...prev, activeQrMsgId]));
       setShowRead(true);
       setLoading(true);
       setError(null);
@@ -247,6 +257,7 @@ function PlaygroundInner() {
     }
 
     // action="text" / "next" / "custom" → テキストとして advance
+    if (activeQrMsgId) setConsumedQrMsgIds((prev) => new Set([...prev, activeQrMsgId]));
     const text = item.value ?? item.label;
     setShowRead(true);
     setLoading(true);
@@ -264,6 +275,7 @@ function PlaygroundInner() {
       if (result.phase?.id !== prevPhaseIdQr) {
         setExtraMessages([]);
         setSentMessages([]);
+        setConsumedQrMsgIds(new Set());
       } else if (result._response_messages && result._response_messages.length > 0) {
         setExtraMessages((prev) => [...prev, ...result._response_messages!]);
         const summary = result._response_messages.map((m) => m.body ?? "[非テキスト]").join(" → ");
@@ -325,6 +337,7 @@ function PlaygroundInner() {
       if (result.phase?.id !== prevPhaseId) {
         setExtraMessages([]);
         setSentMessages([]);
+        setConsumedQrMsgIds(new Set());
       } else if (result._response_messages && result._response_messages.length > 0) {
         // 同一フェーズで response メッセージがあれば追加表示
         setExtraMessages((prev) => [...prev, ...result._response_messages!]);
@@ -365,6 +378,7 @@ function PlaygroundInner() {
       setState(null);
       setExtraMessages([]);
       setSentMessages([]);
+      setConsumedQrMsgIds(new Set());
       addLog("system", "🔄 進行状態をリセットしました");
     } catch (e) {
       setError(e instanceof Error ? e.message : "リセットに失敗しました");
@@ -380,6 +394,9 @@ function PlaygroundInner() {
     setMessage(null);
     setError(null);
     setLog([]);
+    setExtraMessages([]);
+    setSentMessages([]);
+    setConsumedQrMsgIds(new Set());
   }
 
   const isStarted     = !!state?.progress;
@@ -392,17 +409,20 @@ function PlaygroundInner() {
 
   // 現在アクティブな QR（現在の入力待ちポイント）
   //
-  // extraMessages が空 → フェーズ初期表示中。phase.messages の最後の QR が入力待ち。
-  // extraMessages が非空 → ユーザーが QR 選択済み。phase.messages の QR は消費済みなので
-  //   extraMessages の最後の QR だけを見る。extraMessages に QR がなければ
-  //   入力待ちは遷移ボタン（phase.transitions）に委ねる。
-  const activeQrItems: QuickReplyItem[] | null = (() => {
-    if (!state?.phase?.messages) return null;
-
-    const src = extraMessages.length > 0 ? extraMessages : state.phase.messages;
-    const last = [...src].reverse().find((m) => m.quick_replies && m.quick_replies.length > 0);
-    if (!last?.quick_replies) return null;
-    return last.quick_replies.filter((q) => q.enabled !== false);
+  // phase.messages と extraMessages を結合した全シーケンスを後ろから探索し、
+  // consumedQrMsgIds に含まれていない最後の QR メッセージを入力待ちとみなす。
+  const { activeQrItems, activeQrMsgId } = (() => {
+    const empty = { activeQrItems: null as QuickReplyItem[] | null, activeQrMsgId: null as string | null };
+    if (!state?.phase?.messages) return empty;
+    const all = [...state.phase.messages, ...extraMessages];
+    const last = [...all].reverse().find(
+      (m) => m.quick_replies && m.quick_replies.length > 0 && !consumedQrMsgIds.has(m.id)
+    );
+    if (!last?.quick_replies) return empty;
+    const items = last.quick_replies.filter((q) => q.enabled !== false);
+    return items.length > 0
+      ? { activeQrItems: items, activeQrMsgId: last.id }
+      : empty;
   })();
 
   return (
@@ -644,6 +664,8 @@ function PlaygroundInner() {
                   sentMessages={sentMessages}
                   onSendText={handleSendText}
                   activeQrItems={activeQrItems}
+                  activeQrMsgId={activeQrMsgId}
+                  oaTitle={oas.find((o) => o.id === selectedOaId)?.title ?? ""}
                 />
               )}
 
@@ -818,24 +840,17 @@ interface PhasePanelProps {
   sentMessages:   string[];
   onSendText:     (text: string) => void;
   activeQrItems:  QuickReplyItem[] | null;
+  activeQrMsgId:  string | null;
+  oaTitle:        string;
 }
 
-function PhasePanel({ phase, loading, showRead, onAdvance, onQrTap, extraMessages, sentMessages, onSendText, activeQrItems }: PhasePanelProps) {
+function PhasePanel({ phase, loading, showRead, onAdvance, onQrTap, extraMessages, sentMessages, onSendText, activeQrItems, activeQrMsgId, oaTitle }: PhasePanelProps) {
   const [inputText, setInputText] = useState("");
 
   // フェーズ変更時に入力欄をクリア
   useEffect(() => {
     setInputText("");
   }, [phase.id]);
-
-  // 現在アクティブな QR を表示すべきメッセージの ID
-  // extraMessages が非空なら extraMessages 内の最後の QR メッセージ、
-  // 空なら phase.messages 内の最後の QR メッセージ
-  const activeQrMsgId: string | null = (() => {
-    if (!activeQrItems?.length) return null;
-    const src = extraMessages.length > 0 ? extraMessages : phase.messages;
-    return [...src].reverse().find((m) => m.quick_replies && m.quick_replies.length > 0)?.id ?? null;
-  })();
 
   function handleSubmit() {
     if (!inputText.trim() || loading) return;
@@ -939,11 +954,7 @@ function PhasePanel({ phase, loading, showRead, onAdvance, onQrTap, extraMessage
             )}
             {phase.messages.slice(0, visibleCount).map((msg, i) => (
               <Fragment key={msg.id}>
-                <MessageBubble
-                  msg={msg}
-                  index={i}
-                  showRead={showRead && i === visibleCount - 1 && extraMessages.length === 0 && msg.id !== activeQrMsgId}
-                />
+                <MessageBubble msg={msg} index={i} oaTitle={oaTitle} />
                 {/* QR はこのメッセージがアクティブ QR メッセージのとき、直下に描画 */}
                 {allShown && msg.id === activeQrMsgId && activeQrItems && (
                   <QrButtons items={activeQrItems} onTap={onQrTap} loading={loading} />
@@ -953,19 +964,19 @@ function PhasePanel({ phase, loading, showRead, onAdvance, onQrTap, extraMessage
             {/* target_message_id で追加されたメッセージ */}
             {allShown && extraMessages.map((msg, i) => (
               <Fragment key={`extra-${msg.id}-${i}`}>
-                <MessageBubble
-                  msg={msg}
-                  index={phase.messages.length + i}
-                  showRead={showRead && i === extraMessages.length - 1 && sentMessages.length === 0 && msg.id !== activeQrMsgId}
-                />
+                <MessageBubble msg={msg} index={phase.messages.length + i} oaTitle={oaTitle} />
                 {msg.id === activeQrMsgId && activeQrItems && (
                   <QrButtons items={activeQrItems} onTap={onQrTap} loading={loading} />
                 )}
               </Fragment>
             ))}
-            {/* ユーザーが送信したテキスト */}
+            {/* ユーザーが送信したテキスト（最後の1件に既読を表示） */}
             {allShown && sentMessages.map((text, i) => (
-              <UserMessageBubble key={`sent-${i}`} text={text} />
+              <UserMessageBubble
+                key={`sent-${i}`}
+                text={text}
+                showRead={i === sentMessages.length - 1}
+              />
             ))}
             {isTyping && <TypingIndicator char={nextTypingChar} />}
             <div ref={chatBottomRef} />
@@ -1391,13 +1402,21 @@ function ImageMessage({ url }: { url: string }) {
 // ────────────────────────────────────────────────
 // UserMessageBubble — ユーザー送信テキスト（右側吹き出し）
 // ────────────────────────────────────────────────
-function UserMessageBubble({ text }: { text: string }) {
+function UserMessageBubble({ text, showRead }: { text: string; showRead?: boolean }) {
   return (
     <div style={{
       display: "flex",
       justifyContent: "flex-end",
+      alignItems: "flex-end",
+      gap: 4,
       marginBottom: 8,
     }}>
+      {/* 既読（ユーザー送信メッセージにのみ表示） */}
+      {showRead && (
+        <span style={{ fontSize: 10, color: "rgba(0,0,0,0.45)", flexShrink: 0, lineHeight: 1, paddingBottom: 2 }}>
+          既読
+        </span>
+      )}
       <div style={{
         background: "#06C755",
         color: "#fff",
@@ -1419,7 +1438,7 @@ function UserMessageBubble({ text }: { text: string }) {
 // ────────────────────────────────────────────────
 // MessageBubble — メッセージ表示
 // ────────────────────────────────────────────────
-function MessageBubble({ msg, index, showRead }: { msg: RuntimePhaseMessage; index: number; showRead?: boolean }) {
+function MessageBubble({ msg, index, oaTitle }: { msg: RuntimePhaseMessage; index: number; oaTitle?: string }) {
   const hasChar = !!msg.character;
   const char    = msg.character;
 
@@ -1456,12 +1475,15 @@ function MessageBubble({ msg, index, showRead }: { msg: RuntimePhaseMessage; ind
     <div style={{ display: "flex", gap: 7, marginBottom: 8, alignItems: "flex-start" }}>
       <div style={{ flexShrink: 0 }}>{iconEl}</div>
       <div style={{ flex: 1, minWidth: 0 }}>
-        {hasChar && char && (
-          <p style={{ fontSize: 11, color: "rgba(0,0,0,0.5)", marginBottom: 4, fontWeight: 400 }}>
-            {char.name}
-          </p>
-        )}
-        <div style={{ display: "flex", alignItems: "flex-end", gap: 4 }}>
+        {/* 送信者名: キャラ名 from OA名（LINE 実機に準拠） */}
+        <p style={{ fontSize: 11, color: "rgba(0,0,0,0.5)", marginBottom: 4, fontWeight: 400 }}>
+          {hasChar && char ? (
+            oaTitle ? `${char.name} from ${oaTitle}` : char.name
+          ) : (
+            oaTitle ? `OA from ${oaTitle}` : "OA"
+          )}
+        </p>
+        <div style={{ display: "flex", alignItems: "flex-end" }}>
           {/* 吹き出し（しっぽ付き） */}
           <div style={{ position: "relative" }}>
             <div style={{
@@ -1491,12 +1513,6 @@ function MessageBubble({ msg, index, showRead }: { msg: RuntimePhaseMessage; ind
               )}
             </div>
           </div>
-          {/* 既読表示 */}
-          {showRead && (
-            <span style={{ fontSize: 10, color: "rgba(0,0,0,0.45)", flexShrink: 0, lineHeight: 1, paddingBottom: 2 }}>
-              既読
-            </span>
-          )}
         </div>
       </div>
     </div>
