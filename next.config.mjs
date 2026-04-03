@@ -14,11 +14,14 @@ const nextConfig = {
         destination: "/oas/:oaId/works/new",
       },
       // テスターモード: /tester/{oaId}/works/{workId}/{path+} を
-      // /oas/{oaId}/works/{workId}/{path} にリライト（URL バーは /tester/ のまま）。
+      // /oas/{oaId}/works/{workId}/{path*} にリライト（URL バーは /tester/ のまま）。
+      // :path+ はソースで「1 段以上」を要求し、配列としてキャプチャされる。
+      // デスティネーションは :path* にしないと path-to-regexp が
+      // "Expected to not repeat, got array" エラーを投げて 500 になるため注意。
       // /tester/[oaId]/works/[workId] 自体は Next.js の実ページが存在するため除外される。
       {
         source: "/tester/:oaId/works/:workId/:path+",
-        destination: "/oas/:oaId/works/:workId/:path",
+        destination: "/oas/:oaId/works/:workId/:path*",
       },
     ];
   },
