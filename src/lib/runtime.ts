@@ -310,7 +310,9 @@ function buildEntryChain(
 
   // 4. 起点メッセージ: QR 分岐先でなく、チェーン中間でなく、かつ kind が response/hint でないもの
   //    kind="response" / "hint" はキーワードトリガーで表示するもの（フェーズ開始時は非表示）
-  //    triggerKeyword が設定されたメッセージもキーワード入力待ちのため起点にしない
+  //    kind="start" は LINE webhook の handleStartTrigger がキーワードマッチに使うため
+  //    triggerKeyword が設定されていても常に起点として扱う（シナリオ開幕演出メッセージ）
+  //    それ以外（kind="normal"/"puzzle" など）で triggerKeyword があるものはキーワード入力待ちのため除外
   const entries = messages
     .filter(
       (m) =>
@@ -318,7 +320,7 @@ function buildEntryChain(
         !midChainIds.has(m.id) &&
         m.kind !== "response" &&
         m.kind !== "hint" &&
-        !m.triggerKeyword?.trim(),
+        (m.kind === "start" || !m.triggerKeyword?.trim()),
     )
     .sort((a, b) => a.sortOrder - b.sortOrder || a.createdAt.getTime() - b.createdAt.getTime());
 

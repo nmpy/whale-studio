@@ -43,6 +43,7 @@ function toResponse(m: {
   correctText?: string | null; incorrectText?: string | null;
   incorrectQuickReplies?: string | null;
   correctNextPhaseId?: string | null;
+  lagMs?: number;
   sortOrder: number; isActive: boolean; createdAt: Date; updatedAt: Date;
   phase?: { id: string; name: string; phaseType: string } | null;
   character?: { id: string; name: string; iconType: string; iconText: string | null; iconImageUrl: string | null; iconColor: string | null } | null;
@@ -73,6 +74,7 @@ function toResponse(m: {
     incorrect_text:          m.incorrectText ?? null,
     incorrect_quick_replies: parseQuickReplies(m.incorrectQuickReplies ?? null, m.id),
     correct_next_phase_id:   m.correctNextPhaseId ?? null,
+    lag_ms:               m.lagMs ?? 0,
     sort_order:           m.sortOrder,
     is_active:            m.isActive,
     created_at:           m.createdAt,
@@ -207,6 +209,7 @@ export const POST = withAuth(async (req, _ctx, user) => {
         incorrectText:        data.incorrect_text      ?? null,
         incorrectQuickReplies: data.incorrect_quick_replies ? JSON.stringify(data.incorrect_quick_replies) : null,
         correctNextPhaseId:   data.correct_next_phase_id ?? null,
+        lagMs:              data.lag_ms ?? 0,
         sortOrder:          data.sort_order,
         isActive:           data.is_active,
       },

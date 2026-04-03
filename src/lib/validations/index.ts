@@ -264,6 +264,8 @@ export const createMessageSchema = z.object({
   incorrect_text:          z.string().max(2000).optional().nullable(),
   incorrect_quick_replies: z.array(quickReplyItemSchema).max(13).optional().nullable(),
   correct_next_phase_id: uuidSchema.optional().nullable(),
+  /** 前のメッセージ送信後この発話まで待機するミリ秒数。0 = 即時送信 */
+  lag_ms:           z.number().int().min(0).default(0),
   sort_order:       sortSchema,
   is_active:        z.boolean().default(true),
 }).superRefine((val, ctx) => {
@@ -326,6 +328,8 @@ export const updateMessageSchema = z.object({
   incorrect_text:          z.string().max(2000).optional().nullable(),
   incorrect_quick_replies: z.array(quickReplyItemSchema).max(13).optional().nullable(),
   correct_next_phase_id: uuidSchema.optional().nullable(),
+  /** 前のメッセージ送信後この発話まで待機するミリ秒数。0 = 即時送信 */
+  lag_ms:            z.number().int().min(0).optional(),
   sort_order:        z.number().int().min(0).optional(),
   is_active:         z.boolean().optional(),
 }).superRefine((val, ctx) => {

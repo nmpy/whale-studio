@@ -36,6 +36,7 @@ type PrismaMessageWithRelations = {
   correctText: string | null; incorrectText: string | null;
   incorrectQuickReplies: string | null;
   correctNextPhaseId: string | null;
+  lagMs: number;
   sortOrder: number; isActive: boolean; createdAt: Date; updatedAt: Date;
   phase:     { id: string; name: string; phaseType: string } | null;
   character: {
@@ -92,6 +93,7 @@ function toResponse(m: PrismaMessageWithRelations) {
     incorrect_text:          m.incorrectText,
     incorrect_quick_replies: parseQuickReplies(m.incorrectQuickReplies, m.id),
     correct_next_phase_id:   m.correctNextPhaseId,
+    lag_ms:                m.lagMs,
     sort_order:            m.sortOrder,
     is_active:             m.isActive,
     created_at:            m.createdAt,
@@ -220,6 +222,7 @@ export const PATCH = withAuth<{ id: string }>(async (req, { params }, user) => {
           incorrectQuickReplies: data.incorrect_quick_replies ? JSON.stringify(data.incorrect_quick_replies) : null,
         }),
         ...(data.correct_next_phase_id !== undefined && { correctNextPhaseId: data.correct_next_phase_id }),
+        ...(data.lag_ms            !== undefined && { lagMs:           data.lag_ms }),
         ...(data.sort_order        !== undefined && { sortOrder:       data.sort_order }),
         ...(data.is_active         !== undefined && { isActive:        data.is_active }),
       },
