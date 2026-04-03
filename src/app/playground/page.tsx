@@ -390,12 +390,17 @@ function PlaygroundInner() {
   const currentPhase  = state?.phase;
   const selectedWork  = works.find((w) => w.id === selectedWorkId);
 
-  // 現在アクティブな QR（最後に表示されたメッセージの quick_replies）
-  // PhasePanel 内の visibleCount を加味しないが、phase.transitions の表示制御とテキスト入力ルーティングに使用
+  // 現在アクティブな QR（現在の入力待ちポイント）
+  //
+  // extraMessages が空 → フェーズ初期表示中。phase.messages の最後の QR が入力待ち。
+  // extraMessages が非空 → ユーザーが QR 選択済み。phase.messages の QR は消費済みなので
+  //   extraMessages の最後の QR だけを見る。extraMessages に QR がなければ
+  //   入力待ちは遷移ボタン（phase.transitions）に委ねる。
   const activeQrItems: QuickReplyItem[] | null = (() => {
     if (!state?.phase?.messages) return null;
-    const all = [...state.phase.messages, ...extraMessages];
-    const last = [...all].reverse().find((m) => m.quick_replies && m.quick_replies.length > 0);
+
+    const src = extraMessages.length > 0 ? extraMessages : state.phase.messages;
+    const last = [...src].reverse().find((m) => m.quick_replies && m.quick_replies.length > 0);
     if (!last?.quick_replies) return null;
     return last.quick_replies.filter((q) => q.enabled !== false);
   })();
@@ -898,53 +903,44 @@ function PhasePanel({ phase, loading, showRead, onAdvance, onQrTap, extraMessage
             ))}
             {isTyping && <TypingIndicator char={nextTypingChar} />}
             {/* QR ボタン（LINE 風：チャット下部に表示） */}
-            {allShown && (() => {
-              const allMsgs = [...phase.messages.slice(0, visibleCount), ...extraMessages];
-              const lastWithQr = [...allMsgs].reverse().find(
-                (m) => m.quick_replies && m.quick_replies.length > 0
-              );
-              if (!lastWithQr?.quick_replies) return null;
-              const enabledQr = lastWithQr.quick_replies.filter((q) => q.enabled !== false);
-              if (enabledQr.length === 0) return null;
-              return (
-                <div style={{
-                  display: "flex", flexWrap: "wrap", gap: 6,
-                  justifyContent: "flex-end",
-                  padding: "8px 4px 4px",
-                }}>
-                  {enabledQr.map((q, idx) => (
-                    <button
-                      key={idx}
-                      onClick={() => onQrTap(q)}
-                      disabled={loading}
-                      style={{
-                        padding: "7px 14px",
-                        border: "1.5px solid #06C755",
-                        borderRadius: 20,
-                        background: loading ? "#f9fafb" : "#fff",
-                        color: "#06C755",
-                        cursor: loading ? "not-allowed" : "pointer",
-                        fontSize: 13, fontWeight: 600,
-                        whiteSpace: "nowrap",
-                        transition: "background 0.12s, color 0.12s",
-                      }}
-                      onMouseEnter={(e) => {
-                        if (!loading) {
-                          e.currentTarget.style.background = "#06C755";
-                          e.currentTarget.style.color = "#fff";
-                        }
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.background = "#fff";
-                        e.currentTarget.style.color = "#06C755";
-                      }}
-                    >
-                      {q.label}
-                    </button>
-                  ))}
-                </div>
-              );
-            })()}
+            {allShown && activeQrItems && activeQrItems.length > 0 && (
+              <div style={{
+                display: "flex", flexWrap: "wrap", gap: 6,
+                justifyContent: "flex-end",
+                padding: "8px 4px 4px",
+              }}>
+                {activeQrItems.map((q, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => onQrTap(q)}
+                    disabled={loading}
+                    style={{
+                      padding: "7px 14px",
+                      border: "1.5px solid #06C755",
+                      borderRadius: 20,
+                      background: loading ? "#f9fafb" : "#fff",
+                      color: "#06C755",
+                      cursor: loading ? "not-allowed" : "pointer",
+                      fontSize: 13, fontWeight: 600,
+                      whiteSpace: "nowrap",
+                      transition: "background 0.12s, color 0.12s",
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!loading) {
+                        e.currentTarget.style.background = "#06C755";
+                        e.currentTarget.style.color = "#fff";
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = "#fff";
+                      e.currentTarget.style.color = "#06C755";
+                    }}
+                  >
+                    {q.label}
+                  </button>
+                ))}
+              </div>
+            )}
             <div ref={chatBottomRef} />
           </div>
         )}
