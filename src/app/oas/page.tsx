@@ -310,6 +310,27 @@ export default function OaListPage() {
         </Link>
       </div>
 
+      {/* ── β版 遅延注意バナー ── */}
+      <div style={{
+        display:      "flex",
+        alignItems:   "flex-start",
+        gap:          10,
+        background:   "#fffbeb",
+        border:       "1px solid #fcd34d",
+        borderRadius: "var(--radius-md)",
+        padding:      "12px 16px",
+        marginBottom: 16,
+        fontSize:     13,
+        color:        "#92400e",
+        lineHeight:   1.6,
+      }}>
+        <span style={{ fontSize: 16, flexShrink: 0, marginTop: 1 }}>⚠️</span>
+        <span>
+          現在「Whale Studio β版」では、メッセージの処理に遅延が発生する場合があります。
+          現在改善を進めておりますので、あらかじめご了承ください。
+        </span>
+      </div>
+
       {/* ── エラー ── */}
       {error && (
         <div className="alert alert-error" style={{ marginBottom: 16 }}>

@@ -192,6 +192,12 @@ export const PATCH = withAuth<{ id: string }>(async (req, { params }, user) => {
       );
     }
 
+    // hint_mode は Prisma クライアントのバージョン差を回避するため $executeRaw で更新する
+    // （`prisma generate` 前のサーバーインスタンスでも安全に動作させるため）
+    if (data.hint_mode !== undefined) {
+      await prisma.$executeRaw`UPDATE messages SET hint_mode = ${data.hint_mode} WHERE id = ${params.id}`;
+    }
+
     const updated = await prisma.message.update({
       where: { id: params.id },
       data: {
@@ -214,7 +220,7 @@ export const PATCH = withAuth<{ id: string }>(async (req, { params }, user) => {
         ...(data.puzzle_type       !== undefined && { puzzleType:      data.puzzle_type }),
         ...(data.answer            !== undefined && { answer:          data.answer }),
         ...(data.puzzle_hint_text  !== undefined && { puzzleHintText:  data.puzzle_hint_text }),
-        ...(data.hint_mode !== undefined && { hintMode: data.hint_mode }),
+        // hint_mode は $executeRaw で別途更新するためここでは除外
         ...(data.answer_match_type !== undefined && {
           answerMatchType: JSON.stringify(data.answer_match_type),
         }),
@@ -254,13 +260,20 @@ export const PATCH = withAuth<{ id: string }>(async (req, { params }, user) => {
       await activeCache.delete(CACHE_KEY.globalKw(existing.workId));
     }
 
-    return ok(toResponse(updated));
+    const response = toResponse(updated);
+    // hint_mode は $executeRaw で直接更新済み。レスポンスに確実に反映する
+    if (data.hint_mode !== undefined) {
+      response.hint_mode = data.hint_mode;
+    }
+
+    return ok(response);
   } catch (err) {
     if (err instanceof ZodError) {
       const details = formatZodErrors(err);
       console.error(`[PATCH /api/messages/${params.id}] ZodError:`, JSON.stringify(details, null, 2));
       return badRequest("入力値が不正です", details);
     }
+    console.error(`[PATCH /api/messages/${params.id}] UNEXPECTED ERROR:`, err);
     return serverError(err);
   }
 });
