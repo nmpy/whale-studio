@@ -2,11 +2,15 @@
 
 // src/app/pricing/_content.tsx
 // プランページのクライアントコンポーネント本体。
-// useSearchParams() を使うため "use client" が必要。
-// page.tsx（Server Component）から Suspense でラップして呼び出す。
+// page.tsx（Server Component）が searchParams を受け取り、props として渡す。
+// useSearchParams() 依存なし。
+//
+// Props:
+//   source — 流入元 UI（"header" | "banner" | "gate" | "preview" | "settings"）
+//   from   — 現在プラン名（"tester" など）
+//   to     — アップグレード先プラン名（"editor" など）
 
 import { useState, useEffect } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { trackBillingEvent } from "@/lib/billing-tracker";
 import { trackEvent } from "@/lib/event-tracker";
@@ -14,29 +18,29 @@ import { getDevToken } from "@/lib/api-client";
 import { useIsMobile } from "@/hooks/useIsMobile";
 
 // ── チェックアイテム ─────────────────────────────────────────────────
-function CheckItem({ children, muted }: { children: React.ReactNode; muted?: boolean }) {
+function CheckItem({ children }: { children: React.ReactNode }) {
   return (
     <div style={{
       display:    "flex",
       alignItems: "flex-start",
       gap:        10,
       fontSize:   13,
-      color:      muted ? "var(--text-muted)" : "var(--text-secondary)",
+      color:      "var(--text-secondary)",
       lineHeight: 1.6,
     }}>
       <span style={{
-        flexShrink:  0,
-        marginTop:   2,
-        width:       18,
-        height:      18,
-        borderRadius: "50%",
-        background:  muted ? "var(--gray-100)" : "var(--color-primary-soft, #EAF4F1)",
-        display:     "flex",
-        alignItems:  "center",
+        flexShrink:     0,
+        marginTop:      2,
+        width:          18,
+        height:         18,
+        borderRadius:   "50%",
+        background:     "var(--color-primary-soft, #EAF4F1)",
+        display:        "flex",
+        alignItems:     "center",
         justifyContent: "center",
-        fontSize:    10,
-        color:       muted ? "var(--text-muted)" : "var(--color-primary, #2F6F5E)",
-        fontWeight:  700,
+        fontSize:       10,
+        color:          "var(--color-primary, #2F6F5E)",
+        fontWeight:     700,
       }}>✓</span>
       <span>{children}</span>
     </div>
@@ -59,34 +63,127 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
+// ── コンテキスト設定 ─────────────────────────────────────────────────
+
+/** source ごとのヘッダー見出し・サブテキスト */
+const SOURCE_HEADING: Record<string, { title: string; sub: string }> = {
+  gate: {
+    title: "もう1作品、作れるようにしませんか？",
+    sub:   "現在のプランでは作品をこれ以上追加できません。上位プランにアップグレードして、制作を続けましょう。",
+  },
+  banner: {
+    title: "作品数の上限に近づいています",
+    sub:   "今のうちにプランをアップグレードしておくと、スムーズに制作を続けられます。",
+  },
+  preview: {
+    title: "プレビューはいかがでしたか？",
+    sub:   "動作を確認できたら、次は本番公開のステップです。上位プランで続けましょう。",
+  },
+  settings: {
+    title: "プランの変更を検討していますか？",
+    sub:   "現在のご利用状況と比較しながら、ご自身のペースでご検討ください。",
+  },
+};
+const DEFAULT_HEADING = {
+  title: "小さくはじめて、必要なときに広げる。",
+  sub:   "Whale Studio は、今すぐ全部決めなくていいツールです。\nお試し利用から本格運用まで、ペースに合わせてステップアップできます。",
+};
+
+/** from プランごとの「いまのご利用状況」表示設定 */
+const FROM_PLAN_CONFIG: Record<string, {
+  badge:       string;
+  badgeBg:     string;
+  badgeColor:  string;
+  badgeBorder: string;
+  features:    string[];
+  footer:      string;
+}> = {
+  tester: {
+    badge:       "tester プラン",
+    badgeBg:     "#fef3c7",
+    badgeColor:  "#92400e",
+    badgeBorder: "#fde68a",
+    features: [
+      "1 作品をじっくり試作できる",
+      "キャラクター・メッセージ・フローをひと通り体験",
+      "プレビューで動作確認",
+    ],
+    footer: "まずはここからスタート。制作の感触をつかんでから、次のステップを検討できます。",
+  },
+  // 将来のプランをここに追加
+};
+
+/** to プランごとのアップグレード先表示設定 */
+const TO_PLAN_CONFIG: Record<string, {
+  sectionLabel: string;
+  planName:     string;
+  price:        string;
+  priceUnit:    string;
+  ctaText:      string;
+  features:     string[];
+  footer:       string;
+}> = {
+  editor: {
+    sectionLabel: "editor プランに移ると",
+    planName:     "editor プラン",
+    price:        "¥9,800",
+    priceUnit:    "/ 月",
+    ctaText:      "editorプランについて相談する",
+    features: [
+      "複数の作品を並行して制作・管理できる",
+      "制作した作品をそのまま本番公開できる",
+      "継続的に改善・運用を続けられる",
+    ],
+    footer: "現在の作品・キャラクター・フローはそのまま引き継がれます。",
+  },
+  // 将来のプランをここに追加
+};
+
 // ── クライアントコンポーネント本体 ────────────────────────────────────
-export function PricingContent() {
-  const router       = useRouter();
-  const searchParams = useSearchParams();
-  const sp           = useIsMobile();
-  const [requested, setRequested] = useState(false);
+// props は page.tsx（Server Component）が searchParams から渡す
+export function PricingContent({
+  source,
+  from:     fromParam,
+  to:       toParam,
+  oaId,
+  canceled,
+}: {
+  source?:   string;
+  from?:     string;
+  to?:       string;
+  /** Stripe Checkout の申込先 OA ID（あれば Stripe ボタンを有効化） */
+  oaId?:     string;
+  /** "1" のとき Stripe Checkout からのキャンセル戻りを示すバナーを表示 */
+  canceled?: string;
+}) {
+  const sp = useIsMobile();
+  const [requested,       setRequested]       = useState(false);
+  const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const [checkoutError,   setCheckoutError]   = useState<string | null>(null);
+
+  // コンテキストに応じた表示設定を導出
+  const heading  = (source ? SOURCE_HEADING[source] : null) ?? DEFAULT_HEADING;
+  const fromPlan = (fromParam ? FROM_PLAN_CONFIG[fromParam] : null) ?? FROM_PLAN_CONFIG.tester;
+  const toPlan   = (toParam   ? TO_PLAN_CONFIG[toParam]     : null) ?? TO_PLAN_CONFIG.editor;
 
   useEffect(() => {
-    // ?source= クエリパラメータで流入元を記録（例: /pricing?source=header）
-    const source = searchParams.get("source") ?? undefined;
-    const token  = getDevToken();
+    const token = getDevToken();
 
-    // 課金専用ログ（billing_event_logs）
-    trackBillingEvent("pricing_view", token, source);
+    // 課金専用ログ（from/to コンテキスト付き）
+    trackBillingEvent("pricing_view", token, source, { from: fromParam, to: toParam });
 
-    // 汎用行動ログ（event_logs）
-    trackEvent("screen_view",      { page: "/pricing" },                           { token });
-    trackEvent("upgrade_interest", { action: "view", source },                     { token });
-    trackEvent("flow_step",        { step: "pricing", source: source ?? "direct" }, { token });
+    // 汎用行動ログ（event_logs）— payload に from/to も含める
+    trackEvent("screen_view",      { page: "/pricing" },                                       { token });
+    trackEvent("upgrade_interest", { action: "view", source, from: fromParam, to: toParam },   { token });
+    trackEvent("flow_step",        { step: "pricing", source: source ?? "direct" },            { token });
   // searchParams は mount 時に1回だけ読めば十分
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function handleUpgrade() {
-    const token  = getDevToken();
-    const source = searchParams.get("source") ?? undefined;
-    trackBillingEvent("pricing_cta_click", token);
-    trackEvent("upgrade_interest", { action: "cta_click", source }, { token });
+    const token = getDevToken();
+    trackBillingEvent("pricing_cta_click", token, source, { from: fromParam, to: toParam });
+    trackEvent("upgrade_interest", { action: "cta_click", source, from: fromParam, to: toParam }, { token });
     window.dispatchEvent(
       new CustomEvent("open-feedback-modal", {
         detail: { pricingSource: source },
@@ -95,14 +192,43 @@ export function PricingContent() {
     setRequested(true);
   }
 
+  async function handleStripeCheckout() {
+    if (!oaId) return;
+    setCheckoutLoading(true);
+    setCheckoutError(null);
+    try {
+      const token = getDevToken();
+      const res   = await fetch("/api/billing/checkout-session", {
+        method:  "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization:  `Bearer ${token}`,
+        },
+        body: JSON.stringify({ oaId, source, fromPlan: fromParam }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.data?.url) {
+        setCheckoutError(data.error ?? "チェックアウトセッションの作成に失敗しました");
+        return;
+      }
+      trackBillingEvent("pricing_cta_click", token, source, { from: fromParam, to: toParam });
+      trackEvent("upgrade_interest", { action: "stripe_checkout_start", source, from: fromParam, to: toParam }, { token });
+      window.location.href = data.data.url;
+    } catch {
+      setCheckoutError("エラーが発生しました。もう一度お試しください。");
+    } finally {
+      setCheckoutLoading(false);
+    }
+  }
+
   return (
     <div style={{
-      maxWidth:  600,
-      margin:    "0 auto",
-      padding:   sp ? "20px 0 48px" : "40px 0 64px",
+      maxWidth: 600,
+      margin:   "0 auto",
+      padding:  sp ? "20px 0 48px" : "40px 0 64px",
     }}>
 
-      {/* ── ヘッダー ── */}
+      {/* ── ヘッダー（source ごとに見出し・サブを出し分け） ── */}
       <div style={{ textAlign: "center", marginBottom: 36 }}>
         <div style={{
           display:        "inline-flex",
@@ -128,50 +254,52 @@ export function PricingContent() {
           lineHeight:    1.3,
           marginBottom:  10,
         }}>
-          小さくはじめて、必要なときに広げる。
+          {heading.title}
         </h1>
         <p style={{
           fontSize:   13,
           color:      "var(--text-secondary)",
           lineHeight: 1.8,
+          whiteSpace: "pre-line",
         }}>
-          Whale Studio は、今すぐ全部決めなくていいツールです。<br />
-          お試し利用から本格運用まで、ペースに合わせてステップアップできます。
+          {heading.sub}
         </p>
       </div>
 
-      {/* ── コンセプト 3 点 ── */}
-      <div style={{
-        display:      "flex",
-        gap:          sp ? 6 : 8,
-        marginBottom: sp ? 20 : 28,
-        flexDirection: sp ? "column" : "row",
-        flexWrap:     "wrap",
-      }}>
-        {[
-          { icon: "🌱", text: "まず1作品、気軽に試せる" },
-          { icon: "🔓", text: "無理に決めなくていい" },
-          { icon: "📈", text: "成長に合わせてプラン変更できる" },
-        ].map(({ icon, text }) => (
-          <div key={text} style={{
-            flex:         sp ? "none" : "1 1 140px",
-            display:      "flex",
-            alignItems:   "center",
-            gap:          8,
-            padding:      sp ? "9px 12px" : "10px 14px",
-            background:   "var(--surface)",
-            border:       "1px solid var(--border-light)",
-            borderRadius: "var(--radius-md)",
-            fontSize:     12,
-            color:        "var(--text-secondary)",
-          }}>
-            <span style={{ fontSize: 16, flexShrink: 0 }}>{icon}</span>
-            <span>{text}</span>
-          </div>
-        ))}
-      </div>
+      {/* ── コンセプト 3 点（source=default 以外は簡略表示） ── */}
+      {!source && (
+        <div style={{
+          display:       "flex",
+          gap:           sp ? 6 : 8,
+          marginBottom:  sp ? 20 : 28,
+          flexDirection: sp ? "column" : "row",
+          flexWrap:      "wrap",
+        }}>
+          {[
+            { icon: "🌱", text: "まず1作品、気軽に試せる" },
+            { icon: "🔓", text: "無理に決めなくていい" },
+            { icon: "📈", text: "成長に合わせてプラン変更できる" },
+          ].map(({ icon, text }) => (
+            <div key={text} style={{
+              flex:         sp ? "none" : "1 1 140px",
+              display:      "flex",
+              alignItems:   "center",
+              gap:          8,
+              padding:      sp ? "9px 12px" : "10px 14px",
+              background:   "var(--surface)",
+              border:       "1px solid var(--border-light)",
+              borderRadius: "var(--radius-md)",
+              fontSize:     12,
+              color:        "var(--text-secondary)",
+            }}>
+              <span style={{ fontSize: 16, flexShrink: 0 }}>{icon}</span>
+              <span>{text}</span>
+            </div>
+          ))}
+        </div>
+      )}
 
-      {/* ── 現在のご利用状況（tester プラン） ── */}
+      {/* ── 現在のご利用状況（from パラメータで動的出し分け） ── */}
       <div className="card" style={{ marginBottom: 12, padding: "20px 24px" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
           <SectionLabel>いまのご利用状況</SectionLabel>
@@ -180,17 +308,15 @@ export function PricingContent() {
             borderRadius: "var(--radius-full)",
             fontSize:     11,
             fontWeight:   700,
-            background:   "#fef3c7",
-            color:        "#92400e",
-            border:       "1px solid #fde68a",
+            background:   fromPlan.badgeBg,
+            color:        fromPlan.badgeColor,
+            border:       `1px solid ${fromPlan.badgeBorder}`,
           }}>
-            tester プラン
+            {fromPlan.badge}
           </span>
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          <CheckItem>1 作品をじっくり試作できる</CheckItem>
-          <CheckItem>キャラクター・メッセージ・フローをひと通り体験</CheckItem>
-          <CheckItem>プレビューで動作確認</CheckItem>
+          {fromPlan.features.map((f) => <CheckItem key={f}>{f}</CheckItem>)}
         </div>
         <p style={{
           marginTop:  14,
@@ -200,11 +326,11 @@ export function PricingContent() {
           paddingTop: 12,
           borderTop:  "1px solid var(--border-light)",
         }}>
-          まずはここからスタート。制作の感触をつかんでから、次のステップを検討できます。
+          {fromPlan.footer}
         </p>
       </div>
 
-      {/* ── editor でできること ── */}
+      {/* ── アップグレード先でできること（to パラメータで動的出し分け） ── */}
       <div style={{
         padding:      "20px 24px",
         marginBottom: 28,
@@ -212,11 +338,9 @@ export function PricingContent() {
         border:       "1px solid #b9ddd6",
         borderRadius: "var(--radius-md)",
       }}>
-        <SectionLabel>editor プランに移ると</SectionLabel>
+        <SectionLabel>{toPlan.sectionLabel}</SectionLabel>
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          <CheckItem>複数の作品を並行して制作・管理できる</CheckItem>
-          <CheckItem>制作した作品をそのまま本番公開できる</CheckItem>
-          <CheckItem>継続的に改善・運用を続けられる</CheckItem>
+          {toPlan.features.map((f) => <CheckItem key={f}>{f}</CheckItem>)}
         </div>
         <p style={{
           marginTop:  12,
@@ -226,11 +350,11 @@ export function PricingContent() {
           paddingTop: 10,
           borderTop:  "1px solid #b9ddd6",
         }}>
-          現在の作品・キャラクター・フローはそのまま引き継がれます。
+          {toPlan.footer}
         </p>
       </div>
 
-      {/* ── プランカード ── */}
+      {/* ── プランカード（to パラメータで価格・名前を出し分け） ── */}
       <div style={{
         background:   "var(--surface)",
         border:       "2px solid var(--color-primary, #2F6F5E)",
@@ -268,15 +392,15 @@ export function PricingContent() {
           letterSpacing: "-0.02em",
           marginBottom:  10,
         }}>
-          editor プラン
+          {toPlan.planName}
         </h3>
 
         <div style={{ marginBottom: 6 }}>
           <span style={{ fontSize: sp ? 28 : 34, fontWeight: 800, color: "var(--text-primary)", letterSpacing: "-0.03em" }}>
-            ¥9,800
+            {toPlan.price}
           </span>
           <span style={{ fontSize: 13, color: "var(--text-muted)", marginLeft: 4 }}>
-            / 月
+            {toPlan.priceUnit}
           </span>
         </div>
 
@@ -299,20 +423,93 @@ export function PricingContent() {
           borderRadius:  "var(--radius-sm)",
           textAlign:     "left",
         }}>
-          <CheckItem>作品数の上限なし</CheckItem>
-          <CheckItem>本番公開・継続運用</CheckItem>
-          <CheckItem>現在の作品・データを引き継ぎ</CheckItem>
+          {toPlan.features.map((f) => <CheckItem key={f}>{f}</CheckItem>)}
         </div>
 
-        {/* CTA 前の安心文 */}
+        {/* キャンセル戻りバナー（Stripe Checkout キャンセル時） */}
+        {canceled === "1" && (
+          <div style={{
+            padding:      "10px 14px",
+            borderRadius: "var(--radius-sm)",
+            background:   "#fffbeb",
+            border:       "1px solid #fde68a",
+            fontSize:     12,
+            color:        "#b45309",
+            lineHeight:   1.6,
+            marginBottom: 14,
+          }}>
+            ⚠ お申し込みをキャンセルしました。ご検討中の場合はお気軽にご相談ください。
+          </div>
+        )}
+
+        {/* Stripe エラー */}
+        {checkoutError && (
+          <div style={{
+            padding:      "10px 14px",
+            borderRadius: "var(--radius-sm)",
+            background:   "#fee2e2",
+            border:       "1px solid #fca5a5",
+            fontSize:     12,
+            color:        "#991b1b",
+            lineHeight:   1.6,
+            marginBottom: 10,
+          }}>
+            {checkoutError}
+          </div>
+        )}
+
+        {/* Primary CTA — Stripe で申し込む（oaId があるときのみ表示） */}
+        {oaId && (
+          <button
+            onClick={handleStripeCheckout}
+            disabled={checkoutLoading}
+            style={{
+              display:        "flex",
+              alignItems:     "center",
+              justifyContent: "center",
+              gap:            6,
+              width:          "100%",
+              padding:        "13px 20px",
+              borderRadius:   "var(--radius-sm)",
+              background:     checkoutLoading ? "var(--color-primary-soft, #EAF4F1)" : "var(--color-primary, #2F6F5E)",
+              color:          checkoutLoading ? "var(--color-primary, #2F6F5E)" : "#fff",
+              fontSize:       14,
+              fontWeight:     700,
+              border:         "none",
+              cursor:         checkoutLoading ? "not-allowed" : "pointer",
+              marginBottom:   10,
+              transition:     "background 0.15s",
+              boxSizing:      "border-box",
+            }}
+          >
+            {checkoutLoading ? (
+              <>
+                <span style={{
+                  display:      "inline-block",
+                  width:        14,
+                  height:       14,
+                  border:       "2px solid var(--color-primary, #2F6F5E)",
+                  borderTop:    "2px solid transparent",
+                  borderRadius: "50%",
+                  animation:    "spin 0.8s linear infinite",
+                }} />
+                処理中...
+              </>
+            ) : (
+              <>💳 Stripe で申し込む</>
+            )}
+          </button>
+        )}
+
+        {/* Secondary CTA — 相談する */}
         <p style={{
-          fontSize:     13,
-          color:        "var(--text-secondary)",
-          lineHeight:   1.7,
-          marginBottom: 16,
+          fontSize:     12,
+          color:        "var(--text-muted)",
+          lineHeight:   1.6,
+          marginBottom: 10,
+          textAlign:    "center",
         }}>
-          まだ検討中でも大丈夫です。<br />
-          まずはお気軽にご相談ください。
+          {oaId ? "まだ検討中の場合は、" : "まずは、"}お気軽にご相談ください。
         </p>
 
         {requested ? (
@@ -330,21 +527,34 @@ export function PricingContent() {
           </div>
         ) : (
           <button
-            className="btn btn-primary"
             onClick={handleUpgrade}
-            style={{ width: "100%", justifyContent: "center", fontSize: 14, padding: "12px 20px" }}
+            style={{
+              display:        "flex",
+              alignItems:     "center",
+              justifyContent: "center",
+              width:          "100%",
+              padding:        "11px 20px",
+              borderRadius:   "var(--radius-sm)",
+              background:     "var(--surface)",
+              border:         "1px solid var(--border-default, #d1d5db)",
+              color:          "var(--text-secondary)",
+              fontSize:       13,
+              fontWeight:     600,
+              cursor:         "pointer",
+              boxSizing:      "border-box",
+            }}
           >
-            editorプランについて相談する
+            {toPlan.ctaText}
           </button>
         )}
 
         <Link
           href="/oas"
           style={{
-            display:    "block",
-            marginTop:  12,
-            fontSize:   13,
-            color:      "var(--text-muted)",
+            display:   "block",
+            marginTop: 12,
+            fontSize:  13,
+            color:     "var(--text-muted)",
           }}
         >
           もう少し試してみる
@@ -359,42 +569,36 @@ export function PricingContent() {
         borderRadius: "var(--radius-md)",
       }}>
         <p style={{
-          fontSize:     12,
-          fontWeight:   700,
-          color:        "var(--text-muted)",
+          fontSize:      12,
+          fontWeight:    700,
+          color:         "var(--text-muted)",
           letterSpacing: "0.05em",
           textTransform: "uppercase",
-          marginBottom: 16,
-          textAlign:    "center",
+          marginBottom:  16,
+          textAlign:     "center",
         }}>
           ご相談前に知っておいてほしいこと
         </p>
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           {[
             {
-              icon: "🤝",
+              icon:  "🤝",
               title: "無理な営業はしません",
               body:  "ご相談いただいた内容をもとに、個別にご案内します。その場でのお申し込みを求めることはありません。",
             },
             {
-              icon: "🐣",
+              icon:  "🐣",
               title: "現在はβ版です",
               body:  "Whale Studio はまだ成長中のサービスです。一緒に育てていただけるユーザーさんを大切にしています。",
             },
             {
-              icon: "💬",
+              icon:  "💬",
               title: "個別サポートがあります",
               body:  "はじめての導入や使い方の相談など、担当が個別にサポートします。一人で抱え込まなくて大丈夫です。",
             },
           ].map(({ icon, title, body }) => (
             <div key={title} style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
-              <span style={{
-                fontSize:    18,
-                flexShrink:  0,
-                marginTop:   1,
-                width:       28,
-                textAlign:   "center",
-              }}>
+              <span style={{ fontSize: 18, flexShrink: 0, marginTop: 1, width: 28, textAlign: "center" }}>
                 {icon}
               </span>
               <div>

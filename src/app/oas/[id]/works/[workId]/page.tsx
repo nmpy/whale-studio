@@ -79,7 +79,7 @@ export default function WorkHubPage() {
   const workId = params.workId;
   const sp = useIsMobile();
   const { role } = useWorkspaceRole(oaId);
-  const { maxWorks, planDisplayName } = useWorkLimit(oaId);
+  const { maxWorks, planDisplayName, planName } = useWorkLimit(oaId);
 
   const [oaTitle,          setOaTitle]          = useState("");
   const [work,             setWork]             = useState<WorkListItem | null>(null);
@@ -232,6 +232,7 @@ export default function WorkHubPage() {
           onDismiss={() => setShowUpgradeCard(false)}
           maxWorks={maxWorks ?? undefined}
           planDisplayName={planDisplayName ?? undefined}
+          planName={planName ?? undefined}
         />
       )}
 

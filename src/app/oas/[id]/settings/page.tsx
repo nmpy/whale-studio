@@ -3,7 +3,7 @@
 // src/app/oas/[id]/settings/page.tsx
 // OA 設定ハブ — 機能カードを並べるだけ。フォームは /account へ移設。
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { oaApi, getDevToken } from "@/lib/api-client";
@@ -83,7 +83,9 @@ export default function OaSettingsPage() {
   const params = useParams<{ id: string }>();
   const oaId   = params.id;
   const { role, canEdit, isOwner, isAdmin } = useWorkspaceRole(oaId);
-  const [oaTitle, setOaTitle] = useState<string>("");
+  const [oaTitle,        setOaTitle]        = useState<string>("");
+  const [billingSuccess, setBillingSuccess] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     oaApi.get(getDevToken(), oaId)
@@ -91,9 +93,80 @@ export default function OaSettingsPage() {
       .catch(() => {});
   }, [oaId]);
 
+  // billing=success クエリを検出してバナーを表示し、URL をクリーンアップ
+  useEffect(() => {
+    const sp = new URLSearchParams(window.location.search);
+    if (sp.get("billing") === "success") {
+      setBillingSuccess(true);
+      // URL から billing パラメータを除去（ページリロードなし）
+      const url = new URL(window.location.href);
+      url.searchParams.delete("billing");
+      window.history.replaceState({}, "", url.toString());
+      // 10 秒後に自動で消す
+      timerRef.current = setTimeout(() => setBillingSuccess(false), 10_000);
+    }
+    return () => { if (timerRef.current) clearTimeout(timerRef.current); };
+  // マウント時のみ実行
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return (
     <>
       <ViewerBanner role={role} />
+
+      {/* ── Stripe Checkout 完了バナー ── */}
+      {billingSuccess && (
+        <div style={{
+          display:      "flex",
+          alignItems:   "flex-start",
+          gap:          12,
+          padding:      "14px 18px",
+          background:   "#f0fdf4",
+          border:       "1px solid #86efac",
+          borderRadius: "var(--radius-md, 10px)",
+          marginBottom: 16,
+        }}>
+          <span style={{ fontSize: 22, flexShrink: 0, lineHeight: 1 }}>🎉</span>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <p style={{
+              fontSize:    13,
+              fontWeight:  700,
+              color:       "#166534",
+              marginBottom: 3,
+            }}>
+              プランのアップグレードが完了しました！
+            </p>
+            <p style={{
+              fontSize:   12,
+              color:      "#15803d",
+              lineHeight: 1.6,
+              margin:     0,
+            }}>
+              editor プランへの移行が完了しました。作品の追加・本番公開が可能になっています。
+            </p>
+          </div>
+          <button
+            onClick={() => {
+              setBillingSuccess(false);
+              if (timerRef.current) clearTimeout(timerRef.current);
+            }}
+            style={{
+              background: "none",
+              border:     "none",
+              cursor:     "pointer",
+              color:      "#166534",
+              fontSize:   18,
+              lineHeight: 1,
+              padding:    "2px 4px",
+              flexShrink: 0,
+            }}
+            title="閉じる"
+          >
+            ×
+          </button>
+        </div>
+      )}
+
       <div className="page-header">
         <div>
           <Breadcrumb items={[

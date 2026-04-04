@@ -15,6 +15,7 @@ import { useEffect } from "react";
 import { trackBillingEvent } from "@/lib/billing-tracker";
 import { trackEvent } from "@/lib/event-tracker";
 import { getDevToken } from "@/lib/api-client";
+import { buildPricingUrl } from "@/lib/pricing-url";
 import type { BillingEvent } from "@/lib/constants/billing-events";
 import { useIsMobile } from "@/hooks/useIsMobile";
 
@@ -26,8 +27,12 @@ export interface WorkLimitCardProps {
   oaId?: string;
   /** プランの作品数上限（-1 = 無制限）。未指定時は 1 として表示 */
   maxWorks?: number;
-  /** プラン表示名。未指定時は "現在のプラン" として表示 */
+  /** プラン表示名（日本語）。未指定時は "現在のプラン" として表示 */
   planDisplayName?: string;
+  /** プランコード名（URL の from= に使用）。例: "tester" */
+  planName?: string;
+  /** アップグレード先プラン名（URL の to= に使用）。省略時 "editor" */
+  upgradeTo?: string;
 }
 
 // ── BillingEvent → URL source ラベル変換 ─────────────────────────────
@@ -39,14 +44,32 @@ const EVENT_TO_SOURCE: Partial<Record<BillingEvent, string>> = {
 };
 
 // ── 共用: プランを見るリンク ──────────────────────────────────────────
-function PricingLink({ source, style }: { source: BillingEvent; style?: React.CSSProperties }) {
+function PricingLink({
+  source, planName, upgradeTo, oaId, style,
+}: {
+  source:      BillingEvent;
+  planName?:   string;
+  upgradeTo?:  string;
+  oaId?:       string;
+  style?:      React.CSSProperties;
+}) {
   const urlSource = EVENT_TO_SOURCE[source];
-  const href      = urlSource ? `/pricing?source=${urlSource}` : "/pricing";
+  const href = buildPricingUrl({
+    source: urlSource,
+    from:   planName,
+    to:     upgradeTo ?? "editor",
+    oaId,
+  });
 
   return (
     <a
       href={href}
-      onClick={() => trackBillingEvent(source, getDevToken(), urlSource)}
+      onClick={() => trackBillingEvent(
+        source,
+        getDevToken(),
+        urlSource,
+        { from: planName, to: upgradeTo ?? "editor" },
+      )}
       style={{
         display:        "inline-flex",
         alignItems:     "center",
@@ -65,12 +88,15 @@ function PricingLink({ source, style }: { source: BillingEvent; style?: React.CS
   );
 }
 
-export function WorkLimitCard({ variant, onDismiss, oaId, maxWorks, planDisplayName }: WorkLimitCardProps) {
+export function WorkLimitCard({
+  variant, onDismiss, oaId, maxWorks, planDisplayName, planName, upgradeTo,
+}: WorkLimitCardProps) {
   const sp = useIsMobile();
 
   // 表示用の上限値・プラン名（フォールバックあり）
-  const limitLabel = (maxWorks !== undefined && maxWorks !== -1) ? `${maxWorks} 件` : "1 件";
-  const planLabel  = planDisplayName ?? "現在のプラン";
+  const limitLabel  = (maxWorks !== undefined && maxWorks !== -1) ? `${maxWorks} 件` : "1 件";
+  const planLabel   = planDisplayName ?? "現在のプラン";
+  const upgradeTarget = upgradeTo ?? "editor";
 
   // バナー/ゲートの表示を upgrade_interest として記録（mount 時1回）
   useEffect(() => {
@@ -107,15 +133,21 @@ export function WorkLimitCard({ variant, onDismiss, oaId, maxWorks, planDisplayN
             </div>
           </div>
         </div>
-        <PricingLink source="pricing_click_from_banner" style={{
-          alignSelf:      sp ? "stretch" : "auto",
-          justifyContent: sp ? "center" : "flex-start",
-          padding:        sp ? "10px 12px" : "5px 12px",
-          borderRadius:   "var(--radius-full, 999px)",
-          background:     "var(--color-primary, #2F6F5E)",
-          color:          "#fff",
-          fontSize:       sp ? 13 : 11,
-        }} />
+        <PricingLink
+          source="pricing_click_from_banner"
+          planName={planName}
+          upgradeTo={upgradeTarget}
+          oaId={oaId}
+          style={{
+            alignSelf:      sp ? "stretch" : "auto",
+            justifyContent: sp ? "center" : "flex-start",
+            padding:        sp ? "10px 12px" : "5px 12px",
+            borderRadius:   "var(--radius-full, 999px)",
+            background:     "var(--color-primary, #2F6F5E)",
+            color:          "#fff",
+            fontSize:       sp ? 13 : 11,
+          }}
+        />
       </div>
     );
   }
@@ -143,8 +175,13 @@ export function WorkLimitCard({ variant, onDismiss, oaId, maxWorks, planDisplayN
 
         {/* プランを見るCTA — フル幅 */}
         <a
-          href="/pricing?source=gate"
-          onClick={() => trackBillingEvent("pricing_click_from_gate", getDevToken(), "gate")}
+          href={buildPricingUrl({ source: "gate", from: planName, to: upgradeTarget, oaId })}
+          onClick={() => trackBillingEvent(
+            "pricing_click_from_gate",
+            getDevToken(),
+            "gate",
+            { from: planName, to: upgradeTarget },
+          )}
           style={{
             display:        "flex",
             alignItems:     "center",
@@ -236,6 +273,9 @@ export function WorkLimitCard({ variant, onDismiss, oaId, maxWorks, planDisplayN
       <div style={{ marginTop: 10, paddingLeft: 30 }}>
         <PricingLink
           source="pricing_click_from_preview"
+          planName={planName}
+          upgradeTo={upgradeTarget}
+          oaId={oaId}
           style={sp ? {
             display:        "flex",
             justifyContent: "center",

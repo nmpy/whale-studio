@@ -25,7 +25,7 @@ export default function WorkNewPage() {
   const router = useTesterRouter();
   const { showToast } = useToast();
   const { loading: roleLoading } = useWorkspaceRole(oaId);
-  const { maxWorks, planDisplayName, loading: limitLoading } = useWorkLimit(oaId);
+  const { maxWorks, planDisplayName, planName, loading: limitLoading } = useWorkLimit(oaId);
 
   const [title, setTitle]               = useState("");
   const [description, setDescription]   = useState("");
@@ -148,6 +148,7 @@ export default function WorkNewPage() {
           oaId={oaId}
           maxWorks={maxWorks ?? undefined}
           planDisplayName={planDisplayName ?? undefined}
+          planName={planName ?? undefined}
         />
       </>
     );

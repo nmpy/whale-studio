@@ -1,19 +1,19 @@
 // src/app/pricing/page.tsx
 // プランページ — Server Component ラッパー
 //
-// useSearchParams() を使う PricingContent を Suspense でラップすることで、
-// Next.js 14 App Router の "useSearchParams() should be wrapped in a suspense
-// boundary" ビルドエラーを解消する。
+// Next.js App Router では Page コンポーネントが searchParams を props として受け取れる。
+// searchParams を Server Component 側で受け取り、Client Component（PricingContent）へ
+// props として渡すことで useSearchParams() 依存を排除し、Suspense 要件を最小化する。
 //
 // 構成:
-//   page.tsx     — Server Component（このファイル）: Suspense でラップ
-//   _content.tsx — Client Component: useSearchParams / useRouter / イベント記録
+//   page.tsx     — Server Component（このファイル）: searchParams を受け取り props で渡す
+//   _content.tsx — Client Component: useIsMobile / useState / useEffect / イベント記録
 
 import { Suspense } from "react";
 import { PricingContent } from "./_content";
 
 // ── ローディングフォールバック ────────────────────────────────────────
-// Suspense の fallback。useSearchParams の解決を待つ間（SSR shell）表示される。
+// Client Component のハイドレーション前に表示されるスケルトン。
 function PricingFallback() {
   return (
     <div style={{ maxWidth: 600, margin: "0 auto", padding: "40px 0 64px" }}>
@@ -36,10 +36,29 @@ function PricingFallback() {
 }
 
 // ── ページ default export（Server Component）────────────────────────
-export default function PricingPage() {
+// searchParams は Next.js が Request 時に注入するため、useSearchParams() 不要。
+// oa_id  — Stripe Checkout のキャンセル時に pricing へ戻る際に付与される OA ID
+// canceled — "1" のとき Stripe Checkout からのキャンセル戻りを示す
+export default function PricingPage({
+  searchParams,
+}: {
+  searchParams: {
+    source?:   string;
+    from?:     string;
+    to?:       string;
+    oa_id?:    string;
+    canceled?: string;
+  };
+}) {
   return (
     <Suspense fallback={<PricingFallback />}>
-      <PricingContent />
+      <PricingContent
+        source={searchParams.source}
+        from={searchParams.from}
+        to={searchParams.to}
+        oaId={searchParams.oa_id}
+        canceled={searchParams.canceled}
+      />
     </Suspense>
   );
 }

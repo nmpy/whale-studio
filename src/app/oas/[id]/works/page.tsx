@@ -8,6 +8,7 @@ import { WorkCard } from "@/components/WorkCard";
 import { FriendAddSection } from "@/components/FriendAddSection";
 import { oaApi, workApi, friendAddApi, getDevToken, type WorkListItem } from "@/lib/api-client";
 import { trackBillingEvent } from "@/lib/billing-tracker";
+import { buildPricingUrl } from "@/lib/pricing-url";
 import type { FriendAddSettings } from "@/types";
 import { useToast } from "@/components/Toast";
 import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
@@ -50,7 +51,7 @@ export default function WorkListPage() {
   const sp = useIsMobile();
   const { role, isTester: isRoleTester } = useWorkspaceRole(oaId);
   const { isTester } = useTesterMode();
-  const { maxWorks, planDisplayName, loading: limitLoading } = useWorkLimit(oaId);
+  const { maxWorks, planDisplayName, planName, loading: limitLoading } = useWorkLimit(oaId);
 
   const [oaTitle, setOaTitle]     = useState("");
   const [works, setWorks]         = useState<WorkListItem[]>([]);
@@ -128,8 +129,13 @@ export default function WorkListPage() {
           {/* 作品数制限があるプランには「プランを見る」リンクを常時表示 */}
           {showPricingLink && (
             <Link
-              href="/pricing?source=header"
-              onClick={() => trackBillingEvent("pricing_click_from_header", getDevToken(), "header")}
+              href={buildPricingUrl({ source: "header", from: planName ?? undefined, to: "editor", oaId })}
+              onClick={() => trackBillingEvent(
+                "pricing_click_from_header",
+                getDevToken(),
+                "header",
+                { from: planName ?? undefined, to: "editor" },
+              )}
               style={{
                 fontSize:       12,
                 fontWeight:     600,
@@ -167,7 +173,14 @@ export default function WorkListPage() {
       <ViewerBanner role={role} />
 
       {/* 作品上限到達 → アップグレード誘導バナー */}
-      {atLimit && <WorkLimitCard variant="banner" maxWorks={maxWorks ?? undefined} planDisplayName={planDisplayName ?? undefined} />}
+      {atLimit && (
+        <WorkLimitCard
+          variant="banner"
+          maxWorks={maxWorks ?? undefined}
+          planDisplayName={planDisplayName ?? undefined}
+          planName={planName ?? undefined}
+        />
+      )}
 
       {/* テスターモード時の注意文 */}
       {isTester && (

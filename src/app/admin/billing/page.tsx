@@ -186,6 +186,7 @@ const EVENT_ICONS: Record<BillingEvent, string> = {
   pricing_click_from_preview: "▶️",
   pricing_cta_click:          "🔓",
   pricing_feedback_submit:    "✉️",
+  stripe_checkout_initiated:  "💳",
 };
 
 // ── ヘルパー ──────────────────────────────────────────────────────────────

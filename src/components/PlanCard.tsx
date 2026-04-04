@@ -10,6 +10,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { getDevToken } from "@/lib/api-client";
+import { buildPricingUrl } from "@/lib/pricing-url";
 
 // ── 型定義 ──────────────────────────────────────────────────────────────
 interface PlanData {
@@ -186,7 +187,7 @@ export function PlanCard({ oaId }: { oaId: string }) {
             作品を追加・機能を拡張するには上位プランへのアップグレードが必要です。
           </p>
           <Link
-            href="/pricing?source=settings"
+            href={buildPricingUrl({ source: "settings", from: plan.name, to: "editor", oaId })}
             style={{
               display:        "inline-flex",
               alignItems:     "center",

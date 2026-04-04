@@ -36,21 +36,29 @@ export async function trackBillingEventLog({
   workId,
   event,
   source,
+  fromPlan,
+  toPlan,
 }: {
-  userId?:  string | null;
-  oaId?:   string | null;
-  workId?:  string | null;
-  event:    BillingEvent;
-  source?:  string | null;
+  userId?:   string | null;
+  oaId?:    string | null;
+  workId?:   string | null;
+  event:     BillingEvent;
+  source?:   string | null;
+  /** 遷移元プラン名（例: "tester"）*/
+  fromPlan?: string | null;
+  /** 遷移先プラン名（例: "editor"）*/
+  toPlan?:   string | null;
 }): Promise<void> {
   try {
     await prisma.billingEventLog.create({
       data: {
-        userId:  userId  ?? null,
-        oaId:    oaId    ?? null,
-        workId:  workId  ?? null,
+        userId:   userId    ?? null,
+        oaId:     oaId      ?? null,
+        workId:   workId    ?? null,
         event,
-        source:  source  ?? null,
+        source:   source    ?? null,
+        fromPlan: fromPlan  ?? null,
+        toPlan:   toPlan    ?? null,
       },
     });
   } catch (err) {

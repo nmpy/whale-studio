@@ -9,6 +9,7 @@ export const BILLING_EVENTS = [
   "pricing_click_from_preview",
   "pricing_cta_click",
   "pricing_feedback_submit",
+  "stripe_checkout_initiated",
 ] as const;
 
 export type BillingEvent = (typeof BILLING_EVENTS)[number];
@@ -22,4 +23,5 @@ export const BILLING_EVENT_LABELS: Record<BillingEvent, string> = {
   pricing_click_from_preview: "プレビュー後から遷移",
   pricing_cta_click:          "CTA クリック（このプランを使う）",
   pricing_feedback_submit:    "フィードバック送信完了",
+  stripe_checkout_initiated:  "Stripe Checkout 開始",
 };

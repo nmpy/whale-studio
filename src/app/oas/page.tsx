@@ -217,10 +217,22 @@ function RowActions({ oaId, isOwner, onDelete }: {
 }
 
 /* ── 作品名セル ──────────────────────────────────────────────────────────── */
-function WorksCell({ oaId, worksMap }: { oaId: string; worksMap: Record<string, WorkListItem[]> }) {
+function WorksCell({
+  oaId,
+  worksMap,
+  worksLoading,
+}: {
+  oaId: string;
+  worksMap: Record<string, WorkListItem[]>;
+  worksLoading: boolean;
+}) {
+  // 作品リスト取得中はスケルトン表示
+  if (worksLoading) {
+    return <div className="skeleton" style={{ width: 100, height: 14, borderRadius: 4 }} />;
+  }
   const ws = worksMap[oaId];
-  if (!ws) return <span style={{ ...VALUE_STYLE, color: "var(--text-muted)" }}>—</span>;
-  if (ws.length === 0) return (
+  // API エラー等で取得できなかった場合（undefined）は "+ 作品を追加" を表示
+  if (!ws || ws.length === 0) return (
     <Link
       href={`/oas/${oaId}/works`}
       style={{
@@ -320,12 +332,13 @@ function SkeletonList() {
 
 /* ── メインページ ──────────────────────────────────────────────────────────── */
 export default function OaListPage() {
-  const [items,    setItems]    = useState<OaListItem[]>([]);
-  const [meta,     setMeta]     = useState<OaListMeta | null>(null);
-  const [loading,  setLoading]  = useState(true);
-  const [error,    setError]    = useState<string | null>(null);
-  const [page,     setPage]     = useState(1);
-  const [worksMap, setWorksMap] = useState<Record<string, WorkListItem[]>>({});
+  const [items,        setItems]        = useState<OaListItem[]>([]);
+  const [meta,         setMeta]         = useState<OaListMeta | null>(null);
+  const [loading,      setLoading]      = useState(true);
+  const [worksLoading, setWorksLoading] = useState(true);
+  const [error,        setError]        = useState<string | null>(null);
+  const [page,         setPage]         = useState(1);
+  const [worksMap,     setWorksMap]     = useState<Record<string, WorkListItem[]>>({});
   const { showToast }           = useToast();
   const { effectiveRole, isPlatformOwner, setPreviewRole } = usePlatformRole();
 
@@ -333,11 +346,17 @@ export default function OaListPage() {
 
   async function load(p: number) {
     setLoading(true);
+    setWorksLoading(true);
     setError(null);
     try {
       const result = await oaApi.list(getDevToken(), { page: p, limit: 20 });
       setItems(result.data);
       setMeta(result.meta);
+      // OA一覧が揃った時点で loading を解除 → OAカードを先行表示
+      setLoading(false);
+
+      // 作品リストは OA 一覧とは独立してフェッチ（既存作品の表示は subscription 制限とは無関係）
+      // エラー時は [] として扱うが、OAカード自体の表示はブロックしない
       const token = getDevToken();
       const pairs = await Promise.all(
         result.data.map((oa) =>
@@ -351,8 +370,9 @@ export default function OaListPage() {
       setWorksMap(map);
     } catch (e) {
       setError(e instanceof Error ? e.message : "読み込みに失敗しました");
-    } finally {
       setLoading(false);
+    } finally {
+      setWorksLoading(false);
     }
   }
 
@@ -416,7 +436,7 @@ export default function OaListPage() {
       )}
 
       {/* ── 統計サマリー ── */}
-      {!loading && items.length > 0 && (
+      {!loading && !worksLoading && items.length > 0 && (
         <SummaryBar items={items} worksMap={worksMap} />
       )}
 
@@ -557,7 +577,7 @@ export default function OaListPage() {
                       {/* 作品名 */}
                       <div style={{ minWidth: 120, maxWidth: 280 }}>
                         <div style={LABEL_STYLE}>作品名</div>
-                        <WorksCell oaId={oa.id} worksMap={worksMap} />
+                        <WorksCell oaId={oa.id} worksMap={worksMap} worksLoading={worksLoading} />
                       </div>
 
                       {/* 作成日時 */}

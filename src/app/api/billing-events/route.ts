@@ -16,12 +16,15 @@ import { trackBillingEventLog } from "@/lib/billing-events";
 import { z } from "zod";
 
 const schema = z.object({
-  event:   z.enum(BILLING_EVENTS),
+  event:     z.enum(BILLING_EVENTS),
   // 流入元・補助情報（省略可）
-  source:  z.string().max(64).nullable().optional(),
+  source:    z.string().max(64).nullable().optional(),
   // コンテキスト情報（省略可）
-  oa_id:   z.string().nullable().optional(),
-  work_id: z.string().nullable().optional(),
+  oa_id:     z.string().nullable().optional(),
+  work_id:   z.string().nullable().optional(),
+  // プラン遷移コンテキスト（省略可）
+  from_plan: z.string().max(64).nullable().optional(),
+  to_plan:   z.string().max(64).nullable().optional(),
 });
 
 export const POST = withAuth(async (req, _ctx, user) => {
@@ -30,7 +33,7 @@ export const POST = withAuth(async (req, _ctx, user) => {
     const parsed = schema.safeParse(body);
     if (!parsed.success) return badRequest("イベント種別が不正です");
 
-    const { event, source, oa_id, work_id } = parsed.data;
+    const { event, source, oa_id, work_id, from_plan, to_plan } = parsed.data;
 
     // ── 集計用テーブル（billing_events）——————————————————————————
     await prisma.billingEvent.create({
@@ -42,11 +45,13 @@ export const POST = withAuth(async (req, _ctx, user) => {
 
     // ── 詳細ログテーブル（billing_event_logs）— fire-and-forget ——————
     trackBillingEventLog({
-      userId: user.id ?? null,
-      oaId:   oa_id   ?? null,
-      workId: work_id ?? null,
+      userId:   user.id    ?? null,
+      oaId:     oa_id      ?? null,
+      workId:   work_id    ?? null,
       event,
-      source: source  ?? null,
+      source:   source     ?? null,
+      fromPlan: from_plan  ?? null,
+      toPlan:   to_plan    ?? null,
     });
 
     return created({ ok: true });

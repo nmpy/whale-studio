@@ -193,11 +193,12 @@ export function AnnouncementBanner({ canPost = false }: { canPost?: boolean }) {
         if (Array.isArray(j.data) && j.data.length > 0) {
           setAnnouncements(j.data.map(fromApi));
         } else {
-          // DB にまだデータがない場合は静的フォールバック
-          setAnnouncements(FALLBACK_ANNOUNCEMENTS);
+          // DB が空のときは空状態 UI を表示（静的フォールバックは使わない）
+          setAnnouncements([]);
         }
       })
       .catch(() => {
+        // API 疎通エラー時のみ静的フォールバックを使用
         setAnnouncements(FALLBACK_ANNOUNCEMENTS);
       })
       .finally(() => setLoaded(true));
@@ -205,8 +206,6 @@ export function AnnouncementBanner({ canPost = false }: { canPost?: boolean }) {
 
   // ローディング中は何も表示しない（レイアウトシフト防止）
   if (!loaded) return null;
-
-  if (announcements.length === 0 && !canPost) return null;
 
   // フィルタリング
   const filtered = announcements
@@ -301,62 +300,88 @@ export function AnnouncementBanner({ canPost = false }: { canPost?: boolean }) {
           borderRadius: 10,
           overflow: "hidden",
         }}>
-          {/* ── カテゴリタブ ── */}
-          <div style={{
-            display: "flex",
-            gap: 0,
-            padding: "10px 16px",
-            borderBottom: "1px solid var(--color-border-soft, #f0f0f0)",
-            background: "var(--color-bg-subtle, #f7f7f7)",
-            overflowX: "auto",
-          }}>
-            {TABS.map((tab) => {
-              const active = activeTab === tab.value;
-              return (
-                <button
-                  key={tab.value}
-                  type="button"
-                  onClick={() => setActiveTab(tab.value)}
-                  style={{
-                    padding: "4px 12px",
-                    fontSize: 11,
-                    fontWeight: active ? 700 : 400,
-                    color: active ? "var(--color-primary, #2F6F5E)" : "var(--color-text-muted, #999)",
-                    background: active ? "#fff" : "transparent",
-                    border: active ? "1px solid var(--color-border-default, #e5e5e5)" : "1px solid transparent",
-                    borderRadius: 6,
-                    cursor: "pointer",
-                    whiteSpace: "nowrap",
-                    transition: "all .1s",
-                    marginRight: 4,
-                  }}
-                >
-                  {tab.label}
-                </button>
-              );
-            })}
-          </div>
-
-          {/* ── お知らせ一覧 ── */}
-          {filtered.length === 0 ? (
+          {/* ── お知らせが 0 件のとき: 空状態 UI ── */}
+          {announcements.length === 0 ? (
             <div style={{
-              padding: "24px",
+              padding: "28px 20px",
               textAlign: "center",
-              fontSize: 12,
-              color: "var(--color-text-muted, #999)",
             }}>
-              該当するお知らせはありません
+              <p style={{
+                fontSize: 13,
+                fontWeight: 600,
+                color: "var(--color-text-primary, #1a1a1a)",
+                marginBottom: 6,
+              }}>
+                まだお知らせはありません
+              </p>
+              <p style={{
+                fontSize: 12,
+                color: "var(--color-text-muted, #999)",
+                lineHeight: 1.6,
+              }}>
+                アップデートやご案内がある場合、ここに表示されます。
+              </p>
             </div>
           ) : (
-            <div>
-              {filtered.map((item, i) => (
-                <AnnouncementRow
-                  key={item.id}
-                  item={item}
-                  isLast={i === filtered.length - 1}
-                />
-              ))}
-            </div>
+            <>
+              {/* ── カテゴリタブ ── */}
+              <div style={{
+                display: "flex",
+                gap: 0,
+                padding: "10px 16px",
+                borderBottom: "1px solid var(--color-border-soft, #f0f0f0)",
+                background: "var(--color-bg-subtle, #f7f7f7)",
+                overflowX: "auto",
+              }}>
+                {TABS.map((tab) => {
+                  const active = activeTab === tab.value;
+                  return (
+                    <button
+                      key={tab.value}
+                      type="button"
+                      onClick={() => setActiveTab(tab.value)}
+                      style={{
+                        padding: "4px 12px",
+                        fontSize: 11,
+                        fontWeight: active ? 700 : 400,
+                        color: active ? "var(--color-primary, #2F6F5E)" : "var(--color-text-muted, #999)",
+                        background: active ? "#fff" : "transparent",
+                        border: active ? "1px solid var(--color-border-default, #e5e5e5)" : "1px solid transparent",
+                        borderRadius: 6,
+                        cursor: "pointer",
+                        whiteSpace: "nowrap",
+                        transition: "all .1s",
+                        marginRight: 4,
+                      }}
+                    >
+                      {tab.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* ── お知らせ一覧 ── */}
+              {filtered.length === 0 ? (
+                <div style={{
+                  padding: "24px",
+                  textAlign: "center",
+                  fontSize: 12,
+                  color: "var(--color-text-muted, #999)",
+                }}>
+                  該当するお知らせはありません
+                </div>
+              ) : (
+                <div>
+                  {filtered.map((item, i) => (
+                    <AnnouncementRow
+                      key={item.id}
+                      item={item}
+                      isLast={i === filtered.length - 1}
+                    />
+                  ))}
+                </div>
+              )}
+            </>
           )}
         </div>
       )}

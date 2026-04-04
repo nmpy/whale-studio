@@ -700,6 +700,10 @@ model BillingEventLog {
   event     String
   /// pricing への流入元・補助情報（例: "header" / "banner" / "gate" / "preview"）
   source    String?
+  /// 遷移元プラン名（例: "tester"）。null = コンテキスト不明
+  fromPlan  String?  @map("from_plan")
+  /// 遷移先プラン名（例: "editor"）。null = コンテキスト不明
+  toPlan    String?  @map("to_plan")
   createdAt DateTime @default(now()) @map("created_at")
 
   @@index([event])

@@ -22,11 +22,14 @@ function LoginForm() {
   const nextPath   = searchParams.get("next") ?? "/oas";
   const errorReason = searchParams.get("error");
 
-  const [email,    setEmail]    = useState("");
-  const [password, setPassword] = useState("");
-  const [mode,     setMode]     = useState<"password" | "magic">("password");
-  const [status,   setStatus]   = useState<"idle" | "loading" | "sent" | "error">("idle");
-  const [errorMsg, setErrorMsg] = useState("");
+  const [email,        setEmail]        = useState("");
+  const [password,     setPassword]     = useState("");
+  const [mode,         setMode]         = useState<"password" | "magic">("password");
+  const [status,       setStatus]       = useState<"idle" | "loading" | "sent" | "error">("idle");
+  const [errorMsg,     setErrorMsg]     = useState("");
+  // パスワード設定/再設定
+  const [resetStatus,  setResetStatus]  = useState<"idle" | "loading" | "sent" | "error">("idle");
+  const [resetMsg,     setResetMsg]     = useState("");
 
   const supabaseConfigured =
     !!process.env.NEXT_PUBLIC_SUPABASE_URL &&
@@ -38,6 +41,28 @@ function LoginForm() {
       router.replace(nextPath);
     }
   }, [supabaseConfigured, nextPath, router]);
+
+  async function handlePasswordReset() {
+    if (!supabaseConfigured) return;
+    if (!email.trim()) {
+      setResetMsg("メールアドレスを入力してから押してください");
+      setResetStatus("error");
+      return;
+    }
+    setResetStatus("loading");
+    setResetMsg("");
+    const supabase = createSupabaseBrowserClient();
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+      redirectTo: `${window.location.origin}/auth/reset-password`,
+    });
+    if (error) {
+      setResetMsg(error.message);
+      setResetStatus("error");
+    } else {
+      setResetMsg("パスワード設定用のリンクをお送りしました。メールをご確認ください。");
+      setResetStatus("sent");
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -195,7 +220,7 @@ function LoginForm() {
 
             <button
               type="button"
-              onClick={() => { setMode(mode === "password" ? "magic" : "password"); setErrorMsg(""); }}
+              onClick={() => { setMode(mode === "password" ? "magic" : "password"); setErrorMsg(""); setResetStatus("idle"); setResetMsg(""); }}
               style={{
                 width:          "100%",
                 marginTop:      10,
@@ -211,6 +236,55 @@ function LoginForm() {
                 ? "パスワードなしでログイン（マジックリンク）"
                 : "パスワードでログイン"}
             </button>
+
+            {/* ── パスワード設定/再設定（パスワードモード時のみ） ── */}
+            {mode === "password" && (
+              <div style={{ marginTop: 16, borderTop: "1px solid #f3f4f6", paddingTop: 14 }}>
+                {resetStatus === "sent" ? (
+                  <div style={{
+                    background: "#f0fdf4",
+                    border: "1px solid #86efac",
+                    borderRadius: 8,
+                    padding: "10px 14px",
+                    fontSize: 12,
+                    color: "#166534",
+                    lineHeight: 1.6,
+                  }}>
+                    📬 {resetMsg}
+                  </div>
+                ) : (
+                  <>
+                    <p style={{ fontSize: 11, color: "#9ca3af", textAlign: "center", marginBottom: 8 }}>
+                      初めてログインする場合や、パスワードを忘れた場合
+                    </p>
+                    {resetStatus === "error" && resetMsg && (
+                      <p style={{ fontSize: 12, color: "#ef4444", textAlign: "center", marginBottom: 6 }}>
+                        {resetMsg}
+                      </p>
+                    )}
+                    <button
+                      type="button"
+                      onClick={handlePasswordReset}
+                      disabled={resetStatus === "loading"}
+                      style={{
+                        width:          "100%",
+                        padding:        "8px 0",
+                        background:     "none",
+                        border:         "1px solid #d1d5db",
+                        borderRadius:   8,
+                        cursor:         resetStatus === "loading" ? "not-allowed" : "pointer",
+                        fontSize:       12,
+                        fontWeight:     600,
+                        color:          "#374151",
+                        transition:     "border-color .15s, color .15s",
+                      }}
+                    >
+                      {resetStatus === "loading" ? "送信中..." : "パスワードを設定する / 再設定する"}
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
           </form>
         )}
       </div>

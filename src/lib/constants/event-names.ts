@@ -54,9 +54,13 @@ export interface OnboardingBlockedPayload {
 /** pricing閲覧・ゲート/バナー表示・CTAクリック */
 export interface UpgradeInterestPayload {
   /** アクション種別 */
-  action:  "view" | "cta_click" | "gate_shown" | "banner_shown";
+  action:  "view" | "cta_click" | "gate_shown" | "banner_shown" | "stripe_checkout_start";
   /** 流入元（例: "header" | "gate" | "banner" | "preview"） */
   source?: string;
+  /** 遷移元プラン名（例: "tester"）*/
+  from?:   string;
+  /** 遷移先プラン名（例: "editor"）*/
+  to?:     string;
 }
 
 /** API失敗・バリデーションエラー */
