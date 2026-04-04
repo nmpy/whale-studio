@@ -114,6 +114,7 @@ export interface MessageFormState {
   puzzle_type:           string;
   answer:                string;
   puzzle_hint_text:      string;
+  hint_mode:             "always" | "on_wrong" | "hidden";
   answer_match_type:     AnswerMatchType[];
   correct_action:        CorrectAction;
   correct_text:          string;
@@ -145,6 +146,7 @@ export const EMPTY_MESSAGE_FORM: MessageFormState = {
   puzzle_type:           "",
   answer:                "",
   puzzle_hint_text:      "",
+  hint_mode:             "always",
   answer_match_type:     ["exact"],
   correct_action:        "text",
   correct_text:          "",
@@ -172,6 +174,7 @@ export function msgToFormState(msg: {
   puzzle_type?:          string | null;
   answer?:               string | null;
   puzzle_hint_text?:     string | null;
+  hint_mode?:            string | null;
   answer_match_type?:    string[] | null;
   correct_action?:       string | null;
   correct_text?:            string | null;
@@ -181,6 +184,7 @@ export function msgToFormState(msg: {
   lag_ms?:                  number | null;
   sort_order?:              number;
   is_active?:               boolean;
+  phase?:                   { phase_type?: string | null } | null;
 }): MessageFormState {
   // Parse carousel items from body JSON if message_type is carousel
   let carousel_items: MessageCarouselCard[] = [];
@@ -193,9 +197,9 @@ export function msgToFormState(msg: {
     }
   }
 
-  // kind="response" かつ phase_id=null の場合は UI上の "global" 種別として復元する
+  // kind="response" かつ phase_id=null またはグローバルフェーズの場合は UI上の "global" 種別として復元する
   const resolvedKind: MessageKind =
-    msg.kind === "response" && (msg.phase_id === null || msg.phase_id === undefined)
+    msg.kind === "response" && (msg.phase_id === null || msg.phase_id === undefined || msg.phase?.phase_type === "global")
       ? "global"
       : (msg.kind as MessageKind) ?? "normal";
 
@@ -219,6 +223,7 @@ export function msgToFormState(msg: {
     puzzle_type:           msg.puzzle_type     ?? "",
     answer:                msg.answer          ?? "",
     puzzle_hint_text:      msg.puzzle_hint_text ?? "",
+    hint_mode: (msg.hint_mode as "always" | "on_wrong" | "hidden") ?? "always",
     answer_match_type:     (msg.answer_match_type ?? ["exact"]) as AnswerMatchType[],
     correct_action:        (msg.correct_action ?? "text") as CorrectAction,
     correct_text:            msg.correct_text    ?? "",
@@ -270,6 +275,7 @@ export function formStateToMsgBody(form: MessageFormState) {
     incorrect_text:          isPuzzle ? form.incorrect_text || null : null,
     incorrect_quick_replies: isPuzzle && form.incorrect_quick_replies.length > 0 ? form.incorrect_quick_replies : null,
     correct_next_phase_id:   isPuzzle ? form.correct_next_phase_id || null : null,
+    hint_mode: form.hint_mode,
   };
   console.log("[formStateToMsgBody] payload:", JSON.stringify(payload, null, 2));
   return payload;
@@ -396,6 +402,7 @@ const QR_PHASE_TYPE_LABEL: Record<string, string> = {
   start:  "開始",
   normal: "通常",
   ending: "エンディング",
+  global: "全フェーズ共通",
 };
 
 /** QR アイテムの遷移先種別を返す */
@@ -1005,6 +1012,62 @@ function QuickReplyEditor({ items, onChange, responseMessages, phases, transitio
                               <div style={{ ...hintText, marginTop: 4 }}>ヒント本文の直後に続けて送信されます</div>
                             </div>
                             <QrHintPreview hintText={item.hint_text} hintFollowup={item.hint_followup} />
+                            {/* ヒント段階と導線ラベル */}
+                            <div style={{ marginTop: 10, padding: "10px 12px", background: "#fffbeb", border: "1px solid #fcd34d", borderRadius: 8 }}>
+                              <div style={{ fontSize: 12, fontWeight: 600, color: "#92400e", marginBottom: 8 }}>ヒント導線設定</div>
+                              <div className="form-group" style={{ marginBottom: 8 }}>
+                                <label style={{ ...fieldLabel, fontSize: 12 }}>
+                                  ヒント段階（順序）
+                                  <span style={{ fontWeight: 400, color: "#9ca3af", marginLeft: 4 }}>（任意）</span>
+                                </label>
+                                <input
+                                  type="number"
+                                  className="form-input"
+                                  min={1}
+                                  max={99}
+                                  value={(item as { hint_level?: number }).hint_level ?? ""}
+                                  onChange={(e) => {
+                                    const v = e.target.value;
+                                    updateItem(index, { hint_level: v ? parseInt(v, 10) : undefined } as Partial<import("@/types").QuickReplyItem>);
+                                  }}
+                                  placeholder="例: 1（最初のヒント）、2（次のヒント）"
+                                  style={{ fontSize: 13 }}
+                                />
+                                <div style={{ ...hintText, marginTop: 3 }}>数字が小さいほど先に表示されます。複数ヒントがある場合に設定してください。</div>
+                              </div>
+                              <div className="form-group" style={{ marginBottom: 8 }}>
+                                <label style={{ ...fieldLabel, fontSize: 12 }}>
+                                  「さらにヒント」ボタンラベル
+                                  <span style={{ fontWeight: 400, color: "#9ca3af", marginLeft: 4 }}>（任意）</span>
+                                </label>
+                                <input
+                                  type="text"
+                                  className="form-input"
+                                  maxLength={20}
+                                  value={(item as { hint_next_label?: string }).hint_next_label ?? ""}
+                                  onChange={(e) => updateItem(index, { hint_next_label: e.target.value || undefined } as Partial<import("@/types").QuickReplyItem>)}
+                                  placeholder="さらにヒント"
+                                  style={{ fontSize: 13 }}
+                                />
+                                <div style={{ ...hintText, marginTop: 3 }}>このヒントを表示した後に「次のヒント」ボタンとして表示されるラベルです。</div>
+                              </div>
+                              <div className="form-group" style={{ marginBottom: 0 }}>
+                                <label style={{ ...fieldLabel, fontSize: 12 }}>
+                                  「問題に戻る」ボタンラベル
+                                  <span style={{ fontWeight: 400, color: "#9ca3af", marginLeft: 4 }}>（任意）</span>
+                                </label>
+                                <input
+                                  type="text"
+                                  className="form-input"
+                                  maxLength={20}
+                                  value={(item as { hint_cancel_label?: string }).hint_cancel_label ?? ""}
+                                  onChange={(e) => updateItem(index, { hint_cancel_label: e.target.value || undefined } as Partial<import("@/types").QuickReplyItem>)}
+                                  placeholder="問題に戻る"
+                                  style={{ fontSize: 13 }}
+                                />
+                                <div style={{ ...hintText, marginTop: 3 }}>このヒントを表示した後に「キャンセル」ボタンとして表示されるラベルです。</div>
+                              </div>
+                            </div>
                           </>
                         )}
                       </div>
@@ -2469,7 +2532,7 @@ export function MessageForm({
                 {form.kind === "response" && "trigger_keyword が一致したときのみ返信します。フェーズは進みません。"}
                 {form.kind === "normal"   && "フェーズ遷移時またはフェーズ表示時に送信されます。"}
                 {form.kind === "hint"     && "ヒント用メッセージです（将来拡張）。"}
-                {form.kind === "global"   && "どのフェーズにいても反応します。ヒント・ヘルプ・やり直し案内などに使います。キーワードは必須です。フェーズ設定は無視されます。"}
+                {form.kind === "global"   && "どのフェーズにいても反応します（⭐ 全フェーズ共通）。ヒント・ヘルプ・やり直し案内などに使います。キーワードは必須です。"}
               </div>
               {form.kind === "global" && (
                 <div style={{
@@ -2554,7 +2617,7 @@ export function MessageForm({
                   </option>
                 ))}
               </select>
-              <div style={hintText}>フェーズ未指定の場合、全フェーズで適用されます</div>
+              <div style={hintText}>フェーズは必ず指定してください。全フェーズで反応させたい場合は「メッセージ役割」→「共通メッセージ」を選択してください。</div>
             </div>
             )}
           </SectionAccordion>
@@ -3389,6 +3452,41 @@ export function MessageForm({
                 phases={phases}
                 transitionMessages={allMessages.filter((m) => m.id !== messageId)}
               />
+            </div>
+
+            {/* ヒント表示モード */}
+            <div className="form-group" style={{ marginBottom: 16 }}>
+              <label style={fieldLabel}>ヒント表示モード</label>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {([
+                  { value: "always",   label: "💡 常に表示",        desc: "クイックリプライにヒントボタンを常時表示します" },
+                  { value: "on_wrong", label: "⚠️ 不正解時のみ",   desc: "不正解の回答をした後にのみヒントボタンを表示します" },
+                  { value: "hidden",   label: "🚫 非表示",          desc: "ヒントボタンを表示しません" },
+                ] as const).map((opt) => (
+                  <label
+                    key={opt.value}
+                    style={{
+                      display: "flex", alignItems: "flex-start", gap: 10,
+                      padding: "8px 12px", borderRadius: 8, cursor: "pointer",
+                      border: `1.5px solid ${form.hint_mode === opt.value ? "#6366f1" : "#e5e7eb"}`,
+                      background: form.hint_mode === opt.value ? "#f5f3ff" : "#fff",
+                    }}
+                  >
+                    <input
+                      type="radio"
+                      name="hint_mode"
+                      value={opt.value}
+                      checked={form.hint_mode === opt.value}
+                      onChange={() => set("hint_mode", opt.value)}
+                      style={{ marginTop: 2, accentColor: "#6366f1" }}
+                    />
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: "#374151" }}>{opt.label}</div>
+                      <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 1 }}>{opt.desc}</div>
+                    </div>
+                  </label>
+                ))}
+              </div>
             </div>
 
             {/* puzzle_hint_text */}

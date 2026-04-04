@@ -257,6 +257,8 @@ model Message {
   answer             String?  @map("answer")
   /// ヒントテキスト（任意）
   puzzleHintText     String?  @map("puzzle_hint_text")
+  /// ヒント表示モード: "always"（常時）| "on_wrong"（不正解時のみ）| "hidden"（非表示）
+  hintMode       String   @default("always") @map("hint_mode")
   /// 表記ゆれ許容設定（JSON配列文字列: ["exact","ignore_punctuation","normalize_width"]）
   answerMatchType    String   @default("[\"exact\"]") @map("answer_match_type")
   /// 正解時の挙動: "text" | "text_and_transition" | "transition"

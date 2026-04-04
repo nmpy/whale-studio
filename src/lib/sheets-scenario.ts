@@ -69,6 +69,7 @@ function buildRuntimePhaseFromSheets(
       flex_payload_json: null,
       quick_replies:     null,
       lag_ms:            0,
+      hint_mode:         "always" as import("@/types").HintMode,
       sort_order:        msg.sort_order,
       character:    char
         ? {

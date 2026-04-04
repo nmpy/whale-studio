@@ -95,6 +95,18 @@ export const POST = withAuth(async (req, _ctx, user) => {
       },
     });
 
+    // グローバルフェーズを自動作成（全フェーズ共通メッセージ用）
+    await prisma.phase.create({
+      data: {
+        workId:      work.id,
+        phaseType:   "global",
+        name:        "全フェーズ共通",
+        description: "どのフェーズでも反応するメッセージ（ヒント・ヘルプ等）",
+        sortOrder:   -1,
+        isActive:    true,
+      },
+    });
+
     // active 状態で作成した場合はキャッシュを無効化
     if (work.publishStatus === "active") {
       await activeCache.delete(CACHE_KEY.work(work.oaId));

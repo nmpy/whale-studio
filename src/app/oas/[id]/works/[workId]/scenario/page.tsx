@@ -22,6 +22,7 @@ const PHASE_TYPE_META: Record<PhaseType, { label: string; color: string; bg: str
   start:  { label: "開始",         color: "#16a34a", bg: "#f0fdf4", border: "#bbf7d0" },
   normal: { label: "通常",         color: "#2563eb", bg: "#eff6ff", border: "#bfdbfe" },
   ending: { label: "エンディング", color: "#9333ea", bg: "#faf5ff", border: "#e9d5ff" },
+  global: { label: "全フェーズ共通", color: "#b45309", bg: "#fffbeb", border: "#fcd34d" },
 };
 
 const PHASE_TYPE_OPTIONS: { value: PhaseType; label: string; dot: string }[] = [
@@ -95,7 +96,9 @@ export default function ScenarioPage() {
         messageApi.list(token, workId),
       ]);
       setWorkTitle(work.title);
-      setPhases(phaseList.sort((a, b) => a.sort_order - b.sort_order));
+      // global フェーズはシナリオエディタに表示しない
+      const nonGlobalPhases = phaseList.filter(p => p.phase_type !== "global");
+      setPhases(nonGlobalPhases.sort((a, b) => a.sort_order - b.sort_order));
       setAllMessages(allMsgs);
       const sortedTransitions = transitionList.sort((a, b) => a.sort_order - b.sort_order);
       setTransitions(sortedTransitions);

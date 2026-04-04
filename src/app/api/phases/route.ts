@@ -54,11 +54,15 @@ export const GET = withAuth(async (req, _ctx, user) => {
       if (!check.ok) return check.response;
     }
 
+    // include_global=true のときのみ global フェーズを含める（デフォルトは除外）
+    const includeGlobal = searchParams.get("include_global") === "true";
+
     const phases = await prisma.phase.findMany({
       where: {
         workId:    query.work_id,
         ...(query.phase_type !== undefined && { phaseType: query.phase_type }),
         ...(query.is_active  !== undefined && { isActive:  query.is_active }),
+        ...(includeGlobal ? {} : { phaseType: { not: "global" } }),
       },
       orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
       include: { _count: { select: { messages: true, transitionsFrom: true } } },
@@ -84,6 +88,11 @@ export const POST = withAuth(async (req, _ctx, user) => {
     if (oaId) {
       const check = await requireRole(oaId, user.id, 'editor');
       if (!check.ok) return check.response;
+    }
+
+    // global フェーズはシステムが自動作成するため手動作成不可
+    if (data.phase_type === "global") {
+      return badRequest("「全フェーズ共通」フェーズはシステムが自動作成します。手動作成はできません");
     }
 
     // ─ 整合性チェック: start フェーズは1作品に1件まで ─

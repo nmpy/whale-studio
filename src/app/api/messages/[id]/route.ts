@@ -36,6 +36,7 @@ type PrismaMessageWithRelations = {
   correctText: string | null; incorrectText: string | null;
   incorrectQuickReplies: string | null;
   correctNextPhaseId: string | null;
+  hintMode: string;
   lagMs: number;
   sortOrder: number; isActive: boolean; createdAt: Date; updatedAt: Date;
   phase:     { id: string; name: string; phaseType: string } | null;
@@ -93,6 +94,7 @@ function toResponse(m: PrismaMessageWithRelations) {
     incorrect_text:          m.incorrectText,
     incorrect_quick_replies: parseQuickReplies(m.incorrectQuickReplies, m.id),
     correct_next_phase_id:   m.correctNextPhaseId,
+    hint_mode:             m.hintMode as import("@/types").HintMode,
     lag_ms:                m.lagMs,
     sort_order:            m.sortOrder,
     is_active:             m.isActive,
@@ -212,6 +214,7 @@ export const PATCH = withAuth<{ id: string }>(async (req, { params }, user) => {
         ...(data.puzzle_type       !== undefined && { puzzleType:      data.puzzle_type }),
         ...(data.answer            !== undefined && { answer:          data.answer }),
         ...(data.puzzle_hint_text  !== undefined && { puzzleHintText:  data.puzzle_hint_text }),
+        ...(data.hint_mode !== undefined && { hintMode: data.hint_mode }),
         ...(data.answer_match_type !== undefined && {
           answerMatchType: JSON.stringify(data.answer_match_type),
         }),
@@ -246,6 +249,10 @@ export const PATCH = withAuth<{ id: string }>(async (req, { params }, user) => {
     if (prevPhaseId === null || nextPhaseId === null) {
       await activeCache.delete(CACHE_KEY.globalKw(existing.workId));
     }
+    // global フェーズのメッセージ変更は globalKw キャッシュも無効化
+    if (updated.phase?.phaseType === "global") {
+      await activeCache.delete(CACHE_KEY.globalKw(existing.workId));
+    }
 
     return ok(toResponse(updated));
   } catch (err) {
@@ -263,7 +270,10 @@ export const DELETE = withAuth<{ id: string }>(async (_req, { params }, user) =>
   try {
     const existing = await prisma.message.findUnique({
       where: { id: params.id },
-      include: { work: { select: { oaId: true } } },
+      include: {
+        work: { select: { oaId: true } },
+        phase: { select: { phaseType: true } },
+      },
     });
     if (!existing) return notFound("メッセージ");
 
@@ -274,9 +284,13 @@ export const DELETE = withAuth<{ id: string }>(async (_req, { params }, user) =>
 
     // キャッシュ無効化
     if (existing.phaseId) {
-      await activeCache.delete(CACHE_KEY.phase(existing.phaseId));
-      // kind="start" メッセージの削除は startMsgs キャッシュも無効化する
-      await activeCache.delete(CACHE_KEY.startMsgs(existing.phaseId));
+      if (existing.phase?.phaseType === "global") {
+        await activeCache.delete(CACHE_KEY.globalKw(existing.workId));
+      } else {
+        await activeCache.delete(CACHE_KEY.phase(existing.phaseId));
+        // kind="start" メッセージの削除は startMsgs キャッシュも無効化する
+        await activeCache.delete(CACHE_KEY.startMsgs(existing.phaseId));
+      }
     } else {
       await activeCache.delete(CACHE_KEY.globalKw(existing.workId));
     }

@@ -11,6 +11,7 @@ const PHASE_TYPE_META: Record<PhaseType, { label: string; color: string; bg: str
   start:   { label: "開始",       color: "#16a34a", bg: "#f0fdf4" },
   normal:  { label: "通常",       color: "#2563eb", bg: "#eff6ff" },
   ending:  { label: "エンディング", color: "#9333ea", bg: "#faf5ff" },
+  global:  { label: "全フェーズ共通", color: "#b45309", bg: "#fffbeb" },
 };
 
 // ────────────────────────────────────────────────
@@ -243,6 +244,7 @@ function PlaygroundInner() {
         flex_payload_json: null,
         quick_replies: null,
         lag_ms: 0,
+        hint_mode: "always" as import("@/types").HintMode,
         sort_order: 0,
         character: null,
       });
@@ -256,6 +258,7 @@ function PlaygroundInner() {
           flex_payload_json: null,
           quick_replies: null,
           lag_ms: 0,
+          hint_mode: "always" as import("@/types").HintMode,
           sort_order: 1,
           character: null,
         });

@@ -34,6 +34,7 @@ const PHASE_TYPE_LABEL: Record<string, string> = {
   start:   "開始",
   normal:  "通常",
   ending:  "エンディング",
+  global:  "全フェーズ共通",
 };
 
 function CharIcon({ character }: { character: MessageWithRelations["character"]; size?: number }) {
@@ -118,6 +119,7 @@ const PHASE_TYPE_COLOR: Record<string, { bg: string; color: string; border: stri
   start:   { bg: "#eff6ff", color: "#1d4ed8", border: "#bfdbfe" },
   normal:  { bg: "#f0fdf4", color: "#166534", border: "#bbf7d0" },
   ending:  { bg: "#fdf4ff", color: "#7e22ce", border: "#e9d5ff" },
+  global:  { bg: "#fffbeb", color: "#b45309", border: "#fcd34d" },
 };
 
 const KIND_META: Record<string, { label: string; icon: string; bg: string; color: string }> = {
@@ -747,7 +749,7 @@ export default function MessagesPage() {
           "種別が「謎」の場合は謎管理で作成した謎を選択します",
         ]},
         { icon: "⚠️", title: "注意点", points: [
-          "フェーズ未設定かつ共通メッセージでないものは、どのフェーズでも送信されません",
+          "全フェーズ共通フェーズのメッセージはどのフェーズでもキーワードに反応します",
           "有効／無効の切り替えは各メッセージの編集画面から行います",
         ]},
       ]} />

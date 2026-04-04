@@ -170,6 +170,7 @@ export const POST = withAuth(async (req) => {
             flex_payload_json: m.flexPayloadJson ?? null,
             quick_replies:     quickReplies,
             lag_ms:            m.lagMs ?? 0,
+            hint_mode:         ((m as { hintMode?: string }).hintMode ?? "always") as import("@/types").HintMode,
             sort_order:        m.sortOrder,
             character:         m.character
               ? {

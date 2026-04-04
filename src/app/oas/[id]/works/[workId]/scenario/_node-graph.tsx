@@ -25,6 +25,7 @@ const PHASE_META: Record<PhaseType, { label: string; color: string; bg: string; 
   start:  { label: "開始",         color: "#16a34a", bg: "#f0fdf4", border: "#bbf7d0" },
   normal: { label: "通常",         color: "#2563eb", bg: "#eff6ff", border: "#bfdbfe" },
   ending: { label: "エンディング", color: "#9333ea", bg: "#faf5ff", border: "#e9d5ff" },
+  global: { label: "全フェーズ共通", color: "#b45309", bg: "#fffbeb", border: "#fcd34d" },
 };
 
 const MSG_KIND_META: Record<string, { label: string; color: string; border: string }> = {

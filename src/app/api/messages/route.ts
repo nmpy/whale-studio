@@ -43,6 +43,7 @@ function toResponse(m: {
   correctText?: string | null; incorrectText?: string | null;
   incorrectQuickReplies?: string | null;
   correctNextPhaseId?: string | null;
+  hintMode?: string;
   lagMs?: number;
   sortOrder: number; isActive: boolean; createdAt: Date; updatedAt: Date;
   phase?: { id: string; name: string; phaseType: string } | null;
@@ -74,6 +75,7 @@ function toResponse(m: {
     incorrect_text:          m.incorrectText ?? null,
     incorrect_quick_replies: parseQuickReplies(m.incorrectQuickReplies ?? null, m.id),
     correct_next_phase_id:   m.correctNextPhaseId ?? null,
+    hint_mode:            (m.hintMode ?? "always") as import("@/types").HintMode,
     lag_ms:               m.lagMs ?? 0,
     sort_order:           m.sortOrder,
     is_active:            m.isActive,
@@ -203,6 +205,7 @@ export const POST = withAuth(async (req, _ctx, user) => {
         puzzleType:         data.puzzle_type        ?? null,
         answer:             data.answer             ?? null,
         puzzleHintText:     data.puzzle_hint_text   ?? null,
+        hintMode:           data.hint_mode ?? "always",
         answerMatchType:    data.answer_match_type ? JSON.stringify(data.answer_match_type) : JSON.stringify(["exact"]),
         correctAction:      data.correct_action      ?? null,
         correctText:          data.correct_text        ?? null,
@@ -228,9 +231,13 @@ export const POST = withAuth(async (req, _ctx, user) => {
 
     // キャッシュ無効化（新規メッセージが追加されたフェーズ / グローバルキーワード）
     if (data.phase_id) {
-      await activeCache.delete(CACHE_KEY.phase(data.phase_id));
-      // kind="start" メッセージの追加は startMsgs キャッシュも無効化する
-      await activeCache.delete(CACHE_KEY.startMsgs(data.phase_id));
+      // global フェーズへのメッセージ追加は globalKw キャッシュを無効化
+      if (message.phase?.phaseType === "global") {
+        await activeCache.delete(CACHE_KEY.globalKw(data.work_id));
+      } else {
+        await activeCache.delete(CACHE_KEY.phase(data.phase_id));
+        await activeCache.delete(CACHE_KEY.startMsgs(data.phase_id));
+      }
     } else {
       await activeCache.delete(CACHE_KEY.globalKw(data.work_id));
     }

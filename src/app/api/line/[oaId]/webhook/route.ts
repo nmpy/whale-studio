@@ -170,7 +170,10 @@ async function getCachedGlobalKeywords(
     where: {
       workId,
       isActive:       true,
-      phaseId:        null,
+      OR: [
+        { phaseId: null },
+        { phase: { phaseType: "global" } },
+      ],
       triggerKeyword: { not: null },
       kind:           { notIn: ["start", "puzzle"] },
     },
@@ -290,11 +293,13 @@ function matchGlobalCmdInMemory(
 function matchHintFromPhase(
   phase:     PhaseRow,
   inputText: string,
-): { hintText: string; hintFollowup?: string; qrItems: import("@/types").QuickReplyItem[] } | null {
+): { hintText: string; hintFollowup?: string; qrItems: import("@/types").QuickReplyItem[]; matchedItem: import("@/types").QuickReplyItem } | null {
   const inputNorm  = normKw(inputText);
   const inputLoose = normKwLoose(inputText);
 
   for (const msg of phase.messages) {
+    // hint_mode=hidden のメッセージはヒント照合をスキップ
+    if ((msg as { hintMode?: string }).hintMode === "hidden") continue;
     if (!msg.quickReplies) continue;
     let items: import("@/types").QuickReplyItem[];
     try {
@@ -319,7 +324,7 @@ function matchHintFromPhase(
           `[cache][hint] マッチ msgId=${msg.id.slice(0, 8)}`,
           `key="${item.value ?? item.label}" hint_text="${hintText.slice(0, 30)}..."`,
         );
-        return { hintText, hintFollowup, qrItems: items };
+        return { hintText, hintFollowup, qrItems: items, matchedItem: item };
       }
     }
   }
@@ -515,6 +520,8 @@ function matchPuzzleFromPhase(
     type:                  "incorrect",
     incorrectText:         puzzles[0]?.incorrectText ?? null,
     incorrectQuickReplies: puzzles[0]?.incorrectQuickReplies ?? null,
+    hintMode:              (puzzles[0] as { hintMode?: string })?.hintMode ?? "always",
+    hintQrItems:           puzzles[0]?.quickReplies ?? null,
   };
 }
 
@@ -1167,9 +1174,29 @@ async function handleTextEvent({
         ? [{ type: "text" as const, text: hintResult.hintFollowup, sender: systemSender } as import("@/lib/line").LineMessage]
         : []),
     ];
-    // ヒント返答後もクイックリプライを再表示する（LINE では返答でQRが消えるため再付与）
-    const hintQr = buildQuickReplyFromItems(hintResult.qrItems);
-    if (hintQr) (hintMsgs[hintMsgs.length - 1] as import("@/lib/line").LineTextMessage).quickReply = hintQr;
+    // ヒント返答後の導線 QR（同じ QR を再表示せず、「さらにヒント」「問題に戻る」を構築）
+    const hintItems = hintResult.qrItems
+      .filter((i) => i.action === "hint" && i.enabled !== false)
+      .sort((a, b) => ((a as { hint_level?: number }).hint_level ?? 999) - ((b as { hint_level?: number }).hint_level ?? 999));
+    const currentHintIdx = hintItems.indexOf(hintResult.matchedItem);
+    const nextHintItem   = currentHintIdx >= 0 && currentHintIdx + 1 < hintItems.length
+      ? hintItems[currentHintIdx + 1]
+      : null;
+
+    const navQrItems: import("@/types").QuickReplyItem[] = [];
+    if (nextHintItem) {
+      const nextLabel = (hintResult.matchedItem as { hint_next_label?: string }).hint_next_label?.trim() || "さらにヒント";
+      navQrItems.push({
+        label:  nextLabel,
+        action: "text",
+        value:  (nextHintItem.value?.trim() || nextHintItem.label).slice(0, 20),
+      });
+    }
+    const cancelLabel = (hintResult.matchedItem as { hint_cancel_label?: string }).hint_cancel_label?.trim() || "問題に戻る";
+    navQrItems.push({ label: cancelLabel, action: "text", value: cancelLabel });
+
+    const hintNavQr = buildQuickReplyFromItems(navQrItems);
+    if (hintNavQr) (hintMsgs[hintMsgs.length - 1] as import("@/lib/line").LineTextMessage).quickReply = hintNavQr;
     const tReplyHint = Date.now();
     await replyToLine(replyToken, hintMsgs, token);
     console.log(
@@ -1337,6 +1364,24 @@ async function handleTextEvent({
           }
         } catch {
           console.warn("[Webhook][puzzle] incorrectQuickReplies JSON parse error");
+        }
+      }
+      // on_wrong モード: 不正解時にヒント QR を追加
+      if (puzzleResult.hintMode === "on_wrong" && puzzleResult.hintQrItems) {
+        try {
+          const allQrItems = JSON.parse(puzzleResult.hintQrItems) as import("@/types").QuickReplyItem[];
+          const hintOnlyItems = allQrItems.filter((i) => i.action === "hint" && i.enabled !== false);
+          if (hintOnlyItems.length > 0) {
+            // 既存の incorrectQr と hint アイテムをマージ
+            let existingItems: import("@/types").QuickReplyItem[] = [];
+            if (puzzleResult.incorrectQuickReplies) {
+              try { existingItems = JSON.parse(puzzleResult.incorrectQuickReplies); } catch { /* ignore */ }
+            }
+            const mergedItems = [...existingItems, ...hintOnlyItems];
+            incorrectQr = buildQuickReplyFromItems(mergedItems);
+          }
+        } catch {
+          console.warn("[Webhook][puzzle] on_wrong hintQrItems parse error");
         }
       }
       const tReplyPuzzle = Date.now();
@@ -2060,7 +2105,7 @@ type PuzzleRecord = {
 
 type PuzzleMatchResult =
   | null                                                                                                    // このフェーズにパズルなし（遷移照合へ進む）
-  | { type: "incorrect"; incorrectText: string | null; incorrectQuickReplies: string | null }              // パズルあり・不正解
+  | { type: "incorrect"; incorrectText: string | null; incorrectQuickReplies: string | null; hintMode: string; hintQrItems: string | null }              // パズルあり・不正解
   | { type: "correct";   puzzle: PuzzleRecord };                                                           // 正解
 
 /**
@@ -2129,6 +2174,8 @@ async function matchPuzzleAnswer(
       incorrectText:         true,
       incorrectQuickReplies: true,
       correctNextPhaseId:    true,
+      hintMode:              true,
+      quickReplies:          true,
     },
     orderBy: { sortOrder: "asc" },
   });
@@ -2158,6 +2205,8 @@ async function matchPuzzleAnswer(
     type:                  "incorrect",
     incorrectText:         puzzles[0]?.incorrectText ?? null,
     incorrectQuickReplies: puzzles[0]?.incorrectQuickReplies ?? null,
+    hintMode:              puzzles[0]?.hintMode ?? "always",
+    hintQrItems:           puzzles[0]?.quickReplies ?? null,
   };
 }
 

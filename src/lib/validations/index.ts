@@ -121,7 +121,7 @@ export const characterQuerySchema = z.object({
 // ────────────────────────────────────────────────
 export const createPhaseSchema = z.object({
   work_id:       uuidSchema,
-  phase_type:    z.enum(["start", "normal", "ending"]).default("normal"),
+  phase_type:    z.enum(["start", "normal", "ending", "global"]).default("normal"),
   name:          z.string().min(1, "フェーズ名は必須です").max(100),
   description:   z.string().max(500).optional(),
   /** 開始トリガーキーワード（phaseType="start" のみ有効） */
@@ -131,7 +131,7 @@ export const createPhaseSchema = z.object({
 });
 
 export const updatePhaseSchema = z.object({
-  phase_type:    z.enum(["start", "normal", "ending"]).optional(),
+  phase_type:    z.enum(["start", "normal", "ending", "global"]).optional(),
   name:          z.string().min(1).max(100).optional(),
   description:   z.string().max(500).optional().nullable(),
   /** 開始トリガーキーワード（null で削除） */
@@ -142,7 +142,7 @@ export const updatePhaseSchema = z.object({
 
 export const phaseQuerySchema = z.object({
   work_id:    uuidSchema,
-  phase_type: z.enum(["start", "normal", "ending"]).optional(),
+  phase_type: z.enum(["start", "normal", "ending", "global"]).optional(),
   is_active:  z.coerce.boolean().optional(),
 });
 
@@ -269,6 +269,7 @@ export const createMessageSchema = z.object({
   incorrect_text:          z.string().max(2000).optional().nullable(),
   incorrect_quick_replies: z.array(quickReplyItemSchema).max(13).optional().nullable(),
   correct_next_phase_id: uuidSchema.optional().nullable(),
+  hint_mode: z.enum(["always", "on_wrong", "hidden"]).default("always").optional(),
   /** 前のメッセージ送信後この発話まで待機するミリ秒数。0 = 即時送信 */
   lag_ms:           z.number().int().min(0).default(0),
   sort_order:       sortSchema,
@@ -333,6 +334,7 @@ export const updateMessageSchema = z.object({
   incorrect_text:          z.string().max(2000).optional().nullable(),
   incorrect_quick_replies: z.array(quickReplyItemSchema).max(13).optional().nullable(),
   correct_next_phase_id: uuidSchema.optional().nullable(),
+  hint_mode: z.enum(["always", "on_wrong", "hidden"]).optional(),
   /** 前のメッセージ送信後この発話まで待機するミリ秒数。0 = 即時送信 */
   lag_ms:            z.number().int().min(0).optional(),
   sort_order:        z.number().int().min(0).optional(),

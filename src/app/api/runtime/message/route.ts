@@ -39,6 +39,7 @@ function rowToRuntime(msg: MessageRow): RuntimePhaseMessage {
     flex_payload_json: msg.flexPayloadJson ?? null,
     quick_replies:     quickReplies,
     lag_ms:            msg.lagMs ?? 0,
+    hint_mode:         ((msg as { hintMode?: string }).hintMode ?? "always") as import("@/types").HintMode,
     sort_order:        msg.sortOrder,
     character:         msg.character
       ? {

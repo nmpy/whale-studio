@@ -505,9 +505,14 @@ export function buildPhaseMessages(
 
   // ── DB Message 行を 1 件ずつ独立した吹き出しに変換 ──
   for (const msg of phase.messages) {
+    // hint_mode に基づいてヒント QR をフィルタ
+    // on_wrong / hidden の場合は初期表示からヒントアイテムを除外する
+    const visibleQrItems = (msg.hint_mode === "always" || !msg.hint_mode)
+      ? msg.quick_replies
+      : (msg.quick_replies ?? []).filter((i) => i.action !== "hint");
     // メッセージ個別 quickReply（設定されていれば phase-level 遷移より優先）
-    const msgQr = msg.quick_replies?.length
-      ? buildQuickReplyFromItems(msg.quick_replies)
+    const msgQr = visibleQrItems?.length
+      ? buildQuickReplyFromItems(visibleQrItems)
       : undefined;
 
     if (msg.message_type === "text" && msg.body) {

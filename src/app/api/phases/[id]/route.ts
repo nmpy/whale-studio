@@ -78,6 +78,14 @@ export const PATCH = withAuth<{ id: string }>(async (req, { params }, user) => {
     const body = await req.json();
     const data = updatePhaseSchema.parse(body);
 
+    // global フェーズの type 変更は不可
+    if (existing.phaseType === "global") {
+      return badRequest("「全フェーズ共通」フェーズの種別は変更できません");
+    }
+    if (data.phase_type === "global") {
+      return badRequest("フェーズ種別を「全フェーズ共通」に変更することはできません");
+    }
+
     // ─ 整合性チェック: start への変更は1作品1件まで ─
     if (data.phase_type === "start" && existing.phaseType !== "start") {
       const existingStart = await prisma.phase.findFirst({
@@ -142,6 +150,11 @@ export const DELETE = withAuth<{ id: string }>(async (_req, { params }, user) =>
 
     const check = await requireRole(existing.work.oaId, user.id, 'owner');
     if (!check.ok) return check.response;
+
+    // global フェーズは削除不可
+    if (existing.phaseType === "global") {
+      return badRequest("「全フェーズ共通」フェーズは削除できません");
+    }
 
     // Prisma onDelete 動作（schema.prisma 定義に従い自動処理）:
     //   Message.phase_id    → SET NULL（メッセージは残り、フェーズ紐付けが外れる）

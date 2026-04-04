@@ -33,6 +33,21 @@ export interface QuickReplyItem {
   hint_text?:         string;
   /** action="hint" のとき、hint_text の後に続けて送信する回答誘導メッセージ */
   hint_followup?:     string;
+  /**
+   * ヒントボタンの表示順序（1=最初, 2=次, ...）。
+   * ヒント段階を管理するためのフィールド。未設定の場合は配列順。
+   */
+  hint_level?: number;
+  /**
+   * このヒントを表示した後の「さらにヒント」ボタンラベル。
+   * 未設定の場合は "さらにヒント"。
+   */
+  hint_next_label?: string;
+  /**
+   * このヒントを表示した後の「問題に戻る」ボタンラベル。
+   * 未設定の場合は "問題に戻る"。
+   */
+  hint_cancel_label?: string;
   /** false のとき LINE に表示しない / hint 照合対象外にする（省略 = true） */
   enabled?:           boolean;
   /**
@@ -62,9 +77,12 @@ export interface QuickReplyItem {
  */
 export type IconType      = "image" | "text";
 export type MessageType   = "text" | "image" | "riddle" | "video" | "carousel" | "voice";
-export type PhaseType     = "start" | "normal" | "ending";
+export type PhaseType     = "start" | "normal" | "ending" | "global";
 /** メッセージの役割種別 */
 export type MessageKind   = "start" | "normal" | "response" | "hint" | "puzzle";
+
+/** ヒント表示モード */
+export type HintMode = "always" | "on_wrong" | "hidden";
 
 // ────────────────────────────────────────────────
 // Domain models（DB行そのまま — snake_case）
@@ -184,6 +202,8 @@ export interface Message {
   answer: string | null;
   /** ヒントテキスト */
   puzzle_hint_text: string | null;
+  /** ヒント表示モード: always=常時 / on_wrong=不正解時のみ / hidden=非表示 */
+  hint_mode: HintMode;
   /** 表記ゆれ許容設定（配列: ["exact","ignore_punctuation","normalize_width"]） */
   answer_match_type: string[];
   /** 正解時の挙動: "text" | "text_and_transition" | "transition" */
@@ -346,6 +366,8 @@ export interface CreateMessageBody {
   incorrect_text?: string | null;
   incorrect_quick_replies?: QuickReplyItem[] | null;
   correct_next_phase_id?: string | null;
+  /** ヒント表示モード */
+  hint_mode?: HintMode;
   /** 前のメッセージ送信後この発話まで待機するミリ秒数。0 = 即時送信 */
   lag_ms?: number;
   sort_order?: number;
@@ -379,6 +401,8 @@ export interface UpdateMessageBody {
   incorrect_text?: string | null;
   incorrect_quick_replies?: QuickReplyItem[] | null;
   correct_next_phase_id?: string | null;
+  /** ヒント表示モード */
+  hint_mode?: HintMode;
   /** 前のメッセージ送信後この発話まで待機するミリ秒数。0 = 即時送信 */
   lag_ms?: number;
   sort_order?: number;
@@ -436,6 +460,8 @@ export interface RuntimePhaseMessage {
   quick_replies:     QuickReplyItem[] | null;
   /** 前のメッセージ送信後この発話まで待機するミリ秒数。0 = プレビューが自動計算 */
   lag_ms:            number;
+  /** ヒント表示モード */
+  hint_mode: HintMode;
   sort_order:        number;
   character: {
     id:             string;
