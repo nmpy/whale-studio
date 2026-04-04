@@ -1,12 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import { workApi, getDevToken } from "@/lib/api-client";
 import { useToast } from "@/components/Toast";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { TLink as Link } from "@/components/TLink";
 import { useTesterRouter } from "@/hooks/useTesterRouter";
+import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
+import { TesterUpgradeCard } from "@/components/upgrade/TesterUpgradeCard";
 import type { PublishStatus } from "@/types";
 
 const STATUS_OPTIONS: { value: PublishStatus; label: string }[] = [
@@ -20,6 +22,7 @@ export default function WorkNewPage() {
   const oaId   = params.id;
   const router = useTesterRouter();
   const { showToast } = useToast();
+  const { isTester: isRoleTester, loading: roleLoading } = useWorkspaceRole(oaId);
 
   const [title, setTitle]               = useState("");
   const [description, setDescription]   = useState("");
@@ -28,6 +31,22 @@ export default function WorkNewPage() {
 
   const [errors, setErrors]         = useState<Record<string, string[]>>({});
   const [submitting, setSubmitting] = useState(false);
+
+  // tester ロールの場合、既存作品数を確認してゲートを表示するか判定
+  const [workCount,        setWorkCount]        = useState<number | null>(null);
+  const [workCountLoading, setWorkCountLoading] = useState(false);
+
+  useEffect(() => {
+    if (!isRoleTester || roleLoading) return;
+    setWorkCountLoading(true);
+    workApi.list(getDevToken(), oaId)
+      .then((list) => setWorkCount(list.length))
+      .catch(() => setWorkCount(0))
+      .finally(() => setWorkCountLoading(false));
+  }, [isRoleTester, roleLoading, oaId]);
+
+  // tester ロールで既存作品が 1 件以上 → ゲート表示
+  const showGate = isRoleTester && workCount !== null && workCount >= 1;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -48,8 +67,8 @@ export default function WorkNewPage() {
         sort_order:     sortOrder,
       });
       showToast(`「${work.title}」を作成しました`, "success");
-      // 作成後すぐ編集（フェーズ追加）画面へ
-      router.push(`/oas/${oaId}/works/${work.id}/edit`);
+      // 作成後はハブへ遷移（?created=1 で初回導線バナーを表示）
+      router.push(`/oas/${oaId}/works/${work.id}?created=1`);
     } catch (err) {
       showToast(err instanceof Error ? err.message : "作成に失敗しました", "error");
     } finally {
@@ -57,18 +76,47 @@ export default function WorkNewPage() {
     }
   }
 
+  const header = (
+    <div className="page-header">
+      <div>
+        <Breadcrumb items={[
+          { label: "アカウントリスト", href: "/oas" },
+          { label: "作品リスト", href: `/oas/${oaId}/works` },
+          { label: "新規作成" },
+        ]} />
+        <h2>作品を追加</h2>
+      </div>
+    </div>
+  );
+
+  // ロール確認中 or tester の作品数確認中はスケルトン
+  if (roleLoading || workCountLoading) {
+    return (
+      <>
+        {header}
+        <div className="card" style={{ maxWidth: 560, padding: "28px 24px" }}>
+          <div className="skeleton" style={{ width: 220, height: 14, marginBottom: 20 }} />
+          <div className="skeleton" style={{ width: "100%", height: 38, borderRadius: 6, marginBottom: 16 }} />
+          <div className="skeleton" style={{ width: "100%", height: 80, borderRadius: 6, marginBottom: 16 }} />
+          <div className="skeleton" style={{ width: 160, height: 36, borderRadius: 6 }} />
+        </div>
+      </>
+    );
+  }
+
+  // tester ロールで上限到達 → アップグレードゲート表示
+  if (showGate) {
+    return (
+      <>
+        {header}
+        <TesterUpgradeCard variant="gate" oaId={oaId} />
+      </>
+    );
+  }
+
   return (
     <>
-      <div className="page-header">
-        <div>
-          <Breadcrumb items={[
-            { label: "アカウントリスト", href: "/oas" },
-            { label: "作品リスト", href: `/oas/${oaId}/works` },
-            { label: "新規作成" },
-          ]} />
-          <h2>作品を追加</h2>
-        </div>
-      </div>
+      {header}
 
       <div className="card" style={{ maxWidth: 560 }}>
         <form onSubmit={handleSubmit}>

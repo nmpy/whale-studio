@@ -2,7 +2,7 @@
 // GET  /api/works?oa_id=xxx — 作品一覧取得（_count: characters, phases, messages）
 // POST /api/works            — 作品作成
 
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { ok, created, badRequest, notFound, serverError } from "@/lib/api-response";
 import { withAuth } from "@/lib/auth";
@@ -10,6 +10,8 @@ import { requireRole } from "@/lib/rbac";
 import { createWorkSchema, workQuerySchema, formatZodErrors } from "@/lib/validations";
 import { ZodError } from "zod";
 import { activeCache, CACHE_KEY } from "@/lib/cache";
+import { trackOnboardingStep } from "@/lib/onboarding-tracker";
+import { trackOnboardingProgress } from "@/lib/onboarding";
 
 function toResponse(w: {
   id: string; oaId: string; title: string; description: string | null;
@@ -85,6 +87,23 @@ export const POST = withAuth(async (req, _ctx, user) => {
     const check = await requireRole(data.oa_id, user.id, 'tester');
     if (!check.ok) return check.response;
 
+    // tester ロールは 1 作品まで（editor 以上は無制限）
+    if (check.role === 'tester') {
+      const existingCount = await prisma.work.count({ where: { oaId: data.oa_id } });
+      if (existingCount >= 1) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: {
+              code:    'TESTER_WORK_LIMIT',
+              message: 'テスタープランでは作品を 1 件までしか作成できません。エディター以上にアップグレードしてください。',
+            },
+          },
+          { status: 403 }
+        );
+      }
+    }
+
     const work = await prisma.work.create({
       data: {
         oaId:          data.oa_id,
@@ -111,6 +130,10 @@ export const POST = withAuth(async (req, _ctx, user) => {
     if (work.publishStatus === "active") {
       await activeCache.delete(CACHE_KEY.work(work.oaId));
     }
+
+    // オンボーディングステップ記録（fire-and-forget）
+    trackOnboardingStep(work.id, work.oaId, "work_created");
+    trackOnboardingProgress({ userId: user.id, workId: work.id, step: "work_created" });
 
     return created(toResponse(work));
   } catch (err) {

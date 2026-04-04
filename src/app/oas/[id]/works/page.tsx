@@ -12,6 +12,8 @@ import { useToast } from "@/components/Toast";
 import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
 import { ViewerBanner } from "@/components/PermissionGuard";
 import { useTesterMode } from "@/hooks/useTesterMode";
+import { WorksEmptyState } from "@/components/onboarding/WorksEmptyState";
+import { TesterUpgradeCard } from "@/components/upgrade/TesterUpgradeCard";
 
 /* ── スケルトンカード ─────────────────────────────────────────────────── */
 function SkeletonCard() {
@@ -41,7 +43,7 @@ export default function WorkListPage() {
   const params  = useParams<{ id: string }>();
   const oaId    = params.id;
   const { showToast } = useToast();
-  const { role } = useWorkspaceRole(oaId);
+  const { role, isTester: isRoleTester } = useWorkspaceRole(oaId);
   const { isTester } = useTesterMode();
 
   const [oaTitle, setOaTitle]     = useState("");
@@ -49,6 +51,10 @@ export default function WorkListPage() {
   const [friendAdd, setFriendAdd] = useState<FriendAddSettings | null>(null);
   const [loading, setLoading]     = useState(true);
   const [error, setError]         = useState<string | null>(null);
+
+  // tester ロールが作品上限（1件）に達しているか
+  // loading 中は false（ちらつき防止）
+  const testerAtLimit = isRoleTester && !loading && works.length >= 1;
 
   async function load() {
     setLoading(true);
@@ -100,21 +106,53 @@ export default function WorkListPage() {
             {oaTitle ? `${oaTitle} の謎解きシナリオを管理します` : "謎解きシナリオを管理します"}
           </p>
         </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          {!isTester && (
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {/* tester ロールには「プランを見る」リンクを常時表示 */}
+          {isRoleTester && (
+            <Link
+              href="/pricing"
+              style={{
+                fontSize:       12,
+                fontWeight:     600,
+                color:          "var(--color-primary, #2F6F5E)",
+                textDecoration: "none",
+                padding:        "6px 12px",
+                borderRadius:   "var(--radius-sm)",
+                border:         "1px solid #b9ddd6",
+                background:     "var(--color-primary-soft, #EAF4F1)",
+                whiteSpace:     "nowrap",
+              }}
+            >
+              🔓 プランを見る
+            </Link>
+          )}
+          {!isTester && !isRoleTester && (
             <Link href={`/oas/${oaId}/settings`} className="btn btn-ghost">
               ⚙ 設定
             </Link>
           )}
-          {!isTester && (
+          {/* tester ロールが上限到達 → グレーアウトボタン */}
+          {testerAtLimit ? (
+            <button className="btn btn-primary" disabled style={{ opacity: 0.45, cursor: "not-allowed" }}>
+              ＋ 作品を追加
+            </button>
+          ) : !isTester && !isRoleTester ? (
             <Link href={`/oas/${oaId}/works/new`} className="btn btn-primary">
               ＋ 作品を追加
             </Link>
-          )}
+          ) : isRoleTester && !testerAtLimit ? (
+            /* tester で上限未到達 → 通常ボタン */
+            <Link href={`/oas/${oaId}/works/new`} className="btn btn-primary">
+              ＋ 作品を追加
+            </Link>
+          ) : null}
         </div>
       </div>
 
       <ViewerBanner role={role} />
+
+      {/* tester ロールが上限到達 → アップグレード誘導バナー */}
+      {testerAtLimit && <TesterUpgradeCard variant="banner" />}
 
       {/* テスターモード時の注意文 */}
       {isTester && (
@@ -176,21 +214,7 @@ export default function WorkListPage() {
           <SkeletonCard />
         </div>
       ) : sorted.length === 0 ? (
-        <div className="card">
-          <div className="empty-state">
-            <div className="empty-state-icon">🎭</div>
-            <p className="empty-state-title">作品がまだありません</p>
-            <p className="empty-state-desc">
-              「作品を追加」から謎解きシナリオを作成しましょう。<br />
-              1つのアカウントに複数の作品を管理できます。
-            </p>
-            {!isTester && (
-              <Link href={`/oas/${oaId}/works/new`} className="btn btn-primary" style={{ marginTop: 8 }}>
-                ＋ 最初の作品を追加する
-              </Link>
-            )}
-          </div>
-        </div>
+        <WorksEmptyState oaId={oaId} isTester={isTester} />
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           {sorted.map((w) => (

@@ -10,6 +10,8 @@ import { requireRole, getOaIdFromWorkId } from "@/lib/rbac";
 import { createTransitionSchema, transitionQuerySchema, formatZodErrors } from "@/lib/validations";
 import { ZodError } from "zod";
 import { activeCache, CACHE_KEY } from "@/lib/cache";
+import { trackOnboardingStep } from "@/lib/onboarding-tracker";
+import { trackOnboardingProgress } from "@/lib/onboarding";
 
 function toResponse(
   t: {
@@ -128,6 +130,10 @@ export const POST = withAuth(async (req, _ctx, user) => {
 
     // キャッシュ無効化（fromPhase のキャッシュに遷移情報が含まれるため）
     await activeCache.delete(CACHE_KEY.phase(data.from_phase_id));
+
+    // オンボーディングステップ記録（fire-and-forget）
+    if (oaId) trackOnboardingStep(data.work_id, oaId, "flow_connected");
+    trackOnboardingProgress({ userId: user.id, workId: data.work_id, step: "flow_connected" });
 
     return created(toResponse(transition, transition.toPhase));
   } catch (err) {

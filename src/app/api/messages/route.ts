@@ -10,6 +10,8 @@ import { requireRole, getOaIdFromWorkId } from "@/lib/rbac";
 import { createMessageSchema, messageQuerySchema, formatZodErrors } from "@/lib/validations";
 import { ZodError } from "zod";
 import { activeCache, CACHE_KEY } from "@/lib/cache";
+import { trackOnboardingStep } from "@/lib/onboarding-tracker";
+import { trackOnboardingProgress } from "@/lib/onboarding";
 
 function parseQuickReplies(raw: string | null, msgId?: string) {
   if (!raw) return null;
@@ -241,6 +243,10 @@ export const POST = withAuth(async (req, _ctx, user) => {
     } else {
       await activeCache.delete(CACHE_KEY.globalKw(data.work_id));
     }
+
+    // オンボーディングステップ記録（fire-and-forget）
+    if (oaId) trackOnboardingStep(data.work_id, oaId, "message_created");
+    trackOnboardingProgress({ userId: user.id, workId: data.work_id, step: "message_created" });
 
     return created(toResponse(message));
   } catch (err) {

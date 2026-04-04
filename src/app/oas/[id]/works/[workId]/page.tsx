@@ -4,14 +4,18 @@
 // 作品ハブ — 各管理機能へのナビゲーション
 
 import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Breadcrumb } from "@/components/Breadcrumb";
-import { workApi, oaApi, getDevToken } from "@/lib/api-client";
+import { workApi, oaApi, phaseApi, transitionApi, onboardingApi, getDevToken } from "@/lib/api-client";
 import type { WorkListItem } from "@/lib/api-client";
 import { HelpAccordion } from "@/components/HelpAccordion";
 import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
 import { ViewerBanner } from "@/components/PermissionGuard";
+import { WorkCreatedGuide }   from "@/components/onboarding/WorkCreatedGuide";
+import { NextActionCard }     from "@/components/onboarding/NextActionCard";
+import { OnboardingProgress } from "@/components/onboarding/OnboardingProgress";
+import { TesterUpgradeCard }  from "@/components/upgrade/TesterUpgradeCard";
 
 // ── ステータス表示 ───────────────────────────────────────
 const STATUS_META: Record<string, { label: string; color: string; bg: string; dot: string }> = {
@@ -23,68 +27,84 @@ const STATUS_META: Record<string, { label: string; color: string; bg: string; do
 // ── ハブカード定義 ────────────────────────────────────────
 const HUB_CARDS = [
   {
-    key: "edit",
-    icon: "📝",
+    key:   "edit",
+    icon:  "📝",
     title: "作品情報",
-    desc: "タイトル・説明・公開ステータス・あいさつメッセージを編集します",
+    desc:  "タイトル・説明・公開ステータス・あいさつメッセージを編集します",
     color: "#374151",
-    bg: "#f9fafb",
+    bg:    "#f9fafb",
   },
   {
-    key: "characters",
-    icon: "👤",
+    key:   "characters",
+    icon:  "👤",
     title: "キャラクター",
-    desc: "メッセージ送信者となるキャラクターを管理します",
+    desc:  "メッセージ送信者となるキャラクターを管理します",
     color: "#7c3aed",
-    bg: "#f5f3ff",
+    bg:    "#f5f3ff",
   },
   {
-    key: "messages",
-    icon: "💬",
+    key:   "messages",
+    icon:  "💬",
     title: "メッセージ・謎",
-    desc: "フェーズごとに送信するメッセージ・謎チャレンジを管理します",
+    desc:  "フェーズごとに送信するメッセージ・謎チャレンジを管理します",
     color: "#06C755",
-    bg: "#E6F7ED",
+    bg:    "#E6F7ED",
   },
   {
-    key: "scenario",
-    icon: "🗺",
+    key:   "scenario",
+    icon:  "🗺",
     title: "シナリオフロー",
-    desc: "フェーズの追加・並び替え・編集と遷移フローを1画面で管理します",
+    desc:  "フェーズの追加・並び替え・編集と遷移フローを1画面で管理します",
     color: "#059669",
-    bg: "#ecfdf5",
+    bg:    "#ecfdf5",
   },
   {
-    key: "audience",
-    icon: "🎯",
+    key:   "audience",
+    icon:  "🎯",
     title: "オーディエンス",
-    desc: "プレイ統計・リアルタイム・フロー・セグメント・トラッキングを確認します",
+    desc:  "プレイ統計・リアルタイム・フロー・セグメント・トラッキングを確認します",
     color: "#0891b2",
-    bg: "#ecfeff",
+    bg:    "#ecfeff",
   },
 ] as const;
 
 // ── コンポーネント ────────────────────────────────────────
 export default function WorkHubPage() {
-  const params = useParams<{ id: string; workId: string }>();
+  const params       = useParams<{ id: string; workId: string }>();
+  const searchParams = useSearchParams();
   const oaId   = params.id;
   const workId = params.workId;
-  const { role } = useWorkspaceRole(oaId);
+  const { role, isTester: isRoleTester } = useWorkspaceRole(oaId);
 
-  const [oaTitle, setOaTitle] = useState("");
-  const [work, setWork]       = useState<WorkListItem | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError]     = useState<string | null>(null);
+  const [oaTitle,          setOaTitle]          = useState("");
+  const [work,             setWork]             = useState<WorkListItem | null>(null);
+  const [phaseCount,       setPhaseCount]       = useState(0);
+  const [transCount,       setTransCount]       = useState(0);
+  const [loading,          setLoading]          = useState(true);
+  const [error,            setError]            = useState<string | null>(null);
+  const [showCreated,      setShowCreated]      = useState(false);
+  // tester ロール向けプレビュー後アップグレードカード（dismissable）
+  const [showUpgradeCard,  setShowUpgradeCard]  = useState(false);
+
+  // ?created=1 のとき初回バナーを表示
+  useEffect(() => {
+    if (searchParams.get("created") === "1") setShowCreated(true);
+  }, [searchParams]);
 
   useEffect(() => {
     const token = getDevToken();
     Promise.all([
       oaApi.get(token, oaId),
       workApi.get(token, workId),
+      phaseApi.list(token, workId),
+      transitionApi.listByWork(token, workId),
     ])
-      .then(([oa, w]) => {
+      .then(([oa, w, phases, transitions]) => {
         setOaTitle(oa.title);
         setWork(w);
+        // global フェーズは除外してカウント
+        setPhaseCount(phases.filter((p: { phase_type: string }) => p.phase_type !== "global").length);
+        setTransCount(transitions.length);
       })
       .catch((e) => setError(e instanceof Error ? e.message : "読み込みに失敗しました"))
       .finally(() => setLoading(false));
@@ -112,6 +132,13 @@ export default function WorkHubPage() {
       </>
     );
   }
+
+  // ── オンボーディング判定 ─────────────────────────────
+  const hasCharacters  = (work?._count.characters ?? 0) > 0;
+  const hasPhases      = phaseCount > 0;
+  const hasMessages    = (work?._count.messages   ?? 0) > 0;
+  const hasTransitions = transCount > 0;
+  const isSetupIncomplete = !hasCharacters || !hasPhases || !hasMessages || !hasTransitions;
 
   const statusMeta = STATUS_META[work?.publish_status ?? "draft"];
 
@@ -148,6 +175,13 @@ export default function WorkHubPage() {
         <Link
           href={`/playground?work_id=${workId}&oa_id=${oaId}`}
           className="btn btn-ghost"
+          onClick={() => {
+            try { localStorage.setItem(`preview-confirmed-${workId}`, "1"); } catch {}
+            // オンボーディング: previewed ステップを記録（fire-and-forget）
+            onboardingApi.trackStep(getDevToken(), { work_id: workId, oa_id: oaId, step: "previewed" }).catch(() => {});
+            // tester ロールにはプレビュー後アップグレード誘導を表示
+            if (isRoleTester) setShowUpgradeCard(true);
+          }}
         >
           ▶ プレビュー
         </Link>
@@ -155,6 +189,51 @@ export default function WorkHubPage() {
 
       {/* ── 閲覧専用バナー ── */}
       <ViewerBanner role={role} />
+
+      {/* ── tester ロール向けプレビュー後アップグレード誘導 ── */}
+      {showUpgradeCard && (
+        <TesterUpgradeCard
+          variant="preview"
+          onDismiss={() => setShowUpgradeCard(false)}
+        />
+      )}
+
+      {/* ══ オンボーディング UI ══════════════════════════════
+          優先順位:
+            1. 作成直後バナー（?created=1）— WorkCreatedGuide
+            2. 初回進捗ステッパー          — OnboardingProgress
+            3. 次アクションカード          — NextActionCard（setup 未完了時のみ）
+      ══════════════════════════════════════════════════════ */}
+      {showCreated && work ? (
+        <WorkCreatedGuide
+          oaId={oaId}
+          workId={workId}
+          hasCharacters={hasCharacters}
+          hasPhases={hasPhases}
+          hasMessages={hasMessages}
+          hasTransitions={hasTransitions}
+          onDismiss={() => setShowCreated(false)}
+        />
+      ) : (
+        <>
+          <OnboardingProgress
+            oaId={oaId}
+            workId={workId}
+            hasCharacters={hasCharacters}
+            hasPhases={hasPhases}
+            hasMessages={hasMessages}
+            hasTransitions={hasTransitions}
+          />
+          {isSetupIncomplete && (
+            <NextActionCard
+              oaId={oaId}
+              workId={workId}
+              hasCharacters={hasCharacters}
+              hasPhases={hasPhases}
+            />
+          )}
+        </>
+      )}
 
       {/* ── 使い方ガイド ── */}
       <HelpAccordion items={[
@@ -187,7 +266,7 @@ export default function WorkHubPage() {
           {[
             { label: "プレイヤー",   value: (work._count.userProgress ?? 0).toLocaleString(), icon: "👥", highlight: (work._count.userProgress ?? 0) > 0 },
             { label: "キャラクター", value: work._count.characters, icon: "🎭", highlight: false },
-            { label: "フェーズ",     value: work._count.phases,     icon: "🗂",  highlight: false },
+            { label: "フェーズ",     value: phaseCount,             icon: "🗂",  highlight: false },
             { label: "メッセージ",   value: work._count.messages,   icon: "💬", highlight: false },
           ].map(({ label, value, icon, highlight }) => (
             <div key={label} style={{
@@ -230,15 +309,15 @@ export default function WorkHubPage() {
               }}
               onMouseEnter={(e) => {
                 const el = e.currentTarget as HTMLDivElement;
-                el.style.boxShadow = "var(--shadow-md)";
+                el.style.boxShadow   = "var(--shadow-md)";
                 el.style.borderColor = "var(--gray-300)";
-                el.style.transform = "translateY(-2px)";
+                el.style.transform   = "translateY(-2px)";
               }}
               onMouseLeave={(e) => {
                 const el = e.currentTarget as HTMLDivElement;
-                el.style.boxShadow = "var(--shadow-xs)";
+                el.style.boxShadow   = "var(--shadow-xs)";
                 el.style.borderColor = "var(--border-light)";
-                el.style.transform = "";
+                el.style.transform   = "";
               }}
             >
               <div style={{

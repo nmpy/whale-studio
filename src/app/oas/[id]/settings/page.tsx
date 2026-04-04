@@ -68,6 +68,14 @@ const HUB_ITEM_DEFS = [
     color: "#dc2626",
     bg:    "#fef2f2",
   },
+  {
+    key:   "onboarding-analytics",
+    icon:  "📈",
+    title: "オンボーディング分析",
+    desc:  "作品作成〜セットアップ完了の各ステップ到達率を確認（owner のみ）",
+    color: "#7c3aed",
+    bg:    "#f5f3ff",
+  },
 ] as const;
 
 export default function OaSettingsPage() {
@@ -113,6 +121,7 @@ export default function OaSettingsPage() {
           gap: 12,
         }}>
           {HUB_ITEM_DEFS.filter(({ key }) => {
+            if (key === "onboarding-analytics") return isOwner;
             if (key === "settings/members") return isOwner || isAdmin;
             if (key === "account" || key === "richmenu-editor" || key === "friend-add" || key === "sns") return isAdmin;
             return true; // works, trackings — visible to all

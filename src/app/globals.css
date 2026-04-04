@@ -3,7 +3,14 @@
    "Soft Premium SaaS" — 整った余白・上質な質感・物語体験ツールらしさ
 ═══════════════════════════════════════════════════════════════════════ */
 
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+/* Tailwind v4 — base/utilities レイヤーを確立し、
+   既存カスタム CSS（unlayered）が最終的に優先されるようにする */
+@import "tailwindcss";
+
+/* base レイヤーにリセットを置く → utilities が p-*/m-* で上書き可能になる */
+@layer base {
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+}
 
 /* ── デザイントークン ─────────────────────────────────────────────────── */
 :root {

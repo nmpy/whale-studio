@@ -10,6 +10,7 @@ import { HelpAccordion } from "@/components/HelpAccordion";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
 import { ViewerBanner } from "@/components/PermissionGuard";
+import { GuideCard } from "@/components/onboarding/GuideCard";
 import type { MessageWithRelations, MessageType, PhaseWithCounts, TransitionWithPhases, QuickReplyItem } from "@/types";
 
 const MESSAGE_TYPE_LABEL: Record<MessageType, string> = {
@@ -728,6 +729,14 @@ export default function MessagesPage() {
           タブ: メッセージ・謎
       ══════════════════════════════════════════════ */}
       {activeTab === "messages" && (<>
+      {/* ── 初回ガイド（メッセージ未作成時） ── */}
+      {!loading && messages.length === 0 && (
+        <GuideCard
+          icon="💬"
+          message="メッセージや謎を追加して、体験の流れを作りましょう。フェーズに紐づけると、参加者に LINE メッセージとして届きます。"
+        />
+      )}
+
       {/* ── 使い方ガイド ── */}
       <HelpAccordion items={[
         { icon: "✅", title: "この画面でできること", points: [

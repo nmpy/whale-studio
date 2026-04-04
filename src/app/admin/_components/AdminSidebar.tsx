@@ -8,10 +8,11 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const NAV_ITEMS = [
-  { href: "/admin/announcements", label: "お知らせ管理", icon: "📢" },
-  { href: "/admin/documents",     label: "ドキュメント",  icon: "📄" },
-  { href: "/admin/audience",      label: "ユーザー概況",  icon: "👥" },
-  { href: "/admin/audit",         label: "操作ログ",      icon: "📋" },
+  { href: "/admin/announcements", label: "お知らせ管理",       icon: "📢" },
+  { href: "/admin/documents",     label: "ドキュメント",        icon: "📄" },
+  { href: "/admin/audience",      label: "ユーザー概況",        icon: "👥" },
+  { href: "/admin/onboarding",    label: "オンボーディング分析", icon: "📈" },
+  { href: "/admin/audit",         label: "操作ログ",            icon: "📋" },
 ] as const;
 
 export function AdminSidebar() {

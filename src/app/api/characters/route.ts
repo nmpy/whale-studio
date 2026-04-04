@@ -9,6 +9,8 @@ import { withAuth } from "@/lib/auth";
 import { requireRole, getOaIdFromWorkId } from "@/lib/rbac";
 import { createCharacterSchema, characterQuerySchema, formatZodErrors } from "@/lib/validations";
 import { ZodError } from "zod";
+import { trackOnboardingStep } from "@/lib/onboarding-tracker";
+import { trackOnboardingProgress } from "@/lib/onboarding";
 
 function toResponse(c: {
   id: string; workId: string; name: string; iconType: string; iconText: string | null;
@@ -90,6 +92,10 @@ export const POST = withAuth(async (req, _ctx, user) => {
         isActive:     data.is_active,
       },
     });
+
+    // オンボーディングステップ記録（fire-and-forget）
+    if (oaId) trackOnboardingStep(data.work_id, oaId, "character_created");
+    trackOnboardingProgress({ userId: user.id, workId: data.work_id, step: "character_created" });
 
     return created(toResponse(character));
   } catch (err) {

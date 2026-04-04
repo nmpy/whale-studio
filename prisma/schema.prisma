@@ -29,6 +29,7 @@ model Oa {
   globalCommands     GlobalCommand[]
   hintLogs           HintLog[]
   invitations        Invitation[]
+  onboardingEvents   OnboardingEvent[]
   richMenus          RichMenu[]
   riddles            Riddle[]
   segments           Segment[]
@@ -59,13 +60,14 @@ model Work {
   welcomeMessage    String?        @map("welcome_message")
   createdAt         DateTime       @default(now()) @map("created_at")
   updatedAt         DateTime       @updatedAt @map("updated_at")
-  characters        Character[]    @relation("WorkCharacters")
+  characters        Character[]     @relation("WorkCharacters")
   messages          Message[]
+  onboardingEvents  OnboardingEvent[]
   phases            Phase[]
   transitions       Transition[]
   userProgress      UserProgress[]
-  oa                Oa             @relation(fields: [oaId], references: [id], onDelete: Cascade)
-  systemCharacter   Character?     @relation("WorkSystemCharacter", fields: [systemCharacterId], references: [id])
+  oa                Oa              @relation(fields: [oaId], references: [id], onDelete: Cascade)
+  systemCharacter   Character?      @relation("WorkSystemCharacter", fields: [systemCharacterId], references: [id])
 
   @@index([oaId])
   @@index([publishStatus])
@@ -614,6 +616,41 @@ model AppActivityLog {
 
   @@index([lastSeenAt])
   @@map("app_activity_logs")
+}
+
+/// オンボーディング各ステップへの到達を記録するテーブル。
+/// @@unique([workId, step]) により、1作品につき各ステップは初回のみ記録される。
+model OnboardingEvent {
+  id        String   @id @default(uuid())
+  oaId      String   @map("oa_id")
+  workId    String   @map("work_id")
+  /// OnboardingStep 定数に対応する文字列
+  step      String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  oa   Oa   @relation(fields: [oaId], references: [id], onDelete: Cascade)
+  work Work @relation(fields: [workId], references: [id], onDelete: Cascade)
+
+  @@unique([workId, step], name: "workId_step")
+  @@index([oaId])
+  @@index([workId])
+  @@index([createdAt])
+  @@map("onboarding_events")
+}
+
+/// ユーザー単位のオンボーディング進捗を記録するテーブル。
+/// OnboardingEvent（作品単位）とは別に、ユーザー単位でのステップ到達を管理する。
+model OnboardingProgress {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  workId    String   @map("work_id")
+  step      String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([userId, workId, step])
+  @@index([userId, workId])
+  @@index([step])
+  @@map("onboarding_progress")
 }
 
 /// メンバーロール（権限階層: owner > admin > editor > tester > viewer）

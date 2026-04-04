@@ -10,6 +10,7 @@ import { Breadcrumb } from "@/components/Breadcrumb";
 import type { Character } from "@/types";
 import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
 import { ViewerBanner } from "@/components/PermissionGuard";
+import { GuideCard } from "@/components/onboarding/GuideCard";
 
 function IconPreview({ character }: { character: Character }) {
   if (character.icon_type === "image" && character.icon_image_url) {
@@ -129,6 +130,16 @@ export default function WorkCharacterListPage() {
           {error}
           <button onClick={load} style={{ marginLeft: 12, textDecoration: "underline", background: "none", border: "none", cursor: "pointer", color: "inherit" }}>再読み込み</button>
         </div>
+      )}
+
+      {/* ── 初回ガイド（キャラクター未作成時） ── */}
+      {!loading && characters.length === 0 && (
+        <GuideCard
+          icon="👤"
+          message="キャラクターを作成すると、メッセージの送信者として設定できます。名前・アイコン画像を設定して、各メッセージに紐づけましょう。"
+          ctaText="キャラクターを追加 →"
+          ctaHref={`/oas/${oaId}/works/${workId}/characters/new`}
+        />
       )}
 
       {/* ── 使い方ガイド ── */}

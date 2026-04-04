@@ -11,6 +11,7 @@ import { workApi, phaseApi, transitionApi, messageApi, getDevToken } from "@/lib
 import type { QuickReplyItem, Message, UpdatePhaseBody } from "@/types";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { HelpAccordion } from "@/components/HelpAccordion";
+import { GuideCard } from "@/components/onboarding/GuideCard";
 import { useToast } from "@/components/Toast";
 import type { PhaseWithCounts, TransitionWithPhases, PhaseType } from "@/types";
 import { NodeGraph } from "./_node-graph";
@@ -102,6 +103,12 @@ export default function ScenarioPage() {
       setAllMessages(allMsgs);
       const sortedTransitions = transitionList.sort((a, b) => a.sort_order - b.sort_order);
       setTransitions(sortedTransitions);
+
+      // SetupStepper 用 localStorage フラグ
+      try {
+        if (nonGlobalPhases.length > 0)      localStorage.setItem(`phase-created-${workId}`,  "1");
+        if (sortedTransitions.length > 0)    localStorage.setItem(`scenario-setup-${workId}`, "1");
+      } catch {}
 
       const norm = (s: string) => s.trim().toLowerCase().normalize("NFKC");
       const msgPreviewMap: Record<string, string> = {};
@@ -439,6 +446,14 @@ export default function ScenarioPage() {
           "遷移のないフェーズには必ず接続してください",
         ]},
       ]} />
+
+      {/* ── 初回ガイド（フェーズ未作成時） ── */}
+      {!loading && phases.length === 0 && (
+        <GuideCard
+          icon="🗂"
+          message="フェーズ同士をつなげて、物語の進行を作ります。開始・通常・エンディングのフェーズを作り、遷移（分岐）を設定しましょう。"
+        />
+      )}
 
       {loading ? (
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>

@@ -1307,3 +1307,51 @@ export const invitationApi = {
     return parseResponse(res);
   },
 };
+
+// ────────────────────────────────────────────────
+// Onboarding API
+// ────────────────────────────────────────────────
+
+export interface OnboardingFunnelStep {
+  step:              string;
+  label:             string;
+  desc:              string;
+  count:             number;
+  rate:              number;
+  dropoff_from_prev: number;
+}
+
+export interface OnboardingAnalytics {
+  oa_id:       string;
+  total_works: number;
+  funnel:      OnboardingFunnelStep[];
+}
+
+export const onboardingApi = {
+  /**
+   * クライアント起点のオンボーディングステップを記録する。
+   * 主に "previewed" ステップ（プレビュー実行）に使用。
+   * fire-and-forget での呼び出し推奨: `.catch(() => {})`
+   */
+  async trackStep(
+    token: string,
+    body: { work_id: string; oa_id: string; step: string }
+  ): Promise<void> {
+    const res = await fetch("/api/onboarding-events", {
+      method:  "POST",
+      headers: authHeaders(token),
+      body:    JSON.stringify(body),
+    });
+    return parseResponse(res);
+  },
+
+  /**
+   * オンボーディング分析データを取得する（owner 専用）。
+   */
+  async getAnalytics(token: string, oaId: string): Promise<OnboardingAnalytics> {
+    const res = await fetch(`/api/oas/${oaId}/onboarding-analytics`, {
+      headers: authHeaders(token),
+    });
+    return parseResponse(res);
+  },
+};

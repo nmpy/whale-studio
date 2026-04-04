@@ -9,6 +9,10 @@ import { withRole } from "@/lib/auth";
 import { createRiddleSchema, formatZodErrors } from "@/lib/validations";
 import { ZodError } from "zod";
 import type { CarouselCard, Hint } from "@/types";
+// NOTE: OnboardingProgress（ユーザー × 作品単位）は work_id が必須だが、
+// Riddle は OA レベルのエンティティ（oaId のみ）のため work_id が存在しない。
+// そのため trackOnboardingProgress は呼び出せない。
+// 謎をメッセージに紐づけた段階（message_created）でステップが記録される。
 
 type RiddleRow = {
   id: string;
