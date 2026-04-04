@@ -616,11 +616,13 @@ model AppActivityLog {
   @@map("app_activity_logs")
 }
 
-/// メンバーロール（権限階層: owner > admin > editor > viewer）
+/// メンバーロール（権限階層: owner > admin > editor > tester > viewer）
+/// tester: 課金前ユーザー向け体験ロール。コンテンツ作成・編集のみ可能。
 enum MemberRole {
   owner
   admin
   editor
+  tester
   viewer
 }
 

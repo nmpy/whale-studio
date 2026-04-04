@@ -61,7 +61,7 @@ export default function MembersPage() {
   const canManage = isOwner || isAdmin;
 
   // ── ロール階層ソート（API 側と同じ基準。フロント側でも保証） ─────────
-  const ROLE_SORT_ORDER: Record<string, number> = { owner: 0, admin: 1, editor: 2, viewer: 3, tester: 3 };
+  const ROLE_SORT_ORDER: Record<string, number> = { owner: 0, admin: 1, editor: 2, tester: 3, viewer: 4 };
   function sortMembers(list: WorkspaceMember[]): WorkspaceMember[] {
     return [...list].sort(
       (a, b) => (ROLE_SORT_ORDER[a.role] ?? 9) - (ROLE_SORT_ORDER[b.role] ?? 9)

@@ -146,7 +146,7 @@ export const PATCH = withAuth<{ id: string }>(async (req, { params }, user) => {
     });
     if (!existing) return notFound("メッセージ");
 
-    const check = await requireRole(existing.work.oaId, user.id, 'editor');
+    const check = await requireRole(existing.work.oaId, user.id, 'tester');
     if (!check.ok) return check.response;
 
     const body = await req.json();

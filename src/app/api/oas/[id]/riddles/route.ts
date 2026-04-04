@@ -82,7 +82,7 @@ export const GET = withRole<{ id: string }>(
 
 export const POST = withRole<{ id: string }>(
   ({ params }) => params.id,
-  'editor',
+  'tester',
   async (req, { params }) => {
   try {
     const oa = await prisma.oa.findUnique({ where: { id: params.id } });

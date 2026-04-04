@@ -6,6 +6,7 @@ import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { ok, created, badRequest, notFound, serverError } from "@/lib/api-response";
 import { withAuth } from "@/lib/auth";
+import { requireRole, getOaIdFromWorkId } from "@/lib/rbac";
 import { createTransitionSchema, transitionQuerySchema, formatZodErrors } from "@/lib/validations";
 import { ZodError } from "zod";
 import { activeCache, CACHE_KEY } from "@/lib/cache";
@@ -42,7 +43,7 @@ function toResponse(
 }
 
 // ── GET /api/transitions ─────────────────────────
-export const GET = withAuth(async (req) => {
+export const GET = withAuth(async (req, _ctx, user) => {
   try {
     const { searchParams } = new URL(req.url);
     const query = transitionQuerySchema.parse({
@@ -52,6 +53,14 @@ export const GET = withAuth(async (req) => {
       is_active:     searchParams.get("is_active")     ?? undefined,
       with_phases:   searchParams.get("with_phases")   ?? undefined,
     });
+
+    if (query.work_id) {
+      const oaId = await getOaIdFromWorkId(query.work_id);
+      if (oaId) {
+        const check = await requireRole(oaId, user.id, 'viewer');
+        if (!check.ok) return check.response;
+      }
+    }
 
     const transitions = await prisma.transition.findMany({
       where: {
@@ -80,10 +89,16 @@ export const GET = withAuth(async (req) => {
 });
 
 // ── POST /api/transitions ────────────────────────
-export const POST = withAuth(async (req) => {
+export const POST = withAuth(async (req, _ctx, user) => {
   try {
     const body = await req.json();
     const data = createTransitionSchema.parse(body);
+
+    const oaId = await getOaIdFromWorkId(data.work_id);
+    if (oaId) {
+      const check = await requireRole(oaId, user.id, 'tester');
+      if (!check.ok) return check.response;
+    }
 
     // 遷移元フェーズの確認
     const fromPhase = await prisma.phase.findUnique({ where: { id: data.from_phase_id } });

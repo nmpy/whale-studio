@@ -114,7 +114,7 @@ export default function OaSettingsPage() {
         }}>
           {HUB_ITEM_DEFS.filter(({ key }) => {
             if (key === "settings/members") return isOwner || isAdmin;
-            if (key === "account" || key === "richmenu-editor" || key === "friend-add" || key === "sns") return canEdit;
+            if (key === "account" || key === "richmenu-editor" || key === "friend-add" || key === "sns") return isAdmin;
             return true; // works, trackings — visible to all
           }).map(({ key, icon, title, desc, color, bg }) => (
             <Link

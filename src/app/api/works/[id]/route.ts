@@ -59,7 +59,7 @@ export const PATCH = withAuth<{ id: string }>(async (req, { params }, user) => {
     const existing = await prisma.work.findUnique({ where: { id: params.id } });
     if (!existing) return notFound("作品");
 
-    const check = await requireRole(existing.oaId, user.id, 'editor');
+    const check = await requireRole(existing.oaId, user.id, 'tester');
     if (!check.ok) return check.response;
 
     const body = await req.json();

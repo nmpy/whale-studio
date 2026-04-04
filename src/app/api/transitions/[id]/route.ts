@@ -7,6 +7,7 @@ import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { ok, noContent, badRequest, notFound, serverError } from "@/lib/api-response";
 import { withAuth } from "@/lib/auth";
+import { requireRole } from "@/lib/rbac";
 import { updateTransitionSchema, formatZodErrors } from "@/lib/validations";
 import { ZodError } from "zod";
 import { activeCache, CACHE_KEY } from "@/lib/cache";
@@ -43,13 +44,19 @@ function toResponse(
 }
 
 // ── GET /api/transitions/:id ─────────────────────
-export const GET = withAuth<{ id: string }>(async (_req, { params }) => {
+export const GET = withAuth<{ id: string }>(async (_req, { params }, user) => {
   try {
     const transition = await prisma.transition.findUnique({
-      where: { id: params.id },
-      include: { toPhase: { select: { id: true, name: true, phaseType: true } } },
+      where:   { id: params.id },
+      include: {
+        toPhase: { select: { id: true, name: true, phaseType: true } },
+        work:    { select: { oaId: true } },
+      },
     });
     if (!transition) return notFound("遷移");
+
+    const check = await requireRole(transition.work.oaId, user.id, 'viewer');
+    if (!check.ok) return check.response;
 
     return ok(toResponse(transition, transition.toPhase));
   } catch (err) {
@@ -58,10 +65,16 @@ export const GET = withAuth<{ id: string }>(async (_req, { params }) => {
 });
 
 // ── PATCH /api/transitions/:id ───────────────────
-export const PATCH = withAuth<{ id: string }>(async (req, { params }) => {
+export const PATCH = withAuth<{ id: string }>(async (req, { params }, user) => {
   try {
-    const existing = await prisma.transition.findUnique({ where: { id: params.id } });
+    const existing = await prisma.transition.findUnique({
+      where:   { id: params.id },
+      include: { work: { select: { oaId: true } } },
+    });
     if (!existing) return notFound("遷移");
+
+    const check = await requireRole(existing.work.oaId, user.id, 'tester');
+    if (!check.ok) return check.response;
 
     const body = await req.json();
     const data = updateTransitionSchema.parse(body);
@@ -101,10 +114,16 @@ export const PATCH = withAuth<{ id: string }>(async (req, { params }) => {
 });
 
 // ── DELETE /api/transitions/:id ──────────────────
-export const DELETE = withAuth<{ id: string }>(async (_req, { params }) => {
+export const DELETE = withAuth<{ id: string }>(async (_req, { params }, user) => {
   try {
-    const existing = await prisma.transition.findUnique({ where: { id: params.id } });
+    const existing = await prisma.transition.findUnique({
+      where:   { id: params.id },
+      include: { work: { select: { oaId: true } } },
+    });
     if (!existing) return notFound("遷移");
+
+    const check = await requireRole(existing.work.oaId, user.id, 'tester');
+    if (!check.ok) return check.response;
 
     await prisma.transition.delete({ where: { id: params.id } });
 

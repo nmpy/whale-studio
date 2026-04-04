@@ -18,10 +18,11 @@
 // 途中でエラーが起きても DB は変更されない。
 
 import { withAuth } from "@/lib/auth";
+import { requireRole } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
 import { created, notFound, serverError } from "@/lib/api-response";
 
-export const POST = withAuth<{ id: string }>(async (_req, { params }) => {
+export const POST = withAuth<{ id: string }>(async (_req, { params }, user) => {
   try {
     // ── 1. 複製元作品を全リレーションごと取得 ──────────
     const original = await prisma.work.findUnique({
@@ -38,6 +39,9 @@ export const POST = withAuth<{ id: string }>(async (_req, { params }) => {
       },
     });
     if (!original) return notFound("作品");
+
+    const check = await requireRole(original.oaId, user.id, 'tester');
+    if (!check.ok) return check.response;
 
     // 同 OA 内の現在の最大 sort_order を取得
     const maxSortOrder = await prisma.work.aggregate({

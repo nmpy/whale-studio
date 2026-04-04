@@ -2,15 +2,17 @@
  * 権限管理の型定義とロール階層ユーティリティ
  *
  * ロール階層（高 → 低）:
- *   owner (40) > admin (30) > editor (20) > viewer (10)
+ *   owner (40) > admin (30) > editor (20) > tester (15) > viewer (10)
  *
  * - owner  : アカウント所有者。全操作可能。メンバー管理・OA 削除を含む。
  * - admin  : 管理者。コンテンツ編集・メンバー招待が可能。OA 削除は不可。
  * - editor : 編集者。シナリオ・メッセージ・キャラクターの CRUD が可能。
+ * - tester : 体験者。制作コンテンツの作成・編集が可能。メンバー管理・OA設定は不可。
+ *            課金前ユーザー（導入検討中）向けのトライアルロール。
  * - viewer : 閲覧者。閲覧とプレビュー専用。書き込み不可。
  */
 
-export const ROLES = ['owner', 'admin', 'editor', 'viewer'] as const;
+export const ROLES = ['owner', 'admin', 'editor', 'tester', 'viewer'] as const;
 export type Role = typeof ROLES[number];
 
 export type MemberStatus = 'active' | 'inactive' | 'suspended';
@@ -20,6 +22,7 @@ export const ROLE_LEVELS: Record<Role, number> = {
   owner:  40,
   admin:  30,
   editor: 20,
+  tester: 15,
   viewer: 10,
 };
 
@@ -28,6 +31,7 @@ export const ROLE_LABELS: Record<Role, string> = {
   owner:  'オーナー',
   admin:  '管理者',
   editor: '編集者',
+  tester: '体験者',
   viewer: '閲覧者',
 };
 
@@ -36,6 +40,7 @@ export const ROLE_DESCRIPTIONS: Record<Role, string> = {
   owner:  'すべての機能が使えます。メンバーの招待・削除・ロール変更、OA 設定の変更も可能です',
   admin:  'コンテンツの作成・編集とメンバーの招待ができます。OA の削除はできません',
   editor: 'シナリオ・メッセージ・謎など、作品制作に必要な編集ができます',
+  tester: '作品・キャラクター・メッセージ・謎の作成と編集ができます。メンバー管理・OA設定は利用できません',
   viewer: 'シナリオや作品の閲覧・プレビューのみ可能です。編集・保存・削除はできません',
 };
 
@@ -80,49 +85,55 @@ export type Permission =
   | 'phase:delete'
   // 分析・ダッシュボード
   | 'analytics:read'
-  // LINE 設定
+  // LINE 設定（OA レベルの設定。tester・viewer は不可）
   | 'line:apply';
 
-/** 権限マトリクス — どのロールがどの権限を持つか */
+/**
+ * 権限マトリクス — どのロールがどの権限を持つか
+ *
+ * tester の範囲:
+ *   ✓ 作品/メッセージ/謎/キャラクター/フェーズ: read/create/update
+ *   ✗ delete 系・member 系・OA 系・line:apply はすべて不可
+ */
 export const PERMISSION_MATRIX: Record<Permission, Role[]> = {
-  'workspace:read':    ['owner', 'admin', 'editor', 'viewer'],
+  'workspace:read':    ['owner', 'admin', 'editor', 'tester', 'viewer'],
   'workspace:update':  ['owner', 'admin'],
   'workspace:delete':  ['owner'],
 
   'member:read':       ['owner', 'admin'],
   'member:manage':     ['owner', 'admin'],
 
-  'oa:read':           ['owner', 'admin', 'editor', 'viewer'],
+  'oa:read':           ['owner', 'admin', 'editor', 'tester', 'viewer'],
   'oa:create':         ['owner'],
   'oa:update':         ['owner', 'admin'],
   'oa:delete':         ['owner'],
 
-  'work:read':         ['owner', 'admin', 'editor', 'viewer'],
-  'work:create':       ['owner', 'admin', 'editor'],
-  'work:update':       ['owner', 'admin', 'editor'],
+  'work:read':         ['owner', 'admin', 'editor', 'tester', 'viewer'],
+  'work:create':       ['owner', 'admin', 'editor', 'tester'],
+  'work:update':       ['owner', 'admin', 'editor', 'tester'],
   'work:delete':       ['owner', 'admin'],
 
-  'message:read':      ['owner', 'admin', 'editor', 'viewer'],
-  'message:create':    ['owner', 'admin', 'editor'],
-  'message:update':    ['owner', 'admin', 'editor'],
+  'message:read':      ['owner', 'admin', 'editor', 'tester', 'viewer'],
+  'message:create':    ['owner', 'admin', 'editor', 'tester'],
+  'message:update':    ['owner', 'admin', 'editor', 'tester'],
   'message:delete':    ['owner', 'admin'],
 
-  'riddle:read':       ['owner', 'admin', 'editor', 'viewer'],
-  'riddle:create':     ['owner', 'admin', 'editor'],
-  'riddle:update':     ['owner', 'admin', 'editor'],
+  'riddle:read':       ['owner', 'admin', 'editor', 'tester', 'viewer'],
+  'riddle:create':     ['owner', 'admin', 'editor', 'tester'],
+  'riddle:update':     ['owner', 'admin', 'editor', 'tester'],
   'riddle:delete':     ['owner', 'admin'],
 
-  'character:read':    ['owner', 'admin', 'editor', 'viewer'],
-  'character:create':  ['owner', 'admin', 'editor'],
-  'character:update':  ['owner', 'admin', 'editor'],
+  'character:read':    ['owner', 'admin', 'editor', 'tester', 'viewer'],
+  'character:create':  ['owner', 'admin', 'editor', 'tester'],
+  'character:update':  ['owner', 'admin', 'editor', 'tester'],
   'character:delete':  ['owner', 'admin'],
 
-  'phase:read':        ['owner', 'admin', 'editor', 'viewer'],
-  'phase:create':      ['owner', 'admin', 'editor'],
-  'phase:update':      ['owner', 'admin', 'editor'],
+  'phase:read':        ['owner', 'admin', 'editor', 'tester', 'viewer'],
+  'phase:create':      ['owner', 'admin', 'editor', 'tester'],
+  'phase:update':      ['owner', 'admin', 'editor', 'tester'],
   'phase:delete':      ['owner', 'admin'],
 
-  'analytics:read':    ['owner', 'admin', 'editor', 'viewer'],
+  'analytics:read':    ['owner', 'admin', 'editor', 'tester', 'viewer'],
 
   'line:apply':        ['owner', 'admin', 'editor'],
 };
@@ -130,18 +141,16 @@ export const PERMISSION_MATRIX: Record<Permission, Role[]> = {
 /**
  * ユーザーのロールが minRole 以上かチェックする。
  *
- * 旧ロール互換:
- *   'tester' は viewer (10) と同等に扱う（DB 残存データへの後方互換）。
- *
  * @example
- * roleAtLeast('admin', 'editor')  // true  (admin 30 >= editor 20)
- * roleAtLeast('viewer', 'editor') // false (viewer 10 < editor 20)
+ * roleAtLeast('admin',  'editor')  // true  (admin 30 >= editor 20)
+ * roleAtLeast('tester', 'editor')  // false (tester 15 < editor 20)
+ * roleAtLeast('tester', 'tester')  // true  (tester 15 >= tester 15)
+ * roleAtLeast('editor', 'tester')  // true  (editor 20 >= tester 15)
+ * roleAtLeast('viewer', 'tester')  // false (viewer 10 < tester 15)
  */
 export function roleAtLeast(userRole: string, minRole: Role): boolean {
-  // 旧ロール 'tester' → viewer レベルとして扱う（後方互換）
-  const normalized = userRole === 'tester' ? 'viewer' : userRole;
-  const userLevel  = ROLE_LEVELS[normalized as Role] ?? 0;
-  const minLevel   = ROLE_LEVELS[minRole];
+  const userLevel = ROLE_LEVELS[userRole as Role] ?? 0;
+  const minLevel  = ROLE_LEVELS[minRole];
   return userLevel >= minLevel;
 }
 
@@ -150,6 +159,7 @@ export function roleAtLeast(userRole: string, minRole: Role): boolean {
  * requireRole / withRole の配列指定と組み合わせて使う。
  *
  * @example
+ * rolesAtLeast('tester')  // ['tester', 'editor', 'admin', 'owner']
  * rolesAtLeast('editor')  // ['editor', 'admin', 'owner']
  * rolesAtLeast('admin')   // ['admin', 'owner']
  * rolesAtLeast('owner')   // ['owner']

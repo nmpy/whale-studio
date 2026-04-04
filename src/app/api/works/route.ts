@@ -82,7 +82,7 @@ export const POST = withAuth(async (req, _ctx, user) => {
     const oa = await prisma.oa.findUnique({ where: { id: data.oa_id } });
     if (!oa) return notFound("OA");
 
-    const check = await requireRole(data.oa_id, user.id, 'editor');
+    const check = await requireRole(data.oa_id, user.id, 'tester');
     if (!check.ok) return check.response;
 
     const work = await prisma.work.create({

@@ -76,7 +76,7 @@ export const POST = withAuth(async (req, _ctx, user) => {
 
     const oaId = await getOaIdFromWorkId(data.work_id);
     if (oaId) {
-      const check = await requireRole(oaId, user.id, 'editor');
+      const check = await requireRole(oaId, user.id, 'tester');
       if (!check.ok) return check.response;
     }
 

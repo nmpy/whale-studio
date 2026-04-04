@@ -83,7 +83,7 @@ export const GET = withRole<{ id: string; rid: string }>(
 
 export const PATCH = withRole<{ id: string; rid: string }>(
   ({ params }) => params.id,
-  'editor',
+  'tester',
   async (req, { params }) => {
     try {
       const riddle = await findRiddle(params.id, params.rid);
