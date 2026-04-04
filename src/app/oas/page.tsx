@@ -4,10 +4,10 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { oaApi, workApi, getDevToken, type OaListItem, type OaListMeta, type WorkListItem } from "@/lib/api-client";
 import { useToast } from "@/components/Toast";
-import { RoleBadge } from "@/components/PermissionGuard";
 import { AnnouncementBanner } from "@/components/AnnouncementBanner";
 import { usePlatformRole } from "@/hooks/usePlatformRole";
-import type { Role } from "@/lib/types/permissions";
+
+// ── 定数 ─────────────────────────────────────────────────────────────────
 
 const STATUS_LABEL: Record<string, string> = {
   draft:  "未設定",
@@ -15,16 +15,49 @@ const STATUS_LABEL: Record<string, string> = {
   paused: "停止中",
 };
 
+const STATUS_BADGE_STYLE: Record<string, { bg: string; color: string; border: string }> = {
+  draft:  { bg: "#f9fafb", color: "#9ca3af", border: "#e5e7eb" },
+  active: { bg: "#dcfce7", color: "#166534", border: "#86efac" },
+  paused: { bg: "#fef9c3", color: "#854d0e", border: "#fde047" },
+};
+
+const ROLE_LABEL: Record<string, string> = {
+  owner:  "オーナー",
+  admin:  "管理者",
+  editor: "編集者",
+  viewer: "閲覧者",
+};
+
+// ── 日付フォーマット ─────────────────────────────────────────────────────
+
 function formatDate(iso: string): string {
   const d = new Date(iso);
-  const y = d.getFullYear();
+  const y  = d.getFullYear();
   const mo = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}/${mo}/${day}`;
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${y}/${mo}/${dd}`;
 }
 
+// ── スタイル定数 ─────────────────────────────────────────────────────────
 
-/* ── 統計サマリー ─────────────────────────────────────────────────────── */
+const LABEL_STYLE: React.CSSProperties = {
+  fontSize:      10,
+  fontWeight:    600,
+  color:         "var(--text-muted)",
+  textTransform: "uppercase",
+  letterSpacing: "0.06em",
+  marginBottom:  4,
+  whiteSpace:    "nowrap",
+};
+
+const VALUE_STYLE: React.CSSProperties = {
+  fontSize:   13,
+  fontWeight: 600,
+  color:      "var(--text-primary)",
+  lineHeight: 1.4,
+};
+
+/* ── 統計サマリー ────────────────────────────────────────────────────────── */
 function SummaryBar({ items, worksMap }: { items: OaListItem[]; worksMap: Record<string, WorkListItem[]> }) {
   const activeCount  = items.filter((o) => o.publish_status === "active").length;
   const totalWorks   = Object.values(worksMap).reduce((s, ws) => s + ws.length, 0);
@@ -32,24 +65,20 @@ function SummaryBar({ items, worksMap }: { items: OaListItem[]; worksMap: Record
     (s, ws) => s + ws.reduce((ss, w) => ss + (w._count.userProgress ?? 0), 0), 0
   );
   return (
-    <div style={{
-      display: "flex",
-      gap: 12,
-      marginBottom: 20,
-    }}>
+    <div style={{ display: "flex", gap: 12, marginBottom: 20 }}>
       {[
-        { label: "アカウント数",   value: items.length,                      icon: "📡", color: "#6366f1" },
-        { label: "公開中",         value: activeCount,                       icon: "🟢", color: "var(--color-success)" },
-        { label: "総作品数",       value: totalWorks,                        icon: "🎭", color: "#0ea5e9" },
-        { label: "総プレイヤー数", value: totalPlayers.toLocaleString(),      icon: "👥", color: "#f59e0b" },
+        { label: "アカウント数",   value: items.length,                 icon: "📡", color: "#6366f1" },
+        { label: "公開中",         value: activeCount,                  icon: "🟢", color: "var(--color-success)" },
+        { label: "総作品数",       value: totalWorks,                   icon: "🎭", color: "#0ea5e9" },
+        { label: "総プレイヤー数", value: totalPlayers.toLocaleString(), icon: "👥", color: "#f59e0b" },
       ].map((s) => (
         <div key={s.label} style={{
-          flex: 1,
-          padding: "14px 18px",
-          background: "var(--surface)",
-          border: "1px solid var(--border-light)",
+          flex:         1,
+          padding:      "14px 18px",
+          background:   "var(--surface)",
+          border:       "1px solid var(--border-light)",
           borderRadius: "var(--radius-md)",
-          boxShadow: "var(--shadow-xs)",
+          boxShadow:    "var(--shadow-xs)",
         }}>
           <div style={{ fontSize: 20, marginBottom: 6 }}>{s.icon}</div>
           <div style={{ fontSize: 20, fontWeight: 800, color: s.color, lineHeight: 1 }}>{s.value}</div>
@@ -60,7 +89,7 @@ function SummaryBar({ items, worksMap }: { items: OaListItem[]; worksMap: Record
   );
 }
 
-/* ── サポートエリア ───────────────────────────────────────────────────── */
+/* ── サポートエリア ───────────────────────────────────────────────────────── */
 function SupportArea({ isOwner }: { isOwner: boolean }) {
   return (
     <div style={{ marginTop: 40, paddingTop: 24, borderTop: "1px solid var(--color-border-soft)" }}>
@@ -70,18 +99,13 @@ function SupportArea({ isOwner }: { isOwner: boolean }) {
       }}>
         サポート
       </p>
-
-      {/* 横長ワイドボックス */}
       <div style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 18,
+        display: "flex", alignItems: "center", gap: 18,
         padding: "18px 22px",
         background: "var(--color-bg-default)",
         border: "1px solid var(--color-border-soft)",
         borderRadius: 12,
       }}>
-        {/* アイコン */}
         <span style={{
           display: "flex", alignItems: "center", justifyContent: "center",
           width: 40, height: 40, borderRadius: 10,
@@ -89,8 +113,6 @@ function SupportArea({ isOwner }: { isOwner: boolean }) {
         }}>
           📄
         </span>
-
-        {/* テキスト */}
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: "var(--color-text-primary)", marginBottom: 3 }}>
             はじめての方へ — 使い方ガイド
@@ -99,56 +121,34 @@ function SupportArea({ isOwner }: { isOwner: boolean }) {
             セットアップ・LINEチャンネル連携・シナリオ公開までの手順をまとめたPDFです。まずこちらをご確認ください。
           </div>
         </div>
-
-        {/* PDF ボタン */}
         <div style={{ flexShrink: 0, textAlign: "center" }}>
           {isOwner ? (
-            /* オーナー: アップロードボタン（近日公開） */
             <button
               type="button"
               title="PDF ガイドのアップロード（近日公開）"
               onClick={() => alert("PDF アップロード機能は近日公開予定です。")}
               style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-                padding: "8px 18px",
-                fontSize: 12,
-                fontWeight: 600,
-                color: "#fff",
-                background: "var(--color-primary, #2F6F5E)",
-                border: "none",
-                borderRadius: 8,
-                cursor: "pointer",
-                whiteSpace: "nowrap",
+                display: "inline-flex", alignItems: "center", gap: 6,
+                padding: "8px 18px", fontSize: 12, fontWeight: 600,
+                color: "#fff", background: "var(--color-primary, #2F6F5E)",
+                border: "none", borderRadius: 8, cursor: "pointer", whiteSpace: "nowrap",
               }}
             >
-              <span style={{ fontSize: 14 }}>📤</span>
-              PDFをアップロード
+              <span style={{ fontSize: 14 }}>📤</span>PDFをアップロード
             </button>
           ) : (
-            /* テスター: 閲覧ボタン（未実装のため非活性） */
             <>
               <button
                 disabled
                 style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 6,
-                  padding: "8px 18px",
-                  fontSize: 12,
-                  fontWeight: 600,
-                  color: "var(--color-text-muted)",
-                  background: "var(--gray-100)",
-                  border: "1px solid var(--color-border-soft)",
-                  borderRadius: 8,
-                  cursor: "not-allowed",
-                  opacity: 0.5,
-                  whiteSpace: "nowrap",
+                  display: "inline-flex", alignItems: "center", gap: 6,
+                  padding: "8px 18px", fontSize: 12, fontWeight: 600,
+                  color: "var(--color-text-muted)", background: "var(--gray-100)",
+                  border: "1px solid var(--color-border-soft)", borderRadius: 8,
+                  cursor: "not-allowed", opacity: 0.5, whiteSpace: "nowrap",
                 }}
               >
-                <span style={{ fontSize: 14 }}>📥</span>
-                PDFを開く
+                <span style={{ fontSize: 14 }}>📥</span>PDFを開く
               </button>
               <p style={{ fontSize: 11, color: "#dc2626", marginTop: 5 }}>
                 ※実装前のため、ご利用いただけません
@@ -161,29 +161,44 @@ function SupportArea({ isOwner }: { isOwner: boolean }) {
   );
 }
 
-/* ── 行アクション ────────────────────────────────────────────────────── */
-function RowActions({
-  oaId,
-  isOwner,
-  onDelete,
-}: {
+/* ── 行アクションボタン ─────────────────────────────────────────────────── */
+function RowActions({ oaId, isOwner, onDelete }: {
   oaId:     string;
   isOwner:  boolean;
   onDelete: () => void;
 }) {
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 4, justifyContent: "flex-end" }}>
+    <div style={{
+      display:        "flex",
+      flexDirection:  "column",
+      gap:            10,
+      alignItems:     "stretch",
+      minWidth:       108,
+    }}>
       <Link
         href={`/oas/${oaId}/works`}
         className="btn btn-primary"
-        style={{ padding: "4px 10px", fontSize: 11, whiteSpace: "nowrap" }}
+        style={{
+          padding:    "9px 18px",
+          fontSize:   13,
+          fontWeight: 700,
+          textAlign:  "center",
+          display:    "block",
+          whiteSpace: "nowrap",
+        }}
       >
         作品管理
       </Link>
       <Link
         href={`/oas/${oaId}/settings`}
         className="btn btn-ghost"
-        style={{ padding: "4px 10px", fontSize: 11, whiteSpace: "nowrap" }}
+        style={{
+          padding:    "9px 18px",
+          fontSize:   13,
+          textAlign:  "center",
+          display:    "block",
+          whiteSpace: "nowrap",
+        }}
       >
         設定
       </Link>
@@ -191,7 +206,7 @@ function RowActions({
         <button
           type="button"
           className="btn btn-danger"
-          style={{ padding: "4px 9px", fontSize: 11, whiteSpace: "nowrap" }}
+          style={{ padding: "9px 18px", fontSize: 13, whiteSpace: "nowrap" }}
           onClick={onDelete}
         >
           削除
@@ -201,45 +216,119 @@ function RowActions({
   );
 }
 
-/* ── スケルトン行 ─────────────────────────────────────────────────────── */
-function SkeletonRows() {
+/* ── 作品名セル ──────────────────────────────────────────────────────────── */
+function WorksCell({ oaId, worksMap }: { oaId: string; worksMap: Record<string, WorkListItem[]> }) {
+  const ws = worksMap[oaId];
+  if (!ws) return <span style={{ ...VALUE_STYLE, color: "var(--text-muted)" }}>—</span>;
+  if (ws.length === 0) return (
+    <Link
+      href={`/oas/${oaId}/works`}
+      style={{
+        display:        "inline-flex",
+        alignItems:     "center",
+        gap:            4,
+        fontSize:       12,
+        color:          "var(--color-info)",
+        padding:        "3px 9px",
+        background:     "#eff6ff",
+        border:         "1px dashed #bfdbfe",
+        borderRadius:   "var(--radius-full)",
+        textDecoration: "none",
+        whiteSpace:     "nowrap",
+      }}
+    >
+      ＋ 作品を追加
+    </Link>
+  );
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+      {ws.map((w) => (
+        <Link
+          key={w.id}
+          href={`/oas/${oaId}/works/${w.id}`}
+          title={`${w.title} の作品管理へ`}
+          style={{
+            display:        "inline-flex",
+            alignItems:     "center",
+            gap:            3,
+            fontSize:       13,
+            fontWeight:     600,
+            color:          "var(--text-primary)",
+            textDecoration: "none",
+            lineHeight:     1.4,
+            maxWidth:       "100%",
+            transition:     "color .15s",
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.color           = "var(--color-primary, #2F6F5E)";
+            e.currentTarget.style.textDecoration  = "underline";
+            e.currentTarget.style.textUnderlineOffset = "2px";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.color          = "var(--text-primary)";
+            e.currentTarget.style.textDecoration = "none";
+          }}
+        >
+          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {w.title}
+          </span>
+          <span style={{ fontSize: 13, color: "#9ca3af", flexShrink: 0, lineHeight: 1 }}>›</span>
+        </Link>
+      ))}
+    </div>
+  );
+}
+
+/* ── スケルトン行 ─────────────────────────────────────────────────────────── */
+function SkeletonList() {
   return (
     <>
-      {[160, 140, 180].map((w, i) => (
-        <tr key={i}>
-          <td>
-            <div className="skeleton" style={{ width: w, height: 13, marginBottom: 5 }} />
-            <div className="skeleton" style={{ width: 88, height: 10 }} />
-          </td>
-          <td><div className="skeleton" style={{ width: 48, height: 20, borderRadius: 10 }} /></td>
-          <td><div className="skeleton" style={{ width: 96, height: 13 }} /></td>
-          <td style={{ textAlign: "center" }}><div className="skeleton" style={{ width: 32, height: 16, margin: "0 auto" }} /></td>
-          <td><div className="skeleton" style={{ width: 66, height: 11 }} /></td>
-          <td>
-            <div style={{ display: "flex", gap: 4, justifyContent: "flex-end" }}>
-              <div className="skeleton" style={{ width: 54, height: 26, borderRadius: 6 }} />
-              <div className="skeleton" style={{ width: 38, height: 26, borderRadius: 6 }} />
-              <div className="skeleton" style={{ width: 36, height: 26, borderRadius: 6 }} />
+      {[0, 1, 2].map((i) => (
+        <div
+          key={i}
+          style={{
+            display:      "flex",
+            gap:          24,
+            alignItems:   "flex-start",
+            padding:      "22px 24px",
+            borderBottom: "1px solid var(--border-light)",
+          }}
+        >
+          {/* 左: 情報エリア */}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div className="skeleton" style={{ width: 180 + i * 30, height: 18, borderRadius: 4, marginBottom: 8 }} />
+            <div className="skeleton" style={{ width: 100, height: 11, borderRadius: 4, marginBottom: 20 }} />
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "12px 28px" }}>
+              {[60, 72, 140, 66, 66].map((w, j) => (
+                <div key={j}>
+                  <div className="skeleton" style={{ width: 40, height: 9, borderRadius: 3, marginBottom: 6 }} />
+                  <div className="skeleton" style={{ width: w, height: 13, borderRadius: 4 }} />
+                </div>
+              ))}
             </div>
-          </td>
-        </tr>
+          </div>
+          {/* 右: ボタンエリア */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: 108 }}>
+            <div className="skeleton" style={{ height: 38, borderRadius: 8 }} />
+            <div className="skeleton" style={{ height: 38, borderRadius: 8 }} />
+          </div>
+        </div>
       ))}
     </>
   );
 }
 
-/* ── メインページ ─────────────────────────────────────────────────────── */
+/* ── メインページ ──────────────────────────────────────────────────────────── */
 export default function OaListPage() {
-  const [items, setItems]         = useState<OaListItem[]>([]);
-  const [meta, setMeta]           = useState<OaListMeta | null>(null);
-  const [loading, setLoading]     = useState(true);
-  const [error, setError]         = useState<string | null>(null);
-  const [page, setPage]           = useState(1);
-  const [worksMap, setWorksMap]   = useState<Record<string, WorkListItem[]>>({});
-  const { showToast }             = useToast();
+  const [items,    setItems]    = useState<OaListItem[]>([]);
+  const [meta,     setMeta]     = useState<OaListMeta | null>(null);
+  const [loading,  setLoading]  = useState(true);
+  const [error,    setError]    = useState<string | null>(null);
+  const [page,     setPage]     = useState(1);
+  const [worksMap, setWorksMap] = useState<Record<string, WorkListItem[]>>({});
+  const { showToast }           = useToast();
   const { effectiveRole, isPlatformOwner, setPreviewRole } = usePlatformRole();
 
-  // オーナーとして機能するか（プレビュー中でない場合のみ true）
   const actAsOwner = isPlatformOwner && effectiveRole === "owner";
 
   async function load(p: number) {
@@ -280,51 +369,6 @@ export default function OaListPage() {
     }
   }
 
-  function WorksCell({ oaId }: { oaId: string }) {
-    const ws = worksMap[oaId];
-    if (!ws) return <span style={{ color: "#9ca3af", fontSize: 12 }}>—</span>;
-    if (ws.length === 0) return (
-      <Link
-        href={`/oas/${oaId}/works`}
-        style={{
-          display: "inline-flex", alignItems: "center", gap: 4,
-          fontSize: 11, color: "var(--color-info)",
-          padding: "2px 7px",
-          background: "#eff6ff",
-          border: "1px dashed #bfdbfe",
-          borderRadius: "var(--radius-full)",
-          textDecoration: "none",
-          whiteSpace: "nowrap",
-        }}
-      >
-        ＋ 作品を追加
-      </Link>
-    );
-    return (
-      <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-        {ws.map((w) => (
-          <Link
-            key={w.id}
-            href={`/oas/${oaId}/works/${w.id}`}
-            title={w.title}
-            style={{
-              display: "flex", alignItems: "center", gap: 4,
-              fontSize: 12, color: "var(--text-primary)",
-              textDecoration: "none",
-              lineHeight: 1.4,
-              minWidth: 0,
-            }}
-          >
-            <span style={{ color: "var(--text-muted)", fontSize: 10, flexShrink: 0 }}>🎭</span>
-            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {w.title}
-            </span>
-          </Link>
-        ))}
-      </div>
-    );
-  }
-
   function totalPlayers(oaId: string): number {
     return (worksMap[oaId] ?? []).reduce((sum, w) => sum + (w._count.userProgress ?? 0), 0);
   }
@@ -346,17 +390,10 @@ export default function OaListPage() {
 
       {/* ── β版 遅延注意バナー ── */}
       <div style={{
-        display:      "flex",
-        alignItems:   "flex-start",
-        gap:          10,
-        background:   "#fffbeb",
-        border:       "1px solid #fcd34d",
-        borderRadius: "var(--radius-md)",
-        padding:      "12px 16px",
-        marginBottom: 16,
-        fontSize:     13,
-        color:        "#92400e",
-        lineHeight:   1.6,
+        display: "flex", alignItems: "flex-start", gap: 10,
+        background: "#fffbeb", border: "1px solid #fcd34d",
+        borderRadius: "var(--radius-md)", padding: "12px 16px",
+        marginBottom: 16, fontSize: 13, color: "#92400e", lineHeight: 1.6,
       }}>
         <span style={{ fontSize: 16, flexShrink: 0, marginTop: 1 }}>⚠️</span>
         <span>
@@ -378,12 +415,12 @@ export default function OaListPage() {
         </div>
       )}
 
-      {/* ── 統計サマリー（データあり かつ ロード完了時） ── */}
+      {/* ── 統計サマリー ── */}
       {!loading && items.length > 0 && (
         <SummaryBar items={items} worksMap={worksMap} />
       )}
 
-      {/* ── テーブル / スケルトン / 空 ── */}
+      {/* ── 一覧 / スケルトン / 空 ── */}
       {items.length === 0 && !loading ? (
         <div className="card">
           <div className="empty-state">
@@ -399,186 +436,188 @@ export default function OaListPage() {
           </div>
         </div>
       ) : (
-        <div className="card" style={{ padding: 0 }}>
-          <div className="table-wrap">
-            <table className="table-compact" style={{ tableLayout: "fixed", width: "100%" }}>
-              <colgroup>
-                {/* アカウント名: 可変 */}
-                <col style={{ width: "22%" }} />
-                {/* 状態 */}
-                <col style={{ width: "56px" }} />
-                {/* 作品: 可変 */}
-                <col style={{ width: "20%" }} />
-                {/* プレイヤー数 */}
-                <col style={{ width: "76px" }} />
-                {/* 登録/更新 */}
-                <col style={{ width: "80px" }} />
-                {/* アクション */}
-                <col style={{ width: "152px" }} />
-              </colgroup>
-              <thead>
-                <tr>
-                  <th>アカウント名</th>
-                  <th>状態</th>
-                  <th>作品</th>
-                  <th style={{ textAlign: "center" }}>プレイヤー数</th>
-                  <th>更新日</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {loading ? (
-                  <SkeletonRows />
-                ) : (
-                  items.map((oa) => (
-                    <tr key={oa.id}>
-                      {/* ── アカウント名 ── */}
-                      <td style={{ minWidth: 0 }}>
-                        {/* 名前 + ロールバッジ */}
-                        <div style={{ display: "flex", alignItems: "center", gap: 5, minWidth: 0 }}>
-                          <Link
-                            href={`/oas/${oa.id}/works`}
-                            title={oa.title}
+        <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+          {loading ? (
+            <SkeletonList />
+          ) : (
+            items.map((oa, idx) => {
+              const isLast        = idx === items.length - 1;
+              const statusStyle   = STATUS_BADGE_STYLE[oa.publish_status] ?? STATUS_BADGE_STYLE.draft;
+              const players       = totalPlayers(oa.id);
+              const roleText      = ROLE_LABEL[oa.my_role] ?? null;
+
+              return (
+                <div
+                  key={oa.id}
+                  style={{
+                    display:      "flex",
+                    gap:          24,
+                    alignItems:   "flex-start",
+                    padding:      "22px 24px",
+                    borderBottom: isLast ? "none" : "1px solid var(--border-light)",
+                    transition:   "background .1s",
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = "var(--gray-50, #fafafa)"; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = ""; }}
+                >
+                  {/* ─── 左: 情報エリア ─── */}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+
+                    {/* アカウント名 + 状態バッジ */}
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
+                      <span style={{
+                        fontSize:     16,
+                        fontWeight:   800,
+                        color:        "var(--text-primary)",
+                        overflow:     "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace:   "nowrap",
+                        lineHeight:   1.3,
+                      }}>
+                        {oa.title}
+                      </span>
+                      <span style={{
+                        display:      "inline-block",
+                        padding:      "2px 8px",
+                        borderRadius: 20,
+                        fontSize:     10,
+                        fontWeight:   700,
+                        background:   statusStyle.bg,
+                        color:        statusStyle.color,
+                        border:       `1px solid ${statusStyle.border}`,
+                        whiteSpace:   "nowrap",
+                        flexShrink:   0,
+                      }}>
+                        {STATUS_LABEL[oa.publish_status] ?? oa.publish_status}
+                      </span>
+                    </div>
+
+                    {/* Ch ID / OA ID チップ */}
+                    {(oa.channel_id || oa.line_oa_id) && (
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 14 }}>
+                        {oa.channel_id && (
+                          <span
+                            title={`Channel ID: ${oa.channel_id}`}
                             style={{
-                              fontWeight: 700, fontSize: 13,
-                              color: "var(--text-primary)",
-                              textDecoration: "none",
-                              overflow: "hidden",
-                              textOverflow: "ellipsis",
-                              whiteSpace: "nowrap",
-                              minWidth: 0,
+                              fontSize: 10, color: "var(--text-muted)",
+                              background: "var(--gray-50)", border: "1px solid var(--border-light)",
+                              borderRadius: 4, padding: "1px 6px",
+                              fontFamily: "monospace", whiteSpace: "nowrap",
                             }}
                           >
-                            {oa.title}
-                          </Link>
-                          {(oa.my_role === "owner" || oa.my_role === "admin" || oa.my_role === "editor" || oa.my_role === "viewer") && (
-                            <span style={{ flexShrink: 0 }}>
-                              <RoleBadge role={oa.my_role as Role} />
-                            </span>
-                          )}
-                        </div>
-                        {/* 説明 */}
-                        {oa.description && (
-                          <div
-                            title={oa.description}
-                            style={{
-                              fontSize: 11, color: "var(--text-muted)", marginTop: 2,
-                              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                            }}
-                          >
-                            {oa.description}
-                          </div>
+                            {oa.channel_id.length > 10
+                              ? `${oa.channel_id.slice(0, 4)}…${oa.channel_id.slice(-4)}`
+                              : oa.channel_id}
+                          </span>
                         )}
-                        {/* Ch ID / OA ID チップ */}
-                        <div style={{ display: "flex", flexWrap: "nowrap", gap: 4, marginTop: 4, minWidth: 0, overflow: "hidden" }}>
-                          {oa.channel_id && (
-                            <span
-                              title={`Channel ID: ${oa.channel_id}`}
-                              style={{
-                                fontSize: 10, color: "var(--text-muted)",
-                                background: "var(--gray-50)",
-                                border: "1px solid var(--border-light)",
-                                borderRadius: 4,
-                                padding: "1px 5px",
-                                fontFamily: "monospace",
-                                whiteSpace: "nowrap",
-                                overflow: "hidden",
-                                textOverflow: "ellipsis",
-                                maxWidth: 96,
-                                flexShrink: 1,
-                                display: "inline-block",
-                              }}
-                            >
-                              {oa.channel_id.length > 10
-                                ? `${oa.channel_id.slice(0, 4)}…${oa.channel_id.slice(-4)}`
-                                : oa.channel_id}
-                            </span>
-                          )}
-                          {oa.line_oa_id && (
-                            <span
-                              title={`アカウントID: @${oa.line_oa_id}`}
-                              style={{
-                                fontSize: 10, color: "var(--text-muted)",
-                                background: "var(--gray-50)",
-                                border: "1px solid var(--border-light)",
-                                borderRadius: 4,
-                                padding: "1px 5px",
-                                whiteSpace: "nowrap",
-                                overflow: "hidden",
-                                textOverflow: "ellipsis",
-                                maxWidth: 80,
-                                flexShrink: 1,
-                                display: "inline-block",
-                              }}
-                            >
-                              @{oa.line_oa_id}
-                            </span>
-                          )}
+                        {oa.line_oa_id && (
+                          <span
+                            title={`アカウントID: @${oa.line_oa_id}`}
+                            style={{
+                              fontSize: 10, color: "var(--text-muted)",
+                              background: "var(--gray-50)", border: "1px solid var(--border-light)",
+                              borderRadius: 4, padding: "1px 6px", whiteSpace: "nowrap",
+                            }}
+                          >
+                            @{oa.line_oa_id}
+                          </span>
+                        )}
+                      </div>
+                    )}
+
+                    {/* ─ 情報グリッド（ラベル + 値 の 2段） ─ */}
+                    <div style={{
+                      display:   "flex",
+                      flexWrap:  "wrap",
+                      gap:       "12px 32px",
+                      marginTop: (oa.channel_id || oa.line_oa_id) ? 0 : 14,
+                    }}>
+
+                      {/* 権限 */}
+                      {roleText && (
+                        <div>
+                          <div style={LABEL_STYLE}>権限</div>
+                          <div style={VALUE_STYLE}>{roleText}</div>
                         </div>
-                      </td>
+                      )}
 
-                      {/* ── 状態バッジ ── */}
-                      <td>
-                        <span className={`badge badge-${oa.publish_status}`}>
-                          {STATUS_LABEL[oa.publish_status] ?? oa.publish_status}
-                        </span>
-                      </td>
-
-                      {/* ── 作品 ── */}
-                      <td style={{ minWidth: 0 }}>
-                        <WorksCell oaId={oa.id} />
-                      </td>
-
-                      {/* ── プレイヤー数 ── */}
-                      <td style={{ textAlign: "center" }}>
-                        <span style={{
-                          fontWeight: 800, fontSize: 14,
-                          color: totalPlayers(oa.id) > 0 ? "var(--color-info)" : "var(--text-disabled)",
+                      {/* プレイヤー数 */}
+                      <div>
+                        <div style={LABEL_STYLE}>プレイヤー数</div>
+                        <div style={{
+                          ...VALUE_STYLE,
+                          fontSize: 14,
+                          fontWeight: 800,
+                          color: players > 0 ? "var(--color-info, #0ea5e9)" : "var(--text-muted)",
                         }}>
-                          {totalPlayers(oa.id).toLocaleString()}
-                        </span>
-                      </td>
+                          {players.toLocaleString()}
+                        </div>
+                      </div>
 
-                      {/* ── 更新日 ── */}
-                      <td>
-                        <div style={{ fontSize: 11, color: "var(--text-secondary)", whiteSpace: "nowrap" }}>
+                      {/* 作品名 */}
+                      <div style={{ minWidth: 120, maxWidth: 280 }}>
+                        <div style={LABEL_STYLE}>作品名</div>
+                        <WorksCell oaId={oa.id} worksMap={worksMap} />
+                      </div>
+
+                      {/* 作成日時 */}
+                      <div>
+                        <div style={LABEL_STYLE}>作成日時</div>
+                        <div style={{ ...VALUE_STYLE, color: "var(--text-secondary)" }}>
+                          {formatDate(oa.created_at)}
+                        </div>
+                      </div>
+
+                      {/* 更新日時 */}
+                      <div>
+                        <div style={LABEL_STYLE}>更新日時</div>
+                        <div style={{ ...VALUE_STYLE, color: "var(--text-secondary)" }}>
                           {formatDate(oa.updated_at ?? oa.created_at)}
                         </div>
-                        <div style={{ fontSize: 10, color: "var(--text-muted)", whiteSpace: "nowrap", marginTop: 1 }}>
-                          {formatDate(oa.created_at)} 作成
-                        </div>
-                      </td>
+                      </div>
+                    </div>
+                  </div>
 
-                      {/* ── アクション ── */}
-                      <td style={{ paddingRight: 12 }}>
-                        <RowActions
-                          oaId={oa.id}
-                          isOwner={oa.my_role === "owner" && actAsOwner}
-                          onDelete={() => handleDelete(oa.id, oa.title)}
-                        />
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+                  {/* ─── 右: ボタンエリア ─── */}
+                  <div style={{ flexShrink: 0 }}>
+                    <RowActions
+                      oaId={oa.id}
+                      isOwner={oa.my_role === "owner" && actAsOwner}
+                      onDelete={() => handleDelete(oa.id, oa.title)}
+                    />
+                  </div>
+                </div>
+              );
+            })
+          )}
 
-          {/* ページネーション */}
+          {/* ── ページネーション ── */}
           {meta && meta.pages > 1 && (
             <div style={{
-              display: "flex", gap: 8, alignItems: "center",
-              padding: "12px 20px",
+              display:        "flex",
+              gap:            8,
+              alignItems:     "center",
+              padding:        "12px 20px",
               justifyContent: "flex-end",
-              borderTop: "1px solid var(--border-light)",
+              borderTop:      "1px solid var(--border-light)",
             }}>
-              <button className="btn btn-ghost" disabled={page <= 1} onClick={() => setPage((p) => p - 1)} style={{ padding: "6px 14px", fontSize: 12 }}>
+              <button
+                className="btn btn-ghost"
+                disabled={page <= 1}
+                onClick={() => setPage((p) => p - 1)}
+                style={{ padding: "6px 14px", fontSize: 12 }}
+              >
                 ← 前へ
               </button>
               <span style={{ fontSize: 12, color: "var(--text-muted)", padding: "0 4px" }}>
                 {page} / {meta.pages} ページ（計 {meta.total} 件）
               </span>
-              <button className="btn btn-ghost" disabled={page >= meta.pages} onClick={() => setPage((p) => p + 1)} style={{ padding: "6px 14px", fontSize: 12 }}>
+              <button
+                className="btn btn-ghost"
+                disabled={page >= meta.pages}
+                onClick={() => setPage((p) => p + 1)}
+                style={{ padding: "6px 14px", fontSize: 12 }}
+              >
                 次へ →
               </button>
             </div>
@@ -608,16 +647,10 @@ export default function OaListPage() {
             type="button"
             onClick={() => setPreviewRole(null)}
             style={{
-              fontSize:     12,
-              fontWeight:   600,
-              color:        "#92400e",
-              background:   "#fef3c7",
-              border:       "1px solid #fde68a",
-              borderRadius: 6,
-              padding:      "3px 10px",
-              cursor:       "pointer",
-              whiteSpace:   "nowrap",
-              flexShrink:   0,
+              fontSize: 12, fontWeight: 600, color: "#92400e",
+              background: "#fef3c7", border: "1px solid #fde68a",
+              borderRadius: 6, padding: "3px 10px", cursor: "pointer",
+              whiteSpace: "nowrap", flexShrink: 0,
             }}
           >
             オーナー表示に戻す
