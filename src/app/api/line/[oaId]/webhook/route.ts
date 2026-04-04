@@ -507,9 +507,17 @@ function matchPuzzleFromPhase(
   phase:            PhaseRow,
   inputText:        string,
   solvedPuzzleIds:  string[] = [],
+  userSegment:      "not_started" | "in_progress" | "completed" = "in_progress",
 ): PuzzleMatchResult {
   const puzzles = phase.messages.filter(
-    (m) => m.kind === "puzzle" && m.answer !== null && !solvedPuzzleIds.includes(m.id),
+    (m) =>
+      m.kind === "puzzle" &&
+      m.answer !== null &&
+      !solvedPuzzleIds.includes(m.id) &&
+      // targetSegment フィルタ:
+      //   未設定（null / ""）→ すべてのセグメントに発火
+      //   設定あり → ユーザーのセグメントと一致する謎のみ発火
+      (!m.targetSegment || m.targetSegment === userSegment),
   );
 
   if (puzzles.length === 0) return null;
@@ -1164,11 +1172,17 @@ async function handleTextEvent({
     ? (currentFlags.solvedPuzzles as string[])
     : [];
 
+  // ユーザーセグメントを進行状態から導出
+  // ここに到達するユーザーは progress あり・reachedEnding=false 確定なので常に "in_progress"
+  // 将来のリプレイ対応に備えて progress.reachedEnding から明示的に導出しておく
+  const userSegment = (progress.reachedEnding ? "completed" : "in_progress") as
+    "not_started" | "in_progress" | "completed";
+
   // DB クエリなしでインメモリ照合
-  const hintResult     = currentPhase ? matchHintFromPhase(currentPhase, text)                               : null;
-  const matchedQrItem  = currentPhase ? matchQrItem(currentPhase, text)                                      : null;
-  const keywordMatched = currentPhase ? matchKeywordsInMemory(currentPhase.messages, globalKwMsgs, text)     : [];
-  const puzzleResult   = currentPhase ? matchPuzzleFromPhase(currentPhase, text, solvedPuzzleIds)            : null;
+  const hintResult     = currentPhase ? matchHintFromPhase(currentPhase, text)                                           : null;
+  const matchedQrItem  = currentPhase ? matchQrItem(currentPhase, text)                                                  : null;
+  const keywordMatched = currentPhase ? matchKeywordsInMemory(currentPhase.messages, globalKwMsgs, text)                 : [];
+  const puzzleResult   = currentPhase ? matchPuzzleFromPhase(currentPhase, text, solvedPuzzleIds, userSegment)           : null;
 
   if (!currentPhase) {
     console.log(`[Webhook][STEP] メッセージ送信前 (currentPhaseなし) userId=${userId}`);

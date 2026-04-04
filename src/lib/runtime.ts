@@ -287,8 +287,17 @@ function messageRowToRuntime(
  *   3. 起点メッセージから nextMessageId を辿り、quick_replies を持つメッセージで停止
  *      （QRを持つメッセージはそこで一時停止し、ユーザー入力を待つ）
  */
+/**
+ * ユーザーの進行セグメント。
+ * - not_started : 未開始（UserProgress なし）
+ * - in_progress : プレイ中（UserProgress あり・エンディング未到達）
+ * - completed   : クリア済み（reachedEnding = true）
+ */
+export type UserSegment = "not_started" | "in_progress" | "completed";
+
 function buildEntryChain(
   messages: PhaseRow["messages"],
+  userSegment?: UserSegment,
 ): import("@/types").RuntimePhaseMessage[] {
   // 1. QR の target_message_id を収集（分岐先メッセージ ID セット）
   const targetMsgIds = new Set<string>();
@@ -315,6 +324,8 @@ function buildEntryChain(
   //    kind="start" は LINE webhook の handleStartTrigger がキーワードマッチに使うため
   //    triggerKeyword が設定されていても常に起点として扱う（シナリオ開幕演出メッセージ）
   //    それ以外（kind="normal"/"puzzle" など）で triggerKeyword があるものはキーワード入力待ちのため除外
+  //    kind="puzzle" の場合: targetSegment が設定されていればユーザーのセグメントと照合し、
+  //    不一致の謎はフェーズ開始時に表示しない（発火対象外）
   const entries = messages
     .filter(
       (m) =>
@@ -322,7 +333,9 @@ function buildEntryChain(
         !midChainIds.has(m.id) &&
         m.kind !== "response" &&
         m.kind !== "hint" &&
-        (m.kind === "start" || !m.triggerKeyword?.trim()),
+        (m.kind === "start" || !m.triggerKeyword?.trim()) &&
+        // 謎: targetSegment が設定されている場合はセグメント一致チェック
+        (m.kind !== "puzzle" || !m.targetSegment || !userSegment || m.targetSegment === userSegment),
     )
     .sort((a, b) => a.sortOrder - b.sortOrder || a.createdAt.getTime() - b.createdAt.getTime());
 
@@ -355,8 +368,9 @@ function buildEntryChain(
  * buildRuntimeState / buildRuntimeStateWithPhase の共通処理。
  */
 function phaseRowToRuntimePhase(
-  phase:  PhaseRow,
-  flags:  Record<string, unknown>,
+  phase:       PhaseRow,
+  flags:       Record<string, unknown>,
+  userSegment?: UserSegment,
 ): import("@/types").RuntimePhase {
   const isEnding = phase.phaseType === "ending";
 
@@ -369,7 +383,7 @@ function phaseRowToRuntimePhase(
     phase_type:  phase.phaseType as PhaseType,
     name:        phase.name,
     description: phase.description,
-    messages:    buildEntryChain(phase.messages),
+    messages:    buildEntryChain(phase.messages, userSegment),
     transitions: isEnding
       ? null
       : availableTransitions.map((t) => ({
@@ -422,9 +436,13 @@ export async function buildRuntimeState(
 
   const flags = safeParseFlags(progress.flags);
 
+  // ユーザーのセグメントを進行状態から導出
+  // （"not_started" は progress レコードが存在しないため、ここでは in_progress / completed のみ）
+  const userSegment: UserSegment = progress.reachedEnding ? "completed" : "in_progress";
+
   return {
     progress: progressOut,
-    phase:    phaseRowToRuntimePhase(phase, flags),
+    phase:    phaseRowToRuntimePhase(phase, flags, userSegment),
   };
 }
 

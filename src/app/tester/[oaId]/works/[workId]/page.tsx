@@ -23,17 +23,48 @@ const STATUS_META: Record<string, { label: string; color: string; bg: string; do
 };
 
 // 各機能カードの定義（href は tester URL → next.config rewrite で /oas/ ページへ）
-function hubCards(oaId: string, workId: string) {
-  const base = `/tester/${oaId}/works/${workId}`;
-  return [
-    { key: "scenario",   icon: "🗺",  title: "シナリオフロー", desc: "フェーズ間の遷移フローを確認・編集します",                       color: "#059669", bg: "#ecfdf5", href: `${base}/scenario` },
-    { key: "messages",   icon: "💬", title: "メッセージ・謎",  desc: "フェーズごとに送信するメッセージ・謎チャレンジを管理します",    color: "#06C755", bg: "#E6F7ED", href: `${base}/messages` },
-    { key: "phases",     icon: "🗂",  title: "フェーズ管理",   desc: "シナリオの進行段階（フェーズ）を管理します",                     color: "#d97706", bg: "#fffbeb", href: `${base}/phases` },
-    { key: "characters", icon: "👤", title: "キャラクター",    desc: "メッセージ送信者となるキャラクターを管理します",                 color: "#7c3aed", bg: "#f5f3ff", href: `${base}/characters` },
-    { key: "dashboard",  icon: "📊", title: "ダッシュボード",  desc: "プレイ統計・リアルタイム・フロー分析を確認します",               color: "#0891b2", bg: "#ecfeff", href: `${base}/dashboard` },
-    { key: "edit",       icon: "📝", title: "作品情報",        desc: "タイトル・説明・公開ステータス・あいさつメッセージを編集します", color: "#374151", bg: "#f9fafb", href: `${base}/edit` },
-  ] as const;
-}
+const HUB_CARDS = [
+  {
+    key:   "edit",
+    icon:  "📝",
+    title: "作品情報",
+    desc:  "タイトル・説明・公開ステータス・あいさつメッセージを編集します",
+    color: "#374151",
+    bg:    "#f9fafb",
+  },
+  {
+    key:   "characters",
+    icon:  "👤",
+    title: "キャラクター",
+    desc:  "メッセージ送信者となるキャラクターを管理します",
+    color: "#7c3aed",
+    bg:    "#f5f3ff",
+  },
+  {
+    key:   "messages",
+    icon:  "💬",
+    title: "メッセージ・謎",
+    desc:  "フェーズごとに送信するメッセージ・謎チャレンジを管理します",
+    color: "#06C755",
+    bg:    "#E6F7ED",
+  },
+  {
+    key:   "scenario",
+    icon:  "🗺",
+    title: "シナリオフロー",
+    desc:  "フェーズの追加・並び替え・編集と遷移フローを1画面で管理します",
+    color: "#059669",
+    bg:    "#ecfdf5",
+  },
+  {
+    key:   "audience",
+    icon:  "🎯",
+    title: "オーディエンス",
+    desc:  "プレイ統計・リアルタイム・フロー・セグメント・トラッキングを確認します",
+    color: "#0891b2",
+    bg:    "#ecfeff",
+  },
+] as const;
 
 export default function TesterWorkHubPage() {
   const params = useParams<{ oaId: string; workId: string }>();
@@ -75,7 +106,7 @@ export default function TesterWorkHubPage() {
       <>
         <div className="page-header">
           <h2>作品</h2>
-          <Link href={`/tester/${oaId}`} className="btn btn-ghost">← 作品リストに戻る</Link>
+          <Link href={`/tester/${oaId}/works`} className="btn btn-ghost">← 作品リストに戻る</Link>
         </div>
         <div className="alert alert-error">{error}</div>
       </>
@@ -83,16 +114,16 @@ export default function TesterWorkHubPage() {
   }
 
   const statusMeta = STATUS_META[work?.publish_status ?? "draft"];
-  const cards      = hubCards(oaId, workId);
 
   return (
     <>
       {/* ── ページヘッダー ── */}
       <div className="page-header">
         <div>
-          {/* パンくず: OA リストへの導線なし → テスターホームへ */}
+          {/* パンくず: テスターホームへ */}
           <Breadcrumb items={[
             { label: oaTitle || "テスターポータル", href: `/tester/${oaId}` },
+            { label: "作品リスト", href: `/tester/${oaId}/works` },
             ...(work ? [{ label: work.title }] : []),
           ]} />
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -120,13 +151,13 @@ export default function TesterWorkHubPage() {
           >
             ▶ プレビュー
           </Link>
-          <Link href={`/tester/${oaId}`} className="btn btn-ghost">
+          <Link href={`/tester/${oaId}/works`} className="btn btn-ghost">
             ← 作品リスト
           </Link>
         </div>
       </div>
 
-      {/* ── ガイド ── */}
+      {/* ── 使い方ガイド ── */}
       <HelpAccordion items={[
         { icon: "✅", title: "この画面でできること", points: [
           "シナリオを構成するキャラクター・フェーズ・メッセージをまとめて管理できます",
@@ -138,9 +169,13 @@ export default function TesterWorkHubPage() {
           "③ メッセージを追加してフェーズに紐づける",
           "④ シナリオフローで遷移（分岐）を設定する",
         ]},
+        { icon: "⚠️", title: "注意点", points: [
+          "公開ステータスが「公開中」のときだけ LINE からのメッセージに反応します",
+          "公開前に必ずプレビュー機能でシナリオの動作を確認してください",
+        ]},
       ]} />
 
-      {/* ── カウント ── */}
+      {/* ── カウント表示 ── */}
       {work && (
         <div style={{
           display: "flex", gap: 10, marginBottom: 24, flexWrap: "wrap",
@@ -155,56 +190,74 @@ export default function TesterWorkHubPage() {
             { label: "キャラクター", value: work._count.characters, icon: "🎭", highlight: false },
             { label: "フェーズ",     value: work._count.phases,     icon: "🗂",  highlight: false },
             { label: "メッセージ",   value: work._count.messages,   icon: "💬", highlight: false },
-          ].map((chip) => (
-            <div key={chip.label} style={{
-              display: "flex", alignItems: "center", gap: 6,
-              paddingRight: 18, borderRight: "1px solid var(--border-light)",
+          ].map(({ label, value, icon, highlight }) => (
+            <div key={label} style={{
+              display: "flex", alignItems: "center", gap: 8,
+              paddingRight: 18,
+              borderRight: "1px solid var(--border-light)",
             }}>
-              <span style={{ fontSize: 16 }}>{chip.icon}</span>
-              <span style={{ fontSize: 18, fontWeight: 800, color: chip.highlight ? "var(--color-info)" : "var(--text-primary)" }}>
-                {chip.value}
-              </span>
-              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{chip.label}</span>
+              <span style={{ fontSize: 16 }}>{icon}</span>
+              <span style={{ fontSize: 20, fontWeight: 800, color: highlight ? "var(--color-info)" : "var(--text-primary)", lineHeight: 1 }}>{value}</span>
+              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{label}</span>
             </div>
           ))}
         </div>
       )}
 
-      {/* ── 機能カードグリッド ── */}
+      {/* ── ハブカード ── */}
       <div style={{
         display: "grid",
-        gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))",
+        gridTemplateColumns: "repeat(auto-fill, minmax(270px, 1fr))",
         gap: 14,
       }}>
-        {cards.map((card) => (
+        {HUB_CARDS.map((card) => (
           <Link
             key={card.key}
-            href={card.href}
-            style={{
-              display: "block",
-              padding: "20px 22px",
-              background: card.bg,
-              border: "1.5px solid transparent",
-              borderRadius: "var(--radius-md)",
-              textDecoration: "none",
-              transition: "border-color 0.15s, box-shadow 0.15s",
-              boxShadow: "var(--shadow-xs)",
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.borderColor = card.color + "44";
-              e.currentTarget.style.boxShadow   = "var(--shadow-md)";
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.borderColor = "transparent";
-              e.currentTarget.style.boxShadow   = "var(--shadow-xs)";
-            }}
+            href={`/tester/${oaId}/works/${workId}/${card.key}`}
+            style={{ textDecoration: "none" }}
           >
-            <div style={{ fontSize: 26, marginBottom: 8 }}>{card.icon}</div>
-            <div style={{ fontSize: 14, fontWeight: 700, color: card.color, marginBottom: 4 }}>
-              {card.title}
-            </div>
-            <div style={{ fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.5 }}>
-              {card.desc}
+            <div
+              style={{
+                background: "var(--surface)",
+                border: "1px solid var(--border-light)",
+                borderRadius: "var(--radius-md)",
+                padding: "18px 20px",
+                cursor: "pointer",
+                transition: "box-shadow 0.15s, border-color 0.15s, transform 0.1s",
+                display: "flex",
+                alignItems: "flex-start",
+                gap: 14,
+                boxShadow: "var(--shadow-xs)",
+              }}
+              onMouseEnter={(e) => {
+                const el = e.currentTarget as HTMLDivElement;
+                el.style.boxShadow   = "var(--shadow-md)";
+                el.style.borderColor = "var(--gray-300)";
+                el.style.transform   = "translateY(-2px)";
+              }}
+              onMouseLeave={(e) => {
+                const el = e.currentTarget as HTMLDivElement;
+                el.style.boxShadow   = "var(--shadow-xs)";
+                el.style.borderColor = "var(--border-light)";
+                el.style.transform   = "";
+              }}
+            >
+              <div style={{
+                width: 44, height: 44, borderRadius: "var(--radius-sm)", flexShrink: 0,
+                background: card.bg, display: "flex", alignItems: "center",
+                justifyContent: "center", fontSize: 22,
+              }}>
+                {card.icon}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 700, fontSize: 14, color: card.color, marginBottom: 4 }}>
+                  {card.title}
+                </div>
+                <div style={{ fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.6 }}>
+                  {card.desc}
+                </div>
+              </div>
+              <span style={{ color: "var(--text-muted)", fontSize: 16, alignSelf: "center", flexShrink: 0 }}>›</span>
             </div>
           </Link>
         ))}

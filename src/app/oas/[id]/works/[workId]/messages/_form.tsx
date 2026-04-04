@@ -324,6 +324,10 @@ export function validateMessageForm(form: MessageFormState): string | null {
     ) {
       return "遷移先フェーズを選択してください";
     }
+    // フェーズ未設定の警告: 謎は phase_id がないと発火しない
+    if (!form.phase_id) {
+      return "⚠️ フェーズが設定されていません。フェーズを指定しないと謎が発火しません。設定してから保存してください。";
+    }
     return null;
   }
   // ── 通常メッセージバリデーション ──
@@ -2620,6 +2624,12 @@ export function MessageForm({
                 <option value="in_progress">進行中</option>
                 <option value="completed">クリア済み</option>
               </select>
+              {isPuzzle && (
+                <div style={hintText}>
+                  指定したセグメントのプレイヤーにのみ謎が発火します。「すべて」を選ぶと全員に適用されます。
+                  通常は「すべて」または「進行中」を選択してください。
+                </div>
+              )}
             </div>
 
             {/* フェーズ（共通メッセージ時は非表示） */}
@@ -2627,6 +2637,9 @@ export function MessageForm({
             <div className="form-group" style={{ marginBottom: 0 }}>
               <label style={fieldLabel} htmlFor="phase_id">
                 フェーズ
+                {isPuzzle && (
+                  <span style={{ fontSize: 10, fontWeight: 700, background: "#fef2f2", color: "#dc2626", borderRadius: 4, padding: "1px 6px", marginLeft: 6 }}>必須</span>
+                )}
               </label>
               <select
                 id="phase_id"
@@ -2641,7 +2654,29 @@ export function MessageForm({
                   </option>
                 ))}
               </select>
-              <div style={hintText}>フェーズは必ず指定してください。全フェーズで反応させたい場合は「送信タイミング」→「共通メッセージ」を選択してください。</div>
+              {isPuzzle ? (
+                <>
+                  <div style={hintText}>
+                    謎はフェーズに紐づくことで発火します。フェーズを指定しないと、この謎はどのフェーズでも発火しません。
+                  </div>
+                  {!form.phase_id && (
+                    <div style={{
+                      marginTop: 6,
+                      padding: "8px 12px",
+                      background: "#fef2f2",
+                      border: "1px solid #fecaca",
+                      borderRadius: 6,
+                      fontSize: 11,
+                      color: "#dc2626",
+                      lineHeight: 1.6,
+                    }}>
+                      ⚠️ フェーズが未設定です。このままでは謎が発火しません。必ずフェーズを選択してください。
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div style={hintText}>フェーズは必ず指定してください。全フェーズで反応させたい場合は「送信タイミング」→「共通メッセージ」を選択してください。</div>
+              )}
             </div>
             )}
           </SectionAccordion>

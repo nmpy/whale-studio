@@ -155,21 +155,27 @@ export default function TesterWorkListPage() {
   const [loading, setLoading]     = useState(true);
   const [error, setError]         = useState<string | null>(null);
 
-  useEffect(() => {
-    const token = getDevToken();
-    Promise.all([
-      oaApi.get(token, oaId),
-      workApi.list(token, oaId),
-      friendAddApi.get(token, oaId).catch(() => null),
-    ])
-      .then(([oa, list, fa]) => {
-        setOaTitle(oa.title);
-        setWorks(list);
-        setFriendAdd(fa);
-      })
-      .catch((e) => setError(e instanceof Error ? e.message : "読み込みに失敗しました"))
-      .finally(() => setLoading(false));
-  }, [oaId]);
+  async function load() {
+    setLoading(true);
+    setError(null);
+    try {
+      const token = getDevToken();
+      const [oa, list, fa] = await Promise.all([
+        oaApi.get(token, oaId),
+        workApi.list(token, oaId),
+        friendAddApi.get(token, oaId).catch(() => null),
+      ]);
+      setOaTitle(oa.title);
+      setWorks(list);
+      setFriendAdd(fa);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "読み込みに失敗しました");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => { load(); }, [oaId]);
 
   const sorted      = [...works].sort((a, b) => a.sort_order - b.sort_order);
   const activeCount = works.filter((w) => w.publish_status === "active").length;
@@ -185,7 +191,7 @@ export default function TesterWorkListPage() {
           ]} />
           <h2>作品リスト</h2>
           <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 3 }}>
-            {oaTitle ? `${oaTitle} の謎解きシナリオ` : "謎解きシナリオ"}
+            {oaTitle ? `${oaTitle} の謎解きシナリオを管理します` : "謎解きシナリオを管理します"}
           </p>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
@@ -210,7 +216,12 @@ export default function TesterWorkListPage() {
       </div>
 
       {error && (
-        <div className="alert alert-error" style={{ marginBottom: 16 }}>{error}</div>
+        <div className="alert alert-error" style={{ marginBottom: 16 }}>
+          {error}
+          <button onClick={load} style={{ marginLeft: 12, textDecoration: "underline", background: "none", border: "none", cursor: "pointer", color: "inherit" }}>
+            再読み込み
+          </button>
+        </div>
       )}
 
       {/* ── 統計サマリー ── */}
@@ -226,7 +237,7 @@ export default function TesterWorkListPage() {
           {[
             { label: "総作品数",     value: works.length,                                                                       color: "var(--text-primary)" },
             { label: "公開中",       value: activeCount,                                                                        color: "var(--color-success)" },
-            { label: "総プレイヤー", value: works.reduce((s, w) => s + (w._count.userProgress ?? 0), 0).toLocaleString(),      color: "var(--color-info)" },
+            { label: "総プレイヤー数", value: works.reduce((s, w) => s + (w._count.userProgress ?? 0), 0).toLocaleString(),     color: "var(--color-info)" },
           ].map((s) => (
             <div key={s.label} style={{ display: "flex", alignItems: "center", gap: 6, paddingRight: 18, borderRight: "1px solid var(--border-light)" }}>
               <span style={{ fontSize: 18, fontWeight: 800, color: s.color }}>{s.value}</span>
