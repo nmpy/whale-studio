@@ -31,9 +31,10 @@ model Oa {
   invitations        Invitation[]
   onboardingEvents   OnboardingEvent[]
   richMenus          RichMenu[]
-  riddles            Riddle[]
+  riddles            Riddle[]           @relation("OaRiddles")
   segments           Segment[]
   snsPosts           SnsPost[]
+  subscription       Subscription?
   trackings          Tracking[]
   userTrackings      UserTracking[]
   works              Work[]
@@ -60,14 +61,16 @@ model Work {
   welcomeMessage    String?        @map("welcome_message")
   createdAt         DateTime       @default(now()) @map("created_at")
   updatedAt         DateTime       @updatedAt @map("updated_at")
-  characters        Character[]     @relation("WorkCharacters")
-  messages          Message[]
-  onboardingEvents  OnboardingEvent[]
-  phases            Phase[]
-  transitions       Transition[]
-  userProgress      UserProgress[]
-  oa                Oa              @relation(fields: [oaId], references: [id], onDelete: Cascade)
-  systemCharacter   Character?      @relation("WorkSystemCharacter", fields: [systemCharacterId], references: [id])
+  characters          Character[]          @relation("WorkCharacters")
+  messages            Message[]
+  onboardingEvents    OnboardingEvent[]
+  onboardingProgress  OnboardingProgress[]
+  phases              Phase[]
+  riddles             Riddle[]             @relation("WorkRiddles")
+  transitions         Transition[]
+  userProgress        UserProgress[]
+  oa                  Oa                   @relation(fields: [oaId], references: [id], onDelete: Cascade)
+  systemCharacter     Character?           @relation("WorkSystemCharacter", fields: [systemCharacterId], references: [id])
 
   @@index([oaId])
   @@index([publishStatus])
@@ -168,6 +171,10 @@ model UserProgress {
   /// SQLite は JSON 型非対応のため String で保持し、アプリ層で parse/stringify する
   flags            String   @default("{}") @map("flags")
   lastInteractedAt DateTime @default(now()) @map("last_interacted_at")
+  /// プレビューモード（管理者・テスターが疑似プレイする場合 true）
+  isPreview        Boolean  @default(false) @map("is_preview")
+  /// プレビュー実行者の Supabase userId（isPreview=true のとき格納）
+  previewBy        String?  @map("preview_by")
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")
   currentPhase     Phase?   @relation(fields: [currentPhaseId], references: [id])
@@ -373,10 +380,14 @@ model Riddle {
   targetSegment    String?   @map("target_segment")
   createdAt        DateTime  @default(now()) @map("created_at")
   updatedAt        DateTime  @updatedAt @map("updated_at")
+  /// 作品スコープ管理への移行用（任意: 未設定 = OA スコープのまま）
+  workId           String?   @map("work_id")
   hintLogs         HintLog[]
-  oa               Oa        @relation(fields: [oaId], references: [id], onDelete: Cascade)
+  oa               Oa        @relation("OaRiddles", fields: [oaId], references: [id], onDelete: Cascade)
+  work             Work?     @relation("WorkRiddles", fields: [workId], references: [id], onDelete: SetNull)
 
   @@index([oaId])
+  @@index([workId])
   @@index([status])
   @@index([createdAt])
   @@map("riddles")
@@ -641,15 +652,20 @@ model OnboardingEvent {
 /// ユーザー単位のオンボーディング進捗を記録するテーブル。
 /// OnboardingEvent（作品単位）とは別に、ユーザー単位でのステップ到達を管理する。
 model OnboardingProgress {
-  id        String   @id @default(uuid())
-  userId    String   @map("user_id")
-  workId    String   @map("work_id")
-  step      String
-  createdAt DateTime @default(now()) @map("created_at")
+  id              String   @id @default(uuid())
+  userId          String   @map("user_id")
+  workId          String   @map("work_id")
+  step            String
+  /// ステップ初回到達日時。upsert で update: {} としているため createdAt と同値になる。
+  /// OnboardingEvent との統合後に集計の主軸となるフィールド。
+  firstAchievedAt DateTime @default(now()) @map("first_achieved_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+  work            Work     @relation(fields: [workId], references: [id], onDelete: Cascade)
 
   @@unique([userId, workId, step])
   @@index([userId, workId])
   @@index([step])
+  @@index([workId])
   @@map("onboarding_progress")
 }
 
@@ -712,6 +728,54 @@ model EventLog {
   @@index([oaId])
   @@index([createdAt])
   @@map("event_logs")
+}
+
+/// プラン定義テーブル。各プランの上限・価格を管理する。
+/// MVP では tester / editor の 2 プランのみ。enterprise は将来拡張。
+model Plan {
+  id            String         @id @default(uuid())
+  /// プランキー（例: "tester" | "editor" | "enterprise"）
+  name          String         @unique
+  /// 表示名（例: "テスタープラン"）
+  displayName   String         @map("display_name")
+  /// 同時に所有できる作品数の上限（-1 = 無制限）
+  maxWorks      Int            @default(1) @map("max_works")
+  /// 月あたりのプレイヤー上限（-1 = 無制限）
+  maxPlayers    Int            @default(-1) @map("max_players")
+  /// 月額料金（円）。0 = 無料
+  priceMonthly  Int            @default(0) @map("price_monthly")
+  isActive      Boolean        @default(true) @map("is_active")
+  createdAt     DateTime       @default(now()) @map("created_at")
+  updatedAt     DateTime       @updatedAt @map("updated_at")
+  subscriptions Subscription[]
+
+  @@index([name])
+  @@index([isActive])
+  @@map("plans")
+}
+
+/// OA 単位のサブスクリプション。1 OA につき 1 レコード（@@unique(oaId)）。
+/// status: "active" | "trialing" | "canceled" | "past_due"
+model Subscription {
+  id                 String    @id @default(uuid())
+  oaId               String    @unique @map("oa_id")
+  planId             String    @map("plan_id")
+  /// "active" | "trialing" | "canceled" | "past_due"
+  status             String    @default("trialing")
+  currentPeriodStart DateTime  @map("current_period_start")
+  currentPeriodEnd   DateTime  @map("current_period_end")
+  canceledAt         DateTime? @map("canceled_at")
+  /// 外部決済システムのサブスクリプション ID（Stripe 等。MVP では未使用 = null）
+  externalId         String?   @map("external_id")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+  oa                 Oa        @relation(fields: [oaId], references: [id], onDelete: Cascade)
+  plan               Plan      @relation(fields: [planId], references: [id])
+
+  @@index([planId])
+  @@index([status])
+  @@index([currentPeriodEnd])
+  @@map("subscriptions")
 }
 
 /// メンバーロール（権限階層: owner > admin > editor > tester > viewer）

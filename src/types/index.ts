@@ -718,6 +718,8 @@ export interface Hint {
 export interface Riddle {
   id:                 string;
   oa_id:              string;
+  /** 作品スコープ管理用（Phase 3 以降）。null = OA スコープのまま */
+  work_id:            string | null;
   title:              string;
   question_type:      RiddleQuestionType;
   question_text:      string | null;
@@ -751,6 +753,8 @@ export interface CreateRiddleBody {
   hints?:              Hint[];
   character_id?:       string | null;
   target_segment?:     string | null;
+  /** 作品スコープ管理用（省略可・null = OA スコープのまま） */
+  work_id?:            string | null;
 }
 
 export type UpdateRiddleBody = Partial<CreateRiddleBody>;

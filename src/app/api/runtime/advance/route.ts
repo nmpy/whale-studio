@@ -24,10 +24,13 @@ import { advanceScenarioSchema, formatZodErrors } from "@/lib/validations";
 import { buildRuntimeState, matchTransition, applySetFlags, safeParseFlags } from "@/lib/runtime";
 import { ZodError } from "zod";
 
-export const POST = withAuth(async (req) => {
+export const POST = withAuth(async (req, _ctx, user) => {
   try {
     const body = await req.json();
     const data = advanceScenarioSchema.parse(body);
+
+    const isPreview = data.is_preview ?? false;
+    const previewBy = isPreview ? user.id : null;
 
     // 現在の進行状態を取得
     const progress = await prisma.userProgress.findUnique({
@@ -77,7 +80,7 @@ export const POST = withAuth(async (req) => {
       // トリガー一致（または startTrigger 未設定）→ 開始フェーズへ移行
       const updated = await prisma.userProgress.update({
         where: { id: progress.id },
-        data:  { currentPhaseId: startPhase.id, lastInteractedAt: new Date() },
+        data:  { currentPhaseId: startPhase.id, lastInteractedAt: new Date(), isPreview, previewBy },
       });
       const state = await buildRuntimeState(updated);
       return ok({ ...state, _matched: true });
@@ -116,6 +119,8 @@ export const POST = withAuth(async (req) => {
           currentPhaseId:   toPhase.id,
           reachedEnding:    isEnding,
           lastInteractedAt: new Date(),
+          isPreview,
+          previewBy,
         },
       });
       const state = await buildRuntimeState(updated);
@@ -249,6 +254,8 @@ export const POST = withAuth(async (req) => {
         reachedEnding:    isEnding,
         flags:            JSON.stringify(newFlags),
         lastInteractedAt: new Date(),
+        isPreview,
+        previewBy,
       },
     });
 

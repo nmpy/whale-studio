@@ -4,7 +4,8 @@
 // 権限: owner のみ
 // 集計方法:
 //   - work_created〜flow_connected: DB の現在状態から算出（遡及対応・正確）
-//   - previewed: OnboardingEvent テーブルから算出（クライアント記録ベース）
+//   - previewed: OnboardingProgress テーブルのみから算出（Phase 4 で fallback 削除）
+//               ※ Phase 3 以前の OnboardingEvent データは参照しない（わずかな過去データは許容）
 
 import { withRole } from "@/lib/auth";
 import { ok, serverError } from "@/lib/api-response";
@@ -42,12 +43,15 @@ export const GET = withRole(
 
       const total = works.length;
 
-      // ── 2. previewed は OnboardingEvent から取得 ─────────────────────
-      const previewedRows = await prisma.onboardingEvent.findMany({
-        where:  { oaId, step: "previewed" },
+      // ── 2. previewed は OnboardingProgress のみから取得（Phase 4: fallback 削除）──
+      // OnboardingEvent への write は Phase 3 で停止済み。
+      // Phase 3 以前の旧データは OnboardingProgress に移行されないが、誤差は許容する。
+      const progressRows = await prisma.onboardingProgress.findMany({
+        where:  { step: "previewed", work: { oaId } },
         select: { workId: true },
+        distinct: ["workId"],
       });
-      const previewedIds = new Set(previewedRows.map((r) => r.workId));
+      const previewedIds = new Set(progressRows.map((r) => r.workId));
 
       // ── 3. ステップごとの到達作品数を集計 ────────────────────────────
       const counts: Record<OnboardingStep, number> = {

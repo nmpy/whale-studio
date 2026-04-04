@@ -8,8 +8,6 @@ import { withAuth } from "@/lib/auth";
 import { requireRole, getOaIdFromWorkId } from "@/lib/rbac";
 import { badRequest, created, serverError } from "@/lib/api-response";
 import { ONBOARDING_STEPS } from "@/lib/constants/onboarding";
-import type { OnboardingStep } from "@/lib/constants/onboarding";
-import { prisma } from "@/lib/prisma";
 import { trackOnboardingProgress } from "@/lib/onboarding";
 import { z } from "zod";
 
@@ -34,14 +32,10 @@ export const POST = withAuth(async (req, _ctx, user) => {
     const check = await requireRole(oaId, user.id, "tester");
     if (!check.ok) return check.response;
 
-    // OnboardingEvent（作品単位）を記録
-    await prisma.onboardingEvent.upsert({
-      where:  { workId_step: { workId: work_id, step: step as OnboardingStep } },
-      update: {},
-      create: { workId: work_id, oaId, step },
-    });
+    // OnboardingEvent への write は Phase 3 で停止
+    // （analytics fallback は残存するが、新規 write は行わない）
 
-    // OnboardingProgress（ユーザー × 作品単位）を記録（fire-and-forget）
+    // OnboardingProgress（ユーザー × 作品単位）のみを記録（fire-and-forget）
     trackOnboardingProgress({ userId: user.id, workId: work_id, step });
 
     return created({ ok: true });

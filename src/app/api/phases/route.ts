@@ -13,7 +13,7 @@ import { requireRole, getOaIdFromWorkId } from "@/lib/rbac";
 import { createPhaseSchema, phaseQuerySchema, formatZodErrors } from "@/lib/validations";
 import { ZodError } from "zod";
 import { activeCache, CACHE_KEY } from "@/lib/cache";
-import { trackOnboardingStep } from "@/lib/onboarding-tracker";
+// OnboardingEvent write 停止済み（Phase 3）— trackOnboardingStep import を削除
 import { trackOnboardingProgress } from "@/lib/onboarding";
 
 function toResponse(p: {
@@ -130,7 +130,6 @@ export const POST = withAuth(async (req, _ctx, user) => {
 
     // オンボーディングステップ記録（global フェーズはシステム自動作成のためスキップ）
     if (oaId && phase.phaseType !== "global") {
-      trackOnboardingStep(data.work_id, oaId, "phase_created");
       trackOnboardingProgress({ userId: user.id, workId: data.work_id, step: "phase_created" });
     }
 

@@ -10,7 +10,7 @@ import { requireRole, getOaIdFromWorkId } from "@/lib/rbac";
 import { createMessageSchema, messageQuerySchema, formatZodErrors } from "@/lib/validations";
 import { ZodError } from "zod";
 import { activeCache, CACHE_KEY } from "@/lib/cache";
-import { trackOnboardingStep } from "@/lib/onboarding-tracker";
+// OnboardingEvent write 停止済み（Phase 3）— trackOnboardingStep import を削除
 import { trackOnboardingProgress } from "@/lib/onboarding";
 
 function parseQuickReplies(raw: string | null, msgId?: string) {
@@ -245,7 +245,6 @@ export const POST = withAuth(async (req, _ctx, user) => {
     }
 
     // オンボーディングステップ記録（fire-and-forget）
-    if (oaId) trackOnboardingStep(data.work_id, oaId, "message_created");
     trackOnboardingProgress({ userId: user.id, workId: data.work_id, step: "message_created" });
 
     return created(toResponse(message));

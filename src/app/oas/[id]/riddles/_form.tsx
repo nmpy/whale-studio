@@ -5,7 +5,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { uploadApi, workApi, characterApi, segmentApi, getDevToken } from "@/lib/api-client";
+import { uploadApi, workApi, characterApi, segmentApi, getDevToken, type WorkListItem } from "@/lib/api-client";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import type { Segment } from "@/types";
 import { RiddlePreview } from "./_preview";
@@ -66,6 +66,8 @@ export interface FormState {
   hints:               Hint[];
   character_id:        string | null;
   target_segment:      string | null;
+  /** 作品スコープ管理用（null = OA スコープのまま） */
+  work_id:             string | null;
 }
 
 export const EMPTY_FORM: FormState = {
@@ -83,6 +85,7 @@ export const EMPTY_FORM: FormState = {
   hints:               [],
   character_id:        null,
   target_segment:      null,
+  work_id:             null,
 };
 
 const HINT_ACTION_OPTIONS: { value: HintActionType; label: string; desc: string }[] = [
@@ -106,8 +109,9 @@ export function riddleToFormState(r: Riddle): FormState {
     wrong_message:       r.wrong_message,
     status:              r.status,
     hints:               r.hints ?? [],
-    character_id:        r.character_id  ?? null,
+    character_id:        r.character_id   ?? null,
     target_segment:      r.target_segment ?? null,
+    work_id:             r.work_id        ?? null,
   };
 }
 
@@ -125,8 +129,9 @@ export function formStateToBody(f: FormState): CreateRiddleBody {
     wrong_message:       f.wrong_message.trim(),
     status:              f.status,
     hints:               f.hints,
-    character_id:        f.character_id  || null,
+    character_id:        f.character_id   || null,
     target_segment:      f.target_segment || null,
+    work_id:             f.work_id        || null,
   };
 }
 
@@ -183,12 +188,14 @@ export function RiddleForm({
     return () => window.removeEventListener("resize", check);
   }, []);
 
-  // キャラクター一覧（応答キャラクター・ヒント用）
+  // 作品一覧（work セレクタ + キャラクター用）
+  const [works, setWorks]           = useState<WorkListItem[]>([]);
   const [characters, setCharacters] = useState<Character[]>([]);
   useEffect(() => {
     const token = getDevToken();
-    workApi.list(token, oaId).then((works) => {
-      Promise.all(works.map((w) => characterApi.list(token, w.id))).then((arrays) => {
+    workApi.list(token, oaId).then((list) => {
+      setWorks(list);
+      Promise.all(list.map((w) => characterApi.list(token, w.id))).then((arrays) => {
         const seen = new Set<string>();
         const flat: Character[] = [];
         for (const arr of arrays) {
@@ -761,6 +768,28 @@ export function RiddleForm({
               </p>
             )}
           </div>
+
+          {/* ── 作品スコープ（任意） ── */}
+          {works.length > 0 && (
+            <div className="form-group">
+              <label htmlFor="work_id">作品スコープ（任意）</label>
+              <p style={{ fontSize: 12, color: "#6b7280", marginBottom: 8, marginTop: 2 }}>
+                この謎を特定の作品に紐づけます。設定すると作品単位での管理・フィルタリングが可能になります。
+                未設定の場合はアカウント全体で共有されます。
+              </p>
+              <select
+                id="work_id"
+                value={form.work_id ?? ""}
+                onChange={(e) => setField("work_id", e.target.value || null)}
+                style={{ padding: "8px 12px", border: "1px solid #d1d5db", borderRadius: 6, fontSize: 14, background: "#fff", width: "100%" }}
+              >
+                <option value="">🌐 共有（作品スコープなし）</option>
+                {works.map((w) => (
+                  <option key={w.id} value={w.id}>{w.title}</option>
+                ))}
+              </select>
+            </div>
+          )}
 
           <hr className="section-divider" />
 

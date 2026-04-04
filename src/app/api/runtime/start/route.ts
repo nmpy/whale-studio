@@ -26,7 +26,7 @@ import { buildRuntimeState } from "@/lib/runtime";
 import { ZodError } from "zod";
 import type { StartTrigger } from "@/types";
 
-export const POST = withAuth(async (req) => {
+export const POST = withAuth(async (req, _ctx, user) => {
   try {
     const body = await req.json();
     const data = startScenarioSchema.parse(body);
@@ -46,7 +46,11 @@ export const POST = withAuth(async (req) => {
       );
     }
 
+    const isPreview = data.is_preview ?? false;
+    const previewBy = isPreview ? user.id : null;
+
     // UserProgress を upsert（currentPhaseId = null の待機状態でリセット）
+    // is_preview=true の場合は isPreview/previewBy を保存し、本番プレイデータと分離する
     const progress = await prisma.userProgress.upsert({
       where: {
         lineUserId_workId: {
@@ -61,12 +65,16 @@ export const POST = withAuth(async (req) => {
         reachedEnding:    false,
         flags:            "{}",
         lastInteractedAt: new Date(),
+        isPreview,
+        previewBy,
       },
       update: {
         currentPhaseId:   null,       // 待機状態にリセット
         reachedEnding:    false,
         flags:            "{}",
         lastInteractedAt: new Date(),
+        isPreview,
+        previewBy,
       },
     });
 

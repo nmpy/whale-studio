@@ -17,6 +17,7 @@ import type { CarouselCard, Hint } from "@/types";
 type RiddleRow = {
   id: string;
   oaId: string;
+  workId: string | null;
   title: string;
   questionType: string;
   questionText: string | null;
@@ -45,6 +46,7 @@ function toResponse(r: RiddleRow) {
   return {
     id:                 r.id,
     oa_id:              r.oaId,
+    work_id:            r.workId,
     title:              r.title,
     question_type:      r.questionType,
     question_text:      r.questionText,
@@ -112,6 +114,7 @@ export const POST = withRole<{ id: string }>(
         hints:            JSON.stringify(data.hints),
         characterId:      data.character_id   ?? null,
         targetSegment:    data.target_segment ?? null,
+        workId:           data.work_id        ?? null,
       },
     });
 

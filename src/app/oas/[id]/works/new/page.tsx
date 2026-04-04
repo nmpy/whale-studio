@@ -9,6 +9,7 @@ import { Breadcrumb } from "@/components/Breadcrumb";
 import { TLink as Link } from "@/components/TLink";
 import { useTesterRouter } from "@/hooks/useTesterRouter";
 import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
+import { useWorkLimit } from "@/hooks/useWorkLimit";
 import { TesterUpgradeCard } from "@/components/upgrade/TesterUpgradeCard";
 import type { PublishStatus } from "@/types";
 
@@ -24,6 +25,7 @@ export default function WorkNewPage() {
   const router = useTesterRouter();
   const { showToast } = useToast();
   const { isTester: isRoleTester, loading: roleLoading } = useWorkspaceRole(oaId);
+  const { maxWorks, planDisplayName, loading: limitLoading } = useWorkLimit(oaId);
 
   const [title, setTitle]               = useState("");
   const [description, setDescription]   = useState("");
@@ -33,21 +35,23 @@ export default function WorkNewPage() {
   const [errors, setErrors]         = useState<Record<string, string[]>>({});
   const [submitting, setSubmitting] = useState(false);
 
-  // tester ロールの場合、既存作品数を確認してゲートを表示するか判定
+  // 作品数を取得してゲートを表示するか判定（subscription ベース）
   const [workCount,        setWorkCount]        = useState<number | null>(null);
   const [workCountLoading, setWorkCountLoading] = useState(false);
 
   useEffect(() => {
-    if (!isRoleTester || roleLoading) return;
+    // maxWorks が未取得または無制限(-1)の間は作品数の取得は不要
+    if (limitLoading || maxWorks === null || maxWorks === -1) return;
     setWorkCountLoading(true);
     workApi.list(getDevToken(), oaId)
       .then((list) => setWorkCount(list.length))
       .catch(() => setWorkCount(0))
       .finally(() => setWorkCountLoading(false));
-  }, [isRoleTester, roleLoading, oaId]);
+  }, [maxWorks, limitLoading, oaId]);
 
-  // tester ロールで既存作品が 1 件以上 → ゲート表示
-  const showGate = isRoleTester && workCount !== null && workCount >= 1;
+  // 作品数上限に達している場合のみゲート表示
+  // maxWorks === null（未設定）または -1（無制限）の場合はゲートなし
+  const showGate = maxWorks !== null && maxWorks !== -1 && workCount !== null && workCount >= maxWorks;
 
   // ゲートが確定表示になったとき upgrade_interest を記録（1回のみ）
   useEffect(() => {
@@ -119,8 +123,8 @@ export default function WorkNewPage() {
     </div>
   );
 
-  // ロール確認中 or tester の作品数確認中はスケルトン
-  if (roleLoading || workCountLoading) {
+  // ロール確認中 / プラン確認中 / 作品数確認中はスケルトン
+  if (roleLoading || limitLoading || workCountLoading) {
     return (
       <>
         {header}
@@ -134,12 +138,17 @@ export default function WorkNewPage() {
     );
   }
 
-  // tester ロールで上限到達 → アップグレードゲート表示
+  // 作品上限到達 → アップグレードゲート表示
   if (showGate) {
     return (
       <>
         {header}
-        <TesterUpgradeCard variant="gate" oaId={oaId} />
+        <TesterUpgradeCard
+          variant="gate"
+          oaId={oaId}
+          maxWorks={maxWorks ?? undefined}
+          planDisplayName={planDisplayName ?? undefined}
+        />
       </>
     );
   }

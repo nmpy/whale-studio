@@ -11,6 +11,7 @@ import { trackBillingEvent } from "@/lib/billing-tracker";
 import type { FriendAddSettings } from "@/types";
 import { useToast } from "@/components/Toast";
 import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
+import { useWorkLimit } from "@/hooks/useWorkLimit";
 import { ViewerBanner } from "@/components/PermissionGuard";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { trackEvent } from "@/lib/event-tracker";
@@ -49,6 +50,7 @@ export default function WorkListPage() {
   const sp = useIsMobile();
   const { role, isTester: isRoleTester } = useWorkspaceRole(oaId);
   const { isTester } = useTesterMode();
+  const { maxWorks, planDisplayName, loading: limitLoading } = useWorkLimit(oaId);
 
   const [oaTitle, setOaTitle]     = useState("");
   const [works, setWorks]         = useState<WorkListItem[]>([]);
@@ -56,9 +58,12 @@ export default function WorkListPage() {
   const [loading, setLoading]     = useState(true);
   const [error, setError]         = useState<string | null>(null);
 
-  // tester ロールが作品上限（1件）に達しているか
-  // loading 中は false（ちらつき防止）
-  const testerAtLimit = isRoleTester && !loading && works.length >= 1;
+  // プランの作品数上限に達しているか（subscription ベース）
+  // maxWorks === null（未設定）または -1（無制限）の場合は上限なし
+  // loading / limitLoading 中は false（ちらつき防止）
+  const atLimit = maxWorks !== null && maxWorks !== -1 && !loading && !limitLoading && works.length >= maxWorks;
+  // 後方互換: ロールベースのフラグは "プランを見る" ヘッダーリンクの表示判定にのみ残す
+  const showPricingLink = isRoleTester || (maxWorks !== null && maxWorks !== -1);
 
   async function load() {
     setLoading(true);
@@ -118,8 +123,8 @@ export default function WorkListPage() {
           </p>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          {/* tester ロールには「プランを見る」リンクを常時表示 */}
-          {isRoleTester && (
+          {/* 作品数制限があるプランには「プランを見る」リンクを常時表示 */}
+          {showPricingLink && (
             <Link
               href="/pricing?source=header"
               onClick={() => trackBillingEvent("pricing_click_from_header", getDevToken(), "header")}
@@ -143,17 +148,13 @@ export default function WorkListPage() {
               ⚙ 設定
             </Link>
           )}
-          {/* tester ロールが上限到達 → グレーアウトボタン */}
-          {testerAtLimit ? (
+          {/* 作品上限到達 → グレーアウトボタン */}
+          {atLimit ? (
             <button className="btn btn-primary" disabled style={{ opacity: 0.45, cursor: "not-allowed" }}>
               ＋ 作品を追加
             </button>
-          ) : !isTester && !isRoleTester ? (
-            <Link href={`/oas/${oaId}/works/new`} className="btn btn-primary">
-              ＋ 作品を追加
-            </Link>
-          ) : isRoleTester && !testerAtLimit ? (
-            /* tester で上限未到達 → 通常ボタン */
+          ) : !isTester ? (
+            /* 上限未到達（テスターモード以外） → 通常ボタン */
             <Link href={`/oas/${oaId}/works/new`} className="btn btn-primary">
               ＋ 作品を追加
             </Link>
@@ -163,8 +164,8 @@ export default function WorkListPage() {
 
       <ViewerBanner role={role} />
 
-      {/* tester ロールが上限到達 → アップグレード誘導バナー */}
-      {testerAtLimit && <TesterUpgradeCard variant="banner" />}
+      {/* 作品上限到達 → アップグレード誘導バナー */}
+      {atLimit && <TesterUpgradeCard variant="banner" maxWorks={maxWorks ?? undefined} planDisplayName={planDisplayName ?? undefined} />}
 
       {/* テスターモード時の注意文 */}
       {isTester && (

@@ -20,6 +20,10 @@ interface TesterUpgradeCardProps {
   onDismiss?: () => void;
   /** 作品リストに戻るリンク用 oaId（"gate" variant で使用） */
   oaId?: string;
+  /** プランの作品数上限（-1 = 無制限）。未指定時は 1 として表示 */
+  maxWorks?: number;
+  /** プラン表示名。未指定時は "テスタープラン" として表示 */
+  planDisplayName?: string;
 }
 
 // ── BillingEvent → URL source ラベル変換 ─────────────────────────────
@@ -58,8 +62,11 @@ function PricingLink({ source, style }: { source: BillingEvent; style?: React.CS
   );
 }
 
-export function TesterUpgradeCard({ variant, onDismiss, oaId }: TesterUpgradeCardProps) {
+export function TesterUpgradeCard({ variant, onDismiss, oaId, maxWorks, planDisplayName }: TesterUpgradeCardProps) {
   const sp = useIsMobile();
+  // 表示用の上限値・プラン名（フォールバックあり）
+  const limitLabel = (maxWorks !== undefined && maxWorks !== -1) ? `${maxWorks} 件` : "1 件";
+  const planLabel  = planDisplayName ?? "テスタープラン";
 
   // バナー/ゲートの表示を upgrade_interest として記録（mount 時1回）
   useEffect(() => {
@@ -89,7 +96,7 @@ export function TesterUpgradeCard({ variant, onDismiss, oaId }: TesterUpgradeCar
           <span style={{ fontSize: 18, flexShrink: 0, marginTop: 1 }}>🔓</span>
           <div>
             <div style={{ fontWeight: 700, color: "var(--color-primary, #2F6F5E)", marginBottom: 2 }}>
-              テスタープランの作品数上限（1 件）に達しています
+              {planLabel}の作品数上限（{limitLabel}）に達しています
             </div>
             <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>
               追加で作品を作成するには、editorプランへのアップグレードが必要です。
@@ -127,8 +134,8 @@ export function TesterUpgradeCard({ variant, onDismiss, oaId }: TesterUpgradeCar
           作品の作成上限に達しています
         </h3>
         <p style={{ fontSize: 13, color: "var(--text-secondary, #6b7280)", marginBottom: 22, lineHeight: 1.7 }}>
-          テスタープランでは作品を <strong>1 件まで</strong> しか作成できません。<br />
-          さらに作品を追加するには <strong>editor プラン</strong> が必要です。
+          {planLabel}では作品を <strong>{limitLabel}まで</strong> しか作成できません。<br />
+          さらに作品を追加するには <strong>上位プラン</strong> が必要です。
         </p>
 
         {/* プランを見るCTA — フル幅 */}
@@ -198,8 +205,8 @@ export function TesterUpgradeCard({ variant, onDismiss, oaId }: TesterUpgradeCar
             プレビューをご確認いただけましたか？
           </div>
           <div style={{ fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.6 }}>
-            テスタープランでは作品を 1 件まで作成できます。さらに作品を制作するには
-            <strong> editor プラン</strong>へのアップグレードが必要です。
+            {planLabel}では作品を {limitLabel}まで作成できます。さらに作品を制作するには
+            <strong>上位プラン</strong>へのアップグレードが必要です。
           </div>
         </div>
         {onDismiss && (

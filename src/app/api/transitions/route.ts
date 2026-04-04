@@ -10,7 +10,7 @@ import { requireRole, getOaIdFromWorkId } from "@/lib/rbac";
 import { createTransitionSchema, transitionQuerySchema, formatZodErrors } from "@/lib/validations";
 import { ZodError } from "zod";
 import { activeCache, CACHE_KEY } from "@/lib/cache";
-import { trackOnboardingStep } from "@/lib/onboarding-tracker";
+// OnboardingEvent write 停止済み（Phase 3）— trackOnboardingStep import を削除
 import { trackOnboardingProgress } from "@/lib/onboarding";
 
 function toResponse(
@@ -132,7 +132,6 @@ export const POST = withAuth(async (req, _ctx, user) => {
     await activeCache.delete(CACHE_KEY.phase(data.from_phase_id));
 
     // オンボーディングステップ記録（fire-and-forget）
-    if (oaId) trackOnboardingStep(data.work_id, oaId, "flow_connected");
     trackOnboardingProgress({ userId: user.id, workId: data.work_id, step: "flow_connected" });
 
     return created(toResponse(transition, transition.toPhase));

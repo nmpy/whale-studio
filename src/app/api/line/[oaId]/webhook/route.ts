@@ -1761,6 +1761,8 @@ async function handleStartTrigger({
     reachedEnding:    false,
     flags:            "{}",
     lastInteractedAt: now,
+    isPreview:        false,
+    previewBy:        null,
     createdAt:        now,
     updatedAt:        now,
   };

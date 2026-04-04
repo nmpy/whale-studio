@@ -14,6 +14,7 @@ import type { CarouselCard, Hint } from "@/types";
 type RiddleRow = {
   id: string;
   oaId: string;
+  workId: string | null;
   title: string;
   questionType: string;
   questionText: string | null;
@@ -42,6 +43,7 @@ function toResponse(r: RiddleRow) {
   return {
     id:                 r.id,
     oa_id:              r.oaId,
+    work_id:            r.workId,
     title:              r.title,
     question_type:      r.questionType,
     question_text:      r.questionText,
@@ -111,6 +113,7 @@ export const PATCH = withRole<{ id: string; rid: string }>(
           ...(data.hints              !== undefined && { hints:            JSON.stringify(data.hints) }),
           ...(data.character_id       !== undefined && { characterId:      data.character_id }),
           ...(data.target_segment     !== undefined && { targetSegment:    data.target_segment }),
+          ...(data.work_id            !== undefined && { workId:           data.work_id }),
         },
       });
 

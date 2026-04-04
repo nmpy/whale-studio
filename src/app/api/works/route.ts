@@ -10,8 +10,31 @@ import { requireRole } from "@/lib/rbac";
 import { createWorkSchema, workQuerySchema, formatZodErrors } from "@/lib/validations";
 import { ZodError } from "zod";
 import { activeCache, CACHE_KEY } from "@/lib/cache";
-import { trackOnboardingStep } from "@/lib/onboarding-tracker";
+// trackOnboardingStep (OnboardingEvent write) は Phase 3 で停止済み
+// OnboardingEvent テーブルへの書き込みを廃止し、OnboardingProgress のみを使用する
 import { trackOnboardingProgress } from "@/lib/onboarding";
+
+// ── 作品作成上限を取得 ─────────────────────────────────────────────────────
+// 優先順位:
+//   1. OA に紐付く Subscription.plan.maxWorks（存在する場合）
+//   2. role ベースの fallback（tester = 1 件、それ以外 = -1 = 無制限）
+//
+// -1 は無制限を表す。subscription が存在しても plan.maxWorks=-1 なら無制限。
+async function getWorkLimit(oaId: string, role: string): Promise<number> {
+  const sub = await prisma.subscription.findUnique({
+    where:   { oaId },
+    include: { plan: { select: { maxWorks: true } } },
+  });
+
+  // Subscription + Plan が存在する場合はそちらを優先
+  if (sub?.plan != null) {
+    return sub.plan.maxWorks; // -1 = 無制限
+  }
+
+  // Subscription 未設定 → role ベース fallback
+  if (role === "tester") return 1;
+  return -1; // editor 以上は無制限
+}
 
 function toResponse(w: {
   id: string; oaId: string; title: string; description: string | null;
@@ -57,7 +80,13 @@ export const GET = withAuth(async (req, _ctx, user) => {
       orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
       include: {
         _count: {
-          select: { characters: true, phases: true, messages: true, userProgress: true },
+          select: {
+            characters:   true,
+            phases:       true,
+            messages:     true,
+            // preview データを除外してプレイヤー実数を返す
+            userProgress: { where: { isPreview: false } },
+          },
         },
       },
     });
@@ -87,16 +116,19 @@ export const POST = withAuth(async (req, _ctx, user) => {
     const check = await requireRole(data.oa_id, user.id, 'tester');
     if (!check.ok) return check.response;
 
-    // tester ロールは 1 作品まで（editor 以上は無制限）
-    if (check.role === 'tester') {
+    // 作品数上限チェック: subscription.plan.maxWorks 優先、未設定時は role ベース
+    const workLimit = await getWorkLimit(data.oa_id, check.role);
+    if (workLimit !== -1) {
       const existingCount = await prisma.work.count({ where: { oaId: data.oa_id } });
-      if (existingCount >= 1) {
+      if (existingCount >= workLimit) {
         return NextResponse.json(
           {
             success: false,
             error: {
-              code:    'TESTER_WORK_LIMIT',
-              message: 'テスタープランでは作品を 1 件までしか作成できません。エディター以上にアップグレードしてください。',
+              code:    'TESTER_WORK_LIMIT', // 既存フロント互換のままにする
+              message: workLimit === 1
+                ? 'テスタープランでは作品を 1 件までしか作成できません。エディター以上にアップグレードしてください。'
+                : `現在のプランでは作品を ${workLimit} 件まで作成できます。上位プランへのアップグレードをご検討ください。`,
             },
           },
           { status: 403 }
@@ -132,7 +164,7 @@ export const POST = withAuth(async (req, _ctx, user) => {
     }
 
     // オンボーディングステップ記録（fire-and-forget）
-    trackOnboardingStep(work.id, work.oaId, "work_created");
+    // OnboardingProgress のみ記録（OnboardingEvent への write は Phase 3 で停止）
     trackOnboardingProgress({ userId: user.id, workId: work.id, step: "work_created" });
 
     return created(toResponse(work));

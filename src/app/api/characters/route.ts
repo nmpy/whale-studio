@@ -9,7 +9,7 @@ import { withAuth } from "@/lib/auth";
 import { requireRole, getOaIdFromWorkId } from "@/lib/rbac";
 import { createCharacterSchema, characterQuerySchema, formatZodErrors } from "@/lib/validations";
 import { ZodError } from "zod";
-import { trackOnboardingStep } from "@/lib/onboarding-tracker";
+// OnboardingEvent write 停止済み（Phase 3）— trackOnboardingStep import を削除
 import { trackOnboardingProgress } from "@/lib/onboarding";
 
 function toResponse(c: {
@@ -94,7 +94,6 @@ export const POST = withAuth(async (req, _ctx, user) => {
     });
 
     // オンボーディングステップ記録（fire-and-forget）
-    if (oaId) trackOnboardingStep(data.work_id, oaId, "character_created");
     trackOnboardingProgress({ userId: user.id, workId: data.work_id, step: "character_created" });
 
     return created(toResponse(character));

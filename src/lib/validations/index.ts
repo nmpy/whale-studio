@@ -373,6 +373,8 @@ export const messageQuerySchema = z.object({
 export const startScenarioSchema = z.object({
   line_user_id: z.string().min(1, "line_user_id は必須です").max(100),
   work_id:      uuidSchema,
+  /// true のとき管理者・テスターによる疑似プレイ（UserProgress.isPreview=true で記録）
+  is_preview:   z.boolean().optional(),
 });
 
 export const advanceScenarioSchema = z.object({
@@ -381,6 +383,7 @@ export const advanceScenarioSchema = z.object({
   label:           z.string().min(1).max(500).optional(),
   transition_id:   uuidSchema.optional(),
   target_phase_id: uuidSchema.optional(),
+  is_preview:      z.boolean().optional(),
 }).superRefine((val, ctx) => {
   if (!val.label && !val.transition_id && !val.target_phase_id) {
     ctx.addIssue({
@@ -530,6 +533,8 @@ export const createRiddleSchema = z.object({
   hints:               z.array(hintSchema).max(20).default([]),
   character_id:        z.string().uuid().optional().nullable(),
   target_segment:      z.string().max(100).optional().nullable(),
+  /// 作品スコープ管理用（省略可。null = OA スコープのまま）
+  work_id:             z.string().uuid().optional().nullable(),
 }).superRefine((val, ctx) => {
   if (val.question_type === "text" && !val.question_text) {
     ctx.addIssue({ code: "custom", path: ["question_text"], message: "テキスト形式の場合、問題文は必須です" });
@@ -561,6 +566,7 @@ export const updateRiddleSchema = z.object({
   hints:               z.array(hintSchema).max(20).optional(),
   character_id:        z.string().uuid().optional().nullable(),
   target_segment:      z.string().max(100).optional().nullable(),
+  work_id:             z.string().uuid().optional().nullable(),
 });
 
 export const createHintLogSchema = z.object({
