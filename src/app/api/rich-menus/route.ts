@@ -8,6 +8,7 @@ import { ok, created, badRequest, serverError } from "@/lib/api-response";
 import { createRichMenuSchema, richMenuQuerySchema, formatZodErrors } from "@/lib/validations";
 import { ZodError } from "zod";
 
+export const dynamic = "force-dynamic";
 function toAreaResponse(a: {
   id: string; richMenuId: string; x: number; y: number;
   width: number; height: number; actionType: string; actionLabel: string;

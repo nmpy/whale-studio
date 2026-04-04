@@ -15,6 +15,7 @@ import { ZodError, z } from "zod";
 import { formatZodErrors } from "@/lib/validations";
 import type { MessageType, IconType, QuickReplyItem, RuntimePhaseMessage } from "@/types";
 
+export const dynamic = "force-dynamic";
 const querySchema = z.object({
   message_id: z.string().uuid("message_id は UUID 形式で指定してください"),
 });

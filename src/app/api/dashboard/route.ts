@@ -18,6 +18,7 @@ import { formatZodErrors } from "@/lib/validations";
 import { safeParseFlags } from "@/lib/runtime";
 import { z, ZodError } from "zod";
 
+export const dynamic = "force-dynamic";
 const dashboardQuerySchema = z.object({
   work_id: z.string().uuid({ message: "work_id は有効な UUID を指定してください" }),
   page:    z.coerce.number().int().min(1).default(1),

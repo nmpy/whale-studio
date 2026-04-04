@@ -17,7 +17,7 @@ import { useIsMobile } from "@/hooks/useIsMobile";
 import { trackEvent } from "@/lib/event-tracker";
 import { useTesterMode } from "@/hooks/useTesterMode";
 import { WorksEmptyState } from "@/components/onboarding/WorksEmptyState";
-import { TesterUpgradeCard } from "@/components/upgrade/TesterUpgradeCard";
+import { WorkLimitCard } from "@/components/upgrade/WorkLimitCard";
 
 /* ── スケルトンカード ─────────────────────────────────────────────────── */
 function SkeletonCard() {
@@ -62,8 +62,10 @@ export default function WorkListPage() {
   // maxWorks === null（未設定）または -1（無制限）の場合は上限なし
   // loading / limitLoading 中は false（ちらつき防止）
   const atLimit = maxWorks !== null && maxWorks !== -1 && !loading && !limitLoading && works.length >= maxWorks;
-  // 後方互換: ロールベースのフラグは "プランを見る" ヘッダーリンクの表示判定にのみ残す
-  const showPricingLink = isRoleTester || (maxWorks !== null && maxWorks !== -1);
+  // "プランを見る" リンクの表示判定:
+  //   - subscription ベース（maxWorks に制限がある）→ 常時表示
+  //   - Subscription 未設定の旧 OA で tester ロールの場合も表示（フォールバック）
+  const showPricingLink = (maxWorks !== null && maxWorks !== -1) || isRoleTester;
 
   async function load() {
     setLoading(true);
@@ -165,7 +167,7 @@ export default function WorkListPage() {
       <ViewerBanner role={role} />
 
       {/* 作品上限到達 → アップグレード誘導バナー */}
-      {atLimit && <TesterUpgradeCard variant="banner" maxWorks={maxWorks ?? undefined} planDisplayName={planDisplayName ?? undefined} />}
+      {atLimit && <WorkLimitCard variant="banner" maxWorks={maxWorks ?? undefined} planDisplayName={planDisplayName ?? undefined} />}
 
       {/* テスターモード時の注意文 */}
       {isTester && (

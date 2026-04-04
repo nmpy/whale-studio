@@ -11,13 +11,14 @@ import { workApi, oaApi, phaseApi, transitionApi, onboardingApi, getDevToken } f
 import type { WorkListItem } from "@/lib/api-client";
 import { HelpAccordion } from "@/components/HelpAccordion";
 import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
+import { useWorkLimit } from "@/hooks/useWorkLimit";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { trackEvent } from "@/lib/event-tracker";
 import { ViewerBanner } from "@/components/PermissionGuard";
 import { WorkCreatedGuide }   from "@/components/onboarding/WorkCreatedGuide";
 import { NextActionCard }     from "@/components/onboarding/NextActionCard";
 import { OnboardingProgress } from "@/components/onboarding/OnboardingProgress";
-import { TesterUpgradeCard }  from "@/components/upgrade/TesterUpgradeCard";
+import { WorkLimitCard } from "@/components/upgrade/WorkLimitCard";
 
 // ── ステータス表示 ───────────────────────────────────────
 const STATUS_META: Record<string, { label: string; color: string; bg: string; dot: string }> = {
@@ -77,7 +78,8 @@ export default function WorkHubPage() {
   const oaId   = params.id;
   const workId = params.workId;
   const sp = useIsMobile();
-  const { role, isTester: isRoleTester } = useWorkspaceRole(oaId);
+  const { role } = useWorkspaceRole(oaId);
+  const { maxWorks, planDisplayName } = useWorkLimit(oaId);
 
   const [oaTitle,          setOaTitle]          = useState("");
   const [work,             setWork]             = useState<WorkListItem | null>(null);
@@ -212,8 +214,8 @@ export default function WorkHubPage() {
             try { localStorage.setItem(`preview-confirmed-${workId}`, "1"); } catch {}
             // オンボーディング: previewed ステップを記録（fire-and-forget）
             onboardingApi.trackStep(getDevToken(), { work_id: workId, oa_id: oaId, step: "previewed" }).catch(() => {});
-            // tester ロールにはプレビュー後アップグレード誘導を表示
-            if (isRoleTester) setShowUpgradeCard(true);
+            // 作品数上限があるプランにはプレビュー後アップグレード誘導を表示
+            if (maxWorks !== null && maxWorks !== -1) setShowUpgradeCard(true);
           }}
         >
           ▶ プレビュー
@@ -223,11 +225,13 @@ export default function WorkHubPage() {
       {/* ── 閲覧専用バナー ── */}
       <ViewerBanner role={role} />
 
-      {/* ── tester ロール向けプレビュー後アップグレード誘導 ── */}
+      {/* ── 作品数上限プラン向けプレビュー後アップグレード誘導 ── */}
       {showUpgradeCard && (
-        <TesterUpgradeCard
+        <WorkLimitCard
           variant="preview"
           onDismiss={() => setShowUpgradeCard(false)}
+          maxWorks={maxWorks ?? undefined}
+          planDisplayName={planDisplayName ?? undefined}
         />
       )}
 

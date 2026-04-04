@@ -9,6 +9,7 @@ import { withAuth } from "@/lib/auth";
 import { createSegmentSchema, segmentQuerySchema, formatZodErrors } from "@/lib/validations";
 import { ZodError } from "zod";
 
+export const dynamic = "force-dynamic";
 function toResponse(s: {
   id: string; oaId: string; name: string; filterType: string;
   phaseId: string | null; status: string;

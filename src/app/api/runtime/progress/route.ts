@@ -12,6 +12,7 @@ import { progressQuerySchema, formatZodErrors } from "@/lib/validations";
 import { buildRuntimeState } from "@/lib/runtime";
 import { ZodError } from "zod";
 
+export const dynamic = "force-dynamic";
 export const GET = withAuth(async (req) => {
   try {
     const { searchParams } = new URL(req.url);

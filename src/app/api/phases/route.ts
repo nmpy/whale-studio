@@ -16,6 +16,7 @@ import { activeCache, CACHE_KEY } from "@/lib/cache";
 // OnboardingEvent write 停止済み（Phase 3）— trackOnboardingStep import を削除
 import { trackOnboardingProgress } from "@/lib/onboarding";
 
+export const dynamic = "force-dynamic";
 function toResponse(p: {
   id: string; workId: string; phaseType: string; name: string; description: string | null;
   startTrigger: string | null;

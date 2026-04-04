@@ -11,6 +11,7 @@ import { getWorkspaceRole } from "@/lib/rbac";
 import { isPlatformOwner } from "@/lib/platform-admin";
 import { ZodError } from "zod";
 
+export const dynamic = "force-dynamic";
 // ── OA 作成時に tester subscription を自動設定 ────────────────────────
 // fire-and-forget で呼び出す。失敗時は OA 作成をブロックしない。
 // Plan シードが未実行の場合は no-op（testerPlan が null）。

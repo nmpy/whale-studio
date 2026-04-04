@@ -12,6 +12,7 @@ import { ZodError } from "zod";
 // OnboardingEvent write 停止済み（Phase 3）— trackOnboardingStep import を削除
 import { trackOnboardingProgress } from "@/lib/onboarding";
 
+export const dynamic = "force-dynamic";
 function toResponse(c: {
   id: string; workId: string; name: string; iconType: string; iconText: string | null;
   iconImageUrl: string | null; iconColor: string | null; sortOrder: number;

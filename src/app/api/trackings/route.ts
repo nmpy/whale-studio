@@ -10,6 +10,7 @@ import { createTrackingSchema, trackingQuerySchema, formatZodErrors } from "@/li
 import { ZodError } from "zod";
 import { randomUUID } from "crypto";
 
+export const dynamic = "force-dynamic";
 function toResponse(t: {
   id: string; oaId: string; name: string; trackingId: string;
   targetUrl: string; utmEnabled: boolean;

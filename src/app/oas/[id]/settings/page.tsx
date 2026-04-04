@@ -10,73 +10,7 @@ import { oaApi, getDevToken } from "@/lib/api-client";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
 import { ViewerBanner } from "@/components/PermissionGuard";
-
-// ── プランバッジ ──────────────────────────────────────────────────────────
-// owner / admin 向けに現在プランをインライン表示するコンポーネント。
-// GET /api/oas/:id/subscription から取得（fire-and-forget、エラー時は非表示）。
-
-interface PlanInfo {
-  name:          string;
-  display_name:  string;
-  max_works:     number;
-  price_monthly: number;
-}
-
-function PlanBadge({ oaId }: { oaId: string }) {
-  const [plan, setPlan] = useState<PlanInfo | null | "loading">("loading");
-
-  useEffect(() => {
-    fetch(`/api/oas/${oaId}/subscription`, {
-      headers: { Authorization: `Bearer ${getDevToken()}` },
-    })
-      .then((r) => r.json())
-      .then((d) => setPlan(d.plan ?? null))
-      .catch(() => setPlan(null));
-  }, [oaId]);
-
-  if (plan === "loading" || plan === null) return null;
-
-  const isFree      = plan.price_monthly === 0;
-  const worksLabel  = plan.max_works === -1 ? "無制限" : `${plan.max_works} 件`;
-  const priceLabel  = isFree ? "無料" : `¥${plan.price_monthly.toLocaleString()}/月`;
-
-  return (
-    <div style={{
-      display:      "flex",
-      alignItems:   "center",
-      gap:          10,
-      padding:      "10px 14px",
-      background:   isFree ? "var(--color-primary-soft, #EAF4F1)" : "#f0fdf4",
-      border:       `1px solid ${isFree ? "#b9ddd6" : "#86efac"}`,
-      borderRadius: "var(--radius-md, 10px)",
-      marginBottom: 20,
-      fontSize:     13,
-    }}>
-      <span style={{ fontSize: 18 }}>{isFree ? "🔓" : "✅"}</span>
-      <div style={{ flex: 1 }}>
-        <span style={{ fontWeight: 700, color: "var(--color-primary, #2F6F5E)" }}>
-          {plan.display_name}
-        </span>
-        <span style={{ marginLeft: 8, color: "var(--text-secondary, #6b7280)", fontSize: 12 }}>
-          作品 {worksLabel}・{priceLabel}
-        </span>
-      </div>
-      {isFree && (
-        <Link
-          href="/pricing"
-          style={{
-            fontSize: 11, fontWeight: 700, color: "var(--color-primary, #2F6F5E)",
-            textDecoration: "none", padding: "4px 10px",
-            border: "1px solid #b9ddd6", borderRadius: "var(--radius-full, 999px)",
-            whiteSpace: "nowrap",
-          }}
-        >
-          プランを見る →
-        </Link>
-      )}
-    </div>
-  );
-}
+import { PlanCard } from "@/components/PlanCard";
 
 const HUB_ITEM_DEFS = [
   {
@@ -173,8 +107,8 @@ export default function OaSettingsPage() {
         </div>
       </div>
 
-      {/* ── プランバッジ（owner / admin のみ） ── */}
-      {(isOwner || isAdmin) && <PlanBadge oaId={oaId} />}
+      {/* ── プランカード（owner / admin のみ） ── */}
+      {(isOwner || isAdmin) && <PlanCard oaId={oaId} />}
 
       {/* ── 機能カード グリッド ── */}
       <div>

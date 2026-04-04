@@ -10,7 +10,7 @@ import { TLink as Link } from "@/components/TLink";
 import { useTesterRouter } from "@/hooks/useTesterRouter";
 import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
 import { useWorkLimit } from "@/hooks/useWorkLimit";
-import { TesterUpgradeCard } from "@/components/upgrade/TesterUpgradeCard";
+import { WorkLimitCard } from "@/components/upgrade/WorkLimitCard";
 import type { PublishStatus } from "@/types";
 
 const STATUS_OPTIONS: { value: PublishStatus; label: string }[] = [
@@ -24,7 +24,7 @@ export default function WorkNewPage() {
   const oaId   = params.id;
   const router = useTesterRouter();
   const { showToast } = useToast();
-  const { isTester: isRoleTester, loading: roleLoading } = useWorkspaceRole(oaId);
+  const { loading: roleLoading } = useWorkspaceRole(oaId);
   const { maxWorks, planDisplayName, loading: limitLoading } = useWorkLimit(oaId);
 
   const [title, setTitle]               = useState("");
@@ -143,7 +143,7 @@ export default function WorkNewPage() {
     return (
       <>
         {header}
-        <TesterUpgradeCard
+        <WorkLimitCard
           variant="gate"
           oaId={oaId}
           maxWorks={maxWorks ?? undefined}

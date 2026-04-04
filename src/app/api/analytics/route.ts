@@ -7,6 +7,7 @@ import { ok, badRequest, notFound, serverError } from "@/lib/api-response";
 import { withAuth } from "@/lib/auth";
 import { z } from "zod";
 
+export const dynamic = "force-dynamic";
 const querySchema = z.object({
   work_id: z.string().uuid(),
 });

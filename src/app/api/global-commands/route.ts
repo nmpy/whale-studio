@@ -15,6 +15,7 @@ import {
 import { ZodError } from "zod";
 import { activeCache, CACHE_KEY } from "@/lib/cache";
 
+export const dynamic = "force-dynamic";
 function toResponse(c: {
   id: string; oaId: string; keyword: string; actionType: string;
   payload: string | null; isActive: boolean; sortOrder: number;

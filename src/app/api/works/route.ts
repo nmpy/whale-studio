@@ -14,6 +14,7 @@ import { activeCache, CACHE_KEY } from "@/lib/cache";
 // OnboardingEvent テーブルへの書き込みを廃止し、OnboardingProgress のみを使用する
 import { trackOnboardingProgress } from "@/lib/onboarding";
 
+export const dynamic = "force-dynamic";
 // ── 作品作成上限を取得 ─────────────────────────────────────────────────────
 // 優先順位:
 //   1. OA に紐付く Subscription.plan.maxWorks（存在する場合）
