@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import { workApi, getDevToken } from "@/lib/api-client";
+import { trackEvent } from "@/lib/event-tracker";
 import { useToast } from "@/components/Toast";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { TLink as Link } from "@/components/TLink";
@@ -48,6 +49,18 @@ export default function WorkNewPage() {
   // tester ロールで既存作品が 1 件以上 → ゲート表示
   const showGate = isRoleTester && workCount !== null && workCount >= 1;
 
+  // ゲートが確定表示になったとき upgrade_interest を記録（1回のみ）
+  useEffect(() => {
+    if (!showGate) return;
+    trackEvent(
+      "upgrade_interest",
+      { action: "gate_shown", source: "gate" },
+      { token: getDevToken(), oa_id: oaId },
+    );
+  // showGate が true になった最初の1回だけ
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showGate]);
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSubmitting(true);
@@ -58,8 +71,9 @@ export default function WorkNewPage() {
     if (title.length > 100) errs.title = ["作品名は 100 文字以内で入力してください"];
     if (Object.keys(errs).length) { setErrors(errs); setSubmitting(false); return; }
 
+    const token = getDevToken();
     try {
-      const work = await workApi.create(getDevToken(), {
+      const work = await workApi.create(token, {
         oa_id:          oaId,
         title:          title.trim(),
         description:    description.trim() || undefined,
@@ -67,10 +81,26 @@ export default function WorkNewPage() {
         sort_order:     sortOrder,
       });
       showToast(`「${work.title}」を作成しました`, "success");
+
+      // 作品作成成功ログ
+      trackEvent(
+        "action_success",
+        { action: "work_created", work_id: work.id, detail: { title: work.title } },
+        { token, oa_id: oaId },
+      );
+
       // 作成後はハブへ遷移（?created=1 で初回導線バナーを表示）
       router.push(`/oas/${oaId}/works/${work.id}?created=1`);
     } catch (err) {
-      showToast(err instanceof Error ? err.message : "作成に失敗しました", "error");
+      const msg = err instanceof Error ? err.message : "作成に失敗しました";
+      showToast(msg, "error");
+
+      // エラーログ
+      trackEvent(
+        "error",
+        { message: msg, context: "work_create", code: "api_error" },
+        { token, oa_id: oaId },
+      );
     } finally {
       setSubmitting(false);
     }

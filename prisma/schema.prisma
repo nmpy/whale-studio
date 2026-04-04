@@ -653,6 +653,67 @@ model OnboardingProgress {
   @@map("onboarding_progress")
 }
 
+/// 課金導線イベントを記録するテーブル。
+/// pricing ページ到達・CTA クリック・フィードバック送信などを集計する。
+model BillingEvent {
+  id        String   @id @default(uuid())
+  /// BillingEvent 定数に対応するイベント種別
+  event     String
+  /// 発火元ユーザーの Supabase Auth userId（未認証の場合は null）
+  userId    String?  @map("user_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([event])
+  @@index([userId])
+  @@index([createdAt])
+  @@map("billing_events")
+}
+
+/// 課金導線イベントの詳細ログ。
+/// BillingEvent（集計用）とは別に、コンテキスト情報（oa_id / work_id / source）を
+/// 保持する詳細ログテーブル。将来的なコホート分析・ユーザー単位の追跡に使用する。
+model BillingEventLog {
+  id        String   @id @default(uuid())
+  /// Supabase Auth の userId（未ログイン時は null）
+  userId    String?  @map("user_id")
+  /// イベント発生時に参照していた OA（null = OA コンテキスト外）
+  oaId      String?  @map("oa_id")
+  /// イベント発生時に参照していた作品（null = 作品コンテキスト外）
+  workId    String?  @map("work_id")
+  /// BillingEvent 定数に対応するイベント種別
+  event     String
+  /// pricing への流入元・補助情報（例: "header" / "banner" / "gate" / "preview"）
+  source    String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([event])
+  @@index([userId])
+  @@index([createdAt])
+  @@map("billing_event_logs")
+}
+
+/// ユーザー行動・エラー・成功イベントの汎用ログ。
+/// billing_event_logs より広いスコープで行動追跡に使用する。
+/// payload は JSON 文字列でイベント種別ごとの補足情報を格納する。
+model EventLog {
+  id        String   @id @default(uuid())
+  /// Supabase Auth の userId（未認証時は null）
+  userId    String?  @map("user_id")
+  /// イベント発生時に参照していた OA（null = コンテキスト外）
+  oaId      String?  @map("oa_id")
+  /// イベント名（例: "screen_view" / "flow_step" / "error"）
+  eventName String   @map("event_name")
+  /// イベント種別ごとの補足情報 JSON 文字列（例: {"page":"/pricing","source":"header"}）
+  payload   String   @default("{}")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@index([eventName])
+  @@index([oaId])
+  @@index([createdAt])
+  @@map("event_logs")
+}
+
 /// メンバーロール（権限階層: owner > admin > editor > tester > viewer）
 /// tester: 課金前ユーザー向け体験ロール。コンテンツ作成・編集のみ可能。
 enum MemberRole {

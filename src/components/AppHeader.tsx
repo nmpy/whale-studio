@@ -64,6 +64,8 @@ export default function AppHeader() {
   const [feedbackOpen,     setFeedbackOpen]     = useState(false);
   const [loggedIn,         setLoggedIn]         = useState(false);
   const [showRoleDropdown, setShowRoleDropdown] = useState(false);
+  // pricing ページ起点で開いたときの流入元（"header" / "banner" 等）
+  const [pricingSource,    setPricingSource]    = useState<string | undefined>(undefined);
 
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -91,7 +93,12 @@ export default function AppHeader() {
 
   // ── フィードバックモーダル: 外部イベントで開く ─────────────────────
   useEffect(() => {
-    const handler = () => setFeedbackOpen(true);
+    const handler = (e: Event) => {
+      // pricing ページから開く場合は detail.pricingSource が付いてくる
+      const detail = (e as CustomEvent<{ pricingSource?: string }>).detail;
+      setPricingSource(detail?.pricingSource ?? undefined);
+      setFeedbackOpen(true);
+    };
     window.addEventListener("open-feedback-modal", handler);
     return () => window.removeEventListener("open-feedback-modal", handler);
   }, []);
@@ -432,7 +439,8 @@ export default function AppHeader() {
       {feedbackOpen && (
         <FeedbackModal
           pathname={pathname}
-          onClose={() => setFeedbackOpen(false)}
+          pricingSource={pricingSource}
+          onClose={() => { setFeedbackOpen(false); setPricingSource(undefined); }}
         />
       )}
     </>

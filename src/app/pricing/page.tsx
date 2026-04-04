@@ -3,9 +3,13 @@
 // src/app/pricing/page.tsx
 // プランページ — tester → editor アップグレード導線
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
+import { trackBillingEvent } from "@/lib/billing-tracker";
+import { trackEvent } from "@/lib/event-tracker";
+import { getDevToken } from "@/lib/api-client";
+import { useIsMobile } from "@/hooks/useIsMobile";
 
 // ── チェックアイテム ─────────────────────────────────────────────────
 function CheckItem({ children, muted }: { children: React.ReactNode; muted?: boolean }) {
@@ -55,12 +59,37 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 
 // ── メインページ ──────────────────────────────────────────────────────
 export default function PricingPage() {
-  const router  = useRouter();
+  const router       = useRouter();
+  const searchParams = useSearchParams();
+  const sp           = useIsMobile();
   const [requested, setRequested] = useState(false);
 
+  useEffect(() => {
+    // ?source= クエリパラメータで流入元を記録（例: /pricing?source=header）
+    const source = searchParams.get("source") ?? undefined;
+    const token  = getDevToken();
+
+    // 課金専用ログ（billing_event_logs）
+    trackBillingEvent("pricing_view", token, source);
+
+    // 汎用行動ログ（event_logs）
+    trackEvent("screen_view",      { page: "/pricing" },                           { token });
+    trackEvent("upgrade_interest", { action: "view", source },                     { token });
+    trackEvent("flow_step",        { step: "pricing", source: source ?? "direct" }, { token });
+  // searchParams は mount 時に1回だけ読めば十分
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   function handleUpgrade() {
-    // フィードバックモーダルを開いてプラン申請を促す
-    window.dispatchEvent(new CustomEvent("open-feedback-modal"));
+    const token  = getDevToken();
+    const source = searchParams.get("source") ?? undefined;
+    trackBillingEvent("pricing_cta_click", token);
+    trackEvent("upgrade_interest", { action: "cta_click", source }, { token });
+    window.dispatchEvent(
+      new CustomEvent("open-feedback-modal", {
+        detail: { pricingSource: source },
+      })
+    );
     setRequested(true);
   }
 
@@ -68,7 +97,7 @@ export default function PricingPage() {
     <div style={{
       maxWidth:  600,
       margin:    "0 auto",
-      padding:   "40px 0 64px",
+      padding:   sp ? "20px 0 48px" : "40px 0 64px",
     }}>
 
       {/* ── ヘッダー ── */}
@@ -97,22 +126,53 @@ export default function PricingPage() {
           lineHeight:    1.3,
           marginBottom:  10,
         }}>
-          あなたの物語を、もっと自由に。
+          小さくはじめて、必要なときに広げる。
         </h1>
         <p style={{
           fontSize:   13,
           color:      "var(--text-secondary)",
           lineHeight: 1.8,
         }}>
-          Whale Studio では、LINE 上での物語体験を制作できます。<br />
-          現在はお試し利用中です。
+          Whale Studio は、今すぐ全部決めなくていいツールです。<br />
+          お試し利用から本格運用まで、ペースに合わせてステップアップできます。
         </p>
+      </div>
+
+      {/* ── コンセプト 3 点 ── */}
+      <div style={{
+        display:      "flex",
+        gap:          sp ? 6 : 8,
+        marginBottom: sp ? 20 : 28,
+        flexDirection: sp ? "column" : "row",
+        flexWrap:     "wrap",
+      }}>
+        {[
+          { icon: "🌱", text: "まず1作品、気軽に試せる" },
+          { icon: "🔓", text: "無理に決めなくていい" },
+          { icon: "📈", text: "成長に合わせてプラン変更できる" },
+        ].map(({ icon, text }) => (
+          <div key={text} style={{
+            flex:         sp ? "none" : "1 1 140px",
+            display:      "flex",
+            alignItems:   "center",
+            gap:          8,
+            padding:      sp ? "9px 12px" : "10px 14px",
+            background:   "var(--surface)",
+            border:       "1px solid var(--border-light)",
+            borderRadius: "var(--radius-md)",
+            fontSize:     12,
+            color:        "var(--text-secondary)",
+          }}>
+            <span style={{ fontSize: 16, flexShrink: 0 }}>{icon}</span>
+            <span>{text}</span>
+          </div>
+        ))}
       </div>
 
       {/* ── 現在のご利用状況（tester プラン） ── */}
       <div className="card" style={{ marginBottom: 12, padding: "20px 24px" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-          <SectionLabel>現在のご利用状況</SectionLabel>
+          <SectionLabel>いまのご利用状況</SectionLabel>
           <span style={{
             padding:      "2px 10px",
             borderRadius: "var(--radius-full)",
@@ -126,9 +186,9 @@ export default function PricingPage() {
           </span>
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          <CheckItem>1 作品の制作</CheckItem>
-          <CheckItem>キャラクター・メッセージ・フローの作成</CheckItem>
-          <CheckItem>プレビュー確認</CheckItem>
+          <CheckItem>1 作品をじっくり試作できる</CheckItem>
+          <CheckItem>キャラクター・メッセージ・フローをひと通り体験</CheckItem>
+          <CheckItem>プレビューで動作確認</CheckItem>
         </div>
         <p style={{
           marginTop:  14,
@@ -138,7 +198,7 @@ export default function PricingPage() {
           paddingTop: 12,
           borderTop:  "1px solid var(--border-light)",
         }}>
-          基本的な制作機能はすべてお試しいただけます。
+          まずはここからスタート。制作の感触をつかんでから、次のステップを検討できます。
         </p>
       </div>
 
@@ -150,12 +210,22 @@ export default function PricingPage() {
         border:       "1px solid #b9ddd6",
         borderRadius: "var(--radius-md)",
       }}>
-        <SectionLabel>editor プランでできること</SectionLabel>
+        <SectionLabel>editor プランに移ると</SectionLabel>
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          <CheckItem>複数作品の制作・管理</CheckItem>
-          <CheckItem>継続的な作品制作</CheckItem>
-          <CheckItem>本格的な運用（公開・改善）</CheckItem>
+          <CheckItem>複数の作品を並行して制作・管理できる</CheckItem>
+          <CheckItem>制作した作品をそのまま本番公開できる</CheckItem>
+          <CheckItem>継続的に改善・運用を続けられる</CheckItem>
         </div>
+        <p style={{
+          marginTop:  12,
+          fontSize:   12,
+          color:      "#2d5a4e",
+          lineHeight: 1.6,
+          paddingTop: 10,
+          borderTop:  "1px solid #b9ddd6",
+        }}>
+          現在の作品・キャラクター・フローはそのまま引き継がれます。
+        </p>
       </div>
 
       {/* ── プランカード ── */}
@@ -163,7 +233,7 @@ export default function PricingPage() {
         background:   "var(--surface)",
         border:       "2px solid var(--color-primary, #2F6F5E)",
         borderRadius: "var(--radius-lg)",
-        padding:      "32px 28px",
+        padding:      sp ? "24px 18px" : "32px 28px",
         textAlign:    "center",
         boxShadow:    "var(--shadow-md)",
         marginBottom: 28,
@@ -186,7 +256,7 @@ export default function PricingPage() {
           color:         "var(--color-primary, #2F6F5E)",
           marginBottom:  8,
         }}>
-          おすすめ
+          本格運用へのステップ
         </p>
 
         <h3 style={{
@@ -200,7 +270,7 @@ export default function PricingPage() {
         </h3>
 
         <div style={{ marginBottom: 6 }}>
-          <span style={{ fontSize: 34, fontWeight: 800, color: "var(--text-primary)", letterSpacing: "-0.03em" }}>
+          <span style={{ fontSize: sp ? 28 : 34, fontWeight: 800, color: "var(--text-primary)", letterSpacing: "-0.03em" }}>
             ¥9,800
           </span>
           <span style={{ fontSize: 13, color: "var(--text-muted)", marginLeft: 4 }}>
@@ -214,23 +284,34 @@ export default function PricingPage() {
           lineHeight:   1.7,
           marginBottom: 20,
         }}>
-          複数作品の制作や、継続的な運用が可能になります。
+          複数作品の制作・公開・改善を、自分のペースで続けられます。
         </p>
 
         <div style={{
           display:       "flex",
           flexDirection: "column",
           gap:           8,
-          marginBottom:  24,
+          marginBottom:  20,
           padding:       "16px 20px",
           background:    "var(--bg)",
           borderRadius:  "var(--radius-sm)",
           textAlign:     "left",
         }}>
-          <CheckItem>複数作品の制作</CheckItem>
-          <CheckItem>制限なしで制作</CheckItem>
-          <CheckItem>継続的な運用</CheckItem>
+          <CheckItem>作品数の上限なし</CheckItem>
+          <CheckItem>本番公開・継続運用</CheckItem>
+          <CheckItem>現在の作品・データを引き継ぎ</CheckItem>
         </div>
+
+        {/* CTA 前の安心文 */}
+        <p style={{
+          fontSize:     13,
+          color:        "var(--text-secondary)",
+          lineHeight:   1.7,
+          marginBottom: 16,
+        }}>
+          まだ検討中でも大丈夫です。<br />
+          まずはお気軽にご相談ください。
+        </p>
 
         {requested ? (
           <div style={{
@@ -243,7 +324,7 @@ export default function PricingPage() {
             fontWeight:   600,
             marginBottom: 8,
           }}>
-            ✓ ご連絡フォームを開きました。内容を送信してください。
+            ✓ ご相談フォームを開きました。内容を送信してください。
           </div>
         ) : (
           <button
@@ -251,7 +332,7 @@ export default function PricingPage() {
             onClick={handleUpgrade}
             style={{ width: "100%", justifyContent: "center", fontSize: 14, padding: "12px 20px" }}
           >
-            このプランを使う
+            editorプランについて相談する
           </button>
         )}
 
@@ -268,21 +349,63 @@ export default function PricingPage() {
         </Link>
       </div>
 
-      {/* ── 補足 ── */}
+      {/* ── 安心ブロック ── */}
       <div style={{
-        textAlign:  "center",
-        padding:    "20px",
-        background: "var(--surface)",
-        border:     "1px solid var(--border-light)",
+        padding:      sp ? "18px 16px" : "24px",
+        background:   "var(--surface)",
+        border:       "1px solid var(--border-light)",
         borderRadius: "var(--radius-md)",
       }}>
-        <p style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)", marginBottom: 8 }}>
-          まだ検討中の方へ
+        <p style={{
+          fontSize:     12,
+          fontWeight:   700,
+          color:        "var(--text-muted)",
+          letterSpacing: "0.05em",
+          textTransform: "uppercase",
+          marginBottom: 16,
+          textAlign:    "center",
+        }}>
+          ご相談前に知っておいてほしいこと
         </p>
-        <p style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.8 }}>
-          現在の作品はそのまま保持されます。<br />
-          必要なタイミングで、いつでもアップグレードできます。
-        </p>
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          {[
+            {
+              icon: "🤝",
+              title: "無理な営業はしません",
+              body:  "ご相談いただいた内容をもとに、個別にご案内します。その場でのお申し込みを求めることはありません。",
+            },
+            {
+              icon: "🐣",
+              title: "現在はβ版です",
+              body:  "Whale Studio はまだ成長中のサービスです。一緒に育てていただけるユーザーさんを大切にしています。",
+            },
+            {
+              icon: "💬",
+              title: "個別サポートがあります",
+              body:  "はじめての導入や使い方の相談など、担当が個別にサポートします。一人で抱え込まなくて大丈夫です。",
+            },
+          ].map(({ icon, title, body }) => (
+            <div key={title} style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
+              <span style={{
+                fontSize:    18,
+                flexShrink:  0,
+                marginTop:   1,
+                width:       28,
+                textAlign:   "center",
+              }}>
+                {icon}
+              </span>
+              <div>
+                <p style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)", marginBottom: 2 }}>
+                  {title}
+                </p>
+                <p style={{ fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.7 }}>
+                  {body}
+                </p>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
 
     </div>

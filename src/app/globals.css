@@ -665,3 +665,34 @@ select { cursor: pointer; }
   box-shadow: 0 2px 8px rgba(6,199,85,.15);
   text-decoration: none;
 }
+
+/* ── SP レスポンシブ（〜430px） ─────────────────────────────────────────── */
+@media (max-width: 430px) {
+  /* コンテナ水平パディングを縮小 */
+  .container { padding: 0 14px; }
+
+  /* ページ main の余白を縮小 */
+  main { padding: 20px 0 40px; }
+
+  /* ページヘッダーを縦積みに */
+  .page-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+  .page-header h2 { font-size: 18px; }
+
+  /* ページヘッダー右側ボタン群を横並びのまま左寄せ */
+  .page-header > div:last-child,
+  .page-header > a:last-child,
+  .page-header > button:last-child {
+    align-self: stretch;
+  }
+
+  /* カードのデフォルト水平パディングを少し縮小 */
+  .card { padding: 14px 16px; }
+
+  /* ボタンの最小サイズ確保（タップしやすく） */
+  .btn { min-height: 40px; }
+}

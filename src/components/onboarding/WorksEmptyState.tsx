@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useIsMobile } from "@/hooks/useIsMobile";
 
 interface Props {
   oaId:     string;
@@ -8,8 +9,9 @@ interface Props {
 }
 
 export function WorksEmptyState({ oaId, isTester }: Props) {
+  const sp = useIsMobile();
   return (
-    <div className="flex flex-col items-center rounded-3xl border border-neutral-200 bg-white shadow-sm text-center" style={{ padding: "48px 32px" }}>
+    <div className="flex flex-col items-center rounded-3xl border border-neutral-200 bg-white shadow-sm text-center" style={{ padding: sp ? "32px 16px" : "48px 32px" }}>
       <div className="text-5xl mb-4">🐳</div>
 
       <h3 className="font-bold text-neutral-800" style={{ fontSize: 18, marginBottom: 8 }}>
@@ -23,7 +25,7 @@ export function WorksEmptyState({ oaId, isTester }: Props) {
       {/* かんたん3ステップ */}
       <div
         className="rounded-2xl border border-neutral-100 bg-neutral-50 text-left w-full"
-        style={{ maxWidth: 360, padding: "16px 20px", marginBottom: 28 }}
+        style={{ maxWidth: sp ? "100%" : 360, padding: sp ? "14px 16px" : "16px 20px", marginBottom: 24 }}
       >
         <p className="font-bold text-neutral-400" style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 12 }}>
           かんたん 3 ステップ
@@ -53,8 +55,13 @@ export function WorksEmptyState({ oaId, isTester }: Props) {
       {!isTester && (
         <Link
           href={`/oas/${oaId}/works/new`}
-          className="inline-flex items-center rounded-xl bg-emerald-500 text-white font-semibold transition-colors hover:bg-emerald-600"
-          style={{ gap: 6, padding: "10px 22px", fontSize: 14 }}
+          className="inline-flex items-center justify-center rounded-xl bg-emerald-500 text-white font-semibold transition-colors hover:bg-emerald-600"
+          style={{
+            gap:     6,
+            padding: sp ? "13px 22px" : "10px 22px",
+            fontSize: 14,
+            width:   sp ? "100%" : "auto",
+          }}
         >
           作品を作る
         </Link>

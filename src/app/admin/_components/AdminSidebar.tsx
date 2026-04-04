@@ -12,6 +12,7 @@ const NAV_ITEMS = [
   { href: "/admin/documents",     label: "ドキュメント",        icon: "📄" },
   { href: "/admin/audience",      label: "ユーザー概況",        icon: "👥" },
   { href: "/admin/onboarding",    label: "オンボーディング分析", icon: "📈" },
+  { href: "/admin/billing",       label: "課金導線分析",        icon: "💰" },
   { href: "/admin/audit",         label: "操作ログ",            icon: "📋" },
 ] as const;
 

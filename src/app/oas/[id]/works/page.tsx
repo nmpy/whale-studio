@@ -7,10 +7,13 @@ import { Breadcrumb } from "@/components/Breadcrumb";
 import { WorkCard } from "@/components/WorkCard";
 import { FriendAddSection } from "@/components/FriendAddSection";
 import { oaApi, workApi, friendAddApi, getDevToken, type WorkListItem } from "@/lib/api-client";
+import { trackBillingEvent } from "@/lib/billing-tracker";
 import type { FriendAddSettings } from "@/types";
 import { useToast } from "@/components/Toast";
 import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
 import { ViewerBanner } from "@/components/PermissionGuard";
+import { useIsMobile } from "@/hooks/useIsMobile";
+import { trackEvent } from "@/lib/event-tracker";
 import { useTesterMode } from "@/hooks/useTesterMode";
 import { WorksEmptyState } from "@/components/onboarding/WorksEmptyState";
 import { TesterUpgradeCard } from "@/components/upgrade/TesterUpgradeCard";
@@ -43,6 +46,7 @@ export default function WorkListPage() {
   const params  = useParams<{ id: string }>();
   const oaId    = params.id;
   const { showToast } = useToast();
+  const sp = useIsMobile();
   const { role, isTester: isRoleTester } = useWorkspaceRole(oaId);
   const { isTester } = useTesterMode();
 
@@ -76,7 +80,14 @@ export default function WorkListPage() {
     }
   }
 
-  useEffect(() => { load(); }, [oaId]);
+  useEffect(() => {
+    load();
+    const token = getDevToken();
+    trackEvent("screen_view", { page: "/oas/[id]/works" }, { token, oa_id: oaId });
+    trackEvent("flow_step",   { step: "works", source: "direct" }, { token, oa_id: oaId });
+  // oaId 変化時のみ再実行
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [oaId]);
 
   async function handleDelete(id: string, title: string) {
     if (!confirm(`「${title}」を削除しますか？\nキャラクター・フェーズ・メッセージもすべて削除されます。`)) return;
@@ -110,7 +121,8 @@ export default function WorkListPage() {
           {/* tester ロールには「プランを見る」リンクを常時表示 */}
           {isRoleTester && (
             <Link
-              href="/pricing"
+              href="/pricing?source=header"
+              onClick={() => trackBillingEvent("pricing_click_from_header", getDevToken(), "header")}
               style={{
                 fontSize:       12,
                 fontWeight:     600,
@@ -182,8 +194,11 @@ export default function WorkListPage() {
       {/* ── 統計サマリー ── */}
       {!loading && works.length > 0 && (
         <div style={{
-          display: "flex", gap: 10, marginBottom: 20,
-          padding: "14px 18px",
+          display: "flex",
+          flexWrap: "wrap",
+          gap: sp ? 12 : 10,
+          marginBottom: 20,
+          padding: sp ? "12px 14px" : "14px 18px",
           background: "var(--surface)",
           border: "1px solid var(--border-light)",
           borderRadius: "var(--radius-md)",
@@ -197,8 +212,13 @@ export default function WorkListPage() {
               value: works.reduce((s, w) => s + (w._count.userProgress ?? 0), 0).toLocaleString(),
               color: "var(--color-info)",
             },
-          ].map((s) => (
-            <div key={s.label} style={{ display: "flex", alignItems: "center", gap: 6, paddingRight: 18, borderRight: "1px solid var(--border-light)" }}>
+          ].map((s, i, arr) => (
+            <div key={s.label} style={{
+              display: "flex", alignItems: "center", gap: 6,
+              paddingRight: sp ? 0 : 18,
+              // SP ではボーダーなし、PC では最後以外に右ボーダー
+              borderRight: (!sp && i < arr.length - 1) ? "1px solid var(--border-light)" : "none",
+            }}>
               <span style={{ fontSize: 18, fontWeight: 800, color: s.color }}>{s.value}</span>
               <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{s.label}</span>
             </div>

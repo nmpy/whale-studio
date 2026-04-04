@@ -11,6 +11,8 @@ import { workApi, oaApi, phaseApi, transitionApi, onboardingApi, getDevToken } f
 import type { WorkListItem } from "@/lib/api-client";
 import { HelpAccordion } from "@/components/HelpAccordion";
 import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
+import { useIsMobile } from "@/hooks/useIsMobile";
+import { trackEvent } from "@/lib/event-tracker";
 import { ViewerBanner } from "@/components/PermissionGuard";
 import { WorkCreatedGuide }   from "@/components/onboarding/WorkCreatedGuide";
 import { NextActionCard }     from "@/components/onboarding/NextActionCard";
@@ -74,6 +76,7 @@ export default function WorkHubPage() {
   const searchParams = useSearchParams();
   const oaId   = params.id;
   const workId = params.workId;
+  const sp = useIsMobile();
   const { role, isTester: isRoleTester } = useWorkspaceRole(oaId);
 
   const [oaTitle,          setOaTitle]          = useState("");
@@ -91,8 +94,37 @@ export default function WorkHubPage() {
     if (searchParams.get("created") === "1") setShowCreated(true);
   }, [searchParams]);
 
+  // ロード完了後にセットアップが未完了なら onboarding_blocked を記録
+  // work が確定し、loading が false になったタイミングで1回だけ発火
+  useEffect(() => {
+    if (loading || !work) return;
+    const hasChars  = (work._count.characters ?? 0) > 0;
+    const hasPhs    = phaseCount > 0;
+    const hasMsgs   = (work._count.messages   ?? 0) > 0;
+    const hasTrans  = transCount > 0;
+    if (hasChars && hasPhs && hasMsgs && hasTrans) return; // セットアップ完了 → ログ不要
+
+    const blockedStep =
+      !hasChars ? "character" :
+      !hasPhs   ? "phase"     :
+      !hasMsgs  ? "message"   : "transition";
+
+    trackEvent(
+      "onboarding_blocked",
+      { step: blockedStep, reason: "setup_incomplete", work_id: workId },
+      { token: getDevToken(), oa_id: oaId },
+    );
+  // work / phaseCount / transCount が確定したタイミングで実行
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, work, phaseCount, transCount]);
+
   useEffect(() => {
     const token = getDevToken();
+
+    // ページ表示ログ
+    trackEvent("screen_view", { page: "/oas/[id]/works/[workId]" }, { token, oa_id: oaId });
+    trackEvent("flow_step",   { step: "hub", work_id: workId },      { token, oa_id: oaId });
+
     Promise.all([
       oaApi.get(token, oaId),
       workApi.get(token, workId),
@@ -139,6 +171,7 @@ export default function WorkHubPage() {
   const hasMessages    = (work?._count.messages   ?? 0) > 0;
   const hasTransitions = transCount > 0;
   const isSetupIncomplete = !hasCharacters || !hasPhases || !hasMessages || !hasTransitions;
+
 
   const statusMeta = STATUS_META[work?.publish_status ?? "draft"];
 
@@ -256,8 +289,8 @@ export default function WorkHubPage() {
       {/* ── カウント表示 ── */}
       {work && (
         <div style={{
-          display: "flex", gap: 10, marginBottom: 24, flexWrap: "wrap",
-          padding: "14px 18px",
+          display: "flex", gap: sp ? 12 : 10, marginBottom: 24, flexWrap: "wrap",
+          padding: sp ? "12px 14px" : "14px 18px",
           background: "var(--surface)",
           border: "1px solid var(--border-light)",
           borderRadius: "var(--radius-md)",
@@ -268,14 +301,14 @@ export default function WorkHubPage() {
             { label: "キャラクター", value: work._count.characters, icon: "🎭", highlight: false },
             { label: "フェーズ",     value: phaseCount,             icon: "🗂",  highlight: false },
             { label: "メッセージ",   value: work._count.messages,   icon: "💬", highlight: false },
-          ].map(({ label, value, icon, highlight }) => (
+          ].map(({ label, value, icon, highlight }, i, arr) => (
             <div key={label} style={{
               display: "flex", alignItems: "center", gap: 8,
-              paddingRight: 18,
-              borderRight: "1px solid var(--border-light)",
+              paddingRight: sp ? 0 : 18,
+              borderRight: (!sp && i < arr.length - 1) ? "1px solid var(--border-light)" : "none",
             }}>
               <span style={{ fontSize: 16 }}>{icon}</span>
-              <span style={{ fontSize: 20, fontWeight: 800, color: highlight ? "var(--color-info)" : "var(--text-primary)", lineHeight: 1 }}>{value}</span>
+              <span style={{ fontSize: sp ? 18 : 20, fontWeight: 800, color: highlight ? "var(--color-info)" : "var(--text-primary)", lineHeight: 1 }}>{value}</span>
               <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{label}</span>
             </div>
           ))}
@@ -285,8 +318,9 @@ export default function WorkHubPage() {
       {/* ── ハブカード ── */}
       <div style={{
         display: "grid",
-        gridTemplateColumns: "repeat(auto-fill, minmax(270px, 1fr))",
-        gap: 14,
+        // SP: 1カラム固定  PC: 270px以上で auto-fill
+        gridTemplateColumns: sp ? "1fr" : "repeat(auto-fill, minmax(270px, 1fr))",
+        gap: sp ? 10 : 14,
       }}>
         {HUB_CARDS.map((card) => (
           <Link
