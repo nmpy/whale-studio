@@ -276,9 +276,6 @@ export default function ScenarioPage() {
           >
             ＋ フェーズを追加
           </button>
-          <Link href={`/oas/${oaId}/works/${workId}/phases`} className="btn btn-ghost">
-            🗂 フェーズを管理
-          </Link>
         </div>
       </div>
 

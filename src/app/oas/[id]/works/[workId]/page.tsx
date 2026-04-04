@@ -55,14 +55,6 @@ const HUB_CARDS = [
     bg: "#ecfdf5",
   },
   {
-    key: "phases",
-    icon: "🗂",
-    title: "フェーズ詳細",
-    desc: "各フェーズの詳細設定（開始トリガー・遷移条件など）を管理します",
-    color: "#d97706",
-    bg: "#fffbeb",
-  },
-  {
     key: "audience",
     icon: "🎯",
     title: "オーディエンス",
