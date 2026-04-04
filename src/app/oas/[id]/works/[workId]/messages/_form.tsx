@@ -2533,11 +2533,11 @@ export function MessageForm({
           ════════════════════════════════════════ */}
           <SectionAccordion title="トリガー設定" defaultOpen={true}>
 
-            {/* メッセージ役割 (puzzle 以外) */}
+            {/* 送信タイミング (puzzle 以外) */}
             {!isPuzzle && (
             <div className="form-group">
               <label style={fieldLabel} htmlFor="msg_kind">
-                メッセージ役割
+                送信タイミング
               </label>
               <select
                 id="msg_kind"
@@ -2641,7 +2641,7 @@ export function MessageForm({
                   </option>
                 ))}
               </select>
-              <div style={hintText}>フェーズは必ず指定してください。全フェーズで反応させたい場合は「メッセージ役割」→「共通メッセージ」を選択してください。</div>
+              <div style={hintText}>フェーズは必ず指定してください。全フェーズで反応させたい場合は「送信タイミング」→「共通メッセージ」を選択してください。</div>
             </div>
             )}
           </SectionAccordion>

@@ -15,7 +15,7 @@ import type { MessageWithRelations, MessageType, PhaseWithCounts, TransitionWith
 const MESSAGE_TYPE_LABEL: Record<MessageType, string> = {
   text:     "テキスト",
   image:    "画像",
-  riddle:   "謎",
+  riddle:   "—",       // タイプ列で "謎" として表示するため種別列では非表示
   video:    "動画",
   carousel: "カルーセル",
   voice:    "ボイス",
@@ -24,7 +24,7 @@ const MESSAGE_TYPE_LABEL: Record<MessageType, string> = {
 const MESSAGE_TYPE_ICON: Record<MessageType, string> = {
   text:     "💬",
   image:    "🖼",
-  riddle:   "🔍",
+  riddle:   "",         // 同上
   video:    "🎬",
   carousel: "🎠",
   voice:    "🎙",
@@ -122,13 +122,11 @@ const PHASE_TYPE_COLOR: Record<string, { bg: string; color: string; border: stri
   global:  { bg: "#fffbeb", color: "#b45309", border: "#fcd34d" },
 };
 
-const KIND_META: Record<string, { label: string; icon: string; bg: string; color: string }> = {
-  normal:   { label: "通常",     icon: "📨", bg: "#f0f9ff", color: "#0369a1" },
-  start:    { label: "開始演出", icon: "🎬", bg: "#fef3c7", color: "#92400e" },
-  response: { label: "応答",     icon: "💬", bg: "#f0fdf4", color: "#166534" },
-  hint:     { label: "ヒント",   icon: "💡", bg: "#faf5ff", color: "#7e22ce" },
-  puzzle:   { label: "謎",       icon: "🧩", bg: "#fff7ed", color: "#c2410c" },
-};
+/** タイプバッジ: 謎（puzzle / riddle）か メッセージ かの二択 */
+const MSG_TYPE_META = {
+  riddle:  { label: "謎",       icon: "🧩", bg: "#fff7ed", color: "#c2410c", border: "#fed7aa" },
+  message: { label: "メッセージ", icon: "💬", bg: "#f0f9ff", color: "#0369a1", border: "#bae6fd" },
+} as const;
 
 // ── ブランチフロー ────────────────────────────────────────
 
@@ -740,13 +738,13 @@ export default function MessagesPage() {
         { icon: "💬", title: "共通メッセージとは", points: [
           "フェーズに関係なく、どの状態でも反応するメッセージです",
           "例：「ヒント」キーワードでヒントを返す、「ヘルプ」で案内を返す、「やり直し」でリセット案内を返す",
-          "メッセージ追加画面で「メッセージ役割」→「共通メッセージ」を選んで設定します",
+          "メッセージ追加画面で「送信タイミング」→「共通メッセージ」を選んで設定します",
           "通常メッセージとの違い：フェーズ設定が不要で、常に最優先で評価されます",
         ]},
         { icon: "👆", title: "操作手順", points: [
           "「＋ メッセージを追加」→ フェーズとキャラクターを選んで内容を入力",
           "同一フェーズに複数ある場合は「順序」の小さい順に送信されます",
-          "種別が「謎」の場合は謎管理で作成した謎を選択します",
+          "タイプが「謎」のメッセージも「順序」の通りに送信されます",
         ]},
         { icon: "⚠️", title: "注意点", points: [
           "全フェーズ共通フェーズのメッセージはどのフェーズでもキーワードに反応します",
@@ -818,7 +816,7 @@ export default function MessagesPage() {
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                   <thead>
                     <tr style={{ borderBottom: "1px solid var(--border-light)", background: "var(--gray-50)" }}>
-                      {["種別", "役割", "本文", "キャラクター", "状態", "順序", ""].map((h, i) => (
+                      {["タイプ", "種別", "本文", "キャラクター", "状態", "順序", ""].map((h, i) => (
                         <th
                           key={i}
                           style={{
@@ -840,28 +838,18 @@ export default function MessagesPage() {
                         onMouseEnter={(e) => (e.currentTarget.style.background = "var(--gray-50)")}
                         onMouseLeave={(e) => (e.currentTarget.style.background = "")}
                       >
-                        {/* 種別 */}
-                        <td style={{ padding: "12px 14px", whiteSpace: "nowrap" }}>
-                          <span style={{
-                            display: "inline-flex", alignItems: "center", gap: 4,
-                            fontSize: 11, color: "var(--text-secondary)",
-                          }}>
-                            {MESSAGE_TYPE_ICON[msg.message_type]}
-                            {MESSAGE_TYPE_LABEL[msg.message_type]}
-                          </span>
-                        </td>
-
-                        {/* 役割（kind） */}
+                        {/* タイプ（謎 or メッセージ） */}
                         <td style={{ padding: "12px 14px", whiteSpace: "nowrap" }}>
                           {(() => {
-                            const k = msg.kind ?? "normal";
-                            const meta = KIND_META[k] ?? KIND_META.normal;
+                            const isRiddle = msg.kind === "puzzle" || msg.message_type === "riddle";
+                            const meta = isRiddle ? MSG_TYPE_META.riddle : MSG_TYPE_META.message;
                             return (
                               <span style={{
                                 display: "inline-flex", alignItems: "center", gap: 3,
                                 fontSize: 10, fontWeight: 600,
                                 background: meta.bg, color: meta.color,
-                                borderRadius: 8, padding: "2px 7px",
+                                border: `1px solid ${meta.border}`,
+                                borderRadius: 8, padding: "2px 8px",
                               }}>
                                 {meta.icon} {meta.label}
                               </span>
@@ -869,9 +857,25 @@ export default function MessagesPage() {
                           })()}
                         </td>
 
+                        {/* 種別（message_type — riddle は タイプ列で表現済みのため非表示） */}
+                        <td style={{ padding: "12px 14px", whiteSpace: "nowrap" }}>
+                          {msg.message_type === "riddle" ? (
+                            <span style={{ fontSize: 11, color: "var(--text-muted)" }}>—</span>
+                          ) : (
+                            <span style={{
+                              display: "inline-flex", alignItems: "center", gap: 4,
+                              fontSize: 11, color: "var(--text-secondary)",
+                            }}>
+                              {MESSAGE_TYPE_ICON[msg.message_type]}
+                              {MESSAGE_TYPE_LABEL[msg.message_type]}
+                            </span>
+                          )}
+                        </td>
+
                         {/* 本文 */}
                         <td style={{ padding: "12px 14px", maxWidth: 280 }}>
                           {msg.kind === "puzzle" ? (
+                            // インライン謎: 答えと謎タイプを表示
                             <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
                               {"answer" in msg && (msg as { answer?: string | null }).answer ? (
                                 <span style={{ fontSize: 12, color: "#374151" }}>
@@ -886,6 +890,13 @@ export default function MessagesPage() {
                                 </span>
                               )}
                             </div>
+                          ) : msg.message_type === "riddle" ? (
+                            // 外部謎参照: riddle_id ベースのコンテンツ
+                            <span style={{ fontSize: 12, color: "#9ca3af", fontStyle: "italic" }}>
+                              {msg.body
+                                ? (msg.body.length > 28 ? msg.body.slice(0, 28) + "…" : msg.body)
+                                : "📎 謎コンテンツを参照"}
+                            </span>
                           ) : msg.message_type === "image" ? (
                             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                               {msg.asset_url ? (

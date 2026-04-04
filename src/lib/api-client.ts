@@ -252,7 +252,7 @@ async function parseResponse<T>(res: Response): Promise<T> {
 /** GET /api/oas 一覧アイテム（channel_secret / channel_access_token を除く） */
 export interface OaListItem extends Omit<Oa, "channel_secret" | "channel_access_token"> {
   _count:   { works: number };
-  my_role:  string; // 'owner' | 'admin' | 'editor' | 'tester' | 'none'
+  my_role:  string; // 'owner' | 'admin' | 'editor' | 'viewer' | 'none'
 }
 
 /** POST /api/oas・PATCH /api/oas/:id の書き込みレスポンス（secret 類を除く） */
@@ -1216,7 +1216,7 @@ export interface Invitation {
   id:          string;
   oa_id:       string;
   email:       string;
-  role:        string; // 'owner' | 'admin' | 'editor' | 'tester'
+  role:        string; // 'owner' | 'admin' | 'editor' | 'viewer'
   token:       string;
   invited_by:  string;
   expires_at:  string;

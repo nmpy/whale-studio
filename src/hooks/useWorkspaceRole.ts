@@ -6,6 +6,10 @@
  * workspace_id = oa_id（MVP）
  * ロール階層: owner > admin > editor > viewer
  *
+ * platform owner は PREVIEW_WS_ROLE_KEY を localStorage に設定することで、
+ * 任意の workspace role として UI を確認できる（権限プレビュー機能）。
+ * プレビュー変更は PREVIEW_WS_ROLE_EVENT カスタムイベントで即時反映される。
+ *
  * @example
  * const { role, loading, isOwner, isAdmin, canEdit, isViewer } = useWorkspaceRole(oaId);
  */
@@ -14,6 +18,14 @@ import { useState, useEffect } from "react";
 import { getDevToken } from "@/lib/api-client";
 import type { Role } from "@/lib/types/permissions";
 import { roleAtLeast } from "@/lib/types/permissions";
+
+// ── プレビュー定数（usePlatformRole.ts と同値・循環 import 回避のため重複定義） ──
+/** @see usePlatformRole.ts PREVIEW_WS_ROLE_KEY */
+const PREVIEW_WS_ROLE_KEY   = "ws_ws_role_preview";
+/** @see usePlatformRole.ts PREVIEW_WS_ROLE_EVENT */
+const PREVIEW_WS_ROLE_EVENT = "ws-preview-role-changed";
+
+const VALID_ROLES: string[] = ["owner", "admin", "editor", "viewer"];
 
 export interface WorkspaceRoleState {
   role:     Role | null;
@@ -29,17 +41,13 @@ export interface WorkspaceRoleState {
 }
 
 export function useWorkspaceRole(workspaceId: string): WorkspaceRoleState {
-  const [role, setRole]       = useState<Role | null>(null);
+  const [role,    setRole]    = useState<Role | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    if (!workspaceId) {
-      setLoading(false);
-      return;
-    }
-
+  // ── 実ロールを API から取得するヘルパー ──────────────────────────
+  function fetchRealRole(wsId: string) {
     setLoading(true);
-    fetch(`/api/oas/${workspaceId}/members/me`, {
+    fetch(`/api/oas/${wsId}/members/me`, {
       headers: { Authorization: `Bearer ${getDevToken()}` },
     })
       .then((res) => res.json())
@@ -51,9 +59,45 @@ export function useWorkspaceRole(workspaceId: string): WorkspaceRoleState {
         setRole("viewer");
       })
       .finally(() => setLoading(false));
+  }
+
+  // ── 初回 / workspaceId 変更時 ─────────────────────────────────────
+  useEffect(() => {
+    if (!workspaceId) {
+      setLoading(false);
+      return;
+    }
+
+    // platform owner の workspace role プレビューを優先適用
+    try {
+      const preview = localStorage.getItem(PREVIEW_WS_ROLE_KEY);
+      if (preview && VALID_ROLES.includes(preview)) {
+        setRole(preview as Role);
+        setLoading(false);
+        return;
+      }
+    } catch {}
+
+    fetchRealRole(workspaceId);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspaceId]);
 
-  const isViewer = role === "viewer";
+  // ── プレビューロール変更イベントで即時反映 ─────────────────────────
+  useEffect(() => {
+    const handlePreviewChange = (e: Event) => {
+      const newRole = (e as CustomEvent<Role | null>).detail;
+      if (newRole === null) {
+        // プレビュー解除 → 実ロールを再取得
+        if (workspaceId) fetchRealRole(workspaceId);
+      } else if (VALID_ROLES.includes(newRole)) {
+        setRole(newRole);
+        setLoading(false);
+      }
+    };
+    window.addEventListener(PREVIEW_WS_ROLE_EVENT, handlePreviewChange);
+    return () => window.removeEventListener(PREVIEW_WS_ROLE_EVENT, handlePreviewChange);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workspaceId]);
 
   return {
     role,
@@ -61,6 +105,6 @@ export function useWorkspaceRole(workspaceId: string): WorkspaceRoleState {
     isOwner:  role === "owner",
     isAdmin:  role !== null && roleAtLeast(role, "admin"),
     canEdit:  role !== null && roleAtLeast(role, "editor"),
-    isViewer,
+    isViewer: role === "viewer",
   };
 }
