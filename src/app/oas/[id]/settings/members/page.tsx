@@ -9,7 +9,7 @@
 //   2. 招待一覧       — 有効な招待の表示・リンクコピー・取り消し
 //   3. 招待フォーム   — email + role → 招待リンク生成
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import {
@@ -17,6 +17,7 @@ import {
   memberApi,
   invitationApi,
   type WorkspaceMember,
+  type ProvisionalUser,
   type Invitation,
 } from "@/lib/api-client";
 import { useToast } from "@/components/Toast";
@@ -30,6 +31,7 @@ import {
   STATUS_OPTIONS,
   STATUS_COLORS,
   INVITATION_STATE_LABELS,
+  INVITATION_STATUS_STYLES,
   CONFIRM,
   TOAST,
   TOOLTIP,
@@ -47,18 +49,19 @@ export default function MembersPage() {
   const { showToast }                         = useToast();
   const token                                 = getDevToken();
 
-  const [section,     setSection]     = useState<Section>("members");
-  const [members,     setMembers]     = useState<WorkspaceMember[]>([]);
-  const [invitations, setInvitations] = useState<Invitation[]>([]);
-  const [loadingM,    setLoadingM]    = useState(true);
-  const [loadingI,    setLoadingI]    = useState(false);
-  const [errorMsg,    setErrorMsg]    = useState<string | null>(null);
-  const [myUserId,    setMyUserId]    = useState<string | null>(null);
+  const [section,      setSection]      = useState<Section>("members");
+  const [members,      setMembers]      = useState<WorkspaceMember[]>([]);
+  const [provisional,  setProvisional]  = useState<ProvisionalUser[]>([]);
+  const [invitations,  setInvitations]  = useState<Invitation[]>([]);
+  const [loadingM,     setLoadingM]     = useState(true);
+  const [loadingI,     setLoadingI]     = useState(false);
+  const [errorMsg,     setErrorMsg]     = useState<string | null>(null);
+  const [myUserId,     setMyUserId]     = useState<string | null>(null);
 
   const canManage = isOwner || isAdmin;
 
   // ── ロール階層ソート（API 側と同じ基準。フロント側でも保証） ─────────
-  const ROLE_SORT_ORDER: Record<string, number> = { owner: 0, admin: 1, editor: 2, tester: 3 };
+  const ROLE_SORT_ORDER: Record<string, number> = { owner: 0, admin: 1, editor: 2, viewer: 3, tester: 3 };
   function sortMembers(list: WorkspaceMember[]): WorkspaceMember[] {
     return [...list].sort(
       (a, b) => (ROLE_SORT_ORDER[a.role] ?? 9) - (ROLE_SORT_ORDER[b.role] ?? 9)
@@ -71,8 +74,9 @@ export default function MembersPage() {
     setLoadingM(true);
     setErrorMsg(null);
     try {
-      const data = await memberApi.list(token, oaId);
-      setMembers(sortMembers(data));   // フロント側でもソート保証
+      const { members: list, provisional: prov } = await memberApi.list(token, oaId);
+      setMembers(sortMembers(list));   // フロント側でもソート保証
+      setProvisional(prov);
     } catch (e) {
       setErrorMsg(e instanceof Error ? e.message : TOAST.membersLoadFailed);
     } finally {
@@ -130,8 +134,7 @@ export default function MembersPage() {
     );
   }
 
-  const activeInvitations  = invitations.filter((i) => !i.is_expired && !i.is_accepted);
-  const expiredInvitations = invitations.filter((i) => i.is_expired || i.is_accepted);
+  const pendingInvitationsCount = invitations.filter((i) => !i.is_expired && !i.is_accepted).length;
 
   return (
     <>
@@ -181,8 +184,10 @@ export default function MembersPage() {
               transition:   "color .15s",
             }}
           >
-            {s === "members" ? `👥 メンバー（${members.length}）` : `✉️ 招待`}
-            {s === "invitations" && activeInvitations.length > 0 && (
+            {s === "members"
+            ? `👥 メンバー（${members.length}）${provisional.length > 0 ? ` + 未登録 ${provisional.length}` : ""}`
+            : `✉️ 招待`}
+            {s === "invitations" && pendingInvitationsCount > 0 && (
               <span style={{
                 display:      "inline-block",
                 marginLeft:   6,
@@ -193,7 +198,7 @@ export default function MembersPage() {
                 color:        "#1e40af",
                 borderRadius: 99,
               }}>
-                {activeInvitations.length}
+                {pendingInvitationsCount}
               </span>
             )}
           </button>
@@ -206,6 +211,7 @@ export default function MembersPage() {
           oaId={oaId}
           token={token}
           members={members}
+          provisional={provisional}
           loading={loadingM}
           myRole={role}
           myUserId={myUserId}
@@ -220,8 +226,7 @@ export default function MembersPage() {
         <InvitationsSection
           oaId={oaId}
           token={token}
-          activeInvitations={activeInvitations}
-          expiredInvitations={expiredInvitations}
+          invitations={invitations}
           loading={loadingI}
           isOwner={isOwner}
           isAdmin={isAdmin}
@@ -238,20 +243,21 @@ export default function MembersPage() {
 // ────────────────────────────────────────────────────────────────────
 
 interface MembersSectionProps {
-  oaId:      string;
-  token:     string;
-  members:   WorkspaceMember[];
-  loading:   boolean;
-  myRole:    Role | null;
-  myUserId:  string | null;  // 自己操作ガード用
-  isOwner:   boolean;
-  isAdmin:   boolean;
-  onRefresh: () => Promise<void>;
+  oaId:        string;
+  token:       string;
+  members:     WorkspaceMember[];
+  provisional: ProvisionalUser[];
+  loading:     boolean;
+  myRole:      Role | null;
+  myUserId:    string | null;  // 自己操作ガード用
+  isOwner:     boolean;
+  isAdmin:     boolean;
+  onRefresh:   () => Promise<void>;
   showToast: (msg: string, type: "success" | "error") => void;
 }
 
 function MembersSection({
-  oaId, token, members, loading, myUserId, isOwner, isAdmin, onRefresh, showToast,
+  oaId, token, members, provisional, loading, myUserId, isOwner, isAdmin, onRefresh, showToast,
 }: MembersSectionProps) {
 
   // ── 派生値 ───────────────────────────────────────────────────────
@@ -340,15 +346,22 @@ function MembersSection({
     );
   }
 
-  if (members.length === 0) {
+  if (members.length === 0 && provisional.length === 0) {
     return (
       <div className="card" style={{ padding: 48, textAlign: "center", color: "#9ca3af" }}>
         <p style={{ fontSize: 14 }}>メンバーがいません</p>
+        <p style={{ fontSize: 12, marginTop: 8 }}>
+          招待を送るか、アプリにアクセスしたユーザーが自動的にここに表示されます。
+        </p>
       </div>
     );
   }
 
   return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+
+    {/* ── 正式メンバー一覧 ── */}
+    {members.length > 0 && (
     <div className="card" style={{ padding: 0, overflow: "hidden" }}>
       {/* テーブルヘッダー */}
       <div style={{
@@ -534,9 +547,9 @@ function MembersSection({
             {/* ── 参加日列 ── */}
             <div style={{ fontSize: 11, color: "#9ca3af" }}>{joinedDate}</div>
 
-            {/* ── 操作列（owner のみ表示） ── */}
+            {/* ── 操作列（admin / owner に表示。admin は owner 行を操作不可） ── */}
             <div style={{ textAlign: "right" }}>
-              {isOwner && (
+              {modifiable && (
                 <button
                   type="button"
                   className="btn btn-danger"
@@ -581,6 +594,227 @@ function MembersSection({
         </details>
       </div>
     </div>
+    )} {/* /正式メンバーカード */}
+
+    {/* ── 未登録ユーザー（アプリ操作履歴あり） ── */}
+    {provisional.length > 0 && (
+      <ProvisionalSection
+        oaId={oaId}
+        token={token}
+        provisional={provisional}
+        isOwner={isOwner}
+        isAdmin={isAdmin}
+        onRefresh={onRefresh}
+        showToast={showToast}
+      />
+    )}
+
+    </div> // outer flex
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────
+// 未登録ユーザーセクション
+// ────────────────────────────────────────────────────────────────────
+
+interface ProvisionalSectionProps {
+  oaId:        string;
+  token:       string;
+  provisional: ProvisionalUser[];
+  isOwner:     boolean;
+  isAdmin:     boolean;
+  onRefresh:   () => Promise<void>;
+  showToast:   (msg: string, type: "success" | "error") => void;
+}
+
+function ProvisionalSection({
+  oaId, token, provisional, isOwner, isAdmin, onRefresh, showToast,
+}: ProvisionalSectionProps) {
+  const canManage = isOwner || isAdmin;
+
+  async function handleRegister(user: ProvisionalUser, role: Role) {
+    const name = user.email ?? user.user_id;
+    if (!confirm(`${name} を ${ROLE_LABELS[role]} として正式登録しますか？`)) return;
+    try {
+      await memberApi.add(token, oaId, {
+        user_id: user.user_id,
+        role,
+        ...(user.email ? { email: user.email } : {}),
+      });
+      showToast(`${name} を ${ROLE_LABELS[role]} として登録しました`, "success");
+      await onRefresh();
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "登録に失敗しました", "error");
+    }
+  }
+
+  return (
+    <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+      {/* ヘッダー */}
+      <div style={{
+        padding:      "12px 20px",
+        background:   "#fffbeb",
+        borderBottom: "1px solid #fde68a",
+        display:      "flex",
+        alignItems:   "center",
+        gap:          8,
+      }}>
+        <span style={{ fontSize: 14 }}>👤</span>
+        <div style={{ flex: 1 }}>
+          <span style={{ fontSize: 13, fontWeight: 700, color: "#92400e" }}>
+            未登録ユーザー（{provisional.length}件）
+          </span>
+          <span style={{ fontSize: 11, color: "#b45309", marginLeft: 8 }}>
+            最近アプリを操作したユーザーです。ロールを設定すると正式メンバーに登録されます。
+          </span>
+        </div>
+      </div>
+
+      {/* テーブルヘッダー */}
+      <div style={{
+        display:             "grid",
+        gridTemplateColumns: "1fr 80px 160px",
+        gap:                 8,
+        padding:             "8px 20px",
+        background:          "#f9fafb",
+        borderBottom:        "1px solid #e5e7eb",
+        fontSize:            11,
+        fontWeight:          700,
+        color:               "#6b7280",
+        textTransform:       "uppercase",
+        letterSpacing:       "0.06em",
+      }}>
+        <span>ユーザー</span>
+        <span>最終操作</span>
+        <span>{canManage ? "ロール付与" : "状態"}</span>
+      </div>
+
+      {/* 行 */}
+      {provisional.map((u) => (
+        <ProvisionalRow
+          key={u.user_id}
+          user={u}
+          canManage={canManage}
+          isOwner={isOwner}
+          onRegister={handleRegister}
+        />
+      ))}
+    </div>
+  );
+}
+
+// ── 未登録ユーザー行 ─────────────────────────────────────────────────
+
+function ProvisionalRow({
+  user, canManage, isOwner, onRegister,
+}: {
+  user:       ProvisionalUser;
+  canManage:  boolean;
+  isOwner:    boolean;
+  onRegister: (user: ProvisionalUser, role: Role) => Promise<void>;
+}) {
+  const [selectedRole, setSelectedRole] = useState<Role>("viewer");
+  const [registering,  setRegistering]  = useState(false);
+
+  const lastSeen = new Date(user.last_seen_at).toLocaleDateString("ja-JP", {
+    month: "2-digit", day: "2-digit",
+  });
+
+  async function handleClick() {
+    setRegistering(true);
+    try {
+      await onRegister(user, selectedRole);
+    } finally {
+      setRegistering(false);
+    }
+  }
+
+  return (
+    <div style={{
+      display:             "grid",
+      gridTemplateColumns: "1fr 80px 160px",
+      gap:                 8,
+      padding:             "12px 20px",
+      borderBottom:        "1px solid #f3f4f6",
+      alignItems:          "center",
+    }}>
+      {/* ユーザー列 */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+        <div style={{
+          width:          36, height: 36, borderRadius: "50%",
+          background:     "#fef9c3",
+          display:        "flex", alignItems: "center", justifyContent: "center",
+          fontSize:       14, fontWeight: 700, color: "#92400e", flexShrink: 0,
+        }}>
+          {(user.email ?? user.user_id).slice(0, 1).toUpperCase()}
+        </div>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 600, color: "#374151" }}>
+            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {user.email ?? (
+                <span style={{ fontFamily: "monospace", fontSize: 11, color: "#9ca3af" }}>
+                  {user.user_id.slice(0, 20)}…
+                </span>
+              )}
+            </span>
+            {/* 未登録バッジ */}
+            <span style={{
+              flexShrink: 0, fontSize: 10, fontWeight: 700,
+              padding: "1px 6px", borderRadius: 99,
+              background: "#fef9c3", color: "#92400e",
+              border: "1px solid #fde68a",
+            }}>
+              未登録
+            </span>
+          </div>
+          {user.email && (
+            <div style={{ fontSize: 10, color: "#9ca3af", fontFamily: "monospace" }}>
+              {user.user_id.slice(0, 16)}…
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* 最終操作 */}
+      <div style={{ fontSize: 11, color: "#9ca3af" }}>{lastSeen}</div>
+
+      {/* ロール付与 */}
+      {canManage ? (
+        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          <select
+            value={selectedRole}
+            onChange={(e) => setSelectedRole(e.target.value as Role)}
+            disabled={registering}
+            style={{
+              flex: 1, padding: "5px 6px", fontSize: 12,
+              border: "1px solid #e5e7eb", borderRadius: 6, background: "#fff",
+            }}
+          >
+            {ROLES.filter((r) => isOwner ? true : r !== "owner").map((r) => (
+              <option key={r} value={r}>{ROLE_LABELS[r]}</option>
+            ))}
+          </select>
+          <button
+            type="button"
+            className="btn btn-primary"
+            style={{ fontSize: 11, padding: "4px 10px", flexShrink: 0, whiteSpace: "nowrap" }}
+            disabled={registering}
+            onClick={handleClick}
+          >
+            {registering ? "…" : "登録"}
+          </button>
+        </div>
+      ) : (
+        <span style={{
+          fontSize: 11, fontWeight: 700,
+          padding: "2px 8px", borderRadius: 20,
+          background: "#f9fafb", color: "#6b7280",
+          border: "1px solid #e5e7eb",
+        }}>
+          閲覧者（未登録）
+        </span>
+      )}
+    </div>
   );
 }
 
@@ -589,38 +823,87 @@ function MembersSection({
 // ────────────────────────────────────────────────────────────────────
 
 interface InvitationsSectionProps {
-  oaId:               string;
-  token:              string;
-  activeInvitations:  Invitation[];
-  expiredInvitations: Invitation[];
-  loading:            boolean;
-  isOwner:            boolean;
-  isAdmin:            boolean;
-  onRefresh:          () => Promise<void>;
-  showToast:          (msg: string, type: "success" | "error") => void;
+  oaId:        string;
+  token:       string;
+  invitations: Invitation[];
+  loading:     boolean;
+  isOwner:     boolean;
+  isAdmin:     boolean;
+  onRefresh:   () => Promise<void>;
+  showToast:   (msg: string, type: "success" | "error") => void;
+}
+
+// ── 招待をステータス優先 → created_at 降順でソート ─────────────────────
+function sortInvitations(list: Invitation[]): Invitation[] {
+  const statusOrder = (inv: Invitation): number =>
+    inv.is_accepted ? 2 : inv.is_expired ? 1 : 0;
+  return [...list].sort((a, b) => {
+    const diff = statusOrder(a) - statusOrder(b);
+    if (diff !== 0) return diff;
+    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+  });
 }
 
 function InvitationsSection({
-  oaId, token, activeInvitations, expiredInvitations, loading,
+  oaId, token, invitations, loading,
   isOwner, isAdmin, onRefresh, showToast,
 }: InvitationsSectionProps) {
 
-  const [inviteEmail,  setInviteEmail]  = useState("");
-  const [inviteRole,   setInviteRole]   = useState<Role>("editor");
-  const [inviting,     setInviting]     = useState(false);
-  const [newInviteUrl, setNewInviteUrl] = useState<string | null>(null);
-  const [showExpired,  setShowExpired]  = useState(false);
-  /** コピー済み状態の招待 ID（2秒間ボタン表示を変える） */
-  const [copiedId,     setCopiedId]     = useState<string | null>(null);
+  const [inviteEmail,   setInviteEmail]  = useState("");
+  const [inviteRole,    setInviteRole]   = useState<Role>("editor");
+  const [inviting,      setInviting]     = useState(false);
+  const [newInviteUrl,  setNewInviteUrl] = useState<string | null>(null);
+  const [copiedId,      setCopiedId]     = useState<string | null>(null);
+  /** 取り消し確認モーダル対象 */
+  const [revokeTarget,  setRevokeTarget] = useState<Invitation | null>(null);
+  const [revoking,      setRevoking]     = useState(false);
 
-  async function handleRevoke(inv: Invitation) {
-    if (!confirm(CONFIRM.revokeInvitation(inv.email))) return;
+  /** 招待フォームカードへのref（空状態の「メンバーを招待」ボタンでスクロール） */
+  const formCardRef = useRef<HTMLDivElement>(null);
+
+  // ── 集計 ─────────────────────────────────────────────────────────
+  const pendingCount  = invitations.filter((i) => !i.is_expired && !i.is_accepted).length;
+  const expiredCount  = invitations.filter((i) =>  i.is_expired && !i.is_accepted).length;
+  const acceptedCount = invitations.filter((i) =>  i.is_accepted).length;
+
+  const sorted = sortInvitations(invitations);
+
+  // ── ハンドラ ─────────────────────────────────────────────────────
+
+  /** pending → 取り消しモーダルを開く */
+  function handleRevoke(inv: Invitation) {
+    setRevokeTarget(inv);
+  }
+
+  /** モーダルで「取り消す」確定 */
+  async function confirmRevoke() {
+    if (!revokeTarget) return;
+    setRevoking(true);
     try {
-      await invitationApi.revoke(token, oaId, inv.id);
+      await invitationApi.revoke(token, oaId, revokeTarget.id);
       showToast(TOAST.invitationRevoked, "success");
+      setRevokeTarget(null);
       await onRefresh();
     } catch (e) {
       showToast(e instanceof Error ? e.message : TOAST.revokeFailed, "error");
+    } finally {
+      setRevoking(false);
+    }
+  }
+
+  /** expired → 再発行（同メール・同ロールで create = upsert） */
+  async function handleReissue(inv: Invitation) {
+    try {
+      const result = await invitationApi.create(token, oaId, {
+        email: inv.email,
+        role:  inv.role,
+      });
+      const url = `${window.location.origin}/invite/${result.token}`;
+      setNewInviteUrl(url);
+      showToast(TOAST.invitationReissued, "success");
+      await onRefresh();
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : TOAST.inviteFailed, "error");
     }
   }
 
@@ -656,8 +939,18 @@ function InvitationsSection({
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
 
+      {/* ── 取り消し確認モーダル ── */}
+      {revokeTarget && (
+        <RevokeConfirmModal
+          email={revokeTarget.email}
+          revoking={revoking}
+          onCancel={() => setRevokeTarget(null)}
+          onConfirm={confirmRevoke}
+        />
+      )}
+
       {/* ── 招待フォーム ── */}
-      <div className="card">
+      <div className="card" ref={formCardRef}>
         <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 4 }}>メンバーを招待</h3>
         <p style={{ fontSize: 12, color: "#6b7280", marginBottom: 16 }}>
           メールアドレスを入力すると招待リンクが発行されます。リンクを相手に送ってください。
@@ -671,11 +964,11 @@ function InvitationsSection({
             onChange={(e) => setInviteEmail(e.target.value)}
             required
             style={{
-              flex:     1,
-              minWidth: 220,
-              padding:  "8px 12px",
-              fontSize: 13,
-              border:   "1px solid #e5e7eb",
+              flex:         1,
+              minWidth:     220,
+              padding:      "8px 12px",
+              fontSize:     13,
+              border:       "1px solid #e5e7eb",
               borderRadius: 6,
             }}
           />
@@ -683,11 +976,11 @@ function InvitationsSection({
             value={inviteRole}
             onChange={(e) => setInviteRole(e.target.value as Role)}
             style={{
-              padding:  "8px 10px",
-              fontSize: 13,
-              border:   "1px solid #e5e7eb",
+              padding:      "8px 10px",
+              fontSize:     13,
+              border:       "1px solid #e5e7eb",
               borderRadius: 6,
-              background: "#fff",
+              background:   "#fff",
             }}
           >
             {ROLES.filter((r) => isOwner ? true : r !== "owner").map((r) => (
@@ -720,14 +1013,14 @@ function InvitationsSection({
                 readOnly
                 value={newInviteUrl}
                 style={{
-                  flex:       1,
-                  padding:    "6px 10px",
-                  fontSize:   12,
-                  border:     "1px solid #86efac",
+                  flex:         1,
+                  padding:      "6px 10px",
+                  fontSize:     12,
+                  border:       "1px solid #86efac",
                   borderRadius: 6,
-                  background: "#fff",
-                  fontFamily: "monospace",
-                  color:      "#111827",
+                  background:   "#fff",
+                  fontFamily:   "monospace",
+                  color:        "#111827",
                 }}
                 onFocus={(e) => e.target.select()}
               />
@@ -737,7 +1030,7 @@ function InvitationsSection({
                 style={{ flexShrink: 0, fontSize: 12, padding: "6px 12px" }}
                 onClick={async () => {
                   await navigator.clipboard.writeText(newInviteUrl);
-                  showToast("リンクをコピーしました", "success");
+                  showToast(TOAST.linkCopied, "success");
                 }}
               >
                 コピー
@@ -750,85 +1043,95 @@ function InvitationsSection({
         )}
       </div>
 
-      {/* ── 有効な招待一覧 ── */}
-      <div className="card">
-        <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 16 }}>
-          有効な招待
-          {activeInvitations.length > 0 && (
-            <span style={{
-              marginLeft:   8,
-              fontSize:     12,
-              fontWeight:   400,
-              color:        "#6b7280",
-            }}>
-              {activeInvitations.length} 件
+      {/* ── 招待一覧 ── */}
+      <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+
+        {/* カードヘッダー（件数表示） */}
+        <div style={{
+          padding:      "14px 20px",
+          borderBottom: "1px solid #e5e7eb",
+          display:      "flex",
+          alignItems:   "center",
+          gap:          10,
+          flexWrap:     "wrap",
+        }}>
+          <h3 style={{ fontSize: 14, fontWeight: 700, margin: 0 }}>招待一覧</h3>
+          {invitations.length > 0 && (
+            <span style={{ fontSize: 12, color: "#9ca3af" }}>
+              有効 {pendingCount} / 期限切れ {expiredCount} / 受諾済み {acceptedCount}
             </span>
           )}
-        </h3>
+        </div>
 
         {loading ? (
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <div style={{ padding: 20, display: "flex", flexDirection: "column", gap: 12 }}>
             {[1, 2].map((i) => (
               <div key={i} className="skeleton" style={{ height: 52, borderRadius: 8 }} />
             ))}
           </div>
-        ) : activeInvitations.length === 0 ? (
-          <p style={{ fontSize: 13, color: "#9ca3af" }}>有効な招待はありません</p>
+        ) : sorted.length === 0 ? (
+          /* ── 空状態 ── */
+          <div style={{ padding: "48px 20px", textAlign: "center" }}>
+            <div style={{ fontSize: 36, marginBottom: 12 }}>✉️</div>
+            <p style={{ fontSize: 14, fontWeight: 700, color: "#111827", marginBottom: 6 }}>
+              まだ招待はありません
+            </p>
+            <p style={{ fontSize: 13, color: "#9ca3af", marginBottom: 20 }}>
+              メンバーを招待すると、ここに一覧で表示されます
+            </p>
+            <button
+              type="button"
+              className="btn btn-primary"
+              style={{ fontSize: 13 }}
+              onClick={() => formCardRef.current?.scrollIntoView({ behavior: "smooth", block: "center" })}
+            >
+              メンバーを招待
+            </button>
+          </div>
         ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
-            {activeInvitations.map((inv, idx) => (
+          <>
+            <InvitationTableHeader />
+            {sorted.map((inv, idx) => (
               <InvitationRow
                 key={inv.id}
                 invitation={inv}
-                isLast={idx === activeInvitations.length - 1}
+                isLast={idx === sorted.length - 1}
                 isCopied={copiedId === inv.id}
                 onCopy={(url) => handleCopyLink(inv.id, url)}
                 onRevoke={() => handleRevoke(inv)}
+                onReissue={() => handleReissue(inv)}
                 showToast={showToast}
               />
             ))}
-          </div>
+          </>
         )}
       </div>
+    </div>
+  );
+}
 
-      {/* ── 期限切れ / 受け入れ済み ── */}
-      {expiredInvitations.length > 0 && (
-        <div className="card">
-          <button
-            type="button"
-            onClick={() => setShowExpired(!showExpired)}
-            style={{
-              background:   "none",
-              border:       "none",
-              cursor:       "pointer",
-              fontSize:     13,
-              fontWeight:   600,
-              color:        "#6b7280",
-              display:      "flex",
-              alignItems:   "center",
-              gap:          6,
-              padding:      0,
-            }}
-          >
-            {showExpired ? "▼" : "▶"} 期限切れ・受け入れ済み（{expiredInvitations.length} 件）
-          </button>
+// ── テーブルヘッダー（招待一覧共通） ─────────────────────────────────
 
-          {showExpired && (
-            <div style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 0 }}>
-              {expiredInvitations.map((inv, idx) => (
-                <InvitationRow
-                  key={inv.id}
-                  invitation={inv}
-                  isLast={idx === expiredInvitations.length - 1}
-                  onRevoke={undefined}
-                  dimmed
-                  showToast={showToast}
-                />
-              ))}
-            </div>
-          )}
-        </div>
-      )}
+function InvitationTableHeader() {
+  return (
+    <div style={{
+      display:             "grid",
+      gridTemplateColumns: "minmax(0,1fr) 88px 92px 90px auto",
+      gap:                 8,
+      padding:             "8px 20px",
+      background:          "#f9fafb",
+      borderBottom:        "1px solid #e5e7eb",
+      fontSize:            11,
+      fontWeight:          700,
+      color:               "#9ca3af",
+      textTransform:       "uppercase",
+      letterSpacing:       "0.06em",
+    }}>
+      <span>メールアドレス</span>
+      <span>権限</span>
+      <span>ステータス</span>
+      <span>有効期限</span>
+      <span />
     </div>
   );
 }
@@ -838,10 +1141,10 @@ function InvitationsSection({
 function InvitationRow({
   invitation: inv,
   isLast,
-  isCopied  = false,
+  isCopied   = false,
   onCopy,
   onRevoke,
-  dimmed    = false,
+  onReissue,
   showToast: _showToast,
 }: {
   invitation: Invitation;
@@ -849,7 +1152,7 @@ function InvitationRow({
   isCopied?:  boolean;
   onCopy?:    (url: string) => void;
   onRevoke?:  () => void;
-  dimmed?:    boolean;
+  onReissue?: () => void;
   showToast:  (msg: string, type: "success" | "error") => void;
 }) {
   const expiresStr = new Date(inv.expires_at).toLocaleDateString("ja-JP", {
@@ -857,69 +1160,195 @@ function InvitationRow({
   });
   const inviteUrl = `${typeof window !== "undefined" ? window.location.origin : ""}/invite/${inv.token}`;
 
-  // 招待の状態ラベル
-  const stateLabel = inv.is_accepted
-    ? `✅ ${INVITATION_STATE_LABELS.accepted}`
-    : inv.is_expired
-    ? `⏰ ${INVITATION_STATE_LABELS.expired}`
-    : `有効期限: ${expiresStr}`;
+  const statusKey: keyof typeof INVITATION_STATUS_STYLES =
+    inv.is_accepted ? "accepted" : inv.is_expired ? "expired" : "pending";
+
+  const isPending  = !inv.is_expired && !inv.is_accepted;
+  const isExpired  =  inv.is_expired && !inv.is_accepted;
+  // is_accepted → 操作なし
 
   return (
     <div style={{
-      display:      "flex",
-      alignItems:   "center",
-      gap:          12,
-      padding:      "12px 0",
-      borderBottom: isLast ? "none" : "1px solid #f3f4f6",
-      opacity:      dimmed ? 0.55 : 1,
-      flexWrap:     "wrap",
+      display:             "grid",
+      gridTemplateColumns: "minmax(0,1fr) 88px 92px 90px auto",
+      gap:                 8,
+      padding:             "12px 20px",
+      borderBottom:        isLast ? "none" : "1px solid #f3f4f6",
+      alignItems:          "center",
+      opacity:             inv.is_accepted ? 0.5 : 1,
     }}>
-      {/* メール + 状態 */}
-      <div style={{ flex: 1, minWidth: 160 }}>
-        <div style={{ fontSize: 13, fontWeight: 600, color: "#111827" }}>{inv.email}</div>
-        <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 2 }}>{stateLabel}</div>
+
+      {/* メールアドレス */}
+      <div style={{ minWidth: 0 }}>
+        <div style={{
+          fontSize:     13,
+          fontWeight:   600,
+          color:        "#111827",
+          overflow:     "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace:   "nowrap",
+        }}>
+          {inv.email}
+        </div>
+        <div style={{ fontSize: 10, color: "#9ca3af", marginTop: 2, fontFamily: "monospace" }}>
+          {inv.id.slice(0, 8)}…
+        </div>
       </div>
 
-      <RoleBadge role={inv.role as Role} />
+      {/* 権限バッジ */}
+      <div><RoleBadge role={inv.role as Role} /></div>
 
-      {/* 操作（有効な招待のみ） */}
-      {!dimmed && (
-        <>
-          {onCopy && (
-            <button
-              type="button"
-              className="btn btn-ghost"
-              style={{
-                fontSize:   11,
-                padding:    "4px 10px",
-                flexShrink: 0,
-                minWidth:   100,
-                color:      isCopied ? "#059669" : undefined,
-                fontWeight: isCopied ? 700 : undefined,
-                transition: "color .2s",
-              }}
-              onClick={() => onCopy(inviteUrl)}
-            >
-              {isCopied ? "✅ コピー済み" : "リンクをコピー"}
-            </button>
-          )}
-          {onRevoke && (
-            <button
-              type="button"
-              className="btn btn-danger"
-              style={{ fontSize: 11, padding: "4px 10px", flexShrink: 0 }}
-              onClick={onRevoke}
-            >
-              取り消し
-            </button>
-          )}
-        </>
-      )}
+      {/* ステータスバッジ */}
+      <div><InviteStatusBadge statusKey={statusKey} /></div>
+
+      {/* 有効期限 */}
+      <div style={{ fontSize: 12, color: "#6b7280", whiteSpace: "nowrap" }}>
+        {inv.is_accepted ? "—" : expiresStr}
+      </div>
+
+      {/* 操作 — pending: コピー+取り消し / expired: 再発行 / accepted: なし */}
+      <div style={{ display: "flex", gap: 6, justifyContent: "flex-end", whiteSpace: "nowrap" }}>
+        {isPending && onCopy && (
+          <button
+            type="button"
+            className="btn btn-ghost"
+            style={{
+              fontSize:   11,
+              padding:    "4px 10px",
+              minWidth:   90,
+              color:      isCopied ? "#059669" : undefined,
+              fontWeight: isCopied ? 700 : undefined,
+              transition: "color .2s",
+            }}
+            onClick={() => onCopy(inviteUrl)}
+          >
+            {isCopied ? "✅ コピー済み" : "リンクをコピー"}
+          </button>
+        )}
+        {isPending && onRevoke && (
+          <button
+            type="button"
+            className="btn btn-danger"
+            style={{ fontSize: 11, padding: "4px 10px" }}
+            onClick={onRevoke}
+          >
+            取り消し
+          </button>
+        )}
+        {isExpired && onReissue && (
+          <button
+            type="button"
+            className="btn btn-ghost"
+            style={{ fontSize: 11, padding: "4px 10px" }}
+            onClick={onReissue}
+          >
+            再発行
+          </button>
+        )}
+      </div>
     </div>
   );
 }
 
-// ── ステータスバッジ ──────────────────────────────────────────────────
+// ── 取り消し確認モーダル ──────────────────────────────────────────────
+
+function RevokeConfirmModal({
+  email,
+  revoking,
+  onCancel,
+  onConfirm,
+}: {
+  email:     string;
+  revoking:  boolean;
+  onCancel:  () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <div
+      style={{
+        position:        "fixed",
+        inset:           0,
+        background:      "rgba(0,0,0,0.45)",
+        display:         "flex",
+        alignItems:      "center",
+        justifyContent:  "center",
+        zIndex:          1000,
+      }}
+      onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }}
+    >
+      <div style={{
+        background:   "#fff",
+        borderRadius: 12,
+        padding:      "28px 32px",
+        width:        380,
+        maxWidth:     "90vw",
+        boxShadow:    "0 20px 48px rgba(0,0,0,0.18)",
+      }}>
+        <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 12, color: "#111827" }}>
+          招待を取り消しますか？
+        </h3>
+        <p style={{ fontSize: 13, color: "#374151", marginBottom: 6, lineHeight: 1.65 }}>
+          この招待リンクは無効になります。送信済みのリンクからは参加できなくなります。
+        </p>
+        <p style={{
+          fontSize:    12,
+          color:       "#9ca3af",
+          marginBottom: 24,
+          fontFamily:  "monospace",
+          wordBreak:   "break-all",
+        }}>
+          {email}
+        </p>
+        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+          <button
+            type="button"
+            className="btn btn-ghost"
+            onClick={onCancel}
+            disabled={revoking}
+          >
+            キャンセル
+          </button>
+          <button
+            type="button"
+            className="btn btn-danger"
+            onClick={onConfirm}
+            disabled={revoking}
+          >
+            {revoking ? "取り消し中..." : "取り消す"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── 招待ステータスバッジ ──────────────────────────────────────────────
+
+function InviteStatusBadge({
+  statusKey,
+}: {
+  statusKey: keyof typeof INVITATION_STATUS_STYLES;
+}) {
+  const s     = INVITATION_STATUS_STYLES[statusKey];
+  const label = INVITATION_STATE_LABELS[statusKey];
+  return (
+    <span style={{
+      display:      "inline-block",
+      padding:      "3px 10px",
+      borderRadius: 99,
+      fontSize:     11,
+      fontWeight:   600,
+      background:   s.bg,
+      color:        s.color,
+      border:       `1px solid ${s.border}`,
+      whiteSpace:   "nowrap",
+    }}>
+      {label}
+    </span>
+  );
+}
+
+// ── メンバーステータスバッジ ──────────────────────────────────────────
 
 function StatusBadge({ status }: { status: string }) {
   const s = STATUS_COLORS[status] ?? STATUS_COLORS.active;

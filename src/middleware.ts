@@ -20,16 +20,20 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 
 // ── 保護対象ルートのプレフィックス ──────────────────────────────────
-const PROTECTED_PREFIXES = ["/oas", "/playground", "/nazotoki"];
+// /admin は platform owner 専用エリア。まず middleware で認証を必須とし、
+// platform owner 判定は admin/layout.tsx (server component) で行う。
+const PROTECTED_PREFIXES = ["/oas", "/admin", "/playground", "/nazotoki"];
 
 // ── 認証不要のパブリックルート ──────────────────────────────────────
 // /login, /access-denied, /api/line/** (LINE webhook), /t/**, /tester/**
+// /invite/** — 招待リンクは未ログインユーザーも開ける（ページ内でアカウント登録フォームを表示）
 const PUBLIC_PREFIXES = [
   "/login",
   "/access-denied",
   "/api/line/",
   "/t/",
   "/tester/",
+  "/invite/",
 ];
 
 function isProtected(pathname: string): boolean {

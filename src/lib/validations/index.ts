@@ -658,6 +658,25 @@ export const globalCommandQuerySchema = z.object({
   oa_id: uuidSchema,
 });
 
+// ── AdminAnnouncement ─────────────────────────────────────────────────────
+export const createAnnouncementSchema = z.object({
+  type:      z.enum(["update", "bugfix", "known_issue", "info"]).default("info"),
+  title:     z.string().min(1).max(200),
+  body:      z.string().min(1).max(5000),
+  important: z.boolean().default(false),
+  sortOrder: z.number().int().default(0),
+  publish:   z.boolean().default(false),
+});
+
+export const updateAnnouncementSchema = z.object({
+  type:      z.enum(["update", "bugfix", "known_issue", "info"]).optional(),
+  title:     z.string().min(1).max(200).optional(),
+  body:      z.string().min(1).max(5000).optional(),
+  important: z.boolean().optional(),
+  sortOrder: z.number().int().optional(),
+  publish:   z.boolean().optional(),
+});
+
 // ────────────────────────────────────────────────
 // ユーティリティ：バリデーションエラーを整形
 // ────────────────────────────────────────────────

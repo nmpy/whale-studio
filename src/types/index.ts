@@ -48,6 +48,11 @@ export interface QuickReplyItem {
    * 未設定の場合は "問題に戻る"。
    */
   hint_cancel_label?: string;
+  /**
+   * action="hint" のとき、ヒントを返信するキャラクターの ID。
+   * 未設定 or null の場合はシステムキャラクターにフォールバックする。
+   */
+  hint_character_id?: string | null;
   /** false のとき LINE に表示しない / hint 照合対象外にする（省略 = true） */
   enabled?:           boolean;
   /**

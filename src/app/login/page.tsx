@@ -122,10 +122,22 @@ function LoginForm() {
 
         {/* ── マジックリンク送信完了 ── */}
         {status === "sent" ? (
-          <div style={{ textAlign: "center", color: "#059669" }}>
-            <p style={{ fontSize: 15, fontWeight: 600 }}>メールを送信しました</p>
-            <p style={{ fontSize: 13, color: "#6b7280", marginTop: 8 }}>
-              {email} に届いたリンクをクリックしてください。
+          <div style={{ textAlign: "center" }}>
+            {/* アイコン */}
+            <div style={{ fontSize: 36, marginBottom: 12 }}>📬</div>
+
+            <p style={{ fontSize: 16, fontWeight: 700, color: "#111827", marginBottom: 8 }}>
+              ログイン用のリンクをお送りしました
+            </p>
+            <p style={{ fontSize: 13, color: "#374151", lineHeight: 1.7, marginBottom: 12 }}>
+              <strong style={{ color: "#111827" }}>{email}</strong> 宛に<br />
+              Whale Studio からメールをお送りしました。<br />
+              メール内の「ログインする」ボタンをクリックすると、<br />
+              そのまま管理画面をご利用いただけます。
+            </p>
+            <p style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.6 }}>
+              メールが届かない場合は、迷惑メールフォルダもご確認ください。<br />
+              差出人: <span style={{ fontFamily: "monospace" }}>noreply@mail.app.supabase.io</span>
             </p>
           </div>
         ) : (

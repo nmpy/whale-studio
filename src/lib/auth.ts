@@ -6,6 +6,46 @@ import { createClient } from "@supabase/supabase-js";
 import { getWorkspaceRole } from '@/lib/rbac';
 import type { Role } from '@/lib/types/permissions';
 import { roleAtLeast } from '@/lib/types/permissions';
+import { prisma } from '@/lib/prisma';
+
+// ─────────────────────────────────────────────────────────
+// AppActivityLog — 認証済みユーザーの操作記録（fire-and-forget）
+// ─────────────────────────────────────────────────────────
+
+/**
+ * アプリ操作ユーザーを記録する（メンバー招待候補の母集団管理用）。
+ *
+ * - 30分以内に記録済みなら何もしない（in-memory throttle でDB書き込みを抑制）
+ * - await しない（fire-and-forget: リクエストをブロックしない）
+ * - エラーは無視（記録失敗はサイレントに扱う）
+ */
+const _activityThrottle = new Map<string, number>();
+const ACTIVITY_THROTTLE_MS = 30 * 60 * 1000; // 30分
+
+function recordUserActivity(userId: string, email?: string): void {
+  // dev スタブ・bypass は記録不要
+  if (userId === "bypass-admin" || userId === "dev-user") return;
+
+  const now  = Date.now();
+  const last = _activityThrottle.get(userId) ?? 0;
+  if (now - last < ACTIVITY_THROTTLE_MS) return;
+
+  _activityThrottle.set(userId, now);
+
+  // Fire-and-forget: リクエストをブロックしない
+  prisma.appActivityLog.upsert({
+    where:  { userId },
+    update: {
+      lastSeenAt: new Date(),
+      ...(email ? { email } : {}),
+    },
+    create: {
+      userId,
+      email:     email ?? null,
+      lastSeenAt: new Date(),
+    },
+  }).catch(() => { /* silent */ });
+}
 
 /**
  * リクエストから認証済みユーザーを取得する。
@@ -18,7 +58,7 @@ import { roleAtLeast } from '@/lib/types/permissions';
  *     2b. Supabase 未設定 + NODE_ENV=development → 開発スタブ（任意トークン許可）
  *  3. いずれも該当しない → null（401）
  */
-export async function getAuthUser(req: NextRequest): Promise<{ id: string } | null> {
+export async function getAuthUser(req: NextRequest): Promise<{ id: string; email?: string } | null> {
   const path = `${req.method} ${req.nextUrl.pathname}`;
 
   // ── 0. 暫定バイパス ★本番運用前に必ず削除★ ──────────────────────
@@ -59,7 +99,7 @@ export async function getAuthUser(req: NextRequest): Promise<{ id: string } | nu
         // cookie が無効でも Authorization ヘッダーにフォールバック
       } else if (data.user) {
         console.log(`[Auth] Cookie 認証成功 path=${path} userId=${data.user.id}`);
-        return { id: data.user.id };
+        return { id: data.user.id, email: data.user.email ?? undefined };
       }
     } else {
       console.log(`[Auth] Supabase cookie なし path=${path} — Authorization ヘッダーを試行`);
@@ -95,7 +135,7 @@ export async function getAuthUser(req: NextRequest): Promise<{ id: string } | nu
       return null;
     }
     console.log(`[Auth] Bearer 認証成功 path=${path} userId=${data.user.id}`);
-    return { id: data.user.id };
+    return { id: data.user.id, email: data.user.email ?? undefined };
   }
 
   // ── 2b. 開発環境スタブ ──
@@ -241,6 +281,8 @@ export function withAuth<T = Record<string, string>>(handler: Handler<T>) {
         );
       }
       console.log(`[withAuth] 認証OK ${req.method} ${req.nextUrl.pathname} userId=${user.id}`);
+      // 操作ユーザーを記録（fire-and-forget: リクエストをブロックしない）
+      recordUserActivity(user.id, user.email);
       return await handler(req, ctx, user);
     } catch (err) {
       console.error(`[withAuth] UNCAUGHT in ${req.method} ${req.nextUrl.pathname}:`, err);
@@ -274,7 +316,7 @@ type RoleHandler<T = Record<string, string>> = (
  * @example
  * export const GET = withRole(
  *   ({ params }) => params.id,
- *   'tester',                       // tester 以上（全ロール）が通過
+ *   'viewer',                       // viewer 以上（全ロール）が通過
  *   async (req, { params }, user, role) => { ... }
  * );
  *

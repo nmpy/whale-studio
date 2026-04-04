@@ -2,10 +2,24 @@
 
 // src/components/AnnouncementBanner.tsx
 // お知らせ一覧コンポーネント（リスト型UI）
-// 将来: ANNOUNCEMENTS を GET /api/announcements に差し替えるだけで DB 連携可能。
+// GET /api/announcements から公開済みお知らせを取得して表示する。
+// 取得失敗時は静的フォールバックデータを使用。
 
-import { useState } from "react";
-import { ANNOUNCEMENTS, type Announcement, type AnnouncementType } from "@/data/announcements";
+import { useState, useEffect } from "react";
+import { ANNOUNCEMENTS as FALLBACK_ANNOUNCEMENTS } from "@/data/announcements";
+import { getDevToken } from "@/lib/api-client";
+
+// ── 型 ────────────────────────────────────────────────────────────────────
+export type AnnouncementType = "update" | "bugfix" | "known_issue" | "info";
+
+export interface Announcement {
+  id:        string;
+  date:      string;   // 表示用 YYYY-MM-DD
+  type:      AnnouncementType;
+  important: boolean;
+  title:     string;
+  body:      string;
+}
 
 // ── 種別メタ情報 ───────────────────────────────────────────────────────────
 const TYPE_META: Record<AnnouncementType, { label: string; color: string; bg: string }> = {
@@ -17,17 +31,40 @@ const TYPE_META: Record<AnnouncementType, { label: string; color: string; bg: st
 
 // ── タブ定義 ──────────────────────────────────────────────────────────────
 const TABS: { value: AnnouncementType | "all" | "important"; label: string }[] = [
-  { value: "all",       label: "すべて" },
-  { value: "update",    label: "アップデート" },
-  { value: "bugfix",    label: "不具合修正" },
+  { value: "all",         label: "すべて" },
+  { value: "update",      label: "アップデート" },
+  { value: "bugfix",      label: "不具合修正" },
   { value: "known_issue", label: "既知の不具合" },
-  { value: "important", label: "重要" },
+  { value: "important",   label: "重要" },
 ];
 
 // ── 日付フォーマット ──────────────────────────────────────────────────────
 function formatDate(dateStr: string): string {
-  const [y, m, d] = dateStr.split("-");
-  return `${y}/${m}/${d}`;
+  // YYYY-MM-DD または ISO 文字列どちらにも対応
+  const d = new Date(dateStr.includes("T") ? dateStr : `${dateStr}T00:00:00`);
+  return `${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,"0")}/${String(d.getDate()).padStart(2,"0")}`;
+}
+
+// ── API レスポンス → Announcement 変換 ──────────────────────────────────
+interface ApiAnnouncement {
+  id:           string;
+  type:         string;
+  title:        string;
+  body:         string;
+  important:    boolean;
+  published_at: string | null;
+  created_at:   string;
+}
+
+function fromApi(a: ApiAnnouncement): Announcement {
+  return {
+    id:        a.id,
+    date:      (a.published_at ?? a.created_at).slice(0, 10),
+    type:      a.type as AnnouncementType,
+    important: a.important,
+    title:     a.title,
+    body:      a.body,
+  };
 }
 
 // ── 1行アイテム ───────────────────────────────────────────────────────────
@@ -123,12 +160,13 @@ function AnnouncementRow({ item, isLast }: { item: Announcement; isLast: boolean
       {expanded && (
         <div style={{
           padding: "0 20px 14px",
-          paddingLeft: 20 + 72 + 16 + 80 + 16, // date + gap + label + gap
+          paddingLeft: 20 + 72 + 16 + 80 + 16,
           fontSize: 12,
           color: "#374151",
           lineHeight: 1.75,
+          whiteSpace: "pre-wrap",
         }}>
-          {item.body}
+          {displayBody}
         </div>
       )}
     </div>
@@ -136,14 +174,42 @@ function AnnouncementRow({ item, isLast }: { item: Announcement; isLast: boolean
 }
 
 // ── メインコンポーネント ──────────────────────────────────────────────────
-export function AnnouncementBanner() {
+export function AnnouncementBanner({ canPost = false }: { canPost?: boolean }) {
+  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+  const [loaded,        setLoaded]        = useState(false);
   const [activeTab, setActiveTab]   = useState<AnnouncementType | "all" | "important">("all");
   const [collapsed, setCollapsed]   = useState(false);
 
-  if (ANNOUNCEMENTS.length === 0) return null;
+  // GET /api/announcements から取得（失敗時は静的フォールバック）
+  useEffect(() => {
+    fetch("/api/announcements", {
+      headers: { Authorization: `Bearer ${getDevToken()}` },
+    })
+      .then((r) => {
+        if (!r.ok) throw new Error("fetch failed");
+        return r.json() as Promise<{ data: ApiAnnouncement[] }>;
+      })
+      .then((j) => {
+        if (Array.isArray(j.data) && j.data.length > 0) {
+          setAnnouncements(j.data.map(fromApi));
+        } else {
+          // DB にまだデータがない場合は静的フォールバック
+          setAnnouncements(FALLBACK_ANNOUNCEMENTS);
+        }
+      })
+      .catch(() => {
+        setAnnouncements(FALLBACK_ANNOUNCEMENTS);
+      })
+      .finally(() => setLoaded(true));
+  }, []);
+
+  // ローディング中は何も表示しない（レイアウトシフト防止）
+  if (!loaded) return null;
+
+  if (announcements.length === 0 && !canPost) return null;
 
   // フィルタリング
-  const filtered = ANNOUNCEMENTS
+  const filtered = announcements
     .filter((a) => {
       if (activeTab === "all")       return true;
       if (activeTab === "important") return a.important;
@@ -154,7 +220,7 @@ export function AnnouncementBanner() {
       return b.date.localeCompare(a.date);
     });
 
-  const importantCount = ANNOUNCEMENTS.filter((a) => a.important).length;
+  const importantCount = announcements.filter((a) => a.important).length;
 
   return (
     <section style={{ marginBottom: 28 }}>
@@ -164,6 +230,7 @@ export function AnnouncementBanner() {
         alignItems: "center",
         gap: 10,
         marginBottom: collapsed ? 0 : 12,
+        flexWrap: "nowrap",
       }}>
         <h3 style={{
           fontSize: 13,
@@ -187,22 +254,44 @@ export function AnnouncementBanner() {
             重要 {importantCount}件
           </span>
         )}
-        <button
-          type="button"
-          onClick={() => setCollapsed((c) => !c)}
-          style={{
-            marginLeft: "auto",
-            fontSize: 11,
-            color: "var(--color-text-muted, #999)",
-            background: "none",
-            border: "none",
-            cursor: "pointer",
-            padding: "2px 6px",
-            borderRadius: 4,
-          }}
-        >
-          {collapsed ? "▼ 表示する" : "▲ 閉じる"}
-        </button>
+
+        {/* 右端のアクション群 */}
+        <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6 }}>
+          {canPost && (
+            <a
+              href="/admin/announcements"
+              style={{
+                fontSize: 11,
+                fontWeight: 600,
+                color: "var(--color-primary, #2F6F5E)",
+                background: "#f0fdf4",
+                border: "1px solid #bbf7d0",
+                borderRadius: 6,
+                cursor: "pointer",
+                padding: "3px 10px",
+                whiteSpace: "nowrap",
+                textDecoration: "none",
+              }}
+            >
+              管理
+            </a>
+          )}
+          <button
+            type="button"
+            onClick={() => setCollapsed((c) => !c)}
+            style={{
+              fontSize: 11,
+              color: "var(--color-text-muted, #999)",
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              padding: "2px 6px",
+              borderRadius: 4,
+            }}
+          >
+            {collapsed ? "▼ 表示する" : "▲ 閉じる"}
+          </button>
+        </div>
       </div>
 
       {!collapsed && (

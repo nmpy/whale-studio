@@ -69,7 +69,7 @@ async function findRiddle(oaId: string, riddleId: string) {
 
 export const GET = withRole<{ id: string; rid: string }>(
   ({ params }) => params.id,
-  'tester',
+  'viewer',
   async (_req, { params }) => {
     try {
       const riddle = await findRiddle(params.id, params.rid);

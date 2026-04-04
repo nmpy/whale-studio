@@ -158,6 +158,33 @@ async function getCachedStartPhase(workId: string): Promise<StartPhaseRow | null
   return phase;
 }
 
+type CharacterRow = { name: string; iconImageUrl: string | null };
+
+/** キャラクター情報をキャッシュ付きで取得（ヒント話者解決用）。TTL = 5分 */
+async function getCachedCharacter(characterId: string): Promise<CharacterRow | null> {
+  const key = `character:${characterId}`;
+  const hit = await activeCache.get<CharacterRow>(key);
+  if (hit) return hit;
+  const character = await prisma.character.findUnique({
+    where:  { id: characterId },
+    select: { name: true, iconImageUrl: true },
+  });
+  if (character) await activeCache.set(key, character, 5 * 60 * 1000);
+  return character ?? null;
+}
+
+/** キャラクター情報から LineSender を構築する */
+function buildSenderFromCharacter(
+  character: CharacterRow,
+): import("@/lib/line").LineSender {
+  return {
+    name: character.name.slice(0, 20),
+    ...(character.iconImageUrl?.startsWith("https://")
+      ? { iconUrl: character.iconImageUrl }
+      : {}),
+  };
+}
+
 /** 作品共通キーワードメッセージ（phaseId = null）をキャッシュ付きで取得 */
 async function getCachedGlobalKeywords(
   workId: string,
@@ -1168,10 +1195,18 @@ async function handleTextEvent({
       }).catch((e) => console.warn("[Webhook] hint_used flag update failed:", e));
     }
 
+    // ヒント話者を解決する（hint_character_id が設定されていればそのキャラクター、なければ systemSender）
+    const hintCharId = (hintResult.matchedItem as { hint_character_id?: string | null }).hint_character_id;
+    let hintSender = systemSender;
+    if (hintCharId) {
+      const hintChar = await getCachedCharacter(hintCharId);
+      if (hintChar) hintSender = buildSenderFromCharacter(hintChar);
+    }
+
     const hintMsgs: import("@/lib/line").LineMessage[] = [
-      { type: "text" as const, text: hintResult.hintText, sender: systemSender },
+      { type: "text" as const, text: hintResult.hintText, sender: hintSender },
       ...(hintResult.hintFollowup
-        ? [{ type: "text" as const, text: hintResult.hintFollowup, sender: systemSender } as import("@/lib/line").LineMessage]
+        ? [{ type: "text" as const, text: hintResult.hintFollowup, sender: hintSender } as import("@/lib/line").LineMessage]
         : []),
     ];
     // ヒント返答後の導線 QR（同じ QR を再表示せず、「さらにヒント」「問題に戻る」を構築）

@@ -44,7 +44,7 @@ export const GET = withAuth<{ id: string }>(async (_req, { params }, user) => {
     });
     if (!work) return notFound("作品");
 
-    const check = await requireRole(work.oaId, user.id, 'tester');
+    const check = await requireRole(work.oaId, user.id, 'viewer');
     if (!check.ok) return check.response;
 
     return ok({ ...toResponse(work), _count: work._count });

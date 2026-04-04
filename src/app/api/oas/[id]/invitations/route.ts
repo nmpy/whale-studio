@@ -10,7 +10,7 @@ import { isValidRole } from "@/lib/types/permissions";
 
 const createInvitationSchema = z.object({
   email:      z.string().email("有効なメールアドレスを入力してください"),
-  role:       z.string().refine(isValidRole, { message: "role は owner / admin / editor / tester のいずれかです" }),
+  role:       z.string().refine(isValidRole, { message: "role は owner / admin / editor / viewer のいずれかです" }),
   expires_in: z.number().int().min(1).max(30).optional(), // 有効日数 (デフォルト: 7日)
 });
 

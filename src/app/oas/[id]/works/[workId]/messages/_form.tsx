@@ -511,9 +511,11 @@ interface QuickReplyEditorProps {
   phases?: { id: string; name: string; phase_type: string }[];
   /** 遷移先メッセージ一覧（全フェーズ対象・フェーズ名付き表示） */
   transitionMessages?: { id: string; body: string | null; kind: string; phase_id?: string | null }[];
+  /** ヒントQRのキャラクター選択用（hint_character_id） */
+  characters?: Character[];
 }
 
-function QuickReplyEditor({ items, onChange, responseMessages, phases, transitionMessages }: QuickReplyEditorProps) {
+function QuickReplyEditor({ items, onChange, responseMessages, phases, transitionMessages, characters = [] }: QuickReplyEditorProps) {
   const [open, setOpen]               = useState(false);
   const [expandedSet, setExpandedSet] = useState<Set<number>>(new Set());
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
@@ -984,6 +986,28 @@ function QuickReplyEditor({ items, onChange, responseMessages, phases, transitio
                         {/* ヒントフィールド */}
                         {isHint && (
                           <>
+                            {/* ── 応答キャラクター ── */}
+                            <div className="form-group" style={{ marginBottom: 8 }}>
+                              <label style={{ ...fieldLabel, fontSize: 12 }}>
+                                応答キャラクター
+                                <span style={{ fontWeight: 400, color: "#9ca3af", marginLeft: 4 }}>（任意）</span>
+                              </label>
+                              <select
+                                className="form-input"
+                                value={(item as { hint_character_id?: string | null }).hint_character_id ?? ""}
+                                onChange={(e) => updateItem(index, { hint_character_id: e.target.value || null } as Partial<import("@/types").QuickReplyItem>)}
+                                style={{ fontSize: 13 }}
+                              >
+                                <option value="">デフォルト（システムキャラクター）</option>
+                                {characters.map((ch) => (
+                                  <option key={ch.id} value={ch.id}>{ch.name}</option>
+                                ))}
+                              </select>
+                              <div style={{ ...hintText, marginTop: 3 }}>
+                                このヒントを送信するキャラクター。未設定はシステムキャラクターが使われます。
+                              </div>
+                            </div>
+                            {/* ── ヒント本文 ── */}
                             <div className="form-group" style={{ marginBottom: 8 }}>
                               <label style={{ ...fieldLabel, fontSize: 12 }}>
                                 ヒント本文 <span style={{ color: "#dc2626" }}>*</span>
@@ -3306,6 +3330,7 @@ export function MessageForm({
             responseMessages={allMessages.filter((m) => m.kind === "response" && m.id !== messageId)}
             phases={phases}
             transitionMessages={allMessages.filter((m) => m.id !== messageId)}
+            characters={characters}
           />
 
           {/* ════════════════════════════════════════
@@ -3451,6 +3476,7 @@ export function MessageForm({
                 responseMessages={allMessages.filter((m) => m.kind === "response" && m.id !== messageId)}
                 phases={phases}
                 transitionMessages={allMessages.filter((m) => m.id !== messageId)}
+                characters={characters}
               />
             </div>
 

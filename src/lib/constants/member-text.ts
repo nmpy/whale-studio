@@ -43,9 +43,28 @@ export const STATUS_COLORS: Record<string, { bg: string; color: string; border: 
 // ────────────────────────────────────────────────────────────────────
 
 export const INVITATION_STATE_LABELS = {
-  accepted: "承諾済み",
+  accepted: "受諾済み",
   expired:  "期限切れ",
-  pending:  "招待中",
+  pending:  "有効",
+} as const;
+
+/** 招待ステータスバッジのスタイル（やわらかいトーン） */
+export const INVITATION_STATUS_STYLES = {
+  pending: {
+    bg:     "#f0fdf4",
+    color:  "#16a34a",
+    border: "#bbf7d0",
+  },
+  expired: {
+    bg:     "#f9fafb",
+    color:  "#9ca3af",
+    border: "#e5e7eb",
+  },
+  accepted: {
+    bg:     "#eff6ff",
+    color:  "#3b82f6",
+    border: "#bfdbfe",
+  },
 } as const;
 
 // ────────────────────────────────────────────────────────────────────
@@ -78,12 +97,13 @@ export const CONFIRM = {
 // ────────────────────────────────────────────────────────────────────
 
 export const TOAST = {
-  roleChanged:       "ロールを変更しました",
-  statusChanged:     "ステータスを変更しました",
-  memberDeleted:     "メンバーを削除しました",
-  invitationRevoked: "招待を取り消しました",
-  invitationCreated: "招待リンクを発行しました",
-  linkCopied:        "リンクをコピーしました",
+  roleChanged:          "ロールを変更しました",
+  statusChanged:        "ステータスを変更しました",
+  memberDeleted:        "メンバーを削除しました",
+  invitationRevoked:    "招待を取り消しました",
+  invitationCreated:    "招待リンクを発行しました",
+  invitationReissued:   "招待リンクを再発行しました",
+  linkCopied:           "招待リンクをコピーしました",
 
   // エラー系（サーバーメッセージを e.message で表示できない場合のフォールバック）
   roleChangeFailed:       "ロールの変更に失敗しました",

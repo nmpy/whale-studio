@@ -1039,17 +1039,32 @@ export const segmentAnalyticsApi = {
 // ────────────────────────────────────────────────
 
 export interface WorkspaceMember {
+  type:         "member";
   id:           string;
   workspace_id: string;
   user_id:      string;
   email:        string | null;
-  role:         string; // 'owner' | 'admin' | 'editor' | 'tester'
+  role:         string; // 'owner' | 'admin' | 'editor' | 'viewer'
   status:       string; // 'active' | 'inactive' | 'suspended'
   invited_by:   string | null;
   invited_at:   string | null;
   joined_at:    string | null;
   created_at:   string;
   updated_at:   string;
+}
+
+/** 最近アプリを操作したが、まだ WorkspaceMember に登録されていないユーザー */
+export interface ProvisionalUser {
+  type:          "provisional";
+  user_id:       string;
+  email:         string | null;
+  last_seen_at:  string;
+}
+
+/** GET /api/oas/:id/members のレスポンス */
+export interface MemberListResponse {
+  members:     WorkspaceMember[];
+  provisional: ProvisionalUser[];
 }
 
 export interface MyRole {
@@ -1065,13 +1080,16 @@ export const memberApi = {
     return parseResponse(res);
   },
 
-  /** メンバー一覧（admin / owner） */
-  async list(token: string, oaId: string): Promise<WorkspaceMember[]> {
+  /** メンバー一覧 + 未登録の最近操作ユーザー（admin / owner） */
+  async list(token: string, oaId: string): Promise<MemberListResponse> {
     const res = await fetch(`/api/oas/${oaId}/members`, { headers: authHeaders(token) });
     return parseResponse(res);
   },
 
-  /** メンバー直接追加（owner のみ） */
+  /**
+   * メンバー直接追加 / 仮ユーザーの正式登録（admin / owner）
+   * admin は owner ロールを付与不可。
+   */
   async add(token: string, oaId: string, body: { user_id: string; role: string; email?: string }): Promise<WorkspaceMember> {
     const res = await fetch(`/api/oas/${oaId}/members`, {
       method:  "POST",
@@ -1209,13 +1227,20 @@ export interface Invitation {
 }
 
 export interface InvitationDetail {
-  id:         string;
-  oa_id:      string;
-  oa_name:    string;
-  email:      string;
-  role:       string;
-  expires_at: string;
-  created_at: string;
+  id:            string;
+  oa_id:         string;
+  oa_name:       string;
+  email:         string;
+  role:          string;
+  expires_at:    string;
+  created_at:    string;
+  /** 有効期限切れ。true の場合はページが "expired" 状態を表示する */
+  is_expired:    boolean;
+  /** 受け入れ済み。true の場合はページが "invalid" 状態を表示する */
+  is_accepted:   boolean;
+  /** true: 招待メールで app_activity_logs に既存レコードあり（ログイン画面へ誘導）
+   *  false: 初回ユーザー（アカウント登録フォームへ誘導） */
+  is_registered: boolean;
 }
 
 export interface CreateInvitationBody {

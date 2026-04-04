@@ -45,7 +45,7 @@ export const GET = withAuth(async (req, _ctx, user) => {
 
     const oaId = await getOaIdFromWorkId(query.work_id);
     if (oaId) {
-      const check = await requireRole(oaId, user.id, 'tester');
+      const check = await requireRole(oaId, user.id, 'viewer');
       if (!check.ok) return check.response;
     }
 

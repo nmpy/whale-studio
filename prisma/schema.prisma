@@ -459,7 +459,7 @@ model WorkspaceMember {
   /// 招待承認日時（参加確定日）
   joinedAt    DateTime?    @map("joined_at")
   status      MemberStatus @default(active)
-  role        MemberRole   @default(tester)
+  role        MemberRole   @default(viewer)
   oa          Oa           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@unique([workspaceId, userId])
@@ -538,12 +538,90 @@ model HintLog {
   @@map("hint_logs")
 }
 
-/// メンバーロール（権限階層: owner > admin > editor > tester）
+model AdminAnnouncement {
+  id          String    @id @default(uuid())
+  /// "update" | "bugfix" | "known_issue" | "info"
+  type        String    @default("info")
+  title       String
+  body        String
+  important   Boolean   @default(false)
+  /// null = 下書き / non-null = 公開済み
+  publishedAt DateTime? @map("published_at")
+  sortOrder   Int       @default(0) @map("sort_order")
+  createdBy   String    @map("created_by")
+  updatedBy   String?   @map("updated_by")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  @@index([publishedAt])
+  @@index([important])
+  @@index([sortOrder])
+  @@map("admin_announcements")
+}
+
+model AdminDocument {
+  id          String   @id @default(uuid())
+  title       String
+  description String?
+  /// ファイルの公開 URL（Supabase Storage など）
+  fileUrl     String   @map("file_url")
+  fileName    String   @map("file_name")
+  /// バイト数（任意）
+  fileSize    Int?     @map("file_size")
+  mimeType    String   @default("application/pdf") @map("mime_type")
+  isPublished Boolean  @default(false) @map("is_published")
+  sortOrder   Int      @default(0) @map("sort_order")
+  createdBy   String   @map("created_by")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@index([isPublished])
+  @@index([sortOrder])
+  @@map("admin_documents")
+}
+
+model AdminAuditLog {
+  id         String   @id @default(uuid())
+  /// 操作を行ったプラットフォームオーナーの Supabase userId
+  actorId    String   @map("actor_id")
+  /// "create" | "update" | "delete" | "publish" | "unpublish"
+  action     String
+  /// "announcement" | "document" | "oa" | "member"
+  resource   String
+  resourceId String?  @map("resource_id")
+  /// 変更前後などの補足情報（JSON 文字列、任意）
+  detail     String?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([actorId])
+  @@index([resource])
+  @@index([createdAt])
+  @@map("admin_audit_logs")
+}
+
+/// アプリ操作ユーザー記録
+/// 認証済みで操作したユーザーを記録し、メンバー招待候補の母集団として使用する。
+/// user_id は UNIQUE（最新 last_seen_at で上書きされる）。
+model AppActivityLog {
+  id         String   @id @default(uuid())
+  /// Supabase Auth の userId
+  userId     String   @unique @map("user_id")
+  /// メールアドレス（Supabase Auth から取得できた場合のみ格納）
+  email      String?
+  /// 最終操作日時（upsert で更新）
+  lastSeenAt DateTime @default(now()) @map("last_seen_at")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([lastSeenAt])
+  @@map("app_activity_logs")
+}
+
+/// メンバーロール（権限階層: owner > admin > editor > viewer）
 enum MemberRole {
   owner
   admin
   editor
-  tester
+  viewer
 }
 
 /// メンバーステータス

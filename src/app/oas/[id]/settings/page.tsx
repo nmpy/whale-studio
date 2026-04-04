@@ -64,7 +64,7 @@ const HUB_ITEM_DEFS = [
     key:   "settings/members",
     icon:  "👤",
     title: "メンバー管理",
-    desc:  "ワークスペースメンバーのロール（owner/editor/viewer）を管理",
+    desc:  "ワークスペースメンバーのロール（owner/admin/editor/viewer）を管理",
     color: "#dc2626",
     bg:    "#fef2f2",
   },

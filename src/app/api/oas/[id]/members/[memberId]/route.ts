@@ -1,10 +1,11 @@
 // PATCH  /api/oas/:id/members/:memberId — ロール / ステータス変更 (admin / owner)
-// DELETE /api/oas/:id/members/:memberId — メンバー削除 (owner のみ)
+// DELETE /api/oas/:id/members/:memberId — メンバー削除 (admin / owner)
 //
 // 権限ルール:
-//   - admin は owner メンバーの role / status を変更不可
+//   - admin は owner メンバーの role / status / 削除を操作不可
 //   - admin は role を owner に昇格させることも不可
 //   - 最後の owner の role 変更 / 削除は禁止
+//   - 削除後、対象ユーザーが再度アプリを操作すれば provisional に再表示される
 
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
@@ -17,7 +18,7 @@ const VALID_STATUSES = ["active", "inactive", "suspended"] as const;
 type MemberStatus = typeof VALID_STATUSES[number];
 
 const updateMemberSchema = z.object({
-  role:   z.string().refine(isValidRole, { message: "role は owner / admin / editor / tester のいずれかです" }).optional(),
+  role:   z.string().refine(isValidRole, { message: "role は owner / admin / editor / viewer のいずれかです" }).optional(),
   status: z.enum(VALID_STATUSES, { message: "status は active / inactive / suspended のいずれかです" }).optional(),
 }).refine((d) => d.role !== undefined || d.status !== undefined, {
   message: "role か status のどちらかは必須です",
@@ -111,17 +112,29 @@ export const PATCH = withRole<{ id: string; memberId: string }>(
 );
 
 // ── DELETE /api/oas/:id/members/:memberId ────────
+// admin / owner 両方が削除可能。ただし:
+//   - admin は owner メンバーを削除不可
+//   - 最後の owner は誰も削除不可
+// 削除後、対象ユーザーが再度アプリを操作すれば provisional に再表示される。
 export const DELETE = withRole<{ id: string; memberId: string }>(
   ({ params }) => params.id,
-  'owner',
-  async (_req, { params }) => {
+  ['admin', 'owner'],
+  async (_req, { params }, _user, requesterRole) => {
     try {
       const target = await prisma.workspaceMember.findFirst({
         where: { id: params.memberId, workspaceId: params.id },
       });
       if (!target) return notFound("メンバー");
 
-      // 最後の owner は削除不可
+      // admin は owner メンバーを削除不可
+      if (requesterRole === 'admin' && target.role === 'owner') {
+        return NextResponse.json(
+          { success: false, error: { code: 'FORBIDDEN', message: 'admin は owner メンバーを削除できません' } },
+          { status: 403 }
+        );
+      }
+
+      // 最後の owner は削除不可（owner でないと削除できないケースだが念のため）
       if (target.role === 'owner') {
         const ownerCount = await prisma.workspaceMember.count({
           where: { workspaceId: params.id, role: 'owner' },

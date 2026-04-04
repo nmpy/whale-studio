@@ -3,10 +3,10 @@
 /**
  * PermissionGuard — ロールに応じて子要素を制御するコンポーネント群
  *
- * ロール階層（高 → 低）: owner > admin > editor > tester
+ * ロール階層（高 → 低）: owner > admin > editor > viewer
  *
  * @example
- * // 閲覧専用帯（tester に表示）
+ * // 閲覧専用帯（viewer に表示）
  * <ViewerBanner role={role} />
  *
  * // owner のみ表示
@@ -15,8 +15,8 @@
  * // editor 以上のみ表示
  * <EditorAndAbove role={role}><button>保存</button></EditorAndAbove>
  *
- * // tester なら disabled にする
- * <EditableField role={role} readOnly={isTester}>...</EditableField>
+ * // viewer なら disabled にする
+ * <EditableField role={role} readOnly={isViewer}>...</EditableField>
  */
 
 import type { Role } from "@/lib/types/permissions";
@@ -48,17 +48,14 @@ export function EditorAndAbove({ role, children, fallback = null }: RoleProps) {
   return roleAtLeast(role, "editor") ? <>{children}</> : <>{fallback}</>;
 }
 
-// ── tester のみ表示（editor/admin/owner には非表示） ───
-export function TesterOnly({ role, children }: Omit<RoleProps, "fallback">) {
-  return role === "tester" ? <>{children}</> : null;
+// ── viewer のみ表示（editor/admin/owner には非表示） ───
+export function ViewerOnly({ role, children }: Omit<RoleProps, "fallback">) {
+  return role === "viewer" ? <>{children}</> : null;
 }
 
-/** @deprecated ViewerOnly は TesterOnly に改名しました */
-export const ViewerOnly = TesterOnly;
-
-// ── 閲覧専用バナー（tester ロール向け） ─────────────
+// ── 閲覧専用バナー（viewer ロール向け） ─────────────
 export function ViewerBanner({ role }: { role: Role | null }) {
-  if (role !== "tester") return null;
+  if (role !== "viewer") return null;
   return (
     <div
       style={{
@@ -93,7 +90,7 @@ const BADGE_STYLES: Record<Role, React.CSSProperties> = {
     background: "#f0fdf4", color: "#15803d",
     border: "1px solid #bbf7d0",
   },
-  tester: {
+  viewer: {
     background: "#f9fafb", color: "#6b7280",
     border: "1px solid #e5e7eb",
   },
@@ -103,7 +100,7 @@ const ROLE_LABELS: Record<Role, string> = {
   owner:  "オーナー",
   admin:  "管理者",
   editor: "編集者",
-  tester: "テスター",
+  viewer: "閲覧者",
 };
 
 export function RoleBadge({ role }: { role: Role }) {

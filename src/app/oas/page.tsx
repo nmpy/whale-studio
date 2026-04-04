@@ -6,6 +6,7 @@ import { oaApi, workApi, getDevToken, type OaListItem, type OaListMeta, type Wor
 import { useToast } from "@/components/Toast";
 import { RoleBadge } from "@/components/PermissionGuard";
 import { AnnouncementBanner } from "@/components/AnnouncementBanner";
+import { usePlatformRole } from "@/hooks/usePlatformRole";
 import type { Role } from "@/lib/types/permissions";
 
 const STATUS_LABEL: Record<string, string> = {
@@ -60,7 +61,7 @@ function SummaryBar({ items, worksMap }: { items: OaListItem[]; worksMap: Record
 }
 
 /* ── サポートエリア ───────────────────────────────────────────────────── */
-function SupportArea() {
+function SupportArea({ isOwner }: { isOwner: boolean }) {
   return (
     <div style={{ marginTop: 40, paddingTop: 24, borderTop: "1px solid var(--color-border-soft)" }}>
       <p style={{
@@ -99,32 +100,61 @@ function SupportArea() {
           </div>
         </div>
 
-        {/* PDF ボタン（未実装のため非活性） */}
+        {/* PDF ボタン */}
         <div style={{ flexShrink: 0, textAlign: "center" }}>
-          <button
-            disabled
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
-              padding: "8px 18px",
-              fontSize: 12,
-              fontWeight: 600,
-              color: "var(--color-text-muted)",
-              background: "var(--gray-100)",
-              border: "1px solid var(--color-border-soft)",
-              borderRadius: 8,
-              cursor: "not-allowed",
-              opacity: 0.5,
-              whiteSpace: "nowrap",
-            }}
-          >
-            <span style={{ fontSize: 14 }}>📥</span>
-            PDFを開く
-          </button>
-          <p style={{ fontSize: 11, color: "#dc2626", marginTop: 5 }}>
-            ※実装前のため、ご利用いただけません
-          </p>
+          {isOwner ? (
+            /* オーナー: アップロードボタン（近日公開） */
+            <button
+              type="button"
+              title="PDF ガイドのアップロード（近日公開）"
+              onClick={() => alert("PDF アップロード機能は近日公開予定です。")}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "8px 18px",
+                fontSize: 12,
+                fontWeight: 600,
+                color: "#fff",
+                background: "var(--color-primary, #2F6F5E)",
+                border: "none",
+                borderRadius: 8,
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+              }}
+            >
+              <span style={{ fontSize: 14 }}>📤</span>
+              PDFをアップロード
+            </button>
+          ) : (
+            /* テスター: 閲覧ボタン（未実装のため非活性） */
+            <>
+              <button
+                disabled
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  padding: "8px 18px",
+                  fontSize: 12,
+                  fontWeight: 600,
+                  color: "var(--color-text-muted)",
+                  background: "var(--gray-100)",
+                  border: "1px solid var(--color-border-soft)",
+                  borderRadius: 8,
+                  cursor: "not-allowed",
+                  opacity: 0.5,
+                  whiteSpace: "nowrap",
+                }}
+              >
+                <span style={{ fontSize: 14 }}>📥</span>
+                PDFを開く
+              </button>
+              <p style={{ fontSize: 11, color: "#dc2626", marginTop: 5 }}>
+                ※実装前のため、ご利用いただけません
+              </p>
+            </>
+          )}
         </div>
       </div>
     </div>
@@ -207,6 +237,10 @@ export default function OaListPage() {
   const [page, setPage]           = useState(1);
   const [worksMap, setWorksMap]   = useState<Record<string, WorkListItem[]>>({});
   const { showToast }             = useToast();
+  const { effectiveRole, isPlatformOwner, setPreviewRole } = usePlatformRole();
+
+  // オーナーとして機能するか（プレビュー中でない場合のみ true）
+  const actAsOwner = isPlatformOwner && effectiveRole === "owner";
 
   async function load(p: number) {
     setLoading(true);
@@ -417,7 +451,7 @@ export default function OaListPage() {
                           >
                             {oa.title}
                           </Link>
-                          {(oa.my_role === "owner" || oa.my_role === "admin" || oa.my_role === "editor" || oa.my_role === "tester") && (
+                          {(oa.my_role === "owner" || oa.my_role === "admin" || oa.my_role === "editor" || oa.my_role === "viewer") && (
                             <span style={{ flexShrink: 0 }}>
                               <RoleBadge role={oa.my_role as Role} />
                             </span>
@@ -519,7 +553,7 @@ export default function OaListPage() {
                       <td style={{ paddingRight: 12 }}>
                         <RowActions
                           oaId={oa.id}
-                          isOwner={oa.my_role === "owner"}
+                          isOwner={oa.my_role === "owner" && actAsOwner}
                           onDelete={() => handleDelete(oa.id, oa.title)}
                         />
                       </td>
@@ -552,13 +586,52 @@ export default function OaListPage() {
         </div>
       )}
 
+      {/* ── 一般ユーザープレビュー中バナー ── */}
+      {isPlatformOwner && !actAsOwner && (
+        <div style={{
+          display:      "flex",
+          alignItems:   "center",
+          gap:          10,
+          background:   "#fffbeb",
+          border:       "1px solid #fde68a",
+          borderRadius: "var(--radius-md)",
+          padding:      "10px 16px",
+          marginBottom: 16,
+          fontSize:     13,
+          color:        "#92400e",
+        }}>
+          <span style={{ fontSize: 16, flexShrink: 0 }}>👁</span>
+          <span style={{ flex: 1 }}>
+            <strong>一般ユーザープレビュー中</strong> — 一般ユーザーからの見え方を表示しています。
+          </span>
+          <button
+            type="button"
+            onClick={() => setPreviewRole(null)}
+            style={{
+              fontSize:     12,
+              fontWeight:   600,
+              color:        "#92400e",
+              background:   "#fef3c7",
+              border:       "1px solid #fde68a",
+              borderRadius: 6,
+              padding:      "3px 10px",
+              cursor:       "pointer",
+              whiteSpace:   "nowrap",
+              flexShrink:   0,
+            }}
+          >
+            オーナー表示に戻す
+          </button>
+        </div>
+      )}
+
       {/* ── お知らせ ── */}
       <div style={{ marginTop: 32 }}>
-        <AnnouncementBanner />
+        <AnnouncementBanner canPost={actAsOwner} />
       </div>
 
       {/* ── サポートエリア ── */}
-      <SupportArea />
+      <SupportArea isOwner={actAsOwner} />
     </>
   );
 }

@@ -44,7 +44,7 @@ export const GET = withAuth(async (req: NextRequest, _ctx, user) => {
     const oa = await prisma.oa.findUnique({ where: { id: query.oa_id } });
     if (!oa) return notFound("OA");
 
-    const check = await requireRole(query.oa_id, user.id, "tester");
+    const check = await requireRole(query.oa_id, user.id, "viewer");
     if (!check.ok) return check.response;
 
     const commands = await prisma.globalCommand.findMany({

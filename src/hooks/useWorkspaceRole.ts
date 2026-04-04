@@ -4,10 +4,10 @@
  * useWorkspaceRole — 現在ユーザーの workspace ロールを取得する hook
  *
  * workspace_id = oa_id（MVP）
- * ロール階層: owner > admin > editor > tester
+ * ロール階層: owner > admin > editor > viewer
  *
  * @example
- * const { role, loading, isOwner, isAdmin, canEdit, isTester } = useWorkspaceRole(oaId);
+ * const { role, loading, isOwner, isAdmin, canEdit, isViewer } = useWorkspaceRole(oaId);
  */
 
 import { useState, useEffect } from "react";
@@ -24,9 +24,7 @@ export interface WorkspaceRoleState {
   isAdmin:  boolean;
   /** editor 以上かどうか（editor / admin / owner） */
   canEdit:  boolean;
-  /** tester かどうか（閲覧専用） */
-  isTester: boolean;
-  /** @deprecated isViewer → isTester を使ってください */
+  /** viewer かどうか（閲覧専用） */
   isViewer: boolean;
 }
 
@@ -35,7 +33,10 @@ export function useWorkspaceRole(workspaceId: string): WorkspaceRoleState {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!workspaceId) return;
+    if (!workspaceId) {
+      setLoading(false);
+      return;
+    }
 
     setLoading(true);
     fetch(`/api/oas/${workspaceId}/members/me`, {
@@ -46,13 +47,13 @@ export function useWorkspaceRole(workspaceId: string): WorkspaceRoleState {
         if (json.success) setRole(json.data.role as Role);
       })
       .catch(() => {
-        // 取得失敗時は tester として扱う（フロントの安全側倒し）
-        setRole("tester");
+        // 取得失敗時は viewer として扱う（フロントの安全側倒し）
+        setRole("viewer");
       })
       .finally(() => setLoading(false));
   }, [workspaceId]);
 
-  const isTester = role === "tester";
+  const isViewer = role === "viewer";
 
   return {
     role,
@@ -60,7 +61,6 @@ export function useWorkspaceRole(workspaceId: string): WorkspaceRoleState {
     isOwner:  role === "owner",
     isAdmin:  role !== null && roleAtLeast(role, "admin"),
     canEdit:  role !== null && roleAtLeast(role, "editor"),
-    isTester,
-    isViewer: isTester, // backward compat alias
+    isViewer,
   };
 }

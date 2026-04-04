@@ -3,12 +3,21 @@
 // src/components/AppHeader.tsx
 // グローバルヘッダー。フィードバックボタンを右上に常設。
 // /login / /access-denied では非表示。Supabase 認証済み時はログアウトボタンを表示。
+//
+// 権限表示方針:
+//   - ヘッダーには「現在選択中のOAの workspace role」を表示する
+//   - platform role はヘッダーに出さない（管理機能の出し分けのみに使用）
+//   - platform owner には管理ページへのリンクを表示する
 
 import { useState, useEffect } from "react";
 import { usePathname } from "next/navigation";
 import dynamic from "next/dynamic";
 import { useTesterMode } from "@/hooks/useTesterMode";
+import { usePlatformRole } from "@/hooks/usePlatformRole";
+import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
+import { RoleBadge } from "@/components/PermissionGuard";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import type { Role } from "@/lib/types/permissions";
 
 // FeedbackModal は大きいので dynamic import でコード分割
 const FeedbackModal = dynamic(() => import("@/components/FeedbackModal"), { ssr: false });
@@ -16,11 +25,28 @@ const FeedbackModal = dynamic(() => import("@/components/FeedbackModal"), { ssr:
 // AppHeader を表示しないルート
 const HEADER_HIDDEN_ROUTES = ["/login", "/access-denied"];
 
+/**
+ * pathname から OA ID を抽出する。
+ * /oas/[id]/... または /tester/[id]/... の形式に対応。
+ */
+function extractOaId(pathname: string): string {
+  const oasMatch     = pathname.match(/^\/oas\/([^/]+)/);
+  if (oasMatch) return oasMatch[1];
+  return "";
+}
+
 export default function AppHeader() {
   const pathname = usePathname();
   const { isTester, testerOaId } = useTesterMode();
+  const { isPlatformOwner } = usePlatformRole();
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [loggedIn,     setLoggedIn]     = useState(false);
+
+  // 現在の OA ID をパスから取得
+  const currentOaId = extractOaId(pathname);
+
+  // 現在の OA の workspace role を取得（OA ページ外では workspaceId="" → role=null）
+  const { role: workspaceRole, loading: roleLoading } = useWorkspaceRole(currentOaId);
 
   // ── ログイン状態を取得（Supabase 設定済みのときのみ） ─────────────
   // ⚠ hooks はすべての早期 return より前に宣言する必要がある
@@ -59,13 +85,17 @@ export default function AppHeader() {
     window.location.href = "/login";
   }
 
+  // OA ページにいて role が取得済みの場合のみ workspace role バッジを表示
+  const showRoleBadge = !!currentOaId && !roleLoading && workspaceRole !== null;
+
   return (
     <>
       <header>
         <div className="container">
           <h1>
-            <a href={homeHref}>
+            <a href={homeHref} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
               <span className="header-brand">WHALE STUDIO</span>
+
               <span className="header-sep">|</span>
               <span className="header-sub">
                 LINEでつくる物語体験 β版
@@ -77,6 +107,34 @@ export default function AppHeader() {
               </span>
             </a>
           </h1>
+
+          {/* ── 現在の OA の workspace role バッジ ── */}
+          {showRoleBadge && (
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginLeft: 12 }}>
+              <RoleBadge role={workspaceRole as Role} />
+            </div>
+          )}
+
+          {/* ── platform owner 向け管理リンク ── */}
+          {isPlatformOwner && (
+            <a
+              href="/admin/announcements"
+              style={{
+                fontSize:     11,
+                fontWeight:   600,
+                color:        "var(--color-primary, #2F6F5E)",
+                background:   "#f0fdf4",
+                border:       "1px solid #bbf7d0",
+                borderRadius: 6,
+                padding:      "3px 10px",
+                whiteSpace:   "nowrap",
+                textDecoration: "none",
+                flexShrink:   0,
+              }}
+            >
+              管理
+            </a>
+          )}
 
           {/* ── ログアウトボタン（Supabase 認証済み時のみ） ── */}
           {loggedIn && (

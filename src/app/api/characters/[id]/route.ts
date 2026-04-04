@@ -39,7 +39,7 @@ export const GET = withAuth<{ id: string }>(async (_req, { params }, user) => {
     });
     if (!character) return notFound("キャラクター");
 
-    const check = await requireRole(character.work.oaId, user.id, 'tester');
+    const check = await requireRole(character.work.oaId, user.id, 'viewer');
     if (!check.ok) return check.response;
 
     return ok(toResponse(character));

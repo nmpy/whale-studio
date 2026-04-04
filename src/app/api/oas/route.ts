@@ -8,6 +8,7 @@ import { ok, created, badRequest, serverError } from "@/lib/api-response";
 import { withAuth } from "@/lib/auth";
 import { createOaSchema, oaQuerySchema, formatZodErrors } from "@/lib/validations";
 import { getWorkspaceRole } from "@/lib/rbac";
+import { isPlatformOwner } from "@/lib/platform-admin";
 import { ZodError } from "zod";
 
 // ── モジュールロード時ログ ──────────────────────────────────
@@ -27,17 +28,11 @@ export const GET = withAuth(async (req, _ctx, user) => {
       limit:          searchParams.get("limit")          ?? 20,
     });
 
-    // bypass-admin（BYPASS_AUTH=true 時）または dev-user の場合は全 OA を返す
-    // 本番（Supabase 設定済み）では workspace_members に登録済みの OA のみ返す
-    const isDevUser =
-      user.id === "bypass-admin" ||
-      (
-        !process.env.NEXT_PUBLIC_SUPABASE_URL &&
-        process.env.NODE_ENV === "development" &&
-        user.id === "dev-user"
-      );
+    // プラットフォームオーナーは全 OA を返す
+    // それ以外は workspace_members に登録済みの OA のみ返す
+    const showAll = isPlatformOwner(user.id);
 
-    const memberFilter = isDevUser
+    const memberFilter = showAll
       ? {}
       : {
           id: {
@@ -79,12 +74,13 @@ export const GET = withAuth(async (req, _ctx, user) => {
       prisma.oa.count({ where }),
     ]);
 
-    // 各 OA の role を並列取得
+    // 各 OA の role を取得
+    // プラットフォームオーナーはメンバー未登録の OA でも 'owner' として扱う
     const rolesMap = new Map<string, string>();
     for (const oa of items) {
       const m = await getWorkspaceRole(oa.id, user.id);
-      // active 以外は 'none' 扱い（一覧にロールを表示しない）
-      rolesMap.set(oa.id, m?.status === 'active' ? m.role : 'none');
+      const role = m?.status === 'active' ? m.role : (showAll ? 'owner' : 'none');
+      rolesMap.set(oa.id, role);
     }
 
     const data = items.map((oa) => ({

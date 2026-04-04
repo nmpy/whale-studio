@@ -1,5 +1,5 @@
-// GET  /api/oas/:id/members — メンバー一覧 (admin / owner のみ)
-// POST /api/oas/:id/members — メンバー直接追加 (owner のみ) ※招待フロー未使用時の管理用
+// GET  /api/oas/:id/members — メンバー一覧 + 未登録の最近操作ユーザー（admin / owner のみ）
+// POST /api/oas/:id/members — メンバー追加・仮ユーザー正式登録（admin / owner）
 
 import { prisma } from "@/lib/prisma";
 import { ok, created, badRequest, conflict, notFound, serverError } from "@/lib/api-response";
@@ -9,7 +9,7 @@ import { isValidRole } from "@/lib/types/permissions";
 
 const addMemberSchema = z.object({
   user_id: z.string().min(1, "user_id は必須です"),
-  role:    z.string().refine(isValidRole, { message: "role は owner / admin / editor / tester のいずれかです" }),
+  role:    z.string().refine(isValidRole, { message: "role は owner / admin / editor / viewer のいずれかです" }),
   email:   z.string().email().optional(),
 });
 
@@ -27,6 +27,7 @@ function formatMember(m: {
   updatedAt: Date;
 }) {
   return {
+    type:         "member" as const,
     id:           m.id,
     workspace_id: m.workspaceId,
     user_id:      m.userId,
@@ -50,17 +51,40 @@ export const GET = withRole<{ id: string }>(
       const oa = await prisma.oa.findUnique({ where: { id: params.id }, select: { id: true } });
       if (!oa) return notFound("OA");
 
+      // ── 既存 WorkspaceMember ──────────────────────────────────
       const members = await prisma.workspaceMember.findMany({
         where:   { workspaceId: params.id },
-        orderBy: { createdAt: "asc" },          // 参加日で一次ソート
+        orderBy: { createdAt: "asc" },
       });
 
-      // owner(0) → admin(1) → editor(2) → tester(3) の階層順で安定ソート
-      // Prisma の enum orderBy はアルファベット順になるため、アプリ側で並び替える
-      const ROLE_ORDER: Record<string, number> = { owner: 0, admin: 1, editor: 2, tester: 3 };
+      // owner(0) → admin(1) → editor(2) → viewer(3) の階層順で安定ソート
+      const ROLE_ORDER: Record<string, number> = { owner: 0, admin: 1, editor: 2, viewer: 3, tester: 3 };
       members.sort((a, b) => (ROLE_ORDER[a.role] ?? 9) - (ROLE_ORDER[b.role] ?? 9));
 
-      return ok(members.map(formatMember));
+      const memberUserIds = new Set(members.map((m) => m.userId));
+
+      // ── 最近操作したが未登録のユーザー（過去30日、最大50件）──
+      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+
+      const recentActivity = await prisma.appActivityLog.findMany({
+        where: {
+          lastSeenAt: { gte: thirtyDaysAgo },
+          userId:     { notIn: Array.from(memberUserIds) },
+        },
+        orderBy: { lastSeenAt: "desc" },
+        take:    50,
+      });
+
+      // ── レスポンス ────────────────────────────────────────────
+      return ok({
+        members:     members.map(formatMember),
+        provisional: recentActivity.map((a) => ({
+          type:          "provisional" as const,
+          user_id:       a.userId,
+          email:         a.email,
+          last_seen_at:  a.lastSeenAt.toISOString(),
+        })),
+      });
     } catch (err) {
       return serverError(err);
     }
@@ -68,17 +92,25 @@ export const GET = withRole<{ id: string }>(
 );
 
 // ── POST /api/oas/:id/members ────────────────────
-// ユーザー ID が既知の場合の直接追加（owner のみ）。通常は招待フロー経由。
+// メンバー直接追加 / 仮ユーザーの正式登録（admin / owner）
+// admin は owner ロールを付与不可。
 export const POST = withRole<{ id: string }>(
   ({ params }) => params.id,
-  'owner',
-  async (req, { params }, user) => {
+  ['admin', 'owner'],
+  async (req, { params }, user, requesterRole) => {
     try {
       const oa = await prisma.oa.findUnique({ where: { id: params.id }, select: { id: true } });
       if (!oa) return notFound("OA");
 
       const body = await req.json();
       const data = addMemberSchema.parse(body);
+
+      // admin は owner ロールを付与不可
+      if (requesterRole === 'admin' && data.role === 'owner') {
+        return badRequest("admin は owner ロールを付与できません", {
+          role: ["owner ロールの付与は owner のみ可能です"],
+        });
+      }
 
       const existing = await prisma.workspaceMember.findUnique({
         where: { workspaceId_userId: { workspaceId: params.id, userId: data.user_id } },
