@@ -44,7 +44,7 @@ export const GET = withAuth(async (req, _ctx, user) => {
     const oa = await prisma.oa.findUnique({ where: { id: query.oa_id } });
     if (!oa) return notFound("OA");
 
-    const check = await requireRole(query.oa_id, user.id, 'viewer');
+    const check = await requireRole(query.oa_id, user.id, 'tester');
     if (!check.ok) return check.response;
 
     const works = await prisma.work.findMany({

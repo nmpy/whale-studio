@@ -9,6 +9,8 @@ import { Breadcrumb } from "@/components/Breadcrumb";
 import { oaApi, globalCommandApi, getDevToken } from "@/lib/api-client";
 import { useToast } from "@/components/Toast";
 import type { GlobalCommandActionType } from "@/types";
+import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
+import { ViewerBanner } from "@/components/PermissionGuard";
 
 const ACTION_META: Record<GlobalCommandActionType, {
   label: string; icon: string; desc: string; bg: string; color: string;
@@ -33,6 +35,8 @@ export default function GlobalCommandEditPage() {
   const commandId = params.commandId;
   const router    = useRouter();
   const { showToast } = useToast();
+
+  const { role, canEdit } = useWorkspaceRole(oaId);
 
   const [oaTitle,  setOaTitle]  = useState("");
   const [loading,  setLoading]  = useState(true);
@@ -141,6 +145,7 @@ export default function GlobalCommandEditPage() {
 
   return (
     <>
+      <ViewerBanner role={role} />
       <div className="page-header">
         <div>
           <Breadcrumb items={[
@@ -179,6 +184,7 @@ export default function GlobalCommandEditPage() {
               onChange={(e) => { setForm({ ...form, keyword: e.target.value }); setErrors({}); }}
               placeholder="例: ヒント、やめる、ヘルプ"
               maxLength={100}
+              readOnly={!canEdit}
             />
             {errors.keyword && <p className="field-error">{errors.keyword}</p>}
           </div>
@@ -204,6 +210,7 @@ export default function GlobalCommandEditPage() {
                     checked={form.action_type === value}
                     onChange={() => setForm({ ...form, action_type: value as GlobalCommandActionType, payload: "" })}
                     style={{ marginTop: 2 }}
+                    disabled={!canEdit}
                   />
                   <span style={{ fontSize: 16, flexShrink: 0 }}>{icon}</span>
                   <div>
@@ -237,6 +244,7 @@ export default function GlobalCommandEditPage() {
                 }
                 maxLength={2000}
                 style={{ minHeight: 80 }}
+                readOnly={!canEdit}
               />
               {errors.payload && <p className="field-error">{errors.payload}</p>}
             </div>
@@ -253,6 +261,7 @@ export default function GlobalCommandEditPage() {
                 onChange={(e) => setForm({ ...form, sort_order: Number(e.target.value) })}
                 min={0}
                 style={{ width: 90 }}
+                readOnly={!canEdit}
               />
             </div>
             <div className="form-group" style={{ display: "flex", alignItems: "flex-end", paddingBottom: 6 }}>
@@ -262,6 +271,7 @@ export default function GlobalCommandEditPage() {
                   checked={form.is_active}
                   onChange={(e) => setForm({ ...form, is_active: e.target.checked })}
                   style={{ width: "auto" }}
+                  disabled={!canEdit}
                 />
                 有効にする
               </label>
@@ -276,7 +286,7 @@ export default function GlobalCommandEditPage() {
             >
               キャンセル
             </button>
-            <button type="submit" className="btn btn-primary" disabled={saving}>
+            <button type="submit" className="btn btn-primary" disabled={!canEdit || saving}>
               {saving && <span className="spinner" />}
               {saving ? "保存中..." : "変更を保存"}
             </button>

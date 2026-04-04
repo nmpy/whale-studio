@@ -8,6 +8,8 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { riddleApi, oaApi, getDevToken } from "@/lib/api-client";
 import { Breadcrumb } from "@/components/Breadcrumb";
+import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
+import { ViewerBanner } from "@/components/PermissionGuard";
 import type { Riddle, RiddleMatchCondition } from "@/types";
 import { QUESTION_TYPE_OPTIONS, MATCH_CONDITION_OPTIONS } from "./_form";
 
@@ -130,6 +132,7 @@ function TruncatedCell({ text, maxWidth = 180 }: { text: string; maxWidth?: numb
 export default function RiddlesPage() {
   const params = useParams<{ id: string }>();
   const oaId   = params.id;
+  const { role, canEdit } = useWorkspaceRole(oaId);
 
   const [oaTitle, setOaTitle]     = useState("");
   const [riddles, setRiddles]     = useState<Riddle[]>([]);
@@ -195,6 +198,7 @@ export default function RiddlesPage() {
 
   return (
     <>
+      <ViewerBanner role={role} />
       {/* ── ページヘッダー ── */}
       <div className="page-header">
         <div>
@@ -207,9 +211,11 @@ export default function RiddlesPage() {
             LINE Bot が使用する謎（問題）を管理します。
           </p>
         </div>
-        <Link href={`/oas/${oaId}/riddles/new`} className="btn btn-primary">
-          ＋ 謎を作成
-        </Link>
+        {canEdit && (
+          <Link href={`/oas/${oaId}/riddles/new`} className="btn btn-primary">
+            ＋ 謎を作成
+          </Link>
+        )}
       </div>
 
       {/* ── 一覧 ── */}
@@ -221,13 +227,15 @@ export default function RiddlesPage() {
             <p className="empty-state-desc">
               「＋ 謎を作成」から Bot 用の問題を追加してください。
             </p>
-            <Link
-              href={`/oas/${oaId}/riddles/new`}
-              className="btn btn-primary"
-              style={{ marginTop: 8, display: "inline-block" }}
-            >
-              ＋ 最初の謎を作成
-            </Link>
+            {canEdit && (
+              <Link
+                href={`/oas/${oaId}/riddles/new`}
+                className="btn btn-primary"
+                style={{ marginTop: 8, display: "inline-block" }}
+              >
+                ＋ 最初の謎を作成
+              </Link>
+            )}
           </div>
         </div>
       ) : (
@@ -307,13 +315,15 @@ export default function RiddlesPage() {
 
                     {/* 編集ボタン */}
                     <td style={{ padding: "12px 14px", textAlign: "right", whiteSpace: "nowrap" }}>
-                      <Link
-                        href={`/oas/${oaId}/riddles/${riddle.id}`}
-                        className="btn btn-ghost"
-                        style={{ padding: "4px 12px", fontSize: 12 }}
-                      >
-                        編集
-                      </Link>
+                      {canEdit && (
+                        <Link
+                          href={`/oas/${oaId}/riddles/${riddle.id}`}
+                          className="btn btn-ghost"
+                          style={{ padding: "4px 12px", fontSize: 12 }}
+                        >
+                          編集
+                        </Link>
+                      )}
                     </td>
                   </tr>
                 );

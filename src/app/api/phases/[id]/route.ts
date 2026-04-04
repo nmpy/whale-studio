@@ -54,7 +54,7 @@ export const GET = withAuth<{ id: string }>(async (_req, { params }, user) => {
     });
     if (!phase) return notFound("フェーズ");
 
-    const check = await requireRole(phase.work.oaId, user.id, 'viewer');
+    const check = await requireRole(phase.work.oaId, user.id, 'tester');
     if (!check.ok) return check.response;
 
     return ok(toResponse(phase));

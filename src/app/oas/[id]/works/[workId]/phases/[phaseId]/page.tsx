@@ -13,6 +13,8 @@ import type {
   PhaseWithCounts, PhaseType,
   MessageWithRelations,
 } from "@/types";
+import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
+import { ViewerBanner } from "@/components/PermissionGuard";
 
 // ── 定数 ──────────────────────────────────────────
 const PHASE_TYPE_OPTIONS: { value: PhaseType; label: string; color: string; bg: string }[] = [
@@ -49,6 +51,7 @@ export default function PhaseDetailPage() {
   const workId  = params.workId;
   const phaseId = params.phaseId;
   const { showToast } = useToast();
+  const { role, canEdit, isOwner, isAdmin } = useWorkspaceRole(oaId);
 
   // ── 作品情報 ──
   const [workTitle, setWorkTitle] = useState("");
@@ -212,6 +215,7 @@ export default function PhaseDetailPage() {
 
   return (
     <>
+      <ViewerBanner role={role} />
       {/* ── ページヘッダー ── */}
       <div className="page-header">
         <div>
@@ -246,7 +250,8 @@ export default function PhaseDetailPage() {
                   <label key={value} style={{ display: "flex", alignItems: "center", gap: 6 }}>
                     <input type="radio" name="phase-type" value={value}
                       checked={phaseForm.phase_type === value}
-                      onChange={() => setPhaseForm({ ...phaseForm, phase_type: value })} />
+                      onChange={() => setPhaseForm({ ...phaseForm, phase_type: value })}
+                      disabled={!canEdit} />
                     <span style={{ fontSize: 12, fontWeight: 600, color, background: bg, padding: "2px 8px", borderRadius: 10 }}>
                       {label}
                     </span>
@@ -259,7 +264,7 @@ export default function PhaseDetailPage() {
               <label htmlFor="phase-name">フェーズ名 <span style={{ color: "#ef4444" }}>*</span></label>
               <input id="phase-name" type="text" value={phaseForm.name}
                 onChange={(e) => { setPhaseForm({ ...phaseForm, name: e.target.value }); setPhaseErrors({}); }}
-                maxLength={100} />
+                maxLength={100} readOnly={!canEdit} />
               {phaseErrors.name?.map((m) => <p key={m} className="field-error">{m}</p>)}
             </div>
 
@@ -267,7 +272,7 @@ export default function PhaseDetailPage() {
               <label htmlFor="phase-desc">説明（任意）</label>
               <textarea id="phase-desc" value={phaseForm.description}
                 onChange={(e) => setPhaseForm({ ...phaseForm, description: e.target.value })}
-                maxLength={500} style={{ minHeight: 60 }} />
+                maxLength={500} style={{ minHeight: 60 }} readOnly={!canEdit} />
             </div>
 
             {/* 開始トリガー（start フェーズのみ表示） */}
@@ -283,6 +288,7 @@ export default function PhaseDetailPage() {
                   onChange={(e) => setPhaseForm({ ...phaseForm, start_trigger: e.target.value })}
                   placeholder="例: はじめる"
                   maxLength={200}
+                  readOnly={!canEdit}
                 />
                 <p style={{ fontSize: 11, color: "#6b7280", marginTop: 4 }}>
                   未開始ユーザーがこのキーワードを送信するとシナリオが開始されます。
@@ -296,20 +302,20 @@ export default function PhaseDetailPage() {
                 <label htmlFor="phase-sort">表示順</label>
                 <input id="phase-sort" type="number" value={phaseForm.sort_order}
                   onChange={(e) => setPhaseForm({ ...phaseForm, sort_order: Number(e.target.value) })}
-                  min={0} style={{ width: 90 }} />
+                  min={0} style={{ width: 90 }} disabled={!canEdit} />
               </div>
               <div className="form-group" style={{ display: "flex", alignItems: "flex-end", paddingBottom: 6 }}>
                 <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontWeight: 400 }}>
                   <input type="checkbox" checked={phaseForm.is_active}
                     onChange={(e) => setPhaseForm({ ...phaseForm, is_active: e.target.checked })}
-                    style={{ width: "auto" }} />
+                    style={{ width: "auto" }} disabled={!canEdit} />
                   有効にする
                 </label>
               </div>
             </div>
 
             <div className="form-actions">
-              <button type="submit" className="btn btn-primary" disabled={savingPhase}>
+              <button type="submit" className="btn btn-primary" disabled={!canEdit || savingPhase}>
                 {savingPhase && <span className="spinner" />}
                 {savingPhase ? "保存中..." : "フェーズ設定を保存"}
               </button>
@@ -327,13 +333,15 @@ export default function PhaseDetailPage() {
               このフェーズで Bot が送信するメッセージを管理します。
             </p>
           </div>
-          <Link
-            href={`/oas/${oaId}/works/${workId}/messages/new`}
-            className="btn btn-ghost"
-            style={{ fontSize: 12, flexShrink: 0 }}
-          >
-            ＋ 新規作成
-          </Link>
+          {canEdit && (
+            <Link
+              href={`/oas/${oaId}/works/${workId}/messages/new`}
+              className="btn btn-ghost"
+              style={{ fontSize: 12, flexShrink: 0 }}
+            >
+              ＋ 新規作成
+            </Link>
+          )}
         </div>
 
         {/* ヒントバナー */}
@@ -352,7 +360,7 @@ export default function PhaseDetailPage() {
         <MessageSelector
           messages={availableMessages}
           onSelect={handleLinkMessage}
-          disabled={linking}
+          disabled={linking || !canEdit}
         />
 
         {/* このフェーズのメッセージ一覧 */}
@@ -416,13 +424,15 @@ export default function PhaseDetailPage() {
                       >
                         詳細・編集
                       </Link>
-                      <button
-                        className="btn btn-ghost"
-                        style={{ padding: "3px 8px", fontSize: 11, color: "#ef4444", borderColor: "#fecaca" }}
-                        onClick={() => handleUnlinkMessage(msg.id)}
-                      >
-                        外す
-                      </button>
+                      {(isOwner || isAdmin) && (
+                        <button
+                          className="btn btn-ghost"
+                          style={{ padding: "3px 8px", fontSize: 11, color: "#ef4444", borderColor: "#fecaca" }}
+                          onClick={() => handleUnlinkMessage(msg.id)}
+                        >
+                          外す
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>

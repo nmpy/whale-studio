@@ -157,6 +157,8 @@ interface RiddleFormProps {
   deleting?:   boolean;
   onSubmit:    (form: FormState) => Promise<void>;
   onDelete?:   () => Promise<void>;
+  canEdit?:    boolean;
+  canDelete?:  boolean;
 }
 
 // ── コンポーネント ───────────────────────────────────────
@@ -165,6 +167,7 @@ export function RiddleForm({
   oaId, oaTitle, initialForm, isNew,
   submitting, deleting = false,
   onSubmit, onDelete,
+  canEdit = true, canDelete = true,
 }: RiddleFormProps) {
   const { showToast } = useToast();
   const [form, setForm]     = useState<FormState>(initialForm);
@@ -983,7 +986,7 @@ export function RiddleForm({
           <div className="form-actions">
             <div style={{ display: "flex", gap: 8 }}>
               <Link href={`/oas/${oaId}/riddles`} className="btn btn-ghost">キャンセル</Link>
-              {!isNew && onDelete && (
+              {!isNew && onDelete && canDelete && (
                 <button
                   type="button" className="btn btn-danger"
                   onClick={handleDelete} disabled={deleting || submitting}
@@ -993,7 +996,7 @@ export function RiddleForm({
                 </button>
               )}
             </div>
-            <button type="submit" className="btn btn-primary" disabled={submitting || uploading}>
+            <button type="submit" className="btn btn-primary" disabled={!canEdit || submitting || uploading}>
               {submitting && <span className="spinner" />}
               {submitting ? "保存中..." : isNew ? "謎を登録" : "保存する"}
             </button>

@@ -8,12 +8,16 @@ import { useParams, useRouter } from "next/navigation";
 import { riddleApi, oaApi, getDevToken } from "@/lib/api-client";
 import { useToast } from "@/components/Toast";
 import { RiddleForm, EMPTY_FORM, formStateToBody, type FormState } from "../_form";
+import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
+import { ViewerBanner } from "@/components/PermissionGuard";
 
 export default function NewRiddlePage() {
   const params = useParams<{ id: string }>();
   const oaId   = params.id;
   const router = useRouter();
   const { showToast } = useToast();
+
+  const { role, canEdit } = useWorkspaceRole(oaId);
 
   const [oaTitle, setOaTitle]       = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -38,13 +42,18 @@ export default function NewRiddlePage() {
   }
 
   return (
-    <RiddleForm
-      oaId={oaId}
-      oaTitle={oaTitle}
-      initialForm={EMPTY_FORM}
-      isNew={true}
-      submitting={submitting}
-      onSubmit={handleSubmit}
-    />
+    <>
+      <ViewerBanner role={role} />
+      <RiddleForm
+        oaId={oaId}
+        oaTitle={oaTitle}
+        initialForm={EMPTY_FORM}
+        isNew={true}
+        submitting={submitting}
+        onSubmit={handleSubmit}
+        canEdit={canEdit}
+        canDelete={false}
+      />
+    </>
   );
 }

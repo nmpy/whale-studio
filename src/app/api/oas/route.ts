@@ -82,8 +82,9 @@ export const GET = withAuth(async (req, _ctx, user) => {
     // 各 OA の role を並列取得
     const rolesMap = new Map<string, string>();
     for (const oa of items) {
-      const r = await getWorkspaceRole(oa.id, user.id);
-      rolesMap.set(oa.id, r ?? 'none');
+      const m = await getWorkspaceRole(oa.id, user.id);
+      // active 以外は 'none' 扱い（一覧にロールを表示しない）
+      rolesMap.set(oa.id, m?.status === 'active' ? m.role : 'none');
     }
 
     const data = items.map((oa) => ({

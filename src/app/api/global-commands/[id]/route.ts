@@ -40,7 +40,7 @@ export const GET = withAuth(async (
     const command = await prisma.globalCommand.findUnique({ where: { id: params.id } });
     if (!command) return notFound("グローバルコマンド");
 
-    const check = await requireRole(command.oaId, user.id, "viewer");
+    const check = await requireRole(command.oaId, user.id, "tester");
     if (!check.ok) return check.response;
 
     return ok(toResponse(command));

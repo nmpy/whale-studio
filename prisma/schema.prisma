@@ -47,6 +47,8 @@ model Oa {
   userTrackings     UserTracking[]
   hintLogs          HintLog[]
   globalCommands    GlobalCommand[]
+  workspaceMembers  WorkspaceMember[]
+  invitations       Invitation[]
 
   @@index([title])
   @@index([publishStatus])
@@ -519,26 +521,81 @@ model UserTracking {
 }
 
 // ────────────────────────────────────────────────
+// Enums — ロール・ステータス
+// ────────────────────────────────────────────────
+
+/// メンバーロール（権限階層: owner > admin > editor > tester）
+enum MemberRole {
+  owner
+  admin
+  editor
+  tester
+}
+
+/// メンバーステータス
+enum MemberStatus {
+  active
+  inactive
+  suspended
+}
+
+// ────────────────────────────────────────────────
 // WorkspaceMember — OA（ワークスペース）へのメンバーアクセス
 // ────────────────────────────────────────────────
 // MVP では workspace_id = oa_id として運用する。
-// 将来 Workspace モデルを追加する際は、@relation と FK 制約を追加する。
 model WorkspaceMember {
-  id          String   @id @default(uuid())
+  id          String       @id @default(uuid())
   /// workspace_id は現在 Oa.id と同値（MVP）
-  workspaceId String   @map("workspace_id")
-  userId      String   @map("user_id")
-  /// "owner" | "editor" | "viewer"
-  role        String   @default("viewer")
-  invitedBy   String?  @map("invited_by")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  workspaceId String       @map("workspace_id")
+  userId      String       @map("user_id")
+  /// メールアドレス（招待時・表示用に保存。Supabase Auth の email と同期する）
+  email       String?
+  role        MemberRole   @default(tester)
+  status      MemberStatus @default(active)
+  invitedBy   String?      @map("invited_by")
+  /// 招待送信日時
+  invitedAt   DateTime?    @map("invited_at")
+  /// 招待承認日時（参加確定日）
+  joinedAt    DateTime?    @map("joined_at")
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt @map("updated_at")
+
+  oa Oa @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@unique([workspaceId, userId])
   @@index([workspaceId])
   @@index([userId])
   @@index([role])
+  @@index([status])
   @@map("workspace_members")
+}
+
+// ────────────────────────────────────────────────
+// Invitation — メンバー招待トークン管理
+// ────────────────────────────────────────────────
+model Invitation {
+  id          String       @id @default(uuid())
+  oaId        String       @map("oa_id")
+  /// 招待先メールアドレス
+  email       String
+  role        MemberRole   @default(editor)
+  /// URL に埋め込む一意トークン（UUID v4 推奨）
+  token       String       @unique
+  /// 招待送信者（Supabase Auth userId）
+  invitedBy   String       @map("invited_by")
+  /// トークン有効期限（デフォルト: 招待から 7 日後）
+  expiresAt   DateTime     @map("expires_at")
+  /// 招待承認日時（null = 未承認）
+  acceptedAt  DateTime?    @map("accepted_at")
+  createdAt   DateTime     @default(now()) @map("created_at")
+
+  oa Oa @relation(fields: [oaId], references: [id], onDelete: Cascade)
+
+  @@index([oaId])
+  @@index([email])
+  @@index([token])
+  @@index([expiresAt])
+  @@map("invitations")
 }
 
 // ────────────────────────────────────────────────

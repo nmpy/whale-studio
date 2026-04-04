@@ -3,9 +3,11 @@
 /**
  * PermissionGuard — ロールに応じて子要素を制御するコンポーネント群
  *
+ * ロール階層（高 → 低）: owner > admin > editor > tester
+ *
  * @example
- * // 閲覧専用帯（viewer に表示）
- * <ViewerBanner />
+ * // 閲覧専用帯（tester に表示）
+ * <ViewerBanner role={role} />
  *
  * // owner のみ表示
  * <OwnerOnly role={role}><button>削除</button></OwnerOnly>
@@ -13,8 +15,8 @@
  * // editor 以上のみ表示
  * <EditorAndAbove role={role}><button>保存</button></EditorAndAbove>
  *
- * // viewer なら disabled にする
- * <EditableField role={role} readOnly={isViewer}>...</EditableField>
+ * // tester なら disabled にする
+ * <EditableField role={role} readOnly={isTester}>...</EditableField>
  */
 
 import type { Role } from "@/lib/types/permissions";
@@ -34,20 +36,29 @@ export function OwnerOnly({ role, children, fallback = null }: RoleProps) {
   return role === "owner" ? <>{children}</> : <>{fallback}</>;
 }
 
+// ── admin 以上のみ表示 ───────────────────────────────
+export function AdminAndAbove({ role, children, fallback = null }: RoleProps) {
+  if (role === null) return <>{fallback}</>;
+  return roleAtLeast(role, "admin") ? <>{children}</> : <>{fallback}</>;
+}
+
 // ── editor 以上のみ表示 ──────────────────────────────
 export function EditorAndAbove({ role, children, fallback = null }: RoleProps) {
   if (role === null) return <>{fallback}</>;
   return roleAtLeast(role, "editor") ? <>{children}</> : <>{fallback}</>;
 }
 
-// ── viewer のみ表示（editor/owner には非表示） ─────────
-export function ViewerOnly({ role, children }: Omit<RoleProps, "fallback">) {
-  return role === "viewer" ? <>{children}</> : null;
+// ── tester のみ表示（editor/admin/owner には非表示） ───
+export function TesterOnly({ role, children }: Omit<RoleProps, "fallback">) {
+  return role === "tester" ? <>{children}</> : null;
 }
 
-// ── 閲覧専用バナー ───────────────────────────────────
+/** @deprecated ViewerOnly は TesterOnly に改名しました */
+export const ViewerOnly = TesterOnly;
+
+// ── 閲覧専用バナー（tester ロール向け） ─────────────
 export function ViewerBanner({ role }: { role: Role | null }) {
-  if (role !== "viewer") return null;
+  if (role !== "tester") return null;
   return (
     <div
       style={{
@@ -74,11 +85,15 @@ const BADGE_STYLES: Record<Role, React.CSSProperties> = {
     background: "#eff6ff", color: "#1d4ed8",
     border: "1px solid #bfdbfe",
   },
+  admin: {
+    background: "#faf5ff", color: "#7c3aed",
+    border: "1px solid #ddd6fe",
+  },
   editor: {
     background: "#f0fdf4", color: "#15803d",
     border: "1px solid #bbf7d0",
   },
-  viewer: {
+  tester: {
     background: "#f9fafb", color: "#6b7280",
     border: "1px solid #e5e7eb",
   },
@@ -86,8 +101,9 @@ const BADGE_STYLES: Record<Role, React.CSSProperties> = {
 
 const ROLE_LABELS: Record<Role, string> = {
   owner:  "オーナー",
+  admin:  "管理者",
   editor: "編集者",
-  viewer: "閲覧者",
+  tester: "テスター",
 };
 
 export function RoleBadge({ role }: { role: Role }) {

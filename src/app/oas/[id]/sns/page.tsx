@@ -13,6 +13,8 @@ import { Breadcrumb } from "@/components/Breadcrumb";
 import { useToast } from "@/components/Toast";
 import { HelpAccordion } from "@/components/HelpAccordion";
 import type { SnsPost } from "@/types";
+import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
+import { ViewerBanner } from "@/components/PermissionGuard";
 
 // ── UTM 付き URL 生成 ───────────────────────────────────
 // URL API を使うため既存クエリを壊さず安全にパラメータを付与する。
@@ -58,6 +60,7 @@ const EMPTY_FORM: PostForm = { text: "", image_url: "", target_url: "", order: "
 export default function SnsPage() {
   const params = useParams<{ id: string }>();
   const oaId   = params.id;
+  const { role, canEdit, isOwner, isAdmin } = useWorkspaceRole(oaId);
   const { showToast } = useToast();
 
   const [oaTitle, setOaTitle]       = useState("");
@@ -269,6 +272,7 @@ export default function SnsPage() {
 
   return (
     <>
+      <ViewerBanner role={role} />
       <div className="page-header">
         <div>
           <Breadcrumb items={[
@@ -281,13 +285,15 @@ export default function SnsPage() {
             X（旧 Twitter）への告知投稿を管理します。UTM 付き URL を自動生成します。
           </p>
         </div>
-        <button
-          className="btn btn-primary"
-          style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
-          onClick={() => { setShowForm(true); setAddErrors({}); setAddForm(EMPTY_FORM); }}
-        >
-          <XLogo size={12} /> 投稿を追加
-        </button>
+        {canEdit && (
+          <button
+            className="btn btn-primary"
+            style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
+            onClick={() => { setShowForm(true); setAddErrors({}); setAddForm(EMPTY_FORM); }}
+          >
+            <XLogo size={12} /> 投稿を追加
+          </button>
+        )}
       </div>
 
       <HelpAccordion items={[
@@ -327,7 +333,7 @@ export default function SnsPage() {
                   <button type="button" className="btn btn-ghost" onClick={() => setShowForm(false)}>
                     キャンセル
                   </button>
-                  <button type="submit" className="btn btn-primary" disabled={adding}>
+                  <button type="submit" className="btn btn-primary" disabled={!canEdit || adding}>
                     {adding && <span className="spinner" />}
                     {adding ? "追加中..." : "追加"}
                   </button>
@@ -363,13 +369,15 @@ export default function SnsPage() {
             <p className="empty-state-desc">
               X へのイベント告知投稿をここで管理・共有できます。
             </p>
-            <button
-              className="btn btn-primary"
-              style={{ marginTop: 8, display: "inline-flex", alignItems: "center", gap: 6 }}
-              onClick={() => { setShowForm(true); setAddErrors({}); setAddForm(EMPTY_FORM); }}
-            >
-              <XLogo size={12} /> 最初の投稿を追加
-            </button>
+            {canEdit && (
+              <button
+                className="btn btn-primary"
+                style={{ marginTop: 8, display: "inline-flex", alignItems: "center", gap: 6 }}
+                onClick={() => { setShowForm(true); setAddErrors({}); setAddForm(EMPTY_FORM); }}
+              >
+                <XLogo size={12} /> 最初の投稿を追加
+              </button>
+            )}
           </div>
         </div>
       ) : (
@@ -403,7 +411,7 @@ export default function SnsPage() {
                             <button type="button" className="btn btn-ghost" onClick={() => setEditId(null)}>
                               キャンセル
                             </button>
-                            <button type="submit" className="btn btn-primary" disabled={saving}>
+                            <button type="submit" className="btn btn-primary" disabled={!canEdit || saving}>
                               {saving && <span className="spinner" />}
                               {saving ? "保存中..." : "保存"}
                             </button>
@@ -440,20 +448,24 @@ export default function SnsPage() {
                         順序: {post.order}
                       </span>
                       <div style={{ marginLeft: "auto", display: "flex", gap: 6, flexShrink: 0 }}>
-                        <button
-                          className="btn btn-ghost"
-                          style={{ padding: "4px 10px", fontSize: 12 }}
-                          onClick={() => startEdit(post)}
-                        >
-                          編集
-                        </button>
-                        <button
-                          className="btn btn-danger"
-                          style={{ padding: "4px 10px", fontSize: 12 }}
-                          onClick={() => handleDelete(post)}
-                        >
-                          削除
-                        </button>
+                        {canEdit && (
+                          <button
+                            className="btn btn-ghost"
+                            style={{ padding: "4px 10px", fontSize: 12 }}
+                            onClick={() => startEdit(post)}
+                          >
+                            編集
+                          </button>
+                        )}
+                        {(isOwner || isAdmin) && (
+                          <button
+                            className="btn btn-danger"
+                            style={{ padding: "4px 10px", fontSize: 12 }}
+                            onClick={() => handleDelete(post)}
+                          >
+                            削除
+                          </button>
+                        )}
                       </div>
                     </div>
 

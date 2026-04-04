@@ -11,6 +11,8 @@ import { oaApi, globalCommandApi, getDevToken } from "@/lib/api-client";
 import { useToast } from "@/components/Toast";
 import { HelpAccordion } from "@/components/HelpAccordion";
 import type { GlobalCommand, GlobalCommandActionType } from "@/types";
+import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
+import { ViewerBanner } from "@/components/PermissionGuard";
 
 // ── アクション種別のメタ情報 ───────────────────────────────
 const ACTION_META: Record<GlobalCommandActionType, {
@@ -54,6 +56,7 @@ const NEEDS_PAYLOAD: GlobalCommandActionType[] = ["CUSTOM", "HELP"];
 export default function GlobalCommandsPage() {
   const params = useParams<{ id: string }>();
   const oaId   = params.id;
+  const { role, canEdit, isOwner, isAdmin } = useWorkspaceRole(oaId);
   const { showToast } = useToast();
 
   const [oaTitle, setOaTitle]         = useState("");
@@ -153,6 +156,7 @@ export default function GlobalCommandsPage() {
 
   return (
     <>
+      <ViewerBanner role={role} />
       {/* ── ページヘッダー ── */}
       <div className="page-header">
         <div>
@@ -166,7 +170,7 @@ export default function GlobalCommandsPage() {
             フェーズに関係なく反応する共通キーワードとメッセージを設定します
           </p>
         </div>
-        {!showAddForm && (
+        {canEdit && !showAddForm && (
           <button
             className="btn btn-primary"
             onClick={() => { setShowAddForm(true); setAddForm(EMPTY_FORM); setAddErrors({}); }}
@@ -453,32 +457,38 @@ export default function GlobalCommandsPage() {
                     {/* アクション */}
                     <td style={{ padding: "14px 16px", whiteSpace: "nowrap" }}>
                       <div style={{ display: "flex", gap: 5 }}>
-                        <Link
-                          href={`/oas/${oaId}/global-commands/${cmd.id}/edit`}
-                          className="btn btn-ghost"
-                          style={{ padding: "5px 12px", fontSize: 12 }}
-                        >
-                          編集
-                        </Link>
-                        <button
-                          className="btn btn-ghost"
-                          style={{ padding: "5px 12px", fontSize: 12 }}
-                          disabled={togglingId === cmd.id}
-                          onClick={() => handleToggleActive(cmd)}
-                        >
-                          {togglingId === cmd.id
-                            ? <span className="spinner" />
-                            : cmd.is_active ? "無効化" : "有効化"
-                          }
-                        </button>
-                        <button
-                          className="btn btn-danger"
-                          style={{ padding: "5px 10px", fontSize: 12 }}
-                          disabled={deletingId === cmd.id}
-                          onClick={() => handleDelete(cmd)}
-                        >
-                          {deletingId === cmd.id ? <span className="spinner" /> : "削除"}
-                        </button>
+                        {canEdit && (
+                          <Link
+                            href={`/oas/${oaId}/global-commands/${cmd.id}/edit`}
+                            className="btn btn-ghost"
+                            style={{ padding: "5px 12px", fontSize: 12 }}
+                          >
+                            編集
+                          </Link>
+                        )}
+                        {canEdit && (
+                          <button
+                            className="btn btn-ghost"
+                            style={{ padding: "5px 12px", fontSize: 12 }}
+                            disabled={togglingId === cmd.id}
+                            onClick={() => handleToggleActive(cmd)}
+                          >
+                            {togglingId === cmd.id
+                              ? <span className="spinner" />
+                              : cmd.is_active ? "無効化" : "有効化"
+                            }
+                          </button>
+                        )}
+                        {(isOwner || isAdmin) && (
+                          <button
+                            className="btn btn-danger"
+                            style={{ padding: "5px 10px", fontSize: 12 }}
+                            disabled={deletingId === cmd.id}
+                            onClick={() => handleDelete(cmd)}
+                          >
+                            {deletingId === cmd.id ? <span className="spinner" /> : "削除"}
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>

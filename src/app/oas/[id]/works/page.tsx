@@ -235,7 +235,7 @@ export default function WorkListPage() {
               ⚙ 設定
             </Link>
           )}
-          {role !== "viewer" && !isTester && (
+          {!isTester && (
             <Link href={`/oas/${oaId}/works/new`} className="btn btn-primary">
               ＋ 作品を追加
             </Link>
@@ -313,7 +313,7 @@ export default function WorkListPage() {
               「作品を追加」から謎解きシナリオを作成しましょう。<br />
               1つのアカウントに複数の作品を管理できます。
             </p>
-            {role !== "viewer" && !isTester && (
+            {!isTester && (
               <Link href={`/oas/${oaId}/works/new`} className="btn btn-primary" style={{ marginTop: 8 }}>
                 ＋ 最初の作品を追加する
               </Link>

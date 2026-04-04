@@ -7,6 +7,8 @@ import { TLink as Link } from "@/components/TLink";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { characterApi, getDevToken } from "@/lib/api-client";
 import { useToast } from "@/components/Toast";
+import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
+import { ViewerBanner } from "@/components/PermissionGuard";
 
 export default function WorkCharacterNewPage() {
   const params  = useParams<{ id: string; workId: string }>();
@@ -14,6 +16,7 @@ export default function WorkCharacterNewPage() {
   const workId  = params.workId;
   const router  = useRouter();
   const { showToast } = useToast();
+  const { role, canEdit } = useWorkspaceRole(oaId);
 
   const [name, setName]                 = useState("");
   const [iconImageUrl, setIconImageUrl] = useState("");
@@ -57,6 +60,7 @@ export default function WorkCharacterNewPage() {
 
   return (
     <>
+      <ViewerBanner role={role} />
       <div className="page-header">
         <div>
           <Breadcrumb items={[
@@ -99,7 +103,7 @@ export default function WorkCharacterNewPage() {
             <label htmlFor="name">キャラクター名 <span style={{ color: "#ef4444" }}>*</span></label>
             <input id="name" type="text" value={name}
               onChange={(e) => { setName(e.target.value); clearError("name"); }}
-              placeholder="例: 探偵 田中" maxLength={50} autoFocus />
+              placeholder="例: 探偵 田中" maxLength={50} autoFocus readOnly={!canEdit} />
             {errors.name?.map((m) => <p key={m} className="field-error">{m}</p>)}
           </div>
 
@@ -109,7 +113,7 @@ export default function WorkCharacterNewPage() {
             </label>
             <input id="icon_image_url" type="url" value={iconImageUrl}
               onChange={(e) => { setIconImageUrl(e.target.value); clearError("icon_image_url"); }}
-              placeholder="https://example.com/avatar.png" />
+              placeholder="https://example.com/avatar.png" readOnly={!canEdit} />
             {errors.icon_image_url?.map((m) => <p key={m} className="field-error">{m}</p>)}
             <p style={{ fontSize: 11, color: "#9ca3af", marginTop: 4 }}>
               HTTPS URL・正方形推奨（200×200px 以上）。LINE の sender.iconUrl として使用します。
@@ -121,19 +125,19 @@ export default function WorkCharacterNewPage() {
           <div className="form-group">
             <label htmlFor="sort_order">表示順</label>
             <input id="sort_order" type="number" value={sortOrder}
-              onChange={(e) => setSortOrder(Number(e.target.value))} min={0} style={{ width: 120 }} />
+              onChange={(e) => setSortOrder(Number(e.target.value))} min={0} style={{ width: 120 }} disabled={!canEdit} />
           </div>
 
           <div className="form-group">
             <label style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 400, cursor: "pointer" }}>
-              <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} style={{ width: "auto" }} />
+              <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} style={{ width: "auto" }} disabled={!canEdit} />
               このキャラクターを有効にする
             </label>
           </div>
 
           <div className="form-actions">
             <Link href={`/oas/${oaId}/works/${workId}/characters`} className="btn btn-ghost">キャンセル</Link>
-            <button type="submit" className="btn btn-primary" disabled={submitting}>
+            <button type="submit" className="btn btn-primary" disabled={!canEdit || submitting}>
               {submitting && <span className="spinner" />}
               {submitting ? "追加中..." : "キャラクターを追加"}
             </button>

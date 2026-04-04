@@ -8,6 +8,8 @@ import { workApi, getDevToken } from "@/lib/api-client";
 import { useToast } from "@/components/Toast";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import type { PublishStatus } from "@/types";
+import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
+import { ViewerBanner } from "@/components/PermissionGuard";
 
 // ── 定数 ──────────────────────────────────────────
 const STATUS_OPTIONS: { value: PublishStatus; label: string }[] = [
@@ -29,6 +31,7 @@ export default function WorkEditPage() {
   const params  = useParams<{ id: string; workId: string }>();
   const oaId    = params.id;
   const workId  = params.workId;
+  const { role, canEdit, isOwner, isAdmin } = useWorkspaceRole(oaId);
   const router  = useRouter();
   const { showToast } = useToast();
 
@@ -140,6 +143,7 @@ export default function WorkEditPage() {
 
   return (
     <>
+      <ViewerBanner role={role} />
       {/* ── ページヘッダー ── */}
       <div className="page-header">
         <div>
@@ -150,13 +154,15 @@ export default function WorkEditPage() {
           <Link href={`/oas/${oaId}/works/${workId}/dashboard`} className="btn btn-ghost">
             📊 ダッシュボード
           </Link>
-          <button
-            className="btn btn-ghost"
-            disabled={duplicating}
-            onClick={handleDuplicate}
-          >
-            {duplicating ? <><span className="spinner" /> 複製中...</> : "📋 複製"}
-          </button>
+          {canEdit && (
+            <button
+              className="btn btn-ghost"
+              disabled={duplicating}
+              onClick={handleDuplicate}
+            >
+              {duplicating ? <><span className="spinner" /> 複製中...</> : "📋 複製"}
+            </button>
+          )}
         </div>
       </div>
 
@@ -166,13 +172,13 @@ export default function WorkEditPage() {
           <div className="form-group">
             <label htmlFor="work-title">作品名 <span style={{ color: "#ef4444" }}>*</span></label>
             <input id="work-title" type="text" value={workForm!.title}
-              onChange={(e) => setWorkField("title", e.target.value)} maxLength={100} />
+              onChange={(e) => setWorkField("title", e.target.value)} maxLength={100} readOnly={!canEdit} />
             {workErrors.title?.map((m) => <p key={m} className="field-error">{m}</p>)}
           </div>
           <div className="form-group">
             <label htmlFor="work-desc">説明（任意）</label>
             <textarea id="work-desc" value={workForm!.description}
-              onChange={(e) => setWorkField("description", e.target.value)} maxLength={500} />
+              onChange={(e) => setWorkField("description", e.target.value)} maxLength={500} readOnly={!canEdit} />
           </div>
           <div style={{ display: "flex", gap: 24, flexWrap: "wrap" }}>
             <div className="form-group" style={{ flex: 1, minWidth: 200 }}>
@@ -182,7 +188,8 @@ export default function WorkEditPage() {
                   <label key={value}>
                     <input type="radio" name="work-status" value={value}
                       checked={workForm!.publish_status === value}
-                      onChange={() => setWorkField("publish_status", value)} />
+                      onChange={() => setWorkField("publish_status", value)}
+                      disabled={!canEdit} />
                     {label}
                   </label>
                 ))}
@@ -192,13 +199,13 @@ export default function WorkEditPage() {
               <label htmlFor="work-sort">表示順</label>
               <input id="work-sort" type="number" value={workForm!.sort_order}
                 onChange={(e) => setWorkField("sort_order", Number(e.target.value))}
-                min={0} style={{ width: 100 }} />
+                min={0} style={{ width: 100 }} disabled={!canEdit} />
             </div>
           </div>
           <div className="form-actions">
-            <button type="submit" className="btn btn-primary" disabled={savingWork}>
+            <button type="submit" className="btn btn-primary" disabled={!canEdit || savingWork}>
               {savingWork && <span className="spinner" />}
-              {savingWork ? "保存中..." : "作品情報を保存"}
+              {!canEdit ? "閲覧専用" : savingWork ? "保存中..." : "作品情報を保存"}
             </button>
           </div>
         </form>

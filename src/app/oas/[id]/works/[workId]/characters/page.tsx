@@ -8,6 +8,8 @@ import { useToast } from "@/components/Toast";
 import { HelpAccordion } from "@/components/HelpAccordion";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import type { Character } from "@/types";
+import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
+import { ViewerBanner } from "@/components/PermissionGuard";
 
 function IconPreview({ character }: { character: Character }) {
   if (character.icon_type === "image" && character.icon_image_url) {
@@ -36,6 +38,7 @@ export default function WorkCharacterListPage() {
   const params  = useParams<{ id: string; workId: string }>();
   const oaId    = params.id;
   const workId  = params.workId;
+  const { role, canEdit, isOwner, isAdmin } = useWorkspaceRole(oaId);
   const { showToast } = useToast();
 
   const [workTitle, setWorkTitle]           = useState("");
@@ -103,6 +106,7 @@ export default function WorkCharacterListPage() {
 
   return (
     <>
+      <ViewerBanner role={role} />
       <div className="page-header">
         <div>
           <Breadcrumb items={[
@@ -113,9 +117,11 @@ export default function WorkCharacterListPage() {
           ]} />
           <h2>キャラクター管理</h2>
         </div>
-        <Link href={`/oas/${oaId}/works/${workId}/characters/new`} className="btn btn-primary">
-          + キャラクターを追加
-        </Link>
+        {canEdit && (
+          <Link href={`/oas/${oaId}/works/${workId}/characters/new`} className="btn btn-primary">
+            + キャラクターを追加
+          </Link>
+        )}
       </div>
 
       {error && (
@@ -167,6 +173,7 @@ export default function WorkCharacterListPage() {
               <select
                 value={systemCharId ?? ""}
                 onChange={(e) => setSystemCharId(e.target.value || null)}
+                disabled={!canEdit}
                 style={{
                   flex: 1, padding: "8px 12px", border: "1px solid #d1d5db",
                   borderRadius: 6, fontSize: 14, background: "#fff",
@@ -181,7 +188,7 @@ export default function WorkCharacterListPage() {
                 type="button"
                 className="btn btn-primary"
                 onClick={handleSaveSystemChar}
-                disabled={savingSystemChar}
+                disabled={!canEdit || savingSystemChar}
                 style={{ flexShrink: 0 }}
               >
                 {savingSystemChar && <span className="spinner" />}
@@ -243,9 +250,11 @@ export default function WorkCharacterListPage() {
               謎解きに登場するキャラクターを追加しましょう。<br />
               キャラクターはメッセージの送信者として使用できます。
             </p>
-            <Link href={`/oas/${oaId}/works/${workId}/characters/new`} className="btn btn-primary" style={{ marginTop: 8 }}>
-              + 最初のキャラクターを追加
-            </Link>
+            {canEdit && (
+              <Link href={`/oas/${oaId}/works/${workId}/characters/new`} className="btn btn-primary" style={{ marginTop: 8 }}>
+                + 最初のキャラクターを追加
+              </Link>
+            )}
           </div>
         </div>
       ) : (
@@ -290,21 +299,25 @@ export default function WorkCharacterListPage() {
                     </td>
                     <td>
                       <div style={{ display: "flex", gap: 6 }}>
-                        <Link
-                          href={`/oas/${oaId}/works/${workId}/characters/${c.id}/edit`}
-                          className="btn btn-ghost"
-                          style={{ padding: "4px 10px", fontSize: 12 }}
-                        >
-                          編集
-                        </Link>
-                        <button
-                          className="btn btn-ghost"
-                          style={{ padding: "4px 10px", fontSize: 12 }}
-                          onClick={() => toggleActive(c)}
-                        >
-                          {c.is_active ? "無効化" : "有効化"}
-                        </button>
-                        {c.id !== systemCharId && (
+                        {canEdit && (
+                          <Link
+                            href={`/oas/${oaId}/works/${workId}/characters/${c.id}/edit`}
+                            className="btn btn-ghost"
+                            style={{ padding: "4px 10px", fontSize: 12 }}
+                          >
+                            編集
+                          </Link>
+                        )}
+                        {canEdit && (
+                          <button
+                            className="btn btn-ghost"
+                            style={{ padding: "4px 10px", fontSize: 12 }}
+                            onClick={() => toggleActive(c)}
+                          >
+                            {c.is_active ? "無効化" : "有効化"}
+                          </button>
+                        )}
+                        {(isOwner || isAdmin) && c.id !== systemCharId && (
                           <button
                             className="btn btn-danger"
                             style={{ padding: "4px 10px", fontSize: 12 }}

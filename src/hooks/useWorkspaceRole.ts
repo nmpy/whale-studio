@@ -4,23 +4,29 @@
  * useWorkspaceRole — 現在ユーザーの workspace ロールを取得する hook
  *
  * workspace_id = oa_id（MVP）
+ * ロール階層: owner > admin > editor > tester
  *
  * @example
- * const { role, loading, isOwner, canEdit, isViewer } = useWorkspaceRole(oaId);
+ * const { role, loading, isOwner, isAdmin, canEdit, isTester } = useWorkspaceRole(oaId);
  */
 
 import { useState, useEffect } from "react";
 import { getDevToken } from "@/lib/api-client";
 import type { Role } from "@/lib/types/permissions";
+import { roleAtLeast } from "@/lib/types/permissions";
 
 export interface WorkspaceRoleState {
   role:     Role | null;
   loading:  boolean;
   /** owner かどうか */
   isOwner:  boolean;
-  /** editor 以上かどうか（owner / editor） */
+  /** admin 以上かどうか（admin / owner） */
+  isAdmin:  boolean;
+  /** editor 以上かどうか（editor / admin / owner） */
   canEdit:  boolean;
-  /** viewer かどうか（閲覧専用） */
+  /** tester かどうか（閲覧専用） */
+  isTester: boolean;
+  /** @deprecated isViewer → isTester を使ってください */
   isViewer: boolean;
 }
 
@@ -40,17 +46,21 @@ export function useWorkspaceRole(workspaceId: string): WorkspaceRoleState {
         if (json.success) setRole(json.data.role as Role);
       })
       .catch(() => {
-        // 取得失敗時は viewer として扱う（フロントの安全側倒し）
-        setRole("viewer");
+        // 取得失敗時は tester として扱う（フロントの安全側倒し）
+        setRole("tester");
       })
       .finally(() => setLoading(false));
   }, [workspaceId]);
+
+  const isTester = role === "tester";
 
   return {
     role,
     loading,
     isOwner:  role === "owner",
-    canEdit:  role === "owner" || role === "editor",
-    isViewer: role === "viewer",
+    isAdmin:  role !== null && roleAtLeast(role, "admin"),
+    canEdit:  role !== null && roleAtLeast(role, "editor"),
+    isTester,
+    isViewer: isTester, // backward compat alias
   };
 }

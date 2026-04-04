@@ -6,7 +6,7 @@ import { prisma } from "@/lib/prisma";
 
 export const GET = withRole<{ id: string }>(
   ({ params }) => params.id,
-  'viewer',
+  'tester',
   async (_req, { params }, user, role) => {
     try {
       const oa = await prisma.oa.findUnique({

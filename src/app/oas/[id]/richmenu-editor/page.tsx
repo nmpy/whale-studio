@@ -7,10 +7,13 @@ import { Breadcrumb } from "@/components/Breadcrumb";
 import { richMenuEditorApi, oaApi, getDevToken } from "@/lib/api-client";
 import { useToast } from "@/components/Toast";
 import type { RichMenuWithAreas } from "@/types";
+import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
+import { ViewerBanner } from "@/components/PermissionGuard";
 
 export default function RichMenuEditorListPage() {
   const params = useParams<{ id: string }>();
   const oaId   = params.id;
+  const { role, canEdit, isOwner, isAdmin } = useWorkspaceRole(oaId);
   const { showToast } = useToast();
 
   const [oaTitle, setOaTitle]   = useState("");
@@ -99,6 +102,7 @@ export default function RichMenuEditorListPage() {
 
   return (
     <>
+      <ViewerBanner role={role} />
       <div className="page-header">
         <div>
           <Breadcrumb items={[
@@ -115,9 +119,11 @@ export default function RichMenuEditorListPage() {
           <Link href={`/oas/${oaId}/richmenu-sync`} className="btn btn-ghost" style={{ fontSize: 13 }}>
             📊 Sheets 同期
           </Link>
-          <button className="btn btn-primary" onClick={handleCreate} disabled={creating}>
-            {creating ? <><span className="spinner" /> 作成中…</> : "+ 新規作成"}
-          </button>
+          {canEdit && (
+            <button className="btn btn-primary" onClick={handleCreate} disabled={creating}>
+              {creating ? <><span className="spinner" /> 作成中…</> : "+ 新規作成"}
+            </button>
+          )}
         </div>
       </div>
 
@@ -138,9 +144,11 @@ export default function RichMenuEditorListPage() {
           <p style={{ fontSize: 13, color: "#6b7280", marginBottom: 20 }}>
             「新規作成」からカスタムリッチメニューを作成してください。
           </p>
-          <button className="btn btn-primary" onClick={handleCreate} disabled={creating}>
-            {creating ? <><span className="spinner" /> 作成中…</> : "+ 新規作成"}
-          </button>
+          {canEdit && (
+            <button className="btn btn-primary" onClick={handleCreate} disabled={creating}>
+              {creating ? <><span className="spinner" /> 作成中…</> : "+ 新規作成"}
+            </button>
+          )}
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -178,25 +186,31 @@ export default function RichMenuEditorListPage() {
 
               {/* アクション */}
               <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
-                <Link href={`/oas/${oaId}/richmenu-editor/${menu.id}`} className="btn btn-ghost" style={{ fontSize: 13 }}>
-                  ✏️ 編集
-                </Link>
-                <button
-                  className="btn btn-primary"
-                  style={{ fontSize: 13 }}
-                  disabled={applying === menu.id}
-                  onClick={() => handleApply(menu.id)}
-                >
-                  {applying === menu.id ? <><span className="spinner" /> 適用中…</> : "📲 LINE 適用"}
-                </button>
-                <button
-                  className="btn btn-danger"
-                  style={{ fontSize: 13 }}
-                  disabled={deleting === menu.id}
-                  onClick={() => handleDelete(menu.id, menu.name)}
-                >
-                  {deleting === menu.id ? <><span className="spinner" /></> : "削除"}
-                </button>
+                {canEdit && (
+                  <Link href={`/oas/${oaId}/richmenu-editor/${menu.id}`} className="btn btn-ghost" style={{ fontSize: 13 }}>
+                    ✏️ 編集
+                  </Link>
+                )}
+                {canEdit && (
+                  <button
+                    className="btn btn-primary"
+                    style={{ fontSize: 13 }}
+                    disabled={applying === menu.id}
+                    onClick={() => handleApply(menu.id)}
+                  >
+                    {applying === menu.id ? <><span className="spinner" /> 適用中…</> : "📲 LINE 適用"}
+                  </button>
+                )}
+                {(isOwner || isAdmin) && (
+                  <button
+                    className="btn btn-danger"
+                    style={{ fontSize: 13 }}
+                    disabled={deleting === menu.id}
+                    onClick={() => handleDelete(menu.id, menu.name)}
+                  >
+                    {deleting === menu.id ? <><span className="spinner" /></> : "削除"}
+                  </button>
+                )}
               </div>
             </div>
           ))}

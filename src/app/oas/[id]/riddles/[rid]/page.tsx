@@ -11,6 +11,8 @@ import { riddleApi, oaApi, getDevToken } from "@/lib/api-client";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { useToast } from "@/components/Toast";
 import { RiddleForm, riddleToFormState, formStateToBody, EMPTY_FORM, type FormState } from "../_form";
+import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
+import { ViewerBanner } from "@/components/PermissionGuard";
 
 export default function EditRiddlePage() {
   const params    = useParams<{ id: string; rid: string }>();
@@ -18,6 +20,7 @@ export default function EditRiddlePage() {
   const riddleId  = params.rid;
   const router    = useRouter();
   const { showToast } = useToast();
+  const { role, canEdit, isOwner, isAdmin } = useWorkspaceRole(oaId);
 
   const [oaTitle, setOaTitle]       = useState("");
   const [initialForm, setInitialForm] = useState<FormState | null>(null);
@@ -104,15 +107,20 @@ export default function EditRiddlePage() {
   }
 
   return (
-    <RiddleForm
-      oaId={oaId}
-      oaTitle={oaTitle}
-      initialForm={initialForm ?? EMPTY_FORM}
-      isNew={false}
-      submitting={submitting}
-      deleting={deleting}
-      onSubmit={handleSubmit}
-      onDelete={handleDelete}
-    />
+    <>
+      <ViewerBanner role={role} />
+      <RiddleForm
+        oaId={oaId}
+        oaTitle={oaTitle}
+        initialForm={initialForm ?? EMPTY_FORM}
+        isNew={false}
+        submitting={submitting}
+        deleting={deleting}
+        onSubmit={handleSubmit}
+        onDelete={handleDelete}
+        canEdit={canEdit}
+        canDelete={isOwner || isAdmin}
+      />
+    </>
   );
 }

@@ -126,7 +126,7 @@ export const GET = withAuth<{ id: string }>(async (_req, { params }, user) => {
     });
     if (!message) return notFound("メッセージ");
 
-    const check = await requireRole(message.work.oaId, user.id, 'viewer');
+    const check = await requireRole(message.work.oaId, user.id, 'tester');
     if (!check.ok) return check.response;
 
     return ok(toResponse(message));

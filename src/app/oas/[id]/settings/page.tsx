@@ -8,6 +8,8 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { oaApi, getDevToken } from "@/lib/api-client";
 import { Breadcrumb } from "@/components/Breadcrumb";
+import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
+import { ViewerBanner } from "@/components/PermissionGuard";
 
 const HUB_ITEM_DEFS = [
   {
@@ -71,6 +73,7 @@ const HUB_ITEM_DEFS = [
 export default function OaSettingsPage() {
   const params = useParams<{ id: string }>();
   const oaId   = params.id;
+  const { role, canEdit, isOwner, isAdmin } = useWorkspaceRole(oaId);
   const [oaTitle, setOaTitle] = useState<string>("");
 
   useEffect(() => {
@@ -81,6 +84,7 @@ export default function OaSettingsPage() {
 
   return (
     <>
+      <ViewerBanner role={role} />
       <div className="page-header">
         <div>
           <Breadcrumb items={[
@@ -108,7 +112,11 @@ export default function OaSettingsPage() {
           gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))",
           gap: 12,
         }}>
-          {HUB_ITEM_DEFS.map(({ key, icon, title, desc, color, bg }) => (
+          {HUB_ITEM_DEFS.filter(({ key }) => {
+            if (key === "settings/members") return isOwner || isAdmin;
+            if (key === "account" || key === "richmenu-editor" || key === "friend-add" || key === "sns") return canEdit;
+            return true; // works, trackings — visible to all
+          }).map(({ key, icon, title, desc, color, bg }) => (
             <Link
               key={key}
               href={`/oas/${oaId}/${key}`}

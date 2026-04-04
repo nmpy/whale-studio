@@ -96,6 +96,47 @@ export class NotFoundError extends Error {
 }
 
 /**
+ * API が 401 を返したときに throw されるエラー。
+ * セッション切れ等。parseResponse が自動的に /login へリダイレクトする。
+ */
+export class UnauthorizedError extends Error {
+  readonly status = 401;
+  constructor(message?: string) {
+    super(message ?? "Unauthorized");
+    this.name = "UnauthorizedError";
+  }
+}
+
+/**
+ * API が 403 MEMBER_INACTIVE / MEMBER_SUSPENDED / WORKSPACE_ACCESS_DENIED を
+ * 返したときに throw されるエラー。
+ * parseResponse が自動的に /access-denied?reason=... へリダイレクトする。
+ */
+export class AccessDeniedError extends Error {
+  readonly status = 403;
+  readonly code:   string;
+  readonly reason: string;
+  constructor(message: string, code: string, reason: string) {
+    super(message);
+    this.name   = "AccessDeniedError";
+    this.code   = code;
+    this.reason = reason;
+  }
+}
+
+/**
+ * API が 403 FORBIDDEN（ロール不足）を返したときに throw されるエラー。
+ * リダイレクトせず、呼び出し側でインライン表示する。
+ */
+export class ForbiddenError extends Error {
+  readonly status = 403;
+  constructor(message?: string) {
+    super(message ?? "Forbidden");
+    this.name = "ForbiddenError";
+  }
+}
+
+/**
  * API が 400 (Validation error) を返したときに throw されるエラー。
  * `details` にフィールド別のエラーメッセージが入る。
  *
@@ -136,18 +177,72 @@ function authHeaders(token: string): HeadersInit {
   };
 }
 
+/**
+ * 403 エラーコードと /access-denied?reason= のマッピング。
+ *
+ * - MEMBER_INACTIVE / MEMBER_SUSPENDED / WORKSPACE_ACCESS_DENIED
+ *   → メンバーシップ系エラー → access-denied ページへリダイレクト
+ * - FORBIDDEN（ロール不足）
+ *   → リダイレクトせず ForbiddenError を throw → ページ内でインライン表示
+ */
+const ACCESS_DENIED_CODE_MAP: Record<string, string> = {
+  MEMBER_INACTIVE:         "inactive",
+  MEMBER_SUSPENDED:        "suspended",
+  WORKSPACE_ACCESS_DENIED: "forbidden",
+};
+
+type ErrorJson = { error?: { code?: string; message?: string; details?: Record<string, string[]> } };
+
+/**
+ * 401 を検知してセッション切れリダイレクトを行う。
+ * throw で後続の処理を止める。
+ */
+function checkUnauthorized(res: Response, json: ErrorJson): void {
+  if (res.status !== 401) return;
+  const msg = json.error?.message ?? "認証が必要です";
+  if (typeof window !== "undefined") {
+    const next = encodeURIComponent(window.location.pathname + window.location.search);
+    window.location.href = `/login?next=${next}`;
+  }
+  throw new UnauthorizedError(msg);
+}
+
+/**
+ * 403 を検知し、コードに応じてリダイレクト or ForbiddenError を throw する。
+ *
+ * - ACCESS_DENIED_CODE_MAP に載っているコード → access-denied ページへリダイレクト
+ * - FORBIDDEN（ロール不足）                  → ForbiddenError を throw
+ */
+function checkForbidden(res: Response, json: ErrorJson): void {
+  if (res.status !== 403) return;
+  const code   = json.error?.code    ?? "";
+  const msg    = json.error?.message ?? "アクセスが拒否されました";
+  const reason = ACCESS_DENIED_CODE_MAP[code];
+  if (reason) {
+    if (typeof window !== "undefined") {
+      window.location.href = `/access-denied?reason=${reason}`;
+    }
+    throw new AccessDeniedError(msg, code, reason);
+  }
+  // ロール不足��FORBIDDEN）→ ページ内で処理させる
+  throw new ForbiddenError(msg);
+}
+
 async function parseResponse<T>(res: Response): Promise<T> {
   if (res.status === 204) return undefined as unknown as T;
-  const json = await res.json();
+  const json = (await res.json()) as ErrorJson & { success: boolean; data?: T };
   if (!json.success) {
     const msg     = json.error?.message ?? `HTTP ${res.status}`;
     const details = json.error?.details  ?? {};
+    // 認証・認可エラーを優先チェック（throw が後続を止める）
+    checkUnauthorized(res, json);
+    checkForbidden(res, json);
     // 専用クラスで throw — 呼び出し側が instanceof で確実に分岐できる
     if (res.status === 404) throw new NotFoundError(msg);
     if (res.status === 400) throw new ValidationError(msg, details);
     throw new Error(msg);
   }
-  return (json as ApiSuccess<T>).data;
+  return json.data as T;
 }
 
 // ────────────────────────────────────────────────
@@ -157,7 +252,7 @@ async function parseResponse<T>(res: Response): Promise<T> {
 /** GET /api/oas 一覧アイテム（channel_secret / channel_access_token を除く） */
 export interface OaListItem extends Omit<Oa, "channel_secret" | "channel_access_token"> {
   _count:   { works: number };
-  my_role:  string; // 'owner' | 'editor' | 'viewer' | 'none'
+  my_role:  string; // 'owner' | 'admin' | 'editor' | 'tester' | 'none'
 }
 
 /** POST /api/oas・PATCH /api/oas/:id の書き込みレスポンス（secret 類を除く） */
@@ -244,9 +339,13 @@ export const oaApi = {
     if (params?.publish_status) query.set("publish_status", params.publish_status);
     if (params?.page)           query.set("page",           String(params.page));
     if (params?.limit)          query.set("limit",          String(params.limit));
-    const res = await fetch(`/api/oas?${query}`, { headers: authHeaders(token) });
-    const json = await res.json();
-    if (!json.success) throw new Error(json.error?.message ?? `HTTP ${res.status}`);
+    const res  = await fetch(`/api/oas?${query}`, { headers: authHeaders(token) });
+    const json = await res.json() as ErrorJson & { success: boolean; data?: OaListItem[]; meta?: OaListMeta };
+    if (!json.success) {
+      checkUnauthorized(res, json);
+      checkForbidden(res, json);
+      throw new Error(json.error?.message ?? `HTTP ${res.status}`);
+    }
     return { data: json.data as OaListItem[], meta: json.meta as OaListMeta };
   },
 
@@ -943,8 +1042,12 @@ export interface WorkspaceMember {
   id:           string;
   workspace_id: string;
   user_id:      string;
-  role:         string; // 'owner' | 'editor' | 'viewer'
+  email:        string | null;
+  role:         string; // 'owner' | 'admin' | 'editor' | 'tester'
+  status:       string; // 'active' | 'inactive' | 'suspended'
   invited_by:   string | null;
+  invited_at:   string | null;
+  joined_at:    string | null;
   created_at:   string;
   updated_at:   string;
 }
@@ -962,14 +1065,14 @@ export const memberApi = {
     return parseResponse(res);
   },
 
-  /** メンバー一覧（owner のみ） */
+  /** メンバー一覧（admin / owner） */
   async list(token: string, oaId: string): Promise<WorkspaceMember[]> {
     const res = await fetch(`/api/oas/${oaId}/members`, { headers: authHeaders(token) });
     return parseResponse(res);
   },
 
-  /** メンバー追加（owner のみ） */
-  async add(token: string, oaId: string, body: { user_id: string; role: string }): Promise<WorkspaceMember> {
+  /** メンバー直接追加（owner のみ） */
+  async add(token: string, oaId: string, body: { user_id: string; role: string; email?: string }): Promise<WorkspaceMember> {
     const res = await fetch(`/api/oas/${oaId}/members`, {
       method:  "POST",
       headers: authHeaders(token),
@@ -978,12 +1081,37 @@ export const memberApi = {
     return parseResponse(res);
   },
 
-  /** ロール変更（owner のみ） */
+  /** ロール変更（admin / owner — admin は owner を操作不可） */
   async updateRole(token: string, oaId: string, memberId: string, role: string): Promise<WorkspaceMember> {
     const res = await fetch(`/api/oas/${oaId}/members/${memberId}`, {
       method:  "PATCH",
       headers: authHeaders(token),
       body:    JSON.stringify({ role }),
+    });
+    return parseResponse(res);
+  },
+
+  /** ステータス変更（admin / owner — admin は owner を操作不可） */
+  async updateStatus(token: string, oaId: string, memberId: string, status: string): Promise<WorkspaceMember> {
+    const res = await fetch(`/api/oas/${oaId}/members/${memberId}`, {
+      method:  "PATCH",
+      headers: authHeaders(token),
+      body:    JSON.stringify({ status }),
+    });
+    return parseResponse(res);
+  },
+
+  /** ロールとステータスを同時変更 */
+  async update(
+    token: string,
+    oaId: string,
+    memberId: string,
+    body: { role?: string; status?: string }
+  ): Promise<WorkspaceMember> {
+    const res = await fetch(`/api/oas/${oaId}/members/${memberId}`, {
+      method:  "PATCH",
+      headers: authHeaders(token),
+      body:    JSON.stringify(body),
     });
     return parseResponse(res);
   },
@@ -1057,6 +1185,99 @@ export const globalCommandApi = {
     const res = await fetch(`/api/global-commands/${id}`, {
       method:  "DELETE",
       headers: authHeaders(token),
+    });
+    return parseResponse(res);
+  },
+};
+
+// ────────────────────────────────────────────────
+// Invitation API
+// ────────────────────────────────────────────────
+
+export interface Invitation {
+  id:          string;
+  oa_id:       string;
+  email:       string;
+  role:        string; // 'owner' | 'admin' | 'editor' | 'tester'
+  token:       string;
+  invited_by:  string;
+  expires_at:  string;
+  accepted_at: string | null;
+  created_at:  string;
+  is_expired:  boolean;
+  is_accepted: boolean;
+}
+
+export interface InvitationDetail {
+  id:         string;
+  oa_id:      string;
+  oa_name:    string;
+  email:      string;
+  role:       string;
+  expires_at: string;
+  created_at: string;
+}
+
+export interface CreateInvitationBody {
+  email:       string;
+  role:        string;
+  expires_in?: number; // 日数 (省略時: 7日)
+}
+
+export interface AcceptInvitationResult {
+  workspace_id: string;
+  user_id:      string;
+  role:         string;
+  status:       string;
+  joined_at:    string | null;
+  oa_id:        string;
+}
+
+export const invitationApi = {
+  /** 招待一覧を取得（admin / owner のみ） */
+  async list(token: string, oaId: string): Promise<Invitation[]> {
+    const res = await fetch(`/api/oas/${oaId}/invitations`, {
+      headers: authHeaders(token),
+    });
+    return parseResponse(res);
+  },
+
+  /** 招待を作成（admin / owner のみ） */
+  async create(token: string, oaId: string, body: CreateInvitationBody): Promise<Invitation & { accept_url: string }> {
+    const res = await fetch(`/api/oas/${oaId}/invitations`, {
+      method:  "POST",
+      headers: authHeaders(token),
+      body:    JSON.stringify(body),
+    });
+    return parseResponse(res);
+  },
+
+  /** 招待を取り消し（admin / owner のみ） */
+  async revoke(token: string, oaId: string, invitationId: string): Promise<void> {
+    const res = await fetch(`/api/oas/${oaId}/invitations/${invitationId}`, {
+      method:  "DELETE",
+      headers: authHeaders(token),
+    });
+    return parseResponse(res);
+  },
+
+  /**
+   * 招待トークンを検証する（公開エンドポイント・認証不要）。
+   * /invite/[token] ページでレンダリング前に呼び出す。
+   */
+  async validate(token: string): Promise<InvitationDetail> {
+    const res = await fetch(`/api/invitations/${token}`);
+    return parseResponse(res);
+  },
+
+  /**
+   * 招待を承諾して WorkspaceMember を作成する（認証必須）。
+   * 成功時は oa_id を使ってワークスペースにリダイレクトできる。
+   */
+  async accept(authToken: string, inviteToken: string): Promise<AcceptInvitationResult> {
+    const res = await fetch(`/api/invitations/${inviteToken}/accept`, {
+      method:  "POST",
+      headers: authHeaders(authToken),
     });
     return parseResponse(res);
   },

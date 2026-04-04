@@ -267,16 +267,26 @@ type RoleHandler<T = Record<string, string>> = (
  * withAuth ＋ workspace ロールチェックを合わせたラッパー。
  * workspaceIdFn でリクエストから workspace_id（= oa_id）を抽出する。
  *
+ * allowedRoles の指定方法:
+ *  - 単一 Role 文字列 ('editor') → roleAtLeast による階層チェック（editor 以上が通過）
+ *  - Role[] 配列 (['owner', 'admin']) → 配列に含まれるロールのみ通過（完全一致）
+ *
  * @example
  * export const GET = withRole(
  *   ({ params }) => params.id,
- *   'viewer',
+ *   'tester',                       // tester 以上（全ロール）が通過
+ *   async (req, { params }, user, role) => { ... }
+ * );
+ *
+ * export const DELETE = withRole(
+ *   ({ params }) => params.id,
+ *   ['owner', 'admin'],             // owner か admin のみ通過
  *   async (req, { params }, user, role) => { ... }
  * );
  */
 export function withRole<T = Record<string, string>>(
   workspaceIdFn: (ctx: { params: T }) => string | Promise<string>,
-  minRole: Role,
+  allowedRoles: Role | Role[],
   handler: RoleHandler<T>
 ) {
   return withAuth<T>(async (req, ctx, user) => {
@@ -284,44 +294,55 @@ export function withRole<T = Record<string, string>>(
     // withAuth の bypass 分岐で user.id が "bypass-admin" に固定される。
     // workspace_members を参照せず、最高権限（owner）として即通過させる。
     if (user.id === "bypass-admin") {
+      const label = Array.isArray(allowedRoles) ? allowedRoles.join('|') : allowedRoles;
       console.warn(
         `[withRole] ⚠️ BYPASS_AUTH — 権限チェックスキップ`,
         `path=${req.method} ${req.nextUrl.pathname}`,
-        `minRole=${minRole} → bypass as owner`
+        `allowedRoles=${label} → bypass as owner`
       );
       return handler(req, ctx, user, "owner");
     }
 
     const workspaceId = await workspaceIdFn(ctx);
 
-    const role = await getWorkspaceRole(workspaceId, user.id);
+    const member = await getWorkspaceRole(workspaceId, user.id);
 
-    if (!role) {
+    // 1. 未所属
+    if (!member) {
       return NextResponse.json(
-        {
-          success: false,
-          error: {
-            code: 'FORBIDDEN',
-            message: 'このワークスペースへのアクセス権がありません',
-          },
-        },
+        { success: false, error: { code: 'WORKSPACE_ACCESS_DENIED', message: 'このワークスペースへのアクセス権がありません' } },
         { status: 403 }
       );
     }
 
-    if (!roleAtLeast(role, minRole)) {
+    // 2. inactive（一時停止）
+    if (member.status === 'inactive') {
       return NextResponse.json(
-        {
-          success: false,
-          error: {
-            code: 'FORBIDDEN',
-            message: '権限が不足しています',
-          },
-        },
+        { success: false, error: { code: 'MEMBER_INACTIVE', message: 'メンバーシップが一時停止されています' } },
         { status: 403 }
       );
     }
 
-    return handler(req, ctx, user, role);
+    // 3. suspended（強制停止）
+    if (member.status === 'suspended') {
+      return NextResponse.json(
+        { success: false, error: { code: 'MEMBER_SUSPENDED', message: 'このアカウントは利用停止されています。オーナーにお問い合わせください' } },
+        { status: 403 }
+      );
+    }
+
+    // 4. ロールチェック
+    const allowed = Array.isArray(allowedRoles)
+      ? allowedRoles.includes(member.role)
+      : roleAtLeast(member.role, allowedRoles);
+
+    if (!allowed) {
+      return NextResponse.json(
+        { success: false, error: { code: 'FORBIDDEN', message: '権限が不足しています' } },
+        { status: 403 }
+      );
+    }
+
+    return handler(req, ctx, user, member.role);
   });
 }

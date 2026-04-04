@@ -14,6 +14,8 @@ import { HelpAccordion } from "@/components/HelpAccordion";
 import { useToast } from "@/components/Toast";
 import type { PhaseWithCounts, TransitionWithPhases, PhaseType } from "@/types";
 import { NodeGraph } from "./_node-graph";
+import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
+import { ViewerBanner } from "@/components/PermissionGuard";
 
 // ── フェーズ種別メタ ──────────────────────────────
 const PHASE_TYPE_META: Record<PhaseType, { label: string; color: string; bg: string; border: string }> = {
@@ -64,6 +66,7 @@ export default function ScenarioPage() {
   const oaId    = params.id;
   const workId  = params.workId;
   const { showToast } = useToast();
+  const { role, canEdit, isOwner, isAdmin } = useWorkspaceRole(oaId);
 
   const [workTitle, setWorkTitle]     = useState("");
   const [phases, setPhases]           = useState<PhaseWithCounts[]>([]);
@@ -251,6 +254,7 @@ export default function ScenarioPage() {
 
   return (
     <>
+      <ViewerBanner role={role} />
       {/* ── ページヘッダー ── */}
       <div className="page-header">
         <div>
@@ -266,16 +270,18 @@ export default function ScenarioPage() {
           </p>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <button
-            className="btn btn-primary"
-            onClick={() => {
-              setAddForm(EMPTY_PHASE_FORM);
-              setAddErrors({});
-              setShowAddForm((v) => !v);
-            }}
-          >
-            ＋ フェーズを追加
-          </button>
+          {canEdit && (
+            <button
+              className="btn btn-primary"
+              onClick={() => {
+                setAddForm(EMPTY_PHASE_FORM);
+                setAddErrors({});
+                setShowAddForm((v) => !v);
+              }}
+            >
+              ＋ フェーズを追加
+            </button>
+          )}
         </div>
       </div>
 
@@ -448,18 +454,20 @@ export default function ScenarioPage() {
             <p className="empty-state-desc">
               「フェーズを追加」からシナリオの構成要素を作成しましょう。
             </p>
-            <button
-              className="btn btn-primary"
-              style={{ marginTop: 12 }}
-              onClick={() => {
-                setAddForm(EMPTY_PHASE_FORM);
-                setAddErrors({});
-                setShowAddForm(true);
-                window.scrollTo({ top: 0, behavior: "smooth" });
-              }}
-            >
-              ＋ 最初のフェーズを追加
-            </button>
+            {canEdit && (
+              <button
+                className="btn btn-primary"
+                style={{ marginTop: 12 }}
+                onClick={() => {
+                  setAddForm(EMPTY_PHASE_FORM);
+                  setAddErrors({});
+                  setShowAddForm(true);
+                  window.scrollTo({ top: 0, behavior: "smooth" });
+                }}
+              >
+                ＋ 最初のフェーズを追加
+              </button>
+            )}
           </div>
         </div>
       ) : activeView === "node" ? (
@@ -482,6 +490,9 @@ export default function ScenarioPage() {
           onUpdate={handleUpdatePhase}
           onDuplicate={handleDuplicatePhase}
           onDelete={handleDeletePhase}
+          canEdit={canEdit}
+          isOwner={isOwner}
+          isAdmin={isAdmin}
         />
       )}
     </>
@@ -514,11 +525,15 @@ interface FlowTreeProps {
   onUpdate:    (id: string, updates: UpdatePhaseBody) => Promise<void>;
   onDuplicate: (id: string) => Promise<void>;
   onDelete:    (id: string) => Promise<void>;
+  canEdit:     boolean;
+  isOwner:     boolean;
+  isAdmin:     boolean;
 }
 
 function FlowTree({
   phases, transitions, msgQrData, allMessages,
   oaId, workId, onReorder, onUpdate, onDuplicate, onDelete,
+  canEdit, isOwner, isAdmin,
 }: FlowTreeProps) {
   const phaseMap = Object.fromEntries(phases.map((p) => [p.id, p]));
   const fromMap: Record<string, TransitionWithPhases[]> = {};
@@ -827,14 +842,14 @@ function FlowTree({
                       </div>
                     ) : (
                       <button
-                        onClick={() => setEditingTypeId(phase.id)}
-                        title="クリックで種別変更"
+                        onClick={() => canEdit && setEditingTypeId(phase.id)}
+                        title={canEdit ? "クリックで種別変更" : meta.label}
                         style={{
                           fontSize: 10, fontWeight: 700, letterSpacing: "0.04em",
                           color: meta.color, background: meta.bg,
                           padding: "3px 10px", borderRadius: 20, flexShrink: 0,
                           border: `1px solid ${meta.border}`,
-                          cursor: "pointer", transition: "opacity 0.1s",
+                          cursor: canEdit ? "pointer" : "default", transition: "opacity 0.1s",
                         }}
                       >
                         {meta.label}
@@ -864,12 +879,12 @@ function FlowTree({
                     ) : (
                       <span
                         onClick={() => {
-                          if (!isEditingType) setEditingName({ id: phase.id, value: phase.name });
+                          if (canEdit && !isEditingType) setEditingName({ id: phase.id, value: phase.name });
                         }}
-                        title="クリックして名前を編集"
+                        title={canEdit ? "クリックして名前を編集" : phase.name}
                         style={{
                           flex: 1, fontWeight: 700, fontSize: 15, color: "#111827",
-                          cursor: "text", lineHeight: 1.3, minWidth: 0,
+                          cursor: canEdit ? "text" : "default", lineHeight: 1.3, minWidth: 0,
                           overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                         }}
                       >
@@ -907,23 +922,27 @@ function FlowTree({
                     ) : (
                       <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
                         {/* 複製 */}
-                        <button
-                          onClick={() => handleDuplicate(phase.id)}
-                          disabled={isDuplicating || isSaving}
-                          style={{ ...iconBtn }}
-                          title="複製"
-                        >
-                          ⎘
-                        </button>
+                        {canEdit && (
+                          <button
+                            onClick={() => handleDuplicate(phase.id)}
+                            disabled={isDuplicating || isSaving}
+                            style={{ ...iconBtn }}
+                            title="複製"
+                          >
+                            ⎘
+                          </button>
+                        )}
                         {/* 削除 */}
-                        <button
-                          onClick={() => setDeleteConfirmId(phase.id)}
-                          disabled={isDeleting || isSaving}
-                          style={{ ...iconBtn }}
-                          title="削除"
-                        >
-                          🗑
-                        </button>
+                        {(isOwner || isAdmin) && (
+                          <button
+                            onClick={() => setDeleteConfirmId(phase.id)}
+                            disabled={isDeleting || isSaving}
+                            style={{ ...iconBtn }}
+                            title="削除"
+                          >
+                            🗑
+                          </button>
+                        )}
                         {/* 詳細 */}
                         <Link
                           href={`/oas/${oaId}/works/${workId}/phases/${phase.id}`}
@@ -952,14 +971,14 @@ function FlowTree({
                 }}>
                   {/* 有効/無効トグル */}
                   <button
-                    onClick={() => handleToggleActive(phase.id, phase.is_active)}
+                    onClick={() => canEdit && handleToggleActive(phase.id, phase.is_active)}
                     disabled={isSaving}
-                    title={phase.is_active ? "有効（クリックで無効化）" : "無効（クリックで有効化）"}
+                    title={canEdit ? (phase.is_active ? "有効（クリックで無効化）" : "無効（クリックで有効化）") : (phase.is_active ? "有効" : "無効")}
                     style={{
                       display: "inline-flex", alignItems: "center", gap: 5,
                       fontSize: 11, fontWeight: 600,
                       padding: "2px 9px", borderRadius: 20,
-                      cursor: "pointer", transition: "all 0.15s",
+                      cursor: canEdit ? "pointer" : "default", transition: "all 0.15s",
                       border: phase.is_active ? "1px solid #bbf7d0" : "1px solid #e5e7eb",
                       background: phase.is_active ? "#f0fdf4" : "#f9fafb",
                       color:      phase.is_active ? "#16a34a" : "#9ca3af",

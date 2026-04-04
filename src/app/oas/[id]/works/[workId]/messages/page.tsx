@@ -8,6 +8,8 @@ import { TLink as Link } from "@/components/TLink";
 import { workApi, messageApi, phaseApi, transitionApi, getDevToken } from "@/lib/api-client";
 import { HelpAccordion } from "@/components/HelpAccordion";
 import { Breadcrumb } from "@/components/Breadcrumb";
+import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
+import { ViewerBanner } from "@/components/PermissionGuard";
 import type { MessageWithRelations, MessageType, PhaseWithCounts, TransitionWithPhases, QuickReplyItem } from "@/types";
 
 const MESSAGE_TYPE_LABEL: Record<MessageType, string> = {
@@ -390,6 +392,7 @@ export default function MessagesPage() {
   const params  = useParams<{ id: string; workId: string }>();
   const oaId    = params.id;
   const workId  = params.workId;
+  const { role, canEdit } = useWorkspaceRole(oaId);
   const [activeTab, setActiveTab]       = useState<Tab>("messages");
   const [workTitle, setWorkTitle]       = useState("");
   const [welcomeMsg, setWelcomeMsg]     = useState<string | null>(null);
@@ -503,6 +506,7 @@ export default function MessagesPage() {
 
   return (
     <>
+      <ViewerBanner role={role} />
       {/* ── ページヘッダー ── */}
       <div className="page-header">
         <div>
@@ -514,7 +518,7 @@ export default function MessagesPage() {
               : "フェーズごとに送信するメッセージを管理します"}
           </p>
         </div>
-        {activeTab === "messages" && (
+        {activeTab === "messages" && canEdit && (
           <Link href={`/oas/${oaId}/works/${workId}/messages/new`} className="btn btn-primary">
             ＋ メッセージを追加
           </Link>
@@ -757,13 +761,15 @@ export default function MessagesPage() {
             <p className="empty-state-desc">
               「＋ メッセージを追加」からメッセージを作成してください。
             </p>
-            <Link
-              href={`/oas/${oaId}/works/${workId}/messages/new`}
-              className="btn btn-primary"
-              style={{ marginTop: 8, display: "inline-block" }}
-            >
-              ＋ 最初のメッセージを追加
-            </Link>
+            {canEdit && (
+              <Link
+                href={`/oas/${oaId}/works/${workId}/messages/new`}
+                className="btn btn-primary"
+                style={{ marginTop: 8, display: "inline-block" }}
+              >
+                ＋ 最初のメッセージを追加
+              </Link>
+            )}
           </div>
         </div>
       ) : (
@@ -930,13 +936,15 @@ export default function MessagesPage() {
 
                         {/* 編集 */}
                         <td style={{ padding: "12px 14px", textAlign: "right", whiteSpace: "nowrap" }}>
-                          <Link
-                            href={`/oas/${oaId}/works/${workId}/messages/${msg.id}`}
-                            className="btn btn-ghost"
-                            style={{ padding: "5px 14px", fontSize: 12 }}
-                          >
-                            編集
-                          </Link>
+                          {canEdit && (
+                            <Link
+                              href={`/oas/${oaId}/works/${workId}/messages/${msg.id}`}
+                              className="btn btn-ghost"
+                              style={{ padding: "5px 14px", fontSize: 12 }}
+                            >
+                              編集
+                            </Link>
+                          )}
                         </td>
                       </tr>
                       <BranchRows

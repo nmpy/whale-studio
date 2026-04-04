@@ -396,7 +396,7 @@ export default function OaListPage() {
                           >
                             {oa.title}
                           </Link>
-                          {(oa.my_role === "owner" || oa.my_role === "editor" || oa.my_role === "viewer") && (
+                          {(oa.my_role === "owner" || oa.my_role === "admin" || oa.my_role === "editor" || oa.my_role === "tester") && (
                             <span style={{ flexShrink: 0 }}>
                               <RoleBadge role={oa.my_role as Role} />
                             </span>
