@@ -10,20 +10,9 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { oaApi, workApi, friendAddApi, getDevToken, type WorkListItem } from "@/lib/api-client";
 import type { FriendAddSettings } from "@/types";
-
-// ── 定数（/oas/page.tsx と揃える） ─────────────────────────────────────────
-
-const STATUS_LABEL: Record<string, string> = {
-  draft:  "未設定",
-  active: "公開中",
-  paused: "停止中",
-};
-
-const STATUS_BADGE_STYLE: Record<string, { bg: string; color: string; border: string }> = {
-  draft:  { bg: "#f9fafb", color: "#9ca3af", border: "#e5e7eb" },
-  active: { bg: "#dcfce7", color: "#166534", border: "#86efac" },
-  paused: { bg: "#fef9c3", color: "#854d0e", border: "#fde047" },
-};
+import { STATUS_LABEL, STATUS_BADGE_STYLE } from "@/constants/workStatus";
+import { FriendAddSection } from "@/components/FriendAddSection";
+import { TesterBanner } from "@/components/TesterBanner";
 
 const LABEL_STYLE: React.CSSProperties = {
   fontSize:      10,
@@ -86,21 +75,27 @@ export default function TesterHomePage() {
   const [loading, setLoading]     = useState(true);
   const [error, setError]         = useState<string | null>(null);
 
-  useEffect(() => {
-    const token = getDevToken();
-    Promise.all([
-      oaApi.get(token, oaId),
-      workApi.list(token, oaId),
-      friendAddApi.get(token, oaId).catch(() => null),
-    ])
-      .then(([oaData, list, fa]) => {
-        setOa(oaData);
-        setWorks(list);
-        setFriendAdd(fa);
-      })
-      .catch((e) => setError(e instanceof Error ? e.message : "読み込みに失敗しました"))
-      .finally(() => setLoading(false));
-  }, [oaId]);
+  async function load() {
+    setLoading(true);
+    setError(null);
+    try {
+      const token = getDevToken();
+      const [oaData, list, fa] = await Promise.all([
+        oaApi.get(token, oaId),
+        workApi.list(token, oaId),
+        friendAddApi.get(token, oaId).catch(() => null),
+      ]);
+      setOa(oaData);
+      setWorks(list);
+      setFriendAdd(fa);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "読み込みに失敗しました");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => { load(); }, [oaId]);
 
   const totalPlayers  = works.reduce((s, w) => s + (w._count.userProgress ?? 0), 0);
   const activeCount   = works.filter((w) => w.publish_status === "active").length;
@@ -109,31 +104,7 @@ export default function TesterHomePage() {
   return (
     <>
       {/* ── テスターモードバナー ── */}
-      <div style={{
-        padding: "12px 16px",
-        background: "#fffbeb",
-        border: "1px solid #fde68a",
-        borderRadius: "var(--radius-md)",
-        marginBottom: 20,
-      }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-          <span style={{ fontSize: 15 }}>🔍</span>
-          <span style={{ fontSize: 13, fontWeight: 700, color: "#92400e" }}>テスターモード</span>
-          <span style={{ fontSize: 13, color: "#92400e" }}>—</span>
-          <span style={{ fontSize: 13, color: "#92400e" }}>
-            アカウントや作品を自由に作成・編集してお試しいただけます。
-          </span>
-        </div>
-        <div style={{
-          display: "flex", flexDirection: "column", gap: 2,
-          paddingLeft: 23,
-          fontSize: 12, color: "#b45309",
-          lineHeight: 1.6,
-        }}>
-          <span>※ プレビュー機能で実際の LINE 体験をシミュレーションできます。</span>
-          <span>本番環境とは独立した確認用の環境です。</span>
-        </div>
-      </div>
+      <TesterBanner />
 
       {/* ── ページヘッダー ── */}
       <div className="page-header">
@@ -147,7 +118,15 @@ export default function TesterHomePage() {
 
       {/* ── エラー ── */}
       {error && (
-        <div className="alert alert-error" style={{ marginBottom: 16 }}>{error}</div>
+        <div className="alert alert-error" style={{ marginBottom: 16 }}>
+          {error}
+          <button
+            onClick={load}
+            style={{ marginLeft: 12, textDecoration: "underline", background: "none", border: "none", cursor: "pointer", color: "inherit", fontSize: "inherit" }}
+          >
+            再読み込み
+          </button>
+        </div>
       )}
 
       {/* ── カードリスト（/oas/page.tsx レイアウトに揃える） ── */}
@@ -202,23 +181,29 @@ export default function TesterHomePage() {
               {((oa as { channel_id?: string | null }).channel_id || (oa as { line_oa_id?: string | null }).line_oa_id) && (
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 14 }}>
                   {(oa as { channel_id?: string | null }).channel_id && (
-                    <span style={{
-                      fontSize: 10, color: "var(--text-muted)",
-                      background: "var(--gray-50)", border: "1px solid var(--border-light)",
-                      borderRadius: 4, padding: "1px 6px",
-                      fontFamily: "monospace", whiteSpace: "nowrap",
-                    }}>
+                    <span
+                      title={`Channel ID: ${(oa as { channel_id: string }).channel_id}`}
+                      style={{
+                        fontSize: 10, color: "var(--text-muted)",
+                        background: "var(--gray-50)", border: "1px solid var(--border-light)",
+                        borderRadius: 4, padding: "1px 6px",
+                        fontFamily: "monospace", whiteSpace: "nowrap",
+                      }}
+                    >
                       {((oa as { channel_id: string }).channel_id).length > 10
                         ? `${((oa as { channel_id: string }).channel_id).slice(0, 4)}…${((oa as { channel_id: string }).channel_id).slice(-4)}`
                         : (oa as { channel_id: string }).channel_id}
                     </span>
                   )}
                   {(oa as { line_oa_id?: string | null }).line_oa_id && (
-                    <span style={{
-                      fontSize: 10, color: "var(--text-muted)",
-                      background: "var(--gray-50)", border: "1px solid var(--border-light)",
-                      borderRadius: 4, padding: "1px 6px", whiteSpace: "nowrap",
-                    }}>
+                    <span
+                      title={`アカウントID: @${(oa as { line_oa_id: string }).line_oa_id}`}
+                      style={{
+                        fontSize: 10, color: "var(--text-muted)",
+                        background: "var(--gray-50)", border: "1px solid var(--border-light)",
+                        borderRadius: 4, padding: "1px 6px", whiteSpace: "nowrap",
+                      }}
+                    >
                       @{(oa as { line_oa_id: string }).line_oa_id}
                     </span>
                   )}
@@ -300,55 +285,7 @@ export default function TesterHomePage() {
 
       {/* ── 友だち追加セクション ── */}
       {!loading && friendAdd?.add_url && (
-        <div style={{
-          padding: "16px 20px",
-          background: "var(--surface)",
-          border: "1px solid var(--border-light)",
-          borderRadius: "var(--radius-md)",
-          boxShadow: "var(--shadow-xs)",
-          marginTop: 20,
-          display: "flex",
-          alignItems: "flex-start",
-          gap: 20,
-          flexWrap: "wrap",
-        }}>
-          {/* テキスト + ボタン */}
-          <div style={{ flex: 1, minWidth: 200 }}>
-            <p style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)", marginBottom: 8, letterSpacing: 0.5 }}>
-              🔗 友だち追加
-            </p>
-            <p style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 12, lineHeight: 1.6 }}>
-              実機でテストするには、先に LINE の友だち追加が必要です。
-            </p>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <a
-                href={friendAdd.add_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="btn btn-primary"
-                style={{ textDecoration: "none", fontSize: 13 }}
-              >
-                友だち追加URLを開く
-              </a>
-            </div>
-            <p style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 10, wordBreak: "break-all" }}>
-              {friendAdd.add_url}
-            </p>
-          </div>
-
-          {/* QR コード */}
-          <div style={{ flexShrink: 0, textAlign: "center" }}>
-            <p style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 6 }}>QRコードで追加</p>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={`https://api.qrserver.com/v1/create-qr-code/?size=120x120&margin=4&data=${encodeURIComponent(friendAdd.add_url)}`}
-              alt="友だち追加QRコード"
-              width={120}
-              height={120}
-              style={{ borderRadius: 8, border: "1px solid var(--border-light)", display: "block" }}
-            />
-          </div>
-        </div>
+        <FriendAddSection addUrl={friendAdd.add_url} />
       )}
     </>
   );
