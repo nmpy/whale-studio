@@ -117,7 +117,7 @@ export default function RichMenuEditorListPage() {
         </div>
         <div style={{ display: "flex", gap: 10 }}>
           <Link href={`/oas/${oaId}/richmenu-sync`} className="btn btn-ghost" style={{ fontSize: 13 }}>
-            📊 Sheets 同期
+            Sheets 同期
           </Link>
           {canEdit && (
             <button className="btn btn-primary" onClick={handleCreate} disabled={creating}>
@@ -168,7 +168,7 @@ export default function RichMenuEditorListPage() {
                       padding: "2px 8px", borderRadius: 20,
                       border: "1px solid #86efac",
                     }}>
-                      ✅ LINE 適用済み
+                      LINE 適用済み
                     </span>
                   )}
                 </div>

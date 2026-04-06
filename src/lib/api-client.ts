@@ -387,6 +387,18 @@ export const oaApi = {
 
 export interface WorkListItem extends Work {
   _count: { characters: number; phases: number; messages: number; userProgress: number };
+  /**
+   * start フェーズの開始トリガーキーワード（未設定時 null）。
+   * 将来的に複数トリガーへ拡張する場合は string[] への変更を検討する。
+   */
+  start_trigger: string | null;
+  /**
+   * プレイヤー進行情報（isPreview=false のみ集計）。
+   * - total:       総プレイヤー数（= _count.userProgress と一致）
+   * - completed:   エンディング到達済み
+   * - in_progress: 未完了（total - completed）
+   */
+  progress_stats: { total: number; completed: number; in_progress: number };
 }
 
 export const workApi = {

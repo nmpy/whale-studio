@@ -89,14 +89,55 @@ export const GET = withAuth(async (req, _ctx, user) => {
             userProgress: { where: { isPreview: false } },
           },
         },
+        // 開始トリガーを持つ start フェーズを1件取得。
+        // 現在は作品ごとに start フェーズは1件想定だが、将来複数の
+        // 開始トリガー（キーワード）に対応する場合は take を除去し、
+        // フロント側で配列として受け取る形に変更する。
+        phases: {
+          where:   { phaseType: "start" },
+          select:  { startTrigger: true },
+          take:    1,
+          orderBy: { sortOrder: "asc" },
+        },
       },
     });
 
+    // プレイヤー進行情報（isPreview=false）を workId × reachedEnding で集計
+    const workIds = works.map((w) => w.id);
+    const progressGroups = workIds.length > 0
+      ? await prisma.userProgress.groupBy({
+          by:    ["workId", "reachedEnding"],
+          where: { workId: { in: workIds }, isPreview: false },
+          _count: { _all: true },
+        })
+      : [];
+
+    // progressMap[workId] = { completed, in_progress }
+    const progressMap: Record<string, { completed: number; in_progress: number }> = {};
+    for (const g of progressGroups) {
+      if (!progressMap[g.workId]) progressMap[g.workId] = { completed: 0, in_progress: 0 };
+      if (g.reachedEnding) {
+        progressMap[g.workId].completed    += g._count._all;
+      } else {
+        progressMap[g.workId].in_progress  += g._count._all;
+      }
+    }
+
     return ok(
-      works.map((w) => ({
-        ...toResponse(w),
-        _count: w._count,
-      }))
+      works.map((w) => {
+        const ps = progressMap[w.id] ?? { completed: 0, in_progress: 0 };
+        return {
+          ...toResponse(w),
+          _count:        w._count,
+          // start フェーズが未作成の場合は null
+          start_trigger: w.phases[0]?.startTrigger ?? null,
+          progress_stats: {
+            total:       (ps.completed + ps.in_progress),
+            completed:   ps.completed,
+            in_progress: ps.in_progress,
+          },
+        };
+      })
     );
   } catch (err) {
     if (err instanceof ZodError) return badRequest("クエリパラメータが不正です", formatZodErrors(err));

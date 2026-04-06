@@ -135,7 +135,6 @@ export default function WorkCharacterListPage() {
       {/* ── 初回ガイド（キャラクター未作成時） ── */}
       {!loading && characters.length === 0 && (
         <GuideCard
-          icon="👤"
           message="キャラクターを作成すると、メッセージの送信者として設定できます。名前・アイコン画像を設定して、各メッセージに紐づけましょう。"
           ctaText="キャラクターを追加 →"
           ctaHref={`/oas/${oaId}/works/${workId}/characters/new`}
@@ -144,16 +143,16 @@ export default function WorkCharacterListPage() {
 
       {/* ── 使い方ガイド ── */}
       <HelpAccordion items={[
-        { icon: "✅", title: "この画面でできること", points: [
+        { title: "この画面でできること", points: [
           "LINE のメッセージ送信者として表示されるキャラクターを管理します",
           "アイコン画像と名前がトーク画面に表示されます",
         ]},
-        { icon: "👆", title: "操作手順", points: [
+        { title: "操作手順", points: [
           "「+ キャラクターを追加」でキャラクターを作成",
           "アイコン画像URL（HTTPS必須）と名前を設定します",
           "作成後、メッセージ管理でキャラクターをメッセージに紐づけます",
         ]},
-        { icon: "⚠️", title: "注意点", points: [
+        { title: "注意点", points: [
           "アイコン画像は HTTPS の URL のみ有効（HTTP は LINE API に拒否されます）",
           "名前は最大20文字（LINE API の制限）",
           "キャラクターを削除するとメッセージの送信者が空欄になります",
@@ -255,7 +254,6 @@ export default function WorkCharacterListPage() {
       ) : characters.length === 0 ? (
         <div className="card">
           <div className="empty-state">
-            <div className="empty-state-icon">👤</div>
             <p className="empty-state-title">キャラクターがまだいません</p>
             <p className="empty-state-desc">
               謎解きに登場するキャラクターを追加しましょう。<br />

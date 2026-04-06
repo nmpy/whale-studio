@@ -23,7 +23,7 @@ const MESSAGE_TYPE_LABEL: Record<MessageType, string> = {
 };
 
 const MESSAGE_TYPE_ICON: Record<MessageType, string> = {
-  text:     "💬",
+  text:     "",
   image:    "🖼",
   riddle:   "",         // 同上
   video:    "🎬",
@@ -48,9 +48,7 @@ function CharIcon({ character }: { character: MessageWithRelations["character"];
         width: size, height: size, borderRadius: "50%",
         background: "#e5e7eb", fontSize: 13, color: "#9ca3af",
         flexShrink: 0, border: "1px solid #d1d5db",
-      }}>
-        👤
-      </span>
+      }} />
     );
   }
 
@@ -126,7 +124,7 @@ const PHASE_TYPE_COLOR: Record<string, { bg: string; color: string; border: stri
 /** タイプバッジ: 謎（puzzle / riddle）か メッセージ かの二択 */
 const MSG_TYPE_META = {
   riddle:  { label: "謎",       icon: "🧩", bg: "#fff7ed", color: "#c2410c", border: "#fed7aa" },
-  message: { label: "メッセージ", icon: "💬", bg: "#f0f9ff", color: "#0369a1", border: "#bae6fd" },
+  message: { label: "メッセージ", icon: "",   bg: "#f0f9ff", color: "#0369a1", border: "#bae6fd" },
 } as const;
 
 // ── ブランチフロー ────────────────────────────────────────
@@ -283,7 +281,7 @@ function BranchItemRow({
       {firstResp && (
         <>
           <BranchArrow />
-          <BranchChip color="orange">💬 {msgPreview(firstResp)}</BranchChip>
+          <BranchChip color="orange">{msgPreview(firstResp)}</BranchChip>
           {respCount > 1 && (
             <span style={{ fontSize: 10, color: "#9ca3af" }}>+{respCount - 1}件</span>
           )}
@@ -543,7 +541,7 @@ export default function MessagesPage() {
         gap: 0,
       }}>
         <button type="button" style={tabStyle("messages")} onClick={() => setActiveTab("messages")}>
-          💬 メッセージ・謎
+          メッセージ・謎
           <span style={{
             fontSize: 10, fontWeight: 700,
             background: activeTab === "messages" ? "#dcfce7" : "#f3f4f6",
@@ -595,15 +593,15 @@ export default function MessagesPage() {
               </p>
               <div style={{ display: "flex", gap: 16, marginTop: 10, flexWrap: "wrap" }}>
                 {[
-                  { icon: "✉️", text: "友だち追加時に自動送信" },
-                  { icon: "🎯", text: "シナリオ開始前の一度きり" },
-                  { icon: "⚙️", text: "OA設定で一元管理" },
-                ].map(({ icon, text }) => (
+                  { text: "友だち追加時に自動送信" },
+                  { text: "シナリオ開始前の一度きり" },
+                  { text: "OA設定で一元管理" },
+                ].map(({ text }) => (
                   <span key={text} style={{
                     display: "inline-flex", alignItems: "center", gap: 5,
                     fontSize: 11, color: "#059669", fontWeight: 600,
                   }}>
-                    <span>{icon}</span>{text}
+                    {text}
                   </span>
                 ))}
               </div>
@@ -625,7 +623,7 @@ export default function MessagesPage() {
                     fontSize: 11, fontWeight: 700, color: "#166534",
                     background: "#dcfce7", padding: "1px 8px", borderRadius: 10,
                     border: "1px solid #bbf7d0",
-                  }}>✓ 設定済み</span>
+                  }}>設定済み</span>
                 ) : (
                   <span style={{
                     fontSize: 11, fontWeight: 700, color: "#dc2626",
@@ -712,12 +710,12 @@ export default function MessagesPage() {
 
           {/* 使い方ガイド */}
           <HelpAccordion items={[
-            { icon: "📋", title: "あいさつメッセージの使い方", points: [
+            { title: "あいさつメッセージの使い方", points: [
               "「今日からあなたの相棒になる謎解き体験へようこそ！」のような導入文を設定します",
               "シナリオの世界観・始め方をユーザーに伝える場として活用してください",
               "「はじめる」と送ることでシナリオが開始される旨を明記すると分かりやすいです",
             ]},
-            { icon: "⚙️", title: "編集場所について", points: [
+            { title: "編集場所について", points: [
               "あいさつメッセージは「OA設定 → アカウント情報」で管理しています",
               "同じ OA の複数の作品で共通のあいさつを使う設計になっています",
             ]},
@@ -732,30 +730,29 @@ export default function MessagesPage() {
       {/* ── 初回ガイド（メッセージ未作成時） ── */}
       {!loading && messages.length === 0 && (
         <GuideCard
-          icon="💬"
           message="メッセージや謎を追加して、体験の流れを作りましょう。フェーズに紐づけると、参加者に LINE メッセージとして届きます。"
         />
       )}
 
       {/* ── 使い方ガイド ── */}
       <HelpAccordion items={[
-        { icon: "✅", title: "この画面でできること", points: [
+        { title: "この画面でできること", points: [
           "フェーズごとに送信するメッセージを管理します",
           "テキスト・画像・謎など複数の種別を設定できます",
           "フェーズに関係なく反応する「共通メッセージ」も設定できます",
         ]},
-        { icon: "💬", title: "共通メッセージとは", points: [
+        { title: "共通メッセージとは", points: [
           "フェーズに関係なく、どの状態でも反応するメッセージです",
           "例：「ヒント」キーワードでヒントを返す、「ヘルプ」で案内を返す、「やり直し」でリセット案内を返す",
           "メッセージ追加画面で「送信タイミング」→「共通メッセージ」を選んで設定します",
           "通常メッセージとの違い：フェーズ設定が不要で、常に最優先で評価されます",
         ]},
-        { icon: "👆", title: "操作手順", points: [
+        { title: "操作手順", points: [
           "「＋ メッセージを追加」→ フェーズとキャラクターを選んで内容を入力",
           "同一フェーズに複数ある場合は「順序」の小さい順に送信されます",
           "タイプが「謎」のメッセージも「順序」の通りに送信されます",
         ]},
-        { icon: "⚠️", title: "注意点", points: [
+        { title: "注意点", points: [
           "全フェーズ共通フェーズのメッセージはどのフェーズでもキーワードに反応します",
           "有効／無効の切り替えは各メッセージの編集画面から行います",
         ]},
@@ -765,8 +762,7 @@ export default function MessagesPage() {
       {messages.length === 0 ? (
         <div className="card">
           <div className="empty-state">
-            <div className="empty-state-icon">💬</div>
-            <p className="empty-state-title">メッセージがまだありません</p>
+              <p className="empty-state-title">メッセージがまだありません</p>
             <p className="empty-state-desc">
               「＋ メッセージを追加」からメッセージを作成してください。
             </p>

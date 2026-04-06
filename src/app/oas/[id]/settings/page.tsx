@@ -15,7 +15,6 @@ import { PlanCard } from "@/components/PlanCard";
 const HUB_ITEM_DEFS = [
   {
     key:   "works",
-    icon:  "📖",
     title: "作品管理",
     desc:  "謎解きシナリオの作成・編集・公開管理",
     color: "#06C755",
@@ -23,7 +22,6 @@ const HUB_ITEM_DEFS = [
   },
   {
     key:   "account",
-    icon:  "⚙️",
     title: "アカウント情報",
     desc:  "アカウント名・メモ・接続ステータスを管理",
     color: "#4b5563",
@@ -31,7 +29,6 @@ const HUB_ITEM_DEFS = [
   },
   {
     key:   "richmenu-editor",
-    icon:  "🗂",
     title: "リッチメニュー",
     desc:  "ユーザー画面下部のメニューをカスタマイズ",
     color: "#7c3aed",
@@ -39,7 +36,6 @@ const HUB_ITEM_DEFS = [
   },
   {
     key:   "friend-add",
-    icon:  "👥",
     title: "友だち追加設定",
     desc:  "招待 URL・シェア用画像を管理",
     color: "#059669",
@@ -47,7 +43,6 @@ const HUB_ITEM_DEFS = [
   },
   {
     key:   "sns",
-    icon:  "📢",
     title: "SNS 投稿管理",
     desc:  "投稿文・画像・掲載 URL を管理",
     color: "#d97706",
@@ -55,7 +50,6 @@ const HUB_ITEM_DEFS = [
   },
   {
     key:   "trackings",
-    icon:  "📊",
     title: "トラッキング管理",
     desc:  "流入元ごとのクリック数・ユーザー数を計測",
     color: "#2563eb",
@@ -63,7 +57,6 @@ const HUB_ITEM_DEFS = [
   },
   {
     key:   "settings/members",
-    icon:  "👤",
     title: "メンバー管理",
     desc:  "ワークスペースメンバーのロール（owner/admin/editor/viewer）を管理",
     color: "#dc2626",
@@ -71,7 +64,6 @@ const HUB_ITEM_DEFS = [
   },
   {
     key:   "onboarding-analytics",
-    icon:  "📈",
     title: "オンボーディング分析",
     desc:  "作品作成〜セットアップ完了の各ステップ到達率を確認（owner のみ）",
     color: "#7c3aed",
@@ -126,7 +118,6 @@ export default function OaSettingsPage() {
           borderRadius: "var(--radius-md, 10px)",
           marginBottom: 16,
         }}>
-          <span style={{ fontSize: 22, flexShrink: 0, lineHeight: 1 }}>🎉</span>
           <div style={{ flex: 1, minWidth: 0 }}>
             <p style={{
               fontSize:    13,
@@ -202,7 +193,7 @@ export default function OaSettingsPage() {
             if (key === "settings/members") return isOwner || isAdmin;
             if (key === "account" || key === "richmenu-editor" || key === "friend-add" || key === "sns") return isAdmin;
             return true; // works, trackings — visible to all
-          }).map(({ key, icon, title, desc, color, bg }) => (
+          }).map(({ key, title, desc, color }) => (
             <Link
               key={key}
               href={`/oas/${oaId}/${key}`}
@@ -231,19 +222,6 @@ export default function OaSettingsPage() {
                 el.style.transform   = "translateY(0)";
               }}
             >
-              <span style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                width: 36,
-                height: 36,
-                borderRadius: 8,
-                background: bg,
-                fontSize: 18,
-                flexShrink: 0,
-              }}>
-                {icon}
-              </span>
               <div style={{ minWidth: 0 }}>
                 <div style={{ fontSize: 13, fontWeight: 600, color: "#111827", marginBottom: 2 }}>
                   {title}

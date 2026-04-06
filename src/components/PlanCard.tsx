@@ -117,8 +117,6 @@ export function PlanCard({ oaId }: { oaId: string }) {
   const statusMeta   = STATUS_META[subscription.status] ?? {
     label: subscription.status, color: "#6b7280", bg: "#f3f4f6",
   };
-  const planIcon     = isFree ? "🔓" : "✅";
-
   return (
     <div style={{
       padding:      "16px 18px",
@@ -133,14 +131,6 @@ export function PlanCard({ oaId }: { oaId: string }) {
         display: "flex", alignItems: "center", gap: 10, marginBottom: 12,
         flexWrap: "wrap",
       }}>
-        <span style={{
-          display: "flex", alignItems: "center", justifyContent: "center",
-          width: 30, height: 30, borderRadius: 8,
-          background: isFree ? "var(--color-primary-soft, #EAF4F1)" : "#f0fdf4",
-          fontSize: 16, flexShrink: 0,
-        }}>
-          {planIcon}
-        </span>
         <span style={{
           fontSize: 14, fontWeight: 800,
           color: "var(--text-primary, #111827)",

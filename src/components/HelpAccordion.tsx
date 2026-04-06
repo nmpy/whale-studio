@@ -13,7 +13,7 @@
 import { useState } from "react";
 
 export interface HelpItem {
-  icon:   string;
+  icon?:  string;
   title:  string;
   points: string[];
 }
@@ -45,7 +45,6 @@ export function HelpAccordion({ items, defaultOpen = false }: Props) {
           borderBottom: open ? "1px solid #dbeafe" : "none",
         }}
       >
-        <span style={{ fontSize: 15 }}>❓</span>
         <span style={{ fontWeight: 600, fontSize: 13, color: "#1d4ed8", flex: 1 }}>
           この画面の使い方
         </span>
@@ -69,16 +68,40 @@ export function HelpAccordion({ items, defaultOpen = false }: Props) {
           padding: "14px 16px 16px",
           display: "grid",
           gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))",
-          gap: 14,
+          gap: 10,
         }}>
           {items.map((item, i) => (
-            <div key={i}>
-              <p style={{ fontWeight: 600, fontSize: 12, color: "#1e40af", marginBottom: 5 }}>
-                {item.icon} {item.title}
+            <div key={i} style={{
+              background:    "rgba(239, 246, 255, 0.55)",
+              border:        "1px solid rgba(219, 234, 254, 0.8)",
+              borderRadius:  8,
+              padding:       "10px 12px 12px",
+            }}>
+              {/* セクション見出し — カード背景 + 下線 + ドットで区切りを明確に */}
+              <p style={{
+                fontWeight:    700,
+                fontSize:      12,
+                color:         "#1e40af",
+                marginBottom:  8,
+                paddingBottom: 6,
+                borderBottom:  "1px solid rgba(219, 234, 254, 0.9)",
+                display:       "flex",
+                alignItems:    "center",
+                gap:           6,
+              }}>
+                <span style={{
+                  display:      "inline-block",
+                  width:        5,
+                  height:       5,
+                  borderRadius: "50%",
+                  background:   "#3b82f6",
+                  flexShrink:   0,
+                }} aria-hidden="true" />
+                {item.title}
               </p>
-              <ul style={{ margin: 0, paddingLeft: 16 }}>
+              <ul style={{ margin: 0, paddingLeft: 14 }}>
                 {item.points.map((pt, j) => (
-                  <li key={j} style={{ fontSize: 12, color: "#374151", lineHeight: 1.65, marginBottom: 2 }}>
+                  <li key={j} style={{ fontSize: 12, color: "#374151", lineHeight: 1.75, marginBottom: 4 }}>
                     {pt}
                   </li>
                 ))}

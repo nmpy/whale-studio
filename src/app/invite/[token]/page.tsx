@@ -250,7 +250,6 @@ function InvitePage() {
         {/* ── already_joined ── */}
         {state.status === "already_joined" && (
           <div style={{ textAlign: "center" }}>
-            <div style={{ fontSize: 48, marginBottom: 16 }}>✅</div>
             <h2 style={{ fontSize: 20, fontWeight: 800, color: "#111827", marginBottom: 10 }}>
               すでに参加済みです
             </h2>
@@ -271,7 +270,6 @@ function InvitePage() {
         {/* ── error ── */}
         {state.status === "error" && (
           <div style={{ textAlign: "center" }}>
-            <div style={{ fontSize: 48, marginBottom: 16 }}>⚠️</div>
             <h2 style={{ fontSize: 20, fontWeight: 800, color: "#111827", marginBottom: 10 }}>
               招待情報を読み込めませんでした
             </h2>
@@ -342,7 +340,6 @@ function InvitePage() {
         {/* ── email_mismatch ── */}
         {state.status === "email_mismatch" && (
           <>
-            <div style={{ fontSize: 36, marginBottom: 16, textAlign: "center" }}>⚠️</div>
             <h2 style={{ fontSize: 18, fontWeight: 800, color: "#111827", marginBottom: 8, textAlign: "center" }}>
               別のアカウントでログインしています
             </h2>
@@ -396,7 +393,6 @@ function InvitePage() {
         {/* ── registered: 登録完了（初回ユーザー） ── */}
         {state.status === "registered" && (
           <div style={{ textAlign: "center" }}>
-            <div style={{ fontSize: 48, marginBottom: 16 }}>🎉</div>
             <h2 style={{ fontSize: 20, fontWeight: 800, color: "#111827", marginBottom: 10 }}>
               アカウント登録が完了しました
             </h2>
@@ -423,7 +419,6 @@ function InvitePage() {
         {/* ── joined: 参加成功（ログイン済みユーザー） ── */}
         {state.status === "joined" && (
           <div style={{ textAlign: "center" }}>
-            <div style={{ fontSize: 48, marginBottom: 16 }}>🎉</div>
             <h2 style={{ fontSize: 20, fontWeight: 800, color: "#111827", marginBottom: 8 }}>
               参加しました！
             </h2>
@@ -683,7 +678,6 @@ function JoinConfirm({
 
   return (
     <>
-      <div style={{ fontSize: 36, marginBottom: 16, textAlign: "center" }}>🎉</div>
       <h2 style={{ fontSize: 20, fontWeight: 800, color: "#111827", marginBottom: 8, textAlign: "center" }}>
         ワークスペースに招待されています
       </h2>
@@ -797,7 +791,7 @@ function InvitationInfo({
           value={
             <span style={{ color: userEmail === invitation.email ? "#059669" : "#dc2626" }}>
               {userEmail}
-              {userEmail === invitation.email ? " ✓ 一致" : " ⚠ 不一致"}
+              {userEmail === invitation.email ? " 一致" : " 不一致"}
             </span>
           }
         />

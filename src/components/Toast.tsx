@@ -46,7 +46,7 @@ function ToastItem({ item, onRemove }: { item: ToastItem; onRemove: (id: number)
   }, [item.id, onRemove]);
 
   const icons: Record<ToastType, string> = {
-    success: "✓",
+    success: "",
     error: "✕",
     info: "ℹ",
   };
@@ -58,7 +58,7 @@ function ToastItem({ item, onRemove }: { item: ToastItem; onRemove: (id: number)
       role="alert"
       aria-live="polite"
     >
-      <span className="toast-icon">{icons[item.type]}</span>
+      {icons[item.type] && <span className="toast-icon">{icons[item.type]}</span>}
       <span>{item.message}</span>
       <button
         className="toast-close"

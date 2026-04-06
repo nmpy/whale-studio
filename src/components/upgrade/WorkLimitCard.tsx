@@ -123,7 +123,6 @@ export function WorkLimitCard({
         fontSize:       13,
       }}>
         <div style={{ display: "flex", alignItems: "flex-start", gap: 10, flex: 1, minWidth: 0 }}>
-          <span style={{ fontSize: 18, flexShrink: 0, marginTop: 1 }}>🔓</span>
           <div>
             <div style={{ fontWeight: 700, color: "var(--color-primary, #2F6F5E)", marginBottom: 2 }}>
               {planLabel}の作品数上限（{limitLabel}）に達しています
@@ -164,7 +163,6 @@ export function WorkLimitCard({
         boxShadow:    "var(--shadow-sm)",
         textAlign:    "center",
       }}>
-        <div style={{ fontSize: sp ? 36 : 44, marginBottom: 14, lineHeight: 1 }}>🔓</div>
         <h3 style={{ margin: "0 0 8px", fontSize: sp ? 15 : 16, fontWeight: 800, color: "var(--text-primary, #111827)" }}>
           作品の作成上限に達しています
         </h3>
@@ -239,7 +237,6 @@ export function WorkLimitCard({
     }}>
       {/* 上段: アイコン + テキスト + 閉じるボタン */}
       <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
-        <span style={{ fontSize: 20, flexShrink: 0, marginTop: 2 }}>🎉</span>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontWeight: 700, color: "var(--color-primary, #2F6F5E)", marginBottom: 3 }}>
             プレビューをご確認いただけましたか？

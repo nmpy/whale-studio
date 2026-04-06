@@ -41,7 +41,7 @@ function CheckItem({ children }: { children: React.ReactNode }) {
         fontSize:       10,
         color:          "var(--color-primary, #2F6F5E)",
         fontWeight:     700,
-      }}>✓</span>
+      }} />
       <span>{children}</span>
     </div>
   );
@@ -277,8 +277,8 @@ export function PricingContent({
         }}>
           {[
             { icon: "🌱", text: "まず1作品、気軽に試せる" },
-            { icon: "🔓", text: "無理に決めなくていい" },
-            { icon: "📈", text: "成長に合わせてプラン変更できる" },
+            { text: "無理に決めなくていい" },
+            { text: "成長に合わせてプラン変更できる" },
           ].map(({ icon, text }) => (
             <div key={text} style={{
               flex:         sp ? "none" : "1 1 140px",
@@ -292,7 +292,7 @@ export function PricingContent({
               fontSize:     12,
               color:        "var(--text-secondary)",
             }}>
-              <span style={{ fontSize: 16, flexShrink: 0 }}>{icon}</span>
+              {icon && <span style={{ fontSize: 16, flexShrink: 0 }}>{icon}</span>}
               <span>{text}</span>
             </div>
           ))}
@@ -523,7 +523,7 @@ export function PricingContent({
             fontWeight:   600,
             marginBottom: 8,
           }}>
-            ✓ ご相談フォームを開きました。内容を送信してください。
+            ご相談フォームを開きました。内容を送信してください。
           </div>
         ) : (
           <button
@@ -592,7 +592,7 @@ export function PricingContent({
               body:  "Whale Studio はまだ成長中のサービスです。一緒に育てていただけるユーザーさんを大切にしています。",
             },
             {
-              icon:  "💬",
+              icon:  "",
               title: "個別サポートがあります",
               body:  "はじめての導入や使い方の相談など、担当が個別にサポートします。一人で抱え込まなくて大丈夫です。",
             },

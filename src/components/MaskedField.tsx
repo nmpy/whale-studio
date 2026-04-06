@@ -82,7 +82,7 @@ export function MaskedField({
             style={{ padding: "8px 12px", flexShrink: 0, fontSize: 13 }}
             onClick={handleCopy}
           >
-            {copied ? "✓ コピー済" : "コピー"}
+            {copied ? "コピー済" : "コピー"}
           </button>
         )}
       </div>

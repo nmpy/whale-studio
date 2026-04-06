@@ -58,7 +58,7 @@ function LineMsgPreview({ name, iconImageUrl }: { name: string; iconImageUrl: st
               maxWidth: 185, color: "#222",
               boxShadow: "0 1px 3px rgba(0,0,0,.08)",
             }}>
-              こんにちは！謎解きへようこそ🎉
+              こんにちは！謎解きへようこそ
               <br />最初のヒントをお届けします。
             </div>
           </div>
@@ -330,7 +330,7 @@ export default function CharacterNewPage() {
               {[
                 { label: "表示名", value: name       || "（未入力）" },
                 { label: "画像",   value: iconImageUrl ? "URL 入力済み" : "（未入力）" },
-                { label: "状態",   value: isActive   ? "✅ 有効" : "⚫ 無効" },
+                { label: "状態",   value: isActive   ? "有効" : "無効" },
               ].map(({ label, value }) => (
                 <div key={label} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
                   <span style={{

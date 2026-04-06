@@ -15,35 +15,30 @@ interface Props {
 const STEPS = [
   {
     key:   "character",
-    icon:  "👤",
     label: "キャラクターを作成する",
     desc:  "キャラクター名やアイコンを設定します",
     href:  "characters",
   },
   {
     key:   "phase",
-    icon:  "🗂",
     label: "フェーズを作成する",
     desc:  "開始・通常・エンディングの流れを作ります",
     href:  "scenario",
   },
   {
     key:   "message",
-    icon:  "💬",
     label: "メッセージ・謎を追加する",
     desc:  "会話や問題を作成して、フェーズに紐づけます",
     href:  "messages",
   },
   {
     key:   "scenario",
-    icon:  "🗺",
     label: "シナリオフローを設定する",
     desc:  "各フェーズや分岐のつながりを整理します",
     href:  "scenario",
   },
   {
     key:  "preview",
-    icon: "▶",
     label: "プレビューで見え方を確認する",
     desc: "実際の体験に近い形で確認できます",
     href: null as string | null,
@@ -84,7 +79,7 @@ export function WorkCreatedGuide({
       </button>
 
       <p className="font-bold text-emerald-800" style={{ fontSize: 15, marginBottom: 4 }}>
-        作品を作成しました 🎉
+        作品を作成しました
       </p>
       <p className="text-emerald-700" style={{ fontSize: 12, marginBottom: 18 }}>
         次は、作品の体験を形にするための設定を進めましょう。
@@ -118,9 +113,6 @@ export function WorkCreatedGuide({
               >
                 {done ? "✓" : i + 1}
               </span>
-
-              {/* アイコン */}
-              <span style={{ fontSize: 15, flexShrink: 0 }}>{step.icon}</span>
 
               {/* ラベル + 説明 */}
               <div className="flex-1 min-w-0">

@@ -32,7 +32,7 @@ function QuestionContent({ riddle }: { riddle: Riddle }) {
           display: "inline-flex", alignItems: "center", gap: 3,
           fontSize: 10, color: "#9ca3af", marginBottom: 2,
         }}>
-          {meta.icon} {meta.label}
+          {meta.label}
         </span>
         <span style={{
           fontSize: 13, color: "#374151",
@@ -66,7 +66,7 @@ function QuestionContent({ riddle }: { riddle: Riddle }) {
           fontSize: 11, color: "#6b7280",
           display: "inline-flex", alignItems: "center", gap: 3,
         }}>
-          {meta.icon} {meta.label}
+          {meta.label}
         </span>
       </div>
     );
@@ -77,7 +77,7 @@ function QuestionContent({ riddle }: { riddle: Riddle }) {
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
         <span style={{ fontSize: 10, color: "#9ca3af", display: "flex", alignItems: "center", gap: 3 }}>
-          {meta.icon} {meta.label}
+          {meta.label}
         </span>
         {riddle.question_video_url && (
           <span style={{
@@ -99,7 +99,7 @@ function QuestionContent({ riddle }: { riddle: Riddle }) {
         display: "inline-flex", alignItems: "center", gap: 4,
         fontSize: 12, color: "#6b7280",
       }}>
-        {meta.icon} {meta.label}（{count} 枚）
+        {meta.label}（{count} 枚）
       </span>
     );
   }
@@ -222,7 +222,6 @@ export default function RiddlesPage() {
       {riddles.length === 0 ? (
         <div className="card">
           <div className="empty-state">
-            <div className="empty-state-icon">🔍</div>
             <p className="empty-state-title">謎がまだありません</p>
             <p className="empty-state-desc">
               「＋ 謎を作成」から Bot 用の問題を追加してください。

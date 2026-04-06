@@ -162,7 +162,7 @@ function PlaygroundInner() {
       setState(s);
       setCurrentItems([]);
       setChatLog([]);
-      addLog("system", `▶ シナリオ開始: 「${s.phase?.name ?? "（不明）"}」`);
+      addLog("system", `シナリオ開始: 「${s.phase?.name ?? "（不明）"}」`);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "開始に失敗しました";
       setError(msg);
@@ -291,7 +291,7 @@ function PlaygroundInner() {
           ...msgs.map((m) => ({ kind: "bot" as const, msg: m })),
         ]);
         const summary = msgs.map((m) => m.body ?? "[非テキスト]").join(" → ");
-        addLog("system", `💬 メッセージ返信: 「${summary}」`);
+        addLog("system", `メッセージ返信: 「${summary}」`);
       } catch (e) {
         const errMsg = e instanceof Error ? e.message : "メッセージの取得に失敗しました";
         setError(errMsg);
@@ -323,7 +323,7 @@ function PlaygroundInner() {
           // フェーズ遷移完了まで視覚的にチャットへ表示（遷移後 setCurrentItems([]) で消える）
           setCurrentItems((prev) => [...prev, { kind: "user", text: item.label }, ...responseBotItems]);
           const summary = responseMsgs.map((m) => m.body ?? "[非テキスト]").join(" → ");
-          addLog("system", `💬 応答: 「${summary}」`);
+          addLog("system", `応答: 「${summary}」`);
         } catch {
           // 応答メッセージ取得失敗は無視してフェーズ遷移を続行
         }
@@ -393,7 +393,7 @@ function PlaygroundInner() {
             ...result._response_messages!.map((m) => ({ kind: "bot" as const, msg: m })),
           ]);
           const summary = result._response_messages.map((m) => m.body ?? "[非テキスト]").join(" → ");
-          addLog("system", `💬 応答: 「${summary}」`);
+          addLog("system", `応答: 「${summary}」`);
         }
       }
       const suppressMsg =
@@ -465,7 +465,7 @@ function PlaygroundInner() {
             ...result._response_messages!.map((m) => ({ kind: "bot" as const, msg: m })),
           ]);
           const summary = result._response_messages.map((m) => m.body ?? "[非テキスト]").join(" → ");
-          addLog("system", `💬 応答: 「${summary}」`);
+          addLog("system", `応答: 「${summary}」`);
         }
       }
       const suppressMsg =
@@ -630,7 +630,7 @@ function PlaygroundInner() {
               disabled={!selectedWorkId || !lineUserId.trim() || loading}
               onClick={handleStart}
             >
-              {loading ? <><span className="spinner" /> 処理中...</> : "▶ シナリオを開始（リセット含む）"}
+              {loading ? <><span className="spinner" /> 処理中...</> : "シナリオを開始（リセット含む）"}
             </button>
 
             {isStarted && !isEnding && (
@@ -671,7 +671,7 @@ function PlaygroundInner() {
                   href={`/oas/${selectedOaId}/works/${selectedWorkId}/characters`}
                   style={{ color: "#2563eb", textDecoration: "none" }}
                 >
-                  👤 キャラクター管理 →
+                  キャラクター管理 →
                 </Link>
               </div>
             </div>
@@ -717,7 +717,6 @@ function PlaygroundInner() {
             color: "#92400e",
             lineHeight: 1.65,
           }}>
-            <span style={{ fontSize: 15, flexShrink: 0, marginTop: 1 }}>⚠️</span>
             <span>
               現在開発中の機能のため、一部挙動が実機と異なる場合があります。
               あらかじめご了承ください。
@@ -738,7 +737,7 @@ function PlaygroundInner() {
                 <div className="empty-state-icon">⏸️</div>
                 <p className="empty-state-title">シナリオ未開始</p>
                 <p className="empty-state-desc">
-                  「▶ シナリオを開始」ボタンを押すと、開始トリガーが表示されます。
+                  「シナリオを開始」ボタンを押すと、開始トリガーが表示されます。
                 </p>
               </div>
             </div>
@@ -758,10 +757,10 @@ function PlaygroundInner() {
                   display: "flex", alignItems: "center", gap: 12,
                   marginBottom: 12, fontSize: 12, color: "#6b7280",
                 }}>
-                  <span>👤 {state.progress.line_user_id}</span>
+                  <span>{state.progress.line_user_id}</span>
                   <span style={{ color: "#d1d5db" }}>|</span>
                   {isEnding ? (
-                    <span style={{ color: "#9333ea", fontWeight: 700 }}>🎭 エンディング到達</span>
+                    <span style={{ color: "#9333ea", fontWeight: 700 }}>エンディング到達</span>
                   ) : (
                     <span>📍 進行中</span>
                   )}
@@ -908,7 +907,7 @@ function TypingIndicator({ char }: { char: RuntimePhaseMessage["character"] }) {
       width: 36, height: 36, borderRadius: "50%", flexShrink: 0,
       display: "flex", alignItems: "center", justifyContent: "center",
       background: "#c9cdd4", fontSize: 16,
-    }}>📢</div>
+    }}></div>
   );
 
   return (
@@ -1520,7 +1519,6 @@ function EndingPanel({ phase }: { phase: NonNullable<RuntimeState["phase"]> }) {
           textAlign: "center",
           borderBottom: "1px solid #e9d5ff",
         }}>
-          <div style={{ fontSize: 36, marginBottom: 6 }}>🎭</div>
           <p style={{ fontSize: 13, color: "#7c3aed", fontWeight: 600 }}>エンディングに到達しました</p>
         </div>
 

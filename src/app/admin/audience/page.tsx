@@ -57,8 +57,8 @@ export default function AdminAudiencePage() {
       {/* サマリーカード */}
       <div style={{ display: "flex", gap: 12, marginBottom: 24 }}>
         {[
-          { label: "総 OA 数",  value: totalOas,   icon: "📡", color: "#6366f1" },
-          { label: "総作品数",  value: totalWorks,  icon: "🎭", color: "#0ea5e9" },
+          { label: "総 OA 数",  value: totalOas,   color: "#6366f1" },
+          { label: "総作品数",  value: totalWorks,  color: "#0ea5e9" },
         ].map((s) => (
           <div key={s.label} style={{
             flex: "0 0 auto", width: 140,
@@ -67,7 +67,6 @@ export default function AdminAudiencePage() {
             border: "1px solid var(--border-light)",
             borderRadius: "var(--radius-md)",
           }}>
-            <div style={{ fontSize: 20, marginBottom: 6 }}>{s.icon}</div>
             <div style={{ fontSize: 22, fontWeight: 800, color: s.color, lineHeight: 1 }}>
               {loading ? "—" : s.value}
             </div>

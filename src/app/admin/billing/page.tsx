@@ -181,12 +181,12 @@ interface BillingAnalytics {
 const EVENT_ICONS: Record<BillingEvent, string> = {
   pricing_view:               "👁",
   pricing_click_from_header:  "🔗",
-  pricing_click_from_banner:  "📢",
+  pricing_click_from_banner:  "",
   pricing_click_from_gate:    "🚪",
-  pricing_click_from_preview: "▶️",
-  pricing_cta_click:          "🔓",
+  pricing_click_from_preview: "",
+  pricing_cta_click:          "",
   pricing_feedback_submit:    "✉️",
-  stripe_checkout_initiated:  "💳",
+  stripe_checkout_initiated:  "",
 };
 
 // ── ヘルパー ──────────────────────────────────────────────────────────────
@@ -355,7 +355,6 @@ export default function AdminBillingPage() {
         borderRadius: "var(--radius-md, 10px)",
         fontSize:     13,
       }}>
-        <span style={{ fontSize: 16 }}>📊</span>
         <span style={{ color: "var(--color-primary, #2F6F5E)" }}>
           <strong>{total.toLocaleString()} 件</strong> の課金導線イベントを集計しています
         </span>

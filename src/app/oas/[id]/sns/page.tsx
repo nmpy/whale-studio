@@ -297,16 +297,16 @@ export default function SnsPage() {
       </div>
 
       <HelpAccordion items={[
-        { icon: "✅", title: "この画面でできること", points: [
+        { title: "この画面でできること", points: [
           "X（旧 Twitter）への告知投稿文とリンクを管理します",
           "UTM パラメータ付き URL を自動生成して流入を計測できます",
         ]},
-        { icon: "👆", title: "操作手順", points: [
+        { title: "操作手順", points: [
           "「投稿を追加」で投稿テキスト・画像・リンク先 URL を設定します",
           "「X で投稿」ボタンでそのまま X の投稿画面が開きます",
           "トラッキングリンクを設定すると友達追加ユーザーの計測も可能です",
         ]},
-        { icon: "⚠️", title: "注意点", points: [
+        { title: "注意点", points: [
           "投稿テキストは X の文字数制限（280 文字）に注意してください",
           "画像 URL は公開アクセス可能な HTTPS URL のみ有効です",
         ]},
@@ -350,7 +350,7 @@ export default function SnsPage() {
                   utmUrl={addForm.target_url.trim() ? buildUtmUrl(addForm.target_url.trim(), "preview") : ""}
                 />
                 {addForm.target_url.trim() && (
-                  <p style={{ fontSize: 11, color: "#06C755", marginTop: 6 }}>✓ 保存時にトラッキングが自動作成されます</p>
+                  <p style={{ fontSize: 11, color: "#06C755", marginTop: 6 }}>保存時にトラッキングが自動作成されます</p>
                 )}
               </div>
             </div>
@@ -523,7 +523,7 @@ export default function SnsPage() {
                           onClick={() => handleCopy(post)}
                         >
                           {isCopied ? (
-                            <>✓ コピー済み</>
+                            <>コピー済み</>
                           ) : (
                             <>
                               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -678,9 +678,9 @@ function XPostPreview({ text, imageUrl, targetUrl, utmUrl }: {
             borderTop: "1px solid #e5e7eb",
             color: "#536471", fontSize: 12,
           }}>
-            {[{ icon: "💬", n: 0 }, { icon: "🔁", n: 0 }, { icon: "❤️", n: 0 }].map(({ icon, n }) => (
-              <span key={icon} style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-                {icon} {n}
+            {[{ label: "返信", n: 0 }, { label: "RT", n: 0 }, { label: "いいね", n: 0 }].map(({ label, n }) => (
+              <span key={label} style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                {label} {n}
               </span>
             ))}
           </div>

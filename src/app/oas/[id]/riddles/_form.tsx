@@ -28,13 +28,12 @@ import type {
 export const QUESTION_TYPE_OPTIONS: {
   value: RiddleQuestionType;
   label: string;
-  icon:  string;
   desc:  string;
 }[] = [
-  { value: "text",     label: "テキスト",           icon: "📝", desc: "文字で出題" },
-  { value: "image",    label: "画像",               icon: "🖼",  desc: "画像で出題" },
-  { value: "video",    label: "動画",               icon: "🎬", desc: "動画URLで出題" },
-  { value: "carousel", label: "カルーセル",          icon: "🎠", desc: "複数カードで出題" },
+  { value: "text",     label: "テキスト",           desc: "文字で出題" },
+  { value: "image",    label: "画像",               desc: "画像で出題" },
+  { value: "video",    label: "動画",               desc: "動画URLで出題" },
+  { value: "carousel", label: "カルーセル",          desc: "複数カードで出題" },
 ];
 
 export const MATCH_CONDITION_OPTIONS: {
@@ -366,7 +365,7 @@ export function RiddleForm({
                 marginBottom: -2,
               }}
             >
-              {t === "form" ? "✏️ 編集" : "💬 プレビュー"}
+              {t === "form" ? "編集" : "プレビュー"}
             </button>
           ))}
         </div>
@@ -403,7 +402,7 @@ export function RiddleForm({
           <div className="form-group">
             <label>問題形式 <span style={{ color: "#ef4444" }}>*</span></label>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))", gap: 8 }}>
-              {QUESTION_TYPE_OPTIONS.map(({ value, label, icon, desc }) => (
+              {QUESTION_TYPE_OPTIONS.map(({ value, label, desc }) => (
                 <label
                   key={value}
                   style={{
@@ -419,7 +418,6 @@ export function RiddleForm({
                     onChange={() => setField("question_type", value)}
                     style={{ display: "none" }}
                   />
-                  <span style={{ fontSize: 22 }}>{icon}</span>
                   <span style={{ fontSize: 12, fontWeight: 600, color: qType === value ? "#06C755" : "#374151" }}>
                     {label}
                   </span>

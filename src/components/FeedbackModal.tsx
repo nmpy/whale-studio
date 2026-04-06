@@ -68,8 +68,8 @@ function getPageName(pathname: string): string {
 const CATEGORIES = [
   { value: "bug",     label: "🐛 バグ報告" },
   { value: "ux",      label: "😓 使いにくさ" },
-  { value: "feature", label: "✨ 欲しい機能" },
-  { value: "other",   label: "💬 その他" },
+  { value: "feature", label: "欲しい機能" },
+  { value: "other",   label: "その他" },
 ] as const;
 
 type CategoryValue = typeof CATEGORIES[number]["value"];
@@ -313,7 +313,6 @@ export default function FeedbackModal({ pathname, onClose, pricingSource }: Prop
             fontSize: 24,
             margin: "0 auto 20px",
           }}>
-            ✓
           </div>
 
           {/* 見出し */}
@@ -395,7 +394,7 @@ export default function FeedbackModal({ pathname, onClose, pricingSource }: Prop
                   width:        sp ? "100%" : "auto",
                 }}
               >
-                {copied ? "✓ コピーしました" : "📋 メールをコピー"}
+                {copied ? "コピーしました" : "メールをコピー"}
               </button>
             </div>
           </div>
@@ -428,7 +427,7 @@ export default function FeedbackModal({ pathname, onClose, pricingSource }: Prop
       }}>
         <div>
           <h2 style={{ fontSize: 15, fontWeight: 700, color: "#111827", margin: 0 }}>
-            {isPricingMode ? "📋 editorプランについて相談する" : "💬 フィードバックを送る"}
+            {isPricingMode ? "editorプランについて相談する" : "フィードバックを送る"}
           </h2>
           <p style={{ fontSize: 11, color: "#9ca3af", margin: "2px 0 0" }}>
             {isPricingMode ? "個別にご確認のうえ、ご案内します" : `現在のページ: ${pageName}`}

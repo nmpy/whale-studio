@@ -278,19 +278,19 @@ export default function WorkAudiencePage() {
       </div>
 
       <HelpAccordion items={[
-        { icon: "✅", title: "この画面でできること", points: [
+        { title: "この画面でできること", points: [
           "プレイヤーの進捗・離脱・クリア率などの統計を確認できます",
           "リアルタイムで現在プレイ中のユーザーを把握できます",
           "セグメントでユーザーをグループ化して分析できます",
         ]},
-        { icon: "📊", title: "各タブの説明", points: [
+        { title: "各タブの説明", points: [
           "データ分析: 総合統計・フェーズ別クリア率・離脱ポイント",
           "リアルタイム: 現在プレイ中・詰まり中のユーザー一覧",
           "フロー分析: フェーズごとの到達・クリア・離脱の詳細",
           "セグメント: 条件でユーザーをグループ化",
           "トラッキング: 流入元の計測とユーザー帰属",
         ]},
-        { icon: "⚠️", title: "注意点", points: [
+        { title: "注意点", points: [
           "データは LINE webhook の受信時に更新されます",
           "リアルタイムは 30 秒間隔で自動更新できます（自動更新ボタン）",
         ]},
@@ -307,11 +307,11 @@ export default function WorkAudiencePage() {
 
       {/* タブ */}
       <div style={{ borderBottom: "1px solid #e5e5e5", marginBottom: 20, display: "flex", gap: 0, overflowX: "auto" }}>
-        <button style={tabStyle("data")}     onClick={() => switchTab("data")}>📊 データ分析</button>
+        <button style={tabStyle("data")}     onClick={() => switchTab("data")}>データ分析</button>
         <button style={tabStyle("realtime")} onClick={() => switchTab("realtime")}>🔴 リアルタイム</button>
         <button style={tabStyle("flow")}     onClick={() => switchTab("flow")}>🧭 フロー分析</button>
         <button style={tabStyle("segments")} onClick={() => switchTab("segments")}>
-          👥 セグメント{!baseLoading && <span style={{ fontSize: 11, color: "#9ca3af", marginLeft: 4 }}>({segments.length})</span>}
+          セグメント{!baseLoading && <span style={{ fontSize: 11, color: "#9ca3af", marginLeft: 4 }}>({segments.length})</span>}
         </button>
         <button style={tabStyle("tracking")} onClick={() => switchTab("tracking")}>
           🔗 トラッキング{!baseLoading && <span style={{ fontSize: 11, color: "#9ca3af", marginLeft: 4 }}>({trackings.length})</span>}
@@ -328,19 +328,19 @@ export default function WorkAudiencePage() {
 
           {/* KPI カード */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
-            <KpiCard icon="👥" label="プレイヤー数"
+            <KpiCard label="プレイヤー数"
               value={analytics?.summary.total_players}
               color="#111827" loading={anaLoading} />
-            <KpiCard icon="✅" label="クリア率"
+            <KpiCard label="クリア率"
               value={analytics ? `${analytics.summary.clear_rate}%` : undefined}
               color={analytics ? (analytics.summary.clear_rate >= 70 ? "#16a34a" : analytics.summary.clear_rate >= 40 ? "#d97706" : "#ef4444") : "#9ca3af"}
               loading={anaLoading}
               note={analytics ? `${analytics.summary.total_clears}人クリア` : undefined} />
-            <KpiCard icon="🚪" label="離脱率"
+            <KpiCard label="離脱率"
               value={analytics ? `${analytics.summary.dropout_rate}%` : undefined}
               color={analytics ? (analytics.summary.dropout_rate <= 20 ? "#16a34a" : analytics.summary.dropout_rate <= 40 ? "#d97706" : "#ef4444") : "#9ca3af"}
               loading={anaLoading} note="24h以上未操作" />
-            <KpiCard icon="💡" label="ヒント使用率"
+            <KpiCard label="ヒント使用率"
               value={analytics ? `${analytics.summary.hint_usage_rate}%` : undefined}
               color="#7c3aed" loading={anaLoading} note="1回以上使用" />
           </div>
@@ -413,7 +413,7 @@ export default function WorkAudiencePage() {
           {/* 離脱分布 */}
           {!anaLoading && analytics && analytics.dropout_distribution.length > 0 && (
             <div className="card">
-              <div style={{ fontWeight: 500, fontSize: 13, color: "#6b7280", marginBottom: 14 }}>⚠️ 離脱分布</div>
+              <div style={{ fontWeight: 500, fontSize: 13, color: "#6b7280", marginBottom: 14 }}>離脱分布</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 {analytics.dropout_distribution.map((d) => (
                   <div key={d.phase_id}>
@@ -453,13 +453,12 @@ export default function WorkAudiencePage() {
           {/* リアルタイムサマリー */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 12 }}>
             {[
-              { label: "現在プレイ中",    v: analytics?.realtime.currently_playing, icon: "▶",  color: "#16a34a", note: "30分以内にアクティブ" },
-              { label: "本日開始",        v: analytics?.realtime.started_today,     icon: "🆕", color: "#2563eb", note: "" },
-              { label: "本日クリア",      v: analytics?.realtime.cleared_today,     icon: "🎉", color: "#7c3aed", note: "" },
-              { label: "7日間アクティブ", v: analytics?.realtime.active_last_7d,   icon: "📅", color: "#d97706", note: "" },
-            ].map(({ label, v, icon, color, note }) => (
+              { label: "現在プレイ中",    v: analytics?.realtime.currently_playing, color: "#16a34a", note: "30分以内にアクティブ" },
+              { label: "本日開始",        v: analytics?.realtime.started_today,     color: "#2563eb", note: "" },
+              { label: "本日クリア",      v: analytics?.realtime.cleared_today,     color: "#7c3aed", note: "" },
+              { label: "7日間アクティブ", v: analytics?.realtime.active_last_7d,   color: "#d97706", note: "" },
+            ].map(({ label, v, color, note }) => (
               <div key={label} className="card" style={{ padding: "16px 20px", textAlign: "center" }}>
-                <div style={{ fontSize: 22, marginBottom: 6 }}>{icon}</div>
                 <div style={{ fontSize: 12, color: "#9ca3af", marginBottom: 6, fontWeight: 400 }}>{label}</div>
                 {anaLoading ? <div className="skeleton" style={{ width: 60, height: 28, margin: "0 auto" }} />
                   : <div style={{ fontSize: 30, fontWeight: 700, color }}>{v ?? "—"}</div>}
@@ -499,7 +498,7 @@ export default function WorkAudiencePage() {
 
           {/* 詰まり検知 */}
           <div className="card">
-            <div style={{ fontWeight: 500, fontSize: 13, color: "#6b7280", marginBottom: 4 }}>⚠️ 詰まり検知</div>
+            <div style={{ fontWeight: 500, fontSize: 13, color: "#6b7280", marginBottom: 4 }}>詰まり検知</div>
             <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 14 }}>10分以上同じフェーズに滞在（24時間未満）</div>
             {anaLoading ? (
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -507,7 +506,7 @@ export default function WorkAudiencePage() {
               </div>
             ) : !analytics || analytics.stuck_players.length === 0 ? (
               <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "12px 16px", background: "#f0fdf4", borderRadius: 8 }}>
-                <span>✅</span><span style={{ fontSize: 13, color: "#16a34a", fontWeight: 500 }}>詰まっているプレイヤーはいません</span>
+                <span style={{ fontSize: 13, color: "#16a34a", fontWeight: 500 }}>詰まっているプレイヤーはいません</span>
               </div>
             ) : (
               <>
@@ -529,7 +528,7 @@ export default function WorkAudiencePage() {
           {/* プレイヤー詳細 */}
           <div className="card" style={{ padding: 0 }}>
             <div style={{ padding: "14px 20px 10px", borderBottom: "1px solid #e5e5e5" }}>
-              <div style={{ fontWeight: 500, fontSize: 13, color: "#6b7280" }}>👤 プレイヤー詳細（最新100件）</div>
+              <div style={{ fontWeight: 500, fontSize: 13, color: "#6b7280" }}>プレイヤー詳細（最新100件）</div>
             </div>
             {anaLoading ? (
               <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 8 }}>
@@ -580,20 +579,20 @@ export default function WorkAudiencePage() {
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
             <RefreshButton />
             <Link href={`/oas/${oaId}/works/${workId}/scenario`} className="btn btn-ghost" style={{ fontSize: 12 }}>
-              🗺 シナリオフロー（設計）→
+              シナリオフロー（設計）→
             </Link>
           </div>
           <AnaErrorBanner />
 
           {/* サマリー */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
-            <FlowMiniCard loading={anaLoading} icon="👥" label="総プレイヤー数" value={analytics?.summary.total_players} color="#111827" />
-            <FlowMiniCard loading={anaLoading} icon="▶" label="現在プレイ中" value={analytics?.realtime.currently_playing} color="#2563eb" />
-            <FlowMiniCard loading={anaLoading} icon="✅" label="クリア率"
+            <FlowMiniCard loading={anaLoading} label="総プレイヤー数" value={analytics?.summary.total_players} color="#111827" />
+            <FlowMiniCard loading={anaLoading} label="現在プレイ中" value={analytics?.realtime.currently_playing} color="#2563eb" />
+            <FlowMiniCard loading={anaLoading} label="クリア率"
               value={analytics ? `${analytics.summary.clear_rate}%` : undefined}
               color={analytics ? flowRateColor(analytics.summary.clear_rate) : "#9ca3af"}
             />
-            <FlowMiniCard loading={anaLoading} icon="⚠" label="詰まり中" value={analytics?.stuck_players.length} color="#d97706" />
+            <FlowMiniCard loading={anaLoading} label="詰まり中" value={analytics?.stuck_players.length} color="#d97706" />
           </div>
 
           {/* フェーズ別進行分析 */}
@@ -670,7 +669,7 @@ export default function WorkAudiencePage() {
                 </div>
               ) : !analytics || analytics.stuck_players.length === 0 ? (
                 <div style={{ padding: "32px 16px", textAlign: "center", color: "#9ca3af", fontSize: 13 }}>
-                  詰まり中のプレイヤーなし 🎉
+                  詰まり中のプレイヤーなし
                 </div>
               ) : (
                 <div>
@@ -713,7 +712,6 @@ export default function WorkAudiencePage() {
           ) : segments.length === 0 ? (
             <div className="card">
               <div className="empty-state">
-                <div className="empty-state-icon">👥</div>
                 <p className="empty-state-title">セグメントがまだありません</p>
                 <p className="empty-state-desc">ユーザーを絞り込み条件でグループ化して分析できます。</p>
                 <Link href={`/oas/${oaId}/audience/segments/new`} className="btn btn-primary" style={{ marginTop: 8, display: "inline-block" }}>
@@ -843,7 +841,7 @@ export default function WorkAudiencePage() {
                         {trkUrl && (
                           <button onClick={() => copyTrackingUrl(trk)} className="btn btn-ghost"
                             style={{ padding: "6px 14px", fontSize: 12, flexShrink: 0, color: isCopied ? "#16a34a" : undefined }}>
-                            {isCopied ? "✓ コピー済み" : "コピー"}
+                            {isCopied ? "コピー済み" : "コピー"}
                           </button>
                         )}
                       </div>
@@ -872,13 +870,12 @@ function flowRateColor(rate: number): string {
 
 // ── FlowMiniCard ──────────────────────────────────────────────────────────────
 function FlowMiniCard({
-  loading, icon, label, value, color,
+  loading, label, value, color,
 }: {
-  loading: boolean; icon: string; label: string; value?: number | string; color: string;
+  loading: boolean; label: string; value?: number | string; color: string;
 }) {
   return (
     <div className="card" style={{ textAlign: "center" }}>
-      <p style={{ fontSize: 20, marginBottom: 4 }}>{icon}</p>
       <p style={{ fontSize: 11, color: "#6b7280", marginBottom: 6 }}>{label}</p>
       {loading ? (
         <div className="skeleton" style={{ height: 28, width: 80, margin: "0 auto" }} />
@@ -905,10 +902,10 @@ function FlowPhaseStats({
         const hasStuck   = ps.stuck > 0;
 
         const segments = [
-          { pct: ps.clear_rate, color: "#22c55e", label: `✅ ${ps.clear_rate}%` },
-          { pct: dropPct,       color: "#ef4444", label: `🚪 ${dropPct}%` },
-          { pct: currentPct,    color: "#3b82f6", label: `▶ ${currentPct}%` },
-          { pct: stuckPct,      color: "#f59e0b", label: `⚠ ${stuckPct}%` },
+          { pct: ps.clear_rate, color: "#22c55e", label: `${ps.clear_rate}%` },
+          { pct: dropPct,       color: "#ef4444", label: `${dropPct}%` },
+          { pct: currentPct,    color: "#3b82f6", label: `${currentPct}%` },
+          { pct: stuckPct,      color: "#f59e0b", label: `${stuckPct}%` },
         ].filter((s) => s.pct > 0);
 
         return (
@@ -944,10 +941,10 @@ function FlowPhaseStats({
                   ))}
                 </div>
                 <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-                  {ps.cleared > 0 && <FlowSegLabel color="#22c55e" icon="✅" label="クリア" value={ps.cleared} pct={ps.clear_rate} />}
-                  {ps.dropped_out > 0 && <FlowSegLabel color="#ef4444" icon="🚪" label="離脱" value={ps.dropped_out} pct={dropPct} />}
-                  {ps.currently_at > 0 && <FlowSegLabel color="#3b82f6" icon="▶" label="プレイ中" value={ps.currently_at} pct={currentPct} />}
-                  {ps.stuck > 0 && <FlowSegLabel color="#f59e0b" icon="⚠" label="詰まり" value={ps.stuck} pct={stuckPct} warn />}
+                  {ps.cleared > 0 && <FlowSegLabel color="#22c55e" label="クリア" value={ps.cleared} pct={ps.clear_rate} />}
+                  {ps.dropped_out > 0 && <FlowSegLabel color="#ef4444" label="離脱" value={ps.dropped_out} pct={dropPct} />}
+                  {ps.currently_at > 0 && <FlowSegLabel color="#3b82f6" label="プレイ中" value={ps.currently_at} pct={currentPct} />}
+                  {ps.stuck > 0 && <FlowSegLabel color="#f59e0b" label="詰まり" value={ps.stuck} pct={stuckPct} warn />}
                 </div>
               </>
             ) : (
@@ -962,9 +959,9 @@ function FlowPhaseStats({
 
 // ── FlowSegLabel ──────────────────────────────────────────────────────────────
 function FlowSegLabel({
-  color, icon, label, value, pct, warn,
+  color, label, value, pct, warn,
 }: {
-  color: string; icon: string; label: string; value: number; pct: number; warn?: boolean;
+  color: string; label: string; value: number; pct: number; warn?: boolean;
 }) {
   return (
     <span style={{
@@ -974,7 +971,6 @@ function FlowSegLabel({
       border: `1px solid ${color}44`, borderRadius: 6, padding: "2px 8px",
       fontWeight: warn ? 700 : 500,
     }}>
-      <span style={{ color }}>{icon}</span>
       <span>{label}</span>
       <span style={{ fontWeight: 700, color }}>{value}人</span>
       <span style={{ color: "#9ca3af" }}>({pct}%)</span>
@@ -1017,9 +1013,9 @@ function FlowDropoutList({
 
 // ── KpiCard ───────────────────────────────────────────────────────────────────
 function KpiCard({
-  icon, label, value, color, loading, note,
+  label, value, color, loading, note,
 }: {
-  icon: string; label: string; value?: number | string;
+  label: string; value?: number | string;
   color: string; loading: boolean; note?: string;
 }) {
   return (

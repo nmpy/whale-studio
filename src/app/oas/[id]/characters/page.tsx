@@ -82,7 +82,7 @@ function LineMsgPreview({ name, iconImageUrl }: { name: string; iconImageUrl: st
               maxWidth: 185, color: "#222",
               boxShadow: "0 1px 3px rgba(0,0,0,.08)",
             }}>
-              こんにちは！謎解きへようこそ🎉
+              こんにちは！謎解きへようこそ
               <br />最初のヒントをお届けします。
             </div>
           </div>
@@ -354,7 +354,6 @@ export default function CharacterListPage() {
                 ))
               ) : characters.length === 0 ? (
                 <div style={{ padding: "24px 12px", textAlign: "center" }}>
-                  <div style={{ fontSize: 24, marginBottom: 8 }}>🎭</div>
                   <p style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 12, lineHeight: 1.6 }}>
                     まだキャラクターが<br />いません
                   </p>
@@ -582,7 +581,6 @@ export default function CharacterListPage() {
           {/* キャラクター未選択・リストあり時 */}
           {!selectedId && !loading && characters.length > 0 && (
             <div className="card" style={{ padding: "36px 24px", textAlign: "center" }}>
-              <div style={{ fontSize: 32, marginBottom: 12 }}>🎭</div>
               <p style={{ fontSize: 13, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 6 }}>
                 キャラクターを選択してください
               </p>
@@ -649,7 +647,7 @@ export default function CharacterListPage() {
                 {[
                   { label: "表示名", value: editForm.name       || "（未入力）" },
                   { label: "画像",   value: editForm.icon_image_url ? "URL 設定済み" : "（未設定）" },
-                  { label: "状態",   value: editForm.is_active  ? "✅ 有効" : "⚫ 無効" },
+                  { label: "状態",   value: editForm.is_active  ? "有効" : "無効" },
                   { label: "表示順", value: String(editForm.sort_order) },
                 ].map(({ label, value }) => (
                   <div key={label} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>

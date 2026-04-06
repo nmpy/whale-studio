@@ -27,12 +27,12 @@ interface AnalyticsData {
 
 // ── ステップ絵文字 ───────────────────────────────────────────────
 const STEP_ICONS: Record<string, string> = {
-  work_created:      "📝",
-  character_created: "👤",
-  phase_created:     "🗂",
-  message_created:   "💬",
-  flow_connected:    "🔀",
-  previewed:         "▶️",
+  work_created:      "",
+  character_created: "",
+  phase_created:     "",
+  message_created:   "",
+  flow_connected:    "",
+  previewed:         "",
 };
 
 // ── カラー (rate に応じた帯色) ─────────────────────────────────────
@@ -188,7 +188,7 @@ export default function OnboardingAnalyticsPage() {
               );
               return maxDrop.dropoff_from_prev > 0 ? maxDrop.label : "—";
             })(),
-            icon:  "⚠️",
+            icon:  "",
             color: "#dc2626",
             bg:    "#fef2f2",
           },
@@ -221,8 +221,7 @@ export default function OnboardingAnalyticsPage() {
 
         {total_works === 0 ? (
           <div style={{ padding: "40px 20px", textAlign: "center", color: "var(--text-muted)" }}>
-            <div style={{ fontSize: 36, marginBottom: 8 }}>📊</div>
-            <p style={{ fontSize: 14 }}>まだ作品が作成されていません。</p>
+              <p style={{ fontSize: 14 }}>まだ作品が作成されていません。</p>
           </div>
         ) : (
           <div>

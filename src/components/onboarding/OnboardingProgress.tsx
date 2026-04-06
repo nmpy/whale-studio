@@ -94,7 +94,6 @@ export function OnboardingProgress({
 
       {/* ヘッダー */}
       <div className="flex items-center" style={{ gap: 8, marginBottom: 10 }}>
-        <span style={{ fontSize: 15 }}>🚀</span>
         <div>
           <div className="font-bold text-sky-700" style={{ fontSize: 12 }}>
             セットアップの進捗
@@ -138,8 +137,15 @@ export function OnboardingProgress({
               style={{ gap: 8, padding: isNext ? "7px 10px" : "3px 10px" }}
             >
               {/* アイコン */}
-              <span className="flex-shrink-0 text-center" style={{ fontSize: 12, width: 16 }}>
-                {done ? "✅" : isNext ? "👉" : "○"}
+              <span style={{
+                display: "inline-flex", alignItems: "center", justifyContent: "center",
+                width: 20, height: 20, borderRadius: "50%", fontSize: 10, fontWeight: 700,
+                background: done ? "#dcfce7" : isNext ? "#dbeafe" : "#f3f4f6",
+                color:      done ? "#16a34a" : isNext ? "#1d4ed8" : "#9ca3af",
+                border:     `1px solid ${done ? "#86efac" : isNext ? "#93c5fd" : "#e5e7eb"}`,
+                flexShrink: 0,
+              }}>
+                {done ? "✓" : i + 1}
               </span>
 
               {/* ラベル */}

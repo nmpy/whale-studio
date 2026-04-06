@@ -67,10 +67,10 @@ function SummaryBar({ items, worksMap }: { items: OaListItem[]; worksMap: Record
   return (
     <div style={{ display: "flex", gap: 12, marginBottom: 20 }}>
       {[
-        { label: "アカウント数",   value: items.length,                 icon: "📡", color: "#6366f1" },
-        { label: "公開中",         value: activeCount,                  icon: "🟢", color: "var(--color-success)" },
-        { label: "総作品数",       value: totalWorks,                   icon: "🎭", color: "#0ea5e9" },
-        { label: "総プレイヤー数", value: totalPlayers.toLocaleString(), icon: "👥", color: "#f59e0b" },
+        { label: "アカウント数",   value: items.length,                  color: "#6366f1" },
+        { label: "公開中",         value: activeCount,                   color: "var(--color-success)" },
+        { label: "総作品数",       value: totalWorks,                    color: "#0ea5e9" },
+        { label: "総プレイヤー数", value: totalPlayers.toLocaleString(), color: "#f59e0b" },
       ].map((s) => (
         <div key={s.label} style={{
           flex:         1,
@@ -80,7 +80,6 @@ function SummaryBar({ items, worksMap }: { items: OaListItem[]; worksMap: Record
           borderRadius: "var(--radius-md)",
           boxShadow:    "var(--shadow-xs)",
         }}>
-          <div style={{ fontSize: 20, marginBottom: 6 }}>{s.icon}</div>
           <div style={{ fontSize: 20, fontWeight: 800, color: s.color, lineHeight: 1 }}>{s.value}</div>
           <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>{s.label}</div>
         </div>
@@ -415,7 +414,6 @@ export default function OaListPage() {
         borderRadius: "var(--radius-md)", padding: "12px 16px",
         marginBottom: 16, fontSize: 13, color: "#92400e", lineHeight: 1.6,
       }}>
-        <span style={{ fontSize: 16, flexShrink: 0, marginTop: 1 }}>⚠️</span>
         <span>
           現在「Whale Studio β版」では、メッセージの処理に遅延が発生する場合があります。
           現在改善を進めておりますので、あらかじめご了承ください。

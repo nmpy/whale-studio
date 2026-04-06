@@ -25,14 +25,13 @@ export type ExtendedMessageType =
 export const MESSAGE_TYPE_OPTIONS: {
   value: ExtendedMessageType;
   label: string;
-  icon: string;
   desc: string;
 }[] = [
-  { value: "text",     label: "テキスト",     icon: "💬", desc: "テキストメッセージ" },
-  { value: "image",    label: "画像",         icon: "🖼",  desc: "画像メッセージ" },
-  { value: "video",    label: "動画",         icon: "🎬", desc: "動画メッセージ" },
-  { value: "carousel", label: "カルーセル",   icon: "🎠", desc: "カルーセルメッセージ" },
-  { value: "voice",    label: "ボイス",       icon: "🎙", desc: "ボイスメッセージ" },
+  { value: "text",     label: "テキスト",     desc: "テキストメッセージ" },
+  { value: "image",    label: "画像",         desc: "画像メッセージ" },
+  { value: "video",    label: "動画",         desc: "動画メッセージ" },
+  { value: "carousel", label: "カルーセル",   desc: "カルーセルメッセージ" },
+  { value: "voice",    label: "ボイス",       desc: "ボイスメッセージ" },
 ];
 
 /** 謎の配信形式セレクター用（riddle / voice / flex は謎では使用しない） */
@@ -326,7 +325,7 @@ export function validateMessageForm(form: MessageFormState): string | null {
     }
     // フェーズ未設定の警告: 謎は phase_id がないと発火しない
     if (!form.phase_id) {
-      return "⚠️ フェーズが設定されていません。フェーズを指定しないと謎が発火しません。設定してから保存してください。";
+      return "フェーズが設定されていません。フェーズを指定しないと謎が発火しません。設定してから保存してください。";
     }
     return null;
   }
@@ -420,7 +419,7 @@ const QR_ACTION_OPTIONS: { value: QuickReplyAction; label: string; icon: string;
   {
     value: "text",
     label: "テキスト送信",
-    icon: "💬",
+    icon: "",
     hint: "タップすると指定テキストをユーザーが送信します",
     valueLabel: "送信するテキスト",
     valuePlaceholder: "省略時はラベルを送信",
@@ -452,7 +451,7 @@ const QR_ACTION_OPTIONS: { value: QuickReplyAction; label: string; icon: string;
   {
     value: "custom",
     label: "カスタム",
-    icon: "⚙️",
+    icon: "",
     hint: "タップ時に任意のポストバックデータを送信します",
     valueLabel: "カスタムデータ",
     valuePlaceholder: "任意の文字列",
@@ -489,7 +488,7 @@ function QrHintPreview({ hintText, hintFollowup }: { hintText?: string; hintFoll
       marginTop: 8,
     }}>
       <div style={{ fontSize: 10, color: "#16a34a", fontWeight: 700, marginBottom: 7, letterSpacing: 0.5 }}>
-        💬 ユーザーへの返信プレビュー
+        ユーザーへの返信プレビュー
       </div>
       {hintText?.trim() && <div style={bubble}>{hintText}</div>}
       {hintFollowup?.trim() && (
@@ -709,7 +708,7 @@ function QuickReplyEditor({ items, onChange, responseMessages, phases, transitio
                           {item.label || <span style={{ color: "#9ca3af" }}>（ラベル未設定）</span>}
                         </span>
                         {isHint && item.hint_text && (
-                          <span style={{ fontSize: 11, color: "#b45309", flexShrink: 0 }} title="ヒント本文設定済み">💬</span>
+                          <span style={{ fontSize: 11, color: "#b45309", flexShrink: 0 }} title="ヒント本文設定済み"></span>
                         )}
                         <span style={{ fontSize: 10, color: "#9ca3af", marginLeft: "auto", flexShrink: 0 }}>{isExpanded ? "▲" : "▼"}</span>
                       </div>
@@ -1284,7 +1283,7 @@ function KeywordListEditor({ value, onChange, disabled, phases, currentMessageId
                   }}
                   title={alreadyManual ? "手動キーワードにも設定済み" : "QR連携ラベル"}
                 >
-                  {alreadyManual ? "✓ " : ""}{label}
+                  {label}
                 </span>
               );
             })}
@@ -1697,7 +1696,7 @@ function PreviewPanel({ form, characters, riddles }: PreviewPanelProps) {
       width: 36, height: 36, borderRadius: "50%",
       background: "#c9cdd4", flexShrink: 0,
       display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16,
-    }}>📢</div>
+    }}></div>
   );
 
   // ── バブル内コンテンツ ──
@@ -1821,7 +1820,6 @@ function PreviewPanel({ form, characters, riddles }: PreviewPanelProps) {
       case "riddle":
         return (
           <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
-            <span style={{ fontSize: 20 }}>🔍</span>
             <div>
               <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 2 }}>謎チャレンジ</div>
               <div style={{ fontSize: 13, fontWeight: 600, color: "#111" }}>
@@ -1983,7 +1981,6 @@ function PreviewPanel({ form, characters, riddles }: PreviewPanelProps) {
                     cursor: "default",
                   }}
                 >
-                  <span style={{ fontSize: 12 }}>{actionDef?.icon}</span>
                   {qr.label || <span style={{ fontStyle: "italic", opacity: 0.6 }}>ラベル未入力</span>}
                 </span>
               );
@@ -2087,7 +2084,6 @@ function AdditionalMessageBlock({
                   color: mtype === opt.value ? "#06C755" : "#6b7280",
                 }}
               >
-                <span style={{ fontSize: 18 }}>{opt.icon}</span>
                 <span>{opt.label}</span>
               </button>
             ))}
@@ -2490,8 +2486,8 @@ export function MessageForm({
           <SectionAccordion title="メッセージタイプ" defaultOpen={true}>
             <div style={{ display: "flex", gap: 12 }}>
               {([
-                { value: "normal" as const, icon: "💬", label: "メッセージを送る",  desc: "テキストや画像など、通常の会話メッセージ" },
-                { value: "puzzle" as const, icon: "🧩", label: "謎・問題を出す", desc: "回答やヒントを含むインタラクティブなコンテンツ" },
+                { value: "normal" as const, label: "メッセージを送る",  desc: "テキストや画像など、通常の会話メッセージ" },
+                { value: "puzzle" as const, label: "謎・問題を出す", desc: "回答やヒントを含むインタラクティブなコンテンツ" },
               ] as const).map((cat) => {
                 const isActive = cat.value === "puzzle" ? isPuzzle : !isPuzzle;
                 return (
@@ -2519,7 +2515,6 @@ export function MessageForm({
                       transition: "all 0.15s",
                     }}
                   >
-                    <span style={{ fontSize: 28 }}>{cat.icon}</span>
                     <span style={{ fontSize: 14, fontWeight: 700, color: isActive ? "#06C755" : "#374151" }}>
                       {cat.label}
                     </span>
@@ -2553,7 +2548,7 @@ export function MessageForm({
                 <option value="start">開始演出（startTrigger 一致時に送信）</option>
                 <option value="response">応答（trigger_keyword 一致時に返信）</option>
                 <option value="hint">ヒント（将来拡張）</option>
-                <option value="global">💬 共通メッセージ（フェーズ不問・常時反応）</option>
+                <option value="global">共通メッセージ（フェーズ不問・常時反応）</option>
               </select>
               <div style={hintText}>
                 {form.kind === "start"    && "開始フェーズの startTrigger が一致したとき送信されます。フェーズに kind=start のメッセージがない場合は通常メッセージにフォールバックします。"}
@@ -2602,7 +2597,7 @@ export function MessageForm({
               />
               <div style={{ ...hintText, marginTop: 6 }}>
                 {form.kind === "start"  && "kind=start では Phase.startTrigger を使います"}
-                {form.kind === "global" && "⚠️ どのフェーズでも反応します。キーワードは必須です。"}
+                {form.kind === "global" && "どのフェーズでも反応します。キーワードは必須です。"}
                 {form.kind !== "start" && form.kind !== "global" && "複数設定可。いずれかに一致したとき返信します（kind=response 推奨）"}
               </div>
             </div>
@@ -2670,7 +2665,7 @@ export function MessageForm({
                       color: "#dc2626",
                       lineHeight: 1.6,
                     }}>
-                      ⚠️ フェーズが未設定です。このままでは謎が発火しません。必ずフェーズを選択してください。
+                      フェーズが未設定です。このままでは謎が発火しません。必ずフェーズを選択してください。
                     </div>
                   )}
                 </>
@@ -2768,7 +2763,6 @@ export function MessageForm({
                       color: mtype === opt.value ? "#06C755" : "#6b7280",
                     }}
                   >
-                    <span style={{ fontSize: 20 }}>{opt.icon}</span>
                     <span>{opt.label}</span>
                   </button>
                 ))}
@@ -2914,7 +2908,7 @@ export function MessageForm({
                 display: "flex", alignItems: "center", gap: 8,
                 padding: "8px 14px", background: "#dcfce7", borderBottom: "1px solid #d1fae5",
               }}>
-                <span style={{ fontSize: 13, fontWeight: 600, color: "#15803d" }}>💬 1通目の発話</span>
+                <span style={{ fontSize: 13, fontWeight: 600, color: "#15803d" }}>1通目の発話</span>
               </div>
 
               <div style={{ padding: "12px 14px" }}>
@@ -2967,7 +2961,6 @@ export function MessageForm({
                       color: mtype === opt.value ? "#06C755" : "#6b7280",
                     }}
                   >
-                    <span style={{ fontSize: 20 }}>{opt.icon}</span>
                     <span>{opt.label}</span>
                   </button>
                 ))}
@@ -3372,7 +3365,7 @@ export function MessageForm({
               謎の回答設定（puzzle のみ）
           ════════════════════════════════════════ */}
           {isPuzzle && (
-          <SectionAccordion title="⚙️ 謎の回答設定" required defaultOpen={true}>
+          <SectionAccordion title="謎の回答設定" required defaultOpen={true}>
 
             {/* answer */}
             <div className="form-group">
@@ -3521,7 +3514,7 @@ export function MessageForm({
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 {([
                   { value: "always",   label: "💡 常に表示",        desc: "クイックリプライにヒントボタンを常時表示します" },
-                  { value: "on_wrong", label: "⚠️ 不正解時のみ",   desc: "不正解の回答をした後にのみヒントボタンを表示します" },
+                  { value: "on_wrong", label: "不正解時のみ",   desc: "不正解の回答をした後にのみヒントボタンを表示します" },
                   { value: "hidden",   label: "🚫 非表示",          desc: "ヒントボタンを表示しません" },
                 ] as const).map((opt) => (
                   <label

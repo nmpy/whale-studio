@@ -8,12 +8,12 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const NAV_ITEMS = [
-  { href: "/admin/announcements", label: "お知らせ管理",       icon: "📢" },
-  { href: "/admin/documents",     label: "ドキュメント",        icon: "📄" },
-  { href: "/admin/audience",      label: "ユーザー概況",        icon: "👥" },
-  { href: "/admin/onboarding",    label: "オンボーディング分析", icon: "📈" },
-  { href: "/admin/billing",       label: "課金導線分析",        icon: "💰" },
-  { href: "/admin/audit",         label: "操作ログ",            icon: "📋" },
+  { href: "/admin/announcements", label: "お知らせ管理" },
+  { href: "/admin/documents",     label: "ドキュメント" },
+  { href: "/admin/audience",      label: "ユーザー概況" },
+  { href: "/admin/onboarding",    label: "オンボーディング分析" },
+  { href: "/admin/billing",       label: "課金導線分析" },
+  { href: "/admin/audit",         label: "操作ログ" },
 ] as const;
 
 export function AdminSidebar() {
@@ -69,7 +69,6 @@ export function AdminSidebar() {
                 }
               }}
             >
-              <span style={{ fontSize: 15 }}>{item.icon}</span>
               {item.label}
             </Link>
           );

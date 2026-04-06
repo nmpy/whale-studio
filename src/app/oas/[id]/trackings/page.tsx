@@ -41,7 +41,7 @@ function CopyButton({ value }: { value: string }) {
         transition: "all 0.15s",
       }}
     >
-      {copied ? "✓ コピー済" : "コピー"}
+      {copied ? "コピー済" : "コピー"}
     </button>
   );
 }
@@ -134,13 +134,12 @@ function AddForm({
 // ────────────────────="────────────────────────────
 
 function StatBadge({
-  icon, value, label, color,
+  value, label, color,
 }: {
-  icon: string; value: number; label: string; color: string;
+  value: number; label: string; color: string;
 }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", minWidth: 64 }}>
-      <span style={{ fontSize: 18, lineHeight: 1 }}>{icon}</span>
       <span style={{ fontSize: 20, fontWeight: 700, color, lineHeight: 1.2 }}>
         {value.toLocaleString()}
       </span>
@@ -185,9 +184,9 @@ function TrackingCard({
         background: "#f9fafb", borderRadius: 10, flexShrink: 0,
         border: "1px solid #e5e7eb",
       }}>
-        <StatBadge icon="👆" value={tracking.click_count} label="クリック" color="#2563eb" />
+        <StatBadge value={tracking.click_count} label="クリック" color="#2563eb" />
         <div style={{ width: 1, background: "#e5e7eb" }} />
-        <StatBadge icon="👤" value={tracking.user_count}  label="流入ユーザー" color="#16a34a" />
+        <StatBadge value={tracking.user_count}  label="流入ユーザー" color="#16a34a" />
       </div>
 
       {/* 情報 */}
@@ -296,16 +295,16 @@ export default function TrackingsPage() {
       </div>
 
       <HelpAccordion items={[
-        { icon: "✅", title: "この画面でできること", points: [
+        { title: "この画面でできること", points: [
           "/t/[ID] 形式の中間 URL を発行してクリック数を計測します",
           "LINE 友達追加時に直近クリックとユーザーを自動で紐づけます",
         ]},
-        { icon: "👆", title: "操作手順", points: [
+        { title: "操作手順", points: [
           "「+ トラッキングを追加」で名前とリダイレクト先 URL を設定します",
           "発行された /t/[ID] URL を X などの投稿に貼り付けます",
           "クリック数と流入ユーザー数がリアルタイムで更新されます",
         ]},
-        { icon: "🔗", title: "仕組み", points: [
+        { title: "仕組み", points: [
           "クリック → イベント記録 → LINE へリダイレクト",
           "友達追加 webhook で直近 30 分のクリックと紐づけ",
           "UTM パラメータを付与することで Google Analytics でも計測できます",
@@ -315,7 +314,7 @@ export default function TrackingsPage() {
       {/* 仕組み説明 */}
       <div className="card" style={{ marginBottom: 20, background: "#eff6ff", border: "1px solid #bfdbfe" }}>
         <p style={{ fontSize: 13, color: "#1d4ed8", margin: 0, lineHeight: 1.7 }}>
-          <strong>📊 仕組み</strong><br />
+          <strong>仕組み</strong><br />
           X（旧Twitter）などに<code style={{ fontSize: 12 }}>/t/[ID]</code>のURLを投稿 →
           クリック時にイベントを記録してLINEへリダイレクト →
           友達追加時（follow webhook）に直近クリックと紐づけてユーザーを帰属。

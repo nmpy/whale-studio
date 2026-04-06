@@ -476,7 +476,7 @@ export default function RichMenuEditorPage() {
           <h2>🎨 {menuName || "リッチメニュー編集"}</h2>
           {lineMenuId && (
             <p style={{ fontSize: 12, color: "#15803d", marginTop: 4 }}>
-              ✅ LINE 適用済み（ID: {lineMenuId}）
+              LINE 適用済み（ID: {lineMenuId}）
             </p>
           )}
         </div>
@@ -675,7 +675,7 @@ export default function RichMenuEditorPage() {
                   )}
                   {imgLoadState === "success" && (
                     <span style={{ color: "#15803d" }}>
-                      ✅ 画像を確認できました（左のプレビューに反映）
+                      画像を確認できました（左のプレビューに反映）
                     </span>
                   )}
                   {imgLoadState === "error" && (

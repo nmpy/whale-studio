@@ -24,12 +24,12 @@ interface OnboardingAnalytics {
 // ── 定数 ──────────────────────────────────────────────────────────────────
 
 const STEP_ICONS: Record<string, string> = {
-  work_created:      "📝",
-  character_created: "👤",
-  phase_created:     "🗂",
-  message_created:   "💬",
-  flow_connected:    "🔀",
-  previewed:         "▶️",
+  work_created:      "",
+  character_created: "",
+  phase_created:     "",
+  message_created:   "",
+  flow_connected:    "",
+  previewed:         "",
 };
 
 // ── ヘルパー ──────────────────────────────────────────────────────────────
@@ -223,7 +223,6 @@ export default function AdminOnboardingPage() {
           borderRadius: "var(--radius-md, 10px)",
           fontSize:     13,
         }}>
-          <span style={{ fontSize: 16, flexShrink: 0 }}>⚠️</span>
           <div>
             <span style={{ fontWeight: 700, color: "#92400e" }}>最大離脱ポイント</span>
             <span style={{ color: "#78350f", marginLeft: 8 }}>

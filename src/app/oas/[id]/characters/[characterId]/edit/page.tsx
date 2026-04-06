@@ -100,7 +100,7 @@ function LineMsgPreview({ name, iconImageUrl }: { name: string; iconImageUrl: st
               maxWidth: 185, color: "#222",
               boxShadow: "0 1px 3px rgba(0,0,0,.08)",
             }}>
-              こんにちは！謎解きへようこそ🎉
+              こんにちは！謎解きへようこそ
               <br />最初のヒントをお届けします。
             </div>
           </div>
@@ -431,7 +431,7 @@ export default function CharacterEditPage() {
               {[
                 { label: "表示名", value: form!.name || "（未入力）" },
                 { label: "画像",   value: form!.icon_image_url ? "URL 設定済み" : "（未設定）" },
-                { label: "状態",   value: form!.is_active ? "✅ 有効" : "⚫ 無効" },
+                { label: "状態",   value: form!.is_active ? "有効" : "無効" },
                 { label: "表示順", value: String(form!.sort_order) },
               ].map(({ label, value }) => (
                 <div key={label} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>

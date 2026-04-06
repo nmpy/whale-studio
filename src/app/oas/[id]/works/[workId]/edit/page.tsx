@@ -152,7 +152,7 @@ export default function WorkEditPage() {
         </div>
         <div style={{ display: "flex", gap: 8 }}>
           <Link href={`/oas/${oaId}/works/${workId}/dashboard`} className="btn btn-ghost">
-            📊 ダッシュボード
+            ダッシュボード
           </Link>
           {canEdit && (
             <button
@@ -160,7 +160,7 @@ export default function WorkEditPage() {
               disabled={duplicating}
               onClick={handleDuplicate}
             >
-              {duplicating ? <><span className="spinner" /> 複製中...</> : "📋 複製"}
+              {duplicating ? <><span className="spinner" /> 複製中...</> : "複製"}
             </button>
           )}
         </div>

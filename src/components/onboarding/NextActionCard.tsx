@@ -37,7 +37,7 @@ export function NextActionCard({ oaId, workId, hasCharacters, hasPhases }: Props
             className="inline-flex items-center rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-semibold transition-colors"
             style={{ gap: 6, padding: "7px 14px", fontSize: 12 }}
           >
-            👤 キャラクター作成
+            キャラクター作成
           </Link>
         )}
         {!hasPhases && (
@@ -46,7 +46,7 @@ export function NextActionCard({ oaId, workId, hasCharacters, hasPhases }: Props
             className="inline-flex items-center rounded-xl border border-emerald-300 text-emerald-700 hover:bg-emerald-50 font-semibold transition-colors"
             style={{ gap: 6, padding: "7px 14px", fontSize: 12 }}
           >
-            🗂 フェーズ作成
+            フェーズ作成
           </Link>
         )}
       </div>

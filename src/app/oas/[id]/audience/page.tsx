@@ -309,11 +309,11 @@ export default function AudiencePage() {
 
       {/* タブ */}
       <div style={{ borderBottom: "1px solid #e5e5e5", marginBottom: 20, display: "flex", gap: 0, overflowX: "auto" }}>
-        <button style={tabStyle("data")}     onClick={() => switchTab("data")}>📊 データ分析</button>
+        <button style={tabStyle("data")}     onClick={() => switchTab("data")}>データ分析</button>
         <button style={tabStyle("realtime")} onClick={() => switchTab("realtime")}>🔴 リアルタイム</button>
         <button style={tabStyle("flow")}     onClick={() => switchTab("flow")}>🧭 フロー分析</button>
         <button style={tabStyle("segments")} onClick={() => switchTab("segments")}>
-          👥 セグメント{!baseLoading && <span style={{ fontSize: 11, color: "#9ca3af", marginLeft: 4 }}>({segments.length})</span>}
+          セグメント{!baseLoading && <span style={{ fontSize: 11, color: "#9ca3af", marginLeft: 4 }}>({segments.length})</span>}
         </button>
         <button style={tabStyle("tracking")} onClick={() => switchTab("tracking")}>
           🔗 トラッキング{!baseLoading && <span style={{ fontSize: 11, color: "#9ca3af", marginLeft: 4 }}>({trackings.length})</span>}
@@ -329,27 +329,27 @@ export default function AudiencePage() {
           {/* KPI カード */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
             <KpiCard
-              icon="👥" label="プレイヤー数"
+              label="プレイヤー数"
               value={analytics?.summary.total_players}
               color="#111827"
               loading={anaLoading}
             />
             <KpiCard
-              icon="✅" label="クリア率"
+              label="クリア率"
               value={analytics ? `${analytics.summary.clear_rate}%` : undefined}
               color={analytics ? (analytics.summary.clear_rate >= 70 ? "#16a34a" : analytics.summary.clear_rate >= 40 ? "#d97706" : "#ef4444") : "#9ca3af"}
               loading={anaLoading}
               note={analytics ? `${analytics.summary.total_clears}人クリア` : undefined}
             />
             <KpiCard
-              icon="🚪" label="離脱率"
+              label="離脱率"
               value={analytics ? `${analytics.summary.dropout_rate}%` : undefined}
               color={analytics ? (analytics.summary.dropout_rate <= 20 ? "#16a34a" : analytics.summary.dropout_rate <= 40 ? "#d97706" : "#ef4444") : "#9ca3af"}
               loading={anaLoading}
               note="24h以上未操作"
             />
             <KpiCard
-              icon="💡" label="ヒント使用率"
+              label="ヒント使用率"
               value={analytics ? `${analytics.summary.hint_usage_rate}%` : undefined}
               color="#7c3aed"
               loading={anaLoading}
@@ -425,7 +425,7 @@ export default function AudiencePage() {
           {/* 離脱分布 */}
           {!anaLoading && analytics && analytics.dropout_distribution.length > 0 && (
             <div className="card">
-              <div style={{ fontWeight: 700, fontSize: 14, color: "#111827", marginBottom: 14 }}>⚠️ 離脱分布</div>
+              <div style={{ fontWeight: 700, fontSize: 14, color: "#111827", marginBottom: 14 }}>離脱分布</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 {analytics.dropout_distribution.map((d) => (
                   <div key={d.phase_id}>
@@ -470,13 +470,12 @@ export default function AudiencePage() {
           {/* リアルタイムサマリー */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 12 }}>
             {[
-              { label: "現在プレイ中",    v: analytics?.realtime.currently_playing, icon: "▶",  color: "#16a34a", note: "30分以内にアクティブ" },
-              { label: "本日開始",        v: analytics?.realtime.started_today,     icon: "🆕", color: "#2563eb", note: "" },
-              { label: "本日クリア",      v: analytics?.realtime.cleared_today,     icon: "🎉", color: "#7c3aed", note: "" },
-              { label: "7日間アクティブ", v: analytics?.realtime.active_last_7d,   icon: "📅", color: "#d97706", note: "" },
-            ].map(({ label, v, icon, color, note }) => (
+              { label: "現在プレイ中",    v: analytics?.realtime.currently_playing, color: "#16a34a", note: "30分以内にアクティブ" },
+              { label: "本日開始",        v: analytics?.realtime.started_today,     color: "#2563eb", note: "" },
+              { label: "本日クリア",      v: analytics?.realtime.cleared_today,     color: "#7c3aed", note: "" },
+              { label: "7日間アクティブ", v: analytics?.realtime.active_last_7d,   color: "#d97706", note: "" },
+            ].map(({ label, v, color, note }) => (
               <div key={label} className="card" style={{ padding: "16px 20px", textAlign: "center" }}>
-                <div style={{ fontSize: 22, marginBottom: 6 }}>{icon}</div>
                 <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 6, fontWeight: 600 }}>{label}</div>
                 {anaLoading ? <div className="skeleton" style={{ width: 60, height: 28, margin: "0 auto" }} />
                   : <div style={{ fontSize: 28, fontWeight: 800, color }}>{v ?? "—"}</div>}
@@ -516,7 +515,7 @@ export default function AudiencePage() {
 
           {/* 詰まり検知 */}
           <div className="card">
-            <div style={{ fontWeight: 700, fontSize: 14, color: "#111827", marginBottom: 4 }}>⚠️ 詰まり検知</div>
+            <div style={{ fontWeight: 700, fontSize: 14, color: "#111827", marginBottom: 4 }}>詰まり検知</div>
             <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 14 }}>10分以上同じフェーズに滞在（24時間未満）</div>
             {anaLoading ? (
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -524,7 +523,7 @@ export default function AudiencePage() {
               </div>
             ) : !analytics || analytics.stuck_players.length === 0 ? (
               <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "12px 16px", background: "#f0fdf4", borderRadius: 8 }}>
-                <span>✅</span><span style={{ fontSize: 13, color: "#16a34a", fontWeight: 500 }}>詰まっているプレイヤーはいません</span>
+                <span style={{ fontSize: 13, color: "#16a34a", fontWeight: 500 }}>詰まっているプレイヤーはいません</span>
               </div>
             ) : (
               <>
@@ -546,7 +545,7 @@ export default function AudiencePage() {
           {/* プレイヤー詳細 */}
           <div className="card" style={{ padding: 0 }}>
             <div style={{ padding: "14px 20px 10px", borderBottom: "1px solid #e5e5e5" }}>
-              <div style={{ fontWeight: 700, fontSize: 14, color: "#111827" }}>👤 プレイヤー詳細（最新100件）</div>
+              <div style={{ fontWeight: 700, fontSize: 14, color: "#111827" }}>プレイヤー詳細（最新100件）</div>
             </div>
             {anaLoading ? (
               <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 8 }}>
@@ -602,7 +601,7 @@ export default function AudiencePage() {
                 className="btn btn-ghost"
                 style={{ fontSize: 12 }}
               >
-                🗺 シナリオフロー（設計）→
+                シナリオフロー（設計）→
               </Link>
             )}
           </div>
@@ -611,12 +610,11 @@ export default function AudiencePage() {
           {/* サマリー */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 12 }}>
             {[
-              { label: "総プレイヤー数", v: analytics?.summary.total_players,            icon: "👥", color: "#111827" },
-              { label: "クリア率",       v: analytics ? `${analytics.summary.clear_rate}%` : undefined, icon: "✅", color: "#16a34a" },
-              { label: "詰まり中",       v: analytics?.stuck_players.length,              icon: "⚠️", color: "#d97706" },
-            ].map(({ label, v, icon, color }) => (
+              { label: "総プレイヤー数", v: analytics?.summary.total_players,            color: "#111827" },
+              { label: "クリア率",       v: analytics ? `${analytics.summary.clear_rate}%` : undefined, color: "#16a34a" },
+              { label: "詰まり中",       v: analytics?.stuck_players.length,              color: "#d97706" },
+            ].map(({ label, v, color }) => (
               <div key={label} className="card" style={{ padding: "16px 20px", textAlign: "center" }}>
-                <div style={{ fontSize: 22, marginBottom: 6 }}>{icon}</div>
                 <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 6, fontWeight: 600 }}>{label}</div>
                 {anaLoading
                   ? <div className="skeleton" style={{ width: 60, height: 28, margin: "0 auto" }} />
@@ -771,7 +769,6 @@ export default function AudiencePage() {
           ) : segments.length === 0 ? (
             <div className="card">
               <div className="empty-state">
-                <div className="empty-state-icon">👥</div>
                 <p className="empty-state-title">セグメントがまだありません</p>
                 <p className="empty-state-desc">ユーザーを絞り込み条件でグループ化して分析できます。</p>
                 <Link href={`/oas/${oaId}/audience/segments/new`} className="btn btn-primary" style={{ marginTop: 8, display: "inline-block" }}>
@@ -913,7 +910,7 @@ export default function AudiencePage() {
                         {trkUrl && (
                           <button onClick={() => copyTrackingUrl(trk)} className="btn btn-ghost"
                             style={{ padding: "6px 14px", fontSize: 12, flexShrink: 0, color: isCopied ? "#16a34a" : undefined }}>
-                            {isCopied ? "✓ コピー済み" : "コピー"}
+                            {isCopied ? "コピー済み" : "コピー"}
                           </button>
                         )}
                       </div>
@@ -935,9 +932,8 @@ export default function AudiencePage() {
 
 // ── KpiCard ───────────────────────────────────────────────────────────────────
 function KpiCard({
-  icon, label, value, color, loading, note,
+  label, value, color, loading, note,
 }: {
-  icon: string;
   label: string;
   value?: number | string;
   color: string;
@@ -946,7 +942,6 @@ function KpiCard({
 }) {
   return (
     <div className="card" style={{ textAlign: "center", padding: "18px 16px" }}>
-      <div style={{ fontSize: 24, marginBottom: 6 }}>{icon}</div>
       <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 6, fontWeight: 600 }}>{label}</div>
       {loading ? (
         <div className="skeleton" style={{ width: 70, height: 32, margin: "0 auto" }} />

@@ -328,7 +328,7 @@ export default function PhaseDetailPage() {
       <div style={{ maxWidth: 640, marginBottom: 32 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8, gap: 12 }}>
           <div>
-            <h3 style={{ fontSize: 15, fontWeight: 700 }}>💬 メッセージ</h3>
+            <h3 style={{ fontSize: 15, fontWeight: 700 }}>メッセージ</h3>
             <p style={{ fontSize: 12, color: "#6b7280", marginTop: 2 }}>
               このフェーズで Bot が送信するメッセージを管理します。
             </p>

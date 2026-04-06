@@ -293,9 +293,6 @@ export default function AppHeader() {
                         </span>
 
                         {/* チェックマーク */}
-                        {isActive && (
-                          <span style={{ fontSize: 13, color, flexShrink: 0 }}>✓</span>
-                        )}
                       </button>
                     );
                   })}
@@ -428,7 +425,6 @@ export default function AppHeader() {
               }}
               aria-label="気づいた点を送る"
             >
-              <span style={{ fontSize: 14 }}>💬</span>
               気づいた点を送る
             </button>
           )}

@@ -425,22 +425,22 @@ export default function ScenarioPage() {
               cursor: "pointer", transition: "background 0.15s, color 0.15s",
             }}
           >
-            {v === "card" ? "📋 カードビュー" : "🗺 ノードビュー"}
+            {v === "card" ? "カードビュー" : "ノードビュー"}
           </button>
         ))}
       </div>
 
       <HelpAccordion items={[
-        { icon: "✅", title: "この画面でできること", points: [
+        { title: "この画面でできること", points: [
           "フェーズ名・種別の編集、有効/無効の切り替え、複製・削除がカード上で直接できます",
           "フェーズカードはクリックして展開するとメッセージ一覧と分岐が確認できます",
           "詳細な設定はカード内「詳細を開く」または「フェーズを管理」から行ってください",
         ]},
-        { icon: "↕", title: "フェーズの並び替え", points: [
+        { title: "フェーズの並び替え", points: [
           "フェーズカード左端の ⠿ ハンドルをドラッグして並び順を変更できます",
           "並び替え結果は自動で保存されます",
         ]},
-        { icon: "🗺", title: "フローの読み方", points: [
+        { title: "フローの読み方", points: [
           "「開始」フェーズから始まり「エンディング」フェーズで終わります",
           "矢印は遷移条件（正解・不正解など）を表します",
           "遷移のないフェーズには必ず接続してください",
@@ -450,7 +450,6 @@ export default function ScenarioPage() {
       {/* ── 初回ガイド（フェーズ未作成時） ── */}
       {!loading && phases.length === 0 && (
         <GuideCard
-          icon="🗂"
           message="フェーズ同士をつなげて、物語の進行を作ります。開始・通常・エンディングのフェーズを作り、遷移（分岐）を設定しましょう。"
         />
       )}
@@ -467,7 +466,6 @@ export default function ScenarioPage() {
       ) : phases.length === 0 ? (
         <div className="card">
           <div className="empty-state" style={{ padding: "40px 16px" }}>
-            <div className="empty-state-icon">🗺️</div>
             <p className="empty-state-title">フェーズがまだありません</p>
             <p className="empty-state-desc">
               「フェーズを追加」からシナリオの構成要素を作成しましょう。
@@ -1046,11 +1044,11 @@ function FlowTree({
                     style={{ textDecoration: "none" }}
                     title="このフェーズのメッセージ一覧"
                   >
-                    <MetaChip icon="💬" value={phase._count.messages} label="メッセージ" linked />
+                    <MetaChip value={phase._count.messages} label="メッセージ" linked />
                   </Link>
 
                   {/* 分岐数 */}
-                  <MetaChip icon="⤵" value={outgoing.length} label="分岐" />
+                  <MetaChip value={outgoing.length} label="分岐" />
 
                   {/* エンディングバッジ */}
                   {phase.phase_type === "ending" && (
@@ -1090,7 +1088,7 @@ function FlowTree({
                         fontSize: 10, fontWeight: 700, color: "#6b7280",
                         padding: "10px 16px 6px 48px", letterSpacing: 0.4,
                       }}>
-                        📋 メッセージ一覧
+                        メッセージ一覧
                       </div>
                       {phaseMessages.length === 0 ? (
                         <p style={{ fontSize: 12, color: "#9ca3af", padding: "4px 16px 10px 48px", margin: 0 }}>
@@ -1142,7 +1140,7 @@ function FlowTree({
                         padding: "10px 20px 12px 48px",
                       }}>
                         <div style={{ fontSize: 10, fontWeight: 700, color: "#6b7280", marginBottom: 10, letterSpacing: 0.4 }}>
-                          💬 クイックリプライ分岐
+                          クイックリプライ分岐
                         </div>
                         {(msgQrData[phase.id] ?? []).map((entry) => (
                           <div key={entry.msgId} style={{ marginBottom: 12 }}>
@@ -1203,7 +1201,6 @@ function FlowTree({
                                         color: "#92400e", padding: "2px 9px", borderRadius: 20,
                                         maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                                       }}>
-                                        <span style={{ fontSize: 9, flexShrink: 0 }}>💬</span>
                                         {branch.preview}
                                       </span>
                                     )}
@@ -1369,7 +1366,7 @@ function FlowTree({
           </span>
         ))}
         <span style={{ marginLeft: 4, borderLeft: "1px solid #e5e7eb", paddingLeft: 12 }}>
-          💬 メッセージ数　⤵ 分岐数
+          メッセージ数　⤵ 分岐数
         </span>
         <span style={{ marginLeft: 4, borderLeft: "1px solid #e5e7eb", paddingLeft: 12, color: "#9ca3af" }}>
           ⠿ ドラッグで並び替え　▼ 展開　✏ 名前クリックで編集　種別バッジクリックで変更
@@ -1380,7 +1377,7 @@ function FlowTree({
 }
 
 // ── MetaChip — メタ情報アイコン＋数値 ──────────────
-function MetaChip({ icon, value, label, linked }: { icon: string; value: number; label: string; linked?: boolean }) {
+function MetaChip({ value, label, linked }: { value: number; label: string; linked?: boolean }) {
   return (
     <span style={{
       display: "inline-flex", alignItems: "center", gap: 4,
@@ -1391,7 +1388,6 @@ function MetaChip({ icon, value, label, linked }: { icon: string; value: number;
       border: linked ? "1px solid #bfdbfe" : "none",
       transition: "background 0.15s",
     }}>
-      <span style={{ fontSize: 13 }}>{icon}</span>
       <strong style={{ color: linked ? "#1d4ed8" : "#374151", fontWeight: 700 }}>{value}</strong>
       <span>{label}</span>
       {linked && <span style={{ fontSize: 10, opacity: 0.7 }}>→</span>}

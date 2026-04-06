@@ -185,7 +185,7 @@ export default function MembersPage() {
             }}
           >
             {s === "members"
-            ? `👥 メンバー（${members.length}）${provisional.length > 0 ? ` + 未登録 ${provisional.length}` : ""}`
+            ? `メンバー（${members.length}）${provisional.length > 0 ? ` + 未登録 ${provisional.length}` : ""}`
             : `✉️ 招待`}
             {s === "invitations" && pendingInvitationsCount > 0 && (
               <span style={{
@@ -659,7 +659,6 @@ function ProvisionalSection({
         alignItems:   "center",
         gap:          8,
       }}>
-        <span style={{ fontSize: 14 }}>👤</span>
         <div style={{ flex: 1 }}>
           <span style={{ fontSize: 13, fontWeight: 700, color: "#92400e" }}>
             未登録ユーザー（{provisional.length}件）
@@ -1006,7 +1005,7 @@ function InvitationsSection({
             borderRadius: 8,
           }}>
             <p style={{ fontSize: 12, fontWeight: 700, color: "#166534", marginBottom: 8 }}>
-              ✅ 招待リンクが発行されました
+              招待リンクが発行されました
             </p>
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
               <input
@@ -1222,7 +1221,7 @@ function InvitationRow({
             }}
             onClick={() => onCopy(inviteUrl)}
           >
-            {isCopied ? "✅ コピー済み" : "リンクをコピー"}
+            {isCopied ? "コピー済み" : "リンクをコピー"}
           </button>
         )}
         {isPending && onRevoke && (

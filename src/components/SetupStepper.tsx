@@ -103,7 +103,6 @@ export function SetupStepper({ work, oaId, workId }: Props) {
 
       {/* ヘッダー */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-        <span style={{ fontSize: 15 }}>🚀</span>
         <div>
           <div style={{ fontWeight: 700, fontSize: 12, color: "#1e40af" }}>セットアップの進捗</div>
           <div style={{ fontSize: 11, color: "#64748b", marginTop: 1 }}>
@@ -147,8 +146,15 @@ export function SetupStepper({ work, oaId, workId }: Props) {
               border:       isNext ? "1px solid rgba(59,130,246,0.18)" : "1px solid transparent",
             }}>
               {/* アイコン */}
-              <span style={{ fontSize: 13, width: 18, textAlign: "center", flexShrink: 0 }}>
-                {done ? "✅" : isNext ? "👉" : "○"}
+              <span style={{
+                display: "inline-flex", alignItems: "center", justifyContent: "center",
+                width: 20, height: 20, borderRadius: "50%", fontSize: 10, fontWeight: 700,
+                background: done ? "#dcfce7" : isNext ? "#dbeafe" : "#f3f4f6",
+                color:      done ? "#16a34a" : isNext ? "#1d4ed8" : "#9ca3af",
+                border:     `1px solid ${done ? "#86efac" : isNext ? "#93c5fd" : "#e5e7eb"}`,
+                flexShrink: 0,
+              }}>
+                {done ? "✓" : i + 1}
               </span>
 
               {/* ラベル */}

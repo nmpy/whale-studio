@@ -193,7 +193,6 @@ export default function WorkRiddlesPage() {
       ) : riddles.length === 0 ? (
         <div className="card">
           <div className="empty-state" style={{ padding: "32px 0" }}>
-            <div className="empty-state-icon">🔍</div>
             <p className="empty-state-title">謎がまだありません</p>
             <p className="empty-state-desc">「＋ 謎を作成」から問題を追加してください。</p>
           </div>

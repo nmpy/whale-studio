@@ -26,7 +26,6 @@ const STATUS_META: Record<string, { label: string; color: string; bg: string; do
 const HUB_CARDS = [
   {
     key:   "edit",
-    icon:  "📝",
     title: "作品情報",
     desc:  "タイトル・説明・公開ステータス・あいさつメッセージを編集します",
     color: "#374151",
@@ -34,7 +33,6 @@ const HUB_CARDS = [
   },
   {
     key:   "characters",
-    icon:  "👤",
     title: "キャラクター",
     desc:  "メッセージ送信者となるキャラクターを管理します",
     color: "#7c3aed",
@@ -42,7 +40,6 @@ const HUB_CARDS = [
   },
   {
     key:   "messages",
-    icon:  "💬",
     title: "メッセージ・謎",
     desc:  "フェーズごとに送信するメッセージ・謎チャレンジを管理します",
     color: "#06C755",
@@ -50,7 +47,6 @@ const HUB_CARDS = [
   },
   {
     key:   "scenario",
-    icon:  "🗺",
     title: "シナリオフロー",
     desc:  "フェーズの追加・並び替え・編集と遷移フローを1画面で管理します",
     color: "#059669",
@@ -58,7 +54,6 @@ const HUB_CARDS = [
   },
   {
     key:   "audience",
-    icon:  "🎯",
     title: "オーディエンス",
     desc:  "プレイ統計・リアルタイム・フロー・セグメント・トラッキングを確認します",
     color: "#0891b2",
@@ -149,7 +144,7 @@ export default function TesterWorkHubPage() {
             href={`/playground?work_id=${workId}&oa_id=${oaId}`}
             className="btn btn-ghost"
           >
-            ▶ プレビュー
+            プレビュー
           </Link>
           <Link href={`/tester/${oaId}/works`} className="btn btn-ghost">
             ← 作品リスト
@@ -159,17 +154,17 @@ export default function TesterWorkHubPage() {
 
       {/* ── 使い方ガイド ── */}
       <HelpAccordion items={[
-        { icon: "✅", title: "この画面でできること", points: [
+        { title: "この画面でできること", points: [
           "シナリオを構成するキャラクター・フェーズ・メッセージをまとめて管理できます",
           "公開ステータスの変更や、プレビュー機能への起点になります",
         ]},
-        { icon: "👆", title: "まず最初に決めること", points: [
-          "① キャラクターを作成（送信者の名前・アイコン）",
-          "② フェーズを作成（開始・通常・エンディング）",
-          "③ メッセージを追加してフェーズに紐づける",
-          "④ シナリオフローで遷移（分岐）を設定する",
+        { title: "まず最初に決めること", points: [
+          "1. キャラクターを作成（送信者の名前・アイコン）",
+          "2. フェーズを作成（開始・通常・エンディング）",
+          "3. メッセージを追加してフェーズに紐づける",
+          "4. シナリオフローで遷移（分岐）を設定する",
         ]},
-        { icon: "⚠️", title: "注意点", points: [
+        { title: "注意点", points: [
           "公開ステータスが「公開中」のときだけ LINE からのメッセージに反応します",
           "公開前に必ずプレビュー機能でシナリオの動作を確認してください",
         ]},
@@ -186,17 +181,16 @@ export default function TesterWorkHubPage() {
           boxShadow: "var(--shadow-xs)",
         }}>
           {[
-            { label: "プレイヤー",   value: (work._count.userProgress ?? 0).toLocaleString(), icon: "👥", highlight: (work._count.userProgress ?? 0) > 0 },
-            { label: "キャラクター", value: work._count.characters, icon: "🎭", highlight: false },
-            { label: "フェーズ",     value: work._count.phases,     icon: "🗂",  highlight: false },
-            { label: "メッセージ",   value: work._count.messages,   icon: "💬", highlight: false },
-          ].map(({ label, value, icon, highlight }) => (
+            { label: "プレイヤー",   value: (work._count.userProgress ?? 0).toLocaleString(), highlight: (work._count.userProgress ?? 0) > 0 },
+            { label: "キャラクター", value: work._count.characters, highlight: false },
+            { label: "フェーズ",     value: work._count.phases,     highlight: false },
+            { label: "メッセージ",   value: work._count.messages,   highlight: false },
+          ].map(({ label, value, highlight }) => (
             <div key={label} style={{
               display: "flex", alignItems: "center", gap: 8,
               paddingRight: 18,
               borderRight: "1px solid var(--border-light)",
             }}>
-              <span style={{ fontSize: 16 }}>{icon}</span>
               <span style={{ fontSize: 20, fontWeight: 800, color: highlight ? "var(--color-info)" : "var(--text-primary)", lineHeight: 1 }}>{value}</span>
               <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{label}</span>
             </div>
@@ -242,13 +236,6 @@ export default function TesterWorkHubPage() {
                 el.style.transform   = "";
               }}
             >
-              <div style={{
-                width: 44, height: 44, borderRadius: "var(--radius-sm)", flexShrink: 0,
-                background: card.bg, display: "flex", alignItems: "center",
-                justifyContent: "center", fontSize: 22,
-              }}>
-                {card.icon}
-              </div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontWeight: 700, fontSize: 14, color: card.color, marginBottom: 4 }}>
                   {card.title}

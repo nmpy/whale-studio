@@ -191,7 +191,7 @@ export function RiddlePreview({ form, characters }: RiddlePreviewProps) {
         </div>
         <div style={{ display: "flex", gap: 5, flexShrink: 0 }}>
           {phase !== "idle" && (
-            <button type="button" onClick={handleStart} style={headerBtnStyle2}>▶</button>
+            <button type="button" onClick={handleStart} style={headerBtnStyle2}>再生</button>
           )}
           {phase !== "idle" && (
             <button type="button" onClick={handleReset} style={headerBtnStyle2}>🔄</button>
@@ -234,7 +234,7 @@ export function RiddlePreview({ form, characters }: RiddlePreviewProps) {
                 cursor: "pointer",
               }}
             >
-              ▶ 謎を開始する
+              謎を開始する
             </button>
           </div>
         )}
@@ -242,7 +242,7 @@ export function RiddlePreview({ form, characters }: RiddlePreviewProps) {
         {phase === "question" && (
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6, padding: "10px 12px" }}>
             <ActionBtn label="✗ 不正解にする" color="#ef4444" onClick={handleWrong} />
-            <ActionBtn label="✓ 正解にする"   color="#059669" onClick={handleCorrect} />
+            <ActionBtn label="正解にする"   color="#059669" onClick={handleCorrect} />
             {form.hints.length > 0 && (
               <ActionBtn label="💡 ヒント" color="#2563eb" onClick={handleHint} />
             )}
@@ -344,7 +344,7 @@ function PreviewBubble({ msg }: { msg: PMsg }) {
     <div style={{
       width: 36, height: 36, borderRadius: "50%", background: "#c9cdd4",
       display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16,
-    }}>📢</div>
+    }}></div>
   );
 
   return (
