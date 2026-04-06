@@ -23,21 +23,22 @@ import { activeCache, CACHE_KEY } from "@/lib/cache";
 
 function toResponse(p: {
   id: string; workId: string; phaseType: string; name: string; description: string | null;
-  startTrigger: string | null;
+  startTrigger: string | null; resumeSummary: string | null;
   sortOrder: number; isActive: boolean; createdAt: Date; updatedAt: Date;
   _count?: { messages: number; transitionsFrom: number };
 }) {
   return {
-    id:            p.id,
-    work_id:       p.workId,
-    phase_type:    p.phaseType,
-    name:          p.name,
-    description:   p.description,
-    start_trigger: p.startTrigger,
-    sort_order:    p.sortOrder,
-    is_active:     p.isActive,
-    created_at:    p.createdAt,
-    updated_at:    p.updatedAt,
+    id:             p.id,
+    work_id:        p.workId,
+    phase_type:     p.phaseType,
+    name:           p.name,
+    description:    p.description,
+    start_trigger:  p.startTrigger,
+    resume_summary: p.resumeSummary,
+    sort_order:     p.sortOrder,
+    is_active:      p.isActive,
+    created_at:     p.createdAt,
+    updated_at:     p.updatedAt,
     ...(p._count !== undefined && { _count: p._count }),
   };
 }
@@ -113,12 +114,13 @@ export const PATCH = withAuth<{ id: string }>(async (req, { params }, user) => {
     const updated = await prisma.phase.update({
       where: { id: params.id },
       data: {
-        ...(data.phase_type    !== undefined && { phaseType:    data.phase_type }),
-        ...(data.name          !== undefined && { name:         data.name }),
-        ...(data.description   !== undefined && { description:  data.description }),
-        ...(data.start_trigger !== undefined && { startTrigger: data.start_trigger }),
-        ...(data.sort_order    !== undefined && { sortOrder:    data.sort_order }),
-        ...(data.is_active     !== undefined && { isActive:     data.is_active }),
+        ...(data.phase_type     !== undefined && { phaseType:     data.phase_type }),
+        ...(data.name           !== undefined && { name:          data.name }),
+        ...(data.description    !== undefined && { description:   data.description }),
+        ...(data.start_trigger  !== undefined && { startTrigger:  data.start_trigger }),
+        ...(data.resume_summary !== undefined && { resumeSummary: data.resume_summary }),
+        ...(data.sort_order     !== undefined && { sortOrder:     data.sort_order }),
+        ...(data.is_active      !== undefined && { isActive:      data.is_active }),
       },
       include: { _count: { select: { messages: true, transitionsFrom: true } } },
     });

@@ -36,6 +36,14 @@ export type LineQuickReplyItem = {
         type:  "uri";
         label: string;
         uri:   string;
+      }
+    | {
+        type:         "postback";
+        label:        string;
+        /** postback.data として渡す文字列（最大 300 文字） */
+        data:         string;
+        /** タップ時にトーク画面に表示するテキスト（任意） */
+        displayText?: string;
       };
 };
 

@@ -360,6 +360,38 @@ export default function WorkHubPage() {
     if (maxWorks !== null && maxWorks !== -1) setShowUpgradeCard(true);
   }
 
+  // ── 主要アクション クリック計測 ─────────────────────────────
+  // fire-and-forget — 計測失敗時でも遷移・操作は通常通り動く。
+  //
+  // 分析ポイント（後からクエリで確認できること）:
+  //   - 最もクリックされる action_key は何か
+  //   - emphasis="warning" 付与で scenario/audience の CTR が上がるか
+  //     → Rule5（inProgress>0 && completed=0）の施策効果を検証
+  //   - players=0 のとき preview を上位に出す判断が効いているか
+  //     → position_index と CTR の相関を見る
+  //   - status="active" 時に audience を上げた効果の検証
+  //
+  // 計測先: event_logs テーブル（既存の汎用イベントログ基盤）
+  // イベント名: "hub_action_click"  /  ペイロード型: HubActionClickPayload
+  function trackHubActionClick(action: ResolvedAction, positionIndex: number): void {
+    trackEvent(
+      "hub_action_click",
+      {
+        action_key:        action.key,
+        emphasis:          action.emphasis,
+        position_index:    positionIndex,
+        source:            "work_hub_primary_actions",
+        status:            work?.publish_status              ?? "draft",
+        has_start_trigger: !!work?.start_trigger,
+        players:           work?._count.userProgress         ?? 0,
+        completed:         work?.progress_stats?.completed   ?? 0,
+        in_progress:       work?.progress_stats?.in_progress ?? 0,
+        work_id:           workId,
+      },
+      { token: getDevToken(), oa_id: oaId },
+    );
+  }
+
   // 状態ベースの主要アクション並び替え・強調
   // work が null のときはデフォルト順（ローディング後には再計算される）
   const resolvedActions = resolveActions({
@@ -668,7 +700,7 @@ export default function WorkHubPage() {
         </span>
 
         {/* アクション pill リスト（resolveActions による状態ベースの並び・強調） */}
-        {resolvedActions.map((action) => {
+        {resolvedActions.map((action, idx) => {
           const href   = action.isPreview
             ? `/playground?work_id=${workId}&oa_id=${oaId}`
             : `${basePath}/${action.key}`;
@@ -677,7 +709,12 @@ export default function WorkHubPage() {
             <Link
               key={action.key}
               href={href}
-              onClick={action.isPreview ? handlePreviewClick : undefined}
+              onClick={() => {
+                // 計測: fire-and-forget（失敗しても遷移は止まらない）
+                trackHubActionClick(action, idx);
+                // preview 固有の処理（localStorage 書き込み・onboarding 記録）
+                if (action.isPreview) handlePreviewClick();
+              }}
               style={{
                 display:        "inline-flex",
                 alignItems:     "center",

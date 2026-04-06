@@ -40,6 +40,7 @@ import {
   type LineWebhookBody, type LineEvent, type LineSender, type KeywordMessageRecord,
 } from "@/lib/line";
 import { buildRuntimeState, matchTransition, applySetFlags, safeParseFlags, fetchPhaseWithIncludes, type PhaseRow } from "@/lib/runtime";
+import { logEvent } from "@/lib/event-logger";
 import { activeCache, TTL, CACHE_KEY } from "@/lib/cache";
 import { linkRichMenuToUser } from "@/lib/line-richmenu";
 import {
@@ -141,9 +142,9 @@ async function getCachedGlobalCmds(oaId: string): Promise<GlobalCommandRecord[]>
   return cmds;
 }
 
-type StartPhaseRow = { id: string; phaseType: string; startTrigger: string | null };
+type StartPhaseRow = { id: string; phaseType: string; startTrigger: string | null; resumeSummary: string | null };
 
-/** start フェーズ（id / phaseType / startTrigger）をキャッシュ付きで取得 */
+/** start フェーズ（id / phaseType / startTrigger / resumeSummary）をキャッシュ付きで取得 */
 async function getCachedStartPhase(workId: string): Promise<StartPhaseRow | null> {
   const key = CACHE_KEY.startPhase(workId);
   const hit = await activeCache.get<StartPhaseRow>(key);
@@ -152,7 +153,7 @@ async function getCachedStartPhase(workId: string): Promise<StartPhaseRow | null
   const phase = await prisma.phase.findFirst({
     where:   { workId, phaseType: "start", isActive: true },
     orderBy: { sortOrder: "asc" },
-    select:  { id: true, phaseType: true, startTrigger: true },
+    select:  { id: true, phaseType: true, startTrigger: true, resumeSummary: true },
   });
   if (phase) await activeCache.set(key, phase, TTL.START_PHASE);
   return phase;
@@ -1116,10 +1117,28 @@ async function handleTextEvent({
 
     if (inputNorm === triggerNorm || inputLoose === triggerLoose) {
       console.log(
-        `[Webhook][STEP] startTrigger マッチ（progress有無問わず）`,
+        `[Webhook][STEP] startTrigger マッチ`,
         `trigger="${startPhaseForTrigger.startTrigger}"`,
         `userId=${userId}`,
       );
+
+      // 途中離脱ユーザーには即リセットせず「再開 or やり直し」の選択肢を提示する
+      const isMidProgress =
+        progress !== null &&
+        !progress.reachedEnding &&
+        progress.currentPhaseId !== null;
+
+      if (isMidProgress) {
+        console.log(
+          `[Webhook][STEP] 途中離脱ユーザー検出 → 再開選択肢を提示`,
+          `currentPhaseId=${progress.currentPhaseId}`,
+          `userId=${userId}`,
+        );
+        await sendResumeChoice({ oa, work, systemSender, replyToken, workId: work.id, currentPhaseId: progress.currentPhaseId! });
+        return;
+      }
+
+      // 未開始 / エンディング到達済み → 通常の startTrigger 処理（リセット + 開始）
       await handleStartTrigger({
         oa, work, systemSender, userId, replyToken, vars,
         startPhase: startPhaseForTrigger,
@@ -1336,6 +1355,7 @@ async function handleTextEvent({
             },
           });
           await setCachedProgress(updated);
+          fireResumeCompletedIfApplicable(updated, oa.id);
           const state     = await buildRuntimeState(updated, toPhaseRow);
           const phaseMsgs = buildPhaseMessages(state.phase, { systemSender, vars });
           qrMsgs.push(...phaseMsgs);
@@ -1523,6 +1543,7 @@ async function handleTextEvent({
 
   // write-through: 更新後の progress をキャッシュに反映（次の read が最新値を返すため）
   await setCachedProgress(updated);
+  fireResumeCompletedIfApplicable(updated, oa.id);
 
   // プリフェッチ済みフェーズを渡すことで buildRuntimeState の追加クエリを省略
   const state = await buildRuntimeState(updated, toPhaseRow);
@@ -1549,6 +1570,20 @@ async function handleTextEvent({
 async function handlePostbackEvent({
   oa, work, systemSender, userId, data, replyToken, vars,
 }: HandlerCommon & { data: string }) {
+  // ── URLSearchParams 形式の postback（例: action=resume_work&workId=...&mode=resume）──
+  const params = new URLSearchParams(data);
+  if (params.get("action") === "resume_work") {
+    const mode   = params.get("mode");
+    const wid    = params.get("workId");
+    if ((mode === "resume" || mode === "restart") && wid && work && work.id === wid) {
+      await handleResumeChoice({ oa, work, systemSender, userId, replyToken, vars, mode });
+      return;
+    }
+    // workId 不一致や不正パラメータは無視してログのみ
+    console.warn(`[Webhook] resume_work postback: パラメータ不正 data="${data}"`);
+    return;
+  }
+
   switch (data) {
     case RICHMENU_ACTIONS.START:
     case RICHMENU_ACTIONS.RESET:
@@ -1689,9 +1724,10 @@ async function handleStart({
 //   ※ ユーザーが次のメッセージを送ると matchTransition で startPhase の遷移が発火する
 //
 type StartPhaseRecord = {
-  id:           string;
-  phaseType:    string;
-  startTrigger: string | null;
+  id:            string;
+  phaseType:     string;
+  startTrigger:  string | null;
+  resumeSummary: string | null;
 };
 
 async function handleStartTrigger({
@@ -1844,6 +1880,200 @@ async function handleContinue({
   const state = await buildRuntimeState(progress, cachedContinuePhase);
   const msgs  = buildPhaseMessages(state.phase, { systemSender, vars });
   await replyWithLagToLine(replyToken, msgs, userId, token);
+}
+
+// ─ 途中離脱ユーザーへ再開 or やり直しの選択肢を送る ─────────
+//
+// LINE postback quick reply で 2 択を提示する。
+// タップ後は handlePostbackEvent → handleResumeChoice に引き継がれる。
+//
+async function sendResumeChoice({
+  oa,
+  work,
+  systemSender,
+  replyToken,
+  workId,
+  currentPhaseId,
+}: {
+  oa:             OaRecord;
+  work:           NonNullable<WorkRecord>;
+  systemSender:   LineSender | undefined;
+  replyToken:     string;
+  workId:         string;
+  currentPhaseId: string;
+}): Promise<void> {
+  // フェーズの resumeSummary 有無を取得（キャッシュ済みのためレイテンシ微小）
+  const shownPhase       = await getCachedPhase(currentPhaseId);
+  const hasResumeSummary = !!(shownPhase?.resumeSummary?.trim());
+
+  // 計測: 再開選択肢の表示（fire-and-forget）
+  logEvent("resume_choice_shown", {
+    work_id:            workId,
+    current_phase_id:   currentPhaseId,
+    has_resume_summary: hasResumeSummary,
+  }, { oaId: oa.id }).catch(() => {});
+
+  const quickReply: import("@/lib/line").LineQuickReply = {
+    items: [
+      {
+        type:   "action",
+        action: {
+          type:        "postback",
+          label:       "途中から再開する",
+          data:        `action=resume_work&workId=${workId}&mode=resume`,
+          displayText: "途中から再開する",
+        },
+      },
+      {
+        type:   "action",
+        action: {
+          type:        "postback",
+          label:       "最初からやり直す",
+          data:        `action=resume_work&workId=${workId}&mode=restart`,
+          displayText: "最初からやり直す",
+        },
+      },
+    ],
+  };
+
+  await replyToLine(
+    replyToken,
+    [{
+      type:       "text",
+      text:       `「${work.title}」の途中です。どうしますか？`,
+      sender:     systemSender,
+      quickReply,
+    }],
+    oa.channelAccessToken,
+  );
+}
+
+// ─ 再開 / やり直し選択後の処理 ──────────────────────────────
+//
+//  mode=resume  → 現在フェーズ先頭から再実行。
+//                 Phase.resumeSummary が設定されていれば先頭メッセージ前に送信する。
+//  mode=restart → startPhase にリセットして最初から開始（handleStartTrigger 委譲）。
+//
+async function handleResumeChoice({
+  oa, work, systemSender, userId, replyToken, vars, mode,
+}: Omit<HandlerCommon, "work"> & {
+  work: NonNullable<WorkRecord>;
+  mode: "resume" | "restart";
+}) {
+  const token = oa.channelAccessToken;
+
+  // ── やり直し: start フェーズへリセット ──────────────────────
+  if (mode === "restart") {
+    // 計測: 再開選択 → restart（fire-and-forget）
+    // currentPhaseId は postback パラメータから取れないためキャッシュから取得
+    getCachedProgress(userId, work.id).then(async (prog) => {
+      if (prog?.currentPhaseId) {
+        const restartPhase      = await getCachedPhase(prog.currentPhaseId);
+        const hasResumeSummary  = !!(restartPhase?.resumeSummary?.trim());
+        logEvent("resume_choice_selected", {
+          work_id:            work.id,
+          current_phase_id:   prog.currentPhaseId,
+          mode:               "restart",
+          has_resume_summary: hasResumeSummary,
+        }, { oaId: oa.id }).catch(() => {});
+      }
+    }).catch(() => {});
+
+    const startPhase = await getCachedStartPhase(work.id);
+    if (!startPhase) {
+      await replyToLine(replyToken, [{
+        type:   "text",
+        text:   "まだシナリオの準備中です。もうしばらくお待ちください。",
+        sender: systemSender,
+      }], token);
+      return;
+    }
+    await handleStartTrigger({ oa, work, systemSender, userId, replyToken, vars, startPhase });
+    return;
+  }
+
+  // ── 再開: 現在フェーズ先頭から再実行 ────────────────────────
+  const progress = await getCachedProgress(userId, work.id);
+
+  if (!progress || !progress.currentPhaseId) {
+    // 進行記録がない場合は通常開始にフォールバック
+    await handleStart({ oa, work, systemSender, userId, replyToken, vars });
+    return;
+  }
+
+  // 計測: 再開選択 → resume（fire-and-forget）
+  // has_resume_summary はこの後 getCachedPhase で判明するが、
+  // ログ順序を崩さないためフェーズ取得前に非同期で送出する
+  const resumePhaseForLog      = await getCachedPhase(progress.currentPhaseId);
+  const hasResumeSummaryResume = !!(resumePhaseForLog?.resumeSummary?.trim());
+  logEvent("resume_choice_selected", {
+    work_id:            work.id,
+    current_phase_id:   progress.currentPhaseId,
+    mode:               "resume",
+    has_resume_summary: hasResumeSummaryResume,
+  }, { oaId: oa.id }).catch(() => {});
+
+  // flags に resume_phase_id を記録（完走率計測のため write-through）。
+  // エンディング到達時に fireResumeCompletedIfApplicable でこの値を参照する。
+  const prevFlags = safeParseFlags(progress.flags);
+  const newFlags  = { ...prevFlags, resume_phase_id: progress.currentPhaseId };
+  const updatedProgress = await prisma.userProgress.update({
+    where: { id: progress.id },
+    data:  { flags: JSON.stringify(newFlags), lastInteractedAt: new Date() },
+  });
+  await setCachedProgress(updatedProgress);
+
+  // resumePhaseForLog で既に取得済み（再度キャッシュ参照するが同一オブジェクト）
+  const currentPhase = resumePhaseForLog;
+  const outMsgs: import("@/lib/line").LineMessage[] = [];
+
+  // resumeSummary が設定されていれば先頭に挿入（あらすじ・補足）
+  if (currentPhase?.resumeSummary?.trim()) {
+    outMsgs.push({
+      type:   "text",
+      text:   currentPhase.resumeSummary.trim(),
+      sender: systemSender,
+    });
+  }
+
+  const state     = await buildRuntimeState(updatedProgress, currentPhase);
+  const phaseMsgs = buildPhaseMessages(state.phase, { systemSender, vars });
+  outMsgs.push(...phaseMsgs);
+
+  if (outMsgs.length > 0) {
+    await replyWithLagToLine(replyToken, outMsgs, userId, token);
+  } else {
+    await replyToLine(replyToken, [{
+      type:   "text",
+      text:   "「はじめる」と送ってシナリオをスタートしてください。",
+      sender: systemSender,
+    }], token);
+  }
+}
+
+// ── 再開後の完走計測ヘルパー ──────────────────────────────────
+//
+// UserProgress が reachedEnding=true になったとき、
+// flags.resume_phase_id が存在すれば resume_completed イベントを発火する。
+// 呼び出し元は void で fire-and-forget してよい。
+//
+function fireResumeCompletedIfApplicable(
+  updated: ProgressCached,
+  oaId:    string,
+): void {
+  if (!updated.reachedEnding) return;
+  const flags         = safeParseFlags(updated.flags);
+  const resumePhaseId = typeof flags.resume_phase_id === "string" ? flags.resume_phase_id : null;
+  if (!resumePhaseId) return;
+
+  // Phase の resumeSummary 有無もペイロードに含める（summary 効果の完走率計測のため）
+  getCachedPhase(resumePhaseId).then((phase) => {
+    logEvent("resume_completed", {
+      work_id:               updated.workId,
+      resumed_from_phase_id: resumePhaseId,
+      has_resume_summary:    !!(phase?.resumeSummary?.trim()),
+    }, { oaId }).catch(() => {});
+  }).catch(() => {});
 }
 
 // ────────────────────────────────────────────────
@@ -2313,6 +2543,7 @@ async function handlePuzzleCorrect({
         });
         // write-through: パズル正解遷移後のキャッシュを更新
         await setCachedProgress(updated);
+        fireResumeCompletedIfApplicable(updated, oa.id);
         console.log(
           `[Webhook][puzzle] 遷移 → phaseId=${nextPhase.id.slice(0, 8)}`,
           `phaseType=${nextPhase.phaseType}`,

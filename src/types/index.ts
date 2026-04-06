@@ -151,6 +151,13 @@ export interface Phase {
   description: string | null;
   /** 開始トリガーキーワード（phaseType="start" のみ有効） */
   start_trigger: string | null;
+  /**
+   * 再開時あらすじ（任意）。
+   * プレイヤーが途中離脱後「途中から再開する」を選んだとき、
+   * このフェーズ先頭メッセージの前に送られる補助テキスト。
+   * 将来的に Work 単位でも持てる可能性があるが、現時点では Phase に保持。
+   */
+  resume_summary: string | null;
   sort_order: number;
   is_active: boolean;
   created_at: string;
@@ -305,6 +312,8 @@ export interface CreatePhaseBody {
   description?: string;
   /** 開始トリガーキーワード（phaseType="start" のみ有効） */
   start_trigger?: string | null;
+  /** 再開時あらすじ（null で未設定） */
+  resume_summary?: string | null;
   sort_order?: number;
   is_active?: boolean;
 }
@@ -315,6 +324,8 @@ export interface UpdatePhaseBody {
   description?: string | null;
   /** 開始トリガーキーワード（null で削除） */
   start_trigger?: string | null;
+  /** 再開時あらすじ（null で削除） */
+  resume_summary?: string | null;
   sort_order?: number;
   is_active?: boolean;
 }

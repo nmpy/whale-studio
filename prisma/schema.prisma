@@ -116,6 +116,9 @@ model Phase {
   /// 開始トリガーキーワード（未開始ユーザーがこのキーワードを送信するとシナリオ開始）
   /// phaseType="start" のフェーズのみ有効。
   startTrigger    String?        @map("start_trigger")
+  /// 再開時に送るあらすじテキスト（nullable）。
+  /// 途中離脱ユーザーが「途中から再開する」を選んだとき、フェーズ先頭メッセージの前に送信される。
+  resumeSummary   String?        @map("resume_summary")
   puzzleNextFor   Message[]      @relation("MessageCorrectNextPhase")
   messages        Message[]
   work            Work           @relation(fields: [workId], references: [id], onDelete: Cascade)

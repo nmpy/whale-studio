@@ -120,24 +120,34 @@ export const characterQuerySchema = z.object({
 // Phase
 // ────────────────────────────────────────────────
 export const createPhaseSchema = z.object({
-  work_id:       uuidSchema,
-  phase_type:    z.enum(["start", "normal", "ending", "global"]).default("normal"),
-  name:          z.string().min(1, "フェーズ名は必須です").max(100),
-  description:   z.string().max(500).optional(),
+  work_id:        uuidSchema,
+  phase_type:     z.enum(["start", "normal", "ending", "global"]).default("normal"),
+  name:           z.string().min(1, "フェーズ名は必須です").max(100),
+  description:    z.string().max(500).optional(),
   /** 開始トリガーキーワード（phaseType="start" のみ有効） */
-  start_trigger: z.string().max(200).optional().nullable(),
-  sort_order:    sortSchema,
-  is_active:     z.boolean().default(true),
+  start_trigger:  z.string().max(200).optional().nullable(),
+  /**
+   * 再開時あらすじ（任意）。
+   * 途中離脱ユーザーが「途中から再開する」を選んだとき、フェーズ先頭前に送信される。
+   */
+  resume_summary: z.string().max(500).optional().nullable(),
+  sort_order:     sortSchema,
+  is_active:      z.boolean().default(true),
 });
 
 export const updatePhaseSchema = z.object({
-  phase_type:    z.enum(["start", "normal", "ending", "global"]).optional(),
-  name:          z.string().min(1).max(100).optional(),
-  description:   z.string().max(500).optional().nullable(),
+  phase_type:     z.enum(["start", "normal", "ending", "global"]).optional(),
+  name:           z.string().min(1).max(100).optional(),
+  description:    z.string().max(500).optional().nullable(),
   /** 開始トリガーキーワード（null で削除） */
-  start_trigger: z.string().max(200).optional().nullable(),
-  sort_order:    z.number().int().min(0).optional(),
-  is_active:     z.boolean().optional(),
+  start_trigger:  z.string().max(200).optional().nullable(),
+  /**
+   * 再開時あらすじ（null で削除）。
+   * 途中離脱ユーザーが「途中から再開する」を選んだとき、フェーズ先頭前に送信される。
+   */
+  resume_summary: z.string().max(500).optional().nullable(),
+  sort_order:     z.number().int().min(0).optional(),
+  is_active:      z.boolean().optional(),
 });
 
 export const phaseQuerySchema = z.object({

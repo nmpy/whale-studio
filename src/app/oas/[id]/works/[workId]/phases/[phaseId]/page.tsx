@@ -61,7 +61,7 @@ export default function PhaseDetailPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
 
   // ── フェーズ編集フォーム ──
-  const [phaseForm, setPhaseForm]     = useState<{ phase_type: PhaseType; name: string; description: string; start_trigger: string; sort_order: number; is_active: boolean } | null>(null);
+  const [phaseForm, setPhaseForm]     = useState<{ phase_type: PhaseType; name: string; description: string; start_trigger: string; resume_summary: string; sort_order: number; is_active: boolean } | null>(null);
   const [phaseErrors, setPhaseErrors] = useState<Record<string, string[]>>({});
   const [savingPhase, setSavingPhase] = useState(false);
 
@@ -86,12 +86,13 @@ export default function PhaseDetailPage() {
       const p = await phaseApi.get(getDevToken(), phaseId);
       setPhase(p);
       setPhaseForm({
-        phase_type:    p.phase_type,
-        name:          p.name,
-        description:   p.description ?? "",
-        start_trigger: p.start_trigger ?? "",
-        sort_order:    p.sort_order,
-        is_active:     p.is_active,
+        phase_type:     p.phase_type,
+        name:           p.name,
+        description:    p.description ?? "",
+        start_trigger:  p.start_trigger ?? "",
+        resume_summary: p.resume_summary ?? "",
+        sort_order:     p.sort_order,
+        is_active:      p.is_active,
       });
     } catch (e) {
       setLoadError(e instanceof Error ? e.message : "フェーズの読み込みに失敗しました");
@@ -127,12 +128,13 @@ export default function PhaseDetailPage() {
     setSavingPhase(true);
     try {
       const updated = await phaseApi.update(getDevToken(), phaseId, {
-        phase_type:    phaseForm.phase_type,
-        name:          phaseForm.name.trim(),
-        description:   phaseForm.description.trim() || undefined,
-        start_trigger: phaseForm.start_trigger.trim() || null,
-        sort_order:    phaseForm.sort_order,
-        is_active:     phaseForm.is_active,
+        phase_type:     phaseForm.phase_type,
+        name:           phaseForm.name.trim(),
+        description:    phaseForm.description.trim() || undefined,
+        start_trigger:  phaseForm.start_trigger.trim() || null,
+        resume_summary: phaseForm.resume_summary.trim() || null,
+        sort_order:     phaseForm.sort_order,
+        is_active:      phaseForm.is_active,
       });
       setPhase(updated);
       showToast("フェーズを保存しました", "success");
@@ -296,6 +298,31 @@ export default function PhaseDetailPage() {
                 </p>
               </div>
             )}
+
+            {/* 再開時あらすじ */}
+            <div className="form-group">
+              <label htmlFor="phase-resume-summary">
+                再開時あらすじ（任意）
+              </label>
+              <textarea
+                id="phase-resume-summary"
+                value={phaseForm.resume_summary}
+                onChange={(e) => setPhaseForm({ ...phaseForm, resume_summary: e.target.value })}
+                placeholder={"ここまでのあらすじ：\nあなたは不思議な手がかりをたどり、3つの謎を解きました。\nここから続きを始めます。"}
+                maxLength={500}
+                style={{ minHeight: 80 }}
+                readOnly={!canEdit}
+              />
+              {phaseForm.resume_summary.length > 0 && (
+                <p style={{ fontSize: 11, color: "#9ca3af", textAlign: "right", marginTop: 2 }}>
+                  {phaseForm.resume_summary.length} / 500
+                </p>
+              )}
+              <p style={{ fontSize: 11, color: "#6b7280", marginTop: 4 }}>
+                プレイヤーが途中離脱後「途中から再開する」を選んだとき、このフェーズ再開前に送られる補助メッセージです。
+                未入力の場合は送信されません。
+              </p>
+            </div>
 
             <div style={{ display: "flex", gap: 24, flexWrap: "wrap" }}>
               <div className="form-group" style={{ flexShrink: 0 }}>
