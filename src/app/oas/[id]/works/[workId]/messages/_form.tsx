@@ -9,6 +9,7 @@ import { phaseApi, characterApi, riddleApi, messageApi, uploadApi, getDevToken }
 import { Breadcrumb } from "@/components/Breadcrumb";
 import type { PhaseWithCounts, Character, QuickReplyItem, QuickReplyAction } from "@/types";
 import type { Riddle } from "@/types";
+import { PhaseTransitionsSection } from "./_phase-transitions";
 
 // ── 拡張メッセージ種別 ────────────────────────────────────
 
@@ -2532,48 +2533,63 @@ export function MessageForm({
           ════════════════════════════════════════ */}
           <SectionAccordion title="トリガー設定" defaultOpen={true}>
 
-            {/* 送信タイミング (puzzle 以外) */}
-            {!isPuzzle && (
+            {/* 送信タイミング（全種別共通） */}
             <div className="form-group">
               <label style={fieldLabel} htmlFor="msg_kind">
                 送信タイミング
               </label>
-              <select
-                id="msg_kind"
-                className="form-input"
-                value={form.kind}
-                onChange={(e) => set("kind", e.target.value as MessageKind)}
-              >
-                <option value="normal">通常（フェーズ遷移時に送信）</option>
-                <option value="start">開始演出（startTrigger 一致時に送信）</option>
-                <option value="response">応答（trigger_keyword 一致時に返信）</option>
-                <option value="hint">ヒント（将来拡張）</option>
-                <option value="global">共通メッセージ（フェーズ不問・常時反応）</option>
-              </select>
-              <div style={hintText}>
-                {form.kind === "start"    && "開始フェーズの startTrigger が一致したとき送信されます。フェーズに kind=start のメッセージがない場合は通常メッセージにフォールバックします。"}
-                {form.kind === "response" && "trigger_keyword が一致したときのみ返信します。フェーズは進みません。"}
-                {form.kind === "normal"   && "フェーズ遷移時またはフェーズ表示時に送信されます。"}
-                {form.kind === "hint"     && "ヒント用メッセージです（将来拡張）。"}
-                {form.kind === "global"   && "どのフェーズにいても反応します（⭐ 全フェーズ共通）。ヒント・ヘルプ・やり直し案内などに使います。キーワードは必須です。"}
-              </div>
-              {form.kind === "global" && (
+              {isPuzzle ? (
                 <div style={{
-                  marginTop: 8,
-                  padding: "8px 12px",
-                  background: "#f0fdf4",
-                  border: "1px solid #bbf7d0",
+                  padding: "10px 14px",
+                  background: "#f0f9ff",
+                  border: "1px solid #bae6fd",
                   borderRadius: 6,
-                  fontSize: 11,
-                  color: "#166534",
-                  lineHeight: 1.6,
+                  fontSize: 12,
+                  color: "#0369a1",
+                  lineHeight: 1.7,
                 }}>
-                  💡 <strong>共通メッセージ</strong>：フェーズに依存しない返信です。
-                  「応答キーワード」を必ず設定してください。フェーズ設定は自動的に無視されます。
+                  🧩 <strong>謎・問題</strong>は、下で設定した<strong>フェーズに遷移したとき</strong>に自動で発火します。
+                  フェーズを指定することで「いつ出すか」を制御できます。
                 </div>
+              ) : (
+                <>
+                  <select
+                    id="msg_kind"
+                    className="form-input"
+                    value={form.kind}
+                    onChange={(e) => set("kind", e.target.value as MessageKind)}
+                  >
+                    <option value="normal">通常（フェーズ遷移時に送信）</option>
+                    <option value="start">開始演出（startTrigger 一致時に送信）</option>
+                    <option value="response">応答（trigger_keyword 一致時に返信）</option>
+                    <option value="hint">ヒント（将来拡張）</option>
+                    <option value="global">共通メッセージ（フェーズ不問・常時反応）</option>
+                  </select>
+                  <div style={hintText}>
+                    {form.kind === "start"    && "開始フェーズの startTrigger が一致したとき送信されます。フェーズに kind=start のメッセージがない場合は通常メッセージにフォールバックします。"}
+                    {form.kind === "response" && "trigger_keyword が一致したときのみ返信します。フェーズは進みません。"}
+                    {form.kind === "normal"   && "フェーズ遷移時またはフェーズ表示時に送信されます。"}
+                    {form.kind === "hint"     && "ヒント用メッセージです（将来拡張）。"}
+                    {form.kind === "global"   && "どのフェーズにいても反応します（⭐ 全フェーズ共通）。ヒント・ヘルプ・やり直し案内などに使います。キーワードは必須です。"}
+                  </div>
+                  {form.kind === "global" && (
+                    <div style={{
+                      marginTop: 8,
+                      padding: "8px 12px",
+                      background: "#f0fdf4",
+                      border: "1px solid #bbf7d0",
+                      borderRadius: 6,
+                      fontSize: 11,
+                      color: "#166534",
+                      lineHeight: 1.6,
+                    }}>
+                      💡 <strong>共通メッセージ</strong>：フェーズに依存しない返信です。
+                      「応答キーワード」を必ず設定してください。フェーズ設定は自動的に無視されます。
+                    </div>
+                  )}
+                </>
               )}
             </div>
-            )}
 
             {/* 応答キーワード（puzzle は不要） */}
             {!isPuzzle && (
@@ -3558,6 +3574,16 @@ export function MessageForm({
             </div>
           </SectionAccordion>
           )} {/* /isPuzzle 謎の回答設定 */}
+
+          {/* ── このメッセージの後の遷移 ── */}
+          {form.phase_id && form.kind !== "global" && (
+            <PhaseTransitionsSection
+              oaId={oaId}
+              workId={workId}
+              phaseId={form.phase_id}
+              phases={phases}
+            />
+          )}
 
           {/* ── アクション ── */}
           <div

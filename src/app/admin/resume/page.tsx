@@ -228,7 +228,7 @@ export default function AdminResumePage() {
 
   if (!data) return null;
 
-  const { total_events, funnel, by_phase, summary_effect } = data;
+  const { total_events, funnel, by_phase, improvement_candidates, summary_effect } = data;
 
   return (
     <>
@@ -317,7 +317,107 @@ export default function AdminResumePage() {
       </div>
 
       {/* ══════════════════════════════════════════════════════════════════
-          セクション 2: 選択内訳
+          セクション 2: 改善優先フェーズ
+          スコア上位 / 改善候補フラグ付きフェーズを一覧表示
+      ══════════════════════════════════════════════════════════════════ */}
+      <div className="card" style={{ padding: "16px 20px 18px", marginBottom: 16, borderLeft: "4px solid #f59e0b" }}>
+        <SectionHeader
+          label="改善優先フェーズ"
+          sub="再開数が多く・完走率が低いフェーズです。まずここから対処することで完走率の改善が見込めます。"
+        />
+
+        {improvement_candidates.length === 0 ? (
+          <p style={{ fontSize: 13, color: "#16a34a", display: "flex", alignItems: "center", gap: 6 }}>
+            <span style={{ fontSize: 16 }}>✓</span>
+            現在大きな改善ポイントはありません
+          </p>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {improvement_candidates.map((phase) => (
+              <div
+                key={phase.phase_id}
+                style={{
+                  background:   "#fffbeb",
+                  border:       "1px solid #fde68a",
+                  borderRadius: "var(--radius-md, 10px)",
+                  padding:      "12px 14px",
+                  display:      "flex",
+                  alignItems:   "center",
+                  gap:          14,
+                  flexWrap:     "wrap",
+                }}
+              >
+                {/* フェーズ ID */}
+                <div style={{ flex: "0 0 auto", minWidth: 90 }}>
+                  <p style={{ fontSize: 10, color: "#92400e", margin: 0, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                    フェーズ ID
+                  </p>
+                  <p style={{ fontSize: 12, color: "#92400e", margin: "2px 0 0", fontFamily: "monospace" }} title={phase.phase_id}>
+                    {shortId(phase.phase_id)}
+                  </p>
+                </div>
+
+                {/* 再開数 */}
+                <div style={{ flex: "0 0 auto" }}>
+                  <p style={{ fontSize: 10, color: "#92400e", margin: 0 }}>再開数</p>
+                  <p style={{ fontSize: 18, fontWeight: 800, color: "#b45309", margin: "2px 0 0" }}>
+                    {phase.resume_count.toLocaleString()}
+                  </p>
+                </div>
+
+                {/* 完走率 */}
+                <div style={{ flex: "0 0 auto" }}>
+                  <p style={{ fontSize: 10, color: "#92400e", margin: 0 }}>完走率</p>
+                  <p style={{ fontSize: 18, fontWeight: 800, color: pctColor(phase.completion_rate), margin: "2px 0 0" }}>
+                    {phase.completion_rate}%
+                  </p>
+                </div>
+
+                {/* スコア */}
+                <div style={{ flex: "0 0 auto" }}>
+                  <p style={{ fontSize: 10, color: "#92400e", margin: 0 }}>改善スコア</p>
+                  <p style={{ fontSize: 18, fontWeight: 800, color: "#b45309", margin: "2px 0 0" }}>
+                    {phase.score.toFixed(1)}
+                  </p>
+                </div>
+
+                {/* バッジ群 */}
+                <div style={{ display: "flex", gap: 6, marginLeft: "auto", flexWrap: "wrap", justifyContent: "flex-end" }}>
+                  <span style={{
+                    display:      "inline-block",
+                    padding:      "2px 8px",
+                    borderRadius: 99,
+                    fontSize:     11,
+                    fontWeight:   700,
+                    background:   "#fef3c7",
+                    color:        "#b45309",
+                    border:       "1px solid #fde68a",
+                  }}>
+                    改善候補
+                  </span>
+                  {phase.suggest_add_summary && (
+                    <span style={{
+                      display:      "inline-block",
+                      padding:      "2px 8px",
+                      borderRadius: 99,
+                      fontSize:     11,
+                      fontWeight:   700,
+                      background:   "#fff7ed",
+                      color:        "#c2410c",
+                      border:       "1px solid #fed7aa",
+                    }}>
+                      あらすじ追加を推奨
+                    </span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* ══════════════════════════════════════════════════════════════════
+          セクション 3: 選択内訳
           「途中から再開」vs「最初からやり直す」
       ══════════════════════════════════════════════════════════════════ */}
       <div className="card" style={{ padding: "16px 20px 18px", marginBottom: 16 }}>
@@ -365,7 +465,7 @@ export default function AdminResumePage() {
       </div>
 
       {/* ══════════════════════════════════════════════════════════════════
-          セクション 3: フェーズ別再開分析
+          セクション 4: フェーズ別再開分析
           どこで離脱が多いか / どこの完走率が低いか
       ══════════════════════════════════════════════════════════════════ */}
       <div className="card" style={{ padding: "16px 20px 12px", marginBottom: 16 }}>
@@ -381,7 +481,7 @@ export default function AdminResumePage() {
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
               <thead>
                 <tr>
-                  {["フェーズ ID", "再開数", "完走数", "完走率"].map((h) => (
+                  {["フェーズ ID", "再開数", "完走数", "完走率", "バッジ"].map((h) => (
                     <th key={h} style={{
                       textAlign:    "left",
                       padding:      "6px 10px",
@@ -398,7 +498,14 @@ export default function AdminResumePage() {
               </thead>
               <tbody>
                 {by_phase.map((row, i) => (
-                  <tr key={row.phase_id} style={{ background: i % 2 === 0 ? "transparent" : "var(--gray-50, #f9fafb)" }}>
+                  <tr
+                    key={row.phase_id}
+                    style={{
+                      background: row.is_improvement_candidate
+                        ? "#fffbeb"
+                        : i % 2 === 0 ? "transparent" : "var(--gray-50, #f9fafb)",
+                    }}
+                  >
                     <td style={{ padding: "9px 10px", color: "var(--text-muted)", fontFamily: "monospace", fontSize: 12, borderBottom: "1px solid var(--border-light)" }}>
                       <span title={row.phase_id}>{shortId(row.phase_id)}</span>
                     </td>
@@ -421,6 +528,40 @@ export default function AdminResumePage() {
                         <span style={{ color: "var(--text-muted)", fontSize: 12 }}>—</span>
                       )}
                     </td>
+                    <td style={{ padding: "9px 10px", borderBottom: "1px solid var(--border-light)" }}>
+                      <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                        {row.is_improvement_candidate && (
+                          <span style={{
+                            display:      "inline-block",
+                            padding:      "1px 7px",
+                            borderRadius: 99,
+                            fontSize:     10,
+                            fontWeight:   700,
+                            background:   "#fef3c7",
+                            color:        "#b45309",
+                            border:       "1px solid #fde68a",
+                            whiteSpace:   "nowrap",
+                          }}>
+                            改善候補
+                          </span>
+                        )}
+                        {row.suggest_add_summary && (
+                          <span style={{
+                            display:      "inline-block",
+                            padding:      "1px 7px",
+                            borderRadius: 99,
+                            fontSize:     10,
+                            fontWeight:   700,
+                            background:   "#fff7ed",
+                            color:        "#c2410c",
+                            border:       "1px solid #fed7aa",
+                            whiteSpace:   "nowrap",
+                          }}>
+                            あらすじ推奨
+                          </span>
+                        )}
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -433,7 +574,7 @@ export default function AdminResumePage() {
       </div>
 
       {/* ══════════════════════════════════════════════════════════════════
-          セクション 4: resumeSummary 効果
+          セクション 5: resumeSummary 効果
           「再開時あらすじ」設定の有無で再開率・完走率に差があるか
       ══════════════════════════════════════════════════════════════════ */}
       <div className="card" style={{ padding: "16px 20px 18px", marginBottom: 16 }}>

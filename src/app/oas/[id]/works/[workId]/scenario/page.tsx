@@ -493,6 +493,8 @@ export default function ScenarioPage() {
           allMessages={allMessages}
           oaId={oaId}
           workId={workId}
+          canEdit={canEdit}
+          onDataMutated={loadAll}
         />
       ) : (
         <FlowTree
