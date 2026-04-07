@@ -12,7 +12,7 @@
  */
 
 import { useState, useEffect } from "react";
-import { getDevToken } from "@/lib/api-client";
+import { getAuthHeaders } from "@/lib/api-client";
 
 export interface WorkLimitState {
   /** 作品数上限。-1 = 無制限、null = 未設定（Subscription なし） */
@@ -39,7 +39,7 @@ export function useWorkLimit(oaId: string): WorkLimitState {
 
     setLoading(true);
     fetch(`/api/oas/${oaId}/plan-info`, {
-      headers: { Authorization: `Bearer ${getDevToken()}` },
+      headers: { ...getAuthHeaders() },
     })
       .then((res) => (res.ok ? res.json() : Promise.reject(res.status)))
       .then((json) => {

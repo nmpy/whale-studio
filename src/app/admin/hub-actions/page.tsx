@@ -14,7 +14,7 @@
 //   - players=0 の作品での preview クリック率（Rule4 の効果検証）
 
 import { useEffect, useState } from "react";
-import { getDevToken }         from "@/lib/api-client";
+import { getAuthHeaders }      from "@/lib/api-client";
 import type { HubActionAnalytics } from "@/app/api/analytics/hub-actions/route";
 
 // ── 定数 ──────────────────────────────────────────────────────────────────
@@ -36,7 +36,7 @@ const STATUS_COLOR: Record<string, { color: string; bg: string }> = {
 function authHeaders() {
   return {
     "Content-Type": "application/json",
-    Authorization:  `Bearer ${getDevToken()}`,
+    ...getAuthHeaders(),
   };
 }
 

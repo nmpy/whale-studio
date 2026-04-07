@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { Breadcrumb } from "@/components/Breadcrumb";
-import { getDevToken } from "@/lib/api-client";
+import { getAuthHeaders } from "@/lib/api-client";
 import { useToast } from "@/components/Toast";
 
 // ────────────────────────────────────────────────
@@ -68,7 +68,7 @@ export default function RichMenuSyncPage() {
       const res = await fetch(`/api/oas/${oaId}/richmenu-sync`, {
         method:  "POST",
         headers: {
-          "Authorization": `Bearer ${getDevToken()}`,
+          ...getAuthHeaders(),
           "Content-Type":  "application/json",
         },
         body: JSON.stringify({

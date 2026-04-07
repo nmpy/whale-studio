@@ -5,7 +5,7 @@
 // admin layout の isPlatformOwner チェックにより、非オーナーはここに到達できない。
 
 import { useEffect, useState } from "react";
-import { getDevToken } from "@/lib/api-client";
+import { getAuthHeaders } from "@/lib/api-client";
 import { ONBOARDING_STEPS, ONBOARDING_STEP_LABELS } from "@/lib/constants/onboarding";
 
 // ── 型 ────────────────────────────────────────────────────────────────────
@@ -37,7 +37,7 @@ const STEP_ICONS: Record<string, string> = {
 function authHeaders() {
   return {
     "Content-Type": "application/json",
-    Authorization:  `Bearer ${getDevToken()}`,
+    ...getAuthHeaders(),
   };
 }
 

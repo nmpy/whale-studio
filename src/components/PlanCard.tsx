@@ -9,7 +9,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { getDevToken } from "@/lib/api-client";
+import { getAuthHeaders } from "@/lib/api-client";
 import { buildPricingUrl } from "@/lib/pricing-url";
 
 // ── 型定義 ──────────────────────────────────────────────────────────────
@@ -66,7 +66,7 @@ export function PlanCard({ oaId }: { oaId: string }) {
 
   useEffect(() => {
     fetch(`/api/oas/${oaId}/subscription`, {
-      headers: { Authorization: `Bearer ${getDevToken()}` },
+      headers: { ...getAuthHeaders() },
     })
       .then((r) => r.json())
       .then((d) => setData(d.success ? d.data : null))

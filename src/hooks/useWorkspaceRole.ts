@@ -15,7 +15,7 @@
  */
 
 import { useState, useEffect } from "react";
-import { getDevToken } from "@/lib/api-client";
+import { getAuthHeaders } from "@/lib/api-client";
 import type { Role } from "@/lib/types/permissions";
 import { roleAtLeast } from "@/lib/types/permissions";
 
@@ -49,9 +49,7 @@ export function useWorkspaceRole(workspaceId: string): WorkspaceRoleState {
   // ── 実ロールを API から取得するヘルパー ──────────────────────────
   function fetchRealRole(wsId: string) {
     setLoading(true);
-    fetch(`/api/oas/${wsId}/members/me`, {
-      headers: { Authorization: `Bearer ${getDevToken()}` },
-    })
+    fetch(`/api/oas/${wsId}/members/me`, { headers: { ...getAuthHeaders() } })
       .then((res) => res.json())
       .then((json) => {
         if (json.success) setRole(json.data.role as Role);

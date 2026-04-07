@@ -13,7 +13,7 @@
 //   - resumeSummary（再開時あらすじ）設定の有無による完走率差分
 
 import { useEffect, useState } from "react";
-import { getDevToken }         from "@/lib/api-client";
+import { getAuthHeaders }      from "@/lib/api-client";
 import type { ResumeAnalytics } from "@/app/api/analytics/resume/route";
 
 // ── ヘルパー ──────────────────────────────────────────────────────────────
@@ -21,7 +21,7 @@ import type { ResumeAnalytics } from "@/app/api/analytics/resume/route";
 function authHeaders() {
   return {
     "Content-Type": "application/json",
-    Authorization:  `Bearer ${getDevToken()}`,
+    ...getAuthHeaders(),
   };
 }
 

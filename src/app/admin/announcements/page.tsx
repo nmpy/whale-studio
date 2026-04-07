@@ -8,7 +8,7 @@
 // - 削除
 
 import { useEffect, useState, useCallback } from "react";
-import { getDevToken } from "@/lib/api-client";
+import { getAuthHeaders } from "@/lib/api-client";
 import { useToast } from "@/components/Toast";
 
 // ── 型 ────────────────────────────────────────────────────────────────────
@@ -51,7 +51,7 @@ function formatDate(iso: string) {
 // ── API ヘルパー ──────────────────────────────────────────────────────────
 const authHeaders = () => ({
   "Content-Type": "application/json",
-  Authorization: `Bearer ${getDevToken()}`,
+  ...getAuthHeaders(),
 });
 
 async function fetchAnnouncements(): Promise<Announcement[]> {

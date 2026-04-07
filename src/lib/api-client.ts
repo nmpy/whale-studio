@@ -63,12 +63,34 @@ import type {
 /**
  * API 呼び出し用のトークンを返す。
  *
- * 暫定: "dev-token" を返す（サーバー側の BYPASS_AUTH=true と組み合わせて使用）。
- * 本命: サーバーが Supabase cookie を直接読むため、ここで返す値は無視される。
- *       将来的にはブラウザの Supabase セッションから access_token を取得する形に置き換える。
+ * ブラウザからの API 呼び出しでは Supabase cookie が自動送信されるため、
+ * Authorization ヘッダーは本来不要。ただし既存の呼び出し箇所が token を受け取る
+ * インターフェースなので、空文字列を返してヘッダーには実質何も送らない。
+ *
+ * ⚠ 開発環境（Supabase 未設定）では "dev-token" を返して auth.ts の開発スタブと連携する。
  */
 export function getDevToken(): string {
+  if (
+    typeof window !== "undefined" &&
+    process.env.NEXT_PUBLIC_SUPABASE_URL &&
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  ) {
+    // 本番/Supabase 設定済み: cookie 認証に依存するため Bearer は送らない
+    return "";
+  }
   return "dev-token";
+}
+
+/**
+ * Bearer token 付きヘッダーを生成する。
+ * token が空の場合は Authorization ヘッダーを含めない（cookie 認証に依存）。
+ *
+ * 既存の `{ Authorization: \`Bearer ${getDevToken()}\` }` パターンをこれに置き換えることで、
+ * Supabase cookie 認証環境で不正な Bearer トークンを送らなくなる。
+ */
+export function getAuthHeaders(): HeadersInit {
+  const token = getDevToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
 // ────────────────────────────────────────────────
@@ -171,6 +193,10 @@ export class ValidationError extends Error {
 // ────────────────────────────────────────────────
 
 function authHeaders(token: string): HeadersInit {
+  // token が空の場合は Authorization ヘッダーを送らない（cookie 認証に依存）
+  if (!token) {
+    return { "Content-Type": "application/json" };
+  }
   return {
     Authorization: `Bearer ${token}`,
     "Content-Type": "application/json",
@@ -196,13 +222,20 @@ type ErrorJson = { error?: { code?: string; message?: string; details?: Record<s
 /**
  * 401 を検知してセッション切れリダイレクトを行う。
  * throw で後続の処理を止める。
+ *
+ * ⚠ 既に /login にいる場合はリダイレクトしない（ループ防止）。
+ * ⚠ /invite/* にいる場合もリダイレクトしない（招待ページ内で認証を完結させる）。
  */
 function checkUnauthorized(res: Response, json: ErrorJson): void {
   if (res.status !== 401) return;
   const msg = json.error?.message ?? "認証が必要です";
   if (typeof window !== "undefined") {
-    const next = encodeURIComponent(window.location.pathname + window.location.search);
-    window.location.href = `/login?next=${next}`;
+    const currentPath = window.location.pathname;
+    // /login, /invite/* では redirect しない（ループ防止 & 招待ページ内認証）
+    if (!currentPath.startsWith("/login") && !currentPath.startsWith("/invite/")) {
+      const next = encodeURIComponent(currentPath + window.location.search);
+      window.location.href = `/login?next=${next}`;
+    }
   }
   throw new UnauthorizedError(msg);
 }

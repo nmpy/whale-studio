@@ -6,7 +6,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Breadcrumb } from "@/components/Breadcrumb";
-import { getDevToken } from "@/lib/api-client";
+import { getAuthHeaders } from "@/lib/api-client";
 import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
 
 // ── 型定義 ────────────────────────────────────────────────────
@@ -67,7 +67,7 @@ export default function OnboardingAnalyticsPage() {
     setError(null);
     try {
       const res = await fetch(`/api/oas/${oaId}/onboarding-analytics`, {
-        headers: { Authorization: `Bearer ${getDevToken()}` },
+        headers: { ...getAuthHeaders() },
       });
       if (!res.ok) {
         const json = await res.json().catch(() => ({}));

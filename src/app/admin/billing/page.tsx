@@ -4,7 +4,7 @@
 // 課金導線イベント分析（プラットフォームオーナー専用）
 
 import { useEffect, useState } from "react";
-import { getDevToken } from "@/lib/api-client";
+import { getAuthHeaders } from "@/lib/api-client";
 import { BILLING_EVENTS, BILLING_EVENT_LABELS } from "@/lib/constants/billing-events";
 import type { BillingEvent } from "@/lib/constants/billing-events";
 
@@ -32,7 +32,7 @@ function BillingReactionCard() {
 
   useEffect(() => {
     fetch("/api/admin/billing-events", {
-      headers: { Authorization: `Bearer ${getDevToken()}` },
+      headers: { ...getAuthHeaders() },
     })
       .then((r) => r.ok ? r.json() : Promise.reject())
       .then((j) => setData(j.data ?? j))
@@ -194,7 +194,7 @@ const EVENT_ICONS: Record<BillingEvent, string> = {
 function authHeaders() {
   return {
     "Content-Type": "application/json",
-    Authorization:  `Bearer ${getDevToken()}`,
+    ...getAuthHeaders(),
   };
 }
 

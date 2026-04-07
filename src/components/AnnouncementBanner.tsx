@@ -7,7 +7,7 @@
 
 import { useState, useEffect } from "react";
 import { ANNOUNCEMENTS as FALLBACK_ANNOUNCEMENTS } from "@/data/announcements";
-import { getDevToken } from "@/lib/api-client";
+import { getAuthHeaders } from "@/lib/api-client";
 
 // ── 型 ────────────────────────────────────────────────────────────────────
 export type AnnouncementType = "update" | "bugfix" | "known_issue" | "info";
@@ -183,7 +183,7 @@ export function AnnouncementBanner({ canPost = false }: { canPost?: boolean }) {
   // GET /api/announcements から取得（失敗時は静的フォールバック）
   useEffect(() => {
     fetch("/api/announcements", {
-      headers: { Authorization: `Bearer ${getDevToken()}` },
+      headers: { ...getAuthHeaders() },
     })
       .then((r) => {
         if (!r.ok) throw new Error("fetch failed");

@@ -4,7 +4,7 @@
 // ユーザー概況（OA横断）— 近日公開
 
 import { useEffect, useState } from "react";
-import { getDevToken } from "@/lib/api-client";
+import { getAuthHeaders } from "@/lib/api-client";
 
 interface OaStats {
   id: string;
@@ -21,7 +21,7 @@ export default function AdminAudiencePage() {
   useEffect(() => {
     // /api/oas から全 OA + 作品数を取得（プラットフォームオーナーは全件返る）
     fetch("/api/oas?limit=100", {
-      headers: { Authorization: `Bearer ${getDevToken()}` },
+      headers: { ...getAuthHeaders() },
     })
       .then((r) => r.json())
       .then((j) => {

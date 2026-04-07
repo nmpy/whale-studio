@@ -4,7 +4,7 @@
 // 操作ログ（AdminAuditLog 一覧）
 
 import { useEffect, useState } from "react";
-import { getDevToken } from "@/lib/api-client";
+import { getAuthHeaders } from "@/lib/api-client";
 
 interface AuditLog {
   id:          string;
@@ -36,7 +36,7 @@ export default function AdminAuditPage() {
 
   useEffect(() => {
     fetch("/api/admin/audit", {
-      headers: { Authorization: `Bearer ${getDevToken()}` },
+      headers: { ...getAuthHeaders() },
     })
       .then((r) => {
         if (!r.ok) throw new Error("取得に失敗しました");

@@ -13,7 +13,7 @@
 //   コンテンツの閲覧・編集制御は workspace role を使うこと。
 
 import { useEffect, useState, useCallback } from "react";
-import { getDevToken } from "@/lib/api-client";
+import { getAuthHeaders } from "@/lib/api-client";
 import type { Role } from "@/lib/types/permissions";
 
 /** プラットフォームロール: サービス全体の管理権限 */
@@ -58,9 +58,7 @@ export function usePlatformRole() {
     } catch {}
 
     // /api/admin/me からプラットフォームオーナー判定を取得
-    fetch("/api/admin/me", {
-      headers: { Authorization: `Bearer ${getDevToken()}` },
-    })
+    fetch("/api/admin/me", { headers: { ...getAuthHeaders() } })
       .then((r) => {
         if (!r.ok) return null;
         return r.json() as Promise<{ data?: { is_platform_owner?: boolean } }>;
