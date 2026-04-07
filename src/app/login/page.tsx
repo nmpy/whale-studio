@@ -55,8 +55,16 @@ function LoginForm() {
       redirectTo: `${window.location.origin}/auth/reset-password`,
     });
     if (error) {
-      setResetMsg(error.message);
+      setResetMsg(
+        error.message.toLowerCase().includes("rate limit")
+          ? "短時間に操作が集中しています。数分待ってから再度お試しください。"
+          : error.message
+      );
       setResetStatus("error");
+      // rate limit エラー時は30秒ロック
+      if (error.message.toLowerCase().includes("rate limit")) {
+        setTimeout(() => setResetStatus("idle"), 30000);
+      }
     } else {
       setResetMsg("パスワード設定用のリンクをお送りしました。メールをご確認ください。");
       setResetStatus("sent");
@@ -74,11 +82,12 @@ function LoginForm() {
 
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) {
-      // メッセージを日本語化
       const msg = error.message.includes("Invalid login credentials")
         ? "メールアドレスまたはパスワードが正しくありません"
         : error.message.includes("Email not confirmed")
         ? "メールアドレスの確認が完了していません。確認メールをご確認ください"
+        : error.message.toLowerCase().includes("rate limit")
+        ? "短時間に操作が集中しています。数分待ってから再度お試しください。"
         : error.message;
       setErrorMsg(msg);
       setStatus("error");
@@ -193,7 +202,7 @@ function LoginForm() {
                 ) : (
                   <>
                     <p style={{ fontSize: 11, color: "#9ca3af", textAlign: "center", marginBottom: 8 }}>
-                      初めてログインする場合や、パスワードを忘れた場合
+                      初めてご利用の方・パスワード未設定の方はこちら
                     </p>
                     {resetStatus === "error" && resetMsg && (
                       <p style={{ fontSize: 12, color: "#ef4444", textAlign: "center", marginBottom: 6 }}>
@@ -217,7 +226,7 @@ function LoginForm() {
                         transition:     "border-color .15s, color .15s",
                       }}
                     >
-                      {resetStatus === "loading" ? "送信中..." : "パスワードを設定する / 再設定する"}
+                      {resetStatus === "loading" ? "送信中..." : "サインアップ / パスワード設定"}
                     </button>
                   </>
                 )}

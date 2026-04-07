@@ -937,8 +937,8 @@ function translateSupabaseError(msg: string): string {
     return "メールアドレスの形式が正しくありません";
   if (msg.includes("Signup is disabled"))
     return "現在、新規登録を受け付けていません。管理者にお問い合わせください。";
-  if (msg.includes("Email rate limit exceeded"))
-    return "メール送信の上限に達しました。しばらく待ってから再試行してください。";
+  if (msg.toLowerCase().includes("rate limit"))
+    return "短時間に操作が集中しています。数分待ってから再度お試しください。";
   return msg;
 }
 
