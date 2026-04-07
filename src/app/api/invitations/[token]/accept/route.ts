@@ -10,7 +10,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { ok, badRequest, conflict, notFound, serverError } from "@/lib/api-response";
 import { withAuth } from "@/lib/auth";
-import { createClient } from "@supabase/supabase-js";
 
 // ── POST /api/invitations/:token/accept ──────────────
 export const POST = withAuth(
@@ -57,33 +56,16 @@ export const POST = withAuth(
         );
       }
 
-      // ── 4. メールアドレス照合（bypass-admin / dev-user はスキップ） ──
+      // ── 4. メールアドレス照合 ──
+      // withAuth が返す user には email が含まれる（getAuthUser → createServerClient 経由）
+      // bypass-admin / dev-user は email を持たないためスキップ
       if (user.id !== "bypass-admin" && user.id !== "dev-user") {
-        const supabaseUrl     = process.env.NEXT_PUBLIC_SUPABASE_URL;
-        const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-        if (supabaseUrl && supabaseAnonKey) {
-          const authHeader = req.headers.get("authorization") ?? "";
-          const cookieHeader = req.headers.get("cookie") ?? "";
-          // cookie から access_token を取得する（auth.ts と同じロジック）
-          const token = authHeader.startsWith("Bearer ")
-            ? authHeader.slice(7)
-            : extractTokenFromCookie(cookieHeader);
-
-          if (token) {
-            const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-              auth: { persistSession: false },
-            });
-            const { data } = await supabase.auth.getUser(token);
-            const userEmail = data.user?.email;
-
-            if (userEmail && userEmail !== invitation.email) {
-              return badRequest(
-                `この招待は ${invitation.email} 宛てです。現在のアカウント（${userEmail}）では承諾できません`,
-                { email: ["招待メールアドレスとログイン中のメールアドレスが一致しません"] }
-              );
-            }
-          }
+        const userEmail = user.email;
+        if (userEmail && userEmail !== invitation.email) {
+          return badRequest(
+            `この招待は ${invitation.email} 宛てです。現在のアカウント（${userEmail}）では承諾できません`,
+            { email: ["招待メールアドレスとログイン中のメールアドレスが一致しません"] }
+          );
         }
       }
 
@@ -132,39 +114,3 @@ export const POST = withAuth(
   }
 );
 
-// cookie ヘッダーから Supabase access_token を抽出するミニヘルパー
-// (auth.ts の extractSupabaseTokenFromCookie と同じロジック)
-function extractTokenFromCookie(cookieHeader: string): string | null {
-  if (!cookieHeader) return null;
-  const cookies: Record<string, string> = {};
-  for (const part of cookieHeader.split(";")) {
-    const idx = part.indexOf("=");
-    if (idx === -1) continue;
-    cookies[part.slice(0, idx).trim()] = part.slice(idx + 1).trim();
-  }
-
-  const chunkKeys = Object.keys(cookies)
-    .filter((k) => /^sb-.+-auth-token\.\d+$/.test(k))
-    .sort();
-
-  let raw: string | null = null;
-  if (chunkKeys.length > 0) {
-    raw = chunkKeys.map((k) => cookies[k]).join("");
-  } else {
-    const singleKey = Object.keys(cookies).find((k) => /^sb-.+-auth-token$/.test(k));
-    if (singleKey) raw = cookies[singleKey];
-  }
-  if (!raw) return null;
-
-  try {
-    const parsed = JSON.parse(decodeURIComponent(raw)) as { access_token?: string };
-    return parsed.access_token ?? null;
-  } catch {
-    try {
-      const parsed = JSON.parse(Buffer.from(raw, "base64url").toString("utf-8")) as { access_token?: string };
-      return parsed.access_token ?? null;
-    } catch {
-      return null;
-    }
-  }
-}

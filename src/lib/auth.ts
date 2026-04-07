@@ -3,6 +3,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { createServerClient } from "@supabase/ssr";
 import { getWorkspaceRole } from '@/lib/rbac';
 import type { Role } from '@/lib/types/permissions';
 import { roleAtLeast } from '@/lib/types/permissions';
@@ -81,28 +82,35 @@ export async function getAuthUser(req: NextRequest): Promise<{ id: string; email
   const supabaseUrl     = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-  // ── 1. Supabase Auth cookie から JWT を取得 ──────────────────────
-  // ブラウザからのリクエストはログイン済みなら sb-*-auth-token cookie が自動付与される。
-  // Authorization ヘッダー不要。フロント側のコード変更も不要。
+  // ── 1. Supabase Auth cookie から認証（@supabase/ssr 経由） ──────
+  // middleware.ts と同じ createServerClient を使って cookie を読む。
+  // @supabase/ssr v0.10 の base64url エンコーディング・チャンク分割に対応。
   if (supabaseUrl && supabaseAnonKey) {
-    const cookieHeader = req.headers.get("cookie") ?? "";
-    const cookieToken  = extractSupabaseTokenFromCookie(cookieHeader);
-
-    if (cookieToken) {
-      console.log(`[Auth] Cookie から JWT 取得 path=${path} tokenPrefix="${cookieToken.slice(0, 12)}..."`);
-      const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-        auth: { persistSession: false },
+    try {
+      const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
+        cookies: {
+          getAll() {
+            // NextRequest の cookies API から全 cookie を取得
+            return req.cookies.getAll().map(({ name, value }) => ({ name, value }));
+          },
+          setAll() {
+            // API Route Handler では Set-Cookie を返す必要がないためno-op
+            // (middleware が cookie refresh を担当する)
+          },
+        },
       });
-      const { data, error } = await supabase.auth.getUser(cookieToken);
+      const { data, error } = await supabase.auth.getUser();
       if (error) {
-        console.warn(`[Auth] Cookie JWT 検証エラー path=${path} error="${error.message}" status=${error.status}`);
+        console.warn(`[Auth] Cookie 認証エラー path=${path} error="${error.message}"`);
         // cookie が無効でも Authorization ヘッダーにフォールバック
       } else if (data.user) {
         console.log(`[Auth] Cookie 認証成功 path=${path} userId=${data.user.id}`);
         return { id: data.user.id, email: data.user.email ?? undefined };
+      } else {
+        console.log(`[Auth] Cookie からユーザー取得できず path=${path} — Authorization ヘッダーを試行`);
       }
-    } else {
-      console.log(`[Auth] Supabase cookie なし path=${path} — Authorization ヘッダーを試行`);
+    } catch (err) {
+      console.warn(`[Auth] Cookie 認証例外 path=${path}`, err);
     }
   }
 
@@ -149,62 +157,8 @@ export async function getAuthUser(req: NextRequest): Promise<{ id: string; email
   return null;
 }
 
-/**
- * cookie ヘッダー文字列から Supabase の access_token を取り出す。
- *
- * Supabase は以下の形式でセッションを保存する:
- *   sb-<project-ref>-auth-token=base64url(JSON({ access_token, ... }))
- *   または分割 chunk: sb-<ref>-auth-token.0, .1, ...
- */
-function extractSupabaseTokenFromCookie(cookieHeader: string): string | null {
-  if (!cookieHeader) return null;
-
-  // cookie を key=value の Map に変換
-  const cookies: Record<string, string> = {};
-  for (const part of cookieHeader.split(";")) {
-    const idx = part.indexOf("=");
-    if (idx === -1) continue;
-    const k = part.slice(0, idx).trim();
-    const v = part.slice(idx + 1).trim();
-    cookies[k] = v;
-  }
-
-  // sb-*-auth-token.0 チャンクが存在する場合は結合する
-  const chunkKeys = Object.keys(cookies)
-    .filter((k) => /^sb-.+-auth-token\.\d+$/.test(k))
-    .sort();
-
-  let raw: string | null = null;
-
-  if (chunkKeys.length > 0) {
-    raw = chunkKeys.map((k) => cookies[k]).join("");
-  } else {
-    // 分割なしの単一 cookie
-    const singleKey = Object.keys(cookies).find(
-      (k) => /^sb-.+-auth-token$/.test(k)
-    );
-    if (singleKey) raw = cookies[singleKey];
-  }
-
-  if (!raw) return null;
-
-  try {
-    // URL エンコードを外して JSON パース
-    const decoded = decodeURIComponent(raw);
-    const parsed  = JSON.parse(decoded) as { access_token?: string };
-    return parsed.access_token ?? null;
-  } catch {
-    // base64url エンコードの場合
-    try {
-      const json = Buffer.from(raw, "base64url").toString("utf-8");
-      const parsed = JSON.parse(json) as { access_token?: string };
-      return parsed.access_token ?? null;
-    } catch {
-      console.warn("[Auth] Supabase cookie のデコードに失敗しました");
-      return null;
-    }
-  }
-}
+// extractSupabaseTokenFromCookie は削除済み。
+// @supabase/ssr の createServerClient を使って cookie を読む（base64url / chunk 対応）。
 
 // ─────────────────────────────────────────────────────────
 // withAuth — API ルートで認証を必須にするラッパー
@@ -212,7 +166,7 @@ function extractSupabaseTokenFromCookie(cookieHeader: string): string | null {
 type Handler<T = Record<string, string>> = (
   req: NextRequest,
   ctx: { params: T },
-  user: { id: string }
+  user: { id: string; email?: string }
 ) => Promise<NextResponse>;
 
 export function withAuth<T = Record<string, string>>(handler: Handler<T>) {
