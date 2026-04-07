@@ -61,21 +61,21 @@ function recordUserActivity(userId: string, email?: string): void {
 export async function getAuthUser(req: NextRequest): Promise<{ id: string; email?: string } | null> {
   const path = `${req.method} ${req.nextUrl.pathname}`;
 
-  // ── 0. 暫定バイパス ★本番運用前に必ず削除★ ──────────────────────
-  // サーバー側専用 env: BYPASS_AUTH=true
-  // NEXT_PUBLIC_ ではないためクライアントには公開されない。
-  // 確認が終わったら Vercel の環境変数から削除 → 再デプロイで無効化。
-  //
-  // .trim().toLowerCase() で前後スペース・大文字小文字のゆらぎを吸収する。
+  // ── 0. 暫定バイパス（開発環境のみ有効）──────────────────────
+  // ⚠ 本番環境（NODE_ENV=production）では BYPASS_AUTH を無視する。
+  // これにより、本番に env を消し忘れても認証がスキップされない。
   const bypassRaw = process.env.BYPASS_AUTH;
-  const bypassOn  = bypassRaw?.trim().toLowerCase() === "true";
-  // 必ず出力: Vercel ログで env var の実際の値を確認できるようにする
+  const bypassOn  = bypassRaw?.trim().toLowerCase() === "true"
+    && process.env.NODE_ENV !== "production";
   console.log(
-    `[Auth] BYPASS_AUTH raw=${JSON.stringify(bypassRaw)} resolved=${bypassOn} path=${path}`
+    `[Auth] BYPASS_AUTH raw=${JSON.stringify(bypassRaw)} resolved=${bypassOn} env=${process.env.NODE_ENV} path=${path}`
   );
   if (bypassOn) {
-    console.warn(`[Auth] ⚠️  BYPASS_AUTH=true — 認証スキップ中 (本番運用前に削除すること) path=${path}`);
+    console.warn(`[Auth] ⚠️  BYPASS_AUTH=true (dev) — 認証スキップ中 path=${path}`);
     return { id: "bypass-admin" };
+  }
+  if (bypassRaw?.trim().toLowerCase() === "true" && process.env.NODE_ENV === "production") {
+    console.error(`[Auth] 🚨 BYPASS_AUTH=true は本番環境では無効です。環境変数を削除してください path=${path}`);
   }
 
   const supabaseUrl     = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -220,19 +220,17 @@ export function withAuth<T = Record<string, string>>(handler: Handler<T>) {
     const method   = req.method;
     const pathname = req.nextUrl.pathname;
 
-    // ── BYPASS_AUTH を withAuth の先頭で直接評価（getAuthUser に入る前）──
-    // getAuthUser 内でも同じチェックをしているが、
-    // バンドルキャッシュ等の問題で getAuthUser が古いコードを使っている場合でも
-    // こちらで確実に通過させる。
+    // ── BYPASS_AUTH（開発環境のみ） ──
     const bypassRaw = process.env.BYPASS_AUTH;
-    const bypassOn  = bypassRaw?.trim().toLowerCase() === "true";
+    const bypassOn  = bypassRaw?.trim().toLowerCase() === "true"
+      && process.env.NODE_ENV !== "production";
     console.log(
       `[withAuth] ENTRY method=${method} path=${pathname}`,
-      `BYPASS_AUTH_raw=${JSON.stringify(bypassRaw)} BYPASS_AUTH_resolved=${bypassOn}`
+      `BYPASS_AUTH_raw=${JSON.stringify(bypassRaw)} BYPASS_AUTH_resolved=${bypassOn} env=${process.env.NODE_ENV}`
     );
 
     if (bypassOn) {
-      console.warn(`[withAuth] ⚠️ BYPASS_AUTH=true — 認証スキップ method=${method} path=${pathname}`);
+      console.warn(`[withAuth] ⚠️ BYPASS_AUTH=true (dev) — 認証スキップ method=${method} path=${pathname}`);
       try {
         return await handler(req, ctx, { id: "bypass-admin" });
       } catch (err) {
@@ -332,13 +330,11 @@ export function withRole<T = Record<string, string>>(
   handler: RoleHandler<T>
 ) {
   return withAuth<T>(async (req, ctx, user) => {
-    // ── BYPASS_AUTH=true のときは権限チェックをスキップ ──
-    // withAuth の bypass 分岐で user.id が "bypass-admin" に固定される。
-    // workspace_members を参照せず、最高権限（owner）として即通過させる。
-    if (user.id === "bypass-admin") {
+    // ── BYPASS_AUTH（開発環境のみ）: bypass-admin は権限チェックをスキップ ──
+    if (user.id === "bypass-admin" && process.env.NODE_ENV !== "production") {
       const label = Array.isArray(allowedRoles) ? allowedRoles.join('|') : allowedRoles;
       console.warn(
-        `[withRole] ⚠️ BYPASS_AUTH — 権限チェックスキップ`,
+        `[withRole] ⚠️ BYPASS_AUTH (dev) — 権限チェックスキップ`,
         `path=${req.method} ${req.nextUrl.pathname}`,
         `allowedRoles=${label} → bypass as owner`
       );

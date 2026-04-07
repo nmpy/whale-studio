@@ -53,8 +53,12 @@ export async function createSupabaseServerClient() {
 export async function getServerUser(): Promise<{ id: string; email?: string } | null> {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 
-  // ── 開発バイパスモード ──────────────────────────────────────────────
+  // ── 開発バイパスモード（本番環境では無効） ──────────────────────────
   if (!supabaseUrl) {
+    if (process.env.NODE_ENV === "production") {
+      console.error("[getServerUser] Supabase URL 未設定 + 本番環境: 認証不可");
+      return null;
+    }
     const bypassOn = process.env.BYPASS_AUTH?.trim().toLowerCase() === "true";
     if (bypassOn) return { id: "bypass-admin" };
     if (process.env.NODE_ENV === "development") return { id: "dev-user" };

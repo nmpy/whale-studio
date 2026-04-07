@@ -16,11 +16,18 @@ import { createClient } from "@supabase/supabase-js";
 export const POST = withAuth(
   async (req: NextRequest, { params }: { params: { token: string } }, user) => {
     try {
+      console.log(`[AcceptInvitation] START token=${params.token.slice(0, 8)}... userId=${user.id}`);
+
       // ── 1. 招待トークンを取得 ──
       const invitation = await prisma.invitation.findUnique({
         where: { token: params.token },
       });
-      if (!invitation) return notFound("招待");
+      if (!invitation) {
+        console.warn(`[AcceptInvitation] 404 token not found`);
+        return notFound("招待");
+      }
+
+      console.log(`[AcceptInvitation] invitation found: oaId=${invitation.oaId} email=${invitation.email} role=${invitation.role} accepted=${!!invitation.acceptedAt}`);
 
       // ── 2. 受け入れ済みチェック ──
       if (invitation.acceptedAt !== null) {
@@ -85,10 +92,12 @@ export const POST = withAuth(
         where: { workspaceId_userId: { workspaceId: invitation.oaId, userId: user.id } },
       });
       if (existingMember) {
+        console.log(`[AcceptInvitation] 409 already member: role=${existingMember.role} status=${existingMember.status}`);
         return conflict("すでにこのワークスペースのメンバーです");
       }
 
       // ── 6. トランザクション: acceptedAt 更新 + WorkspaceMember 作成 ──
+      console.log(`[AcceptInvitation] creating membership: oaId=${invitation.oaId} userId=${user.id} role=${invitation.role}`);
       const [, member] = await prisma.$transaction([
         prisma.invitation.update({
           where: { id: invitation.id },

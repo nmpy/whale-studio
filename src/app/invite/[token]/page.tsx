@@ -16,16 +16,16 @@
 //   registered     — 登録 + 招待承諾 完了
 //   joined         — ログイン済みユーザーによる招待承諾 完了
 //
-// ■ 未ログイン時の3分岐（is_registered で判定）:
-//   is_registered: false  → ① register（登録フォーム）
-//   is_registered: true   → ② /login?next=/invite/[token]（既存ユーザーはログインへ）
+// ■ 未ログイン時の遷移:
+//   一律 → register（招待専用の登録/ログイン統合画面）
+//   ※ is_registered はアドバイザリ情報として登録済みユーザーへの案内表示に使用
 //
 // ■ already_joined の検出:
 //   accept() が 409 を返したとき（冪等性: 致命的エラーではなく成功扱いに近い）
 //
 // ■ E2Eチェック対象ケース（開発環境では診断ログで確認できる）:
-//   Case 1: 未登録               → register
-//   Case 2: 登録済み未ログイン    → /login?next=...
+//   Case 1: 未登録               → register（登録フォーム）
+//   Case 2: 登録済み未ログイン    → register（ログイン導線を併記）
 //   Case 3: ログイン済み一致      → confirm → joined
 //   Case 4: email不一致          → email_mismatch
 //   Case 5: 期限切れ             → expired
@@ -166,14 +166,11 @@ function InvitePage() {
       return;
     }
 
-    // ── 6. 未ログイン: is_registered で分岐 ───────────────────
-    if (invitation.is_registered) {
-      devLog("Case 2: 登録済み未ログイン → /login?next=...");
-      window.location.href = `/login?next=${encodeURIComponent(`/invite/${token}`)}`;
-    } else {
-      devLog("Case 1: 未登録 → register");
-      setState({ status: "register", invitation });
-    }
+    // ── 6. 未ログイン → 一律 register（招待専用画面） ─────────
+    // is_registered は register 画面内で「既にアカウントをお持ちの方」案内の表示切替に使用。
+    // /login にリダイレクトしないことで、パスワード入力画面に迷い込む問題を防ぐ。
+    devLog(invitation.is_registered ? "Case 2: 登録済み未ログイン → register（ログイン導線併記）" : "Case 1: 未登録 → register");
+    setState({ status: "register", invitation });
   }, [token]);
 
   useEffect(() => { init(); }, [init]);
@@ -307,13 +304,15 @@ function InvitePage() {
           </div>
         )}
 
-        {/* ── ① register: アカウント登録フォーム（未登録ユーザー） ── */}
+        {/* ── ① register: 招待専用の登録/ログイン画面 ── */}
         {state.status === "register" && (
           <RegisterForm
             token={token}
             invitation={state.invitation}
+            isRegistered={state.invitation.is_registered}
             onRegistered={(oaName) => setState({ status: "registered", oaName })}
             onConfirmEmail={() => setState({ status: "confirm_email", invitation: state.invitation })}
+            onLoggedIn={() => { devLog("RegisterForm: login 成功 → init() 再実行"); init(); }}
             onError={(msg) => setState({ status: "error", message: msg })}
           />
         )}
@@ -447,16 +446,22 @@ function InvitePage() {
 function RegisterForm({
   token,
   invitation,
+  isRegistered,
   onRegistered,
   onConfirmEmail,
+  onLoggedIn,
   onError,
 }: {
   token:          string;
   invitation:     InvitationDetail;
+  isRegistered:   boolean;
   onRegistered:   (oaName: string) => void;
   onConfirmEmail: () => void;
+  onLoggedIn:     () => void;
   onError:        (msg: string) => void;
 }) {
+  // formMode: 'register' = 新規登録, 'login' = 既存ユーザーログイン
+  const [formMode,        setFormMode]        = useState<"register" | "login">(isRegistered ? "login" : "register");
   const [displayName,     setDisplayName]     = useState("");
   const [password,        setPassword]        = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -465,9 +470,43 @@ function RegisterForm({
   const [showPass,        setShowPass]        = useState(false);
   const [showConfirm,     setShowConfirm]     = useState(false);
 
+  // ── ログイン処理 ──
+  async function handleLogin(e: React.FormEvent) {
+    e.preventDefault();
+    setFieldError(null);
+    if (password.length < 1) { setFieldError("パスワードを入力してください"); return; }
+
+    setSubmitting(true);
+    devLog("Case 2: signInWithPassword() 実行", { email: invitation.email });
+
+    const supabase = createSupabaseBrowserClient();
+    const { error } = await supabase.auth.signInWithPassword({
+      email: invitation.email,
+      password,
+    });
+
+    if (error) {
+      devLog("Case 2: login エラー", { message: error.message });
+      const msg = error.message.includes("Invalid login credentials")
+        ? "パスワードが正しくありません"
+        : error.message.includes("Email not confirmed")
+        ? "メールアドレスの確認が完了していません"
+        : translateSupabaseError(error.message);
+      setFieldError(msg);
+      setSubmitting(false);
+      return;
+    }
+
+    devLog("Case 2: login 成功 → onLoggedIn()");
+    onLoggedIn(); // init() を再実行して confirm 状態へ遷移
+  }
+
+  // ── 登録処理 ──
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setFieldError(null);
+
+    if (formMode === "login") { return handleLogin(e); }
 
     if (!displayName.trim()) { setFieldError("ユーザー名を入力してください"); return; }
     if (password.length < 8) { setFieldError("パスワードは8文字以上で入力してください"); return; }
@@ -518,11 +557,16 @@ function RegisterForm({
   return (
     <>
       <h2 style={{ fontSize: 22, fontWeight: 800, color: "#111827", marginBottom: 8, textAlign: "center" }}>
-        Whale Studioへようこそ
+        {formMode === "login" ? "ログインして参加" : "Whale Studioへようこそ"}
       </h2>
       <p style={{ fontSize: 13, color: "#6b7280", textAlign: "center", marginBottom: 28, lineHeight: 1.6 }}>
-        招待されたアカウントの登録を進めてください
+        {formMode === "login"
+          ? "招待されたアカウントでログインしてください"
+          : "招待されたアカウントの登録を進めてください"}
       </p>
+
+      {/* ── 招待情報の概要 ── */}
+      <InvitationInfo invitation={invitation} userEmail={null} />
 
       {fieldError && (
         <div className="alert alert-error" style={{ marginBottom: 16, fontSize: 13 }}>
@@ -532,21 +576,24 @@ function RegisterForm({
 
       <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
 
-        <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <span style={{ fontSize: 12, fontWeight: 600, color: "#374151" }}>ユーザー名</span>
-          <input
-            type="text"
-            className="input"
-            placeholder="山田 太郎"
-            value={displayName}
-            onChange={(e) => setDisplayName(e.target.value)}
-            disabled={submitting}
-            maxLength={50}
-            autoComplete="name"
-            autoFocus
-            required
-          />
-        </label>
+        {/* ユーザー名（登録モードのみ） */}
+        {formMode === "register" && (
+          <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: "#374151" }}>ユーザー名</span>
+            <input
+              type="text"
+              className="input"
+              placeholder="山田 太郎"
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              disabled={submitting}
+              maxLength={50}
+              autoComplete="name"
+              autoFocus
+              required
+            />
+          </label>
+        )}
 
         <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
           <span style={{ fontSize: 12, fontWeight: 600, color: "#374151" }}>メールアドレス</span>
@@ -557,7 +604,11 @@ function RegisterForm({
             readOnly
             style={{ background: "#f9fafb", color: "#6b7280", cursor: "not-allowed" }}
           />
-          <span style={{ fontSize: 11, color: "#9ca3af" }}>招待されたメールアドレスで登録されます</span>
+          <span style={{ fontSize: 11, color: "#9ca3af" }}>
+            {formMode === "register"
+              ? "招待されたメールアドレスで登録されます"
+              : "招待されたメールアドレスでログインします"}
+          </span>
         </label>
 
         <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
@@ -566,41 +617,45 @@ function RegisterForm({
             <input
               type={showPass ? "text" : "password"}
               className="input"
-              placeholder="8文字以上"
+              placeholder={formMode === "register" ? "8文字以上" : "パスワード"}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               disabled={submitting}
               style={{ paddingRight: 40 }}
-              autoComplete="new-password"
+              autoComplete={formMode === "register" ? "new-password" : "current-password"}
+              autoFocus={formMode === "login"}
               required
             />
             <TogglePassButton show={showPass} onClick={() => setShowPass((p) => !p)} />
           </div>
-          {password.length > 0 && password.length < 8 && (
+          {formMode === "register" && password.length > 0 && password.length < 8 && (
             <span style={{ fontSize: 11, color: "#dc2626" }}>8文字以上で入力してください</span>
           )}
         </label>
 
-        <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          <span style={{ fontSize: 12, fontWeight: 600, color: "#374151" }}>パスワード（確認）</span>
-          <div style={{ position: "relative" }}>
-            <input
-              type={showConfirm ? "text" : "password"}
-              className="input"
-              placeholder="もう一度入力"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              disabled={submitting}
-              style={{ paddingRight: 40 }}
-              autoComplete="new-password"
-              required
-            />
-            <TogglePassButton show={showConfirm} onClick={() => setShowConfirm((p) => !p)} />
-          </div>
-          {confirmPassword.length > 0 && password !== confirmPassword && (
-            <span style={{ fontSize: 11, color: "#dc2626" }}>パスワードが一致しません</span>
-          )}
-        </label>
+        {/* パスワード確認（登録モードのみ） */}
+        {formMode === "register" && (
+          <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: "#374151" }}>パスワード（確認）</span>
+            <div style={{ position: "relative" }}>
+              <input
+                type={showConfirm ? "text" : "password"}
+                className="input"
+                placeholder="もう一度入力"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                disabled={submitting}
+                style={{ paddingRight: 40 }}
+                autoComplete="new-password"
+                required
+              />
+              <TogglePassButton show={showConfirm} onClick={() => setShowConfirm((p) => !p)} />
+            </div>
+            {confirmPassword.length > 0 && password !== confirmPassword && (
+              <span style={{ fontSize: 11, color: "#dc2626" }}>パスワードが一致しません</span>
+            )}
+          </label>
+        )}
 
         <button
           type="submit"
@@ -608,19 +663,40 @@ function RegisterForm({
           style={{ marginTop: 4 }}
           disabled={submitting}
         >
-          {submitting ? "登録中..." : "アカウントを登録して参加する"}
+          {submitting
+            ? "処理中..."
+            : formMode === "login"
+              ? "ログインして参加する"
+              : "アカウントを登録して参加する"}
         </button>
 
       </form>
 
+      {/* ── モード切替 ── */}
       <p style={{ marginTop: 24, textAlign: "center", fontSize: 12, color: "#9ca3af" }}>
-        すでにアカウントをお持ちの方は{" "}
-        <a
-          href={`/login?next=${encodeURIComponent(`/invite/${token}`)}`}
-          style={{ color: "#2F6F5E", fontWeight: 600, textDecoration: "none" }}
-        >
-          ログインはこちら
-        </a>
+        {formMode === "register" ? (
+          <>
+            すでにアカウントをお持ちの方は{" "}
+            <button
+              type="button"
+              onClick={() => { setFormMode("login"); setFieldError(null); setPassword(""); }}
+              style={{ color: "#2F6F5E", fontWeight: 600, textDecoration: "none", background: "none", border: "none", cursor: "pointer", fontSize: 12 }}
+            >
+              ログインはこちら
+            </button>
+          </>
+        ) : (
+          <>
+            アカウントをお持ちでない方は{" "}
+            <button
+              type="button"
+              onClick={() => { setFormMode("register"); setFieldError(null); setPassword(""); setConfirmPassword(""); }}
+              style={{ color: "#2F6F5E", fontWeight: 600, textDecoration: "none", background: "none", border: "none", cursor: "pointer", fontSize: 12 }}
+            >
+              新規登録はこちら
+            </button>
+          </>
+        )}
       </p>
     </>
   );
@@ -656,8 +732,21 @@ function JoinConfirm({
     devLog("Case 3: accept() 呼び出し開始");
 
     try {
-      // cookie ベース認証: サーバーが Supabase cookie からセッションを取得する
-      await invitationApi.accept("dev-token", token);
+      // セッションから access_token を取得して認証付きで accept を呼ぶ
+      const supabaseUrl     = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+      let authToken = "dev-token"; // Supabase 未設定時のフォールバック（開発環境のみ）
+      if (supabaseUrl && supabaseAnonKey) {
+        const supabase = createSupabaseBrowserClient();
+        const { data } = await supabase.auth.getSession();
+        authToken = data.session?.access_token ?? "";
+        if (!authToken) {
+          setJoinErr("セッションが切れています。ページを再読み込みしてください。");
+          setJoining(false);
+          return;
+        }
+      }
+      await invitationApi.accept(authToken, token);
       onJoined(invitation.oa_id, invitation.oa_name);
     } catch (err: unknown) {
       const anyErr = err as { status?: number; message?: string };

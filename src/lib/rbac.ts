@@ -31,18 +31,13 @@ export async function getWorkspaceRole(
   workspaceId: string,
   userId: string
 ): Promise<MemberInfo> {
-  // BYPASS_AUTH=true 時のスタブ
-  if (userId === 'bypass-admin') {
-    return { role: 'owner', status: 'active' };
-  }
-
-  // dev スタブ: Supabase 未設定の開発環境では常に owner
-  if (
-    !process.env.NEXT_PUBLIC_SUPABASE_URL &&
-    process.env.NODE_ENV === 'development' &&
-    userId === 'dev-user'
-  ) {
-    return { role: 'owner', status: 'active' };
+  // dev スタブ: Supabase 未設定の開発環境では dev-user / bypass-admin を owner として返す
+  // ⚠ 本番環境（NODE_ENV=production）では絶対にスタブを返さない
+  if (process.env.NODE_ENV === 'development' && !process.env.NEXT_PUBLIC_SUPABASE_URL) {
+    if (userId === 'bypass-admin' || userId === 'dev-user') {
+      console.warn(`[RBAC] dev stub: ${userId} → owner (workspace=${workspaceId})`);
+      return { role: 'owner', status: 'active' };
+    }
   }
 
   const member = await prisma.workspaceMember.findUnique({
@@ -50,8 +45,12 @@ export async function getWorkspaceRole(
     select: { role: true, status: true },
   });
 
-  if (!member) return null;
+  if (!member) {
+    console.log(`[RBAC] getWorkspaceRole: no membership found workspace=${workspaceId} user=${userId}`);
+    return null;
+  }
 
+  console.log(`[RBAC] getWorkspaceRole: workspace=${workspaceId} user=${userId} role=${member.role} status=${member.status}`);
   return {
     role:   member.role   as Role,
     status: member.status as MemberStatus,

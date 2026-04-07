@@ -423,9 +423,9 @@ export default function AppHeader() {
                 e.currentTarget.style.background   = "#f3f4f6";
                 e.currentTarget.style.borderColor  = "#e5e7eb";
               }}
-              aria-label="気づいた点を送る"
+              aria-label="気づいたことを伝える"
             >
-              気づいた点を送る
+              気づいたことを伝える
             </button>
           )}
         </div>

@@ -18,8 +18,8 @@
  *   - 他のロールからの見え方をプレビューできる
  */
 export function isPlatformOwner(userId: string): boolean {
-  // BYPASS_AUTH=true 時のスタブ
-  if (userId === "bypass-admin") return true;
+  // BYPASS_AUTH=true 時のスタブ（開発環境のみ）
+  if (userId === "bypass-admin" && process.env.NODE_ENV !== "production") return true;
 
   // 環境変数で設定されたプラットフォームオーナーリスト（設定済みの場合はこれを優先）
   // PLATFORM_ADMIN_USER_IDS が設定されている場合はリストのみで判定し、開発スタブは適用しない。

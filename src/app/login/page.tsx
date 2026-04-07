@@ -24,8 +24,7 @@ function LoginForm() {
 
   const [email,        setEmail]        = useState("");
   const [password,     setPassword]     = useState("");
-  const [mode,         setMode]         = useState<"password" | "magic">("password");
-  const [status,       setStatus]       = useState<"idle" | "loading" | "sent" | "error">("idle");
+  const [status,       setStatus]       = useState<"idle" | "loading" | "error">("idle");
   const [errorMsg,     setErrorMsg]     = useState("");
   // パスワード設定/再設定
   const [resetStatus,  setResetStatus]  = useState<"idle" | "loading" | "sent" | "error">("idle");
@@ -73,34 +72,21 @@ function LoginForm() {
 
     const supabase = createSupabaseBrowserClient();
 
-    if (mode === "magic") {
-      const { error } = await supabase.auth.signInWithOtp({
-        email,
-        options: { emailRedirectTo: `${window.location.origin}${nextPath}` },
-      });
-      if (error) {
-        setErrorMsg(error.message);
-        setStatus("error");
-      } else {
-        setStatus("sent");
-      }
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) {
+      // メッセージを日本語化
+      const msg = error.message.includes("Invalid login credentials")
+        ? "メールアドレスまたはパスワードが正しくありません"
+        : error.message.includes("Email not confirmed")
+        ? "メールアドレスの確認が完了していません。確認メールをご確認ください"
+        : error.message;
+      setErrorMsg(msg);
+      setStatus("error");
     } else {
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
-      if (error) {
-        // メッセージを日本語化
-        const msg = error.message.includes("Invalid login credentials")
-          ? "メールアドレスまたはパスワードが正しくありません"
-          : error.message.includes("Email not confirmed")
-          ? "メールアドレスの確認が完了していません。確認メールをご確認ください"
-          : error.message;
-        setErrorMsg(msg);
-        setStatus("error");
-      } else {
-        // cookie が発行されたのでリダイレクト
-        // router.push だと middleware の cookie 読み取りタイミングがずれることがあるため
-        // window.location.href で確実にページ遷移する
-        window.location.href = nextPath;
-      }
+      // cookie が発行されたのでリダイレクト
+      // router.push だと middleware の cookie 読み取りタイミングがずれることがあるため
+      // window.location.href で確実にページ遷移する
+      window.location.href = nextPath;
     }
   }
 
@@ -145,30 +131,8 @@ function LoginForm() {
           </div>
         )}
 
-        {/* ── マジックリンク送信完了 ── */}
-        {status === "sent" ? (
-          <div style={{ textAlign: "center" }}>
-            {/* アイコン */}
-            <div style={{ fontSize: 36, marginBottom: 12 }}>📬</div>
-
-            <p style={{ fontSize: 16, fontWeight: 700, color: "#111827", marginBottom: 8 }}>
-              ログイン用のリンクをお送りしました
-            </p>
-            <p style={{ fontSize: 13, color: "#374151", lineHeight: 1.7, marginBottom: 12 }}>
-              <strong style={{ color: "#111827" }}>{email}</strong> 宛に<br />
-              Whale Studio からメールをお送りしました。<br />
-              メール内の「ログインする」ボタンをクリックすると、<br />
-              そのまま管理画面をご利用いただけます。
-            </p>
-            <p style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.6 }}>
-              メールが届かない場合は、迷惑メールフォルダもご確認ください。<br />
-              差出人: <span style={{ fontFamily: "monospace" }}>noreply@mail.app.supabase.io</span>
-            </p>
-          </div>
-        ) : (
-
-          /* ── ログインフォーム ── */
-          <form onSubmit={handleSubmit}>
+        {/* ── ログインフォーム ── */}
+        <form onSubmit={handleSubmit}>
             <div className="form-group">
               <label className="form-label" htmlFor="email">メールアドレス</label>
               <input
@@ -183,21 +147,19 @@ function LoginForm() {
               />
             </div>
 
-            {mode === "password" && (
-              <div className="form-group">
-                <label className="form-label" htmlFor="password">パスワード</label>
-                <input
-                  id="password"
-                  type="password"
-                  className="form-input"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  placeholder="••••••••"
-                  autoComplete="current-password"
-                />
-              </div>
-            )}
+            <div className="form-group">
+              <label className="form-label" htmlFor="password">パスワード</label>
+              <input
+                id="password"
+                type="password"
+                className="form-input"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                placeholder="••••••••"
+                autoComplete="current-password"
+              />
+            </div>
 
             {errorMsg && (
               <div className="alert alert-error" style={{ marginBottom: 12, fontSize: 13 }}>
@@ -211,36 +173,12 @@ function LoginForm() {
               style={{ width: "100%", marginTop: 8 }}
               disabled={status === "loading"}
             >
-              {status === "loading"
-                ? "処理中..."
-                : mode === "magic"
-                  ? "マジックリンクを送信"
-                  : "ログイン"}
+              {status === "loading" ? "処理中..." : "ログイン"}
             </button>
 
-            <button
-              type="button"
-              onClick={() => { setMode(mode === "password" ? "magic" : "password"); setErrorMsg(""); setResetStatus("idle"); setResetMsg(""); }}
-              style={{
-                width:          "100%",
-                marginTop:      10,
-                background:     "none",
-                border:         "none",
-                cursor:         "pointer",
-                fontSize:       12,
-                color:          "#6b7280",
-                textDecoration: "underline",
-              }}
-            >
-              {mode === "password"
-                ? "パスワードなしでログイン（マジックリンク）"
-                : "パスワードでログイン"}
-            </button>
-
-            {/* ── パスワード設定/再設定（パスワードモード時のみ） ── */}
-            {mode === "password" && (
-              <div style={{ marginTop: 16, borderTop: "1px solid #f3f4f6", paddingTop: 14 }}>
-                {resetStatus === "sent" ? (
+            {/* ── パスワード設定/再設定 ── */}
+            <div style={{ marginTop: 16, borderTop: "1px solid #f3f4f6", paddingTop: 14 }}>
+              {resetStatus === "sent" ? (
                   <div style={{
                     background: "#f0fdf4",
                     border: "1px solid #86efac",
@@ -284,9 +222,7 @@ function LoginForm() {
                   </>
                 )}
               </div>
-            )}
           </form>
-        )}
       </div>
     </div>
   );
