@@ -277,6 +277,11 @@ export interface Message {
   loading_min_seconds: number | null;
   /** ローディング最大秒数 */
   loading_max_seconds: number | null;
+  // ── タップ遷移先 ──
+  /** タップ時の遷移先 destination ID（null = 未使用） */
+  tap_destination_id: string | null;
+  /** タップ時の直接URL（destination 未使用時のフォールバック） */
+  tap_url: string | null;
   sort_order: number;
   is_active: boolean;
   created_at: string;
@@ -1184,6 +1189,8 @@ export interface ReorderLiffBlocksBody {
 // ────────────────────────────────────────────────
 // Location — ビーコン / QR チェックインポイント
 // ────────────────────────────────────────────────
+export type CheckinMethod = "qr" | "gps" | "beacon";
+
 export interface Location {
   id:               string;
   work_id:          string;
@@ -1192,11 +1199,18 @@ export interface Location {
   beacon_uuid:      string | null;
   beacon_major:     number | null;
   beacon_minor:     number | null;
+  latitude:         number | null;
+  longitude:        number | null;
+  radius_meters:    number | null;
+  gps_enabled:      boolean;
   cooldown_seconds: number;
   transition_id:    string | null;
   set_flags:        string;
   sort_order:       number;
   is_active:        boolean;
+  stamp_enabled:    boolean;
+  stamp_label:      string | null;
+  stamp_order:      number | null;
   created_at:       string;
   updated_at:       string;
 }
@@ -1210,11 +1224,13 @@ export interface LocationWithTransition extends Location {
 }
 
 export interface LocationVisit {
-  id:           string;
-  line_user_id: string;
-  location_id:  string;
-  work_id:      string;
-  visited_at:   string;
+  id:              string;
+  line_user_id:    string;
+  location_id:     string;
+  work_id:         string;
+  checkin_method:  CheckinMethod;
+  distance_meters: number | null;
+  visited_at:      string;
 }
 
 // ── Location リクエストボディ ──
@@ -1225,11 +1241,18 @@ export interface CreateLocationBody {
   beacon_uuid?:     string;
   beacon_major?:    number;
   beacon_minor?:    number;
+  latitude?:        number;
+  longitude?:       number;
+  radius_meters?:   number;
+  gps_enabled?:     boolean;
   cooldown_seconds?: number;
   transition_id?:   string;
   set_flags?:       string;
   sort_order?:      number;
   is_active?:       boolean;
+  stamp_enabled?:   boolean;
+  stamp_label?:     string;
+  stamp_order?:     number;
 }
 
 export interface UpdateLocationBody {
@@ -1238,11 +1261,18 @@ export interface UpdateLocationBody {
   beacon_uuid?:      string | null;
   beacon_major?:     number | null;
   beacon_minor?:     number | null;
+  latitude?:         number | null;
+  longitude?:        number | null;
+  radius_meters?:    number | null;
+  gps_enabled?:      boolean;
   cooldown_seconds?: number;
   transition_id?:    string | null;
   set_flags?:        string;
   sort_order?:       number;
   is_active?:        boolean;
+  stamp_enabled?:    boolean;
+  stamp_label?:      string | null;
+  stamp_order?:      number | null;
 }
 
 // ────────────────────────────────────────────────
@@ -1294,9 +1324,12 @@ export interface UpdateLineDestinationBody {
 
 // ── LIFF チェックイン ──
 export interface CheckinRequest {
-  line_user_id: string;
-  location_id:  string;
-  work_id:      string;
+  line_user_id:    string;
+  location_id:     string;
+  work_id:         string;
+  checkin_method?: CheckinMethod;
+  lat?:            number;
+  lng?:            number;
 }
 
 /** チェックイン成功 */
@@ -1306,10 +1339,14 @@ export interface CheckinSuccess {
   location_id: string;
   work_id:     string;
   location_name: string;
+  checkin_method: CheckinMethod;
   message:     string;
   cooldown_remaining_seconds: 0;
+  distance_meters?: number;
+  radius_meters?:   number;
   transition?: { id: string; name: string; phase_type: string };
   flags_applied?: Record<string, unknown>;
+  stamp?: StampInfo;
 }
 
 /** クールダウン中 */
@@ -1319,12 +1356,50 @@ export interface CheckinCooldown {
   location_id: string;
   work_id:     string;
   location_name: string;
+  checkin_method: CheckinMethod;
   message:     string;
   cooldown_remaining_seconds: number;
 }
 
+/** GPS 範囲外 */
+export interface CheckinOutOfRange {
+  success:     false;
+  status:      "out_of_range";
+  location_id: string;
+  work_id:     string;
+  location_name: string;
+  message:     string;
+  distance_meters: number;
+  radius_meters:   number;
+}
+
 /** チェックインレスポンス（判別共用体） */
-export type CheckinResult = CheckinSuccess | CheckinCooldown;
+export type CheckinResult = CheckinSuccess | CheckinCooldown | CheckinOutOfRange;
+
+/** スタンプ情報（checkin レスポンスに含まれる） */
+export interface StampInfo {
+  enabled:         boolean;
+  newly_collected: boolean;
+  completed_count: number;
+  total_count:     number;
+  is_completed:    boolean;
+}
+
+/** スタンプラリー進捗 */
+export interface StampRallyProgress {
+  work_id:         string;
+  total_count:     number;
+  completed_count: number;
+  is_completed:    boolean;
+  locations: Array<{
+    location_id:  string;
+    name:         string;
+    stamp_label:  string;
+    order:        number | null;
+    checked_in:   boolean;
+    checked_in_at?: string;
+  }>;
+}
 
 // ── LocationVisit 集計 ──
 export interface LocationVisitSummary {

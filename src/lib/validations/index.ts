@@ -859,6 +859,9 @@ export const reorderLiffBlocksSchema = z.object({
 // Location — ビーコン / QR チェックインポイント
 // ────────────────────────────────────────────────
 
+const latSchema  = z.number().min(-90).max(90);
+const lngSchema  = z.number().min(-180).max(180);
+
 export const createLocationSchema = z.object({
   work_id:          uuidSchema,
   name:             z.string().min(1, "ロケーション名は必須です").max(100),
@@ -866,11 +869,18 @@ export const createLocationSchema = z.object({
   beacon_uuid:      z.string().max(100).optional(),
   beacon_major:     z.number().int().min(0).max(65535).optional(),
   beacon_minor:     z.number().int().min(0).max(65535).optional(),
+  latitude:         latSchema.optional(),
+  longitude:        lngSchema.optional(),
+  radius_meters:    z.number().int().min(1).max(10000).optional(),
+  gps_enabled:      z.boolean().default(false),
   cooldown_seconds: z.number().int().min(0).max(86400).default(300),
   transition_id:    uuidSchema.optional(),
   set_flags:        setFlagsSchema,
   sort_order:       sortSchema,
   is_active:        z.boolean().default(true),
+  stamp_enabled:    z.boolean().default(true),
+  stamp_label:      z.string().max(100).optional(),
+  stamp_order:      z.number().int().min(0).optional(),
 });
 
 export const updateLocationSchema = z.object({
@@ -879,11 +889,18 @@ export const updateLocationSchema = z.object({
   beacon_uuid:      z.string().max(100).optional().nullable(),
   beacon_major:     z.number().int().min(0).max(65535).optional().nullable(),
   beacon_minor:     z.number().int().min(0).max(65535).optional().nullable(),
+  latitude:         latSchema.optional().nullable(),
+  longitude:        lngSchema.optional().nullable(),
+  radius_meters:    z.number().int().min(1).max(10000).optional().nullable(),
+  gps_enabled:      z.boolean().optional(),
   cooldown_seconds: z.number().int().min(0).max(86400).optional(),
   transition_id:    uuidSchema.optional().nullable(),
   set_flags:        setFlagsSchema,
   sort_order:       z.number().int().min(0).optional(),
   is_active:        z.boolean().optional(),
+  stamp_enabled:    z.boolean().optional(),
+  stamp_label:      z.string().max(100).optional().nullable(),
+  stamp_order:      z.number().int().min(0).optional().nullable(),
 });
 
 export const locationQuerySchema = z.object({
@@ -892,9 +909,17 @@ export const locationQuerySchema = z.object({
 });
 
 export const checkinSchema = z.object({
-  line_user_id: z.string().min(1, "LINE User ID は必須です"),
-  location_id:  uuidSchema,
-  work_id:      uuidSchema,
+  line_user_id:    z.string().min(1, "LINE User ID は必須です"),
+  location_id:     uuidSchema,
+  work_id:         uuidSchema,
+  checkin_method:  z.enum(["qr", "gps", "beacon"]).default("qr"),
+  lat:             latSchema.optional(),
+  lng:             lngSchema.optional(),
+}).superRefine((val, ctx) => {
+  if (val.checkin_method === "gps") {
+    if (val.lat === undefined) ctx.addIssue({ code: "custom", path: ["lat"], message: "GPS チェックインには緯度が必須です" });
+    if (val.lng === undefined) ctx.addIssue({ code: "custom", path: ["lng"], message: "GPS チェックインには経度が必須です" });
+  }
 });
 
 // ────────────────────────────────────────────────

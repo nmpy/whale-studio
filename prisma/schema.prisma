@@ -295,7 +295,14 @@ model Message {
   /// ローディング最大秒数
   loadingMaxSeconds     Int?       @map("loading_max_seconds")
 
+  // ── タップ遷移先（画像メッセージ等）──────────────
+  /// タップ時の遷移先 destination ID（nullable — null = destination 未使用）
+  tapDestinationId      String?    @map("tap_destination_id")
+  /// タップ時の直接URL（destination 未使用時のフォールバック）
+  tapUrl                String?    @map("tap_url")
+
   character             Character? @relation(fields: [characterId], references: [id])
+  tapDestination        LineDestination? @relation(fields: [tapDestinationId], references: [id], onDelete: SetNull)
   correctNextPhase      Phase?     @relation("MessageCorrectNextPhase", fields: [correctNextPhaseId], references: [id])
   nextMessage           Message?   @relation("MessageChain", fields: [nextMessageId], references: [id])
   prevMessages          Message[]  @relation("MessageChain")
@@ -855,6 +862,8 @@ model LineDestination {
   createdAt         DateTime @default(now()) @map("created_at")
   updatedAt         DateTime @updatedAt @map("updated_at")
   work              Work     @relation(fields: [workId], references: [id], onDelete: Cascade)
+  /// この destination を参照しているメッセージ（逆参照）
+  messages          Message[]
 
   @@unique([workId, key])
   @@index([workId])
@@ -876,6 +885,14 @@ model Location {
   beaconUuid      String?         @map("beacon_uuid")
   beaconMajor     Int?            @map("beacon_major")
   beaconMinor     Int?            @map("beacon_minor")
+  /// GPS チェックイン: 緯度
+  latitude        Float?
+  /// GPS チェックイン: 経度
+  longitude       Float?
+  /// GPS チェックイン: 許容半径（メートル）
+  radiusMeters    Int?            @map("radius_meters")
+  /// GPS チェックインを有効にするか
+  gpsEnabled      Boolean         @default(false) @map("gps_enabled")
   /// チェックインのクールダウン秒数（同一ユーザー×同一ロケーション）。デフォルト 300 = 5分
   cooldownSeconds Int             @default(300) @map("cooldown_seconds")
   /// チェックイン時に自動発火する遷移（任意）
@@ -884,6 +901,12 @@ model Location {
   setFlags        String          @default("{}") @map("set_flags")
   sortOrder       Int             @default(0) @map("sort_order")
   isActive        Boolean         @default(true) @map("is_active")
+  /// スタンプラリー: この地点をスタンプ対象にするか
+  stampEnabled    Boolean         @default(true) @map("stamp_enabled")
+  /// スタンプ表示名（未設定なら name を使用）
+  stampLabel      String?         @map("stamp_label")
+  /// スタンプ並び順
+  stampOrder      Int?            @map("stamp_order")
   createdAt       DateTime        @default(now()) @map("created_at")
   updatedAt       DateTime        @updatedAt @map("updated_at")
   work            Work            @relation(fields: [workId], references: [id], onDelete: Cascade)
@@ -897,12 +920,16 @@ model Location {
 }
 
 model LocationVisit {
-  id         String   @id @default(uuid())
-  lineUserId String   @map("line_user_id")
-  locationId String   @map("location_id")
-  workId     String   @map("work_id")
-  visitedAt  DateTime @default(now()) @map("visited_at")
-  location   Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  id              String   @id @default(uuid())
+  lineUserId      String   @map("line_user_id")
+  locationId      String   @map("location_id")
+  workId          String   @map("work_id")
+  /// チェックイン方式: "qr" | "gps" | "beacon"
+  checkinMethod   String   @default("qr") @map("checkin_method")
+  /// GPS チェックイン時の実測距離（メートル）
+  distanceMeters  Float?   @map("distance_meters")
+  visitedAt       DateTime @default(now()) @map("visited_at")
+  location        Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
 
   @@index([lineUserId, locationId])
   @@index([workId])
