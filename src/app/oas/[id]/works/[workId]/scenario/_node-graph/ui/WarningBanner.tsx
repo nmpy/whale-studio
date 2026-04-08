@@ -19,6 +19,11 @@ const STATUS_ICON: Record<string, string> = {
   loop: "🔁",
 };
 
+const SEVERITY_STYLE: Record<string, { bg: string; border: string; color: string }> = {
+  error:   { bg: "#fef2f2", border: "#fecaca", color: "#991b1b" },
+  warning: { bg: "#fffbeb", border: "#fde68a", color: "#78350f" },
+};
+
 export function WarningBanner({
   errors,
   hasEndingReachable,
@@ -29,21 +34,26 @@ export function WarningBanner({
 }: WarningBannerProps) {
   const showEndingWarning = hasEnding && !hasEndingReachable && phaseCount > 0;
   const showNoStartWarning = !hasStart && phaseCount > 0;
+  const hasErrors = errors.some(e => e.severity === "error");
 
   if (errors.length === 0 && !showEndingWarning && !showNoStartWarning) {
     return null;
   }
 
+  const style = hasErrors ? SEVERITY_STYLE.error : SEVERITY_STYLE.warning;
+
   return (
     <div
+      role="alert"
+      aria-live="polite"
       style={{
-        background: "#fffbeb",
-        border: "1px solid #fde68a",
+        background: style.bg,
+        border: `1px solid ${style.border}`,
         borderRadius: 8,
         padding: "8px 14px",
         marginBottom: 8,
         fontSize: 12,
-        color: "#92400e",
+        color: style.color,
       }}
     >
       {showNoStartWarning && (
@@ -61,21 +71,40 @@ export function WarningBanner({
       {errors.length > 0 && (
         <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
           {errors.map(err => (
-            <div
+            <button
               key={err.phaseId}
+              onClick={() => onFocusNode(err.phaseId)}
+              role="button"
+              tabIndex={0}
+              aria-label={`${err.message} — クリックしてフォーカス`}
               style={{
                 display: "flex",
                 alignItems: "center",
                 gap: 6,
                 cursor: "pointer",
+                background: "none",
+                border: "none",
+                padding: "2px 0",
+                color: "inherit",
+                fontSize: "inherit",
+                textAlign: "left",
               }}
-              onClick={() => onFocusNode(err.phaseId)}
+              onKeyDown={e => { if (e.key === "Enter" || e.key === " ") onFocusNode(err.phaseId); }}
             >
-              <span>{STATUS_ICON[err.status] ?? "⚠"}</span>
+              <span aria-hidden="true">{STATUS_ICON[err.status] ?? "⚠"}</span>
               <span style={{ textDecoration: "underline", textUnderlineOffset: 2 }}>
                 {err.message}
               </span>
-            </div>
+              {err.severity === "error" && (
+                <span style={{
+                  fontSize: 9, fontWeight: 700,
+                  background: "#fecaca", color: "#991b1b",
+                  borderRadius: 3, padding: "0 4px",
+                }}>
+                  エラー
+                </span>
+              )}
+            </button>
           ))}
         </div>
       )}

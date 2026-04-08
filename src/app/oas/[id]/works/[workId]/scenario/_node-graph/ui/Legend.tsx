@@ -12,8 +12,8 @@ function LegendRow({
   label: string;
 }) {
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-      <svg width={24} height={10} style={{ flexShrink: 0 }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 6 }} role="listitem">
+      <svg width={24} height={10} style={{ flexShrink: 0 }} aria-hidden="true">
         <line
           x1={0} y1={5} x2={24} y2={5}
           stroke={color} strokeWidth={2}
@@ -30,6 +30,8 @@ function LegendRow({
 export function Legend() {
   return (
     <div
+      role="list"
+      aria-label="エッジ凡例"
       style={{
         position: "absolute",
         top: 14,

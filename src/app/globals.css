@@ -7,7 +7,7 @@
    既存カスタム CSS（unlayered）が最終的に優先されるようにする */
 @import "tailwindcss";
 
-/* base レイヤーにリセットを置く → utilities が p-*/m-* で上書き可能になる */
+/* base レイヤーにリセットを置く → utilities (p-*, m-* 等) で上書き可能になる */
 @layer base {
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 }

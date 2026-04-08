@@ -14,6 +14,7 @@ export interface ValidationError {
   phaseName: string;
   status: NodeStatus;
   message: string;
+  severity: "error" | "warning";
 }
 
 export function useGraphValidation(
@@ -35,6 +36,20 @@ export function useGraphValidation(
       }
     }
 
+    // start フェーズが複数あるかチェック
+    const startPhases = phases.filter(p => p.phase_type === "start");
+    if (startPhases.length > 1) {
+      for (const sp of startPhases) {
+        errors.push({
+          phaseId: sp.id,
+          phaseName: sp.name,
+          status: "disconnected",
+          message: `開始フェーズが複数あります: 「${sp.name}」`,
+          severity: "error",
+        });
+      }
+    }
+
     for (const phase of phases) {
       // global フェーズはスキップ
       if (phase.phase_type === "global") {
@@ -42,7 +57,7 @@ export function useGraphValidation(
         continue;
       }
 
-      // 1. 到達不能チェック
+      // 1. 到達不能チェック（最優先）
       if (phase.phase_type !== "start" && !analysis.reachablePhaseIds.has(phase.id)) {
         statusMap.set(phase.id, "disconnected");
         errors.push({
@@ -50,11 +65,12 @@ export function useGraphValidation(
           phaseName: phase.name,
           status: "disconnected",
           message: `「${phase.name}」はスタートから到達できません`,
+          severity: "error",
         });
         continue;
       }
 
-      // 2. ループチェック（outgoing にループ遷移がある）
+      // 2. ループチェック
       const hasLoop = transitions.some(
         t => t.from_phase_id === phase.id && analysis.loopTransitionIds.has(t.id),
       );
@@ -65,26 +81,36 @@ export function useGraphValidation(
           phaseName: phase.name,
           status: "loop",
           message: `「${phase.name}」にループ遷移があります`,
+          severity: "warning",
         });
         continue;
       }
 
-      // 3. 条件未設定チェック（複数 outgoing かつ全て条件なし）
+      // 3. 条件未設定チェック
+      // 複数 outgoing があり、条件付きと条件なしが混在 → 曖昧
       const oc = outCount[phase.id] ?? 0;
       const owc = outWithCondition[phase.id] ?? 0;
-      if (oc > 1 && owc === 0 && phase.phase_type !== "ending") {
+      if (oc > 1 && owc < oc && phase.phase_type !== "ending") {
         statusMap.set(phase.id, "no-condition");
         errors.push({
           phaseId: phase.id,
           phaseName: phase.name,
           status: "no-condition",
-          message: `「${phase.name}」に複数遷移がありますが条件が未設定です`,
+          message: `「${phase.name}」に条件未設定の遷移があります（${oc - owc}/${oc}件）`,
+          severity: "warning",
         });
         continue;
       }
 
       statusMap.set(phase.id, "ok");
     }
+
+    // severity でソート（error が先）
+    errors.sort((a, b) => {
+      if (a.severity === "error" && b.severity === "warning") return -1;
+      if (a.severity === "warning" && b.severity === "error") return 1;
+      return 0;
+    });
 
     return { statusMap, errors };
   }, [phases, transitions, analysis]);

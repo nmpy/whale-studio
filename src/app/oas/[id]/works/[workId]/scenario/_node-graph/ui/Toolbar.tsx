@@ -13,7 +13,7 @@ interface ToolbarProps {
   canRedo: boolean;
 }
 
-const btnStyle: React.CSSProperties = {
+const btnBase: React.CSSProperties = {
   fontSize: 11,
   fontWeight: 600,
   padding: "5px 10px",
@@ -28,12 +28,6 @@ const btnStyle: React.CSSProperties = {
   whiteSpace: "nowrap",
 };
 
-const disabledStyle: React.CSSProperties = {
-  ...btnStyle,
-  opacity: 0.4,
-  cursor: "not-allowed",
-};
-
 export function Toolbar({
   onAutoLayout,
   onFitView,
@@ -44,6 +38,8 @@ export function Toolbar({
 }: ToolbarProps) {
   return (
     <div
+      role="toolbar"
+      aria-label="グラフ操作ツールバー"
       style={{
         position: "absolute",
         top: 14,
@@ -55,42 +51,51 @@ export function Toolbar({
     >
       <button
         onClick={() => onAutoLayout("TB")}
-        style={btnStyle}
+        style={btnBase}
         title="自動整形（縦型）"
+        aria-label="自動整形（縦型）"
       >
         ↕ 自動整形
       </button>
       <button
         onClick={() => onAutoLayout("LR")}
-        style={btnStyle}
+        style={btnBase}
         title="自動整形（横型）"
+        aria-label="自動整形（横型）"
       >
         ↔ 横型
       </button>
 
-      <div style={{ width: 1, background: "#e2e8f0", margin: "0 2px" }} />
+      <div style={{ width: 1, background: "#e2e8f0", margin: "0 2px" }} aria-hidden="true" />
 
       <button
         onClick={onFitView}
-        style={btnStyle}
+        style={btnBase}
         title="全体を表示"
+        aria-label="全体を表示"
       >
         ⊡ 全体表示
       </button>
 
-      <div style={{ width: 1, background: "#e2e8f0", margin: "0 2px" }} />
+      <div style={{ width: 1, background: "#e2e8f0", margin: "0 2px" }} aria-hidden="true" />
 
       <button
         onClick={canUndo ? onUndo : undefined}
-        style={canUndo ? btnStyle : disabledStyle}
+        disabled={!canUndo}
+        style={{ ...btnBase, opacity: canUndo ? 1 : 0.4, cursor: canUndo ? "pointer" : "not-allowed" }}
         title="元に戻す (Ctrl+Z)"
+        aria-label="元に戻す"
+        aria-disabled={!canUndo}
       >
         ↶ 戻す
       </button>
       <button
         onClick={canRedo ? onRedo : undefined}
-        style={canRedo ? btnStyle : disabledStyle}
+        disabled={!canRedo}
+        style={{ ...btnBase, opacity: canRedo ? 1 : 0.4, cursor: canRedo ? "pointer" : "not-allowed" }}
         title="やり直す (Ctrl+Shift+Z)"
+        aria-label="やり直す"
+        aria-disabled={!canRedo}
       >
         ↷ やり直す
       </button>

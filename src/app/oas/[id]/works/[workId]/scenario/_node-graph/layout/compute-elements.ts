@@ -59,6 +59,7 @@ export function toReactFlowElements(
   statusMap: Map<string, NodeStatus>,
   pathPhaseIds: Set<string>,
   pathTransitionIds: Set<string>,
+  loopTransitionIds: Set<string>,
 ): { nodes: Node[]; edges: Edge[]; internalEdges: LayoutEdge[] } {
   // BFS depth 計算
   const out: Record<string, string[]> = {};
@@ -244,7 +245,7 @@ export function toReactFlowElements(
 
   // LayoutEdge → React Flow Edge 変換
   for (const le of internalEdges) {
-    const isLoop = le.transitionId ? false : false; // ループはanalyzeGraph側で判定
+    const isLoop = le.transitionId ? loopTransitionIds.has(le.transitionId) : false;
     rfEdges.push({
       id: le.id,
       source: le.fromId,

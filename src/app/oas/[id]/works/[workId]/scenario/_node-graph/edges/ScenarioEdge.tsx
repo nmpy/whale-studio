@@ -44,6 +44,7 @@ function ScenarioEdgeComponent({
 
   if (isLoop) {
     strokeColor = "#f59e0b";
+    opacity = 0.85;
   }
 
   // パスハイライト
@@ -54,9 +55,13 @@ function ScenarioEdgeComponent({
     dashArray = undefined;
   }
 
-  // ホバー・選択時
-  if (hovered || selected) {
-    strokeWidth = Math.max(strokeWidth, 3);
+  // ホバー・選択時の視覚差を強化
+  if (selected) {
+    strokeWidth = Math.max(strokeWidth, 3.5);
+    opacity = 1;
+    strokeColor = "#2563eb";
+  } else if (hovered) {
+    strokeWidth = Math.max(strokeWidth, 2.8);
     opacity = 1;
   }
 
@@ -66,7 +71,8 @@ function ScenarioEdgeComponent({
     sourcePosition, targetPosition,
   });
 
-  const labelW = Math.min(130, Math.max(44, badge.text.length * 7.5 + 18));
+  // ラベル幅: 最小幅50px、パディング厚め
+  const labelW = Math.min(140, Math.max(50, badge.text.length * 7.5 + 22));
 
   return (
     <>
@@ -119,32 +125,39 @@ function ScenarioEdgeComponent({
           }}
           onMouseEnter={() => setHovered(true)}
           onMouseLeave={() => setHovered(false)}
+          role={isTrans ? "button" : undefined}
+          tabIndex={isTrans ? 0 : undefined}
+          aria-label={isTrans ? `遷移: ${le.label}` : undefined}
         >
           <div
             style={{
-              background: isInPath ? "#eff6ff" : hovered ? "#f8fafc" : badge.bg,
-              border: `1px solid ${isInPath ? "#93c5fd" : badge.borderColor}`,
+              background: isInPath || selected ? "#eff6ff" : hovered ? "#f8fafc" : badge.bg,
+              border: `1px solid ${isInPath || selected ? "#93c5fd" : hovered ? "#94a3b8" : badge.borderColor}`,
               borderRadius: 6,
-              padding: "2px 8px",
+              padding: "3px 10px",
               fontSize: 10,
-              fontWeight: isInPath ? 700 : 600,
-              color: isInPath ? "#1d4ed8" : badge.color,
+              fontWeight: isInPath || selected ? 700 : 600,
+              color: isInPath || selected ? "#1d4ed8" : badge.color,
               whiteSpace: "nowrap",
-              boxShadow: hovered
+              boxShadow: hovered || selected
                 ? "0 2px 8px rgba(0,0,0,0.12)"
                 : "0 1px 3px rgba(0,0,0,0.06)",
-              transition: "box-shadow 0.12s, background 0.12s",
+              transition: "box-shadow 0.12s, background 0.12s, border-color 0.12s",
               maxWidth: labelW,
+              minWidth: 50,
               overflow: "hidden",
               textOverflow: "ellipsis",
+              textAlign: "center",
             }}
+            title={le.label}
           >
             {badge.text}
           </div>
 
           {/* ホバー時の詳細ツールチップ */}
-          {hovered && (le.condition || le.flagCondition) && (
+          {hovered && (le.condition || le.flagCondition || le.label.length > 12) && (
             <div
+              role="tooltip"
               style={{
                 position: "absolute",
                 top: "100%",
@@ -158,12 +171,14 @@ function ScenarioEdgeComponent({
                 borderRadius: 8,
                 pointerEvents: "none",
                 zIndex: 50,
-                maxWidth: 220,
+                maxWidth: 240,
                 boxShadow: "0 2px 10px rgba(0,0,0,0.25)",
                 lineHeight: 1.6,
-                whiteSpace: "nowrap",
               }}
             >
+              {le.label.length > 12 && (
+                <div style={{ fontWeight: 700, marginBottom: 2 }}>{le.label}</div>
+              )}
               {le.condition && (
                 <div style={{ color: "#93c5fd" }}>🔑 {le.condition}</div>
               )}

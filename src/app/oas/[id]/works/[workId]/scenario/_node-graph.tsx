@@ -16,8 +16,6 @@ import {
   type Connection,
   type NodeMouseHandler,
   type EdgeMouseHandler,
-  type OnNodesChange,
-  type OnEdgesChange,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 
@@ -35,17 +33,23 @@ import { Toolbar } from "./_node-graph/ui/Toolbar";
 import { WarningBanner } from "./_node-graph/ui/WarningBanner";
 import { Legend } from "./_node-graph/ui/Legend";
 import { BackgroundClickForm } from "./_node-graph/ui/BackgroundClickForm";
-import { PHASE_META } from "./_node-graph/constants";
+import { NodeSearch } from "./_node-graph/ui/NodeSearch";
 
-// ── React Flow ノード・エッジ型登録 ──────────────────
+// ── React Flow ノード・エッジ型登録（モジュールレベル — CRITICAL） ──
 const nodeTypes = {
   phaseNode: PhaseNode,
   messageNode: MessageNode,
-};
+} as const;
 
 const edgeTypes = {
   scenarioEdge: ScenarioEdge,
-};
+} as const;
+
+// ── 選択状態の型 ────────────────────────────────────
+type SelectedEntity =
+  | { type: "phase"; phaseId: string; prefillTargetPhaseId?: string | null }
+  | { type: "transition"; transitionId: string; fromPhaseId: string }
+  | null;
 
 // ── 内部コンポーネント（ReactFlowProvider の中で使用） ──
 function NodeGraphInner({
@@ -59,31 +63,42 @@ function NodeGraphInner({
 }: NodeGraphProps) {
   const reactFlowInstance = useReactFlow();
 
-  // ── グラフ分析 ────────────────────────────────────
+  // ── グラフ分析（phases/transitions 変更時のみ再計算） ──
   const graphAnalysis = useMemo(
     () => analyzeGraph(phases, transitions),
     [phases, transitions],
   );
 
-  // ── 選択フェーズ ──────────────────────────────────
-  const [selectedPhaseId, setSelectedPhaseId] = useState<string | null>(null);
-  const [prefillTargetPhaseId, setPrefillTargetPhaseId] = useState<string | null>(null);
-  const [selectedTransitionId, setSelectedTransitionId] = useState<string | null>(null);
+  // ── 選択状態の一元管理 ────────────────────────────
+  const [selected, setSelected] = useState<SelectedEntity>(null);
 
-  // ── パスハイライト ────────────────────────────────
+  // 便利アクセサ
+  const selectedPhaseId = selected?.type === "phase"
+    ? selected.phaseId
+    : selected?.type === "transition"
+    ? selected.fromPhaseId
+    : null;
+
+  const prefillTargetPhaseId = selected?.type === "phase"
+    ? (selected.prefillTargetPhaseId ?? null)
+    : null;
+
+  const selectedTransitionId = selected?.type === "transition"
+    ? selected.transitionId
+    : null;
+
+  // ── パスハイライト（選択中フェーズのみ再計算） ─────
   const ancestorPath = useMemo(() => {
     if (!selectedPhaseId) return null;
     return getAncestorPath(selectedPhaseId, transitions);
   }, [selectedPhaseId, transitions]);
 
   const pathPhaseIds = useMemo(() => {
-    if (!ancestorPath) return new Set<string>();
-    return ancestorPath.pathPhaseIds;
+    return ancestorPath?.pathPhaseIds ?? new Set<string>();
   }, [ancestorPath]);
 
   const pathTransitionIds = useMemo(() => {
-    if (!ancestorPath) return new Set<string>();
-    return ancestorPath.pathTransitionIds;
+    return ancestorPath?.pathTransitionIds ?? new Set<string>();
   }, [ancestorPath]);
 
   // ── バリデーション ────────────────────────────────
@@ -91,20 +106,23 @@ function NodeGraphInner({
     phases, transitions, graphAnalysis,
   );
 
-  // ── React Flow 要素を生成 ─────────────────────────
-  const { nodes: rawNodes, edges: rawEdges, internalEdges } = useMemo(
+  // ── React Flow 要素を生成（パスハイライト分離済み） ──
+  const { nodes: rawNodes, edges: rawEdges } = useMemo(
     () => toReactFlowElements(
       phases, transitions, allMessages, oaId, workId,
       statusMap, pathPhaseIds, pathTransitionIds,
+      graphAnalysis.loopTransitionIds,
     ),
-    [phases, transitions, allMessages, oaId, workId, statusMap, pathPhaseIds, pathTransitionIds],
+    [phases, transitions, allMessages, oaId, workId, statusMap, pathPhaseIds, pathTransitionIds, graphAnalysis.loopTransitionIds],
   );
 
+  // ── レイアウト方向の保持 ──────────────────────────
+  const [layoutDirection, setLayoutDirection] = useState<LayoutDirection>("TB");
+
   // ── dagre レイアウト適用 ──────────────────────────
-  const layoutApplied = useRef(false);
   const initialLayoutNodes = useMemo(() => {
-    return applyDagreLayout(rawNodes, rawEdges, "TB");
-  }, [rawNodes, rawEdges]);
+    return applyDagreLayout(rawNodes, rawEdges, layoutDirection);
+  }, [rawNodes, rawEdges, layoutDirection]);
 
   // ── Undo/Redo ─────────────────────────────────────
   const {
@@ -118,17 +136,16 @@ function NodeGraphInner({
     canRedo,
   } = useUndoRedo(initialLayoutNodes, rawEdges);
 
-  // データ変更時にリセット
-  const prevDataRef = useRef({ phases, transitions, allMessages });
+  // データ変更時にリセット（外部データ変更時のみ）
+  const prevDataKeyRef = useRef("");
   useEffect(() => {
-    const prev = prevDataRef.current;
-    if (prev.phases !== phases || prev.transitions !== transitions || prev.allMessages !== allMessages) {
-      prevDataRef.current = { phases, transitions, allMessages };
-      const newLayoutNodes = applyDagreLayout(rawNodes, rawEdges, "TB");
+    const key = `${phases.length}-${transitions.length}-${allMessages.length}-${phases.map(p => p.id).join(",")}`;
+    if (prevDataKeyRef.current && prevDataKeyRef.current !== key) {
+      const newLayoutNodes = applyDagreLayout(rawNodes, rawEdges, layoutDirection);
       reset(newLayoutNodes, rawEdges);
-      layoutApplied.current = false;
     }
-  }, [phases, transitions, allMessages, rawNodes, rawEdges, reset]);
+    prevDataKeyRef.current = key;
+  }, [phases, transitions, allMessages, rawNodes, rawEdges, layoutDirection, reset]);
 
   // ── React Flow state ──────────────────────────────
   const [nodes, setNodes, onNodesChange] = useNodesState(undoNodes);
@@ -153,36 +170,39 @@ function NodeGraphInner({
     };
   }, []);
 
-  function handleMutationStart() {
+  const handleMutationStart = useCallback(() => {
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     setSaveStatus("saving");
-  }
+  }, []);
 
-  function handleDataMutated() {
-    setPrefillTargetPhaseId(null);
+  const handleDataMutated = useCallback(() => {
+    setSelected(prev => {
+      if (prev?.type === "phase") return { ...prev, prefillTargetPhaseId: null };
+      return prev;
+    });
     setSaveStatus("saved");
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => setSaveStatus("idle"), 3000);
     onDataMutated();
-  }
+  }, [onDataMutated]);
 
   // ── ノードクリック ────────────────────────────────
   const handleNodeClick: NodeMouseHandler = useCallback((_event, node) => {
     if (node.type === "phaseNode") {
       const phaseId = (node.data as { phaseId: string }).phaseId;
-      setSelectedPhaseId(prev => prev === phaseId ? null : phaseId);
-      setPrefillTargetPhaseId(null);
+      setSelected(prev =>
+        prev?.type === "phase" && prev.phaseId === phaseId
+          ? null
+          : { type: "phase", phaseId },
+      );
       setBgClickPos(null);
-      setSelectedTransitionId(null);
     }
   }, []);
 
   // ── ノードダブルクリックでページ遷移 ──────────────
   const handleNodeDoubleClick: NodeMouseHandler = useCallback((_event, node) => {
     const href = (node.data as { href: string }).href;
-    if (href) {
-      window.location.href = href;
-    }
+    if (href) window.location.href = href;
   }, []);
 
   // ── エッジクリック ────────────────────────────────
@@ -191,9 +211,7 @@ function NodeGraphInner({
     if (data?.layoutEdge.kind === "phase-transition" && data.layoutEdge.transitionId) {
       const t = transitions.find(tr => tr.id === data.layoutEdge.transitionId);
       if (t) {
-        setSelectedTransitionId(data.layoutEdge.transitionId);
-        setSelectedPhaseId(t.from_phase_id);
-        setPrefillTargetPhaseId(null);
+        setSelected({ type: "transition", transitionId: data.layoutEdge.transitionId, fromPhaseId: t.from_phase_id });
         setBgClickPos(null);
       }
     }
@@ -201,12 +219,9 @@ function NodeGraphInner({
 
   // ── 背景クリック ──────────────────────────────────
   const handlePaneClick = useCallback((event: React.MouseEvent) => {
-    if (!canEdit) return;
-    setSelectedPhaseId(null);
-    setPrefillTargetPhaseId(null);
-    setSelectedTransitionId(null);
+    setSelected(null);
 
-    // 背景クリック位置にフェーズ追加フォーム
+    if (!canEdit) return;
     const position = reactFlowInstance.screenToFlowPosition({
       x: event.clientX,
       y: event.clientY,
@@ -217,27 +232,21 @@ function NodeGraphInner({
   // ── 接続（ドラッグ） ─────────────────────────────
   const handleConnect = useCallback((connection: Connection) => {
     if (!connection.source || !connection.target) return;
-    // source / target は "phase-{id}" 形式
     const fromPhaseId = connection.source.replace("phase-", "");
     const toPhaseId = connection.target.replace("phase-", "");
     if (fromPhaseId === toPhaseId) return;
 
-    // RightPanel を開いて遷移追加フォームをプリフィル
-    setSelectedPhaseId(fromPhaseId);
-    setPrefillTargetPhaseId(toPhaseId);
+    setSelected({ type: "phase", phaseId: fromPhaseId, prefillTargetPhaseId: toPhaseId });
     setBgClickPos(null);
-    setSelectedTransitionId(null);
   }, []);
 
   // ── 接続バリデーション ────────────────────────────
   const isValidConnection = useCallback((connection: Connection | { source?: string | null; target?: string | null }) => {
     const src = connection.source;
     const tgt = connection.target;
-    // フェーズ→フェーズのみ許可
     if (!src?.startsWith("phase-")) return false;
     if (!tgt?.startsWith("phase-")) return false;
     if (src === tgt) return false;
-    // ending からの接続は不可
     const fromPhaseId = src.replace("phase-", "");
     const fromPhase = phases.find(p => p.id === fromPhaseId);
     if (fromPhase?.phase_type === "ending") return false;
@@ -245,12 +254,14 @@ function NodeGraphInner({
   }, [phases]);
 
   // ── ノードドラッグ完了時にスナップショット ────────
-  const handleNodeDragStop: NodeMouseHandler = useCallback(() => {
+  const handleNodeDragStop = useCallback(() => {
+    // 現在の全ノード位置をスナップショット（ドラッグ完了時1回のみ）
     pushSnapshot(nodes, edges);
   }, [nodes, edges, pushSnapshot]);
 
-  // ── 自動レイアウト ────────────────────────────────
+  // ── 自動レイアウト（1履歴として記録） ─────────────
   const handleAutoLayout = useCallback((direction: LayoutDirection) => {
+    setLayoutDirection(direction);
     const newNodes = applyDagreLayout(nodes, edges, direction);
     pushSnapshot(newNodes, edges);
     setNodes(newNodes);
@@ -265,45 +276,66 @@ function NodeGraphInner({
   }, [reactFlowInstance]);
 
   // ── キーボードショートカット ──────────────────────
+  const undoRef = useRef(undo);
+  const redoRef = useRef(redo);
+  useEffect(() => { undoRef.current = undo; }, [undo]);
+  useEffect(() => { redoRef.current = redo; }, [redo]);
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const isMac = navigator.platform.includes("Mac");
       const mod = isMac ? e.metaKey : e.ctrlKey;
 
+      // Undo
       if (mod && e.key === "z" && !e.shiftKey) {
         e.preventDefault();
-        undo();
+        undoRef.current();
+        return;
       }
-      if (mod && e.key === "z" && e.shiftKey) {
+      // Redo
+      if ((mod && e.key === "z" && e.shiftKey) || (mod && e.key === "y")) {
         e.preventDefault();
-        redo();
+        redoRef.current();
+        return;
       }
-      // Windows: Ctrl+Y
-      if (mod && e.key === "y") {
-        e.preventDefault();
-        redo();
+      // Escape → 選択解除
+      if (e.key === "Escape") {
+        setSelected(null);
+        setBgClickPos(null);
+        return;
       }
     };
 
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [undo, redo]);
+  }, []);
 
-  // ── エラーフォーカス ──────────────────────────────
-  const handleFocusNode = useCallback((phaseId: string) => {
-    const nodeId = `phase-${phaseId}`;
-    const node = nodes.find(n => n.id === nodeId);
-    if (!node) return;
-    setSelectedPhaseId(phaseId);
-
+  // ── 検索 → ノードフォーカス ───────────────────────
+  const handleSearchFocus = useCallback((nodeId: string) => {
+    const phaseId = nodeId.startsWith("phase-") ? nodeId.replace("phase-", "") : null;
+    if (phaseId) {
+      setSelected({ type: "phase", phaseId });
+    }
     reactFlowInstance.fitView({
       nodes: [{ id: nodeId }],
       padding: 0.5,
       duration: 400,
     });
-  }, [nodes, reactFlowInstance]);
+  }, [reactFlowInstance]);
+
+  // ── エラーフォーカス ──────────────────────────────
+  const handleFocusNode = useCallback((phaseId: string) => {
+    const nodeId = `phase-${phaseId}`;
+    setSelected({ type: "phase", phaseId });
+    reactFlowInstance.fitView({
+      nodes: [{ id: nodeId }],
+      padding: 0.5,
+      duration: 400,
+    });
+  }, [reactFlowInstance]);
 
   // ── 初期 fitView ──────────────────────────────────
+  const layoutApplied = useRef(false);
   useEffect(() => {
     if (!layoutApplied.current && nodes.length > 0) {
       layoutApplied.current = true;
@@ -326,6 +358,11 @@ function NodeGraphInner({
     }
     return "#e2e8f0";
   }, []);
+
+  // ── バリデーション結果をProps経由で公開 ────────────
+  const hasBlockingErrors = validationErrors.some(
+    e => e.status === "disconnected" || e.status === "no-condition",
+  );
 
   return (
     <div>
@@ -385,8 +422,8 @@ function NodeGraphInner({
               style={{
                 bottom: 14,
                 right: 14,
-                width: 160,
-                height: 100,
+                width: 180,
+                height: 110,
                 borderRadius: 8,
                 border: "1px solid #e2e8f0",
                 boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
@@ -416,25 +453,32 @@ function NodeGraphInner({
             canRedo={canRedo}
           />
 
+          {/* 検索 */}
+          <NodeSearch nodes={nodes} onFocus={handleSearchFocus} />
+
           {/* 凡例 */}
           <Legend />
 
           {/* 保存状態 */}
           {saveStatus !== "idle" && (
-            <div style={{
-              position: "absolute",
-              top: 14,
-              left: "50%",
-              transform: "translateX(-50%)",
-              fontSize: 11,
-              color: saveStatus === "saving" ? "#6b7280" : "#16a34a",
-              background: "white",
-              border: `1px solid ${saveStatus === "saving" ? "#e2e8f0" : "#bbf7d0"}`,
-              borderRadius: 6,
-              padding: "3px 12px",
-              boxShadow: "0 1px 4px rgba(0,0,0,0.07)",
-              zIndex: 20,
-            }}>
+            <div
+              role="status"
+              aria-live="polite"
+              style={{
+                position: "absolute",
+                top: 14,
+                left: "50%",
+                transform: "translateX(-50%)",
+                fontSize: 11,
+                color: saveStatus === "saving" ? "#6b7280" : "#16a34a",
+                background: "white",
+                border: `1px solid ${saveStatus === "saving" ? "#e2e8f0" : "#bbf7d0"}`,
+                borderRadius: 6,
+                padding: "3px 12px",
+                boxShadow: "0 1px 4px rgba(0,0,0,0.07)",
+                zIndex: 20,
+              }}
+            >
               {saveStatus === "saving" ? "保存中…" : "✓ 保存完了"}
             </div>
           )}
@@ -456,12 +500,19 @@ function NodeGraphInner({
           {/* ノードが0件のときの空状態 */}
           {nodes.length === 0 && (
             <div style={{
-              position: "absolute", inset: 0,
-              display: "flex", alignItems: "center", justifyContent: "center",
-              color: "#94a3b8", fontSize: 14,
+              position: "absolute",
+              inset: 0,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: "#94a3b8",
+              fontSize: 14,
               pointerEvents: "none",
+              zIndex: 1,
             }}>
-              フェーズを追加するとノードが表示されます
+              {canEdit
+                ? "キャンバスをクリックしてフェーズを追加"
+                : "フェーズを追加するとノードが表示されます"}
             </div>
           )}
         </div>
@@ -484,11 +535,7 @@ function NodeGraphInner({
               oaId={oaId}
               workId={workId}
               canEdit={canEdit}
-              onClose={() => {
-                setSelectedPhaseId(null);
-                setPrefillTargetPhaseId(null);
-                setSelectedTransitionId(null);
-              }}
+              onClose={() => setSelected(null)}
               onDataMutated={handleDataMutated}
               prefillTargetPhaseId={prefillTargetPhaseId}
               focusedTransitionId={selectedTransitionId}

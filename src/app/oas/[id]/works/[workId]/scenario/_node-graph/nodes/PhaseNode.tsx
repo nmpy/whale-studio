@@ -11,11 +11,12 @@ import type { PhaseType } from "@/types";
 
 type PhaseNode = Node<PhaseNodeData, "phaseNode">;
 
-const STATUS_BADGE: Record<string, { icon: string; bg: string; color: string; tip: string }> = {
-  disconnected: { icon: "⚠", bg: "#fff7ed", color: "#ea580c", tip: "スタートから到達不可" },
-  "no-condition": { icon: "❗", bg: "#fefce8", color: "#ca8a04", tip: "条件未設定" },
-  loop: { icon: "🔁", bg: "#fffbeb", color: "#d97706", tip: "ループあり" },
-  ok: { icon: "✓", bg: "#f0fdf4", color: "#16a34a", tip: "正常" },
+// バッジ優先順位: disconnected > no-condition > loop > ok
+const STATUS_BADGE: Record<string, { icon: string; bg: string; color: string; tip: string; label: string }> = {
+  disconnected:    { icon: "⚠",  bg: "#fff7ed", color: "#ea580c", tip: "スタートから到達不可",   label: "到達不可" },
+  "no-condition":  { icon: "❗", bg: "#fefce8", color: "#ca8a04", tip: "条件未設定の遷移あり",   label: "条件未設定" },
+  loop:            { icon: "🔁", bg: "#fffbeb", color: "#d97706", tip: "ループ遷移あり",         label: "ループ" },
+  ok:              { icon: "✓",  bg: "#f0fdf4", color: "#16a34a", tip: "正常",                   label: "正常" },
 };
 
 function PhaseNodeComponent({ data, selected }: NodeProps<PhaseNode>) {
@@ -50,11 +51,13 @@ function PhaseNodeComponent({ data, selected }: NodeProps<PhaseNode>) {
         cursor: "grab",
         position: "relative",
       }}
+      aria-label={`フェーズ: ${data.label} (${meta.label}) — ${badge.label}`}
     >
-      {/* ステータスバッジ */}
-      {(isError || selected) && (
+      {/* ステータスバッジ — エラー時は常時、正常は選択時のみ */}
+      {(isError || (data.status === "ok" && selected)) && (
         <div
           title={badge.tip}
+          aria-label={badge.label}
           style={{
             position: "absolute",
             top: -8,
@@ -71,9 +74,11 @@ function PhaseNodeComponent({ data, selected }: NodeProps<PhaseNode>) {
             lineHeight: 1,
             zIndex: 10,
             boxShadow: "0 1px 4px rgba(0,0,0,0.12)",
+            // エラー時のパルスアニメーション
+            animation: isError ? "badge-pulse 2s ease-in-out infinite" : undefined,
           }}
         >
-          {badge.icon}
+          <span aria-hidden="true">{badge.icon}</span>
         </div>
       )}
 
@@ -141,6 +146,14 @@ function PhaseNodeComponent({ data, selected }: NodeProps<PhaseNode>) {
           boxShadow: "0 1px 3px rgba(0,0,0,0.15)",
         }}
       />
+
+      {/* バッジパルスアニメーション */}
+      <style>{`
+        @keyframes badge-pulse {
+          0%, 100% { transform: scale(1); }
+          50% { transform: scale(1.15); }
+        }
+      `}</style>
     </div>
   );
 }
