@@ -72,13 +72,14 @@ export default function LocationCheckinsPage() {
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 12, marginBottom: 24 }}>
             <KpiCard label="総チェックイン" value={stats.total_checkins} />
             <KpiCard label="ユニークユーザー" value={stats.unique_users} />
-            <KpiCard label="QR チェックイン" value={stats.method_breakdown.qr_count} color="#2563eb" />
-            <KpiCard label="GPS チェックイン" value={stats.method_breakdown.gps_count} color="#16a34a" />
+            <KpiCard label="QR のみ" value={stats.method_breakdown.qr_count} color="#2563eb" />
+            <KpiCard label="GPS のみ" value={stats.method_breakdown.gps_count} color="#16a34a" />
+            <KpiCard label="QR+GPS" value={stats.method_breakdown.qr_and_gps_count} color="#7c3aed" />
             <KpiCard label="ロケーション数" value={stats.location_count} />
             <KpiCard label="直近7日" value={stats.recent_7d_checkins} />
           </div>
 
-          <MethodBreakdownBar qr={stats.method_breakdown.qr_count} gps={stats.method_breakdown.gps_count} />
+          <MethodBreakdownBar qr={stats.method_breakdown.qr_count} gps={stats.method_breakdown.gps_count} qrAndGps={stats.method_breakdown.qr_and_gps_count} />
           <GpsDistanceSection stats={stats.gps_distance} />
           <GpsSuccessRateSection attempts={stats.gps_attempts} />
 
@@ -96,6 +97,7 @@ export default function LocationCheckinsPage() {
                       <th style={thR}>ユニーク</th>
                       <th style={thR}>QR</th>
                       <th style={thR}>GPS</th>
+                      <th style={thR}>QR+GPS</th>
                       <th style={thR}>GPS平均距離</th>
                       <th style={thR}>GPS成功率</th>
                       <th style={thR}>最終訪問</th>
@@ -113,6 +115,7 @@ export default function LocationCheckinsPage() {
                         <td style={tdR}>{loc.unique_users}</td>
                         <td style={tdR}>{loc.qr_count}</td>
                         <td style={tdR}>{loc.gps_count}</td>
+                        <td style={tdR}>{loc.qr_and_gps_count}</td>
                         <td style={tdR}>{loc.avg_distance_meters != null ? `${loc.avg_distance_meters}m` : "—"}</td>
                         <td style={tdR}>{loc.gps_success_rate != null ? `${loc.gps_success_rate}%` : "—"}</td>
                         <td style={{ ...tdR, color: "#9ca3af" }}>
@@ -172,24 +175,33 @@ function KpiCard({ label, value, color }: { label: string; value: number; color?
   );
 }
 
-function MethodBreakdownBar({ qr, gps }: { qr: number; gps: number }) {
-  const total = qr + gps;
+function MethodBreakdownBar({ qr, gps, qrAndGps }: { qr: number; gps: number; qrAndGps: number }) {
+  const total = qr + gps + qrAndGps;
   if (total === 0) return null;
-  const qrPct = Math.round((qr / total) * 100);
-  const gpsPct = 100 - qrPct;
+  const pct = (n: number) => Math.round((n / total) * 100);
+  const segments = [
+    { count: qr, color: "#2563eb", label: "QR" },
+    { count: gps, color: "#16a34a", label: "GPS" },
+    { count: qrAndGps, color: "#7c3aed", label: "QR+GPS" },
+  ].filter((s) => s.count > 0);
+
   return (
     <Section title="チェックイン方法の内訳">
-      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
-        <span style={{ fontSize: 12, color: "#2563eb", fontWeight: 600 }}>QR {qrPct}%</span>
-        <div style={{ flex: 1, height: 12, background: "#e5e7eb", borderRadius: 6, overflow: "hidden", display: "flex" }}>
-          {qr > 0 && <div style={{ width: `${qrPct}%`, background: "#2563eb", borderRadius: qrPct === 100 ? 6 : "6px 0 0 6px" }} />}
-          {gps > 0 && <div style={{ width: `${gpsPct}%`, background: "#16a34a", borderRadius: gpsPct === 100 ? 6 : "0 6px 6px 0" }} />}
-        </div>
-        <span style={{ fontSize: 12, color: "#16a34a", fontWeight: 600 }}>GPS {gpsPct}%</span>
+      <div style={{ height: 12, background: "#e5e7eb", borderRadius: 6, overflow: "hidden", display: "flex", marginBottom: 8 }}>
+        {segments.map((s, i) => (
+          <div key={s.label} style={{
+            width: `${pct(s.count)}%`, background: s.color, minWidth: 4,
+            borderRadius: segments.length === 1 ? 6 : i === 0 ? "6px 0 0 6px" : i === segments.length - 1 ? "0 6px 6px 0" : 0,
+          }} />
+        ))}
       </div>
-      <div style={{ display: "flex", gap: 16, fontSize: 12, color: "#6b7280" }}>
-        <span>QR: {qr.toLocaleString()}件</span>
-        <span>GPS: {gps.toLocaleString()}件</span>
+      <div style={{ display: "flex", gap: 16, fontSize: 12, color: "#6b7280", flexWrap: "wrap" }}>
+        {segments.map((s) => (
+          <span key={s.label} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            <span style={{ width: 8, height: 8, borderRadius: 2, background: s.color, flexShrink: 0 }} />
+            {s.label}: {s.count.toLocaleString()}件 ({pct(s.count)}%)
+          </span>
+        ))}
       </div>
     </Section>
   );
@@ -265,10 +277,16 @@ function MiniStat({ label, value, color }: { label: string; value: string; color
 }
 
 function MethodBadge({ method }: { method: string }) {
-  const isGps = method === "gps";
+  const meta: Record<string, { bg: string; color: string; label: string }> = {
+    qr:          { bg: "#dbeafe", color: "#2563eb", label: "QR" },
+    gps:         { bg: "#dcfce7", color: "#16a34a", label: "GPS" },
+    qr_and_gps:  { bg: "#ede9fe", color: "#7c3aed", label: "QR+GPS" },
+    beacon:      { bg: "#fef3c7", color: "#d97706", label: "Beacon" },
+  };
+  const m = meta[method] ?? { bg: "#f3f4f6", color: "#6b7280", label: method };
   return (
-    <span style={{ display: "inline-block", padding: "1px 8px", borderRadius: 10, fontSize: 11, fontWeight: 600, background: isGps ? "#dcfce7" : "#dbeafe", color: isGps ? "#16a34a" : "#2563eb" }}>
-      {isGps ? "GPS" : "QR"}
+    <span style={{ display: "inline-block", padding: "1px 8px", borderRadius: 10, fontSize: 11, fontWeight: 600, background: m.bg, color: m.color }}>
+      {m.label}
     </span>
   );
 }

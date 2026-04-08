@@ -36,13 +36,14 @@ function logAttempt(data: {
 /** GPS 範囲判定を実行し、結果を返す。失敗時は Response を返す。 */
 function validateGps(
   data: { lat?: number; lng?: number; work_id: string; location_id: string; line_user_id: string },
-  location: { latitude: number | null; longitude: number | null; radiusMeters: number | null; gpsEnabled: boolean; checkinMode: string; name: string },
+  location: { latitude: number | null; longitude: number | null; radiusMeters: number | null; checkinMode: string; name: string },
   method: string,
 ): { ok: true; distanceMeters: number } | { ok: false; response: ReturnType<typeof ok | typeof badRequest> } {
   const attemptBase = { workId: data.work_id, locationId: data.location_id, lineUserId: data.line_user_id, method, lat: data.lat, lng: data.lng };
 
-  const needsGps = location.checkinMode === "gps_only" || location.checkinMode === "qr_and_gps";
-  if (!needsGps && !location.gpsEnabled) {
+  // checkin_mode が GPS を要求しないなら GPS チェックイン不可
+  const modeRequiresGps = location.checkinMode === "gps_only" || location.checkinMode === "qr_and_gps";
+  if (!modeRequiresGps) {
     logAttempt({ ...attemptBase, status: "location_not_supported" });
     return { ok: false, response: badRequest("この地点は GPS チェックインに対応していません") };
   }

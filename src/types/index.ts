@@ -1217,6 +1217,7 @@ export interface Location {
   latitude:         number | null;
   longitude:        number | null;
   radius_meters:    number | null;
+  /** @deprecated checkin_mode から導出される。将来削除予定。requiresGps(checkin_mode) を使用。 */
   gps_enabled:      boolean;
   checkin_mode:     CheckinMode;
   cooldown_seconds: number;
@@ -1260,6 +1261,7 @@ export interface CreateLocationBody {
   latitude?:        number;
   longitude?:       number;
   radius_meters?:   number;
+  /** @deprecated checkin_mode から自動設定。送信不要。 */
   gps_enabled?:     boolean;
   checkin_mode?:    CheckinMode;
   cooldown_seconds?: number;
@@ -1281,6 +1283,7 @@ export interface UpdateLocationBody {
   latitude?:         number | null;
   longitude?:        number | null;
   radius_meters?:    number | null;
+  /** @deprecated checkin_mode から自動設定。送信不要。 */
   gps_enabled?:      boolean;
   checkin_mode?:     CheckinMode;
   cooldown_seconds?: number;
@@ -1424,8 +1427,9 @@ export interface StampRallyProgress {
 // ── LocationVisit 集計 ──
 
 export interface CheckinMethodBreakdown {
-  qr_count:  number;
-  gps_count: number;
+  qr_count:          number;
+  gps_count:         number;
+  qr_and_gps_count:  number;
 }
 
 export interface GpsDistanceStats {
@@ -1442,6 +1446,7 @@ export interface LocationVisitSummary {
   unique_users:         number;
   qr_count:             number;
   gps_count:            number;
+  qr_and_gps_count:     number;
   avg_distance_meters:  number | null;
   gps_attempts:         number;
   gps_successes:        number;

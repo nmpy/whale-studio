@@ -1,8 +1,10 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // @upstash/redis は HTTP ベースの純粋 JS クライアント。
-  // webpack でバンドルせず Node.js の require() でランタイムロードする（推奨）。
-  serverExternalPackages: ["@upstash/redis"],
+  experimental: {
+    // @upstash/redis は HTTP ベースの純粋 JS クライアント。
+    // webpack でバンドルせず Node.js の require() でランタイムロードする（推奨）。
+    serverComponentsExternalPackages: ["@upstash/redis"],
+  },
 
   async rewrites() {
     return [

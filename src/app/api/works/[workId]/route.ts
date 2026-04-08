@@ -1,7 +1,7 @@
-// src/app/api/works/[id]/route.ts
-// GET    /api/works/:id — 作品詳細（_count 付き）
-// PATCH  /api/works/:id — 作品更新
-// DELETE /api/works/:id — 作品削除（CASCADE: characters/phases/messages も削除）
+// src/app/api/works/[workId]/route.ts
+// GET    /api/works/:workId — 作品詳細（_count 付き）
+// PATCH  /api/works/:workId — 作品更新
+// DELETE /api/works/:workId — 作品削除（CASCADE: characters/phases/messages も削除）
 
 import { prisma } from "@/lib/prisma";
 import { ok, noContent, badRequest, notFound, serverError } from "@/lib/api-response";
@@ -45,11 +45,11 @@ function toResponse(w: {
   };
 }
 
-// ── GET /api/works/:id ───────────────────────────
-export const GET = withAuth<{ id: string }>(async (_req, { params }, user) => {
+// ── GET /api/works/:workId ───────────────────────────
+export const GET = withAuth<{ workId: string }>(async (_req, { params }, user) => {
   try {
     const work = await prisma.work.findUnique({
-      where: { id: params.id },
+      where: { id: params.workId },
       include: {
         _count: {
           select: { characters: true, phases: true, messages: true, userProgress: true },
@@ -67,10 +67,10 @@ export const GET = withAuth<{ id: string }>(async (_req, { params }, user) => {
   }
 });
 
-// ── PATCH /api/works/:id ─────────────────────────
-export const PATCH = withAuth<{ id: string }>(async (req, { params }, user) => {
+// ── PATCH /api/works/:workId ─────────────────────────
+export const PATCH = withAuth<{ workId: string }>(async (req, { params }, user) => {
   try {
-    const existing = await prisma.work.findUnique({ where: { id: params.id } });
+    const existing = await prisma.work.findUnique({ where: { id: params.workId } });
     if (!existing) return notFound("作品");
 
     const check = await requireRole(existing.oaId, user.id, 'tester');
@@ -80,7 +80,7 @@ export const PATCH = withAuth<{ id: string }>(async (req, { params }, user) => {
     const data = updateWorkSchema.parse(body);
 
     const updated = await prisma.work.update({
-      where: { id: params.id },
+      where: { id: params.workId },
       data: {
         ...(data.title               !== undefined && { title:              data.title }),
         ...(data.description         !== undefined && { description:        data.description }),
@@ -111,17 +111,17 @@ export const PATCH = withAuth<{ id: string }>(async (req, { params }, user) => {
   }
 });
 
-// ── DELETE /api/works/:id ────────────────────────
-export const DELETE = withAuth<{ id: string }>(async (_req, { params }, user) => {
+// ── DELETE /api/works/:workId ────────────────────────
+export const DELETE = withAuth<{ workId: string }>(async (_req, { params }, user) => {
   try {
-    const existing = await prisma.work.findUnique({ where: { id: params.id } });
+    const existing = await prisma.work.findUnique({ where: { id: params.workId } });
     if (!existing) return notFound("作品");
 
     const check = await requireRole(existing.oaId, user.id, 'owner');
     if (!check.ok) return check.response;
 
     // CASCADE により characters / phases / messages も削除される
-    await prisma.work.delete({ where: { id: params.id } });
+    await prisma.work.delete({ where: { id: params.workId } });
     return noContent();
   } catch (err) {
     return serverError(err);

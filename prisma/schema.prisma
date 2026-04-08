@@ -896,7 +896,9 @@ model Location {
   longitude       Float?
   /// GPS チェックイン: 許容半径（メートル）
   radiusMeters    Int?            @map("radius_meters")
-  /// GPS チェックインを有効にするか（checkinMode から自動設定。後方互換用に残す）
+  /// @deprecated checkinMode から導出される。将来削除予定。
+  /// 削除条件: (1) API レスポンスから gps_enabled を除外 (2) 旧クライアント互換が不要
+  /// 現在は checkinMode 保存時に deriveGpsEnabled() で自動同期される。
   gpsEnabled      Boolean         @default(false) @map("gps_enabled")
   /// チェックイン方式: "qr_only" | "gps_only" | "qr_and_gps"
   checkinMode     String          @default("qr_only") @map("checkin_mode")

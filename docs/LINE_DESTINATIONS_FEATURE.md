@@ -328,3 +328,54 @@ action="url" の場合:
 3. **使用箇所からの直接編集リンク** — usage 詳細に各編集画面へのリンク
 4. **destination の使用禁止** — 使用中の destination を削除不可にする（設定次第）
 5. **一括インポート/エクスポート** — JSON での一括操作
+
+---
+
+## 18. UX改善: destination を推奨導線に（実装済み）
+
+### destination が使えるUIの一覧
+
+| 画面 | コンポーネント | 対象フィールド |
+|------|---------------|----------------|
+| 画像メッセージ | TapDestinationSection | tap_destination_id |
+| カルーセルカード | TapDestinationSection | carousel card destination_id |
+| リッチメニュー | RichMenuDestinationSelect | area destination_id |
+| クイックリプライ(url) | TapDestinationSection | QR item destination_id |
+
+### 共通改善内容
+
+1. **segmented control 順序統一**: 全UIで「保存済みの遷移先を使う」が左（推奨）、「URLを直接入力」が右
+2. **初期モード**: 新規作成時は destination モードをデフォルト表示
+3. **空状態の充実**: destination 未登録時は「遷移先URL設定を開く」ボタン付きの案内を表示
+4. **選択中の補助情報**: name, key, type バッジ, resolved URL を表示
+5. **直URL入力を控えめに**: 「一時的にURLを直接指定したい場合に使います」の補足文
+6. **タイプラベル統一**: 全箇所で「LIFF」「内部URL」「外部URL」に統一
+
+### 推奨運用
+
+**destination を先に作るべきケース:**
+- リッチメニューから遷移するURL
+- 複数メッセージで同じURLを使うとき
+- LIFF ページへの遷移
+- キャンペーンLPなど長期間使うURL
+
+**直URL入力を使うべきケース:**
+- テスト用の一時的なURL
+- 1回しか使わないURL
+- 他のシステムから直接指定されたURL
+
+### よく使う destination の例
+
+| key | name | type | params |
+|-----|------|------|--------|
+| start | 開始画面 | LIFF | entry=richmenu |
+| evidence | 証拠一覧 | LIFF | tab=evidence |
+| progress | 進捗表示 | LIFF | tab=progress |
+| profile | プロフィール | LIFF | — |
+
+### 今後の改善候補
+
+1. **inline 作成**: 各編集画面から destination をモーダル or drawer で直接作成
+2. **最近使った destination**: 選択候補の先頭に直近使用分を表示
+3. **destination 自動提案**: URLを直入力したとき「この URL を遷移先として保存しますか？」
+4. **プリセット自動生成**: 作品作成時に start/evidence/progress を自動作成

@@ -65,15 +65,18 @@ export default function DestinationsPage() {
           </button>
         )}
       </div>
-      <p className="text-sm text-gray-500 mb-6">
-        リッチメニュー、画像メッセージ、カードタイプメッセージなどで再利用するURLを管理します。
+      <p className="text-sm text-gray-500 mb-1">
+        リッチメニュー、画像メッセージ、カードタイプメッセージ、クイックリプライなどで再利用するURLを管理します。
+      </p>
+      <p className="text-xs text-gray-400 mb-6">
+        ここでURLを一元管理しておくと、各編集画面から「保存済みの遷移先」として選べるようになります。
       </p>
 
-      {/* 案内ボックス */}
+      {/* 案内ボックス（少数の時のみ） */}
       {dest.destinations.length > 0 && dest.destinations.length <= 2 && (
-        <div className="bg-gray-50 border border-gray-100 rounded-lg p-3 mb-4">
-          <p className="text-xs text-gray-500">
-            遷移先URLとは、LINE上の各タップ導線から開くURLの定義です。一度作成しておくと、メッセージ編集画面などから再利用しやすくなります。
+        <div className="bg-teal-50 border border-teal-100 rounded-lg p-3 mb-4">
+          <p className="text-xs text-teal-700">
+            <strong>おすすめ:</strong> よく使う遷移先（開始画面・証拠一覧・進捗表示など）を先に作成しておくと、メッセージやリッチメニューの編集時にすぐ選べて便利です。
           </p>
         </div>
       )}
@@ -83,22 +86,41 @@ export default function DestinationsPage() {
         <div className="bg-gray-50 rounded-xl p-10 text-center border-2 border-dashed border-gray-200">
           <p className="text-3xl mb-3">🔗</p>
           <p className="text-sm font-medium text-gray-600 mb-1">遷移先URLはまだありません</p>
-          <p className="text-xs text-gray-400 mb-4">
-            まずは「開始画面」や「証拠一覧」など、LINEから開きたい遷移先を作成してください。
+          <p className="text-xs text-gray-400 mb-5">
+            まずはよく使う遷移先を作成しましょう。作成した遷移先は、メッセージ・リッチメニュー・クイックリプライの編集画面から選べるようになります。
           </p>
+
+          {/* テンプレートショートカット */}
+          {!isReadOnly && (
+            <div className="space-y-2 mb-4">
+              <p className="text-[11px] text-gray-500 font-medium">よく使う遷移先を作成:</p>
+              <div className="flex gap-2 justify-center flex-wrap">
+                {[
+                  { name: "開始画面", key: "start" },
+                  { name: "証拠一覧", key: "evidence" },
+                  { name: "進捗表示", key: "progress" },
+                  { name: "プロフィール", key: "profile" },
+                ].map((t) => (
+                  <button
+                    key={t.key}
+                    onClick={() => { setEditingDest(null); setShowModal(true); }}
+                    className="text-xs px-3 py-1.5 bg-white border border-teal-200 text-teal-700 rounded-full cursor-pointer hover:bg-teal-50 transition-colors"
+                  >
+                    + {t.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {!isReadOnly && (
             <button
               onClick={() => { setEditingDest(null); setShowModal(true); }}
               className="px-4 py-2 bg-teal-600 text-white rounded-lg text-sm font-semibold cursor-pointer hover:bg-teal-700 transition-colors"
             >
-              + 最初の遷移先を追加
+              + カスタム遷移先を追加
             </button>
           )}
-          <div className="flex gap-2 justify-center mt-4">
-            {["start", "evidence", "progress", "profile"].map((k) => (
-              <span key={k} className="text-[10px] bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">{k}</span>
-            ))}
-          </div>
         </div>
       )}
 

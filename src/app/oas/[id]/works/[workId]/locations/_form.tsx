@@ -20,7 +20,7 @@ interface LocationFormProps {
     latitude: number | null;
     longitude: number | null;
     radius_meters: number | null;
-    gps_enabled: boolean;
+    checkin_mode: string;
     cooldown_seconds: number;
     transition_id: string;
     set_flags: string;
@@ -77,12 +77,12 @@ export function LocationForm({ onSubmit, saving, workId, defaultValues }: Locati
   const [beaconMajor, setBeaconMajor] = useState(defaultValues?.beacon_major?.toString() ?? "");
   const [beaconMinor, setBeaconMinor] = useState(defaultValues?.beacon_minor?.toString() ?? "");
   const [showBeacon, setShowBeacon] = useState(!!defaultValues?.beacon_uuid);
-  // GPS
-  const [gpsEnabled, setGpsEnabled] = useState(defaultValues?.gps_enabled ?? false);
+  // Checkin mode + GPS
+  const [checkinMode, setCheckinMode] = useState(defaultValues?.checkin_mode ?? "qr_only");
+  const needsGps = checkinMode === "gps_only" || checkinMode === "qr_and_gps";
   const [latitude, setLatitude] = useState(defaultValues?.latitude?.toString() ?? "");
   const [longitude, setLongitude] = useState(defaultValues?.longitude?.toString() ?? "");
   const [radiusMeters, setRadiusMeters] = useState(defaultValues?.radius_meters?.toString() ?? "50");
-  const [showGps, setShowGps] = useState(defaultValues?.gps_enabled ?? false);
   // Core
   const [cooldownSeconds, setCooldownSeconds] = useState(defaultValues?.cooldown_seconds?.toString() ?? "300");
   const [transitionId, setTransitionId] = useState(defaultValues?.transition_id ?? "");
@@ -101,8 +101,8 @@ export function LocationForm({ onSubmit, saving, workId, defaultValues }: Locati
     : radiusNum > 1000 ? "半径が非常に大きいです。意図どおりか確認してください。"
     : null;
 
-  // GPS有効時に座標・半径が揃っているか
-  const gpsIncomplete = gpsEnabled && (!latitude || !longitude || !radiusMeters);
+  // GPS系モード時に座標・半径が揃っているか
+  const gpsIncomplete = needsGps && (!latitude || !longitude || !radiusMeters);
   const latNum = Number(latitude);
   const lngNum = Number(longitude);
   const latInvalid = latitude !== "" && (isNaN(latNum) || latNum < -90 || latNum > 90);
@@ -130,7 +130,7 @@ export function LocationForm({ onSubmit, saving, workId, defaultValues }: Locati
       stamp_enabled: stampEnabled,
       stamp_label: stampLabel.trim() || (defaultValues ? null : undefined),
       stamp_order: stampOrder ? Number(stampOrder) : (defaultValues ? null : undefined),
-      gps_enabled: gpsEnabled,
+      checkin_mode: checkinMode,
     };
 
     // Beacon
@@ -143,13 +143,12 @@ export function LocationForm({ onSubmit, saving, workId, defaultValues }: Locati
     }
 
     // GPS
-    if (showGps && gpsEnabled) {
+    if (needsGps) {
       data.latitude = latitude ? Number(latitude) : (defaultValues ? null : undefined);
       data.longitude = longitude ? Number(longitude) : (defaultValues ? null : undefined);
       data.radius_meters = radiusMeters ? Number(radiusMeters) : (defaultValues ? null : undefined);
     } else if (defaultValues) {
       data.latitude = null; data.longitude = null; data.radius_meters = null;
-      data.gps_enabled = false;
     }
 
     onSubmit(data);
@@ -167,41 +166,63 @@ export function LocationForm({ onSubmit, saving, workId, defaultValues }: Locati
         <textarea style={{ ...inputStyle, minHeight: 60, resize: "vertical" }} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="ロケーションの説明（任意）" />
       </div>
 
-      {/* ── GPS 設定 ── */}
-      <CollapsibleSection title="GPS チェックイン設定" subtitle="任意" open={showGps} onToggle={() => setShowGps(!showGps)}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-          <input type="checkbox" id="gps_enabled" checked={gpsEnabled} onChange={(e) => setGpsEnabled(e.target.checked)} style={{ width: 16, height: 16 }} />
-          <label htmlFor="gps_enabled" style={{ fontSize: 13, fontWeight: 500, color: "#374151" }}>GPS チェックインを有効にする</label>
+      {/* ── チェックイン方式 ── */}
+      <div style={groupStyle}>
+        <label style={labelStyle}>チェックイン方式</label>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {([
+            { value: "qr_only",    label: "QR のみ",  desc: "現地の QR コード読み取りでチェックイン" },
+            { value: "gps_only",   label: "GPS のみ",  desc: "現在地が指定範囲内のときチェックイン" },
+            { value: "qr_and_gps", label: "QR + GPS", desc: "QR 読み取り＋現在地が範囲内のときのみチェックイン" },
+          ] as const).map(({ value, label, desc }) => (
+            <label
+              key={value}
+              style={{
+                display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 12px",
+                border: `2px solid ${checkinMode === value ? "#2563eb" : "#e5e7eb"}`,
+                borderRadius: 8, cursor: "pointer",
+                background: checkinMode === value ? "#eff6ff" : "#fff",
+              }}
+            >
+              <input type="radio" name="checkin_mode" value={value} checked={checkinMode === value} onChange={() => setCheckinMode(value)} style={{ marginTop: 2 }} />
+              <div>
+                <div style={{ fontWeight: 500, fontSize: 14 }}>{label}</div>
+                <div style={{ fontSize: 12, color: "#6b7280" }}>{desc}</div>
+              </div>
+            </label>
+          ))}
         </div>
-        {gpsEnabled && (
-          <>
-            <div style={{ display: "flex", gap: 12 }}>
-              <div style={{ flex: 1 }}>
-                <label style={labelStyle}>緯度 * <span style={subLabel}>— 中心座標</span></label>
-                <input style={{ ...inputStyle, borderColor: latInvalid ? "#fca5a5" : "#d1d5db" }} type="number" step="any" min="-90" max="90" value={latitude} onChange={(e) => setLatitude(e.target.value)} placeholder="35.6812" />
-                {latInvalid && <p style={{ fontSize: 11, color: "#dc2626", marginTop: 2 }}>-90〜90 の範囲で入力してください</p>}
-              </div>
-              <div style={{ flex: 1 }}>
-                <label style={labelStyle}>経度 * <span style={subLabel}>— 中心座標</span></label>
-                <input style={{ ...inputStyle, borderColor: lngInvalid ? "#fca5a5" : "#d1d5db" }} type="number" step="any" min="-180" max="180" value={longitude} onChange={(e) => setLongitude(e.target.value)} placeholder="139.7671" />
-                {lngInvalid && <p style={{ fontSize: 11, color: "#dc2626", marginTop: 2 }}>-180〜180 の範囲で入力してください</p>}
-              </div>
+      </div>
+
+      {/* ── GPS 座標設定（gps_only / qr_and_gps 時に表示） ── */}
+      {needsGps && (
+        <div style={{ marginBottom: 16, padding: "12px 14px", border: "1px solid #e5e7eb", borderRadius: 8, display: "flex", flexDirection: "column", gap: 12 }}>
+          <p style={{ fontSize: 13, fontWeight: 600, color: "#374151" }}>GPS 座標設定 *</p>
+          <div style={{ display: "flex", gap: 12 }}>
+            <div style={{ flex: 1 }}>
+              <label style={labelStyle}>緯度 <span style={subLabel}>— 中心座標</span></label>
+              <input style={{ ...inputStyle, borderColor: latInvalid ? "#fca5a5" : "#d1d5db" }} type="number" step="any" min="-90" max="90" value={latitude} onChange={(e) => setLatitude(e.target.value)} placeholder="35.6812" />
+              {latInvalid && <p style={{ fontSize: 11, color: "#dc2626", marginTop: 2 }}>-90〜90 の範囲で入力してください</p>}
             </div>
-            <div>
-              <label style={labelStyle}>許容半径（m）* <span style={subLabel}>— この範囲内ならチェックイン成功</span></label>
-              <input style={inputStyle} type="number" min="1" max="10000" value={radiusMeters} onChange={(e) => setRadiusMeters(e.target.value)} placeholder="50" />
-              {radiusWarning && <p style={{ fontSize: 12, color: "#d97706", marginTop: 2 }}>{radiusWarning}</p>}
-              <p style={helpStyle}>推奨: 20m〜100m程度。Google Maps で座標を確認できます。</p>
+            <div style={{ flex: 1 }}>
+              <label style={labelStyle}>経度 <span style={subLabel}>— 中心座標</span></label>
+              <input style={{ ...inputStyle, borderColor: lngInvalid ? "#fca5a5" : "#d1d5db" }} type="number" step="any" min="-180" max="180" value={longitude} onChange={(e) => setLongitude(e.target.value)} placeholder="139.7671" />
+              {lngInvalid && <p style={{ fontSize: 11, color: "#dc2626", marginTop: 2 }}>-180〜180 の範囲で入力してください</p>}
             </div>
-            {gpsIncomplete && (
-              <p style={{ fontSize: 12, color: "#dc2626", marginTop: 4 }}>
-                GPS チェックインを有効にするには緯度・経度・半径がすべて必要です
-              </p>
-            )}
-          </>
-        )}
-        {!gpsEnabled && <p style={helpStyle}>有効にすると、ユーザーは現在地でのチェックインも利用できます。</p>}
-      </CollapsibleSection>
+          </div>
+          <div>
+            <label style={labelStyle}>許容半径（m） <span style={subLabel}>— この範囲内ならチェックイン成功</span></label>
+            <input style={inputStyle} type="number" min="1" max="10000" value={radiusMeters} onChange={(e) => setRadiusMeters(e.target.value)} placeholder="50" />
+            {radiusWarning && <p style={{ fontSize: 12, color: "#d97706", marginTop: 2 }}>{radiusWarning}</p>}
+            <p style={helpStyle}>推奨: 20m〜100m。Google Maps で座標を確認できます。</p>
+          </div>
+          {gpsIncomplete && (
+            <p style={{ fontSize: 12, color: "#dc2626" }}>
+              この方式では緯度・経度・半径がすべて必要です
+            </p>
+          )}
+        </div>
+      )}
 
       {/* ── Beacon 設定 ── */}
       <CollapsibleSection title="Bluetooth ビーコン設定" subtitle="任意" open={showBeacon} onToggle={() => setShowBeacon(!showBeacon)}>

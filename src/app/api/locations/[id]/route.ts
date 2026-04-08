@@ -9,6 +9,7 @@ import { ok, noContent, badRequest, notFound, serverError } from "@/lib/api-resp
 import { withAuth } from "@/lib/auth";
 import { requireRole } from "@/lib/rbac";
 import { updateLocationSchema, formatZodErrors } from "@/lib/validations";
+import { deriveGpsEnabled } from "@/lib/checkin-mode";
 import { ZodError } from "zod";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -24,7 +25,8 @@ function toResponse(l: any, transition?: any) {
     latitude:         l.latitude,
     longitude:        l.longitude,
     radius_meters:    l.radiusMeters,
-    gps_enabled:      l.gpsEnabled,
+    gps_enabled:      deriveGpsEnabled(l.checkinMode), // @deprecated — checkin_mode から導出
+    checkin_mode:     l.checkinMode,
     cooldown_seconds: l.cooldownSeconds,
     transition_id:    l.transitionId,
     set_flags:        l.setFlags,
@@ -112,7 +114,8 @@ export const PATCH = withAuth<{ id: string }>(async (req, { params }, user) => {
         ...(data.latitude         !== undefined && { latitude:        data.latitude }),
         ...(data.longitude        !== undefined && { longitude:       data.longitude }),
         ...(data.radius_meters    !== undefined && { radiusMeters:    data.radius_meters }),
-        ...(data.gps_enabled      !== undefined && { gpsEnabled:      data.gps_enabled }),
+        // gps_enabled は checkin_mode から自動同期（@deprecated）
+        ...(data.checkin_mode     !== undefined && { checkinMode: data.checkin_mode, gpsEnabled: deriveGpsEnabled(data.checkin_mode) }),
         ...(data.cooldown_seconds !== undefined && { cooldownSeconds: data.cooldown_seconds }),
         ...(data.transition_id    !== undefined && { transitionId:    data.transition_id }),
         ...(data.set_flags        !== undefined && { setFlags:        data.set_flags }),

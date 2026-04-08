@@ -320,7 +320,6 @@ function RichMenuDestinationSelect({ oaId, value, onChange }: {
 
   useEffect(() => {
     const token = getDevToken();
-    // OA配下の全作品の destination を取得
     workApi.list(token, oaId).then(async (works) => {
       const allDests: LineDestination[] = [];
       for (const w of works) {
@@ -338,34 +337,56 @@ function RichMenuDestinationSelect({ oaId, value, onChange }: {
   const selected = value ? destinations.find((d) => d.id === value) : null;
   const resolvedUrl = selected ? (selected.resolved_url ?? resolveDestinationUrlFromApi(selected)) : null;
 
+  const TYPE_LABELS: Record<string, string> = { liff: "LIFF", internal_url: "内部URL", external_url: "外部URL" };
+
+  // 空状態
+  if (destinations.length === 0) {
+    return (
+      <div style={{ padding: 12, background: "#f0fdfa", borderRadius: 8, border: "1px solid #ccfbf1", textAlign: "center" }}>
+        <p style={{ fontSize: 12, fontWeight: 500, color: "#0d9488", marginBottom: 4 }}>
+          保存済みの遷移先がまだありません
+        </p>
+        <p style={{ fontSize: 11, color: "#5eead4", marginBottom: 8 }}>
+          作品の「遷移先URL設定」で作成すると、ここから選べるようになります
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div>
-      {destinations.length === 0 ? (
-        <p style={{ fontSize: 12, color: "#9ca3af", padding: 8 }}>遷移先が登録されていません</p>
-      ) : (
-        <select
-          className="input"
-          value={value}
-          onChange={(e) => {
-            const id = e.target.value;
-            const dest = destinations.find((d) => d.id === id);
-            const url = dest ? (dest.resolved_url ?? resolveDestinationUrlFromApi(dest)) : null;
-            onChange(id, url);
-          }}
-        >
-          <option value="">遷移先を選択...</option>
-          {destinations.map((d) => (
-            <option key={d.id} value={d.id}>
-              {d.name} ({d.key})
-            </option>
-          ))}
-        </select>
+      <select
+        className="input"
+        value={value}
+        onChange={(e) => {
+          const id = e.target.value;
+          const dest = destinations.find((d) => d.id === id);
+          const url = dest ? (dest.resolved_url ?? resolveDestinationUrlFromApi(dest)) : null;
+          onChange(id, url);
+        }}
+      >
+        <option value="">遷移先を選択...</option>
+        {destinations.map((d) => (
+          <option key={d.id} value={d.id}>
+            {d.name} ({d.key}) — {TYPE_LABELS[d.destination_type] ?? d.destination_type}
+          </option>
+        ))}
+      </select>
+      {/* 選択中の補助情報 */}
+      {selected && (
+        <div style={{ marginTop: 6, padding: "6px 8px", background: "#f9fafb", borderRadius: 6, border: "1px solid #f3f4f6" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
+            <span style={{ fontSize: 11, fontWeight: 500, color: "#374151" }}>{selected.name}</span>
+            <code style={{ fontSize: 10, background: "#e5e7eb", color: "#6b7280", padding: "1px 4px", borderRadius: 3 }}>{selected.key}</code>
+          </div>
+          {resolvedUrl && (
+            <p style={{ fontSize: 10, color: "#9ca3af", wordBreak: "break-all" }}>{resolvedUrl}</p>
+          )}
+        </div>
       )}
-      {resolvedUrl && (
-        <p style={{ fontSize: 11, color: "#6b7280", marginTop: 4, wordBreak: "break-all" }}>
-          実際のURL: {resolvedUrl}
-        </p>
-      )}
+      <p style={{ fontSize: 10, color: "#9ca3af", marginTop: 4 }}>
+        繰り返し使うURLは「遷移先URL設定」に保存すると再利用できます
+      </p>
     </div>
   );
 }
@@ -929,18 +950,8 @@ export default function RichMenuEditorPage() {
                       タップ時の遷移先
                     </span>
 
-                    {/* モード切替 */}
+                    {/* モード切替（保存済み遷移先を推奨・左に配置） */}
                     <div style={{ display: "flex", gap: 2, background: "#f3f4f6", borderRadius: 8, padding: 2, marginBottom: 8 }}>
-                      <button type="button"
-                        onClick={() => updateArea(selectedIdx, { destination_id: "", action_uri: selectedArea.action_uri })}
-                        style={{
-                          flex: 1, padding: "6px 0", borderRadius: 6, border: "none", fontSize: 12, fontWeight: 500, cursor: "pointer",
-                          background: !selectedArea.destination_id ? "#fff" : "transparent",
-                          color: !selectedArea.destination_id ? "#111" : "#6b7280",
-                          boxShadow: !selectedArea.destination_id ? "0 1px 2px rgba(0,0,0,0.08)" : "none",
-                        }}>
-                        URLを直接入力
-                      </button>
                       <button type="button"
                         onClick={() => updateArea(selectedIdx, { destination_id: "__select__" })}
                         style={{
@@ -951,23 +962,19 @@ export default function RichMenuEditorPage() {
                         }}>
                         保存済みの遷移先を使う
                       </button>
+                      <button type="button"
+                        onClick={() => updateArea(selectedIdx, { destination_id: "", action_uri: selectedArea.action_uri })}
+                        style={{
+                          flex: 1, padding: "6px 0", borderRadius: 6, border: "none", fontSize: 12, fontWeight: 500, cursor: "pointer",
+                          background: !selectedArea.destination_id ? "#fff" : "transparent",
+                          color: !selectedArea.destination_id ? "#111" : "#6b7280",
+                          boxShadow: !selectedArea.destination_id ? "0 1px 2px rgba(0,0,0,0.08)" : "none",
+                        }}>
+                        URLを直接入力
+                      </button>
                     </div>
 
-                    {!selectedArea.destination_id ? (
-                      <>
-                        <input
-                          type="url"
-                          className="input"
-                          value={selectedArea.action_uri}
-                          onChange={(e) => updateArea(selectedIdx, { action_uri: e.target.value })}
-                          placeholder="https://example.com"
-                          maxLength={1000}
-                        />
-                        <span style={{ fontSize: 11, color: "#9ca3af" }}>
-                          タップ時に開く URL
-                        </span>
-                      </>
-                    ) : (
+                    {selectedArea.destination_id ? (
                       <RichMenuDestinationSelect
                         oaId={oaId}
                         value={selectedArea.destination_id === "__select__" ? "" : selectedArea.destination_id}
@@ -978,6 +985,20 @@ export default function RichMenuEditorPage() {
                           });
                         }}
                       />
+                    ) : (
+                      <>
+                        <input
+                          type="url"
+                          className="input"
+                          value={selectedArea.action_uri}
+                          onChange={(e) => updateArea(selectedIdx, { action_uri: e.target.value })}
+                          placeholder="https://example.com"
+                          maxLength={1000}
+                        />
+                        <span style={{ fontSize: 10, color: "#9ca3af" }}>
+                          一時的にURLを直接指定したい場合に使います
+                        </span>
+                      </>
                     )}
                   </div>
                 )}

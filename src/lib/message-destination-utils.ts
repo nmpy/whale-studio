@@ -61,11 +61,15 @@ export function resolveCarouselButtonUrl(
  * 遷移先モードを判定する。
  * 既存データの tap_destination_id / tap_url から初期表示モードを決める。
  */
+/**
+ * 既存データからタップ遷移先のモードを判定する。
+ * 新規作成時（両方未設定）は destination モードを推奨する。
+ */
 export function detectTapMode(
   tapDestinationId: string | null | undefined,
   tapUrl: string | null | undefined
 ): "destination" | "direct_url" | "none" {
   if (tapDestinationId) return "destination";
   if (tapUrl) return "direct_url";
-  return "none";
+  return "destination"; // 新規作成時は destination を推奨
 }

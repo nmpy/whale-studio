@@ -61,8 +61,9 @@ export const GET = withAuth<{ workId: string }>(async (_req, { params }, user) =
     // ── method 内訳 ──
     const methodMap = new Map(methodRows.map((r) => [r.checkinMethod, r._count.id]));
     const methodBreakdown: CheckinMethodBreakdown = {
-      qr_count:  methodMap.get("qr") ?? 0,
-      gps_count: methodMap.get("gps") ?? 0,
+      qr_count:          methodMap.get("qr") ?? 0,
+      gps_count:         methodMap.get("gps") ?? 0,
+      qr_and_gps_count:  methodMap.get("qr_and_gps") ?? 0,
     };
 
     // ── GPS 距離統計 ──
@@ -102,11 +103,12 @@ export const GET = withAuth<{ workId: string }>(async (_req, { params }, user) =
     const locUserMap = new Map<string, number>();
     for (const row of byLocUserRows) locUserMap.set(row.locationId, (locUserMap.get(row.locationId) ?? 0) + 1);
 
-    const locMethodMap = new Map<string, { qr: number; gps: number }>();
+    const locMethodMap = new Map<string, { qr: number; gps: number; qr_and_gps: number }>();
     for (const row of byLocMethodRows) {
-      const cur = locMethodMap.get(row.locationId) ?? { qr: 0, gps: 0 };
+      const cur = locMethodMap.get(row.locationId) ?? { qr: 0, gps: 0, qr_and_gps: 0 };
       if (row.checkinMethod === "qr") cur.qr = row._count.id;
       else if (row.checkinMethod === "gps") cur.gps = row._count.id;
+      else if (row.checkinMethod === "qr_and_gps") cur.qr_and_gps = row._count.id;
       locMethodMap.set(row.locationId, cur);
     }
 
@@ -123,7 +125,7 @@ export const GET = withAuth<{ workId: string }>(async (_req, { params }, user) =
 
     const byLocation: LocationVisitSummary[] = byLocationRows
       .map((r) => {
-        const methods = locMethodMap.get(r.locationId) ?? { qr: 0, gps: 0 };
+        const methods = locMethodMap.get(r.locationId) ?? { qr: 0, gps: 0, qr_and_gps: 0 };
         const avgDist = locGpsMap.get(r.locationId);
         const locAttempt = locAttemptMap.get(r.locationId);
         const locAttemptTotal = locAttempt?.total ?? 0;
@@ -135,6 +137,7 @@ export const GET = withAuth<{ workId: string }>(async (_req, { params }, user) =
           unique_users:        locUserMap.get(r.locationId) ?? 0,
           qr_count:            methods.qr,
           gps_count:           methods.gps,
+          qr_and_gps_count:    methods.qr_and_gps,
           avg_distance_meters: avgDist != null ? Math.round(avgDist) : null,
           gps_attempts:        locAttemptTotal,
           gps_successes:       locAttemptSuccess,

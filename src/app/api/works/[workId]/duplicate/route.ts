@@ -1,5 +1,5 @@
-// src/app/api/works/[id]/duplicate/route.ts
-// POST /api/works/:id/duplicate
+// src/app/api/works/[workId]/duplicate/route.ts
+// POST /api/works/:workId/duplicate
 //
 // 作品を複製する。
 //
@@ -22,11 +22,11 @@ import { requireRole } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
 import { created, notFound, serverError } from "@/lib/api-response";
 
-export const POST = withAuth<{ id: string }>(async (_req, { params }, user) => {
+export const POST = withAuth<{ workId: string }>(async (_req, { params }, user) => {
   try {
     // ── 1. 複製元作品を全リレーションごと取得 ──────────
     const original = await prisma.work.findUnique({
-      where:   { id: params.id },
+      where:   { id: params.workId },
       include: {
         characters: { orderBy: { sortOrder: "asc" } },
         phases: {
@@ -170,7 +170,7 @@ export const POST = withAuth<{ id: string }>(async (_req, { params }, user) => {
       updated_at:          result!.updatedAt,
       _count:              result!._count,
       // 複製元との差分を返す（UI でのフィードバック用）
-      _duplicated_from: params.id,
+      _duplicated_from: params.workId,
     });
   } catch (err) {
     return serverError(err);

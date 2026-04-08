@@ -112,6 +112,7 @@ export default function EditLocationPage() {
             longitude: location.longitude,
             radius_meters: location.radius_meters,
             gps_enabled: location.gps_enabled,
+            checkin_mode: location.checkin_mode,
             cooldown_seconds: location.cooldown_seconds,
             transition_id: location.transition_id ?? "",
             set_flags: location.set_flags,

@@ -2,7 +2,8 @@
 
 // src/components/destination/TapDestinationSection.tsx
 // 「画像タップ時の遷移先」「ボタンの遷移先」で共通使用するセクション。
-// destination 選択 or 直接URL入力 の2択UI。
+// destination 選択（推奨）or 直接URL入力 の2択UI。
+// destination を推奨導線として見せ、直URL入力は控えめにする。
 
 import { DestinationSelect } from "./DestinationSelect";
 import type { LineDestination } from "@/types";
@@ -33,7 +34,7 @@ export function TapDestinationSection({
     <div className="space-y-3">
       <label className="block text-xs font-medium text-gray-500">{label}</label>
 
-      {/* モード切替 */}
+      {/* モード切替（destination が常に左＝推奨） */}
       <div className="flex gap-1 bg-gray-100 rounded-lg p-0.5">
         <button
           type="button"
@@ -57,34 +58,44 @@ export function TapDestinationSection({
               : "text-gray-500 hover:text-gray-700"
           }`}
         >
-          URLを直接入力する
+          URLを直接入力
         </button>
       </div>
 
-      {/* destination モード */}
+      {/* destination モード（推奨） */}
       {mode === "destination" && (
-        <DestinationSelect
-          workId={workId}
-          oaId={oaId}
-          value={destinationId}
-          onChange={onDestinationChange}
-          disabled={disabled}
-          destinations={destinations}
-        />
+        <div>
+          <DestinationSelect
+            workId={workId}
+            oaId={oaId}
+            value={destinationId}
+            onChange={onDestinationChange}
+            disabled={disabled}
+            destinations={destinations}
+          />
+          <p className="text-[10px] text-gray-400 mt-1">
+            繰り返し使うURLは「遷移先URL設定」に保存すると、他の画面でも再利用できます
+          </p>
+        </div>
       )}
 
-      {/* 直接URL入力モード */}
+      {/* 直接URL入力モード（控えめ） */}
       {mode === "direct_url" && (
-        <input
-          className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-200 disabled:bg-gray-50"
-          value={directUrl}
-          onChange={(e) => onDirectUrlChange(e.target.value)}
-          disabled={disabled}
-          placeholder="https://..."
-        />
+        <div>
+          <input
+            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-200 disabled:bg-gray-50"
+            value={directUrl}
+            onChange={(e) => onDirectUrlChange(e.target.value)}
+            disabled={disabled}
+            placeholder="https://..."
+          />
+          <p className="text-[10px] text-gray-400 mt-1">
+            一時的にURLを直接指定したい場合に使います
+          </p>
+        </div>
       )}
 
-      {/* none モード（何も設定しない） */}
+      {/* none モード */}
       {mode === "none" && (
         <p className="text-xs text-gray-400">
           遷移先が未設定です。上のボタンで設定方法を選んでください。

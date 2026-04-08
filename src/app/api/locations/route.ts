@@ -8,6 +8,7 @@ import { ok, created, badRequest, notFound, serverError } from "@/lib/api-respon
 import { withAuth } from "@/lib/auth";
 import { requireRole, getOaIdFromWorkId } from "@/lib/rbac";
 import { createLocationSchema, locationQuerySchema, formatZodErrors } from "@/lib/validations";
+import { deriveGpsEnabled } from "@/lib/checkin-mode";
 import { ZodError } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -25,7 +26,8 @@ function toResponse(l: any, transition?: any) {
     latitude:         l.latitude,
     longitude:        l.longitude,
     radius_meters:    l.radiusMeters,
-    gps_enabled:      l.gpsEnabled,
+    gps_enabled:      deriveGpsEnabled(l.checkinMode), // @deprecated — checkin_mode から導出
+    checkin_mode:     l.checkinMode,
     cooldown_seconds: l.cooldownSeconds,
     transition_id:    l.transitionId,
     set_flags:        l.setFlags,
@@ -118,7 +120,8 @@ export const POST = withAuth(async (req, _ctx, user) => {
         latitude:        data.latitude,
         longitude:       data.longitude,
         radiusMeters:    data.radius_meters,
-        gpsEnabled:      data.gps_enabled,
+        gpsEnabled:      deriveGpsEnabled(data.checkin_mode ?? "qr_only"),
+        checkinMode:     data.checkin_mode ?? "qr_only",
         cooldownSeconds: data.cooldown_seconds,
         transitionId:    data.transition_id,
         setFlags:        data.set_flags ?? "{}",
