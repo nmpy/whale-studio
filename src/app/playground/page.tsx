@@ -246,6 +246,7 @@ function PlaygroundInner() {
         lag_ms: 0,
         hint_mode: "always" as import("@/types").HintMode,
         sort_order: 0,
+        timing: null,
         character: null,
       });
       if (item.hint_followup?.trim()) {
@@ -260,6 +261,7 @@ function PlaygroundInner() {
           lag_ms: 0,
           hint_mode: "always" as import("@/types").HintMode,
           sort_order: 1,
+          timing: null,
           character: null,
         });
       }

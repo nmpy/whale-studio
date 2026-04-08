@@ -18,6 +18,9 @@ import { usePlatformRole } from "@/hooks/usePlatformRole";
 import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
 import { RoleBadge } from "@/components/PermissionGuard";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { useProfile } from "@/hooks/useProfile";
+import { useToast } from "@/components/Toast";
+import { getDisplayName } from "@/lib/user-display";
 import type { Role } from "@/lib/types/permissions";
 
 // FeedbackModal は大きいので dynamic import でコード分割
@@ -64,6 +67,9 @@ export default function AppHeader() {
   const [feedbackOpen,     setFeedbackOpen]     = useState(false);
   const [loggedIn,         setLoggedIn]         = useState(false);
   const [showRoleDropdown, setShowRoleDropdown] = useState(false);
+  const { profile, loading: profileLoading }    = useProfile();
+  const { showToast }                           = useToast();
+  const displayName                             = getDisplayName(profile);
   // pricing ページ起点で開いたときの流入元（"header" / "banner" 等）
   const [pricingSource,    setPricingSource]    = useState<string | undefined>(undefined);
 
@@ -90,6 +96,20 @@ export default function AppHeader() {
     });
     return () => subscription.unsubscribe();
   }, []);
+
+  // ── 初回ログイン時の「ようこそ」トースト ──────────────────────────
+  useEffect(() => {
+    if (!loggedIn || profileLoading || !profile) return;
+    const key = `welcome_shown_${profile.user_id}`;
+    try {
+      if (!localStorage.getItem(key)) {
+        showToast(`ようこそ、${getDisplayName(profile)}さん`, "success");
+        localStorage.setItem(key, "1");
+      }
+    } catch {
+      // localStorage 無効な環境はスキップ
+    }
+  }, [loggedIn, profileLoading, profile, showToast]);
 
   // ── フィードバックモーダル: 外部イベントで開く ─────────────────────
   useEffect(() => {
@@ -332,6 +352,27 @@ export default function AppHeader() {
             <div style={{ display: "flex", alignItems: "center", gap: 6, marginLeft: 8 }}>
               <RoleBadge role={workspaceRole as Role} />
             </div>
+          )}
+
+          {/* ── ユーザー名（ログイン済み時のみ） ── */}
+          {loggedIn && (
+            <a
+              href="/settings/profile"
+              style={{
+                fontSize:       12,
+                fontWeight:     600,
+                color:          "#374151",
+                whiteSpace:     "nowrap",
+                overflow:       "hidden",
+                textOverflow:   "ellipsis",
+                maxWidth:       120,
+                flexShrink:     1,
+                textDecoration: "none",
+              }}
+              title={`${displayName} — プロフィール設定`}
+            >
+              {displayName}
+            </a>
           )}
 
           {/* ── ログアウトボタン（Supabase 認証済み時のみ） ── */}

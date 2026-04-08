@@ -22,7 +22,7 @@ import { createServerClient } from "@supabase/ssr";
 // ── 保護対象ルートのプレフィックス ──────────────────────────────────
 // /admin は platform owner 専用エリア。まず middleware で認証を必須とし、
 // platform owner 判定は admin/layout.tsx (server component) で行う。
-const PROTECTED_PREFIXES = ["/oas", "/admin", "/playground", "/nazotoki"];
+const PROTECTED_PREFIXES = ["/oas", "/admin", "/playground", "/nazotoki", "/settings"];
 
 // ── 認証不要のパブリックルート ──────────────────────────────────────
 // /login, /access-denied, /api/line/** (LINE webhook), /t/**, /tester/**

@@ -71,6 +71,7 @@ function buildRuntimePhaseFromSheets(
       lag_ms:            0,
       hint_mode:         "always" as import("@/types").HintMode,
       sort_order:        msg.sort_order,
+      timing:            null,
       character:    char
         ? {
             id:             char.character_id,

@@ -54,6 +54,19 @@ import type {
   GlobalCommand,
   CreateGlobalCommandBody,
   UpdateGlobalCommandBody,
+  LiffPageConfig,
+  LiffPageBlock,
+  UpdateLiffConfigBody,
+  CreateLiffBlockBody,
+  UpdateLiffBlockBody,
+  ReorderLiffBlocksBody,
+  Location,
+  LocationWithTransition,
+  CreateLocationBody,
+  UpdateLocationBody,
+  LineDestination,
+  CreateLineDestinationBody,
+  UpdateLineDestinationBody,
 } from "@/types";
 
 // ────────────────────────────────────────────────
@@ -1397,6 +1410,152 @@ export const onboardingApi = {
     const res = await fetch(`/api/oas/${oaId}/onboarding-analytics`, {
       headers: authHeaders(token),
     });
+    return parseResponse(res);
+  },
+};
+
+// ────────────────────────────────────────────────
+// LIFF 設定 API
+// ────────────────────────────────────────────────
+
+export const liffConfigApi = {
+  async get(token: string, workId: string): Promise<LiffPageConfig> {
+    const res = await fetch(`/api/works/${workId}/liff-config`, {
+      headers: authHeaders(token),
+    });
+    return parseResponse(res);
+  },
+
+  async update(token: string, workId: string, body: UpdateLiffConfigBody): Promise<LiffPageConfig> {
+    const res = await fetch(`/api/works/${workId}/liff-config`, {
+      method: "PUT",
+      headers: authHeaders(token),
+      body: JSON.stringify(body),
+    });
+    return parseResponse(res);
+  },
+
+  async createBlock(token: string, workId: string, body: CreateLiffBlockBody): Promise<LiffPageBlock> {
+    const res = await fetch(`/api/works/${workId}/liff-blocks`, {
+      method: "POST",
+      headers: authHeaders(token),
+      body: JSON.stringify(body),
+    });
+    return parseResponse(res);
+  },
+
+  async updateBlock(token: string, workId: string, blockId: string, body: UpdateLiffBlockBody): Promise<LiffPageBlock> {
+    const res = await fetch(`/api/works/${workId}/liff-blocks/${blockId}`, {
+      method: "PATCH",
+      headers: authHeaders(token),
+      body: JSON.stringify(body),
+    });
+    return parseResponse(res);
+  },
+
+  async deleteBlock(token: string, workId: string, blockId: string): Promise<void> {
+    const res = await fetch(`/api/works/${workId}/liff-blocks/${blockId}`, {
+      method: "DELETE",
+      headers: authHeaders(token),
+    });
+    if (res.status === 204) return;
+    return parseResponse(res);
+  },
+
+  async reorderBlocks(token: string, workId: string, body: ReorderLiffBlocksBody): Promise<LiffPageBlock[]> {
+    const res = await fetch(`/api/works/${workId}/liff-blocks/reorder`, {
+      method: "POST",
+      headers: authHeaders(token),
+      body: JSON.stringify(body),
+    });
+    return parseResponse(res);
+  },
+};
+
+// ────────────────────────────────────────────────
+// Location API
+// ────────────────────────────────────────────────
+
+export const locationApi = {
+  async list(
+    token: string,
+    workId: string,
+    params?: { is_active?: boolean }
+  ): Promise<LocationWithTransition[]> {
+    const query = new URLSearchParams({ work_id: workId });
+    if (params?.is_active !== undefined) query.set("is_active", String(params.is_active));
+    const res = await fetch(`/api/locations?${query}`, { headers: authHeaders(token) });
+    return parseResponse(res);
+  },
+
+  async get(token: string, id: string): Promise<LocationWithTransition> {
+    const res = await fetch(`/api/locations/${id}`, { headers: authHeaders(token) });
+    return parseResponse(res);
+  },
+
+  async create(token: string, body: CreateLocationBody): Promise<LocationWithTransition> {
+    const res = await fetch("/api/locations", {
+      method: "POST",
+      headers: authHeaders(token),
+      body: JSON.stringify(body),
+    });
+    return parseResponse(res);
+  },
+
+  async update(token: string, id: string, body: UpdateLocationBody): Promise<LocationWithTransition> {
+    const res = await fetch(`/api/locations/${id}`, {
+      method: "PATCH",
+      headers: authHeaders(token),
+      body: JSON.stringify(body),
+    });
+    return parseResponse(res);
+  },
+
+  async delete(token: string, id: string): Promise<void> {
+    const res = await fetch(`/api/locations/${id}`, {
+      method: "DELETE",
+      headers: authHeaders(token),
+    });
+    return parseResponse(res);
+  },
+};
+
+// ────────────────────────────────────────────────
+// LineDestination API — 遷移先URL定義
+// ────────────────────────────────────────────────
+
+export const destinationApi = {
+  async list(token: string, workId: string): Promise<LineDestination[]> {
+    const res = await fetch(`/api/works/${workId}/destinations`, {
+      headers: authHeaders(token),
+    });
+    return parseResponse(res);
+  },
+
+  async create(token: string, workId: string, body: Omit<CreateLineDestinationBody, "work_id">): Promise<LineDestination> {
+    const res = await fetch(`/api/works/${workId}/destinations`, {
+      method: "POST",
+      headers: authHeaders(token),
+      body: JSON.stringify(body),
+    });
+    return parseResponse(res);
+  },
+
+  async update(token: string, workId: string, id: string, body: UpdateLineDestinationBody): Promise<LineDestination> {
+    const res = await fetch(`/api/works/${workId}/destinations/${id}`, {
+      method: "PATCH",
+      headers: authHeaders(token),
+      body: JSON.stringify(body),
+    });
+    return parseResponse(res);
+  },
+
+  async delete(token: string, workId: string, id: string): Promise<void> {
+    const res = await fetch(`/api/works/${workId}/destinations/${id}`, {
+      method: "DELETE",
+      headers: authHeaders(token),
+    });
+    if (res.status === 204) return;
     return parseResponse(res);
   },
 };

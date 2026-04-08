@@ -64,6 +64,20 @@ const HUB_CARDS = [
     color: "#0891b2",
     bg:    "#ecfeff",
   },
+  {
+    key:   "liff",
+    title: "LIFF表示設定",
+    desc:  "LIFFページに表示するブロックの追加・編集・並び替えを行います",
+    color: "#8b5cf6",
+    bg:    "#f5f3ff",
+  },
+  {
+    key:   "destinations",
+    title: "遷移先URL設定",
+    desc:  "リッチメニューやメッセージから飛ばすURLを一元管理します",
+    color: "#0d9488",
+    bg:    "#f0fdfa",
+  },
 ] as const;
 
 // ── ハブカード / アクションアイコン（SVGで役割を示す） ──────────
@@ -99,6 +113,18 @@ function HubCardIcon({ cardKey, color }: { cardKey: string; color: string }) {
       <line x1="18" y1="20" x2="18" y2="10"/>
       <line x1="12" y1="20" x2="12" y2="4"/>
       <line x1="6" y1="20" x2="6" y2="14"/>
+    </svg>
+  );
+  if (cardKey === "liff") return (
+    <svg {...p} aria-hidden="true">
+      <rect x="5" y="2" width="14" height="20" rx="2" ry="2"/>
+      <line x1="12" y1="18" x2="12" y2="18"/>
+    </svg>
+  );
+  if (cardKey === "destinations") return (
+    <svg {...p} aria-hidden="true">
+      <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+      <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
     </svg>
   );
   if (cardKey === "preview") return (

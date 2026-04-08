@@ -111,6 +111,8 @@ export type LineEvent = {
     data: string;
     params?: Record<string, string>;
   };
+  /** 既読制御トークン（Mark as Read API で使用）。メッセージイベントに付与される */
+  markAsReadToken?: string;
 };
 
 export type LineWebhookBody = {

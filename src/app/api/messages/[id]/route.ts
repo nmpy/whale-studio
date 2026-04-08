@@ -38,6 +38,16 @@ type PrismaMessageWithRelations = {
   correctNextPhaseId: string | null;
   hintMode: string;
   lagMs: number;
+  // 演出設定
+  readReceiptMode: string | null;
+  readDelayMs: number | null;
+  typingEnabled: boolean | null;
+  typingMinMs: number | null;
+  typingMaxMs: number | null;
+  loadingEnabled: boolean | null;
+  loadingThresholdMs: number | null;
+  loadingMinSeconds: number | null;
+  loadingMaxSeconds: number | null;
   sortOrder: number; isActive: boolean; createdAt: Date; updatedAt: Date;
   phase:     { id: string; name: string; phaseType: string } | null;
   character: {
@@ -96,6 +106,16 @@ function toResponse(m: PrismaMessageWithRelations) {
     correct_next_phase_id:   m.correctNextPhaseId,
     hint_mode:             m.hintMode as import("@/types").HintMode,
     lag_ms:                m.lagMs,
+    // 演出設定
+    read_receipt_mode:     (m.readReceiptMode as import("@/types").ReadReceiptMode) ?? null,
+    read_delay_ms:         m.readDelayMs ?? null,
+    typing_enabled:        m.typingEnabled ?? null,
+    typing_min_ms:         m.typingMinMs ?? null,
+    typing_max_ms:         m.typingMaxMs ?? null,
+    loading_enabled:       m.loadingEnabled ?? null,
+    loading_threshold_ms:  m.loadingThresholdMs ?? null,
+    loading_min_seconds:   m.loadingMinSeconds ?? null,
+    loading_max_seconds:   m.loadingMaxSeconds ?? null,
     sort_order:            m.sortOrder,
     is_active:             m.isActive,
     created_at:            m.createdAt,
@@ -232,6 +252,16 @@ export const PATCH = withAuth<{ id: string }>(async (req, { params }, user) => {
         }),
         ...(data.correct_next_phase_id !== undefined && { correctNextPhaseId: data.correct_next_phase_id }),
         ...(data.lag_ms            !== undefined && { lagMs:           data.lag_ms }),
+        // 演出設定
+        ...(data.read_receipt_mode    !== undefined && { readReceiptMode:    data.read_receipt_mode }),
+        ...(data.read_delay_ms        !== undefined && { readDelayMs:        data.read_delay_ms }),
+        ...(data.typing_enabled       !== undefined && { typingEnabled:      data.typing_enabled }),
+        ...(data.typing_min_ms        !== undefined && { typingMinMs:        data.typing_min_ms }),
+        ...(data.typing_max_ms        !== undefined && { typingMaxMs:        data.typing_max_ms }),
+        ...(data.loading_enabled      !== undefined && { loadingEnabled:     data.loading_enabled }),
+        ...(data.loading_threshold_ms !== undefined && { loadingThresholdMs: data.loading_threshold_ms }),
+        ...(data.loading_min_seconds  !== undefined && { loadingMinSeconds:  data.loading_min_seconds }),
+        ...(data.loading_max_seconds  !== undefined && { loadingMaxSeconds:  data.loading_max_seconds }),
         ...(data.sort_order        !== undefined && { sortOrder:       data.sort_order }),
         ...(data.is_active         !== undefined && { isActive:        data.is_active }),
       },

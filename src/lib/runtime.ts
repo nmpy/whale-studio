@@ -254,6 +254,26 @@ function messageRowToRuntime(
       console.warn(`[buildRuntimeState] quickReplies parse error msgId=${m.id}`);
     }
   }
+  // 演出設定: すべて null なら timing=null（inherit 扱い）
+  const hasAnyTiming =
+    m.readReceiptMode != null || m.readDelayMs != null ||
+    m.typingEnabled != null || m.typingMinMs != null || m.typingMaxMs != null ||
+    m.loadingEnabled != null || m.loadingThresholdMs != null ||
+    m.loadingMinSeconds != null || m.loadingMaxSeconds != null;
+  const timing: import("@/types").MessageTimingConfig | null = hasAnyTiming
+    ? {
+        read_receipt_mode:    (m.readReceiptMode as import("@/types").ReadReceiptMode) ?? null,
+        read_delay_ms:        m.readDelayMs        ?? null,
+        typing_enabled:       m.typingEnabled       ?? null,
+        typing_min_ms:        m.typingMinMs         ?? null,
+        typing_max_ms:        m.typingMaxMs         ?? null,
+        loading_enabled:      m.loadingEnabled      ?? null,
+        loading_threshold_ms: m.loadingThresholdMs  ?? null,
+        loading_min_seconds:  m.loadingMinSeconds   ?? null,
+        loading_max_seconds:  m.loadingMaxSeconds   ?? null,
+      }
+    : null;
+
   return {
     id:                m.id,
     message_type:      m.messageType as MessageType,
@@ -265,6 +285,7 @@ function messageRowToRuntime(
     lag_ms:            m.lagMs           ?? 0,
     hint_mode:         (m.hintMode ?? "always") as import("@/types").HintMode,
     sort_order:        m.sortOrder,
+    timing,
     character:         m.character
       ? {
           id:             m.character.id,

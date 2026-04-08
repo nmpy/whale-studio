@@ -29,20 +29,116 @@
 //    - 不一致の userId は 200 OK を返すが返信・DB更新を行わない
 //    - ログに "[Webhook] ignored (test mode)" を出力
 
+import { AsyncLocalStorage } from "node:async_hooks";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import {
   verifyLineSignature,
   isStartCommand, isResetCommand, isContinueCommand,
-  replyToLine, replyWithLagToLine,
-  buildPhaseMessages, buildQuickReply, buildKeywordMessages, buildQuickReplyFromItems,
+  replyToLine as _replyToLine, replyWithLagToLine as _replyWithLagToLine,
+  buildPhaseMessages as _buildPhaseMessages, buildQuickReply, buildKeywordMessages as _buildKeywordMessages, buildQuickReplyFromItems,
   RICHMENU_ACTIONS,
-  type LineWebhookBody, type LineEvent, type LineSender, type KeywordMessageRecord,
+  type LineWebhookBody, type LineEvent, type LineSender, type LineMessage, type KeywordMessageRecord,
 } from "@/lib/line";
 import { buildRuntimeState, matchTransition, applySetFlags, safeParseFlags, fetchPhaseWithIncludes, type PhaseRow } from "@/lib/runtime";
 import { logEvent } from "@/lib/event-logger";
 import { activeCache, TTL, CACHE_KEY } from "@/lib/cache";
 import { linkRichMenuToUser } from "@/lib/line-richmenu";
+import { ReadReceiptController, calcReadDelayByTextLength } from "@/lib/line-read-receipt";
+import type { MessageTimingConfig } from "@/types";
+
+/**
+ * WorkRow から作品単位の演出設定を抽出する。
+ * すべて null なら null を返す（= inherit、controller への影響なし）。
+ */
+function extractWorkTiming(work: { readReceiptMode: string | null; readDelayMs: number | null; typingEnabled: boolean | null; typingMinMs: number | null; typingMaxMs: number | null; loadingEnabled: boolean | null; loadingThresholdMs: number | null; loadingMinSeconds: number | null; loadingMaxSeconds: number | null } | null): MessageTimingConfig | null {
+  if (!work) return null;
+  const hasAny =
+    work.readReceiptMode != null || work.readDelayMs != null ||
+    work.typingEnabled != null || work.typingMinMs != null || work.typingMaxMs != null ||
+    work.loadingEnabled != null || work.loadingThresholdMs != null ||
+    work.loadingMinSeconds != null || work.loadingMaxSeconds != null;
+  if (!hasAny) return null;
+  return {
+    read_receipt_mode:    (work.readReceiptMode as MessageTimingConfig["read_receipt_mode"]) ?? null,
+    read_delay_ms:        work.readDelayMs        ?? null,
+    typing_enabled:       work.typingEnabled       ?? null,
+    typing_min_ms:        work.typingMinMs         ?? null,
+    typing_max_ms:        work.typingMaxMs         ?? null,
+    loading_enabled:      work.loadingEnabled      ?? null,
+    loading_threshold_ms: work.loadingThresholdMs  ?? null,
+    loading_min_seconds:  work.loadingMinSeconds   ?? null,
+    loading_max_seconds:  work.loadingMaxSeconds   ?? null,
+  };
+}
+
+// ────────────────────────────────────────────────
+// 既読制御: AsyncLocalStorage でハンドラーにコントローラーを透過的に渡す
+// ────────────────────────────────────────────────
+// 既存の replyToLine / replyWithLagToLine 呼び出しを一切変更せずに
+// 返信前の既読送信を自動的に挟み込む。
+
+const readCtrlStorage = new AsyncLocalStorage<ReadReceiptController>();
+
+/**
+ * replyToLine のラッパー。AsyncLocalStorage から ReadReceiptController を取得し、
+ * typing 待機 → 既読保証 → 返信 の順で実行する。
+ */
+async function replyToLine(
+  replyToken: string,
+  messages: LineMessage[],
+  channelAccessToken: string,
+): Promise<void> {
+  const ctrl = readCtrlStorage.getStore();
+  if (ctrl) {
+    await ctrl.waitTypingBeforeReply();
+    await ctrl.ensureReadBeforeReply();
+  }
+  await _replyToLine(replyToken, messages, channelAccessToken);
+  if (ctrl) ctrl.markReplySent();
+}
+
+/**
+ * replyWithLagToLine のラッパー。typing 待機 → 既読保証 → 返信。
+ */
+async function replyWithLagToLine(
+  replyToken: string,
+  messages: LineMessage[],
+  userId: string,
+  channelAccessToken: string,
+): Promise<void> {
+  const ctrl = readCtrlStorage.getStore();
+  if (ctrl) {
+    await ctrl.waitTypingBeforeReply();
+    await ctrl.ensureReadBeforeReply();
+  }
+  await _replyWithLagToLine(replyToken, messages, userId, channelAccessToken);
+  if (ctrl) ctrl.markReplySent();
+}
+
+/**
+ * buildPhaseMessages のラッパー。最初のメッセージの演出設定を自動適用する。
+ */
+function buildPhaseMessages(
+  ...args: Parameters<typeof _buildPhaseMessages>
+): ReturnType<typeof _buildPhaseMessages> {
+  const msgs = _buildPhaseMessages(...args);
+  const firstMsg = args[0]?.messages[0];
+  if (firstMsg?.timing) {
+    readCtrlStorage.getStore()?.applyMessageTiming(firstMsg.timing);
+  }
+  return msgs;
+}
+
+/**
+ * buildKeywordMessages のラッパー。
+ * KeywordMessageRecord にはランタイム timing がないため、そのまま委譲する。
+ */
+function buildKeywordMessages(
+  ...args: Parameters<typeof _buildKeywordMessages>
+): ReturnType<typeof _buildKeywordMessages> {
+  return _buildKeywordMessages(...args);
+}
 import {
   loadSheetsData,
   findActiveWork,
@@ -931,31 +1027,72 @@ async function handleWebhook(req: NextRequest, oaId: string) {
   }
 
   // ── 7. 各イベントを並列処理（エラーが出ても他のイベントに影響させない）──
+  // ReadReceiptController を AsyncLocalStorage 経由でハンドラーに注入する。
+  // これにより既存の replyToLine / replyWithLagToLine 呼び出しが透過的に
+  // 「返信前の既読送信」を行うようになる。
+  const workTiming = extractWorkTiming(work);
   await Promise.allSettled([
-    // テキストメッセージ
-    ...textEvents.map((event) =>
-      handleTextEvent({
-        oa,
-        work:         work ?? null,
-        systemSender,
-        userId:       event.source.userId,
-        text:         event.message.text.trim(),
-        replyToken:   event.replyToken,
-        vars:         buildVars(event.source.userId),
-      })
-    ),
+    // テキストメッセージ（markAsReadToken 付き）
+    ...textEvents.map((event) => {
+      const dynamicDelay = calcReadDelayByTextLength(event.message.text.trim().length);
+      const ctrl = new ReadReceiptController({
+        markAsReadToken:  event.markAsReadToken,
+        userId:           event.source.userId,
+        channelAccessToken: oa.channelAccessToken,
+        isOneOnOne:       event.source.type === "user",
+        config:           { readDelayMs: dynamicDelay },
+      });
+      ctrl.setWorkTiming(workTiming);
+      ctrl.scheduleDelayedRead();
+      const loadingAbort = new AbortController();
+      ctrl.scheduleLoading(loadingAbort.signal);
+
+      return readCtrlStorage.run(ctrl, async () => {
+        try {
+          await handleTextEvent({
+            oa,
+            work:         work ?? null,
+            systemSender,
+            userId:       event.source.userId,
+            text:         event.message.text.trim(),
+            replyToken:   event.replyToken,
+            vars:         buildVars(event.source.userId),
+          });
+        } finally {
+          loadingAbort.abort();
+          ctrl.logTiming(`text userId=${event.source.userId.slice(0, 8)}`);
+          ctrl.dispose();
+        }
+      });
+    }),
     // postback（リッチメニューアクション）
-    ...postbackEvents.map((event) =>
-      handlePostbackEvent({
-        oa,
-        work:         work ?? null,
-        systemSender,
-        userId:       event.source.userId,
-        data:         event.postback.data,
-        replyToken:   event.replyToken,
-        vars:         buildVars(event.source.userId),
-      })
-    ),
+    ...postbackEvents.map((event) => {
+      const ctrl = new ReadReceiptController({
+        markAsReadToken:  event.markAsReadToken,
+        userId:           event.source.userId,
+        channelAccessToken: oa.channelAccessToken,
+        isOneOnOne:       event.source.type === "user",
+      });
+      ctrl.setWorkTiming(workTiming);
+      ctrl.scheduleDelayedRead();
+
+      return readCtrlStorage.run(ctrl, async () => {
+        try {
+          await handlePostbackEvent({
+            oa,
+            work:         work ?? null,
+            systemSender,
+            userId:       event.source.userId,
+            data:         event.postback.data,
+            replyToken:   event.replyToken,
+            vars:         buildVars(event.source.userId),
+          });
+        } finally {
+          ctrl.logTiming(`postback userId=${event.source.userId.slice(0, 8)}`);
+          ctrl.dispose();
+        }
+      });
+    }),
   ]);
 
   // LINE には常に 200 OK を返す

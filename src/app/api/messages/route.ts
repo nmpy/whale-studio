@@ -48,6 +48,16 @@ function toResponse(m: {
   correctNextPhaseId?: string | null;
   hintMode?: string;
   lagMs?: number;
+  // 演出設定
+  readReceiptMode?: string | null;
+  readDelayMs?: number | null;
+  typingEnabled?: boolean | null;
+  typingMinMs?: number | null;
+  typingMaxMs?: number | null;
+  loadingEnabled?: boolean | null;
+  loadingThresholdMs?: number | null;
+  loadingMinSeconds?: number | null;
+  loadingMaxSeconds?: number | null;
   sortOrder: number; isActive: boolean; createdAt: Date; updatedAt: Date;
   phase?: { id: string; name: string; phaseType: string } | null;
   character?: { id: string; name: string; iconType: string; iconText: string | null; iconImageUrl: string | null; iconColor: string | null } | null;
@@ -80,6 +90,16 @@ function toResponse(m: {
     correct_next_phase_id:   m.correctNextPhaseId ?? null,
     hint_mode:            (m.hintMode ?? "always") as import("@/types").HintMode,
     lag_ms:               m.lagMs ?? 0,
+    // 演出設定
+    read_receipt_mode:    (m.readReceiptMode as import("@/types").ReadReceiptMode) ?? null,
+    read_delay_ms:        m.readDelayMs ?? null,
+    typing_enabled:       m.typingEnabled ?? null,
+    typing_min_ms:        m.typingMinMs ?? null,
+    typing_max_ms:        m.typingMaxMs ?? null,
+    loading_enabled:      m.loadingEnabled ?? null,
+    loading_threshold_ms: m.loadingThresholdMs ?? null,
+    loading_min_seconds:  m.loadingMinSeconds ?? null,
+    loading_max_seconds:  m.loadingMaxSeconds ?? null,
     sort_order:           m.sortOrder,
     is_active:            m.isActive,
     created_at:           m.createdAt,
@@ -216,6 +236,16 @@ export const POST = withAuth(async (req, _ctx, user) => {
         incorrectQuickReplies: data.incorrect_quick_replies ? JSON.stringify(data.incorrect_quick_replies) : null,
         correctNextPhaseId:   data.correct_next_phase_id ?? null,
         lagMs:              data.lag_ms ?? 0,
+        // 演出設定
+        readReceiptMode:    data.read_receipt_mode    ?? null,
+        readDelayMs:        data.read_delay_ms        ?? null,
+        typingEnabled:      data.typing_enabled       ?? null,
+        typingMinMs:        data.typing_min_ms        ?? null,
+        typingMaxMs:        data.typing_max_ms        ?? null,
+        loadingEnabled:     data.loading_enabled      ?? null,
+        loadingThresholdMs: data.loading_threshold_ms ?? null,
+        loadingMinSeconds:  data.loading_min_seconds  ?? null,
+        loadingMaxSeconds:  data.loading_max_seconds  ?? null,
         sortOrder:          data.sort_order,
         isActive:           data.is_active,
       },

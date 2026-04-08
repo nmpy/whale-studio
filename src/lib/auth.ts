@@ -14,6 +14,31 @@ import { prisma } from '@/lib/prisma';
 // ─────────────────────────────────────────────────────────
 
 /**
+ * profile が存在しない既存ユーザーに対して lazy に作成する。
+ * ログイン時にまだ profile 行がないケース（v1以前のユーザー）を救済する。
+ *
+ * - fire-and-forget でリクエストをブロックしない
+ * - 同一プロセス内で userId ごとに 1 回だけ実行（in-memory Set）
+ */
+const _profileChecked = new Set<string>();
+
+function ensureProfile(userId: string, email?: string): void {
+  if (userId === "bypass-admin" || userId === "dev-user") return;
+  if (_profileChecked.has(userId)) return;
+  _profileChecked.add(userId);
+
+  prisma.profile.findUnique({ where: { userId } })
+    .then((profile) => {
+      if (profile) return;
+      const fallbackName = email?.split("@")[0] ?? "ユーザー";
+      return prisma.profile.create({
+        data: { userId, username: fallbackName },
+      });
+    })
+    .catch(() => { /* silent */ });
+}
+
+/**
  * アプリ操作ユーザーを記録する（メンバー招待候補の母集団管理用）。
  *
  * - 30分以内に記録済みなら何もしない（in-memory throttle でDB書き込みを抑制）
@@ -233,8 +258,9 @@ export function withAuth<T = Record<string, string>>(handler: Handler<T>) {
         );
       }
       console.log(`[withAuth] 認証OK ${req.method} ${req.nextUrl.pathname} userId=${user.id}`);
-      // 操作ユーザーを記録（fire-and-forget: リクエストをブロックしない）
+      // 操作ユーザーを記録 & profile 自動作成（fire-and-forget: リクエストをブロックしない）
       recordUserActivity(user.id, user.email);
+      ensureProfile(user.id, user.email);
       return await handler(req, ctx, user);
     } catch (err) {
       console.error(`[withAuth] UNCAUGHT in ${req.method} ${req.nextUrl.pathname}:`, err);

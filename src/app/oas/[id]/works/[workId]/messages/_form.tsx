@@ -7,9 +7,12 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { phaseApi, characterApi, riddleApi, messageApi, uploadApi, getDevToken } from "@/lib/api-client";
 import { Breadcrumb } from "@/components/Breadcrumb";
-import type { PhaseWithCounts, Character, QuickReplyItem, QuickReplyAction } from "@/types";
+import type { PhaseWithCounts, Character, QuickReplyItem, QuickReplyAction, ReadReceiptMode } from "@/types";
 import type { Riddle } from "@/types";
 import { PhaseTransitionsSection } from "./_phase-transitions";
+import { BUILTIN_PRESETS, presetToFormValues } from "@/lib/timing-presets";
+import { PreviewPlayer } from "@/components/PreviewPlayer";
+import type { MessageTimingConfig } from "@/types";
 
 // ── 拡張メッセージ種別 ────────────────────────────────────
 
@@ -123,6 +126,16 @@ export interface MessageFormState {
   correct_next_phase_id:    string;
   /** 2通目以降のメッセージ（チェーン送信） */
   additionalMessages: AdditionalMessageSlot[];
+  // ── 演出設定 ──
+  read_receipt_mode:    string; // "" = inherit
+  read_delay_ms:        string; // "" = inherit（数値入力との兼用）
+  typing_enabled:       string; // "" = inherit, "true", "false"
+  typing_min_ms:        string;
+  typing_max_ms:        string;
+  loading_enabled:      string; // "" = inherit, "true", "false"
+  loading_threshold_ms: string;
+  loading_min_seconds:  string;
+  loading_max_seconds:  string;
 }
 
 export const EMPTY_MESSAGE_FORM: MessageFormState = {
@@ -154,6 +167,16 @@ export const EMPTY_MESSAGE_FORM: MessageFormState = {
   incorrect_quick_replies: [],
   correct_next_phase_id:   "",
   additionalMessages:      [],
+  // 演出設定（空文字 = inherit）
+  read_receipt_mode:    "",
+  read_delay_ms:        "",
+  typing_enabled:       "",
+  typing_min_ms:        "",
+  typing_max_ms:        "",
+  loading_enabled:      "",
+  loading_threshold_ms: "",
+  loading_min_seconds:  "",
+  loading_max_seconds:  "",
 };
 
 // ── コンバーター ──────────────────────────────────────────
@@ -185,6 +208,16 @@ export function msgToFormState(msg: {
   sort_order?:              number;
   is_active?:               boolean;
   phase?:                   { phase_type?: string | null } | null;
+  // 演出設定
+  read_receipt_mode?:    string | null;
+  read_delay_ms?:        number | null;
+  typing_enabled?:       boolean | null;
+  typing_min_ms?:        number | null;
+  typing_max_ms?:        number | null;
+  loading_enabled?:      boolean | null;
+  loading_threshold_ms?: number | null;
+  loading_min_seconds?:  number | null;
+  loading_max_seconds?:  number | null;
 }): MessageFormState {
   // Parse carousel items from body JSON if message_type is carousel
   let carousel_items: MessageCarouselCard[] = [];
@@ -231,6 +264,16 @@ export function msgToFormState(msg: {
     incorrect_quick_replies: msg.incorrect_quick_replies ?? [],
     correct_next_phase_id:   msg.correct_next_phase_id ?? "",
     additionalMessages:      [],
+    // 演出設定（null → 空文字 = inherit）
+    read_receipt_mode:    msg.read_receipt_mode ?? "",
+    read_delay_ms:        msg.read_delay_ms != null ? String(msg.read_delay_ms) : "",
+    typing_enabled:       msg.typing_enabled != null ? String(msg.typing_enabled) : "",
+    typing_min_ms:        msg.typing_min_ms != null ? String(msg.typing_min_ms) : "",
+    typing_max_ms:        msg.typing_max_ms != null ? String(msg.typing_max_ms) : "",
+    loading_enabled:      msg.loading_enabled != null ? String(msg.loading_enabled) : "",
+    loading_threshold_ms: msg.loading_threshold_ms != null ? String(msg.loading_threshold_ms) : "",
+    loading_min_seconds:  msg.loading_min_seconds != null ? String(msg.loading_min_seconds) : "",
+    loading_max_seconds:  msg.loading_max_seconds != null ? String(msg.loading_max_seconds) : "",
   };
 }
 
@@ -276,6 +319,16 @@ export function formStateToMsgBody(form: MessageFormState) {
     incorrect_quick_replies: isPuzzle && form.incorrect_quick_replies.length > 0 ? form.incorrect_quick_replies : null,
     correct_next_phase_id:   isPuzzle ? form.correct_next_phase_id || null : null,
     hint_mode: form.hint_mode,
+    // 演出設定（空文字 → null = inherit）
+    read_receipt_mode:    (form.read_receipt_mode || null) as ReadReceiptMode | null,
+    read_delay_ms:        form.read_delay_ms ? Number(form.read_delay_ms) : null,
+    typing_enabled:       form.typing_enabled === "true" ? true : form.typing_enabled === "false" ? false : null,
+    typing_min_ms:        form.typing_min_ms ? Number(form.typing_min_ms) : null,
+    typing_max_ms:        form.typing_max_ms ? Number(form.typing_max_ms) : null,
+    loading_enabled:      form.loading_enabled === "true" ? true : form.loading_enabled === "false" ? false : null,
+    loading_threshold_ms: form.loading_threshold_ms ? Number(form.loading_threshold_ms) : null,
+    loading_min_seconds:  form.loading_min_seconds ? Number(form.loading_min_seconds) : null,
+    loading_max_seconds:  form.loading_max_seconds ? Number(form.loading_max_seconds) : null,
   };
   console.log("[formStateToMsgBody] payload:", JSON.stringify(payload, null, 2));
   return payload;
@@ -1996,6 +2049,296 @@ function PreviewPanel({ form, characters, riddles }: PreviewPanelProps) {
 // ────────────────────────────────────────────────────────
 // AdditionalMessageBlock — 2通目以降のメッセージブロック
 // ────────────────────────────────────────────────────────
+// 演出設定セクション
+// ────────────────────────────────────────────────────────
+
+const READ_RECEIPT_MODE_OPTIONS = [
+  { value: "",              label: "継承（デフォルト）" },
+  { value: "immediate",     label: "即時" },
+  { value: "delayed",       label: "遅延" },
+  { value: "before_reply",  label: "返信直前" },
+] as const;
+
+const BOOL_INHERIT_OPTIONS = [
+  { value: "",      label: "継承" },
+  { value: "true",  label: "ON" },
+  { value: "false", label: "OFF" },
+] as const;
+
+function TimingConfigSection({
+  form,
+  set,
+}: {
+  form: MessageFormState;
+  set: <K extends keyof MessageFormState>(key: K, val: MessageFormState[K]) => void;
+}) {
+  const [open, setOpen] = useState(
+    // 既に値が設定されていれば展開して表示
+    !!(form.read_receipt_mode || form.typing_enabled || form.loading_enabled),
+  );
+
+  const sectionStyle = {
+    marginTop: 16,
+    border: "1px solid #e5e7eb",
+    borderRadius: 8,
+    background: "#fafbfc",
+    overflow: "hidden" as const,
+  };
+
+  const headerStyle = {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: "8px 12px",
+    cursor: "pointer" as const,
+    userSelect: "none" as const,
+    fontSize: 13,
+    fontWeight: 500,
+    color: "#4b5563",
+    background: open ? "#f3f4f6" : "transparent",
+  };
+
+  const bodyStyle = {
+    padding: "12px 12px 16px",
+    display: "flex",
+    flexDirection: "column" as const,
+    gap: 12,
+  };
+
+  const miniLabel = {
+    display: "block",
+    fontSize: 12,
+    fontWeight: 500,
+    color: "#6b7280",
+    marginBottom: 2,
+  };
+
+  const inlineRow = {
+    display: "flex",
+    gap: 10,
+    alignItems: "end",
+    flexWrap: "wrap" as const,
+  };
+
+  const miniInput = {
+    maxWidth: 120,
+  };
+
+  return (
+    <div style={sectionStyle}>
+      <div style={headerStyle} onClick={() => setOpen(!open)}>
+        <span>{open ? "▼" : "▶"} 演出設定（既読・typing・ローディング）</span>
+        {!open && (form.read_receipt_mode || form.typing_enabled || form.loading_enabled) && (
+          <span style={{ fontSize: 11, color: "#3b82f6" }}>設定あり</span>
+        )}
+      </div>
+      {open && (
+        <div style={bodyStyle}>
+          {/* ── プリセット ── */}
+          <div style={{ marginBottom: 4 }}>
+            <label style={miniLabel}>プリセットから適用</label>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {BUILTIN_PRESETS.map((p) => (
+                <button
+                  key={p.key}
+                  type="button"
+                  style={{
+                    fontSize: 11, padding: "3px 8px", border: "1px solid #d1d5db",
+                    borderRadius: 4, background: "#fff", cursor: "pointer", color: "#374151",
+                  }}
+                  title={p.description}
+                  onClick={() => {
+                    const vals = presetToFormValues(p);
+                    for (const [k, v] of Object.entries(vals)) {
+                      set(k as keyof MessageFormState, v);
+                    }
+                  }}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* ── 既読 ── */}
+          <div>
+            <label style={miniLabel}>既読タイミング</label>
+            <select
+              className="form-input"
+              style={{ maxWidth: 200 }}
+              value={form.read_receipt_mode}
+              onChange={(e) => set("read_receipt_mode", e.target.value)}
+            >
+              {READ_RECEIPT_MODE_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </div>
+          {form.read_receipt_mode === "delayed" && (
+            <div>
+              <label style={miniLabel}>既読遅延（ms）</label>
+              <input
+                type="number"
+                className="form-input"
+                style={miniInput}
+                value={form.read_delay_ms}
+                onChange={(e) => set("read_delay_ms", e.target.value)}
+                min={0}
+                max={10000}
+                step={100}
+                placeholder="2000"
+              />
+              <div style={hintText}>未入力 = デフォルト値を使用</div>
+            </div>
+          )}
+
+          {/* ── typing ── */}
+          <div>
+            <label style={miniLabel}>typing 風の間</label>
+            <select
+              className="form-input"
+              style={{ maxWidth: 120 }}
+              value={form.typing_enabled}
+              onChange={(e) => set("typing_enabled", e.target.value)}
+            >
+              {BOOL_INHERIT_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </div>
+          {form.typing_enabled === "true" && (
+            <div style={inlineRow}>
+              <div>
+                <label style={miniLabel}>最小（ms）</label>
+                <input
+                  type="number"
+                  className="form-input"
+                  style={miniInput}
+                  value={form.typing_min_ms}
+                  onChange={(e) => set("typing_min_ms", e.target.value)}
+                  min={0}
+                  max={5000}
+                  step={100}
+                  placeholder="300"
+                />
+              </div>
+              <div>
+                <label style={miniLabel}>最大（ms）</label>
+                <input
+                  type="number"
+                  className="form-input"
+                  style={miniInput}
+                  value={form.typing_max_ms}
+                  onChange={(e) => set("typing_max_ms", e.target.value)}
+                  min={0}
+                  max={5000}
+                  step={100}
+                  placeholder="1200"
+                />
+              </div>
+            </div>
+          )}
+
+          {/* ── ローディング ── */}
+          <div>
+            <label style={miniLabel}>ローディングアニメーション</label>
+            <select
+              className="form-input"
+              style={{ maxWidth: 120 }}
+              value={form.loading_enabled}
+              onChange={(e) => set("loading_enabled", e.target.value)}
+            >
+              {BOOL_INHERIT_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </div>
+          {form.loading_enabled === "true" && (
+            <>
+              <div>
+                <label style={miniLabel}>ローディング表示閾値（ms）</label>
+                <input
+                  type="number"
+                  className="form-input"
+                  style={miniInput}
+                  value={form.loading_threshold_ms}
+                  onChange={(e) => set("loading_threshold_ms", e.target.value)}
+                  min={0}
+                  max={30000}
+                  step={500}
+                  placeholder="3000"
+                />
+                <div style={hintText}>処理時間がこの値を超えたらローディング表示</div>
+              </div>
+              <div style={inlineRow}>
+                <div>
+                  <label style={miniLabel}>最小秒数</label>
+                  <input
+                    type="number"
+                    className="form-input"
+                    style={miniInput}
+                    value={form.loading_min_seconds}
+                    onChange={(e) => set("loading_min_seconds", e.target.value)}
+                    min={3}
+                    max={60}
+                    step={1}
+                    placeholder="5"
+                  />
+                </div>
+                <div>
+                  <label style={miniLabel}>最大秒数</label>
+                  <input
+                    type="number"
+                    className="form-input"
+                    style={miniInput}
+                    value={form.loading_max_seconds}
+                    onChange={(e) => set("loading_max_seconds", e.target.value)}
+                    min={3}
+                    max={60}
+                    step={1}
+                    placeholder="15"
+                  />
+                </div>
+              </div>
+            </>
+          )}
+
+          <div style={{ ...hintText, marginTop: 4 }}>
+            未設定の項目はデフォルト設定（環境変数）を継承します
+          </div>
+
+          {/* ── プレビュー ── */}
+          <PreviewPlayer
+            msgConfig={formToTimingConfig(form)}
+            botReply={form.body || "返信テキスト"}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** フォーム文字列値を MessageTimingConfig に変換する */
+function formToTimingConfig(form: {
+  read_receipt_mode: string; read_delay_ms: string;
+  typing_enabled: string; typing_min_ms: string; typing_max_ms: string;
+  loading_enabled: string; loading_threshold_ms: string;
+  loading_min_seconds: string; loading_max_seconds: string;
+}): MessageTimingConfig {
+  return {
+    read_receipt_mode:    (form.read_receipt_mode || null) as MessageTimingConfig["read_receipt_mode"],
+    read_delay_ms:        form.read_delay_ms ? Number(form.read_delay_ms) : null,
+    typing_enabled:       form.typing_enabled === "true" ? true : form.typing_enabled === "false" ? false : null,
+    typing_min_ms:        form.typing_min_ms ? Number(form.typing_min_ms) : null,
+    typing_max_ms:        form.typing_max_ms ? Number(form.typing_max_ms) : null,
+    loading_enabled:      form.loading_enabled === "true" ? true : form.loading_enabled === "false" ? false : null,
+    loading_threshold_ms: form.loading_threshold_ms ? Number(form.loading_threshold_ms) : null,
+    loading_min_seconds:  form.loading_min_seconds ? Number(form.loading_min_seconds) : null,
+    loading_max_seconds:  form.loading_max_seconds ? Number(form.loading_max_seconds) : null,
+  };
+}
+
+// ────────────────────────────────────────────────────────
 
 function AdditionalMessageBlock({
   index, slot, onChange, onRemove, oaId, workId, characters,
@@ -3324,6 +3667,10 @@ export function MessageForm({
                   />
                   <div style={hintText}>1秒 = 1000ms　0ms = 即時送信</div>
                 </div>
+
+                {/* ── 演出設定（既読・typing・ローディング）── */}
+                <TimingConfigSection form={form} set={set} />
+
               </div>{/* /padding */}
             </div>{/* /1通目ラッパー */}
 

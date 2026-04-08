@@ -5,6 +5,21 @@
 // Enums
 // ────────────────────────────────────────────────
 export type PublishStatus = "draft" | "active" | "paused";
+/** 既読制御モード */
+export type ReadReceiptMode = "inherit" | "immediate" | "delayed" | "before_reply";
+
+/** メッセージ単位の演出タイミング設定（null = 上位設定を継承） */
+export interface MessageTimingConfig {
+  read_receipt_mode:    ReadReceiptMode | null;
+  read_delay_ms:        number | null;
+  typing_enabled:       boolean | null;
+  typing_min_ms:        number | null;
+  typing_max_ms:        number | null;
+  loading_enabled:      boolean | null;
+  loading_threshold_ms: number | null;
+  loading_min_seconds:  number | null;
+  loading_max_seconds:  number | null;
+}
 
 // ────────────────────────────────────────────────
 // クイックリプライ
@@ -125,9 +140,22 @@ export interface Work {
    * 未設定（null）のときはシステムデフォルト文にフォールバックする。
    */
   welcome_message: string | null;
+  // ── 演出デフォルト設定 ──
+  read_receipt_mode: ReadReceiptMode | null;
+  read_delay_ms: number | null;
+  typing_enabled: boolean | null;
+  typing_min_ms: number | null;
+  typing_max_ms: number | null;
+  loading_enabled: boolean | null;
+  loading_threshold_ms: number | null;
+  loading_min_seconds: number | null;
+  loading_max_seconds: number | null;
   created_at: string;
   updated_at: string;
 }
+
+/** 作品単位の演出タイミング設定（MessageTimingConfig と同じ形状） */
+export type WorkTimingConfig = MessageTimingConfig;
 
 export interface Character {
   id: string;
@@ -230,6 +258,25 @@ export interface Message {
   correct_next_phase_id: string | null;
   /** 前のメッセージ送信後この発話まで待機するミリ秒数。0 = 即時送信 */
   lag_ms: number;
+  // ── 演出設定（既読・typing・ローディング）──
+  /** 既読制御モード: null=inherit */
+  read_receipt_mode: ReadReceiptMode | null;
+  /** 既読遅延（ms） */
+  read_delay_ms: number | null;
+  /** typing 風の間を有効にするか */
+  typing_enabled: boolean | null;
+  /** typing 最小待機（ms） */
+  typing_min_ms: number | null;
+  /** typing 最大待機（ms） */
+  typing_max_ms: number | null;
+  /** ローディングアニメーション制御 */
+  loading_enabled: boolean | null;
+  /** ローディング表示閾値（ms） */
+  loading_threshold_ms: number | null;
+  /** ローディング最小秒数 */
+  loading_min_seconds: number | null;
+  /** ローディング最大秒数 */
+  loading_max_seconds: number | null;
   sort_order: number;
   is_active: boolean;
   created_at: string;
@@ -280,6 +327,16 @@ export interface UpdateWorkBody {
    * 未開始ユーザーへの導入文。未設定ならシステムデフォルト文を使用。
    */
   welcome_message?: string | null;
+  // 演出デフォルト設定
+  read_receipt_mode?: ReadReceiptMode | null;
+  read_delay_ms?: number | null;
+  typing_enabled?: boolean | null;
+  typing_min_ms?: number | null;
+  typing_max_ms?: number | null;
+  loading_enabled?: boolean | null;
+  loading_threshold_ms?: number | null;
+  loading_min_seconds?: number | null;
+  loading_max_seconds?: number | null;
 }
 
 export interface CreateCharacterBody {
@@ -386,6 +443,16 @@ export interface CreateMessageBody {
   hint_mode?: HintMode;
   /** 前のメッセージ送信後この発話まで待機するミリ秒数。0 = 即時送信 */
   lag_ms?: number;
+  // 演出設定
+  read_receipt_mode?: ReadReceiptMode | null;
+  read_delay_ms?: number | null;
+  typing_enabled?: boolean | null;
+  typing_min_ms?: number | null;
+  typing_max_ms?: number | null;
+  loading_enabled?: boolean | null;
+  loading_threshold_ms?: number | null;
+  loading_min_seconds?: number | null;
+  loading_max_seconds?: number | null;
   sort_order?: number;
   is_active?: boolean;
 }
@@ -421,6 +488,16 @@ export interface UpdateMessageBody {
   hint_mode?: HintMode;
   /** 前のメッセージ送信後この発話まで待機するミリ秒数。0 = 即時送信 */
   lag_ms?: number;
+  // 演出設定
+  read_receipt_mode?: ReadReceiptMode | null;
+  read_delay_ms?: number | null;
+  typing_enabled?: boolean | null;
+  typing_min_ms?: number | null;
+  typing_max_ms?: number | null;
+  loading_enabled?: boolean | null;
+  loading_threshold_ms?: number | null;
+  loading_min_seconds?: number | null;
+  loading_max_seconds?: number | null;
   sort_order?: number;
   is_active?: boolean;
 }
@@ -479,6 +556,8 @@ export interface RuntimePhaseMessage {
   /** ヒント表示モード */
   hint_mode: HintMode;
   sort_order:        number;
+  /** メッセージ単位の演出タイミング設定 */
+  timing: MessageTimingConfig | null;
   character: {
     id:             string;
     name:           string;
@@ -971,4 +1050,295 @@ export interface UpdateGlobalCommandBody {
   payload?:     string | null;
   is_active?:   boolean;
   sort_order?:  number;
+}
+
+// ────────────────────────────────────────────────
+// LIFF ページ設定
+// ────────────────────────────────────────────────
+
+export type LiffBlockType =
+  | "free_text"
+  | "start_button"
+  | "resume_button"
+  | "progress"
+  | "evidence_list"
+  | "hint_list"
+  | "character_list"
+  | "image"
+  | "video";
+
+export type VisibilityCondition = "always" | "before_start" | "in_progress" | "completed";
+
+export interface FreeTextSettings {
+  body?: string;
+  align?: "left" | "center";
+  emphasis?: "normal" | "strong";
+}
+
+export interface StartButtonSettings {
+  label?: string;
+  confirm_message?: string;
+  api_action?: string;
+}
+
+export interface ResumeButtonSettings {
+  label?: string;
+}
+
+export interface ProgressSettings {
+  display_format?: "bar" | "text";
+  show_denominator?: boolean;
+}
+
+export interface EvidenceListSettings {
+  max_display_count?: number;
+  hide_undiscovered?: boolean;
+  empty_message?: string;
+}
+
+export interface HintListSettings {
+  max_display_count?: number;
+  empty_message?: string;
+}
+
+export interface CharacterListSettings {
+  show_icon?: boolean;
+  show_description?: boolean;
+}
+
+export interface ImageBlockSettings {
+  image_url?: string;
+  alt?: string;
+  caption?: string;
+}
+
+export interface VideoBlockSettings {
+  video_url?: string;
+  poster_url?: string;
+  caption?: string;
+}
+
+export type LiffBlockSettings =
+  | FreeTextSettings
+  | StartButtonSettings
+  | ResumeButtonSettings
+  | ProgressSettings
+  | EvidenceListSettings
+  | HintListSettings
+  | CharacterListSettings
+  | ImageBlockSettings
+  | VideoBlockSettings;
+
+export interface LiffPageBlock {
+  id:                        string;
+  page_config_id:            string;
+  block_type:                LiffBlockType;
+  sort_order:                number;
+  is_enabled:                boolean;
+  title:                     string | null;
+  settings_json:             LiffBlockSettings;
+  visibility_condition_json: VisibilityCondition | null;
+  created_at:                string;
+  updated_at:                string;
+}
+
+export interface LiffPageConfig {
+  id:          string;
+  work_id:     string;
+  is_enabled:  boolean;
+  title:       string | null;
+  description: string | null;
+  blocks:      LiffPageBlock[];
+  created_at:  string;
+  updated_at:  string;
+}
+
+export interface UpdateLiffConfigBody {
+  is_enabled?:  boolean;
+  title?:       string | null;
+  description?: string | null;
+}
+
+export interface CreateLiffBlockBody {
+  block_type:                LiffBlockType;
+  sort_order?:               number;
+  is_enabled?:               boolean;
+  title?:                    string | null;
+  settings_json?:            LiffBlockSettings;
+  visibility_condition_json?: VisibilityCondition | null;
+}
+
+export interface UpdateLiffBlockBody {
+  block_type?:               LiffBlockType;
+  sort_order?:               number;
+  is_enabled?:               boolean;
+  title?:                    string | null;
+  settings_json?:            LiffBlockSettings;
+  visibility_condition_json?: VisibilityCondition | null;
+}
+
+export interface ReorderLiffBlocksBody {
+  block_ids: string[];
+}
+
+// ────────────────────────────────────────────────
+// Location — ビーコン / QR チェックインポイント
+// ────────────────────────────────────────────────
+export interface Location {
+  id:               string;
+  work_id:          string;
+  name:             string;
+  description:      string | null;
+  beacon_uuid:      string | null;
+  beacon_major:     number | null;
+  beacon_minor:     number | null;
+  cooldown_seconds: number;
+  transition_id:    string | null;
+  set_flags:        string;
+  sort_order:       number;
+  is_active:        boolean;
+  created_at:       string;
+  updated_at:       string;
+}
+
+export interface LocationWithTransition extends Location {
+  transition: {
+    id:    string;
+    label: string;
+    to_phase: { id: string; name: string; phase_type: string } | null;
+  } | null;
+}
+
+export interface LocationVisit {
+  id:           string;
+  line_user_id: string;
+  location_id:  string;
+  work_id:      string;
+  visited_at:   string;
+}
+
+// ── Location リクエストボディ ──
+export interface CreateLocationBody {
+  work_id:          string;
+  name:             string;
+  description?:     string;
+  beacon_uuid?:     string;
+  beacon_major?:    number;
+  beacon_minor?:    number;
+  cooldown_seconds?: number;
+  transition_id?:   string;
+  set_flags?:       string;
+  sort_order?:      number;
+  is_active?:       boolean;
+}
+
+export interface UpdateLocationBody {
+  name?:             string;
+  description?:      string | null;
+  beacon_uuid?:      string | null;
+  beacon_major?:     number | null;
+  beacon_minor?:     number | null;
+  cooldown_seconds?: number;
+  transition_id?:    string | null;
+  set_flags?:        string;
+  sort_order?:       number;
+  is_active?:        boolean;
+}
+
+// ────────────────────────────────────────────────
+// LineDestination — 再利用可能な遷移先URL定義
+// ────────────────────────────────────────────────
+
+export type DestinationType = "liff" | "internal_url" | "external_url";
+export type LiffTargetType = "work_main" | "custom";
+
+export interface LineDestination {
+  id:                string;
+  work_id:           string;
+  key:               string;
+  name:              string;
+  description:       string | null;
+  destination_type:  DestinationType;
+  liff_target_type:  LiffTargetType | null;
+  url_or_path:       string | null;
+  query_params_json: Record<string, string>;
+  is_enabled:        boolean;
+  created_at:        string;
+  updated_at:        string;
+  /** API 側で計算された解決済みURL */
+  resolved_url?:     string | null;
+}
+
+export interface CreateLineDestinationBody {
+  work_id:            string;
+  key:                string;
+  name:               string;
+  description?:       string | null;
+  destination_type:   DestinationType;
+  liff_target_type?:  LiffTargetType | null;
+  url_or_path?:       string | null;
+  query_params_json?: Record<string, string>;
+  is_enabled?:        boolean;
+}
+
+export interface UpdateLineDestinationBody {
+  key?:               string;
+  name?:              string;
+  description?:       string | null;
+  destination_type?:  DestinationType;
+  liff_target_type?:  LiffTargetType | null;
+  url_or_path?:       string | null;
+  query_params_json?: Record<string, string>;
+  is_enabled?:        boolean;
+}
+
+// ── LIFF チェックイン ──
+export interface CheckinRequest {
+  line_user_id: string;
+  location_id:  string;
+  work_id:      string;
+}
+
+/** チェックイン成功 */
+export interface CheckinSuccess {
+  success:     true;
+  status:      "checked_in";
+  location_id: string;
+  work_id:     string;
+  location_name: string;
+  message:     string;
+  cooldown_remaining_seconds: 0;
+  transition?: { id: string; name: string; phase_type: string };
+  flags_applied?: Record<string, unknown>;
+}
+
+/** クールダウン中 */
+export interface CheckinCooldown {
+  success:     true;
+  status:      "cooldown";
+  location_id: string;
+  work_id:     string;
+  location_name: string;
+  message:     string;
+  cooldown_remaining_seconds: number;
+}
+
+/** チェックインレスポンス（判別共用体） */
+export type CheckinResult = CheckinSuccess | CheckinCooldown;
+
+// ── LocationVisit 集計 ──
+export interface LocationVisitSummary {
+  location_id:    string;
+  location_name:  string;
+  total_visits:   number;
+  unique_users:   number;
+  last_visited_at: string | null;
+}
+
+export interface LocationVisitStats {
+  total_checkins:    number;
+  unique_users:      number;
+  location_count:    number;
+  recent_7d_checkins: number;
+  by_location:       LocationVisitSummary[];
 }

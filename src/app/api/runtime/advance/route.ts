@@ -177,6 +177,7 @@ export const POST = withAuth(async (req, _ctx, user) => {
             lag_ms:            m.lagMs ?? 0,
             hint_mode:         ((m as { hintMode?: string }).hintMode ?? "always") as import("@/types").HintMode,
             sort_order:        m.sortOrder,
+            timing:            null,
             character:         m.character
               ? {
                   id:             m.character.id,

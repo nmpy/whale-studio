@@ -59,6 +59,23 @@ export const updateWorkSchema = z.object({
    * null を送ると削除、undefined（省略）は変更なし。
    */
   welcome_message:     z.string().max(1000).optional().nullable(),
+  // ── 演出デフォルト設定 ──
+  read_receipt_mode:    z.enum(["inherit", "immediate", "delayed", "before_reply"]).optional().nullable(),
+  read_delay_ms:        z.number().int().min(0).max(10000).optional().nullable(),
+  typing_enabled:       z.boolean().optional().nullable(),
+  typing_min_ms:        z.number().int().min(0).max(5000).optional().nullable(),
+  typing_max_ms:        z.number().int().min(0).max(5000).optional().nullable(),
+  loading_enabled:      z.boolean().optional().nullable(),
+  loading_threshold_ms: z.number().int().min(0).max(30000).optional().nullable(),
+  loading_min_seconds:  z.number().int().min(3).max(60).optional().nullable(),
+  loading_max_seconds:  z.number().int().min(3).max(60).optional().nullable(),
+}).superRefine((val, ctx) => {
+  if (val.typing_min_ms != null && val.typing_max_ms != null && val.typing_min_ms > val.typing_max_ms) {
+    ctx.addIssue({ code: "custom", path: ["typing_max_ms"], message: "typing_max_ms は typing_min_ms 以上にしてください" });
+  }
+  if (val.loading_min_seconds != null && val.loading_max_seconds != null && val.loading_min_seconds > val.loading_max_seconds) {
+    ctx.addIssue({ code: "custom", path: ["loading_max_seconds"], message: "loading_max_seconds は loading_min_seconds 以上にしてください" });
+  }
 });
 
 export const workQuerySchema = z.object({
@@ -282,9 +299,26 @@ export const createMessageSchema = z.object({
   hint_mode: z.enum(["always", "on_wrong", "hidden"]).default("always").optional(),
   /** 前のメッセージ送信後この発話まで待機するミリ秒数。0 = 即時送信 */
   lag_ms:           z.number().int().min(0).default(0),
+  // ── 演出設定 ──
+  read_receipt_mode:    z.enum(["inherit", "immediate", "delayed", "before_reply"]).optional().nullable(),
+  read_delay_ms:        z.number().int().min(0).max(10000).optional().nullable(),
+  typing_enabled:       z.boolean().optional().nullable(),
+  typing_min_ms:        z.number().int().min(0).max(5000).optional().nullable(),
+  typing_max_ms:        z.number().int().min(0).max(5000).optional().nullable(),
+  loading_enabled:      z.boolean().optional().nullable(),
+  loading_threshold_ms: z.number().int().min(0).max(30000).optional().nullable(),
+  loading_min_seconds:  z.number().int().min(3).max(60).optional().nullable(),
+  loading_max_seconds:  z.number().int().min(3).max(60).optional().nullable(),
   sort_order:       sortSchema,
   is_active:        z.boolean().default(true),
 }).superRefine((val, ctx) => {
+  // 演出設定 min <= max バリデーション
+  if (val.typing_min_ms != null && val.typing_max_ms != null && val.typing_min_ms > val.typing_max_ms) {
+    ctx.addIssue({ code: "custom", path: ["typing_max_ms"], message: "typing_max_ms は typing_min_ms 以上にしてください" });
+  }
+  if (val.loading_min_seconds != null && val.loading_max_seconds != null && val.loading_min_seconds > val.loading_max_seconds) {
+    ctx.addIssue({ code: "custom", path: ["loading_max_seconds"], message: "loading_max_seconds は loading_min_seconds 以上にしてください" });
+  }
   if (val.kind === "puzzle") {
     if (!val.answer?.trim()) {
       ctx.addIssue({ code: "custom", path: ["answer"], message: "puzzle の場合、正解（answer）は必須です" });
@@ -347,9 +381,26 @@ export const updateMessageSchema = z.object({
   hint_mode: z.enum(["always", "on_wrong", "hidden"]).optional(),
   /** 前のメッセージ送信後この発話まで待機するミリ秒数。0 = 即時送信 */
   lag_ms:            z.number().int().min(0).optional(),
+  // ── 演出設定 ──
+  read_receipt_mode:    z.enum(["inherit", "immediate", "delayed", "before_reply"]).optional().nullable(),
+  read_delay_ms:        z.number().int().min(0).max(10000).optional().nullable(),
+  typing_enabled:       z.boolean().optional().nullable(),
+  typing_min_ms:        z.number().int().min(0).max(5000).optional().nullable(),
+  typing_max_ms:        z.number().int().min(0).max(5000).optional().nullable(),
+  loading_enabled:      z.boolean().optional().nullable(),
+  loading_threshold_ms: z.number().int().min(0).max(30000).optional().nullable(),
+  loading_min_seconds:  z.number().int().min(3).max(60).optional().nullable(),
+  loading_max_seconds:  z.number().int().min(3).max(60).optional().nullable(),
   sort_order:        z.number().int().min(0).optional(),
   is_active:         z.boolean().optional(),
 }).superRefine((val, ctx) => {
+  // 演出設定 min <= max バリデーション
+  if (val.typing_min_ms != null && val.typing_max_ms != null && val.typing_min_ms > val.typing_max_ms) {
+    ctx.addIssue({ code: "custom", path: ["typing_max_ms"], message: "typing_max_ms は typing_min_ms 以上にしてください" });
+  }
+  if (val.loading_min_seconds != null && val.loading_max_seconds != null && val.loading_min_seconds > val.loading_max_seconds) {
+    ctx.addIssue({ code: "custom", path: ["loading_max_seconds"], message: "loading_max_seconds は loading_min_seconds 以上にしてください" });
+  }
   if (val.kind !== "puzzle") {
     if (val.message_type === "text" && val.body === null) {
       ctx.addIssue({ code: "custom", path: ["body"], message: "text型の場合、body を null にはできません" });
@@ -691,6 +742,214 @@ export const updateAnnouncementSchema = z.object({
   important: z.boolean().optional(),
   sortOrder: z.number().int().optional(),
   publish:   z.boolean().optional(),
+});
+
+// ────────────────────────────────────────────────
+// LIFF ページ設定
+// ────────────────────────────────────────────────
+
+export const LIFF_BLOCK_TYPES = [
+  "free_text", "start_button", "resume_button", "progress",
+  "evidence_list", "hint_list", "character_list", "image", "video",
+] as const;
+
+export const VISIBILITY_CONDITIONS = [
+  "always", "before_start", "in_progress", "completed",
+] as const;
+
+const liffBlockTypeSchema = z.enum(LIFF_BLOCK_TYPES);
+const visibilityConditionSchema = z.enum(VISIBILITY_CONDITIONS).nullable().optional();
+
+const freeTextSettingsSchema = z.object({
+  body:     z.string().max(5000).optional(),
+  align:    z.enum(["left", "center"]).optional(),
+  emphasis: z.enum(["normal", "strong"]).optional(),
+}).passthrough();
+
+const startButtonSettingsSchema = z.object({
+  label:           z.string().max(100).optional(),
+  confirm_message: z.string().max(500).optional(),
+  api_action:      z.string().max(200).optional(),
+}).passthrough();
+
+const resumeButtonSettingsSchema = z.object({
+  label: z.string().max(100).optional(),
+}).passthrough();
+
+const progressSettingsSchema = z.object({
+  display_format:   z.enum(["bar", "text"]).optional(),
+  show_denominator: z.boolean().optional(),
+}).passthrough();
+
+const evidenceListSettingsSchema = z.object({
+  max_display_count: z.number().int().min(1).max(100).optional(),
+  hide_undiscovered: z.boolean().optional(),
+  empty_message:     z.string().max(200).optional(),
+}).passthrough();
+
+const hintListSettingsSchema = z.object({
+  max_display_count: z.number().int().min(1).max(100).optional(),
+  empty_message:     z.string().max(200).optional(),
+}).passthrough();
+
+const characterListSettingsSchema = z.object({
+  show_icon:        z.boolean().optional(),
+  show_description: z.boolean().optional(),
+}).passthrough();
+
+const imageSettingsSchema = z.object({
+  image_url: z.string().url().optional(),
+  alt:       z.string().max(200).optional(),
+  caption:   z.string().max(500).optional(),
+}).passthrough();
+
+const videoSettingsSchema = z.object({
+  video_url:  z.string().url().optional(),
+  poster_url: z.string().url().optional(),
+  caption:    z.string().max(500).optional(),
+}).passthrough();
+
+const SETTINGS_SCHEMA_MAP: Record<string, z.ZodTypeAny> = {
+  free_text:       freeTextSettingsSchema,
+  start_button:    startButtonSettingsSchema,
+  resume_button:   resumeButtonSettingsSchema,
+  progress:        progressSettingsSchema,
+  evidence_list:   evidenceListSettingsSchema,
+  hint_list:       hintListSettingsSchema,
+  character_list:  characterListSettingsSchema,
+  image:           imageSettingsSchema,
+  video:           videoSettingsSchema,
+};
+
+export function validateBlockSettings(blockType: string, settings: unknown): z.SafeParseReturnType<unknown, unknown> {
+  const schema = SETTINGS_SCHEMA_MAP[blockType];
+  if (!schema) return { success: false, error: new z.ZodError([{ code: "custom", message: `不明なブロックタイプ: ${blockType}`, path: ["block_type"] }]) } as z.SafeParseError<unknown>;
+  return schema.safeParse(settings);
+}
+
+export const updateLiffConfigSchema = z.object({
+  is_enabled:  z.boolean().optional(),
+  title:       z.string().max(200).optional().nullable(),
+  description: z.string().max(1000).optional().nullable(),
+});
+
+export const createLiffBlockSchema = z.object({
+  block_type:                liffBlockTypeSchema,
+  sort_order:                z.number().int().min(0).optional(),
+  is_enabled:                z.boolean().optional(),
+  title:                     z.string().max(200).optional().nullable(),
+  settings_json:             z.record(z.unknown()).optional().default({}),
+  visibility_condition_json: visibilityConditionSchema,
+});
+
+export const updateLiffBlockSchema = z.object({
+  block_type:                liffBlockTypeSchema.optional(),
+  sort_order:                z.number().int().min(0).optional(),
+  is_enabled:                z.boolean().optional(),
+  title:                     z.string().max(200).optional().nullable(),
+  settings_json:             z.record(z.unknown()).optional(),
+  visibility_condition_json: visibilityConditionSchema,
+});
+
+export const reorderLiffBlocksSchema = z.object({
+  block_ids: z.array(z.string().uuid()).min(1),
+});
+
+// ────────────────────────────────────────────────
+// Location — ビーコン / QR チェックインポイント
+// ────────────────────────────────────────────────
+
+export const createLocationSchema = z.object({
+  work_id:          uuidSchema,
+  name:             z.string().min(1, "ロケーション名は必須です").max(100),
+  description:      z.string().max(500).optional(),
+  beacon_uuid:      z.string().max(100).optional(),
+  beacon_major:     z.number().int().min(0).max(65535).optional(),
+  beacon_minor:     z.number().int().min(0).max(65535).optional(),
+  cooldown_seconds: z.number().int().min(0).max(86400).default(300),
+  transition_id:    uuidSchema.optional(),
+  set_flags:        setFlagsSchema,
+  sort_order:       sortSchema,
+  is_active:        z.boolean().default(true),
+});
+
+export const updateLocationSchema = z.object({
+  name:             z.string().min(1).max(100).optional(),
+  description:      z.string().max(500).optional().nullable(),
+  beacon_uuid:      z.string().max(100).optional().nullable(),
+  beacon_major:     z.number().int().min(0).max(65535).optional().nullable(),
+  beacon_minor:     z.number().int().min(0).max(65535).optional().nullable(),
+  cooldown_seconds: z.number().int().min(0).max(86400).optional(),
+  transition_id:    uuidSchema.optional().nullable(),
+  set_flags:        setFlagsSchema,
+  sort_order:       z.number().int().min(0).optional(),
+  is_active:        z.boolean().optional(),
+});
+
+export const locationQuerySchema = z.object({
+  work_id:   uuidSchema,
+  is_active: z.coerce.boolean().optional(),
+});
+
+export const checkinSchema = z.object({
+  line_user_id: z.string().min(1, "LINE User ID は必須です"),
+  location_id:  uuidSchema,
+  work_id:      uuidSchema,
+});
+
+// ────────────────────────────────────────────────
+// LineDestination — 遷移先URL定義
+// ────────────────────────────────────────────────
+
+export const DESTINATION_TYPES = ["liff", "internal_url", "external_url"] as const;
+export const LIFF_TARGET_TYPES = ["work_main", "custom"] as const;
+
+const destinationKeySchema = z.string()
+  .min(1, "key は必須です")
+  .max(50, "key は50文字以内にしてください")
+  .regex(/^[a-z0-9][a-z0-9_-]*$/, "key は小文字英数字・ハイフン・アンダースコアのみ使用可能です");
+
+const queryParamsJsonSchema = z.record(z.string(), z.string()).default({});
+
+export const createDestinationSchema = z.object({
+  work_id:           uuidSchema,
+  key:               destinationKeySchema,
+  name:              z.string().min(1, "名前は必須です").max(100, "名前は100文字以内にしてください"),
+  description:       z.string().max(500).optional().nullable(),
+  destination_type:  z.enum(DESTINATION_TYPES),
+  liff_target_type:  z.enum(LIFF_TARGET_TYPES).optional().nullable(),
+  url_or_path:       z.string().max(2000).optional().nullable(),
+  query_params_json: queryParamsJsonSchema.optional(),
+  is_enabled:        z.boolean().optional(),
+}).superRefine((data, ctx) => {
+  if (data.destination_type === "liff" && !data.liff_target_type) {
+    ctx.addIssue({ code: "custom", message: "LIFF destination には liff_target_type が必要です", path: ["liff_target_type"] });
+  }
+  if (data.destination_type === "external_url") {
+    if (!data.url_or_path) {
+      ctx.addIssue({ code: "custom", message: "外部URLは必須です", path: ["url_or_path"] });
+    } else if (!/^https?:\/\/.+/.test(data.url_or_path)) {
+      ctx.addIssue({ code: "custom", message: "https:// から始まるURLを入力してください", path: ["url_or_path"] });
+    }
+  }
+  if (data.destination_type === "internal_url") {
+    if (!data.url_or_path) {
+      ctx.addIssue({ code: "custom", message: "内部パスは必須です", path: ["url_or_path"] });
+    } else if (!data.url_or_path.startsWith("/")) {
+      ctx.addIssue({ code: "custom", message: "内部パスは / から始めてください", path: ["url_or_path"] });
+    }
+  }
+});
+
+export const updateDestinationSchema = z.object({
+  key:               destinationKeySchema.optional(),
+  name:              z.string().min(1).max(100).optional(),
+  description:       z.string().max(500).optional().nullable(),
+  destination_type:  z.enum(DESTINATION_TYPES).optional(),
+  liff_target_type:  z.enum(LIFF_TARGET_TYPES).optional().nullable(),
+  url_or_path:       z.string().max(2000).optional().nullable(),
+  query_params_json: queryParamsJsonSchema.optional(),
+  is_enabled:        z.boolean().optional(),
 });
 
 // ────────────────────────────────────────────────

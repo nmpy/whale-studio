@@ -59,6 +59,27 @@ model Work {
   /// あいさつメッセージ。未開始ユーザーが話しかけたときに送信される導入文（任意）。
   /// 未設定の場合はシステムデフォルト文にフォールバックする。
   welcomeMessage    String?        @map("welcome_message")
+
+  // ── 演出デフォルト設定（既読・typing・ローディング）──────
+  /// 既読制御モード: "inherit" | "immediate" | "delayed" | "before_reply"
+  readReceiptMode       String?    @map("read_receipt_mode")
+  /// 既読遅延（ms）
+  readDelayMs           Int?       @map("read_delay_ms")
+  /// typing 風の間を有効にするか
+  typingEnabled         Boolean?   @map("typing_enabled")
+  /// typing 最小待機（ms）
+  typingMinMs           Int?       @map("typing_min_ms")
+  /// typing 最大待機（ms）
+  typingMaxMs           Int?       @map("typing_max_ms")
+  /// ローディングアニメーション制御
+  loadingEnabled        Boolean?   @map("loading_enabled")
+  /// ローディング表示閾値（ms）
+  loadingThresholdMs    Int?       @map("loading_threshold_ms")
+  /// ローディング最小秒数
+  loadingMinSeconds     Int?       @map("loading_min_seconds")
+  /// ローディング最大秒数
+  loadingMaxSeconds     Int?       @map("loading_max_seconds")
+
   createdAt         DateTime       @default(now()) @map("created_at")
   updatedAt         DateTime       @updatedAt @map("updated_at")
   characters          Character[]          @relation("WorkCharacters")
@@ -69,6 +90,9 @@ model Work {
   riddles             Riddle[]             @relation("WorkRiddles")
   transitions         Transition[]
   userProgress        UserProgress[]
+  lineDestinations    LineDestination[]
+  liffPageConfig      LiffPageConfig?
+  locations           Location[]
   oa                  Oa                   @relation(fields: [oaId], references: [id], onDelete: Cascade)
   systemCharacter     Character?           @relation("WorkSystemCharacter", fields: [systemCharacterId], references: [id])
 
@@ -156,6 +180,7 @@ model Transition {
   fromPhase     Phase    @relation("TransitionFrom", fields: [fromPhaseId], references: [id], onDelete: Cascade)
   toPhase       Phase    @relation("TransitionTo", fields: [toPhaseId], references: [id], onDelete: Cascade)
   work          Work     @relation(fields: [workId], references: [id], onDelete: Cascade)
+  locations     Location[]
 
   @@index([workId])
   @@index([fromPhaseId])
@@ -249,6 +274,27 @@ model Message {
   lagMs                 Int        @default(0) @map("lag_ms")
   /// ヒント表示モード: "always"（常時）| "on_wrong"（不正解時のみ）| "hidden"（非表示）
   hintMode              String     @default("always") @map("hint_mode")
+
+  // ── 演出設定（既読・typing・ローディング）──────────────
+  /// 既読制御モード: "inherit" | "immediate" | "delayed" | "before_reply"
+  readReceiptMode       String?    @map("read_receipt_mode")
+  /// 既読遅延（ms）。readReceiptMode="delayed" のとき使用
+  readDelayMs           Int?       @map("read_delay_ms")
+  /// typing 風の間を有効にするか
+  typingEnabled         Boolean?   @map("typing_enabled")
+  /// typing 最小待機（ms）
+  typingMinMs           Int?       @map("typing_min_ms")
+  /// typing 最大待機（ms）
+  typingMaxMs           Int?       @map("typing_max_ms")
+  /// ローディングアニメーション制御: true=有効 / false=無効 / null=inherit
+  loadingEnabled        Boolean?   @map("loading_enabled")
+  /// ローディング表示閾値（ms）
+  loadingThresholdMs    Int?       @map("loading_threshold_ms")
+  /// ローディング最小秒数
+  loadingMinSeconds     Int?       @map("loading_min_seconds")
+  /// ローディング最大秒数
+  loadingMaxSeconds     Int?       @map("loading_max_seconds")
+
   character             Character? @relation(fields: [characterId], references: [id])
   correctNextPhase      Phase?     @relation("MessageCorrectNextPhase", fields: [correctNextPhaseId], references: [id])
   nextMessage           Message?   @relation("MessageChain", fields: [nextMessageId], references: [id])
@@ -785,6 +831,125 @@ model Subscription {
   @@map("subscriptions")
 }
 
+// ────────────────────────────────────────────────
+// LineDestination — 再利用可能な遷移先URL定義
+// ────────────────────────────────────────────────
+
+model LineDestination {
+  id                String   @id @default(uuid())
+  workId            String   @map("work_id")
+  /// プログラム参照用キー（英数字・ハイフン・アンダースコア）。work 内で unique
+  key               String
+  /// 管理画面上の表示名
+  name              String
+  description       String?
+  /// "liff" | "internal_url" | "external_url"
+  destinationType   String   @map("destination_type")
+  /// destination_type=liff のとき有効: "work_main" | "custom"
+  liffTargetType    String?  @map("liff_target_type")
+  /// 遷移先URLまたはパス
+  urlOrPath         String?  @map("url_or_path")
+  /// 追加クエリパラメータ（JSONB）
+  queryParamsJson   Json     @default("{}") @map("query_params_json") @db.JsonB
+  isEnabled         Boolean  @default(true) @map("is_enabled")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+  work              Work     @relation(fields: [workId], references: [id], onDelete: Cascade)
+
+  @@unique([workId, key])
+  @@index([workId])
+  @@index([destinationType])
+  @@index([isEnabled])
+  @@map("line_destinations")
+}
+
+// ────────────────────────────────────────────────
+// Location — ビーコン / QR チェックインポイント
+// ────────────────────────────────────────────────
+
+model Location {
+  id              String          @id @default(uuid())
+  workId          String          @map("work_id")
+  name            String
+  description     String?
+  /// Bluetooth ビーコン UUID（任意 — 未設定時は QR コードのみ）
+  beaconUuid      String?         @map("beacon_uuid")
+  beaconMajor     Int?            @map("beacon_major")
+  beaconMinor     Int?            @map("beacon_minor")
+  /// チェックインのクールダウン秒数（同一ユーザー×同一ロケーション）。デフォルト 300 = 5分
+  cooldownSeconds Int             @default(300) @map("cooldown_seconds")
+  /// チェックイン時に自動発火する遷移（任意）
+  transitionId    String?         @map("transition_id")
+  /// チェックイン時に UserProgress.flags へマージする JSON オブジェクト
+  setFlags        String          @default("{}") @map("set_flags")
+  sortOrder       Int             @default(0) @map("sort_order")
+  isActive        Boolean         @default(true) @map("is_active")
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+  work            Work            @relation(fields: [workId], references: [id], onDelete: Cascade)
+  transition      Transition?     @relation(fields: [transitionId], references: [id], onDelete: SetNull)
+  visits          LocationVisit[]
+
+  @@index([workId])
+  @@index([beaconUuid, beaconMajor, beaconMinor])
+  @@index([isActive])
+  @@map("locations")
+}
+
+model LocationVisit {
+  id         String   @id @default(uuid())
+  lineUserId String   @map("line_user_id")
+  locationId String   @map("location_id")
+  workId     String   @map("work_id")
+  visitedAt  DateTime @default(now()) @map("visited_at")
+  location   Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  @@index([lineUserId, locationId])
+  @@index([workId])
+  @@index([visitedAt])
+  @@map("location_visits")
+}
+
+// ────────────────────────────────────────────────
+// LIFF ページ設定
+// ────────────────────────────────────────────────
+
+model LiffPageConfig {
+  id          String          @id @default(uuid())
+  workId      String          @unique @map("work_id")
+  isEnabled   Boolean         @default(false) @map("is_enabled")
+  title       String?
+  description String?
+  createdAt   DateTime        @default(now()) @map("created_at")
+  updatedAt   DateTime        @updatedAt @map("updated_at")
+  blocks      LiffPageBlock[]
+  work        Work            @relation(fields: [workId], references: [id], onDelete: Cascade)
+
+  @@map("liff_page_configs")
+}
+
+model LiffPageBlock {
+  id                      String         @id @default(uuid())
+  pageConfigId            String         @map("page_config_id")
+  /// "free_text" | "start_button" | "resume_button" | "progress" | "evidence_list" | "hint_list" | "character_list" | "image" | "video"
+  blockType               String         @map("block_type")
+  sortOrder               Int            @default(0) @map("sort_order")
+  isEnabled               Boolean        @default(true) @map("is_enabled")
+  title                   String?
+  /// ブロック固有の設定（JSON）
+  settingsJson            Json           @default("{}") @map("settings_json") @db.JsonB
+  /// 表示条件（"always" | "before_start" | "in_progress" | "completed"）
+  visibilityConditionJson String?        @map("visibility_condition_json")
+  createdAt               DateTime       @default(now()) @map("created_at")
+  updatedAt               DateTime       @updatedAt @map("updated_at")
+  pageConfig              LiffPageConfig @relation(fields: [pageConfigId], references: [id], onDelete: Cascade)
+
+  @@index([pageConfigId])
+  @@index([sortOrder])
+  @@index([blockType])
+  @@map("liff_page_blocks")
+}
+
 /// メンバーロール（権限階層: owner > admin > editor > tester > viewer）
 /// tester: 課金前ユーザー向け体験ロール。コンテンツ作成・編集のみ可能。
 enum MemberRole {
@@ -800,4 +965,15 @@ enum MemberStatus {
   active
   inactive
   suspended
+}
+
+/// ユーザープロフィール（Supabase Auth ユーザーと 1:1）
+model Profile {
+  id        String   @id @default(uuid())
+  userId    String   @unique @map("user_id")
+  username  String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("profiles")
 }

@@ -316,6 +316,17 @@ export default function WorkAudiencePage() {
         <button style={tabStyle("tracking")} onClick={() => switchTab("tracking")}>
           🔗 トラッキング{!baseLoading && <span style={{ fontSize: 11, color: "#9ca3af", marginLeft: 4 }}>({trackings.length})</span>}
         </button>
+        <a
+          href={`/oas/${params.id}/works/${params.workId}/audience/location-checkins`}
+          style={{
+            ...tabStyle("data" as TabType),
+            textDecoration: "none",
+            borderBottom: "2px solid transparent",
+            color: "#6b7280",
+          }}
+        >
+          📍 ロケーション
+        </a>
       </div>
 
       {/* ══ データ分析 ══════════════════════════════════════════════════════════ */}

@@ -41,6 +41,10 @@ function toResponse(w: {
   id: string; oaId: string; title: string; description: string | null;
   publishStatus: string; sortOrder: number; systemCharacterId: string | null;
   welcomeMessage: string | null;
+  readReceiptMode: string | null; readDelayMs: number | null;
+  typingEnabled: boolean | null; typingMinMs: number | null; typingMaxMs: number | null;
+  loadingEnabled: boolean | null; loadingThresholdMs: number | null;
+  loadingMinSeconds: number | null; loadingMaxSeconds: number | null;
   createdAt: Date; updatedAt: Date;
 }) {
   return {
@@ -52,6 +56,15 @@ function toResponse(w: {
     sort_order:          w.sortOrder,
     system_character_id: w.systemCharacterId,
     welcome_message:     w.welcomeMessage,
+    read_receipt_mode:    (w.readReceiptMode as import("@/types").ReadReceiptMode) ?? null,
+    read_delay_ms:        w.readDelayMs ?? null,
+    typing_enabled:       w.typingEnabled ?? null,
+    typing_min_ms:        w.typingMinMs ?? null,
+    typing_max_ms:        w.typingMaxMs ?? null,
+    loading_enabled:      w.loadingEnabled ?? null,
+    loading_threshold_ms: w.loadingThresholdMs ?? null,
+    loading_min_seconds:  w.loadingMinSeconds ?? null,
+    loading_max_seconds:  w.loadingMaxSeconds ?? null,
     created_at:          w.createdAt,
     updated_at:          w.updatedAt,
   };

@@ -509,6 +509,7 @@ function RegisterForm({
     if (formMode === "login") { return handleLogin(e); }
 
     if (!displayName.trim()) { setFieldError("ユーザー名を入力してください"); return; }
+    if (displayName.trim().length > 20) { setFieldError("ユーザー名は20文字以内で入力してください"); return; }
     if (password.length < 8) { setFieldError("パスワードは8文字以上で入力してください"); return; }
     if (password !== confirmPassword) { setFieldError("パスワードが一致しません"); return; }
 
@@ -539,7 +540,22 @@ function RegisterForm({
       return;
     }
 
-    devLog("Case 1: session 取得 OK → accept() 実行");
+    devLog("Case 1: session 取得 OK → profiles 保存 → accept() 実行");
+
+    // profiles テーブルにユーザー名を保存
+    try {
+      await fetch("/api/profiles/me", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ username: displayName.trim() }),
+      });
+      devLog("Case 1: profiles 保存 OK");
+    } catch {
+      devLog("Case 1: profiles 保存失敗（続行）");
+    }
 
     try {
       await invitationApi.accept(session.access_token, token);
@@ -587,7 +603,7 @@ function RegisterForm({
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
               disabled={submitting}
-              maxLength={50}
+              maxLength={20}
               autoComplete="name"
               autoFocus
               required
@@ -930,7 +946,7 @@ function TogglePassButton({ show, onClick }: { show: boolean; onClick: () => voi
 // ────────────────────────────────────────────────────────────────────
 function translateSupabaseError(msg: string): string {
   if (msg.includes("User already registered"))
-    return "このメールアドレスはすでに登録されています。ログイン画面からサインインしてください。";
+    return "このメールアドレスはすでに登録されています。ログインしてください。";
   if (msg.includes("Password should be at least"))
     return "パスワードは8文字以上で入力してください";
   if (msg.includes("invalid email"))

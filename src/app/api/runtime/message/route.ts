@@ -42,6 +42,7 @@ function rowToRuntime(msg: MessageRow): RuntimePhaseMessage {
     lag_ms:            msg.lagMs ?? 0,
     hint_mode:         ((msg as { hintMode?: string }).hintMode ?? "always") as import("@/types").HintMode,
     sort_order:        msg.sortOrder,
+    timing:            null,
     character:         msg.character
       ? {
           id:             msg.character.id,
