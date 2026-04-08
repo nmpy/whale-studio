@@ -395,11 +395,14 @@ model RichMenuArea {
   /// postback type: postback data string
   actionData  String?  @map("action_data")
   /// uri type: URL to open
-  actionUri   String?  @map("action_uri")
-  sortOrder   Int      @default(0) @map("sort_order")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
-  richMenu    RichMenu @relation(fields: [richMenuId], references: [id], onDelete: Cascade)
+  actionUri       String?          @map("action_uri")
+  /// destination 参照（action_type=uri のとき、直URLの代わりに使用。null = 直URL）
+  destinationId   String?          @map("destination_id")
+  sortOrder       Int              @default(0) @map("sort_order")
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
+  richMenu        RichMenu         @relation(fields: [richMenuId], references: [id], onDelete: Cascade)
+  destination     LineDestination? @relation(fields: [destinationId], references: [id], onDelete: SetNull)
 
   @@index([richMenuId])
   @@index([sortOrder])
@@ -864,6 +867,8 @@ model LineDestination {
   work              Work     @relation(fields: [workId], references: [id], onDelete: Cascade)
   /// この destination を参照しているメッセージ（逆参照）
   messages          Message[]
+  /// この destination を参照しているリッチメニューエリア（逆参照）
+  richMenuAreas     RichMenuArea[]
 
   @@unique([workId, key])
   @@index([workId])
@@ -891,8 +896,10 @@ model Location {
   longitude       Float?
   /// GPS チェックイン: 許容半径（メートル）
   radiusMeters    Int?            @map("radius_meters")
-  /// GPS チェックインを有効にするか
+  /// GPS チェックインを有効にするか（checkinMode から自動設定。後方互換用に残す）
   gpsEnabled      Boolean         @default(false) @map("gps_enabled")
+  /// チェックイン方式: "qr_only" | "gps_only" | "qr_and_gps"
+  checkinMode     String          @default("qr_only") @map("checkin_mode")
   /// チェックインのクールダウン秒数（同一ユーザー×同一ロケーション）。デフォルト 300 = 5分
   cooldownSeconds Int             @default(300) @map("cooldown_seconds")
   /// チェックイン時に自動発火する遷移（任意）
@@ -935,6 +942,35 @@ model LocationVisit {
   @@index([workId])
   @@index([visitedAt])
   @@map("location_visits")
+}
+
+/// GPS チェックイン試行ログ（成功・失敗問わず記録）
+/// LocationVisit は成功時のみ。このテーブルは全試行を記録し、成功率分析に使う。
+model CheckinAttempt {
+  id             String   @id @default(uuid())
+  workId         String   @map("work_id")
+  locationId     String   @map("location_id")
+  lineUserId     String   @map("line_user_id")
+  /// チェックイン方式: "gps" | "beacon" など（QR は試行ログ不要のため基本 GPS のみ）
+  method         String   @default("gps")
+  /// "success" | "out_of_range" | "permission_denied" | "gps_unavailable"
+  /// | "location_not_supported" | "location_config_incomplete" | "invalid_request"
+  status         String
+  /// 失敗理由の補足（任意）
+  failureReason  String?  @map("failure_reason")
+  /// サーバー計算の距離（メートル）
+  distanceMeters Float?   @map("distance_meters")
+  /// クライアント送信の緯度
+  lat            Float?
+  /// クライアント送信の経度
+  lng            Float?
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@index([workId])
+  @@index([locationId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("checkin_attempts")
 }
 
 // ────────────────────────────────────────────────

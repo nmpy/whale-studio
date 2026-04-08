@@ -2,13 +2,14 @@
 
 // src/app/oas/[id]/works/[workId]/audience/location-checkins/page.tsx
 // ロケーションチェックイン分析ページ
+// QR/GPS 内訳 + GPS 距離統計 + GPS 成功率 + 失敗理由内訳
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { getDevToken } from "@/lib/api-client";
-import type { LocationVisitStats, LocationVisit } from "@/types";
+import type { LocationVisitStats, LocationVisit, GpsAttemptStats } from "@/types";
 
 function authHeaders(token: string): HeadersInit {
   return token ? { Authorization: `Bearer ${token}` } : {};
@@ -27,29 +28,20 @@ export default function LocationCheckinsPage() {
   useEffect(() => {
     const token = getDevToken();
     const headers = authHeaders(token);
-
     Promise.all([
       fetch(`/api/works/${workId}/location-stats`, { headers }).then((r) => r.json()),
-      // 全ロケーションの直近訪問を統合取得
       fetch(`/api/locations?work_id=${workId}`, { headers }).then((r) => r.json()),
     ])
       .then(async ([statsJson, locsJson]) => {
         if (statsJson.success) setStats(statsJson.data);
         else setError(statsJson.error?.message ?? "統計の取得に失敗しました");
-
-        // 各ロケーションから直近5件ずつ取得して統合
         if (locsJson.success && Array.isArray(locsJson.data)) {
           const locs = locsJson.data as Array<{ id: string; name: string }>;
           const locMap = new Map(locs.map((l) => [l.id, l.name]));
-
           const visitPromises = locs.slice(0, 10).map((loc) =>
             fetch(`/api/locations/${loc.id}/visits?limit=5`, { headers })
               .then((r) => r.json())
-              .then((json) =>
-                json.success
-                  ? (json.data as LocationVisit[]).map((v) => ({ ...v, location_name: locMap.get(v.location_id) }))
-                  : []
-              )
+              .then((json) => json.success ? (json.data as LocationVisit[]).map((v) => ({ ...v, location_name: locMap.get(v.location_id) })) : [])
               .catch(() => [] as (LocationVisit & { location_name?: string })[])
           );
           const allVisits = (await Promise.all(visitPromises)).flat();
@@ -69,7 +61,6 @@ export default function LocationCheckinsPage() {
         { label: "オーディエンス", href: `/oas/${oaId}/works/${workId}/audience` },
         { label: "ロケーション分析" },
       ]} />
-
       <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 24 }}>ロケーションチェックイン分析</h1>
 
       {loading && <div style={{ textAlign: "center", padding: 40, color: "#6b7280" }}>読み込み中...</div>}
@@ -77,104 +68,225 @@ export default function LocationCheckinsPage() {
 
       {!loading && stats && (
         <>
-          {/* ── KPI カード ── */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12, marginBottom: 24 }}>
-            <KpiCard label="総チェックイン数" value={stats.total_checkins} />
-            <KpiCard label="ユニー��ユーザー" value={stats.unique_users} />
+          {/* ── 全体 KPI ── */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 12, marginBottom: 24 }}>
+            <KpiCard label="総チェックイン" value={stats.total_checkins} />
+            <KpiCard label="ユニークユーザー" value={stats.unique_users} />
+            <KpiCard label="QR チェックイン" value={stats.method_breakdown.qr_count} color="#2563eb" />
+            <KpiCard label="GPS チェックイン" value={stats.method_breakdown.gps_count} color="#16a34a" />
             <KpiCard label="ロケーション数" value={stats.location_count} />
             <KpiCard label="直近7日" value={stats.recent_7d_checkins} />
           </div>
 
-          {/* ── ロケーション別集計 ── */}
-          <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 12, overflow: "hidden", marginBottom: 24 }}>
-            <div style={{ padding: "14px 16px", borderBottom: "1px solid #f3f4f6", fontWeight: 600, fontSize: 14, color: "#374151" }}>
-              ロケーション別
-            </div>
-            {stats.by_location.length === 0 ? (
-              <div style={{ padding: 24, textAlign: "center", color: "#9ca3af", fontSize: 13 }}>
-                まだチェックイン履歴がありません
-              </div>
-            ) : (
-              <table style={{ width: "100%", fontSize: 13, borderCollapse: "collapse" }}>
-                <thead>
-                  <tr style={{ borderBottom: "1px solid #e5e7eb", background: "#f9fafb" }}>
-                    <th style={thStyle}>ロケーション</th>
-                    <th style={{ ...thStyle, textAlign: "right" }}>チェックイン</th>
-                    <th style={{ ...thStyle, textAlign: "right" }}>ユニークユーザー</th>
-                    <th style={{ ...thStyle, textAlign: "right" }}>最終訪問</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {stats.by_location.map((loc) => (
-                    <tr key={loc.location_id} style={{ borderBottom: "1px solid #f3f4f6" }}>
-                      <td style={tdStyle}>
-                        <Link
-                          href={`/oas/${oaId}/works/${workId}/locations/${loc.location_id}`}
-                          style={{ color: "#2563eb", textDecoration: "none", fontWeight: 500 }}
-                        >
-                          {loc.location_name}
-                        </Link>
-                      </td>
-                      <td style={{ ...tdStyle, textAlign: "right", fontWeight: 600 }}>{loc.total_visits}</td>
-                      <td style={{ ...tdStyle, textAlign: "right" }}>{loc.unique_users}</td>
-                      <td style={{ ...tdStyle, textAlign: "right", color: "#9ca3af" }}>
-                        {loc.last_visited_at ? new Date(loc.last_visited_at).toLocaleDateString("ja-JP") : "—"}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
+          <MethodBreakdownBar qr={stats.method_breakdown.qr_count} gps={stats.method_breakdown.gps_count} />
+          <GpsDistanceSection stats={stats.gps_distance} />
+          <GpsSuccessRateSection attempts={stats.gps_attempts} />
 
-          {/* ── 直近の訪問履歴 ── */}
-          <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 12, overflow: "hidden" }}>
-            <div style={{ padding: "14px 16px", borderBottom: "1px solid #f3f4f6", fontWeight: 600, fontSize: 14, color: "#374151" }}>
-              直近のチェックイン（最大20件）
-            </div>
-            {recentVisits.length === 0 ? (
-              <div style={{ padding: 24, textAlign: "center", color: "#9ca3af", fontSize: 13 }}>
-                まだチェックイン履歴がありません
-              </div>
+          {/* ── ロケーション別 ── */}
+          <Section title="ロケーション別">
+            {stats.by_location.length === 0 ? (
+              <EmptyState text="まだチェックイン履歴がありません" />
             ) : (
-              <table style={{ width: "100%", fontSize: 13, borderCollapse: "collapse" }}>
-                <thead>
-                  <tr style={{ borderBottom: "1px solid #e5e7eb", background: "#f9fafb" }}>
-                    <th style={thStyle}>日時</th>
-                    <th style={thStyle}>ロケーション</th>
-                    <th style={thStyle}>LINE User ID</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {recentVisits.map((v) => (
-                    <tr key={v.id} style={{ borderBottom: "1px solid #f3f4f6" }}>
-                      <td style={tdStyle}>
-                        {new Date(v.visited_at).toLocaleString("ja-JP", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
-                      </td>
-                      <td style={tdStyle}>{v.location_name ?? "—"}</td>
-                      <td style={{ ...tdStyle, fontFamily: "monospace", fontSize: 11, color: "#6b7280" }}>
-                        {v.line_user_id.slice(0, 12)}...
-                      </td>
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", fontSize: 13, borderCollapse: "collapse", minWidth: 700 }}>
+                  <thead>
+                    <tr style={{ borderBottom: "1px solid #e5e7eb", background: "#f9fafb" }}>
+                      <th style={thL}>ロケーション</th>
+                      <th style={thR}>訪問</th>
+                      <th style={thR}>ユニーク</th>
+                      <th style={thR}>QR</th>
+                      <th style={thR}>GPS</th>
+                      <th style={thR}>GPS平均距離</th>
+                      <th style={thR}>GPS成功率</th>
+                      <th style={thR}>最終訪問</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {stats.by_location.map((loc) => (
+                      <tr key={loc.location_id} style={{ borderBottom: "1px solid #f3f4f6" }}>
+                        <td style={tdL}>
+                          <Link href={`/oas/${oaId}/works/${workId}/locations/${loc.location_id}`} style={{ color: "#2563eb", textDecoration: "none", fontWeight: 500 }}>
+                            {loc.location_name}
+                          </Link>
+                        </td>
+                        <td style={tdR}><strong>{loc.total_visits}</strong></td>
+                        <td style={tdR}>{loc.unique_users}</td>
+                        <td style={tdR}>{loc.qr_count}</td>
+                        <td style={tdR}>{loc.gps_count}</td>
+                        <td style={tdR}>{loc.avg_distance_meters != null ? `${loc.avg_distance_meters}m` : "—"}</td>
+                        <td style={tdR}>{loc.gps_success_rate != null ? `${loc.gps_success_rate}%` : "—"}</td>
+                        <td style={{ ...tdR, color: "#9ca3af" }}>
+                          {loc.last_visited_at ? new Date(loc.last_visited_at).toLocaleDateString("ja-JP") : "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
-          </div>
+          </Section>
+
+          {/* ── 直近の訪問 ── */}
+          <Section title="直近のチェックイン（最大20件）">
+            {recentVisits.length === 0 ? (
+              <EmptyState text="まだチェックイン履歴がありません" />
+            ) : (
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", fontSize: 13, borderCollapse: "collapse" }}>
+                  <thead>
+                    <tr style={{ borderBottom: "1px solid #e5e7eb", background: "#f9fafb" }}>
+                      <th style={thL}>日時</th>
+                      <th style={thL}>ロケーション</th>
+                      <th style={thL}>方式</th>
+                      <th style={thL}>LINE User ID</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {recentVisits.map((v) => (
+                      <tr key={v.id} style={{ borderBottom: "1px solid #f3f4f6" }}>
+                        <td style={tdL}>{new Date(v.visited_at).toLocaleString("ja-JP", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</td>
+                        <td style={tdL}>{v.location_name ?? "—"}</td>
+                        <td style={tdL}><MethodBadge method={v.checkin_method} /></td>
+                        <td style={{ ...tdL, fontFamily: "monospace", fontSize: 11, color: "#6b7280" }}>{v.line_user_id.slice(0, 12)}...</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Section>
         </>
       )}
     </div>
   );
 }
 
-function KpiCard({ label, value }: { label: string; value: number }) {
+// ── サブコンポーネント ──
+
+function KpiCard({ label, value, color }: { label: string; value: number; color?: string }) {
   return (
     <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 12, padding: "16px 20px" }}>
       <p style={{ fontSize: 12, color: "#6b7280", marginBottom: 4 }}>{label}</p>
-      <p style={{ fontSize: 24, fontWeight: 700, color: "#111827" }}>{value.toLocaleString()}</p>
+      <p style={{ fontSize: 24, fontWeight: 700, color: color ?? "#111827" }}>{value.toLocaleString()}</p>
     </div>
   );
 }
 
-const thStyle: React.CSSProperties = { textAlign: "left", padding: "10px 12px", fontWeight: 600, color: "#6b7280", fontSize: 12 };
-const tdStyle: React.CSSProperties = { padding: "10px 12px", color: "#374151" };
+function MethodBreakdownBar({ qr, gps }: { qr: number; gps: number }) {
+  const total = qr + gps;
+  if (total === 0) return null;
+  const qrPct = Math.round((qr / total) * 100);
+  const gpsPct = 100 - qrPct;
+  return (
+    <Section title="チェックイン方法の内訳">
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
+        <span style={{ fontSize: 12, color: "#2563eb", fontWeight: 600 }}>QR {qrPct}%</span>
+        <div style={{ flex: 1, height: 12, background: "#e5e7eb", borderRadius: 6, overflow: "hidden", display: "flex" }}>
+          {qr > 0 && <div style={{ width: `${qrPct}%`, background: "#2563eb", borderRadius: qrPct === 100 ? 6 : "6px 0 0 6px" }} />}
+          {gps > 0 && <div style={{ width: `${gpsPct}%`, background: "#16a34a", borderRadius: gpsPct === 100 ? 6 : "0 6px 6px 0" }} />}
+        </div>
+        <span style={{ fontSize: 12, color: "#16a34a", fontWeight: 600 }}>GPS {gpsPct}%</span>
+      </div>
+      <div style={{ display: "flex", gap: 16, fontSize: 12, color: "#6b7280" }}>
+        <span>QR: {qr.toLocaleString()}件</span>
+        <span>GPS: {gps.toLocaleString()}件</span>
+      </div>
+    </Section>
+  );
+}
+
+function GpsDistanceSection({ stats }: { stats: LocationVisitStats["gps_distance"] }) {
+  if (!stats || stats.sample_count === 0) {
+    return <Section title="GPS 距離統計"><p style={{ fontSize: 13, color: "#9ca3af" }}>GPS チェックインデータがまだありません</p></Section>;
+  }
+  return (
+    <Section title="GPS 距離統計">
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 12 }}>
+        <MiniStat label="サンプル数" value={`${stats.sample_count}件`} />
+        <MiniStat label="平均距離" value={`${stats.avg_distance_meters}m`} />
+        <MiniStat label="最小距離" value={`${stats.min_distance_meters}m`} />
+        <MiniStat label="最大距離" value={`${stats.max_distance_meters}m`} />
+      </div>
+    </Section>
+  );
+}
+
+function GpsSuccessRateSection({ attempts }: { attempts: GpsAttemptStats }) {
+  if (attempts.total_attempts === 0) {
+    return <Section title="GPS 成功率"><p style={{ fontSize: 13, color: "#9ca3af" }}>GPS チェックイン試行データがまだありません</p></Section>;
+  }
+
+  const fb = attempts.failure_breakdown;
+  const failureItems: Array<{ label: string; count: number }> = [
+    { label: "範囲外", count: fb.out_of_range },
+    { label: "権限拒否", count: fb.permission_denied },
+    { label: "GPS取得不可", count: fb.gps_unavailable },
+    { label: "リクエスト不正", count: fb.invalid_request },
+    { label: "GPS未対応地点", count: fb.location_not_supported },
+    { label: "設定不備", count: fb.location_config_incomplete },
+  ].filter((item) => item.count > 0);
+
+  return (
+    <Section title="GPS 成功率">
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 12, marginBottom: failureItems.length > 0 ? 16 : 0 }}>
+        <MiniStat label="試行数" value={`${attempts.total_attempts}件`} />
+        <MiniStat label="成功" value={`${attempts.successes}件`} color="#16a34a" />
+        <MiniStat label="失敗" value={`${attempts.failures}件`} color={attempts.failures > 0 ? "#dc2626" : undefined} />
+        <MiniStat label="成功率" value={attempts.success_rate != null ? `${attempts.success_rate}%` : "—"} color="#2563eb" />
+      </div>
+
+      {failureItems.length > 0 && (
+        <div>
+          <p style={{ fontSize: 12, fontWeight: 600, color: "#6b7280", marginBottom: 8 }}>失敗理由の内訳</p>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            {failureItems.map((item) => (
+              <span key={item.label} style={{
+                display: "inline-flex", alignItems: "center", gap: 4,
+                padding: "4px 10px", background: "#fef2f2", borderRadius: 6,
+                fontSize: 12, color: "#dc2626",
+              }}>
+                {item.label}: <strong>{item.count}</strong>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+    </Section>
+  );
+}
+
+function MiniStat({ label, value, color }: { label: string; value: string; color?: string }) {
+  return (
+    <div style={{ padding: "10px 14px", background: "#f9fafb", borderRadius: 8 }}>
+      <p style={{ fontSize: 11, color: "#9ca3af", marginBottom: 2 }}>{label}</p>
+      <p style={{ fontSize: 16, fontWeight: 600, color: color ?? "#374151" }}>{value}</p>
+    </div>
+  );
+}
+
+function MethodBadge({ method }: { method: string }) {
+  const isGps = method === "gps";
+  return (
+    <span style={{ display: "inline-block", padding: "1px 8px", borderRadius: 10, fontSize: 11, fontWeight: 600, background: isGps ? "#dcfce7" : "#dbeafe", color: isGps ? "#16a34a" : "#2563eb" }}>
+      {isGps ? "GPS" : "QR"}
+    </span>
+  );
+}
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 12, overflow: "hidden", marginBottom: 24 }}>
+      <div style={{ padding: "14px 16px", borderBottom: "1px solid #f3f4f6", fontWeight: 600, fontSize: 14, color: "#374151" }}>{title}</div>
+      <div style={{ padding: "12px 16px" }}>{children}</div>
+    </div>
+  );
+}
+
+function EmptyState({ text }: { text: string }) {
+  return <div style={{ padding: 16, textAlign: "center", color: "#9ca3af", fontSize: 13 }}>{text}</div>;
+}
+
+const thL: React.CSSProperties = { textAlign: "left", padding: "10px 12px", fontWeight: 600, color: "#6b7280", fontSize: 12 };
+const thR: React.CSSProperties = { ...thL, textAlign: "right" };
+const tdL: React.CSSProperties = { padding: "10px 12px", color: "#374151" };
+const tdR: React.CSSProperties = { ...tdL, textAlign: "right" };

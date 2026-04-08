@@ -309,6 +309,9 @@ export const createMessageSchema = z.object({
   loading_threshold_ms: z.number().int().min(0).max(30000).optional().nullable(),
   loading_min_seconds:  z.number().int().min(3).max(60).optional().nullable(),
   loading_max_seconds:  z.number().int().min(3).max(60).optional().nullable(),
+  // ── タップ遷移先 ──
+  tap_destination_id: z.string().uuid().optional().nullable(),
+  tap_url:            z.string().url("有効なURLを入力してください").max(2000).optional().nullable(),
   sort_order:       sortSchema,
   is_active:        z.boolean().default(true),
 }).superRefine((val, ctx) => {
@@ -391,6 +394,9 @@ export const updateMessageSchema = z.object({
   loading_threshold_ms: z.number().int().min(0).max(30000).optional().nullable(),
   loading_min_seconds:  z.number().int().min(3).max(60).optional().nullable(),
   loading_max_seconds:  z.number().int().min(3).max(60).optional().nullable(),
+  // ── タップ遷移先 ──
+  tap_destination_id: z.string().uuid().optional().nullable(),
+  tap_url:            z.string().url("有効なURLを入力してください").max(2000).optional().nullable(),
   sort_order:        z.number().int().min(0).optional(),
   is_active:         z.boolean().optional(),
 }).superRefine((val, ctx) => {
@@ -477,8 +483,9 @@ export const richMenuAreaSchema = z.object({
   action_label: z.string().max(20).default(""),
   action_text:  z.string().max(300).optional().nullable(),
   action_data:  z.string().max(300).optional().nullable(),
-  action_uri:   z.string().url().optional().nullable(),
-  sort_order:   sortSchema,
+  action_uri:      z.string().url().optional().nullable(),
+  destination_id:  z.string().uuid().optional().nullable(),
+  sort_order:      sortSchema,
 }).superRefine((val, ctx) => {
   if (val.action_type === "message" && !val.action_text) {
     ctx.addIssue({ code: "custom", path: ["action_text"], message: "message タイプには action_text が必須です" });
@@ -486,8 +493,8 @@ export const richMenuAreaSchema = z.object({
   if (val.action_type === "postback" && !val.action_data) {
     ctx.addIssue({ code: "custom", path: ["action_data"], message: "postback タイプには action_data が必須です" });
   }
-  if (val.action_type === "uri" && !val.action_uri) {
-    ctx.addIssue({ code: "custom", path: ["action_uri"], message: "uri タイプには action_uri が必須です" });
+  if (val.action_type === "uri" && !val.action_uri && !val.destination_id) {
+    ctx.addIssue({ code: "custom", path: ["action_uri"], message: "uri タイプには action_uri または遷移先の設定が必須です" });
   }
 });
 
@@ -861,6 +868,7 @@ export const reorderLiffBlocksSchema = z.object({
 
 const latSchema  = z.number().min(-90).max(90);
 const lngSchema  = z.number().min(-180).max(180);
+const checkinModeSchema = z.enum(["qr_only", "gps_only", "qr_and_gps"]).default("qr_only");
 
 export const createLocationSchema = z.object({
   work_id:          uuidSchema,
@@ -873,6 +881,7 @@ export const createLocationSchema = z.object({
   longitude:        lngSchema.optional(),
   radius_meters:    z.number().int().min(1).max(10000).optional(),
   gps_enabled:      z.boolean().default(false),
+  checkin_mode:     checkinModeSchema,
   cooldown_seconds: z.number().int().min(0).max(86400).default(300),
   transition_id:    uuidSchema.optional(),
   set_flags:        setFlagsSchema,
@@ -881,6 +890,12 @@ export const createLocationSchema = z.object({
   stamp_enabled:    z.boolean().default(true),
   stamp_label:      z.string().max(100).optional(),
   stamp_order:      z.number().int().min(0).optional(),
+}).superRefine((val, ctx) => {
+  if (val.checkin_mode === "gps_only" || val.checkin_mode === "qr_and_gps") {
+    if (val.latitude === undefined)     ctx.addIssue({ code: "custom", path: ["latitude"],      message: "この方式では緯度が必須です" });
+    if (val.longitude === undefined)    ctx.addIssue({ code: "custom", path: ["longitude"],     message: "この方式では経度が必須です" });
+    if (val.radius_meters === undefined) ctx.addIssue({ code: "custom", path: ["radius_meters"], message: "この方式では許容半径が必須です" });
+  }
 });
 
 export const updateLocationSchema = z.object({
@@ -893,6 +908,7 @@ export const updateLocationSchema = z.object({
   longitude:        lngSchema.optional().nullable(),
   radius_meters:    z.number().int().min(1).max(10000).optional().nullable(),
   gps_enabled:      z.boolean().optional(),
+  checkin_mode:     z.enum(["qr_only", "gps_only", "qr_and_gps"]).optional(),
   cooldown_seconds: z.number().int().min(0).max(86400).optional(),
   transition_id:    uuidSchema.optional().nullable(),
   set_flags:        setFlagsSchema,
@@ -912,11 +928,11 @@ export const checkinSchema = z.object({
   line_user_id:    z.string().min(1, "LINE User ID は必須です"),
   location_id:     uuidSchema,
   work_id:         uuidSchema,
-  checkin_method:  z.enum(["qr", "gps", "beacon"]).default("qr"),
+  checkin_method:  z.enum(["qr", "gps", "qr_and_gps", "beacon"]).default("qr"),
   lat:             latSchema.optional(),
   lng:             lngSchema.optional(),
 }).superRefine((val, ctx) => {
-  if (val.checkin_method === "gps") {
+  if (val.checkin_method === "gps" || val.checkin_method === "qr_and_gps") {
     if (val.lat === undefined) ctx.addIssue({ code: "custom", path: ["lat"], message: "GPS チェックインには緯度が必須です" });
     if (val.lng === undefined) ctx.addIssue({ code: "custom", path: ["lng"], message: "GPS チェックインには経度が必須です" });
   }

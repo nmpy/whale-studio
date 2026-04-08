@@ -17,6 +17,18 @@ export const POST = withAuth(
     try {
       console.log(`[AcceptInvitation] START token=${params.token.slice(0, 8)}... userId=${user.id}`);
 
+      // 本番環境で bypass-admin による承諾を禁止
+      if (process.env.NODE_ENV === "production" && user.id === "bypass-admin") {
+        console.error("[AcceptInvitation] 🚨 bypass-admin cannot accept invitations in production");
+        return badRequest("bypass-admin ユーザーでは本番環境の招待を承諾できません");
+      }
+
+      if (user.id === "bypass-admin" || user.id === "dev-user") {
+        console.warn(`[AcceptInvitation] ⚠️ stub user accepting invitation`, {
+          userId: user.id, bypass: process.env.BYPASS_AUTH === "true",
+        });
+      }
+
       // ── 1. 招待トークンを取得 ──
       const invitation = await prisma.invitation.findUnique({
         where: { token: params.token },

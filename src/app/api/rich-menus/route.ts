@@ -13,6 +13,7 @@ function toAreaResponse(a: {
   id: string; richMenuId: string; x: number; y: number;
   width: number; height: number; actionType: string; actionLabel: string;
   actionText: string | null; actionData: string | null; actionUri: string | null;
+  destinationId: string | null;
   sortOrder: number; createdAt: Date; updatedAt: Date;
 }) {
   return {
@@ -26,8 +27,9 @@ function toAreaResponse(a: {
     action_label: a.actionLabel,
     action_text:  a.actionText,
     action_data:  a.actionData,
-    action_uri:   a.actionUri,
-    sort_order:   a.sortOrder,
+    action_uri:      a.actionUri,
+    destination_id:  a.destinationId ?? null,
+    sort_order:      a.sortOrder,
     created_at:   a.createdAt,
     updated_at:   a.updatedAt,
   };
@@ -99,8 +101,9 @@ export const POST = withAuth(async (req) => {
             actionLabel: area.action_label,
             actionText:  area.action_text ?? null,
             actionData:  area.action_data ?? null,
-            actionUri:   area.action_uri ?? null,
-            sortOrder:   area.sort_order ?? 0,
+            actionUri:       area.action_uri ?? null,
+            destinationId:   area.destination_id ?? null,
+            sortOrder:       area.sort_order ?? 0,
           },
         });
       }

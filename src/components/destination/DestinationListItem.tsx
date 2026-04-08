@@ -59,6 +59,12 @@ export function DestinationListItem({ destination: d, readOnly, onEdit, onDelete
         {!d.is_enabled && (
           <span className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full">無効</span>
         )}
+        {d.usage_count != null && d.usage_count > 0 && (
+          <span className="text-[10px] bg-teal-50 text-teal-600 px-1.5 py-0.5 rounded-full">使用中 {d.usage_count}件</span>
+        )}
+        {d.usage_count === 0 && (
+          <span className="text-[10px] bg-gray-50 text-gray-400 px-1.5 py-0.5 rounded-full">未使用</span>
+        )}
       </div>
 
       {/* 中段: key + target */}

@@ -99,7 +99,12 @@ export function useDestinations(
   }, [token, workId, reload, onSuccess, onError]);
 
   const remove = useCallback(async (id: string) => {
-    if (!confirm("この遷移先を削除しますか？")) return;
+    const dest = destinations.find((d) => d.id === id);
+    const usageCount = dest?.usage_count ?? 0;
+    const msg = usageCount > 0
+      ? `この遷移先は ${usageCount} 箇所で使われています。本当に削除しますか？`
+      : "この遷移先を削除しますか？";
+    if (!confirm(msg)) return;
     setSaving(true);
     try {
       await destinationApi.delete(token, workId, id);

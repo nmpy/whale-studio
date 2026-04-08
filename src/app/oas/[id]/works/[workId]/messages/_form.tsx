@@ -13,6 +13,11 @@ import { PhaseTransitionsSection } from "./_phase-transitions";
 import { BUILTIN_PRESETS, presetToFormValues } from "@/lib/timing-presets";
 import { PreviewPlayer } from "@/components/PreviewPlayer";
 import type { MessageTimingConfig } from "@/types";
+import { TapDestinationSection } from "@/components/destination/TapDestinationSection";
+import type { TapMode } from "@/components/destination/TapDestinationSection";
+import { detectTapMode } from "@/lib/message-destination-utils";
+import { destinationApi } from "@/lib/api-client";
+import type { LineDestination } from "@/types";
 
 // ── 拡張メッセージ種別 ────────────────────────────────────
 
@@ -46,11 +51,13 @@ const PUZZLE_DELIVERY_TYPE_OPTIONS = MESSAGE_TYPE_OPTIONS.filter(
 // ── カルーセルカード型 ────────────────────────────────────
 
 export interface MessageCarouselCard {
-  image_url:    string;
-  title:        string;
-  body:         string;
-  button_label: string;
-  button_url:   string;
+  image_url:       string;
+  title:           string;
+  body:            string;
+  button_label:    string;
+  button_url:      string;
+  /** destination を使用する場合の ID（null = 直接URL） */
+  destination_id?: string | null;
 }
 
 const EMPTY_CAROUSEL_CARD: MessageCarouselCard = {
@@ -126,6 +133,9 @@ export interface MessageFormState {
   correct_next_phase_id:    string;
   /** 2通目以降のメッセージ（チェーン送信） */
   additionalMessages: AdditionalMessageSlot[];
+  // ── タップ遷移先 ──
+  tap_destination_id:  string; // "" = 未設定
+  tap_url:             string; // "" = 未設定
   // ── 演出設定 ──
   read_receipt_mode:    string; // "" = inherit
   read_delay_ms:        string; // "" = inherit（数値入力との兼用）
@@ -167,6 +177,9 @@ export const EMPTY_MESSAGE_FORM: MessageFormState = {
   incorrect_quick_replies: [],
   correct_next_phase_id:   "",
   additionalMessages:      [],
+  // タップ遷移先
+  tap_destination_id:  "",
+  tap_url:             "",
   // 演出設定（空文字 = inherit）
   read_receipt_mode:    "",
   read_delay_ms:        "",
@@ -208,6 +221,9 @@ export function msgToFormState(msg: {
   sort_order?:              number;
   is_active?:               boolean;
   phase?:                   { phase_type?: string | null } | null;
+  // タップ遷移先
+  tap_destination_id?:   string | null;
+  tap_url?:              string | null;
   // 演出設定
   read_receipt_mode?:    string | null;
   read_delay_ms?:        number | null;
@@ -264,6 +280,9 @@ export function msgToFormState(msg: {
     incorrect_quick_replies: msg.incorrect_quick_replies ?? [],
     correct_next_phase_id:   msg.correct_next_phase_id ?? "",
     additionalMessages:      [],
+    // タップ遷移先
+    tap_destination_id:  msg.tap_destination_id ?? "",
+    tap_url:             msg.tap_url ?? "",
     // 演出設定（null → 空文字 = inherit）
     read_receipt_mode:    msg.read_receipt_mode ?? "",
     read_delay_ms:        msg.read_delay_ms != null ? String(msg.read_delay_ms) : "",
@@ -319,6 +338,9 @@ export function formStateToMsgBody(form: MessageFormState) {
     incorrect_quick_replies: isPuzzle && form.incorrect_quick_replies.length > 0 ? form.incorrect_quick_replies : null,
     correct_next_phase_id:   isPuzzle ? form.correct_next_phase_id || null : null,
     hint_mode: form.hint_mode,
+    // タップ遷移先
+    tap_destination_id: form.tap_destination_id || null,
+    tap_url:            form.tap_url || null,
     // 演出設定（空文字 → null = inherit）
     read_receipt_mode:    (form.read_receipt_mode || null) as ReadReceiptMode | null,
     read_delay_ms:        form.read_delay_ms ? Number(form.read_delay_ms) : null,
@@ -570,9 +592,13 @@ interface QuickReplyEditorProps {
   transitionMessages?: { id: string; body: string | null; kind: string; phase_id?: string | null }[];
   /** ヒントQRのキャラクター選択用（hint_character_id） */
   characters?: Character[];
+  /** destination 統合用 */
+  workId?: string;
+  oaId?: string;
+  destinations?: LineDestination[];
 }
 
-function QuickReplyEditor({ items, onChange, responseMessages, phases, transitionMessages, characters = [] }: QuickReplyEditorProps) {
+function QuickReplyEditor({ items, onChange, responseMessages, phases, transitionMessages, characters = [], workId, oaId, destinations = [] }: QuickReplyEditorProps) {
   const [open, setOpen]               = useState(false);
   const [expandedSet, setExpandedSet] = useState<Set<number>>(new Set());
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
@@ -823,7 +849,12 @@ function QuickReplyEditor({ items, onChange, responseMessages, phases, transitio
                             value={item.label}
                             onChange={(e) => {
                               const t = e.target.value;
-                              updateItem(index, { label: t, value: t || undefined });
+                              // action="url" のときは label と value を分離（value は URL）
+                              if (item.action === "url") {
+                                updateItem(index, { label: t });
+                              } else {
+                                updateItem(index, { label: t, value: t || undefined });
+                              }
                             }}
                             placeholder="例: 話を聞く"
                             maxLength={20}
@@ -834,8 +865,30 @@ function QuickReplyEditor({ items, onChange, responseMessages, phases, transitio
                           </div>
                         </div>
 
+                        {/* URL遷移先（action="url" の場合のみ） */}
+                        {item.action === "url" && workId && (
+                          <div className="form-group" style={{ marginBottom: 10 }}>
+                            <TapDestinationSection
+                              label="遷移先URL"
+                              workId={workId}
+                              oaId={oaId ?? ""}
+                              mode={item.destination_id ? "destination" : item.value ? "direct_url" : "destination"}
+                              destinationId={item.destination_id ?? null}
+                              directUrl={item.value ?? ""}
+                              destinations={destinations}
+                              onModeChange={(m) => {
+                                if (m === "destination") updateItem(index, { value: undefined } as Partial<QuickReplyItem>);
+                                if (m === "direct_url") updateItem(index, { destination_id: undefined } as Partial<QuickReplyItem>);
+                                if (m === "none") updateItem(index, { destination_id: undefined, value: undefined } as Partial<QuickReplyItem>);
+                              }}
+                              onDestinationChange={(id) => updateItem(index, { destination_id: id } as Partial<QuickReplyItem>)}
+                              onDirectUrlChange={(url) => updateItem(index, { value: url } as Partial<QuickReplyItem>)}
+                            />
+                          </div>
+                        )}
+
                         {/* Step 2: 応答メッセージ（ヒントでない場合のみ） */}
-                        {!isHint && (responseMessages?.length ?? 0) > 0 && (
+                        {!isHint && item.action !== "url" && (responseMessages?.length ?? 0) > 0 && (
                           <div className="form-group" style={{ marginBottom: 10 }}>
                             <label style={{ ...fieldLabel, fontSize: 12 }}>
                               <span style={{ fontWeight: 700, color: "#1d4ed8", fontSize: 11, marginRight: 6 }}>Step 2</span>
@@ -1705,9 +1758,10 @@ function ImageUploader({ value, onChange, oaId, workId, disabled }: ImageUploade
 // ── LINEプレビューパネル ──────────────────────────────────
 
 interface PreviewPanelProps {
-  form:       MessageFormState;
-  characters: Character[];
-  riddles:    Riddle[];
+  form:         MessageFormState;
+  characters:   Character[];
+  riddles:      Riddle[];
+  destinations: LineDestination[];
 }
 
 /** クイックリプライボタンの表示色定義 */
@@ -1719,7 +1773,7 @@ const QR_CHIP_COLORS: Record<QuickReplyAction, { bg: string; text: string; borde
   custom: { bg: "#f8fafc", text: "#475569",  border: "#e2e8f0" },
 };
 
-function PreviewPanel({ form, characters, riddles }: PreviewPanelProps) {
+function PreviewPanel({ form, characters, riddles, destinations }: PreviewPanelProps) {
   const selectedChar   = characters.find((c) => c.id === form.character_id) ?? null;
   const selectedRiddle = riddles.find((r) => r.id === form.riddle_id);
 
@@ -1861,16 +1915,29 @@ function PreviewPanel({ form, characters, riddles }: PreviewPanelProps) {
           </span>
         );
       }
-      case "image":
-        return form.asset_url ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={form.asset_url} alt="画像プレビュー"
-            style={{ maxWidth: 200, maxHeight: 160, borderRadius: 8, objectFit: "cover", display: "block" }}
-            onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
-        ) : (
-          <div style={{ width: 160, height: 100, background: "#e5e7eb", borderRadius: 8,
-            display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, color: "#9ca3af" }}>🖼</div>
+      case "image": {
+        const tapInfo = form.tap_destination_id
+          ? destinations.find((d) => d.id === form.tap_destination_id)?.name
+          : form.tap_url
+          ? "直接URL"
+          : null;
+        return (
+          <div>
+            {form.asset_url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={form.asset_url} alt="画像プレビュー"
+                style={{ maxWidth: 200, maxHeight: 160, borderRadius: 8, objectFit: "cover", display: "block" }}
+                onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
+            ) : (
+              <div style={{ width: 160, height: 100, background: "#e5e7eb", borderRadius: 8,
+                display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, color: "#9ca3af" }}>🖼</div>
+            )}
+            {tapInfo && (
+              <div style={{ fontSize: 10, color: "#0d9488", marginTop: 4 }}>🔗 {tapInfo}</div>
+            )}
+          </div>
         );
+      }
       case "riddle":
         return (
           <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
@@ -2673,6 +2740,18 @@ export function MessageForm({
     trigger_keyword?: string | null;
   }[]>([]);
 
+  // ── destination 選択用 ──
+  const [destinations, setDestinations] = useState<LineDestination[]>([]);
+  const [tapMode, setTapMode] = useState<TapMode>(() =>
+    detectTapMode(initialForm.tap_destination_id, initialForm.tap_url)
+  );
+
+  useEffect(() => {
+    const token = getDevToken();
+    // destination 一覧も並行取得
+    destinationApi.list(token, workId).then(setDestinations).catch(() => {});
+  }, [workId]);
+
   useEffect(() => {
     const token = getDevToken();
     Promise.all([
@@ -3395,6 +3474,26 @@ export function MessageForm({
                     maxLength={200}
                   />
                 </div>
+                {/* ── 画像タップ時の遷移先 ── */}
+                <div className="form-group" style={{ marginTop: 12 }}>
+                  <TapDestinationSection
+                    label="画像タップ時の遷移先"
+                    workId={workId}
+                    oaId={oaId}
+                    mode={tapMode}
+                    destinationId={form.tap_destination_id || null}
+                    directUrl={form.tap_url}
+                    destinations={destinations}
+                    onModeChange={(m) => {
+                      setTapMode(m);
+                      if (m === "destination") set("tap_url", "");
+                      if (m === "direct_url") set("tap_destination_id", "");
+                      if (m === "none") { set("tap_destination_id", ""); set("tap_url", ""); }
+                    }}
+                    onDestinationChange={(id) => set("tap_destination_id", id ?? "")}
+                    onDirectUrlChange={(url) => set("tap_url", url)}
+                  />
+                </div>
               </>
             )}
 
@@ -3572,16 +3671,27 @@ export function MessageForm({
                           />
                         </div>
                         <div className="form-group" style={{ marginBottom: 0 }}>
-                          <label style={{ ...fieldLabel, fontSize: 12 }}>
-                            ボタン URL（任意）
-                          </label>
-                          <input
-                            type="url"
-                            className="form-input"
-                            value={card.button_url}
-                            onChange={(e) => updateCard(index, "button_url", e.target.value)}
-                            placeholder="https://example.com/"
-                            style={{ fontFamily: "monospace", fontSize: 12 }}
+                          <TapDestinationSection
+                            label="ボタンの遷移先（任意）"
+                            workId={workId}
+                            oaId={oaId}
+                            mode={card.destination_id ? "destination" : card.button_url ? "direct_url" : "none"}
+                            destinationId={card.destination_id ?? null}
+                            directUrl={card.button_url}
+                            destinations={destinations}
+                            onModeChange={(m) => {
+                              const items = [...form.carousel_items];
+                              if (m === "destination") items[index] = { ...items[index], button_url: "" };
+                              if (m === "direct_url") items[index] = { ...items[index], destination_id: null };
+                              if (m === "none") items[index] = { ...items[index], button_url: "", destination_id: null };
+                              set("carousel_items", items);
+                            }}
+                            onDestinationChange={(id) => {
+                              const items = [...form.carousel_items];
+                              items[index] = { ...items[index], destination_id: id };
+                              set("carousel_items", items);
+                            }}
+                            onDirectUrlChange={(url) => updateCard(index, "button_url", url)}
                           />
                         </div>
                       </div>
@@ -3722,6 +3832,9 @@ export function MessageForm({
             phases={phases}
             transitionMessages={allMessages.filter((m) => m.id !== messageId)}
             characters={characters}
+            workId={workId}
+            oaId={oaId}
+            destinations={destinations}
           />
 
           {/* ════════════════════════════════════════
@@ -3868,6 +3981,9 @@ export function MessageForm({
                 phases={phases}
                 transitionMessages={allMessages.filter((m) => m.id !== messageId)}
                 characters={characters}
+                workId={workId}
+                oaId={oaId}
+                destinations={destinations}
               />
             </div>
 
@@ -3999,6 +4115,7 @@ export function MessageForm({
             form={form}
             characters={characters}
             riddles={riddles}
+            destinations={destinations}
           />
         </div>
       </div>

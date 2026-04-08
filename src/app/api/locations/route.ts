@@ -12,18 +12,8 @@ import { ZodError } from "zod";
 
 export const dynamic = "force-dynamic";
 
-function toResponse(
-  l: {
-    id: string; workId: string; name: string; description: string | null;
-    beaconUuid: string | null; beaconMajor: number | null; beaconMinor: number | null;
-    cooldownSeconds: number; transitionId: string | null; setFlags: string;
-    sortOrder: number; isActive: boolean; createdAt: Date; updatedAt: Date;
-  },
-  transition?: {
-    id: string; label: string;
-    toPhase: { id: string; name: string; phaseType: string } | null;
-  } | null,
-) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function toResponse(l: any, transition?: any) {
   return {
     id:               l.id,
     work_id:          l.workId,
@@ -32,11 +22,18 @@ function toResponse(
     beacon_uuid:      l.beaconUuid,
     beacon_major:     l.beaconMajor,
     beacon_minor:     l.beaconMinor,
+    latitude:         l.latitude,
+    longitude:        l.longitude,
+    radius_meters:    l.radiusMeters,
+    gps_enabled:      l.gpsEnabled,
     cooldown_seconds: l.cooldownSeconds,
     transition_id:    l.transitionId,
     set_flags:        l.setFlags,
     sort_order:       l.sortOrder,
     is_active:        l.isActive,
+    stamp_enabled:    l.stampEnabled,
+    stamp_label:      l.stampLabel,
+    stamp_order:      l.stampOrder,
     created_at:       l.createdAt,
     updated_at:       l.updatedAt,
     ...(transition !== undefined && {
@@ -118,11 +115,18 @@ export const POST = withAuth(async (req, _ctx, user) => {
         beaconUuid:      data.beacon_uuid,
         beaconMajor:     data.beacon_major,
         beaconMinor:     data.beacon_minor,
+        latitude:        data.latitude,
+        longitude:       data.longitude,
+        radiusMeters:    data.radius_meters,
+        gpsEnabled:      data.gps_enabled,
         cooldownSeconds: data.cooldown_seconds,
         transitionId:    data.transition_id,
         setFlags:        data.set_flags ?? "{}",
         sortOrder:       data.sort_order,
         isActive:        data.is_active,
+        stampEnabled:    data.stamp_enabled,
+        stampLabel:      data.stamp_label,
+        stampOrder:      data.stamp_order,
       },
       include: {
         transition: {

@@ -11,6 +11,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { ok, noContent, badRequest, notFound, serverError } from "@/lib/api-response";
 import { withRole } from "@/lib/auth";
+import { ensureActiveOwnerRemains, LastOwnerError } from "@/lib/rbac";
 import { z, ZodError } from "zod";
 import { isValidRole } from "@/lib/types/permissions";
 
@@ -54,36 +55,22 @@ export const PATCH = withRole<{ id: string; memberId: string }>(
         );
       }
 
-      // ── 最後の owner の role 変更禁止 ──
-      if (data.role && data.role !== 'owner' && target.role === 'owner') {
-        const ownerCount = await prisma.workspaceMember.count({
-          where: { workspaceId: params.id, role: 'owner' },
-        });
-        if (ownerCount <= 1) {
-          return badRequest("最後の owner のロールは変更できません", {
-            role: ["ワークスペースに owner が1人以上必要です"],
-          });
-        }
-      }
+      // ── owner 保護: role 降格 or status 非active化 ──
+      const needsOwnerGuard =
+        (data.role && data.role !== 'owner' && target.role === 'owner') ||
+        (data.status && data.status !== 'active' && target.role === 'owner' && target.status === 'active');
 
-      // ── 自分自身を owner から降格させる禁止 ──
-      if (target.userId === user.id && data.role && data.role !== 'owner' && target.role === 'owner') {
-        const ownerCount = await prisma.workspaceMember.count({
-          where: { workspaceId: params.id, role: 'owner' },
-        });
-        if (ownerCount <= 1) {
-          return badRequest("最後の owner の権限は変更できません", {
-            role: ["先に他のメンバーを owner に昇格させてください"],
-          });
+      const updated = await prisma.$transaction(async (tx) => {
+        if (needsOwnerGuard) {
+          await ensureActiveOwnerRemains(params.id, params.memberId, tx);
         }
-      }
-
-      const updated = await prisma.workspaceMember.update({
-        where: { id: params.memberId },
-        data: {
-          ...(data.role   ? { role:   data.role }   : {}),
-          ...(data.status ? { status: data.status } : {}),
-        },
+        return tx.workspaceMember.update({
+          where: { id: params.memberId },
+          data: {
+            ...(data.role   ? { role:   data.role }   : {}),
+            ...(data.status ? { status: data.status } : {}),
+          },
+        });
       });
 
       return ok({
@@ -100,6 +87,11 @@ export const PATCH = withRole<{ id: string; memberId: string }>(
         updated_at:   updated.updatedAt,
       });
     } catch (err) {
+      if (err instanceof LastOwnerError) {
+        return badRequest(err.message, {
+          owner: ["先に他のメンバーをオーナーに昇格させてください"],
+        });
+      }
       if (err instanceof ZodError) {
         return badRequest("入力値が不正です", {
           role:   err.issues.filter((i) => i.path[0] === "role").map((i) => i.message),
@@ -134,21 +126,20 @@ export const DELETE = withRole<{ id: string; memberId: string }>(
         );
       }
 
-      // 最後の owner は削除不可（owner でないと削除できないケースだが念のため）
-      if (target.role === 'owner') {
-        const ownerCount = await prisma.workspaceMember.count({
-          where: { workspaceId: params.id, role: 'owner' },
-        });
-        if (ownerCount <= 1) {
-          return badRequest("最後の owner は削除できません", {
-            member: ["ワークスペースに owner が1人以上必要です"],
-          });
+      // owner 保護 + 削除をトランザクションで実行
+      await prisma.$transaction(async (tx) => {
+        if (target.role === 'owner') {
+          await ensureActiveOwnerRemains(params.id, params.memberId, tx);
         }
-      }
-
-      await prisma.workspaceMember.delete({ where: { id: params.memberId } });
+        await tx.workspaceMember.delete({ where: { id: params.memberId } });
+      });
       return noContent();
     } catch (err) {
+      if (err instanceof LastOwnerError) {
+        return badRequest(err.message, {
+          owner: ["先に他のメンバーをオーナーに昇格させてください"],
+        });
+      }
       return serverError(err);
     }
   }

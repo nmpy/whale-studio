@@ -178,6 +178,8 @@ export const POST = withAuth(async (req, _ctx, user) => {
             hint_mode:         ((m as { hintMode?: string }).hintMode ?? "always") as import("@/types").HintMode,
             sort_order:        m.sortOrder,
             timing:            null,
+            tap_destination_id: (m as { tapDestinationId?: string | null }).tapDestinationId ?? null,
+            tap_url:            (m as { tapUrl?: string | null }).tapUrl ?? null,
             character:         m.character
               ? {
                   id:             m.character.id,

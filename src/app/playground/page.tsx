@@ -247,6 +247,8 @@ function PlaygroundInner() {
         hint_mode: "always" as import("@/types").HintMode,
         sort_order: 0,
         timing: null,
+        tap_destination_id: null,
+        tap_url: null,
         character: null,
       });
       if (item.hint_followup?.trim()) {
@@ -262,6 +264,8 @@ function PlaygroundInner() {
           hint_mode: "always" as import("@/types").HintMode,
           sort_order: 1,
           timing: null,
+          tap_destination_id: null,
+          tap_url: null,
           character: null,
         });
       }

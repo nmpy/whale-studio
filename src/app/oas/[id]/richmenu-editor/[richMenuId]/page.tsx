@@ -2,10 +2,11 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { richMenuEditorApi, oaApi, getDevToken } from "@/lib/api-client";
+import { richMenuEditorApi, oaApi, workApi, destinationApi, getDevToken } from "@/lib/api-client";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { useToast } from "@/components/Toast";
-import type { RichMenuWithAreas, RichMenuArea, CreateRichMenuAreaBody, RichMenuSize } from "@/types";
+import { resolveDestinationUrlFromApi } from "@/lib/destination-url-builder";
+import type { RichMenuWithAreas, RichMenuArea, CreateRichMenuAreaBody, RichMenuSize, LineDestination } from "@/types";
 
 // ────────────────────────────────────────────────
 // 定数
@@ -17,17 +18,18 @@ const LINE_H_FULL    = 1686;
 type ActionType = "message" | "postback" | "uri";
 
 interface AreaDraft {
-  id?:          string;  // 既存エリアの場合のみ
-  x:            number;
-  y:            number;
-  width:        number;
-  height:       number;
-  action_type:  ActionType;
-  action_label: string;
-  action_text:  string;
-  action_data:  string;
-  action_uri:   string;
-  sort_order:   number;
+  id?:             string;  // 既存エリアの場合のみ
+  x:               number;
+  y:               number;
+  width:           number;
+  height:          number;
+  action_type:     ActionType;
+  action_label:    string;
+  action_text:     string;
+  action_data:     string;
+  action_uri:      string;
+  destination_id:  string;  // "" = 未設定
+  sort_order:      number;
 }
 
 // ────────────────────────────────────────────────
@@ -47,9 +49,9 @@ const TEMPLATES: Template[] = [
       const H = size === "full" ? LINE_H_FULL : LINE_H_COMPACT;
       const sw = Math.floor(LINE_W / 3);
       return [
-        { x: 0,      y: 0, width: sw,            height: H, action_type: "message", action_label: "ボタン1", action_text: "ボタン1", action_data: "", action_uri: "", sort_order: 0 },
-        { x: sw,     y: 0, width: sw,            height: H, action_type: "message", action_label: "ボタン2", action_text: "ボタン2", action_data: "", action_uri: "", sort_order: 1 },
-        { x: sw * 2, y: 0, width: LINE_W - sw*2, height: H, action_type: "message", action_label: "ボタン3", action_text: "ボタン3", action_data: "", action_uri: "", sort_order: 2 },
+        { x: 0,      y: 0, width: sw,            height: H, action_type: "message", action_label: "ボタン1", action_text: "ボタン1", action_data: "", action_uri: "", destination_id: "", sort_order: 0 },
+        { x: sw,     y: 0, width: sw,            height: H, action_type: "message", action_label: "ボタン2", action_text: "ボタン2", action_data: "", action_uri: "", destination_id: "", sort_order: 1 },
+        { x: sw * 2, y: 0, width: LINE_W - sw*2, height: H, action_type: "message", action_label: "ボタン3", action_text: "ボタン3", action_data: "", action_uri: "", destination_id: "", sort_order: 2 },
       ];
     },
   },
@@ -59,8 +61,8 @@ const TEMPLATES: Template[] = [
       const H = size === "full" ? LINE_H_FULL : LINE_H_COMPACT;
       const hw = Math.floor(LINE_W / 2);
       return [
-        { x: 0,  y: 0, width: hw,          height: H, action_type: "message", action_label: "ボタン1", action_text: "ボタン1", action_data: "", action_uri: "", sort_order: 0 },
-        { x: hw, y: 0, width: LINE_W - hw, height: H, action_type: "message", action_label: "ボタン2", action_text: "ボタン2", action_data: "", action_uri: "", sort_order: 1 },
+        { x: 0,  y: 0, width: hw,          height: H, action_type: "message", action_label: "ボタン1", action_text: "ボタン1", action_data: "", action_uri: "", destination_id: "", sort_order: 0 },
+        { x: hw, y: 0, width: LINE_W - hw, height: H, action_type: "message", action_label: "ボタン2", action_text: "ボタン2", action_data: "", action_uri: "", destination_id: "", sort_order: 1 },
       ];
     },
   },
@@ -71,10 +73,10 @@ const TEMPLATES: Template[] = [
       const hw = Math.floor(LINE_W / 2);
       const hh = Math.floor(H / 2);
       return [
-        { x: 0,  y: 0,  width: hw,          height: hh,      action_type: "message", action_label: "ボタン1", action_text: "ボタン1", action_data: "", action_uri: "", sort_order: 0 },
-        { x: hw, y: 0,  width: LINE_W - hw, height: hh,      action_type: "message", action_label: "ボタン2", action_text: "ボタン2", action_data: "", action_uri: "", sort_order: 1 },
-        { x: 0,  y: hh, width: hw,          height: H - hh,  action_type: "message", action_label: "ボタン3", action_text: "ボタン3", action_data: "", action_uri: "", sort_order: 2 },
-        { x: hw, y: hh, width: LINE_W - hw, height: H - hh,  action_type: "message", action_label: "ボタン4", action_text: "ボタン4", action_data: "", action_uri: "", sort_order: 3 },
+        { x: 0,  y: 0,  width: hw,          height: hh,      action_type: "message", action_label: "ボタン1", action_text: "ボタン1", action_data: "", action_uri: "", destination_id: "", sort_order: 0 },
+        { x: hw, y: 0,  width: LINE_W - hw, height: hh,      action_type: "message", action_label: "ボタン2", action_text: "ボタン2", action_data: "", action_uri: "", destination_id: "", sort_order: 1 },
+        { x: 0,  y: hh, width: hw,          height: H - hh,  action_type: "message", action_label: "ボタン3", action_text: "ボタン3", action_data: "", action_uri: "", destination_id: "", sort_order: 2 },
+        { x: hw, y: hh, width: LINE_W - hw, height: H - hh,  action_type: "message", action_label: "ボタン4", action_text: "ボタン4", action_data: "", action_uri: "", destination_id: "", sort_order: 3 },
       ];
     },
   },
@@ -97,8 +99,9 @@ const TEMPLATES: Template[] = [
             action_label: `ボタン${idx + 1}`,
             action_text:  `ボタン${idx + 1}`,
             action_data:  "",
-            action_uri:   "",
-            sort_order:   idx,
+            action_uri:      "",
+            destination_id:  "",
+            sort_order:      idx,
           });
         }
       }
@@ -110,7 +113,7 @@ const TEMPLATES: Template[] = [
     build: (size) => {
       const H = size === "full" ? LINE_H_FULL : LINE_H_COMPACT;
       return [
-        { x: 0, y: 0, width: LINE_W, height: H, action_type: "message", action_label: "タップ", action_text: "タップ", action_data: "", action_uri: "", sort_order: 0 },
+        { x: 0, y: 0, width: LINE_W, height: H, action_type: "message", action_label: "タップ", action_text: "タップ", action_data: "", action_uri: "", destination_id: "", sort_order: 0 },
       ];
     },
   },
@@ -138,8 +141,9 @@ function areaToDraft(a: RichMenuArea): AreaDraft {
     action_label: a.action_label,
     action_text:  a.action_text ?? "",
     action_data:  a.action_data ?? "",
-    action_uri:   a.action_uri  ?? "",
-    sort_order:   a.sort_order,
+    action_uri:      a.action_uri  ?? "",
+    destination_id:  a.destination_id ?? "",
+    sort_order:      a.sort_order,
   };
 }
 
@@ -153,8 +157,9 @@ function draftToBody(d: AreaDraft): CreateRichMenuAreaBody {
     action_label: d.action_label,
     action_text:  d.action_text  || null,
     action_data:  d.action_data  || null,
-    action_uri:   d.action_uri   || null,
-    sort_order:   d.sort_order,
+    action_uri:      d.action_uri   || null,
+    destination_id:  d.destination_id || null,
+    sort_order:      d.sort_order,
   };
 }
 
@@ -238,7 +243,7 @@ function validateRichMenu(params: {
         });
       }
     } else if (area.action_type === "uri") {
-      if (!area.action_uri.trim()) {
+      if (!area.action_uri.trim() && !area.destination_id) {
         errors.push({
           areaIndex: i,
           message:   `「${label}」の URL が空です。`,
@@ -300,6 +305,69 @@ function validateRichMenu(params: {
   }
 
   return errors;
+}
+
+// ────────────────────────────────────────────────
+// リッチメニュー用 destination セレクト（OA配下の全作品の destination を表示）
+// ────────────────────────────────────────────────
+function RichMenuDestinationSelect({ oaId, value, onChange }: {
+  oaId: string;
+  value: string;
+  onChange: (destId: string, resolvedUrl: string | null) => void;
+}) {
+  const [destinations, setDestinations] = useState<LineDestination[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const token = getDevToken();
+    // OA配下の全作品の destination を取得
+    workApi.list(token, oaId).then(async (works) => {
+      const allDests: LineDestination[] = [];
+      for (const w of works) {
+        try {
+          const dests = await destinationApi.list(token, w.id);
+          allDests.push(...dests.filter((d) => d.is_enabled));
+        } catch { /* ignore */ }
+      }
+      setDestinations(allDests);
+    }).catch(() => {}).finally(() => setLoading(false));
+  }, [oaId]);
+
+  if (loading) return <div style={{ height: 36, background: "#f3f4f6", borderRadius: 8 }} />;
+
+  const selected = value ? destinations.find((d) => d.id === value) : null;
+  const resolvedUrl = selected ? (selected.resolved_url ?? resolveDestinationUrlFromApi(selected)) : null;
+
+  return (
+    <div>
+      {destinations.length === 0 ? (
+        <p style={{ fontSize: 12, color: "#9ca3af", padding: 8 }}>遷移先が登録されていません</p>
+      ) : (
+        <select
+          className="input"
+          value={value}
+          onChange={(e) => {
+            const id = e.target.value;
+            const dest = destinations.find((d) => d.id === id);
+            const url = dest ? (dest.resolved_url ?? resolveDestinationUrlFromApi(dest)) : null;
+            onChange(id, url);
+          }}
+        >
+          <option value="">遷移先を選択...</option>
+          {destinations.map((d) => (
+            <option key={d.id} value={d.id}>
+              {d.name} ({d.key})
+            </option>
+          ))}
+        </select>
+      )}
+      {resolvedUrl && (
+        <p style={{ fontSize: 11, color: "#6b7280", marginTop: 4, wordBreak: "break-all" }}>
+          実際のURL: {resolvedUrl}
+        </p>
+      )}
+    </div>
+  );
 }
 
 // ────────────────────────────────────────────────
@@ -856,22 +924,62 @@ export default function RichMenuEditorPage() {
                 )}
 
                 {selectedArea.action_type === "uri" && (
-                  <label>
+                  <div>
                     <span style={{ fontWeight: 600, color: "#374151", display: "block", marginBottom: 4 }}>
-                      URL
+                      タップ時の遷移先
                     </span>
-                    <input
-                      type="url"
-                      className="input"
-                      value={selectedArea.action_uri}
-                      onChange={(e) => updateArea(selectedIdx, { action_uri: e.target.value })}
-                      placeholder="https://example.com"
-                      maxLength={1000}
-                    />
-                    <span style={{ fontSize: 11, color: "#9ca3af" }}>
-                      タップ時に開く URL
-                    </span>
-                  </label>
+
+                    {/* モード切替 */}
+                    <div style={{ display: "flex", gap: 2, background: "#f3f4f6", borderRadius: 8, padding: 2, marginBottom: 8 }}>
+                      <button type="button"
+                        onClick={() => updateArea(selectedIdx, { destination_id: "", action_uri: selectedArea.action_uri })}
+                        style={{
+                          flex: 1, padding: "6px 0", borderRadius: 6, border: "none", fontSize: 12, fontWeight: 500, cursor: "pointer",
+                          background: !selectedArea.destination_id ? "#fff" : "transparent",
+                          color: !selectedArea.destination_id ? "#111" : "#6b7280",
+                          boxShadow: !selectedArea.destination_id ? "0 1px 2px rgba(0,0,0,0.08)" : "none",
+                        }}>
+                        URLを直接入力
+                      </button>
+                      <button type="button"
+                        onClick={() => updateArea(selectedIdx, { destination_id: "__select__" })}
+                        style={{
+                          flex: 1, padding: "6px 0", borderRadius: 6, border: "none", fontSize: 12, fontWeight: 500, cursor: "pointer",
+                          background: selectedArea.destination_id ? "#fff" : "transparent",
+                          color: selectedArea.destination_id ? "#111" : "#6b7280",
+                          boxShadow: selectedArea.destination_id ? "0 1px 2px rgba(0,0,0,0.08)" : "none",
+                        }}>
+                        保存済みの遷移先を使う
+                      </button>
+                    </div>
+
+                    {!selectedArea.destination_id ? (
+                      <>
+                        <input
+                          type="url"
+                          className="input"
+                          value={selectedArea.action_uri}
+                          onChange={(e) => updateArea(selectedIdx, { action_uri: e.target.value })}
+                          placeholder="https://example.com"
+                          maxLength={1000}
+                        />
+                        <span style={{ fontSize: 11, color: "#9ca3af" }}>
+                          タップ時に開く URL
+                        </span>
+                      </>
+                    ) : (
+                      <RichMenuDestinationSelect
+                        oaId={oaId}
+                        value={selectedArea.destination_id === "__select__" ? "" : selectedArea.destination_id}
+                        onChange={(destId, resolvedUrl) => {
+                          updateArea(selectedIdx, {
+                            destination_id: destId || "",
+                            action_uri: resolvedUrl || selectedArea.action_uri,
+                          });
+                        }}
+                      />
+                    )}
+                  </div>
                 )}
               </div>
             </div>
@@ -885,12 +993,13 @@ export default function RichMenuEditorPage() {
               const H = size === "full" ? LINE_H_FULL : LINE_H_COMPACT;
               const newArea: AreaDraft = {
                 x: 0, y: 0, width: 500, height: H,
-                action_type:  "message",
-                action_label: `ボタン${areas.length + 1}`,
-                action_text:  `ボタン${areas.length + 1}`,
-                action_data:  "",
-                action_uri:   "",
-                sort_order:   areas.length,
+                action_type:    "message",
+                action_label:   `ボタン${areas.length + 1}`,
+                action_text:    `ボタン${areas.length + 1}`,
+                action_data:    "",
+                action_uri:     "",
+                destination_id: "",
+                sort_order:     areas.length,
               };
               setAreas((prev) => [...prev, newArea]);
               setSelectedIdx(areas.length);

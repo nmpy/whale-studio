@@ -6,6 +6,8 @@ import { oaApi, workApi, getDevToken, type OaListItem, type OaListMeta, type Wor
 import { useToast } from "@/components/Toast";
 import { AnnouncementBanner } from "@/components/AnnouncementBanner";
 import { usePlatformRole } from "@/hooks/usePlatformRole";
+import { RoleBadge } from "@/components/PermissionGuard";
+import type { Role } from "@/lib/types/permissions";
 
 // ── 定数 ─────────────────────────────────────────────────────────────────
 
@@ -463,6 +465,7 @@ export default function OaListPage() {
               const statusStyle   = STATUS_BADGE_STYLE[oa.publish_status] ?? STATUS_BADGE_STYLE.draft;
               const players       = totalPlayers(oa.id);
               const roleText      = ROLE_LABEL[oa.my_role] ?? null;
+              const hasRole       = oa.my_role && oa.my_role !== 'none';
 
               return (
                 <div
@@ -552,10 +555,12 @@ export default function OaListPage() {
                     }}>
 
                       {/* 権限 */}
-                      {roleText && (
+                      {hasRole && (
                         <div>
                           <div style={LABEL_STYLE}>権限</div>
-                          <div style={VALUE_STYLE}>{roleText}</div>
+                          <div style={{ ...VALUE_STYLE, display: 'flex', alignItems: 'center' }}>
+                            <RoleBadge role={oa.my_role as Role} />
+                          </div>
                         </div>
                       )}
 

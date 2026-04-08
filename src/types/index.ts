@@ -70,6 +70,8 @@ export interface QuickReplyItem {
   hint_character_id?: string | null;
   /** false のとき LINE に表示しない / hint 照合対象外にする（省略 = true） */
   enabled?:           boolean;
+  /** action="url" のとき、destination を参照する ID（null = 直URL） */
+  destination_id?:    string | null;
   /**
    * タップ時の遷移先種別。action="text" と組み合わせて使用。
    * - "phase"   : 通常のフェーズ遷移（デフォルト動作）
@@ -458,6 +460,9 @@ export interface CreateMessageBody {
   loading_threshold_ms?: number | null;
   loading_min_seconds?: number | null;
   loading_max_seconds?: number | null;
+  // タップ遷移先
+  tap_destination_id?: string | null;
+  tap_url?: string | null;
   sort_order?: number;
   is_active?: boolean;
 }
@@ -503,6 +508,9 @@ export interface UpdateMessageBody {
   loading_threshold_ms?: number | null;
   loading_min_seconds?: number | null;
   loading_max_seconds?: number | null;
+  // タップ遷移先
+  tap_destination_id?: string | null;
+  tap_url?: string | null;
   sort_order?: number;
   is_active?: boolean;
 }
@@ -563,6 +571,10 @@ export interface RuntimePhaseMessage {
   sort_order:        number;
   /** メッセージ単位の演出タイミング設定 */
   timing: MessageTimingConfig | null;
+  /** タップ遷移先 destination ID */
+  tap_destination_id: string | null;
+  /** タップ遷移先 直接URL */
+  tap_url: string | null;
   character: {
     id:             string;
     name:           string;
@@ -740,9 +752,10 @@ export interface RichMenuArea {
   /** postback type: postback data 文字列 */
   action_data:  string | null;
   /** uri type: 開くURL */
-  action_uri:   string | null;
-  sort_order:   number;
-  created_at:   string;
+  action_uri:      string | null;
+  destination_id:  string | null;
+  sort_order:      number;
+  created_at:      string;
   updated_at:   string;
 }
 
@@ -769,8 +782,9 @@ export interface CreateRichMenuAreaBody {
   action_label: string;
   action_text?: string | null;
   action_data?: string | null;
-  action_uri?:  string | null;
-  sort_order?:  number;
+  action_uri?:      string | null;
+  destination_id?:  string | null;
+  sort_order?:      number;
 }
 
 export interface UpdateRichMenuBody {
@@ -1189,7 +1203,8 @@ export interface ReorderLiffBlocksBody {
 // ────────────────────────────────────────────────
 // Location — ビーコン / QR チェックインポイント
 // ────────────────────────────────────────────────
-export type CheckinMethod = "qr" | "gps" | "beacon";
+export type CheckinMode = "qr_only" | "gps_only" | "qr_and_gps";
+export type CheckinMethod = "qr" | "gps" | "qr_and_gps" | "beacon";
 
 export interface Location {
   id:               string;
@@ -1203,6 +1218,7 @@ export interface Location {
   longitude:        number | null;
   radius_meters:    number | null;
   gps_enabled:      boolean;
+  checkin_mode:     CheckinMode;
   cooldown_seconds: number;
   transition_id:    string | null;
   set_flags:        string;
@@ -1245,6 +1261,7 @@ export interface CreateLocationBody {
   longitude?:       number;
   radius_meters?:   number;
   gps_enabled?:     boolean;
+  checkin_mode?:    CheckinMode;
   cooldown_seconds?: number;
   transition_id?:   string;
   set_flags?:       string;
@@ -1265,6 +1282,7 @@ export interface UpdateLocationBody {
   longitude?:        number | null;
   radius_meters?:    number | null;
   gps_enabled?:      boolean;
+  checkin_mode?:     CheckinMode;
   cooldown_seconds?: number;
   transition_id?:    string | null;
   set_flags?:        string;
@@ -1297,6 +1315,8 @@ export interface LineDestination {
   updated_at:        string;
   /** API 側で計算された解決済みURL */
   resolved_url?:     string | null;
+  /** 使用箇所の件数（一覧API で返される） */
+  usage_count?:      number;
 }
 
 export interface CreateLineDestinationBody {
@@ -1402,18 +1422,71 @@ export interface StampRallyProgress {
 }
 
 // ── LocationVisit 集計 ──
+
+export interface CheckinMethodBreakdown {
+  qr_count:  number;
+  gps_count: number;
+}
+
+export interface GpsDistanceStats {
+  sample_count:        number;
+  avg_distance_meters: number;
+  min_distance_meters: number;
+  max_distance_meters: number;
+}
+
 export interface LocationVisitSummary {
-  location_id:    string;
-  location_name:  string;
-  total_visits:   number;
-  unique_users:   number;
-  last_visited_at: string | null;
+  location_id:          string;
+  location_name:        string;
+  total_visits:         number;
+  unique_users:         number;
+  qr_count:             number;
+  gps_count:            number;
+  avg_distance_meters:  number | null;
+  gps_attempts:         number;
+  gps_successes:        number;
+  gps_success_rate:     number | null;
+  last_visited_at:      string | null;
+}
+
+/** GPS 試行の失敗理由内訳 */
+export interface GpsFailureBreakdown {
+  out_of_range:              number;
+  permission_denied:         number;
+  gps_unavailable:           number;
+  invalid_request:           number;
+  location_not_supported:    number;
+  location_config_incomplete: number;
+}
+
+/** GPS 試行全体の統計 */
+export interface GpsAttemptStats {
+  total_attempts:   number;
+  successes:        number;
+  failures:         number;
+  success_rate:     number | null;
+  failure_breakdown: GpsFailureBreakdown;
 }
 
 export interface LocationVisitStats {
-  total_checkins:    number;
-  unique_users:      number;
-  location_count:    number;
+  total_checkins:     number;
+  unique_users:       number;
+  location_count:     number;
   recent_7d_checkins: number;
-  by_location:       LocationVisitSummary[];
+  method_breakdown:   CheckinMethodBreakdown;
+  gps_distance:       GpsDistanceStats | null;
+  gps_attempts:       GpsAttemptStats;
+  by_location:        LocationVisitSummary[];
+}
+
+/** チェックイン試行ログ送信用（クライアント → API） */
+export interface CheckinAttemptLogRequest {
+  work_id:     string;
+  location_id: string;
+  line_user_id: string;
+  method:      string;
+  status:      string;
+  failure_reason?: string;
+  lat?:        number;
+  lng?:        number;
 }

@@ -147,6 +147,51 @@ export async function requireRole(
   return { ok: true, role: member.role, status: member.status };
 }
 
+// ── Owner 保護ガード ──────────────────────────────────────────────────
+
+/**
+ * 最後のアクティブ owner を消そうとしたときに投げるエラー。
+ * API ハンドラで catch → badRequest に変換する。
+ */
+export class LastOwnerError extends Error {
+  public readonly code = 'LAST_OWNER' as const;
+  constructor(message = 'このアカウントには少なくとも1人のアクティブなオーナーが必要です') {
+    super(message);
+    this.name = 'LastOwnerError';
+  }
+}
+
+/**
+ * ワークスペースに少なくとも 1 人のアクティブ owner が残ることを保証する。
+ *
+ * excludeMemberId を除外した状態で active owner をカウントし、
+ * 0 になる場合は LastOwnerError を投げる。
+ *
+ * 必ず prisma.$transaction 内で呼ぶこと（race condition 防止）。
+ *
+ * @param workspaceId  ワークスペース ID
+ * @param excludeMemberId  除外するメンバー ID（変更/削除対象）
+ * @param tx  Prisma トランザクションクライアント
+ */
+export async function ensureActiveOwnerRemains(
+  workspaceId: string,
+  excludeMemberId: string,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  tx: { workspaceMember: { count: (...args: any[]) => Promise<number> } },
+): Promise<void> {
+  const activeOwnerCount = await tx.workspaceMember.count({
+    where: {
+      workspaceId,
+      role:   'owner',
+      status: 'active',
+      id:     { not: excludeMemberId },
+    },
+  });
+  if (activeOwnerCount === 0) {
+    throw new LastOwnerError();
+  }
+}
+
 export { roleAtLeast };
 export type { Role };
 export { rolesAtLeast } from '@/lib/types/permissions';

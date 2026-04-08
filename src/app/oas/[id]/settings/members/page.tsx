@@ -287,7 +287,11 @@ function MembersSection({
 
   async function handleRoleChange(m: WorkspaceMember, newRole: Role) {
     const name = m.email ?? m.user_id;
-    if (!confirm(CONFIRM.roleChange(name, ROLE_LABELS[newRole]))) return;
+    // owner の role 変更は強い確認
+    const msg = m.role === "owner" && newRole !== "owner"
+      ? CONFIRM.ownerRoleChange(name, ROLE_LABELS[newRole])
+      : CONFIRM.roleChange(name, ROLE_LABELS[newRole]);
+    if (!confirm(msg)) return;
     try {
       await memberApi.updateRole(token, oaId, m.id, newRole);
       showToast(TOAST.roleChanged, "success");
@@ -299,10 +303,13 @@ function MembersSection({
 
   async function handleStatusChange(m: WorkspaceMember, newStatus: string) {
     const name = m.email ?? m.user_id;
+    const label = STATUS_LABELS[newStatus] ?? newStatus;
     if (newStatus === "suspended") {
       if (!confirm(CONFIRM.suspend(name))) return;
+    } else if (m.role === "owner" && newStatus !== "active") {
+      // owner の停止は強い確認
+      if (!confirm(CONFIRM.ownerStatusChange(name, label))) return;
     } else {
-      const label = STATUS_LABELS[newStatus] ?? newStatus;
       if (!confirm(CONFIRM.statusChange(name, label))) return;
     }
     try {
@@ -316,7 +323,11 @@ function MembersSection({
 
   async function handleDelete(m: WorkspaceMember) {
     const name = m.email ?? m.user_id;
-    if (!confirm(CONFIRM.deleteMember(name))) return;
+    // owner の削除は強い確認
+    const msg = m.role === "owner"
+      ? CONFIRM.deleteOwner(name)
+      : CONFIRM.deleteMember(name);
+    if (!confirm(msg)) return;
     try {
       await memberApi.remove(token, oaId, m.id);
       showToast(TOAST.memberDeleted, "success");
@@ -403,8 +414,10 @@ function MembersSection({
                            : undefined;
 
         // ── status select の無効化理由 ────────────────────────────
-        const statusDisabled = isSelf;
-        const statusTitle    = isSelf ? TOOLTIP.selfStatusChange : undefined;
+        const statusDisabled = isSelf || isLastOwn;
+        const statusTitle    = isSelf     ? TOOLTIP.selfStatusChange
+                             : isLastOwn  ? TOOLTIP.lastOwnerStatusChange
+                             : undefined;
 
         // ── 削除ボタンの無効化理由 ────────────────────────────────
         const deleteDisabled = isSelf || isLastOwn;

@@ -11,18 +11,8 @@ import { requireRole } from "@/lib/rbac";
 import { updateLocationSchema, formatZodErrors } from "@/lib/validations";
 import { ZodError } from "zod";
 
-function toResponse(
-  l: {
-    id: string; workId: string; name: string; description: string | null;
-    beaconUuid: string | null; beaconMajor: number | null; beaconMinor: number | null;
-    cooldownSeconds: number; transitionId: string | null; setFlags: string;
-    sortOrder: number; isActive: boolean; createdAt: Date; updatedAt: Date;
-  },
-  transition?: {
-    id: string; label: string;
-    toPhase: { id: string; name: string; phaseType: string } | null;
-  } | null,
-) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function toResponse(l: any, transition?: any) {
   return {
     id:               l.id,
     work_id:          l.workId,
@@ -31,11 +21,18 @@ function toResponse(
     beacon_uuid:      l.beaconUuid,
     beacon_major:     l.beaconMajor,
     beacon_minor:     l.beaconMinor,
+    latitude:         l.latitude,
+    longitude:        l.longitude,
+    radius_meters:    l.radiusMeters,
+    gps_enabled:      l.gpsEnabled,
     cooldown_seconds: l.cooldownSeconds,
     transition_id:    l.transitionId,
     set_flags:        l.setFlags,
     sort_order:       l.sortOrder,
     is_active:        l.isActive,
+    stamp_enabled:    l.stampEnabled,
+    stamp_label:      l.stampLabel,
+    stamp_order:      l.stampOrder,
     created_at:       l.createdAt,
     updated_at:       l.updatedAt,
     ...(transition !== undefined && {
@@ -112,11 +109,18 @@ export const PATCH = withAuth<{ id: string }>(async (req, { params }, user) => {
         ...(data.beacon_uuid      !== undefined && { beaconUuid:      data.beacon_uuid }),
         ...(data.beacon_major     !== undefined && { beaconMajor:     data.beacon_major }),
         ...(data.beacon_minor     !== undefined && { beaconMinor:     data.beacon_minor }),
+        ...(data.latitude         !== undefined && { latitude:        data.latitude }),
+        ...(data.longitude        !== undefined && { longitude:       data.longitude }),
+        ...(data.radius_meters    !== undefined && { radiusMeters:    data.radius_meters }),
+        ...(data.gps_enabled      !== undefined && { gpsEnabled:      data.gps_enabled }),
         ...(data.cooldown_seconds !== undefined && { cooldownSeconds: data.cooldown_seconds }),
         ...(data.transition_id    !== undefined && { transitionId:    data.transition_id }),
         ...(data.set_flags        !== undefined && { setFlags:        data.set_flags }),
         ...(data.sort_order       !== undefined && { sortOrder:       data.sort_order }),
         ...(data.is_active        !== undefined && { isActive:        data.is_active }),
+        ...(data.stamp_enabled    !== undefined && { stampEnabled:    data.stamp_enabled }),
+        ...(data.stamp_label      !== undefined && { stampLabel:      data.stamp_label }),
+        ...(data.stamp_order      !== undefined && { stampOrder:      data.stamp_order }),
       },
       include: includeTransition,
     });

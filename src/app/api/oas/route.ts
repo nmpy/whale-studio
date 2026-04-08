@@ -56,17 +56,21 @@ export const GET = withAuth(async (req, _ctx, user) => {
     // それ以外は workspace_members に登録済みの OA のみ返す
     const showAll = isPlatformOwner(user.id);
 
+    // メンバーシップでフィルタ
+    const memberships = showAll
+      ? []
+      : await prisma.workspaceMember.findMany({
+          where: { userId: user.id },
+          select: { workspaceId: true, role: true, status: true },
+        });
+    if (process.env.NODE_ENV !== "production" || process.env.DEBUG_OAS === "true") {
+      console.log(`[GET /api/oas] user.id=${user.id} showAll=${showAll} memberships=${JSON.stringify(memberships)}`);
+    }
+
     const memberFilter = showAll
       ? {}
       : {
-          id: {
-            in: (
-              await prisma.workspaceMember.findMany({
-                where: { userId: user.id },
-                select: { workspaceId: true },
-              })
-            ).map((m) => m.workspaceId),
-          },
+          id: { in: memberships.map((m) => m.workspaceId) },
         };
 
     const where = {
@@ -137,6 +141,20 @@ export const GET = withAuth(async (req, _ctx, user) => {
 // ── POST /api/oas ────────────────────────────────
 export const POST = withAuth(async (req, _ctx, user) => {
   try {
+    // 本番環境で bypass-admin による作成を禁止
+    if (process.env.NODE_ENV === "production" && user.id === "bypass-admin") {
+      console.error("[POST /api/oas] 🚨 bypass-admin cannot create production OAs");
+      return badRequest("bypass-admin ユーザーでは本番 OA を作成できません");
+    }
+
+    const isBypass = user.id === "bypass-admin" || user.id === "dev-user";
+    if (isBypass) {
+      console.warn("[POST /api/oas] ⚠️ BYPASS/DEV user creating OA — resources will be owned by stub user", {
+        userId: user.id,
+        bypass: process.env.BYPASS_AUTH === "true",
+      });
+    }
+
     const body = await req.json();
     const data = createOaSchema.parse(body);
 
@@ -154,22 +172,24 @@ export const POST = withAuth(async (req, _ctx, user) => {
         },
       });
 
-      // dev-user 以外のユーザーのみ明示的に workspace_members に登録
-      // （dev-user は getWorkspaceRole で常に owner が返るため不要）
-      if (
-        process.env.NEXT_PUBLIC_SUPABASE_URL ||
-        process.env.NODE_ENV !== "development" ||
-        user.id !== "dev-user"
-      ) {
-        await tx.workspaceMember.create({
-          data: {
-            workspaceId: newOa.id,
-            userId:      user.id,
-            role:        "owner",
-            invitedBy:   user.id,
-          },
-        });
-      }
+      // 常に workspace_members に owner を登録する
+      // （dev-user / bypass-admin でも DB に記録し、後から実ユーザーへ移行可能にする）
+      await tx.workspaceMember.create({
+        data: {
+          workspaceId: newOa.id,
+          userId:      user.id,
+          role:        "owner",
+          invitedBy:   user.id,
+        },
+      });
+
+      console.log("[POST /api/oas] workspace_member created", {
+        userId:  user.id,
+        email:   user.email ?? "(none)",
+        role:    "owner",
+        oaId:    newOa.id,
+        bypass:  isBypass,
+      });
 
       return newOa;
     });

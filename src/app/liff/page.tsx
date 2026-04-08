@@ -2,9 +2,12 @@
 
 // src/app/liff/page.tsx
 // LIFF ロケーションチェックインページ（スマホファースト）
+// QR（メイン導線）+ GPS（補助導線）+ スタンプラリー進捗
 
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { GpsCheckin } from "./_gps-checkin";
+import { StampRallyProgressView } from "./_stamp-rally-progress";
 import type { CheckinResult } from "@/types";
 
 type LiffStep =
@@ -21,6 +24,7 @@ function CheckinContent() {
 
   const [state, setState] = useState<LiffStep>({ step: "init", detail: "LIFF を初期化中..." });
   const [lineUserId, setLineUserId] = useState<string | null>(null);
+  const [stampRefreshKey, setStampRefreshKey] = useState(0);
   const submittingRef = useRef(false);
 
   // ── LIFF 初期化 ──
@@ -73,7 +77,7 @@ function CheckinContent() {
     return () => { cancelled = true; };
   }, [locationId, workId]);
 
-  // ── チェックイン送信（二重送信防止） ──
+  // ── QR チェックイン送信 ──
   const handleCheckin = useCallback(async () => {
     if (!lineUserId || !locationId || !workId) return;
     if (submittingRef.current) return;
@@ -85,7 +89,12 @@ function CheckinContent() {
       const res = await fetch("/api/liff/checkin", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ line_user_id: lineUserId, location_id: locationId, work_id: workId }),
+        body: JSON.stringify({
+          line_user_id: lineUserId,
+          location_id: locationId,
+          work_id: workId,
+          checkin_method: "qr",
+        }),
       });
 
       const json = await res.json();
@@ -95,13 +104,22 @@ function CheckinContent() {
         return;
       }
 
-      setState({ step: "result", result: json.data as CheckinResult });
+      const result = json.data as CheckinResult;
+      setState({ step: "result", result });
+      if (result.status === "checked_in") setStampRefreshKey((k) => k + 1);
     } catch {
       setState({ step: "error", code: "NETWORK", message: "通信エラーが発生しました。電波状況を確認してもう一度お試しください。" });
     } finally {
       submittingRef.current = false;
     }
   }, [lineUserId, locationId, workId]);
+
+  // ── GPS チェックイン結果 ──
+  const handleGpsResult = useCallback((data: unknown) => {
+    const result = data as CheckinResult;
+    setState({ step: "result", result });
+    if (result.status === "checked_in") setStampRefreshKey((k) => k + 1);
+  }, []);
 
   // ── LIFF ウィンドウを閉じる ──
   const handleClose = useCallback(async () => {
@@ -115,18 +133,15 @@ function CheckinContent() {
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100vh", padding: "24px" }}>
 
-      {/* ── 初期化中 ── */}
       {state.step === "init" && (
         <div style={{ textAlign: "center" }}>
-          <div style={{ width: 40, height: 40, border: "3px solid #e5e7eb", borderTopColor: "#2563eb", borderRadius: "50%", animation: "spin 1s linear infinite", margin: "0 auto 16px" }} />
+          <Spinner />
           <p style={{ fontSize: 14, color: "#6b7280" }}>{state.detail}</p>
-          <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
         </div>
       )}
 
-      {/* ── エラー ── */}
       {state.step === "error" && (
-        <div style={{ background: "#fff", borderRadius: 16, boxShadow: "0 4px 20px rgba(0,0,0,0.08)", padding: 32, maxWidth: 360, width: "100%", textAlign: "center" }}>
+        <div style={cardStyle}>
           <div style={{ fontSize: 40, marginBottom: 12 }}>
             {state.code === "NOT_IN_LINE" ? "📱" : state.code === "NETWORK" ? "📡" : "⚠️"}
           </div>
@@ -138,69 +153,131 @@ function CheckinContent() {
         </div>
       )}
 
-      {/* ── 確認 ── */}
       {state.step === "confirm" && (
-        <div style={{ background: "#fff", borderRadius: 16, boxShadow: "0 4px 20px rgba(0,0,0,0.08)", padding: 32, maxWidth: 360, width: "100%", textAlign: "center" }}>
-          <div style={{ fontSize: 40, marginBottom: 12 }}>📍</div>
-          <h1 style={{ fontSize: 20, fontWeight: 700, color: "#111827", marginBottom: 8 }}>チェックイン</h1>
-          <p style={{ fontSize: 14, color: "#6b7280", marginBottom: 24 }}>この場所に来ましたか？</p>
-          <button onClick={handleCheckin} style={btnPrimary}>チェックインする</button>
-          <button onClick={handleClose} style={btnGhost}>キャンセル</button>
-        </div>
+        <>
+          <div style={cardStyle}>
+            <div style={{ fontSize: 40, marginBottom: 12 }}>📍</div>
+            <h1 style={{ fontSize: 20, fontWeight: 700, color: "#111827", marginBottom: 8 }}>チェックイン</h1>
+            <p style={{ fontSize: 14, color: "#6b7280", marginBottom: 24 }}>この場所に来ましたか？</p>
+            <button onClick={handleCheckin} style={btnPrimary}>チェックインする</button>
+
+            {/* GPS 補助導線 */}
+            {lineUserId && locationId && workId && (
+              <GpsCheckin
+                locationId={locationId}
+                workId={workId}
+                lineUserId={lineUserId}
+                onResult={handleGpsResult}
+              />
+            )}
+
+            <button onClick={handleClose} style={btnGhost}>キャンセル</button>
+          </div>
+
+          {/* スタンプ進捗（confirm時に表示） */}
+          {lineUserId && workId && (
+            <StampRallyProgressView workId={workId} lineUserId={lineUserId} refreshKey={stampRefreshKey} />
+          )}
+        </>
       )}
 
-      {/* ── 送信中 ── */}
       {state.step === "submitting" && (
         <div style={{ textAlign: "center" }}>
-          <div style={{ width: 40, height: 40, border: "3px solid #e5e7eb", borderTopColor: "#2563eb", borderRadius: "50%", animation: "spin 1s linear infinite", margin: "0 auto 16px" }} />
+          <Spinner />
           <p style={{ fontSize: 14, color: "#6b7280" }}>チェックイン中...</p>
-          <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
         </div>
       )}
 
-      {/* ── 結果 ── */}
       {state.step === "result" && (
-        <div style={{ background: "#fff", borderRadius: 16, boxShadow: "0 4px 20px rgba(0,0,0,0.08)", padding: 32, maxWidth: 360, width: "100%", textAlign: "center" }}>
-          {state.result.status === "checked_in" ? (
-            <>
-              <div style={{ fontSize: 40, marginBottom: 12 }}>✅</div>
-              <h2 style={{ fontSize: 20, fontWeight: 700, color: "#111827", marginBottom: 8 }}>チェックイン完了</h2>
-              <p style={{ fontSize: 14, color: "#6b7280" }}>{state.result.message}</p>
-              {state.result.transition && (
-                <div style={{ marginTop: 12, padding: "8px 12px", background: "#eff6ff", borderRadius: 8, fontSize: 13, color: "#1d4ed8" }}>
-                  次のフェーズ: {state.result.transition.name}
-                </div>
-              )}
-              {state.result.flags_applied && Object.keys(state.result.flags_applied).length > 0 && (
-                <div style={{ marginTop: 8, fontSize: 11, color: "#9ca3af" }}>
-                  フラグ更新: {Object.entries(state.result.flags_applied).map(([k, v]) => `${k}=${String(v)}`).join(", ")}
-                </div>
-              )}
-            </>
-          ) : (
-            <>
-              <div style={{ fontSize: 40, marginBottom: 12 }}>⏳</div>
-              <h2 style={{ fontSize: 20, fontWeight: 700, color: "#111827", marginBottom: 8 }}>{state.result.location_name}</h2>
-              <p style={{ fontSize: 14, color: "#6b7280" }}>{state.result.message}</p>
-              <CooldownTimer seconds={state.result.cooldown_remaining_seconds} />
-            </>
+        <>
+          <div style={cardStyle}>
+            {state.result.status === "checked_in" ? (
+              <>
+                <div style={{ fontSize: 40, marginBottom: 12 }}>✅</div>
+                <h2 style={{ fontSize: 20, fontWeight: 700, color: "#111827", marginBottom: 8 }}>チェックイン完了</h2>
+                <p style={{ fontSize: 14, color: "#6b7280" }}>{state.result.message}</p>
+
+                {/* スタンプ情報 */}
+                {state.result.stamp && (
+                  <div style={{ marginTop: 12, padding: "10px 14px", background: state.result.stamp.newly_collected ? "#f0fdf4" : "#f9fafb", borderRadius: 8, fontSize: 13 }}>
+                    {state.result.stamp.newly_collected ? (
+                      <span style={{ color: "#16a34a", fontWeight: 600 }}>
+                        新しいスタンプを獲得しました！（{state.result.stamp.completed_count}/{state.result.stamp.total_count}）
+                      </span>
+                    ) : (
+                      <span style={{ color: "#6b7280" }}>
+                        このスポットは達成済みです（{state.result.stamp.completed_count}/{state.result.stamp.total_count}）
+                      </span>
+                    )}
+                    {state.result.stamp.is_completed && (
+                      <div style={{ marginTop: 4, fontWeight: 700, color: "#16a34a" }}>
+                        全スポットコンプリート！
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* GPS 距離情報 */}
+                {state.result.distance_meters !== undefined && (
+                  <p style={{ marginTop: 8, fontSize: 11, color: "#9ca3af" }}>
+                    距離: 約{state.result.distance_meters}m（許容: {state.result.radius_meters}m）
+                  </p>
+                )}
+
+                {state.result.transition && (
+                  <div style={{ marginTop: 12, padding: "8px 12px", background: "#eff6ff", borderRadius: 8, fontSize: 13, color: "#1d4ed8" }}>
+                    次のフェーズ: {state.result.transition.name}
+                  </div>
+                )}
+                {state.result.flags_applied && Object.keys(state.result.flags_applied).length > 0 && (
+                  <div style={{ marginTop: 8, fontSize: 11, color: "#9ca3af" }}>
+                    フラグ更新: {Object.entries(state.result.flags_applied).map(([k, v]) => `${k}=${String(v)}`).join(", ")}
+                  </div>
+                )}
+              </>
+            ) : state.result.status === "cooldown" ? (
+              <>
+                <div style={{ fontSize: 40, marginBottom: 12 }}>⏳</div>
+                <h2 style={{ fontSize: 20, fontWeight: 700, color: "#111827", marginBottom: 8 }}>{state.result.location_name}</h2>
+                <p style={{ fontSize: 14, color: "#6b7280" }}>{state.result.message}</p>
+                <CooldownTimer seconds={state.result.cooldown_remaining_seconds} />
+              </>
+            ) : (
+              // out_of_range
+              <>
+                <div style={{ fontSize: 40, marginBottom: 12 }}>📏</div>
+                <h2 style={{ fontSize: 20, fontWeight: 700, color: "#111827", marginBottom: 8 }}>範囲外です</h2>
+                <p style={{ fontSize: 14, color: "#6b7280" }}>{state.result.message}</p>
+              </>
+            )}
+            <button onClick={handleClose} style={btnGhost}>閉じる</button>
+          </div>
+
+          {/* スタンプ進捗（result時にも表示） */}
+          {lineUserId && workId && (
+            <StampRallyProgressView workId={workId} lineUserId={lineUserId} refreshKey={stampRefreshKey} />
           )}
-          <button onClick={handleClose} style={btnGhost}>閉じる</button>
-        </div>
+        </>
       )}
     </div>
   );
 }
 
-/** クールダウンのカウントダウン表示 */
+function Spinner() {
+  return (
+    <>
+      <div style={{ width: 40, height: 40, border: "3px solid #e5e7eb", borderTopColor: "#2563eb", borderRadius: "50%", animation: "spin 1s linear infinite", margin: "0 auto 16px" }} />
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+    </>
+  );
+}
+
 function CooldownTimer({ seconds }: { seconds: number }) {
   const [remaining, setRemaining] = useState(seconds);
 
   useEffect(() => {
     if (remaining <= 0) return;
-    const timer = setInterval(() => {
-      setRemaining((r) => Math.max(0, r - 1));
-    }, 1000);
+    const timer = setInterval(() => setRemaining((r) => Math.max(0, r - 1)), 1000);
     return () => clearInterval(timer);
   }, [remaining]);
 
@@ -217,24 +294,26 @@ function CooldownTimer({ seconds }: { seconds: number }) {
   );
 }
 
-// ── 共通スタイル ──
+const cardStyle: React.CSSProperties = {
+  background: "#fff", borderRadius: 16, boxShadow: "0 4px 20px rgba(0,0,0,0.08)",
+  padding: 32, maxWidth: 360, width: "100%", textAlign: "center",
+};
 const btnPrimary: React.CSSProperties = {
   width: "100%", padding: "14px 0", background: "#2563eb", color: "#fff",
   border: "none", borderRadius: 12, fontSize: 15, fontWeight: 600,
-  cursor: "pointer", marginTop: 8, transition: "background 0.15s",
+  cursor: "pointer", marginTop: 8,
 };
 const btnGhost: React.CSSProperties = {
   width: "100%", padding: "12px 0", background: "#f3f4f6", color: "#374151",
   border: "none", borderRadius: 12, fontSize: 14, fontWeight: 500,
-  cursor: "pointer", marginTop: 8, transition: "background 0.15s",
+  cursor: "pointer", marginTop: 8,
 };
 
 export default function LiffPage() {
   return (
     <Suspense fallback={
       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh" }}>
-        <div style={{ width: 40, height: 40, border: "3px solid #e5e7eb", borderTopColor: "#2563eb", borderRadius: "50%", animation: "spin 1s linear infinite" }} />
-        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+        <Spinner />
       </div>
     }>
       <CheckinContent />

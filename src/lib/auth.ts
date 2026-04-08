@@ -74,6 +74,80 @@ function recordUserActivity(userId: string, email?: string): void {
 }
 
 /**
+ * メンバーシップの整合性をチェック（fire-and-forget）。
+ *
+ * 同一プロセス内で userId ごとに 1 回だけ実行。
+ * リクエストをブロックしない。エラーは無視。
+ *
+ * Level 1: active membership が 0 件なら warning
+ * Level 2: 未承諾の有効招待があれば warning（自動 accept はしない）
+ * Level 3: 同一 workspace に bypass-admin membership があれば warning（自動移管はしない）
+ */
+const _membershipChecked = new Set<string>();
+
+function checkMembershipIntegrity(userId: string, email?: string): void {
+  if (userId === "bypass-admin" || userId === "dev-user") return;
+  if (_membershipChecked.has(userId)) return;
+  _membershipChecked.add(userId);
+
+  (async () => {
+    try {
+      // Level 1: active membership count
+      const memberships = await prisma.workspaceMember.findMany({
+        where: { userId, status: "active" },
+        select: { workspaceId: true, role: true },
+      });
+
+      if (memberships.length === 0) {
+        console.warn(
+          `[SelfHeal] ユーザーにアクティブなメンバーシップがありません userId=${userId} email=${email ?? "(none)"}`
+        );
+      }
+
+      // Level 2: pending invitations (log only, no auto-accept)
+      if (email) {
+        const pendingInvitations = await prisma.invitation.findMany({
+          where: {
+            email,
+            acceptedAt: null,
+            expiresAt: { gt: new Date() },
+          },
+          select: { id: true, oaId: true, role: true },
+        });
+        if (pendingInvitations.length > 0) {
+          console.warn(
+            `[SelfHeal] 未承諾の招待が ${pendingInvitations.length} 件あります`,
+            `userId=${userId} email=${email}`,
+            `invitations=${JSON.stringify(pendingInvitations.map((i) => ({ oaId: i.oaId, role: i.role })))}`
+          );
+        }
+      }
+
+      // Level 3: bypass-admin membership in same workspaces
+      if (memberships.length > 0) {
+        const wsIds = memberships.map((m) => m.workspaceId);
+        const bypassMembers = await prisma.workspaceMember.findMany({
+          where: {
+            workspaceId: { in: wsIds },
+            userId: "bypass-admin",
+          },
+          select: { workspaceId: true, role: true },
+        });
+        if (bypassMembers.length > 0) {
+          console.warn(
+            `[SelfHeal] bypass-admin メンバーシップを検出（同一ワークスペース）`,
+            `userId=${userId}`,
+            `workspaces=${JSON.stringify(bypassMembers.map((b) => b.workspaceId))}`
+          );
+        }
+      }
+    } catch {
+      /* silent */
+    }
+  })();
+}
+
+/**
  * リクエストから認証済みユーザーを取得する。
  *
  * 認証フロー（優先順位順）:
@@ -258,9 +332,11 @@ export function withAuth<T = Record<string, string>>(handler: Handler<T>) {
         );
       }
       console.log(`[withAuth] 認証OK ${req.method} ${req.nextUrl.pathname} userId=${user.id}`);
-      // 操作ユーザーを記録 & profile 自動作成（fire-and-forget: リクエストをブロックしない）
+      // 操作ユーザーを記録 & profile 自動作成 & メンバーシップ整合性チェック
+      // （すべて fire-and-forget: リクエストをブロックしない）
       recordUserActivity(user.id, user.email);
       ensureProfile(user.id, user.email);
+      checkMembershipIntegrity(user.id, user.email);
       return await handler(req, ctx, user);
     } catch (err) {
       console.error(`[withAuth] UNCAUGHT in ${req.method} ${req.nextUrl.pathname}:`, err);

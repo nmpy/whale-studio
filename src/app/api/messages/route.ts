@@ -58,6 +58,9 @@ function toResponse(m: {
   loadingThresholdMs?: number | null;
   loadingMinSeconds?: number | null;
   loadingMaxSeconds?: number | null;
+  // タップ遷移先
+  tapDestinationId?: string | null;
+  tapUrl?: string | null;
   sortOrder: number; isActive: boolean; createdAt: Date; updatedAt: Date;
   phase?: { id: string; name: string; phaseType: string } | null;
   character?: { id: string; name: string; iconType: string; iconText: string | null; iconImageUrl: string | null; iconColor: string | null } | null;
@@ -100,6 +103,9 @@ function toResponse(m: {
     loading_threshold_ms: m.loadingThresholdMs ?? null,
     loading_min_seconds:  m.loadingMinSeconds ?? null,
     loading_max_seconds:  m.loadingMaxSeconds ?? null,
+    // タップ遷移先
+    tap_destination_id:   m.tapDestinationId ?? null,
+    tap_url:              m.tapUrl ?? null,
     sort_order:           m.sortOrder,
     is_active:            m.isActive,
     created_at:           m.createdAt,
@@ -246,6 +252,9 @@ export const POST = withAuth(async (req, _ctx, user) => {
         loadingThresholdMs: data.loading_threshold_ms ?? null,
         loadingMinSeconds:  data.loading_min_seconds  ?? null,
         loadingMaxSeconds:  data.loading_max_seconds  ?? null,
+        // タップ遷移先
+        tapDestinationId:   data.tap_destination_id   ?? null,
+        tapUrl:             data.tap_url              ?? null,
         sortOrder:          data.sort_order,
         isActive:           data.is_active,
       },

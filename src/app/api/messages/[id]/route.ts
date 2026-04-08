@@ -48,6 +48,9 @@ type PrismaMessageWithRelations = {
   loadingThresholdMs: number | null;
   loadingMinSeconds: number | null;
   loadingMaxSeconds: number | null;
+  // タップ遷移先
+  tapDestinationId: string | null;
+  tapUrl: string | null;
   sortOrder: number; isActive: boolean; createdAt: Date; updatedAt: Date;
   phase:     { id: string; name: string; phaseType: string } | null;
   character: {
@@ -116,6 +119,9 @@ function toResponse(m: PrismaMessageWithRelations) {
     loading_threshold_ms:  m.loadingThresholdMs ?? null,
     loading_min_seconds:   m.loadingMinSeconds ?? null,
     loading_max_seconds:   m.loadingMaxSeconds ?? null,
+    // タップ遷移先
+    tap_destination_id:    m.tapDestinationId ?? null,
+    tap_url:               m.tapUrl ?? null,
     sort_order:            m.sortOrder,
     is_active:             m.isActive,
     created_at:            m.createdAt,
@@ -262,6 +268,9 @@ export const PATCH = withAuth<{ id: string }>(async (req, { params }, user) => {
         ...(data.loading_threshold_ms !== undefined && { loadingThresholdMs: data.loading_threshold_ms }),
         ...(data.loading_min_seconds  !== undefined && { loadingMinSeconds:  data.loading_min_seconds }),
         ...(data.loading_max_seconds  !== undefined && { loadingMaxSeconds:  data.loading_max_seconds }),
+        // タップ遷移先
+        ...(data.tap_destination_id !== undefined && { tapDestinationId: data.tap_destination_id }),
+        ...(data.tap_url            !== undefined && { tapUrl:           data.tap_url }),
         ...(data.sort_order        !== undefined && { sortOrder:       data.sort_order }),
         ...(data.is_active         !== undefined && { isActive:        data.is_active }),
       },

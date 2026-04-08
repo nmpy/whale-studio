@@ -75,8 +75,21 @@ export const CONFIRM = {
   roleChange: (name: string, roleLabel: string) =>
     `${name} のロールを「${roleLabel}」に変更しますか？`,
 
+  /** オーナーのロール変更は強い警告付き */
+  ownerRoleChange: (name: string, roleLabel: string) =>
+    `⚠️ ${name} はオーナーです。\n\n` +
+    `ロールを「${roleLabel}」に変更すると、管理権限が縮小されます。\n` +
+    `本当に変更しますか？`,
+
   statusChange: (name: string, statusLabel: string) =>
     `${name} のステータスを「${statusLabel}」に変更しますか？`,
+
+  /** オーナーの停止・凍結は強い警告付き */
+  ownerStatusChange: (name: string, statusLabel: string) =>
+    `⚠️ ${name} はオーナーです。\n\n` +
+    `ステータスを「${statusLabel}」に変更すると、\n` +
+    `このオーナーはワークスペースにアクセスできなくなります。\n` +
+    `本当に変更しますか？`,
 
   /** 凍結は強い警告ダイアログ */
   suspend: (name: string) =>
@@ -87,6 +100,12 @@ export const CONFIRM = {
 
   deleteMember: (name: string) =>
     `${name} をワークスペースから削除しますか？\nこの操作は取り消せません。`,
+
+  /** オーナーの削除は強い警告付き */
+  deleteOwner: (name: string) =>
+    `⚠️ ${name} はオーナーです。\n\n` +
+    `削除するとこのユーザーのオーナー権限が失われます。\n` +
+    `この操作は取り消せません。本当に削除しますか？`,
 
   revokeInvitation: (email: string) =>
     `${email} への招待を取り消しますか？`,
@@ -120,12 +139,13 @@ export const TOAST = {
 // ────────────────────────────────────────────────────────────────────
 
 export const TOOLTIP = {
-  selfRoleChange:       "自分のロールは変更できません",
-  lastOwnerRoleChange:  "最後のオーナーのロールは変更できません",
-  selfStatusChange:     "自分のステータスは変更できません",
-  selfDelete:           "自分を削除することはできません",
-  lastOwnerDelete:      "最後のオーナーは削除できません",
-  deleteButton:         "メンバーを削除",
+  selfRoleChange:         "自分のロールは変更できません",
+  lastOwnerRoleChange:    "最後のオーナーのロールは変更できません",
+  selfStatusChange:       "自分のステータスは変更できません",
+  lastOwnerStatusChange:  "最後のオーナーのステータスは変更できません",
+  selfDelete:             "自分を削除することはできません",
+  lastOwnerDelete:        "最後のオーナーは削除できません",
+  deleteButton:           "メンバーを削除",
 } as const;
 
 // ────────────────────────────────────────────────────────────────────

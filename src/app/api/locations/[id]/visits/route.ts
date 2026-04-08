@@ -29,11 +29,13 @@ export const GET = withAuth<{ id: string }>(async (req, { params }, user) => {
     });
 
     return ok(visits.map((v) => ({
-      id:           v.id,
-      line_user_id: v.lineUserId,
-      location_id:  v.locationId,
-      work_id:      v.workId,
-      visited_at:   v.visitedAt,
+      id:              v.id,
+      line_user_id:    v.lineUserId,
+      location_id:     v.locationId,
+      work_id:         v.workId,
+      checkin_method:  v.checkinMethod,
+      distance_meters: v.distanceMeters,
+      visited_at:      v.visitedAt,
     })));
   } catch (err) {
     return serverError(err);

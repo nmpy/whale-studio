@@ -286,6 +286,8 @@ function messageRowToRuntime(
     hint_mode:         (m.hintMode ?? "always") as import("@/types").HintMode,
     sort_order:        m.sortOrder,
     timing,
+    tap_destination_id: m.tapDestinationId ?? null,
+    tap_url:            m.tapUrl ?? null,
     character:         m.character
       ? {
           id:             m.character.id,

@@ -448,6 +448,7 @@ export function buildQuickReply(labels: string[]): LineQuickReply {
  */
 export function buildQuickReplyFromItems(
   items: QuickReplyItem[],
+  opts?: { resolveDestinationUrl?: (destinationId: string) => string | null },
 ): LineQuickReply | undefined {
   if (!items || items.length === 0) return undefined;
 
@@ -457,8 +458,14 @@ export function buildQuickReplyFromItems(
     .flatMap((item): LineQuickReplyItem[] => {
       const label = item.label.slice(0, 20);
       if (item.action === "url") {
-        if (!item.value) return [];
-        return [{ type: "action", action: { type: "uri", label, uri: item.value } }];
+        // destination_id がある場合は resolved URL を優先
+        let uri = item.value || "";
+        if (item.destination_id && opts?.resolveDestinationUrl) {
+          const resolved = opts.resolveDestinationUrl(item.destination_id);
+          if (resolved) uri = resolved;
+        }
+        if (!uri) return [];
+        return [{ type: "action", action: { type: "uri", label, uri } }];
       }
       // hint → ユーザーに見える文言（label）をそのまま送信テキストにする
       // text / next / custom → value 優先、なければ label

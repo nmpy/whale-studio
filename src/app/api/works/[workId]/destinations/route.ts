@@ -10,6 +10,7 @@ import { withAuth } from "@/lib/auth";
 import { requireRole, getOaIdFromWorkId } from "@/lib/rbac";
 import { createDestinationSchema, formatZodErrors } from "@/lib/validations";
 import { toDestinationResponse } from "@/lib/destination-utils";
+import { getDestinationUsageCounts } from "@/lib/destination-usage-utils";
 import { ZodError } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -24,12 +25,18 @@ export const GET = withAuth(async (req, ctx, user) => {
     const check = await requireRole(oaId, user.id, "viewer");
     if (!check.ok) return check.response;
 
-    const destinations = await prisma.lineDestination.findMany({
-      where: { workId },
-      orderBy: [{ createdAt: "asc" }],
-    });
+    const [destinations, usageCounts] = await Promise.all([
+      prisma.lineDestination.findMany({
+        where: { workId },
+        orderBy: [{ createdAt: "asc" }],
+      }),
+      getDestinationUsageCounts(workId),
+    ]);
 
-    return ok(destinations.map(toDestinationResponse));
+    return ok(destinations.map((d) => ({
+      ...toDestinationResponse(d),
+      usage_count: usageCounts[d.id] ?? 0,
+    })));
   } catch (err) {
     return serverError(err);
   }

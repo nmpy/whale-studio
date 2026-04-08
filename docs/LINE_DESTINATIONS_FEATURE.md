@@ -198,17 +198,133 @@ server からは `resolveDestinationUrl()`、client からは `resolveDestinatio
 
 ## 10. 既知の制約
 
-1. メッセージ編集画面からの destination 選択UIはまだ未統合（型・API・hookは準備済み）
-2. destination の使用箇所一覧表示は未実装
-3. `custom` LIFFターゲットは型のみ（`work_main` のみ実用）
-4. query_params_json の値は文字列のみ
+1. destination の使用箇所一覧表示は未実装
+2. `custom` LIFFターゲットは型のみ（`work_main` のみ実用）
+3. query_params_json の値は文字列のみ
+4. LINE画像メッセージのタップアクションはLINE API上は imagemap が必要（将来対応）
 
 ---
 
 ## 11. 今後の拡張ポイント
 
-1. **メッセージ編集画面統合** — `useDestinations` hook で一覧取得 → 選択UI
-2. **リッチメニュー統合** — `destinationApi.list()` で候補取得
-3. **使用箇所一覧** — 各 destination がどこで使われているか逆引き
-4. **プリセット自動生成** — 作品作成時に start/evidence/progress を自動登録
+1. **リッチメニュー統合** — `DestinationSelect` で候補取得 → area actionUri に設定
+2. **使用箇所一覧** — 各 destination がどこで使われているか逆引き
+3. **プリセット自動生成** — 作品作成時に start/evidence/progress を自動登録
+4. **一括インポート/エクスポート** — JSON での一括操作
+5. **クイックリプライ統合** — `action: "url"` の value に destination を選択
+
+---
+
+## 12. メッセージ編集画面との統合（実装済み）
+
+### 対象メッセージ種別
+- **画像メッセージ** — タップ遷移先として destination を選択可能
+- **カルーセルメッセージ** — 各カードのボタン遷移先として destination を選択可能
+
+### DB変更
+Message モデルに追加:
+- `tap_destination_id` (nullable, FK → LineDestination, onDelete: SetNull)
+- `tap_url` (nullable, 直接URL)
+
+カルーセルカードは JSON（body フィールド）内に `destination_id` を保持可能。
+
+### URL解決の優先順位
+プレビュー・保存・送信の3箇所で統一:
+1. `tap_destination_id` あり → destination の resolved_url
+2. `tap_url` あり → そのまま使用
+3. どちらもなし → 遷移なし
+
+実装: `src/lib/message-destination-utils.ts` の `resolveMessageActionUrl()`
+
+### UI
+`TapDestinationSection` コンポーネント:
+- segmented control で「保存済みの遷移先を使う」「URLを直接入力する」を切替
+- destination モード: `DestinationSelect` で候補選択 + resolved URL 補助表示
+- 直入力モード: 従来のURL入力欄
+
+### 後方互換
+- 既存データ（destination_id なし、URL直接保存）はそのまま動作
+- destination_id = null の場合は tap_url にフォールバック
+- 既存フィールドは削除していない
+
+### 追加ファイル
+- `src/lib/message-destination-utils.ts` — resolveMessageActionUrl, resolveCarouselButtonUrl, detectTapMode
+- `src/components/destination/DestinationSelect.tsx` — 再利用可能な destination セレクト
+- `src/components/destination/TapDestinationSection.tsx` — 遷移先設定セクション（segmented control + select + URL入力）
+
+---
+
+## 13. リッチメニューとの統合（実装済み）
+
+### 変更内容
+- `RichMenuArea` に `destinationId` (nullable FK → LineDestination) 追加
+- リッチメニューエディタの URI action 編集時に segmented control で「保存済みの遷移先を使う」「URLを直接入力」を切替可能
+- OA配下の全作品の destination を選択候補に表示
+- 保存時に `destination_id` と `action_uri` の両方を保持（destination 選択時は resolved URL を action_uri にも反映）
+- 既存の直URL運用はそのまま継続可能
+
+### URL解決の優先順位
+1. `destination_id` あり → destination の resolved_url を action_uri に設定
+2. `destination_id` なし → action_uri をそのまま使用
+
+---
+
+## 14. クイックリプライとの統合（実装済み）
+
+### 変更内容
+- `QuickReplyItem` に `destination_id` (nullable) を追加（JSON内フィールド）
+- action="url" のクイックリプライ編集時に TapDestinationSection で destination 選択可能
+- `buildQuickReplyFromItems()` に `resolveDestinationUrl` オプションを追加
+- action="url" の label と value（URL）を分離（label はボタン表示文、value は遷移先URL）
+- 既存の直URL QR はそのまま動作
+
+### LINE payload 解決
+```
+action="url" の場合:
+  1. destination_id → opts.resolveDestinationUrl(id) → uri
+  2. value → uri
+  3. なし → スキップ
+```
+
+---
+
+## 15. destination 使用箇所の逆引き（実装済み）
+
+### API
+- `GET /api/works/[workId]/destinations` — 一覧に `usage_count` を含む
+- `GET /api/works/[workId]/destinations/[id]/usages` — 使用箇所の詳細
+
+### 検索対象
+| usage_type | 説明 | 検索方法 |
+|------------|------|----------|
+| image_message | 画像メッセージの tapDestinationId | FK |
+| carousel_button | カルーセルカードの destination_id | body JSON |
+| richmenu_area | リッチメニューエリアの destinationId | FK |
+| quick_reply | クイックリプライの destination_id | quickReplies JSON |
+
+### UI表示
+- 一覧画面: `使用中 N件` / `未使用` バッジ
+- 削除確認: 使用中なら「この遷移先は N 箇所で使われています。本当に削除しますか？」
+
+### ユーティリティ
+- `src/lib/destination-usage-utils.ts`
+  - `getDestinationUsages(destinationId, workId)` — 使用箇所詳細
+  - `getDestinationUsageCounts(workId)` — 全 destination の usage count 一括取得
+
+---
+
+## 16. 既知の制約
+
+1. リッチメニューはOAレベルだが destination は作品レベル — リッチメニュー編集時はOA配下の全作品の destination を表示
+2. クイックリプライの destination 解決はサーバー側 buildQuickReplyFromItems に resolver を渡す必要あり
+3. usage 逆引きの JSON 走査はメッセージ件数が多い場合パフォーマンスに注意
+
+---
+
+## 17. 今後の拡張候補
+
+1. **Flex Message 統合** — Flex の URI action にも destination 選択
+2. **destination テンプレートの自動生成** — 作品作成時に start/evidence/progress を自動登録
+3. **使用箇所からの直接編集リンク** — usage 詳細に各編集画面へのリンク
+4. **destination の使用禁止** — 使用中の destination を削除不可にする（設定次第）
 5. **一括インポート/エクスポート** — JSON での一括操作

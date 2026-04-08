@@ -108,10 +108,17 @@ export default function EditLocationPage() {
             beacon_uuid: location.beacon_uuid ?? "",
             beacon_major: location.beacon_major,
             beacon_minor: location.beacon_minor,
+            latitude: location.latitude,
+            longitude: location.longitude,
+            radius_meters: location.radius_meters,
+            gps_enabled: location.gps_enabled,
             cooldown_seconds: location.cooldown_seconds,
             transition_id: location.transition_id ?? "",
             set_flags: location.set_flags,
             is_active: location.is_active,
+            stamp_enabled: location.stamp_enabled,
+            stamp_label: location.stamp_label ?? "",
+            stamp_order: location.stamp_order,
           }}
         />
       )}
