@@ -158,6 +158,108 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// ────────────────────────────────────────────────
+// メッセージ変換共通ヘルパー
+// ────────────────────────────────────────────────
+//
+// buildPhaseMessages / buildKeywordMessages が共有する
+// 「message_type → LineMessage」変換の単一実装。
+// 変換契約を1箇所に集約し、未対応型の黙殺を防止する。
+//
+// 変換契約:
+//   正式対応（専用 LINE 型に変換）:
+//     text      → LineTextMessage   （body 必須）
+//     image     → LineImageMessage  （asset_url 必須）
+//     video     → LineVideoMessage  （asset_url 必須）
+//   フォールバック（text 代替送信）:
+//     flex / carousel / voice / riddle / 未知型
+//     → alt_text or body をテキスト送信。carousel の body は JSON の可能性があるため alt_text 優先。
+//   欠損時:
+//     正式対応型で必須フィールドが null → warn + null（スキップ）
+//     フォールバック候補もすべて null   → warn("変換不能") + null
+
+/** convertMessageToLine に渡す共通入力型 */
+type ConvertibleMessage = {
+  id:         string;
+  /** DB の messageType カラム値。text / image / video / carousel / voice / riddle / flex / 任意 */
+  mtype:      string;
+  body:       string | null;
+  asset_url:  string | null;
+  alt_text:   string | null;
+  sender?:    LineSender;
+  quickReply?: LineQuickReply;
+  lagMs?:     number;
+};
+
+/**
+ * 単一メッセージを LineMessage に変換する。
+ * 変換不能な場合は null を返し、呼び出し元がスキップする。
+ *
+ * @param msg     変換対象
+ * @param caller  ログ出力用の呼び出し元名（"buildPhaseMessages" など）
+ * @param phaseId ログ出力用のフェーズ ID（任意）
+ * @param vars    プレースホルダ置換変数
+ */
+function convertMessageToLine(
+  msg:     ConvertibleMessage,
+  caller:  string,
+  phaseId: string,
+  vars:    PlaceholderVars = {},
+): LineMessage | null {
+  const { id, mtype, body, asset_url, alt_text, sender, quickReply, lagMs } = msg;
+
+  /** LINE メッセージ共通フィールドを付与するヘルパー */
+  const attach = <T extends LineMessage>(m: T): T => {
+    if (sender) m.sender = sender;
+    if (quickReply) m.quickReply = quickReply;
+    if (lagMs && lagMs > 0) m._lagMs = lagMs;
+    return m;
+  };
+
+  // ── 正式対応 ──
+  if (mtype === "text") {
+    if (body) return attach({ type: "text", text: replacePlaceholders(body, vars) } as LineTextMessage);
+    console.warn(`[${caller}] ⚠️ text メッセージの body が空 id=${id.slice(0, 8)} phase=${phaseId.slice(0, 8)}`);
+    return null;
+  }
+  if (mtype === "image") {
+    if (asset_url) return attach({ type: "image", originalContentUrl: asset_url, previewImageUrl: asset_url } as LineImageMessage);
+    console.warn(`[${caller}] ⚠️ image メッセージの asset_url が空 id=${id.slice(0, 8)} phase=${phaseId.slice(0, 8)}`);
+    return null;
+  }
+  if (mtype === "video") {
+    if (asset_url) return attach({ type: "video", originalContentUrl: asset_url, previewImageUrl: asset_url } as LineVideoMessage);
+    console.warn(`[${caller}] ⚠️ video メッセージの asset_url が空 id=${id.slice(0, 8)} phase=${phaseId.slice(0, 8)}`);
+    return null;
+  }
+
+  // ── フォールバック（carousel / voice / riddle / flex / 未知型）──
+  const fallbackText = (mtype === "carousel" && alt_text) ? alt_text : (alt_text || body);
+  if (fallbackText) {
+    return attach({ type: "text", text: replacePlaceholders(truncateText(fallbackText), vars) } as LineTextMessage);
+  }
+
+  // ── 変換不能 ──
+  console.warn(
+    `[${caller}] ⚠️ 変換不能メッセージ（送信スキップ）`,
+    `id=${id.slice(0, 8)} type=${mtype} phase=${phaseId.slice(0, 8)}`,
+    `body=${body ? "あり" : "なし"} asset=${asset_url ? "あり" : "なし"} alt=${alt_text ? "あり" : "なし"}`,
+  );
+  return null;
+}
+
+/**
+ * 変換結果のサマリログを出力する。
+ * 入力に対して出力が減った場合に warn、0件になった場合に error を出す。
+ */
+function logConversionSummary(caller: string, phaseId: string, inputCount: number, outputCount: number): void {
+  if (inputCount > 0 && outputCount === 0) {
+    console.error(`[${caller}] ❌ 入力 ${inputCount}件 → LINE変換 0件（全メッセージが変換不能） phase=${phaseId.slice(0, 8)}`);
+  } else if (inputCount > 0 && outputCount < inputCount) {
+    console.warn(`[${caller}] 入力 ${inputCount}件 → LINE変換 ${outputCount}件（${inputCount - outputCount}件スキップ） phase=${phaseId.slice(0, 8)}`);
+  }
+}
+
 /** LineMessage から内部フィールド（_lagMs）を除去して送信用オブジェクトを生成する */
 function stripInternalFields(msg: LineMessage): Record<string, unknown> {
   const m = { ...msg } as Record<string, unknown>;
@@ -521,24 +623,7 @@ export function buildPhaseMessages(
   }
 
   // ── DB Message 行を 1 件ずつ独立した吹き出しに変換 ──
-  //
-  // message_type ごとの変換契約:
-  //   正式対応（専用 LINE 型に変換）:
-  //     text      → LineTextMessage   （body 必須）
-  //     image     → LineImageMessage  （asset_url 必須）
-  //     video     → LineVideoMessage  （asset_url 必須）
-  //   フォールバック（text 代替送信）:
-  //     flex      → alt_text をテキスト送信（既存データ後方互換）
-  //     carousel  → alt_text を優先、なければ body 先頭200文字をテキスト送信
-  //     voice     → alt_text or body をテキスト送信（LINE audio は duration 必須で非対応）
-  //     riddle    → body or alt_text をテキスト送信（外部 riddle 参照型の後方互換）
-  //   必須フィールド欠損時:
-  //     text + body null  → 警告ログ + スキップ（送信不能）
-  //     image + asset null → 警告ログ + スキップ
-  //     video + asset null → 警告ログ + スキップ
-  //   未知の type:
-  //     警告ログ + body or alt_text があればテキストフォールバック
-  //
+  // 変換契約は convertMessageToLine() に集約されている。
   const inputCount = phase.messages.length;
   for (const msg of phase.messages) {
     // hint_mode に基づいてヒント QR をフィルタ
@@ -549,81 +634,23 @@ export function buildPhaseMessages(
       ? buildQuickReplyFromItems(visibleQrItems)
       : undefined;
 
-    // ── ヘルパー: LINE メッセージを組み立てて push する ──
-    const pushText = (text: string) => {
-      const lineMsg: LineTextMessage = { type: "text", text: replacePlaceholders(text, vars) };
-      if (msg.character) lineMsg.sender = buildSender(msg.character);
-      if (msgQr) lineMsg.quickReply = msgQr;
-      if (msg.lag_ms > 0) lineMsg._lagMs = msg.lag_ms;
-      messages.push(lineMsg);
-    };
-    const pushImage = (url: string) => {
-      const lineMsg: LineImageMessage = { type: "image", originalContentUrl: url, previewImageUrl: url };
-      if (msg.character) lineMsg.sender = buildSender(msg.character);
-      if (msgQr) lineMsg.quickReply = msgQr;
-      if (msg.lag_ms > 0) lineMsg._lagMs = msg.lag_ms;
-      messages.push(lineMsg);
-    };
-    const pushVideo = (url: string) => {
-      const lineMsg: LineVideoMessage = { type: "video", originalContentUrl: url, previewImageUrl: url };
-      if (msg.character) lineMsg.sender = buildSender(msg.character);
-      if (msgQr) lineMsg.quickReply = msgQr;
-      if (msg.lag_ms > 0) lineMsg._lagMs = msg.lag_ms;
-      messages.push(lineMsg);
-    };
+    const lineMsg = convertMessageToLine({
+      id:        msg.id,
+      mtype:     msg.message_type as string,
+      body:      msg.body,
+      asset_url: msg.asset_url,
+      alt_text:  msg.alt_text,
+      sender:    msg.character ? buildSender(msg.character) : undefined,
+      quickReply: msgQr,
+      lagMs:     msg.lag_ms,
+    }, "buildPhaseMessages", phase.id, vars);
 
-    const mtype = msg.message_type as string;
-
-    // ── 正式対応 ──
-    if (mtype === "text") {
-      if (msg.body) { pushText(msg.body); continue; }
-      console.warn(`[buildPhaseMessages] ⚠️ text メッセージの body が空 id=${msg.id.slice(0, 8)} phase=${phase.id.slice(0, 8)}`);
-      continue;
-    }
-    if (mtype === "image") {
-      if (msg.asset_url) { pushImage(msg.asset_url); continue; }
-      console.warn(`[buildPhaseMessages] ⚠️ image メッセージの asset_url が空 id=${msg.id.slice(0, 8)} phase=${phase.id.slice(0, 8)}`);
-      continue;
-    }
-    if (mtype === "video") {
-      if (msg.asset_url) { pushVideo(msg.asset_url); continue; }
-      console.warn(`[buildPhaseMessages] ⚠️ video メッセージの asset_url が空 id=${msg.id.slice(0, 8)} phase=${phase.id.slice(0, 8)}`);
-      continue;
-    }
-
-    // ── フォールバック対応（テキスト代替送信）──
-    // flex / carousel / voice / riddle および未知の type はすべてここに落ちる。
-    // 送信可能なテキスト（alt_text > body）があれば LINE テキストメッセージとして送信する。
-    const fallbackText = msg.alt_text || msg.body;
-    if (fallbackText) {
-      // carousel の body は JSON 文字列の場合があるため alt_text を優先
-      const safeText = (mtype === "carousel" && msg.alt_text) ? msg.alt_text : fallbackText;
-      pushText(truncateText(safeText));
-      continue;
-    }
-
-    // ── 送信不能（テキストも画像もない）──
-    console.warn(
-      `[buildPhaseMessages] ⚠️ 変換不能メッセージ（送信スキップ）`,
-      `id=${msg.id.slice(0, 8)} type=${mtype} phase=${phase.id.slice(0, 8)}`,
-      `body=${msg.body ? "あり" : "なし"} asset=${msg.asset_url ? "あり" : "なし"} alt=${msg.alt_text ? "あり" : "なし"}`,
-    );
+    if (lineMsg) messages.push(lineMsg);
   }
 
-  // ── サマリログ: 入力に対して出力が大幅に減った場合の警告 ──
+  // ── サマリログ ──
   const prefixOffset = prefixText ? 1 : 0;
-  const convertedCount = messages.length - prefixOffset;
-  if (inputCount > 0 && convertedCount === 0) {
-    console.error(
-      `[buildPhaseMessages] ❌ 入力 ${inputCount}件 → LINE変換 0件（全メッセージが変換不能）`,
-      `phase=${phase.id.slice(0, 8)}`,
-    );
-  } else if (inputCount > 0 && convertedCount < inputCount) {
-    console.warn(
-      `[buildPhaseMessages] 入力 ${inputCount}件 → LINE変換 ${convertedCount}件（${inputCount - convertedCount}件スキップ）`,
-      `phase=${phase.id.slice(0, 8)}`,
-    );
-  }
+  logConversionSummary("buildPhaseMessages", phase.id, inputCount, messages.length - prefixOffset);
 
   // ── エンディング or クイックリプライ付与 ──
   if (phase.transitions === null) {
@@ -702,6 +729,7 @@ export function buildKeywordMessages(
   vars:          PlaceholderVars = {},
 ): LineMessage[] {
   const messages: LineMessage[] = [];
+  const inputCount = records.length;
 
   for (const msg of records) {
     const sender: LineSender | undefined = msg.character
@@ -719,35 +747,22 @@ export function buildKeywordMessages(
       }
     }
 
-    if (msg.messageType === "text" && msg.body) {
-      const lineMsg: LineTextMessage = { type: "text", text: replacePlaceholders(msg.body, vars), sender };
-      if (msgQr) lineMsg.quickReply = msgQr;
-      messages.push(lineMsg);
-    } else if (msg.messageType === "image" && msg.assetUrl) {
-      const lineMsg: LineImageMessage = {
-        type:               "image",
-        originalContentUrl: msg.assetUrl,
-        previewImageUrl:    msg.assetUrl,
-      };
-      if (sender) lineMsg.sender = sender;
-      if (msgQr) lineMsg.quickReply = msgQr;
-      messages.push(lineMsg);
-    } else if (msg.messageType === "video" && msg.assetUrl) {
-      const lineMsg: LineVideoMessage = {
-        type:               "video",
-        originalContentUrl: msg.assetUrl,
-        previewImageUrl:    msg.assetUrl,
-      };
-      if (sender) lineMsg.sender = sender;
-      if (msgQr) lineMsg.quickReply = msgQr;
-      messages.push(lineMsg);
-    // flex → alt_text をテキストとして送信（既存 DB データの後方互換）
-    } else if ((msg.messageType as string) === "flex" && msg.altText) {
-      const lineMsg: LineTextMessage = { type: "text", text: replacePlaceholders(msg.altText, vars), sender };
-      if (msgQr) lineMsg.quickReply = msgQr;
-      messages.push(lineMsg);
-    }
+    // 共通変換ヘルパー（buildPhaseMessages と同一ロジック）
+    const lineMsg = convertMessageToLine({
+      id:        msg.id,
+      mtype:     msg.messageType as string,
+      body:      msg.body,
+      asset_url: msg.assetUrl,
+      alt_text:  msg.altText,
+      sender,
+      quickReply: msgQr,
+    }, "buildKeywordMessages", "keyword");
+
+    if (lineMsg) messages.push(lineMsg);
   }
+
+  // サマリログ
+  logConversionSummary("buildKeywordMessages", "keyword", inputCount, messages.length);
 
   // LINE は最後のメッセージの quickReply のみ表示する仕様のため、
   // 中間メッセージに quickReply が設定されていたら最後のメッセージに移動する。

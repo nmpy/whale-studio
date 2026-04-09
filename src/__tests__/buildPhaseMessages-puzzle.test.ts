@@ -238,7 +238,6 @@ describe("C. 必須フィールド欠損時の安全なスキップ", () => {
     ]));
     expect(errorSpy).toHaveBeenCalledWith(
       expect.stringContaining("入力 2件 → LINE変換 0件"),
-      expect.any(String),
     );
   });
 
@@ -251,7 +250,6 @@ describe("C. 必須フィールド欠損時の安全なスキップ", () => {
     expect(result).toHaveLength(2);
     expect(warnSpy).toHaveBeenCalledWith(
       expect.stringContaining("入力 3件 → LINE変換 2件"),
-      expect.any(String),
     );
   });
 });
