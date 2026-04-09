@@ -425,6 +425,10 @@ export function drainAutoSendableItems(
     .sort((a, b) => a.sortOrder - b.sortOrder || a.createdAt.getTime() - b.createdAt.getTime());
 
   // 5. sortOrder 順にドレイン
+  console.log(
+    `[drainAutoSendableItems] input=${messages.length}件 sorted=${sorted.length}件 midChain=${midChainIds.size}件 targetMsg=${targetMsgIds.size}件 startAfter=${startAfterSortOrder ?? "none"} segment=${userSegment ?? "none"}`,
+    sorted.map((m) => `id=${m.id.slice(0, 8)} kind=${m.kind} sort=${m.sortOrder} type=${m.messageType}`).join(" / "),
+  );
   const result: import("@/types").RuntimePhaseMessage[] = [];
   const visited = new Set<string>();
 
@@ -453,6 +457,10 @@ export function drainAutoSendableItems(
     }
   }
 
+  console.log(
+    `[drainAutoSendableItems] result=${result.length}件`,
+    result.map((m) => `id=${m.id.slice(0, 8)} type=${m.message_type} sort=${m.sort_order}`).join(" / "),
+  );
   return result;
 }
 

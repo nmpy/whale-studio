@@ -521,6 +521,10 @@ export function buildPhaseMessages(
   }
 
   // ── DB Message 行を 1 件ずつ独立した吹き出しに変換 ──
+  console.log(
+    `[buildPhaseMessages] phase=${phase.id.slice(0, 8)} msgs=${phase.messages.length}件`,
+    phase.messages.map((m) => `id=${m.id.slice(0, 8)} type=${m.message_type} body=${m.body ? "あり" : "なし"} asset=${m.asset_url ? "あり" : "なし"}`).join(" / "),
+  );
   for (const msg of phase.messages) {
     // hint_mode に基づいてヒント QR をフィルタ
     // on_wrong / hidden の場合は初期表示からヒントアイテムを除外する
@@ -579,6 +583,55 @@ export function buildPhaseMessages(
       if (msgQr) lineMsg.quickReply = msgQr;
       if (msg.lag_ms > 0) lineMsg._lagMs = msg.lag_ms;
       messages.push(lineMsg);
+    }
+
+    // carousel → body に JSON が格納されている。alt_text or 通知テキストをフォールバック送信
+    if ((msg.message_type as string) === "carousel") {
+      const fallbackText = msg.alt_text || msg.body;
+      if (fallbackText) {
+        const lineMsg: LineTextMessage = {
+          type: "text",
+          text: replacePlaceholders(
+            // body が JSON の場合はそのまま送れないので alt_text を優先
+            msg.alt_text || "（カルーセルメッセージ）",
+            vars,
+          ),
+        };
+        if (msg.character) lineMsg.sender = buildSender(msg.character);
+        if (msgQr) lineMsg.quickReply = msgQr;
+        if (msg.lag_ms > 0) lineMsg._lagMs = msg.lag_ms;
+        messages.push(lineMsg);
+      }
+    }
+
+    // voice → asset_url を音声メッセージとして送信（LINE は audio type をサポート）
+    // 現時点では LINE Messaging API の audio 型で送信
+    if ((msg.message_type as string) === "voice" && msg.asset_url) {
+      // LINE audio message は duration が必須だが、DB に duration がないためテキストフォールバック
+      const lineMsg: LineTextMessage = {
+        type: "text",
+        text: msg.alt_text || msg.body || "（ボイスメッセージ）",
+      };
+      if (msg.character) lineMsg.sender = buildSender(msg.character);
+      if (msgQr) lineMsg.quickReply = msgQr;
+      if (msg.lag_ms > 0) lineMsg._lagMs = msg.lag_ms;
+      messages.push(lineMsg);
+    }
+
+    // ── 未対応 message_type の検出ログ ──
+    const handled =
+      (msg.message_type === "text" && !!msg.body) ||
+      (msg.message_type === "image" && !!msg.asset_url) ||
+      (msg.message_type === "video" && !!msg.asset_url) ||
+      ((msg.message_type as string) === "flex" && !!msg.alt_text) ||
+      ((msg.message_type as string) === "carousel") ||
+      ((msg.message_type as string) === "voice" && !!msg.asset_url);
+    if (!handled) {
+      console.warn(
+        `[buildPhaseMessages] ⚠️ 未変換メッセージ`,
+        `id=${msg.id.slice(0, 8)} type=${msg.message_type}`,
+        `body=${msg.body ? "あり" : "なし"} asset=${msg.asset_url ? "あり" : "なし"} alt=${msg.alt_text ? "あり" : "なし"}`,
+      );
     }
   }
 
