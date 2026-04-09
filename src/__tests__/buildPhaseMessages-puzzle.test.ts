@@ -30,6 +30,7 @@ beforeEach(() => {
 function makeMsg(overrides: Partial<RuntimePhaseMessage> = {}): RuntimePhaseMessage {
   return {
     id:                 "msg-default",
+    kind:               "normal",
     message_type:       "text",
     body:               "テストメッセージ",
     asset_url:          null,
@@ -303,6 +304,59 @@ describe("D. puzzle メッセージの変換パイプライン", () => {
     ]));
     expect(result.some((m) => m.type === "text")).toBe(true);
     expect(result.some((m) => m.type === "image")).toBe(true);
+  });
+
+  // ── puzzle フォールバック（body/asset_url が null でもドロップしない）──
+
+  it("puzzle text + body=null → フォールバックテキストで送信", () => {
+    const result = buildPhaseMessages(makePhase([
+      makeMsg({ id: "p1", kind: "puzzle", message_type: "text", body: null }),
+    ]));
+    expect(result).toHaveLength(1);
+    expect(result[0].type).toBe("text");
+    expect((result[0] as { text: string }).text).toBe("この謎を解いてください");
+  });
+
+  it("puzzle text + body=null + alt_text あり → alt_text で送信", () => {
+    const result = buildPhaseMessages(makePhase([
+      makeMsg({ id: "p1", kind: "puzzle", message_type: "text", body: null, alt_text: "問題のヒント画像を見てください" }),
+    ]));
+    expect(result).toHaveLength(1);
+    expect((result[0] as { text: string }).text).toContain("問題のヒント");
+  });
+
+  it("puzzle image + asset_url=null → テキストフォールバックで送信", () => {
+    const result = buildPhaseMessages(makePhase([
+      makeMsg({ id: "p1", kind: "puzzle", message_type: "image", body: null, asset_url: null }),
+    ]));
+    expect(result).toHaveLength(1);
+    expect(result[0].type).toBe("text");
+    expect((result[0] as { text: string }).text).toBe("この謎を解いてください");
+  });
+
+  it("puzzle image + asset_url=null + body あり → body をテキスト送信", () => {
+    const result = buildPhaseMessages(makePhase([
+      makeMsg({ id: "p1", kind: "puzzle", message_type: "image", body: "この画像の答えは？", asset_url: null }),
+    ]));
+    expect(result).toHaveLength(1);
+    expect((result[0] as { text: string }).text).toContain("この画像の答えは");
+  });
+
+  it("normal text + body=null → 従来通りドロップ（puzzle 以外は変更なし）", () => {
+    const result = buildPhaseMessages(makePhase([
+      makeMsg({ id: "m1", kind: "normal", message_type: "text", body: null }),
+    ]));
+    expect(result).toHaveLength(0);
+  });
+
+  it("Message → Puzzle(body=null) → 両方送信される", () => {
+    const result = buildPhaseMessages(makePhase([
+      makeMsg({ id: "m1", kind: "normal", message_type: "text", body: "導入テキスト" }),
+      makeMsg({ id: "p1", kind: "puzzle", message_type: "text", body: null }),
+    ]));
+    expect(result).toHaveLength(2);
+    expect((result[0] as { text: string }).text).toContain("導入テキスト");
+    expect((result[1] as { text: string }).text).toBe("この謎を解いてください");
   });
 });
 

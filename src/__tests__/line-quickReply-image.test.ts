@@ -46,6 +46,7 @@ describe("buildPhaseMessages — 個別 quickReply", () => {
     const phase = makePhase({
       messages: [{
         id:                "msg-1",
+        kind:              "normal",
         message_type:      "image",
         body:              null,
         asset_url:         "https://example.com/puzzle.png",
@@ -77,6 +78,7 @@ describe("buildPhaseMessages — 個別 quickReply", () => {
     const phase = makePhase({
       messages: [{
         id:                "msg-v",
+        kind:              "normal",
         message_type:      "video",
         body:              null,
         asset_url:         "https://example.com/video.mp4",
@@ -111,6 +113,7 @@ describe("buildPhaseMessages — 遷移 quickReply", () => {
     const phase = makePhase({
       messages: [{
         id:                "msg-img",
+        kind:              "normal",
         message_type:      "image",
         body:              null,
         asset_url:         "https://example.com/img.png",
@@ -144,12 +147,12 @@ describe("buildPhaseMessages — 遷移 quickReply", () => {
     const phase = makePhase({
       messages: [
         {
-          id: "msg-txt", message_type: "text", body: "本文です",
+          id: "msg-txt", kind: "normal", message_type: "text", body: "本文です",
           asset_url: null, alt_text: null, flex_payload_json: null,
           quick_replies: null, lag_ms: 0, hint_mode: "always" as const, sort_order: 0, timing: null, tap_destination_id: null, tap_url: null, character: null,
         },
         {
-          id: "msg-img", message_type: "image", body: null,
+          id: "msg-img", kind: "normal", message_type: "image", body: null,
           asset_url: "https://example.com/img.png", alt_text: null, flex_payload_json: null,
           quick_replies: null, lag_ms: 0, hint_mode: "always" as const, sort_order: 1, timing: null, tap_destination_id: null, tap_url: null, character: null,
         },

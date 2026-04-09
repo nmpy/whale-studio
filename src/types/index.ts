@@ -555,6 +555,8 @@ export interface UserProgress {
 // ────────────────────────────────────────────────
 export interface RuntimePhaseMessage {
   id:                string;
+  /** メッセージ種別: "normal" | "start" | "puzzle" | "response" | "hint" */
+  kind:              string;
   message_type:      MessageType;
   body:              string | null;
   asset_url:         string | null;

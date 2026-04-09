@@ -276,6 +276,7 @@ function messageRowToRuntime(
 
   return {
     id:                m.id,
+    kind:              m.kind,
     message_type:      m.messageType as MessageType,
     body:              m.body,
     asset_url:         m.assetUrl,

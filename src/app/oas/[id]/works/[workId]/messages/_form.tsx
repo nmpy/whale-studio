@@ -314,6 +314,9 @@ export function formStateToMsgBody(form: MessageFormState) {
         ? JSON.stringify(form.carousel_items)
         : form.message_type === "text"
         ? form.body || undefined
+        // puzzle の image/video でも body を保持（LINE 送信時のフォールバックテキストとして使用）
+        : isPuzzle
+        ? form.body || form.alt_text || undefined
         : undefined,
     asset_url:         (form.message_type === "image" || form.message_type === "video" || form.message_type === "voice")
       ? form.asset_url || undefined
