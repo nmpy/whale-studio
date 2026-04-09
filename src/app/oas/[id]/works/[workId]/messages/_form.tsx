@@ -316,7 +316,7 @@ export function formStateToMsgBody(form: MessageFormState) {
         ? form.body || undefined
         // puzzle の image/video でも body を保持（LINE 送信時のフォールバックテキストとして使用）
         : isPuzzle
-        ? form.body || form.alt_text || undefined
+        ? form.body || form.notify_text || undefined
         : undefined,
     asset_url:         (form.message_type === "image" || form.message_type === "video" || form.message_type === "voice")
       ? form.asset_url || undefined

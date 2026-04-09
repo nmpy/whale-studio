@@ -177,7 +177,7 @@ describe("buildPhaseMessages — 遷移 quickReply", () => {
   it("全メッセージに個別 quickReply 設定済みの場合は「続きを選んでください」テキストを追加", () => {
     const phase = makePhase({
       messages: [{
-        id: "msg-img", message_type: "image", body: null,
+        id: "msg-img", kind: "normal", message_type: "image", body: null,
         asset_url: "https://example.com/img.png", alt_text: null, flex_payload_json: null,
         quick_replies: [{ label: "はい", action: "text", value: "はい" }], // 個別 QR あり
         lag_ms: 0, hint_mode: "always" as const, sort_order: 0, timing: null, tap_destination_id: null, tap_url: null, character: null,

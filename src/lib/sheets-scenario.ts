@@ -62,6 +62,7 @@ function buildRuntimePhaseFromSheets(
     const char = msg.character_id ? findCharacterById(data, msg.character_id) : null;
     return {
       id:                msg.message_id,
+      kind:              (msg as { kind?: string }).kind ?? "normal",
       message_type:      msg.message_type as MessageType,
       body:              msg.body,
       asset_url:         msg.asset_url,
