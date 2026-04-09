@@ -315,7 +315,15 @@ export type UserSegment = "not_started" | "in_progress" | "completed";
 //
 //   [通常] → [通常] → [puzzle] → (停止) → 正解 → drain再開 → [通常] → ...
 //
-//   停止条件:
+//   自動送信の判定基準:
+//     現在ノード（currentNode）の属性のみで判定する。
+//     次ノードの種類（puzzle / ending / その他）は一切参照しない。
+//
+//   送信条件:
+//   - currentNode が Message（kind=normal/start）かつ待機条件なし → 自動送信
+//   - currentNode の次に何が来ても（puzzle, ending 等）、送信を阻害しない
+//
+//   停止条件（= ユーザー操作待ち: requiresUserInteraction）:
 //   - puzzle       … 表示後に解答待ち
 //   - quickReplies … 表示後に選択待ち
 //   - triggerKeyword … キーワード入力待ち（kind="start" 除く）
@@ -333,45 +341,42 @@ export type UserSegment = "not_started" | "in_progress" | "completed";
 //
 //   - kind="puzzle" は「送信は自動、回答待ちで停止」。
 //     puzzle メッセージ自体はフェーズ突入時に表示されるが、
-//     isWaitPoint が true を返すためそこで連続送信は停止する。
+//     requiresUserInteraction が true を返すためそこで連続送信は停止する。
 //     正解後の correctText / incorrectText はメッセージ行ではなく
 //     puzzle の属性であり、handlePuzzleCorrect が処理する。
 
 type PhaseMessage = PhaseRow["messages"][number];
 
-/**
- * メッセージがフェーズ突入時の自動送信対象かどうかを判定する。
- *
- * kind だけでなく triggerKeyword の有無・QR 分岐先参照・puzzle の
- * targetSegment を加味して判定する。
- * この関数が true を返しても isWaitPoint が true ならそこで連続送信は停止する。
- */
-function isAutoSendablePhaseItem(
-  m: PhaseMessage,
-  opts: {
-    targetMsgIds: Set<string>;
-    userSegment?: UserSegment;
-  },
-): boolean {
-  // QR 分岐先として参照されるメッセージは自動表示しない
-  if (opts.targetMsgIds.has(m.id)) return false;
-  // response / hint はキーワード / ヒントトリガーでのみ表示
-  if (m.kind === "response" || m.kind === "hint") return false;
-  // kind="start" は常に自動表示（startTrigger 用の開始演出）
-  // それ以外で triggerKeyword が設定されているものはキーワード入力待ちのため除外
-  if (m.kind !== "start" && m.triggerKeyword?.trim()) return false;
-  // puzzle: targetSegment フィルタ（設定されていればセグメント一致チェック）
-  if (m.kind === "puzzle" && m.targetSegment && opts.userSegment && m.targetSegment !== opts.userSegment) return false;
-  return true;
-}
+// ── 自動送信判定ヘルパー ─────────────────────────────
+//
+// 自動送信の判定は **現在ノード（currentNode）** の属性のみで行う。
+// 「次ノードが puzzle かどうか」は一切参照しない。
+//
+//   判定フロー:
+//     1. isAutoSendableMessageNode(currentNode, ctx)
+//        → 現在ノードがフェーズ開始時の自動送信対象か？
+//        → false なら sortOrder 走査からスキップ（response, hint, QR先参照 等）
+//
+//     2. requiresUserInteraction(currentNode)
+//        → 現在ノード自体がユーザー操作を必要とするか？
+//        → true なら「このノードを送信した上で」連続送信を停止
+//          （例: puzzle は表示してから解答待ち、QR は表示してから選択待ち）
+//
+//   重要: 次ノードの種類（puzzle / ending / その他）は停止判定に一切影響しない。
+//         Message ノード（kind=normal/start）かつ待機条件なし → 常に自動送信される。
 
 /**
- * メッセージが「待機ポイント」（連続送信を停止してユーザー入力を待つ地点）かどうか。
+ * 現在ノードがユーザー操作を必要とするかどうかを判定する。
  *
- * 待機ポイントのメッセージ自体は送信される（例: puzzle は表示してから解答待ち）。
- * drainAutoSendableItems はこの関数が true を返した時点で結果を確定して返す。
+ * true を返すノードは送信された上で連続送信チェーンを停止する。
+ * ユーザーの操作（解答入力・QR選択・キーワード入力）を待つ。
+ *
+ * 判定条件（いずれかを満たせば true）:
+ *   - quickReplies あり → QR選択待ち
+ *   - kind="puzzle"     → パズル解答待ち
+ *   - triggerKeyword あり（kind≠"start"）→ キーワード入力待ち
  */
-function isWaitPoint(m: PhaseMessage): boolean {
+export function requiresUserInteraction(m: PhaseMessage): boolean {
   if (m.quickReplies) return true;
   if (m.kind === "puzzle") return true;
   // kind="start" の triggerKeyword は開始トリガー用であり、ユーザー入力待ちではない
@@ -380,12 +385,54 @@ function isWaitPoint(m: PhaseMessage): boolean {
 }
 
 /**
+ * 現在ノードがフェーズ突入時の自動送信対象かどうかを判定する。
+ *
+ * 判定は現在ノードの属性のみで行い、次ノードの種類は参照しない。
+ * この関数が true を返しても requiresUserInteraction が true なら
+ * そのノードで連続送信は停止する（ノード自体は送信される）。
+ *
+ * 除外条件:
+ *   - QR 分岐先として参照されるメッセージ（QR タップ時のみ表示）
+ *   - kind="response" / "hint"（キーワード / ヒントトリガーでのみ表示）
+ *   - triggerKeyword 付き（kind≠"start"）（キーワード入力待ちのため除外）
+ *   - puzzle の targetSegment 不一致（セグメント限定パズル）
+ */
+export function isAutoSendableMessageNode(
+  m: PhaseMessage,
+  ctx: {
+    targetMsgIds: Set<string>;
+    userSegment?: UserSegment;
+  },
+): boolean {
+  // QR 分岐先として参照されるメッセージは自動表示しない
+  if (ctx.targetMsgIds.has(m.id)) return false;
+  // response / hint はキーワード / ヒントトリガーでのみ表示
+  if (m.kind === "response" || m.kind === "hint") return false;
+  // kind="start" は常に自動表示（startTrigger 用の開始演出）
+  // それ以外で triggerKeyword が設定されているものはキーワード入力待ちのため除外
+  if (m.kind !== "start" && m.triggerKeyword?.trim()) return false;
+  // puzzle: targetSegment フィルタ（設定されていればセグメント一致チェック）
+  if (m.kind === "puzzle" && m.targetSegment && ctx.userSegment && m.targetSegment !== ctx.userSegment) return false;
+  return true;
+}
+
+// 後方互換エイリアス（内部参照用）
+const isAutoSendablePhaseItem = isAutoSendableMessageNode;
+const isWaitPoint = requiresUserInteraction;
+
+/**
  * フェーズ内の自動送信対象メッセージを sortOrder 順にドレインする。
+ *
+ * 判定基準:
+ *   - 送信可否は **現在ノードの属性** のみで決定する（次ノードの種類は参照しない）
+ *   - 現在ノードが Message（kind=normal/start）かつ待機条件なし → 自動送信
+ *   - 現在ノードが puzzle/QR付き/triggerKeyword付き → 送信した上で停止（ユーザー操作待ち）
+ *   - 次ノードが puzzle であること自体は、直前の Message の送信を阻害しない
  *
  * ルール:
  *   1. メッセージを sortOrder 順に走査する
- *   2. 自動送信対象（isAutoSendablePhaseItem）のメッセージを順に結果に追加する
- *   3. 待機ポイント（isWaitPoint）に達したら、そのメッセージを追加して停止する
+ *   2. 自動送信対象（isAutoSendableMessageNode）のメッセージを順に結果に追加する
+ *   3. ユーザー操作待ち（requiresUserInteraction）に達したら、そのメッセージを追加して停止する
  *      （puzzle は表示してから解答待ち、QR は表示してから選択待ち）
  *   4. nextMessageId チェーン中間のメッセージは sortOrder 走査からはスキップするが、
  *      チェーンの起点がドレイン対象であればチェーンを辿って追加する
@@ -436,8 +483,8 @@ export function drainAutoSendableItems(
     // startAfterSortOrder 指定時: それ以前のメッセージはスキップ
     if (startAfterSortOrder !== undefined && entry.sortOrder <= startAfterSortOrder) continue;
 
-    // 自動送信対象でなければスキップ
-    if (!isAutoSendablePhaseItem(entry, { targetMsgIds, userSegment })) continue;
+    // 現在ノードが自動送信対象でなければスキップ（次ノードの種類は参照しない）
+    if (!isAutoSendableMessageNode(entry, { targetMsgIds, userSegment })) continue;
 
     // エントリーからチェーンを辿る
     let cur: PhaseMessage | undefined = entry;
@@ -447,8 +494,9 @@ export function drainAutoSendableItems(
       visited.add(cur.id);
       result.push(messageRowToRuntime(cur));
 
-      // 待機ポイントに達したら、そのメッセージを追加済みなので全体を停止
-      if (isWaitPoint(cur)) return result;
+      // 現在ノードがユーザー操作待ちなら、送信済みの上で全体を停止
+      // （判定は現在ノードの属性のみ。次ノードが puzzle 等であっても直前の Message は送信済み）
+      if (requiresUserInteraction(cur)) return result;
 
       // nextMessageId チェーンを辿る
       const nextId = cur.nextMessageId;
@@ -467,12 +515,15 @@ export function drainAutoSendableItems(
 /**
  * フェーズのメッセージ一覧から「フェーズ開始時に自動表示すべきメッセージ列」を構築する。
  *
+ * 判定基準は **現在ノードの属性** のみ。次ノードの種類（puzzle 等）は参照しない。
+ *
  * ルール:
  *   1. QRの target_message_id で参照されるメッセージは表示しない（QRタップ時のみ表示）
  *   2. kind="response"/"hint" はフェーズ開始時に表示しない
  *   3. triggerKeyword 付き（kind≠"start"）のメッセージは自動表示しない
- *   4. sortOrder 順に通常メッセージを連続送信し、待機ポイント（puzzle/QR/trigger）で停止する
- *   5. 待機ポイントのメッセージ自体は送信する（例: puzzle は表示してから解答待ちに入る）
+ *   4. sortOrder 順に Message ノードを連続送信する
+ *      → Message（kind=normal/start）かつ待機条件なし → 次ノードの種類に関係なく送信
+ *   5. ユーザー操作待ちノード（puzzle/QR/trigger）に達したらそのノードを送信して停止
  */
 function buildEntryChain(
   messages: PhaseRow["messages"],
