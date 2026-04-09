@@ -1,26 +1,35 @@
 /**
  * src/__tests__/buildPhaseMessages-puzzle.test.ts
  *
- * buildPhaseMessages が puzzle メッセージを LINE メッセージに正しく変換するか検証する。
- * drainAutoSendableItems (runtime.ts) → buildPhaseMessages (line.ts) の
- * 統合パイプラインをテストする。
+ * buildPhaseMessages の LINE メッセージ変換を検証する。
  *
- * テスト対象:
- *  1. text puzzle が text LINE メッセージに変換される
- *  2. image puzzle が image LINE メッセージに変換される
- *  3. carousel puzzle がフォールバック text に変換される
- *  4. normal text + puzzle text が 2件の LINE メッセージになる
- *  5. message_type が未対応でもクラッシュしない
+ * 検証カテゴリ:
+ *   A. 正式対応 type（text/image/video）の正常変換
+ *   B. フォールバック type（carousel/voice/riddle/flex/未知型）の安全な変換
+ *   C. 必須フィールド欠損時の安全なスキップ
+ *   D. puzzle メッセージの変換パイプライン（drain → build 統合）
+ *   E. サマリログ検証（複数件のうち一部変換不能ケース）
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { buildPhaseMessages } from "@/lib/line";
 import type { RuntimePhase, RuntimePhaseMessage } from "@/types";
 
+// console.warn / console.error をスパイしてログ出力を検証する
+let warnSpy: ReturnType<typeof vi.spyOn>;
+let errorSpy: ReturnType<typeof vi.spyOn>;
+
+beforeEach(() => {
+  warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+  errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+  // console.log は診断用なのでスパイ不要だが、テスト出力を汚さないよう抑制
+  vi.spyOn(console, "log").mockImplementation(() => {});
+});
+
 /** テスト用 RuntimePhaseMessage を生成する */
-function makeRuntimeMsg(overrides: Partial<RuntimePhaseMessage> = {}): RuntimePhaseMessage {
+function makeMsg(overrides: Partial<RuntimePhaseMessage> = {}): RuntimePhaseMessage {
   return {
-    id:                 "msg-1",
+    id:                 "msg-default",
     message_type:       "text",
     body:               "テストメッセージ",
     asset_url:          null,
@@ -46,185 +55,350 @@ function makePhase(messages: RuntimePhaseMessage[], overrides: Partial<RuntimePh
     name:        "テストフェーズ",
     description: null,
     messages,
-    transitions: [],
+    transitions: null, // エンディング扱い（遷移QR不付与）
     ...overrides,
   };
 }
 
-describe("buildPhaseMessages — puzzle 変換", () => {
+// ────────────────────────────────────────────
+// A. 正式対応 type の正常変換
+// ────────────────────────────────────────────
 
-  it("text puzzle (body あり) → text LINE メッセージに変換される", () => {
-    const phase = makePhase([
-      makeRuntimeMsg({ id: "puzzle-1", message_type: "text", body: "この謎を解け！" }),
-    ]);
+describe("A. 正式対応 type の正常変換", () => {
 
-    const result = buildPhaseMessages(phase);
-
-    // text + body → LINE text message
-    const textMsgs = result.filter((m) => m.type === "text");
-    expect(textMsgs.length).toBeGreaterThanOrEqual(1);
-    expect(textMsgs.some((m) => "text" in m && (m as { text: string }).text.includes("この謎を解け"))).toBe(true);
+  it("text + body → text LINE メッセージ", () => {
+    const result = buildPhaseMessages(makePhase([
+      makeMsg({ id: "t1", message_type: "text", body: "Hello!" }),
+    ]));
+    expect(result).toHaveLength(1);
+    expect(result[0].type).toBe("text");
+    expect((result[0] as { text: string }).text).toBe("Hello!");
   });
 
-  it("image puzzle (asset_url あり) → image LINE メッセージに変換される", () => {
-    const phase = makePhase([
-      makeRuntimeMsg({
-        id: "puzzle-2",
-        message_type: "image",
-        body: null,
-        asset_url: "https://example.com/puzzle.jpg",
+  it("image + asset_url → image LINE メッセージ", () => {
+    const result = buildPhaseMessages(makePhase([
+      makeMsg({ id: "i1", message_type: "image", body: null, asset_url: "https://example.com/img.jpg" }),
+    ]));
+    expect(result).toHaveLength(1);
+    expect(result[0].type).toBe("image");
+  });
+
+  it("video + asset_url → video LINE メッセージ", () => {
+    const result = buildPhaseMessages(makePhase([
+      makeMsg({ id: "v1", message_type: "video", body: null, asset_url: "https://example.com/vid.mp4" }),
+    ]));
+    expect(result).toHaveLength(1);
+    expect(result[0].type).toBe("video");
+  });
+});
+
+// ────────────────────────────────────────────
+// B. フォールバック type の安全な変換
+// ────────────────────────────────────────────
+
+describe("B. フォールバック type の安全な変換", () => {
+
+  it("carousel + alt_text → alt_text がテキスト送信される", () => {
+    const result = buildPhaseMessages(makePhase([
+      makeMsg({
+        id: "c1",
+        message_type: "carousel" as RuntimePhaseMessage["message_type"],
+        body: JSON.stringify([{ title: "card" }]),
+        alt_text: "カルーセルの概要",
       }),
-    ]);
-
-    const result = buildPhaseMessages(phase);
-
-    const imageMsgs = result.filter((m) => m.type === "image");
-    expect(imageMsgs.length).toBeGreaterThanOrEqual(1);
+    ]));
+    expect(result).toHaveLength(1);
+    expect(result[0].type).toBe("text");
+    expect((result[0] as { text: string }).text).toBe("カルーセルの概要");
   });
 
-  it("carousel puzzle → フォールバック text に変換される（黙って消えない）", () => {
-    const phase = makePhase([
-      makeRuntimeMsg({
-        id: "puzzle-3",
+  it("carousel + body のみ（alt_text なし）→ body がテキスト送信される", () => {
+    const result = buildPhaseMessages(makePhase([
+      makeMsg({
+        id: "c2",
+        message_type: "carousel" as RuntimePhaseMessage["message_type"],
+        body: "カードの説明テキスト",
+        alt_text: null,
+      }),
+    ]));
+    expect(result).toHaveLength(1);
+    expect((result[0] as { text: string }).text).toBe("カードの説明テキスト");
+  });
+
+  it("voice + alt_text → テキストフォールバック送信される", () => {
+    const result = buildPhaseMessages(makePhase([
+      makeMsg({
+        id: "vo1",
+        message_type: "voice" as RuntimePhaseMessage["message_type"],
+        body: null,
+        asset_url: "https://example.com/audio.m4a",
+        alt_text: "ボイスメッセージの説明",
+      }),
+    ]));
+    // voice は asset_url があるが、フォールバックで alt_text がテキスト送信される
+    expect(result).toHaveLength(1);
+    expect(result[0].type).toBe("text");
+  });
+
+  it("riddle + body → テキストフォールバック送信される", () => {
+    const result = buildPhaseMessages(makePhase([
+      makeMsg({
+        id: "r1",
+        message_type: "riddle" as RuntimePhaseMessage["message_type"],
+        body: "外部参照の謎テキスト",
+      }),
+    ]));
+    expect(result).toHaveLength(1);
+    expect(result[0].type).toBe("text");
+    expect((result[0] as { text: string }).text).toBe("外部参照の謎テキスト");
+  });
+
+  it("flex + alt_text → テキストフォールバック送信される（後方互換）", () => {
+    const result = buildPhaseMessages(makePhase([
+      makeMsg({
+        id: "f1",
+        message_type: "flex" as RuntimePhaseMessage["message_type"],
+        body: null,
+        alt_text: "Flexの代替テキスト",
+      }),
+    ]));
+    expect(result).toHaveLength(1);
+    expect((result[0] as { text: string }).text).toBe("Flexの代替テキスト");
+  });
+
+  it("未知の type + body → テキストフォールバック送信される", () => {
+    const result = buildPhaseMessages(makePhase([
+      makeMsg({
+        id: "u1",
+        message_type: "unknown_future_type" as RuntimePhaseMessage["message_type"],
+        body: "何かのテキスト",
+      }),
+    ]));
+    expect(result).toHaveLength(1);
+    expect(result[0].type).toBe("text");
+  });
+});
+
+// ────────────────────────────────────────────
+// C. 必須フィールド欠損時の安全なスキップ
+// ────────────────────────────────────────────
+
+describe("C. 必須フィールド欠損時の安全なスキップ", () => {
+
+  it("text + body null → スキップされ warning ログが出る", () => {
+    const result = buildPhaseMessages(makePhase([
+      makeMsg({ id: "bad-text", message_type: "text", body: null }),
+    ]));
+    expect(result).toHaveLength(0);
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("text メッセージの body が空"),
+    );
+  });
+
+  it("image + asset_url null → スキップされ warning ログが出る", () => {
+    const result = buildPhaseMessages(makePhase([
+      makeMsg({ id: "bad-img", message_type: "image", body: null, asset_url: null }),
+    ]));
+    expect(result).toHaveLength(0);
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("image メッセージの asset_url が空"),
+    );
+  });
+
+  it("video + asset_url null → スキップされ warning ログが出る", () => {
+    const result = buildPhaseMessages(makePhase([
+      makeMsg({ id: "bad-vid", message_type: "video", body: null, asset_url: null }),
+    ]));
+    expect(result).toHaveLength(0);
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("video メッセージの asset_url が空"),
+    );
+  });
+
+  it("完全に空のメッセージ（body も asset も alt も null）→ スキップ + 変換不能ログ", () => {
+    const result = buildPhaseMessages(makePhase([
+      makeMsg({
+        id: "empty",
+        message_type: "carousel" as RuntimePhaseMessage["message_type"],
+        body: null, asset_url: null, alt_text: null,
+      }),
+    ]));
+    expect(result).toHaveLength(0);
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("変換不能メッセージ"),
+      expect.any(String),
+      expect.any(String),
+    );
+  });
+
+  it("入力2件 → 変換0件の場合に error ログが出る", () => {
+    buildPhaseMessages(makePhase([
+      makeMsg({ id: "b1", message_type: "text", body: null }),
+      makeMsg({ id: "b2", message_type: "image", body: null, asset_url: null }),
+    ]));
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining("入力 2件 → LINE変換 0件"),
+      expect.any(String),
+    );
+  });
+
+  it("入力3件中1件だけ変換不能 → 残り2件は正常送信 + warn ログ", () => {
+    const result = buildPhaseMessages(makePhase([
+      makeMsg({ id: "ok1", message_type: "text", body: "正常1" }),
+      makeMsg({ id: "bad", message_type: "text", body: null }),
+      makeMsg({ id: "ok2", message_type: "text", body: "正常2" }),
+    ]));
+    expect(result).toHaveLength(2);
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("入力 3件 → LINE変換 2件"),
+      expect.any(String),
+    );
+  });
+});
+
+// ────────────────────────────────────────────
+// D. puzzle メッセージの変換パイプライン
+// ────────────────────────────────────────────
+
+describe("D. puzzle メッセージの変換パイプライン", () => {
+
+  it("text puzzle (body あり) → text LINE メッセージ", () => {
+    const result = buildPhaseMessages(makePhase([
+      makeMsg({ id: "p1", message_type: "text", body: "この謎を解け！" }),
+    ]));
+    expect(result).toHaveLength(1);
+    expect((result[0] as { text: string }).text).toContain("この謎を解け");
+  });
+
+  it("image puzzle → image LINE メッセージ", () => {
+    const result = buildPhaseMessages(makePhase([
+      makeMsg({ id: "p2", message_type: "image", body: null, asset_url: "https://example.com/puzzle.jpg" }),
+    ]));
+    expect(result.some((m) => m.type === "image")).toBe(true);
+  });
+
+  it("carousel puzzle → フォールバック text（黙って消えない）", () => {
+    const result = buildPhaseMessages(makePhase([
+      makeMsg({
+        id: "p3",
         message_type: "carousel" as RuntimePhaseMessage["message_type"],
         body: JSON.stringify([{ title: "選択肢1" }]),
         alt_text: "カルーセルの説明",
       }),
-    ]);
-
-    const result = buildPhaseMessages(phase);
-
-    // carousel はフォールバック text として送信される
-    const textMsgs = result.filter((m) => m.type === "text");
-    expect(textMsgs.length).toBeGreaterThanOrEqual(1);
+    ]));
+    expect(result).toHaveLength(1);
+    expect(result[0].type).toBe("text");
   });
 
-  it("normal text + puzzle text → 2件の LINE メッセージになる", () => {
-    const phase = makePhase([
-      makeRuntimeMsg({ id: "m1", sort_order: 0, message_type: "text", body: "導入テキスト" }),
-      makeRuntimeMsg({ id: "puzzle-1", sort_order: 1, message_type: "text", body: "この謎を解け！" }),
-    ]);
-
-    const result = buildPhaseMessages(phase);
-
-    // 2件のメッセージ + 遷移QR(transitions=[]のため「続きを選んでください」テキスト可能性あり)
-    // 少なくとも 2件の text が含まれる
-    const textMsgs = result.filter((m) => m.type === "text");
-    expect(textMsgs.length).toBeGreaterThanOrEqual(2);
+  it("normal text + puzzle text → 2件とも LINE メッセージになる", () => {
+    const result = buildPhaseMessages(makePhase([
+      makeMsg({ id: "m1", message_type: "text", body: "導入" }),
+      makeMsg({ id: "p1", message_type: "text", body: "謎を解け" }),
+    ]));
+    expect(result.filter((m) => m.type === "text")).toHaveLength(2);
   });
 
-  it("normal text + image puzzle → text + image の 2件になる", () => {
-    const phase = makePhase([
-      makeRuntimeMsg({ id: "m1", sort_order: 0, message_type: "text", body: "まず読んでね" }),
-      makeRuntimeMsg({
-        id: "puzzle-1", sort_order: 1,
-        message_type: "image",
-        body: null,
-        asset_url: "https://example.com/puzzle.jpg",
-      }),
-    ]);
-
-    const result = buildPhaseMessages(phase);
-
+  it("normal text + image puzzle → text + image の 2件", () => {
+    const result = buildPhaseMessages(makePhase([
+      makeMsg({ id: "m1", message_type: "text", body: "まず読んでね" }),
+      makeMsg({ id: "p1", message_type: "image", body: null, asset_url: "https://example.com/puzzle.jpg" }),
+    ]));
     expect(result.some((m) => m.type === "text")).toBe(true);
     expect(result.some((m) => m.type === "image")).toBe(true);
   });
-
-  it("未対応 message_type でもクラッシュせず、空にならない（警告のみ）", () => {
-    const phase = makePhase([
-      makeRuntimeMsg({ id: "m1", sort_order: 0, message_type: "text", body: "正常テキスト" }),
-      makeRuntimeMsg({
-        id: "m2", sort_order: 1,
-        message_type: "voice" as RuntimePhaseMessage["message_type"],
-        body: null,
-        asset_url: null, // voice だが asset_url もない
-      }),
-    ]);
-
-    const result = buildPhaseMessages(phase);
-
-    // voice の asset_url が null → 変換されないが、text の m1 は含まれる
-    expect(result.some((m) => m.type === "text")).toBe(true);
-    // クラッシュしない
-    expect(result.length).toBeGreaterThanOrEqual(1);
-  });
 });
 
-describe("drainAutoSendableItems → buildPhaseMessages 統合パイプライン", () => {
+// ────────────────────────────────────────────
+// E. drainAutoSendableItems → buildPhaseMessages 統合
+// ────────────────────────────────────────────
 
-  // drainAutoSendableItems の出力を buildPhaseMessages に通して
-  // 実際に puzzle が LINE メッセージになるかを検証する
-  it("同一フェーズの normal text + puzzle text → フェーズ突入で両方送信対象になる", async () => {
-    // drainAutoSendableItems をインポート
+describe("E. 統合パイプライン（drain → build）", () => {
+
+  /** DB 取得形式に近い PhaseRow message を生成する */
+  function makeDbMsg(overrides: Record<string, unknown> = {}) {
+    const now = new Date("2024-01-01");
+    return {
+      id: "db-msg", workId: "w1", phaseId: "p1", characterId: null,
+      messageType: "text", body: "テスト", assetUrl: null,
+      altText: null, flexPayloadJson: null, quickReplies: null,
+      sortOrder: 0, isActive: true, createdAt: now, updatedAt: now,
+      kind: "normal", triggerKeyword: null, targetSegment: null,
+      notifyText: null, riddleId: null,
+      answer: null, answerMatchType: '["exact"]',
+      correctAction: null, correctNextPhaseId: null,
+      correctText: null, incorrectText: null,
+      incorrectQuickReplies: null, puzzleHintText: null,
+      puzzleType: null, nextMessageId: null, lagMs: 0,
+      hintMode: "always",
+      readReceiptMode: null, readDelayMs: null,
+      typingEnabled: null, typingMinMs: null, typingMaxMs: null,
+      loadingEnabled: null, loadingThresholdMs: null,
+      loadingMinSeconds: null, loadingMaxSeconds: null,
+      tapDestinationId: null, tapUrl: null,
+      character: null,
+      ...overrides,
+    };
+  }
+
+  it("normal text + puzzle text → drain で 2件取得 → build で 2件の LINE メッセージ", async () => {
     const { drainAutoSendableItems } = await import("@/lib/runtime");
 
-    // DB 取得形式に近い PhaseRow["messages"] を構築
-    const now = new Date("2024-01-01");
-    const phaseMessages = [
-      {
-        id: "m1", workId: "w1", phaseId: "p1", characterId: null,
-        messageType: "text", body: "導入テキスト", assetUrl: null,
-        altText: null, flexPayloadJson: null, quickReplies: null,
-        sortOrder: 0, isActive: true, createdAt: now, updatedAt: now,
-        kind: "normal", triggerKeyword: null, targetSegment: null,
-        notifyText: null, riddleId: null,
-        answer: null, answerMatchType: '["exact"]',
-        correctAction: null, correctNextPhaseId: null,
-        correctText: null, incorrectText: null,
-        incorrectQuickReplies: null, puzzleHintText: null,
-        puzzleType: null, nextMessageId: null, lagMs: 0,
-        hintMode: "always",
-        readReceiptMode: null, readDelayMs: null,
-        typingEnabled: null, typingMinMs: null, typingMaxMs: null,
-        loadingEnabled: null, loadingThresholdMs: null,
-        loadingMinSeconds: null, loadingMaxSeconds: null,
-        tapDestinationId: null, tapUrl: null,
-        character: null,
-      },
-      {
-        id: "puzzle1", workId: "w1", phaseId: "p1", characterId: null,
-        messageType: "text", body: "この謎を解いてください", assetUrl: null,
-        altText: null, flexPayloadJson: null, quickReplies: null,
-        sortOrder: 1, isActive: true, createdAt: now, updatedAt: now,
-        kind: "puzzle", triggerKeyword: null, targetSegment: null,
-        notifyText: null, riddleId: null,
-        answer: "42", answerMatchType: '["exact"]',
-        correctAction: "text", correctNextPhaseId: null,
-        correctText: "正解！", incorrectText: "不正解",
-        incorrectQuickReplies: null, puzzleHintText: null,
-        puzzleType: "text", nextMessageId: null, lagMs: 0,
-        hintMode: "always",
-        readReceiptMode: null, readDelayMs: null,
-        typingEnabled: null, typingMinMs: null, typingMaxMs: null,
-        loadingEnabled: null, loadingThresholdMs: null,
-        loadingMinSeconds: null, loadingMaxSeconds: null,
-        tapDestinationId: null, tapUrl: null,
-        character: null,
-      },
+    const msgs = [
+      makeDbMsg({ id: "m1", sortOrder: 0, body: "導入テキスト" }),
+      makeDbMsg({ id: "puzzle1", sortOrder: 1, kind: "puzzle", body: "この謎を解け", answer: "42" }),
     ];
 
-    // Step 1: drainAutoSendableItems
-    const drained = drainAutoSendableItems(phaseMessages as any, "in_progress");
+    const drained = drainAutoSendableItems(msgs as any, "in_progress");
     expect(drained).toHaveLength(2);
-    expect(drained[0].id).toBe("m1");
-    expect(drained[1].id).toBe("puzzle1");
 
-    // Step 2: buildPhaseMessages
     const phase: RuntimePhase = {
-      id: "p1",
-      phase_type: "normal",
-      name: "テスト",
-      description: null,
-      messages: drained,
-      transitions: null, // エンディング扱い（遷移QR不要）
+      id: "p1", phase_type: "normal", name: "テスト", description: null,
+      messages: drained, transitions: null,
     };
     const lineMessages = buildPhaseMessages(phase);
-
-    // 2件の text メッセージが生成される
-    expect(lineMessages.length).toBeGreaterThanOrEqual(2);
-    expect(lineMessages[0].type).toBe("text");
-    expect(lineMessages[1].type).toBe("text");
+    expect(lineMessages).toHaveLength(2);
     expect((lineMessages[0] as { text: string }).text).toContain("導入テキスト");
-    expect((lineMessages[1] as { text: string }).text).toContain("この謎を解いてください");
+    expect((lineMessages[1] as { text: string }).text).toContain("この謎を解け");
+  });
+
+  it("normal text + image puzzle → drain 2件 → build で text + image", async () => {
+    const { drainAutoSendableItems } = await import("@/lib/runtime");
+
+    const msgs = [
+      makeDbMsg({ id: "m1", sortOrder: 0, body: "テキスト" }),
+      makeDbMsg({
+        id: "puzzle1", sortOrder: 1, kind: "puzzle",
+        messageType: "image", body: null,
+        assetUrl: "https://example.com/puzzle.jpg", answer: "答え",
+      }),
+    ];
+
+    const drained = drainAutoSendableItems(msgs as any, "in_progress");
+    expect(drained).toHaveLength(2);
+
+    const lineMessages = buildPhaseMessages(makePhase(drained));
+    expect(lineMessages.some((m) => m.type === "text")).toBe(true);
+    expect(lineMessages.some((m) => m.type === "image")).toBe(true);
+  });
+
+  it("normal + carousel puzzle → drain 2件 → build でテキスト2件（carousel はフォールバック）", async () => {
+    const { drainAutoSendableItems } = await import("@/lib/runtime");
+
+    const msgs = [
+      makeDbMsg({ id: "m1", sortOrder: 0, body: "導入" }),
+      makeDbMsg({
+        id: "puzzle1", sortOrder: 1, kind: "puzzle",
+        messageType: "carousel", body: JSON.stringify([{ title: "card" }]),
+        altText: "カルーセル謎", answer: "答え",
+      }),
+    ];
+
+    const drained = drainAutoSendableItems(msgs as any, "in_progress");
+    expect(drained).toHaveLength(2);
+
+    const lineMessages = buildPhaseMessages(makePhase(drained));
+    expect(lineMessages).toHaveLength(2);
+    // carousel puzzle は alt_text でフォールバック
+    expect((lineMessages[1] as { text: string }).text).toContain("カルーセル謎");
   });
 });

@@ -521,118 +521,108 @@ export function buildPhaseMessages(
   }
 
   // ── DB Message 行を 1 件ずつ独立した吹き出しに変換 ──
-  console.log(
-    `[buildPhaseMessages] phase=${phase.id.slice(0, 8)} msgs=${phase.messages.length}件`,
-    phase.messages.map((m) => `id=${m.id.slice(0, 8)} type=${m.message_type} body=${m.body ? "あり" : "なし"} asset=${m.asset_url ? "あり" : "なし"}`).join(" / "),
-  );
+  //
+  // message_type ごとの変換契約:
+  //   正式対応（専用 LINE 型に変換）:
+  //     text      → LineTextMessage   （body 必須）
+  //     image     → LineImageMessage  （asset_url 必須）
+  //     video     → LineVideoMessage  （asset_url 必須）
+  //   フォールバック（text 代替送信）:
+  //     flex      → alt_text をテキスト送信（既存データ後方互換）
+  //     carousel  → alt_text を優先、なければ body 先頭200文字をテキスト送信
+  //     voice     → alt_text or body をテキスト送信（LINE audio は duration 必須で非対応）
+  //     riddle    → body or alt_text をテキスト送信（外部 riddle 参照型の後方互換）
+  //   必須フィールド欠損時:
+  //     text + body null  → 警告ログ + スキップ（送信不能）
+  //     image + asset null → 警告ログ + スキップ
+  //     video + asset null → 警告ログ + スキップ
+  //   未知の type:
+  //     警告ログ + body or alt_text があればテキストフォールバック
+  //
+  const inputCount = phase.messages.length;
   for (const msg of phase.messages) {
     // hint_mode に基づいてヒント QR をフィルタ
-    // on_wrong / hidden の場合は初期表示からヒントアイテムを除外する
     const visibleQrItems = (msg.hint_mode === "always" || !msg.hint_mode)
       ? msg.quick_replies
       : (msg.quick_replies ?? []).filter((i) => i.action !== "hint");
-    // メッセージ個別 quickReply（設定されていれば phase-level 遷移より優先）
     const msgQr = visibleQrItems?.length
       ? buildQuickReplyFromItems(visibleQrItems)
       : undefined;
 
-    if (msg.message_type === "text" && msg.body) {
-      const lineMsg: LineTextMessage = {
-        type: "text",
-        text: replacePlaceholders(msg.body, vars),
-      };
-      if (msg.character) {
-        lineMsg.sender = buildSender(msg.character);
-      }
-      if (msgQr) lineMsg.quickReply = msgQr;
-      if (msg.lag_ms > 0) lineMsg._lagMs = msg.lag_ms;
-      messages.push(lineMsg);
-    }
-
-    if (msg.message_type === "image" && msg.asset_url) {
-      const lineMsg: LineImageMessage = {
-        type:               "image",
-        originalContentUrl: msg.asset_url,
-        previewImageUrl:    msg.asset_url,
-      };
+    // ── ヘルパー: LINE メッセージを組み立てて push する ──
+    const pushText = (text: string) => {
+      const lineMsg: LineTextMessage = { type: "text", text: replacePlaceholders(text, vars) };
       if (msg.character) lineMsg.sender = buildSender(msg.character);
       if (msgQr) lineMsg.quickReply = msgQr;
       if (msg.lag_ms > 0) lineMsg._lagMs = msg.lag_ms;
       messages.push(lineMsg);
-    }
-
-    if (msg.message_type === "video" && msg.asset_url) {
-      const lineMsg: LineVideoMessage = {
-        type:               "video",
-        originalContentUrl: msg.asset_url,
-        previewImageUrl:    msg.asset_url,
-      };
+    };
+    const pushImage = (url: string) => {
+      const lineMsg: LineImageMessage = { type: "image", originalContentUrl: url, previewImageUrl: url };
       if (msg.character) lineMsg.sender = buildSender(msg.character);
       if (msgQr) lineMsg.quickReply = msgQr;
       if (msg.lag_ms > 0) lineMsg._lagMs = msg.lag_ms;
       messages.push(lineMsg);
-    }
-
-    // flex → alt_text をテキストとして送信（既存 DB データの後方互換）
-    if ((msg.message_type as string) === "flex" && msg.alt_text) {
-      const lineMsg: LineTextMessage = {
-        type: "text",
-        text: replacePlaceholders(msg.alt_text, vars),
-      };
+    };
+    const pushVideo = (url: string) => {
+      const lineMsg: LineVideoMessage = { type: "video", originalContentUrl: url, previewImageUrl: url };
       if (msg.character) lineMsg.sender = buildSender(msg.character);
       if (msgQr) lineMsg.quickReply = msgQr;
       if (msg.lag_ms > 0) lineMsg._lagMs = msg.lag_ms;
       messages.push(lineMsg);
+    };
+
+    const mtype = msg.message_type as string;
+
+    // ── 正式対応 ──
+    if (mtype === "text") {
+      if (msg.body) { pushText(msg.body); continue; }
+      console.warn(`[buildPhaseMessages] ⚠️ text メッセージの body が空 id=${msg.id.slice(0, 8)} phase=${phase.id.slice(0, 8)}`);
+      continue;
+    }
+    if (mtype === "image") {
+      if (msg.asset_url) { pushImage(msg.asset_url); continue; }
+      console.warn(`[buildPhaseMessages] ⚠️ image メッセージの asset_url が空 id=${msg.id.slice(0, 8)} phase=${phase.id.slice(0, 8)}`);
+      continue;
+    }
+    if (mtype === "video") {
+      if (msg.asset_url) { pushVideo(msg.asset_url); continue; }
+      console.warn(`[buildPhaseMessages] ⚠️ video メッセージの asset_url が空 id=${msg.id.slice(0, 8)} phase=${phase.id.slice(0, 8)}`);
+      continue;
     }
 
-    // carousel → body に JSON が格納されている。alt_text or 通知テキストをフォールバック送信
-    if ((msg.message_type as string) === "carousel") {
-      const fallbackText = msg.alt_text || msg.body;
-      if (fallbackText) {
-        const lineMsg: LineTextMessage = {
-          type: "text",
-          text: replacePlaceholders(
-            // body が JSON の場合はそのまま送れないので alt_text を優先
-            msg.alt_text || "（カルーセルメッセージ）",
-            vars,
-          ),
-        };
-        if (msg.character) lineMsg.sender = buildSender(msg.character);
-        if (msgQr) lineMsg.quickReply = msgQr;
-        if (msg.lag_ms > 0) lineMsg._lagMs = msg.lag_ms;
-        messages.push(lineMsg);
-      }
+    // ── フォールバック対応（テキスト代替送信）──
+    // flex / carousel / voice / riddle および未知の type はすべてここに落ちる。
+    // 送信可能なテキスト（alt_text > body）があれば LINE テキストメッセージとして送信する。
+    const fallbackText = msg.alt_text || msg.body;
+    if (fallbackText) {
+      // carousel の body は JSON 文字列の場合があるため alt_text を優先
+      const safeText = (mtype === "carousel" && msg.alt_text) ? msg.alt_text : fallbackText;
+      pushText(truncateText(safeText));
+      continue;
     }
 
-    // voice → asset_url を音声メッセージとして送信（LINE は audio type をサポート）
-    // 現時点では LINE Messaging API の audio 型で送信
-    if ((msg.message_type as string) === "voice" && msg.asset_url) {
-      // LINE audio message は duration が必須だが、DB に duration がないためテキストフォールバック
-      const lineMsg: LineTextMessage = {
-        type: "text",
-        text: msg.alt_text || msg.body || "（ボイスメッセージ）",
-      };
-      if (msg.character) lineMsg.sender = buildSender(msg.character);
-      if (msgQr) lineMsg.quickReply = msgQr;
-      if (msg.lag_ms > 0) lineMsg._lagMs = msg.lag_ms;
-      messages.push(lineMsg);
-    }
+    // ── 送信不能（テキストも画像もない）──
+    console.warn(
+      `[buildPhaseMessages] ⚠️ 変換不能メッセージ（送信スキップ）`,
+      `id=${msg.id.slice(0, 8)} type=${mtype} phase=${phase.id.slice(0, 8)}`,
+      `body=${msg.body ? "あり" : "なし"} asset=${msg.asset_url ? "あり" : "なし"} alt=${msg.alt_text ? "あり" : "なし"}`,
+    );
+  }
 
-    // ── 未対応 message_type の検出ログ ──
-    const handled =
-      (msg.message_type === "text" && !!msg.body) ||
-      (msg.message_type === "image" && !!msg.asset_url) ||
-      (msg.message_type === "video" && !!msg.asset_url) ||
-      ((msg.message_type as string) === "flex" && !!msg.alt_text) ||
-      ((msg.message_type as string) === "carousel") ||
-      ((msg.message_type as string) === "voice" && !!msg.asset_url);
-    if (!handled) {
-      console.warn(
-        `[buildPhaseMessages] ⚠️ 未変換メッセージ`,
-        `id=${msg.id.slice(0, 8)} type=${msg.message_type}`,
-        `body=${msg.body ? "あり" : "なし"} asset=${msg.asset_url ? "あり" : "なし"} alt=${msg.alt_text ? "あり" : "なし"}`,
-      );
-    }
+  // ── サマリログ: 入力に対して出力が大幅に減った場合の警告 ──
+  const prefixOffset = prefixText ? 1 : 0;
+  const convertedCount = messages.length - prefixOffset;
+  if (inputCount > 0 && convertedCount === 0) {
+    console.error(
+      `[buildPhaseMessages] ❌ 入力 ${inputCount}件 → LINE変換 0件（全メッセージが変換不能）`,
+      `phase=${phase.id.slice(0, 8)}`,
+    );
+  } else if (inputCount > 0 && convertedCount < inputCount) {
+    console.warn(
+      `[buildPhaseMessages] 入力 ${inputCount}件 → LINE変換 ${convertedCount}件（${inputCount - convertedCount}件スキップ）`,
+      `phase=${phase.id.slice(0, 8)}`,
+    );
   }
 
   // ── エンディング or クイックリプライ付与 ──
