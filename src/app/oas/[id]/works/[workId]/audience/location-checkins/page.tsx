@@ -9,6 +9,7 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { getDevToken } from "@/lib/api-client";
+import { evaluateGpsHealth } from "@/lib/location-health";
 import type { LocationVisitStats, LocationVisit, GpsAttemptStats } from "@/types";
 
 function authHeaders(token: string): HeadersInit {
@@ -89,40 +90,80 @@ export default function LocationCheckinsPage() {
               <EmptyState text="まだチェックイン履歴がありません" />
             ) : (
               <div style={{ overflowX: "auto" }}>
-                <table style={{ width: "100%", fontSize: 13, borderCollapse: "collapse", minWidth: 700 }}>
+                <table style={{ width: "100%", fontSize: 13, borderCollapse: "collapse", minWidth: 780 }}>
                   <thead>
                     <tr style={{ borderBottom: "1px solid #e5e7eb", background: "#f9fafb" }}>
                       <th style={thL}>ロケーション</th>
                       <th style={thR}>訪問</th>
-                      <th style={thR}>ユニーク</th>
                       <th style={thR}>QR</th>
                       <th style={thR}>GPS</th>
                       <th style={thR}>QR+GPS</th>
-                      <th style={thR}>GPS平均距離</th>
                       <th style={thR}>GPS成功率</th>
-                      <th style={thR}>最終訪問</th>
+                      <th style={{ ...thL, textAlign: "center" }}>状態</th>
+                      <th style={{ ...thL, textAlign: "center" }}></th>
                     </tr>
                   </thead>
                   <tbody>
-                    {stats.by_location.map((loc) => (
-                      <tr key={loc.location_id} style={{ borderBottom: "1px solid #f3f4f6" }}>
-                        <td style={tdL}>
-                          <Link href={`/oas/${oaId}/works/${workId}/locations/${loc.location_id}`} style={{ color: "#2563eb", textDecoration: "none", fontWeight: 500 }}>
-                            {loc.location_name}
-                          </Link>
-                        </td>
-                        <td style={tdR}><strong>{loc.total_visits}</strong></td>
-                        <td style={tdR}>{loc.unique_users}</td>
-                        <td style={tdR}>{loc.qr_count}</td>
-                        <td style={tdR}>{loc.gps_count}</td>
-                        <td style={tdR}>{loc.qr_and_gps_count}</td>
-                        <td style={tdR}>{loc.avg_distance_meters != null ? `${loc.avg_distance_meters}m` : "—"}</td>
-                        <td style={tdR}>{loc.gps_success_rate != null ? `${loc.gps_success_rate}%` : "—"}</td>
-                        <td style={{ ...tdR, color: "#9ca3af" }}>
-                          {loc.last_visited_at ? new Date(loc.last_visited_at).toLocaleDateString("ja-JP") : "—"}
-                        </td>
-                      </tr>
-                    ))}
+                    {stats.by_location.map((loc) => {
+                      const health = evaluateGpsHealth({
+                        gps_attempts: loc.gps_attempts,
+                        gps_successes: loc.gps_successes,
+                        gps_success_rate: loc.gps_success_rate,
+                        out_of_range_count: loc.out_of_range_count,
+                      });
+                      const hasGpsIssue = health.status === "adjust" || health.status === "review";
+
+                      return (
+                        <tr key={loc.location_id} style={{ borderBottom: "1px solid #f3f4f6", background: health.status === "adjust" ? "#fef2f220" : undefined }}>
+                          <td style={tdL}>
+                            <Link href={`/oas/${oaId}/works/${workId}/locations/${loc.location_id}`} style={{ color: "#2563eb", textDecoration: "none", fontWeight: 500 }}>
+                              {loc.location_name}
+                            </Link>
+                            {health.hint && hasGpsIssue && (
+                              <p style={{ fontSize: 11, color: "#9ca3af", marginTop: 2, lineHeight: 1.4 }}>{health.hint}</p>
+                            )}
+                            {loc.radius_suggestion && (
+                              <p style={{ fontSize: 11, color: "#d97706", marginTop: 2, fontWeight: 500 }}>
+                                提案: 半径 {loc.radius_suggestion.current_radius}m → {loc.radius_suggestion.suggested_radius}m
+                                <span style={{ fontWeight: 400, color: "#9ca3af" }}> ({loc.radius_suggestion.confidence})</span>
+                              </p>
+                            )}
+                          </td>
+                          <td style={tdR}><strong>{loc.total_visits}</strong></td>
+                          <td style={tdR}>{loc.qr_count}</td>
+                          <td style={tdR}>
+                            {loc.gps_count + loc.qr_and_gps_count > 0 ? loc.gps_count : "—"}
+                          </td>
+                          <td style={tdR}>{loc.qr_and_gps_count || "—"}</td>
+                          <td style={tdR}>{loc.gps_success_rate != null ? `${loc.gps_success_rate}%` : "—"}</td>
+                          <td style={{ ...tdL, textAlign: "center" }}>
+                            {health.status && (
+                              <span style={{
+                                display: "inline-block", padding: "2px 8px", borderRadius: 10,
+                                fontSize: 11, fontWeight: 600,
+                                background: health.bgColor, color: health.color,
+                              }}>
+                                {health.label}
+                              </span>
+                            )}
+                          </td>
+                          <td style={{ ...tdL, textAlign: "center" }}>
+                            {hasGpsIssue && (
+                              <Link
+                                href={`/oas/${oaId}/works/${workId}/locations/${loc.location_id}${loc.radius_suggestion ? `?suggested_radius=${loc.radius_suggestion.suggested_radius}` : ""}`}
+                                style={{
+                                  display: "inline-block", padding: "3px 10px", borderRadius: 6,
+                                  fontSize: 11, fontWeight: 600, textDecoration: "none",
+                                  background: "#eff6ff", color: "#2563eb", border: "1px solid #bfdbfe",
+                                }}
+                              >
+                                設定を見直す
+                              </Link>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

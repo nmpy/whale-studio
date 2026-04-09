@@ -302,15 +302,6 @@ function messageRowToRuntime(
 }
 
 /**
- * フェーズのメッセージ一覧から「フェーズ開始時に自動表示すべきメッセージ列」を構築する。
- *
- * ルール:
- *   1. QRの target_message_id で参照されるメッセージは表示しない（QRタップ時のみ表示）
- *   2. 他メッセージの nextMessageId で参照されるメッセージは起点にしない（チェーン中間）
- *   3. 起点メッセージから nextMessageId を辿り、quick_replies を持つメッセージで停止
- *      （QRを持つメッセージはそこで一時停止し、ユーザー入力を待つ）
- */
-/**
  * ユーザーの進行セグメント。
  * - not_started : 未開始（UserProgress なし）
  * - in_progress : プレイ中（UserProgress あり・エンディング未到達）
@@ -318,11 +309,96 @@ function messageRowToRuntime(
  */
 export type UserSegment = "not_started" | "in_progress" | "completed";
 
-function buildEntryChain(
+// ── フェーズ内メッセージの自動連続送信 ─────────────────────
+//
+// Phase内メッセージ送信フロー:
+//
+//   [通常] → [通常] → [puzzle] → (停止) → 正解 → drain再開 → [通常] → ...
+//
+//   停止条件:
+//   - puzzle       … 表示後に解答待ち
+//   - quickReplies … 表示後に選択待ち
+//   - triggerKeyword … キーワード入力待ち（kind="start" 除く）
+//
+// 設計メモ:
+//   - UIの「ラベル」（通常/応答/謎 等）は MSG_KIND_META[kind].label で
+//     表示時に導出される名前であり、DB に label カラムは存在しない。
+//     ランタイムでは kind フィールドを直接参照する。
+//
+//   - 自動送信の判定は kind 単独では決まらない。
+//     kind="normal" でも triggerKeyword があればキーワード入力待ち、
+//     quickReplies があれば選択待ちになる。
+//     → isAutoSendablePhaseItem（送信対象か）と isWaitPoint（停止するか）の
+//       2段階で判定する。
+//
+//   - kind="puzzle" は「送信は自動、回答待ちで停止」。
+//     puzzle メッセージ自体はフェーズ突入時に表示されるが、
+//     isWaitPoint が true を返すためそこで連続送信は停止する。
+//     正解後の correctText / incorrectText はメッセージ行ではなく
+//     puzzle の属性であり、handlePuzzleCorrect が処理する。
+
+type PhaseMessage = PhaseRow["messages"][number];
+
+/**
+ * メッセージがフェーズ突入時の自動送信対象かどうかを判定する。
+ *
+ * kind だけでなく triggerKeyword の有無・QR 分岐先参照・puzzle の
+ * targetSegment を加味して判定する。
+ * この関数が true を返しても isWaitPoint が true ならそこで連続送信は停止する。
+ */
+function isAutoSendablePhaseItem(
+  m: PhaseMessage,
+  opts: {
+    targetMsgIds: Set<string>;
+    userSegment?: UserSegment;
+  },
+): boolean {
+  // QR 分岐先として参照されるメッセージは自動表示しない
+  if (opts.targetMsgIds.has(m.id)) return false;
+  // response / hint はキーワード / ヒントトリガーでのみ表示
+  if (m.kind === "response" || m.kind === "hint") return false;
+  // kind="start" は常に自動表示（startTrigger 用の開始演出）
+  // それ以外で triggerKeyword が設定されているものはキーワード入力待ちのため除外
+  if (m.kind !== "start" && m.triggerKeyword?.trim()) return false;
+  // puzzle: targetSegment フィルタ（設定されていればセグメント一致チェック）
+  if (m.kind === "puzzle" && m.targetSegment && opts.userSegment && m.targetSegment !== opts.userSegment) return false;
+  return true;
+}
+
+/**
+ * メッセージが「待機ポイント」（連続送信を停止してユーザー入力を待つ地点）かどうか。
+ *
+ * 待機ポイントのメッセージ自体は送信される（例: puzzle は表示してから解答待ち）。
+ * drainAutoSendableItems はこの関数が true を返した時点で結果を確定して返す。
+ */
+function isWaitPoint(m: PhaseMessage): boolean {
+  if (m.quickReplies) return true;
+  if (m.kind === "puzzle") return true;
+  // kind="start" の triggerKeyword は開始トリガー用であり、ユーザー入力待ちではない
+  if (m.kind !== "start" && m.triggerKeyword?.trim()) return true;
+  return false;
+}
+
+/**
+ * フェーズ内の自動送信対象メッセージを sortOrder 順にドレインする。
+ *
+ * ルール:
+ *   1. メッセージを sortOrder 順に走査する
+ *   2. 自動送信対象（isAutoSendablePhaseItem）のメッセージを順に結果に追加する
+ *   3. 待機ポイント（isWaitPoint）に達したら、そのメッセージを追加して停止する
+ *      （puzzle は表示してから解答待ち、QR は表示してから選択待ち）
+ *   4. nextMessageId チェーン中間のメッセージは sortOrder 走査からはスキップするが、
+ *      チェーンの起点がドレイン対象であればチェーンを辿って追加する
+ *
+ * @param startAfterSortOrder  指定すると、この sortOrder より後のメッセージからドレインする。
+ *                              パズル正解後の継続送信で使用する。
+ */
+export function drainAutoSendableItems(
   messages: PhaseRow["messages"],
   userSegment?: UserSegment,
+  startAfterSortOrder?: number,
 ): import("@/types").RuntimePhaseMessage[] {
-  // 1. QR の target_message_id を収集（分岐先メッセージ ID セット）
+  // 1. QR の target_message_id を収集
   const targetMsgIds = new Set<string>();
   for (const m of messages) {
     if (!m.quickReplies) continue;
@@ -334,48 +410,42 @@ function buildEntryChain(
     } catch { /* ignore */ }
   }
 
-  // 2. nextMessageId で参照されているメッセージ ID セット（チェーン中間）
+  // 2. nextMessageId で参照されるメッセージ ID セット（チェーン中間）
   const midChainIds = new Set<string>(
-    messages.filter((m) => m.nextMessageId).map((m) => m.nextMessageId!)
+    messages.filter((m) => m.nextMessageId).map((m) => m.nextMessageId!),
   );
 
   // 3. ID → メッセージ マップ
   const msgMap = new Map(messages.map((m) => [m.id, m]));
 
-  // 4. 起点メッセージ: QR 分岐先でなく、チェーン中間でなく、かつ kind が response/hint でないもの
-  //    kind="response" / "hint" はキーワードトリガーで表示するもの（フェーズ開始時は非表示）
-  //    kind="start" は LINE webhook の handleStartTrigger がキーワードマッチに使うため
-  //    triggerKeyword が設定されていても常に起点として扱う（シナリオ開幕演出メッセージ）
-  //    それ以外（kind="normal"/"puzzle" など）で triggerKeyword があるものはキーワード入力待ちのため除外
-  //    kind="puzzle" の場合: targetSegment が設定されていればユーザーのセグメントと照合し、
-  //    不一致の謎はフェーズ開始時に表示しない（発火対象外）
-  const entries = messages
-    .filter(
-      (m) =>
-        !targetMsgIds.has(m.id) &&
-        !midChainIds.has(m.id) &&
-        m.kind !== "response" &&
-        m.kind !== "hint" &&
-        (m.kind === "start" || !m.triggerKeyword?.trim()) &&
-        // 謎: targetSegment が設定されている場合はセグメント一致チェック
-        (m.kind !== "puzzle" || !m.targetSegment || !userSegment || m.targetSegment === userSegment),
-    )
+  // 4. sortOrder 順にソートした自動送信候補を構築
+  //    チェーン中間のメッセージは起点から辿るため、ここではスキップする
+  const sorted = messages
+    .filter((m) => !midChainIds.has(m.id))
     .sort((a, b) => a.sortOrder - b.sortOrder || a.createdAt.getTime() - b.createdAt.getTime());
 
-  // 5. 各起点からチェーンを辿り、QR・puzzle・triggerKeyword で停止
+  // 5. sortOrder 順にドレイン
   const result: import("@/types").RuntimePhaseMessage[] = [];
-  const visited = new Set<string>(); // 循環ガード
+  const visited = new Set<string>();
 
-  for (const entry of entries) {
-    let cur: PhaseRow["messages"][number] | undefined = entry;
+  for (const entry of sorted) {
+    // startAfterSortOrder 指定時: それ以前のメッセージはスキップ
+    if (startAfterSortOrder !== undefined && entry.sortOrder <= startAfterSortOrder) continue;
+
+    // 自動送信対象でなければスキップ
+    if (!isAutoSendablePhaseItem(entry, { targetMsgIds, userSegment })) continue;
+
+    // エントリーからチェーンを辿る
+    let cur: PhaseMessage | undefined = entry;
     while (cur && !visited.has(cur.id)) {
-      // kind="response"/"hint" はチェーン中間でも表示しない
+      // チェーン中間で response/hint に遭遇したら停止
       if (cur.kind === "response" || cur.kind === "hint") break;
       visited.add(cur.id);
       result.push(messageRowToRuntime(cur));
-      // QR を持つメッセージ、puzzle フェーズ、または triggerKeyword が設定されたメッセージで停止
-      // （ユーザーの選択・解答・キーワード入力を待つ）
-      if (cur.quickReplies || cur.kind === "puzzle" || cur.triggerKeyword?.trim()) break;
+
+      // 待機ポイントに達したら、そのメッセージを追加済みなので全体を停止
+      if (isWaitPoint(cur)) return result;
+
       // nextMessageId チェーンを辿る
       const nextId = cur.nextMessageId;
       if (!nextId) break;
@@ -384,6 +454,23 @@ function buildEntryChain(
   }
 
   return result;
+}
+
+/**
+ * フェーズのメッセージ一覧から「フェーズ開始時に自動表示すべきメッセージ列」を構築する。
+ *
+ * ルール:
+ *   1. QRの target_message_id で参照されるメッセージは表示しない（QRタップ時のみ表示）
+ *   2. kind="response"/"hint" はフェーズ開始時に表示しない
+ *   3. triggerKeyword 付き（kind≠"start"）のメッセージは自動表示しない
+ *   4. sortOrder 順に通常メッセージを連続送信し、待機ポイント（puzzle/QR/trigger）で停止する
+ *   5. 待機ポイントのメッセージ自体は送信する（例: puzzle は表示してから解答待ちに入る）
+ */
+function buildEntryChain(
+  messages: PhaseRow["messages"],
+  userSegment?: UserSegment,
+): import("@/types").RuntimePhaseMessage[] {
+  return drainAutoSendableItems(messages, userSegment);
 }
 
 /**

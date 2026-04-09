@@ -1,11 +1,16 @@
 // src/app/api/works/[workId]/location-stats/route.ts
 // GET /api/works/:workId/location-stats — 作品のロケーション訪問統計
 // checkin_method 別内訳 + GPS 距離統計 + GPS 試行成功率
+//
+// 注意: CheckinAttempt は重複抑制済み（同一条件 15 秒以内の連打は間引かれる）。
+// そのため成功率は「間引き後の代表的な試行」に基づく。
+// 厳密な raw events ではないが、連打ノイズが除去されるため分析精度は向上する。
 
 import { prisma } from "@/lib/prisma";
 import { ok, serverError } from "@/lib/api-response";
 import { withAuth } from "@/lib/auth";
 import { requireRole, getOaIdFromWorkId } from "@/lib/rbac";
+import { suggestRadius } from "@/lib/location-radius-suggestion";
 import type {
   LocationVisitStats, LocationVisitSummary,
   CheckinMethodBreakdown, GpsDistanceStats,
@@ -37,11 +42,11 @@ export const GET = withAuth<{ workId: string }>(async (_req, { params }, user) =
       methodRows, gpsDistAgg,
       byLocationRows, byLocUserRows, byLocMethodRows, byLocGpsRows,
       // GPS 試行ログ
-      attemptStatusRows, attemptByLocRows,
+      attemptStatusRows, attemptByLocRows, outOfRangeDistRows,
     ] = await Promise.all([
       prisma.locationVisit.aggregate({ where: { workId }, _count: { id: true } }),
       prisma.locationVisit.aggregate({ where: { workId, visitedAt: { gte: sevenDaysAgo } }, _count: { id: true } }),
-      prisma.location.findMany({ where: { workId }, select: { id: true, name: true }, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] }),
+      prisma.location.findMany({ where: { workId }, select: { id: true, name: true, radiusMeters: true, checkinMode: true }, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] }),
       prisma.locationVisit.groupBy({ by: ["lineUserId"], where: { workId } }),
       prisma.locationVisit.groupBy({ by: ["checkinMethod"], where: { workId }, _count: { id: true } }),
       prisma.locationVisit.aggregate({
@@ -56,6 +61,11 @@ export const GET = withAuth<{ workId: string }>(async (_req, { params }, user) =
       prisma.checkinAttempt.groupBy({ by: ["status"], where: { workId }, _count: { id: true } }),
       // GPS 試行: ロケーション別
       prisma.checkinAttempt.groupBy({ by: ["locationId", "status"], where: { workId }, _count: { id: true } }),
+      // out_of_range の距離データ（半径提案用）
+      prisma.checkinAttempt.findMany({
+        where: { workId, status: "out_of_range", distanceMeters: { not: null } },
+        select: { locationId: true, distanceMeters: true },
+      }),
     ]);
 
     // ── method 内訳 ──
@@ -100,6 +110,16 @@ export const GET = withAuth<{ workId: string }>(async (_req, { params }, user) =
 
     // ── ロケーション別 ──
     const locMap = new Map(locations.map((l) => [l.id, l.name]));
+    const locRadiusMap = new Map(locations.map((l) => [l.id, l.radiusMeters]));
+
+    // out_of_range 距離データを location 別に集約（半径提案用）
+    const locOutOfRangeDistMap = new Map<string, number[]>();
+    for (const row of outOfRangeDistRows) {
+      if (row.distanceMeters == null) continue;
+      const arr = locOutOfRangeDistMap.get(row.locationId) ?? [];
+      arr.push(row.distanceMeters);
+      locOutOfRangeDistMap.set(row.locationId, arr);
+    }
     const locUserMap = new Map<string, number>();
     for (const row of byLocUserRows) locUserMap.set(row.locationId, (locUserMap.get(row.locationId) ?? 0) + 1);
 
@@ -115,11 +135,12 @@ export const GET = withAuth<{ workId: string }>(async (_req, { params }, user) =
     const locGpsMap = new Map(byLocGpsRows.map((r) => [r.locationId, r._avg.distanceMeters]));
 
     // ロケーション別 GPS 試行
-    const locAttemptMap = new Map<string, { total: number; success: number }>();
+    const locAttemptMap = new Map<string, { total: number; success: number; outOfRange: number }>();
     for (const row of attemptByLocRows) {
-      const cur = locAttemptMap.get(row.locationId) ?? { total: 0, success: 0 };
+      const cur = locAttemptMap.get(row.locationId) ?? { total: 0, success: 0, outOfRange: 0 };
       cur.total += row._count.id;
       if (row.status === "success") cur.success += row._count.id;
+      if (row.status === "out_of_range") cur.outOfRange += row._count.id;
       locAttemptMap.set(row.locationId, cur);
     }
 
@@ -130,6 +151,7 @@ export const GET = withAuth<{ workId: string }>(async (_req, { params }, user) =
         const locAttempt = locAttemptMap.get(r.locationId);
         const locAttemptTotal = locAttempt?.total ?? 0;
         const locAttemptSuccess = locAttempt?.success ?? 0;
+        const locOutOfRange = locAttempt?.outOfRange ?? 0;
         return {
           location_id:         r.locationId,
           location_name:       locMap.get(r.locationId) ?? "不明",
@@ -142,6 +164,22 @@ export const GET = withAuth<{ workId: string }>(async (_req, { params }, user) =
           gps_attempts:        locAttemptTotal,
           gps_successes:       locAttemptSuccess,
           gps_success_rate:    locAttemptTotal > 0 ? Math.round((locAttemptSuccess / locAttemptTotal) * 1000) / 10 : null,
+          out_of_range_count:  locOutOfRange,
+          radius_suggestion:   (() => {
+            const currentRadius = locRadiusMap.get(r.locationId);
+            if (currentRadius == null) return null;
+            const distances = locOutOfRangeDistMap.get(r.locationId);
+            if (!distances || distances.length === 0) return null;
+            const suggestion = suggestRadius(currentRadius, distances);
+            if (!suggestion) return null;
+            return {
+              current_radius:   suggestion.current_radius,
+              suggested_radius: suggestion.suggested_radius,
+              reason:           suggestion.reason,
+              confidence:       suggestion.confidence,
+              sample_count:     suggestion.sample_count,
+            };
+          })(),
           last_visited_at:     r._max.visitedAt?.toISOString() ?? null,
         };
       })

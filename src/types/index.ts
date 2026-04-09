@@ -1451,7 +1451,18 @@ export interface LocationVisitSummary {
   gps_attempts:         number;
   gps_successes:        number;
   gps_success_rate:     number | null;
+  out_of_range_count:   number;
+  radius_suggestion:    RadiusSuggestionResult | null;
   last_visited_at:      string | null;
+}
+
+/** 半径見直し提案 */
+export interface RadiusSuggestionResult {
+  current_radius:   number;
+  suggested_radius: number;
+  reason:           string;
+  confidence:       "high" | "medium" | "low";
+  sample_count:     number;
 }
 
 /** GPS 試行の失敗理由内訳 */

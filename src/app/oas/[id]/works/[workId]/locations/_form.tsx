@@ -3,9 +3,13 @@
 // src/app/oas/[id]/works/[workId]/locations/_form.tsx
 // ロケーション作成・編集共通フォーム（GPS + スタンプ対応）
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
+import dynamic from "next/dynamic";
 import { transitionApi, getDevToken } from "@/lib/api-client";
 import type { TransitionWithPhases } from "@/types";
+
+// Leaflet は SSR 非対応のため dynamic import
+const LocationMapPicker = dynamic(() => import("@/components/LocationMapPicker"), { ssr: false });
 
 interface LocationFormProps {
   onSubmit: (data: Record<string, unknown>) => void;
@@ -108,6 +112,12 @@ export function LocationForm({ onSubmit, saving, workId, defaultValues }: Locati
   const latInvalid = latitude !== "" && (isNaN(latNum) || latNum < -90 || latNum > 90);
   const lngInvalid = longitude !== "" && (isNaN(lngNum) || lngNum < -180 || lngNum > 180);
 
+  // 地図クリック/ドラッグ時のコールバック
+  const handleMapLocationChange = useCallback((lat: number, lng: number) => {
+    setLatitude(lat.toFixed(6));
+    setLongitude(lng.toFixed(6));
+  }, []);
+
   useEffect(() => {
     (async () => {
       try { setTransitions(await transitionApi.listByWork(getDevToken(), workId)); } catch { /* ignore */ }
@@ -198,6 +208,16 @@ export function LocationForm({ onSubmit, saving, workId, defaultValues }: Locati
       {needsGps && (
         <div style={{ marginBottom: 16, padding: "12px 14px", border: "1px solid #e5e7eb", borderRadius: 8, display: "flex", flexDirection: "column", gap: 12 }}>
           <p style={{ fontSize: 13, fontWeight: 600, color: "#374151" }}>GPS 座標設定 *</p>
+
+          {/* 地図ピッカー */}
+          <LocationMapPicker
+            latitude={latitude ? Number(latitude) : null}
+            longitude={longitude ? Number(longitude) : null}
+            radiusMeters={Number(radiusMeters) || 50}
+            onLocationChange={handleMapLocationChange}
+          />
+
+          {/* 数値入力（地図と双方向同期） */}
           <div style={{ display: "flex", gap: 12 }}>
             <div style={{ flex: 1 }}>
               <label style={labelStyle}>緯度 <span style={subLabel}>— 中心座標</span></label>
@@ -212,9 +232,9 @@ export function LocationForm({ onSubmit, saving, workId, defaultValues }: Locati
           </div>
           <div>
             <label style={labelStyle}>許容半径（m） <span style={subLabel}>— この範囲内ならチェックイン成功</span></label>
-            <input style={inputStyle} type="number" min="1" max="10000" value={radiusMeters} onChange={(e) => setRadiusMeters(e.target.value)} placeholder="50" />
+            <input id="radius_meters_input" style={inputStyle} type="number" min="1" max="10000" value={radiusMeters} onChange={(e) => setRadiusMeters(e.target.value)} onInput={(e) => setRadiusMeters((e.target as HTMLInputElement).value)} placeholder="50" />
             {radiusWarning && <p style={{ fontSize: 12, color: "#d97706", marginTop: 2 }}>{radiusWarning}</p>}
-            <p style={helpStyle}>推奨: 20m〜100m。Google Maps で座標を確認できます。</p>
+            <p style={helpStyle}>推奨: 20m〜100m。地図上の円で範囲を確認できます。</p>
           </div>
           {gpsIncomplete && (
             <p style={{ fontSize: 12, color: "#dc2626" }}>

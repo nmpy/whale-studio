@@ -6,6 +6,7 @@ import type {
   PhaseType,
   Message,
 } from "@/types";
+import type { LayoutDirection } from "./layout/dagre-layout";
 
 // ── 内部レイアウトノード ──────────────────────────────
 export interface LayoutNode {
@@ -50,6 +51,13 @@ export interface GraphAnalysis {
 // ── ノードバリデーション状態 ─────────────────────────
 export type NodeStatus = "ok" | "disconnected" | "no-condition" | "loop";
 
+// ── 選択状態の型 ────────────────────────────────────
+export type SelectedEntity =
+  | { type: "phase"; phaseId: string; prefillTargetPhaseId?: string | null }
+  | { type: "transition"; transitionId: string; fromPhaseId: string }
+  | { type: "multi"; nodeIds: string[] }
+  | null;
+
 // ── NodeGraph Props ─────────────────────────────────
 export interface NodeGraphProps {
   phases:        PhaseWithCounts[];
@@ -59,4 +67,5 @@ export interface NodeGraphProps {
   workId:        string;
   canEdit?:      boolean;
   onDataMutated: () => void;
+  onValidationChange?: (result: { hasBlockingErrors: boolean; errorCount: number; warningCount: number }) => void;
 }

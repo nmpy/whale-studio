@@ -40,7 +40,7 @@ import {
   RICHMENU_ACTIONS,
   type LineWebhookBody, type LineEvent, type LineSender, type LineMessage, type KeywordMessageRecord,
 } from "@/lib/line";
-import { buildRuntimeState, matchTransition, applySetFlags, safeParseFlags, fetchPhaseWithIncludes, type PhaseRow } from "@/lib/runtime";
+import { buildRuntimeState, matchTransition, applySetFlags, safeParseFlags, fetchPhaseWithIncludes, drainAutoSendableItems, type PhaseRow } from "@/lib/runtime";
 import { logEvent } from "@/lib/event-logger";
 import { activeCache, TTL, CACHE_KEY } from "@/lib/cache";
 import { linkRichMenuToUser } from "@/lib/line-richmenu";
@@ -1555,6 +1555,7 @@ async function handleTextEvent({
         oa, work, systemSender, userId, replyToken, vars,
         progress,
         puzzle: puzzleResult.puzzle,
+        currentPhase,
       });
     } else {
       // ℹ️ パズル不正解は userProgress を更新しない（フェーズを進めない）
@@ -2637,11 +2638,12 @@ async function matchPuzzleAnswer(
  */
 async function handlePuzzleCorrect({
   oa, work, systemSender, userId, replyToken, vars,
-  progress, puzzle,
+  progress, puzzle, currentPhase,
 }: Omit<HandlerCommon, "work"> & {
-  work:     NonNullable<WorkRecord>;
-  progress: { id: string; flags: string };
-  puzzle:   PuzzleRecord;
+  work:         NonNullable<WorkRecord>;
+  progress:     { id: string; flags: string };
+  puzzle:       PuzzleRecord;
+  currentPhase: PhaseRow;
 }) {
   const token  = oa.channelAccessToken;
   const action = puzzle.correctAction ?? "text";
@@ -2714,6 +2716,31 @@ async function handlePuzzleCorrect({
       data: { flags: JSON.stringify(flagsWithSolved), lastInteractedAt: new Date() },
     });
     await setCachedProgress(updated);
+
+    // ─ パズル正解後の自動連続送信（フェーズ遷移なしの場合） ─
+    // パズルの sortOrder 以降にある通常メッセージを drainAutoSendableItems で取得し送信する
+    const puzzleMsg = currentPhase.messages.find((m) => m.id === puzzle.id);
+    if (puzzleMsg) {
+      const remaining = drainAutoSendableItems(currentPhase.messages, "in_progress", puzzleMsg.sortOrder);
+      if (remaining.length > 0) {
+        console.log(
+          `[Webhook][puzzle] 正解後の自動連続送信`,
+          `remaining=${remaining.length}件`,
+          remaining.map((m) => `id=${m.id.slice(0, 8)} type=${m.message_type}`).join(" / "),
+        );
+        // RuntimePhaseMessage[] → LINE メッセージに変換するため、最小限の RuntimePhase を構築
+        const continuationPhase: import("@/types").RuntimePhase = {
+          id:          currentPhase.id,
+          phase_type:  currentPhase.phaseType as import("@/types").PhaseType,
+          name:        currentPhase.name,
+          description: currentPhase.description,
+          messages:    remaining,
+          transitions: null, // 継続送信では遷移 QR を付けない（パズル正解後の自動送信）
+        };
+        const remainingLineMsgs = buildPhaseMessages(continuationPhase, { systemSender, vars });
+        messagesToSend.push(...remainingLineMsgs);
+      }
+    }
   }
 
   // ─ フォールバック: メッセージが組み立てられなかった場合 ─

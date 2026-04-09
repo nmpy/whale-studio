@@ -968,10 +968,12 @@ model CheckinAttempt {
   lng            Float?
   createdAt      DateTime @default(now()) @map("created_at")
 
-  @@index([workId])
-  @@index([locationId])
-  @@index([status])
+  // dedupe 用: hasDuplicateAttempt() の WHERE 句に最適化
+  @@index([workId, locationId, lineUserId, status, createdAt])
+  // retention cleanup 用: cleanupOldAttempts() の WHERE createdAt < cutoff
   @@index([createdAt])
+  // work/location 単位の集計用 (Audience stats)
+  @@index([workId, status])
   @@map("checkin_attempts")
 }
 

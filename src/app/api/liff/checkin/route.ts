@@ -14,23 +14,19 @@ import { ok, badRequest, notFound, serverError } from "@/lib/api-response";
 import { checkinSchema, formatZodErrors } from "@/lib/validations";
 import { applySetFlags, evaluateCondition } from "@/lib/runtime";
 import { isWithinRadius } from "@/lib/geo";
+import { logAttemptDeduped } from "@/lib/checkin-attempt";
 import { ZodError } from "zod";
 import type { CheckinSuccess, CheckinCooldown, CheckinOutOfRange, CheckinMethod, StampInfo } from "@/types";
 
 export const dynamic = "force-dynamic";
 
+/** 重複抑制付きで試行ログを fire-and-forget 保存 */
 function logAttempt(data: {
   workId: string; locationId: string; lineUserId: string;
   method: string; status: string; failureReason?: string;
   distanceMeters?: number; lat?: number; lng?: number;
 }): void {
-  prisma.checkinAttempt.create({
-    data: {
-      workId: data.workId, locationId: data.locationId, lineUserId: data.lineUserId,
-      method: data.method, status: data.status, failureReason: data.failureReason ?? null,
-      distanceMeters: data.distanceMeters ?? null, lat: data.lat ?? null, lng: data.lng ?? null,
-    },
-  }).catch(() => {});
+  logAttemptDeduped(data).catch(() => {});
 }
 
 /** GPS 範囲判定を実行し、結果を返す。失敗時は Response を返す。 */

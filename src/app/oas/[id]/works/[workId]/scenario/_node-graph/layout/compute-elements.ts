@@ -12,6 +12,16 @@ import {
 } from "../constants";
 import type { NodeStatus } from "../types";
 
+// ── 分析情報（analytics）型 ─────────────────────────
+// 将来の項目追加時はここに足すだけ。PhaseNode 側は analytics? の有無で切替。
+export interface PhaseAnalytics {
+  visitCount?: number;
+  dropoffRate?: number;
+  completionRate?: number;
+  avgDurationMs?: number;
+  dropoffCount?: number;
+}
+
 // ── Phase ノード data 型 ────────────────────────────
 export interface PhaseNodeData {
   label: string;
@@ -25,6 +35,7 @@ export interface PhaseNodeData {
   messageCount: number;
   status: NodeStatus;
   isInPath: boolean;
+  analytics?: PhaseAnalytics;
   [key: string]: unknown;
 }
 

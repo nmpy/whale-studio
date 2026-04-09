@@ -4,7 +4,7 @@
 // ロケーション編集ページ（訪問履歴セクション付き）
 
 import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { locationApi, getDevToken } from "@/lib/api-client";
 import { LocationForm } from "../_form";
@@ -13,9 +13,11 @@ import type { LocationWithTransition, LocationVisit } from "@/types";
 export default function EditLocationPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const oaId = params.id as string;
   const workId = params.workId as string;
   const locationId = params.locationId as string;
+  const suggestedRadius = searchParams.get("suggested_radius");
 
   const [location, setLocation] = useState<LocationWithTransition | null>(null);
   const [loading, setLoading] = useState(true);
@@ -94,6 +96,13 @@ export default function EditLocationPage() {
       {liffId && location && (
         <div style={{ marginBottom: 16, padding: "10px 14px", background: "#f0f9ff", borderRadius: 8, fontSize: 12, color: "#3b82f6", wordBreak: "break-all" }}>
           <strong>LIFF URL:</strong> https://liff.line.me/{liffId}?location_id={location.id}&work_id={workId}
+        </div>
+      )}
+
+      {suggestedRadius && location && (
+        <div style={{ marginBottom: 16, padding: "12px 16px", background: "#fef3c7", border: "1px solid #fcd34d", borderRadius: 8, fontSize: 13, color: "#92400e", lineHeight: 1.6 }}>
+          <strong>提案:</strong> 半径を <strong>{location.radius_meters}m → {suggestedRadius}m</strong> に広げることで GPS 成功率が改善する可能性があります。
+          <span style={{ fontSize: 12, color: "#b45309" }}> 地図で範囲を確認しながら調整してください。</span>
         </div>
       )}
 

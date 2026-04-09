@@ -1,6 +1,6 @@
 "use client";
 
-// _node-graph/panels/RightPanel.tsx — 遷移編集パネル（既存RightPanelをほぼそのまま抽出）
+// _node-graph/panels/RightPanel.tsx — 遷移編集パネル + フェーズ複製
 
 import { useState } from "react";
 import { TLink as Link } from "@/components/TLink";
@@ -25,6 +25,9 @@ interface RightPanelProps {
   prefillTargetPhaseId?: string | null;
   focusedTransitionId?: string | null;
   onMutationStart?: () => void;
+  /** 複製処理（メイン側の共通関数を呼ぶ） */
+  onDuplicatePhase?: () => void;
+  onError?: (message: string) => void;
 }
 
 export function RightPanel({
@@ -39,11 +42,13 @@ export function RightPanel({
   prefillTargetPhaseId,
   focusedTransitionId,
   onMutationStart,
+  onDuplicatePhase,
+  onError,
 }: RightPanelProps) {
   const outgoing = transitions.filter(t => t.from_phase_id === phase.id);
   const meta = PHASE_META[phase.phase_type] ?? PHASE_META.normal;
 
-  // 新規遷移追加フォームの状態
+  // 遷移追加フォーム
   const [addOpen, setAddOpen]           = useState(!!prefillTargetPhaseId);
   const [addLabel, setAddLabel]         = useState("");
   const [addToPhaseId, setAddToPhaseId] = useState(prefillTargetPhaseId ?? "");
@@ -61,6 +66,7 @@ export function RightPanel({
   // 削除中
   const [deletingTid, setDeletingTid] = useState<string | null>(null);
 
+  // ── 遷移追加 ─────────────────────────────────────
   async function handleAddTransition() {
     if (!addToPhaseId || !addLabel.trim()) return;
     onMutationStart?.();
@@ -80,6 +86,7 @@ export function RightPanel({
       onDataMutated();
     } catch (err) {
       console.error(err);
+      onError?.("遷移の追加に失敗しました");
     } finally {
       setAddSaving(false);
     }
@@ -102,6 +109,7 @@ export function RightPanel({
       onDataMutated();
     } catch (err) {
       console.error(err);
+      onError?.("遷移の更新に失敗しました");
     } finally {
       setEditSaving(false);
     }
@@ -116,6 +124,7 @@ export function RightPanel({
       onDataMutated();
     } catch (err) {
       console.error(err);
+      onError?.("遷移の削除に失敗しました");
     } finally {
       setDeletingTid(null);
     }
@@ -144,7 +153,7 @@ export function RightPanel({
           <div style={{ fontSize: 14, fontWeight: 700, color: "#111827", wordBreak: "break-all" }}>
             {phase.name}
           </div>
-          <div style={{ marginTop: 6, display: "flex", gap: 6 }}>
+          <div style={{ marginTop: 6, display: "flex", gap: 6, flexWrap: "wrap" }}>
             <Link
               href={`/oas/${oaId}/works/${workId}/phases/${phase.id}`}
               style={{
@@ -155,10 +164,24 @@ export function RightPanel({
             >
               フェーズ詳細
             </Link>
+            {canEdit && onDuplicatePhase && (
+              <button
+                onClick={onDuplicatePhase}
+                style={{
+                  fontSize: 10, color: "#7c3aed", textDecoration: "none",
+                  padding: "2px 8px", border: "1px solid #ddd6fe",
+                  borderRadius: 4, background: "#f5f3ff",
+                  cursor: "pointer",
+                }}
+              >
+                ⧉ 複製
+              </button>
+            )}
           </div>
         </div>
         <button
           onClick={onClose}
+          aria-label="パネルを閉じる"
           style={{
             background: "none", border: "none", cursor: "pointer",
             fontSize: 18, color: "#9ca3af", padding: "2px 4px",
@@ -236,43 +259,20 @@ export function RightPanel({
                 </div>
               ) : (
                 <div>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: "#111827" }}>
-                    {t.label}
-                  </div>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: "#111827" }}>{t.label}</div>
                   <div style={{ fontSize: 11, color: "#6b7280", marginTop: 2 }}>
                     → {t.to_phase?.name ?? t.to_phase_id}
                   </div>
-                  {t.condition && (
-                    <div style={{ fontSize: 10, color: "#1d4ed8", marginTop: 2 }}>
-                      🔑 {t.condition}
-                    </div>
-                  )}
-                  {t.flag_condition && (
-                    <div style={{ fontSize: 10, color: "#6d28d9", marginTop: 2 }}>
-                      ⚑ {t.flag_condition}
-                    </div>
-                  )}
+                  {t.condition && <div style={{ fontSize: 10, color: "#1d4ed8", marginTop: 2 }}>🔑 {t.condition}</div>}
+                  {t.flag_condition && <div style={{ fontSize: 10, color: "#6d28d9", marginTop: 2 }}>⚑ {t.flag_condition}</div>}
                   {canEdit && (
                     <div style={{ marginTop: 6, display: "flex", gap: 6 }}>
-                      <button
-                        onClick={() => startEdit(t)}
-                        style={{
-                          fontSize: 10, padding: "2px 8px",
-                          background: "none", color: "#2563eb",
-                          border: "1px solid #bfdbfe", borderRadius: 4, cursor: "pointer",
-                        }}
-                      >
+                      <button onClick={() => startEdit(t)}
+                        style={{ fontSize: 10, padding: "2px 8px", background: "none", color: "#2563eb", border: "1px solid #bfdbfe", borderRadius: 4, cursor: "pointer" }}>
                         編集
                       </button>
-                      <button
-                        onClick={() => handleDelete(t.id)}
-                        disabled={deletingTid === t.id}
-                        style={{
-                          fontSize: 10, padding: "2px 8px",
-                          background: "none", color: "#dc2626",
-                          border: "1px solid #fecaca", borderRadius: 4, cursor: "pointer",
-                        }}
-                      >
+                      <button onClick={() => handleDelete(t.id)} disabled={deletingTid === t.id}
+                        style={{ fontSize: 10, padding: "2px 8px", background: "none", color: "#dc2626", border: "1px solid #fecaca", borderRadius: 4, cursor: "pointer" }}>
                         {deletingTid === t.id ? "削除中…" : "削除"}
                       </button>
                     </div>
@@ -287,64 +287,40 @@ export function RightPanel({
         {canEdit && phase.phase_type !== "ending" && (
           <div style={{ marginTop: 8 }}>
             {!addOpen ? (
-              <button
-                onClick={() => setAddOpen(true)}
+              <button onClick={() => setAddOpen(true)}
                 style={{
-                  fontSize: 11, padding: "6px 12px",
-                  background: "#eff6ff", color: "#2563eb",
-                  border: "1px solid #bfdbfe", borderRadius: 6, cursor: "pointer",
-                  fontWeight: 600, width: "100%",
-                }}
-              >
+                  fontSize: 11, padding: "6px 12px", background: "#eff6ff", color: "#2563eb",
+                  border: "1px solid #bfdbfe", borderRadius: 6, cursor: "pointer", fontWeight: 600, width: "100%",
+                }}>
                 ＋ 遷移を追加
               </button>
             ) : (
               <div style={{
-                padding: "10px", border: "1px solid #bfdbfe",
-                borderRadius: 8, background: "#f0f9ff",
+                padding: "10px", border: "1px solid #bfdbfe", borderRadius: 8, background: "#f0f9ff",
                 display: "flex", flexDirection: "column", gap: 8,
               }}>
-                <input
-                  autoFocus
-                  value={addLabel}
-                  onChange={e => setAddLabel(e.target.value)}
+                <input autoFocus value={addLabel} onChange={e => setAddLabel(e.target.value)}
                   placeholder="ラベル（例: 正解、不正解）"
                   style={{ fontSize: 12, border: "1px solid #d1d5db", borderRadius: 4, padding: "5px 8px" }}
                 />
-                <select
-                  value={addToPhaseId}
-                  onChange={e => setAddToPhaseId(e.target.value)}
-                  style={{ fontSize: 12, border: "1px solid #d1d5db", borderRadius: 4, padding: "5px 6px" }}
-                >
+                <select value={addToPhaseId} onChange={e => setAddToPhaseId(e.target.value)}
+                  style={{ fontSize: 12, border: "1px solid #d1d5db", borderRadius: 4, padding: "5px 6px" }}>
                   <option value="">遷移先フェーズを選択</option>
-                  {otherPhases.map(p => (
-                    <option key={p.id} value={p.id}>{p.name}</option>
-                  ))}
+                  {otherPhases.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </select>
 
-                <button
-                  onClick={() => setAddShowCond(v => !v)}
-                  style={{
-                    fontSize: 10, padding: "2px 8px",
-                    background: "none", color: "#6b7280",
-                    border: "1px solid #e5e7eb", borderRadius: 4, cursor: "pointer",
-                    alignSelf: "flex-start",
-                  }}
-                >
+                <button onClick={() => setAddShowCond(v => !v)}
+                  style={{ fontSize: 10, padding: "2px 8px", background: "none", color: "#6b7280", border: "1px solid #e5e7eb", borderRadius: 4, cursor: "pointer", alignSelf: "flex-start" }}>
                   {addShowCond ? "▲ 条件を非表示" : "▼ 条件を追加（任意）"}
                 </button>
 
                 {addShowCond && (
                   <>
-                    <input
-                      value={addCondition}
-                      onChange={e => setAddCondition(e.target.value)}
+                    <input value={addCondition} onChange={e => setAddCondition(e.target.value)}
                       placeholder="条件（テキスト）"
                       style={{ fontSize: 12, border: "1px solid #d1d5db", borderRadius: 4, padding: "5px 8px" }}
                     />
-                    <input
-                      value={addFlagCond}
-                      onChange={e => setAddFlagCond(e.target.value)}
+                    <input value={addFlagCond} onChange={e => setAddFlagCond(e.target.value)}
                       placeholder="フラグ条件（例: flags.score >= 10）"
                       style={{ fontSize: 12, border: "1px solid #d1d5db", borderRadius: 4, padding: "5px 8px" }}
                     />
@@ -352,29 +328,12 @@ export function RightPanel({
                 )}
 
                 <div style={{ display: "flex", gap: 6 }}>
-                  <button
-                    onClick={handleAddTransition}
-                    disabled={addSaving || !addToPhaseId || !addLabel.trim()}
-                    style={{
-                      fontSize: 11, padding: "5px 12px",
-                      background: "#2563eb", color: "white",
-                      border: "none", borderRadius: 4, cursor: "pointer",
-                      fontWeight: 600,
-                    }}
-                  >
+                  <button onClick={handleAddTransition} disabled={addSaving || !addToPhaseId || !addLabel.trim()}
+                    style={{ fontSize: 11, padding: "5px 12px", background: "#2563eb", color: "white", border: "none", borderRadius: 4, cursor: "pointer", fontWeight: 600 }}>
                     {addSaving ? "追加中…" : "追加"}
                   </button>
-                  <button
-                    onClick={() => {
-                      setAddOpen(false); setAddLabel(""); setAddToPhaseId("");
-                      setAddCondition(""); setAddFlagCond(""); setAddShowCond(false);
-                    }}
-                    style={{
-                      fontSize: 11, padding: "5px 10px",
-                      background: "#f3f4f6", color: "#374151",
-                      border: "1px solid #d1d5db", borderRadius: 4, cursor: "pointer",
-                    }}
-                  >
+                  <button onClick={() => { setAddOpen(false); setAddLabel(""); setAddToPhaseId(""); setAddCondition(""); setAddFlagCond(""); setAddShowCond(false); }}
+                    style={{ fontSize: 11, padding: "5px 10px", background: "#f3f4f6", color: "#374151", border: "1px solid #d1d5db", borderRadius: 4, cursor: "pointer" }}>
                     キャンセル
                   </button>
                 </div>
