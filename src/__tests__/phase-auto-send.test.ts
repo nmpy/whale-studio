@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect, beforeEach } from "vitest";
-import { drainAutoSendableItems } from "@/lib/runtime";
+import { drainAutoSendableItems, requiresUserInteraction, isAutoSendableMessageNode } from "@/lib/runtime";
 
 // ── テスト用ファクトリ ──────────────────────────
 
@@ -487,5 +487,176 @@ describe("drainAutoSendableItems", () => {
       expect(result).toHaveLength(2);
       expect(result.map((m) => m.id)).toEqual(["n1", "n3"]);
     });
+  });
+
+  // ──────────────────────────────────────────
+  // 現在ノード基準の自動送信判定テスト
+  // （次ノードの種類に依存しないことを検証）
+  // ──────────────────────────────────────────
+
+  describe("Message→Puzzle 自動送信（次ノードが puzzle でも直前の Message は送信される）", () => {
+
+    it("Message → Puzzle: Message が送信され、Puzzle も送信されて停止", () => {
+      const messages = [
+        makeMessage({ id: "m1", sortOrder: 1, kind: "normal", body: "導入テキスト" }),
+        makeMessage({ id: "puzzle1", sortOrder: 2, kind: "puzzle", body: "この謎を解け", answer: "答え" }),
+      ];
+
+      const result = drainAutoSendableItems(messages, "in_progress");
+
+      // Message は次ノードの種類に関係なく送信される
+      expect(result).toHaveLength(2);
+      expect(result.map((m) => m.id)).toEqual(["m1", "puzzle1"]);
+    });
+
+    it("Message → Message → Puzzle: 全 Message が送信され Puzzle で停止", () => {
+      const messages = [
+        makeMessage({ id: "m1", sortOrder: 1, kind: "normal", body: "メッセージ1" }),
+        makeMessage({ id: "m2", sortOrder: 2, kind: "normal", body: "メッセージ2" }),
+        makeMessage({ id: "m3", sortOrder: 3, kind: "normal", body: "メッセージ3" }),
+        makeMessage({ id: "puzzle1", sortOrder: 4, kind: "puzzle", body: "謎", answer: "答え" }),
+      ];
+
+      const result = drainAutoSendableItems(messages, "in_progress");
+
+      // Message → Message → Message → Puzzle: 途中で止まらず、Puzzle まで全件送信
+      expect(result).toHaveLength(4);
+      expect(result.map((m) => m.id)).toEqual(["m1", "m2", "m3", "puzzle1"]);
+    });
+
+    it("Message(QRなし) → Message → Puzzle: Puzzle 手前で不自然に止まらない", () => {
+      const messages = [
+        makeMessage({ id: "m1", sortOrder: 1, kind: "normal", body: "最初のメッセージ" }),
+        makeMessage({ id: "m2", sortOrder: 2, kind: "normal", body: "途中のメッセージ" }),
+        makeMessage({ id: "puzzle1", sortOrder: 3, kind: "puzzle", body: "謎を解け", answer: "42" }),
+        makeMessage({ id: "m4", sortOrder: 4, kind: "normal", body: "パズル後（送信されない）" }),
+      ];
+
+      const result = drainAutoSendableItems(messages, "in_progress");
+
+      // m1, m2 は Message なので自動送信。puzzle1 で停止。m4 は送信されない。
+      expect(result).toHaveLength(3);
+      expect(result.map((m) => m.id)).toEqual(["m1", "m2", "puzzle1"]);
+    });
+
+    it("Message → Ending（遷移なし）: Message が送信される", () => {
+      // Ending フェーズへの遷移はフェーズ遷移ロジックが担当するが、
+      // フェーズ内の Message は自動送信される
+      const messages = [
+        makeMessage({ id: "m1", sortOrder: 1, kind: "normal", body: "最終メッセージ" }),
+      ];
+
+      const result = drainAutoSendableItems(messages, "in_progress");
+
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe("m1");
+    });
+
+    it("Message(QRあり) → Puzzle: QR で停止し、Puzzle まで進まない", () => {
+      const qrJson = JSON.stringify([{ label: "次へ", action: "text", value: "次へ" }]);
+      const messages = [
+        makeMessage({ id: "m1", sortOrder: 1, kind: "normal", body: "選んでください", quickReplies: qrJson }),
+        makeMessage({ id: "puzzle1", sortOrder: 2, kind: "puzzle", body: "謎", answer: "答え" }),
+      ];
+
+      const result = drainAutoSendableItems(messages, "in_progress");
+
+      // QR 付き Message で停止。Puzzle まで進まない。
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe("m1");
+    });
+
+    it("Message(ユーザー入力待ち) → Puzzle: triggerKeyword 付きはスキップされ、Puzzle で停止", () => {
+      const messages = [
+        makeMessage({ id: "m1", sortOrder: 1, kind: "normal", body: "通常メッセージ" }),
+        makeMessage({
+          id: "m2", sortOrder: 2, kind: "normal",
+          triggerKeyword: "合言葉", body: "合言葉を入力してください",
+        }),
+        makeMessage({ id: "puzzle1", sortOrder: 3, kind: "puzzle", body: "謎", answer: "答え" }),
+      ];
+
+      const result = drainAutoSendableItems(messages, "in_progress");
+
+      // m1 は送信。m2 は triggerKeyword 付きなのでスキップ。puzzle1 は送信して停止。
+      expect(result).toHaveLength(2);
+      expect(result.map((m) => m.id)).toEqual(["m1", "puzzle1"]);
+    });
+  });
+});
+
+// ── requiresUserInteraction 単体テスト ─────────────────
+
+describe("requiresUserInteraction", () => {
+  beforeEach(() => resetCounter());
+
+  it("kind=normal + QRなし + triggerなし → false（自動送信を阻害しない）", () => {
+    const m = makeMessage({ kind: "normal" });
+    expect(requiresUserInteraction(m)).toBe(false);
+  });
+
+  it("kind=puzzle → true（解答待ち）", () => {
+    const m = makeMessage({ kind: "puzzle", answer: "答え" });
+    expect(requiresUserInteraction(m)).toBe(true);
+  });
+
+  it("quickReplies あり → true（QR選択待ち）", () => {
+    const qrJson = JSON.stringify([{ label: "はい", action: "text", value: "はい" }]);
+    const m = makeMessage({ quickReplies: qrJson });
+    expect(requiresUserInteraction(m)).toBe(true);
+  });
+
+  it("triggerKeyword あり (kind≠start) → true（キーワード入力待ち）", () => {
+    const m = makeMessage({ kind: "normal", triggerKeyword: "合言葉" });
+    expect(requiresUserInteraction(m)).toBe(true);
+  });
+
+  it("triggerKeyword あり + kind=start → false（開始トリガーは入力待ちではない）", () => {
+    const m = makeMessage({ kind: "start", triggerKeyword: "はじめる" });
+    expect(requiresUserInteraction(m)).toBe(false);
+  });
+});
+
+// ── isAutoSendableMessageNode 単体テスト ────────────────
+
+describe("isAutoSendableMessageNode", () => {
+  beforeEach(() => resetCounter());
+
+  const emptyCtx = { targetMsgIds: new Set<string>() };
+
+  it("kind=normal → true（自動送信対象）", () => {
+    const m = makeMessage({ kind: "normal" });
+    expect(isAutoSendableMessageNode(m, emptyCtx)).toBe(true);
+  });
+
+  it("kind=puzzle → true（自動送信対象、ただし requiresUserInteraction で停止）", () => {
+    const m = makeMessage({ kind: "puzzle", answer: "答え" });
+    expect(isAutoSendableMessageNode(m, emptyCtx)).toBe(true);
+  });
+
+  it("kind=response → false（キーワード応答のみ表示）", () => {
+    const m = makeMessage({ kind: "response", triggerKeyword: "ヒント" });
+    expect(isAutoSendableMessageNode(m, emptyCtx)).toBe(false);
+  });
+
+  it("kind=hint → false（ヒントトリガーのみ表示）", () => {
+    const m = makeMessage({ kind: "hint" });
+    expect(isAutoSendableMessageNode(m, emptyCtx)).toBe(false);
+  });
+
+  it("QR target_message_id で参照されるメッセージ → false", () => {
+    const m = makeMessage({ id: "target-msg" });
+    const ctx = { targetMsgIds: new Set(["target-msg"]) };
+    expect(isAutoSendableMessageNode(m, ctx)).toBe(false);
+  });
+
+  it("puzzle + targetSegment 不一致 → false（セグメント限定）", () => {
+    const m = makeMessage({ kind: "puzzle", targetSegment: "completed", answer: "答え" });
+    expect(isAutoSendableMessageNode(m, { ...emptyCtx, userSegment: "in_progress" })).toBe(false);
+  });
+
+  it("puzzle + targetSegment 一致 → true", () => {
+    const m = makeMessage({ kind: "puzzle", targetSegment: "in_progress", answer: "答え" });
+    expect(isAutoSendableMessageNode(m, { ...emptyCtx, userSegment: "in_progress" })).toBe(true);
   });
 });
