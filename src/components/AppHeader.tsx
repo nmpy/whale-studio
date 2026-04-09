@@ -6,15 +6,13 @@
 //
 // 権限表示方針:
 //   - ヘッダーには「現在選択中のOAの workspace role」を表示する
-//   - platform role はヘッダーに出さない（管理機能の出し分けのみに使用）
-//   - platform owner には「オーナー」バッジを表示し、クリックで権限プレビューを切り替えられる
-//   - platform owner には「スタジオ管理」ボタンを表示する（非 owner は「気づいた点を送る」）
+//   - owner 判定は workspace role === "owner" に統一
+//   - owner → 「スタジオ管理」 / 非 owner → 「気づいた点を送る」
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { usePathname } from "next/navigation";
 import dynamic from "next/dynamic";
 import { useTesterMode } from "@/hooks/useTesterMode";
-import { usePlatformRole } from "@/hooks/usePlatformRole";
 import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
 import { RoleBadge } from "@/components/PermissionGuard";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
@@ -29,21 +27,6 @@ const FeedbackModal = dynamic(() => import("@/components/FeedbackModal"), { ssr:
 // AppHeader を表示しないルート
 const HEADER_HIDDEN_ROUTES = ["/login", "/access-denied"];
 
-// ── 権限プレビュードロップダウン用ロール定義 ────────────────────────
-const WORKSPACE_ROLE_INFO: Array<{
-  role:   Role;
-  label:  string;
-  desc:   string;
-  bg:     string;
-  color:  string;
-  border: string;
-}> = [
-  { role: "owner",  label: "オーナー", desc: "すべて操作可能",  bg: "#eff6ff", color: "#1d4ed8", border: "#bfdbfe" },
-  { role: "admin",  label: "管理者",   desc: "管理・招待可能",  bg: "#faf5ff", color: "#7c3aed", border: "#ddd6fe" },
-  { role: "editor", label: "編集者",   desc: "制作編集可能",    bg: "#f0fdf4", color: "#15803d", border: "#bbf7d0" },
-  { role: "viewer", label: "閲覧者",   desc: "閲覧のみ",        bg: "#f9fafb", color: "#6b7280", border: "#e5e7eb" },
-];
-
 /**
  * pathname から OA ID を抽出する。
  * /oas/[id]/... の形式に対応。
@@ -57,29 +40,20 @@ function extractOaId(pathname: string): string {
 export default function AppHeader() {
   const pathname = usePathname();
   const { isTester, testerOaId } = useTesterMode();
-  const {
-    isPlatformOwner,
-    previewWsRole,
-    setPreviewWsRole,
-    isPreviewingWsRole,
-  } = usePlatformRole();
 
   const [feedbackOpen,     setFeedbackOpen]     = useState(false);
   const [loggedIn,         setLoggedIn]         = useState(false);
-  const [showRoleDropdown, setShowRoleDropdown] = useState(false);
   const { profile, loading: profileLoading }    = useProfile();
   const { showToast }                           = useToast();
   const displayName                             = getDisplayName(profile);
   // pricing ページ起点で開いたときの流入元（"header" / "banner" 等）
   const [pricingSource,    setPricingSource]    = useState<string | undefined>(undefined);
 
-  const dropdownRef = useRef<HTMLDivElement>(null);
-
   // 現在の OA ID をパスから取得
   const currentOaId = extractOaId(pathname);
 
   // 現在の OA の workspace role を取得（OA ページ外では workspaceId="" → role=null）
-  const { role: workspaceRole, loading: roleLoading } = useWorkspaceRole(currentOaId);
+  const { role: workspaceRole, loading: roleLoading, isOwner } = useWorkspaceRole(currentOaId);
 
   // ── ログイン状態を取得（Supabase 設定済みのときのみ） ─────────────
   useEffect(() => {
@@ -123,18 +97,6 @@ export default function AppHeader() {
     return () => window.removeEventListener("open-feedback-modal", handler);
   }, []);
 
-  // ── ドロップダウン外クリックで閉じる ─────────────────────────────
-  useEffect(() => {
-    if (!showRoleDropdown) return;
-    const handleClickOutside = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-        setShowRoleDropdown(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [showRoleDropdown]);
-
   // ── ヘッダー非表示ルート ─────────────────────────────────────────
   if (HEADER_HIDDEN_ROUTES.some((r) => pathname === r || pathname.startsWith(r + "?"))) {
     return null;
@@ -150,10 +112,6 @@ export default function AppHeader() {
 
   // OA ページにいて role が取得済みの場合のみ workspace role バッジを表示
   const showRoleBadge = !!currentOaId && !roleLoading && workspaceRole !== null;
-
-  // owner 判定: platform owner または workspace role が owner なら owner 扱い
-  // CTA やオーナー専用 UI の出し分けに使う
-  const isEffectiveOwner = isPlatformOwner || workspaceRole === "owner";
 
   return (
     <>
@@ -174,182 +132,6 @@ export default function AppHeader() {
               </span>
             </a>
           </h1>
-
-          {/* ── platform owner バッジ（クリックで権限プレビュードロップダウン） ── */}
-          {isPlatformOwner && (
-            <div
-              ref={dropdownRef}
-              style={{ position: "relative", display: "inline-flex", alignItems: "center" }}
-            >
-              <button
-                type="button"
-                onClick={() => setShowRoleDropdown((v) => !v)}
-                style={{
-                  display:      "inline-flex",
-                  alignItems:   "center",
-                  gap:          4,
-                  fontSize:     11,
-                  fontWeight:   700,
-                  padding:      "3px 10px",
-                  borderRadius: 20,
-                  cursor:       "pointer",
-                  border:       isPreviewingWsRole
-                    ? "1.5px solid #f59e0b"
-                    : "1.5px solid #bfdbfe",
-                  background:   isPreviewingWsRole ? "#fffbeb" : "#eff6ff",
-                  color:        isPreviewingWsRole ? "#92400e" : "#1d4ed8",
-                  transition:   "all .15s",
-                  whiteSpace:   "nowrap",
-                  lineHeight:   1,
-                }}
-                aria-label="権限プレビューを切り替える"
-                aria-haspopup="true"
-                aria-expanded={showRoleDropdown}
-              >
-                {isPreviewingWsRole ? (
-                  <>
-                    👁 {WORKSPACE_ROLE_INFO.find((r) => r.role === previewWsRole)?.label ?? "プレビュー"}
-                    <span style={{ fontSize: 9, opacity: 0.7 }}>▼</span>
-                  </>
-                ) : (
-                  <>
-                    ⚡ オーナー
-                    <span style={{ fontSize: 9, opacity: 0.7 }}>▼</span>
-                  </>
-                )}
-              </button>
-
-              {/* ── 権限プレビュードロップダウン ── */}
-              {showRoleDropdown && (
-                <div
-                  role="menu"
-                  style={{
-                    position:     "absolute",
-                    top:          "calc(100% + 8px)",
-                    left:         0,
-                    minWidth:     240,
-                    background:   "#fff",
-                    border:       "1px solid #e5e7eb",
-                    borderRadius: 10,
-                    boxShadow:    "0 8px 24px rgba(0,0,0,0.12)",
-                    zIndex:       1000,
-                    overflow:     "hidden",
-                  }}
-                >
-                  {/* ドロップダウンヘッダー */}
-                  <div style={{
-                    padding:       "10px 14px 8px",
-                    fontSize:      11,
-                    fontWeight:    700,
-                    color:         "#6b7280",
-                    letterSpacing: ".04em",
-                    textTransform: "uppercase",
-                    borderBottom:  "1px solid #f3f4f6",
-                    display:       "flex",
-                    alignItems:    "center",
-                    gap:           6,
-                  }}>
-                    <span>👁</span> 権限プレビュー
-                  </div>
-
-                  {/* ロール一覧 */}
-                  {WORKSPACE_ROLE_INFO.map(({ role, label, desc, bg, color, border }) => {
-                    const isCurrentPreview = isPreviewingWsRole && previewWsRole === role;
-                    const isRealOwner      = !isPreviewingWsRole && role === "owner";
-                    const isActive         = isCurrentPreview || isRealOwner;
-
-                    return (
-                      <button
-                        key={role}
-                        type="button"
-                        role="menuitem"
-                        onClick={() => {
-                          if (isActive && role === "owner") {
-                            // owner を再クリック or デフォルト owner → 何もしない（解除はフッター）
-                          } else if (isActive) {
-                            // 現在プレビュー中のロールを再クリック → プレビュー解除
-                            setPreviewWsRole(null);
-                          } else {
-                            // プレビュー切り替え（owner を選んでも「プレビュー」扱い）
-                            setPreviewWsRole(role);
-                          }
-                          setShowRoleDropdown(false);
-                        }}
-                        style={{
-                          width:        "100%",
-                          display:      "flex",
-                          alignItems:   "center",
-                          gap:          10,
-                          padding:      "9px 14px",
-                          background:   isActive ? `${bg}99` : "transparent",
-                          border:       "none",
-                          cursor:       "pointer",
-                          textAlign:    "left",
-                          borderBottom: "1px solid #f9fafb",
-                          transition:   "background .1s",
-                        }}
-                        onMouseEnter={(e) => {
-                          if (!isActive) e.currentTarget.style.background = "#f9fafb";
-                        }}
-                        onMouseLeave={(e) => {
-                          if (!isActive) e.currentTarget.style.background = "transparent";
-                        }}
-                      >
-                        {/* ロールバッジ */}
-                        <span style={{
-                          display:      "inline-block",
-                          padding:      "2px 9px",
-                          borderRadius: 20,
-                          fontSize:     10,
-                          fontWeight:   700,
-                          background:   bg,
-                          color,
-                          border:       `1px solid ${border}`,
-                          whiteSpace:   "nowrap",
-                          flexShrink:   0,
-                        }}>
-                          {label}
-                        </span>
-
-                        {/* 説明 */}
-                        <span style={{ fontSize: 12, color: "#374151", flex: 1 }}>
-                          {desc}
-                        </span>
-
-                        {/* チェックマーク */}
-                      </button>
-                    );
-                  })}
-
-                  {/* プレビュー中の場合のみ解除フッターを表示 */}
-                  {isPreviewingWsRole && (
-                    <div style={{ padding: "7px 14px", borderTop: "1px solid #f3f4f6" }}>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setPreviewWsRole(null);
-                          setShowRoleDropdown(false);
-                        }}
-                        style={{
-                          width:      "100%",
-                          padding:    "5px",
-                          fontSize:   11,
-                          fontWeight: 600,
-                          color:      "#9ca3af",
-                          background: "none",
-                          border:     "none",
-                          cursor:     "pointer",
-                          textAlign:  "center",
-                        }}
-                      >
-                        プレビューを解除する
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
 
           {/* ── 現在の OA の workspace role バッジ ── */}
           {showRoleBadge && (
@@ -414,7 +196,7 @@ export default function AppHeader() {
           )}
 
           {/* ── owner → スタジオ管理 / 非 owner → 気づいた点を送る ── */}
-          {isEffectiveOwner ? (
+          {isOwner ? (
             <a
               href="/admin/announcements"
               style={{
