@@ -194,17 +194,14 @@ function CheckinContent() {
                 <button onClick={handleQrCheckin} style={btnPrimary}>チェックインする</button>
                 {/* GPS 補助（任意） */}
                 {lineUserId && locationId && workId && (
-                  <GpsCheckin locationId={locationId} workId={workId} lineUserId={lineUserId} onResult={handleGpsResult} />
+                  <GpsCheckin locationId={locationId} workId={workId} lineUserId={lineUserId} locationName={state.step === "confirm" ? state.locationName : undefined} onResult={handleGpsResult} />
                 )}
               </>
             )}
 
             {/* ── gps_only ── */}
             {state.mode === "gps_only" && lineUserId && locationId && workId && (
-              <>
-                <p style={{ fontSize: 12, color: "#9ca3af", marginBottom: 12 }}>現在地が指定範囲内のときチェックインできます</p>
-                <GpsCheckin locationId={locationId} workId={workId} lineUserId={lineUserId} onResult={handleGpsResult} />
-              </>
+              <GpsCheckin locationId={locationId} workId={workId} lineUserId={lineUserId} locationName={state.step === "confirm" ? state.locationName : undefined} onResult={handleGpsResult} />
             )}
 
             {/* ── qr_and_gps ── */}
