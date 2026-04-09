@@ -2,6 +2,8 @@
 
 // src/app/oas/[id]/works/[workId]/locations/_form.tsx
 // ロケーション作成・編集共通フォーム（GPS + スタンプ対応）
+// PC: 左フォーム / 右地図 sticky の 2カラムレイアウト
+// SP: 縦積み（フォーム → 地図）
 
 import { useEffect, useState, useCallback } from "react";
 import dynamic from "next/dynamic";
@@ -118,6 +120,11 @@ export function LocationForm({ onSubmit, saving, workId, defaultValues }: Locati
     setLongitude(lng.toFixed(6));
   }, []);
 
+  // 半径変更コールバック（スライダー / クイック選択 → フォーム state）
+  const handleRadiusChange = useCallback((r: number) => {
+    setRadiusMeters(String(r));
+  }, []);
+
   useEffect(() => {
     (async () => {
       try { setTransitions(await transitionApi.listByWork(getDevToken(), workId)); } catch { /* ignore */ }
@@ -164,8 +171,9 @@ export function LocationForm({ onSubmit, saving, workId, defaultValues }: Locati
     onSubmit(data);
   };
 
-  return (
-    <form onSubmit={handleSubmit}>
+  // ── フォーム左カラム ──
+  const formColumn = (
+    <>
       <div style={groupStyle}>
         <label style={labelStyle}>ロケーション名 *</label>
         <input style={inputStyle} value={name} onChange={(e) => setName(e.target.value)} placeholder="例: 受付ロビー" required />
@@ -204,18 +212,10 @@ export function LocationForm({ onSubmit, saving, workId, defaultValues }: Locati
         </div>
       </div>
 
-      {/* ── GPS 座標設定（gps_only / qr_and_gps 時に表示） ── */}
+      {/* ── GPS 座標入力（gps_only / qr_and_gps 時） ── */}
       {needsGps && (
         <div style={{ marginBottom: 16, padding: "12px 14px", border: "1px solid #e5e7eb", borderRadius: 8, display: "flex", flexDirection: "column", gap: 12 }}>
           <p style={{ fontSize: 13, fontWeight: 600, color: "#374151" }}>GPS 座標設定 *</p>
-
-          {/* 地図ピッカー */}
-          <LocationMapPicker
-            latitude={latitude ? Number(latitude) : null}
-            longitude={longitude ? Number(longitude) : null}
-            radiusMeters={Number(radiusMeters) || 50}
-            onLocationChange={handleMapLocationChange}
-          />
 
           {/* 数値入力（地図と双方向同期） */}
           <div style={{ display: "flex", gap: 12 }}>
@@ -232,7 +232,22 @@ export function LocationForm({ onSubmit, saving, workId, defaultValues }: Locati
           </div>
           <div>
             <label style={labelStyle}>許容半径（m） <span style={subLabel}>— この範囲内ならチェックイン成功</span></label>
-            <input id="radius_meters_input" style={inputStyle} type="number" min="1" max="10000" value={radiusMeters} onChange={(e) => setRadiusMeters(e.target.value)} onInput={(e) => setRadiusMeters((e.target as HTMLInputElement).value)} placeholder="50" />
+            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+              <input
+                id="radius_meters_input"
+                style={{ ...inputStyle, width: 100, flex: "none" }}
+                type="number" min="1" max="10000" value={radiusMeters}
+                onChange={(e) => setRadiusMeters(e.target.value)}
+                onInput={(e) => setRadiusMeters((e.target as HTMLInputElement).value)}
+              />
+              <input
+                type="range"
+                min={10} max={500} step={5}
+                value={radiusNum || 50}
+                onChange={(e) => setRadiusMeters(e.target.value)}
+                style={{ flex: 1, accentColor: "#2563eb" }}
+              />
+            </div>
             {radiusWarning && <p style={{ fontSize: 12, color: "#d97706", marginTop: 2 }}>{radiusWarning}</p>}
             <p style={helpStyle}>推奨: 20m〜100m。地図上の円で範囲を確認できます。</p>
           </div>
@@ -284,31 +299,40 @@ export function LocationForm({ onSubmit, saving, workId, defaultValues }: Locati
         <p style={helpStyle}>スタンプ対象にすると、LIFF 画面のスタンプラリー進捗に含まれます。</p>
       </div>
 
+      {/* ── 成功時アクション ── */}
+      <div style={{ marginBottom: 16, padding: "12px 14px", border: "1px solid #e5e7eb", borderRadius: 8, background: "#f9fafb" }}>
+        <p style={{ fontSize: 13, fontWeight: 600, color: "#374151", marginBottom: 10 }}>成功時アクション</p>
+
+        <div style={groupStyle}>
+          <label style={labelStyle}>チェックイン時に発火する遷移</label>
+          <select style={inputStyle} value={transitionId} onChange={(e) => setTransitionId(e.target.value)}>
+            <option value="">なし</option>
+            {transitions.map((t) => (
+              <option key={t.id} value={t.id}>{t.label} → {t.to_phase?.name ?? "?"}</option>
+            ))}
+          </select>
+          <p style={helpStyle}>遷移元フェーズが現在フェーズと一致する場合のみ発火します。</p>
+        </div>
+
+        <div style={groupStyle}>
+          <label style={labelStyle}>チェックイン時に設定するフラグ（JSON）</label>
+          <textarea
+            style={{ ...inputStyle, fontFamily: "monospace", fontSize: 13, minHeight: 60, borderColor: !jsonCheck.valid ? "#fca5a5" : "#d1d5db" }}
+            value={setFlags} onChange={(e) => setSetFlags(e.target.value)} placeholder='{"visited_lobby": true}'
+          />
+          {!jsonCheck.valid && <p style={{ fontSize: 12, color: "#dc2626", marginTop: 2 }}>{jsonCheck.message}</p>}
+          <p style={helpStyle}>UserProgress.flags にマージされます。</p>
+        </div>
+
+        <p style={{ fontSize: 11, color: "#9ca3af", lineHeight: 1.6 }}>
+          将来拡張: メッセージ送信・報酬付与・ヒント解放などのアクションは今後追加予定です。
+        </p>
+      </div>
+
       <div style={groupStyle}>
         <label style={labelStyle}>クールダウン（秒）</label>
         <input style={inputStyle} type="number" min="0" max="86400" value={cooldownSeconds} onChange={(e) => setCooldownSeconds(e.target.value)} />
         <p style={helpStyle}>同一ユーザーが連続チェックインできるまでの待機時間（デフォルト: 300秒 = 5分）</p>
-      </div>
-
-      <div style={groupStyle}>
-        <label style={labelStyle}>チェックイン時に発火する遷移</label>
-        <select style={inputStyle} value={transitionId} onChange={(e) => setTransitionId(e.target.value)}>
-          <option value="">なし</option>
-          {transitions.map((t) => (
-            <option key={t.id} value={t.id}>{t.label} → {t.to_phase?.name ?? "?"}</option>
-          ))}
-        </select>
-        <p style={helpStyle}>遷移元フェーズが現在フェーズと一致する場合のみ発火します。</p>
-      </div>
-
-      <div style={groupStyle}>
-        <label style={labelStyle}>チェックイン時に設定するフラグ（JSON）</label>
-        <textarea
-          style={{ ...inputStyle, fontFamily: "monospace", fontSize: 13, minHeight: 60, borderColor: !jsonCheck.valid ? "#fca5a5" : "#d1d5db" }}
-          value={setFlags} onChange={(e) => setSetFlags(e.target.value)} placeholder='{"visited_lobby": true}'
-        />
-        {!jsonCheck.valid && <p style={{ fontSize: 12, color: "#dc2626", marginTop: 2 }}>{jsonCheck.message}</p>}
-        <p style={helpStyle}>UserProgress.flags にマージされます。</p>
       </div>
 
       <div style={{ ...groupStyle, display: "flex", alignItems: "center", gap: 8 }}>
@@ -327,6 +351,48 @@ export function LocationForm({ onSubmit, saving, workId, defaultValues }: Locati
       >
         {saving ? "保存中..." : defaultValues ? "更新" : "作成"}
       </button>
+    </>
+  );
+
+  // ── 地図カラム（GPS モード時のみ、PC で右側 sticky） ──
+  const mapColumn = needsGps ? (
+    <div style={{ position: "sticky", top: 20 }}>
+      <LocationMapPicker
+        latitude={latitude ? Number(latitude) : null}
+        longitude={longitude ? Number(longitude) : null}
+        radiusMeters={Number(radiusMeters) || 50}
+        onLocationChange={handleMapLocationChange}
+        onRadiusChange={handleRadiusChange}
+        height={450}
+      />
+    </div>
+  ) : null;
+
+  return (
+    <form onSubmit={handleSubmit}>
+      {needsGps ? (
+        /* 2カラムレイアウト: 左フォーム / 右地図 */
+        <div style={{ display: "flex", gap: 24, alignItems: "flex-start" }}>
+          {/* SP では縦積みにする */}
+          <style>{`
+            @media (max-width: 900px) {
+              .loc-form-2col { flex-direction: column !important; }
+              .loc-form-2col > div { width: 100% !important; }
+            }
+          `}</style>
+          <div className="loc-form-2col" style={{ display: "flex", gap: 24, alignItems: "flex-start", width: "100%" }}>
+            <div style={{ flex: "1 1 55%", minWidth: 0 }}>
+              {formColumn}
+            </div>
+            <div style={{ flex: "1 1 45%", minWidth: 300 }}>
+              {mapColumn}
+            </div>
+          </div>
+        </div>
+      ) : (
+        /* 1カラム（GPS 不要時は地図なし） */
+        formColumn
+      )}
     </form>
   );
 }

@@ -9,7 +9,7 @@
 //   - ピンドラッグでも座標変更
 //   - radius_meters を円で可視化
 //   - 「現在地を設定」ボタン
-//   - 半径クイック選択
+//   - 半径クイック選択 + スライダー
 //   - 数値入力と双方向同期（props 経由）
 //
 // SSR 非対応のため dynamic import で使うこと:
@@ -36,12 +36,19 @@ interface LocationMapPickerProps {
   longitude: number | null;
   radiusMeters: number;
   onLocationChange: (lat: number, lng: number) => void;
+  onRadiusChange?: (radius: number) => void;
+  height?: number;
 }
 
 const DEFAULT_CENTER: [number, number] = [35.6812, 139.7671]; // 東京駅
 const DEFAULT_ZOOM = 15;
 
-/** 地図クリックとマーカードラッグのハンドラ */
+const RADIUS_PRESETS = [20, 50, 100, 200, 500] as const;
+const RADIUS_LABELS: Record<number, string> = {
+  10: "建物内", 20: "ごく近く", 50: "敷地内", 100: "ブロック", 200: "周辺", 300: "エリア", 500: "広域",
+};
+
+/** 地図クリックのハンドラ */
 function MapClickHandler({ onLocationChange }: { onLocationChange: (lat: number, lng: number) => void }) {
   useMapEvents({
     click(e) {
@@ -72,6 +79,8 @@ export default function LocationMapPicker({
   longitude,
   radiusMeters,
   onLocationChange,
+  onRadiusChange,
+  height = 320,
 }: LocationMapPickerProps) {
   const [gettingLocation, setGettingLocation] = useState(false);
   const markerRef = useRef<L.Marker>(null);
@@ -99,10 +108,32 @@ export default function LocationMapPicker({
     );
   }, [onLocationChange]);
 
+  const handleRadiusPreset = useCallback((r: number) => {
+    if (onRadiusChange) {
+      onRadiusChange(r);
+    } else {
+      // fallback: DOM イベントで伝搬（後方互換）
+      const input = document.getElementById("radius_meters_input") as HTMLInputElement | null;
+      if (input) {
+        const nativeSet = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+        nativeSet?.call(input, String(r));
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+      }
+    }
+  }, [onRadiusChange]);
+
   const hasPosition = latitude != null && longitude != null;
 
+  // 半径目安テキスト
+  const radiusLabel = RADIUS_LABELS[radiusMeters] ?? (
+    radiusMeters <= 20 ? "ごく近く" :
+    radiusMeters <= 50 ? "敷地内" :
+    radiusMeters <= 100 ? "ブロック" :
+    radiusMeters <= 300 ? "エリア" : "広域"
+  );
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
       {/* ツールバー */}
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
         <button
@@ -122,39 +153,48 @@ export default function LocationMapPicker({
         </span>
       </div>
 
-      {/* 半径クイック選択 */}
-      <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-        <span style={{ fontSize: 11, color: "#6b7280" }}>半径:</span>
-        {[30, 50, 100, 300].map((r) => (
-          <button
-            key={r}
-            type="button"
-            onClick={() => {
-              // 親のフォームに変更を伝える — 直接 radiusMeters を変更するのではなく
-              // hidden input のトリックで伝搬するか、onRadiusChange コールバックが必要
-              // ここでは DOM イベントをディスパッチ
-              const input = document.getElementById("radius_meters_input") as HTMLInputElement | null;
-              if (input) {
-                const nativeSet = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
-                nativeSet?.call(input, String(r));
-                input.dispatchEvent(new Event("input", { bubbles: true }));
-              }
-            }}
-            style={{
-              padding: "3px 10px", fontSize: 11, fontWeight: 500,
-              background: radiusMeters === r ? "#2563eb" : "#f3f4f6",
-              color: radiusMeters === r ? "#fff" : "#374151",
-              border: `1px solid ${radiusMeters === r ? "#2563eb" : "#e5e7eb"}`,
-              borderRadius: 4, cursor: "pointer",
-            }}
-          >
-            {r}m
-          </button>
-        ))}
+      {/* 半径: クイック選択 + スライダー */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        <div style={{ display: "flex", gap: 5, alignItems: "center", flexWrap: "wrap" }}>
+          <span style={{ fontSize: 11, color: "#6b7280", flexShrink: 0 }}>半径:</span>
+          {RADIUS_PRESETS.map((r) => (
+            <button
+              key={r}
+              type="button"
+              onClick={() => handleRadiusPreset(r)}
+              style={{
+                padding: "3px 10px", fontSize: 11, fontWeight: 500,
+                background: radiusMeters === r ? "#2563eb" : "#f3f4f6",
+                color: radiusMeters === r ? "#fff" : "#374151",
+                border: `1px solid ${radiusMeters === r ? "#2563eb" : "#e5e7eb"}`,
+                borderRadius: 4, cursor: "pointer",
+              }}
+            >
+              {r}m
+            </button>
+          ))}
+          <span style={{ fontSize: 11, color: "#9ca3af", marginLeft: 4 }}>{radiusLabel}</span>
+        </div>
+        {/* スライダー */}
+        {onRadiusChange && (
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 10, color: "#9ca3af", flexShrink: 0 }}>10m</span>
+            <input
+              type="range"
+              min={10}
+              max={500}
+              step={5}
+              value={radiusMeters}
+              onChange={(e) => onRadiusChange(Number(e.target.value))}
+              style={{ flex: 1, accentColor: "#2563eb" }}
+            />
+            <span style={{ fontSize: 10, color: "#9ca3af", flexShrink: 0 }}>500m</span>
+          </div>
+        )}
       </div>
 
       {/* 地図 */}
-      <div style={{ height: 320, borderRadius: 8, overflow: "hidden", border: "1px solid #e5e7eb" }}>
+      <div style={{ height, borderRadius: 8, overflow: "hidden", border: "1px solid #e5e7eb" }}>
         <MapContainer
           center={center}
           zoom={hasPosition ? 16 : DEFAULT_ZOOM}
