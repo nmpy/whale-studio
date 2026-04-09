@@ -25,6 +25,8 @@ model Oa {
   /// LINE公式アカウントの Basic ID（例: 613zlngs）。Webhook URL の識別子として使う。
   /// channelId（数値の API 認証用）とは別物。LINE Developers「Basic information」で確認できる。
   lineOaId           String?            @unique @map("line_oa_id")
+  /// OA オーナーの識別子（Supabase Auth userId）。RBAC で owner 判定に使う。
+  ownerKey           String?            @map("owner_key")
   friendAddSettings  FriendAddSettings?
   globalCommands     GlobalCommand[]
   hintLogs           HintLog[]
