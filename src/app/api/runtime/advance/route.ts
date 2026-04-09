@@ -21,8 +21,37 @@ import { prisma } from "@/lib/prisma";
 import { ok, badRequest, notFound, serverError } from "@/lib/api-response";
 import { withAuth } from "@/lib/auth";
 import { advanceScenarioSchema, formatZodErrors } from "@/lib/validations";
-import { buildRuntimeState, matchTransition, applySetFlags, safeParseFlags } from "@/lib/runtime";
+import { buildRuntimeState, matchTransition, applySetFlags, safeParseFlags, fetchPhaseWithIncludes, drainAutoSendableItems } from "@/lib/runtime";
 import { ZodError } from "zod";
+
+// ── パズル照合ヘルパー（webhook/route.ts と同じロジック）──────────
+
+function normKw(s: string): string {
+  return s.trim().normalize("NFKC");
+}
+
+function removePunct(s: string): string {
+  return s.replace(/[!?,.　\u0020\t、。，．・：；！？…‥〜ー\u3000-\u303F]+/gu, "").trim();
+}
+
+function parsePuzzleMatchType(raw: string | null): string[] {
+  if (!raw) return ["exact"];
+  try { return JSON.parse(raw); } catch { return ["exact"]; }
+}
+
+function checkPuzzleAnswer(input: string, answer: string, matchTypes: string[]): boolean {
+  const inputNorm  = normKw(input);
+  const answerNorm = normKw(answer);
+  for (const mt of matchTypes) {
+    if (mt === "exact" || mt === "normalize_width") {
+      if (inputNorm === answerNorm) return true;
+    }
+    if (mt === "ignore_punctuation") {
+      if (removePunct(inputNorm) === removePunct(answerNorm)) return true;
+    }
+  }
+  return false;
+}
 
 export const POST = withAuth(async (req, _ctx, user) => {
   try {
@@ -226,6 +255,120 @@ export const POST = withAuth(async (req, _ctx, user) => {
               cur = fetched ?? undefined;
             }
             depth++;
+          }
+        }
+      }
+
+      // ── パズル照合（遷移・応答にマッチしなかった場合）──────────
+      // webhook の matchPuzzleFromPhase と同じロジックで同一フェーズ内のパズルを照合する
+      if (data.label) {
+        const phaseRow = await fetchPhaseWithIncludes(progress.currentPhaseId!);
+        if (phaseRow) {
+          const solvedPuzzleIds = Array.isArray(currentFlags.solvedPuzzles)
+            ? (currentFlags.solvedPuzzles as string[])
+            : [];
+          const userSegment = (progress.reachedEnding ? "completed" : "in_progress") as
+            "not_started" | "in_progress" | "completed";
+
+          const puzzles = phaseRow.messages.filter(
+            (m) =>
+              m.kind === "puzzle" &&
+              m.answer !== null &&
+              !solvedPuzzleIds.includes(m.id) &&
+              (!m.targetSegment || m.targetSegment === userSegment),
+          );
+
+          for (const puzzle of puzzles) {
+            if (!puzzle.answer) continue;
+            const matchTypes = parsePuzzleMatchType(puzzle.answerMatchType);
+            if (checkPuzzleAnswer(data.label, puzzle.answer, matchTypes)) {
+              // ── 正解 ──
+              const newSolved = [...solvedPuzzleIds, puzzle.id];
+              const flagsWithSolved = { ...currentFlags, solvedPuzzles: newSolved };
+
+              const correctAction = puzzle.correctAction ?? "text";
+              const puzzleMessages: import("@/types").RuntimePhaseMessage[] = [];
+
+              // correctText があればメッセージとして追加
+              if (puzzle.correctText?.trim()) {
+                puzzleMessages.push({
+                  id:                `correct-${puzzle.id}`,
+                  message_type:      "text",
+                  body:              puzzle.correctText.trim(),
+                  asset_url:         null,
+                  alt_text:          null,
+                  flex_payload_json: null,
+                  quick_replies:     null,
+                  lag_ms:            0,
+                  hint_mode:         "always",
+                  sort_order:        puzzle.sortOrder,
+                  timing:            null,
+                  tap_destination_id: null,
+                  tap_url:            null,
+                  character:         null,
+                });
+              }
+
+              if (correctAction === "transition" || correctAction === "text_and_transition") {
+                // フェーズ遷移
+                if (puzzle.correctNextPhaseId) {
+                  const toPhase = await prisma.phase.findUnique({ where: { id: puzzle.correctNextPhaseId } });
+                  const updatedFlags = JSON.stringify(flagsWithSolved);
+                  const updated = await prisma.userProgress.update({
+                    where: { id: progress.id },
+                    data: {
+                      currentPhaseId:   puzzle.correctNextPhaseId,
+                      reachedEnding:    toPhase?.phaseType === "ending" || false,
+                      flags:            updatedFlags,
+                      lastInteractedAt: new Date(),
+                      isPreview,
+                      previewBy,
+                    },
+                  });
+                  const newState = await buildRuntimeState(updated);
+                  return ok({
+                    ...newState,
+                    _matched: true,
+                    _puzzle_result: "correct",
+                    ...(puzzleMessages.length > 0 ? { _response_messages: puzzleMessages } : {}),
+                  });
+                }
+              }
+
+              // correctAction = "text" or correctNextPhaseId 未設定: フェーズ遷移なし
+              const updatedFlags = JSON.stringify(flagsWithSolved);
+              const updated = await prisma.userProgress.update({
+                where: { id: progress.id },
+                data: { flags: updatedFlags, lastInteractedAt: new Date() },
+              });
+
+              // パズル正解後の自動連続送信（同一フェーズ内の後続メッセージ）
+              const remaining = drainAutoSendableItems(phaseRow.messages, userSegment, puzzle.sortOrder);
+              if (remaining.length > 0) {
+                puzzleMessages.push(...remaining);
+              }
+
+              const newState = await buildRuntimeState(updated, phaseRow);
+              return ok({
+                ...newState,
+                _matched: true,
+                _puzzle_result: "correct",
+                ...(puzzleMessages.length > 0 ? { _response_messages: puzzleMessages } : {}),
+              });
+            }
+          }
+
+          // パズルが存在するが不正解
+          if (puzzles.length > 0) {
+            const incorrectText = puzzles[0]?.incorrectText?.trim()
+              ?? "答えが違います。もう一度考えてみてください。";
+            return ok({
+              ...state,
+              _matched: false,
+              _puzzle_result: "incorrect",
+              _message: incorrectText,
+              ...(responseMessages.length > 0 ? { _response_messages: responseMessages } : {}),
+            });
           }
         }
       }
