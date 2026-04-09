@@ -14,6 +14,7 @@ import { usePathname } from "next/navigation";
 import dynamic from "next/dynamic";
 import { useTesterMode } from "@/hooks/useTesterMode";
 import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
+import { getAuthHeaders } from "@/lib/api-client";
 import { RoleBadge } from "@/components/PermissionGuard";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { useProfile } from "@/hooks/useProfile";
@@ -43,6 +44,7 @@ export default function AppHeader() {
 
   const [feedbackOpen,     setFeedbackOpen]     = useState(false);
   const [loggedIn,         setLoggedIn]         = useState(false);
+  const [isPlatformOwner,  setIsPlatformOwner]  = useState(false);
   const { profile, loading: profileLoading }    = useProfile();
   const { showToast }                           = useToast();
   const displayName                             = getDisplayName(profile);
@@ -54,6 +56,16 @@ export default function AppHeader() {
 
   // 現在の OA の workspace role を取得（OA ページ外では workspaceId="" → role=null）
   const { role: workspaceRole, loading: roleLoading, isOwner } = useWorkspaceRole(currentOaId);
+
+  // ── platform owner 判定（OA ページ外でも CTA を切り替えるため）─────
+  useEffect(() => {
+    fetch("/api/admin/me", { headers: { ...getAuthHeaders() }, cache: "no-store" })
+      .then((r) => r.ok ? r.json() : null)
+      .then((body) => {
+        if (body?.data?.is_platform_owner) setIsPlatformOwner(true);
+      })
+      .catch(() => {});
+  }, []);
 
   // ── ログイン状態を取得（Supabase 設定済みのときのみ） ─────────────
   useEffect(() => {
@@ -112,6 +124,14 @@ export default function AppHeader() {
 
   // OA ページにいて role が取得済みの場合のみ workspace role バッジを表示
   const showRoleBadge = !!currentOaId && !roleLoading && workspaceRole !== null;
+
+  // owner 判定: workspace owner（OA ページ内）または platform owner（OA ページ外含む）
+  const isEffectiveOwner = isOwner || isPlatformOwner;
+
+  // スタジオ管理のリンク先: OA ページ内なら OA 設定、それ以外は admin
+  const studioHref = currentOaId
+    ? `/oas/${currentOaId}/settings`
+    : "/admin/announcements";
 
   return (
     <>
@@ -196,9 +216,9 @@ export default function AppHeader() {
           )}
 
           {/* ── owner → スタジオ管理 / 非 owner → 気づいた点を送る ── */}
-          {isOwner ? (
+          {isEffectiveOwner ? (
             <a
-              href="/admin/announcements"
+              href={studioHref}
               style={{
                 marginLeft:     "auto",
                 display:        "inline-flex",
