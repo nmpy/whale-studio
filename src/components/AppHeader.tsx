@@ -151,6 +151,10 @@ export default function AppHeader() {
   // OA ページにいて role が取得済みの場合のみ workspace role バッジを表示
   const showRoleBadge = !!currentOaId && !roleLoading && workspaceRole !== null;
 
+  // owner 判定: platform owner または workspace role が owner なら owner 扱い
+  // CTA やオーナー専用 UI の出し分けに使う
+  const isEffectiveOwner = isPlatformOwner || workspaceRole === "owner";
+
   return (
     <>
       <header>
@@ -409,8 +413,8 @@ export default function AppHeader() {
             </button>
           )}
 
-          {/* ── platform owner → スタジオ管理 / 非 owner → 気づいた点を送る ── */}
-          {isPlatformOwner ? (
+          {/* ── owner → スタジオ管理 / 非 owner → 気づいた点を送る ── */}
+          {isEffectiveOwner ? (
             <a
               href="/admin/announcements"
               style={{

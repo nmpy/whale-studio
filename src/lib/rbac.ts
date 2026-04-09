@@ -60,7 +60,17 @@ export async function getWorkspaceRole(
     console.warn(`[RBAC] owner_key lookup failed (migration pending?) workspace=${workspaceId}`, err);
   }
 
-  // ── WorkspaceMember テーブル検索 ────────────────────────────────
+  // ── 2b. ADMIN_IDENTITY 最優先フォールバック ─────────────────────
+  // owner_key が未設定（null / migration 未適用）の場合でも、
+  // ADMIN_IDENTITY と一致するユーザーは owner として扱う。
+  // WorkspaceMember に editor 等がある場合でも owner_key/ADMIN_IDENTITY が勝つ。
+  const adminIdentity = process.env.ADMIN_IDENTITY;
+  if (ownerKey === null && adminIdentity && userId === adminIdentity) {
+    console.warn(`[RBAC] admin-identity override: ADMIN_IDENTITY match workspace=${workspaceId} user=${userId}`);
+    return { role: 'owner', status: 'active' };
+  }
+
+  // ── 3. WorkspaceMember テーブル検索 ────────────────────────────
   const member = await prisma.workspaceMember.findUnique({
     where:  { workspaceId_userId: { workspaceId, userId } },
     select: { role: true, status: true },
@@ -72,14 +82,6 @@ export async function getWorkspaceRole(
       role:   member.role   as Role,
       status: member.status as MemberStatus,
     };
-  }
-
-  // ── owner_key=null フォールバック（backfill 前の既存 OA 用）────
-  // owner_key 未設定かつ ADMIN_IDENTITY と一致する場合のみ暫定 owner
-  const adminIdentity = process.env.ADMIN_IDENTITY;
-  if (ownerKey === null && adminIdentity && userId === adminIdentity) {
-    console.warn(`[RBAC] owner-key fallback: owner_key=null + ADMIN_IDENTITY match workspace=${workspaceId} user=${userId}`);
-    return { role: 'owner', status: 'active' };
   }
 
   console.log(`[RBAC] getWorkspaceRole: no membership found workspace=${workspaceId} user=${userId}`);
