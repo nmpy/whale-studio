@@ -1,5 +1,7 @@
 // GET /api/oas/:id/members/me — 自分のロールを取得（viewer以上）
 
+export const dynamic = "force-dynamic";
+
 import { withRole } from "@/lib/auth";
 import { ok, notFound, serverError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";

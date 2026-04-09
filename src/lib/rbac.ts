@@ -50,14 +50,15 @@ export async function getWorkspaceRole(
       select: { ownerKey: true },
     });
     ownerKey = oa?.ownerKey ?? null;
+    console.log(`[RBAC] owner_key lookup: workspace=${workspaceId} ownerKey=${JSON.stringify(ownerKey)} userId=${userId} match=${ownerKey === userId}`);
 
     if (ownerKey && ownerKey === userId) {
-      console.log(`[RBAC] owner-key: owner_key match workspace=${workspaceId} user=${userId}`);
+      console.log(`[RBAC] → RESULT: owner (owner_key match)`);
       return { role: 'owner', status: 'active' };
     }
   } catch (err) {
     // owner_key カラムが存在しない（migration 未適用）→ スキップして従来の判定へ
-    console.warn(`[RBAC] owner_key lookup failed (migration pending?) workspace=${workspaceId}`, err);
+    console.warn(`[RBAC] owner_key lookup FAILED (migration pending?) workspace=${workspaceId}`, err);
   }
 
   // ── 2b. ADMIN_IDENTITY 最優先フォールバック ─────────────────────
@@ -65,8 +66,9 @@ export async function getWorkspaceRole(
   // ADMIN_IDENTITY と一致するユーザーは owner として扱う。
   // WorkspaceMember に editor 等がある場合でも owner_key/ADMIN_IDENTITY が勝つ。
   const adminIdentity = process.env.ADMIN_IDENTITY;
+  console.log(`[RBAC] ADMIN_IDENTITY check: ownerKey=${JSON.stringify(ownerKey)} adminIdentity=${adminIdentity ? adminIdentity.slice(0, 8) + '...' : '(unset)'} userId=${userId.slice(0, 8)}... match=${ownerKey === null && adminIdentity === userId}`);
   if (ownerKey === null && adminIdentity && userId === adminIdentity) {
-    console.warn(`[RBAC] admin-identity override: ADMIN_IDENTITY match workspace=${workspaceId} user=${userId}`);
+    console.log(`[RBAC] → RESULT: owner (ADMIN_IDENTITY override)`);
     return { role: 'owner', status: 'active' };
   }
 
