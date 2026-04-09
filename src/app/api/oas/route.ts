@@ -169,6 +169,7 @@ export const POST = withAuth(async (req, _ctx, user) => {
           channelSecret:      data.channel_secret,
           channelAccessToken: data.channel_access_token,
           publishStatus:      data.publish_status,
+          ownerKey:           user.id,
         },
       });
 
