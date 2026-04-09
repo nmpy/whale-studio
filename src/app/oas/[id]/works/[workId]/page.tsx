@@ -72,6 +72,13 @@ const HUB_CARDS = [
     bg:    "#f5f3ff",
   },
   {
+    key:   "locations",
+    title: "ロケーション",
+    desc:  "GPSチェックイン地点の追加・編集とチェックイン履歴を管理します",
+    color: "#dc2626",
+    bg:    "#fef2f2",
+  },
+  {
     key:   "destinations",
     title: "遷移先URL設定",
     desc:  "リッチメニューやメッセージから飛ばすURLを一元管理します",
@@ -119,6 +126,12 @@ function HubCardIcon({ cardKey, color }: { cardKey: string; color: string }) {
     <svg {...p} aria-hidden="true">
       <rect x="5" y="2" width="14" height="20" rx="2" ry="2"/>
       <line x1="12" y1="18" x2="12" y2="18"/>
+    </svg>
+  );
+  if (cardKey === "locations") return (
+    <svg {...p} aria-hidden="true">
+      <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+      <circle cx="12" cy="10" r="3"/>
     </svg>
   );
   if (cardKey === "destinations") return (
