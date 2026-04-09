@@ -49,7 +49,7 @@ export function useWorkspaceRole(workspaceId: string): WorkspaceRoleState {
   // ── 実ロールを API から取得するヘルパー ──────────────────────────
   function fetchRealRole(wsId: string) {
     setLoading(true);
-    fetch(`/api/oas/${wsId}/members/me`, { headers: { ...getAuthHeaders() } })
+    fetch(`/api/oas/${wsId}/members/me`, { headers: { ...getAuthHeaders() }, cache: "no-store" })
       .then((res) => res.json())
       .then((json) => {
         if (json.success) setRole(json.data.role as Role);
