@@ -343,6 +343,19 @@ export function isContinueCommand(text: string): boolean {
   return CONTINUE_KEYWORDS.has(n);
 }
 
+/**
+ * ユーザー入力が「開始意図」を持つかどうかを判定する（ゆるいマッチ）。
+ * リッチメニューの message アクションが「『作品名』をはじめる」形式のテキストを
+ * 送信するケースに対応。
+ */
+export function isStartIntent(text: string): boolean {
+  const n = text
+    .trim()
+    .normalize("NFKC")
+    .replace(/[「」『』【】（）()。！？!?\s]+$/u, "");
+  return /をはじめる$|を始める$|をスタート$|を開始$/u.test(n);
+}
+
 // ────────────────────────────────────────────────
 // Reply API
 // ────────────────────────────────────────────────
