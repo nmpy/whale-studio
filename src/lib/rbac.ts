@@ -42,14 +42,22 @@ export async function getWorkspaceRole(
 
   // ── owner_key 最優先判定 ──────────────────────────────────────
   // owner_key が設定済みかつ userId と一致 → 無条件で owner
-  const oa = await prisma.oa.findUnique({
-    where:  { id: workspaceId },
-    select: { ownerKey: true },
-  });
+  // migration 未適用の環境では owner_key カラムが存在しない可能性があるため try-catch
+  let ownerKey: string | null = null;
+  try {
+    const oa = await prisma.oa.findUnique({
+      where:  { id: workspaceId },
+      select: { ownerKey: true },
+    });
+    ownerKey = oa?.ownerKey ?? null;
 
-  if (oa?.ownerKey && oa.ownerKey === userId) {
-    console.log(`[RBAC] owner-key: owner_key match workspace=${workspaceId} user=${userId}`);
-    return { role: 'owner', status: 'active' };
+    if (ownerKey && ownerKey === userId) {
+      console.log(`[RBAC] owner-key: owner_key match workspace=${workspaceId} user=${userId}`);
+      return { role: 'owner', status: 'active' };
+    }
+  } catch (err) {
+    // owner_key カラムが存在しない（migration 未適用）→ スキップして従来の判定へ
+    console.warn(`[RBAC] owner_key lookup failed (migration pending?) workspace=${workspaceId}`, err);
   }
 
   // ── WorkspaceMember テーブル検索 ────────────────────────────────
@@ -69,7 +77,7 @@ export async function getWorkspaceRole(
   // ── owner_key=null フォールバック（backfill 前の既存 OA 用）────
   // owner_key 未設定かつ ADMIN_IDENTITY と一致する場合のみ暫定 owner
   const adminIdentity = process.env.ADMIN_IDENTITY;
-  if (oa && !oa.ownerKey && adminIdentity && userId === adminIdentity) {
+  if (ownerKey === null && adminIdentity && userId === adminIdentity) {
     console.warn(`[RBAC] owner-key fallback: owner_key=null + ADMIN_IDENTITY match workspace=${workspaceId} user=${userId}`);
     return { role: 'owner', status: 'active' };
   }
