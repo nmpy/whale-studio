@@ -645,7 +645,15 @@ export function buildPhaseMessages(
       lagMs:     msg.lag_ms,
     }, "buildPhaseMessages", phase.id, vars);
 
-    if (lineMsg) messages.push(lineMsg);
+    if (lineMsg) {
+      messages.push(lineMsg);
+    } else {
+      console.warn(
+        `[buildPhaseMessages] ⚠️ メッセージ変換失敗（LINE送信から除外）`,
+        `id=${msg.id.slice(0, 8)} type=${msg.message_type} sort=${msg.sort_order}`,
+        `body=${msg.body ? `"${msg.body.slice(0, 30)}"` : "null"} asset=${msg.asset_url ? "あり" : "null"} alt=${msg.alt_text ? "あり" : "null"}`,
+      );
+    }
   }
 
   // ── サマリログ ──

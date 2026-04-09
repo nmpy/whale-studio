@@ -477,7 +477,17 @@ export function drainAutoSendableItems(
     sorted.map((m) => `id=${m.id.slice(0, 8)} kind=${m.kind} sort=${m.sortOrder} type=${m.messageType}`).join(" / "),
   );
   const result: import("@/types").RuntimePhaseMessage[] = [];
+  // 診断用: result に追加したメッセージの kind を追跡（RuntimePhaseMessage に kind がないため）
+  const resultKinds: string[] = [];
   const visited = new Set<string>();
+
+  /** 診断ログ出力ヘルパー */
+  const logResult = () => {
+    console.log(
+      `[drainAutoSendableItems] result=${result.length}件`,
+      result.map((m, i) => `id=${m.id.slice(0, 8)} kind=${resultKinds[i]} type=${m.message_type} sort=${m.sort_order} body=${m.body ? "あり" : "なし"} asset=${m.asset_url ? "あり" : "なし"}`).join(" / "),
+    );
+  };
 
   for (const entry of sorted) {
     // startAfterSortOrder 指定時: それ以前のメッセージはスキップ
@@ -493,10 +503,14 @@ export function drainAutoSendableItems(
       if (cur.kind === "response" || cur.kind === "hint") break;
       visited.add(cur.id);
       result.push(messageRowToRuntime(cur));
+      resultKinds.push(cur.kind);
 
       // 現在ノードがユーザー操作待ちなら、送信済みの上で全体を停止
       // （判定は現在ノードの属性のみ。次ノードが puzzle 等であっても直前の Message は送信済み）
-      if (requiresUserInteraction(cur)) return result;
+      if (requiresUserInteraction(cur)) {
+        logResult();
+        return result;
+      }
 
       // nextMessageId チェーンを辿る
       const nextId = cur.nextMessageId;
@@ -505,10 +519,7 @@ export function drainAutoSendableItems(
     }
   }
 
-  console.log(
-    `[drainAutoSendableItems] result=${result.length}件`,
-    result.map((m) => `id=${m.id.slice(0, 8)} type=${m.message_type} sort=${m.sort_order}`).join(" / "),
-  );
+  logResult();
   return result;
 }
 
