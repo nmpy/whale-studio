@@ -34,7 +34,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import {
   verifyLineSignature,
-  isStartCommand, isResetCommand, isContinueCommand,
+  isStartCommand, isStartIntent, isResetCommand, isContinueCommand,
   replyToLine as _replyToLine, replyWithLagToLine as _replyWithLagToLine,
   buildPhaseMessages as _buildPhaseMessages, buildQuickReply, buildKeywordMessages as _buildKeywordMessages, buildQuickReplyFromItems,
   RICHMENU_ACTIONS,
@@ -1058,6 +1058,14 @@ async function handleWebhook(req: NextRequest, oaId: string) {
             replyToken:   event.replyToken,
             vars:         buildVars(event.source.userId),
           });
+        } catch (err) {
+          console.error(
+            `[Webhook][ERROR] handleTextEvent 例外`,
+            `userId=${event.source.userId.slice(0, 8)}`,
+            `text="${event.message.text.slice(0, 60)}"`,
+            err,
+          );
+          throw err;
         } finally {
           loadingAbort.abort();
           ctrl.logTiming(`text userId=${event.source.userId.slice(0, 8)}`);
@@ -1087,6 +1095,14 @@ async function handleWebhook(req: NextRequest, oaId: string) {
             replyToken:   event.replyToken,
             vars:         buildVars(event.source.userId),
           });
+        } catch (err) {
+          console.error(
+            `[Webhook][ERROR] handlePostbackEvent 例外`,
+            `userId=${event.source.userId.slice(0, 8)}`,
+            `data="${event.postback.data}"`,
+            err,
+          );
+          throw err;
         } finally {
           ctrl.logTiming(`postback userId=${event.source.userId.slice(0, 8)}`);
           ctrl.dispose();
@@ -1183,7 +1199,16 @@ async function handleTextEvent({
   }
 
   // ─ 「はじめる」系コマンド → 常に（再）開始 ─
-  if (isStartCommand(text)) {
+  // isStartCommand: 厳密一致 ("はじめる", "スタート" 等)
+  // isStartIntent:  ゆるい末尾一致 ("『作品名』をはじめる" 等、リッチメニュー message アクション対応)
+  if (isStartCommand(text) || isStartIntent(text)) {
+    console.log(
+      `[Webhook][STEP] 開始コマンド検出`,
+      `isStartCommand=${isStartCommand(text)}`,
+      `isStartIntent=${isStartIntent(text)}`,
+      `text="${text.slice(0, 60)}"`,
+      `userId=${userId}`,
+    );
     await handleStart({ oa, work, systemSender, userId, replyToken, vars });
     return;
   }
@@ -1249,10 +1274,12 @@ async function handleTextEvent({
   if (startPhaseForTrigger?.startTrigger) {
     const triggerNorm  = normKw(startPhaseForTrigger.startTrigger);
     const triggerLoose = normKwLoose(startPhaseForTrigger.startTrigger);
+    const triggerBare  = normKwBare(startPhaseForTrigger.startTrigger);
     const inputNorm    = normKw(text);
     const inputLoose   = normKwLoose(text);
+    const inputBare    = normKwBare(text);
 
-    if (inputNorm === triggerNorm || inputLoose === triggerLoose) {
+    if (inputNorm === triggerNorm || inputLoose === triggerLoose || inputBare === triggerBare) {
       console.log(
         `[Webhook][STEP] startTrigger マッチ`,
         `trigger="${startPhaseForTrigger.startTrigger}"`,
@@ -1283,7 +1310,12 @@ async function handleTextEvent({
       return;
     } else {
       console.log(
-        `[Webhook][STEP] startTrigger 不一致 trigger="${startPhaseForTrigger.startTrigger}" input="${text}"`,
+        `[Webhook][STEP] startTrigger 不一致`,
+        `trigger="${startPhaseForTrigger.startTrigger}"`,
+        `input="${text}"`,
+        `normMatch=${inputNorm === triggerNorm}`,
+        `looseMatch=${inputLoose === triggerLoose}`,
+        `bareMatch=${inputBare === triggerBare}`,
       );
     }
   }
@@ -1297,9 +1329,16 @@ async function handleTextEvent({
     return;
   }
 
-  // ─ エンディング到達済み → 自動返信なし（シナリオ定義に委ねる） ─
+  // ─ エンディング到達済み ─
+  //   開始意図がある場合（isStartIntent）→ 再スタート。
+  //   それ以外のテキスト → 無視（シナリオ定義に委ねる）。
   if (progress.reachedEnding) {
-    console.log(`[Webhook][STEP] エンディング到達済み → 無視 userId=${userId}`);
+    if (isStartIntent(text)) {
+      console.log(`[Webhook][STEP] エンディング到達済み + 開始意図あり → handleStart userId=${userId}`);
+      await handleStart({ oa, work, systemSender, userId, replyToken, vars });
+      return;
+    }
+    console.log(`[Webhook][STEP] エンディング到達済み → 無視 userId=${userId} text="${text.slice(0, 40)}"`);
     return;
   }
 
@@ -2430,6 +2469,14 @@ function normKw(s: string): string {
  */
 function normKwLoose(s: string): string {
   return normKw(s).replace(/[。！？!?．…\s]+$/u, "").trimEnd();
+}
+
+/**
+ * 括弧類をすべて除去した「最ゆるい」正規化。
+ * リッチメニューの message テキストと DB startTrigger の括弧ズレを吸収する。
+ */
+function normKwBare(s: string): string {
+  return normKwLoose(s).replace(/[「」『』【】（）()""'']/gu, "");
 }
 
 // ──────────────────────────────────────────────────────────

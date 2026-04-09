@@ -474,9 +474,15 @@ function PlaygroundInner() {
           addLog("system", `応答: 「${summary}」`);
         }
       }
+      // パズル結果ログ
+      if (result._puzzle_result === "correct") {
+        addLog("system", "正解！");
+      } else if (result._puzzle_result === "incorrect") {
+        addLog("system", "不正解");
+      }
       const suppressMsg =
         result._matched === false &&
-        (!!result._response_messages?.length || !!activeQrItems?.length);
+        (!!result._response_messages?.length || !!activeQrItems?.length || result._puzzle_result === "incorrect");
       if (result._message && !suppressMsg) { setMessage(result._message); addLog("system", result._message); }
       if (result.phase) {
         addLog("system", `📍 フェーズ: 「${result.phase.name}」（${PHASE_TYPE_META[result.phase.phase_type].label}）`);

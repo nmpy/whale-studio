@@ -664,6 +664,7 @@ export interface RuntimeAdvanceResult extends RuntimeState {
   _message?:           string;
   _transition?:        { id: string; label: string };
   _response_messages?: RuntimePhaseMessage[];
+  _puzzle_result?:     "correct" | "incorrect";
 }
 
 export const runtimeApi = {
