@@ -181,6 +181,8 @@ function sleep(ms: number): Promise<void> {
 /** convertMessageToLine に渡す共通入力型 */
 type ConvertibleMessage = {
   id:         string;
+  /** DB の kind カラム値。"normal" | "start" | "puzzle" | "response" | "hint" */
+  kind?:      string;
   /** DB の messageType カラム値。text / image / video / carousel / voice / riddle / flex / 任意 */
   mtype:      string;
   body:       string | null;
@@ -206,7 +208,8 @@ function convertMessageToLine(
   phaseId: string,
   vars:    PlaceholderVars = {},
 ): LineMessage | null {
-  const { id, mtype, body, asset_url, alt_text, sender, quickReply, lagMs } = msg;
+  const { id, kind, mtype, body, asset_url, alt_text, sender, quickReply, lagMs } = msg;
+  const isPuzzle = kind === "puzzle";
 
   /** LINE メッセージ共通フィールドを付与するヘルパー */
   const attach = <T extends LineMessage>(m: T): T => {
@@ -219,16 +222,34 @@ function convertMessageToLine(
   // ── 正式対応 ──
   if (mtype === "text") {
     if (body) return attach({ type: "text", text: replacePlaceholders(body, vars) } as LineTextMessage);
+    // puzzle の text で body が空 → フォールバックテキストで送信
+    if (isPuzzle) {
+      const fb = alt_text || "この謎を解いてください";
+      console.warn(`[${caller}] puzzle body が空のためフォールバック送信 id=${id.slice(0, 8)} fallback="${fb.slice(0, 30)}"`);
+      return attach({ type: "text", text: replacePlaceholders(fb, vars) } as LineTextMessage);
+    }
     console.warn(`[${caller}] ⚠️ text メッセージの body が空 id=${id.slice(0, 8)} phase=${phaseId.slice(0, 8)}`);
     return null;
   }
   if (mtype === "image") {
     if (asset_url) return attach({ type: "image", originalContentUrl: asset_url, previewImageUrl: asset_url } as LineImageMessage);
+    // puzzle の image で asset_url が空 → body or alt_text をテキストフォールバック
+    if (isPuzzle) {
+      const fb = body || alt_text || "この謎を解いてください";
+      console.warn(`[${caller}] puzzle image の asset_url が空のためテキストフォールバック送信 id=${id.slice(0, 8)}`);
+      return attach({ type: "text", text: replacePlaceholders(fb, vars) } as LineTextMessage);
+    }
     console.warn(`[${caller}] ⚠️ image メッセージの asset_url が空 id=${id.slice(0, 8)} phase=${phaseId.slice(0, 8)}`);
     return null;
   }
   if (mtype === "video") {
     if (asset_url) return attach({ type: "video", originalContentUrl: asset_url, previewImageUrl: asset_url } as LineVideoMessage);
+    // puzzle の video で asset_url が空 → body or alt_text をテキストフォールバック
+    if (isPuzzle) {
+      const fb = body || alt_text || "この謎を解いてください";
+      console.warn(`[${caller}] puzzle video の asset_url が空のためテキストフォールバック送信 id=${id.slice(0, 8)}`);
+      return attach({ type: "text", text: replacePlaceholders(fb, vars) } as LineTextMessage);
+    }
     console.warn(`[${caller}] ⚠️ video メッセージの asset_url が空 id=${id.slice(0, 8)} phase=${phaseId.slice(0, 8)}`);
     return null;
   }
@@ -239,10 +260,17 @@ function convertMessageToLine(
     return attach({ type: "text", text: replacePlaceholders(truncateText(fallbackText), vars) } as LineTextMessage);
   }
 
+  // puzzle の未知型でもフォールバック送信
+  if (isPuzzle) {
+    const fb = "この謎を解いてください";
+    console.warn(`[${caller}] puzzle 変換不能のためフォールバック送信 id=${id.slice(0, 8)} type=${mtype}`);
+    return attach({ type: "text", text: fb } as LineTextMessage);
+  }
+
   // ── 変換不能 ──
   console.warn(
     `[${caller}] ⚠️ 変換不能メッセージ（送信スキップ）`,
-    `id=${id.slice(0, 8)} type=${mtype} phase=${phaseId.slice(0, 8)}`,
+    `id=${id.slice(0, 8)} type=${mtype} kind=${kind ?? "unknown"} phase=${phaseId.slice(0, 8)}`,
     `body=${body ? "あり" : "なし"} asset=${asset_url ? "あり" : "なし"} alt=${alt_text ? "あり" : "なし"}`,
   );
   return null;
@@ -649,6 +677,7 @@ export function buildPhaseMessages(
 
     const lineMsg = convertMessageToLine({
       id:        msg.id,
+      kind:      msg.kind,
       mtype:     msg.message_type as string,
       body:      msg.body,
       asset_url: msg.asset_url,
@@ -658,7 +687,15 @@ export function buildPhaseMessages(
       lagMs:     msg.lag_ms,
     }, "buildPhaseMessages", phase.id, vars);
 
-    if (lineMsg) messages.push(lineMsg);
+    if (lineMsg) {
+      messages.push(lineMsg);
+    } else {
+      console.warn(
+        `[buildPhaseMessages] ⚠️ メッセージ変換失敗（LINE送信から除外）`,
+        `id=${msg.id.slice(0, 8)} type=${msg.message_type} sort=${msg.sort_order}`,
+        `body=${msg.body ? `"${msg.body.slice(0, 30)}"` : "null"} asset=${msg.asset_url ? "あり" : "null"} alt=${msg.alt_text ? "あり" : "null"}`,
+      );
+    }
   }
 
   // ── サマリログ ──

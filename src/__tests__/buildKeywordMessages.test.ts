@@ -158,7 +158,7 @@ describe("変換 parity: buildKeywordMessages と buildPhaseMessages で同一�
   /** buildPhaseMessages 用の RuntimePhaseMessage を生成する */
   function makePhaseMsg(overrides: Partial<RuntimePhaseMessage> = {}): RuntimePhaseMessage {
     return {
-      id: "pm-1", message_type: "text", body: "テスト", asset_url: null,
+      id: "pm-1", kind: "normal", message_type: "text", body: "テスト", asset_url: null,
       alt_text: null, flex_payload_json: null, quick_replies: null, lag_ms: 0,
       hint_mode: "always", sort_order: 0, timing: null,
       tap_destination_id: null, tap_url: null, character: null,

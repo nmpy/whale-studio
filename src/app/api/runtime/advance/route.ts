@@ -197,6 +197,7 @@ export const POST = withAuth(async (req, _ctx, user) => {
           }
           return {
             id:                m.id,
+            kind:              (m as { kind?: string }).kind ?? "normal",
             message_type:      m.messageType as import("@/types").MessageType,
             body:              m.body,
             asset_url:         m.assetUrl,
@@ -293,6 +294,7 @@ export const POST = withAuth(async (req, _ctx, user) => {
               if (puzzle.correctText?.trim()) {
                 puzzleMessages.push({
                   id:                `correct-${puzzle.id}`,
+                  kind:              "normal",
                   message_type:      "text",
                   body:              puzzle.correctText.trim(),
                   asset_url:         null,

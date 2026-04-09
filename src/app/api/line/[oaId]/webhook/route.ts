@@ -421,6 +421,8 @@ function matchHintFromPhase(
   const inputNorm  = normKw(inputText);
   const inputLoose = normKwLoose(inputText);
 
+  // 診断: フェーズ内の hint QR 候補をログ出力
+  let hintCandidateCount = 0;
   for (const msg of phase.messages) {
     // hint_mode=hidden のメッセージはヒント照合をスキップ
     if ((msg as { hintMode?: string }).hintMode === "hidden") continue;
@@ -436,6 +438,7 @@ function matchHintFromPhase(
     for (const item of items) {
       if (item.action !== "hint") continue;
       if (item.enabled === false) continue;
+      hintCandidateCount++;
       // value と label の両方を照合キーとして試みる（LINE では label がそのまま送信される）
       const keys = [item.value?.trim(), item.label].filter(Boolean) as string[];
       const matched = keys.some(
@@ -449,8 +452,21 @@ function matchHintFromPhase(
           `key="${item.value ?? item.label}" hint_text="${hintText.slice(0, 30)}..."`,
         );
         return { hintText, hintFollowup, qrItems: items, matchedItem: item };
+      } else {
+        console.log(
+          `[cache][hint] 不一致 msgId=${msg.id.slice(0, 8)} kind=${msg.kind}`,
+          `input="${inputNorm}" keys=${JSON.stringify(keys)}`,
+        );
       }
     }
+  }
+  if (hintCandidateCount === 0) {
+    console.log(
+      `[cache][hint] 候補なし phaseId=${phase.id.slice(0, 8)}`,
+      `messages=${phase.messages.length}件`,
+      `qrMessages=${phase.messages.filter((m) => m.quickReplies).length}件`,
+      phase.messages.map((m) => `id=${m.id.slice(0, 8)} kind=${m.kind} qr=${m.quickReplies ? "あり" : "なし"} hintMode=${(m as { hintMode?: string }).hintMode ?? "always"}`).join(" / "),
+    );
   }
   return null;
 }

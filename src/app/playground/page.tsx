@@ -237,6 +237,7 @@ function PlaygroundInner() {
       const hintBody = item.hint_text?.trim() || "ヒントはまだ設定されていません。";
       hintMsgs.push({
         id: `hint-${Date.now()}-body`,
+        kind: "hint",
         message_type: "text",
         body: hintBody,
         asset_url: null,
@@ -254,6 +255,7 @@ function PlaygroundInner() {
       if (item.hint_followup?.trim()) {
         hintMsgs.push({
           id: `hint-${Date.now()}-followup`,
+          kind: "hint",
           message_type: "text",
           body: item.hint_followup.trim(),
           asset_url: null,

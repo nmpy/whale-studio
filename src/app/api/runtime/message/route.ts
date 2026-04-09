@@ -33,6 +33,7 @@ function rowToRuntime(msg: MessageRow): RuntimePhaseMessage {
   }
   return {
     id:                msg.id,
+    kind:              (msg as { kind?: string }).kind ?? "normal",
     message_type:      msg.messageType as MessageType,
     body:              msg.body,
     asset_url:         msg.assetUrl,
