@@ -497,26 +497,27 @@ export async function replyWithLagToLine(
 ): Promise<void> {
   if (!replyToken || messages.length === 0) return;
 
-  const sliced = messages.slice(0, LINE_MSG_MAX);
-
   // 1 件のみ → 通常の replyToLine と同じ（ラグなし）
-  if (sliced.length <= 1) {
-    await replyToLine(replyToken, sliced, channelAccessToken);
+  if (messages.length <= 1) {
+    await replyToLine(replyToken, messages, channelAccessToken);
     return;
   }
 
   // 1 件目を Reply API で即送信（replyToken の有効期限内に必ず呼ぶ）
-  const [first, ...rest] = sliced;
+  const [first, ...rest] = messages;
   await replyToLine(replyToken, [first], channelAccessToken);
 
-  // 2 件目以降を Push API でラグ付き送信
-  for (const msg of rest) {
+  // 2 件目以降を Push API でラグ付き 1 件ずつ送信（件数制限なし）
+  console.log(`[replyWithLagToLine] reply=1件 push=${rest.length}件 total=${messages.length}件`);
+  for (let i = 0; i < rest.length; i++) {
+    const msg = rest[i];
     const rawLag = msg._lagMs ?? 0;
     const delay  = rawLag > 0 ? Math.min(rawLag, MAX_MSG_LAG_MS) : DEFAULT_MSG_LAG_MS;
-    console.log(`[replyWithLagToLine] 次のメッセージまで ${delay}ms 待機`);
+    console.log(`[replyWithLagToLine] push ${i + 1}/${rest.length} delay=${delay}ms`);
     await sleep(delay);
     await pushToLine(userId, [msg], channelAccessToken);
   }
+  console.log(`[replyWithLagToLine] 完了 reply=1 push=${rest.length} total=${messages.length}`);
 }
 
 // ────────────────────────────────────────────────
