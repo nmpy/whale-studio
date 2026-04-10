@@ -2811,8 +2811,14 @@ async function handlePuzzleCorrect({
     messagesToSend.push({ type: "text", text: "正解！", sender: systemSender });
   }
 
-  // LINE reply は最大 5 件（返信後にリッチメニュー切り替えをバックグラウンド実行）
-  await replyToLine(replyToken, messagesToSend.slice(0, 5), token);
+  console.log(
+    `[Webhook][puzzle] 送信 total=${messagesToSend.length}件`,
+    messagesToSend.map((m, i) => `[${i}]type=${m.type}`).join(" / "),
+  );
+
+  // replyWithLagToLine で送信（1件目を reply、2件目以降を push でラグ付き送信）
+  // これにより LINE reply API の 5 件上限を超えるメッセージも全件送信される
+  await replyWithLagToLine(replyToken, messagesToSend, userId, token);
 
   // 遷移が発生した場合のみリッチメニューを切り替え（fire-and-forget、キャッシュ利用）
   if ((puzzle.correctAction === "transition" || puzzle.correctAction === "text_and_transition")
