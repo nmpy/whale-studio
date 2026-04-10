@@ -473,6 +473,18 @@ export function drainAutoSendableItems(
     .sort((a, b) => a.sortOrder - b.sortOrder || a.createdAt.getTime() - b.createdAt.getTime());
 
   // 5. sortOrder 順にドレイン
+  // midChain で除外されたメッセージを診断ログに出力
+  const midChainExcluded = messages.filter((m) => midChainIds.has(m.id));
+  if (midChainExcluded.length > 0) {
+    console.log(
+      `[drainAutoSendableItems] midChain除外=${midChainExcluded.length}件`,
+      midChainExcluded.map((m) => {
+        // この ID を nextMessageId で参照している「親」を特定
+        const parent = messages.find((p) => p.nextMessageId === m.id);
+        return `id=${m.id.slice(0, 8)} kind=${m.kind} sort=${m.sortOrder} ←parent=${parent ? `id=${parent.id.slice(0, 8)} kind=${parent.kind}` : "不明"}`;
+      }).join(" / "),
+    );
+  }
   console.log(
     `[drainAutoSendableItems] input=${messages.length}件 sorted=${sorted.length}件 midChain=${midChainIds.size}件 targetMsg=${targetMsgIds.size}件 startAfter=${startAfterSortOrder ?? "none"} segment=${userSegment ?? "none"}`,
     sorted.map((m) => `id=${m.id.slice(0, 8)} kind=${m.kind} sort=${m.sortOrder} type=${m.messageType}`).join(" / "),
@@ -518,6 +530,23 @@ export function drainAutoSendableItems(
       if (!nextId) break;
       cur = msgMap.get(nextId);
     }
+  }
+
+  // ── midChain 補償: チェーン起点から辿られなかったメッセージを救済 ──
+  // midChainIds に含まれているが visited に入っていない = 親が response/hint 等で
+  // sorted から除外されたため、チェーン起点からも辿られなかったケース。
+  // sortOrder 順に結果に追加する（wait point 判定も適用）。
+  const orphaned = messages
+    .filter((m) => midChainIds.has(m.id) && !visited.has(m.id))
+    .filter((m) => isAutoSendableMessageNode(m, { targetMsgIds, userSegment }))
+    .sort((a, b) => a.sortOrder - b.sortOrder);
+  for (const m of orphaned) {
+    if (m.kind === "response" || m.kind === "hint") continue;
+    visited.add(m.id);
+    result.push(messageRowToRuntime(m));
+    resultKinds.push(m.kind);
+    console.log(`[drainAutoSendableItems] midChain補償追加 id=${m.id.slice(0, 8)} kind=${m.kind} sort=${m.sortOrder}`);
+    if (requiresUserInteraction(m)) break;
   }
 
   logResult();
