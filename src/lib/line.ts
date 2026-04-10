@@ -667,6 +667,10 @@ export function buildPhaseMessages(
   // ── DB Message 行を 1 件ずつ独立した吹き出しに変換 ──
   // 変換契約は convertMessageToLine() に集約されている。
   const inputCount = phase.messages.length;
+  console.log(
+    `[buildPhaseMessages] 入力 ${inputCount}件`,
+    phase.messages.map((m) => `id=${m.id.slice(0, 8)} kind=${m.kind} type=${m.message_type} body=${m.body ? "あり" : "null"} asset=${m.asset_url ? "あり" : "null"}`).join(" / "),
+  );
   for (const msg of phase.messages) {
     // hint_mode に基づいてヒント QR をフィルタ
     const visibleQrItems = (msg.hint_mode === "always" || !msg.hint_mode)
@@ -693,7 +697,7 @@ export function buildPhaseMessages(
     } else {
       console.warn(
         `[buildPhaseMessages] ⚠️ メッセージ変換失敗（LINE送信から除外）`,
-        `id=${msg.id.slice(0, 8)} type=${msg.message_type} sort=${msg.sort_order}`,
+        `id=${msg.id.slice(0, 8)} kind=${msg.kind} type=${msg.message_type} sort=${msg.sort_order}`,
         `body=${msg.body ? `"${msg.body.slice(0, 30)}"` : "null"} asset=${msg.asset_url ? "あり" : "null"} alt=${msg.alt_text ? "あり" : "null"}`,
       );
     }
