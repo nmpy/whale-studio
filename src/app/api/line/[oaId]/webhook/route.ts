@@ -2752,7 +2752,15 @@ async function handlePuzzleCorrect({
           `isEnding=${isEnding}`,
         );
         const state     = await buildRuntimeState(updated, nextPhase);
+        console.log(
+          `[Webhook][puzzle] 遷移先phase messages=${state.phase?.messages.length ?? 0}件`,
+          state.phase?.messages.map((m, i) => `[${i}]id=${m.id.slice(0, 8)} kind=${m.kind} type=${m.message_type} body=${m.body ? "あり" : "なし"} sort=${m.sort_order}`).join(" / ") ?? "(null)",
+        );
         const nextMsgs  = buildPhaseMessages(state.phase, { systemSender, vars });
+        console.log(
+          `[Webhook][puzzle] buildPhaseMessages結果=${nextMsgs.length}件`,
+          nextMsgs.map((m, i) => `[${i}]type=${m.type}`).join(" / "),
+        );
         messagesToSend.push(...nextMsgs);
       } else {
         // correctNextPhaseId が存在するが取得できなかった場合: solved だけ保存
