@@ -44,7 +44,7 @@ export default function AppHeader() {
 
   const [feedbackOpen,     setFeedbackOpen]     = useState(false);
   const [loggedIn,         setLoggedIn]         = useState(false);
-  const [isPlatformOwner,  setIsPlatformOwner]  = useState(false);
+  const [isAnyOaOwner,     setIsAnyOaOwner]     = useState(false);
   const { profile, loading: profileLoading }    = useProfile();
   const { showToast }                           = useToast();
   const displayName                             = getDisplayName(profile);
@@ -57,12 +57,15 @@ export default function AppHeader() {
   // 現在の OA の workspace role を取得（OA ページ外では workspaceId="" → role=null）
   const { role: workspaceRole, loading: roleLoading, isOwner } = useWorkspaceRole(currentOaId);
 
-  // ── platform owner 判定（OA ページ外でも CTA を切り替えるため）─────
+  // ── OA 横断 owner 判定（OA ページ外でも CTA を切り替えるため）─────
+  // /api/oas の my_role を見て、1つでも owner の OA があれば isAnyOaOwner = true
   useEffect(() => {
-    fetch("/api/admin/me", { headers: { ...getAuthHeaders() }, cache: "no-store" })
+    fetch("/api/oas?limit=100", { headers: { ...getAuthHeaders() }, cache: "no-store" })
       .then((r) => r.ok ? r.json() : null)
       .then((body) => {
-        if (body?.data?.is_platform_owner) setIsPlatformOwner(true);
+        if (body?.data?.some((oa: { my_role?: string }) => oa.my_role === "owner")) {
+          setIsAnyOaOwner(true);
+        }
       })
       .catch(() => {});
   }, []);
@@ -122,11 +125,16 @@ export default function AppHeader() {
     window.location.href = "/login";
   }
 
-  // OA ページにいて role が取得済みの場合のみ workspace role バッジを表示
-  const showRoleBadge = !!currentOaId && !roleLoading && workspaceRole !== null;
+  // role バッジ表示: OA ページ内は workspace role、OA ページ外は isAnyOaOwner
+  const showRoleBadge = currentOaId
+    ? (!roleLoading && workspaceRole !== null)
+    : isAnyOaOwner;
 
-  // owner 判定: workspace owner（OA ページ内）または platform owner（OA ページ外含む）
-  const isEffectiveOwner = isOwner || isPlatformOwner;
+  // バッジに表示する role
+  const displayRole: Role | null = currentOaId ? workspaceRole : (isAnyOaOwner ? "owner" : null);
+
+  // owner 判定: workspace owner（OA ページ内）または OA 横断 owner（OA ページ外）
+  const isEffectiveOwner = isOwner || isAnyOaOwner;
 
   // スタジオ管理のリンク先: OA ページ内なら OA 設定、それ以外は admin
   const studioHref = currentOaId
@@ -153,10 +161,10 @@ export default function AppHeader() {
             </a>
           </h1>
 
-          {/* ── 現在の OA の workspace role バッジ ── */}
-          {showRoleBadge && (
+          {/* ── role バッジ ── */}
+          {showRoleBadge && displayRole && (
             <div style={{ display: "flex", alignItems: "center", gap: 6, marginLeft: 8 }}>
-              <RoleBadge role={workspaceRole as Role} />
+              <RoleBadge role={displayRole} />
             </div>
           )}
 
