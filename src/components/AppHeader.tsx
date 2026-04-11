@@ -136,10 +136,10 @@ export default function AppHeader() {
   // owner 判定: workspace owner（OA ページ内）または OA 横断 owner（OA ページ外）
   const isEffectiveOwner = isOwner || isAnyOaOwner;
 
-  // スタジオ管理のリンク先: OA ページ内なら OA 設定、それ以外は admin
+  // スタジオ管理のリンク先: OA ページ内なら OA 設定、それ以外はスタジオ管理トップ
   const studioHref = currentOaId
     ? `/oas/${currentOaId}/settings`
-    : "/admin/announcements";
+    : "/admin";
 
   return (
     <>
