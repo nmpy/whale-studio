@@ -1,0 +1,411 @@
+diff --git a/src/__tests__/checkPuzzleAnswer.test.ts b/src/__tests__/checkPuzzleAnswer.test.ts
+new file mode 100644
+index 0000000..b5c430c
+表示を減らす
+--- /dev/null
++++ b/src/__tests__/checkPuzzleAnswer.test.ts
+@@ -0,0 +1,143 @@
++/**
++ * checkPuzzleAnswer ユニットテスト
++ *
++ * webhook/route.ts と runtime/advance/route.ts の両方で使われている
++ * パズル回答照合ロジックのテスト。
++ * ここでは同一ロジックを再現し、各 matchType の動作を検証する。
++ */
++import { describe, it, expect } from "vitest";
++
++// ── ロジック再現（webhook/route.ts と同一） ─────────────────
++
++function normKw(s: string): string {
++  return s.trim().normalize("NFKC");
++}
++
++function removePunct(s: string): string {
++  return s.replace(/[!?,.　\u0020\t、。，．・：；！？…‥〜ー\u3000-\u303F]+/gu, "").trim();
++}
++
++function checkPuzzleAnswer(
++  input: string,
++  answer: string,
++  matchTypes: string[],
++): boolean {
++  const inputNorm = normKw(input);
++  const answerNorm = normKw(answer);
++
++  // 空文字の正解は常に不正解とする（partial で常時 true になるのを防ぐ）
++  if (answerNorm === "") return false;
++
++  for (const mt of matchTypes) {
++    if (mt === "exact" || mt === "normalize_width") {
++      if (inputNorm === answerNorm) return true;
++    }
++    if (mt === "partial") {
++      if (inputNorm.includes(answerNorm)) return true;
++    }
++    if (mt === "ignore_punctuation") {
++      if (removePunct(inputNorm) === removePunct(answerNorm)) return true;
++    }
++  }
++  return false;
++}
++
++// ── テスト ─────────────────────────────────────────────────
++
++describe("checkPuzzleAnswer", () => {
++  // ── exact ────────────────────────────────────────────────
++  describe("exact マッチ", () => {
++    it("完全一致で正解", () => {
++      expect(checkPuzzleAnswer("りんご", "りんご", ["exact"])).toBe(true);
++    });
++
++    it("不一致で不正解", () => {
++      expect(checkPuzzleAnswer("みかん", "りんご", ["exact"])).toBe(false);
++    });
++
++    it("部分一致テキストでは exact 不正解", () => {
++      expect(checkPuzzleAnswer("答えはりんごです", "りんご", ["exact"])).toBe(false);
++    });
++
++    it("前後空白は trim されて一致", () => {
++      expect(checkPuzzleAnswer("  りんご  ", "りんご", ["exact"])).toBe(true);
++    });
++
++    it("NFKC 正規化で全角→半角が吸収される", () => {
++      expect(checkPuzzleAnswer("ＡＢＣ", "ABC", ["exact"])).toBe(true);
++    });
++  });
++
++  // ── partial ──────────────────────────────────────────────
++  describe("partial マッチ（部分一致）", () => {
++    it("完全一致でも正解", () => {
++      expect(checkPuzzleAnswer("りんご", "りんご", ["partial"])).toBe(true);
++    });
++
++    it("入力文中に正解が含まれていれば正解", () => {
++      expect(checkPuzzleAnswer("答えはりんごです", "りんご", ["partial"])).toBe(true);
++    });
++
++    it("正解が先頭にあっても正解", () => {
++      expect(checkPuzzleAnswer("りんごかな？", "りんご", ["partial"])).toBe(true);
++    });
++
++    it("正解の前に文字があっても正解（青りんご）", () => {
++      expect(checkPuzzleAnswer("青りんご", "りんご", ["partial"])).toBe(true);
++    });
++
++    it("正解が含まれていなければ不正解", () => {
++      expect(checkPuzzleAnswer("みかん", "りんご", ["partial"])).toBe(false);
++    });
++
++    it("NFKC 正規化後に部分一致判定される", () => {
++      // 全角 "ＡＢＣ" は NFKC で "ABC" に正規化される
++      expect(checkPuzzleAnswer("答えはＡＢＣです", "ABC", ["partial"])).toBe(true);
++    });
++
++    it("前後空白が trim された後に判定される", () => {
++      expect(checkPuzzleAnswer("  答えはりんごです  ", "りんご", ["partial"])).toBe(true);
++    });
++  });
++
++  // ── 空文字ガード ─────────────────────────────────────────
++  describe("空文字ガード", () => {
++    it("正解が空文字のとき partial でも false", () => {
++      expect(checkPuzzleAnswer("なんでも", "", ["partial"])).toBe(false);
++    });
++
++    it("正解が空白のみのとき partial でも false", () => {
++      expect(checkPuzzleAnswer("なんでも", "   ", ["partial"])).toBe(false);
++    });
++
++    it("正解が空文字のとき exact でも false", () => {
++      expect(checkPuzzleAnswer("", "", ["exact"])).toBe(false);
++    });
++  });
++
++  // ── ignore_punctuation ────────────────────────────────────
++  describe("ignore_punctuation マッチ", () => {
++    it("句読点なしで一致", () => {
++      expect(checkPuzzleAnswer("りんご", "りんご", ["ignore_punctuation"])).toBe(true);
++    });
++
++    it("句読点の有無を吸収", () => {
++      expect(checkPuzzleAnswer("りんご。", "りんご", ["ignore_punctuation"])).toBe(true);
++    });
++
++    it("内容が異なれば不正解", () => {
++      expect(checkPuzzleAnswer("みかん", "りんご", ["ignore_punctuation"])).toBe(false);
++    });
++  });
++
++  // ── 複数 matchTypes ──────────────────────────────────────
++  describe("複数 matchTypes 組み合わせ", () => {
++    it("exact で不正解でも partial で正解なら true", () => {
++      expect(checkPuzzleAnswer("答えはりんごです", "りんご", ["exact", "partial"])).toBe(true);
++    });
++
++    it("どの matchType にも該当しなければ false", () => {
++      expect(checkPuzzleAnswer("みかん", "りんご", ["exact", "partial"])).toBe(false);
++    });
++  });
++});
+diff --git a/src/app/api/line/[oaId]/webhook/route.ts b/src/app/api/line/[oaId]/webhook/route.ts
+index a95c35c..42e3541 100644
+--- a/src/app/api/line/[oaId]/webhook/route.ts
++++ b/src/app/api/line/[oaId]/webhook/route.ts
+@@ -2608,11 +2608,18 @@ function checkPuzzleAnswer(
+   const inputNorm  = normKw(input);
+   const answerNorm = normKw(answer);
+ 
++  // 空文字の正解は常に不正解とする（partial で常時 true になるのを防ぐ）
++  if (answerNorm === "") return false;
++
+   for (const mt of matchTypes) {
+     if (mt === "exact" || mt === "normalize_width") {
+       // normalize_width は NFKC で解決済み
+       if (inputNorm === answerNorm) return true;
+     }
++    if (mt === "partial") {
++      // 正規化後の入力に正解文字列が含まれていれば正解
++      if (inputNorm.includes(answerNorm)) return true;
++    }
+     if (mt === "ignore_punctuation") {
+       if (removePunct(inputNorm) === removePunct(answerNorm)) return true;
+     }
+diff --git a/src/app/api/runtime/advance/route.ts b/src/app/api/runtime/advance/route.ts
+index 6a7b03d..e92c082 100644
+--- a/src/app/api/runtime/advance/route.ts
++++ b/src/app/api/runtime/advance/route.ts
+@@ -42,10 +42,18 @@ function parsePuzzleMatchType(raw: string | null): string[] {
+ function checkPuzzleAnswer(input: string, answer: string, matchTypes: string[]): boolean {
+   const inputNorm  = normKw(input);
+   const answerNorm = normKw(answer);
++
++  // 空文字の正解は常に不正解とする（partial で常時 true になるのを防ぐ）
++  if (answerNorm === "") return false;
++
+   for (const mt of matchTypes) {
+     if (mt === "exact" || mt === "normalize_width") {
+       if (inputNorm === answerNorm) return true;
+     }
++    if (mt === "partial") {
++      // 正規化後の入力に正解文字列が含まれていれば正解
++      if (inputNorm.includes(answerNorm)) return true;
++    }
+     if (mt === "ignore_punctuation") {
+       if (removePunct(inputNorm) === removePunct(answerNorm)) return true;
+     }
+diff --git a/src/app/oas/[id]/works/[workId]/messages/_form.tsx b/src/app/oas/[id]/works/[workId]/messages/_form.tsx
+index d3b2588..f2b4319 100644
+--- a/src/app/oas/[id]/works/[workId]/messages/_form.tsx
++++ b/src/app/oas/[id]/works/[workId]/messages/_form.tsx
+@@ -97,7 +97,7 @@ const EMPTY_ADDITIONAL_SLOT: AdditionalMessageSlot = {
+ // ── FormState ────────────────────────────────────────────
+ 
+ export type MessageKind = "start" | "normal" | "response" | "hint" | "puzzle" | "global";
+-export type AnswerMatchType = "exact" | "ignore_punctuation" | "normalize_width";
++export type AnswerMatchType = "exact" | "partial" | "ignore_punctuation" | "normalize_width";
+ export type CorrectAction   = "text" | "text_and_transition" | "transition";
+ 
+ export interface MessageFormState {
+@@ -2661,7 +2661,7 @@ function AdditionalMessageBlock({
+           <DurationInput
+             valueMs={slot.lag_ms ?? 0}
+             onChange={(ms) => onChange({ ...slot, lag_ms: ms })}
+-            />
++          />
+         </div>
+       </div>
+     </div>
+@@ -3760,18 +3760,11 @@ export function MessageForm({
+ 
+                 {/* 次の発話までの待機時間（1通目） */}
+                 <div className="form-group" style={{ marginTop: 10, marginBottom: 0 }}>
+-                  <label style={fieldLabel}>次の発話までの待機時間（ms）</label>
+-                  <input
+-                    type="number"
+-                    className="form-input"
+-                    style={{ maxWidth: 160 }}
+-                    value={form.lag_ms}
+-                    onChange={(e) => set("lag_ms", Math.max(0, Number(e.target.value)))}
+-                    min={0}
+-                    step={500}
+-                    placeholder="0"
++                  <label style={fieldLabel}>次の発話までの待機時間</label>
++                  <DurationInput
++                    valueMs={form.lag_ms ?? 0}
++                    onChange={(ms) => set("lag_ms", ms)}
+                   />
+-                  <div style={hintText}>1秒 = 1000ms　0ms = 即時送信</div>
+                 </div>
+ 
+                 {/* ── 演出設定（既読・typing・ローディング）── */}
+@@ -3862,6 +3855,7 @@ export function MessageForm({
+                 {(
+                   [
+                     { value: "exact" as const,              label: "完全一致",       desc: "NFKC正規化後に完全一致するか確認します" },
++                    { value: "partial" as const,            label: "部分一致",       desc: "入力文の中に答えが含まれていれば正解になります" },
+                     { value: "normalize_width" as const,    label: "全角半角を無視",  desc: "全角・半角の違いを無視して照合します" },
+                     { value: "ignore_punctuation" as const, label: "句読点を無視",    desc: "句点・読点・記号を除去して照合します" },
+                   ]
+diff --git a/src/components/DurationInput.tsx b/src/components/DurationInput.tsx
+index 817a94b..0b9ecf2 100644
+--- a/src/components/DurationInput.tsx
++++ b/src/components/DurationInput.tsx
+@@ -2,44 +2,72 @@
+ 
+ import { useEffect, useState } from "react";
+ 
+-type Props = {
++const MAX_MS = 10 * 60 * 1000; // 10分 = 600000ms
++
++interface DurationInputProps {
+   valueMs: number;
+   onChange: (ms: number) => void;
+-};
++}
+ 
+-export default function DurationInput({ valueMs, onChange }: Props) {
+-  const [minutes, setMinutes] = useState(Math.floor(valueMs / 60000));
+-  const [seconds, setSeconds] = useState(Math.floor((valueMs % 60000) / 1000));
++export default function DurationInput({ valueMs, onChange }: DurationInputProps) {
++  const clamped = Math.min(Math.max(valueMs, 0), MAX_MS);
++  const [min, setMin] = useState(Math.floor(clamped / 60000));
++  const [sec, setSec] = useState(Math.floor((clamped % 60000) / 1000));
+ 
++  // 外部から valueMs が変わったとき内部状態を同期
+   useEffect(() => {
+-    const rawMs = minutes * 60000 + seconds * 1000;
+-    const ms = Math.min(rawMs, 10 * 60 * 1000);
++    const c = Math.min(Math.max(valueMs, 0), MAX_MS);
++    setMin(Math.floor(c / 60000));
++    setSec(Math.floor((c % 60000) / 1000));
++  }, [valueMs]);
++
++  function emitChange(m: number, s: number) {
++    const rawMs = m * 60000 + s * 1000;
++    const ms = Math.min(rawMs, MAX_MS);
+     onChange(ms);
+-  }, [minutes, seconds, onChange]);
++  }
++
++  function handleMinChange(e: React.ChangeEvent<HTMLInputElement>) {
++    const v = Math.max(0, Math.min(10, Number(e.target.value) || 0));
++    setMin(v);
++    // 10分のとき秒は0に
++    const s = v >= 10 ? 0 : sec;
++    if (v >= 10) setSec(0);
++    emitChange(v, s);
++  }
++
++  function handleSecChange(e: React.ChangeEvent<HTMLInputElement>) {
++    const v = Math.max(0, Math.min(59, Number(e.target.value) || 0));
++    setSec(v);
++    emitChange(min, v);
++  }
+ 
+   return (
+-    <div style={{ display: "flex", gap: 8 }}>
++    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+       <input
+         type="number"
++        className="form-input"
++        style={{ width: 70, textAlign: "right" }}
++        value={min}
++        onChange={handleMinChange}
+         min={0}
+-        value={minutes}
+-        onChange={(e) => setMinutes(Number(e.target.value))}
+-        style={{width: 60 }}
++        max={10}
+       />
+-      <span>分</span>
+-
++      <span style={{ fontSize: 13, color: "#6b7280" }}>分</span>
+       <input
+         type="number"
++        className="form-input"
++        style={{ width: 70, textAlign: "right" }}
++        value={sec}
++        onChange={handleSecChange}
+         min={0}
+         max={59}
+-        value={seconds}
+-        onChange={(e) => {
+-          const val = Math.min(59, Math.max(0, Number(e.target.value)));
+-          setSeconds(val);
+-        }}
+-        style={{ width: 60 }}
++        disabled={min >= 10}
+       />
+-      <span>秒</span>
++      <span style={{ fontSize: 13, color: "#6b7280" }}>秒</span>
++      {valueMs === 0 && (
++        <span style={{ fontSize: 12, color: "#9ca3af", marginLeft: 4 }}>（即時送信）</span>
++      )}
+     </div>
+   );
+-}
+\ No newline at end of file
++}
+diff --git a/src/lib/line.ts b/src/lib/line.ts
+index 2d51c02..985e907 100644
+--- a/src/lib/line.ts
++++ b/src/lib/line.ts
+@@ -151,7 +151,7 @@ const LINE_PUSH_URL      = "https://api.line.me/v2/bot/message/push";
+ const LINE_TEXT_MAX      = 5000; // LINE テキストメッセージの最大文字数
+ const LINE_MSG_MAX       = 5;    // 1 回の reply で送れる最大メッセージ数
+ const DEFAULT_MSG_LAG_MS = 1000; // lag_ms 未設定時のメッセージ間待機時間（ms）
+-const MAX_MSG_LAG_MS = 600000; // lag_ms の上限値（ms）
++const MAX_MSG_LAG_MS     = 600000; // lag_ms の上限値（ms）= 10分
+ 
+ /** ms ミリ秒待機する */
+ function sleep(ms: number): Promise<void> {
+@@ -485,7 +485,7 @@ export async function pushToLine(
+  * - 1件目: Reply API（replyToken を使用・即送信）
+  * - 2件目以降: 各メッセージの _lagMs ms 待機後に Push API で 1 件ずつ送信
+  *   - _lagMs が未設定 → DEFAULT_MSG_LAG_MS (1000ms)
+- *   - _lagMs が設定済み → min(_lagMs, MAX_MSG_LAG_MS) (上限 2000ms)
++ *   - _lagMs が設定済み → min(_lagMs, MAX_MSG_LAG_MS) (上限 600000ms = 10分)
+  *
+  * 1 件のみの場合は通常の replyToLine と同じ動作（Push API は使用しない）。
+  */
+diff --git a/src/lib/validations/index.ts b/src/lib/validations/index.ts
+index 85f7f16..a613887 100644
+--- a/src/lib/validations/index.ts
++++ b/src/lib/validations/index.ts
+@@ -264,7 +264,7 @@ export const quickReplyItemSchema = z.object({
+ // ────────────────────────────────────────────────
+ /** puzzle answer_match_type 配列スキーマ */
+ const answerMatchTypeSchema = z
+-  .array(z.enum(["exact", "ignore_punctuation", "normalize_width"]))
++  .array(z.enum(["exact", "partial", "ignore_punctuation", "normalize_width"]))
+   .min(1, "少なくとも1つのマッチ方式を選択してください")
+   .default(["exact"]);
+ 
+@@ -298,7 +298,7 @@ export const createMessageSchema = z.object({
+   correct_next_phase_id: uuidSchema.optional().nullable(),
+   hint_mode: z.enum(["always", "on_wrong", "hidden"]).default("always").optional(),
+   /** 前のメッセージ送信後この発話まで待機するミリ秒数。0 = 即時送信 */
+-  lag_ms:           z.number().int().min(0).default(0),
++  lag_ms:           z.number().int().min(0).max(600000).default(0),
+   // ── 演出設定 ──
+   read_receipt_mode:    z.enum(["inherit", "immediate", "delayed", "before_reply"]).optional().nullable(),
+   read_delay_ms:        z.number().int().min(0).max(10000).optional().nullable(),
+@@ -375,7 +375,7 @@ export const updateMessageSchema = z.object({
+   puzzle_type:           z.enum(["text", "image", "video", "carousel"]).optional().nullable(),
+   answer:                z.string().max(500).optional().nullable(),
+   puzzle_hint_text:      z.string().max(1000).optional().nullable(),
+-  answer_match_type:     z.array(z.enum(["exact", "ignore_punctuation", "normalize_width"])).optional(),
++  answer_match_type:     z.array(z.enum(["exact", "partial", "ignore_punctuation", "normalize_width"])).optional(),
+   correct_action:        z.enum(["text", "text_and_transition", "transition"]).optional().nullable(),
+   correct_text:          z.string().max(2000).optional().nullable(),
+   incorrect_text:          z.string().max(2000).optional().nullable(),
+@@ -383,7 +383,7 @@ export const updateMessageSchema = z.object({
+   correct_next_phase_id: uuidSchema.optional().nullable(),
+   hint_mode: z.enum(["always", "on_wrong", "hidden"]).optional(),
+   /** 前のメッセージ送信後この発話まで待機するミリ秒数。0 = 即時送信 */
+-  lag_ms:            z.number().int().min(0).optional(),
++  lag_ms:            z.number().int().min(0).max(600000).optional(),
+   // ── 演出設定 ──
+   read_receipt_mode:    z.enum(["inherit", "immediate", "delayed", "before_reply"]).optional().nullable(),
+   read_delay_ms:        z.number().int().min(0).max(10000).optional().nullable(),
