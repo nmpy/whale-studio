@@ -2,7 +2,7 @@
 // 共有メッセージフォーム（新規・編集ページで使用）
 
 "use client";
-
+import DurationInput from "@/components/DurationInput";
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { phaseApi, characterApi, riddleApi, messageApi, uploadApi, getDevToken } from "@/lib/api-client";
@@ -2657,18 +2657,11 @@ function AdditionalMessageBlock({
 
         {/* 次のメッセージまでの待機時間 */}
         <div className="form-group" style={{ marginTop: 10, marginBottom: 0 }}>
-          <label style={fieldLabel}>次の発話までの待機時間（ms）</label>
-          <input
-            type="number"
-            className="form-input"
-            style={{ maxWidth: 160 }}
-            value={slot.lag_ms}
-            onChange={(e) => onChange({ ...slot, lag_ms: Math.max(0, Number(e.target.value)) })}
-            min={0}
-            step={500}
-            placeholder="0"
-          />
-          <div style={hintText}>1秒 = 1000ms　0ms = 即時送信</div>
+          <label style={fieldLabel}>次の発話までの待機時間</label>
+          <DurationInput
+            valueMs={slot.lag_ms ?? 0}
+            onChange={(ms) => onChange({ ...slot, lag_ms: ms })}
+            />
         </div>
       </div>
     </div>

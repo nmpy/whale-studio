@@ -151,7 +151,7 @@ const LINE_PUSH_URL      = "https://api.line.me/v2/bot/message/push";
 const LINE_TEXT_MAX      = 5000; // LINE テキストメッセージの最大文字数
 const LINE_MSG_MAX       = 5;    // 1 回の reply で送れる最大メッセージ数
 const DEFAULT_MSG_LAG_MS = 1000; // lag_ms 未設定時のメッセージ間待機時間（ms）
-const MAX_MSG_LAG_MS     = 2000; // lag_ms の上限値（ms）
+const MAX_MSG_LAG_MS = 600000; // lag_ms の上限値（ms）
 
 /** ms ミリ秒待機する */
 function sleep(ms: number): Promise<void> {
