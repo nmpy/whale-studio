@@ -74,7 +74,3 @@ jobs:
             --data "$payload" \
             "$SLACK_WEBHOOK_URL"
 YAML
-
-git add .github/workflows/slack-pr-notify.yml
-git commit -m "chore: add Slack notifications for PR opened and merged events"
-git push
