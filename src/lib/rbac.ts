@@ -3,7 +3,6 @@
  * workspace（= OA）単位のロール取得・チェック
  */
 
-import { isAnyWorkspaceOwner } from "@/lib/rbac";
 import { prisma } from '@/lib/prisma';
 import { NextResponse } from 'next/server';
 import type { Role, MemberStatus } from '@/lib/types/permissions';
