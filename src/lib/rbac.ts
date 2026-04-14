@@ -3,6 +3,7 @@
  * workspace（= OA）単位のロール取得・チェック
  */
 
+import { isAnyWorkspaceOwner } from "@/lib/rbac";
 import { prisma } from '@/lib/prisma';
 import { NextResponse } from 'next/server';
 import type { Role, MemberStatus } from '@/lib/types/permissions';
@@ -16,6 +17,16 @@ export type MemberInfo = {
   status: MemberStatus;
 } | null;
 
+export async function isAnyWorkspaceOwner(userId: string): Promise<boolean> {
+  const count = await prisma.workspaceMember.count({
+    where: {
+      userId,
+      role: 'owner',
+      status: 'active',
+    },
+  });
+  return count > 0;
+}
 // ── ユーティリティ ────────────────────────────────────────────────────
 
 /**

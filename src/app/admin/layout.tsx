@@ -8,7 +8,7 @@
 //   - クライアントサイドのみのガードは useEffect バイパス可能なため使わない
 //
 // Note: usePathname を使うサイドバーは Client Component (_components/AdminSidebar) に分離済み
-
+import { isAnyWorkspaceOwner } from "@/lib/rbac";
 import { redirect } from "next/navigation";
 import { getServerUser } from "@/lib/supabase/server";
 import { isPlatformOwner } from "@/lib/platform-admin";
@@ -27,9 +27,11 @@ export default async function AdminLayout({
     redirect("/login?next=/admin/announcements");
   }
 
-  if (!isPlatformOwner(user.id)) {
-    // 認証済みだがプラットフォームオーナーでない → OA一覧へ
-    redirect("/oas");
+  const isPlatform = isPlatformOwner(user.id);
+  const isWorkspaceOwner = await isAnyWorkspaceOwner(user.id);
+
+  if (!isPlatform && !isWorkspaceOwner) {
+  redirect("/oas");
   }
 
   // ── オーナー確認済み: レイアウトをレンダー ───────────────────────

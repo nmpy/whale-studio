@@ -12,6 +12,27 @@ import { withAuth } from "@/lib/auth";
 import { forbidden } from "@/lib/api-response";
 import { isPlatformOwner } from "@/lib/platform-admin";
 import type { NextRequest, NextResponse } from "next/server";
+import { isAnyWorkspaceOwner } from "@/lib/rbac";
+
+/**
+ * プラットフォームオーナー専用の認証ラッパー。
+ * isPlatformOwner チェックを withAuth の後に追加する。
+ */
+
+export function withPlatformAdmin<P extends Record<string, string> = Record<string, string>>(
+  handler: PlatformAdminHandler<P>
+) {
+  return withAuth<P>(async (req, ctx, user) => {
+    const isPlatform = isPlatformOwner(user.id);
+    const isWorkspaceOwner = await isAnyWorkspaceOwner(user.id);
+
+    if (!isPlatform && !isWorkspaceOwner) {
+      return forbidden();
+    }
+
+    return handler(req, ctx, user);
+  });
+}
 
 type RouteContext<P extends Record<string, string> = Record<string, string>> = {
   params: P;
@@ -22,18 +43,3 @@ type PlatformAdminHandler<P extends Record<string, string> = Record<string, stri
   ctx: RouteContext<P>,
   user: { id: string }
 ) => Promise<NextResponse>;
-
-/**
- * プラットフォームオーナー専用の認証ラッパー。
- * isPlatformOwner チェックを withAuth の後に追加する。
- */
-export function withPlatformAdmin<P extends Record<string, string> = Record<string, string>>(
-  handler: PlatformAdminHandler<P>
-) {
-  return withAuth<P>(async (req, ctx, user) => {
-    if (!isPlatformOwner(user.id)) {
-      return forbidden();
-    }
-    return handler(req, ctx, user);
-  });
-}
