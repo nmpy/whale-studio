@@ -3760,19 +3760,12 @@ export function MessageForm({
 
                 {/* 次の発話までの待機時間（1通目） */}
                 <div className="form-group" style={{ marginTop: 10, marginBottom: 0 }}>
-                  <label style={fieldLabel}>次の発話までの待機時間（ms）</label>
-                  <input
-                    type="number"
-                    className="form-input"
-                    style={{ maxWidth: 160 }}
-                    value={form.lag_ms}
-                    onChange={(e) => set("lag_ms", Math.max(0, Number(e.target.value)))}
-                    min={0}
-                    step={500}
-                    placeholder="0"
-                  />
-                  <div style={hintText}>1秒 = 1000ms　0ms = 即時送信</div>
-                </div>
+               <label style={fieldLabel}>次の発話までの待機時間</label>
+               <DurationInput
+                valueMs={form.lag_ms}
+                onChange={(ms) => set("lag_ms", ms)}
+                />
+              </div>
 
                 {/* ── 演出設定（既読・typing・ローディング）── */}
                 <TimingConfigSection form={form} set={set} />
