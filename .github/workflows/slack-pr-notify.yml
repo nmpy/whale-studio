@@ -1,0 +1,79 @@
+name: Slack PR Notify
+
+on:
+  pull_request:
+    types: [opened, closed]
+name: Slack PR Notify
+
+on:
+  pull_request:
+    types: [opened, closed]
+    # branches:
+    #   - main
+    #   - develop
+
+jobs:
+  notify-pr-opened:
+    if: github.event.action == 'opened'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Slack notification for PR opened
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          PR_BASE: ${{ github.event.pull_request.base.ref }}
+          PR_HEAD: ${{ github.event.pull_request.head.ref }}
+          PR_DRAFT: ${{ github.event.pull_request.draft }}
+        run: |
+          if [ "$PR_DRAFT" = "true" ]; then
+            DRAFT_LABEL="Yes"
+          else
+            DRAFT_LABEL="No"
+          fi
+
+          payload=$(jq -n \
+            --arg title "$PR_TITLE" \
+            --arg url "$PR_URL" \
+            --arg author "$PR_AUTHOR" \
+            --arg base "$PR_BASE" \
+            --arg head "$PR_HEAD" \
+            --arg draft "$DRAFT_LABEL" \
+            '{
+              text: "🚀 Pull Request が作成されました\n- Title: \($title)\n- Author: \($author)\n- Base: \($base)\n- Head: \($head)\n- Draft: \($draft)\n- URL: \($url)"
+            }')
+
+          curl -sfS -X POST -H 'Content-type: application/json' \
+            --data "$payload" \
+            "$SLACK_WEBHOOK_URL"
+
+  notify-pr-merged:
+    if: github.event.action == 'closed' && github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Slack notification for PR merged
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          PR_BASE: ${{ github.event.pull_request.base.ref }}
+          PR_HEAD: ${{ github.event.pull_request.head.ref }}
+          MERGED_BY: ${{ github.actor }}
+        run: |
+          payload=$(jq -n \
+            --arg title "$PR_TITLE" \
+            --arg url "$PR_URL" \
+            --arg author "$PR_AUTHOR" \
+            --arg mergedBy "$MERGED_BY" \
+            --arg base "$PR_BASE" \
+            --arg head "$PR_HEAD" \
+            '{
+              text: "✅ Pull Request が merge されました\n- Title: \($title)\n- Author: \($author)\n- Merged by: \($mergedBy)\n- Base: \($base)\n- Head: \($head)\n- URL: \($url)"
+            }')
+
+          curl -sfS -X POST -H 'Content-type: application/json' \
+            --data "$payload" \
+            "$SLACK_WEBHOOK_URL"
+YAML
