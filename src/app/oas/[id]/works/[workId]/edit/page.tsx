@@ -1,5 +1,6 @@
 "use client";
 
+import DurationInput from "@/components/DurationInput";
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { useTesterRouter as useRouter } from "@/hooks/useTesterRouter";
@@ -359,11 +360,13 @@ function WorkTimingSection({
             </select>
           </div>
           {form.read_receipt_mode === "delayed" && (
-            <div className="form-group">
-              <label style={miniLabel}>既読遅延（ms）</label>
-              <input type="number" className="form-input" style={miniInput} value={form.read_delay_ms}
-                onChange={(e) => set("read_delay_ms", e.target.value)} min={0} max={10000} step={100} placeholder="2000" disabled={!canEdit} />
-            </div>
+          <div className="form-group">
+            <label style={miniLabel}>既読遅延</label>
+            <DurationInput
+              valueMs={Number(form.read_delay_ms || 0)}
+              onChange={(ms) => set("read_delay_ms", String(Math.min(ms, 600000)))}
+            />
+          </div>
           )}
 
           {/* ── typing ── */}
@@ -377,17 +380,28 @@ function WorkTimingSection({
           {form.typing_enabled === "true" && (
             <div style={inlineRow}>
               <div className="form-group">
-                <label style={miniLabel}>最小（ms）</label>
-                <input type="number" className="form-input" style={miniInput} value={form.typing_min_ms}
-                  onChange={(e) => set("typing_min_ms", e.target.value)} min={0} max={5000} step={100} placeholder="300" disabled={!canEdit} />
-              </div>
-              <div className="form-group">
-                <label style={miniLabel}>最大（ms）</label>
-                <input type="number" className="form-input" style={miniInput} value={form.typing_max_ms}
-                  onChange={(e) => set("typing_max_ms", e.target.value)} min={0} max={5000} step={100} placeholder="1200" disabled={!canEdit} />
-              </div>
+              <label style={miniLabel}>最小</label>
+              <DurationInput
+                valueMs={Number(form.typing_min_ms || 0)}
+                onChange={(ms) => {
+                const next = Math.min(ms, 600000);
+                const currentMax = Number(form.typing_max_ms || 0);
+                set("typing_min_ms", String(currentMax > 0 ? Math.min(next, currentMax) : next));
+                  }}
+                />
             </div>
-          )}
+
+              <div className="form-group">
+              <label style={miniLabel}>最大</label>
+              <DurationInput
+                valueMs={Number(form.typing_max_ms || 0)}
+                onChange={(ms) => {
+                const next = Math.min(ms, 600000);
+                const currentMin = Number(form.typing_min_ms || 0);
+                set("typing_max_ms", String(Math.max(next, currentMin)));
+                }}
+                />
+            </div>
 
           {/* ── ローディング ── */}
           <div className="form-group">
