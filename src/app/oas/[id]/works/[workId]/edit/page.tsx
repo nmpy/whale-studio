@@ -306,20 +306,26 @@ export default function WorkEditPage() {
 }
 
   // ─────────────────────────
-  //  作品単位の演出設定セクション
+  // 作品単位の演出設定セクション
   // ─────────────────────────
 
-function WorkTimingSection({
-  form, set, canEdit, saving, onSave,
-}: {
+type WorkTimingSectionProps = {
   form: TimingForm;
-  set: <K extends keyof TimingForm>(key: K, val: TimingForm[K]) => void;
+  set: (key: keyof TimingForm, val: TimingForm[keyof TimingForm]) => void;
   canEdit: boolean;
   saving: boolean;
   onSave: (e: React.FormEvent) => void;
-}) {
+};
+
+function WorkTimingSection({
+  form,
+  set,
+  canEdit,
+  saving,
+  onSave,
+}: WorkTimingSectionProps) {
   const [open, setOpen] = useState(
-    !!(form.read_receipt_mode || form.typing_enabled || form.loading_enabled),
+    !!(form.read_receipt_mode || form.typing_enabled || form.loading_enabled)
   );
 
   return (
