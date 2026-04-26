@@ -409,7 +409,9 @@ function WorkTimingSection({
                 />
             </div>
 
+          
           {/* ── ローディング ── */}
+  
           <div className="form-group">
             <label style={miniLabel}>ローディングアニメーション</label>
             <select className="form-input" style={{ maxWidth: 120 }} value={form.loading_enabled}
