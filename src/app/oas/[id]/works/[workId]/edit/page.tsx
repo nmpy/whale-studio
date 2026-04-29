@@ -395,7 +395,8 @@ function WorkTimingSection({
                 set("typing_min_ms", String(currentMax > 0 ? Math.min(next, currentMax) : next));
                   }}
                 />
-            </div>
+                </div>
+
 
               <div className="form-group">
               <label style={miniLabel}>最大</label>
@@ -406,9 +407,10 @@ function WorkTimingSection({
                 const currentMin = Number(form.typing_min_ms || 0);
                 set("typing_max_ms", String(Math.max(next, currentMin)));
                 }}
-                />
+              />
             </div>
-
+           </div>
+          )}
           
           {/* ── ローディング ── */}
   
