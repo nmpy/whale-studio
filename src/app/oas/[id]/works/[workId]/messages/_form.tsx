@@ -97,7 +97,8 @@ const EMPTY_ADDITIONAL_SLOT: AdditionalMessageSlot = {
 // ── FormState ────────────────────────────────────────────
 
 export type MessageKind = "start" | "normal" | "response" | "hint" | "puzzle" | "global";
-export type AnswerMatchType = "exact" | "ignore_punctuation" | "normalize_width";
+export type AnswerMatchType = "exact" | "partial" | "ignore_punctuation" | "normalize_width";
+export type AnswerMatchMode = "exact" | "partial";
 export type CorrectAction   = "text" | "text_and_transition" | "transition";
 
 export interface MessageFormState {
@@ -2825,16 +2826,32 @@ export function MessageForm({
   }
 
   // ── answer_match_type トグル ────────────────────────────
-  function toggleMatchType(mt: AnswerMatchType) {
+
+  /**
+   * 照合条件（exact / partial）の切り替え。配列内のどちらか1つだけが有効。
+   * 既存データに "exact" / "partial" が無い場合は "exact" を初期値とする。
+   */
+  function setMatchMode(mode: AnswerMatchMode) {
+    const others = form.answer_match_type.filter(
+      (x) => x !== "exact" && x !== "partial",
+    );
+    set("answer_match_type", [mode, ...others] as AnswerMatchType[]);
+  }
+
+  /** 正規化オプション（normalize_width / ignore_punctuation）のトグル */
+  function toggleMatchOption(opt: "normalize_width" | "ignore_punctuation") {
     const current = form.answer_match_type;
-    if (current.includes(mt)) {
-      // 最低1つは残す
-      if (current.length <= 1) return;
-      set("answer_match_type", current.filter((x) => x !== mt));
+    if (current.includes(opt)) {
+      set("answer_match_type", current.filter((x) => x !== opt));
     } else {
-      set("answer_match_type", [...current, mt]);
+      set("answer_match_type", [...current, opt]);
     }
   }
+
+  /** 現在の照合条件（既存データに含まれない場合は "exact"） */
+  const matchMode: AnswerMatchMode = form.answer_match_type.includes("partial")
+    ? "partial"
+    : "exact";
 
   // ── レンダリング ──────────────────────────────────────────
 
@@ -3835,22 +3852,49 @@ export function MessageForm({
               />
             </div>
 
-            {/* answer_match_type */}
+            {/* 照合条件（exact / partial 排他ラジオ） */}
             <div className="form-group">
-              <label style={fieldLabel}>照合方法 <span style={{ color: "#dc2626" }}>*</span></label>
+              <label style={fieldLabel}>照合条件 <span style={{ color: "#dc2626" }}>*</span></label>
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {(
                   [
-                    { value: "exact" as const,              label: "完全一致",       desc: "NFKC正規化後に完全一致するか確認します" },
-                    { value: "normalize_width" as const,    label: "全角半角を無視",  desc: "全角・半角の違いを無視して照合します" },
-                    { value: "ignore_punctuation" as const, label: "句読点を無視",    desc: "句点・読点・記号を除去して照合します" },
+                    { value: "exact"   as const, label: "完全一致", desc: "NFKC正規化後に完全一致するか確認します" },
+                    { value: "partial" as const, label: "部分一致", desc: "入力文の中に答えが含まれていれば正解にします" },
+                  ]
+                ).map(({ value, label, desc }) => (
+                  <label key={value} style={{ display: "flex", alignItems: "flex-start", gap: 8, cursor: "pointer" }}>
+                    <input
+                      type="radio"
+                      name="answer_match_mode"
+                      value={value}
+                      checked={matchMode === value}
+                      onChange={() => setMatchMode(value)}
+                      style={{ marginTop: 3 }}
+                    />
+                    <div>
+                      <span style={{ fontSize: 13, fontWeight: 500, color: "#374151" }}>{label}</span>
+                      <div style={hintText}>{desc}</div>
+                    </div>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {/* 正規化オプション（任意・複数選択可） */}
+            <div className="form-group">
+              <label style={fieldLabel}>正規化オプション</label>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {(
+                  [
+                    { value: "normalize_width"    as const, label: "全角半角を無視", desc: "全角・半角の違いを無視して照合します" },
+                    { value: "ignore_punctuation" as const, label: "句読点を無視",   desc: "句点・読点・記号を除去して照合します" },
                   ]
                 ).map(({ value, label, desc }) => (
                   <label key={value} style={{ display: "flex", alignItems: "flex-start", gap: 8, cursor: "pointer" }}>
                     <input
                       type="checkbox"
                       checked={form.answer_match_type.includes(value)}
-                      onChange={() => toggleMatchType(value)}
+                      onChange={() => toggleMatchOption(value)}
                       style={{ marginTop: 2 }}
                     />
                     <div>

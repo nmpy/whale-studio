@@ -10,6 +10,7 @@ import { requireRole } from "@/lib/rbac";
 import { updateMessageSchema, formatZodErrors } from "@/lib/validations";
 import { ZodError } from "zod";
 import { activeCache, CACHE_KEY } from "@/lib/cache";
+import { parseAnswerMatchType } from "@/lib/puzzle-answer";
 
 // ── リレーション include 定義（GET・PATCH 共通） ────────────
 const MESSAGE_INCLUDE = {
@@ -72,11 +73,6 @@ function parseQuickReplies(raw: string | null, msgId?: string) {
     console.warn(`[parseQuickReplies] JSON パース失敗 id=${msgId ?? "?"} raw=${raw.slice(0, 80)}`);
     return null;
   }
-}
-
-function parseAnswerMatchType(raw: string | null): string[] {
-  if (!raw) return ["exact"];
-  try { return JSON.parse(raw); } catch { return ["exact"]; }
 }
 
 // ── snake_case 変換（GET / PATCH 共通） ─────────────────────
