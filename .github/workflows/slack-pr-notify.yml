@@ -1,4 +1,4 @@
-# Pull Request の主要イベント (opened / reopened / ready_for_review / merged) を
+　# Pull Request の主要イベント (opened / reopened / ready_for_review / merged) を
 # Slack Incoming Webhook に通知する最小構成の workflow。
 # Webhook URL は Secret `SLACK_WEBHOOK_URL` から読み込む (コードに直書きしない)。
 name: Slack PR Notify
