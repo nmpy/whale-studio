@@ -41,6 +41,8 @@ import {
   type LineWebhookBody, type LineEvent, type LineSender, type LineMessage, type KeywordMessageRecord,
 } from "@/lib/line";
 import { buildRuntimeState, matchTransition, applySetFlags, safeParseFlags, fetchPhaseWithIncludes, drainAutoSendableItems, type PhaseRow } from "@/lib/runtime";
+import { handleBeaconEvent, type LineBeaconEvent } from "@/lib/beacon";
+import { pushToLine as _pushToLine } from "@/lib/line";
 import { logEvent } from "@/lib/event-logger";
 import { activeCache, TTL, CACHE_KEY } from "@/lib/cache";
 import { linkRichMenuToUser } from "@/lib/line-richmenu";
@@ -915,6 +917,13 @@ async function handleWebhook(req: NextRequest, oaId: string) {
       typeof e.source?.userId === "string"
   );
 
+  // beacon イベント（LINE Beacon 受信圏侵入）
+  const rawBeaconEvents = webhookBody.events.filter(
+    (e): e is LineEvent & { beacon: { hwid: string; type: string; dm?: string } } =>
+      e.type === "beacon" &&
+      typeof (e as { beacon?: { hwid?: unknown } }).beacon?.hwid === "string"
+  ) as unknown as LineBeaconEvent[];
+
   // ── 5-a. userId をログ出力（開発時の確認用）+ テストモードフィルタリング ──
   const testModeActive = isTestModeActive();
 
@@ -943,6 +952,45 @@ async function handleWebhook(req: NextRequest, oaId: string) {
     }
     return true;
   });
+
+  // ── 5-c. beacon イベント処理（Sheets / Prisma モードに依らず実行）──
+  // beacon は OA スコープのトリガー設定で発火するため、作品取得を待たず即実行する。
+  const beaconEvents = rawBeaconEvents.filter((e) => {
+    const uid = e.source?.userId;
+    console.info(
+      `[Webhook] beacon        userId=${uid ?? "(none)"}  hwid="${e.beacon.hwid}"  type=${e.beacon.type}` +
+      (testModeActive ? `  testMode=ON` : "")
+    );
+    if (uid && !isAllowedUser(uid)) {
+      console.info(`[Webhook] ignored (test mode)  userId=${uid}`);
+      return false;
+    }
+    return true;
+  });
+
+  if (beaconEvents.length > 0) {
+    await Promise.allSettled(beaconEvents.map(async (event) => {
+      try {
+        const result = await handleBeaconEvent({
+          prisma,
+          oa: { id: oa.id, channelAccessToken: oa.channelAccessToken },
+          event,
+          line: {
+            reply: (token, msgs) => _replyToLine(token, msgs, oa.channelAccessToken),
+            push:  (uid, msgs)   => _pushToLine(uid,   msgs, oa.channelAccessToken),
+          },
+        });
+        console.log(
+          `[Webhook][beacon] hwid=${event.beacon.hwid} type=${event.beacon.type}`,
+          `userId=${event.source?.userId?.slice(0, 8) ?? "-"}`,
+          `→ status=${result.status}${result.reason ? ` reason="${result.reason}"` : ""}`,
+        );
+      } catch (err) {
+        // beacon 処理は webhook 全体を落とさない
+        console.error(`[Webhook][beacon] ハンドラ例外`, err);
+      }
+    }));
+  }
 
   // ── 6. Sheets モード: oa.spreadsheetId が設定されている場合は Sheets から読み込む ──
   if (oa.spreadsheetId) {

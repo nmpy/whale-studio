@@ -880,6 +880,73 @@ model LineDestination {
 }
 
 // ────────────────────────────────────────────────
+// BeaconTrigger / BeaconEventLog — LINE Beacon webhook
+// ────────────────────────────────────────────────
+//
+// LINE 公式アカウントに紐づけたビーコン端末（HWID）の受信圏に
+// ユーザーが入ったとき、Whale Studio で設定したアクションを発火する。
+// MVP では beacon.type = "enter" のみを実行対象にする。
+// 重要導線では QR / GPS の代替導線を併用する想定。
+
+model BeaconTrigger {
+  id              String   @id @default(uuid())
+  oaId            String   @map("oa_id")
+  /// 任意の所属作品（作品スコープでアクションを実行したい場合）
+  workId          String?  @map("work_id")
+  name            String
+  /// 正規化済み HWID（小文字英数字のみ）
+  hwid            String
+  enabled         Boolean  @default(true)
+  /// 発火対象イベント種別（CSV）。MVP では "enter" のみサポート
+  eventTypes      String   @default("enter") @map("event_types")
+  /// 同一ユーザー × 同一トリガーの再発火防止（秒）。デフォルト 300 = 5 分
+  cooldownSeconds Int      @default(300) @map("cooldown_seconds")
+  /// アクション種別: "send_message" | "destination" | "noop"
+  actionType      String   @map("action_type")
+  /// アクション固有の payload（JSON）
+  /// - send_message:  { text: string }
+  /// - destination:   { destination_id: string, text?: string }
+  actionPayload   Json?    @map("action_payload") @db.JsonB
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  events          BeaconEventLog[]
+
+  @@unique([oaId, hwid])
+  @@index([oaId])
+  @@index([workId])
+  @@map("beacon_triggers")
+}
+
+model BeaconEventLog {
+  id              String   @id @default(uuid())
+  oaId            String   @map("oa_id")
+  workId          String?  @map("work_id")
+  beaconTriggerId String?  @map("beacon_trigger_id")
+  lineUserId      String?  @map("line_user_id")
+  hwid            String
+  /// "enter" | "stay" | "banner"
+  beaconType      String   @map("beacon_type")
+  /// LINE Beacon の dm（device message）。任意
+  deviceMessage   String?  @map("device_message")
+  /// LINE webhook event の webhookEventId（重複排除キー）
+  webhookEventId  String   @unique @map("webhook_event_id")
+  isRedelivery    Boolean  @default(false) @map("is_redelivery")
+  /// "sent" | "matched" | "ignored" | "cooldown" | "failed"
+  actionStatus    String   @map("action_status")
+  errorMessage    String?  @map("error_message")
+  rawEvent        Json?    @map("raw_event") @db.JsonB
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  beaconTrigger   BeaconTrigger? @relation(fields: [beaconTriggerId], references: [id], onDelete: SetNull)
+
+  @@index([oaId, hwid])
+  @@index([lineUserId])
+  @@index([createdAt])
+  @@map("beacon_event_logs")
+}
+
+// ────────────────────────────────────────────────
 // Location — ビーコン / QR チェックインポイント
 // ────────────────────────────────────────────────
 

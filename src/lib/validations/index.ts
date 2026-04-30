@@ -1012,6 +1012,49 @@ export const updateDestinationSchema = z.object({
 });
 
 // ────────────────────────────────────────────────
+// BeaconTrigger — LINE Beacon HWID トリガー
+// ────────────────────────────────────────────────
+
+export const BEACON_ACTION_TYPES = ["send_message", "destination", "noop"] as const;
+export const BEACON_EVENT_TYPES = ["enter", "stay", "banner"] as const;
+
+const beaconHwidSchema = z.string()
+  .min(1, "HWID は必須です")
+  .max(64, "HWID は64文字以内にしてください")
+  // 入力時はゆるく許容し、サーバー側で normalize → 正規表現チェックを行う
+  .regex(/^[\sA-Za-z0-9]+$/, "HWID は半角英数字のみ使用できます");
+
+const beaconEventTypesSchema = z.string()
+  .min(1, "発火イベントは必須です")
+  .refine(
+    (s) => s.split(",").map((x) => x.trim()).filter(Boolean)
+      .every((x) => (BEACON_EVENT_TYPES as readonly string[]).includes(x)),
+    { message: "発火イベントは enter / stay / banner のいずれかをカンマ区切りで指定してください" },
+  );
+
+export const createBeaconTriggerSchema = z.object({
+  name:             z.string().min(1, "名前は必須です").max(100, "名前は100文字以内にしてください"),
+  hwid:             beaconHwidSchema,
+  work_id:          z.string().uuid().optional().nullable(),
+  enabled:          z.boolean().optional(),
+  event_types:      beaconEventTypesSchema.optional(),
+  cooldown_seconds: z.number().int().min(0).max(86400).optional(),
+  action_type:      z.enum(BEACON_ACTION_TYPES),
+  action_payload:   z.record(z.string(), z.unknown()).optional().nullable(),
+});
+
+export const updateBeaconTriggerSchema = z.object({
+  name:             z.string().min(1).max(100).optional(),
+  hwid:             beaconHwidSchema.optional(),
+  work_id:          z.string().uuid().optional().nullable(),
+  enabled:          z.boolean().optional(),
+  event_types:      beaconEventTypesSchema.optional(),
+  cooldown_seconds: z.number().int().min(0).max(86400).optional(),
+  action_type:      z.enum(BEACON_ACTION_TYPES).optional(),
+  action_payload:   z.record(z.string(), z.unknown()).optional().nullable(),
+});
+
+// ────────────────────────────────────────────────
 // ユーティリティ：バリデーションエラーを整形
 // ────────────────────────────────────────────────
 export function formatZodErrors(error: z.ZodError): Record<string, string[]> {
