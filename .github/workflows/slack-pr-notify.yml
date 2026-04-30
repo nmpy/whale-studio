@@ -1,76 +1,88 @@
-mkdir -p .github/workflows
-cat > .github/workflows/slack-pr-notify.yml <<'YAML'
+# Pull Request の主要イベント (opened / reopened / ready_for_review / merged) を
+# Slack Incoming Webhook に通知する最小構成の workflow。
+# Webhook URL は Secret `SLACK_WEBHOOK_URL` から読み込む (コードに直書きしない)。
 name: Slack PR Notify
 
 on:
   pull_request:
-    types: [opened, closed]
-    # branches:
-    #   - main
-    #   - develop
+    types:
+      - opened
+      - reopened
+      - ready_for_review
+      - closed
 
 jobs:
-  notify-pr-opened:
-    if: github.event.action == 'opened'
+  notify:
     runs-on: ubuntu-latest
+    # closed イベントは "マージされた場合のみ" 通知。単なる close は無視する。
+    # それ以外の opened / reopened / ready_for_review は常に通知する。
+    if: >-
+      github.event.action != 'closed' ||
+      github.event.pull_request.merged == true
     steps:
-      - name: Send Slack notification for PR opened
+      # Secret 未設定の場合は分かりやすいメッセージで失敗させる。
+      - name: Verify Slack webhook secret is set
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-          PR_TITLE: ${{ github.event.pull_request.title }}
-          PR_URL: ${{ github.event.pull_request.html_url }}
-          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
-          PR_BASE: ${{ github.event.pull_request.base.ref }}
-          PR_HEAD: ${{ github.event.pull_request.head.ref }}
-          PR_DRAFT: ${{ github.event.pull_request.draft }}
         run: |
-          if [ "$PR_DRAFT" = "true" ]; then
-            DRAFT_LABEL="Yes"
-          else
-            DRAFT_LABEL="No"
+          if [ -z "$SLACK_WEBHOOK_URL" ]; then
+            echo "::error title=SLACK_WEBHOOK_URL is not configured::Repository secret 'SLACK_WEBHOOK_URL' is empty or missing. Please register the Slack Incoming Webhook URL under Settings → Secrets and variables → Actions."
+            exit 1
           fi
 
-          payload=$(jq -n \
-            --arg title "$PR_TITLE" \
-            --arg url "$PR_URL" \
-            --arg author "$PR_AUTHOR" \
-            --arg base "$PR_BASE" \
-            --arg head "$PR_HEAD" \
-            --arg draft "$DRAFT_LABEL" \
-            '{
-              text: "🚀 Pull Request が作成されました\n- Title: \($title)\n- Author: \($author)\n- Base: \($base)\n- Head: \($head)\n- Draft: \($draft)\n- URL: \($url)"
-            }')
-
-          curl -sfS -X POST -H 'Content-type: application/json' \
-            --data "$payload" \
-            "$SLACK_WEBHOOK_URL"
-
-  notify-pr-merged:
-    if: github.event.action == 'closed' && github.event.pull_request.merged == true
-    runs-on: ubuntu-latest
-    steps:
-      - name: Send Slack notification for PR merged
+      # Slack に送る payload を jq で組み立てて curl で POST する。
+      - name: Build payload and POST to Slack
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          ACTION: ${{ github.event.action }}
+          MERGED: ${{ github.event.pull_request.merged }}
+          REPO: ${{ github.repository }}
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_URL: ${{ github.event.pull_request.html_url }}
           PR_AUTHOR: ${{ github.event.pull_request.user.login }}
           PR_BASE: ${{ github.event.pull_request.base.ref }}
           PR_HEAD: ${{ github.event.pull_request.head.ref }}
-          MERGED_BY: ${{ github.actor }}
+          MERGED_BY: ${{ github.event.pull_request.merged_by.login }}
         run: |
+          set -euo pipefail
+
+          # イベント種別に応じてヘッドラインと表示する actor を切り替える。
+          if [ "$ACTION" = "closed" ] && [ "$MERGED" = "true" ]; then
+            HEADLINE="✅ PR merged: ${PR_TITLE}"
+            ACTOR_LABEL="Merged by"
+            ACTOR_VALUE="${MERGED_BY:-unknown}"
+          else
+            case "$ACTION" in
+              opened)           VERB="opened" ;;
+              reopened)         VERB="reopened" ;;
+              ready_for_review) VERB="ready for review" ;;
+              *)                VERB="$ACTION" ;;
+            esac
+            HEADLINE="🟣 PR ${VERB}: ${PR_TITLE}"
+            ACTOR_LABEL="Author"
+            ACTOR_VALUE="$PR_AUTHOR"
+          fi
+
+          BRANCH_LINE="${PR_HEAD} → ${PR_BASE}"
+
+          # bash の文字列連結だと quote/改行で壊れるため jq で安全に組み立てる。
           payload=$(jq -n \
-            --arg title "$PR_TITLE" \
-            --arg url "$PR_URL" \
-            --arg author "$PR_AUTHOR" \
-            --arg mergedBy "$MERGED_BY" \
-            --arg base "$PR_BASE" \
-            --arg head "$PR_HEAD" \
+            --arg headline    "$HEADLINE" \
+            --arg repo        "$REPO" \
+            --arg actorLabel  "$ACTOR_LABEL" \
+            --arg actorValue  "$ACTOR_VALUE" \
+            --arg branch      "$BRANCH_LINE" \
+            --arg url         "$PR_URL" \
             '{
-              text: "✅ Pull Request が merge されました\n- Title: \($title)\n- Author: \($author)\n- Merged by: \($mergedBy)\n- Base: \($base)\n- Head: \($head)\n- URL: \($url)"
+              text: ($headline
+                + "\nRepository: " + $repo
+                + "\n" + $actorLabel + ": " + $actorValue
+                + "\nBranch: " + $branch
+                + "\nURL: " + $url)
             }')
 
-          curl -sfS -X POST -H 'Content-type: application/json' \
+          # -sfS: silent + fail-on-HTTP-error + show-error-on-failure。
+          curl -sfS -X POST \
+            -H 'Content-Type: application/json' \
             --data "$payload" \
             "$SLACK_WEBHOOK_URL"
-YAML
