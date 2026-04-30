@@ -1,6 +1,6 @@
 name: Slack PR Notify
 
-"on":
+on:
   pull_request:
     types:
       - opened
@@ -11,19 +11,10 @@ name: Slack PR Notify
 jobs:
   notify:
     runs-on: ubuntu-latest
-    if: >-
-      github.event.action != 'closed' ||
-      github.event.pull_request.merged == true
+    if: github.event.action != 'closed' || github.event.pull_request.merged == true
 
     steps:
-      - name: Verify Slack webhook secret is set
-        env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-        run: |
-          if [ -z "$SLACK_WEBHOOK_URL" ]; then
-            echo "::error title=SLACK_WEBHOOK_URL is not configured::Repository secret SLACK_WEBHOOK_URL is empty or missing."
-            exit 1
-          fi      - name: Build payload and POST to Slack
+      - name: Send Slack notification
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           ACTION: ${{ github.event.action }}
@@ -38,39 +29,37 @@ jobs:
         run: |
           set -euo pipefail
 
-          if [ "$ACTION" = "closed" ] && [ "$MERGED" = "true" ]; then
-            HEADLINE="✅ PR merged: ${PR_TITLE}"
-            ACTOR_LABEL="Merged by"
-            ACTOR_VALUE="${MERGED_BY:-unknown}"
-          else
-            case "$ACTION" in
-              opened) VERB="opened" ;;
-              reopened) VERB="reopened" ;;
-              ready_for_review) VERB="ready for review" ;;
-              *) VERB="$ACTION" ;;
-            esac            HEADLINE="🟣 PR ${VERB}: ${PR_TITLE}"
-            ACTOR_LABEL="Author"
-            ACTOR_VALUE="$PR_AUTHOR"
+          if [ -z "$SLACK_WEBHOOK_URL" ]; then
+            echo "SLACK_WEBHOOK_URL is not configured."
+            exit 1
           fi
 
-          BRANCH_LINE="${PR_HEAD} → ${PR_BASE}"
+          if [ "$ACTION" = "closed" ] && [ "$MERGED" = "true" ]; then
+            TITLE="PR merged: $PR_TITLE"
+            USER_LABEL="Merged by"
+            USER_VALUE="${MERGED_BY:-unknown}"
+          else
+            TITLE="PR $ACTION: $PR_TITLE"
+            USER_LABEL="Author"
+            USER_VALUE="$PR_AUTHOR"
+          fi
 
           payload=$(jq -n \
-            --arg headline "$HEADLINE" \
+            --arg title "$TITLE" \
             --arg repo "$REPO" \
-            --arg actorLabel "$ACTOR_LABEL" \
-            --arg actorValue "$ACTOR_VALUE" \
-            --arg branch "$BRANCH_LINE" \
+            --arg userLabel "$USER_LABEL" \
+            --arg userValue "$USER_VALUE" \
+            --arg branch "$PR_HEAD -> $PR_BASE" \
             --arg url "$PR_URL" \
             '{
-              text: ($headline
+              text: ($title
                 + "\nRepository: " + $repo
-                + "\n" + $actorLabel + ": " + $actorValue
+                + "\n" + $userLabel + ": " + $userValue
                 + "\nBranch: " + $branch
                 + "\nURL: " + $url)
             }')
 
-          curl -sfS -X POST \
+          curl -f -X POST \
             -H 'Content-Type: application/json' \
             --data "$payload" \
             "$SLACK_WEBHOOK_URL"
