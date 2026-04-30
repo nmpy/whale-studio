@@ -12,6 +12,7 @@ import { ZodError } from "zod";
 import { activeCache, CACHE_KEY } from "@/lib/cache";
 // OnboardingEvent write 停止済み（Phase 3）— trackOnboardingStep import を削除
 import { trackOnboardingProgress } from "@/lib/onboarding";
+import { parseAnswerMatchType } from "@/lib/puzzle-answer";
 
 export const dynamic = "force-dynamic";
 function parseQuickReplies(raw: string | null, msgId?: string) {
@@ -27,11 +28,6 @@ function parseQuickReplies(raw: string | null, msgId?: string) {
     console.warn(`[parseQuickReplies] JSON パース失敗 id=${msgId ?? "?"} raw=${raw.slice(0, 80)}`);
     return null;
   }
-}
-
-function parseAnswerMatchType(raw: string | null): string[] {
-  if (!raw) return ["exact"];
-  try { return JSON.parse(raw); } catch { return ["exact"]; }
 }
 
 function toResponse(m: {

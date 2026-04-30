@@ -22,36 +22,11 @@ import { ok, badRequest, notFound, serverError } from "@/lib/api-response";
 import { withAuth } from "@/lib/auth";
 import { advanceScenarioSchema, formatZodErrors } from "@/lib/validations";
 import { buildRuntimeState, matchTransition, applySetFlags, safeParseFlags, fetchPhaseWithIncludes, drainAutoSendableItems } from "@/lib/runtime";
+import { checkPuzzleAnswer, parseAnswerMatchType } from "@/lib/puzzle-answer";
 import { ZodError } from "zod";
 
-// ── パズル照合ヘルパー（webhook/route.ts と同じロジック）──────────
-
-function normKw(s: string): string {
-  return s.trim().normalize("NFKC");
-}
-
-function removePunct(s: string): string {
-  return s.replace(/[!?,.　\u0020\t、。，．・：；！？…‥〜ー\u3000-\u303F]+/gu, "").trim();
-}
-
-function parsePuzzleMatchType(raw: string | null): string[] {
-  if (!raw) return ["exact"];
-  try { return JSON.parse(raw); } catch { return ["exact"]; }
-}
-
-function checkPuzzleAnswer(input: string, answer: string, matchTypes: string[]): boolean {
-  const inputNorm  = normKw(input);
-  const answerNorm = normKw(answer);
-  for (const mt of matchTypes) {
-    if (mt === "exact" || mt === "normalize_width") {
-      if (inputNorm === answerNorm) return true;
-    }
-    if (mt === "ignore_punctuation") {
-      if (removePunct(inputNorm) === removePunct(answerNorm)) return true;
-    }
-  }
-  return false;
-}
+// 回答照合は @/lib/puzzle-answer に共通化済み（webhook と同じロジック）。
+const parsePuzzleMatchType = parseAnswerMatchType;
 
 export const POST = withAuth(async (req, _ctx, user) => {
   try {

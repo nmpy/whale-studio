@@ -262,10 +262,22 @@ export const quickReplyItemSchema = z.object({
 // ────────────────────────────────────────────────
 // Message
 // ────────────────────────────────────────────────
-/** puzzle answer_match_type 配列スキーマ */
+/**
+ * puzzle answer_match_type 配列スキーマ。
+ *   - "exact" / "partial": 照合条件（どちらか必須）
+ *   - "normalize_width" / "ignore_punctuation": 正規化オプション（任意）
+ *
+ * 既存データとの互換性のため、"exact" / "partial" のどちらも含まない場合は
+ * "exact" として扱う（パース時に補完）。バリデーションでは少なくとも1要素
+ * 必要であることだけを保証する。
+ */
 const answerMatchTypeSchema = z
-  .array(z.enum(["exact", "ignore_punctuation", "normalize_width"]))
-  .min(1, "少なくとも1つのマッチ方式を選択してください")
+  .array(z.enum(["exact", "partial", "ignore_punctuation", "normalize_width"]))
+  .min(1, "照合条件を選択してください")
+  .refine(
+    (arr) => !(arr.includes("exact") && arr.includes("partial")),
+    "完全一致と部分一致は同時に指定できません",
+  )
   .default(["exact"]);
 
 export const createMessageSchema = z.object({
@@ -375,7 +387,13 @@ export const updateMessageSchema = z.object({
   puzzle_type:           z.enum(["text", "image", "video", "carousel"]).optional().nullable(),
   answer:                z.string().max(500).optional().nullable(),
   puzzle_hint_text:      z.string().max(1000).optional().nullable(),
-  answer_match_type:     z.array(z.enum(["exact", "ignore_punctuation", "normalize_width"])).optional(),
+  answer_match_type:     z
+    .array(z.enum(["exact", "partial", "ignore_punctuation", "normalize_width"]))
+    .refine(
+      (arr) => !(arr.includes("exact") && arr.includes("partial")),
+      "完全一致と部分一致は同時に指定できません",
+    )
+    .optional(),
   correct_action:        z.enum(["text", "text_and_transition", "transition"]).optional().nullable(),
   correct_text:          z.string().max(2000).optional().nullable(),
   incorrect_text:          z.string().max(2000).optional().nullable(),

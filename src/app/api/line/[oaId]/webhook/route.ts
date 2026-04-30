@@ -45,6 +45,7 @@ import { logEvent } from "@/lib/event-logger";
 import { activeCache, TTL, CACHE_KEY } from "@/lib/cache";
 import { linkRichMenuToUser } from "@/lib/line-richmenu";
 import { ReadReceiptController, calcReadDelayByTextLength } from "@/lib/line-read-receipt";
+import { checkPuzzleAnswer, parseAnswerMatchType } from "@/lib/puzzle-answer";
 import type { MessageTimingConfig } from "@/types";
 
 /**
@@ -2590,43 +2591,8 @@ type PuzzleMatchResult =
   | { type: "incorrect"; incorrectText: string | null; incorrectQuickReplies: string | null; hintMode: string; hintQrItems: string | null }              // パズルあり・不正解
   | { type: "correct";   puzzle: PuzzleRecord };                                                           // 正解
 
-/**
- * 句読点・記号類を除去する（ignore_punctuation マッチ用）
- */
-function removePunct(s: string): string {
-  return s.replace(/[!?,.　\u0020\t、。，．・：；！？…‥〜ー\u3000-\u303F]+/gu, "").trim();
-}
-
-/**
- * 入力テキストとパズルの答えを answer_match_type に基づいて照合する
- */
-function checkPuzzleAnswer(
-  input:      string,
-  answer:     string,
-  matchTypes: string[],
-): boolean {
-  const inputNorm  = normKw(input);
-  const answerNorm = normKw(answer);
-
-  for (const mt of matchTypes) {
-    if (mt === "exact" || mt === "normalize_width") {
-      // normalize_width は NFKC で解決済み
-      if (inputNorm === answerNorm) return true;
-    }
-    if (mt === "ignore_punctuation") {
-      if (removePunct(inputNorm) === removePunct(answerNorm)) return true;
-    }
-  }
-  return false;
-}
-
-/**
- * DB の answerMatchType（JSON 文字列）を string[] に変換する
- */
-function parsePuzzleMatchType(raw: string | null): string[] {
-  if (!raw) return ["exact"];
-  try { return JSON.parse(raw); } catch { return ["exact"]; }
-}
+// 回答照合は @/lib/puzzle-answer に共通化済み（checkPuzzleAnswer / parseAnswerMatchType）。
+const parsePuzzleMatchType = parseAnswerMatchType;
 
 /**
  * 現在フェーズのパズルメッセージを照合する。
