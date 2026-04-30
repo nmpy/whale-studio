@@ -1,9 +1,6 @@
-　# Pull Request の主要イベント (opened / reopened / ready_for_review / merged) を
-# Slack Incoming Webhook に通知する最小構成の workflow。
-# Webhook URL は Secret `SLACK_WEBHOOK_URL` から読み込む (コードに直書きしない)。
 name: Slack PR Notify
 
-on:
+"on":
   pull_request:
     types:
       - opened
@@ -14,24 +11,19 @@ on:
 jobs:
   notify:
     runs-on: ubuntu-latest
-    # closed イベントは "マージされた場合のみ" 通知。単なる close は無視する。
-    # それ以外の opened / reopened / ready_for_review は常に通知する。
     if: >-
       github.event.action != 'closed' ||
       github.event.pull_request.merged == true
+
     steps:
-      # Secret 未設定の場合は分かりやすいメッセージで失敗させる。
       - name: Verify Slack webhook secret is set
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
         run: |
           if [ -z "$SLACK_WEBHOOK_URL" ]; then
-            echo "::error title=SLACK_WEBHOOK_URL is not configured::Repository secret 'SLACK_WEBHOOK_URL' is empty or missing. Please register the Slack Incoming Webhook URL under Settings → Secrets and variables → Actions."
+            echo "::error title=SLACK_WEBHOOK_URL is not configured::Repository secret SLACK_WEBHOOK_URL is empty or missing."
             exit 1
-          fi
-
-      # Slack に送る payload を jq で組み立てて curl で POST する。
-      - name: Build payload and POST to Slack
+          fi      - name: Build payload and POST to Slack
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           ACTION: ${{ github.event.action }}
@@ -46,33 +38,30 @@ jobs:
         run: |
           set -euo pipefail
 
-          # イベント種別に応じてヘッドラインと表示する actor を切り替える。
           if [ "$ACTION" = "closed" ] && [ "$MERGED" = "true" ]; then
             HEADLINE="✅ PR merged: ${PR_TITLE}"
             ACTOR_LABEL="Merged by"
             ACTOR_VALUE="${MERGED_BY:-unknown}"
           else
             case "$ACTION" in
-              opened)           VERB="opened" ;;
-              reopened)         VERB="reopened" ;;
+              opened) VERB="opened" ;;
+              reopened) VERB="reopened" ;;
               ready_for_review) VERB="ready for review" ;;
-              *)                VERB="$ACTION" ;;
-            esac
-            HEADLINE="🟣 PR ${VERB}: ${PR_TITLE}"
+              *) VERB="$ACTION" ;;
+            esac            HEADLINE="🟣 PR ${VERB}: ${PR_TITLE}"
             ACTOR_LABEL="Author"
             ACTOR_VALUE="$PR_AUTHOR"
           fi
 
           BRANCH_LINE="${PR_HEAD} → ${PR_BASE}"
 
-          # bash の文字列連結だと quote/改行で壊れるため jq で安全に組み立てる。
           payload=$(jq -n \
-            --arg headline    "$HEADLINE" \
-            --arg repo        "$REPO" \
-            --arg actorLabel  "$ACTOR_LABEL" \
-            --arg actorValue  "$ACTOR_VALUE" \
-            --arg branch      "$BRANCH_LINE" \
-            --arg url         "$PR_URL" \
+            --arg headline "$HEADLINE" \
+            --arg repo "$REPO" \
+            --arg actorLabel "$ACTOR_LABEL" \
+            --arg actorValue "$ACTOR_VALUE" \
+            --arg branch "$BRANCH_LINE" \
+            --arg url "$PR_URL" \
             '{
               text: ($headline
                 + "\nRepository: " + $repo
@@ -81,7 +70,6 @@ jobs:
                 + "\nURL: " + $url)
             }')
 
-          # -sfS: silent + fail-on-HTTP-error + show-error-on-failure。
           curl -sfS -X POST \
             -H 'Content-Type: application/json' \
             --data "$payload" \
