@@ -1,0 +1,283 @@
+"use client";
+
+// src/app/oas/[id]/works/[workId]/beacons/_form.tsx
+// ビーコン作成 / 編集フォーム（共通）
+
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { getAuthHeaders } from "@/lib/api-client";
+
+export type BeaconFormValue = {
+  id?: string;
+  name: string;
+  hwid: string;
+  enabled: boolean;
+  event_types: string;
+  cooldown_seconds: number;
+  action_type: "send_message" | "destination" | "noop";
+  action_payload: Record<string, unknown> | null;
+};
+
+interface Props {
+  oaId: string;
+  workId: string;
+  initial: BeaconFormValue;
+  mode: "create" | "edit";
+}
+
+const DEFAULT_PAYLOADS: Record<BeaconFormValue["action_type"], Record<string, unknown>> = {
+  send_message: { text: "" },
+  destination:  { destination_id: "", text: "" },
+  noop:         {},
+};
+
+export default function BeaconForm({ oaId, workId, initial, mode }: Props) {
+  const router = useRouter();
+  const [name, setName] = useState(initial.name);
+  const [hwid, setHwid] = useState(initial.hwid);
+  const [enabled, setEnabled] = useState(initial.enabled);
+  const [eventTypes, setEventTypes] = useState(initial.event_types);
+  const [cooldownMin, setCooldownMin] = useState(Math.floor(initial.cooldown_seconds / 60));
+  const [cooldownSec, setCooldownSec] = useState(initial.cooldown_seconds % 60);
+  const [actionType, setActionType] = useState(initial.action_type);
+  const [actionPayload, setActionPayload] = useState<Record<string, unknown>>(
+    (initial.action_payload as Record<string, unknown> | null) ?? DEFAULT_PAYLOADS[initial.action_type] ?? {},
+  );
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function updatePayload(key: string, value: string) {
+    setActionPayload((prev) => ({ ...prev, [key]: value }));
+  }
+
+  function changeActionType(t: BeaconFormValue["action_type"]) {
+    setActionType(t);
+    setActionPayload(DEFAULT_PAYLOADS[t] ?? {});
+  }
+
+  async function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setSaving(true);
+    try {
+      const cooldown = Math.max(0, cooldownMin * 60 + cooldownSec);
+      const body = {
+        name,
+        hwid,
+        enabled,
+        event_types: eventTypes,
+        cooldown_seconds: cooldown,
+        action_type: actionType,
+        action_payload: actionType === "noop" ? null : actionPayload,
+      };
+      const url = mode === "create"
+        ? `/api/works/${workId}/beacons`
+        : `/api/works/${workId}/beacons/${initial.id}`;
+      const res = await fetch(url, {
+        method: mode === "create" ? "POST" : "PATCH",
+        headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        setError(json.error?.message ?? `保存に失敗しました (HTTP ${res.status})`);
+        return;
+      }
+      router.push(`/oas/${oaId}/works/${workId}/beacons`);
+      router.refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "保存に失敗しました");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function onDelete() {
+    if (!initial.id) return;
+    if (!window.confirm("このビーコントリガーを削除しますか？")) return;
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/works/${workId}/beacons/${initial.id}`, {
+        method: "DELETE",
+        headers: getAuthHeaders(),
+      });
+      if (res.status === 204 || res.ok) {
+        router.push(`/oas/${oaId}/works/${workId}/beacons`);
+        router.refresh();
+      } else {
+        const json = await res.json().catch(() => ({}));
+        setError(json.error?.message ?? `削除に失敗しました (HTTP ${res.status})`);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "削除に失敗しました");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <form onSubmit={onSubmit} style={{ display: "flex", flexDirection: "column", gap: 18, maxWidth: 640 }}>
+      {error && (
+        <div style={{ padding: 10, background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, color: "#b91c1c", fontSize: 13 }}>
+          {error}
+        </div>
+      )}
+
+      <Field label="ビーコン名" required>
+        <input
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          required
+          maxLength={100}
+          style={inputStyle}
+        />
+      </Field>
+
+      <Field label="HWID" required hint="LINE 公式アカウント側で発行・確認した HWID（半角英数字）。大文字小文字は区別しません。">
+        <input
+          type="text"
+          value={hwid}
+          onChange={(e) => setHwid(e.target.value)}
+          required
+          maxLength={64}
+          style={{ ...inputStyle, fontFamily: "ui-monospace, monospace" }}
+          placeholder="例: d41d8cd98f"
+        />
+      </Field>
+
+      <Field label="有効/無効">
+        <label style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+          <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
+          有効化（OFF にするとイベントは記録のみで送信しません）
+        </label>
+      </Field>
+
+      <Field label="発火イベント" hint="MVP では enter のみ送信されます。stay / banner はログのみ。複数指定する場合はカンマ区切り。">
+        <select value={eventTypes} onChange={(e) => setEventTypes(e.target.value)} style={inputStyle}>
+          <option value="enter">enter（受信圏に入ったとき）</option>
+          <option value="enter,stay">enter,stay</option>
+          <option value="enter,banner">enter,banner</option>
+          <option value="enter,stay,banner">enter,stay,banner</option>
+        </select>
+      </Field>
+
+      <Field label="再発火防止時間" hint="同一ユーザーが連続で受信したときの再発火を抑制します。0 の場合は毎回発火。">
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <input
+            type="number"
+            min={0}
+            max={1440}
+            value={cooldownMin}
+            onChange={(e) => setCooldownMin(Math.max(0, Number(e.target.value)))}
+            style={{ ...inputStyle, width: 90 }}
+          />
+          <span style={{ fontSize: 13 }}>分</span>
+          <input
+            type="number"
+            min={0}
+            max={59}
+            value={cooldownSec}
+            onChange={(e) => setCooldownSec(Math.max(0, Math.min(59, Number(e.target.value))))}
+            style={{ ...inputStyle, width: 90 }}
+          />
+          <span style={{ fontSize: 13 }}>秒</span>
+        </div>
+      </Field>
+
+      <Field label="発火時アクション" required>
+        <select value={actionType} onChange={(e) => changeActionType(e.target.value as BeaconFormValue["action_type"])} style={inputStyle}>
+          <option value="send_message">テキストメッセージを送信</option>
+          <option value="destination">遷移先 URL を送信（destination 参照）</option>
+          <option value="noop">ログのみ（送信しない）</option>
+        </select>
+      </Field>
+
+      {actionType === "send_message" && (
+        <Field label="送信テキスト" required>
+          <textarea
+            value={String(actionPayload.text ?? "")}
+            onChange={(e) => updatePayload("text", e.target.value)}
+            rows={4}
+            maxLength={1000}
+            style={{ ...inputStyle, resize: "vertical" }}
+            placeholder="例: ビーコンの圏内に入りました。"
+          />
+        </Field>
+      )}
+
+      {actionType === "destination" && (
+        <>
+          <Field label="Destination ID" required hint="作品に登録済みの遷移先 destination の ID を指定してください。">
+            <input
+              type="text"
+              value={String(actionPayload.destination_id ?? "")}
+              onChange={(e) => updatePayload("destination_id", e.target.value)}
+              style={inputStyle}
+              placeholder="例: 0c3a..."
+            />
+          </Field>
+          <Field label="送信テキスト（任意）" hint="URL の前に挿入する説明文。省略時は URL のみ送信。">
+            <input
+              type="text"
+              value={String(actionPayload.text ?? "")}
+              onChange={(e) => updatePayload("text", e.target.value)}
+              maxLength={500}
+              style={inputStyle}
+            />
+          </Field>
+        </>
+      )}
+
+      <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+        <button
+          type="submit"
+          disabled={saving}
+          style={{ padding: "9px 22px", background: "#2563eb", color: "#fff", borderRadius: 8, fontSize: 14, fontWeight: 600, border: "none", cursor: saving ? "not-allowed" : "pointer", opacity: saving ? 0.6 : 1 }}
+        >
+          {saving ? "保存中…" : (mode === "create" ? "作成" : "保存")}
+        </button>
+        <Link
+          href={`/oas/${oaId}/works/${workId}/beacons`}
+          style={{ padding: "9px 22px", background: "#f3f4f6", color: "#374151", borderRadius: 8, fontSize: 14, fontWeight: 600, textDecoration: "none" }}
+        >
+          キャンセル
+        </Link>
+        {mode === "edit" && (
+          <button
+            type="button"
+            disabled={saving}
+            onClick={onDelete}
+            style={{ marginLeft: "auto", padding: "9px 22px", background: "#fff", color: "#b91c1c", border: "1px solid #fecaca", borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: saving ? "not-allowed" : "pointer" }}
+          >
+            削除
+          </button>
+        )}
+      </div>
+    </form>
+  );
+}
+
+const inputStyle: React.CSSProperties = {
+  padding: "8px 12px",
+  border: "1px solid #d1d5db",
+  borderRadius: 8,
+  fontSize: 13,
+  outline: "none",
+  width: "100%",
+  background: "#fff",
+};
+
+function Field({ label, hint, required, children }: { label: string; hint?: string; required?: boolean; children: React.ReactNode }) {
+  return (
+    <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <span style={{ fontSize: 13, fontWeight: 600, color: "#1f2937" }}>
+        {label}
+        {required && <span style={{ color: "#dc2626", marginLeft: 4 }}>*</span>}
+      </span>
+      {children}
+      {hint && <span style={{ fontSize: 11, color: "#6b7280" }}>{hint}</span>}
+    </label>
+  );
+}
