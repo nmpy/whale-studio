@@ -74,7 +74,7 @@ const HUB_CARDS = [
   {
     key:   "locations",
     title: "ロケーション",
-    desc:  "GPSチェックイン地点の追加・編集とチェックイン履歴を管理します",
+    desc:  "GPS・ビーコン・QRを使って、現地で発火する体験トリガーを管理します",
     color: "#dc2626",
     bg:    "#fef2f2",
   },
