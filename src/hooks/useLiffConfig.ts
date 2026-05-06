@@ -3,7 +3,7 @@
 // src/hooks/useLiffConfig.ts
 // LIFF設定管理のステートとハンドラーをカプセル化するカスタムフック
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { liffConfigApi, getDevToken, workApi } from "@/lib/api-client";
 import type { LiffPageConfig, LiffPageBlock, LiffBlockType, LiffPageType, LiffPublishStatus, LiffPageConfigSettings } from "@/types";
 
@@ -45,7 +45,17 @@ export function useLiffConfig(
   const [editingBlockId, setEditingBlockId] = useState<string | null>(null);
 
   const token = getDevToken();
-  const { onSuccess, onError } = opts;
+
+  // 呼び出し側が毎レンダーで新しい inline 関数を渡しても、
+  // useCallback / useEffect の deps を不安定にしないよう ref 経由で参照する。
+  // これがないと reload が毎レンダー再生成されて useEffect 経由で
+  // 編集中の入力をサーバ値で上書きしてしまう。
+  const optsRef = useRef(opts);
+  useEffect(() => {
+    optsRef.current = opts;
+  });
+  const onSuccess = useCallback((msg: string) => optsRef.current.onSuccess?.(msg), []);
+  const onError = useCallback((msg: string) => optsRef.current.onError?.(msg), []);
 
   const reload = useCallback(async () => {
     try {

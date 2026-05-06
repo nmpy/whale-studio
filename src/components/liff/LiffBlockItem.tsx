@@ -3,6 +3,7 @@
 // src/components/liff/LiffBlockItem.tsx
 // ブロック一覧の個別アイテム — 表示・編集・ON/OFF・削除
 
+import { useState } from "react";
 import type { LiffPageBlock, LiffBlockType, VisibilityCondition } from "@/types";
 import { getBlockEntry, VISIBILITY_CONDITION_LABELS } from "./block-type-registry";
 import { BlockSettingsForm } from "./block-settings-forms";
@@ -32,6 +33,27 @@ export function LiffBlockItem({
   onMove, onLocalChange, onDragStart, onDragOver, onDragEnd,
 }: Props) {
   const entry = getBlockEntry(block.block_type);
+
+  // 編集中ブロックのローカル draft。
+  // 親（page）は preview を即時更新するために `onLocalChange` で
+  // config.blocks も書き換えるが、draft はその再 render に依存せず
+  // ユーザー入力を保持する。
+  const [draft, setDraft] = useState<LiffPageBlock>(block);
+  // draft をリセットするタイミングを id で識別する
+  // （isEditing への遷移時 / 別ブロックへ切り替えた時のみ block を取り込む）
+  const [draftKey, setDraftKey] = useState<string | null>(null);
+  const targetKey = isEditing ? block.id : null;
+
+  if (draftKey !== targetKey) {
+    if (targetKey) setDraft(block);
+    setDraftKey(targetKey);
+  }
+
+  const updateDraft = (patch: Partial<LiffPageBlock>) => {
+    setDraft((prev) => ({ ...prev, ...patch }));
+    // プレビューが保存前の編集を反映できるよう、親の config にも伝搬する
+    onLocalChange(patch);
+  };
 
   return (
     <div
@@ -113,8 +135,8 @@ export function LiffBlockItem({
             </label>
             <input
               className="w-full px-2.5 py-1.5 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-violet-300"
-              value={block.title ?? ""}
-              onChange={(e) => onLocalChange({ title: e.target.value || null })}
+              value={draft.title ?? ""}
+              onChange={(e) => updateDraft({ title: e.target.value || null })}
               disabled={readOnly}
             />
           </div>
@@ -125,8 +147,8 @@ export function LiffBlockItem({
             </label>
             <select
               className="w-full px-2.5 py-1.5 border border-gray-200 rounded-md text-sm bg-white focus:outline-none focus:ring-2 focus:ring-violet-300"
-              value={block.visibility_condition_json ?? "always"}
-              onChange={(e) => onLocalChange({ visibility_condition_json: e.target.value as VisibilityCondition })}
+              value={draft.visibility_condition_json ?? "always"}
+              onChange={(e) => updateDraft({ visibility_condition_json: e.target.value as VisibilityCondition })}
               disabled={readOnly}
             >
               {Object.entries(VISIBILITY_CONDITION_LABELS).map(([k, v]) => (
@@ -136,16 +158,16 @@ export function LiffBlockItem({
           </div>
 
           <BlockSettingsForm
-            blockType={block.block_type as LiffBlockType}
-            settings={block.settings_json as Record<string, unknown>}
-            onChange={(s) => onLocalChange({ settings_json: s as LiffPageBlock["settings_json"] })}
+            blockType={draft.block_type as LiffBlockType}
+            settings={draft.settings_json as Record<string, unknown>}
+            onChange={(s) => updateDraft({ settings_json: s as LiffPageBlock["settings_json"] })}
             readOnly={readOnly}
           />
 
           {!readOnly && (
             <div className="flex gap-2 mt-4">
               <button
-                onClick={() => onSave(block)}
+                onClick={() => onSave(draft)}
                 disabled={saving}
                 className="px-5 py-2 bg-violet-500 text-white rounded-lg text-sm font-semibold cursor-pointer disabled:opacity-60"
               >
