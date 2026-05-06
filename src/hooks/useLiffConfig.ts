@@ -48,8 +48,6 @@ export function useLiffConfig(
 
   // 呼び出し側が毎レンダーで新しい inline 関数を渡しても、
   // useCallback / useEffect の deps を不安定にしないよう ref 経由で参照する。
-  // これがないと reload が毎レンダー再生成されて useEffect 経由で
-  // 編集中の入力をサーバ値で上書きしてしまう。
   const optsRef = useRef(opts);
   useEffect(() => {
     optsRef.current = opts;
@@ -57,19 +55,24 @@ export function useLiffConfig(
   const onSuccess = useCallback((msg: string) => optsRef.current.onSuccess?.(msg), []);
   const onError = useCallback((msg: string) => optsRef.current.onError?.(msg), []);
 
+  // LIFF設定（必須）と Work 情報（補助）を分けて取得し、
+  // 補助側の失敗で「LIFF設定の読み込みに失敗しました」を出さないようにする。
   const reload = useCallback(async () => {
     try {
-      const [cfg, work] = await Promise.all([
-        liffConfigApi.get(token, workId),
-        workApi.get(token, workId),
-      ]);
+      const cfg = await liffConfigApi.get(token, workId);
       setConfig(cfg);
-      setWorkTitle(work.title);
-    } catch {
-      onError?.("LIFF設定の読み込みに失敗しました");
-    } finally {
-      setLoading(false);
+    } catch (err) {
+      console.error("[useLiffConfig.reload] liff-config get failed", err);
+      onError("LIFF設定の読み込みに失敗しました");
     }
+    try {
+      const work = await workApi.get(token, workId);
+      setWorkTitle(work.title);
+    } catch (err) {
+      // 作品情報はパンくず等の補助表示にしか使っていないので致命扱いしない
+      console.warn("[useLiffConfig.reload] work get failed (non-fatal)", err);
+    }
+    setLoading(false);
   }, [token, workId, onError]);
 
   useEffect(() => { reload(); }, [reload]);
@@ -80,9 +83,10 @@ export function useLiffConfig(
     try {
       const updated = await liffConfigApi.update(token, workId, { is_enabled: !config.is_enabled });
       setConfig(updated);
-      onSuccess?.(updated.is_enabled ? "LIFFを有効にしました" : "LIFFを無効にしました");
-    } catch {
-      onError?.("更新に失敗しました");
+      onSuccess(updated.is_enabled ? "LIFFを有効にしました" : "LIFFを無効にしました");
+    } catch (err) {
+      console.error("[useLiffConfig.toggleEnabled]", err);
+      onError("更新に失敗しました");
     } finally {
       setSaving(false);
     }
@@ -94,18 +98,18 @@ export function useLiffConfig(
     try {
       const updated = await liffConfigApi.update(token, workId, { [field]: value || null });
       setConfig(updated);
-      onSuccess?.("保存しました");
-    } catch {
-      onError?.("保存に失敗しました");
+      onSuccess("保存しました");
+    } catch (err) {
+      console.error("[useLiffConfig.updateConfigField]", err);
+      onError("保存に失敗しました");
     } finally {
       setSaving(false);
     }
   }, [config, token, workId, onSuccess, onError]);
 
   const updateConfigLocal = useCallback((patch: Partial<LiffPageConfig>) => {
-    if (!config) return;
-    setConfig({ ...config, ...patch });
-  }, [config]);
+    setConfig((prev) => (prev ? { ...prev, ...patch } : prev));
+  }, []);
 
   const updatePageType = useCallback(async (next: LiffPageType) => {
     if (!config) return;
@@ -113,9 +117,10 @@ export function useLiffConfig(
     try {
       const updated = await liffConfigApi.update(token, workId, { page_type: next });
       setConfig(updated);
-      onSuccess?.("ページ種別を更新しました");
-    } catch {
-      onError?.("更新に失敗しました");
+      onSuccess("ページ種別を更新しました");
+    } catch (err) {
+      console.error("[useLiffConfig.updatePageType]", err);
+      onError("更新に失敗しました");
     } finally {
       setSaving(false);
     }
@@ -127,13 +132,14 @@ export function useLiffConfig(
     try {
       const updated = await liffConfigApi.update(token, workId, { publish_status: next });
       setConfig(updated);
-      onSuccess?.(
+      onSuccess(
         next === "published" ? "公開しました" :
         next === "archived"  ? "アーカイブしました" :
         "下書きに戻しました"
       );
     } catch (err) {
-      onError?.(err instanceof Error ? err.message : "公開に失敗しました");
+      console.error("[useLiffConfig.updatePublishStatus]", err);
+      onError(err instanceof Error ? err.message : "公開に失敗しました");
     } finally {
       setSaving(false);
     }
@@ -147,76 +153,102 @@ export function useLiffConfig(
     try {
       const updated = await liffConfigApi.update(token, workId, { settings_json: nextSettings });
       setConfig(updated);
-    } catch {
-      onError?.("更新に失敗しました");
+    } catch (err) {
+      console.error("[useLiffConfig.updateSettingsField]", err);
+      onError("更新に失敗しました");
       await reload();
     } finally {
       setSaving(false);
     }
   }, [config, token, workId, onError, reload]);
 
+  // 追加・更新・削除は API レスポンスをそのまま local state に反映し、
+  // 余分な reload を発火させない（reload が失敗するとトーストが出てしまうため）。
   const addBlock = useCallback(async (blockType: LiffBlockType) => {
     setSaving(true);
     try {
       const { BLOCK_TYPE_REGISTRY } = await import("@/components/liff/block-type-registry");
       const entry = BLOCK_TYPE_REGISTRY[blockType];
-      await liffConfigApi.createBlock(token, workId, {
+      const createdBlock = await liffConfigApi.createBlock(token, workId, {
         block_type: blockType,
         title: entry.label,
         settings_json: entry.defaultSettings,
       });
-      await reload();
-      onSuccess?.("ブロックを追加しました");
-    } catch {
-      onError?.("追加に失敗しました");
+      setConfig((prev) => (prev ? { ...prev, blocks: [...prev.blocks, createdBlock] } : prev));
+      onSuccess("ブロックを追加しました");
+    } catch (err) {
+      console.error("[useLiffConfig.addBlock]", err);
+      onError("追加に失敗しました");
     } finally {
       setSaving(false);
     }
-  }, [token, workId, reload, onSuccess, onError]);
+  }, [token, workId, onSuccess, onError]);
 
   const updateBlock = useCallback(async (block: LiffPageBlock) => {
     setSaving(true);
     try {
-      await liffConfigApi.updateBlock(token, workId, block.id, {
+      const updated = await liffConfigApi.updateBlock(token, workId, block.id, {
         title: block.title,
         is_enabled: block.is_enabled,
         settings_json: block.settings_json as Record<string, unknown>,
         visibility_condition_json: block.visibility_condition_json,
       });
-      await reload();
+      setConfig((prev) =>
+        prev ? { ...prev, blocks: prev.blocks.map((b) => (b.id === updated.id ? updated : b)) } : prev
+      );
       setEditingBlockId(null);
-      onSuccess?.("保存しました");
-    } catch {
-      onError?.("保存に失敗しました");
+      onSuccess("保存しました");
+    } catch (err) {
+      console.error("[useLiffConfig.updateBlock]", err);
+      onError("保存に失敗しました");
     } finally {
       setSaving(false);
     }
-  }, [token, workId, reload, onSuccess, onError]);
+  }, [token, workId, onSuccess, onError]);
 
   const deleteBlock = useCallback(async (blockId: string) => {
     if (!confirm("このブロックを削除しますか？")) return;
     setSaving(true);
     try {
       await liffConfigApi.deleteBlock(token, workId, blockId);
-      await reload();
-      if (editingBlockId === blockId) setEditingBlockId(null);
-      onSuccess?.("削除しました");
-    } catch {
-      onError?.("削除に失敗しました");
+      setConfig((prev) =>
+        prev
+          ? {
+              ...prev,
+              blocks: prev.blocks
+                .filter((b) => b.id !== blockId)
+                .map((b, i) => ({ ...b, sort_order: i })),
+            }
+          : prev
+      );
+      setEditingBlockId((cur) => (cur === blockId ? null : cur));
+      onSuccess("削除しました");
+    } catch (err) {
+      console.error("[useLiffConfig.deleteBlock]", err);
+      onError("削除に失敗しました");
     } finally {
       setSaving(false);
     }
-  }, [token, workId, reload, editingBlockId, onSuccess, onError]);
+  }, [token, workId, onSuccess, onError]);
+
+  const updateBlockLocal = useCallback((blockId: string, patch: Partial<LiffPageBlock>) => {
+    setConfig((prev) =>
+      prev
+        ? { ...prev, blocks: prev.blocks.map((b) => (b.id === blockId ? { ...b, ...patch } : b)) }
+        : prev
+    );
+  }, []);
 
   const toggleBlockEnabled = useCallback(async (block: LiffPageBlock) => {
     updateBlockLocal(block.id, { is_enabled: !block.is_enabled });
     try {
       await liffConfigApi.updateBlock(token, workId, block.id, { is_enabled: !block.is_enabled });
-    } catch {
-      onError?.("更新に失敗しました");
+    } catch (err) {
+      console.error("[useLiffConfig.toggleBlockEnabled]", err);
+      onError("更新に失敗しました");
       await reload();
     }
-  }, [token, workId, reload, onError]);
+  }, [token, workId, reload, updateBlockLocal, onError]);
 
   const moveBlock = useCallback(async (idx: number, direction: "up" | "down") => {
     if (!config) return;
@@ -228,8 +260,9 @@ export function useLiffConfig(
     setConfig({ ...config, blocks: reordered });
     try {
       await liffConfigApi.reorderBlocks(token, workId, { block_ids: reordered.map((b) => b.id) });
-    } catch {
-      onError?.("並び替えに失敗しました");
+    } catch (err) {
+      console.error("[useLiffConfig.moveBlock]", err);
+      onError("並び替えに失敗しました");
       await reload();
     }
   }, [config, token, workId, reload, onError]);
@@ -240,19 +273,12 @@ export function useLiffConfig(
     setConfig({ ...config, blocks: reordered });
     try {
       await liffConfigApi.reorderBlocks(token, workId, { block_ids: reordered.map((b) => b.id) });
-    } catch {
-      onError?.("並び替えに失敗しました");
+    } catch (err) {
+      console.error("[useLiffConfig.reorderBlocks]", err);
+      onError("並び替えに失敗しました");
       await reload();
     }
   }, [config, token, workId, reload, onError]);
-
-  const updateBlockLocal = useCallback((blockId: string, patch: Partial<LiffPageBlock>) => {
-    if (!config) return;
-    setConfig({
-      ...config,
-      blocks: config.blocks.map((b) => b.id === blockId ? { ...b, ...patch } : b),
-    });
-  }, [config]);
 
   return {
     config, loading, saving, workTitle, editingBlockId,

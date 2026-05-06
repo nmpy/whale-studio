@@ -145,7 +145,7 @@ export default function LiffConfigPage() {
                 readOnly={isReadOnly}
                 saving={liff.saving}
                 onEdit={() => liff.setEditingBlockId(block.id)}
-                onCloseEdit={() => { liff.setEditingBlockId(null); liff.reload(); }}
+                onCloseEdit={() => liff.setEditingBlockId(null)}
                 onSave={liff.updateBlock}
                 onToggleEnabled={() => liff.toggleBlockEnabled(block)}
                 onDelete={() => liff.deleteBlock(block.id)}

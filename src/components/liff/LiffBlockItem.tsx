@@ -3,7 +3,7 @@
 // src/components/liff/LiffBlockItem.tsx
 // ブロック一覧の個別アイテム — 表示・編集・ON/OFF・削除
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { LiffPageBlock, LiffBlockType, VisibilityCondition } from "@/types";
 import { getBlockEntry, VISIBILITY_CONDITION_LABELS } from "./block-type-registry";
 import { BlockSettingsForm } from "./block-settings-forms";
@@ -39,13 +39,18 @@ export function LiffBlockItem({
   // config.blocks も書き換えるが、draft はその再 render に依存せず
   // ユーザー入力を保持する。
   const [draft, setDraft] = useState<LiffPageBlock>(block);
+  // 編集開始時点のスナップショット。キャンセル時に親の config を元に戻すために使う。
+  const originalRef = useRef<LiffPageBlock>(block);
   // draft をリセットするタイミングを id で識別する
   // （isEditing への遷移時 / 別ブロックへ切り替えた時のみ block を取り込む）
   const [draftKey, setDraftKey] = useState<string | null>(null);
   const targetKey = isEditing ? block.id : null;
 
   if (draftKey !== targetKey) {
-    if (targetKey) setDraft(block);
+    if (targetKey) {
+      setDraft(block);
+      originalRef.current = block;
+    }
     setDraftKey(targetKey);
   }
 
@@ -53,6 +58,19 @@ export function LiffBlockItem({
     setDraft((prev) => ({ ...prev, ...patch }));
     // プレビューが保存前の編集を反映できるよう、親の config にも伝搬する
     onLocalChange(patch);
+  };
+
+  // 閉じる/キャンセル: preview 用に伝搬していた変更を元に戻してから親に通知。
+  // これで親側で reload() を呼ばなくて済む。
+  const handleClose = () => {
+    const orig = originalRef.current;
+    onLocalChange({
+      title: orig.title,
+      visibility_condition_json: orig.visibility_condition_json,
+      settings_json: orig.settings_json,
+      is_enabled: orig.is_enabled,
+    });
+    onCloseEdit();
   };
 
   return (
@@ -101,7 +119,7 @@ export function LiffBlockItem({
         {!readOnly && (
           <div className="flex gap-1">
             <button
-              onClick={isEditing ? onCloseEdit : onEdit}
+              onClick={isEditing ? handleClose : onEdit}
               className={`px-2.5 py-1 text-[11px] border rounded-md cursor-pointer ${
                 isEditing ? "bg-gray-100 border-gray-200 text-gray-700" : "bg-white border-gray-200 text-gray-700"
               }`}
@@ -174,7 +192,7 @@ export function LiffBlockItem({
                 {saving ? "保存中..." : "保存"}
               </button>
               <button
-                onClick={onCloseEdit}
+                onClick={handleClose}
                 className="px-5 py-2 bg-white text-gray-700 border border-gray-200 rounded-lg text-sm cursor-pointer"
               >
                 キャンセル
