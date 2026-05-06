@@ -1,0 +1,1361 @@
+From 4c06c6528c2d9ab2451ddbd0936e0d3a194ece49 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Mon, 4 May 2026 06:01:08 +0000
+Subject: [PATCH] feat: unify GPS / Beacon / QR under locations tabs
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Group the three location-related trigger types under a single
+"ロケーション" hub with tabs (?tab=gps | beacons | qr). Existing nested
+routes (/locations/new, /locations/[locationId], /locations/print) are
+preserved; the dispatch happens via query parameter to avoid clashing
+with [locationId].
+
+- Shared LocationTabs component + tab config (pure helpers in .ts so
+  Vitest can import without JSX)
+- GpsPanel: lifted from the previous /locations page (search/sort/list/
+  QR expansion all preserved)
+- BeaconListPanel: extracted from /beacons/page.tsx and reused by both
+  /locations?tab=beacons and the legacy /beacons route (back-compat)
+- QrPanel: MVP info cards linking to existing QR touchpoints
+  (locations checkin, destinations, friend-add). A note flags the
+  future unified QR management screen.
+- Legacy /beacons page now renders the same shared panel under the
+  location tabs so both URLs land on the same UX
+- Work hub card description updated to mention all three trigger types
+- Tests for resolveLocationTab / isValidLocationTab / LOCATION_TABS
+
+https://claude.ai/code/session_01SF863naiQf16RKq1NUHYwf
+---
+ src/__tests__/locations-tabs.test.ts          |  57 +++
+ .../[workId]/beacons/_beacon-list-panel.tsx   | 155 ++++++++
+ .../oas/[id]/works/[workId]/beacons/page.tsx  | 145 +-------
+ .../works/[workId]/locations/_gps-panel.tsx   | 297 ++++++++++++++++
+ .../works/[workId]/locations/_qr-panel.tsx    | 105 ++++++
+ .../works/[workId]/locations/_tabs-config.ts  |  36 ++
+ .../[id]/works/[workId]/locations/_tabs.tsx   |  79 +++++
+ .../[id]/works/[workId]/locations/page.tsx    | 331 ++----------------
+ src/app/oas/[id]/works/[workId]/page.tsx      |   2 +-
+ 9 files changed, 773 insertions(+), 434 deletions(-)
+ create mode 100644 src/__tests__/locations-tabs.test.ts
+ create mode 100644 src/app/oas/[id]/works/[workId]/beacons/_beacon-list-panel.tsx
+ create mode 100644 src/app/oas/[id]/works/[workId]/locations/_gps-panel.tsx
+ create mode 100644 src/app/oas/[id]/works/[workId]/locations/_qr-panel.tsx
+ create mode 100644 src/app/oas/[id]/works/[workId]/locations/_tabs-config.ts
+ create mode 100644 src/app/oas/[id]/works/[workId]/locations/_tabs.tsx
+
+diff --git a/src/__tests__/locations-tabs.test.ts b/src/__tests__/locations-tabs.test.ts
+new file mode 100644
+index 0000000..667f7d9
+--- /dev/null
++++ b/src/__tests__/locations-tabs.test.ts
+@@ -0,0 +1,57 @@
++/**
++ * src/__tests__/locations-tabs.test.ts
++ *
++ * /locations?tab=... の解決ロジックを検証する。
++ * 不正値・null は "gps" にフォールバックすること。
++ */
++
++import { describe, it, expect } from "vitest";
++import { resolveLocationTab, isValidLocationTab, LOCATION_TABS } from "@/app/oas/[id]/works/[workId]/locations/_tabs-config";
++
++describe("resolveLocationTab", () => {
++  it('"gps" / "beacons" / "qr" はそのまま返す', () => {
++    expect(resolveLocationTab("gps")).toBe("gps");
++    expect(resolveLocationTab("beacons")).toBe("beacons");
++    expect(resolveLocationTab("qr")).toBe("qr");
++  });
++
++  it("null / undefined は gps にフォールバックする", () => {
++    expect(resolveLocationTab(null)).toBe("gps");
++    expect(resolveLocationTab(undefined)).toBe("gps");
++  });
++
++  it("空文字列・未知の値は gps にフォールバックする", () => {
++    expect(resolveLocationTab("")).toBe("gps");
++    expect(resolveLocationTab("hoge")).toBe("gps");
++    expect(resolveLocationTab("GPS")).toBe("gps"); // 大文字は無効
++    expect(resolveLocationTab("beacon")).toBe("gps"); // s なし
++  });
++});
++
++describe("isValidLocationTab", () => {
++  it("正規の値は true", () => {
++    expect(isValidLocationTab("gps")).toBe(true);
++    expect(isValidLocationTab("beacons")).toBe(true);
++    expect(isValidLocationTab("qr")).toBe(true);
++  });
++
++  it("不正値は false", () => {
++    expect(isValidLocationTab("")).toBe(false);
++    expect(isValidLocationTab("hoge")).toBe(false);
++    expect(isValidLocationTab(null)).toBe(false);
++    expect(isValidLocationTab(undefined)).toBe(false);
++  });
++});
++
++describe("LOCATION_TABS", () => {
++  it("3 タブ（gps / beacons / qr）の順で定義されている", () => {
++    expect(LOCATION_TABS.map((t) => t.key)).toEqual(["gps", "beacons", "qr"]);
++  });
++
++  it("各タブに表示用ラベル・説明文が設定されている", () => {
++    for (const tab of LOCATION_TABS) {
++      expect(tab.label.length).toBeGreaterThan(0);
++      expect(tab.description.length).toBeGreaterThan(0);
++    }
++  });
++});
+diff --git a/src/app/oas/[id]/works/[workId]/beacons/_beacon-list-panel.tsx b/src/app/oas/[id]/works/[workId]/beacons/_beacon-list-panel.tsx
+new file mode 100644
+index 0000000..33e5df6
+--- /dev/null
++++ b/src/app/oas/[id]/works/[workId]/beacons/_beacon-list-panel.tsx
+@@ -0,0 +1,155 @@
++"use client";
++
++// src/app/oas/[id]/works/[workId]/beacons/_beacon-list-panel.tsx
++//
++// ビーコントリガー一覧の本体UI（共通コンポーネント）。
++// /locations?tab=beacons と /beacons/page.tsx の両方から再利用される。
++
++import { useEffect, useState } from "react";
++import Link from "next/link";
++import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
++import { getAuthHeaders } from "@/lib/api-client";
++
++type BeaconTriggerItem = {
++  id: string;
++  name: string;
++  hwid: string;
++  enabled: boolean;
++  event_types: string;
++  cooldown_seconds: number;
++  action_type: string;
++  last_event_at: string | null;
++  last_action_status: string | null;
++};
++
++function fmtCooldown(sec: number): string {
++  if (sec <= 0) return "なし";
++  const m = Math.floor(sec / 60);
++  const s = sec % 60;
++  if (m > 0 && s > 0) return `${m}分${s}秒`;
++  if (m > 0) return `${m}分`;
++  return `${s}秒`;
++}
++
++function fmtDate(iso: string | null): string {
++  if (!iso) return "—";
++  const d = new Date(iso);
++  return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
++}
++
++interface Props {
++  oaId: string;
++  workId: string;
++  /** タイトル h2 を表示するかどうか。タブUIから使うときは true 推奨 */
++  showHeading?: boolean;
++}
++
++export default function BeaconListPanel({ oaId, workId, showHeading = true }: Props) {
++  const { role, loading: roleLoading } = useWorkspaceRole(oaId);
++  const isReadOnly = role === "viewer" || role === "tester";
++
++  const [items, setItems] = useState<BeaconTriggerItem[]>([]);
++  const [loading, setLoading] = useState(true);
++  const [error, setError] = useState<string | null>(null);
++
++  useEffect(() => {
++    setLoading(true);
++    fetch(`/api/works/${workId}/beacons`, {
++      headers: getAuthHeaders(),
++      cache: "no-store",
++    })
++      .then((res) => res.json())
++      .then((json) => {
++        if (json.success) setItems(json.data);
++        else setError(json.error?.message ?? "読み込みに失敗しました");
++      })
++      .catch((e) => setError(e instanceof Error ? e.message : "読み込みに失敗しました"))
++      .finally(() => setLoading(false));
++  }, [workId]);
++
++  return (
++    <div data-panel="beacons">
++      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
++        {showHeading && <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0 }}>LINE Beacon トリガー</h2>}
++        {!isReadOnly && (
++          <Link
++            href={`/oas/${oaId}/works/${workId}/beacons/new`}
++            style={{ padding: "8px 18px", background: "#2563eb", color: "#fff", borderRadius: 8, fontSize: 14, fontWeight: 600, textDecoration: "none", marginLeft: "auto" }}
++          >
++            + ビーコンを追加
++          </Link>
++        )}
++      </div>
++
++      <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: 14, marginBottom: 18, fontSize: 12, color: "#334155", lineHeight: 1.7 }}>
++        <p style={{ fontWeight: 600, marginBottom: 4 }}>使い方</p>
++        <ul style={{ marginLeft: 18, listStyle: "disc" }}>
++          <li>LINE 公式アカウント側でビーコン端末を登録し、発行/確認した HWID を入力してください。</li>
++          <li>ユーザー側で Bluetooth と LINE Beacon 設定が ON、かつ LINE 公式アカウントを友だち追加済みの場合に検知されます。</li>
++          <li>重要な進行には QR / GPS などの代替導線を併用してください（演出トリガーとしての使用を推奨）。</li>
++        </ul>
++      </div>
++
++      {(loading || roleLoading) && <div style={{ textAlign: "center", padding: 40, color: "#6b7280" }}>読み込み中…</div>}
++      {error && (
++        <div style={{ padding: 12, background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, color: "#b91c1c", fontSize: 13 }}>
++          {error}
++        </div>
++      )}
++
++      {!loading && !error && items.length === 0 && (
++        <div style={{ textAlign: "center", padding: 40, background: "#f9fafb", borderRadius: 12, border: "1px dashed #d1d5db", color: "#6b7280" }}>
++          <div style={{ fontSize: 36, marginBottom: 8 }}>📡</div>
++          <p style={{ fontSize: 14, fontWeight: 600, color: "#374151", marginBottom: 4 }}>ビーコントリガーはまだ未登録です</p>
++          <p style={{ fontSize: 12 }}>HWID を登録すると、ユーザーが受信圏に入った際の演出を発火できます。</p>
++        </div>
++      )}
++
++      {!loading && items.length > 0 && (
++        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
++          {items.map((b) => (
++            <Link
++              key={b.id}
++              href={isReadOnly ? "#" : `/oas/${oaId}/works/${workId}/beacons/${b.id}/edit`}
++              style={{
++                display: "block",
++                background: "#fff",
++                border: "1px solid #e5e7eb",
++                borderRadius: 12,
++                padding: "14px 18px",
++                textDecoration: "none",
++                color: "inherit",
++                pointerEvents: isReadOnly ? "none" : "auto",
++                opacity: isReadOnly ? 0.85 : 1,
++              }}
++            >
++              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
++                <div style={{ flex: 1, minWidth: 0 }}>
++                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
++                    <span style={{ fontSize: 15, fontWeight: 600 }}>{b.name}</span>
++                    {!b.enabled && (
++                      <span style={{ fontSize: 10, background: "#f3f4f6", color: "#6b7280", padding: "2px 8px", borderRadius: 10, fontWeight: 600 }}>無効</span>
++                    )}
++                    <span style={{ fontSize: 10, background: "#eef2ff", color: "#4338ca", padding: "2px 8px", borderRadius: 10, fontWeight: 600 }}>
++                      {b.action_type}
++                    </span>
++                  </div>
++                  <div style={{ fontSize: 12, color: "#6b7280", marginTop: 4 }}>
++                    HWID: <code style={{ fontFamily: "ui-monospace, monospace" }}>{b.hwid}</code>
++                  </div>
++                  <div style={{ display: "flex", gap: 14, marginTop: 6, fontSize: 11, color: "#9ca3af", flexWrap: "wrap" }}>
++                    <span>発火: {b.event_types}</span>
++                    <span>再発火防止: {fmtCooldown(b.cooldown_seconds)}</span>
++                    <span>最終検知: {fmtDate(b.last_event_at)}</span>
++                    {b.last_action_status && <span>結果: {b.last_action_status}</span>}
++                  </div>
++                </div>
++                <span style={{ color: "#9ca3af", fontSize: 20 }}>›</span>
++              </div>
++            </Link>
++          ))}
++        </div>
++      )}
++    </div>
++  );
++}
+diff --git a/src/app/oas/[id]/works/[workId]/beacons/page.tsx b/src/app/oas/[id]/works/[workId]/beacons/page.tsx
+index 4b8a57b..b9c026b 100644
+--- a/src/app/oas/[id]/works/[workId]/beacons/page.tsx
++++ b/src/app/oas/[id]/works/[workId]/beacons/page.tsx
+@@ -1,67 +1,20 @@
+ "use client";
+ 
+ // src/app/oas/[id]/works/[workId]/beacons/page.tsx
+-// LINE Beacon トリガー一覧
++//
++// LINE Beacon トリガー一覧（後方互換ルート）。
++// 内容は共通の BeaconListPanel に寄せ、上部にロケーションタブを表示して
++// /locations?tab=beacons と同じ情報設計でアクセスできるようにしている。
+ 
+-import { useEffect, useState } from "react";
+ import { useParams } from "next/navigation";
+-import Link from "next/link";
+ import { Breadcrumb } from "@/components/Breadcrumb";
+-import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
+-import { getAuthHeaders } from "@/lib/api-client";
+-
+-type BeaconTriggerItem = {
+-  id: string;
+-  name: string;
+-  hwid: string;
+-  enabled: boolean;
+-  event_types: string;
+-  cooldown_seconds: number;
+-  action_type: string;
+-  last_event_at: string | null;
+-  last_action_status: string | null;
+-};
+-
+-function fmtCooldown(sec: number): string {
+-  if (sec <= 0) return "なし";
+-  const m = Math.floor(sec / 60);
+-  const s = sec % 60;
+-  if (m > 0 && s > 0) return `${m}分${s}秒`;
+-  if (m > 0) return `${m}分`;
+-  return `${s}秒`;
+-}
+-
+-function fmtDate(iso: string | null): string {
+-  if (!iso) return "—";
+-  const d = new Date(iso);
+-  return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+-}
++import { LocationTabs } from "../locations/_tabs";
++import BeaconListPanel from "./_beacon-list-panel";
+ 
+ export default function BeaconsPage() {
+   const params = useParams();
+   const oaId = params.id as string;
+   const workId = params.workId as string;
+-  const { role, loading: roleLoading } = useWorkspaceRole(oaId);
+-  const isReadOnly = role === "viewer" || role === "tester";
+-
+-  const [items, setItems] = useState<BeaconTriggerItem[]>([]);
+-  const [loading, setLoading] = useState(true);
+-  const [error, setError] = useState<string | null>(null);
+-
+-  useEffect(() => {
+-    setLoading(true);
+-    fetch(`/api/works/${workId}/beacons`, {
+-      headers: getAuthHeaders(),
+-      cache: "no-store",
+-    })
+-      .then((res) => res.json())
+-      .then((json) => {
+-        if (json.success) setItems(json.data);
+-        else setError(json.error?.message ?? "読み込みに失敗しました");
+-      })
+-      .catch((e) => setError(e instanceof Error ? e.message : "読み込みに失敗しました"))
+-      .finally(() => setLoading(false));
+-  }, [workId]);
+ 
+   return (
+     <div style={{ maxWidth: 900, margin: "0 auto", padding: "24px 16px" }}>
+@@ -69,91 +22,21 @@ export default function BeaconsPage() {
+         items={[
+           { label: "OA一覧", href: "/oas" },
+           { label: "作品", href: `/oas/${oaId}/works/${workId}` },
++          { label: "ロケーション", href: `/oas/${oaId}/works/${workId}/locations` },
+           { label: "ビーコン" },
+         ]}
+       />
+ 
+-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
+-        <h1 style={{ fontSize: 22, fontWeight: 700 }}>LINE Beacon トリガー</h1>
+-        {!isReadOnly && (
+-          <Link
+-            href={`/oas/${oaId}/works/${workId}/beacons/new`}
+-            style={{ padding: "8px 18px", background: "#2563eb", color: "#fff", borderRadius: 8, fontSize: 14, fontWeight: 600, textDecoration: "none" }}
+-          >
+-            + ビーコンを追加
+-          </Link>
+-        )}
++      <div style={{ marginBottom: 12 }}>
++        <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>ロケーション</h1>
++        <p style={{ fontSize: 13, color: "#6b7280", marginTop: 6, lineHeight: 1.6 }}>
++          GPS・ビーコン・QRを使って、現地での到達判定や体験の進行トリガーを管理できます。
++        </p>
+       </div>
+ 
+-      <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: 14, marginBottom: 18, fontSize: 12, color: "#334155", lineHeight: 1.7 }}>
+-        <p style={{ fontWeight: 600, marginBottom: 4 }}>使い方</p>
+-        <ul style={{ marginLeft: 18, listStyle: "disc" }}>
+-          <li>LINE 公式アカウント側でビーコン端末を登録し、発行/確認した HWID を入力してください。</li>
+-          <li>ユーザー側で Bluetooth と LINE Beacon 設定が ON、かつ LINE 公式アカウントを友だち追加済みの場合に検知されます。</li>
+-          <li>重要な進行には QR / GPS などの代替導線を併用してください（演出トリガーとしての使用を推奨）。</li>
+-        </ul>
+-      </div>
+-
+-      {(loading || roleLoading) && <div style={{ textAlign: "center", padding: 40, color: "#6b7280" }}>読み込み中…</div>}
+-      {error && (
+-        <div style={{ padding: 12, background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, color: "#b91c1c", fontSize: 13 }}>
+-          {error}
+-        </div>
+-      )}
+-
+-      {!loading && !error && items.length === 0 && (
+-        <div style={{ textAlign: "center", padding: 40, background: "#f9fafb", borderRadius: 12, border: "1px dashed #d1d5db", color: "#6b7280" }}>
+-          <div style={{ fontSize: 36, marginBottom: 8 }}>📡</div>
+-          <p style={{ fontSize: 14, fontWeight: 600, color: "#374151", marginBottom: 4 }}>ビーコントリガーはまだ未登録です</p>
+-          <p style={{ fontSize: 12 }}>HWID を登録すると、ユーザーが受信圏に入った際の演出を発火できます。</p>
+-        </div>
+-      )}
++      <LocationTabs oaId={oaId} workId={workId} activeTab="beacons" />
+ 
+-      {!loading && items.length > 0 && (
+-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+-          {items.map((b) => (
+-            <Link
+-              key={b.id}
+-              href={isReadOnly ? "#" : `/oas/${oaId}/works/${workId}/beacons/${b.id}/edit`}
+-              style={{
+-                display: "block",
+-                background: "#fff",
+-                border: "1px solid #e5e7eb",
+-                borderRadius: 12,
+-                padding: "14px 18px",
+-                textDecoration: "none",
+-                color: "inherit",
+-                pointerEvents: isReadOnly ? "none" : "auto",
+-                opacity: isReadOnly ? 0.85 : 1,
+-              }}
+-            >
+-              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
+-                <div style={{ flex: 1, minWidth: 0 }}>
+-                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+-                    <span style={{ fontSize: 15, fontWeight: 600 }}>{b.name}</span>
+-                    {!b.enabled && (
+-                      <span style={{ fontSize: 10, background: "#f3f4f6", color: "#6b7280", padding: "2px 8px", borderRadius: 10, fontWeight: 600 }}>無効</span>
+-                    )}
+-                    <span style={{ fontSize: 10, background: "#eef2ff", color: "#4338ca", padding: "2px 8px", borderRadius: 10, fontWeight: 600 }}>
+-                      {b.action_type}
+-                    </span>
+-                  </div>
+-                  <div style={{ fontSize: 12, color: "#6b7280", marginTop: 4 }}>
+-                    HWID: <code style={{ fontFamily: "ui-monospace, monospace" }}>{b.hwid}</code>
+-                  </div>
+-                  <div style={{ display: "flex", gap: 14, marginTop: 6, fontSize: 11, color: "#9ca3af", flexWrap: "wrap" }}>
+-                    <span>発火: {b.event_types}</span>
+-                    <span>再発火防止: {fmtCooldown(b.cooldown_seconds)}</span>
+-                    <span>最終検知: {fmtDate(b.last_event_at)}</span>
+-                    {b.last_action_status && <span>結果: {b.last_action_status}</span>}
+-                  </div>
+-                </div>
+-                <span style={{ color: "#9ca3af", fontSize: 20 }}>›</span>
+-              </div>
+-            </Link>
+-          ))}
+-        </div>
+-      )}
++      <BeaconListPanel oaId={oaId} workId={workId} />
+     </div>
+   );
+ }
+diff --git a/src/app/oas/[id]/works/[workId]/locations/_gps-panel.tsx b/src/app/oas/[id]/works/[workId]/locations/_gps-panel.tsx
+new file mode 100644
+index 0000000..15d952c
+--- /dev/null
++++ b/src/app/oas/[id]/works/[workId]/locations/_gps-panel.tsx
+@@ -0,0 +1,297 @@
++"use client";
++
++// src/app/oas/[id]/works/[workId]/locations/_gps-panel.tsx
++// GPSタブ — 既存の location 一覧UIを内部コンポーネント化したもの。
++
++import { useEffect, useState, useCallback, useMemo } from "react";
++import Link from "next/link";
++import { QRCodeSVG } from "qrcode.react";
++import { locationApi, getDevToken } from "@/lib/api-client";
++import type { LocationWithTransition } from "@/types";
++
++function buildLiffUrl(liffId: string, locationId: string, workId: string) {
++  return `https://liff.line.me/${liffId}?location_id=${locationId}&work_id=${workId}`;
++}
++
++const MODE_BADGE: Record<string, { label: string; color: string; bg: string }> = {
++  qr_only:    { label: "QR",      color: "#7c3aed", bg: "#f5f3ff" },
++  gps_only:   { label: "GPS",     color: "#059669", bg: "#ecfdf5" },
++  qr_and_gps: { label: "QR+GPS", color: "#2563eb", bg: "#eff6ff" },
++};
++
++type SortKey = "updated" | "name";
++
++function CopyButton({ text }: { text: string }) {
++  const [copied, setCopied] = useState(false);
++  const handleCopy = useCallback(async (e: React.MouseEvent) => {
++    e.preventDefault();
++    e.stopPropagation();
++    try {
++      await navigator.clipboard.writeText(text);
++      setCopied(true);
++      setTimeout(() => setCopied(false), 2000);
++    } catch { /* ignore */ }
++  }, [text]);
++
++  return (
++    <button
++      type="button"
++      onClick={handleCopy}
++      style={{
++        padding: "3px 10px", fontSize: 11, fontWeight: 600,
++        background: copied ? "#dcfce7" : "#f3f4f6",
++        color: copied ? "#16a34a" : "#374151",
++        border: `1px solid ${copied ? "#86efac" : "#e5e7eb"}`,
++        borderRadius: 6, cursor: "pointer", whiteSpace: "nowrap",
++        transition: "all 0.15s",
++      }}
++    >
++      {copied ? "コピー済み" : "URLをコピー"}
++    </button>
++  );
++}
++
++function actionSummary(loc: LocationWithTransition): string | null {
++  const parts: string[] = [];
++  if (loc.transition) parts.push(`遷移: ${loc.transition.label}`);
++  if (loc.set_flags !== "{}") parts.push("Flags");
++  if (loc.stamp_enabled) parts.push("スタンプ");
++  return parts.length ? parts.join(" / ") : null;
++}
++
++interface LocStatSummary {
++  location_id: string;
++  total_visits: number;
++  gps_success_rate?: number;
++}
++
++interface Props {
++  oaId: string;
++  workId: string;
++}
++
++export default function GpsPanel({ oaId, workId }: Props) {
++  const [locations, setLocations] = useState<LocationWithTransition[]>([]);
++  const [loading, setLoading] = useState(true);
++  const [error, setError] = useState<string | null>(null);
++  const [expandedQR, setExpandedQR] = useState<string | null>(null);
++
++  const [search, setSearch] = useState("");
++  const [sortKey, setSortKey] = useState<SortKey>("updated");
++
++  const [locStats, setLocStats] = useState<Map<string, LocStatSummary>>(new Map());
++
++  useEffect(() => {
++    const token = getDevToken();
++    (async () => {
++      try {
++        const data = await locationApi.list(token, workId);
++        setLocations(data);
++      } catch (err) {
++        setError(err instanceof Error ? err.message : "読み込みに失敗しました");
++      } finally {
++        setLoading(false);
++      }
++    })();
++    fetch(`/api/works/${workId}/location-stats`, {
++      headers: token ? { Authorization: `Bearer ${token}` } : {},
++    })
++      .then((r) => r.ok ? r.json() : null)
++      .then((json) => {
++        if (json?.success && json.data?.by_location) {
++          const m = new Map<string, LocStatSummary>();
++          for (const s of json.data.by_location) {
++            m.set(s.location_id, s);
++          }
++          setLocStats(m);
++        }
++      })
++      .catch(() => {});
++  }, [workId]);
++
++  const filteredLocations = useMemo(() => {
++    let list = locations;
++    if (search.trim()) {
++      const q = search.trim().toLowerCase();
++      list = list.filter((l) =>
++        l.name.toLowerCase().includes(q) || (l.description ?? "").toLowerCase().includes(q),
++      );
++    }
++    return [...list].sort((a, b) => {
++      if (sortKey === "name") return a.name.localeCompare(b.name, "ja");
++      return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
++    });
++  }, [locations, search, sortKey]);
++
++  const liffId = process.env.NEXT_PUBLIC_LIFF_ID;
++
++  return (
++    <div data-panel="gps">
++      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap", gap: 8 }}>
++        <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0 }}>GPS チェックイン地点</h2>
++        <div style={{ display: "flex", gap: 8 }}>
++          {liffId && locations.length > 0 && (
++            <Link
++              href={`/oas/${oaId}/works/${workId}/locations/print`}
++              style={{ padding: "8px 14px", background: "#f3f4f6", color: "#374151", borderRadius: 8, fontSize: 13, fontWeight: 600, textDecoration: "none", border: "1px solid #e5e7eb" }}
++            >
++              QR一括印刷
++            </Link>
++          )}
++          <Link
++            href={`/oas/${oaId}/works/${workId}/locations/new`}
++            style={{ padding: "8px 18px", background: "#2563eb", color: "#fff", borderRadius: 8, fontSize: 14, fontWeight: 600, textDecoration: "none" }}
++          >
++            + ロケーションを追加
++          </Link>
++        </div>
++      </div>
++
++      {locations.length > 0 && (
++        <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap", alignItems: "center" }}>
++          <input
++            type="search"
++            placeholder="名前・説明で検索"
++            value={search}
++            onChange={(e) => setSearch(e.target.value)}
++            style={{
++              flex: 1, minWidth: 200, padding: "8px 12px",
++              border: "1px solid #d1d5db", borderRadius: 8,
++              fontSize: 13, outline: "none",
++            }}
++          />
++          <select
++            value={sortKey}
++            onChange={(e) => setSortKey(e.target.value as SortKey)}
++            style={{
++              padding: "8px 12px", border: "1px solid #d1d5db",
++              borderRadius: 8, fontSize: 13, background: "#fff",
++            }}
++          >
++            <option value="updated">更新日順</option>
++            <option value="name">名前順</option>
++          </select>
++          <span style={{ fontSize: 12, color: "#9ca3af" }}>
++            {filteredLocations.length} / {locations.length} 件
++          </span>
++        </div>
++      )}
++
++      {!liffId && (
++        <div style={{ padding: 12, background: "#fef3c7", border: "1px solid #fcd34d", borderRadius: 8, color: "#92400e", fontSize: 13, marginBottom: 16 }}>
++          LIFF ID が未設定のため QR コードを生成できません。<code style={{ fontSize: 11 }}>NEXT_PUBLIC_LIFF_ID</code> を設定してください。
++        </div>
++      )}
++
++      {loading && <div style={{ textAlign: "center", padding: 40, color: "#6b7280" }}>読み込み中...</div>}
++      {error && <div style={{ padding: 16, background: "#fef2f2", border: "1px solid #fca5a5", borderRadius: 8, color: "#dc2626" }}>{error}</div>}
++
++      {!loading && !error && locations.length === 0 && (
++        <div style={{ textAlign: "center", padding: 60, background: "#f9fafb", borderRadius: 12, border: "1px dashed #d1d5db", color: "#6b7280" }}>
++          <div style={{ fontSize: 40, marginBottom: 12 }}>📍</div>
++          <p style={{ fontSize: 18, fontWeight: 600, color: "#374151", marginBottom: 8 }}>ロケーションを追加しましょう</p>
++          <p style={{ fontSize: 13, lineHeight: 1.7, marginBottom: 20 }}>
++            GPS チェックインや QR スタンプラリーで使う地点を作成します。
++            <br />地図上で場所を選び、半径を設定するだけで始められます。
++          </p>
++          <Link
++            href={`/oas/${oaId}/works/${workId}/locations/new`}
++            style={{ display: "inline-block", padding: "10px 24px", background: "#2563eb", color: "#fff", borderRadius: 8, fontSize: 14, fontWeight: 600, textDecoration: "none" }}
++          >
++            + 最初のロケーションを作成
++          </Link>
++        </div>
++      )}
++
++      {!loading && filteredLocations.length > 0 && (
++        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
++          {filteredLocations.map((loc) => {
++            const liffUrl = liffId ? buildLiffUrl(liffId, loc.id, workId) : null;
++            const isExpanded = expandedQR === loc.id;
++            const stats = locStats.get(loc.id);
++            const modeBadge = MODE_BADGE[loc.checkin_mode] ?? MODE_BADGE.qr_only;
++            const action = actionSummary(loc);
++            return (
++              <div key={loc.id} style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 12, boxShadow: "0 1px 4px rgba(0,0,0,0.05)", overflow: "hidden" }}>
++                <Link
++                  href={`/oas/${oaId}/works/${workId}/locations/${loc.id}`}
++                  style={{ display: "block", padding: "16px 20px", textDecoration: "none", color: "inherit" }}
++                >
++                  <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
++                    <div style={{ flex: 1, minWidth: 0 }}>
++                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
++                        <span style={{ fontWeight: 600, fontSize: 15 }}>{loc.name}</span>
++                        {!loc.is_active && (
++                          <span style={{ fontSize: 10, background: "#f3f4f6", color: "#6b7280", padding: "2px 8px", borderRadius: 10, fontWeight: 500 }}>無効</span>
++                        )}
++                        <span style={{ fontSize: 10, background: modeBadge.bg, color: modeBadge.color, padding: "2px 8px", borderRadius: 10, fontWeight: 600 }}>
++                          {modeBadge.label}
++                        </span>
++                        {loc.radius_meters && loc.checkin_mode !== "qr_only" && (
++                          <span style={{ fontSize: 10, color: "#9ca3af" }}>{loc.radius_meters}m</span>
++                        )}
++                      </div>
++                      {loc.description && <p style={{ fontSize: 13, color: "#6b7280", marginTop: 4 }}>{loc.description}</p>}
++
++                      <div style={{ display: "flex", gap: 12, marginTop: 8, fontSize: 12, color: "#9ca3af", flexWrap: "wrap" }}>
++                        {action && <span>{action}</span>}
++                        <span>CD: {loc.cooldown_seconds}秒</span>
++                        {stats && <span style={{ color: stats.total_visits > 0 ? "#059669" : "#9ca3af", fontWeight: stats.total_visits > 0 ? 600 : 400 }}>チェックイン: {stats.total_visits}</span>}
++                      </div>
++                    </div>
++
++                    <div style={{ display: "flex", gap: 6, flexShrink: 0, alignItems: "center" }}>
++                      {liffUrl && (
++                        <button
++                          type="button"
++                          onClick={(e) => { e.preventDefault(); e.stopPropagation(); window.open(liffUrl, "_blank"); }}
++                          style={{
++                            padding: "5px 10px", fontSize: 11, fontWeight: 600,
++                            background: "#ecfdf5", color: "#059669",
++                            border: "1px solid #86efac", borderRadius: 6, cursor: "pointer",
++                          }}
++                        >
++                          テスト
++                        </button>
++                      )}
++                      <span style={{ color: "#9ca3af", fontSize: 20 }}>›</span>
++                    </div>
++                  </div>
++                </Link>
++
++                {liffUrl && (
++                  <div style={{ padding: "0 20px 16px", borderTop: "1px solid #f3f4f6" }}>
++                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
++                      <div style={{ flex: 1, fontSize: 11, color: "#3b82f6", wordBreak: "break-all", background: "#f0f9ff", padding: "6px 10px", borderRadius: 6 }}>
++                        {liffUrl}
++                      </div>
++                      <CopyButton text={liffUrl} />
++                      <button
++                        type="button"
++                        onClick={() => setExpandedQR(isExpanded ? null : loc.id)}
++                        style={{ padding: "3px 10px", fontSize: 11, fontWeight: 600, background: "#f3f4f6", color: "#374151", border: "1px solid #e5e7eb", borderRadius: 6, cursor: "pointer", whiteSpace: "nowrap" }}
++                      >
++                        {isExpanded ? "QR閉じる" : "QR表示"}
++                      </button>
++                    </div>
++                    {isExpanded && (
++                      <div style={{ marginTop: 12, display: "flex", justifyContent: "center" }}>
++                        <QRCodeSVG value={liffUrl} size={160} level="M" />
++                      </div>
++                    )}
++                  </div>
++                )}
++              </div>
++            );
++          })}
++        </div>
++      )}
++
++      {!loading && locations.length > 0 && filteredLocations.length === 0 && (
++        <div style={{ textAlign: "center", padding: 40, color: "#9ca3af" }}>
++          「{search}」に一致するロケーションはありません
++        </div>
++      )}
++    </div>
++  );
++}
+diff --git a/src/app/oas/[id]/works/[workId]/locations/_qr-panel.tsx b/src/app/oas/[id]/works/[workId]/locations/_qr-panel.tsx
+new file mode 100644
+index 0000000..2130666
+--- /dev/null
++++ b/src/app/oas/[id]/works/[workId]/locations/_qr-panel.tsx
+@@ -0,0 +1,105 @@
++"use client";
++
++// src/app/oas/[id]/works/[workId]/locations/_qr-panel.tsx
++//
++// QRタブ — MVP では情報カードと既存QR導線へのリンクを表示する。
++// 将来 QR コードを一元管理する画面ができたら、このパネルを差し替える。
++
++import Link from "next/link";
++
++interface Props {
++  oaId: string;
++  workId: string;
++}
++
++export default function QrPanel({ oaId, workId }: Props) {
++  const base = `/oas/${oaId}/works/${workId}`;
++  return (
++    <div data-panel="qr">
++      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
++        <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0 }}>QR</h2>
++      </div>
++
++      <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: 14, marginBottom: 18, fontSize: 12, color: "#334155", lineHeight: 1.7 }}>
++        現地に設置したQRコードを読み取ることで、チェックイン・メッセージ送信・シナリオ遷移を発火できます。
++        QR は「GPS地点のチェックイン用QR」と「メッセージ・遷移用QR」の 2 系統で活用できます。
++      </div>
++
++      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 12 }}>
++        {/* GPS 地点の QR チェックイン */}
++        <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 12, padding: "16px 18px", display: "flex", flexDirection: "column", gap: 8 }}>
++          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
++            <span style={{ fontSize: 20 }}>📍</span>
++            <span style={{ fontSize: 14, fontWeight: 700, color: "#1f2937" }}>GPS地点のQRチェックイン</span>
++          </div>
++          <p style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.6, margin: 0 }}>
++            ロケーションのチェックインモードを <code style={{ fontSize: 11 }}>qr_only</code> または <code style={{ fontSize: 11 }}>qr_and_gps</code> にすると、各ロケーションのQRコードを使ってチェックインを発火できます。
++          </p>
++          <div style={{ marginTop: 4, display: "flex", gap: 8, flexWrap: "wrap" }}>
++            <Link
++              href={`${base}/locations`}
++              style={{ padding: "6px 14px", background: "#2563eb", color: "#fff", borderRadius: 8, fontSize: 12, fontWeight: 600, textDecoration: "none" }}
++            >
++              GPSロケーションを管理
++            </Link>
++            <Link
++              href={`${base}/locations/print`}
++              style={{ padding: "6px 14px", background: "#f3f4f6", color: "#374151", borderRadius: 8, fontSize: 12, fontWeight: 600, textDecoration: "none", border: "1px solid #e5e7eb" }}
++            >
++              QR一括印刷
++            </Link>
++          </div>
++        </div>
++
++        {/* メッセージ・遷移用 QR */}
++        <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 12, padding: "16px 18px", display: "flex", flexDirection: "column", gap: 8 }}>
++          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
++            <span style={{ fontSize: 20 }}>🔗</span>
++            <span style={{ fontSize: 14, fontWeight: 700, color: "#1f2937" }}>メッセージ・遷移用QR</span>
++          </div>
++          <p style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.6, margin: 0 }}>
++            遷移先URL（destination）として登録した LIFF / 内部URL / 外部URL は、そのままQRコード化して現地に設置できます。シナリオの起点や演出ジャンプに活用してください。
++          </p>
++          <div style={{ marginTop: 4, display: "flex", gap: 8, flexWrap: "wrap" }}>
++            <Link
++              href={`${base}/destinations`}
++              style={{ padding: "6px 14px", background: "#0d9488", color: "#fff", borderRadius: 8, fontSize: 12, fontWeight: 600, textDecoration: "none" }}
++            >
++              遷移先URLを管理
++            </Link>
++          </div>
++        </div>
++
++        {/* 友だち追加 QR（OAスコープ） */}
++        <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 12, padding: "16px 18px", display: "flex", flexDirection: "column", gap: 8 }}>
++          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
++            <span style={{ fontSize: 20 }}>👋</span>
++            <span style={{ fontSize: 14, fontWeight: 700, color: "#1f2937" }}>友だち追加QR</span>
++          </div>
++          <p style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.6, margin: 0 }}>
++            LINE公式アカウントへの友だち追加導線として、各OAの「友だち追加設定」から共有用QRを取得できます。
++          </p>
++          <div style={{ marginTop: 4, display: "flex", gap: 8, flexWrap: "wrap" }}>
++            <Link
++              href={`/oas/${oaId}/friend-add`}
++              style={{ padding: "6px 14px", background: "#f3f4f6", color: "#374151", borderRadius: 8, fontSize: 12, fontWeight: 600, textDecoration: "none", border: "1px solid #e5e7eb" }}
++            >
++              友だち追加設定へ
++            </Link>
++          </div>
++        </div>
++
++        {/* 今後の拡張 */}
++        <div style={{ background: "#fefce8", border: "1px dashed #fde68a", borderRadius: 12, padding: "16px 18px", display: "flex", flexDirection: "column", gap: 6 }}>
++          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
++            <span style={{ fontSize: 20 }}>🛠️</span>
++            <span style={{ fontSize: 13, fontWeight: 700, color: "#92400e" }}>今後の拡張</span>
++          </div>
++          <p style={{ fontSize: 12, color: "#92400e", lineHeight: 1.6, margin: 0 }}>
++            QRコードを一元管理する専用画面（独立したQRトークンの発行・印刷・利用統計）を追加予定です。それまでは上記の各画面からQRを利用してください。
++          </p>
++        </div>
++      </div>
++    </div>
++  );
++}
+diff --git a/src/app/oas/[id]/works/[workId]/locations/_tabs-config.ts b/src/app/oas/[id]/works/[workId]/locations/_tabs-config.ts
+new file mode 100644
+index 0000000..a89f68d
+--- /dev/null
++++ b/src/app/oas/[id]/works/[workId]/locations/_tabs-config.ts
+@@ -0,0 +1,36 @@
++// src/app/oas/[id]/works/[workId]/locations/_tabs-config.ts
++//
++// 「ロケーション」タブの純粋ロジック（JSX を含まないため Vitest から直接 import 可）。
++
++export type LocationTab = "gps" | "beacons" | "qr";
++
++export const LOCATION_TABS: Array<{
++  key: LocationTab;
++  label: string;
++  description: string;
++}> = [
++  {
++    key: "gps",
++    label: "GPS",
++    description: "緯度経度と半径を使って、ユーザーが指定地点にいるかを判定します。",
++  },
++  {
++    key: "beacons",
++    label: "ビーコン",
++    description: "LINE Beacon の検知イベントを使って、近づいたユーザーにメッセージ送信や進行処理を実行します。",
++  },
++  {
++    key: "qr",
++    label: "QR",
++    description: "現地に設置したQRコードから、特定の遷移・メッセージ・チェックインを発火します。",
++  },
++];
++
++export function isValidLocationTab(value: string | null | undefined): value is LocationTab {
++  return value === "gps" || value === "beacons" || value === "qr";
++}
++
++/** ?tab=... を読み取り、不正値は "gps" にフォールバックする */
++export function resolveLocationTab(value: string | null | undefined): LocationTab {
++  return isValidLocationTab(value) ? value : "gps";
++}
+diff --git a/src/app/oas/[id]/works/[workId]/locations/_tabs.tsx b/src/app/oas/[id]/works/[workId]/locations/_tabs.tsx
+new file mode 100644
+index 0000000..7426397
+--- /dev/null
++++ b/src/app/oas/[id]/works/[workId]/locations/_tabs.tsx
+@@ -0,0 +1,79 @@
++"use client";
++
++// src/app/oas/[id]/works/[workId]/locations/_tabs.tsx
++//
++// 「ロケーション」配下の GPS / ビーコン / QR タブ UI。
++// 純粋ロジックは _tabs-config.ts に切り出し、本ファイルは React コンポーネントに専念する。
++
++import Link from "next/link";
++import {
++  LOCATION_TABS,
++  type LocationTab,
++} from "./_tabs-config";
++
++export {
++  LOCATION_TABS,
++  isValidLocationTab,
++  resolveLocationTab,
++  type LocationTab,
++} from "./_tabs-config";
++
++interface Props {
++  oaId: string;
++  workId: string;
++  activeTab: LocationTab;
++}
++
++export function LocationTabs({ oaId, workId, activeTab }: Props) {
++  const base = `/oas/${oaId}/works/${workId}/locations`;
++  const activeMeta = LOCATION_TABS.find((t) => t.key === activeTab);
++  return (
++    <div style={{ marginBottom: 18 }}>
++      <div
++        role="tablist"
++        aria-label="ロケーション種別"
++        style={{
++          display: "flex",
++          gap: 4,
++          borderBottom: "1px solid #e5e7eb",
++          marginBottom: 12,
++          flexWrap: "wrap",
++        }}
++      >
++        {LOCATION_TABS.map((tab) => {
++          const isActive = tab.key === activeTab;
++          const href = tab.key === "gps" ? base : `${base}?tab=${tab.key}`;
++          return (
++            <Link
++              key={tab.key}
++              href={href}
++              role="tab"
++              aria-selected={isActive}
++              data-tab={tab.key}
++              data-active={isActive ? "true" : "false"}
++              style={{
++                padding: "8px 18px",
++                fontSize: 13,
++                fontWeight: 600,
++                color: isActive ? "#2563eb" : "#6b7280",
++                background: "transparent",
++                borderBottom: isActive ? "2px solid #2563eb" : "2px solid transparent",
++                marginBottom: -1,
++                textDecoration: "none",
++                cursor: "pointer",
++                transition: "color 0.12s, border-color 0.12s",
++              }}
++            >
++              {tab.label}
++            </Link>
++          );
++        })}
++      </div>
++      {activeMeta && (
++        <p style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.6, margin: 0 }}>
++          {activeMeta.description}
++        </p>
++      )}
++    </div>
++  );
++}
+diff --git a/src/app/oas/[id]/works/[workId]/locations/page.tsx b/src/app/oas/[id]/works/[workId]/locations/page.tsx
+index e8172d4..c7919da 100644
+--- a/src/app/oas/[id]/works/[workId]/locations/page.tsx
++++ b/src/app/oas/[id]/works/[workId]/locations/page.tsx
+@@ -1,321 +1,48 @@
+ "use client";
+ 
+ // src/app/oas/[id]/works/[workId]/locations/page.tsx
+-// ロケーション一覧ページ（検索 / ソート / チェックイン数 / テスト導線 / QR表示）
++//
++// ロケーションタブハブ — GPS / ビーコン / QR を ?tab=... で切り替える。
++// 既存の /locations/new, /locations/[locationId], /locations/print との衝突を避けるため
++// query parameter 方式（推奨案A）を採用している。
+ 
+-import { useEffect, useState, useCallback, useMemo } from "react";
+-import { useParams } from "next/navigation";
+-import Link from "next/link";
+-import { QRCodeSVG } from "qrcode.react";
++import { useParams, useSearchParams } from "next/navigation";
+ import { Breadcrumb } from "@/components/Breadcrumb";
+-import { locationApi, getDevToken } from "@/lib/api-client";
+-import type { LocationWithTransition } from "@/types";
++import { LocationTabs, resolveLocationTab } from "./_tabs";
++import GpsPanel from "./_gps-panel";
++import QrPanel from "./_qr-panel";
++import BeaconListPanel from "../beacons/_beacon-list-panel";
+ 
+-function buildLiffUrl(liffId: string, locationId: string, workId: string) {
+-  return `https://liff.line.me/${liffId}?location_id=${locationId}&work_id=${workId}`;
+-}
+-
+-// ── checkin_mode バッジ ──
+-const MODE_BADGE: Record<string, { label: string; color: string; bg: string }> = {
+-  qr_only:    { label: "QR",      color: "#7c3aed", bg: "#f5f3ff" },
+-  gps_only:   { label: "GPS",     color: "#059669", bg: "#ecfdf5" },
+-  qr_and_gps: { label: "QR+GPS", color: "#2563eb", bg: "#eff6ff" },
+-};
+-
+-type SortKey = "updated" | "name";
+-
+-// ── コピーボタン ──
+-function CopyButton({ text }: { text: string }) {
+-  const [copied, setCopied] = useState(false);
+-  const handleCopy = useCallback(async (e: React.MouseEvent) => {
+-    e.preventDefault();
+-    e.stopPropagation();
+-    try {
+-      await navigator.clipboard.writeText(text);
+-      setCopied(true);
+-      setTimeout(() => setCopied(false), 2000);
+-    } catch { /* ignore */ }
+-  }, [text]);
+-
+-  return (
+-    <button
+-      type="button"
+-      onClick={handleCopy}
+-      style={{
+-        padding: "3px 10px", fontSize: 11, fontWeight: 600,
+-        background: copied ? "#dcfce7" : "#f3f4f6",
+-        color: copied ? "#16a34a" : "#374151",
+-        border: `1px solid ${copied ? "#86efac" : "#e5e7eb"}`,
+-        borderRadius: 6, cursor: "pointer", whiteSpace: "nowrap",
+-        transition: "all 0.15s",
+-      }}
+-    >
+-      {copied ? "コピー済み" : "URLをコピー"}
+-    </button>
+-  );
+-}
+-
+-// ── 成功時アクション要約 ──
+-function actionSummary(loc: LocationWithTransition): string | null {
+-  const parts: string[] = [];
+-  if (loc.transition) parts.push(`遷移: ${loc.transition.label}`);
+-  if (loc.set_flags !== "{}") parts.push("Flags");
+-  if (loc.stamp_enabled) parts.push("スタンプ");
+-  return parts.length ? parts.join(" / ") : null;
+-}
+-
+-// ── LocationVisitSummary の型（location-stats API の by_location 要素） ──
+-interface LocStatSummary {
+-  location_id: string;
+-  total_visits: number;
+-  gps_success_rate?: number;
+-}
+-
+-export default function LocationsPage() {
++export default function LocationsHubPage() {
+   const params = useParams();
++  const searchParams = useSearchParams();
+   const oaId = params.id as string;
+   const workId = params.workId as string;
+ 
+-  const [locations, setLocations] = useState<LocationWithTransition[]>([]);
+-  const [loading, setLoading] = useState(true);
+-  const [error, setError] = useState<string | null>(null);
+-  const [expandedQR, setExpandedQR] = useState<string | null>(null);
+-
+-  // 検索 / ソート
+-  const [search, setSearch] = useState("");
+-  const [sortKey, setSortKey] = useState<SortKey>("updated");
+-
+-  // チェックイン統計（location-stats API）
+-  const [locStats, setLocStats] = useState<Map<string, LocStatSummary>>(new Map());
+-
+-  useEffect(() => {
+-    const token = getDevToken();
+-    (async () => {
+-      try {
+-        const data = await locationApi.list(token, workId);
+-        setLocations(data);
+-      } catch (err) {
+-        setError(err instanceof Error ? err.message : "読み込みに失敗しました");
+-      } finally {
+-        setLoading(false);
+-      }
+-    })();
+-    // 統計を並行取得（失敗しても一覧表示には影響しない）
+-    fetch(`/api/works/${workId}/location-stats`, {
+-      headers: token ? { Authorization: `Bearer ${token}` } : {},
+-    })
+-      .then((r) => r.ok ? r.json() : null)
+-      .then((json) => {
+-        if (json?.success && json.data?.by_location) {
+-          const m = new Map<string, LocStatSummary>();
+-          for (const s of json.data.by_location) {
+-            m.set(s.location_id, s);
+-          }
+-          setLocStats(m);
+-        }
+-      })
+-      .catch(() => {});
+-  }, [workId]);
+-
+-  // フィルタ + ソート
+-  const filteredLocations = useMemo(() => {
+-    let list = locations;
+-    if (search.trim()) {
+-      const q = search.trim().toLowerCase();
+-      list = list.filter((l) =>
+-        l.name.toLowerCase().includes(q) || (l.description ?? "").toLowerCase().includes(q),
+-      );
+-    }
+-    return [...list].sort((a, b) => {
+-      if (sortKey === "name") return a.name.localeCompare(b.name, "ja");
+-      return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
+-    });
+-  }, [locations, search, sortKey]);
+-
+-  const liffId = process.env.NEXT_PUBLIC_LIFF_ID;
++  const activeTab = resolveLocationTab(searchParams.get("tab"));
+ 
+   return (
+     <div style={{ maxWidth: 900, margin: "0 auto", padding: "24px 16px" }}>
+-      <Breadcrumb items={[
+-        { label: "OA一覧", href: "/oas" },
+-        { label: "作品", href: `/oas/${oaId}` },
+-        { label: "ロケーション" },
+-      ]} />
+-
+-      {/* ── ヘッダー ── */}
+-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap", gap: 8 }}>
+-        <h1 style={{ fontSize: 22, fontWeight: 700 }}>ロケーション</h1>
+-        <div style={{ display: "flex", gap: 8 }}>
+-          {liffId && locations.length > 0 && (
+-            <Link
+-              href={`/oas/${oaId}/works/${workId}/locations/print`}
+-              style={{ padding: "8px 14px", background: "#f3f4f6", color: "#374151", borderRadius: 8, fontSize: 13, fontWeight: 600, textDecoration: "none", border: "1px solid #e5e7eb" }}
+-            >
+-              QR一括印刷
+-            </Link>
+-          )}
+-          <Link
+-            href={`/oas/${oaId}/works/${workId}/locations/new`}
+-            style={{ padding: "8px 18px", background: "#2563eb", color: "#fff", borderRadius: 8, fontSize: 14, fontWeight: 600, textDecoration: "none" }}
+-          >
+-            + ロケーションを追加
+-          </Link>
+-        </div>
++      <Breadcrumb
++        items={[
++          { label: "OA一覧", href: "/oas" },
++          { label: "作品", href: `/oas/${oaId}/works/${workId}` },
++          { label: "ロケーション" },
++        ]}
++      />
++
++      <div style={{ marginBottom: 12 }}>
++        <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>ロケーション</h1>
++        <p style={{ fontSize: 13, color: "#6b7280", marginTop: 6, lineHeight: 1.6 }}>
++          GPS・ビーコン・QRを使って、現地での到達判定や体験の進行トリガーを管理できます。
++        </p>
+       </div>
+ 
+-      {/* ── ツールバー: 検索 + ソート ── */}
+-      {locations.length > 0 && (
+-        <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap", alignItems: "center" }}>
+-          <input
+-            type="search"
+-            placeholder="名前・説明で検索"
+-            value={search}
+-            onChange={(e) => setSearch(e.target.value)}
+-            style={{
+-              flex: 1, minWidth: 200, padding: "8px 12px",
+-              border: "1px solid #d1d5db", borderRadius: 8,
+-              fontSize: 13, outline: "none",
+-            }}
+-          />
+-          <select
+-            value={sortKey}
+-            onChange={(e) => setSortKey(e.target.value as SortKey)}
+-            style={{
+-              padding: "8px 12px", border: "1px solid #d1d5db",
+-              borderRadius: 8, fontSize: 13, background: "#fff",
+-            }}
+-          >
+-            <option value="updated">更新日順</option>
+-            <option value="name">名前順</option>
+-          </select>
+-          <span style={{ fontSize: 12, color: "#9ca3af" }}>
+-            {filteredLocations.length} / {locations.length} 件
+-          </span>
+-        </div>
+-      )}
+-
+-      {!liffId && (
+-        <div style={{ padding: 12, background: "#fef3c7", border: "1px solid #fcd34d", borderRadius: 8, color: "#92400e", fontSize: 13, marginBottom: 16 }}>
+-          LIFF ID が未設定のため QR コードを生成できません。<code style={{ fontSize: 11 }}>NEXT_PUBLIC_LIFF_ID</code> を設定してください。
+-        </div>
+-      )}
+-
+-      {loading && <div style={{ textAlign: "center", padding: 40, color: "#6b7280" }}>読み込み中...</div>}
+-      {error && <div style={{ padding: 16, background: "#fef2f2", border: "1px solid #fca5a5", borderRadius: 8, color: "#dc2626" }}>{error}</div>}
+-
+-      {/* ── 空状態 ── */}
+-      {!loading && !error && locations.length === 0 && (
+-        <div style={{ textAlign: "center", padding: 60, background: "#f9fafb", borderRadius: 12, border: "1px dashed #d1d5db", color: "#6b7280" }}>
+-          <div style={{ fontSize: 40, marginBottom: 12 }}>📍</div>
+-          <p style={{ fontSize: 18, fontWeight: 600, color: "#374151", marginBottom: 8 }}>ロケーションを追加しましょう</p>
+-          <p style={{ fontSize: 13, lineHeight: 1.7, marginBottom: 20 }}>
+-            GPS チェックインや QR スタンプラリーで使う地点を作成します。
+-            <br />地図上で場所を選び、半径を設定するだけで始められます。
+-          </p>
+-          <Link
+-            href={`/oas/${oaId}/works/${workId}/locations/new`}
+-            style={{ display: "inline-block", padding: "10px 24px", background: "#2563eb", color: "#fff", borderRadius: 8, fontSize: 14, fontWeight: 600, textDecoration: "none" }}
+-          >
+-            + 最初のロケーションを作成
+-          </Link>
+-        </div>
+-      )}
+-
+-      {/* ── ロケーション一覧 ── */}
+-      {!loading && filteredLocations.length > 0 && (
+-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+-          {filteredLocations.map((loc) => {
+-            const liffUrl = liffId ? buildLiffUrl(liffId, loc.id, workId) : null;
+-            const isExpanded = expandedQR === loc.id;
+-            const stats = locStats.get(loc.id);
+-            const modeBadge = MODE_BADGE[loc.checkin_mode] ?? MODE_BADGE.qr_only;
+-            const action = actionSummary(loc);
+-            return (
+-              <div key={loc.id} style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 12, boxShadow: "0 1px 4px rgba(0,0,0,0.05)", overflow: "hidden" }}>
+-                <Link
+-                  href={`/oas/${oaId}/works/${workId}/locations/${loc.id}`}
+-                  style={{ display: "block", padding: "16px 20px", textDecoration: "none", color: "inherit" }}
+-                >
+-                  <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+-                    <div style={{ flex: 1, minWidth: 0 }}>
+-                      {/* 名前行 + バッジ */}
+-                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+-                        <span style={{ fontWeight: 600, fontSize: 15 }}>{loc.name}</span>
+-                        {!loc.is_active && (
+-                          <span style={{ fontSize: 10, background: "#f3f4f6", color: "#6b7280", padding: "2px 8px", borderRadius: 10, fontWeight: 500 }}>無効</span>
+-                        )}
+-                        <span style={{ fontSize: 10, background: modeBadge.bg, color: modeBadge.color, padding: "2px 8px", borderRadius: 10, fontWeight: 600 }}>
+-                          {modeBadge.label}
+-                        </span>
+-                        {loc.radius_meters && loc.checkin_mode !== "qr_only" && (
+-                          <span style={{ fontSize: 10, color: "#9ca3af" }}>{loc.radius_meters}m</span>
+-                        )}
+-                      </div>
+-                      {loc.description && <p style={{ fontSize: 13, color: "#6b7280", marginTop: 4 }}>{loc.description}</p>}
+-
+-                      {/* メタ情報行 */}
+-                      <div style={{ display: "flex", gap: 12, marginTop: 8, fontSize: 12, color: "#9ca3af", flexWrap: "wrap" }}>
+-                        {action && <span>{action}</span>}
+-                        <span>CD: {loc.cooldown_seconds}秒</span>
+-                        {stats && <span style={{ color: stats.total_visits > 0 ? "#059669" : "#9ca3af", fontWeight: stats.total_visits > 0 ? 600 : 400 }}>チェックイン: {stats.total_visits}</span>}
+-                      </div>
+-                    </div>
+-
+-                    {/* 右側: テスト + 編集 */}
+-                    <div style={{ display: "flex", gap: 6, flexShrink: 0, alignItems: "center" }}>
+-                      {liffUrl && (
+-                        <button
+-                          type="button"
+-                          onClick={(e) => { e.preventDefault(); e.stopPropagation(); window.open(liffUrl, "_blank"); }}
+-                          style={{
+-                            padding: "5px 10px", fontSize: 11, fontWeight: 600,
+-                            background: "#ecfdf5", color: "#059669",
+-                            border: "1px solid #86efac", borderRadius: 6, cursor: "pointer",
+-                          }}
+-                        >
+-                          テスト
+-                        </button>
+-                      )}
+-                      <span style={{ color: "#9ca3af", fontSize: 20 }}>›</span>
+-                    </div>
+-                  </div>
+-                </Link>
+-
+-                {/* QR + URL セクション */}
+-                {liffUrl && (
+-                  <div style={{ padding: "0 20px 16px", borderTop: "1px solid #f3f4f6" }}>
+-                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
+-                      <div style={{ flex: 1, fontSize: 11, color: "#3b82f6", wordBreak: "break-all", background: "#f0f9ff", padding: "6px 10px", borderRadius: 6 }}>
+-                        {liffUrl}
+-                      </div>
+-                      <CopyButton text={liffUrl} />
+-                      <button
+-                        type="button"
+-                        onClick={() => setExpandedQR(isExpanded ? null : loc.id)}
+-                        style={{ padding: "3px 10px", fontSize: 11, fontWeight: 600, background: "#f3f4f6", color: "#374151", border: "1px solid #e5e7eb", borderRadius: 6, cursor: "pointer", whiteSpace: "nowrap" }}
+-                      >
+-                        {isExpanded ? "QR閉じる" : "QR表示"}
+-                      </button>
+-                    </div>
+-                    {isExpanded && (
+-                      <div style={{ marginTop: 12, display: "flex", justifyContent: "center" }}>
+-                        <QRCodeSVG value={liffUrl} size={160} level="M" />
+-                      </div>
+-                    )}
+-                  </div>
+-                )}
+-              </div>
+-            );
+-          })}
+-        </div>
+-      )}
++      <LocationTabs oaId={oaId} workId={workId} activeTab={activeTab} />
+ 
+-      {/* 検索結果なし */}
+-      {!loading && locations.length > 0 && filteredLocations.length === 0 && (
+-        <div style={{ textAlign: "center", padding: 40, color: "#9ca3af" }}>
+-          「{search}」に一致するロケーションはありません
+-        </div>
+-      )}
++      {activeTab === "gps"     && <GpsPanel        oaId={oaId} workId={workId} />}
++      {activeTab === "beacons" && <BeaconListPanel oaId={oaId} workId={workId} />}
++      {activeTab === "qr"      && <QrPanel         oaId={oaId} workId={workId} />}
+     </div>
+   );
+ }
+diff --git a/src/app/oas/[id]/works/[workId]/page.tsx b/src/app/oas/[id]/works/[workId]/page.tsx
+index 5fd47e0..5d66916 100644
+--- a/src/app/oas/[id]/works/[workId]/page.tsx
++++ b/src/app/oas/[id]/works/[workId]/page.tsx
+@@ -74,7 +74,7 @@ const HUB_CARDS = [
+   {
+     key:   "locations",
+     title: "ロケーション",
+-    desc:  "GPSチェックイン地点の追加・編集とチェックイン履歴を管理します",
++    desc:  "GPS・ビーコン・QRを使って、現地で発火する体験トリガーを管理します",
+     color: "#dc2626",
+     bg:    "#fef2f2",
+   },
+-- 
+2.43.0
+

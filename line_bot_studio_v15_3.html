@@ -1,0 +1,797 @@
+
+<style>
+/* ════════════════════════════════════════
+   LINE Bot Studio v15.3 — Design System
+   変更ポイント:
+   1. サイドバー幅: 196px → 280px
+   2. メッセージリスト: ボタン名・列名変更・20文字表示
+   3. LINEプレビュー: 1.4倍拡大
+   4. 謎作成フォーム: 入力欄を明確化
+   5. リッチメニュー: エリア設定を80%縮小
+════════════════════════════════════════ */
+:root{
+  --g:#06C755;--gd:#04a847;--gl:#f0fdf4;--g50:#f0fdf4;--g100:#dcfce7;
+  --cr:14px;--r:10px;--r-sm:6px;
+  --shadow-sm:0 1px 3px rgba(0,0,0,.08),0 1px 2px rgba(0,0,0,.05);
+  --shadow-md:0 4px 12px rgba(0,0,0,.08),0 2px 4px rgba(0,0,0,.04);
+  --font:var(--font-sans,'Helvetica Neue',system-ui,sans-serif);
+  /* ① サイドバー幅: 280px */
+  --sidebar-w:280px;
+  --content-max:960px;
+  /* ④ 入力欄: #f7f7f7 相当のグレー */
+  --input-bg:var(--color-background-secondary);
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:var(--font);font-size:13px;color:var(--color-text-primary);line-height:1.5;}
+
+.shell{display:flex;min-height:760px;width:100%;border-radius:var(--cr);overflow:hidden;border:0.5px solid var(--color-border-tertiary);background:var(--color-background-tertiary);}
+
+/* ═══ ① サイドバー: 280px・余白拡大・文字大きめ ═══ */
+.sidebar{
+  width:var(--sidebar-w);
+  background:var(--color-background-primary);
+  border-right:0.5px solid var(--color-border-tertiary);
+  display:flex;flex-direction:column;flex-shrink:0;overflow-y:auto;
+}
+.sb-logo{padding:18px 20px;border-bottom:0.5px solid var(--color-border-tertiary);display:flex;align-items:center;gap:12px;}
+.sb-logo-mark{width:32px;height:32px;border-radius:9px;background:var(--g);display:flex;align-items:center;justify-content:center;color:white;font-weight:700;font-size:15px;flex-shrink:0;}
+.sb-logo-name{font-size:13px;font-weight:700;line-height:1.2;}
+.sb-logo-sub{font-size:11px;color:var(--color-text-secondary);}
+.sb-sec{padding:16px 12px 6px;}
+.sb-lbl{
+  padding:0 10px 5px;
+  font-size:10px;font-weight:700;letter-spacing:.09em;
+  color:var(--color-text-secondary);text-transform:uppercase;
+}
+.sb-item{
+  display:flex;align-items:center;gap:10px;
+  padding:9px 10px;border-radius:var(--r);cursor:pointer;
+  /* ① 文字サイズ 13px */
+  font-size:13px;color:var(--color-text-secondary);
+  transition:background .1s,color .1s;
+  border-left:3px solid transparent;margin:2px 0;
+}
+.sb-item:hover{background:var(--color-background-secondary);color:var(--color-text-primary);}
+.sb-item.active{background:var(--gl);color:var(--gd);border-left-color:var(--g);font-weight:600;}
+.sb-icon{font-size:14px;width:18px;text-align:center;flex-shrink:0;}
+
+/* ─── Main ─── */
+.main{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0;}
+.oa-bar{background:var(--color-background-secondary);border-bottom:0.5px solid var(--color-border-tertiary);padding:8px 22px;display:flex;align-items:center;gap:10px;flex-shrink:0;}
+.oa-sel{padding:5px 28px 5px 10px;font-size:12px;border:1px solid var(--color-border-secondary);border-radius:7px;background:var(--input-bg);color:var(--color-text-primary);outline:none;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23888'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 8px center;cursor:pointer;}
+.oa-badge{padding:3px 10px;border-radius:20px;font-size:11px;font-weight:500;background:var(--g100);color:var(--gd);}
+.topbar{background:var(--color-background-primary);border-bottom:0.5px solid var(--color-border-tertiary);padding:12px 22px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
+.topbar-title{font-size:15px;font-weight:700;}
+.content-wrap{flex:1;overflow-y:auto;padding:20px 22px;}
+.content-inner{max-width:var(--content-max);margin:0 auto;}
+.page{display:none;}
+.page.active{display:block;}
+
+/* ─── Buttons ─── */
+.btn{padding:7px 14px;border-radius:var(--r);font-size:12px;font-weight:500;cursor:pointer;transition:all .12s;line-height:1;white-space:nowrap;border:none;display:inline-flex;align-items:center;gap:5px;}
+.btn-primary{background:var(--g);color:white;}
+.btn-primary:hover{background:var(--gd);}
+.btn-secondary{background:transparent;border:1px solid var(--color-border-secondary)!important;color:var(--color-text-secondary);}
+.btn-secondary:hover{background:var(--color-background-secondary);color:var(--color-text-primary);}
+.btn-danger{background:white;border:1.5px solid #dc2626!important;color:#dc2626;font-weight:600;}
+.btn-danger:hover{background:#fef2f2;}
+/* ② 「公開」ボタン: 緑枠・緑テキスト */
+.btn-publish{background:white;border:1.5px solid var(--g)!important;color:var(--gd);font-weight:600;}
+.btn-publish:hover{background:var(--gl);}
+.btn-sm{padding:5px 10px;font-size:11px;}
+.btn-xs{padding:3px 8px;font-size:10px;border-radius:5px;}
+
+/* ─── Cards ─── */
+.card{background:var(--color-background-primary);border-radius:var(--cr);border:0.5px solid var(--color-border-tertiary);box-shadow:var(--shadow-sm);}
+.card-hd{padding:14px 18px;border-bottom:0.5px solid var(--color-border-tertiary);display:flex;align-items:center;justify-content:space-between;gap:8px;}
+.card-hd-title{font-size:13px;font-weight:600;}
+.card-body{padding:18px;}
+
+/* ─── Form fields ─── */
+.field{margin-bottom:14px;}
+.field:last-child{margin-bottom:0;}
+.f-label{display:block;font-size:12px;font-weight:600;color:var(--color-text-primary);margin-bottom:6px;}
+.f-note{font-size:10px;color:var(--color-text-secondary);opacity:.65;margin-left:4px;font-weight:400;}
+.f-hint{font-size:10px;color:var(--color-text-secondary);margin-top:4px;line-height:1.5;}
+/* ④ 入力欄: 明確なグレー背景 */
+.f-input{
+  width:100%;padding:9px 11px;
+  border:1.5px solid transparent;
+  border-radius:var(--r);
+  background:var(--input-bg);
+  color:var(--color-text-primary);
+  font-size:12px;outline:none;
+  transition:border-color .15s,box-shadow .15s;
+  font-family:var(--font);line-height:1.5;
+}
+.f-input::placeholder{color:var(--color-text-secondary);opacity:.65;}
+.f-input:hover:not(:focus):not([readonly]){border-color:var(--color-border-secondary);}
+.f-input:focus{border-color:var(--g);box-shadow:0 0 0 3px rgba(6,199,85,.12);background:var(--input-bg);}
+textarea.f-input{resize:vertical;min-height:68px;}
+.f-input[readonly]{color:var(--color-text-secondary);cursor:default;}
+.f-input.mono{font-family:var(--font-mono,monospace);font-size:11px;}
+.f-sel{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23888'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;padding-right:28px;cursor:pointer;}
+.f-row{display:flex;gap:8px;align-items:stretch;}
+.f-row .f-input{flex:1;}
+.copy-btn{flex-shrink:0;padding:8px 11px;border-radius:var(--r);font-size:11px;font-weight:500;border:1px solid var(--color-border-secondary);background:var(--input-bg);color:var(--color-text-secondary);cursor:pointer;transition:all .12s;white-space:nowrap;}
+.copy-btn:hover{border-color:var(--color-border-primary);color:var(--color-text-primary);}
+.url-box{display:flex;align-items:center;gap:8px;padding:9px 11px;border:1.5px solid transparent;border-radius:var(--r);background:var(--input-bg);font-size:11px;color:var(--color-text-secondary);font-family:var(--font-mono,monospace);}
+.url-box-text{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+
+/* ─── Chips ─── */
+.chips{display:flex;flex-wrap:wrap;gap:6px;}
+.chip{padding:6px 14px;border-radius:20px;border:1.5px solid var(--color-border-secondary);font-size:11px;font-weight:500;cursor:pointer;transition:all .12s;background:var(--input-bg);color:var(--color-text-secondary);user-select:none;}
+.chip:hover{border-color:var(--color-border-primary);color:var(--color-text-primary);}
+.chip.active{background:var(--gl);border-color:var(--g);color:var(--gd);}
+.match-opts{display:flex;flex-wrap:wrap;gap:5px;}
+.match-opt{padding:4px 10px;border-radius:20px;border:1.5px solid var(--color-border-secondary);font-size:10px;cursor:pointer;transition:all .12s;background:var(--input-bg);color:var(--color-text-secondary);}
+.match-opt:hover{border-color:var(--color-border-primary);}
+.match-opt.sel{background:var(--gl);border-color:var(--g);color:var(--gd);font-weight:500;}
+
+/* ─── Grids ─── */
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:11px;}
+.g4{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;}
+/* ③ キャラクター: 左カラムを広く、右プレビューは320px固定 */
+.g-chars{display:grid;grid-template-columns:1fr 320px;gap:16px;align-items:start;}
+.g-sidebar{display:grid;grid-template-columns:200px 1fr;gap:16px;align-items:start;}
+/* ⑤ リッチメニュー: 左右を均等に */
+.g-richmenu{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start;}
+
+.div{height:1px;background:var(--color-border-tertiary);margin:16px 0;}
+
+/* ─── Tabs ─── */
+.tabs{display:flex;border-bottom:0.5px solid var(--color-border-tertiary);margin-bottom:18px;}
+.tab-btn{padding:9px 14px;font-size:12px;cursor:pointer;color:var(--color-text-secondary);border-bottom:2px solid transparent;margin-bottom:-0.5px;transition:all .12s;white-space:nowrap;background:none;border-top:none;border-left:none;border-right:none;}
+.tab-btn.active{color:var(--gd);border-bottom-color:var(--g);font-weight:600;}
+.tab-btn:hover:not(.active){color:var(--color-text-primary);}
+.tab-pane{display:none;}
+.tab-pane.active{display:block;}
+
+/* ─── Badges ─── */
+.badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:500;}
+.badge-pub{background:#dbeafe;color:#1d4ed8;}
+.badge-draft{background:var(--color-background-secondary);color:var(--color-text-secondary);}
+
+/* ─── QR pills ─── */
+.qr-row{display:flex;align-items:center;gap:6px;margin-bottom:5px;}
+.qr-pill{padding:4px 12px;border-radius:20px;border:1px solid var(--g);color:var(--gd);font-size:11px;font-weight:500;background:var(--g50);}
+
+/* ─── Section header ─── */
+.sec-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;}
+.sec-hd-sub{font-size:11px;color:var(--color-text-secondary);}
+
+/* ─── Upload ─── */
+.upload{border:1.5px dashed var(--color-border-secondary);border-radius:var(--r);padding:16px 12px;text-align:center;cursor:pointer;color:var(--color-text-secondary);font-size:12px;transition:all .12s;background:var(--input-bg);}
+.upload:hover{border-color:var(--g);color:var(--gd);background:var(--g50);}
+.upload-icon{font-size:20px;margin-bottom:5px;}
+.upload-sub{font-size:10px;margin-top:3px;opacity:.7;}
+
+/* ③ LINE Preview: 拡大版 */
+.line-prev{background:#e8f5db;border-radius:13px;overflow:hidden;}
+.line-prev-hd{background:rgba(0,0,0,.07);padding:10px 14px;display:flex;align-items:center;gap:9px;font-size:12px;color:#3a4a3a;font-weight:600;}
+.line-prev-dot{width:18px;height:18px;border-radius:50%;background:var(--g);display:flex;align-items:center;justify-content:center;color:white;font-size:8px;font-weight:700;}
+.line-prev-body{padding:14px;display:flex;flex-direction:column;gap:12px;}
+.line-brow{display:flex;align-items:flex-start;gap:10px;}
+/* ③ アバターを大きく */
+.line-av{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;flex-shrink:0;overflow:hidden;}
+.line-av img{width:100%;height:100%;object-fit:cover;border-radius:50%;}
+.line-sender{font-size:11px;color:#555;margin-bottom:4px;}
+/* ③ 吹き出しを大きく */
+.line-msg{background:white;border-radius:2px 12px 12px 12px;padding:11px 14px;font-size:13px;line-height:1.6;max-width:230px;color:#222;box-shadow:0 1px 3px rgba(0,0,0,.08);}
+.line-qrs{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;margin-left:46px;}
+.line-qr{padding:6px 14px;border-radius:20px;border:1px solid var(--g);color:var(--gd);font-size:12px;font-weight:500;background:white;}
+
+/* ─── Char ─── */
+.av{border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:600;overflow:hidden;flex-shrink:0;}
+.av img{width:100%;height:100%;object-fit:cover;border-radius:50%;}
+.char-item{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:var(--r);cursor:pointer;transition:background .1s;border:1px solid transparent;}
+.char-item:hover{background:var(--color-background-secondary);}
+.char-item.selected{background:var(--gl);border-color:rgba(6,199,85,.3);}
+.char-name{font-size:12px;font-weight:500;}
+.char-sub{font-size:11px;color:var(--color-text-secondary);}
+.av-wrap{position:relative;width:56px;height:56px;border-radius:50%;cursor:pointer;flex-shrink:0;}
+.av-inner{width:56px;height:56px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:600;overflow:hidden;border:1px solid var(--color-border-tertiary);}
+.av-inner img{width:100%;height:100%;object-fit:cover;border-radius:50%;}
+.av-ov{position:absolute;inset:0;border-radius:50%;background:rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .15s;font-size:14px;}
+.av-wrap:hover .av-ov{opacity:1;}
+.color-dots{display:flex;gap:7px;flex-wrap:wrap;margin-top:4px;}
+.cdot{width:22px;height:22px;border-radius:50%;cursor:pointer;border:2.5px solid transparent;transition:transform .1s,border-color .1s;}
+.cdot.sel{border-color:var(--color-text-primary);transform:scale(1.18);}
+.cdot:hover{transform:scale(1.1);}
+
+/* ─── Msg blocks ─── */
+.msg-block{border:1px solid var(--color-border-tertiary);border-radius:var(--r);margin-bottom:10px;overflow:hidden;background:var(--color-background-primary);}
+.msg-block-hd{background:var(--color-background-secondary);padding:9px 14px;border-bottom:1px solid var(--color-border-tertiary);display:flex;align-items:center;justify-content:space-between;}
+.msg-type-bar{display:flex;gap:4px;padding:9px 14px;border-bottom:1px solid var(--color-border-tertiary);}
+.type-btn{width:34px;height:34px;border-radius:var(--r-sm);display:flex;align-items:center;justify-content:center;cursor:pointer;border:1.5px solid transparent;transition:all .12s;background:var(--input-bg);color:var(--color-text-secondary);}
+.type-btn svg{width:16px;height:16px;}
+.type-btn:hover{border-color:var(--color-border-secondary);}
+.type-btn.active{border-color:var(--g);background:var(--g50);color:var(--gd);}
+.msg-block-body{padding:14px;}
+.char-count{text-align:right;font-size:10px;color:var(--color-text-secondary);margin-top:3px;}
+
+/* ─── Riddle ─── */
+.riddle-item{border:1px solid var(--color-border-tertiary);border-radius:var(--r);margin-bottom:9px;overflow:hidden;background:var(--color-background-primary);}
+.riddle-hd{padding:12px 16px;background:var(--color-background-secondary);border-bottom:1px solid var(--color-border-tertiary);display:flex;align-items:center;justify-content:space-between;cursor:pointer;}
+/* ④ 謎作成: 2カラムレイアウト */
+.riddle-body{padding:18px;display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+
+/* ─── Metrics ─── */
+.metric-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px;}
+.metric-card{background:var(--color-background-secondary);border-radius:var(--r);padding:14px;border:1px solid var(--color-border-tertiary);}
+.m-label{font-size:11px;color:var(--color-text-secondary);margin-bottom:5px;}
+.m-value{font-size:22px;font-weight:600;line-height:1.1;}
+.m-sub{font-size:10px;color:var(--color-text-secondary);margin-top:3px;}
+
+/* ─── Step ─── */
+.step-item{display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--input-bg);border:1.5px solid transparent;border-radius:var(--r);margin-bottom:5px;}
+.phase-item{display:flex;align-items:center;gap:9px;padding:9px 12px;border-radius:var(--r);cursor:pointer;transition:background .1s;border:1px solid transparent;}
+.phase-item:hover{background:var(--color-background-secondary);}
+.phase-item.sel{background:var(--gl);border-color:rgba(6,199,85,.3);}
+.phase-num{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;flex-shrink:0;}
+
+/* ─── Cards (seg/sns/tc) ─── */
+.seg-card{background:var(--color-background-primary);border:1px solid var(--color-border-tertiary);border-radius:var(--r);padding:15px 17px;margin-bottom:10px;}
+.sns-card{background:var(--color-background-secondary);border:1px solid var(--color-border-tertiary);border-radius:var(--r);padding:15px 17px;margin-bottom:10px;}
+.tc-card{background:var(--color-background-primary);border:1px solid var(--color-border-tertiary);border-radius:var(--r);padding:17px;margin-bottom:10px;}
+.form-group{background:var(--color-background-secondary);border:1px solid var(--color-border-tertiary);border-radius:var(--r);padding:14px;margin-bottom:10px;}
+.form-note{font-size:11px;color:var(--color-text-secondary);margin-top:5px;line-height:1.5;}
+
+/* SCH selector */
+.sch{display:flex;align-items:center;gap:8px;padding:8px 11px;border-radius:var(--r);border:1.5px solid transparent;cursor:pointer;font-size:12px;background:var(--input-bg);transition:all .12s;}
+.sch:hover{border-color:var(--color-border-secondary);}
+.sch.active{border-color:var(--g);background:var(--gl);color:var(--gd);}
+
+/* Bar chart */
+.bar-row{display:flex;align-items:center;gap:10px;margin-bottom:6px;}
+.bar-lbl{font-size:11px;color:var(--color-text-secondary);width:80px;text-align:right;flex-shrink:0;}
+.bar-track{flex:1;height:10px;background:var(--color-background-secondary);border-radius:5px;overflow:hidden;border:1px solid var(--color-border-tertiary);}
+.bar-fill{height:100%;border-radius:5px;}
+.bar-val{font-size:11px;color:var(--color-text-secondary);width:34px;}
+
+/* ─── ② Data table ─── */
+.data-table{width:100%;border-collapse:collapse;}
+.data-table th{padding:9px 14px;font-size:10px;font-weight:700;color:var(--color-text-secondary);text-transform:uppercase;letter-spacing:.05em;text-align:left;background:var(--color-background-secondary);border-bottom:1px solid var(--color-border-tertiary);}
+.data-table td{padding:11px 14px;font-size:12px;border-bottom:0.5px solid var(--color-border-tertiary);vertical-align:middle;}
+.data-table tr:last-child td{border-bottom:none;}
+.data-table tr:hover td{background:var(--color-background-secondary);}
+.td-kw{font-weight:500;}
+/* ② 「メッセージ」列: 最大20文字 */
+.td-msg{color:var(--color-text-secondary);overflow:hidden;white-space:nowrap;text-overflow:ellipsis;max-width:160px;}
+
+/* ⑤ RM grid — 80%縮小 */
+.rm-grid{display:grid;gap:3px;background:var(--color-border-tertiary);border-radius:var(--r-sm);overflow:hidden;}
+.rm-cell{background:var(--color-background-secondary);display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;border:2px solid transparent;transition:all .12s;position:relative;min-height:32px;font-size:10px;}
+.rm-cell:hover,.rm-cell.sel{border-color:var(--g);background:var(--g50);}
+.rm-cell-ov{position:absolute;inset:0;background:rgba(6,199,85,.12);display:none;}
+.rm-cell.sel .rm-cell-ov{display:block;}
+.rm-cell-lbl{position:absolute;bottom:3px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.5);color:white;font-size:7px;padding:1px 5px;border-radius:8px;white-space:nowrap;}
+
+/* Toast / Dialog */
+.toast{position:fixed;bottom:16px;right:16px;background:#1a1a1a;color:white;padding:9px 15px;border-radius:var(--r);font-size:12px;opacity:0;pointer-events:none;z-index:9999;transition:opacity .2s;box-shadow:var(--shadow-md);}
+.toast.show{opacity:1;}
+#dlgOverlay{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:center;justify-content:center;z-index:9000;}
+#dlgBox{background:var(--color-background-primary);border-radius:var(--cr);padding:24px;width:320px;box-shadow:0 8px 32px rgba(0,0,0,.18);z-index:9001;position:relative;}
+#dlgTitle{font-size:14px;font-weight:600;margin-bottom:8px;}
+#dlgMsg{font-size:12px;color:var(--color-text-secondary);margin-bottom:20px;line-height:1.5;}
+#dlgBtns{display:flex;gap:8px;justify-content:flex-end;}
+</style>
+
+<div id="dlgOverlay">
+  <div id="dlgBox">
+    <div id="dlgTitle">削除の確認</div>
+    <div id="dlgMsg">本当に削除しますか？</div>
+    <div id="dlgBtns">
+      <button class="btn btn-secondary" id="dlgCancel">キャンセル</button>
+      <button class="btn btn-danger" id="dlgOk">削除する</button>
+    </div>
+  </div>
+</div>
+
+<div class="shell">
+<!-- ① サイドバー: 280px・余白拡大・文字13px -->
+<nav class="sidebar">
+  <div class="sb-logo">
+    <div class="sb-logo-mark">L</div>
+    <div><div class="sb-logo-name">LINE Bot Studio</div><div class="sb-logo-sub">by ピントクル</div></div>
+  </div>
+  <div class="sb-sec">
+    <div class="sb-lbl">基本設定</div>
+    <div class="sb-item active" onclick="goPage('chars',this)"><span class="sb-icon">👤</span>キャラクター</div>
+    <div class="sb-item" onclick="goPage('scenes',this)"><span class="sb-icon">🎭</span>フェーズ</div>
+    <div class="sb-item" onclick="goPage('riddlelist',this)"><span class="sb-icon">📋</span>謎リスト</div>
+    <div class="sb-item" onclick="goPage('riddles',this)"><span class="sb-icon">🔐</span>謎作成</div>
+  </div>
+  <div class="sb-sec">
+    <div class="sb-lbl">メッセージ</div>
+    <div class="sb-item" onclick="goPage('greeting',this)"><span class="sb-icon">👋</span>あいさつメッセージ</div>
+    <div class="sb-item" onclick="goPage('msglist',this)"><span class="sb-icon">📋</span>メッセージリスト</div>
+    <div class="sb-item" onclick="goPage('msgcreate',this)"><span class="sb-icon">✏️</span>メッセージ作成</div>
+  </div>
+  <div class="sb-sec">
+    <div class="sb-lbl">管理</div>
+    <div class="sb-item" onclick="goPage('richmenu',this)"><span class="sb-icon">🗂</span>リッチメニュー</div>
+    <div class="sb-item" onclick="goPage('qr',this)"><span class="sb-icon">🔗</span>友だち追加</div>
+    <div class="sb-item" onclick="goPage('sns',this)"><span class="sb-icon">📱</span>SNS</div>
+  </div>
+  <div class="sb-sec">
+    <div class="sb-lbl">分析</div>
+    <div class="sb-item" onclick="goPage('audience',this)"><span class="sb-icon">📈</span>オーディエンス</div>
+  </div>
+</nav>
+
+<div class="main">
+  <div class="oa-bar">
+    <span style="font-size:11px;color:var(--color-text-secondary);">OA：</span>
+    <select class="oa-sel" id="oaSel" onchange="updateOA()">
+      <option value="p">ピントクル謎bot</option><option value="e">脱出ゲームbot</option>
+    </select>
+    <span class="oa-badge" id="oaBadge">友だち 1,482人</span>
+  </div>
+  <div class="topbar">
+    <div class="topbar-title" id="pageTitle">キャラクター</div>
+    <div style="display:flex;gap:8px;">
+      <button class="btn btn-secondary" onclick="showToast('同期しました')">同期</button>
+      <button class="btn btn-primary" onclick="showToast('保存しました')">
+        <svg width="11" height="11" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 13V9h10v4M10 2H4v4h6V2zM4 2V1h6v1"/></svg>保存
+      </button>
+    </div>
+  </div>
+
+  <div class="content-wrap"><div class="content-inner">
+
+    <!-- ═══ キャラクター ═══ -->
+    <div class="page active" id="pg-chars">
+      <!-- ③ g-chars: 右プレビュー 320px -->
+      <div class="g-chars">
+        <div style="display:flex;flex-direction:column;gap:14px;">
+          <div class="card">
+            <div class="card-hd"><span class="card-hd-title">キャラクターリスト</span><button class="btn btn-primary btn-sm" onclick="addChar()">+ 追加</button></div>
+            <div class="card-body" style="padding:10px;"><div id="charList"></div></div>
+          </div>
+          <div class="card">
+            <div class="card-hd"><span class="card-hd-title">プロフィール設定</span><button class="btn btn-danger btn-sm" id="charDelBtn" onclick="deleteChar()">削除</button></div>
+            <div class="card-body">
+              <div style="display:flex;align-items:flex-start;gap:14px;margin-bottom:16px;">
+                <div class="av-wrap" onclick="document.getElementById('iconFI').click()">
+                  <div class="av-inner" id="iconPrevLg" style="background:#B5D4F4;color:#0C447C;">謎</div>
+                  <div class="av-ov">📷</div>
+                </div>
+                <input type="file" id="iconFI" style="display:none;" accept="image/*" onchange="handleIcon(event)">
+                <div>
+                  <div style="font-size:11px;color:var(--color-text-secondary);margin-bottom:7px;">JPG・PNG（推奨 640×640px）</div>
+                  <div style="display:flex;gap:6px;">
+                    <button class="btn btn-secondary btn-sm" onclick="document.getElementById('iconFI').click()">画像を選択</button>
+                    <button class="btn btn-danger btn-sm" id="rmIconBtn" style="display:none;" onclick="confirm2('アイコン画像を削除しますか？',rmIcon)">削除</button>
+                  </div>
+                </div>
+              </div>
+              <div class="div"></div>
+              <div class="g2">
+                <div class="field"><label class="f-label">アイコン文字<span class="f-note">画像未設定時</span></label><input class="f-input" id="cIcon" value="謎" maxlength="2" oninput="updCP()"></div>
+                <div class="field"><label class="f-label">アイコンカラー</label><div class="color-dots"><div class="cdot sel" style="background:#B5D4F4;" onclick="pickCol(this,'#B5D4F4','#0C447C')"></div><div class="cdot" style="background:#9FE1CB;" onclick="pickCol(this,'#9FE1CB','#085041')"></div><div class="cdot" style="background:#CECBF6;" onclick="pickCol(this,'#CECBF6','#3C3489')"></div><div class="cdot" style="background:#F5C4B3;" onclick="pickCol(this,'#F5C4B3','#712B13')"></div><div class="cdot" style="background:#FAC775;" onclick="pickCol(this,'#FAC775','#633806')"></div></div></div>
+              </div>
+              <div class="field"><label class="f-label">表示名</label><input class="f-input" id="cName" value="謎の案内人" oninput="updCP()"></div>
+              <div class="field"><label class="f-label">from 表記（OA名）<span class="f-note">任意</span></label><input class="f-input" id="cFrom" value="ピントクル謎bot" oninput="updCP()"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ③ LINEプレビュー: 横320px・拡大 -->
+        <div class="card" style="position:sticky;top:0;">
+          <div class="card-hd"><span class="card-hd-title">LINEプレビュー</span></div>
+          <div class="card-body" style="padding:14px;">
+            <div class="line-prev">
+              <div class="line-prev-hd"><div class="line-prev-dot">L</div><span>ピントクル謎bot</span></div>
+              <div class="line-prev-body">
+                <div class="line-brow">
+                  <div class="line-av" id="prevAv" style="background:#B5D4F4;color:#0C447C;width:36px;height:36px;font-size:13px;">謎</div>
+                  <div><div class="line-sender" id="prevSender">謎の案内人 from 'ピントクル謎bot'</div><div class="line-msg" style="color:#999;font-style:italic;font-size:12px;">メッセージはメッセージ作成で設定できます</div></div>
+                </div>
+              </div>
+            </div>
+            <div style="margin-top:14px;padding:13px;background:var(--color-background-secondary);border-radius:var(--r);border:1px solid var(--color-border-tertiary);">
+              <div style="font-size:10px;color:var(--color-text-secondary);margin-bottom:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;">キャラクター情報</div>
+              <div style="display:flex;flex-direction:column;gap:7px;">
+                <div style="display:flex;justify-content:space-between;font-size:12px;"><span style="color:var(--color-text-secondary);">表示名</span><span id="prevInfoName" style="font-weight:500;">謎の案内人</span></div>
+                <div style="display:flex;justify-content:space-between;font-size:12px;"><span style="color:var(--color-text-secondary);">from 表記</span><span id="prevInfoFrom" style="font-weight:500;">ピントクル謎bot</span></div>
+                <div style="display:flex;justify-content:space-between;font-size:12px;"><span style="color:var(--color-text-secondary);">アイコン文字</span><span id="prevInfoIcon" style="font-weight:500;">謎</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ フェーズ ═══ -->
+    <div class="page" id="pg-scenes">
+      <div class="g-sidebar">
+        <div class="card"><div class="card-hd"><span class="card-hd-title">フェーズ一覧</span><button class="btn btn-primary btn-sm" onclick="addScene()">+ 追加</button></div><div class="card-body" style="padding:10px;"><div id="sceneList"></div></div></div>
+        <div class="card"><div class="card-hd" id="scEditTitle" style="font-size:13px;font-weight:600;">フェーズ設定</div><div class="card-body">
+          <div class="g2"><div class="field"><label class="f-label">フェーズ名</label><input class="f-input" id="scName" value="オープニング" oninput="updateScName()"></div><div class="field"><label class="f-label">開始キーワード</label><input class="f-input" id="scStartKw" placeholder="例: スタート、はじめる"></div></div>
+          <div class="div"></div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;"><div><div style="font-size:12px;font-weight:600;">フェーズ内ステップ</div><div style="font-size:11px;color:var(--color-text-secondary);margin-top:1px;">順番に処理されます</div></div><button class="btn btn-secondary btn-sm" onclick="addSceneStep()">+ 追加</button></div>
+          <div id="sceneStepList" style="margin-bottom:6px;"></div>
+          <div class="div"></div>
+          <div class="g2"><div class="field"><label class="f-label">終了キーワード</label><input class="f-input" id="scEndKw" placeholder="例: おわり、exit"></div><div class="field"><label class="f-label">終了後のフェーズ移行</label><select class="f-input f-sel" id="scNext"><option value="">移行しない</option><option>謎1</option><option>謎2</option><option>エンディングA</option></select></div></div>
+        </div></div>
+      </div>
+    </div>
+
+    <!-- ═══ 謎リスト ═══ -->
+    <div class="page" id="pg-riddlelist">
+      <div class="card"><div class="card-hd"><span class="card-hd-title">謎リスト</span><button class="btn btn-primary btn-sm" onclick="goPage('riddles',null)">+ 新規作成</button></div>
+        <table class="data-table"><thead><tr><th style="width:44px;">画像</th><th>謎の名称</th><th>問題テキスト</th><th style="width:100px;">正解</th><th style="width:80px;">状態</th><th style="width:64px;"></th></tr></thead><tbody id="riddleListBody"></tbody></table>
+      </div>
+    </div>
+
+    <!-- ═══ 謎作成 ═══ -->
+    <div class="page" id="pg-riddles">
+      <div class="sec-hd"><span class="sec-hd-sub">各謎の詳細設定を行います</span><button class="btn btn-primary btn-sm" onclick="addRiddle()">+ 新規作成</button></div>
+      <div id="riddleEditList"></div>
+    </div>
+
+    <!-- ═══ あいさつメッセージ ═══ -->
+    <div class="page" id="pg-greeting">
+      <div class="g2">
+        <div class="card"><div class="card-hd"><span class="card-hd-title">あいさつメッセージ設定</span></div><div class="card-body">
+          <div class="field"><label class="f-label">送信元キャラクター</label>
+            <div style="display:flex;flex-direction:column;gap:5px;" id="greetChips">
+              <div class="sch active" id="gsc-def" onclick="selGS('default')"><div style="width:20px;height:20px;border-radius:50%;background:var(--color-background-secondary);border:1px solid var(--color-border-secondary);display:flex;align-items:center;justify-content:center;"><svg width="11" height="11" viewBox="0 0 12 12" fill="none"><circle cx="6" cy="4" r="2.5" fill="#888"/><path d="M1 11c0-2.761 2.239-5 5-5s5 2.239 5 5" stroke="#888" stroke-width="1.2" fill="none"/></svg></div><span style="font-weight:500;">デフォルト</span></div>
+              <div id="greetCharChips"></div>
+            </div>
+          </div>
+          <div class="div"></div>
+          <div class="field"><label class="f-label">メッセージ本文</label><textarea class="f-input" id="greetMsg" style="min-height:80px;" oninput="updGP()">ようこそ！まずは「スタート」と送ってみよう！</textarea></div>
+          <div class="field"><label class="f-label">クイックリプライ<span class="f-note">任意</span></label>
+            <div id="greetQRL" style="display:flex;flex-direction:column;gap:5px;margin-bottom:8px;"><div class="qr-row"><div class="qr-pill">スタート</div><button class="btn btn-danger btn-xs" onclick="confirm2('削除しますか？',()=>this.parentNode.remove())">削除</button></div></div>
+            <div class="f-row"><input class="f-input" id="greetQRI" placeholder="ボタンテキストを入力"><button class="btn btn-secondary btn-sm" onclick="addQR('greetQRL','greetQRI')">追加</button></div>
+          </div>
+        </div></div>
+        <div class="card"><div class="card-hd"><span class="card-hd-title">LINEプレビュー</span></div><div class="card-body" style="padding:14px;">
+          <div class="line-prev"><div class="line-prev-hd"><div class="line-prev-dot">L</div><span>ピントクル謎bot</span></div>
+            <div class="line-prev-body"><div class="line-brow"><div class="line-av" id="gPrevAv" style="background:var(--color-background-secondary);display:flex;align-items:center;justify-content:center;width:36px;height:36px;"><svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="5" r="2.8" fill="#888"/><path d="M1.5 13c0-3.038 2.462-5.5 5.5-5.5s5.5 2.462 5.5 5.5" stroke="#888" stroke-width="1.3" fill="none"/></svg></div><div><div class="line-sender" id="gPrevName">ピントクル謎bot</div><div class="line-msg" id="gPrevMsg">ようこそ！まずは「スタート」と送ってみよう！</div></div></div>
+              <div class="line-qrs"><div class="line-qr">スタート</div></div>
+            </div>
+          </div>
+        </div></div>
+      </div>
+    </div>
+
+    <!-- ═══ ② メッセージリスト ═══ -->
+    <div class="page" id="pg-msglist">
+      <div class="card"><div class="card-hd"><span class="card-hd-title">登録済みメッセージ</span><button class="btn btn-primary btn-sm" onclick="goMsgCreate(null)">+ 新規作成</button></div>
+        <table class="data-table">
+          <thead><tr>
+            <th style="width:64px;">ID</th>
+            <th style="width:120px;">キーワード</th>
+            <th style="width:110px;">応答キャラ</th>
+            <!-- ② 列名を「メッセージ」に変更 -->
+            <th>メッセージ</th>
+            <!-- ② 「編集」ボタンを右揃え -->
+            <th style="width:160px;text-align:right;">操作</th>
+          </tr></thead>
+          <tbody id="msgListBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ═══ メッセージ作成 ═══ -->
+    <div class="page" id="pg-msgcreate">
+      <div class="sec-hd"><span class="sec-hd-sub">メッセージを作成します</span><button class="btn btn-primary btn-sm" onclick="goMsgCreate(null)">+ 新規作成</button></div>
+      <div class="g2">
+        <div>
+          <div class="card" style="margin-bottom:12px;"><div class="card-hd" id="mcTitle" style="font-size:13px;font-weight:600;">メッセージ作成</div><div class="card-body">
+            <div class="g2"><div class="field"><label class="f-label">ID<span class="f-note">自動採番</span></label><div class="f-row"><input class="f-input mono" id="mcId" value="MSG-004" readonly><button class="copy-btn" onclick="showToast('IDをコピーしました')">コピー</button></div></div><div class="field"><label class="f-label">キーワード</label><input class="f-input" id="mcKw" placeholder="例: スタート、ヒント"></div></div>
+            <div class="g2"><div class="field"><label class="f-label">応答キャラクター</label><select class="f-input f-sel" id="mcChar" onchange="updMCPrev()"><option value="def">デフォルト</option><option value="0">謎の案内人</option><option value="1">助手のコウ</option><option value="2">鍵守のリン</option></select></div><div class="field"><label class="f-label">送信対象セグメント</label><select class="f-input f-sel" id="mcSegment"><option value="all">すべて（デフォルト）</option></select></div></div>
+          </div></div>
+          <div id="mcBlocks"></div>
+          <button class="btn btn-secondary" style="width:100%;padding:9px;font-size:12px;margin-bottom:12px;" onclick="addMsgBlock()">
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="2" x2="8" y2="14"/><line x1="2" y1="8" x2="14" y2="8"/></svg>メッセージを追加（2通目以降）
+          </button>
+          <div style="display:flex;gap:8px;justify-content:flex-end;"><button class="btn btn-danger btn-sm" id="mcDelBtn" style="display:none;" onclick="deleteMsgEdit()">削除</button><button class="btn btn-secondary btn-sm" onclick="saveMsgDraft()">下書き保存</button></div>
+        </div>
+        <div class="card"><div class="card-hd"><span class="card-hd-title">LINEプレビュー</span></div><div class="card-body" style="padding:14px;">
+          <div class="line-prev"><div class="line-prev-hd"><div class="line-prev-dot">L</div><span>ピントクル謎bot</span></div>
+            <div class="line-prev-body"><div class="line-brow"><div class="line-av" id="mcPrevAv" style="background:#B5D4F4;color:#0C447C;width:36px;height:36px;font-size:13px;">謎</div><div><div class="line-sender" id="mcPrevName">謎の案内人</div><div class="line-msg" id="mcPrevBody">謎の扉が開いた…<br>覚悟はいいか？</div></div></div></div>
+          </div>
+        </div></div>
+      </div>
+    </div>
+
+    <!-- ═══ ⑤ リッチメニュー ═══ -->
+    <div class="page" id="pg-richmenu">
+      <div class="g-richmenu">
+        <div class="card"><div class="card-hd"><span class="card-hd-title">リッチメニュー設定</span></div><div class="card-body">
+          <!-- ⑤ セクションをform-groupでまとめる -->
+          <div class="form-group" style="margin-bottom:12px;">
+            <div style="font-size:11px;font-weight:600;color:var(--color-text-secondary);margin-bottom:10px;">基本設定</div>
+            <div class="field"><label class="f-label">背景画像</label><div class="upload" onclick="showToast('アップロード')"><div class="upload-icon">🗂</div>背景画像をアップロード<div class="upload-sub">JPG・PNG（推奨 2500×843px）</div></div></div>
+            <div class="field" style="margin-bottom:0;"><label class="f-label">テンプレート</label><select class="f-input f-sel" id="rmTemplate" onchange="changeRMTemplate()"><option value="sq">① 正方形：1040 × 1040px</option><option value="w1">② 横長：1040 × 350px</option><option value="w2">③ 横長：1040 × 700px</option><option value="w3">④ 横長：1040 × 585px</option></select></div>
+          </div>
+          <div class="form-group">
+            <div style="font-size:11px;font-weight:600;color:var(--color-text-secondary);margin-bottom:8px;">エリア設定<span style="font-size:10px;font-weight:400;margin-left:5px;">クリックして選択</span></div>
+            <!-- ⑤ rm-grid を 80% 縮小: max-width で制御 -->
+            <div id="rmGrid" style="margin-bottom:10px;max-width:80%;"></div>
+            <div style="font-size:11px;font-weight:600;color:var(--color-text-secondary);margin-bottom:8px;" id="rmEditLbl">エリア 1 を編集</div>
+            <div class="field"><label class="f-label">管理用エリア名<span class="f-note">実画面には表示されません</span></label><input class="f-input" id="rmName" value="謎を探す"></div>
+            <div class="field" style="margin-bottom:0;"><label class="f-label">タップ時のアクション</label>
+              <select class="f-input f-sel" id="rmAction" onchange="toggleRMAction()" style="margin-bottom:8px;"><option value="link">リンクを開く</option><option value="text">テキストを送信</option></select>
+              <div id="rm-action-link"><input class="f-input" id="rmUrl" value="https://pintkuru.com/quiz" placeholder="https://"></div>
+              <div id="rm-action-text" style="display:none;"><input class="f-input" id="rmText" placeholder="ユーザーが送信するテキスト"></div>
+            </div>
+          </div>
+        </div></div>
+        <div class="card"><div class="card-hd"><span class="card-hd-title">プレビュー</span><span style="font-size:10px;color:var(--color-text-secondary);" id="rmDimLabel">1040 × 1040px</span></div><div class="card-body" style="padding:14px;">
+          <div style="background:#e8f5db;border-radius:10px;overflow:hidden;">
+            <div style="padding:8px 12px;font-size:12px;color:#3a4a3a;display:flex;align-items:center;gap:6px;font-weight:600;"><div style="width:15px;height:15px;border-radius:50%;background:var(--g);display:flex;align-items:center;justify-content:center;font-size:7px;color:white;font-weight:700;">L</div>ピントクル謎bot</div>
+            <div id="rmPrev"></div>
+          </div>
+        </div></div>
+      </div>
+    </div>
+
+    <!-- ═══ 友だち追加 ═══ -->
+    <div class="page" id="pg-qr">
+      <div class="g2">
+        <div class="card"><div class="card-hd"><span class="card-hd-title">友だち追加URL・QRコード</span></div><div class="card-body">
+          <div class="field"><label class="f-label">OAアカウント</label><select class="f-input f-sel" id="qrOA" onchange="updateQR()"><option value="p">ピントクル謎bot（@pintkuru）</option><option value="e">脱出ゲームbot（@escapebot）</option></select></div>
+          <div class="field"><label class="f-label">キャンペーン名<span class="f-note">任意</span></label><input class="f-input" id="qrCampaign" placeholder="例: SNS告知2025春"></div>
+          <div class="div"></div>
+          <div class="field"><label class="f-label">友だち追加URL</label><div class="url-box" style="margin-bottom:6px;"><div class="url-box-text" id="qrUrl">https://line.me/R/ti/p/@pintkuru</div><button class="copy-btn" onclick="showToast('コピーしました')">コピー</button></div><div class="form-note">このURLをSNSやWebサイトに掲載すると、タップで友だち追加できます</div></div>
+          <div style="display:flex;gap:8px;margin-top:12px;"><button class="btn btn-primary btn-sm" onclick="showToast('QR画像をDLしました')"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 2v9M4 7l4 4 4-4"/><path d="M2 13h12"/></svg>QR画像をDL</button><button class="btn btn-secondary btn-sm" onclick="showToast('URLをコピーしました')">URLをコピー</button></div>
+        </div></div>
+        <div class="card"><div class="card-hd"><span class="card-hd-title">QRコードプレビュー</span></div><div class="card-body" style="display:flex;flex-direction:column;align-items:center;gap:12px;padding:24px;">
+          <div style="background:white;padding:14px;border-radius:10px;border:1px solid var(--color-border-tertiary);">
+            <svg width="120" height="120" viewBox="0 0 100 100"><rect width="100" height="100" fill="white"/><rect x="8" y="8" width="30" height="30" fill="none" stroke="#06C755" stroke-width="3" rx="3"/><rect x="13" y="13" width="20" height="20" fill="#06C755" rx="1"/><rect x="62" y="8" width="30" height="30" fill="none" stroke="#06C755" stroke-width="3" rx="3"/><rect x="67" y="13" width="20" height="20" fill="#06C755" rx="1"/><rect x="8" y="62" width="30" height="30" fill="none" stroke="#06C755" stroke-width="3" rx="3"/><rect x="13" y="67" width="20" height="20" fill="#06C755" rx="1"/></svg>
+          </div>
+          <div style="text-align:center;"><div style="font-size:12px;font-weight:500;" id="qrAccountName">ピントクル謎bot</div><div style="font-size:11px;color:var(--color-text-secondary);margin-top:2px;" id="qrHandle">@pintkuru</div></div>
+          <div style="background:var(--color-background-secondary);border:1px solid var(--color-border-tertiary);border-radius:var(--r);padding:10px 14px;width:100%;text-align:center;"><div style="font-size:10px;color:var(--color-text-secondary);margin-bottom:3px;">友だち追加数（累計）</div><div style="font-size:20px;font-weight:600;">1,482 人</div></div>
+        </div></div>
+      </div>
+    </div>
+
+    <!-- ═══ SNS ═══ -->
+    <div class="page" id="pg-sns">
+      <div class="g2">
+        <div>
+          <div class="sec-hd"><div><div style="font-size:13px;font-weight:600;">SNS投稿管理</div><div class="sec-hd-sub">Xに投稿する場合、画像の登録は推奨しません</div></div><button class="btn btn-primary btn-sm" onclick="addSns()">+ 追加</button></div>
+          <div id="snsList"><div class="sns-card">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;"><div style="font-size:12px;font-weight:600;">投稿 1</div><button class="btn btn-danger btn-xs" onclick="confirm2('削除しますか？',()=>{this.closest('.sns-card').remove();showToast('削除しました')})">削除</button></div>
+            <div class="field"><label class="f-label">SNS名称</label><input class="f-input" value="X（Twitter）"></div>
+            <div class="field"><label class="f-label">投稿画像<span class="f-note">任意</span></label><div class="upload" onclick="showToast('画像をアップロード')"><div class="upload-icon">🖼</div>JPG・PNG・GIF<div class="upload-sub">推奨：1200×675px</div></div></div>
+            <div class="field"><label class="f-label">投稿文</label><textarea class="f-input" style="min-height:72px;">謎解きイベント開催中🔐 ぜひ参加してね！ #謎解き</textarea></div>
+            <div class="field"><label class="f-label">掲載URL</label><input class="f-input" value="https://pintkuru.com/event2025"></div>
+          </div></div>
+        </div>
+        <div class="card"><div class="card-hd"><span class="card-hd-title">Xプレビュー</span></div><div class="card-body">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;"><div style="width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,#B5D4F4,#9FE1CB);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;">P</div><div><div style="font-size:12px;font-weight:600;">ピントクル謎bot</div><div style="font-size:11px;color:var(--color-text-secondary);">@pintkuru</div></div></div>
+          <div style="font-size:12px;line-height:1.6;margin-bottom:10px;">謎解きイベント開催中🔐 <span style="color:#1d9bf0;">#謎解き</span></div>
+          <div style="background:var(--color-background-secondary);border-radius:var(--r);padding:10px;border:1px solid var(--color-border-tertiary);"><div style="font-size:12px;font-weight:500;margin-bottom:2px;">ピントクル謎bot - イベント2025</div><div style="font-size:11px;color:var(--color-text-secondary);">https://pintkuru.com/event2025</div></div>
+        </div></div>
+      </div>
+    </div>
+
+    <!-- ═══ オーディエンス ═══ -->
+    <div class="page" id="pg-audience">
+      <div class="tabs" id="audTabs">
+        <button class="tab-btn active" onclick="switchTab(this,'aud-data','audTabs','audPanes')">データ</button>
+        <button class="tab-btn" onclick="switchTab(this,'aud-seg','audTabs','audPanes')">セグメント設定</button>
+        <button class="tab-btn" onclick="switchTab(this,'aud-track','audTabs','audPanes')">トラッキング設定</button>
+      </div>
+      <div id="audPanes">
+        <div class="tab-pane active" id="aud-data">
+          <div class="metric-grid"><div class="metric-card"><div class="m-label">友だち追加（今月）</div><div class="m-value">+123</div><div class="m-sub">先月比 +25%</div></div><div class="metric-card"><div class="m-label">クリア済み</div><div class="m-value">312人</div><div class="m-sub">達成率 21%</div></div><div class="metric-card"><div class="m-label">ヒント使用</div><div class="m-value">847人</div><div class="m-sub">使用率 57%</div></div><div class="metric-card"><div class="m-label">7日間未復帰</div><div class="m-value">203人</div><div class="m-sub">13.7%</div></div></div>
+          <div class="g2" style="margin-bottom:16px;">
+            <div class="card"><div class="card-hd"><span class="card-hd-title">友だち増減推移</span></div><div class="card-body"><svg width="100%" height="90" viewBox="0 0 300 90" preserveAspectRatio="none"><defs><linearGradient id="lg1" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#06C755" stop-opacity=".15"/><stop offset="100%" stop-color="#06C755" stop-opacity="0"/></linearGradient></defs><path d="M0,80 L75,65 L150,45 L225,27 L300,11" fill="none" stroke="#06C755" stroke-width="2.5"/><path d="M0,80 L75,65 L150,45 L225,27 L300,11 L300,90 L0,90 Z" fill="url(#lg1)"/><circle cx="0" cy="80" r="3" fill="#06C755"/><circle cx="75" cy="65" r="3" fill="#06C755"/><circle cx="150" cy="45" r="3" fill="#06C755"/><circle cx="225" cy="27" r="3" fill="#06C755"/><circle cx="300" cy="11" r="3" fill="#06C755"/></svg></div></div>
+            <div class="card"><div class="card-hd"><span class="card-hd-title">クリア達成率</span></div><div class="card-body"><div style="display:flex;align-items:center;gap:14px;"><svg width="80" height="80" viewBox="0 0 90 90"><circle cx="45" cy="45" r="34" fill="none" stroke="var(--color-background-secondary)" stroke-width="13"/><circle cx="45" cy="45" r="34" fill="none" stroke="#06C755" stroke-width="13" stroke-dasharray="45 169" stroke-dashoffset="-42" transform="rotate(-90 45 45)"/><circle cx="45" cy="45" r="34" fill="none" stroke="#B5D4F4" stroke-width="13" stroke-dasharray="124 90" stroke-dashoffset="-87" transform="rotate(-90 45 45)"/><text x="45" y="49" text-anchor="middle" font-size="12" font-weight="600" fill="var(--color-text-primary)">21%</text></svg><div style="display:flex;flex-direction:column;gap:7px;"><div style="display:flex;align-items:center;gap:7px;font-size:11px;"><div style="width:10px;height:10px;border-radius:3px;background:#06C755;"></div>クリア済み 312人</div><div style="display:flex;align-items:center;gap:7px;font-size:11px;"><div style="width:10px;height:10px;border-radius:3px;background:#B5D4F4;"></div>挑戦中 1,081人</div></div></div></div></div>
+          </div>
+          <div class="card"><div class="card-hd"><span class="card-hd-title">トラッキングデータ</span></div><div class="card-body"><div class="bar-row"><div class="bar-lbl">クリック数</div><div class="bar-track"><div class="bar-fill" style="width:62%;background:#378ADD;"></div></div><div class="bar-val">918</div></div><div class="bar-row"><div class="bar-lbl">ユニーク</div><div class="bar-track"><div class="bar-fill" style="width:45%;background:#378ADD;"></div></div><div class="bar-val">667</div></div><div class="bar-row"><div class="bar-lbl">CVR</div><div class="bar-track"><div class="bar-fill" style="width:21%;background:var(--g);"></div></div><div class="bar-val">21%</div></div></div></div>
+        </div>
+        <div class="tab-pane" id="aud-seg">
+          <div class="sec-hd"><div><div style="font-size:13px;font-weight:600;">セグメント設定</div><div class="sec-hd-sub">「送信対象」で使用できます</div></div><button class="btn btn-primary btn-sm" onclick="addSegCard()">+ 新規作成</button></div>
+          <div id="segCardList">
+            <div class="seg-card"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;"><div style="font-size:13px;font-weight:600;">謎解き上級者</div><button class="btn btn-danger btn-xs" onclick="confirm2('削除しますか？',()=>{this.closest('.seg-card').remove();refreshSegSelects();showToast('削除しました')})">削除</button></div><div class="g3"><div class="field"><label class="f-label">セグメント名</label><input class="f-input" value="謎解き上級者" oninput="refreshSegSelects()"></div><div class="field"><label class="f-label">絞り込み条件</label><select class="f-input f-sel"><option>エンディング到達済み</option><option>エンディング未到達</option><option>友だち追加後 7日以内</option><option>最終操作 7日以上前</option></select></div><div class="field"><label class="f-label">状態</label><div class="chips"><div class="chip active" onclick="toggleChip(this,this.parentNode)">有効</div><div class="chip" onclick="toggleChip(this,this.parentNode)">無効</div></div></div></div></div>
+            <div class="seg-card"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;"><div style="font-size:13px;font-weight:600;">新規友だち</div><button class="btn btn-danger btn-xs" onclick="confirm2('削除しますか？',()=>{this.closest('.seg-card').remove();refreshSegSelects();showToast('削除しました')})">削除</button></div><div class="g3"><div class="field"><label class="f-label">セグメント名</label><input class="f-input" value="新規友だち"></div><div class="field"><label class="f-label">絞り込み条件</label><select class="f-input f-sel"><option selected>友だち追加後 7日以内</option><option>エンディング到達済み</option><option>エンディング未到達</option><option>最終操作 7日以上前</option></select></div><div class="field"><label class="f-label">状態</label><div class="chips"><div class="chip active" onclick="toggleChip(this,this.parentNode)">有効</div><div class="chip" onclick="toggleChip(this,this.parentNode)">無効</div></div></div></div></div>
+          </div>
+        </div>
+        <div class="tab-pane" id="aud-track">
+          <div class="sec-hd"><div><div style="font-size:13px;font-weight:600;">トラッキング設定</div><div class="sec-hd-sub">計測したいURLを登録して流入分析できます</div></div><button class="btn btn-primary btn-sm" onclick="addTracking()">+ トラッキングを追加</button></div>
+          <div id="trackingList">
+            <div class="tc-card"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;"><div style="font-size:13px;font-weight:600;">クリア計測</div><button class="btn btn-danger btn-xs" onclick="confirm2('削除しますか？',()=>{this.closest('.tc-card').remove();showToast('削除しました')})">削除</button></div><div class="g2"><div class="field"><label class="f-label">トラッキング名</label><input class="f-input" value="クリア計測"></div><div class="field"><label class="f-label">トラッキングID</label><input class="f-input" value="clear_stage"></div><div class="field"><label class="f-label">計測対象URL</label><input class="f-input" value="https://pintkuru.com/clear"></div><div class="field"><label class="f-label">UTMパラメータ</label><div class="chips"><div class="chip active" onclick="toggleChip(this,this.parentNode)">有効</div><div class="chip" onclick="toggleChip(this,this.parentNode)">無効</div></div></div><div class="field" style="grid-column:1/3;"><label class="f-label">トラッキングURL</label><div class="url-box" style="margin-bottom:8px;"><div class="url-box-text" id="turl0">（発行ボタンを押すと生成されます）</div><button class="copy-btn" onclick="showToast('コピーしました')">コピー</button></div><button class="btn btn-primary btn-sm" onclick="issueUrl(this,'turl0','https://pintkuru.com/clear','clear_stage')"><svg width="11" height="11" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 7h10M7 2l5 5-5 5"/></svg>URLを発行する</button></div></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div></div>
+</div>
+</div>
+<div class="toast" id="toastEl"></div>
+
+<script>
+// ── Dialog ──
+const _ov=document.getElementById('dlgOverlay');let _cb=null;
+function confirm2(msg,cb){document.getElementById('dlgMsg').textContent=msg;_cb=cb;_ov.style.display='flex';}
+function closeDlg(){_ov.style.display='none';_cb=null;}
+document.getElementById('dlgCancel').addEventListener('click',closeDlg);
+document.getElementById('dlgOk').addEventListener('click',()=>{const f=_cb;closeDlg();if(f)f();});
+_ov.addEventListener('click',e=>{if(e.target===_ov)closeDlg();});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&_ov.style.display==='flex')closeDlg();});
+function showToast(msg){const t=document.getElementById('toastEl');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2200);}
+function toggleChip(el,p){p.querySelectorAll('.chip').forEach(c=>c.classList.remove('active'));el.classList.add('active');}
+
+// ── Data ──
+const OA_MAP={p:'友だち 1,482人',e:'友だち 328人'};
+const PAGE_TITLES={chars:'キャラクター',scenes:'フェーズ',riddlelist:'謎リスト',riddles:'謎作成',greeting:'あいさつメッセージ',msglist:'メッセージリスト',msgcreate:'メッセージ作成',richmenu:'リッチメニュー',qr:'友だち追加',sns:'SNS',audience:'オーディエンス'};
+const ICONS={text:`<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="14" height="14" rx="2"/><line x1="6" y1="7" x2="14" y2="7"/><line x1="6" y1="10" x2="14" y2="10"/><line x1="6" y1="13" x2="10" y2="13"/></svg>`,image:`<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="4" width="16" height="12" rx="2"/><circle cx="7" cy="8.5" r="1.5"/><path d="M2 14l4-4 3 3 3-4 4 5"/></svg>`,card:`<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="3" width="7" height="14" rx="1.5"/><rect x="11" y="3" width="7" height="14" rx="1.5"/></svg>`,video:`<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="5" width="12" height="10" rx="2"/><path d="M14 8l4-2v8l-4-2V8z"/></svg>`,voice:`<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="7" y="2" width="6" height="10" rx="3"/><path d="M3 10a7 7 0 0014 0"/><line x1="10" y1="17" x2="10" y2="20"/><line x1="7" y1="20" x2="13" y2="20"/></svg>`};
+const TYPE_LABELS={text:'テキスト',image:'写真',card:'カードタイプ',video:'動画',voice:'ボイスメッセージ'};
+const TYPES=['text','image','card','video','voice'];
+const RM_TEMPLATES={sq:{cols:3,rows:2,label:'1040 × 1040px',aspect:'1/1'},w1:{cols:3,rows:1,label:'1040 × 350px',aspect:'3/1'},w2:{cols:3,rows:2,label:'1040 × 700px',aspect:'1.49/1'},w3:{cols:3,rows:2,label:'1040 × 585px',aspect:'1.78/1'}};
+const RM_ICONS=['🔍','💡','🏆','📅','👤','📞'];
+const MATCH_OPTS=['完全一致','部分一致','大文字小文字・全半角吸収','ひらがなカタカナ吸収','複数正答設定'];
+const SEL_S=`style="appearance:none;background-image:url(\\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23888'/%3E%3C/svg%3E\\");background-repeat:no-repeat;background-position:right 10px center;padding-right:28px;"`;
+
+let chars=[{id:0,name:'謎の案内人',from:'ピントクル謎bot',icon:'謎',bg:'#B5D4F4',tc:'#0C447C',img:null},{id:1,name:'助手のコウ',from:'ピントクル謎bot',icon:'助',bg:'#9FE1CB',tc:'#085041',img:null},{id:2,name:'鍵守のリン',from:'ピントクル謎bot',icon:'鍵',bg:'#CECBF6',tc:'#3C3489',img:null}];
+let selChar=0,selScene=0,selRM=0,curTemplate='sq',greetSender='default',snsCount=1,tUrlCount=1,editingMsgIdx=null,msgBlocks=[],blockIdSeq=0;
+let scenes=[{id:0,name:'オープニング',startKw:'スタート',endKw:'',steps:['友だち追加時のあいさつ','謎の説明テキストを送る']},{id:1,name:'謎1',startKw:'',endKw:'',steps:['謎1の問題を送る']},{id:2,name:'謎2',startKw:'',endKw:'',steps:[]},{id:3,name:'エンディングA',startKw:'',endKw:'おわり',steps:['クリアメッセージ']}];
+let riddles=[{id:0,name:'謎1',scene:'オープニング',char:'def',notify:'新しい謎が届いた！',problem:'2, 4, 8, 16, ?',answer:'32',matchOpts:['完全一致'],hint:'2ずつ掛けていきます',correctMsg:'正解！',wrongMsg:'惜しい！',img:null,status:'published',open:true},{id:1,name:'謎2',scene:'謎2',char:'def',notify:'次の謎！',problem:'「月」を英語にすると？',answer:'moon',matchOpts:['完全一致'],hint:'',correctMsg:'すごい！',wrongMsg:'残念…',img:null,status:'draft',open:false}];
+let openRiddles=new Set([0]);
+let msgList=[{id:'MSG-001',kw:'スタート',char:'0',msg:'謎の扉が開いた…\n覚悟はいいか？',status:'published'},{id:'MSG-002',kw:'ヒント',char:'def',msg:'ふふ…少しだけ教えてあげよう。',status:'published'},{id:'MSG-003',kw:'クリア',char:'2',msg:'おめでとう！次の謎が待ってるよ。',status:'draft'}];
+let rmData=[{name:'謎を探す',url:'',action:'link',text:''},{name:'ヒント',url:'',action:'link',text:''},{name:'ランキング',url:'',action:'link',text:''},{name:'イベント',url:'',action:'link',text:''},{name:'マイページ',url:'',action:'link',text:''},{name:'問い合わせ',url:'',action:'link',text:''}];
+
+function avH(c,sz){if(c.img)return`<img src="${c.img}" style="width:${sz}px;height:${sz}px;object-fit:cover;border-radius:50%;">`;return c.icon;}
+function sLbl(c){return c.from?`${c.name} from '${c.from}'`:c.name;}
+function charNameById(id){if(id==='def')return'デフォルト';const c=chars[parseInt(id)];return c?c.name:'不明';}
+function updateOA(){document.getElementById('oaBadge').textContent=OA_MAP[document.getElementById('oaSel').value]||'';}
+function refreshSegSelects(){const cards=document.querySelectorAll('#segCardList .seg-card');const opts='<option value="all">すべて（デフォルト）</option>'+Array.from(cards).map((c,i)=>{const n=c.querySelector('input.f-input');return n&&n.value?`<option value="${i}">${n.value}</option>`:''}).join('');const el=document.getElementById('mcSegment');if(el)el.innerHTML=opts;}
+
+function goPage(id,el){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  const pg=document.getElementById('pg-'+id);if(pg)pg.classList.add('active');
+  document.querySelectorAll('.sb-item').forEach(n=>n.classList.remove('active'));
+  if(el)el.classList.add('active');
+  else document.querySelectorAll('.sb-item').forEach(n=>{if(n.getAttribute('onclick')?.includes(`'${id}'`))n.classList.add('active');});
+  document.getElementById('pageTitle').textContent=PAGE_TITLES[id]||id;
+  if(id==='chars'){renderCharList();loadCharForm();}
+  if(id==='scenes'){renderSceneList();renderSceneSteps();}
+  if(id==='riddlelist')renderRiddleList();
+  if(id==='riddles')renderRiddles();
+  if(id==='greeting'){renderGreetChips();updGP();}
+  if(id==='msglist')renderMsgList();
+  if(id==='richmenu')renderRM();
+  if(id==='msgcreate'){refreshSegSelects();renderMsgBlocks();}
+}
+
+// ── Chars ──
+function renderCharList(){document.getElementById('charList').innerHTML=chars.map((c,i)=>`<div class="char-item${i===selChar?' selected':''}" onclick="selCharFn(${i})"><div class="av" style="width:36px;height:36px;font-size:13px;background:${c.bg};color:${c.tc};">${avH(c,36)}</div><div><div class="char-name">${c.name}</div><div class="char-sub">${c.from||'OA名なし'}</div></div></div>`).join('');const b=document.getElementById('charDelBtn');if(b){b.disabled=chars.length<=1;b.style.opacity=chars.length<=1?'.35':'1';}}
+function selCharFn(i){selChar=i;document.querySelectorAll('.char-item').forEach((x,j)=>x.classList.toggle('selected',j===i));loadCharForm();}
+function loadCharForm(){const c=chars[selChar];document.getElementById('cName').value=c.name;document.getElementById('cFrom').value=c.from;document.getElementById('cIcon').value=c.icon;const lg=document.getElementById('iconPrevLg');lg.style.background=c.bg;lg.style.color=c.tc;lg.innerHTML=c.img?`<img src="${c.img}" style="width:100%;height:100%;object-fit:cover;">`:c.icon;updCP();}
+function addChar(){chars.push({id:chars.length,name:'新キャラクター',from:'',icon:'新',bg:'#FAC775',tc:'#633806',img:null});selChar=chars.length-1;renderCharList();loadCharForm();}
+function deleteChar(){if(chars.length<=1){showToast('最低1人必要です');return;}confirm2(`「${chars[selChar].name}」を削除しますか？`,()=>{chars.splice(selChar,1);selChar=Math.max(0,selChar-1);renderCharList();loadCharForm();showToast('削除しました');});}
+function updCP(){const c=chars[selChar];c.name=document.getElementById('cName').value||c.name;c.from=document.getElementById('cFrom').value;c.icon=document.getElementById('cIcon').value||c.icon;const av=document.getElementById('prevAv');if(av){av.style.background=c.bg;av.style.color=c.tc;av.innerHTML=c.img?`<img src="${c.img}" style="width:36px;height:36px;border-radius:50%;object-fit:cover;">`:c.icon;}const ps=document.getElementById('prevSender');if(ps)ps.textContent=sLbl(c);const lg=document.getElementById('iconPrevLg');if(lg){lg.style.background=c.bg;lg.style.color=c.tc;lg.innerHTML=c.img?`<img src="${c.img}" style="width:100%;height:100%;object-fit:cover;">`:c.icon;}const ni=document.getElementById('prevInfoName');if(ni)ni.textContent=c.name;const fi=document.getElementById('prevInfoFrom');if(fi)fi.textContent=c.from||'（なし）';const ii=document.getElementById('prevInfoIcon');if(ii)ii.textContent=c.icon;renderCharList();}
+function pickCol(el,bg,tc){document.querySelectorAll('.cdot').forEach(d=>d.classList.remove('sel'));el.classList.add('sel');chars[selChar].bg=bg;chars[selChar].tc=tc;updCP();}
+function handleIcon(e){const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>{chars[selChar].img=ev.target.result;loadCharForm();document.getElementById('rmIconBtn').style.display='';showToast('アップロードしました');};r.readAsDataURL(f);e.target.value='';}
+function rmIcon(){chars[selChar].img=null;loadCharForm();document.getElementById('rmIconBtn').style.display='none';}
+
+// ── Scenes ──
+function renderSceneList(){document.getElementById('sceneList').innerHTML=scenes.map((s,i)=>`<div class="phase-item${i===selScene?' sel':''}" onclick="selSceneFn(${i})"><div class="phase-num" style="background:${i===selScene?'var(--g)':'var(--color-background-secondary)'};color:${i===selScene?'white':'var(--color-text-secondary)'};">${i+1}</div><span style="font-size:13px;font-weight:${i===selScene?600:400};">${s.name}</span></div>`).join('');const s=scenes[selScene];document.getElementById('scName').value=s.name;document.getElementById('scStartKw').value=s.startKw;document.getElementById('scEndKw').value=s.endKw;}
+function renderSceneSteps(){const list=scenes[selScene].steps;document.getElementById('sceneStepList').innerHTML=list.length?list.map((s,i)=>`<div class="step-item"><span style="cursor:grab;color:var(--color-text-secondary);">⠿</span><input class="f-input" style="flex:1;padding:7px 9px;font-size:12px;" value="${s}" oninput="scenes[${selScene}].steps[${i}]=this.value"><button class="btn btn-danger btn-xs" onclick="confirm2('削除しますか？',()=>{scenes[${selScene}].steps.splice(${i},1);renderSceneSteps()})">削除</button></div>`).join(''):`<div style="text-align:center;padding:14px;color:var(--color-text-secondary);font-size:12px;background:var(--input-bg);border-radius:var(--r);border:1.5px dashed var(--color-border-secondary);">ステップなし — 「+ 追加」で追加できます</div>`;}
+function selSceneFn(i){selScene=i;renderSceneList();document.getElementById('scEditTitle').textContent=`フェーズ設定：${scenes[i].name}`;renderSceneSteps();}
+function updateScName(){scenes[selScene].name=document.getElementById('scName').value;renderSceneList();}
+function addScene(){scenes.push({id:scenes.length,name:'新しいフェーズ',startKw:'',endKw:'',steps:[]});selScene=scenes.length-1;renderSceneList();renderSceneSteps();}
+function addSceneStep(){scenes[selScene].steps.push('新しいステップ');renderSceneSteps();}
+
+// ── Riddles ──
+function renderRiddleList(){document.getElementById('riddleListBody').innerHTML=riddles.map((r,i)=>`<tr><td><div style="width:34px;height:34px;border-radius:6px;background:linear-gradient(135deg,#B5D4F4,#9FE1CB);display:flex;align-items:center;justify-content:center;font-size:14px;">🔐</div></td><td style="font-weight:500;">${r.name}</td><td style="font-size:12px;color:var(--color-text-secondary);max-width:130px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">${r.problem.slice(0,22)}${r.problem.length>22?'…':''}</td><td style="font-size:12px;">${r.answer.slice(0,14)}</td><td><span class="badge ${r.status==='published'?'badge-pub':'badge-draft'}">${r.status==='published'?'公開':'非公開'}</span></td><td><button class="btn btn-secondary btn-xs" onclick="editRiddle(${i})">編集</button></td></tr>`).join('')||'<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--color-text-secondary);">謎がまだありません</td></tr>';}
+function editRiddle(i){openRiddles.add(i);goPage('riddles',null);setTimeout(()=>{document.getElementById(`rblk${i}`)?.scrollIntoView({behavior:'smooth',block:'start'});},100);}
+
+// ④ 謎作成: 入力欄明確化（グレー背景+枠線）
+function renderRiddles(){
+  const scO=scenes.map(s=>`<option>${s.name}</option>`).join('');
+  const chO=['<option value="def">デフォルト</option>',...chars.map((c,ci)=>`<option value="${ci}">${c.name}</option>`)].join('');
+  document.getElementById('riddleEditList').innerHTML=riddles.map((r,i)=>{
+    const open=openRiddles.has(i);
+    const mHTML=MATCH_OPTS.map(m=>`<div class="match-opt${r.matchOpts.includes(m)?' sel':''}" onclick="toggleMatch(${i},'${m}',this)">${m}</div>`).join('');
+    return`<div class="riddle-item" id="rblk${i}">
+      <div class="riddle-hd" onclick="toggleRiddle(${i})">
+        <div style="display:flex;align-items:center;gap:9px;"><div style="width:22px;height:22px;border-radius:50%;background:var(--g);color:white;font-size:9px;display:flex;align-items:center;justify-content:center;font-weight:700;">${i+1}</div><span style="font-size:13px;font-weight:600;" id="rn${i}">${r.name}</span></div>
+        <div style="display:flex;align-items:center;gap:7px;"><span class="badge ${r.status==='published'?'badge-pub':'badge-draft'}">${r.status==='published'?'公開':'非公開'}</span><span style="font-size:11px;color:var(--color-text-secondary);">${open?'▲':'▼'}</span></div>
+      </div>
+      ${open?`<div class="riddle-body">
+        <div class="field"><label class="f-label">謎の名称</label><input class="f-input" value="${r.name}" oninput="riddles[${i}].name=this.value;document.getElementById('rn${i}').textContent=this.value"></div>
+        <div class="field"><label class="f-label">公開状態</label><div class="chips"><div class="chip${r.status==='published'?' active':''}" onclick="riddles[${i}].status='published';this.parentNode.querySelectorAll('.chip').forEach(c=>c.classList.remove('active'));this.classList.add('active');renderRiddleList()">公開</div><div class="chip${r.status==='draft'?' active':''}" onclick="riddles[${i}].status='draft';this.parentNode.querySelectorAll('.chip').forEach(c=>c.classList.remove('active'));this.classList.add('active');renderRiddleList()">非公開（下書き）</div></div></div>
+        <div class="field" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;"><div><label class="f-label">フェーズ</label><select class="f-input f-sel" ${SEL_S}>${scO}</select></div><div><label class="f-label">フェーズ移行</label><select class="f-input f-sel" ${SEL_S}><option value="">移行しない</option>${scO}</select></div></div>
+        <div class="field"><label class="f-label">送信キャラクター</label><select class="f-input f-sel" ${SEL_S}>${chO}</select></div>
+        <div class="field"><label class="f-label">通知メッセージ<span class="f-note">プッシュ通知</span></label><input class="f-input" value="${r.notify}" placeholder="通知テキスト"></div>
+        <!-- ④ 画像設定: 明確なアップロード領域 -->
+        <div class="field"><label class="f-label">画像設定<span class="f-note">任意</span></label>
+          <div class="upload" onclick="showToast('画像を選択')">
+            <div class="upload-icon">🖼</div>
+            <div style="font-size:12px;font-weight:500;margin-bottom:3px;">クリックして画像をアップロード</div>
+            <div class="upload-sub">JPG・PNG・GIF（推奨 1000×1000px）</div>
+          </div>
+        </div>
+        <!-- ④ 問題文: grid-column span で横幅いっぱい使う -->
+        <div class="field" style="grid-column:1/3;"><label class="f-label">問題テキスト</label><textarea class="f-input" style="min-height:72px;font-size:13px;" placeholder="謎の問題文を入力...">${r.problem}</textarea></div>
+        <div class="field"><label class="f-label">正解テキスト</label><input class="f-input" style="font-size:13px;" value="${r.answer}" placeholder="正解を入力"></div>
+        <div class="field"><label class="f-label">マッチ条件</label><div class="match-opts">${mHTML}</div></div>
+        <div class="field"><label class="f-label">ヒント<span class="f-note">任意</span></label><textarea class="f-input" style="min-height:52px;" placeholder="ヒントテキスト（任意）">${r.hint||''}</textarea></div>
+        <div class="field"><label class="f-label">正解時メッセージ</label><textarea class="f-input" style="min-height:52px;">${r.correctMsg}</textarea></div>
+        <div class="field"><label class="f-label">不正解時メッセージ</label><textarea class="f-input" style="min-height:52px;">${r.wrongMsg}</textarea></div>
+        <div style="grid-column:1/3;display:flex;justify-content:flex-end;padding-top:12px;border-top:1px solid var(--color-border-tertiary);">
+          <button class="btn btn-danger btn-sm" onclick="confirm2('謎を削除しますか？',()=>{riddles.splice(${i},1);openRiddles.clear();renderRiddles();renderRiddleList();showToast('削除しました')})">削除</button>
+        </div>
+      </div>`:''}
+    </div>`}).join('');}
+function toggleRiddle(i){openRiddles.has(i)?openRiddles.delete(i):openRiddles.add(i);renderRiddles();}
+function toggleMatch(ri,m,el){el.classList.toggle('sel');const idx=riddles[ri].matchOpts.indexOf(m);if(idx>-1)riddles[ri].matchOpts.splice(idx,1);else riddles[ri].matchOpts.push(m);}
+function addRiddle(){riddles.push({id:riddles.length,name:`謎${riddles.length+1}`,scene:'オープニング',char:'def',notify:'新しい謎が届いた！',problem:'問題を入力',answer:'',matchOpts:['完全一致'],hint:'',correctMsg:'正解！',wrongMsg:'もう一度考えてみよう。',img:null,status:'draft',open:true});openRiddles.add(riddles.length-1);renderRiddles();}
+
+// ── Greeting ──
+function renderGreetChips(){document.getElementById('greetCharChips').innerHTML=chars.map((c,i)=>`<div class="sch${greetSender===String(i)?' active':''}" id="gsc-${i}" onclick="selGS('${i}')"><div style="width:20px;height:20px;border-radius:50%;background:${c.bg};color:${c.tc};display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:600;overflow:hidden;">${avH(c,20)}</div><span style="font-weight:500;">${c.name}</span></div>`).join('');document.getElementById('gsc-def').classList.toggle('active',greetSender==='default');}
+function selGS(id){greetSender=id;document.querySelectorAll('#greetChips .sch').forEach(c=>c.classList.remove('active'));(id==='default'?document.getElementById('gsc-def'):document.getElementById(`gsc-${id}`))?.classList.add('active');updGP();}
+function updGP(){const av=document.getElementById('gPrevAv');if(greetSender==='default'){av.innerHTML=`<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="5" r="2.8" fill="#888"/><path d="M1.5 13c0-3.038 2.462-5.5 5.5-5.5s5.5 2.462 5.5 5.5" stroke="#888" stroke-width="1.3" fill="none"/></svg>`;av.style.background='var(--color-background-secondary)';av.style.color='';}else{const c=chars[parseInt(greetSender)];if(!c)return;av.innerHTML=avH(c,36);av.style.background=c.bg;av.style.color=c.tc;}const m=document.getElementById('greetMsg');if(m)document.getElementById('gPrevMsg').innerHTML=m.value.replace(/\n/g,'<br>');}
+
+// ② メッセージリスト
+function renderMsgList(){
+  document.getElementById('msgListBody').innerHTML=msgList.map((m,i)=>{
+    // ② 最大20文字表示
+    const preview=m.msg.replace(/\n/g,' ').slice(0,20)+(m.msg.replace(/\n/g,' ').length>20?'…':'');
+    // ② 「公開」→ btn-publish(緑枠+緑テキスト)、「非公開」→ btn-danger
+    const pubBtn=m.status==='draft'
+      ?`<button class="btn btn-publish btn-xs" onclick="publishMsg(${i})">公開</button>`
+      :`<button class="btn btn-danger btn-xs" onclick="unpublishMsg(${i})">非公開</button>`;
+    // ② 編集ボタン右揃え: flex + justify-content:flex-end
+    return`<tr>
+      <td style="font-size:11px;color:var(--color-text-secondary);">${m.id}</td>
+      <td style="font-weight:500;">${m.kw}</td>
+      <td style="font-size:12px;">${charNameById(m.char)}</td>
+      <td class="td-msg">${preview}</td>
+      <td style="text-align:right;">
+        <div style="display:flex;gap:6px;justify-content:flex-end;align-items:center;">
+          ${pubBtn}
+          <button class="btn btn-xs" style="background:#185FA5;color:white;" onclick="goMsgCreate(${i})">編集</button>
+        </div>
+      </td>
+    </tr>`}).join('');}
+function publishMsg(i){msgList[i].status='published';renderMsgList();showToast('公開しました');}
+function unpublishMsg(i){msgList[i].status='draft';renderMsgList();showToast('非公開にしました');}
+
+// ── Msg Create ──
+function goMsgCreate(idx){editingMsgIdx=idx;msgBlocks=[];goPage('msgcreate',null);const t=document.getElementById('mcTitle');const d=document.getElementById('mcDelBtn');if(idx===null){t.textContent='メッセージ作成';document.getElementById('mcId').value=`MSG-00${msgList.length+1}`;document.getElementById('mcKw').value='';document.getElementById('mcChar').value='def';d.style.display='none';}else{const m=msgList[idx];t.textContent=`メッセージ編集（${m.id}）`;document.getElementById('mcId').value=m.id;document.getElementById('mcKw').value=m.kw;document.getElementById('mcChar').value=m.char;d.style.display='';}updMCPrev();renderMsgBlocks();}
+function deleteMsgEdit(){if(editingMsgIdx===null)return;confirm2('削除しますか？',()=>{msgList.splice(editingMsgIdx,1);editingMsgIdx=null;goPage('msglist',null);showToast('削除しました');});}
+function updMCPrev(){const sel=document.getElementById('mcChar').value;const av=document.getElementById('mcPrevAv');const nm=document.getElementById('mcPrevName');if(sel==='def'){av.innerHTML=`<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="5" r="2.8" fill="#888"/><path d="M1.5 13c0-3.038 2.462-5.5 5.5-5.5s5.5 2.462 5.5 5.5" stroke="#888" stroke-width="1.3" fill="none"/></svg>`;av.style.background='var(--color-background-secondary)';av.style.color='';nm.textContent='ピントクル謎bot';}else{const c=chars[parseInt(sel)];if(!c)return;av.innerHTML=avH(c,36);av.style.background=c.bg;av.style.color=c.tc;nm.textContent=sLbl(c);}}
+function saveMsgDraft(){const kw=document.getElementById('mcKw').value||'未設定';const char=document.getElementById('mcChar').value;const body=msgBlocks[0]?.text||'';if(editingMsgIdx!==null){msgList[editingMsgIdx].kw=kw;msgList[editingMsgIdx].msg=body;msgList[editingMsgIdx].char=char;msgList[editingMsgIdx].status='draft';showToast(`下書き保存（${msgList[editingMsgIdx].id}）`);}else{const nid=`MSG-00${msgList.length+1}`;msgList.push({id:nid,kw,char,msg:body,status:'draft'});showToast(`下書き保存（${nid}）`);}}
+function addMsgBlock(){blockIdSeq++;msgBlocks.push({id:blockIdSeq,type:'text',text:'',charCount:0});renderMsgBlocks();}
+function renderMsgBlocks(){const c=document.getElementById('mcBlocks');if(!c)return;if(!msgBlocks.length){blockIdSeq++;msgBlocks=[{id:blockIdSeq,type:'text',text:'謎の扉が開いた…\n覚悟はいいか？',charCount:17}];}c.innerHTML=msgBlocks.map((b,i)=>buildBlock(b,i)).join('');msgBlocks.forEach(b=>{const ta=document.getElementById(`bta_${b.id}`);if(ta){ta.value=b.text;updCC(b.id,ta.value);}});}
+function buildBlock(b,i){const del=i>0?`<button class="btn btn-danger btn-xs" onclick="removeBlock(${b.id})">削除</button>`:'';const bar=TYPES.map(t=>`<div class="type-btn${b.type===t?' active':''}" title="${TYPE_LABELS[t]}" onclick="setBlockType(${b.id},'${t}')">${ICONS[t]}</div>`).join('');let body='';if(b.type==='text')body=`<div class="field"><label class="f-label">送信メッセージ</label><textarea class="f-input" id="bta_${b.id}" style="min-height:80px;" oninput="updCC(${b.id},this.value)" maxlength="500" placeholder="テキストを入力"></textarea><div class="char-count" id="bcc_${b.id}">0/500</div></div><div class="field"><label class="f-label">クイックリプライ<span class="f-note">任意</span></label><div id="bqrl_${b.id}" style="display:flex;flex-direction:column;gap:4px;margin-bottom:6px;"></div><div class="f-row"><input class="f-input" id="bqri_${b.id}" placeholder="ボタンテキスト"><button class="btn btn-secondary btn-sm" onclick="addQR('bqrl_${b.id}','bqri_${b.id}')">追加</button></div></div>`;
+else if(b.type==='image')body=`<div class="field"><label class="f-label">画像</label><div class="upload" onclick="showToast('ファイルを選択')"><div class="upload-icon">🖼</div>JPG・PNG・GIF（最大10MB）</div></div><div class="field"><label class="f-label">URL<span class="f-note">任意</span></label><input class="f-input" placeholder="https://"></div><div class="field"><label class="f-label">通知テキスト</label><input class="f-input" placeholder="例: 謎の地図が届いた！"></div>`;
+else if(b.type==='card')body=`<div style="font-size:12px;font-weight:600;margin-bottom:8px;">カード設定（最大10枚）</div><div id="bcards_${b.id}" style="display:flex;flex-direction:column;gap:8px;margin-bottom:8px;"><div style="border:1px solid var(--color-border-tertiary);border-radius:var(--r);overflow:hidden;"><div style="height:52px;background:linear-gradient(135deg,#B5D4F4,#9FE1CB);display:flex;align-items:center;justify-content:center;font-size:11px;color:#0C447C;cursor:pointer;" onclick="showToast('画像をアップロード')">🖼 画像をアップロード</div><div style="padding:10px;display:flex;flex-direction:column;gap:6px;"><input class="f-input" placeholder="タイトル" value="第一の謎"><input class="f-input" placeholder="本文"><input class="f-input" placeholder="ボタンテキスト（任意）"><button class="btn btn-danger btn-xs" style="align-self:flex-start;" onclick="confirm2('削除しますか？',()=>this.closest('[style]').parentNode.parentNode.remove())">削除</button></div></div></div><button class="btn btn-secondary btn-sm" style="width:100%;margin-bottom:8px;" onclick="addCardItem('bcards_${b.id}')">+ カードを追加</button><div class="field"><label class="f-label">通知テキスト</label><input class="f-input" placeholder="例: 新しい謎カードが届いた！"></div>`;
+else if(b.type==='video')body=`<div class="field"><label class="f-label">動画ファイル</label><div class="upload" onclick="showToast('ファイルを選択')"><div class="upload-icon">🎬</div>MP4・MOV<div class="upload-sub">最大200MB</div></div></div><div class="field"><label class="f-label">サムネイル</label><div class="upload" style="padding:10px;" onclick="showToast('サムネイルを選択')">🖼 サムネイルを選択</div></div><div class="field"><label class="f-label">通知テキスト</label><input class="f-input" placeholder="例: 謎解き動画が届いた！"></div>`;
+else if(b.type==='voice')body=`<div class="field"><label class="f-label">音声ファイル</label><div class="upload" onclick="showToast('ファイルを選択')"><div class="upload-icon">🎤</div>M4A・MP3・WAV<div class="upload-sub">最大5MB</div></div></div><div class="field"><label class="f-label">通知テキスト</label><input class="f-input" placeholder="例: 音声メッセージが届きました"></div>`;
+return`<div class="msg-block" id="block_${b.id}"><div class="msg-block-hd"><span style="font-size:11px;font-weight:500;color:var(--color-text-secondary);">${i+1}通目・${TYPE_LABELS[b.type]}</span><div style="display:flex;gap:5px;">${del}</div></div><div class="msg-type-bar">${bar}</div><div class="msg-block-body">${body}</div></div>`;}
+function setBlockType(id,type){const b=msgBlocks.find(x=>x.id===id);if(!b)return;b.type=type;renderMsgBlocks();}
+function removeBlock(id){confirm2('削除しますか？',()=>{msgBlocks=msgBlocks.filter(x=>x.id!==id);renderMsgBlocks();showToast('削除しました');});}
+function updCC(id,val){const b=msgBlocks.find(x=>x.id===id);if(b)b.text=val;const el=document.getElementById(`bcc_${id}`);if(el)el.textContent=`${val.length}/500`;}
+function addCardItem(cid){const d=document.createElement('div');d.style.cssText='border:1px solid var(--color-border-tertiary);border-radius:var(--r);overflow:hidden;';d.innerHTML=`<div style="height:52px;background:linear-gradient(135deg,#FAC775,#F5C4B3);display:flex;align-items:center;justify-content:center;font-size:11px;color:#633806;cursor:pointer;" onclick="showToast('画像をアップロード')">🖼 画像をアップロード</div><div style="padding:10px;display:flex;flex-direction:column;gap:6px;"><input class="f-input" placeholder="タイトル"><input class="f-input" placeholder="本文"><input class="f-input" placeholder="ボタンテキスト（任意）"><button class="btn btn-danger btn-xs" style="align-self:flex-start;" onclick="confirm2('削除しますか？',()=>this.closest('[style]').parentNode.parentNode.remove())">削除</button></div>`;document.getElementById(cid).appendChild(d);}
+
+// ⑤ RM
+function renderRM(){const t=RM_TEMPLATES[curTemplate];['rmGrid','rmPrev'].forEach(gid=>{const el=document.getElementById(gid);const isE=gid==='rmGrid';el.style.gridTemplateColumns=`repeat(${t.cols},1fr)`;el.style.gridTemplateRows=`repeat(${t.rows},1fr)`;el.style.aspectRatio=t.aspect;el.className='rm-grid';el.innerHTML=rmData.slice(0,t.cols*t.rows).map((a,i)=>`<div class="rm-cell${isE&&i===selRM?' sel':''}" ${isE?`onclick="selRM2(${i})"`:'style="cursor:default;pointer-events:none;"'}><div style="font-size:12px;">${RM_ICONS[i]||''}</div>${isE?`<div class="rm-cell-ov"></div><div class="rm-cell-lbl">${a.name||'エリア '+(i+1)}</div>`:''}</div>`).join('');});}
+function changeRMTemplate(){curTemplate=document.getElementById('rmTemplate').value;document.getElementById('rmDimLabel').textContent=RM_TEMPLATES[curTemplate].label;selRM=0;renderRM();}
+function selRM2(i){selRM=i;document.getElementById('rmEditLbl').textContent=`エリア ${i+1} を編集`;document.getElementById('rmName').value=rmData[i].name;document.getElementById('rmAction').value=rmData[i].action||'link';document.getElementById('rmUrl').value=rmData[i].url||'';document.getElementById('rmText').value=rmData[i].text||'';toggleRMAction();renderRM();}
+function toggleRMAction(){document.getElementById('rm-action-link').style.display=document.getElementById('rmAction').value==='link'?'':'none';document.getElementById('rm-action-text').style.display=document.getElementById('rmAction').value==='text'?'':'none';}
+
+// ── Misc ──
+function addQR(listId,inputId){const inp=document.getElementById(inputId);const v=inp.value.trim();if(!v)return;const d=document.createElement('div');d.className='qr-row';d.innerHTML=`<div class="qr-pill">${v}</div><button class="btn btn-danger btn-xs" onclick="confirm2('削除しますか？',()=>this.parentNode.remove())">削除</button>`;document.getElementById(listId).appendChild(d);inp.value='';}
+function updateQR(){const m={p:{name:'ピントクル謎bot',handle:'@pintkuru'},e:{name:'脱出ゲームbot',handle:'@escapebot'}};const info=m[document.getElementById('qrOA').value];document.getElementById('qrUrl').textContent=`https://line.me/R/ti/p/${info.handle}`;document.getElementById('qrAccountName').textContent=info.name;document.getElementById('qrHandle').textContent=info.handle;}
+function addSns(){snsCount++;const d=document.createElement('div');d.className='sns-card';d.innerHTML=`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;"><div style="font-size:12px;font-weight:600;">投稿 ${snsCount}</div><button class="btn btn-danger btn-xs" onclick="confirm2('削除しますか？',()=>{this.closest('.sns-card').remove();showToast('削除しました')})">削除</button></div><div class="field"><label class="f-label">SNS名称</label><input class="f-input" placeholder="例: X（Twitter）、Instagram"></div><div class="field"><label class="f-label">投稿画像<span class="f-note">任意</span></label><div class="upload" onclick="showToast('アップロード')"><div class="upload-icon">🖼</div>JPG・PNG・GIF</div></div><div class="field"><label class="f-label">投稿文</label><textarea class="f-input" style="min-height:72px;"></textarea></div><div class="field"><label class="f-label">掲載URL</label><input class="f-input" placeholder="https://"></div>`;document.getElementById('snsList').appendChild(d);}
+function addSegCard(){const d=document.createElement('div');d.className='seg-card';d.innerHTML=`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;"><div style="font-size:13px;font-weight:600;">新しいセグメント</div><button class="btn btn-danger btn-xs" onclick="confirm2('削除しますか？',()=>{this.closest('.seg-card').remove();refreshSegSelects();showToast('削除しました')})">削除</button></div><div class="g3"><div class="field"><label class="f-label">セグメント名</label><input class="f-input" placeholder="セグメント名" oninput="refreshSegSelects()"></div><div class="field"><label class="f-label">絞り込み条件</label><select class="f-input f-sel" ${SEL_S}><option>エンディング到達済み</option><option>エンディング未到達</option><option>友だち追加後 7日以内</option><option>最終操作 7日以上前</option></select></div><div class="field"><label class="f-label">状態</label><div class="chips"><div class="chip active" onclick="toggleChip(this,this.parentNode)">有効</div><div class="chip" onclick="toggleChip(this,this.parentNode)">無効</div></div></div></div>`;document.getElementById('segCardList').appendChild(d);refreshSegSelects();showToast('追加しました');}
+function issueUrl(btn,tid,base,lid){const url=`${base}?utm_source=line&utm_medium=bot&utm_campaign=${lid}`;document.getElementById(tid).textContent=url;btn.textContent='再発行';showToast('URLを発行しました');}
+function addTracking(){tUrlCount++;const tid=`turl${tUrlCount}`;const d=document.createElement('div');d.className='tc-card';d.innerHTML=`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;"><div style="font-size:13px;font-weight:600;">新しいトラッキング</div><button class="btn btn-danger btn-xs" onclick="confirm2('削除しますか？',()=>{this.closest('.tc-card').remove();showToast('削除しました')})">削除</button></div><div class="g2"><div class="field"><label class="f-label">トラッキング名</label><input class="f-input" placeholder="計測名"></div><div class="field"><label class="f-label">トラッキングID</label><input class="f-input" id="tid_${tid}" placeholder="例: form_submit"></div><div class="field"><label class="f-label">計測対象URL</label><input class="f-input" id="base_${tid}" placeholder="https://"></div><div class="field"><label class="f-label">UTMパラメータ</label><div class="chips"><div class="chip active" onclick="toggleChip(this,this.parentNode)">有効</div><div class="chip" onclick="toggleChip(this,this.parentNode)">無効</div></div></div><div class="field" style="grid-column:1/3;"><label class="f-label">トラッキングURL</label><div class="url-box" style="margin-bottom:8px;"><div class="url-box-text" id="${tid}">（発行ボタンを押すと生成されます）</div><button class="copy-btn" onclick="showToast('コピーしました')">コピー</button></div><button class="btn btn-primary btn-sm" onclick="issueUrl(this,'${tid}',document.getElementById('base_${tid}').value||'https://example.com',document.getElementById('tid_${tid}').value||'new_track')"><svg width="11" height="11" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 7h10M7 2l5 5-5 5"/></svg>URLを発行する</button></div></div>`;document.getElementById('trackingList').appendChild(d);showToast('追加しました');}
+function switchTab(el,id,barId,panesId){document.getElementById(barId).querySelectorAll('.tab-btn').forEach(t=>t.classList.remove('active'));el.classList.add('active');document.getElementById(panesId).querySelectorAll(':scope > .tab-pane').forEach(p=>p.classList.remove('active'));document.getElementById(id).classList.add('active');}
+
+// ── Init ──
+renderCharList();loadCharForm();renderRM();renderGreetChips();updGP();renderMsgList();renderRiddleList();refreshSegSelects();
+</script>
