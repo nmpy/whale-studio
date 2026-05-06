@@ -3,7 +3,16 @@
 // src/components/liff/LiffRenderer.tsx
 // LIFF表示用ブロックレンダラー — block_type に応じてコンポーネントを切り替え
 
-import type { LiffBlockType, VisibilityCondition } from "@/types";
+import type {
+  LiffBlockType,
+  VisibilityCondition,
+  HeadingSettings,
+  TextSettings,
+  WarningSettings,
+  ButtonLinkSettings,
+  DividerSettings,
+  AccordionSettings,
+} from "@/types";
 import {
   FreeTextBlock,
   StartButtonBlock,
@@ -14,6 +23,12 @@ import {
   CharacterListBlock,
   ImageBlock,
   VideoBlock,
+  HeadingBlock,
+  TextBlock,
+  WarningBlock,
+  ButtonLinkBlock,
+  DividerBlock,
+  AccordionBlock,
 } from "./renderers";
 import type { Evidence, Hint, CharacterInfo } from "./renderers";
 
@@ -72,6 +87,18 @@ function RenderBlock({ block, ctx }: { block: LiffBlock; ctx: LiffRenderContext 
       return <ImageBlock settings={s} />;
     case "video":
       return <VideoBlock settings={s} />;
+    case "heading":
+      return <HeadingBlock title={block.title} settings={s as HeadingSettings} />;
+    case "text":
+      return <TextBlock title={block.title} settings={s as TextSettings} />;
+    case "warning":
+      return <WarningBlock settings={s as WarningSettings} />;
+    case "button_link":
+      return <ButtonLinkBlock settings={s as ButtonLinkSettings} />;
+    case "divider":
+      return <DividerBlock settings={s as DividerSettings} />;
+    case "accordion":
+      return <AccordionBlock title={block.title} settings={s as AccordionSettings} depth={1} blockId={block.id} />;
     default:
       return null;
   }
@@ -92,12 +119,10 @@ export function LiffRenderer({
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* ヘッダー */}
       <header className="bg-white border-b border-gray-100 px-4 py-3">
         <h1 className="text-lg font-bold text-gray-900">{title || "LIFF"}</h1>
       </header>
 
-      {/* ブロック */}
       <main className="px-4 py-4 space-y-4 max-w-lg mx-auto">
         {visibleBlocks.length === 0 ? (
           <p className="text-center text-gray-400 py-12 text-sm">

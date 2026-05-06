@@ -1,0 +1,215 @@
+"use client";
+
+// src/components/liff/HintSiteRenderer.tsx
+// ヒントサイト用 LIFF ページの全体レイアウト。
+// 固定ヘッダー（ロゴ + CTA + ハンバーガー枠）、ネタバレ注意帯、ブロック描画を担う。
+
+import { useEffect, useMemo, useState } from "react";
+import type {
+  LiffPageConfigSettings,
+  HeadingSettings,
+  TextSettings,
+  WarningSettings,
+  ImageBlockSettings,
+  ButtonLinkSettings,
+  DividerSettings,
+  AccordionSettings,
+  LiffBlockType,
+} from "@/types";
+
+export interface HintSiteBlock {
+  id: string;
+  block_type: LiffBlockType;
+  title: string | null;
+  settings_json: Record<string, unknown>;
+}
+
+export interface HintSiteConfig {
+  work_id: string;
+  title: string | null;
+  description: string | null;
+  settings_json: LiffPageConfigSettings;
+  blocks: HintSiteBlock[];
+}
+import {
+  HeadingBlock,
+  TextBlock,
+  WarningBlock,
+  ImageBlock,
+  ButtonLinkBlock,
+  DividerBlock,
+  AccordionBlock,
+} from "./renderers";
+import { trackHintSiteEvent } from "@/lib/liff-analytics";
+
+interface Props {
+  config: HintSiteConfig;
+  preview?: boolean;
+}
+
+const HEADER_HEIGHT_PX = 56;
+
+export function HintSiteRenderer({ config, preview }: Props) {
+  const settings: LiffPageConfigSettings = config.settings_json || {};
+  const fixed = settings.header_fixed !== false;
+
+  useEffect(() => {
+    if (preview) return;
+    trackHintSiteEvent("page_view", { work_id: config.work_id, source: "hint_site" });
+  }, [config.work_id, preview]);
+
+  const themeStyle = useMemo<React.CSSProperties>(() => ({
+    "--hint-header-bg": settings.theme?.header_bg ?? "#000000",
+    "--hint-header-fg": settings.theme?.header_fg ?? "#ffffff",
+  } as React.CSSProperties), [settings.theme]);
+
+  return (
+    <div
+      className="min-h-screen bg-white text-gray-900"
+      style={themeStyle}
+    >
+      <Header
+        fixed={fixed}
+        logoUrl={settings.header_logo_url}
+        logoAlt={settings.header_logo_alt}
+        ctaLabel={settings.header_cta_label}
+        ctaUrl={settings.header_cta_url}
+        showHamburger={settings.show_hamburger}
+        title={config.title}
+      />
+
+      <div
+        style={fixed ? { paddingTop: `calc(${HEADER_HEIGHT_PX}px + env(safe-area-inset-top, 0px))` } : undefined}
+      >
+        {settings.spoiler_warning_text && (
+          <div className="bg-yellow-300 text-black px-4 py-2 text-sm font-bold text-center break-words">
+            {settings.spoiler_warning_text}
+          </div>
+        )}
+
+        <main className="max-w-md mx-auto px-4 py-5 flex flex-col gap-5 pb-24">
+          {(config.title || config.description) && (
+            <div className="space-y-1.5">
+              {config.title && (
+                <h1 className="text-2xl font-extrabold tracking-tight text-gray-900 break-words">
+                  {config.title}
+                </h1>
+              )}
+              {config.description && (
+                <p className="text-sm text-gray-700 whitespace-pre-wrap break-words">
+                  {config.description}
+                </p>
+              )}
+            </div>
+          )}
+
+          {config.blocks.length === 0 ? (
+            <p className="text-sm text-gray-400 text-center py-8">
+              （ブロックが追加されていません）
+            </p>
+          ) : (
+            config.blocks.map((b) => <BlockSwitch key={b.id} block={b} />)
+          )}
+        </main>
+      </div>
+    </div>
+  );
+}
+
+function Header({
+  fixed, logoUrl, logoAlt, ctaLabel, ctaUrl, showHamburger, title,
+}: {
+  fixed: boolean;
+  logoUrl?: string;
+  logoAlt?: string;
+  ctaLabel?: string;
+  ctaUrl?: string;
+  showHamburger?: boolean;
+  title?: string | null;
+}) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  return (
+    <header
+      className={`${fixed ? "fixed top-0 left-0 right-0 z-30" : ""}`}
+      style={{
+        background: "var(--hint-header-bg)",
+        color: "var(--hint-header-fg)",
+        paddingTop: fixed ? "env(safe-area-inset-top, 0px)" : undefined,
+      }}
+    >
+      <div
+        className="max-w-md mx-auto flex items-center gap-2 px-3"
+        style={{ height: HEADER_HEIGHT_PX }}
+      >
+        <div className="shrink-0 w-[120px] h-[36px] flex items-center">
+          {logoUrl ? (
+            <img
+              src={logoUrl}
+              alt={logoAlt || title || "logo"}
+              className="max-w-full max-h-full"
+              style={{ objectFit: "contain" }}
+            />
+          ) : (
+            <span className="text-sm font-bold truncate">{title || "LIFF"}</span>
+          )}
+        </div>
+
+        <div className="flex-1 min-w-0" />
+
+        {ctaLabel && ctaUrl && (
+          <a
+            href={ctaUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={() => trackHintSiteEvent("cta_click", { url: ctaUrl, label: ctaLabel, source: "header" })}
+            className="shrink-0 px-3 py-1.5 text-xs font-bold rounded-full bg-white text-black border border-white whitespace-nowrap"
+          >
+            {ctaLabel}
+          </a>
+        )}
+
+        {showHamburger && (
+          <button
+            type="button"
+            aria-label="メニュー"
+            aria-expanded={menuOpen}
+            onClick={() => setMenuOpen((v) => !v)}
+            className="shrink-0 w-9 h-9 flex items-center justify-center rounded-md border border-white/20"
+          >
+            <span aria-hidden="true" className="text-xl leading-none">≡</span>
+          </button>
+        )}
+      </div>
+    </header>
+  );
+}
+
+function BlockSwitch({ block }: { block: HintSiteBlock }) {
+  const s = (block.settings_json ?? {}) as Record<string, unknown>;
+  switch (block.block_type) {
+    case "heading":
+      return <HeadingBlock title={block.title} settings={s as HeadingSettings} />;
+    case "text":
+    case "free_text":
+      return <TextBlock title={block.title} settings={s as TextSettings} />;
+    case "warning":
+      return <WarningBlock settings={s as WarningSettings} />;
+    case "image":
+      return <ImageBlock settings={s as ImageBlockSettings} />;
+    case "button_link":
+      return <ButtonLinkBlock settings={s as ButtonLinkSettings} />;
+    case "divider":
+      return <DividerBlock settings={s as DividerSettings} />;
+    case "accordion":
+      return (
+        <AccordionBlock
+          title={block.title}
+          settings={s as AccordionSettings}
+          depth={1}
+          blockId={block.id}
+        />
+      );
+    default:
+      return null;
+  }
+}

@@ -2,25 +2,31 @@
 
 // src/app/liff/work/[workId]/page.tsx
 // LIFF表示ページ — LINE内ブラウザ / 外部ブラウザ両対応
-// LIFF SDK 初期化は useLiffSDK hook に委譲
 
 import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { useLiffSDK } from "@/hooks/useLiffSDK";
 import { LiffRenderer } from "@/components/liff/LiffRenderer";
+import { HintSiteRenderer } from "@/components/liff/HintSiteRenderer";
 import type { LiffBlock, UserState, LiffRenderContext } from "@/components/liff/LiffRenderer";
+import type { LiffPageType, LiffPageConfigSettings, LiffPublishStatus } from "@/types";
 
 interface LiffPageData {
   work_id: string;
   work_title: string;
   title: string | null;
   description: string | null;
+  page_type?: LiffPageType;
+  publish_status?: LiffPublishStatus;
+  settings_json?: LiffPageConfigSettings;
   blocks: LiffBlock[];
 }
 
 export default function LiffViewerPage() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const workId = params.workId as string;
+  const isPreview = searchParams.get("preview") === "1";
   const liff = useLiffSDK();
 
   const [pageData, setPageData] = useState<LiffPageData | null>(null);
@@ -28,13 +34,15 @@ export default function LiffViewerPage() {
   const [error, setError] = useState<string | null>(null);
   const [userState, setUserState] = useState<UserState>("before_start");
 
-  // ── ページデータ取得 ───────────────────────────
   useEffect(() => {
     if (!liff.ready) return;
 
     (async () => {
       try {
-        const res = await fetch(`/api/liff/works/${workId}`);
+        const url = isPreview
+          ? `/api/liff/works/${workId}?preview=1`
+          : `/api/liff/works/${workId}`;
+        const res = await fetch(url);
         const json = await res.json();
         if (!json.success) {
           setError(json.error?.message || "データの取得に失敗しました");
@@ -47,9 +55,8 @@ export default function LiffViewerPage() {
         setLoading(false);
       }
     })();
-  }, [workId, liff.ready]);
+  }, [workId, liff.ready, isPreview]);
 
-  // ── UserProgress 取得 ──────────────────────────
   useEffect(() => {
     if (!liff.lineUserId || !workId) return;
 
@@ -66,12 +73,11 @@ export default function LiffViewerPage() {
           }
         }
       } catch {
-        // プログレス取得失敗は無視（before_start のまま）
+        // ignore
       }
     })();
   }, [liff.lineUserId, workId]);
 
-  // ── Loading ────────────────────────────────────
   if (liff.loading || loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -83,7 +89,6 @@ export default function LiffViewerPage() {
     );
   }
 
-  // ── Error ──────────────────────────────────────
   if (error) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
@@ -98,7 +103,35 @@ export default function LiffViewerPage() {
 
   if (!pageData) return null;
 
-  // ── Render context ─────────────────────────────
+  if (pageData.page_type === "hint_site") {
+    return (
+      <>
+        {!liff.isInClient && !isPreview && (
+          <div className="bg-amber-50 border-b border-amber-200 px-4 py-2">
+            <p className="text-xs text-amber-700 text-center">
+              LINEアプリ内で開くと、すべての機能をご利用いただけます
+            </p>
+          </div>
+        )}
+        <HintSiteRenderer
+          config={{
+            work_id:       pageData.work_id,
+            title:         pageData.title || pageData.work_title,
+            description:   pageData.description,
+            settings_json: pageData.settings_json ?? {},
+            blocks:        pageData.blocks.map((b) => ({
+              id:            b.id,
+              block_type:    b.block_type,
+              title:         b.title,
+              settings_json: (b.settings_json ?? {}) as Record<string, unknown>,
+            })),
+          }}
+          preview={isPreview}
+        />
+      </>
+    );
+  }
+
   const ctx: LiffRenderContext = {
     userState,
     progress: { current: 0, total: 1 },

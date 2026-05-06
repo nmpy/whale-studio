@@ -2,7 +2,6 @@
 
 // src/components/liff/block-type-registry.tsx
 // ブロックタイプの統一レジストリ
-// switch文の重複を排除し、新しいblock_type追加時にこの1ファイルだけ編集すれば済むようにする。
 
 import type { ComponentType } from "react";
 import type {
@@ -17,6 +16,12 @@ import type {
   CharacterListSettings,
   ImageBlockSettings,
   VideoBlockSettings,
+  HeadingSettings,
+  TextSettings,
+  WarningSettings,
+  ButtonLinkSettings,
+  DividerSettings,
+  AccordionSettings,
 } from "@/types";
 
 import {
@@ -29,31 +34,28 @@ import {
   CharacterListForm,
   ImageBlockForm,
   VideoBlockForm,
+  HeadingForm,
+  TextForm,
+  WarningForm,
+  ButtonLinkForm,
+  DividerForm,
+  AccordionForm,
 } from "./block-settings-forms";
 
-// ── 共通 Props 型 ────────────────────────────────
-// settings form が受け取る共通シグネチャ
 export type SettingsFormProps<T = Record<string, unknown>> = {
   settings: T;
   onChange: (s: T) => void;
   readOnly?: boolean;
 };
 
-// ── レジストリエントリ型 ─────────────────────────
 export interface BlockTypeEntry {
-  /** UIラベル */
   label: string;
-  /** 絵文字アイコン */
   icon: string;
-  /** 概要説明 */
   description: string;
-  /** 新規作成時のデフォルト設定 */
   defaultSettings: Record<string, unknown>;
-  /** 管理画面: 設定フォームコンポーネント */
   SettingsForm: ComponentType<SettingsFormProps<any>>;
 }
 
-// ── レジストリ本体 ───────────────────────────────
 export const BLOCK_TYPE_REGISTRY: Record<LiffBlockType, BlockTypeEntry> = {
   free_text: {
     label:           "フリーテキスト",
@@ -108,7 +110,7 @@ export const BLOCK_TYPE_REGISTRY: Record<LiffBlockType, BlockTypeEntry> = {
     label:           "画像",
     icon:            "🖼️",
     description:     "画像を表示",
-    defaultSettings: { image_url: "", alt: "", caption: "" } satisfies ImageBlockSettings,
+    defaultSettings: { image_url: "", alt: "", caption: "", size: "normal" } satisfies ImageBlockSettings,
     SettingsForm:    ImageBlockForm as ComponentType<SettingsFormProps<any>>,
   },
   video: {
@@ -118,9 +120,50 @@ export const BLOCK_TYPE_REGISTRY: Record<LiffBlockType, BlockTypeEntry> = {
     defaultSettings: { video_url: "", poster_url: "", caption: "" } satisfies VideoBlockSettings,
     SettingsForm:    VideoBlockForm as ComponentType<SettingsFormProps<any>>,
   },
+  heading: {
+    label:           "見出し",
+    icon:            "🅷",
+    description:     "セクションの見出しを表示",
+    defaultSettings: { text: "", level: 2, align: "left" } satisfies HeadingSettings,
+    SettingsForm:    HeadingForm as ComponentType<SettingsFormProps<any>>,
+  },
+  text: {
+    label:           "テキスト",
+    icon:            "📄",
+    description:     "本文テキストを表示",
+    defaultSettings: { body: "", align: "left", emphasis: "normal" } satisfies TextSettings,
+    SettingsForm:    TextForm as ComponentType<SettingsFormProps<any>>,
+  },
+  warning: {
+    label:           "注意帯",
+    icon:            "⚠️",
+    description:     "ネタバレ注意などの強調テキスト",
+    defaultSettings: { body: "ネタバレ注意：このサイトではヒントが見られます。", tone: "spoiler" } satisfies WarningSettings,
+    SettingsForm:    WarningForm as ComponentType<SettingsFormProps<any>>,
+  },
+  button_link: {
+    label:           "ボタンリンク",
+    icon:            "🔘",
+    description:     "リンクボタンを表示",
+    defaultSettings: { label: "", url: "", open_external: true, variant: "default" } satisfies ButtonLinkSettings,
+    SettingsForm:    ButtonLinkForm as ComponentType<SettingsFormProps<any>>,
+  },
+  divider: {
+    label:           "区切り線",
+    icon:            "—",
+    description:     "セクション区切りの線",
+    defaultSettings: { style: "solid" } satisfies DividerSettings,
+    SettingsForm:    DividerForm as ComponentType<SettingsFormProps<any>>,
+  },
+  accordion: {
+    label:           "アコーディオン",
+    icon:            "▾",
+    description:     "STAGE 用の開閉セクション（子要素を持てる）",
+    defaultSettings: { title: "", default_open: false, variant: "default", children: [] } satisfies AccordionSettings,
+    SettingsForm:    AccordionForm as ComponentType<SettingsFormProps<any>>,
+  },
 };
 
-// ── ヘルパー ─────────────────────────────────────
 export const ALL_BLOCK_TYPES = Object.keys(BLOCK_TYPE_REGISTRY) as LiffBlockType[];
 
 export function getBlockEntry(blockType: string): BlockTypeEntry | undefined {

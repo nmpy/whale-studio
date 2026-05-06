@@ -2,7 +2,6 @@
 
 // src/app/oas/[id]/works/[workId]/liff/page.tsx
 // LIFF表示設定ページ — ブロック追加・編集・削除・並び替え + プレビュー
-// 状態管理は useLiffConfig hook に集約し、UIはサブコンポーネントに分割
 
 import { useState, useCallback } from "react";
 import { useParams } from "next/navigation";
@@ -21,8 +20,9 @@ export default function LiffConfigPage() {
   const oaId = params.id as string;
   const workId = params.workId as string;
   const { showToast } = useToast();
-  const { role, loading: roleLoading } = useWorkspaceRole(oaId);
+  const { role, loading: roleLoading, isAdmin } = useWorkspaceRole(oaId);
   const isReadOnly = role === "viewer" || role === "tester";
+  const canPublish = isAdmin;
 
   const liff = useLiffConfig(workId, {
     onSuccess: (msg) => showToast(msg, "success"),
@@ -32,7 +32,6 @@ export default function LiffConfigPage() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [dragIdx, setDragIdx] = useState<number | null>(null);
 
-  // ── DnD ────────────────────────────────────────
   const handleDragStart = useCallback((idx: number) => setDragIdx(idx), []);
   const handleDragOver = useCallback((e: React.DragEvent, idx: number) => {
     e.preventDefault();
@@ -52,7 +51,6 @@ export default function LiffConfigPage() {
     await liff.reorderBlocks(liff.config.blocks);
   }, [liff, isReadOnly]);
 
-  // ── Loading ────────────────────────────────────
   if (liff.loading || roleLoading) {
     return (
       <div className="p-6">
@@ -81,14 +79,37 @@ export default function LiffConfigPage() {
         config={config}
         saving={liff.saving}
         readOnly={isReadOnly}
+        canPublish={canPublish}
         onToggleEnabled={liff.toggleEnabled}
         onUpdateField={liff.updateConfigField}
         onLocalChange={(patch) => liff.updateConfigLocal(patch)}
+        onUpdateSettingsField={liff.updateSettingsField}
+        onUpdatePageType={liff.updatePageType}
+        onUpdatePublishStatus={liff.updatePublishStatus}
       />
 
-      {/* メインエリア: ブロックリスト + プレビュー */}
+      <div className="flex items-center gap-2 mb-4 text-xs text-gray-500">
+        <span>プレビュー:</span>
+        <a
+          href={`/liff/work/${workId}?preview=1`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-violet-600 underline"
+        >
+          下書きを含むプレビューを開く
+        </a>
+        <span>/</span>
+        <a
+          href={`/liff/work/${workId}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-gray-600 underline"
+        >
+          公開ページを開く
+        </a>
+      </div>
+
       <div className="flex gap-6 items-start">
-        {/* 左: ブロックリスト */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-base font-semibold text-gray-900">表示ブロック</h2>
@@ -138,14 +159,12 @@ export default function LiffConfigPage() {
           </div>
         </div>
 
-        {/* 右: プレビュー */}
         <div className="sticky top-6 shrink-0">
           <h2 className="text-sm font-semibold text-gray-500 mb-2">プレビュー</h2>
-          <LiffPreview blocks={config.blocks} title={config.title} />
+          <LiffPreview blocks={config.blocks} title={config.title} config={config} />
         </div>
       </div>
 
-      {/* 追加モーダル */}
       {showAddModal && (
         <LiffAddBlockModal
           saving={liff.saving}

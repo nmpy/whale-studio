@@ -35,6 +35,9 @@ export function toConfigResponse(c: {
   isEnabled: boolean;
   title: string | null;
   description: string | null;
+  pageType?: string | null;
+  publishStatus?: string | null;
+  settingsJson?: unknown;
   createdAt: Date;
   updatedAt: Date;
   blocks: Array<{
@@ -51,15 +54,18 @@ export function toConfigResponse(c: {
   }>;
 }) {
   return {
-    id:          c.id,
-    work_id:     c.workId,
-    is_enabled:  c.isEnabled,
-    title:       c.title,
-    description: c.description,
-    blocks:      c.blocks
+    id:             c.id,
+    work_id:        c.workId,
+    is_enabled:     c.isEnabled,
+    title:          c.title,
+    description:    c.description,
+    page_type:      (c.pageType ?? "default") as "default" | "hint_site",
+    publish_status: (c.publishStatus ?? "draft") as "draft" | "published" | "archived",
+    settings_json:  (c.settingsJson ?? {}) as Record<string, unknown>,
+    blocks:         c.blocks
       .sort((a, b) => a.sortOrder - b.sortOrder)
       .map(toBlockResponse),
-    created_at:  c.createdAt,
-    updated_at:  c.updatedAt,
+    created_at:     c.createdAt,
+    updated_at:     c.updatedAt,
   };
 }

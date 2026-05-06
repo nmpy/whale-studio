@@ -5,7 +5,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { liffConfigApi, getDevToken, workApi } from "@/lib/api-client";
-import type { LiffPageConfig, LiffPageBlock, LiffBlockType } from "@/types";
+import type { LiffPageConfig, LiffPageBlock, LiffBlockType, LiffPageType, LiffPublishStatus, LiffPageConfigSettings } from "@/types";
 
 export interface UseLiffConfigReturn {
   config: LiffPageConfig | null;
@@ -14,12 +14,13 @@ export interface UseLiffConfigReturn {
   workTitle: string;
   editingBlockId: string | null;
 
-  // ── Config 操作 ──
   toggleEnabled: () => Promise<void>;
   updateConfigField: (field: "title" | "description", value: string | null) => Promise<void>;
   updateConfigLocal: (patch: Partial<LiffPageConfig>) => void;
+  updatePageType: (next: LiffPageType) => Promise<void>;
+  updatePublishStatus: (next: LiffPublishStatus) => Promise<void>;
+  updateSettingsField: (key: keyof LiffPageConfigSettings, value: unknown) => Promise<void>;
 
-  // ── Block 操作 ──
   addBlock: (blockType: LiffBlockType) => Promise<void>;
   updateBlock: (block: LiffPageBlock) => Promise<void>;
   deleteBlock: (blockId: string) => Promise<void>;
@@ -27,11 +28,9 @@ export interface UseLiffConfigReturn {
   moveBlock: (idx: number, direction: "up" | "down") => Promise<void>;
   reorderBlocks: (newBlocks: LiffPageBlock[]) => Promise<void>;
 
-  // ── Local 編集 ──
   setEditingBlockId: (id: string | null) => void;
   updateBlockLocal: (blockId: string, patch: Partial<LiffPageBlock>) => void;
 
-  // ── リフレッシュ ──
   reload: () => Promise<void>;
 }
 
@@ -65,7 +64,6 @@ export function useLiffConfig(
 
   useEffect(() => { reload(); }, [reload]);
 
-  // ── Config 操作 ──────────────────────────────
   const toggleEnabled = useCallback(async () => {
     if (!config) return;
     setSaving(true);
@@ -99,7 +97,54 @@ export function useLiffConfig(
     setConfig({ ...config, ...patch });
   }, [config]);
 
-  // ── Block 操作 ──────────────────────────────
+  const updatePageType = useCallback(async (next: LiffPageType) => {
+    if (!config) return;
+    setSaving(true);
+    try {
+      const updated = await liffConfigApi.update(token, workId, { page_type: next });
+      setConfig(updated);
+      onSuccess?.("ページ種別を更新しました");
+    } catch {
+      onError?.("更新に失敗しました");
+    } finally {
+      setSaving(false);
+    }
+  }, [config, token, workId, onSuccess, onError]);
+
+  const updatePublishStatus = useCallback(async (next: LiffPublishStatus) => {
+    if (!config) return;
+    setSaving(true);
+    try {
+      const updated = await liffConfigApi.update(token, workId, { publish_status: next });
+      setConfig(updated);
+      onSuccess?.(
+        next === "published" ? "公開しました" :
+        next === "archived"  ? "アーカイブしました" :
+        "下書きに戻しました"
+      );
+    } catch (err) {
+      onError?.(err instanceof Error ? err.message : "公開に失敗しました");
+    } finally {
+      setSaving(false);
+    }
+  }, [config, token, workId, onSuccess, onError]);
+
+  const updateSettingsField = useCallback(async (key: keyof LiffPageConfigSettings, value: unknown) => {
+    if (!config) return;
+    const nextSettings = { ...(config.settings_json ?? {}), [key]: value };
+    setConfig({ ...config, settings_json: nextSettings });
+    setSaving(true);
+    try {
+      const updated = await liffConfigApi.update(token, workId, { settings_json: nextSettings });
+      setConfig(updated);
+    } catch {
+      onError?.("更新に失敗しました");
+      await reload();
+    } finally {
+      setSaving(false);
+    }
+  }, [config, token, workId, onError, reload]);
+
   const addBlock = useCallback(async (blockType: LiffBlockType) => {
     setSaving(true);
     try {
@@ -154,7 +199,6 @@ export function useLiffConfig(
   }, [token, workId, reload, editingBlockId, onSuccess, onError]);
 
   const toggleBlockEnabled = useCallback(async (block: LiffPageBlock) => {
-    // optimistic update
     updateBlockLocal(block.id, { is_enabled: !block.is_enabled });
     try {
       await liffConfigApi.updateBlock(token, workId, block.id, { is_enabled: !block.is_enabled });
@@ -192,7 +236,6 @@ export function useLiffConfig(
     }
   }, [config, token, workId, reload, onError]);
 
-  // ── Local 編集 ──────────────────────────────
   const updateBlockLocal = useCallback((blockId: string, patch: Partial<LiffPageBlock>) => {
     if (!config) return;
     setConfig({
@@ -204,6 +247,7 @@ export function useLiffConfig(
   return {
     config, loading, saving, workTitle, editingBlockId,
     toggleEnabled, updateConfigField, updateConfigLocal,
+    updatePageType, updatePublishStatus, updateSettingsField,
     addBlock, updateBlock, deleteBlock, toggleBlockEnabled, moveBlock, reorderBlocks,
     setEditingBlockId, updateBlockLocal,
     reload,
