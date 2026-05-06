@@ -1086,9 +1086,28 @@ export type LiffBlockType =
   | "hint_list"
   | "character_list"
   | "image"
-  | "video";
+  | "video"
+  // ── ヒントサイト用ブロック ────────────────────
+  | "heading"
+  | "text"
+  | "warning"
+  | "button_link"
+  | "divider"
+  | "accordion";
 
 export type VisibilityCondition = "always" | "before_start" | "in_progress" | "completed";
+
+/** LIFF ページ種別 — 表示ロジック分岐用 */
+export type LiffPageType = "default" | "hint_site";
+
+/** LIFF ページの公開状態（draft = 編集中 / published = 公開中 / archived = 退避） */
+export type LiffPublishStatus = "draft" | "published" | "archived";
+
+/** セクション色のバリエーション（テーマで色を出し分けるためのキー） */
+export type LiffSectionVariant = "default" | "dark" | "purple";
+
+/** 画像表示サイズ */
+export type LiffImageSize = "normal" | "wide" | "full";
 
 export interface FreeTextSettings {
   body?: string;
@@ -1131,6 +1150,8 @@ export interface ImageBlockSettings {
   image_url?: string;
   alt?: string;
   caption?: string;
+  /** 表示サイズ（normal=通常 / wide=コンテナ余白なし / full=画面端まで） */
+  size?: LiffImageSize;
 }
 
 export interface VideoBlockSettings {
@@ -1139,7 +1160,60 @@ export interface VideoBlockSettings {
   caption?: string;
 }
 
-export type LiffBlockSettings =
+// ── ヒントサイト用ブロック設定 ──────────────────
+export interface HeadingSettings {
+  text?: string;
+  level?: 1 | 2 | 3;
+  align?: "left" | "center";
+}
+
+export interface TextSettings {
+  body?: string;
+  align?: "left" | "center";
+  emphasis?: "normal" | "strong";
+}
+
+export interface WarningSettings {
+  body?: string;
+  /** "spoiler" | "info" | "danger" — UIスタイルのヒント */
+  tone?: "spoiler" | "info" | "danger";
+}
+
+export interface ButtonLinkSettings {
+  label?: string;
+  url?: string;
+  /** 外部リンクとして開くか（LIFF外で開く） */
+  open_external?: boolean;
+  variant?: LiffSectionVariant;
+}
+
+export interface DividerSettings {
+  /** "solid" | "dashed"。省略時は solid */
+  style?: "solid" | "dashed";
+}
+
+/**
+ * accordion ブロック設定。
+ * children には任意の AnyLiffBlockSettings を含むネスト可能なブロックを格納する。
+ * ネストは最大 3 階層に制限する（バリデーション側で担保）。
+ */
+export interface AccordionSettings {
+  title?: string;
+  default_open?: boolean;
+  variant?: LiffSectionVariant;
+  children?: NestedLiffBlock[];
+}
+
+/** accordion の中に直接埋め込めるネスト可能ブロック（DBには載らないインライン構造） */
+export interface NestedLiffBlock {
+  /** 子要素の安定 ID（クライアントで生成・保存） */
+  id?: string;
+  block_type: LiffBlockType;
+  title?: string | null;
+  settings_json?: AnyLiffBlockSettings;
+}
+
+export type AnyLiffBlockSettings =
   | FreeTextSettings
   | StartButtonSettings
   | ResumeButtonSettings
@@ -1148,7 +1222,15 @@ export type LiffBlockSettings =
   | HintListSettings
   | CharacterListSettings
   | ImageBlockSettings
-  | VideoBlockSettings;
+  | VideoBlockSettings
+  | HeadingSettings
+  | TextSettings
+  | WarningSettings
+  | ButtonLinkSettings
+  | DividerSettings
+  | AccordionSettings;
+
+export type LiffBlockSettings = AnyLiffBlockSettings;
 
 export interface LiffPageBlock {
   id:                        string;
@@ -1163,21 +1245,63 @@ export interface LiffPageBlock {
   updated_at:                string;
 }
 
+/**
+ * LIFF ページ全体の設定。
+ *
+ * ヒントサイト機能ではヘッダー（ロゴ・CTA）やテーマ設定などをここに格納する。
+ * 既存の LiffPageConfig を壊さないように、すべての項目はオプショナル。
+ */
+export interface LiffPageConfigSettings {
+  /** 固定ヘッダーを使用するか（hint_site のとき有効） */
+  header_fixed?: boolean;
+  /** ロゴ画像 URL（枠内に contain で表示される） */
+  header_logo_url?: string;
+  /** ロゴの alt テキスト */
+  header_logo_alt?: string;
+  /** CTA ボタンのラベル（例: "チケットを購入する"） */
+  header_cta_label?: string;
+  /** CTA ボタンの URL */
+  header_cta_url?: string;
+  /** ハンバーガーメニューを表示するか（将来の拡張用。現状は枠のみ確保） */
+  show_hamburger?: boolean;
+  /** 本文上部に表示するネタバレ注意帯のテキスト */
+  spoiler_warning_text?: string;
+  /** テーマ設定 */
+  theme?: {
+    /** ヘッダー背景色（CSS color 文字列） */
+    header_bg?: string;
+    /** ヘッダー文字色 */
+    header_fg?: string;
+    /** デフォルト variant 色のオーバーライド */
+    variants?: {
+      default?: { bg?: string; fg?: string; border?: string };
+      dark?:    { bg?: string; fg?: string; border?: string };
+      purple?:  { bg?: string; fg?: string; border?: string };
+    };
+  };
+}
+
 export interface LiffPageConfig {
-  id:          string;
-  work_id:     string;
-  is_enabled:  boolean;
-  title:       string | null;
-  description: string | null;
-  blocks:      LiffPageBlock[];
-  created_at:  string;
-  updated_at:  string;
+  id:             string;
+  work_id:        string;
+  is_enabled:     boolean;
+  title:          string | null;
+  description:    string | null;
+  page_type:      LiffPageType;
+  publish_status: LiffPublishStatus;
+  settings_json:  LiffPageConfigSettings;
+  blocks:         LiffPageBlock[];
+  created_at:     string;
+  updated_at:     string;
 }
 
 export interface UpdateLiffConfigBody {
-  is_enabled?:  boolean;
-  title?:       string | null;
-  description?: string | null;
+  is_enabled?:     boolean;
+  title?:          string | null;
+  description?:    string | null;
+  page_type?:      LiffPageType;
+  publish_status?: LiffPublishStatus;
+  settings_json?:  LiffPageConfigSettings;
 }
 
 export interface CreateLiffBlockBody {

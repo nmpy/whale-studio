@@ -3,6 +3,7 @@
 // src/components/liff/block-settings-forms.tsx
 // ブロックタイプごとの設定フォーム
 
+import { useState } from "react";
 import type {
   LiffBlockType,
   FreeTextSettings,
@@ -14,7 +15,16 @@ import type {
   CharacterListSettings,
   ImageBlockSettings,
   VideoBlockSettings,
+  HeadingSettings,
+  TextSettings,
+  WarningSettings,
+  ButtonLinkSettings,
+  DividerSettings,
+  AccordionSettings,
+  NestedLiffBlock,
+  LiffSectionVariant,
 } from "@/types";
+import { uploadApi, getDevToken } from "@/lib/api-client";
 
 type FieldProps<T> = {
   settings: T;
@@ -22,14 +32,12 @@ type FieldProps<T> = {
   readOnly?: boolean;
 };
 
-// ── 共通 input スタイル ──────────────────────────
 const inputClass =
   "w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-300 focus:border-violet-400 disabled:bg-gray-50 disabled:text-gray-500";
 const labelClass = "block text-xs font-medium text-gray-600 mb-1";
 const selectClass =
   "w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-violet-300 disabled:bg-gray-50";
 
-// ── FreeText ─────────────────────────────────────
 export function FreeTextForm({ settings, onChange, readOnly }: FieldProps<FreeTextSettings>) {
   return (
     <div className="space-y-3">
@@ -74,7 +82,6 @@ export function FreeTextForm({ settings, onChange, readOnly }: FieldProps<FreeTe
   );
 }
 
-// ── StartButton ──────────────────────────────────
 export function StartButtonForm({ settings, onChange, readOnly }: FieldProps<StartButtonSettings>) {
   return (
     <div className="space-y-3">
@@ -102,7 +109,6 @@ export function StartButtonForm({ settings, onChange, readOnly }: FieldProps<Sta
   );
 }
 
-// ── ResumeButton ─────────────────────────────────
 export function ResumeButtonForm({ settings, onChange, readOnly }: FieldProps<ResumeButtonSettings>) {
   return (
     <div className="space-y-3">
@@ -120,7 +126,6 @@ export function ResumeButtonForm({ settings, onChange, readOnly }: FieldProps<Re
   );
 }
 
-// ── Progress ─────────────────────────────────────
 export function ProgressForm({ settings, onChange, readOnly }: FieldProps<ProgressSettings>) {
   return (
     <div className="space-y-3">
@@ -150,7 +155,6 @@ export function ProgressForm({ settings, onChange, readOnly }: FieldProps<Progre
   );
 }
 
-// ── EvidenceList ─────────────────────────────────
 export function EvidenceListForm({ settings, onChange, readOnly }: FieldProps<EvidenceListSettings>) {
   return (
     <div className="space-y-3">
@@ -190,7 +194,6 @@ export function EvidenceListForm({ settings, onChange, readOnly }: FieldProps<Ev
   );
 }
 
-// ── HintList ─────────────────────────────────────
 export function HintListForm({ settings, onChange, readOnly }: FieldProps<HintListSettings>) {
   return (
     <div className="space-y-3">
@@ -220,7 +223,6 @@ export function HintListForm({ settings, onChange, readOnly }: FieldProps<HintLi
   );
 }
 
-// ── CharacterList ────────────────────────────────
 export function CharacterListForm({ settings, onChange, readOnly }: FieldProps<CharacterListSettings>) {
   return (
     <div className="space-y-3">
@@ -248,8 +250,24 @@ export function CharacterListForm({ settings, onChange, readOnly }: FieldProps<C
   );
 }
 
-// ── Image ────────────────────────────────────────
 export function ImageBlockForm({ settings, onChange, readOnly }: FieldProps<ImageBlockSettings>) {
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+
+  const handleFile = async (file: File | undefined) => {
+    if (!file) return;
+    setUploading(true);
+    setUploadError(null);
+    try {
+      const { url } = await uploadApi.uploadImage(getDevToken(), file);
+      onChange({ ...settings, image_url: url });
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : "アップロードに失敗しました");
+    } finally {
+      setUploading(false);
+    }
+  };
+
   return (
     <div className="space-y-3">
       <div>
@@ -258,9 +276,24 @@ export function ImageBlockForm({ settings, onChange, readOnly }: FieldProps<Imag
           className={inputClass}
           value={settings.image_url ?? ""}
           onChange={(e) => onChange({ ...settings, image_url: e.target.value })}
-          disabled={readOnly}
+          disabled={readOnly || uploading}
           placeholder="https://..."
         />
+        {!readOnly && (
+          <div className="mt-2 flex items-center gap-2">
+            <label className="inline-block px-3 py-1.5 bg-violet-50 border border-violet-200 rounded-md text-xs text-violet-700 cursor-pointer hover:bg-violet-100">
+              {uploading ? "アップロード中..." : "画像をアップロード"}
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/gif"
+                disabled={uploading}
+                onChange={(e) => handleFile(e.target.files?.[0])}
+                className="hidden"
+              />
+            </label>
+            {uploadError && <span className="text-xs text-red-600">{uploadError}</span>}
+          </div>
+        )}
       </div>
       <div>
         <label className={labelClass}>alt テキスト</label>
@@ -280,11 +313,23 @@ export function ImageBlockForm({ settings, onChange, readOnly }: FieldProps<Imag
           disabled={readOnly}
         />
       </div>
+      <div>
+        <label className={labelClass}>表示サイズ</label>
+        <select
+          className={selectClass}
+          value={settings.size ?? "normal"}
+          onChange={(e) => onChange({ ...settings, size: e.target.value as ImageBlockSettings["size"] })}
+          disabled={readOnly}
+        >
+          <option value="normal">通常</option>
+          <option value="wide">広め</option>
+          <option value="full">画面いっぱい</option>
+        </select>
+      </div>
     </div>
   );
 }
 
-// ── Video ────────────────────────────────────────
 export function VideoBlockForm({ settings, onChange, readOnly }: FieldProps<VideoBlockSettings>) {
   return (
     <div className="space-y-3">
@@ -321,7 +366,250 @@ export function VideoBlockForm({ settings, onChange, readOnly }: FieldProps<Vide
   );
 }
 
-// ── Settings Form ルーター（レジストリベース） ──
+export function HeadingForm({ settings, onChange, readOnly }: FieldProps<HeadingSettings>) {
+  return (
+    <div className="space-y-3">
+      <div>
+        <label className={labelClass}>見出しテキスト</label>
+        <input
+          className={inputClass}
+          value={settings.text ?? ""}
+          onChange={(e) => onChange({ ...settings, text: e.target.value })}
+          disabled={readOnly}
+          placeholder="HINTを見る前に"
+        />
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className={labelClass}>レベル</label>
+          <select
+            className={selectClass}
+            value={String(settings.level ?? 2)}
+            onChange={(e) => onChange({ ...settings, level: Number(e.target.value) as 1 | 2 | 3 })}
+            disabled={readOnly}
+          >
+            <option value="1">H1（最大）</option>
+            <option value="2">H2</option>
+            <option value="3">H3</option>
+          </select>
+        </div>
+        <div>
+          <label className={labelClass}>配置</label>
+          <select
+            className={selectClass}
+            value={settings.align ?? "left"}
+            onChange={(e) => onChange({ ...settings, align: e.target.value as "left" | "center" })}
+            disabled={readOnly}
+          >
+            <option value="left">左揃え</option>
+            <option value="center">中央揃え</option>
+          </select>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function TextForm({ settings, onChange, readOnly }: FieldProps<TextSettings>) {
+  return (
+    <div className="space-y-3">
+      <div>
+        <label className={labelClass}>本文</label>
+        <textarea
+          className={inputClass}
+          rows={4}
+          value={settings.body ?? ""}
+          onChange={(e) => onChange({ ...settings, body: e.target.value })}
+          disabled={readOnly}
+          placeholder="本文を入力..."
+        />
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className={labelClass}>配置</label>
+          <select
+            className={selectClass}
+            value={settings.align ?? "left"}
+            onChange={(e) => onChange({ ...settings, align: e.target.value as "left" | "center" })}
+            disabled={readOnly}
+          >
+            <option value="left">左揃え</option>
+            <option value="center">中央揃え</option>
+          </select>
+        </div>
+        <div>
+          <label className={labelClass}>強調</label>
+          <select
+            className={selectClass}
+            value={settings.emphasis ?? "normal"}
+            onChange={(e) => onChange({ ...settings, emphasis: e.target.value as "normal" | "strong" })}
+            disabled={readOnly}
+          >
+            <option value="normal">通常</option>
+            <option value="strong">強調</option>
+          </select>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function WarningForm({ settings, onChange, readOnly }: FieldProps<WarningSettings>) {
+  return (
+    <div className="space-y-3">
+      <div>
+        <label className={labelClass}>注意文</label>
+        <textarea
+          className={inputClass}
+          rows={3}
+          value={settings.body ?? ""}
+          onChange={(e) => onChange({ ...settings, body: e.target.value })}
+          disabled={readOnly}
+          placeholder="ネタバレ注意：このサイトではヒントが見られます。"
+        />
+      </div>
+      <div>
+        <label className={labelClass}>トーン</label>
+        <select
+          className={selectClass}
+          value={settings.tone ?? "spoiler"}
+          onChange={(e) => onChange({ ...settings, tone: e.target.value as WarningSettings["tone"] })}
+          disabled={readOnly}
+        >
+          <option value="spoiler">スポイラー（黄）</option>
+          <option value="info">情報（青）</option>
+          <option value="danger">危険（赤）</option>
+        </select>
+      </div>
+    </div>
+  );
+}
+
+export function ButtonLinkForm({ settings, onChange, readOnly }: FieldProps<ButtonLinkSettings>) {
+  return (
+    <div className="space-y-3">
+      <div>
+        <label className={labelClass}>ラベル</label>
+        <input
+          className={inputClass}
+          value={settings.label ?? ""}
+          onChange={(e) => onChange({ ...settings, label: e.target.value })}
+          disabled={readOnly}
+          placeholder="チケットを購入する"
+        />
+      </div>
+      <div>
+        <label className={labelClass}>URL</label>
+        <input
+          className={inputClass}
+          value={settings.url ?? ""}
+          onChange={(e) => onChange({ ...settings, url: e.target.value })}
+          disabled={readOnly}
+          placeholder="https://..."
+        />
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className={labelClass}>variant</label>
+          <select
+            className={selectClass}
+            value={settings.variant ?? "default"}
+            onChange={(e) => onChange({ ...settings, variant: e.target.value as LiffSectionVariant })}
+            disabled={readOnly}
+          >
+            <option value="default">default</option>
+            <option value="dark">dark</option>
+            <option value="purple">purple</option>
+          </select>
+        </div>
+        <label className="flex items-center gap-2 text-sm text-gray-700 mt-6">
+          <input
+            type="checkbox"
+            checked={settings.open_external ?? true}
+            onChange={(e) => onChange({ ...settings, open_external: e.target.checked })}
+            disabled={readOnly}
+            className="rounded border-gray-300"
+          />
+          外部ブラウザで開く
+        </label>
+      </div>
+    </div>
+  );
+}
+
+export function DividerForm({ settings, onChange, readOnly }: FieldProps<DividerSettings>) {
+  return (
+    <div className="space-y-3">
+      <div>
+        <label className={labelClass}>スタイル</label>
+        <select
+          className={selectClass}
+          value={settings.style ?? "solid"}
+          onChange={(e) => onChange({ ...settings, style: e.target.value as "solid" | "dashed" })}
+          disabled={readOnly}
+        >
+          <option value="solid">実線</option>
+          <option value="dashed">点線</option>
+        </select>
+      </div>
+    </div>
+  );
+}
+
+import { AccordionChildrenEditor } from "./AccordionChildrenEditor";
+
+export function AccordionForm({ settings, onChange, readOnly }: FieldProps<AccordionSettings>) {
+  return (
+    <div className="space-y-3">
+      <div>
+        <label className={labelClass}>タイトル（必須）</label>
+        <input
+          className={inputClass}
+          value={settings.title ?? ""}
+          onChange={(e) => onChange({ ...settings, title: e.target.value })}
+          disabled={readOnly}
+          placeholder="1st STAGE.（無料エリア）"
+        />
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className={labelClass}>variant</label>
+          <select
+            className={selectClass}
+            value={settings.variant ?? "default"}
+            onChange={(e) => onChange({ ...settings, variant: e.target.value as LiffSectionVariant })}
+            disabled={readOnly}
+          >
+            <option value="default">default（白）</option>
+            <option value="dark">dark（黒）</option>
+            <option value="purple">purple（紫）</option>
+          </select>
+        </div>
+        <label className="flex items-center gap-2 text-sm text-gray-700 mt-6">
+          <input
+            type="checkbox"
+            checked={settings.default_open ?? false}
+            onChange={(e) => onChange({ ...settings, default_open: e.target.checked })}
+            disabled={readOnly}
+            className="rounded border-gray-300"
+          />
+          初期状態で開く
+        </label>
+      </div>
+
+      <div>
+        <label className={labelClass}>子要素</label>
+        <AccordionChildrenEditor
+          items={settings.children ?? []}
+          depth={1}
+          readOnly={readOnly}
+          onChange={(next) => onChange({ ...settings, children: next })}
+        />
+      </div>
+    </div>
+  );
+}
+
 import { getBlockEntry } from "./block-type-registry";
 
 export function BlockSettingsForm({

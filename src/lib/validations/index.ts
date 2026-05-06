@@ -776,14 +776,25 @@ export const updateAnnouncementSchema = z.object({
 export const LIFF_BLOCK_TYPES = [
   "free_text", "start_button", "resume_button", "progress",
   "evidence_list", "hint_list", "character_list", "image", "video",
+  // ── ヒントサイト用 ──
+  "heading", "text", "warning", "button_link", "divider", "accordion",
 ] as const;
 
 export const VISIBILITY_CONDITIONS = [
   "always", "before_start", "in_progress", "completed",
 ] as const;
 
+export const LIFF_PAGE_TYPES = ["default", "hint_site"] as const;
+export const LIFF_PUBLISH_STATUSES = ["draft", "published", "archived"] as const;
+export const LIFF_SECTION_VARIANTS = ["default", "dark", "purple"] as const;
+export const LIFF_IMAGE_SIZES = ["normal", "wide", "full"] as const;
+
+/** accordion ネスト最大深度（最上位 accordion を 1 と数える） */
+export const LIFF_MAX_ACCORDION_DEPTH = 3;
+
 const liffBlockTypeSchema = z.enum(LIFF_BLOCK_TYPES);
 const visibilityConditionSchema = z.enum(VISIBILITY_CONDITIONS).nullable().optional();
+const sectionVariantSchema = z.enum(LIFF_SECTION_VARIANTS).optional();
 
 const freeTextSettingsSchema = z.object({
   body:     z.string().max(5000).optional(),
@@ -826,12 +837,56 @@ const imageSettingsSchema = z.object({
   image_url: z.string().url().optional(),
   alt:       z.string().max(200).optional(),
   caption:   z.string().max(500).optional(),
+  size:      z.enum(LIFF_IMAGE_SIZES).optional(),
 }).passthrough();
 
 const videoSettingsSchema = z.object({
   video_url:  z.string().url().optional(),
   poster_url: z.string().url().optional(),
   caption:    z.string().max(500).optional(),
+}).passthrough();
+
+// ── ヒントサイト用ブロック設定 ─────────────────
+const headingSettingsSchema = z.object({
+  text:  z.string().max(300).optional(),
+  level: z.union([z.literal(1), z.literal(2), z.literal(3)]).optional(),
+  align: z.enum(["left", "center"]).optional(),
+}).passthrough();
+
+const textSettingsSchema = z.object({
+  body:     z.string().max(5000).optional(),
+  align:    z.enum(["left", "center"]).optional(),
+  emphasis: z.enum(["normal", "strong"]).optional(),
+}).passthrough();
+
+const warningSettingsSchema = z.object({
+  body: z.string().max(500).optional(),
+  tone: z.enum(["spoiler", "info", "danger"]).optional(),
+}).passthrough();
+
+const buttonLinkSettingsSchema = z.object({
+  label:         z.string().max(100).optional(),
+  url:           z.string().url().optional(),
+  open_external: z.boolean().optional(),
+  variant:       sectionVariantSchema,
+}).passthrough();
+
+const dividerSettingsSchema = z.object({
+  style: z.enum(["solid", "dashed"]).optional(),
+}).passthrough();
+
+const nestedBlockBaseSchema = z.object({
+  id:            z.string().optional(),
+  block_type:    liffBlockTypeSchema,
+  title:         z.string().max(200).optional().nullable(),
+  settings_json: z.record(z.unknown()).optional(),
+});
+
+const accordionSettingsSchema: z.ZodTypeAny = z.object({
+  title:        z.string().max(300).optional(),
+  default_open: z.boolean().optional(),
+  variant:      sectionVariantSchema,
+  children:     z.array(nestedBlockBaseSchema).optional(),
 }).passthrough();
 
 const SETTINGS_SCHEMA_MAP: Record<string, z.ZodTypeAny> = {
@@ -844,19 +899,190 @@ const SETTINGS_SCHEMA_MAP: Record<string, z.ZodTypeAny> = {
   character_list:  characterListSettingsSchema,
   image:           imageSettingsSchema,
   video:           videoSettingsSchema,
+  // ── ヒントサイト用 ──
+  heading:         headingSettingsSchema,
+  text:            textSettingsSchema,
+  warning:         warningSettingsSchema,
+  button_link:     buttonLinkSettingsSchema,
+  divider:         dividerSettingsSchema,
+  accordion:       accordionSettingsSchema,
 };
+
+/**
+ * accordion 内 children を再帰的に検証する。
+ */
+function validateNestedChildren(
+  children: unknown,
+  depth: number,
+  pathPrefix: (string | number)[],
+  issues: z.ZodIssue[],
+): void {
+  if (children === undefined || children === null) return;
+  if (!Array.isArray(children)) {
+    issues.push({ code: "custom", path: pathPrefix, message: "children は配列で指定してください" });
+    return;
+  }
+  for (let i = 0; i < children.length; i++) {
+    const child = children[i] as { block_type?: unknown; settings_json?: unknown };
+    const childPath = [...pathPrefix, i];
+
+    if (typeof child !== "object" || child === null) {
+      issues.push({ code: "custom", path: childPath, message: "child の形式が不正です" });
+      continue;
+    }
+    const blockType = child.block_type;
+    if (typeof blockType !== "string") {
+      issues.push({ code: "custom", path: [...childPath, "block_type"], message: "block_type が不正です" });
+      continue;
+    }
+    const schema = SETTINGS_SCHEMA_MAP[blockType];
+    if (!schema) {
+      issues.push({ code: "custom", path: [...childPath, "block_type"], message: `不明なブロックタイプ: ${blockType}` });
+      continue;
+    }
+
+    const settings = child.settings_json ?? {};
+    const r = schema.safeParse(settings);
+    if (!r.success) {
+      for (const issue of r.error.issues) {
+        issues.push({
+          ...issue,
+          path: [...childPath, "settings_json", ...issue.path],
+        });
+      }
+    }
+
+    if (blockType === "accordion") {
+      const nextDepth = depth + 1;
+      if (nextDepth > LIFF_MAX_ACCORDION_DEPTH) {
+        issues.push({
+          code: "custom",
+          path: [...childPath],
+          message: `accordion は最大 ${LIFF_MAX_ACCORDION_DEPTH} 階層までしかネストできません`,
+        });
+        continue;
+      }
+      const innerSettings = (settings ?? {}) as { children?: unknown };
+      validateNestedChildren(
+        innerSettings.children,
+        nextDepth,
+        [...childPath, "settings_json", "children"],
+        issues,
+      );
+    }
+  }
+}
 
 export function validateBlockSettings(blockType: string, settings: unknown): z.SafeParseReturnType<unknown, unknown> {
   const schema = SETTINGS_SCHEMA_MAP[blockType];
   if (!schema) return { success: false, error: new z.ZodError([{ code: "custom", message: `不明なブロックタイプ: ${blockType}`, path: ["block_type"] }]) } as z.SafeParseError<unknown>;
-  return schema.safeParse(settings);
+  const base = schema.safeParse(settings);
+  if (!base.success) return base;
+
+  if (blockType === "accordion") {
+    const issues: z.ZodIssue[] = [];
+    const s = (settings ?? {}) as { children?: unknown };
+    validateNestedChildren(s.children, 1, ["children"], issues);
+    if (issues.length > 0) {
+      return { success: false, error: new z.ZodError(issues) } as z.SafeParseError<unknown>;
+    }
+  }
+  return base;
 }
 
+// ── LIFF ページ設定スキーマ（ヒントサイト用フィールドを含む） ──
+const liffPageConfigSettingsSchema = z.object({
+  header_fixed:         z.boolean().optional(),
+  header_logo_url:      z.string().url().optional().or(z.literal("")),
+  header_logo_alt:      z.string().max(200).optional(),
+  header_cta_label:     z.string().max(100).optional(),
+  header_cta_url:       z.string().url().optional().or(z.literal("")),
+  show_hamburger:       z.boolean().optional(),
+  spoiler_warning_text: z.string().max(500).optional(),
+  theme: z.object({
+    header_bg: z.string().max(64).optional(),
+    header_fg: z.string().max(64).optional(),
+    variants: z.object({
+      default: z.object({ bg: z.string().max(64).optional(), fg: z.string().max(64).optional(), border: z.string().max(64).optional() }).partial().optional(),
+      dark:    z.object({ bg: z.string().max(64).optional(), fg: z.string().max(64).optional(), border: z.string().max(64).optional() }).partial().optional(),
+      purple:  z.object({ bg: z.string().max(64).optional(), fg: z.string().max(64).optional(), border: z.string().max(64).optional() }).partial().optional(),
+    }).partial().optional(),
+  }).partial().optional(),
+}).passthrough();
+
 export const updateLiffConfigSchema = z.object({
-  is_enabled:  z.boolean().optional(),
-  title:       z.string().max(200).optional().nullable(),
-  description: z.string().max(1000).optional().nullable(),
+  is_enabled:     z.boolean().optional(),
+  title:          z.string().max(200).optional().nullable(),
+  description:    z.string().max(1000).optional().nullable(),
+  page_type:      z.enum(LIFF_PAGE_TYPES).optional(),
+  publish_status: z.enum(LIFF_PUBLISH_STATUSES).optional(),
+  settings_json:  liffPageConfigSettingsSchema.optional(),
 });
+
+/**
+ * 公開（publish_status="published"）時の必須項目チェック。
+ */
+export function validatePublishRequirements(args: {
+  title:        string | null;
+  pageType:     string;
+  settings:     unknown;
+  blocks:       Array<{ blockType: string; title: string | null; settingsJson: unknown }>;
+}): { ok: true } | { ok: false; errors: string[] } {
+  const errors: string[] = [];
+  if (!args.title || args.title.trim() === "") {
+    errors.push("公開するにはタイトルを入力してください");
+  }
+
+  const s = (args.settings ?? {}) as Record<string, unknown>;
+  if (args.pageType === "hint_site") {
+    const ctaLabel = (s.header_cta_label as string | undefined)?.trim();
+    const ctaUrl   = (s.header_cta_url   as string | undefined)?.trim();
+    if ((ctaLabel && !ctaUrl) || (!ctaLabel && ctaUrl)) {
+      errors.push("CTA を使う場合はラベルと URL の両方を入力してください");
+    }
+    if (ctaUrl && !/^https?:\/\//.test(ctaUrl)) {
+      errors.push("CTA の URL は http:// または https:// で始めてください");
+    }
+    const logoUrl = (s.header_logo_url as string | undefined)?.trim();
+    if (logoUrl && !/^https?:\/\//.test(logoUrl)) {
+      errors.push("ヘッダーロゴ URL は http:// または https:// で始めてください");
+    }
+  }
+
+  function walk(blockType: string, title: string | null, settings: unknown, depth: number, label: string) {
+    if (blockType === "accordion") {
+      const accSettings = (settings ?? {}) as { title?: string; children?: unknown };
+      const hasTitle = (accSettings.title?.trim() ?? title?.trim() ?? "") !== "";
+      if (!hasTitle) errors.push(`${label}: アコーディオンのタイトルが必要です`);
+      if (depth > LIFF_MAX_ACCORDION_DEPTH) {
+        errors.push(`${label}: アコーディオンのネストが深すぎます（最大 ${LIFF_MAX_ACCORDION_DEPTH} 階層）`);
+      }
+      if (Array.isArray(accSettings.children)) {
+        accSettings.children.forEach((c, i) => {
+          const child = c as { block_type?: string; title?: string | null; settings_json?: unknown };
+          if (typeof child?.block_type === "string") {
+            walk(child.block_type, child.title ?? null, child.settings_json, depth + 1, `${label} > ${child.block_type}#${i + 1}`);
+          }
+        });
+      }
+    } else if (blockType === "image") {
+      const imgSettings = (settings ?? {}) as { image_url?: string };
+      if (!imgSettings.image_url || imgSettings.image_url.trim() === "") {
+        errors.push(`${label}: 画像 URL を設定してください`);
+      }
+    } else if (blockType === "button_link") {
+      const btnSettings = (settings ?? {}) as { url?: string };
+      if (!btnSettings.url || btnSettings.url.trim() === "") {
+        errors.push(`${label}: リンク URL を設定してください`);
+      }
+    }
+  }
+  args.blocks.forEach((b, i) => {
+    walk(b.blockType, b.title, b.settingsJson, 1, `${b.blockType}#${i + 1}`);
+  });
+
+  return errors.length === 0 ? { ok: true } : { ok: false, errors };
+}
 
 export const createLiffBlockSchema = z.object({
   block_type:                liffBlockTypeSchema,

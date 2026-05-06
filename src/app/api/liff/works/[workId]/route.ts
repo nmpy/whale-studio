@@ -35,9 +35,19 @@ export async function GET(
       },
     });
 
+    // ?preview=1 が指定されているとき（管理画面プレビュー用）は draft でも返す。
+    // 通常は published のみ。is_enabled=false は LIFF 自体無効として 404。
+    const url = new URL(req.url);
+    const preview = url.searchParams.get("preview") === "1";
     if (!config || !config.isEnabled) {
       return NextResponse.json(
         { success: false, error: { code: "LIFF_DISABLED", message: "このLIFFページは無効です" } },
+        { status: 404 }
+      );
+    }
+    if (!preview && config.publishStatus !== "published") {
+      return NextResponse.json(
+        { success: false, error: { code: "LIFF_NOT_PUBLISHED", message: "このLIFFページはまだ公開されていません" } },
         { status: 404 }
       );
     }
@@ -45,10 +55,13 @@ export async function GET(
     return NextResponse.json({
       success: true,
       data: {
-        work_id:     work.id,
-        work_title:  work.title,
-        title:       config.title,
-        description: config.description,
+        work_id:        work.id,
+        work_title:     work.title,
+        title:          config.title,
+        description:    config.description,
+        page_type:      config.pageType,
+        publish_status: config.publishStatus,
+        settings_json:  config.settingsJson,
         blocks: config.blocks.map((b) => ({
           id:                        b.id,
           block_type:                b.blockType,

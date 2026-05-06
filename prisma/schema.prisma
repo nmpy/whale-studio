@@ -1056,11 +1056,19 @@ model LiffPageConfig {
   isEnabled   Boolean         @default(false) @map("is_enabled")
   title       String?
   description String?
+  /// "default" | "hint_site"（将来 page 種別を増やすための識別子）
+  pageType    String          @default("default") @map("page_type")
+  /// "draft" | "published" | "archived"
+  publishStatus String        @default("draft") @map("publish_status")
+  /// ページ全体の設定（ヘッダー / CTA / テーマ など）。詳細は LiffPageConfigSettings 型を参照。
+  settingsJson Json           @default("{}") @map("settings_json") @db.JsonB
   createdAt   DateTime        @default(now()) @map("created_at")
   updatedAt   DateTime        @updatedAt @map("updated_at")
   blocks      LiffPageBlock[]
   work        Work            @relation(fields: [workId], references: [id], onDelete: Cascade)
 
+  @@index([pageType])
+  @@index([publishStatus])
   @@map("liff_page_configs")
 }
 

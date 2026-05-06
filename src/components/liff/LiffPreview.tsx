@@ -3,7 +3,7 @@
 // src/components/liff/LiffPreview.tsx
 // 管理画面用スマホ幅プレビュー — Tailwind ベース
 
-import type { LiffPageBlock, LiffBlockType } from "@/types";
+import type { LiffPageBlock, LiffBlockType, LiffPageConfig } from "@/types";
 import type {
   FreeTextSettings,
   StartButtonSettings,
@@ -14,9 +14,23 @@ import type {
   CharacterListSettings,
   ImageBlockSettings,
   VideoBlockSettings,
+  HeadingSettings,
+  TextSettings,
+  WarningSettings,
+  ButtonLinkSettings,
+  DividerSettings,
+  AccordionSettings,
 } from "@/types";
+import { HintSiteRenderer } from "./HintSiteRenderer";
+import {
+  HeadingBlock,
+  TextBlock,
+  WarningBlock,
+  ButtonLinkBlock,
+  DividerBlock,
+  AccordionBlock,
+} from "./renderers";
 
-// ── ブロックプレビュー ──────────────────────────
 function PreviewFreeText({ title, settings }: { title?: string | null; settings: FreeTextSettings }) {
   return (
     <div className={settings.align === "center" ? "text-center" : "text-left"}>
@@ -131,7 +145,6 @@ function PreviewVideo({ settings }: { settings: VideoBlockSettings }) {
   );
 }
 
-// ── プレビュールーター（レジストリは使わず軽量に） ──
 function BlockPreviewContent({ block }: { block: LiffPageBlock }) {
   const s = block.settings_json as Record<string, unknown>;
   const t = block.block_type as LiffBlockType;
@@ -145,35 +158,66 @@ function BlockPreviewContent({ block }: { block: LiffPageBlock }) {
     case "character_list": return <PreviewCharacterList title={block.title} />;
     case "image":          return <PreviewImage settings={s as ImageBlockSettings} />;
     case "video":          return <PreviewVideo settings={s as VideoBlockSettings} />;
+    case "heading":        return <HeadingBlock title={block.title} settings={s as HeadingSettings} />;
+    case "text":           return <TextBlock title={block.title} settings={s as TextSettings} />;
+    case "warning":        return <WarningBlock settings={s as WarningSettings} />;
+    case "button_link":    return <ButtonLinkBlock settings={s as ButtonLinkSettings} />;
+    case "divider":        return <DividerBlock settings={s as DividerSettings} />;
+    case "accordion":      return <AccordionBlock title={block.title} settings={s as AccordionSettings} depth={1} blockId={block.id} />;
     default:               return <p className="text-xs text-gray-400">不明なブロック</p>;
   }
 }
 
-// ── メインコンポーネント ─────────────────────────
 export function LiffPreview({
   blocks,
   title,
+  config,
 }: {
   blocks: LiffPageBlock[];
   title?: string | null;
+  config?: Pick<LiffPageConfig, "page_type" | "settings_json" | "description"> | null;
 }) {
   const enabledBlocks = blocks.filter((b) => b.is_enabled);
 
+  if (config?.page_type === "hint_site") {
+    return (
+      <div className="w-[375px] min-h-[600px] bg-white rounded-2xl overflow-hidden border-[8px] border-gray-800 shadow-xl shrink-0">
+        <div className="bg-gray-800 text-white py-2 px-4 text-[11px] font-semibold text-center">
+          LIFF ヒントサイトプレビュー
+        </div>
+        <div className="overflow-auto" style={{ maxHeight: 720 }}>
+          <HintSiteRenderer
+            preview
+            config={{
+              work_id:       "preview",
+              title:         title ?? null,
+              description:   config?.description ?? null,
+              settings_json: config?.settings_json ?? {},
+              blocks:        enabledBlocks.map((b) => ({
+                id:            b.id,
+                block_type:    b.block_type,
+                title:         b.title,
+                settings_json: (b.settings_json ?? {}) as Record<string, unknown>,
+              })),
+            }}
+          />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="w-[375px] min-h-[600px] bg-white rounded-2xl overflow-hidden border-[8px] border-gray-800 shadow-xl shrink-0">
-      {/* ステータスバー風 */}
       <div className="bg-gray-800 text-white py-2 px-4 text-[11px] font-semibold text-center">
         LIFF プレビュー
       </div>
 
-      {/* ヘッダー */}
       <div className="px-4 pt-4 pb-3 border-b border-gray-100">
         <h2 className="text-base font-bold text-gray-900">
           {title || "LIFF ページ"}
         </h2>
       </div>
 
-      {/* ブロック */}
       <div className="p-4 flex flex-col gap-4">
         {enabledBlocks.length === 0 ? (
           <p className="text-gray-400 text-sm text-center py-10">
