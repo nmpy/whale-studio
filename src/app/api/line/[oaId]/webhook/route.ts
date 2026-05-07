@@ -302,7 +302,7 @@ async function getCachedGlobalKeywords(
         { phase: { phaseType: "global" } },
       ],
       triggerKeyword: { not: null },
-      kind:           { notIn: ["start", "puzzle"] },
+      kind:           { notIn: ["start", "puzzle", "system_notice"] },
     },
     select: {
       id:              true,
@@ -585,9 +585,9 @@ function matchKeywordsInMemory(
   const inputNorm  = normKw(inputText);
   const inputLoose = normKwLoose(inputText);
 
-  // フェーズ内のキーワードメッセージ（triggerKeyword あり / kind ≠ start・puzzle）
+  // フェーズ内のキーワードメッセージ（triggerKeyword あり / kind ≠ start・puzzle・system_notice）
   const phaseKwMsgs = phaseMessages
-    .filter((m) => m.triggerKeyword !== null && m.kind !== "start" && m.kind !== "puzzle")
+    .filter((m) => m.triggerKeyword !== null && m.kind !== "start" && m.kind !== "puzzle" && m.kind !== "system_notice")
     .map((m) => ({
       id:              m.id,
       triggerKeyword:  m.triggerKeyword as string,
@@ -2878,7 +2878,7 @@ async function matchTriggerKeyword(
       workId,
       isActive:       true,
       triggerKeyword: { not: null },
-      kind:           { notIn: ["start", "puzzle"] },
+      kind:           { notIn: ["start", "puzzle", "system_notice"] },
       OR: [
         { phaseId: currentPhaseId },
         { phaseId: null },

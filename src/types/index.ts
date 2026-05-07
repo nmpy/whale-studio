@@ -101,7 +101,7 @@ export type IconType      = "image" | "text";
 export type MessageType   = "text" | "image" | "riddle" | "video" | "carousel" | "voice";
 export type PhaseType     = "start" | "normal" | "ending" | "global";
 /** メッセージの役割種別 */
-export type MessageKind   = "start" | "normal" | "response" | "hint" | "puzzle";
+export type MessageKind   = "start" | "normal" | "response" | "hint" | "puzzle" | "system_notice";
 
 /** ヒント表示モード */
 export type HintMode = "always" | "on_wrong" | "hidden";
@@ -555,7 +555,7 @@ export interface UserProgress {
 // ────────────────────────────────────────────────
 export interface RuntimePhaseMessage {
   id:                string;
-  /** メッセージ種別: "normal" | "start" | "puzzle" | "response" | "hint" */
+  /** メッセージ種別: "normal" | "start" | "puzzle" | "response" | "hint" | "system_notice" */
   kind:              string;
   message_type:      MessageType;
   body:              string | null;

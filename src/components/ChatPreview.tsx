@@ -11,10 +11,10 @@ import type { CSSProperties } from "react";
 
 export interface ChatBubble {
   id: string;
-  /** "user" = 右側, "bot" = 左側 */
-  from: "user" | "bot";
+  /** "user" = 右側, "bot" = 左側, "system" = 中央寄せのシステム通知（入室/退室/通話など） */
+  from: "user" | "bot" | "system";
   text: string;
-  /** 既読表示するか */
+  /** 既読表示するか（user 発話のみ。system では無視される） */
   read?: boolean;
 }
 
@@ -92,6 +92,26 @@ const loadingRow: CSSProperties = {
   padding: "8px 0",
 };
 
+const systemRow: CSSProperties = {
+  display: "flex",
+  justifyContent: "center",
+  padding: "4px 0",
+};
+
+const systemChip: CSSProperties = {
+  display: "inline-block",
+  background: "rgba(255,255,255,0.85)",
+  color: "#555",
+  fontSize: 11,
+  lineHeight: 1.4,
+  padding: "4px 12px",
+  borderRadius: 999,
+  maxWidth: "80%",
+  textAlign: "center",
+  whiteSpace: "pre-wrap",
+  wordBreak: "break-word",
+};
+
 const loadingBox: CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
@@ -110,12 +130,21 @@ const loadingBox: CSSProperties = {
 export function ChatPreview({ state }: { state: ChatPreviewState }) {
   return (
     <div style={containerStyle}>
-      {state.bubbles.map((b) => (
-        <div key={b.id} style={bubbleRow(b.from)}>
-          {b.from === "user" && b.read && <span style={readLabel}>既読</span>}
-          <div style={bubbleStyle(b.from)}>{b.text}</div>
-        </div>
-      ))}
+      {state.bubbles.map((b) => {
+        if (b.from === "system") {
+          return (
+            <div key={b.id} style={systemRow}>
+              <div style={systemChip}>{b.text}</div>
+            </div>
+          );
+        }
+        return (
+          <div key={b.id} style={bubbleRow(b.from)}>
+            {b.from === "user" && b.read && <span style={readLabel}>既読</span>}
+            <div style={bubbleStyle(b.from)}>{b.text}</div>
+          </div>
+        );
+      })}
 
       {state.showTyping && (
         <div style={bubbleRow("bot")}>
