@@ -96,7 +96,7 @@ const EMPTY_ADDITIONAL_SLOT: AdditionalMessageSlot = {
 
 // ── FormState ────────────────────────────────────────────
 
-export type MessageKind = "start" | "normal" | "response" | "hint" | "puzzle" | "global";
+export type MessageKind = "start" | "normal" | "response" | "hint" | "puzzle" | "global" | "system_notice";
 export type AnswerMatchType = "exact" | "partial" | "ignore_punctuation" | "normalize_width";
 export type AnswerMatchMode = "exact" | "partial";
 export type CorrectAction   = "text" | "text_and_transition" | "transition";
@@ -300,18 +300,23 @@ export function msgToFormState(msg: {
 export function formStateToMsgBody(form: MessageFormState) {
   const isPuzzle  = form.kind === "puzzle";
   const isGlobal  = form.kind === "global";
+  const isSystemNotice = form.kind === "system_notice";
   const payload = {
-    trigger_keyword:  form.trigger_keyword || null,
+    // システム通知はキーワード入力待ちにしないため trigger_keyword を強制 null
+    trigger_keyword:  isSystemNotice ? null : (form.trigger_keyword || null),
     target_segment:   form.target_segment  || null,
     // 共通メッセージはフェーズ不問のため phase_id を null にする
     phase_id:         isGlobal ? null : (form.phase_id || null),
-    character_id:     form.character_id    || null,
-    // puzzle も message_type をそのまま使う（画像・動画・カルーセル謎に対応）
-    message_type:     form.message_type,
+    // システム通知は中央寄せ表示のため、話者キャラクターを持たない
+    character_id:     isSystemNotice ? null : (form.character_id || null),
+    // システム通知はテキストで送る前提なので message_type を強制 "text"
+    message_type:     isSystemNotice ? "text" : form.message_type,
     // global は API に kind="response" + phase_id=null で送信
     kind:             (isGlobal ? "response" : form.kind) as Exclude<MessageKind, "global">,
     body:
-      form.message_type === "carousel"
+      isSystemNotice
+        ? form.body || undefined
+        : form.message_type === "carousel"
         ? JSON.stringify(form.carousel_items)
         : form.message_type === "text"
         ? form.body || undefined
@@ -319,14 +324,14 @@ export function formStateToMsgBody(form: MessageFormState) {
         : isPuzzle
         ? form.body || form.notify_text || undefined
         : undefined,
-    asset_url:         (form.message_type === "image" || form.message_type === "video" || form.message_type === "voice")
+    asset_url:         (!isSystemNotice && (form.message_type === "image" || form.message_type === "video" || form.message_type === "voice"))
       ? form.asset_url || undefined
       : undefined,
-    notify_text:       form.message_type !== "text"
+    notify_text:       (!isSystemNotice && form.message_type !== "text")
       ? form.notify_text || undefined
       : undefined,
-    riddle_id:         !isPuzzle ? (form.riddle_id || null) : null,
-    quick_replies:     form.quick_replies.length > 0 ? form.quick_replies : null,
+    riddle_id:         !isPuzzle && !isSystemNotice ? (form.riddle_id || null) : null,
+    quick_replies:     !isSystemNotice && form.quick_replies.length > 0 ? form.quick_replies : null,
     next_message_id:   form.next_message_id || null,
     lag_ms:            form.lag_ms,
     sort_order:        form.sort_order,
@@ -406,6 +411,13 @@ export function validateMessageForm(form: MessageFormState): string | null {
     // フェーズ未設定の警告: 謎は phase_id がないと発火しない
     if (!form.phase_id) {
       return "フェーズが設定されていません。フェーズを指定しないと謎が発火しません。設定してから保存してください。";
+    }
+    return null;
+  }
+  // ── システム通知バリデーション ──
+  if (form.kind === "system_notice") {
+    if (!form.body.trim()) {
+      return "システム通知の表示テキストを入力してください（例: ミカさんが入室しました）";
     }
     return null;
   }
@@ -2714,6 +2726,7 @@ export function MessageForm({
   const bodyTextareaRef       = useRef<HTMLTextAreaElement>(null);
 
   const isPuzzle = form.kind === "puzzle";
+  const isSystemNotice = form.kind === "system_notice";
 
   const [phases, setPhases]         = useState<PhaseWithCounts[]>([]);
   const [characters, setCharacters] = useState<Character[]>([]);
@@ -2979,13 +2992,19 @@ export function MessageForm({
                     id="msg_kind"
                     className="form-input"
                     value={form.kind}
-                    onChange={(e) => set("kind", e.target.value as MessageKind)}
+                    onChange={(e) => {
+                      const next = e.target.value as MessageKind;
+                      set("kind", next);
+                      // システム通知に切り替えたら message_type を text に強制
+                      if (next === "system_notice") set("message_type", "text");
+                    }}
                   >
                     <option value="normal">通常（フェーズ遷移時に送信）</option>
                     <option value="start">開始演出（startTrigger 一致時に送信）</option>
                     <option value="response">応答（trigger_keyword 一致時に返信）</option>
                     <option value="hint">ヒント（将来拡張）</option>
                     <option value="global">共通メッセージ（フェーズ不問・常時反応）</option>
+                    <option value="system_notice">システム通知（中央表示・例: ミカさんが入室しました）</option>
                   </select>
                   <div style={hintText}>
                     {form.kind === "start"    && "開始フェーズの startTrigger が一致したとき送信されます。フェーズに kind=start のメッセージがない場合は通常メッセージにフォールバックします。"}
@@ -2993,6 +3012,7 @@ export function MessageForm({
                     {form.kind === "normal"   && "フェーズ遷移時またはフェーズ表示時に送信されます。"}
                     {form.kind === "hint"     && "ヒント用メッセージです（将来拡張）。"}
                     {form.kind === "global"   && "どのフェーズにいても反応します（⭐ 全フェーズ共通）。ヒント・ヘルプ・やり直し案内などに使います。キーワードは必須です。"}
+                    {form.kind === "system_notice" && "トーク中央に小さく表示されるシステム通知です（例: ミカさんが入室しました、通話が終了しました）。話者アイコン・名前は表示されません。LINE 上では通常テキストとして配信されます。"}
                   </div>
                   {form.kind === "global" && (
                     <div style={{
@@ -3409,16 +3429,35 @@ export function MessageForm({
             {mtype === "text" && (
               <div className="form-group" style={{ marginBottom: 0 }}>
                 <label style={fieldLabel} htmlFor="body">
-                  本文 <span style={{ color: "#dc2626" }}>*</span>
+                  {isSystemNotice ? "表示テキスト" : "本文"} <span style={{ color: "#dc2626" }}>*</span>
                 </label>
+                {isSystemNotice && (
+                  <div style={{
+                    marginBottom: 8,
+                    padding: "8px 12px",
+                    background: "#f9fafb",
+                    border: "1px solid #e5e7eb",
+                    borderRadius: 6,
+                    fontSize: 11,
+                    color: "#6b7280",
+                    lineHeight: 1.6,
+                  }}>
+                    💬 <strong>システム通知</strong>はトーク中央に小さく表示されます。
+                    例: <code style={{ background: "#fff", padding: "1px 6px", borderRadius: 3 }}>ミカさんが入室しました</code> /
+                    <code style={{ background: "#fff", padding: "1px 6px", borderRadius: 3, marginLeft: 4 }}>通話が終了しました</code>
+                    <br />
+                    話者キャラクター・応答キーワード・クイックリプライは無視されます。
+                    LINE 上では通常テキストとして配信されます（中央寄せはプレビューのみ）。
+                  </div>
+                )}
                 <textarea
                   ref={bodyTextareaRef}
                   id="body"
                   className="form-input"
-                  style={{ minHeight: 100, resize: "vertical" }}
+                  style={{ minHeight: isSystemNotice ? 60 : 100, resize: "vertical" }}
                   value={form.body}
                   onChange={(e) => set("body", e.target.value)}
-                  placeholder="送信するテキストを入力してください"
+                  placeholder={isSystemNotice ? "例: ミカさんが入室しました" : "送信するテキストを入力してください"}
                   maxLength={5000}
                 />
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 4 }}>

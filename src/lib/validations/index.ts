@@ -285,8 +285,8 @@ export const createMessageSchema = z.object({
   phase_id:         uuidSchema.optional().nullable(),
   character_id:     uuidSchema.optional().nullable(),
   message_type:     z.enum(["text", "image", "riddle", "video", "carousel", "voice"]).default("text"),
-  /** メッセージ役割種別: "start" | "normal" | "response" | "hint" | "puzzle" */
-  kind:             z.enum(["start", "normal", "response", "hint", "puzzle"]).default("normal"),
+  /** メッセージ役割種別: "start" | "normal" | "response" | "hint" | "puzzle" | "system_notice" */
+  kind:             z.enum(["start", "normal", "response", "hint", "puzzle", "system_notice"]).default("normal"),
   body:             z.string().max(10000).optional(),
   asset_url:        urlSchema,
   trigger_keyword:  z.string().max(200).optional().nullable(),
@@ -347,6 +347,11 @@ export const createMessageSchema = z.object({
     ) {
       ctx.addIssue({ code: "custom", path: ["correct_next_phase_id"], message: "遷移系の correct_action には遷移先フェーズが必須です" });
     }
+  } else if (val.kind === "system_notice") {
+    // システム通知は本文（表示テキスト）のみ必須。message_type は強制しない。
+    if (!val.body?.trim()) {
+      ctx.addIssue({ code: "custom", path: ["body"], message: "システム通知には表示テキストが必要です" });
+    }
   } else {
     // 通常メッセージのバリデーション
     if (val.message_type === "text" && !val.body) {
@@ -371,7 +376,7 @@ export const updateMessageSchema = z.object({
   character_id:      uuidSchema.optional().nullable(),
   message_type:      z.enum(["text", "image", "riddle", "video", "carousel", "voice"]).optional(),
   /** メッセージ役割種別 */
-  kind:              z.enum(["start", "normal", "response", "hint", "puzzle"]).optional(),
+  kind:              z.enum(["start", "normal", "response", "hint", "puzzle", "system_notice"]).optional(),
   body:              z.string().max(10000).optional().nullable(),
   asset_url:         z.string().url().optional().nullable(),
   trigger_keyword:   z.string().max(200).optional().nullable(),
@@ -425,13 +430,16 @@ export const updateMessageSchema = z.object({
   if (val.loading_min_seconds != null && val.loading_max_seconds != null && val.loading_min_seconds > val.loading_max_seconds) {
     ctx.addIssue({ code: "custom", path: ["loading_max_seconds"], message: "loading_max_seconds は loading_min_seconds 以上にしてください" });
   }
-  if (val.kind !== "puzzle") {
+  if (val.kind !== "puzzle" && val.kind !== "system_notice") {
     if (val.message_type === "text" && val.body === null) {
       ctx.addIssue({ code: "custom", path: ["body"], message: "text型の場合、body を null にはできません" });
     }
     if ((val.message_type === "image" || val.message_type === "video" || val.message_type === "voice") && val.asset_url === null) {
       ctx.addIssue({ code: "custom", path: ["asset_url"], message: `${val.message_type}型の場合、asset_url を null にはできません` });
     }
+  }
+  if (val.kind === "system_notice" && val.body === null) {
+    ctx.addIssue({ code: "custom", path: ["body"], message: "システム通知の表示テキスト（body）を null にはできません" });
   }
   if (val.kind === "puzzle") {
     if (
