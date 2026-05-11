@@ -103,6 +103,9 @@ export const PUT = withAuth(async (req, ctx, user) => {
 });
 
 // ── DELETE ──────────────────────────────────────
+// admin 以上のみ。
+// UI 上では現在この DELETE を呼ぶ導線を出していない (初期スコープ外)。
+// 将来追加するときは UI 側に必ず確認ダイアログ (window.confirm 等) を入れること。
 export const DELETE = withAuth(async (req, ctx, user) => {
   try {
     const { workId, pageId } = await ctx.params;

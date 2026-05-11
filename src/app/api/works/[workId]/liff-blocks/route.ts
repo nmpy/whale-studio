@@ -38,7 +38,7 @@ export const POST = withAuth(async (req, ctx, user) => {
     const requestedPageId = (body?.page_id ?? null) as string | null;
     let config = requestedPageId
       ? await prisma.liffPageConfig.findFirst({ where: { id: requestedPageId, workId } })
-      : await prisma.liffPageConfig.findFirst({ where: { workId }, orderBy: { createdAt: "asc" } });
+      : await prisma.liffPageConfig.findFirst({ where: { workId }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] });
     if (!config) {
       // ページが 1 件も無い場合は自動作成 (旧 single-config 互換動作)
       if (requestedPageId) return notFound("LiffPage");

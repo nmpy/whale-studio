@@ -33,7 +33,7 @@ export const POST = withAuth(async (req, ctx, user) => {
         })
       : await prisma.liffPageConfig.findFirst({
           where: { workId },
-          orderBy: { createdAt: "asc" },
+          orderBy: [{ createdAt: "asc" }, { id: "asc" }],
           include: { blocks: { select: { id: true } } },
         });
     if (!config) return notFound("LiffPage");

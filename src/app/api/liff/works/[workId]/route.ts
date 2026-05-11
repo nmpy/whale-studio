@@ -27,9 +27,10 @@ export async function GET(
 
     // 複数 LIFF ページ対応: workId だけで指定された場合は、最も古い (oldest) ページを返す。
     // 新仕様の URL は /api/liff/works/[workId]/pages/[pageId] を使うこと。
+    // createdAt 同値時のタイブレークに id を併用して安定ソートにする。
     const config = await prisma.liffPageConfig.findFirst({
       where: { workId },
-      orderBy: { createdAt: "asc" },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
       include: {
         blocks: {
           where: { isEnabled: true },

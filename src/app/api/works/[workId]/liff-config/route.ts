@@ -28,10 +28,11 @@ export const GET = withAuth(async (req, ctx, user) => {
     const check = await requireRole(oaId, user.id, "viewer");
     if (!check.ok) return check.response;
 
-    // workId に紐づく最も古いページを返す (旧 single-config 互換)
+    // workId に紐づく最も古いページを返す (旧 single-config 互換)。
+    // createdAt が同値の場合に備えて id でタイブレークし、安定ソートにする。
     let config = await prisma.liffPageConfig.findFirst({
       where: { workId },
-      orderBy: { createdAt: "asc" },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
       include: { blocks: { orderBy: { sortOrder: "asc" } } },
     });
 
@@ -72,7 +73,7 @@ export const PUT = withAuth(async (req, ctx, user) => {
     // 対象は workId 配下の最も古いページ。無ければ作成する。
     const existing = await prisma.liffPageConfig.findFirst({
       where: { workId },
-      orderBy: { createdAt: "asc" },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
       include: { blocks: true },
     });
 
