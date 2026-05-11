@@ -2,6 +2,9 @@
 
 // src/components/liff/LiffConfigHeader.tsx
 // LIFF設定ページのヘッダー — 有効/無効トグル + page_type 切替 + ヒントサイト用ヘッダー設定
+//
+// 入力欄の onChange は API を直接呼ばず、すべて onLocalChange (= draft 更新) に集約する。
+// 実 API 保存は useLiffConfig 側の debounce auto-save に任せる。
 
 import type { LiffPageConfig, LiffPageConfigSettings, LiffPageType, LiffPublishStatus } from "@/types";
 
@@ -11,23 +14,25 @@ interface Props {
   readOnly: boolean;
   canPublish?: boolean;
   onToggleEnabled: () => void;
-  onUpdateField: (field: "title" | "description", value: string | null) => void;
   onLocalChange: (patch: Partial<LiffPageConfig>) => void;
-  onUpdateSettingsField: (key: keyof LiffPageConfigSettings, value: unknown) => void;
   onUpdatePageType: (next: LiffPageType) => void;
   onUpdatePublishStatus: (next: LiffPublishStatus) => void;
 }
 
 export function LiffConfigHeader({
   config, saving, readOnly, canPublish,
-  onToggleEnabled, onUpdateField, onLocalChange,
-  onUpdateSettingsField, onUpdatePageType, onUpdatePublishStatus,
+  onToggleEnabled, onLocalChange,
+  onUpdatePageType, onUpdatePublishStatus,
 }: Props) {
   const settings: LiffPageConfigSettings = config.settings_json ?? {};
   const isHintSite = config.page_type === "hint_site";
 
   const inputCls = "w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-300 disabled:bg-gray-50";
   const labelCls = "block text-xs font-medium text-gray-500 mb-1";
+
+  const updateSetting = (key: keyof LiffPageConfigSettings, value: unknown) => {
+    onLocalChange({ settings_json: { ...settings, [key]: value } });
+  };
 
   return (
     <>
@@ -86,7 +91,6 @@ export function LiffConfigHeader({
             className={inputCls}
             value={config.title ?? ""}
             onChange={(e) => onLocalChange({ title: e.target.value || null })}
-            onBlur={(e) => onUpdateField("title", e.target.value)}
             disabled={readOnly}
             placeholder={isHintSite ? "例: 都市奇譚ヒントサイト" : "例: 謎解き探偵ゲーム"}
           />
@@ -97,7 +101,6 @@ export function LiffConfigHeader({
             className={inputCls}
             value={config.description ?? ""}
             onChange={(e) => onLocalChange({ description: e.target.value || null })}
-            onBlur={(e) => onUpdateField("description", e.target.value)}
             disabled={readOnly}
             placeholder="任意の説明文"
           />
@@ -112,7 +115,7 @@ export function LiffConfigHeader({
             <input
               type="checkbox"
               checked={settings.header_fixed !== false}
-              onChange={(e) => onUpdateSettingsField("header_fixed", e.target.checked)}
+              onChange={(e) => updateSetting("header_fixed", e.target.checked)}
               disabled={readOnly}
               className="rounded border-gray-300"
             />
@@ -125,7 +128,7 @@ export function LiffConfigHeader({
               <input
                 className={inputCls}
                 value={settings.header_logo_url ?? ""}
-                onChange={(e) => onUpdateSettingsField("header_logo_url", e.target.value)}
+                onChange={(e) => updateSetting("header_logo_url", e.target.value)}
                 disabled={readOnly}
                 placeholder="https://..."
               />
@@ -135,7 +138,7 @@ export function LiffConfigHeader({
               <input
                 className={inputCls}
                 value={settings.header_logo_alt ?? ""}
-                onChange={(e) => onUpdateSettingsField("header_logo_alt", e.target.value)}
+                onChange={(e) => updateSetting("header_logo_alt", e.target.value)}
                 disabled={readOnly}
               />
             </div>
@@ -147,7 +150,7 @@ export function LiffConfigHeader({
               <input
                 className={inputCls}
                 value={settings.header_cta_label ?? ""}
-                onChange={(e) => onUpdateSettingsField("header_cta_label", e.target.value)}
+                onChange={(e) => updateSetting("header_cta_label", e.target.value)}
                 disabled={readOnly}
                 placeholder="チケットを購入する"
               />
@@ -157,7 +160,7 @@ export function LiffConfigHeader({
               <input
                 className={inputCls}
                 value={settings.header_cta_url ?? ""}
-                onChange={(e) => onUpdateSettingsField("header_cta_url", e.target.value)}
+                onChange={(e) => updateSetting("header_cta_url", e.target.value)}
                 disabled={readOnly}
                 placeholder="https://..."
               />
@@ -168,7 +171,7 @@ export function LiffConfigHeader({
             <input
               type="checkbox"
               checked={settings.show_hamburger ?? false}
-              onChange={(e) => onUpdateSettingsField("show_hamburger", e.target.checked)}
+              onChange={(e) => updateSetting("show_hamburger", e.target.checked)}
               disabled={readOnly}
               className="rounded border-gray-300"
             />
@@ -180,7 +183,7 @@ export function LiffConfigHeader({
             <input
               className={inputCls}
               value={settings.spoiler_warning_text ?? ""}
-              onChange={(e) => onUpdateSettingsField("spoiler_warning_text", e.target.value)}
+              onChange={(e) => updateSetting("spoiler_warning_text", e.target.value)}
               disabled={readOnly}
               placeholder="ネタバレ注意：ここから先はヒントサイトです"
             />
@@ -192,7 +195,7 @@ export function LiffConfigHeader({
               <input
                 className={inputCls}
                 value={settings.theme?.header_bg ?? ""}
-                onChange={(e) => onUpdateSettingsField("theme", { ...(settings.theme ?? {}), header_bg: e.target.value })}
+                onChange={(e) => updateSetting("theme", { ...(settings.theme ?? {}), header_bg: e.target.value })}
                 disabled={readOnly}
                 placeholder="#000000"
               />
@@ -202,7 +205,7 @@ export function LiffConfigHeader({
               <input
                 className={inputCls}
                 value={settings.theme?.header_fg ?? ""}
-                onChange={(e) => onUpdateSettingsField("theme", { ...(settings.theme ?? {}), header_fg: e.target.value })}
+                onChange={(e) => updateSetting("theme", { ...(settings.theme ?? {}), header_fg: e.target.value })}
                 disabled={readOnly}
                 placeholder="#ffffff"
               />

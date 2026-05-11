@@ -8,12 +8,29 @@ import { useParams } from "next/navigation";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { useToast } from "@/components/Toast";
 import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
-import { useLiffConfig } from "@/hooks/useLiffConfig";
+import { useLiffConfig, type LiffSaveStatus } from "@/hooks/useLiffConfig";
 import { ViewerBanner } from "@/components/PermissionGuard";
 import { LiffConfigHeader } from "@/components/liff/LiffConfigHeader";
 import { LiffBlockItem } from "@/components/liff/LiffBlockItem";
 import { LiffAddBlockModal } from "@/components/liff/LiffAddBlockModal";
 import { LiffPreview } from "@/components/liff/LiffPreview";
+
+function SaveStatusIndicator({ status }: { status: LiffSaveStatus }) {
+  if (status === "idle") return null;
+
+  const label =
+    status === "pending" ? "未保存..." :
+    status === "saving" ? "保存中..." :
+    status === "saved"  ? "✓ 保存しました" :
+    "保存に失敗しました";
+
+  const cls =
+    status === "error" ? "text-red-500" :
+    status === "saved" ? "text-green-600" :
+    "text-gray-500";
+
+  return <span className={`text-xs ${cls}`} aria-live="polite">{label}</span>;
+}
 
 export default function LiffConfigPage() {
   const params = useParams();
@@ -75,15 +92,17 @@ export default function LiffConfigPage() {
 
       {isReadOnly && <ViewerBanner role={role} />}
 
+      <div className="flex items-center justify-end mb-2 h-4">
+        <SaveStatusIndicator status={liff.saveStatus} />
+      </div>
+
       <LiffConfigHeader
         config={config}
         saving={liff.saving}
         readOnly={isReadOnly}
         canPublish={canPublish}
         onToggleEnabled={liff.toggleEnabled}
-        onUpdateField={liff.updateConfigField}
-        onLocalChange={(patch) => liff.updateConfigLocal(patch)}
-        onUpdateSettingsField={liff.updateSettingsField}
+        onLocalChange={liff.updateConfigLocal}
         onUpdatePageType={liff.updatePageType}
         onUpdatePublishStatus={liff.updatePublishStatus}
       />
@@ -145,7 +164,7 @@ export default function LiffConfigPage() {
                 readOnly={isReadOnly}
                 saving={liff.saving}
                 onEdit={() => liff.setEditingBlockId(block.id)}
-                onCloseEdit={() => { liff.setEditingBlockId(null); liff.reload(); }}
+                onCloseEdit={() => liff.cancelBlockEdit()}
                 onSave={liff.updateBlock}
                 onToggleEnabled={() => liff.toggleBlockEnabled(block)}
                 onDelete={() => liff.deleteBlock(block.id)}
