@@ -178,16 +178,9 @@ export function LiffConfigHeader({
             ハンバーガーメニュー枠を表示する（中身は将来拡張）
           </label>
 
-          <div>
-            <label className={labelCls}>ネタバレ注意帯テキスト</label>
-            <input
-              className={inputCls}
-              value={settings.spoiler_warning_text ?? ""}
-              onChange={(e) => updateSetting("spoiler_warning_text", e.target.value)}
-              disabled={readOnly}
-              placeholder="ネタバレ注意：ここから先はヒントサイトです"
-            />
-          </div>
+          {/* ネタバレ注意はブロック単位 (Warning ブロック) でのみ管理する。
+              旧 settings.spoiler_warning_text の値は表示・編集 UI からは外したが、
+              既存データ互換のため保存ロジックでは引き続き許容される。 */}
 
           <div className="grid sm:grid-cols-2 gap-3">
             <div>
@@ -197,8 +190,9 @@ export function LiffConfigHeader({
                 value={settings.theme?.header_bg ?? ""}
                 onChange={(e) => updateSetting("theme", { ...(settings.theme ?? {}), header_bg: e.target.value })}
                 disabled={readOnly}
-                placeholder="#000000"
+                placeholder="#06C755"
               />
+              <p className="text-[11px] text-gray-400 mt-1">未設定時は LINE Green (#06C755) が適用されます。</p>
             </div>
             <div>
               <label className={labelCls}>ヘッダー文字色</label>
@@ -207,8 +201,9 @@ export function LiffConfigHeader({
                 value={settings.theme?.header_fg ?? ""}
                 onChange={(e) => updateSetting("theme", { ...(settings.theme ?? {}), header_fg: e.target.value })}
                 disabled={readOnly}
-                placeholder="#ffffff"
+                placeholder="#000000"
               />
+              <p className="text-[11px] text-gray-400 mt-1">未設定時は #000000 が適用されます。</p>
             </div>
           </div>
         </div>

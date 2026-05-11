@@ -24,10 +24,14 @@ export function EvidenceListBlock({
 
   return (
     <div>
-      {title && <h3 className="text-base font-semibold text-gray-900 mb-2">{title}</h3>}
+      {title && (
+        <h3 className="text-[16px] font-bold text-[color:var(--liff-primary-text)] mb-2 break-words">
+          {title}
+        </h3>
+      )}
       {limited.length === 0 ? (
-        <div className="bg-gray-50 rounded-lg p-4 text-center">
-          <p className="text-sm text-gray-400">
+        <div className="bg-[color:var(--liff-background)] rounded-[12px] p-4 text-center">
+          <p className="text-[14px] text-[color:var(--liff-tertiary-text)]">
             {settings.empty_message || "まだ証拠はありません"}
           </p>
         </div>
@@ -36,12 +40,20 @@ export function EvidenceListBlock({
           {limited.map((ev) => (
             <li
               key={ev.id}
-              className={`flex items-center gap-3 p-3 rounded-lg border ${
-                ev.discovered ? "bg-white border-gray-200" : "bg-gray-50 border-gray-100"
+              className={`flex items-center gap-3 p-3 rounded-[12px] border ${
+                ev.discovered
+                  ? "bg-[color:var(--liff-surface)] border-[color:var(--liff-border)]"
+                  : "bg-[color:var(--liff-background)] border-[color:var(--liff-border)]"
               }`}
             >
               <span className="text-lg">{ev.discovered ? "🔓" : "🔒"}</span>
-              <span className={`text-sm ${ev.discovered ? "text-gray-900" : "text-gray-400"}`}>
+              <span
+                className={`text-[15px] ${
+                  ev.discovered
+                    ? "text-[color:var(--liff-primary-text)]"
+                    : "text-[color:var(--liff-tertiary-text)]"
+                }`}
+              >
                 {ev.discovered ? ev.name : "???"}
               </span>
             </li>

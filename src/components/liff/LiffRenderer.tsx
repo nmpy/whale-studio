@@ -118,19 +118,36 @@ export function LiffRenderer({
   );
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white border-b border-gray-100 px-4 py-3">
-        <h1 className="text-lg font-bold text-gray-900">{title || "LIFF"}</h1>
+    // LINE Design System に寄せたプレイヤー画面レイアウト。
+    //   - 画面背景: --liff-background
+    //   - ヘッダー: Primary Green (#06C755) / 文字色 #000000 を既定とする
+    //   - コンテンツ: 画面左右 16px (px-4)、本文は max-w-md でスマホ前提
+    <div className="liff-font min-h-screen bg-[color:var(--liff-background)] text-[color:var(--liff-primary-text)]">
+      <header
+        className="px-4 py-3"
+        style={{
+          background: "var(--liff-header-bg)",
+          color: "var(--liff-header-text)",
+        }}
+      >
+        <div className="max-w-md mx-auto">
+          <h1 className="text-[18px] leading-tight font-bold tracking-tight break-words">
+            {title || "LIFF"}
+          </h1>
+        </div>
       </header>
 
-      <main className="px-4 py-4 space-y-4 max-w-lg mx-auto">
+      <main className="px-4 py-4 space-y-3 max-w-md mx-auto">
         {visibleBlocks.length === 0 ? (
-          <p className="text-center text-gray-400 py-12 text-sm">
+          <p className="text-center text-[color:var(--liff-tertiary-text)] py-12 text-sm">
             表示する項目がありません
           </p>
         ) : (
           visibleBlocks.map((block) => (
-            <section key={block.id} className="bg-white rounded-xl p-4 shadow-sm">
+            <section
+              key={block.id}
+              className="bg-[color:var(--liff-surface)] rounded-[12px] px-4 py-3 border border-[color:var(--liff-border)]"
+            >
               <RenderBlock block={block} ctx={ctx} />
             </section>
           ))

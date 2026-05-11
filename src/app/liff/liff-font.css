@@ -1,16 +1,53 @@
-/* LIFF 専用フォントスコープ
- * LINE Seed JP を LIFF 配下にだけ適用する。
- * CMS（/oas, /admin など）には影響させない。
+/* LIFF 専用フォント & デザイントークン
+ *
+ * LIFF 配下にだけ適用する。CMS（/oas, /admin など）には影響させない。
  * フォント本体は layout.tsx で @fontsource/line-seed-jp を import している。
+ *
+ * デザインの基本思想は LINE Design System for Messenger に準拠する:
+ *   - Color: Primary Green (#06C755) を CTA / ヘッダーに使用
+ *   - Typography: 日本語は LINE Seed JP、フォールバックは OS システムフォント
+ *   - Layout: 画面左右 16pt 余白、本文 max-width はスマホ前提
+ *   - Box Button: 高さ 44-48px、角丸、フルワイド利用が基本
+ *
+ * トークンは LIFF プレイヤー画面とプレビューの両方で参照する。
+ * 個別ブロックで色を直書きせず、できるだけここを通す。
  */
+
 .liff-font {
+  /* === Color tokens === */
+  --liff-line-green:      #06C755;
+  --liff-line-green-press:#05B14C;
+  --liff-header-bg:       #06C755;
+  --liff-header-text:     #000000;
+  --liff-primary-text:    #111111;
+  --liff-secondary-text:  #666666;
+  --liff-tertiary-text:   #999999;
+  --liff-border:          #E5E5E5;
+  --liff-surface:         #FFFFFF;
+  --liff-background:      #F7F8FA;
+  --liff-danger:          #E22B2B;
+  --liff-danger-press:    #C42323;
+
+  /* === Layout tokens === */
+  --liff-gutter:          16px;  /* 画面左右余白 */
+  --liff-card-radius:     12px;
+  --liff-button-radius:   10px;
+  --liff-button-height:   48px;
+
   font-family:
     "LINE Seed JP",
     "LINE Seed Sans",
-    system-ui,
     -apple-system,
     BlinkMacSystemFont,
+    "Helvetica Neue",
+    "Segoe UI",
+    system-ui,
     sans-serif;
+  color: var(--liff-primary-text);
+  /* LINE Design System の本文ガイドに合わせ、行間は本文用に余裕を持たせる */
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 /* Tailwind の font-sans 等が当たっている子孫要素にも継承させる。

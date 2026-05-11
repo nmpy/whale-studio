@@ -21,15 +21,15 @@ import { ButtonLinkBlock } from "./ButtonLinkBlock";
 import { DividerBlock } from "./DividerBlock";
 
 const VARIANT_HEADER: Record<LiffSectionVariant, string> = {
-  default: "bg-white text-gray-900 border-gray-900",
-  dark:    "bg-gray-900 text-white border-gray-900",
+  default: "bg-[color:var(--liff-surface)] text-[color:var(--liff-primary-text)] border-[color:var(--liff-border)]",
+  dark:    "bg-[color:var(--liff-primary-text)] text-white border-[color:var(--liff-primary-text)]",
   purple:  "bg-violet-600 text-white border-violet-600",
 };
 
 const VARIANT_BODY: Record<LiffSectionVariant, string> = {
-  default: "bg-white border-gray-900",
-  dark:    "bg-white border-gray-900",
-  purple:  "bg-white border-violet-600",
+  default: "bg-[color:var(--liff-surface)] border-[color:var(--liff-border)]",
+  dark:    "bg-[color:var(--liff-surface)] border-[color:var(--liff-primary-text)]",
+  purple:  "bg-[color:var(--liff-surface)] border-violet-600",
 };
 
 interface Props {
@@ -64,7 +64,15 @@ export function AccordionBlock({ title, settings, depth = 1, blockId }: Props) {
   const headerId = `acc-header-${id}`;
 
   return (
-    <section className={`border ${variant === "purple" ? "border-violet-600" : "border-gray-900"} rounded-md overflow-hidden`}>
+    <section
+      className={`border rounded-[12px] overflow-hidden ${
+        variant === "purple"
+          ? "border-violet-600"
+          : variant === "dark"
+            ? "border-[color:var(--liff-primary-text)]"
+            : "border-[color:var(--liff-border)]"
+      }`}
+    >
       <h3 className="m-0">
         <button
           id={headerId}
@@ -74,13 +82,13 @@ export function AccordionBlock({ title, settings, depth = 1, blockId }: Props) {
           onClick={toggle}
           className={`w-full flex items-center justify-between gap-3 text-left px-4 py-3 ${headerCls} transition-colors`}
         >
-          <span className="font-bold text-[15px] leading-snug break-words flex-1 min-w-0">
+          <span className="font-bold text-[16px] leading-snug break-words flex-1 min-w-0">
             {headingText || "（タイトル未設定）"}
           </span>
           <span
             aria-hidden="true"
             className={`shrink-0 w-6 h-6 rounded-full border ${
-              variant === "default" ? "border-gray-900" : "border-current"
+              variant === "default" ? "border-[color:var(--liff-border)]" : "border-current"
             } flex items-center justify-center text-base font-bold leading-none`}
           >
             {open ? "−" : "+"}
@@ -99,7 +107,7 @@ export function AccordionBlock({ title, settings, depth = 1, blockId }: Props) {
             <NestedRenderer key={child.id ?? idx} child={child} depth={depth + 1} />
           ))}
           {(!settings.children || settings.children.length === 0) && (
-            <p className="text-xs text-gray-400">（中身は未設定です）</p>
+            <p className="text-[12px] text-[color:var(--liff-tertiary-text)]">（中身は未設定です）</p>
           )}
         </div>
       )}

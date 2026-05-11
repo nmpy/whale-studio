@@ -2,13 +2,20 @@
 
 import type { TextSettings } from "@/types";
 
+// LINE Design System の Body Text 階層に揃える:
+//   - 本文: 15px / line-height 1.6 (LIFF root が 1.6 を継承する)
+//   - 補足ラベル (title): 13px / 補助色
 export function TextBlock({ title, settings }: { title?: string | null; settings: TextSettings }) {
   return (
     <div className={settings.align === "center" ? "text-center" : "text-left"}>
-      {title && <h3 className="text-sm font-semibold mb-1 text-gray-900 break-words">{title}</h3>}
+      {title && (
+        <h3 className="text-[13px] font-bold mb-1 text-[color:var(--liff-secondary-text)] break-words">
+          {title}
+        </h3>
+      )}
       <p
-        className={`text-sm leading-relaxed text-gray-800 whitespace-pre-wrap break-words ${
-          settings.emphasis === "strong" ? "font-bold text-gray-900" : ""
+        className={`text-[15px] leading-[1.6] whitespace-pre-wrap break-words text-[color:var(--liff-primary-text)] ${
+          settings.emphasis === "strong" ? "font-bold" : ""
         }`}
       >
         {settings.body || ""}

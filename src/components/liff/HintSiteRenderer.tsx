@@ -2,7 +2,14 @@
 
 // src/components/liff/HintSiteRenderer.tsx
 // ヒントサイト用 LIFF ページの全体レイアウト。
-// 固定ヘッダー（ロゴ + CTA + ハンバーガー枠）、ネタバレ注意帯、ブロック描画を担う。
+// 固定ヘッダー（ロゴ + CTA + ハンバーガー枠）、ブロック描画を担う。
+//
+// 設計の基本は LINE Design System for Messenger に準拠:
+//   - ヘッダー既定色は LINE Primary Green (#06C755) / 文字色 #000000
+//   - 画面左右 16px 余白（--liff-gutter）
+//   - 本文 max-width はスマホ前提（max-w-md）
+//   - ネタバレ注意はブロック (WarningBlock) スコープのみで扱う。
+//     ※ 旧 settings.spoiler_warning_text は表示しない。データは互換のため残置。
 
 import { useEffect, useMemo, useState } from "react";
 import type {
@@ -49,6 +56,21 @@ interface Props {
 
 const HEADER_HEIGHT_PX = 56;
 
+// LINE Design System のデフォルト色。settings.theme で上書き可能だが、
+// 未設定時はこの値を使う（"#00000" などの不正値は無効として扱う）。
+const DEFAULT_HEADER_BG = "#06C755";
+const DEFAULT_HEADER_FG = "#000000";
+
+const HEX_COLOR_RE = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/;
+
+function normalizeColor(value: string | undefined, fallback: string): string {
+  const v = (value ?? "").trim();
+  if (!v) return fallback;
+  // # 始まりだが 6 桁になっていない（"#00000" 等の typo）ものは fallback。
+  if (v.startsWith("#") && !HEX_COLOR_RE.test(v)) return fallback;
+  return v;
+}
+
 export function HintSiteRenderer({ config, preview }: Props) {
   const settings: LiffPageConfigSettings = config.settings_json || {};
   const fixed = settings.header_fixed !== false;
@@ -59,13 +81,13 @@ export function HintSiteRenderer({ config, preview }: Props) {
   }, [config.work_id, preview]);
 
   const themeStyle = useMemo<React.CSSProperties>(() => ({
-    "--hint-header-bg": settings.theme?.header_bg ?? "#000000",
-    "--hint-header-fg": settings.theme?.header_fg ?? "#ffffff",
+    "--hint-header-bg": normalizeColor(settings.theme?.header_bg, DEFAULT_HEADER_BG),
+    "--hint-header-fg": normalizeColor(settings.theme?.header_fg, DEFAULT_HEADER_FG),
   } as React.CSSProperties), [settings.theme]);
 
   return (
     <div
-      className="min-h-screen bg-white text-gray-900"
+      className="liff-font min-h-screen bg-[color:var(--liff-background)] text-[color:var(--liff-primary-text)]"
       style={themeStyle}
     >
       <Header
@@ -81,22 +103,16 @@ export function HintSiteRenderer({ config, preview }: Props) {
       <div
         style={fixed ? { paddingTop: `calc(${HEADER_HEIGHT_PX}px + env(safe-area-inset-top, 0px))` } : undefined}
       >
-        {settings.spoiler_warning_text && (
-          <div className="bg-yellow-300 text-black px-4 py-2 text-sm font-bold text-center break-words">
-            {settings.spoiler_warning_text}
-          </div>
-        )}
-
-        <main className="max-w-md mx-auto px-4 py-5 flex flex-col gap-5 pb-24">
+        <main className="max-w-md mx-auto px-4 py-5 flex flex-col gap-4 pb-24">
           {(config.title || config.description) && (
             <div className="space-y-1.5">
               {config.title && (
-                <h1 className="text-2xl font-extrabold tracking-tight text-gray-900 break-words">
+                <h1 className="text-[20px] leading-tight font-bold tracking-tight text-[color:var(--liff-primary-text)] break-words">
                   {config.title}
                 </h1>
               )}
               {config.description && (
-                <p className="text-sm text-gray-700 whitespace-pre-wrap break-words">
+                <p className="text-[14px] leading-relaxed text-[color:var(--liff-secondary-text)] whitespace-pre-wrap break-words">
                   {config.description}
                 </p>
               )}
@@ -104,7 +120,7 @@ export function HintSiteRenderer({ config, preview }: Props) {
           )}
 
           {config.blocks.length === 0 ? (
-            <p className="text-sm text-gray-400 text-center py-8">
+            <p className="text-sm text-[color:var(--liff-tertiary-text)] text-center py-8">
               （ブロックが追加されていません）
             </p>
           ) : (
@@ -138,7 +154,7 @@ function Header({
       }}
     >
       <div
-        className="max-w-md mx-auto flex items-center gap-2 px-3"
+        className="max-w-md mx-auto flex items-center gap-2 px-4"
         style={{ height: HEADER_HEIGHT_PX }}
       >
         <div className="shrink-0 w-[120px] h-[36px] flex items-center">
@@ -150,7 +166,7 @@ function Header({
               style={{ objectFit: "contain" }}
             />
           ) : (
-            <span className="text-sm font-bold truncate">{title || "LIFF"}</span>
+            <span className="text-[16px] font-bold truncate">{title || "LIFF"}</span>
           )}
         </div>
 
@@ -174,7 +190,7 @@ function Header({
             aria-label="メニュー"
             aria-expanded={menuOpen}
             onClick={() => setMenuOpen((v) => !v)}
-            className="shrink-0 w-9 h-9 flex items-center justify-center rounded-md border border-white/20"
+            className="shrink-0 w-9 h-9 flex items-center justify-center rounded-md border border-current/20"
           >
             <span aria-hidden="true" className="text-xl leading-none">≡</span>
           </button>
