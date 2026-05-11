@@ -11,7 +11,7 @@
 //   - ネタバレ注意はブロック (WarningBlock) スコープのみで扱う。
 //     ※ 旧 settings.spoiler_warning_text は表示しない。データは互換のため残置。
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
 import type {
   LiffPageConfigSettings,
   HeadingSettings,
@@ -60,7 +60,7 @@ const HEADER_HEIGHT_PX = 56;
 // LINE Design System のデフォルト色。settings.theme で上書き可能だが、
 // 未設定時はこの値を使う（"#00000" などの不正値は無効として扱う）。
 const DEFAULT_HEADER_BG = "#06C755";
-const DEFAULT_HEADER_FG = "#000000";
+const DEFAULT_HEADER_FG = "#ffffff";
 
 const HEX_COLOR_RE = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/;
 
@@ -74,7 +74,9 @@ function normalizeColor(value: string | undefined, fallback: string): string {
 
 export function HintSiteRenderer({ config, preview }: Props) {
   const settings: LiffPageConfigSettings = config.settings_json || {};
-  const fixed = settings.header_fixed !== false;
+  // プレビュー (管理画面の縮小表示) では position:fixed が iframe 的にスクロールコンテナを抜けてしまい
+  // 表示崩れを起こすので、プレビュー時は常に non-fixed に倒す。
+  const fixed = !preview && settings.header_fixed !== false;
 
   useEffect(() => {
     if (preview) return;
@@ -95,9 +97,6 @@ export function HintSiteRenderer({ config, preview }: Props) {
         fixed={fixed}
         logoUrl={settings.header_logo_url}
         logoAlt={settings.header_logo_alt}
-        ctaLabel={settings.header_cta_label}
-        ctaUrl={settings.header_cta_url}
-        showHamburger={settings.show_hamburger}
         title={config.title}
       />
 
@@ -139,18 +138,18 @@ export function HintSiteRenderer({ config, preview }: Props) {
   );
 }
 
+// ヘッダー: ロゴ (or タイトル文字) のみを表示するシンプルな構成。
+// 旧仕様で対応していた CTA ボタン / ハンバーガーメニュー枠は廃止した。
+// settings 側に残っている header_cta_label / header_cta_url / show_hamburger は
+// 互換性のため型・Zod 上は optional のまま残置するが、ここでは参照しない。
 function Header({
-  fixed, logoUrl, logoAlt, ctaLabel, ctaUrl, showHamburger, title,
+  fixed, logoUrl, logoAlt, title,
 }: {
   fixed: boolean;
   logoUrl?: string;
   logoAlt?: string;
-  ctaLabel?: string;
-  ctaUrl?: string;
-  showHamburger?: boolean;
   title?: string | null;
 }) {
-  const [menuOpen, setMenuOpen] = useState(false);
   return (
     <header
       className={`${fixed ? "fixed top-0 left-0 right-0 z-30" : ""}`}
@@ -161,46 +160,18 @@ function Header({
       }}
     >
       <div
-        className="max-w-md mx-auto flex items-center gap-2 px-4"
+        className="max-w-md mx-auto flex items-center px-4"
         style={{ height: HEADER_HEIGHT_PX }}
       >
-        <div className="shrink-0 w-[120px] h-[36px] flex items-center">
-          {logoUrl ? (
-            <img
-              src={logoUrl}
-              alt={logoAlt || title || "logo"}
-              className="max-w-full max-h-full"
-              style={{ objectFit: "contain" }}
-            />
-          ) : (
-            <span className="text-[16px] font-bold truncate">{title || "LIFF"}</span>
-          )}
-        </div>
-
-        <div className="flex-1 min-w-0" />
-
-        {ctaLabel && ctaUrl && (
-          <a
-            href={ctaUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={() => trackHintSiteEvent("cta_click", { url: ctaUrl, label: ctaLabel, source: "header" })}
-            className="shrink-0 px-3 py-1.5 text-xs font-bold rounded-full bg-white text-black border border-white whitespace-nowrap"
-          >
-            {ctaLabel}
-          </a>
-        )}
-
-        {showHamburger && (
-          <button
-            type="button"
-            aria-label="メニュー"
-            aria-expanded={menuOpen}
-            onClick={() => setMenuOpen((v) => !v)}
-            className="shrink-0 w-9 h-9 flex items-center justify-center rounded-md border border-current/20"
-          >
-            <span aria-hidden="true" className="text-xl leading-none">≡</span>
-          </button>
+        {logoUrl ? (
+          <img
+            src={logoUrl}
+            alt={logoAlt || title || "logo"}
+            className="max-h-[36px] max-w-[160px]"
+            style={{ objectFit: "contain" }}
+          />
+        ) : (
+          <span className="text-[16px] font-bold truncate">{title || "LIFF"}</span>
         )}
       </div>
     </header>
