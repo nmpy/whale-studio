@@ -1042,6 +1042,10 @@ const liffPageConfigSettingsSchema = z.object({
     }).partial().optional(),
   }).partial().optional(),
 
+  // シェアボタン設定（全モード共通）
+  share_enabled:         z.boolean().optional(),
+  share_button_label:    z.string().max(100).optional(),
+  share_message:         z.string().max(1000).optional(),
   // FAQ モード
   faq_items:             z.array(faqItemSchema).max(100).optional(),
   // Survey モード

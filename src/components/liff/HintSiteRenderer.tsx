@@ -48,6 +48,7 @@ import {
   AccordionBlock,
 } from "./renderers";
 import { trackHintSiteEvent } from "@/lib/liff-analytics";
+import { LiffShareButton } from "./LiffShareButton";
 
 interface Props {
   config: HintSiteConfig;
@@ -125,6 +126,12 @@ export function HintSiteRenderer({ config, preview }: Props) {
             </p>
           ) : (
             config.blocks.map((b) => <BlockSwitch key={b.id} block={b} />)
+          )}
+
+          {settings.share_enabled && (
+            <div className="pt-2">
+              <LiffShareButton settings={settings} pageTitle={config.title || ""} preview={preview} />
+            </div>
           )}
         </main>
       </div>

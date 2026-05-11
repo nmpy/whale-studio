@@ -1296,6 +1296,14 @@ export interface LiffPageConfigSettings {
     };
   };
 
+  // ── シェアボタン設定（全モード共通） ───────
+  /** シェアボタンを表示するか */
+  share_enabled?: boolean;
+  /** シェアボタンのラベル文言（未設定時はデフォルト "友だちにシェアする"） */
+  share_button_label?: string;
+  /** シェアメッセージ（未設定時はページタイトル + 現在 URL を使う） */
+  share_message?: string;
+
   // ── FAQ モード設定 ──────────────────────────
   /** FAQ モードの Q&A 項目。順序は配列順。空項目はプレイヤー側で非表示。 */
   faq_items?: FaqItem[];

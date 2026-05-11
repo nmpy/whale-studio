@@ -6,6 +6,7 @@
 
 import { useState } from "react";
 import type { LiffPageConfigSettings, SurveyItem } from "@/types";
+import { LiffShareButton } from "./LiffShareButton";
 
 export interface SurveyRendererConfig {
   work_id:       string;
@@ -141,6 +142,12 @@ export function SurveyRenderer({ config, preview, lineUserId }: Props) {
               {submitting ? "送信中..." : "回答を送信する"}
             </button>
           </form>
+        )}
+
+        {config.settings_json.share_enabled && (
+          <div className="pt-2">
+            <LiffShareButton settings={config.settings_json} pageTitle={config.title || ""} preview={preview} />
+          </div>
         )}
       </main>
     </div>

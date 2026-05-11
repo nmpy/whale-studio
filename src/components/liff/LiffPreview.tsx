@@ -31,6 +31,7 @@ import { HintSiteRenderer } from "./HintSiteRenderer";
 import { FaqRenderer } from "./FaqRenderer";
 import { SurveyRenderer } from "./SurveyRenderer";
 import { LocationHistoryRenderer } from "./LocationHistoryRenderer";
+import { LiffShareButton } from "./LiffShareButton";
 import { normalizeLiffPageType } from "@/types";
 import {
   HeadingBlock,
@@ -122,6 +123,7 @@ export function LiffPreview({
   if (mode === "faq") {
     return frame("LIFF FAQ プレビュー", (
       <FaqRenderer
+        preview
         config={{
           title:         title ?? null,
           description:   config?.description ?? null,
@@ -195,6 +197,12 @@ export function LiffPreview({
                 <BlockPreviewContent block={block} />
               </section>
             ))
+          )}
+
+          {config?.settings_json?.share_enabled && (
+            <div className="pt-2">
+              <LiffShareButton settings={config.settings_json} pageTitle={title || ""} preview />
+            </div>
           )}
         </div>
       </div>
