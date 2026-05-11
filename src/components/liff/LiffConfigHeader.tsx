@@ -10,6 +10,7 @@ import type { LiffPageConfig, LiffPageConfigSettings, LiffPageType, LiffPublishS
 import { normalizeLiffPageType } from "@/types";
 import { LiffFaqEditor } from "./LiffFaqEditor";
 import { LiffSurveyEditor } from "./LiffSurveyEditor";
+import { ImageUploadField } from "./ImageUploadField";
 
 interface Props {
   config: LiffPageConfig;
@@ -166,16 +167,14 @@ export function LiffConfigHeader({
           </label>
 
           <div className="grid sm:grid-cols-2 gap-3">
-            <div>
-              <label className={labelCls}>ロゴ画像URL</label>
-              <input
-                className={inputCls}
-                value={settings.header_logo_url ?? ""}
-                onChange={(e) => updateSetting("header_logo_url", e.target.value)}
-                disabled={readOnly}
-                placeholder="https://..."
-              />
-            </div>
+            <ImageUploadField
+              label="ロゴ画像"
+              value={settings.header_logo_url}
+              onChange={(url) => updateSetting("header_logo_url", url)}
+              readOnly={readOnly}
+              previewAlt={settings.header_logo_alt || "ロゴプレビュー"}
+              previewMaxHeight={80}
+            />
             <div>
               <label className={labelCls}>ロゴ alt テキスト</label>
               <input
