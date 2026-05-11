@@ -792,7 +792,15 @@ export const VISIBILITY_CONDITIONS = [
   "always", "before_start", "in_progress", "completed",
 ] as const;
 
-export const LIFF_PAGE_TYPES = ["default", "hint_site"] as const;
+// LIFF ページ種別。
+// 新しいモード: default / hint / faq / survey / location
+// 旧データ互換: "hint_site" も受理（保存時に "hint" に正規化される）
+export const LIFF_PAGE_TYPES = ["default", "hint", "faq", "survey", "location", "hint_site"] as const;
+/** 受け取った page_type を正規化（"hint_site" → "hint"） */
+export function normalizeLiffPageTypeValue(value: string | null | undefined): string {
+  if (value === "hint_site") return "hint";
+  return value ?? "default";
+}
 export const LIFF_PUBLISH_STATUSES = ["draft", "published", "archived"] as const;
 export const LIFF_SECTION_VARIANTS = ["default", "dark", "purple"] as const;
 export const LIFF_IMAGE_SIZES = ["normal", "wide", "full"] as const;
@@ -998,7 +1006,24 @@ export function validateBlockSettings(blockType: string, settings: unknown): z.S
   return base;
 }
 
-// ── LIFF ページ設定スキーマ（ヒントサイト用フィールドを含む） ──
+// ── FAQ / Survey 設定 ────────────────────────
+const faqItemSchema = z.object({
+  id:       z.string().optional(),
+  question: z.string().max(300),
+  answer:   z.string().max(3000),
+});
+
+const surveyInputTypeSchema = z.enum(["text", "textarea", "radio", "checkbox"]);
+
+const surveyItemSchema = z.object({
+  id:         z.string().optional(),
+  question:   z.string().max(300),
+  input_type: surveyInputTypeSchema,
+  options:    z.array(z.string().max(200)).max(20).optional(),
+  required:   z.boolean().optional(),
+});
+
+// ── LIFF ページ設定スキーマ（ヒントサイト用 + FAQ / Survey フィールドを含む） ──
 const liffPageConfigSettingsSchema = z.object({
   header_fixed:         z.boolean().optional(),
   header_logo_url:      z.string().url().optional().or(z.literal("")),
@@ -1016,13 +1041,23 @@ const liffPageConfigSettingsSchema = z.object({
       purple:  z.object({ bg: z.string().max(64).optional(), fg: z.string().max(64).optional(), border: z.string().max(64).optional() }).partial().optional(),
     }).partial().optional(),
   }).partial().optional(),
+
+  // FAQ モード
+  faq_items:             z.array(faqItemSchema).max(100).optional(),
+  // Survey モード
+  survey_items:          z.array(surveyItemSchema).max(50).optional(),
+  survey_thanks_message: z.string().max(500).optional(),
 }).passthrough();
 
 export const updateLiffConfigSchema = z.object({
   is_enabled:     z.boolean().optional(),
   title:          z.string().max(200).optional().nullable(),
   description:    z.string().max(1000).optional().nullable(),
-  page_type:      z.enum(LIFF_PAGE_TYPES).optional(),
+  // page_type は新旧両方を受理し、保存時に "hint" に正規化する。
+  page_type: z.enum(LIFF_PAGE_TYPES).optional().transform((v) => {
+    if (v === "hint_site") return "hint" as const;
+    return v;
+  }),
   publish_status: z.enum(LIFF_PUBLISH_STATUSES).optional(),
   settings_json:  liffPageConfigSettingsSchema.optional(),
 });
@@ -1042,7 +1077,8 @@ export function validatePublishRequirements(args: {
   }
 
   const s = (args.settings ?? {}) as Record<string, unknown>;
-  if (args.pageType === "hint_site") {
+  // hint_site は旧名。新名 "hint" でも同じ検証を走らせる。
+  if (args.pageType === "hint_site" || args.pageType === "hint") {
     const ctaLabel = (s.header_cta_label as string | undefined)?.trim();
     const ctaUrl   = (s.header_cta_url   as string | undefined)?.trim();
     if ((ctaLabel && !ctaUrl) || (!ctaLabel && ctaUrl)) {

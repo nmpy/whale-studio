@@ -1097,8 +1097,24 @@ export type LiffBlockType =
 
 export type VisibilityCondition = "always" | "before_start" | "in_progress" | "completed";
 
-/** LIFF ページ種別 — 表示ロジック分岐用 */
-export type LiffPageType = "default" | "hint_site";
+/** LIFF ページ種別 — 表示ロジック分岐用
+ *
+ *  - default:  既存のプレイヤー向けブロックページ
+ *  - hint:     ヒントサイト（旧 "hint_site" の後継。データ migration 済み）
+ *  - faq:      よくある質問
+ *  - survey:   アンケート
+ *  - location: ロケーション履歴（チェックイン履歴の表示）
+ *
+ *  互換性: 旧データの "hint_site" は読み込み時に "hint" として扱う。
+ *  Zod (`LIFF_PAGE_TYPES`) では両方を受理し、保存は "hint" に正規化する。 */
+export type LiffPageType = "default" | "hint" | "faq" | "survey" | "location";
+
+/** 旧データ互換用。ストレージから読んだ値を正規化する。 */
+export function normalizeLiffPageType(value: string | null | undefined): LiffPageType {
+  if (value === "hint_site") return "hint";
+  if (value === "hint" || value === "faq" || value === "survey" || value === "location") return value;
+  return "default";
+}
 
 /** LIFF ページの公開状態（draft = 編集中 / published = 公開中 / archived = 退避） */
 export type LiffPublishStatus = "draft" | "published" | "archived";
@@ -1279,6 +1295,38 @@ export interface LiffPageConfigSettings {
       purple?:  { bg?: string; fg?: string; border?: string };
     };
   };
+
+  // ── FAQ モード設定 ──────────────────────────
+  /** FAQ モードの Q&A 項目。順序は配列順。空項目はプレイヤー側で非表示。 */
+  faq_items?: FaqItem[];
+
+  // ── Survey モード設定 ───────────────────────
+  /** Survey モードの質問項目。順序は配列順。 */
+  survey_items?: SurveyItem[];
+  /** Survey 送信完了時に表示するテキスト */
+  survey_thanks_message?: string;
+}
+
+/** FAQ 1 項目 */
+export interface FaqItem {
+  /** クライアントで生成する安定 ID（並び替え時のキー） */
+  id?: string;
+  question: string;
+  answer:   string;
+}
+
+/** Survey 入力種別 */
+export type SurveyInputType = "text" | "textarea" | "radio" | "checkbox";
+
+/** Survey 1 質問 */
+export interface SurveyItem {
+  id?: string;
+  question:    string;
+  input_type:  SurveyInputType;
+  /** radio / checkbox 用の選択肢 */
+  options?:    string[];
+  /** 必須入力か */
+  required?:   boolean;
 }
 
 export interface LiffPageConfig {

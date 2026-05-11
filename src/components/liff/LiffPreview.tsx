@@ -28,6 +28,10 @@ import type {
   AccordionSettings,
 } from "@/types";
 import { HintSiteRenderer } from "./HintSiteRenderer";
+import { FaqRenderer } from "./FaqRenderer";
+import { SurveyRenderer } from "./SurveyRenderer";
+import { LocationHistoryRenderer } from "./LocationHistoryRenderer";
+import { normalizeLiffPageType } from "@/types";
 import {
   HeadingBlock,
   TextBlock,
@@ -84,33 +88,75 @@ export function LiffPreview({
   config?: Pick<LiffPageConfig, "page_type" | "settings_json" | "description"> | null;
 }) {
   const enabledBlocks = blocks.filter((b) => b.is_enabled);
+  const mode = normalizeLiffPageType(config?.page_type);
+
+  // ── 共通フレーム ──
+  const frame = (label: string, content: React.ReactNode) => (
+    <div className="w-[375px] min-h-[600px] bg-white rounded-2xl overflow-hidden border-[8px] border-gray-800 shadow-xl shrink-0">
+      <div className="bg-gray-800 text-white py-2 px-4 text-[11px] font-semibold text-center">{label}</div>
+      <div className="overflow-auto" style={{ maxHeight: 720 }}>{content}</div>
+    </div>
+  );
 
   // ヒントサイトプレビュー — 実機と同じレンダラーをそのまま縮小表示する
-  if (config?.page_type === "hint_site") {
-    return (
-      <div className="w-[375px] min-h-[600px] bg-white rounded-2xl overflow-hidden border-[8px] border-gray-800 shadow-xl shrink-0">
-        <div className="bg-gray-800 text-white py-2 px-4 text-[11px] font-semibold text-center">
-          LIFF ヒントサイトプレビュー
-        </div>
-        <div className="overflow-auto" style={{ maxHeight: 720 }}>
-          <HintSiteRenderer
-            preview
-            config={{
-              work_id:       "preview",
-              title:         title ?? null,
-              description:   config?.description ?? null,
-              settings_json: config?.settings_json ?? {},
-              blocks:        enabledBlocks.map((b) => ({
-                id:            b.id,
-                block_type:    b.block_type,
-                title:         b.title,
-                settings_json: (b.settings_json ?? {}) as Record<string, unknown>,
-              })),
-            }}
-          />
-        </div>
-      </div>
-    );
+  if (mode === "hint") {
+    return frame("LIFF ヒントプレビュー", (
+      <HintSiteRenderer
+        preview
+        config={{
+          work_id:       "preview",
+          title:         title ?? null,
+          description:   config?.description ?? null,
+          settings_json: config?.settings_json ?? {},
+          blocks:        enabledBlocks.map((b) => ({
+            id:            b.id,
+            block_type:    b.block_type,
+            title:         b.title,
+            settings_json: (b.settings_json ?? {}) as Record<string, unknown>,
+          })),
+        }}
+      />
+    ));
+  }
+
+  if (mode === "faq") {
+    return frame("LIFF FAQ プレビュー", (
+      <FaqRenderer
+        config={{
+          title:         title ?? null,
+          description:   config?.description ?? null,
+          settings_json: config?.settings_json ?? {},
+        }}
+      />
+    ));
+  }
+
+  if (mode === "survey") {
+    return frame("LIFF アンケートプレビュー", (
+      <SurveyRenderer
+        preview
+        config={{
+          work_id:       "preview",
+          title:         title ?? null,
+          description:   config?.description ?? null,
+          settings_json: config?.settings_json ?? {},
+        }}
+      />
+    ));
+  }
+
+  if (mode === "location") {
+    return frame("LIFF 履歴プレビュー", (
+      <LocationHistoryRenderer
+        preview
+        config={{
+          work_id:       "preview",
+          title:         title ?? null,
+          description:   config?.description ?? null,
+          settings_json: config?.settings_json ?? {},
+        }}
+      />
+    ));
   }
 
   // デフォルト (プレイヤー向け) プレビュー — LiffRenderer と同じレイアウト・色を再現する。

@@ -8,7 +8,11 @@ import { useParams, useSearchParams } from "next/navigation";
 import { useLiffSDK } from "@/hooks/useLiffSDK";
 import { LiffRenderer } from "@/components/liff/LiffRenderer";
 import { HintSiteRenderer } from "@/components/liff/HintSiteRenderer";
+import { FaqRenderer } from "@/components/liff/FaqRenderer";
+import { SurveyRenderer } from "@/components/liff/SurveyRenderer";
+import { LocationHistoryRenderer } from "@/components/liff/LocationHistoryRenderer";
 import type { LiffBlock, UserState, LiffRenderContext } from "@/components/liff/LiffRenderer";
+import { normalizeLiffPageType } from "@/types";
 import type { LiffPageType, LiffPageConfigSettings, LiffPublishStatus } from "@/types";
 
 interface LiffPageData {
@@ -109,16 +113,21 @@ export default function LiffViewerPage() {
 
   if (!pageData) return null;
 
-  if (pageData.page_type === "hint_site") {
+  // 旧 "hint_site" は "hint" に正規化（DB の生値が古い場合の互換対応）。
+  const mode = normalizeLiffPageType(pageData.page_type);
+
+  const InClientBanner = !liff.isInClient && !isPreview ? (
+    <div className="bg-amber-50 border-b border-amber-200 px-4 py-2">
+      <p className="text-xs text-amber-700 text-center">
+        LINEアプリ内で開くと、すべての機能をご利用いただけます
+      </p>
+    </div>
+  ) : null;
+
+  if (mode === "hint") {
     return (
       <>
-        {!liff.isInClient && !isPreview && (
-          <div className="bg-amber-50 border-b border-amber-200 px-4 py-2">
-            <p className="text-xs text-amber-700 text-center">
-              LINEアプリ内で開くと、すべての機能をご利用いただけます
-            </p>
-          </div>
-        )}
+        {InClientBanner}
         <HintSiteRenderer
           config={{
             work_id:       pageData.work_id,
@@ -132,6 +141,57 @@ export default function LiffViewerPage() {
               settings_json: (b.settings_json ?? {}) as Record<string, unknown>,
             })),
           }}
+          preview={isPreview}
+        />
+      </>
+    );
+  }
+
+  if (mode === "faq") {
+    return (
+      <>
+        {InClientBanner}
+        <FaqRenderer
+          config={{
+            title:         pageData.title || pageData.work_title,
+            description:   pageData.description,
+            settings_json: pageData.settings_json ?? {},
+          }}
+        />
+      </>
+    );
+  }
+
+  if (mode === "survey") {
+    return (
+      <>
+        {InClientBanner}
+        <SurveyRenderer
+          config={{
+            work_id:       pageData.work_id,
+            title:         pageData.title || pageData.work_title,
+            description:   pageData.description,
+            settings_json: pageData.settings_json ?? {},
+          }}
+          preview={isPreview}
+          lineUserId={liff.lineUserId}
+        />
+      </>
+    );
+  }
+
+  if (mode === "location") {
+    return (
+      <>
+        {InClientBanner}
+        <LocationHistoryRenderer
+          config={{
+            work_id:       pageData.work_id,
+            title:         pageData.title || pageData.work_title,
+            description:   pageData.description,
+            settings_json: pageData.settings_json ?? {},
+          }}
+          lineUserId={liff.lineUserId}
           preview={isPreview}
         />
       </>
