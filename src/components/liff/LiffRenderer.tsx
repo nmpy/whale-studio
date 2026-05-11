@@ -5,6 +5,7 @@
 
 import type {
   LiffBlockType,
+  LiffPageConfigSettings,
   VisibilityCondition,
   HeadingSettings,
   TextSettings,
@@ -13,6 +14,7 @@ import type {
   DividerSettings,
   AccordionSettings,
 } from "@/types";
+import { LiffShareButton } from "./LiffShareButton";
 import {
   FreeTextBlock,
   StartButtonBlock,
@@ -108,10 +110,16 @@ export function LiffRenderer({
   blocks,
   title,
   ctx,
+  settings,
+  preview,
 }: {
   blocks: LiffBlock[];
   title?: string | null;
   ctx: LiffRenderContext;
+  /** ページ全体設定（シェアボタン制御などに使う） */
+  settings?: LiffPageConfigSettings;
+  /** プレビュー時は shareTargetPicker を呼ばない */
+  preview?: boolean;
 }) {
   const visibleBlocks = blocks.filter((b) =>
     shouldShow(b.visibility_condition_json, ctx.userState)
@@ -151,6 +159,12 @@ export function LiffRenderer({
               <RenderBlock block={block} ctx={ctx} />
             </section>
           ))
+        )}
+
+        {settings?.share_enabled && (
+          <div className="pt-2">
+            <LiffShareButton settings={settings} pageTitle={title || ""} preview={preview} />
+          </div>
         )}
       </main>
     </div>

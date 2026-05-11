@@ -7,6 +7,7 @@
 // LINE ユーザー ID が取れない / API 未対応の場合でも落ちないように案内表示のみ行う。
 
 import type { LiffPageConfigSettings } from "@/types";
+import { LiffShareButton } from "./LiffShareButton";
 
 export interface LocationHistoryRendererConfig {
   work_id:       string;
@@ -58,6 +59,12 @@ export function LocationHistoryRenderer({ config, lineUserId, preview }: Props) 
             <p className="text-[12px] leading-[1.6] text-[color:var(--liff-tertiary-text)] mt-2">
               （履歴取得 API 実装後、ここに地点名・日時・種別・成否が一覧表示されます）
             </p>
+          </div>
+        )}
+
+        {config.settings_json.share_enabled && (
+          <div className="pt-2">
+            <LiffShareButton settings={config.settings_json} pageTitle={config.title || ""} preview={preview} />
           </div>
         )}
       </main>

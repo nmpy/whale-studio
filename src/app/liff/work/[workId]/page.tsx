@@ -157,6 +157,7 @@ export default function LiffViewerPage() {
             description:   pageData.description,
             settings_json: pageData.settings_json ?? {},
           }}
+          preview={isPreview}
         />
       </>
     );
@@ -240,6 +241,8 @@ export default function LiffViewerPage() {
         blocks={pageData.blocks}
         title={pageData.title || pageData.work_title}
         ctx={ctx}
+        settings={pageData.settings_json ?? {}}
+        preview={isPreview}
       />
     </div>
   );

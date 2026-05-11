@@ -125,6 +125,56 @@ export function LiffConfigHeader({
         </div>
       </div>
 
+      {/* シェアボタン設定（全モード共通） */}
+      <div className="bg-white rounded-xl border border-gray-200 p-5 mb-6 space-y-4">
+        <h2 className="text-sm font-semibold text-gray-900">シェアボタン</h2>
+        <label className="flex items-center gap-2 text-sm text-gray-700">
+          <input
+            type="checkbox"
+            checked={settings.share_enabled ?? false}
+            onChange={(e) => updateSetting("share_enabled", e.target.checked)}
+            disabled={readOnly}
+            className="rounded border-gray-300"
+          />
+          シェアボタンを表示する
+        </label>
+        <p className="text-[11px] text-gray-400 -mt-2">
+          ON にすると、LIFF プレイヤー画面下部にシェアボタンが表示されます。タップすると LINE の友だち / グループ選択画面が開きます。
+        </p>
+
+        {settings.share_enabled && (
+          <div className="space-y-3 pt-1">
+            <div>
+              <label className={labelCls}>ボタン文言</label>
+              <input
+                className={inputCls}
+                value={settings.share_button_label ?? ""}
+                onChange={(e) => updateSetting("share_button_label", e.target.value)}
+                disabled={readOnly}
+                placeholder="友だちにシェアする"
+                maxLength={100}
+              />
+              <p className="text-[11px] text-gray-400 mt-1">未設定時は「友だちにシェアする」が使われます。</p>
+            </div>
+            <div>
+              <label className={labelCls}>シェアメッセージ</label>
+              <textarea
+                className={`${inputCls} resize-y min-h-[80px]`}
+                value={settings.share_message ?? ""}
+                onChange={(e) => updateSetting("share_message", e.target.value)}
+                disabled={readOnly}
+                placeholder="例: 都市奇譚ヒントサイトをチェックしてみてください！"
+                rows={3}
+                maxLength={1000}
+              />
+              <p className="text-[11px] text-gray-400 mt-1">
+                未設定時は「ページタイトル + 現在の LIFF ページ URL」が送信されます。
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
+
       {isFaq && (
         <LiffFaqEditor
           settings={settings}

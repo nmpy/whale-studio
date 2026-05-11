@@ -6,6 +6,7 @@
 
 import { useState } from "react";
 import type { FaqItem, LiffPageConfigSettings } from "@/types";
+import { LiffShareButton } from "./LiffShareButton";
 
 export interface FaqRendererConfig {
   title:         string | null;
@@ -13,7 +14,7 @@ export interface FaqRendererConfig {
   settings_json: LiffPageConfigSettings;
 }
 
-export function FaqRenderer({ config }: { config: FaqRendererConfig }) {
+export function FaqRenderer({ config, preview }: { config: FaqRendererConfig; preview?: boolean }) {
   const items = (config.settings_json.faq_items ?? []).filter(
     (it) => (it.question?.trim() ?? "") !== "" || (it.answer?.trim() ?? "") !== ""
   );
@@ -46,6 +47,12 @@ export function FaqRenderer({ config }: { config: FaqRendererConfig }) {
               <FaqRow key={item.id ?? idx} item={item} index={idx} />
             ))}
           </ul>
+        )}
+
+        {config.settings_json.share_enabled && (
+          <div className="pt-2">
+            <LiffShareButton settings={config.settings_json} pageTitle={config.title || ""} preview={preview} />
+          </div>
         )}
       </main>
     </div>
