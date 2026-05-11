@@ -8,8 +8,14 @@
 //     これにより本番 / Vercel Preview / 各種プレビュー環境でも自前のオリジンを使う。
 //   - localhost / 127.0.0.1 のみの場合は注意文を出す (本番 UI に localhost を貼り付けないため)。
 //   - 公開ページ: ${BASE}/liff/work/${workId}
-//   - プレビュー: ${BASE}/liff/work/${workId}?preview=1  (既存の /api/liff/works/[workId] が ?preview=1 で
-//     draft の取得を許可しているため、本 URL でも draft 状態のままスマホ確認ができる)
+//
+// セキュリティ方針:
+//   - 本パネルでは **公開済みの URL のみ** を表示する。
+//   - 既存 API (/api/liff/works/[workId]?preview=1) は認証なしで draft / archived を返してしまう
+//     ため、ここから draft の実機プレビュー URL を一般 UI に貼り出すと、共有された第三者が公開前の
+//     内容を閲覧可能になってしまう。
+//   - draft の実機プレビューを安全に提供するには preview token / owner 認証つきの専用 API が必要。
+//     後続 PR で対応予定。
 //
 // LIFF アプリ URL (https://liff.line.me/<liffId>) について:
 //   - LINE Developers で設定された LIFF アプリの endpoint URL は通常 /liff/... のチェックイン用ページに
@@ -47,10 +53,6 @@ export function LiffDevicePreviewLinks({ workId, publishStatus }: Props) {
 
   const publicUrl = useMemo(
     () => (baseUrl ? `${baseUrl}/liff/work/${workId}` : ""),
-    [baseUrl, workId]
-  );
-  const previewUrl = useMemo(
-    () => (baseUrl ? `${baseUrl}/liff/work/${workId}?preview=1` : ""),
     [baseUrl, workId]
   );
 
@@ -93,7 +95,7 @@ export function LiffDevicePreviewLinks({ workId, publishStatus }: Props) {
           {publishStatus !== "published" && (
             <>
               <br />
-              現在 <strong>未公開</strong> のため、公開ページ URL は閲覧できません。下のプレビュー URL をご利用ください。
+              現在 <strong>未公開</strong> のため、この URL ではまだ閲覧できません。公開すると有効になります。
             </>
           )}
         </p>
@@ -113,14 +115,9 @@ export function LiffDevicePreviewLinks({ workId, publishStatus }: Props) {
         onCopy={() => handleCopy("public", publicUrl)}
       />
 
-      <UrlRow
-        label="プレビュー URL (下書き含む)"
-        helpText="編集中の最新状態を実機で確認できます。共有用ではありません"
-        url={previewUrl}
-        disabled={false}
-        copied={copied === "preview"}
-        onCopy={() => handleCopy("preview", previewUrl)}
-      />
+      <p className="text-[11px] text-gray-400 leading-relaxed">
+        ※ 下書き / アーカイブ状態での実機プレビューは現在対応していません。安全なプレビュー (限定共有) は後続 PR で対応予定です。
+      </p>
 
       <p className="text-[11px] text-gray-400 leading-relaxed">
         ※ LINE 内ブラウザ (LIFF) として開きたい場合は LINE Developers で別途 LIFF アプリ
