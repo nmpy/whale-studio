@@ -3,7 +3,6 @@
 // src/components/liff/block-settings-forms.tsx
 // ブロックタイプごとの設定フォーム
 
-import { useState } from "react";
 import type {
   LiffBlockType,
   FreeTextSettings,
@@ -24,7 +23,7 @@ import type {
   NestedLiffBlock,
   LiffSectionVariant,
 } from "@/types";
-import { uploadApi, getDevToken } from "@/lib/api-client";
+import { ImageUploadField } from "./ImageUploadField";
 
 type FieldProps<T> = {
   settings: T;
@@ -251,50 +250,16 @@ export function CharacterListForm({ settings, onChange, readOnly }: FieldProps<C
 }
 
 export function ImageBlockForm({ settings, onChange, readOnly }: FieldProps<ImageBlockSettings>) {
-  const [uploading, setUploading] = useState(false);
-  const [uploadError, setUploadError] = useState<string | null>(null);
-
-  const handleFile = async (file: File | undefined) => {
-    if (!file) return;
-    setUploading(true);
-    setUploadError(null);
-    try {
-      const { url } = await uploadApi.uploadImage(getDevToken(), file);
-      onChange({ ...settings, image_url: url });
-    } catch (err) {
-      setUploadError(err instanceof Error ? err.message : "アップロードに失敗しました");
-    } finally {
-      setUploading(false);
-    }
-  };
-
   return (
     <div className="space-y-3">
-      <div>
-        <label className={labelClass}>画像URL</label>
-        <input
-          className={inputClass}
-          value={settings.image_url ?? ""}
-          onChange={(e) => onChange({ ...settings, image_url: e.target.value })}
-          disabled={readOnly || uploading}
-          placeholder="https://..."
-        />
-        {!readOnly && (
-          <div className="mt-2 flex items-center gap-2">
-            <label className="inline-block px-3 py-1.5 bg-violet-50 border border-violet-200 rounded-md text-xs text-violet-700 cursor-pointer hover:bg-violet-100">
-              {uploading ? "アップロード中..." : "画像をアップロード"}
-              <input
-                type="file"
-                accept="image/jpeg,image/png,image/webp,image/gif"
-                disabled={uploading}
-                onChange={(e) => handleFile(e.target.files?.[0])}
-                className="hidden"
-              />
-            </label>
-            {uploadError && <span className="text-xs text-red-600">{uploadError}</span>}
-          </div>
-        )}
-      </div>
+      <ImageUploadField
+        label="画像"
+        value={settings.image_url}
+        onChange={(url) => onChange({ ...settings, image_url: url })}
+        readOnly={readOnly}
+        previewAlt={settings.alt || "画像プレビュー"}
+        previewMaxHeight={160}
+      />
       <div>
         <label className={labelClass}>alt テキスト</label>
         <input
@@ -343,16 +308,13 @@ export function VideoBlockForm({ settings, onChange, readOnly }: FieldProps<Vide
           placeholder="https://..."
         />
       </div>
-      <div>
-        <label className={labelClass}>ポスター画像URL</label>
-        <input
-          className={inputClass}
-          value={settings.poster_url ?? ""}
-          onChange={(e) => onChange({ ...settings, poster_url: e.target.value })}
-          disabled={readOnly}
-          placeholder="https://..."
-        />
-      </div>
+      <ImageUploadField
+        label="ポスター画像（任意）"
+        value={settings.poster_url}
+        onChange={(url) => onChange({ ...settings, poster_url: url })}
+        readOnly={readOnly}
+        previewAlt="ポスター画像プレビュー"
+      />
       <div>
         <label className={labelClass}>キャプション</label>
         <input
