@@ -17,20 +17,24 @@ export function ProgressBlock({
 
   return (
     <div>
-      {title && <h3 className="text-base font-semibold text-gray-900 mb-2">{title}</h3>}
+      {title && (
+        <h3 className="text-[16px] font-bold text-[color:var(--liff-primary-text)] mb-2 break-words">
+          {title}
+        </h3>
+      )}
       {settings.display_format === "text" ? (
-        <p className="text-sm text-gray-700">
+        <p className="text-[15px] leading-[1.6] text-[color:var(--liff-primary-text)]">
           {current} / {total} フェーズ完了
         </p>
       ) : (
         <div>
-          <div className="bg-gray-200 rounded-full h-2 overflow-hidden">
+          <div className="bg-[color:var(--liff-border)] rounded-full h-2 overflow-hidden">
             <div
               className="h-full rounded-full transition-all duration-500"
-              style={{ width: `${pct}%`, background: "#06C755" }}
+              style={{ width: `${pct}%`, background: "var(--liff-line-green, #06C755)" }}
             />
           </div>
-          <p className="text-xs text-gray-500 mt-1 text-right">
+          <p className="text-[12px] text-[color:var(--liff-secondary-text)] mt-1 text-right">
             {settings.show_denominator !== false ? `${current} / ${total}` : `${pct}%`}
           </p>
         </div>

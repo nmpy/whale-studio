@@ -80,10 +80,16 @@ export default function LiffViewerPage() {
 
   if (liff.loading || loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-[color:var(--liff-background)] flex items-center justify-center px-4">
         <div className="text-center">
-          <div className="w-8 h-8 border-2 border-gray-300 border-t-green-500 rounded-full animate-spin mx-auto mb-3" />
-          <p className="text-sm text-gray-500">読み込み中...</p>
+          <div
+            className="w-8 h-8 border-2 rounded-full animate-spin mx-auto mb-3"
+            style={{
+              borderColor: "var(--liff-border)",
+              borderTopColor: "var(--liff-line-green, #06C755)",
+            }}
+          />
+          <p className="text-[14px] text-[color:var(--liff-secondary-text)]">読み込み中...</p>
         </div>
       </div>
     );
@@ -91,11 +97,11 @@ export default function LiffViewerPage() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-        <div className="bg-white rounded-xl p-6 shadow-sm text-center max-w-sm w-full">
+      <div className="min-h-screen bg-[color:var(--liff-background)] flex items-center justify-center p-4">
+        <div className="bg-[color:var(--liff-surface)] rounded-[12px] px-4 py-6 border border-[color:var(--liff-border)] text-center max-w-sm w-full">
           <p className="text-4xl mb-3">😢</p>
-          <h2 className="text-base font-semibold text-gray-900 mb-2">エラーが発生しました</h2>
-          <p className="text-sm text-gray-500">{error}</p>
+          <h2 className="text-[16px] font-bold text-[color:var(--liff-primary-text)] mb-2">エラーが発生しました</h2>
+          <p className="text-[14px] text-[color:var(--liff-secondary-text)]">{error}</p>
         </div>
       </div>
     );

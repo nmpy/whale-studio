@@ -15,7 +15,9 @@ export const metadata: Metadata = {
 
 export default function LiffLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="liff-font min-h-screen bg-gradient-to-b from-blue-50 to-white">
+    // 背景・タイポグラフィは liff-font.css で定義された LIFF デザイントークンに従う。
+    // 個別のページ（プレイヤー / ヒントサイト）が必要に応じて bg を上書きする。
+    <div className="liff-font min-h-screen bg-[color:var(--liff-background)]">
       {children}
     </div>
   );

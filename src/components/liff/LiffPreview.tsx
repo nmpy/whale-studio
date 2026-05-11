@@ -1,7 +1,13 @@
 "use client";
 
 // src/components/liff/LiffPreview.tsx
-// 管理画面用スマホ幅プレビュー — Tailwind ベース
+// 管理画面用スマホ幅プレビュー。
+// 実機 LIFF 表示とズレないよう、`.liff-font` ラッパー越しに同じデザイントークン
+// (--liff-line-green / --liff-header-bg / --liff-primary-text 等) を継承する。
+// プレビュー専用にスタイルを直書きせず、なるべく本物のレンダラーを使う。
+//
+// 管理画面ルートでは LIFF レイアウトの CSS がロードされていないため、ここで明示的に import する。
+import "@/app/liff/liff-font.css";
 
 import type { LiffPageBlock, LiffBlockType, LiffPageConfig } from "@/types";
 import type {
@@ -29,135 +35,35 @@ import {
   ButtonLinkBlock,
   DividerBlock,
   AccordionBlock,
+  StartButtonBlock,
+  ResumeButtonBlock,
+  ProgressBlock,
+  EvidenceListBlock,
+  HintListBlock,
+  CharacterListBlock,
+  ImageBlock,
+  VideoBlock,
+  FreeTextBlock,
 } from "./renderers";
 
-function PreviewFreeText({ title, settings }: { title?: string | null; settings: FreeTextSettings }) {
-  return (
-    <div className={settings.align === "center" ? "text-center" : "text-left"}>
-      {title && <h3 className="text-sm font-semibold mb-1">{title}</h3>}
-      <p className={`text-[13px] text-gray-700 whitespace-pre-wrap ${settings.emphasis === "strong" ? "font-bold text-gray-900" : ""}`}>
-        {settings.body || "（テキスト未設定）"}
-      </p>
-    </div>
-  );
-}
-
-function PreviewStartButton({ settings }: { settings: StartButtonSettings }) {
-  return (
-    <div className="w-full py-3 px-4 bg-[#06C755] text-white rounded-lg font-semibold text-sm text-center">
-      {settings.label || "謎解きを始める"}
-    </div>
-  );
-}
-
-function PreviewResumeButton({ settings }: { settings: ResumeButtonSettings }) {
-  return (
-    <div className="w-full py-3 px-4 bg-blue-500 text-white rounded-lg font-semibold text-sm text-center">
-      {settings.label || "途中から再開する"}
-    </div>
-  );
-}
-
-function PreviewProgress({ title, settings }: { title?: string | null; settings: ProgressSettings }) {
-  const pct = 60;
-  return (
-    <div>
-      {title && <h3 className="text-sm font-semibold mb-2">{title}</h3>}
-      {settings.display_format === "text" ? (
-        <p className="text-[13px] text-gray-700">3 / 5 フェーズ完了</p>
-      ) : (
-        <div>
-          <div className="bg-gray-200 rounded-full h-2 overflow-hidden">
-            <div className="bg-[#06C755] h-full rounded-full transition-all" style={{ width: `${pct}%` }} />
-          </div>
-          <p className="text-[11px] text-gray-500 mt-1 text-right">
-            {settings.show_denominator !== false ? "3 / 5" : `${pct}%`}
-          </p>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function PreviewEvidenceList({ title, settings }: { title?: string | null; settings: EvidenceListSettings }) {
-  return (
-    <div>
-      {title && <h3 className="text-sm font-semibold mb-2">{title}</h3>}
-      <div className="bg-gray-50 rounded-lg p-3 text-center">
-        <p className="text-xs text-gray-400">{settings.empty_message || "まだ証拠はありません"}</p>
-      </div>
-    </div>
-  );
-}
-
-function PreviewHintList({ title, settings }: { title?: string | null; settings: HintListSettings }) {
-  return (
-    <div>
-      {title && <h3 className="text-sm font-semibold mb-2">{title}</h3>}
-      <div className="bg-amber-50 rounded-lg p-3 text-center">
-        <p className="text-xs text-amber-700">{settings.empty_message || "ヒントはまだありません"}</p>
-      </div>
-    </div>
-  );
-}
-
-function PreviewCharacterList({ title }: { title?: string | null }) {
-  return (
-    <div>
-      {title && <h3 className="text-sm font-semibold mb-2">{title}</h3>}
-      <div className="flex gap-3">
-        {["A", "B", "C"].map((c) => (
-          <div key={c} className="flex flex-col items-center gap-1">
-            <div className="w-10 h-10 rounded-full bg-violet-200 flex items-center justify-center text-base font-semibold text-violet-600">
-              {c}
-            </div>
-            <span className="text-[11px] text-gray-500">キャラ{c}</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function PreviewImage({ settings }: { settings: ImageBlockSettings }) {
-  return (
-    <div>
-      {settings.image_url ? (
-        <img src={settings.image_url} alt={settings.alt || ""} className="w-full rounded-lg object-cover max-h-[200px]" />
-      ) : (
-        <div className="w-full h-[120px] bg-gray-100 rounded-lg flex items-center justify-center text-gray-400 text-xs">
-          画像未設定
-        </div>
-      )}
-      {settings.caption && <p className="text-[11px] text-gray-500 mt-1 text-center">{settings.caption}</p>}
-    </div>
-  );
-}
-
-function PreviewVideo({ settings }: { settings: VideoBlockSettings }) {
-  return (
-    <div>
-      <div className="w-full h-[160px] bg-gray-800 rounded-lg flex items-center justify-center text-white text-2xl">
-        ▶
-      </div>
-      {settings.caption && <p className="text-[11px] text-gray-500 mt-1 text-center">{settings.caption}</p>}
-    </div>
-  );
-}
+// 「ヒントの一覧」用ダミー
+const SAMPLE_HINTS = [
+  { id: "h1", text: "（プレビュー用ヒント）" },
+];
 
 function BlockPreviewContent({ block }: { block: LiffPageBlock }) {
   const s = block.settings_json as Record<string, unknown>;
   const t = block.block_type as LiffBlockType;
   switch (t) {
-    case "free_text":      return <PreviewFreeText title={block.title} settings={s as FreeTextSettings} />;
-    case "start_button":   return <PreviewStartButton settings={s as StartButtonSettings} />;
-    case "resume_button":  return <PreviewResumeButton settings={s as ResumeButtonSettings} />;
-    case "progress":       return <PreviewProgress title={block.title} settings={s as ProgressSettings} />;
-    case "evidence_list":  return <PreviewEvidenceList title={block.title} settings={s as EvidenceListSettings} />;
-    case "hint_list":      return <PreviewHintList title={block.title} settings={s as HintListSettings} />;
-    case "character_list": return <PreviewCharacterList title={block.title} />;
-    case "image":          return <PreviewImage settings={s as ImageBlockSettings} />;
-    case "video":          return <PreviewVideo settings={s as VideoBlockSettings} />;
+    case "free_text":      return <FreeTextBlock title={block.title} settings={s as FreeTextSettings} />;
+    case "start_button":   return <StartButtonBlock settings={s as StartButtonSettings} />;
+    case "resume_button":  return <ResumeButtonBlock settings={s as ResumeButtonSettings} canResume />;
+    case "progress":       return <ProgressBlock title={block.title} settings={s as ProgressSettings} current={3} total={5} />;
+    case "evidence_list":  return <EvidenceListBlock title={block.title} settings={s as EvidenceListSettings} evidences={[]} />;
+    case "hint_list":      return <HintListBlock title={block.title} settings={s as HintListSettings} hints={SAMPLE_HINTS} />;
+    case "character_list": return <CharacterListBlock title={block.title} settings={s as CharacterListSettings} characters={[]} />;
+    case "image":          return <ImageBlock settings={s as ImageBlockSettings} />;
+    case "video":          return <VideoBlock settings={s as VideoBlockSettings} />;
     case "heading":        return <HeadingBlock title={block.title} settings={s as HeadingSettings} />;
     case "text":           return <TextBlock title={block.title} settings={s as TextSettings} />;
     case "warning":        return <WarningBlock settings={s as WarningSettings} />;
@@ -179,6 +85,7 @@ export function LiffPreview({
 }) {
   const enabledBlocks = blocks.filter((b) => b.is_enabled);
 
+  // ヒントサイトプレビュー — 実機と同じレンダラーをそのまま縮小表示する
   if (config?.page_type === "hint_site") {
     return (
       <div className="w-[375px] min-h-[600px] bg-white rounded-2xl overflow-hidden border-[8px] border-gray-800 shadow-xl shrink-0">
@@ -206,30 +113,44 @@ export function LiffPreview({
     );
   }
 
+  // デフォルト (プレイヤー向け) プレビュー — LiffRenderer と同じレイアウト・色を再現する。
   return (
     <div className="w-[375px] min-h-[600px] bg-white rounded-2xl overflow-hidden border-[8px] border-gray-800 shadow-xl shrink-0">
       <div className="bg-gray-800 text-white py-2 px-4 text-[11px] font-semibold text-center">
         LIFF プレビュー
       </div>
 
-      <div className="px-4 pt-4 pb-3 border-b border-gray-100">
-        <h2 className="text-base font-bold text-gray-900">
-          {title || "LIFF ページ"}
-        </h2>
-      </div>
+      <div className="liff-font bg-[color:var(--liff-background)] min-h-[560px]">
+        <header
+          className="px-4 py-3"
+          style={{
+            background: "var(--liff-header-bg)",
+            color: "var(--liff-header-text)",
+          }}
+        >
+          <div className="max-w-md mx-auto">
+            <h2 className="text-[18px] leading-tight font-bold tracking-tight break-words">
+              {title || "LIFF ページ"}
+            </h2>
+          </div>
+        </header>
 
-      <div className="p-4 flex flex-col gap-4">
-        {enabledBlocks.length === 0 ? (
-          <p className="text-gray-400 text-sm text-center py-10">
-            ブロックが追加されていません
-          </p>
-        ) : (
-          enabledBlocks.map((block) => (
-            <div key={block.id}>
-              <BlockPreviewContent block={block} />
-            </div>
-          ))
-        )}
+        <div className="px-4 py-4 flex flex-col gap-3 max-w-md mx-auto">
+          {enabledBlocks.length === 0 ? (
+            <p className="text-[color:var(--liff-tertiary-text)] text-sm text-center py-10">
+              ブロックが追加されていません
+            </p>
+          ) : (
+            enabledBlocks.map((block) => (
+              <section
+                key={block.id}
+                className="bg-[color:var(--liff-surface)] rounded-[12px] px-4 py-3 border border-[color:var(--liff-border)]"
+              >
+                <BlockPreviewContent block={block} />
+              </section>
+            ))
+          )}
+        </div>
       </div>
     </div>
   );
