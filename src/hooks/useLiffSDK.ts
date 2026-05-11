@@ -67,35 +67,53 @@ export function useLiffSDK(liffId?: string): LiffSDKState {
         await liff.init({ liffId: id });
 
         const inClient = liff.isInClient();
+        const isLoggedIn = liff.isLoggedIn();
 
-        if (!liff.isLoggedIn()) {
+        // LINE クライアント内では LIFF にログイン済みのことが多いが、念のため未ログインなら login() を呼ぶ。
+        // 外部ブラウザでは login() を呼ぶと LINE の OAuth ページにリダイレクトされ、
+        // 「実機確認用ブラウザ URL」で開いただけのユーザーが混乱するため auto-login しない。
+        // (外部ブラウザでも UID が必要な操作は呼び出し側で個別にハンドリングする想定)
+        if (inClient && !isLoggedIn) {
           liff.login({ redirectUri: window.location.href });
           return; // リダイレクトされるので state 更新不要
         }
 
-        const profile = await liff.getProfile();
-
-        setState({
-          ready: true,
-          loading: false,
-          isInClient: inClient,
-          lineUserId: profile.userId,
-          displayName: profile.displayName,
-          error: null,
-          closeWindow: () => {
-            if (inClient) {
-              liff.closeWindow();
-            }
-          },
-        });
+        if (isLoggedIn) {
+          const profile = await liff.getProfile();
+          setState({
+            ready: true,
+            loading: false,
+            isInClient: inClient,
+            lineUserId: profile.userId,
+            displayName: profile.displayName,
+            error: null,
+            closeWindow: () => {
+              if (inClient) {
+                liff.closeWindow();
+              }
+            },
+          });
+        } else {
+          // 未ログイン (外部ブラウザでの確認用) — ページの描画は許可し、UID は null のまま。
+          setState({
+            ready: true,
+            loading: false,
+            isInClient: inClient,
+            lineUserId: null,
+            displayName: null,
+            error: null,
+            closeWindow: () => {},
+          });
+        }
       } catch (err) {
         console.error("[LIFF] 初期化失敗:", err);
+        // init 自体に失敗しても画面を真っ白にしない。プレビュー用途を優先。
         setState((prev) => ({
           ...prev,
           ready: true,
           loading: false,
           isInClient: false,
-          error: "LINEアプリ内で開くとすべての機能をご利用いただけます",
+          error: "LIFF を初期化できませんでした。LINE アプリ内で開くとすべての機能をご利用いただけます。",
         }));
       }
     })();
