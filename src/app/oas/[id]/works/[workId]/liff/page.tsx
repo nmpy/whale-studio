@@ -14,6 +14,7 @@ import { LiffConfigHeader } from "@/components/liff/LiffConfigHeader";
 import { LiffBlockItem } from "@/components/liff/LiffBlockItem";
 import { LiffAddBlockModal } from "@/components/liff/LiffAddBlockModal";
 import { LiffPreview } from "@/components/liff/LiffPreview";
+import { LiffDevicePreviewLinks } from "@/components/liff/LiffDevicePreviewLinks";
 
 function SaveStatusIndicator({ status }: { status: LiffSaveStatus }) {
   if (status === "idle") return null;
@@ -107,26 +108,7 @@ export default function LiffConfigPage() {
         onUpdatePublishStatus={liff.updatePublishStatus}
       />
 
-      <div className="flex items-center gap-2 mb-4 text-xs text-gray-500">
-        <span>プレビュー:</span>
-        <a
-          href={`/liff/work/${workId}?preview=1`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-violet-600 underline"
-        >
-          下書きを含むプレビューを開く
-        </a>
-        <span>/</span>
-        <a
-          href={`/liff/work/${workId}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-gray-600 underline"
-        >
-          公開ページを開く
-        </a>
-      </div>
+      <LiffDevicePreviewLinks workId={workId} publishStatus={config.publish_status} />
 
       <div className="flex gap-6 items-start">
         <div className="flex-1 min-w-0">

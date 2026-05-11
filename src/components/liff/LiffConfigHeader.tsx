@@ -42,6 +42,21 @@ export function LiffConfigHeader({
     onLocalChange({ settings_json: { ...settings, [key]: value } });
   };
 
+  // 公開状態の変更は LINE プレイヤーから即時影響を受けるため、必ず確認ダイアログを挟む。
+  // 既存にプロジェクト固有のモーダルが無いため window.confirm の最小実装で十分。
+  const handlePublishStatusChange = (next: LiffPublishStatus) => {
+    if (next === config.publish_status) return;
+    const msg =
+      next === "published" ? "このLIFFページを公開しますか？プレイヤーが閲覧できる状態になります。" :
+      next === "draft"     ? "このLIFFページを下書きに戻しますか？公開中の場合、プレイヤーから見えなくなる可能性があります。" :
+      next === "archived"  ? "このLIFFページをアーカイブしますか？通常の一覧やプレイヤー表示から除外される可能性があります。" :
+      "状態を変更しますか？";
+    if (typeof window !== "undefined" && !window.confirm(msg)) {
+      return;
+    }
+    onUpdatePublishStatus(next);
+  };
+
   return (
     <>
       <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
@@ -49,7 +64,13 @@ export function LiffConfigHeader({
         <div className="flex items-center gap-3 flex-wrap">
           <select
             value={config.publish_status}
-            onChange={(e) => onUpdatePublishStatus(e.target.value as LiffPublishStatus)}
+            onChange={(e) => {
+              // select の onChange はキャンセル時に表示値だけ巻き戻したいので、
+              // currentTarget.value を元に戻したうえで handlePublishStatusChange に委譲する
+              const next = e.target.value as LiffPublishStatus;
+              e.currentTarget.value = config.publish_status;
+              handlePublishStatusChange(next);
+            }}
             disabled={saving || readOnly || !canPublish}
             title={!canPublish ? "公開操作は admin 以上の権限が必要です" : undefined}
             className="px-3 py-1.5 border border-gray-200 rounded-md text-sm bg-white disabled:bg-gray-50"
@@ -236,43 +257,11 @@ export function LiffConfigHeader({
             </div>
           </div>
 
-          <div className="grid sm:grid-cols-2 gap-3">
-            <div>
-              <label className={labelCls}>CTA ラベル</label>
-              <input
-                className={inputCls}
-                value={settings.header_cta_label ?? ""}
-                onChange={(e) => updateSetting("header_cta_label", e.target.value)}
-                disabled={readOnly}
-                placeholder="チケットを購入する"
-              />
-            </div>
-            <div>
-              <label className={labelCls}>CTA URL</label>
-              <input
-                className={inputCls}
-                value={settings.header_cta_url ?? ""}
-                onChange={(e) => updateSetting("header_cta_url", e.target.value)}
-                disabled={readOnly}
-                placeholder="https://..."
-              />
-            </div>
-          </div>
-
-          <label className="flex items-center gap-2 text-sm text-gray-700">
-            <input
-              type="checkbox"
-              checked={settings.show_hamburger ?? false}
-              onChange={(e) => updateSetting("show_hamburger", e.target.checked)}
-              disabled={readOnly}
-              className="rounded border-gray-300"
-            />
-            ハンバーガーメニュー枠を表示する（中身は将来拡張）
-          </label>
-
-          {/* ネタバレ注意はブロック単位 (Warning ブロック) でのみ管理する。
-              旧 settings.spoiler_warning_text の値は表示・編集 UI からは外したが、
-              既存データ互換のため保存ロジックでは引き続き許容される。 */}
+          {/* 廃止済み:
+              - CTA ラベル / CTA URL (header_cta_label / header_cta_url)
+              - ハンバーガーメニュー枠 (show_hamburger)
+              - ネタバレ注意帯 (spoiler_warning_text)
+              既存データ互換のため型・Zod では引き続き optional 残置するが、UI からは外し、レンダラーも参照しない。 */}
 
           <div className="grid sm:grid-cols-2 gap-3">
             <div>
@@ -293,9 +282,9 @@ export function LiffConfigHeader({
                 value={settings.theme?.header_fg ?? ""}
                 onChange={(e) => updateSetting("theme", { ...(settings.theme ?? {}), header_fg: e.target.value })}
                 disabled={readOnly}
-                placeholder="#000000"
+                placeholder="#ffffff"
               />
-              <p className="text-[11px] text-gray-400 mt-1">未設定時は #000000 が適用されます。</p>
+              <p className="text-[11px] text-gray-400 mt-1">未設定時は #ffffff が適用されます。</p>
             </div>
           </div>
         </div>
