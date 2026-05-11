@@ -1,0 +1,20 @@
+/* LIFF 専用フォントスコープ
+ * LINE Seed JP を LIFF 配下にだけ適用する。
+ * CMS（/oas, /admin など）には影響させない。
+ * フォント本体は layout.tsx で @fontsource/line-seed-jp を import している。
+ */
+.liff-font {
+  font-family:
+    "LINE Seed JP",
+    "LINE Seed Sans",
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    sans-serif;
+}
+
+/* Tailwind の font-sans 等が当たっている子孫要素にも継承させる。
+ * アイコンフォント等で font-family を明示している要素は上書きしない（inherit のみ）。 */
+.liff-font *:not([class*="icon"]):not(code):not(pre):not(kbd):not(samp) {
+  font-family: inherit;
+}
