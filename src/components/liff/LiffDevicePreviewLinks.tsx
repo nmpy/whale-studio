@@ -3,27 +3,33 @@
 // src/components/liff/LiffDevicePreviewLinks.tsx
 // LIFF 設定画面に「実機で確認」用の URL / コピー / QR を出すパネル。
 //
-// URL の組み立て:
-//   - ベース URL は process.env.NEXT_PUBLIC_BASE_URL を最優先、未設定時は window.location.origin。
-//     これにより本番 / Vercel Preview / 各種プレビュー環境でも自前のオリジンを使う。
-//   - localhost / 127.0.0.1 のみの場合は注意文を出す (本番 UI に localhost を貼り付けないため)。
-//   - 公開ページ: ${BASE}/liff/work/${workId}
+// 表示する URL は 2 種類:
+//   1) ブラウザ確認用 URL — `${BASE}/liff/work/{workId}/pages/{pageId}`
+//      PC / スマホブラウザで見た目だけ確認するためのもの。LINE UID 取得や liff.getProfile は
+//      使えない可能性があるが、LIFF SDK 初期化に失敗しても画面が真っ白にならないよう、
+//      レンダラー側で graceful fallback している。
+//
+//   2) 実機 LIFF URL — `https://liff.line.me/{LIFF_ID}/work/{workId}/pages/{pageId}`
+//      LINE アプリ内ブラウザで開いて UID 取得 / 位置情報 / shareTargetPicker などを含む
+//      本番動作を確認するためのもの。
+//      ※ LINE Developers 側の Endpoint URL は `${BASE}/liff` のように LIFF プレイヤー用
+//        入口に向けておくこと。Endpoint URL がルート (/) や `/oas` のように管理画面側に
+//        向いていると、LIFF アプリを開いたときに Whale Studio 本体が開いてしまう。
+//
+// ベース URL の解決:
+//   - `process.env.NEXT_PUBLIC_BASE_URL` を最優先 (本番 / Vercel Preview 共通の規約)
+//   - 未設定時は `window.location.origin` でフォールバック
+//   - localhost のときは「スマホからアクセスできない」注意を表示
 //
 // セキュリティ方針:
-//   - 本パネルでは **公開済みの URL のみ** を表示する。
-//   - 既存 API (/api/liff/works/[workId]?preview=1) は認証なしで draft / archived を返してしまう
-//     ため、ここから draft の実機プレビュー URL を一般 UI に貼り出すと、共有された第三者が公開前の
-//     内容を閲覧可能になってしまう。
-//   - draft の実機プレビューを安全に提供するには preview token / owner 認証つきの専用 API が必要。
-//     後続 PR で対応予定。
-//
-// LIFF アプリ URL (https://liff.line.me/<liffId>) について:
-//   - LINE Developers で設定された LIFF アプリの endpoint URL は通常 /liff/... のチェックイン用ページに
-//     向いており、本ページ用には別個に LIFF アプリを登録しないと使えない。
-//   - そのため本パネルでは web URL を主とし、LIFF SDK 経由で開きたい場合は事前に LIFF アプリを用意する旨を
-//     注記として残す。
+//   - 本パネルでは **公開済みのページ URL のみ** を表示する。
+//   - 旧 API (/api/liff/works/[workId]?preview=1) は認証なしで draft / archived を返してしまうため、
+//     ここから draft プレビュー URL を貼り出すと第三者が閲覧できてしまう。
+//     安全な draft プレビューは preview token / owner 認証付き API を別 PR で実装する。
 //
 // QR コード: 既存で qrcode.react (QRCodeSVG) を使っているのでそれを再利用する。
+// 実機 LIFF URL がある (LIFF_ID 設定済み) ときは QR を実機 LIFF URL に切り替え、
+// 未設定時はブラウザ URL を載せる + 注意文を出す。
 
 import { useEffect, useMemo, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
@@ -44,6 +50,12 @@ function buildBaseUrl(): string {
   return "";
 }
 
+/** LIFF アプリの sub-path 部分。LINE Developers の Endpoint URL に付与される相対パス。
+ *  Endpoint URL = `${BASE}/liff` を想定しているので、ここでは `/liff` を含めない。 */
+function buildLiffSubPath(workId: string, pageId?: string): string {
+  return pageId ? `/work/${workId}/pages/${pageId}` : `/work/${workId}`;
+}
+
 export function LiffDevicePreviewLinks({ workId, pageId, publishStatus }: Props) {
   const [baseUrl, setBaseUrl] = useState("");
   const [copied, setCopied] = useState<string | null>(null);
@@ -53,14 +65,22 @@ export function LiffDevicePreviewLinks({ workId, pageId, publishStatus }: Props)
     setBaseUrl(buildBaseUrl());
   }, []);
 
-  const publicUrl = useMemo(() => {
+  const liffId = process.env.NEXT_PUBLIC_LIFF_ID?.trim() || "";
+
+  const browserUrlExplicit = useMemo(() => {
     if (!baseUrl) return "";
     return pageId
       ? `${baseUrl}/liff/work/${workId}/pages/${pageId}`
       : `${baseUrl}/liff/work/${workId}`;
   }, [baseUrl, workId, pageId]);
 
+  const liffUrl = useMemo(() => {
+    if (!liffId) return "";
+    return `https://liff.line.me/${liffId}${buildLiffSubPath(workId, pageId)}`;
+  }, [liffId, workId, pageId]);
+
   const isLocalhost = baseUrl.startsWith("http://localhost") || baseUrl.startsWith("http://127.0.0.1");
+  const isPublished = publishStatus === "published";
 
   const handleCopy = async (key: string, url: string) => {
     if (!url) return;
@@ -95,8 +115,8 @@ export function LiffDevicePreviewLinks({ workId, pageId, publishStatus }: Props)
       <div>
         <h2 className="text-sm font-semibold text-gray-900">実機で確認する</h2>
         <p className="text-[11px] text-gray-500 mt-1 leading-relaxed">
-          下記の URL またはQRコードを使って、スマホで実機表示を確認できます。
-          {publishStatus !== "published" && (
+          下記の URL またはQRコードで、PC ブラウザ・スマホ・LINE アプリ内ブラウザでの表示を確認できます。
+          {!isPublished && (
             <>
               <br />
               現在 <strong>未公開</strong> のため、この URL ではまだ閲覧できません。公開すると有効になります。
@@ -110,31 +130,58 @@ export function LiffDevicePreviewLinks({ workId, pageId, publishStatus }: Props)
         )}
       </div>
 
+      {/* ── ブラウザ確認用 URL ── */}
       <UrlRow
-        label="公開ページ URL"
-        helpText={publishStatus === "published" ? "公開中のページにアクセスします" : "公開後にこの URL で閲覧できます"}
-        url={publicUrl}
-        disabled={publishStatus !== "published"}
-        copied={copied === "public"}
-        onCopy={() => handleCopy("public", publicUrl)}
+        label="ブラウザ確認用 URL"
+        helpText="PC/スマホのブラウザで開く。見た目だけの確認に使う。LINE UID / shareTargetPicker など LIFF SDK 機能は使えない。"
+        url={browserUrlExplicit}
+        disabled={!isPublished}
+        copied={copied === "browser"}
+        onCopy={() => handleCopy("browser", browserUrlExplicit)}
+        showQr={!liffId}
       />
 
-      <p className="text-[11px] text-gray-400 leading-relaxed">
-        ※ 下書き / アーカイブ状態での実機プレビューは現在対応していません。安全なプレビュー (限定共有) は後続 PR で対応予定です。
-      </p>
+      {/* ── 実機 LIFF URL ── */}
+      {liffId ? (
+        <UrlRow
+          label="実機 LIFF URL"
+          helpText="LINE アプリ内ブラウザで開く。LINE UID / プロフィール / shareTargetPicker など本番動作を確認できる。"
+          url={liffUrl}
+          disabled={!isPublished}
+          copied={copied === "liff"}
+          onCopy={() => handleCopy("liff", liffUrl)}
+          showQr
+        />
+      ) : (
+        <div className="border border-amber-200 bg-amber-50 rounded-lg p-3 text-[12px] text-amber-800 leading-relaxed">
+          <strong>LIFF ID 未設定</strong>: 実機 LIFF URL を発行するには <code className="text-[10px] bg-white border border-amber-200 px-1 rounded">NEXT_PUBLIC_LIFF_ID</code> を環境変数に設定してください。
+          設定後、LINE Developers の Endpoint URL を{" "}
+          <code className="text-[10px] bg-white border border-amber-200 px-1 rounded">{baseUrl}/liff</code>
+          {" "}にすると、LIFF アプリから本ページを開けるようになります。
+        </div>
+      )}
 
-      <p className="text-[11px] text-gray-400 leading-relaxed">
-        ※ LINE 内ブラウザ (LIFF) として開きたい場合は LINE Developers で別途 LIFF アプリ
-        (endpoint URL: <code className="text-[10px] bg-gray-100 px-1 py-0.5 rounded">{baseUrl}/liff/work/&lt;workId&gt;</code>) を登録し、その LIFF URL (
-        <code className="text-[10px] bg-gray-100 px-1 py-0.5 rounded">https://liff.line.me/&lt;liffId&gt;</code>
-        ) を使ってください。Web URL でも表示自体は確認できますが、LIFF SDK 経由の機能 (shareTargetPicker など) は LINE 内で開いたときのみ動作します。
-      </p>
+      <div className="border-t border-gray-100 pt-3 space-y-1.5">
+        <p className="text-[11px] text-gray-500 leading-relaxed">
+          <strong>LINE Developers 側の設定:</strong> 該当 LIFF アプリの Endpoint URL を
+          {" "}<code className="text-[10px] bg-gray-100 px-1 py-0.5 rounded">{baseUrl}/liff</code>{" "}
+          に設定してください。Endpoint URL がルート ( / ) や{" "}
+          <code className="text-[10px] bg-gray-100 px-1 py-0.5 rounded">/oas</code>{" "}
+          のように管理画面側に向いていると、LIFF を開いたとき Whale Studio 本体が表示されてしまいます。
+        </p>
+        <p className="text-[11px] text-gray-400 leading-relaxed">
+          ※ 下書き / アーカイブ状態での実機プレビューは現在対応していません。安全な限定共有 (preview token / owner 認証) は別 PR で対応予定です。
+        </p>
+      </div>
+
+      {/* QR は片方の UrlRow に表示する。両方表示するとレイアウトが重くなるため。 */}
+      {/* ↑ 上記 UrlRow の showQr で制御 */}
     </div>
   );
 }
 
 function UrlRow({
-  label, helpText, url, disabled, copied, onCopy,
+  label, helpText, url, disabled, copied, onCopy, showQr,
 }: {
   label: string;
   helpText: string;
@@ -142,6 +189,7 @@ function UrlRow({
   disabled: boolean;
   copied: boolean;
   onCopy: () => void;
+  showQr: boolean;
 }) {
   return (
     <div
@@ -152,7 +200,7 @@ function UrlRow({
       <div className="flex-1 min-w-0 space-y-2">
         <div>
           <div className="text-xs font-semibold text-gray-900 mb-0.5">{label}</div>
-          <div className="text-[11px] text-gray-500">{helpText}</div>
+          <div className="text-[11px] text-gray-500 leading-relaxed">{helpText}</div>
         </div>
         <input
           type="text"
@@ -163,7 +211,7 @@ function UrlRow({
             disabled ? "bg-gray-100 text-gray-500" : "bg-white text-gray-800"
           }`}
         />
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <button
             type="button"
             onClick={onCopy}
@@ -185,16 +233,18 @@ function UrlRow({
         </div>
       </div>
 
-      <div className="shrink-0 flex flex-col items-center gap-1">
-        <div
-          className={`p-2 border border-gray-200 rounded bg-white ${
-            disabled ? "opacity-40" : ""
-          }`}
-        >
-          <QRCodeSVG value={url || "https://example.com"} size={96} level="M" />
+      {showQr && (
+        <div className="shrink-0 flex flex-col items-center gap-1">
+          <div
+            className={`p-2 border border-gray-200 rounded bg-white ${
+              disabled ? "opacity-40" : ""
+            }`}
+          >
+            <QRCodeSVG value={url || "https://example.com"} size={96} level="M" />
+          </div>
+          <div className="text-[10px] text-gray-400">QR でスマホから</div>
         </div>
-        <div className="text-[10px] text-gray-400">QR でスマホから</div>
-      </div>
+      )}
     </div>
   );
 }
