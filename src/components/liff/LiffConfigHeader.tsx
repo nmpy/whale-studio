@@ -126,13 +126,17 @@ export function LiffConfigHeader({
             onChange={(e) => onLocalChange({ title: e.target.value || null })}
             disabled={readOnly}
             placeholder={
-              isHint   ? "例: 都市奇譚ヒントサイト"
-              : isFaq    ? "例: よくある質問"
-              : isSurvey ? "例: ご感想アンケート"
-              : mode === "location" ? "例: マイチェックイン履歴"
-              : "例: 謎解き探偵ゲーム"
+              isHint   ? "例: ヒント"
+              : isFaq    ? "例: FAQ"
+              : isSurvey ? "例: アンケート"
+              : mode === "location" ? "例: 履歴"
+              : "例: トップ"
             }
+            maxLength={10}
           />
+          <p className="text-[11px] text-gray-400 mt-1">
+            最大 10 文字（現在 {(config.title ?? "").length} / 10 文字）
+          </p>
         </div>
         <div>
           <label className={labelCls}>説明</label>

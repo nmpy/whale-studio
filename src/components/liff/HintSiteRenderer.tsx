@@ -104,19 +104,12 @@ export function HintSiteRenderer({ config, preview }: Props) {
         style={fixed ? { paddingTop: `calc(${HEADER_HEIGHT_PX}px + env(safe-area-inset-top, 0px))` } : undefined}
       >
         <main className="max-w-md mx-auto px-4 py-5 flex flex-col gap-4 pb-24">
-          {(config.title || config.description) && (
-            <div className="space-y-1.5">
-              {config.title && (
-                <h1 className="text-[20px] leading-tight font-bold tracking-tight text-[color:var(--liff-primary-text)] break-words">
-                  {config.title}
-                </h1>
-              )}
-              {config.description && (
-                <p className="text-[14px] leading-relaxed text-[color:var(--liff-secondary-text)] whitespace-pre-wrap break-words">
-                  {config.description}
-                </p>
-              )}
-            </div>
+          {/* タイトルはヘッダーで表示する。本文側では重複させない (LIFF 仕様変更)。
+              説明文 (description) のみ本文先頭に出す。 */}
+          {config.description && (
+            <p className="text-[14px] leading-relaxed text-[color:var(--liff-secondary-text)] whitespace-pre-wrap break-words">
+              {config.description}
+            </p>
           )}
 
           {config.blocks.length === 0 ? (
@@ -171,7 +164,9 @@ function Header({
             style={{ objectFit: "contain" }}
           />
         ) : (
-          <span className="text-[16px] font-bold truncate">{title || "LIFF"}</span>
+          // タイトルは最大 10 文字制限がフロント / API 両方で効いている前提のため、
+          // ヘッダーでも省略せず全文表示する (truncate / ellipsis を付けない)。
+          <span className="text-[16px] font-bold break-words">{title || "LIFF"}</span>
         )}
       </div>
     </header>

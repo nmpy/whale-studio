@@ -1,6 +1,7 @@
-// src/app/api/liff/works/[workId]/route.ts
-// GET /api/liff/works/[workId] — LIFF表示用公開API（認証不要）
-// LIFF側から呼ばれる。有効なブロックのみ返す。
+// src/app/api/liff/works/[workId]/pages/[pageId]/route.ts
+// GET /api/liff/works/[workId]/pages/[pageId] — LIFF表示用公開API（認証不要）
+// 指定された LIFF ページ ID と workId の組み合わせで配信内容を返す。
+// publish_status の制御は ?preview=1 で旧 /api/liff/works/[workId] と同等。
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
@@ -9,10 +10,10 @@ export const dynamic = "force-dynamic";
 
 export async function GET(
   req: NextRequest,
-  ctx: { params: Promise<{ workId: string }> }
+  ctx: { params: Promise<{ workId: string; pageId: string }> }
 ) {
   try {
-    const { workId } = await ctx.params;
+    const { workId, pageId } = await ctx.params;
 
     const work = await prisma.work.findUnique({
       where: { id: workId },
@@ -25,11 +26,8 @@ export async function GET(
       );
     }
 
-    // 複数 LIFF ページ対応: workId だけで指定された場合は、最も古い (oldest) ページを返す。
-    // 新仕様の URL は /api/liff/works/[workId]/pages/[pageId] を使うこと。
     const config = await prisma.liffPageConfig.findFirst({
-      where: { workId },
-      orderBy: { createdAt: "asc" },
+      where: { id: pageId, workId },
       include: {
         blocks: {
           where: { isEnabled: true },
@@ -38,10 +36,9 @@ export async function GET(
       },
     });
 
-    // ?preview=1 が指定されているとき（管理画面プレビュー用）は draft でも返す。
-    // 通常は published のみ。is_enabled=false は LIFF 自体無効として 404。
     const url = new URL(req.url);
     const preview = url.searchParams.get("preview") === "1";
+
     if (!config || !config.isEnabled) {
       return NextResponse.json(
         { success: false, error: { code: "LIFF_DISABLED", message: "このLIFFページは無効です" } },
@@ -60,6 +57,7 @@ export async function GET(
       data: {
         work_id:        work.id,
         work_title:     work.title,
+        page_id:        config.id,
         title:          config.title,
         description:    config.description,
         page_type:      config.pageType,

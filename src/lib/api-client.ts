@@ -1419,7 +1419,20 @@ export const onboardingApi = {
 // LIFF 設定 API
 // ────────────────────────────────────────────────
 
+export interface LiffPageSummary {
+  id:             string;
+  work_id:        string;
+  title:          string | null;
+  description:    string | null;
+  page_type:      string;
+  publish_status: string;
+  is_enabled:     boolean;
+  created_at:     string;
+  updated_at:     string;
+}
+
 export const liffConfigApi = {
+  // ── 旧 single-config API (後方互換用 / 内部利用は新 API へ移行) ────────────
   async get(token: string, workId: string): Promise<LiffPageConfig> {
     const res = await fetch(`/api/works/${workId}/liff-config`, {
       headers: authHeaders(token),
@@ -1436,7 +1449,50 @@ export const liffConfigApi = {
     return parseResponse(res);
   },
 
-  async createBlock(token: string, workId: string, body: CreateLiffBlockBody): Promise<LiffPageBlock> {
+  // ── 複数ページ対応 API ────────────────────────────────────────────────
+  async listPages(token: string, workId: string): Promise<{ work_id: string; pages: LiffPageSummary[] }> {
+    const res = await fetch(`/api/works/${workId}/liff-pages`, {
+      headers: authHeaders(token),
+    });
+    return parseResponse(res);
+  },
+
+  async createPage(token: string, workId: string, body: { title?: string; page_type?: string } = {}): Promise<LiffPageConfig> {
+    const res = await fetch(`/api/works/${workId}/liff-pages`, {
+      method: "POST",
+      headers: authHeaders(token),
+      body: JSON.stringify(body),
+    });
+    return parseResponse(res);
+  },
+
+  async getPage(token: string, workId: string, pageId: string): Promise<LiffPageConfig> {
+    const res = await fetch(`/api/works/${workId}/liff-pages/${pageId}`, {
+      headers: authHeaders(token),
+    });
+    return parseResponse(res);
+  },
+
+  async updatePage(token: string, workId: string, pageId: string, body: UpdateLiffConfigBody): Promise<LiffPageConfig> {
+    const res = await fetch(`/api/works/${workId}/liff-pages/${pageId}`, {
+      method: "PUT",
+      headers: authHeaders(token),
+      body: JSON.stringify(body),
+    });
+    return parseResponse(res);
+  },
+
+  async deletePage(token: string, workId: string, pageId: string): Promise<void> {
+    const res = await fetch(`/api/works/${workId}/liff-pages/${pageId}`, {
+      method: "DELETE",
+      headers: authHeaders(token),
+    });
+    if (res.status === 204) return;
+    return parseResponse(res);
+  },
+
+  // ── ブロック操作 (page_id を必要に応じて body で渡す) ─────────────────
+  async createBlock(token: string, workId: string, body: CreateLiffBlockBody & { page_id?: string }): Promise<LiffPageBlock> {
     const res = await fetch(`/api/works/${workId}/liff-blocks`, {
       method: "POST",
       headers: authHeaders(token),
@@ -1463,7 +1519,7 @@ export const liffConfigApi = {
     return parseResponse(res);
   },
 
-  async reorderBlocks(token: string, workId: string, body: ReorderLiffBlocksBody): Promise<LiffPageBlock[]> {
+  async reorderBlocks(token: string, workId: string, body: ReorderLiffBlocksBody & { page_id?: string }): Promise<LiffPageBlock[]> {
     const res = await fetch(`/api/works/${workId}/liff-blocks/reorder`, {
       method: "POST",
       headers: authHeaders(token),

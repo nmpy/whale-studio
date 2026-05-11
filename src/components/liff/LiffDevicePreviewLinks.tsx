@@ -30,6 +30,8 @@ import { QRCodeSVG } from "qrcode.react";
 
 interface Props {
   workId: string;
+  /** 個別 LIFF ページ ID。指定があれば /pages/:pageId 形式の URL を生成する。 */
+  pageId?: string;
   publishStatus: "draft" | "published" | "archived";
 }
 
@@ -42,7 +44,7 @@ function buildBaseUrl(): string {
   return "";
 }
 
-export function LiffDevicePreviewLinks({ workId, publishStatus }: Props) {
+export function LiffDevicePreviewLinks({ workId, pageId, publishStatus }: Props) {
   const [baseUrl, setBaseUrl] = useState("");
   const [copied, setCopied] = useState<string | null>(null);
 
@@ -51,10 +53,12 @@ export function LiffDevicePreviewLinks({ workId, publishStatus }: Props) {
     setBaseUrl(buildBaseUrl());
   }, []);
 
-  const publicUrl = useMemo(
-    () => (baseUrl ? `${baseUrl}/liff/work/${workId}` : ""),
-    [baseUrl, workId]
-  );
+  const publicUrl = useMemo(() => {
+    if (!baseUrl) return "";
+    return pageId
+      ? `${baseUrl}/liff/work/${workId}/pages/${pageId}`
+      : `${baseUrl}/liff/work/${workId}`;
+  }, [baseUrl, workId, pageId]);
 
   const isLocalhost = baseUrl.startsWith("http://localhost") || baseUrl.startsWith("http://127.0.0.1");
 
