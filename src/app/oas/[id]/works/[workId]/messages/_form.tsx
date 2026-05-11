@@ -3819,18 +3819,25 @@ export function MessageForm({
             {/* === 2通目以降 === */}
             {form.additionalMessages.map((slot, idx) => (
               <AdditionalMessageBlock
-                key={idx}
+                key={slot.existingId ?? `slot-${idx}`}
                 index={idx}
                 slot={slot}
                 oaId={oaId}
                 workId={workId}
                 characters={characters}
                 onChange={(updated) => {
-                  const next = form.additionalMessages.map((s, i) => i === idx ? updated : s);
-                  set("additionalMessages", next);
+                  setForm((prev) => ({
+                    ...prev,
+                    additionalMessages: prev.additionalMessages.map((s, i) =>
+                      i === idx ? updated : s
+                    ),
+                  }));
                 }}
                 onRemove={() => {
-                  set("additionalMessages", form.additionalMessages.filter((_, i) => i !== idx));
+                  setForm((prev) => ({
+                    ...prev,
+                    additionalMessages: prev.additionalMessages.filter((_, i) => i !== idx),
+                  }));
                 }}
               />
             ))}
@@ -3838,7 +3845,15 @@ export function MessageForm({
             {/* 追加ボタン */}
             <button
               type="button"
-              onClick={() => set("additionalMessages", [...form.additionalMessages, { ...EMPTY_ADDITIONAL_SLOT }])}
+              onClick={() =>
+                setForm((prev) => ({
+                  ...prev,
+                  additionalMessages: [
+                    ...prev.additionalMessages,
+                    { ...EMPTY_ADDITIONAL_SLOT, carousel_items: [] },
+                  ],
+                }))
+              }
               style={{
                 marginTop: 14, width: "100%", padding: "10px 0",
                 border: "2px dashed #d1d5db", borderRadius: 8, background: "#f9fafb",
