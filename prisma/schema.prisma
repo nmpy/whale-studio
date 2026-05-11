@@ -94,6 +94,7 @@ model Work {
   userProgress        UserProgress[]
   lineDestinations    LineDestination[]
   liffPageConfig      LiffPageConfig?
+  liffSurveyResponses LiffSurveyResponse[]
   locations           Location[]
   oa                  Oa                   @relation(fields: [oaId], references: [id], onDelete: Cascade)
   systemCharacter     Character?           @relation("WorkSystemCharacter", fields: [systemCharacterId], references: [id])
@@ -1072,6 +1073,22 @@ model LiffPageConfig {
   @@index([pageType])
   @@index([publishStatus])
   @@map("liff_page_configs")
+}
+
+/// LIFF Survey モードの回答を 1 回 1 行で保存する。
+/// answersJson は質問 id をキー、回答値（string | string[]）を value にもつオブジェクト。
+model LiffSurveyResponse {
+  id           String   @id @default(uuid())
+  workId       String   @map("work_id")
+  lineUserId   String?  @map("line_user_id")
+  answersJson  Json     @map("answers_json") @db.JsonB
+  submittedAt  DateTime @default(now()) @map("submitted_at")
+  work         Work     @relation(fields: [workId], references: [id], onDelete: Cascade)
+
+  @@index([workId])
+  @@index([lineUserId])
+  @@index([submittedAt])
+  @@map("liff_survey_responses")
 }
 
 model LiffPageBlock {

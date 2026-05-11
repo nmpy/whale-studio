@@ -7,6 +7,9 @@
 // 実 API 保存は useLiffConfig 側の debounce auto-save に任せる。
 
 import type { LiffPageConfig, LiffPageConfigSettings, LiffPageType, LiffPublishStatus } from "@/types";
+import { normalizeLiffPageType } from "@/types";
+import { LiffFaqEditor } from "./LiffFaqEditor";
+import { LiffSurveyEditor } from "./LiffSurveyEditor";
 
 interface Props {
   config: LiffPageConfig;
@@ -25,7 +28,11 @@ export function LiffConfigHeader({
   onUpdatePageType, onUpdatePublishStatus,
 }: Props) {
   const settings: LiffPageConfigSettings = config.settings_json ?? {};
-  const isHintSite = config.page_type === "hint_site";
+  // 旧 "hint_site" は "hint" に正規化したうえでモード判定する
+  const mode = normalizeLiffPageType(config.page_type);
+  const isHint = mode === "hint";
+  const isFaq = mode === "faq";
+  const isSurvey = mode === "survey";
 
   const inputCls = "w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-300 disabled:bg-gray-50";
   const labelCls = "block text-xs font-medium text-gray-500 mb-1";
@@ -72,16 +79,20 @@ export function LiffConfigHeader({
         <div className="flex items-center gap-3 mb-4">
           <label className={labelCls + " mb-0"}>ページ種別</label>
           <select
-            value={config.page_type}
+            // 表示上は "hint" を選択状態として正規化する（旧 "hint_site" 互換）
+            value={mode}
             onChange={(e) => onUpdatePageType(e.target.value as LiffPageType)}
             disabled={readOnly}
             className="px-3 py-1.5 border border-gray-200 rounded-md text-sm bg-white"
           >
             <option value="default">既存LIFF（プレイヤー向け）</option>
-            <option value="hint_site">ヒントサイト</option>
+            <option value="hint">ヒント</option>
+            <option value="faq">FAQ（よくある質問）</option>
+            <option value="survey">アンケート</option>
+            <option value="location">チェックイン履歴</option>
           </select>
           <span className="text-[11px] text-gray-400">
-            ※「default」はGPS/QRや進捗表示などの従来機能、「hint_site」はSTAGE型ヒントページ
+            ※モードによって編集 UI とプレイヤー表示が切り替わります
           </span>
         </div>
 
@@ -92,7 +103,13 @@ export function LiffConfigHeader({
             value={config.title ?? ""}
             onChange={(e) => onLocalChange({ title: e.target.value || null })}
             disabled={readOnly}
-            placeholder={isHintSite ? "例: 都市奇譚ヒントサイト" : "例: 謎解き探偵ゲーム"}
+            placeholder={
+              isHint   ? "例: 都市奇譚ヒントサイト"
+              : isFaq    ? "例: よくある質問"
+              : isSurvey ? "例: ご感想アンケート"
+              : mode === "location" ? "例: マイチェックイン履歴"
+              : "例: 謎解き探偵ゲーム"
+            }
           />
         </div>
         <div>
@@ -107,7 +124,33 @@ export function LiffConfigHeader({
         </div>
       </div>
 
-      {isHintSite && (
+      {isFaq && (
+        <LiffFaqEditor
+          settings={settings}
+          readOnly={readOnly}
+          onChange={(patch) => onLocalChange({ settings_json: { ...settings, ...patch } })}
+        />
+      )}
+
+      {isSurvey && (
+        <LiffSurveyEditor
+          settings={settings}
+          readOnly={readOnly}
+          onChange={(patch) => onLocalChange({ settings_json: { ...settings, ...patch } })}
+        />
+      )}
+
+      {mode === "location" && (
+        <div className="bg-white rounded-xl border border-gray-200 p-5 mb-6">
+          <h2 className="text-sm font-semibold text-gray-900 mb-1">チェックイン履歴モード</h2>
+          <p className="text-[12px] text-gray-500 leading-relaxed">
+            このページではプレイヤーが自分のチェックイン履歴を確認できます。<br />
+            ※ 履歴の取得 API は次回 PR で実装予定です。現状ではプレースホルダーが表示されます。
+          </p>
+        </div>
+      )}
+
+      {isHint && (
         <div className="bg-white rounded-xl border border-gray-200 p-5 mb-6 space-y-4">
           <h2 className="text-sm font-semibold text-gray-900">ヒントサイト ヘッダー設定</h2>
 
