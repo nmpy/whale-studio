@@ -24,12 +24,19 @@ export const POST = withAuth(async (req, ctx, user) => {
     const body = await req.json();
     const data = reorderLiffBlocksSchema.parse(body);
 
-    // config 存在チェック
-    const config = await prisma.liffPageConfig.findUnique({
-      where: { workId },
-      include: { blocks: { select: { id: true } } },
-    });
-    if (!config) return notFound("LiffPageConfig");
+    // 対象 LIFF ページの特定: page_id があればそれ、無ければ最古ページ (旧仕様互換)
+    const requestedPageId = (body?.page_id ?? null) as string | null;
+    const config = requestedPageId
+      ? await prisma.liffPageConfig.findFirst({
+          where: { id: requestedPageId, workId },
+          include: { blocks: { select: { id: true } } },
+        })
+      : await prisma.liffPageConfig.findFirst({
+          where: { workId },
+          orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+          include: { blocks: { select: { id: true } } },
+        });
+    if (!config) return notFound("LiffPage");
 
     // block_ids がすべてこの config に属しているか確認
     const existingIds = new Set(config.blocks.map((b) => b.id));

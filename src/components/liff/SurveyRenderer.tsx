@@ -7,6 +7,7 @@
 import { useState } from "react";
 import type { LiffPageConfigSettings, SurveyItem } from "@/types";
 import { LiffShareButton } from "./LiffShareButton";
+import { LiffPlayerHeader } from "./LiffPlayerHeader";
 
 export interface SurveyRendererConfig {
   work_id:       string;
@@ -92,20 +93,13 @@ export function SurveyRenderer({ config, preview, lineUserId }: Props) {
 
   return (
     <div className="liff-font min-h-screen bg-[color:var(--liff-background)] text-[color:var(--liff-primary-text)]">
+      <LiffPlayerHeader title={config.title} />
       <main className="max-w-md mx-auto px-4 py-5 flex flex-col gap-4 pb-24">
-        {(config.title || config.description) && (
-          <div className="space-y-1.5">
-            {config.title && (
-              <h1 className="text-[20px] leading-tight font-bold tracking-tight break-words">
-                {config.title}
-              </h1>
-            )}
-            {config.description && (
-              <p className="text-[14px] leading-relaxed text-[color:var(--liff-secondary-text)] whitespace-pre-wrap break-words">
-                {config.description}
-              </p>
-            )}
-          </div>
+        {/* タイトルはヘッダーで表示。本文には description のみ。 */}
+        {config.description && (
+          <p className="text-[14px] leading-relaxed text-[color:var(--liff-secondary-text)] whitespace-pre-wrap break-words">
+            {config.description}
+          </p>
         )}
 
         {completed ? (

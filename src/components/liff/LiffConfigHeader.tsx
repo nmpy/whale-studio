@@ -126,13 +126,24 @@ export function LiffConfigHeader({
             onChange={(e) => onLocalChange({ title: e.target.value || null })}
             disabled={readOnly}
             placeholder={
-              isHint   ? "例: 都市奇譚ヒントサイト"
-              : isFaq    ? "例: よくある質問"
-              : isSurvey ? "例: ご感想アンケート"
-              : mode === "location" ? "例: マイチェックイン履歴"
-              : "例: 謎解き探偵ゲーム"
+              isHint   ? "例: ヒント"
+              : isFaq    ? "例: FAQ"
+              : isSurvey ? "例: アンケート"
+              : mode === "location" ? "例: 履歴"
+              : "例: トップ"
             }
+            maxLength={10}
           />
+          {(() => {
+            const len = (config.title ?? "").length;
+            const over = len > 10;
+            return (
+              <p className={`text-[11px] mt-1 ${over ? "text-red-600" : "text-gray-400"}`}>
+                最大 10 文字（現在 {len} / 10 文字）
+                {over && "  ※ 10 文字以内に編集してください。このまま保存しようとするとエラーになります。"}
+              </p>
+            );
+          })()}
         </div>
         <div>
           <label className={labelCls}>説明</label>

@@ -1053,9 +1053,13 @@ const liffPageConfigSettingsSchema = z.object({
   survey_thanks_message: z.string().max(500).optional(),
 }).passthrough();
 
+/** LIFF ページタイトルの最大文字数（10 文字）。
+ *  実機ヘッダーで省略表示せず全文を出す前提で、保守的に短く制限する。 */
+export const LIFF_PAGE_TITLE_MAX = 10;
+
 export const updateLiffConfigSchema = z.object({
   is_enabled:     z.boolean().optional(),
-  title:          z.string().max(200).optional().nullable(),
+  title:          z.string().max(LIFF_PAGE_TITLE_MAX).optional().nullable(),
   description:    z.string().max(1000).optional().nullable(),
   // page_type は新旧両方を受理し、保存時に "hint" に正規化する。
   page_type: z.enum(LIFF_PAGE_TYPES).optional().transform((v) => {
@@ -1064,6 +1068,16 @@ export const updateLiffConfigSchema = z.object({
   }),
   publish_status: z.enum(LIFF_PUBLISH_STATUSES).optional(),
   settings_json:  liffPageConfigSettingsSchema.optional(),
+});
+
+/** LIFF ページ新規作成。タイトル以外は既定値（API 側で適用）。 */
+export const createLiffPageSchema = z.object({
+  title:          z.string().max(LIFF_PAGE_TITLE_MAX).optional().nullable(),
+  description:    z.string().max(1000).optional().nullable(),
+  page_type:      z.enum(LIFF_PAGE_TYPES).optional().transform((v) => {
+    if (v === "hint_site") return "hint" as const;
+    return v;
+  }),
 });
 
 /**

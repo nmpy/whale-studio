@@ -59,7 +59,7 @@ export function toConfigResponse(c: {
     is_enabled:     c.isEnabled,
     title:          c.title,
     description:    c.description,
-    page_type:      (c.pageType ?? "default") as "default" | "hint_site",
+    page_type:      (c.pageType ?? "default") as "default" | "hint" | "faq" | "survey" | "location",
     publish_status: (c.publishStatus ?? "draft") as "draft" | "published" | "archived",
     settings_json:  (c.settingsJson ?? {}) as Record<string, unknown>,
     blocks:         c.blocks

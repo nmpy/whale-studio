@@ -1,6 +1,10 @@
 // src/app/api/works/[workId]/liff-config/route.ts
 // GET  /api/works/[workId]/liff-config — LIFF設定取得（blocks含む）
 // PUT  /api/works/[workId]/liff-config — LIFF設定更新（upsert）
+//
+// [後方互換] 旧仕様 (work 単位の単一 LIFF 設定) を保つためのエンドポイント。
+// 複数 LIFF ページに移行した後は、ここでは作品配下で最も古い (oldest) ページを対象とする。
+// 新規 UI は /api/works/[workId]/liff-pages 系を使うこと。
 
 import { NextRequest } from "next/server";
 import { Prisma } from "@prisma/client";
@@ -24,8 +28,11 @@ export const GET = withAuth(async (req, ctx, user) => {
     const check = await requireRole(oaId, user.id, "viewer");
     if (!check.ok) return check.response;
 
-    let config = await prisma.liffPageConfig.findUnique({
+    // workId に紐づく最も古いページを返す (旧 single-config 互換)。
+    // createdAt が同値の場合に備えて id でタイブレークし、安定ソートにする。
+    let config = await prisma.liffPageConfig.findFirst({
       where: { workId },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
       include: { blocks: { orderBy: { sortOrder: "asc" } } },
     });
 
@@ -63,12 +70,14 @@ export const PUT = withAuth(async (req, ctx, user) => {
       if (!adminCheck.ok) return adminCheck.response;
     }
 
-    // 公開しようとしている場合は必須項目を検証
+    // 対象は workId 配下の最も古いページ。無ければ作成する。
+    const existing = await prisma.liffPageConfig.findFirst({
+      where: { workId },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      include: { blocks: true },
+    });
+
     if (data.publish_status === "published") {
-      const existing = await prisma.liffPageConfig.findUnique({
-        where: { workId },
-        include: { blocks: true },
-      });
       const settings = data.settings_json ?? (existing?.settingsJson as Record<string, unknown> | undefined) ?? {};
       const title = data.title ?? existing?.title ?? null;
       const pageType = data.page_type ?? existing?.pageType ?? "default";
@@ -83,27 +92,31 @@ export const PUT = withAuth(async (req, ctx, user) => {
       }
     }
 
-    const config = await prisma.liffPageConfig.upsert({
-      where: { workId },
-      create: {
-        workId,
-        isEnabled:     data.is_enabled ?? false,
-        title:         data.title ?? null,
-        description:   data.description ?? null,
-        pageType:      data.page_type ?? "default",
-        publishStatus: data.publish_status ?? "draft",
-        settingsJson:  (data.settings_json ?? {}) as Prisma.InputJsonValue,
-      },
-      update: {
-        ...(data.is_enabled !== undefined && { isEnabled: data.is_enabled }),
-        ...(data.title !== undefined && { title: data.title }),
-        ...(data.description !== undefined && { description: data.description }),
-        ...(data.page_type !== undefined && { pageType: data.page_type }),
-        ...(data.publish_status !== undefined && { publishStatus: data.publish_status }),
-        ...(data.settings_json !== undefined && { settingsJson: data.settings_json as Prisma.InputJsonValue }),
-      },
-      include: { blocks: { orderBy: { sortOrder: "asc" } } },
-    });
+    const config = existing
+      ? await prisma.liffPageConfig.update({
+          where: { id: existing.id },
+          data: {
+            ...(data.is_enabled !== undefined && { isEnabled: data.is_enabled }),
+            ...(data.title !== undefined && { title: data.title }),
+            ...(data.description !== undefined && { description: data.description }),
+            ...(data.page_type !== undefined && { pageType: data.page_type }),
+            ...(data.publish_status !== undefined && { publishStatus: data.publish_status }),
+            ...(data.settings_json !== undefined && { settingsJson: data.settings_json as Prisma.InputJsonValue }),
+          },
+          include: { blocks: { orderBy: { sortOrder: "asc" } } },
+        })
+      : await prisma.liffPageConfig.create({
+          data: {
+            workId,
+            isEnabled:     data.is_enabled ?? false,
+            title:         data.title ?? null,
+            description:   data.description ?? null,
+            pageType:      data.page_type ?? "default",
+            publishStatus: data.publish_status ?? "draft",
+            settingsJson:  (data.settings_json ?? {}) as Prisma.InputJsonValue,
+          },
+          include: { blocks: { orderBy: { sortOrder: "asc" } } },
+        });
 
     return ok(toConfigResponse(config));
   } catch (err) {

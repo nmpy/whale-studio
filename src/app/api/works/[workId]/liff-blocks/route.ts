@@ -31,9 +31,17 @@ export const POST = withAuth(async (req, ctx, user) => {
       return badRequest("ブロック設定に誤りがあります", formatZodErrors(settingsCheck.error));
     }
 
-    // LiffPageConfig がなければ自動作成
-    let config = await prisma.liffPageConfig.findUnique({ where: { workId } });
+    // 対象 LIFF ページを決定する。
+    // - body.page_id があればそれを使用 (新仕様)
+    // - 無ければ work 配下で最も古い (oldest) ページを使用 (旧仕様後方互換)
+    // どちらの場合も workId 所属を確認する。
+    const requestedPageId = (body?.page_id ?? null) as string | null;
+    let config = requestedPageId
+      ? await prisma.liffPageConfig.findFirst({ where: { id: requestedPageId, workId } })
+      : await prisma.liffPageConfig.findFirst({ where: { workId }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] });
     if (!config) {
+      // ページが 1 件も無い場合は自動作成 (旧 single-config 互換動作)
+      if (requestedPageId) return notFound("LiffPage");
       config = await prisma.liffPageConfig.create({
         data: { workId, isEnabled: false },
       });

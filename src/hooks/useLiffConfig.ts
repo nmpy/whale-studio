@@ -49,8 +49,14 @@ const SAVED_INDICATOR_TIMEOUT_MS = 2000;
 
 export function useLiffConfig(
   workId: string,
-  opts: { onSuccess?: (msg: string) => void; onError?: (msg: string) => void } = {}
+  opts: {
+    /** 編集対象の LIFF ページ ID。未指定なら旧 single-config API を使う (workId 配下の最古ページ)。 */
+    pageId?: string;
+    onSuccess?: (msg: string) => void;
+    onError?: (msg: string) => void;
+  } = {}
 ): UseLiffConfigReturn {
+  const pageId = opts.pageId;
   const [config, setConfig] = useState<LiffPageConfig | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -78,6 +84,8 @@ export function useLiffConfig(
   useEffect(() => { tokenRef.current = token; }, [token]);
   const workIdRef = useRef(workId);
   useEffect(() => { workIdRef.current = workId; }, [workId]);
+  const pageIdRef = useRef(pageId);
+  useEffect(() => { pageIdRef.current = pageId; }, [pageId]);
 
   // ── auto-save state ───────────────────────────────────────────────────────────
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -99,11 +107,14 @@ export function useLiffConfig(
     setSaveStatus("saving");
     setSaving(true);
     try {
-      const updated = await liffConfigApi.update(tokenRef.current, workIdRef.current, {
+      const body = {
         title: draft.title,
         description: draft.description,
         settings_json: draft.settings_json,
-      });
+      };
+      const updated = pageIdRef.current
+        ? await liffConfigApi.updatePage(tokenRef.current, workIdRef.current, pageIdRef.current, body)
+        : await liffConfigApi.update(tokenRef.current, workIdRef.current, body);
       if (seq < latestAckedSeqRef.current) {
         // 古い in-flight 応答。最新入力を上書きしない。
         return;
@@ -158,8 +169,11 @@ export function useLiffConfig(
   // ── 読み込み ─────────────────────────────────────────────────────────────────
   const reload = useCallback(async () => {
     try {
+      const cfgPromise = pageIdRef.current
+        ? liffConfigApi.getPage(tokenRef.current, workIdRef.current, pageIdRef.current)
+        : liffConfigApi.get(tokenRef.current, workIdRef.current);
       const [cfg, work] = await Promise.all([
-        liffConfigApi.get(tokenRef.current, workIdRef.current),
+        cfgPromise,
         workApi.get(tokenRef.current, workIdRef.current),
       ]);
       serverConfigRef.current = cfg;
@@ -199,7 +213,11 @@ export function useLiffConfig(
     setSaving(true);
     try {
       await flushAutoSave();
-      await liffConfigApi.update(tokenRef.current, workIdRef.current, { is_enabled: next });
+      if (pageIdRef.current) {
+        await liffConfigApi.updatePage(tokenRef.current, workIdRef.current, pageIdRef.current, { is_enabled: next });
+      } else {
+        await liffConfigApi.update(tokenRef.current, workIdRef.current, { is_enabled: next });
+      }
       if (serverConfigRef.current) serverConfigRef.current = { ...serverConfigRef.current, is_enabled: next };
       onSuccessRef.current?.(next ? "LIFFを有効にしました" : "LIFFを無効にしました");
     } catch {
@@ -218,7 +236,11 @@ export function useLiffConfig(
     setSaving(true);
     try {
       await flushAutoSave();
-      await liffConfigApi.update(tokenRef.current, workIdRef.current, { page_type: next });
+      if (pageIdRef.current) {
+        await liffConfigApi.updatePage(tokenRef.current, workIdRef.current, pageIdRef.current, { page_type: next });
+      } else {
+        await liffConfigApi.update(tokenRef.current, workIdRef.current, { page_type: next });
+      }
       if (serverConfigRef.current) serverConfigRef.current = { ...serverConfigRef.current, page_type: next };
       onSuccessRef.current?.("ページ種別を更新しました");
     } catch {
@@ -237,7 +259,11 @@ export function useLiffConfig(
     setSaving(true);
     try {
       await flushAutoSave();
-      await liffConfigApi.update(tokenRef.current, workIdRef.current, { publish_status: next });
+      if (pageIdRef.current) {
+        await liffConfigApi.updatePage(tokenRef.current, workIdRef.current, pageIdRef.current, { publish_status: next });
+      } else {
+        await liffConfigApi.update(tokenRef.current, workIdRef.current, { publish_status: next });
+      }
       if (serverConfigRef.current) serverConfigRef.current = { ...serverConfigRef.current, publish_status: next };
       onSuccessRef.current?.(
         next === "published" ? "公開しました" :
@@ -288,6 +314,7 @@ export function useLiffConfig(
         block_type: blockType,
         title: entry.label,
         settings_json: entry.defaultSettings,
+        ...(pageIdRef.current ? { page_id: pageIdRef.current } : {}),
       });
       setConfig((prev) => (prev ? { ...prev, blocks: [...prev.blocks, created] } : prev));
       if (serverConfigRef.current) {
@@ -383,6 +410,7 @@ export function useLiffConfig(
     try {
       await liffConfigApi.reorderBlocks(tokenRef.current, workIdRef.current, {
         block_ids: reordered.map((b) => b.id),
+        ...(pageIdRef.current ? { page_id: pageIdRef.current } : {}),
       });
       if (serverConfigRef.current) serverConfigRef.current = { ...serverConfigRef.current, blocks: reordered };
     } catch {
@@ -400,6 +428,7 @@ export function useLiffConfig(
     try {
       await liffConfigApi.reorderBlocks(tokenRef.current, workIdRef.current, {
         block_ids: reordered.map((b) => b.id),
+        ...(pageIdRef.current ? { page_id: pageIdRef.current } : {}),
       });
       if (serverConfigRef.current) serverConfigRef.current = { ...serverConfigRef.current, blocks: reordered };
     } catch {
