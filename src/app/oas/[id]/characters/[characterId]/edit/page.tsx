@@ -6,6 +6,10 @@ import Link from "next/link";
 import { characterApi, getDevToken } from "@/lib/api-client";
 import { useToast } from "@/components/Toast";
 import { Breadcrumb } from "@/components/Breadcrumb";
+import { ImageUploadField } from "@/components/ImageUploadField";
+
+const ICON_ACCEPT = "image/jpeg,image/png,image/webp";
+const ICON_FORMATS_TEXT = "対応形式: JPEG / PNG / WebP (最大 5MB)";
 
 // ── 既存 FormState（変更なし） ──────────────────────────────────────────────
 interface FormState {
@@ -153,7 +157,7 @@ export default function CharacterEditPage() {
 
     const clientErrors: Record<string, string[]> = {};
     if (!form.name.trim())           clientErrors.name          = ["キャラクター名を入力してください"];
-    if (!form.icon_image_url.trim()) clientErrors.icon_image_url = ["アイコン画像 URL を入力してください"];
+    if (!form.icon_image_url.trim()) clientErrors.icon_image_url = ["アイコン画像を設定してください"];
     if (Object.keys(clientErrors).length) { setErrors(clientErrors); setSubmitting(false); return; }
 
     try {
@@ -322,19 +326,33 @@ export default function CharacterEditPage() {
             </div>
 
             <div className="form-group">
-              <label htmlFor="icon_image_url">
-                アイコン画像 URL
+              <label>
+                アイコン画像
                 <span style={{ color: "#ef4444", marginLeft: 4 }}>*</span>
               </label>
-              <input
-                id="icon_image_url"
-                type="url"
+              <ImageUploadField
                 value={form!.icon_image_url}
-                onChange={(e) => setField("icon_image_url", e.target.value)}
-                placeholder="https://example.com/avatar.png"
+                onChange={(next) => setField("icon_image_url", next)}
+                previewShape="circle"
+                previewSize={88}
+                previewAlt="アイコンプレビュー"
+                accept={ICON_ACCEPT}
+                supportedFormatsText={ICON_FORMATS_TEXT}
+                emptyContent={
+                  <span style={{ fontSize: 28, fontWeight: 600 }}>
+                    {(form!.name.trim().charAt(0) || "?").toUpperCase()}
+                  </span>
+                }
+                showEmptyOnImageError
+                urlInputCollapsibleLabel="URLを直接指定する"
+                errors={{
+                  invalidType: "対応している画像形式は jpg / png / webp です。",
+                  tooLarge:    "画像サイズは5MB以内にしてください。",
+                  uploadFailed: "画像のアップロードに失敗しました。時間をおいて再度お試しください。",
+                }}
               />
               <p style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>
-                HTTPS URL・正方形推奨（200×200px 以上）。LINE の sender.iconUrl として使用します。
+                正方形推奨（200×200px 以上）。LINE の sender.iconUrl として使用します。
               </p>
               {errors.icon_image_url?.map((m) => <p key={m} className="field-error">{m}</p>)}
             </div>

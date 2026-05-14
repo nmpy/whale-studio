@@ -9,6 +9,11 @@ import { characterApi, getDevToken } from "@/lib/api-client";
 import { useToast } from "@/components/Toast";
 import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
 import { ViewerBanner } from "@/components/PermissionGuard";
+import { ImageUploadField } from "@/components/ImageUploadField";
+
+// キャラクターアイコンの対応形式 (GIF は対象外)。
+const ICON_ACCEPT = "image/jpeg,image/png,image/webp";
+const ICON_FORMATS_TEXT = "対応形式: JPEG / PNG / WebP (最大 5MB)";
 
 export default function WorkCharacterNewPage() {
   const params  = useParams<{ id: string; workId: string }>();
@@ -37,7 +42,7 @@ export default function WorkCharacterNewPage() {
 
     const errs: Record<string, string[]> = {};
     if (!name.trim())          errs.name          = ["キャラクター名を入力してください"];
-    if (!iconImageUrl.trim())  errs.icon_image_url = ["アイコン画像 URL を入力してください"];
+    if (!iconImageUrl.trim())  errs.icon_image_url = ["アイコン画像を設定してください"];
     if (Object.keys(errs).length) { setErrors(errs); setSubmitting(false); return; }
 
     try {
@@ -75,29 +80,6 @@ export default function WorkCharacterNewPage() {
       </div>
 
       <div className="card" style={{ maxWidth: 560 }}>
-        {/* プレビュー */}
-        <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 24 }}>
-          {iconImageUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={iconImageUrl} alt="プレビュー"
-              style={{ width: 56, height: 56, borderRadius: "50%", objectFit: "cover", border: "2px solid #e5e5e5" }}
-              onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
-          ) : (
-            <div style={{
-              width: 56, height: 56, borderRadius: "50%",
-              background: "#e5e7eb", display: "flex", alignItems: "center",
-              justifyContent: "center", fontSize: 20, color: "#9ca3af",
-              border: "2px solid #e5e5e5",
-            }}>
-              ?
-            </div>
-          )}
-          <div style={{ fontSize: 13, color: "#6b7280" }}>
-            <p style={{ fontWeight: 500 }}>アイコンプレビュー</p>
-            <p style={{ fontSize: 11, marginTop: 2 }}>URL を入力するとリアルタイム更新</p>
-          </div>
-        </div>
-
         <form onSubmit={handleSubmit}>
           <div className="form-group">
             <label htmlFor="name">キャラクター名 <span style={{ color: "#ef4444" }}>*</span></label>
@@ -108,15 +90,34 @@ export default function WorkCharacterNewPage() {
           </div>
 
           <div className="form-group">
-            <label htmlFor="icon_image_url">
-              アイコン画像 URL <span style={{ color: "#ef4444" }}>*</span>
+            <label>
+              アイコン画像 <span style={{ color: "#ef4444" }}>*</span>
             </label>
-            <input id="icon_image_url" type="url" value={iconImageUrl}
-              onChange={(e) => { setIconImageUrl(e.target.value); clearError("icon_image_url"); }}
-              placeholder="https://example.com/avatar.png" readOnly={!canEdit} />
+            <ImageUploadField
+              value={iconImageUrl}
+              onChange={(next) => { setIconImageUrl(next); clearError("icon_image_url"); }}
+              readOnly={!canEdit}
+              previewShape="circle"
+              previewSize={88}
+              previewAlt="アイコンプレビュー"
+              accept={ICON_ACCEPT}
+              supportedFormatsText={ICON_FORMATS_TEXT}
+              emptyContent={
+                <span style={{ fontSize: 28, fontWeight: 600 }}>
+                  {(name.trim().charAt(0) || "?").toUpperCase()}
+                </span>
+              }
+              showEmptyOnImageError
+              urlInputCollapsibleLabel="URLを直接指定する"
+              errors={{
+                invalidType: "対応している画像形式は jpg / png / webp です。",
+                tooLarge:    "画像サイズは5MB以内にしてください。",
+                uploadFailed: "画像のアップロードに失敗しました。時間をおいて再度お試しください。",
+              }}
+            />
             {errors.icon_image_url?.map((m) => <p key={m} className="field-error">{m}</p>)}
             <p style={{ fontSize: 11, color: "#9ca3af", marginTop: 4 }}>
-              HTTPS URL・正方形推奨（200×200px 以上）。LINE の sender.iconUrl として使用します。
+              正方形推奨（200×200px 以上）。LINE の sender.iconUrl として使用します。
             </p>
           </div>
 
