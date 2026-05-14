@@ -4,6 +4,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { findWorkByIdOrPublicId } from "@/lib/public-id-resolver";
 
 export const dynamic = "force-dynamic";
 
@@ -12,15 +13,14 @@ export async function GET(
   ctx: { params: Promise<{ workId: string }> }
 ) {
   try {
-    const { workId } = await ctx.params;
+    const { workId: workIdOrPublic } = await ctx.params;
 
-    const work = await prisma.work.findUnique({
-      where: { id: workId },
-      select: { id: true, title: true, publishStatus: true, oaId: true },
-    });
+    // workId は UUID か publicId のどちらでも受け付ける
+    const work = await findWorkByIdOrPublicId(workIdOrPublic);
     if (!work) {
+      console.error(`[LIFF API] Work not found: workIdOrPublic=${workIdOrPublic}`);
       return NextResponse.json(
-        { success: false, error: { code: "NOT_FOUND", message: "作品が見つかりません" } },
+        { success: false, error: { code: "NOT_FOUND", message: "ページを読み込めませんでした。URLが正しいか確認してください。" } },
         { status: 404 }
       );
     }
@@ -29,7 +29,7 @@ export async function GET(
     // 新仕様の URL は /api/liff/works/[workId]/pages/[pageId] を使うこと。
     // createdAt 同値時のタイブレークに id を併用して安定ソートにする。
     const config = await prisma.liffPageConfig.findFirst({
-      where: { workId },
+      where: { workId: work.id },
       orderBy: [{ createdAt: "asc" }, { id: "asc" }],
       include: {
         blocks: {

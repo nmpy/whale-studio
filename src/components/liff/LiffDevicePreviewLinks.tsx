@@ -35,9 +35,14 @@ import { useEffect, useMemo, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
 
 interface Props {
+  /** Work の DB 内部 ID (UUID)。URL 生成自体には publicId を優先する */
   workId: string;
-  /** 個別 LIFF ページ ID。指定があれば /pages/:pageId 形式の URL を生成する。 */
+  /** Work の公開 URL 用短縮 ID。指定があれば URL に publicId を使う (短縮 URL)。 */
+  workPublicId?: string;
+  /** 個別 LIFF ページの DB 内部 ID (UUID)。指定があれば /pages/:pageId 形式の URL を生成する。 */
   pageId?: string;
+  /** 個別 LIFF ページの公開 URL 用短縮 ID。指定があれば URL に publicId を使う (短縮 URL)。 */
+  pagePublicId?: string;
   publishStatus: "draft" | "published" | "archived";
 }
 
@@ -51,12 +56,26 @@ function buildBaseUrl(): string {
 }
 
 /** LIFF アプリの sub-path 部分。LINE Developers の Endpoint URL に付与される相対パス。
- *  Endpoint URL = `${BASE}/liff` を想定しているので、ここでは `/liff` を含めない。 */
-function buildLiffSubPath(workId: string, pageId?: string): string {
-  return pageId ? `/work/${workId}/pages/${pageId}` : `/work/${workId}`;
+ *  Endpoint URL = `${BASE}/liff` を想定しているので、ここでは `/liff` を含めない。
+ *  short URL: publicId が指定されていれば /w/{wp}/p/{pp} を使う、無ければ旧 /work/{w}/pages/{p}。 */
+function buildLiffSubPath(args: {
+  workId: string; workPublicId?: string; pageId?: string; pagePublicId?: string;
+}): string {
+  const { workId, workPublicId, pageId, pagePublicId } = args;
+  if (workPublicId && pagePublicId) return `/w/${workPublicId}/p/${pagePublicId}`;
+  if (workPublicId)                  return `/w/${workPublicId}`;
+  if (pageId)                        return `/work/${workId}/pages/${pageId}`;
+  return `/work/${workId}`;
 }
 
-export function LiffDevicePreviewLinks({ workId, pageId, publishStatus }: Props) {
+/** ブラウザ用 URL (BASE 込み)。同じく publicId 優先。 */
+function buildBrowserPath(args: {
+  workId: string; workPublicId?: string; pageId?: string; pagePublicId?: string;
+}): string {
+  return `/liff${buildLiffSubPath(args)}`;
+}
+
+export function LiffDevicePreviewLinks({ workId, workPublicId, pageId, pagePublicId, publishStatus }: Props) {
   const [baseUrl, setBaseUrl] = useState("");
   const [copied, setCopied] = useState<string | null>(null);
 
@@ -69,15 +88,13 @@ export function LiffDevicePreviewLinks({ workId, pageId, publishStatus }: Props)
 
   const browserUrlExplicit = useMemo(() => {
     if (!baseUrl) return "";
-    return pageId
-      ? `${baseUrl}/liff/work/${workId}/pages/${pageId}`
-      : `${baseUrl}/liff/work/${workId}`;
-  }, [baseUrl, workId, pageId]);
+    return `${baseUrl}${buildBrowserPath({ workId, workPublicId, pageId, pagePublicId })}`;
+  }, [baseUrl, workId, workPublicId, pageId, pagePublicId]);
 
   const liffUrl = useMemo(() => {
     if (!liffId) return "";
-    return `https://liff.line.me/${liffId}${buildLiffSubPath(workId, pageId)}`;
-  }, [liffId, workId, pageId]);
+    return `https://liff.line.me/${liffId}${buildLiffSubPath({ workId, workPublicId, pageId, pagePublicId })}`;
+  }, [liffId, workId, workPublicId, pageId, pagePublicId]);
 
   const isLocalhost = baseUrl.startsWith("http://localhost") || baseUrl.startsWith("http://127.0.0.1");
   const isPublished = publishStatus === "published";

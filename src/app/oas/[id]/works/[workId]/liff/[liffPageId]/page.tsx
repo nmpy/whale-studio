@@ -135,7 +135,13 @@ export default function LiffPageEditor() {
         onUpdatePublishStatus={liff.updatePublishStatus}
       />
 
-      <LiffDevicePreviewLinks workId={workId} pageId={config.id} publishStatus={config.publish_status} />
+      <LiffDevicePreviewLinks
+        workId={workId}
+        workPublicId={config.work_public_id}
+        pageId={config.id}
+        pagePublicId={config.public_id}
+        publishStatus={config.publish_status}
+      />
 
       <div className="flex gap-6 items-start">
         <div className="flex-1 min-w-0">

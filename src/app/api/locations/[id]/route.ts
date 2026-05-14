@@ -16,6 +16,7 @@ import { ZodError } from "zod";
 function toResponse(l: any, transition?: any) {
   return {
     id:               l.id,
+    public_id:        l.publicId,
     work_id:          l.workId,
     name:             l.name,
     description:      l.description,

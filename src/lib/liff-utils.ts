@@ -28,10 +28,14 @@ export function toBlockResponse(b: {
   };
 }
 
-/** DB の LiffPageConfig レコード（blocks 含む）を API レスポンス形式に変換する */
+/** DB の LiffPageConfig レコード（blocks 含む）を API レスポンス形式に変換する
+ *  公開 URL 用短縮 ID は work.publicId / config.publicId をそれぞれ work_public_id / public_id として返す */
 export function toConfigResponse(c: {
   id: string;
+  publicId?: string | null;
   workId: string;
+  /** include: { work: true } で取得した場合に使う。未指定 (旧呼出) でも互換 */
+  work?: { publicId?: string | null } | null;
   isEnabled: boolean;
   title: string | null;
   description: string | null;
@@ -54,18 +58,20 @@ export function toConfigResponse(c: {
   }>;
 }) {
   return {
-    id:             c.id,
-    work_id:        c.workId,
-    is_enabled:     c.isEnabled,
-    title:          c.title,
-    description:    c.description,
-    page_type:      (c.pageType ?? "default") as "default" | "hint" | "faq" | "survey" | "location",
-    publish_status: (c.publishStatus ?? "draft") as "draft" | "published" | "archived",
-    settings_json:  (c.settingsJson ?? {}) as Record<string, unknown>,
-    blocks:         c.blocks
+    id:              c.id,
+    public_id:       c.publicId ?? undefined,
+    work_id:         c.workId,
+    work_public_id:  c.work?.publicId ?? undefined,
+    is_enabled:      c.isEnabled,
+    title:           c.title,
+    description:     c.description,
+    page_type:       (c.pageType ?? "default") as "default" | "hint" | "faq" | "survey" | "location",
+    publish_status:  (c.publishStatus ?? "draft") as "draft" | "published" | "archived",
+    settings_json:   (c.settingsJson ?? {}) as Record<string, unknown>,
+    blocks:          c.blocks
       .sort((a, b) => a.sortOrder - b.sortOrder)
       .map(toBlockResponse),
-    created_at:     c.createdAt,
-    updated_at:     c.updatedAt,
+    created_at:      c.createdAt,
+    updated_at:      c.updatedAt,
   };
 }

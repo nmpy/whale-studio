@@ -81,14 +81,28 @@ export async function POST(req: NextRequest) {
     const data = checkinSchema.parse(body);
     const clientMethod: CheckinMethod = data.checkin_method ?? "qr";
 
-    // ── 1. ロケーション取得 ──
+    // ── 1. ロケーション + Work 取得 ──
+    // location_id / work_id は UUID か publicId のどちらでも受け付ける (短縮 URL 対応)
+    const { findLocationByIdOrPublicId, findWorkByIdOrPublicId } =
+      await import("@/lib/public-id-resolver");
+
+    const work = await findWorkByIdOrPublicId(data.work_id);
+    if (!work) return notFound("作品");
+
+    const locationMeta = await findLocationByIdOrPublicId(data.location_id);
+    if (!locationMeta) return notFound("ロケーション");
+
+    // UUID に正規化して以後の処理は UUID ベースで進める
+    data.location_id = locationMeta.id;
+    data.work_id = work.id;
+
     const location = await prisma.location.findUnique({
-      where: { id: data.location_id },
+      where: { id: locationMeta.id },
       include: { transition: { include: { toPhase: { select: { id: true, name: true, phaseType: true } } } } },
     });
     if (!location) return notFound("ロケーション");
     if (!location.isActive) return badRequest("このロケーションは現在無効です");
-    if (location.workId !== data.work_id) return badRequest("ロケーションが指定作品に属していません");
+    if (location.workId !== work.id) return badRequest("ロケーションが指定作品に属していません");
 
     const mode = location.checkinMode as string; // "qr_only" | "gps_only" | "qr_and_gps"
 

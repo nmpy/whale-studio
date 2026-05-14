@@ -7,6 +7,7 @@
 import { NextRequest } from "next/server";
 import { ok, badRequest, serverError } from "@/lib/api-response";
 import { logAttemptDeduped } from "@/lib/checkin-attempt";
+import { findWorkByIdOrPublicId, findLocationByIdOrPublicId } from "@/lib/public-id-resolver";
 
 export const dynamic = "force-dynamic";
 
@@ -21,21 +22,27 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
 
-    const workId     = typeof body.work_id === "string" ? body.work_id : "";
-    const locationId = typeof body.location_id === "string" ? body.location_id : "";
-    const lineUserId = typeof body.line_user_id === "string" ? body.line_user_id : "";
-    const status     = typeof body.status === "string" ? body.status : "";
+    const workIdOrPublic     = typeof body.work_id === "string" ? body.work_id : "";
+    const locationIdOrPublic = typeof body.location_id === "string" ? body.location_id : "";
+    const lineUserId         = typeof body.line_user_id === "string" ? body.line_user_id : "";
+    const status             = typeof body.status === "string" ? body.status : "";
 
-    if (!workId || !locationId || !lineUserId || !status) {
+    if (!workIdOrPublic || !locationIdOrPublic || !lineUserId || !status) {
       return badRequest("必須パラメータが不足しています");
     }
     if (!VALID_STATUSES.has(status)) {
       return badRequest("無効なステータスです");
     }
 
+    // work_id / location_id は UUID か publicId のどちらでも受け付ける
+    const work = await findWorkByIdOrPublicId(workIdOrPublic);
+    if (!work) return badRequest("作品が見つかりません");
+    const location = await findLocationByIdOrPublicId(locationIdOrPublic, { workScope: work.id });
+    if (!location) return badRequest("ロケーションが見つかりません");
+
     const saved = await logAttemptDeduped({
-      workId,
-      locationId,
+      workId: work.id,
+      locationId: location.id,
       lineUserId,
       method:        "gps",
       status,

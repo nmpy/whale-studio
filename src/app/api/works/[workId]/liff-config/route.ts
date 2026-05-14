@@ -33,13 +33,13 @@ export const GET = withAuth(async (req, ctx, user) => {
     let config = await prisma.liffPageConfig.findFirst({
       where: { workId },
       orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-      include: { blocks: { orderBy: { sortOrder: "asc" } } },
+      include: { blocks: { orderBy: { sortOrder: "asc" } }, work: { select: { publicId: true } } },
     });
 
     if (!config) {
       config = await prisma.liffPageConfig.create({
         data: { workId, isEnabled: false },
-        include: { blocks: { orderBy: { sortOrder: "asc" } } },
+        include: { blocks: { orderBy: { sortOrder: "asc" } }, work: { select: { publicId: true } } },
       });
     }
 
@@ -103,7 +103,7 @@ export const PUT = withAuth(async (req, ctx, user) => {
             ...(data.publish_status !== undefined && { publishStatus: data.publish_status }),
             ...(data.settings_json !== undefined && { settingsJson: data.settings_json as Prisma.InputJsonValue }),
           },
-          include: { blocks: { orderBy: { sortOrder: "asc" } } },
+          include: { blocks: { orderBy: { sortOrder: "asc" } }, work: { select: { publicId: true } } },
         })
       : await prisma.liffPageConfig.create({
           data: {
@@ -115,7 +115,7 @@ export const PUT = withAuth(async (req, ctx, user) => {
             publishStatus: data.publish_status ?? "draft",
             settingsJson:  (data.settings_json ?? {}) as Prisma.InputJsonValue,
           },
-          include: { blocks: { orderBy: { sortOrder: "asc" } } },
+          include: { blocks: { orderBy: { sortOrder: "asc" } }, work: { select: { publicId: true } } },
         });
 
     return ok(toConfigResponse(config));

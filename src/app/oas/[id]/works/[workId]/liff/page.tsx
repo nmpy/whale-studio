@@ -29,12 +29,19 @@ const PAGE_TYPE_LABELS: Record<string, string> = {
   location:  "履歴",
 };
 
-function buildPublicUrl(workId: string, pageId: string): string {
+function buildPublicUrl(args: {
+  workId: string; workPublicId?: string; pageId: string; pagePublicId?: string;
+}): string {
   const env = process.env.NEXT_PUBLIC_BASE_URL?.trim();
   const base = env
     ? env.replace(/\/$/, "")
     : (typeof window !== "undefined" ? window.location.origin : "");
-  return base ? `${base}/liff/work/${workId}/pages/${pageId}` : "";
+  if (!base) return "";
+  // publicId が両方揃っているときは短縮 URL、無ければ UUID 形式の旧 URL
+  if (args.workPublicId && args.pagePublicId) {
+    return `${base}/liff/w/${args.workPublicId}/p/${args.pagePublicId}`;
+  }
+  return `${base}/liff/work/${args.workId}/pages/${args.pageId}`;
 }
 
 function formatDateTime(iso: string | Date | null | undefined): string {
@@ -96,7 +103,13 @@ export default function LiffPagesIndex() {
   };
 
   const handleCopyUrl = async (pageId: string) => {
-    const url = buildPublicUrl(workId, pageId);
+    const page = pages?.find((p) => p.id === pageId);
+    const url = buildPublicUrl({
+      workId,
+      workPublicId: page?.work_public_id,
+      pageId,
+      pagePublicId: page?.public_id,
+    });
     if (!url) return;
     try {
       await navigator.clipboard.writeText(url);
@@ -152,7 +165,12 @@ export default function LiffPagesIndex() {
           {/* スマホ幅は縦並びカード、デスクトップ幅はテーブル形式 */}
           <ul className="divide-y divide-gray-100">
             {pages?.map((p) => {
-              const url = buildPublicUrl(workId, p.id);
+              const url = buildPublicUrl({
+                workId,
+                workPublicId: p.work_public_id,
+                pageId: p.id,
+                pagePublicId: p.public_id,
+              });
               return (
                 <li key={p.id} className="px-4 py-3 flex flex-col md:flex-row md:items-center gap-3">
                   <div className="flex-1 min-w-0">

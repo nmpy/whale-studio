@@ -123,24 +123,30 @@ export default function EditLocationPage() {
 
       {error && <div style={{ padding: 12, background: "#fef2f2", border: "1px solid #fca5a5", borderRadius: 8, color: "#dc2626", marginBottom: 16, fontSize: 14 }}>{error}</div>}
 
-      {liffId && location && (
-        <div style={{ marginBottom: 16, padding: "10px 14px", background: "#f0f9ff", borderRadius: 8, fontSize: 12, color: "#3b82f6", wordBreak: "break-all", display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ flex: 1 }}>
-            <strong>LIFF URL:</strong> https://liff.line.me/{liffId}?location_id={location.id}&work_id={workId}
-          </span>
-          <button
-            type="button"
-            onClick={() => window.open(`https://liff.line.me/${liffId}?location_id=${location.id}&work_id=${workId}`, "_blank")}
-            style={{
-              padding: "4px 10px", fontSize: 11, fontWeight: 600,
-              background: "#ecfdf5", color: "#059669",
-              border: "1px solid #86efac", borderRadius: 6, cursor: "pointer", flexShrink: 0,
-            }}
-          >
-            テスト
-          </button>
-        </div>
-      )}
+      {liffId && location && (() => {
+        // publicId が揃えば短縮 URL を使う。揃わなければ旧 UUID 形式へフォールバック。
+        const shortUrl = location.public_id && (location as { work_public_id?: string }).work_public_id
+          ? `https://liff.line.me/${liffId}/c/${(location as { work_public_id?: string }).work_public_id}/${location.public_id}`
+          : `https://liff.line.me/${liffId}?location_id=${location.id}&work_id=${workId}`;
+        return (
+          <div style={{ marginBottom: 16, padding: "10px 14px", background: "#f0f9ff", borderRadius: 8, fontSize: 12, color: "#3b82f6", wordBreak: "break-all", display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ flex: 1 }}>
+              <strong>LIFF URL:</strong> {shortUrl}
+            </span>
+            <button
+              type="button"
+              onClick={() => window.open(shortUrl, "_blank")}
+              style={{
+                padding: "4px 10px", fontSize: 11, fontWeight: 600,
+                background: "#ecfdf5", color: "#059669",
+                border: "1px solid #86efac", borderRadius: 6, cursor: "pointer", flexShrink: 0,
+              }}
+            >
+              テスト
+            </button>
+          </div>
+        );
+      })()}
 
       {suggestedRadius && location && (
         <div style={{ marginBottom: 16, padding: "12px 16px", background: "#fef3c7", border: "1px solid #fcd34d", borderRadius: 8, fontSize: 13, color: "#92400e", lineHeight: 1.6 }}>
