@@ -135,9 +135,12 @@ export function LiffPlayerViewer({ workId, apiBaseUrl }: Props) {
   if (!pageData) return null;
 
   const mode = normalizeLiffPageType(pageData.page_type);
-  // 本文には pageData.title (LIFF ページタイトル) を使う。
-  // pageData.work_title へのフォールバックはやめる (LIFF ページのタイトルが空ならヘッダーも空にする方が UX として誤解が少ない)。
+  // 役割分離 (新仕様):
+  //   - ヘッダー = 作品名 (work_title)
+  //   - 本文 h2  = LIFF ページタイトル (page.title)
+  // どちらも renderers 側に config で渡し、空のときは renderers 側で出さない判定をする。
   const displayTitle = pageData.title;
+  const workTitle    = pageData.work_title;
 
   // ブロック内の計測用 (button_click / hint_open / faq_open) に workId/pageId/lineUserId を渡す
   const playerCtxValue = {
@@ -162,6 +165,7 @@ export function LiffPlayerViewer({ workId, apiBaseUrl }: Props) {
         <HintSiteRenderer
           config={{
             work_id:       pageData.work_id,
+            work_title:    workTitle,
             title:         displayTitle,
             description:   pageData.description,
             settings_json: pageData.settings_json ?? {},
@@ -184,6 +188,7 @@ export function LiffPlayerViewer({ workId, apiBaseUrl }: Props) {
         {InClientBanner}
         <FaqRenderer
           config={{
+            work_title:    workTitle,
             title:         displayTitle,
             description:   pageData.description,
             settings_json: pageData.settings_json ?? {},
@@ -202,6 +207,7 @@ export function LiffPlayerViewer({ workId, apiBaseUrl }: Props) {
           config={{
             work_id:       pageData.work_id,
             page_id:       pageData.page_id,
+            work_title:    workTitle,
             title:         displayTitle,
             description:   pageData.description,
             settings_json: pageData.settings_json ?? {},
@@ -220,6 +226,7 @@ export function LiffPlayerViewer({ workId, apiBaseUrl }: Props) {
         <LocationHistoryRenderer
           config={{
             work_id:       pageData.work_id,
+            work_title:    workTitle,
             title:         displayTitle,
             description:   pageData.description,
             settings_json: pageData.settings_json ?? {},
@@ -265,6 +272,7 @@ export function LiffPlayerViewer({ workId, apiBaseUrl }: Props) {
         {InClientBanner}
         <LiffRenderer
           blocks={pageData.blocks}
+          workTitle={workTitle}
           title={displayTitle}
           ctx={ctx}
           settings={pageData.settings_json ?? {}}

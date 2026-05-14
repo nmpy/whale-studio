@@ -14,6 +14,9 @@ export interface SurveyRendererConfig {
   /** どの LIFF ページ (LiffPageConfig) から送信されたかを記録するため API に同梱する。
    *  pageId 不明な旧経路では undefined のまま (API 側は許容)。 */
   page_id?:      string;
+  /** 作品名。ヘッダーに表示する (新仕様)。未指定なら title にフォールバック */
+  work_title?:   string | null;
+  /** LIFF ページ名。本文側 h2 として表示する */
   title:         string | null;
   description:   string | null;
   settings_json: LiffPageConfigSettings;
@@ -101,11 +104,18 @@ export function SurveyRenderer({ config, preview, lineUserId }: Props) {
     }
   };
 
+  const pageTitle = config.title?.trim();
+
   return (
     <div className="liff-font min-h-screen bg-[color:var(--liff-background)] text-[color:var(--liff-primary-text)]">
-      <LiffPlayerHeader title={config.title} />
+      <LiffPlayerHeader workTitle={config.work_title} pageTitle={config.title} />
       <main className="max-w-md mx-auto px-4 py-5 flex flex-col gap-4 pb-24">
-        {/* タイトルはヘッダーで表示。本文には description のみ。 */}
+        {/* 本文先頭にページタイトルを h2 として表示する。ヘッダーは作品名。 */}
+        {pageTitle && (
+          <h2 className="text-[20px] leading-tight font-bold tracking-tight break-words text-[color:var(--liff-primary-text)]">
+            {pageTitle}
+          </h2>
+        )}
         {config.description && (
           <p className="text-[14px] leading-relaxed text-[color:var(--liff-secondary-text)] whitespace-pre-wrap break-words">
             {config.description}
@@ -158,6 +168,40 @@ export function SurveyRenderer({ config, preview, lineUserId }: Props) {
   );
 }
 
+// ── 設問カード共通構造 ─────────────────────────────────────────────
+// LINE Design System を踏まえた最小限の Question Card:
+//   - label 行 (タイトル + 必須マーク)
+//   - control area (input / textarea / radio / checkbox)
+// fieldset/legend を使わない理由:
+//   ブラウザの既定で legend は fieldset の border 上に位置決めされ、
+//   border-radius を付けた角丸カードでは「タイトルがカード外にはみ出して見える」現象が
+//   起こる。div + role="group" + aria-labelledby で同等のセマンティクスを得つつ
+//   通常フローで描画できるようにする。
+
+const QUESTION_CARD_CLS =
+  "bg-[color:var(--liff-surface)] border border-[color:var(--liff-border)] rounded-[12px] px-4 py-3 flex flex-col gap-2";
+
+const INPUT_CLS =
+  "w-full px-3 py-2 border border-[color:var(--liff-border)] rounded-[8px] text-[15px] leading-[1.6] " +
+  "focus:outline-none focus:ring-2 focus:ring-[color:var(--liff-line-green)] focus:border-[color:var(--liff-line-green)] " +
+  "bg-[color:var(--liff-surface)] text-[color:var(--liff-primary-text)] placeholder:text-[color:var(--liff-tertiary-text)]";
+
+function QuestionLabel({ id, text, required }: { id?: string; text: string; required?: boolean }) {
+  return (
+    <span id={id} className="text-[14px] font-bold leading-[1.5] text-[color:var(--liff-primary-text)] break-words">
+      {text}
+      {required && (
+        <span
+          aria-label="必須"
+          className="ml-1 text-[color:var(--liff-danger,#E22B2B)] font-bold"
+        >
+          *
+        </span>
+      )}
+    </span>
+  );
+}
+
 function SurveyField({
   item, index, value, onChange,
 }: {
@@ -166,16 +210,17 @@ function SurveyField({
   value: string | string[] | undefined;
   onChange: (v: string | string[]) => void;
 }) {
-  const label = (item.question?.trim() || `Q${index + 1}`) + (item.required ? " *" : "");
-  const cardCls = "bg-[color:var(--liff-surface)] border border-[color:var(--liff-border)] rounded-[12px] px-4 py-3 flex flex-col gap-2";
-  const inputCls = "w-full px-3 py-2 border border-[color:var(--liff-border)] rounded-[8px] text-[15px] leading-[1.6] focus:outline-none focus:ring-2 focus:ring-[color:var(--liff-line-green)] bg-[color:var(--liff-surface)]";
+  const labelText = item.question?.trim() || `Q${index + 1}`;
+  const required = !!item.required;
+  // 設問ごとの label id (radio/checkbox の aria-labelledby に使う)
+  const labelId = `survey-q-${index}-label`;
 
   if (item.input_type === "textarea") {
     return (
-      <label className={cardCls}>
-        <span className="text-[14px] font-bold">{label}</span>
+      <label className={QUESTION_CARD_CLS}>
+        <QuestionLabel text={labelText} required={required} />
         <textarea
-          className={`${inputCls} min-h-[96px]`}
+          className={`${INPUT_CLS} min-h-[96px] resize-y`}
           value={typeof value === "string" ? value : ""}
           onChange={(e) => onChange(e.target.value)}
           rows={4}
@@ -187,23 +232,27 @@ function SurveyField({
   if (item.input_type === "radio" && Array.isArray(item.options) && item.options.length > 0) {
     const selected = typeof value === "string" ? value : "";
     return (
-      <fieldset className={cardCls}>
-        <legend className="text-[14px] font-bold">{label}</legend>
-        <div className="flex flex-col gap-1.5">
+      <div className={QUESTION_CARD_CLS} role="radiogroup" aria-labelledby={labelId}>
+        <QuestionLabel id={labelId} text={labelText} required={required} />
+        <div className="flex flex-col gap-2">
           {item.options.map((opt, i) => (
-            <label key={i} className="flex items-center gap-2 text-[15px]">
+            <label
+              key={i}
+              className="flex items-start gap-2 text-[15px] leading-[1.5] cursor-pointer py-1 min-h-[28px]"
+            >
               <input
                 type="radio"
                 name={`q${index}`}
                 value={opt}
                 checked={selected === opt}
                 onChange={(e) => onChange(e.target.value)}
+                className="mt-[3px] accent-[color:var(--liff-line-green,#06C755)]"
               />
-              <span>{opt}</span>
+              <span className="flex-1 min-w-0 break-words">{opt}</span>
             </label>
           ))}
         </div>
-      </fieldset>
+      </div>
     );
   }
 
@@ -214,31 +263,35 @@ function SurveyField({
       else onChange([...selected, opt]);
     };
     return (
-      <fieldset className={cardCls}>
-        <legend className="text-[14px] font-bold">{label}</legend>
-        <div className="flex flex-col gap-1.5">
+      <div className={QUESTION_CARD_CLS} role="group" aria-labelledby={labelId}>
+        <QuestionLabel id={labelId} text={labelText} required={required} />
+        <div className="flex flex-col gap-2">
           {item.options.map((opt, i) => (
-            <label key={i} className="flex items-center gap-2 text-[15px]">
+            <label
+              key={i}
+              className="flex items-start gap-2 text-[15px] leading-[1.5] cursor-pointer py-1 min-h-[28px]"
+            >
               <input
                 type="checkbox"
                 checked={selected.includes(opt)}
                 onChange={() => toggle(opt)}
+                className="mt-[3px] accent-[color:var(--liff-line-green,#06C755)]"
               />
-              <span>{opt}</span>
+              <span className="flex-1 min-w-0 break-words">{opt}</span>
             </label>
           ))}
         </div>
-      </fieldset>
+      </div>
     );
   }
 
   // 既定: text
   return (
-    <label className={cardCls}>
-      <span className="text-[14px] font-bold">{label}</span>
+    <label className={QUESTION_CARD_CLS}>
+      <QuestionLabel text={labelText} required={required} />
       <input
         type="text"
-        className={inputCls}
+        className={INPUT_CLS}
         value={typeof value === "string" ? value : ""}
         onChange={(e) => onChange(e.target.value)}
       />

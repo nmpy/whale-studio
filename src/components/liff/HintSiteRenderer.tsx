@@ -33,6 +33,9 @@ export interface HintSiteBlock {
 
 export interface HintSiteConfig {
   work_id: string;
+  /** 作品名。ヘッダーに表示する (新仕様)。logo_url 指定があるときはロゴ優先。 */
+  work_title?: string | null;
+  /** LIFF ページ名。本文先頭の h2 として表示する */
   title: string | null;
   description: string | null;
   settings_json: LiffPageConfigSettings;
@@ -72,6 +75,14 @@ function normalizeColor(value: string | undefined, fallback: string): string {
   return v;
 }
 
+/** ヘッダーに出す文字列を決める。work_title 優先、なければ title (LIFF ページ名)。 */
+function pickHeaderTitle(config: HintSiteConfig): string | null {
+  const w = (config.work_title ?? "").trim();
+  if (w) return w;
+  const t = (config.title ?? "").trim();
+  return t || null;
+}
+
 export function HintSiteRenderer({ config, preview }: Props) {
   const settings: LiffPageConfigSettings = config.settings_json || {};
   // プレビュー (管理画面の縮小表示) では position:fixed が iframe 的にスクロールコンテナを抜けてしまい
@@ -97,15 +108,20 @@ export function HintSiteRenderer({ config, preview }: Props) {
         fixed={fixed}
         logoUrl={settings.header_logo_url}
         logoAlt={settings.header_logo_alt}
-        title={config.title}
+        title={pickHeaderTitle(config)}
       />
 
       <div
         style={fixed ? { paddingTop: `calc(${HEADER_HEIGHT_PX}px + env(safe-area-inset-top, 0px))` } : undefined}
       >
         <main className="max-w-md mx-auto px-4 py-5 flex flex-col gap-4 pb-24">
-          {/* タイトルはヘッダーで表示する。本文側では重複させない (LIFF 仕様変更)。
-              説明文 (description) のみ本文先頭に出す。 */}
+          {/* ヘッダーは作品名表示なので、本文先頭でページ単位の h2 を出す。
+              ページタイトルが空のときは何も出さない (ヘッダーで作品名が見えていれば十分)。 */}
+          {config.title?.trim() && (
+            <h2 className="text-[20px] leading-tight font-bold tracking-tight break-words text-[color:var(--liff-primary-text)]">
+              {config.title}
+            </h2>
+          )}
           {config.description && (
             <p className="text-[14px] leading-relaxed text-[color:var(--liff-secondary-text)] whitespace-pre-wrap break-words">
               {config.description}

@@ -226,7 +226,7 @@ export default function LiffPageEditor() {
 
         <div className="sticky top-6 shrink-0">
           <h2 className="text-sm font-semibold text-gray-500 mb-2">プレビュー</h2>
-          <LiffPreview blocks={config.blocks} title={config.title} config={config} />
+          <LiffPreview blocks={config.blocks} workTitle={liff.workTitle} title={config.title} config={config} />
         </div>
       </div>
       )}

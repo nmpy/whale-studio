@@ -108,12 +108,16 @@ function RenderBlock({ block, ctx }: { block: LiffBlock; ctx: LiffRenderContext 
 
 export function LiffRenderer({
   blocks,
+  workTitle,
   title,
   ctx,
   settings,
   preview,
 }: {
   blocks: LiffBlock[];
+  /** 作品名。ヘッダーに表示する (新仕様)。未指定なら title にフォールバック */
+  workTitle?: string | null;
+  /** LIFF ページ名。本文先頭の h2 として表示する */
   title?: string | null;
   ctx: LiffRenderContext;
   /** ページ全体設定（シェアボタン制御などに使う） */
@@ -124,12 +128,15 @@ export function LiffRenderer({
   const visibleBlocks = blocks.filter((b) =>
     shouldShow(b.visibility_condition_json, ctx.userState)
   );
+  const headerLabel = (workTitle ?? "").trim() || (title ?? "").trim() || "LIFF";
+  const pageHeading = (title ?? "").trim();
 
   return (
     // LINE Design System に寄せたプレイヤー画面レイアウト。
     //   - 画面背景: --liff-background
-    //   - ヘッダー: Primary Green (#06C755) / 文字色 #000000 を既定とする
+    //   - ヘッダー: Primary Green (#06C755) / 文字色 #000000 を既定とする (作品名を表示)
     //   - コンテンツ: 画面左右 16px (px-4)、本文は max-w-md でスマホ前提
+    //   - ページタイトルは本文先頭の h2 として描画 (ヘッダーと役割を分離)
     <div className="liff-font min-h-screen bg-[color:var(--liff-background)] text-[color:var(--liff-primary-text)]">
       <header
         className="px-4 py-3"
@@ -140,12 +147,17 @@ export function LiffRenderer({
       >
         <div className="max-w-md mx-auto">
           <h1 className="text-[18px] leading-tight font-bold tracking-tight break-words">
-            {title || "LIFF"}
+            {headerLabel}
           </h1>
         </div>
       </header>
 
       <main className="px-4 py-4 space-y-3 max-w-md mx-auto">
+        {pageHeading && (
+          <h2 className="text-[20px] leading-tight font-bold tracking-tight break-words text-[color:var(--liff-primary-text)] pt-1">
+            {pageHeading}
+          </h2>
+        )}
         {visibleBlocks.length === 0 ? (
           <p className="text-center text-[color:var(--liff-tertiary-text)] py-12 text-sm">
             表示する項目がありません

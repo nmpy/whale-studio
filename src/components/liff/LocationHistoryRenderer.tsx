@@ -17,6 +17,9 @@ import { LiffPlayerHeader } from "./LiffPlayerHeader";
 
 export interface LocationHistoryRendererConfig {
   work_id:       string;
+  /** 作品名。ヘッダーに表示する (新仕様)。未指定なら title にフォールバック */
+  work_title?:   string | null;
+  /** LIFF ページ名。本文側 h2 として表示する */
   title:         string | null;
   description:   string | null;
   settings_json: LiffPageConfigSettings;
@@ -132,11 +135,18 @@ export function LocationHistoryRenderer({ config, lineUserId, preview }: Props) 
     return () => { cancelled = true; };
   }, [config.work_id, lineUserId, preview]);
 
+  const pageTitle = config.title?.trim();
+
   return (
     <div className="liff-font min-h-screen bg-[color:var(--liff-background)] text-[color:var(--liff-primary-text)]">
-      <LiffPlayerHeader title={config.title} />
+      <LiffPlayerHeader workTitle={config.work_title} pageTitle={config.title} />
       <main className="max-w-md mx-auto px-4 py-5 flex flex-col gap-4 pb-24">
-        {/* タイトルはヘッダーで表示。本文には description のみ。 */}
+        {/* 本文先頭にページタイトルを h2 として表示する。ヘッダーは作品名。 */}
+        {pageTitle && (
+          <h2 className="text-[20px] leading-tight font-bold tracking-tight break-words text-[color:var(--liff-primary-text)]">
+            {pageTitle}
+          </h2>
+        )}
         {config.description && (
           <p className="text-[14px] leading-relaxed text-[color:var(--liff-secondary-text)] whitespace-pre-wrap break-words">
             {config.description}
