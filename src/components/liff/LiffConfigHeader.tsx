@@ -157,6 +157,29 @@ export function LiffConfigHeader({
         </div>
       </div>
 
+      {/* ページデザイン設定（全モード共通）—— LINE Design System 準拠の基本トークンを切り替える。
+          現状は本文フォントのみ。block-level の見出しレベル / 太さは各ブロック編集で指定する。 */}
+      <div className="bg-white rounded-xl border border-gray-200 p-5 mb-6 space-y-3">
+        <h2 className="text-sm font-semibold text-gray-900">ページデザイン</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label className={labelCls}>本文フォント</label>
+            <select
+              className={inputCls}
+              value={settings.font_family ?? "gothic"}
+              onChange={(e) => updateSetting("font_family", e.target.value as "gothic" | "mincho")}
+              disabled={readOnly}
+            >
+              <option value="gothic">ゴシック（既定）</option>
+              <option value="mincho">明朝体</option>
+            </select>
+            <p className="text-[11px] text-gray-400 mt-1">
+              ゴシック: LINE Seed JP / 明朝: Noto Serif JP・游明朝・ヒラギノ明朝（OS 内蔵を優先）
+            </p>
+          </div>
+        </div>
+      </div>
+
       {/* シェアボタン設定（全モード共通） */}
       <div className="bg-white rounded-xl border border-gray-200 p-5 mb-6 space-y-4">
         <h2 className="text-sm font-semibold text-gray-900">シェアボタン</h2>

@@ -8,6 +8,7 @@ import { useState } from "react";
 import type { LiffPageConfigSettings, SurveyItem } from "@/types";
 import { LiffShareButton } from "./LiffShareButton";
 import { LiffPlayerHeader } from "./LiffPlayerHeader";
+import { liffRootClass } from "./liff-style-helpers";
 
 export interface SurveyRendererConfig {
   work_id:       string;
@@ -107,7 +108,7 @@ export function SurveyRenderer({ config, preview, lineUserId }: Props) {
   const pageTitle = config.title?.trim();
 
   return (
-    <div className="liff-font min-h-screen bg-[color:var(--liff-background)] text-[color:var(--liff-primary-text)]">
+    <div className={`liff-font ${liffRootClass(config.settings_json)} min-h-screen bg-[color:var(--liff-background)] text-[color:var(--liff-primary-text)]`}>
       <LiffPlayerHeader workTitle={config.work_title} pageTitle={config.title} />
       <main className="max-w-md mx-auto px-4 py-5 flex flex-col gap-4 pb-24">
         {/* 本文先頭にページタイトルを h2 として表示する。ヘッダーは作品名。 */}

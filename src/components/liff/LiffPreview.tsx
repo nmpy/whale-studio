@@ -178,7 +178,7 @@ export function LiffPreview({
         LIFF プレビュー
       </div>
 
-      <div className="liff-font bg-[color:var(--liff-background)] min-h-[560px]">
+      <div className={`liff-font ${config?.settings_json?.font_family === "mincho" ? "liff-font--mincho" : ""} bg-[color:var(--liff-background)] min-h-[560px]`}>
         <header
           className="px-4 py-3"
           style={{

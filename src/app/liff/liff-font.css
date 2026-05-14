@@ -34,7 +34,11 @@
   --liff-button-radius:   10px;
   --liff-button-height:   48px;
 
-  font-family:
+  /* === Typography tokens ===
+   * --liff-font-stack を 1 か所で切り替えることで、ゴシック / 明朝の家族を変更できる。
+   * .liff-font--mincho が当たれば明朝に上書きされる。
+   */
+  --liff-font-stack:
     "LINE Seed JP",
     "LINE Seed Sans",
     -apple-system,
@@ -43,11 +47,26 @@
     "Segoe UI",
     system-ui,
     sans-serif;
+
+  font-family: var(--liff-font-stack);
   color: var(--liff-primary-text);
   /* LINE Design System の本文ガイドに合わせ、行間は本文用に余裕を持たせる */
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+}
+
+/* 明朝バリアント。ページ設定で font_family = "mincho" のときに付与される。
+ * Web フォントは追加 import せず、OS の Noto Serif JP / 游明朝 / ヒラギノ明朝 などを優先する。 */
+.liff-font--mincho {
+  --liff-font-stack:
+    "Noto Serif JP",
+    "Yu Mincho",
+    "YuMincho",
+    "Hiragino Mincho ProN",
+    "Hiragino Mincho Pro",
+    "MS PMincho",
+    serif;
 }
 
 /* Tailwind の font-sans 等が当たっている子孫要素にも継承させる。

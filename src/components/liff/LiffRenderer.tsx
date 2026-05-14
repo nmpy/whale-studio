@@ -33,6 +33,7 @@ import {
   AccordionBlock,
 } from "./renderers";
 import type { Evidence, Hint, CharacterInfo } from "./renderers";
+import { liffRootClass } from "./liff-style-helpers";
 
 export interface LiffBlock {
   id: string;
@@ -137,7 +138,7 @@ export function LiffRenderer({
     //   - ヘッダー: Primary Green (#06C755) / 文字色 #000000 を既定とする (作品名を表示)
     //   - コンテンツ: 画面左右 16px (px-4)、本文は max-w-md でスマホ前提
     //   - ページタイトルは本文先頭の h2 として描画 (ヘッダーと役割を分離)
-    <div className="liff-font min-h-screen bg-[color:var(--liff-background)] text-[color:var(--liff-primary-text)]">
+    <div className={`liff-font ${liffRootClass(settings)} min-h-screen bg-[color:var(--liff-background)] text-[color:var(--liff-primary-text)]`}>
       <header
         className="px-4 py-3"
         style={{
