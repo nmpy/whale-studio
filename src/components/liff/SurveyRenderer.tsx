@@ -3,12 +3,22 @@
 // src/components/liff/SurveyRenderer.tsx
 // LIFF Survey モード — フォームを表示し、送信ボタンで /api/liff/works/[workId]/survey-responses に送信する。
 // 送信成功後は完了表示に切り替える。プレビュー時は API を呼ばずに完了表示まで遷移する。
+//
+// 設問 UI は LIFF primitives (LiffInput / LiffTextarea / LiffRadioGroup / LiffCheckboxGroup) に
+// 集約しており、見た目・状態 (focus / error / disabled) と余白を共通化している。
 
 import { useState } from "react";
 import type { LiffPageConfigSettings, SurveyItem } from "@/types";
 import { LiffShareButton } from "./LiffShareButton";
 import { LiffPlayerHeader } from "./LiffPlayerHeader";
 import { liffRootClass } from "./liff-style-helpers";
+import {
+  LiffButton,
+  LiffInput,
+  LiffTextarea,
+  LiffRadioGroup,
+  LiffCheckboxGroup,
+} from "./primitives";
 
 export interface SurveyRendererConfig {
   work_id:       string;
@@ -145,17 +155,21 @@ export function SurveyRenderer({ config, preview, lineUserId }: Props) {
             ))}
 
             {error && (
-              <p className="text-[14px] text-[color:var(--liff-danger)] leading-[1.6]">{error}</p>
+              <p className="text-[14px] text-[color:var(--liff-danger)] leading-[1.6]" role="alert">
+                {error}
+              </p>
             )}
 
-            <button
-              type="submit"
-              disabled={submitting}
-              className="w-full h-12 px-4 rounded-[10px] text-white font-bold text-[15px] tracking-tight transition-opacity disabled:opacity-50 active:opacity-90 mt-2"
-              style={{ background: "var(--liff-line-green, #06C755)" }}
-            >
-              {submitting ? "送信中..." : "回答を送信する"}
-            </button>
+            <div className="mt-2">
+              <LiffButton
+                type="submit"
+                variant="primary"
+                loading={submitting}
+                loadingLabel="送信中..."
+              >
+                回答を送信する
+              </LiffButton>
+            </div>
           </form>
         )}
 
@@ -169,40 +183,8 @@ export function SurveyRenderer({ config, preview, lineUserId }: Props) {
   );
 }
 
-// ── 設問カード共通構造 ─────────────────────────────────────────────
-// LINE Design System を踏まえた最小限の Question Card:
-//   - label 行 (タイトル + 必須マーク)
-//   - control area (input / textarea / radio / checkbox)
-// fieldset/legend を使わない理由:
-//   ブラウザの既定で legend は fieldset の border 上に位置決めされ、
-//   border-radius を付けた角丸カードでは「タイトルがカード外にはみ出して見える」現象が
-//   起こる。div + role="group" + aria-labelledby で同等のセマンティクスを得つつ
-//   通常フローで描画できるようにする。
-
-const QUESTION_CARD_CLS =
-  "bg-[color:var(--liff-surface)] border border-[color:var(--liff-border)] rounded-[12px] px-4 py-3 flex flex-col gap-2";
-
-const INPUT_CLS =
-  "w-full px-3 py-2 border border-[color:var(--liff-border)] rounded-[8px] text-[15px] leading-[1.6] " +
-  "focus:outline-none focus:ring-2 focus:ring-[color:var(--liff-line-green)] focus:border-[color:var(--liff-line-green)] " +
-  "bg-[color:var(--liff-surface)] text-[color:var(--liff-primary-text)] placeholder:text-[color:var(--liff-tertiary-text)]";
-
-function QuestionLabel({ id, text, required }: { id?: string; text: string; required?: boolean }) {
-  return (
-    <span id={id} className="text-[14px] font-bold leading-[1.5] text-[color:var(--liff-primary-text)] break-words">
-      {text}
-      {required && (
-        <span
-          aria-label="必須"
-          className="ml-1 text-[color:var(--liff-danger,#E22B2B)] font-bold"
-        >
-          *
-        </span>
-      )}
-    </span>
-  );
-}
-
+// ── 設問: LiffInput / LiffTextarea / LiffRadioGroup / LiffCheckboxGroup を使う ─
+// 共通の Question Card 構造 (label / required / control / helper) は primitives 側で持つ。
 function SurveyField({
   item, index, value, onChange,
 }: {
@@ -213,89 +195,52 @@ function SurveyField({
 }) {
   const labelText = item.question?.trim() || `Q${index + 1}`;
   const required = !!item.required;
-  // 設問ごとの label id (radio/checkbox の aria-labelledby に使う)
-  const labelId = `survey-q-${index}-label`;
 
   if (item.input_type === "textarea") {
     return (
-      <label className={QUESTION_CARD_CLS}>
-        <QuestionLabel text={labelText} required={required} />
-        <textarea
-          className={`${INPUT_CLS} min-h-[96px] resize-y`}
-          value={typeof value === "string" ? value : ""}
-          onChange={(e) => onChange(e.target.value)}
-          rows={4}
-        />
-      </label>
+      <LiffTextarea
+        label={labelText}
+        required={required}
+        value={typeof value === "string" ? value : ""}
+        onChange={(e) => onChange(e.target.value)}
+      />
     );
   }
 
   if (item.input_type === "radio" && Array.isArray(item.options) && item.options.length > 0) {
     const selected = typeof value === "string" ? value : "";
     return (
-      <div className={QUESTION_CARD_CLS} role="radiogroup" aria-labelledby={labelId}>
-        <QuestionLabel id={labelId} text={labelText} required={required} />
-        <div className="flex flex-col gap-2">
-          {item.options.map((opt, i) => (
-            <label
-              key={i}
-              className="flex items-start gap-2 text-[15px] leading-[1.5] cursor-pointer py-1 min-h-[28px]"
-            >
-              <input
-                type="radio"
-                name={`q${index}`}
-                value={opt}
-                checked={selected === opt}
-                onChange={(e) => onChange(e.target.value)}
-                className="mt-[3px] accent-[color:var(--liff-line-green,#06C755)]"
-              />
-              <span className="flex-1 min-w-0 break-words">{opt}</span>
-            </label>
-          ))}
-        </div>
-      </div>
+      <LiffRadioGroup
+        label={labelText}
+        required={required}
+        options={item.options}
+        name={`q${index}`}
+        value={selected}
+        onChange={(next) => onChange(next)}
+      />
     );
   }
 
   if (item.input_type === "checkbox" && Array.isArray(item.options) && item.options.length > 0) {
     const selected = Array.isArray(value) ? value : [];
-    const toggle = (opt: string) => {
-      if (selected.includes(opt)) onChange(selected.filter((s) => s !== opt));
-      else onChange([...selected, opt]);
-    };
     return (
-      <div className={QUESTION_CARD_CLS} role="group" aria-labelledby={labelId}>
-        <QuestionLabel id={labelId} text={labelText} required={required} />
-        <div className="flex flex-col gap-2">
-          {item.options.map((opt, i) => (
-            <label
-              key={i}
-              className="flex items-start gap-2 text-[15px] leading-[1.5] cursor-pointer py-1 min-h-[28px]"
-            >
-              <input
-                type="checkbox"
-                checked={selected.includes(opt)}
-                onChange={() => toggle(opt)}
-                className="mt-[3px] accent-[color:var(--liff-line-green,#06C755)]"
-              />
-              <span className="flex-1 min-w-0 break-words">{opt}</span>
-            </label>
-          ))}
-        </div>
-      </div>
+      <LiffCheckboxGroup
+        label={labelText}
+        required={required}
+        options={item.options}
+        value={selected}
+        onChange={(next) => onChange(next)}
+      />
     );
   }
 
   // 既定: text
   return (
-    <label className={QUESTION_CARD_CLS}>
-      <QuestionLabel text={labelText} required={required} />
-      <input
-        type="text"
-        className={INPUT_CLS}
-        value={typeof value === "string" ? value : ""}
-        onChange={(e) => onChange(e.target.value)}
-      />
-    </label>
+    <LiffInput
+      label={labelText}
+      required={required}
+      value={typeof value === "string" ? value : ""}
+      onChange={(e) => onChange(e.target.value)}
+    />
   );
 }

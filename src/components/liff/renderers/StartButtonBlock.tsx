@@ -4,11 +4,10 @@ import { useState } from "react";
 import type { StartButtonSettings } from "@/types";
 import { recordLiffEvent } from "@/lib/liff-events";
 import { useLiffPlayerContext } from "@/components/liff/LiffPlayerContext";
+import { LiffButton } from "@/components/liff/primitives";
 
-// LINE Design System の Box Button (Primary) に準拠。
-// - 背景: LINE Primary Green (#06C755)
-// - 文字: #FFFFFF (緑背景の上で十分なコントラストを持つ既存仕様)
-// - 高さ: 48px、横幅: 100%、角丸: 10px
+// 謎解き開始ボタン。LiffButton (variant=primary) を使う。
+// Primary CTA としての見た目 (LINE Primary Green / 48px / 角丸 10px) は LiffButton に集約済み。
 export function StartButtonBlock({
   settings,
   onStart,
@@ -45,13 +44,13 @@ export function StartButtonBlock({
   };
 
   return (
-    <button
+    <LiffButton
+      variant="primary"
       onClick={handleClick}
-      disabled={loading}
-      className="w-full h-12 px-4 rounded-[10px] text-white font-bold text-[15px] tracking-tight transition-opacity disabled:opacity-50 active:opacity-90"
-      style={{ background: "var(--liff-line-green, #06C755)" }}
+      loading={loading}
+      loadingLabel="処理中..."
     >
-      {loading ? "処理中..." : (settings.label || "謎解きを始める")}
-    </button>
+      {settings.label || "謎解きを始める"}
+    </LiffButton>
   );
 }
