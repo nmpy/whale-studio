@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Inter, Noto_Sans_JP } from "next/font/google";
 import { ToastProvider } from "@/components/Toast";
-import AppHeader from "@/components/AppHeader";
+import { AppShell } from "@/components/AppShell";
 import "./globals.css";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
@@ -42,10 +42,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="ja" className={`${inter.variable} ${notoSansJP.variable}`}>
       <body>
         <ToastProvider>
-          <AppHeader />
-          <main>
-            <div className="container">{children}</div>
-          </main>
+          {/* CMS では <AppHeader /> + container を被せ、/liff/* ではどちらも被せない。
+              詳細は AppShell.tsx を参照。 */}
+          <AppShell>{children}</AppShell>
         </ToastProvider>
       </body>
     </html>

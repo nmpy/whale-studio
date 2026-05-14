@@ -34,8 +34,15 @@ function CheckinContent() {
   // ── LIFF 初期化 + ロケーション情報取得 ──
   useEffect(() => {
     if (!locationId || !workId) {
-      const missing = [!locationId && "location_id", !workId && "work_id"].filter(Boolean).join(", ");
-      setState({ step: "error", code: "MISSING_PARAMS", message: `URLパラメータが不足しています: ${missing}` });
+      // ここは「チェックイン専用ページ」(ロケーション QR コードから開く想定)。
+      // location_id / work_id が無い場合は、利用者が誤ってこの URL を開いたと判断し、
+      // 「LIFFページを表示する URL ではない」旨の案内に切り替える。
+      // 本ルート (/liff) を「LIFFページ全体エラー」と誤解させないため。
+      setState({
+        step: "error",
+        code: "MISSING_PARAMS",
+        message: "このページはチェックイン用のリンクです。LINEで送られてきたボタンや、現地のQRコードから開いてください。LIFFページを開きたい場合は、編集画面に表示される LIFFページ URL を使ってください。",
+      });
       return;
     }
     const liffId = process.env.NEXT_PUBLIC_LIFF_ID;
@@ -172,9 +179,17 @@ function CheckinContent() {
 
       {state.step === "error" && (
         <div style={cardStyle}>
-          <div style={{ fontSize: 40, marginBottom: 12 }}>{state.code === "NOT_IN_LINE" ? "📱" : state.code === "GPS_FAILED" ? "📍" : "⚠️"}</div>
+          <div style={{ fontSize: 40, marginBottom: 12 }}>
+            {state.code === "NOT_IN_LINE" ? "📱"
+              : state.code === "GPS_FAILED" ? "📍"
+              : state.code === "MISSING_PARAMS" ? "🔗"
+              : "⚠️"}
+          </div>
           <p style={{ fontWeight: 600, fontSize: 16, color: "#111827", marginBottom: 8 }}>
-            {state.code === "NOT_IN_LINE" ? "LINE で開いてください" : state.code === "GPS_FAILED" ? "位置情報を取得できません" : "エラーが発生しました"}
+            {state.code === "NOT_IN_LINE" ? "LINE で開いてください"
+              : state.code === "GPS_FAILED" ? "位置情報を取得できません"
+              : state.code === "MISSING_PARAMS" ? "このページはチェックイン用です"
+              : "エラーが発生しました"}
           </p>
           <p style={{ fontSize: 13, color: "#6b7280", lineHeight: 1.7 }}>{state.message}</p>
           <button onClick={handleClose} style={btnGhost}>閉じる</button>
