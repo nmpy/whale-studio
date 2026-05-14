@@ -17,6 +17,8 @@ import { LocationHistoryRenderer } from "./LocationHistoryRenderer";
 import type { LiffBlock, UserState, LiffRenderContext } from "./LiffRenderer";
 import { normalizeLiffPageType } from "@/types";
 import type { LiffPageType, LiffPageConfigSettings, LiffPublishStatus } from "@/types";
+import { recordLiffEvent } from "@/lib/liff-events";
+import { LiffPlayerProvider } from "./LiffPlayerContext";
 
 interface LiffPageData {
   work_id: string;
@@ -65,6 +67,21 @@ export function LiffPlayerViewer({ workId, apiBaseUrl }: Props) {
       }
     })();
   }, [apiBaseUrl, liff.ready, isPreview]);
+
+  // ── page_view 計測 ──
+  // pageData が読み込めて、かつ preview ではないとき (= 本番閲覧) のみ送信。
+  // dedupeKey で同一 (workId, pageId, user) の 30 秒以内重複を防ぐ。
+  useEffect(() => {
+    if (!pageData || isPreview) return;
+    recordLiffEvent({
+      workId:     pageData.work_id,
+      pageId:     pageData.page_id,
+      lineUserId: liff.lineUserId,
+      eventType:  "page_view",
+      metadata:   { page_type: pageData.page_type, title: pageData.title },
+      dedupeKey:  `page_view:${pageData.work_id}:${pageData.page_id ?? "default"}:${liff.lineUserId ?? "anon"}`,
+    });
+  }, [pageData, isPreview, liff.lineUserId]);
 
   useEffect(() => {
     if (!liff.lineUserId || !workId) return;
@@ -122,6 +139,14 @@ export function LiffPlayerViewer({ workId, apiBaseUrl }: Props) {
   // pageData.work_title へのフォールバックはやめる (LIFF ページのタイトルが空ならヘッダーも空にする方が UX として誤解が少ない)。
   const displayTitle = pageData.title;
 
+  // ブロック内の計測用 (button_click / hint_open / faq_open) に workId/pageId/lineUserId を渡す
+  const playerCtxValue = {
+    workId:     pageData.work_id,
+    pageId:     pageData.page_id,
+    lineUserId: liff.lineUserId,
+    preview:    isPreview,
+  };
+
   const InClientBanner = !liff.isInClient && !isPreview ? (
     <div className="bg-amber-50 border-b border-amber-200 px-4 py-2">
       <p className="text-xs text-amber-700 text-center">
@@ -132,7 +157,7 @@ export function LiffPlayerViewer({ workId, apiBaseUrl }: Props) {
 
   if (mode === "hint") {
     return (
-      <>
+      <LiffPlayerProvider value={playerCtxValue}>
         {InClientBanner}
         <HintSiteRenderer
           config={{
@@ -149,13 +174,13 @@ export function LiffPlayerViewer({ workId, apiBaseUrl }: Props) {
           }}
           preview={isPreview}
         />
-      </>
+      </LiffPlayerProvider>
     );
   }
 
   if (mode === "faq") {
     return (
-      <>
+      <LiffPlayerProvider value={playerCtxValue}>
         {InClientBanner}
         <FaqRenderer
           config={{
@@ -165,17 +190,18 @@ export function LiffPlayerViewer({ workId, apiBaseUrl }: Props) {
           }}
           preview={isPreview}
         />
-      </>
+      </LiffPlayerProvider>
     );
   }
 
   if (mode === "survey") {
     return (
-      <>
+      <LiffPlayerProvider value={playerCtxValue}>
         {InClientBanner}
         <SurveyRenderer
           config={{
             work_id:       pageData.work_id,
+            page_id:       pageData.page_id,
             title:         displayTitle,
             description:   pageData.description,
             settings_json: pageData.settings_json ?? {},
@@ -183,13 +209,13 @@ export function LiffPlayerViewer({ workId, apiBaseUrl }: Props) {
           preview={isPreview}
           lineUserId={liff.lineUserId}
         />
-      </>
+      </LiffPlayerProvider>
     );
   }
 
   if (mode === "location") {
     return (
-      <>
+      <LiffPlayerProvider value={playerCtxValue}>
         {InClientBanner}
         <LocationHistoryRenderer
           config={{
@@ -201,7 +227,7 @@ export function LiffPlayerViewer({ workId, apiBaseUrl }: Props) {
           lineUserId={liff.lineUserId}
           preview={isPreview}
         />
-      </>
+      </LiffPlayerProvider>
     );
   }
 
@@ -234,15 +260,17 @@ export function LiffPlayerViewer({ workId, apiBaseUrl }: Props) {
   };
 
   return (
-    <div>
-      {InClientBanner}
-      <LiffRenderer
-        blocks={pageData.blocks}
-        title={displayTitle}
-        ctx={ctx}
-        settings={pageData.settings_json ?? {}}
-        preview={isPreview}
-      />
-    </div>
+    <LiffPlayerProvider value={playerCtxValue}>
+      <div>
+        {InClientBanner}
+        <LiffRenderer
+          blocks={pageData.blocks}
+          title={displayTitle}
+          ctx={ctx}
+          settings={pageData.settings_json ?? {}}
+          preview={isPreview}
+        />
+      </div>
+    </LiffPlayerProvider>
   );
 }

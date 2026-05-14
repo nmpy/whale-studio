@@ -16,6 +16,7 @@ import { LiffBlockItem } from "@/components/liff/LiffBlockItem";
 import { LiffAddBlockModal } from "@/components/liff/LiffAddBlockModal";
 import { LiffPreview } from "@/components/liff/LiffPreview";
 import { LiffDevicePreviewLinks } from "@/components/liff/LiffDevicePreviewLinks";
+import { LiffAnalyticsTab } from "@/components/liff/LiffAnalyticsTab";
 
 function SaveStatusIndicator({ status }: { status: LiffSaveStatus }) {
   if (status === "idle") return null;
@@ -49,6 +50,7 @@ export default function LiffPageEditor() {
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [dragIdx, setDragIdx] = useState<number | null>(null);
+  const [activeTab, setActiveTab] = useState<"editor" | "analytics">("editor");
 
   const handleDragStart = useCallback((idx: number) => setDragIdx(idx), []);
   const handleDragOver = useCallback((e: React.DragEvent, idx: number) => {
@@ -143,6 +145,35 @@ export default function LiffPageEditor() {
         publishStatus={config.publish_status}
       />
 
+      {/* タブ切り替え: 編集 / 計測 */}
+      <div className="flex gap-1 border-b border-gray-200 mb-4">
+        <button
+          type="button"
+          onClick={() => setActiveTab("editor")}
+          className={`px-4 py-2 text-sm font-semibold transition-colors border-b-2 ${
+            activeTab === "editor"
+              ? "border-violet-500 text-violet-700"
+              : "border-transparent text-gray-500 hover:text-gray-700"
+          }`}
+        >
+          編集
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab("analytics")}
+          className={`px-4 py-2 text-sm font-semibold transition-colors border-b-2 ${
+            activeTab === "analytics"
+              ? "border-violet-500 text-violet-700"
+              : "border-transparent text-gray-500 hover:text-gray-700"
+          }`}
+        >
+          計測
+        </button>
+      </div>
+
+      {activeTab === "analytics" ? (
+        <LiffAnalyticsTab workId={workId} pageId={liffPageId} />
+      ) : (
       <div className="flex gap-6 items-start">
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between mb-3">
@@ -198,6 +229,7 @@ export default function LiffPageEditor() {
           <LiffPreview blocks={config.blocks} title={config.title} config={config} />
         </div>
       </div>
+      )}
 
       {showAddModal && (
         <LiffAddBlockModal

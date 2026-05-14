@@ -22,6 +22,8 @@
 
 import { useState } from "react";
 import type { LiffPageConfigSettings } from "@/types";
+import { recordLiffEvent } from "@/lib/liff-events";
+import { useLiffPlayerContext } from "@/components/liff/LiffPlayerContext";
 
 interface Props {
   settings: LiffPageConfigSettings;
@@ -53,6 +55,7 @@ export function LiffShareButton({ settings, pageTitle, preview }: Props) {
   const [status, setStatus] = useState<ShareStatus>("idle");
   const [feedback, setFeedback] = useState<string | null>(null);
   const [showCopyFallback, setShowCopyFallback] = useState(false);
+  const playerCtx = useLiffPlayerContext();
 
   const label = settings.share_button_label?.trim() || DEFAULT_LABEL;
 
@@ -92,6 +95,16 @@ export function LiffShareButton({ settings, pageTitle, preview }: Props) {
   const handleClick = async () => {
     setFeedback(null);
     setShowCopyFallback(false);
+
+    if (playerCtx && !playerCtx.preview) {
+      recordLiffEvent({
+        workId:     playerCtx.workId,
+        pageId:     playerCtx.pageId,
+        lineUserId: playerCtx.lineUserId,
+        eventType:  "button_click",
+        metadata:   { source: "share_button", label },
+      });
+    }
 
     // プレビューモード: API を呼ばずに案内のみ
     if (preview) {

@@ -12,7 +12,14 @@ import { Breadcrumb } from "@/components/Breadcrumb";
 import { useToast } from "@/components/Toast";
 import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
 import { ViewerBanner } from "@/components/PermissionGuard";
-import { liffConfigApi, workApi, getDevToken, type LiffPageSummary } from "@/lib/api-client";
+import {
+  liffConfigApi,
+  workApi,
+  getDevToken,
+  type LiffPageSummary,
+  type LiffAnalyticsSummary,
+  type LiffPageAnalyticsSummaryRow,
+} from "@/lib/api-client";
 
 const PUBLISH_LABELS: Record<string, string> = {
   draft:     "下書き",
@@ -28,6 +35,23 @@ const PAGE_TYPE_LABELS: Record<string, string> = {
   survey:    "アンケート",
   location:  "履歴",
 };
+
+const METRIC_LABELS: Record<string, string> = {
+  checkin_success: "チェックイン成功",
+  survey_submit:   "回答送信",
+  faq_open:        "Q&A開封",
+  hint_open:       "ヒント開封",
+};
+
+function formatPercent(ratio: number): string {
+  if (!Number.isFinite(ratio) || ratio <= 0) return "0%";
+  return `${(ratio * 100).toFixed(1)}%`;
+}
+
+function formatCount(n: number | null | undefined): string {
+  if (n == null) return "-";
+  return n.toLocaleString();
+}
 
 function buildPublicUrl(args: {
   workId: string; workPublicId?: string; pageId: string; pagePublicId?: string;
@@ -70,6 +94,8 @@ export default function LiffPagesIndex() {
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
+  /** page_id -> 集計値。計測 API 失敗時は null のまま (UI 上は "-" 表示) */
+  const [analytics, setAnalytics] = useState<Record<string, LiffPageAnalyticsSummaryRow> | null>(null);
 
   const reload = useCallback(async () => {
     try {
@@ -80,6 +106,18 @@ export default function LiffPagesIndex() {
       ]);
       setPages(list.pages);
       setWorkTitle(work.title);
+      // 計測サマリは並行取得し、失敗してもページ一覧自体は表示する
+      liffConfigApi
+        .getAnalyticsSummary(token, workId)
+        .then((s: LiffAnalyticsSummary) => {
+          const map: Record<string, LiffPageAnalyticsSummaryRow> = {};
+          for (const row of s.pages) map[row.page_id] = row;
+          setAnalytics(map);
+        })
+        .catch(() => {
+          // 計測の取得失敗は致命的ではない。指標列は "-" 表示にする。
+          setAnalytics({});
+        });
     } catch {
       showToast("LIFFページ一覧の読み込みに失敗しました", "error");
     } finally {
@@ -197,6 +235,26 @@ export default function LiffPagesIndex() {
                       <span>作成: {formatDateTime(p.created_at)}</span>
                       <span>更新: {formatDateTime(p.updated_at)}</span>
                     </div>
+                    {/* KPI 行 — 計測 API 取得後に表示。失敗時は "-" にフォールバック */}
+                    {analytics && (
+                      <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-gray-600">
+                        <span title="ページ表示回数">
+                          PV: <strong className="text-gray-900">{formatCount(analytics[p.id]?.page_view ?? 0)}</strong>
+                        </span>
+                        <span title="ユニークユーザー数">
+                          UU: <strong className="text-gray-900">{formatCount(analytics[p.id]?.unique_users ?? 0)}</strong>
+                        </span>
+                        <span title="ボタンクリック数 / PV">
+                          CTR: <strong className="text-gray-900">{formatPercent(analytics[p.id]?.ctr ?? 0)}</strong>
+                        </span>
+                        {analytics[p.id]?.page_type_metric_key && (
+                          <span title={METRIC_LABELS[analytics[p.id].page_type_metric_key!] ?? analytics[p.id].page_type_metric_key!}>
+                            {METRIC_LABELS[analytics[p.id].page_type_metric_key!] ?? analytics[p.id].page_type_metric_key}:{" "}
+                            <strong className="text-gray-900">{formatCount(analytics[p.id]?.page_type_metric_count ?? 0)}</strong>
+                          </span>
+                        )}
+                      </div>
+                    )}
                     {url && (
                       <div className="mt-1.5 flex items-center gap-2">
                         <a

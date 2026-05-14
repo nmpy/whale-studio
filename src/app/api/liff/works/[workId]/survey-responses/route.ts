@@ -8,7 +8,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { z, ZodError } from "zod";
 import { prisma } from "@/lib/prisma";
-import { findWorkByIdOrPublicId } from "@/lib/public-id-resolver";
+import {
+  findWorkByIdOrPublicId,
+  findLiffPageConfigByIdOrPublicId,
+} from "@/lib/public-id-resolver";
 
 export const dynamic = "force-dynamic";
 
@@ -17,6 +20,10 @@ const answerValueSchema = z.union([z.string().max(5000), z.array(z.string().max(
 
 const surveyResponseBodySchema = z.object({
   line_user_id: z.string().max(100).optional().nullable(),
+  /** どの LIFF ページから送信されたか。UUID か publicId のどちらでも受け付ける。
+   *  指定なしでも回答自体は成功するが、その場合 LiffEventLog の liffPageConfigId は null になり、
+   *  LIFF ページ詳細の "計測" タブには集計されない。 */
+  page_id:      z.string().max(200).optional().nullable(),
   /** 質問 id をキー、回答値を value とするマップ */
   answers: z.record(answerValueSchema),
 });
@@ -57,6 +64,29 @@ export async function POST(
       },
       select: { id: true, submittedAt: true },
     });
+
+    // page_id を計測用に解決する。
+    // - UUID か publicId のどちらでも受け付ける
+    // - work に属することを resolver で必ず検証 (workScope)
+    // - 未指定 / 不正値の場合は liffPageConfigId = null として記録 (回答自体は成功扱い)
+    let liffPageConfigId: string | null = null;
+    if (data.page_id) {
+      const page = await findLiffPageConfigByIdOrPublicId(data.page_id, { workScope: work.id });
+      if (page) liffPageConfigId = page.id;
+    }
+
+    // 計測: survey_submit (失敗してもアンケート登録は成功扱いとし、UX を阻害しない)
+    prisma.liffEventLog
+      .create({
+        data: {
+          workId:       work.id,
+          liffPageConfigId,
+          lineUserId:   data.line_user_id ?? null,
+          eventType:    "survey_submit",
+          metadataJson: { response_id: saved.id, answer_count: Object.keys(data.answers).length } as Prisma.InputJsonValue,
+        },
+      })
+      .catch((e) => console.error("[LIFF Survey] event log failed:", e));
 
     return NextResponse.json({
       success: true,

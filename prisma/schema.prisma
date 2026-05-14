@@ -98,6 +98,7 @@ model Work {
   lineDestinations    LineDestination[]
   liffPageConfigs     LiffPageConfig[]
   liffSurveyResponses LiffSurveyResponse[]
+  liffEventLogs       LiffEventLog[]
   locations           Location[]
   oa                  Oa                   @relation(fields: [oaId], references: [id], onDelete: Cascade)
   systemCharacter     Character?           @relation("WorkSystemCharacter", fields: [systemCharacterId], references: [id])
@@ -1082,6 +1083,42 @@ model LiffPageConfig {
   @@index([pageType])
   @@index([publishStatus])
   @@map("liff_page_configs")
+}
+
+/// LIFF プレイヤー画面で発生したイベント (page_view, block_view, button_click,
+/// hint_open, faq_open, survey_submit, checkin_success, checkin_failed) を 1 件 1 行で保存する。
+///
+/// 集計方針:
+///   - work / page / user 単位で count するため index を張る
+///   - 詳細メタデータ (button label / location id / hint index 等) は metadataJson に格納
+///   - 不正な ID は API 層で弾く想定なので、本テーブルへの FK 違反は基本起きない構造
+model LiffEventLog {
+  id                String   @id @default(uuid())
+  workId            String   @map("work_id")
+  /// 対象 LIFF ページ ID。page_view / block_view / button_click / hint_open / faq_open / survey_submit で必須に近い。
+  /// checkin_success / checkin_failed は location 起点のため null になることがある。
+  liffPageConfigId  String?  @map("liff_page_config_id")
+  /// 対象ブロック ID。block 起点のイベント (button_click, hint_open, faq_open) で入る。
+  liffPageBlockId   String?  @map("liff_page_block_id")
+  /// LINE ユーザー ID。LIFF SDK で取得できた場合のみ入る。
+  lineUserId        String?  @map("line_user_id")
+  /// イベント種別。"page_view" | "block_view" | "button_click" | "hint_open" | "faq_open"
+  ///                | "survey_submit" | "checkin_success" | "checkin_failed"
+  eventType         String   @map("event_type")
+  /// 追加メタデータ (button label, click url, locationId, questionId, hintIndex, distance 等)
+  metadataJson      Json?    @map("metadata_json") @db.JsonB
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  work              Work     @relation(fields: [workId], references: [id], onDelete: Cascade)
+
+  @@index([workId])
+  @@index([liffPageConfigId])
+  @@index([liffPageBlockId])
+  @@index([lineUserId])
+  @@index([eventType])
+  @@index([createdAt])
+  @@index([workId, eventType, createdAt])
+  @@map("liff_event_logs")
 }
 
 /// LIFF Survey モードの回答を 1 回 1 行で保存する。

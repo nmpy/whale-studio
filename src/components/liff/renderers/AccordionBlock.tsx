@@ -13,6 +13,8 @@ import type {
   WarningSettings,
 } from "@/types";
 import { trackHintSiteEvent } from "@/lib/liff-analytics";
+import { recordLiffEvent } from "@/lib/liff-events";
+import { useLiffPlayerContext } from "@/components/liff/LiffPlayerContext";
 import { HeadingBlock } from "./HeadingBlock";
 import { TextBlock } from "./TextBlock";
 import { WarningBlock } from "./WarningBlock";
@@ -42,6 +44,7 @@ interface Props {
 export function AccordionBlock({ title, settings, depth = 1, blockId }: Props) {
   const reactId = useId();
   const id = blockId || reactId;
+  const playerCtx = useLiffPlayerContext();
   const headingText = settings.title?.trim() || title?.trim() || "";
 
   const [open, setOpen] = useState<boolean>(!!settings.default_open);
@@ -58,6 +61,19 @@ export function AccordionBlock({ title, settings, depth = 1, blockId }: Props) {
       depth,
       label: headingText,
     });
+    // 開いた瞬間だけ hint_open を記録 (閉じる動作は計測しない)
+    // blockId が DB の LiffPageBlock.id 由来でない場合は捨てる (useId のローカル ID は記録しても無意味)
+    if (next && playerCtx && !playerCtx.preview && blockId) {
+      recordLiffEvent({
+        workId:     playerCtx.workId,
+        pageId:     playerCtx.pageId,
+        blockId,
+        lineUserId: playerCtx.lineUserId,
+        eventType:  "hint_open",
+        metadata:   { label: headingText, depth },
+        dedupeKey:  `hint_open:${playerCtx.workId}:${playerCtx.pageId ?? "default"}:${blockId}:${playerCtx.lineUserId ?? "anon"}`,
+      });
+    }
   };
 
   const panelId = `acc-panel-${id}`;
@@ -128,6 +144,7 @@ function NestedRenderer({ child, depth }: { child: NestedLiffBlock; depth: numbe
     case "image":
       return <ImageBlock settings={s as ImageBlockSettings} />;
     case "button_link":
+      // ネストされた子ブロックは DB 上の独立行ではないため、blockId は付けず親ブロック単位の集計に寄せる
       return <ButtonLinkBlock settings={s as ButtonLinkSettings} />;
     case "divider":
       return <DividerBlock settings={s as DividerSettings} />;

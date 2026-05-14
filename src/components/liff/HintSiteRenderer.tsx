@@ -186,7 +186,7 @@ function BlockSwitch({ block }: { block: HintSiteBlock }) {
     case "image":
       return <ImageBlock settings={s as ImageBlockSettings} />;
     case "button_link":
-      return <ButtonLinkBlock settings={s as ButtonLinkSettings} />;
+      return <ButtonLinkBlock settings={s as ButtonLinkSettings} blockId={block.id} />;
     case "divider":
       return <DividerBlock settings={s as DividerSettings} />;
     case "accordion":

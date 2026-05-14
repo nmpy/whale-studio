@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import type { StartButtonSettings } from "@/types";
+import { recordLiffEvent } from "@/lib/liff-events";
+import { useLiffPlayerContext } from "@/components/liff/LiffPlayerContext";
 
 // LINE Design System の Box Button (Primary) に準拠。
 // - 背景: LINE Primary Green (#06C755)
@@ -16,8 +18,18 @@ export function StartButtonBlock({
 }) {
   const [loading, setLoading] = useState(false);
   const [confirmed, setConfirmed] = useState(!settings.confirm_message);
+  const playerCtx = useLiffPlayerContext();
 
   const handleClick = async () => {
+    if (playerCtx && !playerCtx.preview) {
+      recordLiffEvent({
+        workId:     playerCtx.workId,
+        pageId:     playerCtx.pageId,
+        lineUserId: playerCtx.lineUserId,
+        eventType:  "button_click",
+        metadata:   { source: "start_button", label: settings.label ?? "謎解きを始める" },
+      });
+    }
     if (!confirmed && settings.confirm_message) {
       if (!window.confirm(settings.confirm_message)) return;
       setConfirmed(true);
