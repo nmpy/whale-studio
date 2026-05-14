@@ -153,6 +153,20 @@ export const GET = withAuth(async (req, ctx, user) => {
     const buttonClickCount = totalsMap["button_click"] ?? 0;
     const ctr = pageViewCount > 0 ? buttonClickCount / pageViewCount : 0;
 
+    // checkin 系は pageId-less で保存される (location 起点) ため、default ページのときだけ
+    // work 単位で別途集計し、totals に反映する。
+    // default 以外のページでは 0 表示にし、UI 側でも該当カードを出さない。
+    let checkinSuccessCount = 0;
+    let checkinFailedCount  = 0;
+    if (page.pageType === "default") {
+      const [success, failed] = await Promise.all([
+        prisma.liffEventLog.count({ where: { workId: work.id, eventType: "checkin_success" } }),
+        prisma.liffEventLog.count({ where: { workId: work.id, eventType: "checkin_failed" } }),
+      ]);
+      checkinSuccessCount = success;
+      checkinFailedCount  = failed;
+    }
+
     return ok({
       work_id:        work.id,
       work_public_id: work.publicId,
@@ -166,8 +180,8 @@ export const GET = withAuth(async (req, ctx, user) => {
         hint_open:        totalsMap["hint_open"] ?? 0,
         faq_open:         totalsMap["faq_open"] ?? 0,
         survey_submit:    totalsMap["survey_submit"] ?? 0,
-        checkin_success:  totalsMap["checkin_success"] ?? 0,
-        checkin_failed:   totalsMap["checkin_failed"] ?? 0,
+        checkin_success:  checkinSuccessCount,
+        checkin_failed:   checkinFailedCount,
         ctr,
       },
       block_breakdown: blockBreakdown.map((b) => ({

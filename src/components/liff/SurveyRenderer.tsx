@@ -11,6 +11,9 @@ import { LiffPlayerHeader } from "./LiffPlayerHeader";
 
 export interface SurveyRendererConfig {
   work_id:       string;
+  /** どの LIFF ページ (LiffPageConfig) から送信されたかを記録するため API に同梱する。
+   *  pageId 不明な旧経路では undefined のまま (API 側は許容)。 */
+  page_id?:      string;
   title:         string | null;
   description:   string | null;
   settings_json: LiffPageConfigSettings;
@@ -76,7 +79,14 @@ export function SurveyRenderer({ config, preview, lineUserId }: Props) {
       const res = await fetch(`/api/liff/works/${config.work_id}/survey-responses`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ line_user_id: lineUserId ?? null, answers }),
+        body: JSON.stringify({
+          line_user_id: lineUserId ?? null,
+          // page_id を渡すことで、サーバー側が LiffSurveyResponse には保存しないが
+          // LiffEventLog (survey_submit) には liffPageConfigId として保存できるようになる。
+          // 古い経路 (page_id 不明) でも未指定で OK。
+          page_id:      config.page_id ?? null,
+          answers,
+        }),
       });
       const json = await res.json();
       if (!json.success) {

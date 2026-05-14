@@ -201,6 +201,7 @@ export function LiffPlayerViewer({ workId, apiBaseUrl }: Props) {
         <SurveyRenderer
           config={{
             work_id:       pageData.work_id,
+            page_id:       pageData.page_id,
             title:         displayTitle,
             description:   pageData.description,
             settings_json: pageData.settings_json ?? {},

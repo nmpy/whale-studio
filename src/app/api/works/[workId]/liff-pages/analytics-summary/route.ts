@@ -62,6 +62,7 @@ export const GET = withAuth(async (req, ctx, user) => {
     }
 
     const pageIds = pages.map((p) => p.id);
+    const hasDefaultPage = pages.some((p) => p.pageType === "default");
 
     // ── イベント数集計 (page x event_type) ──
     const eventCounts = await prisma.liffEventLog.groupBy({
@@ -69,6 +70,16 @@ export const GET = withAuth(async (req, ctx, user) => {
       where: { workId: work.id, liffPageConfigId: { in: pageIds } },
       _count: { _all: true },
     });
+
+    // ── checkin 系イベントは pageId-less で保存される (location 起点) ため、
+    //   default ページの metric として表示するには work 単位で別途集計する。
+    //   work に default ページが 1 つも無ければクエリ自体を省く。
+    let workCheckinSuccess = 0;
+    if (hasDefaultPage) {
+      workCheckinSuccess = await prisma.liffEventLog.count({
+        where: { workId: work.id, eventType: "checkin_success" },
+      });
+    }
 
     // ── ユニークユーザー集計 (page_id ごと、line_user_id != null) ──
     // groupBy では DISTINCT 集計ができないので raw クエリ。
@@ -112,7 +123,10 @@ export const GET = withAuth(async (req, ctx, user) => {
       switch (p.pageType) {
         case "default":
           metricKey   = "checkin_success";
-          metricCount = bucket.events["checkin_success"] ?? 0;
+          // checkin イベントは pageId-less なので、work 単位の集計値を全 default ページに同じ値で出す。
+          // 1 つの work に複数 default ページがある場合、どのページから来た checkin かは区別できないため
+          // すべての default ページに work-level の合計を表示する。
+          metricCount = workCheckinSuccess;
           break;
         case "survey":
           metricKey   = "survey_submit";
