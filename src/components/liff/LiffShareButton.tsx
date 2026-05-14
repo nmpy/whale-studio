@@ -24,6 +24,7 @@ import { useState } from "react";
 import type { LiffPageConfigSettings } from "@/types";
 import { recordLiffEvent } from "@/lib/liff-events";
 import { useLiffPlayerContext } from "@/components/liff/LiffPlayerContext";
+import { LiffButton } from "@/components/liff/primitives";
 
 interface Props {
   settings: LiffPageConfigSettings;
@@ -165,16 +166,16 @@ export function LiffShareButton({ settings, pageTitle, preview }: Props) {
 
   return (
     <div className="flex flex-col gap-2">
-      <button
+      <LiffButton
         type="button"
+        variant="primary"
         onClick={handleClick}
-        disabled={isSending}
+        loading={isSending}
+        loadingLabel="シェア中..."
         aria-label={label}
-        className="w-full h-12 px-4 rounded-[10px] text-white font-bold text-[15px] tracking-tight transition-opacity disabled:opacity-50 active:opacity-90"
-        style={{ background: "var(--liff-line-green, #06C755)" }}
       >
-        {isSending ? "シェア中..." : label}
-      </button>
+        {label}
+      </LiffButton>
 
       {feedback && (
         <p
@@ -191,13 +192,14 @@ export function LiffShareButton({ settings, pageTitle, preview }: Props) {
       )}
 
       {showCopyFallback && (
-        <button
+        <LiffButton
           type="button"
+          variant="outline"
+          size="sm"
           onClick={copyUrlToClipboard}
-          className="w-full h-11 px-4 rounded-[10px] text-[14px] font-bold tracking-tight border border-[color:var(--liff-line-green,#06C755)] text-[color:var(--liff-line-green,#06C755)] bg-[color:var(--liff-surface,#FFFFFF)] active:opacity-80"
         >
           URL をコピーする
-        </button>
+        </LiffButton>
       )}
     </div>
   );
