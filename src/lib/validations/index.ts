@@ -863,16 +863,22 @@ const videoSettingsSchema = z.object({
 }).passthrough();
 
 // ── ヒントサイト用ブロック設定 ─────────────────
+// 文字ウェイトの 3 段階。renderer 側で normal=400 / medium=600 / bold=700 にマッピング。
+const fontWeightSchema = z.enum(["normal", "medium", "bold"]).optional();
+
 const headingSettingsSchema = z.object({
-  text:  z.string().max(300).optional(),
-  level: z.union([z.literal(1), z.literal(2), z.literal(3)]).optional(),
-  align: z.enum(["left", "center"]).optional(),
+  text:        z.string().max(300).optional(),
+  // 旧 1|2|3 から 1〜5 に拡張。既存データ (level 1-3) は引き続き有効。
+  level:       z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5)]).optional(),
+  align:       z.enum(["left", "center"]).optional(),
+  font_weight: fontWeightSchema,
 }).passthrough();
 
 const textSettingsSchema = z.object({
-  body:     z.string().max(5000).optional(),
-  align:    z.enum(["left", "center"]).optional(),
-  emphasis: z.enum(["normal", "strong"]).optional(),
+  body:        z.string().max(5000).optional(),
+  align:       z.enum(["left", "center"]).optional(),
+  emphasis:    z.enum(["normal", "strong"]).optional(),
+  font_weight: fontWeightSchema,
 }).passthrough();
 
 const warningSettingsSchema = z.object({
@@ -1025,6 +1031,8 @@ const surveyItemSchema = z.object({
 
 // ── LIFF ページ設定スキーマ（ヒントサイト用 + FAQ / Survey フィールドを含む） ──
 const liffPageConfigSettingsSchema = z.object({
+  // ページ全体のフォントファミリ。未指定 / 不正値は renderer 側で "gothic" 扱い。
+  font_family:          z.enum(["gothic", "mincho"]).optional(),
   header_fixed:         z.boolean().optional(),
   header_logo_url:      z.string().url().optional().or(z.literal("")),
   header_logo_alt:      z.string().max(200).optional(),

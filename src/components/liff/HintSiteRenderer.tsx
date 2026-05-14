@@ -52,6 +52,7 @@ import {
 } from "./renderers";
 import { trackHintSiteEvent } from "@/lib/liff-analytics";
 import { LiffShareButton } from "./LiffShareButton";
+import { liffRootClass } from "./liff-style-helpers";
 
 interface Props {
   config: HintSiteConfig;
@@ -101,7 +102,7 @@ export function HintSiteRenderer({ config, preview }: Props) {
 
   return (
     <div
-      className="liff-font min-h-screen bg-[color:var(--liff-background)] text-[color:var(--liff-primary-text)]"
+      className={`liff-font ${liffRootClass(settings)} min-h-screen bg-[color:var(--liff-background)] text-[color:var(--liff-primary-text)]`}
       style={themeStyle}
     >
       <Header

@@ -1179,16 +1179,31 @@ export interface VideoBlockSettings {
 }
 
 // ── ヒントサイト用ブロック設定 ──────────────────
+/** 文字ウェイトの 3 段階。デフォルトは block の種類によって異なる:
+ *  - heading: bold (見出しなので強め)
+ *  - text:    normal (本文)
+ *  値が無いブロックは renderer 側で default を当てる。 */
+export type LiffFontWeight = "normal" | "medium" | "bold";
+
+/** 見出しレベル 1〜5。default は 2。
+ *  数値で扱うか文字列で扱うかは型に表現せず、numeric union で固定する。 */
+export type LiffHeadingLevel = 1 | 2 | 3 | 4 | 5;
+
 export interface HeadingSettings {
-  text?: string;
-  level?: 1 | 2 | 3;
-  align?: "left" | "center";
+  text?:        string;
+  level?:       LiffHeadingLevel;
+  align?:       "left" | "center";
+  /** 文字ウェイト。未指定なら bold (見出しの既定) */
+  font_weight?: LiffFontWeight;
 }
 
 export interface TextSettings {
-  body?: string;
-  align?: "left" | "center";
-  emphasis?: "normal" | "strong";
+  body?:        string;
+  align?:       "left" | "center";
+  /** 既存互換: "strong" は font_weight: "bold" 相当として renderer 側で読む */
+  emphasis?:    "normal" | "strong";
+  /** 文字ウェイト。未指定なら normal */
+  font_weight?: LiffFontWeight;
 }
 
 export interface WarningSettings {
@@ -1269,7 +1284,15 @@ export interface LiffPageBlock {
  * ヒントサイト機能ではヘッダー（ロゴ・CTA）やテーマ設定などをここに格納する。
  * 既存の LiffPageConfig を壊さないように、すべての項目はオプショナル。
  */
+/** ページ全体のフォントファミリ選択肢。
+ *  - "gothic" : LINE Seed JP / system-ui (既定)
+ *  - "mincho" : Noto Serif JP / Hiragino Mincho ProN / serif 系
+ *  値が無い場合は "gothic" として扱う。 */
+export type LiffFontFamily = "gothic" | "mincho";
+
 export interface LiffPageConfigSettings {
+  /** ページ全体の本文フォント。未指定は "gothic"。 */
+  font_family?:  LiffFontFamily;
   /** 固定ヘッダーを使用するか（hint_site のとき有効） */
   header_fixed?: boolean;
   /** ロゴ画像 URL（枠内に contain で表示される） */

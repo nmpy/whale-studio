@@ -341,18 +341,37 @@ export function HeadingForm({ settings, onChange, readOnly }: FieldProps<Heading
           placeholder="HINTを見る前に"
         />
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-3 gap-3">
         <div>
           <label className={labelClass}>レベル</label>
           <select
             className={selectClass}
             value={String(settings.level ?? 2)}
-            onChange={(e) => onChange({ ...settings, level: Number(e.target.value) as 1 | 2 | 3 })}
+            onChange={(e) =>
+              onChange({ ...settings, level: Number(e.target.value) as 1 | 2 | 3 | 4 | 5 })
+            }
             disabled={readOnly}
           >
             <option value="1">H1（最大）</option>
             <option value="2">H2</option>
             <option value="3">H3</option>
+            <option value="4">H4</option>
+            <option value="5">H5（最小）</option>
+          </select>
+        </div>
+        <div>
+          <label className={labelClass}>太さ</label>
+          <select
+            className={selectClass}
+            value={settings.font_weight ?? "bold"}
+            onChange={(e) =>
+              onChange({ ...settings, font_weight: e.target.value as "normal" | "medium" | "bold" })
+            }
+            disabled={readOnly}
+          >
+            <option value="normal">通常</option>
+            <option value="medium">中太</option>
+            <option value="bold">太字</option>
           </select>
         </div>
         <div>
@@ -386,7 +405,7 @@ export function TextForm({ settings, onChange, readOnly }: FieldProps<TextSettin
           placeholder="本文を入力..."
         />
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-3 gap-3">
         <div>
           <label className={labelClass}>配置</label>
           <select
@@ -400,7 +419,22 @@ export function TextForm({ settings, onChange, readOnly }: FieldProps<TextSettin
           </select>
         </div>
         <div>
-          <label className={labelClass}>強調</label>
+          <label className={labelClass}>太さ</label>
+          <select
+            className={selectClass}
+            value={settings.font_weight ?? (settings.emphasis === "strong" ? "bold" : "normal")}
+            onChange={(e) =>
+              onChange({ ...settings, font_weight: e.target.value as "normal" | "medium" | "bold" })
+            }
+            disabled={readOnly}
+          >
+            <option value="normal">通常</option>
+            <option value="medium">中太</option>
+            <option value="bold">太字</option>
+          </select>
+        </div>
+        <div>
+          <label className={labelClass}>強調 (旧)</label>
           <select
             className={selectClass}
             value={settings.emphasis ?? "normal"}

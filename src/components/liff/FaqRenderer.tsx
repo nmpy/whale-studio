@@ -10,6 +10,7 @@ import { LiffShareButton } from "./LiffShareButton";
 import { LiffPlayerHeader } from "./LiffPlayerHeader";
 import { recordLiffEvent } from "@/lib/liff-events";
 import { useLiffPlayerContext } from "./LiffPlayerContext";
+import { liffRootClass } from "./liff-style-helpers";
 
 export interface FaqRendererConfig {
   /** 作品名。ヘッダーに表示する (新仕様)。未指定なら title にフォールバック */
@@ -27,7 +28,7 @@ export function FaqRenderer({ config, preview }: { config: FaqRendererConfig; pr
   const pageTitle = config.title?.trim();
 
   return (
-    <div className="liff-font min-h-screen bg-[color:var(--liff-background)] text-[color:var(--liff-primary-text)]">
+    <div className={`liff-font ${liffRootClass(config.settings_json)} min-h-screen bg-[color:var(--liff-background)] text-[color:var(--liff-primary-text)]`}>
       <LiffPlayerHeader workTitle={config.work_title} pageTitle={config.title} />
       <main className="max-w-md mx-auto px-4 py-5 flex flex-col gap-4 pb-24">
         {/* 本文先頭の見出しとして LIFF ページタイトル (page.title) を表示する。
