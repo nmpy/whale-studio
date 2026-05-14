@@ -21,18 +21,76 @@ type LiffStep =
   | { step: "submitting" }
   | { step: "result"; result: CheckinResult };
 
+// LIFF SDK は https://liff.line.me/{LIFF_ID}/<path> で開かれたとき、
+// <path> 部分を `liff.state` クエリパラメータとして endpoint URL (= 本ルート /liff) に付加する。
+// 例: https://liff.line.me/{ID}/work/X/pages/Y
+//   → https://<endpoint>/liff?liff.state=%2Fwork%2FX%2Fpages%2FY
+// 通常は LIFF SDK の `liff.init()` が liff.state を読んで自動リダイレクトしてくれるが、
+// 本ページは「チェックイン専用ページ」として location_id / work_id が無いと early return しており
+// liff.init() に到達しないため、ここで「dispatcher」として手動でリダイレクトを行う。
+//
+// この処理を最優先で実行することで、/liff (チェックイン) と /liff/work/... (プレイヤー) を
+// 明確に分離する。チェックインへの誤誘導を防ぐため、liff.state があれば必ず先にリダイレクトする。
+function resolveLiffStateRedirect(): string | null {
+  if (typeof window === "undefined") return null;
+  const url = new URL(window.location.href);
+  const liffState = url.searchParams.get("liff.state");
+  if (!liffState) return null;
+
+  // 空文字 / ルート "/" は無限ループするだけなので無視する。
+  if (liffState === "" || liffState === "/") return null;
+
+  // liff.state は通常 "/work/X/pages/Y" のような絶対パス文字列。
+  // 万一相対パス文字列で来ても先頭に / を補う。
+  const subPath = liffState.startsWith("/") ? liffState : `/${liffState}`;
+
+  // すでに /liff で始まる(無限ループ防止)場合はそのまま使う。それ以外は /liff を前置。
+  const targetPath = subPath.startsWith("/liff") ? subPath : `/liff${subPath}`;
+
+  // 自ルート同一(= /liff)への redirect は無視 (loop 防止)
+  // pathname の trailing slash を正規化して比較する
+  const currentPath = window.location.pathname.replace(/\/+$/, "") || "/";
+  const normalizedTarget = targetPath.replace(/\/+$/, "") || "/";
+  if (normalizedTarget === currentPath) return null;
+
+  // 残りのクエリ(liff.state 以外)とハッシュは保持する。
+  url.searchParams.delete("liff.state");
+  const remainingQuery = url.searchParams.toString();
+  const hash = window.location.hash;
+  return `${targetPath}${remainingQuery ? `?${remainingQuery}` : ""}${hash}`;
+}
+
 function CheckinContent() {
   const searchParams = useSearchParams();
   const locationId = searchParams.get("location_id");
   const workId = searchParams.get("work_id");
+
+  // SSR / 初回 render では window が無いので false 開始。
+  // dispatch 用に "redirecting" 状態を持ち、redirect 中は画面を白くしすぎないようロード表示する。
+  const [redirecting, setRedirecting] = useState(false);
 
   const [state, setState] = useState<LiffStep>({ step: "init", detail: "LIFF を初期化中..." });
   const [lineUserId, setLineUserId] = useState<string | null>(null);
   const [stampRefreshKey, setStampRefreshKey] = useState(0);
   const submittingRef = useRef(false);
 
+  // ── 最優先: LIFF deep link の dispatch (liff.state クエリを処理) ──
+  // useEffect 内ではなく、最初の render 後すぐにリダイレクトしたいので
+  // ここで判定して即座に navigate する。
+  useEffect(() => {
+    const redirectTo = resolveLiffStateRedirect();
+    if (redirectTo) {
+      setRedirecting(true);
+      // replace で履歴に残さない (戻るボタンで /liff?liff.state= に戻れないように)
+      window.location.replace(redirectTo);
+    }
+  }, []);
+
   // ── LIFF 初期化 + ロケーション情報取得 ──
   useEffect(() => {
+    // dispatch 中は何もしない
+    if (redirecting) return;
+
     if (!locationId || !workId) {
       // ここは「チェックイン専用ページ」(ロケーション QR コードから開く想定)。
       // location_id / work_id が無い場合は、利用者が誤ってこの URL を開いたと判断し、
@@ -94,7 +152,7 @@ function CheckinContent() {
     })();
 
     return () => { cancelled = true; };
-  }, [locationId, workId]);
+  }, [locationId, workId, redirecting]);
 
   // ── QR チェックイン（qr_only 用） ──
   const handleQrCheckin = useCallback(async () => {
@@ -171,6 +229,18 @@ function CheckinContent() {
     try { const liff = (await import("@line/liff")).default; if (liff.isInClient()) { liff.closeWindow(); return; } } catch {}
     window.close();
   }, []);
+
+  // dispatch 中は spinner だけ出して、誤って checkin ページが見えないようにする。
+  if (redirecting) {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100vh", padding: "24px" }}>
+        <div style={{ textAlign: "center" }}>
+          <Spinner />
+          <p style={{ fontSize: 14, color: "#6b7280" }}>ページを読み込み中...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100vh", padding: "24px" }}>
