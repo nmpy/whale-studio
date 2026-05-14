@@ -12,6 +12,9 @@ import { recordLiffEvent } from "@/lib/liff-events";
 import { useLiffPlayerContext } from "./LiffPlayerContext";
 
 export interface FaqRendererConfig {
+  /** 作品名。ヘッダーに表示する (新仕様)。未指定なら title にフォールバック */
+  work_title?:   string | null;
+  /** LIFF ページ名。本文側 h1 で表示する */
   title:         string | null;
   description:   string | null;
   settings_json: LiffPageConfigSettings;
@@ -21,12 +24,19 @@ export function FaqRenderer({ config, preview }: { config: FaqRendererConfig; pr
   const items = (config.settings_json.faq_items ?? []).filter(
     (it) => (it.question?.trim() ?? "") !== "" || (it.answer?.trim() ?? "") !== ""
   );
+  const pageTitle = config.title?.trim();
 
   return (
     <div className="liff-font min-h-screen bg-[color:var(--liff-background)] text-[color:var(--liff-primary-text)]">
-      <LiffPlayerHeader title={config.title} />
+      <LiffPlayerHeader workTitle={config.work_title} pageTitle={config.title} />
       <main className="max-w-md mx-auto px-4 py-5 flex flex-col gap-4 pb-24">
-        {/* タイトルはヘッダーで表示するため、本文側では出さない。説明文のみ残す。 */}
+        {/* 本文先頭の見出しとして LIFF ページタイトル (page.title) を表示する。
+            ヘッダーは作品名なので、本文側でページ単位のタイトルを出して区別する。 */}
+        {pageTitle && (
+          <h2 className="text-[20px] leading-tight font-bold tracking-tight break-words text-[color:var(--liff-primary-text)]">
+            {pageTitle}
+          </h2>
+        )}
         {config.description && (
           <p className="text-[14px] leading-relaxed text-[color:var(--liff-secondary-text)] whitespace-pre-wrap break-words">
             {config.description}

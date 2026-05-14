@@ -81,15 +81,21 @@ function BlockPreviewContent({ block }: { block: LiffPageBlock }) {
 
 export function LiffPreview({
   blocks,
+  workTitle,
   title,
   config,
 }: {
   blocks: LiffPageBlock[];
+  /** 作品名。ヘッダー表示に使う (新仕様) */
+  workTitle?: string | null;
+  /** LIFF ページ名。本文 h2 として表示する */
   title?: string | null;
   config?: Pick<LiffPageConfig, "page_type" | "settings_json" | "description"> | null;
 }) {
   const enabledBlocks = blocks.filter((b) => b.is_enabled);
   const mode = normalizeLiffPageType(config?.page_type);
+  const headerLabel = (workTitle ?? "").trim() || (title ?? "").trim() || "LIFF ページ";
+  const pageHeading = (title ?? "").trim();
 
   // ── 共通フレーム ──
   const frame = (label: string, content: React.ReactNode) => (
@@ -106,6 +112,7 @@ export function LiffPreview({
         preview
         config={{
           work_id:       "preview",
+          work_title:    workTitle ?? null,
           title:         title ?? null,
           description:   config?.description ?? null,
           settings_json: config?.settings_json ?? {},
@@ -125,6 +132,7 @@ export function LiffPreview({
       <FaqRenderer
         preview
         config={{
+          work_title:    workTitle ?? null,
           title:         title ?? null,
           description:   config?.description ?? null,
           settings_json: config?.settings_json ?? {},
@@ -139,6 +147,7 @@ export function LiffPreview({
         preview
         config={{
           work_id:       "preview",
+          work_title:    workTitle ?? null,
           title:         title ?? null,
           description:   config?.description ?? null,
           settings_json: config?.settings_json ?? {},
@@ -153,6 +162,7 @@ export function LiffPreview({
         preview
         config={{
           work_id:       "preview",
+          work_title:    workTitle ?? null,
           title:         title ?? null,
           description:   config?.description ?? null,
           settings_json: config?.settings_json ?? {},
@@ -178,12 +188,17 @@ export function LiffPreview({
         >
           <div className="max-w-md mx-auto">
             <h2 className="text-[18px] leading-tight font-bold tracking-tight break-words">
-              {title || "LIFF ページ"}
+              {headerLabel}
             </h2>
           </div>
         </header>
 
         <div className="px-4 py-4 flex flex-col gap-3 max-w-md mx-auto">
+          {pageHeading && (
+            <h3 className="text-[20px] leading-tight font-bold tracking-tight break-words text-[color:var(--liff-primary-text)] pt-1">
+              {pageHeading}
+            </h3>
+          )}
           {enabledBlocks.length === 0 ? (
             <p className="text-[color:var(--liff-tertiary-text)] text-sm text-center py-10">
               ブロックが追加されていません
