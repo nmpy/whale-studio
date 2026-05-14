@@ -58,6 +58,18 @@ export async function POST(
       select: { id: true, submittedAt: true },
     });
 
+    // 計測: survey_submit (失敗してもアンケート登録は成功扱いとし、UX を阻害しない)
+    prisma.liffEventLog
+      .create({
+        data: {
+          workId:       work.id,
+          lineUserId:   data.line_user_id ?? null,
+          eventType:    "survey_submit",
+          metadataJson: { response_id: saved.id, answer_count: Object.keys(data.answers).length } as Prisma.InputJsonValue,
+        },
+      })
+      .catch((e) => console.error("[LIFF Survey] event log failed:", e));
+
     return NextResponse.json({
       success: true,
       data: {

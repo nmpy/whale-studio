@@ -9,6 +9,7 @@
 // Location.checkinMode に基づいて判定。既存 QR/GPS チェックインとの後方互換を維持。
 
 import { NextRequest } from "next/server";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { ok, badRequest, notFound, serverError } from "@/lib/api-response";
 import { checkinSchema, formatZodErrors } from "@/lib/validations";
@@ -27,6 +28,25 @@ function logAttempt(data: {
   distanceMeters?: number; lat?: number; lng?: number;
 }): void {
   logAttemptDeduped(data).catch(() => {});
+}
+
+/** LIFF 計測用イベントを fire-and-forget で保存 (失敗してもチェックインの結果は変えない) */
+function logLiffEvent(data: {
+  workId: string;
+  lineUserId: string;
+  eventType: "checkin_success" | "checkin_failed";
+  metadata?: Record<string, unknown>;
+}): void {
+  prisma.liffEventLog
+    .create({
+      data: {
+        workId:       data.workId,
+        lineUserId:   data.lineUserId,
+        eventType:    data.eventType,
+        metadataJson: (data.metadata ?? undefined) as Prisma.InputJsonValue | undefined,
+      },
+    })
+    .catch((e) => console.error("[LIFF checkin] event log failed:", e));
 }
 
 /** GPS 範囲判定を実行し、結果を返す。失敗時は Response を返す。 */
@@ -64,6 +84,13 @@ function validateGps(
 
   if (!geo.within) {
     logAttempt({ ...attemptBase, status: "out_of_range", distanceMeters: geo.distanceMeters });
+    // 計測: サーバー側で out_of_range を確定したケース
+    logLiffEvent({
+      workId:     data.work_id,
+      lineUserId: data.line_user_id,
+      eventType:  "checkin_failed",
+      metadata:   { location_id: data.location_id, reason: "out_of_range", distance_meters: geo.distanceMeters, radius_meters: location.radiusMeters },
+    });
     return { ok: false, response: ok<CheckinOutOfRange>({
       success: false, status: "out_of_range",
       location_id: data.location_id, work_id: data.work_id, location_name: location.name,
@@ -215,6 +242,23 @@ export async function POST(req: NextRequest) {
     if (recordedMethod === "gps" || recordedMethod === "qr_and_gps") {
       logAttempt({ workId: data.work_id, locationId: data.location_id, lineUserId: data.line_user_id, method: recordedMethod, status: "success", distanceMeters, lat: data.lat, lng: data.lng });
     }
+
+    // 計測: checkin_success (cooldown は計測しない — 既にこの地点は visited 済みのため)
+    logLiffEvent({
+      workId:     data.work_id,
+      lineUserId: data.line_user_id,
+      eventType:  "checkin_success",
+      metadata:   {
+        location_id:        data.location_id,
+        location_name:      location.name,
+        checkin_method:     recordedMethod,
+        distance_meters:    distanceMeters,
+        transitioned_to:    transitionPhase?.id,
+        reached_ending:     reachedEnding,
+        stamp_collected:    stampInfo?.newly_collected ?? false,
+        stamp_completed:    stampInfo?.is_completed ?? false,
+      },
+    });
 
     // ── 8. レスポンス ──
     return ok<CheckinSuccess>({

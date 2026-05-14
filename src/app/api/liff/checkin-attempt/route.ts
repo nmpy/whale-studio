@@ -5,9 +5,11 @@
 // 重複抑制: 同一 (workId, locationId, lineUserId, status) が直近 15 秒以内にあればスキップ。
 
 import { NextRequest } from "next/server";
+import { Prisma } from "@prisma/client";
 import { ok, badRequest, serverError } from "@/lib/api-response";
 import { logAttemptDeduped } from "@/lib/checkin-attempt";
 import { findWorkByIdOrPublicId, findLocationByIdOrPublicId } from "@/lib/public-id-resolver";
+import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
@@ -50,6 +52,18 @@ export async function POST(req: NextRequest) {
       lat:           typeof body.lat === "number" ? body.lat : undefined,
       lng:           typeof body.lng === "number" ? body.lng : undefined,
     });
+
+    // 計測: クライアント側で確定する GPS 失敗を checkin_failed として残す
+    prisma.liffEventLog
+      .create({
+        data: {
+          workId:       work.id,
+          lineUserId,
+          eventType:    "checkin_failed",
+          metadataJson: { location_id: location.id, reason: status, source: "client_attempt" } as Prisma.InputJsonValue,
+        },
+      })
+      .catch((e) => console.error("[LIFF checkin-attempt] event log failed:", e));
 
     return ok({ recorded: saved });
   } catch (err) {

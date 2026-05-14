@@ -96,7 +96,7 @@ function RenderBlock({ block, ctx }: { block: LiffBlock; ctx: LiffRenderContext 
     case "warning":
       return <WarningBlock settings={s as WarningSettings} />;
     case "button_link":
-      return <ButtonLinkBlock settings={s as ButtonLinkSettings} />;
+      return <ButtonLinkBlock settings={s as ButtonLinkSettings} blockId={block.id} />;
     case "divider":
       return <DividerBlock settings={s as DividerSettings} />;
     case "accordion":

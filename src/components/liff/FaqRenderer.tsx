@@ -8,6 +8,8 @@ import { useState } from "react";
 import type { FaqItem, LiffPageConfigSettings } from "@/types";
 import { LiffShareButton } from "./LiffShareButton";
 import { LiffPlayerHeader } from "./LiffPlayerHeader";
+import { recordLiffEvent } from "@/lib/liff-events";
+import { useLiffPlayerContext } from "./LiffPlayerContext";
 
 export interface FaqRendererConfig {
   title:         string | null;
@@ -55,8 +57,27 @@ export function FaqRenderer({ config, preview }: { config: FaqRendererConfig; pr
 
 function FaqRow({ item, index }: { item: FaqItem; index: number }) {
   const [open, setOpen] = useState(false);
+  const playerCtx = useLiffPlayerContext();
   const panelId = `faq-panel-${index}`;
   const headerId = `faq-header-${index}`;
+  const toggle = () => {
+    setOpen((v) => {
+      const next = !v;
+      // 開いた瞬間だけ faq_open を記録する。閉じる動作は計測しない。
+      if (next && playerCtx && !playerCtx.preview) {
+        const itemKey = item.id ?? `idx_${index}`;
+        recordLiffEvent({
+          workId:     playerCtx.workId,
+          pageId:     playerCtx.pageId,
+          lineUserId: playerCtx.lineUserId,
+          eventType:  "faq_open",
+          metadata:   { index, label: item.question?.trim() ?? "", item_id: item.id ?? null },
+          dedupeKey:  `faq_open:${playerCtx.workId}:${playerCtx.pageId ?? "default"}:${itemKey}:${playerCtx.lineUserId ?? "anon"}`,
+        });
+      }
+      return next;
+    });
+  };
   return (
     <li className="border border-[color:var(--liff-border)] rounded-[12px] overflow-hidden bg-[color:var(--liff-surface)]">
       <button
@@ -64,7 +85,7 @@ function FaqRow({ item, index }: { item: FaqItem; index: number }) {
         type="button"
         aria-expanded={open}
         aria-controls={panelId}
-        onClick={() => setOpen((v) => !v)}
+        onClick={toggle}
         className="w-full flex items-center justify-between gap-3 text-left px-4 py-3"
       >
         <span className="font-bold text-[15px] leading-snug break-words flex-1 min-w-0">

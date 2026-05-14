@@ -2,6 +2,14 @@
 
 import type { ButtonLinkSettings, LiffSectionVariant } from "@/types";
 import { trackHintSiteEvent } from "@/lib/liff-analytics";
+import { recordLiffEvent } from "@/lib/liff-events";
+import { useLiffPlayerContext } from "@/components/liff/LiffPlayerContext";
+
+interface Props {
+  settings: ButtonLinkSettings;
+  /** ブロックの DB 行 ID。LiffRenderer から渡る。 */
+  blockId?: string;
+}
 
 // LINE Design System の Box Button に準拠したリンクボタン。
 // - default: Outline (Primary Green) — Primary CTA と区別される補助導線として使う
@@ -14,19 +22,38 @@ const VARIANT_CLASSES: Record<LiffSectionVariant, string> = {
   purple:  "bg-violet-600 text-white border border-violet-600 active:bg-violet-700",
 };
 
-export function ButtonLinkBlock({ settings }: { settings: ButtonLinkSettings }) {
+export function ButtonLinkBlock({ settings, blockId }: Props) {
+  const playerCtx = useLiffPlayerContext();
   if (!settings.url || !settings.label) return null;
   const variant = (settings.variant ?? "default") as LiffSectionVariant;
   const cls = VARIANT_CLASSES[variant];
   const target = settings.open_external ? "_blank" : undefined;
   const rel = settings.open_external ? "noopener noreferrer" : undefined;
+  const handleClick = () => {
+    trackHintSiteEvent("cta_click", { url: settings.url, label: settings.label, source: "block" });
+    if (playerCtx && !playerCtx.preview) {
+      recordLiffEvent({
+        workId:     playerCtx.workId,
+        pageId:     playerCtx.pageId,
+        blockId,
+        lineUserId: playerCtx.lineUserId,
+        eventType:  "button_click",
+        metadata:   {
+          source:        "button_link",
+          label:         settings.label,
+          url:           settings.url,
+          open_external: !!settings.open_external,
+        },
+      });
+    }
+  };
   return (
     <a
       href={settings.url}
       target={target}
       rel={rel}
       className={`flex items-center justify-center w-full h-12 px-4 rounded-[10px] text-[15px] font-bold tracking-tight transition-colors ${cls}`}
-      onClick={() => trackHintSiteEvent("cta_click", { url: settings.url, label: settings.label, source: "block" })}
+      onClick={handleClick}
     >
       {settings.label}
     </a>

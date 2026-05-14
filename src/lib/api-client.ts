@@ -1531,7 +1531,81 @@ export const liffConfigApi = {
     });
     return parseResponse(res);
   },
+
+  // ── Analytics ─────────────────────────────────────────────────────
+  /** LIFF 一覧画面で各ページに添える KPI まとめ。1 リクエストで全ページ分。 */
+  async getAnalyticsSummary(token: string, workId: string): Promise<LiffAnalyticsSummary> {
+    const res = await fetch(`/api/works/${workId}/liff-pages/analytics-summary`, {
+      headers: authHeaders(token),
+    });
+    return parseResponse(res);
+  },
+
+  /** LIFF ページ詳細の "計測" タブ。1 ページ分の総合計 + 直近イベント。 */
+  async getPageAnalytics(token: string, workId: string, pageId: string): Promise<LiffPageAnalytics> {
+    const res = await fetch(`/api/works/${workId}/liff-pages/${pageId}/analytics`, {
+      headers: authHeaders(token),
+    });
+    return parseResponse(res);
+  },
 };
+
+// ── Analytics 型 ─────────────────────────────────────────────────────
+export interface LiffPageAnalyticsSummaryRow {
+  page_id:                string;
+  page_public_id:         string | null;
+  page_type:              string;
+  page_view:              number;
+  unique_users:           number;
+  button_click:           number;
+  ctr:                    number;
+  page_type_metric_key:   string | null;
+  page_type_metric_count: number | null;
+}
+
+export interface LiffAnalyticsSummary {
+  work_id:        string;
+  work_public_id: string | null;
+  pages:          LiffPageAnalyticsSummaryRow[];
+}
+
+export interface LiffPageAnalyticsRecentEvent {
+  id:                   string;
+  event_type:           string;
+  line_user_id:         string | null;
+  liff_page_block_id:   string | null;
+  metadata_json:        unknown;
+  created_at:           string;
+}
+
+export interface LiffPageAnalytics {
+  work_id:        string;
+  work_public_id: string | null;
+  page_id:        string;
+  page_public_id: string | null;
+  page_type:      string;
+  totals: {
+    page_view:        number;
+    unique_users:     number;
+    button_click:     number;
+    hint_open:        number;
+    faq_open:         number;
+    survey_submit:    number;
+    checkin_success:  number;
+    checkin_failed:   number;
+    ctr:              number;
+  };
+  block_breakdown: Array<{ block_id: string | null; event_type: string; count: number }>;
+  recent_events:   LiffPageAnalyticsRecentEvent[];
+  survey?: {
+    total_count: number;
+    recent: Array<{ id: string; line_user_id: string | null; answers_json: unknown; submitted_at: string }>;
+  };
+  checkin?: {
+    total_count: number;
+    recent: Array<{ id: string; location_id: string; location_name: string | null; line_user_id: string; checkin_method: string; visited_at: string }>;
+  };
+}
 
 // ────────────────────────────────────────────────
 // Location API
