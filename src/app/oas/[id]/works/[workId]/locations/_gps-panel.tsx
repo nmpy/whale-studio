@@ -6,11 +6,24 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { QRCodeSVG } from "qrcode.react";
-import { locationApi, getDevToken } from "@/lib/api-client";
+import { locationApi, workApi, getDevToken } from "@/lib/api-client";
 import type { LocationWithTransition } from "@/types";
 
-function buildLiffUrl(liffId: string, locationId: string, workId: string) {
-  return `https://liff.line.me/${liffId}?location_id=${locationId}&work_id=${workId}`;
+function buildLiffUrl(args: {
+  liffId: string;
+  locationId: string;
+  locationPublicId?: string;
+  workId: string;
+  workPublicId?: string;
+}): string {
+  const { liffId } = args;
+  // publicId が両方揃えば短縮 URL (https://liff.line.me/{ID}/c/{wp}/{lp}) を使う。
+  // /liff/c/[workPublicId]/[locationPublicId] route が /liff?work_id=...&location_id=... へ redirect する。
+  if (args.workPublicId && args.locationPublicId) {
+    return `https://liff.line.me/${liffId}/c/${args.workPublicId}/${args.locationPublicId}`;
+  }
+  // 旧 query 形式 (UUID)。後方互換維持。
+  return `https://liff.line.me/${liffId}?location_id=${args.locationId}&work_id=${args.workId}`;
 }
 
 const MODE_BADGE: Record<string, { label: string; color: string; bg: string }> = {
@@ -72,6 +85,7 @@ interface Props {
 
 export default function GpsPanel({ oaId, workId }: Props) {
   const [locations, setLocations] = useState<LocationWithTransition[]>([]);
+  const [workPublicId, setWorkPublicId] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedQR, setExpandedQR] = useState<string | null>(null);
@@ -83,6 +97,8 @@ export default function GpsPanel({ oaId, workId }: Props) {
 
   useEffect(() => {
     const token = getDevToken();
+    // 短縮 LIFF URL 生成のため work.publicId を取得 (失敗しても旧 UUID URL にフォールバック)
+    workApi.get(token, workId).then((w) => setWorkPublicId(w.public_id)).catch(() => {});
     (async () => {
       try {
         const data = await locationApi.list(token, workId);
@@ -206,7 +222,13 @@ export default function GpsPanel({ oaId, workId }: Props) {
       {!loading && filteredLocations.length > 0 && (
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           {filteredLocations.map((loc) => {
-            const liffUrl = liffId ? buildLiffUrl(liffId, loc.id, workId) : null;
+            const liffUrl = liffId ? buildLiffUrl({
+              liffId,
+              locationId: loc.id,
+              locationPublicId: loc.public_id,
+              workId,
+              workPublicId,
+            }) : null;
             const isExpanded = expandedQR === loc.id;
             const stats = locStats.get(loc.id);
             const modeBadge = MODE_BADGE[loc.checkin_mode] ?? MODE_BADGE.qr_only;

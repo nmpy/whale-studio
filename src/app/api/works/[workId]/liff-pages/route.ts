@@ -33,7 +33,9 @@ export const GET = withAuth(async (req, ctx, user) => {
       orderBy: { createdAt: "asc" },
       select: {
         id:            true,
+        publicId:      true,
         workId:        true,
+        work:          { select: { publicId: true } },
         title:         true,
         description:   true,
         pageType:      true,
@@ -47,15 +49,17 @@ export const GET = withAuth(async (req, ctx, user) => {
     return ok({
       work_id: workId,
       pages: pages.map((p) => ({
-        id:             p.id,
-        work_id:        p.workId,
-        title:          p.title,
-        description:    p.description,
-        page_type:      p.pageType,
-        publish_status: p.publishStatus,
-        is_enabled:     p.isEnabled,
-        created_at:     p.createdAt,
-        updated_at:     p.updatedAt,
+        id:              p.id,
+        public_id:       p.publicId,
+        work_id:         p.workId,
+        work_public_id:  p.work?.publicId,
+        title:           p.title,
+        description:     p.description,
+        page_type:       p.pageType,
+        publish_status:  p.publishStatus,
+        is_enabled:      p.isEnabled,
+        created_at:      p.createdAt,
+        updated_at:      p.updatedAt,
       })),
     });
   } catch (err) {
@@ -92,20 +96,23 @@ export const POST = withAuth(async (req, ctx, user) => {
         isEnabled:     false,
         settingsJson:  {} as Prisma.InputJsonValue,
       },
+      include: { work: { select: { publicId: true } } },
     });
 
     return created({
-      id:             page.id,
-      work_id:        page.workId,
-      title:          page.title,
-      description:    page.description,
-      page_type:      page.pageType,
-      publish_status: page.publishStatus,
-      is_enabled:     page.isEnabled,
-      settings_json:  page.settingsJson,
-      blocks:         [],
-      created_at:     page.createdAt,
-      updated_at:     page.updatedAt,
+      id:              page.id,
+      public_id:       page.publicId,
+      work_id:         page.workId,
+      work_public_id:  page.work?.publicId,
+      title:           page.title,
+      description:     page.description,
+      page_type:       page.pageType,
+      publish_status:  page.publishStatus,
+      is_enabled:      page.isEnabled,
+      settings_json:   page.settingsJson,
+      blocks:          [],
+      created_at:      page.createdAt,
+      updated_at:      page.updatedAt,
     });
   } catch (err) {
     if (err instanceof ZodError) {

@@ -1420,15 +1420,19 @@ export const onboardingApi = {
 // ────────────────────────────────────────────────
 
 export interface LiffPageSummary {
-  id:             string;
-  work_id:        string;
-  title:          string | null;
-  description:    string | null;
-  page_type:      string;
-  publish_status: string;
-  is_enabled:     boolean;
-  created_at:     string;
-  updated_at:     string;
+  id:              string;
+  /** 公開 URL 用の短縮 ID (10 文字)。URL 表示時に使う */
+  public_id?:      string;
+  work_id:         string;
+  /** Work の公開 URL 用短縮 ID */
+  work_public_id?: string;
+  title:           string | null;
+  description:     string | null;
+  page_type:       string;
+  publish_status:  string;
+  is_enabled:      boolean;
+  created_at:      string;
+  updated_at:      string;
 }
 
 export const liffConfigApi = {

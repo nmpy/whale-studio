@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { z, ZodError } from "zod";
 import { prisma } from "@/lib/prisma";
+import { findWorkByIdOrPublicId } from "@/lib/public-id-resolver";
 
 export const dynamic = "force-dynamic";
 
@@ -25,13 +26,12 @@ export async function POST(
   ctx: { params: Promise<{ workId: string }> }
 ) {
   try {
-    const { workId } = await ctx.params;
+    const { workId: workIdOrPublic } = await ctx.params;
 
-    const work = await prisma.work.findUnique({
-      where: { id: workId },
-      select: { id: true },
-    });
+    // workId は UUID か publicId のどちらでも受け付ける
+    const work = await findWorkByIdOrPublicId(workIdOrPublic);
     if (!work) {
+      console.error(`[LIFF Survey] Work not found: workIdOrPublic=${workIdOrPublic}`);
       return NextResponse.json(
         { success: false, error: { code: "NOT_FOUND", message: "作品が見つかりません" } },
         { status: 404 }
@@ -51,7 +51,7 @@ export async function POST(
 
     const saved = await prisma.liffSurveyResponse.create({
       data: {
-        workId,
+        workId: work.id,
         lineUserId: data.line_user_id ?? null,
         answersJson: data.answers as Prisma.InputJsonValue,
       },

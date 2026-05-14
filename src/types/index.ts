@@ -129,6 +129,8 @@ export interface Oa {
 
 export interface Work {
   id: string;
+  /** 公開 URL 用の短縮 ID。LIFF / チェックイン URL で使う */
+  public_id?: string;
   oa_id: string;
   title: string;
   description: string | null;
@@ -1338,17 +1340,21 @@ export interface SurveyItem {
 }
 
 export interface LiffPageConfig {
-  id:             string;
-  work_id:        string;
-  is_enabled:     boolean;
-  title:          string | null;
-  description:    string | null;
-  page_type:      LiffPageType;
-  publish_status: LiffPublishStatus;
-  settings_json:  LiffPageConfigSettings;
-  blocks:         LiffPageBlock[];
-  created_at:     string;
-  updated_at:     string;
+  id:              string;
+  /** 公開 URL 用の短縮 ID (10 文字)。CMS 管理画面の「実機で確認する」欄など、URL 生成時に使う。 */
+  public_id?:      string;
+  work_id:         string;
+  /** Work の公開 URL 用短縮 ID。LIFF プレイヤー URL 生成時に使う。 */
+  work_public_id?: string;
+  is_enabled:      boolean;
+  title:           string | null;
+  description:     string | null;
+  page_type:       LiffPageType;
+  publish_status:  LiffPublishStatus;
+  settings_json:   LiffPageConfigSettings;
+  blocks:          LiffPageBlock[];
+  created_at:      string;
+  updated_at:      string;
 }
 
 export interface UpdateLiffConfigBody {
@@ -1390,6 +1396,8 @@ export type CheckinMethod = "qr" | "gps" | "qr_and_gps" | "beacon";
 
 export interface Location {
   id:               string;
+  /** 公開 URL 用の短縮 ID。チェックイン URL で使う */
+  public_id?:       string;
   work_id:          string;
   name:             string;
   description:      string | null;

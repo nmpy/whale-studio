@@ -50,6 +50,9 @@ model Oa {
 
 model Work {
   id                String         @id @default(uuid())
+  /// 公開 URL 用の短縮 ID (10 文字、a-z + 0-9)。DB 主キーは引き続き UUID `id` を使用。
+  /// URL に出すときだけこの値を使う。生成は PG 関数 gen_unique_public_id() で自動 (migration 参照)。
+  publicId          String         @unique @default(dbgenerated("gen_unique_public_id('works'::text)")) @map("public_id")
   oaId              String         @map("oa_id")
   title             String
   description       String?
@@ -955,6 +958,8 @@ model BeaconEventLog {
 
 model Location {
   id              String          @id @default(uuid())
+  /// 公開 URL 用の短縮 ID (10 文字、a-z + 0-9)。チェックイン URL で使う。
+  publicId        String          @unique @default(dbgenerated("gen_unique_public_id('locations'::text)")) @map("public_id")
   workId          String          @map("work_id")
   name            String
   description     String?
@@ -1055,6 +1060,8 @@ model CheckinAttempt {
 
 model LiffPageConfig {
   id          String          @id @default(uuid())
+  /// 公開 URL 用の短縮 ID (10 文字、a-z + 0-9)。LIFF プレイヤー URL で使う。
+  publicId    String          @unique @default(dbgenerated("gen_unique_public_id('liff_page_configs'::text)")) @map("public_id")
   workId      String          @map("work_id")
   isEnabled   Boolean         @default(false) @map("is_enabled")
   /// 一覧表示や公開ページのタイトル。最大 10 文字（バリデーション側で制御）。

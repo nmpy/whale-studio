@@ -14,6 +14,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { findWorkByIdOrPublicId } from "@/lib/public-id-resolver";
 
 export const dynamic = "force-dynamic";
 
@@ -35,7 +36,7 @@ export async function GET(
   ctx: { params: Promise<{ workId: string }> }
 ) {
   try {
-    const { workId } = await ctx.params;
+    const { workId: workIdOrPublic } = await ctx.params;
     const { searchParams } = new URL(req.url);
     const lineUserId = searchParams.get("line_user_id");
 
@@ -46,12 +47,10 @@ export async function GET(
       );
     }
 
-    // 作品が存在するか軽く確認（404 を返すため。詳細は返さない）
-    const work = await prisma.work.findUnique({
-      where: { id: workId },
-      select: { id: true },
-    });
+    // workId は UUID か publicId のどちらでも受け付ける
+    const work = await findWorkByIdOrPublicId(workIdOrPublic);
     if (!work) {
+      console.error(`[LIFF Location History] Work not found: workIdOrPublic=${workIdOrPublic}`);
       return NextResponse.json(
         { success: false, error: { code: "NOT_FOUND", message: "作品が見つかりません" } },
         { status: 404 }
@@ -59,7 +58,7 @@ export async function GET(
     }
 
     const visits = await prisma.locationVisit.findMany({
-      where: { workId, lineUserId },
+      where: { workId: work.id, lineUserId },
       orderBy: { visitedAt: "desc" },
       take: MAX_ITEMS,
       select: {
@@ -89,7 +88,7 @@ export async function GET(
     return NextResponse.json({
       success: true,
       data: {
-        work_id: workId,
+        work_id: work.id,
         total:   items.length,
         items,
       },

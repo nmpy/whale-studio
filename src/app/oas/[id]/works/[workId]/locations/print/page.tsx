@@ -10,8 +10,17 @@ import { QRCodeSVG } from "qrcode.react";
 import { locationApi, workApi, getDevToken } from "@/lib/api-client";
 import type { LocationWithTransition } from "@/types";
 
-function buildLiffUrl(liffId: string, locationId: string, workId: string) {
-  return `https://liff.line.me/${liffId}?location_id=${locationId}&work_id=${workId}`;
+function buildLiffUrl(args: {
+  liffId: string;
+  locationId: string;
+  locationPublicId?: string;
+  workId: string;
+  workPublicId?: string;
+}): string {
+  if (args.workPublicId && args.locationPublicId) {
+    return `https://liff.line.me/${args.liffId}/c/${args.workPublicId}/${args.locationPublicId}`;
+  }
+  return `https://liff.line.me/${args.liffId}?location_id=${args.locationId}&work_id=${args.workId}`;
 }
 
 export default function LocationsPrintPage() {
@@ -21,6 +30,7 @@ export default function LocationsPrintPage() {
 
   const [locations, setLocations] = useState<LocationWithTransition[]>([]);
   const [workTitle, setWorkTitle] = useState("");
+  const [workPublicId, setWorkPublicId] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -36,6 +46,7 @@ export default function LocationsPrintPage() {
         ]);
         setLocations(locs);
         setWorkTitle(work.title);
+        setWorkPublicId(work.public_id);
       } catch (err) {
         setError(err instanceof Error ? err.message : "読み込みに失敗しました");
       } finally {
@@ -85,7 +96,13 @@ export default function LocationsPrintPage() {
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
             {locations.map((loc) => {
-              const url = buildLiffUrl(liffId, loc.id, workId);
+              const url = buildLiffUrl({
+                liffId,
+                locationId: loc.id,
+                locationPublicId: loc.public_id,
+                workId,
+                workPublicId,
+              });
               return (
                 <div
                   key={loc.id}

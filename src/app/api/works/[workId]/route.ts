@@ -12,7 +12,7 @@ import { ZodError } from "zod";
 import { activeCache, CACHE_KEY } from "@/lib/cache";
 
 function toResponse(w: {
-  id: string; oaId: string; title: string; description: string | null;
+  id: string; publicId?: string | null; oaId: string; title: string; description: string | null;
   publishStatus: string; sortOrder: number; systemCharacterId: string | null;
   welcomeMessage: string | null;
   readReceiptMode: string | null; readDelayMs: number | null;
@@ -23,6 +23,7 @@ function toResponse(w: {
 }) {
   return {
     id:                  w.id,
+    public_id:           w.publicId ?? undefined,
     oa_id:               w.oaId,
     title:               w.title,
     description:         w.description,

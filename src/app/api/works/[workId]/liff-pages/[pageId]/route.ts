@@ -18,7 +18,10 @@ export const dynamic = "force-dynamic";
 async function loadPage(workId: string, pageId: string) {
   const page = await prisma.liffPageConfig.findFirst({
     where: { id: pageId, workId },
-    include: { blocks: { orderBy: { sortOrder: "asc" } } },
+    include: {
+      blocks: { orderBy: { sortOrder: "asc" } },
+      work: { select: { publicId: true } },
+    },
   });
   return page;
 }
@@ -90,7 +93,10 @@ export const PUT = withAuth(async (req, ctx, user) => {
         ...(data.publish_status !== undefined && { publishStatus: data.publish_status }),
         ...(data.settings_json !== undefined && { settingsJson: data.settings_json as Prisma.InputJsonValue }),
       },
-      include: { blocks: { orderBy: { sortOrder: "asc" } } },
+      include: {
+        blocks: { orderBy: { sortOrder: "asc" } },
+        work: { select: { publicId: true } },
+      },
     });
 
     return ok(toConfigResponse(updated));

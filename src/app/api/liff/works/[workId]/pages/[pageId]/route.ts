@@ -5,6 +5,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { findWorkByIdOrPublicId, findLiffPageConfigByIdOrPublicId } from "@/lib/public-id-resolver";
 
 export const dynamic = "force-dynamic";
 
@@ -13,21 +14,31 @@ export async function GET(
   ctx: { params: Promise<{ workId: string; pageId: string }> }
 ) {
   try {
-    const { workId, pageId } = await ctx.params;
+    const { workId: workIdOrPublic, pageId: pageIdOrPublic } = await ctx.params;
 
-    const work = await prisma.work.findUnique({
-      where: { id: workId },
-      select: { id: true, title: true, publishStatus: true, oaId: true },
-    });
+    // workId / pageId はそれぞれ UUID か publicId のどちらでも受け付ける
+    const work = await findWorkByIdOrPublicId(workIdOrPublic);
     if (!work) {
+      console.error(`[LIFF API] Work not found: workIdOrPublic=${workIdOrPublic}`);
       return NextResponse.json(
-        { success: false, error: { code: "NOT_FOUND", message: "作品が見つかりません" } },
+        { success: false, error: { code: "NOT_FOUND", message: "ページを読み込めませんでした。URLが正しいか確認してください。" } },
         { status: 404 }
       );
     }
 
-    const config = await prisma.liffPageConfig.findFirst({
-      where: { id: pageId, workId },
+    // page は work に属していることも検証 (テナント分離)
+    const configMeta = await findLiffPageConfigByIdOrPublicId(pageIdOrPublic, { workScope: work.id });
+    if (!configMeta) {
+      console.error(`[LIFF API] LIFF page not found or wrong work: workId=${work.id} pageIdOrPublic=${pageIdOrPublic}`);
+      return NextResponse.json(
+        { success: false, error: { code: "NOT_FOUND", message: "ページを読み込めませんでした。URLが正しいか確認してください。" } },
+        { status: 404 }
+      );
+    }
+
+    // blocks 込みで再取得 (resolver は blocks を含まないため)
+    const config = await prisma.liffPageConfig.findUnique({
+      where: { id: configMeta.id },
       include: {
         blocks: {
           where: { isEnabled: true },
