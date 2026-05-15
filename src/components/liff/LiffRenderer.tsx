@@ -34,7 +34,6 @@ import {
 } from "./renderers";
 import type { Evidence, Hint, CharacterInfo } from "./renderers";
 import { liffRootClass } from "./liff-style-helpers";
-import { LiffPlayerHeader as LiffHeader } from "./LiffPlayerHeader";
 
 export interface LiffBlock {
   id: string;
@@ -133,14 +132,11 @@ export function LiffRenderer({
 
   return (
     // LINE Gift like モバイル閲覧 UI。
-    //   - 背景白、ヘッダー帯は薄罫線で区切るのみ
-    //   - コンテンツは max-w-md / px-4
+    //   - 背景白、画面内ヘッダーは廃止 (上部バー = document.title で表現)
+    //   - 本文は .liff-player-main で max-w-md + 左右 16px を保証
     //   - ブロックは縦に並ぶフラットセクション (角丸カード積み重ねは廃止)
-    //   - 本文 h2 (ページタイトル) は廃止: ヘッダーと役割が被るため
     <div className={`liff-font ${liffRootClass(settings)} min-h-screen bg-[color:var(--liff-background)] text-[color:var(--liff-primary-text)]`}>
-      <LiffHeader settings={settings} workTitle={workTitle} pageTitle={title} />
-
-      <main className="px-4 pt-6 pb-8 max-w-md mx-auto">
+      <main className="liff-player-main pt-6 pb-8">
         {visibleBlocks.length === 0 ? (
           <p className="text-center text-[color:var(--liff-tertiary-text)] py-12 text-sm">
             表示する項目がありません

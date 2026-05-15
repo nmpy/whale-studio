@@ -178,29 +178,21 @@ export function LiffPreview({
   }
 
   // デフォルト (プレイヤー向け) プレビュー — LiffRenderer と同じレイアウト・色を再現する。
+  // ※ 実機 LIFF からは画面内ヘッダー (LiffPlayerHeader) を廃止したが、
+  //    CMS プレビューでは「上部バーには何が出るか」を確認できるよう、フレーム上端に
+  //    薄い小さなタイトル帯を残す (実機との完全一致ではなく "プレビュー表示" 扱い)。
   return (
     <div className="w-[375px] min-h-[600px] bg-white rounded-2xl overflow-hidden border-[8px] border-gray-800 shadow-xl shrink-0">
-      <div className="bg-gray-800 text-white py-2 px-4 text-[11px] font-semibold text-center">
-        LIFF プレビュー
+      <div className="bg-gray-800 text-white py-2 px-4 text-[11px] font-semibold text-center flex items-center justify-between">
+        <span>LIFF プレビュー</span>
+        {/* 上部バーに出るタイトル (= document.title 相当) を CMS でも確認できるよう小さく表示 */}
+        <span className="text-[10px] opacity-70 truncate max-w-[160px]" title={headerLabel}>
+          {headerLabel}
+        </span>
       </div>
 
       <div className={`liff-font ${liffRootClass(config?.settings_json)} bg-[color:var(--liff-background)] min-h-[560px]`}>
-        <header
-          className="px-4 h-14 flex items-center justify-center border-b"
-          style={{
-            background: "var(--liff-header-bg)",
-            color: "var(--liff-header-text)",
-            borderColor: "var(--liff-header-border)",
-          }}
-        >
-          <div className="max-w-md mx-auto w-full">
-            <h2 className="text-[17px] leading-tight font-bold break-words text-center truncate">
-              {headerLabel}
-            </h2>
-          </div>
-        </header>
-
-        <div className="px-4 pt-6 pb-5 max-w-md mx-auto">
+        <main className="liff-player-main pt-6 pb-5">
           {/* ページタイトル h3 は廃止。ヘッダー文言で文脈表現。 */}
           {enabledBlocks.length === 0 ? (
             <p className="text-[color:var(--liff-tertiary-text)] text-sm text-center py-10">
@@ -228,7 +220,7 @@ export function LiffPreview({
               <LiffShareButton settings={config.settings_json} pageTitle={title || ""} preview />
             </div>
           )}
-        </div>
+        </main>
       </div>
     </div>
   );

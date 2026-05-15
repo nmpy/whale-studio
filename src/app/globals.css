@@ -685,8 +685,15 @@ select { cursor: pointer; }
   /* コンテナ水平パディングを縮小 */
   .container { padding: 0 14px; }
 
-  /* ページ main の余白を縮小 */
-  main { padding: 20px 0 40px; }
+  /* ページ main の余白を縮小。
+   * @layer base 内に置く理由は line 137 の global main rule と同じ:
+   *   unlayered な main {} は Tailwind utilities (@layer utilities) を常に上書きしてしまう。
+   *   特にこの SP 幅 (≤430px) は LIFF 実機 (iPhone 等) で発火するため、ここを unlayered のまま
+   *   にすると LIFF プレイヤーの px-4 が機種で打ち消され、本文が画面端に張り付く症状になる。
+   * @layer base に入れることで Tailwind utility が常に勝てる layer 階層になる。 */
+  @layer base {
+    main { padding: 20px 0 40px; }
+  }
 
   /* ページヘッダーを縦積みに */
   .page-header {
