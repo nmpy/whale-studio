@@ -112,6 +112,7 @@ export function LiffConfigHeader({
             <option value="faq">FAQ（よくある質問）</option>
             <option value="survey">アンケート</option>
             <option value="location">チェックイン履歴</option>
+            <option value="character">キャラクター</option>
           </select>
           <span className="text-[11px] text-gray-400">
             ※モードによって編集 UI とプレイヤー表示が切り替わります
@@ -214,6 +215,63 @@ export function LiffConfigHeader({
             <p className="text-[11px] text-gray-400 mt-1">
               description テキストの揃え。未設定は中央寄せ。
             </p>
+          </div>
+        </div>
+      </div>
+
+      {/* 作品メニュー shell (タブ UI) 用設定。
+          このページがプレイヤーの作品メニューにタブとしてどう出るかを制御する。
+          - tab_enabled = false なら タブから除外
+          - tab_label   = タブバーに出す文言 (未設定なら LIFF ページ名)
+          - tab_page_title = タブ本文先頭に出すタイトル (未設定なら LIFF ページ名) */}
+      <div className="bg-white rounded-xl border border-gray-200 p-5 mb-6 space-y-3">
+        <h2 className="text-sm font-semibold text-gray-900">作品メニューでの表示</h2>
+
+        <label className="flex items-center gap-2 text-sm text-gray-700">
+          <input
+            type="checkbox"
+            checked={settings.tab_enabled !== false}
+            onChange={(e) => updateSetting("tab_enabled", e.target.checked)}
+            disabled={readOnly}
+            className="rounded border-gray-300"
+          />
+          このページを作品メニューにタブとして表示する
+        </label>
+        <p className="text-[11px] text-gray-400 -mt-1">
+          OFF にすると、LIFF プレイヤーのタブ一覧から除外されます (URL を直接開いた場合の表示は維持)。
+        </p>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+          <div>
+            <label className={labelCls}>タブ名（タブバーに表示）</label>
+            <input
+              className={inputCls}
+              value={settings.tab_label ?? ""}
+              onChange={(e) => updateSetting("tab_label", e.target.value)}
+              disabled={readOnly}
+              placeholder={
+                mode === "hint"      ? "例: ヒント"
+                : mode === "location"  ? "例: ロケーション"
+                : mode === "survey"    ? "例: アンケート"
+                : mode === "character" ? "例: キャラクター"
+                : mode === "faq"       ? "例: FAQ"
+                : "例: メニュー"
+              }
+              maxLength={30}
+            />
+            <p className="text-[11px] text-gray-400 mt-1">未設定時は LIFF ページタイトル → ページ種別の既定名にフォールバック。</p>
+          </div>
+          <div>
+            <label className={labelCls}>タブ本文の見出し</label>
+            <input
+              className={inputCls}
+              value={settings.tab_page_title ?? ""}
+              onChange={(e) => updateSetting("tab_page_title", e.target.value)}
+              disabled={readOnly}
+              placeholder="例: 物語のヒント"
+              maxLength={30}
+            />
+            <p className="text-[11px] text-gray-400 mt-1">タブを開いたとき、本文の最上部に出す見出しです。</p>
           </div>
         </div>
       </div>

@@ -1101,20 +1101,28 @@ export type VisibilityCondition = "always" | "before_start" | "in_progress" | "c
 
 /** LIFF ページ種別 — 表示ロジック分岐用
  *
- *  - default:  既存のプレイヤー向けブロックページ
- *  - hint:     ヒントサイト（旧 "hint_site" の後継。データ migration 済み）
- *  - faq:      よくある質問
- *  - survey:   アンケート
- *  - location: ロケーション履歴（チェックイン履歴の表示）
+ *  - default:   既存のプレイヤー向けブロックページ
+ *  - hint:      ヒントサイト（旧 "hint_site" の後継。データ migration 済み）
+ *  - faq:       よくある質問
+ *  - survey:    アンケート
+ *  - location:  ロケーション履歴（チェックイン履歴の表示）
+ *  - character: キャラクター情報 (作品メニュー shell のタブ用。本文ブロックは default と同じ
+ *               LiffPageBlock を使う想定だが、未登録ならプレイヤー側で空状態を表示する)
  *
  *  互換性: 旧データの "hint_site" は読み込み時に "hint" として扱う。
- *  Zod (`LIFF_PAGE_TYPES`) では両方を受理し、保存は "hint" に正規化する。 */
-export type LiffPageType = "default" | "hint" | "faq" | "survey" | "location";
+ *  Zod (`LIFF_PAGE_TYPES`) では両方を受理し、保存は "hint" に正規化する。
+ *
+ *  DB は `pageType String @default("default")` で enum ではないため、character 追加に
+ *  Prisma migration は不要。 */
+export type LiffPageType = "default" | "hint" | "faq" | "survey" | "location" | "character";
 
 /** 旧データ互換用。ストレージから読んだ値を正規化する。 */
 export function normalizeLiffPageType(value: string | null | undefined): LiffPageType {
   if (value === "hint_site") return "hint";
-  if (value === "hint" || value === "faq" || value === "survey" || value === "location") return value;
+  if (
+    value === "hint" || value === "faq" || value === "survey" ||
+    value === "location" || value === "character"
+  ) return value;
   return "default";
 }
 
@@ -1362,6 +1370,18 @@ export interface LiffPageConfigSettings {
   survey_items?: SurveyItem[];
   /** Survey 送信完了時に表示するテキスト */
   survey_thanks_message?: string;
+
+  // ── 作品メニュー shell (タブ UI) 用設定 ────────
+  /** このページを作品メニュー shell のタブとして表示するか。
+   *  未指定 = true (= 表示)。false にすると LIFF プレイヤーのタブ一覧から除外される。
+   *  なお `LiffPageConfig.is_enabled` が false の場合はそもそも公開されない (= タブにも出ない)。 */
+  tab_enabled?: boolean;
+  /** メニュー shell のタブバーに表示する文言。
+   *  未指定なら `title` (LIFF ページ名) にフォールバック。 */
+  tab_label?: string;
+  /** タブをアクティブにしたときに本文先頭に出すページタイトル。
+   *  未指定なら `title` (LIFF ページ名) にフォールバック。 */
+  tab_page_title?: string;
 }
 
 /** FAQ 1 項目 */

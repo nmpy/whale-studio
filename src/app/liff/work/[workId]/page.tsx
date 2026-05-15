@@ -3,14 +3,14 @@
 // src/app/liff/work/[workId]/page.tsx
 // LIFF表示ページ (旧 URL: workId のみ) — LINE内ブラウザ / 外部ブラウザ両対応
 //
-// 後方互換のため残す URL。workId 配下で最も古い (oldest) LIFF ページを表示する。
-// 個別ページ指定は /liff/work/[workId]/pages/[pageId] を使う。
+// 後方互換のため残す URL。今は作品メニュー shell (= タブ UI) を表示する。
+// 旧仕様 "workId 配下で最も古いページを表示" は廃止。タブ UI から各 pageType を選んでもらう。
 
 import { useParams } from "next/navigation";
-import { LiffPlayerViewer } from "@/components/liff/LiffPlayerViewer";
+import { LiffMenuPlayerViewer } from "@/components/liff/LiffMenuPlayerViewer";
 
 export default function LiffViewerPage() {
   const params = useParams();
   const workId = params.workId as string;
-  return <LiffPlayerViewer workId={workId} apiBaseUrl={`/api/liff/works/${workId}`} />;
+  return <LiffMenuPlayerViewer workId={workId} />;
 }

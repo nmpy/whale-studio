@@ -1,226 +1,122 @@
 "use client";
 
 // src/components/liff/LiffPreview.tsx
+//
 // 管理画面用スマホ幅プレビュー。
-// 実機 LIFF 表示とズレないよう、`.liff-font` ラッパー越しに同じデザイントークン
-// (--liff-line-green / --liff-header-bg / --liff-primary-text 等) を継承する。
-// プレビュー専用にスタイルを直書きせず、なるべく本物のレンダラーを使う。
+//
+// 旧仕様: 編集中ページ単体を per-type renderer で表示するだけだった。
+// 新仕様: **作品メニュー shell (LiffMenuShell)** を実機と同じく表示する。
+//   - work 配下の他のページ (siblings) を /api/liff/works/[workId]/menu?preview=1 から取得
+//   - 編集中ページ (= まだ未保存の draft) は in-memory で sibling 配列に上書き / 追加して
+//     リアルタイムにプレビュー反映する
+//   - LiffMenuShell の syncUrl は false (CMS では URL を書き換えない)
 //
 // 管理画面ルートでは LIFF レイアウトの CSS がロードされていないため、ここで明示的に import する。
 import "@/app/liff/liff-font.css";
 
-import type { LiffPageBlock, LiffBlockType, LiffPageConfig } from "@/types";
-import type {
-  FreeTextSettings,
-  StartButtonSettings,
-  ResumeButtonSettings,
-  ProgressSettings,
-  EvidenceListSettings,
-  HintListSettings,
-  CharacterListSettings,
-  ImageBlockSettings,
-  VideoBlockSettings,
-  HeadingSettings,
-  TextSettings,
-  WarningSettings,
-  ButtonLinkSettings,
-  DividerSettings,
-  AccordionSettings,
-} from "@/types";
-import { HintSiteRenderer } from "./HintSiteRenderer";
-import { FaqRenderer } from "./FaqRenderer";
-import { SurveyRenderer } from "./SurveyRenderer";
-import { LocationHistoryRenderer } from "./LocationHistoryRenderer";
-import { LiffShareButton } from "./LiffShareButton";
-import { normalizeLiffPageType } from "@/types";
-import {
-  HeadingBlock,
-  TextBlock,
-  WarningBlock,
-  ButtonLinkBlock,
-  DividerBlock,
-  AccordionBlock,
-  StartButtonBlock,
-  ResumeButtonBlock,
-  ProgressBlock,
-  EvidenceListBlock,
-  HintListBlock,
-  CharacterListBlock,
-  ImageBlock,
-  VideoBlock,
-  FreeTextBlock,
-} from "./renderers";
-import { liffRootClass, resolveHeaderTitle } from "./liff-style-helpers";
+import { useEffect, useState, useMemo } from "react";
+import type { LiffPageBlock, LiffPageConfig } from "@/types";
+import { LiffMenuShell, type LiffMenuPage } from "./LiffMenuShell";
 
-// 「ヒントの一覧」用ダミー
-const SAMPLE_HINTS = [
-  { id: "h1", text: "（プレビュー用ヒント）" },
-];
+interface Props {
+  blocks: LiffPageBlock[];
+  /** 編集中の work ID (= 作品メニュー shell が他ページを取得するのに使う) */
+  workId?: string;
+  /** 編集中の LIFF ページ ID (= サーバから取った siblings 配列でこの id を編集中データに置換する) */
+  pageId?: string;
+  /** 作品名。ヘッダー表示に使う */
+  workTitle?: string | null;
+  /** 編集中ページのタイトル (in-progress) */
+  title?: string | null;
+  /** 編集中ページの page_type / settings_json / description / is_enabled (in-progress) */
+  config?: Pick<LiffPageConfig, "page_type" | "settings_json" | "description" | "is_enabled" | "public_id"> | null;
+}
 
-function BlockPreviewContent({ block }: { block: LiffPageBlock }) {
-  const s = block.settings_json as Record<string, unknown>;
-  const t = block.block_type as LiffBlockType;
-  switch (t) {
-    case "free_text":      return <FreeTextBlock title={block.title} settings={s as FreeTextSettings} />;
-    case "start_button":   return <StartButtonBlock settings={s as StartButtonSettings} />;
-    case "resume_button":  return <ResumeButtonBlock settings={s as ResumeButtonSettings} canResume />;
-    case "progress":       return <ProgressBlock title={block.title} settings={s as ProgressSettings} current={3} total={5} />;
-    case "evidence_list":  return <EvidenceListBlock title={block.title} settings={s as EvidenceListSettings} evidences={[]} />;
-    case "hint_list":      return <HintListBlock title={block.title} settings={s as HintListSettings} hints={SAMPLE_HINTS} />;
-    case "character_list": return <CharacterListBlock title={block.title} settings={s as CharacterListSettings} characters={[]} />;
-    case "image":          return <ImageBlock settings={s as ImageBlockSettings} />;
-    case "video":          return <VideoBlock settings={s as VideoBlockSettings} />;
-    case "heading":        return <HeadingBlock title={block.title} settings={s as HeadingSettings} />;
-    case "text":           return <TextBlock title={block.title} settings={s as TextSettings} />;
-    case "warning":        return <WarningBlock settings={s as WarningSettings} />;
-    case "button_link":    return <ButtonLinkBlock settings={s as ButtonLinkSettings} />;
-    case "divider":        return <DividerBlock settings={s as DividerSettings} />;
-    case "accordion":      return <AccordionBlock title={block.title} settings={s as AccordionSettings} depth={1} blockId={block.id} />;
-    default:               return <p className="text-xs text-gray-400">不明なブロック</p>;
-  }
+interface MenuApiResponse {
+  success: boolean;
+  data?: {
+    work_id:    string;
+    work_title: string;
+    pages:      LiffMenuPage[];
+  };
+}
+
+/** 編集中の `LiffPageConfig` 部分から LiffMenuShell が期待する LiffMenuPage を組む。 */
+function buildCurrentPage({
+  pageId, blocks, title, config,
+}: {
+  pageId: string;
+  blocks: LiffPageBlock[];
+  title: string | null;
+  config: Props["config"];
+}): LiffMenuPage {
+  return {
+    id:            pageId,
+    public_id:     config?.public_id ?? null,
+    title,
+    description:   config?.description ?? null,
+    page_type:     config?.page_type ?? "default",
+    is_enabled:    config?.is_enabled ?? true,
+    settings_json: (config?.settings_json ?? {}) as LiffMenuPage["settings_json"],
+    blocks: blocks
+      .filter((b) => b.is_enabled)
+      .map((b) => ({
+        id:            b.id,
+        block_type:    b.block_type,
+        sort_order:    b.sort_order,
+        title:         b.title,
+        settings_json: (b.settings_json ?? {}) as Record<string, unknown>,
+      })),
+  };
 }
 
 export function LiffPreview({
-  blocks,
-  workTitle,
-  title,
-  config,
-}: {
-  blocks: LiffPageBlock[];
-  /** 作品名。ヘッダー表示に使う (新仕様) */
-  workTitle?: string | null;
-  /** LIFF ページ名。本文 h2 として表示する */
-  title?: string | null;
-  config?: Pick<LiffPageConfig, "page_type" | "settings_json" | "description"> | null;
-}) {
-  const enabledBlocks = blocks.filter((b) => b.is_enabled);
-  const mode = normalizeLiffPageType(config?.page_type);
-  // ヘッダーは settings.header_title 優先で、次に workTitle → pageTitle → fallback。
-  // 本文 h2 (ページタイトル) は廃止。
-  const headerLabel = resolveHeaderTitle({
-    settings:  config?.settings_json,
-    workTitle,
-    pageTitle: title,
-  }) || "LIFF ページ";
+  blocks, workId, pageId, workTitle, title, config,
+}: Props) {
+  // ── work 配下の他ページを取得 (preview=1 で draft も含める) ────────────────
+  const [siblings, setSiblings] = useState<LiffMenuPage[]>([]);
 
-  // ── 共通フレーム ──
-  const frame = (label: string, content: React.ReactNode) => (
-    <div className="w-[375px] min-h-[600px] bg-white rounded-2xl overflow-hidden border-[8px] border-gray-800 shadow-xl shrink-0">
-      <div className="bg-gray-800 text-white py-2 px-4 text-[11px] font-semibold text-center">{label}</div>
-      <div className="overflow-auto" style={{ maxHeight: 720 }}>{content}</div>
-    </div>
-  );
+  useEffect(() => {
+    if (!workId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/liff/works/${workId}/menu?preview=1`);
+        const json = (await res.json()) as MenuApiResponse;
+        if (cancelled) return;
+        if (json.success && json.data) {
+          setSiblings(json.data.pages);
+        }
+      } catch {
+        if (!cancelled) setSiblings([]);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [workId]);
 
-  // ヒントサイトプレビュー — 実機と同じレンダラーをそのまま縮小表示する
-  if (mode === "hint") {
-    return frame("LIFF ヒントプレビュー", (
-      <HintSiteRenderer
-        preview
-        config={{
-          work_id:       "preview",
-          work_title:    workTitle ?? null,
-          title:         title ?? null,
-          description:   config?.description ?? null,
-          settings_json: config?.settings_json ?? {},
-          blocks:        enabledBlocks.map((b) => ({
-            id:            b.id,
-            block_type:    b.block_type,
-            title:         b.title,
-            settings_json: (b.settings_json ?? {}) as Record<string, unknown>,
-          })),
-        }}
-      />
-    ));
-  }
+  // 編集中ページの最新スナップショットを sibling 配列に重ねて、リアルタイム反映する。
+  const mergedPages = useMemo<LiffMenuPage[]>(() => {
+    if (!pageId) return siblings;
+    const current = buildCurrentPage({ pageId, blocks, title: title ?? null, config });
+    const exists = siblings.some((p) => p.id === pageId);
+    if (exists) return siblings.map((p) => (p.id === pageId ? current : p));
+    return [...siblings, current];
+  }, [siblings, pageId, blocks, title, config]);
 
-  if (mode === "faq") {
-    return frame("LIFF FAQ プレビュー", (
-      <FaqRenderer
-        preview
-        config={{
-          work_title:    workTitle ?? null,
-          title:         title ?? null,
-          description:   config?.description ?? null,
-          settings_json: config?.settings_json ?? {},
-        }}
-      />
-    ));
-  }
-
-  if (mode === "survey") {
-    return frame("LIFF アンケートプレビュー", (
-      <SurveyRenderer
-        preview
-        config={{
-          work_id:       "preview",
-          work_title:    workTitle ?? null,
-          title:         title ?? null,
-          description:   config?.description ?? null,
-          settings_json: config?.settings_json ?? {},
-        }}
-      />
-    ));
-  }
-
-  if (mode === "location") {
-    return frame("LIFF 履歴プレビュー", (
-      <LocationHistoryRenderer
-        preview
-        config={{
-          work_id:       "preview",
-          work_title:    workTitle ?? null,
-          title:         title ?? null,
-          description:   config?.description ?? null,
-          settings_json: config?.settings_json ?? {},
-        }}
-      />
-    ));
-  }
-
-  // デフォルト (プレイヤー向け) プレビュー — LiffRenderer と同じレイアウト・色を再現する。
-  // ※ 実機 LIFF からは画面内ヘッダー (LiffPlayerHeader) を廃止したが、
-  //    CMS プレビューでは「上部バーには何が出るか」を確認できるよう、フレーム上端に
-  //    薄い小さなタイトル帯を残す (実機との完全一致ではなく "プレビュー表示" 扱い)。
   return (
     <div className="w-[375px] min-h-[600px] bg-white rounded-2xl overflow-hidden border-[8px] border-gray-800 shadow-xl shrink-0">
-      <div className="bg-gray-800 text-white py-2 px-4 text-[11px] font-semibold text-center flex items-center justify-between">
-        <span>LIFF プレビュー</span>
-        {/* 上部バーに出るタイトル (= document.title 相当) を CMS でも確認できるよう小さく表示 */}
-        <span className="text-[10px] opacity-70 truncate max-w-[160px]" title={headerLabel}>
-          {headerLabel}
-        </span>
+      <div className="bg-gray-800 text-white py-2 px-4 text-[11px] font-semibold text-center">
+        LIFF プレビュー
       </div>
-
-      <div className={`liff-font ${liffRootClass(config?.settings_json)} bg-[color:var(--liff-background)] min-h-[560px]`}>
-        <main className="liff-player-main pt-6 pb-5">
-          {/* ページタイトル h3 は廃止。ヘッダー文言で文脈表現。 */}
-          {enabledBlocks.length === 0 ? (
-            <p className="text-[color:var(--liff-tertiary-text)] text-sm text-center py-10">
-              ブロックが追加されていません
-            </p>
-          ) : (
-            enabledBlocks.map((block, i) => {
-              const isAccordion = block.block_type === "accordion";
-              const isLast = i === enabledBlocks.length - 1;
-              const sectionCls = isAccordion
-                ? ""
-                : isLast
-                  ? "pb-2"
-                  : "pb-6 mb-6 border-b border-[color:var(--liff-border)]";
-              return (
-                <div key={block.id} className={sectionCls}>
-                  <BlockPreviewContent block={block} />
-                </div>
-              );
-            })
-          )}
-
-          {config?.settings_json?.share_enabled && (
-            <div className="pt-6">
-              <LiffShareButton settings={config.settings_json} pageTitle={title || ""} preview />
-            </div>
-          )}
-        </main>
+      <div className="overflow-auto" style={{ maxHeight: 720 }}>
+        <LiffMenuShell
+          workId={workId ?? "preview"}
+          workTitle={workTitle ?? ""}
+          pages={mergedPages}
+          activePagePublicId={config?.public_id ?? pageId ?? null}
+          preview
+          syncUrl={false}
+        />
       </div>
     </div>
   );
