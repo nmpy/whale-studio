@@ -61,10 +61,12 @@ interface Props {
 
 const HEADER_HEIGHT_PX = 56;
 
-// LINE Design System のデフォルト色。settings.theme で上書き可能だが、
-// 未設定時はこの値を使う（"#00000" などの不正値は無効として扱う）。
-const DEFAULT_HEADER_BG = "#06C755";
-const DEFAULT_HEADER_FG = "#ffffff";
+// 既定色は LINE Design System for Messenger の Layout に合わせ、
+// 白背景 + 黒文字 + 細い罫線。緑帯はやめる (作品名は静かに見せる)。
+// settings.theme.header_bg / header_fg があれば上書き可能 (旧データ互換)。
+const DEFAULT_HEADER_BG = "#FFFFFF";
+const DEFAULT_HEADER_FG = "#1F2329";
+const DEFAULT_HEADER_BORDER = "#E6E8EB";
 
 const HEX_COLOR_RE = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/;
 
@@ -96,8 +98,9 @@ export function HintSiteRenderer({ config, preview }: Props) {
   }, [config.work_id, preview]);
 
   const themeStyle = useMemo<React.CSSProperties>(() => ({
-    "--hint-header-bg": normalizeColor(settings.theme?.header_bg, DEFAULT_HEADER_BG),
-    "--hint-header-fg": normalizeColor(settings.theme?.header_fg, DEFAULT_HEADER_FG),
+    "--hint-header-bg":     normalizeColor(settings.theme?.header_bg, DEFAULT_HEADER_BG),
+    "--hint-header-fg":     normalizeColor(settings.theme?.header_fg, DEFAULT_HEADER_FG),
+    "--hint-header-border": DEFAULT_HEADER_BORDER,
   } as React.CSSProperties), [settings.theme]);
 
   return (
@@ -118,9 +121,13 @@ export function HintSiteRenderer({ config, preview }: Props) {
         <main className="max-w-md mx-auto px-4 py-5 flex flex-col gap-4 pb-24">
           {/* ヘッダーは作品名表示なので、本文先頭でページ単位の h2 を出す。
               ページタイトルが空のときは何も出さない (ヘッダーで作品名が見えていれば十分)。
-              LINE Design System Layout に揃え、ページタイトルは中央寄せ。 */}
+              LINE Design System Layout に揃え、ページタイトルは中央寄せ。
+              22px / 上品な読み物見出し。 */}
           {config.title?.trim() && (
-            <h2 className="text-[20px] leading-tight font-bold tracking-tight break-words text-[color:var(--liff-primary-text)] text-center">
+            <h2
+              className="text-[22px] leading-tight font-bold break-words text-[color:var(--liff-primary-text)] text-center pt-1 pb-1"
+              style={{ letterSpacing: "-0.005em" }}
+            >
               {config.title}
             </h2>
           )}
@@ -163,10 +170,11 @@ function Header({
 }) {
   return (
     <header
-      className={`${fixed ? "fixed top-0 left-0 right-0 z-30" : ""}`}
+      className={`${fixed ? "fixed top-0 left-0 right-0 z-30" : ""} border-b`}
       style={{
         background: "var(--hint-header-bg)",
         color: "var(--hint-header-fg)",
+        borderColor: "var(--hint-header-border)",
         paddingTop: fixed ? "env(safe-area-inset-top, 0px)" : undefined,
       }}
     >
@@ -184,8 +192,8 @@ function Header({
         ) : (
           // タイトルは最大 10 文字制限がフロント / API 両方で効いている前提のため、
           // ヘッダーでも省略せず全文表示する (truncate / ellipsis を付けない)。
-          // 中央寄せ (LINE Design System Layout に合わせる)。
-          <span className="text-[16px] font-bold break-words text-center">{title || "LIFF"}</span>
+          // 17px / 中央寄せ (白背景 + 細罫線の上に静かに乗る)。
+          <span className="text-[17px] font-bold break-words text-center">{title || "LIFF"}</span>
         )}
       </div>
     </header>

@@ -33,9 +33,13 @@ export function FaqRenderer({ config, preview }: { config: FaqRendererConfig; pr
       <main className="max-w-md mx-auto px-4 py-5 flex flex-col gap-4 pb-24">
         {/* 本文先頭の見出しとして LIFF ページタイトル (page.title) を表示する。
             ヘッダーは作品名なので、本文側でページ単位のタイトルを出して区別する。
-            LINE Design System Layout に揃え、ページタイトルは中央寄せ。 */}
+            LINE Design System Layout に揃え、ページタイトルは中央寄せ。
+            22px / 上品な読み物見出し。 */}
         {pageTitle && (
-          <h2 className="text-[20px] leading-tight font-bold tracking-tight break-words text-[color:var(--liff-primary-text)] text-center">
+          <h2
+            className="text-[22px] leading-tight font-bold break-words text-[color:var(--liff-primary-text)] text-center pt-1 pb-1"
+            style={{ letterSpacing: "-0.005em" }}
+          >
             {pageTitle}
           </h2>
         )}
@@ -91,33 +95,47 @@ function FaqRow({ item, index }: { item: FaqItem; index: number }) {
     });
   };
   return (
-    <li className="border border-[color:var(--liff-border)] rounded-[12px] overflow-hidden bg-[color:var(--liff-surface)]">
+    <li className="border border-[color:var(--liff-border)] rounded-[16px] overflow-hidden bg-[color:var(--liff-surface)]">
       <button
         id={headerId}
         type="button"
         aria-expanded={open}
         aria-controls={panelId}
         onClick={toggle}
-        className="w-full flex items-center justify-between gap-3 text-left px-4 py-3"
+        className="w-full flex items-center justify-between gap-3 text-left px-5 min-h-[60px] py-3 transition-colors active:bg-[color:var(--liff-surface-subtle,#F7F8FA)]"
       >
-        <span className="font-bold text-[15px] leading-snug break-words flex-1 min-w-0">
+        <span className="font-bold text-[16px] leading-snug break-words flex-1 min-w-0 text-[color:var(--liff-primary-text)]">
           {item.question?.trim() || "（質問未設定）"}
         </span>
-        <span
+        {/* AccordionBlock と同じ chevron。緑ボタン / 丸枠は使わない */}
+        <svg
           aria-hidden="true"
-          className="shrink-0 w-6 h-6 rounded-full border border-[color:var(--liff-border)] flex items-center justify-center text-base font-bold leading-none"
+          viewBox="0 0 24 24"
+          width="20"
+          height="20"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className={`shrink-0 text-[color:var(--liff-secondary-text)] transition-transform ${
+            open ? "rotate-180" : ""
+          }`}
         >
-          {open ? "−" : "+"}
-        </span>
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
       </button>
       {open && (
         <div
           id={panelId}
           role="region"
           aria-labelledby={headerId}
-          className="px-4 py-3 border-t border-[color:var(--liff-border)]"
+          className="px-5 pt-4 pb-5 border-t border-[color:var(--liff-border)]"
         >
-          <p className="text-[15px] leading-[1.6] whitespace-pre-wrap break-words text-[color:var(--liff-primary-text)]">
+          <p
+            className="text-[15px] leading-[1.8] whitespace-pre-wrap break-words text-[color:var(--liff-primary-text)]"
+            style={{ letterSpacing: "0.02em" }}
+          >
             {item.answer?.trim() || "（回答未設定）"}
           </p>
         </div>

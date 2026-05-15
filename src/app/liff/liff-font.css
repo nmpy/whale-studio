@@ -14,29 +14,39 @@
  */
 
 .liff-font {
-  /* === Color tokens === */
+  /* === Color tokens ===
+   * 緑は強く出しすぎない方針。ヘッダー帯は廃止し、白背景 + 細い罫線で
+   * 「LINE 内で読む静かなドキュメント」として見えるようにする。
+   * 緑はアクセント (リンク・主要 CTA) としてのみ使う。 */
   --liff-line-green:      #06C755;
   --liff-line-green-press:#05B14C;
-  --liff-header-bg:       #06C755;
-  --liff-header-text:     #ffffff;
-  --liff-primary-text:    #111111;
-  --liff-secondary-text:  #666666;
-  --liff-tertiary-text:   #999999;
-  --liff-border:          #E5E5E5;
+  --liff-header-bg:       #FFFFFF;       /* 旧: #06C755 (緑帯) → 白に変更。緑帯はやめる */
+  --liff-header-text:     #1F2329;       /* 旧: #FFFFFF → 黒に変更 */
+  --liff-header-border:   #E6E8EB;       /* ヘッダー下の細い罫線色 (新規) */
+  --liff-primary-text:    #1F2329;       /* 旧 #111 を少し柔らかい黒に */
+  --liff-secondary-text:  #5B6168;       /* 旧 #666 → 少し冷たすぎないグレー */
+  --liff-tertiary-text:   #8C8C8C;       /* 補助テキスト用 */
+  --liff-border:          #EEF0F2;       /* 旧 #E5E5E5 → カード境界を更に弱める */
+  --liff-border-strong:   #E6E8EB;       /* 区切り線・focus 等で必要な場合用 */
   --liff-surface:         #FFFFFF;
+  --liff-surface-subtle:  #F7F8FA;       /* 軽く沈めたい領域 (背景と同色) */
   --liff-background:      #F7F8FA;
   --liff-danger:          #E22B2B;
   --liff-danger-press:    #C42323;
 
   /* === Layout tokens === */
   --liff-gutter:          16px;  /* 画面左右余白 */
-  --liff-card-radius:     12px;
+  --liff-card-radius:     16px;  /* 旧 12 → 16 (上品さを増す) */
   --liff-button-radius:   10px;
   --liff-button-height:   48px;
+  --liff-card-padding:    18px;  /* カード内の標準パディング (旧: 12) */
 
   /* === Typography tokens ===
    * --liff-font-stack を 1 か所で切り替えることで、ゴシック / 明朝の家族を変更できる。
    * .liff-font--mincho が当たれば明朝に上書きされる。
+   *
+   * 本文の読みやすさを優先し、line-height と letter-spacing を緩める。
+   * LINE Seed JP は密度が高めなので 1.8 程度の行間が目に優しい。
    */
   --liff-font-stack:
     "LINE Seed JP",
@@ -50,8 +60,9 @@
 
   font-family: var(--liff-font-stack);
   color: var(--liff-primary-text);
-  /* LINE Design System の本文ガイドに合わせ、行間は本文用に余裕を持たせる */
-  line-height: 1.6;
+  /* 本文用ガイド: 行間を緩めて読みやすく。 */
+  line-height: 1.8;
+  letter-spacing: 0.01em;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }

@@ -122,9 +122,13 @@ export function SurveyRenderer({ config, preview, lineUserId }: Props) {
       <LiffPlayerHeader workTitle={config.work_title} pageTitle={config.title} />
       <main className="max-w-md mx-auto px-4 py-5 flex flex-col gap-4 pb-24">
         {/* 本文先頭にページタイトルを h2 として表示する。ヘッダーは作品名。
-            LINE Design System Layout に合わせ、ページタイトルも中央寄せ。 */}
+            LINE Design System Layout に合わせ、ページタイトルも中央寄せ。
+            22px / 行間広めで、上品な読み物見出しに寄せる。 */}
         {pageTitle && (
-          <h2 className="text-[20px] leading-tight font-bold tracking-tight break-words text-[color:var(--liff-primary-text)] text-center">
+          <h2
+            className="text-[22px] leading-tight font-bold break-words text-[color:var(--liff-primary-text)] text-center pt-1 pb-1"
+            style={{ letterSpacing: "-0.005em" }}
+          >
             {pageTitle}
           </h2>
         )}
@@ -135,9 +139,9 @@ export function SurveyRenderer({ config, preview, lineUserId }: Props) {
         )}
 
         {completed ? (
-          <div className="bg-[color:var(--liff-surface)] border border-[color:var(--liff-border)] rounded-[12px] px-4 py-6 text-center">
-            <p className="text-3xl mb-2">✓</p>
-            <p className="text-[15px] leading-[1.6] whitespace-pre-wrap">{thanksMessage}</p>
+          <div className="bg-[color:var(--liff-surface)] border border-[color:var(--liff-border)] rounded-[16px] px-5 py-7 text-center">
+            <p className="text-3xl mb-3 text-[color:var(--liff-line-green)]">✓</p>
+            <p className="text-[15px] leading-[1.8] whitespace-pre-wrap" style={{ letterSpacing: "0.02em" }}>{thanksMessage}</p>
           </div>
         ) : items.length === 0 ? (
           <p className="text-sm text-[color:var(--liff-tertiary-text)] text-center py-8">

@@ -140,23 +140,24 @@ export function LiffRenderer({
     //   - ページタイトルは本文先頭の h2 として描画 (ヘッダーと役割を分離)
     <div className={`liff-font ${liffRootClass(settings)} min-h-screen bg-[color:var(--liff-background)] text-[color:var(--liff-primary-text)]`}>
       <header
-        className="px-4 py-3"
+        className="px-4 h-14 flex items-center justify-center border-b"
         style={{
           background: "var(--liff-header-bg)",
           color: "var(--liff-header-text)",
+          borderColor: "var(--liff-header-border)",
         }}
       >
-        <div className="max-w-md mx-auto">
-          {/* 作品名は中央寄せ (LINE Design System Layout) */}
-          <h1 className="text-[18px] leading-tight font-bold tracking-tight break-words text-center">
+        <div className="max-w-md mx-auto w-full">
+          {/* 白背景 + 細罫線、17px 中央寄せ。緑帯はやめる。 */}
+          <h1 className="text-[17px] leading-tight font-bold break-words text-center">
             {headerLabel}
           </h1>
         </div>
       </header>
 
-      <main className="px-4 py-4 space-y-3 max-w-md mx-auto">
+      <main className="px-4 py-5 space-y-3 max-w-md mx-auto">
         {pageHeading && (
-          <h2 className="text-[20px] leading-tight font-bold tracking-tight break-words text-[color:var(--liff-primary-text)] pt-1 text-center">
+          <h2 className="text-[22px] leading-tight font-bold break-words text-[color:var(--liff-primary-text)] pt-2 pb-1 text-center" style={{ letterSpacing: "-0.005em" }}>
             {pageHeading}
           </h2>
         )}
@@ -168,7 +169,7 @@ export function LiffRenderer({
           visibleBlocks.map((block) => (
             <section
               key={block.id}
-              className="bg-[color:var(--liff-surface)] rounded-[12px] px-4 py-3 border border-[color:var(--liff-border)]"
+              className="bg-[color:var(--liff-surface)] rounded-[16px] px-5 py-4 border border-[color:var(--liff-border)]"
             >
               <RenderBlock block={block} ctx={ctx} />
             </section>
