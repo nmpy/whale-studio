@@ -143,9 +143,13 @@ export function LocationHistoryRenderer({ config, lineUserId, preview }: Props) 
       <LiffPlayerHeader workTitle={config.work_title} pageTitle={config.title} />
       <main className="max-w-md mx-auto px-4 py-5 flex flex-col gap-4 pb-24">
         {/* 本文先頭にページタイトルを h2 として表示する。ヘッダーは作品名。
-            LINE Design System Layout に揃え、ページタイトルは中央寄せ。 */}
+            LINE Design System Layout に揃え、ページタイトルは中央寄せ。
+            22px / 上品な読み物見出し。 */}
         {pageTitle && (
-          <h2 className="text-[20px] leading-tight font-bold tracking-tight break-words text-[color:var(--liff-primary-text)] text-center">
+          <h2
+            className="text-[22px] leading-tight font-bold break-words text-[color:var(--liff-primary-text)] text-center pt-1 pb-1"
+            style={{ letterSpacing: "-0.005em" }}
+          >
             {pageTitle}
           </h2>
         )}

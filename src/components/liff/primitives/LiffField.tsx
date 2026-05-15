@@ -45,8 +45,12 @@ const INPUT_ERROR_CLS =
 // LIFF プレイヤーの設問カード共通箱。Question wrapper として使う。
 // border-radius カードを使うが、子要素は通常フローで描画されるので
 // fieldset/legend の位置決め問題は起きない。
+//
+// 旧仕様: radius 12 / padding 12-16 / 太い境界 → 管理画面っぽい印象。
+// 新仕様: radius 16 / padding 18-20 / 薄い境界 (#EEF0F2) で「読み物の中の小さなパネル」感を出す。
 const FIELD_WRAPPER_CLS =
-  "bg-[color:var(--liff-surface,#fff)] border border-[color:var(--liff-border,#E5E5E5)] rounded-[12px] px-4 py-3 flex flex-col gap-2";
+  "bg-[color:var(--liff-surface,#fff)] border border-[color:var(--liff-border,#EEF0F2)] " +
+  "rounded-[16px] px-5 py-4 flex flex-col gap-3";
 
 // ── ラベル / ヘルパー ──────────────────────────────────────────────────────
 

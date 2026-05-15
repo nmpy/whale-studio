@@ -22,17 +22,16 @@ import { ImageBlock } from "./ImageBlock";
 import { ButtonLinkBlock } from "./ButtonLinkBlock";
 import { DividerBlock } from "./DividerBlock";
 
-const VARIANT_HEADER: Record<LiffSectionVariant, string> = {
-  default: "bg-[color:var(--liff-surface)] text-[color:var(--liff-primary-text)] border-[color:var(--liff-border)]",
-  dark:    "bg-[color:var(--liff-primary-text)] text-white border-[color:var(--liff-primary-text)]",
-  purple:  "bg-violet-600 text-white border-violet-600",
-};
-
-const VARIANT_BODY: Record<LiffSectionVariant, string> = {
-  default: "bg-[color:var(--liff-surface)] border-[color:var(--liff-border)]",
-  dark:    "bg-[color:var(--liff-surface)] border-[color:var(--liff-primary-text)]",
-  purple:  "bg-[color:var(--liff-surface)] border-violet-600",
-};
+// ── AccordionBlock (LINE Design System / Hint Site 用) ─────────────────────
+//
+// 旧仕様: variant ごとに header / body の bg を変え、中入れ子カードとして見せていた。
+//   → 古いフォーム UI 感が出てしまうため廃止。
+//
+// 新仕様 (台本・ハンドアウトを LINE 内で読むトーン):
+//   - 白カード 1 枚で完結。border は薄く (--liff-border)、角丸 16px。
+//   - ヘッダーは text-left + chevron (▾) のみ。緑ボタン枠やラベルは付けない。
+//   - 展開時、ヘッダーと本文の間は細い区切り線 1 本のみ。
+//   - 旧 settings.variant (default / dark / purple) は受け取りつつ無視する (互換)。
 
 interface Props {
   title?: string | null;
@@ -49,9 +48,10 @@ export function AccordionBlock({ title, settings, depth = 1, blockId }: Props) {
 
   const [open, setOpen] = useState<boolean>(!!settings.default_open);
 
-  const variant = (settings.variant ?? (depth === 1 ? "default" : depth === 2 ? "purple" : "default")) as LiffSectionVariant;
-  const headerCls = VARIANT_HEADER[variant];
-  const bodyCls = VARIANT_BODY[variant];
+  // 旧 variant 設定は読み込むが見た目には反映しない (新デザインは 1 種類で統一)。
+  // 型互換のため variable は残す。
+  const _variant = (settings.variant ?? "default") as LiffSectionVariant;
+  void _variant;
 
   const toggle = () => {
     const next = !open;
@@ -61,8 +61,8 @@ export function AccordionBlock({ title, settings, depth = 1, blockId }: Props) {
       depth,
       label: headingText,
     });
-    // 開いた瞬間だけ hint_open を記録 (閉じる動作は計測しない)
-    // blockId が DB の LiffPageBlock.id 由来でない場合は捨てる (useId のローカル ID は記録しても無意味)
+    // 開いた瞬間だけ hint_open を記録 (閉じる動作は計測しない)。
+    // blockId が DB 由来でない場合 (useId の生成値) は記録しない。
     if (next && playerCtx && !playerCtx.preview && blockId) {
       recordLiffEvent({
         workId:     playerCtx.workId,
@@ -76,19 +76,11 @@ export function AccordionBlock({ title, settings, depth = 1, blockId }: Props) {
     }
   };
 
-  const panelId = `acc-panel-${id}`;
+  const panelId  = `acc-panel-${id}`;
   const headerId = `acc-header-${id}`;
 
   return (
-    <section
-      className={`border rounded-[12px] overflow-hidden ${
-        variant === "purple"
-          ? "border-violet-600"
-          : variant === "dark"
-            ? "border-[color:var(--liff-primary-text)]"
-            : "border-[color:var(--liff-border)]"
-      }`}
-    >
+    <section className="bg-[color:var(--liff-surface)] border border-[color:var(--liff-border)] rounded-[16px] overflow-hidden">
       <h3 className="m-0">
         <button
           id={headerId}
@@ -96,19 +88,13 @@ export function AccordionBlock({ title, settings, depth = 1, blockId }: Props) {
           aria-expanded={open}
           aria-controls={panelId}
           onClick={toggle}
-          className={`w-full flex items-center justify-between gap-3 text-left px-4 py-3 ${headerCls} transition-colors`}
+          className="w-full flex items-center justify-between gap-3 text-left px-5 min-h-[60px] py-3 transition-colors active:bg-[color:var(--liff-surface-subtle,#F7F8FA)]"
         >
-          <span className="font-bold text-[16px] leading-snug break-words flex-1 min-w-0">
+          <span className="text-[16px] font-bold leading-snug break-words flex-1 min-w-0 text-[color:var(--liff-primary-text)]">
             {headingText || "（タイトル未設定）"}
           </span>
-          <span
-            aria-hidden="true"
-            className={`shrink-0 w-6 h-6 rounded-full border ${
-              variant === "default" ? "border-[color:var(--liff-border)]" : "border-current"
-            } flex items-center justify-center text-base font-bold leading-none`}
-          >
-            {open ? "−" : "+"}
-          </span>
+          {/* シンプルな chevron。緑ボタンや丸ラベルは使わない。 */}
+          <Chevron open={open} />
         </button>
       </h3>
 
@@ -117,17 +103,40 @@ export function AccordionBlock({ title, settings, depth = 1, blockId }: Props) {
           id={panelId}
           role="region"
           aria-labelledby={headerId}
-          className={`px-4 py-4 border-t ${bodyCls} flex flex-col gap-3`}
+          className="px-5 pt-4 pb-5 border-t border-[color:var(--liff-border)] flex flex-col gap-3 bg-[color:var(--liff-surface)]"
         >
           {(settings.children ?? []).map((child, idx) => (
             <NestedRenderer key={child.id ?? idx} child={child} depth={depth + 1} />
           ))}
           {(!settings.children || settings.children.length === 0) && (
-            <p className="text-[12px] text-[color:var(--liff-tertiary-text)]">（中身は未設定です）</p>
+            <p className="text-[13px] text-[color:var(--liff-tertiary-text)]">（中身は未設定です）</p>
           )}
         </div>
       )}
     </section>
+  );
+}
+
+/** Chevron アイコン。open のときは下向き → 上向きに 180° 回転。
+ *  色は currentColor 継承で、ヘッダーの文字色 (secondary) に追従する。 */
+function Chevron({ open }: { open: boolean }) {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      width="20"
+      height="20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={`shrink-0 text-[color:var(--liff-secondary-text)] transition-transform ${
+        open ? "rotate-180" : ""
+      }`}
+    >
+      <polyline points="6 9 12 15 18 9" />
+    </svg>
   );
 }
 

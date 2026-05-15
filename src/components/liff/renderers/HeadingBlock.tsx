@@ -10,6 +10,9 @@ import { headingSizeClass, headingWeightClass } from "../liff-style-helpers";
 //   level=4 → 16px / bold (本文相当の強調)
 //   level=5 → 14px / bold (小見出し)
 // 太さは settings.font_weight で normal / medium / bold を選べる (既定 bold)。
+//
+// 上品な読み物に寄せるため、letter-spacing を見出し用に少し詰める (-0.01em)。
+// 本文 (TextBlock) は逆に letter-spacing をやや広めに取っている。
 export function HeadingBlock({
   title,
   settings,
@@ -27,12 +30,15 @@ export function HeadingBlock({
   const colorCls = "text-[color:var(--liff-primary-text)]";
   const baseCls = `${sizeCls} ${weightCls} ${align} ${colorCls} break-words`;
 
+  // 見出しは letter-spacing をやや詰め、本文 (0.02em) とコントラストを付ける。
+  const headingStyle: React.CSSProperties = { letterSpacing: "-0.005em" };
+
   switch (level) {
-    case 1: return <h1 className={baseCls}>{text}</h1>;
-    case 2: return <h2 className={baseCls}>{text}</h2>;
-    case 3: return <h3 className={baseCls}>{text}</h3>;
-    case 4: return <h4 className={baseCls}>{text}</h4>;
-    case 5: return <h5 className={baseCls}>{text}</h5>;
+    case 1: return <h1 className={baseCls} style={headingStyle}>{text}</h1>;
+    case 2: return <h2 className={baseCls} style={headingStyle}>{text}</h2>;
+    case 3: return <h3 className={baseCls} style={headingStyle}>{text}</h3>;
+    case 4: return <h4 className={baseCls} style={headingStyle}>{text}</h4>;
+    case 5: return <h5 className={baseCls} style={headingStyle}>{text}</h5>;
   }
 }
 

@@ -21,16 +21,17 @@ export function LiffPlayerHeader({ workTitle, pageTitle, title }: Props) {
   const shown = pickTitle({ workTitle, pageTitle, title });
   return (
     <header
-      className="px-4 py-3"
+      className="px-4 h-14 flex items-center justify-center border-b"
       style={{
         background: "var(--liff-header-bg)",
         color: "var(--liff-header-text)",
+        borderColor: "var(--liff-header-border)",
       }}
     >
-      <div className="max-w-md mx-auto">
-        {/* LINE Design System に揃え、ヘッダー (作品名) は中央寄せ。
-            ヘッダー帯は full-width、内側で px-4 + 中央揃え。 */}
-        <h1 className="text-[18px] leading-tight font-bold tracking-tight break-words text-center">
+      <div className="max-w-md mx-auto w-full">
+        {/* 旧: 緑帯 + 太字大きめ → 白背景 + 細罫線 + 17px 中央寄せ。
+            「LINE 内で読む静かなドキュメント」として上品に見えるように。 */}
+        <h1 className="text-[17px] leading-tight font-bold break-words text-center">
           {shown}
         </h1>
       </div>
