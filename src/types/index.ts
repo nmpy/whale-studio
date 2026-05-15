@@ -1382,6 +1382,11 @@ export interface LiffPageConfigSettings {
   /** タブをアクティブにしたときに本文先頭に出すページタイトル。
    *  未指定なら `title` (LIFF ページ名) にフォールバック。 */
   tab_page_title?: string;
+
+  /** LIFF プレイヤー画面最下部の "Powered by Whale Studio" クレジット表記の表示有無。
+   *  未指定 = true (= 表示)。false で非表示 (ホワイトラベル運用想定)。
+   *  per-page で持っているが、運用上は work 配下の全ページで揃える想定。 */
+  show_whale_studio_credit?: boolean;
 }
 
 /** FAQ 1 項目 */
