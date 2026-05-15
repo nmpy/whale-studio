@@ -74,3 +74,19 @@
 .liff-font *:not([class*="icon"]):not(code):not(pre):not(kbd):not(samp) {
   font-family: inherit;
 }
+
+/* グローバル CSS (src/app/globals.css) の `main { padding: 28px 0 48px }` を LIFF スコープで打ち消す。
+ *
+ * 背景:
+ *   グローバル rule は CMS の <main> 用 (max-width 980px container 内) を想定したもので、
+ *   左右 padding を 0 に固定する。これが LIFF プレイヤー画面の <main> にも当たり、
+ *   Tailwind の `px-4` (= 16px) を上書きしてしまっていた (no-layer vs @layer utilities の優先順位)。
+ *
+ * 対応:
+ *   LIFF プレイヤー画面の <main> はモバイル前提で左右 16px (px-4) を Tailwind で制御する。
+ *   グローバル shorthand を上書きするため、LIFF スコープで padding を unset する。
+ *   実際の padding は各 renderer の Tailwind class (px-4 py-4 等) で指定する。
+ */
+.liff-font main {
+  padding: 0;
+}

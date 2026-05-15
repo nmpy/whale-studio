@@ -7,6 +7,7 @@ import type {
   LiffFontFamily,
   LiffFontWeight,
   LiffHeadingLevel,
+  LiffDescriptionAlign,
   LiffPageConfigSettings,
   HeadingSettings,
   TextSettings,
@@ -64,4 +65,18 @@ export function textWeightClass(settings: TextSettings): string {
   if (settings.font_weight) return fontWeightClass(settings.font_weight, "normal");
   if (settings.emphasis === "strong") return "font-bold";
   return "font-normal";
+}
+
+/** description (ページ本文上部の説明文) の text-align クラス。
+ *  値が不明 / 未指定の場合は "center" (LINE Design System Layout 既定) を返す。 */
+export function descriptionAlignClass(align: LiffDescriptionAlign | undefined): string {
+  if (align === "left")  return "text-left";
+  if (align === "right") return "text-right";
+  return "text-center";
+}
+
+/** page settings から description 用の text-align クラスを出す。
+ *  settings 自体が undefined / align 未設定の場合も "text-center" にフォールバック。 */
+export function liffDescriptionAlignClass(settings: LiffPageConfigSettings | undefined): string {
+  return descriptionAlignClass(settings?.description_align);
 }

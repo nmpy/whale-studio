@@ -1033,6 +1033,8 @@ const surveyItemSchema = z.object({
 const liffPageConfigSettingsSchema = z.object({
   // ページ全体のフォントファミリ。未指定 / 不正値は renderer 側で "gothic" 扱い。
   font_family:          z.enum(["gothic", "mincho"]).optional(),
+  // 本文 description の配置。未指定 / 不正値は renderer 側で "center" 扱い。
+  description_align:    z.enum(["left", "center", "right"]).optional(),
   header_fixed:         z.boolean().optional(),
   header_logo_url:      z.string().url().optional().or(z.literal("")),
   header_logo_alt:      z.string().max(200).optional(),

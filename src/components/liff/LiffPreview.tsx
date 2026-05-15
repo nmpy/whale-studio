@@ -187,7 +187,7 @@ export function LiffPreview({
           }}
         >
           <div className="max-w-md mx-auto">
-            <h2 className="text-[18px] leading-tight font-bold tracking-tight break-words">
+            <h2 className="text-[18px] leading-tight font-bold tracking-tight break-words text-center">
               {headerLabel}
             </h2>
           </div>
@@ -195,7 +195,7 @@ export function LiffPreview({
 
         <div className="px-4 py-4 flex flex-col gap-3 max-w-md mx-auto">
           {pageHeading && (
-            <h3 className="text-[20px] leading-tight font-bold tracking-tight break-words text-[color:var(--liff-primary-text)] pt-1">
+            <h3 className="text-[20px] leading-tight font-bold tracking-tight break-words text-[color:var(--liff-primary-text)] pt-1 text-center">
               {pageHeading}
             </h3>
           )}

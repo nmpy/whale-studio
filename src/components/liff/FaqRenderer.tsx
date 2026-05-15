@@ -10,7 +10,7 @@ import { LiffShareButton } from "./LiffShareButton";
 import { LiffPlayerHeader } from "./LiffPlayerHeader";
 import { recordLiffEvent } from "@/lib/liff-events";
 import { useLiffPlayerContext } from "./LiffPlayerContext";
-import { liffRootClass } from "./liff-style-helpers";
+import { liffRootClass, liffDescriptionAlignClass } from "./liff-style-helpers";
 
 export interface FaqRendererConfig {
   /** 作品名。ヘッダーに表示する (新仕様)。未指定なら title にフォールバック */
@@ -32,14 +32,15 @@ export function FaqRenderer({ config, preview }: { config: FaqRendererConfig; pr
       <LiffPlayerHeader workTitle={config.work_title} pageTitle={config.title} />
       <main className="max-w-md mx-auto px-4 py-5 flex flex-col gap-4 pb-24">
         {/* 本文先頭の見出しとして LIFF ページタイトル (page.title) を表示する。
-            ヘッダーは作品名なので、本文側でページ単位のタイトルを出して区別する。 */}
+            ヘッダーは作品名なので、本文側でページ単位のタイトルを出して区別する。
+            LINE Design System Layout に揃え、ページタイトルは中央寄せ。 */}
         {pageTitle && (
-          <h2 className="text-[20px] leading-tight font-bold tracking-tight break-words text-[color:var(--liff-primary-text)]">
+          <h2 className="text-[20px] leading-tight font-bold tracking-tight break-words text-[color:var(--liff-primary-text)] text-center">
             {pageTitle}
           </h2>
         )}
         {config.description && (
-          <p className="text-[14px] leading-relaxed text-[color:var(--liff-secondary-text)] whitespace-pre-wrap break-words">
+          <p className={`text-[14px] leading-relaxed text-[color:var(--liff-secondary-text)] whitespace-pre-wrap break-words ${liffDescriptionAlignClass(config.settings_json)}`}>
             {config.description}
           </p>
         )}
