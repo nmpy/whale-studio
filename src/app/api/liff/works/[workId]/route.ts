@@ -25,6 +25,17 @@ export async function GET(
       );
     }
 
+    const url = new URL(req.url);
+    const preview = url.searchParams.get("preview") === "1";
+
+    // work レベルの LIFF 有効/無効を尊重。preview=1 は CMS プレビュー継続のため通す。
+    if (!preview && (work as { liffEnabled?: boolean }).liffEnabled === false) {
+      return NextResponse.json(
+        { success: false, error: { code: "LIFF_DISABLED", message: "このLIFFは現在無効になっています" } },
+        { status: 404 }
+      );
+    }
+
     // 複数 LIFF ページ対応: workId だけで指定された場合は、最も古い (oldest) ページを返す。
     // 新仕様の URL は /api/liff/works/[workId]/pages/[pageId] を使うこと。
     // createdAt 同値時のタイブレークに id を併用して安定ソートにする。
@@ -41,8 +52,7 @@ export async function GET(
 
     // ?preview=1 が指定されているとき（管理画面プレビュー用）は draft でも返す。
     // 通常は published のみ。is_enabled=false は LIFF 自体無効として 404。
-    const url = new URL(req.url);
-    const preview = url.searchParams.get("preview") === "1";
+    // (preview / url は上で計算済み)
     if (!config || !config.isEnabled) {
       return NextResponse.json(
         { success: false, error: { code: "LIFF_DISABLED", message: "このLIFFページは無効です" } },

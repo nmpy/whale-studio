@@ -59,6 +59,11 @@ model Work {
   /// "draft" | "active" | "paused"
   publishStatus     String         @default("draft") @map("publish_status")
   sortOrder         Int            @default(0) @map("sort_order")
+  /// LIFF プレイヤー機能 (work メニュー + 個別 LIFF ページ) の有効/無効。
+  /// false にすると `/liff/w/{publicId}` 系の URL は全て LIFF_DISABLED 応答を返し、
+  /// 実機 LIFF アプリからアクセスできなくなる。CMS プレビューは引き続き利用可能。
+  /// 既存 work データは default(true) で migrate されるため挙動が変わらない。
+  liffEnabled       Boolean        @default(true) @map("liff_enabled")
   /// システムメッセージ（開始/エラー等）送信者として使うキャラクター（任意）
   systemCharacterId String?        @map("system_character_id")
   /// あいさつメッセージ。未開始ユーザーが話しかけたときに送信される導入文（任意）。

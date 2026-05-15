@@ -39,7 +39,9 @@ async function getWorkLimit(oaId: string, role: string): Promise<number> {
 
 function toResponse(w: {
   id: string; oaId: string; title: string; description: string | null;
-  publishStatus: string; sortOrder: number; systemCharacterId: string | null;
+  publishStatus: string; sortOrder: number;
+  liffEnabled?: boolean | null;
+  systemCharacterId: string | null;
   welcomeMessage: string | null;
   readReceiptMode: string | null; readDelayMs: number | null;
   typingEnabled: boolean | null; typingMinMs: number | null; typingMaxMs: number | null;
@@ -54,6 +56,7 @@ function toResponse(w: {
     description:         w.description,
     publish_status:      w.publishStatus,
     sort_order:          w.sortOrder,
+    liff_enabled:        w.liffEnabled ?? true,
     system_character_id: w.systemCharacterId,
     welcome_message:     w.welcomeMessage,
     read_receipt_mode:    (w.readReceiptMode as import("@/types").ReadReceiptMode) ?? null,

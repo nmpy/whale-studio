@@ -10,7 +10,9 @@
 //   - ?preview=1 のときは publishStatus=draft も含める (CMS プレビュー用)
 //   - is_enabled=false の page は除外
 //   - blocks は各 page の is_enabled=true のみ、sort_order asc で同梱
-//   - 並び替えはクライアント側 (buildMenuTabs) に任せる — API はあくまで raw を返す
+//   - 並び替え / 表示有無の最終判定はクライアント側 (buildMenuCards) に任せる
+//   - Work.liffEnabled が false のときは LIFF_DISABLED を返して実機からのアクセスを止める
+//     (?preview=1 のときは CMS プレビュー維持のため通す)
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
@@ -35,6 +37,14 @@ export async function GET(
 
     const url = new URL(req.url);
     const preview = url.searchParams.get("preview") === "1";
+
+    // work レベルの LIFF 有効/無効を尊重。preview=1 は CMS プレビュー継続のため通す。
+    if (!preview && (work as { liffEnabled?: boolean }).liffEnabled === false) {
+      return NextResponse.json(
+        { success: false, error: { code: "LIFF_DISABLED", message: "このLIFFは現在無効になっています" } },
+        { status: 404 }
+      );
+    }
 
     const configs = await prisma.liffPageConfig.findMany({
       where: {
@@ -78,6 +88,7 @@ export async function GET(
           publish_status: config.publishStatus,
           is_enabled:     config.isEnabled,
           settings_json:  config.settingsJson,
+          created_at:     config.createdAt,
           blocks: config.blocks.map((b) => ({
             id:                        b.id,
             block_type:                b.blockType,

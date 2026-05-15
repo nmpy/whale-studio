@@ -53,6 +53,8 @@ export const updateWorkSchema = z.object({
   description:         z.string().max(500).optional().nullable(),
   publish_status:      z.enum(["draft", "active", "paused"]).optional(),
   sort_order:          z.number().int().min(0).optional(),
+  /** LIFF プレイヤー機能 (作品メニュー + 個別 LIFF ページ) の有効/無効。 */
+  liff_enabled:        z.boolean().optional(),
   system_character_id: z.string().uuid().optional().nullable(),
   /**
    * あいさつメッセージ。最大 1000 文字。
@@ -1070,12 +1072,16 @@ const liffPageConfigSettingsSchema = z.object({
   survey_items:          z.array(surveyItemSchema).max(50).optional(),
   survey_thanks_message: z.string().max(500).optional(),
 
-  // 作品メニュー shell (タブ UI) 用の per-page 設定。
-  // ここを各 LiffPageConfig.settings_json に持たせ、作品メニュー shell が読み取って
-  // タブの表示順 / 表示名 / 表示有無を決定する。blocks 自体は引き続き LiffPageBlock に持つ。
+  // PR #59 のタブ UI 用 (deprecated)。後方互換のため schema には残置、renderer は参照しない。
   tab_enabled:    z.boolean().optional(),
   tab_label:      z.string().max(30).optional(),
   tab_page_title: z.string().max(30).optional(),
+
+  // 作品メニューホーム (グリッドカード) 用 per-page 設定。
+  show_in_menu:   z.boolean().optional(),
+  menu_label:     z.string().max(30).optional(),
+  menu_icon:      z.string().max(8).optional(),
+  menu_order:     z.number().int().min(0).max(9999).optional(),
 
   // LIFF プレイヤー最下部 "Powered by Whale Studio" の表示有無 (ホワイトラベル用)。
   // 未指定 = 表示。

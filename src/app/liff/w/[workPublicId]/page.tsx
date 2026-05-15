@@ -2,14 +2,14 @@
 
 // src/app/liff/w/[workPublicId]/page.tsx
 //
-// 短縮公開 URL の作品メニュー shell ルート。
-// 旧仕様 (workPublicId 配下の最古ページを表示) からタブ UI に切り替えた。
+// 短縮公開 URL の作品メニューホーム。カードをタップして個別ページに遷移する。
+// 旧仕様 (PR #59 のタブ shell) は廃止し、トップメニュー + 個別ページ構成に変更。
 
 import { useParams } from "next/navigation";
-import { LiffMenuPlayerViewer } from "@/components/liff/LiffMenuPlayerViewer";
+import { LiffMenuHomeViewer } from "@/components/liff/LiffMenuHomeViewer";
 
 export default function LiffShortWorkViewer() {
   const params = useParams();
   const workPublicId = params.workPublicId as string;
-  return <LiffMenuPlayerViewer workId={workPublicId} />;
+  return <LiffMenuHomeViewer workId={workPublicId} workPublicId={workPublicId} />;
 }

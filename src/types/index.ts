@@ -136,6 +136,9 @@ export interface Work {
   description: string | null;
   publish_status: PublishStatus;
   sort_order: number;
+  /** LIFF プレイヤー機能 (作品メニュー + 個別 LIFF ページ) の有効/無効。
+   *  既定 true。false にすると `/liff/w/[workPublicId]` などからアクセスできなくなる。 */
+  liff_enabled: boolean;
   /** システムメッセージ送信者として使うキャラクター ID（任意） */
   system_character_id: string | null;
   /**
@@ -329,6 +332,8 @@ export interface UpdateWorkBody {
   description?: string;
   publish_status?: PublishStatus;
   sort_order?: number;
+  /** LIFF プレイヤー機能の有効/無効。 */
+  liff_enabled?: boolean;
   /** システムメッセージ送信者キャラクター ID（null で解除） */
   system_character_id?: string | null;
   /**
@@ -1371,17 +1376,31 @@ export interface LiffPageConfigSettings {
   /** Survey 送信完了時に表示するテキスト */
   survey_thanks_message?: string;
 
-  // ── 作品メニュー shell (タブ UI) 用設定 ────────
-  /** このページを作品メニュー shell のタブとして表示するか。
-   *  未指定 = true (= 表示)。false にすると LIFF プレイヤーのタブ一覧から除外される。
-   *  なお `LiffPageConfig.is_enabled` が false の場合はそもそも公開されない (= タブにも出ない)。 */
+  // ── 作品メニュー shell (タブ UI) 用設定 (deprecated) ────────
+  /** @deprecated PR #59 のタブ UI 用。`/liff/w/[workPublicId]` がメニューホーム +
+   *  個別ページ構成に変わったため、現行 renderer はこのフィールドを参照しない。
+   *  既存データを壊さないため schema には残置。新規データでは `show_in_menu` を使う。 */
   tab_enabled?: boolean;
-  /** メニュー shell のタブバーに表示する文言。
-   *  未指定なら `title` (LIFF ページ名) にフォールバック。 */
+  /** @deprecated PR #59 のタブ UI 用。新規データでは `menu_label` を使う。 */
   tab_label?: string;
-  /** タブをアクティブにしたときに本文先頭に出すページタイトル。
-   *  未指定なら `title` (LIFF ページ名) にフォールバック。 */
+  /** @deprecated PR #59 のタブ UI 用。本文タイトルは LIFF ページの `title` で代替する。 */
   tab_page_title?: string;
+
+  // ── 作品メニューホーム (グリッドカード) 用設定 ──────
+  // このページが /liff/w/[workPublicId] のメニューホームでカードとして並ぶ際の振る舞い。
+  // 個別ページ (/liff/w/[workPublicId]/p/[pagePublicId]) の表示自体はここでは制御しない
+  // (= 個別 URL を直接開けば、`show_in_menu=false` でも表示される)。
+  /** このページをメニューホームのカードとして並べるか。未指定 = true (表示)。
+   *  false にしてもページ自体は公開されたまま (URL 直アクセスは生きる)。 */
+  show_in_menu?: boolean;
+  /** メニューホームのカードに出す文言。未指定なら `title` → pageType 既定名にフォールバック。 */
+  menu_label?: string;
+  /** メニューホームのカードに出すアイコン (emoji を想定。1〜3 文字程度)。
+   *  未指定なら pageType 別の既定 emoji にフォールバック。 */
+  menu_icon?: string;
+  /** メニューホームでのカード並び順 (小さい順)。同値は createdAt asc。
+   *  未指定はもっとも後ろに回す。 */
+  menu_order?: number;
 
   /** LIFF プレイヤー画面最下部の "Powered by Whale Studio" クレジット表記の表示有無。
    *  未指定 = true (= 表示)。false で非表示 (ホワイトラベル運用想定)。
