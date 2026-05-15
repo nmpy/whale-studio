@@ -1,24 +1,36 @@
 "use client";
 
 // src/components/liff/LiffPlayerHeader.tsx
-// LIFF プレイヤー画面用の共通ヘッダー。
-// ヘッダーには「作品名」を表示するのが基本仕様。
-// LIFF ページ単体のタイトルは本文側の h1 で表示する (renderers 側で実装)。
 //
-// 受け取りは workTitle 優先、未指定なら pageTitle にフォールバック、最後は "LIFF"。
-// 古い呼び出し (workTitle 無し) でも壊れないようにフォールバック付き。
+// LIFF プレイヤー画面用の共通ヘッダー。
+// 表示文言は CMS で編集可能。優先順位:
+//   1. settings.header_title (CMS で「ヘッダータイトル」として編集)
+//   2. workTitle (作品名)
+//   3. pageTitle (LIFF ページ名)
+//   4. "LIFF" (最終 fallback)
+//
+// 旧 API (workTitle / pageTitle / title prop のみ) も互換維持する。
+
+import type { LiffPageConfigSettings } from "@/types";
+import { resolveHeaderTitle } from "./liff-style-helpers";
 
 interface Props {
-  /** 作品名。新仕様ではこれが優先表示される */
+  /** ページ設定 (CMS の header_title を参照する) */
+  settings?:  LiffPageConfigSettings | null;
+  /** 作品名 (settings.header_title 未設定時の 1 つ目フォールバック) */
   workTitle?: string | null;
-  /** 互換: ページタイトル。workTitle 未指定のときだけ使う。新規実装では渡さない想定 */
+  /** LIFF ページ名 (workTitle も無いときのフォールバック) */
   pageTitle?: string | null;
   /** 互換用エイリアス: 旧 API。pageTitle 相当として扱う */
   title?: string | null;
 }
 
-export function LiffPlayerHeader({ workTitle, pageTitle, title }: Props) {
-  const shown = pickTitle({ workTitle, pageTitle, title });
+export function LiffPlayerHeader({ settings, workTitle, pageTitle, title }: Props) {
+  const shown = resolveHeaderTitle({
+    settings,
+    workTitle,
+    pageTitle: pageTitle ?? title,
+  });
   return (
     <header
       className="px-4 h-14 flex items-center justify-center border-b"
@@ -29,20 +41,12 @@ export function LiffPlayerHeader({ workTitle, pageTitle, title }: Props) {
       }}
     >
       <div className="max-w-md mx-auto w-full">
-        {/* 旧: 緑帯 + 太字大きめ → 白背景 + 細罫線 + 17px 中央寄せ。
-            「LINE 内で読む静かなドキュメント」として上品に見えるように。 */}
-        <h1 className="text-[17px] leading-tight font-bold break-words text-center">
+        {/* 白背景 + 薄罫線 + 17px 中央寄せ。緑帯は使わない。
+            長すぎる場合は省略 (truncate) する。 */}
+        <h1 className="text-[17px] leading-tight font-bold text-center truncate">
           {shown}
         </h1>
       </div>
     </header>
   );
-}
-
-function pickTitle({ workTitle, pageTitle, title }: Props): string {
-  const w = (workTitle ?? "").trim();
-  if (w) return w;
-  const p = (pageTitle ?? title ?? "").trim();
-  if (p) return p;
-  return "LIFF";
 }

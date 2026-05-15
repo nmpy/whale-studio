@@ -1031,8 +1031,12 @@ const surveyItemSchema = z.object({
 
 // ── LIFF ページ設定スキーマ（ヒントサイト用 + FAQ / Survey フィールドを含む） ──
 const liffPageConfigSettingsSchema = z.object({
-  // ページ全体のフォントファミリ。未指定 / 不正値は renderer 側で "gothic" 扱い。
+  // フォントプリセット (新)。未指定 / 不正値は renderer 側で "line_seed_jp" 扱い。
+  font_preset:          z.enum(["line_seed_jp", "system_sans", "noto_sans_jp", "serif"]).optional(),
+  // 旧フォントファミリ (deprecated)。データ互換のため残置。新規 CMS では出さない。
   font_family:          z.enum(["gothic", "mincho"]).optional(),
+  // ヘッダーに表示する文言 (新)。例: "チェックイン" / "設定資料"
+  header_title:         z.string().max(30).optional(),
   // 本文 description の配置。未指定 / 不正値は renderer 側で "center" 扱い。
   description_align:    z.enum(["left", "center", "right"]).optional(),
   header_fixed:         z.boolean().optional(),

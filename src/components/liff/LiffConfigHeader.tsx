@@ -158,23 +158,45 @@ export function LiffConfigHeader({
       </div>
 
       {/* ページデザイン設定（全モード共通）—— LINE Design System 準拠の基本トークンを切り替える。
-          現状は本文フォント + 説明文の配置。block-level の見出しレベル / 太さは各ブロック編集で指定する。 */}
+          ヘッダータイトル / フォント / 説明文配置の 3 種。block-level の見出しレベル・太さは各ブロックで指定。 */}
       <div className="bg-white rounded-xl border border-gray-200 p-5 mb-6 space-y-3">
         <h2 className="text-sm font-semibold text-gray-900">ページデザイン</h2>
+
+        {/* ヘッダータイトル: LIFF 画面上部に表示するテキスト。
+            設定がなければ作品名 → LIFF ページ名へフォールバック (renderer 側で処理)。 */}
+        <div>
+          <label className={labelCls}>ヘッダータイトル</label>
+          <input
+            className={inputCls}
+            value={settings.header_title ?? ""}
+            onChange={(e) => updateSetting("header_title", e.target.value)}
+            disabled={readOnly}
+            placeholder="例: チェックイン / 設定資料 / ご案内"
+            maxLength={30}
+          />
+          <p className="text-[11px] text-gray-400 mt-1">
+            LIFF 画面上部に表示されるタイトルです。未設定時は作品名が使われます。
+          </p>
+        </div>
+
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <label className={labelCls}>本文フォント</label>
+            <label className={labelCls}>フォント</label>
             <select
               className={inputCls}
-              value={settings.font_family ?? "gothic"}
-              onChange={(e) => updateSetting("font_family", e.target.value as "gothic" | "mincho")}
+              value={settings.font_preset ?? (settings.font_family === "mincho" ? "serif" : "line_seed_jp")}
+              onChange={(e) =>
+                updateSetting("font_preset", e.target.value as "line_seed_jp" | "system_sans" | "noto_sans_jp" | "serif")
+              }
               disabled={readOnly}
             >
-              <option value="gothic">ゴシック（既定）</option>
-              <option value="mincho">明朝体</option>
+              <option value="line_seed_jp">LINE Seed JP（既定）</option>
+              <option value="system_sans">System Sans</option>
+              <option value="noto_sans_jp">Noto Sans JP</option>
+              <option value="serif">Serif（明朝）</option>
             </select>
             <p className="text-[11px] text-gray-400 mt-1">
-              ゴシック: LINE Seed JP / 明朝: Noto Serif JP・游明朝・ヒラギノ明朝（OS 内蔵を優先）
+              LIFF 画面全体の本文フォントです。未設定は LINE Seed JP。
             </p>
           </div>
           <div>
@@ -190,7 +212,7 @@ export function LiffConfigHeader({
               <option value="right">右寄せ</option>
             </select>
             <p className="text-[11px] text-gray-400 mt-1">
-              ページタイトル直下の説明文の text-align を切り替えます。未設定は中央寄せ。
+              description テキストの揃え。未設定は中央寄せ。
             </p>
           </div>
         </div>

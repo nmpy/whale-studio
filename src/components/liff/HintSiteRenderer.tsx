@@ -118,19 +118,8 @@ export function HintSiteRenderer({ config, preview }: Props) {
       <div
         style={fixed ? { paddingTop: `calc(${HEADER_HEIGHT_PX}px + env(safe-area-inset-top, 0px))` } : undefined}
       >
-        <main className="max-w-md mx-auto px-4 py-5 flex flex-col gap-4 pb-24">
-          {/* ヘッダーは作品名表示なので、本文先頭でページ単位の h2 を出す。
-              ページタイトルが空のときは何も出さない (ヘッダーで作品名が見えていれば十分)。
-              LINE Design System Layout に揃え、ページタイトルは中央寄せ。
-              22px / 上品な読み物見出し。 */}
-          {config.title?.trim() && (
-            <h2
-              className="text-[22px] leading-tight font-bold break-words text-[color:var(--liff-primary-text)] text-center pt-1 pb-1"
-              style={{ letterSpacing: "-0.005em" }}
-            >
-              {config.title}
-            </h2>
-          )}
+        <main className="max-w-md mx-auto px-4 pt-5 pb-24 flex flex-col gap-4">
+          {/* ページタイトル h2 は廃止。ヘッダー文言 (header_title or work_title) で文脈表現。 */}
           {config.description && (
             <p className={`text-[14px] leading-relaxed text-[color:var(--liff-secondary-text)] whitespace-pre-wrap break-words ${liffDescriptionAlignClass(settings)}`}>
               {config.description}
