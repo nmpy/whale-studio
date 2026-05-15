@@ -1290,9 +1290,15 @@ export interface LiffPageBlock {
  *  値が無い場合は "gothic" として扱う。 */
 export type LiffFontFamily = "gothic" | "mincho";
 
+/** 本文 description の配置 (左/中央/右)。
+ *  未指定 / 不正値は renderer 側で "center" として扱う (LINE Design System 既定)。 */
+export type LiffDescriptionAlign = "left" | "center" | "right";
+
 export interface LiffPageConfigSettings {
   /** ページ全体の本文フォント。未指定は "gothic"。 */
   font_family?:  LiffFontFamily;
+  /** 本文 description の配置。未指定は "center"。 */
+  description_align?: LiffDescriptionAlign;
   /** 固定ヘッダーを使用するか（hint_site のとき有効） */
   header_fixed?: boolean;
   /** ロゴ画像 URL（枠内に contain で表示される） */

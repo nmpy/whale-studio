@@ -158,7 +158,7 @@ export function LiffConfigHeader({
       </div>
 
       {/* ページデザイン設定（全モード共通）—— LINE Design System 準拠の基本トークンを切り替える。
-          現状は本文フォントのみ。block-level の見出しレベル / 太さは各ブロック編集で指定する。 */}
+          現状は本文フォント + 説明文の配置。block-level の見出しレベル / 太さは各ブロック編集で指定する。 */}
       <div className="bg-white rounded-xl border border-gray-200 p-5 mb-6 space-y-3">
         <h2 className="text-sm font-semibold text-gray-900">ページデザイン</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -175,6 +175,22 @@ export function LiffConfigHeader({
             </select>
             <p className="text-[11px] text-gray-400 mt-1">
               ゴシック: LINE Seed JP / 明朝: Noto Serif JP・游明朝・ヒラギノ明朝（OS 内蔵を優先）
+            </p>
+          </div>
+          <div>
+            <label className={labelCls}>説明文の配置</label>
+            <select
+              className={inputCls}
+              value={settings.description_align ?? "center"}
+              onChange={(e) => updateSetting("description_align", e.target.value as "left" | "center" | "right")}
+              disabled={readOnly}
+            >
+              <option value="left">左寄せ</option>
+              <option value="center">中央寄せ（既定）</option>
+              <option value="right">右寄せ</option>
+            </select>
+            <p className="text-[11px] text-gray-400 mt-1">
+              ページタイトル直下の説明文の text-align を切り替えます。未設定は中央寄せ。
             </p>
           </div>
         </div>

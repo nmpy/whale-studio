@@ -52,7 +52,7 @@ import {
 } from "./renderers";
 import { trackHintSiteEvent } from "@/lib/liff-analytics";
 import { LiffShareButton } from "./LiffShareButton";
-import { liffRootClass } from "./liff-style-helpers";
+import { liffRootClass, liffDescriptionAlignClass } from "./liff-style-helpers";
 
 interface Props {
   config: HintSiteConfig;
@@ -117,14 +117,15 @@ export function HintSiteRenderer({ config, preview }: Props) {
       >
         <main className="max-w-md mx-auto px-4 py-5 flex flex-col gap-4 pb-24">
           {/* ヘッダーは作品名表示なので、本文先頭でページ単位の h2 を出す。
-              ページタイトルが空のときは何も出さない (ヘッダーで作品名が見えていれば十分)。 */}
+              ページタイトルが空のときは何も出さない (ヘッダーで作品名が見えていれば十分)。
+              LINE Design System Layout に揃え、ページタイトルは中央寄せ。 */}
           {config.title?.trim() && (
-            <h2 className="text-[20px] leading-tight font-bold tracking-tight break-words text-[color:var(--liff-primary-text)]">
+            <h2 className="text-[20px] leading-tight font-bold tracking-tight break-words text-[color:var(--liff-primary-text)] text-center">
               {config.title}
             </h2>
           )}
           {config.description && (
-            <p className="text-[14px] leading-relaxed text-[color:var(--liff-secondary-text)] whitespace-pre-wrap break-words">
+            <p className={`text-[14px] leading-relaxed text-[color:var(--liff-secondary-text)] whitespace-pre-wrap break-words ${liffDescriptionAlignClass(settings)}`}>
               {config.description}
             </p>
           )}
@@ -170,7 +171,7 @@ function Header({
       }}
     >
       <div
-        className="max-w-md mx-auto flex items-center px-4"
+        className="max-w-md mx-auto flex items-center justify-center px-4"
         style={{ height: HEADER_HEIGHT_PX }}
       >
         {logoUrl ? (
@@ -183,7 +184,8 @@ function Header({
         ) : (
           // タイトルは最大 10 文字制限がフロント / API 両方で効いている前提のため、
           // ヘッダーでも省略せず全文表示する (truncate / ellipsis を付けない)。
-          <span className="text-[16px] font-bold break-words">{title || "LIFF"}</span>
+          // 中央寄せ (LINE Design System Layout に合わせる)。
+          <span className="text-[16px] font-bold break-words text-center">{title || "LIFF"}</span>
         )}
       </div>
     </header>

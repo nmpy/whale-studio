@@ -28,7 +28,9 @@ export function LiffPlayerHeader({ workTitle, pageTitle, title }: Props) {
       }}
     >
       <div className="max-w-md mx-auto">
-        <h1 className="text-[18px] leading-tight font-bold tracking-tight break-words">
+        {/* LINE Design System に揃え、ヘッダー (作品名) は中央寄せ。
+            ヘッダー帯は full-width、内側で px-4 + 中央揃え。 */}
+        <h1 className="text-[18px] leading-tight font-bold tracking-tight break-words text-center">
           {shown}
         </h1>
       </div>
