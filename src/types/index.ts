@@ -1284,19 +1284,37 @@ export interface LiffPageBlock {
  * ヒントサイト機能ではヘッダー（ロゴ・CTA）やテーマ設定などをここに格納する。
  * 既存の LiffPageConfig を壊さないように、すべての項目はオプショナル。
  */
-/** ページ全体のフォントファミリ選択肢。
- *  - "gothic" : LINE Seed JP / system-ui (既定)
- *  - "mincho" : Noto Serif JP / Hiragino Mincho ProN / serif 系
- *  値が無い場合は "gothic" として扱う。 */
+/** @deprecated `font_preset` を使ってください。
+ *  旧仕様: gothic / mincho の 2 択。読み込み時に font_preset へマップする。
+ *    - "gothic" → "line_seed_jp"
+ *    - "mincho" → "serif"
+ *  既存データ互換のため型と field は残置。新規 CMS では非表示。 */
 export type LiffFontFamily = "gothic" | "mincho";
+
+/** ページ全体のフォントプリセット (LINE ギフト風の自然な表示に寄せる)。
+ *
+ *  - "line_seed_jp": LINE Seed JP (既定、LINE 公式アカウント内 LIFF のデフォルト)
+ *  - "system_sans" : OS のシステムフォント (San Francisco / Roboto / Noto Sans CJK)
+ *  - "noto_sans_jp": Google Noto Sans JP (静かなゴシック)
+ *  - "serif"       : Noto Serif JP / 游明朝 / ヒラギノ明朝 (上品な明朝)
+ *
+ *  未指定 / 不正値は renderer 側で "line_seed_jp" として扱う。
+ *  旧 `font_family` がある場合は gothic→line_seed_jp / mincho→serif にマップ。 */
+export type LiffFontPreset = "line_seed_jp" | "system_sans" | "noto_sans_jp" | "serif";
 
 /** 本文 description の配置 (左/中央/右)。
  *  未指定 / 不正値は renderer 側で "center" として扱う (LINE Design System 既定)。 */
 export type LiffDescriptionAlign = "left" | "center" | "right";
 
 export interface LiffPageConfigSettings {
-  /** ページ全体の本文フォント。未指定は "gothic"。 */
-  font_family?:  LiffFontFamily;
+  /** ページ全体のフォントプリセット。未指定は "line_seed_jp"。 */
+  font_preset?: LiffFontPreset;
+  /** @deprecated 旧仕様。新規データでは font_preset を使う。読み込み時のフォールバック用に残置。 */
+  font_family?: LiffFontFamily;
+  /** LIFF プレイヤー画面の上部ヘッダーに表示する文言。
+   *  例: "チェックイン" / "設定資料" / "ご案内" / "出演者A" / "公演情報"
+   *  未指定は work.title にフォールバックする (renderer 側で処理)。 */
+  header_title?: string;
   /** 本文 description の配置。未指定は "center"。 */
   description_align?: LiffDescriptionAlign;
   /** 固定ヘッダーを使用するか（hint_site のとき有効） */

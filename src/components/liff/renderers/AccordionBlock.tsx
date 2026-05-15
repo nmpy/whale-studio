@@ -22,16 +22,19 @@ import { ImageBlock } from "./ImageBlock";
 import { ButtonLinkBlock } from "./ButtonLinkBlock";
 import { DividerBlock } from "./DividerBlock";
 
-// ── AccordionBlock (LINE Design System / Hint Site 用) ─────────────────────
+// ── AccordionBlock (LINE Gift like flat section) ──────────────────────────
 //
-// 旧仕様: variant ごとに header / body の bg を変え、中入れ子カードとして見せていた。
-//   → 古いフォーム UI 感が出てしまうため廃止。
+// 旧仕様: variant ごとに header / body 背景を変える「カード in カード」UI。
+// 旧仕様 v2: 白カード 1 枚 + chevron。これも angled-card 感が残った。
 //
-// 新仕様 (台本・ハンドアウトを LINE 内で読むトーン):
-//   - 白カード 1 枚で完結。border は薄く (--liff-border)、角丸 16px。
-//   - ヘッダーは text-left + chevron (▾) のみ。緑ボタン枠やラベルは付けない。
-//   - 展開時、ヘッダーと本文の間は細い区切り線 1 本のみ。
-//   - 旧 settings.variant (default / dark / purple) は受け取りつつ無視する (互換)。
+// 新仕様 (LINE Gift の "受け取り方" / "支払い方法" のような自然なセクションリスト):
+//   - 外側カード枠を完全廃止。borderBottom のみ
+//   - 上端も下端も border-bottom で他項目と連結 (上端は親側で 1 本入れることで開始線にする)
+//   - ヘッダー高 60px、左に見出し、右に chevron up/down
+//   - 開いたら本文がその下に自然に表示される。さらなる囲み枠なし
+//   - 旧 settings.variant (default / dark / purple) は受け取りつつ無視
+//
+// 親 renderer 側で複数 accordion を縦に並べると、border-bottom が罫線として連続する。
 
 interface Props {
   title?: string | null;
@@ -49,7 +52,6 @@ export function AccordionBlock({ title, settings, depth = 1, blockId }: Props) {
   const [open, setOpen] = useState<boolean>(!!settings.default_open);
 
   // 旧 variant 設定は読み込むが見た目には反映しない (新デザインは 1 種類で統一)。
-  // 型互換のため variable は残す。
   const _variant = (settings.variant ?? "default") as LiffSectionVariant;
   void _variant;
 
@@ -61,8 +63,6 @@ export function AccordionBlock({ title, settings, depth = 1, blockId }: Props) {
       depth,
       label: headingText,
     });
-    // 開いた瞬間だけ hint_open を記録 (閉じる動作は計測しない)。
-    // blockId が DB 由来でない場合 (useId の生成値) は記録しない。
     if (next && playerCtx && !playerCtx.preview && blockId) {
       recordLiffEvent({
         workId:     playerCtx.workId,
@@ -80,7 +80,9 @@ export function AccordionBlock({ title, settings, depth = 1, blockId }: Props) {
   const headerId = `acc-header-${id}`;
 
   return (
-    <section className="bg-[color:var(--liff-surface)] border border-[color:var(--liff-border)] rounded-[16px] overflow-hidden">
+    // 外側カード枠を持たない。border-bottom のみで隣接 accordion と区切る。
+    // 開閉中も大きさが変わらないよう、本文 padding-top/bottom は固定値。
+    <section className="border-b border-[color:var(--liff-border)]">
       <h3 className="m-0">
         <button
           id={headerId}
@@ -88,12 +90,11 @@ export function AccordionBlock({ title, settings, depth = 1, blockId }: Props) {
           aria-expanded={open}
           aria-controls={panelId}
           onClick={toggle}
-          className="w-full flex items-center justify-between gap-3 text-left px-5 min-h-[60px] py-3 transition-colors active:bg-[color:var(--liff-surface-subtle,#F7F8FA)]"
+          className="w-full flex items-center justify-between gap-3 text-left min-h-[60px] py-3 transition-colors active:bg-[color:var(--liff-surface-subtle)]"
         >
           <span className="text-[16px] font-bold leading-snug break-words flex-1 min-w-0 text-[color:var(--liff-primary-text)]">
             {headingText || "（タイトル未設定）"}
           </span>
-          {/* シンプルな chevron。緑ボタンや丸ラベルは使わない。 */}
           <Chevron open={open} />
         </button>
       </h3>
@@ -103,7 +104,7 @@ export function AccordionBlock({ title, settings, depth = 1, blockId }: Props) {
           id={panelId}
           role="region"
           aria-labelledby={headerId}
-          className="px-5 pt-4 pb-5 border-t border-[color:var(--liff-border)] flex flex-col gap-3 bg-[color:var(--liff-surface)]"
+          className="pt-1 pb-5 flex flex-col gap-4"
         >
           {(settings.children ?? []).map((child, idx) => (
             <NestedRenderer key={child.id ?? idx} child={child} depth={depth + 1} />
@@ -117,8 +118,7 @@ export function AccordionBlock({ title, settings, depth = 1, blockId }: Props) {
   );
 }
 
-/** Chevron アイコン。open のときは下向き → 上向きに 180° 回転。
- *  色は currentColor 継承で、ヘッダーの文字色 (secondary) に追従する。 */
+/** Chevron アイコン (LINE Gift 風)。open のとき下向き → 上向きに 180° 回転。 */
 function Chevron({ open }: { open: boolean }) {
   return (
     <svg
@@ -153,7 +153,6 @@ function NestedRenderer({ child, depth }: { child: NestedLiffBlock; depth: numbe
     case "image":
       return <ImageBlock settings={s as ImageBlockSettings} />;
     case "button_link":
-      // ネストされた子ブロックは DB 上の独立行ではないため、blockId は付けず親ブロック単位の集計に寄せる
       return <ButtonLinkBlock settings={s as ButtonLinkSettings} />;
     case "divider":
       return <DividerBlock settings={s as DividerSettings} />;

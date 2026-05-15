@@ -5,6 +5,7 @@
 
 import type {
   LiffFontFamily,
+  LiffFontPreset,
   LiffFontWeight,
   LiffHeadingLevel,
   LiffDescriptionAlign,
@@ -13,8 +14,35 @@ import type {
   TextSettings,
 } from "@/types";
 
-/** ルート div の className に足す追加クラス文字列。
- *  ゴシックは何も足さず (CSS の既定で .liff-font が当たる)、明朝のとき --mincho を付ける。 */
+/** 旧 font_family の値を新 font_preset の値にマップする (data migration なしの読み取り側変換)。 */
+function legacyFontFamilyToPreset(family: LiffFontFamily | undefined): LiffFontPreset | undefined {
+  if (family === "mincho") return "serif";
+  if (family === "gothic") return "line_seed_jp";
+  return undefined;
+}
+
+/** settings から **最終的に適用するフォントプリセット** を解決する。
+ *  優先順位: font_preset (新) → font_family (旧) → "line_seed_jp" (既定)。 */
+export function resolveFontPreset(settings: LiffPageConfigSettings | undefined): LiffFontPreset {
+  if (settings?.font_preset) return settings.font_preset;
+  const legacy = legacyFontFamilyToPreset(settings?.font_family);
+  if (legacy) return legacy;
+  return "line_seed_jp";
+}
+
+/** font preset → root クラス名。"line_seed_jp" は default なので空文字を返す。 */
+export function fontPresetClass(preset: LiffFontPreset): string {
+  switch (preset) {
+    case "system_sans":  return "liff-font--system-sans";
+    case "noto_sans_jp": return "liff-font--noto-sans-jp";
+    case "serif":        return "liff-font--serif";
+    case "line_seed_jp":
+    default:             return "";
+  }
+}
+
+/** @deprecated `liffRootClass(settings)` (= font_preset 経由) を使ってください。
+ *  旧 API: font_family のみを見て class を返す。新 API では font_preset 優先。 */
 export function fontFamilyClass(family: LiffFontFamily | undefined): string {
   return family === "mincho" ? "liff-font--mincho" : "";
 }
@@ -22,7 +50,24 @@ export function fontFamilyClass(family: LiffFontFamily | undefined): string {
 /** page settings から root クラス文字列を組み立てる。
  *  既存の className と組み合わせて使う想定: `${ROOT_BASE} ${liffRootClass(settings)}` */
 export function liffRootClass(settings: LiffPageConfigSettings | undefined): string {
-  return fontFamilyClass(settings?.font_family);
+  return fontPresetClass(resolveFontPreset(settings));
+}
+
+/** ヘッダーに表示する文字列を解決する。
+ *  優先順位: settings.header_title (CMS で編集可能) → workTitle → pageTitle → "LIFF"
+ *  すべて空のときは "LIFF" を返す。 */
+export function resolveHeaderTitle(args: {
+  settings?:  LiffPageConfigSettings | null;
+  workTitle?: string | null;
+  pageTitle?: string | null;
+}): string {
+  const h = args.settings?.header_title?.trim();
+  if (h) return h;
+  const w = args.workTitle?.trim();
+  if (w) return w;
+  const p = args.pageTitle?.trim();
+  if (p) return p;
+  return "LIFF";
 }
 
 /** Tailwind の font-weight class へのマッピング。
@@ -41,15 +86,16 @@ export function fontWeightClass(
 }
 
 /** Heading レベルに対応する font-size / line-height の Tailwind クラス。
- *  数値で受け取り、不明値は H2 にフォールバック。 */
+ *  LINE Gift のような落ち着いた見出しスケールに合わせ、大見出しでも 19-20px に抑える。
+ *  数値で受け取り、不明値は H2 (= 17px) にフォールバック。 */
 export function headingSizeClass(level: LiffHeadingLevel | undefined): string {
   switch (level) {
-    case 1: return "text-[22px] leading-tight tracking-tight";
-    case 2: return "text-[20px] leading-tight tracking-tight";
-    case 3: return "text-[18px] leading-snug";
-    case 4: return "text-[16px] leading-snug";
-    case 5: return "text-[14px] leading-snug";
-    default: return "text-[20px] leading-tight tracking-tight";
+    case 1: return "text-[19px] leading-snug";  // 旧 22 → 19 (ページタイトル h2 を廃止したのに合わせ大見出しも控えめに)
+    case 2: return "text-[17px] leading-snug";  // 旧 20 → 17 (LINE Gift のセクション見出し相当)
+    case 3: return "text-[16px] leading-snug";  // 旧 18 → 16
+    case 4: return "text-[15px] leading-snug";  // 旧 16 → 15
+    case 5: return "text-[13px] leading-snug";  // 旧 14 → 13 (補助見出し)
+    default: return "text-[17px] leading-snug";
   }
 }
 

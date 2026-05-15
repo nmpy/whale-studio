@@ -3,51 +3,53 @@
  * LIFF 配下にだけ適用する。CMS（/oas, /admin など）には影響させない。
  * フォント本体は layout.tsx で @fontsource/line-seed-jp を import している。
  *
- * デザインの基本思想は LINE Design System for Messenger に準拠する:
- *   - Color: Primary Green (#06C755) を CTA / ヘッダーに使用
- *   - Typography: 日本語は LINE Seed JP、フォールバックは OS システムフォント
- *   - Layout: 画面左右 16pt 余白、本文 max-width はスマホ前提
- *   - Box Button: 高さ 44-48px、角丸、フルワイド利用が基本
+ * デザインの基本思想:
+ *   LINE Gift / LINE 公式アカウント内 LIFF のような「白ベース・余白重視・フラット」な
+ *   モバイル閲覧 UI に寄せる。角丸カードを積み重ねた管理画面っぽさをやめ、薄い罫線と
+ *   余白でセクションを区切る。緑は CTA / アクセントだけに最小限使う。
  *
  * トークンは LIFF プレイヤー画面とプレビューの両方で参照する。
  * 個別ブロックで色を直書きせず、できるだけここを通す。
  */
 
 .liff-font {
-  /* === Color tokens ===
-   * 緑は強く出しすぎない方針。ヘッダー帯は廃止し、白背景 + 細い罫線で
-   * 「LINE 内で読む静かなドキュメント」として見えるようにする。
-   * 緑はアクセント (リンク・主要 CTA) としてのみ使う。 */
-  --liff-line-green:      #06C755;
-  --liff-line-green-press:#05B14C;
-  --liff-header-bg:       #FFFFFF;       /* 旧: #06C755 (緑帯) → 白に変更。緑帯はやめる */
-  --liff-header-text:     #1F2329;       /* 旧: #FFFFFF → 黒に変更 */
-  --liff-header-border:   #E6E8EB;       /* ヘッダー下の細い罫線色 (新規) */
-  --liff-primary-text:    #1F2329;       /* 旧 #111 を少し柔らかい黒に */
-  --liff-secondary-text:  #5B6168;       /* 旧 #666 → 少し冷たすぎないグレー */
-  --liff-tertiary-text:   #8C8C8C;       /* 補助テキスト用 */
-  --liff-border:          #EEF0F2;       /* 旧 #E5E5E5 → カード境界を更に弱める */
-  --liff-border-strong:   #E6E8EB;       /* 区切り線・focus 等で必要な場合用 */
-  --liff-surface:         #FFFFFF;
-  --liff-surface-subtle:  #F7F8FA;       /* 軽く沈めたい領域 (背景と同色) */
-  --liff-background:      #F7F8FA;
-  --liff-danger:          #E22B2B;
-  --liff-danger-press:    #C42323;
+  /* === Color tokens === */
+  --liff-line-green:        #06C755;
+  --liff-line-green-press:  #05B14C;
 
-  /* === Layout tokens === */
-  --liff-gutter:          16px;  /* 画面左右余白 */
-  --liff-card-radius:     16px;  /* 旧 12 → 16 (上品さを増す) */
-  --liff-button-radius:   10px;
-  --liff-button-height:   48px;
-  --liff-card-padding:    18px;  /* カード内の標準パディング (旧: 12) */
+  --liff-header-bg:         #FFFFFF;     /* ヘッダー帯は白固定 */
+  --liff-header-text:       #1F2329;
+  --liff-header-border:     #EAEAEA;     /* ヘッダー下の薄い罫線 (旧 #E6E8EB → 更に薄く) */
+
+  --liff-primary-text:      #1F2329;     /* 本文・見出しの基本色 */
+  --liff-secondary-text:    #5B6168;     /* やや補助 */
+  --liff-tertiary-text:     #8C8C8C;     /* 補足テキスト */
+
+  --liff-border:            #EAEAEA;     /* セクション区切り線 (border-bottom 中心で使う) */
+  --liff-border-strong:     #E0E2E5;     /* 強調が要る場合のみ */
+
+  --liff-surface:           #FFFFFF;
+  --liff-surface-subtle:    #FAFAFA;
+  --liff-background:        #FFFFFF;     /* 白基調に変更 (旧: #F7F8FA グレー) */
+
+  --liff-danger:            #E22B2B;
+  --liff-danger-press:      #C42323;
+
+  /* === Layout tokens ===
+   * カード前提の値は残置するが、新デザインではほぼ使わない。
+   * 必要なときだけ Survey フィールド等で参照。 */
+  --liff-gutter:            16px;
+  --liff-card-radius:       12px;
+  --liff-button-radius:     10px;
+  --liff-button-height:     48px;
+  --liff-card-padding:      16px;
 
   /* === Typography tokens ===
-   * --liff-font-stack を 1 か所で切り替えることで、ゴシック / 明朝の家族を変更できる。
-   * .liff-font--mincho が当たれば明朝に上書きされる。
+   * --liff-font-stack を 1 か所で切り替えることで、フォントを変更できる。
+   * 各 font preset class (.liff-font--system-sans 等) が当たれば上書きされる。
    *
-   * 本文の読みやすさを優先し、line-height と letter-spacing を緩める。
-   * LINE Seed JP は密度が高めなので 1.8 程度の行間が目に優しい。
-   */
+   * 本文の読みやすさを優先し、行間と letter-spacing を緩める。
+   * LINE Seed JP は密度が高めなので 1.85 程度の行間が目に優しい。 */
   --liff-font-stack:
     "LINE Seed JP",
     "LINE Seed Sans",
@@ -55,20 +57,66 @@
     BlinkMacSystemFont,
     "Helvetica Neue",
     "Segoe UI",
+    "Noto Sans JP",
     system-ui,
     sans-serif;
 
   font-family: var(--liff-font-stack);
   color: var(--liff-primary-text);
-  /* 本文用ガイド: 行間を緩めて読みやすく。 */
-  line-height: 1.8;
+  line-height: 1.85;
   letter-spacing: 0.01em;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
 
-/* 明朝バリアント。ページ設定で font_family = "mincho" のときに付与される。
- * Web フォントは追加 import せず、OS の Noto Serif JP / 游明朝 / ヒラギノ明朝 などを優先する。 */
+/* === フォントプリセット (新仕様) ===
+ *
+ * ページ設定の `font_preset` に応じて root に付くクラス。
+ * "line_seed_jp" は default 状態 (.liff-font のみ) で当たる。 */
+
+/* System Sans: OS 標準のシステムフォント。San Francisco / Roboto / Noto Sans CJK */
+.liff-font--system-sans {
+  --liff-font-stack:
+    -apple-system,
+    BlinkMacSystemFont,
+    "Helvetica Neue",
+    "Segoe UI",
+    "Noto Sans CJK JP",
+    "Noto Sans JP",
+    system-ui,
+    sans-serif;
+}
+
+/* Noto Sans JP: 静かなゴシック。OS 内蔵 + Google Fonts フォールバック */
+.liff-font--noto-sans-jp {
+  --liff-font-stack:
+    "Noto Sans JP",
+    "Noto Sans CJK JP",
+    -apple-system,
+    BlinkMacSystemFont,
+    "Hiragino Kaku Gothic ProN",
+    "Yu Gothic",
+    system-ui,
+    sans-serif;
+}
+
+/* Serif: 明朝系。OS 内蔵 (Yu Mincho / Hiragino Mincho ProN / Noto Serif JP) */
+.liff-font--serif {
+  --liff-font-stack:
+    "Noto Serif JP",
+    "Yu Mincho",
+    "YuMincho",
+    "Hiragino Mincho ProN",
+    "Hiragino Mincho Pro",
+    "MS PMincho",
+    serif;
+}
+
+/* === 旧 font_family 互換 (deprecated) ===
+ *
+ * 古い liff_page_configs データは font_family: "mincho" を持っている可能性がある。
+ * 読み込み時に renderer 側で "serif" preset にマップするが、
+ * 直接 class が付けられた場合の保険として、旧 class も serif に倒す。 */
 .liff-font--mincho {
   --liff-font-stack:
     "Noto Serif JP",

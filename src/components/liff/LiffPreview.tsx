@@ -50,6 +50,7 @@ import {
   VideoBlock,
   FreeTextBlock,
 } from "./renderers";
+import { liffRootClass, resolveHeaderTitle } from "./liff-style-helpers";
 
 // 「ヒントの一覧」用ダミー
 const SAMPLE_HINTS = [
@@ -94,8 +95,13 @@ export function LiffPreview({
 }) {
   const enabledBlocks = blocks.filter((b) => b.is_enabled);
   const mode = normalizeLiffPageType(config?.page_type);
-  const headerLabel = (workTitle ?? "").trim() || (title ?? "").trim() || "LIFF ページ";
-  const pageHeading = (title ?? "").trim();
+  // ヘッダーは settings.header_title 優先で、次に workTitle → pageTitle → fallback。
+  // 本文 h2 (ページタイトル) は廃止。
+  const headerLabel = resolveHeaderTitle({
+    settings:  config?.settings_json,
+    workTitle,
+    pageTitle: title,
+  }) || "LIFF ページ";
 
   // ── 共通フレーム ──
   const frame = (label: string, content: React.ReactNode) => (
@@ -178,7 +184,7 @@ export function LiffPreview({
         LIFF プレビュー
       </div>
 
-      <div className={`liff-font ${config?.settings_json?.font_family === "mincho" ? "liff-font--mincho" : ""} bg-[color:var(--liff-background)] min-h-[560px]`}>
+      <div className={`liff-font ${liffRootClass(config?.settings_json)} bg-[color:var(--liff-background)] min-h-[560px]`}>
         <header
           className="px-4 h-14 flex items-center justify-center border-b"
           style={{
@@ -188,33 +194,24 @@ export function LiffPreview({
           }}
         >
           <div className="max-w-md mx-auto w-full">
-            <h2 className="text-[17px] leading-tight font-bold break-words text-center">
+            <h2 className="text-[17px] leading-tight font-bold break-words text-center truncate">
               {headerLabel}
             </h2>
           </div>
         </header>
 
-        <div className="px-4 py-5 flex flex-col gap-3 max-w-md mx-auto">
-          {pageHeading && (
-            <h3
-              className="text-[22px] leading-tight font-bold break-words text-[color:var(--liff-primary-text)] pt-2 pb-1 text-center"
-              style={{ letterSpacing: "-0.005em" }}
-            >
-              {pageHeading}
-            </h3>
-          )}
+        <div className="px-4 pt-5 pb-5 flex flex-col gap-5 max-w-md mx-auto">
+          {/* ページタイトル h3 (= 本文上の大きな見出し) は廃止。
+              ヘッダー文言 (header_title or work_title) で文脈表現する。 */}
           {enabledBlocks.length === 0 ? (
             <p className="text-[color:var(--liff-tertiary-text)] text-sm text-center py-10">
               ブロックが追加されていません
             </p>
           ) : (
             enabledBlocks.map((block) => (
-              <section
-                key={block.id}
-                className="bg-[color:var(--liff-surface)] rounded-[16px] px-5 py-4 border border-[color:var(--liff-border)]"
-              >
+              <div key={block.id}>
                 <BlockPreviewContent block={block} />
-              </section>
+              </div>
             ))
           )}
 

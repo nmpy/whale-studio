@@ -34,6 +34,7 @@ import {
 } from "./renderers";
 import type { Evidence, Hint, CharacterInfo } from "./renderers";
 import { liffRootClass } from "./liff-style-helpers";
+import { LiffPlayerHeader as LiffHeader } from "./LiffPlayerHeader";
 
 export interface LiffBlock {
   id: string;
@@ -129,50 +130,26 @@ export function LiffRenderer({
   const visibleBlocks = blocks.filter((b) =>
     shouldShow(b.visibility_condition_json, ctx.userState)
   );
-  const headerLabel = (workTitle ?? "").trim() || (title ?? "").trim() || "LIFF";
-  const pageHeading = (title ?? "").trim();
 
   return (
-    // LINE Design System に寄せたプレイヤー画面レイアウト。
-    //   - 画面背景: --liff-background
-    //   - ヘッダー: Primary Green (#06C755) / 文字色 #000000 を既定とする (作品名を表示)
-    //   - コンテンツ: 画面左右 16px (px-4)、本文は max-w-md でスマホ前提
-    //   - ページタイトルは本文先頭の h2 として描画 (ヘッダーと役割を分離)
+    // LINE Gift like モバイル閲覧 UI。
+    //   - 背景白、ヘッダー帯は薄罫線で区切るのみ
+    //   - コンテンツは max-w-md / px-4
+    //   - ブロックは縦に並ぶフラットセクション (角丸カード積み重ねは廃止)
+    //   - 本文 h2 (ページタイトル) は廃止: ヘッダーと役割が被るため
     <div className={`liff-font ${liffRootClass(settings)} min-h-screen bg-[color:var(--liff-background)] text-[color:var(--liff-primary-text)]`}>
-      <header
-        className="px-4 h-14 flex items-center justify-center border-b"
-        style={{
-          background: "var(--liff-header-bg)",
-          color: "var(--liff-header-text)",
-          borderColor: "var(--liff-header-border)",
-        }}
-      >
-        <div className="max-w-md mx-auto w-full">
-          {/* 白背景 + 細罫線、17px 中央寄せ。緑帯はやめる。 */}
-          <h1 className="text-[17px] leading-tight font-bold break-words text-center">
-            {headerLabel}
-          </h1>
-        </div>
-      </header>
+      <LiffHeader settings={settings} workTitle={workTitle} pageTitle={title} />
 
-      <main className="px-4 py-5 space-y-3 max-w-md mx-auto">
-        {pageHeading && (
-          <h2 className="text-[22px] leading-tight font-bold break-words text-[color:var(--liff-primary-text)] pt-2 pb-1 text-center" style={{ letterSpacing: "-0.005em" }}>
-            {pageHeading}
-          </h2>
-        )}
+      <main className="px-4 pt-5 pb-8 max-w-md mx-auto flex flex-col gap-5">
         {visibleBlocks.length === 0 ? (
           <p className="text-center text-[color:var(--liff-tertiary-text)] py-12 text-sm">
             表示する項目がありません
           </p>
         ) : (
           visibleBlocks.map((block) => (
-            <section
-              key={block.id}
-              className="bg-[color:var(--liff-surface)] rounded-[16px] px-5 py-4 border border-[color:var(--liff-border)]"
-            >
+            <div key={block.id}>
               <RenderBlock block={block} ctx={ctx} />
-            </section>
+            </div>
           ))
         )}
 
@@ -185,3 +162,4 @@ export function LiffRenderer({
     </div>
   );
 }
+

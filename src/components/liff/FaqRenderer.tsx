@@ -25,24 +25,12 @@ export function FaqRenderer({ config, preview }: { config: FaqRendererConfig; pr
   const items = (config.settings_json.faq_items ?? []).filter(
     (it) => (it.question?.trim() ?? "") !== "" || (it.answer?.trim() ?? "") !== ""
   );
-  const pageTitle = config.title?.trim();
-
   return (
     <div className={`liff-font ${liffRootClass(config.settings_json)} min-h-screen bg-[color:var(--liff-background)] text-[color:var(--liff-primary-text)]`}>
-      <LiffPlayerHeader workTitle={config.work_title} pageTitle={config.title} />
-      <main className="max-w-md mx-auto px-4 py-5 flex flex-col gap-4 pb-24">
-        {/* 本文先頭の見出しとして LIFF ページタイトル (page.title) を表示する。
-            ヘッダーは作品名なので、本文側でページ単位のタイトルを出して区別する。
-            LINE Design System Layout に揃え、ページタイトルは中央寄せ。
-            22px / 上品な読み物見出し。 */}
-        {pageTitle && (
-          <h2
-            className="text-[22px] leading-tight font-bold break-words text-[color:var(--liff-primary-text)] text-center pt-1 pb-1"
-            style={{ letterSpacing: "-0.005em" }}
-          >
-            {pageTitle}
-          </h2>
-        )}
+      <LiffPlayerHeader settings={config.settings_json} workTitle={config.work_title} pageTitle={config.title} />
+      <main className="max-w-md mx-auto px-4 pt-5 pb-24 flex flex-col gap-4">
+        {/* ページタイトル h2 は廃止。ヘッダーの header_title (またはフォールバック) で文脈表現。
+            description だけは本文先頭に残す (CMS で設定がある場合のみ表示)。 */}
         {config.description && (
           <p className={`text-[14px] leading-relaxed text-[color:var(--liff-secondary-text)] whitespace-pre-wrap break-words ${liffDescriptionAlignClass(config.settings_json)}`}>
             {config.description}

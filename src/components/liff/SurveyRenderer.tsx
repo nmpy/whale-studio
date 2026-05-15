@@ -115,23 +115,11 @@ export function SurveyRenderer({ config, preview, lineUserId }: Props) {
     }
   };
 
-  const pageTitle = config.title?.trim();
-
   return (
     <div className={`liff-font ${liffRootClass(config.settings_json)} min-h-screen bg-[color:var(--liff-background)] text-[color:var(--liff-primary-text)]`}>
-      <LiffPlayerHeader workTitle={config.work_title} pageTitle={config.title} />
-      <main className="max-w-md mx-auto px-4 py-5 flex flex-col gap-4 pb-24">
-        {/* 本文先頭にページタイトルを h2 として表示する。ヘッダーは作品名。
-            LINE Design System Layout に合わせ、ページタイトルも中央寄せ。
-            22px / 行間広めで、上品な読み物見出しに寄せる。 */}
-        {pageTitle && (
-          <h2
-            className="text-[22px] leading-tight font-bold break-words text-[color:var(--liff-primary-text)] text-center pt-1 pb-1"
-            style={{ letterSpacing: "-0.005em" }}
-          >
-            {pageTitle}
-          </h2>
-        )}
+      <LiffPlayerHeader settings={config.settings_json} workTitle={config.work_title} pageTitle={config.title} />
+      <main className="max-w-md mx-auto px-4 pt-5 pb-24 flex flex-col gap-4">
+        {/* ページタイトル h2 は廃止。description だけ表示。 */}
         {config.description && (
           <p className={`text-[14px] leading-relaxed text-[color:var(--liff-secondary-text)] whitespace-pre-wrap break-words ${liffDescriptionAlignClass(config.settings_json)}`}>
             {config.description}
