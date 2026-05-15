@@ -129,8 +129,25 @@
 }
 
 /* Tailwind の font-sans 等が当たっている子孫要素にも継承させる。
- * アイコンフォント等で font-family を明示している要素は上書きしない（inherit のみ）。 */
-.liff-font *:not([class*="icon"]):not(code):not(pre):not(kbd):not(samp) {
+ * アイコンフォント等で font-family を明示している要素は上書きしない（inherit のみ）。
+ *
+ * `:not(.liff-font)` を含めている理由 (重要):
+ *
+ *   実機 LIFF では DOM が `<div class="liff-font">` (= src/app/liff/layout.tsx) の中に
+ *   さらに `<div class="liff-font liff-font--serif">` (= 各 renderer) がネストする。
+ *   この内側ラッパーは外側 `.liff-font` の子孫でもあるため、ここで `font-family: inherit`
+ *   を強制してしまうと、自身が持つ `.liff-font--*` プリセットの `--liff-font-stack` ではなく
+ *   親の computed font-family (= デフォルトの LINE Seed JP) を継承してしまい、
+ *   フォントプリセットの切替が実機で効かなくなる。
+ *
+ *   セレクタの specificity は `.liff-font *:not([attr])...` で (0,2,4) と高く、
+ *   `.liff-font` 自身の declaration (0,1,0) や `.liff-font.liff-font--serif` (0,2,0) でも
+ *   打ち消せない。よって「ネストした `.liff-font` ラッパーだけは inherit 強制を skip する」
+ *   というロジックでこの問題を解決する。
+ *
+ *   CMS プレビュー (`LiffPreview.tsx`) は `/liff` レイアウト配下に居ないため
+ *   `.liff-font` ラッパーは 1 階層しか存在せず、もとから本問題は起きない。 */
+.liff-font *:not(.liff-font):not([class*="icon"]):not(code):not(pre):not(kbd):not(samp) {
   font-family: inherit;
 }
 
