@@ -10,9 +10,11 @@ import type {
   LiffHeadingLevel,
   LiffDescriptionAlign,
   LiffPageConfigSettings,
+  LiffPageType,
   HeadingSettings,
   TextSettings,
 } from "@/types";
+import { normalizeLiffPageType } from "@/types";
 
 /** 旧 font_family の値を新 font_preset の値にマップする (data migration なしの読み取り側変換)。 */
 function legacyFontFamilyToPreset(family: LiffFontFamily | undefined): LiffFontPreset | undefined {
@@ -125,4 +127,130 @@ export function descriptionAlignClass(align: LiffDescriptionAlign | undefined): 
  *  settings 自体が undefined / align 未設定の場合も "text-center" にフォールバック。 */
 export function liffDescriptionAlignClass(settings: LiffPageConfigSettings | undefined): string {
   return descriptionAlignClass(settings?.description_align);
+}
+
+// ───────────────────────────────────────────────────────────
+// 作品メニュー shell (タブ UI) 用ヘルパー
+//
+// LIFF プレイヤー画面は「1 work = 複数 LiffPageConfig」を作品メニュー shell で束ねて
+// タブで表示する設計。タブ表示順 / 表示名 / 表示有無の解決ロジックをここに集約する。
+// ───────────────────────────────────────────────────────────
+
+/** タブ表示順 — 仕様で指示された並び (hint → location → survey → character) を優先し、
+ *  その後ろに既存の faq / default を続ける。
+ *  存在しない pageType の page は normalizeLiffPageType() で "default" に丸めるため、ここには現れない。 */
+const TAB_TYPE_ORDER: LiffPageType[] = [
+  "hint",
+  "location",
+  "survey",
+  "character",
+  "faq",
+  "default",
+];
+
+export function tabTypeOrderIndex(pageType: LiffPageType): number {
+  const i = TAB_TYPE_ORDER.indexOf(pageType);
+  return i === -1 ? TAB_TYPE_ORDER.length : i;
+}
+
+/** pageType ごとのフォールバックタブラベル (pageType 由来の既定の日本語ラベル)。 */
+export function defaultTabLabel(pageType: LiffPageType): string {
+  switch (pageType) {
+    case "hint":      return "ヒント";
+    case "location":  return "ロケーション";
+    case "survey":    return "アンケート";
+    case "character": return "キャラクター";
+    case "faq":       return "FAQ";
+    case "default":   return "メニュー";
+  }
+}
+
+/** タブバーに出す表示文字列を解決する。
+ *  優先順: settings.tab_label → page.title → defaultTabLabel(pageType) */
+export function resolveTabLabel(args: {
+  pageType: LiffPageType;
+  title?:   string | null;
+  settings?: LiffPageConfigSettings | null;
+}): string {
+  const t = args.settings?.tab_label?.trim();
+  if (t) return t;
+  const p = args.title?.trim();
+  if (p) return p;
+  return defaultTabLabel(args.pageType);
+}
+
+/** タブ本文先頭に出すページタイトルを解決する。
+ *  優先順: settings.tab_page_title → page.title → defaultTabLabel(pageType) */
+export function resolveTabPageTitle(args: {
+  pageType: LiffPageType;
+  title?:   string | null;
+  settings?: LiffPageConfigSettings | null;
+}): string {
+  const t = args.settings?.tab_page_title?.trim();
+  if (t) return t;
+  const p = args.title?.trim();
+  if (p) return p;
+  return defaultTabLabel(args.pageType);
+}
+
+/** 「このページをメニュー shell のタブとして出すか」を判定する。
+ *  - `is_enabled === false` ならそもそも公開対象外 → タブにも出さない
+ *  - `settings.tab_enabled === false` でも非表示
+ *  - 未指定 (undefined) は表示扱い (= 既存データを壊さない default) */
+export function isTabVisible(args: {
+  is_enabled: boolean;
+  settings?: LiffPageConfigSettings | null;
+}): boolean {
+  if (args.is_enabled === false) return false;
+  if (args.settings?.tab_enabled === false) return false;
+  return true;
+}
+
+export interface MenuTabSource {
+  id:             string;
+  public_id?:     string | null;
+  page_type:      string | null | undefined;
+  title:          string | null;
+  is_enabled:     boolean;
+  settings_json?: LiffPageConfigSettings | null;
+}
+
+export interface MenuTab {
+  id:        string;
+  publicId:  string | null;
+  pageType:  LiffPageType;
+  tabLabel:  string;
+  pageTitle: string;
+}
+
+/** raw page リスト → 並び替え済みのタブ配列。
+ *  - is_enabled / tab_enabled で非表示を除外
+ *  - TAB_TYPE_ORDER で並び替え (同種別なら配列入力順を保持)
+ *  - pageType を normalize して未知値は "default" へ */
+export function buildMenuTabs(pages: MenuTabSource[]): MenuTab[] {
+  return pages
+    .map((p, idx) => {
+      const pageType = normalizeLiffPageType(p.page_type);
+      const settings = p.settings_json ?? null;
+      return {
+        idx,
+        pageType,
+        page: p,
+        settings,
+      };
+    })
+    .filter(({ page, settings }) => isTabVisible({ is_enabled: page.is_enabled, settings }))
+    .sort((a, b) => {
+      const oa = tabTypeOrderIndex(a.pageType);
+      const ob = tabTypeOrderIndex(b.pageType);
+      if (oa !== ob) return oa - ob;
+      return a.idx - b.idx;
+    })
+    .map(({ page, pageType, settings }) => ({
+      id:        page.id,
+      publicId:  page.public_id ?? null,
+      pageType,
+      tabLabel:  resolveTabLabel({ pageType, title: page.title, settings }),
+      pageTitle: resolveTabPageTitle({ pageType, title: page.title, settings }),
+    }));
 }

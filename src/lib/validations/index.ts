@@ -793,9 +793,9 @@ export const VISIBILITY_CONDITIONS = [
 ] as const;
 
 // LIFF ページ種別。
-// 新しいモード: default / hint / faq / survey / location
+// 新しいモード: default / hint / faq / survey / location / character
 // 旧データ互換: "hint_site" も受理（保存時に "hint" に正規化される）
-export const LIFF_PAGE_TYPES = ["default", "hint", "faq", "survey", "location", "hint_site"] as const;
+export const LIFF_PAGE_TYPES = ["default", "hint", "faq", "survey", "location", "character", "hint_site"] as const;
 /** 受け取った page_type を正規化（"hint_site" → "hint"） */
 export function normalizeLiffPageTypeValue(value: string | null | undefined): string {
   if (value === "hint_site") return "hint";
@@ -1069,6 +1069,13 @@ const liffPageConfigSettingsSchema = z.object({
   // Survey モード
   survey_items:          z.array(surveyItemSchema).max(50).optional(),
   survey_thanks_message: z.string().max(500).optional(),
+
+  // 作品メニュー shell (タブ UI) 用の per-page 設定。
+  // ここを各 LiffPageConfig.settings_json に持たせ、作品メニュー shell が読み取って
+  // タブの表示順 / 表示名 / 表示有無を決定する。blocks 自体は引き続き LiffPageBlock に持つ。
+  tab_enabled:    z.boolean().optional(),
+  tab_label:      z.string().max(30).optional(),
+  tab_page_title: z.string().max(30).optional(),
 }).passthrough();
 
 /** LIFF ページタイトルの最大文字数（10 文字）。
