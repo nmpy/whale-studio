@@ -140,21 +140,34 @@ export function LiffRenderer({
     <div className={`liff-font ${liffRootClass(settings)} min-h-screen bg-[color:var(--liff-background)] text-[color:var(--liff-primary-text)]`}>
       <LiffHeader settings={settings} workTitle={workTitle} pageTitle={title} />
 
-      <main className="px-4 pt-5 pb-8 max-w-md mx-auto flex flex-col gap-5">
+      <main className="px-4 pt-6 pb-8 max-w-md mx-auto">
         {visibleBlocks.length === 0 ? (
           <p className="text-center text-[color:var(--liff-tertiary-text)] py-12 text-sm">
             表示する項目がありません
           </p>
         ) : (
-          visibleBlocks.map((block) => (
-            <div key={block.id}>
-              <RenderBlock block={block} ctx={ctx} />
-            </div>
-          ))
+          /* セクションリスト:
+             各ブロックの下に細い区切り線 + 上下に padding でメリハリを付ける。
+             ただし accordion 自体が border-bottom を持つので二重罫線にならないよう、
+             accordion ブロックは独自セパレータに任せる (親の border は出さない)。 */
+          visibleBlocks.map((block, i) => {
+            const isAccordion = block.block_type === "accordion";
+            const isLast = i === visibleBlocks.length - 1;
+            const sectionCls = isAccordion
+              ? ""
+              : isLast
+                ? "pb-2"
+                : "pb-6 mb-6 border-b border-[color:var(--liff-border)]";
+            return (
+              <div key={block.id} className={sectionCls}>
+                <RenderBlock block={block} ctx={ctx} />
+              </div>
+            );
+          })
         )}
 
         {settings?.share_enabled && (
-          <div className="pt-2">
+          <div className="pt-6">
             <LiffShareButton settings={settings} pageTitle={title || ""} preview={preview} />
           </div>
         )}
