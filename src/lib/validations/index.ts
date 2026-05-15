@@ -1076,6 +1076,10 @@ const liffPageConfigSettingsSchema = z.object({
   tab_enabled:    z.boolean().optional(),
   tab_label:      z.string().max(30).optional(),
   tab_page_title: z.string().max(30).optional(),
+
+  // LIFF プレイヤー最下部 "Powered by Whale Studio" の表示有無 (ホワイトラベル用)。
+  // 未指定 = 表示。
+  show_whale_studio_credit: z.boolean().optional(),
 }).passthrough();
 
 /** LIFF ページタイトルの最大文字数（10 文字）。

@@ -40,6 +40,7 @@ import {
   type MenuTab,
 } from "./liff-style-helpers";
 import { LiffPlayerProvider } from "./LiffPlayerContext";
+import { LiffStudioFooter, shouldShowWhaleStudioCredit } from "./LiffStudioFooter";
 
 /** メニュー shell 用の per-page 入力。API レスポンス / プレビュー側の両方からこの形で渡す。 */
 export interface LiffMenuPage {
@@ -188,6 +189,7 @@ export function LiffMenuShell({
 
   // ── 空状態: pages 自体が無い ──────────────────────────────────────────────
   if (tabs.length === 0 || !activeTab || !activePage) {
+    // 空状態では active page の settings_json が無いため、クレジット表示は常に出す。
     return (
       <div className={`liff-font ${liffRootClass(undefined)} min-h-screen bg-[color:var(--liff-background)] text-[color:var(--liff-primary-text)]`}>
         <MenuHeader workTitle={workTitle} onClose={preview ? undefined : onClose} />
@@ -200,9 +202,12 @@ export function LiffMenuShell({
             </p>
           </div>
         </main>
+        <LiffStudioFooter />
       </div>
     );
   }
+
+  const showCredit = shouldShowWhaleStudioCredit(activePage.settings_json);
 
   const playerCtxValue = {
     workId,
@@ -268,6 +273,10 @@ export function LiffMenuShell({
           lineUserId={lineUserId}
           defaultPageCtx={defaultPageCtx}
         />
+
+        {/* LIFF ページ全体の最下部 (sticky / fixed ではなく通常の流れの末尾)。
+            ホワイトラベル運用時は settings.show_whale_studio_credit=false で非表示。 */}
+        {showCredit && <LiffStudioFooter />}
       </div>
     </LiffPlayerProvider>
   );
