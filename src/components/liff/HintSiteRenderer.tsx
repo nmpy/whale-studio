@@ -118,10 +118,10 @@ export function HintSiteRenderer({ config, preview }: Props) {
       <div
         style={fixed ? { paddingTop: `calc(${HEADER_HEIGHT_PX}px + env(safe-area-inset-top, 0px))` } : undefined}
       >
-        <main className="max-w-md mx-auto px-4 pt-5 pb-24 flex flex-col gap-4">
+        <main className="max-w-md mx-auto px-4 pt-6 pb-24">
           {/* ページタイトル h2 は廃止。ヘッダー文言 (header_title or work_title) で文脈表現。 */}
           {config.description && (
-            <p className={`text-[14px] leading-relaxed text-[color:var(--liff-secondary-text)] whitespace-pre-wrap break-words ${liffDescriptionAlignClass(settings)}`}>
+            <p className={`text-[14px] leading-relaxed text-[color:var(--liff-secondary-text)] whitespace-pre-wrap break-words pb-6 mb-6 border-b border-[color:var(--liff-border)] ${liffDescriptionAlignClass(settings)}`}>
               {config.description}
             </p>
           )}
@@ -131,11 +131,25 @@ export function HintSiteRenderer({ config, preview }: Props) {
               （ブロックが追加されていません）
             </p>
           ) : (
-            config.blocks.map((b) => <BlockSwitch key={b.id} block={b} />)
+            /* セクションリスト: accordion 以外は border-bottom + padding で区切る。 */
+            config.blocks.map((b, i) => {
+              const isAccordion = b.block_type === "accordion";
+              const isLast = i === config.blocks.length - 1;
+              const sectionCls = isAccordion
+                ? ""
+                : isLast
+                  ? "pb-2"
+                  : "pb-6 mb-6 border-b border-[color:var(--liff-border)]";
+              return (
+                <div key={b.id} className={sectionCls}>
+                  <BlockSwitch block={b} />
+                </div>
+              );
+            })
           )}
 
           {settings.share_enabled && (
-            <div className="pt-2">
+            <div className="pt-6">
               <LiffShareButton settings={settings} pageTitle={config.title || ""} preview={preview} />
             </div>
           )}

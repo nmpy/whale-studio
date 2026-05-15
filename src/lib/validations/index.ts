@@ -849,16 +849,20 @@ const characterListSettingsSchema = z.object({
   show_description: z.boolean().optional(),
 }).passthrough();
 
+// 画像 / 動画 ブロック設定。
+// URL は未入力 (= 新規追加直後) を許容するため、空文字も accept する。
+// `.url()` 単体だと "" が "Invalid URL" で reject されるため、`.or(z.literal(""))` を併用。
+// 既存パターン (header_logo_url 等) と同じ。
 const imageSettingsSchema = z.object({
-  image_url: z.string().url().optional(),
+  image_url: z.string().url().optional().or(z.literal("")),
   alt:       z.string().max(200).optional(),
   caption:   z.string().max(500).optional(),
   size:      z.enum(LIFF_IMAGE_SIZES).optional(),
 }).passthrough();
 
 const videoSettingsSchema = z.object({
-  video_url:  z.string().url().optional(),
-  poster_url: z.string().url().optional(),
+  video_url:  z.string().url().optional().or(z.literal("")),
+  poster_url: z.string().url().optional().or(z.literal("")),
   caption:    z.string().max(500).optional(),
 }).passthrough();
 

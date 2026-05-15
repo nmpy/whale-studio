@@ -200,23 +200,31 @@ export function LiffPreview({
           </div>
         </header>
 
-        <div className="px-4 pt-5 pb-5 flex flex-col gap-5 max-w-md mx-auto">
-          {/* ページタイトル h3 (= 本文上の大きな見出し) は廃止。
-              ヘッダー文言 (header_title or work_title) で文脈表現する。 */}
+        <div className="px-4 pt-6 pb-5 max-w-md mx-auto">
+          {/* ページタイトル h3 は廃止。ヘッダー文言で文脈表現。 */}
           {enabledBlocks.length === 0 ? (
             <p className="text-[color:var(--liff-tertiary-text)] text-sm text-center py-10">
               ブロックが追加されていません
             </p>
           ) : (
-            enabledBlocks.map((block) => (
-              <div key={block.id}>
-                <BlockPreviewContent block={block} />
-              </div>
-            ))
+            enabledBlocks.map((block, i) => {
+              const isAccordion = block.block_type === "accordion";
+              const isLast = i === enabledBlocks.length - 1;
+              const sectionCls = isAccordion
+                ? ""
+                : isLast
+                  ? "pb-2"
+                  : "pb-6 mb-6 border-b border-[color:var(--liff-border)]";
+              return (
+                <div key={block.id} className={sectionCls}>
+                  <BlockPreviewContent block={block} />
+                </div>
+              );
+            })
           )}
 
           {config?.settings_json?.share_enabled && (
-            <div className="pt-2">
+            <div className="pt-6">
               <LiffShareButton settings={config.settings_json} pageTitle={title || ""} preview />
             </div>
           )}
