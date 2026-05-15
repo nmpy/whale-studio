@@ -121,7 +121,21 @@ a:hover { color: var(--brand-dark); text-decoration: underline; }
 /* ── レイアウト ──────────────────────────────────────────────────────── */
 .container { max-width: 980px; margin: 0 auto; padding: 0 24px; }
 
-main { padding: 28px 0 48px; }
+/* CMS 用 <main> の上下余白。
+ *
+ * 旧: `main { padding: 28px 0 48px }` を unlayered で書いていたため、
+ *     Tailwind utilities (@layer utilities) を常に上書きしてしまい、
+ *     LIFF プレイヤー画面の `<main className="px-4 ...">` の左右 padding が
+ *     0 に潰されていた (CSS layers の優先順位: unlayered > @layer utilities)。
+ *
+ * 新: `@layer base` 内に置く。これで `@layer utilities` の Tailwind 規則
+ *     (`.px-4` / `.py-5` 等) が常に勝つようになり、LIFF 側の左右 16px や
+ *     上下の Tailwind 指定が期待通りに効く。
+ *     CMS 側 (Tailwind utility を main に付けていない) はこのデフォルトで
+ *     引き続き 28px / 48px の上下 padding を持つ。 */
+@layer base {
+  main { padding: 28px 0 48px; }
+}
 
 /* ── ヘッダー ────────────────────────────────────────────────────────── */
 header {

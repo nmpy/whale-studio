@@ -19,6 +19,7 @@ import { normalizeLiffPageType } from "@/types";
 import type { LiffPageType, LiffPageConfigSettings, LiffPublishStatus } from "@/types";
 import { recordLiffEvent } from "@/lib/liff-events";
 import { LiffPlayerProvider } from "./LiffPlayerContext";
+import { resolveHeaderTitle } from "./liff-style-helpers";
 
 interface LiffPageData {
   work_id: string;
@@ -82,6 +83,21 @@ export function LiffPlayerViewer({ workId, apiBaseUrl }: Props) {
       dedupeKey:  `page_view:${pageData.work_id}:${pageData.page_id ?? "default"}:${liff.lineUserId ?? "anon"}`,
     });
   }, [pageData, isPreview, liff.lineUserId]);
+
+  // ── document.title をヘッダー文言と同期 ──
+  // LIFF レイアウト側で metadata.title を持たないため、クライアント側で動的に設定する。
+  // ブラウザのタブタイトル / LINE 内ブラウザの上部バーに settings.header_title が反映される。
+  // 優先順位は resolveHeaderTitle() に従う (settings.header_title → work_title → page.title → "LIFF")。
+  useEffect(() => {
+    if (!pageData) return;
+    if (typeof document === "undefined") return;
+    const title = resolveHeaderTitle({
+      settings:  pageData.settings_json,
+      workTitle: pageData.work_title,
+      pageTitle: pageData.title,
+    });
+    document.title = title;
+  }, [pageData]);
 
   useEffect(() => {
     if (!liff.lineUserId || !workId) return;
