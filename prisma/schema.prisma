@@ -104,6 +104,7 @@ model Work {
   liffPageConfigs     LiffPageConfig[]
   liffSurveyResponses LiffSurveyResponse[]
   liffEventLogs       LiffEventLog[]
+  werewolfTitles      WerewolfTitle[]
   locations           Location[]
   oa                  Oa                   @relation(fields: [oaId], references: [id], onDelete: Cascade)
   systemCharacter     Character?           @relation("WorkSystemCharacter", fields: [systemCharacterId], references: [id])
@@ -1082,6 +1083,7 @@ model LiffPageConfig {
   createdAt   DateTime        @default(now()) @map("created_at")
   updatedAt   DateTime        @updatedAt @map("updated_at")
   blocks      LiffPageBlock[]
+  werewolfTitles WerewolfTitle[]
   work        Work            @relation(fields: [workId], references: [id], onDelete: Cascade)
 
   @@index([workId])
@@ -1162,6 +1164,106 @@ model LiffPageBlock {
   @@index([sortOrder])
   @@index([blockType])
   @@map("liff_page_blocks")
+}
+
+// ────────────────────────────────────────────────
+// 人狼 / 配役閲覧モード (LiffPageConfig.pageType = "werewolf" の配下)
+//
+// MVP スコープ:
+//   - GM がプレイヤー人数分の配役ページを作成
+//   - 各 slot に役職カードを複数枚設定
+//   - プレイヤーは QR (/liff/r/[token]) でアクセスして自分の配役を閲覧
+//   - GM が「ゲーム開始」を押すまで isStarted=false でロック (cards は返さない)
+//
+// スコープ外 (将来対応): 夜行動 / 投票 / 進行管理 / 勝敗判定 / 既読確認 /
+//                       LINE UID 紐付け / QR 一度きり制限 / 閲覧ログ
+// ────────────────────────────────────────────────
+
+/// 人狼モードの 1 ゲーム単位 (例: "テストプレイA卓" "第1ゲーム")。
+/// 1 LiffPageConfig(pageType="werewolf") 配下に複数並ぶ想定。
+model WerewolfTitle {
+  id               String   @id @default(uuid())
+  /// GM 操作用の短縮 ID (10 文字)。CMS 内 URL や CSV 出力で使う。
+  /// プレイヤーが直接見る URL は使わない (= slot.token を使う)。
+  publicId         String   @unique @default(dbgenerated("gen_unique_public_id('werewolf_titles'::text)")) @map("public_id")
+  liffPageConfigId String   @map("liff_page_config_id")
+  /// LiffPageConfig 経由でも引けるが、work 横断クエリ (e.g. 作品の全ゲーム一覧) を高速化するため冗長保存。
+  workId           String   @map("work_id")
+
+  title            String
+  description      String?
+  /// プレイ予定日時 (null 可、後から記入できる)
+  scheduledAt      DateTime? @map("scheduled_at")
+  /// プレイヤー人数。スロット数と一致する (POST 時に slots を auto-generate するロジックで担保)
+  playerCount      Int      @default(0) @map("player_count")
+  /// false = 開始前 (プレイヤーは閲覧不可)、true = 開始済み
+  isStarted        Boolean  @default(false) @map("is_started")
+  /// 開始した日時 (監査用、null = 未開始)
+  startedAt        DateTime? @map("started_at")
+  /// CMS 上での並び順 (一覧で上から順に並ぶ)
+  sortOrder        Int      @default(0) @map("sort_order")
+
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  pageConfig       LiffPageConfig     @relation(fields: [liffPageConfigId], references: [id], onDelete: Cascade)
+  work             Work               @relation(fields: [workId], references: [id], onDelete: Cascade)
+  slots            WerewolfRoleSlot[]
+
+  @@index([liffPageConfigId])
+  @@index([workId])
+  @@index([scheduledAt])
+  @@map("werewolf_titles")
+}
+
+/// 1 タイトルに対する 1 プレイヤー分の "配役スロット"。
+/// QR の 1 単位。token は不可逆な短縮 ID (URL 直叩きで他 slot を推測できないように publicId とは別の opaque な値を発行する)。
+model WerewolfRoleSlot {
+  id          String   @id @default(uuid())
+  titleId     String   @map("title_id")
+  /// プレイヤー番号 (1-N、表示順)
+  slotNumber  Int      @map("slot_number")
+  /// GM が付ける管理用ラベル (例: "プレイヤー1" / "Aさん"). プレイヤーには表示しない。
+  label       String?
+  /// QR / URL に使う opaque token (10 文字、a-z+0-9)。slotNumber と分離することで
+  /// URL を見ても他の slot を推測できないようにする。
+  token       String   @unique @default(dbgenerated("gen_unique_public_id('werewolf_role_slots'::text)")) @map("token")
+
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  title       WerewolfTitle      @relation(fields: [titleId], references: [id], onDelete: Cascade)
+  cards       WerewolfRoleCard[]
+
+  /// (title_id, slot_number) でユニーク。1 タイトル内で番号重複を許さない。
+  @@unique([titleId, slotNumber])
+  @@index([titleId])
+  @@map("werewolf_role_slots")
+}
+
+/// 1 slot に並ぶ配役カード。1 slot に複数枚並べられる
+/// (例: "守護騎士" カード + "賢者の水晶" カード のように役職 + 所持アイテム)。
+model WerewolfRoleCard {
+  id          String   @id @default(uuid())
+  slotId      String   @map("slot_id")
+  /// カード上の見出し (例: "守護騎士" / "賢者の水晶")
+  title       String
+  /// カード上のサブテキスト (例: "あなたは……") — null 可
+  subtitle    String?
+  /// 小さなバッジ表示 (例: "役職" / "アイテム") — null 可
+  badgeLabel  String?  @map("badge_label")
+  /// 本文 (改行 OK)。役職の能力説明などを書く。
+  body        String
+  /// slot 内での並び順 (小さい順、同値は createdAt 昇順)
+  sortOrder   Int      @default(0) @map("sort_order")
+
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  slot        WerewolfRoleSlot @relation(fields: [slotId], references: [id], onDelete: Cascade)
+
+  @@index([slotId])
+  @@map("werewolf_role_cards")
 }
 
 /// メンバーロール（権限階層: owner > admin > editor > tester > viewer）

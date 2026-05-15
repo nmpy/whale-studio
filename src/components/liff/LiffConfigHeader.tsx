@@ -113,6 +113,7 @@ export function LiffConfigHeader({
             <option value="survey">アンケート</option>
             <option value="location">チェックイン履歴</option>
             <option value="character">キャラクター</option>
+            <option value="werewolf">人狼（配役閲覧）</option>
           </select>
           <span className="text-[11px] text-gray-400">
             ※モードによって編集 UI とプレイヤー表示が切り替わります

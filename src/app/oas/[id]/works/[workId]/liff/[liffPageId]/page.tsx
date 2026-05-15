@@ -17,6 +17,8 @@ import { LiffAddBlockModal } from "@/components/liff/LiffAddBlockModal";
 import { LiffPreview } from "@/components/liff/LiffPreview";
 import { LiffDevicePreviewLinks } from "@/components/liff/LiffDevicePreviewLinks";
 import { LiffAnalyticsTab } from "@/components/liff/LiffAnalyticsTab";
+import { LiffWerewolfEditor } from "@/components/liff/LiffWerewolfEditor";
+import { normalizeLiffPageType } from "@/types";
 
 function SaveStatusIndicator({ status }: { status: LiffSaveStatus }) {
   if (status === "idle") return null;
@@ -176,52 +178,64 @@ export default function LiffPageEditor() {
       ) : (
       <div className="flex gap-6 items-start">
         <div className="flex-1 min-w-0">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-base font-semibold text-gray-900">表示ブロック</h2>
-            {!isReadOnly && (
-              <button
-                onClick={() => setShowAddModal(true)}
-                className="px-4 py-1.5 bg-violet-500 text-white rounded-lg text-sm font-semibold cursor-pointer hover:bg-violet-600 transition-colors"
-              >
-                + ブロック追加
-              </button>
-            )}
-          </div>
+          {/* pageType="werewolf" は LiffPageBlock を使わない (専用テーブル WerewolfTitle 配下で
+              管理する) ため、ブロック編集 UI ではなく WerewolfEditor を出す。 */}
+          {normalizeLiffPageType(config.page_type) === "werewolf" ? (
+            <LiffWerewolfEditor
+              workId={workId}
+              liffPageConfigId={config.id}
+              readOnly={isReadOnly}
+            />
+          ) : (
+            <>
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-base font-semibold text-gray-900">表示ブロック</h2>
+                {!isReadOnly && (
+                  <button
+                    onClick={() => setShowAddModal(true)}
+                    className="px-4 py-1.5 bg-violet-500 text-white rounded-lg text-sm font-semibold cursor-pointer hover:bg-violet-600 transition-colors"
+                  >
+                    + ブロック追加
+                  </button>
+                )}
+              </div>
 
-          {config.blocks.length === 0 && (
-            <div className="bg-gray-50 rounded-xl p-10 text-center border-2 border-dashed border-gray-200">
-              <p className="text-sm text-gray-500 mb-2">
-                ブロックがまだ追加されていません
-              </p>
-              <p className="text-xs text-gray-400">
-                「ブロック追加」ボタンから表示したい項目を選んでください
-              </p>
-            </div>
+              {config.blocks.length === 0 && (
+                <div className="bg-gray-50 rounded-xl p-10 text-center border-2 border-dashed border-gray-200">
+                  <p className="text-sm text-gray-500 mb-2">
+                    ブロックがまだ追加されていません
+                  </p>
+                  <p className="text-xs text-gray-400">
+                    「ブロック追加」ボタンから表示したい項目を選んでください
+                  </p>
+                </div>
+              )}
+
+              <div className="flex flex-col gap-2">
+                {config.blocks.map((block, idx) => (
+                  <LiffBlockItem
+                    key={block.id}
+                    block={block}
+                    index={idx}
+                    totalBlocks={config.blocks.length}
+                    isEditing={liff.editingBlockId === block.id}
+                    readOnly={isReadOnly}
+                    saving={liff.saving}
+                    onEdit={() => liff.setEditingBlockId(block.id)}
+                    onCloseEdit={() => liff.cancelBlockEdit()}
+                    onSave={liff.updateBlock}
+                    onToggleEnabled={() => liff.toggleBlockEnabled(block)}
+                    onDelete={() => liff.deleteBlock(block.id)}
+                    onMove={(dir) => liff.moveBlock(idx, dir)}
+                    onLocalChange={(patch) => liff.updateBlockLocal(block.id, patch)}
+                    onDragStart={() => handleDragStart(idx)}
+                    onDragOver={(e) => handleDragOver(e, idx)}
+                    onDragEnd={handleDragEnd}
+                  />
+                ))}
+              </div>
+            </>
           )}
-
-          <div className="flex flex-col gap-2">
-            {config.blocks.map((block, idx) => (
-              <LiffBlockItem
-                key={block.id}
-                block={block}
-                index={idx}
-                totalBlocks={config.blocks.length}
-                isEditing={liff.editingBlockId === block.id}
-                readOnly={isReadOnly}
-                saving={liff.saving}
-                onEdit={() => liff.setEditingBlockId(block.id)}
-                onCloseEdit={() => liff.cancelBlockEdit()}
-                onSave={liff.updateBlock}
-                onToggleEnabled={() => liff.toggleBlockEnabled(block)}
-                onDelete={() => liff.deleteBlock(block.id)}
-                onMove={(dir) => liff.moveBlock(idx, dir)}
-                onLocalChange={(patch) => liff.updateBlockLocal(block.id, patch)}
-                onDragStart={() => handleDragStart(idx)}
-                onDragOver={(e) => handleDragOver(e, idx)}
-                onDragEnd={handleDragEnd}
-              />
-            ))}
-          </div>
         </div>
 
         <div className="sticky top-6 shrink-0">

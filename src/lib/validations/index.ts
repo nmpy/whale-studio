@@ -795,9 +795,9 @@ export const VISIBILITY_CONDITIONS = [
 ] as const;
 
 // LIFF ページ種別。
-// 新しいモード: default / hint / faq / survey / location / character
+// 新しいモード: default / hint / faq / survey / location / character / werewolf
 // 旧データ互換: "hint_site" も受理（保存時に "hint" に正規化される）
-export const LIFF_PAGE_TYPES = ["default", "hint", "faq", "survey", "location", "character", "hint_site"] as const;
+export const LIFF_PAGE_TYPES = ["default", "hint", "faq", "survey", "location", "character", "werewolf", "hint_site"] as const;
 /** 受け取った page_type を正規化（"hint_site" → "hint"） */
 export function normalizeLiffPageTypeValue(value: string | null | undefined): string {
   if (value === "hint_site") return "hint";
@@ -1113,6 +1113,21 @@ export const createLiffPageSchema = z.object({
     if (v === "hint_site") return "hint" as const;
     return v;
   }),
+});
+
+// ── 人狼 / 配役閲覧モード (Phase 1) ─────────────────────────
+// Phase 1 では「タイトル一覧 + 新規作成 + 削除」のみ受け付ける。
+// 詳細編集 / slot 編集 / カード編集 / ゲーム開始は Phase 2 で別 schema を追加する。
+
+/** 人狼タイトル新規作成 body。POST 時、player_count に応じて WerewolfRoleSlot を auto-generate する。 */
+export const createWerewolfTitleSchema = z.object({
+  liff_page_config_id: z.string().uuid("LIFF ページ ID が不正です"),
+  title:               z.string().min(1, "タイトル名は必須です").max(100, "タイトル名は 100 文字以内で入力してください"),
+  description:         z.string().max(1000).optional().nullable(),
+  // ISO 文字列を受け取り、Date 形式の妥当性は API 側で `new Date(...)` 後にチェック。
+  scheduled_at:        z.string().datetime({ offset: true }).optional().nullable(),
+  // MVP では 1 名 〜 50 名を想定。実用上 8〜20 名が中心、上限は念のため広め。
+  player_count:        z.number().int().min(1, "プレイヤー人数は 1 以上").max(50, "プレイヤー人数は 50 以下"),
 });
 
 /**
