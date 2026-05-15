@@ -26,6 +26,17 @@ export async function GET(
       );
     }
 
+    const url = new URL(req.url);
+    const preview = url.searchParams.get("preview") === "1";
+
+    // work レベルの LIFF 有効/無効を尊重。preview=1 は CMS プレビュー継続のため通す。
+    if (!preview && (work as { liffEnabled?: boolean }).liffEnabled === false) {
+      return NextResponse.json(
+        { success: false, error: { code: "LIFF_DISABLED", message: "このLIFFは現在無効になっています" } },
+        { status: 404 }
+      );
+    }
+
     // page は work に属していることも検証 (テナント分離)
     const configMeta = await findLiffPageConfigByIdOrPublicId(pageIdOrPublic, { workScope: work.id });
     if (!configMeta) {
@@ -47,9 +58,6 @@ export async function GET(
       },
     });
 
-    const url = new URL(req.url);
-    const preview = url.searchParams.get("preview") === "1";
-
     if (!config || !config.isEnabled) {
       return NextResponse.json(
         { success: false, error: { code: "LIFF_DISABLED", message: "このLIFFページは無効です" } },
@@ -69,10 +77,12 @@ export async function GET(
         work_id:        work.id,
         work_title:     work.title,
         page_id:        config.id,
+        public_id:      config.publicId,
         title:          config.title,
         description:    config.description,
         page_type:      config.pageType,
         publish_status: config.publishStatus,
+        is_enabled:     config.isEnabled,
         settings_json:  config.settingsJson,
         blocks: config.blocks.map((b) => ({
           id:                        b.id,

@@ -33,3 +33,10 @@ Thumbs.db
 dist/
 build/
 .vercel
+
+# ── TypeScript / tooling 一時ファイル ───────────
+# tsc --noEmit / --incremental が更新する増分ビルドキャッシュ。Git 管理不要。
+tsconfig.tsbuildinfo
+
+# Claude Code (CLI) のローカル作業状態。プロジェクトには関係しない。
+.claude/

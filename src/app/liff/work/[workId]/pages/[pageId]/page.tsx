@@ -1,23 +1,21 @@
 "use client";
 
-// src/app/liff/work/[workId]/pages/[pageId]/page.tsx
-// LIFF表示ページ (旧 URL: pageId 指定) — LINE内ブラウザ / 外部ブラウザ両対応
+// src/app/liff/work/[workId]/pages/[pageId]/page.tsx (旧 URL)
 //
-// 旧仕様: 該当 pageId のページだけ表示
-// 新仕様: 作品メニュー shell (= タブ UI) を表示し、pageId に該当するタブを初期 active にする。
-//          既存ブックマーク URL から開いても、ユーザーは目的のタブに直接ジャンプできる。
+// 後方互換 URL: workId / pageId (UUID) で個別 LIFF ページを表示する。
 
 import { useParams } from "next/navigation";
-import { LiffMenuPlayerViewer } from "@/components/liff/LiffMenuPlayerViewer";
+import { LiffSinglePageViewer } from "@/components/liff/LiffSinglePageViewer";
 
 export default function LiffPageViewerPage() {
   const params = useParams();
   const workId = params.workId as string;
   const pageId = params.pageId as string;
   return (
-    <LiffMenuPlayerViewer
+    <LiffSinglePageViewer
       workId={workId}
-      activePagePublicId={pageId}
+      pageId={pageId}
+      workPublicId={workId}
     />
   );
 }

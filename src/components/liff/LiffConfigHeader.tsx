@@ -219,35 +219,35 @@ export function LiffConfigHeader({
         </div>
       </div>
 
-      {/* 作品メニュー shell (タブ UI) 用設定。
-          このページがプレイヤーの作品メニューにタブとしてどう出るかを制御する。
-          - tab_enabled = false なら タブから除外
-          - tab_label   = タブバーに出す文言 (未設定なら LIFF ページ名)
-          - tab_page_title = タブ本文先頭に出すタイトル (未設定なら LIFF ページ名) */}
+      {/* 作品メニューホーム (グリッドカード) でこのページがどう表示されるかを制御。
+          - show_in_menu = false なら カードを並べない
+          - menu_label   = カードに出す文言 (未設定なら LIFF ページ名)
+          - menu_icon    = カード左上に出す絵文字
+          - menu_order   = カードの並び順 (小さい順) */}
       <div className="bg-white rounded-xl border border-gray-200 p-5 mb-6 space-y-3">
         <h2 className="text-sm font-semibold text-gray-900">作品メニューでの表示</h2>
 
         <label className="flex items-center gap-2 text-sm text-gray-700">
           <input
             type="checkbox"
-            checked={settings.tab_enabled !== false}
-            onChange={(e) => updateSetting("tab_enabled", e.target.checked)}
+            checked={settings.show_in_menu !== false}
+            onChange={(e) => updateSetting("show_in_menu", e.target.checked)}
             disabled={readOnly}
             className="rounded border-gray-300"
           />
-          このページを作品メニューにタブとして表示する
+          このページを作品メニューのカードとして表示する
         </label>
         <p className="text-[11px] text-gray-400 -mt-1">
-          OFF にすると、LIFF プレイヤーのタブ一覧から除外されます (URL を直接開いた場合の表示は維持)。
+          OFF にすると、LIFF トップメニュー (`/liff/w/...`) のカード一覧から除外されます。個別 URL (`.../p/...`) を直接開いた場合の表示は維持されます。
         </p>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-          <div>
-            <label className={labelCls}>タブ名（タブバーに表示）</label>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+          <div className="sm:col-span-2">
+            <label className={labelCls}>カード名（メニューに表示）</label>
             <input
               className={inputCls}
-              value={settings.tab_label ?? ""}
-              onChange={(e) => updateSetting("tab_label", e.target.value)}
+              value={settings.menu_label ?? ""}
+              onChange={(e) => updateSetting("menu_label", e.target.value)}
               disabled={readOnly}
               placeholder={
                 mode === "hint"      ? "例: ヒント"
@@ -262,17 +262,47 @@ export function LiffConfigHeader({
             <p className="text-[11px] text-gray-400 mt-1">未設定時は LIFF ページタイトル → ページ種別の既定名にフォールバック。</p>
           </div>
           <div>
-            <label className={labelCls}>タブ本文の見出し</label>
+            <label className={labelCls}>アイコン（絵文字）</label>
             <input
               className={inputCls}
-              value={settings.tab_page_title ?? ""}
-              onChange={(e) => updateSetting("tab_page_title", e.target.value)}
+              value={settings.menu_icon ?? ""}
+              onChange={(e) => updateSetting("menu_icon", e.target.value)}
               disabled={readOnly}
-              placeholder="例: 物語のヒント"
-              maxLength={30}
+              placeholder={
+                mode === "hint"      ? "💡"
+                : mode === "location"  ? "📍"
+                : mode === "survey"    ? "📝"
+                : mode === "character" ? "🎭"
+                : mode === "faq"       ? "❓"
+                : "📄"
+              }
+              maxLength={8}
             />
-            <p className="text-[11px] text-gray-400 mt-1">タブを開いたとき、本文の最上部に出す見出しです。</p>
+            <p className="text-[11px] text-gray-400 mt-1">未設定時はページ種別の既定絵文字。</p>
           </div>
+        </div>
+
+        <div>
+          <label className={labelCls}>並び順</label>
+          <input
+            type="number"
+            className={`${inputCls} max-w-[160px]`}
+            value={settings.menu_order ?? ""}
+            onChange={(e) => {
+              const raw = e.target.value;
+              if (raw === "") {
+                updateSetting("menu_order", undefined);
+              } else {
+                const n = Number(raw);
+                if (Number.isFinite(n)) updateSetting("menu_order", Math.max(0, Math.min(9999, Math.floor(n))));
+              }
+            }}
+            disabled={readOnly}
+            min={0}
+            max={9999}
+            placeholder="例: 1"
+          />
+          <p className="text-[11px] text-gray-400 mt-1">小さい数字ほど前に出ます。未設定は末尾。</p>
         </div>
       </div>
 

@@ -130,31 +130,19 @@ export function liffDescriptionAlignClass(settings: LiffPageConfigSettings | und
 }
 
 // ───────────────────────────────────────────────────────────
-// 作品メニュー shell (タブ UI) 用ヘルパー
+// 作品メニューホーム (グリッドカード) 用ヘルパー
 //
-// LIFF プレイヤー画面は「1 work = 複数 LiffPageConfig」を作品メニュー shell で束ねて
-// タブで表示する設計。タブ表示順 / 表示名 / 表示有無の解決ロジックをここに集約する。
+// `/liff/w/[workPublicId]` は work 配下の有効な LiffPageConfig をカードとして
+// 一覧表示する設計。並び順 / 表示名 / アイコン / 表示有無の解決ロジックをここに集約。
+//
+// 旧 tab_* 設定 (PR #59) は backward compat のため fallback で参照する:
+//   show_in_menu  未指定なら tab_enabled を見る (どちらも未指定なら表示)
+//   menu_label    未指定なら tab_label を見る (どちらも未指定なら title → 既定名)
+// 個別ページの本文タイトルは LiffPageConfig.title をそのまま使う (専用フィールドを設けない)。
 // ───────────────────────────────────────────────────────────
 
-/** タブ表示順 — 仕様で指示された並び (hint → location → survey → character) を優先し、
- *  その後ろに既存の faq / default を続ける。
- *  存在しない pageType の page は normalizeLiffPageType() で "default" に丸めるため、ここには現れない。 */
-const TAB_TYPE_ORDER: LiffPageType[] = [
-  "hint",
-  "location",
-  "survey",
-  "character",
-  "faq",
-  "default",
-];
-
-export function tabTypeOrderIndex(pageType: LiffPageType): number {
-  const i = TAB_TYPE_ORDER.indexOf(pageType);
-  return i === -1 ? TAB_TYPE_ORDER.length : i;
-}
-
-/** pageType ごとのフォールバックタブラベル (pageType 由来の既定の日本語ラベル)。 */
-export function defaultTabLabel(pageType: LiffPageType): string {
+/** pageType ごとの既定日本語ラベル。menu_label / title が両方未設定の最終フォールバック。 */
+export function defaultMenuLabel(pageType: LiffPageType): string {
   switch (pageType) {
     case "hint":      return "ヒント";
     case "location":  return "ロケーション";
@@ -165,92 +153,116 @@ export function defaultTabLabel(pageType: LiffPageType): string {
   }
 }
 
-/** タブバーに出す表示文字列を解決する。
- *  優先順: settings.tab_label → page.title → defaultTabLabel(pageType) */
-export function resolveTabLabel(args: {
+/** pageType ごとの既定アイコン (emoji)。menu_icon 未指定時のフォールバック。 */
+export function defaultMenuIcon(pageType: LiffPageType): string {
+  switch (pageType) {
+    case "hint":      return "💡";
+    case "location":  return "📍";
+    case "survey":    return "📝";
+    case "character": return "🎭";
+    case "faq":       return "❓";
+    case "default":   return "📄";
+  }
+}
+
+/** メニューカードに出す表示文字列を解決する。
+ *  優先順: settings.menu_label → settings.tab_label (旧) → page.title → 既定名 */
+export function resolveMenuLabel(args: {
   pageType: LiffPageType;
   title?:   string | null;
   settings?: LiffPageConfigSettings | null;
 }): string {
+  const m = args.settings?.menu_label?.trim();
+  if (m) return m;
   const t = args.settings?.tab_label?.trim();
   if (t) return t;
   const p = args.title?.trim();
   if (p) return p;
-  return defaultTabLabel(args.pageType);
+  return defaultMenuLabel(args.pageType);
 }
 
-/** タブ本文先頭に出すページタイトルを解決する。
- *  優先順: settings.tab_page_title → page.title → defaultTabLabel(pageType) */
-export function resolveTabPageTitle(args: {
-  pageType: LiffPageType;
-  title?:   string | null;
-  settings?: LiffPageConfigSettings | null;
-}): string {
-  const t = args.settings?.tab_page_title?.trim();
-  if (t) return t;
-  const p = args.title?.trim();
-  if (p) return p;
-  return defaultTabLabel(args.pageType);
+/** メニューカードのアイコン (emoji) を解決する。
+ *  優先順: settings.menu_icon → defaultMenuIcon(pageType) */
+export function resolveMenuIcon(
+  pageType: LiffPageType,
+  settings: LiffPageConfigSettings | null | undefined
+): string {
+  const i = settings?.menu_icon?.trim();
+  if (i) return i;
+  return defaultMenuIcon(pageType);
 }
 
-/** 「このページをメニュー shell のタブとして出すか」を判定する。
- *  - `is_enabled === false` ならそもそも公開対象外 → タブにも出さない
- *  - `settings.tab_enabled === false` でも非表示
- *  - 未指定 (undefined) は表示扱い (= 既存データを壊さない default) */
-export function isTabVisible(args: {
+/** 「このページをメニューホームのカードに出すか」を判定する。
+ *  - `is_enabled === false` なら非表示 (= 公開対象外)
+ *  - `settings.show_in_menu === false` 明示で非表示
+ *  - 旧 `settings.tab_enabled === false` も尊重 (backward compat)
+ *  - それ以外は表示 (default) */
+export function isShownInMenu(args: {
   is_enabled: boolean;
   settings?: LiffPageConfigSettings | null;
 }): boolean {
   if (args.is_enabled === false) return false;
-  if (args.settings?.tab_enabled === false) return false;
+  if (args.settings?.show_in_menu === false) return false;
+  if (args.settings?.show_in_menu === undefined && args.settings?.tab_enabled === false) return false;
   return true;
 }
 
-export interface MenuTabSource {
+export interface MenuCardSource {
   id:             string;
   public_id?:     string | null;
   page_type:      string | null | undefined;
   title:          string | null;
   is_enabled:     boolean;
   settings_json?: LiffPageConfigSettings | null;
+  created_at?:    string | Date | null;
 }
 
-export interface MenuTab {
+export interface MenuCard {
   id:        string;
   publicId:  string | null;
   pageType:  LiffPageType;
-  tabLabel:  string;
-  pageTitle: string;
+  label:     string;
+  icon:      string;
+  order:     number;
 }
 
-/** raw page リスト → 並び替え済みのタブ配列。
- *  - is_enabled / tab_enabled で非表示を除外
- *  - TAB_TYPE_ORDER で並び替え (同種別なら配列入力順を保持)
- *  - pageType を normalize して未知値は "default" へ */
-export function buildMenuTabs(pages: MenuTabSource[]): MenuTab[] {
+const ORDER_FALLBACK = 9999;
+
+/** raw page リスト → 並び替え済みカード配列。
+ *  並び順:
+ *    1. settings.menu_order の昇順 (未指定は ORDER_FALLBACK)
+ *    2. created_at 昇順 (古い順)
+ *    3. 入力配列順 (安定ソート保険)
+ *  非表示 (isShownInMenu=false) は事前に除外。 */
+export function buildMenuCards(pages: MenuCardSource[]): MenuCard[] {
   return pages
     .map((p, idx) => {
       const pageType = normalizeLiffPageType(p.page_type);
       const settings = p.settings_json ?? null;
+      const createdAtMs = p.created_at
+        ? (typeof p.created_at === "string" ? Date.parse(p.created_at) : p.created_at.getTime())
+        : 0;
       return {
         idx,
+        createdAtMs: isNaN(createdAtMs) ? 0 : createdAtMs,
         pageType,
         page: p,
         settings,
+        order: settings?.menu_order ?? ORDER_FALLBACK,
       };
     })
-    .filter(({ page, settings }) => isTabVisible({ is_enabled: page.is_enabled, settings }))
+    .filter(({ page, settings }) => isShownInMenu({ is_enabled: page.is_enabled, settings }))
     .sort((a, b) => {
-      const oa = tabTypeOrderIndex(a.pageType);
-      const ob = tabTypeOrderIndex(b.pageType);
-      if (oa !== ob) return oa - ob;
+      if (a.order !== b.order) return a.order - b.order;
+      if (a.createdAtMs !== b.createdAtMs) return a.createdAtMs - b.createdAtMs;
       return a.idx - b.idx;
     })
-    .map(({ page, pageType, settings }) => ({
+    .map(({ page, pageType, settings, order }) => ({
       id:        page.id,
       publicId:  page.public_id ?? null,
       pageType,
-      tabLabel:  resolveTabLabel({ pageType, title: page.title, settings }),
-      pageTitle: resolveTabPageTitle({ pageType, title: page.title, settings }),
+      label:     resolveMenuLabel({ pageType, title: page.title, settings }),
+      icon:      resolveMenuIcon(pageType, settings),
+      order,
     }));
 }

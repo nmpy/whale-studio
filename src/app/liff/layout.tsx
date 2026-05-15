@@ -7,7 +7,7 @@
 // 注意: ここで Next.js metadata.title を固定値で出すと、ブラウザ / LINE 内ブラウザの
 // 上部バーにその文字列が永続表示されてしまい、CMS で設定する header_title と一致しなくなる。
 // → metadata.title は意図的に持たない。
-// 実際の title はクライアント側 (LiffPlayerViewer) で
+// 実際の title はクライアント側 (LiffMenuHomeViewer / LiffSinglePageViewer) で
 // `document.title = resolveHeaderTitle(...)` として動的に設定する。
 // SSR フェーズで一瞬出る text は <title> 未指定により Next.js の root layout title が使われる。
 

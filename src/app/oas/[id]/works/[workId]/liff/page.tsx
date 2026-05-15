@@ -91,6 +91,8 @@ export default function LiffPagesIndex() {
 
   const [pages, setPages] = useState<LiffPageSummary[] | null>(null);
   const [workTitle, setWorkTitle] = useState("");
+  const [liffEnabled, setLiffEnabled] = useState(true);
+  const [savingLiffEnabled, setSavingLiffEnabled] = useState(false);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
@@ -106,6 +108,7 @@ export default function LiffPagesIndex() {
       ]);
       setPages(list.pages);
       setWorkTitle(work.title);
+      setLiffEnabled(work.liff_enabled !== false);
       // 計測サマリは並行取得し、失敗してもページ一覧自体は表示する
       liffConfigApi
         .getAnalyticsSummary(token, workId)
@@ -137,6 +140,22 @@ export default function LiffPagesIndex() {
     } catch {
       showToast("LIFF ページの作成に失敗しました", "error");
       setCreating(false);
+    }
+  };
+
+  const handleToggleLiffEnabled = async (next: boolean) => {
+    if (isReadOnly || savingLiffEnabled || next === liffEnabled) return;
+    const prev = liffEnabled;
+    setLiffEnabled(next); // optimistic
+    setSavingLiffEnabled(true);
+    try {
+      await workApi.update(getDevToken(), workId, { liff_enabled: next });
+      showToast(next ? "LIFFを有効にしました" : "LIFFを無効にしました", "success");
+    } catch {
+      setLiffEnabled(prev); // rollback
+      showToast("LIFF状態の更新に失敗しました", "error");
+    } finally {
+      setSavingLiffEnabled(false);
     }
   };
 
@@ -178,6 +197,39 @@ export default function LiffPagesIndex() {
       />
 
       {isReadOnly && <ViewerBanner role={role} />}
+
+      {/* 作品単位の LIFF 有効/無効 — 無効にすると実機 LIFF からアクセス不可。CMS では引き続き編集可。 */}
+      <div className="bg-white border border-gray-200 rounded-xl p-4 mb-4">
+        <div className="flex items-center gap-4 flex-wrap">
+          <h2 className="text-sm font-semibold text-gray-900">LIFFページ</h2>
+          <label className="flex items-center gap-1.5 text-sm cursor-pointer">
+            <input
+              type="radio"
+              name="liff-enabled"
+              checked={liffEnabled}
+              onChange={() => handleToggleLiffEnabled(true)}
+              disabled={isReadOnly || savingLiffEnabled}
+            />
+            有効
+          </label>
+          <label className="flex items-center gap-1.5 text-sm cursor-pointer">
+            <input
+              type="radio"
+              name="liff-enabled"
+              checked={!liffEnabled}
+              onChange={() => handleToggleLiffEnabled(false)}
+              disabled={isReadOnly || savingLiffEnabled}
+            />
+            無効
+          </label>
+          {savingLiffEnabled && <span className="text-xs text-gray-500">保存中...</span>}
+        </div>
+        {!liffEnabled && (
+          <p className="text-[12px] text-amber-700 mt-2">
+            ⚠ 現在 LIFF は無効です。実機からアクセスすると &quot;このLIFFは現在無効になっています&quot; と表示されます。Studio 内では引き続き編集・プレビューできます。
+          </p>
+        )}
+      </div>
 
       <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
         <h1 className="text-xl font-bold text-gray-900">LIFF ページ一覧</h1>

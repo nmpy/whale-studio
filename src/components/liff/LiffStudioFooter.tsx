@@ -7,7 +7,7 @@
 // 仕様:
 //   - 文言: "Powered by Whale Studio" 固定
 //   - sticky / fixed ではなく通常の <footer> として本文末尾に流す
-//   - 全タブで共通 (LiffMenuShell の一番外側、ActiveTabContent の下に置く)
+//   - 全ページ共通 (LiffMenuHomeRenderer / LiffSinglePageRenderer の末尾に置く)
 //   - 控えめなトーン: 中央寄せ・小さめフォント・薄いグレー・上部余白多め
 //   - 左右 padding は `.liff-player-main` で 16px を保証
 //
