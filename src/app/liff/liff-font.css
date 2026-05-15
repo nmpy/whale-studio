@@ -140,7 +140,33 @@
  * リセット規則を持っていたが、これは Tailwind utilities (`@layer utilities`) と layer 階層が
  * 違うため、結果として `.px-4` 等を打ち消す副作用を持っていた。
  *
- * 新仕様: globals.css 側で global の `main { padding: 28px 0 48px }` を `@layer base` に
- * 移動した (commit 参照)。これにより Tailwind utilities (`@layer utilities`) が常に勝てる
- * 状態になり、LIFF スコープで打ち消す必要がなくなった。
- * もし将来 global rule の場所が unlayered に戻った場合、ここに同様のリセットを足す。 */
+ * 新仕様: globals.css 側で global の `main { padding: ... }` を `@layer base` に移動した。
+ * (line 137 / line 689 の SP メディアクエリ内も同様)。これにより Tailwind utilities が
+ * 常に勝てる状態になり、LIFF スコープで打ち消す必要がなくなった。 */
+
+/* === LIFF プレイヤー本文 main 専用 wrapper class ===
+ *
+ * Tailwind `.px-4` だけに頼らず、明示的な padding-left/right で 16px を保証する防御層。
+ *
+ * 理由:
+ *   過去 PR #52 / #55 / #56 でグローバル CSS の unlayered `main {}` rule が左右 padding を
+ *   0 に潰してきた経緯がある (今は line 137 / line 689 の両方を @layer base に移動して解決)。
+ *   将来また別の unlayered main rule が混入した場合の保険として、専用 class で
+ *   再度 16px padding を当て直す。
+ *
+ * 仕様:
+ *   - .liff-font 配下に限定 (specificity 0,1,1) — CMS 側 main には影響しない
+ *   - max-width 448px (= Tailwind max-w-md と同値)、中央寄せ、left/right padding 16px
+ *   - !important は使わない (CSS layer 階層を正しく設計すれば不要)
+ *
+ * 各 renderer の <main> に `liff-player-main` クラスを付けるだけで適用される。
+ * py-X / pt-X / pb-X 等の上下 padding は引き続き Tailwind で個別に指定する想定。 */
+.liff-font .liff-player-main {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 448px;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 16px;
+  padding-right: 16px;
+}

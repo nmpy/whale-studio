@@ -10,7 +10,6 @@
 import { useState } from "react";
 import type { LiffPageConfigSettings, SurveyItem } from "@/types";
 import { LiffShareButton } from "./LiffShareButton";
-import { LiffPlayerHeader } from "./LiffPlayerHeader";
 import { liffRootClass, liffDescriptionAlignClass } from "./liff-style-helpers";
 import {
   LiffButton,
@@ -117,8 +116,8 @@ export function SurveyRenderer({ config, preview, lineUserId }: Props) {
 
   return (
     <div className={`liff-font ${liffRootClass(config.settings_json)} min-h-screen bg-[color:var(--liff-background)] text-[color:var(--liff-primary-text)]`}>
-      <LiffPlayerHeader settings={config.settings_json} workTitle={config.work_title} pageTitle={config.title} />
-      <main className="max-w-md mx-auto px-4 pt-5 pb-24 flex flex-col gap-4">
+      {/* 画面内ヘッダーは廃止。document.title (= LIFF 上部バー) で文脈表現する。 */}
+      <main className="liff-player-main pt-5 pb-24 flex flex-col gap-4">
         {/* ページタイトル h2 は廃止。description だけ表示。 */}
         {config.description && (
           <p className={`text-[14px] leading-relaxed text-[color:var(--liff-secondary-text)] whitespace-pre-wrap break-words ${liffDescriptionAlignClass(config.settings_json)}`}>
