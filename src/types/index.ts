@@ -1113,20 +1113,23 @@ export type VisibilityCondition = "always" | "before_start" | "in_progress" | "c
  *  - location:  ロケーション履歴（チェックイン履歴の表示）
  *  - character: キャラクター情報 (作品メニュー shell のタブ用。本文ブロックは default と同じ
  *               LiffPageBlock を使う想定だが、未登録ならプレイヤー側で空状態を表示する)
+ *  - werewolf:  人狼 / 配役閲覧モード (PR Phase 1)。GM がプレイヤーごとに配役カードを
+ *               配布するゲーム向け。LiffPageBlock は使わず、専用テーブル
+ *               (WerewolfTitle / WerewolfRoleSlot / WerewolfRoleCard) を持つ。
  *
  *  互換性: 旧データの "hint_site" は読み込み時に "hint" として扱う。
  *  Zod (`LIFF_PAGE_TYPES`) では両方を受理し、保存は "hint" に正規化する。
  *
- *  DB は `pageType String @default("default")` で enum ではないため、character 追加に
- *  Prisma migration は不要。 */
-export type LiffPageType = "default" | "hint" | "faq" | "survey" | "location" | "character";
+ *  DB は `pageType String @default("default")` で enum ではないため、新 pageType 追加に
+ *  Prisma migration は不要 (werewolf 用の専用テーブル migration は別で持つ)。 */
+export type LiffPageType = "default" | "hint" | "faq" | "survey" | "location" | "character" | "werewolf";
 
 /** 旧データ互換用。ストレージから読んだ値を正規化する。 */
 export function normalizeLiffPageType(value: string | null | undefined): LiffPageType {
   if (value === "hint_site") return "hint";
   if (
     value === "hint" || value === "faq" || value === "survey" ||
-    value === "location" || value === "character"
+    value === "location" || value === "character" || value === "werewolf"
   ) return value;
   return "default";
 }
@@ -1477,6 +1480,70 @@ export interface UpdateLiffBlockBody {
 
 export interface ReorderLiffBlocksBody {
   block_ids: string[];
+}
+
+// ────────────────────────────────────────────────
+// 人狼 / 配役閲覧モード — pageType="werewolf" 配下のデータ
+// (DB テーブル: werewolf_titles / werewolf_role_slots / werewolf_role_cards)
+// ────────────────────────────────────────────────
+
+/** 1 ゲーム単位。LiffPageConfig(pageType="werewolf") 配下に複数並ぶ。 */
+export interface WerewolfTitle {
+  id:                  string;
+  public_id?:          string;
+  liff_page_config_id: string;
+  work_id:             string;
+  title:               string;
+  description:         string | null;
+  /** プレイ予定日時 (ISO 文字列、null 可)。 */
+  scheduled_at:        string | null;
+  player_count:        number;
+  is_started:          boolean;
+  started_at:          string | null;
+  sort_order:          number;
+  created_at:          string;
+  updated_at:          string;
+  /** GM 詳細画面ではここに slots を埋めて返す。一覧では空 or 省略。 */
+  slots?:              WerewolfRoleSlot[];
+}
+
+/** 1 タイトル内の 1 プレイヤー分のスロット。QR の単位。 */
+export interface WerewolfRoleSlot {
+  id:           string;
+  title_id:     string;
+  slot_number:  number;
+  /** GM 用管理ラベル (プレイヤーには非表示) */
+  label:        string | null;
+  /** QR / URL に使う opaque な短縮トークン (10 文字) */
+  token:        string;
+  created_at:   string;
+  updated_at:   string;
+  /** GM 詳細 / プレイヤー閲覧時はここに cards を埋めて返す。 */
+  cards?:       WerewolfRoleCard[];
+}
+
+/** 1 slot に並ぶ配役カード (役職カード / アイテムカード等)。 */
+export interface WerewolfRoleCard {
+  id:           string;
+  slot_id:      string;
+  title:        string;
+  subtitle:     string | null;
+  badge_label:  string | null;
+  body:         string;
+  sort_order:   number;
+  created_at:   string;
+  updated_at:   string;
+}
+
+// ── リクエストボディ ──
+export interface CreateWerewolfTitleBody {
+  liff_page_config_id: string;
+  title:               string;
+  description?:        string | null;
+  /** ISO 文字列 (例: "2026-11-15T00:00:00+09:00")。null 可。 */
+  scheduled_at?:       string | null;
+  /** 0 以上。POST 時、この数だけ slot が auto-generate される。 */
+  player_count:        number;
 }
 
 // ────────────────────────────────────────────────

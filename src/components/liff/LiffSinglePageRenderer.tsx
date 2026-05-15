@@ -22,6 +22,7 @@ import { FaqRenderer } from "./FaqRenderer";
 import { SurveyRenderer } from "./SurveyRenderer";
 import { LocationHistoryRenderer } from "./LocationHistoryRenderer";
 import { CharacterRenderer, type CharacterRendererBlock } from "./CharacterRenderer";
+import { WerewolfRenderer } from "./WerewolfRenderer";
 import { LiffRenderer, type LiffBlock, type LiffRenderContext } from "./LiffRenderer";
 import { LiffPlayerProvider } from "./LiffPlayerContext";
 import { liffRootClass, resolveHeaderTitle } from "./liff-style-helpers";
@@ -257,6 +258,20 @@ function ActivePageContent({
               title:         b.title,
               settings_json: (b.settings_json ?? {}) as Record<string, unknown>,
             })) as CharacterRendererBlock[],
+          }}
+        />
+      );
+    case "werewolf":
+      // Phase 1: 暫定 placeholder のみ表示。
+      // Phase 2 でプレイ予定一覧 / 配役カード閲覧 / ゲーム開始 gating を実装する。
+      return (
+        <WerewolfRenderer
+          preview={preview}
+          config={{
+            work_title:    null,
+            title:         page.title,
+            description:   page.description,
+            settings_json: settings,
           }}
         />
       );

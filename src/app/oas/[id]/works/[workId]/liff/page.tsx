@@ -34,6 +34,8 @@ const PAGE_TYPE_LABELS: Record<string, string> = {
   faq:       "FAQ",
   survey:    "アンケート",
   location:  "履歴",
+  character: "キャラクター",
+  werewolf:  "人狼",
 };
 
 const METRIC_LABELS: Record<string, string> = {

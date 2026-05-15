@@ -67,6 +67,8 @@ import type {
   LineDestination,
   CreateLineDestinationBody,
   UpdateLineDestinationBody,
+  WerewolfTitle,
+  CreateWerewolfTitleBody,
 } from "@/types";
 
 // ────────────────────────────────────────────────
@@ -1606,6 +1608,50 @@ export interface LiffPageAnalytics {
     recent: Array<{ id: string; location_id: string; location_name: string | null; line_user_id: string; checkin_method: string; visited_at: string }>;
   };
 }
+
+// ────────────────────────────────────────────────
+// Werewolf API (人狼 / 配役閲覧モード)
+// Phase 1 では list / create / delete のみ実装。
+// Phase 2 で detail / update / start / slots / cards を追加する。
+// ────────────────────────────────────────────────
+
+export const werewolfApi = {
+  /** タイトル一覧を取得。`liff_page_config_id` で絞り込み可。 */
+  async listTitles(
+    token: string,
+    workId: string,
+    params?: { liff_page_config_id?: string }
+  ): Promise<{ work_id: string; titles: WerewolfTitle[] }> {
+    const qs = new URLSearchParams();
+    if (params?.liff_page_config_id) qs.set("liff_page_config_id", params.liff_page_config_id);
+    const url = `/api/works/${workId}/werewolf/titles${qs.toString() ? `?${qs}` : ""}`;
+    const res = await fetch(url, { headers: authHeaders(token) });
+    return parseResponse(res);
+  },
+
+  /** 新規タイトル作成。player_count に応じて slot を auto-generate。 */
+  async createTitle(
+    token: string,
+    workId: string,
+    body: CreateWerewolfTitleBody
+  ): Promise<WerewolfTitle> {
+    const res = await fetch(`/api/works/${workId}/werewolf/titles`, {
+      method:  "POST",
+      headers: authHeaders(token),
+      body:    JSON.stringify(body),
+    });
+    return parseResponse(res);
+  },
+
+  /** タイトル削除。配下の slot / card も CASCADE で消える。 */
+  async deleteTitle(token: string, workId: string, titleId: string): Promise<void> {
+    const res = await fetch(`/api/works/${workId}/werewolf/titles/${titleId}`, {
+      method:  "DELETE",
+      headers: authHeaders(token),
+    });
+    return parseResponse(res);
+  },
+};
 
 // ────────────────────────────────────────────────
 // Location API
