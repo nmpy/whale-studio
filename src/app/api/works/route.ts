@@ -3,6 +3,7 @@
 // POST /api/works            — 作品作成
 
 import { NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { ok, created, badRequest, notFound, serverError } from "@/lib/api-response";
 import { withAuth } from "@/lib/auth";
@@ -157,6 +158,30 @@ export const GET = withAuth(async (req, _ctx, user) => {
     );
   } catch (err) {
     if (err instanceof ZodError) return badRequest("クエリパラメータが不正です", formatZodErrors(err));
+    // Prisma 既知エラーは code / meta を含めて明示的にログする。
+    // 特に P2022 (column does not exist) は本番 DB に migration が未適用な兆候なので
+    // Vercel ログから一目で分かるようにする。
+    if (err instanceof Prisma.PrismaClientKnownRequestError) {
+      console.error(
+        `[/api/works GET] Prisma error code=${err.code} message=${err.message}`,
+        err.meta
+      );
+      if (err.code === "P2022") {
+        // 「カラムが見つからない」= 本番 DB の schema が古い (migrate deploy 漏れ) の合図。
+        // 一般 500 ではなく専用エラーで返してフロント側で気付きやすくする。
+        return NextResponse.json(
+          {
+            success: false,
+            error: {
+              code:    "SCHEMA_OUT_OF_DATE",
+              message: "DB スキーマと Prisma client が一致しません。`npx prisma migrate deploy` を本番 DB に適用してください。",
+              hint:    err.meta?.column ? `不足カラム: ${String(err.meta.column)}` : undefined,
+            },
+          },
+          { status: 500 }
+        );
+      }
+    }
     return serverError(err);
   }
 });

@@ -442,13 +442,24 @@ export default function WorkListPage() {
         </div>
       )}
 
-      {/* ── コンテンツ ── */}
+      {/* ── コンテンツ ──
+          表示分岐の優先順:
+            1. loading 中 → スケルトン
+            2. error あり → エラーバナーのみ (= 上部の <alert alert-error>)。空状態は出さない。
+               「API失敗」と「作品0件」を UI 上で混同させない。
+            3. works.length === 0 → 初回 empty state (WorksEmptyState)
+            4. それ以外 → 検索結果 / 一覧表示
+          以前は loading 直後に works.length === 0 を見ていたため、API 失敗時に「サーバーエラー」と
+          「まだ作品がありません」が同時表示される問題があった。 */}
       {loading ? (
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           <SkeletonCard />
           <SkeletonCard />
           <SkeletonCard />
         </div>
+      ) : error ? (
+        /* エラー時はコンテンツ領域を空にする (エラーバナーは上部で既に表示済み) */
+        null
       ) : works.length === 0 ? (
         /* 作品ゼロ → 初回 empty state */
         <WorksEmptyState oaId={oaId} isTester={isTester} />
