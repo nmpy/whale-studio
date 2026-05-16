@@ -262,16 +262,18 @@ function ActivePageContent({
         />
       );
     case "werewolf":
-      // Phase 1: 暫定 placeholder のみ表示。
-      // Phase 2 でプレイ予定一覧 / 配役カード閲覧 / ゲーム開始 gating を実装する。
+      // Phase 2: プレイ予定タイトル一覧 (アコーディオン) + マイページ (Phase 3 placeholder)。
+      // 役職カード本体は QR 経由 (`/liff/r/[slotToken]`) でのみ閲覧可能。
       return (
         <WerewolfRenderer
           preview={preview}
           config={{
-            work_title:    null,
-            title:         page.title,
-            description:   page.description,
-            settings_json: settings,
+            work_id:             workId,
+            liff_page_config_id: page.id,
+            work_title:          null,
+            title:               page.title,
+            description:         page.description,
+            settings_json:       settings,
           }}
         />
       );
