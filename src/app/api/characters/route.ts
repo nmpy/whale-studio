@@ -43,7 +43,10 @@ export const GET = withAuth(async (req, _ctx, user) => {
     });
 
     // Work の存在確認
-    const work = await prisma.work.findUnique({ where: { id: query.work_id } });
+    const work = await prisma.work.findUnique({
+      where: { id: query.work_id },
+      select: { id: true },
+    });
     if (!work) return notFound("作品");
 
     const oaId = await getOaIdFromWorkId(query.work_id);
@@ -74,7 +77,10 @@ export const POST = withAuth(async (req, _ctx, user) => {
     const data = createCharacterSchema.parse(body);
 
     // Work の存在確認
-    const work = await prisma.work.findUnique({ where: { id: data.work_id } });
+    const work = await prisma.work.findUnique({
+      where: { id: data.work_id },
+      select: { id: true },
+    });
     if (!work) return notFound("作品");
 
     const oaId = await getOaIdFromWorkId(data.work_id);

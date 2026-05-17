@@ -42,12 +42,12 @@ function toResponse(w: {
   id: string; oaId: string; title: string; description: string | null;
   publishStatus: string; sortOrder: number;
   liffEnabled?: boolean | null;
-  systemCharacterId: string | null;
-  welcomeMessage: string | null;
-  readReceiptMode: string | null; readDelayMs: number | null;
-  typingEnabled: boolean | null; typingMinMs: number | null; typingMaxMs: number | null;
-  loadingEnabled: boolean | null; loadingThresholdMs: number | null;
-  loadingMinSeconds: number | null; loadingMaxSeconds: number | null;
+  systemCharacterId?: string | null;
+  welcomeMessage?: string | null;
+  readReceiptMode?: string | null; readDelayMs?: number | null;
+  typingEnabled?: boolean | null; typingMinMs?: number | null; typingMaxMs?: number | null;
+  loadingEnabled?: boolean | null; loadingThresholdMs?: number | null;
+  loadingMinSeconds?: number | null; loadingMaxSeconds?: number | null;
   createdAt: Date; updatedAt: Date;
 }) {
   return {
@@ -96,7 +96,15 @@ export const GET = withAuth(async (req, _ctx, user) => {
         ...(query.publish_status !== undefined && { publishStatus: query.publish_status }),
       },
       orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
-      include: {
+      select: {
+        id:                true,
+        oaId:              true,
+        title:             true,
+        description:       true,
+        publishStatus:     true,
+        sortOrder:         true,
+        createdAt:         true,
+        updatedAt:         true,
         _count: {
           select: {
             characters:   true,

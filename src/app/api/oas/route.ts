@@ -7,7 +7,6 @@ import { prisma } from "@/lib/prisma";
 import { ok, created, badRequest, serverError } from "@/lib/api-response";
 import { withAuth } from "@/lib/auth";
 import { createOaSchema, oaQuerySchema, formatZodErrors } from "@/lib/validations";
-import { getWorkspaceRole } from "@/lib/rbac";
 import { isPlatformOwner } from "@/lib/platform-admin";
 import { ZodError } from "zod";
 
@@ -79,36 +78,40 @@ export const GET = withAuth(async (req, _ctx, user) => {
     };
     const skip = (query.page - 1) * query.limit;
 
-    const [items, total] = await prisma.$transaction([
-      prisma.oa.findMany({
-        where,
-        orderBy: { createdAt: "desc" },
-        skip,
-        take: query.limit,
-        select: {
-          id:             true,
-          title:          true,
-          description:    true,
-          channelId:      true,
-          lineOaId:       true,
-          publishStatus:  true,
-          richMenuId:     true,
-          spreadsheetId:  true,
-          createdAt:      true,
-          updatedAt:      true,
-          _count: { select: { works: true } },
-        },
-      }),
-      prisma.oa.count({ where }),
-    ]);
+    const items = await prisma.oa.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      skip,
+      take: query.limit,
+      select: {
+        id:             true,
+        title:          true,
+        description:    true,
+        channelId:      true,
+        lineOaId:       true,
+        publishStatus:  true,
+        richMenuId:     true,
+        spreadsheetId:  true,
+        createdAt:      true,
+        updatedAt:      true,
+        _count: { select: { works: true } },
+      },
+    });
+
+    const total =
+      items.length < query.limit && (items.length > 0 || skip === 0)
+        ? skip + items.length
+        : await prisma.oa.count({ where });
 
     // 各 OA の role を取得
     // プラットフォームオーナーはメンバー未登録の OA でも 'owner' として扱う
     const rolesMap = new Map<string, string>();
-    for (const oa of items) {
-      const m = await getWorkspaceRole(oa.id, user.id);
-      const role = m?.status === 'active' ? m.role : (showAll ? 'owner' : 'none');
-      rolesMap.set(oa.id, role);
+    if (showAll) {
+      for (const oa of items) rolesMap.set(oa.id, "owner");
+    } else {
+      for (const m of memberships) {
+        rolesMap.set(m.workspaceId, m.status === "active" ? m.role : "none");
+      }
     }
 
     const data = items.map((oa) => ({

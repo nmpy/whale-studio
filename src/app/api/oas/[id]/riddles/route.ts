@@ -71,7 +71,10 @@ export const GET = withRole<{ id: string }>(
   'viewer',
   async (_req, { params }) => {
     try {
-      const oa = await prisma.oa.findUnique({ where: { id: params.id } });
+      const oa = await prisma.oa.findUnique({
+        where: { id: params.id },
+        select: { id: true },
+      });
       if (!oa) return notFound("OA");
 
       const riddles = await prisma.riddle.findMany({
@@ -91,7 +94,10 @@ export const POST = withRole<{ id: string }>(
   'tester',
   async (req, { params }) => {
   try {
-    const oa = await prisma.oa.findUnique({ where: { id: params.id } });
+    const oa = await prisma.oa.findUnique({
+      where: { id: params.id },
+      select: { id: true },
+    });
     if (!oa) return notFound("OA");
 
     const body = await req.json();

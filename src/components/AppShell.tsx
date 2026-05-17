@@ -14,13 +14,24 @@
 
 import { usePathname } from "next/navigation";
 import AppHeader from "@/components/AppHeader";
+import type { Role } from "@/lib/types/permissions";
 
 function isLiffRoute(pathname: string | null): boolean {
   if (!pathname) return false;
   return pathname === "/liff" || pathname.startsWith("/liff/");
 }
 
-export function AppShell({ children }: { children: React.ReactNode }) {
+export function AppShell({
+  children,
+  initialIsAnyOaOwner,
+  initialDefaultWorkspaceRole,
+  initialWorkspaceRoles,
+}: {
+  children: React.ReactNode;
+  initialIsAnyOaOwner: boolean;
+  initialDefaultWorkspaceRole: Role | null;
+  initialWorkspaceRoles: Record<string, Role>;
+}) {
   const pathname = usePathname();
   const liff = isLiffRoute(pathname);
 
@@ -32,7 +43,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <>
-      <AppHeader />
+      <AppHeader
+        initialIsAnyOaOwner={initialIsAnyOaOwner}
+        initialDefaultWorkspaceRole={initialDefaultWorkspaceRole}
+        initialWorkspaceRoles={initialWorkspaceRoles}
+      />
       <main>
         <div className="container">{children}</div>
       </main>

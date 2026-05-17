@@ -25,14 +25,21 @@ export interface WorkLimitState {
   loading:         boolean;
 }
 
-export function useWorkLimit(oaId: string): WorkLimitState {
-  const [maxWorks,        setMaxWorks]        = useState<number | null>(null);
-  const [planDisplayName, setPlanDisplayName] = useState<string | null>(null);
-  const [planName,        setPlanName]        = useState<string | null>(null);
-  const [loading,         setLoading]         = useState(true);
+export type InitialWorkLimitState = Pick<WorkLimitState, "maxWorks" | "planDisplayName" | "planName">;
+
+export function useWorkLimit(oaId: string, initial?: InitialWorkLimitState): WorkLimitState {
+  const [maxWorks,        setMaxWorks]        = useState<number | null>(initial?.maxWorks ?? null);
+  const [planDisplayName, setPlanDisplayName] = useState<string | null>(initial?.planDisplayName ?? null);
+  const [planName,        setPlanName]        = useState<string | null>(initial?.planName ?? null);
+  const [loading,         setLoading]         = useState(initial === undefined);
 
   useEffect(() => {
     if (!oaId) {
+      setLoading(false);
+      return;
+    }
+
+    if (initial !== undefined) {
       setLoading(false);
       return;
     }

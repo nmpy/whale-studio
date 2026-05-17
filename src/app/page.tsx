@@ -1,17 +1,44 @@
-"use client";
-
-import { useEffect, useState } from "react";
 import Link from "next/link";
-import { oaApi, getDevToken, type OaListItem } from "@/lib/api-client";
+import { prisma } from "@/lib/prisma";
+import { getServerAuthUser } from "@/lib/server-auth-user";
+import { isPlatformOwner } from "@/lib/platform-admin";
 
-export default function LandingPage() {
-  const [recents, setRecents] = useState<OaListItem[]>([]);
+export const dynamic = "force-dynamic";
 
-  useEffect(() => {
-    oaApi.list(getDevToken(), { page: 1, limit: 3 })
-      .then((r) => setRecents(r.data))
-      .catch(() => {});
-  }, []);
+type RecentOa = {
+  id: string;
+  title: string;
+};
+
+async function loadRecentOas(): Promise<RecentOa[]> {
+  const user = await getServerAuthUser();
+  if (!user) return [];
+
+  const showAll = isPlatformOwner(user.id);
+  const workspaceIds = showAll
+    ? null
+    : await prisma.workspaceMember.findMany({
+        where: { userId: user.id, status: "active" },
+        select: { workspaceId: true },
+      }).then((members) => members.map((m) => m.workspaceId));
+
+  if (workspaceIds && workspaceIds.length === 0) return [];
+
+  const oas = await prisma.oa.findMany({
+    where: workspaceIds ? { id: { in: workspaceIds } } : {},
+    orderBy: { createdAt: "desc" },
+    take: 3,
+    select: {
+      id: true,
+      title: true,
+    },
+  });
+
+  return oas;
+}
+
+export default async function LandingPage() {
+  const recents = await loadRecentOas();
 
   return (
     <div className="landing-root">

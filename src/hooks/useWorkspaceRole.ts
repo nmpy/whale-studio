@@ -6,8 +6,8 @@
  * workspace_id = oa_id（MVP）
  * ロール階層: owner > admin > editor > tester > viewer
  *
- * ロールは常に /api/oas/{id}/members/me から取得する。
- * サーバー側の getWorkspaceRole() が唯一の source of truth。
+ * SSR 済みの初期ロールがある場合はそれを使う。
+ * 初期値がない場合だけ /api/oas/{id}/members/me から取得する。
  *
  * @example
  * const { role, loading, isOwner, isAdmin, canEdit, isTester, isViewer } = useWorkspaceRole(oaId);
@@ -33,15 +33,39 @@ export interface WorkspaceRoleState {
   isViewer: boolean;
 }
 
-export function useWorkspaceRole(workspaceId: string): WorkspaceRoleState {
-  const [role,    setRole]    = useState<Role | null>(null);
-  const [loading, setLoading] = useState(true);
+const workspaceRoleCache = new Map<string, Role>();
+
+export function rememberWorkspaceRole(workspaceId: string, role: Role | null | undefined) {
+  if (!workspaceId || !role) return;
+  workspaceRoleCache.set(workspaceId, role);
+}
+
+export function useWorkspaceRole(
+  workspaceId: string,
+  initialRole?: Role | null,
+): WorkspaceRoleState {
+  const cachedRole = workspaceId ? workspaceRoleCache.get(workspaceId) ?? null : null;
+  const resolvedInitialRole = initialRole ?? cachedRole;
+  const hasInitialRole = resolvedInitialRole !== null;
+
+  const [role,    setRole]    = useState<Role | null>(resolvedInitialRole);
+  const [loading, setLoading] = useState(!hasInitialRole);
 
   useEffect(() => {
     // 旧プレビュー機能の localStorage 残骸を除去（一度だけ）
     try { localStorage.removeItem("ws_ws_role_preview"); } catch {}
 
     if (!workspaceId) {
+      setRole(null);
+      setLoading(false);
+      return;
+    }
+
+    const cached = workspaceRoleCache.get(workspaceId);
+    const seedRole = initialRole ?? cached;
+    if (seedRole) {
+      workspaceRoleCache.set(workspaceId, seedRole);
+      setRole(seedRole);
       setLoading(false);
       return;
     }
@@ -53,13 +77,18 @@ export function useWorkspaceRole(workspaceId: string): WorkspaceRoleState {
     })
       .then((res) => res.json())
       .then((json) => {
-        if (json.success) setRole(json.data.role as Role);
+        if (json.success) {
+          const nextRole = json.data.role as Role;
+          workspaceRoleCache.set(workspaceId, nextRole);
+          setRole(nextRole);
+        }
       })
       .catch(() => {
         setRole("viewer");
+        workspaceRoleCache.set(workspaceId, "viewer");
       })
       .finally(() => setLoading(false));
-  }, [workspaceId]);
+  }, [workspaceId, initialRole]);
 
   return {
     role,

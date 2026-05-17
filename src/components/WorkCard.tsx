@@ -15,6 +15,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { STATUS_META } from "@/constants/workStatus";
 import { workApi, getDevToken, type WorkListItem } from "@/lib/api-client";
 import { useToast } from "@/components/Toast";
@@ -221,6 +222,7 @@ interface WorkCardProps {
 
 export function WorkCard({ work, oaId, basePath, role, onDelete, onStatusChange }: WorkCardProps) {
   const { showToast } = useToast();
+  const router = useRouter();
 
   const [hovered,       setHovered]       = useState(false);
   const [copied,        setCopied]        = useState(false);
@@ -243,6 +245,10 @@ export function WorkCard({ work, oaId, basePath, role, onDelete, onStatusChange 
 
   const workHref    = `${basePath}/${work.id}`;
   const previewHref = `/playground?work_id=${work.id}&oa_id=${oaId}`;
+
+  useEffect(() => {
+    router.prefetch(workHref);
+  }, [router, workHref]);
 
   // draft ↔ active のみ切り替え可能。paused は表示専用。
   // 権限は owner / admin のみ（viewer / tester / editor は read-only）。

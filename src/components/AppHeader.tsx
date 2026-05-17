@@ -14,7 +14,6 @@ import { usePathname } from "next/navigation";
 import dynamic from "next/dynamic";
 import { useTesterMode } from "@/hooks/useTesterMode";
 import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
-import { getAuthHeaders } from "@/lib/api-client";
 import { RoleBadge } from "@/components/PermissionGuard";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { useProfile } from "@/hooks/useProfile";
@@ -38,13 +37,21 @@ function extractOaId(pathname: string): string {
   return "";
 }
 
-export default function AppHeader() {
+export default function AppHeader({
+  initialIsAnyOaOwner,
+  initialDefaultWorkspaceRole,
+  initialWorkspaceRoles,
+}: {
+  initialIsAnyOaOwner: boolean;
+  initialDefaultWorkspaceRole: Role | null;
+  initialWorkspaceRoles: Record<string, Role>;
+}) {
   const pathname = usePathname();
   const { isTester, testerOaId } = useTesterMode();
 
   const [feedbackOpen,     setFeedbackOpen]     = useState(false);
   const [loggedIn,         setLoggedIn]         = useState(false);
-  const [isAnyOaOwner,     setIsAnyOaOwner]     = useState(false);
+  const [isAnyOaOwner]                          = useState(initialIsAnyOaOwner);
   const { profile, loading: profileLoading }    = useProfile();
   const { showToast }                           = useToast();
   const displayName                             = getDisplayName(profile);
@@ -53,22 +60,12 @@ export default function AppHeader() {
 
   // 現在の OA ID をパスから取得
   const currentOaId = extractOaId(pathname);
+  const initialWorkspaceRole = currentOaId
+    ? initialWorkspaceRoles[currentOaId] ?? initialDefaultWorkspaceRole ?? undefined
+    : undefined;
 
   // 現在の OA の workspace role を取得（OA ページ外では workspaceId="" → role=null）
-  const { role: workspaceRole, loading: roleLoading, isOwner } = useWorkspaceRole(currentOaId);
-
-  // ── OA 横断 owner 判定（OA ページ外でも CTA を切り替えるため）─────
-  // /api/oas の my_role を見て、1つでも owner の OA があれば isAnyOaOwner = true
-  useEffect(() => {
-    fetch("/api/oas?limit=100", { headers: { ...getAuthHeaders() }, cache: "no-store" })
-      .then((r) => r.ok ? r.json() : null)
-      .then((body) => {
-        if (body?.data?.some((oa: { my_role?: string }) => oa.my_role === "owner")) {
-          setIsAnyOaOwner(true);
-        }
-      })
-      .catch(() => {});
-  }, []);
+  const { role: workspaceRole, loading: roleLoading, isOwner } = useWorkspaceRole(currentOaId, initialWorkspaceRole);
 
   // ── ログイン状態を取得（Supabase 設定済みのときのみ） ─────────────
   useEffect(() => {

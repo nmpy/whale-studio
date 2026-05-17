@@ -49,7 +49,10 @@ export const GET = withAuth(async (req, _ctx, user) => {
       is_active:  searchParams.get("is_active")  ?? undefined,
     });
 
-    const work = await prisma.work.findUnique({ where: { id: query.work_id } });
+    const work = await prisma.work.findUnique({
+      where: { id: query.work_id },
+      select: { id: true },
+    });
     if (!work) return notFound("作品");
 
     const oaId = await getOaIdFromWorkId(query.work_id);
@@ -85,7 +88,10 @@ export const POST = withAuth(async (req, _ctx, user) => {
     const body = await req.json();
     const data = createPhaseSchema.parse(body);
 
-    const work = await prisma.work.findUnique({ where: { id: data.work_id } });
+    const work = await prisma.work.findUnique({
+      where: { id: data.work_id },
+      select: { id: true },
+    });
     if (!work) return notFound("作品");
 
     const oaId = await getOaIdFromWorkId(data.work_id);

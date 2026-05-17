@@ -15,12 +15,12 @@ function toResponse(w: {
   id: string; publicId?: string | null; oaId: string; title: string; description: string | null;
   publishStatus: string; sortOrder: number;
   liffEnabled?: boolean | null;
-  systemCharacterId: string | null;
-  welcomeMessage: string | null;
-  readReceiptMode: string | null; readDelayMs: number | null;
-  typingEnabled: boolean | null; typingMinMs: number | null; typingMaxMs: number | null;
-  loadingEnabled: boolean | null; loadingThresholdMs: number | null;
-  loadingMinSeconds: number | null; loadingMaxSeconds: number | null;
+  systemCharacterId?: string | null;
+  welcomeMessage?: string | null;
+  readReceiptMode?: string | null; readDelayMs?: number | null;
+  typingEnabled?: boolean | null; typingMinMs?: number | null; typingMaxMs?: number | null;
+  loadingEnabled?: boolean | null; loadingThresholdMs?: number | null;
+  loadingMinSeconds?: number | null; loadingMaxSeconds?: number | null;
   createdAt: Date; updatedAt: Date;
 }) {
   return {
@@ -56,7 +56,15 @@ export const GET = withAuth<{ workId: string }>(async (_req, { params }, user) =
   try {
     const work = await prisma.work.findUnique({
       where: { id: params.workId },
-      include: {
+      select: {
+        id:                true,
+        oaId:              true,
+        title:             true,
+        description:       true,
+        publishStatus:     true,
+        sortOrder:         true,
+        createdAt:         true,
+        updatedAt:         true,
         _count: {
           select: { characters: true, phases: true, messages: true, userProgress: true },
         },
