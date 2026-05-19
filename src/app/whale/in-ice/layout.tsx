@@ -65,16 +65,37 @@ export default function WhaleInIceLayout({ children }: { children: React.ReactNo
           --ice-accent-strong: #C8ECFA;   /* CTA 背景 */
           --font-serif-jp:     var(--font-noto-serif-jp), 'Noto Serif JP', 'Yu Mincho', 'YuMincho', 'Hiragino Mincho ProN', serif;
 
-          /* 全体は単色濃紺。Hero 上部のみ装飾的に微弱なグラデーションを乗せる (Hero 内で個別実装)。 */
-          background: #06111F;
+          /* 全体は深海濃紺ベースに、aurora gradient と微細な grain を控えめに重ねる。
+           * 「やりすぎると安っぽい」ので両方とも opacity を低く抑える。
+           * SaaS LP 感を排除し「静かな深海の空気感」を出すための最低限の演出。 */
+          background:
+            radial-gradient(ellipse 80% 50% at 50% 0%,   rgba(60, 130, 200, 0.18) 0%, transparent 60%),
+            radial-gradient(ellipse 60% 40% at 12% 95%,  rgba(40,  90, 160, 0.12) 0%, transparent 65%),
+            radial-gradient(ellipse 50% 35% at 88% 70%,  rgba(80, 160, 220, 0.06) 0%, transparent 60%),
+            #06111F;
           color: var(--ice-text-muted);
           min-height: 100svh;
           font-feature-settings: "palt";
           letter-spacing: 0.02em;
+          position: relative;
+          isolation: isolate;
         }
-        /* sticky header アンカー対応 — Header の高さ分を offset する */
-        .whale-in-ice-root {
-          scroll-padding-top: 72px;
+        /* grain — 全体に薄く乗せる。fixed で背景に紐付け、スクロールで動かない。
+           opacity を 0.04 程度に抑え、SaaS 感を出さない。 */
+        .whale-in-ice-root::before {
+          content: "";
+          position: fixed;
+          inset: 0;
+          z-index: 0;
+          pointer-events: none;
+          opacity: 0.04;
+          mix-blend-mode: overlay;
+          background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.8  0 0 0 0 0.9  0 0 0 0 1  0 0 0 0.7 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+        }
+        /* コンテンツ自体は noise の上に来る */
+        .whale-in-ice-root > * {
+          position: relative;
+          z-index: 1;
         }
         .whale-in-ice-root ::selection {
           background: rgba(189, 232, 255, 0.30);

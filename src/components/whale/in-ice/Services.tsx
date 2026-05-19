@@ -1,58 +1,44 @@
 // src/components/whale/in-ice/Services.tsx
 //
-// 6 カード → 3 グループに再構成。
-//   1. 企画・体験設計
-//   2. 謎解き / マーダーミステリー制作
-//   3. LINE / LIFF / 運用実装
-//
-// 各カードは「何を頼めるか」を箇条書きで明示し、迷わず判断できるようにする。
-// セクション背景は出さない (= 全体は #06111F 一色)。塗りつぶし矩形を避ける。
+// 「制作領域」縦リスト (再設計版)。
+//   - 3 カード grid → ToC (目次) 風縦リストへ
+//   - 各項目: 左に大きな番号 + 英ラベル、右に和文タイトル + 1 段落説明
+//   - 矩形 / 角丸 / 塗りつぶしを使わない。hairline 1 本のみで仕切る
+//   - 箇条書きは廃止。散文で「何ができるか」を伝える
 
-import { Section, SectionHeading } from "./shared";
+import { Section, SectionHeading, Hairline } from "./shared";
 
-interface ServiceGroup {
-  index: string;
-  title: string;
-  description: string;
-  items:  string[];
+interface ServiceItem {
+  index:   string;
+  label:   string;
+  title:   string;
+  body:    string;
 }
 
-const GROUPS: ServiceGroup[] = [
+const ITEMS: ServiceItem[] = [
   {
     index: "01",
+    label: "Narrative",
     title: "企画・体験設計",
-    description:
-      "コンセプト立案、脚本、演出、観客の動線設計まで一貫してお引き受けします。物語と現実、デジタルとアナログを編み込む工程に強みがあります。",
-    items: [
-      "体験コンセプト / プロット設計",
-      "シナリオ・脚本",
-      "公演 / 体験会場の演出設計",
-      "舞台 / 公演との連動企画",
-    ],
+    body:
+      "コンセプト、脚本、演出、観客の動線まで一貫して。物語と現実、デジタルとアナログを編み込む工程に強みがあります。" +
+      "目的に応じて、必要な工程だけを切り出してご一緒することもできます。",
   },
   {
     index: "02",
+    label: "Mystery",
     title: "謎解き / マーダーミステリー制作",
-    description:
-      "1 公演から制作可能。リプレイ性 / 同卓体験 / 観客性 / プレイヤー名 — 案件の目的に合わせた形式に落とします。",
-    items: [
-      "謎解き制作 (周遊型 / 公演型 / オンライン)",
-      "マーダーミステリー制作 (同卓 / 観客 / 配信)",
-      "イマーシブ / 回遊型イベント",
-      "ARG / プロモーション連動企画",
-    ],
+    body:
+      "1 公演から制作可能。同卓 / 観客 / リプレイ性、案件の目的に応じて形式を選びます。" +
+      "ARG、回遊型、イマーシブといった派生形にも対応します。",
   },
   {
     index: "03",
+    label: "System",
     title: "LINE / LIFF / 運用実装",
-    description:
-      "観客のスマートフォンを物語の小道具として動かす実装。公演当日の現場負荷を最小化する運用設計まで。",
-    items: [
-      "LINE 公式アカウント / リッチメニュー設計",
-      "LIFF / QR を使った物語進行",
-      "GM オペレーション支援",
-      "Whale Studio を活用した CMS / 計測",
-    ],
+    body:
+      "観客のスマートフォンを物語の小道具にする実装。" +
+      "通知、リッチメニュー、QR、LIFF を物語の一部として組み上げ、当日の現場負荷を最小化する運用設計まで。",
   },
 ];
 
@@ -60,60 +46,41 @@ export function Services() {
   return (
     <Section id="services">
       <SectionHeading
+        number="No.02"
         eyebrow="Services"
-        title={
-          <>
-            体験を、3 つの<br className="md:hidden" />
-            役割で支える。
-          </>
-        }
-        subtitle="脚本だけでも、実装だけでも、運用だけでも。プロジェクトごとに必要な工程を絞ってご依頼いただけます。"
+        title="制作領域"
+        lead="脚本だけでも、実装だけでも、運用だけでも。"
       />
 
-      <ul className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-5">
-        {GROUPS.map((g) => (
-          <li
-            key={g.index}
-            className="group relative rounded-2xl border p-7 md:p-8 transition-colors duration-200 flex flex-col gap-5"
-            style={{
-              background: "var(--ice-surface)",
-              borderColor: "var(--ice-border)",
-            }}
-          >
-            {/* index 番号 — 控えめなアクセント */}
-            <span
-              aria-hidden="true"
-              className="ice-serif text-[12px] tracking-[0.18em] text-[color:var(--ice-accent)] opacity-80"
-            >
-              {g.index}
-            </span>
+      {/* ToC 風縦リスト。各項目間に hairline 1 本だけ。 */}
+      <div className="flex flex-col">
+        {ITEMS.map((it, idx) => (
+          <div key={it.index}>
+            {idx > 0 && <Hairline />}
+            <div className="grid grid-cols-12 gap-x-6 md:gap-x-10 lg:gap-x-16 py-10 md:py-14 lg:py-16">
+              {/* 左: 番号 + 英ラベル */}
+              <div className="col-span-12 md:col-span-4 mb-4 md:mb-0 flex md:flex-col items-baseline gap-3 md:gap-2">
+                <span className="ice-serif text-[28px] md:text-[36px] lg:text-[40px] leading-none text-[color:var(--ice-text)] opacity-90">
+                  {it.index}
+                </span>
+                <span className="text-[10px] md:text-[11px] tracking-[0.32em] uppercase text-[color:var(--ice-accent)]">
+                  {it.label}
+                </span>
+              </div>
 
-            <h3 className="ice-serif text-[19px] md:text-[20px] leading-snug text-[color:var(--ice-text)]">
-              {g.title}
-            </h3>
-
-            <p className="text-[13px] md:text-[14px] leading-[2.0] text-[color:var(--ice-text-muted)]">
-              {g.description}
-            </p>
-
-            <ul className="flex flex-col gap-2 pt-1">
-              {g.items.map((item) => (
-                <li
-                  key={item}
-                  className="flex items-start gap-2.5 text-[12px] md:text-[13px] leading-[1.85] text-[color:var(--ice-text-muted)]"
-                >
-                  <span
-                    aria-hidden="true"
-                    className="mt-2 inline-block w-1 h-1 rounded-full shrink-0"
-                    style={{ background: "var(--ice-accent)" }}
-                  />
-                  <span>{item}</span>
-                </li>
-              ))}
-            </ul>
-          </li>
+              {/* 右: 和文タイトル + 散文の説明 */}
+              <div className="col-span-12 md:col-span-8">
+                <h3 className="ice-serif text-[20px] md:text-[24px] lg:text-[26px] leading-snug text-[color:var(--ice-text)] mb-4 md:mb-5">
+                  {it.title}
+                </h3>
+                <p className="text-[14px] md:text-[15px] leading-[2.05] text-[color:var(--ice-text-muted)]">
+                  {it.body}
+                </p>
+              </div>
+            </div>
+          </div>
         ))}
-      </ul>
+      </div>
     </Section>
   );
 }
