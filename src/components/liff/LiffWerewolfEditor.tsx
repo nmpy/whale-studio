@@ -18,6 +18,8 @@
 //   - 「ゲーム開始」ボタン (確認ダイアログつき)
 
 import { useCallback, useEffect, useState } from "react";
+import { useParams } from "next/navigation";
+import Link from "next/link";
 import { useToast } from "@/components/Toast";
 import { werewolfApi, getDevToken } from "@/lib/api-client";
 import type { WerewolfTitle } from "@/types";
@@ -51,6 +53,8 @@ function datetimeLocalToISO(value: string): string | null {
 
 export function LiffWerewolfEditor({ workId, liffPageConfigId, readOnly }: Props) {
   const { showToast } = useToast();
+  const params = useParams();
+  const oaId = params.id as string;
   const [titles, setTitles] = useState<WerewolfTitle[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -98,13 +102,9 @@ export function LiffWerewolfEditor({ workId, liffPageConfigId, readOnly }: Props
       </div>
 
       <p className="text-[11px] text-gray-500 mb-4 leading-relaxed">
-        GMがプレイヤーごとに配役情報を配布するためのモードです。
-        タイトル単位でプレイヤー人数分の配役スロットを作成し、QR コードで配布する想定です。
-        <br />
-        <span className="text-amber-700">
-          ※ 現在は <strong>Phase 1</strong> として「タイトルの作成 / 削除」のみ対応しています。
-          配役カード編集 / QR 発行 / ゲーム開始は Phase 2 で対応予定です。
-        </span>
+        GM がプレイヤーごとに配役情報を配布するためのモードです。
+        タイトル単位でプレイヤー人数分の配役スロットを作成し、QR コードで配布します。
+        「編集」から各スロットの配役カードや QR、ゲーム開始操作を行えます。
       </p>
 
       {loading ? (
@@ -135,8 +135,14 @@ export function LiffWerewolfEditor({ workId, liffPageConfigId, readOnly }: Props
                   <span>プレイヤー: {t.player_count} 名</span>
                 </div>
               </div>
-              {!readOnly && (
-                <div className="flex items-center gap-2 shrink-0">
+              <div className="flex items-center gap-2 shrink-0">
+                <Link
+                  href={`/oas/${oaId}/works/${workId}/liff/${liffPageConfigId}/werewolf/${t.id}`}
+                  className="px-2.5 py-1 text-xs bg-violet-500 text-white rounded font-semibold hover:bg-violet-600"
+                >
+                  編集
+                </Link>
+                {!readOnly && (
                   <button
                     type="button"
                     onClick={() => handleDelete(t)}
@@ -144,8 +150,8 @@ export function LiffWerewolfEditor({ workId, liffPageConfigId, readOnly }: Props
                   >
                     削除
                   </button>
-                </div>
-              )}
+                )}
+              </div>
             </li>
           ))}
         </ul>

@@ -68,7 +68,14 @@ import type {
   CreateLineDestinationBody,
   UpdateLineDestinationBody,
   WerewolfTitle,
+  WerewolfRoleSlot,
+  WerewolfRoleCard,
   CreateWerewolfTitleBody,
+  UpdateWerewolfTitleBody,
+  UpdateWerewolfRoleSlotBody,
+  CreateWerewolfRoleCardBody,
+  UpdateWerewolfRoleCardBody,
+  ReorderWerewolfRoleCardsBody,
 } from "@/types";
 
 // ────────────────────────────────────────────────
@@ -1648,6 +1655,129 @@ export const werewolfApi = {
     const res = await fetch(`/api/works/${workId}/werewolf/titles/${titleId}`, {
       method:  "DELETE",
       headers: authHeaders(token),
+    });
+    return parseResponse(res);
+  },
+
+  // ── Phase 2: タイトル詳細 / 更新 / ゲーム開始 ───────────
+  /** タイトル詳細を取得 (slots + 各 slot の cards 含む)。 */
+  async getTitleDetail(
+    token: string,
+    workId: string,
+    titleId: string
+  ): Promise<Omit<WerewolfTitle, "slots"> & {
+    slots: Array<Omit<WerewolfRoleSlot, "cards"> & { cards: WerewolfRoleCard[] }>;
+  }> {
+    const res = await fetch(`/api/works/${workId}/werewolf/titles/${titleId}`, {
+      headers: authHeaders(token),
+    });
+    return parseResponse(res);
+  },
+
+  /** タイトル本体更新。playerCount を増減すると slot を auto extend / 末尾削除する。 */
+  async updateTitle(
+    token: string,
+    workId: string,
+    titleId: string,
+    body: UpdateWerewolfTitleBody
+  ): Promise<Omit<WerewolfTitle, "slots"> & {
+    slots: Array<Omit<WerewolfRoleSlot, "cards"> & { cards: WerewolfRoleCard[] }>;
+  }> {
+    const res = await fetch(`/api/works/${workId}/werewolf/titles/${titleId}`, {
+      method:  "PUT",
+      headers: authHeaders(token),
+      body:    JSON.stringify(body),
+    });
+    return parseResponse(res);
+  },
+
+  /** ゲーム開始 (is_started=true)。冪等。 */
+  async startGame(
+    token: string,
+    workId: string,
+    titleId: string
+  ): Promise<{ id: string; is_started: boolean; started_at: string | null }> {
+    const res = await fetch(`/api/works/${workId}/werewolf/titles/${titleId}/start`, {
+      method:  "POST",
+      headers: authHeaders(token),
+    });
+    return parseResponse(res);
+  },
+
+  // ── Phase 2: slot 更新 / token 再発行 ─────────────────────
+  async updateSlot(
+    token: string,
+    workId: string,
+    slotId: string,
+    body: UpdateWerewolfRoleSlotBody
+  ): Promise<WerewolfRoleSlot> {
+    const res = await fetch(`/api/works/${workId}/werewolf/slots/${slotId}`, {
+      method:  "PUT",
+      headers: authHeaders(token),
+      body:    JSON.stringify(body),
+    });
+    return parseResponse(res);
+  },
+
+  async rotateSlotToken(
+    token: string,
+    workId: string,
+    slotId: string
+  ): Promise<WerewolfRoleSlot> {
+    const res = await fetch(`/api/works/${workId}/werewolf/slots/${slotId}/rotate-token`, {
+      method:  "POST",
+      headers: authHeaders(token),
+    });
+    return parseResponse(res);
+  },
+
+  // ── Phase 2: card CRUD + 並び替え ─────────────────────────
+  async createCard(
+    token: string,
+    workId: string,
+    slotId: string,
+    body: CreateWerewolfRoleCardBody
+  ): Promise<WerewolfRoleCard> {
+    const res = await fetch(`/api/works/${workId}/werewolf/slots/${slotId}/cards`, {
+      method:  "POST",
+      headers: authHeaders(token),
+      body:    JSON.stringify(body),
+    });
+    return parseResponse(res);
+  },
+
+  async updateCard(
+    token: string,
+    workId: string,
+    cardId: string,
+    body: UpdateWerewolfRoleCardBody
+  ): Promise<WerewolfRoleCard> {
+    const res = await fetch(`/api/works/${workId}/werewolf/cards/${cardId}`, {
+      method:  "PUT",
+      headers: authHeaders(token),
+      body:    JSON.stringify(body),
+    });
+    return parseResponse(res);
+  },
+
+  async deleteCard(token: string, workId: string, cardId: string): Promise<void> {
+    const res = await fetch(`/api/works/${workId}/werewolf/cards/${cardId}`, {
+      method:  "DELETE",
+      headers: authHeaders(token),
+    });
+    return parseResponse(res);
+  },
+
+  async reorderCards(
+    token: string,
+    workId: string,
+    slotId: string,
+    body: ReorderWerewolfRoleCardsBody
+  ): Promise<{ slot_id: string; card_ids: string[] }> {
+    const res = await fetch(`/api/works/${workId}/werewolf/slots/${slotId}/cards/reorder`, {
+      method:  "POST",
+      headers: authHeaders(token),
+      body:    JSON.stringify(body),
     });
     return parseResponse(res);
   },

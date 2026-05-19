@@ -1546,6 +1546,53 @@ export interface CreateWerewolfTitleBody {
   player_count:        number;
 }
 
+/** タイトル更新 body。player_count を増やすと slot を auto-extend、減らすと末尾を削除する。 */
+export interface UpdateWerewolfTitleBody {
+  title?:        string;
+  description?:  string | null;
+  scheduled_at?: string | null;
+  player_count?: number;
+}
+
+/** スロット更新 body。token は別 endpoint (rotate-token) で再発行する。 */
+export interface UpdateWerewolfRoleSlotBody {
+  label?: string | null;
+}
+
+/** 配役カード新規作成 body。 */
+export interface CreateWerewolfRoleCardBody {
+  title:        string;
+  subtitle?:    string | null;
+  badge_label?: string | null;
+  body:         string;
+}
+
+/** 配役カード更新 body。全フィールド optional (部分更新)。 */
+export interface UpdateWerewolfRoleCardBody {
+  title?:       string;
+  subtitle?:    string | null;
+  badge_label?: string | null;
+  body?:        string;
+}
+
+/** カード並び替え body — slot 配下のカード id 順を指定する。 */
+export interface ReorderWerewolfRoleCardsBody {
+  card_ids: string[];
+}
+
+/** プレイヤー側 (LIFF) `/api/liff/werewolf/slots/[slotToken]` のレスポンス。
+ *  is_started=false のときは cards を返さない (サーバー側 gating)。 */
+export interface PlayerWerewolfRoleSlot {
+  slot_token:  string;
+  slot_number: number;
+  title:       string;
+  description: string | null;
+  scheduled_at: string | null;
+  is_started:  boolean;
+  /** is_started=true のときだけ詰める。false なら空配列 or 未指定。 */
+  cards:       WerewolfRoleCard[];
+}
+
 // ────────────────────────────────────────────────
 // Location — ビーコン / QR チェックインポイント
 // ────────────────────────────────────────────────

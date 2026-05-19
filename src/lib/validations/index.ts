@@ -1115,9 +1115,9 @@ export const createLiffPageSchema = z.object({
   }),
 });
 
-// ── 人狼 / 配役閲覧モード (Phase 1) ─────────────────────────
-// Phase 1 では「タイトル一覧 + 新規作成 + 削除」のみ受け付ける。
-// 詳細編集 / slot 編集 / カード編集 / ゲーム開始は Phase 2 で別 schema を追加する。
+// ── 人狼 / 配役閲覧モード ─────────────────────────
+// Phase 1: タイトル一覧 + 新規作成 + 削除
+// Phase 2: タイトル更新 / slot 更新 / card CRUD / card 並び替え / ゲーム開始
 
 /** 人狼タイトル新規作成 body。POST 時、player_count に応じて WerewolfRoleSlot を auto-generate する。 */
 export const createWerewolfTitleSchema = z.object({
@@ -1128,6 +1128,42 @@ export const createWerewolfTitleSchema = z.object({
   scheduled_at:        z.string().datetime({ offset: true }).optional().nullable(),
   // MVP では 1 名 〜 50 名を想定。実用上 8〜20 名が中心、上限は念のため広め。
   player_count:        z.number().int().min(1, "プレイヤー人数は 1 以上").max(50, "プレイヤー人数は 50 以下"),
+});
+
+/** タイトル更新 body。全フィールド optional (部分更新)。
+ *  player_count を増減すると slot を auto extend / 末尾削除する (API 側で処理)。 */
+export const updateWerewolfTitleSchema = z.object({
+  title:        z.string().min(1).max(100).optional(),
+  description:  z.string().max(1000).optional().nullable(),
+  scheduled_at: z.string().datetime({ offset: true }).optional().nullable(),
+  player_count: z.number().int().min(1).max(50).optional(),
+});
+
+/** スロット更新 body。token は別 endpoint で再発行する。 */
+export const updateWerewolfRoleSlotSchema = z.object({
+  label: z.string().max(50).optional().nullable(),
+});
+
+/** 配役カード新規作成 body。 */
+export const createWerewolfRoleCardSchema = z.object({
+  title:       z.string().min(1, "カード見出しは必須です").max(100),
+  subtitle:    z.string().max(100).optional().nullable(),
+  badge_label: z.string().max(30).optional().nullable(),
+  body:        z.string().min(1, "本文は必須です").max(5000),
+});
+
+/** 配役カード更新 body。全フィールド optional (部分更新)。 */
+export const updateWerewolfRoleCardSchema = z.object({
+  title:       z.string().min(1).max(100).optional(),
+  subtitle:    z.string().max(100).optional().nullable(),
+  badge_label: z.string().max(30).optional().nullable(),
+  body:        z.string().min(1).max(5000).optional(),
+});
+
+/** カード並び替え body。配下カードの id 順を指定。
+ *  API 側は同一 slot 内で全 card_id が網羅されているかチェックする。 */
+export const reorderWerewolfRoleCardsSchema = z.object({
+  card_ids: z.array(z.string().uuid()).min(1).max(50),
 });
 
 /**
