@@ -72,9 +72,13 @@ export function CtaLink({
   variant?: "primary" | "ghost";
 }) {
   const baseCls = "inline-flex items-center gap-2 text-[14px] md:text-[15px] font-medium px-5 md:px-6 py-3 rounded-full transition-colors duration-200";
+  // primary: frosted-glass 寄りの "氷の白" ボタン。LINE / Studio 系の緑感を排除し、
+  //          半透明の高明度ブルーオフホワイトで「押せるが上品」を狙う。
+  //          hover は純白へ。境界線は cool blue を薄く乗せて氷柱感を残す。
+  // ghost:   既存通り。
   const styleCls =
     variant === "primary"
-      ? "bg-[color:var(--ice-accent-strong)] text-[color:var(--ice-ink)] hover:bg-white"
+      ? "bg-[rgba(231,238,245,0.92)] text-[color:var(--ice-ink)] border border-[color:var(--ice-border-strong)] hover:bg-white"
       : "border border-[color:var(--ice-border-strong)] text-[color:var(--ice-text)] hover:bg-[color:var(--ice-surface)]";
 
   if (external) {

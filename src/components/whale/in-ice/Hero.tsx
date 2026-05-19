@@ -8,18 +8,23 @@ export function Hero() {
       {/* 背景の氷感を出すための装飾レイヤー (CSS のみ、画像不要) */}
       <BackgroundOrnaments />
 
-      <div className="relative z-10 mx-auto w-full max-w-[980px]">
-        {/* 小さなブランドマーク行 */}
-        <div className="ice-fade-up flex items-center gap-2.5 mb-8 md:mb-12">
+      {/* コンテンツ box は max-w を絞り、PC で右側に過度な空白が出ないよう内部 maxWidth でも制御。
+          ※ 中央寄せは維持。Hero タイトルだけは内部にさらに max-w を当てて行長を制御する。 */}
+      <div className="relative z-10 mx-auto w-full max-w-[860px]">
+        {/* 小さなブランドマーク行 — Whale in Ice / 氷のくじら を併記。
+            英語は uppercase tracking 強め、和文は serif で控えめに、両者を opacity 控えた "/" で繋ぐ。 */}
+        <div className="ice-fade-up flex items-center gap-2.5 mb-8 md:mb-12 text-[color:var(--ice-accent)]">
           <span aria-hidden="true" className="inline-block w-1.5 h-1.5 rounded-full bg-[color:var(--ice-accent)]" />
-          <p className="text-[11px] md:text-xs tracking-[0.28em] uppercase text-[color:var(--ice-accent)]">
-            Whale in Ice
+          <p className="flex items-center gap-2.5 md:gap-3">
+            <span className="text-[11px] md:text-xs tracking-[0.28em] uppercase">Whale in Ice</span>
+            <span aria-hidden="true" className="opacity-40 text-xs">/</span>
+            <span className="ice-serif text-[12px] md:text-[13px] tracking-[0.08em]">氷のくじら</span>
           </p>
         </div>
 
-        {/* メインコピー */}
+        {/* メインコピー — PC で大きすぎないよう上限を 54px に。max-w で行長制御し右余白を残す。 */}
         <h1
-          className="ice-fade-up ice-serif text-[36px] md:text-[58px] lg:text-[72px] leading-[1.2] font-bold text-[color:var(--ice-text)] mb-6 md:mb-8"
+          className="ice-fade-up ice-serif text-[34px] md:text-[46px] lg:text-[54px] leading-[1.25] font-bold text-[color:var(--ice-text)] mb-6 md:mb-8 max-w-[720px]"
           style={{ animationDelay: "0.1s" }}
         >
           思い出ではなく、<br className="md:hidden" />
