@@ -1,7 +1,11 @@
 // src/components/whale/in-ice/Works.tsx
 //
-// 実績数が少なくても寂しく見えないよう、「具体的な実績」ではなく「制作領域 (Case Study)」として
-// 取り組み方を示す構成にしている。固有名詞を増やすときは ITEMS を差し替える。
+// Case Study セクション。
+// 実績数が少なくても寂しく見えないよう、「具体的な実績」ではなく「こんな体験をつくれます」
+// として取り組み方を示す構成。固有名詞を増やすときは ITEMS を差し替える。
+//
+// セクション id は #case-study (Header ナビと一致)。
+// セクション背景は出さない (= 全体 #06111F 上にカードのみ浮かせる)。
 
 import { Section, SectionHeading } from "./shared";
 
@@ -41,10 +45,10 @@ const ITEMS: CaseStudy[] = [
 
 export function Works() {
   return (
-    <Section id="works">
+    <Section id="case-study">
       <SectionHeading
         eyebrow="Case Study"
-        title="制作領域の例"
+        title="こんな体験をつくれます。"
         subtitle="案件は守秘のため固有名詞は控えていますが、実際の制作領域と進め方を共有しています。"
       />
 
@@ -52,12 +56,16 @@ export function Works() {
         {ITEMS.map((it) => (
           <li
             key={it.title}
-            className="rounded-2xl border border-[color:var(--ice-border)] bg-[color:var(--ice-surface)]/60 p-7 md:p-8 flex flex-col gap-4"
+            className="rounded-2xl border p-7 md:p-8 flex flex-col gap-4"
+            style={{
+              background: "var(--ice-surface)",
+              borderColor: "var(--ice-border)",
+            }}
           >
             <p className="text-[10px] md:text-[11px] tracking-[0.24em] uppercase text-[color:var(--ice-accent)]">
               {it.category}
             </p>
-            <h3 className="ice-serif text-[20px] md:text-[22px] leading-snug text-[color:var(--ice-text)]">
+            <h3 className="ice-serif text-[19px] md:text-[21px] leading-snug text-[color:var(--ice-text)]">
               {it.title}
             </h3>
             <p className="text-[13px] md:text-[14px] leading-[2.0] text-[color:var(--ice-text-muted)]">
@@ -67,7 +75,8 @@ export function Works() {
               {it.scope.map((tag) => (
                 <li
                   key={tag}
-                  className="text-[10px] md:text-[11px] tracking-[0.04em] px-2.5 py-1 rounded-full border border-[color:var(--ice-border-strong)] text-[color:var(--ice-text-muted)]"
+                  className="text-[10px] md:text-[11px] tracking-[0.04em] px-2.5 py-1 rounded-full border text-[color:var(--ice-text-faint)]"
+                  style={{ borderColor: "var(--ice-border)" }}
                 >
                   {tag}
                 </li>

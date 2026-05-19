@@ -12,6 +12,7 @@
 
 import type { Metadata } from "next";
 import { Noto_Serif_JP } from "next/font/google";
+import { Header } from "@/components/whale/in-ice/Header";
 
 /** 見出し用セリフ。記憶に残る "物語の余韻" を出す。本文は親 layout の Noto Sans JP に任せる。 */
 const notoSerifJP = Noto_Serif_JP({
@@ -45,28 +46,38 @@ export default function WhaleInIceLayout({ children }: { children: React.ReactNo
       {/* 専用トークンは module CSS 風にここで宣言。Tailwind v4 utilities と併用しても干渉しない。
           .whale-in-ice-root に閉じこめるため、SaaS / LIFF への副作用ゼロ。 */}
       <style>{`
+        /* ── デザイントークン (UI polish 改修) ────────────────────────────────
+         * 全体を濃紺背景で統一し、白いセクション帯を排除。
+         * カードは 2 段階 (--ice-surface / --ice-surface-soft) で軽くトーン差をつける。
+         * 文字色は 3 段階 (見出し / 本文 / サブ) の明度差で読みやすさを担保。
+         */
         .whale-in-ice-root {
-          --ice-ink:           #08111E;
-          --ice-deep:          #0B1A2E;
-          --ice-surface:       #0F2138;
-          --ice-surface-soft:  #122845;
-          --ice-border:        rgba(231, 238, 245, 0.10);
-          --ice-border-strong: rgba(231, 238, 245, 0.20);
-          --ice-text:          #E7EEF5;
-          --ice-text-muted:    #98A8BC;
-          --ice-text-faint:    #5B6B82;
-          --ice-accent:        #9DC8E0;    /* 氷の白水色 — controls / hover */
-          --ice-accent-strong: #C7E2F2;
+          --ice-ink:           #06111F;   /* main background */
+          --ice-deep:          #06111F;   /* (旧スペックで分けていたが統一) */
+          --ice-surface:       #0D1E33;   /* 通常カード */
+          --ice-surface-soft:  #132B46;   /* 強調カード (Contact 等) */
+          --ice-border:        rgba(180, 220, 255, 0.18);
+          --ice-border-strong: rgba(180, 220, 255, 0.28);
+          --ice-text:          #EAF4FF;   /* 見出し */
+          --ice-text-muted:    #C8D6E5;   /* 本文 */
+          --ice-text-faint:    #8EA8BE;   /* サブテキスト / メタ */
+          --ice-accent:        #BDE8FF;   /* アクセント (eyebrow / dots / hover) */
+          --ice-accent-strong: #C8ECFA;   /* CTA 背景 */
           --font-serif-jp:     var(--font-noto-serif-jp), 'Noto Serif JP', 'Yu Mincho', 'YuMincho', 'Hiragino Mincho ProN', serif;
 
-          background: radial-gradient(ellipse 90% 60% at 50% -10%, #15355D 0%, #0B1A2E 45%, #08111E 100%);
-          color: var(--ice-text);
+          /* 全体は単色濃紺。Hero 上部のみ装飾的に微弱なグラデーションを乗せる (Hero 内で個別実装)。 */
+          background: #06111F;
+          color: var(--ice-text-muted);
           min-height: 100svh;
           font-feature-settings: "palt";
           letter-spacing: 0.02em;
         }
+        /* sticky header アンカー対応 — Header の高さ分を offset する */
+        .whale-in-ice-root {
+          scroll-padding-top: 72px;
+        }
         .whale-in-ice-root ::selection {
-          background: rgba(157, 200, 224, 0.30);
+          background: rgba(189, 232, 255, 0.30);
           color: #FFFFFF;
         }
         .whale-in-ice-root .ice-serif {
@@ -84,6 +95,8 @@ export default function WhaleInIceLayout({ children }: { children: React.ReactNo
           .whale-in-ice-root .ice-fade-up { animation: none; }
         }
       `}</style>
+      <div id="top" />
+      <Header />
       {children}
     </div>
   );

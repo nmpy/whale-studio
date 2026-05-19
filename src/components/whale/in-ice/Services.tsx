@@ -1,55 +1,116 @@
 // src/components/whale/in-ice/Services.tsx
+//
+// 6 カード → 3 グループに再構成。
+//   1. 企画・体験設計
+//   2. 謎解き / マーダーミステリー制作
+//   3. LINE / LIFF / 運用実装
+//
+// 各カードは「何を頼めるか」を箇条書きで明示し、迷わず判断できるようにする。
+// セクション背景は出さない (= 全体は #06111F 一色)。塗りつぶし矩形を避ける。
 
 import { Section, SectionHeading } from "./shared";
 
-const SERVICES: Array<{ title: string; body: string }> = [
+interface ServiceGroup {
+  index: string;
+  title: string;
+  description: string;
+  items:  string[];
+}
+
+const GROUPS: ServiceGroup[] = [
   {
-    title: "体験企画・設計",
-    body:  "コンセプト立案から導線・脚本・演出までを一貫して設計します。物語と現実、デジタルとアナログを編み込む工程に強みがあります。",
+    index: "01",
+    title: "企画・体験設計",
+    description:
+      "コンセプト立案、脚本、演出、観客の動線設計まで一貫してお引き受けします。物語と現実、デジタルとアナログを編み込む工程に強みがあります。",
+    items: [
+      "体験コンセプト / プロット設計",
+      "シナリオ・脚本",
+      "公演 / 体験会場の演出設計",
+      "舞台 / 公演との連動企画",
+    ],
   },
   {
+    index: "02",
     title: "謎解き / マーダーミステリー制作",
-    body:  "1 公演から制作可能。リプレイ性 / 同卓体験 / 観客性 / プレイヤー名 — 案件の目的に合わせた形式に落とします。",
+    description:
+      "1 公演から制作可能。リプレイ性 / 同卓体験 / 観客性 / プレイヤー名 — 案件の目的に合わせた形式に落とします。",
+    items: [
+      "謎解き制作 (周遊型 / 公演型 / オンライン)",
+      "マーダーミステリー制作 (同卓 / 観客 / 配信)",
+      "イマーシブ / 回遊型イベント",
+      "ARG / プロモーション連動企画",
+    ],
   },
   {
-    title: "イマーシブ / 回遊型イベント",
-    body:  "街、建物、舞台、配信プラットフォーム。観客が動き、選び、行間を埋めることで完成する体験を設計します。",
-  },
-  {
-    title: "舞台・公演連動企画",
-    body:  "公演前後の世界観拡張、観客限定の追加体験、出演者と観客をつなぐ物語装置。本編を邪魔せず、余韻を立体にします。",
-  },
-  {
-    title: "LINE / LIFF 連動実装",
-    body:  "公式アカウント、リッチメニュー、QR、LIFF。観客のスマートフォンを物語の小道具として動かす実装を組みます。",
-  },
-  {
-    title: "Whale Studio を活用した運用設計",
-    body:  "1 回きりではなく、運用を見越した CMS 設計・GM フロー・チェックイン体験。公演当日の現場負荷を最小化します。",
+    index: "03",
+    title: "LINE / LIFF / 運用実装",
+    description:
+      "観客のスマートフォンを物語の小道具として動かす実装。公演当日の現場負荷を最小化する運用設計まで。",
+    items: [
+      "LINE 公式アカウント / リッチメニュー設計",
+      "LIFF / QR を使った物語進行",
+      "GM オペレーション支援",
+      "Whale Studio を活用した CMS / 計測",
+    ],
   },
 ];
 
 export function Services() {
   return (
-    <Section id="services" className="bg-[color:var(--ice-deep)]/40">
+    <Section id="services">
       <SectionHeading
         eyebrow="Services"
-        title="制作領域"
-        subtitle="脚本だけでも、実装だけでも、運用だけでも。プロジェクトごとに役割を絞って参加します。"
+        title={
+          <>
+            体験を、3 つの<br className="md:hidden" />
+            役割で支える。
+          </>
+        }
+        subtitle="脚本だけでも、実装だけでも、運用だけでも。プロジェクトごとに必要な工程を絞ってご依頼いただけます。"
       />
 
-      <ul className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-5">
-        {SERVICES.map((s) => (
+      <ul className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-5">
+        {GROUPS.map((g) => (
           <li
-            key={s.title}
-            className="group rounded-2xl border border-[color:var(--ice-border)] bg-[color:var(--ice-surface)]/70 px-6 py-7 transition-colors duration-200 hover:border-[color:var(--ice-border-strong)] hover:bg-[color:var(--ice-surface-soft)]"
+            key={g.index}
+            className="group relative rounded-2xl border p-7 md:p-8 transition-colors duration-200 flex flex-col gap-5"
+            style={{
+              background: "var(--ice-surface)",
+              borderColor: "var(--ice-border)",
+            }}
           >
-            <h3 className="ice-serif text-[18px] md:text-[19px] leading-snug text-[color:var(--ice-text)] mb-3">
-              {s.title}
+            {/* index 番号 — 控えめなアクセント */}
+            <span
+              aria-hidden="true"
+              className="ice-serif text-[12px] tracking-[0.18em] text-[color:var(--ice-accent)] opacity-80"
+            >
+              {g.index}
+            </span>
+
+            <h3 className="ice-serif text-[19px] md:text-[20px] leading-snug text-[color:var(--ice-text)]">
+              {g.title}
             </h3>
+
             <p className="text-[13px] md:text-[14px] leading-[2.0] text-[color:var(--ice-text-muted)]">
-              {s.body}
+              {g.description}
             </p>
+
+            <ul className="flex flex-col gap-2 pt-1">
+              {g.items.map((item) => (
+                <li
+                  key={item}
+                  className="flex items-start gap-2.5 text-[12px] md:text-[13px] leading-[1.85] text-[color:var(--ice-text-muted)]"
+                >
+                  <span
+                    aria-hidden="true"
+                    className="mt-2 inline-block w-1 h-1 rounded-full shrink-0"
+                    style={{ background: "var(--ice-accent)" }}
+                  />
+                  <span>{item}</span>
+                </li>
+              ))}
+            </ul>
           </li>
         ))}
       </ul>
