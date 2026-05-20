@@ -606,7 +606,7 @@ async function buildMessageChain(
     character: { name: string; iconImageUrl: string | null } | null;
   },
   vars: import("@/lib/line").PlaceholderVars = {},
-): Promise<import("@/lib/line").LineMessage[]> {
+): Promise<{ messages: import("@/lib/line").LineMessage[]; chainIds: string[] }> {
   const records: typeof first[] = [first];
 
   // チェーンを最大 4 件追加（合計 5 件 = LINE 返信上限）
@@ -639,7 +639,10 @@ async function buildMessageChain(
     sortOrder:       r.sortOrder,
     character:       r.character,
   }));
-  return buildKeywordMessages(asKeywordRecords, undefined, vars);
+  return {
+    messages: buildKeywordMessages(asKeywordRecords, undefined, vars),
+    chainIds: records.map((r) => r.id),
+  };
 }
 
 /**
@@ -1448,9 +1451,16 @@ async function handleTextEvent({
             ...vars,
             userVariables: nextVars,
           };
-          const chain = await buildMessageChain(nextMsg, replyVars);
+          const { messages: chain, chainIds } = await buildMessageChain(nextMsg, replyVars);
           if (chain.length > 0) {
             await replyToLine(replyToken, chain, token);
+            // 連鎖した nextMessage の末尾も freeInputEnabled の対象にする
+            await applyFreeInputPostEffect({
+              sentMessageIds: chainIds,
+              userId,
+              workId:    work.id,
+              progressId: progress?.id,
+            });
             return;
           }
           console.warn(
@@ -1700,6 +1710,8 @@ async function handleTextEvent({
     } as const;
 
     const qrMsgs: import("@/lib/line").LineMessage[] = [];
+    // 自由入力受付モード用: 実際にユーザーへ送信される全メッセージ ID
+    const qrSentIds: string[] = [];
 
     // ── Step 2: 応答メッセージ（返す内容）──
     if (matchedQrItem.response_message_id) {
@@ -1709,8 +1721,9 @@ async function handleTextEvent({
           select: MSG_SELECT,
         });
         if (respMsg) {
-          const chain = await buildMessageChain(respMsg, vars);
+          const { messages: chain, chainIds } = await buildMessageChain(respMsg, vars);
           qrMsgs.push(...chain);
+          qrSentIds.push(...chainIds);
         }
       } catch (e) {
         console.warn("[Webhook] qrItem response_message fetch error:", e);
@@ -1725,8 +1738,9 @@ async function handleTextEvent({
           select: MSG_SELECT,
         });
         if (targetMsg) {
-          const chain = await buildMessageChain(targetMsg, vars);
+          const { messages: chain, chainIds } = await buildMessageChain(targetMsg, vars);
           qrMsgs.push(...chain);
+          qrSentIds.push(...chainIds);
         }
       } catch (e) {
         console.warn("[Webhook] qrItem target_message fetch error:", e);
@@ -1734,6 +1748,13 @@ async function handleTextEvent({
       if (qrMsgs.length > 0) {
         const tReplyQrMsg = Date.now();
         await replyToLine(replyToken, qrMsgs.slice(0, 5), token);
+        // qrItem_message パス: 応答 + 遷移先チェーンの末尾を自由入力候補とする
+        await applyFreeInputPostEffect({
+          sentMessageIds: qrSentIds,
+          userId,
+          workId:    work.id,
+          progressId: progress?.id,
+        });
         console.log(`[perf][event] path=qrItem_message total=${Date.now() - t0e}ms reply:${Date.now() - tReplyQrMsg}ms`);
         return;
       }
@@ -1759,8 +1780,16 @@ async function handleTextEvent({
           const state     = await buildRuntimeState(updated, toPhaseRow);
           const phaseMsgs = buildPhaseMessages(state.phase, { systemSender, vars });
           qrMsgs.push(...phaseMsgs);
+          // 遷移後フェーズのメッセージも自由入力候補に含める
+          const phaseMessageIds = state.phase?.messages.map((m) => m.id) ?? [];
           const tReplyQrPh = Date.now();
           await replyWithLagToLine(replyToken, qrMsgs.slice(0, 5), userId, token);
+          await applyFreeInputPostEffect({
+            sentMessageIds: [...qrSentIds, ...phaseMessageIds],
+            userId,
+            workId:    work.id,
+            progressId: updated.id,
+          });
           console.log(`[perf][event] path=qrItem_phase total=${Date.now() - t0e}ms reply:${Date.now() - tReplyQrPh}ms`);
           void switchRichMenuForUser(oa, userId, toPhaseRow.phaseType);
           return;
@@ -1775,6 +1804,12 @@ async function handleTextEvent({
     if (qrMsgs.length > 0) {
       const tReplyQrResp = Date.now();
       await replyToLine(replyToken, qrMsgs.slice(0, 5), token);
+      await applyFreeInputPostEffect({
+        sentMessageIds: qrSentIds,
+        userId,
+        workId:    work.id,
+        progressId: progress?.id,
+      });
       console.log(`[perf][event] path=qrItem_response total=${Date.now() - t0e}ms reply:${Date.now() - tReplyQrResp}ms`);
       return;
     }
@@ -1792,20 +1827,23 @@ async function handleTextEvent({
     );
     // nextMessageId チェーンを展開してすべてのメッセージをまとめて返信する
     const chainedMsgs: import("@/lib/line").LineMessage[] = [];
+    const chainedIds: string[] = [];
     for (const match of keywordMatched) {
-      const chain = await buildMessageChain(match, vars);
+      const { messages: chain, chainIds } = await buildMessageChain(match, vars);
       chainedMsgs.push(...chain);
+      chainedIds.push(...chainIds);
     }
     const msgs = chainedMsgs.length > 0 ? chainedMsgs : buildKeywordMessages(keywordMatched, systemSender, vars);
+    // 送信 ID: チェーンが成立していればチェーン全体、そうでなければ直接マッチ ID
+    const sentIdsForFreeInput = chainedMsgs.length > 0 ? chainedIds : keywordMatched.map((m) => m.id);
     if (msgs.length > 0) {
       const tReplyKw = Date.now();
       await replyToLine(replyToken, msgs, token);
-      // 自由入力受付モード: 送信した keyword 応答メッセージのいずれかが
-      // freeInputEnabled=true なら waitingForInput を立てる。
-      // ※ チェーン (nextMessageId) で繋がれた末尾までは追わない仕様。freeInputEnabled は
-      //    keywordMatched (= ユーザー入力に直接マッチした応答) 自体に付ける運用を想定。
+      // 自由入力受付モード: チェーン展開後の全送信メッセージから freeInputEnabled を検出する。
+      // チェーン末尾メッセージ ("こんにちは！あなたの名前は？") に freeInputEnabled を立てる
+      // ユースケースを正しくサポートする。
       await applyFreeInputPostEffect({
-        sentMessageIds: keywordMatched.map((m) => m.id),
+        sentMessageIds: sentIdsForFreeInput,
         userId,
         workId:    work.id,
         progressId: progress?.id,
@@ -1962,6 +2000,16 @@ async function handleTextEvent({
   console.log(`[Webhook][STEP] メッセージ送信前 (遷移後) msgs件数=${msgs.length} userId=${userId}`);
   const tReply = Date.now();
   await replyWithLagToLine(replyToken, msgs, userId, token);
+  // 遷移後フェーズメッセージの末尾も自由入力候補にする
+  const transitionSentIds = state.phase?.messages.map((m) => m.id) ?? [];
+  if (transitionSentIds.length > 0) {
+    await applyFreeInputPostEffect({
+      sentMessageIds: transitionSentIds,
+      userId,
+      workId:    work.id,
+      progressId: updated.id,
+    });
+  }
   console.log(
     `[perf][event] path=transition total=${Date.now() - t0e}ms` +
     ` progress=${progressHit ? "HIT" : "MISS"}:${progressFindMs}ms` +
@@ -2116,6 +2164,16 @@ async function handleStart({
   );
   const tReplyStart = Date.now();
   await replyWithLagToLine(replyToken, msgs, userId, token);
+  // startPhase のメッセージも自由入力候補に含める
+  const startSentIds = state.phase?.messages.map((m) => m.id) ?? [];
+  if (startSentIds.length > 0) {
+    await applyFreeInputPostEffect({
+      sentMessageIds: startSentIds,
+      userId,
+      workId:    work.id,
+      progressId: progress.id,
+    });
+  }
   console.log(`[perf][handleStart/reply] ${Date.now() - tReplyStart}ms total=${Date.now() - tStart}ms`);
 
   // リッチメニュー切り替えは返信後にバックグラウンド実行
@@ -2224,6 +2282,13 @@ async function handleStartTrigger({
     if (msgs.length > 0) {
       const tReply = Date.now();
       await replyWithLagToLine(replyToken, msgs, userId, token);
+      // kind="start" メッセージも自由入力候補に含める
+      await applyFreeInputPostEffect({
+        sentMessageIds: startKindMessages.map((m) => m.id),
+        userId,
+        workId:    work.id,
+        progressId: progress.id,
+      });
       console.log(
         `[perf][startTrigger] total=${Date.now() - t0st}ms` +
         ` upsert=${upsertMs}ms build=${buildMs}ms reply=${Date.now() - tReply}ms`,
@@ -2244,6 +2309,16 @@ async function handleStartTrigger({
   if (msgs.length > 0) {
     const tReply = Date.now();
     await replyWithLagToLine(replyToken, msgs, userId, token);
+    // startPhase フォールバックメッセージも自由入力候補に含める
+    const startTriggerFallbackIds = state.phase?.messages.map((m) => m.id) ?? [];
+    if (startTriggerFallbackIds.length > 0) {
+      await applyFreeInputPostEffect({
+        sentMessageIds: startTriggerFallbackIds,
+        userId,
+        workId:    work.id,
+        progressId: progress.id,
+      });
+    }
     console.log(
       `[perf][startTrigger] total=${Date.now() - t0st}ms` +
       ` upsert=${upsertMs}ms build=${buildFallbackMs}ms reply=${Date.now() - tReply}ms (fallback)`,
