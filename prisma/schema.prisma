@@ -211,6 +211,15 @@ model UserProgress {
   /// JSON 文字列。任意フラグを保存できる（例: {"hint_used": true, "score": 10}）
   /// SQLite は JSON 型非対応のため String で保持し、アプリ層で parse/stringify する
   flags            String   @default("{}") @map("flags")
+  /// ユーザー入力で保存された変数（自由入力 / アンケート任意回答などに使用）。
+  /// 例: {"userName": "なみぽよ", "favoriteColor": "blue"}
+  /// flags とは意味論を分離: flags は条件分岐 / set_flags 用、こちらはユーザー固有データ。
+  /// SQLite/PG 共用方針に従い String 保持、アプリ層で parse/stringify する。
+  variables        String   @default("{}") @map("variables")
+  /// 自由入力待ち状態のメタ情報（null = 通常状態）。
+  /// 例: {"messageId":"...", "variableKey":"userName", "nextMessageId":"..."}
+  /// Message.freeInputEnabled=true のメッセージ送信時に立ち、次のテキスト入力で消化される。
+  waitingForInput  String?  @map("waiting_for_input")
   lastInteractedAt DateTime @default(now()) @map("last_interacted_at")
   /// プレビューモード（管理者・テスターが疑似プレイする場合 true）
   isPreview        Boolean  @default(false) @map("is_preview")
@@ -316,11 +325,24 @@ model Message {
   /// タップ時の直接URL（destination 未使用時のフォールバック）
   tapUrl                String?    @map("tap_url")
 
+  // ── 自由入力受付（このメッセージ送信後にユーザーの次入力を保存する）──────
+  /// true: このメッセージ送信後にユーザーの次のテキスト入力を変数として保存する。
+  /// 名前入力 / アンケート自由回答 / 任意テキストの記録 等に使う。
+  /// nextMessageId (連続送信) とは意味が違うため別管理。
+  freeInputEnabled      Boolean    @default(false) @map("free_input_enabled")
+  /// 保存先の変数名 (^[a-zA-Z_][a-zA-Z0-9_]*$ で validation)。freeInputEnabled=true のとき必須。
+  freeInputVariableKey  String?    @map("free_input_variable_key")
+  /// 自由入力を受け取った後に送信する次メッセージ ID。自己参照 FK。
+  /// freeInputEnabled=true のとき、入力受付完了後にここで指定されたメッセージを送信する。
+  freeInputNextMessageId String?   @map("free_input_next_message_id")
+
   character             Character? @relation(fields: [characterId], references: [id])
   tapDestination        LineDestination? @relation(fields: [tapDestinationId], references: [id], onDelete: SetNull)
   correctNextPhase      Phase?     @relation("MessageCorrectNextPhase", fields: [correctNextPhaseId], references: [id])
   nextMessage           Message?   @relation("MessageChain", fields: [nextMessageId], references: [id])
   prevMessages          Message[]  @relation("MessageChain")
+  freeInputNextMessage  Message?   @relation("MessageFreeInputNext", fields: [freeInputNextMessageId], references: [id], onDelete: SetNull)
+  freeInputPrevMessages Message[]  @relation("MessageFreeInputNext")
   phase                 Phase?     @relation(fields: [phaseId], references: [id])
   work                  Work       @relation(fields: [workId], references: [id], onDelete: Cascade)
 
@@ -330,6 +352,7 @@ model Message {
   @@index([messageType])
   @@index([sortOrder])
   @@index([isActive])
+  @@index([freeInputNextMessageId])
   @@map("messages")
 }
 

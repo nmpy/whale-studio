@@ -121,6 +121,10 @@ type ProgressRecord = {
   currentPhaseId: string | null;
   reachedEnding: boolean;
   flags: string;
+  /** 自由入力受付モードで保存された変数 (JSON 文字列、無い場合は "{}")。 */
+  variables?: string;
+  /** 自由入力待ち状態のメタ情報 (JSON 文字列、null = 通常状態)。 */
+  waitingForInput?: string | null;
   lastInteractedAt: Date;
   createdAt: Date;
   updatedAt: Date;
@@ -130,13 +134,15 @@ async function buildRuntimeStateFromSheets(
   data:     SheetsData,
   progress: ProgressRecord,
 ): Promise<RuntimeState> {
-  const progressOut = {
+  const progressOut: RuntimeState["progress"] = {
     id:                 progress.id,
     line_user_id:       progress.lineUserId,
     work_id:            progress.workId,
     current_phase_id:   progress.currentPhaseId,
     reached_ending:     progress.reachedEnding,
     flags:              safeParseFlags(progress.flags),
+    variables:          {},
+    waiting_for_input:  null,
     last_interacted_at: progress.lastInteractedAt.toISOString(),
     created_at:         progress.createdAt.toISOString(),
     updated_at:         progress.updatedAt.toISOString(),

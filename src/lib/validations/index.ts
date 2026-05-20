@@ -10,6 +10,16 @@ const uuidSchema  = z.string().uuid({ message: "有効なUUIDを指定してく�
 const colorSchema = z.string().regex(/^#[0-9A-Fa-f]{3,8}$/, "カラーコードは #RGB または #RRGGBB 形式で入力してください").optional();
 const urlSchema   = z.string().url({ message: "有効なURLを入力してください" }).optional();
 const sortSchema  = z.number().int().min(0).default(0);
+/** 変数名バリデータ — 自由入力受付の保存先変数名やテンプレ差し込み変数で使う。
+ *  形式: ^[a-zA-Z_][a-zA-Z0-9_]*$ (半角英数字 + アンダースコア、先頭は英字 or `_`)。 */
+export const VARIABLE_KEY_REGEX = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
+const variableKeySchema = z.string()
+  .min(1, "変数名は必須です")
+  .max(60, "変数名は 60 文字以内で入力してください")
+  .regex(
+    VARIABLE_KEY_REGEX,
+    "変数名は半角英数字とアンダースコアで入力してください。先頭に数字は使えません。",
+  );
 
 // ────────────────────────────────────────────────
 // OA
@@ -326,6 +336,10 @@ export const createMessageSchema = z.object({
   // ── タップ遷移先 ──
   tap_destination_id: z.string().uuid().optional().nullable(),
   tap_url:            z.string().url("有効なURLを入力してください").max(2000).optional().nullable(),
+  // ── 自由入力受付 ──
+  free_input_enabled:         z.boolean().default(false),
+  free_input_variable_key:    variableKeySchema.optional().nullable(),
+  free_input_next_message_id: uuidSchema.optional().nullable(),
   sort_order:       sortSchema,
   is_active:        z.boolean().default(true),
 }).superRefine((val, ctx) => {
@@ -335,6 +349,14 @@ export const createMessageSchema = z.object({
   }
   if (val.loading_min_seconds != null && val.loading_max_seconds != null && val.loading_min_seconds > val.loading_max_seconds) {
     ctx.addIssue({ code: "custom", path: ["loading_max_seconds"], message: "loading_max_seconds は loading_min_seconds 以上にしてください" });
+  }
+  // 自由入力受付: ON のときは variable_key が必須
+  if (val.free_input_enabled === true && !val.free_input_variable_key) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["free_input_variable_key"],
+      message: "自由入力を受け付ける場合、保存する変数名は必須です",
+    });
   }
   if (val.kind === "puzzle") {
     if (!val.answer?.trim()) {
@@ -422,6 +444,10 @@ export const updateMessageSchema = z.object({
   // ── タップ遷移先 ──
   tap_destination_id: z.string().uuid().optional().nullable(),
   tap_url:            z.string().url("有効なURLを入力してください").max(2000).optional().nullable(),
+  // ── 自由入力受付 ──
+  free_input_enabled:         z.boolean().optional(),
+  free_input_variable_key:    variableKeySchema.optional().nullable(),
+  free_input_next_message_id: uuidSchema.optional().nullable(),
   sort_order:        z.number().int().min(0).optional(),
   is_active:         z.boolean().optional(),
 }).superRefine((val, ctx) => {
@@ -431,6 +457,14 @@ export const updateMessageSchema = z.object({
   }
   if (val.loading_min_seconds != null && val.loading_max_seconds != null && val.loading_min_seconds > val.loading_max_seconds) {
     ctx.addIssue({ code: "custom", path: ["loading_max_seconds"], message: "loading_max_seconds は loading_min_seconds 以上にしてください" });
+  }
+  // 自由入力受付: ON のときは variable_key が必須 (PATCH では明示変更時のみチェック)
+  if (val.free_input_enabled === true && val.free_input_variable_key === null) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["free_input_variable_key"],
+      message: "自由入力を受け付ける場合、保存する変数名は必須です",
+    });
   }
   if (val.kind !== "puzzle" && val.kind !== "system_notice") {
     if (val.message_type === "text" && val.body === null) {
