@@ -119,6 +119,13 @@ export interface MessageFormState {
   next_message_id: string;
   /** 前のメッセージ送信後この発話まで待機するミリ秒数。0 = 即時送信 */
   lag_ms:          number;
+  // ── 自由入力受付 ──
+  /** このメッセージ送信後、次のテキスト入力を変数として保存するか。 */
+  free_input_enabled:         boolean;
+  /** 保存先の変数名 (例: "userName")。半角英数字 + `_`、先頭は英字 or `_`。 */
+  free_input_variable_key:    string;
+  /** 自由入力を受け取った後に進む次メッセージ ID (空文字 = なし)。 */
+  free_input_next_message_id: string;
   sort_order:      number;
   is_active:       boolean;
   // ── 謎（puzzle）専用フィールド ──
@@ -164,6 +171,10 @@ export const EMPTY_MESSAGE_FORM: MessageFormState = {
   quick_replies:   [],
   next_message_id: "",
   lag_ms:          0,
+  // 自由入力受付（既定 OFF）
+  free_input_enabled:         false,
+  free_input_variable_key:    "",
+  free_input_next_message_id: "",
   sort_order:      0,
   is_active:       true,
   // puzzle defaults
@@ -225,6 +236,10 @@ export function msgToFormState(msg: {
   // タップ遷移先
   tap_destination_id?:   string | null;
   tap_url?:              string | null;
+  // 自由入力受付
+  free_input_enabled?:         boolean | null;
+  free_input_variable_key?:    string | null;
+  free_input_next_message_id?: string | null;
   // 演出設定
   read_receipt_mode?:    string | null;
   read_delay_ms?:        number | null;
@@ -284,6 +299,10 @@ export function msgToFormState(msg: {
     // タップ遷移先
     tap_destination_id:  msg.tap_destination_id ?? "",
     tap_url:             msg.tap_url ?? "",
+    // 自由入力受付
+    free_input_enabled:         msg.free_input_enabled         ?? false,
+    free_input_variable_key:    msg.free_input_variable_key    ?? "",
+    free_input_next_message_id: msg.free_input_next_message_id ?? "",
     // 演出設定（null → 空文字 = inherit）
     read_receipt_mode:    msg.read_receipt_mode ?? "",
     read_delay_ms:        msg.read_delay_ms != null ? String(msg.read_delay_ms) : "",
@@ -350,6 +369,11 @@ export function formStateToMsgBody(form: MessageFormState) {
     // タップ遷移先
     tap_destination_id: form.tap_destination_id || null,
     tap_url:            form.tap_url || null,
+    // 自由入力受付
+    free_input_enabled:         !!form.free_input_enabled,
+    // ON のときのみ key を保存。OFF のときは null にして整合性を保つ。
+    free_input_variable_key:    form.free_input_enabled ? (form.free_input_variable_key.trim() || null) : null,
+    free_input_next_message_id: form.free_input_enabled ? (form.free_input_next_message_id || null) : null,
     // 演出設定（空文字 → null = inherit）
     read_receipt_mode:    (form.read_receipt_mode || null) as ReadReceiptMode | null,
     read_delay_ms:        form.read_delay_ms ? Number(form.read_delay_ms) : null,
@@ -368,6 +392,16 @@ export function formStateToMsgBody(form: MessageFormState) {
 // ── バリデーション ────────────────────────────────────────
 
 export function validateMessageForm(form: MessageFormState): string | null {
+  // ── 自由入力受付バリデーション (kind を問わず先に判定) ──
+  if (form.free_input_enabled) {
+    const key = form.free_input_variable_key.trim();
+    if (!key) {
+      return "自由入力を受け付ける場合、保存する変数名は必須です";
+    }
+    if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(key)) {
+      return "変数名は半角英数字とアンダースコアで入力してください。先頭に数字は使えません。";
+    }
+  }
   // ── 共通メッセージバリデーション ──
   if (form.kind === "global") {
     if (!form.trigger_keyword.trim()) {
@@ -3188,6 +3222,99 @@ export function MessageForm({
               <div style={hintText}>無効にすると Bot はこのメッセージを送信しません</div>
             </div>
           </SectionAccordion>
+
+          {/* ════════════════════════════════════════
+              セクション 2.5: 自由入力受付
+              このメッセージ送信後、ユーザーの次のテキスト入力を変数として保存できる。
+              名前入力 / アンケート自由回答 / 任意テキストの記録などに使用。
+              通常は OFF。puzzle / system_notice では無効化する。
+          ════════════════════════════════════════ */}
+          {!isPuzzle && form.kind !== "system_notice" && (
+            <SectionAccordion title="自由入力受付" defaultOpen={form.free_input_enabled}>
+              <div className="form-group">
+                <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+                  <input
+                    type="checkbox"
+                    checked={form.free_input_enabled}
+                    onChange={(e) => set("free_input_enabled", e.target.checked)}
+                  />
+                  <span style={{ fontSize: 14, fontWeight: 600 }}>自由入力を受け付ける</span>
+                </label>
+                <div style={{ ...hintText, marginTop: 4 }}>
+                  このメッセージ送信後、ユーザーの次のテキスト入力を変数として保存して、次の応答に利用できます。
+                  <br />
+                  名前入力 / アンケート自由回答 / 任意の感想記録などに使えます。
+                </div>
+              </div>
+
+              {form.free_input_enabled && (
+                <>
+                  {/* 保存先変数名 */}
+                  <div className="form-group" style={{ marginTop: 12 }}>
+                    <label style={fieldLabel} htmlFor="free_input_variable_key">
+                      保存する変数名
+                      <span style={{ fontSize: 10, fontWeight: 700, background: "#fef2f2", color: "#dc2626", borderRadius: 4, padding: "1px 6px", marginLeft: 6 }}>必須</span>
+                    </label>
+                    <input
+                      id="free_input_variable_key"
+                      type="text"
+                      className="form-input"
+                      style={{ maxWidth: 320 }}
+                      value={form.free_input_variable_key}
+                      onChange={(e) => set("free_input_variable_key", e.target.value)}
+                      placeholder="例: userName"
+                      maxLength={60}
+                      autoComplete="off"
+                    />
+                    {(() => {
+                      const v = form.free_input_variable_key;
+                      const validRegex = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
+                      if (v && !validRegex.test(v)) {
+                        return (
+                          <div style={{ fontSize: 12, color: "#dc2626", marginTop: 4 }}>
+                            変数名は半角英数字とアンダースコアで入力してください。先頭に数字は使えません。
+                          </div>
+                        );
+                      }
+                      return (
+                        <div style={hintText}>
+                          半角英数字とアンダースコア。先頭は英字 or `_`。例: <code>userName</code> / <code>nickname</code> / <code>favoriteColor</code>
+                        </div>
+                      );
+                    })()}
+                  </div>
+
+                  {/* 入力後の次メッセージ */}
+                  <div className="form-group" style={{ marginTop: 12, marginBottom: 0 }}>
+                    <label style={fieldLabel} htmlFor="free_input_next_message_id">
+                      入力後に送信するメッセージ
+                    </label>
+                    <select
+                      id="free_input_next_message_id"
+                      className="form-input"
+                      value={form.free_input_next_message_id}
+                      onChange={(e) => set("free_input_next_message_id", e.target.value)}
+                    >
+                      <option value="">— 選択しない（次メッセージを送らない）—</option>
+                      {allMessages
+                        .filter((m) => m.id !== messageId)
+                        .map((m) => {
+                          const label = m.body?.trim().slice(0, 30) || `(本文なし) id=${m.id.slice(0, 8)}`;
+                          return (
+                            <option key={m.id} value={m.id}>
+                              {label}
+                            </option>
+                          );
+                        })}
+                    </select>
+                    <div style={hintText}>
+                      ユーザー入力を受け取った後に送信するメッセージ。本文に <code>{`{${form.free_input_variable_key || "userName"}}`}</code> と書くと、保存した値が差し込まれます。
+                    </div>
+                  </div>
+                </>
+              )}
+            </SectionAccordion>
+          )}
 
           {/* ════════════════════════════════════════
               セクション 3a: 謎の形式とコンテンツ（puzzle のみ）

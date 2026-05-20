@@ -40,7 +40,7 @@ import {
   RICHMENU_ACTIONS,
   type LineWebhookBody, type LineEvent, type LineSender, type LineMessage, type KeywordMessageRecord,
 } from "@/lib/line";
-import { buildRuntimeState, matchTransition, applySetFlags, safeParseFlags, fetchPhaseWithIncludes, drainAutoSendableItems, type PhaseRow } from "@/lib/runtime";
+import { buildRuntimeState, matchTransition, applySetFlags, safeParseFlags, safeParseVariables, safeParseWaitingForInput, fetchPhaseWithIncludes, drainAutoSendableItems, type PhaseRow } from "@/lib/runtime";
 import { handleBeaconEvent, type LineBeaconEvent } from "@/lib/beacon";
 import { pushToLine as _pushToLine } from "@/lib/line";
 import { logEvent } from "@/lib/event-logger";
@@ -523,6 +523,75 @@ function matchQrItem(
     }
   }
   return null;
+}
+
+/**
+ * 自由入力受付モードの post-send effect。
+ *   - 直前に送信した message ID 群のうち、freeInputEnabled=true のものがあれば
+ *     UserProgress.waitingForInput を立てる (= 次の text を変数として受け取る状態にする)
+ *   - 該当なしなら no-op
+ *   - 複数該当の場合は最も後の sortOrder のものを採用 (連続送信チェーンの末尾)
+ *
+ * webhook の主要な送信パス (triggerKeyword / フェーズ遷移メッセージ / start メッセージ等)
+ * の reply 後に呼ぶことで、自由入力受付状態を確実に立てる。
+ *
+ * progress が null の場合は upsert で新規作成する (= 開始直後でも waiting を立てられる)。
+ */
+async function applyFreeInputPostEffect(args: {
+  sentMessageIds: string[];
+  userId:         string;
+  workId:         string;
+  progressId?:    string;
+}): Promise<void> {
+  if (args.sentMessageIds.length === 0) return;
+
+  const freeInputMsg = await prisma.message.findFirst({
+    where:  { id: { in: args.sentMessageIds }, isActive: true, freeInputEnabled: true },
+    orderBy: { sortOrder: "desc" },
+    select: { id: true, freeInputVariableKey: true, freeInputNextMessageId: true },
+  });
+  if (!freeInputMsg) return;
+  // バリデーションで防がれているはずだが、念のため
+  if (!freeInputMsg.freeInputVariableKey) {
+    console.warn(`[Webhook][free-input] freeInputEnabled=true なのに variableKey なし msgId=${freeInputMsg.id.slice(0, 8)}`);
+    return;
+  }
+
+  const waitingJson = JSON.stringify({
+    messageId:     freeInputMsg.id,
+    variableKey:   freeInputMsg.freeInputVariableKey,
+    nextMessageId: freeInputMsg.freeInputNextMessageId ?? null,
+    setAt:         new Date().toISOString(),
+  });
+
+  try {
+    if (args.progressId) {
+      await prisma.userProgress.update({
+        where: { id: args.progressId },
+        data:  { waitingForInput: waitingJson },
+      });
+    } else {
+      // 開始直後で progress 行が未作成のケース。upsert で安全に新規作成。
+      await prisma.userProgress.upsert({
+        where: { lineUserId_workId: { lineUserId: args.userId, workId: args.workId } },
+        create: {
+          lineUserId:      args.userId,
+          workId:          args.workId,
+          waitingForInput: waitingJson,
+        },
+        update: { waitingForInput: waitingJson },
+      });
+    }
+    await activeCache.delete(CACHE_KEY.progress(args.userId, args.workId));
+    console.log(
+      `[Webhook][free-input] waiting セット完了`,
+      `userId=${args.userId.slice(0, 8)}`,
+      `msgId=${freeInputMsg.id.slice(0, 8)}`,
+      `key=${freeInputMsg.freeInputVariableKey}`,
+    );
+  } catch (err) {
+    console.error(`[Webhook][free-input] waiting セット失敗 userId=${args.userId}`, err);
+  }
 }
 
 /**
@@ -1318,6 +1387,96 @@ async function handleTextEvent({
   ]);
   const globalCmd = matchGlobalCmdInMemory(cachedCmds, text);
 
+  // ─ 自由入力受付モード (free text input) ─
+  //
+  //  仕様:
+  //    - progress.waitingForInput が立っているなら、ユーザーの生入力を variables に保存し
+  //      freeInputNextMessageId で指定された次メッセージを送信して return する
+  //    - 通常のキーワード判定 / フェーズ遷移はスキップする (= 名前入力等で誤反応させない)
+  //    - リセット / 「はじめる」/ 「つづきから」系は上で既に処理済みなので、ここには到達しない
+  //
+  //  保存先:
+  //    - UserProgress.variables (JSON 文字列、最終的に Record<string, string>)
+  //    - UserProgress.waitingForInput は受付後 null にクリア
+  //
+  //  次メッセージ送信時:
+  //    - vars.userVariables に最新の variables を渡し、本文の {key} を展開する
+  if (progress?.waitingForInput) {
+    const waiting = safeParseWaitingForInput(progress.waitingForInput);
+    if (waiting) {
+      const currentVars = safeParseVariables(progress.variables);
+      const nextVars   = { ...currentVars, [waiting.variableKey]: text };
+      const nextVarsJson = JSON.stringify(nextVars);
+
+      // DB 更新: variables を上書き、waitingForInput をクリア
+      try {
+        await prisma.userProgress.update({
+          where: { id: progress.id },
+          data: {
+            variables:        nextVarsJson,
+            waitingForInput:  null,
+            lastInteractedAt: new Date(),
+          },
+        });
+        await activeCache.delete(CACHE_KEY.progress(userId, work.id));
+      } catch (err) {
+        console.error(`[Webhook][free-input] DB 更新失敗 userId=${userId} err=`, err);
+        // 失敗しても LINE に応答は返したいので fallthrough しない (= 静かに ack)
+      }
+
+      console.log(
+        `[Webhook][free-input] 受付完了`,
+        `userId=${userId.slice(0, 8)}`,
+        `key=${waiting.variableKey}`,
+        `value="${text.slice(0, 40)}"`,
+        `nextMessageId=${waiting.nextMessageId?.slice(0, 8) ?? "(none)"}`,
+      );
+
+      // 次メッセージを送信 (freeInputNextMessageId が指定されている場合)
+      if (waiting.nextMessageId) {
+        const nextMsg = await prisma.message.findUnique({
+          where: { id: waiting.nextMessageId, isActive: true },
+          select: {
+            id: true, messageType: true, body: true, assetUrl: true,
+            altText: true, flexPayloadJson: true, quickReplies: true,
+            nextMessageId: true, sortOrder: true,
+            character: { select: { name: true, iconImageUrl: true } },
+          },
+        });
+        if (nextMsg) {
+          const replyVars: import("@/lib/line").PlaceholderVars = {
+            ...vars,
+            userVariables: nextVars,
+          };
+          const chain = await buildMessageChain(nextMsg, replyVars);
+          if (chain.length > 0) {
+            await replyToLine(replyToken, chain, token);
+            return;
+          }
+          console.warn(
+            `[Webhook][free-input] nextMessage の変換が 0 件 userId=${userId.slice(0, 8)}`,
+            `nextMessageId=${waiting.nextMessageId.slice(0, 8)}`,
+          );
+        } else {
+          console.warn(
+            `[Webhook][free-input] nextMessage が見つからない userId=${userId.slice(0, 8)}`,
+            `nextMessageId=${waiting.nextMessageId.slice(0, 8)}`,
+          );
+        }
+      }
+
+      // nextMessage 未設定 / 取得失敗時のフォールバック: 静かに ack を返す
+      await replyToLine(
+        replyToken,
+        [{ type: "text", text: "ありがとうございます。" }],
+        token,
+      );
+      return;
+    }
+    // safeParseWaitingForInput が null を返した = JSON 不正。フォールスルーして通常処理に。
+    console.warn(`[Webhook][free-input] waitingForInput JSON が不正 userId=${userId.slice(0, 8)} — フォールスルーします`);
+  }
+
   // ─ globalCmd 判定（最優先）─
   if (globalCmd) {
     console.log(
@@ -1641,6 +1800,16 @@ async function handleTextEvent({
     if (msgs.length > 0) {
       const tReplyKw = Date.now();
       await replyToLine(replyToken, msgs, token);
+      // 自由入力受付モード: 送信した keyword 応答メッセージのいずれかが
+      // freeInputEnabled=true なら waitingForInput を立てる。
+      // ※ チェーン (nextMessageId) で繋がれた末尾までは追わない仕様。freeInputEnabled は
+      //    keywordMatched (= ユーザー入力に直接マッチした応答) 自体に付ける運用を想定。
+      await applyFreeInputPostEffect({
+        sentMessageIds: keywordMatched.map((m) => m.id),
+        userId,
+        workId:    work.id,
+        progressId: progress?.id,
+      });
       console.log(
         `[perf][event] path=keyword total=${Date.now() - t0e}ms` +
         ` progress=${progressHit ? "HIT" : "MISS"}:${progressFindMs}ms` +
@@ -2038,6 +2207,8 @@ async function handleStartTrigger({
     currentPhaseId:   initialPhaseId,
     reachedEnding:    false,
     flags:            "{}",
+    variables:        "{}",
+    waitingForInput:  null,
     lastInteractedAt: now,
     isPreview:        false,
     previewBy:        null,

@@ -289,6 +289,14 @@ export interface Message {
   tap_destination_id: string | null;
   /** タップ時の直接URL（destination 未使用時のフォールバック） */
   tap_url: string | null;
+  // ── 自由入力受付（このメッセージ送信後にユーザーの次入力を保存する） ──
+  /** このメッセージ送信後、次のテキスト入力を変数として保存するか。 */
+  free_input_enabled: boolean;
+  /** 保存先の変数名。free_input_enabled=true のとき必須。
+   *  半角英数字とアンダースコア、先頭は英字 or `_` (正規表現 ^[a-zA-Z_][a-zA-Z0-9_]*$)。 */
+  free_input_variable_key: string | null;
+  /** 自由入力を受け取った後に送信する次メッセージ ID。連続送信用の next_message_id とは別管理。 */
+  free_input_next_message_id: string | null;
   sort_order: number;
   is_active: boolean;
   created_at: string;
@@ -470,6 +478,10 @@ export interface CreateMessageBody {
   // タップ遷移先
   tap_destination_id?: string | null;
   tap_url?: string | null;
+  // 自由入力受付
+  free_input_enabled?: boolean;
+  free_input_variable_key?: string | null;
+  free_input_next_message_id?: string | null;
   sort_order?: number;
   is_active?: boolean;
 }
@@ -518,6 +530,10 @@ export interface UpdateMessageBody {
   // タップ遷移先
   tap_destination_id?: string | null;
   tap_url?: string | null;
+  // 自由入力受付
+  free_input_enabled?: boolean;
+  free_input_variable_key?: string | null;
+  free_input_next_message_id?: string | null;
   sort_order?: number;
   is_active?: boolean;
 }
@@ -551,10 +567,30 @@ export interface UserProgress {
   work_id:            string;
   current_phase_id:   string | null;
   reached_ending:     boolean;
+  /** 条件分岐 / set_flags 用フラグ JSON (例: {"hint_used": true, "score": 10})。 */
   flags:              Record<string, unknown>;
+  /** ユーザー入力で保存された変数 (自由入力 / アンケート等)。
+   *  flags とは意味論を分離: こちらはユーザー固有データ。 */
+  variables:          Record<string, string>;
+  /** 自由入力待ち状態のメタ情報 (null = 通常状態)。 */
+  waiting_for_input:  WaitingForInputState | null;
   last_interacted_at: string;
   created_at:         string;
   updated_at:         string;
+}
+
+/** 自由入力待ち状態のメタ情報。
+ *  Message.free_input_enabled=true のメッセージ送信時に立ち、
+ *  次のテキスト入力で消化される。 */
+export interface WaitingForInputState {
+  /** どのメッセージが受付状態にしたかの参照 (デバッグ・ログ用)。 */
+  messageId:     string;
+  /** 入力を保存する変数名。 */
+  variableKey:   string;
+  /** 入力後に進む次メッセージ ID。 */
+  nextMessageId: string | null;
+  /** いつ受付状態になったか (ISO 文字列、デバッグ用)。 */
+  setAt:         string;
 }
 
 // ────────────────────────────────────────────────

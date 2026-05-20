@@ -13,6 +13,10 @@ type RawProgress = {
   currentPhaseId: string | null;
   reachedEnding: boolean;
   flags: string;
+  /** 自由入力受付モードで保存された変数 (JSON 文字列、Record<string, string>)。 */
+  variables: string;
+  /** 自由入力待ち状態のメタ情報 (JSON 文字列、null = 通常状態)。 */
+  waitingForInput: string | null;
   lastInteractedAt: Date;
   createdAt: Date;
   updatedAt: Date;
@@ -629,6 +633,17 @@ export async function buildRuntimeState(
     current_phase_id:   progress.currentPhaseId,
     reached_ending:     progress.reachedEnding,
     flags:              safeParseFlags(progress.flags),
+    variables:          safeParseVariables(progress.variables),
+    waiting_for_input:  progress.waitingForInput
+      ? (safeParseWaitingForInput(progress.waitingForInput)
+          ? {
+              messageId:     safeParseWaitingForInput(progress.waitingForInput)!.messageId,
+              variableKey:   safeParseWaitingForInput(progress.waitingForInput)!.variableKey,
+              nextMessageId: safeParseWaitingForInput(progress.waitingForInput)!.nextMessageId,
+              setAt:         safeParseWaitingForInput(progress.waitingForInput)!.setAt,
+            }
+          : null)
+      : null,
     last_interacted_at: progress.lastInteractedAt.toISOString(),
     created_at:         progress.createdAt.toISOString(),
     updated_at:         progress.updatedAt.toISOString(),
@@ -666,4 +681,56 @@ export function safeParseFlags(raw: string): Record<string, unknown> {
   } catch {
     return {};
   }
+}
+
+/** ユーザー入力で保存された変数 (UserProgress.variables) を JSON 文字列から parse する。
+ *  形式: { [key: string]: string }。先頭が object でない / 非 object / 配列の場合は空を返す。
+ *  値が string 以外 (null / number / object) の場合は文字列化または除外する。 */
+export function safeParseVariables(raw: string | null | undefined): Record<string, string> {
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    const out: Record<string, string> = {};
+    for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+      if (typeof v === "string") {
+        out[k] = v;
+      } else if (typeof v === "number" || typeof v === "boolean") {
+        out[k] = String(v);
+      }
+      // null / object / array は無視 (= 不正値スキップ)
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+/** UserProgress.waiting_for_input を parse する。null / 不正 JSON は null を返す。
+ *  形式: { messageId: string, variableKey: string, nextMessageId: string | null, setAt: string }。
+ *  必須キーが欠けている場合は null を返す (= 安全側に倒す)。 */
+export function safeParseWaitingForInput(raw: string | null | undefined): WaitingForInputParsed | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+    const o = parsed as Record<string, unknown>;
+    if (typeof o.messageId !== "string" || typeof o.variableKey !== "string") return null;
+    return {
+      messageId:     o.messageId,
+      variableKey:   o.variableKey,
+      nextMessageId: typeof o.nextMessageId === "string" ? o.nextMessageId : null,
+      setAt:         typeof o.setAt === "string" ? o.setAt : new Date().toISOString(),
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** waiting_for_input の parse 結果 (runtime 内部表現)。 */
+export interface WaitingForInputParsed {
+  messageId:     string;
+  variableKey:   string;
+  nextMessageId: string | null;
+  setAt:         string;
 }

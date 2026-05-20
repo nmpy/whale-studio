@@ -8,6 +8,7 @@
 
 import crypto from "crypto";
 import type { RuntimePhase, QuickReplyItem } from "@/types";
+import { interpolate } from "@/lib/template";
 
 // ────────────────────────────────────────────────
 // 型
@@ -130,16 +131,28 @@ export type PlaceholderVars = {
   userName?:    string;
   /** LINE 公式アカウント名（OA タイトル） */
   accountName?: string;
+  /** 自由入力受付モードで保存したユーザー固有変数 (UserProgress.variables)。
+   *  `{userName}` `{nickname}` 等の `{key}` 形式を本文内で展開する。
+   *  未指定 / undefined の場合は interpolate は no-op。 */
+  userVariables?: Record<string, string>;
 };
 
 /**
- * テキスト内の `{{user_name}}` / `{{account_name}}` を実際の値へ置換する。
+ * テキスト内の `{{user_name}}` / `{{account_name}}` (二重括弧) を実際の値へ置換する。
  * 値が未設定（undefined）の場合は空文字へ置換し、プレースホルダ文字列が露出しないようにする。
+ *
+ * 加えて、`userVariables` が指定されていれば、自由入力受付モード用の
+ * `{key}` 形式 (一重括弧) も同じパスで展開する (interpolate 経由)。
+ * 未保存変数は空文字に置換する (テンプレ文字列を表示しないため)。
  */
 export function replacePlaceholders(text: string, vars: PlaceholderVars): string {
-  return text
+  let out = text
     .replace(/\{\{user_name\}\}/g,    vars.userName    ?? "")
     .replace(/\{\{account_name\}\}/g, vars.accountName ?? "");
+  if (vars.userVariables !== undefined) {
+    out = interpolate(out, vars.userVariables);
+  }
+  return out;
 }
 
 // ────────────────────────────────────────────────
