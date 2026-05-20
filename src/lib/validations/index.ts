@@ -350,14 +350,8 @@ export const createMessageSchema = z.object({
   if (val.loading_min_seconds != null && val.loading_max_seconds != null && val.loading_min_seconds > val.loading_max_seconds) {
     ctx.addIssue({ code: "custom", path: ["loading_max_seconds"], message: "loading_max_seconds は loading_min_seconds 以上にしてください" });
   }
-  // 自由入力受付: ON のときは variable_key が必須
-  if (val.free_input_enabled === true && !val.free_input_variable_key) {
-    ctx.addIssue({
-      code: "custom",
-      path: ["free_input_variable_key"],
-      message: "自由入力を受け付ける場合、保存する変数名は必須です",
-    });
-  }
+  // 自由入力受付: variable_key は任意 (空欄なら入力をどこにも保存しない＝ログ用途)。
+  // 値があるときの regex チェックは variableKeySchema 内で実施。
   if (val.kind === "puzzle") {
     if (!val.answer?.trim()) {
       ctx.addIssue({ code: "custom", path: ["answer"], message: "puzzle の場合、正解（answer）は必須です" });
@@ -458,14 +452,7 @@ export const updateMessageSchema = z.object({
   if (val.loading_min_seconds != null && val.loading_max_seconds != null && val.loading_min_seconds > val.loading_max_seconds) {
     ctx.addIssue({ code: "custom", path: ["loading_max_seconds"], message: "loading_max_seconds は loading_min_seconds 以上にしてください" });
   }
-  // 自由入力受付: ON のときは variable_key が必須 (PATCH では明示変更時のみチェック)
-  if (val.free_input_enabled === true && val.free_input_variable_key === null) {
-    ctx.addIssue({
-      code: "custom",
-      path: ["free_input_variable_key"],
-      message: "自由入力を受け付ける場合、保存する変数名は必須です",
-    });
-  }
+  // 自由入力受付: variable_key は任意 (PATCH でも null/未指定を許容)。
   if (val.kind !== "puzzle" && val.kind !== "system_notice") {
     if (val.message_type === "text" && val.body === null) {
       ctx.addIssue({ code: "custom", path: ["body"], message: "text型の場合、body を null にはできません" });
