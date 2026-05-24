@@ -12,7 +12,6 @@ import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
 import { ViewerBanner } from "@/components/PermissionGuard";
 import { GuideCard } from "@/components/onboarding/GuideCard";
 import type { MessageWithRelations, MessageType, PhaseWithCounts, TransitionWithPhases, QuickReplyItem } from "@/types";
-import { collectChainContinuationIds, chainSizeFrom } from "./_list-helpers";
 
 const MESSAGE_TYPE_LABEL: Record<MessageType, string> = {
   text:     "テキスト",
@@ -423,38 +422,19 @@ export default function MessagesPage() {
       .finally(() => setLoading(false));
   }, [workId]);
 
-  // ────────────────────────────────────────────────
-  // チェーン継続メッセージ (= 他メッセージの next_message_id から指されているもの)
-  // を一覧から除外するための ID Set。
-  //
-  // 理由: メッセージ編集画面で「+ 2 通目を追加」して保存された連続メッセージは、
-  //   DB 上は親と同じ phase_id / sort_order を持つトップレベル行として作成される
-  //   (= messageApi.create 経由)。一覧側で chain 末尾の継続行を除外しないと、
-  //   ユーザー体験的には「1 つの塊」のはずが「複数の独立メッセージ」に見えてしまう。
-  //
-  // 純関数 helper は _list-helpers.ts に切り出し (テスト容易性のため)。
-  // ────────────────────────────────────────────────
-  const chainContinuationIds = collectChainContinuationIds(messages);
-  // 一覧の件数 (タブ / フッター) はチェーン継続を除いた「先頭メッセージ」基準で数える。
-  // phase 見出しの 件数 は buildPhaseGroups 内で既に filter 済みなので別途集計不要。
-  const headMessageCount = messages.length - chainContinuationIds.size;
-
   // フェーズごとにメッセージをグルーピング
   function buildPhaseGroups(): PhaseGroup[] {
     const phaseIds = new Set(phases.map((p) => p.id));
-    // chain 継続行を除いた「先頭のみ」のリスト
-    const heads = messages.filter((m) => !chainContinuationIds.has(m.id));
-
     const groups: PhaseGroup[] = phases
       .map((ph) => ({
         phase: ph,
-        messages: heads
+        messages: messages
           .filter((m) => m.phase?.id === ph.id)
           .sort((a, b) => a.sort_order - b.sort_order),
       }))
       .filter((g) => g.messages.length > 0);
 
-    const unassigned = heads
+    const unassigned = messages
       .filter((m) => !m.phase || !phaseIds.has(m.phase.id))
       .sort((a, b) => a.sort_order - b.sort_order);
 
@@ -568,7 +548,7 @@ export default function MessagesPage() {
             color: activeTab === "messages" ? "#166534" : "#9ca3af",
             borderRadius: 8, padding: "0 5px",
           }}>
-            {headMessageCount}
+            {messages.length}
           </span>
         </button>
         <button type="button" style={tabStyle("welcome")} onClick={() => setActiveTab("welcome")}>
@@ -944,18 +924,6 @@ export default function MessagesPage() {
                               {msg.body || <span style={{ color: "#9ca3af" }}>—</span>}
                             </span>
                           )}
-                          {/* チェーン継続メッセージあり ⇒ 連続送信通数を表示 */}
-                          {msg.next_message_id && chainSizeFrom(messages, msg.id) > 1 && (
-                            <div style={{
-                              marginTop: 4, display: "inline-flex", alignItems: "center", gap: 4,
-                              fontSize: 10, fontWeight: 600,
-                              background: "#eff6ff", color: "#1d4ed8",
-                              border: "1px solid #bfdbfe",
-                              borderRadius: 10, padding: "1px 7px",
-                            }}>
-                              ▾ {chainSizeFrom(messages, msg.id)} 通の連続メッセージ
-                            </div>
-                          )}
                         </td>
 
                         {/* キャラクター */}
@@ -1013,7 +981,7 @@ export default function MessagesPage() {
           })}
 
           <div style={{ fontSize: 11, color: "var(--text-muted)", textAlign: "right", padding: "0 4px 4px" }}>
-            合計 {headMessageCount} 件
+            合計 {messages.length} 件
           </div>
         </div>
       )}
