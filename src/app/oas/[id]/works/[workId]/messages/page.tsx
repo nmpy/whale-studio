@@ -435,6 +435,9 @@ export default function MessagesPage() {
   // 純関数 helper は _list-helpers.ts に切り出し (テスト容易性のため)。
   // ────────────────────────────────────────────────
   const chainContinuationIds = collectChainContinuationIds(messages);
+  // 一覧の件数 (タブ / フッター) はチェーン継続を除いた「先頭メッセージ」基準で数える。
+  // phase 見出しの 件数 は buildPhaseGroups 内で既に filter 済みなので別途集計不要。
+  const headMessageCount = messages.length - chainContinuationIds.size;
 
   // フェーズごとにメッセージをグルーピング
   function buildPhaseGroups(): PhaseGroup[] {
@@ -565,7 +568,7 @@ export default function MessagesPage() {
             color: activeTab === "messages" ? "#166534" : "#9ca3af",
             borderRadius: 8, padding: "0 5px",
           }}>
-            {messages.length}
+            {headMessageCount}
           </span>
         </button>
         <button type="button" style={tabStyle("welcome")} onClick={() => setActiveTab("welcome")}>
@@ -1010,7 +1013,7 @@ export default function MessagesPage() {
           })}
 
           <div style={{ fontSize: 11, color: "var(--text-muted)", textAlign: "right", padding: "0 4px 4px" }}>
-            合計 {messages.length} 件
+            合計 {headMessageCount} 件
           </div>
         </div>
       )}
