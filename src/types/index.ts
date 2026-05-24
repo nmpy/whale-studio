@@ -315,8 +315,8 @@ export interface Message {
   // ── 自由入力受付（このメッセージ送信後にユーザーの次入力を保存する） ──
   /** このメッセージ送信後、次のテキスト入力を変数として保存するか。 */
   free_input_enabled: boolean;
-  /** 保存先の変数名。free_input_enabled=true のとき必須。
-   *  半角英数字とアンダースコア、先頭は英字 or `_` (正規表現 ^[a-zA-Z_][a-zA-Z0-9_]*$)。 */
+  /** 保存先の変数名。任意 — null/空欄なら入力をどこにも保存しない (ログ用途)。
+   *  値があるときは ^[a-zA-Z_][a-zA-Z0-9_]*$ で validation。 */
   free_input_variable_key: string | null;
   /** 自由入力を受け取った後に送信する次メッセージ ID。連続送信用の next_message_id とは別管理。 */
   free_input_next_message_id: string | null;
@@ -620,8 +620,8 @@ export interface UserProgress {
 export interface WaitingForInputState {
   /** どのメッセージが受付状態にしたかの参照 (デバッグ・ログ用)。 */
   messageId:     string;
-  /** 入力を保存する変数名。 */
-  variableKey:   string;
+  /** 入力を保存する変数名。null = どこにも保存しない (ログ用途・次メッセージへの差し込みなし)。 */
+  variableKey:   string | null;
   /** 入力後に進む次メッセージ ID。 */
   nextMessageId: string | null;
   /** いつ受付状態になったか (ISO 文字列、デバッグ用)。 */

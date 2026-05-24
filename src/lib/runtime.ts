@@ -712,18 +712,21 @@ export function safeParseVariables(raw: string | null | undefined): Record<strin
 }
 
 /** UserProgress.waiting_for_input を parse する。null / 不正 JSON は null を返す。
- *  形式: { messageId: string, variableKey: string, nextMessageId: string | null, setAt: string }。
- *  必須キーが欠けている場合は null を返す (= 安全側に倒す)。 */
+ *  形式: { messageId: string, variableKey: string | null, nextMessageId: string | null, setAt: string }。
+ *  messageId が欠けている場合は null を返す (= 安全側に倒す)。
+ *  variableKey は null / 未指定を許容 (＝ ログ用途・差し込み不要のケース)。 */
 export function safeParseWaitingForInput(raw: string | null | undefined): WaitingForInputParsed | null {
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
     const o = parsed as Record<string, unknown>;
-    if (typeof o.messageId !== "string" || typeof o.variableKey !== "string") return null;
+    if (typeof o.messageId !== "string") return null;
+    const variableKey =
+      typeof o.variableKey === "string" && o.variableKey.length > 0 ? o.variableKey : null;
     return {
       messageId:     o.messageId,
-      variableKey:   o.variableKey,
+      variableKey,
       nextMessageId: typeof o.nextMessageId === "string" ? o.nextMessageId : null,
       setAt:         typeof o.setAt === "string" ? o.setAt : new Date().toISOString(),
     };
@@ -735,7 +738,8 @@ export function safeParseWaitingForInput(raw: string | null | undefined): Waitin
 /** waiting_for_input の parse 結果 (runtime 内部表現)。 */
 export interface WaitingForInputParsed {
   messageId:     string;
-  variableKey:   string;
+  /** 保存先変数名。null = どこにも保存しない (ログ用途・差し込み不要) */
+  variableKey:   string | null;
   nextMessageId: string | null;
   setAt:         string;
 }

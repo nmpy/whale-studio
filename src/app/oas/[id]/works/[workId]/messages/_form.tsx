@@ -450,12 +450,11 @@ export function formStateToMsgBody(form: MessageFormState) {
 
 export function validateMessageForm(form: MessageFormState): string | null {
   // ── 自由入力受付バリデーション (kind を問わず先に判定) ──
+  // variable_key は任意 (空欄＝入力をどこにも保存しない / ログ用途)。
+  // 値があるときだけ regex チェックする。
   if (form.free_input_enabled) {
     const key = form.free_input_variable_key.trim();
-    if (!key) {
-      return "自由入力を受け付ける場合、保存する変数名は必須です";
-    }
-    if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(key)) {
+    if (key && !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(key)) {
       return "変数名は半角英数字とアンダースコアで入力してください。先頭に数字は使えません。";
     }
   }
@@ -3333,11 +3332,11 @@ export function MessageForm({
 
               {form.free_input_enabled && (
                 <>
-                  {/* 保存先変数名 */}
+                  {/* 保存先変数名 (任意) */}
                   <div className="form-group" style={{ marginTop: 12 }}>
                     <label style={fieldLabel} htmlFor="free_input_variable_key">
                       保存する変数名
-                      <span style={{ fontSize: 10, fontWeight: 700, background: "#fef2f2", color: "#dc2626", borderRadius: 4, padding: "1px 6px", marginLeft: 6 }}>必須</span>
+                      <span style={{ fontSize: 10, fontWeight: 600, background: "#f1f5f9", color: "#64748b", borderRadius: 4, padding: "1px 6px", marginLeft: 6 }}>任意</span>
                     </label>
                     <input
                       id="free_input_variable_key"
@@ -3346,12 +3345,12 @@ export function MessageForm({
                       style={{ maxWidth: 320 }}
                       value={form.free_input_variable_key}
                       onChange={(e) => set("free_input_variable_key", e.target.value)}
-                      placeholder="例: userName"
+                      placeholder="例: userName（差し込みが不要なら空欄でOK）"
                       maxLength={60}
                       autoComplete="off"
                     />
                     {(() => {
-                      const v = form.free_input_variable_key;
+                      const v = form.free_input_variable_key.trim();
                       const validRegex = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
                       if (v && !validRegex.test(v)) {
                         return (
@@ -3362,7 +3361,10 @@ export function MessageForm({
                       }
                       return (
                         <div style={hintText}>
-                          半角英数字とアンダースコア。先頭は英字 or `_`。例: <code>userName</code> / <code>nickname</code> / <code>favoriteColor</code>
+                          入力内容を次のメッセージで使いたい場合のみ設定します。<br />
+                          例：名前なら <code>userName</code>、感想なら <code>feedback</code>。<br />
+                          本文に <code>{"{userName}"}</code> のように書くと、保存した入力内容を差し込めます。<br />
+                          空欄のままにすると、入力は受け付けますが変数として保存はされません（ログ用途）。
                         </div>
                       );
                     })()}
@@ -3392,7 +3394,12 @@ export function MessageForm({
                         })}
                     </select>
                     <div style={hintText}>
-                      ユーザー入力を受け取った後に送信するメッセージ。本文に <code>{`{${form.free_input_variable_key || "userName"}}`}</code> と書くと、保存した値が差し込まれます。
+                      ユーザー入力を受け取った後に送信するメッセージ。
+                      {form.free_input_variable_key.trim() ? (
+                        <>本文に <code>{`{${form.free_input_variable_key.trim()}}`}</code> と書くと、保存した値が差し込まれます。</>
+                      ) : (
+                        <>変数名を設定していないため、ここでは入力内容を差し込みません（受け取って次へ進むだけ）。</>
+                      )}
                     </div>
                   </div>
                 </>
