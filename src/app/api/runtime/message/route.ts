@@ -43,6 +43,7 @@ function rowToRuntime(msg: MessageRow): RuntimePhaseMessage {
     lag_ms:            msg.lagMs ?? 0,
     hint_mode:         ((msg as { hintMode?: string }).hintMode ?? "always") as import("@/types").HintMode,
     sort_order:        msg.sortOrder,
+    next_message_id:   (msg as { nextMessageId?: string | null }).nextMessageId ?? null,
     timing:            null,
     tap_destination_id: (msg as { tapDestinationId?: string | null }).tapDestinationId ?? null,
     tap_url:            (msg as { tapUrl?: string | null }).tapUrl ?? null,

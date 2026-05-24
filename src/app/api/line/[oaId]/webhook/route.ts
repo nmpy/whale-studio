@@ -614,9 +614,6 @@ async function buildMessageChain(
 ): Promise<{ messages: import("@/lib/line").LineMessage[]; chainIds: string[] }> {
   const records: typeof first[] = [first];
 
-  // [diag] チェーン展開の入口を記録 (next が無ければ chain=単発)
-  console.log(`[diag][chain] start head=${first.id.slice(0, 8)} next=${first.nextMessageId?.slice(0, 8) ?? "null"} hasQR=${!!first.quickReplies}`);
-
   // チェーンを最大 4 件追加（合計 5 件 = LINE 返信上限）
   let current = first;
   for (let i = 0; i < 4 && current.nextMessageId; i++) {
@@ -632,13 +629,13 @@ async function buildMessageChain(
       },
     });
     if (!next) {
-      console.warn(`[diag][chain] BREAK — nextMessageId=${current.nextMessageId.slice(0, 8)} not found in DB or isActive=false (step=${i})`);
+      console.warn(`[buildMessageChain] nextMessageId=${current.nextMessageId.slice(0, 8)} not found in DB or isActive=false (step=${i})`);
       break;
     }
     records.push(next);
     current = next;
   }
-  console.log(`[diag][chain] expanded count=${records.length} ids=[${records.map((r) => r.id.slice(0, 8)).join(",")}]`);
+  console.log(`[buildMessageChain] expanded count=${records.length} ids=[${records.map((r) => r.id.slice(0, 8)).join(",")}]`);
 
   // KeywordMessageRecord 互換形式に変換（nextMessageId なし・triggerKeyword なし）
   const asKeywordRecords: import("@/lib/line").KeywordMessageRecord[] = records.map((r) => ({
@@ -1868,9 +1865,6 @@ async function handleTextEvent({
     const msgs = chainedMsgs.length > 0 ? chainedMsgs : buildKeywordMessages(keywordMatched, systemSender, vars);
     // 送信 ID: チェーンが成立していればチェーン全体、そうでなければ直接マッチ ID
     const sentIdsForFreeInput = chainedMsgs.length > 0 ? chainedIds : keywordMatched.map((m) => m.id);
-    // [diag] 送信直前の payload 内訳
-    const lastMsg = msgs[msgs.length - 1] as { type?: string; quickReply?: unknown } | undefined;
-    console.log(`[diag][kw] payload count=${msgs.length} chainIds=[${chainedIds.map((id) => id.slice(0, 8)).join(",")}] lastType=${lastMsg?.type ?? "none"} lastHasQR=${!!lastMsg?.quickReply}`);
     if (msgs.length > 0) {
       const tReplyKw = Date.now();
       await replyToLine(replyToken, msgs, token);
