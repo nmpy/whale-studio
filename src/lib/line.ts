@@ -9,6 +9,7 @@
 import crypto from "crypto";
 import type { RuntimePhase, QuickReplyItem } from "@/types";
 import { interpolate } from "@/lib/template";
+import { moveQuickReplyToTail } from "@/lib/quick-reply-tail";
 
 // ────────────────────────────────────────────────
 // 型
@@ -837,6 +838,12 @@ export function buildPhaseMessages(
   const prefixOffset = prefixText ? 1 : 0;
   logConversionSummary("buildPhaseMessages", phase.id, inputCount, messages.length - prefixOffset);
 
+  // ── chain head の quickReply を chain tail (= 最後のメッセージ) に集約 ──
+  // LINE は 1 通の reply で最後のメッセージの quickReply しか表示しないため、
+  // chain head (= msg1) に設定された quickReply を tail (= msg2) に移動する。
+  // 既に tail に quickReply があればそのまま (= tail の方を優先)。
+  moveQuickReplyToTail(messages as { quickReply?: LineQuickReply }[]);
+
   // ── エンディング or クイックリプライ付与 ──
   if (phase.transitions === null) {
     // エンディングフェーズ — シナリオ定義のメッセージのみ送信（自動メッセージは送らない）
@@ -964,19 +971,8 @@ export function buildKeywordMessages(
 
   // LINE は最後のメッセージの quickReply のみ表示する仕様のため、
   // 中間メッセージに quickReply が設定されていたら最後のメッセージに移動する。
+  // (= chain head の QR は chain tail で表示される。buildPhaseMessages と同じ挙動)
   const sliced = messages.slice(0, LINE_MSG_MAX);
-  if (sliced.length > 1) {
-    const lastMsg = sliced[sliced.length - 1] as { quickReply?: LineQuickReply };
-    if (!lastMsg.quickReply) {
-      for (let i = sliced.length - 2; i >= 0; i--) {
-        const m = sliced[i] as { quickReply?: LineQuickReply };
-        if (m.quickReply) {
-          lastMsg.quickReply = m.quickReply;
-          delete m.quickReply;
-          break;
-        }
-      }
-    }
-  }
+  moveQuickReplyToTail(sliced as { quickReply?: LineQuickReply }[]);
   return sliced;
 }
