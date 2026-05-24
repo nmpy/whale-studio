@@ -293,6 +293,11 @@ function messageRowToRuntime(
     timing,
     tap_destination_id: m.tapDestinationId ?? null,
     tap_url:            m.tapUrl ?? null,
+    image_action_type:          (m.imageActionType         as import("@/types").ImageActionType) ?? null,
+    image_action_text:          m.imageActionText         ?? null,
+    image_action_url:           m.imageActionUrl          ?? null,
+    image_action_liff_page_id:  m.imageActionLiffPageId   ?? null,
+    image_action_postback_data: m.imageActionPostbackData ?? null,
     character:         m.character
       ? {
           id:             m.character.id,

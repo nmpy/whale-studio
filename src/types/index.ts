@@ -216,6 +216,17 @@ export interface Transition {
   updated_at: string;
 }
 
+/** 画像メッセージのタップ時アクション種別。 */
+export type ImageActionType = "none" | "message" | "uri" | "liff" | "postback";
+
+/** 画像メッセージのタップ時アクション (discriminated union, 主に webhook / preview で使用)。 */
+export type MessageImageAction =
+  | { type: "none" }
+  | { type: "message"; text: string }
+  | { type: "uri"; url: string }
+  | { type: "liff"; pageId: string }
+  | { type: "postback"; data: string; displayText?: string };
+
 export interface Message {
   id: string;
   work_id: string;
@@ -289,11 +300,23 @@ export interface Message {
   tap_destination_id: string | null;
   /** タップ時の直接URL（destination 未使用時のフォールバック） */
   tap_url: string | null;
+  // ── 画像タップ時アクション (messageType="image" 用) ──
+  /** タップ時のアクション種別。null = アクションなし (= 通常の Image Message)。
+   *  値があるときは LINE 送信側で Flex Message に自動変換される。 */
+  image_action_type: ImageActionType | null;
+  /** type="message": タップ時にプレイヤーから送信されるテキスト */
+  image_action_text: string | null;
+  /** type="uri": タップで開く外部 URL (HTTPS のみ) */
+  image_action_url: string | null;
+  /** type="liff": タップで開く LIFF ページ ID */
+  image_action_liff_page_id: string | null;
+  /** type="postback": postback data */
+  image_action_postback_data: string | null;
   // ── 自由入力受付（このメッセージ送信後にユーザーの次入力を保存する） ──
   /** このメッセージ送信後、次のテキスト入力を変数として保存するか。 */
   free_input_enabled: boolean;
-  /** 保存先の変数名。free_input_enabled=true のとき必須。
-   *  半角英数字とアンダースコア、先頭は英字 or `_` (正規表現 ^[a-zA-Z_][a-zA-Z0-9_]*$)。 */
+  /** 保存先の変数名。任意 — null/空欄なら入力をどこにも保存しない (ログ用途)。
+   *  値があるときは ^[a-zA-Z_][a-zA-Z0-9_]*$ で validation。 */
   free_input_variable_key: string | null;
   /** 自由入力を受け取った後に送信する次メッセージ ID。連続送信用の next_message_id とは別管理。 */
   free_input_next_message_id: string | null;
@@ -478,6 +501,12 @@ export interface CreateMessageBody {
   // タップ遷移先
   tap_destination_id?: string | null;
   tap_url?: string | null;
+  // 画像タップ時アクション
+  image_action_type?: ImageActionType | null;
+  image_action_text?: string | null;
+  image_action_url?: string | null;
+  image_action_liff_page_id?: string | null;
+  image_action_postback_data?: string | null;
   // 自由入力受付
   free_input_enabled?: boolean;
   free_input_variable_key?: string | null;
@@ -530,6 +559,12 @@ export interface UpdateMessageBody {
   // タップ遷移先
   tap_destination_id?: string | null;
   tap_url?: string | null;
+  // 画像タップ時アクション
+  image_action_type?: ImageActionType | null;
+  image_action_text?: string | null;
+  image_action_url?: string | null;
+  image_action_liff_page_id?: string | null;
+  image_action_postback_data?: string | null;
   // 自由入力受付
   free_input_enabled?: boolean;
   free_input_variable_key?: string | null;
@@ -620,6 +655,12 @@ export interface RuntimePhaseMessage {
   tap_destination_id: string | null;
   /** タップ遷移先 直接URL */
   tap_url: string | null;
+  // 画像タップ時アクション (messageType="image" 用)
+  image_action_type:          ImageActionType | null;
+  image_action_text:          string | null;
+  image_action_url:           string | null;
+  image_action_liff_page_id:  string | null;
+  image_action_postback_data: string | null;
   character: {
     id:             string;
     name:           string;

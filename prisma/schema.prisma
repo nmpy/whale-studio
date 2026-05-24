@@ -325,6 +325,22 @@ model Message {
   /// タップ時の直接URL（destination 未使用時のフォールバック）
   tapUrl                String?    @map("tap_url")
 
+  // ── 画像タップ時アクション（messageType="image" 用）─────────────────
+  // 画像メッセージをタップしたときに発火するアクション。設定時は LINE 送信側で
+  // Image Message → Flex Message (hero image + action) に自動変換する。
+  // null/未設定 = アクションなし (= 既存の Image Message として送信)。
+  // 既存の tap_destination_id / tap_url は別概念（タップ→Destination 遷移）。
+  /// "none" | "message" | "uri" | "liff" | "postback"。null = アクションなし
+  imageActionType         String?    @map("image_action_type")
+  /// type="message" 用: 画像タップ時にプレイヤーから送信されるテキスト
+  imageActionText         String?    @map("image_action_text")
+  /// type="uri" 用: 画像タップ時に開く外部 URL (HTTPS のみ)
+  imageActionUrl          String?    @map("image_action_url")
+  /// type="liff" 用: 画像タップ時に開く LIFF ページ ID
+  imageActionLiffPageId   String?    @map("image_action_liff_page_id")
+  /// type="postback" 用: 画像タップ時の postback data
+  imageActionPostbackData String?    @map("image_action_postback_data")
+
   // ── 自由入力受付（このメッセージ送信後にユーザーの次入力を保存する）──────
   /// true: このメッセージ送信後にユーザーの次のテキスト入力を変数として保存する。
   /// 名前入力 / アンケート自由回答 / 任意テキストの記録 等に使う。

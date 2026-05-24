@@ -88,7 +88,33 @@ export type LineVideoMessage = {
   _lagMs?: number;
 };
 
-export type LineMessage = LineTextMessage | LineImageMessage | LineVideoMessage;
+/** Flex Message action (LINE 仕様の部分集合)。message / uri / postback のみ実装。 */
+export type LineFlexAction =
+  | { type: "message"; label?: string; text: string }
+  | { type: "uri";     label?: string; uri:  string }
+  | { type: "postback"; label?: string; data: string; displayText?: string };
+
+/** Flex Message (画像 + アクション用 = 1 bubble に hero image)。 */
+export type LineFlexMessage = {
+  type: "flex";
+  altText: string;
+  contents: {
+    type: "bubble";
+    hero: {
+      type: "image";
+      url: string;
+      size: "full";
+      aspectRatio: string;   // "20:13" など
+      aspectMode: "cover" | "fit";
+      action?: LineFlexAction;
+    };
+  };
+  sender?: LineSender;
+  quickReply?: LineQuickReply;
+  _lagMs?: number;
+};
+
+export type LineMessage = LineTextMessage | LineImageMessage | LineVideoMessage | LineFlexMessage;
 
 // LINE Webhook イベント（最小限の型定義）
 export type LineEvent = {
@@ -191,6 +217,15 @@ function sleep(ms: number): Promise<void> {
 //     正式対応型で必須フィールドが null → warn + null（スキップ）
 //     フォールバック候補もすべて null   → warn("変換不能") + null
 
+/** 画像メッセージのタップ時アクション設定 (DB 列群を要約した形)。 */
+export type ImageActionSpec = {
+  type:          string | null;  // "message" | "uri" | "liff" | "postback" | "none" | null
+  text:          string | null;  // type="message"
+  url:           string | null;  // type="uri"
+  liffPageId:    string | null;  // type="liff"
+  postbackData:  string | null;  // type="postback"
+};
+
 /** convertMessageToLine に渡す共通入力型 */
 type ConvertibleMessage = {
   id:         string;
@@ -201,10 +236,74 @@ type ConvertibleMessage = {
   body:       string | null;
   asset_url:  string | null;
   alt_text:   string | null;
+  /** 画像タップ時アクション (messageType="image" のときのみ有効、未指定は null) */
+  imageAction?: ImageActionSpec | null;
+  /** LIFF endpoint URL (type="liff" 時の解決用)。未指定なら liff URL は生成しない */
+  liffEndpointUrl?: string | null;
   sender?:    LineSender;
   quickReply?: LineQuickReply;
   lagMs?:     number;
 };
+
+const DEFAULT_IMAGE_ALT_TEXT = "画像メッセージ";
+const DEFAULT_IMAGE_ASPECT_RATIO = "20:13";
+
+/** 画像 + action 用 Flex Message を生成する。url は HTTPS 必須。
+ *  imageAction が null や type="none" の場合は null を返す (= 通常 Image Message を使う)。 */
+export function buildImageActionFlex(args: {
+  imageUrl: string;
+  altText:  string | null;
+  imageAction: ImageActionSpec | null;
+  liffEndpointUrl?: string | null;
+}): LineFlexMessage | null {
+  const { imageUrl, imageAction, liffEndpointUrl } = args;
+  if (!imageAction || !imageAction.type || imageAction.type === "none") return null;
+  if (!imageUrl.startsWith("https://")) {
+    console.warn(`[buildImageActionFlex] HTTPS URL のみ対応 (received: ${imageUrl.slice(0, 60)})`);
+    return null;
+  }
+  let action: LineFlexAction | undefined;
+  switch (imageAction.type) {
+    case "message":
+      if (!imageAction.text) return null;
+      action = {
+        type:  "message",
+        label: imageAction.text.slice(0, 20),
+        text:  imageAction.text.slice(0, 300),
+      };
+      break;
+    case "uri":
+      if (!imageAction.url || !imageAction.url.startsWith("https://")) return null;
+      action = { type: "uri", label: "開く", uri: imageAction.url };
+      break;
+    case "liff":
+      if (!imageAction.liffPageId || !liffEndpointUrl) return null;
+      action = { type: "uri", label: "開く", uri: liffEndpointUrl };
+      break;
+    case "postback":
+      if (!imageAction.postbackData) return null;
+      action = { type: "postback", label: "実行", data: imageAction.postbackData };
+      break;
+    default:
+      return null;
+  }
+  const safeAlt = (args.altText?.trim() || DEFAULT_IMAGE_ALT_TEXT).slice(0, 400);
+  return {
+    type: "flex",
+    altText: safeAlt,
+    contents: {
+      type: "bubble",
+      hero: {
+        type:        "image",
+        url:         imageUrl,
+        size:        "full",
+        aspectRatio: DEFAULT_IMAGE_ASPECT_RATIO,
+        aspectMode:  "cover",
+        action,
+      },
+    },
+  };
+}
 
 /**
  * 単一メッセージを LineMessage に変換する。
@@ -245,7 +344,18 @@ function convertMessageToLine(
     return null;
   }
   if (mtype === "image") {
-    if (asset_url) return attach({ type: "image", originalContentUrl: asset_url, previewImageUrl: asset_url } as LineImageMessage);
+    if (asset_url) {
+      // 画像タップ時アクションが設定されていれば Flex Message に変換する。
+      // 未設定 (= null / "none") なら従来通り Image Message として送信。
+      const flex = buildImageActionFlex({
+        imageUrl:    asset_url,
+        altText:     alt_text,
+        imageAction: msg.imageAction ?? null,
+        liffEndpointUrl: msg.liffEndpointUrl ?? null,
+      });
+      if (flex) return attach(flex);
+      return attach({ type: "image", originalContentUrl: asset_url, previewImageUrl: asset_url } as LineImageMessage);
+    }
     // puzzle の image で asset_url が空 → body or alt_text をテキストフォールバック
     if (isPuzzle) {
       const fb = body || alt_text || "この謎を解いてください";
@@ -700,6 +810,13 @@ export function buildPhaseMessages(
       body:      msg.body,
       asset_url: msg.asset_url,
       alt_text:  msg.alt_text,
+      imageAction: msg.image_action_type ? {
+        type:         msg.image_action_type,
+        text:         msg.image_action_text         ?? null,
+        url:          msg.image_action_url          ?? null,
+        liffPageId:   msg.image_action_liff_page_id ?? null,
+        postbackData: msg.image_action_postback_data ?? null,
+      } : null,
       sender:    msg.character ? buildSender(msg.character) : undefined,
       quickReply: msgQr,
       lagMs:     msg.lag_ms,
@@ -780,6 +897,12 @@ export type KeywordMessageRecord = {
   /** 連続送信チェーン先メッセージ ID（null = チェーンなし） */
   nextMessageId:   string | null;
   sortOrder:       number;
+  // 画像タップ時アクション (messageType="image" のとき有効)
+  imageActionType?:         string | null;
+  imageActionText?:         string | null;
+  imageActionUrl?:          string | null;
+  imageActionLiffPageId?:   string | null;
+  imageActionPostbackData?: string | null;
   character: {
     name:         string;
     iconImageUrl: string | null;
@@ -822,9 +945,16 @@ export function buildKeywordMessages(
       body:      msg.body,
       asset_url: msg.assetUrl,
       alt_text:  msg.altText,
+      imageAction: msg.imageActionType ? {
+        type:         msg.imageActionType,
+        text:         msg.imageActionText         ?? null,
+        url:          msg.imageActionUrl          ?? null,
+        liffPageId:   msg.imageActionLiffPageId   ?? null,
+        postbackData: msg.imageActionPostbackData ?? null,
+      } : null,
       sender,
       quickReply: msgQr,
-    }, "buildKeywordMessages", "keyword");
+    }, "buildKeywordMessages", "keyword", vars);
 
     if (lineMsg) messages.push(lineMsg);
   }

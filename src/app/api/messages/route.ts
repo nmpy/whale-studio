@@ -57,6 +57,12 @@ function toResponse(m: {
   // タップ遷移先
   tapDestinationId?: string | null;
   tapUrl?: string | null;
+  // 画像タップ時アクション
+  imageActionType?: string | null;
+  imageActionText?: string | null;
+  imageActionUrl?: string | null;
+  imageActionLiffPageId?: string | null;
+  imageActionPostbackData?: string | null;
   sortOrder: number; isActive: boolean; createdAt: Date; updatedAt: Date;
   phase?: { id: string; name: string; phaseType: string } | null;
   character?: { id: string; name: string; iconType: string; iconText: string | null; iconImageUrl: string | null; iconColor: string | null } | null;
@@ -102,6 +108,12 @@ function toResponse(m: {
     // タップ遷移先
     tap_destination_id:   m.tapDestinationId ?? null,
     tap_url:              m.tapUrl ?? null,
+    // 画像タップ時アクション
+    image_action_type:          m.imageActionType         ?? null,
+    image_action_text:          m.imageActionText         ?? null,
+    image_action_url:           m.imageActionUrl          ?? null,
+    image_action_liff_page_id:  m.imageActionLiffPageId   ?? null,
+    image_action_postback_data: m.imageActionPostbackData ?? null,
     sort_order:           m.sortOrder,
     is_active:            m.isActive,
     created_at:           m.createdAt,
@@ -251,6 +263,12 @@ export const POST = withAuth(async (req, _ctx, user) => {
         // タップ遷移先
         tapDestinationId:   data.tap_destination_id   ?? null,
         tapUrl:             data.tap_url              ?? null,
+        // 画像タップ時アクション
+        imageActionType:         data.image_action_type === "none" ? null : (data.image_action_type ?? null),
+        imageActionText:         data.image_action_text         ?? null,
+        imageActionUrl:          data.image_action_url          ?? null,
+        imageActionLiffPageId:   data.image_action_liff_page_id ?? null,
+        imageActionPostbackData: data.image_action_postback_data ?? null,
         sortOrder:          data.sort_order,
         isActive:           data.is_active,
       },

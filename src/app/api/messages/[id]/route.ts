@@ -52,6 +52,12 @@ type PrismaMessageWithRelations = {
   // タップ遷移先
   tapDestinationId: string | null;
   tapUrl: string | null;
+  // 画像タップ時アクション
+  imageActionType: string | null;
+  imageActionText: string | null;
+  imageActionUrl: string | null;
+  imageActionLiffPageId: string | null;
+  imageActionPostbackData: string | null;
   sortOrder: number; isActive: boolean; createdAt: Date; updatedAt: Date;
   phase:     { id: string; name: string; phaseType: string } | null;
   character: {
@@ -118,6 +124,12 @@ function toResponse(m: PrismaMessageWithRelations) {
     // タップ遷移先
     tap_destination_id:    m.tapDestinationId ?? null,
     tap_url:               m.tapUrl ?? null,
+    // 画像タップ時アクション
+    image_action_type:          m.imageActionType         ?? null,
+    image_action_text:          m.imageActionText         ?? null,
+    image_action_url:           m.imageActionUrl          ?? null,
+    image_action_liff_page_id:  m.imageActionLiffPageId   ?? null,
+    image_action_postback_data: m.imageActionPostbackData ?? null,
     sort_order:            m.sortOrder,
     is_active:             m.isActive,
     created_at:            m.createdAt,
@@ -267,6 +279,14 @@ export const PATCH = withAuth<{ id: string }>(async (req, { params }, user) => {
         // タップ遷移先
         ...(data.tap_destination_id !== undefined && { tapDestinationId: data.tap_destination_id }),
         ...(data.tap_url            !== undefined && { tapUrl:           data.tap_url }),
+        // 画像タップ時アクション
+        ...(data.image_action_type !== undefined && {
+          imageActionType: data.image_action_type === "none" ? null : data.image_action_type
+        }),
+        ...(data.image_action_text         !== undefined && { imageActionText:         data.image_action_text }),
+        ...(data.image_action_url          !== undefined && { imageActionUrl:          data.image_action_url }),
+        ...(data.image_action_liff_page_id !== undefined && { imageActionLiffPageId:   data.image_action_liff_page_id }),
+        ...(data.image_action_postback_data !== undefined && { imageActionPostbackData: data.image_action_postback_data }),
         ...(data.sort_order        !== undefined && { sortOrder:       data.sort_order }),
         ...(data.is_active         !== undefined && { isActive:        data.is_active }),
       },

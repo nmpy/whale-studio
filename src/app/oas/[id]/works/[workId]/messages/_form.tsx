@@ -144,6 +144,14 @@ export interface MessageFormState {
   // ── タップ遷移先 ──
   tap_destination_id:  string; // "" = 未設定
   tap_url:             string; // "" = 未設定
+  // ── 画像タップ時アクション (message_type="image" 用) ──
+  /** "" = なし。"message" | "uri" | "liff" | "postback" */
+  image_action_type:          "" | "message" | "uri" | "liff" | "postback";
+  image_action_text:          string;
+  image_action_url:           string;
+  image_action_liff_page_id:  string;
+  image_action_postback_data: string;
+  alt_text:                   string;
   // ── 演出設定 ──
   read_receipt_mode:    string; // "" = inherit
   read_delay_ms:        string; // "" = inherit（数値入力との兼用）
@@ -192,6 +200,13 @@ export const EMPTY_MESSAGE_FORM: MessageFormState = {
   // タップ遷移先
   tap_destination_id:  "",
   tap_url:             "",
+  // 画像タップ時アクション
+  image_action_type:          "",
+  image_action_text:          "",
+  image_action_url:           "",
+  image_action_liff_page_id:  "",
+  image_action_postback_data: "",
+  alt_text:                   "",
   // 演出設定（空文字 = inherit）
   read_receipt_mode:    "",
   read_delay_ms:        "",
@@ -236,6 +251,13 @@ export function msgToFormState(msg: {
   // タップ遷移先
   tap_destination_id?:   string | null;
   tap_url?:              string | null;
+  // 画像タップ時アクション
+  image_action_type?:         string | null;
+  image_action_text?:         string | null;
+  image_action_url?:          string | null;
+  image_action_liff_page_id?: string | null;
+  image_action_postback_data?: string | null;
+  alt_text?:                  string | null;
   // 自由入力受付
   free_input_enabled?:         boolean | null;
   free_input_variable_key?:    string | null;
@@ -299,6 +321,15 @@ export function msgToFormState(msg: {
     // タップ遷移先
     tap_destination_id:  msg.tap_destination_id ?? "",
     tap_url:             msg.tap_url ?? "",
+    // 画像タップ時アクション
+    image_action_type:          ((msg.image_action_type === "message" || msg.image_action_type === "uri"
+                                  || msg.image_action_type === "liff" || msg.image_action_type === "postback")
+                                  ? msg.image_action_type : "") as "" | "message" | "uri" | "liff" | "postback",
+    image_action_text:          msg.image_action_text         ?? "",
+    image_action_url:           msg.image_action_url          ?? "",
+    image_action_liff_page_id:  msg.image_action_liff_page_id ?? "",
+    image_action_postback_data: msg.image_action_postback_data ?? "",
+    alt_text:                   msg.alt_text                  ?? "",
     // 自由入力受付
     free_input_enabled:         msg.free_input_enabled         ?? false,
     free_input_variable_key:    msg.free_input_variable_key    ?? "",
@@ -369,6 +400,32 @@ export function formStateToMsgBody(form: MessageFormState) {
     // タップ遷移先
     tap_destination_id: form.tap_destination_id || null,
     tap_url:            form.tap_url || null,
+    // 画像タップ時アクション (画像メッセージのみ。type 空文字 = 無効)
+    image_action_type:
+      form.message_type === "image" && form.image_action_type
+        ? (form.image_action_type as "message" | "uri" | "liff" | "postback")
+        : null,
+    image_action_text:
+      form.message_type === "image" && form.image_action_type === "message"
+        ? (form.image_action_text.trim() || null)
+        : null,
+    image_action_url:
+      form.message_type === "image" && form.image_action_type === "uri"
+        ? (form.image_action_url.trim() || null)
+        : null,
+    image_action_liff_page_id:
+      form.message_type === "image" && form.image_action_type === "liff"
+        ? (form.image_action_liff_page_id || null)
+        : null,
+    image_action_postback_data:
+      form.message_type === "image" && form.image_action_type === "postback"
+        ? (form.image_action_postback_data.trim() || null)
+        : null,
+    // alt_text (画像メッセージで Flex 変換時に使用)
+    alt_text:
+      form.message_type === "image"
+        ? (form.alt_text.trim() || null)
+        : (form.alt_text.trim() || null),
     // 自由入力受付
     free_input_enabled:         !!form.free_input_enabled,
     // ON のときのみ key を保存。OFF のときは null にして整合性を保つ。
@@ -399,6 +456,23 @@ export function validateMessageForm(form: MessageFormState): string | null {
     const key = form.free_input_variable_key.trim();
     if (key && !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(key)) {
       return "変数名は半角英数字とアンダースコアで入力してください。先頭に数字は使えません。";
+    }
+  }
+  // ── 画像タップ時アクションバリデーション ──
+  if (form.message_type === "image" && form.image_action_type) {
+    if (form.image_action_type === "message" && !form.image_action_text.trim()) {
+      return "画像タップ時アクション「メッセージを送信する」には、送信されるテキストが必須です";
+    }
+    if (form.image_action_type === "uri") {
+      const url = form.image_action_url.trim();
+      if (!url) return "URL アクションには URL が必須です";
+      if (!url.startsWith("https://")) return "URL は https:// から始まるものを指定してください";
+    }
+    if (form.image_action_type === "liff" && !form.image_action_liff_page_id.trim()) {
+      return "LIFF アクションには LIFF ページの選択が必須です";
+    }
+    if (form.image_action_type === "postback" && !form.image_action_postback_data.trim()) {
+      return "postback アクションには data が必須です";
     }
   }
   // ── 共通メッセージバリデーション ──
@@ -1549,8 +1623,11 @@ function KeywordListEditor({ value, onChange, disabled, phases, currentMessageId
 
 // ── 画像アップローダー ────────────────────────────────────
 //
-// Supabase Storage bucket "image" へアップロードし、public URL を form state に反映。
-// 既存の URL 文字列データとも互換（"URLで直接入力" モード）。
+// Cloudinary (POST /api/upload) へアップロードし、secure_url (HTTPS) を form state に反映する。
+// キャラクターアイコン / LIFF ブロック画像と同じアップローダーを共有する形に統一。
+//
+// (履歴) 旧実装は Supabase Storage 経由 (`uploadApi.uploadToStorage`) だったが
+// Supabase 環境変数が未設定で 500 になっていたため、既に動作実績のある Cloudinary 経路へ変更。
 
 const UPLOAD_ALLOWED_TYPES = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
 const UPLOAD_MAX_BYTES      = 5 * 1024 * 1024; // 5 MB
@@ -1558,12 +1635,14 @@ const UPLOAD_MAX_BYTES      = 5 * 1024 * 1024; // 5 MB
 interface ImageUploaderProps {
   value:    string;   // 現在の asset_url（空文字 = 未設定）
   onChange: (url: string) => void;
-  oaId:     string;
-  workId:   string;
+  /** @deprecated 旧 Supabase 実装のシグネチャ互換のため受けるが Cloudinary 化後は未使用 */
+  oaId?:    string;
+  /** @deprecated 同上 */
+  workId?:  string;
   disabled?: boolean;
 }
 
-function ImageUploader({ value, onChange, oaId, workId, disabled }: ImageUploaderProps) {
+function ImageUploader({ value, onChange, disabled }: ImageUploaderProps) {
   const [uploading,    setUploading]    = useState(false);
   const [uploadError,  setUploadError]  = useState<string | null>(null);
   const [dragOver,     setDragOver]     = useState(false);
@@ -1594,11 +1673,16 @@ function ImageUploader({ value, onChange, oaId, workId, disabled }: ImageUploade
     setUploading(true);
     try {
       const token = getDevToken();
-      const { url } = await uploadApi.uploadToStorage(token, file, { oaId, workId });
+      const { url } = await uploadApi.uploadImage(token, file);
+      if (!url || !/^https:\/\//.test(url)) {
+        throw new Error("アップロードレスポンスの URL が不正です (HTTPS でない)");
+      }
       onChange(url);
       setShowUrlInput(false);
     } catch (err) {
-      setUploadError(err instanceof Error ? err.message : "アップロードに失敗しました");
+      const msg = err instanceof Error ? err.message : "アップロードに失敗しました";
+      console.error("[ImageUploader] upload failed", err);
+      setUploadError(msg);
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -3647,7 +3731,7 @@ export function MessageForm({
                     maxLength={200}
                   />
                 </div>
-                {/* ── 画像タップ時の遷移先 ── */}
+                {/* ── 画像タップ時の遷移先 (旧 Destination 経路 — 既存機能、互換のため残置) ── */}
                 <div className="form-group" style={{ marginTop: 12 }}>
                   <TapDestinationSection
                     label="画像タップ時の遷移先"
@@ -3667,6 +3751,115 @@ export function MessageForm({
                     onDirectUrlChange={(url) => set("tap_url", url)}
                   />
                 </div>
+
+                {/* ── 画像メッセージ用: altText + タップ時アクション (Flex 変換用) ── */}
+                <div className="form-group" style={{ marginTop: 16, borderTop: "1px dashed #e5e7eb", paddingTop: 12 }}>
+                  <label style={fieldLabel} htmlFor="alt_text">
+                    altText（プッシュ通知 / プレビュー用テキスト）
+                    <span style={{ fontSize: 10, fontWeight: 600, background: "#f1f5f9", color: "#64748b", borderRadius: 4, padding: "1px 6px", marginLeft: 6 }}>任意</span>
+                  </label>
+                  <input
+                    id="alt_text"
+                    type="text"
+                    className="form-input"
+                    value={form.alt_text}
+                    onChange={(e) => set("alt_text", e.target.value)}
+                    placeholder="例: 古い写真（既定: 画像メッセージ）"
+                    maxLength={400}
+                  />
+                  <div style={hintText}>
+                    タップ時アクション設定時に Flex Message として送信されるため altText が必須になります。未入力なら「画像メッセージ」が使われます。
+                  </div>
+                </div>
+
+                <div className="form-group" style={{ marginTop: 12 }}>
+                  <label style={fieldLabel} htmlFor="image_action_type">
+                    タップ時の動作
+                    <span style={{ fontSize: 10, fontWeight: 600, background: "#f1f5f9", color: "#64748b", borderRadius: 4, padding: "1px 6px", marginLeft: 6 }}>任意</span>
+                  </label>
+                  <select
+                    id="image_action_type"
+                    className="form-input"
+                    value={form.image_action_type}
+                    onChange={(e) => set("image_action_type", e.target.value as MessageFormState["image_action_type"])}
+                    style={{ maxWidth: 320 }}
+                  >
+                    <option value="">なし（通常の画像メッセージとして送信）</option>
+                    <option value="message">メッセージを送信する</option>
+                    <option value="uri">URL を開く</option>
+                    <option value="liff" disabled>LIFF ページを開く（実装予定）</option>
+                    <option value="postback" disabled>内部イベントを発火する（実装予定）</option>
+                  </select>
+                  <div style={hintText}>
+                    アクションを設定すると、画像が LINE 上で Flex Message として送信され、タップ可能になります。
+                  </div>
+                </div>
+
+                {form.image_action_type === "message" && (
+                  <div className="form-group" style={{ marginTop: 12, marginLeft: 24, paddingLeft: 12, borderLeft: "3px solid #e5e7eb" }}>
+                    <label style={fieldLabel} htmlFor="image_action_text">
+                      送信されるテキスト <span style={{ color: "#dc2626" }}>*</span>
+                    </label>
+                    <input
+                      id="image_action_text"
+                      type="text"
+                      className="form-input"
+                      value={form.image_action_text}
+                      onChange={(e) => set("image_action_text", e.target.value)}
+                      placeholder="例: 古い写真を見る"
+                      maxLength={300}
+                    />
+                    <div style={hintText}>
+                      プレイヤーが画像をタップすると、このテキストがプレイヤーから送信されたものとして扱われます。
+                      <br />既存の応答キーワードに設定すると、次のメッセージを送信できます。
+                    </div>
+                  </div>
+                )}
+
+                {form.image_action_type === "uri" && (
+                  <div className="form-group" style={{ marginTop: 12, marginLeft: 24, paddingLeft: 12, borderLeft: "3px solid #e5e7eb" }}>
+                    <label style={fieldLabel} htmlFor="image_action_url">
+                      開く URL <span style={{ color: "#dc2626" }}>*</span>
+                    </label>
+                    <input
+                      id="image_action_url"
+                      type="url"
+                      className="form-input"
+                      value={form.image_action_url}
+                      onChange={(e) => set("image_action_url", e.target.value)}
+                      placeholder="https://example.com/"
+                      style={{ fontFamily: "monospace", fontSize: 13 }}
+                      maxLength={2000}
+                    />
+                    <div style={hintText}>https:// のみ対応。タップで外部ブラウザが開きます。</div>
+                  </div>
+                )}
+
+                {/* ── プレビュー (タップ時の挙動サマリ) ── */}
+                {form.image_action_type && (
+                  <div style={{
+                    marginTop: 12, padding: "10px 12px",
+                    background: "#f0f9ff", border: "1px solid #bae6fd",
+                    borderRadius: 8, fontSize: 12, color: "#0c4a6e",
+                    display: "flex", alignItems: "center", gap: 8,
+                  }}>
+                    <span style={{ fontWeight: 700 }}>🎯 タップ時:</span>
+                    {form.image_action_type === "message" && (
+                      <span>
+                        メッセージ送信 <code style={{ background: "#fff", padding: "1px 6px", borderRadius: 4 }}>
+                          {form.image_action_text || "（未入力）"}
+                        </code>
+                      </span>
+                    )}
+                    {form.image_action_type === "uri" && (
+                      <span>URL を開く <code style={{ background: "#fff", padding: "1px 6px", borderRadius: 4, wordBreak: "break-all" }}>
+                        {form.image_action_url || "（未入力）"}
+                      </code></span>
+                    )}
+                    {form.image_action_type === "liff" && <span>LIFF ページを開く（実装予定）</span>}
+                    {form.image_action_type === "postback" && <span>内部イベント発火（実装予定）</span>}
+                  </div>
+                )}
               </>
             )}
 
