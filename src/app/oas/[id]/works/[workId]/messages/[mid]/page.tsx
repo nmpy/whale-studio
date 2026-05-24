@@ -7,36 +7,7 @@ import { useParams } from "next/navigation";
 import { useTesterRouter as useRouter } from "@/hooks/useTesterRouter";
 import { workApi, messageApi, getDevToken, ValidationError } from "@/lib/api-client";
 import { useToast } from "@/components/Toast";
-import { MessageForm, msgToFormState, formStateToMsgBody, msgToAdditionalSlot, additionalSlotToMsgBody, EMPTY_MESSAGE_FORM, type MessageFormState, type AdditionalMessageSlot } from "../_form";
-
-/** メッセージ ID から next_message_id チェーンを辿り、2 通目以降を AdditionalMessageSlot[] に詰める。
- *  上限 4 件 (= 合計 5 件 = LINE 返信上限) でループを止める。
- *  失敗時はそこまでの結果を返す (= 編集 UI に出すデータを最大限引き渡す) 。 */
-async function loadAdditionalChain(
-  token: string,
-  firstNextId: string | null,
-): Promise<AdditionalMessageSlot[]> {
-  const out: AdditionalMessageSlot[] = [];
-  let currentId: string | null = firstNextId;
-  const seen = new Set<string>();
-  for (let i = 0; i < 4 && currentId; i++) {
-    if (seen.has(currentId)) {
-      console.warn(`[EditMessagePage] チェーンに循環参照 (msgId=${currentId.slice(0, 8)}) — 中断`);
-      break;
-    }
-    const fetchingId = currentId;
-    seen.add(fetchingId);
-    try {
-      const msg = await messageApi.get(token, fetchingId);
-      out.push(msgToAdditionalSlot(msg));
-      currentId = (msg.next_message_id as string | null) ?? null;
-    } catch (err) {
-      console.warn(`[EditMessagePage] チェーン取得失敗 msgId=${fetchingId.slice(0, 8)}:`, err);
-      break;
-    }
-  }
-  return out;
-}
+import { MessageForm, msgToFormState, formStateToMsgBody, EMPTY_MESSAGE_FORM, type MessageFormState } from "../_form";
 
 export default function EditMessagePage() {
   const params    = useParams<{ id: string; workId: string; mid: string }>();
@@ -59,15 +30,9 @@ export default function EditMessagePage() {
       // GET /api/messages/:id で単件取得（リレーション込み）
       messageApi.get(token, messageId),
     ])
-      .then(async ([w, msg]) => {
+      .then(([w, msg]) => {
         setWorkTitle(w.title);
-        // 2 通目以降 (next_message_id チェーン) も並行して読み込む。
-        // 失敗しても 1 通目だけで UI を出す。
-        const additional = (msg.next_message_id as string | null)
-          ? await loadAdditionalChain(token, msg.next_message_id as string)
-          : [];
-        const form = msgToFormState(msg);
-        setInitialForm({ ...form, additionalMessages: additional });
+        setInitialForm(msgToFormState(msg));
       })
       .catch((e) => setLoadError(e instanceof Error ? e.message : "読み込みに失敗しました"));
   }, [workId, messageId]);
@@ -78,33 +43,38 @@ export default function EditMessagePage() {
       const mainBody = formStateToMsgBody(form);
       await messageApi.update(getDevToken(), messageId, mainBody);
 
-      // 2通目以降のメッセージを作成してチェーン (演出設定込み)
-      console.log(`[diag][save] start head=${messageId.slice(0, 8)} additional=${form.additionalMessages.length}`);
+      // 2通目以降のメッセージを作成してチェーン
       let prevId: string = messageId;
       for (const slot of form.additionalMessages) {
-        const additionalBody = additionalSlotToMsgBody(slot, {
+        const additionalBody = {
           work_id:      workId,
-          phase_id:     mainBody.phase_id ?? null,
-          character_id: mainBody.character_id ?? null,
+          phase_id:     mainBody.phase_id,
+          // スロット個別のキャラクター指定があればそちらを優先、なければ1通目を引き継ぐ
+          character_id: slot.character_id || mainBody.character_id,
           kind:         mainBody.kind,
+          message_type: slot.message_type,
+          body:         slot.message_type === "carousel"
+            ? JSON.stringify(slot.carousel_items)
+            : slot.message_type === "text" ? (slot.body || undefined) : undefined,
+          asset_url:    (slot.message_type === "image" || slot.message_type === "video" || slot.message_type === "voice")
+            ? (slot.asset_url || undefined) : undefined,
+          notify_text:  slot.message_type !== "text" ? (slot.notify_text || undefined) : undefined,
+          lag_ms:       slot.lag_ms,
           sort_order:   mainBody.sort_order,
           is_active:    mainBody.is_active,
-        });
+        };
         if (slot.existingId) {
           // 既存の追加メッセージを更新
           await messageApi.update(getDevToken(), slot.existingId, additionalBody);
           await messageApi.update(getDevToken(), prevId, { next_message_id: slot.existingId });
-          console.log(`[diag][save] linked prev=${prevId.slice(0, 8)} → next=${slot.existingId.slice(0, 8)} (existing)`);
           prevId = slot.existingId;
         } else {
           // 新規追加メッセージを作成
           const additionalCreated = await messageApi.create(getDevToken(), additionalBody);
           await messageApi.update(getDevToken(), prevId, { next_message_id: additionalCreated.id });
-          console.log(`[diag][save] linked prev=${prevId.slice(0, 8)} → next=${additionalCreated.id.slice(0, 8)} (newly created)`);
           prevId = additionalCreated.id;
         }
       }
-      console.log(`[diag][save] complete chainTail=${prevId.slice(0, 8)}`);
 
       showToast("メッセージを保存しました", "success");
       router.push(`/oas/${oaId}/works/${workId}/messages`);

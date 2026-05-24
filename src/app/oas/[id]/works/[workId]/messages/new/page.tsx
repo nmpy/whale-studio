@@ -7,7 +7,7 @@ import { useParams } from "next/navigation";
 import { useTesterRouter as useRouter } from "@/hooks/useTesterRouter";
 import { workApi, messageApi, getDevToken, ValidationError } from "@/lib/api-client";
 import { useToast } from "@/components/Toast";
-import { MessageForm, EMPTY_MESSAGE_FORM, formStateToMsgBody, additionalSlotToMsgBody, type MessageFormState } from "../_form";
+import { MessageForm, EMPTY_MESSAGE_FORM, formStateToMsgBody, type MessageFormState } from "../_form";
 
 export default function NewMessagePage() {
   const params  = useParams<{ id: string; workId: string }>();
@@ -34,24 +34,30 @@ export default function NewMessagePage() {
         ...mainBody,
       });
 
-      // 2通目以降のメッセージを作成してチェーン (演出設定込み)
-      console.log(`[diag][save-new] start head=${created.id.slice(0, 8)} additional=${form.additionalMessages.length}`);
+      // 2通目以降のメッセージを作成してチェーン
       let prevId: string = created.id;
       for (const slot of form.additionalMessages) {
-        const additionalBody = additionalSlotToMsgBody(slot, {
+        const additionalBody = {
           work_id:      workId,
-          phase_id:     mainBody.phase_id ?? null,
-          character_id: mainBody.character_id ?? null,
+          phase_id:     mainBody.phase_id,
+          // スロット個別のキャラクター指定があればそちらを優先、なければ1通目を引き継ぐ
+          character_id: slot.character_id || mainBody.character_id,
           kind:         mainBody.kind,
+          message_type: slot.message_type,
+          body:         slot.message_type === "carousel"
+            ? JSON.stringify(slot.carousel_items)
+            : slot.message_type === "text" ? (slot.body || undefined) : undefined,
+          asset_url:    (slot.message_type === "image" || slot.message_type === "video" || slot.message_type === "voice")
+            ? (slot.asset_url || undefined) : undefined,
+          notify_text:  slot.message_type !== "text" ? (slot.notify_text || undefined) : undefined,
+          lag_ms:       slot.lag_ms,
           sort_order:   mainBody.sort_order,
           is_active:    mainBody.is_active,
-        });
+        };
         const additionalCreated = await messageApi.create(getDevToken(), additionalBody);
         await messageApi.update(getDevToken(), prevId, { next_message_id: additionalCreated.id });
-        console.log(`[diag][save-new] linked prev=${prevId.slice(0, 8)} → next=${additionalCreated.id.slice(0, 8)}`);
         prevId = additionalCreated.id;
       }
-      console.log(`[diag][save-new] complete chainTail=${prevId.slice(0, 8)}`);
 
       showToast("メッセージを追加しました", "success");
       router.push(`/oas/${oaId}/works/${workId}/messages`);
