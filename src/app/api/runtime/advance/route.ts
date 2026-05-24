@@ -185,6 +185,11 @@ export const POST = withAuth(async (req, _ctx, user) => {
             timing:            null,
             tap_destination_id: (m as { tapDestinationId?: string | null }).tapDestinationId ?? null,
             tap_url:            (m as { tapUrl?: string | null }).tapUrl ?? null,
+            image_action_type:          ((m as { imageActionType?: string | null }).imageActionType         ?? null) as import("@/types").ImageActionType | null,
+            image_action_text:          (m as { imageActionText?: string | null }).imageActionText         ?? null,
+            image_action_url:           (m as { imageActionUrl?: string | null }).imageActionUrl          ?? null,
+            image_action_liff_page_id:  (m as { imageActionLiffPageId?: string | null }).imageActionLiffPageId   ?? null,
+            image_action_postback_data: (m as { imageActionPostbackData?: string | null }).imageActionPostbackData ?? null,
             character:         m.character
               ? {
                   id:             m.character.id,
@@ -282,6 +287,11 @@ export const POST = withAuth(async (req, _ctx, user) => {
                   timing:            null,
                   tap_destination_id: null,
                   tap_url:            null,
+                  image_action_type:          null,
+                  image_action_text:          null,
+                  image_action_url:           null,
+                  image_action_liff_page_id:  null,
+                  image_action_postback_data: null,
                   character:         null,
                 });
               }

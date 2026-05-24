@@ -46,6 +46,11 @@ function rowToRuntime(msg: MessageRow): RuntimePhaseMessage {
     timing:            null,
     tap_destination_id: (msg as { tapDestinationId?: string | null }).tapDestinationId ?? null,
     tap_url:            (msg as { tapUrl?: string | null }).tapUrl ?? null,
+    image_action_type:          ((msg as { imageActionType?: string | null }).imageActionType         ?? null) as import("@/types").ImageActionType | null,
+    image_action_text:          (msg as { imageActionText?: string | null }).imageActionText         ?? null,
+    image_action_url:           (msg as { imageActionUrl?: string | null }).imageActionUrl          ?? null,
+    image_action_liff_page_id:  (msg as { imageActionLiffPageId?: string | null }).imageActionLiffPageId   ?? null,
+    image_action_postback_data: (msg as { imageActionPostbackData?: string | null }).imageActionPostbackData ?? null,
     character:         msg.character
       ? {
           id:             msg.character.id,

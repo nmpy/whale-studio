@@ -336,6 +336,19 @@ export const createMessageSchema = z.object({
   // ── タップ遷移先 ──
   tap_destination_id: z.string().uuid().optional().nullable(),
   tap_url:            z.string().url("有効なURLを入力してください").max(2000).optional().nullable(),
+  // ── 画像タップ時アクション (messageType="image" 用) ──
+  // type=null/"none" = アクションなし (= 通常 Image Message)
+  // type="message"   = タップでプレイヤーからテキスト送信 (image_action_text 必須)
+  // type="uri"       = タップで外部 URL を開く (HTTPS のみ)
+  // type="liff"      = タップで LIFF ページを開く
+  // type="postback"  = タップで postback (将来拡張)
+  image_action_type: z.enum(["none", "message", "uri", "liff", "postback"]).optional().nullable(),
+  image_action_text: z.string().max(300).optional().nullable(),
+  image_action_url: z.string().url("HTTPS の URL を入力してください").max(2000)
+    .refine((v) => v.startsWith("https://"), "HTTPS のみ対応 (http:// は使用不可)")
+    .optional().nullable(),
+  image_action_liff_page_id:   uuidSchema.optional().nullable(),
+  image_action_postback_data:  z.string().max(300).optional().nullable(),
   // ── 自由入力受付 ──
   free_input_enabled:         z.boolean().default(false),
   free_input_variable_key:    variableKeySchema.optional().nullable(),
@@ -357,6 +370,29 @@ export const createMessageSchema = z.object({
       path: ["free_input_variable_key"],
       message: "自由入力を受け付ける場合、保存する変数名は必須です",
     });
+  }
+  // 画像タップ時アクション: type に応じた必須項目チェック
+  if (val.image_action_type && val.image_action_type !== "none") {
+    if (val.message_type !== "image") {
+      ctx.addIssue({ code: "custom", path: ["image_action_type"],
+        message: "画像タップ時アクションは画像メッセージ (message_type=image) のみ設定できます" });
+    }
+    if (val.image_action_type === "message" && !val.image_action_text?.trim()) {
+      ctx.addIssue({ code: "custom", path: ["image_action_text"],
+        message: "メッセージ送信アクションには送信テキストが必須です" });
+    }
+    if (val.image_action_type === "uri" && !val.image_action_url) {
+      ctx.addIssue({ code: "custom", path: ["image_action_url"],
+        message: "URL アクションには URL が必須です" });
+    }
+    if (val.image_action_type === "liff" && !val.image_action_liff_page_id) {
+      ctx.addIssue({ code: "custom", path: ["image_action_liff_page_id"],
+        message: "LIFF アクションには LIFF ページ ID が必須です" });
+    }
+    if (val.image_action_type === "postback" && !val.image_action_postback_data?.trim()) {
+      ctx.addIssue({ code: "custom", path: ["image_action_postback_data"],
+        message: "postback アクションには data が必須です" });
+    }
   }
   if (val.kind === "puzzle") {
     if (!val.answer?.trim()) {
@@ -444,6 +480,14 @@ export const updateMessageSchema = z.object({
   // ── タップ遷移先 ──
   tap_destination_id: z.string().uuid().optional().nullable(),
   tap_url:            z.string().url("有効なURLを入力してください").max(2000).optional().nullable(),
+  // ── 画像タップ時アクション ──
+  image_action_type: z.enum(["none", "message", "uri", "liff", "postback"]).optional().nullable(),
+  image_action_text: z.string().max(300).optional().nullable(),
+  image_action_url:  z.string().url("HTTPS の URL を入力してください").max(2000)
+    .refine((v) => v.startsWith("https://"), "HTTPS のみ対応 (http:// は使用不可)")
+    .optional().nullable(),
+  image_action_liff_page_id:   uuidSchema.optional().nullable(),
+  image_action_postback_data:  z.string().max(300).optional().nullable(),
   // ── 自由入力受付 ──
   free_input_enabled:         z.boolean().optional(),
   free_input_variable_key:    variableKeySchema.optional().nullable(),
@@ -483,6 +527,26 @@ export const updateMessageSchema = z.object({
       val.correct_next_phase_id === null
     ) {
       ctx.addIssue({ code: "custom", path: ["correct_next_phase_id"], message: "遷移系の correct_action には遷移先フェーズが必須です" });
+    }
+  }
+  // 画像タップ時アクション: type に応じた必須項目チェック (PATCH 時)
+  if (val.image_action_type && val.image_action_type !== "none") {
+    if (val.image_action_type === "message" && val.image_action_text !== undefined &&
+        (!val.image_action_text || !val.image_action_text.trim())) {
+      ctx.addIssue({ code: "custom", path: ["image_action_text"],
+        message: "メッセージ送信アクションには送信テキストが必須です" });
+    }
+    if (val.image_action_type === "uri" && val.image_action_url === null) {
+      ctx.addIssue({ code: "custom", path: ["image_action_url"],
+        message: "URL アクションには URL が必須です" });
+    }
+    if (val.image_action_type === "liff" && val.image_action_liff_page_id === null) {
+      ctx.addIssue({ code: "custom", path: ["image_action_liff_page_id"],
+        message: "LIFF アクションには LIFF ページ ID が必須です" });
+    }
+    if (val.image_action_type === "postback" && val.image_action_postback_data === null) {
+      ctx.addIssue({ code: "custom", path: ["image_action_postback_data"],
+        message: "postback アクションには data が必須です" });
     }
   }
 });

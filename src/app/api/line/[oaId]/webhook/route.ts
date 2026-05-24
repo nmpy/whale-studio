@@ -315,6 +315,8 @@ async function getCachedGlobalKeywords(
       nextMessageId:   true,
       sortOrder:       true,
       triggerKeyword:  true,
+      imageActionType: true, imageActionText: true, imageActionUrl: true,
+      imageActionLiffPageId: true, imageActionPostbackData: true,
       character: {
         select: { name: true, iconImageUrl: true },
       },
@@ -355,6 +357,8 @@ async function getCachedStartMsgs(
       quickReplies:    true,
       nextMessageId:   true,
       sortOrder:       true,
+      imageActionType: true, imageActionText: true, imageActionUrl: true,
+      imageActionLiffPageId: true, imageActionPostbackData: true,
       character: {
         select: { name: true, iconImageUrl: true },
       },
@@ -603,6 +607,11 @@ async function buildMessageChain(
     id: string; messageType: string; body: string | null; assetUrl: string | null;
     altText: string | null; flexPayloadJson: string | null;
     quickReplies: string | null; nextMessageId: string | null; sortOrder: number;
+    imageActionType?:         string | null;
+    imageActionText?:         string | null;
+    imageActionUrl?:          string | null;
+    imageActionLiffPageId?:   string | null;
+    imageActionPostbackData?: string | null;
     character: { name: string; iconImageUrl: string | null } | null;
   },
   vars: import("@/lib/line").PlaceholderVars = {},
@@ -618,6 +627,8 @@ async function buildMessageChain(
         id: true, messageType: true, body: true, assetUrl: true,
         altText: true, flexPayloadJson: true, quickReplies: true,
         nextMessageId: true, sortOrder: true,
+        imageActionType: true, imageActionText: true, imageActionUrl: true,
+        imageActionLiffPageId: true, imageActionPostbackData: true,
         character: { select: { name: true, iconImageUrl: true } },
       },
     });
@@ -637,6 +648,11 @@ async function buildMessageChain(
     quickReplies:    r.quickReplies,
     nextMessageId:   r.nextMessageId,
     sortOrder:       r.sortOrder,
+    imageActionType:         r.imageActionType         ?? null,
+    imageActionText:         r.imageActionText         ?? null,
+    imageActionUrl:          r.imageActionUrl          ?? null,
+    imageActionLiffPageId:   r.imageActionLiffPageId   ?? null,
+    imageActionPostbackData: r.imageActionPostbackData ?? null,
     character:       r.character,
   }));
   return {
@@ -671,6 +687,11 @@ function matchKeywordsInMemory(
       quickReplies:    m.quickReplies,
       nextMessageId:   m.nextMessageId,
       sortOrder:       m.sortOrder,
+      imageActionType:         m.imageActionType         ?? null,
+      imageActionText:         m.imageActionText         ?? null,
+      imageActionUrl:          m.imageActionUrl          ?? null,
+      imageActionLiffPageId:   m.imageActionLiffPageId   ?? null,
+      imageActionPostbackData: m.imageActionPostbackData ?? null,
       character:       m.character
         ? { name: m.character.name, iconImageUrl: m.character.iconImageUrl }
         : null,
@@ -1443,6 +1464,8 @@ async function handleTextEvent({
             id: true, messageType: true, body: true, assetUrl: true,
             altText: true, flexPayloadJson: true, quickReplies: true,
             nextMessageId: true, sortOrder: true,
+            imageActionType: true, imageActionText: true, imageActionUrl: true,
+            imageActionLiffPageId: true, imageActionPostbackData: true,
             character: { select: { name: true, iconImageUrl: true } },
           },
         });
@@ -1706,6 +1729,8 @@ async function handleTextEvent({
       id: true, messageType: true, body: true, assetUrl: true,
       altText: true, flexPayloadJson: true, quickReplies: true,
       nextMessageId: true, sortOrder: true,
+      imageActionType: true, imageActionText: true, imageActionUrl: true,
+      imageActionLiffPageId: true, imageActionPostbackData: true,
       character: { select: { name: true, iconImageUrl: true } },
     } as const;
 
