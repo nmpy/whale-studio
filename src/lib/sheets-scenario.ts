@@ -72,6 +72,7 @@ function buildRuntimePhaseFromSheets(
       lag_ms:            0,
       hint_mode:         "always" as import("@/types").HintMode,
       sort_order:        msg.sort_order,
+      next_message_id:   null,
       timing:            null,
       tap_destination_id: null,
       tap_url:            null,
