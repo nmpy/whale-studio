@@ -381,16 +381,32 @@ type PhaseMessage = PhaseRow["messages"][number];
  * true を返すノードは送信された上で連続送信チェーンを停止する。
  * ユーザーの操作（解答入力・QR選択・キーワード入力）を待つ。
  *
- * 判定条件（いずれかを満たせば true）:
- *   - quickReplies あり → QR選択待ち
- *   - kind="puzzle"     → パズル解答待ち
- *   - triggerKeyword あり（kind≠"start"）→ キーワード入力待ち
+ * 判定の優先順位 (chain 中間 / 末尾を区別する):
+ *
+ *   A. puzzle は chain 中間でも常に停止 (= 解答待ちはチェーンで継続できない)
+ *   B. triggerKeyword (非 start) は chain 中間でも常に停止 (= キーワード入力待ち)
+ *   C. quickReplies (= QR) は chain 中間ではスキップし、chain 末尾でのみ停止
+ *      → chain head の QR は moveQuickReplyToTail で chain tail のメッセージに
+ *        移動して表示される (LINE は最後の bubble の quickReply のみ表示するため)
+ *   D. それ以外は停止しない
+ *
+ * 仕様の根拠:
+ *   - PR #74 が「QR を持つメッセージで chain mid 停止 → msg2 が届かない」バグだった。
+ *     QR だけは tail 移動で対応できるが、puzzle / triggerKeyword は配置を変えられない
+ *     ため既存挙動を維持する。
  */
 export function requiresUserInteraction(m: PhaseMessage): boolean {
-  if (m.quickReplies) return true;
+  // A. puzzle は chain 中間/末尾に関わらず常に停止
   if (m.kind === "puzzle") return true;
-  // kind="start" の triggerKeyword は開始トリガー用であり、ユーザー入力待ちではない
+  // B. triggerKeyword (非 start) も chain 中間でも停止
+  //    kind="start" の triggerKeyword は開始トリガー用であり、ユーザー入力待ちではない
   if (m.kind !== "start" && m.triggerKeyword?.trim()) return true;
+  // C. quickReplies は chain 末尾でのみ停止 (= chain 中間では tail に移動して継続)
+  if (m.quickReplies) {
+    if (m.nextMessageId) return false;  // chain 中間 → 停止しない
+    return true;                         // chain 末尾 → 停止
+  }
+  // D. 待機条件なし → 停止しない
   return false;
 }
 
