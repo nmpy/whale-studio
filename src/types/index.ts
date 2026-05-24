@@ -585,8 +585,8 @@ export interface UserProgress {
 export interface WaitingForInputState {
   /** どのメッセージが受付状態にしたかの参照 (デバッグ・ログ用)。 */
   messageId:     string;
-  /** 入力を保存する変数名。 */
-  variableKey:   string;
+  /** 入力を保存する変数名。null = どこにも保存しない (ログ用途・次メッセージへの差し込みなし)。 */
+  variableKey:   string | null;
   /** 入力後に進む次メッセージ ID。 */
   nextMessageId: string | null;
   /** いつ受付状態になったか (ISO 文字列、デバッグ用)。 */

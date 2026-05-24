@@ -551,15 +551,11 @@ async function applyFreeInputPostEffect(args: {
     select: { id: true, freeInputVariableKey: true, freeInputNextMessageId: true },
   });
   if (!freeInputMsg) return;
-  // バリデーションで防がれているはずだが、念のため
-  if (!freeInputMsg.freeInputVariableKey) {
-    console.warn(`[Webhook][free-input] freeInputEnabled=true なのに variableKey なし msgId=${freeInputMsg.id.slice(0, 8)}`);
-    return;
-  }
+  // variableKey は任意 (null = ログ用途・差し込み不要)。message へ進むだけで OK。
 
   const waitingJson = JSON.stringify({
     messageId:     freeInputMsg.id,
-    variableKey:   freeInputMsg.freeInputVariableKey,
+    variableKey:   freeInputMsg.freeInputVariableKey ?? null,
     nextMessageId: freeInputMsg.freeInputNextMessageId ?? null,
     setAt:         new Date().toISOString(),
   });
@@ -1408,15 +1404,19 @@ async function handleTextEvent({
     const waiting = safeParseWaitingForInput(progress.waitingForInput);
     if (waiting) {
       const currentVars = safeParseVariables(progress.variables);
-      const nextVars   = { ...currentVars, [waiting.variableKey]: text };
-      const nextVarsJson = JSON.stringify(nextVars);
+      // variableKey が null/空 のときは variables に保存しない (= ログ用途・差し込み不要)。
+      // ただし waitingForInput はクリアし、nextMessage は送信する。
+      const nextVars = waiting.variableKey
+        ? { ...currentVars, [waiting.variableKey]: text }
+        : currentVars;
+      const shouldUpdateVars = waiting.variableKey !== null;
 
-      // DB 更新: variables を上書き、waitingForInput をクリア
+      // DB 更新: variables を上書き (key が指定されている場合のみ)、waitingForInput をクリア
       try {
         await prisma.userProgress.update({
           where: { id: progress.id },
           data: {
-            variables:        nextVarsJson,
+            ...(shouldUpdateVars && { variables: JSON.stringify(nextVars) }),
             waitingForInput:  null,
             lastInteractedAt: new Date(),
           },
@@ -1430,7 +1430,7 @@ async function handleTextEvent({
       console.log(
         `[Webhook][free-input] 受付完了`,
         `userId=${userId.slice(0, 8)}`,
-        `key=${waiting.variableKey}`,
+        `key=${waiting.variableKey ?? "(none/log-only)"}`,
         `value="${text.slice(0, 40)}"`,
         `nextMessageId=${waiting.nextMessageId?.slice(0, 8) ?? "(none)"}`,
       );

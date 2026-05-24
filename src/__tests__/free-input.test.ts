@@ -30,17 +30,25 @@ describe("createMessageSchema with free_input fields", () => {
     expect(r.success).toBe(true);
   });
 
-  it("free_input_enabled=true で variable_key が空 だと reject", () => {
-    const r = createMessageSchema.safeParse({
+  it("free_input_enabled=true で variable_key が空欄 / null でも受理する (任意項目)", () => {
+    // null
+    const r1 = createMessageSchema.safeParse({
       ...base,
       free_input_enabled: true,
       free_input_variable_key: null,
     });
-    expect(r.success).toBe(false);
+    expect(r1.success).toBe(true);
+    // 未指定
+    const r2 = createMessageSchema.safeParse({
+      ...base,
+      free_input_enabled: true,
+    });
+    expect(r2.success).toBe(true);
   });
 
-  it("無効な変数名 (1abc / user-name / 空白を含む) は Zod で reject", () => {
-    const invalids = ["1abc", "user-name", "user name", "ユーザー名", ""];
+  it("無効な変数名 (1abc / user-name / 空白を含む / 日本語) は Zod で reject (空文字は許容)", () => {
+    // 空文字は許容に変わったため、無効値リストから "" は除外
+    const invalids = ["1abc", "user-name", "user name", "ユーザー名"];
     for (const key of invalids) {
       const r = createMessageSchema.safeParse({
         ...base,
@@ -126,9 +134,21 @@ describe("safeParseWaitingForInput()", () => {
     const r = safeParseWaitingForInput(json);
     expect(r?.nextMessageId).toBeNull();
   });
-  it("必須キー欠落は null を返す", () => {
-    expect(safeParseWaitingForInput('{"messageId":"m1"}')).toBeNull();
+  it("messageId 欠落は null を返す", () => {
     expect(safeParseWaitingForInput('{}')).toBeNull();
+  });
+  it("variableKey なし (任意化後) でも parse する — variableKey は null", () => {
+    const json = JSON.stringify({ messageId: "m1", nextMessageId: "m2" });
+    const r = safeParseWaitingForInput(json);
+    expect(r).not.toBeNull();
+    expect(r?.variableKey).toBeNull();
+    expect(r?.messageId).toBe("m1");
+    expect(r?.nextMessageId).toBe("m2");
+  });
+  it("variableKey が空文字でも null として扱う", () => {
+    const json = JSON.stringify({ messageId: "m1", variableKey: "" });
+    const r = safeParseWaitingForInput(json);
+    expect(r?.variableKey).toBeNull();
   });
   it("null / 不正 JSON は null", () => {
     expect(safeParseWaitingForInput(null)).toBeNull();
@@ -177,10 +197,38 @@ describe("Webhook 自由入力フロー — ロジック整合性", () => {
     const waitingRaw = JSON.stringify({ messageId: "m1", variableKey: "userName" });
     const waiting = safeParseWaitingForInput(waitingRaw)!;
     const userInput = "なみぽよ";
-    const newVars = { ...oldVars, [waiting.variableKey]: userInput };
+    const newVars = waiting.variableKey
+      ? { ...oldVars, [waiting.variableKey]: userInput }
+      : oldVars;
 
     expect(newVars).toEqual({ nickname: "ぽよ", userName: "なみぽよ" });
     expect(JSON.parse(JSON.stringify(newVars))).toEqual(newVars); // serialize 可能
+  });
+
+  it("variableKey が null の場合、入力を受け取っても variables には保存しない (ログ用途)", () => {
+    // 「感想を教えてください」のようなケース。waiting に variableKey は無い。
+    const oldRaw = '{"nickname": "ぽよ"}';
+    const oldVars = safeParseVariables(oldRaw);
+    const waitingRaw = JSON.stringify({ messageId: "m1", nextMessageId: "m2" });
+    const waiting = safeParseWaitingForInput(waitingRaw)!;
+    expect(waiting.variableKey).toBeNull();
+
+    // webhook 側のロジックを模倣: variableKey が null なら variables は更新しない
+    const newVars = waiting.variableKey
+      ? { ...oldVars, [waiting.variableKey]: "入力テキスト" }
+      : oldVars;
+    expect(newVars).toEqual({ nickname: "ぽよ" }); // 変化なし
+  });
+
+  it("variableKey が null でも nextMessage は送信される (= waiting.nextMessageId を持つ)", () => {
+    // 「感想を教えてください」→「ありがとうございます」フロー
+    const waitingRaw = JSON.stringify({
+      messageId: "m_feedback",
+      nextMessageId: "m_thanks",
+    });
+    const waiting = safeParseWaitingForInput(waitingRaw)!;
+    expect(waiting.variableKey).toBeNull();
+    expect(waiting.nextMessageId).toBe("m_thanks"); // 次メッセージ送信可能
   });
 
   it("waitingForInput が無い場合、入力は variables に保存されない (= 通常のキーワード判定に進む)", () => {
