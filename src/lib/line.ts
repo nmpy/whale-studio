@@ -9,7 +9,6 @@
 import crypto from "crypto";
 import type { RuntimePhase, QuickReplyItem } from "@/types";
 import { interpolate } from "@/lib/template";
-import { expandChainsInArray, moveQuickReplyToTail } from "@/lib/chain-expansion";
 
 // ────────────────────────────────────────────────
 // 型
@@ -790,18 +789,12 @@ export function buildPhaseMessages(
 
   // ── DB Message 行を 1 件ずつ独立した吹き出しに変換 ──
   // 変換契約は convertMessageToLine() に集約されている。
-  //
-  // 連続送信チェーン (= next_message_id) は head から順に並べ替える。
-  // 例: phase.messages が DB order で [m2, m1] (m1.next=m2) でも、
-  //     並べ替え後は [m1, m2] になる。chain 継続は head の直後に並び、
-  //     独立行として並ばないため LINE 上で 1 つの塊として届く。
-  const orderedMessages = expandChainsInArray(phase.messages, (m) => m.next_message_id);
-  const inputCount = orderedMessages.length;
+  const inputCount = phase.messages.length;
   console.log(
-    `[buildPhaseMessages] 入力 ${inputCount}件 (chain 展開後)`,
-    orderedMessages.map((m) => `id=${m.id.slice(0, 8)} kind=${m.kind} type=${m.message_type} next=${m.next_message_id?.slice(0, 8) ?? "null"}`).join(" / "),
+    `[buildPhaseMessages] 入力 ${inputCount}件`,
+    phase.messages.map((m) => `id=${m.id.slice(0, 8)} kind=${m.kind} type=${m.message_type} body=${m.body ? "あり" : "null"} asset=${m.asset_url ? "あり" : "null"}`).join(" / "),
   );
-  for (const msg of orderedMessages) {
+  for (const msg of phase.messages) {
     // hint_mode に基づいてヒント QR をフィルタ
     const visibleQrItems = (msg.hint_mode === "always" || !msg.hint_mode)
       ? msg.quick_replies
@@ -843,12 +836,6 @@ export function buildPhaseMessages(
   // ── サマリログ ──
   const prefixOffset = prefixText ? 1 : 0;
   logConversionSummary("buildPhaseMessages", phase.id, inputCount, messages.length - prefixOffset);
-
-  // ── chain 末尾に quickReply を集約 ──
-  // 例: 1通目 (user-set QR) + 2通目 (no QR) → 1通目から 2通目へ QR を移動。
-  // LINE は最後の bubble の quickReply しか表示しないため、これを行わないと
-  // 1通目に付けたまま 2通目が送られた時に QR が見えなくなる。
-  moveQuickReplyToTail(messages as { quickReply?: LineQuickReply }[]);
 
   // ── エンディング or クイックリプライ付与 ──
   if (phase.transitions === null) {
@@ -933,14 +920,9 @@ export function buildKeywordMessages(
   vars:          PlaceholderVars = {},
 ): LineMessage[] {
   const messages: LineMessage[] = [];
-  // 配列内に chain 継続が含まれていれば head から順に並べ替える。
-  // 例: handleStartTrigger の getCachedStartMsgs() で複数の kind="start" を取得した場合や、
-  //     chain でつないだ keyword 応答メッセージを直接渡された場合に効く。
-  // 配列に存在しない継続メッセージは別途 buildMessageChain (webhook 内) が DB から fetch する。
-  const orderedRecords = expandChainsInArray(records, (r) => r.nextMessageId);
-  const inputCount = orderedRecords.length;
+  const inputCount = records.length;
 
-  for (const msg of orderedRecords) {
+  for (const msg of records) {
     const sender: LineSender | undefined = msg.character
       ? buildSender({ name: msg.character.name, icon_image_url: msg.character.iconImageUrl })
       : systemSender;
@@ -982,8 +964,19 @@ export function buildKeywordMessages(
 
   // LINE は最後のメッセージの quickReply のみ表示する仕様のため、
   // 中間メッセージに quickReply が設定されていたら最後のメッセージに移動する。
-  // (= chain head に user QR が付いていても、chain tail で表示される)
   const sliced = messages.slice(0, LINE_MSG_MAX);
-  moveQuickReplyToTail(sliced as { quickReply?: LineQuickReply }[]);
+  if (sliced.length > 1) {
+    const lastMsg = sliced[sliced.length - 1] as { quickReply?: LineQuickReply };
+    if (!lastMsg.quickReply) {
+      for (let i = sliced.length - 2; i >= 0; i--) {
+        const m = sliced[i] as { quickReply?: LineQuickReply };
+        if (m.quickReply) {
+          lastMsg.quickReply = m.quickReply;
+          delete m.quickReply;
+          break;
+        }
+      }
+    }
+  }
   return sliced;
 }

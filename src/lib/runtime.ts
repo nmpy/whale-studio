@@ -290,7 +290,6 @@ function messageRowToRuntime(
     lag_ms:            m.lagMs           ?? 0,
     hint_mode:         (m.hintMode ?? "always") as import("@/types").HintMode,
     sort_order:        m.sortOrder,
-    next_message_id:   m.nextMessageId ?? null,
     timing,
     tap_destination_id: m.tapDestinationId ?? null,
     tap_url:            m.tapUrl ?? null,

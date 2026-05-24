@@ -649,9 +649,6 @@ export interface RuntimePhaseMessage {
   /** ヒント表示モード */
   hint_mode: HintMode;
   sort_order:        number;
-  /** 連続送信チェーン先メッセージ ID (null = チェーン末尾)。
-   *  runtime 送信時に「1 つの塊」として head から順に並べ替えるために使う。 */
-  next_message_id: string | null;
   /** メッセージ単位の演出タイミング設定 */
   timing: MessageTimingConfig | null;
   /** タップ遷移先 destination ID */
