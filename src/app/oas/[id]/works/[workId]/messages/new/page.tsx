@@ -35,6 +35,7 @@ export default function NewMessagePage() {
       });
 
       // 2通目以降のメッセージを作成してチェーン (演出設定込み)
+      console.log(`[diag][save-new] start head=${created.id.slice(0, 8)} additional=${form.additionalMessages.length}`);
       let prevId: string = created.id;
       for (const slot of form.additionalMessages) {
         const additionalBody = additionalSlotToMsgBody(slot, {
@@ -47,8 +48,10 @@ export default function NewMessagePage() {
         });
         const additionalCreated = await messageApi.create(getDevToken(), additionalBody);
         await messageApi.update(getDevToken(), prevId, { next_message_id: additionalCreated.id });
+        console.log(`[diag][save-new] linked prev=${prevId.slice(0, 8)} → next=${additionalCreated.id.slice(0, 8)}`);
         prevId = additionalCreated.id;
       }
+      console.log(`[diag][save-new] complete chainTail=${prevId.slice(0, 8)}`);
 
       showToast("メッセージを追加しました", "success");
       router.push(`/oas/${oaId}/works/${workId}/messages`);

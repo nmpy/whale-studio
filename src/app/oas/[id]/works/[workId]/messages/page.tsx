@@ -438,6 +438,16 @@ export default function MessagesPage() {
   // 一覧の件数 (タブ / フッター) はチェーン継続を除いた「先頭メッセージ」基準で数える。
   // phase 見出しの 件数 は buildPhaseGroups 内で既に filter 済みなので別途集計不要。
   const headMessageCount = messages.length - chainContinuationIds.size;
+  // [diag] 一覧フィルタ動作確認用ログ (= ブラウザ console で確認可能)
+  if (typeof window !== "undefined" && messages.length > 0) {
+    console.log(`[diag][list] total=${messages.length} continuations=${chainContinuationIds.size} heads=${headMessageCount}`);
+    const sample = messages.slice(0, 5).map((m) => ({
+      id:   m.id.slice(0, 8),
+      next: m.next_message_id ? m.next_message_id.slice(0, 8) : null,
+      isContinuation: chainContinuationIds.has(m.id),
+    }));
+    console.log(`[diag][list] sample (first 5):`, sample);
+  }
 
   // フェーズごとにメッセージをグルーピング
   function buildPhaseGroups(): PhaseGroup[] {
