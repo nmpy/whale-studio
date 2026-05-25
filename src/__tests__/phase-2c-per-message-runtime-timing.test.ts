@@ -323,3 +323,50 @@ describe("Phase 2c hotfix: abortPendingLoading / showLoadingForMessage", () => {
     expect(() => ctrl.abortPendingLoading()).not.toThrow();
   });
 });
+
+// ──────────────────────────────────────────────────────────
+// 5. Phase 2c hotfix v2: msg1 typing もreceivedAt 非依存で安定する
+// ──────────────────────────────────────────────────────────
+
+describe("Phase 2c hotfix v2: msg1 typing は receivedAt 経過時間でスキップされない", () => {
+  it("waitTypingForMessage は受信から 5 秒経過していても typing_min ms 待機する", async () => {
+    // Phase 2c hotfix v2 のコアシナリオ:
+    // cold start で webhook 受信から msg1 送信まで数秒経過していても、
+    // msg1 に typing_enabled=true / typing_min_ms=1500 があれば必ず 1.5 秒待つ。
+    const ctrl = new ReadReceiptController({
+      userId:             "u-test",
+      channelAccessToken: "tok",
+      isOneOnOne:         true,
+      receivedAt:         Date.now() - 5000,  // 5 秒前に受信した想定
+      // env では typing OFF (= msg 設定が支配的になるよう)
+      config: { typingEnabled: false, loadingThresholdMs: 3000 },
+    });
+    const t0 = Date.now();
+    await ctrl.waitTypingForMessage({
+      read_receipt_mode: null, read_delay_ms: null,
+      typing_enabled: true, typing_min_ms: 200, typing_max_ms: 200,
+      loading_enabled: null, loading_threshold_ms: null,
+      loading_min_seconds: null, loading_max_seconds: null,
+    });
+    const elapsed = Date.now() - t0;
+    // 200ms 待機している (= 経過時間 5 秒 > loadingThresholdMs 3 秒 でもスキップされない)
+    expect(elapsed).toBeGreaterThanOrEqual(180);
+  });
+
+  it("対照: waitTypingBeforeReply は受信から loadingThresholdMs 経過するとスキップする (= 既存挙動)", async () => {
+    // 既存の waitTypingBeforeReply は意図的に「処理が遅いときは typing を出さない」設計。
+    // hotfix v2 は msg1 で waitTypingForMessage を使うことでこの問題を回避している。
+    const ctrl = new ReadReceiptController({
+      userId:             "u-test",
+      channelAccessToken: "tok",
+      isOneOnOne:         true,
+      receivedAt:         Date.now() - 5000,  // 5 秒前に受信
+      config: { typingEnabled: true, typingMinMs: 200, typingMaxMs: 200, loadingThresholdMs: 3000 },
+    });
+    const t0 = Date.now();
+    await ctrl.waitTypingBeforeReply();
+    const elapsed = Date.now() - t0;
+    // 既存挙動: 経過時間 > loadingThresholdMs なのでスキップ
+    expect(elapsed).toBeLessThan(50);
+  });
+});

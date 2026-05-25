@@ -696,10 +696,14 @@ export async function replyWithLagToLine(
     // _timing が無ければ何もしない (= 単に lag のみ待つ)。
     const typingStart = Date.now();
     if (controller && msg._timing) {
+      console.log(`[diag][typing-before] msg=${idOf(msg)} via=perMessage (chain push #${i + 1})`);
       await controller.waitTypingForMessage(msg._timing);
       await controller.showLoadingForMessage(msg._timing);
+    } else {
+      console.log(`[diag][typing-before] msg=${idOf(msg)} via=none (no _timing or no ctrl)`);
     }
     const typingWaited = Date.now() - typingStart;
+    console.log(`[diag][typing-after] msg=${idOf(msg)} waitedMs=${typingWaited} (chain push #${i + 1})`);
     await pushToLine(userId, [msg], channelAccessToken);
     console.log(`[diag][timing-send-after] msg=${idOf(msg)} pushed=true typingWaited=${typingWaited}ms`);
   }
