@@ -375,9 +375,9 @@ function WorkTimingSection({
           </div>
           )}
 
-          {/* ── typing ── */}
+          {/* ── 送信前の待機時間（旧: typing 風の間） ── */}
           <div className="form-group">
-            <label style={miniLabel}>typing 風の間</label>
+            <label style={miniLabel}>送信前の待機時間（画面には表示されません）</label>
             <select className="form-input" style={{ maxWidth: 120 }} value={form.typing_enabled}
               onChange={(e) => set("typing_enabled", e.target.value)} disabled={!canEdit}>
               {BOOL_INHERIT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -412,10 +412,10 @@ function WorkTimingSection({
            </div>
           )}
           
-          {/* ── ローディング ── */}
-  
+          {/* ── 「入力中...」表示（旧: ローディングアニメーション） ── */}
+
           <div className="form-group">
-            <label style={miniLabel}>ローディングアニメーション</label>
+            <label style={miniLabel}>「入力中...」表示</label>
             <select className="form-input" style={{ maxWidth: 120 }} value={form.loading_enabled}
               onChange={(e) => set("loading_enabled", e.target.value)} disabled={!canEdit}>
               {BOOL_INHERIT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -424,10 +424,10 @@ function WorkTimingSection({
           {form.loading_enabled === "true" && (
             <>
               <div className="form-group">
-                <label style={miniLabel}>ローディング表示閾値（ms）</label>
+                <label style={miniLabel}>表示閾値（ms）</label>
                 <input type="number" className="form-input" style={miniInput} value={form.loading_threshold_ms}
                   onChange={(e) => set("loading_threshold_ms", e.target.value)} min={0} max={30000} step={500} placeholder="3000" disabled={!canEdit} />
-                <div style={hintText}>処理時間がこの値を超えたらローディング表示</div>
+                <div style={hintText}>処理時間がこの値を超えたら「入力中...」を表示</div>
               </div>
               <div style={inlineRow}>
                 <div className="form-group">

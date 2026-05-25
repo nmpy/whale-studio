@@ -239,8 +239,8 @@ describe("summarizeTiming (Phase 2c)", () => {
     expect(summarizeTiming({ lag_ms: 1500 })).toContain("待機 1.5秒");
   });
 
-  it("typing_enabled=true → 'typing' を含む", () => {
-    expect(summarizeTiming({ typing_enabled: true })).toContain("typing");
+  it("typing_enabled=true → '送信前の間' を含む (= 旧: 'typing')", () => {
+    expect(summarizeTiming({ typing_enabled: true })).toContain("送信前の間");
   });
 
   it('read_receipt_mode="delayed" + read_delay_ms=1000 → "既読遅延 1秒"', () => {
@@ -258,7 +258,11 @@ describe("summarizeTiming (Phase 2c)", () => {
       read_receipt_mode: "delayed", read_delay_ms: 1500,
     });
     expect(s).toContain("待機 2秒");
-    expect(s).toContain("typing");
+    expect(s).toContain("送信前の間");
     expect(s).toContain("既読遅延 1.5秒");
+  });
+
+  it("loading_enabled=true → '「入力中...」' を含む (= 旧: 'ローディング')", () => {
+    expect(summarizeTiming({ loading_enabled: true })).toContain("「入力中...」");
   });
 });
