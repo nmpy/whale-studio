@@ -12,7 +12,7 @@ import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
 import { ViewerBanner } from "@/components/PermissionGuard";
 import { GuideCard } from "@/components/onboarding/GuideCard";
 import type { MessageWithRelations, MessageType, PhaseWithCounts, TransitionWithPhases, QuickReplyItem } from "@/types";
-import { collectChainContinuationIds, chainSizeFrom } from "./_list-helpers";
+import { collectChainContinuationIds, chainSizeFrom, getChainContinuations } from "./_list-helpers";
 
 const MESSAGE_TYPE_LABEL: Record<MessageType, string> = {
   text:     "テキスト",
@@ -401,6 +401,16 @@ export default function MessagesPage() {
   const [transitions, setTransitions]   = useState<TransitionWithPhases[]>([]);
   const [loading, setLoading]           = useState(true);
   const [loadError, setLoadError]       = useState<string | null>(null);
+  // chain head ID の Set。展開状態の head はここに含まれる (= 連続メッセージ展開トグル用)
+  const [expandedChains, setExpandedChains] = useState<Set<string>>(new Set());
+  const toggleChainExpansion = (headId: string) => {
+    setExpandedChains((prev) => {
+      const next = new Set(prev);
+      if (next.has(headId)) next.delete(headId);
+      else next.add(headId);
+      return next;
+    });
+  };
 
   useEffect(() => {
     const token = getDevToken();
@@ -945,18 +955,29 @@ export default function MessagesPage() {
                               {msg.body || <span style={{ color: "#9ca3af" }}>—</span>}
                             </span>
                           )}
-                          {/* chain head のとき、連続送信通数を青バッジで表示 */}
-                          {msg.next_message_id && chainSizeFrom(messages, msg.id) > 1 && (
-                            <div style={{
-                              marginTop: 4, display: "inline-flex", alignItems: "center", gap: 4,
-                              fontSize: 10, fontWeight: 600,
-                              background: "#eff6ff", color: "#1d4ed8",
-                              border: "1px solid #bfdbfe",
-                              borderRadius: 10, padding: "1px 7px",
-                            }}>
-                              ▾ {chainSizeFrom(messages, msg.id)} 通の連続メッセージ
-                            </div>
-                          )}
+                          {/* chain head のとき、連続送信通数を青バッジで表示 (= クリックで展開トグル) */}
+                          {msg.next_message_id && chainSizeFrom(messages, msg.id) > 1 && (() => {
+                            const isExpanded = expandedChains.has(msg.id);
+                            const chainCount = chainSizeFrom(messages, msg.id);
+                            return (
+                              <button
+                                type="button"
+                                onClick={() => toggleChainExpansion(msg.id)}
+                                aria-expanded={isExpanded}
+                                style={{
+                                  marginTop: 4, display: "inline-flex", alignItems: "center", gap: 4,
+                                  fontSize: 10, fontWeight: 600,
+                                  background: "#eff6ff", color: "#1d4ed8",
+                                  border: "1px solid #bfdbfe",
+                                  borderRadius: 10, padding: "1px 7px",
+                                  cursor: "pointer",
+                                }}
+                                title={isExpanded ? "連続メッセージを閉じる" : "連続メッセージを展開して内容を確認"}
+                              >
+                                {isExpanded ? "▴" : "▾"} {chainCount} 通の連続メッセージ
+                              </button>
+                            );
+                          })()}
                         </td>
 
                         {/* キャラクター */}
@@ -998,6 +1019,77 @@ export default function MessagesPage() {
                           )}
                         </td>
                       </tr>
+                      {/* chain 展開中: 2 通目以降を「中身プレビュー」として小さく並べる */}
+                      {expandedChains.has(msg.id) && getChainContinuations(messages, msg.id).map((cont, ci) => (
+                        <tr
+                          key={`chain-${msg.id}-${cont.id}`}
+                          style={{
+                            background: "#f9fafb",
+                            borderBottom: ci === getChainContinuations(messages, msg.id).length - 1 ? "1px solid var(--border-light)" : "1px dashed #e5e7eb",
+                            fontSize: 11,
+                          }}
+                        >
+                          {/* タイプ列: chain インデント表示 */}
+                          <td style={{ padding: "8px 14px", paddingLeft: 36, color: "#94a3b8", fontSize: 10, whiteSpace: "nowrap" }}>
+                            └─ {ci + 2}通目
+                          </td>
+                          {/* 種別 */}
+                          <td style={{ padding: "8px 14px", whiteSpace: "nowrap" }}>
+                            {cont.message_type === "riddle" ? (
+                              <span style={{ fontSize: 10, color: "#9ca3af" }}>—</span>
+                            ) : (
+                              <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10, color: "#64748b" }}>
+                                {MESSAGE_TYPE_ICON[cont.message_type]}
+                                {MESSAGE_TYPE_LABEL[cont.message_type]}
+                              </span>
+                            )}
+                          </td>
+                          {/* 本文プレビュー */}
+                          <td style={{ padding: "8px 14px", maxWidth: 280 }}>
+                            {cont.message_type === "image" ? (
+                              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                {cont.asset_url ? (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img
+                                    src={cont.asset_url}
+                                    alt="画像"
+                                    style={{ width: 36, height: 27, objectFit: "cover", borderRadius: 3, border: "1px solid #e5e7eb" }}
+                                    onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                                  />
+                                ) : null}
+                                <span style={{ fontSize: 10, color: "#9ca3af" }}>画像メッセージ</span>
+                              </div>
+                            ) : (
+                              <span style={{
+                                display: "-webkit-box", WebkitLineClamp: 2,
+                                WebkitBoxOrient: "vertical", overflow: "hidden",
+                                fontSize: 11, color: "#475569", wordBreak: "break-all",
+                              }}>
+                                {cont.body || <span style={{ color: "#cbd5e1" }}>—</span>}
+                              </span>
+                            )}
+                            {/* QR / quickReply が設定済みなら小さく注記 */}
+                            {cont.quick_replies && cont.quick_replies.length > 0 && (
+                              <span style={{
+                                marginLeft: 6, display: "inline-block",
+                                fontSize: 9, color: "#64748b",
+                                background: "#fff", border: "1px solid #e2e8f0",
+                                borderRadius: 6, padding: "0 5px", verticalAlign: "middle",
+                              }}>
+                                QR {cont.quick_replies.length}
+                              </span>
+                            )}
+                          </td>
+                          {/* キャラクター */}
+                          <td style={{ padding: "8px 14px", whiteSpace: "nowrap" }}>
+                            <CharTag character={cont.character} />
+                          </td>
+                          {/* 状態 / 順序 / 編集 列は continuation では空 (= 親の塊に内包されているため独立操作対象にしない) */}
+                          <td style={{ padding: "8px 14px", whiteSpace: "nowrap", color: "#cbd5e1", fontSize: 10 }}>—</td>
+                          <td style={{ padding: "8px 14px", textAlign: "center", color: "#cbd5e1", fontSize: 10 }}>—</td>
+                          <td style={{ padding: "8px 14px" }} />
+                        </tr>
+                      ))}
                       <BranchRows
                         msg={msg}
                         allMessages={messages}
