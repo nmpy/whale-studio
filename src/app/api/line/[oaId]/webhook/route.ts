@@ -720,6 +720,11 @@ async function buildMessageChain(
     loadingThresholdMs?:   number | null;
     loadingMinSeconds?:    number | null;
     loadingMaxSeconds?:    number | null;
+    /** Phase 2c hotfix v4: 既に集約済みの timing (= matchKeywordsInMemory が前段で計算)
+     *  を引き取れるようにする。raw columns が削られた `match` から来る経路で
+     *  buildKeywordTiming(r) が null を返してしまい head の timing が落ちる問題への対処。
+     *  raw columns と timing 両方ある場合は timing を優先する。 */
+    timing?:               import("@/types").MessageTimingConfig | null;
     character: { name: string; iconImageUrl: string | null } | null;
   },
   vars: import("@/lib/line").PlaceholderVars = {},
@@ -759,6 +764,8 @@ async function buildMessageChain(
   console.log(`[diag][chain] expanded count=${records.length} ids=[${records.map((r) => r.id.slice(0, 8)).join(",")}]`);
 
   // KeywordMessageRecord 互換形式に変換（nextMessageId なし・triggerKeyword なし）
+  // Phase 2c hotfix v4: r.timing が既に集約されていれば優先する (= matchKeywordsInMemory 経由)。
+  // raw columns しか無い場合は buildKeywordTiming(r) で再計算 (= 再帰 findUnique 経由)。
   const asKeywordRecords: import("@/lib/line").KeywordMessageRecord[] = records.map((r) => ({
     id:              r.id,
     messageType:     r.messageType,
@@ -775,7 +782,10 @@ async function buildMessageChain(
     imageActionLiffPageId:   r.imageActionLiffPageId   ?? null,
     imageActionPostbackData: r.imageActionPostbackData ?? null,
     lagMs:           r.lagMs ?? null,
-    timing:          buildKeywordTiming(r),
+    // (r as { timing?: ... }).timing は records[0] (= first) のみ存在しうる。
+    // 再帰 findUnique の next は raw columns のみで timing キーがない。
+    timing:          (r as { timing?: import("@/types").MessageTimingConfig | null }).timing
+                      ?? buildKeywordTiming(r),
     character:       r.character,
   }));
   return {

@@ -10,7 +10,7 @@
 //   4. 既存単発メッセージの演出挙動が壊れない
 
 import { describe, it, expect } from "vitest";
-import { buildPhaseMessages, type LineTextMessage } from "@/lib/line";
+import { buildPhaseMessages, buildKeywordMessages, type LineTextMessage } from "@/lib/line";
 import { ReadReceiptController } from "@/lib/line-read-receipt";
 import { moveQuickReplyToTail } from "@/lib/quick-reply-tail";
 import type { RuntimePhase, MessageTimingConfig } from "@/types";
@@ -313,6 +313,46 @@ describe("Phase 2c hotfix: abortPendingLoading / showLoadingForMessage", () => {
       loading_enabled: true,
     });
     expect(ctrl.getTimingLog().loadingStartedAt).toBeNull();
+  });
+
+  it("Phase 2c hotfix v4: buildKeywordMessages は record.timing が既に集約済みなら raw columns 無しでも維持する", () => {
+    // 背景: matchKeywordsInMemory が PhaseRow.messages から timing を集約して
+    // record に詰め直すが、その record には raw columns (readReceiptMode 等) が
+    // 残らない。下流の buildMessageChain は buildKeywordTiming(r) を呼ぶが、
+    // raw columns が無いと null を返してしまい head の timing が落ちていた。
+    // 修正後: `r.timing ?? buildKeywordTiming(r)` で aggregated を優先する。
+    //
+    // ここでは convertMessageToLine 経由でその挙動を確認する (= 純関数で再現)。
+    const records = [{
+      id: "kw1",
+      messageType: "text",
+      body: "画像がタップされました",
+      assetUrl: null, altText: null, flexPayloadJson: null,
+      quickReplies: null, nextMessageId: null, sortOrder: 0,
+      // raw columns は無い (= matchKeywordsInMemory の map 出力を再現)
+      lagMs: 2000,
+      timing: {
+        read_receipt_mode: "delayed" as const,
+        read_delay_ms: 2000,
+        typing_enabled: true,
+        typing_min_ms: 0,
+        typing_max_ms: 2000,
+        loading_enabled: true,
+        loading_threshold_ms: 3000,
+        loading_min_seconds: 3,
+        loading_max_seconds: 3,
+      },
+      character: null,
+    }];
+    const out = buildKeywordMessages(records as Parameters<typeof buildKeywordMessages>[0]);
+    expect(out.length).toBe(1);
+    const lm = out[0] as LineTextMessage;
+    // 受け入れ条件: 集約済み timing が head の _timing として残る
+    expect(lm._timing).toBeDefined();
+    expect(lm._timing?.typing_enabled).toBe(true);
+    expect(lm._timing?.read_receipt_mode).toBe("delayed");
+    expect(lm._timing?.loading_enabled).toBe(true);
+    expect(lm._lagMs).toBe(2000);
   });
 
   it("Phase 2c hotfix v3: showLoadingForMessage は loadingShown=true でも再発火する (= LINE API は重複呼び出しを許容)", async () => {
