@@ -32,6 +32,29 @@ export function collectChainContinuationIds(messages: MessageLike[]): Set<string
   return out;
 }
 
+/** head から chain を walk して「2 通目以降」のメッセージ配列を返す (= head 自身は含まない)。
+ *  一覧画面で chain head の下に展開表示するために使う。
+ *  上限 4 件 (= LINE 上限 5 件 - head 1 件) でループ + 循環参照防止。
+ *  next_message_id が配列内に存在しない ID を指していたらそこで walk を止める。
+ *
+ *  generic T で渡された型をそのまま返すので、呼び出し側で全プロパティ (body / character 等) が使える。 */
+export function getChainContinuations<T extends MessageLike>(
+  messages: T[],
+  headId: string,
+): T[] {
+  const byId = new Map(messages.map((m) => [m.id, m]));
+  const out: T[] = [];
+  const visited = new Set<string>([headId]);
+  let currentId: string | null = byId.get(headId)?.next_message_id ?? null;
+  while (currentId && !visited.has(currentId) && out.length < 4) {
+    if (!byId.has(currentId)) break;
+    visited.add(currentId);
+    out.push(byId.get(currentId)!);
+    currentId = byId.get(currentId)?.next_message_id ?? null;
+  }
+  return out;
+}
+
 /** headId を起点に next_message_id を walk し、合計件数 (= 自分自身 + 子孫) を返す。
  *  上限 5 件 (= LINE 返信上限と一致) でループ + 循環参照防止。
  *  headId 自身が見つからない場合は 0 を返す。

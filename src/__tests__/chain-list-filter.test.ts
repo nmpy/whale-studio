@@ -7,6 +7,7 @@ import { describe, it, expect } from "vitest";
 import {
   collectChainContinuationIds,
   chainSizeFrom,
+  getChainContinuations,
 } from "@/app/oas/[id]/works/[workId]/messages/_list-helpers";
 
 describe("collectChainContinuationIds", () => {
@@ -110,5 +111,73 @@ describe("chainSizeFrom", () => {
       { id: "a", next_message_id: "ghost" },
     ];
     expect(chainSizeFrom(messages, "a")).toBe(1);
+  });
+});
+
+describe("getChainContinuations", () => {
+  it("単独メッセージなら空配列を返す (= head 以外の chain なし)", () => {
+    const messages = [{ id: "a", next_message_id: null }];
+    expect(getChainContinuations(messages, "a")).toEqual([]);
+  });
+
+  it("a → b chain: head=a なら [b]、head 自身は含まれない", () => {
+    const messages = [
+      { id: "a", next_message_id: "b" },
+      { id: "b", next_message_id: null },
+    ];
+    const r = getChainContinuations(messages, "a");
+    expect(r.map((m) => m.id)).toEqual(["b"]);
+  });
+
+  it("a → b → c chain: head=a なら [b, c]", () => {
+    const messages = [
+      { id: "a", next_message_id: "b" },
+      { id: "b", next_message_id: "c" },
+      { id: "c", next_message_id: null },
+    ];
+    const r = getChainContinuations(messages, "a");
+    expect(r.map((m) => m.id)).toEqual(["b", "c"]);
+  });
+
+  it("循環参照でも head は重複追加されず無限ループしない", () => {
+    const messages = [
+      { id: "a", next_message_id: "b" },
+      { id: "b", next_message_id: "a" },  // 循環
+    ];
+    const r = getChainContinuations(messages, "a");
+    // b は追加されるが a は visited なので停止
+    expect(r.map((m) => m.id)).toEqual(["b"]);
+  });
+
+  it("ghost reference があってもクラッシュしない", () => {
+    const messages = [
+      { id: "a", next_message_id: "ghost" },
+    ];
+    expect(getChainContinuations(messages, "a")).toEqual([]);
+  });
+
+  it("head が見つからなければ空配列", () => {
+    expect(getChainContinuations([], "missing")).toEqual([]);
+  });
+
+  it("4 件まで walk (= LINE 上限 5 件 - head 1 件)", () => {
+    // 6 通の chain → continuation は 4 件まで
+    const messages = Array.from({ length: 6 }, (_, i) => ({
+      id: `m${i}`,
+      next_message_id: i < 5 ? `m${i + 1}` : null,
+    }));
+    const r = getChainContinuations(messages, "m0");
+    expect(r.length).toBe(4);
+    expect(r.map((m) => m.id)).toEqual(["m1", "m2", "m3", "m4"]);
+  });
+
+  it("呼び出し側が渡した全プロパティが保持される (= generic 型)", () => {
+    type WithBody = { id: string; next_message_id?: string | null; body: string };
+    const messages: WithBody[] = [
+      { id: "a", next_message_id: "b", body: "msg1 body" },
+      { id: "b", next_message_id: null, body: "msg2 body" },
+    ];
+    const r = getChainContinuations(messages, "a");
+    expect(r[0].body).toBe("msg2 body");
   });
 });
