@@ -666,6 +666,16 @@ export async function replyWithLagToLine(
   const [first, ...rest] = messages;
   await replyToLine(replyToken, [first], channelAccessToken);
 
+  // Phase 2c hotfix: chain 送信に入る前に webhook-level scheduleLoading を抑止する。
+  // 理由: webhook 開始時に予約された loading が msg1/msg2 の間 (= lag/typing 待機中) に
+  //       発火すると、ユーザー体感では「msg1/msg2 の合間にランダムに loading が出る」
+  //       不安定さに見える。chain 内 per-message の loading は下のループで明示的に
+  //       showLoadingForMessage で処理する。
+  if (controller) {
+    controller.abortPendingLoading();
+    console.log(`[diag][timing-loading-abort] chain送信開始のため webhook scheduleLoading を abort`);
+  }
+
   // 2 件目以降を Push API でラグ付き 1 件ずつ送信（件数制限なし）
   console.log(`[replyWithLagToLine] reply=1件 push=${rest.length}件 total=${messages.length}件`);
   for (let i = 0; i < rest.length; i++) {
@@ -675,19 +685,25 @@ export async function replyWithLagToLine(
     console.log(
       `[diag][timing-send-before] msg=${idOf(msg)} waitLag=${delay}ms`,
       `typing=${msg._timing?.typing_enabled ?? "—"}`,
+      `loading=${msg._timing?.loading_enabled ?? "—"}`,
       `lagSource=${msg._lagMs != null ? "_lagMs" : "default"}`,
     );
     await sleep(delay);
-    // Phase 2c: per-message typing 演出を反映する。
+    // Phase 2c: per-message 演出を反映する (typing → loading の順)。
     // chain head の typing は waitTypingBeforeReply で適用済み。
-    // 2 通目以降は waitTypingForMessage を使い、receivedAt 経過時間に縛られず
-    // メッセージ作者の typing_min_ms ~ typing_max_ms を効かせる。
+    // 2 通目以降は waitTypingForMessage / showLoadingForMessage を使い、
+    // receivedAt 経過時間に縛られずメッセージ作者の設定を効かせる。
     // _timing が無ければ何もしない (= 単に lag のみ待つ)。
     const typingStart = Date.now();
     if (controller && msg._timing) {
+      console.log(`[diag][typing-before] msg=${idOf(msg)} via=perMessage (chain push #${i + 1})`);
       await controller.waitTypingForMessage(msg._timing);
+      await controller.showLoadingForMessage(msg._timing);
+    } else {
+      console.log(`[diag][typing-before] msg=${idOf(msg)} via=none (no _timing or no ctrl)`);
     }
     const typingWaited = Date.now() - typingStart;
+    console.log(`[diag][typing-after] msg=${idOf(msg)} waitedMs=${typingWaited} (chain push #${i + 1})`);
     await pushToLine(userId, [msg], channelAccessToken);
     console.log(`[diag][timing-send-after] msg=${idOf(msg)} pushed=true typingWaited=${typingWaited}ms`);
   }

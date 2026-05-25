@@ -94,11 +94,39 @@ async function replyToLine(
 ): Promise<void> {
   const ctrl = readCtrlStorage.getStore();
   if (ctrl) {
-    await ctrl.waitTypingBeforeReply();
+    const first = messages[0];
+    // Phase 2c hotfix v2: msg1 に明示 _timing があれば waitTypingForMessage を使う
+    // (= receivedAt 経過時間に縛られず必ず typing_min~max ms 待機)。
+    // _timing が無ければ legacy の waitTypingBeforeReply (= env-based + processing fallback) を使う。
+    const typingStart = Date.now();
+    if (first?._timing) {
+      console.log(`[diag][typing-before] msg=${idOf(first)} via=perMessage`);
+      await ctrl.waitTypingForMessage(first._timing);
+    } else {
+      console.log(`[diag][typing-before] msg=${first ? idOf(first) : "?"} via=legacy`);
+      await ctrl.waitTypingBeforeReply();
+    }
+    const typingWaited = Date.now() - typingStart;
+    console.log(`[diag][typing-after] msg=${first ? idOf(first) : "?"} waitedMs=${typingWaited}`);
+
+    // Phase 2c hotfix: 1 通目に明示的 loading_enabled=true があれば、
+    // 「処理遅延ベースで loading が出るか出ないか分からない」状態を解消し、
+    // 必ず loading 表示してから reply する。
+    if (first?._timing) {
+      await ctrl.showLoadingForMessage(first._timing);
+    }
     await ctrl.ensureReadBeforeReply();
   }
   await _replyToLine(replyToken, messages, channelAccessToken);
   if (ctrl) ctrl.markReplySent();
+}
+
+/** [diag] LineMessage の識別用 (= webhook/route.ts でも使う) */
+function idOf(m: LineMessage): string {
+  if (m.type === "text") return `txt:${(m.text ?? "").slice(0, 14)}`;
+  if (m.type === "image") return `img:…${m.originalContentUrl.slice(-12)}`;
+  if (m.type === "video") return `vid:…${m.originalContentUrl.slice(-12)}`;
+  return `flex:${m.altText?.slice(0, 14) ?? "?"}`;
 }
 
 /**
@@ -117,7 +145,26 @@ async function replyWithLagToLine(
 ): Promise<void> {
   const ctrl = readCtrlStorage.getStore();
   if (ctrl) {
-    await ctrl.waitTypingBeforeReply();
+    const first = messages[0];
+    // Phase 2c hotfix v2: msg1 (chain head) にも per-message typing を適用する。
+    // 経過時間 (receivedAt) に縛られず必ず typing_min~max ms 待機する。
+    const typingStart = Date.now();
+    if (first?._timing) {
+      console.log(`[diag][typing-before] msg=${idOf(first)} via=perMessage (chain head)`);
+      await ctrl.waitTypingForMessage(first._timing);
+    } else {
+      console.log(`[diag][typing-before] msg=${first ? idOf(first) : "?"} via=legacy (chain head)`);
+      await ctrl.waitTypingBeforeReply();
+    }
+    const typingWaited = Date.now() - typingStart;
+    console.log(`[diag][typing-after] msg=${first ? idOf(first) : "?"} waitedMs=${typingWaited} (chain head)`);
+
+    // Phase 2c hotfix: chain head (= msg1) に明示的 loading_enabled=true があれば、
+    // 処理時間に依存せず必ず loading 表示してから reply する。
+    // chain 2 通目以降の loading は _replyWithLagToLine の push loop で個別適用される。
+    if (first?._timing) {
+      await ctrl.showLoadingForMessage(first._timing);
+    }
     await ctrl.ensureReadBeforeReply();
   }
   await _replyWithLagToLine(replyToken, messages, userId, channelAccessToken, ctrl);
