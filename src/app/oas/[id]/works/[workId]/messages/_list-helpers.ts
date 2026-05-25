@@ -55,6 +55,64 @@ export function getChainContinuations<T extends MessageLike>(
   return out;
 }
 
+/** Phase 2c: メッセージに何らかの演出設定が入っているかを判定する。
+ *
+ *  - lag_ms は「次の発話までの待機時間」。0 / null / undefined はデフォルト扱いなので「無し」とする。
+ *  - 他の timing 列は null = inherit、非 null = 明示設定。よって 1 つでも非 null なら「あり」。
+ *
+ *  呼び出し側は MessageWithRelations の部分集合を渡す。snake_case 固定。 */
+export function hasAnyTiming(m: {
+  lag_ms?:               number | null;
+  read_receipt_mode?:    string | null;
+  read_delay_ms?:        number | null;
+  typing_enabled?:       boolean | null;
+  typing_min_ms?:        number | null;
+  typing_max_ms?:        number | null;
+  loading_enabled?:      boolean | null;
+  loading_threshold_ms?: number | null;
+  loading_min_seconds?:  number | null;
+  loading_max_seconds?:  number | null;
+}): boolean {
+  if (m.lag_ms != null && m.lag_ms > 0) return true;
+  if (m.read_receipt_mode != null && m.read_receipt_mode !== "inherit") return true;
+  if (m.read_delay_ms != null) return true;
+  if (m.typing_enabled != null) return true;
+  if (m.typing_min_ms != null) return true;
+  if (m.typing_max_ms != null) return true;
+  if (m.loading_enabled != null) return true;
+  if (m.loading_threshold_ms != null) return true;
+  if (m.loading_min_seconds != null) return true;
+  if (m.loading_max_seconds != null) return true;
+  return false;
+}
+
+/** Phase 2c: 演出設定の簡易サマリ文字列を作る (= title 属性 / tooltip 用)。
+ *  「typing」「既読遅延 N 秒」「待機 N 秒」などの設定済み項目だけを併記する。
+ *  全て無設定なら空文字を返す (= hasAnyTiming と併用前提)。 */
+export function summarizeTiming(m: {
+  lag_ms?:               number | null;
+  read_receipt_mode?:    string | null;
+  read_delay_ms?:        number | null;
+  typing_enabled?:       boolean | null;
+  loading_enabled?:      boolean | null;
+}): string {
+  const parts: string[] = [];
+  if (m.lag_ms != null && m.lag_ms > 0) {
+    parts.push(`待機 ${(m.lag_ms / 1000).toFixed(m.lag_ms % 1000 === 0 ? 0 : 1)}秒`);
+  }
+  if (m.typing_enabled === true) parts.push("typing");
+  if (m.read_receipt_mode === "delayed") {
+    const sec = m.read_delay_ms != null ? `${(m.read_delay_ms / 1000).toFixed(m.read_delay_ms % 1000 === 0 ? 0 : 1)}秒` : "";
+    parts.push(`既読遅延${sec ? ` ${sec}` : ""}`);
+  } else if (m.read_receipt_mode === "before_reply") {
+    parts.push("既読(返信直前)");
+  } else if (m.read_receipt_mode === "immediate") {
+    parts.push("既読(即時)");
+  }
+  if (m.loading_enabled === true) parts.push("ローディング");
+  return parts.length > 0 ? `演出: 設定あり (${parts.join(" / ")})` : "演出: 設定あり";
+}
+
 /** headId を起点に next_message_id を walk し、合計件数 (= 自分自身 + 子孫) を返す。
  *  上限 5 件 (= LINE 返信上限と一致) でループ + 循環参照防止。
  *  headId 自身が見つからない場合は 0 を返す。

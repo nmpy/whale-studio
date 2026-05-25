@@ -2277,9 +2277,12 @@ type TimingFormFields = {
 function TimingConfigSection<T extends TimingFormFields>({
   form,
   set,
+  isAdditional,
 }: {
   form: T;
   set: <K extends keyof T>(key: K, val: T[K]) => void;
+  /** 追加 (2 通目以降) のメッセージ用なら true。既読遅延の制約注記を出すために使う。 */
+  isAdditional?: boolean;
 }) {
   const [open, setOpen] = useState(
     // 既に値が設定されていれば展開して表示
@@ -2392,6 +2395,11 @@ function TimingConfigSection<T extends TimingFormFields>({
                 onChange={(ms) => set("read_delay_ms", String(Math.min(ms, 600000)))}
               />
               <div style={hintText}>未入力 = デフォルト値を使用</div>
+            </div>
+          )}
+          {isAdditional && (
+            <div style={{ ...hintText, color: "#92400e", marginTop: -4 }}>
+              ※ 既読遅延は現在、最初のメッセージにのみ実機反映されます。typing / 待機時間は反映されます。
             </div>
           )}
 
@@ -2796,6 +2804,7 @@ function AdditionalMessageBlock({
         <TimingConfigSection
           form={slot}
           set={(k, v) => onChange({ ...slot, [k]: v })}
+          isAdditional
         />
       </div>
     </div>

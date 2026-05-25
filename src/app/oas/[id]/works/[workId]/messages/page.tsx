@@ -12,7 +12,7 @@ import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
 import { ViewerBanner } from "@/components/PermissionGuard";
 import { GuideCard } from "@/components/onboarding/GuideCard";
 import type { MessageWithRelations, MessageType, PhaseWithCounts, TransitionWithPhases, QuickReplyItem } from "@/types";
-import { collectChainContinuationIds, chainSizeFrom, getChainContinuations } from "./_list-helpers";
+import { collectChainContinuationIds, chainSizeFrom, getChainContinuations, hasAnyTiming, summarizeTiming } from "./_list-helpers";
 
 const MESSAGE_TYPE_LABEL: Record<MessageType, string> = {
   text:     "テキスト",
@@ -1077,6 +1077,20 @@ export default function MessagesPage() {
                                 borderRadius: 6, padding: "0 5px", verticalAlign: "middle",
                               }}>
                                 QR {cont.quick_replies.length}
+                              </span>
+                            )}
+                            {/* Phase 2c: 演出設定有無を小さく注記 */}
+                            {hasAnyTiming(cont) && (
+                              <span
+                                title={summarizeTiming(cont)}
+                                style={{
+                                  marginLeft: 6, display: "inline-block",
+                                  fontSize: 9, color: "#7c3aed",
+                                  background: "#f5f3ff", border: "1px solid #ddd6fe",
+                                  borderRadius: 6, padding: "0 5px", verticalAlign: "middle",
+                                }}
+                              >
+                                演出: 設定あり
                               </span>
                             )}
                           </td>

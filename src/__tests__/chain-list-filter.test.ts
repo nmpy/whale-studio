@@ -8,6 +8,8 @@ import {
   collectChainContinuationIds,
   chainSizeFrom,
   getChainContinuations,
+  hasAnyTiming,
+  summarizeTiming,
 } from "@/app/oas/[id]/works/[workId]/messages/_list-helpers";
 
 describe("collectChainContinuationIds", () => {
@@ -179,5 +181,84 @@ describe("getChainContinuations", () => {
     ];
     const r = getChainContinuations(messages, "a");
     expect(r[0].body).toBe("msg2 body");
+  });
+});
+
+// ──────────────────────────────────────────────────────────
+// Phase 2c: hasAnyTiming / summarizeTiming
+// ──────────────────────────────────────────────────────────
+
+describe("hasAnyTiming (Phase 2c)", () => {
+  it("全フィールド null / undefined なら false", () => {
+    expect(hasAnyTiming({})).toBe(false);
+    expect(hasAnyTiming({
+      lag_ms: null, read_receipt_mode: null, typing_enabled: null, loading_enabled: null,
+    })).toBe(false);
+  });
+
+  it("lag_ms=0 は default 扱いで false (= 「演出なし」表示)", () => {
+    expect(hasAnyTiming({ lag_ms: 0 })).toBe(false);
+  });
+
+  it("lag_ms > 0 なら true (= 「待機時間あり」=演出あり扱い)", () => {
+    expect(hasAnyTiming({ lag_ms: 1000 })).toBe(true);
+  });
+
+  it('read_receipt_mode="inherit" は false (= 上位から継承=自分で設定していない)', () => {
+    expect(hasAnyTiming({ read_receipt_mode: "inherit" })).toBe(false);
+  });
+
+  it('read_receipt_mode="delayed" は true', () => {
+    expect(hasAnyTiming({ read_receipt_mode: "delayed" })).toBe(true);
+  });
+
+  it("typing_enabled=false は明示 false なので true (= 演出設定が入っている)", () => {
+    expect(hasAnyTiming({ typing_enabled: false })).toBe(true);
+  });
+
+  it("typing_enabled=true は当然 true", () => {
+    expect(hasAnyTiming({ typing_enabled: true })).toBe(true);
+  });
+
+  it("loading_enabled=false / read_delay_ms=0 でも null との区別で true", () => {
+    expect(hasAnyTiming({ loading_enabled: false })).toBe(true);
+    expect(hasAnyTiming({ read_delay_ms: 0 })).toBe(true);
+  });
+});
+
+describe("summarizeTiming (Phase 2c)", () => {
+  it("全 null なら 'あり' のみで詳細なし", () => {
+    expect(summarizeTiming({})).toBe("演出: 設定あり");
+  });
+
+  it("lag_ms=2000 → '待機 2秒' を含む", () => {
+    expect(summarizeTiming({ lag_ms: 2000 })).toContain("待機 2秒");
+  });
+
+  it("lag_ms=1500 → '待機 1.5秒' (= 小数表示)", () => {
+    expect(summarizeTiming({ lag_ms: 1500 })).toContain("待機 1.5秒");
+  });
+
+  it("typing_enabled=true → 'typing' を含む", () => {
+    expect(summarizeTiming({ typing_enabled: true })).toContain("typing");
+  });
+
+  it('read_receipt_mode="delayed" + read_delay_ms=1000 → "既読遅延 1秒"', () => {
+    expect(summarizeTiming({ read_receipt_mode: "delayed", read_delay_ms: 1000 })).toContain("既読遅延 1秒");
+  });
+
+  it('read_receipt_mode="before_reply" → "既読(返信直前)"', () => {
+    expect(summarizeTiming({ read_receipt_mode: "before_reply" })).toContain("既読(返信直前)");
+  });
+
+  it("複合 (lag + typing + delayed read) は全て併記される", () => {
+    const s = summarizeTiming({
+      lag_ms: 2000,
+      typing_enabled: true,
+      read_receipt_mode: "delayed", read_delay_ms: 1500,
+    });
+    expect(s).toContain("待機 2秒");
+    expect(s).toContain("typing");
+    expect(s).toContain("既読遅延 1.5秒");
   });
 });

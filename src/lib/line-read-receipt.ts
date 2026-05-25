@@ -443,6 +443,34 @@ export class ReadReceiptController {
     await sleep(actualWait);
   }
 
+  /**
+   * Phase 2c: chain 内 2 通目以降の per-message typing 待機。
+   *
+   * receivedAt からの経過時間を参照しない (= waitTypingBeforeReply とは別物)。
+   * 1 通目を送った直後など、既に loadingThresholdMs を超えている場合でも
+   * メッセージ作者が設定した「次の発話前の typing」をそのまま効かせるための入口。
+   *
+   * - 解決済み timing が typingEnabled=false なら即 return
+   * - typingMinMs〜typingMaxMs のランダム値で sleep
+   * - 50ms 以下は意味がないのでスキップ
+   *
+   * loading / 既読 (delayed read) には触らない (= chain head の枠組みで処理済み)。
+   *
+   * @param msgConfig 当該メッセージの timing 設定 (= LineMessage._timing)
+   */
+  async waitTypingForMessage(msgConfig: MessageTimingConfig | null | undefined): Promise<void> {
+    const resolved = resolveMessageTimingConfig(msgConfig, this.workTiming, this.config);
+    if (!resolved.typingEnabled) return;
+
+    const minMs = Math.max(0, resolved.typingMinMs);
+    const maxMs = Math.max(minMs, resolved.typingMaxMs);
+    const rawWait = minMs + Math.random() * (maxMs - minMs);
+    const actualWait = Math.round(rawWait);
+    if (actualWait <= 50) return;
+
+    await sleep(actualWait);
+  }
+
   // ── ローディングアニメーション（可変秒数）──
 
   scheduleLoading(signal?: AbortSignal): void {
