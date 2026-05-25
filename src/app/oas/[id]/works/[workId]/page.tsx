@@ -19,6 +19,13 @@ import { WorkCreatedGuide }   from "@/components/onboarding/WorkCreatedGuide";
 import { NextActionCard }     from "@/components/onboarding/NextActionCard";
 import { OnboardingProgress } from "@/components/onboarding/OnboardingProgress";
 import { WorkLimitCard } from "@/components/upgrade/WorkLimitCard";
+import {
+  HUB_CARD_TO_FEATURE,
+  PLAN_DESCRIPTIONS,
+  PLAN_LABELS,
+  getPlanAccessState,
+  mapPlanNameToTier,
+} from "@/lib/constants/plans";
 
 // ── ステータス表示 ───────────────────────────────────────
 const STATUS_META: Record<string, { label: string; color: string; bg: string; dot: string }> = {
@@ -288,6 +295,9 @@ export default function WorkHubPage() {
   const sp = useIsMobile();
   const { role } = useWorkspaceRole(oaId);
   const { maxWorks, planDisplayName, planName } = useWorkLimit(oaId);
+  // 既存 plan.name (e.g. "tester" / "editor") を 4 段階ティアに正規化する。
+  // Subscription 未設定 (= planName=null) は基本 Basic 扱いで安全側 fallback。
+  const planTier = mapPlanNameToTier(planName);
 
   const [oaTitle,          setOaTitle]          = useState("");
   const [work,             setWork]             = useState<WorkListItem | null>(null);
@@ -810,37 +820,41 @@ export default function WorkHubPage() {
         gridTemplateColumns: sp ? "1fr" : "repeat(auto-fill, minmax(270px, 1fr))",
         gap: sp ? 10 : 14,
       }}>
-        {HUB_CARDS.map((card) => (
-          <Link
-            key={card.key}
-            href={`/oas/${oaId}/works/${workId}/${card.key}`}
-            style={{ textDecoration: "none" }}
-          >
+        {HUB_CARDS.map((card) => {
+          // プランによる利用可否を判定。featureKey が未マップの card は安全側で「許可」扱い (= 制限しない)。
+          const featureKey = HUB_CARD_TO_FEATURE[card.key];
+          const access = featureKey
+            ? getPlanAccessState({ plan: planTier, featureKey })
+            : ({ allowed: true, reason: "allowed", message: "" } as const);
+
+          // カード本体 (= 共通の中身レンダリング)
+          const cardBody = (
             <div
               style={{
                 background:   "var(--surface)",
                 border:       "1px solid var(--border-light)",
                 borderRadius: "var(--radius-md)",
                 padding:      "16px 18px",
-                cursor:       "pointer",
+                cursor:       access.allowed ? "pointer" : "not-allowed",
                 transition:   "box-shadow 0.15s, border-color 0.15s, transform 0.1s",
                 display:      "flex",
                 alignItems:   "center",
                 gap:          14,
                 boxShadow:    "var(--shadow-xs)",
+                opacity:      access.allowed ? 1 : 0.55,
               }}
-              onMouseEnter={(e) => {
+              onMouseEnter={access.allowed ? (e) => {
                 const el = e.currentTarget as HTMLDivElement;
                 el.style.boxShadow   = "var(--shadow-md)";
                 el.style.borderColor = "var(--gray-300)";
                 el.style.transform   = "translateY(-2px)";
-              }}
-              onMouseLeave={(e) => {
+              } : undefined}
+              onMouseLeave={access.allowed ? (e) => {
                 const el = e.currentTarget as HTMLDivElement;
                 el.style.boxShadow   = "var(--shadow-xs)";
                 el.style.borderColor = "var(--border-light)";
                 el.style.transform   = "";
-              }}
+              } : undefined}
             >
               {/* カラーアンカー — SVGアイコン入りで各カードの役割を即座に示す */}
               <div style={{
@@ -863,11 +877,70 @@ export default function WorkHubPage() {
                 <div style={{ fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.55 }}>
                   {card.desc}
                 </div>
+                {/* プラン制限がかかっている場合、必要プラン表記を小さく表示 */}
+                {!access.allowed && access.reason === "plan_required" && (
+                  <div style={{
+                    fontSize: 11, color: "#92400e", marginTop: 4,
+                    background: "#fffbeb", border: "1px solid #fde68a",
+                    borderRadius: 4, padding: "2px 6px", display: "inline-block",
+                  }}>
+                    {access.requiredPlanLabel}プラン以上で利用できます
+                  </div>
+                )}
               </div>
-              <span style={{ color: "var(--text-muted)", fontSize: 16, alignSelf: "center", flexShrink: 0 }}>›</span>
+              <span style={{
+                color: access.allowed ? "var(--text-muted)" : "#cbd5e1",
+                fontSize: 16, alignSelf: "center", flexShrink: 0,
+              }}>›</span>
             </div>
-          </Link>
-        ))}
+          );
+
+          // 利用可: 通常通り Link でラップ
+          if (access.allowed) {
+            return (
+              <Link
+                key={card.key}
+                href={`/oas/${oaId}/works/${workId}/${card.key}`}
+                style={{ textDecoration: "none" }}
+              >
+                {cardBody}
+              </Link>
+            );
+          }
+
+          // 利用不可: href / onClick を付けず、aria-disabled / tabIndex=-1 で操作不能にする。
+          // クリックさせない (= ユーザーに「使えませんでした」体験をさせない) のがポイント。
+          // role="link" を付けないことで SR でリンク扱いされず、無駄な遷移を促さない。
+          return (
+            <div
+              key={card.key}
+              role="group"
+              aria-disabled={true}
+              aria-label={`${card.title} (${access.reason === "plan_required" ? access.requiredPlanLabel + "プラン以上で利用できます" : "利用できません"})`}
+              tabIndex={-1}
+              style={{ textDecoration: "none" }}
+            >
+              {cardBody}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* プラン説明文 (= 管理メニュー下部) */}
+      <div style={{
+        marginTop: 14,
+        padding: "10px 14px",
+        background: "#f8fafc",
+        border: "1px solid var(--border-light)",
+        borderRadius: "var(--radius-md)",
+        fontSize: 12,
+        color: "var(--text-secondary)",
+        lineHeight: 1.7,
+      }}>
+        <span style={{ fontWeight: 700, color: "var(--text-primary)", marginRight: 8 }}>
+          現在のプラン: {PLAN_LABELS[planTier]}
+        </span>
+        {PLAN_DESCRIPTIONS[planTier]}
       </div>
     </>
   );
