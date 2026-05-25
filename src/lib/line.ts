@@ -645,6 +645,23 @@ export async function replyWithLagToLine(
     return;
   }
 
+  // [diag] sequence 全体: 各 message の id + lag + timing 概要を出す
+  console.log(
+    `[diag][timing-sequence] count=${messages.length} ids=[${messages.map((m) => idOf(m)).join(",")}]`,
+  );
+  for (let i = 0; i < messages.length; i++) {
+    const m = messages[i];
+    const t = m._timing;
+    console.log(
+      `[diag][timing-sequence][${i}] msg=${idOf(m)} lag=${m._lagMs ?? "—"}`,
+      `typing=${t?.typing_enabled ?? "—"}`,
+      `typingMin=${t?.typing_min_ms ?? "—"}`,
+      `typingMax=${t?.typing_max_ms ?? "—"}`,
+      `loading=${t?.loading_enabled ?? "—"}`,
+      `readMode=${t?.read_receipt_mode ?? "—"}`,
+    );
+  }
+
   // 1 件目を Reply API で即送信（replyToken の有効期限内に必ず呼ぶ）
   const [first, ...rest] = messages;
   await replyToLine(replyToken, [first], channelAccessToken);
@@ -655,19 +672,35 @@ export async function replyWithLagToLine(
     const msg = rest[i];
     const rawLag = msg._lagMs ?? 0;
     const delay  = rawLag > 0 ? Math.min(rawLag, MAX_MSG_LAG_MS) : DEFAULT_MSG_LAG_MS;
-    console.log(`[replyWithLagToLine] push ${i + 1}/${rest.length} delay=${delay}ms timing=${msg._timing ? "あり" : "なし"}`);
+    console.log(
+      `[diag][timing-send-before] msg=${idOf(msg)} waitLag=${delay}ms`,
+      `typing=${msg._timing?.typing_enabled ?? "—"}`,
+      `lagSource=${msg._lagMs != null ? "_lagMs" : "default"}`,
+    );
     await sleep(delay);
     // Phase 2c: per-message typing 演出を反映する。
     // chain head の typing は waitTypingBeforeReply で適用済み。
     // 2 通目以降は waitTypingForMessage を使い、receivedAt 経過時間に縛られず
     // メッセージ作者の typing_min_ms ~ typing_max_ms を効かせる。
     // _timing が無ければ何もしない (= 単に lag のみ待つ)。
+    const typingStart = Date.now();
     if (controller && msg._timing) {
       await controller.waitTypingForMessage(msg._timing);
     }
+    const typingWaited = Date.now() - typingStart;
     await pushToLine(userId, [msg], channelAccessToken);
+    console.log(`[diag][timing-send-after] msg=${idOf(msg)} pushed=true typingWaited=${typingWaited}ms`);
   }
   console.log(`[replyWithLagToLine] 完了 reply=1 push=${rest.length} total=${messages.length}`);
+}
+
+/** [diag] LineMessage の識別用に内部 id を取り出す。
+ *  LineMessage 型には id がないため、Image なら url の末尾、Text なら本文先頭で代用する。 */
+function idOf(m: LineMessage): string {
+  if (m.type === "text") return `txt:${(m.text ?? "").slice(0, 14)}`;
+  if (m.type === "image") return `img:…${m.originalContentUrl.slice(-12)}`;
+  if (m.type === "video") return `vid:…${m.originalContentUrl.slice(-12)}`;
+  return `flex:${m.altText?.slice(0, 14) ?? "?"}`;
 }
 
 // ────────────────────────────────────────────────
