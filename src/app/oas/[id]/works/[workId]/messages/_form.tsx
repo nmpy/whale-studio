@@ -2465,7 +2465,7 @@ function TimingConfigSection<T extends TimingFormFields>({
           </div>
           {isAdditional && form.loading_enabled === "true" && (
             <div style={{ ...hintText, color: "#92400e", marginTop: -4 }}>
-              ※ 「入力中...」表示は LINE の仕様上、1 チャットに同時に 1 つだけ表示され、最小 5 秒表示されます。そのため、連続メッセージそれぞれの直前に必ず表示されるとは限りません。
+              ※ 「入力中...」表示は LINE 側の挙動 (最小 5 秒・1 チャットに 1 つ) により、連続メッセージそれぞれの直前に必ず表示されるとは限りません (= best-effort)。確実に「間」を作りたい場合は「送信前の待機時間」を併用してください。
             </div>
           )}
           {form.loading_enabled === "true" && (

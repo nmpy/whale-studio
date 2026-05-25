@@ -516,15 +516,29 @@ export class ReadReceiptController {
    *
    * - msgConfig.loading_enabled が true (= 明示 ON) のときだけ表示する。
    * - 1:1 トーク (isOneOnOne) でなければスキップ。
-   * - 既に loadingShown なら再表示しない。
+   * - **loadingShown guard は効かせない** (= per-message loading は LINE 側で
+   *   重複呼び出しを許容するため、各 message の前に refresh を試みる)。
    *
    * 用途: chain push loop で msg2 等を送る直前に「このメッセージは loading 出す」
-   *       設定なら明示的に発火する。
+   *       設定なら明示的に発火する。LINE 側が表示できれば見える、できなくても害はない (= best-effort)。
+   *
+   * 参考: LINE LoadingAnimation API は同じ chat に対する複数回呼び出しを許容し、
+   * 後発の呼び出しが loading の duration を更新する (= 再表示開始扱い)。
+   * よって msg1 の loading が表示中でも msg2 で呼ぶことで refresh を試みる。
    */
   async showLoadingForMessage(msgConfig: MessageTimingConfig | null | undefined): Promise<void> {
     if (!msgConfig?.loading_enabled) return;
-    if (!this.isOneOnOne || this.loadingShown) return;
-    await this.showLoadingNow();
+    if (!this.isOneOnOne) return;
+
+    // loadingShown guard を意図的にスキップ。LINE API への重複呼び出しは
+    // best-effort で許容する (= 「入力中...」表示の per-message refresh を試みる)。
+    const resolved = resolveMessageTimingConfig(msgConfig, this.workTiming, this.config);
+    const elapsed = Date.now() - this.receivedAt;
+    const seconds = computeLoadingSeconds(elapsed, resolved.loadingMinSeconds, resolved.loadingMaxSeconds);
+    this.loadingShown = true;  // 統計用 (= legacy scheduleLoading の二重発火は防止)
+    this.loadingStartedAt = Date.now();
+    this.loadingSecondsComputed = seconds;
+    await showLoadingAnimation(this.userId, seconds, this.channelAccessToken);
   }
 
   /** @deprecated checkAndShowLoading を使う代わりに scheduleLoading を推奨 */
