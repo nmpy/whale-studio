@@ -69,30 +69,23 @@ const EMPTY_CAROUSEL_CARD: MessageCarouselCard = {
 };
 
 // ── 追加メッセージスロット型 ──────────────────────────────
+// 型 / EMPTY 値 / pure helper は _form-helpers.ts に切り出し済 (= vitest が
+// bracket route パスの .tsx 解析でエラーになるため)。本ファイルは re-export で API 維持。
 
-export interface AdditionalMessageSlot {
-  /** 既存メッセージ ID（編集モードでチェーンを読み込んだ場合に設定される） */
-  existingId?:    string;
-  /** この発話のキャラクター ID（空文字 = 1通目のキャラクターを引き継ぐ） */
-  character_id:   string;
-  message_type:   ExtendedMessageType;
-  body:           string;
-  asset_url:      string;
-  notify_text:    string;
-  carousel_items: MessageCarouselCard[];
-  /** 前のメッセージ送信後この発話まで待機するミリ秒数。0 = 即時送信 */
-  lag_ms:         number;
-}
+export {
+  msgToAdditionalSlot,
+  additionalSlotToMsgBody,
+  EMPTY_ADDITIONAL_SLOT,
+} from "./_form-helpers";
+export type { AdditionalMessageSlot } from "./_form-helpers";
 
-const EMPTY_ADDITIONAL_SLOT: AdditionalMessageSlot = {
-  character_id:   "",
-  message_type:   "text",
-  body:           "",
-  asset_url:      "",
-  notify_text:    "",
-  carousel_items: [],
-  lag_ms:         0,
-};
+import {
+  EMPTY_ADDITIONAL_SLOT as _EMPTY_ADDITIONAL_SLOT,
+  type AdditionalMessageSlot as _AdditionalMessageSlot,
+} from "./_form-helpers";
+// 内部参照用エイリアス (= 既存コードの local シンボル名と互換)
+const EMPTY_ADDITIONAL_SLOT = _EMPTY_ADDITIONAL_SLOT;
+type AdditionalMessageSlot = _AdditionalMessageSlot;
 
 // ── FormState ────────────────────────────────────────────
 
@@ -2265,12 +2258,28 @@ const BOOL_INHERIT_OPTIONS = [
   { value: "false", label: "OFF" },
 ] as const;
 
-function TimingConfigSection({
+// 演出設定 UI が要求する最小フィールド集合。
+// MessageFormState (1 通目) と AdditionalMessageSlot (2 通目以降) は両方とも
+// この共通形を満たすため、TimingConfigSection は両方で再利用できる。
+type TimingFormFields = {
+  body?: string;  // PreviewPlayer のサンプル本文として使う
+  read_receipt_mode:    string;
+  read_delay_ms:        string;
+  typing_enabled:       string;
+  typing_min_ms:        string;
+  typing_max_ms:        string;
+  loading_enabled:      string;
+  loading_threshold_ms: string;
+  loading_min_seconds:  string;
+  loading_max_seconds:  string;
+};
+
+function TimingConfigSection<T extends TimingFormFields>({
   form,
   set,
 }: {
-  form: MessageFormState;
-  set: <K extends keyof MessageFormState>(key: K, val: MessageFormState[K]) => void;
+  form: T;
+  set: <K extends keyof T>(key: K, val: T[K]) => void;
 }) {
   const [open, setOpen] = useState(
     // 既に値が設定されていれば展開して表示
@@ -2350,7 +2359,8 @@ function TimingConfigSection({
                   onClick={() => {
                     const vals = presetToFormValues(p);
                     for (const [k, v] of Object.entries(vals)) {
-                      set(k as keyof MessageFormState, v);
+                      // k は timing キーで TimingFormFields に含まれる
+                      set(k as keyof T, v as T[keyof T]);
                     }
                   }}
                 >
@@ -2780,6 +2790,13 @@ function AdditionalMessageBlock({
             onChange={(ms) => onChange({ ...slot, lag_ms: ms })}
             />
         </div>
+
+        {/* 演出設定 (既読 / typing / loading) — 折りたたみ。
+            1 通目 form と同じ TimingConfigSection を generic 化して再利用。 */}
+        <TimingConfigSection
+          form={slot}
+          set={(k, v) => onChange({ ...slot, [k]: v })}
+        />
       </div>
     </div>
   );
