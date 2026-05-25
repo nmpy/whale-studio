@@ -1630,6 +1630,12 @@ async function handleTextEvent({
             nextMessageId: true, sortOrder: true,
             imageActionType: true, imageActionText: true, imageActionUrl: true,
             imageActionLiffPageId: true, imageActionPostbackData: true,
+            // 演出設定 (Phase 2c)
+            lagMs: true,
+            readReceiptMode: true, readDelayMs: true,
+            typingEnabled: true, typingMinMs: true, typingMaxMs: true,
+            loadingEnabled: true, loadingThresholdMs: true,
+            loadingMinSeconds: true, loadingMaxSeconds: true,
             character: { select: { name: true, iconImageUrl: true } },
           },
         });
@@ -1640,7 +1646,9 @@ async function handleTextEvent({
           };
           const { messages: chain, chainIds } = await buildMessageChain(nextMsg, replyVars);
           if (chain.length > 0) {
-            await replyToLine(replyToken, chain, token);
+            // Phase 2c hotfix: chain (= length > 1) でも per-message timing が効くよう
+            // replyWithLagToLine に統一。
+            await replyWithLagToLine(replyToken, chain, userId, token);
             // 連鎖した nextMessage の末尾も freeInputEnabled の対象にする
             await applyFreeInputPostEffect({
               sentMessageIds: chainIds,
@@ -1889,12 +1897,20 @@ async function handleTextEvent({
     );
 
     // Step 2 用の DB セレクト（buildMessageChain に渡す形式）
+    // Phase 2c hotfix: 演出設定 (lagMs / readReceiptMode / typingEnabled 等) も fetch する。
+    // これがないと response_message の per-message timing が runtime まで届かない。
     const MSG_SELECT = {
       id: true, messageType: true, body: true, assetUrl: true,
       altText: true, flexPayloadJson: true, quickReplies: true,
       nextMessageId: true, sortOrder: true,
       imageActionType: true, imageActionText: true, imageActionUrl: true,
       imageActionLiffPageId: true, imageActionPostbackData: true,
+      // 演出設定 (Phase 2c)
+      lagMs: true,
+      readReceiptMode: true, readDelayMs: true,
+      typingEnabled: true, typingMinMs: true, typingMaxMs: true,
+      loadingEnabled: true, loadingThresholdMs: true,
+      loadingMinSeconds: true, loadingMaxSeconds: true,
       character: { select: { name: true, iconImageUrl: true } },
     } as const;
 
@@ -1936,7 +1952,10 @@ async function handleTextEvent({
       }
       if (qrMsgs.length > 0) {
         const tReplyQrMsg = Date.now();
-        await replyToLine(replyToken, qrMsgs.slice(0, 5), token);
+        // Phase 2c hotfix: chain (= length > 1) でも per-message timing が効くよう、
+        // replyWithLagToLine 経路に統一する。1 通でも replyWithLagToLine は内部で
+        // replyToLine に委譲するため、挙動差は per-message timing の有無のみ。
+        await replyWithLagToLine(replyToken, qrMsgs.slice(0, 5), userId, token);
         // qrItem_message パス: 応答 + 遷移先チェーンの末尾を自由入力候補とする
         await applyFreeInputPostEffect({
           sentMessageIds: qrSentIds,
@@ -1992,7 +2011,8 @@ async function handleTextEvent({
     // ── response_message のみ（遷移先なし）──
     if (qrMsgs.length > 0) {
       const tReplyQrResp = Date.now();
-      await replyToLine(replyToken, qrMsgs.slice(0, 5), token);
+      // Phase 2c hotfix: chain 内 per-message timing を効かせるため replyWithLagToLine に変更
+      await replyWithLagToLine(replyToken, qrMsgs.slice(0, 5), userId, token);
       await applyFreeInputPostEffect({
         sentMessageIds: qrSentIds,
         userId,
@@ -2030,7 +2050,8 @@ async function handleTextEvent({
     console.log(`[diag][kw] payload count=${msgs.length} chainIds=[${chainedIds.map((id) => id.slice(0, 8)).join(",")}] lastType=${lastMsg?.type ?? "none"} lastHasQR=${!!lastMsg?.quickReply}`);
     if (msgs.length > 0) {
       const tReplyKw = Date.now();
-      await replyToLine(replyToken, msgs, token);
+      // Phase 2c hotfix: chain (= length > 1) で per-message timing が効くよう replyWithLagToLine に統一
+      await replyWithLagToLine(replyToken, msgs, userId, token);
       // 自由入力受付モード: チェーン展開後の全送信メッセージから freeInputEnabled を検出する。
       // チェーン末尾メッセージ ("こんにちは！あなたの名前は？") に freeInputEnabled を立てる
       // ユースケースを正しくサポートする。
