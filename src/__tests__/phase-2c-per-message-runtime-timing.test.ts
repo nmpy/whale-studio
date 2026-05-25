@@ -244,3 +244,82 @@ describe("Phase 2c: ReadReceiptController.waitTypingForMessage", () => {
     expect(elapsed).toBeGreaterThanOrEqual(80);
   });
 });
+
+// ──────────────────────────────────────────────────────────
+// 4. Phase 2c hotfix: abortPendingLoading / showLoadingForMessage
+// ──────────────────────────────────────────────────────────
+
+describe("Phase 2c hotfix: abortPendingLoading / showLoadingForMessage", () => {
+  it("abortPendingLoading を呼ぶと、scheduled な loading は発火しない", async () => {
+    const ctrl = new ReadReceiptController({
+      userId:             "u-test",
+      channelAccessToken: "tok",
+      isOneOnOne:         true,
+      // loading threshold を小さくして即発火しそうな状態にする
+      config: { loadingEnabled: true, loadingThresholdMs: 50, loadingMinSeconds: 5, loadingMaxSeconds: 15 },
+    });
+    // resolvedTiming を inherit のままにしておくと、env (loadingEnabled=true) が効く
+    let loadingCalled = false;
+    // showLoadingNow を pass-through する spy 代わりに、内部 fetch を avoid するため
+    // loadingShown 状態が更新されるかで判定する。
+    // ここでは scheduleLoading → setTimeout(50ms) → showLoadingNow を予約。
+    ctrl.scheduleLoading();
+    ctrl.abortPendingLoading();
+    await new Promise((r) => setTimeout(r, 120));
+    const log = ctrl.getTimingLog();
+    // 発火していなければ loadingStartedAt は null のまま
+    expect(log.loadingStartedAt).toBeNull();
+    void loadingCalled;
+  });
+
+  it("showLoadingForMessage は msgConfig.loading_enabled=true のときのみ発火を試みる", async () => {
+    const ctrl = new ReadReceiptController({
+      userId:             "u-test",
+      channelAccessToken: "tok",
+      isOneOnOne:         true,
+      config: { loadingEnabled: false },  // env では disabled
+    });
+    // loading_enabled=null (= inherit) は env が disabled なので no-op
+    await ctrl.showLoadingForMessage({
+      ...TIMING_MSG2,
+      loading_enabled: null,
+    });
+    expect(ctrl.getTimingLog().loadingStartedAt).toBeNull();
+  });
+
+  it("showLoadingForMessage は msgConfig.loading_enabled=false なら何もしない", async () => {
+    const ctrl = new ReadReceiptController({
+      userId:             "u-test",
+      channelAccessToken: "tok",
+      isOneOnOne:         true,
+      config: { loadingEnabled: true },
+    });
+    await ctrl.showLoadingForMessage({
+      ...TIMING_MSG2,
+      loading_enabled: false,
+    });
+    expect(ctrl.getTimingLog().loadingStartedAt).toBeNull();
+  });
+
+  it("isOneOnOne=false (= グループトーク) では showLoadingForMessage は no-op", async () => {
+    const ctrl = new ReadReceiptController({
+      userId:             "u-test",
+      channelAccessToken: "tok",
+      isOneOnOne:         false,
+      config: { loadingEnabled: true },
+    });
+    await ctrl.showLoadingForMessage({
+      ...TIMING_MSG2,
+      loading_enabled: true,
+    });
+    expect(ctrl.getTimingLog().loadingStartedAt).toBeNull();
+  });
+
+  it("abortPendingLoading を 2 回呼んでも例外にならない", () => {
+    const ctrl = new ReadReceiptController({
+      userId: "u-test", channelAccessToken: "tok", isOneOnOne: true,
+    });
+    ctrl.abortPendingLoading();
+    expect(() => ctrl.abortPendingLoading()).not.toThrow();
+  });
+});

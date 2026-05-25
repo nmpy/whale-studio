@@ -328,6 +328,8 @@ export class ReadReceiptController {
   private readSent = false;
   private readTimer: ReturnType<typeof setTimeout> | null = null;
   private loadingShown = false;
+  // Phase 2c hotfix: chain 送信に入る直前に scheduled loading を抑止するための内部 signal
+  private loadingAbortInternal = new AbortController();
 
   constructor(opts: {
     markAsReadToken?: string;
@@ -479,16 +481,50 @@ export class ReadReceiptController {
 
     const remaining = resolved.loadingThresholdMs - (Date.now() - this.receivedAt);
     if (remaining <= 0) {
+      if (this.loadingAbortInternal.signal.aborted) return;
       void this.showLoadingNow();
       return;
     }
 
     const timer = setTimeout(() => {
-      if (signal?.aborted) return;
+      if (signal?.aborted || this.loadingAbortInternal.signal.aborted) return;
       void this.showLoadingNow();
     }, remaining);
 
     signal?.addEventListener("abort", () => clearTimeout(timer), { once: true });
+    this.loadingAbortInternal.signal.addEventListener("abort", () => clearTimeout(timer), { once: true });
+  }
+
+  /**
+   * Phase 2c hotfix: scheduled な loading を抑止する。
+   *
+   * 用途: chain 送信 (= msg2 以降の push) に入る直前に呼ぶことで、
+   *       webhook 開始時に予約された loading が msg1/msg2 の間に
+   *       割り込み表示されるのを防ぐ。
+   *
+   * 既に発火済みの loading は止められない (= LINE API への 1 回の call は取り消せない)。
+   * 未発火の setTimeout だけクリアする。
+   *
+   * 1 通メッセージ送信時は呼ばない (= 従来通り webhook-level scheduleLoading が動く)。
+   */
+  abortPendingLoading(): void {
+    this.loadingAbortInternal.abort();
+  }
+
+  /**
+   * Phase 2c hotfix: 指定 message の timing に基づいて loading を即時表示する。
+   *
+   * - msgConfig.loading_enabled が true (= 明示 ON) のときだけ表示する。
+   * - 1:1 トーク (isOneOnOne) でなければスキップ。
+   * - 既に loadingShown なら再表示しない。
+   *
+   * 用途: chain push loop で msg2 等を送る直前に「このメッセージは loading 出す」
+   *       設定なら明示的に発火する。
+   */
+  async showLoadingForMessage(msgConfig: MessageTimingConfig | null | undefined): Promise<void> {
+    if (!msgConfig?.loading_enabled) return;
+    if (!this.isOneOnOne || this.loadingShown) return;
+    await this.showLoadingNow();
   }
 
   /** @deprecated checkAndShowLoading を使う代わりに scheduleLoading を推奨 */

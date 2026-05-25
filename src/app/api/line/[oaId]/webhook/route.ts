@@ -95,6 +95,13 @@ async function replyToLine(
   const ctrl = readCtrlStorage.getStore();
   if (ctrl) {
     await ctrl.waitTypingBeforeReply();
+    // Phase 2c hotfix: 1 通目に明示的 loading_enabled=true があれば、
+    // 「処理遅延ベースで loading が出るか出ないか分からない」状態を解消し、
+    // 必ず loading 表示してから reply する。
+    const first = messages[0];
+    if (first?._timing) {
+      await ctrl.showLoadingForMessage(first._timing);
+    }
     await ctrl.ensureReadBeforeReply();
   }
   await _replyToLine(replyToken, messages, channelAccessToken);
@@ -118,6 +125,13 @@ async function replyWithLagToLine(
   const ctrl = readCtrlStorage.getStore();
   if (ctrl) {
     await ctrl.waitTypingBeforeReply();
+    // Phase 2c hotfix: chain head (= msg1) に明示的 loading_enabled=true があれば、
+    // 処理時間に依存せず必ず loading 表示してから reply する。
+    // chain 2 通目以降の loading は _replyWithLagToLine の push loop で個別適用される。
+    const first = messages[0];
+    if (first?._timing) {
+      await ctrl.showLoadingForMessage(first._timing);
+    }
     await ctrl.ensureReadBeforeReply();
   }
   await _replyWithLagToLine(replyToken, messages, userId, channelAccessToken, ctrl);
