@@ -100,7 +100,7 @@ export function summarizeTiming(m: {
   if (m.lag_ms != null && m.lag_ms > 0) {
     parts.push(`待機 ${(m.lag_ms / 1000).toFixed(m.lag_ms % 1000 === 0 ? 0 : 1)}秒`);
   }
-  if (m.typing_enabled === true) parts.push("typing");
+  if (m.typing_enabled === true) parts.push("送信前の間");
   if (m.read_receipt_mode === "delayed") {
     const sec = m.read_delay_ms != null ? `${(m.read_delay_ms / 1000).toFixed(m.read_delay_ms % 1000 === 0 ? 0 : 1)}秒` : "";
     parts.push(`既読遅延${sec ? ` ${sec}` : ""}`);
@@ -109,7 +109,7 @@ export function summarizeTiming(m: {
   } else if (m.read_receipt_mode === "immediate") {
     parts.push("既読(即時)");
   }
-  if (m.loading_enabled === true) parts.push("ローディング");
+  if (m.loading_enabled === true) parts.push("「入力中...」");
   return parts.length > 0 ? `演出: 設定あり (${parts.join(" / ")})` : "演出: 設定あり";
 }
 

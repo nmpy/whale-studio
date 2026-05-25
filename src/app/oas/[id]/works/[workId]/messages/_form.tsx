@@ -2339,7 +2339,7 @@ function TimingConfigSection<T extends TimingFormFields>({
   return (
     <div style={sectionStyle}>
       <div style={headerStyle} onClick={() => setOpen(!open)}>
-        <span>{open ? "▼" : "▶"} 演出設定（既読・typing・ローディング）</span>
+        <span>{open ? "▼" : "▶"} 演出設定（既読・送信前の間・「入力中...」表示）</span>
         {!open && (form.read_receipt_mode || form.typing_enabled || form.loading_enabled) && (
           <span style={{ fontSize: 11, color: "#3b82f6" }}>設定あり</span>
         )}
@@ -2399,13 +2399,16 @@ function TimingConfigSection<T extends TimingFormFields>({
           )}
           {isAdditional && (
             <div style={{ ...hintText, color: "#92400e", marginTop: -4 }}>
-              ※ 既読遅延は現在、最初のメッセージにのみ実機反映されます。typing / 待機時間は反映されます。
+              ※ 既読遅延は現在、最初のメッセージにのみ実機反映されます。送信前の待機時間 / 「入力中...」表示は反映されます。
             </div>
           )}
 
-          {/* ── typing ── */}
+          {/* ── 送信前の待機時間（旧: typing 風の間） ──
+              実装: ReadReceiptController.waitTypingForMessage / waitTypingBeforeReply
+              内部 sleep() のみで、LINE 画面上には何も表示されない (= 不可視の「間」)。
+              UI 文言は「typing」を避け、「入力中...」表示 (= loading) と区別する。 */}
           <div>
-            <label style={miniLabel}>typing 風の間</label>
+            <label style={miniLabel}>送信前の待機時間（画面には表示されません）</label>
             <select
               className="form-input"
               style={{ maxWidth: 120 }}
@@ -2444,9 +2447,11 @@ function TimingConfigSection<T extends TimingFormFields>({
             </div>
           )}
 
-          {/* ── ローディング ── */}
+          {/* ── 「入力中...」表示（旧: ローディングアニメーション） ──
+              実装: LINE LoadingAnimation API (POST /chat/loading/start)。
+              LINE 仕様で最小 5 秒・1 chat に 1 つのみ・表示中は再トリガー無視。 */}
           <div>
-            <label style={miniLabel}>ローディングアニメーション</label>
+            <label style={miniLabel}>「入力中...」表示</label>
             <select
               className="form-input"
               style={{ maxWidth: 120 }}
@@ -2458,10 +2463,15 @@ function TimingConfigSection<T extends TimingFormFields>({
               ))}
             </select>
           </div>
+          {isAdditional && form.loading_enabled === "true" && (
+            <div style={{ ...hintText, color: "#92400e", marginTop: -4 }}>
+              ※ 「入力中...」表示は LINE の仕様上、1 チャットに同時に 1 つだけ表示され、最小 5 秒表示されます。そのため、連続メッセージそれぞれの直前に必ず表示されるとは限りません。
+            </div>
+          )}
           {form.loading_enabled === "true" && (
             <>
               <div>
-                <label style={miniLabel}>ローディング表示閾値（ms）</label>
+                <label style={miniLabel}>表示閾値（ms）</label>
                 <input
                   type="number"
                   className="form-input"
@@ -2473,7 +2483,7 @@ function TimingConfigSection<T extends TimingFormFields>({
                   step={500}
                   placeholder="3000"
                 />
-                <div style={hintText}>処理時間がこの値を超えたらローディング表示</div>
+                <div style={hintText}>処理時間がこの値を超えたら「入力中...」を表示</div>
               </div>
               <div style={inlineRow}>
                 <div>
