@@ -315,6 +315,33 @@ describe("Phase 2c hotfix: abortPendingLoading / showLoadingForMessage", () => {
     expect(ctrl.getTimingLog().loadingStartedAt).toBeNull();
   });
 
+  it("Phase 2c hotfix v3: showLoadingForMessage は loadingShown=true でも再発火する (= LINE API は重複呼び出しを許容)", async () => {
+    // 背景: msg2 / response の前にも「入力中...」表示を試みる (= per-message refresh)
+    // ため、loadingShown guard を意図的に効かせない。LINE 側で表示できない場合も害はない。
+    const ctrl = new ReadReceiptController({
+      userId:             "u-test",
+      channelAccessToken: "tok",
+      isOneOnOne:         true,
+      config: { loadingEnabled: true, loadingMinSeconds: 5, loadingMaxSeconds: 15 },
+    });
+    // 1 回目: ネットワークモックがないので showLoadingAnimation 自体は失敗するが、
+    // loadingStartedAt は updated_at として記録される
+    await ctrl.showLoadingForMessage({
+      ...TIMING_MSG2, loading_enabled: true,
+    });
+    const firstStartedAt = ctrl.getTimingLog().loadingStartedAt;
+    expect(firstStartedAt).not.toBeNull();
+
+    // 2 回目: loadingShown=true でも再発火するため loadingStartedAt が更新される
+    await new Promise((r) => setTimeout(r, 10));
+    await ctrl.showLoadingForMessage({
+      ...TIMING_MSG2, loading_enabled: true,
+    });
+    const secondStartedAt = ctrl.getTimingLog().loadingStartedAt;
+    expect(secondStartedAt).not.toBeNull();
+    expect(secondStartedAt!).toBeGreaterThan(firstStartedAt!);  // = 再発火確認
+  });
+
   it("abortPendingLoading を 2 回呼んでも例外にならない", () => {
     const ctrl = new ReadReceiptController({
       userId: "u-test", channelAccessToken: "tok", isOneOnOne: true,
