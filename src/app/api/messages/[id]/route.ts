@@ -334,6 +334,17 @@ export const PATCH = withAuth<{ id: string }>(async (req, { params }, user) => {
 });
 
 // ── DELETE /api/messages/:id ─────────────────────
+//
+// 仕様: chain head (= next_message_id で連結された連続メッセージの先頭) を削除すると、
+//   chain 内の continuation メッセージ (msg2, msg3, ...) も一括削除する。
+//   理由: chain continuation は一覧では非表示で、独立操作対象ではないため、
+//   親 (chain head) と一緒に消える方が UX 上自然 (= 確認ダイアログ「関連する...設定も削除されます」と整合)。
+//
+//   safeguards:
+//   - 同じ work_id に属する message のみを chain として walk する (= 他 work 混入防止)
+//   - 循環参照を visited Set で防止
+//   - 上限 10 件 (= LINE 5 件 chain の倍を保険として)
+//   - transaction で一括 delete (= 中途半端な状態回避)
 export const DELETE = withAuth<{ id: string }>(async (_req, { params }, user) => {
   try {
     const existing = await prisma.message.findUnique({
@@ -348,7 +359,27 @@ export const DELETE = withAuth<{ id: string }>(async (_req, { params }, user) =>
     const check = await requireRole(existing.work.oaId, user.id, 'owner');
     if (!check.ok) return check.response;
 
-    await prisma.message.delete({ where: { id: params.id } });
+    // chain continuation を walk して削除対象 ID を集める
+    const idsToDelete: string[] = [existing.id];
+    const visited = new Set<string>([existing.id]);
+    let currentNextId: string | null = existing.nextMessageId ?? null;
+    for (let i = 0; i < 10 && currentNextId; i++) {
+      if (visited.has(currentNextId)) break;  // = 循環防止
+      const next = await prisma.message.findUnique({
+        where: { id: currentNextId },
+        select: { id: true, workId: true, nextMessageId: true },
+      });
+      if (!next) break;
+      if (next.workId !== existing.workId) break;  // = 別 work への跨ぎは追わない
+      visited.add(next.id);
+      idsToDelete.push(next.id);
+      currentNextId = next.nextMessageId ?? null;
+    }
+
+    // transaction で一括削除
+    await prisma.$transaction(
+      idsToDelete.map((id) => prisma.message.delete({ where: { id } })),
+    );
 
     // キャッシュ無効化
     if (existing.phaseId) {
