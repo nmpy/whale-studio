@@ -1522,7 +1522,13 @@ function KeywordListEditor({ value, onChange, disabled, phases, currentMessageId
               className="form-input"
               value={kw}
               onChange={(e) => updateRow(i, e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addRow(); } }}
+              onKeyDown={(e) => {
+                // Enter で入力欄を増やさない / form submit を起こさない。
+                // IME 変換中の Enter (= 変換確定) は素通りさせる。
+                if (e.key !== "Enter") return;
+                if (e.nativeEvent.isComposing) return;
+                e.preventDefault();
+              }}
               placeholder={i === 0 ? "例: 虹" : "例: にじ、rainbow …"}
               maxLength={100}
               disabled={disabled}
