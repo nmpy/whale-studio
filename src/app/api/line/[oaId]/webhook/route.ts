@@ -136,8 +136,19 @@ function buildPhaseMessages(
 ): ReturnType<typeof _buildPhaseMessages> {
   const msgs = _buildPhaseMessages(...args);
   const firstMsg = args[0]?.messages[0];
+  // [diag] RuntimePhase の各メッセージの timing/lag をログに出す
+  console.log(
+    `[diag][timing-runtime-phase] msgs=${args[0]?.messages.length ?? 0}件`,
+    (args[0]?.messages ?? []).map((m, i) =>
+      `[${i}] id=${m.id.slice(0, 8)} kind=${m.kind} lag=${m.lag_ms} timing=${m.timing ? "あり" : "null"}` +
+      (m.timing ? ` typing=${m.timing.typing_enabled} typingMin=${m.timing.typing_min_ms} typingMax=${m.timing.typing_max_ms} loading=${m.timing.loading_enabled} read=${m.timing.read_receipt_mode}` : ""),
+    ).join(" / "),
+  );
   if (firstMsg?.timing) {
+    console.log(`[diag][timing-ctrl-apply] msg1 timing → controller`, firstMsg.timing);
     readCtrlStorage.getStore()?.applyMessageTiming(firstMsg.timing);
+  } else {
+    console.log(`[diag][timing-ctrl-apply] msg1 timing null → controller stays default (env)`);
   }
   return msgs;
 }
@@ -152,7 +163,16 @@ function buildKeywordMessages(
 ): ReturnType<typeof _buildKeywordMessages> {
   const msgs = _buildKeywordMessages(...args);
   const firstRecord = args[0]?.[0];
+  // [diag] keyword record の各 msg の timing/lag をログに出す
+  console.log(
+    `[diag][timing-keyword-records] records=${args[0]?.length ?? 0}件`,
+    (args[0] ?? []).map((r, i) =>
+      `[${i}] id=${r.id.slice(0, 8)} lag=${r.lagMs ?? "—"} timing=${r.timing ? "あり" : "null"}` +
+      (r.timing ? ` typing=${r.timing.typing_enabled} read=${r.timing.read_receipt_mode}` : ""),
+    ).join(" / "),
+  );
   if (firstRecord?.timing) {
+    console.log(`[diag][timing-ctrl-apply][kw] msg1 timing → controller`, firstRecord.timing);
     readCtrlStorage.getStore()?.applyMessageTiming(firstRecord.timing);
   }
   return msgs;
