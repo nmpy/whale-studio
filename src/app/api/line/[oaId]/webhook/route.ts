@@ -102,7 +102,12 @@ async function replyToLine(
 }
 
 /**
- * replyWithLagToLine のラッパー。typing 待機 → 既読保証 → 返信。
+ * replyWithLagToLine のラッパー。
+ *  - chain head: typing 待機 → 既読保証 → reply 送信
+ *  - chain 2 通目以降: 各メッセージの _timing で per-message typing 待機 (Phase 2c)
+ *
+ * Phase 2c: controller を _replyWithLagToLine に渡し、push loop 内で
+ * waitTypingForMessage を呼ばせる。
  */
 async function replyWithLagToLine(
   replyToken: string,
@@ -115,12 +120,16 @@ async function replyWithLagToLine(
     await ctrl.waitTypingBeforeReply();
     await ctrl.ensureReadBeforeReply();
   }
-  await _replyWithLagToLine(replyToken, messages, userId, channelAccessToken);
+  await _replyWithLagToLine(replyToken, messages, userId, channelAccessToken, ctrl);
   if (ctrl) ctrl.markReplySent();
 }
 
 /**
- * buildPhaseMessages のラッパー。最初のメッセージの演出設定を自動適用する。
+ * buildPhaseMessages のラッパー。chain head (= 1 通目) の演出設定を controller に適用する。
+ *
+ * Phase 2c: 2 通目以降の per-message timing は LineMessage._timing として
+ * convertMessageToLine で搬送され、_replyWithLagToLine の push loop で
+ * waitTypingForMessage 経由で適用される (= ここでは触らない)。
  */
 function buildPhaseMessages(
   ...args: Parameters<typeof _buildPhaseMessages>
@@ -135,12 +144,18 @@ function buildPhaseMessages(
 
 /**
  * buildKeywordMessages のラッパー。
- * KeywordMessageRecord にはランタイム timing がないため、そのまま委譲する。
+ * Phase 2c: KeywordMessageRecord にも timing を持たせたため、1 通目の timing を controller に適用する。
+ * 2 通目以降は _timing 経由で per-message timing が適用される。
  */
 function buildKeywordMessages(
   ...args: Parameters<typeof _buildKeywordMessages>
 ): ReturnType<typeof _buildKeywordMessages> {
-  return _buildKeywordMessages(...args);
+  const msgs = _buildKeywordMessages(...args);
+  const firstRecord = args[0]?.[0];
+  if (firstRecord?.timing) {
+    readCtrlStorage.getStore()?.applyMessageTiming(firstRecord.timing);
+  }
+  return msgs;
 }
 import {
   loadSheetsData,
@@ -317,15 +332,24 @@ async function getCachedGlobalKeywords(
       triggerKeyword:  true,
       imageActionType: true, imageActionText: true, imageActionUrl: true,
       imageActionLiffPageId: true, imageActionPostbackData: true,
+      // 演出設定 (Phase 2c)
+      lagMs: true,
+      readReceiptMode: true, readDelayMs: true,
+      typingEnabled: true, typingMinMs: true, typingMaxMs: true,
+      loadingEnabled: true, loadingThresholdMs: true,
+      loadingMinSeconds: true, loadingMaxSeconds: true,
       character: {
         select: { name: true, iconImageUrl: true },
       },
     },
     orderBy: { sortOrder: "asc" },
   });
-  const result = msgs.filter(
-    (m): m is typeof m & { triggerKeyword: string } => m.triggerKeyword !== null,
-  );
+  const result = msgs
+    .filter((m): m is typeof m & { triggerKeyword: string } => m.triggerKeyword !== null)
+    .map((m) => ({
+      ...m,
+      timing: buildKeywordTiming(m),
+    }));
   await activeCache.set(key, result, TTL.GLOBAL_KW);
   return result;
 }
@@ -359,14 +383,24 @@ async function getCachedStartMsgs(
       sortOrder:       true,
       imageActionType: true, imageActionText: true, imageActionUrl: true,
       imageActionLiffPageId: true, imageActionPostbackData: true,
+      // 演出設定 (Phase 2c)
+      lagMs: true,
+      readReceiptMode: true, readDelayMs: true,
+      typingEnabled: true, typingMinMs: true, typingMaxMs: true,
+      loadingEnabled: true, loadingThresholdMs: true,
+      loadingMinSeconds: true, loadingMaxSeconds: true,
       character: {
         select: { name: true, iconImageUrl: true },
       },
     },
     orderBy: { sortOrder: "asc" },
   });
-  await activeCache.set(key, msgs, TTL.START_MSGS);
-  return msgs;
+  const result = msgs.map((m) => ({
+    ...m,
+    timing: buildKeywordTiming(m),
+  }));
+  await activeCache.set(key, result, TTL.START_MSGS);
+  return result;
 }
 
 // ── userProgress キャッシュ（TTL 10秒 / write-through）──────────────────
@@ -608,6 +642,17 @@ async function buildMessageChain(
     imageActionUrl?:          string | null;
     imageActionLiffPageId?:   string | null;
     imageActionPostbackData?: string | null;
+    // ── 演出設定（Phase 2c で chain 2 通目以降にも反映する） ──
+    lagMs?:                number | null;
+    readReceiptMode?:      string | null;
+    readDelayMs?:          number | null;
+    typingEnabled?:        boolean | null;
+    typingMinMs?:          number | null;
+    typingMaxMs?:          number | null;
+    loadingEnabled?:       boolean | null;
+    loadingThresholdMs?:   number | null;
+    loadingMinSeconds?:    number | null;
+    loadingMaxSeconds?:    number | null;
     character: { name: string; iconImageUrl: string | null } | null;
   },
   vars: import("@/lib/line").PlaceholderVars = {},
@@ -628,6 +673,12 @@ async function buildMessageChain(
         nextMessageId: true, sortOrder: true,
         imageActionType: true, imageActionText: true, imageActionUrl: true,
         imageActionLiffPageId: true, imageActionPostbackData: true,
+        // 演出設定 (Phase 2c)
+        lagMs: true,
+        readReceiptMode: true, readDelayMs: true,
+        typingEnabled: true, typingMinMs: true, typingMaxMs: true,
+        loadingEnabled: true, loadingThresholdMs: true,
+        loadingMinSeconds: true, loadingMaxSeconds: true,
         character: { select: { name: true, iconImageUrl: true } },
       },
     });
@@ -656,11 +707,47 @@ async function buildMessageChain(
     imageActionUrl:          r.imageActionUrl          ?? null,
     imageActionLiffPageId:   r.imageActionLiffPageId   ?? null,
     imageActionPostbackData: r.imageActionPostbackData ?? null,
+    lagMs:           r.lagMs ?? null,
+    timing:          buildKeywordTiming(r),
     character:       r.character,
   }));
   return {
     messages: buildKeywordMessages(asKeywordRecords, undefined, vars),
     chainIds: records.map((r) => r.id),
+  };
+}
+
+/**
+ * Phase 2c: DB raw Message から MessageTimingConfig を組み立てる。
+ * 全フィールドが null/undefined なら null (= inherit) を返す。
+ */
+function buildKeywordTiming(r: {
+  readReceiptMode?:    string | null;
+  readDelayMs?:        number | null;
+  typingEnabled?:      boolean | null;
+  typingMinMs?:        number | null;
+  typingMaxMs?:        number | null;
+  loadingEnabled?:     boolean | null;
+  loadingThresholdMs?: number | null;
+  loadingMinSeconds?:  number | null;
+  loadingMaxSeconds?:  number | null;
+}): import("@/types").MessageTimingConfig | null {
+  const hasAny =
+    r.readReceiptMode != null || r.readDelayMs != null ||
+    r.typingEnabled != null || r.typingMinMs != null || r.typingMaxMs != null ||
+    r.loadingEnabled != null || r.loadingThresholdMs != null ||
+    r.loadingMinSeconds != null || r.loadingMaxSeconds != null;
+  if (!hasAny) return null;
+  return {
+    read_receipt_mode:    (r.readReceiptMode as import("@/types").ReadReceiptMode | null) ?? null,
+    read_delay_ms:        r.readDelayMs        ?? null,
+    typing_enabled:       r.typingEnabled      ?? null,
+    typing_min_ms:        r.typingMinMs        ?? null,
+    typing_max_ms:        r.typingMaxMs        ?? null,
+    loading_enabled:      r.loadingEnabled     ?? null,
+    loading_threshold_ms: r.loadingThresholdMs ?? null,
+    loading_min_seconds:  r.loadingMinSeconds  ?? null,
+    loading_max_seconds:  r.loadingMaxSeconds  ?? null,
   };
 }
 
@@ -695,6 +782,9 @@ function matchKeywordsInMemory(
       imageActionUrl:          m.imageActionUrl          ?? null,
       imageActionLiffPageId:   m.imageActionLiffPageId   ?? null,
       imageActionPostbackData: m.imageActionPostbackData ?? null,
+      // 演出設定 (Phase 2c) — PhaseRow.messages は include で全カラム取得済み
+      lagMs:           m.lagMs ?? null,
+      timing:          buildKeywordTiming(m),
       character:       m.character
         ? { name: m.character.name, iconImageUrl: m.character.iconImageUrl }
         : null,

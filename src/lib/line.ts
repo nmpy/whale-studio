@@ -7,9 +7,10 @@
 //   - RuntimePhase → LINE メッセージ変換
 
 import crypto from "crypto";
-import type { RuntimePhase, QuickReplyItem } from "@/types";
+import type { RuntimePhase, QuickReplyItem, MessageTimingConfig } from "@/types";
 import { interpolate } from "@/lib/template";
 import { moveQuickReplyToTail } from "@/lib/quick-reply-tail";
+import type { ReadReceiptController } from "@/lib/line-read-receipt";
 
 // ────────────────────────────────────────────────
 // 型
@@ -63,6 +64,8 @@ export type LineTextMessage = {
   quickReply?: LineQuickReply;
   /** @internal LINE API には送信しない。replyWithLagToLine のラグ制御に使用（ms） */
   _lagMs?: number;
+  /** @internal LINE API には送信しない。replyWithLagToLine で per-message timing 適用に使用 */
+  _timing?: MessageTimingConfig;
 };
 
 export type LineImageMessage = {
@@ -75,6 +78,8 @@ export type LineImageMessage = {
   quickReply?: LineQuickReply;
   /** @internal LINE API には送信しない。replyWithLagToLine のラグ制御に使用（ms） */
   _lagMs?: number;
+  /** @internal LINE API には送信しない。replyWithLagToLine で per-message timing 適用に使用 */
+  _timing?: MessageTimingConfig;
 };
 
 export type LineVideoMessage = {
@@ -87,6 +92,8 @@ export type LineVideoMessage = {
   quickReply?: LineQuickReply;
   /** @internal LINE API には送信しない。replyWithLagToLine のラグ制御に使用（ms） */
   _lagMs?: number;
+  /** @internal LINE API には送信しない。replyWithLagToLine で per-message timing 適用に使用 */
+  _timing?: MessageTimingConfig;
 };
 
 /** Flex Message action (LINE 仕様の部分集合)。message / uri / postback のみ実装。 */
@@ -113,6 +120,7 @@ export type LineFlexMessage = {
   sender?: LineSender;
   quickReply?: LineQuickReply;
   _lagMs?: number;
+  _timing?: MessageTimingConfig;
 };
 
 export type LineMessage = LineTextMessage | LineImageMessage | LineVideoMessage | LineFlexMessage;
@@ -244,6 +252,8 @@ type ConvertibleMessage = {
   sender?:    LineSender;
   quickReply?: LineQuickReply;
   lagMs?:     number;
+  /** メッセージ単位の演出設定 (= LineMessage._timing として搬送) */
+  timing?:    MessageTimingConfig | null;
 };
 
 const DEFAULT_IMAGE_ALT_TEXT = "画像メッセージ";
@@ -321,7 +331,7 @@ function convertMessageToLine(
   phaseId: string,
   vars:    PlaceholderVars = {},
 ): LineMessage | null {
-  const { id, kind, mtype, body, asset_url, alt_text, sender, quickReply, lagMs } = msg;
+  const { id, kind, mtype, body, asset_url, alt_text, sender, quickReply, lagMs, timing } = msg;
   const isPuzzle = kind === "puzzle";
 
   /** LINE メッセージ共通フィールドを付与するヘルパー */
@@ -329,6 +339,8 @@ function convertMessageToLine(
     if (sender) m.sender = sender;
     if (quickReply) m.quickReply = quickReply;
     if (lagMs && lagMs > 0) m._lagMs = lagMs;
+    // null は inherit。undefined と区別して扱う必要はないので、非 null/undefined のときのみセット。
+    if (timing) m._timing = timing;
     return m;
   };
 
@@ -412,10 +424,11 @@ function logConversionSummary(caller: string, phaseId: string, inputCount: numbe
   }
 }
 
-/** LineMessage から内部フィールド（_lagMs）を除去して送信用オブジェクトを生成する */
+/** LineMessage から内部フィールド（_lagMs / _timing）を除去して送信用オブジェクトを生成する */
 function stripInternalFields(msg: LineMessage): Record<string, unknown> {
   const m = { ...msg } as Record<string, unknown>;
   delete m._lagMs;
+  delete m._timing;
   return m;
 }
 
@@ -609,7 +622,11 @@ export async function pushToLine(
  * - 1件目: Reply API（replyToken を使用・即送信）
  * - 2件目以降: 各メッセージの _lagMs ms 待機後に Push API で 1 件ずつ送信
  *   - _lagMs が未設定 → DEFAULT_MSG_LAG_MS (1000ms)
- *   - _lagMs が設定済み → min(_lagMs, MAX_MSG_LAG_MS) (上限 2000ms)
+ *   - _lagMs が設定済み → min(_lagMs, MAX_MSG_LAG_MS)
+ *
+ * Phase 2c: 各メッセージの `_timing` が設定されていれば、push 直前に
+ * ReadReceiptController.applyMessageTiming() を呼んで該当 message の
+ * typing 待機を効かせる。controller が未指定なら従来通り lag のみ。
  *
  * 1 件のみの場合は通常の replyToLine と同じ動作（Push API は使用しない）。
  */
@@ -618,6 +635,7 @@ export async function replyWithLagToLine(
   messages:           LineMessage[],
   userId:             string,
   channelAccessToken: string,
+  controller?:        ReadReceiptController,
 ): Promise<void> {
   if (!replyToken || messages.length === 0) return;
 
@@ -637,8 +655,16 @@ export async function replyWithLagToLine(
     const msg = rest[i];
     const rawLag = msg._lagMs ?? 0;
     const delay  = rawLag > 0 ? Math.min(rawLag, MAX_MSG_LAG_MS) : DEFAULT_MSG_LAG_MS;
-    console.log(`[replyWithLagToLine] push ${i + 1}/${rest.length} delay=${delay}ms`);
+    console.log(`[replyWithLagToLine] push ${i + 1}/${rest.length} delay=${delay}ms timing=${msg._timing ? "あり" : "なし"}`);
     await sleep(delay);
+    // Phase 2c: per-message typing 演出を反映する。
+    // chain head の typing は waitTypingBeforeReply で適用済み。
+    // 2 通目以降は waitTypingForMessage を使い、receivedAt 経過時間に縛られず
+    // メッセージ作者の typing_min_ms ~ typing_max_ms を効かせる。
+    // _timing が無ければ何もしない (= 単に lag のみ待つ)。
+    if (controller && msg._timing) {
+      await controller.waitTypingForMessage(msg._timing);
+    }
     await pushToLine(userId, [msg], channelAccessToken);
   }
   console.log(`[replyWithLagToLine] 完了 reply=1 push=${rest.length} total=${messages.length}`);
@@ -821,6 +847,7 @@ export function buildPhaseMessages(
       sender:    msg.character ? buildSender(msg.character) : undefined,
       quickReply: msgQr,
       lagMs:     msg.lag_ms,
+      timing:    msg.timing,
     }, "buildPhaseMessages", phase.id, vars);
 
     if (lineMsg) {
@@ -910,6 +937,10 @@ export type KeywordMessageRecord = {
   imageActionUrl?:          string | null;
   imageActionLiffPageId?:   string | null;
   imageActionPostbackData?: string | null;
+  /** 前のメッセージ送信後の待機時間 (ms)。chain 内 2 通目以降で使用 */
+  lagMs?:                   number | null;
+  /** メッセージ単位の演出設定 (= LineMessage._timing として搬送) */
+  timing?:                  MessageTimingConfig | null;
   character: {
     name:         string;
     iconImageUrl: string | null;
@@ -961,6 +992,8 @@ export function buildKeywordMessages(
       } : null,
       sender,
       quickReply: msgQr,
+      lagMs:      msg.lagMs ?? 0,
+      timing:     msg.timing ?? null,
     }, "buildKeywordMessages", "keyword", vars);
 
     if (lineMsg) messages.push(lineMsg);
