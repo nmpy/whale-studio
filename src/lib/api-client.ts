@@ -951,6 +951,16 @@ export const messageApi = {
     });
     return parseResponse(res);
   },
+
+  /** 一覧の並び替え (= sortOrder を 0,1,2,... で一括更新) */
+  async reorder(token: string, body: { work_id: string; message_ids: string[] }): Promise<{ updated: number }> {
+    const res = await fetch("/api/messages/reorder", {
+      method:  "PATCH",
+      headers: authHeaders(token),
+      body:    JSON.stringify(body),
+    });
+    return parseResponse(res);
+  },
 };
 
 // ────────────────────────────────────────────────

@@ -8,6 +8,7 @@ import { TLink as Link } from "@/components/TLink";
 import { workApi, messageApi, phaseApi, transitionApi, getDevToken } from "@/lib/api-client";
 import { HelpAccordion } from "@/components/HelpAccordion";
 import { Breadcrumb } from "@/components/Breadcrumb";
+import { useToast } from "@/components/Toast";
 import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
 import { ViewerBanner } from "@/components/PermissionGuard";
 import { GuideCard } from "@/components/onboarding/GuideCard";
@@ -393,6 +394,7 @@ export default function MessagesPage() {
   const oaId    = params.id;
   const workId  = params.workId;
   const { role, canEdit } = useWorkspaceRole(oaId);
+  const { showToast } = useToast();
   const [activeTab, setActiveTab]       = useState<Tab>("messages");
   const [workTitle, setWorkTitle]       = useState("");
   const [welcomeMsg, setWelcomeMsg]     = useState<string | null>(null);
@@ -403,6 +405,8 @@ export default function MessagesPage() {
   const [loadError, setLoadError]       = useState<string | null>(null);
   // chain head ID の Set。展開状態の head はここに含まれる (= 連続メッセージ展開トグル用)
   const [expandedChains, setExpandedChains] = useState<Set<string>>(new Set());
+  // 操作中の messageId (= 削除/並び替え 進行中の表示用)
+  const [busyMessageId, setBusyMessageId] = useState<string | null>(null);
   const toggleChainExpansion = (headId: string) => {
     setExpandedChains((prev) => {
       const next = new Set(prev);
@@ -411,6 +415,77 @@ export default function MessagesPage() {
       return next;
     });
   };
+
+  /** 一覧からメッセージを削除する (chain head 専用)。
+   *  確認ダイアログを出し、API 呼び出し成功で local state からも除去する。 */
+  async function handleDeleteMessage(headMsg: MessageWithRelations) {
+    if (busyMessageId) return;
+    const ok = window.confirm(
+      `メッセージを削除しますか？\nこの操作は取り消せません。関連する応答キーワードや設定も削除されます。`,
+    );
+    if (!ok) return;
+    setBusyMessageId(headMsg.id);
+    try {
+      await messageApi.delete(getDevToken(), headMsg.id);
+      // local state からも該当メッセージ + chain continuation を除去
+      const contIds = new Set(getChainContinuations(messages, headMsg.id).map((c) => c.id));
+      setMessages((prev) => prev.filter((m) => m.id !== headMsg.id && !contIds.has(m.id)));
+      // 展開状態も clear
+      setExpandedChains((prev) => {
+        if (!prev.has(headMsg.id)) return prev;
+        const next = new Set(prev);
+        next.delete(headMsg.id);
+        return next;
+      });
+      showToast("メッセージを削除しました", "success");
+    } catch (err) {
+      console.error("[messages] delete error:", err);
+      showToast(err instanceof Error ? err.message : "メッセージの削除に失敗しました", "error");
+    } finally {
+      setBusyMessageId(null);
+    }
+  }
+
+  /** phase グループ内で head メッセージを 1 件分上下に並び替える。
+   *  - direction="up": 一つ前と sortOrder を入れ替える (= 0 番目なら no-op)
+   *  - direction="down": 一つ後と sortOrder を入れ替える (= 最後なら no-op)
+   *  バックエンドには「グループ全体の新しい順序」を渡し、sortOrder を 0,1,2,... で再付番する。
+   *  これにより既存メッセージ間で sortOrder の重複が起きていても整理される副次効果あり。 */
+  async function handleReorderMessage(
+    headMsg: MessageWithRelations,
+    direction: "up" | "down",
+    groupHeads: MessageWithRelations[],
+  ) {
+    if (busyMessageId) return;
+    const idx = groupHeads.findIndex((m) => m.id === headMsg.id);
+    if (idx === -1) return;
+    if (direction === "up" && idx === 0) return;
+    if (direction === "down" && idx === groupHeads.length - 1) return;
+
+    const newOrder = [...groupHeads];
+    const swapWith = direction === "up" ? idx - 1 : idx + 1;
+    [newOrder[idx], newOrder[swapWith]] = [newOrder[swapWith], newOrder[idx]];
+
+    setBusyMessageId(headMsg.id);
+    try {
+      await messageApi.reorder(getDevToken(), {
+        work_id:     workId,
+        message_ids: newOrder.map((m) => m.id),
+      });
+      // local state を新しい順序で更新 (= sortOrder を 0,1,2,... で再付番)
+      const newSortByMsgId = new Map(newOrder.map((m, i) => [m.id, i]));
+      setMessages((prev) =>
+        prev.map((m) =>
+          newSortByMsgId.has(m.id) ? { ...m, sort_order: newSortByMsgId.get(m.id)! } : m,
+        ),
+      );
+    } catch (err) {
+      console.error("[messages] reorder error:", err);
+      showToast(err instanceof Error ? err.message : "並び替えに失敗しました", "error");
+    } finally {
+      setBusyMessageId(null);
+    }
+  }
 
   useEffect(() => {
     const token = getDevToken();
@@ -852,7 +927,7 @@ export default function MessagesPage() {
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                   <thead>
                     <tr style={{ borderBottom: "1px solid var(--border-light)", background: "var(--gray-50)" }}>
-                      {["タイプ", "種別", "本文", "キャラクター", "状態", "順序", ""].map((h, i) => (
+                      {["タイプ", "種別", "本文", "キャラクター", "状態", "順序", "操作"].map((h, i) => (
                         <th
                           key={i}
                           style={{
@@ -1006,16 +1081,71 @@ export default function MessagesPage() {
                           {msg.sort_order}
                         </td>
 
-                        {/* 編集 */}
+                        {/* 操作 (= 並び替え / 編集 / 削除) */}
                         <td style={{ padding: "12px 14px", textAlign: "right", whiteSpace: "nowrap" }}>
                           {canEdit && (
-                            <Link
-                              href={`/oas/${oaId}/works/${workId}/messages/${msg.id}`}
-                              className="btn btn-ghost"
-                              style={{ padding: "5px 14px", fontSize: 12 }}
-                            >
-                              編集
-                            </Link>
+                            <div style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                              {/* ▲ 上へ */}
+                              <button
+                                type="button"
+                                title="上へ"
+                                aria-label="上へ"
+                                disabled={
+                                  busyMessageId !== null ||
+                                  group.messages.findIndex((m) => m.id === msg.id) === 0
+                                }
+                                onClick={() => handleReorderMessage(msg, "up", group.messages)}
+                                className="btn btn-ghost"
+                                style={{
+                                  padding: "4px 8px", fontSize: 13, lineHeight: 1,
+                                  ...(busyMessageId !== null ||
+                                  group.messages.findIndex((m) => m.id === msg.id) === 0
+                                    ? { opacity: 0.3, cursor: "not-allowed" }
+                                    : {}),
+                                }}
+                              >▲</button>
+                              {/* ▼ 下へ */}
+                              <button
+                                type="button"
+                                title="下へ"
+                                aria-label="下へ"
+                                disabled={
+                                  busyMessageId !== null ||
+                                  group.messages.findIndex((m) => m.id === msg.id) === group.messages.length - 1
+                                }
+                                onClick={() => handleReorderMessage(msg, "down", group.messages)}
+                                className="btn btn-ghost"
+                                style={{
+                                  padding: "4px 8px", fontSize: 13, lineHeight: 1,
+                                  ...(busyMessageId !== null ||
+                                  group.messages.findIndex((m) => m.id === msg.id) === group.messages.length - 1
+                                    ? { opacity: 0.3, cursor: "not-allowed" }
+                                    : {}),
+                                }}
+                              >▼</button>
+                              {/* 編集 */}
+                              <Link
+                                href={`/oas/${oaId}/works/${workId}/messages/${msg.id}`}
+                                className="btn btn-ghost"
+                                style={{ padding: "5px 14px", fontSize: 12 }}
+                              >
+                                編集
+                              </Link>
+                              {/* 削除 */}
+                              <button
+                                type="button"
+                                title="削除"
+                                aria-label="削除"
+                                disabled={busyMessageId !== null}
+                                onClick={() => handleDeleteMessage(msg)}
+                                style={{
+                                  padding: "5px 11px", fontSize: 12, borderRadius: 6,
+                                  border: "1px solid #fecaca", background: "#fff5f5",
+                                  color: "#ef4444", cursor: "pointer",
+                                  ...(busyMessageId !== null ? { opacity: 0.5, cursor: "not-allowed" } : {}),
+                                }}
+                              >削除</button>
+                            </div>
                           )}
                         </td>
                       </tr>
