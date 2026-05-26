@@ -19,6 +19,7 @@
 
 import { usePathname } from "next/navigation";
 import AppHeader from "@/components/AppHeader";
+import { AccessPreviewBar } from "@/components/AccessPreviewBar";
 
 function isBareLayoutRoute(pathname: string | null): boolean {
   if (!pathname) return false;
@@ -40,6 +41,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <>
       <AppHeader />
+      {/* OA 配下 + owner のときだけ表示される独立バー (= owner 以外には何も描画されない)。
+          ヘッダー横並びを崩さないため main の外、ヘッダー直下に配置する。 */}
+      <AccessPreviewBar />
       <main>
         <div className="container">{children}</div>
       </main>

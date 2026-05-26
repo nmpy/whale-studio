@@ -16,7 +16,6 @@ import { useTesterMode } from "@/hooks/useTesterMode";
 import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
 import { getAuthHeaders } from "@/lib/api-client";
 import { RoleBadge } from "@/components/PermissionGuard";
-import { AccessPreviewControls } from "@/components/AccessPreviewControls";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { useProfile } from "@/hooks/useProfile";
 import { useToast } from "@/components/Toast";
@@ -166,13 +165,9 @@ export default function AppHeader() {
               <RoleBadge role={displayRole} />
             </div>
           )}
-
-          {/* ── プラン / 権限の表示 + owner 限定 preview controls ─── */}
-          {currentOaId && loggedIn && (
-            <div style={{ marginLeft: 8 }}>
-              <AccessPreviewControls oaId={currentOaId} />
-            </div>
-          )}
+          {/* AccessPreviewControls は AppShell でヘッダー直下の独立バーとして表示する。
+              既存ヘッダーの横並び (= ロゴ / 副題 / オーナーバッジ / ユーザー名 / ログアウト /
+              スタジオ管理) の高さ・折り返しを崩さないため。 */}
 
           {/* ── ユーザー名（ログイン済み時のみ） ── */}
           {loggedIn && (
