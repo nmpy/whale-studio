@@ -7,6 +7,7 @@
 // 直 URL アクセス時にいきなり 404 を返すのではなく、案内 + 「管理メニューに戻る」
 // 導線を出すことで「気付かない遷移」を防ぐ。
 
+import { useSearchParams } from "next/navigation";
 import { TLink as Link } from "@/components/TLink";
 import {
   HUB_CARD_TO_FEATURE,
@@ -15,6 +16,7 @@ import {
   type FeatureKey,
   type PlanTier,
 } from "@/lib/constants/plans";
+import { withPreviewParams } from "@/lib/access-preview";
 
 interface Props {
   /** OA ID (= 管理メニューへの戻り先ルーティングに使う) */
@@ -31,12 +33,17 @@ interface Props {
 }
 
 export function PlanRequiredCard({ oaId, workId, featureKey, currentPlan, featureLabel }: Props) {
+  const searchParams = useSearchParams();
   const requiredPlan = getRequiredPlanForFeature(featureKey);
   const requiredLabel = PLAN_LABELS[requiredPlan];
-  // 戻り先: workId があれば作品ハブ、無ければ OA トップ
-  const backHref = workId
-    ? `/oas/${oaId}/works/${workId}`
-    : `/oas/${oaId}`;
+  // 戻り先: workId があれば作品ハブ、無ければ OA トップ。
+  // owner の表示確認モード中は previewPlan / previewRole を持ち越す
+  // (= 「Basic で見ると LIFF はグレーアウト」を確認した後、戻った管理メニューでも
+  //   Basic 表示を維持するため)。
+  const backHref = withPreviewParams(
+    workId ? `/oas/${oaId}/works/${workId}` : `/oas/${oaId}`,
+    searchParams,
+  );
 
   return (
     <div

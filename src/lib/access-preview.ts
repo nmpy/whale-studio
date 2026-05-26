@@ -162,3 +162,43 @@ interface ReadonlyURLSearchParams {
   toString(): string;
   get(name: string): string | null;
 }
+
+// ────────────────────────────────────────────────
+// href に preview query を持ち越すための helper
+// ────────────────────────────────────────────────
+
+/**
+ * `pathname` に対して、現在の preview 関連 query (= previewPlan / previewRole) のみを
+ * 付与した URL 文字列を返す。
+ *
+ * 用途:
+ *   owner が表示確認モード中に管理メニューカード等のリンクをクリックした際、
+ *   遷移先でも preview 状態を維持したい。Next.js の <Link href> にこの結果を渡す。
+ *
+ * 仕様:
+ *   - pathname に既に `?` が含まれていたら追記、なければ新規付与
+ *   - preview 関連 query 以外 (= 例: ?tab=data) は **持ち越さない** (= 遷移先固有の状態のため)
+ *   - preview query が両方 null/未指定の場合は pathname をそのまま返す
+ *
+ * 例:
+ *   withPreviewParams("/oas/x/works/y/liff", currentSearchParams)
+ *   → "/oas/x/works/y/liff?previewPlan=basic&previewRole=client_operator"
+ */
+export function withPreviewParams(
+  pathname: string,
+  searchParams: URLSearchParams | ReadonlyURLSearchParams | null | undefined,
+): string {
+  if (!searchParams) return pathname;
+  const previewPlan = searchParams.get("previewPlan");
+  const previewRole = searchParams.get("previewRole");
+  if (!previewPlan && !previewRole) return pathname;
+
+  const next = new URLSearchParams();
+  if (previewPlan) next.set("previewPlan", previewPlan);
+  if (previewRole) next.set("previewRole", previewRole);
+  const qs = next.toString();
+  if (!qs) return pathname;
+
+  const sep = pathname.includes("?") ? "&" : "?";
+  return `${pathname}${sep}${qs}`;
+}
