@@ -27,13 +27,21 @@ import {
 } from "@/lib/constants/plans";
 import { useAccessPreview } from "@/hooks/useAccessPreview";
 import { withPreviewParams } from "@/lib/access-preview";
+import { StatusBadge } from "@/components/shared";
 
-// ── ステータス表示 ───────────────────────────────────────
-const STATUS_META: Record<string, { label: string; color: string; bg: string; dot: string }> = {
-  draft:  { label: "下書き", color: "#6b7280", bg: "#f3f4f6", dot: "#9ca3af" },
-  active: { label: "公開中", color: "#166534", bg: "#dcfce7", dot: "#22c55e" },
-  paused: { label: "停止中", color: "#92400e", bg: "#fef3c7", dot: "#f59e0b" },
+// ── ステータス → shared/StatusBadge tone マッピング ───────────────
+// (= Phase 3.3a でローカル STATUS_META を撤廃、shared/StatusBadge に統合)
+// 表示文言は既存の「下書き / 公開中 / 停止中」を維持。
+const STATUS_LABEL: Record<string, string> = {
+  draft:  "下書き",
+  active: "公開中",
+  paused: "停止中",
 };
+function statusTone(status: string): "active" | "muted" | "warn" {
+  if (status === "active") return "active";
+  if (status === "paused") return "warn";
+  return "muted"; // draft / unknown
+}
 
 // ── ハブカード定義 ────────────────────────────────────────
 const HUB_CARDS = [
@@ -368,11 +376,9 @@ export default function WorkHubPage() {
 
   if (loading) {
     return (
-      <div className="page-header">
-        <div>
-          <div className="skeleton" style={{ width: 200, height: 13, marginBottom: 8 }} />
-          <div className="skeleton" style={{ width: 280, height: 22 }} />
-        </div>
+      <div className="mb-5 w-full max-w-[720px] rounded-card border border-line bg-surface p-5 shadow-sm">
+        <div className="skeleton mb-2" style={{ width: 200, height: 13, borderRadius: 4 }} />
+        <div className="skeleton" style={{ width: 280, height: 22, borderRadius: 4 }} />
       </div>
     );
   }
@@ -380,11 +386,23 @@ export default function WorkHubPage() {
   if (error) {
     return (
       <>
-        <div className="page-header">
-          <h2>作品</h2>
-          <Link href={`/oas/${oaId}/works`} className="btn btn-ghost">← 作品リストに戻る</Link>
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+          <h2 className="font-round text-[clamp(20px,4vw,24px)] font-extrabold leading-[1.2] tracking-[-0.02em] text-ink">
+            作品
+          </h2>
+          <Link
+            href={`/oas/${oaId}/works`}
+            className="inline-flex items-center justify-center rounded-full border border-line bg-surface px-4 py-1.5 text-[12px] font-bold text-ink-2 no-underline transition-colors hover:border-brand hover:bg-brand-mist hover:text-brand-ink"
+          >
+            ← 作品リストに戻る
+          </Link>
         </div>
-        <div className="alert alert-error">{error}</div>
+        <div
+          role="alert"
+          className="rounded-field border border-danger/30 bg-danger-soft px-4 py-3 text-[13px] leading-[1.6] text-danger"
+        >
+          {error}
+        </div>
       </>
     );
   }
@@ -397,7 +415,8 @@ export default function WorkHubPage() {
   const isSetupIncomplete = !hasCharacters || !hasPhases || !hasMessages || !hasTransitions;
 
 
-  const statusMeta = STATUS_META[work?.publish_status ?? "draft"];
+  const currentStatus    = work?.publish_status ?? "draft";
+  const currentStatusLabel = STATUS_LABEL[currentStatus] ?? currentStatus;
   const basePath   = `/oas/${oaId}/works/${workId}`;
 
   // updated_at フォーマット（WorkCard と同形式）
@@ -458,100 +477,62 @@ export default function WorkHubPage() {
   return (
     <>
       {/* ── ページヘッダー ── */}
-      <div className="page-header">
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <Breadcrumb items={[
-            { label: "アカウントリスト", href: "/oas" },
-            { label: "作品リスト",       href: `/oas/${oaId}/works` },
-            ...(work ? [{ label: work.title }] : []),
-          ]} />
+      <div className="mb-5 min-w-0">
+        <Breadcrumb items={[
+          { label: "アカウントリスト", href: "/oas" },
+          { label: "作品リスト",       href: `/oas/${oaId}/works` },
+          ...(work ? [{ label: work.title }] : []),
+        ]} />
 
-          {/* タイトル行 */}
-          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginTop: 2 }}>
-            <h2 style={{ margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: sp ? 200 : 400 }}>
-              {work?.title ?? "作品"}
-            </h2>
-            {/* ステータスバッジ */}
-            {statusMeta && (
-              <span style={{
-                display:      "inline-flex",
-                alignItems:   "center",
-                gap:          5,
-                padding:      "3px 10px",
-                borderRadius: "var(--radius-full)",
-                fontSize:     11,
-                fontWeight:   700,
-                background:   statusMeta.bg,
-                color:        statusMeta.color,
-                flexShrink:   0,
-              }}>
-                <span style={{ width: 6, height: 6, borderRadius: "50%", background: statusMeta.dot, display: "inline-block" }} />
-                {statusMeta.label}
-              </span>
-            )}
-          </div>
-
-          {/* サブ情報行: 開始トリガー / 最終更新 */}
-          <div style={{
-            display:    "flex",
-            alignItems: "center",
-            flexWrap:   "wrap",
-            gap:        "6px 16px",
-            marginTop:  8,
-          }}>
-            {/* 開始トリガー */}
-            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <span style={{
-                fontSize:      10,
-                fontWeight:    700,
-                letterSpacing: "0.07em",
-                textTransform: "uppercase",
-                color:         "var(--text-muted)",
-                userSelect:    "none",
-                flexShrink:    0,
-              }}>
-                開始トリガー
-              </span>
-              {work?.start_trigger ? (
-                <span style={{
-                  fontSize:     12,
-                  fontWeight:   500,
-                  color:        "var(--text-primary)",
-                  fontFamily:   "var(--font-mono, monospace)",
-                  background:   "#f8fafc",
-                  border:       "1px solid var(--border-light)",
-                  padding:      "1px 10px",
-                  borderRadius: "var(--radius-full)",
-                  maxWidth:     sp ? 140 : 260,
-                  overflow:     "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace:   "nowrap",
-                }}>
-                  {work.start_trigger}
-                </span>
-              ) : (
-                <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, color: "var(--text-secondary)", fontStyle: "italic" }}>
-                  <span style={{ display: "inline-block", width: 6, height: 6, borderRadius: "50%", background: "#fbbf24" }} aria-hidden="true" />
-                  未設定
-                </span>
-              )}
-            </div>
-
-            {/* 最終更新日 */}
-            {work?.updated_at && (
-              <time dateTime={work.updated_at} style={{ fontSize: 11, color: "var(--text-muted)" }}>
-                更新 {formatDate(work.updated_at)}
-              </time>
-            )}
-          </div>
-
-          {/* 説明文 */}
-          {work?.description && (
-            <p style={{ fontSize: 13, color: "#6b7280", marginTop: 6, lineHeight: 1.6 }}>
-              {work.description}
-            </p>
+        {/* タイトル行 */}
+        <div className="mt-1 flex flex-wrap items-center gap-2.5">
+          <h2 className="font-round m-0 overflow-hidden text-ellipsis whitespace-nowrap text-[clamp(20px,4vw,24px)] font-extrabold leading-[1.2] tracking-[-0.02em] text-ink max-w-[200px] sm:max-w-[400px]">
+            {work?.title ?? "作品"}
+          </h2>
+          {/* ステータスバッジ — shared/StatusBadge に統合 (Phase 3.3a) */}
+          {work?.publish_status && (
+            <StatusBadge tone={statusTone(currentStatus)}>
+              {currentStatusLabel}
+            </StatusBadge>
           )}
         </div>
+
+        {/* サブ情報行: 開始トリガー / 最終更新 */}
+        <div className="mt-2 flex flex-wrap items-center gap-y-1.5 gap-x-4">
+          {/* 開始トリガー */}
+          <div className="flex items-center gap-1.5">
+            <span className="flex-shrink-0 select-none text-[10px] font-bold uppercase tracking-[0.07em] text-ink-3">
+              開始トリガー
+            </span>
+            {work?.start_trigger ? (
+              <span
+                className="max-w-[140px] overflow-hidden text-ellipsis whitespace-nowrap rounded-full border border-line bg-bg-tint px-2.5 py-0.5 font-mono text-[12px] font-medium text-ink sm:max-w-[260px]"
+                title={work.start_trigger}
+              >
+                {work.start_trigger}
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 text-[12px] italic text-ink-2">
+                <span aria-hidden="true" className="inline-block h-1.5 w-1.5 flex-shrink-0 rounded-full bg-warn" />
+                未設定
+              </span>
+            )}
+          </div>
+
+          {/* 最終更新日 */}
+          {work?.updated_at && (
+            <time dateTime={work.updated_at} className="font-num text-[11px] text-ink-3">
+              更新 {formatDate(work.updated_at)}
+            </time>
+          )}
+        </div>
+
+        {/* 説明文 */}
+        {work?.description && (
+          <p className="mt-1.5 text-[13px] leading-[1.6] text-ink-2">
+            {work.description}
+          </p>
+        )}
       </div>
 
       {/* ── 閲覧専用バナー ── */}
@@ -625,34 +606,32 @@ export default function WorkHubPage() {
 
       {/* ── カウント表示 ── */}
       {work && (
-        <div style={{
-          marginBottom: 24,
-          background:   "var(--surface)",
-          border:       "1px solid var(--border-light)",
-          borderRadius: "var(--radius-md)",
-          boxShadow:    "var(--shadow-xs)",
-          overflow:     "hidden",
-        }}>
+        <div className="mb-6 overflow-hidden rounded-card border border-line bg-surface shadow-sm">
           {/* 上段: 構成要素カウント */}
-          <div style={{
-            display:  "flex",
-            flexWrap: "wrap",
-            gap:      sp ? 12 : 10,
-            padding:  sp ? "12px 14px" : "14px 18px",
-          }}>
+          <div className="flex flex-wrap gap-3 p-3.5 sm:gap-2.5 sm:px-5 sm:py-4">
             {[
               { label: "プレイヤー",   value: (work._count.userProgress ?? 0).toLocaleString(), highlight: (work._count.userProgress ?? 0) > 0 },
-              { label: "キャラクター", value: work._count.characters, highlight: false },
-              { label: "フェーズ",     value: phaseCount,             highlight: false },
-              { label: "メッセージ",   value: work._count.messages,   highlight: false },
+              { label: "キャラクター", value: work._count.characters.toLocaleString(), highlight: false },
+              { label: "フェーズ",     value: phaseCount.toLocaleString(),             highlight: false },
+              { label: "メッセージ",   value: work._count.messages.toLocaleString(),   highlight: false },
             ].map(({ label, value, highlight }, i, arr) => (
-              <div key={label} style={{
-                display: "flex", alignItems: "center", gap: 8,
-                paddingRight: sp ? 0 : 18,
-                borderRight: (!sp && i < arr.length - 1) ? "1px solid var(--border-light)" : "none",
-              }}>
-                <span style={{ fontSize: sp ? 18 : 20, fontWeight: 800, color: highlight ? "var(--color-info)" : "var(--text-primary)", lineHeight: 1 }}>{value}</span>
-                <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{label}</span>
+              <div
+                key={label}
+                className={
+                  "flex items-center gap-2 " +
+                  "sm:pr-5 " +
+                  (i < arr.length - 1 ? "sm:border-r sm:border-line-2" : "")
+                }
+              >
+                <span
+                  className={
+                    "font-num text-[18px] font-extrabold leading-none sm:text-[20px] " +
+                    (highlight ? "text-sky-ink" : "text-ink")
+                  }
+                >
+                  {value}
+                </span>
+                <span className="text-[11px] text-ink-3">{label}</span>
               </div>
             ))}
           </div>
@@ -663,49 +642,30 @@ export default function WorkHubPage() {
             const inProgress = work.progress_stats?.in_progress ?? 0;
             const needsCheck = inProgress > 0 && completed === 0;
             return (
-              <div style={{
-                display:    "flex",
-                alignItems: "center",
-                flexWrap:   "wrap",
-                gap:        8,
-                padding:    sp ? "8px 14px 12px" : "8px 18px 12px",
-                borderTop:  "1px solid var(--border-light)",
-              }}>
-                {/* 完了チップ — グリーン（WorkCard と同トーン） */}
-                <span style={{
-                  display: "inline-flex", alignItems: "center", gap: 4,
-                  fontSize: 12, color: completed > 0 ? "#15803d" : "var(--text-muted)",
-                  background: completed > 0 ? "#f0fdf4" : "var(--gray-50)",
-                  border: `1px solid ${completed > 0 ? "#86efac" : "var(--border-light)"}`,
-                  padding: "3px 11px", borderRadius: "var(--radius-full)",
-                }}>
-                  <strong style={{ fontWeight: 700 }}>{completed.toLocaleString()}</strong>
-                  <span style={{ color: completed > 0 ? "#16a34a" : "var(--text-muted)" }}>完了</span>
+              <div className="flex flex-wrap items-center gap-2 border-t border-line-2 px-3.5 pb-3 pt-2 sm:px-5 sm:pb-3 sm:pt-2">
+                {/* 完了チップ — brand トーン (= WorkCard と同) */}
+                <span
+                  className={
+                    "inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[12px] " +
+                    (completed > 0
+                      ? "border-brand/30 bg-brand-soft text-brand-ink"
+                      : "border-line bg-bg-tint text-ink-3")
+                  }
+                >
+                  <strong className="font-num font-bold">{completed.toLocaleString()}</strong>
+                  <span className={completed > 0 ? "text-brand-ink/85" : "text-ink-3"}>完了</span>
                 </span>
 
-                {/* 進行中チップ — グレー（WorkCard と同トーン） */}
-                <span style={{
-                  display: "inline-flex", alignItems: "center", gap: 4,
-                  fontSize: 12, color: "#374151",
-                  background: "#f3f4f6", border: "1px solid #d1d5db",
-                  padding: "3px 11px", borderRadius: "var(--radius-full)",
-                }}>
-                  <span style={{
-                    display: "inline-block", width: 6, height: 6,
-                    borderRadius: "50%", background: "#9ca3af", flexShrink: 0,
-                  }} aria-hidden="true" />
-                  <strong style={{ fontWeight: 700 }}>{inProgress.toLocaleString()}</strong>
-                  <span style={{ color: "#6b7280" }}>進行中</span>
+                {/* 進行中チップ — gray 系 (= WorkCard と同) */}
+                <span className="inline-flex items-center gap-1 rounded-full border border-line bg-bg-tint px-2.5 py-0.5 text-[12px] text-ink-2">
+                  <span aria-hidden="true" className="inline-block h-1.5 w-1.5 flex-shrink-0 rounded-full bg-ink-3" />
+                  <strong className="font-num font-bold">{inProgress.toLocaleString()}</strong>
+                  <span className="text-ink-3">進行中</span>
                 </span>
 
                 {/* 「要確認」補助ラベル — WorkCard と同条件・同トーン */}
                 {needsCheck && (
-                  <span style={{
-                    display: "inline-flex", alignItems: "center", gap: 4,
-                    fontSize: 11, color: "#b45309",
-                    background: "#fffbeb", border: "1px solid #fde68a",
-                    padding: "2px 9px", borderRadius: "var(--radius-full)",
-                  }}>
+                  <span className="inline-flex items-center gap-1 rounded-full border border-warn/30 bg-warn-soft px-2 py-0.5 text-[11px] text-warn">
                     <svg width="10" height="10" viewBox="0 0 24 24" fill="none"
                       stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
                       aria-hidden="true">
