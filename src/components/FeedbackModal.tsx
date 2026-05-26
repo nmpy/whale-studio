@@ -427,7 +427,7 @@ export default function FeedbackModal({ pathname, onClose, pricingSource }: Prop
       }}>
         <div>
           <h2 style={{ fontSize: 15, fontWeight: 700, color: "#111827", margin: 0 }}>
-            {isPricingMode ? "editorプランについて相談する" : "フィードバックを送る"}
+            {isPricingMode ? "プランのアップグレードについて" : "フィードバックを送る"}
           </h2>
           <p style={{ fontSize: 11, color: "#9ca3af", margin: "2px 0 0" }}>
             {isPricingMode ? "個別にご確認のうえ、ご案内します" : `現在のページ: ${pageName}`}

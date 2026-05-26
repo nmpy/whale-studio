@@ -86,14 +86,14 @@ const SOURCE_HEADING: Record<string, { title: string; sub: string }> = {
 };
 const DEFAULT_HEADING = {
   title: "小さくはじめて、必要なときに広げる。",
-  sub:   "Whale Studio は、今すぐ全部決めなくていいツールです。\nお試し利用から本格運用まで、ペースに合わせてステップアップできます。",
+  sub:   "お試し利用から本格運用まで、ペースに合わせてステップアップできます。",
 };
 
 /** 個人利用プランカード定義。
  *  Basic / Standard / Pro / Plus の順で表示する (= user request)。
- *  価格は未確定のため "料金は準備中" / "詳細はお問い合わせください" 表記。
- *  CTA は FeedbackModal を開く「相談する」のみ。Stripe checkout は当面オフ
- *  (= 金額未確定のためエラー導線にならないようにする)。 */
+ *  価格は未確定のため "準備中" / "詳細はお問い合わせください" 表記。
+ *  個人 CTA は FeedbackModal を開く「アップグレードする」。
+ *  Stripe checkout は当面オフ (= 金額未確定のためエラー導線にならないようにする)。 */
 interface PersonalPlanCard {
   /** 内部キー (= future plan-guard との接続用、現時点では表示制御のみ) */
   tier:        "basic" | "standard" | "pro" | "plus";
@@ -111,7 +111,7 @@ const PERSONAL_PLAN_CARDS: readonly PersonalPlanCard[] = [
     tier:    "basic",
     label:   "Basic",
     tagline: "小さく作品づくりを始めたい方向け",
-    price:   "料金は準備中",
+    price:   "準備中",
     priceUnit: "",
     features: [
       "1 作品をじっくり試作できる",
@@ -123,7 +123,7 @@ const PERSONAL_PLAN_CARDS: readonly PersonalPlanCard[] = [
     tier:    "standard",
     label:   "Standard",
     tagline: "継続的に作品を制作・管理したい方向け",
-    price:   "料金は準備中",
+    price:   "準備中",
     priceUnit: "",
     features: [
       "複数作品の制作・管理",
@@ -135,7 +135,7 @@ const PERSONAL_PLAN_CARDS: readonly PersonalPlanCard[] = [
     tier:    "pro",
     label:   "Pro",
     tagline: "公開・運用・分析までしっかり使いたい方向け",
-    price:   "料金は準備中",
+    price:   "準備中",
     priceUnit: "",
     recommended: true,
     features: [
@@ -456,7 +456,7 @@ export function PricingContent({
                   boxSizing:    "border-box",
                 }}
               >
-                {plan.label}プランを相談する
+                アップグレードする
               </button>
             </div>
           );
