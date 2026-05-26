@@ -20,7 +20,7 @@ import { NextRequest } from "next/server";
 import { z, ZodError } from "zod";
 import { withAuth } from "@/lib/auth";
 import { ok, badRequest, serverError } from "@/lib/api-response";
-import { getStripe, isStripeConfigured } from "@/lib/stripe";
+import { getStripe, isStripeCheckoutConfigured } from "@/lib/stripe";
 import { getPriceIdForPlan, getAppUrl } from "@/lib/stripe-prices";
 import { requireRole } from "@/lib/rbac";
 import { prisma } from "@/lib/prisma";
@@ -35,9 +35,9 @@ const bodySchema = z.object({
 });
 
 export const POST = withAuth(async (req: NextRequest, _ctx, user) => {
-  if (!isStripeConfigured()) {
+  if (!isStripeCheckoutConfigured()) {
     return badRequest(
-      "Stripe が設定されていません。環境変数 STRIPE_SECRET_KEY / STRIPE_WEBHOOK_SECRET を確認してください。",
+      "Stripe が設定されていません。環境変数 STRIPE_SECRET_KEY を確認してください。",
     );
   }
 
