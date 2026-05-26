@@ -1,5 +1,13 @@
 "use client";
 
+// src/app/oas/[id]/works/[workId]/edit/page.tsx
+// GET   /api/works/:id          → 作品情報 + 演出デフォルト設定のプリフィル
+// PATCH /api/works/:id          → 作品情報 / 演出デフォルト設定の更新 (= workApi.update)
+// POST  /api/works/:id/duplicate → 作品の複製 (= workApi.duplicate)
+//
+// Phase 3.1: UI を Phase 0 トークン + shared/Button + shared/Accordion に揃える。
+// 保存 payload / API / toast / router 遷移 / canEdit 制御 / 三値変換は完全維持。
+
 import DurationInput from "@/components/DurationInput";
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
@@ -13,13 +21,14 @@ import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
 import { ViewerBanner } from "@/components/PermissionGuard";
 import { BUILTIN_PRESETS, presetToFormValues } from "@/lib/timing-presets";
 import { PreviewPlayer } from "@/components/PreviewPlayer";
+import { Button, Accordion, buttonClass } from "@/components/shared";
 import type { MessageTimingConfig } from "@/types";
 
 // ── 定数 ──────────────────────────────────────────
-const STATUS_OPTIONS: { value: PublishStatus; label: string }[] = [
-  { value: "draft",  label: "下書き（非公開）" },
-  { value: "active", label: "公開中" },
-  { value: "paused", label: "停止中" },
+const STATUS_OPTIONS: { value: PublishStatus; label: string; desc: string }[] = [
+  { value: "draft",  label: "下書き（非公開）", desc: "公開せず編集のみ" },
+  { value: "active", label: "公開中",          desc: "LINE に配信中" },
+  { value: "paused", label: "停止中",          desc: "一時的に配信を停止" },
 ];
 
 const READ_RECEIPT_MODE_OPTIONS = [
@@ -61,11 +70,23 @@ const EMPTY_TIMING: TimingForm = {
   loading_enabled: "", loading_threshold_ms: "", loading_min_seconds: "", loading_max_seconds: "",
 };
 
-// ── スタイル ──────────────────────────────────────
-const miniLabel: React.CSSProperties = { display: "block", fontSize: 12, fontWeight: 500, color: "#6b7280", marginBottom: 2 };
-const hintText: React.CSSProperties  = { fontSize: 11, color: "#9ca3af", marginTop: 3 };
-const miniInput: React.CSSProperties = { maxWidth: 120 };
-const inlineRow: React.CSSProperties = { display: "flex", gap: 10, alignItems: "end", flexWrap: "wrap" };
+// ── ローカル共通: 必須マーク (= Phase 2.1 /account と同じパターンを重複定義) ──
+function RequiredMark() {
+  return <span aria-hidden="true" className="ml-0.5 text-danger">*</span>;
+}
+
+// ── ローカル共通: section heading ──
+function SectionHeading({ children }: { children: React.ReactNode }) {
+  return <p className="mb-4 text-[13px] font-bold text-ink">{children}</p>;
+}
+
+// ── 共通スタイル ──
+// 行内 input / select 用 (= compact size、Phase 2.2c の compactInputClass と同パターン)
+const compactInputClass =
+  "rounded-md border border-line bg-surface px-3 py-2 text-[13px] text-ink " +
+  "placeholder:text-ink-3 transition-shadow focus:border-brand focus:outline-none " +
+  "focus:ring-2 focus:ring-brand/20 disabled:cursor-not-allowed disabled:bg-bg-tint " +
+  "disabled:text-ink-3";
 
 // ── メインコンポーネント ─────────────────────────
 export default function WorkEditPage() {
@@ -184,7 +205,7 @@ export default function WorkEditPage() {
     }
   }
 
-  // ── ローディング / エラー ─────────────────────────
+  // ── ヘッダー (= 各 state 共通) ──
   const breadcrumb = (
     <Breadcrumb items={[
       { label: "アカウントリスト", href: "/oas" },
@@ -194,17 +215,21 @@ export default function WorkEditPage() {
     ]} />
   );
 
+  // ── ローディング (skeleton) ──
   if (!workForm && !loadError) {
     return (
       <>
-        <div className="page-header">
-          <div>{breadcrumb}<h2>作品情報</h2></div>
+        <div className="mb-5">
+          {breadcrumb}
+          <h2 className="font-round mt-1 text-[clamp(20px,4vw,24px)] font-extrabold leading-[1.2] tracking-[-0.02em] text-ink">
+            作品情報
+          </h2>
         </div>
-        <div className="card" style={{ maxWidth: 640 }}>
+        <div className="w-full max-w-[640px] rounded-card border border-line bg-surface p-5 shadow-sm sm:p-6">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="form-group">
-              <div className="skeleton" style={{ width: 100, height: 13, marginBottom: 4 }} />
-              <div className="skeleton" style={{ height: 36 }} />
+            <div key={i} className="mb-5">
+              <div className="skeleton mb-1.5" style={{ width: 100, height: 13, borderRadius: 4 }} />
+              <div className="skeleton" style={{ height: 36, borderRadius: 8 }} />
             </div>
           ))}
         </div>
@@ -212,13 +237,22 @@ export default function WorkEditPage() {
     );
   }
 
+  // ── ロードエラー ──
   if (loadError) {
     return (
       <>
-        <div className="page-header">
-          <div>{breadcrumb}<h2>作品情報</h2></div>
+        <div className="mb-5">
+          {breadcrumb}
+          <h2 className="font-round mt-1 text-[clamp(20px,4vw,24px)] font-extrabold leading-[1.2] tracking-[-0.02em] text-ink">
+            作品情報
+          </h2>
         </div>
-        <div className="alert alert-error">{loadError}</div>
+        <div
+          role="alert"
+          className="rounded-field border border-danger/30 bg-danger-soft px-4 py-3 text-[13px] leading-[1.6] text-danger"
+        >
+          {loadError}
+        </div>
       </>
     );
   }
@@ -226,88 +260,173 @@ export default function WorkEditPage() {
   return (
     <>
       <ViewerBanner role={role} />
+
       {/* ── ページヘッダー ── */}
-      <div className="page-header">
-        <div>
+      <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div className="min-w-0">
           {breadcrumb}
-          <h2>{workForm!.title}</h2>
+          <h2 className="font-round mt-1 overflow-hidden text-ellipsis whitespace-nowrap text-[clamp(20px,4vw,24px)] font-extrabold leading-[1.2] tracking-[-0.02em] text-ink">
+            {workForm!.title}
+          </h2>
         </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          <Link href={`/oas/${oaId}/works/${workId}/dashboard`} className="btn btn-ghost">
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            href={`/oas/${oaId}/works/${workId}/dashboard`}
+            className={buttonClass({ variant: "ghost", size: "md" })}
+          >
             ダッシュボード
           </Link>
           {canEdit && (
-            <button
-              className="btn btn-ghost"
+            <Button
+              type="button"
+              variant="ghost"
+              size="md"
               disabled={duplicating}
+              aria-busy={duplicating || undefined}
               onClick={handleDuplicate}
             >
-              {duplicating ? <><span className="spinner" /> 複製中...</> : "複製"}
-            </button>
+              {duplicating && <span className="spinner" aria-hidden="true" />}
+              {duplicating ? "複製中..." : "複製"}
+            </Button>
           )}
         </div>
       </div>
 
       {/* ══ 作品情報フォーム ══ */}
-      <div className="card" style={{ maxWidth: 640 }}>
+      <div className="w-full max-w-[640px] rounded-card border border-line bg-surface p-5 shadow-sm sm:p-6">
         <form onSubmit={handleSaveWork}>
-          <div className="form-group">
-            <label htmlFor="work-title">作品名 <span style={{ color: "#ef4444" }}>*</span></label>
-            <input id="work-title" type="text" value={workForm!.title}
-              onChange={(e) => setWorkField("title", e.target.value)} maxLength={100} readOnly={!canEdit} />
-            {workErrors.title?.map((m) => <p key={m} className="field-error">{m}</p>)}
+
+          <SectionHeading>作品基本情報</SectionHeading>
+
+          {/* title */}
+          <div className="mb-5">
+            <label htmlFor="work-title" className="mb-1.5 block text-[13px] font-bold text-ink">
+              作品名<RequiredMark />
+            </label>
+            <input
+              id="work-title"
+              type="text"
+              value={workForm!.title}
+              onChange={(e) => setWorkField("title", e.target.value)}
+              maxLength={100}
+              readOnly={!canEdit}
+              aria-required="true"
+              aria-invalid={workErrors.title ? "true" : undefined}
+              aria-describedby={workErrors.title ? "work-title-error" : undefined}
+            />
+            {workErrors.title?.map((m) => (
+              <p key={m} id="work-title-error" role="alert" className="field-error">{m}</p>
+            ))}
           </div>
-          <div className="form-group">
-            <label htmlFor="work-desc">説明（任意）</label>
-            <textarea id="work-desc" value={workForm!.description}
-              onChange={(e) => setWorkField("description", e.target.value)} maxLength={500} readOnly={!canEdit} />
+
+          {/* description */}
+          <div className="mb-5">
+            <label htmlFor="work-desc" className="mb-1.5 block text-[13px] font-bold text-ink">
+              説明（任意）
+            </label>
+            <textarea
+              id="work-desc"
+              value={workForm!.description}
+              onChange={(e) => setWorkField("description", e.target.value)}
+              maxLength={500}
+              readOnly={!canEdit}
+            />
           </div>
-          <div style={{ display: "flex", gap: 24, flexWrap: "wrap" }}>
-            <div className="form-group" style={{ flex: 1, minWidth: 200 }}>
-              <label>公開ステータス</label>
-              <div className="radio-group" style={{ flexDirection: "column", gap: 4 }}>
-                {STATUS_OPTIONS.map(({ value, label }) => (
-                  <label key={value}>
-                    <input type="radio" name="work-status" value={value}
-                      checked={workForm!.publish_status === value}
-                      onChange={() => setWorkField("publish_status", value)}
-                      disabled={!canEdit} />
-                    {label}
-                  </label>
-                ))}
+
+          {/* publish_status (カード型 radio) + sort_order */}
+          <div className="flex flex-col gap-5 sm:flex-row sm:items-start">
+            {/* publish_status */}
+            <div className="min-w-0 flex-1">
+              <span id="work-status-label" className="mb-1.5 block text-[13px] font-bold text-ink">
+                公開ステータス
+              </span>
+              <div
+                role="radiogroup"
+                aria-labelledby="work-status-label"
+                className="flex flex-col gap-2"
+              >
+                {STATUS_OPTIONS.map(({ value, label, desc }) => {
+                  const selected = workForm!.publish_status === value;
+                  return (
+                    <label
+                      key={value}
+                      className={
+                        "flex items-start gap-2.5 rounded-field border-2 px-3 py-2.5 transition-colors " +
+                        (canEdit ? "cursor-pointer" : "cursor-not-allowed opacity-70") + " " +
+                        (selected
+                          ? "border-brand bg-brand-soft"
+                          : "border-line bg-surface " + (canEdit ? "hover:bg-bg-tint" : ""))
+                      }
+                    >
+                      <input
+                        type="radio"
+                        name="work-status"
+                        value={value}
+                        checked={selected}
+                        onChange={() => setWorkField("publish_status", value)}
+                        disabled={!canEdit}
+                        className="mt-[3px] accent-brand"
+                      />
+                      <div className="min-w-0">
+                        <div className="text-[14px] font-semibold text-ink">{label}</div>
+                        <div className="text-[12px] text-ink-2">{desc}</div>
+                      </div>
+                    </label>
+                  );
+                })}
               </div>
             </div>
-            <div className="form-group" style={{ flexShrink: 0 }}>
-              <label htmlFor="work-sort">表示順</label>
-              <input id="work-sort" type="number" value={workForm!.sort_order}
+
+            {/* sort_order */}
+            <div className="sm:flex-shrink-0">
+              <label htmlFor="work-sort" className="mb-1.5 block text-[13px] font-bold text-ink">
+                表示順
+              </label>
+              <input
+                id="work-sort"
+                type="number"
+                value={workForm!.sort_order}
                 onChange={(e) => setWorkField("sort_order", Number(e.target.value))}
-                min={0} style={{ width: 100 }} disabled={!canEdit} />
+                min={0}
+                disabled={!canEdit}
+                className={compactInputClass + " w-[120px]"}
+              />
             </div>
           </div>
-          <div className="form-actions">
-            <button type="submit" className="btn btn-primary" disabled={!canEdit || savingWork}>
-              {savingWork && <span className="spinner" />}
+
+          {/* form actions */}
+          <div className="mt-7 flex flex-col-reverse items-stretch gap-3 border-t border-line-2 pt-5 sm:flex-row sm:items-center sm:justify-end">
+            <Button
+              type="submit"
+              variant="primary"
+              size="md"
+              disabled={!canEdit || savingWork}
+              aria-busy={savingWork || undefined}
+            >
+              {savingWork && <span className="spinner" aria-hidden="true" />}
               {!canEdit ? "閲覧専用" : savingWork ? "保存中..." : "作品情報を保存"}
-            </button>
+            </Button>
           </div>
         </form>
       </div>
 
-      {/* ══ 演出デフォルト設定 ══ */}
-      <WorkTimingSection
-        form={timingForm}
-        set={setTiming}
-        canEdit={canEdit}
-        saving={savingTiming}
-        onSave={handleSaveTiming}
-      />
+      {/* ══ 演出デフォルト設定 (= shared/Accordion) ══ */}
+      <div className="mt-4 w-full max-w-[640px]">
+        <WorkTimingSection
+          form={timingForm}
+          set={setTiming}
+          canEdit={canEdit}
+          saving={savingTiming}
+          onSave={handleSaveTiming}
+        />
+      </div>
     </>
   );
 }
 
-  // ─────────────────────────
-  // 作品単位の演出設定セクション
-  // ─────────────────────────
+// ─────────────────────────
+// 作品単位の演出設定セクション
+// ─────────────────────────
 
 type WorkTimingSectionProps = {
   form: TimingForm;
@@ -324,138 +443,190 @@ function WorkTimingSection({
   saving,
   onSave,
 }: WorkTimingSectionProps) {
-  const [open, setOpen] = useState(
-    !!(form.read_receipt_mode || form.typing_enabled || form.loading_enabled)
-  );
+  // 既存挙動踏襲: 何らかの設定があれば初期 open
+  const hasInitialConfig = !!(form.read_receipt_mode || form.typing_enabled || form.loading_enabled);
 
   return (
-    <div className="card" style={{ maxWidth: 640, marginTop: 16 }}>
-      <div
-        style={{
-          display: "flex", alignItems: "center", justifyContent: "space-between",
-          cursor: "pointer", userSelect: "none", padding: "4px 0",
-        }}
-        onClick={() => setOpen(!open)}
-      >
-        <h3 style={{ margin: 0, fontSize: 15 }}>
-          {open ? "▼" : "▶"} 演出デフォルト設定
-        </h3>
-        {!open && (form.read_receipt_mode || form.typing_enabled || form.loading_enabled) && (
-          <span style={{ fontSize: 11, color: "#3b82f6" }}>設定あり</span>
-        )}
-      </div>
+    <Accordion
+      title="演出デフォルト設定"
+      summary={hasInitialConfig ? "設定済み" : "未設定"}
+      defaultOpen={hasInitialConfig}
+    >
+      <form onSubmit={onSave} className="flex flex-col gap-5">
+        <p className="text-[12px] leading-[1.7] text-ink-3">
+          この作品に所属するメッセージの演出デフォルト値を設定します。
+          メッセージ個別の設定が優先されます。未設定の項目は環境変数の値を継承します。
+        </p>
 
-      {open && (
-        <form onSubmit={onSave} style={{ marginTop: 12 }}>
-          <p style={{ ...hintText, marginBottom: 12 }}>
-            この作品に所属するメッセージの演出デフォルト値を設定します。
-            メッセージ個別の設定が優先されます。未設定の項目は環境変数の値を継承します。
-          </p>
-
-          {/* ── プリセット ── */}
-          <PresetSelector onApply={(vals) => {
+        {/* ── プリセット ── */}
+        <PresetSelector
+          onApply={(vals) => {
             for (const [k, v] of Object.entries(vals)) set(k as keyof TimingForm, v);
-          }} disabled={!canEdit} />
+          }}
+          disabled={!canEdit}
+        />
 
-          {/* ── 既読 ── */}
-          <div className="form-group">
-            <label style={miniLabel}>既読タイミング</label>
-            <select className="form-input" style={{ maxWidth: 200 }} value={form.read_receipt_mode}
-              onChange={(e) => set("read_receipt_mode", e.target.value)} disabled={!canEdit}>
-              {READ_RECEIPT_MODE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </select>
-          </div>
-          {form.read_receipt_mode === "delayed" && (
-          <div className="form-group">
-            <label style={miniLabel}>既読遅延</label>
+        {/* ── 既読 ── */}
+        <div>
+          <label htmlFor="timing-read-mode" className="mb-1 block text-[12px] font-medium text-ink-2">
+            既読タイミング
+          </label>
+          <select
+            id="timing-read-mode"
+            value={form.read_receipt_mode}
+            onChange={(e) => set("read_receipt_mode", e.target.value)}
+            disabled={!canEdit}
+            className={compactInputClass + " w-full cursor-pointer sm:max-w-[220px]"}
+          >
+            {READ_RECEIPT_MODE_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+        </div>
+        {form.read_receipt_mode === "delayed" && (
+          <div>
+            <label className="mb-1 block text-[12px] font-medium text-ink-2">既読遅延</label>
             <DurationInput
               valueMs={Number(form.read_delay_ms || 0)}
               onChange={(ms) => set("read_delay_ms", String(Math.min(ms, 600000)))}
             />
           </div>
-          )}
+        )}
 
-          {/* ── 送信前の待機時間（旧: typing 風の間） ── */}
-          <div className="form-group">
-            <label style={miniLabel}>送信前の待機時間（画面には表示されません）</label>
-            <select className="form-input" style={{ maxWidth: 120 }} value={form.typing_enabled}
-              onChange={(e) => set("typing_enabled", e.target.value)} disabled={!canEdit}>
-              {BOOL_INHERIT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </select>
-          </div>
-          {form.typing_enabled === "true" && (
-            <div style={inlineRow}>
-              <div className="form-group">
-              <label style={miniLabel}>最小</label>
+        {/* ── 送信前の待機時間 ── */}
+        <div>
+          <label htmlFor="timing-typing" className="mb-1 block text-[12px] font-medium text-ink-2">
+            送信前の待機時間（画面には表示されません）
+          </label>
+          <select
+            id="timing-typing"
+            value={form.typing_enabled}
+            onChange={(e) => set("typing_enabled", e.target.value)}
+            disabled={!canEdit}
+            className={compactInputClass + " w-full cursor-pointer sm:max-w-[140px]"}
+          >
+            {BOOL_INHERIT_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+        </div>
+        {form.typing_enabled === "true" && (
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
+            <div>
+              <label className="mb-1 block text-[12px] font-medium text-ink-2">最小</label>
               <DurationInput
                 valueMs={Number(form.typing_min_ms || 0)}
                 onChange={(ms) => {
-                const next = Math.min(ms, 600000);
-                const currentMax = Number(form.typing_max_ms || 0);
-                set("typing_min_ms", String(currentMax > 0 ? Math.min(next, currentMax) : next));
-                  }}
-                />
-                </div>
-
-
-              <div className="form-group">
-              <label style={miniLabel}>最大</label>
-              <DurationInput
-                valueMs={Number(form.typing_max_ms || 0)}
-                onChange={(ms) => {
-                const next = Math.min(ms, 600000);
-                const currentMin = Number(form.typing_min_ms || 0);
-                set("typing_max_ms", String(Math.max(next, currentMin)));
+                  const next = Math.min(ms, 600000);
+                  const currentMax = Number(form.typing_max_ms || 0);
+                  set("typing_min_ms", String(currentMax > 0 ? Math.min(next, currentMax) : next));
                 }}
               />
             </div>
-           </div>
-          )}
-          
-          {/* ── 「入力中...」表示（旧: ローディングアニメーション） ── */}
-
-          <div className="form-group">
-            <label style={miniLabel}>「入力中...」表示</label>
-            <select className="form-input" style={{ maxWidth: 120 }} value={form.loading_enabled}
-              onChange={(e) => set("loading_enabled", e.target.value)} disabled={!canEdit}>
-              {BOOL_INHERIT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </select>
+            <div>
+              <label className="mb-1 block text-[12px] font-medium text-ink-2">最大</label>
+              <DurationInput
+                valueMs={Number(form.typing_max_ms || 0)}
+                onChange={(ms) => {
+                  const next = Math.min(ms, 600000);
+                  const currentMin = Number(form.typing_min_ms || 0);
+                  set("typing_max_ms", String(Math.max(next, currentMin)));
+                }}
+              />
+            </div>
           </div>
-          {form.loading_enabled === "true" && (
-            <>
-              <div className="form-group">
-                <label style={miniLabel}>表示閾値（ms）</label>
-                <input type="number" className="form-input" style={miniInput} value={form.loading_threshold_ms}
-                  onChange={(e) => set("loading_threshold_ms", e.target.value)} min={0} max={30000} step={500} placeholder="3000" disabled={!canEdit} />
-                <div style={hintText}>処理時間がこの値を超えたら「入力中...」を表示</div>
-              </div>
-              <div style={inlineRow}>
-                <div className="form-group">
-                  <label style={miniLabel}>最小秒数</label>
-                  <input type="number" className="form-input" style={miniInput} value={form.loading_min_seconds}
-                    onChange={(e) => set("loading_min_seconds", e.target.value)} min={3} max={60} step={1} placeholder="5" disabled={!canEdit} />
-                </div>
-                <div className="form-group">
-                  <label style={miniLabel}>最大秒数</label>
-                  <input type="number" className="form-input" style={miniInput} value={form.loading_max_seconds}
-                    onChange={(e) => set("loading_max_seconds", e.target.value)} min={3} max={60} step={1} placeholder="15" disabled={!canEdit} />
-                </div>
-              </div>
-            </>
-          )}
+        )}
 
-          {/* ── プレビュー ── */}
-          <PreviewPlayer workConfig={timingFormToConfig(form)} />
+        {/* ── 「入力中...」表示 ── */}
+        <div>
+          <label htmlFor="timing-loading" className="mb-1 block text-[12px] font-medium text-ink-2">
+            「入力中...」表示
+          </label>
+          <select
+            id="timing-loading"
+            value={form.loading_enabled}
+            onChange={(e) => set("loading_enabled", e.target.value)}
+            disabled={!canEdit}
+            className={compactInputClass + " w-full cursor-pointer sm:max-w-[140px]"}
+          >
+            {BOOL_INHERIT_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+        </div>
+        {form.loading_enabled === "true" && (
+          <>
+            <div>
+              <label htmlFor="timing-loading-threshold" className="mb-1 block text-[12px] font-medium text-ink-2">
+                表示閾値（ms）
+              </label>
+              <input
+                id="timing-loading-threshold"
+                type="number"
+                value={form.loading_threshold_ms}
+                onChange={(e) => set("loading_threshold_ms", e.target.value)}
+                min={0}
+                max={30000}
+                step={500}
+                placeholder="3000"
+                disabled={!canEdit}
+                className={compactInputClass + " w-[120px]"}
+              />
+              <p className="mt-1 text-[11px] text-ink-3">
+                処理時間がこの値を超えたら「入力中...」を表示
+              </p>
+            </div>
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
+              <div>
+                <label className="mb-1 block text-[12px] font-medium text-ink-2">最小秒数</label>
+                <input
+                  type="number"
+                  value={form.loading_min_seconds}
+                  onChange={(e) => set("loading_min_seconds", e.target.value)}
+                  min={3}
+                  max={60}
+                  step={1}
+                  placeholder="5"
+                  disabled={!canEdit}
+                  className={compactInputClass + " w-[120px]"}
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-[12px] font-medium text-ink-2">最大秒数</label>
+                <input
+                  type="number"
+                  value={form.loading_max_seconds}
+                  onChange={(e) => set("loading_max_seconds", e.target.value)}
+                  min={3}
+                  max={60}
+                  step={1}
+                  placeholder="15"
+                  disabled={!canEdit}
+                  className={compactInputClass + " w-[120px]"}
+                />
+              </div>
+            </div>
+          </>
+        )}
 
-          <div className="form-actions">
-            <button type="submit" className="btn btn-primary" disabled={!canEdit || saving}>
-              {saving && <span className="spinner" />}
-              {!canEdit ? "閲覧専用" : saving ? "保存中..." : "演出設定を保存"}
-            </button>
-          </div>
-        </form>
-      )}
-    </div>
+        {/* ── プレビュー (= 別管理コンポーネント、本 PR では触らない) ── */}
+        <PreviewPlayer workConfig={timingFormToConfig(form)} />
+
+        {/* form actions */}
+        <div className="flex flex-col-reverse items-stretch gap-3 border-t border-line-2 pt-5 sm:flex-row sm:items-center sm:justify-end">
+          <Button
+            type="submit"
+            variant="primary"
+            size="md"
+            disabled={!canEdit || saving}
+            aria-busy={saving || undefined}
+          >
+            {saving && <span className="spinner" aria-hidden="true" />}
+            {!canEdit ? "閲覧専用" : saving ? "保存中..." : "演出設定を保存"}
+          </Button>
+        </div>
+      </form>
+    </Accordion>
   );
 }
 
@@ -471,24 +642,26 @@ function PresetSelector({
   disabled?: boolean;
 }) {
   return (
-    <div style={{ marginBottom: 14 }}>
-      <label style={miniLabel}>プリセットから適用</label>
-      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+    <div>
+      <label className="mb-1 block text-[12px] font-medium text-ink-2">プリセットから適用</label>
+      <div className="flex flex-wrap gap-1.5">
         {BUILTIN_PRESETS.map((p) => (
-          <button
+          <Button
             key={p.key}
             type="button"
-            className="btn btn-ghost"
-            style={{ fontSize: 12, padding: "4px 10px" }}
+            variant="ghost"
+            size="sm"
             title={p.description}
             disabled={disabled}
             onClick={() => onApply(presetToFormValues(p))}
           >
             {p.label}
-          </button>
+          </Button>
         ))}
       </div>
-      <div style={hintText}>ボタンをクリックするとフォームに値が反映されます（保存前に確認可能）</div>
+      <p className="mt-1 text-[11px] text-ink-3">
+        ボタンをクリックするとフォームに値が反映されます（保存前に確認可能）
+      </p>
     </div>
   );
 }
