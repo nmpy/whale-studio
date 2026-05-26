@@ -23,11 +23,11 @@ export function getStripe(): Stripe {
   return _stripe;
 }
 
-/** Stripe が設定済みかどうかを確認する（UI の表示制御用）。 */
+/** Stripe ベース設定 (secret + webhook secret) が揃っているか。
+ *  個別プランの price ID 有無は getPriceIdForPlan で個別に判定する。 */
 export function isStripeConfigured(): boolean {
   return !!(
     process.env.STRIPE_SECRET_KEY &&
-    process.env.STRIPE_EDITOR_PRICE_ID &&
     process.env.STRIPE_WEBHOOK_SECRET
   );
 }

@@ -7,8 +7,8 @@
 //
 // Props:
 //   source — 流入元 UI（"header" | "banner" | "gate" | "preview" | "settings"）
-//   from   — 現在プラン名（"tester" など）
-//   to     — アップグレード先プラン名（"editor" など）
+//   from   — 現在プラン名（"basic" など、tracking ログ用）
+//   to     — 流入元コンテキストでのアップグレード先プラン名（tracking ログ用）
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
@@ -92,8 +92,8 @@ const DEFAULT_HEADING = {
 /** 個人利用プランカード定義。
  *  Basic / Standard / Pro / Plus の順で表示する (= user request)。
  *  価格は未確定のため "準備中" / "詳細はお問い合わせください" 表記。
- *  個人 CTA は FeedbackModal を開く「アップグレードする」。
- *  Stripe checkout は当面オフ (= 金額未確定のためエラー導線にならないようにする)。 */
+ *  CTA「アップグレードする」は POST /api/billing/checkout → Stripe Checkout に遷移する。
+ *  STRIPE_PRICE_<TIER> が未設定のプランは API 側で 400「準備中」を返す。 */
 interface PersonalPlanCard {
   /** 内部キー (= future plan-guard との接続用、現時点では表示制御のみ) */
   tier:        "basic" | "standard" | "pro" | "plus";
@@ -205,10 +205,11 @@ export function PricingContent({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  function handleUpgrade() {
+  /** 法人プラン用 CTA — FeedbackModal を開く既存導線。 */
+  function handleEnterpriseInquiry() {
     const token = getDevToken();
-    trackBillingEvent("pricing_cta_click", token, source, { from: fromParam, to: toParam });
-    trackEvent("upgrade_interest", { action: "cta_click", source, from: fromParam, to: toParam }, { token });
+    trackBillingEvent("pricing_cta_click", token, source, { from: fromParam, to: "enterprise" });
+    trackEvent("upgrade_interest", { action: "cta_click", source, from: fromParam, to: "enterprise" }, { token });
     window.dispatchEvent(
       new CustomEvent("open-feedback-modal", {
         detail: { pricingSource: source },
@@ -217,27 +218,37 @@ export function PricingContent({
     setRequested(true);
   }
 
-  async function handleStripeCheckout() {
-    if (!oaId) return;
-    setCheckoutLoading(true);
+  /** 個人プラン用 CTA — Stripe Checkout に遷移。
+   *  oaId が無い場合は OA 選択ページへ誘導する。 */
+  async function handlePersonalUpgrade(plan: "basic" | "standard" | "pro" | "plus") {
+    if (checkoutLoading) return; // 二重クリック防止
     setCheckoutError(null);
+
+    if (!oaId) {
+      setCheckoutError("アカウントを選択してから操作してください。アカウントリストへ移動します。");
+      window.setTimeout(() => { window.location.href = "/oas"; }, 1500);
+      return;
+    }
+
+    setCheckoutLoading(true);
     try {
       const token = getDevToken();
-      const res   = await fetch("/api/billing/checkout-session", {
+      trackBillingEvent("pricing_cta_click", token, source, { from: fromParam, to: plan });
+      trackEvent("upgrade_interest", { action: "stripe_checkout_start", source, from: fromParam, to: plan }, { token });
+
+      const res  = await fetch("/api/billing/checkout", {
         method:  "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization:  `Bearer ${token}`,
         },
-        body: JSON.stringify({ oaId, source, fromPlan: fromParam }),
+        body: JSON.stringify({ plan, oaId }),
       });
       const data = await res.json();
       if (!res.ok || !data.data?.url) {
         setCheckoutError(data.error ?? "チェックアウトセッションの作成に失敗しました");
         return;
       }
-      trackBillingEvent("pricing_cta_click", token, source, { from: fromParam, to: toParam });
-      trackEvent("upgrade_interest", { action: "stripe_checkout_start", source, from: fromParam, to: toParam }, { token });
       window.location.href = data.data.url;
     } catch {
       setCheckoutError("エラーが発生しました。もう一度お試しください。");
@@ -438,7 +449,8 @@ export function PricingContent({
 
               <button
                 type="button"
-                onClick={handleUpgrade}
+                onClick={() => handlePersonalUpgrade(plan.tier)}
+                disabled={checkoutLoading}
                 style={{
                   marginTop:    "auto",
                   display:      "flex",
@@ -452,11 +464,12 @@ export function PricingContent({
                   border:       `1px solid ${isRecommended ? "var(--color-primary, #2F6F5E)" : "var(--border-default, #d1d5db)"}`,
                   fontSize:     12,
                   fontWeight:   600,
-                  cursor:       "pointer",
+                  cursor:       checkoutLoading ? "not-allowed" : "pointer",
+                  opacity:      checkoutLoading ? 0.6 : 1,
                   boxSizing:    "border-box",
                 }}
               >
-                アップグレードする
+                {checkoutLoading ? "処理中..." : "アップグレードする"}
               </button>
             </div>
           );
@@ -504,7 +517,7 @@ export function PricingContent({
         <div style={{ flexShrink: 0 }}>
           <button
             type="button"
-            onClick={handleUpgrade}
+            onClick={handleEnterpriseInquiry}
             style={{
               padding:      "11px 22px",
               borderRadius: "var(--radius-sm)",
@@ -521,33 +534,6 @@ export function PricingContent({
           </button>
         </div>
       </div>
-
-      {/* 既存 Stripe Checkout flow — 金額確定済みプランへの直接申し込み導線 (oaId があるときのみ) */}
-      {oaId && (
-        <div style={{ textAlign: "center", marginBottom: 12 }}>
-          <button
-            onClick={handleStripeCheckout}
-            disabled={checkoutLoading}
-            style={{
-              display:        "inline-flex",
-              alignItems:     "center",
-              justifyContent: "center",
-              gap:            6,
-              padding:        "10px 22px",
-              borderRadius:   "var(--radius-sm)",
-              background:     checkoutLoading ? "var(--color-primary-soft, #EAF4F1)" : "var(--color-primary, #2F6F5E)",
-              color:          checkoutLoading ? "var(--color-primary, #2F6F5E)" : "#fff",
-              fontSize:       13,
-              fontWeight:     700,
-              border:         "none",
-              cursor:         checkoutLoading ? "not-allowed" : "pointer",
-              boxSizing:      "border-box",
-            }}
-          >
-            {checkoutLoading ? "処理中..." : "💳 Stripe で申し込む"}
-          </button>
-        </div>
-      )}
 
       {/* CTA フィードバック (= 相談フォームを開いた後の確認表示) */}
       {requested && (
