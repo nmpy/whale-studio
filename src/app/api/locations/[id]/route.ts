@@ -8,6 +8,8 @@ import { prisma } from "@/lib/prisma";
 import { ok, noContent, badRequest, notFound, serverError } from "@/lib/api-response";
 import { withAuth } from "@/lib/auth";
 import { requireRole } from "@/lib/rbac";
+import { requirePlanFeature } from "@/lib/plan-guard";
+import { FEATURE } from "@/lib/constants/plans";
 import { updateLocationSchema, formatZodErrors } from "@/lib/validations";
 import { deriveGpsEnabled } from "@/lib/checkin-mode";
 import { ZodError } from "zod";
@@ -94,6 +96,10 @@ export const PATCH = withAuth<{ id: string }>(async (req, { params }, user) => {
     const check = await requireRole(existing.work.oaId, user.id, "tester");
     if (!check.ok) return check.response;
 
+    // プラン制限: location は Pro プラン以上が必要
+    const planGuard = await requirePlanFeature({ oaId: existing.work.oaId, featureKey: FEATURE.location });
+    if (!planGuard.ok) return planGuard.response;
+
     const body = await req.json();
     const data = updateLocationSchema.parse(body);
 
@@ -147,6 +153,10 @@ export const DELETE = withAuth<{ id: string }>(async (_req, { params }, user) =>
 
     const check = await requireRole(existing.work.oaId, user.id, "tester");
     if (!check.ok) return check.response;
+
+    // プラン制限: location は Pro プラン以上が必要
+    const planGuard = await requirePlanFeature({ oaId: existing.work.oaId, featureKey: FEATURE.location });
+    if (!planGuard.ok) return planGuard.response;
 
     await prisma.location.delete({ where: { id: params.id } });
 

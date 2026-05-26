@@ -6,6 +6,8 @@ import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { ok, created, badRequest, notFound, serverError } from "@/lib/api-response";
 import { withAuth } from "@/lib/auth";
+import { requirePlanFeature } from "@/lib/plan-guard";
+import { FEATURE } from "@/lib/constants/plans";
 import { createSegmentSchema, segmentQuerySchema, formatZodErrors } from "@/lib/validations";
 import { ZodError } from "zod";
 
@@ -54,6 +56,10 @@ export const POST = withAuth(async (req: NextRequest) => {
 
     const oa = await prisma.oa.findUnique({ where: { id: data.oa_id } });
     if (!oa) return notFound("OA");
+
+    // プラン制限: audience (segments) は Standard プラン以上
+    const planGuard = await requirePlanFeature({ oaId: data.oa_id, featureKey: FEATURE.audience });
+    if (!planGuard.ok) return planGuard.response;
 
     const segment = await prisma.segment.create({
       data: {

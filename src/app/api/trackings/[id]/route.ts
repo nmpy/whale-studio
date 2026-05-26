@@ -7,6 +7,8 @@ import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { ok, noContent, badRequest, notFound, serverError } from "@/lib/api-response";
 import { withAuth } from "@/lib/auth";
+import { requirePlanFeature } from "@/lib/plan-guard";
+import { FEATURE } from "@/lib/constants/plans";
 import { updateTrackingSchema, formatZodErrors } from "@/lib/validations";
 import { ZodError } from "zod";
 
@@ -50,6 +52,10 @@ export const PATCH = withAuth<{ id: string }>(async (req, { params }) => {
     const tracking = await prisma.tracking.findUnique({ where: { id: params.id } });
     if (!tracking) return notFound("Tracking");
 
+    // プラン制限: audience は Standard プラン以上
+    const planGuard = await requirePlanFeature({ oaId: tracking.oaId, featureKey: FEATURE.audience });
+    if (!planGuard.ok) return planGuard.response;
+
     const body = await req.json();
     const data = updateTrackingSchema.parse(body);
 
@@ -75,6 +81,11 @@ export const DELETE = withAuth<{ id: string }>(async (_req, { params }) => {
   try {
     const tracking = await prisma.tracking.findUnique({ where: { id: params.id } });
     if (!tracking) return notFound("Tracking");
+
+    // プラン制限: audience は Standard プラン以上
+    const planGuard = await requirePlanFeature({ oaId: tracking.oaId, featureKey: FEATURE.audience });
+    if (!planGuard.ok) return planGuard.response;
+
     await prisma.tracking.delete({ where: { id: params.id } });
     return noContent();
   } catch (err) {
