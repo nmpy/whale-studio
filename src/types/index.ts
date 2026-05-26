@@ -587,7 +587,9 @@ export interface ApiError {
   error: {
     code: string;
     message: string;
-    details?: Record<string, string[]>;
+    /** 追加情報。Zod validation error は `field → string[]` を入れる (= 既存挙動)。
+     *  PLAN_REQUIRED などの単一値の付加情報は string を直接入れる。 */
+    details?: Record<string, string | string[]>;
   };
 }
 

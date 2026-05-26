@@ -11,7 +11,10 @@ import { useParams, useRouter } from "next/navigation";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { useToast } from "@/components/Toast";
 import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
+import { useWorkLimit } from "@/hooks/useWorkLimit";
 import { ViewerBanner } from "@/components/PermissionGuard";
+import { PlanRequiredCard } from "@/components/PlanRequiredCard";
+import { FEATURE, mapPlanNameToTier, getPlanAccessState } from "@/lib/constants/plans";
 import {
   liffConfigApi,
   workApi,
@@ -90,6 +93,11 @@ export default function LiffPagesIndex() {
   const { showToast } = useToast();
   const { role, loading: roleLoading } = useWorkspaceRole(oaId);
   const isReadOnly = role === "viewer" || role === "tester";
+
+  // プラン制限: LIFF表示設定は Plus 以上が必要
+  const { planName, loading: planLoading } = useWorkLimit(oaId);
+  const planTier = mapPlanNameToTier(planName);
+  const planAccess = getPlanAccessState({ plan: planTier, featureKey: FEATURE.liffDisplay });
 
   const [pages, setPages] = useState<LiffPageSummary[] | null>(null);
   const [workTitle, setWorkTitle] = useState("");
@@ -185,6 +193,19 @@ export default function LiffPagesIndex() {
         <div className="h-6 w-48 bg-gray-200 rounded-md mb-4 animate-pulse" />
         <div className="h-48 bg-gray-100 rounded-lg animate-pulse" />
       </div>
+    );
+  }
+
+  // プラン不足: 直 URL アクセス時にここで遮断する
+  if (!planLoading && !planAccess.allowed) {
+    return (
+      <PlanRequiredCard
+        oaId={oaId}
+        workId={workId}
+        featureKey={FEATURE.liffDisplay}
+        currentPlan={planTier}
+        featureLabel="LIFF表示設定"
+      />
     );
   }
 

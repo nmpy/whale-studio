@@ -8,6 +8,8 @@ import { Prisma } from "@prisma/client";
 import { ok, badRequest, notFound, noContent, conflict, serverError } from "@/lib/api-response";
 import { withAuth } from "@/lib/auth";
 import { requireRole, getOaIdFromWorkId } from "@/lib/rbac";
+import { requirePlanFeature } from "@/lib/plan-guard";
+import { FEATURE } from "@/lib/constants/plans";
 import { updateDestinationSchema, formatZodErrors } from "@/lib/validations";
 import { toDestinationResponse } from "@/lib/destination-utils";
 import { ZodError } from "zod";
@@ -23,6 +25,10 @@ export const PATCH = withAuth(async (req, ctx, user) => {
 
     const check = await requireRole(oaId, user.id, "editor");
     if (!check.ok) return check.response;
+
+    // プラン制限: destinations は Plus プラン以上
+    const planGuard = await requirePlanFeature({ oaId, featureKey: FEATURE.destinations });
+    if (!planGuard.ok) return planGuard.response;
 
     // 存在 + 所属チェック
     const existing = await prisma.lineDestination.findUnique({
@@ -77,6 +83,10 @@ export const DELETE = withAuth(async (req, ctx, user) => {
 
     const check = await requireRole(oaId, user.id, "editor");
     if (!check.ok) return check.response;
+
+    // プラン制限: destinations は Plus プラン以上
+    const planGuard = await requirePlanFeature({ oaId, featureKey: FEATURE.destinations });
+    if (!planGuard.ok) return planGuard.response;
 
     const existing = await prisma.lineDestination.findUnique({
       where: { id: destinationId },

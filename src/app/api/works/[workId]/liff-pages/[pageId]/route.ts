@@ -9,6 +9,8 @@ import { prisma } from "@/lib/prisma";
 import { ok, badRequest, notFound, noContent, serverError } from "@/lib/api-response";
 import { withAuth } from "@/lib/auth";
 import { requireRole, getOaIdFromWorkId } from "@/lib/rbac";
+import { requirePlanFeature } from "@/lib/plan-guard";
+import { FEATURE } from "@/lib/constants/plans";
 import { updateLiffConfigSchema, formatZodErrors, validatePublishRequirements } from "@/lib/validations";
 import { toConfigResponse } from "@/lib/liff-utils";
 import { ZodError } from "zod";
@@ -56,6 +58,10 @@ export const PUT = withAuth(async (req, ctx, user) => {
 
     const check = await requireRole(oaId, user.id, "editor");
     if (!check.ok) return check.response;
+
+    // プラン制限: LIFF表示設定は Plus プラン以上
+    const planGuard = await requirePlanFeature({ oaId, featureKey: FEATURE.liffDisplay });
+    if (!planGuard.ok) return planGuard.response;
 
     const existing = await loadPage(workId, pageId);
     if (!existing) return notFound("LiffPage");
@@ -120,6 +126,10 @@ export const DELETE = withAuth(async (req, ctx, user) => {
 
     const check = await requireRole(oaId, user.id, "admin");
     if (!check.ok) return check.response;
+
+    // プラン制限: LIFF表示設定は Plus プラン以上
+    const planGuard = await requirePlanFeature({ oaId, featureKey: FEATURE.liffDisplay });
+    if (!planGuard.ok) return planGuard.response;
 
     const existing = await loadPage(workId, pageId);
     if (!existing) return notFound("LiffPage");
