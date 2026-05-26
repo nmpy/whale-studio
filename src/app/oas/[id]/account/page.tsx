@@ -3,6 +3,9 @@
 // src/app/oas/[id]/account/page.tsx
 // GET /api/oas/:id → フォームプリフィル
 // PUT /api/oas/:id → アカウント情報 + LINE接続情報の更新
+//
+// Phase 2.1: UI を Phase 0 トークン + shared/Button に揃える。
+// 保存 payload / API endpoint / toast / router 遷移 / validation は完全維持。
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
@@ -11,6 +14,7 @@ import { Breadcrumb } from "@/components/Breadcrumb";
 import { oaApi, getDevToken } from "@/lib/api-client";
 import { MaskedField } from "@/components/MaskedField";
 import { useToast } from "@/components/Toast";
+import { Button, buttonClass } from "@/components/shared";
 import type { PublishStatus } from "@/types";
 
 interface FormState {
@@ -27,6 +31,18 @@ const STATUS_OPTIONS: { value: PublishStatus; label: string; desc: string }[] = 
   { value: "active", label: "稼働中", desc: "Webhook 受信中" },
   { value: "paused", label: "停止中", desc: "一時停止中" },
 ];
+
+// ── 共通: 必須マーク ──
+function RequiredMark() {
+  return <span aria-hidden="true" className="ml-0.5 text-danger">*</span>;
+}
+
+// ── 共通: section heading (= ガイド §1 風の控えめなブロック見出し) ──
+function SectionHeading({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="mb-4 text-[13px] font-bold text-ink">{children}</p>
+  );
+}
 
 export default function OaAccountPage() {
   const params = useParams<{ id: string }>();
@@ -92,7 +108,7 @@ export default function OaAccountPage() {
     }
   }
 
-  // ── ローディング ──────────────────────────────
+  // ── breadcrumb ──
   const breadcrumbItems = [
     { label: "アカウントリスト", href: "/oas" },
     ...(oaTitle ? [{ label: oaTitle, href: `/oas/${oaId}/works` }] : []),
@@ -100,20 +116,29 @@ export default function OaAccountPage() {
     { label: "アカウント情報" },
   ];
 
+  // ── ヘッダー (= 各 state 共通) ──
+  const header = (
+    <div className="mb-5">
+      <Breadcrumb items={breadcrumbItems} />
+      <h2 className="font-round mt-1 text-[clamp(20px,4vw,24px)] font-extrabold leading-[1.2] tracking-[-0.02em] text-ink">
+        アカウント情報
+      </h2>
+      <p className="mt-1 text-[13px] text-ink-2">
+        アカウント名・LINE接続情報・接続ステータスを管理します。
+      </p>
+    </div>
+  );
+
+  // ── ローディング (skeleton) ──
   if (!form && !loadError) {
     return (
       <>
-        <div className="page-header">
-          <div>
-            <Breadcrumb items={breadcrumbItems} />
-            <h2>アカウント情報</h2>
-          </div>
-        </div>
-        <div className="card" style={{ maxWidth: 560 }}>
+        {header}
+        <div className="w-full max-w-[560px] rounded-card border border-line bg-surface p-5 shadow-sm sm:p-6">
           {[1, 2, 3, 4, 5].map((i) => (
-            <div key={i} className="form-group">
-              <div className="skeleton" style={{ width: 100, height: 13, marginBottom: 4 }} />
-              <div className="skeleton" style={{ height: 36 }} />
+            <div key={i} className="mb-5">
+              <div className="skeleton mb-1.5" style={{ width: 100, height: 13, borderRadius: 4 }} />
+              <div className="skeleton" style={{ height: 36, borderRadius: 8 }} />
             </div>
           ))}
         </div>
@@ -121,42 +146,36 @@ export default function OaAccountPage() {
     );
   }
 
+  // ── ロードエラー ──
   if (loadError) {
     return (
       <>
-        <div className="page-header">
-          <div>
-            <Breadcrumb items={breadcrumbItems} />
-            <h2>アカウント情報</h2>
-          </div>
+        {header}
+        <div
+          role="alert"
+          className="rounded-field border border-danger/30 bg-danger-soft px-4 py-3 text-[13px] leading-[1.6] text-danger"
+        >
+          {loadError}
         </div>
-        <div className="alert alert-error">{loadError}</div>
       </>
     );
   }
 
   return (
     <>
-      <div className="page-header">
-        <div>
-          <Breadcrumb items={breadcrumbItems} />
-          <h2>アカウント情報</h2>
-          <p style={{ fontSize: 13, color: "#6b7280", marginTop: 4 }}>
-            アカウント名・LINE接続情報・接続ステータスを管理します。
-          </p>
-        </div>
-      </div>
+      {header}
 
       {/* ── OA 設定フォーム ── */}
-      <div className="card" style={{ maxWidth: 560 }}>
+      <div className="w-full max-w-[560px] rounded-card border border-line bg-surface p-5 shadow-sm sm:p-6">
         <form onSubmit={handleSubmit}>
 
           {/* ── アカウント基本情報 ── */}
-          <p style={{ fontWeight: 600, marginBottom: 16, color: "#374151" }}>アカウント基本情報</p>
+          <SectionHeading>アカウント基本情報</SectionHeading>
 
-          <div className="form-group">
-            <label htmlFor="title">
-              アカウント名 <span style={{ color: "#ef4444" }}>*</span>
+          {/* title */}
+          <div className="mb-5">
+            <label htmlFor="title" className="mb-1.5 block text-[13px] font-bold text-ink">
+              アカウント名<RequiredMark />
             </label>
             <input
               id="title"
@@ -165,12 +184,20 @@ export default function OaAccountPage() {
               onChange={(e) => setField("title", e.target.value)}
               placeholder="例: ミステリー作品公式"
               maxLength={100}
+              aria-required="true"
+              aria-invalid={errors.title ? "true" : undefined}
+              aria-describedby={errors.title ? "title-error" : undefined}
             />
-            {errors.title?.map((m) => <p key={m} className="field-error">{m}</p>)}
+            {errors.title?.map((m) => (
+              <p key={m} id="title-error" role="alert" className="field-error">{m}</p>
+            ))}
           </div>
 
-          <div className="form-group">
-            <label htmlFor="description">メモ（任意）</label>
+          {/* description */}
+          <div className="mb-5">
+            <label htmlFor="description" className="mb-1.5 block text-[13px] font-bold text-ink">
+              メモ（任意）
+            </label>
             <textarea
               id="description"
               value={form!.description}
@@ -180,52 +207,62 @@ export default function OaAccountPage() {
             />
           </div>
 
-          <div className="form-group">
-            <label>接続ステータス</label>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {STATUS_OPTIONS.map(({ value, label, desc }) => (
-                <label
-                  key={value}
-                  style={{
-                    display: "flex",
-                    alignItems: "flex-start",
-                    gap: 10,
-                    padding: "10px 12px",
-                    border: `2px solid ${form!.publish_status === value ? "#06C755" : "#e5e5e5"}`,
-                    borderRadius: 8,
-                    cursor: "pointer",
-                    background: form!.publish_status === value ? "#E6F7ED" : "#fff",
-                  }}
-                >
-                  <input
-                    type="radio"
-                    name="publish_status"
-                    value={value}
-                    checked={form!.publish_status === value}
-                    onChange={() => setField("publish_status", value)}
-                    style={{ marginTop: 2 }}
-                  />
-                  <div>
-                    <div style={{ fontWeight: 500, fontSize: 14 }}>{label}</div>
-                    <div style={{ fontSize: 12, color: "#6b7280" }}>{desc}</div>
-                  </div>
-                </label>
-              ))}
+          {/* publish_status — radio card 3 枚 */}
+          <div className="mb-5">
+            <span id="publish-status-label" className="mb-1.5 block text-[13px] font-bold text-ink">
+              接続ステータス
+            </span>
+            <div
+              role="radiogroup"
+              aria-labelledby="publish-status-label"
+              className="flex flex-col gap-2"
+            >
+              {STATUS_OPTIONS.map(({ value, label, desc }) => {
+                const selected = form!.publish_status === value;
+                return (
+                  <label
+                    key={value}
+                    className={
+                      "flex cursor-pointer items-start gap-2.5 rounded-field border-2 px-3 py-2.5 transition-colors " +
+                      (selected
+                        ? "border-brand bg-brand-soft"
+                        : "border-line bg-surface hover:bg-bg-tint")
+                    }
+                  >
+                    <input
+                      type="radio"
+                      name="publish_status"
+                      value={value}
+                      checked={selected}
+                      onChange={() => setField("publish_status", value)}
+                      className="mt-[3px] accent-brand"
+                    />
+                    <div className="min-w-0">
+                      <div className="text-[14px] font-semibold text-ink">{label}</div>
+                      <div className="text-[12px] text-ink-2">{desc}</div>
+                    </div>
+                  </label>
+                );
+              })}
             </div>
           </div>
 
-          <hr className="section-divider" />
+          <hr className="my-6 border-0 border-t border-line-2" />
 
           {/* ── LINE 接続情報 ── */}
-          <p style={{ fontWeight: 600, marginBottom: 4, color: "#374151" }}>LINE 接続情報</p>
-          <div className="alert alert-info" style={{ marginBottom: 16 }}>
+          <SectionHeading>LINE 接続情報</SectionHeading>
+          <div
+            role="status"
+            className="mb-5 rounded-field border border-sky/30 bg-sky-soft px-4 py-3 text-[13px] leading-[1.6] text-sky-ink"
+          >
             LINE Developers コンソール → Messaging API タブから取得してください。
             変更しない場合もそのまま保存できます。
           </div>
 
-          <div className="form-group">
-            <label htmlFor="channel_id">
-              Channel ID <span style={{ color: "#ef4444" }}>*</span>
+          {/* channel_id */}
+          <div className="mb-5">
+            <label htmlFor="channel_id" className="mb-1.5 block text-[13px] font-bold text-ink">
+              Channel ID<RequiredMark />
             </label>
             <input
               id="channel_id"
@@ -233,11 +270,17 @@ export default function OaAccountPage() {
               value={form!.channel_id}
               onChange={(e) => setField("channel_id", e.target.value)}
               placeholder="例: 1234567890"
-              style={{ fontFamily: "monospace" }}
+              style={{ fontFamily: "ui-monospace, monospace" }}
+              aria-required="true"
+              aria-invalid={errors.channel_id ? "true" : undefined}
+              aria-describedby={errors.channel_id ? "channel_id-error" : undefined}
             />
-            {errors.channel_id?.map((m) => <p key={m} className="field-error">{m}</p>)}
+            {errors.channel_id?.map((m) => (
+              <p key={m} id="channel_id-error" role="alert" className="field-error">{m}</p>
+            ))}
           </div>
 
+          {/* channel_secret / channel_access_token — MaskedField は別 PR スコープ、本 PR では触らない */}
           <MaskedField
             id="channel_secret"
             label="Channel Secret"
@@ -256,12 +299,24 @@ export default function OaAccountPage() {
             errorMessages={errors.channel_access_token}
           />
 
-          <div className="form-actions">
-            <Link href={`/oas/${oaId}/settings`} className="btn btn-ghost">キャンセル</Link>
-            <button type="submit" className="btn btn-primary" disabled={submitting}>
-              {submitting && <span className="spinner" />}
+          {/* form actions */}
+          <div className="mt-7 flex flex-col-reverse items-stretch gap-3 border-t border-line-2 pt-5 sm:flex-row sm:items-center sm:justify-end">
+            <Link
+              href={`/oas/${oaId}/settings`}
+              className={buttonClass({ variant: "ghost", size: "md" })}
+            >
+              キャンセル
+            </Link>
+            <Button
+              type="submit"
+              variant="primary"
+              size="md"
+              disabled={submitting}
+              aria-busy={submitting || undefined}
+            >
+              {submitting && <span className="spinner" aria-hidden="true" />}
               {submitting ? "保存中..." : "保存する"}
-            </button>
+            </Button>
           </div>
 
         </form>
