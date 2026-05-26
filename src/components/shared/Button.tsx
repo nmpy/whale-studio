@@ -14,12 +14,12 @@
 
 import { forwardRef, type ButtonHTMLAttributes } from "react";
 
-type Variant = "primary" | "ghost" | "danger";
-type Size    = "md" | "sm";
+export type ButtonVariant = "primary" | "ghost" | "danger";
+export type ButtonSize    = "md" | "sm";
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: Variant;
-  size?:    Size;
+  variant?: ButtonVariant;
+  size?:    ButtonSize;
   fullWidth?: boolean;
 }
 
@@ -29,7 +29,7 @@ const base =
   "disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none " +
   "focus:outline-none focus-visible:ring-4 focus-visible:ring-brand/20";
 
-const variants: Record<Variant, string> = {
+const variants: Record<ButtonVariant, string> = {
   primary:
     "text-white bg-gradient-to-br from-brand to-brand-deep " +
     "shadow-[0_3px_12px_rgba(34,197,94,.28)] " +
@@ -43,23 +43,46 @@ const variants: Record<Variant, string> = {
     "hover:bg-danger/15 hover:border-danger/50",
 };
 
-const sizes: Record<Size, string> = {
+const sizes: Record<ButtonSize, string> = {
   md: "px-5 py-2.5 text-[13px]",
   sm: "px-3.5 py-1.5 text-[12px]",
 };
 
-/** 共通ボタン (= ガイド §4 準拠)。
- *  実装メモ: variant="primary" は実行系のみ。多用しないこと (§1)。 */
-export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
-  { variant = "ghost", size = "md", fullWidth, className = "", ...rest },
-  ref,
-) {
-  const cls = [
+/** ボタンの className 文字列を組み立てる helper。
+ *  Link / a タグなど <button> 以外に同じ見た目を適用したい場合に使う
+ *  (= `<Link><Button>` だと <a><button> となり HTML 的に無効なので、Link 側にこの className を当てる)。
+ */
+export function buttonClass({
+  variant = "ghost",
+  size    = "md",
+  fullWidth,
+  className = "",
+}: {
+  variant?:   ButtonVariant;
+  size?:      ButtonSize;
+  fullWidth?: boolean;
+  className?: string;
+} = {}): string {
+  return [
     base,
     variants[variant],
     sizes[size],
     fullWidth ? "w-full" : "",
     className,
   ].filter(Boolean).join(" ");
-  return <button ref={ref} className={cls} {...rest} />;
+}
+
+/** 共通ボタン (= ガイド §4 準拠)。
+ *  実装メモ: variant="primary" は実行系のみ。多用しないこと (§1)。 */
+export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
+  { variant, size, fullWidth, className, ...rest },
+  ref,
+) {
+  return (
+    <button
+      ref={ref}
+      className={buttonClass({ variant, size, fullWidth, className })}
+      {...rest}
+    />
+  );
 });
