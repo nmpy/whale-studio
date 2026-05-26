@@ -256,7 +256,7 @@ export default function WorkCharacterListPage() {
           <div className="empty-state">
             <p className="empty-state-title">キャラクターがまだいません</p>
             <p className="empty-state-desc">
-              謎解きに登場するキャラクターを追加しましょう。<br />
+              作品に登場するキャラクターを追加しましょう。<br />
               キャラクターはメッセージの送信者として使用できます。
             </p>
             {canEdit && (

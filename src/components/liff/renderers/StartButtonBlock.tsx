@@ -26,7 +26,7 @@ export function StartButtonBlock({
         pageId:     playerCtx.pageId,
         lineUserId: playerCtx.lineUserId,
         eventType:  "button_click",
-        metadata:   { source: "start_button", label: settings.label ?? "謎解きを始める" },
+        metadata:   { source: "start_button", label: settings.label ?? "作品を始める" },
       });
     }
     if (!confirmed && settings.confirm_message) {
@@ -50,7 +50,7 @@ export function StartButtonBlock({
       loading={loading}
       loadingLabel="処理中..."
     >
-      {settings.label || "謎解きを始める"}
+      {settings.label || "作品を始める"}
     </LiffButton>
   );
 }

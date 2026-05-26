@@ -62,7 +62,7 @@ function LineMsgPreview({ name, iconImageUrl }: { name: string; iconImageUrl: st
               maxWidth: 185, color: "#222",
               boxShadow: "0 1px 3px rgba(0,0,0,.08)",
             }}>
-              こんにちは！謎解きへようこそ
+              こんにちは！作品の世界へようこそ
               <br />最初のヒントをお届けします。
             </div>
           </div>

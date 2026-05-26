@@ -16,7 +16,7 @@ const HUB_ITEM_DEFS = [
   {
     key:   "works",
     title: "作品管理",
-    desc:  "謎解きシナリオの作成・編集・公開管理",
+    desc:  "作品シナリオの作成・編集・公開管理",
     color: "#06C755",
     bg:    "#E6F7ED",
   },

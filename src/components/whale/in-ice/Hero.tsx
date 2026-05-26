@@ -32,7 +32,7 @@ export function Hero() {
           style={{ animationDelay: "0.25s" }}
         >
           氷のくじらは、物語のあとに残る体験を設計する制作レーベル。<br />
-          謎解き / マーダーミステリー / イマーシブ / LINE 連動。
+          マーダーミステリー / ARG / イマーシブ / LINE 連動の物語体験。
         </p>
         <p
           className="ice-fade-up text-[12px] md:text-[13px] tracking-[0.18em] text-[color:var(--ice-text-faint)] mb-12 md:mb-16"

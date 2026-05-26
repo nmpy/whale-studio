@@ -23,10 +23,10 @@ const notoSerifJP = Noto_Serif_JP({
 
 export const metadata: Metadata = {
   title: "氷のくじら — Whale in Ice",
-  description: "謎解き / マーダーミステリー / イマーシブ体験 / LINE 連動の物語体験を設計する制作レーベル。",
+  description: "作品 (マーダーミステリー / ARG / イマーシブ体験 / LINE 連動の物語体験など) を設計する制作レーベル。",
   openGraph: {
     title: "氷のくじら — Whale in Ice",
-    description: "謎解き / マーダーミステリー / イマーシブ体験 / LINE 連動の物語体験を設計する制作レーベル。",
+    description: "作品 (マーダーミステリー / ARG / イマーシブ体験 / LINE 連動の物語体験など) を設計する制作レーベル。",
     siteName: "Whale in Ice",
     locale: "ja_JP",
     type: "website",

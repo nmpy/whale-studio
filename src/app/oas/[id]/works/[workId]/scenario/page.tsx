@@ -353,7 +353,7 @@ export default function ScenarioPage() {
                 className="form-input"
                 value={addForm.name}
                 onChange={(e) => { setAddForm({ ...addForm, name: e.target.value }); setAddErrors({}); }}
-                placeholder="例: 序章 / 謎解きパート / 真相エンド"
+                placeholder="例: 序章 / 探索パート / 真相エンド"
                 maxLength={100}
                 autoFocus
               />

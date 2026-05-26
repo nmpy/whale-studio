@@ -96,7 +96,7 @@ export default function OaNewPage() {
               type="text"
               value={title}
               onChange={(e) => { setTitle(e.target.value); clearError("title"); }}
-              placeholder="例: 謎解きミステリー Vol.1"
+              placeholder="例: ミステリー作品 Vol.1"
               maxLength={100}
               required
             />

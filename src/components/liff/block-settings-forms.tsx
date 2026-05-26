@@ -91,7 +91,7 @@ export function StartButtonForm({ settings, onChange, readOnly }: FieldProps<Sta
           value={settings.label ?? ""}
           onChange={(e) => onChange({ ...settings, label: e.target.value })}
           disabled={readOnly}
-          placeholder="謎解きを始める"
+          placeholder="作品を始める"
         />
       </div>
       <div>

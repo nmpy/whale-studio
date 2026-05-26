@@ -18,7 +18,7 @@ export function About() {
       <div className="grid grid-cols-1 md:grid-cols-12 gap-8 md:gap-12">
         <div className="md:col-span-7">
           <p className="text-[15px] md:text-[16px] leading-[2.1] text-[color:var(--ice-text)]">
-            氷のくじらは、謎解き・マーダーミステリー・イマーシブ・LINE 連動体験などを扱う制作レーベルです。
+            氷のくじらは、マーダーミステリー・ARG・イマーシブ・LINE 連動体験など、物語体験を扱う制作レーベルです。
           </p>
           <p className="text-[15px] md:text-[16px] leading-[2.1] text-[color:var(--ice-text)] mt-5">
             物語、選択、現実の移動、スマートフォン上の演出。

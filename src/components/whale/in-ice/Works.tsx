@@ -27,7 +27,7 @@ const ITEMS: CaseStudy[] = [
   },
   {
     category: "Mystery × Promotion",
-    title:    "ARG / 謎解き連動のキャンペーン",
+    title:    "ARG / 物語連動のキャンペーン",
     body:     "公開前作品の世界観を、SNS / Web / 実空間にまたがる断片で先取りする。プレイヤーが自分で組み立てた解釈が、本編公開時の体験価値に直結する。",
     scope:    ["コンセプト", "難易度設計", "拡散導線", "結末との接続"],
   },
