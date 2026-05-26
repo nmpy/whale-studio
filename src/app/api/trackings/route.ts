@@ -6,6 +6,7 @@ import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { ok, created, badRequest, notFound, serverError } from "@/lib/api-response";
 import { withAuth } from "@/lib/auth";
+import { requireRole } from "@/lib/rbac";
 import { requirePlanFeature } from "@/lib/plan-guard";
 import { FEATURE } from "@/lib/constants/plans";
 import { createTrackingSchema, trackingQuerySchema, formatZodErrors } from "@/lib/validations";
@@ -33,13 +34,17 @@ function toResponse(t: {
   };
 }
 
-export const GET = withAuth(async (req: NextRequest) => {
+export const GET = withAuth(async (req: NextRequest, _ctx, user) => {
   try {
     const { searchParams } = new URL(req.url);
     const query = trackingQuerySchema.parse({ oa_id: searchParams.get("oa_id") ?? undefined });
 
     const oa = await prisma.oa.findUnique({ where: { id: query.oa_id } });
     if (!oa) return notFound("OA");
+
+    // 認可: OA メンバー (viewer 以上) のみ。plan 推測も防ぐ。
+    const check = await requireRole(query.oa_id, user.id, "viewer");
+    if (!check.ok) return check.response;
 
     const trackings = await prisma.tracking.findMany({
       where:   { oaId: query.oa_id },
@@ -54,13 +59,17 @@ export const GET = withAuth(async (req: NextRequest) => {
   }
 });
 
-export const POST = withAuth(async (req: NextRequest) => {
+export const POST = withAuth(async (req: NextRequest, _ctx, user) => {
   try {
     const body = await req.json();
     const data = createTrackingSchema.parse(body);
 
     const oa = await prisma.oa.findUnique({ where: { id: data.oa_id } });
     if (!oa) return notFound("OA");
+
+    // 認可: editor 以上のみ作成可能。plan check より前。
+    const check = await requireRole(data.oa_id, user.id, "editor");
+    if (!check.ok) return check.response;
 
     // プラン制限: audience (trackings) は Standard プラン以上
     const planGuard = await requirePlanFeature({ oaId: data.oa_id, featureKey: FEATURE.audience });
