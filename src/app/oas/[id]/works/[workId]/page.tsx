@@ -26,6 +26,7 @@ import {
   getPlanAccessState,
 } from "@/lib/constants/plans";
 import { useAccessPreview } from "@/hooks/useAccessPreview";
+import { withPreviewParams } from "@/lib/access-preview";
 
 // ── ステータス表示 ───────────────────────────────────────
 const STATUS_META: Record<string, { label: string; color: string; bg: string; dot: string }> = {
@@ -898,12 +899,18 @@ export default function WorkHubPage() {
             </div>
           );
 
-          // 利用可: 通常通り Link でラップ
+          // 利用可: 通常通り Link でラップ。
+          // owner の表示確認モード中は previewPlan / previewRole を href に持ち越す
+          // (= 遷移先でも同じ preview 状態を維持するため)。
           if (access.allowed) {
+            const cardHref = withPreviewParams(
+              `/oas/${oaId}/works/${workId}/${card.key}`,
+              searchParams,
+            );
             return (
               <Link
                 key={card.key}
-                href={`/oas/${oaId}/works/${workId}/${card.key}`}
+                href={cardHref}
                 style={{ textDecoration: "none" }}
               >
                 {cardBody}

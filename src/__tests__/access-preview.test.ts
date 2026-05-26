@@ -18,6 +18,7 @@ import {
   getEffectivePlan,
   getEffectiveRole,
   buildPreviewSearchParams,
+  withPreviewParams,
 } from "@/lib/access-preview";
 
 // ──────────────────────────────────────────────────────────
@@ -232,5 +233,55 @@ describe("統合シナリオ", () => {
       { previewPlan: null, previewRole: null },
     );
     expect(cleared.toString()).toBe("");
+  });
+});
+
+// ──────────────────────────────────────────────────────────
+// withPreviewParams (= 遷移先 href に preview を持ち越す)
+// ──────────────────────────────────────────────────────────
+
+describe("withPreviewParams", () => {
+  it("preview なし → pathname をそのまま返す", () => {
+    expect(withPreviewParams("/oas/x/works/y/liff", new URLSearchParams())).toBe(
+      "/oas/x/works/y/liff",
+    );
+  });
+
+  it("previewPlan のみあり → ?previewPlan=... を付与", () => {
+    expect(
+      withPreviewParams("/oas/x/works/y/liff", new URLSearchParams("previewPlan=basic"))
+    ).toBe("/oas/x/works/y/liff?previewPlan=basic");
+  });
+
+  it("previewPlan + previewRole → 両方付与", () => {
+    expect(
+      withPreviewParams(
+        "/oas/x/works/y/audience",
+        new URLSearchParams("previewPlan=standard&previewRole=client_operator"),
+      )
+    ).toBe("/oas/x/works/y/audience?previewPlan=standard&previewRole=client_operator");
+  });
+
+  it("preview 以外の query (= tab 等) は持ち越さない", () => {
+    // 遷移先 page では別の意味になるため安全側で落とす
+    const result = withPreviewParams(
+      "/oas/x/works/y/liff",
+      new URLSearchParams("previewPlan=basic&tab=draft&foo=bar"),
+    );
+    expect(result).toBe("/oas/x/works/y/liff?previewPlan=basic");
+  });
+
+  it("pathname に既に ? があれば & で連結", () => {
+    expect(
+      withPreviewParams(
+        "/oas/x/audience?tab=segments",
+        new URLSearchParams("previewPlan=basic"),
+      )
+    ).toBe("/oas/x/audience?tab=segments&previewPlan=basic");
+  });
+
+  it("searchParams が null / undefined → pathname のまま", () => {
+    expect(withPreviewParams("/foo", null)).toBe("/foo");
+    expect(withPreviewParams("/foo", undefined)).toBe("/foo");
   });
 });
