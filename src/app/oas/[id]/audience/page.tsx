@@ -8,9 +8,9 @@ import {
 } from "@/lib/api-client";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { useToast } from "@/components/Toast";
-import { useWorkLimit } from "@/hooks/useWorkLimit";
+import { useAccessPreview } from "@/hooks/useAccessPreview";
 import { PlanRequiredCard } from "@/components/PlanRequiredCard";
-import { FEATURE, mapPlanNameToTier, getPlanAccessState } from "@/lib/constants/plans";
+import { FEATURE, getPlanAccessState } from "@/lib/constants/plans";
 import type {
   Segment, Tracking, AnalyticsData, AnalyticsPhaseStats, SegmentAnalytics,
 } from "@/types";
@@ -115,8 +115,8 @@ export default function AudiencePage() {
   // useWorkLimit は plan-info を fetch する。loading 中は plan 不明 = 何も描画しない方が
   // ちらつきが減るが、ここでは plan_required の方を優先する判定にする。
   // (= 万一 plan 取得失敗時は basic 扱いで安全側に倒れる仕様)
-  const { planName, loading: planLoading } = useWorkLimit(oaId);
-  const planTier = mapPlanNameToTier(planName);
+  // owner の「表示確認モード」を反映するため effectivePlan を使う。
+  const { effectivePlan: planTier, loading: planLoading } = useAccessPreview(oaId);
   const access = getPlanAccessState({ plan: planTier, featureKey: FEATURE.audience });
 
   type TabType = "data" | "realtime" | "flow" | "segments" | "tracking";

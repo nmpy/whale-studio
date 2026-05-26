@@ -11,10 +11,10 @@ import { useParams, useRouter } from "next/navigation";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { useToast } from "@/components/Toast";
 import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
-import { useWorkLimit } from "@/hooks/useWorkLimit";
+import { useAccessPreview } from "@/hooks/useAccessPreview";
 import { ViewerBanner } from "@/components/PermissionGuard";
 import { PlanRequiredCard } from "@/components/PlanRequiredCard";
-import { FEATURE, mapPlanNameToTier, getPlanAccessState } from "@/lib/constants/plans";
+import { FEATURE, getPlanAccessState } from "@/lib/constants/plans";
 import {
   liffConfigApi,
   workApi,
@@ -95,8 +95,8 @@ export default function LiffPagesIndex() {
   const isReadOnly = role === "viewer" || role === "tester";
 
   // プラン制限: LIFF表示設定は Plus 以上が必要
-  const { planName, loading: planLoading } = useWorkLimit(oaId);
-  const planTier = mapPlanNameToTier(planName);
+  // owner の「表示確認モード」を反映するため effectivePlan を使う。
+  const { effectivePlan: planTier, loading: planLoading } = useAccessPreview(oaId);
   const planAccess = getPlanAccessState({ plan: planTier, featureKey: FEATURE.liffDisplay });
 
   const [pages, setPages] = useState<LiffPageSummary[] | null>(null);
