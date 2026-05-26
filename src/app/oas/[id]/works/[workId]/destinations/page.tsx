@@ -9,8 +9,11 @@ import { useParams } from "next/navigation";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { useToast } from "@/components/Toast";
 import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
+import { useWorkLimit } from "@/hooks/useWorkLimit";
 import { useDestinations } from "@/hooks/useDestinations";
 import { ViewerBanner } from "@/components/PermissionGuard";
+import { PlanRequiredCard } from "@/components/PlanRequiredCard";
+import { FEATURE, mapPlanNameToTier, getPlanAccessState } from "@/lib/constants/plans";
 import { DestinationListItem } from "@/components/destination/DestinationListItem";
 import { DestinationFormModal } from "@/components/destination/DestinationFormModal";
 import type { LineDestination } from "@/types";
@@ -22,6 +25,11 @@ export default function DestinationsPage() {
   const { showToast } = useToast();
   const { role, loading: roleLoading } = useWorkspaceRole(oaId);
   const isReadOnly = role === "viewer" || role === "tester";
+
+  // プラン制限: destinations は Plus 以上が必要
+  const { planName, loading: planLoading } = useWorkLimit(oaId);
+  const planTier = mapPlanNameToTier(planName);
+  const planAccess = getPlanAccessState({ plan: planTier, featureKey: FEATURE.destinations });
 
   const dest = useDestinations(workId, {
     onSuccess: (msg) => showToast(msg, "success"),
@@ -38,6 +46,19 @@ export default function DestinationsPage() {
         <div className="h-6 w-48 bg-gray-200 rounded-md mb-4 animate-pulse" />
         <div className="h-48 bg-gray-100 rounded-lg animate-pulse" />
       </div>
+    );
+  }
+
+  // プラン不足: 直 URL アクセス時にここで遮断する
+  if (!planLoading && !planAccess.allowed) {
+    return (
+      <PlanRequiredCard
+        oaId={oaId}
+        workId={workId}
+        featureKey={FEATURE.destinations}
+        currentPlan={planTier}
+        featureLabel="遷移先URL設定"
+      />
     );
   }
 

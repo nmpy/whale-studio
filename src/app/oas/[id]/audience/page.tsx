@@ -8,6 +8,9 @@ import {
 } from "@/lib/api-client";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { useToast } from "@/components/Toast";
+import { useWorkLimit } from "@/hooks/useWorkLimit";
+import { PlanRequiredCard } from "@/components/PlanRequiredCard";
+import { FEATURE, mapPlanNameToTier, getPlanAccessState } from "@/lib/constants/plans";
 import type {
   Segment, Tracking, AnalyticsData, AnalyticsPhaseStats, SegmentAnalytics,
 } from "@/types";
@@ -107,6 +110,14 @@ export default function AudiencePage() {
   const searchParams  = useSearchParams();
   const router        = useRouter();
   const { showToast } = useToast();
+
+  // プラン制限: audience は Standard 以上。
+  // useWorkLimit は plan-info を fetch する。loading 中は plan 不明 = 何も描画しない方が
+  // ちらつきが減るが、ここでは plan_required の方を優先する判定にする。
+  // (= 万一 plan 取得失敗時は basic 扱いで安全側に倒れる仕様)
+  const { planName, loading: planLoading } = useWorkLimit(oaId);
+  const planTier = mapPlanNameToTier(planName);
+  const access = getPlanAccessState({ plan: planTier, featureKey: FEATURE.audience });
 
   type TabType = "data" | "realtime" | "flow" | "segments" | "tracking";
   const activeTab = (searchParams.get("tab") as TabType) ?? "data";
@@ -277,6 +288,19 @@ export default function AudiencePage() {
           再試行
         </button>
       </div>
+    );
+  }
+
+  // プラン不足: 直 URL アクセス時にここで遮断し PlanRequiredCard を表示する。
+  // loading 中はチラつき防止のため、判定確定 (= !planLoading) を待つ。
+  if (!planLoading && !access.allowed) {
+    return (
+      <PlanRequiredCard
+        oaId={oaId}
+        featureKey={FEATURE.audience}
+        currentPlan={planTier}
+        featureLabel="オーディエンス"
+      />
     );
   }
 

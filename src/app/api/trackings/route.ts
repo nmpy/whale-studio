@@ -6,6 +6,8 @@ import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { ok, created, badRequest, notFound, serverError } from "@/lib/api-response";
 import { withAuth } from "@/lib/auth";
+import { requirePlanFeature } from "@/lib/plan-guard";
+import { FEATURE } from "@/lib/constants/plans";
 import { createTrackingSchema, trackingQuerySchema, formatZodErrors } from "@/lib/validations";
 import { ZodError } from "zod";
 import { randomUUID } from "crypto";
@@ -59,6 +61,10 @@ export const POST = withAuth(async (req: NextRequest) => {
 
     const oa = await prisma.oa.findUnique({ where: { id: data.oa_id } });
     if (!oa) return notFound("OA");
+
+    // プラン制限: audience (trackings) は Standard プラン以上
+    const planGuard = await requirePlanFeature({ oaId: data.oa_id, featureKey: FEATURE.audience });
+    if (!planGuard.ok) return planGuard.response;
 
     // tracking_id が未指定なら自動生成（UUID 先頭8文字）
     const trackingId = data.tracking_id ?? randomUUID().replace(/-/g, "").slice(0, 12);

@@ -37,6 +37,34 @@ export function forbidden(): NextResponse<ApiError> {
   );
 }
 
+/**
+ * プラン不足によるアクセス拒否レスポンス (= 403 + PLAN_REQUIRED)。
+ *
+ * UI 側の `getPlanAccessState` と shape を揃え、UI / API で同じ判定結果が
+ * 共有できるようにする。 */
+export function planRequired(args: {
+  requiredPlan: string;       // = PlanTier "basic" | "standard" | "plus" | "pro"
+  requiredPlanLabel: string;  // = "Basic" / "Standard" / "Plus" / "Pro"
+  message?: string;
+}): NextResponse<ApiError> {
+  const message = args.message ?? `この機能は${args.requiredPlanLabel}プラン以上で利用できます`;
+  return NextResponse.json(
+    {
+      success: false,
+      error: {
+        code: "PLAN_REQUIRED",
+        message,
+        // details に requiredPlan を含めることで、フロントから access state を再構成できる
+        details: {
+          requiredPlan:      [args.requiredPlan],
+          requiredPlanLabel: [args.requiredPlanLabel],
+        },
+      },
+    },
+    { status: 403 },
+  );
+}
+
 export function conflict(message: string): NextResponse<ApiError> {
   return NextResponse.json(
     { success: false, error: { code: "CONFLICT", message } },

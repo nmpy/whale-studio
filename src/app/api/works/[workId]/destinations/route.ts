@@ -8,6 +8,8 @@ import { Prisma } from "@prisma/client";
 import { ok, created, badRequest, notFound, conflict, serverError } from "@/lib/api-response";
 import { withAuth } from "@/lib/auth";
 import { requireRole, getOaIdFromWorkId } from "@/lib/rbac";
+import { requirePlanFeature } from "@/lib/plan-guard";
+import { FEATURE } from "@/lib/constants/plans";
 import { createDestinationSchema, formatZodErrors } from "@/lib/validations";
 import { toDestinationResponse } from "@/lib/destination-utils";
 import { getDestinationUsageCounts } from "@/lib/destination-usage-utils";
@@ -51,6 +53,10 @@ export const POST = withAuth(async (req, ctx, user) => {
 
     const check = await requireRole(oaId, user.id, "editor");
     if (!check.ok) return check.response;
+
+    // プラン制限: destinations は Plus プラン以上
+    const planGuard = await requirePlanFeature({ oaId, featureKey: FEATURE.destinations });
+    if (!planGuard.ok) return planGuard.response;
 
     const body = await req.json();
     const data = createDestinationSchema.parse({ ...body, work_id: workId });
