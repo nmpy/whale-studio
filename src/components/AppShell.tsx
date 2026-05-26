@@ -17,6 +17,7 @@
 //   モバイル前提の LIFF レイアウトと衝突するため、/liff/* では適用しない。
 //   /whale/* も同じ理由で SaaS の見た目から切り離す。
 
+import { Suspense } from "react";
 import { usePathname } from "next/navigation";
 import AppHeader from "@/components/AppHeader";
 import { AccessPreviewBar } from "@/components/AccessPreviewBar";
@@ -42,8 +43,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <>
       <AppHeader />
       {/* OA 配下 + owner のときだけ表示される独立バー (= owner 以外には何も描画されない)。
-          ヘッダー横並びを崩さないため main の外、ヘッダー直下に配置する。 */}
-      <AccessPreviewBar />
+          ヘッダー横並びを崩さないため main の外、ヘッダー直下に配置する。
+          AccessPreviewBar は useSearchParams を使うため、静的生成ページの CSR bailout を
+          避けるべく Suspense 境界で包む (= 全ページ root layout に乗るため必須)。 */}
+      <Suspense fallback={null}>
+        <AccessPreviewBar />
+      </Suspense>
       <main>
         <div className="container">{children}</div>
       </main>
