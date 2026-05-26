@@ -7,6 +7,7 @@ import { useToast } from "@/components/Toast";
 import { AnnouncementBanner } from "@/components/AnnouncementBanner";
 import { usePlatformRole } from "@/hooks/usePlatformRole";
 import { RoleBadge } from "@/components/PermissionGuard";
+import { Button, StatusBadge, buttonClass } from "@/components/shared";
 import type { Role } from "@/lib/types/permissions";
 
 // ── 定数 ─────────────────────────────────────────────────────────────────
@@ -17,18 +18,12 @@ const STATUS_LABEL: Record<string, string> = {
   paused: "停止中",
 };
 
-const STATUS_BADGE_STYLE: Record<string, { bg: string; color: string; border: string }> = {
-  draft:  { bg: "#f9fafb", color: "#9ca3af", border: "#e5e7eb" },
-  active: { bg: "#dcfce7", color: "#166534", border: "#86efac" },
-  paused: { bg: "#fef9c3", color: "#854d0e", border: "#fde047" },
-};
-
-const ROLE_LABEL: Record<string, string> = {
-  owner:  "オーナー",
-  admin:  "管理者",
-  editor: "編集者",
-  viewer: "閲覧者",
-};
+/** publish_status を StatusBadge の tone にマップする。 */
+function statusTone(s: string): "active" | "muted" | "warn" {
+  if (s === "active") return "active";
+  if (s === "paused") return "warn";
+  return "muted"; // draft / unknown
+}
 
 // ── 日付フォーマット ─────────────────────────────────────────────────────
 
@@ -40,50 +35,40 @@ function formatDate(iso: string): string {
   return `${y}/${mo}/${dd}`;
 }
 
-// ── スタイル定数 ─────────────────────────────────────────────────────────
-
-const LABEL_STYLE: React.CSSProperties = {
-  fontSize:      10,
-  fontWeight:    600,
-  color:         "var(--text-muted)",
-  textTransform: "uppercase",
-  letterSpacing: "0.06em",
-  marginBottom:  4,
-  whiteSpace:    "nowrap",
-};
-
-const VALUE_STYLE: React.CSSProperties = {
-  fontSize:   13,
-  fontWeight: 600,
-  color:      "var(--text-primary)",
-  lineHeight: 1.4,
-};
+// ── 情報グリッドの label / value 部品 ──
+function MetaItem({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.06em] text-ink-3 whitespace-nowrap">
+        {label}
+      </div>
+      <div className="text-[13px] font-semibold leading-[1.4] text-ink">{children}</div>
+    </div>
+  );
+}
 
 /* ── 統計サマリー ────────────────────────────────────────────────────────── */
 function SummaryBar({ items, worksMap }: { items: OaListItem[]; worksMap: Record<string, WorkListItem[]> }) {
   const activeCount  = items.filter((o) => o.publish_status === "active").length;
   const totalWorks   = Object.values(worksMap).reduce((s, ws) => s + ws.length, 0);
   const totalPlayers = Object.values(worksMap).reduce(
-    (s, ws) => s + ws.reduce((ss, w) => ss + (w._count.userProgress ?? 0), 0), 0
+    (s, ws) => s + ws.reduce((ss, w) => ss + (w._count.userProgress ?? 0), 0), 0,
   );
+  const stats = [
+    { label: "アカウント数",   value: items.length.toString() },
+    { label: "公開中",         value: activeCount.toString() },
+    { label: "総作品数",       value: totalWorks.toString() },
+    { label: "総プレイヤー数", value: totalPlayers.toLocaleString() },
+  ];
   return (
-    <div style={{ display: "flex", gap: 12, marginBottom: 20 }}>
-      {[
-        { label: "アカウント数",   value: items.length,                  color: "#6366f1" },
-        { label: "公開中",         value: activeCount,                   color: "var(--color-success)" },
-        { label: "総作品数",       value: totalWorks,                    color: "#0ea5e9" },
-        { label: "総プレイヤー数", value: totalPlayers.toLocaleString(), color: "#f59e0b" },
-      ].map((s) => (
-        <div key={s.label} style={{
-          flex:         1,
-          padding:      "14px 18px",
-          background:   "var(--surface)",
-          border:       "1px solid var(--border-light)",
-          borderRadius: "var(--radius-md)",
-          boxShadow:    "var(--shadow-xs)",
-        }}>
-          <div style={{ fontSize: 20, fontWeight: 800, color: s.color, lineHeight: 1 }}>{s.value}</div>
-          <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 4 }}>{s.label}</div>
+    <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+      {stats.map((s) => (
+        <div
+          key={s.label}
+          className="rounded-card border border-line bg-surface px-4 py-3.5 shadow-sm"
+        >
+          <div className="font-num text-[20px] font-extrabold leading-none text-ink">{s.value}</div>
+          <div className="mt-1 text-[11px] text-ink-3">{s.label}</div>
         </div>
       ))}
     </div>
@@ -93,126 +78,51 @@ function SummaryBar({ items, worksMap }: { items: OaListItem[]; worksMap: Record
 /* ── サポートエリア ───────────────────────────────────────────────────────── */
 function SupportArea({ isOwner }: { isOwner: boolean }) {
   return (
-    <div style={{ marginTop: 40, paddingTop: 24, borderTop: "1px solid var(--color-border-soft)" }}>
-      <p style={{
-        fontSize: 11, fontWeight: 600, color: "var(--color-text-muted)",
-        textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 12,
-      }}>
+    <div className="mt-10 border-t border-line pt-6">
+      <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.07em] text-ink-3">
         サポート
       </p>
-      <div style={{
-        display: "flex", alignItems: "center", gap: 18,
-        padding: "18px 22px",
-        background: "var(--color-bg-default)",
-        border: "1px solid var(--color-border-soft)",
-        borderRadius: 12,
-      }}>
-        <span style={{
-          display: "flex", alignItems: "center", justifyContent: "center",
-          width: 40, height: 40, borderRadius: 10,
-          background: "var(--gray-100)", fontSize: 20, flexShrink: 0,
-        }}>
+      <div className="flex flex-col items-stretch gap-4 rounded-card border border-line bg-surface p-5 sm:flex-row sm:items-center sm:gap-5">
+        <span
+          aria-hidden="true"
+          className="inline-flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-field bg-bg-tint text-[20px]"
+        >
           📄
         </span>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: "var(--color-text-primary)", marginBottom: 3 }}>
-            はじめての方へ — 使い方ガイド
-          </div>
-          <div style={{ fontSize: 11, color: "var(--color-text-muted)", lineHeight: 1.6 }}>
+        <div className="min-w-0 flex-1">
+          <div className="mb-1 text-[13px] font-bold text-ink">はじめての方へ — 使い方ガイド</div>
+          <div className="text-[11px] leading-[1.6] text-ink-2">
             セットアップ・LINEチャンネル連携・シナリオ公開までの手順をまとめたPDFです。まずこちらをご確認ください。
           </div>
         </div>
-        <div style={{ flexShrink: 0, textAlign: "center" }}>
+        <div className="flex-shrink-0 text-center">
           {isOwner ? (
-            <button
+            <Button
               type="button"
+              variant="primary"
+              size="sm"
               title="PDF ガイドのアップロード（近日公開）"
               onClick={() => alert("PDF アップロード機能は近日公開予定です。")}
-              style={{
-                display: "inline-flex", alignItems: "center", gap: 6,
-                padding: "8px 18px", fontSize: 12, fontWeight: 600,
-                color: "#fff", background: "var(--color-primary, #2F6F5E)",
-                border: "none", borderRadius: 8, cursor: "pointer", whiteSpace: "nowrap",
-              }}
+              className="whitespace-nowrap"
             >
-              <span style={{ fontSize: 14 }}>📤</span>PDFをアップロード
-            </button>
+              📤 PDFをアップロード
+            </Button>
           ) : (
             <>
-              <button
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
                 disabled
-                style={{
-                  display: "inline-flex", alignItems: "center", gap: 6,
-                  padding: "8px 18px", fontSize: 12, fontWeight: 600,
-                  color: "var(--color-text-muted)", background: "var(--gray-100)",
-                  border: "1px solid var(--color-border-soft)", borderRadius: 8,
-                  cursor: "not-allowed", opacity: 0.5, whiteSpace: "nowrap",
-                }}
+                className="whitespace-nowrap"
               >
-                <span style={{ fontSize: 14 }}>📥</span>PDFを開く
-              </button>
-              <p style={{ fontSize: 11, color: "#dc2626", marginTop: 5 }}>
-                ※実装前のため、ご利用いただけません
-              </p>
+                📥 PDFを開く
+              </Button>
+              <p className="mt-1.5 text-[11px] text-danger">※実装前のため、ご利用いただけません</p>
             </>
           )}
         </div>
       </div>
-    </div>
-  );
-}
-
-/* ── 行アクションボタン ─────────────────────────────────────────────────── */
-function RowActions({ oaId, isOwner, onDelete }: {
-  oaId:     string;
-  isOwner:  boolean;
-  onDelete: () => void;
-}) {
-  return (
-    <div style={{
-      display:        "flex",
-      flexDirection:  "column",
-      gap:            10,
-      alignItems:     "stretch",
-      minWidth:       108,
-    }}>
-      <Link
-        href={`/oas/${oaId}/works`}
-        className="btn btn-primary"
-        style={{
-          padding:    "9px 18px",
-          fontSize:   13,
-          fontWeight: 700,
-          textAlign:  "center",
-          display:    "block",
-          whiteSpace: "nowrap",
-        }}
-      >
-        作品管理
-      </Link>
-      <Link
-        href={`/oas/${oaId}/settings`}
-        className="btn btn-ghost"
-        style={{
-          padding:    "9px 18px",
-          fontSize:   13,
-          textAlign:  "center",
-          display:    "block",
-          whiteSpace: "nowrap",
-        }}
-      >
-        設定
-      </Link>
-      {isOwner && (
-        <button
-          type="button"
-          className="btn btn-danger"
-          style={{ padding: "9px 18px", fontSize: 13, whiteSpace: "nowrap" }}
-          onClick={onDelete}
-        >
-          削除
-        </button>
-      )}
     </div>
   );
 }
@@ -227,107 +137,64 @@ function WorksCell({
   worksMap: Record<string, WorkListItem[]>;
   worksLoading: boolean;
 }) {
-  // 作品リスト取得中はスケルトン表示
   if (worksLoading) {
     return <div className="skeleton" style={{ width: 100, height: 14, borderRadius: 4 }} />;
   }
   const ws = worksMap[oaId];
-  // API エラー等で取得できなかった場合（undefined）は "+ 作品を追加" を表示
-  if (!ws || ws.length === 0) return (
-    <Link
-      href={`/oas/${oaId}/works`}
-      style={{
-        display:        "inline-flex",
-        alignItems:     "center",
-        gap:            4,
-        fontSize:       12,
-        color:          "var(--color-info)",
-        padding:        "3px 9px",
-        background:     "#eff6ff",
-        border:         "1px dashed #bfdbfe",
-        borderRadius:   "var(--radius-full)",
-        textDecoration: "none",
-        whiteSpace:     "nowrap",
-      }}
-    >
-      ＋ 作品を追加
-    </Link>
-  );
+  if (!ws || ws.length === 0) {
+    return (
+      <Link
+        href={`/oas/${oaId}/works`}
+        className="inline-flex items-center gap-1 rounded-full border border-dashed border-sky/40 bg-sky-soft px-2.5 py-0.5 text-[12px] text-sky-ink whitespace-nowrap"
+      >
+        ＋ 作品を追加
+      </Link>
+    );
+  }
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+    <div className="flex flex-col gap-1">
       {ws.map((w) => (
         <Link
           key={w.id}
           href={`/oas/${oaId}/works/${w.id}`}
           title={`${w.title} の作品管理へ`}
-          style={{
-            display:        "inline-flex",
-            alignItems:     "center",
-            gap:            3,
-            fontSize:       13,
-            fontWeight:     600,
-            color:          "var(--text-primary)",
-            textDecoration: "none",
-            lineHeight:     1.4,
-            maxWidth:       "100%",
-            transition:     "color .15s",
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.color           = "var(--color-primary, #2F6F5E)";
-            e.currentTarget.style.textDecoration  = "underline";
-            e.currentTarget.style.textUnderlineOffset = "2px";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.color          = "var(--text-primary)";
-            e.currentTarget.style.textDecoration = "none";
-          }}
+          className="inline-flex max-w-full items-center gap-1 text-[13px] font-semibold leading-[1.4] text-ink transition-colors hover:text-brand-ink hover:underline hover:underline-offset-2"
         >
-          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {w.title}
-          </span>
-          <span style={{ fontSize: 13, color: "#9ca3af", flexShrink: 0, lineHeight: 1 }}>›</span>
+          <span className="overflow-hidden text-ellipsis whitespace-nowrap">{w.title}</span>
+          <span className="flex-shrink-0 text-[13px] leading-none text-ink-3">›</span>
         </Link>
       ))}
     </div>
   );
 }
 
-/* ── スケルトン行 ─────────────────────────────────────────────────────────── */
+/* ── スケルトン (OA カード) ──────────────────────────────────────────────── */
 function SkeletonList() {
   return (
-    <>
+    <div className="flex flex-col gap-3">
       {[0, 1, 2].map((i) => (
-        <div
-          key={i}
-          style={{
-            display:      "flex",
-            gap:          24,
-            alignItems:   "flex-start",
-            padding:      "22px 24px",
-            borderBottom: "1px solid var(--border-light)",
-          }}
-        >
-          {/* 左: 情報エリア */}
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div className="skeleton" style={{ width: 180 + i * 30, height: 18, borderRadius: 4, marginBottom: 8 }} />
-            <div className="skeleton" style={{ width: 100, height: 11, borderRadius: 4, marginBottom: 20 }} />
-            <div style={{ display: "flex", flexWrap: "wrap", gap: "12px 28px" }}>
-              {[60, 72, 140, 66, 66].map((w, j) => (
-                <div key={j}>
-                  <div className="skeleton" style={{ width: 40, height: 9, borderRadius: 3, marginBottom: 6 }} />
-                  <div className="skeleton" style={{ width: w, height: 13, borderRadius: 4 }} />
-                </div>
-              ))}
+        <div key={i} className="rounded-card border border-line bg-surface p-5 shadow-sm sm:p-6">
+          <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0 flex-1">
+              <div className="skeleton mb-2" style={{ width: 180 + i * 30, height: 18, borderRadius: 4 }} />
+              <div className="skeleton mb-5" style={{ width: 100, height: 11, borderRadius: 4 }} />
+              <div className="flex flex-wrap gap-x-7 gap-y-3">
+                {[60, 72, 140, 66, 66].map((w, j) => (
+                  <div key={j}>
+                    <div className="skeleton mb-1.5" style={{ width: 40, height: 9, borderRadius: 3 }} />
+                    <div className="skeleton" style={{ width: w, height: 13, borderRadius: 4 }} />
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
-          {/* 右: ボタンエリア */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: 108 }}>
-            <div className="skeleton" style={{ height: 38, borderRadius: 8 }} />
-            <div className="skeleton" style={{ height: 38, borderRadius: 8 }} />
+            <div className="flex flex-col gap-2 sm:min-w-[108px]">
+              <div className="skeleton" style={{ height: 32, borderRadius: 999 }} />
+              <div className="skeleton" style={{ height: 32, borderRadius: 999 }} />
+            </div>
           </div>
         </div>
       ))}
-    </>
+    </div>
   );
 }
 
@@ -356,15 +223,14 @@ export default function OaListPage() {
       // OA一覧が揃った時点で loading を解除 → OAカードを先行表示
       setLoading(false);
 
-      // 作品リストは OA 一覧とは独立してフェッチ（既存作品の表示は subscription 制限とは無関係）
-      // エラー時は [] として扱うが、OAカード自体の表示はブロックしない
+      // 作品リストは OA 一覧とは独立してフェッチ
       const token = getDevToken();
       const pairs = await Promise.all(
         result.data.map((oa) =>
           workApi.list(token, oa.id)
             .then((ws) => [oa.id, ws] as [string, WorkListItem[]])
-            .catch(() => [oa.id, [] as WorkListItem[]] as [string, WorkListItem[]])
-        )
+            .catch(() => [oa.id, [] as WorkListItem[]] as [string, WorkListItem[]]),
+        ),
       );
       const map: Record<string, WorkListItem[]> = {};
       for (const [id, ws] of pairs) map[id] = ws;
@@ -397,38 +263,43 @@ export default function OaListPage() {
   return (
     <>
       {/* ── ページヘッダー ── */}
-      <div className="page-header">
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h2>アカウントリスト</h2>
-          <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 3 }}>
+          <h2 className="font-round text-[clamp(20px,4vw,24px)] font-extrabold leading-[1.2] tracking-[-0.02em] text-ink">
+            アカウントリスト
+          </h2>
+          <p className="mt-1 text-[12px] text-ink-3">
             1つのLINE公式アカウントにつき複数の作品を管理できます
           </p>
         </div>
-        <Link href="/oas/new" className="btn btn-primary">
+        <Link
+          href="/oas/new"
+          className={buttonClass({ variant: "primary", size: "md" })}
+        >
           ＋ アカウントを追加
         </Link>
       </div>
 
       {/* ── β版 遅延注意バナー ── */}
-      <div style={{
-        display: "flex", alignItems: "flex-start", gap: 10,
-        background: "#fffbeb", border: "1px solid #fcd34d",
-        borderRadius: "var(--radius-md)", padding: "12px 16px",
-        marginBottom: 16, fontSize: 13, color: "#92400e", lineHeight: 1.6,
-      }}>
-        <span>
-          現在「Whale Studio β版」では、メッセージの処理に遅延が発生する場合があります。
-          現在改善を進めておりますので、あらかじめご了承ください。
-        </span>
+      <div
+        role="status"
+        className="mb-4 rounded-field border border-warn/30 bg-warn-soft px-4 py-3 text-[13px] leading-[1.6] text-warn"
+      >
+        現在「Whale Studio β版」では、メッセージの処理に遅延が発生する場合があります。
+        現在改善を進めておりますので、あらかじめご了承ください。
       </div>
 
       {/* ── エラー ── */}
       {error && (
-        <div className="alert alert-error" style={{ marginBottom: 16 }}>
-          {error}
+        <div
+          role="alert"
+          className="mb-4 flex items-center gap-3 rounded-field border border-danger/30 bg-danger-soft px-4 py-3 text-[13px] leading-[1.6] text-danger"
+        >
+          <span>{error}</span>
           <button
+            type="button"
             onClick={() => load(page)}
-            style={{ marginLeft: 12, textDecoration: "underline", background: "none", border: "none", cursor: "pointer", color: "inherit", fontSize: "inherit" }}
+            className="underline hover:no-underline"
           >
             再読み込み
           </button>
@@ -442,247 +313,202 @@ export default function OaListPage() {
 
       {/* ── 一覧 / スケルトン / 空 ── */}
       {items.length === 0 && !loading ? (
-        <div className="card">
-          <div className="empty-state">
-            <div className="empty-state-icon">📡</div>
-            <p className="empty-state-title">アカウントが未登録です</p>
-            <p className="empty-state-desc">
-              まずLINE公式アカウントを登録してください。<br />
-              登録後、アカウントに紐づく作品を追加できます。
-            </p>
-            <Link href="/oas/new" className="btn btn-primary" style={{ marginTop: 8 }}>
-              ＋ 最初のアカウントを追加する
-            </Link>
-          </div>
+        <div className="rounded-card border border-line bg-surface p-8 text-center shadow-sm">
+          <div className="text-[40px] leading-none">📡</div>
+          <p className="mt-3 text-[16px] font-bold text-ink">アカウントが未登録です</p>
+          <p className="mx-auto mt-2 max-w-[360px] text-[13px] leading-[1.75] text-ink-2">
+            まずLINE公式アカウントを登録してください。
+            <br />
+            登録後、アカウントに紐づく作品を追加できます。
+          </p>
+          <Link
+            href="/oas/new"
+            className={buttonClass({ variant: "primary", size: "md", className: "mt-4" })}
+          >
+            ＋ 最初のアカウントを追加する
+          </Link>
         </div>
+      ) : loading ? (
+        <SkeletonList />
       ) : (
-        <div className="card" style={{ padding: 0, overflow: "hidden" }}>
-          {loading ? (
-            <SkeletonList />
-          ) : (
-            items.map((oa, idx) => {
-              const isLast        = idx === items.length - 1;
-              const statusStyle   = STATUS_BADGE_STYLE[oa.publish_status] ?? STATUS_BADGE_STYLE.draft;
-              const players       = totalPlayers(oa.id);
-              const roleText      = ROLE_LABEL[oa.my_role] ?? null;
-              const hasRole       = oa.my_role && oa.my_role !== 'none';
-
+        <>
+          <div className="flex flex-col gap-3">
+            {items.map((oa) => {
+              const players  = totalPlayers(oa.id);
+              const hasRole  = oa.my_role && oa.my_role !== "none";
+              const isOwner  = oa.my_role === "owner" && actAsOwner;
               return (
-                <div
+                <article
                   key={oa.id}
-                  style={{
-                    display:      "flex",
-                    gap:          24,
-                    alignItems:   "flex-start",
-                    padding:      "22px 24px",
-                    borderBottom: isLast ? "none" : "1px solid var(--border-light)",
-                    transition:   "background .1s",
-                  }}
-                  onMouseEnter={(e) => { e.currentTarget.style.background = "var(--gray-50, #fafafa)"; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.background = ""; }}
+                  className="group relative overflow-hidden rounded-card border border-line bg-surface p-5 shadow-sm transition-all duration-150 hover:-translate-y-px hover:shadow-card sm:p-6"
                 >
-                  {/* ─── 左: 情報エリア ─── */}
-                  <div style={{ flex: 1, minWidth: 0 }}>
+                  {/* 左端の brand アクセントバー (hover 時のみ可視) */}
+                  <span
+                    aria-hidden="true"
+                    className="absolute left-0 top-0 h-full w-[3px] bg-brand opacity-0 transition-opacity group-hover:opacity-100"
+                  />
 
-                    {/* アカウント名 + 状態バッジ */}
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
-                      <span style={{
-                        fontSize:     16,
-                        fontWeight:   800,
-                        color:        "var(--text-primary)",
-                        overflow:     "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace:   "nowrap",
-                        lineHeight:   1.3,
-                      }}>
-                        {oa.title}
-                      </span>
-                      <span style={{
-                        display:      "inline-block",
-                        padding:      "2px 8px",
-                        borderRadius: 20,
-                        fontSize:     10,
-                        fontWeight:   700,
-                        background:   statusStyle.bg,
-                        color:        statusStyle.color,
-                        border:       `1px solid ${statusStyle.border}`,
-                        whiteSpace:   "nowrap",
-                        flexShrink:   0,
-                      }}>
-                        {STATUS_LABEL[oa.publish_status] ?? oa.publish_status}
-                      </span>
-                    </div>
-
-                    {/* Ch ID / OA ID チップ */}
-                    {(oa.channel_id || oa.line_oa_id) && (
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 14 }}>
-                        {oa.channel_id && (
-                          <span
-                            title={`Channel ID: ${oa.channel_id}`}
-                            style={{
-                              fontSize: 10, color: "var(--text-muted)",
-                              background: "var(--gray-50)", border: "1px solid var(--border-light)",
-                              borderRadius: 4, padding: "1px 6px",
-                              fontFamily: "monospace", whiteSpace: "nowrap",
-                            }}
-                          >
-                            {oa.channel_id.length > 10
-                              ? `${oa.channel_id.slice(0, 4)}…${oa.channel_id.slice(-4)}`
-                              : oa.channel_id}
-                          </span>
-                        )}
-                        {oa.line_oa_id && (
-                          <span
-                            title={`アカウントID: @${oa.line_oa_id}`}
-                            style={{
-                              fontSize: 10, color: "var(--text-muted)",
-                              background: "var(--gray-50)", border: "1px solid var(--border-light)",
-                              borderRadius: 4, padding: "1px 6px", whiteSpace: "nowrap",
-                            }}
-                          >
-                            @{oa.line_oa_id}
-                          </span>
-                        )}
+                  <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
+                    {/* ─── 左: 情報エリア ─── */}
+                    <div className="min-w-0 flex-1">
+                      {/* アカウント名 + 状態バッジ */}
+                      <div className="mb-1.5 flex flex-wrap items-center gap-2">
+                        <h3 className="font-round overflow-hidden text-ellipsis whitespace-nowrap text-[16px] font-extrabold leading-[1.3] text-ink">
+                          {oa.title}
+                        </h3>
+                        <StatusBadge tone={statusTone(oa.publish_status)}>
+                          {STATUS_LABEL[oa.publish_status] ?? oa.publish_status}
+                        </StatusBadge>
                       </div>
-                    )}
 
-                    {/* ─ 情報グリッド（ラベル + 値 の 2段） ─ */}
-                    <div style={{
-                      display:   "flex",
-                      flexWrap:  "wrap",
-                      gap:       "12px 32px",
-                      marginTop: (oa.channel_id || oa.line_oa_id) ? 0 : 14,
-                    }}>
-
-                      {/* 権限 */}
-                      {hasRole && (
-                        <div>
-                          <div style={LABEL_STYLE}>権限</div>
-                          <div style={{ ...VALUE_STYLE, display: 'flex', alignItems: 'center' }}>
-                            <RoleBadge role={oa.my_role as Role} />
-                          </div>
+                      {/* Ch ID / OA ID チップ */}
+                      {(oa.channel_id || oa.line_oa_id) && (
+                        <div className="mb-3.5 flex flex-wrap gap-1">
+                          {oa.channel_id && (
+                            <span
+                              title={`Channel ID: ${oa.channel_id}`}
+                              className="rounded border border-line bg-bg-tint px-1.5 py-0.5 font-mono text-[10px] text-ink-3 whitespace-nowrap"
+                            >
+                              {oa.channel_id.length > 10
+                                ? `${oa.channel_id.slice(0, 4)}…${oa.channel_id.slice(-4)}`
+                                : oa.channel_id}
+                            </span>
+                          )}
+                          {oa.line_oa_id && (
+                            <span
+                              title={`アカウントID: @${oa.line_oa_id}`}
+                              className="rounded border border-line bg-bg-tint px-1.5 py-0.5 text-[10px] text-ink-3 whitespace-nowrap"
+                            >
+                              @{oa.line_oa_id}
+                            </span>
+                          )}
                         </div>
                       )}
 
-                      {/* プレイヤー数 */}
-                      <div>
-                        <div style={LABEL_STYLE}>プレイヤー数</div>
-                        <div style={{
-                          ...VALUE_STYLE,
-                          fontSize: 14,
-                          fontWeight: 800,
-                          color: players > 0 ? "var(--color-info, #0ea5e9)" : "var(--text-muted)",
-                        }}>
-                          {players.toLocaleString()}
-                        </div>
-                      </div>
+                      {/* 情報グリッド */}
+                      <div className={
+                        "flex flex-wrap gap-x-8 gap-y-3 " +
+                        ((oa.channel_id || oa.line_oa_id) ? "" : "mt-3.5")
+                      }>
+                        {hasRole && (
+                          <MetaItem label="権限">
+                            <RoleBadge role={oa.my_role as Role} />
+                          </MetaItem>
+                        )}
 
-                      {/* 作品名 */}
-                      <div style={{ minWidth: 120, maxWidth: 280 }}>
-                        <div style={LABEL_STYLE}>作品名</div>
-                        <WorksCell oaId={oa.id} worksMap={worksMap} worksLoading={worksLoading} />
-                      </div>
+                        <MetaItem label="プレイヤー数">
+                          <span
+                            className={
+                              "font-num text-[14px] font-extrabold " +
+                              (players > 0 ? "text-sky-ink" : "text-ink-3")
+                            }
+                          >
+                            {players.toLocaleString()}
+                          </span>
+                        </MetaItem>
 
-                      {/* 作成日時 */}
-                      <div>
-                        <div style={LABEL_STYLE}>作成日時</div>
-                        <div style={{ ...VALUE_STYLE, color: "var(--text-secondary)" }}>
-                          {formatDate(oa.created_at)}
+                        <div className="min-w-[120px] max-w-[280px]">
+                          <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.06em] text-ink-3 whitespace-nowrap">
+                            作品名
+                          </div>
+                          <WorksCell oaId={oa.id} worksMap={worksMap} worksLoading={worksLoading} />
                         </div>
-                      </div>
 
-                      {/* 更新日時 */}
-                      <div>
-                        <div style={LABEL_STYLE}>更新日時</div>
-                        <div style={{ ...VALUE_STYLE, color: "var(--text-secondary)" }}>
-                          {formatDate(oa.updated_at ?? oa.created_at)}
-                        </div>
+                        <MetaItem label="作成日時">
+                          <span className="font-num text-ink-2">{formatDate(oa.created_at)}</span>
+                        </MetaItem>
+
+                        <MetaItem label="更新日時">
+                          <span className="font-num text-ink-2">{formatDate(oa.updated_at ?? oa.created_at)}</span>
+                        </MetaItem>
                       </div>
                     </div>
-                  </div>
 
-                  {/* ─── 右: ボタンエリア ─── */}
-                  <div style={{ flexShrink: 0 }}>
-                    <RowActions
-                      oaId={oa.id}
-                      isOwner={oa.my_role === "owner" && actAsOwner}
-                      onDelete={() => handleDelete(oa.id, oa.title)}
-                    />
+                    {/* ─── 右: ボタンエリア ─── */}
+                    <div className="flex flex-col gap-2 sm:min-w-[108px]">
+                      <Link
+                        href={`/oas/${oa.id}/works`}
+                        className={buttonClass({ variant: "primary", size: "sm", fullWidth: true })}
+                      >
+                        作品管理
+                      </Link>
+                      <Link
+                        href={`/oas/${oa.id}/settings`}
+                        className={buttonClass({ variant: "ghost", size: "sm", fullWidth: true })}
+                      >
+                        設定
+                      </Link>
+                      {isOwner && (
+                        <Button
+                          type="button"
+                          variant="danger"
+                          size="sm"
+                          fullWidth
+                          onClick={() => handleDelete(oa.id, oa.title)}
+                        >
+                          削除
+                        </Button>
+                      )}
+                    </div>
                   </div>
-                </div>
+                </article>
               );
-            })
-          )}
+            })}
+          </div>
 
           {/* ── ページネーション ── */}
           {meta && meta.pages > 1 && (
-            <div style={{
-              display:        "flex",
-              gap:            8,
-              alignItems:     "center",
-              padding:        "12px 20px",
-              justifyContent: "flex-end",
-              borderTop:      "1px solid var(--border-light)",
-            }}>
-              <button
-                className="btn btn-ghost"
+            <div className="mt-4 flex items-center justify-end gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
                 disabled={page <= 1}
                 onClick={() => setPage((p) => p - 1)}
-                style={{ padding: "6px 14px", fontSize: 12 }}
               >
                 ← 前へ
-              </button>
-              <span style={{ fontSize: 12, color: "var(--text-muted)", padding: "0 4px" }}>
+              </Button>
+              <span className="px-1 text-[12px] text-ink-3">
                 {page} / {meta.pages} ページ（計 {meta.total} 件）
               </span>
-              <button
-                className="btn btn-ghost"
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
                 disabled={page >= meta.pages}
                 onClick={() => setPage((p) => p + 1)}
-                style={{ padding: "6px 14px", fontSize: 12 }}
               >
                 次へ →
-              </button>
+              </Button>
             </div>
           )}
-        </div>
+        </>
       )}
 
       {/* ── 一般ユーザープレビュー中バナー ── */}
       {isPlatformOwner && !actAsOwner && (
-        <div style={{
-          display:      "flex",
-          alignItems:   "center",
-          gap:          10,
-          background:   "#fffbeb",
-          border:       "1px solid #fde68a",
-          borderRadius: "var(--radius-md)",
-          padding:      "10px 16px",
-          marginBottom: 16,
-          fontSize:     13,
-          color:        "#92400e",
-        }}>
-          <span style={{ fontSize: 16, flexShrink: 0 }}>👁</span>
-          <span style={{ flex: 1 }}>
+        <div
+          role="status"
+          className="mt-4 flex items-center gap-3 rounded-field border border-warn/30 bg-warn-soft px-4 py-2.5 text-[13px] text-warn"
+        >
+          <span aria-hidden="true" className="flex-shrink-0 text-[16px]">👁</span>
+          <span className="flex-1">
             <strong>一般ユーザープレビュー中</strong> — 一般ユーザーからの見え方を表示しています。
           </span>
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="sm"
             onClick={() => setPreviewRole(null)}
-            style={{
-              fontSize: 12, fontWeight: 600, color: "#92400e",
-              background: "#fef3c7", border: "1px solid #fde68a",
-              borderRadius: 6, padding: "3px 10px", cursor: "pointer",
-              whiteSpace: "nowrap", flexShrink: 0,
-            }}
+            className="whitespace-nowrap"
           >
             オーナー表示に戻す
-          </button>
+          </Button>
         </div>
       )}
 
-      {/* ── お知らせ ── */}
-      <div style={{ marginTop: 32 }}>
+      {/* ── お知らせ (= 別管理コンポーネント、本 PR では触らない) ── */}
+      <div className="mt-8">
         <AnnouncementBanner canPost={actAsOwner} />
       </div>
 
