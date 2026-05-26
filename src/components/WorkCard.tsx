@@ -12,6 +12,10 @@
 //   role            — ワークスペース権限（省略時は編集操作を非表示）
 //   onDelete        — 削除ハンドラ（owner のみ）
 //   onStatusChange  — ステータス変更後のコールバック（親 state を refetch なしで更新）
+//
+// Phase 3.2b: 色トークンを Phase 0 (Tailwind v4) に揃える。
+// STATUS_META (= /constants/workStatus.ts) は触らず、WorkCard 内でローカル mapping を定義。
+// ステータストグル / 楽観的更新 / 削除 / コピー / aria 等のロジックは完全維持。
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
@@ -27,16 +31,38 @@ function formatDate(iso: string) {
   return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}`;
 }
 
+// ── ステータス → Tailwind クラス mapping (= Phase 0 トークン、WorkCard 内ローカル) ─────
+// STATUS_META 自体は触らず、WorkCard でのみ Tailwind クラスを使う設計
+// (= 影響範囲を WorkCard に閉じ、work hub 等の他参照箇所には波及させない)。
+const STATUS_CLASS: Record<string, { container: string; dot: string }> = {
+  draft:  {
+    container: "bg-bg-tint text-ink-3",
+    dot:       "bg-ink-3",
+  },
+  active: {
+    container: "bg-brand-soft text-brand-ink",
+    dot:       "bg-brand",
+  },
+  paused: {
+    container: "bg-warn-soft text-warn",
+    dot:       "bg-warn",
+  },
+};
+
+function statusClass(status: string) {
+  return STATUS_CLASS[status] ?? STATUS_CLASS.draft;
+}
+
 // ── ステータストグルバッジ ────────────────────────────────────────────────
 //
 // canToggle = true のとき <button>、false のとき <span> をレンダリング。
 // hover 時にトグル先のステータスをプレビュー表示（affordance）する。
 // draft ↔ active のみ切り替え可能。paused は表示専用。
 
-// スプレッドで color/bg/dot を継承しつつ label のみ操作用テキストで上書きする
-const TOGGLE_NEXT: Partial<Record<string, typeof STATUS_META[string]>> = {
-  draft:  { ...STATUS_META.active, label: "公開する"     },
-  active: { ...STATUS_META.draft,  label: "下書きに戻す" },
+// label のみ操作用テキストで上書き (= 「公開する」「下書きに戻す」)
+const TOGGLE_NEXT: Partial<Record<string, { status: PublishStatus; label: string }>> = {
+  draft:  { status: "active", label: "公開する"     },
+  active: { status: "draft",  label: "下書きに戻す" },
 };
 
 interface StatusBadgeProps {
@@ -47,62 +73,47 @@ interface StatusBadgeProps {
 }
 
 function StatusBadge({ status, updating, canToggle, onToggle }: StatusBadgeProps) {
+  // hover state はロジック上必要 (= 次状態プレビュー表示)。維持する。
   const [hov, setHov] = useState(false);
 
-  const current = STATUS_META[status] ?? STATUS_META.draft;
-  const next     = TOGGLE_NEXT[status];
+  const currentMeta  = STATUS_META[status] ?? STATUS_META.draft;
+  const next         = TOGGLE_NEXT[status];
 
-  // hover かつ切り替え可能なとき → 次ステータスの色にじわっと遷移
-  const isHovActive   = hov && canToggle && !!next;
-  const displayColor  = isHovActive ? next!.color : current.color;
-  const displayBg     = isHovActive ? next!.bg    : current.bg;
-  const displayDot    = isHovActive ? next!.dot   : current.dot;
-  const displayLabel  = isHovActive ? `→ ${next!.label}` : current.label;
+  // hover かつ切り替え可能なとき → 次ステータスの色・ラベルにじわっと遷移
+  const isHovActive  = hov && canToggle && !!next;
+  const displayKey   = isHovActive ? next!.status : status;
+  const displayClass = statusClass(displayKey);
+  const displayLabel = isHovActive ? `→ ${next!.label}` : currentMeta.label;
 
-  const baseStyle: React.CSSProperties = {
-    display:      "inline-flex",
-    alignItems:   "center",
-    gap:          5,
-    fontSize:     12,
-    fontWeight:   700,
-    padding:      "4px 10px",
-    borderRadius: "var(--radius-full)",
-    whiteSpace:   "nowrap",
-    flexShrink:   0,
-    transition:   "color 0.15s, background 0.15s",
-    color:        displayColor,
-    background:   displayBg,
-    opacity:      updating ? 0.6 : 1,
-    cursor:       canToggle && !updating ? "pointer" : "default",
-    // <button> リセット
-    border:       "none",
-    fontFamily:   "inherit",
-    lineHeight:   "inherit",
-  };
+  const baseClass =
+    "inline-flex flex-shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full " +
+    "px-2.5 py-1 text-[12px] font-bold leading-none transition-colors " +
+    displayClass.container + " " +
+    (updating ? "opacity-60 " : "") +
+    (canToggle && !updating ? "cursor-pointer" : "cursor-default");
 
   const dot = (
-    <span style={{
-      display:      "inline-block",
-      width:        6,
-      height:       6,
-      borderRadius: "50%",
-      background:   displayDot,
-      flexShrink:   0,
-      transition:   "background 0.15s",
-    }} />
+    <span
+      aria-hidden="true"
+      className={
+        "inline-block h-1.5 w-1.5 flex-shrink-0 rounded-full transition-colors " +
+        displayClass.dot
+      }
+    />
   );
 
   if (!canToggle) {
     return (
-      <span style={baseStyle}>
+      <span className={baseClass}>
         {dot}
-        {current.label}
+        {currentMeta.label}
       </span>
     );
   }
 
   return (
     <button
+      type="button"
       // aria-pressed でスクリーンリーダーにトグル状態を伝える
       // active = "pressed"（公開中）、draft = "false"（非公開）
       aria-pressed={status === "active"}
@@ -111,13 +122,13 @@ function StatusBadge({ status, updating, canToggle, onToggle }: StatusBadgeProps
           ? "ステータスを更新中"
           : next
             ? `ステータスを「${next.label}」に変更`
-            : `現在のステータス: ${current.label}`
+            : `現在のステータス: ${currentMeta.label}`
       }
       onClick={onToggle}
       disabled={updating}
-      style={baseStyle}
       onMouseEnter={() => setHov(true)}
       onMouseLeave={() => setHov(false)}
+      className={baseClass + " border-0"}
     >
       {dot}
       {displayLabel}
@@ -125,9 +136,9 @@ function StatusBadge({ status, updating, canToggle, onToggle }: StatusBadgeProps
   );
 }
 
-// ── クイックアクションボタン ─────────────────────────────────────────────���
-// ボタンごとに独立した hover state を持たせることで、カード全体の再描画を避ける。
-// href がある場合は <Link>、ない場合は <button> を返す。
+// ── クイックアクションボタン ────────────────────────────────────────────
+// 30×30 アイコン button。href がある場合は <Link>、ない場合は <button>。
+// hover は CSS :hover に置換 (= useState 削減、再描画削減)。
 
 interface QuickActionBtnProps {
   href?:     string;
@@ -138,48 +149,28 @@ interface QuickActionBtnProps {
 }
 
 function QuickActionBtn({ href, onClick, ariaLabel, danger = false, children }: QuickActionBtnProps) {
-  const [hov, setHov] = useState(false);
-
-  const style: React.CSSProperties = {
-    display:        "flex",
-    alignItems:     "center",
-    justifyContent: "center",
-    width:          30,
-    height:         30,
-    borderRadius:   "var(--radius-sm, 6px)",
-    border:         "none",
-    cursor:         "pointer",
-    textDecoration: "none",
-    flexShrink:     0,
-    transition:     "background 0.12s, color 0.12s",
-    color:          hov
-      ? (danger ? "#dc2626" : "var(--text-primary, #111827)")
-      : (danger ? "#ef4444" : "var(--text-muted, #9ca3af)"),
-    background: hov
-      ? (danger ? "#fee2e2" : "var(--gray-100, #f3f4f6)")
-      : "transparent",
-  };
-
-  const events = {
-    onMouseEnter: () => setHov(true),
-    onMouseLeave: () => setHov(false),
-  };
+  const cls =
+    "flex h-[30px] w-[30px] flex-shrink-0 cursor-pointer items-center justify-center " +
+    "rounded-md border-0 bg-transparent no-underline transition-colors " +
+    (danger
+      ? "text-danger hover:bg-danger-soft"
+      : "text-ink-3 hover:bg-bg-tint hover:text-ink");
 
   if (href) {
     return (
-      <Link href={href} aria-label={ariaLabel} style={style} {...events}>
+      <Link href={href} aria-label={ariaLabel} className={cls}>
         {children}
       </Link>
     );
   }
   return (
-    <button aria-label={ariaLabel} onClick={onClick} style={style} {...events}>
+    <button type="button" aria-label={ariaLabel} onClick={onClick} className={cls}>
       {children}
     </button>
   );
 }
 
-// ── SVG アイコン ────────────────────────────────────────────────��─────────
+// ── SVG アイコン ──────────────────────────────────────────────────────────
 
 const IconEdit = () => (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
@@ -222,9 +213,8 @@ interface WorkCardProps {
 export function WorkCard({ work, oaId, basePath, role, onDelete, onStatusChange }: WorkCardProps) {
   const { showToast } = useToast();
 
-  const [hovered,       setHovered]       = useState(false);
-  const [copied,        setCopied]        = useState(false);
-  const [localStatus,   setLocalStatus]   = useState<PublishStatus>(work.publish_status);
+  const [copied,         setCopied]         = useState(false);
+  const [localStatus,    setLocalStatus]    = useState<PublishStatus>(work.publish_status);
   const [statusUpdating, setStatusUpdating] = useState(false);
 
   const copyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -286,24 +276,15 @@ export function WorkCard({ work, oaId, basePath, role, onDelete, onStatusChange 
     }
   }
 
-  const st = STATUS_META[localStatus] ?? STATUS_META.draft;
-
   return (
     <div
-      style={{
-        background:   "var(--surface)",
-        border:       `1px solid ${hovered ? "#d1d5db" : "var(--border-light)"}`,
-        borderRadius: "var(--radius-md)",
-        padding:      "22px 24px",
-        boxShadow:    "var(--shadow-xs)",
-        transition:   "border-color 0.2s",
-        position:     "relative",
-      }}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
+      className={
+        "group rounded-card border border-line bg-surface p-5 shadow-sm " +
+        "transition-all duration-150 hover:-translate-y-px hover:shadow-card sm:p-6"
+      }
     >
       {/* ── ヘッダー行 ── */}
-      <div style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: 10 }}>
+      <div className="mb-2.5 flex items-start gap-2.5">
 
         {/* ステータスバッジ — クリックで draft ↔ active をトグル */}
         <StatusBadge
@@ -314,31 +295,15 @@ export function WorkCard({ work, oaId, basePath, role, onDelete, onStatusChange 
         />
 
         {/* タイトル — 1行クランプ。全文は title 属性で確認可能 */}
-        <Link href={workHref} title={work.title} style={{ flex: 1, minWidth: 0 }}>
-          <span style={{
-            display:      "block",
-            fontSize:     16,
-            fontWeight:   700,
-            color:        "var(--text-primary)",
-            lineHeight:   1.35,
-            whiteSpace:   "nowrap",
-            overflow:     "hidden",
-            textOverflow: "ellipsis",
-          }}>
+        <Link href={workHref} title={work.title} className="min-w-0 flex-1">
+          <span className="block overflow-hidden text-ellipsis whitespace-nowrap text-[16px] font-bold leading-[1.35] text-ink">
             {work.title}
           </span>
         </Link>
 
-        {/* クイックアクション — 非ホバー時��� opacity で控えめに */}
+        {/* クイックアクション — 非ホバー時は opacity で控えめに */}
         <div
-          style={{
-            display:    "flex",
-            alignItems: "center",
-            gap:        1,
-            flexShrink: 0,
-            opacity:    hovered ? 1 : 0.55,
-            transition: "opacity 0.2s",
-          }}
+          className="flex flex-shrink-0 items-center gap-0.5 opacity-60 transition-opacity group-hover:opacity-100"
           onMouseEnter={(e) => e.stopPropagation()}
         >
           <QuickActionBtn href={workHref}    ariaLabel={`「${work.title}」を管理する`}>
@@ -360,23 +325,8 @@ export function WorkCard({ work, oaId, basePath, role, onDelete, onStatusChange 
       </div>
 
       {/* ── 開始トリガー行 ── */}
-      <div style={{
-        display:      "flex",
-        alignItems:   "center",
-        gap:          8,
-        marginBottom: 12,
-        minWidth:     0,
-        minHeight:    26,
-      }}>
-        <span style={{
-          fontSize:      10,
-          fontWeight:    700,
-          letterSpacing: "0.07em",
-          textTransform: "uppercase",
-          color:         "var(--text-muted)",
-          flexShrink:    0,
-          userSelect:    "none",
-        }}>
+      <div className="mb-3 flex min-h-[26px] min-w-0 items-center gap-2">
+        <span className="flex-shrink-0 select-none text-[10px] font-bold uppercase tracking-[0.07em] text-ink-3">
           開始トリガー
         </span>
 
@@ -384,147 +334,78 @@ export function WorkCard({ work, oaId, basePath, role, onDelete, onStatusChange 
           <>
             <span
               title={work.start_trigger}
-              style={{
-                flex:         "1 1 0",
-                minWidth:     0,
-                fontSize:     12,
-                fontWeight:   500,
-                color:        "var(--text-primary)",
-                fontFamily:   "var(--font-mono, monospace)",
-                background:   "#f8fafc",
-                border:       "1px solid var(--border-light)",
-                padding:      "2px 10px",
-                borderRadius: "var(--radius-full)",
-                overflow:     "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace:   "nowrap",
-                cursor:       "default",
-              }}
+              className={
+                "min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap " +
+                "rounded-full border border-line bg-bg-tint px-2.5 py-0.5 " +
+                "font-mono text-[12px] font-medium text-ink"
+              }
             >
               {work.start_trigger}
             </span>
             <button
+              type="button"
               aria-label={copied ? "開始トリガーをコピーしました" : "開始トリガーをクリップボードにコピー"}
               onClick={handleCopy}
-              style={{
-                flexShrink:   0,
-                display:      "inline-flex",
-                alignItems:   "center",
-                gap:          3,
-                padding:      "2px 8px",
-                fontSize:     11,
-                fontWeight:   600,
-                color:        copied ? "var(--color-primary, #2F6F5E)" : "var(--text-muted)",
-                background:   copied ? "var(--color-primary-soft, #EAF4F1)" : "transparent",
-                border:       `1px solid ${copied ? "#b9ddd6" : "transparent"}`,
-                borderRadius: "var(--radius-full)",
-                cursor:       copied ? "default" : "pointer",
-                transition:   "color 0.15s, background 0.15s, border-color 0.15s",
-                whiteSpace:   "nowrap",
-              }}
+              className={
+                "inline-flex flex-shrink-0 cursor-pointer items-center gap-0.5 whitespace-nowrap rounded-full " +
+                "border px-2 py-0.5 text-[11px] font-semibold transition-colors " +
+                (copied
+                  ? "cursor-default border-brand/30 bg-brand-soft text-brand-ink"
+                  : "border-transparent bg-transparent text-ink-3 hover:bg-bg-tint hover:text-ink-2")
+              }
             >
               <span aria-hidden="true">{copied ? "コピー済み" : "コピー"}</span>
             </button>
           </>
         ) : (
-          <span style={{
-            display:    "inline-flex",
-            alignItems: "center",
-            gap:        5,
-            fontSize:   12,
-            color:      "var(--text-secondary, #6b7280)",
-            fontStyle:  "italic",
-          }}>
-            <span style={{
-              display:      "inline-block",
-              width:        6,
-              height:       6,
-              borderRadius: "50%",
-              background:   "#fbbf24",
-              flexShrink:   0,
-            }} aria-hidden="true" />
+          <span className="inline-flex items-center gap-1.5 text-[12px] italic text-ink-2">
+            <span aria-hidden="true" className="inline-block h-1.5 w-1.5 flex-shrink-0 rounded-full bg-warn" />
             未設定
           </span>
         )}
       </div>
 
       {/* ── メタ情報チップ ── */}
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+      <div className="flex flex-wrap gap-2">
         {[
           { value: (work._count.userProgress ?? 0).toLocaleString(), label: "プレイヤー",   highlight: (work._count.userProgress ?? 0) > 0 },
-          { value: work._count.phases,                              label: "フェーズ",     highlight: false },
-          { value: work._count.messages,                             label: "メッセージ",   highlight: false },
-          { value: work._count.characters,                           label: "キャラクター", highlight: false },
+          { value: work._count.phases.toLocaleString(),             label: "フェーズ",     highlight: false },
+          { value: work._count.messages.toLocaleString(),           label: "メッセージ",   highlight: false },
+          { value: work._count.characters.toLocaleString(),         label: "キャラクター", highlight: false },
         ].map((chip) => (
-          <span key={chip.label} style={{
-            display:      "inline-flex",
-            alignItems:   "center",
-            gap:          4,
-            fontSize:     12,
-            color:        chip.highlight ? "var(--color-info)" : "var(--text-secondary)",
-            background:   chip.highlight ? "#eff6ff" : "var(--gray-50)",
-            border:       `1px solid ${chip.highlight ? "#bfdbfe" : "var(--border-light)"}`,
-            padding:      "4px 11px",
-            borderRadius: "var(--radius-full)",
-          }}>
-            <strong style={{ fontWeight: 700 }}>{chip.value}</strong>
-            <span style={{ color: "var(--text-muted)" }}>{chip.label}</span>
+          <span
+            key={chip.label}
+            className={
+              "inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[12px] " +
+              (chip.highlight
+                ? "border-sky/30 bg-sky-soft text-sky-ink"
+                : "border-line bg-bg-tint text-ink-2")
+            }
+          >
+            <strong className="font-num font-bold">{chip.value}</strong>
+            <span className={chip.highlight ? "text-sky-ink/85" : "text-ink-3"}>{chip.label}</span>
           </span>
         ))}
 
         {/*
          * 完了 / 進行中チップ
          * 表示条件: 各カウントが 1 以上のときのみ表示（0 件は非表示でノイズを避ける）
-         *
-         * 将来拡張メモ:
-         *   in_progress が多い作品を優先的に確認したいユースケースがある。
-         *   progress_stats.in_progress をソートキーに使うことで
-         *   「進行中ユーザーが多い順」への並び替えを実装できる。
-         *   （works/page.tsx の sorted 計算部分にソートセレクタを追加予定）
          */}
 
-        {/* 完了チップ — グリーン（到達者がいる場合のみ） */}
+        {/* 完了チップ — brand (到達者がいる場合のみ) */}
         {(work.progress_stats?.completed ?? 0) > 0 && (
-          <span style={{
-            display:      "inline-flex",
-            alignItems:   "center",
-            gap:          4,
-            fontSize:     12,
-            color:        "#15803d",
-            background:   "#f0fdf4",
-            border:       "1px solid #86efac",
-            padding:      "4px 11px",
-            borderRadius: "var(--radius-full)",
-          }}>
-            <strong style={{ fontWeight: 700 }}>{work.progress_stats.completed.toLocaleString()}</strong>
-            <span style={{ color: "#16a34a" }}>完了</span>
+          <span className="inline-flex items-center gap-1 rounded-full border border-brand/30 bg-brand-soft px-2.5 py-1 text-[12px] text-brand-ink">
+            <strong className="font-num font-bold">{work.progress_stats.completed.toLocaleString()}</strong>
+            <span className="text-brand-ink/85">完了</span>
           </span>
         )}
 
-        {/* 進行中チップ — グレー系（ニュートラル・補助情報として控えめに） */}
+        {/* 進行中チップ — gray 系 (= ニュートラル・補助情報) */}
         {(work.progress_stats?.in_progress ?? 0) > 0 && (
-          <span style={{
-            display:      "inline-flex",
-            alignItems:   "center",
-            gap:          4,
-            fontSize:     12,
-            color:        "#374151",
-            background:   "#f3f4f6",
-            border:       "1px solid #d1d5db",
-            padding:      "4px 11px",
-            borderRadius: "var(--radius-full)",
-          }}>
-            {/* ● ドットは aria-hidden — 数値＋ラベルでスクリーンリーダーに伝わる */}
-            <span style={{
-              display:      "inline-block",
-              width:        6,
-              height:       6,
-              borderRadius: "50%",
-              background:   "#9ca3af",
-              flexShrink:   0,
-            }} aria-hidden="true" />
-            <strong style={{ fontWeight: 700 }}>{work.progress_stats.in_progress.toLocaleString()}</strong>
-            <span style={{ color: "#6b7280" }}>進行中</span>
+          <span className="inline-flex items-center gap-1 rounded-full border border-line bg-bg-tint px-2.5 py-1 text-[12px] text-ink-2">
+            <span aria-hidden="true" className="inline-block h-1.5 w-1.5 flex-shrink-0 rounded-full bg-ink-3" />
+            <strong className="font-num font-bold">{work.progress_stats.in_progress.toLocaleString()}</strong>
+            <span className="text-ink-3">進行中</span>
           </span>
         )}
 
@@ -532,21 +413,10 @@ export function WorkCard({ work, oaId, basePath, role, onDelete, onStatusChange 
          * 「要確認」補助ラベル
          * 条件: 進行中ユーザーはいるが完了者がまだ出ていない作品
          *   → シナリオが詰まっている可能性の早期発見を促す
-         * 強調色は使わず、控えめなアンバー文字で補助表示する
          */}
         {(work.progress_stats?.in_progress ?? 0) > 0 &&
          (work.progress_stats?.completed   ?? 0) === 0 && (
-          <span style={{
-            display:      "inline-flex",
-            alignItems:   "center",
-            gap:          4,
-            fontSize:     11,
-            color:        "#b45309",
-            background:   "#fffbeb",
-            border:       "1px solid #fde68a",
-            padding:      "3px 9px",
-            borderRadius: "var(--radius-full)",
-          }}>
+          <span className="inline-flex items-center gap-1 rounded-full border border-warn/30 bg-warn-soft px-2 py-0.5 text-[11px] text-warn">
             {/* 小さなフラグアイコン */}
             <svg width="10" height="10" viewBox="0 0 24 24" fill="none"
               stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
@@ -560,12 +430,7 @@ export function WorkCard({ work, oaId, basePath, role, onDelete, onStatusChange 
 
         <time
           dateTime={work.updated_at}
-          style={{
-            marginLeft: "auto",
-            fontSize:   11,
-            color:      "var(--text-secondary, #6b7280)",
-            alignSelf:  "center",
-          }}
+          className="font-num ml-auto self-center text-[11px] text-ink-3"
         >
           更新 {formatDate(work.updated_at)}
         </time>
