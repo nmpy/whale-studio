@@ -1,8 +1,8 @@
 "use client";
 
 // src/app/oas/[id]/account/page.tsx
-// GET /api/oas/:id → フォームプリフィル
-// PUT /api/oas/:id → アカウント情報 + LINE接続情報の更新
+// GET   /api/oas/:id → フォームプリフィル
+// PATCH /api/oas/:id → アカウント情報 + LINE接続情報の更新 (= oaApi.update)
 //
 // Phase 2.1: UI を Phase 0 トークン + shared/Button に揃える。
 // 保存 payload / API endpoint / toast / router 遷移 / validation は完全維持。
