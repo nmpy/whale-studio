@@ -1,5 +1,12 @@
 "use client";
 
+// src/app/oas/[id]/works/page.tsx
+// 作品一覧ページ。
+// Phase 3.2a: ページ外枠 (= ヘッダー / アクション / バナー / 統計サマリー / ツールバー /
+// skeleton / filtered empty / error) のみ Phase 0 トークンに揃える。
+// WorkCard / WorksEmptyState / WorkLimitCard / FriendAddSection / ViewerBanner には触らない。
+// 検索 / filter / sort / delete / API / 権限判定 は完全維持。
+
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
@@ -14,27 +21,29 @@ import { useToast } from "@/components/Toast";
 import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
 import { useWorkLimit } from "@/hooks/useWorkLimit";
 import { ViewerBanner } from "@/components/PermissionGuard";
-import { useIsMobile } from "@/hooks/useIsMobile";
 import { trackEvent } from "@/lib/event-tracker";
 import { useTesterMode } from "@/hooks/useTesterMode";
 import { WorksEmptyState } from "@/components/onboarding/WorksEmptyState";
 import { WorkLimitCard } from "@/components/upgrade/WorkLimitCard";
+import { Button, buttonClass } from "@/components/shared";
+
+// 行内 input / select 用の共通 className (= Phase 3.1 の compactInputClass パターン流用)
+const compactInputClass =
+  "rounded-md border border-line bg-surface px-2.5 py-1.5 text-[12px] text-ink " +
+  "placeholder:text-ink-3 transition-shadow focus:border-brand focus:outline-none " +
+  "focus:ring-2 focus:ring-brand/20 disabled:cursor-not-allowed disabled:bg-bg-tint " +
+  "disabled:text-ink-3";
 
 /* ── スケルトンカード ─────────────────────────────────────────────────── */
 function SkeletonCard() {
   return (
-    <div style={{
-      background: "var(--surface)",
-      border: "1px solid var(--border-light)",
-      borderRadius: "var(--radius-md)",
-      padding: "20px 22px",
-    }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 14 }}>
+    <div className="rounded-card border border-line bg-surface p-5 shadow-sm">
+      <div className="mb-3.5 flex items-center gap-3">
         <div className="skeleton" style={{ width: 56, height: 24, borderRadius: 12 }} />
-        <div className="skeleton" style={{ width: 180, height: 18, flex: 1 }} />
+        <div className="skeleton flex-1" style={{ width: 180, height: 18 }} />
         <div className="skeleton" style={{ width: 72, height: 30, borderRadius: 6 }} />
       </div>
-      <div style={{ display: "flex", gap: 8 }}>
+      <div className="flex flex-wrap gap-2">
         {[80, 70, 90, 90].map((w, i) => (
           <div key={i} className="skeleton" style={{ width: w, height: 24, borderRadius: 12 }} />
         ))}
@@ -48,7 +57,6 @@ export default function WorkListPage() {
   const params  = useParams<{ id: string }>();
   const oaId    = params.id;
   const { showToast } = useToast();
-  const sp = useIsMobile();
   const { role, isTester: isRoleTester } = useWorkspaceRole(oaId);
   const { isTester } = useTesterMode();
   const { maxWorks, planDisplayName, planName, loading: limitLoading } = useWorkLimit(oaId);
@@ -101,7 +109,7 @@ export default function WorkListPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [oaId]);
 
-  // ステータ��変更コールバック — WorkCard の楽観的更新が成功した後に呼ばれる。
+  // ステータス変更コールバック — WorkCard の楽観的更新が成功した後に呼ばれる。
   // 全件 refetch なしでリスト state を同期する。
   function handleStatusChange(id: string, newStatus: PublishStatus) {
     setWorks((prev) =>
@@ -200,21 +208,29 @@ export default function WorkListPage() {
 
   const activeCount = works.filter((w) => w.publish_status === "active").length;
 
+  // ── 「プランを見る」リンク用 className (= brand-soft 系の専用トーン、primary より控えめ) ──
+  const pricingLinkClass =
+    "inline-flex items-center justify-center whitespace-nowrap rounded-md " +
+    "border border-brand/30 bg-brand-soft px-3 py-1.5 text-[12px] font-semibold " +
+    "text-brand-ink no-underline transition-shadow hover:shadow-sm";
+
   return (
     <>
       {/* ── ページヘッダー ── */}
-      <div className="page-header">
-        <div>
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div className="min-w-0">
           <Breadcrumb items={[
             { label: "アカウントリスト", href: "/oas" },
             ...(oaTitle ? [{ label: oaTitle }] : []),
           ]} />
-          <h2>作品リスト</h2>
-          <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 3 }}>
+          <h2 className="font-round mt-1 text-[clamp(20px,4vw,24px)] font-extrabold leading-[1.2] tracking-[-0.02em] text-ink">
+            作品リスト
+          </h2>
+          <p className="mt-1 text-[12px] text-ink-3">
             {oaTitle ? `${oaTitle} の作品を管理します` : "作品を管理します"}
           </p>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <div className="flex flex-wrap items-center gap-2">
           {/* 作品数制限があるプランには「プランを見る」リンクを常時表示 */}
           {showPricingLink && (
             <Link
@@ -225,34 +241,36 @@ export default function WorkListPage() {
                 "header",
                 { from: planName ?? undefined, to: "editor" },
               )}
-              style={{
-                fontSize:       12,
-                fontWeight:     600,
-                color:          "var(--color-primary, #2F6F5E)",
-                textDecoration: "none",
-                padding:        "6px 12px",
-                borderRadius:   "var(--radius-sm)",
-                border:         "1px solid #b9ddd6",
-                background:     "var(--color-primary-soft, #EAF4F1)",
-                whiteSpace:     "nowrap",
-              }}
+              className={pricingLinkClass}
             >
               プランを見る
             </Link>
           )}
           {!isTester && !isRoleTester && (
-            <Link href={`/oas/${oaId}/settings`} className="btn btn-ghost">
+            <Link
+              href={`/oas/${oaId}/settings`}
+              className={buttonClass({ variant: "ghost", size: "md" })}
+            >
               ⚙ 設定
             </Link>
           )}
-          {/* 作品上限到達 → グレーアウトボタン */}
+          {/* 作品上限到達 → disabled な primary button (Link は無効化のため <Button> で表現) */}
           {atLimit ? (
-            <button className="btn btn-primary" disabled style={{ opacity: 0.45, cursor: "not-allowed" }}>
+            <Button
+              type="button"
+              variant="primary"
+              size="md"
+              disabled
+              aria-disabled="true"
+              title="作品数の上限に達しています"
+            >
               ＋ 作品を追加
-            </button>
+            </Button>
           ) : !isTester ? (
-            /* 上限未到達（テスターモード以外） → 通常ボタン */
-            <Link href={`/oas/${oaId}/works/new`} className="btn btn-primary">
+            <Link
+              href={`/oas/${oaId}/works/new`}
+              className={buttonClass({ variant: "primary", size: "md" })}
+            >
               ＋ 作品を追加
             </Link>
           ) : null}
@@ -273,58 +291,58 @@ export default function WorkListPage() {
 
       {/* テスターモード時の注意文 */}
       {isTester && (
-        <div style={{
-          display: "flex", alignItems: "center", gap: 8,
-          padding: "8px 14px",
-          background: "#fffbeb",
-          border: "1px solid #fde68a",
-          borderRadius: "var(--radius-md)",
-          marginBottom: 16,
-          fontSize: 12, color: "#b45309",
-        }}>
-          <span>※ テスター環境のため、一部機能は制限されています。</span>
+        <div
+          role="status"
+          className="mb-4 rounded-field border border-warn/30 bg-warn-soft px-4 py-2.5 text-[12px] leading-[1.6] text-warn"
+        >
+          ※ テスター環境のため、一部機能は制限されています。
         </div>
       )}
 
+      {/* ── エラー ── */}
       {error && (
-        <div className="alert alert-error" style={{ marginBottom: 16 }}>
-          {error}
-          <button onClick={load} style={{ marginLeft: 12, textDecoration: "underline", background: "none", border: "none", cursor: "pointer", color: "inherit" }}>
+        <div
+          role="alert"
+          className="mb-4 flex flex-wrap items-center gap-3 rounded-field border border-danger/30 bg-danger-soft px-4 py-3 text-[13px] leading-[1.6] text-danger"
+        >
+          <span>{error}</span>
+          <Button type="button" variant="ghost" size="sm" onClick={load}>
             再読み込み
-          </button>
+          </Button>
         </div>
       )}
 
       {/* ── 統計サマリー ── */}
       {!loading && works.length > 0 && (
-        <div style={{
-          display: "flex",
-          flexWrap: "wrap",
-          gap: sp ? 12 : 10,
-          marginBottom: 20,
-          padding: sp ? "12px 14px" : "14px 18px",
-          background: "var(--surface)",
-          border: "1px solid var(--border-light)",
-          borderRadius: "var(--radius-md)",
-          boxShadow: "var(--shadow-xs)",
-        }}>
+        <div className="mb-5 grid grid-cols-3 gap-3 rounded-card border border-line bg-surface p-4 shadow-sm sm:flex sm:flex-wrap sm:items-center sm:gap-0 sm:px-5 sm:py-3.5">
           {[
-            { label: "総作品数", value: works.length, color: "var(--text-primary)" },
-            { label: "公開中", value: activeCount, color: "var(--color-success)" },
+            { label: "総作品数", value: works.length.toLocaleString(), tone: "ink" },
+            { label: "公開中", value: activeCount.toLocaleString(),    tone: "brand" },
             {
               label: "総プレイヤー数",
               value: works.reduce((s, w) => s + (w._count.userProgress ?? 0), 0).toLocaleString(),
-              color: "var(--color-info)",
+              tone:  "sky",
             },
           ].map((s, i, arr) => (
-            <div key={s.label} style={{
-              display: "flex", alignItems: "center", gap: 6,
-              paddingRight: sp ? 0 : 18,
-              // SP ではボーダーなし、PC では最後以外に右ボーダー
-              borderRight: (!sp && i < arr.length - 1) ? "1px solid var(--border-light)" : "none",
-            }}>
-              <span style={{ fontSize: 18, fontWeight: 800, color: s.color }}>{s.value}</span>
-              <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{s.label}</span>
+            <div
+              key={s.label}
+              className={
+                "flex flex-col items-start gap-0.5 " +
+                "sm:flex-row sm:items-center sm:gap-1.5 sm:pr-5 " +
+                (i < arr.length - 1 ? "sm:border-r sm:border-line-2" : "")
+              }
+            >
+              <span
+                className={
+                  "font-num text-[18px] font-extrabold leading-none " +
+                  (s.tone === "brand" ? "text-brand-ink"
+                   : s.tone === "sky"  ? "text-sky-ink"
+                   : "text-ink")
+                }
+              >
+                {s.value}
+              </span>
+              <span className="text-[11px] text-ink-3">{s.label}</span>
             </div>
           ))}
         </div>
@@ -332,21 +350,15 @@ export default function WorkListPage() {
 
       {/* ── ツールバー（検索 / 絞り込み / 並び替え） ── */}
       {!loading && works.length > 0 && (
-        <div style={{
-          display:      "flex",
-          alignItems:   "center",
-          flexWrap:     "wrap",
-          gap:          8,
-          marginBottom: 8,
-        }}>
+        <div className="mb-2 flex flex-col items-stretch gap-2 sm:flex-row sm:flex-wrap sm:items-center">
           {/* 検索ボックス */}
-          <div style={{ position: "relative", flex: "1 1 160px", minWidth: 0, maxWidth: 320 }}>
+          <div className="relative min-w-0 sm:max-w-[320px] sm:flex-1 sm:basis-[160px]">
             {/* 虫眼鏡アイコン */}
             <svg
               width="13" height="13" viewBox="0 0 24 24" fill="none"
-              stroke="var(--text-muted)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"
-              style={{ position: "absolute", left: 9, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }}
+              stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"
               aria-hidden="true"
+              className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-3"
             >
               <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
             </svg>
@@ -356,63 +368,48 @@ export default function WorkListPage() {
               onChange={(e) => setQuery(e.target.value)}
               placeholder="タイトル / 開始トリガーで検索"
               aria-label="作品を検索"
-              style={{
-                width:        "100%",
-                boxSizing:    "border-box",
-                fontSize:     12,
-                color:        "var(--text-primary)",
-                background:   "var(--surface)",
-                border:       "1px solid var(--border-light)",
-                borderRadius: "var(--radius-sm, 6px)",
-                padding:      "5px 10px 5px 30px",
-                outline:      "none",
-              }}
+              className={compactInputClass + " w-full !pl-8"}
             />
           </div>
 
           {/* 「未設定のみ」チェックボックス */}
-          <label style={{
-            display:    "inline-flex",
-            alignItems: "center",
-            gap:        5,
-            fontSize:   12,
-            color:      onlyUnset ? "var(--text-primary)" : "var(--text-secondary)",
-            cursor:     "pointer",
-            userSelect: "none",
-            whiteSpace: "nowrap",
-            flexShrink: 0,
-          }}>
+          <label
+            className={
+              "inline-flex flex-shrink-0 cursor-pointer select-none items-center gap-1.5 " +
+              "whitespace-nowrap text-[12px] " +
+              (onlyUnset ? "text-ink" : "text-ink-2")
+            }
+          >
             <input
               type="checkbox"
               checked={onlyUnset}
               onChange={(e) => setOnlyUnset(e.target.checked)}
-              style={{ accentColor: "#fbbf24", cursor: "pointer" }}
+              className="cursor-pointer accent-warn"
             />
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-              <span style={{ display: "inline-block", width: 6, height: 6, borderRadius: "50%", background: "#fbbf24" }} aria-hidden="true" />
+            <span className="inline-flex items-center gap-1">
+              <span aria-hidden="true" className="inline-block h-1.5 w-1.5 rounded-full bg-warn" />
               トリガー未設定のみ
             </span>
           </label>
 
           {/* 件数表示 */}
-          <span style={{
-            fontSize:   11,
-            color:      isFiltering ? "var(--text-secondary)" : "var(--text-muted)",
-            whiteSpace: "nowrap",
-            flexShrink: 0,
-          }}>
-            {isFiltering
-              ? <>{filtered.length} <span style={{ color: "var(--text-muted)" }}>/ {works.length} 件</span></>
-              : <>{works.length} 件</>
-            }
+          <span className="flex-shrink-0 whitespace-nowrap text-[11px] text-ink-3">
+            {isFiltering ? (
+              <>
+                <span className="text-ink-2">{filtered.length}</span>
+                <span> / {works.length} 件</span>
+              </>
+            ) : (
+              <>{works.length} 件</>
+            )}
           </span>
 
           {/* 並び替えセレクト — 2件以上のときのみ */}
           {works.length > 1 && (
-            <div style={{ display: "flex", alignItems: "center", gap: 5, marginLeft: "auto", flexShrink: 0 }}>
+            <div className="flex flex-shrink-0 items-center gap-1.5 sm:ml-auto">
               <label
                 htmlFor="works-sort-select"
-                style={{ fontSize: 11, color: "var(--text-muted)", whiteSpace: "nowrap", userSelect: "none" }}
+                className="select-none whitespace-nowrap text-[11px] text-ink-3"
               >
                 並び替え:
               </label>
@@ -420,18 +417,7 @@ export default function WorkListPage() {
                 id="works-sort-select"
                 value={sortKey}
                 onChange={(e) => setSortKey(e.target.value as SortKey)}
-                style={{
-                  fontSize:     12,
-                  color:        "var(--text-secondary, #374151)",
-                  background:   "var(--surface)",
-                  border:       "1px solid var(--border-light)",
-                  borderRadius: "var(--radius-sm, 6px)",
-                  padding:      "4px 24px 4px 8px",
-                  cursor:       "pointer",
-                  outline:      "none",
-                  appearance:   "auto",
-                  maxWidth:     sp ? 148 : 190,
-                }}
+                className={compactInputClass + " cursor-pointer pr-6 sm:max-w-[200px]"}
               >
                 {SORT_OPTIONS.map((o) => (
                   <option key={o.value} value={o.value}>{o.label}</option>
@@ -445,14 +431,11 @@ export default function WorkListPage() {
       {/* ── コンテンツ ──
           表示分岐の優先順:
             1. loading 中 → スケルトン
-            2. error あり → エラーバナーのみ (= 上部の <alert alert-error>)。空状態は出さない。
-               「API失敗」と「作品0件」を UI 上で混同させない。
+            2. error あり → エラーバナーのみ (= 上部の banner)。空状態は出さない。
             3. works.length === 0 → 初回 empty state (WorksEmptyState)
-            4. それ以外 → 検索結果 / 一覧表示
-          以前は loading 直後に works.length === 0 を見ていたため、API 失敗時に「サーバーエラー」と
-          「まだ作品がありません」が同時表示される問題があった。 */}
+            4. それ以外 → 検索結果 / 一覧表示 */}
       {loading ? (
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <div className="flex flex-col gap-3">
           <SkeletonCard />
           <SkeletonCard />
           <SkeletonCard />
@@ -461,63 +444,44 @@ export default function WorkListPage() {
         /* エラー時はコンテンツ領域を空にする (エラーバナーは上部で既に表示済み) */
         null
       ) : works.length === 0 ? (
-        /* 作品ゼロ → 初回 empty state */
+        /* 作品ゼロ → 初回 empty state (= 別管理) */
         <WorksEmptyState oaId={oaId} isTester={isTester} />
       ) : filtered.length === 0 ? (
         /* 作品はあるがフィルタ結果がゼロ */
-        <div style={{
-          textAlign:    "center",
-          padding:      "40px 20px",
-          color:        "var(--text-muted)",
-          background:   "var(--surface)",
-          border:       "1px solid var(--border-light)",
-          borderRadius: "var(--radius-md)",
-        }}>
+        <div className="rounded-card border border-line bg-surface px-5 py-10 text-center shadow-sm">
           {/* 検索アイコン */}
-          <div style={{
-            display:        "inline-flex",
-            alignItems:     "center",
-            justifyContent: "center",
-            width:          44,
-            height:         44,
-            borderRadius:   10,
-            background:     "var(--gray-50)",
-            border:         "1px solid var(--border-light)",
-            marginBottom:   14,
-          }}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
-              stroke="var(--text-muted)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-              aria-hidden="true">
+          <div className="mx-auto mb-3.5 inline-flex h-11 w-11 items-center justify-center rounded-md border border-line bg-bg-tint">
+            <svg
+              width="18" height="18" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+              aria-hidden="true"
+              className="text-ink-3"
+            >
               <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
             </svg>
           </div>
-          <p style={{ fontSize: 14, fontWeight: 600, color: "var(--text-secondary)", marginBottom: 6 }}>
+          <p className="mb-1.5 text-[14px] font-semibold text-ink-2">
             該当する作品が見つかりませんでした
           </p>
-          <p style={{ fontSize: 12, lineHeight: 1.7 }}>
+          <p className="text-[12px] leading-[1.7] text-ink-3">
             {onlyUnset && q
               ? `「${q}」かつ開始トリガー未設定の作品はありません`
               : onlyUnset
               ? "開始トリガーが未設定の作品はありません"
               : `「${q}」に一致する作品はありません`}
           </p>
-          <button
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="mt-4"
             onClick={() => { setQuery(""); setOnlyUnset(false); }}
-            style={{
-              marginTop:    16,
-              fontSize:     12,
-              color:        "var(--color-primary, #2F6F5E)",
-              background:   "none",
-              border:       "none",
-              cursor:       "pointer",
-              textDecoration: "underline",
-            }}
           >
             絞り込みをリセット
-          </button>
+          </Button>
         </div>
       ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <div className="flex flex-col gap-3">
           {filtered.map((w) => (
             <WorkCard
               key={w.id}
@@ -532,7 +496,7 @@ export default function WorkListPage() {
         </div>
       )}
 
-      {/* ── 友だち追加 ── */}
+      {/* ── 友だち追加 (= 別管理コンポーネント、本 PR では触らない) ── */}
       {!loading && friendAdd?.add_url && (
         <FriendAddSection
           addUrl={friendAdd.add_url}
