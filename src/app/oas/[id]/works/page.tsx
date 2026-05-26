@@ -254,26 +254,31 @@ export default function WorkListPage() {
               ⚙ 設定
             </Link>
           )}
-          {/* 作品上限到達 → disabled な primary button (Link は無効化のため <Button> で表現) */}
-          {atLimit ? (
-            <Button
-              type="button"
-              variant="primary"
-              size="md"
-              disabled
-              aria-disabled="true"
-              title="作品数の上限に達しています"
-            >
-              ＋ 作品を追加
-            </Button>
-          ) : !isTester ? (
-            <Link
-              href={`/oas/${oaId}/works/new`}
-              className={buttonClass({ variant: "primary", size: "md" })}
-            >
-              ＋ 作品を追加
-            </Link>
-          ) : null}
+          {/* 「＋ 作品を追加」:
+              - isTester は表示しない (= 上限状態に関係なく非表示。既存挙動)
+              - atLimit (= 上限到達) は disabled な primary button (Link は無効化不可のため Button で表現)
+              - 通常時は primary Link で /works/new に遷移 */}
+          {!isTester && (
+            atLimit ? (
+              <Button
+                type="button"
+                variant="primary"
+                size="md"
+                disabled
+                aria-disabled="true"
+                title="作品数の上限に達しています"
+              >
+                ＋ 作品を追加
+              </Button>
+            ) : (
+              <Link
+                href={`/oas/${oaId}/works/new`}
+                className={buttonClass({ variant: "primary", size: "md" })}
+              >
+                ＋ 作品を追加
+              </Link>
+            )
+          )}
         </div>
       </div>
 
