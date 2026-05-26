@@ -884,8 +884,15 @@ function InvitationsSection({
     }
   }
 
+  // フォーム要素 (input/select) 共通の小型 className (= globals.css の入力デフォルトより compact)
+  const compactInputClass =
+    "w-full rounded-md border border-line bg-surface px-3 py-2 text-[13px] text-ink " +
+    "placeholder:text-ink-3 transition-shadow focus:border-brand focus:outline-none " +
+    "focus:ring-2 focus:ring-brand/20 disabled:cursor-not-allowed disabled:bg-bg-tint " +
+    "disabled:text-ink-3";
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+    <div className="flex flex-col gap-5">
 
       {/* ── 取り消し確認モーダル ── */}
       {revokeTarget && (
@@ -898,93 +905,77 @@ function InvitationsSection({
       )}
 
       {/* ── 招待フォーム ── */}
-      <div className="card" ref={formCardRef}>
-        <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 4 }}>メンバーを招待</h3>
-        <p style={{ fontSize: 12, color: "#6b7280", marginBottom: 16 }}>
+      <div
+        ref={formCardRef}
+        className="rounded-card border border-line bg-surface p-5 shadow-sm sm:p-6"
+      >
+        <h3 className="font-round text-[14px] font-bold text-ink">メンバーを招待</h3>
+        <p className="mt-1 mb-4 text-[12px] leading-[1.6] text-ink-2">
           メールアドレスを入力すると招待リンクが発行されます。リンクを相手に送ってください。
         </p>
 
-        <form onSubmit={handleInvite} style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <form onSubmit={handleInvite} className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-stretch">
           <input
             type="email"
             placeholder="招待するメールアドレス"
             value={inviteEmail}
             onChange={(e) => setInviteEmail(e.target.value)}
             required
-            style={{
-              flex:         1,
-              minWidth:     220,
-              padding:      "8px 12px",
-              fontSize:     13,
-              border:       "1px solid #e5e7eb",
-              borderRadius: 6,
-            }}
+            aria-label="招待するメールアドレス"
+            className={compactInputClass + " sm:min-w-[220px] sm:flex-1"}
           />
           <select
             value={inviteRole}
             onChange={(e) => setInviteRole(e.target.value as Role)}
-            style={{
-              padding:      "8px 10px",
-              fontSize:     13,
-              border:       "1px solid #e5e7eb",
-              borderRadius: 6,
-              background:   "#fff",
-            }}
+            aria-label="付与するロール"
+            className={compactInputClass + " cursor-pointer sm:w-auto sm:flex-shrink-0"}
           >
             {ROLES.filter((r) => isOwner ? true : r !== "owner").map((r) => (
               <option key={r} value={r}>{ROLE_LABELS[r]}</option>
             ))}
           </select>
-          <button
+          <Button
             type="submit"
-            className="btn btn-primary"
+            variant="primary"
+            size="md"
             disabled={inviting || !inviteEmail.trim()}
+            className="sm:flex-shrink-0"
           >
             {inviting ? "生成中..." : "招待リンクを発行"}
-          </button>
+          </Button>
         </form>
 
-        {/* 生成済み招待リンク */}
+        {/* 生成済み招待リンク (= ブランドトーン) */}
         {newInviteUrl && (
-          <div style={{
-            marginTop:    16,
-            padding:      "12px 14px",
-            background:   "#f0fdf4",
-            border:       "1px solid #86efac",
-            borderRadius: 8,
-          }}>
-            <p style={{ fontSize: 12, fontWeight: 700, color: "#166534", marginBottom: 8 }}>
+          <div
+            role="status"
+            className="mt-4 rounded-field border border-brand/30 bg-brand-soft px-3.5 py-3"
+          >
+            <p className="mb-2 text-[12px] font-bold text-brand-ink">
               招待リンクが発行されました
             </p>
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
               <input
                 readOnly
                 value={newInviteUrl}
-                style={{
-                  flex:         1,
-                  padding:      "6px 10px",
-                  fontSize:     12,
-                  border:       "1px solid #86efac",
-                  borderRadius: 6,
-                  background:   "#fff",
-                  fontFamily:   "monospace",
-                  color:        "#111827",
-                }}
                 onFocus={(e) => e.target.select()}
+                aria-label="生成された招待リンク"
+                className="w-full flex-1 rounded-md border border-brand/30 bg-surface px-2.5 py-1.5 font-mono text-[12px] text-ink"
               />
-              <button
+              <Button
                 type="button"
-                className="btn btn-ghost"
-                style={{ flexShrink: 0, fontSize: 12, padding: "6px 12px" }}
+                variant="ghost"
+                size="sm"
+                className="sm:flex-shrink-0"
                 onClick={async () => {
                   await navigator.clipboard.writeText(newInviteUrl);
                   showToast(TOAST.linkCopied, "success");
                 }}
               >
                 コピー
-              </button>
+              </Button>
             </div>
-            <p style={{ fontSize: 11, color: "#6b7280", marginTop: 8 }}>
+            <p className="mt-2 text-[11px] leading-[1.5] text-brand-ink/85">
               有効期限は 7日間です。期限切れの場合は再発行してください。
             </p>
           </div>
@@ -992,58 +983,58 @@ function InvitationsSection({
       </div>
 
       {/* ── 招待一覧 ── */}
-      <div className="card" style={{ padding: 0, overflow: "hidden" }}>
-
-        {/* カードヘッダー（件数表示） */}
-        <div style={{
-          padding:      "14px 20px",
-          borderBottom: "1px solid #e5e7eb",
-          display:      "flex",
-          alignItems:   "center",
-          gap:          10,
-          flexWrap:     "wrap",
-        }}>
-          <h3 style={{ fontSize: 14, fontWeight: 700, margin: 0 }}>招待一覧</h3>
+      <section className="flex flex-col gap-3">
+        {/* セクション見出し + 件数表示 */}
+        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-1">
+          <h3 className="font-round text-[14px] font-bold text-ink">招待一覧</h3>
           {invitations.length > 0 && (
-            <span style={{ fontSize: 12, color: "#9ca3af" }}>
+            <span className="text-[12px] text-ink-3">
               有効 {pendingCount} / 期限切れ {expiredCount} / 受諾済み {acceptedCount}
             </span>
           )}
         </div>
 
         {loading ? (
-          <div style={{ padding: 20, display: "flex", flexDirection: "column", gap: 12 }}>
+          <div className="flex flex-col gap-3">
             {[1, 2].map((i) => (
-              <div key={i} className="skeleton" style={{ height: 52, borderRadius: 8 }} />
+              <div key={i} className="rounded-card border border-line bg-surface p-4 shadow-sm sm:p-5">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0 flex-1">
+                    <div className="skeleton mb-1.5" style={{ width: "55%", height: 14, borderRadius: 4 }} />
+                    <div className="skeleton" style={{ width: "30%", height: 11, borderRadius: 4 }} />
+                  </div>
+                  <div className="flex flex-wrap gap-2 sm:flex-shrink-0">
+                    <div className="skeleton" style={{ width: 60, height: 22, borderRadius: 999 }} />
+                    <div className="skeleton" style={{ width: 60, height: 22, borderRadius: 999 }} />
+                  </div>
+                </div>
+              </div>
             ))}
           </div>
         ) : sorted.length === 0 ? (
           /* ── 空状態 ── */
-          <div style={{ padding: "48px 20px", textAlign: "center" }}>
-            <div style={{ fontSize: 36, marginBottom: 12 }}>✉️</div>
-            <p style={{ fontSize: 14, fontWeight: 700, color: "#111827", marginBottom: 6 }}>
-              まだ招待はありません
-            </p>
-            <p style={{ fontSize: 13, color: "#9ca3af", marginBottom: 20 }}>
+          <div className="rounded-card border border-line bg-surface px-5 py-12 text-center shadow-sm">
+            <div aria-hidden="true" className="text-[36px] leading-none">✉️</div>
+            <p className="mt-3 text-[14px] font-bold text-ink">まだ招待はありません</p>
+            <p className="mx-auto mt-1.5 max-w-[340px] text-[13px] leading-[1.7] text-ink-3">
               メンバーを招待すると、ここに一覧で表示されます
             </p>
-            <button
+            <Button
               type="button"
-              className="btn btn-primary"
-              style={{ fontSize: 13 }}
+              variant="primary"
+              size="md"
+              className="mt-5"
               onClick={() => formCardRef.current?.scrollIntoView({ behavior: "smooth", block: "center" })}
             >
               メンバーを招待
-            </button>
+            </Button>
           </div>
         ) : (
-          <>
-            <InvitationTableHeader />
-            {sorted.map((inv, idx) => (
+          <div className="flex flex-col gap-3">
+            {sorted.map((inv) => (
               <InvitationRow
                 key={inv.id}
                 invitation={inv}
-                isLast={idx === sorted.length - 1}
                 isCopied={copiedId === inv.id}
                 onCopy={(url) => handleCopyLink(inv.id, url)}
                 onRevoke={() => handleRevoke(inv)}
@@ -1051,44 +1042,17 @@ function InvitationsSection({
                 showToast={showToast}
               />
             ))}
-          </>
+          </div>
         )}
-      </div>
+      </section>
     </div>
   );
 }
 
-// ── テーブルヘッダー（招待一覧共通） ─────────────────────────────────
-
-function InvitationTableHeader() {
-  return (
-    <div style={{
-      display:             "grid",
-      gridTemplateColumns: "minmax(0,1fr) 88px 92px 90px auto",
-      gap:                 8,
-      padding:             "8px 20px",
-      background:          "#f9fafb",
-      borderBottom:        "1px solid #e5e7eb",
-      fontSize:            11,
-      fontWeight:          700,
-      color:               "#9ca3af",
-      textTransform:       "uppercase",
-      letterSpacing:       "0.06em",
-    }}>
-      <span>メールアドレス</span>
-      <span>権限</span>
-      <span>ステータス</span>
-      <span>有効期限</span>
-      <span />
-    </div>
-  );
-}
-
-// ── 招待行コンポーネント ──────────────────────────────────────────────
+// ── 招待行コンポーネント (= 1 招待 = 1 カード、Phase 2.2c でテーブル grid → card に再構成) ──
 
 function InvitationRow({
   invitation: inv,
-  isLast,
   isCopied   = false,
   onCopy,
   onRevoke,
@@ -1096,7 +1060,6 @@ function InvitationRow({
   showToast: _showToast,
 }: {
   invitation: Invitation;
-  isLast:     boolean;
   isCopied?:  boolean;
   onCopy?:    (url: string) => void;
   onRevoke?:  () => void;
@@ -1116,89 +1079,78 @@ function InvitationRow({
   // is_accepted → 操作なし
 
   return (
-    <div style={{
-      display:             "grid",
-      gridTemplateColumns: "minmax(0,1fr) 88px 92px 90px auto",
-      gap:                 8,
-      padding:             "12px 20px",
-      borderBottom:        isLast ? "none" : "1px solid #f3f4f6",
-      alignItems:          "center",
-      opacity:             inv.is_accepted ? 0.5 : 1,
-    }}>
+    <article
+      className={
+        "rounded-card border border-line bg-surface p-4 shadow-sm sm:p-5 " +
+        (inv.is_accepted ? "opacity-60" : "")
+      }
+    >
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
 
-      {/* メールアドレス */}
-      <div style={{ minWidth: 0 }}>
-        <div style={{
-          fontSize:     13,
-          fontWeight:   600,
-          color:        "#111827",
-          overflow:     "hidden",
-          textOverflow: "ellipsis",
-          whiteSpace:   "nowrap",
-        }}>
-          {inv.email}
+        {/* ── 左: 招待情報 ── */}
+        <div className="min-w-0 flex-1">
+          {/* メールアドレス */}
+          <div className="overflow-hidden text-ellipsis whitespace-nowrap text-[14px] font-semibold text-ink">
+            {inv.email}
+          </div>
+          <div className="mt-0.5 font-mono text-[10px] text-ink-3">
+            {inv.id.slice(0, 8)}…
+          </div>
+
+          {/* RoleBadge + StatusBadge */}
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <RoleBadge role={inv.role as Role} />
+            <StatusBadge tone={invitationStatusTone(statusKey)}>
+              {INVITATION_STATE_LABELS[statusKey]}
+            </StatusBadge>
+          </div>
+
+          {/* 有効期限 */}
+          <div className="mt-2 text-[11px] text-ink-3">
+            有効期限: <span className="font-num text-ink-2">{inv.is_accepted ? "—" : expiresStr}</span>
+          </div>
         </div>
-        <div style={{ fontSize: 10, color: "#9ca3af", marginTop: 2, fontFamily: "monospace" }}>
-          {inv.id.slice(0, 8)}…
-        </div>
-      </div>
 
-      {/* 権限バッジ */}
-      <div><RoleBadge role={inv.role as Role} /></div>
-
-      {/* ステータスバッジ */}
-      <div>
-        <StatusBadge tone={invitationStatusTone(statusKey)}>
-          {INVITATION_STATE_LABELS[statusKey]}
-        </StatusBadge>
-      </div>
-
-      {/* 有効期限 */}
-      <div style={{ fontSize: 12, color: "#6b7280", whiteSpace: "nowrap" }}>
-        {inv.is_accepted ? "—" : expiresStr}
-      </div>
-
-      {/* 操作 — pending: コピー+取り消し / expired: 再発行 / accepted: なし */}
-      <div style={{ display: "flex", gap: 6, justifyContent: "flex-end", whiteSpace: "nowrap" }}>
-        {isPending && onCopy && (
-          <button
-            type="button"
-            className="btn btn-ghost"
-            style={{
-              fontSize:   11,
-              padding:    "4px 10px",
-              minWidth:   90,
-              color:      isCopied ? "#059669" : undefined,
-              fontWeight: isCopied ? 700 : undefined,
-              transition: "color .2s",
-            }}
-            onClick={() => onCopy(inviteUrl)}
-          >
-            {isCopied ? "コピー済み" : "リンクをコピー"}
-          </button>
-        )}
-        {isPending && onRevoke && (
-          <button
-            type="button"
-            className="btn btn-danger"
-            style={{ fontSize: 11, padding: "4px 10px" }}
-            onClick={onRevoke}
-          >
-            取り消し
-          </button>
-        )}
-        {isExpired && onReissue && (
-          <button
-            type="button"
-            className="btn btn-ghost"
-            style={{ fontSize: 11, padding: "4px 10px" }}
-            onClick={onReissue}
-          >
-            再発行
-          </button>
+        {/* ── 右: 操作 — pending: コピー+取り消し / expired: 再発行 / accepted: なし ── */}
+        {(isPending || isExpired) && (
+          <div className="flex flex-col gap-2 sm:w-[160px] sm:flex-shrink-0">
+            {isPending && onCopy && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                fullWidth
+                onClick={() => onCopy(inviteUrl)}
+              >
+                {isCopied ? "コピー済み" : "リンクをコピー"}
+              </Button>
+            )}
+            {isPending && onRevoke && (
+              <Button
+                type="button"
+                variant="danger"
+                size="sm"
+                fullWidth
+                onClick={onRevoke}
+              >
+                取り消し
+              </Button>
+            )}
+            {isExpired && onReissue && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                fullWidth
+                onClick={onReissue}
+              >
+                再発行
+              </Button>
+            )}
+          </div>
         )}
       </div>
-    </div>
+    </article>
   );
 }
 
@@ -1217,57 +1169,46 @@ function RevokeConfirmModal({
 }) {
   return (
     <div
-      style={{
-        position:        "fixed",
-        inset:           0,
-        background:      "rgba(0,0,0,0.45)",
-        display:         "flex",
-        alignItems:      "center",
-        justifyContent:  "center",
-        zIndex:          1000,
-      }}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="revoke-modal-title"
+      // overlay: z-index 1000 維持 (= 既存挙動)
+      style={{ zIndex: 1000 }}
+      className="fixed inset-0 flex items-center justify-center bg-ink/45 px-4 py-6"
       onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }}
     >
-      <div style={{
-        background:   "#fff",
-        borderRadius: 12,
-        padding:      "28px 32px",
-        width:        380,
-        maxWidth:     "90vw",
-        boxShadow:    "0 20px 48px rgba(0,0,0,0.18)",
-      }}>
-        <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 12, color: "#111827" }}>
+      <div className="w-full max-w-[420px] rounded-card border border-line bg-surface px-6 py-7 shadow-card sm:px-8 sm:py-8">
+        <h3
+          id="revoke-modal-title"
+          className="font-round mb-3 text-[16px] font-bold text-ink"
+        >
           招待を取り消しますか？
         </h3>
-        <p style={{ fontSize: 13, color: "#374151", marginBottom: 6, lineHeight: 1.65 }}>
+        <p className="mb-1.5 text-[13px] leading-[1.65] text-ink-2">
           この招待リンクは無効になります。送信済みのリンクからは参加できなくなります。
         </p>
-        <p style={{
-          fontSize:    12,
-          color:       "#9ca3af",
-          marginBottom: 24,
-          fontFamily:  "monospace",
-          wordBreak:   "break-all",
-        }}>
+        <p className="mb-6 break-all font-mono text-[12px] text-ink-3">
           {email}
         </p>
-        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-          <button
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end sm:gap-2">
+          <Button
             type="button"
-            className="btn btn-ghost"
+            variant="ghost"
+            size="md"
             onClick={onCancel}
             disabled={revoking}
           >
             キャンセル
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
-            className="btn btn-danger"
+            variant="danger"
+            size="md"
             onClick={onConfirm}
             disabled={revoking}
           >
             {revoking ? "取り消し中..." : "取り消す"}
-          </button>
+          </Button>
         </div>
       </div>
     </div>
