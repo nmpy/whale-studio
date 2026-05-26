@@ -1,7 +1,9 @@
 "use client";
 
 // src/app/oas/[id]/settings/page.tsx
-// OA 設定ハブ — 機能カードを並べるだけ。フォームは /account へ移設。
+// OA 設定ハブ — 機能カードを並べるだけ。フォームは /account / /richmenu-editor 等の各サブページに移設済。
+// Phase 1.4 ではこのハブの見た目を Phase 0 トークンに揃える。
+// (※ フォーム/Accordion/危険操作 等は本ページに存在しないため、それらは適用対象外)
 
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
@@ -12,69 +14,25 @@ import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
 import { ViewerBanner } from "@/components/PermissionGuard";
 import { PlanCard } from "@/components/PlanCard";
 
+/** ハブに並べる機能カード定義。
+ *  Phase 1.4 で per-feature の vivid color を削除し、見た目を uniform に揃える
+ *  (ガイド §1.1「brand 緑は主役アクション専用 / 多用しない」 / §1.5「装飾を盛らず…」)。
+ *  カードのアクセントは hover 時の brand 左バー 1 つに集約。 */
 const HUB_ITEM_DEFS = [
-  {
-    key:   "works",
-    title: "作品管理",
-    desc:  "作品シナリオの作成・編集・公開管理",
-    color: "#06C755",
-    bg:    "#E6F7ED",
-  },
-  {
-    key:   "account",
-    title: "アカウント情報",
-    desc:  "アカウント名・メモ・接続ステータスを管理",
-    color: "#4b5563",
-    bg:    "#f3f4f6",
-  },
-  {
-    key:   "richmenu-editor",
-    title: "リッチメニュー",
-    desc:  "ユーザー画面下部のメニューをカスタマイズ",
-    color: "#7c3aed",
-    bg:    "#f5f3ff",
-  },
-  {
-    key:   "friend-add",
-    title: "友だち追加設定",
-    desc:  "招待 URL・シェア用画像を管理",
-    color: "#059669",
-    bg:    "#f0fdf4",
-  },
-  {
-    key:   "sns",
-    title: "SNS 投稿管理",
-    desc:  "投稿文・画像・掲載 URL を管理",
-    color: "#d97706",
-    bg:    "#fffbeb",
-  },
-  {
-    key:   "trackings",
-    title: "トラッキング管理",
-    desc:  "流入元ごとのクリック数・ユーザー数を計測",
-    color: "#2563eb",
-    bg:    "#eff6ff",
-  },
-  {
-    key:   "settings/members",
-    title: "メンバー管理",
-    desc:  "ワークスペースメンバーのロール（owner/admin/editor/viewer）を管理",
-    color: "#dc2626",
-    bg:    "#fef2f2",
-  },
-  {
-    key:   "onboarding-analytics",
-    title: "オンボーディング分析",
-    desc:  "作品作成〜セットアップ完了の各ステップ到達率を確認（owner のみ）",
-    color: "#7c3aed",
-    bg:    "#f5f3ff",
-  },
+  { key: "works",                title: "作品管理",         desc: "作品シナリオの作成・編集・公開管理" },
+  { key: "account",              title: "アカウント情報",   desc: "アカウント名・メモ・接続ステータスを管理" },
+  { key: "richmenu-editor",      title: "リッチメニュー",   desc: "ユーザー画面下部のメニューをカスタマイズ" },
+  { key: "friend-add",           title: "友だち追加設定",   desc: "招待 URL・シェア用画像を管理" },
+  { key: "sns",                  title: "SNS 投稿管理",     desc: "投稿文・画像・掲載 URL を管理" },
+  { key: "trackings",            title: "トラッキング管理", desc: "流入元ごとのクリック数・ユーザー数を計測" },
+  { key: "settings/members",     title: "メンバー管理",     desc: "ワークスペースメンバーのロール（owner/admin/editor/viewer）を管理" },
+  { key: "onboarding-analytics", title: "オンボーディング分析", desc: "作品作成〜セットアップ完了の各ステップ到達率を確認（owner のみ）" },
 ] as const;
 
 export default function OaSettingsPage() {
   const params = useParams<{ id: string }>();
   const oaId   = params.id;
-  const { role, canEdit, isOwner, isAdmin } = useWorkspaceRole(oaId);
+  const { role, isOwner, isAdmin } = useWorkspaceRole(oaId);
   const [oaTitle,        setOaTitle]        = useState<string>("");
   const [billingSuccess, setBillingSuccess] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -108,141 +66,87 @@ export default function OaSettingsPage() {
 
       {/* ── Stripe Checkout 完了バナー ── */}
       {billingSuccess && (
-        <div style={{
-          display:      "flex",
-          alignItems:   "flex-start",
-          gap:          12,
-          padding:      "14px 18px",
-          background:   "#f0fdf4",
-          border:       "1px solid #86efac",
-          borderRadius: "var(--radius-md, 10px)",
-          marginBottom: 16,
-        }}>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <p style={{
-              fontSize:    13,
-              fontWeight:  700,
-              color:       "#166534",
-              marginBottom: 3,
-            }}>
+        <div
+          role="status"
+          className="mb-4 flex items-start gap-3 rounded-field border border-brand/30 bg-brand-soft px-4 py-3.5"
+        >
+          <div className="min-w-0 flex-1">
+            <p className="mb-1 text-[13px] font-bold text-brand-ink">
               プランのアップグレードが完了しました！
             </p>
-            <p style={{
-              fontSize:   12,
-              color:      "#15803d",
-              lineHeight: 1.6,
-              margin:     0,
-            }}>
+            <p className="text-[12px] leading-[1.6] text-brand-ink/85">
               editor プランへの移行が完了しました。作品の追加・本番公開が可能になっています。
             </p>
           </div>
           <button
+            type="button"
             onClick={() => {
               setBillingSuccess(false);
               if (timerRef.current) clearTimeout(timerRef.current);
             }}
-            style={{
-              background: "none",
-              border:     "none",
-              cursor:     "pointer",
-              color:      "#166534",
-              fontSize:   18,
-              lineHeight: 1,
-              padding:    "2px 4px",
-              flexShrink: 0,
-            }}
             title="閉じる"
+            aria-label="バナーを閉じる"
+            className="flex-shrink-0 cursor-pointer rounded-full px-1.5 py-0.5 text-[18px] leading-none text-brand-ink/70 transition-colors hover:bg-brand/10 hover:text-brand-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
           >
             ×
           </button>
         </div>
       )}
 
-      <div className="page-header">
-        <div>
-          <Breadcrumb items={[
-            { label: "アカウントリスト", href: "/oas" },
-            { label: "設定" },
-          ]} />
-          <h2>アカウント設定</h2>
-          <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 3 }}>
-            {oaTitle ? `${oaTitle} の各機能を管理します` : "このアカウントの機能を選択してください"}
-          </p>
-        </div>
+      {/* ── ページヘッダー ── */}
+      <div className="mb-5">
+        <Breadcrumb items={[
+          { label: "アカウントリスト", href: "/oas" },
+          { label: "設定" },
+        ]} />
+        <h2 className="font-round mt-1 text-[clamp(20px,4vw,24px)] font-extrabold leading-[1.2] tracking-[-0.02em] text-ink">
+          アカウント設定
+        </h2>
+        <p className="mt-1 text-[12px] text-ink-3">
+          {oaTitle ? `${oaTitle} の各機能を管理します` : "このアカウントの機能を選択してください"}
+        </p>
       </div>
 
-      {/* ── プランカード（owner / admin のみ） ── */}
+      {/* ── プランカード（owner / admin のみ、別管理コンポーネント） ── */}
       {(isOwner || isAdmin) && <PlanCard oaId={oaId} />}
 
       {/* ── 機能カード グリッド ── */}
-      <div>
-        <p style={{
-          fontSize: 12, fontWeight: 600, color: "#6b7280",
-          textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 12,
-        }}>
+      <section>
+        <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.07em] text-ink-3">
           このアカウントの機能
         </p>
 
-        <div style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))",
-          gap: 12,
-        }}>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-[repeat(auto-fill,minmax(220px,1fr))]">
           {HUB_ITEM_DEFS.filter(({ key }) => {
             if (key === "onboarding-analytics") return isOwner;
             if (key === "settings/members") return isOwner || isAdmin;
             if (key === "account" || key === "richmenu-editor" || key === "friend-add" || key === "sns") return isAdmin;
             return true; // works, trackings — visible to all
-          }).map(({ key, title, desc, color }) => (
+          }).map(({ key, title, desc }) => (
             <Link
               key={key}
               href={`/oas/${oaId}/${key}`}
-              style={{
-                display: "flex",
-                alignItems: "flex-start",
-                gap: 12,
-                padding: "14px 16px",
-                background: "#fff",
-                border: "1px solid #e5e5e5",
-                borderRadius: 10,
-                textDecoration: "none",
-                color: "inherit",
-                transition: "border-color .15s, box-shadow .15s, transform .1s",
-              }}
-              onMouseEnter={(e) => {
-                const el = e.currentTarget;
-                el.style.borderColor = color;
-                el.style.boxShadow   = "0 2px 8px rgba(0,0,0,.08)";
-                el.style.transform   = "translateY(-1px)";
-              }}
-              onMouseLeave={(e) => {
-                const el = e.currentTarget;
-                el.style.borderColor = "#e5e5e5";
-                el.style.boxShadow   = "none";
-                el.style.transform   = "translateY(0)";
-              }}
+              className="group relative flex items-start gap-3 overflow-hidden rounded-card border border-line bg-surface px-4 py-3.5 no-underline transition-all duration-150 hover:-translate-y-px hover:border-brand/30 hover:shadow-card"
             >
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: 13, fontWeight: 600, color: "#111827", marginBottom: 2 }}>
-                  {title}
-                </div>
-                <div style={{ fontSize: 11, color: "#6b7280", lineHeight: 1.45 }}>
-                  {desc}
-                </div>
+              {/* 左端 brand アクセントバー (= hover 時のみ可視) */}
+              <span
+                aria-hidden="true"
+                className="absolute left-0 top-0 h-full w-[3px] bg-brand opacity-0 transition-opacity group-hover:opacity-100"
+              />
+              <div className="min-w-0 flex-1">
+                <div className="mb-0.5 text-[13px] font-semibold text-ink">{title}</div>
+                <div className="text-[11px] leading-[1.45] text-ink-3">{desc}</div>
               </div>
-              <span style={{
-                marginLeft: "auto",
-                fontSize: 14,
-                color: "#9ca3af",
-                flexShrink: 0,
-                alignSelf: "center",
-              }}>
+              <span
+                aria-hidden="true"
+                className="ml-auto flex-shrink-0 self-center text-[14px] text-ink-3 transition-colors group-hover:text-brand-ink"
+              >
                 →
               </span>
             </Link>
           ))}
         </div>
-      </div>
+      </section>
     </>
   );
 }
