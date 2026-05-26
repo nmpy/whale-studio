@@ -23,11 +23,10 @@ export function getStripe(): Stripe {
   return _stripe;
 }
 
-/** Stripe が設定済みかどうかを確認する（UI の表示制御用）。 */
-export function isStripeConfigured(): boolean {
-  return !!(
-    process.env.STRIPE_SECRET_KEY &&
-    process.env.STRIPE_EDITOR_PRICE_ID &&
-    process.env.STRIPE_WEBHOOK_SECRET
-  );
+/** Checkout API が動作可能か (= STRIPE_SECRET_KEY のみ確認)。
+ *  Webhook secret は /api/billing/webhook が個別に検証するため、
+ *  本関数では要求しない。Webhook 未配線環境でも Checkout の動作確認はできる。
+ *  個別プランの price ID 有無は getPriceIdForPlan で別途判定する。 */
+export function isStripeCheckoutConfigured(): boolean {
+  return !!process.env.STRIPE_SECRET_KEY;
 }

@@ -29,7 +29,7 @@ async function main() {
   });
   console.log(`  ✓ tester  (id=${tester.id.slice(0, 8)}…)`);
 
-  // ── editor プラン ──────────────────────────────────────────
+  // ── editor プラン (legacy, 後方互換のため維持) ─────────────
   const editor = await prisma.plan.upsert({
     where:  { name: "editor" },
     update: {},
@@ -43,6 +43,30 @@ async function main() {
     },
   });
   console.log(`  ✓ editor  (id=${editor.id.slice(0, 8)}…)`);
+
+  // ── 個人プラン 4 ティア (= 新フロー、Stripe Checkout から発火) ──
+  // priceMonthly は表示参考値。実際の課金額は Stripe price 側で管理する。
+  const personalPlans = [
+    { name: "basic",    displayName: "Basicプラン",    maxWorks: 1,  priceMonthly: 0 },
+    { name: "standard", displayName: "Standardプラン", maxWorks: -1, priceMonthly: 0 },
+    { name: "pro",      displayName: "Proプラン",      maxWorks: -1, priceMonthly: 0 },
+    { name: "plus",     displayName: "Plusプラン",     maxWorks: -1, priceMonthly: 0 },
+  ];
+  for (const p of personalPlans) {
+    const row = await prisma.plan.upsert({
+      where:  { name: p.name },
+      update: {},
+      create: {
+        name:         p.name,
+        displayName:  p.displayName,
+        maxWorks:     p.maxWorks,
+        maxPlayers:   -1,
+        priceMonthly: p.priceMonthly,
+        isActive:     true,
+      },
+    });
+    console.log(`  ✓ ${p.name.padEnd(8)} (id=${row.id.slice(0, 8)}…)`);
+  }
 
   console.log("✅  Seeding complete.");
 }

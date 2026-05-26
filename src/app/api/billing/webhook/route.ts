@@ -40,15 +40,16 @@ function mapStripeStatus(stripeStatus: Stripe.Subscription["status"]): string {
 
 // ── checkout.session.completed 処理 ──────────────────────────────────
 async function handleCheckoutCompleted(session: Stripe.Checkout.Session): Promise<void> {
-  const oaId    = session.metadata?.oaId;
-  const toPlan  = session.metadata?.toPlan ?? "editor";
+  const oaId    = session.metadata?.oaId ?? session.client_reference_id ?? null;
+  // 新 API は metadata.plan を使う。旧 metadata.toPlan も後方互換で受ける。
+  const planKey = session.metadata?.plan ?? session.metadata?.toPlan ?? null;
   const rawSub  = session.subscription;
   const stripeSubscriptionId =
     typeof rawSub === "string" ? rawSub : rawSub?.id ?? null;
 
-  if (!oaId || !stripeSubscriptionId) {
-    console.warn("[webhook] checkout.session.completed: oaId または subscription ID が不明", {
-      oaId, stripeSubscriptionId,
+  if (!oaId || !stripeSubscriptionId || !planKey) {
+    console.warn("[webhook] checkout.session.completed: 必須メタデータが不足", {
+      oaId, stripeSubscriptionId, planKey,
     });
     return;
   }
@@ -57,10 +58,10 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session): Promis
   const stripe    = getStripe();
   const stripeSub = await stripe.subscriptions.retrieve(stripeSubscriptionId);
 
-  // editor プランを DB から取得
-  const editorPlan = await prisma.plan.findUnique({ where: { name: toPlan } });
-  if (!editorPlan) {
-    console.error(`[webhook] plan '${toPlan}' が DB に存在しません。prisma/seed.mjs を確認してください。`);
+  // metadata.plan ("basic"/"standard"/"pro"/"plus") に対応する Plan 行を取得
+  const planRow = await prisma.plan.findUnique({ where: { name: planKey } });
+  if (!planRow) {
+    console.error(`[webhook] plan '${planKey}' が DB に存在しません。prisma/seed.mjs を確認してください。`);
     return;
   }
 
@@ -70,7 +71,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session): Promis
   await prisma.subscription.upsert({
     where:  { oaId },
     update: {
-      planId:             editorPlan.id,
+      planId:             planRow.id,
       status:             "active",
       externalId:         stripeSubscriptionId,
       currentPeriodStart: periodStart,
@@ -79,7 +80,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session): Promis
     },
     create: {
       oaId,
-      planId:             editorPlan.id,
+      planId:             planRow.id,
       status:             "active",
       externalId:         stripeSubscriptionId,
       currentPeriodStart: periodStart,
@@ -87,7 +88,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session): Promis
     },
   });
 
-  console.log(`[webhook] checkout.session.completed: OA ${oaId} を ${toPlan} プランに更新しました`);
+  console.log(`[webhook] checkout.session.completed: OA ${oaId} を ${planKey} プランに更新しました`);
 }
 
 // ── customer.subscription.created / updated 処理 ─────────────────────

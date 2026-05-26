@@ -37,8 +37,9 @@ function PricingFallback() {
 
 // ── ページ default export（Server Component）────────────────────────
 // searchParams は Next.js が Request 時に注入するため、useSearchParams() 不要。
-// oa_id  — Stripe Checkout のキャンセル時に pricing へ戻る際に付与される OA ID
-// canceled — "1" のとき Stripe Checkout からのキャンセル戻りを示す
+// oa_id    — Stripe Checkout のキャンセル時に pricing へ戻る際に付与される OA ID
+// checkout — "cancelled" のとき Stripe Checkout からのキャンセル戻りを示す
+//            (legacy "canceled=1" もサポート)
 export default function PricingPage({
   searchParams,
 }: {
@@ -48,8 +49,11 @@ export default function PricingPage({
     to?:       string;
     oa_id?:    string;
     canceled?: string;
+    checkout?: string;
   };
 }) {
+  const isCancelled =
+    searchParams.checkout === "cancelled" || searchParams.canceled === "1";
   return (
     <Suspense fallback={<PricingFallback />}>
       <PricingContent
@@ -57,7 +61,7 @@ export default function PricingPage({
         from={searchParams.from}
         to={searchParams.to}
         oaId={searchParams.oa_id}
-        canceled={searchParams.canceled}
+        canceled={isCancelled ? "1" : undefined}
       />
     </Suspense>
   );
