@@ -7,6 +7,7 @@ import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { ok, noContent, badRequest, notFound, serverError } from "@/lib/api-response";
 import { withAuth } from "@/lib/auth";
+import { requireRole } from "@/lib/rbac";
 import { requirePlanFeature } from "@/lib/plan-guard";
 import { FEATURE } from "@/lib/constants/plans";
 import { updateSegmentSchema, formatZodErrors } from "@/lib/validations";
@@ -29,20 +30,29 @@ function toResponse(s: {
   };
 }
 
-export const GET = withAuth<{ id: string }>(async (_req, { params }) => {
+export const GET = withAuth<{ id: string }>(async (_req, { params }, user) => {
   try {
     const segment = await prisma.segment.findUnique({ where: { id: params.id } });
     if (!segment) return notFound("Segment");
+
+    // 認可: OA メンバー (viewer 以上) のみ。plan 推測も防ぐ。
+    const check = await requireRole(segment.oaId, user.id, "viewer");
+    if (!check.ok) return check.response;
+
     return ok(toResponse(segment));
   } catch (err) {
     return serverError(err);
   }
 });
 
-export const PATCH = withAuth<{ id: string }>(async (req, { params }) => {
+export const PATCH = withAuth<{ id: string }>(async (req, { params }, user) => {
   try {
     const segment = await prisma.segment.findUnique({ where: { id: params.id } });
     if (!segment) return notFound("Segment");
+
+    // 認可: editor 以上のみ編集可能。plan check より前に置く。
+    const check = await requireRole(segment.oaId, user.id, "editor");
+    if (!check.ok) return check.response;
 
     // プラン制限: audience は Standard プラン以上
     const planGuard = await requirePlanFeature({ oaId: segment.oaId, featureKey: FEATURE.audience });
@@ -68,10 +78,14 @@ export const PATCH = withAuth<{ id: string }>(async (req, { params }) => {
   }
 });
 
-export const DELETE = withAuth<{ id: string }>(async (_req, { params }) => {
+export const DELETE = withAuth<{ id: string }>(async (_req, { params }, user) => {
   try {
     const segment = await prisma.segment.findUnique({ where: { id: params.id } });
     if (!segment) return notFound("Segment");
+
+    // 認可: editor 以上のみ削除可能。plan check より前に置く。
+    const check = await requireRole(segment.oaId, user.id, "editor");
+    if (!check.ok) return check.response;
 
     // プラン制限: audience は Standard プラン以上
     const planGuard = await requirePlanFeature({ oaId: segment.oaId, featureKey: FEATURE.audience });

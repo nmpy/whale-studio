@@ -41,7 +41,11 @@ export function forbidden(): NextResponse<ApiError> {
  * プラン不足によるアクセス拒否レスポンス (= 403 + PLAN_REQUIRED)。
  *
  * UI 側の `getPlanAccessState` と shape を揃え、UI / API で同じ判定結果が
- * 共有できるようにする。 */
+ * 共有できるようにする。
+ *
+ * details の値は **string** にする (= 単一値の付加情報なので array は不要)。
+ * 既存の Zod error 系 (= `badRequest`) は引き続き array を使えるよう、
+ * `ApiError.details` は `Record<string, string | string[]>` で両対応する。 */
 export function planRequired(args: {
   requiredPlan: string;       // = PlanTier "basic" | "standard" | "plus" | "pro"
   requiredPlanLabel: string;  // = "Basic" / "Standard" / "Plus" / "Pro"
@@ -54,10 +58,9 @@ export function planRequired(args: {
       error: {
         code: "PLAN_REQUIRED",
         message,
-        // details に requiredPlan を含めることで、フロントから access state を再構成できる
         details: {
-          requiredPlan:      [args.requiredPlan],
-          requiredPlanLabel: [args.requiredPlanLabel],
+          requiredPlan:      args.requiredPlan,
+          requiredPlanLabel: args.requiredPlanLabel,
         },
       },
     },

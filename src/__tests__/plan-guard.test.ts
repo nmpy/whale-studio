@@ -130,8 +130,8 @@ describe("requirePlanFeature — feature × plan の判定", () => {
       expect(result.response.status).toBe(403);
       const body = await result.response.json();
       expect(body.error.code).toBe("PLAN_REQUIRED");
-      expect(body.error.details.requiredPlan[0]).toBe("standard");
-      expect(body.error.details.requiredPlanLabel[0]).toBe("Standard");
+      expect(body.error.details.requiredPlan).toBe("standard");
+      expect(body.error.details.requiredPlanLabel).toBe("Standard");
       expect(body.error.message).toContain("Standard");
     }
   });
@@ -148,7 +148,7 @@ describe("requirePlanFeature — feature × plan の判定", () => {
     if (!result.ok) {
       const body = await result.response.json();
       expect(body.error.code).toBe("PLAN_REQUIRED");
-      expect(body.error.details.requiredPlanLabel[0]).toBe("Plus");
+      expect(body.error.details.requiredPlanLabel).toBe("Plus");
     }
   });
 
@@ -167,7 +167,7 @@ describe("requirePlanFeature — feature × plan の判定", () => {
     expect(result.ok).toBe(false);
     if (!result.ok) {
       const body = await result.response.json();
-      expect(body.error.details.requiredPlanLabel[0]).toBe("Pro");
+      expect(body.error.details.requiredPlanLabel).toBe("Pro");
     }
   });
 
@@ -184,7 +184,7 @@ describe("requirePlanFeature — feature × plan の判定", () => {
     expect(result.ok).toBe(false);
     if (!result.ok) {
       const body = await result.response.json();
-      expect(body.error.details.requiredPlanLabel[0]).toBe("Pro");
+      expect(body.error.details.requiredPlanLabel).toBe("Pro");
     }
   });
 
