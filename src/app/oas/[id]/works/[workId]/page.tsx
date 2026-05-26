@@ -27,7 +27,7 @@ import {
 } from "@/lib/constants/plans";
 import { useAccessPreview } from "@/hooks/useAccessPreview";
 import { withPreviewParams } from "@/lib/access-preview";
-import { StatusBadge } from "@/components/shared";
+import { StatusBadge, PlanTag } from "@/components/shared";
 
 // ── ステータス → shared/StatusBadge tone マッピング ───────────────
 // (= Phase 3.3a でローカル STATUS_META を撤廃、shared/StatusBadge に統合)
@@ -44,68 +44,25 @@ function statusTone(status: string): "active" | "muted" | "warn" {
 }
 
 // ── ハブカード定義 ────────────────────────────────────────
+// Phase 3.3c: per-feature vivid 色 (color / bg) を撤廃 (= ガイド §1.1「brand 緑は主役アクション専用」)。
+// uniform card + hover brand アクセント (= OA settings hub Phase 1.4 と同方針)。
+// key / title / desc / 表示順 / featureKey 連携 (HUB_CARD_TO_FEATURE) は完全維持。
 const HUB_CARDS = [
-  {
-    key:   "edit",
-    title: "作品情報",
-    desc:  "タイトル・説明・公開ステータス・あいさつメッセージを編集します",
-    color: "#374151",
-    bg:    "#f9fafb",
-  },
-  {
-    key:   "characters",
-    title: "キャラクター",
-    desc:  "メッセージ送信者となるキャラクターを管理します",
-    color: "#7c3aed",
-    bg:    "#f5f3ff",
-  },
-  {
-    key:   "messages",
-    title: "メッセージ・謎",
-    desc:  "フェーズごとに送信するメッセージ・謎チャレンジを管理します",
-    color: "#06C755",
-    bg:    "#E6F7ED",
-  },
-  {
-    key:   "scenario",
-    title: "シナリオフロー",
-    desc:  "フェーズの追加・並び替え・編集と遷移フローを1画面で管理します",
-    color: "#059669",
-    bg:    "#ecfdf5",
-  },
-  {
-    key:   "audience",
-    title: "オーディエンス",
-    desc:  "プレイ統計・リアルタイム・フロー・セグメント・トラッキングを確認します",
-    color: "#0891b2",
-    bg:    "#ecfeff",
-  },
-  {
-    key:   "liff",
-    title: "LIFF表示設定",
-    desc:  "LIFFページに表示するブロックの追加・編集・並び替えを行います",
-    color: "#8b5cf6",
-    bg:    "#f5f3ff",
-  },
-  {
-    key:   "locations",
-    title: "ロケーション",
-    desc:  "GPS・ビーコン・QRを使って、現地で発火する体験トリガーを管理します",
-    color: "#dc2626",
-    bg:    "#fef2f2",
-  },
-  {
-    key:   "destinations",
-    title: "遷移先URL設定",
-    desc:  "リッチメニューやメッセージから飛ばすURLを一元管理します",
-    color: "#0d9488",
-    bg:    "#f0fdfa",
-  },
+  { key: "edit",         title: "作品情報",       desc: "タイトル・説明・公開ステータス・あいさつメッセージを編集します" },
+  { key: "characters",   title: "キャラクター",   desc: "メッセージ送信者となるキャラクターを管理します" },
+  { key: "messages",     title: "メッセージ・謎", desc: "フェーズごとに送信するメッセージ・謎チャレンジを管理します" },
+  { key: "scenario",     title: "シナリオフロー", desc: "フェーズの追加・並び替え・編集と遷移フローを1画面で管理します" },
+  { key: "audience",     title: "オーディエンス", desc: "プレイ統計・リアルタイム・フロー・セグメント・トラッキングを確認します" },
+  { key: "liff",         title: "LIFF表示設定",   desc: "LIFFページに表示するブロックの追加・編集・並び替えを行います" },
+  { key: "locations",    title: "ロケーション",   desc: "GPS・ビーコン・QRを使って、現地で発火する体験トリガーを管理します" },
+  { key: "destinations", title: "遷移先URL設定",  desc: "リッチメニューやメッセージから飛ばすURLを一元管理します" },
 ] as const;
 
 // ── ハブカード / アクションアイコン（SVGで役割を示す） ──────────
-function HubCardIcon({ cardKey, color }: { cardKey: string; color: string }) {
-  const p = { width: 16, height: 16, viewBox: "0 0 24 24", fill: "none" as const, stroke: color, strokeWidth: "1.8", strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
+// Phase 3.3c: color 引数を撤廃し currentColor ベースに変更。
+// 親要素の Tailwind text-* class でアイコン色を制御する。
+function HubCardIcon({ cardKey }: { cardKey: string }) {
+  const p = { width: 16, height: 16, viewBox: "0 0 24 24", fill: "none" as const, stroke: "currentColor", strokeWidth: "1.8", strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
   if (cardKey === "edit") return (
     <svg {...p} aria-hidden="true">
       <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
@@ -264,28 +221,15 @@ function resolveActions({
 }
 
 // ── アクション emphasis ごとのスタイル定義 ───────────────────
-// Phase 3.3b: className ベースに刷新 (= Phase 0 Tailwind トークン)。
-// iconColor は HubCardIcon が SVG stroke 属性で参照する文字列なので、
-// @theme で生成された CSS 変数 `var(--color-*)` を経由して新トークン値を渡す。
-const ACTION_EMPHASIS_STYLE: Record<
-  ActionEmphasis,
-  { className: string; iconColor: string }
-> = {
+// Phase 3.3b/c: className ベース + currentColor 化。
+// アイコン色は className の text-* で親から継承される (= HubCardIcon は currentColor)。
+const ACTION_EMPHASIS_STYLE: Record<ActionEmphasis, string> = {
   // 情報系 sky (= プレビュー固定トーン)
-  preview: {
-    className: "bg-sky-soft border-sky/30 text-sky-ink hover:border-sky/50 hover:shadow-sm",
-    iconColor: "var(--color-sky-ink)",
-  },
+  preview: "bg-sky-soft border-sky/30 text-sky-ink hover:border-sky/50 hover:shadow-sm",
   // 要確認トーン — WorkCard / ハブの "完了者未発生" と同トーン
-  warning: {
-    className: "bg-warn-soft border-warn/30 text-warn hover:border-warn/50 hover:shadow-sm",
-    iconColor: "var(--color-warn)",
-  },
+  warning: "bg-warn-soft border-warn/30 text-warn hover:border-warn/50 hover:shadow-sm",
   // 通常 (= ニュートラル) — hover で bg-bg-tint へ
-  normal: {
-    className: "bg-surface border-line text-ink-2 hover:bg-bg-tint hover:border-line-2 hover:text-ink",
-    iconColor: "var(--color-ink-3)",
-  },
+  normal:  "bg-surface border-line text-ink-2 hover:bg-bg-tint hover:border-line-2 hover:text-ink",
 } as const;
 
 // ── コンポーネント ────────────────────────────────────────
@@ -688,10 +632,9 @@ export default function WorkHubPage() {
 
         {/* アクション pill リスト（resolveActions による状態ベースの並び・強調） */}
         {resolvedActions.map((action, idx) => {
-          const href   = action.isPreview
+          const href = action.isPreview
             ? `/playground?work_id=${workId}&oa_id=${oaId}`
             : `${basePath}/${action.key}`;
-          const es = ACTION_EMPHASIS_STYLE[action.emphasis];
           return (
             <Link
               key={action.key}
@@ -706,10 +649,11 @@ export default function WorkHubPage() {
                 "inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border " +
                 "px-3 py-1.5 text-[13px] font-semibold no-underline " +
                 "transition-[background-color,border-color,color,box-shadow] duration-150 " +
-                es.className
+                ACTION_EMPHASIS_STYLE[action.emphasis]
               }
             >
-              <HubCardIcon cardKey={action.key} color={es.iconColor} />
+              {/* アイコン色は親の text-* class (= ACTION_EMPHASIS_STYLE) から currentColor で継承 */}
+              <HubCardIcon cardKey={action.key} />
               {action.label}
             </Link>
           );
@@ -718,27 +662,14 @@ export default function WorkHubPage() {
 
       {/* ── ハブカード（全機能の見取り図） ── */}
       {/* 上部アクション行との役割分離: ハブカードは機能一覧・補助導線として機能する */}
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-        <span style={{
-          fontSize:      10,
-          fontWeight:    700,
-          letterSpacing: "0.06em",
-          textTransform: "uppercase",
-          color:         "var(--text-muted)",
-          whiteSpace:    "nowrap",
-          flexShrink:    0,
-        }}>
+      <div className="mb-2.5 flex items-center gap-2">
+        <span className="flex-shrink-0 whitespace-nowrap text-[10px] font-bold uppercase tracking-wider text-ink-3">
           管理メニュー
         </span>
-        <div style={{ flex: 1, height: 1, background: "var(--border-light)" }} aria-hidden="true" />
+        <div aria-hidden="true" className="h-px flex-1 bg-line" />
       </div>
 
-      <div style={{
-        display: "grid",
-        // SP: 1カラム固定  PC: 270px以上で auto-fill
-        gridTemplateColumns: sp ? "1fr" : "repeat(auto-fill, minmax(270px, 1fr))",
-        gap: sp ? 10 : 14,
-      }}>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-[repeat(auto-fill,minmax(270px,1fr))] sm:gap-3.5">
         {HUB_CARDS.map((card) => {
           // プランによる利用可否を判定。featureKey が未マップの card は安全側で「許可」扱い (= 制限しない)。
           const featureKey = HUB_CARD_TO_FEATURE[card.key];
@@ -747,70 +678,54 @@ export default function WorkHubPage() {
             : ({ allowed: true, reason: "allowed", message: "" } as const);
 
           // カード本体 (= 共通の中身レンダリング)
+          // Phase 3.3c: per-feature 色を撤廃、uniform card + hover brand アクセント
           const cardBody = (
             <div
-              style={{
-                background:   "var(--surface)",
-                border:       "1px solid var(--border-light)",
-                borderRadius: "var(--radius-md)",
-                padding:      "16px 18px",
-                cursor:       access.allowed ? "pointer" : "not-allowed",
-                transition:   "box-shadow 0.15s, border-color 0.15s, transform 0.1s",
-                display:      "flex",
-                alignItems:   "center",
-                gap:          14,
-                boxShadow:    "var(--shadow-xs)",
-                opacity:      access.allowed ? 1 : 0.55,
-              }}
-              onMouseEnter={access.allowed ? (e) => {
-                const el = e.currentTarget as HTMLDivElement;
-                el.style.boxShadow   = "var(--shadow-md)";
-                el.style.borderColor = "var(--gray-300)";
-                el.style.transform   = "translateY(-2px)";
-              } : undefined}
-              onMouseLeave={access.allowed ? (e) => {
-                const el = e.currentTarget as HTMLDivElement;
-                el.style.boxShadow   = "var(--shadow-xs)";
-                el.style.borderColor = "var(--border-light)";
-                el.style.transform   = "";
-              } : undefined}
+              className={
+                "group flex items-center gap-3.5 rounded-card border bg-surface px-4 py-4 shadow-sm transition-all " +
+                (access.allowed
+                  ? "cursor-pointer border-line hover:-translate-y-px hover:border-brand/30 hover:shadow-card"
+                  : "cursor-not-allowed border-line bg-bg-tint opacity-70")
+              }
             >
-              {/* カラーアンカー — SVGアイコン入りで各カードの役割を即座に示す */}
-              <div style={{
-                width:           36,
-                height:          36,
-                borderRadius:    8,
-                background:      card.bg,
-                border:          `1px solid ${card.color}40`,
-                flexShrink:      0,
-                display:         "flex",
-                alignItems:      "center",
-                justifyContent:  "center",
-              }}>
-                <HubCardIcon cardKey={card.key} color={card.color} />
+              {/* アイコン枠 (= uniform、アイコン色は currentColor で text-* から継承) */}
+              <div
+                className={
+                  "flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md border border-line bg-bg-tint transition-colors " +
+                  (access.allowed ? "text-ink-3 group-hover:bg-brand-soft group-hover:text-brand-ink" : "text-ink-3")
+                }
+              >
+                <HubCardIcon cardKey={card.key} />
               </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 700, fontSize: 14, color: card.color, marginBottom: 3 }}>
+              <div className="min-w-0 flex-1">
+                <div
+                  className={
+                    "mb-0.5 text-[14px] font-bold transition-colors " +
+                    (access.allowed ? "text-ink group-hover:text-brand-ink" : "text-ink-2")
+                  }
+                >
                   {card.title}
                 </div>
-                <div style={{ fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.55 }}>
+                <div className="text-[12px] leading-[1.55] text-ink-2">
                   {card.desc}
                 </div>
-                {/* プラン制限がかかっている場合、必要プラン表記を小さく表示 */}
+                {/* プラン制限がかかっている場合、必要プラン表記を <PlanTag> で表示 */}
                 {!access.allowed && access.reason === "plan_required" && (
-                  <div style={{
-                    fontSize: 11, color: "#92400e", marginTop: 4,
-                    background: "#fffbeb", border: "1px solid #fde68a",
-                    borderRadius: 4, padding: "2px 6px", display: "inline-block",
-                  }}>
-                    {access.requiredPlanLabel}プラン以上で利用できます
+                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                    <PlanTag plan={access.requiredPlanLabel} />
+                    <span className="text-[11px] text-ink-3">で利用できます</span>
                   </div>
                 )}
               </div>
-              <span style={{
-                color: access.allowed ? "var(--text-muted)" : "#cbd5e1",
-                fontSize: 16, alignSelf: "center", flexShrink: 0,
-              }}>›</span>
+              <span
+                aria-hidden="true"
+                className={
+                  "flex-shrink-0 self-center text-[16px] transition-colors " +
+                  (access.allowed ? "text-ink-3 group-hover:text-brand-ink" : "text-ink-3/40")
+                }
+              >
+                ›
+              </span>
             </div>
           );
 
@@ -826,7 +741,7 @@ export default function WorkHubPage() {
               <Link
                 key={card.key}
                 href={cardHref}
-                style={{ textDecoration: "none" }}
+                className="no-underline"
               >
                 {cardBody}
               </Link>
@@ -841,9 +756,9 @@ export default function WorkHubPage() {
               key={card.key}
               role="group"
               aria-disabled={true}
-              aria-label={`${card.title} (${access.reason === "plan_required" ? access.requiredPlanLabel + "プラン以上で利用できます" : "利用できません"})`}
+              aria-label={`${card.title} (${access.reason === "plan_required" ? access.requiredPlanLabel + "プランで利用できます" : "利用できません"})`}
               tabIndex={-1}
-              style={{ textDecoration: "none" }}
+              className="no-underline"
             >
               {cardBody}
             </div>
@@ -852,17 +767,15 @@ export default function WorkHubPage() {
       </div>
 
       {/* プラン説明文 (= 管理メニュー下部) — 表示確認中は背景を変えて区別 */}
-      <div style={{
-        marginTop: 14,
-        padding: "10px 14px",
-        background:   isPreviewingPlan ? "#fffbeb" : "#f8fafc",
-        border:       `1px solid ${isPreviewingPlan ? "#fde68a" : "var(--border-light)"}`,
-        borderRadius: "var(--radius-md)",
-        fontSize:     12,
-        color:        "var(--text-secondary)",
-        lineHeight:   1.7,
-      }}>
-        <span style={{ fontWeight: 700, color: "var(--text-primary)", marginRight: 8 }}>
+      <div
+        className={
+          "mt-3.5 rounded-card border px-3.5 py-2.5 text-[12px] leading-[1.7] text-ink-2 " +
+          (isPreviewingPlan
+            ? "border-warn/30 bg-warn-soft"
+            : "border-line bg-bg-tint")
+        }
+      >
+        <span className="mr-2 font-bold text-ink">
           {isPreviewingPlan ? "表示確認中のプラン" : "現在のプラン"}: {PLAN_LABELS[planTier]}
         </span>
         {PLAN_DESCRIPTIONS[planTier]}
