@@ -29,6 +29,20 @@ function isBareLayoutRoute(pathname: string | null): boolean {
   return false;
 }
 
+/** 表示確認バーを描画すべき OA ページかどうかを path で判定する。
+ *  /oas (= リスト) や /oas/new は対象外。/oas/[id] 以下のみ true。
+ *  Hooks の不要 fetch + 全ページに乗る connection pool 圧迫を避けるため、
+ *  non-OA path では Bar 自体を mount しない。 */
+function extractOaIdForPreviewBar(pathname: string | null): string | null {
+  if (!pathname) return null;
+  const m = pathname.match(/^\/oas\/([^/]+)/);
+  if (!m) return null;
+  const oaId = m[1];
+  if (oaId === "new") return null;       // 新規作成ページ
+  if (oaId.length < 8) return null;      // 明らかに ID 形式でない値は除外
+  return oaId;
+}
+
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
 
@@ -39,16 +53,23 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     return <>{children}</>;
   }
 
+  // 表示確認バーは OA 配下 (/oas/[id]/...) のページにだけ mount する。
+  // - 非 OA ページ (/, /login, /admin, /playground, /oas, /oas/new など) では
+  //   AccessPreviewBar 自体を render しない。内部 hook の不要呼び出しを完全排除し、
+  //   serverless function の DB connection 消費を抑える。
+  // - oaId は AppShell が決定し、Bar には props で渡す (= 重複 pathname 解析を避ける)。
+  const oaId = extractOaIdForPreviewBar(pathname);
+
   return (
     <>
       <AppHeader />
-      {/* OA 配下 + owner のときだけ表示される独立バー (= owner 以外には何も描画されない)。
-          ヘッダー横並びを崩さないため main の外、ヘッダー直下に配置する。
-          AccessPreviewBar は useSearchParams を使うため、静的生成ページの CSR bailout を
-          避けるべく Suspense 境界で包む (= 全ページ root layout に乗るため必須)。 */}
-      <Suspense fallback={null}>
-        <AccessPreviewBar />
-      </Suspense>
+      {/* OA 配下のみ owner 限定バーを mount。内部で更に owner 判定して描画する。
+          useSearchParams を使うため Suspense で包む (= 静的ページ CSR bailout 防止)。 */}
+      {oaId && (
+        <Suspense fallback={null}>
+          <AccessPreviewBar oaId={oaId} />
+        </Suspense>
+      )}
       <main>
         <div className="container">{children}</div>
       </main>

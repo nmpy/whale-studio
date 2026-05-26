@@ -9,9 +9,9 @@
 // 横並びを崩していたため、独立 row として layout (= AppShell) で配置する設計に変更。
 //
 // 表示条件:
-//   - OA 配下 (= /oas/[id]/...) のページのみ
-//   - ログイン済み
-//   - owner のみ操作 (= プルダウン)。owner 以外には何も描画しない
+//   - OA 配下 (= /oas/[id]/...) のページのみ。これは AppShell 側で path 判定して
+//     mount を制御する (= 非 OA ページでは本コンポーネントを mount しない)。
+//   - ログイン済み + owner のみ操作 (= プルダウン)。owner 以外には何も描画しない
 //   - 全幅 / 控えめ表示。preview 中は黄色で目立たせる。
 //
 // 内容:
@@ -21,22 +21,19 @@
 //   - 表示確認中バッジ (= owner かつ preview 適用中のみ)
 //   - 「表示確認を解除」ボタン (= owner かつ preview 適用中のみ)
 
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { PLAN_LABELS, PLAN_TIER_ORDER, type PlanTier } from "@/lib/constants/plans";
 import {
   PREVIEW_ROLE_LABELS,
   PREVIEW_ROLE_ORDER,
+  buildPreviewSearchParams,
   type PreviewRole,
 } from "@/lib/access-preview";
 import { useAccessPreview, type RealRole } from "@/hooks/useAccessPreview";
-import { useRouter, useSearchParams } from "next/navigation";
-import { buildPreviewSearchParams } from "@/lib/access-preview";
 
-/** OA ID をパスから抽出 (= AppHeader と同じ正規表現)。
- *  OA 配下以外 (= preview の意味がない場所) では何も描画しないため。 */
-function extractOaId(pathname: string): string {
-  const m = pathname.match(/^\/oas\/([^/]+)/);
-  return m ? m[1] : "";
+interface AccessPreviewBarProps {
+  /** AppShell が pathname から決定した OA ID。空 / null は AppShell 側で弾く前提なので必ず非空。 */
+  oaId: string;
 }
 
 function realRoleLabel(role: RealRole): string {
@@ -50,24 +47,20 @@ function realRoleLabel(role: RealRole): string {
   }
 }
 
-export function AccessPreviewBar() {
+export function AccessPreviewBar({ oaId }: AccessPreviewBarProps) {
   const pathname     = usePathname();
   const router       = useRouter();
   const searchParams = useSearchParams();
-  const oaId         = extractOaId(pathname);
 
-  // OA 配下でないなら表示しない (= preview の意味がない)
-  const enabled = !!oaId;
-
-  // useAccessPreview は OA ID が必要。空 ID では noop で返るが、フックは常に呼ぶ (= rules of hooks)
   const {
     realPlan, realRole, previewPlan, previewRole, effectivePlan, effectiveRole,
     canUsePreviewMode, isPreviewing, loading,
   } = useAccessPreview(oaId);
 
-  // owner じゃない or 読み込み中 or OA 配下でない場合は何も描画しない。
-  // ロード中は一時的にバーが消えるが、preview 切り替え UI なので問題なし。
-  if (!enabled || !canUsePreviewMode || loading) return null;
+  // owner じゃない or 読み込み中の場合は何も描画しない。
+  // 非 OA ページでの mount は AppShell 側で path 判定して防いでいるため、
+  // ここでは oaId は必ず非空である前提。
+  if (!canUsePreviewMode || loading) return null;
 
   function pushWithParams(next: URLSearchParams) {
     const q = next.toString();
