@@ -9,11 +9,11 @@ import { useParams } from "next/navigation";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { useToast } from "@/components/Toast";
 import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
-import { useWorkLimit } from "@/hooks/useWorkLimit";
+import { useAccessPreview } from "@/hooks/useAccessPreview";
 import { useDestinations } from "@/hooks/useDestinations";
 import { ViewerBanner } from "@/components/PermissionGuard";
 import { PlanRequiredCard } from "@/components/PlanRequiredCard";
-import { FEATURE, mapPlanNameToTier, getPlanAccessState } from "@/lib/constants/plans";
+import { FEATURE, getPlanAccessState } from "@/lib/constants/plans";
 import { DestinationListItem } from "@/components/destination/DestinationListItem";
 import { DestinationFormModal } from "@/components/destination/DestinationFormModal";
 import type { LineDestination } from "@/types";
@@ -26,9 +26,9 @@ export default function DestinationsPage() {
   const { role, loading: roleLoading } = useWorkspaceRole(oaId);
   const isReadOnly = role === "viewer" || role === "tester";
 
-  // プラン制限: destinations は Plus 以上が必要
-  const { planName, loading: planLoading } = useWorkLimit(oaId);
-  const planTier = mapPlanNameToTier(planName);
+  // プラン制限: destinations は Plus 以上が必要。
+  // owner の「表示確認モード」を反映するため effectivePlan を使う。
+  const { effectivePlan: planTier, loading: planLoading } = useAccessPreview(oaId);
   const planAccess = getPlanAccessState({ plan: planTier, featureKey: FEATURE.destinations });
 
   const dest = useDestinations(workId, {

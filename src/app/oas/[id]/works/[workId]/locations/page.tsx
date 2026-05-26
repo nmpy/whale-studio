@@ -8,9 +8,9 @@
 
 import { useParams, useSearchParams } from "next/navigation";
 import { Breadcrumb } from "@/components/Breadcrumb";
-import { useWorkLimit } from "@/hooks/useWorkLimit";
+import { useAccessPreview } from "@/hooks/useAccessPreview";
 import { PlanRequiredCard } from "@/components/PlanRequiredCard";
-import { FEATURE, mapPlanNameToTier, getPlanAccessState } from "@/lib/constants/plans";
+import { FEATURE, getPlanAccessState } from "@/lib/constants/plans";
 import { LocationTabs, resolveLocationTab } from "./_tabs";
 import GpsPanel from "./_gps-panel";
 import QrPanel from "./_qr-panel";
@@ -24,9 +24,9 @@ export default function LocationsHubPage() {
 
   const activeTab = resolveLocationTab(searchParams.get("tab"));
 
-  // プラン制限: location は Pro 以上が必要
-  const { planName, loading: planLoading } = useWorkLimit(oaId);
-  const planTier = mapPlanNameToTier(planName);
+  // プラン制限: location は Pro 以上が必要。
+  // owner が「表示確認モード」で他プランを選んでいる場合は effectivePlan を使う。
+  const { effectivePlan: planTier, loading: planLoading } = useAccessPreview(oaId);
   const planAccess = getPlanAccessState({ plan: planTier, featureKey: FEATURE.location });
 
   // 直 URL アクセス時にここで遮断する。loading 中はチラつき防止で素通り。

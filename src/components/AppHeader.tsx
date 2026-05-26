@@ -16,6 +16,7 @@ import { useTesterMode } from "@/hooks/useTesterMode";
 import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
 import { getAuthHeaders } from "@/lib/api-client";
 import { RoleBadge } from "@/components/PermissionGuard";
+import { AccessPreviewControls } from "@/components/AccessPreviewControls";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { useProfile } from "@/hooks/useProfile";
 import { useToast } from "@/components/Toast";
@@ -163,6 +164,13 @@ export default function AppHeader() {
           {showRoleBadge && displayRole && (
             <div style={{ display: "flex", alignItems: "center", gap: 6, marginLeft: 8 }}>
               <RoleBadge role={displayRole} />
+            </div>
+          )}
+
+          {/* ── プラン / 権限の表示 + owner 限定 preview controls ─── */}
+          {currentOaId && loggedIn && (
+            <div style={{ marginLeft: 8 }}>
+              <AccessPreviewControls oaId={currentOaId} />
             </div>
           )}
 
