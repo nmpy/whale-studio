@@ -15,33 +15,18 @@ import Link from "next/link";
 import { trackBillingEvent } from "@/lib/billing-tracker";
 import { trackEvent } from "@/lib/event-tracker";
 import { getDevToken } from "@/lib/api-client";
-import { useIsMobile } from "@/hooks/useIsMobile";
+import { Button } from "@/components/shared";
 
 // ── チェックアイテム ─────────────────────────────────────────────────
 function CheckItem({ children }: { children: React.ReactNode }) {
   return (
-    <div style={{
-      display:    "flex",
-      alignItems: "flex-start",
-      gap:        10,
-      fontSize:   13,
-      color:      "var(--text-secondary)",
-      lineHeight: 1.6,
-    }}>
-      <span style={{
-        flexShrink:     0,
-        marginTop:      2,
-        width:          18,
-        height:         18,
-        borderRadius:   "50%",
-        background:     "var(--color-primary-soft, #EAF4F1)",
-        display:        "flex",
-        alignItems:     "center",
-        justifyContent: "center",
-        fontSize:       10,
-        color:          "var(--color-primary, #2F6F5E)",
-        fontWeight:     700,
-      }} />
+    <div className="flex items-start gap-2.5 text-[13px] leading-[1.6] text-ink-2">
+      <span
+        aria-hidden="true"
+        className="mt-0.5 inline-flex h-[18px] w-[18px] flex-shrink-0 items-center justify-center rounded-full bg-brand-soft text-[10px] font-bold text-brand-ink"
+      >
+        ✓
+      </span>
       <span>{children}</span>
     </div>
   );
@@ -50,14 +35,7 @@ function CheckItem({ children }: { children: React.ReactNode }) {
 // ── セクション見出し ─────────────────────────────────────────────────
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
-    <p style={{
-      fontSize:      11,
-      fontWeight:    700,
-      letterSpacing: "0.07em",
-      textTransform: "uppercase",
-      color:         "var(--text-muted)",
-      marginBottom:  10,
-    }}>
+    <p className="mb-2.5 text-[11px] font-bold uppercase tracking-[0.07em] text-ink-3">
       {children}
     </p>
   );
@@ -183,7 +161,6 @@ export function PricingContent({
   /** "1" のとき Stripe Checkout からのキャンセル戻りを示すバナーを表示 */
   canceled?: string;
 }) {
-  const sp = useIsMobile();
   const [requested,       setRequested]       = useState(false);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [checkoutError,   setCheckoutError]   = useState<string | null>(null);
@@ -258,77 +235,34 @@ export function PricingContent({
   }
 
   return (
-    <div style={{
-      maxWidth: 600,
-      margin:   "0 auto",
-      padding:  sp ? "20px 0 48px" : "40px 0 64px",
-    }}>
+    <div className="mx-auto w-full max-w-[640px] px-5 py-6 sm:px-0 sm:py-10">
 
       {/* ── ヘッダー（source ごとに見出し・サブを出し分け） ── */}
-      <div style={{ textAlign: "center", marginBottom: 36 }}>
-        <div style={{
-          display:        "inline-flex",
-          alignItems:     "center",
-          gap:            6,
-          padding:        "4px 14px",
-          borderRadius:   "var(--radius-full)",
-          background:     "var(--color-primary-soft, #EAF4F1)",
-          border:         "1px solid #b9ddd6",
-          fontSize:       11,
-          fontWeight:     700,
-          color:          "var(--color-primary, #2F6F5E)",
-          letterSpacing:  "0.05em",
-          marginBottom:   16,
-        }}>
+      <header className="mb-9 text-center">
+        <span className="mb-4 inline-flex items-center gap-1.5 rounded-full bg-brand-soft px-3.5 py-1 text-[11px] font-bold tracking-[0.05em] text-brand-ink">
           🐋 WHALE STUDIO プラン
-        </div>
-        <h1 style={{
-          fontSize:      "clamp(20px, 4vw, 26px)",
-          fontWeight:    800,
-          color:         "var(--text-primary)",
-          letterSpacing: "-0.02em",
-          lineHeight:    1.3,
-          marginBottom:  10,
-        }}>
+        </span>
+        <h1 className="font-round mb-2.5 text-[clamp(20px,4vw,26px)] font-extrabold leading-[1.3] tracking-[-0.02em] text-ink">
           {heading.title}
         </h1>
-        <p style={{
-          fontSize:   13,
-          color:      "var(--text-secondary)",
-          lineHeight: 1.8,
-          whiteSpace: "pre-line",
-        }}>
+        <p className="whitespace-pre-line text-[13px] leading-[1.8] text-ink-2">
           {heading.sub}
         </p>
-      </div>
+      </header>
 
       {/* ── コンセプト 3 点（source=default 以外は簡略表示） ── */}
       {!source && (
-        <div style={{
-          display:       "flex",
-          gap:           sp ? 6 : 8,
-          marginBottom:  sp ? 20 : 28,
-          flexDirection: sp ? "column" : "row",
-          flexWrap:      "wrap",
-        }}>
+        <div className="mb-5 flex flex-col gap-1.5 sm:mb-7 sm:flex-row sm:flex-wrap sm:gap-2">
           {[
             { icon: "🌱", text: "まず1作品、気軽に試せる" },
             { text: "無理に決めなくていい" },
             { text: "成長に合わせてプラン変更できる" },
           ].map(({ icon, text }) => (
-            <div key={text} style={{
-              flex:         sp ? "none" : "1 1 140px",
-              display:      "flex",
-              alignItems:   "center",
-              gap:          8,
-              padding:      sp ? "9px 12px" : "10px 14px",
-              background:   "var(--surface)",
-              border:       "1px solid var(--border-light)",
-              borderRadius: "var(--radius-md)",
-              fontSize:     12,
-              color:        "var(--text-secondary)",
-            }}>
-              {icon && <span style={{ fontSize: 16, flexShrink: 0 }}>{icon}</span>}
+            <div
+              key={text}
+              className="flex items-center gap-2 rounded-field border border-line bg-surface px-3 py-2 text-[12px] text-ink-2 sm:flex-1 sm:basis-[140px] sm:px-3.5 sm:py-2.5"
+            >
+              {icon && <span className="flex-shrink-0 text-[16px]">{icon}</span>}
               <span>{text}</span>
             </div>
           ))}
@@ -337,140 +271,91 @@ export function PricingContent({
 
       {/* キャンセル戻りバナー（Stripe Checkout キャンセル時） */}
       {canceled === "1" && (
-        <div style={{
-          padding:      "10px 14px",
-          borderRadius: "var(--radius-sm)",
-          background:   "#fffbeb",
-          border:       "1px solid #fde68a",
-          fontSize:     12,
-          color:        "#b45309",
-          lineHeight:   1.6,
-          marginBottom: 14,
-        }}>
+        <div
+          role="status"
+          className="mb-3.5 rounded-field border border-warn/30 bg-warn-soft px-3.5 py-2.5 text-[12px] leading-[1.6] text-warn"
+        >
           ⚠ お申し込みをキャンセルしました。ご検討中の場合はお気軽にご相談ください。
         </div>
       )}
 
       {/* Stripe エラー */}
       {checkoutError && (
-        <div style={{
-          padding:      "10px 14px",
-          borderRadius: "var(--radius-sm)",
-          background:   "#fee2e2",
-          border:       "1px solid #fca5a5",
-          fontSize:     12,
-          color:        "#991b1b",
-          lineHeight:   1.6,
-          marginBottom: 10,
-        }}>
+        <div
+          role="alert"
+          className="mb-2.5 rounded-field border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[12px] leading-[1.6] text-danger"
+        >
           {checkoutError}
         </div>
       )}
 
       {/* ── 個人利用プラン (4 ティア grid) ── */}
       <SectionLabel>個人利用プラン</SectionLabel>
-      <div
-        style={{
-          display:             "grid",
-          gridTemplateColumns: sp ? "1fr" : "repeat(auto-fit, minmax(220px, 1fr))",
-          gap:                 sp ? 12 : 14,
-          marginTop:           10,
-          marginBottom:        28,
-        }}
-      >
+      <div className="mb-7 mt-2.5 grid grid-cols-1 gap-3 sm:grid-cols-[repeat(auto-fit,minmax(220px,1fr))] sm:gap-3.5">
         {PERSONAL_PLAN_CARDS.map((plan) => {
           const isRecommended = plan.recommended === true;
+          // price が長文 (= "詳細はお問い合わせください" や "準備中") のときは小さく muted で表示
+          const isPriceMuted = plan.price.length > 8 || plan.price === "準備中";
           return (
             <div
               key={plan.tier}
-              style={{
-                position:     "relative",
-                background:   "var(--surface)",
-                border:       `${isRecommended ? "2px" : "1px"} solid ${isRecommended ? "var(--color-primary, #2F6F5E)" : "var(--border-light)"}`,
-                borderRadius: "var(--radius-lg)",
-                padding:      sp ? "20px 18px" : "22px 20px",
-                boxShadow:    isRecommended ? "var(--shadow-md)" : "var(--shadow-xs)",
-                display:      "flex",
-                flexDirection: "column",
-                gap:          10,
-              }}
+              className={
+                "relative flex flex-col gap-2.5 rounded-card bg-surface px-[18px] py-[20px] sm:px-5 sm:py-[22px] " +
+                (isRecommended
+                  ? "border-2 border-brand shadow-card"
+                  : "border border-line shadow-sm")
+              }
             >
               {/* 推奨タグ */}
               {isRecommended && (
-                <span style={{
-                  position:    "absolute",
-                  top:         -10,
-                  left:        14,
-                  padding:     "2px 10px",
-                  background:  "var(--color-primary, #2F6F5E)",
-                  color:       "#fff",
-                  fontSize:    10,
-                  fontWeight:  700,
-                  letterSpacing: "0.05em",
-                  borderRadius: "var(--radius-full)",
-                }}>
+                <span className="absolute -top-2.5 left-3.5 rounded-full bg-brand px-2.5 py-0.5 text-[10px] font-bold tracking-[0.05em] text-white">
                   おすすめ
                 </span>
               )}
 
-              <h3 style={{
-                fontSize:     18,
-                fontWeight:   800,
-                color:        "var(--text-primary)",
-                letterSpacing: "-0.02em",
-              }}>
+              <h3 className="font-round text-[18px] font-extrabold tracking-[-0.02em] text-ink">
                 {plan.label}
               </h3>
-              <p style={{ fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.6 }}>
+              <p className="text-[12px] leading-[1.6] text-ink-2">
                 {plan.tagline}
               </p>
 
-              <div style={{ paddingTop: 4, paddingBottom: 4 }}>
-                <p style={{
-                  fontSize:   plan.price.length > 8 ? 14 : 22,
-                  fontWeight: 700,
-                  color:      "var(--text-primary)",
-                  letterSpacing: "-0.02em",
-                }}>
+              <div className="py-1">
+                <p
+                  className={
+                    "font-bold tracking-[-0.02em] " +
+                    (isPriceMuted
+                      ? "text-[14px] text-ink-3"
+                      : "text-[22px] text-ink")
+                  }
+                >
                   {plan.price}
                   {plan.priceUnit && (
-                    <span style={{ fontSize: 11, color: "var(--text-muted)", marginLeft: 4, fontWeight: 500 }}>
+                    <span className="ml-1 text-[11px] font-medium text-ink-3">
                       {plan.priceUnit}
                     </span>
                   )}
                 </p>
               </div>
 
-              <div style={{ display: "flex", flexDirection: "column", gap: 7, marginTop: 4 }}>
+              <div className="mt-1 flex flex-col gap-[7px]">
                 {plan.features.map((f) => (
                   <CheckItem key={f}>{f}</CheckItem>
                 ))}
               </div>
 
-              <button
+              <Button
                 type="button"
                 onClick={() => handlePersonalUpgrade(plan.tier)}
                 disabled={checkoutLoading}
-                style={{
-                  marginTop:    "auto",
-                  display:      "flex",
-                  alignItems:   "center",
-                  justifyContent: "center",
-                  width:        "100%",
-                  padding:      "10px 14px",
-                  borderRadius: "var(--radius-sm)",
-                  background:   isRecommended ? "var(--color-primary, #2F6F5E)" : "var(--surface)",
-                  color:        isRecommended ? "#fff" : "var(--text-secondary)",
-                  border:       `1px solid ${isRecommended ? "var(--color-primary, #2F6F5E)" : "var(--border-default, #d1d5db)"}`,
-                  fontSize:     12,
-                  fontWeight:   600,
-                  cursor:       checkoutLoading ? "not-allowed" : "pointer",
-                  opacity:      checkoutLoading ? 0.6 : 1,
-                  boxSizing:    "border-box",
-                }}
+                variant={isRecommended ? "primary" : "ghost"}
+                size="sm"
+                fullWidth
+                aria-label={`${plan.label}プランにアップグレード`}
+                className="mt-auto"
               >
                 {checkoutLoading ? "処理中..." : "アップグレードする"}
-              </button>
+              </Button>
             </div>
           );
         })}
@@ -478,89 +363,45 @@ export function PricingContent({
 
       {/* ── 法人プラン (個人利用とは分けて表示) ── */}
       <SectionLabel>法人プラン</SectionLabel>
-      <div
-        style={{
-          background:   "#f8fafc",
-          border:       "1px dashed var(--border-default, #d1d5db)",
-          borderRadius: "var(--radius-lg)",
-          padding:      sp ? "22px 18px" : "28px 28px",
-          marginTop:    10,
-          marginBottom: 28,
-          display:      "flex",
-          flexDirection: sp ? "column" : "row",
-          alignItems:   sp ? "stretch" : "center",
-          justifyContent: "space-between",
-          gap:          sp ? 16 : 24,
-        }}
-      >
-        <div style={{ flex: 1 }}>
-          <h3 style={{
-            fontSize:    18,
-            fontWeight:  800,
-            color:       "var(--text-primary)",
-            marginBottom: 6,
-          }}>
+      <div className="mb-7 mt-2.5 flex flex-col items-stretch justify-between gap-4 rounded-card border border-dashed border-line bg-bg-tint px-[18px] py-[22px] sm:flex-row sm:items-center sm:gap-6 sm:p-7">
+        <div className="flex-1">
+          <h3 className="font-round mb-1.5 text-[18px] font-extrabold text-ink">
             {ENTERPRISE_PLAN.label}
           </h3>
-          <p style={{
-            fontSize:     16,
-            fontWeight:   700,
-            color:        "var(--text-primary)",
-            marginBottom: 6,
-          }}>
+          <p className="mb-1.5 text-[16px] font-bold text-ink">
             {ENTERPRISE_PLAN.price}
           </p>
-          <p style={{ fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.7 }}>
+          <p className="text-[12px] leading-[1.7] text-ink-2">
             {ENTERPRISE_PLAN.description}
           </p>
         </div>
-        <div style={{ flexShrink: 0 }}>
-          <button
+        <div className="flex-shrink-0">
+          {/* 個人プランカードと一貫した見た目を保ちつつ、相談・問い合わせ寄りの ghost トーン */}
+          <Button
             type="button"
             onClick={handleEnterpriseInquiry}
-            style={{
-              padding:      "11px 22px",
-              borderRadius: "var(--radius-sm)",
-              background:   "var(--color-primary, #2F6F5E)",
-              color:        "#fff",
-              border:       "none",
-              fontSize:     13,
-              fontWeight:   700,
-              cursor:       "pointer",
-              whiteSpace:   "nowrap",
-            }}
+            variant="ghost"
+            size="sm"
+            className="whitespace-nowrap"
           >
             {ENTERPRISE_PLAN.ctaText}
-          </button>
+          </Button>
         </div>
       </div>
 
       {/* CTA フィードバック (= 相談フォームを開いた後の確認表示) */}
       {requested && (
-        <div style={{
-          padding:      "12px",
-          borderRadius: "var(--radius-sm)",
-          background:   "var(--color-primary-soft, #EAF4F1)",
-          border:       "1px solid #b9ddd6",
-          fontSize:     13,
-          color:        "var(--color-primary, #2F6F5E)",
-          fontWeight:   600,
-          marginBottom: 12,
-          textAlign:    "center",
-        }}>
+        <div
+          role="status"
+          className="mb-3 rounded-field border border-brand/30 bg-brand-soft px-3 py-3 text-center text-[13px] font-semibold text-brand-ink"
+        >
           ご相談フォームを開きました。内容を送信してください。
         </div>
       )}
 
       <Link
         href="/oas"
-        style={{
-          display:   "block",
-          marginTop: 8,
-          fontSize:  13,
-          color:     "var(--text-muted)",
-          textAlign: "center",
-        }}
+        className="mt-2 block text-center text-[13px] text-ink-3 transition-colors hover:text-brand-ink hover:underline"
       >
         もう少し試してみる
       </Link>

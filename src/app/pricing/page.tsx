@@ -14,23 +14,33 @@ import { PricingContent } from "./_content";
 
 // ── ローディングフォールバック ────────────────────────────────────────
 // Client Component のハイドレーション前に表示されるスケルトン。
+// 新レイアウト (ヘッダー + コンセプト 3 点 + 個人 4 カード grid + 法人カード) を近似する。
 function PricingFallback() {
   return (
-    <div style={{ maxWidth: 600, margin: "0 auto", padding: "40px 0 64px" }}>
-      <div style={{ textAlign: "center", marginBottom: 36 }}>
-        <div className="skeleton" style={{ width: 180, height: 28, borderRadius: 999, margin: "0 auto 16px" }} />
-        <div className="skeleton" style={{ width: 300, height: 34, margin: "0 auto 10px" }} />
-        <div className="skeleton" style={{ width: 260, height: 18, margin: "0 auto 6px" }} />
-        <div className="skeleton" style={{ width: 220, height: 18, margin: "0 auto" }} />
+    <div className="mx-auto w-full max-w-[640px] px-5 py-6 sm:px-0 sm:py-10">
+      {/* ヘッダー */}
+      <div className="mb-9 text-center">
+        <div className="skeleton mx-auto mb-4" style={{ width: 180, height: 24, borderRadius: 999 }} />
+        <div className="skeleton mx-auto mb-2.5" style={{ width: 300, height: 26 }} />
+        <div className="skeleton mx-auto mb-1.5" style={{ width: 260, height: 16 }} />
+        <div className="skeleton mx-auto" style={{ width: 220, height: 16 }} />
       </div>
-      <div style={{ display: "flex", gap: 8, marginBottom: 28 }}>
+      {/* コンセプト 3 点 */}
+      <div className="mb-7 flex flex-col gap-1.5 sm:flex-row sm:flex-wrap sm:gap-2">
         {[1, 2, 3].map((i) => (
-          <div key={i} className="skeleton" style={{ flex: "1 1 140px", height: 44, borderRadius: 10 }} />
+          <div key={i} className="skeleton sm:flex-1 sm:basis-[140px]" style={{ height: 40, borderRadius: 13 }} />
         ))}
       </div>
-      <div className="skeleton" style={{ width: "100%", height: 160, borderRadius: 10, marginBottom: 12 }} />
-      <div className="skeleton" style={{ width: "100%", height: 140, borderRadius: 10, marginBottom: 28 }} />
-      <div className="skeleton" style={{ width: "100%", height: 240, borderRadius: 10 }} />
+      {/* 個人 4 カード grid */}
+      <div className="skeleton mb-2.5" style={{ width: 100, height: 12 }} />
+      <div className="mb-7 grid grid-cols-1 gap-3 sm:grid-cols-[repeat(auto-fit,minmax(220px,1fr))] sm:gap-3.5">
+        {[1, 2, 3, 4].map((i) => (
+          <div key={i} className="skeleton" style={{ height: 240, borderRadius: 20 }} />
+        ))}
+      </div>
+      {/* 法人カード */}
+      <div className="skeleton mb-2.5" style={{ width: 100, height: 12 }} />
+      <div className="skeleton" style={{ height: 140, borderRadius: 20 }} />
     </div>
   );
 }
