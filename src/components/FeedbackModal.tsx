@@ -75,10 +75,10 @@ const CATEGORIES = [
 type CategoryValue = typeof CATEGORIES[number]["value"];
 
 // ── pricing モード用テンプレート ───────────────────────────────────────────
-const PRICING_TEMPLATE = `Whale Studio の editorプランについて相談したいです。
+const PRICING_TEMPLATE = `Whale Studio のプランについて相談したいです。
 
 【利用用途】
-（例：謎解き / マーダーミステリー / ARG / その他）
+（例：マーダーミステリー / ARG / 物語体験 / その他）
 
 【現在の状況】
 （例：1作品試作中 / 導入を検討中 / クライアント案件で利用予定）

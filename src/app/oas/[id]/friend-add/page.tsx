@@ -292,7 +292,7 @@ export default function FriendAddPage() {
               type="text"
               value={form.campaign_name}
               onChange={(e) => setField("campaign_name", e.target.value)}
-              placeholder="例: 春の謎解きキャンペーン"
+              placeholder="例: 春の作品キャンペーン"
               maxLength={100}
             />
             <span style={{ fontSize: 11, color: "#9ca3af", display: "block", marginTop: 4 }}>

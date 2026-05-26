@@ -87,7 +87,7 @@ export default function TesterWorkListPage() {
           ]} />
           <h2>作品リスト</h2>
           <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 3 }}>
-            {oaTitle ? `${oaTitle} の謎解きシナリオを管理します` : "謎解きシナリオを管理します"}
+            {oaTitle ? `${oaTitle} の作品を管理します` : "作品を管理します"}
           </p>
         </div>
         <div style={{ display: "flex", gap: 8 }}>

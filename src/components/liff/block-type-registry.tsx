@@ -67,8 +67,8 @@ export const BLOCK_TYPE_REGISTRY: Record<LiffBlockType, BlockTypeEntry> = {
   start_button: {
     label:           "開始ボタン",
     icon:            "▶️",
-    description:     "謎解き開始ボタン",
-    defaultSettings: { label: "謎解きを始める", confirm_message: "" } satisfies StartButtonSettings,
+    description:     "作品開始ボタン",
+    defaultSettings: { label: "作品を始める", confirm_message: "" } satisfies StartButtonSettings,
     SettingsForm:    StartButtonForm as ComponentType<SettingsFormProps<any>>,
   },
   resume_button: {

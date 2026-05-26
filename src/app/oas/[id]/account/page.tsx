@@ -163,7 +163,7 @@ export default function OaAccountPage() {
               type="text"
               value={form!.title}
               onChange={(e) => setField("title", e.target.value)}
-              placeholder="例: 謎解きミステリー公式"
+              placeholder="例: ミステリー作品公式"
               maxLength={100}
             />
             {errors.title?.map((m) => <p key={m} className="field-error">{m}</p>)}

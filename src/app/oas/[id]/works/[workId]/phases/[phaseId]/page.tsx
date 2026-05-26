@@ -379,7 +379,7 @@ export default function PhaseDetailPage() {
           <strong>💡 メッセージとフェーズの分離</strong><br />
           メッセージはメッセージタブで作成・編集します。ここでは作成済みのメッセージを
           このフェーズに追加・外すことができます。
-          {phase!.phase_type === "start" && " 開始フェーズのメッセージは謎解きへの誘導に使いましょう。"}
+          {phase!.phase_type === "start" && " 開始フェーズのメッセージは作品への誘導に使いましょう。"}
           {phase!.phase_type === "ending" && " エンディングのメッセージは物語の締めくくりです。"}
         </div>
 

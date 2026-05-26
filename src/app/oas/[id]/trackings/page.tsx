@@ -92,7 +92,7 @@ function AddForm({
           <input
             value={form.name}
             onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-            placeholder="例: X投稿_4月謎解き"
+            placeholder="例: X投稿_4月キャンペーン"
             required
           />
         </div>

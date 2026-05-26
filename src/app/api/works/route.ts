@@ -210,7 +210,7 @@ export const POST = withAuth(async (req, _ctx, user) => {
             error: {
               code:    'TESTER_WORK_LIMIT', // 既存フロント互換のままにする
               message: workLimit === 1
-                ? 'テスタープランでは作品を 1 件までしか作成できません。エディター以上にアップグレードしてください。'
+                ? 'Basicプランでは作品を 1 件までしか作成できません。上位プランへのアップグレードをご検討ください。'
                 : `現在のプランでは作品を ${workLimit} 件まで作成できます。上位プランへのアップグレードをご検討ください。`,
             },
           },

@@ -401,7 +401,7 @@ export default function OaListPage() {
         <div>
           <h2>アカウントリスト</h2>
           <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 3 }}>
-            1つのLINE公式アカウントにつき複数の謎解き作品を管理できます
+            1つのLINE公式アカウントにつき複数の作品を管理できます
           </p>
         </div>
         <Link href="/oas/new" className="btn btn-primary">
@@ -448,7 +448,7 @@ export default function OaListPage() {
             <p className="empty-state-title">アカウントが未登録です</p>
             <p className="empty-state-desc">
               まずLINE公式アカウントを登録してください。<br />
-              登録後、アカウントに紐づく謎解き作品を追加できます。
+              登録後、アカウントに紐づく作品を追加できます。
             </p>
             <Link href="/oas/new" className="btn btn-primary" style={{ marginTop: 8 }}>
               ＋ 最初のアカウントを追加する
