@@ -24,7 +24,7 @@ import { useToast } from "@/components/Toast";
 import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
 import { RoleBadge } from "@/components/PermissionGuard";
 import { Breadcrumb } from "@/components/Breadcrumb";
-import { StatusBadge, buttonClass } from "@/components/shared";
+import { StatusBadge, Button, Accordion, buttonClass } from "@/components/shared";
 import type { Role } from "@/lib/types/permissions";
 import { ROLES, ROLE_LABELS, ROLE_DESCRIPTIONS } from "@/lib/types/permissions";
 import {
@@ -362,16 +362,19 @@ function MembersSection({
 
   if (loading) {
     return (
-      <div className="card" style={{ padding: 24 }}>
+      <div className="flex flex-col gap-3">
         {[1, 2, 3].map((i) => (
-          <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
-            <div className="skeleton" style={{ width: 40, height: 40, borderRadius: "50%", flexShrink: 0 }} />
-            <div style={{ flex: 1 }}>
-              <div className="skeleton" style={{ width: "45%", height: 14, marginBottom: 6, borderRadius: 4 }} />
-              <div className="skeleton" style={{ width: "25%", height: 11, borderRadius: 4 }} />
+          <div key={i} className="rounded-card border border-line bg-surface p-4 shadow-sm sm:p-5">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0 flex-1">
+                <div className="skeleton mb-1.5" style={{ width: "45%", height: 14, borderRadius: 4 }} />
+                <div className="skeleton" style={{ width: "30%", height: 11, borderRadius: 4 }} />
+              </div>
+              <div className="flex flex-wrap gap-2 sm:flex-shrink-0">
+                <div className="skeleton" style={{ width: 100, height: 28, borderRadius: 6 }} />
+                <div className="skeleton" style={{ width: 100, height: 28, borderRadius: 6 }} />
+              </div>
             </div>
-            <div className="skeleton" style={{ width: 90, height: 30, borderRadius: 6 }} />
-            <div className="skeleton" style={{ width: 90, height: 30, borderRadius: 6 }} />
           </div>
         ))}
       </div>
@@ -380,257 +383,197 @@ function MembersSection({
 
   if (members.length === 0 && provisional.length === 0) {
     return (
-      <div className="card" style={{ padding: 48, textAlign: "center", color: "#9ca3af" }}>
-        <p style={{ fontSize: 14 }}>メンバーがいません</p>
-        <p style={{ fontSize: 12, marginTop: 8 }}>
+      <div className="rounded-card border border-line bg-surface p-12 text-center shadow-sm">
+        <p className="text-[14px] font-bold text-ink">メンバーがいません</p>
+        <p className="mt-2 text-[12px] text-ink-3">
           招待を送るか、アプリにアクセスしたユーザーが自動的にここに表示されます。
         </p>
       </div>
     );
   }
 
+  // 行内 select の共通 className (= 小型 / border-line / focus 時 brand ring)
+  // ※ globals.css の input/select は padding=10px/13px が既定なので、ここで size-sm 用に上書き
+  const selectClass =
+    "w-full cursor-pointer rounded-md border border-line bg-surface px-2 py-1 " +
+    "text-[12px] text-ink transition-shadow focus:border-brand focus:outline-none " +
+    "focus:ring-2 focus:ring-brand/20 disabled:cursor-not-allowed disabled:bg-bg-tint " +
+    "disabled:text-ink-3 disabled:opacity-70";
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+    <div className="flex flex-col gap-5">
 
     {/* ── 正式メンバー一覧 ── */}
     {members.length > 0 && (
-    <div className="card" style={{ padding: 0, overflow: "hidden" }}>
-      {/* テーブルヘッダー */}
-      <div style={{
-        display:             "grid",
-        gridTemplateColumns: "1fr 140px 140px 100px 80px",
-        gap:                 8,
-        padding:             "10px 20px",
-        background:          "#f9fafb",
-        borderBottom:        "1px solid #e5e7eb",
-        fontSize:            11,
-        fontWeight:          700,
-        color:               "#6b7280",
-        textTransform:       "uppercase",
-        letterSpacing:       "0.06em",
-      }}>
-        <span>ユーザー</span>
-        <span>ロール</span>
-        <span>ステータス</span>
-        <span>参加日</span>
-        <span style={{ textAlign: "right" }}>操作</span>
-      </div>
+      <div className="flex flex-col gap-3">
+        {members.map((m) => {
+          const modifiable  = canModify(m);
+          const isSelf      = isMe(m);
+          const isLastOwn   = isLastOwner(m);
+          const joinedDate  = m.joined_at
+            ? new Date(m.joined_at).toLocaleDateString("ja-JP", {
+                year: "numeric", month: "2-digit", day: "2-digit",
+              })
+            : "—";
 
-      {/* ── 行 ── */}
-      {members.map((m) => {
-        const modifiable  = canModify(m);
-        const isSelf      = isMe(m);
-        const isLastOwn   = isLastOwner(m);
-        const statusStyle = STATUS_COLORS[m.status] ?? STATUS_COLORS.active;
-        const joinedDate  = m.joined_at
-          ? new Date(m.joined_at).toLocaleDateString("ja-JP", {
-              year: "numeric", month: "2-digit", day: "2-digit",
-            })
-          : "—";
-
-        // ── role select の無効化理由 ──────────────────────────────
-        const roleDisabled = isSelf || isLastOwn;
-        const roleTitle    = isSelf    ? TOOLTIP.selfRoleChange
-                           : isLastOwn ? TOOLTIP.lastOwnerRoleChange
-                           : undefined;
-
-        // ── status select の無効化理由 ────────────────────────────
-        const statusDisabled = isSelf || isLastOwn;
-        const statusTitle    = isSelf     ? TOOLTIP.selfStatusChange
-                             : isLastOwn  ? TOOLTIP.lastOwnerStatusChange
+          // ── role select の無効化理由 ──────────────────────────────
+          const roleDisabled = isSelf || isLastOwn;
+          const roleTitle    = isSelf    ? TOOLTIP.selfRoleChange
+                             : isLastOwn ? TOOLTIP.lastOwnerRoleChange
                              : undefined;
 
-        // ── 削除ボタンの無効化理由 ────────────────────────────────
-        const deleteDisabled = isSelf || isLastOwn;
-        const deleteTitle    = isSelf    ? TOOLTIP.selfDelete
-                             : isLastOwn ? TOOLTIP.lastOwnerDelete
-                             : TOOLTIP.deleteButton;
+          // ── status select の無効化理由 ────────────────────────────
+          const statusDisabled = isSelf || isLastOwn;
+          const statusTitle    = isSelf     ? TOOLTIP.selfStatusChange
+                               : isLastOwn  ? TOOLTIP.lastOwnerStatusChange
+                               : undefined;
 
-        return (
-          <div
-            key={m.id}
-            style={{
-              display:             "grid",
-              gridTemplateColumns: "1fr 140px 140px 100px 80px",
-              gap:                 8,
-              padding:             "12px 20px",
-              borderBottom:        "1px solid #f3f4f6",
-              alignItems:          "center",
-              // 自分の行を薄いハイライト
-              background:          isSelf ? "#fafafa" : undefined,
-            }}
-          >
-            {/* ── ユーザー列 ── */}
-            <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-              <div style={{
-                width:          36,
-                height:         36,
-                borderRadius:   "50%",
-                background:     isSelf ? "#dbeafe" : "#e5e7eb",
-                display:        "flex",
-                alignItems:     "center",
-                justifyContent: "center",
-                fontSize:       14,
-                fontWeight:     700,
-                color:          isSelf ? "#1e40af" : "#6b7280",
-                flexShrink:     0,
-              }}>
-                {(m.email ?? m.user_id).slice(0, 1).toUpperCase()}
-              </div>
-              <div style={{ minWidth: 0 }}>
-                <div style={{
-                  display:     "flex",
-                  alignItems:  "center",
-                  gap:         6,
-                  fontSize:    13,
-                  fontWeight:  600,
-                  color:       "#111827",
-                }}>
-                  <span style={{
-                    overflow:    "hidden",
-                    textOverflow:"ellipsis",
-                    whiteSpace:  "nowrap",
-                  }}>
-                    {m.email ?? (
-                      <span style={{ fontFamily: "monospace", fontSize: 11, color: "#9ca3af" }}>
+          // ── 削除ボタンの無効化理由 ────────────────────────────────
+          const deleteDisabled = isSelf || isLastOwn;
+          const deleteTitle    = isSelf    ? TOOLTIP.selfDelete
+                               : isLastOwn ? TOOLTIP.lastOwnerDelete
+                               : TOOLTIP.deleteButton;
+
+          return (
+            <article
+              key={m.id}
+              className={
+                "rounded-card border bg-surface p-4 shadow-sm sm:p-5 " +
+                (isSelf ? "border-brand/30 bg-brand-mist" : "border-line")
+              }
+            >
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+
+                {/* ── 左: ユーザー情報 ── */}
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    {m.email ? (
+                      <span className="overflow-hidden text-ellipsis whitespace-nowrap text-[14px] font-semibold text-ink">
+                        {m.email}
+                      </span>
+                    ) : (
+                      <span className="font-mono text-[12px] text-ink-3">
                         {m.user_id.slice(0, 20)}…
                       </span>
                     )}
-                  </span>
-                  {/* 自分バッジ */}
-                  {isSelf && (
-                    <span style={{
-                      flexShrink:   0,
-                      fontSize:     10,
-                      fontWeight:   700,
-                      padding:      "1px 6px",
-                      borderRadius: 99,
-                      background:   "#dbeafe",
-                      color:        "#1e40af",
-                    }}>
-                      自分
-                    </span>
+                    {isSelf && (
+                      <span className="flex-shrink-0 rounded-full bg-brand-soft px-1.5 py-0.5 text-[10px] font-bold text-brand-ink">
+                        自分
+                      </span>
+                    )}
+                  </div>
+                  {m.email && (
+                    <div className="mt-0.5 font-mono text-[10px] text-ink-3">
+                      {m.user_id.slice(0, 16)}…
+                    </div>
+                  )}
+                  <div className="mt-2 text-[11px] text-ink-3">
+                    参加日: <span className="font-num text-ink-2">{joinedDate}</span>
+                  </div>
+                </div>
+
+                {/* ── 右: コントロール (role / status / 削除) ── */}
+                <div className="flex flex-col gap-2.5 sm:w-[180px] sm:flex-shrink-0">
+
+                  {/* ロール */}
+                  <div>
+                    <label
+                      className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.06em] text-ink-3"
+                      htmlFor={`role-${m.id}`}
+                    >
+                      ロール
+                    </label>
+                    {modifiable ? (
+                      <select
+                        id={`role-${m.id}`}
+                        value={m.role}
+                        disabled={roleDisabled}
+                        title={roleTitle}
+                        onChange={(e) => handleRoleChange(m, e.target.value as Role)}
+                        className={selectClass}
+                      >
+                        {ROLES.filter((r) =>
+                          // admin は owner ロールを付与不可
+                          isOwner ? true : r !== "owner"
+                        ).map((r) => (
+                          <option key={r} value={r}>{ROLE_LABELS[r]}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <div><RoleBadge role={m.role as Role} /></div>
+                    )}
+                  </div>
+
+                  {/* ステータス */}
+                  <div>
+                    <label
+                      className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.06em] text-ink-3"
+                      htmlFor={`status-${m.id}`}
+                    >
+                      ステータス
+                    </label>
+                    {modifiable ? (
+                      <select
+                        id={`status-${m.id}`}
+                        value={m.status}
+                        disabled={statusDisabled}
+                        title={statusTitle}
+                        onChange={(e) => handleStatusChange(m, e.target.value)}
+                        className={selectClass}
+                      >
+                        {STATUS_OPTIONS.map((o) => (
+                          <option key={o.value} value={o.value}>{o.label}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <div>
+                        <StatusBadge tone={memberStatusTone(m.status)}>
+                          {STATUS_LABELS[m.status] ?? m.status}
+                        </StatusBadge>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 削除 (admin / owner に表示。admin は owner 行を操作不可) */}
+                  {modifiable && (
+                    <Button
+                      type="button"
+                      variant="danger"
+                      size="sm"
+                      fullWidth
+                      disabled={deleteDisabled}
+                      title={deleteTitle}
+                      onClick={() => !deleteDisabled && handleDelete(m)}
+                    >
+                      削除
+                    </Button>
                   )}
                 </div>
-                {m.email && (
-                  <div style={{ fontSize: 10, color: "#9ca3af", fontFamily: "monospace" }}>
-                    {m.user_id.slice(0, 16)}…
-                  </div>
-                )}
               </div>
-            </div>
+            </article>
+          );
+        })}
 
-            {/* ── ロール列 ── */}
-            {modifiable ? (
-              <select
-                value={m.role}
-                disabled={roleDisabled}
-                title={roleTitle}
-                onChange={(e) => handleRoleChange(m, e.target.value as Role)}
-                style={{
-                  padding:      "5px 8px",
-                  fontSize:     12,
-                  border:       "1px solid #e5e7eb",
-                  borderRadius: 6,
-                  background:   roleDisabled ? "#f3f4f6" : "#fff",
-                  color:        roleDisabled ? "#9ca3af" : "#111827",
-                  cursor:       roleDisabled ? "not-allowed" : "pointer",
-                  width:        "100%",
-                  opacity:      roleDisabled ? 0.7 : 1,
-                }}
-              >
-                {ROLES.filter((r) =>
-                  // admin は owner ロールを付与不可
-                  isOwner ? true : r !== "owner"
-                ).map((r) => (
-                  <option key={r} value={r}>{ROLE_LABELS[r]}</option>
-                ))}
-              </select>
-            ) : (
-              <RoleBadge role={m.role as Role} />
-            )}
-
-            {/* ── ステータス列 ── */}
-            {modifiable ? (
-              <select
-                value={m.status}
-                disabled={statusDisabled}
-                title={statusTitle}
-                onChange={(e) => handleStatusChange(m, e.target.value)}
-                style={{
-                  padding:      "5px 8px",
-                  fontSize:     12,
-                  border:       `1px solid ${statusDisabled ? "#e5e7eb" : statusStyle.border}`,
-                  borderRadius: 6,
-                  background:   statusDisabled ? "#f3f4f6" : statusStyle.bg,
-                  color:        statusDisabled ? "#9ca3af" : statusStyle.color,
-                  cursor:       statusDisabled ? "not-allowed" : "pointer",
-                  fontWeight:   600,
-                  width:        "100%",
-                  opacity:      statusDisabled ? 0.7 : 1,
-                }}
-              >
-                {STATUS_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
-                ))}
-              </select>
-            ) : (
-              <StatusBadge tone={memberStatusTone(m.status)}>
-                {STATUS_LABELS[m.status] ?? m.status}
-              </StatusBadge>
-            )}
-
-            {/* ── 参加日列 ── */}
-            <div style={{ fontSize: 11, color: "#9ca3af" }}>{joinedDate}</div>
-
-            {/* ── 操作列（admin / owner に表示。admin は owner 行を操作不可） ── */}
-            <div style={{ textAlign: "right" }}>
-              {modifiable && (
-                <button
-                  type="button"
-                  className="btn btn-danger"
-                  style={{
-                    padding:  "4px 10px",
-                    fontSize: 11,
-                    opacity:  deleteDisabled ? 0.4 : 1,
-                    cursor:   deleteDisabled ? "not-allowed" : "pointer",
-                  }}
-                  disabled={deleteDisabled}
-                  title={deleteTitle}
-                  onClick={() => !deleteDisabled && handleDelete(m)}
-                >
-                  削除
-                </button>
-              )}
-            </div>
-          </div>
-        );
-      })}
-
-      {/* フッター: ロール説明 */}
-      <div style={{
-        padding:    "12px 20px",
-        background: "#f9fafb",
-        borderTop:  "1px solid #e5e7eb",
-      }}>
-        <details style={{ fontSize: 12 }}>
-          <summary style={{ color: "#6b7280", cursor: "pointer", userSelect: "none" }}>
-            ロール権限の説明
-          </summary>
-          <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
+        {/* ── ロール権限の説明 (= shared/Accordion defaultOpen=false) ── */}
+        <Accordion
+          title="ロール権限の説明"
+          summary={`${ROLES.length}種類のロールと操作範囲`}
+          defaultOpen={false}
+          helpTone
+        >
+          <div className="flex flex-col gap-2.5">
             {ROLES.map((r) => (
-              <div key={r} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
-                <RoleBadge role={r} />
-                <span style={{ color: "#6b7280", paddingTop: 2, lineHeight: 1.4 }}>
+              <div key={r} className="flex items-start gap-2.5">
+                <div className="flex-shrink-0"><RoleBadge role={r} /></div>
+                <span className="pt-0.5 text-[12px] leading-[1.45] text-ink-2">
                   {ROLE_DESCRIPTIONS[r]}
                 </span>
               </div>
             ))}
           </div>
-        </details>
+        </Accordion>
       </div>
-    </div>
-    )} {/* /正式メンバーカード */}
+    )}
 
     {/* ── 未登録ユーザー（アプリ操作履歴あり） ── */}
     {provisional.length > 0 && (
@@ -645,7 +588,7 @@ function MembersSection({
       />
     )}
 
-    </div> // outer flex
+    </div>
   );
 }
 
@@ -685,56 +628,33 @@ function ProvisionalSection({
   }
 
   return (
-    <div className="card" style={{ padding: 0, overflow: "hidden" }}>
-      {/* ヘッダー */}
-      <div style={{
-        padding:      "12px 20px",
-        background:   "#fffbeb",
-        borderBottom: "1px solid #fde68a",
-        display:      "flex",
-        alignItems:   "center",
-        gap:          8,
-      }}>
-        <div style={{ flex: 1 }}>
-          <span style={{ fontSize: 13, fontWeight: 700, color: "#92400e" }}>
-            未登録ユーザー（{provisional.length}件）
-          </span>
-          <span style={{ fontSize: 11, color: "#b45309", marginLeft: 8 }}>
-            最近アプリを操作したユーザーです。ロールを設定すると正式メンバーに登録されます。
-          </span>
-        </div>
+    <section className="flex flex-col gap-3">
+      {/* ヘッダー (warn-soft) */}
+      <div
+        role="status"
+        className="flex flex-wrap items-baseline gap-x-2 gap-y-1 rounded-field border border-warn/30 bg-warn-soft px-4 py-2.5"
+      >
+        <span className="text-[13px] font-bold text-warn">
+          未登録ユーザー（{provisional.length}件）
+        </span>
+        <span className="text-[11px] text-warn/85">
+          最近アプリを操作したユーザーです。ロールを設定すると正式メンバーに登録されます。
+        </span>
       </div>
 
-      {/* テーブルヘッダー */}
-      <div style={{
-        display:             "grid",
-        gridTemplateColumns: "1fr 80px 160px",
-        gap:                 8,
-        padding:             "8px 20px",
-        background:          "#f9fafb",
-        borderBottom:        "1px solid #e5e7eb",
-        fontSize:            11,
-        fontWeight:          700,
-        color:               "#6b7280",
-        textTransform:       "uppercase",
-        letterSpacing:       "0.06em",
-      }}>
-        <span>ユーザー</span>
-        <span>最終操作</span>
-        <span>{canManage ? "ロール付与" : "状態"}</span>
+      {/* 未登録ユーザー カード一覧 */}
+      <div className="flex flex-col gap-3">
+        {provisional.map((u) => (
+          <ProvisionalRow
+            key={u.user_id}
+            user={u}
+            canManage={canManage}
+            isOwner={isOwner}
+            onRegister={handleRegister}
+          />
+        ))}
       </div>
-
-      {/* 行 */}
-      {provisional.map((u) => (
-        <ProvisionalRow
-          key={u.user_id}
-          user={u}
-          canManage={canManage}
-          isOwner={isOwner}
-          onRegister={handleRegister}
-        />
-      ))}
-    </div>
+    </section>
   );
 }
 
@@ -764,92 +684,85 @@ function ProvisionalRow({
     }
   }
 
+  const provisionalSelectClass =
+    "w-full cursor-pointer rounded-md border border-line bg-surface px-2 py-1 " +
+    "text-[12px] text-ink transition-shadow focus:border-brand focus:outline-none " +
+    "focus:ring-2 focus:ring-brand/20 disabled:cursor-not-allowed disabled:bg-bg-tint " +
+    "disabled:text-ink-3 disabled:opacity-70";
+
   return (
-    <div style={{
-      display:             "grid",
-      gridTemplateColumns: "1fr 80px 160px",
-      gap:                 8,
-      padding:             "12px 20px",
-      borderBottom:        "1px solid #f3f4f6",
-      alignItems:          "center",
-    }}>
-      {/* ユーザー列 */}
-      <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-        <div style={{
-          width:          36, height: 36, borderRadius: "50%",
-          background:     "#fef9c3",
-          display:        "flex", alignItems: "center", justifyContent: "center",
-          fontSize:       14, fontWeight: 700, color: "#92400e", flexShrink: 0,
-        }}>
-          {(user.email ?? user.user_id).slice(0, 1).toUpperCase()}
-        </div>
-        <div style={{ minWidth: 0 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 600, color: "#374151" }}>
-            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {user.email ?? (
-                <span style={{ fontFamily: "monospace", fontSize: 11, color: "#9ca3af" }}>
-                  {user.user_id.slice(0, 20)}…
-                </span>
-              )}
-            </span>
-            {/* 未登録バッジ */}
-            <span style={{
-              flexShrink: 0, fontSize: 10, fontWeight: 700,
-              padding: "1px 6px", borderRadius: 99,
-              background: "#fef9c3", color: "#92400e",
-              border: "1px solid #fde68a",
-            }}>
+    <article className="rounded-card border border-line bg-surface p-4 shadow-sm sm:p-5">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+
+        {/* ── 左: ユーザー情報 ── */}
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            {user.email ? (
+              <span className="overflow-hidden text-ellipsis whitespace-nowrap text-[14px] font-semibold text-ink">
+                {user.email}
+              </span>
+            ) : (
+              <span className="font-mono text-[12px] text-ink-3">
+                {user.user_id.slice(0, 20)}…
+              </span>
+            )}
+            {/* 未登録バッジ — warn 系の控えめなバッジで残す */}
+            <span className="flex-shrink-0 rounded-full border border-warn/30 bg-warn-soft px-1.5 py-0.5 text-[10px] font-bold text-warn">
               未登録
             </span>
           </div>
           {user.email && (
-            <div style={{ fontSize: 10, color: "#9ca3af", fontFamily: "monospace" }}>
+            <div className="mt-0.5 font-mono text-[10px] text-ink-3">
               {user.user_id.slice(0, 16)}…
             </div>
           )}
+          <div className="mt-2 text-[11px] text-ink-3">
+            最終操作: <span className="font-num text-ink-2">{lastSeen}</span>
+          </div>
+        </div>
+
+        {/* ── 右: ロール付与 ── */}
+        <div className="flex flex-col gap-2.5 sm:w-[200px] sm:flex-shrink-0">
+          {canManage ? (
+            <>
+              <div>
+                <label
+                  className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.06em] text-ink-3"
+                  htmlFor={`prov-role-${user.user_id}`}
+                >
+                  付与するロール
+                </label>
+                <select
+                  id={`prov-role-${user.user_id}`}
+                  value={selectedRole}
+                  onChange={(e) => setSelectedRole(e.target.value as Role)}
+                  disabled={registering}
+                  className={provisionalSelectClass}
+                >
+                  {ROLES.filter((r) => isOwner ? true : r !== "owner").map((r) => (
+                    <option key={r} value={r}>{ROLE_LABELS[r]}</option>
+                  ))}
+                </select>
+              </div>
+              <Button
+                type="button"
+                variant="primary"
+                size="sm"
+                fullWidth
+                disabled={registering}
+                onClick={handleClick}
+              >
+                {registering ? "…" : "登録"}
+              </Button>
+            </>
+          ) : (
+            <span className="inline-flex items-center justify-center rounded-full border border-line bg-bg-tint px-2 py-1 text-[11px] font-bold text-ink-3">
+              閲覧者（未登録）
+            </span>
+          )}
         </div>
       </div>
-
-      {/* 最終操作 */}
-      <div style={{ fontSize: 11, color: "#9ca3af" }}>{lastSeen}</div>
-
-      {/* ロール付与 */}
-      {canManage ? (
-        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-          <select
-            value={selectedRole}
-            onChange={(e) => setSelectedRole(e.target.value as Role)}
-            disabled={registering}
-            style={{
-              flex: 1, padding: "5px 6px", fontSize: 12,
-              border: "1px solid #e5e7eb", borderRadius: 6, background: "#fff",
-            }}
-          >
-            {ROLES.filter((r) => isOwner ? true : r !== "owner").map((r) => (
-              <option key={r} value={r}>{ROLE_LABELS[r]}</option>
-            ))}
-          </select>
-          <button
-            type="button"
-            className="btn btn-primary"
-            style={{ fontSize: 11, padding: "4px 10px", flexShrink: 0, whiteSpace: "nowrap" }}
-            disabled={registering}
-            onClick={handleClick}
-          >
-            {registering ? "…" : "登録"}
-          </button>
-        </div>
-      ) : (
-        <span style={{
-          fontSize: 11, fontWeight: 700,
-          padding: "2px 8px", borderRadius: 20,
-          background: "#f9fafb", color: "#6b7280",
-          border: "1px solid #e5e7eb",
-        }}>
-          閲覧者（未登録）
-        </span>
-      )}
-    </div>
+    </article>
   );
 }
 
