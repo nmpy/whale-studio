@@ -264,34 +264,27 @@ function resolveActions({
 }
 
 // ── アクション emphasis ごとのスタイル定義 ───────────────────
+// Phase 3.3b: className ベースに刷新 (= Phase 0 Tailwind トークン)。
+// iconColor は HubCardIcon が SVG stroke 属性で参照する文字列なので、
+// @theme で生成された CSS 変数 `var(--color-*)` を経由して新トークン値を渡す。
 const ACTION_EMPHASIS_STYLE: Record<
   ActionEmphasis,
-  { color: string; background: string; borderColor: string; hoverBg: string; hoverBorder: string; iconColor: string }
+  { className: string; iconColor: string }
 > = {
+  // 情報系 sky (= プレビュー固定トーン)
   preview: {
-    color:       "#0369a1",
-    background:  "#f0f9ff",
-    borderColor: "#bae6fd",
-    hoverBg:     "#e0f2fe",
-    hoverBorder: "#7dd3fc",
-    iconColor:   "#0369a1",
+    className: "bg-sky-soft border-sky/30 text-sky-ink hover:border-sky/50 hover:shadow-sm",
+    iconColor: "var(--color-sky-ink)",
   },
   // 要確認トーン — WorkCard / ハブの "完了者未発生" と同トーン
   warning: {
-    color:       "#b45309",
-    background:  "#fffbeb",
-    borderColor: "#fde68a",
-    hoverBg:     "#fef3c7",
-    hoverBorder: "#fcd34d",
-    iconColor:   "#b45309",
+    className: "bg-warn-soft border-warn/30 text-warn hover:border-warn/50 hover:shadow-sm",
+    iconColor: "var(--color-warn)",
   },
+  // 通常 (= ニュートラル) — hover で bg-bg-tint へ
   normal: {
-    color:       "var(--text-secondary, #374151)",
-    background:  "var(--surface)",
-    borderColor: "var(--border-light)",
-    hoverBg:     "var(--gray-100, #f3f4f6)",
-    hoverBorder: "var(--gray-300, #d1d5db)",
-    iconColor:   "var(--text-muted)",
+    className: "bg-surface border-line text-ink-2 hover:bg-bg-tint hover:border-line-2 hover:text-ink",
+    iconColor: "var(--color-ink-3)",
   },
 } as const;
 
@@ -687,28 +680,9 @@ export default function WorkHubPage() {
           拡張ポイント: 将来は publish_status / setup 状態で順序を変える
             例) active → "audience" 先頭 / draft+未完了 → "messages" 先頭
       ════════════════════════════════════════════════════════════════ */}
-      <div style={{
-        marginBottom: 20,
-        padding:      sp ? "10px 12px" : "10px 16px",
-        background:   "var(--gray-50, #f9fafb)",
-        border:       "1px solid var(--border-light)",
-        borderRadius: "var(--radius-md)",
-        display:      "flex",
-        alignItems:   "center",
-        flexWrap:     "wrap",
-        gap:          "8px 8px",
-      }}>
+      <div className="mb-5 flex flex-wrap items-center gap-2 rounded-card border border-line bg-bg-tint px-3 py-2.5 sm:px-4">
         {/* セクションラベル */}
-        <span style={{
-          fontSize:      10,
-          fontWeight:    700,
-          letterSpacing: "0.07em",
-          textTransform: "uppercase",
-          color:         "var(--text-muted)",
-          whiteSpace:    "nowrap",
-          flexShrink:    0,
-          paddingRight:  6,
-        }}>
+        <span className="flex-shrink-0 whitespace-nowrap pr-1.5 text-[10px] font-bold uppercase tracking-wider text-ink-3">
           次の操作
         </span>
 
@@ -728,31 +702,12 @@ export default function WorkHubPage() {
                 // preview 固有の処理（localStorage 書き込み・onboarding 記録）
                 if (action.isPreview) handlePreviewClick();
               }}
-              style={{
-                display:        "inline-flex",
-                alignItems:     "center",
-                gap:            5,
-                padding:        sp ? "7px 13px" : "6px 13px",
-                borderRadius:   "var(--radius-full)",
-                fontSize:       13,
-                fontWeight:     600,
-                color:          es.color,
-                background:     es.background,
-                border:         `1px solid ${es.borderColor}`,
-                textDecoration: "none",
-                whiteSpace:     "nowrap",
-                transition:     "background 0.12s, border-color 0.12s",
-              }}
-              onMouseEnter={(e) => {
-                const el = e.currentTarget as HTMLAnchorElement;
-                el.style.background  = es.hoverBg;
-                el.style.borderColor = es.hoverBorder;
-              }}
-              onMouseLeave={(e) => {
-                const el = e.currentTarget as HTMLAnchorElement;
-                el.style.background  = es.background;
-                el.style.borderColor = es.borderColor;
-              }}
+              className={
+                "inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border " +
+                "px-3 py-1.5 text-[13px] font-semibold no-underline " +
+                "transition-[background-color,border-color,color,box-shadow] duration-150 " +
+                es.className
+              }
             >
               <HubCardIcon cardKey={action.key} color={es.iconColor} />
               {action.label}
