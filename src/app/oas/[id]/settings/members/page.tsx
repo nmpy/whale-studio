@@ -24,6 +24,7 @@ import { useToast } from "@/components/Toast";
 import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
 import { RoleBadge } from "@/components/PermissionGuard";
 import { Breadcrumb } from "@/components/Breadcrumb";
+import { StatusBadge, buttonClass } from "@/components/shared";
 import type { Role } from "@/lib/types/permissions";
 import { ROLES, ROLE_LABELS, ROLE_DESCRIPTIONS } from "@/lib/types/permissions";
 import {
@@ -40,6 +41,25 @@ import {
 // ── 型 ───────────────────────────────────────────────────────────────
 
 type Section = "members" | "invitations";
+
+// ── shared StatusBadge への tone マッピング ────────────────────────────
+// Phase 2.2a の方針 (= ユーザー指示):
+//   member  active    → active (= brand 外周リング dot)
+//   member  inactive  → muted  (= グレー)
+//   member  suspended → warn   (= 控えめなくすみ橙)
+//   invite  pending   → active (= 有効ステータス)
+//   invite  expired   → warn
+//   invite  accepted  → muted
+function memberStatusTone(status: string): "active" | "muted" | "warn" {
+  if (status === "suspended") return "warn";
+  if (status === "active")    return "active";
+  return "muted"; // inactive / unknown
+}
+function invitationStatusTone(key: "pending" | "expired" | "accepted"): "active" | "muted" | "warn" {
+  if (key === "pending") return "active";
+  if (key === "expired") return "warn";
+  return "muted"; // accepted
+}
 
 // ── ページ本体 ────────────────────────────────────────────────────────
 
@@ -121,13 +141,16 @@ export default function MembersPage() {
 
   if (!roleLoading && !canManage) {
     return (
-      <div className="card" style={{ padding: 48, textAlign: "center" }}>
-        <div style={{ fontSize: 40, marginBottom: 16 }}>🔒</div>
-        <p style={{ fontSize: 16, fontWeight: 700, marginBottom: 8 }}>アクセス権限がありません</p>
-        <p style={{ fontSize: 13, color: "#6b7280" }}>
+      <div className="rounded-card border border-line bg-surface p-12 text-center shadow-sm">
+        <div aria-hidden="true" className="text-[40px] leading-none">🔒</div>
+        <p className="mt-3 text-[16px] font-bold text-ink">アクセス権限がありません</p>
+        <p className="mt-1 text-[13px] text-ink-2">
           メンバー管理は admin / owner のみ利用できます
         </p>
-        <Link href={`/oas/${oaId}/settings`} className="btn btn-ghost" style={{ marginTop: 20 }}>
+        <Link
+          href={`/oas/${oaId}/settings`}
+          className={buttonClass({ variant: "ghost", size: "md", className: "mt-5" })}
+        >
           設定に戻る
         </Link>
       </div>
@@ -139,70 +162,68 @@ export default function MembersPage() {
   return (
     <>
       {/* ── ページヘッダー ── */}
-      <div className="page-header">
-        <div>
-          <Breadcrumb items={[
-            { label: "アカウントリスト", href: "/oas" },
-            { label: "設定", href: `/oas/${oaId}/settings` },
-            { label: "メンバー管理" },
-          ]} />
-          <h2>メンバー管理</h2>
-          <p style={{ fontSize: 13, color: "#6b7280", marginTop: 4 }}>
-            ワークスペースメンバーのロール・ステータスを管理します
-          </p>
-        </div>
+      <div className="mb-5">
+        <Breadcrumb items={[
+          { label: "アカウントリスト", href: "/oas" },
+          { label: "設定", href: `/oas/${oaId}/settings` },
+          { label: "メンバー管理" },
+        ]} />
+        <h2 className="font-round mt-1 text-[clamp(20px,4vw,24px)] font-extrabold leading-[1.2] tracking-[-0.02em] text-ink">
+          メンバー管理
+        </h2>
+        <p className="mt-1 text-[13px] text-ink-2">
+          ワークスペースメンバーのロール・ステータスを管理します
+        </p>
       </div>
 
       {errorMsg && (
-        <div className="alert alert-error" style={{ marginBottom: 16 }}>
+        <div
+          role="alert"
+          className="mb-4 rounded-field border border-danger/30 bg-danger-soft px-4 py-3 text-[13px] leading-[1.6] text-danger"
+        >
           {errorMsg}
         </div>
       )}
 
       {/* ── タブ ── */}
-      <div style={{
-        display:      "flex",
-        gap:          0,
-        marginBottom: 20,
-        borderBottom: "2px solid #e5e7eb",
-      }}>
-        {(["members", "invitations"] as Section[]).map((s) => (
-          <button
-            key={s}
-            type="button"
-            onClick={() => setSection(s)}
-            style={{
-              padding:      "9px 20px",
-              fontSize:     13,
-              fontWeight:   section === s ? 700 : 500,
-              color:        section === s ? "#111827" : "#6b7280",
-              background:   "none",
-              border:       "none",
-              borderBottom: section === s ? "2px solid #111827" : "2px solid transparent",
-              marginBottom: -2,
-              cursor:       "pointer",
-              transition:   "color .15s",
-            }}
-          >
-            {s === "members"
-            ? `メンバー（${members.length}）${provisional.length > 0 ? ` + 未登録 ${provisional.length}` : ""}`
-            : `✉️ 招待`}
-            {s === "invitations" && pendingInvitationsCount > 0 && (
-              <span style={{
-                display:      "inline-block",
-                marginLeft:   6,
-                padding:      "1px 7px",
-                fontSize:     11,
-                fontWeight:   700,
-                background:   "#dbeafe",
-                color:        "#1e40af",
-                borderRadius: 99,
-              }}>
-                {pendingInvitationsCount}
+      <div
+        role="tablist"
+        aria-label="メンバー管理セクション"
+        className="mb-5 flex gap-0 border-b border-line"
+      >
+        {(["members", "invitations"] as Section[]).map((s) => {
+          const isActive = section === s;
+          return (
+            <button
+              key={s}
+              type="button"
+              role="tab"
+              aria-selected={isActive}
+              onClick={() => setSection(s)}
+              className={
+                "-mb-px flex items-center gap-1.5 border-b-2 px-5 py-2.5 text-[13px] transition-colors " +
+                (isActive
+                  ? "border-brand font-bold text-ink"
+                  : "border-transparent font-medium text-ink-3 hover:text-ink-2")
+              }
+            >
+              <span>
+                {s === "members"
+                  ? `メンバー（${members.length}）${provisional.length > 0 ? ` + 未登録 ${provisional.length}` : ""}`
+                  : `✉️ 招待`}
               </span>
-            )}
-          </button>
-        ))}
+              {s === "invitations" && pendingInvitationsCount > 0 && (
+                // ※ status ではなく件数通知バッジ。<StatusBadge> には統一せず独自小バッジを維持 (= ユーザー指示)
+                <span
+                  aria-label={`有効な招待 ${pendingInvitationsCount} 件`}
+                  className="inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-sky-soft px-1.5 py-0.5 text-[11px] font-bold text-sky-ink"
+                >
+                  {pendingInvitationsCount}
+                </span>
+              )}
+            </button>
+          );
+        })}
       </div>
 
       {/* ── タブコンテンツ ── */}
@@ -554,7 +575,9 @@ function MembersSection({
                 ))}
               </select>
             ) : (
-              <StatusBadge status={m.status} />
+              <StatusBadge tone={memberStatusTone(m.status)}>
+                {STATUS_LABELS[m.status] ?? m.status}
+              </StatusBadge>
             )}
 
             {/* ── 参加日列 ── */}
@@ -1211,7 +1234,11 @@ function InvitationRow({
       <div><RoleBadge role={inv.role as Role} /></div>
 
       {/* ステータスバッジ */}
-      <div><InviteStatusBadge statusKey={statusKey} /></div>
+      <div>
+        <StatusBadge tone={invitationStatusTone(statusKey)}>
+          {INVITATION_STATE_LABELS[statusKey]}
+        </StatusBadge>
+      </div>
 
       {/* 有効期限 */}
       <div style={{ fontSize: 12, color: "#6b7280", whiteSpace: "nowrap" }}>
@@ -1334,48 +1361,5 @@ function RevokeConfirmModal({
   );
 }
 
-// ── 招待ステータスバッジ ──────────────────────────────────────────────
-
-function InviteStatusBadge({
-  statusKey,
-}: {
-  statusKey: keyof typeof INVITATION_STATUS_STYLES;
-}) {
-  const s     = INVITATION_STATUS_STYLES[statusKey];
-  const label = INVITATION_STATE_LABELS[statusKey];
-  return (
-    <span style={{
-      display:      "inline-block",
-      padding:      "3px 10px",
-      borderRadius: 99,
-      fontSize:     11,
-      fontWeight:   600,
-      background:   s.bg,
-      color:        s.color,
-      border:       `1px solid ${s.border}`,
-      whiteSpace:   "nowrap",
-    }}>
-      {label}
-    </span>
-  );
-}
-
-// ── メンバーステータスバッジ ──────────────────────────────────────────
-
-function StatusBadge({ status }: { status: string }) {
-  const s = STATUS_COLORS[status] ?? STATUS_COLORS.active;
-  return (
-    <span style={{
-      display:      "inline-block",
-      padding:      "3px 10px",
-      borderRadius: 99,
-      fontSize:     11,
-      fontWeight:   700,
-      background:   s.bg,
-      color:        s.color,
-      border:       `1px solid ${s.border}`,
-    }}>
-      {STATUS_LABELS[status] ?? status}
-    </span>
-  );
-}
+// ── 旧ローカル <InviteStatusBadge> / <StatusBadge> は Phase 2.2a で共通 <StatusBadge> に統合済
+// (mapping は memberStatusTone / invitationStatusTone を参照)。
