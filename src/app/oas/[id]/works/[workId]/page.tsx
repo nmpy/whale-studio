@@ -24,8 +24,9 @@ import {
   PLAN_DESCRIPTIONS,
   PLAN_LABELS,
   getPlanAccessState,
-  mapPlanNameToTier,
 } from "@/lib/constants/plans";
+import { useAccessPreview } from "@/hooks/useAccessPreview";
+import { withPreviewParams } from "@/lib/access-preview";
 
 // ── ステータス表示 ───────────────────────────────────────
 const STATUS_META: Record<string, { label: string; color: string; bg: string; dot: string }> = {
@@ -297,7 +298,10 @@ export default function WorkHubPage() {
   const { maxWorks, planDisplayName, planName } = useWorkLimit(oaId);
   // 既存 plan.name (e.g. "tester" / "editor") を 4 段階ティアに正規化する。
   // Subscription 未設定 (= planName=null) は基本 Basic 扱いで安全側 fallback。
-  const planTier = mapPlanNameToTier(planName);
+  //
+  // owner が「表示確認モード」で other plan を選んでいる場合は、
+  // effectivePlan を使う (= UI 上だけ override される。API には影響しない)。
+  const { effectivePlan: planTier, isPreviewingPlan } = useAccessPreview(oaId);
 
   const [oaTitle,          setOaTitle]          = useState("");
   const [work,             setWork]             = useState<WorkListItem | null>(null);
@@ -895,12 +899,18 @@ export default function WorkHubPage() {
             </div>
           );
 
-          // 利用可: 通常通り Link でラップ
+          // 利用可: 通常通り Link でラップ。
+          // owner の表示確認モード中は previewPlan / previewRole を href に持ち越す
+          // (= 遷移先でも同じ preview 状態を維持するため)。
           if (access.allowed) {
+            const cardHref = withPreviewParams(
+              `/oas/${oaId}/works/${workId}/${card.key}`,
+              searchParams,
+            );
             return (
               <Link
                 key={card.key}
-                href={`/oas/${oaId}/works/${workId}/${card.key}`}
+                href={cardHref}
                 style={{ textDecoration: "none" }}
               >
                 {cardBody}
@@ -926,19 +936,19 @@ export default function WorkHubPage() {
         })}
       </div>
 
-      {/* プラン説明文 (= 管理メニュー下部) */}
+      {/* プラン説明文 (= 管理メニュー下部) — 表示確認中は背景を変えて区別 */}
       <div style={{
         marginTop: 14,
         padding: "10px 14px",
-        background: "#f8fafc",
-        border: "1px solid var(--border-light)",
+        background:   isPreviewingPlan ? "#fffbeb" : "#f8fafc",
+        border:       `1px solid ${isPreviewingPlan ? "#fde68a" : "var(--border-light)"}`,
         borderRadius: "var(--radius-md)",
-        fontSize: 12,
-        color: "var(--text-secondary)",
-        lineHeight: 1.7,
+        fontSize:     12,
+        color:        "var(--text-secondary)",
+        lineHeight:   1.7,
       }}>
         <span style={{ fontWeight: 700, color: "var(--text-primary)", marginRight: 8 }}>
-          現在のプラン: {PLAN_LABELS[planTier]}
+          {isPreviewingPlan ? "表示確認中のプラン" : "現在のプラン"}: {PLAN_LABELS[planTier]}
         </span>
         {PLAN_DESCRIPTIONS[planTier]}
       </div>

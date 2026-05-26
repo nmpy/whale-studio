@@ -7,6 +7,8 @@ import { prisma } from "@/lib/prisma";
 import { ok, created, badRequest, notFound, serverError } from "@/lib/api-response";
 import { withAuth } from "@/lib/auth";
 import { requireRole, getOaIdFromWorkId } from "@/lib/rbac";
+import { requirePlanFeature } from "@/lib/plan-guard";
+import { FEATURE } from "@/lib/constants/plans";
 import { createLocationSchema, locationQuerySchema, formatZodErrors } from "@/lib/validations";
 import { deriveGpsEnabled } from "@/lib/checkin-mode";
 import { ZodError } from "zod";
@@ -102,6 +104,10 @@ export const POST = withAuth(async (req, _ctx, user) => {
     if (!work) return notFound("作品");
     const check = await requireRole(work.oaId, user.id, "tester");
     if (!check.ok) return check.response;
+
+    // プラン制限: location は Pro プラン以上が必要
+    const planGuard = await requirePlanFeature({ oaId: work.oaId, featureKey: FEATURE.location });
+    if (!planGuard.ok) return planGuard.response;
 
     // transition_id が指定されている場合、同じ作品に属するか確認
     if (data.transition_id) {

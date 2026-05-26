@@ -7,6 +7,8 @@ import { Prisma } from "@prisma/client";
 import { created, badRequest, notFound, serverError } from "@/lib/api-response";
 import { withAuth } from "@/lib/auth";
 import { requireRole, getOaIdFromWorkId } from "@/lib/rbac";
+import { requirePlanFeature } from "@/lib/plan-guard";
+import { FEATURE } from "@/lib/constants/plans";
 import { createLiffBlockSchema, validateBlockSettings, formatZodErrors } from "@/lib/validations";
 import { toBlockResponse } from "@/lib/liff-utils";
 import { ZodError } from "zod";
@@ -21,6 +23,10 @@ export const POST = withAuth(async (req, ctx, user) => {
 
     const check = await requireRole(oaId, user.id, "editor");
     if (!check.ok) return check.response;
+
+    // プラン制限: LIFF表示設定は Plus プラン以上
+    const planGuard = await requirePlanFeature({ oaId, featureKey: FEATURE.liffDisplay });
+    if (!planGuard.ok) return planGuard.response;
 
     const body = await req.json();
     const data = createLiffBlockSchema.parse(body);

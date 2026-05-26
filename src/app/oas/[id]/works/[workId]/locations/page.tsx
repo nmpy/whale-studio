@@ -8,6 +8,9 @@
 
 import { useParams, useSearchParams } from "next/navigation";
 import { Breadcrumb } from "@/components/Breadcrumb";
+import { useAccessPreview } from "@/hooks/useAccessPreview";
+import { PlanRequiredCard } from "@/components/PlanRequiredCard";
+import { FEATURE, getPlanAccessState } from "@/lib/constants/plans";
 import { LocationTabs, resolveLocationTab } from "./_tabs";
 import GpsPanel from "./_gps-panel";
 import QrPanel from "./_qr-panel";
@@ -20,6 +23,24 @@ export default function LocationsHubPage() {
   const workId = params.workId as string;
 
   const activeTab = resolveLocationTab(searchParams.get("tab"));
+
+  // プラン制限: location は Pro 以上が必要。
+  // owner が「表示確認モード」で他プランを選んでいる場合は effectivePlan を使う。
+  const { effectivePlan: planTier, loading: planLoading } = useAccessPreview(oaId);
+  const planAccess = getPlanAccessState({ plan: planTier, featureKey: FEATURE.location });
+
+  // 直 URL アクセス時にここで遮断する。loading 中はチラつき防止で素通り。
+  if (!planLoading && !planAccess.allowed) {
+    return (
+      <PlanRequiredCard
+        oaId={oaId}
+        workId={workId}
+        featureKey={FEATURE.location}
+        currentPlan={planTier}
+        featureLabel="ロケーション"
+      />
+    );
+  }
 
   return (
     <div style={{ maxWidth: 900, margin: "0 auto", padding: "24px 16px" }}>

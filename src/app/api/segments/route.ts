@@ -6,6 +6,9 @@ import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { ok, created, badRequest, notFound, serverError } from "@/lib/api-response";
 import { withAuth } from "@/lib/auth";
+import { requireRole } from "@/lib/rbac";
+import { requirePlanFeature } from "@/lib/plan-guard";
+import { FEATURE } from "@/lib/constants/plans";
 import { createSegmentSchema, segmentQuerySchema, formatZodErrors } from "@/lib/validations";
 import { ZodError } from "zod";
 
@@ -27,13 +30,17 @@ function toResponse(s: {
   };
 }
 
-export const GET = withAuth(async (req: NextRequest) => {
+export const GET = withAuth(async (req: NextRequest, _ctx, user) => {
   try {
     const { searchParams } = new URL(req.url);
     const query = segmentQuerySchema.parse({ oa_id: searchParams.get("oa_id") ?? undefined });
 
     const oa = await prisma.oa.findUnique({ where: { id: query.oa_id } });
     if (!oa) return notFound("OA");
+
+    // 認可: OA メンバー (viewer 以上) のみ参照可能。これにより plan 情報の存在推測も防ぐ。
+    const check = await requireRole(query.oa_id, user.id, "viewer");
+    if (!check.ok) return check.response;
 
     const segments = await prisma.segment.findMany({
       where:   { oaId: query.oa_id },
@@ -47,13 +54,22 @@ export const GET = withAuth(async (req: NextRequest) => {
   }
 });
 
-export const POST = withAuth(async (req: NextRequest) => {
+export const POST = withAuth(async (req: NextRequest, _ctx, user) => {
   try {
     const body = await req.json();
     const data = createSegmentSchema.parse(body);
 
     const oa = await prisma.oa.findUnique({ where: { id: data.oa_id } });
     if (!oa) return notFound("OA");
+
+    // 認可: 編集可能ロール (= editor 以上) でないと作成不可。
+    // plan check より前に置くことで、未メンバーに PLAN_REQUIRED で plan 情報を漏らさない。
+    const check = await requireRole(data.oa_id, user.id, "editor");
+    if (!check.ok) return check.response;
+
+    // プラン制限: audience (segments) は Standard プラン以上
+    const planGuard = await requirePlanFeature({ oaId: data.oa_id, featureKey: FEATURE.audience });
+    if (!planGuard.ok) return planGuard.response;
 
     const segment = await prisma.segment.create({
       data: {

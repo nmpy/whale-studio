@@ -165,6 +165,9 @@ export default function AppHeader() {
               <RoleBadge role={displayRole} />
             </div>
           )}
+          {/* AccessPreviewControls は AppShell でヘッダー直下の独立バーとして表示する。
+              既存ヘッダーの横並び (= ロゴ / 副題 / オーナーバッジ / ユーザー名 / ログアウト /
+              スタジオ管理) の高さ・折り返しを崩さないため。 */}
 
           {/* ── ユーザー名（ログイン済み時のみ） ── */}
           {loggedIn && (
