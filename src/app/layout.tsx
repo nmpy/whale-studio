@@ -1,11 +1,32 @@
 import type { Metadata } from "next";
-import { Inter, Noto_Sans_JP } from "next/font/google";
+import { Zen_Maru_Gothic, Zen_Kaku_Gothic_New, Quicksand } from "next/font/google";
 import { ToastProvider } from "@/components/Toast";
 import { AppShell } from "@/components/AppShell";
 import "./globals.css";
 
-const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
-const notoSansJP = Noto_Sans_JP({ subsets: ["latin"], variable: "--font-noto" });
+// デザインガイド §2: 3 種のフォントロール
+// - font-round (Zen Maru Gothic) : 見出し・ボタン・ラベル・ロゴ
+// - font-body  (Zen Kaku Gothic New) : 本文 (= body default)
+// - font-num   (Quicksand) : 数値・英数字・日付
+// Inter / Roboto / system フォントは禁止 (= ガイド §6 NG)。
+const zenMaru = Zen_Maru_Gothic({
+  subsets: ["latin"],
+  weight:  ["500", "700", "900"],
+  display: "swap",
+  variable: "--font-zen-maru",
+});
+const zenKaku = Zen_Kaku_Gothic_New({
+  subsets: ["latin"],
+  weight:  ["400", "500", "700"],
+  display: "swap",
+  variable: "--font-zen-kaku",
+});
+const quicksand = Quicksand({
+  subsets: ["latin"],
+  weight:  ["500", "600", "700"],
+  display: "swap",
+  variable: "--font-quicksand",
+});
 
 export const metadata: Metadata = {
   title: "Whale Studio",
@@ -39,7 +60,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="ja" className={`${inter.variable} ${notoSansJP.variable}`}>
+    <html lang="ja" className={`${zenMaru.variable} ${zenKaku.variable} ${quicksand.variable}`}>
       <body>
         <ToastProvider>
           {/* CMS では <AppHeader /> + container を被せ、/liff/* ではどちらも被せない。

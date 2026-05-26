@@ -7,18 +7,81 @@
    既存カスタム CSS（unlayered）が最終的に優先されるようにする */
 @import "tailwindcss";
 
+/* ── Tailwind v4 デザイントークン (@theme) ───────────────────────────────
+   `@theme` で宣言した変数は Tailwind utility (bg-brand / text-ink / rounded-card 等)
+   として直接使えるようになる。同時に :root の CSS 変数としても露出するため、
+   既存の `var(--color-brand)` 形式でも参照できる。
+   ガイド (whale_design_guide.md §2) のトークンをこのブロックに一元化する。 */
+@theme {
+  /* === Brand (管理画面 = 親しみやすさ + 落ち着いた緑) === */
+  --color-brand:      #22c55e;  /* 主役: 実行系ボタン・進捗・選択状態 */
+  --color-brand-deep: #16a34a;  /* グラデ下端・hover */
+  --color-brand-ink:  #0f7a3d;  /* テキストに乗せる緑 */
+  --color-brand-soft: #e9f8ef;  /* 淡い面・バッジ背景 */
+  --color-brand-mist: #f4fbf7;  /* ホバー背景 */
+
+  /* === LINE 公式ブランド (LIFF / LINE 連携 UI 専用) === */
+  --color-line-brand: #06c755;  /* 管理画面では使わない。LINE 公式風 UI のみ */
+
+  /* === サポートカラー (控えめパステル) === */
+  --color-sky:        #7fb1e6;
+  --color-sky-soft:   #eef4fb;
+  --color-sky-ink:    #3d77b8;
+  --color-lilac:      #9a86d6;
+  --color-lilac-soft: #f3f0fb;
+  --color-peach:      #e8a89a;
+  --color-peach-soft: #fbeee9;
+  --color-mint:       #7fc2a8;
+  --color-mint-soft:  #eaf6f0;
+
+  /* === Ink (見出し / 本文 / 補助) === */
+  --color-ink:    #33403a;
+  --color-ink-2:  #5f6b65;
+  --color-ink-3:  #9aa8a2;
+
+  /* === Line (罫線) === */
+  --color-line:   #e8edea;
+  --color-line-2: #f0f3f1;
+
+  /* === Surface / Background === */
+  --color-surface: #ffffff;
+  --color-bg:      #f5f8f6;
+  --color-bg-tint: #fafcfb;
+
+  /* === Status === */
+  --color-warn:        #b0832e;
+  --color-warn-soft:   #f8f1df;
+  --color-danger:      #d9776a;
+  --color-danger-soft: #fbecea;
+
+  /* === フォント (next/font/google から layout.tsx で注入) === */
+  --font-round: var(--font-zen-maru, "Zen Maru Gothic"), sans-serif;
+  --font-body:  var(--font-zen-kaku, "Zen Kaku Gothic New"), sans-serif;
+  --font-num:   var(--font-quicksand, "Quicksand"), sans-serif;
+
+  /* === Radius (専用名。既存の --radius-sm 等は :root に残す) === */
+  --radius-card:  20px;
+  --radius-field: 13px;
+
+  /* === Shadow (デザインガイド準拠の上品な影) === */
+  --shadow-card: 0 6px 24px rgba(26,40,32,.06), 0 2px 6px rgba(26,40,32,.04);
+}
+
 /* base レイヤーにリセットを置く → utilities (p-*, m-* 等) で上書き可能になる */
 @layer base {
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 }
 
-/* ── デザイントークン ─────────────────────────────────────────────────── */
+/* ── 既存トークン (後方互換) ─────────────────────────────────────────────
+   既存の inline `style={{}}` / utility class が大量に `var(--color-primary)` 等を
+   参照しているため、値だけ新パレットに揃えて変数名は維持する。
+   段階的に画面 PR で `var(--color-brand)` 等の新トークン参照に置き換えていく。 */
 :root {
-  /* Brand */
-  --brand:        #06C755;
-  --brand-dark:   #05a849;
-  --brand-light:  #e8f9ef;
-  --brand-subtle: #f2fdf6;
+  /* Brand (= --color-brand 系と値を揃える) */
+  --brand:        #22c55e;
+  --brand-dark:   #16a34a;
+  --brand-light:  #e9f8ef;
+  --brand-subtle: #f4fbf7;
   --brand-mid:    #b7eecb;
 
   /* Neutral scale */
@@ -33,16 +96,16 @@
   --gray-800: #1c2a3e;
   --gray-900: #0f1a2e;
 
-  /* Semantic aliases */
-  --bg:              #f5f7fb;
+  /* Semantic aliases (= ガイドの ink / line / bg と値を揃える) */
+  --bg:              #f5f8f6;
   --surface:         #ffffff;
   --surface-raised:  #ffffff;
-  --border:          #e2e7f0;
-  --border-light:    #eef1f7;
-  --text-primary:    #1c2a3e;
-  --text-secondary:  #68778f;
-  --text-muted:      #97a3b6;
-  --text-disabled:   #b8c0cc;
+  --border:          #e8edea;
+  --border-light:    #f0f3f1;
+  --text-primary:    #33403a;
+  --text-secondary:  #5f6b65;
+  --text-muted:      #9aa8a2;
+  --text-disabled:   #c8d0ca;
 
   /* Status */
   --color-success: #16a34a;
@@ -50,21 +113,23 @@
   --color-warning: #d97706;
   --color-info:    #2563eb;
 
-  /* ── Whale Studio ブランドパレット (green × black × gray) ── */
-  --color-primary:        #2F6F5E;
-  --color-primary-hover:  #285E50;
-  --color-primary-soft:   #EAF4F1;
+  /* ── Whale Studio ブランドパレット — ガイドの brand 系に揃える ──
+     旧値 (#2F6F5E ダークフォレスト) はガイドの「親しみやすさ + LINEグリーン軸」と
+     方向性が違うため、brand-deep (#16a34a) ベースに置換する。 */
+  --color-primary:        #16a34a;
+  --color-primary-hover:  #15803d;
+  --color-primary-soft:   #e9f8ef;
 
-  --color-text-primary:   #1A1A1A;
-  --color-text-secondary: #666666;
-  --color-text-muted:     #999999;
+  --color-text-primary:   #33403a;
+  --color-text-secondary: #5f6b65;
+  --color-text-muted:     #9aa8a2;
 
-  --color-bg-default:     #FFFFFF;
-  --color-bg-subtle:      #F7F7F7;
-  --color-bg-soft:        #F2F5F4;
+  --color-bg-default:     #ffffff;
+  --color-bg-subtle:      #fafcfb;
+  --color-bg-soft:        #f5f8f6;
 
-  --color-border-default: #E5E5E5;
-  --color-border-soft:    #EEEEEE;
+  --color-border-default: #e8edea;
+  --color-border-soft:    #f0f3f1;
 
   /* Radius */
   --radius-xs: 4px;
@@ -105,12 +170,11 @@
 
 /* ── ベース ──────────────────────────────────────────────────────────── */
 body {
-  font-family: var(--font-inter, "Inter"), var(--font-noto, "Noto Sans JP"),
-               -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: var(--font-body, "Zen Kaku Gothic New"), sans-serif;
   font-size: var(--font-size-md);
   color: var(--text-primary);
   background: var(--bg);
-  line-height: 1.65;
+  line-height: 1.7;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -137,10 +201,12 @@ a:hover { color: var(--brand-dark); text-decoration: underline; }
   main { padding: 28px 0 48px; }
 }
 
-/* ── ヘッダー ────────────────────────────────────────────────────────── */
+/* ── ヘッダー ──────────────────────────────────────────────────────────
+   ガイド §4: 旧太い緑ボーダーラインは廃止 → 細罫線に。 */
 header {
-  background: var(--surface);
-  border-bottom: 2px solid var(--brand);
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: saturate(180%) blur(8px);
+  border-bottom: 1px solid var(--border-light);
   position: sticky;
   top: 0;
   z-index: 200;
@@ -161,11 +227,11 @@ header h1 a {
   text-decoration: none;
 }
 .header-brand {
-  font-family: var(--font-inter, "Inter"), sans-serif;
+  font-family: var(--font-round, "Zen Maru Gothic"), sans-serif;
   font-size: 15px;
   font-weight: 900;
-  letter-spacing: 0.06em;
-  color: var(--gray-800);
+  letter-spacing: 0.04em;
+  color: #1f2a25; /* ガイド §4: ブランド名のみ視認性のため専用色 */
 }
 .header-sep {
   color: var(--gray-300);
@@ -622,11 +688,11 @@ select { cursor: pointer; }
   margin-bottom: 4px;
 }
 .landing-brand {
-  font-family: var(--font-inter, "Inter"), sans-serif;
+  font-family: var(--font-round, "Zen Maru Gothic"), sans-serif;
   font-size: 40px;
   font-weight: 900;
-  letter-spacing: 0.06em;
-  color: var(--gray-800);
+  letter-spacing: 0.04em;
+  color: #1f2a25; /* ガイド §4: ブランド名のみ視認性のため専用色 */
   line-height: 1;
 }
 .landing-subtitle {
