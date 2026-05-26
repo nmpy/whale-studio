@@ -19,7 +19,7 @@ export default function LandingPage() {
   }, []);
 
   return (
-    <div className="mx-auto flex min-h-[calc(100vh-56px)] max-w-[640px] flex-col items-center justify-center gap-12 px-5 py-12 sm:py-16">
+    <div className="mx-auto flex min-h-[calc(100vh-56px)] max-w-[640px] flex-col items-center justify-center gap-10 px-5 py-12 sm:py-16">
       {/* ── ヒーロー ───────────────────────────────────────────── */}
       <section className="flex flex-col items-center gap-5 text-center">
         {/* eyebrow badge */}
@@ -72,8 +72,8 @@ export default function LandingPage() {
       {/* ── 最近使ったアカウント ────────────────────────────── */}
       {recents.length > 0 && (
         <section className="flex flex-col items-center gap-3">
-          <span className="font-num text-[11px] font-semibold uppercase tracking-[0.06em] text-ink-3">
-            Recent accounts
+          <span className="text-[11px] font-semibold tracking-[0.04em] text-ink-3">
+            最近使ったアカウント
           </span>
           <div className="flex flex-wrap justify-center gap-2">
             {recents.map((oa) => (
