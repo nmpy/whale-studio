@@ -1,10 +1,16 @@
 // src/app/api/locations/[id]/visits/route.ts
 // GET /api/locations/:id/visits — ロケーションの訪問履歴（直近20件）
+//
+// location 機能は Pro プラン専用 (= /api/locations の作成 API と同じ要件)。
+// 訪問履歴も同等の制限を掛け、API 直叩きで Pro 未契約の OA が履歴を覗けない
+// ようにする。
 
 import { prisma } from "@/lib/prisma";
 import { ok, notFound, serverError } from "@/lib/api-response";
 import { withAuth } from "@/lib/auth";
 import { requireRole } from "@/lib/rbac";
+import { requirePlanFeature } from "@/lib/plan-guard";
+import { FEATURE } from "@/lib/constants/plans";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +24,10 @@ export const GET = withAuth<{ id: string }>(async (req, { params }, user) => {
 
     const check = await requireRole(location.work.oaId, user.id, "viewer");
     if (!check.ok) return check.response;
+
+    // プラン制限: location は Pro プラン以上が必要
+    const planGuard = await requirePlanFeature({ oaId: location.work.oaId, featureKey: FEATURE.location });
+    if (!planGuard.ok) return planGuard.response;
 
     const { searchParams } = new URL(req.url);
     const limit = Math.min(Number(searchParams.get("limit") ?? "20"), 100);
