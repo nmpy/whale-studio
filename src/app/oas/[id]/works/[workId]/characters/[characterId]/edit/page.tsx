@@ -1,5 +1,13 @@
 "use client";
 
+// src/app/oas/[id]/works/[workId]/characters/[characterId]/edit/page.tsx
+// 作品配下キャラクター 編集フォーム。
+// Phase 4.1b: UI を Phase 0 トークン + shared/Button + buttonClass に揃える。
+// ImageUploadField 本体 / ViewerBanner / Breadcrumb / API / 認可ロジックは触らない。
+// update payload 6 キー (name / icon_type / icon_image_url / icon_text:null / sort_order / is_active) と
+// name.trim() / icon_image_url.trim() / icon_type:"image" / icon_text:null の送信構造は完全維持。
+// characterApi.get / update / toast 文言 / router 遷移 / validation / submitting / canEdit ゲートも完全維持。
+
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { useTesterRouter as useRouter } from "@/hooks/useTesterRouter";
@@ -10,9 +18,27 @@ import { useToast } from "@/components/Toast";
 import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
 import { ViewerBanner } from "@/components/PermissionGuard";
 import { ImageUploadField } from "@/components/ImageUploadField";
+import { Button, buttonClass } from "@/components/shared";
 
 const ICON_ACCEPT = "image/jpeg,image/png,image/webp";
 const ICON_FORMATS_TEXT = "対応形式: JPEG / PNG / WebP (最大 5MB)";
+
+// ── ローカル共通: 必須マーク (= /account / works edit と同じパターン) ──
+function RequiredMark() {
+  return <span aria-hidden="true" className="ml-0.5 text-danger">*</span>;
+}
+
+// ── ローカル共通: section heading ──
+function SectionHeading({ children }: { children: React.ReactNode }) {
+  return <p className="mb-4 text-[13px] font-bold text-ink">{children}</p>;
+}
+
+// ── 共通スタイル: 行内 input / number (= Phase 3.1 compactInputClass と同パターン) ──
+const compactInputClass =
+  "rounded-md border border-line bg-surface px-3 py-2 text-[13px] text-ink " +
+  "placeholder:text-ink-3 transition-shadow focus:border-brand focus:outline-none " +
+  "focus:ring-2 focus:ring-brand/20 disabled:cursor-not-allowed disabled:bg-bg-tint " +
+  "disabled:text-ink-3 read-only:cursor-not-allowed read-only:bg-bg-tint read-only:text-ink-3";
 
 interface FormState {
   name:           string;
@@ -80,16 +106,24 @@ export default function WorkCharacterEditPage() {
     }
   }
 
+  // ── 読み込み中: skeleton ──
   if (!form && !loadError) {
     return (
       <>
-        <div className="page-header">
-          <h2>キャラクター編集</h2>
-          <Link href={`/oas/${oaId}/works/${workId}/characters`} className="btn btn-ghost">← 一覧に戻る</Link>
+        <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <h2 className="font-round text-[clamp(20px,4vw,24px)] font-extrabold leading-[1.2] tracking-[-0.02em] text-ink">
+            キャラクター編集
+          </h2>
+          <Link
+            href={`/oas/${oaId}/works/${workId}/characters`}
+            className={buttonClass({ variant: "ghost", size: "md" })}
+          >
+            ← 一覧に戻る
+          </Link>
         </div>
-        <div className="card" style={{ maxWidth: 560 }}>
+        <div className="w-full max-w-[560px] rounded-card border border-line bg-surface p-5 shadow-sm sm:p-6">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="form-group">
+            <div key={i} className="mb-5">
               <div className="skeleton" style={{ width: 100, height: 13, marginBottom: 4 }} />
               <div className="skeleton" style={{ height: 36 }} />
             </div>
@@ -99,14 +133,27 @@ export default function WorkCharacterEditPage() {
     );
   }
 
+  // ── 読み込みエラー ──
   if (loadError) {
     return (
       <>
-        <div className="page-header">
-          <h2>キャラクター編集</h2>
-          <Link href={`/oas/${oaId}/works/${workId}/characters`} className="btn btn-ghost">← 一覧に戻る</Link>
+        <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <h2 className="font-round text-[clamp(20px,4vw,24px)] font-extrabold leading-[1.2] tracking-[-0.02em] text-ink">
+            キャラクター編集
+          </h2>
+          <Link
+            href={`/oas/${oaId}/works/${workId}/characters`}
+            className={buttonClass({ variant: "ghost", size: "md" })}
+          >
+            ← 一覧に戻る
+          </Link>
         </div>
-        <div className="alert alert-error">{loadError}</div>
+        <div
+          role="alert"
+          className="w-full max-w-[560px] rounded-field border border-danger/30 bg-danger-soft px-4 py-3 text-[13px] leading-[1.6] text-danger"
+        >
+          {loadError}
+        </div>
       </>
     );
   }
@@ -114,31 +161,59 @@ export default function WorkCharacterEditPage() {
   return (
     <>
       <ViewerBanner role={role} />
-      <div className="page-header">
-        <div>
+
+      {/* ── ページヘッダー ── */}
+      <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div className="min-w-0">
           <Breadcrumb items={[
             { label: "アカウントリスト", href: "/oas" },
             { label: "作品リスト", href: `/oas/${oaId}/works` },
             { label: "キャラクター", href: `/oas/${oaId}/works/${workId}/characters` },
             { label: "編集" },
           ]} />
-          <h2>{form!.name}</h2>
+          <h2 className="font-round mt-1 truncate text-[clamp(20px,4vw,24px)] font-extrabold leading-[1.2] tracking-[-0.02em] text-ink">
+            {form!.name}
+          </h2>
         </div>
-        <Link href={`/oas/${oaId}/works/${workId}/characters`} className="btn btn-ghost">← 一覧に戻る</Link>
+        <Link
+          href={`/oas/${oaId}/works/${workId}/characters`}
+          className={buttonClass({ variant: "ghost", size: "md" })}
+        >
+          ← 一覧に戻る
+        </Link>
       </div>
 
-      <div className="card" style={{ maxWidth: 560 }}>
+      {/* ── フォーム本体 ── */}
+      <div className="w-full max-w-[560px] rounded-card border border-line bg-surface p-5 shadow-sm sm:p-6">
         <form onSubmit={handleSubmit}>
-          <div className="form-group">
-            <label htmlFor="name">キャラクター名 <span style={{ color: "#ef4444" }}>*</span></label>
-            <input id="name" type="text" value={form!.name}
-              onChange={(e) => setField("name", e.target.value)} maxLength={50} readOnly={!canEdit} />
-            {errors.name?.map((m) => <p key={m} className="field-error">{m}</p>)}
+          <SectionHeading>基本情報</SectionHeading>
+
+          {/* name */}
+          <div className="mb-5">
+            <label htmlFor="name" className="mb-1.5 block text-[13px] font-bold text-ink">
+              キャラクター名<RequiredMark />
+            </label>
+            <input
+              id="name"
+              type="text"
+              value={form!.name}
+              onChange={(e) => setField("name", e.target.value)}
+              maxLength={50}
+              readOnly={!canEdit}
+              aria-required="true"
+              aria-invalid={errors.name ? "true" : undefined}
+              aria-describedby={errors.name ? "name-error" : undefined}
+              className={compactInputClass + " w-full"}
+            />
+            {errors.name?.map((m) => (
+              <p key={m} id="name-error" role="alert" className="mt-1 text-[12px] text-danger">{m}</p>
+            ))}
           </div>
 
-          <div className="form-group">
-            <label>
-              アイコン画像 <span style={{ color: "#ef4444" }}>*</span>
+          {/* icon_image_url */}
+          <div className="mb-5">
+            <label className="mb-1.5 block text-[13px] font-bold text-ink">
+              アイコン画像<RequiredMark />
             </label>
             <ImageUploadField
               value={form!.icon_image_url}
@@ -162,34 +237,66 @@ export default function WorkCharacterEditPage() {
                 uploadFailed: "画像のアップロードに失敗しました。時間をおいて再度お試しください。",
               }}
             />
-            {errors.icon_image_url?.map((m) => <p key={m} className="field-error">{m}</p>)}
-            <p style={{ fontSize: 11, color: "#9ca3af", marginTop: 4 }}>
+            {errors.icon_image_url?.map((m) => (
+              <p key={m} id="icon-image-url-error" role="alert" className="mt-1 text-[12px] text-danger">{m}</p>
+            ))}
+            <p className="mt-1 text-[11px] text-ink-3">
               正方形推奨（200×200px 以上）。LINE の sender.iconUrl として使用します。
             </p>
           </div>
 
-          <hr className="section-divider" />
+          <hr className="my-5 border-t border-line-2" />
 
-          <div className="form-group">
-            <label htmlFor="sort_order">表示順</label>
-            <input id="sort_order" type="number" value={form!.sort_order}
-              onChange={(e) => setField("sort_order", Number(e.target.value))} min={0} style={{ width: 120 }} disabled={!canEdit} />
+          <SectionHeading>表示設定</SectionHeading>
+
+          {/* sort_order */}
+          <div className="mb-5">
+            <label htmlFor="sort_order" className="mb-1.5 block text-[13px] font-bold text-ink">
+              表示順
+            </label>
+            <input
+              id="sort_order"
+              type="number"
+              value={form!.sort_order}
+              onChange={(e) => setField("sort_order", Number(e.target.value))}
+              min={0}
+              disabled={!canEdit}
+              className={compactInputClass + " w-[120px]"}
+            />
           </div>
 
-          <div className="form-group">
-            <label style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 400, cursor: "pointer" }}>
-              <input type="checkbox" checked={form!.is_active}
-                onChange={(e) => setField("is_active", e.target.checked)} style={{ width: "auto" }} disabled={!canEdit} />
+          {/* is_active */}
+          <div className="mb-5">
+            <label className="flex cursor-pointer items-center gap-2 text-[13px] text-ink">
+              <input
+                type="checkbox"
+                checked={form!.is_active}
+                onChange={(e) => setField("is_active", e.target.checked)}
+                disabled={!canEdit}
+                className="h-4 w-4 cursor-pointer accent-brand disabled:cursor-not-allowed"
+              />
               このキャラクターを有効にする
             </label>
           </div>
 
-          <div className="form-actions">
-            <Link href={`/oas/${oaId}/works/${workId}/characters`} className="btn btn-ghost">キャンセル</Link>
-            <button type="submit" className="btn btn-primary" disabled={!canEdit || submitting}>
-              {submitting && <span className="spinner" />}
+          {/* form actions */}
+          <div className="mt-7 flex flex-col-reverse items-stretch gap-3 border-t border-line-2 pt-5 sm:flex-row sm:items-center sm:justify-end">
+            <Link
+              href={`/oas/${oaId}/works/${workId}/characters`}
+              className={buttonClass({ variant: "ghost", size: "md" })}
+            >
+              キャンセル
+            </Link>
+            <Button
+              type="submit"
+              variant="primary"
+              size="md"
+              disabled={!canEdit || submitting}
+              aria-busy={submitting || undefined}
+            >
+              {submitting && <span className="spinner" aria-hidden="true" />}
               {submitting ? "保存中..." : "変更を保存"}
-            </button>
+            </Button>
           </div>
         </form>
       </div>
