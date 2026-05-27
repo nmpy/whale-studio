@@ -871,6 +871,39 @@ model Plan {
   @@map("plans")
 }
 
+/// Stripe webhook event の idempotency 制御。
+/// 受信した stripeEventId を保存し、再送時の重複処理を防ぐ。
+///
+/// フロー:
+///   1. webhook 受信直後に stripeEventId で create (= reserve)
+///   2. 既存 event.id があれば unique 制約違反 → 200 を返してスキップ
+///   3. 処理成功時に status="processed" + processedAt セット
+///   4. 処理失敗時に status="failed" + errorMessage セット (= Stripe には 200 を返して
+///      再送ループを防ぎ、失敗内容は本テーブル + サーバログから後追い確認できる)
+model StripeWebhookEvent {
+  id             String    @id @default(uuid())
+  /// Stripe の event.id (evt_xxx)。再送検知のキー。
+  stripeEventId  String    @unique @map("stripe_event_id")
+  /// Stripe の event.type (例: "checkout.session.completed")。
+  eventType      String    @map("event_type")
+  /// 処理ステータス。
+  ///   "received"  — 受信直後 (= reserve、処理中 or 処理失敗で update されないと残る)
+  ///   "processed" — 処理成功
+  ///   "failed"    — 処理失敗 (= errorMessage に詳細を残す)
+  status         String    @default("received")
+  /// 処理失敗時のエラーメッセージ (= 管理者が後から確認するため)。
+  errorMessage   String?   @map("error_message")
+  /// 受信時刻 (= reserve 時に自動セット)。
+  receivedAt     DateTime  @default(now()) @map("received_at")
+  /// 処理完了時刻 (= 成功 / 失敗どちらでもセット)。received のままなら null。
+  processedAt    DateTime? @map("processed_at")
+
+  @@index([eventType])
+  @@index([status])
+  @@index([receivedAt])
+  @@map("stripe_webhook_events")
+}
+
 /// OA 単位のサブスクリプション。1 OA につき 1 レコード（@@unique(oaId)）。
 /// status: "active" | "trialing" | "canceled" | "past_due"
 model Subscription {
