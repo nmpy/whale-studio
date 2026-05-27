@@ -427,7 +427,10 @@ export default function SnsPage() {
             const isEditing = editId   === post.id;
 
             return (
-              <div key={post.id} className="card" style={{ padding: 0 }}>
+              <div
+                key={post.id}
+                className="overflow-hidden rounded-card border border-line bg-surface shadow-sm transition-colors hover:border-brand/30"
+              >
                 {isEditing ? (
                   /* ── 編集フォーム ── */
                   <div className="p-5 sm:p-6">
@@ -482,59 +485,61 @@ export default function SnsPage() {
                   </div>
                 ) : (
                   /* ── 表示モード ── */
-                  <div style={{ padding: "16px 20px" }}>
+                  <div className="px-5 py-4">
 
                     {/* ヘッダー行: X バッジ + 順序 + 編集/削除 */}
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-                      <span style={{
-                        display: "inline-flex", alignItems: "center", gap: 4,
-                        padding: "2px 10px", borderRadius: 12,
-                        fontSize: 11, fontWeight: 600, color: "#fff", background: "#000",
-                      }}>
+                    <div className="mb-2.5 flex items-center gap-2">
+                      {/* X バッジ (= X ブランド黒 inline 維持) */}
+                      <span
+                        className="inline-flex items-center gap-1 rounded-xl px-2.5 py-0.5 text-[11px] font-semibold"
+                        style={{ color: "#fff", background: "#000" }}
+                      >
                         <XLogo size={9} />
                       </span>
-                      <span style={{ fontSize: 11, color: "#9ca3af" }}>
+                      <span className="text-[11px] text-ink-3">
                         順序: {post.order}
                       </span>
-                      <div style={{ marginLeft: "auto", display: "flex", gap: 6, flexShrink: 0 }}>
+                      <div className="ml-auto flex flex-shrink-0 gap-1.5">
                         {canEdit && (
-                          <button
-                            className="btn btn-ghost"
-                            style={{ padding: "4px 10px", fontSize: 12 }}
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
                             onClick={() => startEdit(post)}
                           >
                             編集
-                          </button>
+                          </Button>
                         )}
                         {(isOwner || isAdmin) && (
-                          <button
-                            className="btn btn-danger"
-                            style={{ padding: "4px 10px", fontSize: 12 }}
+                          <Button
+                            type="button"
+                            variant="danger"
+                            size="sm"
                             onClick={() => handleDelete(post)}
                           >
                             削除
-                          </button>
+                          </Button>
                         )}
                       </div>
                     </div>
 
                     {/* 本文 */}
-                    <p style={{
-                      fontSize: 14, color: "#111827",
-                      marginBottom: utmUrl ? 2 : (post.image_url ? 10 : 0),
-                      whiteSpace: "pre-wrap", wordBreak: "break-word",
-                    }}>
+                    <p
+                      className="whitespace-pre-wrap break-words text-[14px] text-ink"
+                      style={{ marginBottom: utmUrl ? 2 : (post.image_url ? 10 : 0) }}
+                    >
                       {post.text}
                     </p>
 
-                    {/* UTM 付き URL（本文直下・X と同じ見え方） */}
+                    {/* UTM 付き URL（本文直下・X と同じ見え方、#06C755 inline 維持） */}
                     {utmUrl && (
                       <p style={{ marginBottom: post.image_url ? 10 : 12 }}>
                         <a
                           href={utmUrl}
                           target="_blank"
                           rel="noopener noreferrer"
-                          style={{ fontSize: 14, color: "#06C755", textDecoration: "none", wordBreak: "break-all" }}
+                          className="break-all text-[14px] no-underline"
+                          style={{ color: "#06C755" }}
                         >
                           {utmUrl}
                         </a>
@@ -543,39 +548,46 @@ export default function SnsPage() {
 
                     {/* 画像サムネイル */}
                     {post.image_url && (
-                      <a href={post.image_url} target="_blank" rel="noopener noreferrer" style={{ display: "block", marginBottom: 12 }}>
+                      <a
+                        href={post.image_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mb-3 block"
+                      >
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
                           src={post.image_url}
                           alt="投稿画像"
-                          style={{
-                            width: "100%", maxWidth: 400, borderRadius: 8,
-                            border: "1px solid #e5e5e5", display: "block",
-                          }}
+                          className="block w-full max-w-[400px] rounded-md border border-line bg-bg-tint"
                           onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
                         />
                       </a>
                     )}
 
                     {/* アクションボタン行 */}
-                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                      {/* URLをコピー */}
+                    <div className="flex flex-wrap gap-2">
+                      {/* URLをコピー (= isCopied 時の green アクセント inline 維持) */}
                       {utmUrl && (
                         <button
-                          className="btn btn-ghost"
-                          style={{
-                            fontSize: 12, padding: "5px 12px",
-                            display: "inline-flex", alignItems: "center", gap: 5,
-                            color: isCopied ? "#059669" : undefined,
-                            borderColor: isCopied ? "#6ee7b7" : undefined,
-                          }}
+                          type="button"
                           onClick={() => handleCopy(post)}
+                          className={
+                            "inline-flex items-center gap-1.5 rounded-md border bg-surface px-3 py-1.5 text-[12px] transition-colors " +
+                            (isCopied
+                              ? ""
+                              : "border-line text-ink-2 hover:bg-bg-tint")
+                          }
+                          style={
+                            isCopied
+                              ? { color: "#059669", borderColor: "#6ee7b7" }
+                              : undefined
+                          }
                         >
                           {isCopied ? (
                             <>コピー済み</>
                           ) : (
                             <>
-                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                                 <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
                                 <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
                               </svg>
@@ -585,20 +597,16 @@ export default function SnsPage() {
                         </button>
                       )}
 
-                      {/* X に投稿する */}
+                      {/* X に投稿する (= X ブランド黒 inline 完全維持) */}
                       <a
                         href={xPostUrl}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="btn btn-ghost"
+                        className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[12px] no-underline transition-colors"
                         style={{
-                          fontSize: 12, padding: "5px 12px",
-                          display: "inline-flex", alignItems: "center", gap: 5,
-                          textDecoration: "none",
                           color: "#111827",
                           background: "#fff",
                           border: "1px solid #e5e5e5",
-                          borderRadius: 6,
                         }}
                         onMouseEnter={(e) => {
                           (e.currentTarget as HTMLAnchorElement).style.background = "#f9fafb";
