@@ -161,9 +161,13 @@ export function PricingContent({
   /** "1" のとき Stripe Checkout からのキャンセル戻りを示すバナーを表示 */
   canceled?: string;
 }) {
-  const [requested,       setRequested]       = useState(false);
-  const [checkoutLoading, setCheckoutLoading] = useState(false);
-  const [checkoutError,   setCheckoutError]   = useState<string | null>(null);
+  const [requested,            setRequested]            = useState(false);
+  /** 押された個別プランの tier (= "basic"|"standard"|"pro"|"plus")。
+   *  null = checkout 進行中ではない。
+   *  全プラン disabled は loadingTier !== null で判定する。
+   *  「処理中...」表示は loadingTier === plan.tier の行のみ。 */
+  const [checkoutLoadingTier, setCheckoutLoadingTier] = useState<PersonalPlanCard["tier"] | null>(null);
+  const [checkoutError,        setCheckoutError]        = useState<string | null>(null);
 
   // コンテキストに応じた表示設定を導出
   const heading = (source ? SOURCE_HEADING[source] : null) ?? DEFAULT_HEADING;
@@ -195,10 +199,26 @@ export function PricingContent({
     setRequested(true);
   }
 
+  /** API response の error フィールドから安全に文字列メッセージを抽出する。
+   *  ApiError は `{ code, message, details? }` 形状なので、object をそのまま
+   *  setCheckoutError に渡すと React error #31 (Objects are not valid as a React child)
+   *  でページ全体がクラッシュする。常に string か null になるよう正規化する。 */
+  function extractErrorMessage(payload: unknown, fallback: string): string {
+    if (payload && typeof payload === "object" && "error" in payload) {
+      const err = (payload as { error: unknown }).error;
+      if (typeof err === "string") return err;
+      if (err && typeof err === "object" && "message" in err) {
+        const msg = (err as { message: unknown }).message;
+        if (typeof msg === "string" && msg.length > 0) return msg;
+      }
+    }
+    return fallback;
+  }
+
   /** 個人プラン用 CTA — Stripe Checkout に遷移。
    *  oaId が無い場合は OA 選択ページへ誘導する。 */
-  async function handlePersonalUpgrade(plan: "basic" | "standard" | "pro" | "plus") {
-    if (checkoutLoading) return; // 二重クリック防止
+  async function handlePersonalUpgrade(plan: PersonalPlanCard["tier"]) {
+    if (checkoutLoadingTier !== null) return; // 二重クリック / 他プランの進行中クリック防止
     setCheckoutError(null);
 
     if (!oaId) {
@@ -207,13 +227,13 @@ export function PricingContent({
       return;
     }
 
-    setCheckoutLoading(true);
+    setCheckoutLoadingTier(plan);
     try {
       const token = getDevToken();
       trackBillingEvent("pricing_cta_click", token, source, { from: fromParam, to: plan });
       trackEvent("upgrade_interest", { action: "stripe_checkout_start", source, from: fromParam, to: plan }, { token });
 
-      const res  = await fetch("/api/billing/checkout", {
+      const res = await fetch("/api/billing/checkout", {
         method:  "POST",
         headers: {
           "Content-Type": "application/json",
@@ -221,16 +241,25 @@ export function PricingContent({
         },
         body: JSON.stringify({ plan, oaId }),
       });
-      const data = await res.json();
-      if (!res.ok || !data.data?.url) {
-        setCheckoutError(data.error ?? "チェックアウトセッションの作成に失敗しました");
+
+      // response body が空 / 非 JSON でも UI を落とさない
+      let data: unknown = null;
+      try {
+        data = await res.json();
+      } catch {
+        // 非 JSON response → data は null のままで失敗扱い
+      }
+
+      const url = (data as { data?: { url?: unknown } } | null)?.data?.url;
+      if (!res.ok || typeof url !== "string") {
+        setCheckoutError(extractErrorMessage(data, "チェックアウトセッションの作成に失敗しました"));
         return;
       }
-      window.location.href = data.data.url;
+      window.location.href = url;
     } catch {
       setCheckoutError("エラーが発生しました。もう一度お試しください。");
     } finally {
-      setCheckoutLoading(false);
+      setCheckoutLoadingTier(null);
     }
   }
 
@@ -347,14 +376,15 @@ export function PricingContent({
               <Button
                 type="button"
                 onClick={() => handlePersonalUpgrade(plan.tier)}
-                disabled={checkoutLoading}
+                disabled={checkoutLoadingTier !== null}
+                aria-busy={checkoutLoadingTier === plan.tier || undefined}
                 variant={isRecommended ? "primary" : "ghost"}
                 size="sm"
                 fullWidth
                 aria-label={`${plan.label}プランにアップグレード`}
                 className="mt-auto"
               >
-                {checkoutLoading ? "処理中..." : "アップグレードする"}
+                {checkoutLoadingTier === plan.tier ? "処理中..." : "アップグレードする"}
               </Button>
             </div>
           );
