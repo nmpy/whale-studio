@@ -51,18 +51,23 @@ describe("getCurrentPlanTierForOa", () => {
     vi.clearAllMocks();
   });
 
-  it("Subscription あり (= tester) → basic", async () => {
-    mockSubscription.findUnique.mockResolvedValue({ plan: { name: "tester" } });
+  it("Subscription あり (= status active / tester) → basic", async () => {
+    mockSubscription.findUnique.mockResolvedValue({ status: "active", plan: { name: "tester" } });
     expect(await getCurrentPlanTierForOa("oa-1")).toBe("basic");
   });
 
-  it("Subscription あり (= editor) → pro", async () => {
-    mockSubscription.findUnique.mockResolvedValue({ plan: { name: "editor" } });
+  it("Subscription あり (= status active / editor) → pro", async () => {
+    mockSubscription.findUnique.mockResolvedValue({ status: "active", plan: { name: "editor" } });
     expect(await getCurrentPlanTierForOa("oa-1")).toBe("pro");
   });
 
-  it("Subscription あり (= 4 ティア名そのまま) → そのまま返る", async () => {
-    mockSubscription.findUnique.mockResolvedValue({ plan: { name: "plus" } });
+  it("Subscription あり (= status trialing / plus) → plus (= trialing も full access)", async () => {
+    mockSubscription.findUnique.mockResolvedValue({ status: "trialing", plan: { name: "plus" } });
+    expect(await getCurrentPlanTierForOa("oa-1")).toBe("plus");
+  });
+
+  it("Subscription あり (= 4 ティア名そのまま, status active) → そのまま返る", async () => {
+    mockSubscription.findUnique.mockResolvedValue({ status: "active", plan: { name: "plus" } });
     expect(await getCurrentPlanTierForOa("oa-1")).toBe("plus");
   });
 
@@ -80,6 +85,21 @@ describe("getCurrentPlanTierForOa", () => {
     mockSubscription.findUnique.mockRejectedValue(new Error("db down"));
     expect(await getCurrentPlanTierForOa("oa-1")).toBe("basic");
   });
+
+  // ── status による full-access 制御 ──
+  // active / trialing 以外は plan 名を無視して basic にフォールバック (= 課金状態と権限を一致させる)。
+  it.each([
+    ["past_due",           "pro"],
+    ["canceled",           "pro"],
+    ["unpaid",             "plus"],
+    ["incomplete",         "plus"],
+    ["incomplete_expired", "pro"],
+    ["paused",             "standard"],
+    ["unknown_status",     "pro"],
+  ])("status='%s' (= 非アクティブ) なら plan='%s' でも basic にフォールバック", async (status, planName) => {
+    mockSubscription.findUnique.mockResolvedValue({ status, plan: { name: planName } });
+    expect(await getCurrentPlanTierForOa("oa-1")).toBe("basic");
+  });
 });
 
 // ──────────────────────────────────────────────────────────
@@ -93,8 +113,14 @@ describe("getCurrentPlanTierForWork", () => {
 
   it("work → OA → Subscription を解決して tier を返す", async () => {
     mockGetOaIdFromWorkId.mockResolvedValue("oa-1");
-    mockSubscription.findUnique.mockResolvedValue({ plan: { name: "editor" } });
+    mockSubscription.findUnique.mockResolvedValue({ status: "active", plan: { name: "editor" } });
     expect(await getCurrentPlanTierForWork("w1")).toBe("pro");
+  });
+
+  it("work 経由でも status 非アクティブなら basic にフォールバック", async () => {
+    mockGetOaIdFromWorkId.mockResolvedValue("oa-1");
+    mockSubscription.findUnique.mockResolvedValue({ status: "canceled", plan: { name: "editor" } });
+    expect(await getCurrentPlanTierForWork("w1")).toBe("basic");
   });
 
   it("work から OA が引けない → basic fallback", async () => {
@@ -117,9 +143,9 @@ describe("requirePlanFeature — feature × plan の判定", () => {
     vi.clearAllMocks();
   });
 
-  /** plan = `name` の OA で featureKey を試す共通ヘルパー */
+  /** plan = `name` の OA (= status="active") で featureKey を試す共通ヘルパー */
   async function tryAccess(planName: string, featureKey: typeof FEATURE[keyof typeof FEATURE]) {
-    mockSubscription.findUnique.mockResolvedValue({ plan: { name: planName } });
+    mockSubscription.findUnique.mockResolvedValue({ status: "active", plan: { name: planName } });
     return requirePlanFeature({ oaId: "oa-1", featureKey });
   }
 
@@ -179,13 +205,55 @@ describe("requirePlanFeature — feature × plan の判定", () => {
 
   it("workId 経由でも判定できる (= getOaIdFromWorkId を通る)", async () => {
     mockGetOaIdFromWorkId.mockResolvedValue("oa-2");
-    mockSubscription.findUnique.mockResolvedValue({ plan: { name: "tester" } });
+    mockSubscription.findUnique.mockResolvedValue({ status: "active", plan: { name: "tester" } });
     const result = await requirePlanFeature({ workId: "w-1", featureKey: FEATURE.location });
     expect(result.ok).toBe(false);
     if (!result.ok) {
       const body = await result.response.json();
       expect(body.error.details.requiredPlanLabel).toBe("Pro");
     }
+  });
+
+  // ── status による full-access 制御 (= requirePlanFeature 経由) ──
+  it("status='active' + Plus plan で destinations → allowed", async () => {
+    mockSubscription.findUnique.mockResolvedValue({ status: "active", plan: { name: "plus" } });
+    const result = await requirePlanFeature({ oaId: "oa-1", featureKey: FEATURE.destinations });
+    expect(result.ok).toBe(true);
+  });
+
+  it("status='canceled' + Plus plan で destinations → 403 PLAN_REQUIRED (= basic にダウングレード)", async () => {
+    mockSubscription.findUnique.mockResolvedValue({ status: "canceled", plan: { name: "plus" } });
+    const result = await requirePlanFeature({ oaId: "oa-1", featureKey: FEATURE.destinations });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      const body = await result.response.json();
+      expect(body.error.code).toBe("PLAN_REQUIRED");
+      expect(body.error.details.requiredPlanLabel).toBe("Plus");
+    }
+  });
+
+  it("status='past_due' + Pro plan で location → 403 PLAN_REQUIRED", async () => {
+    mockSubscription.findUnique.mockResolvedValue({ status: "past_due", plan: { name: "editor" } });
+    const result = await requirePlanFeature({ oaId: "oa-1", featureKey: FEATURE.location });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      const body = await result.response.json();
+      expect(body.error.code).toBe("PLAN_REQUIRED");
+    }
+  });
+
+  it("status='incomplete' + Plus plan で audience → 403 PLAN_REQUIRED", async () => {
+    mockSubscription.findUnique.mockResolvedValue({ status: "incomplete", plan: { name: "plus" } });
+    const result = await requirePlanFeature({ oaId: "oa-1", featureKey: FEATURE.audience });
+    expect(result.ok).toBe(false);
+  });
+
+  it("status='paused' + Plus plan でも workInfo (= Basic 機能) → allowed", async () => {
+    // 非アクティブでも basic にフォールバックするので、Basic 範囲は使える
+    mockSubscription.findUnique.mockResolvedValue({ status: "paused", plan: { name: "plus" } });
+    const result = await requirePlanFeature({ oaId: "oa-1", featureKey: FEATURE.workInfo });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.plan).toBe("basic");
   });
 
   it("workId / oaId 両方未指定 → 403 (= 設計バグ扱い、安全側)", async () => {

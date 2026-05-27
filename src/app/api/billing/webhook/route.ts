@@ -26,15 +26,20 @@ import { prisma }    from "@/lib/prisma";
 export const dynamic = "force-dynamic";
 
 // ── Stripe ステータス → 内部ステータス変換 ───────────────────────────
+// active / trialing 以外は full access にしないため、安全側に倒す。
+// 旧実装では incomplete / paused / default が "active" になっていた → 修正。
+// 内部ステータスを参照する側 (= plan-guard) で active / trialing のみフルアクセスとする。
 function mapStripeStatus(stripeStatus: Stripe.Subscription["status"]): string {
   switch (stripeStatus) {
     case "active":             return "active";
     case "trialing":           return "trialing";
     case "past_due":           return "past_due";
+    case "unpaid":             return "past_due";
     case "canceled":           return "canceled";
     case "incomplete_expired": return "canceled";
-    case "unpaid":             return "past_due";
-    default:                   return "active"; // incomplete / paused は active として扱う
+    case "incomplete":         return "incomplete"; // 支払い未完了 → 機能制限
+    case "paused":             return "paused";     // 一時停止 → 機能制限
+    default:                   return "incomplete"; // 未知 status は安全側で機能制限
   }
 }
 
