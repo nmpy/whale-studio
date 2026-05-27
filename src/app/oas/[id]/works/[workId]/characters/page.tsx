@@ -1,5 +1,12 @@
 "use client";
 
+// src/app/oas/[id]/works/[workId]/characters/page.tsx
+// 作品配下キャラクター一覧 + システムキャラクター選択 + 削除 / 有効・無効トグル。
+// Phase 4.1a: UI を Phase 0 トークン + shared/Button + shared/StatusBadge + buttonClass に揃える。
+// new / edit ページには触らない (= Phase 4.1b 対象)。
+// OA-level /oas/[id]/characters/ も触らない (= 別 PR 候補)。
+// load / handleSaveSystemChar / handleDelete / toggleActive / API / 権限判定 / systemCharId 保護は完全維持。
+
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { TLink as Link } from "@/components/TLink";
@@ -11,6 +18,14 @@ import type { Character } from "@/types";
 import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
 import { ViewerBanner } from "@/components/PermissionGuard";
 import { GuideCard } from "@/components/onboarding/GuideCard";
+import { Button, StatusBadge, buttonClass } from "@/components/shared";
+
+// 行内 select / input 共通 className (= Phase 3.1 以降の compact 入力 pattern と統一)
+const compactInputClass =
+  "rounded-md border border-line bg-surface px-3 py-2 text-[13px] text-ink " +
+  "placeholder:text-ink-3 transition-shadow focus:border-brand focus:outline-none " +
+  "focus:ring-2 focus:ring-brand/20 disabled:cursor-not-allowed disabled:bg-bg-tint " +
+  "disabled:text-ink-3";
 
 function IconPreview({ character }: { character: Character }) {
   if (character.icon_type === "image" && character.icon_image_url) {
@@ -19,17 +34,15 @@ function IconPreview({ character }: { character: Character }) {
       <img
         src={character.icon_image_url}
         alt={character.name}
-        style={{ width: 36, height: 36, borderRadius: "50%", objectFit: "cover", display: "block" }}
+        className="block h-9 w-9 rounded-full object-cover"
       />
     );
   }
   return (
-    <div style={{
-      width: 36, height: 36, borderRadius: "50%",
-      background: character.icon_color ?? "#6366f1",
-      display: "flex", alignItems: "center", justifyContent: "center",
-      fontSize: 13, fontWeight: 700, color: "#fff", flexShrink: 0,
-    }}>
+    <div
+      style={{ background: character.icon_color ?? "#6366f1" }}
+      className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full text-[13px] font-bold text-white"
+    >
       {character.icon_text ?? character.name.charAt(0)}
     </div>
   );
@@ -108,27 +121,40 @@ export default function WorkCharacterListPage() {
   return (
     <>
       <ViewerBanner role={role} />
-      <div className="page-header">
-        <div>
+
+      {/* ── ページヘッダー ── */}
+      <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div className="min-w-0">
           <Breadcrumb items={[
             { label: "アカウントリスト", href: "/oas" },
             { label: "作品リスト", href: `/oas/${oaId}/works` },
             ...(workTitle ? [{ label: workTitle, href: `/oas/${oaId}/works/${workId}` }] : []),
             { label: "キャラクター管理" },
           ]} />
-          <h2>キャラクター管理</h2>
+          <h2 className="font-round mt-1 text-[clamp(20px,4vw,24px)] font-extrabold leading-[1.2] tracking-[-0.02em] text-ink">
+            キャラクター管理
+          </h2>
         </div>
         {canEdit && (
-          <Link href={`/oas/${oaId}/works/${workId}/characters/new`} className="btn btn-primary">
+          <Link
+            href={`/oas/${oaId}/works/${workId}/characters/new`}
+            className={buttonClass({ variant: "primary", size: "md" })}
+          >
             + キャラクターを追加
           </Link>
         )}
       </div>
 
+      {/* ── エラー ── */}
       {error && (
-        <div className="alert alert-error">
-          {error}
-          <button onClick={load} style={{ marginLeft: 12, textDecoration: "underline", background: "none", border: "none", cursor: "pointer", color: "inherit" }}>再読み込み</button>
+        <div
+          role="alert"
+          className="mb-4 flex flex-wrap items-center gap-3 rounded-field border border-danger/30 bg-danger-soft px-4 py-3 text-[13px] leading-[1.6] text-danger"
+        >
+          <span>{error}</span>
+          <Button type="button" variant="ghost" size="sm" onClick={load}>
+            再読み込み
+          </Button>
         </div>
       )}
 
@@ -141,7 +167,7 @@ export default function WorkCharacterListPage() {
         />
       )}
 
-      {/* ── 使い方ガイド ── */}
+      {/* ── 使い方ガイド (= 別管理、触らず) ── */}
       <HelpAccordion items={[
         { title: "この画面でできること", points: [
           "LINE のメッセージ送信者として表示されるキャラクターを管理します",
@@ -160,18 +186,14 @@ export default function WorkCharacterListPage() {
       ]} />
 
       {/* ══ システムキャラクター（必須） ══ */}
-      <div className="card" style={{ maxWidth: 640, marginBottom: 24 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-          <p style={{ fontWeight: 600, color: "#374151", margin: 0 }}>システムキャラクター</p>
-          <span style={{
-            fontSize: 11, fontWeight: 700, color: "#dc2626",
-            background: "#fef2f2", padding: "1px 7px", borderRadius: 10,
-            border: "1px solid #fecaca",
-          }}>
+      <div className="mb-6 w-full max-w-[640px] rounded-card border border-line bg-surface p-5 shadow-sm sm:p-6">
+        <div className="mb-1 flex items-center gap-2">
+          <p className="m-0 text-[13px] font-bold text-ink">システムキャラクター</p>
+          <span className="rounded-full border border-danger/30 bg-danger-soft px-1.5 py-0.5 text-[10px] font-bold text-danger">
             必須
           </span>
         </div>
-        <p style={{ fontSize: 12, color: "#6b7280", marginBottom: 16 }}>
+        <p className="mb-4 text-[12px] leading-[1.6] text-ink-2">
           開始・エラー等のシステムメッセージに使う送信者を設定します。未設定の場合は OA デフォルト名義で送信されます。
         </p>
 
@@ -179,52 +201,49 @@ export default function WorkCharacterListPage() {
           <div className="skeleton" style={{ height: 38, borderRadius: 6 }} />
         ) : (
           <>
-            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
               <select
                 value={systemCharId ?? ""}
                 onChange={(e) => setSystemCharId(e.target.value || null)}
                 disabled={!canEdit}
-                style={{
-                  flex: 1, padding: "8px 12px", border: "1px solid #d1d5db",
-                  borderRadius: 6, fontSize: 14, background: "#fff",
-                }}
+                aria-label="システムキャラクターを選択"
+                className={compactInputClass + " flex-1"}
               >
                 <option value="">（OA デフォルト — 設定しない）</option>
                 {characters.filter((c) => c.is_active).map((c) => (
                   <option key={c.id} value={c.id}>{c.name}</option>
                 ))}
               </select>
-              <button
+              <Button
                 type="button"
-                className="btn btn-primary"
+                variant="primary"
+                size="sm"
                 onClick={handleSaveSystemChar}
                 disabled={!canEdit || savingSystemChar}
-                style={{ flexShrink: 0 }}
+                aria-busy={savingSystemChar || undefined}
+                className="sm:flex-shrink-0"
               >
-                {savingSystemChar && <span className="spinner" />}
+                {savingSystemChar && <span className="spinner" aria-hidden="true" />}
                 {savingSystemChar ? "保存中..." : "保存"}
-              </button>
+              </Button>
             </div>
 
             {selectedSystemChar && (
-              <div style={{
-                marginTop: 10, display: "flex", alignItems: "center", gap: 10,
-                padding: "8px 12px", background: "#f0fdf4", borderRadius: 6,
-                border: "1px solid #bbf7d0",
-              }}>
+              <div className="mt-2.5 flex items-center gap-2.5 rounded-field border border-brand/30 bg-brand-soft px-3 py-2">
                 <IconPreview character={selectedSystemChar} />
-                <div style={{ fontSize: 13 }}>
-                  <span style={{ fontWeight: 600 }}>{selectedSystemChar.name}</span>
-                  {selectedSystemChar.icon_image_url
-                    ? <span style={{ color: "#16a34a", marginLeft: 8, fontSize: 11 }}>アイコン画像あり</span>
-                    : <span style={{ color: "#ef4444", marginLeft: 8, fontSize: 11 }}>画像URL未設定（name のみ）</span>
-                  }
+                <div className="text-[13px]">
+                  <span className="font-bold text-ink">{selectedSystemChar.name}</span>
+                  {selectedSystemChar.icon_image_url ? (
+                    <span className="ml-2 text-[11px] text-brand-ink">アイコン画像あり</span>
+                  ) : (
+                    <span className="ml-2 text-[11px] text-danger">画像URL未設定（name のみ）</span>
+                  )}
                 </div>
               </div>
             )}
 
             {characters.length === 0 && (
-              <p style={{ fontSize: 12, color: "#9ca3af", marginTop: 8 }}>
+              <p className="mt-2 text-[12px] text-ink-3">
                 先にキャラクターを追加すると、ここで選択できます。
               </p>
             )}
@@ -234,7 +253,7 @@ export default function WorkCharacterListPage() {
 
       {/* ══ キャラクター一覧 ══ */}
       {loading ? (
-        <div className="card" style={{ padding: 0 }}>
+        <div className="overflow-hidden rounded-card border border-line bg-surface shadow-sm">
           <table>
             <thead>
               <tr>{["アイコン", "名前", "種別", "順序", "状態", ""].map((h) => <th key={h}>{h}</th>)}</tr>
@@ -252,22 +271,24 @@ export default function WorkCharacterListPage() {
           </table>
         </div>
       ) : characters.length === 0 ? (
-        <div className="card">
-          <div className="empty-state">
-            <p className="empty-state-title">キャラクターがまだいません</p>
-            <p className="empty-state-desc">
-              作品に登場するキャラクターを追加しましょう。<br />
-              キャラクターはメッセージの送信者として使用できます。
-            </p>
-            {canEdit && (
-              <Link href={`/oas/${oaId}/works/${workId}/characters/new`} className="btn btn-primary" style={{ marginTop: 8 }}>
-                + 最初のキャラクターを追加
-              </Link>
-            )}
-          </div>
+        <div className="rounded-card border border-line bg-surface p-8 text-center shadow-sm">
+          <p className="text-[16px] font-bold text-ink">キャラクターがまだいません</p>
+          <p className="mt-2 text-[13px] leading-[1.75] text-ink-2">
+            作品に登場するキャラクターを追加しましょう。
+            <br />
+            キャラクターはメッセージの送信者として使用できます。
+          </p>
+          {canEdit && (
+            <Link
+              href={`/oas/${oaId}/works/${workId}/characters/new`}
+              className={buttonClass({ variant: "primary", size: "md", className: "mt-4" })}
+            >
+              + 最初のキャラクターを追加
+            </Link>
+          )}
         </div>
       ) : (
-        <div className="card" style={{ padding: 0 }}>
+        <div className="overflow-hidden rounded-card border border-line bg-surface shadow-sm">
           <div className="table-wrap">
             <table>
               <thead>
@@ -284,56 +305,53 @@ export default function WorkCharacterListPage() {
                 {characters.map((c) => (
                   <tr key={c.id}>
                     <td><IconPreview character={c} /></td>
-                    <td style={{ fontWeight: 600 }}>
+                    <td className="font-semibold text-ink">
                       {c.name}
                       {c.id === systemCharId && (
-                        <span style={{
-                          marginLeft: 6, fontSize: 10, fontWeight: 700,
-                          color: "#7c3aed", background: "#f5f3ff",
-                          padding: "1px 6px", borderRadius: 8,
-                          border: "1px solid #ddd6fe",
-                        }}>
+                        // 「システム」識別ラベル (= status ではなくロール識別、ローカル小バッジで維持)
+                        <span className="ml-1.5 inline-flex items-center rounded-full border border-lilac/30 bg-lilac-soft px-1.5 py-0.5 text-[10px] font-bold text-lilac">
                           システム
                         </span>
                       )}
                     </td>
-                    <td style={{ fontSize: 12, color: "#6b7280" }}>
+                    <td className="text-[12px] text-ink-3">
                       {c.icon_type === "text" ? `テキスト「${c.icon_text ?? ""}」` : "画像URL"}
                     </td>
-                    <td style={{ textAlign: "center", color: "#6b7280" }}>{c.sort_order}</td>
+                    <td className="text-center text-ink-3">{c.sort_order}</td>
                     <td>
-                      <span className={`badge ${c.is_active ? "badge-active" : "badge-paused"}`}>
+                      <StatusBadge tone={c.is_active ? "active" : "muted"}>
                         {c.is_active ? "有効" : "無効"}
-                      </span>
+                      </StatusBadge>
                     </td>
                     <td>
-                      <div style={{ display: "flex", gap: 6 }}>
+                      <div className="flex flex-wrap gap-1.5">
                         {canEdit && (
                           <Link
                             href={`/oas/${oaId}/works/${workId}/characters/${c.id}/edit`}
-                            className="btn btn-ghost"
-                            style={{ padding: "4px 10px", fontSize: 12 }}
+                            className={buttonClass({ variant: "ghost", size: "sm" })}
                           >
                             編集
                           </Link>
                         )}
                         {canEdit && (
-                          <button
-                            className="btn btn-ghost"
-                            style={{ padding: "4px 10px", fontSize: 12 }}
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
                             onClick={() => toggleActive(c)}
                           >
                             {c.is_active ? "無効化" : "有効化"}
-                          </button>
+                          </Button>
                         )}
                         {(isOwner || isAdmin) && c.id !== systemCharId && (
-                          <button
-                            className="btn btn-danger"
-                            style={{ padding: "4px 10px", fontSize: 12 }}
+                          <Button
+                            type="button"
+                            variant="danger"
+                            size="sm"
                             onClick={() => handleDelete(c.id, c.name)}
                           >
                             削除
-                          </button>
+                          </Button>
                         )}
                       </div>
                     </td>
@@ -342,7 +360,7 @@ export default function WorkCharacterListPage() {
               </tbody>
             </table>
           </div>
-          <div style={{ padding: "10px 16px", fontSize: 12, color: "#9ca3af", borderTop: "1px solid #e5e5e5" }}>
+          <div className="border-t border-line-2 px-4 py-2.5 text-[12px] text-ink-3">
             {characters.length} 件
           </div>
         </div>
