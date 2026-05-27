@@ -338,12 +338,15 @@ export default function SnsPage() {
 
       {/* ── 追加フォーム ── */}
       {showForm && (
-        <div className="card" style={{ marginBottom: 24, border: "2px solid #000" }}>
-          <p style={{ fontWeight: 600, marginBottom: 16, color: "#374151", display: "flex", alignItems: "center", gap: 6 }}>
+        <div
+          className="mb-6 rounded-card bg-surface p-5 shadow-sm sm:p-6"
+          style={{ border: "2px solid #000" }}
+        >
+          <p className="mb-4 flex items-center gap-1.5 text-[14px] font-semibold text-ink">
             <XLogo size={13} /> 新しい投稿
           </p>
           <form onSubmit={handleAdd}>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr minmax(0, 340px)", gap: 24, alignItems: "start" }}>
+            <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[1fr_minmax(0,340px)]">
               <div>
                 <PostFormFields
                   form={addForm}
@@ -353,18 +356,29 @@ export default function SnsPage() {
                     setAddErrors((e) => { const n = { ...e }; delete n[key]; return n; });
                   }}
                 />
-                <div className="form-actions">
-                  <button type="button" className="btn btn-ghost" onClick={() => setShowForm(false)}>
+                <div className="mt-6 flex flex-col-reverse items-stretch gap-3 border-t border-line-2 pt-5 sm:flex-row sm:items-center sm:justify-end">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="md"
+                    onClick={() => setShowForm(false)}
+                  >
                     キャンセル
-                  </button>
-                  <button type="submit" className="btn btn-primary" disabled={!canEdit || adding}>
-                    {adding && <span className="spinner" />}
+                  </Button>
+                  <Button
+                    type="submit"
+                    variant="primary"
+                    size="md"
+                    disabled={!canEdit || adding}
+                    aria-busy={adding || undefined}
+                  >
+                    {adding && <span className="spinner" aria-hidden="true" />}
                     {adding ? "追加中..." : "追加"}
-                  </button>
+                  </Button>
                 </div>
               </div>
               <div>
-                <p style={{ fontSize: 11, fontWeight: 600, color: "#6b7280", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-ink-3">
                   プレビュー
                 </p>
                 <XPostPreview
@@ -374,7 +388,7 @@ export default function SnsPage() {
                   utmUrl={addForm.target_url.trim() ? buildUtmUrl(addForm.target_url.trim(), "preview") : ""}
                 />
                 {addForm.target_url.trim() && (
-                  <p style={{ fontSize: 11, color: "#06C755", marginTop: 6 }}>保存時にトラッキングが自動作成されます</p>
+                  <p className="mt-1.5 text-[11px]" style={{ color: "#06C755" }}>保存時にトラッキングが自動作成されます</p>
                 )}
               </div>
             </div>
@@ -416,12 +430,12 @@ export default function SnsPage() {
               <div key={post.id} className="card" style={{ padding: 0 }}>
                 {isEditing ? (
                   /* ── 編集フォーム ── */
-                  <div style={{ padding: "20px 24px" }}>
-                    <p style={{ fontWeight: 600, marginBottom: 16, color: "#374151", display: "flex", alignItems: "center", gap: 6 }}>
+                  <div className="p-5 sm:p-6">
+                    <p className="mb-4 flex items-center gap-1.5 text-[14px] font-semibold text-ink">
                       <XLogo size={13} /> 投稿を編集
                     </p>
                     <form onSubmit={handleSave}>
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr minmax(0, 340px)", gap: 24, alignItems: "start" }}>
+                      <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[1fr_minmax(0,340px)]">
                         <div>
                           <PostFormFields
                             form={editForm}
@@ -431,18 +445,29 @@ export default function SnsPage() {
                               setEditErrors((e) => { const n = { ...e }; delete n[key]; return n; });
                             }}
                           />
-                          <div className="form-actions">
-                            <button type="button" className="btn btn-ghost" onClick={() => setEditId(null)}>
+                          <div className="mt-6 flex flex-col-reverse items-stretch gap-3 border-t border-line-2 pt-5 sm:flex-row sm:items-center sm:justify-end">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="md"
+                              onClick={() => setEditId(null)}
+                            >
                               キャンセル
-                            </button>
-                            <button type="submit" className="btn btn-primary" disabled={!canEdit || saving}>
-                              {saving && <span className="spinner" />}
+                            </Button>
+                            <Button
+                              type="submit"
+                              variant="primary"
+                              size="md"
+                              disabled={!canEdit || saving}
+                              aria-busy={saving || undefined}
+                            >
+                              {saving && <span className="spinner" aria-hidden="true" />}
                               {saving ? "保存中..." : "保存"}
-                            </button>
+                            </Button>
                           </div>
                         </div>
                         <div>
-                          <p style={{ fontSize: 11, fontWeight: 600, color: "#6b7280", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                          <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-ink-3">
                             プレビュー
                           </p>
                           <XPostPreview
@@ -714,6 +739,18 @@ function XPostPreview({ text, imageUrl, targetUrl, utmUrl }: {
   );
 }
 
+// ── 共通: 必須マーク (= /account / works edit と同じパターン) ──
+function RequiredMark() {
+  return <span aria-hidden="true" className="ml-0.5 text-danger">*</span>;
+}
+
+// ── 共通スタイル: 行内 input / number / textarea (= Phase 3.1 compactInputClass) ──
+const compactInputClass =
+  "rounded-md border border-line bg-surface px-3 py-2 text-[13px] text-ink " +
+  "placeholder:text-ink-3 transition-shadow focus:border-brand focus:outline-none " +
+  "focus:ring-2 focus:ring-brand/20 disabled:cursor-not-allowed disabled:bg-bg-tint " +
+  "disabled:text-ink-3";
+
 // ── 共通フォームフィールド（追加 / 編集で共用） ────────
 interface PostFormFieldsProps {
   form:     PostForm;
@@ -722,11 +759,12 @@ interface PostFormFieldsProps {
 }
 
 function PostFormFields({ form, errors, onChange }: PostFormFieldsProps) {
+  const textOver = form.text.length > 250;
   return (
     <>
-      <div className="form-group">
-        <label htmlFor="text">
-          投稿テキスト <span style={{ color: "#ef4444" }}>*</span>
+      <div className="mb-5">
+        <label htmlFor="text" className="mb-1.5 block text-[13px] font-bold text-ink">
+          投稿テキスト<RequiredMark />
         </label>
         <textarea
           id="text"
@@ -735,56 +773,80 @@ function PostFormFields({ form, errors, onChange }: PostFormFieldsProps) {
           placeholder="X に投稿するテキストを入力してください"
           rows={4}
           maxLength={280}
+          aria-required="true"
+          aria-invalid={errors.text ? "true" : undefined}
+          aria-describedby={errors.text ? "sns-text-error sns-text-count" : "sns-text-count"}
+          className={compactInputClass + " w-full"}
         />
-        <span style={{
-          fontSize: 11,
-          color: form.text.length > 250 ? "#ef4444" : "#9ca3af",
-          display: "block", marginTop: 2,
-        }}>
+        <span
+          id="sns-text-count"
+          className={"mt-0.5 block text-[11px] " + (textOver ? "text-danger" : "text-ink-3")}
+        >
           {form.text.length} / 280
         </span>
-        {errors.text && <p className="field-error">{errors.text}</p>}
+        {errors.text && (
+          <p id="sns-text-error" role="alert" className="mt-1 text-[12px] text-danger">{errors.text}</p>
+        )}
       </div>
 
-      <div className="form-group">
-        <label htmlFor="target_url">リンク URL（任意）</label>
+      <div className="mb-5">
+        <label htmlFor="target_url" className="mb-1.5 block text-[13px] font-bold text-ink">
+          リンク URL（任意）
+        </label>
         <input
           id="target_url"
           type="url"
           value={form.target_url}
           onChange={(e) => onChange("target_url", e.target.value)}
           placeholder="https://example.com/"
-          style={{ fontFamily: "monospace", fontSize: 13 }}
+          aria-invalid={errors.target_url ? "true" : undefined}
+          aria-describedby={errors.target_url ? "sns-target_url-error sns-target_url-help" : "sns-target_url-help"}
+          className={compactInputClass + " w-full font-mono"}
         />
-        <span style={{ fontSize: 11, color: "#9ca3af", display: "block", marginTop: 4 }}>
+        <span id="sns-target_url-help" className="mt-1 block text-[11px] text-ink-3">
           保存後に utm_source=x&utm_medium=social&utm_campaign=sns_post_… が自動付与されます
         </span>
-        {errors.target_url && <p className="field-error">{errors.target_url}</p>}
+        {errors.target_url && (
+          <p id="sns-target_url-error" role="alert" className="mt-1 text-[12px] text-danger">{errors.target_url}</p>
+        )}
       </div>
 
-      <div className="form-group">
-        <label htmlFor="image_url">画像 URL（任意）</label>
+      <div className="mb-5">
+        <label htmlFor="image_url" className="mb-1.5 block text-[13px] font-bold text-ink">
+          画像 URL（任意）
+        </label>
         <input
           id="image_url"
           type="url"
           value={form.image_url}
           onChange={(e) => onChange("image_url", e.target.value)}
           placeholder="https://example.com/image.png"
-          style={{ fontFamily: "monospace", fontSize: 13 }}
+          aria-invalid={errors.image_url ? "true" : undefined}
+          aria-describedby={errors.image_url ? "sns-image_url-error" : undefined}
+          className={compactInputClass + " w-full font-mono"}
         />
-        {errors.image_url && <p className="field-error">{errors.image_url}</p>}
+        {errors.image_url && (
+          <p id="sns-image_url-error" role="alert" className="mt-1 text-[12px] text-danger">{errors.image_url}</p>
+        )}
       </div>
 
-      <div className="form-group" style={{ maxWidth: 120 }}>
-        <label htmlFor="order">表示順序</label>
+      <div className="mb-5 max-w-[120px]">
+        <label htmlFor="order" className="mb-1.5 block text-[13px] font-bold text-ink">
+          表示順序
+        </label>
         <input
           id="order"
           type="number"
           value={form.order}
           onChange={(e) => onChange("order", e.target.value)}
           min={0}
+          aria-invalid={errors.order ? "true" : undefined}
+          aria-describedby={errors.order ? "sns-order-error" : undefined}
+          className={compactInputClass + " w-full"}
         />
-        {errors.order && <p className="field-error">{errors.order}</p>}
+        {errors.order && (
+          <p id="sns-order-error" role="alert" className="mt-1 text-[12px] text-danger">{errors.order}</p>
+        )}
       </div>
     </>
   );
