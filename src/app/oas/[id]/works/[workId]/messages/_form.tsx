@@ -3034,16 +3034,64 @@ export function MessageForm({
       {/* ── レスポンシブ: 768px以下で縦並び ── */}
       <style>{`
         .msg-form-layout { display: flex; gap: 24px; align-items: flex-start; }
-        .msg-form-col    { flex: 1; min-width: 0; }
+        .msg-form-col    { flex: 1; min-width: 0; padding-bottom: 80px; }
         .msg-preview-col {
           flex-shrink: 0; width: 340px;
           position: sticky; top: 24px;
           max-height: calc(100vh - 48px);
           overflow-y: auto;
         }
+
+        /* ── 詳細設定 divider (= 「送信設定」 等の控えめなセクション前に置く視覚的区切り) ── */
+        .msg-section-divider {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          margin: 12px 0 12px;
+          color: var(--color-ink-3, #9aa8a2);
+          font-size: 11px;
+          font-weight: 700;
+          letter-spacing: 0.07em;
+        }
+        .msg-section-divider::before,
+        .msg-section-divider::after {
+          content: "";
+          flex: 1;
+          height: 1px;
+          background: var(--color-line, #e8edea);
+        }
+
+        /* ── 画面下に常時表示する action footer ── */
+        /* 保存・キャンセル・削除を sticky で固定し、スクロール量に関わらず操作可能に。 */
+        /* 親 (.msg-form-col) に padding-bottom を入れ、最後のフォーム項目と被らないようにする。 */
+        .msg-action-footer {
+          position: sticky;
+          bottom: 0;
+          left: 0;
+          right: 0;
+          z-index: 20;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 8px;
+          padding: 12px 16px;
+          margin: 16px -16px 0;
+          background: var(--color-surface, #ffffff);
+          border-top: 1px solid var(--color-line, #e8edea);
+          box-shadow: 0 -2px 8px rgba(26, 40, 32, 0.04);
+        }
+        .msg-action-footer .msg-action-group {
+          display: flex;
+          gap: 8px;
+          align-items: center;
+        }
         @media (max-width: 768px) {
           .msg-form-layout  { flex-direction: column; }
           .msg-preview-col  { position: static; width: 100%; max-height: none; order: -1; }
+          .msg-action-footer {
+            margin: 16px 0 0;
+            padding: 12px 14px;
+          }
         }
       `}</style>
 
@@ -3292,6 +3340,11 @@ export function MessageForm({
             </div>
             )}
           </SectionAccordion>
+
+          {/* ── 「詳細設定」 視覚的区切り (= 以下は任意/上級者向け、デフォルト折りたたみ) ── */}
+          <div className="msg-section-divider" aria-hidden="true">
+            <span>詳細設定（任意）</span>
+          </div>
 
           {/* ════════════════════════════════════════
               セクション 2: 送信設定
@@ -4491,15 +4544,10 @@ export function MessageForm({
             />
           )}
 
-          {/* ── アクション ── */}
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              marginTop: 4,
-            }}
-          >
+          {/* ── アクションフッター (= sticky で画面下部に固定) ── */}
+          {/* スクロール量が多い長いフォームでも、保存ボタンが常に視界に入るようにする。 */}
+          {/* 削除 / キャンセル / 保存 のロジックは旧 inline 版から完全維持。 */}
+          <div className="msg-action-footer" role="group" aria-label="保存・キャンセル操作">
             {!isNew && onDelete ? (
               <button
                 type="button"
@@ -4518,7 +4566,7 @@ export function MessageForm({
             ) : (
               <div />
             )}
-            <div style={{ display: "flex", gap: 8 }}>
+            <div className="msg-action-group">
               <Link href={`/oas/${oaId}/works/${workId}/messages`} className="btn btn-ghost">
                 キャンセル
               </Link>
