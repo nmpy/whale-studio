@@ -160,6 +160,19 @@ async function handleSubscriptionDeleted(stripeSub: Stripe.Subscription): Promis
   console.log(`[webhook] subscription.deleted: Subscription ${existing.id} を canceled に更新しました`);
 }
 
+// ── Prisma の unique 制約違反コード ──────────────────────────────────
+// P2002 = "Unique constraint failed on the {constraint}" (= 再送 / 二重受信検知に使用)
+const PRISMA_UNIQUE_VIOLATION_CODE = "P2002";
+
+function isPrismaUniqueViolation(err: unknown): boolean {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    "code" in err &&
+    (err as { code: unknown }).code === PRISMA_UNIQUE_VIOLATION_CODE
+  );
+}
+
 // ── メインハンドラ ───────────────────────────────────────────────────
 export async function POST(req: NextRequest): Promise<NextResponse> {
   // ── Stripe 署名検証 ─────────────────────────────────────────────
@@ -183,8 +196,32 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
   console.log(`[webhook] イベント受信: ${event.type} id=${event.id}`);
 
+  // ── Idempotency: 受信直後に stripeEventId を reserve ─────────────
+  // 既に同じ event.id を受信していれば unique 制約違反 (P2002) で検知し、
+  // 二重処理せず 200 を返す (= Stripe の再試行ループを継続させない)。
+  try {
+    await prisma.stripeWebhookEvent.create({
+      data: {
+        stripeEventId: event.id,
+        eventType:     event.type,
+        status:        "received",
+      },
+    });
+  } catch (err) {
+    if (isPrismaUniqueViolation(err)) {
+      console.log(`[webhook] イベント ${event.id} は既に受信済み (skip 二重処理)`);
+      return NextResponse.json({ received: true, skipped: true });
+    }
+    // reserve 自体の予期せぬエラー (= DB ダウン等) は 500 を返して Stripe に再送させる
+    console.error("[webhook] idempotency reserve 失敗:", err);
+    return NextResponse.json({ error: "Failed to record webhook event" }, { status: 500 });
+  }
+
   // ── イベント処理 ────────────────────────────────────────────────
-  // 処理失敗は 200 を返してログのみ記録（Stripe の再試行ループを防ぐ）
+  // 処理失敗は 200 を返してログのみ記録（Stripe の再試行ループを防ぐ）。
+  // 処理結果は stripe_webhook_events.status + processed_at + error_message に
+  // 記録され、管理者が後から確認できる。
+  let processingError: unknown = null;
   try {
     switch (event.type) {
       case "checkout.session.completed":
@@ -205,10 +242,29 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         console.log(`[webhook] 未対応イベント: ${event.type} — スキップ`);
     }
   } catch (err) {
+    processingError = err;
     console.error(`[webhook] イベント処理中エラー (${event.type}):`, err);
     // 200 を返してから Stripe へ "受け取った" と伝える
     // 再試行が必要な場合は Stripe Dashboard から手動で行う
   }
+
+  // ── 処理結果を記録 ───────────────────────────────────────────────
+  // 記録自体の失敗は致命的でない (= ログのみ、Stripe には 200 を返す)。
+  await prisma.stripeWebhookEvent.update({
+    where: { stripeEventId: event.id },
+    data: processingError
+      ? {
+          status:       "failed",
+          errorMessage: processingError instanceof Error ? processingError.message : String(processingError),
+          processedAt:  new Date(),
+        }
+      : {
+          status:      "processed",
+          processedAt: new Date(),
+        },
+  }).catch((err) => {
+    console.error(`[webhook] idempotency record update 失敗 (event ${event.id}):`, err);
+  });
 
   return NextResponse.json({ received: true });
 }
