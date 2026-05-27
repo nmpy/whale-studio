@@ -5,6 +5,13 @@
 // POST   /api/oas/:id/sns         → 追加（platform は "x" 固定）
 // PATCH  /api/oas/:id/sns/:snsId  → 更新（platform は "x" 固定）
 // DELETE /api/oas/:id/sns/:snsId  → 削除
+//
+// Phase 4.5a: layout 層 (= ヘッダー / Loading / Error / Empty / 一覧外枠 / 件数) を
+// Phase 0 トークン + shared/Button に揃える。追加 form / 編集 form / PostFormFields /
+// 投稿 row 表示モード / copy button / handleCopy / 削除 button / handleDelete /
+// 「X で投稿する」button / XPostPreview / HelpAccordion / ViewerBanner / Breadcrumb /
+// buildUtmUrl / buildXIntentUrl / XLogo / API / payload / toast / confirm / tracking /
+// clipboard には触らない (= 4.5b / 4.5c 対象、または永続的に非対象)。
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
@@ -15,6 +22,7 @@ import { HelpAccordion } from "@/components/HelpAccordion";
 import type { SnsPost } from "@/types";
 import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
 import { ViewerBanner } from "@/components/PermissionGuard";
+import { Button } from "@/components/shared";
 
 // ── UTM 付き URL 生成 ───────────────────────────────────
 // URL API を使うため既存クエリを壊さず安全にパラメータを付与する。
@@ -221,26 +229,43 @@ export default function SnsPage() {
     }
   }
 
+  // ── ローディング / エラー時にも使う共通ヘッダー ──
+  const minimalHeader = (
+    <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+      <div className="min-w-0">
+        <Breadcrumb items={[
+          { label: "アカウントリスト", href: "/oas" },
+          { label: "設定", href: `/oas/${oaId}/settings` },
+          { label: "SNS連携" },
+        ]} />
+        <h2 className="font-round mt-1 text-[clamp(20px,4vw,24px)] font-extrabold leading-[1.2] tracking-[-0.02em] text-ink">
+          X 投稿管理
+        </h2>
+      </div>
+    </div>
+  );
+
   // ── ローディング ──────────────────────────────
   if (loading) {
     return (
       <>
-        <div className="page-header">
-          <Breadcrumb items={[
-            { label: "アカウントリスト", href: "/oas" },
-            { label: "設定", href: `/oas/${oaId}/settings` },
-            { label: "SNS連携" },
-          ]} />
-          <h2>X 投稿管理</h2>
-        </div>
-        <div className="card" style={{ padding: 0 }}>
+        {minimalHeader}
+        <div
+          role="status"
+          aria-busy="true"
+          className="overflow-hidden rounded-card border border-line bg-surface"
+        >
           {[1, 2, 3].map((i) => (
-            <div key={i} style={{ padding: "16px 20px", borderBottom: "1px solid #e5e5e5" }}>
-              <div className="skeleton" style={{ width: 60, height: 20, marginBottom: 8, borderRadius: 4 }} />
-              <div className="skeleton" style={{ height: 14, marginBottom: 4 }} />
-              <div className="skeleton" style={{ width: "60%", height: 14 }} />
+            <div
+              key={i}
+              className="border-b border-line-2 px-5 py-4 last:border-b-0"
+            >
+              <div className="mb-2 h-5 w-16 animate-pulse rounded bg-bg-tint" />
+              <div className="mb-1 h-3.5 animate-pulse rounded bg-bg-tint" />
+              <div className="h-3.5 w-3/5 animate-pulse rounded bg-bg-tint" />
             </div>
           ))}
+          <span className="sr-only">読み込み中...</span>
         </div>
       </>
     );
@@ -249,22 +274,15 @@ export default function SnsPage() {
   if (loadError) {
     return (
       <>
-        <div className="page-header">
-          <Breadcrumb items={[
-            { label: "アカウントリスト", href: "/oas" },
-            { label: "設定", href: `/oas/${oaId}/settings` },
-            { label: "SNS連携" },
-          ]} />
-          <h2>X 投稿管理</h2>
-        </div>
-        <div className="alert alert-error">
-          {loadError}
-          <button
-            onClick={load}
-            style={{ marginLeft: 12, textDecoration: "underline", background: "none", border: "none", cursor: "pointer", color: "inherit" }}
-          >
+        {minimalHeader}
+        <div
+          role="alert"
+          className="flex flex-wrap items-center gap-3 rounded-field border border-danger/30 bg-danger-soft px-4 py-3 text-[13px] leading-[1.6] text-danger"
+        >
+          <span>{loadError}</span>
+          <Button type="button" variant="ghost" size="sm" onClick={load}>
             再読み込み
-          </button>
+          </Button>
         </div>
       </>
     );
@@ -273,26 +291,32 @@ export default function SnsPage() {
   return (
     <>
       <ViewerBanner role={role} />
-      <div className="page-header">
-        <div>
+
+      {/* ── ヘッダー ── */}
+      <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div className="min-w-0">
           <Breadcrumb items={[
             { label: "アカウントリスト", href: "/oas" },
             { label: "設定", href: `/oas/${oaId}/settings` },
             { label: "SNS連携" },
           ]} />
-          <h2>X 投稿管理</h2>
-          <p style={{ fontSize: 13, color: "#6b7280", marginTop: 4 }}>
+          <h2 className="font-round mt-1 text-[clamp(20px,4vw,24px)] font-extrabold leading-[1.2] tracking-[-0.02em] text-ink">
+            X 投稿管理
+          </h2>
+          <p className="mt-1 text-[13px] text-ink-2">
             X（旧 Twitter）への告知投稿を管理します。UTM 付き URL を自動生成します。
           </p>
         </div>
         {canEdit && (
-          <button
-            className="btn btn-primary"
-            style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
+          <Button
+            type="button"
+            variant="primary"
+            size="md"
             onClick={() => { setShowForm(true); setAddErrors({}); setAddForm(EMPTY_FORM); }}
+            className="inline-flex items-center gap-1.5"
           >
             <XLogo size={12} /> 投稿を追加
-          </button>
+          </Button>
         )}
       </div>
 
@@ -360,28 +384,28 @@ export default function SnsPage() {
 
       {/* ── 一覧 ── */}
       {posts.length === 0 ? (
-        <div className="card">
-          <div className="empty-state">
-            <div className="empty-state-icon">
-              <XLogo size={32} />
-            </div>
-            <p className="empty-state-title">X 投稿がまだありません</p>
-            <p className="empty-state-desc">
-              X へのイベント告知投稿をここで管理・共有できます。
-            </p>
-            {canEdit && (
-              <button
-                className="btn btn-primary"
-                style={{ marginTop: 8, display: "inline-flex", alignItems: "center", gap: 6 }}
-                onClick={() => { setShowForm(true); setAddErrors({}); setAddForm(EMPTY_FORM); }}
-              >
-                <XLogo size={12} /> 最初の投稿を追加
-              </button>
-            )}
+        <div className="rounded-card border-2 border-dashed border-line-2 bg-bg-tint px-6 py-12 text-center">
+          <div className="mb-3 flex justify-center text-ink-2" aria-hidden="true">
+            <XLogo size={32} />
           </div>
+          <p className="mb-2 text-[16px] font-bold text-ink">X 投稿がまだありません</p>
+          <p className="mb-5 text-[13px] text-ink-2">
+            X へのイベント告知投稿をここで管理・共有できます。
+          </p>
+          {canEdit && (
+            <Button
+              type="button"
+              variant="primary"
+              size="md"
+              onClick={() => { setShowForm(true); setAddErrors({}); setAddForm(EMPTY_FORM); }}
+              className="inline-flex items-center gap-1.5"
+            >
+              <XLogo size={12} /> 最初の投稿を追加
+            </Button>
+          )}
         </div>
       ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <div className="flex flex-col gap-4">
           {posts.map((post) => {
             const utmUrl    = post.target_url ? buildUtmUrl(post.target_url, post.id) : "";
             const xPostUrl  = buildXIntentUrl(post.text, utmUrl);
@@ -569,7 +593,7 @@ export default function SnsPage() {
               </div>
             );
           })}
-          <div style={{ fontSize: 12, color: "#9ca3af", textAlign: "right" }}>
+          <div className="text-right text-[12px] text-ink-3">
             {posts.length} 件
           </div>
         </div>
