@@ -3,6 +3,11 @@
 // src/components/destination/DestinationUrlPreview.tsx
 // フォーム入力値からリアルタイムで resolved URL を表示するプレビュー。
 // 保存前に最終URLを確認できる。
+//
+// Phase 4.2c: UI を Phase 0 トークンに揃える。
+// 成功: bg-brand-soft + border-brand/30 + text-brand-ink
+// 警告: bg-warn-soft + border-warn/30 + text-warn
+// resolveDestinationUrl 本体・警告条件・表示文言・空キー除外ロジックは完全維持。
 
 import { resolveDestinationUrl } from "@/lib/destination-url-builder";
 import type { DestinationType, LiffTargetType } from "@/types";
@@ -40,17 +45,19 @@ export function DestinationUrlPreview({
       : "URLを入力してください";
 
     return (
-      <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-        <p className="text-xs font-medium text-amber-600 mb-0.5">生成されるURL</p>
-        <p className="text-xs text-amber-500">{reason}</p>
+      <div className="mt-4 rounded-field border border-warn/30 bg-warn-soft p-3" role="status">
+        <p className="mb-0.5 text-[12px] font-medium text-warn">生成されるURL</p>
+        <p className="text-[12px] text-warn">{reason}</p>
       </div>
     );
   }
 
   return (
-    <div className="mt-4 p-3 bg-teal-50 border border-teal-200 rounded-lg">
-      <p className="text-xs font-medium text-teal-700 mb-1">生成されるURL</p>
-      <code className="text-[11px] text-teal-800 break-all leading-relaxed">{resolved}</code>
+    <div className="mt-4 rounded-field border border-brand/30 bg-brand-soft p-3" role="status">
+      <p className="mb-1 text-[12px] font-medium text-brand-ink">生成されるURL</p>
+      <code className="block break-all font-mono text-[11px] leading-relaxed text-brand-ink">
+        {resolved}
+      </code>
     </div>
   );
 }
