@@ -1,5 +1,18 @@
 "use client";
 
+// src/app/oas/[id]/richmenu-editor/page.tsx
+// リッチメニュー管理画面 — 一覧 + 新規作成 + LINE 適用 + 編集導線 + 削除。
+//
+// Phase 4.4: UI を Phase 0 トークン + shared/Button + buttonClass に揃える。
+// richMenuEditorApi / oaApi / API route / Prisma / 認可ロジック / types /
+// ViewerBanner / Breadcrumb / Toast / useWorkspaceRole には触らない。
+// load / handleCreate / handleApply / handleDelete / 全 confirm 文言 /
+// create payload (= name / chat_bar_text / size / image_url / is_active /
+// areas 3 つ + W=2500/H=843/sw=Math.floor(W/3) 計算) / 成功後の
+// window.location.href 遷移 / await load() / state filter / toast 文言 /
+// canEdit / isOwner / isAdmin 判定 / ViewerBanner 表示は完全維持。
+// MiniPreview のサイズ・色 cycling 6 色・配置計算も完全維持。
+
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
@@ -9,6 +22,7 @@ import { useToast } from "@/components/Toast";
 import type { RichMenuWithAreas } from "@/types";
 import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
 import { ViewerBanner } from "@/components/PermissionGuard";
+import { Button, buttonClass } from "@/components/shared";
 
 export default function RichMenuEditorListPage() {
   const params = useParams<{ id: string }>();
@@ -42,7 +56,7 @@ export default function RichMenuEditorListPage() {
     }
   }
 
-  useEffect(() => { load(); }, [oaId]);
+  useEffect(() => { load(); }, [oaId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handleCreate() {
     setCreating(true);
@@ -103,113 +117,165 @@ export default function RichMenuEditorListPage() {
   return (
     <>
       <ViewerBanner role={role} />
-      <div className="page-header">
-        <div>
+
+      {/* ── ヘッダー ── */}
+      <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div className="min-w-0">
           <Breadcrumb items={[
             { label: "アカウントリスト", href: "/oas" },
             { label: oaTitle || "作品リスト", href: `/oas/${oaId}/works` },
             { label: "リッチメニューエディター" },
           ]} />
-          <h2>🎨 リッチメニューエディター</h2>
-          <p style={{ fontSize: 13, color: "#6b7280", marginTop: 4 }}>
+          <h2 className="font-round mt-1 text-[clamp(20px,4vw,24px)] font-extrabold leading-[1.2] tracking-[-0.02em] text-ink">
+            <span aria-hidden="true">🎨 </span>リッチメニューエディター
+          </h2>
+          <p className="mt-1 text-[13px] text-ink-2">
             カスタムリッチメニューを自由に作成・編集できます。
           </p>
         </div>
-        <div style={{ display: "flex", gap: 10 }}>
-          <Link href={`/oas/${oaId}/richmenu-sync`} className="btn btn-ghost" style={{ fontSize: 13 }}>
+        <div className="flex flex-wrap gap-2">
+          <Link
+            href={`/oas/${oaId}/richmenu-sync`}
+            className={buttonClass({ variant: "ghost", size: "md" })}
+          >
             Sheets 同期
           </Link>
           {canEdit && (
-            <button className="btn btn-primary" onClick={handleCreate} disabled={creating}>
-              {creating ? <><span className="spinner" /> 作成中…</> : "+ 新規作成"}
-            </button>
+            <Button
+              type="button"
+              variant="primary"
+              size="md"
+              onClick={handleCreate}
+              disabled={creating}
+              aria-busy={creating || undefined}
+            >
+              {creating ? <><span className="spinner" aria-hidden="true" /> 作成中…</> : "+ 新規作成"}
+            </Button>
           )}
         </div>
       </div>
 
-      {error && <div className="alert alert-error">{error}</div>}
+      {/* ── Error banner ── */}
+      {error && (
+        <div
+          role="alert"
+          className="mb-4 rounded-field border border-danger/30 bg-danger-soft px-4 py-3 text-[13px] leading-[1.6] text-danger"
+        >
+          {error}
+        </div>
+      )}
 
+      {/* ── Loading skeleton ── */}
       {loading ? (
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <div className="flex flex-col gap-3" role="status" aria-busy="true">
           {[...Array(2)].map((_, i) => (
-            <div key={i} className="skeleton" style={{ height: 100, borderRadius: 10 }} />
+            <div
+              key={i}
+              className="h-[100px] animate-pulse rounded-card border border-line bg-bg-tint"
+            />
           ))}
+          <span className="sr-only">読み込み中...</span>
         </div>
       ) : menus.length === 0 ? (
-        <div className="card" style={{ textAlign: "center", padding: "48px 24px" }}>
-          <div style={{ fontSize: 40, marginBottom: 12 }}>🎨</div>
-          <p style={{ fontWeight: 700, fontSize: 16, color: "#374151", marginBottom: 8 }}>
+        /* ── Empty state ── */
+        <div className="rounded-card border-2 border-dashed border-line-2 bg-bg-tint px-6 py-12 text-center">
+          <div className="mb-3 text-[40px]" aria-hidden="true">🎨</div>
+          <p className="mb-2 text-[16px] font-bold text-ink">
             リッチメニューがありません
           </p>
-          <p style={{ fontSize: 13, color: "#6b7280", marginBottom: 20 }}>
+          <p className="mb-5 text-[13px] text-ink-2">
             「新規作成」からカスタムリッチメニューを作成してください。
           </p>
           {canEdit && (
-            <button className="btn btn-primary" onClick={handleCreate} disabled={creating}>
-              {creating ? <><span className="spinner" /> 作成中…</> : "+ 新規作成"}
-            </button>
+            <Button
+              type="button"
+              variant="primary"
+              size="md"
+              onClick={handleCreate}
+              disabled={creating}
+              aria-busy={creating || undefined}
+            >
+              {creating ? <><span className="spinner" aria-hidden="true" /> 作成中…</> : "+ 新規作成"}
+            </Button>
           )}
         </div>
       ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        /* ── 一覧 ── */
+        <div className="flex flex-col gap-3">
           {menus.map((menu) => (
-            <div key={menu.id} className="card" style={{ display: "flex", gap: 16, alignItems: "center" }}>
-              {/* ミニプレビュー */}
+            <div
+              key={menu.id}
+              className="flex flex-col gap-3 rounded-card border border-line bg-surface p-4 shadow-sm transition-colors hover:border-brand/30 sm:flex-row sm:items-center sm:gap-4"
+            >
+              {/* ミニプレビュー (= 内部は触らない) */}
               <MiniPreview areas={menu.areas} size={menu.size as "full" | "compact"} />
 
               {/* メニュー情報 */}
-              <div style={{ flex: 1 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
-                  <span style={{ fontWeight: 700, fontSize: 15, color: "#111827" }}>{menu.name}</span>
+              <div className="min-w-0 flex-1">
+                <div className="mb-1 flex flex-wrap items-center gap-2.5">
+                  <span className="text-[15px] font-bold text-ink">{menu.name}</span>
                   {menu.line_rich_menu_id && (
-                    <span style={{
-                      background: "#f0fdf4", color: "#15803d",
-                      fontSize: 11, fontWeight: 600,
-                      padding: "2px 8px", borderRadius: 20,
-                      border: "1px solid #86efac",
-                    }}>
+                    <span
+                      className="rounded-full px-2 py-0.5 text-[11px] font-semibold"
+                      style={{
+                        background:   "#f0fdf4",
+                        color:        "#15803d",
+                        border:       "1px solid #86efac",
+                      }}
+                    >
                       LINE 適用済み
                     </span>
                   )}
                 </div>
-                <div style={{ fontSize: 12, color: "#6b7280", display: "flex", gap: 12 }}>
+                <div className="flex flex-wrap gap-3 text-[12px] text-ink-3">
                   <span>バーテキスト: 「{menu.chat_bar_text}」</span>
                   <span>サイズ: {menu.size === "full" ? "フル (2500×1686)" : "コンパクト (2500×843)"}</span>
                   <span>エリア数: {menu.areas.length}</span>
                 </div>
                 {menu.line_rich_menu_id && (
-                  <p style={{ fontSize: 11, color: "#9ca3af", marginTop: 3, fontFamily: "monospace" }}>
+                  <p className="mt-1 font-mono text-[11px] text-ink-3">
                     LINE ID: {menu.line_rich_menu_id}
                   </p>
                 )}
               </div>
 
-              {/* アクション */}
-              <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+              {/* アクション (= SP では flex-wrap で折り返し) */}
+              <div className="flex flex-shrink-0 flex-wrap gap-2">
                 {canEdit && (
-                  <Link href={`/oas/${oaId}/richmenu-editor/${menu.id}`} className="btn btn-ghost" style={{ fontSize: 13 }}>
-                    ✏️ 編集
+                  <Link
+                    href={`/oas/${oaId}/richmenu-editor/${menu.id}`}
+                    className={buttonClass({ variant: "ghost", size: "sm" })}
+                  >
+                    <span aria-hidden="true">✏️ </span>編集
                   </Link>
                 )}
                 {canEdit && (
-                  <button
-                    className="btn btn-primary"
-                    style={{ fontSize: 13 }}
+                  <Button
+                    type="button"
+                    variant="primary"
+                    size="sm"
                     disabled={applying === menu.id}
+                    aria-busy={applying === menu.id || undefined}
                     onClick={() => handleApply(menu.id)}
                   >
-                    {applying === menu.id ? <><span className="spinner" /> 適用中…</> : "📲 LINE 適用"}
-                  </button>
+                    {applying === menu.id ? (
+                      <><span className="spinner" aria-hidden="true" /> 適用中…</>
+                    ) : (
+                      <><span aria-hidden="true">📲 </span>LINE 適用</>
+                    )}
+                  </Button>
                 )}
                 {(isOwner || isAdmin) && (
-                  <button
-                    className="btn btn-danger"
-                    style={{ fontSize: 13 }}
+                  <Button
+                    type="button"
+                    variant="danger"
+                    size="sm"
                     disabled={deleting === menu.id}
+                    aria-busy={deleting === menu.id || undefined}
                     onClick={() => handleDelete(menu.id, menu.name)}
                   >
-                    {deleting === menu.id ? <><span className="spinner" /></> : "削除"}
-                  </button>
+                    {deleting === menu.id ? <span className="spinner" aria-hidden="true" /> : "削除"}
+                  </Button>
                 )}
               </div>
             </div>
@@ -220,7 +286,7 @@ export default function RichMenuEditorListPage() {
   );
 }
 
-// ── ミニプレビューコンポーネント ──
+// ── ミニプレビューコンポーネント (= Phase 4.4 では中身を触らない) ──
 function MiniPreview({ areas, size }: {
   areas: RichMenuWithAreas["areas"];
   size: "full" | "compact";
