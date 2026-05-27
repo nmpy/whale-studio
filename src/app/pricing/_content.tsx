@@ -202,14 +202,24 @@ export function PricingContent({
   /** API response の error フィールドから安全に文字列メッセージを抽出する。
    *  ApiError は `{ code, message, details? }` 形状なので、object をそのまま
    *  setCheckoutError に渡すと React error #31 (Objects are not valid as a React child)
-   *  でページ全体がクラッシュする。常に string か null になるよう正規化する。 */
+   *  でページ全体がクラッシュする。常に string か null になるよう正規化する。
+   *
+   *  さらに `code === "INTERNAL_SERVER_ERROR"` の generic backend message
+   *  (= 「サーバーエラーが発生しました」) はそのままだと原因が分からず不親切なので、
+   *  fallback (= ユーザー向けの汎用文言) に置き換える。 */
   function extractErrorMessage(payload: unknown, fallback: string): string {
     if (payload && typeof payload === "object" && "error" in payload) {
       const err = (payload as { error: unknown }).error;
       if (typeof err === "string") return err;
-      if (err && typeof err === "object" && "message" in err) {
-        const msg = (err as { message: unknown }).message;
-        if (typeof msg === "string" && msg.length > 0) return msg;
+      if (err && typeof err === "object") {
+        const errObj = err as { code?: unknown; message?: unknown };
+        // INTERNAL_SERVER_ERROR は backend の汎用文言なのでユーザー向け fallback に変換
+        if (errObj.code === "INTERNAL_SERVER_ERROR") {
+          return fallback;
+        }
+        if (typeof errObj.message === "string" && errObj.message.length > 0) {
+          return errObj.message;
+        }
       }
     }
     return fallback;
@@ -252,7 +262,7 @@ export function PricingContent({
 
       const url = (data as { data?: { url?: unknown } } | null)?.data?.url;
       if (!res.ok || typeof url !== "string") {
-        setCheckoutError(extractErrorMessage(data, "チェックアウトセッションの作成に失敗しました"));
+        setCheckoutError(extractErrorMessage(data, "決済の準備中です。時間をおいて再度お試しください。"));
         return;
       }
       window.location.href = url;
@@ -373,19 +383,30 @@ export function PricingContent({
                 ))}
               </div>
 
-              <Button
-                type="button"
-                onClick={() => handlePersonalUpgrade(plan.tier)}
-                disabled={checkoutLoadingTier !== null}
-                aria-busy={checkoutLoadingTier === plan.tier || undefined}
-                variant={isRecommended ? "primary" : "ghost"}
-                size="sm"
-                fullWidth
-                aria-label={`${plan.label}プランにアップグレード`}
-                className="mt-auto"
-              >
-                {checkoutLoadingTier === plan.tier ? "処理中..." : "アップグレードする"}
-              </Button>
+              {(() => {
+                const isThisLoading  = checkoutLoadingTier === plan.tier;
+                const isOtherLoading = checkoutLoadingTier !== null && !isThisLoading;
+                return (
+                  <Button
+                    type="button"
+                    onClick={() => handlePersonalUpgrade(plan.tier)}
+                    // disabled は「押されたプラン」だけに適用 (= 視覚的にも処理中表示)。
+                    // 他プランは disabled にせず通常表示を維持し、二重クリックは
+                    // handlePersonalUpgrade 内の guard (checkoutLoadingTier !== null → 早期 return) で防ぐ。
+                    disabled={isThisLoading}
+                    // a11y: 他プランボタンは「今は押せない」状態を semantic に伝える (= 視覚は維持)
+                    aria-disabled={isOtherLoading || undefined}
+                    aria-busy={isThisLoading || undefined}
+                    variant={isRecommended ? "primary" : "ghost"}
+                    size="sm"
+                    fullWidth
+                    aria-label={`${plan.label}プランにアップグレード`}
+                    className="mt-auto"
+                  >
+                    {isThisLoading ? "処理中..." : "アップグレードする"}
+                  </Button>
+                );
+              })()}
             </div>
           );
         })}
