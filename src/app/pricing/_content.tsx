@@ -84,63 +84,80 @@ interface PersonalPlanCard {
   recommended?: boolean;
 }
 
+// 個人利用プラン (= 機能階段順: Basic → Standard → Plus → Pro)。
+// 内部 plan tier (= "basic"|"standard"|"plus"|"pro") は変更せず、表示文言と並び順のみを
+// FEATURE mapping に揃える (= constants/plans.ts):
+//   Basic    : work.info / characters / messages / scenarioFlow
+//   Standard : + audience
+//   Plus     : + liffDisplay / destinations
+//   Pro      : + location
+// 価格: Basic は ¥5,400/月 (= Stripe 本番側で確定済、運用上ハードコード)。
+// 他は seed/env に確定値が無いため "準備中" のまま (= 金額は推測で入れない方針)。
+// recommended: Plus に付与 (= 一般的な制作・運用に最適な位置として推奨)。
 const PERSONAL_PLAN_CARDS: readonly PersonalPlanCard[] = [
   {
     tier:    "basic",
     label:   "Basic",
-    tagline: "小さく作品づくりを始めたい方向け",
-    price:   "準備中",
-    priceUnit: "",
+    tagline: "まずは作品の基本設計とLINE上の体験づくりを始めたい方向け",
+    price:   "¥5,400",
+    priceUnit: "/ 月",
     features: [
-      "1 作品をじっくり試作できる",
-      "キャラクター・メッセージ・フローを編集",
-      "プレビューで動作確認",
+      "作品情報・キャラクター管理",
+      "メッセージ・謎の作成",
+      "シナリオフロー設計",
     ],
   },
   {
     tier:    "standard",
     label:   "Standard",
-    tagline: "継続的に作品を制作・管理したい方向け",
+    tagline: "参加者管理も含めて、継続的に作品を運用したい方向け",
     price:   "準備中",
     priceUnit: "",
     features: [
-      "複数作品の制作・管理",
-      "オーディエンス分析・セグメント",
-      "トラッキング機能",
-    ],
-  },
-  {
-    tier:    "pro",
-    label:   "Pro",
-    tagline: "公開・運用・分析までしっかり使いたい方向け",
-    price:   "準備中",
-    priceUnit: "",
-    recommended: true,
-    features: [
-      "Standard の全機能",
-      "LIFF 表示設定 / 遷移先URL設定",
-      "ロケーション機能 (GPS / ビーコン / QR)",
+      "Basic の全機能",
+      "オーディエンス管理",
+      "参加者の状態確認",
     ],
   },
   {
     tier:    "plus",
     label:   "Plus",
-    tagline: "より大きな規模や複数作品の運用を見据えた方向け",
-    price:   "詳細はお問い合わせください",
+    tagline: "LIFFページや外部導線を使って、体験の幅を広げたい方向け",
+    price:   "準備中",
+    priceUnit: "",
+    recommended: true,
+    features: [
+      "Standard の全機能",
+      "LIFF表示設定",
+      "遷移先URL設定",
+    ],
+  },
+  {
+    tier:    "pro",
+    label:   "Pro",
+    tagline: "GPS・QR・現地チェックインなど、現場連動の体験まで運用したい方向け",
+    price:   "準備中",
     priceUnit: "",
     features: [
-      "複数作品の並行運用",
-      "高度な分析・運用支援",
-      "個別の拡張要件にも対応",
+      "Plus の全機能",
+      "ロケーション機能",
+      "GPS / QR / 現地チェックイン",
     ],
   },
 ];
 
-/** 法人プランの定義 (= 別カード扱い、個人利用とは分けて表示) */
+/** 法人プランの定義 (= 別カード扱い、個人利用とは分けて表示)。
+ *  個人プランの単なる上位ではなく、**導入支援・個別相談・運用支援** の位置づけ。
+ *  features は具体的な相談スコープを示し、個人プランとの違いを明確にする。 */
 const ENTERPRISE_PLAN = {
   label:       "法人プラン",
   price:       "お問い合わせください",
-  description: "企業・IP・イベント・舞台連動など、個別要件に合わせた導入をご相談いただけます。",
+  description: "企業・IP・イベント・舞台連動など、個別要件に合わせた導入設計から運用支援までご相談いただけます。",
+  features: [
+    "法人・商業利用の個別相談",
+    "導入設計・初期設定サポート",
+    "運用支援・追加開発の相談",
+  ],
   ctaText:     "法人プランについて相談する",
 };
 
@@ -412,21 +429,26 @@ export function PricingContent({
         })}
       </div>
 
-      {/* ── 法人プラン (個人利用とは分けて表示) ── */}
+      {/* ── 法人プラン (個人利用とは分けて表示、導入支援・個別相談・運用支援の位置づけ) ── */}
       <SectionLabel>法人プラン</SectionLabel>
-      <div className="mb-7 mt-2.5 flex flex-col items-stretch justify-between gap-4 rounded-card border border-dashed border-line bg-bg-tint px-[18px] py-[22px] sm:flex-row sm:items-center sm:gap-6 sm:p-7">
-        <div className="flex-1">
+      <div className="mb-7 mt-2.5 flex flex-col items-stretch justify-between gap-4 rounded-card border border-dashed border-line bg-bg-tint px-[18px] py-[22px] sm:flex-row sm:items-start sm:gap-6 sm:p-7">
+        <div className="min-w-0 flex-1">
           <h3 className="font-round mb-1.5 text-[18px] font-extrabold text-ink">
             {ENTERPRISE_PLAN.label}
           </h3>
           <p className="mb-1.5 text-[16px] font-bold text-ink">
             {ENTERPRISE_PLAN.price}
           </p>
-          <p className="text-[12px] leading-[1.7] text-ink-2">
+          <p className="mb-3 text-[12px] leading-[1.7] text-ink-2">
             {ENTERPRISE_PLAN.description}
           </p>
+          <div className="flex flex-col gap-[7px]">
+            {ENTERPRISE_PLAN.features.map((f) => (
+              <CheckItem key={f}>{f}</CheckItem>
+            ))}
+          </div>
         </div>
-        <div className="flex-shrink-0">
+        <div className="flex-shrink-0 sm:self-center">
           {/* 個人プランカードと一貫した見た目を保ちつつ、相談・問い合わせ寄りの ghost トーン */}
           <Button
             type="button"
