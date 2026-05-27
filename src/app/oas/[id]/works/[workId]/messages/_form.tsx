@@ -2832,10 +2832,15 @@ function AdditionalMessageBlock({
 // ────────────────────────────────────────────────────────
 
 function SectionAccordion({
-  title, required, defaultOpen = true, badge, children,
+  title, required, optional, description, defaultOpen = true, badge, children,
 }: {
   title: string;
+  /** 必須セクション (= 「必須」バッジ表示) */
   required?: boolean;
+  /** 任意セクション (= 「任意」バッジ表示、required と排他扱い) */
+  optional?: boolean;
+  /** header 下に表示する短い helper text。長い文章は入れない。 */
+  description?: string;
   defaultOpen?: boolean;
   badge?: React.ReactNode;
   children: React.ReactNode;
@@ -2854,18 +2859,34 @@ function SectionAccordion({
           paddingBottom: open ? 6 : 0,
           borderBottom: open ? "1px solid #e5e5e5" : "none",
         }}
+        aria-expanded={open}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-          <span style={{ fontWeight: 600, fontSize: 13, color: "#374151" }}>{title}</span>
-          {required && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0, flex: 1 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <span style={{ fontWeight: 600, fontSize: 13, color: "#374151" }}>{title}</span>
+            {required && (
+              <span style={{
+                fontSize: 10, fontWeight: 700, background: "#fef2f2", color: "#dc2626",
+                borderRadius: 4, padding: "1px 6px",
+              }}>必須</span>
+            )}
+            {!required && optional && (
+              <span style={{
+                fontSize: 10, fontWeight: 700, background: "var(--color-line-2, #f0f3f1)", color: "var(--color-ink-3, #9aa8a2)",
+                borderRadius: 4, padding: "1px 6px",
+              }}>任意</span>
+            )}
+            {badge}
+          </div>
+          {description && (
             <span style={{
-              fontSize: 10, fontWeight: 700, background: "#fef2f2", color: "#dc2626",
-              borderRadius: 4, padding: "1px 6px",
-            }}>必須</span>
+              fontSize: 11, color: "var(--color-ink-3, #9aa8a2)", lineHeight: 1.5, fontWeight: 400,
+            }}>
+              {description}
+            </span>
           )}
-          {badge}
         </div>
-        <span style={{ fontSize: 11, color: "#9ca3af", userSelect: "none", flexShrink: 0 }}>
+        <span style={{ fontSize: 11, color: "#9ca3af", userSelect: "none", flexShrink: 0, marginLeft: 8 }}>
           {open ? "▲" : "▼"}
         </span>
       </button>
@@ -3029,6 +3050,18 @@ export function MessageForm({
 
   const mtype = form.message_type;
 
+  // ── 「送信設定」 accordion の初期 open 判定 ──
+  // 新規作成時はデフォルト値のみのため close。編集時は initialForm に既存値が
+  // 入っているなら open (= 編集者が既存設定を見落とさない配慮)。
+  // 判定対象は「送信設定」内で設定可能なフィールド (= character_id / sort_order /
+  // is_active が初期値以外)。
+  const sendingHasExistingData =
+    !isNew && (
+      initialForm.character_id !== "" ||
+      initialForm.sort_order !== 0 ||
+      initialForm.is_active === false
+    );
+
   return (
     <>
       {/* ── レスポンシブ: 768px以下で縦並び ── */}
@@ -3047,7 +3080,7 @@ export function MessageForm({
           display: flex;
           align-items: center;
           gap: 10px;
-          margin: 12px 0 12px;
+          margin: 12px 0 4px;
           color: var(--color-ink-3, #9aa8a2);
           font-size: 11px;
           font-weight: 700;
@@ -3059,6 +3092,29 @@ export function MessageForm({
           flex: 1;
           height: 1px;
           background: var(--color-line, #e8edea);
+        }
+        .msg-section-divider-hint {
+          text-align: center;
+          margin: 0 0 12px;
+          font-size: 11px;
+          line-height: 1.5;
+          color: var(--color-ink-3, #9aa8a2);
+        }
+
+        /* ── 基本設定の冒頭に出す概要 info (= 初心者向けガイダンス) ── */
+        .msg-basic-intro {
+          margin: 0 0 16px;
+          padding: 10px 14px;
+          background: var(--color-bg-tint, #fafcfb);
+          border: 1px solid var(--color-line, #e8edea);
+          border-radius: 8px;
+          font-size: 12px;
+          line-height: 1.6;
+          color: var(--color-ink-2, #5f6b65);
+        }
+        .msg-basic-intro strong {
+          color: var(--color-ink, #33403a);
+          font-weight: 700;
         }
 
         /* ── 画面下に常時表示する action footer ── */
@@ -3123,10 +3179,24 @@ export function MessageForm({
             </div>
           )}
 
+          {/* ── 基本設定の概要 (= 初心者向けガイダンス、新規時のみ表示) ── */}
+          {/* 既存メッセージの編集時はすでに何度か触っているはずなので、ノイズを減らすため非表示。 */}
+          {isNew && (
+            <p className="msg-basic-intro">
+              <strong>基本設定</strong>だけ入力すれば登録できます。
+              詳細な演出や任意項目は下の「詳細設定（任意）」エリアでまとめて調整できます。
+            </p>
+          )}
+
           {/* ════════════════════════════════════════
               カテゴリ選択: メッセージ / 謎
           ════════════════════════════════════════ */}
-          <SectionAccordion title="メッセージタイプ" defaultOpen={true}>
+          <SectionAccordion
+            title="メッセージタイプ"
+            required
+            description="通常のメッセージか、謎・問題かを選びます"
+            defaultOpen={true}
+          >
             <div style={{ display: "flex", gap: 12 }}>
               {([
                 { value: "normal" as const, label: "メッセージを送る",  desc: "テキストや画像など、通常の会話メッセージ" },
@@ -3173,7 +3243,12 @@ export function MessageForm({
           {/* ════════════════════════════════════════
               セクション 1: トリガー設定
           ════════════════════════════════════════ */}
-          <SectionAccordion title="トリガー設定" defaultOpen={true}>
+          <SectionAccordion
+            title="トリガー設定"
+            required
+            description="どのタイミングでこのメッセージが送信されるかを設定します（キーワード・QR・遷移など）"
+            defaultOpen={true}
+          >
 
             {/* 送信タイミング（全種別共通） */}
             <div className="form-group">
@@ -3345,11 +3420,19 @@ export function MessageForm({
           <div className="msg-section-divider" aria-hidden="true">
             <span>詳細設定（任意）</span>
           </div>
+          <p className="msg-section-divider-hint" aria-hidden="true">
+            返信タイミングや演出など、必要な場合だけ設定します
+          </p>
 
           {/* ════════════════════════════════════════
               セクション 2: 送信設定
           ════════════════════════════════════════ */}
-          <SectionAccordion title="送信設定" defaultOpen={false}>
+          <SectionAccordion
+            title="送信設定"
+            optional
+            description="応答キャラクター・表示順序・有効状態など。デフォルトのままでOKです"
+            defaultOpen={sendingHasExistingData}
+          >
 
             {/* 応答キャラクター */}
             <div className="form-group">
@@ -3408,7 +3491,12 @@ export function MessageForm({
               通常は OFF。puzzle / system_notice では無効化する。
           ════════════════════════════════════════ */}
           {!isPuzzle && form.kind !== "system_notice" && (
-            <SectionAccordion title="自由入力受付" defaultOpen={form.free_input_enabled}>
+            <SectionAccordion
+              title="自由入力受付"
+              optional
+              description="メッセージ送信後にユーザーの次の入力を変数として保存できます（名前入力やアンケート用）"
+              defaultOpen={form.free_input_enabled}
+            >
               <div className="form-group">
                 <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
                   <input
@@ -3506,7 +3594,12 @@ export function MessageForm({
               セクション 3a: 謎の形式とコンテンツ（puzzle のみ）
           ════════════════════════════════════════ */}
           {isPuzzle && (
-          <SectionAccordion title="🧩 謎の形式" required defaultOpen={true}>
+          <SectionAccordion
+            title="🧩 謎の形式"
+            required
+            description="クイズ形式かパスワード形式かなど、謎の出題方法を選びます"
+            defaultOpen={true}
+          >
 
             {/* ── 形式選択 ── */}
             <div className="form-group">
@@ -3668,7 +3761,12 @@ export function MessageForm({
               セクション 3b: 送信メッセージ（puzzle のときは非表示）
           ════════════════════════════════════════ */}
           {!isPuzzle && (
-          <SectionAccordion title="会話シーケンス" required defaultOpen={true}>
+          <SectionAccordion
+            title="会話シーケンス"
+            required
+            description="謎を出題する流れ（出題メッセージ・ヒント・正解時のリアクションなど）"
+            defaultOpen={true}
+          >
             {/* === 1通目の発話 === */}
             <div style={{
               border: "1px solid #d1fae5", borderRadius: 10, background: "#f0fdf4",
@@ -4310,7 +4408,12 @@ export function MessageForm({
               謎の回答設定（puzzle のみ）
           ════════════════════════════════════════ */}
           {isPuzzle && (
-          <SectionAccordion title="謎の回答設定" required defaultOpen={true}>
+          <SectionAccordion
+            title="謎の回答設定"
+            required
+            description="正解の判定方法と、合致した時の動作を設定します"
+            defaultOpen={true}
+          >
 
             {/* answer */}
             <div className="form-group">
