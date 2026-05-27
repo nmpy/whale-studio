@@ -3452,6 +3452,7 @@ export function MessageForm({
                   </option>
                 ))}
               </select>
+              <div style={hintText}>このメッセージを送るキャラクターを指定できます</div>
             </div>
 
             {/* 表示順序 */}
@@ -3468,6 +3469,7 @@ export function MessageForm({
                 onChange={(e) => set("sort_order", Number(e.target.value))}
                 min={0}
               />
+              <div style={hintText}>同じ条件のメッセージが複数ある場合の並び順です（小さい順）</div>
             </div>
 
             {/* 有効フラグ */}
