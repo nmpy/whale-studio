@@ -16,6 +16,7 @@ import { trackBillingEvent } from "@/lib/billing-tracker";
 import { trackEvent } from "@/lib/event-tracker";
 import { getDevToken } from "@/lib/api-client";
 import { Button } from "@/components/shared";
+import { mapPlanNameToTier, PLAN_TIER_ORDER } from "@/lib/constants/plans";
 
 // ── チェックアイテム ─────────────────────────────────────────────────
 function CheckItem({ children }: { children: React.ReactNode }) {
@@ -32,13 +33,47 @@ function CheckItem({ children }: { children: React.ReactNode }) {
   );
 }
 
-// ── セクション見出し ─────────────────────────────────────────────────
-function SectionLabel({ children }: { children: React.ReactNode }) {
+// ── セクション見出し (= 「個人利用プラン」/「法人利用プラン」 の区切り) ──
+// 旧 SectionLabel は uppercase + ink-3 で控えめだったため、ユーザー要望で
+// font-round + text-ink + 大きいサイズに変更し、明確な区切りに。
+function SectionHeading({ children }: { children: React.ReactNode }) {
   return (
-    <p className="mb-2.5 text-[11px] font-bold uppercase tracking-[0.07em] text-ink-3">
+    <h2 className="font-round mb-4 mt-2 text-[20px] font-bold tracking-[-0.01em] text-ink sm:text-[22px]">
       {children}
-    </p>
+    </h2>
   );
+}
+
+// ── 現在の契約状態 ──────────────────────────────────────────────────
+//   loading  : /api/oas/[id]/plan-info の fetch 中 (= oaId 指定時のみ発火)
+//   no_plan  : 未契約 / 非アクティブ status (canceled/past_due/incomplete/paused)
+//   active   : active or trialing で、判定可能な PlanTier に正規化済み
+type CurrentPlanState =
+  | { kind: "loading" }
+  | { kind: "no_plan" }
+  | { kind: "active"; tier: PersonalPlanCard["tier"] };
+
+// ── カードごとの表示状態 ────────────────────────────────────────────
+//   loading_current_plan    : current plan info ロード中、CTA を仮 disable
+//   current                 : このカードがログイン中ユーザーの現契約 (= 「利用中」)
+//   downgrade_not_supported : 現プランより下位 (= 「ダウングレード未対応」、押せない)
+//   upgradable              : 上位プラン or 未契約 (= 「アップグレードする」、checkout)
+type CardState =
+  | "loading_current_plan"
+  | "current"
+  | "downgrade_not_supported"
+  | "upgradable";
+
+function computeCardState(
+  tier: PersonalPlanCard["tier"],
+  current: CurrentPlanState,
+): CardState {
+  if (current.kind === "loading") return "loading_current_plan";
+  if (current.kind === "no_plan") return "upgradable";
+  if (tier === current.tier) return "current";
+  // ranking 比較: PLAN_TIER_ORDER の indexOf で確実に判定
+  const order = PLAN_TIER_ORDER as readonly PersonalPlanCard["tier"][];
+  return order.indexOf(tier) < order.indexOf(current.tier) ? "downgrade_not_supported" : "upgradable";
 }
 
 // ── コンテキスト設定 ─────────────────────────────────────────────────
@@ -62,10 +97,8 @@ const SOURCE_HEADING: Record<string, { title: string; sub: string }> = {
     sub:   "現在のご利用状況と比較しながら、ご自身のペースでご検討ください。",
   },
 };
-const DEFAULT_HEADING = {
-  title: "小さくはじめて、必要なときに広げる。",
-  sub:   "お試し利用から本格運用まで、ペースに合わせてステップアップできます。",
-};
+// DEFAULT_HEADING は削除済 (= ユーザー要望でヒーローエリア撤去、source 指定時のみ
+// SOURCE_HEADING を表示する設計に変更)。
 
 /** 個人利用プランカード定義。
  *  Basic / Standard / Pro / Plus の順で表示する (= user request)。
@@ -181,13 +214,23 @@ export function PricingContent({
   const [requested,            setRequested]            = useState(false);
   /** 押された個別プランの tier (= "basic"|"standard"|"pro"|"plus")。
    *  null = checkout 進行中ではない。
-   *  全プラン disabled は loadingTier !== null で判定する。
    *  「処理中...」表示は loadingTier === plan.tier の行のみ。 */
   const [checkoutLoadingTier, setCheckoutLoadingTier] = useState<PersonalPlanCard["tier"] | null>(null);
   const [checkoutError,        setCheckoutError]        = useState<string | null>(null);
 
-  // コンテキストに応じた表示設定を導出
-  const heading = (source ? SOURCE_HEADING[source] : null) ?? DEFAULT_HEADING;
+  // 現在の契約状態。oaId 指定時に /api/oas/[id]/plan-info から取得する。
+  //   - 取得前: loading
+  //   - oaId なし / fetch 失敗 / 非アクティブ status: no_plan
+  //   - active or trialing: active(tier)
+  // ユーザー要望: 「利用中」「ダウングレード未対応」表示用、checkoutLoadingTier とは独立。
+  const [currentPlan, setCurrentPlan] = useState<CurrentPlanState>(
+    oaId ? { kind: "loading" } : { kind: "no_plan" }
+  );
+
+  // source ごとのサブ見出し (= gate / banner / preview / settings)。
+  // ユーザー要望でデフォルトの大きなヒーローエリアは削除。source 指定時のみ
+  // 軽量な見出し + サブテキストを表示する (= コンテキストは保持)。
+  const sourceHeading = source ? SOURCE_HEADING[source] ?? null : null;
 
   useEffect(() => {
     const token = getDevToken();
@@ -202,6 +245,40 @@ export function PricingContent({
   // searchParams は mount 時に1回だけ読めば十分
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // ── 現在の契約 plan を取得 ──
+  // oaId が無ければ未契約扱い。oaId 指定時のみ /api/oas/[id]/plan-info を fetch。
+  // 仕様:
+  //   - status が active/trialing 以外 (= canceled/past_due/incomplete/paused) は no_plan 扱い
+  //     → 機能制限 (basic フォールバック) と整合させ、UI 上も「利用中」を出さない
+  //   - 404 / fetch エラーは握りつぶし、no_plan で続行 (= pricing 表示は壊さない)
+  useEffect(() => {
+    if (!oaId) return;
+    const token = getDevToken();
+    fetch(`/api/oas/${oaId}/plan-info`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then(async (res) => {
+        if (!res.ok) {
+          setCurrentPlan({ kind: "no_plan" });
+          return;
+        }
+        let payload: unknown = null;
+        try { payload = await res.json(); } catch { /* 非 JSON: 落とさない */ }
+        const data = (payload as { data?: { plan_name?: unknown; status?: unknown } } | null)?.data;
+        if (!data || typeof data.plan_name !== "string") {
+          setCurrentPlan({ kind: "no_plan" });
+          return;
+        }
+        const isActive = data.status === "active" || data.status === "trialing";
+        if (!isActive) {
+          setCurrentPlan({ kind: "no_plan" });
+          return;
+        }
+        setCurrentPlan({ kind: "active", tier: mapPlanNameToTier(data.plan_name) });
+      })
+      .catch(() => setCurrentPlan({ kind: "no_plan" }));
+  }, [oaId]);
 
   /** 法人プラン用 CTA — FeedbackModal を開く既存導線。 */
   function handleEnterpriseInquiry() {
@@ -243,9 +320,14 @@ export function PricingContent({
   }
 
   /** 個人プラン用 CTA — Stripe Checkout に遷移。
-   *  oaId が無い場合は OA 選択ページへ誘導する。 */
+   *  oaId が無い場合は OA 選択ページへ誘導する。
+   *  current / downgrade_not_supported / loading_current_plan の場合は no-op (= 早期 return)。 */
   async function handlePersonalUpgrade(plan: PersonalPlanCard["tier"]) {
     if (checkoutLoadingTier !== null) return; // 二重クリック / 他プランの進行中クリック防止
+    // 現在の契約状態に応じて、利用中・ダウングレード対象・現プラン情報ロード中は早期 return
+    // (= 視覚 disabled + a11y aria-disabled で押せないが、念のため handler 側でも guard)
+    const cardState = computeCardState(plan, currentPlan);
+    if (cardState !== "upgradable") return;
     setCheckoutError(null);
 
     if (!oaId) {
@@ -291,37 +373,17 @@ export function PricingContent({
   }
 
   return (
-    <div className="mx-auto w-full max-w-[640px] px-5 py-6 sm:px-0 sm:py-10">
+    <div className="mx-auto w-full max-w-[640px] px-5 py-6 sm:px-0 sm:py-8 lg:max-w-[1120px]">
 
-      {/* ── ヘッダー（source ごとに見出し・サブを出し分け） ── */}
-      <header className="mb-9 text-center">
-        <span className="mb-4 inline-flex items-center gap-1.5 rounded-full bg-brand-soft px-3.5 py-1 text-[11px] font-bold tracking-[0.05em] text-brand-ink">
-          🐋 WHALE STUDIO プラン
-        </span>
-        <h1 className="font-round mb-2.5 text-[clamp(20px,4vw,26px)] font-extrabold leading-[1.3] tracking-[-0.02em] text-ink">
-          {heading.title}
-        </h1>
-        <p className="whitespace-pre-line text-[13px] leading-[1.8] text-ink-2">
-          {heading.sub}
-        </p>
-      </header>
-
-      {/* ── コンセプト 3 点（source=default 以外は簡略表示） ── */}
-      {!source && (
-        <div className="mb-5 flex flex-col gap-1.5 sm:mb-7 sm:flex-row sm:flex-wrap sm:gap-2">
-          {[
-            { icon: "🌱", text: "まず1作品、気軽に試せる" },
-            { text: "無理に決めなくていい" },
-            { text: "成長に合わせてプラン変更できる" },
-          ].map(({ icon, text }) => (
-            <div
-              key={text}
-              className="flex items-center gap-2 rounded-field border border-line bg-surface px-3 py-2 text-[12px] text-ink-2 sm:flex-1 sm:basis-[140px] sm:px-3.5 sm:py-2.5"
-            >
-              {icon && <span className="flex-shrink-0 text-[16px]">{icon}</span>}
-              <span>{text}</span>
-            </div>
-          ))}
+      {/* ── ヒーローエリアは削除 (= ユーザー要望)。source 指定時のみ軽量な context 見出しを表示。 ── */}
+      {sourceHeading && (
+        <div className="mb-6 text-center">
+          <h1 className="font-round mb-2 text-[clamp(18px,3vw,22px)] font-bold leading-[1.3] tracking-[-0.02em] text-ink">
+            {sourceHeading.title}
+          </h1>
+          <p className="text-[12px] leading-[1.7] text-ink-2">
+            {sourceHeading.sub}
+          </p>
         </div>
       )}
 
@@ -345,25 +407,60 @@ export function PricingContent({
         </div>
       )}
 
-      {/* ── 個人利用プラン (4 ティア grid) ── */}
-      <SectionLabel>個人利用プラン</SectionLabel>
-      <div className="mb-7 mt-2.5 grid grid-cols-1 gap-3 sm:grid-cols-[repeat(auto-fit,minmax(220px,1fr))] sm:gap-3.5">
+      {/* ── 個人利用プラン (= PC で 4 列、tablet で 2 列、mobile で 1 列) ── */}
+      <SectionHeading>個人利用プラン</SectionHeading>
+      <div className="mb-9 grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-3.5 lg:grid-cols-4">
         {PERSONAL_PLAN_CARDS.map((plan) => {
+          const cardState = computeCardState(plan.tier, currentPlan);
+          const isCurrent = cardState === "current";
+          const isDowngrade = cardState === "downgrade_not_supported";
+          const isLoadingCurrentPlan = cardState === "loading_current_plan";
           const isRecommended = plan.recommended === true;
+          // current が優先、それ以外で recommended のときに「おすすめ」バッジ
+          const showCurrentBadge = isCurrent;
+          const showRecommendedBadge = !isCurrent && isRecommended;
           // price が長文 (= "詳細はお問い合わせください" や "準備中") のときは小さく muted で表示
           const isPriceMuted = plan.price.length > 8 || plan.price === "準備中";
+          const isThisLoading  = checkoutLoadingTier === plan.tier;
+          const isOtherLoading = checkoutLoadingTier !== null && !isThisLoading;
+
+          // ボタン文言の優先順位:
+          //   1. isThisLoading       → "処理中..."
+          //   2. isLoadingCurrentPlan → "確認中..."
+          //   3. isCurrent           → "利用中"
+          //   4. isDowngrade         → "ダウングレード未対応"
+          //   5. その他              → "アップグレードする"
+          let buttonLabel = "アップグレードする";
+          if (isThisLoading) buttonLabel = "処理中...";
+          else if (isLoadingCurrentPlan) buttonLabel = "確認中...";
+          else if (isCurrent) buttonLabel = "利用中";
+          else if (isDowngrade) buttonLabel = "ダウングレード未対応";
+
+          // 押せない条件: 「処理中」「確認中」「利用中」「ダウングレード未対応」
+          const isClickDisabled = isThisLoading || isLoadingCurrentPlan || isCurrent || isDowngrade;
+
+          // 「現在のプラン」枠は強調 (= sky border)、それ以外は通常 / 推奨枠
+          const cardBorder = isCurrent
+            ? "border-2 border-sky shadow-sm bg-sky-soft/30"
+            : isRecommended
+              ? "border-2 border-brand shadow-card"
+              : "border border-line shadow-sm";
+
           return (
             <div
               key={plan.tier}
               className={
-                "relative flex flex-col gap-2.5 rounded-card bg-surface px-[18px] py-[20px] sm:px-5 sm:py-[22px] " +
-                (isRecommended
-                  ? "border-2 border-brand shadow-card"
-                  : "border border-line shadow-sm")
+                "relative flex h-full flex-col gap-2.5 rounded-card bg-surface px-[18px] py-[20px] sm:px-5 sm:py-[22px] " +
+                cardBorder
               }
             >
-              {/* 推奨タグ */}
-              {isRecommended && (
+              {/* バッジ: current > recommended の優先順位 (= 同時表示しない) */}
+              {showCurrentBadge && (
+                <span className="absolute -top-2.5 left-3.5 rounded-full bg-sky-ink px-2.5 py-0.5 text-[10px] font-bold tracking-[0.05em] text-white">
+                  現在のプラン
+                </span>
+              )}
+              {showRecommendedBadge && (
                 <span className="absolute -top-2.5 left-3.5 rounded-full bg-brand px-2.5 py-0.5 text-[10px] font-bold tracking-[0.05em] text-white">
                   おすすめ
                 </span>
@@ -400,37 +497,36 @@ export function PricingContent({
                 ))}
               </div>
 
-              {(() => {
-                const isThisLoading  = checkoutLoadingTier === plan.tier;
-                const isOtherLoading = checkoutLoadingTier !== null && !isThisLoading;
-                return (
-                  <Button
-                    type="button"
-                    onClick={() => handlePersonalUpgrade(plan.tier)}
-                    // disabled は「押されたプラン」だけに適用 (= 視覚的にも処理中表示)。
-                    // 他プランは disabled にせず通常表示を維持し、二重クリックは
-                    // handlePersonalUpgrade 内の guard (checkoutLoadingTier !== null → 早期 return) で防ぐ。
-                    disabled={isThisLoading}
-                    // a11y: 他プランボタンは「今は押せない」状態を semantic に伝える (= 視覚は維持)
-                    aria-disabled={isOtherLoading || undefined}
-                    aria-busy={isThisLoading || undefined}
-                    variant={isRecommended ? "primary" : "ghost"}
-                    size="sm"
-                    fullWidth
-                    aria-label={`${plan.label}プランにアップグレード`}
-                    className="mt-auto"
-                  >
-                    {isThisLoading ? "処理中..." : "アップグレードする"}
-                  </Button>
-                );
-              })()}
+              <Button
+                type="button"
+                onClick={() => handlePersonalUpgrade(plan.tier)}
+                // disabled は「押されたプラン (= processing)」「利用中」「ダウングレード未対応」
+                // 「現プラン確認中」に適用。他のアップグレード可能プランは disabled にせず通常表示、
+                // 多重クリックは handler 側 guard で防ぐ。
+                disabled={isClickDisabled}
+                // a11y: 他プランの checkout 進行中ボタンは「今は押せない」を semantic に伝える (= 視覚維持)
+                aria-disabled={(isOtherLoading || isClickDisabled) || undefined}
+                aria-busy={(isThisLoading || isLoadingCurrentPlan) || undefined}
+                // current / downgrade は控えめ表現の ghost、recommended は primary、他は ghost
+                variant={isCurrent || isDowngrade ? "ghost" : isRecommended ? "primary" : "ghost"}
+                size="sm"
+                fullWidth
+                aria-label={
+                  isCurrent ? `${plan.label}プランは現在利用中です`
+                  : isDowngrade ? `${plan.label}プランへのダウングレードは未対応です`
+                  : `${plan.label}プランにアップグレード`
+                }
+                className="mt-auto"
+              >
+                {buttonLabel}
+              </Button>
             </div>
           );
         })}
       </div>
 
       {/* ── 法人プラン (個人利用とは分けて表示、導入支援・個別相談・運用支援の位置づけ) ── */}
-      <SectionLabel>法人プラン</SectionLabel>
+      <SectionHeading>法人プラン</SectionHeading>
       <div className="mb-7 mt-2.5 flex flex-col items-stretch justify-between gap-4 rounded-card border border-dashed border-line bg-bg-tint px-[18px] py-[22px] sm:flex-row sm:items-start sm:gap-6 sm:p-7">
         <div className="min-w-0 flex-1">
           <h3 className="font-round mb-1.5 text-[18px] font-extrabold text-ink">
