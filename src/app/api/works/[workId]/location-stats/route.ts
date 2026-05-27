@@ -10,6 +10,8 @@ import { prisma } from "@/lib/prisma";
 import { ok, serverError } from "@/lib/api-response";
 import { withAuth } from "@/lib/auth";
 import { requireRole, getOaIdFromWorkId } from "@/lib/rbac";
+import { requirePlanFeature } from "@/lib/plan-guard";
+import { FEATURE } from "@/lib/constants/plans";
 import { suggestRadius } from "@/lib/location-radius-suggestion";
 import type {
   LocationVisitStats, LocationVisitSummary,
@@ -31,6 +33,10 @@ export const GET = withAuth<{ workId: string }>(async (_req, { params }, user) =
     if (oaId) {
       const check = await requireRole(oaId, user.id, "viewer");
       if (!check.ok) return check.response;
+
+      // プラン制限: location は Pro プラン以上が必要
+      const planGuard = await requirePlanFeature({ oaId, featureKey: FEATURE.location });
+      if (!planGuard.ok) return planGuard.response;
     }
 
     const workId = params.workId;
