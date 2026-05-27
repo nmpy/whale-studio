@@ -48,9 +48,19 @@ import {
 // 現在の plan tier を取得する
 // ────────────────────────────────────────────────
 
+/** Subscription.status のうち「full access を許可する」状態。
+ *  past_due / canceled / unpaid / incomplete / incomplete_expired / paused は basic に
+ *  ダウングレードする (= 課金状態とアクセス権限を一致させる)。 */
+const FULL_ACCESS_STATUSES = new Set(["active", "trialing"]);
+
 /**
  * 指定 OA の現在のプランティアを返す。
- * Subscription 未設定 / DB エラー時は basic にフォールバック (= UI 側と同じ思想)。
+ *
+ * - Subscription 未設定 / DB エラー時は basic にフォールバック (= UI 側と同じ思想)。
+ * - Subscription はあるが `status` が "active" / "trialing" 以外 (= past_due / canceled /
+ *   unpaid / incomplete / incomplete_expired / paused / 不明) の場合は basic にフォール
+ *   バック (= 課金未完了で上位機能が使えるのを防ぐ)。
+ *   UI 側の PlanCard はそのまま status を表示するため、表示と権限制御は別経路。
  */
 export async function getCurrentPlanTierForOa(oaId: string): Promise<PlanTier> {
   if (!oaId) return mapPlanNameToTier(null);
@@ -59,7 +69,10 @@ export async function getCurrentPlanTierForOa(oaId: string): Promise<PlanTier> {
       where:   { oaId },
       include: { plan: { select: { name: true } } },
     });
-    return mapPlanNameToTier(sub?.plan?.name ?? null);
+    if (!sub) return mapPlanNameToTier(null);
+    // active / trialing 以外は basic 扱い (= フル機能解放しない)
+    if (!FULL_ACCESS_STATUSES.has(sub.status)) return mapPlanNameToTier(null);
+    return mapPlanNameToTier(sub.plan?.name ?? null);
   } catch (err) {
     // DB エラー時は最低プラン扱い (= 機能を不用意に開放しない)
     console.error("[plan-guard] getCurrentPlanTierForOa failed:", err);
