@@ -4,6 +4,13 @@
 // GET /api/oas/:id/friend-add  → フォームプリフィル（404 = 未設定・正常系）
 // PUT /api/oas/:id/friend-add  → upsert 保存
 // POST /api/upload             → シェア用画像アップロード
+//
+// Phase 4.3: UI を Phase 0 トークン + shared/Button + buttonClass に揃える。
+// 画像アップロードは独自実装維持 (ImageUploadField には統一しない)。
+// LINE 連携 UI の中核として LINE Green (= --color-line-brand と inline 淡色) を維持。
+// friendAddApi / oaApi / uploadApi / API route / 認可 / payload / 404 / ValidationError
+// / 画像 upload・clear・preview / QR 生成 / toast 文言 / button 文言 / placeholder /
+// helper 文言は完全維持。useWorkspaceRole / ViewerBanner は追加しない (= 既存挙動)。
 
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
@@ -11,6 +18,7 @@ import Link from "next/link";
 import { friendAddApi, oaApi, uploadApi, getDevToken, NotFoundError, ValidationError } from "@/lib/api-client";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { useToast } from "@/components/Toast";
+import { Button, buttonClass } from "@/components/shared";
 
 interface FormState {
   campaign_name:   string;
@@ -19,6 +27,18 @@ interface FormState {
 }
 
 const EMPTY_FORM: FormState = { campaign_name: "", add_url: "", share_image_url: "" };
+
+// ── ローカル共通: 必須マーク (= /account / works edit と同じパターン) ──
+function RequiredMark() {
+  return <span aria-hidden="true" className="ml-0.5 text-danger">*</span>;
+}
+
+// ── 共通スタイル: 行内 input (= Phase 3.1 compactInputClass) ──
+const compactInputClass =
+  "rounded-md border border-line bg-surface px-3 py-2 text-[13px] text-ink " +
+  "placeholder:text-ink-3 transition-shadow focus:border-brand focus:outline-none " +
+  "focus:ring-2 focus:ring-brand/20 disabled:cursor-not-allowed disabled:bg-bg-tint " +
+  "disabled:text-ink-3";
 
 export default function FriendAddPage() {
   const params = useParams<{ id: string }>();
@@ -132,7 +152,6 @@ export default function FriendAddPage() {
       campaign_name:   form.campaign_name.trim() || null,
       share_image_url: form.share_image_url      || null,
     };
-    console.log("[friend-add] PUT payload:", JSON.stringify(putPayload));
 
     setSubmitting(true);
     try {
@@ -157,25 +176,44 @@ export default function FriendAddPage() {
     }
   }
 
+  // ── ヘッダー (loading / error / 通常で共用) ──
+  const header = (
+    <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+      <div className="min-w-0">
+        <Breadcrumb items={[
+          { label: "アカウントリスト", href: "/oas" },
+          { label: "設定", href: `/oas/${oaId}/settings` },
+          { label: "友だち追加" },
+        ]} />
+        <h2 className="font-round mt-1 text-[clamp(20px,4vw,24px)] font-extrabold leading-[1.2] tracking-[-0.02em] text-ink">
+          友だち追加設定
+        </h2>
+        {!loading && !loadError && (
+          <p className="mt-1 text-[13px] text-ink-2">
+            LINE公式アカウントへの友だち追加URL・シェア用画像を管理します。
+          </p>
+        )}
+      </div>
+    </div>
+  );
+
   // ── ローディング ──────────────────────────────
   if (loading) {
     return (
       <>
-        <div className="page-header">
-          <Breadcrumb items={[
-            { label: "アカウントリスト", href: "/oas" },
-            { label: "設定", href: `/oas/${oaId}/settings` },
-            { label: "友だち追加" },
-          ]} />
-          <h2>友だち追加設定</h2>
-        </div>
-        <div className="card" style={{ maxWidth: 560 }}>
+        {header}
+        <div
+          role="status"
+          aria-busy="true"
+          className="w-full max-w-[560px] rounded-card border border-line bg-surface p-5 shadow-sm sm:p-6"
+        >
           {[1, 2, 3].map((i) => (
-            <div key={i} className="form-group">
+            <div key={i} className="mb-5">
               <div className="skeleton" style={{ width: 120, height: 13, marginBottom: 4 }} />
               <div className="skeleton" style={{ height: 36 }} />
             </div>
           ))}
+          <span className="sr-only">読み込み中...</span>
         </div>
       </>
     );
@@ -185,49 +223,38 @@ export default function FriendAddPage() {
   if (loadError) {
     return (
       <>
-        <div className="page-header">
-          <Breadcrumb items={[
-            { label: "アカウントリスト", href: "/oas" },
-            { label: "設定", href: `/oas/${oaId}/settings` },
-            { label: "友だち追加" },
-          ]} />
-          <h2>友だち追加設定</h2>
+        {header}
+        <div
+          role="alert"
+          className="w-full max-w-[560px] rounded-field border border-danger/30 bg-danger-soft px-4 py-3 text-[13px] leading-[1.6] text-danger"
+        >
+          {loadError}
         </div>
-        <div className="alert alert-error">{loadError}</div>
       </>
     );
   }
 
   return (
     <>
-      <div className="page-header">
-        <div>
-          <Breadcrumb items={[
-            { label: "アカウントリスト", href: "/oas" },
-            { label: "設定", href: `/oas/${oaId}/settings` },
-            { label: "友だち追加" },
-          ]} />
-          <h2>友だち追加設定</h2>
-          <p style={{ fontSize: 13, color: "#6b7280", marginTop: 4 }}>
-            LINE公式アカウントへの友だち追加URL・シェア用画像を管理します。
-          </p>
-        </div>
-      </div>
+      {header}
 
       {/* 未設定案内 */}
       {isNew && (
-        <div className="alert alert-info" style={{ maxWidth: 560, marginBottom: 20 }}>
+        <div
+          role="status"
+          className="mb-5 w-full max-w-[560px] rounded-field border border-sky/30 bg-sky-soft px-4 py-3 text-[13px] leading-[1.6] text-sky-ink"
+        >
           まだ友だち追加設定が登録されていません。入力して保存してください。
         </div>
       )}
 
-      <div className="card" style={{ maxWidth: 560 }}>
+      <div className="w-full max-w-[560px] rounded-card border border-line bg-surface p-5 shadow-sm sm:p-6">
         <form onSubmit={handleSubmit}>
 
           {/* ── 友だち追加 URL ── */}
-          <div className="form-group">
-            <label htmlFor="add_url">
-              友だち追加 URL <span style={{ color: "#ef4444" }}>*</span>
+          <div className="mb-5">
+            <label htmlFor="add_url" className="mb-1.5 block text-[13px] font-bold text-ink">
+              友だち追加 URL<RequiredMark />
             </label>
             <input
               id="add_url"
@@ -235,58 +262,75 @@ export default function FriendAddPage() {
               value={form.add_url}
               onChange={(e) => setField("add_url", e.target.value)}
               placeholder="https://lin.ee/xxxxxxx"
-              style={{ fontFamily: "monospace", fontSize: 13 }}
+              className={compactInputClass + " w-full font-mono"}
+              aria-required="true"
+              aria-invalid={errors.add_url ? "true" : undefined}
+              aria-describedby={errors.add_url ? "add_url-error" : "add_url-help"}
             />
-            <span style={{ fontSize: 11, color: "#9ca3af", display: "block", marginTop: 4 }}>
+            <span id="add_url-help" className="mt-1 block text-[11px] text-ink-3">
               LINE Official Account Manager の「友だち追加ガイド」から取得できます
             </span>
-            {errors.add_url && <p className="field-error">{errors.add_url}</p>}
+            {errors.add_url && (
+              <p id="add_url-error" role="alert" className="mt-1 text-[12px] text-danger">{errors.add_url}</p>
+            )}
           </div>
 
-          {/* 友だち追加リンクプレビュー + QRコード */}
+          {/* 友だち追加リンクプレビュー + QRコード (= LINE Green 維持) */}
           {form.add_url && /^https?:\/\//.test(form.add_url) && (
-            <div style={{
-              marginBottom: 20, padding: "16px",
-              background: "#f0fdf4", border: "1px solid #86efac", borderRadius: 8,
-              display: "flex", alignItems: "flex-start", gap: 16, flexWrap: "wrap",
-            }}>
+            <div
+              className="mb-5 flex flex-wrap items-start gap-4 rounded-field border p-4"
+              style={{ background: "#f0fdf4", borderColor: "#86efac" }}
+            >
               {/* テキスト + ボタン */}
-              <div style={{ flex: 1, minWidth: 160 }}>
-                <p style={{ fontSize: 11, fontWeight: 700, color: "#15803d", marginBottom: 6 }}>
+              <div className="min-w-[160px] flex-1">
+                <p
+                  className="mb-1.5 text-[11px] font-bold"
+                  style={{ color: "#15803d" }}
+                >
                   プレビュー
                 </p>
                 <a
                   href={form.add_url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="btn btn-primary"
-                  style={{ fontSize: 12, textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 4, marginBottom: 8 }}
+                  className={buttonClass({ variant: "primary", size: "sm" }) + " mb-2 no-underline"}
                 >
                   友だち追加URLを開く
                 </a>
-                <p style={{ fontSize: 11, color: "#15803d", wordBreak: "break-all", lineHeight: 1.5 }}>
+                <p
+                  className="break-all text-[11px] leading-[1.5]"
+                  style={{ color: "#15803d" }}
+                >
                   {form.add_url}
                 </p>
               </div>
 
               {/* QRコード */}
-              <div style={{ flexShrink: 0, textAlign: "center" }}>
-                <p style={{ fontSize: 11, color: "#15803d", marginBottom: 6 }}>QRコードで追加</p>
+              <div className="flex-shrink-0 text-center">
+                <p
+                  className="mb-1.5 text-[11px]"
+                  style={{ color: "#15803d" }}
+                >
+                  QRコードで追加
+                </p>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={`https://api.qrserver.com/v1/create-qr-code/?size=120x120&margin=4&data=${encodeURIComponent(form.add_url)}`}
                   alt="友だち追加QRコード"
                   width={120}
                   height={120}
-                  style={{ borderRadius: 8, border: "1px solid #86efac", display: "block" }}
+                  className="block rounded-md"
+                  style={{ border: "1px solid #86efac" }}
                 />
               </div>
             </div>
           )}
 
           {/* ── キャンペーン名 ── */}
-          <div className="form-group">
-            <label htmlFor="campaign_name">キャンペーン名（任意）</label>
+          <div className="mb-5">
+            <label htmlFor="campaign_name" className="mb-1.5 block text-[13px] font-bold text-ink">
+              キャンペーン名（任意）
+            </label>
             <input
               id="campaign_name"
               type="text"
@@ -294,81 +338,72 @@ export default function FriendAddPage() {
               onChange={(e) => setField("campaign_name", e.target.value)}
               placeholder="例: 春の作品キャンペーン"
               maxLength={100}
+              className={compactInputClass + " w-full"}
+              aria-describedby="campaign_name-help"
             />
-            <span style={{ fontSize: 11, color: "#9ca3af", display: "block", marginTop: 4 }}>
+            <span id="campaign_name-help" className="mt-1 block text-[11px] text-ink-3">
               管理用のメモ。ユーザーには表示されません
             </span>
           </div>
 
-          <hr className="section-divider" />
+          <hr className="my-5 border-t border-line-2" />
 
           {/* ── シェア用画像 ── */}
-          <div className="form-group">
-            <label>シェア用画像（任意）</label>
-            <p style={{ fontSize: 12, color: "#6b7280", marginBottom: 10, lineHeight: 1.6 }}>
+          <div className="mb-5">
+            <label className="mb-1.5 block text-[13px] font-bold text-ink">シェア用画像（任意）</label>
+            <p className="mb-2.5 text-[12px] leading-[1.6] text-ink-2">
               URL をシェアすると自動で表示される画像です。<br />
               実際の画像には、あなたのアカウントのアカウント名、ID、QR コードが表示されます。
             </p>
-            <p style={{ fontSize: 11, color: "#9ca3af", marginBottom: 10 }}>
+            <p className="mb-2.5 text-[11px] text-ink-3">
               推奨サイズ: 1200 × 630 px（JPEG / PNG / WebP）・最大 5 MB
             </p>
 
             {/* プレビュー表示 */}
             {imagePreview ? (
-              <div style={{ marginBottom: 12 }}>
+              <div className="mb-3">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={imagePreview}
                   alt="シェア用画像プレビュー"
-                  style={{
-                    width: "100%", maxWidth: 400,
-                    aspectRatio: "1200 / 630",
-                    objectFit: "cover",
-                    borderRadius: 8,
-                    border: "1px solid #e5e5e5",
-                    display: "block",
-                    background: "#f3f4f6",
-                  }}
+                  className="block w-full max-w-[400px] rounded-md border border-line bg-bg-tint object-cover"
+                  style={{ aspectRatio: "1200 / 630" }}
                   onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
                 />
-                <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-                  <button
+                <div className="mt-2 flex gap-2">
+                  <Button
                     type="button"
-                    className="btn btn-ghost"
-                    style={{ fontSize: 12, padding: "4px 12px" }}
+                    variant="ghost"
+                    size="sm"
                     onClick={() => fileInputRef.current?.click()}
                     disabled={uploading}
+                    aria-busy={uploading || undefined}
                   >
-                    {uploading ? <><span className="spinner" /> アップロード中...</> : "画像を変更"}
-                  </button>
-                  <button
+                    {uploading ? <><span className="spinner" aria-hidden="true" /> アップロード中...</> : "画像を変更"}
+                  </Button>
+                  <Button
                     type="button"
-                    className="btn btn-ghost"
-                    style={{ fontSize: 12, padding: "4px 12px", color: "#ef4444", borderColor: "#fecaca" }}
+                    variant="danger"
+                    size="sm"
                     onClick={handleImageClear}
                     disabled={uploading}
                   >
                     削除
-                  </button>
+                  </Button>
                 </div>
               </div>
             ) : (
-              /* アップロードエリア */
+              /* アップロードエリア (= LINE Green hover 維持) */
               <div
                 role="button"
                 tabIndex={0}
+                aria-busy={uploading || undefined}
                 onClick={() => !uploading && fileInputRef.current?.click()}
                 onKeyDown={(e) => e.key === "Enter" && !uploading && fileInputRef.current?.click()}
-                style={{
-                  border: "2px dashed #d1d5db",
-                  borderRadius: 10,
-                  padding: "32px 20px",
-                  textAlign: "center",
-                  cursor: uploading ? "wait" : "pointer",
-                  background: "#fafafa",
-                  transition: "border-color .15s, background .15s",
-                  marginBottom: 8,
-                }}
+                className={
+                  "mb-2 rounded-card border-2 border-dashed border-line-2 bg-bg-tint px-5 py-8 text-center transition-colors " +
+                  (uploading ? "cursor-wait" : "cursor-pointer")
+                }
                 onMouseEnter={(e) => {
                   if (!uploading) {
                     (e.currentTarget as HTMLDivElement).style.borderColor = "#06C755";
@@ -376,22 +411,22 @@ export default function FriendAddPage() {
                   }
                 }}
                 onMouseLeave={(e) => {
-                  (e.currentTarget as HTMLDivElement).style.borderColor = "#d1d5db";
-                  (e.currentTarget as HTMLDivElement).style.background   = "#fafafa";
+                  (e.currentTarget as HTMLDivElement).style.borderColor = "";
+                  (e.currentTarget as HTMLDivElement).style.background   = "";
                 }}
               >
                 {uploading ? (
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, color: "#6b7280", fontSize: 13 }}>
-                    <span className="spinner" style={{ borderColor: "#6b7280", borderTopColor: "transparent" }} />
+                  <div className="flex items-center justify-center gap-2 text-[13px] text-ink-2">
+                    <span className="spinner" aria-hidden="true" />
                     アップロード中...
                   </div>
                 ) : (
                   <>
-                    <div style={{ fontSize: 28, marginBottom: 8 }}>🖼</div>
-                    <p style={{ fontSize: 13, color: "#374151", fontWeight: 500, marginBottom: 4 }}>
+                    <div className="mb-2 text-[28px]" aria-hidden="true">🖼</div>
+                    <p className="mb-1 text-[13px] font-medium text-ink">
                       クリックして画像を選択
                     </p>
-                    <p style={{ fontSize: 11, color: "#9ca3af" }}>
+                    <p className="text-[11px] text-ink-3">
                       JPEG / PNG / WebP / GIF・最大 5 MB
                     </p>
                   </>
@@ -404,21 +439,32 @@ export default function FriendAddPage() {
               ref={fileInputRef}
               type="file"
               accept="image/jpeg,image/png,image/webp,image/gif"
-              style={{ display: "none" }}
+              className="hidden"
               onChange={handleFileChange}
             />
             {errors.share_image_url && (
-              <p className="field-error">{errors.share_image_url}</p>
+              <p role="alert" className="mt-1 text-[12px] text-danger">{errors.share_image_url}</p>
             )}
           </div>
 
           {/* ── 保存ボタン ── */}
-          <div className="form-actions">
-            <Link href={`/oas/${oaId}/settings`} className="btn btn-ghost">キャンセル</Link>
-            <button type="submit" className="btn btn-primary" disabled={submitting || uploading}>
-              {submitting && <span className="spinner" />}
+          <div className="mt-7 flex flex-col-reverse items-stretch gap-3 border-t border-line-2 pt-5 sm:flex-row sm:items-center sm:justify-end">
+            <Link
+              href={`/oas/${oaId}/settings`}
+              className={buttonClass({ variant: "ghost", size: "md" })}
+            >
+              キャンセル
+            </Link>
+            <Button
+              type="submit"
+              variant="primary"
+              size="md"
+              disabled={submitting || uploading}
+              aria-busy={submitting || undefined}
+            >
+              {submitting && <span className="spinner" aria-hidden="true" />}
               {submitting ? "保存中..." : isNew ? "設定を登録" : "設定を保存"}
-            </button>
+            </Button>
           </div>
 
         </form>
