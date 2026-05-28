@@ -103,6 +103,8 @@ export const POST = withAuth(
             userId:      user.id,
             email:       invitation.email,
             role:        invitation.role,
+            // Whale Studio Live のロールを招待から引き継ぐ（null = Live 権限なし）。
+            liveRole:    invitation.liveRole,
             status:      "active",
             invitedBy:   invitation.invitedBy,
             invitedAt:   invitation.createdAt,

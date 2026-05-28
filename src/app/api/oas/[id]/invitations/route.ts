@@ -7,11 +7,14 @@ import { ok, created, badRequest, notFound, serverError } from "@/lib/api-respon
 import { withRole } from "@/lib/auth";
 import { z, ZodError } from "zod";
 import { isValidRole } from "@/lib/types/permissions";
+import { isLiveEnabled } from "@/lib/live";
 
 const createInvitationSchema = z.object({
   email:      z.string().email("有効なメールアドレスを入力してください"),
   role:       z.string().refine(isValidRole, { message: "role は owner / admin / editor / viewer のいずれかです" }),
   expires_in: z.number().int().min(1).max(30).optional(), // 有効日数 (デフォルト: 7日)
+  // Whale Studio Live のロール（Live 有効 OA のみ。null = Live 権限なし）。
+  live_role:  z.enum(["live_player", "live_admin", "live_actor"]).nullable().optional(),
 });
 
 // ── GET /api/oas/:id/invitations ─────────────────────
@@ -34,6 +37,7 @@ export const GET = withRole<{ id: string }>(
           oa_id:       inv.oaId,
           email:       inv.email,
           role:        inv.role,
+          live_role:   inv.liveRole ?? null,
           token:       inv.token,
           invited_by:  inv.invitedBy,
           expires_at:  inv.expiresAt,
@@ -62,6 +66,11 @@ export const POST = withRole<{ id: string }>(
       const body = await req.json();
       const data = createInvitationSchema.parse(body);
 
+      // Live 無効 OA に live_role が送られた場合は silently ignore せず 400 で拒否する。
+      if (data.live_role != null && !(await isLiveEnabled(params.id))) {
+        return badRequest("この OA では Whale Studio Live が有効化されていないため、Live 権限は付与できません");
+      }
+
       // 有効期限: デフォルト 7日
       const expiresInDays = data.expires_in ?? 7;
       const expiresAt = new Date();
@@ -81,11 +90,12 @@ export const POST = withRole<{ id: string }>(
       const token = crypto.randomUUID();
 
       if (existing) {
-        // 既存の有効招待を更新（token + role + expiresAt を刷新）
+        // 既存の有効招待を更新（token + role + live_role + expiresAt を刷新）
         invitation = await prisma.invitation.update({
           where: { id: existing.id },
           data: {
             role:      data.role,
+            liveRole:  data.live_role ?? null,
             token,
             invitedBy: user.id,
             expiresAt,
@@ -97,6 +107,7 @@ export const POST = withRole<{ id: string }>(
             oaId:      params.id,
             email:     data.email,
             role:      data.role,
+            liveRole:  data.live_role ?? null,
             token,
             invitedBy: user.id,
             expiresAt,
@@ -109,6 +120,7 @@ export const POST = withRole<{ id: string }>(
         oa_id:       invitation.oaId,
         email:       invitation.email,
         role:        invitation.role,
+        live_role:   invitation.liveRole ?? null,
         token:       invitation.token,
         invited_by:  invitation.invitedBy,
         expires_at:  invitation.expiresAt,
@@ -120,8 +132,9 @@ export const POST = withRole<{ id: string }>(
     } catch (err) {
       if (err instanceof ZodError) {
         return badRequest("入力値が不正です", {
-          email: err.issues.filter((i) => i.path[0] === "email").map((i) => i.message),
-          role:  err.issues.filter((i) => i.path[0] === "role").map((i) => i.message),
+          email:     err.issues.filter((i) => i.path[0] === "email").map((i) => i.message),
+          role:      err.issues.filter((i) => i.path[0] === "role").map((i) => i.message),
+          live_role: err.issues.filter((i) => i.path[0] === "live_role").map((i) => i.message),
         });
       }
       return serverError(err);

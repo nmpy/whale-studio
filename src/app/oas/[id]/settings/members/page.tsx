@@ -25,8 +25,8 @@ import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
 import { RoleBadge } from "@/components/PermissionGuard";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { StatusBadge, Button, Accordion, buttonClass } from "@/components/shared";
-import type { Role } from "@/lib/types/permissions";
-import { ROLES, ROLE_LABELS, ROLE_DESCRIPTIONS } from "@/lib/types/permissions";
+import type { Role, LiveRole } from "@/lib/types/permissions";
+import { ROLES, ROLE_LABELS, ROLE_DESCRIPTIONS, LIVE_ROLES, LIVE_ROLE_LABELS } from "@/lib/types/permissions";
 import {
   STATUS_LABELS,
   STATUS_OPTIONS,
@@ -65,7 +65,7 @@ function invitationStatusTone(key: "pending" | "expired" | "accepted"): "active"
 
 export default function MembersPage() {
   const { id: oaId }                         = useParams<{ id: string }>();
-  const { role, loading: roleLoading, isOwner, isAdmin } = useWorkspaceRole(oaId);
+  const { role, loading: roleLoading, isOwner, isAdmin, liveEnabled } = useWorkspaceRole(oaId);
   const { showToast }                         = useToast();
   const token                                 = getDevToken();
 
@@ -251,6 +251,7 @@ export default function MembersPage() {
           loading={loadingI}
           isOwner={isOwner}
           isAdmin={isAdmin}
+          liveEnabled={liveEnabled}
           onRefresh={fetchInvitations}
           showToast={showToast}
         />
@@ -777,6 +778,7 @@ interface InvitationsSectionProps {
   loading:     boolean;
   isOwner:     boolean;
   isAdmin:     boolean;
+  liveEnabled: boolean;
   onRefresh:   () => Promise<void>;
   showToast:   (msg: string, type: "success" | "error") => void;
 }
@@ -794,11 +796,13 @@ function sortInvitations(list: Invitation[]): Invitation[] {
 
 function InvitationsSection({
   oaId, token, invitations, loading,
-  isOwner, isAdmin, onRefresh, showToast,
+  isOwner, isAdmin, liveEnabled, onRefresh, showToast,
 }: InvitationsSectionProps) {
 
-  const [inviteEmail,   setInviteEmail]  = useState("");
-  const [inviteRole,    setInviteRole]   = useState<Role>("editor");
+  const [inviteEmail,    setInviteEmail]    = useState("");
+  const [inviteRole,     setInviteRole]     = useState<Role>("editor");
+  // Whale Studio Live のロール（Live 有効 OA のみ。"" = 付与しない）
+  const [inviteLiveRole, setInviteLiveRole] = useState<LiveRole | "">("");
   const [inviting,      setInviting]     = useState(false);
   const [newInviteUrl,  setNewInviteUrl] = useState<string | null>(null);
   const [copiedId,      setCopiedId]     = useState<string | null>(null);
@@ -871,10 +875,13 @@ function InvitationsSection({
       const result = await invitationApi.create(token, oaId, {
         email: inviteEmail.trim(),
         role:  inviteRole,
+        // Live 有効 OA かつ Live ロール選択時のみ live_role を送る
+        ...(liveEnabled && inviteLiveRole ? { live_role: inviteLiveRole } : {}),
       });
       const url = `${window.location.origin}/invite/${result.token}`;
       setNewInviteUrl(url);
       setInviteEmail("");
+      setInviteLiveRole("");
       showToast(TOAST.invitationCreated, "success");
       await onRefresh();
     } catch (e) {
@@ -934,6 +941,20 @@ function InvitationsSection({
               <option key={r} value={r}>{ROLE_LABELS[r]}</option>
             ))}
           </select>
+          {/* Whale Studio Live 権限（Live 有効 OA のみ表示。隠し機能のため通常 OA では出さない） */}
+          {liveEnabled && (
+            <select
+              value={inviteLiveRole}
+              onChange={(e) => setInviteLiveRole(e.target.value as LiveRole | "")}
+              aria-label="付与する Whale Studio Live 権限"
+              className={compactInputClass + " cursor-pointer sm:w-auto sm:flex-shrink-0"}
+            >
+              <option value="">Whale Studio Live: なし</option>
+              {LIVE_ROLES.map((lr) => (
+                <option key={lr} value={lr}>{LIVE_ROLE_LABELS[lr]}</option>
+              ))}
+            </select>
+          )}
           <Button
             type="submit"
             variant="primary"

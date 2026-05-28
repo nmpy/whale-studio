@@ -9,13 +9,19 @@
  * ロールは常に /api/oas/{id}/members/me から取得する。
  * サーバー側の getWorkspaceRole() が唯一の source of truth。
  *
+ * Whale Studio Live（隠し上位機能）の情報も同 API から取得する:
+ *   - liveEnabled: OA で Live が有効か
+ *   - liveRole:    自分の Live ロール（null = Live 権限なし）
+ *   - liveAccess:  Live にアクセスできるか（platform admin / OA owner / liveRole 保持）
+ * Live 無効 OA・権限なしユーザーには false / null が返る（存在を露出しない）。
+ *
  * @example
- * const { role, loading, isOwner, isAdmin, canEdit, isTester, isViewer } = useWorkspaceRole(oaId);
+ * const { role, loading, isOwner, isAdmin, canEdit, isTester, isViewer, liveAccess } = useWorkspaceRole(oaId);
  */
 
 import { useState, useEffect } from "react";
 import { getAuthHeaders } from "@/lib/api-client";
-import type { Role } from "@/lib/types/permissions";
+import type { Role, LiveRole } from "@/lib/types/permissions";
 import { roleAtLeast } from "@/lib/types/permissions";
 
 export interface WorkspaceRoleState {
@@ -31,11 +37,20 @@ export interface WorkspaceRoleState {
   isTester: boolean;
   /** viewer かどうか（閲覧専用） */
   isViewer: boolean;
+  /** OA で Whale Studio Live が有効か */
+  liveEnabled: boolean;
+  /** 自分の Live ロール（null = Live 権限なし） */
+  liveRole: LiveRole | null;
+  /** Live にアクセスできるか（メニュー表示の判定に使う） */
+  liveAccess: boolean;
 }
 
 export function useWorkspaceRole(workspaceId: string): WorkspaceRoleState {
-  const [role,    setRole]    = useState<Role | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [role,        setRole]        = useState<Role | null>(null);
+  const [loading,     setLoading]     = useState(true);
+  const [liveEnabled, setLiveEnabled] = useState(false);
+  const [liveRole,    setLiveRole]    = useState<LiveRole | null>(null);
+  const [liveAccess,  setLiveAccess]  = useState(false);
 
   useEffect(() => {
     // 旧プレビュー機能の localStorage 残骸を除去（一度だけ）
@@ -53,7 +68,12 @@ export function useWorkspaceRole(workspaceId: string): WorkspaceRoleState {
     })
       .then((res) => res.json())
       .then((json) => {
-        if (json.success) setRole(json.data.role as Role);
+        if (json.success) {
+          setRole(json.data.role as Role);
+          setLiveEnabled(json.data.live_enabled === true);
+          setLiveRole((json.data.live_role as LiveRole | null) ?? null);
+          setLiveAccess(json.data.live_access === true);
+        }
       })
       .catch(() => {
         setRole("viewer");
@@ -69,5 +89,8 @@ export function useWorkspaceRole(workspaceId: string): WorkspaceRoleState {
     canEdit:  role !== null && roleAtLeast(role, "tester"),
     isTester: role === "tester",
     isViewer: role === "viewer",
+    liveEnabled,
+    liveRole,
+    liveAccess,
   };
 }

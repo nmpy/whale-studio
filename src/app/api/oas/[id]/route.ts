@@ -6,6 +6,7 @@ import { withRole } from "@/lib/auth";
 import { updateOaSchema, formatZodErrors } from "@/lib/validations";
 import { ZodError } from "zod";
 import { activeCache, CACHE_KEY } from "@/lib/cache";
+import { isLiveEnabled } from "@/lib/live";
 
 // ── GET /api/oas/:id ─────────────────────────────
 export const GET = withRole<{ id: string }>(
@@ -19,6 +20,9 @@ export const GET = withRole<{ id: string }>(
       });
       if (!oa) return notFound("OA");
 
+      // Whale Studio Live の利用可否（隠し機能。entitlement 無効 OA では常に false）。
+      const live_enabled = await isLiveEnabled(oa.id);
+
       return ok({
         id:                   oa.id,
         title:                oa.title,
@@ -30,6 +34,7 @@ export const GET = withRole<{ id: string }>(
         publish_status:       oa.publishStatus,
         rich_menu_id:         oa.richMenuId ?? null,
         spreadsheet_id:       oa.spreadsheetId ?? null,
+        live_enabled,
         created_at:           oa.createdAt,
         updated_at:           oa.updatedAt,
         _count:               oa._count,
