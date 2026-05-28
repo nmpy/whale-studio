@@ -20,6 +20,7 @@ function formatMember(m: {
   email: string | null;
   role: string;
   status: string;
+  liveRole: string | null;
   invitedBy: string | null;
   invitedAt: Date | null;
   joinedAt: Date | null;
@@ -34,6 +35,7 @@ function formatMember(m: {
     email:        m.email,
     role:         m.role,
     status:       m.status,
+    live_role:    m.liveRole,
     invited_by:   m.invitedBy,
     invited_at:   m.invitedAt,
     joined_at:    m.joinedAt,

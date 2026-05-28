@@ -1124,6 +1124,8 @@ export interface WorkspaceMember {
   email:        string | null;
   role:         string; // 'owner' | 'admin' | 'editor' | 'viewer'
   status:       string; // 'active' | 'inactive' | 'suspended'
+  /** Whale Studio Live のロール（null = Live 権限なし） */
+  live_role:    "live_player" | "live_admin" | "live_actor" | null;
   invited_by:   string | null;
   invited_at:   string | null;
   joined_at:    string | null;

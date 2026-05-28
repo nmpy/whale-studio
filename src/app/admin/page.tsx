@@ -13,6 +13,12 @@ const ADMIN_ITEMS = [
     color: "#06C755",
   },
   {
+    href:  "/admin/live",
+    title: "Whale Studio Live 管理",
+    desc:  "OA ごとに Whale Studio Live（上位機能）の有効 / 無効を切り替え",
+    color: "#0ea5e9",
+  },
+  {
     href:  "/admin/announcements",
     title: "お知らせ管理",
     desc:  "ユーザーへのお知らせの作成・公開・非公開を管理",

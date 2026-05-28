@@ -238,6 +238,7 @@ export default function MembersPage() {
           myUserId={myUserId}
           isOwner={isOwner}
           isAdmin={isAdmin}
+          liveEnabled={liveEnabled}
           onRefresh={fetchMembers}
           showToast={showToast}
         />
@@ -274,12 +275,13 @@ interface MembersSectionProps {
   myUserId:    string | null;  // 自己操作ガード用
   isOwner:     boolean;
   isAdmin:     boolean;
+  liveEnabled: boolean;
   onRefresh:   () => Promise<void>;
   showToast: (msg: string, type: "success" | "error") => void;
 }
 
 function MembersSection({
-  oaId, token, members, provisional, loading, myUserId, isOwner, isAdmin, onRefresh, showToast,
+  oaId, token, members, provisional, loading, myUserId, isOwner, isAdmin, liveEnabled, onRefresh, showToast,
 }: MembersSectionProps) {
 
   // ── 派生値 ───────────────────────────────────────────────────────
@@ -320,6 +322,17 @@ function MembersSection({
       await onRefresh();
     } catch (e) {
       showToast(e instanceof Error ? e.message : TOAST.roleChangeFailed, "error");
+    }
+  }
+
+  async function handleLiveRoleChange(m: WorkspaceMember, value: LiveRole | "") {
+    const nextLiveRole: LiveRole | null = value === "" ? null : value;
+    try {
+      await memberApi.updateLiveRole(token, oaId, m.id, nextLiveRole);
+      showToast(nextLiveRole ? "Whale Studio Live 権限を更新しました" : "Whale Studio Live 権限を解除しました", "success");
+      await onRefresh();
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "Live 権限の更新に失敗しました", "error");
     }
   }
 
@@ -504,6 +517,35 @@ function MembersSection({
                       <div><RoleBadge role={m.role as Role} /></div>
                     )}
                   </div>
+
+                  {/* Whale Studio Live 権限（Live 有効 OA かつ変更権限がある場合のみ） */}
+                  {liveEnabled && (
+                    <div>
+                      <label
+                        className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.06em] text-ink-3"
+                        htmlFor={`live-role-${m.id}`}
+                      >
+                        Whale Studio Live
+                      </label>
+                      {modifiable ? (
+                        <select
+                          id={`live-role-${m.id}`}
+                          value={m.live_role ?? ""}
+                          onChange={(e) => handleLiveRoleChange(m, e.target.value as LiveRole | "")}
+                          className={selectClass}
+                        >
+                          <option value="">なし</option>
+                          {LIVE_ROLES.map((lr) => (
+                            <option key={lr} value={lr}>{LIVE_ROLE_LABELS[lr]}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <div className="text-[12px] text-ink-2">
+                          {m.live_role ? LIVE_ROLE_LABELS[m.live_role] : "なし"}
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   {/* ステータス */}
                   <div>
