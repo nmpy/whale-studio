@@ -34,10 +34,14 @@ export const metadata: Metadata = {
   icons: {
     icon: "/favicon.ico",
   },
+  // app.whale-studio.app は管理アプリ。公開 LP（STUDIO / whale-studio.app）とは別物なので
+  // 検索インデックス対象にしない（robots.ts と合わせて二重に noindex / no-crawl）。
+  metadataBase: new URL("https://app.whale-studio.app"),
+  robots: { index: false, follow: false },
   openGraph: {
     title: "Whale Studio",
     description: "LINEで物語体験をつくるスタジオ",
-    url: "https://whale-studio.app", // 本番URLに合わせて変更してください
+    url: "https://app.whale-studio.app",
     siteName: "Whale Studio",
     images: [
       {
