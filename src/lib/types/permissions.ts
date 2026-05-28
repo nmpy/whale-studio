@@ -48,7 +48,10 @@ export const ROLE_DESCRIPTIONS: Record<Role, string> = {
 // Whale Studio Live ロール（studio の Role とは別軸。混同しないこと）
 // 法人・個別契約向けの隠し上位機能。OA の entitlement が有効な場合のみ使用する。
 // ────────────────────────────────────────────────
-export const LIVE_ROLES = ['live_player', 'live_admin', 'live_actor'] as const;
+// live_owner = Live 全体（Player/Admin/Actor すべて）にアクセスできる liveRole。
+// studio role の owner とは別物（本体の編集・課金権限は付与しない）。
+// 配列順は select の表示順（なし / for Owner / for Player / for Admin / for Actor）。
+export const LIVE_ROLES = ['live_owner', 'live_player', 'live_admin', 'live_actor'] as const;
 export type LiveRole = typeof LIVE_ROLES[number];
 
 /** Live セクション識別子（URL: /oas/[id]/live/{section}） */
@@ -56,20 +59,32 @@ export type LiveSection = 'player' | 'admin' | 'actor';
 
 /** liveRole → 表示名（UI 表記は要件指定の英語名を踏襲） */
 export const LIVE_ROLE_LABELS: Record<LiveRole, string> = {
+  live_owner:  'Whale Studio Live for Owner',
   live_player: 'Whale Studio Live for Player',
   live_admin:  'Whale Studio Live for Admin',
   live_actor:  'Whale Studio Live for Actor',
 };
 
+/** liveRole → 短縮表示（select 内など、見出しが「Whale Studio Live」の文脈で使う） */
+export const LIVE_ROLE_SHORT_LABELS: Record<LiveRole, string> = {
+  live_owner:  'for Owner',
+  live_player: 'for Player',
+  live_admin:  'for Admin',
+  live_actor:  'for Actor',
+};
+
 /** liveRole → 説明文（権限付与画面用） */
 export const LIVE_ROLE_DESCRIPTIONS: Record<LiveRole, string> = {
+  live_owner:  'Whale Studio Live 全体（Player / Admin / Actor すべて）を管理・閲覧できます。',
   live_player: 'プレイヤーの行動・進行・演出連携を設定する画面を利用できます。',
   live_admin:  '運営・主催者向けの管制画面（全プレイヤーの進行・接触・アラート確認）を利用できます。',
   live_actor:  '演者向けの演出支援画面（接触対象・推奨セリフ・接触後アクション）を利用できます。',
 };
 
-/** liveRole → アクセスできる Live セクション */
-export const LIVE_ROLE_SECTION: Record<LiveRole, LiveSection> = {
+/** liveRole → アクセスできる単一 Live セクション。
+ *  live_owner は全 section にアクセスできるため、この 1:1 マップには含めず
+ *  canViewLiveSection 側で特別扱いする。 */
+export const LIVE_ROLE_SECTION: Record<Exclude<LiveRole, 'live_owner'>, LiveSection> = {
   live_player: 'player',
   live_admin:  'admin',
   live_actor:  'actor',

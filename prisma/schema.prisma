@@ -1443,6 +1443,9 @@ enum LiveRole {
   live_player
   live_admin
   live_actor
+  /// Live 全体（Player / Admin / Actor すべて）にアクセスできる liveRole。
+  /// studio role の owner とは別物（本体の編集・課金権限は付与しない）。
+  live_owner
 }
 
 /// OA 単位の機能エンタイトルメント（汎用）。

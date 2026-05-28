@@ -67,5 +67,7 @@ export async function canViewLiveSection(
   if (await isOaOwner(oaId, userId)) return true;
   const liveRole = await getLiveRole(oaId, userId);
   if (!liveRole) return false;
+  // live_owner は Live 全体（全 section）にアクセスできる
+  if (liveRole === "live_owner") return true;
   return LIVE_ROLE_SECTION[liveRole] === section;
 }

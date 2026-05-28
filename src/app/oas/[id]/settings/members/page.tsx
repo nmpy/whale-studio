@@ -26,7 +26,7 @@ import { RoleBadge } from "@/components/PermissionGuard";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { StatusBadge, Button, Accordion, buttonClass } from "@/components/shared";
 import type { Role, LiveRole } from "@/lib/types/permissions";
-import { ROLES, ROLE_LABELS, ROLE_DESCRIPTIONS, LIVE_ROLES, LIVE_ROLE_LABELS } from "@/lib/types/permissions";
+import { ROLES, ROLE_LABELS, ROLE_DESCRIPTIONS, LIVE_ROLES, LIVE_ROLE_LABELS, LIVE_ROLE_SHORT_LABELS } from "@/lib/types/permissions";
 import {
   STATUS_LABELS,
   STATUS_OPTIONS,
@@ -238,6 +238,7 @@ export default function MembersPage() {
           myUserId={myUserId}
           isOwner={isOwner}
           isAdmin={isAdmin}
+          liveEnabled={liveEnabled}
           onRefresh={fetchMembers}
           showToast={showToast}
         />
@@ -274,12 +275,13 @@ interface MembersSectionProps {
   myUserId:    string | null;  // 自己操作ガード用
   isOwner:     boolean;
   isAdmin:     boolean;
+  liveEnabled: boolean;
   onRefresh:   () => Promise<void>;
   showToast: (msg: string, type: "success" | "error") => void;
 }
 
 function MembersSection({
-  oaId, token, members, provisional, loading, myUserId, isOwner, isAdmin, onRefresh, showToast,
+  oaId, token, members, provisional, loading, myUserId, isOwner, isAdmin, liveEnabled, onRefresh, showToast,
 }: MembersSectionProps) {
 
   // ── 派生値 ───────────────────────────────────────────────────────
@@ -320,6 +322,17 @@ function MembersSection({
       await onRefresh();
     } catch (e) {
       showToast(e instanceof Error ? e.message : TOAST.roleChangeFailed, "error");
+    }
+  }
+
+  async function handleLiveRoleChange(m: WorkspaceMember, value: LiveRole | "") {
+    const nextLiveRole: LiveRole | null = value === "" ? null : value;
+    try {
+      await memberApi.updateLiveRole(token, oaId, m.id, nextLiveRole);
+      showToast(nextLiveRole ? "Whale Studio Live 権限を更新しました" : "Whale Studio Live 権限を解除しました", "success");
+      await onRefresh();
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "Live 権限の更新に失敗しました", "error");
     }
   }
 
@@ -439,47 +452,39 @@ function MembersSection({
             <article
               key={m.id}
               className={
-                "rounded-card border bg-surface p-4 shadow-sm sm:p-5 " +
+                "rounded-card border bg-surface px-4 py-3 shadow-sm " +
                 (isSelf ? "border-brand/30 bg-brand-mist" : "border-line")
               }
             >
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
 
                 {/* ── 左: ユーザー情報 ── */}
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    {m.email ? (
-                      <span className="overflow-hidden text-ellipsis whitespace-nowrap text-[14px] font-semibold text-ink">
-                        {m.email}
-                      </span>
-                    ) : (
-                      <span className="font-mono text-[12px] text-ink-3">
-                        {m.user_id.slice(0, 20)}…
-                      </span>
-                    )}
+                    <span className="overflow-hidden text-ellipsis whitespace-nowrap text-[14px] font-semibold text-ink">
+                      {m.email ?? `ユーザーID: ${m.user_id.slice(0, 13)}…`}
+                    </span>
                     {isSelf && (
                       <span className="flex-shrink-0 rounded-full bg-brand-soft px-1.5 py-0.5 text-[10px] font-bold text-brand-ink">
                         自分
                       </span>
                     )}
                   </div>
-                  {m.email && (
-                    <div className="mt-0.5 font-mono text-[10px] text-ink-3">
-                      {m.user_id.slice(0, 16)}…
-                    </div>
-                  )}
-                  <div className="mt-2 text-[11px] text-ink-3">
-                    参加日: <span className="font-num text-ink-2">{joinedDate}</span>
+                  <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[10px] text-ink-3">
+                    {m.email && (
+                      <span className="font-mono">ユーザーID: {m.user_id.slice(0, 13)}…</span>
+                    )}
+                    <span>参加日: <span className="font-num text-ink-2">{joinedDate}</span></span>
                   </div>
                 </div>
 
-                {/* ── 右: コントロール (role / status / 削除) ── */}
-                <div className="flex flex-col gap-2.5 sm:w-[180px] sm:flex-shrink-0">
+                {/* ── 右: コントロール (role / live / status / 削除 を横並び) ── */}
+                <div className="flex flex-wrap items-end gap-2 sm:flex-shrink-0">
 
                   {/* ロール */}
-                  <div>
+                  <div className="w-[92px]">
                     <label
-                      className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.06em] text-ink-3"
+                      className="mb-0.5 block text-[10px] font-semibold uppercase tracking-[0.06em] text-ink-3"
                       htmlFor={`role-${m.id}`}
                     >
                       ロール
@@ -505,10 +510,39 @@ function MembersSection({
                     )}
                   </div>
 
+                  {/* Whale Studio Live 権限（Live 有効 OA のみ。select 内は短縮表示） */}
+                  {liveEnabled && (
+                    <div className="w-[116px]">
+                      <label
+                        className="mb-0.5 block text-[10px] font-semibold uppercase tracking-[0.06em] text-ink-3"
+                        htmlFor={`live-role-${m.id}`}
+                      >
+                        Live
+                      </label>
+                      {modifiable ? (
+                        <select
+                          id={`live-role-${m.id}`}
+                          value={m.live_role ?? ""}
+                          onChange={(e) => handleLiveRoleChange(m, e.target.value as LiveRole | "")}
+                          className={selectClass}
+                        >
+                          <option value="">なし</option>
+                          {LIVE_ROLES.map((lr) => (
+                            <option key={lr} value={lr}>{LIVE_ROLE_SHORT_LABELS[lr]}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <div className="text-[12px] text-ink-2">
+                          {m.live_role ? LIVE_ROLE_SHORT_LABELS[m.live_role] : "なし"}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   {/* ステータス */}
-                  <div>
+                  <div className="w-[104px]">
                     <label
-                      className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.06em] text-ink-3"
+                      className="mb-0.5 block text-[10px] font-semibold uppercase tracking-[0.06em] text-ink-3"
                       htmlFor={`status-${m.id}`}
                     >
                       ステータス
@@ -537,17 +571,18 @@ function MembersSection({
 
                   {/* 削除 (admin / owner に表示。admin は owner 行を操作不可) */}
                   {modifiable && (
-                    <Button
-                      type="button"
-                      variant="danger"
-                      size="sm"
-                      fullWidth
-                      disabled={deleteDisabled}
-                      title={deleteTitle}
-                      onClick={() => !deleteDisabled && handleDelete(m)}
-                    >
-                      削除
-                    </Button>
+                    <div className="flex items-end">
+                      <Button
+                        type="button"
+                        variant="danger"
+                        size="sm"
+                        disabled={deleteDisabled}
+                        title={deleteTitle}
+                        onClick={() => !deleteDisabled && handleDelete(m)}
+                      >
+                        削除
+                      </Button>
+                    </div>
                   )}
                 </div>
               </div>
@@ -692,43 +727,35 @@ function ProvisionalRow({
     "disabled:text-ink-3 disabled:opacity-70";
 
   return (
-    <article className="rounded-card border border-line bg-surface p-4 shadow-sm sm:p-5">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+    <article className="rounded-card border border-line bg-surface px-4 py-3 shadow-sm">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
 
         {/* ── 左: ユーザー情報 ── */}
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            {user.email ? (
-              <span className="overflow-hidden text-ellipsis whitespace-nowrap text-[14px] font-semibold text-ink">
-                {user.email}
-              </span>
-            ) : (
-              <span className="font-mono text-[12px] text-ink-3">
-                {user.user_id.slice(0, 20)}…
-              </span>
-            )}
+            <span className="overflow-hidden text-ellipsis whitespace-nowrap text-[14px] font-semibold text-ink">
+              {user.email ?? `ユーザーID: ${user.user_id.slice(0, 13)}…`}
+            </span>
             {/* 未登録バッジ — warn 系の控えめなバッジで残す */}
             <span className="flex-shrink-0 rounded-full border border-warn/30 bg-warn-soft px-1.5 py-0.5 text-[10px] font-bold text-warn">
               未登録
             </span>
           </div>
-          {user.email && (
-            <div className="mt-0.5 font-mono text-[10px] text-ink-3">
-              {user.user_id.slice(0, 16)}…
-            </div>
-          )}
-          <div className="mt-2 text-[11px] text-ink-3">
-            最終操作: <span className="font-num text-ink-2">{lastSeen}</span>
+          <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[10px] text-ink-3">
+            {user.email && (
+              <span className="font-mono">ユーザーID: {user.user_id.slice(0, 13)}…</span>
+            )}
+            <span>最終操作: <span className="font-num text-ink-2">{lastSeen}</span></span>
           </div>
         </div>
 
         {/* ── 右: ロール付与 ── */}
-        <div className="flex flex-col gap-2.5 sm:w-[200px] sm:flex-shrink-0">
+        <div className="flex flex-wrap items-end gap-2 sm:flex-shrink-0">
           {canManage ? (
             <>
-              <div>
+              <div className="w-[120px]">
                 <label
-                  className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.06em] text-ink-3"
+                  className="mb-0.5 block text-[10px] font-semibold uppercase tracking-[0.06em] text-ink-3"
                   htmlFor={`prov-role-${user.user_id}`}
                 >
                   付与するロール
@@ -745,16 +772,17 @@ function ProvisionalRow({
                   ))}
                 </select>
               </div>
-              <Button
-                type="button"
-                variant="primary"
-                size="sm"
-                fullWidth
-                disabled={registering}
-                onClick={handleClick}
-              >
-                {registering ? "…" : "登録"}
-              </Button>
+              <div className="flex items-end">
+                <Button
+                  type="button"
+                  variant="primary"
+                  size="sm"
+                  disabled={registering}
+                  onClick={handleClick}
+                >
+                  {registering ? "…" : "登録"}
+                </Button>
+              </div>
             </>
           ) : (
             <span className="inline-flex items-center justify-center rounded-full border border-line bg-bg-tint px-2 py-1 text-[11px] font-bold text-ink-3">

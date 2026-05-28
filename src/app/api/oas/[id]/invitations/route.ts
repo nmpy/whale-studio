@@ -14,7 +14,7 @@ const createInvitationSchema = z.object({
   role:       z.string().refine(isValidRole, { message: "role は owner / admin / editor / viewer のいずれかです" }),
   expires_in: z.number().int().min(1).max(30).optional(), // 有効日数 (デフォルト: 7日)
   // Whale Studio Live のロール（Live 有効 OA のみ。null = Live 権限なし）。
-  live_role:  z.enum(["live_player", "live_admin", "live_actor"]).nullable().optional(),
+  live_role:  z.enum(["live_owner", "live_player", "live_admin", "live_actor"]).nullable().optional(),
 });
 
 // ── GET /api/oas/:id/invitations ─────────────────────
