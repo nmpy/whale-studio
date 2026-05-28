@@ -23,7 +23,7 @@ const updateMemberSchema = z.object({
   role:      z.string().refine(isValidRole, { message: "role は owner / admin / editor / viewer のいずれかです" }).optional(),
   status:    z.enum(VALID_STATUSES, { message: "status は active / inactive / suspended のいずれかです" }).optional(),
   // Whale Studio Live のロール（null = 剥奪 / Live 有効 OA のみ付与可）。
-  live_role: z.enum(["live_player", "live_admin", "live_actor"]).nullable().optional(),
+  live_role: z.enum(["live_owner", "live_player", "live_admin", "live_actor"]).nullable().optional(),
 }).refine((d) => d.role !== undefined || d.status !== undefined || d.live_role !== undefined, {
   message: "role / status / live_role のいずれかは必須です",
 });

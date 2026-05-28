@@ -1125,7 +1125,7 @@ export interface WorkspaceMember {
   role:         string; // 'owner' | 'admin' | 'editor' | 'viewer'
   status:       string; // 'active' | 'inactive' | 'suspended'
   /** Whale Studio Live のロール（null = Live 権限なし） */
-  live_role:    "live_player" | "live_admin" | "live_actor" | null;
+  live_role:    "live_owner" | "live_player" | "live_admin" | "live_actor" | null;
   invited_by:   string | null;
   invited_at:   string | null;
   joined_at:    string | null;
@@ -1194,7 +1194,7 @@ export const memberApi = {
     token: string,
     oaId: string,
     memberId: string,
-    liveRole: "live_player" | "live_admin" | "live_actor" | null,
+    liveRole: "live_owner" | "live_player" | "live_admin" | "live_actor" | null,
   ): Promise<WorkspaceMember> {
     const res = await fetch(`/api/oas/${oaId}/members/${memberId}`, {
       method:  "PATCH",
@@ -1343,7 +1343,7 @@ export interface CreateInvitationBody {
   role:        string;
   expires_in?: number; // 日数 (省略時: 7日)
   /** Whale Studio Live のロール（Live 有効 OA のみ。null/省略 = Live 権限なし） */
-  live_role?:  "live_player" | "live_admin" | "live_actor" | null;
+  live_role?:  "live_owner" | "live_player" | "live_admin" | "live_actor" | null;
 }
 
 export interface AcceptInvitationResult {
