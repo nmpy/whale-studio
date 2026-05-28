@@ -34,6 +34,21 @@ export async function approveOnboardingRequest(args: {
   }
 
   const oa = await prisma.$transaction(async (tx) => {
+    // ── 二重承認の race condition 防止 ──
+    // 事前 findUnique と transaction の間で別リクエストが APPROVED に進めた場合、
+    // ここで最新ステータスを読み直し、既に APPROVED ないし oaId が紐付いていれば
+    // 例外を投げて transaction 全体を rollback する。
+    const fresh = await tx.oaOnboardingRequest.findUnique({
+      where: { id: request.id },
+      select: { status: true, oaId: true },
+    });
+    if (!fresh) {
+      throw new Error("承認対象の申請が見つかりません");
+    }
+    if (fresh.status === "APPROVED" || fresh.oaId) {
+      throw new Error("既に承認済みです (二重承認をブロックしました)");
+    }
+
     const newOa = await tx.oa.create({
       data: {
         title:              request.oaName!,
