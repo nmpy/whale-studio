@@ -24,6 +24,7 @@ import { AccessPreviewBar } from "@/components/AccessPreviewBar";
 
 function isBareLayoutRoute(pathname: string | null): boolean {
   if (!pathname) return false;
+  if (pathname === "/")                                        return true; // 公開LP: 独自ヘッダー / フルブリード背景
   if (pathname === "/liff"  || pathname.startsWith("/liff/"))  return true;
   if (pathname === "/whale" || pathname.startsWith("/whale/")) return true;
   return false;
