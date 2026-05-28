@@ -61,6 +61,13 @@ export const LIVE_ROLE_LABELS: Record<LiveRole, string> = {
   live_actor:  'Whale Studio Live for Actor',
 };
 
+/** liveRole → 短縮表示（select 内など、見出しが「Whale Studio Live」の文脈で使う） */
+export const LIVE_ROLE_SHORT_LABELS: Record<LiveRole, string> = {
+  live_player: 'for Player',
+  live_admin:  'for Admin',
+  live_actor:  'for Actor',
+};
+
 /** liveRole → 説明文（権限付与画面用） */
 export const LIVE_ROLE_DESCRIPTIONS: Record<LiveRole, string> = {
   live_player: 'プレイヤーの行動・進行・演出連携を設定する画面を利用できます。',
