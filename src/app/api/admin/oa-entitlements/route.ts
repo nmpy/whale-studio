@@ -21,11 +21,19 @@ export const GET = withAuth(async (_req, _ctx, user) => {
   try {
     const oas = await prisma.oa.findMany({
       select: {
-        id:    true,
-        title: true,
+        id:       true,
+        title:    true,
+        ownerKey: true,
         entitlements: {
           where:  { featureKey: LIVE_FEATURE_KEY },
           select: { enabled: true },
+        },
+        // 現ユーザーがこの OA のメンバーか（設定導線の出し分けに使う）。
+        // platform admin でも各 OA のメンバーとは限らないため、メンバーでなければ
+        // 通常設定画面（/oas/[id]/settings）には入れない（access-denied）。
+        workspaceMembers: {
+          where:  { userId: user.id },
+          select: { status: true },
         },
       },
       orderBy: { createdAt: "desc" },
@@ -36,6 +44,8 @@ export const GET = withAuth(async (_req, _ctx, user) => {
         oa_id:        o.id,
         title:        o.title,
         live_enabled: o.entitlements[0]?.enabled === true,
+        // owner_key 一致 or active メンバー なら通常設定にアクセス可能
+        has_access:   o.ownerKey === user.id || o.workspaceMembers.some((m) => m.status === "active"),
       })),
     );
   } catch (err) {

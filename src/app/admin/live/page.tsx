@@ -6,12 +6,15 @@
 // OA 一覧 + Live ON/OFF トグル。API は GET/PATCH /api/admin/oa-entitlements。
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { getDevToken } from "@/lib/api-client";
 
 interface OaLiveRow {
   oa_id:        string;
   title:        string;
   live_enabled: boolean;
+  /** 現ユーザー（platform admin）がこの OA のメンバーか。通常設定への導線出し分けに使う。 */
+  has_access:   boolean;
 }
 
 export default function AdminLivePage() {
@@ -117,6 +120,7 @@ export default function AdminLivePage() {
                 <th style={{ padding: "10px 12px", textAlign: "left", fontSize: 11, color: "#6b7280" }}>OA 名</th>
                 <th style={{ padding: "10px 12px", textAlign: "left", fontSize: 11, color: "#6b7280" }}>OA ID</th>
                 <th style={{ padding: "10px 12px", textAlign: "left", fontSize: 11, color: "#6b7280" }}>Whale Studio Live</th>
+                <th style={{ padding: "10px 12px", textAlign: "left", fontSize: 11, color: "#6b7280" }}>設定</th>
                 <th style={{ padding: "10px 12px", textAlign: "right", fontSize: 11, color: "#6b7280" }}>操作</th>
               </tr>
             </thead>
@@ -134,6 +138,26 @@ export default function AdminLivePage() {
                     }}>
                       {r.live_enabled ? "有効" : "無効"}
                     </span>
+                  </td>
+                  {/* 通常設定への導線は、現ユーザーがこの OA のメンバーである場合のみ。
+                      platform admin でもメンバーでなければ /oas/[id]/settings は access-denied になるため、
+                      押せる導線を出さず「メンバー外」と補足する。 */}
+                  <td style={{ padding: "12px 12px", fontSize: 12 }}>
+                    {r.has_access ? (
+                      <Link
+                        href={`/oas/${r.oa_id}/settings`}
+                        style={{ color: "#2563eb", textDecoration: "none" }}
+                      >
+                        設定を開く ↗
+                      </Link>
+                    ) : (
+                      <span
+                        style={{ color: "#9ca3af" }}
+                        title="このアカウントのメンバーではないため、通常の設定画面は開けません"
+                      >
+                        このOAのメンバーではありません
+                      </span>
+                    )}
                   </td>
                   <td style={{ padding: "12px 12px", textAlign: "right" }}>
                     <button
