@@ -4,6 +4,8 @@
 // スタジオ管理トップ — 運営管理機能への導線
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
+import { getAuthHeaders } from "@/lib/api-client";
 
 const ADMIN_ITEMS = [
   {
@@ -57,6 +59,16 @@ const ADMIN_ITEMS = [
 ] as const;
 
 export default function AdminIndexPage() {
+  // Whale Studio Live 管理カードは platform admin のみに表示（運営専用）。
+  // /admin は workspace owner も入れるため、ここで platform 判定して出し分ける。
+  const [isPlatform, setIsPlatform] = useState(false);
+  useEffect(() => {
+    fetch("/api/admin/me", { headers: { ...getAuthHeaders() }, cache: "no-store" })
+      .then((r) => r.json())
+      .then((j) => { if (j.success) setIsPlatform(j.data.is_platform_owner === true); })
+      .catch(() => {});
+  }, []);
+
   return (
     <>
       <div className="page-header">
@@ -82,7 +94,7 @@ export default function AdminIndexPage() {
         gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))",
         gap: 12,
       }}>
-        {ADMIN_ITEMS.map(({ href, title, desc, color }) => {
+        {ADMIN_ITEMS.filter(({ href }) => (href === "/admin/live" ? isPlatform : true)).map(({ href, title, desc, color }) => {
           const isDisabled = !href;
 
           const cardStyle: React.CSSProperties = {

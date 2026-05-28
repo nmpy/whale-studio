@@ -6,14 +6,18 @@
 // ※ entitlement の変更は隠し機能の運用操作のため、UI も /admin（platform 専用）配下に置く。
 
 import { prisma } from "@/lib/prisma";
-import { ok, badRequest, notFound, serverError } from "@/lib/api-response";
-import { withPlatformAdmin } from "@/lib/with-platform-admin";
+import { ok, badRequest, notFound, forbidden, serverError } from "@/lib/api-response";
+import { withAuth } from "@/lib/auth";
+import { isPlatformOwner } from "@/lib/platform-admin";
 import { LIVE_FEATURE_KEY } from "@/lib/live";
 import { z, ZodError } from "zod";
 
 export const dynamic = "force-dynamic";
 
-export const GET = withPlatformAdmin(async () => {
+// entitlement の変更は運営専用操作のため、platform admin のみに限定する。
+// （withPlatformAdmin は workspace owner も通すため、ここでは使わない）
+export const GET = withAuth(async (_req, _ctx, user) => {
+  if (!isPlatformOwner(user.id)) return forbidden();
   try {
     const oas = await prisma.oa.findMany({
       select: {
@@ -44,7 +48,8 @@ const patchSchema = z.object({
   enabled: z.boolean(),
 });
 
-export const PATCH = withPlatformAdmin(async (req) => {
+export const PATCH = withAuth(async (req, _ctx, user) => {
+  if (!isPlatformOwner(user.id)) return forbidden();
   try {
     const body = await req.json().catch(() => ({}));
     const { oa_id, enabled } = patchSchema.parse(body);
