@@ -6,6 +6,8 @@
 // /signup 専用ルートは存在せず、/login が register モードを内包しているため、
 // メールアドレスを ?mode=register&email=... で引き継いで /login に遷移する。
 // （login ページ側で initialMode / initialEmail を読み取る）
+//
+// トーン: 明るい背景に合わせ、白入力欄 + 緑の丸みボタン。
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
@@ -32,7 +34,7 @@ export function LandingEmailForm({ ctaLabel = "今すぐ始める", source }: Pr
   return (
     <form
       onSubmit={(e) => { e.preventDefault(); handleStart(); }}
-      className="flex w-full max-w-[520px] flex-col gap-3 sm:flex-row"
+      className="flex w-full max-w-[480px] flex-col gap-3 sm:flex-row"
     >
       <input
         type="email"
@@ -41,11 +43,11 @@ export function LandingEmailForm({ ctaLabel = "今すぐ始める", source }: Pr
         placeholder="メールアドレス"
         autoComplete="email"
         aria-label="メールアドレス"
-        className="h-12 flex-1 rounded-lg border border-white/15 bg-white/10 px-4 text-[15px] text-white placeholder:text-white/45 outline-none backdrop-blur focus:border-[#06C755] focus:ring-2 focus:ring-[#06C755]/40"
+        className="h-12 flex-1 rounded-full border border-[#E3EAE4] bg-white px-5 text-[15px] text-[#1F2A24] placeholder:text-[#9aa49d] outline-none transition focus:border-[#06C755] focus:ring-2 focus:ring-[#06C755]/25"
       />
       <button
         type="submit"
-        className="h-12 shrink-0 rounded-lg bg-[#06C755] px-7 text-[15px] font-bold text-white transition hover:brightness-110 active:brightness-95"
+        className="h-12 shrink-0 rounded-full bg-[#06C755] px-7 text-[15px] font-bold text-white shadow-sm transition hover:-translate-y-px hover:brightness-105 active:translate-y-0"
       >
         {ctaLabel}
       </button>

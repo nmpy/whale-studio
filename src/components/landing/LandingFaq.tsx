@@ -2,6 +2,7 @@
 
 // src/components/landing/LandingFaq.tsx
 // 公開LPのよくある質問（アコーディオン）。
+// トーン: 白〜薄グレー背景、薄い border、+ アイコンは LINEグリーン。
 
 import { useState } from "react";
 
@@ -41,13 +42,13 @@ export function LandingFaq() {
   const [open, setOpen] = useState<number | null>(0);
 
   return (
-    <div className="mx-auto flex w-full max-w-[760px] flex-col gap-3">
+    <div className="mx-auto flex w-full max-w-[720px] flex-col gap-3">
       {ITEMS.map((item, i) => {
         const isOpen = open === i;
         return (
           <div
             key={i}
-            className="overflow-hidden rounded-xl border border-white/10 bg-white/[0.03]"
+            className="overflow-hidden rounded-2xl border border-[#E3EAE4] bg-white"
           >
             <button
               type="button"
@@ -55,7 +56,7 @@ export function LandingFaq() {
               aria-expanded={isOpen}
               className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left"
             >
-              <span className="text-[15px] font-bold text-white">{item.q}</span>
+              <span className="text-[15px] font-bold text-[#1F2A24]">{item.q}</span>
               <span
                 className={`shrink-0 text-[18px] text-[#06C755] transition-transform ${isOpen ? "rotate-45" : ""}`}
                 aria-hidden="true"
@@ -64,7 +65,7 @@ export function LandingFaq() {
               </span>
             </button>
             {isOpen && (
-              <div className="px-5 pb-5 text-[14px] leading-[1.85] text-[#A7B0AA]">
+              <div className="px-5 pb-5 text-[14px] leading-[1.85] text-[#5F6B64]">
                 {item.a}
               </div>
             )}

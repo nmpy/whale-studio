@@ -3,6 +3,8 @@
 // 認証状態は page.tsx 側で getServerUser して props で渡す。
 // - 未ログイン: ログイン / 今すぐ始める
 // - ログイン済: 管理画面へ /（権限があれば）スタジオ管理
+//
+// トーン: 既存 Studio.site 風の明るい / 透過白 + blur。
 
 import Link from "next/link";
 
@@ -13,23 +15,23 @@ interface Props {
 
 export function LandingHeader({ isLoggedIn, canAccessAdmin }: Props) {
   return (
-    <header className="sticky top-0 z-30 border-b border-white/10 bg-[#020617]/80 backdrop-blur">
-      <div className="mx-auto flex h-16 max-w-[1180px] items-center justify-between gap-4 px-5">
+    <header className="sticky top-0 z-30 border-b border-[#E3EAE4] bg-white/80 backdrop-blur">
+      <div className="mx-auto flex h-16 max-w-[1100px] items-center justify-between gap-4 px-5">
         {/* 左: ロゴ + タグライン */}
         <Link href="/" className="flex items-baseline gap-2">
-          <span className="font-round text-[17px] font-black tracking-[0.04em] text-white">
+          <span className="font-round text-[17px] font-black tracking-[0.14em] text-[#1F2A24]">
             WHALE STUDIO
           </span>
-          <span className="hidden text-[11px] text-[#A7B0AA] sm:inline">
+          <span className="hidden text-[11px] text-[#8a948d] sm:inline">
             LINEでつくる物語体験 β版
           </span>
         </Link>
 
         {/* 中央: nav（PCのみ） */}
         <nav className="hidden items-center gap-7 md:flex">
-          <a href="#features" className="text-[13px] font-medium text-[#A7B0AA] transition hover:text-white">機能</a>
-          <Link href="/pricing" className="text-[13px] font-medium text-[#A7B0AA] transition hover:text-white">料金</Link>
-          <a href="#faq" className="text-[13px] font-medium text-[#A7B0AA] transition hover:text-white">よくある質問</a>
+          <a href="#features" className="text-[13px] font-medium text-[#5F6B64] transition hover:text-[#1F2A24]">機能</a>
+          <Link href="/pricing" className="text-[13px] font-medium text-[#5F6B64] transition hover:text-[#1F2A24]">料金</Link>
+          <a href="#faq" className="text-[13px] font-medium text-[#5F6B64] transition hover:text-[#1F2A24]">よくある質問</a>
         </nav>
 
         {/* 右: CTA（認証状態で出し分け） */}
@@ -39,14 +41,14 @@ export function LandingHeader({ isLoggedIn, canAccessAdmin }: Props) {
               {canAccessAdmin && (
                 <Link
                   href="/admin"
-                  className="hidden rounded-lg border border-white/15 px-4 py-2 text-[13px] font-bold text-white transition hover:bg-white/10 sm:inline-block"
+                  className="hidden rounded-full border border-[#E3EAE4] px-4 py-2 text-[13px] font-bold text-[#1F2A24] transition hover:bg-[#F3F7F4] sm:inline-block"
                 >
                   スタジオ管理
                 </Link>
               )}
               <Link
                 href="/oas"
-                className="rounded-lg bg-[#06C755] px-5 py-2 text-[13px] font-bold text-white transition hover:brightness-110"
+                className="rounded-full bg-[#06C755] px-5 py-2 text-[13px] font-bold text-white shadow-sm transition hover:-translate-y-px hover:brightness-105"
               >
                 管理画面へ
               </Link>
@@ -55,13 +57,13 @@ export function LandingHeader({ isLoggedIn, canAccessAdmin }: Props) {
             <>
               <Link
                 href="/login"
-                className="rounded-lg border border-white/15 px-4 py-2 text-[13px] font-bold text-white transition hover:bg-white/10"
+                className="rounded-full border border-[#E3EAE4] px-4 py-2 text-[13px] font-bold text-[#1F2A24] transition hover:bg-[#F3F7F4]"
               >
                 ログイン
               </Link>
               <Link
                 href="/login?mode=register"
-                className="rounded-lg bg-[#06C755] px-5 py-2 text-[13px] font-bold text-white transition hover:brightness-110"
+                className="rounded-full bg-[#06C755] px-5 py-2 text-[13px] font-bold text-white shadow-sm transition hover:-translate-y-px hover:brightness-105"
               >
                 今すぐ始める
               </Link>
