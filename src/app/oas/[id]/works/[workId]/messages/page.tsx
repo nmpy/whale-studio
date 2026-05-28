@@ -487,6 +487,28 @@ export default function MessagesPage() {
     }
   }
 
+  /** 一覧から is_active をトグルする。
+   *  楽観的更新で即時反映し、失敗時は元に戻して toast を表示する。
+   *  is_active のみを送信するため他フィールドへの副作用なし。 */
+  async function handleToggleActive(msg: MessageWithRelations) {
+    if (busyMessageId) return;
+    const nextActive = !msg.is_active;
+    setBusyMessageId(msg.id);
+    // 楽観的更新
+    setMessages((prev) => prev.map((m) => (m.id === msg.id ? { ...m, is_active: nextActive } : m)));
+    try {
+      await messageApi.update(getDevToken(), msg.id, { is_active: nextActive });
+      showToast(nextActive ? "メッセージを有効化しました" : "メッセージを無効化しました", "success");
+    } catch (err) {
+      console.error("[messages] toggle is_active error:", err);
+      // ロールバック
+      setMessages((prev) => prev.map((m) => (m.id === msg.id ? { ...m, is_active: msg.is_active } : m)));
+      showToast(err instanceof Error ? err.message : "状態の切り替えに失敗しました", "error");
+    } finally {
+      setBusyMessageId(null);
+    }
+  }
+
   useEffect(() => {
     const token = getDevToken();
     setLoading(true);
@@ -1060,20 +1082,45 @@ export default function MessagesPage() {
                           <CharTag character={msg.character} />
                         </td>
 
-                        {/* 状態 */}
+                        {/* 状態 (= canEdit のときはクリックで有効/無効トグル) */}
                         <td style={{ padding: "12px 14px", whiteSpace: "nowrap" }}>
-                          <span style={{
-                            display: "inline-flex", alignItems: "center", gap: 4,
-                            padding: "2px 9px", borderRadius: "var(--radius-full)",
-                            fontSize: 11, fontWeight: 700,
-                            background: msg.is_active ? "#dcfce7" : "var(--gray-100)",
-                            color:      msg.is_active ? "#166534" : "var(--text-muted)",
-                          }}>
-                            {msg.is_active
-                              ? <><span style={{ width: 5, height: 5, borderRadius: "50%", background: "#22c55e", display: "inline-block" }} />有効</>
-                              : "無効"
-                            }
-                          </span>
+                          {canEdit ? (
+                            <button
+                              type="button"
+                              onClick={() => handleToggleActive(msg)}
+                              disabled={busyMessageId !== null}
+                              aria-pressed={msg.is_active}
+                              title={msg.is_active ? "クリックで無効化" : "クリックで有効化"}
+                              style={{
+                                display: "inline-flex", alignItems: "center", gap: 4,
+                                padding: "2px 9px", borderRadius: "var(--radius-full)",
+                                fontSize: 11, fontWeight: 700,
+                                background: msg.is_active ? "#dcfce7" : "var(--gray-100)",
+                                color:      msg.is_active ? "#166534" : "var(--text-muted)",
+                                border: "1px solid transparent",
+                                cursor: busyMessageId !== null ? "not-allowed" : "pointer",
+                                opacity: busyMessageId !== null && busyMessageId !== msg.id ? 0.5 : 1,
+                              }}
+                            >
+                              {msg.is_active
+                                ? <><span style={{ width: 5, height: 5, borderRadius: "50%", background: "#22c55e", display: "inline-block" }} />有効</>
+                                : "無効"
+                              }
+                            </button>
+                          ) : (
+                            <span style={{
+                              display: "inline-flex", alignItems: "center", gap: 4,
+                              padding: "2px 9px", borderRadius: "var(--radius-full)",
+                              fontSize: 11, fontWeight: 700,
+                              background: msg.is_active ? "#dcfce7" : "var(--gray-100)",
+                              color:      msg.is_active ? "#166534" : "var(--text-muted)",
+                            }}>
+                              {msg.is_active
+                                ? <><span style={{ width: 5, height: 5, borderRadius: "50%", background: "#22c55e", display: "inline-block" }} />有効</>
+                                : "無効"
+                              }
+                            </span>
+                          )}
                         </td>
 
                         {/* 順序 */}

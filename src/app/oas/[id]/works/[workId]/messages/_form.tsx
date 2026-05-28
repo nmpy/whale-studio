@@ -3050,18 +3050,6 @@ export function MessageForm({
 
   const mtype = form.message_type;
 
-  // ── 「送信設定」 accordion の初期 open 判定 ──
-  // 新規作成時はデフォルト値のみのため close。編集時は initialForm に既存値が
-  // 入っているなら open (= 編集者が既存設定を見落とさない配慮)。
-  // 判定対象は「送信設定」内で設定可能なフィールド (= character_id / sort_order /
-  // is_active が初期値以外)。
-  const sendingHasExistingData =
-    !isNew && (
-      initialForm.character_id !== "" ||
-      initialForm.sort_order !== 0 ||
-      initialForm.is_active === false
-    );
-
   return (
     <>
       {/* ── レスポンシブ: 768px以下で縦並び ── */}
@@ -3414,51 +3402,11 @@ export function MessageForm({
               )}
             </div>
             )}
-          </SectionAccordion>
 
-          {/* ── 「詳細設定」 視覚的区切り (= 以下は任意/上級者向け、デフォルト折りたたみ) ── */}
-          <div className="msg-section-divider" aria-hidden="true">
-            <span>詳細設定（任意）</span>
-          </div>
-          <p className="msg-section-divider-hint" aria-hidden="true">
-            返信タイミングや演出など、必要な場合だけ設定します
-          </p>
-
-          {/* ════════════════════════════════════════
-              セクション 2: 送信設定
-          ════════════════════════════════════════ */}
-          <SectionAccordion
-            title="送信設定"
-            optional
-            description="応答キャラクター・表示順序・有効状態など。デフォルトのままでOKです"
-            defaultOpen={sendingHasExistingData}
-          >
-
-            {/* 応答キャラクター */}
-            <div className="form-group">
-              <label style={fieldLabel} htmlFor="character_id">
-                応答キャラクター
-              </label>
-              <select
-                id="character_id"
-                className="form-input"
-                value={form.character_id}
-                onChange={(e) => set("character_id", e.target.value)}
-              >
-                <option value="">— キャラクターを指定しない —</option>
-                {characters.map((ch) => (
-                  <option key={ch.id} value={ch.id}>
-                    {ch.name}
-                  </option>
-                ))}
-              </select>
-              <div style={hintText}>このメッセージを送るキャラクターを指定できます</div>
-            </div>
-
-            {/* 表示順序 */}
-            <div className="form-group">
+            {/* 表示順 (= 同条件のメッセージが複数あるときの並び順) */}
+            <div className="form-group" style={{ marginBottom: 0 }}>
               <label style={fieldLabel} htmlFor="sort_order">
-                表示順序
+                表示順
               </label>
               <input
                 id="sort_order"
@@ -3471,126 +3419,7 @@ export function MessageForm({
               />
               <div style={hintText}>同じ条件のメッセージが複数ある場合の並び順です（小さい順）</div>
             </div>
-
-            {/* 有効フラグ */}
-            <div className="form-group" style={{ marginBottom: 0 }}>
-              <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
-                <input
-                  type="checkbox"
-                  checked={form.is_active}
-                  onChange={(e) => set("is_active", e.target.checked)}
-                />
-                <span style={{ fontSize: 14 }}>有効にする</span>
-              </label>
-              <div style={hintText}>無効にすると Bot はこのメッセージを送信しません</div>
-            </div>
           </SectionAccordion>
-
-          {/* ════════════════════════════════════════
-              セクション 2.5: 自由入力受付
-              このメッセージ送信後、ユーザーの次のテキスト入力を変数として保存できる。
-              名前入力 / アンケート自由回答 / 任意テキストの記録などに使用。
-              通常は OFF。puzzle / system_notice では無効化する。
-          ════════════════════════════════════════ */}
-          {!isPuzzle && form.kind !== "system_notice" && (
-            <SectionAccordion
-              title="自由入力受付"
-              optional
-              description="メッセージ送信後にユーザーの次の入力を変数として保存できます（名前入力やアンケート用）"
-              defaultOpen={form.free_input_enabled}
-            >
-              <div className="form-group">
-                <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
-                  <input
-                    type="checkbox"
-                    checked={form.free_input_enabled}
-                    onChange={(e) => set("free_input_enabled", e.target.checked)}
-                  />
-                  <span style={{ fontSize: 14, fontWeight: 600 }}>自由入力を受け付ける</span>
-                </label>
-                <div style={{ ...hintText, marginTop: 4 }}>
-                  このメッセージ送信後、ユーザーの次のテキスト入力を変数として保存して、次の応答に利用できます。
-                  <br />
-                  名前入力 / アンケート自由回答 / 任意の感想記録などに使えます。
-                </div>
-              </div>
-
-              {form.free_input_enabled && (
-                <>
-                  {/* 保存先変数名 (任意) */}
-                  <div className="form-group" style={{ marginTop: 12 }}>
-                    <label style={fieldLabel} htmlFor="free_input_variable_key">
-                      保存する変数名
-                      <span style={{ fontSize: 10, fontWeight: 600, background: "#f1f5f9", color: "#64748b", borderRadius: 4, padding: "1px 6px", marginLeft: 6 }}>任意</span>
-                    </label>
-                    <input
-                      id="free_input_variable_key"
-                      type="text"
-                      className="form-input"
-                      style={{ maxWidth: 320 }}
-                      value={form.free_input_variable_key}
-                      onChange={(e) => set("free_input_variable_key", e.target.value)}
-                      placeholder="例: userName（差し込みが不要なら空欄でOK）"
-                      maxLength={60}
-                      autoComplete="off"
-                    />
-                    {(() => {
-                      const v = form.free_input_variable_key.trim();
-                      const validRegex = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
-                      if (v && !validRegex.test(v)) {
-                        return (
-                          <div style={{ fontSize: 12, color: "#dc2626", marginTop: 4 }}>
-                            変数名は半角英数字とアンダースコアで入力してください。先頭に数字は使えません。
-                          </div>
-                        );
-                      }
-                      return (
-                        <div style={hintText}>
-                          入力内容を次のメッセージで使いたい場合のみ設定します。<br />
-                          例：名前なら <code>userName</code>、感想なら <code>feedback</code>。<br />
-                          本文に <code>{"{userName}"}</code> のように書くと、保存した入力内容を差し込めます。<br />
-                          空欄のままにすると、入力は受け付けますが変数として保存はされません（ログ用途）。
-                        </div>
-                      );
-                    })()}
-                  </div>
-
-                  {/* 入力後の次メッセージ */}
-                  <div className="form-group" style={{ marginTop: 12, marginBottom: 0 }}>
-                    <label style={fieldLabel} htmlFor="free_input_next_message_id">
-                      入力後に送信するメッセージ
-                    </label>
-                    <select
-                      id="free_input_next_message_id"
-                      className="form-input"
-                      value={form.free_input_next_message_id}
-                      onChange={(e) => set("free_input_next_message_id", e.target.value)}
-                    >
-                      <option value="">— 選択しない（次メッセージを送らない）—</option>
-                      {allMessages
-                        .filter((m) => m.id !== messageId)
-                        .map((m) => {
-                          const label = m.body?.trim().slice(0, 30) || `(本文なし) id=${m.id.slice(0, 8)}`;
-                          return (
-                            <option key={m.id} value={m.id}>
-                              {label}
-                            </option>
-                          );
-                        })}
-                    </select>
-                    <div style={hintText}>
-                      ユーザー入力を受け取った後に送信するメッセージ。
-                      {form.free_input_variable_key.trim() ? (
-                        <>本文に <code>{`{${form.free_input_variable_key.trim()}}`}</code> と書くと、保存した値が差し込まれます。</>
-                      ) : (
-                        <>変数名を設定していないため、ここでは入力内容を差し込みません（受け取って次へ進むだけ）。</>
-                      )}
-                    </div>
-                  </div>
-                </>
-              )}
-            </SectionAccordion>
-          )}
 
           {/* ════════════════════════════════════════
               セクション 3a: 謎の形式とコンテンツ（puzzle のみ）
@@ -4391,6 +4220,14 @@ export function MessageForm({
           </SectionAccordion>
           )} {/* /!isPuzzle */}
 
+          {/* ── 「詳細設定」 視覚的区切り (= 以下は任意/上級者向け、デフォルト折りたたみ) ── */}
+          <div className="msg-section-divider" aria-hidden="true">
+            <span>詳細設定（任意）</span>
+          </div>
+          <p className="msg-section-divider-hint" aria-hidden="true">
+            返信時の選択肢や自由入力など、必要な場合だけ設定します
+          </p>
+
           {/* ════════════════════════════════════════
               クイックリプライ設定（メッセージ・謎 共通）
           ════════════════════════════════════════ */}
@@ -4405,6 +4242,112 @@ export function MessageForm({
             oaId={oaId}
             destinations={destinations}
           />
+
+          {/* ════════════════════════════════════════
+              自由入力受付（クイックリプライの直後に配置）
+              このメッセージ送信後、ユーザーの次のテキスト入力を変数として保存できる。
+              名前入力 / アンケート自由回答 / 任意テキストの記録などに使用。
+              通常は OFF。puzzle / system_notice では無効化する。
+          ════════════════════════════════════════ */}
+          {!isPuzzle && form.kind !== "system_notice" && (
+            <SectionAccordion
+              title="自由入力受付"
+              optional
+              description="メッセージ送信後にユーザーの次の入力を変数として保存できます（名前入力やアンケート用）"
+              defaultOpen={form.free_input_enabled}
+            >
+              <div className="form-group">
+                <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+                  <input
+                    type="checkbox"
+                    checked={form.free_input_enabled}
+                    onChange={(e) => set("free_input_enabled", e.target.checked)}
+                  />
+                  <span style={{ fontSize: 14, fontWeight: 600 }}>自由入力を受け付ける</span>
+                </label>
+                <div style={{ ...hintText, marginTop: 4 }}>
+                  このメッセージ送信後、ユーザーの次のテキスト入力を変数として保存して、次の応答に利用できます。
+                  <br />
+                  名前入力 / アンケート自由回答 / 任意の感想記録などに使えます。
+                </div>
+              </div>
+
+              {form.free_input_enabled && (
+                <>
+                  {/* 保存先変数名 (任意) */}
+                  <div className="form-group" style={{ marginTop: 12 }}>
+                    <label style={fieldLabel} htmlFor="free_input_variable_key">
+                      保存する変数名
+                      <span style={{ fontSize: 10, fontWeight: 600, background: "#f1f5f9", color: "#64748b", borderRadius: 4, padding: "1px 6px", marginLeft: 6 }}>任意</span>
+                    </label>
+                    <input
+                      id="free_input_variable_key"
+                      type="text"
+                      className="form-input"
+                      style={{ maxWidth: 320 }}
+                      value={form.free_input_variable_key}
+                      onChange={(e) => set("free_input_variable_key", e.target.value)}
+                      placeholder="例: userName（差し込みが不要なら空欄でOK）"
+                      maxLength={60}
+                      autoComplete="off"
+                    />
+                    {(() => {
+                      const v = form.free_input_variable_key.trim();
+                      const validRegex = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
+                      if (v && !validRegex.test(v)) {
+                        return (
+                          <div style={{ fontSize: 12, color: "#dc2626", marginTop: 4 }}>
+                            変数名は半角英数字とアンダースコアで入力してください。先頭に数字は使えません。
+                          </div>
+                        );
+                      }
+                      return (
+                        <div style={hintText}>
+                          入力内容を次のメッセージで使いたい場合のみ設定します。<br />
+                          例：名前なら <code>userName</code>、感想なら <code>feedback</code>。<br />
+                          本文に <code>{"{userName}"}</code> のように書くと、保存した入力内容を差し込めます。<br />
+                          空欄のままにすると、入力は受け付けますが変数として保存はされません（ログ用途）。
+                        </div>
+                      );
+                    })()}
+                  </div>
+
+                  {/* 入力後の次メッセージ */}
+                  <div className="form-group" style={{ marginTop: 12, marginBottom: 0 }}>
+                    <label style={fieldLabel} htmlFor="free_input_next_message_id">
+                      入力後に送信するメッセージ
+                    </label>
+                    <select
+                      id="free_input_next_message_id"
+                      className="form-input"
+                      value={form.free_input_next_message_id}
+                      onChange={(e) => set("free_input_next_message_id", e.target.value)}
+                    >
+                      <option value="">— 選択しない（次メッセージを送らない）—</option>
+                      {allMessages
+                        .filter((m) => m.id !== messageId)
+                        .map((m) => {
+                          const label = m.body?.trim().slice(0, 30) || `(本文なし) id=${m.id.slice(0, 8)}`;
+                          return (
+                            <option key={m.id} value={m.id}>
+                              {label}
+                            </option>
+                          );
+                        })}
+                    </select>
+                    <div style={hintText}>
+                      ユーザー入力を受け取った後に送信するメッセージ。
+                      {form.free_input_variable_key.trim() ? (
+                        <>本文に <code>{`{${form.free_input_variable_key.trim()}}`}</code> と書くと、保存した値が差し込まれます。</>
+                      ) : (
+                        <>変数名を設定していないため、ここでは入力内容を差し込みません（受け取って次へ進むだけ）。</>
+                      )}
+                    </div>
+                  </div>
+                </>
+              )}
+            </SectionAccordion>
+          )}
 
           {/* ════════════════════════════════════════
               謎の回答設定（puzzle のみ）
