@@ -41,6 +41,7 @@ model Oa {
   userTrackings      UserTracking[]
   works              Work[]
   workspaceMembers   WorkspaceMember[]
+  entitlements       OaEntitlement[]
 
   @@index([title])
   @@index([publishStatus])
@@ -586,6 +587,8 @@ model WorkspaceMember {
   joinedAt    DateTime?    @map("joined_at")
   status      MemberStatus @default(active)
   role        MemberRole   @default(viewer)
+  /// Whale Studio Live のロール（null = Live 権限なし）。studio の role(MemberRole) とは別軸。
+  liveRole    LiveRole?    @map("live_role")
   oa          Oa           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@unique([workspaceId, userId])
@@ -602,6 +605,8 @@ model Invitation {
   /// 招待先メールアドレス
   email      String
   role       MemberRole @default(editor)
+  /// Whale Studio Live のロール（招待時に付与。承諾時に WorkspaceMember.liveRole へ引き継ぐ）。
+  liveRole   LiveRole?  @map("live_role")
   /// URL に埋め込む一意トークン（UUID v4 推奨）
   token      String     @unique
   /// 招待送信者（Supabase Auth userId）
@@ -1430,4 +1435,31 @@ model OaOnboardingRequest {
   @@index([userId])
   @@index([status])
   @@map("oa_onboarding_requests")
+}
+
+/// Whale Studio Live のメンバーロール（studio の MemberRole とは別軸の権限）。
+/// null = Live 権限なし（WorkspaceMember.liveRole / Invitation.liveRole で使用）。
+enum LiveRole {
+  live_player
+  live_admin
+  live_actor
+}
+
+/// OA 単位の機能エンタイトルメント（汎用）。
+/// 公開プラン（Subscription/Plan/PlanTier）とは別軸で、法人・個別契約向けの
+/// 隠し機能を OA ごとに有効化する。featureKey の第一弾は "whale_studio_live"。
+///
+/// Phase 1 では有効化 UI を作らず、platform admin が SQL / seed で投入する。
+model OaEntitlement {
+  id         String   @id @default(uuid())
+  oaId       String   @map("oa_id")
+  featureKey String   @map("feature_key")
+  enabled    Boolean  @default(false)
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+  oa         Oa       @relation(fields: [oaId], references: [id], onDelete: Cascade)
+
+  @@unique([oaId, featureKey])
+  @@index([oaId])
+  @@map("oa_entitlements")
 }

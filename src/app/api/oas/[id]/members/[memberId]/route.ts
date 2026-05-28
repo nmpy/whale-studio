@@ -14,15 +14,18 @@ import { withRole } from "@/lib/auth";
 import { ensureActiveOwnerRemains, LastOwnerError } from "@/lib/rbac";
 import { z, ZodError } from "zod";
 import { isValidRole } from "@/lib/types/permissions";
+import { isLiveEnabled } from "@/lib/live";
 
 const VALID_STATUSES = ["active", "inactive", "suspended"] as const;
 type MemberStatus = typeof VALID_STATUSES[number];
 
 const updateMemberSchema = z.object({
-  role:   z.string().refine(isValidRole, { message: "role は owner / admin / editor / viewer のいずれかです" }).optional(),
-  status: z.enum(VALID_STATUSES, { message: "status は active / inactive / suspended のいずれかです" }).optional(),
-}).refine((d) => d.role !== undefined || d.status !== undefined, {
-  message: "role か status のどちらかは必須です",
+  role:      z.string().refine(isValidRole, { message: "role は owner / admin / editor / viewer のいずれかです" }).optional(),
+  status:    z.enum(VALID_STATUSES, { message: "status は active / inactive / suspended のいずれかです" }).optional(),
+  // Whale Studio Live のロール（null = 剥奪 / Live 有効 OA のみ付与可）。
+  live_role: z.enum(["live_player", "live_admin", "live_actor"]).nullable().optional(),
+}).refine((d) => d.role !== undefined || d.status !== undefined || d.live_role !== undefined, {
+  message: "role / status / live_role のいずれかは必須です",
 });
 
 // ── PATCH /api/oas/:id/members/:memberId ─────────
@@ -55,6 +58,11 @@ export const PATCH = withRole<{ id: string; memberId: string }>(
         );
       }
 
+      // ── Live 無効 OA に live_role 付与が来たら 400（null=剥奪は許可）──
+      if (data.live_role != null && !(await isLiveEnabled(params.id))) {
+        return badRequest("この OA では Whale Studio Live が有効化されていないため、Live 権限は付与できません");
+      }
+
       // ── owner 保護: role 降格 or status 非active化 ──
       const needsOwnerGuard =
         (data.role && data.role !== 'owner' && target.role === 'owner') ||
@@ -69,6 +77,8 @@ export const PATCH = withRole<{ id: string; memberId: string }>(
           data: {
             ...(data.role   ? { role:   data.role }   : {}),
             ...(data.status ? { status: data.status } : {}),
+            // live_role は undefined=変更なし / null=剥奪 / 値=付与
+            ...(data.live_role !== undefined ? { liveRole: data.live_role } : {}),
           },
         });
       });
@@ -79,6 +89,7 @@ export const PATCH = withRole<{ id: string; memberId: string }>(
         user_id:      updated.userId,
         email:        updated.email,
         role:         updated.role,
+        live_role:    updated.liveRole ?? null,
         status:       updated.status,
         invited_by:   updated.invitedBy,
         invited_at:   updated.invitedAt,
@@ -94,8 +105,9 @@ export const PATCH = withRole<{ id: string; memberId: string }>(
       }
       if (err instanceof ZodError) {
         return badRequest("入力値が不正です", {
-          role:   err.issues.filter((i) => i.path[0] === "role").map((i) => i.message),
-          status: err.issues.filter((i) => i.path[0] === "status").map((i) => i.message),
+          role:      err.issues.filter((i) => i.path[0] === "role").map((i) => i.message),
+          status:    err.issues.filter((i) => i.path[0] === "status").map((i) => i.message),
+          live_role: err.issues.filter((i) => i.path[0] === "live_role").map((i) => i.message),
         });
       }
       return serverError(err);

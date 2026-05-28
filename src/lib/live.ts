@@ -1,0 +1,71 @@
+// src/lib/live.ts
+// Whale Studio Live（隠し上位機能）の利用可否・権限判定ヘルパー（サーバー専用）。
+//
+// 権限モデル（studio 権限と Live 権限を厳密に分離）:
+//   Live にアクセスできる = entitlement 有効 かつ 次のいずれか
+//     - platform admin（運営）           → 全 section
+//     - OA owner（実効ロール owner）       → 全 section
+//     - liveRole を持つメンバー            → 自分の liveRole に対応する section のみ
+//   studio role が admin/editor/viewer でも liveRole が無ければ Live には一切入れない。
+//   権限がないユーザーには存在を露出しない（呼び出し側で notFound / 非表示にする）。
+
+import { prisma } from "@/lib/prisma";
+import { isPlatformOwner } from "@/lib/platform-admin";
+import { getWorkspaceRole } from "@/lib/rbac";
+import { LIVE_ROLE_SECTION, type LiveRole, type LiveSection } from "@/lib/types/permissions";
+
+/** OaEntitlement.featureKey の第一弾 */
+export const LIVE_FEATURE_KEY = "whale_studio_live";
+
+/** OA で Whale Studio Live が有効か（entitlement enabled）。 */
+export async function isLiveEnabled(oaId: string): Promise<boolean> {
+  const ent = await prisma.oaEntitlement.findUnique({
+    where:  { oaId_featureKey: { oaId, featureKey: LIVE_FEATURE_KEY } },
+    select: { enabled: true },
+  });
+  return ent?.enabled === true;
+}
+
+/** メンバーの liveRole を取得（owner_key 判定の owner などメンバー行が無い場合は null）。 */
+export async function getLiveRole(oaId: string, userId: string): Promise<LiveRole | null> {
+  const member = await prisma.workspaceMember.findUnique({
+    where:  { workspaceId_userId: { workspaceId: oaId, userId } },
+    select: { liveRole: true },
+  });
+  return (member?.liveRole as LiveRole | null) ?? null;
+}
+
+/** OA owner（実効ロール）か。owner_key / ADMIN_IDENTITY も考慮する。 */
+async function isOaOwner(oaId: string, userId: string): Promise<boolean> {
+  const info = await getWorkspaceRole(oaId, userId); // MemberInfo | null
+  return info?.role === "owner" && info.status === "active";
+}
+
+/**
+ * Live 全体にアクセスできるか（メニュー表示・/live ハブ到達の判定）。
+ * entitlement 有効 かつ（platform admin / OA owner / liveRole 保持）。
+ */
+export async function canAccessLive(oaId: string, userId: string): Promise<boolean> {
+  if (!(await isLiveEnabled(oaId))) return false;
+  if (isPlatformOwner(userId)) return true;
+  if (await isOaOwner(oaId, userId)) return true;
+  const liveRole = await getLiveRole(oaId, userId);
+  return liveRole !== null;
+}
+
+/**
+ * 特定の Live セクション（player/admin/actor）を閲覧できるか。
+ * platform admin / OA owner は全 section。それ以外は liveRole が section に一致する場合のみ。
+ */
+export async function canViewLiveSection(
+  oaId: string,
+  userId: string,
+  section: LiveSection,
+): Promise<boolean> {
+  if (!(await isLiveEnabled(oaId))) return false;
+  if (isPlatformOwner(userId)) return true;
+  if (await isOaOwner(oaId, userId)) return true;
+  const liveRole = await getLiveRole(oaId, userId);
+  if (!liveRole) return false;
+  return LIVE_ROLE_SECTION[liveRole] === section;
+}

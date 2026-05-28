@@ -27,12 +27,14 @@ const HUB_ITEM_DEFS = [
   { key: "trackings",            title: "トラッキング管理", desc: "流入元ごとのクリック数・ユーザー数を計測" },
   { key: "settings/members",     title: "メンバー管理",     desc: "ワークスペースメンバーのロール（owner/admin/editor/viewer）を管理" },
   { key: "onboarding-analytics", title: "オンボーディング分析", desc: "作品作成〜セットアップ完了の各ステップ到達率を確認（owner のみ）" },
+  // Whale Studio Live（隠し上位機能）。Live にアクセス可能なユーザーにのみ表示する。
+  { key: "live",                 title: "Whale Studio Live", desc: "リアルタイムに進行・管制・演出支援を行う上位機能" },
 ] as const;
 
 export default function OaSettingsPage() {
   const params = useParams<{ id: string }>();
   const oaId   = params.id;
-  const { role, isOwner, isAdmin } = useWorkspaceRole(oaId);
+  const { role, isOwner, isAdmin, liveAccess } = useWorkspaceRole(oaId);
   const [oaTitle,        setOaTitle]        = useState<string>("");
   const [billingSuccess, setBillingSuccess] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -121,6 +123,7 @@ export default function OaSettingsPage() {
             if (key === "onboarding-analytics") return isOwner;
             if (key === "settings/members") return isOwner || isAdmin;
             if (key === "account" || key === "richmenu-editor" || key === "friend-add" || key === "sns") return isAdmin;
+            if (key === "live") return liveAccess; // Live 可ユーザーのみ。それ以外には存在を見せない
             return true; // works, trackings — visible to all
           }).map(({ key, title, desc }) => (
             <Link
