@@ -23,10 +23,14 @@ function LoginForm() {
 
   const nextPath    = searchParams.get("next") ?? getPostAuthRedirect({ source: "login" });
   const errorReason = searchParams.get("error");
+  // STUDIO LP (whale-studio.app) の「今すぐ始める / ログイン」から
+  // app.whale-studio.app/login?mode=register&email=... で遷移してくる導線をサポート。
+  const initialMode  = searchParams.get("mode") === "register" ? "register" : "login";
+  const initialEmail = searchParams.get("email") ?? "";
 
-  const [mode,            setMode]            = useState<"login" | "register">("login");
+  const [mode,            setMode]            = useState<"login" | "register">(initialMode);
   const [username,        setUsername]         = useState("");
-  const [email,           setEmail]            = useState("");
+  const [email,           setEmail]            = useState(initialEmail);
   const [password,        setPassword]         = useState("");
   const [confirmPassword, setConfirmPassword]  = useState("");
   const [status,          setStatus]           = useState<"idle" | "loading" | "error">("idle");
