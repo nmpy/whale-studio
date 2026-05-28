@@ -9,31 +9,10 @@ import { withAuth } from "@/lib/auth";
 import { createOaSchema, oaQuerySchema, formatZodErrors } from "@/lib/validations";
 import { getWorkspaceRole } from "@/lib/rbac";
 import { isPlatformOwner } from "@/lib/platform-admin";
+import { createTesterSubscription } from "@/lib/billing/create-tester-subscription";
 import { ZodError } from "zod";
 
 export const dynamic = "force-dynamic";
-// ── OA 作成時に tester subscription を自動設定 ────────────────────────
-// fire-and-forget で呼び出す。失敗時は OA 作成をブロックしない。
-// Plan シードが未実行の場合は no-op（testerPlan が null）。
-async function createTesterSubscription(oaId: string): Promise<void> {
-  const testerPlan = await prisma.plan.findUnique({ where: { name: "tester" } });
-  if (!testerPlan) {
-    console.warn("[POST /api/oas] tester plan not found — subscription skipped. Run `node prisma/seed.mjs`.");
-    return;
-  }
-  const now = new Date();
-  const end = new Date(now);
-  end.setFullYear(end.getFullYear() + 1);
-  await prisma.subscription.create({
-    data: {
-      oaId,
-      planId:             testerPlan.id,
-      status:             "trialing",
-      currentPeriodStart: now,
-      currentPeriodEnd:   end,
-    },
-  });
-}
 
 // ── モジュールロード時ログ ──────────────────────────────────
 // このログが Vercel に出ない場合は古いキャッシュが使われている。

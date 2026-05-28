@@ -7,6 +7,12 @@ import Link from "next/link";
 
 const ADMIN_ITEMS = [
   {
+    href:  "/admin/oa-onboarding",
+    title: "OA連携審査",
+    desc:  "新規ユーザーの LINE 公式アカウント連携申請を承認 / 差し戻し",
+    color: "#06C755",
+  },
+  {
     href:  "/admin/announcements",
     title: "お知らせ管理",
     desc:  "ユーザーへのお知らせの作成・公開・非公開を管理",

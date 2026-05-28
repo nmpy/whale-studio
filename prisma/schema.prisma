@@ -1365,3 +1365,69 @@ model Profile {
 
   @@map("profiles")
 }
+
+/// 利用規約への同意履歴。termsVersion を上げるとユーザーは再同意が必要になる。
+model TermsAcceptance {
+  id           String   @id @default(uuid())
+  userId       String   @map("user_id")
+  termsVersion String   @map("terms_version")
+  acceptedAt   DateTime @default(now()) @map("accepted_at")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@unique([userId, termsVersion])
+  @@index([userId])
+  @@map("terms_acceptances")
+}
+
+/// OA連携の審査ステータス。
+/// - DRAFT:      入力途中
+/// - SUBMITTED:  ユーザーが提出した直後
+/// - IN_REVIEW:  運営が確認中（将来運営側で SUBMITTED→IN_REVIEW へ遷移させる余地）
+/// - APPROVED:   承認済み（同時に Oa + WorkspaceMember(owner) が作成される）
+/// - REJECTED:   差し戻し（reviewNote を確認してユーザーが再提出する）
+enum OaOnboardingStatus {
+  DRAFT
+  SUBMITTED
+  IN_REVIEW
+  APPROVED
+  REJECTED
+}
+
+/// LINE 公式アカウント連携の審査リクエスト。
+/// ユーザーが Step 2 で入力した Channel 情報、Step 3 で提出した権限URLを保持する。
+/// 承認時に Oa レコードが作成され、oaId に紐付けられる。
+///
+/// セキュリティ注意:
+///   channel_secret / channel_access_token は現状平文で保存している（既存 Oa と同水準）。
+///   将来的に暗号化する場合は専用の secret-store にこのテーブル分も合わせて移行する。
+model OaOnboardingRequest {
+  id              String             @id @default(uuid())
+  userId          String             @map("user_id")
+  /// 承認時に作成された Oa.id。それ以前は null。
+  oaId            String?            @map("oa_id")
+  status          OaOnboardingStatus @default(DRAFT)
+
+  /// Step 2 の入力（OA 連携情報）。
+  oaName          String?            @map("oa_name")
+  channelId       String?            @map("channel_id")
+  channelSecret   String?            @map("channel_secret")
+  channelToken    String?            @map("channel_access_token")
+  basicId         String?            @map("basic_id")
+  liffId          String?            @map("liff_id")
+
+  /// Step 3 で提出された権限URL（運営が確認に使う）。
+  permissionUrl   String?            @map("permission_url")
+  submittedAt     DateTime?          @map("submitted_at")
+
+  /// 承認 / 差し戻しの記録。
+  reviewedAt      DateTime?          @map("reviewed_at")
+  reviewedBy      String?            @map("reviewed_by")
+  reviewNote      String?            @map("review_note")
+
+  createdAt       DateTime           @default(now()) @map("created_at")
+  updatedAt       DateTime           @updatedAt @map("updated_at")
+
+  @@index([userId])
+  @@index([status])
+  @@map("oa_onboarding_requests")
+}
