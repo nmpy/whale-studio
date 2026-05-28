@@ -3050,11 +3050,6 @@ export function MessageForm({
 
   const mtype = form.message_type;
 
-  // ── 「送信設定」 accordion の初期 open 判定 ──
-  // 編集時に既存メッセージが無効状態 (= is_active=false) であれば、編集者が
-  // 状態を見落とさないよう open にする。新規作成時は default のため close。
-  const sendingHasExistingData = !isNew && initialForm.is_active === false;
-
   return (
     <>
       {/* ── レスポンシブ: 768px以下で縦並び ── */}
@@ -3423,37 +3418,6 @@ export function MessageForm({
                 min={0}
               />
               <div style={hintText}>同じ条件のメッセージが複数ある場合の並び順です（小さい順）</div>
-            </div>
-          </SectionAccordion>
-
-          {/* ── 「詳細設定」 視覚的区切り (= 以下は任意/上級者向け、デフォルト折りたたみ) ── */}
-          <div className="msg-section-divider" aria-hidden="true">
-            <span>詳細設定（任意）</span>
-          </div>
-          <p className="msg-section-divider-hint" aria-hidden="true">
-            返信タイミングや演出など、必要な場合だけ設定します
-          </p>
-
-          {/* ════════════════════════════════════════
-              セクション 2: 送信設定
-          ════════════════════════════════════════ */}
-          <SectionAccordion
-            title="送信設定"
-            optional
-            description="メッセージの有効/無効を切り替えます"
-            defaultOpen={sendingHasExistingData}
-          >
-            {/* 有効フラグ */}
-            <div className="form-group" style={{ marginBottom: 0 }}>
-              <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
-                <input
-                  type="checkbox"
-                  checked={form.is_active}
-                  onChange={(e) => set("is_active", e.target.checked)}
-                />
-                <span style={{ fontSize: 14 }}>有効にする</span>
-              </label>
-              <div style={hintText}>無効にすると Bot はこのメッセージを送信しません</div>
             </div>
           </SectionAccordion>
 
@@ -4255,6 +4219,14 @@ export function MessageForm({
             </button>
           </SectionAccordion>
           )} {/* /!isPuzzle */}
+
+          {/* ── 「詳細設定」 視覚的区切り (= 以下は任意/上級者向け、デフォルト折りたたみ) ── */}
+          <div className="msg-section-divider" aria-hidden="true">
+            <span>詳細設定（任意）</span>
+          </div>
+          <p className="msg-section-divider-hint" aria-hidden="true">
+            返信時の選択肢や自由入力など、必要な場合だけ設定します
+          </p>
 
           {/* ════════════════════════════════════════
               クイックリプライ設定（メッセージ・謎 共通）
