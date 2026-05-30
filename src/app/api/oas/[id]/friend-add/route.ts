@@ -2,10 +2,9 @@
 // GET  /api/oas/:id/friend-add — 友だち追加設定取得
 // PUT  /api/oas/:id/friend-add — 友だち追加設定作成・更新（upsert）
 
-import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { ok, badRequest, notFound, serverError } from "@/lib/api-response";
-import { withAuth } from "@/lib/auth";
+import { withRole } from "@/lib/auth";
 import { putFriendAddSchema, formatZodErrors } from "@/lib/validations";
 import { ZodError } from "zod";
 
@@ -32,24 +31,33 @@ function toResponse(s: {
 }
 
 // ── GET /api/oas/:id/friend-add ──────────────────
-export const GET = withAuth<{ id: string }>(async (_req, { params }) => {
-  try {
-    const oa = await prisma.oa.findUnique({ where: { id: params.id } });
-    if (!oa) return notFound("OA");
+// 既存 RBAC 方針（owner_key 一致 / ADMIN_IDENTITY / active WorkspaceMember）に揃える。
+// 取得は viewer 以上、保存は admin/owner（編集系設定のため owner/admin に限定）。
+export const GET = withRole<{ id: string }>(
+  ({ params }) => params.id,
+  'viewer',
+  async (_req, { params }) => {
+    try {
+      const oa = await prisma.oa.findUnique({ where: { id: params.id } });
+      if (!oa) return notFound("OA");
 
-    const settings = await prisma.friendAddSettings.findUnique({
-      where: { oaId: params.id },
-    });
+      const settings = await prisma.friendAddSettings.findUnique({
+        where: { oaId: params.id },
+      });
 
-    if (!settings) return notFound("FriendAddSettings");
-    return ok(toResponse(settings));
-  } catch (err) {
-    return serverError(err);
-  }
-});
+      if (!settings) return notFound("FriendAddSettings");
+      return ok(toResponse(settings));
+    } catch (err) {
+      return serverError(err);
+    }
+  },
+);
 
 // ── PUT /api/oas/:id/friend-add ──────────────────
-export const PUT = withAuth<{ id: string }>(async (req, { params }) => {
+export const PUT = withRole<{ id: string }>(
+  ({ params }) => params.id,
+  ['admin', 'owner'],
+  async (req, { params }) => {
   try {
     const oa = await prisma.oa.findUnique({ where: { id: params.id } });
     if (!oa) return notFound("OA");
@@ -84,4 +92,5 @@ export const PUT = withAuth<{ id: string }>(async (req, { params }) => {
     console.error("[friend-add PUT] UNEXPECTED ERROR:", err);
     return serverError(err);
   }
-});
+  },
+);
