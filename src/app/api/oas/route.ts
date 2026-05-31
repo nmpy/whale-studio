@@ -35,21 +35,29 @@ export const GET = withAuth(async (req, _ctx, user) => {
     // それ以外は workspace_members に登録済みの OA のみ返す
     const showAll = isPlatformOwner(user.id);
 
-    // メンバーシップでフィルタ
+    // メンバーシップでフィルタ。user_id ベースで WorkspaceMember を取得し、
+    // さらに owner_key 一致 OA も補完（workspace_members 行が無くても owner と扱う rbac 方針に揃える）。
+    // email NULL でも user_id 一致でメンバーとして扱われる（getWorkspaceRole / rbac.ts と同方針）。
     const memberships = showAll
       ? []
       : await prisma.workspaceMember.findMany({
           where: { userId: user.id },
           select: { workspaceId: true, role: true, status: true },
         });
+    const ownedOaIds = showAll
+      ? []
+      : (await prisma.oa.findMany({
+          where:  { ownerKey: user.id },
+          select: { id: true },
+        })).map((o) => o.id);
     if (process.env.NODE_ENV !== "production" || process.env.DEBUG_OAS === "true") {
-      console.log(`[GET /api/oas] user.id=${user.id} showAll=${showAll} memberships=${JSON.stringify(memberships)}`);
+      console.log(`[GET /api/oas] user.id=${user.id} showAll=${showAll} memberships=${JSON.stringify(memberships)} ownedOaIds=${JSON.stringify(ownedOaIds)}`);
     }
 
     const memberFilter = showAll
       ? {}
       : {
-          id: { in: memberships.map((m) => m.workspaceId) },
+          id: { in: Array.from(new Set([...memberships.map((m) => m.workspaceId), ...ownedOaIds])) },
         };
 
     const where = {
@@ -83,26 +91,37 @@ export const GET = withAuth(async (req, _ctx, user) => {
 
     // 各 OA の role を取得
     // プラットフォームオーナーはメンバー未登録の OA でも 'owner' として扱う
-    const rolesMap = new Map<string, string>();
+    // 各 OA に対する役割 + 実際のアクセス可否を計算する。
+    // my_role: 表示用（platform admin で showAll のとき、非 member OA でも 'owner' 表示）。
+    // has_workspace_access: 実際の workspace へのアクセス可否（owner_key 一致 or active WorkspaceMember のみ true）。
+    //   platform admin であってもメンバーでない OA に対する API 呼び出しは 403 になるため、
+    //   client 側で workApi.list 等を呼ぶ前にこのフラグを参照して判定する。
+    const rolesMap  = new Map<string, string>();
+    const accessMap = new Map<string, boolean>();
     for (const oa of items) {
       const m = await getWorkspaceRole(oa.id, user.id);
       const role = m?.status === 'active' ? m.role : (showAll ? 'owner' : 'none');
       rolesMap.set(oa.id, role);
+      // getWorkspaceRole は owner_key 一致なら { role: 'owner', status: 'active' } を返す。
+      // active member（owner / admin / editor / viewer / tester）なら status === 'active'。
+      // それ以外（null / inactive / suspended）は false。
+      accessMap.set(oa.id, m !== null && m.status === 'active');
     }
 
     const data = items.map((oa) => ({
-      id:             oa.id,
-      title:          oa.title,
-      description:    oa.description,
-      channel_id:     oa.channelId,
-      line_oa_id:     oa.lineOaId     ?? null,
-      publish_status: oa.publishStatus,
-      rich_menu_id:   oa.richMenuId   ?? null,
-      spreadsheet_id: oa.spreadsheetId ?? null,
-      created_at:     oa.createdAt,
-      updated_at:     oa.updatedAt,
-      _count:         oa._count,
-      my_role:        rolesMap.get(oa.id) ?? 'none',
+      id:                   oa.id,
+      title:                oa.title,
+      description:          oa.description,
+      channel_id:           oa.channelId,
+      line_oa_id:           oa.lineOaId     ?? null,
+      publish_status:       oa.publishStatus,
+      rich_menu_id:         oa.richMenuId   ?? null,
+      spreadsheet_id:       oa.spreadsheetId ?? null,
+      created_at:           oa.createdAt,
+      updated_at:           oa.updatedAt,
+      _count:               oa._count,
+      my_role:              rolesMap.get(oa.id) ?? 'none',
+      has_workspace_access: accessMap.get(oa.id) ?? false,
     }));
 
     return ok(data, {
