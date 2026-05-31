@@ -55,13 +55,14 @@ export function LocationTabs({ oaId, workId, activeTab }: Props) {
                 padding: "8px 18px",
                 fontSize: 13,
                 fontWeight: 600,
-                color: isActive ? "#2563eb" : "#6b7280",
+                color: isActive ? "#06C755" : "#6b7280",
                 background: "transparent",
-                borderBottom: isActive ? "2px solid #2563eb" : "2px solid transparent",
+                borderBottom: isActive ? "2px solid #06C755" : "2px solid transparent",
                 marginBottom: -1,
                 textDecoration: "none",
                 cursor: "pointer",
                 transition: "color 0.12s, border-color 0.12s",
+                whiteSpace: "nowrap" as const,
               }}
             >
               {tab.label}

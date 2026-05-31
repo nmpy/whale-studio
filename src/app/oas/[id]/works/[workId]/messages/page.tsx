@@ -623,12 +623,12 @@ export default function MessagesPage() {
 
   const phaseGroups = buildPhaseGroups();
 
-  // ── タブ共通スタイル ────────────────────────────────
+  // ── タブ共通スタイル (work detail 配下の他タブと揃える) ──
   const tabStyle = (tab: Tab): React.CSSProperties => ({
-    padding: "9px 20px",
+    padding: "8px 18px",
     fontSize: 13,
-    fontWeight: activeTab === tab ? 700 : 500,
-    color: activeTab === tab ? "#06C755" : "var(--text-secondary)",
+    fontWeight: 600,
+    color: activeTab === tab ? "#06C755" : "#6b7280",
     background: "none",
     border: "none",
     borderBottom: activeTab === tab ? "2px solid #06C755" : "2px solid transparent",

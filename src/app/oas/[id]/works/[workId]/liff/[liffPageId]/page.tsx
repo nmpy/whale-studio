@@ -147,14 +147,14 @@ export default function LiffPageEditor() {
         publishStatus={config.publish_status}
       />
 
-      {/* タブ切り替え: 編集 / 計測 */}
-      <div className="flex gap-1 border-b border-gray-200 mb-4">
+      {/* タブ切り替え: 編集 / 計測 (work detail 配下の他タブと揃える) */}
+      <div className="flex gap-0 border-b border-gray-200 mb-4">
         <button
           type="button"
           onClick={() => setActiveTab("editor")}
-          className={`px-4 py-2 text-sm font-semibold transition-colors border-b-2 ${
+          className={`px-[18px] py-2 text-[13px] font-semibold transition-colors border-b-2 whitespace-nowrap ${
             activeTab === "editor"
-              ? "border-violet-500 text-violet-700"
+              ? "border-[#06C755] text-[#06C755]"
               : "border-transparent text-gray-500 hover:text-gray-700"
           }`}
         >
@@ -163,9 +163,9 @@ export default function LiffPageEditor() {
         <button
           type="button"
           onClick={() => setActiveTab("analytics")}
-          className={`px-4 py-2 text-sm font-semibold transition-colors border-b-2 ${
+          className={`px-[18px] py-2 text-[13px] font-semibold transition-colors border-b-2 whitespace-nowrap ${
             activeTab === "analytics"
-              ? "border-violet-500 text-violet-700"
+              ? "border-[#06C755] text-[#06C755]"
               : "border-transparent text-gray-500 hover:text-gray-700"
           }`}
         >
