@@ -168,13 +168,13 @@ describe("requirePlanFeature — feature × plan の判定", () => {
     if (result.ok) expect(result.plan).toBe("standard");
   });
 
-  it("Standard で liffDisplay → 403 PLAN_REQUIRED (Pro 必要)", async () => {
+  it("Standard で liffDisplay → 403 PLAN_REQUIRED (Pro Max 必要)", async () => {
     const result = await tryAccess("standard", FEATURE.liffDisplay);
     expect(result.ok).toBe(false);
     if (!result.ok) {
       const body = await result.response.json();
       expect(body.error.code).toBe("PLAN_REQUIRED");
-      expect(body.error.details.requiredPlanLabel).toBe("Pro");
+      expect(body.error.details.requiredPlanLabel).toBe("Pro Max");
     }
   });
 
@@ -188,16 +188,16 @@ describe("requirePlanFeature — feature × plan の判定", () => {
     expect(result.ok).toBe(true);
   });
 
-  it("Plus で location → 403 PLAN_REQUIRED (Pro Max 必要)", async () => {
+  it("Plus で location → 403 PLAN_REQUIRED (Pro 必要)", async () => {
     const result = await tryAccess("plus", FEATURE.location);
     expect(result.ok).toBe(false);
     if (!result.ok) {
       const body = await result.response.json();
-      expect(body.error.details.requiredPlanLabel).toBe("Pro Max");
+      expect(body.error.details.requiredPlanLabel).toBe("Pro");
     }
   });
 
-  it("Pro Max (= editor) で location → allowed", async () => {
+  it("Pro (= editor) で location → allowed", async () => {
     const result = await tryAccess("editor", FEATURE.location);
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.plan).toBe("pro");
@@ -210,7 +210,7 @@ describe("requirePlanFeature — feature × plan の判定", () => {
     expect(result.ok).toBe(false);
     if (!result.ok) {
       const body = await result.response.json();
-      expect(body.error.details.requiredPlanLabel).toBe("Pro Max");
+      expect(body.error.details.requiredPlanLabel).toBe("Pro");
     }
   });
 
@@ -221,14 +221,14 @@ describe("requirePlanFeature — feature × plan の判定", () => {
     expect(result.ok).toBe(true);
   });
 
-  it("status='canceled' + Pro plan で destinations → 403 PLAN_REQUIRED (= basic にダウングレード)", async () => {
+  it("status='canceled' + Pro Max plan で destinations → 403 PLAN_REQUIRED (= basic にダウングレード)", async () => {
     mockSubscription.findUnique.mockResolvedValue({ status: "canceled", plan: { name: "plus" } });
     const result = await requirePlanFeature({ oaId: "oa-1", featureKey: FEATURE.destinations });
     expect(result.ok).toBe(false);
     if (!result.ok) {
       const body = await result.response.json();
       expect(body.error.code).toBe("PLAN_REQUIRED");
-      expect(body.error.details.requiredPlanLabel).toBe("Pro");
+      expect(body.error.details.requiredPlanLabel).toBe("Pro Max");
     }
   });
 
