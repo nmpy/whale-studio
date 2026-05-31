@@ -50,7 +50,7 @@ async function main() {
     { name: "basic",    displayName: "Basicプラン",    maxWorks: 1,  priceMonthly: 0 },
     { name: "standard", displayName: "Standardプラン", maxWorks: -1, priceMonthly: 0 },
     { name: "pro",      displayName: "Pro Maxプラン",  maxWorks: -1, priceMonthly: 0 },
-    { name: "plus",     displayName: "Plusプラン",     maxWorks: -1, priceMonthly: 0 },
+    { name: "plus",     displayName: "Proプラン",      maxWorks: -1, priceMonthly: 0 },
   ];
   for (const p of personalPlans) {
     const row = await prisma.plan.upsert({

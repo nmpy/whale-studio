@@ -154,7 +154,7 @@ const PERSONAL_PLAN_CARDS: readonly PersonalPlanCard[] = [
   },
   {
     tier:    "plus",
-    label:   "Plus",
+    label:   "Pro",
     tagline: "LIFFページや外部導線を使って、体験の幅を広げたい方向け",
     price:   "準備中",
     priceUnit: "",
@@ -172,7 +172,7 @@ const PERSONAL_PLAN_CARDS: readonly PersonalPlanCard[] = [
     price:   "準備中",
     priceUnit: "",
     features: [
-      "Plus の全機能",
+      "Pro の全機能",
       "ロケーション機能",
       "GPS / QR / 現地チェックイン",
     ],

@@ -28,10 +28,10 @@ describe("PLAN_TIER / PLAN_LABELS / PLAN_TIER_ORDER", () => {
     expect(Object.keys(PLAN_TIER).sort()).toEqual(["basic", "plus", "pro", "standard"]);
   });
 
-  it("PLAN_LABELS は表示用名 (Basic/Standard/Plus/Pro Max) を返す", () => {
+  it("PLAN_LABELS は表示用名 (Basic/Standard/Pro/Pro Max) を返す", () => {
     expect(PLAN_LABELS.basic).toBe("Basic");
     expect(PLAN_LABELS.standard).toBe("Standard");
-    expect(PLAN_LABELS.plus).toBe("Plus");
+    expect(PLAN_LABELS.plus).toBe("Pro");
     expect(PLAN_LABELS.pro).toBe("Pro Max");
   });
 
@@ -103,7 +103,7 @@ describe("PLAN_DESCRIPTIONS — 管理メニュー下部の説明文", () => {
   it("4 プラン全てに説明文がある", () => {
     expect(PLAN_DESCRIPTIONS.basic).toContain("Basicプラン");
     expect(PLAN_DESCRIPTIONS.standard).toContain("Standardプラン");
-    expect(PLAN_DESCRIPTIONS.plus).toContain("Plusプラン");
+    expect(PLAN_DESCRIPTIONS.plus).toContain("Proプラン");
     expect(PLAN_DESCRIPTIONS.pro).toContain("Pro Maxプラン");
   });
 
@@ -221,21 +221,21 @@ describe("getPlanAccessState — UI のグレーアウト判定で使う", () =>
     expect(s.message).toBe("利用できます");
   });
 
-  it("Standard で liffDisplay は plan_required + Plus 必要", () => {
+  it("Standard で liffDisplay は plan_required + Pro 必要", () => {
     const s = getPlanAccessState({ plan: "standard", featureKey: "liffDisplay" });
     expect(s.allowed).toBe(false);
     if (!s.allowed) {
-      expect(s.requiredPlanLabel).toBe("Plus");
-      expect(s.message).toContain("Plus");
+      expect(s.requiredPlanLabel).toBe("Pro");
+      expect(s.message).toContain("Pro");
     }
   });
 
-  it("Plus で liffDisplay / destinations は allowed", () => {
+  it("Pro で liffDisplay / destinations は allowed", () => {
     expect(getPlanAccessState({ plan: "plus", featureKey: "liffDisplay" }).allowed).toBe(true);
     expect(getPlanAccessState({ plan: "plus", featureKey: "destinations" }).allowed).toBe(true);
   });
 
-  it("Plus で location は plan_required + Pro Max 必要", () => {
+  it("Pro で location は plan_required + Pro Max 必要", () => {
     const s = getPlanAccessState({ plan: "plus", featureKey: "location" });
     expect(s.allowed).toBe(false);
     if (!s.allowed) {
@@ -248,12 +248,12 @@ describe("getPlanAccessState — UI のグレーアウト判定で使う", () =>
     expect(getPlanAccessState({ plan: "pro", featureKey: "location" }).allowed).toBe(true);
   });
 
-  it("requiredPlanLabel は表示用 (Basic/Standard/Plus/Pro Max)", () => {
+  it("requiredPlanLabel は表示用 (Basic/Standard/Pro/Pro Max)", () => {
     expect(getPlanAccessState({ plan: "basic", featureKey: "audience" })).toMatchObject({
       requiredPlanLabel: "Standard",
     });
     expect(getPlanAccessState({ plan: "basic", featureKey: "liffDisplay" })).toMatchObject({
-      requiredPlanLabel: "Plus",
+      requiredPlanLabel: "Pro",
     });
     expect(getPlanAccessState({ plan: "basic", featureKey: "location" })).toMatchObject({
       requiredPlanLabel: "Pro Max",
@@ -285,7 +285,7 @@ describe("getAccessState — plan + role 統合判定 (= 現時点では plan �
     });
     expect(s.allowed).toBe(false);
     if (!s.allowed && s.reason === "plan_required") {
-      expect(s.requiredPlanLabel).toBe("Plus");
+      expect(s.requiredPlanLabel).toBe("Pro");
     }
   });
 
