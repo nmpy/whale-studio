@@ -16,6 +16,25 @@ export type MemberInfo = {
   status: MemberStatus;
 } | null;
 
+/**
+ * `getWorkspaceRole` / `requireRole` に preloaded された OA 情報を渡せる optional 型。
+ * 渡された場合、これらの関数は内部の `Oa.findUnique({select:{ownerKey}})` をスキップする。
+ *
+ * これは呼び出し側で既に `prisma.oa.findUnique` を実行済みのケース（例: 存在確認の直後）
+ * での 1 リクエスト内重複クエリを排除するためのもので、権限ロジックは一切変えない。
+ * `preloadedOa` が未指定（undefined）の従来呼び出しは完全に同挙動。
+ */
+export type PreloadedOaForRbac = { ownerKey: string | null };
+
+// ── ログ用ヘルパー ────────────────────────────────────────────────
+// production では UUID の生値（userId / ownerKey / workspaceId）をログに残さない。
+// 先頭 8 文字 + "…" のフィンガープリントだけ出し、判定経路の追跡を可能にする。
+const _IS_PROD = process.env.NODE_ENV === "production";
+function maskId(s?: string | null): string {
+  if (!s) return "(none)";
+  return _IS_PROD ? `${s.slice(0, 8)}…` : s;
+}
+
 export async function isAnyWorkspaceOwner(userId: string): Promise<boolean> {
   const count = await prisma.workspaceMember.count({
     where: {
@@ -39,7 +58,8 @@ export async function isAnyWorkspaceOwner(userId: string): Promise<boolean> {
  */
 export async function getWorkspaceRole(
   workspaceId: string,
-  userId: string
+  userId: string,
+  options?: { preloadedOa?: PreloadedOaForRbac },
 ): Promise<MemberInfo> {
   // dev スタブ: Supabase 未設定の開発環境では dev-user / bypass-admin を owner として返す
   // ⚠ 本番環境（NODE_ENV=production）では絶対にスタブを返さない
@@ -52,23 +72,33 @@ export async function getWorkspaceRole(
 
   // ── owner_key 最優先判定 ──────────────────────────────────────
   // owner_key が設定済みかつ userId と一致 → 無条件で owner
+  // 呼び出し側が `preloadedOa` を渡している場合は `Oa.findUnique` をスキップ。
   // migration 未適用の環境では owner_key カラムが存在しない可能性があるため try-catch
   let ownerKey: string | null = null;
-  try {
-    const oa = await prisma.oa.findUnique({
-      where:  { id: workspaceId },
-      select: { ownerKey: true },
-    });
-    ownerKey = oa?.ownerKey ?? null;
-    console.log(`[RBAC] owner_key lookup: workspace=${workspaceId} ownerKey=${JSON.stringify(ownerKey)} userId=${userId} match=${ownerKey === userId}`);
-
+  if (options?.preloadedOa !== undefined) {
+    ownerKey = options.preloadedOa.ownerKey;
+    console.log(`[RBAC] owner_key (preloaded) workspace=${maskId(workspaceId)} ownerKey=${maskId(ownerKey)} userId=${maskId(userId)} match=${ownerKey === userId}`);
     if (ownerKey && ownerKey === userId) {
-      console.log(`[RBAC] → RESULT: owner (owner_key match)`);
+      console.log(`[RBAC] → RESULT: owner (owner_key match, preloaded)`);
       return { role: 'owner', status: 'active' };
     }
-  } catch (err) {
-    // owner_key カラムが存在しない（migration 未適用）→ スキップして従来の判定へ
-    console.warn(`[RBAC] owner_key lookup FAILED (migration pending?) workspace=${workspaceId}`, err);
+  } else {
+    try {
+      const oa = await prisma.oa.findUnique({
+        where:  { id: workspaceId },
+        select: { ownerKey: true },
+      });
+      ownerKey = oa?.ownerKey ?? null;
+      console.log(`[RBAC] owner_key lookup workspace=${maskId(workspaceId)} ownerKey=${maskId(ownerKey)} userId=${maskId(userId)} match=${ownerKey === userId}`);
+
+      if (ownerKey && ownerKey === userId) {
+        console.log(`[RBAC] → RESULT: owner (owner_key match)`);
+        return { role: 'owner', status: 'active' };
+      }
+    } catch (err) {
+      // owner_key カラムが存在しない（migration 未適用）→ スキップして従来の判定へ
+      console.warn(`[RBAC] owner_key lookup FAILED (migration pending?) workspace=${maskId(workspaceId)}`, err);
+    }
   }
 
   // ── 2b. ADMIN_IDENTITY 最優先フォールバック ─────────────────────
@@ -76,7 +106,7 @@ export async function getWorkspaceRole(
   // ADMIN_IDENTITY と一致するユーザーは owner として扱う。
   // WorkspaceMember に editor 等がある場合でも owner_key/ADMIN_IDENTITY が勝つ。
   const adminIdentity = process.env.ADMIN_IDENTITY;
-  console.log(`[RBAC] ADMIN_IDENTITY check: ownerKey=${JSON.stringify(ownerKey)} adminIdentity=${adminIdentity ? adminIdentity.slice(0, 8) + '...' : '(unset)'} userId=${userId.slice(0, 8)}... match=${ownerKey === null && adminIdentity === userId}`);
+  console.log(`[RBAC] ADMIN_IDENTITY check ownerKey=${maskId(ownerKey)} adminIdentity=${maskId(adminIdentity)} userId=${maskId(userId)} match=${ownerKey === null && adminIdentity === userId}`);
   if (ownerKey === null && adminIdentity && userId === adminIdentity) {
     console.log(`[RBAC] → RESULT: owner (ADMIN_IDENTITY override)`);
     return { role: 'owner', status: 'active' };
@@ -89,14 +119,14 @@ export async function getWorkspaceRole(
   });
 
   if (member) {
-    console.log(`[RBAC] getWorkspaceRole: workspace=${workspaceId} user=${userId} role=${member.role} status=${member.status}`);
+    console.log(`[RBAC] getWorkspaceRole workspace=${maskId(workspaceId)} user=${maskId(userId)} role=${member.role} status=${member.status}`);
     return {
       role:   member.role   as Role,
       status: member.status as MemberStatus,
     };
   }
 
-  console.log(`[RBAC] getWorkspaceRole: no membership found workspace=${workspaceId} user=${userId}`);
+  console.log(`[RBAC] getWorkspaceRole no membership found workspace=${maskId(workspaceId)} user=${maskId(userId)}`);
   return null;
 }
 
@@ -156,12 +186,13 @@ function forbidden(code: string, message: string): NextResponse {
 export async function requireRole(
   workspaceId: string,
   userId: string,
-  allowedRoles: Role | Role[]
+  allowedRoles: Role | Role[],
+  options?: { preloadedOa?: PreloadedOaForRbac },
 ): Promise<
   | { ok: true;  role: Role; status: MemberStatus }
   | { ok: false; response: NextResponse }
 > {
-  const member = await getWorkspaceRole(workspaceId, userId);
+  const member = await getWorkspaceRole(workspaceId, userId, options);
 
   // 1. 未所属
   if (!member) {
