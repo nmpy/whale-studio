@@ -7,6 +7,7 @@ import { prisma } from '@/lib/prisma';
 import { NextResponse } from 'next/server';
 import type { Role, MemberStatus } from '@/lib/types/permissions';
 import { roleAtLeast } from '@/lib/types/permissions';
+import { isPlatformOwner } from '@/lib/platform-admin';
 
 // ── 型 ────────────────────────────────────────────────────────────────
 
@@ -68,6 +69,16 @@ export async function getWorkspaceRole(
       console.warn(`[RBAC] dev stub: ${userId} → owner (workspace=${workspaceId})`);
       return { role: 'owner', status: 'active' };
     }
+  }
+
+  // ── platform admin bypass ─────────────────────────────────────
+  // PLATFORM_ADMIN_USER_IDS に列挙された運営者は、全 OA で owner 相当として扱う。
+  // 一般ユーザーは isPlatformOwner=false → 従来の判定経路 (owner_key → ADMIN_IDENTITY
+  // → WorkspaceMember) を通る。billing / Stripe webhook は rbac を経由しないため
+  // 課金整合性には影響しない。
+  if (isPlatformOwner(userId)) {
+    console.log(`[RBAC] → RESULT: owner (isPlatformOwner) workspace=${maskId(workspaceId)} userId=${maskId(userId)}`);
+    return { role: 'owner', status: 'active' };
   }
 
   // ── owner_key 最優先判定 ──────────────────────────────────────

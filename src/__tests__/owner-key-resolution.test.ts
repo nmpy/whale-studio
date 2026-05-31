@@ -35,6 +35,9 @@ describe("getWorkspaceRole — owner_key resolution", () => {
     vi.stubEnv("NODE_ENV", "production");
     vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://example.supabase.co");
     vi.stubEnv("ADMIN_IDENTITY", USER_ID);
+    // PLATFORM_ADMIN_USER_IDS をデフォルトで空にして、platform admin bypass を発火させない
+    // (各テストが個別に owner_key / ADMIN_IDENTITY / WorkspaceMember の経路を検証するため)
+    vi.stubEnv("PLATFORM_ADMIN_USER_IDS", "");
   });
 
   // ── owner_key 一致 → owner ──────────────────────────────────────
@@ -113,5 +116,63 @@ describe("getWorkspaceRole — owner_key resolution", () => {
     const result = await getWorkspaceRole(WS_ID, USER_ID);
 
     expect(result).toEqual({ role: "editor", status: "active" });
+  });
+});
+
+// ──────────────────────────────────────────────────────────
+// platform admin bypass
+// ──────────────────────────────────────────────────────────
+
+describe("getWorkspaceRole — platform admin bypass", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://example.supabase.co");
+    vi.stubEnv("ADMIN_IDENTITY", ""); // ADMIN_IDENTITY とは独立に動くことを検証
+  });
+
+  it("PLATFORM_ADMIN_USER_IDS に含まれるユーザーは owner_key/member 不問で owner", async () => {
+    vi.stubEnv("PLATFORM_ADMIN_USER_IDS", USER_ID);
+    mockFindUniqueOa.mockResolvedValue({ ownerKey: "someone-else" });
+    mockFindUniqueMember.mockResolvedValue(null);
+
+    const result = await getWorkspaceRole(WS_ID, USER_ID);
+
+    expect(result).toEqual({ role: "owner", status: "active" });
+    // owner_key / WorkspaceMember 検索は行われない (platform admin bypass で先に return)
+    expect(mockFindUniqueOa).not.toHaveBeenCalled();
+    expect(mockFindUniqueMember).not.toHaveBeenCalled();
+  });
+
+  it("カンマ区切りで複数登録された platform admin のいずれもが owner として扱われる", async () => {
+    vi.stubEnv("PLATFORM_ADMIN_USER_IDS", `other-1,${USER_ID},other-2`);
+    mockFindUniqueOa.mockResolvedValue({ ownerKey: "someone-else" });
+    mockFindUniqueMember.mockResolvedValue(null);
+
+    const result = await getWorkspaceRole(WS_ID, USER_ID);
+
+    expect(result).toEqual({ role: "owner", status: "active" });
+  });
+
+  it("PLATFORM_ADMIN_USER_IDS に含まれない一般ユーザーは従来の判定経路を通る (= 一般ユーザーへの影響なし)", async () => {
+    vi.stubEnv("PLATFORM_ADMIN_USER_IDS", "platform-admin-only");
+    mockFindUniqueOa.mockResolvedValue({ ownerKey: null });
+    mockFindUniqueMember.mockResolvedValue({ role: "editor", status: "active" });
+
+    const result = await getWorkspaceRole(WS_ID, USER_ID);
+
+    expect(result).toEqual({ role: "editor", status: "active" });
+    // 一般ユーザーなので WorkspaceMember 検索が走ること
+    expect(mockFindUniqueMember).toHaveBeenCalled();
+  });
+
+  it("PLATFORM_ADMIN_USER_IDS が未設定なら bypass は無効 (= 従来通り)", async () => {
+    vi.stubEnv("PLATFORM_ADMIN_USER_IDS", "");
+    mockFindUniqueOa.mockResolvedValue({ ownerKey: null });
+    mockFindUniqueMember.mockResolvedValue(null);
+
+    const result = await getWorkspaceRole(WS_ID, USER_ID);
+
+    expect(result).toBeNull();
   });
 });
