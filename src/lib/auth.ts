@@ -8,6 +8,13 @@ import { getWorkspaceRole } from '@/lib/rbac';
 import type { Role } from '@/lib/types/permissions';
 import { roleAtLeast } from '@/lib/types/permissions';
 import { prisma } from '@/lib/prisma';
+import { PERF_LOG_ENABLED, withTimingFnf, logFnfSkip } from '@/lib/perf';
+
+// fire-and-forget hooks 用の userId mask (PII 不出力)
+// PR #161: PERF_LOG_ENABLED=1 の時だけ duration log に含めるための短縮表記。
+function maskUserId(userId: string): string {
+  return userId.slice(0, 8);
+}
 
 // ─────────────────────────────────────────────────────────
 // AppActivityLog — 認証済みユーザーの操作記録（fire-and-forget）
@@ -22,20 +29,36 @@ import { prisma } from '@/lib/prisma';
  */
 const _profileChecked = new Set<string>();
 
-function ensureProfile(userId: string, email?: string): void {
-  if (userId === "bypass-admin" || userId === "dev-user") return;
-  if (_profileChecked.has(userId)) return;
+/**
+ * Hook 実行結果。`"fired"` なら DB query が発火、それ以外は skip 理由。
+ * 戻り値は呼び出し側 (withAuth) の summary log カウント用。
+ * ロジックは変えず計測のみ行うため、既存挙動 (fire-and-forget) は完全に保たれる。
+ */
+type HookResult = "fired" | { skipped: string };
+
+function ensureProfile(userId: string, email?: string): HookResult {
+  if (userId === "bypass-admin" || userId === "dev-user") {
+    logFnfSkip("auth-hook", "ensureProfile", "dev-stub");
+    return { skipped: "dev-stub" };
+  }
+  if (_profileChecked.has(userId)) {
+    logFnfSkip("auth-hook", "ensureProfile", "alreadyChecked");
+    return { skipped: "alreadyChecked" };
+  }
   _profileChecked.add(userId);
 
-  prisma.profile.findUnique({ where: { userId } })
-    .then((profile) => {
-      if (profile) return;
-      const fallbackName = email?.split("@")[0] ?? "ユーザー";
-      return prisma.profile.create({
-        data: { userId, username: fallbackName },
-      });
-    })
-    .catch(() => { /* silent */ });
+  withTimingFnf("auth-hook", "ensureProfile", () =>
+    prisma.profile.findUnique({ where: { userId } })
+      .then((profile) => {
+        if (profile) return;
+        const fallbackName = email?.split("@")[0] ?? "ユーザー";
+        return prisma.profile.create({
+          data: { userId, username: fallbackName },
+        });
+      }),
+    { userId: maskUserId(userId) },
+  );
+  return "fired";
 }
 
 /**
@@ -48,29 +71,39 @@ function ensureProfile(userId: string, email?: string): void {
 const _activityThrottle = new Map<string, number>();
 const ACTIVITY_THROTTLE_MS = 30 * 60 * 1000; // 30分
 
-function recordUserActivity(userId: string, email?: string): void {
+function recordUserActivity(userId: string, email?: string): HookResult {
   // dev スタブ・bypass は記録不要
-  if (userId === "bypass-admin" || userId === "dev-user") return;
+  if (userId === "bypass-admin" || userId === "dev-user") {
+    logFnfSkip("auth-hook", "recordUserActivity", "dev-stub");
+    return { skipped: "dev-stub" };
+  }
 
   const now  = Date.now();
   const last = _activityThrottle.get(userId) ?? 0;
-  if (now - last < ACTIVITY_THROTTLE_MS) return;
+  if (now - last < ACTIVITY_THROTTLE_MS) {
+    logFnfSkip("auth-hook", "recordUserActivity", "throttled");
+    return { skipped: "throttled" };
+  }
 
   _activityThrottle.set(userId, now);
 
   // Fire-and-forget: リクエストをブロックしない
-  prisma.appActivityLog.upsert({
-    where:  { userId },
-    update: {
-      lastSeenAt: new Date(),
-      ...(email ? { email } : {}),
-    },
-    create: {
-      userId,
-      email:     email ?? null,
-      lastSeenAt: new Date(),
-    },
-  }).catch(() => { /* silent */ });
+  withTimingFnf("auth-hook", "recordUserActivity", () =>
+    prisma.appActivityLog.upsert({
+      where:  { userId },
+      update: {
+        lastSeenAt: new Date(),
+        ...(email ? { email } : {}),
+      },
+      create: {
+        userId,
+        email:     email ?? null,
+        lastSeenAt: new Date(),
+      },
+    }),
+    { userId: maskUserId(userId) },
+  );
+  return "fired";
 }
 
 /**
@@ -85,13 +118,18 @@ function recordUserActivity(userId: string, email?: string): void {
  */
 const _membershipChecked = new Set<string>();
 
-function checkMembershipIntegrity(userId: string, email?: string): void {
-  if (userId === "bypass-admin" || userId === "dev-user") return;
-  if (_membershipChecked.has(userId)) return;
+function checkMembershipIntegrity(userId: string, email?: string): HookResult {
+  if (userId === "bypass-admin" || userId === "dev-user") {
+    logFnfSkip("auth-hook", "checkMembershipIntegrity", "dev-stub");
+    return { skipped: "dev-stub" };
+  }
+  if (_membershipChecked.has(userId)) {
+    logFnfSkip("auth-hook", "checkMembershipIntegrity", "alreadyChecked");
+    return { skipped: "alreadyChecked" };
+  }
   _membershipChecked.add(userId);
 
-  (async () => {
-    try {
+  withTimingFnf("auth-hook", "checkMembershipIntegrity", async () => {
       // Level 1: active membership count
       const memberships = await prisma.workspaceMember.findMany({
         where: { userId, status: "active" },
@@ -141,10 +179,10 @@ function checkMembershipIntegrity(userId: string, email?: string): void {
           );
         }
       }
-    } catch {
-      /* silent */
-    }
-  })();
+    },
+    { userId: maskUserId(userId) },
+  );
+  return "fired";
 }
 
 /**
@@ -334,9 +372,20 @@ export function withAuth<T = Record<string, string>>(handler: Handler<T>) {
       console.log(`[withAuth] 認証OK ${req.method} ${req.nextUrl.pathname} userId=${user.id}`);
       // 操作ユーザーを記録 & profile 自動作成 & メンバーシップ整合性チェック
       // （すべて fire-and-forget: リクエストをブロックしない）
-      recordUserActivity(user.id, user.email);
-      ensureProfile(user.id, user.email);
-      checkMembershipIntegrity(user.id, user.email);
+      // PR #161: 戻り値 HookResult で fired/skipped を集計し、summary log を出す。
+      const hookResults: HookResult[] = [
+        recordUserActivity(user.id, user.email),
+        ensureProfile(user.id, user.email),
+        checkMembershipIntegrity(user.id, user.email),
+      ];
+      if (PERF_LOG_ENABLED) {
+        const fired   = hookResults.filter((r) => r === "fired").length;
+        const skipped = hookResults.length - fired;
+        // eslint-disable-next-line no-console
+        console.log(
+          `[perf][auth-hooks] fired=${fired} skipped=${skipped} userId=${maskUserId(user.id)}`,
+        );
+      }
       return await handler(req, ctx, user);
     } catch (err) {
       console.error(`[withAuth] UNCAUGHT in ${req.method} ${req.nextUrl.pathname}:`, err);
