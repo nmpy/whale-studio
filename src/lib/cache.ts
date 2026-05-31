@@ -110,16 +110,31 @@ export function cacheSize(): number {
 }
 
 // ── キャッシュキー定数（webhook / API ルートで共有）──────────
+//
+// キャッシュ shape のバージョン管理:
+//   message オブジェクトに新フィールド (free_input_enabled / next_message_id 等) を
+//   追加した際、過去 deploy 時点で書き込まれた cache entry には新フィールドが
+//   含まれない (= 古い shape のままで残る)。次回 read で undefined となり、
+//   runtime の判定 (`m.free_input_enabled === true` 等) が常に false で素通りする。
+//
+//   shape 変更時は cache key suffix (:v2 / :v3) を bump して、過去 entry を
+//   読み出し対象から外す。古い entry は TTL で自然消滅する。
+
+/**
+ * Message shape version. RuntimePhaseMessage / KeywordMessageRecord に
+ * free_input_enabled / freeInputEnabled が含まれるよう PR #147 (2026-05-31) で v2 に bump。
+ */
+const MESSAGE_SHAPE_VERSION = "v2";
 
 export const CACHE_KEY = {
   oa:         (lineOaId:  string) => `oa:${lineOaId}`,
   oaReverse:  (oaId:      string) => `oa:id-to-line:${oaId}`,
   work:       (oaId:      string) => `work:active:${oaId}`,
-  phase:      (phaseId:   string) => `phase:full:${phaseId}`,
+  phase:      (phaseId:   string) => `phase:full:${MESSAGE_SHAPE_VERSION}:${phaseId}`,
   globalCmd:  (oaId:      string) => `globalcmd:${oaId}`,
   startPhase: (workId:    string) => `startphase:${workId}`,
-  globalKw:   (workId:    string) => `work:global-kw:${workId}`,
-  startMsgs:  (phaseId:   string) => `startmsgs:${phaseId}`,
+  globalKw:   (workId:    string) => `work:global-kw:${MESSAGE_SHAPE_VERSION}:${workId}`,
+  startMsgs:  (phaseId:   string) => `startmsgs:${MESSAGE_SHAPE_VERSION}:${phaseId}`,
   progress:   (userId:    string, workId: string) => `progress:${userId}:${workId}`,
   liveEnabled:(oaId:      string) => `live:enabled:${oaId}`,
 } as const;
