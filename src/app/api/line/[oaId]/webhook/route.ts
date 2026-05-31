@@ -1696,6 +1696,40 @@ async function handleTextEvent({
       if (progress.currentPhaseId) {
         const earlyPhase = await getCachedPhase(progress.currentPhaseId);
         const earlyQrMatched = earlyPhase ? matchQrItem(earlyPhase, text) : null;
+        // [diag] QR pre-check の入力と結果を毎回 print (matched / null 両方)。
+        // matched=null になる原因 (= currentPhase に QR が無い / label 不一致 / response/target 未設定) を実機で切り分け可能に。
+        // PII 安全: text は最初 30 文字、phase id 8 文字。
+        try {
+          const candidates = (earlyPhase?.messages ?? [])
+            .flatMap((m) => {
+              if (!m.quickReplies) return [];
+              try {
+                const parsed = JSON.parse(m.quickReplies);
+                if (!Array.isArray(parsed)) return [];
+                return (parsed as import("@/types").QuickReplyItem[]).map((it) => ({
+                  label: it.label,
+                  value: it.value ?? null,
+                  action: it.action ?? null,
+                  enabled: it.enabled !== false,
+                  hasResp: !!it.response_message_id,
+                  hasTargetMsg: !!it.target_message_id,
+                  hasTargetPhase: !!it.target_phase_id,
+                }));
+              } catch { return []; }
+            });
+          console.log(
+            `[diag][free-input][qr-precheck]`,
+            `userId=${userId.slice(0, 8)}`,
+            `currentPhaseId=${progress.currentPhaseId.slice(0, 8)}`,
+            `inputText="${text.slice(0, 30)}"`,
+            `phaseMsgs=${earlyPhase?.messages.length ?? 0}`,
+            `qrCandidates=${candidates.length}`,
+            `matched=${earlyQrMatched !== null}`,
+            `candidates=[${candidates.map((c) => `label="${c.label.slice(0, 16)}" val="${(c.value ?? "").slice(0, 16)}" act=${c.action} en=${c.enabled} resp=${c.hasResp} tgM=${c.hasTargetMsg} tgP=${c.hasTargetPhase}`).join(" | ")}]`,
+          );
+        } catch (e) {
+          console.warn(`[diag][free-input][qr-precheck] log error`, e);
+        }
         if (earlyQrMatched !== null) {
           console.log(
             `[diag][qr] free_input skip — QR tap detected`,
