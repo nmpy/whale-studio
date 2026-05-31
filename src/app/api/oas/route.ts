@@ -7,9 +7,9 @@ import { prisma } from "@/lib/prisma";
 import { ok, created, badRequest, serverError } from "@/lib/api-response";
 import { withAuth } from "@/lib/auth";
 import { createOaSchema, oaQuerySchema, formatZodErrors } from "@/lib/validations";
-import { getWorkspaceRole } from "@/lib/rbac";
 import { isPlatformOwner } from "@/lib/platform-admin";
 import { createTesterSubscription } from "@/lib/billing/create-tester-subscription";
+import { genRequestId, runWithRequestId, withTiming } from "@/lib/perf";
 import { ZodError } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -22,7 +22,8 @@ console.log(
 );
 
 // ── GET /api/oas ─────────────────────────────────
-export const GET = withAuth(async (req, _ctx, user) => {
+export const GET = withAuth(async (req, _ctx, user) =>
+  runWithRequestId(genRequestId(), () => withTiming("api/oas:GET", async () => {
   try {
     const { searchParams } = new URL(req.url);
     const query = oaQuerySchema.parse({
@@ -81,6 +82,7 @@ export const GET = withAuth(async (req, _ctx, user) => {
           publishStatus:  true,
           richMenuId:     true,
           spreadsheetId:  true,
+          ownerKey:       true,    // ループ内の getWorkspaceRole 呼び出しを排除するため追加（レスポンスには出さない）
           createdAt:      true,
           updatedAt:      true,
           _count: { select: { works: true } },
@@ -89,22 +91,42 @@ export const GET = withAuth(async (req, _ctx, user) => {
       prisma.oa.count({ where }),
     ]);
 
-    // 各 OA の role を取得
-    // プラットフォームオーナーはメンバー未登録の OA でも 'owner' として扱う
-    // 各 OA に対する役割 + 実際のアクセス可否を計算する。
-    // my_role: 表示用（platform admin で showAll のとき、非 member OA でも 'owner' 表示）。
-    // has_workspace_access: 実際の workspace へのアクセス可否（owner_key 一致 or active WorkspaceMember のみ true）。
-    //   platform admin であってもメンバーでない OA に対する API 呼び出しは 403 になるため、
-    //   client 側で workApi.list 等を呼ぶ前にこのフラグを参照して判定する。
+    // 各 OA の role / アクセス可否を取得。
+    // 旧実装: items.length 回の getWorkspaceRole（内部で oa.findUnique + workspaceMember.findUnique）を
+    //         await ループで実行 → N+1。
+    // 新実装: items の select に ownerKey を含め、自分の WorkspaceMember を 1 query で一括取得して
+    //         Map で判定。rbac.ts の getWorkspaceRole と同じ優先順（owner_key 一致 → ADMIN_IDENTITY →
+    //         active WorkspaceMember）を保持する。my_role / has_workspace_access の出力意味は不変。
+    const itemIds = items.map((o) => o.id);
+    const myMembers = itemIds.length === 0
+      ? []
+      : await prisma.workspaceMember.findMany({
+          where:  { userId: user.id, workspaceId: { in: itemIds } },
+          select: { workspaceId: true, role: true, status: true },
+        });
+    const memberByOaId = new Map(myMembers.map((m) => [m.workspaceId, m] as const));
+    const adminIdentity = process.env.ADMIN_IDENTITY;
+
     const rolesMap  = new Map<string, string>();
     const accessMap = new Map<string, boolean>();
     for (const oa of items) {
-      const m = await getWorkspaceRole(oa.id, user.id);
+      // 1. owner_key 最優先（rbac.ts と同方針）
+      if (oa.ownerKey && oa.ownerKey === user.id) {
+        rolesMap.set(oa.id, 'owner');
+        accessMap.set(oa.id, true);
+        continue;
+      }
+      // 2. ADMIN_IDENTITY フォールバック（owner_key 未設定時のみ）
+      if (oa.ownerKey === null && adminIdentity && user.id === adminIdentity) {
+        rolesMap.set(oa.id, 'owner');
+        accessMap.set(oa.id, true);
+        continue;
+      }
+      // 3. WorkspaceMember
+      const m = memberByOaId.get(oa.id) ?? null;
       const role = m?.status === 'active' ? m.role : (showAll ? 'owner' : 'none');
       rolesMap.set(oa.id, role);
-      // getWorkspaceRole は owner_key 一致なら { role: 'owner', status: 'active' } を返す。
-      // active member（owner / admin / editor / viewer / tester）なら status === 'active'。
-      // それ以外（null / inactive / suspended）は false。
+      // active member のみ has_workspace_access = true（owner_key fallback は上で処理済み）
       accessMap.set(oa.id, m !== null && m.status === 'active');
     }
 
@@ -134,7 +156,8 @@ export const GET = withAuth(async (req, _ctx, user) => {
     if (err instanceof ZodError) return badRequest("クエリパラメータが不正です", formatZodErrors(err));
     return serverError(err);
   }
-});
+  }))
+);
 
 // ── POST /api/oas ────────────────────────────────
 export const POST = withAuth(async (req, _ctx, user) => {

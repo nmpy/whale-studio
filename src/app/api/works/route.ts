@@ -11,6 +11,7 @@ import { requireRole } from "@/lib/rbac";
 import { createWorkSchema, workQuerySchema, formatZodErrors } from "@/lib/validations";
 import { ZodError } from "zod";
 import { activeCache, CACHE_KEY } from "@/lib/cache";
+import { genRequestId, runWithRequestId, withTiming } from "@/lib/perf";
 // trackOnboardingStep (OnboardingEvent write) は Phase 3 で停止済み
 // OnboardingEvent テーブルへの書き込みを廃止し、OnboardingProgress のみを使用する
 import { trackOnboardingProgress } from "@/lib/onboarding";
@@ -75,7 +76,8 @@ function toResponse(w: {
 }
 
 // ── GET /api/works ───────────────────────────────
-export const GET = withAuth(async (req, _ctx, user) => {
+export const GET = withAuth(async (req, _ctx, user) =>
+  runWithRequestId(genRequestId(), () => withTiming("api/works:GET", async () => {
   try {
     const { searchParams } = new URL(req.url);
     const query = workQuerySchema.parse({
@@ -184,7 +186,8 @@ export const GET = withAuth(async (req, _ctx, user) => {
     }
     return serverError(err);
   }
-});
+  }))
+);
 
 // ── POST /api/works ──────────────────────────────
 export const POST = withAuth(async (req, _ctx, user) => {

@@ -49,6 +49,7 @@ import { linkRichMenuToUser } from "@/lib/line-richmenu";
 import { ReadReceiptController, calcReadDelayByTextLength } from "@/lib/line-read-receipt";
 import { checkPuzzleAnswer, parseAnswerMatchType } from "@/lib/puzzle-answer";
 import type { MessageTimingConfig } from "@/types";
+import { genRequestId, runWithRequestId, withTiming } from "@/lib/perf";
 
 /**
  * WorkRow から作品単位の演出設定を抽出する。
@@ -1014,7 +1015,11 @@ export async function POST(
 ) {
   // ── 全体を try/catch で包む: いかなる例外でも必ず 200 を返す ──
   try {
-    return await handleWebhook(req, params.oaId);
+    // PERF_LOG_ENABLED=1 のとき totalMs を 1 行だけ出す。OFF 時は overhead 0（fn 直接呼び出し）。
+    // 内部 phase の細分化は本番ログ取得後の別 PR で対応する。
+    return await runWithRequestId(genRequestId(), () =>
+      withTiming("line:webhook:total", () => handleWebhook(req, params.oaId))
+    );
   } catch (err) {
     const e = err as Record<string, unknown> | null | undefined;
     console.error("[Webhook ERROR]", {
