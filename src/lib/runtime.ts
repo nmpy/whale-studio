@@ -300,6 +300,18 @@ function messageRowToRuntime(
     image_action_postback_data: m.imageActionPostbackData ?? null,
     next_message_id:            m.nextMessageId           ?? null,
     free_input_enabled:         m.freeInputEnabled         ?? false,
+    // [diag] Raw Prisma の freeInputEnabled が true な行を可視化する。
+    // cache shape の不整合 (= キャッシュされた行に freeInputEnabled フィールドが
+    // 含まれていない) を切り分けるためのトレース。true のときだけログを出して
+    // 通常運用時のノイズを抑える。
+    ...(m.freeInputEnabled === true ? (() => {
+      console.log(
+        `[diag][m2r] freeInputEnabled=true id=${m.id.slice(0, 8)} kind=${m.kind} sort=${m.sortOrder} ` +
+        `nextMessageId=${m.nextMessageId?.slice(0, 8) ?? "null"} ` +
+        `freeInputNextMessageId=${m.freeInputNextMessageId?.slice(0, 8) ?? "null"}`,
+      );
+      return {};
+    })() : {}),
     character:         m.character
       ? {
           id:             m.character.id,
