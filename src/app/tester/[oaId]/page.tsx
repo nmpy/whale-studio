@@ -274,6 +274,9 @@ export default function TesterHomePage() {
                   textAlign:  "center",
                   display:    "block",
                   whiteSpace: "nowrap",
+                  // unlayered な `a {}` rule (= color: var(--brand-dark)) が .btn-primary の
+                  // color:#fff を上書きしてしまうため、inline style で確実に白にする。
+                  color:      "#fff",
                 }}
               >
                 作品管理
