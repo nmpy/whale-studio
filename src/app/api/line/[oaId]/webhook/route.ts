@@ -762,12 +762,17 @@ async function buildMessageChain(
     if (first.nextMessageId) {
       console.warn(
         `[diag][chain] STOP at first — freeInputEnabled=true headId=${first.id.slice(0, 8)} ` +
-        `nextMessageId=${first.nextMessageId.slice(0, 8)} (data possibly miswired: ` +
-        `自由入力プロンプトに next_message_id が設定されている。応答メッセージは ` +
-        `free_input_next_message_id で送るのが正しい仕様)`,
+        `nextMessageId=${first.nextMessageId.slice(0, 8)} sort=${first.sortOrder} ` +
+        `type=${first.messageType} body="${(first.body ?? "").slice(0, 30)}" ` +
+        `(data possibly miswired: 自由入力プロンプトに next_message_id が設定されている。` +
+        `応答メッセージは free_input_next_message_id で送るのが正しい仕様)`,
       );
     } else {
-      console.log(`[diag][chain] STOP at first — freeInputEnabled=true (chain walk skipped, awaiting user input)`);
+      console.log(
+        `[diag][chain] STOP at first — freeInputEnabled=true headId=${first.id.slice(0, 8)} ` +
+        `sort=${first.sortOrder} type=${first.messageType} body="${(first.body ?? "").slice(0, 30)}" ` +
+        `(chain walk skipped, awaiting user input)`,
+      );
     }
   } else {
     // チェーンを最大 4 件追加（合計 5 件 = LINE 返信上限）
@@ -2231,6 +2236,17 @@ async function handleTextEvent({
       `userId=${userId}`,
       `messages=${keywordMatched.length}件`,
       keywordMatched.map((m) => `id=${m.id.slice(0, 8)} kw="${m.triggerKeyword}" body="${(m.body ?? "").slice(0, 20)}"`).join(" / ")
+    );
+    // [diag] matchKeywordsInMemory が返した各 match の詳細を 1 行で可視化。
+    //   freeInputEnabled / nextMessageId / messageType を含め、想定外の freeInput タグ付け
+    //   や nextMessageId 未設定を実機 log で発見できるようにする。
+    console.log(
+      `[diag][kw] matchedKeywords detail=[${
+        keywordMatched.map((m) => {
+          const fie = (m as { freeInputEnabled?: boolean | null }).freeInputEnabled === true;
+          return `id=${m.id.slice(0, 8)} kw="${m.triggerKeyword}" type=${m.messageType} next=${m.nextMessageId?.slice(0, 8) ?? "null"} freeInputEnabled=${fie} body="${(m.body ?? "").slice(0, 30)}"`;
+        }).join(" | ")
+      }]`,
     );
     // nextMessageId チェーンを展開してすべてのメッセージをまとめて返信する
     const chainedMsgs: import("@/lib/line").LineMessage[] = [];
