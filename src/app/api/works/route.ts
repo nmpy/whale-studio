@@ -86,10 +86,12 @@ export const GET = withAuth(async (req, _ctx, user) =>
     });
 
     // OA の存在確認 + ownerKey の事前取得（後段の requireRole で再利用して Oa.findUnique を 1 回に集約）
-    const oa = await prisma.oa.findUnique({
-      where:  { id: query.oa_id },
-      select: { id: true, ownerKey: true },
-    });
+    const oa = await withTiming("api/works:db:oa", () =>
+      prisma.oa.findUnique({
+        where:  { id: query.oa_id },
+        select: { id: true, ownerKey: true },
+      }),
+    );
     if (!oa) return notFound("OA");
 
     const check = await requireRole(query.oa_id, user.id, 'viewer', {
@@ -97,51 +99,54 @@ export const GET = withAuth(async (req, _ctx, user) =>
     });
     if (!check.ok) return check.response;
 
+    // Work.findMany と UserProgress.groupBy を並列化する。
+    // groupBy は workIds に依存させず relation filter (where.work.oaId) を使うことで
+    // works の結果を待たずに発行可能になり、直列 ~(1000+750)ms → 並列 ~max(1000,750)ms。
+    // 結果は workId をキーに突き合わせるので、publish_status filter で works から
+    // 除外された workId が progressGroups に含まれていても shape 側で参照されず無害。
+    //
     // _count.userProgress { where: { isPreview: false } } は Work 件数分の per-work
-     // サブクエリになる（本番で 1185ms）。同じ集計は後段の progressGroups（groupBy）で
-     // 既に取得しているため、Prisma include からは外して per-work サブクエリを削減する。
-     // ただし API レスポンスからは _count.userProgress を消さず、shape 側で
-     // progress_stats.total から合成して返す（後方互換維持）。
-    const works = await withTiming("api/works:db:list", () =>
-      prisma.work.findMany({
-        where: {
-          oaId: query.oa_id,
-          ...(query.publish_status !== undefined && { publishStatus: query.publish_status }),
-        },
-        orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
-        include: {
-          _count: {
-            select: {
-              characters: true,
-              phases:     true,
-              messages:   true,
+    // サブクエリになる（本番で 1185ms）。同じ集計は progressGroups（groupBy）で取得して
+    // いるため、Prisma include からは外して per-work サブクエリを削減する。
+    // API レスポンスからは _count.userProgress を消さず、shape 側で progress_stats.total
+    // から合成して返す（後方互換維持）。
+    const [works, progressGroups] = await Promise.all([
+      withTiming("api/works:db:list", () =>
+        prisma.work.findMany({
+          where: {
+            oaId: query.oa_id,
+            ...(query.publish_status !== undefined && { publishStatus: query.publish_status }),
+          },
+          orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+          include: {
+            _count: {
+              select: {
+                characters: true,
+                phases:     true,
+                messages:   true,
+              },
+            },
+            // 開始トリガーを持つ start フェーズを1件取得。
+            // 現在は作品ごとに start フェーズは1件想定だが、将来複数の
+            // 開始トリガー（キーワード）に対応する場合は take を除去し、
+            // フロント側で配列として受け取る形に変更する。
+            phases: {
+              where:   { phaseType: "start" },
+              select:  { startTrigger: true },
+              take:    1,
+              orderBy: { sortOrder: "asc" },
             },
           },
-          // 開始トリガーを持つ start フェーズを1件取得。
-          // 現在は作品ごとに start フェーズは1件想定だが、将来複数の
-          // 開始トリガー（キーワード）に対応する場合は take を除去し、
-          // フロント側で配列として受け取る形に変更する。
-          phases: {
-            where:   { phaseType: "start" },
-            select:  { startTrigger: true },
-            take:    1,
-            orderBy: { sortOrder: "asc" },
-          },
-        },
-      }),
-    );
-
-    // プレイヤー進行情報（isPreview=false）を workId × reachedEnding で集計
-    const workIds = works.map((w) => w.id);
-    const progressGroups = workIds.length > 0
-      ? await withTiming("api/works:db:progressGroups", () =>
-          prisma.userProgress.groupBy({
-            by:    ["workId", "reachedEnding"],
-            where: { workId: { in: workIds }, isPreview: false },
-            _count: { _all: true },
-          }),
-        )
-      : [];
+        }),
+      ),
+      withTiming("api/works:db:progressGroups", () =>
+        prisma.userProgress.groupBy({
+          by:    ["workId", "reachedEnding"],
+          where: { isPreview: false, work: { oaId: query.oa_id } },
+          _count: { _all: true },
+        }),
+      ),
+    ]);
 
     // progressMap[workId] = { completed, in_progress }
     const progressMap: Record<string, { completed: number; in_progress: number }> = {};
