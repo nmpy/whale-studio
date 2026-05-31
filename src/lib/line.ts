@@ -1030,6 +1030,9 @@ export type KeywordMessageRecord = {
   lagMs?:                   number | null;
   /** メッセージ単位の演出設定 (= LineMessage._timing として搬送) */
   timing?:                  MessageTimingConfig | null;
+  /** 自由入力受付フラグ。true の message は buildMessageChain での chain walk を停止する
+   *  (= 通常 nextMessageId による連続送信は行わず、応答は free_input_next_message_id 経由)。 */
+  freeInputEnabled?:        boolean | null;
   character: {
     name:         string;
     iconImageUrl: string | null;

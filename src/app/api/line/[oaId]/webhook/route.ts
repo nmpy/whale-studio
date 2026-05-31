@@ -400,6 +400,8 @@ async function getCachedGlobalKeywords(
       triggerKeyword:  true,
       imageActionType: true, imageActionText: true, imageActionUrl: true,
       imageActionLiffPageId: true, imageActionPostbackData: true,
+      // 自由入力受付フラグ (buildMessageChain の chain walk 停止判定に必要)
+      freeInputEnabled: true,
       // 演出設定 (Phase 2c)
       lagMs: true,
       readReceiptMode: true, readDelayMs: true,
@@ -451,6 +453,8 @@ async function getCachedStartMsgs(
       sortOrder:       true,
       imageActionType: true, imageActionText: true, imageActionUrl: true,
       imageActionLiffPageId: true, imageActionPostbackData: true,
+      // 自由入力受付フラグ (buildMessageChain の chain walk 停止判定に必要)
+      freeInputEnabled: true,
       // 演出設定 (Phase 2c)
       lagMs: true,
       readReceiptMode: true, readDelayMs: true,
@@ -721,6 +725,13 @@ async function buildMessageChain(
     loadingThresholdMs?:   number | null;
     loadingMinSeconds?:    number | null;
     loadingMaxSeconds?:    number | null;
+    /** 自由入力受付モード。true の message は「ここで一旦停止して
+     *  waitingForInput をセットする」セマンティクスを持つため、chain walk は
+     *  この message を含めた地点で停止する (= 通常 nextMessageId による
+     *  自動連続送信の対象外。応答メッセージは free_input_next_message_id で
+     *  別経路として送られる)。caller が select に含めていない場合は undefined
+     *  扱いで stop しない（後方互換）。 */
+    freeInputEnabled?:     boolean | null;
     /** Phase 2c hotfix v4: 既に集約済みの timing (= matchKeywordsInMemory が前段で計算)
      *  を引き取れるようにする。raw columns が削られた `match` から来る経路で
      *  buildKeywordTiming(r) が null を返してしまい head の timing が落ちる問題への対処。
@@ -730,46 +741,81 @@ async function buildMessageChain(
   },
   vars: import("@/lib/line").PlaceholderVars = {},
 ): Promise<{ messages: import("@/lib/line").LineMessage[]; chainIds: string[] }> {
-  const records: typeof first[] = [first];
+  const records: (typeof first & { freeInputEnabled?: boolean | null })[] = [first];
 
   // [diag] チェーン展開の入口を記録 (next が無ければ chain=単発)
-  console.log(`[diag][chain] start head=${first.id.slice(0, 8)} next=${first.nextMessageId?.slice(0, 8) ?? "null"} hasQR=${!!first.quickReplies} sort=${first.sortOrder} body="${(first.body ?? "").slice(0, 20)}"`);
+  console.log(`[diag][chain] start head=${first.id.slice(0, 8)} next=${first.nextMessageId?.slice(0, 8) ?? "null"} hasQR=${!!first.quickReplies} sort=${first.sortOrder} freeInputEnabled=${first.freeInputEnabled === true} body="${(first.body ?? "").slice(0, 20)}"`);
 
-  // チェーンを最大 4 件追加（合計 5 件 = LINE 返信上限）
-  // 循環参照を visited Set で防止する。loop cap (i<4) だけでは saved DB の chain link が
-  // A→B→A のような cycle になっている場合に [A, B, A, B, A] のような重複展開が起きるため、
-  // 明示的に既に積んだ id を skip する (= 重複の原因経路を断つ)。
-  const visited = new Set<string>([first.id]);
-  let current = first;
-  for (let i = 0; i < 4 && current.nextMessageId; i++) {
-    if (visited.has(current.nextMessageId)) {
-      console.warn(`[diag][chain] CYCLE — nextMessageId=${current.nextMessageId.slice(0, 8)} already visited (step=${i}). stop expansion.`);
-      break;
+  // 自由入力受付メッセージは「そこで一旦停止して waitingForInput をセットする」
+  // セマンティクスを持つため、`first` が freeInputEnabled=true ならその時点で chain walk しない。
+  // データ上 next_message_id が設定されていても、それは誤って付与された chain link (= 本来は
+  // free_input_next_message_id に入れるべき遷移先) の可能性が高いので、warn log で可視化する。
+  if (first.freeInputEnabled === true) {
+    if (first.nextMessageId) {
+      console.warn(
+        `[diag][chain] STOP at first — freeInputEnabled=true headId=${first.id.slice(0, 8)} ` +
+        `nextMessageId=${first.nextMessageId.slice(0, 8)} (data possibly miswired: ` +
+        `自由入力プロンプトに next_message_id が設定されている。応答メッセージは ` +
+        `free_input_next_message_id で送るのが正しい仕様)`,
+      );
+    } else {
+      console.log(`[diag][chain] STOP at first — freeInputEnabled=true (chain walk skipped, awaiting user input)`);
     }
-    const next = await prisma.message.findUnique({
-      where: { id: current.nextMessageId, isActive: true },
-      select: {
-        id: true, messageType: true, body: true, assetUrl: true,
-        altText: true, flexPayloadJson: true, quickReplies: true,
-        nextMessageId: true, sortOrder: true,
-        imageActionType: true, imageActionText: true, imageActionUrl: true,
-        imageActionLiffPageId: true, imageActionPostbackData: true,
-        // 演出設定 (Phase 2c)
-        lagMs: true,
-        readReceiptMode: true, readDelayMs: true,
-        typingEnabled: true, typingMinMs: true, typingMaxMs: true,
-        loadingEnabled: true, loadingThresholdMs: true,
-        loadingMinSeconds: true, loadingMaxSeconds: true,
-        character: { select: { name: true, iconImageUrl: true } },
-      },
-    });
-    if (!next) {
-      console.warn(`[diag][chain] BREAK — nextMessageId=${current.nextMessageId.slice(0, 8)} not found in DB or isActive=false (step=${i})`);
-      break;
+  } else {
+    // チェーンを最大 4 件追加（合計 5 件 = LINE 返信上限）
+    // 循環参照を visited Set で防止する。loop cap (i<4) だけでは saved DB の chain link が
+    // A→B→A のような cycle になっている場合に [A, B, A, B, A] のような重複展開が起きるため、
+    // 明示的に既に積んだ id を skip する (= 重複の原因経路を断つ)。
+    const visited = new Set<string>([first.id]);
+    let current: typeof first & { freeInputEnabled?: boolean | null } = first;
+    for (let i = 0; i < 4 && current.nextMessageId; i++) {
+      if (visited.has(current.nextMessageId)) {
+        console.warn(`[diag][chain] CYCLE — nextMessageId=${current.nextMessageId.slice(0, 8)} already visited (step=${i}). stop expansion.`);
+        break;
+      }
+      const next = await prisma.message.findUnique({
+        where: { id: current.nextMessageId, isActive: true },
+        select: {
+          id: true, messageType: true, body: true, assetUrl: true,
+          altText: true, flexPayloadJson: true, quickReplies: true,
+          nextMessageId: true, sortOrder: true,
+          imageActionType: true, imageActionText: true, imageActionUrl: true,
+          imageActionLiffPageId: true, imageActionPostbackData: true,
+          // 演出設定 (Phase 2c)
+          lagMs: true,
+          readReceiptMode: true, readDelayMs: true,
+          typingEnabled: true, typingMinMs: true, typingMaxMs: true,
+          loadingEnabled: true, loadingThresholdMs: true,
+          loadingMinSeconds: true, loadingMaxSeconds: true,
+          // 自由入力受付フラグ — true なら chain walk を停止する
+          freeInputEnabled: true,
+          character: { select: { name: true, iconImageUrl: true } },
+        },
+      });
+      if (!next) {
+        console.warn(`[diag][chain] BREAK — nextMessageId=${current.nextMessageId.slice(0, 8)} not found in DB or isActive=false (step=${i})`);
+        break;
+      }
+      visited.add(next.id);
+      records.push(next);
+      // 自由入力受付メッセージに到達したら、この message を含めて chain walk を停止する。
+      // この message の応答は free_input_next_message_id で別経路として送られる
+      // (= waitingForInput をセットした上で、ユーザーの次入力でその message を送る仕様)。
+      if (next.freeInputEnabled === true) {
+        if (next.nextMessageId) {
+          console.warn(
+            `[diag][chain] STOP at step=${i} — freeInputEnabled=true id=${next.id.slice(0, 8)} ` +
+            `nextMessageId=${next.nextMessageId.slice(0, 8)} (data possibly miswired: ` +
+            `自由入力プロンプトに next_message_id が設定されている。応答メッセージは ` +
+            `free_input_next_message_id で送るのが正しい仕様)`,
+          );
+        } else {
+          console.log(`[diag][chain] STOP at step=${i} — freeInputEnabled=true id=${next.id.slice(0, 8)} (awaiting user input)`);
+        }
+        break;
+      }
+      current = next;
     }
-    visited.add(next.id);
-    records.push(next);
-    current = next;
   }
   // [diag] 展開後の各 record の詳細を出す (= LINE 送信直前の中間状態を可視化)。
   // PII は出さない: body は先頭 20 文字 / id は先頭 8 文字。
@@ -875,6 +921,8 @@ function matchKeywordsInMemory(
       imageActionUrl:          m.imageActionUrl          ?? null,
       imageActionLiffPageId:   m.imageActionLiffPageId   ?? null,
       imageActionPostbackData: m.imageActionPostbackData ?? null,
+      // 自由入力受付フラグ (buildMessageChain の chain walk 停止判定に必要)
+      freeInputEnabled:        m.freeInputEnabled        ?? null,
       // 演出設定 (Phase 2c) — PhaseRow.messages は include で全カラム取得済み
       lagMs:           m.lagMs ?? null,
       timing:          buildKeywordTiming(m),
@@ -1660,6 +1708,8 @@ async function handleTextEvent({
             nextMessageId: true, sortOrder: true,
             imageActionType: true, imageActionText: true, imageActionUrl: true,
             imageActionLiffPageId: true, imageActionPostbackData: true,
+            // 自由入力受付フラグ (buildMessageChain で chain walk 停止判定に使う)
+            freeInputEnabled: true,
             // 演出設定 (Phase 2c)
             lagMs: true,
             readReceiptMode: true, readDelayMs: true,
@@ -1946,6 +1996,8 @@ async function handleTextEvent({
       nextMessageId: true, sortOrder: true,
       imageActionType: true, imageActionText: true, imageActionUrl: true,
       imageActionLiffPageId: true, imageActionPostbackData: true,
+      // 自由入力受付フラグ (buildMessageChain で chain walk 停止判定に使う)
+      freeInputEnabled: true,
       // 演出設定 (Phase 2c)
       lagMs: true,
       readReceiptMode: true, readDelayMs: true,
