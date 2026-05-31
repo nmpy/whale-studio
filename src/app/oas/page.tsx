@@ -130,13 +130,28 @@ function SupportArea({ isOwner }: { isOwner: boolean }) {
 /* ── 作品名セル ──────────────────────────────────────────────────────────── */
 function WorksCell({
   oaId,
+  oaRole,
   worksMap,
   worksLoading,
 }: {
   oaId: string;
+  /** 現ユーザーのこの OA に対する role（'none' = メンバー外 = 作品取得不可） */
+  oaRole?: string;
   worksMap: Record<string, WorkListItem[]>;
   worksLoading: boolean;
 }) {
+  // メンバー外の OA は workApi.list をスキップしているため、件数が分からない。
+  // 0 件と誤解されないよう「権限外」と表示する（platform admin の全OA表示時のみ発生）。
+  if (oaRole === "none") {
+    return (
+      <span
+        className="inline-flex items-center rounded-full border border-line bg-bg-tint px-2.5 py-0.5 text-[12px] text-ink-3 whitespace-nowrap"
+        title="このアカウントのメンバーではないため、作品一覧は取得していません"
+      >
+        — 権限外
+      </span>
+    );
+  }
   if (worksLoading) {
     return <div className="skeleton" style={{ width: 100, height: 14, borderRadius: 4 }} />;
   }
@@ -417,7 +432,7 @@ export default function OaListPage() {
                           <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.06em] text-ink-3 whitespace-nowrap">
                             作品名
                           </div>
-                          <WorksCell oaId={oa.id} worksMap={worksMap} worksLoading={worksLoading} />
+                          <WorksCell oaId={oa.id} oaRole={oa.my_role} worksMap={worksMap} worksLoading={worksLoading} />
                         </div>
 
                         <MetaItem label="作成日時">
