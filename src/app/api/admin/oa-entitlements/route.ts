@@ -9,7 +9,7 @@ import { prisma } from "@/lib/prisma";
 import { ok, badRequest, notFound, forbidden, serverError } from "@/lib/api-response";
 import { withAuth } from "@/lib/auth";
 import { isPlatformOwner } from "@/lib/platform-admin";
-import { LIVE_FEATURE_KEY } from "@/lib/live";
+import { LIVE_FEATURE_KEY, invalidateLiveEnabledCache } from "@/lib/live";
 import { z, ZodError } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -73,6 +73,10 @@ export const PATCH = withAuth(async (req, _ctx, user) => {
       create: { oaId: oa_id, featureKey: LIVE_FEATURE_KEY, enabled },
       update: { enabled },
     });
+
+    // 管理画面で ON/OFF した直後の /api/oas/[id] 等で必ず新値を返すため、
+    // レスポンス返却前に cache を invalidate する（write-through）。
+    await invalidateLiveEnabledCache(oa_id);
 
     return ok({
       oa_id,

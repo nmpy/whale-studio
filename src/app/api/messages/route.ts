@@ -152,34 +152,36 @@ export const GET = withAuth(async (req, _ctx, user) =>
     const work = await prisma.work.findUnique({ where: { id: query.work_id } });
     if (!work) return notFound("作品");
 
-    const oaId = await getOaIdFromWorkId(query.work_id);
+    const oaId = await withTiming("api/messages:db:resolveOa", () => getOaIdFromWorkId(query.work_id));
     if (oaId) {
       const check = await requireRole(oaId, user.id, 'viewer');
       if (!check.ok) return check.response;
     }
 
-    const messages = await prisma.message.findMany({
-      where: {
-        workId:      query.work_id,
-        ...(query.phase_id     && { phaseId:     query.phase_id }),
-        ...(query.character_id && { characterId: query.character_id }),
-        ...(query.message_type && { messageType: query.message_type as "text" | "image" | "button" }),
-        ...(query.is_active !== undefined && { isActive: query.is_active }),
-      },
-      orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
-      ...(query.with_relations && {
-        include: {
-          phase: {
-            select: { id: true, name: true, phaseType: true },
-          },
-          character: {
-            select: { id: true, name: true, iconType: true, iconText: true, iconImageUrl: true, iconColor: true },
-          },
+    const messages = await withTiming("api/messages:db:list", () =>
+      prisma.message.findMany({
+        where: {
+          workId:      query.work_id,
+          ...(query.phase_id     && { phaseId:     query.phase_id }),
+          ...(query.character_id && { characterId: query.character_id }),
+          ...(query.message_type && { messageType: query.message_type as "text" | "image" | "button" }),
+          ...(query.is_active !== undefined && { isActive: query.is_active }),
         },
+        orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+        ...(query.with_relations && {
+          include: {
+            phase: {
+              select: { id: true, name: true, phaseType: true },
+            },
+            character: {
+              select: { id: true, name: true, iconType: true, iconText: true, iconImageUrl: true, iconColor: true },
+            },
+          },
+        }),
       }),
-    });
+    );
 
-    return ok(messages.map(toResponse));
+    return await withTiming("api/messages:shape", async () => ok(messages.map(toResponse)));
   } catch (err) {
     if (err instanceof ZodError) return badRequest("クエリパラメータが不正です", formatZodErrors(err));
     return serverError(err);
