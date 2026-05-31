@@ -981,6 +981,28 @@ export function buildPhaseMessages(
   const prefixOffset = prefixText ? 1 : 0;
   logConversionSummary("buildPhaseMessages", phase.id, inputCount, messages.length - prefixOffset);
 
+  // ── safety guard: 未置換の placeholder (= {xxx} がそのまま残っている) を検出 ──
+  // 想定シナリオ: 自由入力プロンプトの応答 (= free_input_next_message_id 先) 用に
+  // 本文 "{freeText}..." を持つメッセージが、誤って通常 phase response に
+  // 混ざってしまった場合、ユーザー入力前なので `{freeText}` が未置換のまま LINE に
+  // 届く。これを runtime で警告として可視化する (= 削除はしない / データ修正の手がかり用)。
+  // `{user_name}` / `{account_name}` のような既知 placeholder は vars 側で必ず
+  // 置換される前提なので、ここで残っている場合だけが対象。
+  const UNRESOLVED_PLACEHOLDER_RE = /\{[a-zA-Z_][a-zA-Z0-9_]*\}/;
+  for (const m of messages) {
+    const lm = m as { type?: string; text?: string; altText?: string };
+    const candidate = lm.text ?? lm.altText ?? "";
+    if (UNRESOLVED_PLACEHOLDER_RE.test(candidate)) {
+      const match = candidate.match(UNRESOLVED_PLACEHOLDER_RE);
+      console.warn(
+        `[buildPhaseMessages] ⚠️ 未置換 placeholder 検出 phase=${phase.id.slice(0, 8)} ` +
+        `placeholder="${match?.[0]}" text(20)="${candidate.slice(0, 20)}" ` +
+        `(自由入力プロンプトの応答メッセージが phase response に混ざっている可能性。` +
+        `データ確認: 該当 message は free_input_next_message_id 経由で送るのが正しい)`,
+      );
+    }
+  }
+
   // ── [diag] 出力 payload の id / type / hasQR / body(20文字) を 1 行に
   // (= buildPhaseMessages が誰を送るか / 自由入力プロンプトを正しく含めているかを可視化)。
   console.log(
