@@ -10,6 +10,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { submitFeedback } from "@/lib/services/feedback";
+import { notifyFeedbackSubmitted } from "@/lib/slack/feedback";
 
 // フロントから受け取る入力型（自動付与フィールドは除く）
 interface FeedbackInput {
@@ -84,6 +85,27 @@ export async function POST(req: NextRequest) {
     }
 
     console.info(`[POST /api/feedback] [${requestId}] ✅ 完了 id=${id}`);
+
+    // Slack 通知 (fire-and-forget):
+    //   - webhook (= FEEDBACK_SLACK_WEBHOOK_URL) 未設定なら silent no-op
+    //   - 通知失敗時もレスポンスはブロックしない (= console.error のみ)
+    //   - webhook URL はログに出さない (= helper 側で吸収)
+    void notifyFeedbackSubmitted({
+      id:        payload.id,
+      category:  payload.category,
+      content:   payload.content,
+      userName:  payload.user_name  || null,
+      userEmail: payload.user_email || null,
+      pageName:  payload.page_name  || null,
+      pageUrl:   payload.page_url   || null,
+      oaId:      payload.oa_id,
+      oaName:    payload.oa_name,
+      workId:    payload.work_id,
+      workName:  payload.work_name,
+      createdAt: new Date(payload.created_at),
+    }).catch((err) => {
+      console.error("[slack] failed to notify feedback", err);
+    });
 
     // dev_skip フラグをフロントに伝えて開発モードメッセージを出せるようにする
     return NextResponse.json({ ok: true, ...(result.dev_skip ? { dev_skip: true } : {}) });
