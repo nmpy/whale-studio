@@ -85,11 +85,16 @@ export const GET = withAuth(async (req, _ctx, user) =>
       publish_status: searchParams.get("publish_status") ?? undefined,
     });
 
-    // OA の存在確認
-    const oa = await prisma.oa.findUnique({ where: { id: query.oa_id } });
+    // OA の存在確認 + ownerKey の事前取得（後段の requireRole で再利用して Oa.findUnique を 1 回に集約）
+    const oa = await prisma.oa.findUnique({
+      where:  { id: query.oa_id },
+      select: { id: true, ownerKey: true },
+    });
     if (!oa) return notFound("OA");
 
-    const check = await requireRole(query.oa_id, user.id, 'viewer');
+    const check = await requireRole(query.oa_id, user.id, 'viewer', {
+      preloadedOa: { ownerKey: oa.ownerKey },
+    });
     if (!check.ok) return check.response;
 
     const works = await withTiming("api/works:db:list", () =>
@@ -199,11 +204,16 @@ export const POST = withAuth(async (req, _ctx, user) => {
     const body = await req.json();
     const data = createWorkSchema.parse(body);
 
-    // OA の存在確認
-    const oa = await prisma.oa.findUnique({ where: { id: data.oa_id } });
+    // OA の存在確認 + ownerKey の事前取得（後段の requireRole で再利用して Oa.findUnique を 1 回に集約）
+    const oa = await prisma.oa.findUnique({
+      where:  { id: data.oa_id },
+      select: { id: true, ownerKey: true },
+    });
     if (!oa) return notFound("OA");
 
-    const check = await requireRole(data.oa_id, user.id, 'tester');
+    const check = await requireRole(data.oa_id, user.id, 'tester', {
+      preloadedOa: { ownerKey: oa.ownerKey },
+    });
     if (!check.ok) return check.response;
 
     // 作品数上限チェック: subscription.plan.maxWorks 優先、未設定時は role ベース
