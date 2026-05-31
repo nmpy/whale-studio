@@ -1667,6 +1667,55 @@ async function handleTextEvent({
   if (progress?.waitingForInput) {
     const waiting = safeParseWaitingForInput(progress.waitingForInput);
     if (waiting) {
+      // ── QR タップ検出 (free_input 横取り防止) ─
+      //
+      // LINE の Quick Reply は action=message の場合、ユーザーが QR をタップすると
+      // label がそのまま text メッセージとして webhook に届く。
+      // waitingForInput が立っている状態でこれが起きると、free_input ハンドラが
+      // QR タップを「自由入力の回答」として誤受領し、本来の QR action
+      // (response_message_id / target_message_id / target_phase_id) が発火しない。
+      //
+      // ここで先に現在 phase の matchQrItem を評価し、ユーザー text が active な
+      // QR にマッチするなら waitingForInput をクリアしてフォールスルー
+      // (後段の matchedQrItem パス line 1983 で再評価される)。
+      //
+      // 注: ここで currentPhase を取得するが、後段 line 1880 の getCachedPhase は
+      // 同一キャッシュキーを引くため DB ラウンドトリップは発生しない (cache HIT)。
+      if (progress.currentPhaseId) {
+        const earlyPhase = await getCachedPhase(progress.currentPhaseId);
+        const earlyQrMatched = earlyPhase ? matchQrItem(earlyPhase, text) : null;
+        if (earlyQrMatched !== null) {
+          console.log(
+            `[diag][qr] free_input skip — QR tap detected`,
+            `userId=${userId.slice(0, 8)}`,
+            `promptMessageId=${waiting.messageId.slice(0, 8)}`,
+            `response_message_id=${earlyQrMatched.response_message_id?.slice(0, 8) ?? "none"}`,
+            `target_type=${earlyQrMatched.target_type ?? "none"}`,
+            `target_message_id=${earlyQrMatched.target_message_id?.slice(0, 8) ?? "none"}`,
+            `target_phase_id=${earlyQrMatched.target_phase_id?.slice(0, 8) ?? "none"}`,
+          );
+          try {
+            await prisma.userProgress.update({
+              where: { id: progress.id },
+              data:  { waitingForInput: null, lastInteractedAt: new Date() },
+            });
+            await activeCache.delete(CACHE_KEY.progress(userId, work.id));
+            // フォールスルー後の参照も整合させる (= 後段で再度 progress.waitingForInput を見る箇所への安全策)
+            (progress as { waitingForInput: string | null }).waitingForInput = null;
+          } catch (err) {
+            console.error(`[Webhook][free-input] waitingForInput クリア失敗 (QR fall through)`, err);
+          }
+          // ↓ return せず、後段 (globalCmd / startTrigger / matchedQrItem / keyword) にフォールスルー
+        } else {
+          // QR にマッチしなければ既存 free_input フローに進む (下の if-else)
+        }
+      }
+
+      // QR タップでなければ既存 free_input フローを実行
+      // (progress.waitingForInput が上で null にクリアされた場合は読み飛ばす)
+      if (!progress.waitingForInput) {
+        // QR fallthrough 済み → 後段へ
+      } else {
       const currentVars = safeParseVariables(progress.variables);
       // variableKey が null/空 のときは variables に保存しない (= ログ用途・差し込み不要)。
       // ただし waitingForInput はクリアし、nextMessage は送信する。
@@ -1769,6 +1818,7 @@ async function handleTextEvent({
         token,
       );
       return;
+      } // close: else (QR fallthrough 未該当 = 既存 free_input フロー)
     }
     // safeParseWaitingForInput が null を返した = JSON 不正。フォールスルーして通常処理に。
     console.warn(`[Webhook][free-input] waitingForInput JSON が不正 userId=${userId.slice(0, 8)} — フォールスルーします`);
@@ -2020,9 +2070,19 @@ async function handleTextEvent({
           select: MSG_SELECT,
         });
         if (respMsg) {
+          console.log(
+            `[diag][qr] response_message fetched`,
+            `id=${respMsg.id.slice(0, 8)}`,
+            `type=${respMsg.messageType}`,
+            `next=${respMsg.nextMessageId?.slice(0, 8) ?? "null"}`,
+            `body="${(respMsg.body ?? "").slice(0, 20)}"`,
+            `freeInputEnabled=${respMsg.freeInputEnabled === true}`,
+          );
           const { messages: chain, chainIds } = await buildMessageChain(respMsg, vars);
           qrMsgs.push(...chain);
           qrSentIds.push(...chainIds);
+        } else {
+          console.warn(`[diag][qr] response_message not found or inactive id=${matchedQrItem.response_message_id.slice(0, 8)}`);
         }
       } catch (e) {
         console.warn("[Webhook] qrItem response_message fetch error:", e);
@@ -2037,14 +2097,35 @@ async function handleTextEvent({
           select: MSG_SELECT,
         });
         if (targetMsg) {
+          console.log(
+            `[diag][qr] target_message fetched`,
+            `id=${targetMsg.id.slice(0, 8)}`,
+            `type=${targetMsg.messageType}`,
+            `next=${targetMsg.nextMessageId?.slice(0, 8) ?? "null"}`,
+            `body="${(targetMsg.body ?? "").slice(0, 20)}"`,
+            `freeInputEnabled=${targetMsg.freeInputEnabled === true}`,
+          );
+          if (targetMsg.messageType === "image") {
+            console.log(
+              `[diag][image-action] target_message image`,
+              `id=${targetMsg.id.slice(0, 8)}`,
+              `actionType=${targetMsg.imageActionType ?? "none"}`,
+              `nextMessageId=${targetMsg.nextMessageId?.slice(0, 8) ?? "null"}`,
+            );
+          }
           const { messages: chain, chainIds } = await buildMessageChain(targetMsg, vars);
           qrMsgs.push(...chain);
           qrSentIds.push(...chainIds);
+        } else {
+          console.warn(`[diag][qr] target_message not found or inactive id=${matchedQrItem.target_message_id.slice(0, 8)}`);
         }
       } catch (e) {
         console.warn("[Webhook] qrItem target_message fetch error:", e);
       }
       if (qrMsgs.length > 0) {
+        console.log(
+          `[diag][qr] payload count=${qrMsgs.length} ids=[${qrSentIds.map((id) => id.slice(0, 8)).join(",")}]`,
+        );
         const tReplyQrMsg = Date.now();
         // Phase 2c hotfix: chain (= length > 1) でも per-message timing が効くよう、
         // replyWithLagToLine 経路に統一する。1 通でも replyWithLagToLine は内部で
@@ -2104,6 +2185,9 @@ async function handleTextEvent({
 
     // ── response_message のみ（遷移先なし）──
     if (qrMsgs.length > 0) {
+      console.log(
+        `[diag][qr] payload count=${qrMsgs.length} ids=[${qrSentIds.map((id) => id.slice(0, 8)).join(",")}] path=response_only`,
+      );
       const tReplyQrResp = Date.now();
       // Phase 2c hotfix: chain 内 per-message timing を効かせるため replyWithLagToLine に変更
       await replyWithLagToLine(replyToken, qrMsgs.slice(0, 5), userId, token);
