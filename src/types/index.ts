@@ -669,6 +669,12 @@ export interface RuntimePhaseMessage {
    *  optional: スプレッドシート由来 / playground 等の synthetic な
    *  RuntimePhaseMessage では未指定でも no chain と等価に扱う。 */
   next_message_id?:  string | null;
+  /** 自由入力受付フラグ。true の場合、buildPhaseMessages は
+   *  この message を含むチェーンの末尾を「自由入力プロンプト終端」と見なし、
+   *  phase 全体の iteration もそこで停止する (= 後続の独立 head は送らない)。
+   *  応答メッセージは free_input_next_message_id 経由でユーザー入力後に送る。
+   *  optional: synthetic な RuntimePhaseMessage では false 相当の扱い。 */
+  free_input_enabled?: boolean;
   character: {
     id:             string;
     name:           string;
