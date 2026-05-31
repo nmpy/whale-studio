@@ -149,6 +149,9 @@ describe("additionalSlotToMsgBody — slot → API body", () => {
       loading_threshold_ms: "",
       loading_min_seconds:  "",
       loading_max_seconds:  "",
+      free_input_enabled:         false,
+      free_input_variable_key:    "",
+      free_input_next_message_id: "",
     };
   }
 

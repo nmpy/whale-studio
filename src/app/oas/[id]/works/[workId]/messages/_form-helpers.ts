@@ -55,6 +55,13 @@ export interface AdditionalMessageSlot {
   loading_threshold_ms: string;
   loading_min_seconds:  string;
   loading_max_seconds:  string;
+  // ── 自由入力受付 (= chain continuation でも freeInput プロンプトに設定可能にする) ──
+  // 例: 「{{user_name}}さんにより画像がタップされました」(chain head, freeInput=false)
+  //   → 「xxについてどう思う？」(chain continuation, freeInput=true) のような構成。
+  // main message と完全に同形。空文字 / false がデフォルト。
+  free_input_enabled:         boolean;
+  free_input_variable_key:    string;
+  free_input_next_message_id: string;
 }
 
 export const EMPTY_ADDITIONAL_SLOT: AdditionalMessageSlot = {
@@ -75,6 +82,10 @@ export const EMPTY_ADDITIONAL_SLOT: AdditionalMessageSlot = {
   loading_threshold_ms: "",
   loading_min_seconds:  "",
   loading_max_seconds:  "",
+  // 自由入力受付 (デフォルト OFF)
+  free_input_enabled:         false,
+  free_input_variable_key:    "",
+  free_input_next_message_id: "",
 };
 
 // ── 純関数 helper ────────────────────────────────────────
@@ -105,6 +116,10 @@ export function msgToAdditionalSlot(msg: {
   loading_threshold_ms?: number | null;
   loading_min_seconds?:  number | null;
   loading_max_seconds?:  number | null;
+  // 自由入力受付 (chain continuation でも main message と同様に設定可能)
+  free_input_enabled?:         boolean | null;
+  free_input_variable_key?:    string  | null;
+  free_input_next_message_id?: string  | null;
 }): AdditionalMessageSlot {
   let carousel_items: MessageCarouselCard[] = [];
   if (msg.message_type === "carousel" && msg.body) {
@@ -136,6 +151,10 @@ export function msgToAdditionalSlot(msg: {
     loading_threshold_ms: msg.loading_threshold_ms != null ? String(msg.loading_threshold_ms) : "",
     loading_min_seconds:  msg.loading_min_seconds != null ? String(msg.loading_min_seconds) : "",
     loading_max_seconds:  msg.loading_max_seconds != null ? String(msg.loading_max_seconds) : "",
+    // 自由入力受付 (null → false / 空文字。DB 値があれば form state に復元する)
+    free_input_enabled:         msg.free_input_enabled         ?? false,
+    free_input_variable_key:    msg.free_input_variable_key    ?? "",
+    free_input_next_message_id: msg.free_input_next_message_id ?? "",
   };
 }
 
@@ -179,6 +198,10 @@ export function additionalSlotToMsgBody(
   loading_threshold_ms: number | null;
   loading_min_seconds:  number | null;
   loading_max_seconds:  number | null;
+  // 自由入力受付 (main message と同形)
+  free_input_enabled:         boolean;
+  free_input_variable_key:    string | null;
+  free_input_next_message_id: string | null;
 } {
   return {
     work_id:      main.work_id,
@@ -217,5 +240,9 @@ export function additionalSlotToMsgBody(
     loading_threshold_ms: slot.loading_threshold_ms ? Number(slot.loading_threshold_ms) : null,
     loading_min_seconds:  slot.loading_min_seconds ? Number(slot.loading_min_seconds) : null,
     loading_max_seconds:  slot.loading_max_seconds ? Number(slot.loading_max_seconds) : null,
+    // 自由入力受付 (main message と同じ仕様: ON のときのみ key / next を保存)
+    free_input_enabled:         !!slot.free_input_enabled,
+    free_input_variable_key:    slot.free_input_enabled ? (slot.free_input_variable_key.trim() || null) : null,
+    free_input_next_message_id: slot.free_input_enabled ? (slot.free_input_next_message_id || null) : null,
   };
 }

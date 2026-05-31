@@ -451,6 +451,16 @@ export function validateMessageForm(form: MessageFormState): string | null {
       return "変数名は半角英数字とアンダースコアで入力してください。先頭に数字は使えません。";
     }
   }
+  // chain continuation (additional slots) の自由入力受付も同じバリデーションを行う。
+  for (let i = 0; i < form.additionalMessages.length; i++) {
+    const slot = form.additionalMessages[i];
+    if (slot.free_input_enabled) {
+      const key = slot.free_input_variable_key.trim();
+      if (key && !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(key)) {
+        return `${i + 2}通目: 変数名は半角英数字とアンダースコアで入力してください。先頭に数字は使えません。`;
+      }
+    }
+  }
   // ── 画像タップ時アクションバリデーション ──
   if (form.message_type === "image" && form.image_action_type) {
     if (form.image_action_type === "message" && !form.image_action_text.trim()) {
@@ -2562,7 +2572,7 @@ function formToTimingConfig(form: {
 // ────────────────────────────────────────────────────────
 
 function AdditionalMessageBlock({
-  index, slot, onChange, onRemove, oaId, workId, characters,
+  index, slot, onChange, onRemove, oaId, workId, characters, allMessages,
 }: {
   index:      number;
   slot:       AdditionalMessageSlot;
@@ -2571,6 +2581,12 @@ function AdditionalMessageBlock({
   oaId:       string;
   workId:     string;
   characters: Character[];
+  /** free_input_next_message_id の選択肢用。chain head と continuation 両方を含む全 message。 */
+  allMessages: {
+    id: string; body: string | null; kind: string; sort_order: number;
+    phase_id?: string | null; quick_replies?: QuickReplyItem[] | null;
+    trigger_keyword?: string | null;
+  }[];
 }) {
   const bodyRef = useRef<HTMLTextAreaElement>(null);
 
@@ -2822,6 +2838,102 @@ function AdditionalMessageBlock({
           set={(k, v) => onChange({ ...slot, [k]: v })}
           isAdditional
         />
+
+        {/* 自由入力受付 (= chain continuation でも freeInput プロンプトに設定可能)。
+            1 通目と同形。example: 「{{user_name}}さんにより画像がタップされました」
+            (chain head, freeInput=false) → 「xxについてどう思う？」(slot, freeInput=true)
+            の構成で、slot が freeInput プロンプトとして waitingForInput をセットする。 */}
+        <SectionAccordion
+          title="自由入力受付"
+          optional
+          description="このメッセージ送信後にユーザーの次の入力を変数として保存（chain continuation 用）"
+          defaultOpen={slot.free_input_enabled}
+        >
+          <div className="form-group">
+            <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+              <input
+                type="checkbox"
+                checked={slot.free_input_enabled}
+                onChange={(e) => onChange({ ...slot, free_input_enabled: e.target.checked })}
+              />
+              <span style={{ fontSize: 14, fontWeight: 600 }}>自由入力を受け付ける</span>
+            </label>
+            <div style={{ ...hintText, marginTop: 4 }}>
+              このメッセージ送信後、ユーザーの次のテキスト入力を変数として保存して、次の応答に利用できます。
+              <br />
+              chain の途中で free_input を有効化する場合に使用します (= 1 通目はそのまま送信、
+              本メッセージで入力待機になる)。
+            </div>
+          </div>
+
+          {slot.free_input_enabled && (
+            <>
+              <div className="form-group" style={{ marginTop: 12 }}>
+                <label style={fieldLabel} htmlFor={`slot-${index}-free_input_variable_key`}>
+                  保存する変数名
+                  <span style={{ fontSize: 10, fontWeight: 700, background: "#f1f5f9", color: "#64748b", borderRadius: 4, padding: "1px 6px", marginLeft: 6 }}>任意</span>
+                </label>
+                <input
+                  id={`slot-${index}-free_input_variable_key`}
+                  type="text"
+                  className="form-input"
+                  style={{ maxWidth: 320 }}
+                  value={slot.free_input_variable_key}
+                  onChange={(e) => onChange({ ...slot, free_input_variable_key: e.target.value })}
+                  placeholder="例: userName（差し込みが不要なら空欄でOK）"
+                  maxLength={60}
+                  autoComplete="off"
+                />
+                {(() => {
+                  const v = slot.free_input_variable_key.trim();
+                  const validRegex = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
+                  if (v && !validRegex.test(v)) {
+                    return (
+                      <div style={{ fontSize: 12, color: "#dc2626", marginTop: 4 }}>
+                        変数名は半角英数字とアンダースコアで入力してください。先頭に数字は使えません。
+                      </div>
+                    );
+                  }
+                  return (
+                    <div style={hintText}>
+                      入力内容を次のメッセージで使いたい場合のみ設定します。空欄なら入力を受け付けるだけ。
+                    </div>
+                  );
+                })()}
+              </div>
+
+              <div className="form-group" style={{ marginTop: 12, marginBottom: 0 }}>
+                <label style={fieldLabel} htmlFor={`slot-${index}-free_input_next_message_id`}>
+                  入力後に送信するメッセージ
+                </label>
+                <select
+                  id={`slot-${index}-free_input_next_message_id`}
+                  className="form-input"
+                  value={slot.free_input_next_message_id}
+                  onChange={(e) => onChange({ ...slot, free_input_next_message_id: e.target.value })}
+                >
+                  <option value="">— 選択しない（次メッセージを送らない）—</option>
+                  {allMessages
+                    .filter((m) => m.id !== slot.existingId)
+                    .map((m) => {
+                      const label = m.body?.trim().slice(0, 30) || `(本文なし) id=${m.id.slice(0, 8)}`;
+                      return (
+                        <option key={m.id} value={m.id}>{label}</option>
+                      );
+                    })}
+                </select>
+                <div style={hintText}>
+                  ユーザー入力を受け取った後に送信するメッセージ。
+                  {slot.free_input_variable_key.trim() ? (
+                    <>本文に <code>{`{${slot.free_input_variable_key.trim()}}`}</code> と書くと、保存した値が差し込まれます。</>
+                  ) : (
+                    <>変数名を設定していないため、ここでは入力内容を差し込みません（受け取って次へ進むだけ）。</>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
+        </SectionAccordion>
       </div>
     </div>
   );
@@ -4176,6 +4288,7 @@ export function MessageForm({
                 oaId={oaId}
                 workId={workId}
                 characters={characters}
+                allMessages={allMessages}
                 onChange={(updated) => {
                   setForm((prev) => ({
                     ...prev,
