@@ -6,7 +6,7 @@ import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { ok, created, badRequest, notFound, serverError } from "@/lib/api-response";
 import { withAuth } from "@/lib/auth";
-import { requireRole, getOaIdFromWorkId } from "@/lib/rbac";
+import { requireRole } from "@/lib/rbac";
 import { createMessageSchema, messageQuerySchema, formatZodErrors } from "@/lib/validations";
 import { ZodError } from "zod";
 import { activeCache, CACHE_KEY } from "@/lib/cache";
@@ -157,10 +157,18 @@ export const GET = withAuth(async (req, _ctx, user) =>
       with_relations: searchParams.get("with_relations") ?? undefined,
     });
 
-    const work = await prisma.work.findUnique({ where: { id: query.work_id } });
+    // 旧: prisma.work.findUnique + getOaIdFromWorkId で同じ workId に対し 2 回 lookup していた。
+    // 1 回目で oaId も select することで重複ラウンドトリップを排除する。
+    // auth ロジックは不変 (= requireRole の呼び出し方は同じ)。
+    const work = await withTiming("api/messages:db:work", () =>
+      prisma.work.findUnique({
+        where:  { id: query.work_id },
+        select: { id: true, oaId: true },
+      }),
+    );
     if (!work) return notFound("作品");
 
-    const oaId = await withTiming("api/messages:db:resolveOa", () => getOaIdFromWorkId(query.work_id));
+    const oaId = work.oaId;
     if (oaId) {
       const check = await requireRole(oaId, user.id, 'viewer');
       if (!check.ok) return check.response;
@@ -204,11 +212,14 @@ export const POST = withAuth(async (req, _ctx, user) => {
     console.log("[POST /api/messages] raw body:", JSON.stringify(body, null, 2));
     const data = createMessageSchema.parse(body);
 
-    // Work 存在確認
-    const work = await prisma.work.findUnique({ where: { id: data.work_id } });
+    // Work 存在確認 + oaId 取得 (GET と同じ dedup パターン: 1 回の lookup で 2 用途を満たす)
+    const work = await prisma.work.findUnique({
+      where:  { id: data.work_id },
+      select: { id: true, oaId: true },
+    });
     if (!work) return notFound("作品");
 
-    const oaId = await getOaIdFromWorkId(data.work_id);
+    const oaId = work.oaId;
     if (oaId) {
       const check = await requireRole(oaId, user.id, 'tester');
       if (!check.ok) return check.response;
