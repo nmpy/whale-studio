@@ -14,7 +14,7 @@ import { HelpAccordion } from "@/components/HelpAccordion";
 import { GuideCard } from "@/components/onboarding/GuideCard";
 import { useToast } from "@/components/Toast";
 import type { PhaseWithCounts, TransitionWithPhases, PhaseType } from "@/types";
-import { NodeGraph } from "./_node-graph";
+// ノードビューは UI 導線を削除済み (2026 整理)。`_node-graph.tsx` 本体は復活可能性のため残置。
 import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
 import { ViewerBanner } from "@/components/PermissionGuard";
 
@@ -76,9 +76,6 @@ export default function ScenarioPage() {
   const [msgQrData, setMsgQrData]     = useState<Record<string, MsgQrEntry[]>>({});
   const [allMessages, setAllMessages] = useState<Message[]>([]);
   const [loading, setLoading]         = useState(true);
-
-  // ビュー切り替え
-  const [activeView, setActiveView] = useState<"card" | "node">("card");
 
   // フェーズ追加フォーム
   const [showAddForm, setShowAddForm] = useState(false);
@@ -405,31 +402,6 @@ export default function ScenarioPage() {
         </div>
       )}
 
-      {/* ── ビュー切り替えタブ ── */}
-      <div style={{
-        display: "inline-flex", gap: 0,
-        border: "1px solid #e5e7eb", borderRadius: 8,
-        overflow: "hidden", marginBottom: 16,
-      }}>
-        {(["card", "node"] as const).map((v, i) => (
-          <button
-            key={v}
-            onClick={() => setActiveView(v)}
-            style={{
-              padding: "6px 20px", fontSize: 13,
-              fontWeight: activeView === v ? 700 : 400,
-              background: activeView === v ? "#2563eb" : "#fff",
-              color:      activeView === v ? "#fff" : "#6b7280",
-              border: "none",
-              borderRight: i === 0 ? "1px solid #e5e7eb" : "none",
-              cursor: "pointer", transition: "background 0.15s, color 0.15s",
-            }}
-          >
-            {v === "card" ? "カードビュー" : "ノードビュー"}
-          </button>
-        ))}
-      </div>
-
       <HelpAccordion items={[
         { title: "この画面でできること", points: [
           "フェーズ名・種別の編集、有効/無効の切り替え、複製・削除がカード上で直接できます",
@@ -486,16 +458,6 @@ export default function ScenarioPage() {
             )}
           </div>
         </div>
-      ) : activeView === "node" ? (
-        <NodeGraph
-          phases={phases}
-          transitions={transitions}
-          allMessages={allMessages}
-          oaId={oaId}
-          workId={workId}
-          canEdit={canEdit}
-          onDataMutated={loadAll}
-        />
       ) : (
         <FlowTree
           phases={phases}
