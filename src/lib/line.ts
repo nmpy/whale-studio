@@ -883,10 +883,6 @@ export function buildPhaseMessages(
   //   walk 中に phase.messages に存在しない id を指していたら chain はそこで停止する
   //   (= 別 phase / 削除済み / orphan な link は安全に無視)。
   const inputCount = phase.messages.length;
-  console.log(
-    `[buildPhaseMessages] 入力 ${inputCount}件`,
-    phase.messages.map((m) => `id=${m.id.slice(0, 8)} kind=${m.kind} type=${m.message_type} sort=${m.sort_order} freeInput=${isFreeInputPrompt(m)} next=${(m.next_message_id ?? "null").slice(0, 8)} body=${m.body ? `"${m.body.slice(0, 20)}"` : "null"}`).join(" / "),
-  );
 
   const phaseById = new Map(phase.messages.map((m) => [m.id, m]));
   const continuationIds = new Set<string>();
@@ -1000,29 +996,17 @@ export function buildPhaseMessages(
   // ユーザー指示: 「freeInput 前の phase response では safety guard として除外する」
   const UNRESOLVED_PLACEHOLDER_RE = /\{[a-zA-Z_][a-zA-Z0-9_]*\}/;
   const filteredMessages: LineMessage[] = [];
-  let exemptCount = 0;       // freeInputEnabled=true による exempt 件数
-  let placeholderSkipCount = 0; // 未置換 placeholder で除外した件数
   for (const m of messages) {
     // freeInputEnabled=true の prompt はユーザー入力前に必ず出すメッセージ。たとえ
     // 未置換 placeholder を含んでいても safety guard では除外せず、そのまま送る。
     // (= 仕様: 「freeInputEnabled=true のプロンプト自体は送信対象から除外しない」)
     if (freeInputPromptLineMsgs.has(m)) {
-      const lmExempt = m as { text?: string; altText?: string };
-      const candExempt = lmExempt.text ?? lmExempt.altText ?? "";
-      if (UNRESOLVED_PLACEHOLDER_RE.test(candExempt)) {
-        const match = candExempt.match(UNRESOLVED_PLACEHOLDER_RE);
-        console.log(
-          `[diag][phase] EXEMPT (freeInputEnabled=true) text(20)="${candExempt.slice(0, 20)}" placeholder="${match?.[0] ?? ""}" — 自由入力プロンプト本体は除外しない`,
-        );
-      }
-      exemptCount++;
       filteredMessages.push(m);
       continue;
     }
     const lm = m as { type?: string; text?: string; altText?: string };
     const candidate = lm.text ?? lm.altText ?? "";
     if (UNRESOLVED_PLACEHOLDER_RE.test(candidate)) {
-      placeholderSkipCount++;
       const match = candidate.match(UNRESOLVED_PLACEHOLDER_RE);
       console.warn(
         `[buildPhaseMessages] ⚠️ 未置換 placeholder 検出 → 送信対象から除外 phase=${phase.id.slice(0, 8)} ` +
@@ -1038,18 +1022,6 @@ export function buildPhaseMessages(
   // 付与処理にも反映させる)。
   messages.length = 0;
   messages.push(...filteredMessages);
-
-  // ── [diag] 出力 payload の id / type / hasQR / body(20文字) を 1 行に
-  // (= buildPhaseMessages が誰を送るか / 自由入力プロンプトを正しく含めているかを可視化)。
-  console.log(
-    `[diag][phase] output count=${messages.length} stoppedAtFreeInput=${stoppedAtFreeInput} ` +
-    `freeInputExempt=${exemptCount} placeholderSkipped=${placeholderSkipCount} ` +
-    `payload=[${messages.map((m, idx) => {
-      const lm = m as { type?: string; text?: string; altText?: string; quickReply?: unknown };
-      const bodyPreview = (lm.text ?? lm.altText ?? "").slice(0, 20);
-      return `${idx}:type=${lm.type ?? "?"} hasQR=${!!lm.quickReply} body="${bodyPreview}"`;
-    }).join(" | ")}]`,
-  );
 
   // ── エンディング or クイックリプライ付与 ──
   if (phase.transitions === null) {
