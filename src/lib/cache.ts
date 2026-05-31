@@ -49,6 +49,18 @@ export const TTL = {
    * /api/admin/oa-entitlements PATCH 成功時に必ず invalidation すること。
    */
   LIVE_ENABLED: 60 * 1000,
+  /**
+   * OA を internal id で引いた結果（ownerKey 含む）: 60 秒
+   *
+   * `/api/messages` GET / POST と `/api/works` GET で requireRole の認可判定に必要な
+   * ownerKey 取得用。warm 計測 (PR #159 後) で db:work 740ms / api/works:db:oa
+   * ~700-890ms と判明したため、id → ownerKey 引きを cache 化する。
+   *
+   * 短 TTL (60s) で保守的に運用。ownerKey 変更 (ownership transfer) は稀だが、
+   * /api/oas/[id] PATCH / DELETE / rich-menus/[id]/apply で write 後に必ず
+   * invalidateOaCacheById() を呼ぶこと。
+   */
+  OA_BY_ID:    60 * 1000,
 } as const;
 
 // ── 基本操作 ─────────────────────────────────────────────────
@@ -137,6 +149,12 @@ export const CACHE_KEY = {
   startMsgs:  (phaseId:   string) => `startmsgs:${MESSAGE_SHAPE_VERSION}:${phaseId}`,
   progress:   (userId:    string, workId: string) => `progress:${userId}:${workId}`,
   liveEnabled:(oaId:      string) => `live:enabled:${oaId}`,
+  /**
+   * OA を internal id で引いた結果のキャッシュキー。
+   * value shape: `{ id, ownerKey }` (OaByIdCached, src/lib/oa-cache.ts)
+   * shape 変更時は :v1 → :v2 に bump して過去 entry を破棄する。
+   */
+  oaById:     (id:        string) => `oa:by-id:v1:${id}`,
 } as const;
 
 // ── 抽象インターフェース（Upstash Redis 等へ切り替え可能）────

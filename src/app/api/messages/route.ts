@@ -7,6 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { ok, created, badRequest, notFound, serverError } from "@/lib/api-response";
 import { withAuth } from "@/lib/auth";
 import { requireRole } from "@/lib/rbac";
+import { getCachedOaById } from "@/lib/oa-cache";
 import { createMessageSchema, messageQuerySchema, formatZodErrors } from "@/lib/validations";
 import { ZodError } from "zod";
 import { activeCache, CACHE_KEY } from "@/lib/cache";
@@ -157,9 +158,10 @@ export const GET = withAuth(async (req, _ctx, user) =>
       with_relations: searchParams.get("with_relations") ?? undefined,
     });
 
-    // 旧: prisma.work.findUnique + getOaIdFromWorkId で同じ workId に対し 2 回 lookup していた。
-    // 1 回目で oaId も select することで重複ラウンドトリップを排除する。
-    // auth ロジックは不変 (= requireRole の呼び出し方は同じ)。
+    // PR #159: prisma.work.findUnique で oaId も同時取得 (= getOaIdFromWorkId 重複削除)
+    // PR #160: 取得した oaId で getCachedOaById → preloadedOa を requireRole に渡して
+    //          requireRole 内部の Oa.findUnique をスキップする (warm hit 時 ~500ms 短縮)。
+    // auth ロジックの結果は不変 (= ownerKey ベースの owner 判定 + WorkspaceMember fallback)。
     const work = await withTiming("api/messages:db:work", () =>
       prisma.work.findUnique({
         where:  { id: query.work_id },
@@ -170,7 +172,11 @@ export const GET = withAuth(async (req, _ctx, user) =>
 
     const oaId = work.oaId;
     if (oaId) {
-      const check = await requireRole(oaId, user.id, 'viewer');
+      const cachedOa = await withTiming("api/messages:db:oa", () => getCachedOaById(oaId));
+      if (!cachedOa) return notFound("OA");
+      const check = await requireRole(oaId, user.id, 'viewer', {
+        preloadedOa: { ownerKey: cachedOa.ownerKey },
+      });
       if (!check.ok) return check.response;
     }
 
@@ -213,6 +219,7 @@ export const POST = withAuth(async (req, _ctx, user) => {
     const data = createMessageSchema.parse(body);
 
     // Work 存在確認 + oaId 取得 (GET と同じ dedup パターン: 1 回の lookup で 2 用途を満たす)
+    // PR #160: getCachedOaById + preloadedOa で requireRole 内部の Oa.findUnique をスキップ。
     const work = await prisma.work.findUnique({
       where:  { id: data.work_id },
       select: { id: true, oaId: true },
@@ -221,7 +228,11 @@ export const POST = withAuth(async (req, _ctx, user) => {
 
     const oaId = work.oaId;
     if (oaId) {
-      const check = await requireRole(oaId, user.id, 'tester');
+      const cachedOa = await getCachedOaById(oaId);
+      if (!cachedOa) return notFound("OA");
+      const check = await requireRole(oaId, user.id, 'tester', {
+        preloadedOa: { ownerKey: cachedOa.ownerKey },
+      });
       if (!check.ok) return check.response;
     }
 

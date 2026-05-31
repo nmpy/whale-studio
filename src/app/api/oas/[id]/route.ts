@@ -6,6 +6,7 @@ import { withRole } from "@/lib/auth";
 import { updateOaSchema, formatZodErrors } from "@/lib/validations";
 import { ZodError } from "zod";
 import { activeCache, CACHE_KEY } from "@/lib/cache";
+import { invalidateOaCacheById } from "@/lib/oa-cache";
 import { isLiveEnabled } from "@/lib/live";
 import { genRequestId, runWithRequestId, withTiming } from "@/lib/perf";
 
@@ -83,6 +84,8 @@ export const PATCH = withRole<{ id: string }>(
       if (updated.lineOaId && updated.lineOaId !== existing.lineOaId) {
         await activeCache.delete(CACHE_KEY.oa(updated.lineOaId));
       }
+      // PR #160: id ベースのキャッシュも invalidate (ownerKey や OA fields の write 後)
+      await invalidateOaCacheById(params.id);
 
       return ok({
         id:             updated.id,
@@ -113,6 +116,10 @@ export const DELETE = withRole<{ id: string }>(
       if (!existing) return notFound("OA");
 
       await prisma.oa.delete({ where: { id: params.id } });
+      // PR #160: id ベースのキャッシュを invalidate (DELETE 後は notFound 検出を遅延させない)
+      await invalidateOaCacheById(params.id);
+      // lineOaId 側 cache も削除 (= webhook 経路用)
+      if (existing.lineOaId) await activeCache.delete(CACHE_KEY.oa(existing.lineOaId));
       return noContent();
     } catch (err) {
       return serverError(err);

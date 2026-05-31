@@ -21,6 +21,7 @@ import { NextResponse } from "next/server";
 import { withAuth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { ok, notFound } from "@/lib/api-response";
+import { invalidateOaCacheById } from "@/lib/oa-cache";
 import {
   applyRichMenuConfig,
 } from "@/lib/line-richmenu";
@@ -199,6 +200,8 @@ export const POST = withAuth<{ id: string }>(async (_req, { params }) => {
       }),
     ]);
     console.log(`[apply] DB 更新完了 lineRichMenuId=${lineRichMenuId}`);
+    // PR #160: Oa.richMenuId を更新したので id ベースの OA cache を invalidate
+    await invalidateOaCacheById(menu.oaId);
   } catch (err) {
     return applyError("DB更新", err);
   }

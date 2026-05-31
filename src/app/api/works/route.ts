@@ -11,6 +11,7 @@ import { requireRole } from "@/lib/rbac";
 import { createWorkSchema, workQuerySchema, formatZodErrors } from "@/lib/validations";
 import { ZodError } from "zod";
 import { activeCache, CACHE_KEY } from "@/lib/cache";
+import { getCachedOaById } from "@/lib/oa-cache";
 import { genRequestId, runWithRequestId, withTiming } from "@/lib/perf";
 // trackOnboardingStep (OnboardingEvent write) は Phase 3 で停止済み
 // OnboardingEvent テーブルへの書き込みを廃止し、OnboardingProgress のみを使用する
@@ -85,13 +86,10 @@ export const GET = withAuth(async (req, _ctx, user) =>
       publish_status: searchParams.get("publish_status") ?? undefined,
     });
 
-    // OA の存在確認 + ownerKey の事前取得（後段の requireRole で再利用して Oa.findUnique を 1 回に集約）
-    const oa = await withTiming("api/works:db:oa", () =>
-      prisma.oa.findUnique({
-        where:  { id: query.oa_id },
-        select: { id: true, ownerKey: true },
-      }),
-    );
+    // OA の存在確認 + ownerKey の事前取得 (後段の requireRole で再利用して Oa.findUnique を 1 回に集約)。
+    // PR #160: prisma.oa.findUnique を getCachedOaById に置き換え。warm hit 時 ~5ms。
+    // cache miss 時は内部で prisma.oa.findUnique が走り、TTL=60s で保存される。
+    const oa = await withTiming("api/works:db:oa", () => getCachedOaById(query.oa_id));
     if (!oa) return notFound("OA");
 
     const check = await requireRole(query.oa_id, user.id, 'viewer', {
@@ -219,11 +217,8 @@ export const POST = withAuth(async (req, _ctx, user) => {
     const body = await req.json();
     const data = createWorkSchema.parse(body);
 
-    // OA の存在確認 + ownerKey の事前取得（後段の requireRole で再利用して Oa.findUnique を 1 回に集約）
-    const oa = await prisma.oa.findUnique({
-      where:  { id: data.oa_id },
-      select: { id: true, ownerKey: true },
-    });
+    // OA の存在確認 + ownerKey の事前取得 (= GET と同じ cache 経路)
+    const oa = await getCachedOaById(data.oa_id);
     if (!oa) return notFound("OA");
 
     const check = await requireRole(data.oa_id, user.id, 'tester', {
