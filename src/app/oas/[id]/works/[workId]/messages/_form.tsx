@@ -2844,11 +2844,21 @@ function AdditionalMessageBlock({
             (chain head, freeInput=false) → 「xxについてどう思う？」(slot, freeInput=true)
             の構成で、slot が freeInput プロンプトとして waitingForInput をセットする。 */}
         <SectionAccordion
-          title="自由入力受付"
+          title="この追加メッセージ送信後に自由入力を受け付ける"
           optional
-          description="このメッセージ送信後にユーザーの次の入力を変数として保存（chain continuation 用）"
+          description="この追加メッセージを送信した直後に、ユーザーの次の入力を変数として保存します。"
           defaultOpen={slot.free_input_enabled}
         >
+          {/* 使い分けの案内 (= 1通目の直後 vs 2通目以降の直後) */}
+          <div style={{
+            fontSize: 12, lineHeight: 1.6, padding: "10px 12px", marginBottom: 12,
+            background: "#f0f9ff", border: "1px solid #bae6fd", borderRadius: 6, color: "#075985",
+          }}>
+            「どのメッセージの直後に入力を待つか」で設定場所を選びます。
+            <br />
+            1通目の直後に待つ場合は <strong>メインメッセージ側</strong>、
+            2通目以降の直後に待つ場合は <strong>該当する追加メッセージ側</strong> (このセクション) で ON にしてください。
+          </div>
           <div className="form-group">
             <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
               <input
@@ -2856,13 +2866,13 @@ function AdditionalMessageBlock({
                 checked={slot.free_input_enabled}
                 onChange={(e) => onChange({ ...slot, free_input_enabled: e.target.checked })}
               />
-              <span style={{ fontSize: 14, fontWeight: 600 }}>自由入力を受け付ける</span>
+              <span style={{ fontSize: 14, fontWeight: 600 }}>この追加メッセージ送信後に自由入力を受け付ける</span>
             </label>
             <div style={{ ...hintText, marginTop: 4 }}>
-              このメッセージ送信後、ユーザーの次のテキスト入力を変数として保存して、次の応答に利用できます。
+              この追加メッセージを送信した直後に、ユーザーの次の入力を変数として保存します。
               <br />
-              chain の途中で free_input を有効化する場合に使用します (= 1 通目はそのまま送信、
-              本メッセージで入力待機になる)。
+              チェーン途中で質問を挟みたい場合に使います (= 1 通目はそのまま送信、
+              この追加メッセージで入力待機になる)。
             </div>
           </div>
 
@@ -4364,11 +4374,21 @@ export function MessageForm({
           ════════════════════════════════════════ */}
           {!isPuzzle && form.kind !== "system_notice" && (
             <SectionAccordion
-              title="自由入力受付"
+              title="このメッセージ送信後に自由入力を受け付ける"
               optional
-              description="メッセージ送信後にユーザーの次の入力を変数として保存できます（名前入力やアンケート用）"
+              description="このメッセージを送信した直後に、ユーザーの次の入力を変数として保存します。"
               defaultOpen={form.free_input_enabled}
             >
+              {/* 使い分けの案内 (= 1通目の直後 vs 2通目以降の直後) */}
+              <div style={{
+                fontSize: 12, lineHeight: 1.6, padding: "10px 12px", marginBottom: 12,
+                background: "#f0f9ff", border: "1px solid #bae6fd", borderRadius: 6, color: "#075985",
+              }}>
+                「どのメッセージの直後に入力を待つか」で設定場所を選びます。
+                <br />
+                1通目の直後に待つ場合は <strong>このメインメッセージ側</strong>、
+                2通目以降の直後に待つ場合は <strong>該当する追加メッセージ側</strong> で ON にしてください。
+              </div>
               <div className="form-group">
                 <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
                   <input
@@ -4376,10 +4396,10 @@ export function MessageForm({
                     checked={form.free_input_enabled}
                     onChange={(e) => set("free_input_enabled", e.target.checked)}
                   />
-                  <span style={{ fontSize: 14, fontWeight: 600 }}>自由入力を受け付ける</span>
+                  <span style={{ fontSize: 14, fontWeight: 600 }}>このメッセージ送信後に自由入力を受け付ける</span>
                 </label>
                 <div style={{ ...hintText, marginTop: 4 }}>
-                  このメッセージ送信後、ユーザーの次のテキスト入力を変数として保存して、次の応答に利用できます。
+                  このメッセージを送信した直後に、ユーザーの次の入力を変数として保存します。
                   <br />
                   名前入力 / アンケート自由回答 / 任意の感想記録などに使えます。
                 </div>
