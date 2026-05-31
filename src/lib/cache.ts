@@ -41,6 +41,14 @@ export const TTL = {
    * upsert / update 直後は必ず setCachedProgress() で上書きすること。
    */
   PROGRESS:    10 * 1000,
+  /**
+   * Whale Studio Live の entitlement 有効フラグ: 60 秒
+   *
+   * 管理画面の複数ページ（/oas/[id] / settings / sidenav 等）で連続して
+   * isLiveEnabled() を呼ぶため、短 TTL で DB ラウンドトリップを削減。
+   * /api/admin/oa-entitlements PATCH 成功時に必ず invalidation すること。
+   */
+  LIVE_ENABLED: 60 * 1000,
 } as const;
 
 // ── 基本操作 ─────────────────────────────────────────────────
@@ -113,6 +121,7 @@ export const CACHE_KEY = {
   globalKw:   (workId:    string) => `work:global-kw:${workId}`,
   startMsgs:  (phaseId:   string) => `startmsgs:${phaseId}`,
   progress:   (userId:    string, workId: string) => `progress:${userId}:${workId}`,
+  liveEnabled:(oaId:      string) => `live:enabled:${oaId}`,
 } as const;
 
 // ── 抽象インターフェース（Upstash Redis 等へ切り替え可能）────

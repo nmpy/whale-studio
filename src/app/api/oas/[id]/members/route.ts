@@ -56,10 +56,12 @@ export const GET = withRole<{ id: string }>(
       if (!oa) return notFound("OA");
 
       // ── 既存 WorkspaceMember ──────────────────────────────────
-      const members = await prisma.workspaceMember.findMany({
-        where:   { workspaceId: params.id },
-        orderBy: { createdAt: "asc" },
-      });
+      const members = await withTiming("api/members:db:members", () =>
+        prisma.workspaceMember.findMany({
+          where:   { workspaceId: params.id },
+          orderBy: { createdAt: "asc" },
+        }),
+      );
 
       // owner(0) → admin(1) → editor(2) → viewer(3) の階層順で安定ソート
       const ROLE_ORDER: Record<string, number> = { owner: 0, admin: 1, editor: 2, viewer: 3, tester: 3 };
@@ -70,17 +72,19 @@ export const GET = withRole<{ id: string }>(
       // ── 最近操作したが未登録のユーザー（過去30日、最大50件）──
       const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
-      const recentActivity = await prisma.appActivityLog.findMany({
-        where: {
-          lastSeenAt: { gte: thirtyDaysAgo },
-          userId:     { notIn: Array.from(memberUserIds) },
-        },
-        orderBy: { lastSeenAt: "desc" },
-        take:    50,
-      });
+      const recentActivity = await withTiming("api/members:db:appActivity", () =>
+        prisma.appActivityLog.findMany({
+          where: {
+            lastSeenAt: { gte: thirtyDaysAgo },
+            userId:     { notIn: Array.from(memberUserIds) },
+          },
+          orderBy: { lastSeenAt: "desc" },
+          take:    50,
+        }),
+      );
 
       // ── レスポンス ────────────────────────────────────────────
-      return ok({
+      return await withTiming("api/members:shape", async () => ok({
         members:     members.map(formatMember),
         provisional: recentActivity.map((a) => ({
           type:          "provisional" as const,
@@ -88,7 +92,7 @@ export const GET = withRole<{ id: string }>(
           email:         a.email,
           last_seen_at:  a.lastSeenAt.toISOString(),
         })),
-      });
+      }));
     } catch (err) {
       return serverError(err);
     }

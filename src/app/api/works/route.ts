@@ -92,43 +92,47 @@ export const GET = withAuth(async (req, _ctx, user) =>
     const check = await requireRole(query.oa_id, user.id, 'viewer');
     if (!check.ok) return check.response;
 
-    const works = await prisma.work.findMany({
-      where: {
-        oaId: query.oa_id,
-        ...(query.publish_status !== undefined && { publishStatus: query.publish_status }),
-      },
-      orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
-      include: {
-        _count: {
-          select: {
-            characters:   true,
-            phases:       true,
-            messages:     true,
-            // preview データを除外してプレイヤー実数を返す
-            userProgress: { where: { isPreview: false } },
+    const works = await withTiming("api/works:db:list", () =>
+      prisma.work.findMany({
+        where: {
+          oaId: query.oa_id,
+          ...(query.publish_status !== undefined && { publishStatus: query.publish_status }),
+        },
+        orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+        include: {
+          _count: {
+            select: {
+              characters:   true,
+              phases:       true,
+              messages:     true,
+              // preview データを除外してプレイヤー実数を返す
+              userProgress: { where: { isPreview: false } },
+            },
+          },
+          // 開始トリガーを持つ start フェーズを1件取得。
+          // 現在は作品ごとに start フェーズは1件想定だが、将来複数の
+          // 開始トリガー（キーワード）に対応する場合は take を除去し、
+          // フロント側で配列として受け取る形に変更する。
+          phases: {
+            where:   { phaseType: "start" },
+            select:  { startTrigger: true },
+            take:    1,
+            orderBy: { sortOrder: "asc" },
           },
         },
-        // 開始トリガーを持つ start フェーズを1件取得。
-        // 現在は作品ごとに start フェーズは1件想定だが、将来複数の
-        // 開始トリガー（キーワード）に対応する場合は take を除去し、
-        // フロント側で配列として受け取る形に変更する。
-        phases: {
-          where:   { phaseType: "start" },
-          select:  { startTrigger: true },
-          take:    1,
-          orderBy: { sortOrder: "asc" },
-        },
-      },
-    });
+      }),
+    );
 
     // プレイヤー進行情報（isPreview=false）を workId × reachedEnding で集計
     const workIds = works.map((w) => w.id);
     const progressGroups = workIds.length > 0
-      ? await prisma.userProgress.groupBy({
-          by:    ["workId", "reachedEnding"],
-          where: { workId: { in: workIds }, isPreview: false },
-          _count: { _all: true },
-        })
+      ? await withTiming("api/works:db:progressGroups", () =>
+          prisma.userProgress.groupBy({
+            by:    ["workId", "reachedEnding"],
+            where: { workId: { in: workIds }, isPreview: false },
+            _count: { _all: true },
+          }),
+        )
       : [];
 
     // progressMap[workId] = { completed, in_progress }
@@ -142,7 +146,7 @@ export const GET = withAuth(async (req, _ctx, user) =>
       }
     }
 
-    return ok(
+    return await withTiming("api/works:shape", async () => ok(
       works.map((w) => {
         const ps = progressMap[w.id] ?? { completed: 0, in_progress: 0 };
         return {
@@ -157,7 +161,7 @@ export const GET = withAuth(async (req, _ctx, user) =>
           },
         };
       })
-    );
+    ));
   } catch (err) {
     if (err instanceof ZodError) return badRequest("クエリパラメータが不正です", formatZodErrors(err));
     // Prisma 既知エラーは code / meta を含めて明示的にログする。

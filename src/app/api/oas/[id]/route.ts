@@ -7,21 +7,28 @@ import { updateOaSchema, formatZodErrors } from "@/lib/validations";
 import { ZodError } from "zod";
 import { activeCache, CACHE_KEY } from "@/lib/cache";
 import { isLiveEnabled } from "@/lib/live";
+import { genRequestId, runWithRequestId, withTiming } from "@/lib/perf";
 
 // ── GET /api/oas/:id ─────────────────────────────
 export const GET = withRole<{ id: string }>(
   ({ params }) => params.id,
   'viewer',
-  async (_req, { params }) => {
+  async (_req, { params }) =>
+    runWithRequestId(genRequestId(), () => withTiming("api/oas-detail:GET", async () => {
     try {
-      const oa = await prisma.oa.findUnique({
-        where: { id: params.id },
-        include: { _count: { select: { works: true } } },
-      });
+      const oa = await withTiming("api/oas-detail:db:findUnique", () =>
+        prisma.oa.findUnique({
+          where: { id: params.id },
+          include: { _count: { select: { works: true } } },
+        }),
+      );
       if (!oa) return notFound("OA");
 
       // Whale Studio Live の利用可否（隠し機能。entitlement 無効 OA では常に false）。
-      const live_enabled = await isLiveEnabled(oa.id);
+      // 内部で activeCache を経由するため、cache hit 時は DB を叩かない。
+      const live_enabled = await withTiming("api/oas-detail:db:liveCheck", () =>
+        isLiveEnabled(oa.id),
+      );
 
       return ok({
         id:                   oa.id,
@@ -42,7 +49,7 @@ export const GET = withRole<{ id: string }>(
     } catch (err) {
       return serverError(err);
     }
-  }
+    }))
 );
 
 // ── PATCH /api/oas/:id ─── owner のみ（重要設定）

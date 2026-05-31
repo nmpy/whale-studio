@@ -744,6 +744,12 @@ model AppActivityLog {
   createdAt  DateTime @default(now()) @map("created_at")
 
   @@index([lastSeenAt])
+  // /api/oas/[id]/members で `where: { lastSeenAt: { gte }, userId: { notIn } }, take: 50` を実行する。
+  // 単独の lastSeenAt index は範囲条件の絞り込みには効くが、userId の notIn フィルタは
+  // index 上で評価できず、レコードに heap fetch して評価する必要がある。
+  // (lastSeenAt, userId) の複合 index を追加することで、PostgreSQL は index scan のみで
+  // 範囲条件＋userId 比較の両方を完結でき、heap fetch を避けやすくなる。
+  @@index([lastSeenAt, userId])
   @@map("app_activity_logs")
 }
 

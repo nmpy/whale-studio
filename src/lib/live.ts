@@ -13,17 +13,36 @@ import { prisma } from "@/lib/prisma";
 import { isPlatformOwner } from "@/lib/platform-admin";
 import { getWorkspaceRole } from "@/lib/rbac";
 import { LIVE_ROLE_SECTION, type LiveRole, type LiveSection } from "@/lib/types/permissions";
+import { activeCache, CACHE_KEY, TTL } from "@/lib/cache";
 
 /** OaEntitlement.featureKey の第一弾 */
 export const LIVE_FEATURE_KEY = "whale_studio_live";
 
-/** OA で Whale Studio Live が有効か（entitlement enabled）。 */
+/**
+ * OA で Whale Studio Live が有効か（entitlement enabled）。
+ *
+ * 管理画面の複数ページから同一 OA に対して連続して呼ばれるため、activeCache に
+ * 短 TTL（{@link TTL.LIVE_ENABLED}）で乗せる。`/api/admin/oa-entitlements` の
+ * PATCH 成功時には {@link invalidateLiveEnabledCache} で write-through invalidation
+ * を行うため、ON/OFF 操作の即時反映は維持される。
+ */
 export async function isLiveEnabled(oaId: string): Promise<boolean> {
+  const key = CACHE_KEY.liveEnabled(oaId);
+  const cached = await activeCache.get<boolean>(key);
+  if (cached !== null) return cached;
+
   const ent = await prisma.oaEntitlement.findUnique({
     where:  { oaId_featureKey: { oaId, featureKey: LIVE_FEATURE_KEY } },
     select: { enabled: true },
   });
-  return ent?.enabled === true;
+  const enabled = ent?.enabled === true;
+  await activeCache.set(key, enabled, TTL.LIVE_ENABLED);
+  return enabled;
+}
+
+/** /api/admin/oa-entitlements PATCH 成功時に呼ぶ。Live ON/OFF を即時反映するため。 */
+export async function invalidateLiveEnabledCache(oaId: string): Promise<void> {
+  await activeCache.delete(CACHE_KEY.liveEnabled(oaId));
 }
 
 /** メンバーの liveRole を取得（owner_key 判定の owner などメンバー行が無い場合は null）。 */
