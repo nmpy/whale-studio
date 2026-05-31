@@ -229,6 +229,14 @@ export default function OaListPage() {
 
   const actAsOwner = isPlatformOwner && effectiveRole === "owner";
 
+  // 「+ アカウントを追加」(top-right) を表示する条件:
+  //   - Platform owner (= サービス全体の管理者) は常に追加できる
+  //   - もしくは既に何かしらの OA で owner ロールを持っているユーザー (= 既存オーナーが追加可)
+  // 招待された editor/viewer/admin (= owner ではない) や、まだ memberships がない fresh user は
+  // top-right ボタンを見せない。fresh user は empty state の「+ 最初のアカウントを追加する」
+  // から bootstrap できる (= 別 path)。
+  const canCreateOa = isPlatformOwner || items.some((oa) => oa.my_role === "owner");
+
   async function load(p: number) {
     setLoading(true);
     setWorksLoading(true);
@@ -296,12 +304,14 @@ export default function OaListPage() {
             1つのLINE公式アカウントにつき複数の作品を管理できます
           </p>
         </div>
-        <Link
-          href="/oas/new"
-          className={buttonClass({ variant: "primary", size: "md" })}
-        >
-          ＋ アカウントを追加
-        </Link>
+        {canCreateOa && (
+          <Link
+            href="/oas/new"
+            className={buttonClass({ variant: "primary", size: "md", className: "!text-white hover:!text-white" })}
+          >
+            ＋ アカウントを追加
+          </Link>
+        )}
       </div>
 
       {/* ── β版 遅延注意バナー ── */}
@@ -347,7 +357,7 @@ export default function OaListPage() {
           </p>
           <Link
             href="/oas/new"
-            className={buttonClass({ variant: "primary", size: "md", className: "mt-4" })}
+            className={buttonClass({ variant: "primary", size: "md", className: "mt-4 !text-white hover:!text-white" })}
           >
             ＋ 最初のアカウントを追加する
           </Link>
