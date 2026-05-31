@@ -6,6 +6,7 @@ import { ok, created, badRequest, conflict, notFound, serverError } from "@/lib/
 import { withRole } from "@/lib/auth";
 import { z, ZodError } from "zod";
 import { isValidRole } from "@/lib/types/permissions";
+import { genRequestId, runWithRequestId, withTiming } from "@/lib/perf";
 
 const addMemberSchema = z.object({
   user_id: z.string().min(1, "user_id は必須です"),
@@ -48,7 +49,8 @@ function formatMember(m: {
 export const GET = withRole<{ id: string }>(
   ({ params }) => params.id,
   ['admin', 'owner'],
-  async (_req, { params }) => {
+  async (_req, { params }) =>
+    runWithRequestId(genRequestId(), () => withTiming("api/oas/[id]/members:GET", async () => {
     try {
       const oa = await prisma.oa.findUnique({ where: { id: params.id }, select: { id: true } });
       if (!oa) return notFound("OA");
@@ -90,7 +92,7 @@ export const GET = withRole<{ id: string }>(
     } catch (err) {
       return serverError(err);
     }
-  }
+    }))
 );
 
 // ── POST /api/oas/:id/members ────────────────────
