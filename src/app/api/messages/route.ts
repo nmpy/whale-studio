@@ -64,6 +64,10 @@ function toResponse(m: {
   imageActionUrl?: string | null;
   imageActionLiffPageId?: string | null;
   imageActionPostbackData?: string | null;
+  // 自由入力受付（このメッセージ送信後にユーザーの次入力を保存する）
+  freeInputEnabled?: boolean;
+  freeInputVariableKey?: string | null;
+  freeInputNextMessageId?: string | null;
   sortOrder: number; isActive: boolean; createdAt: Date; updatedAt: Date;
   phase?: { id: string; name: string; phaseType: string } | null;
   character?: { id: string; name: string; iconType: string; iconText: string | null; iconImageUrl: string | null; iconColor: string | null } | null;
@@ -115,6 +119,10 @@ function toResponse(m: {
     image_action_url:           m.imageActionUrl          ?? null,
     image_action_liff_page_id:  m.imageActionLiffPageId   ?? null,
     image_action_postback_data: m.imageActionPostbackData ?? null,
+    // 自由入力受付
+    free_input_enabled:         m.freeInputEnabled         ?? false,
+    free_input_variable_key:    m.freeInputVariableKey     ?? null,
+    free_input_next_message_id: m.freeInputNextMessageId   ?? null,
     sort_order:           m.sortOrder,
     is_active:            m.isActive,
     created_at:           m.createdAt,
@@ -274,6 +282,10 @@ export const POST = withAuth(async (req, _ctx, user) => {
         imageActionUrl:          data.image_action_url          ?? null,
         imageActionLiffPageId:   data.image_action_liff_page_id ?? null,
         imageActionPostbackData: data.image_action_postback_data ?? null,
+        // 自由入力受付（schema・Zod・form は揃っていたが POST data に欠落していた pre-existing bug を修正）
+        freeInputEnabled:       data.free_input_enabled ?? false,
+        freeInputVariableKey:   data.free_input_variable_key ?? null,
+        freeInputNextMessageId: data.free_input_next_message_id ?? null,
         sortOrder:          data.sort_order,
         isActive:           data.is_active,
       },
