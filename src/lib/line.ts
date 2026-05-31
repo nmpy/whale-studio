@@ -865,21 +865,43 @@ export function buildPhaseMessages(
 
   // ── DB Message 行を 1 件ずつ独立した吹き出しに変換 ──
   // 変換契約は convertMessageToLine() に集約されている。
+  //
+  // chain-aware iteration:
+  //   phase.messages は heads と chain continuation が混在しており、かつ continuation は
+  //   親の sort_order を継承するため、単純に flat 走査 + moveQuickReplyToTail を一度かけると
+  //   chain head の QR が phase 全体末尾の関係ないメッセージへ移動してしまう。
+  //   管理画面（messages list page）と表示順・QR 位置を一致させるため、ここでは:
+  //     1. phase.messages から「他のメッセージから next_message_id で参照されている ID」を
+  //        continuation 集合として抽出
+  //     2. heads (= continuation 集合に含まれないもの) を phase.messages 内の DB 順
+  //        (sortOrder asc, createdAt asc) で iterate
+  //     3. 各 head から next_message_id を walk して chain を作り、chain 単位で
+  //        moveQuickReplyToTail を適用
+  //     4. chain ごとに LineMessage[] を生成 → 全体 messages に concat
+  //   これにより chain head の QR は chain tail に集約され、別 chain には漏れない。
+  //   walk 中に phase.messages に存在しない id を指していたら chain はそこで停止する
+  //   (= 別 phase / 削除済み / orphan な link は安全に無視)。
   const inputCount = phase.messages.length;
   console.log(
     `[buildPhaseMessages] 入力 ${inputCount}件`,
     phase.messages.map((m) => `id=${m.id.slice(0, 8)} kind=${m.kind} type=${m.message_type} body=${m.body ? "あり" : "null"} asset=${m.asset_url ? "あり" : "null"}`).join(" / "),
   );
-  for (const msg of phase.messages) {
-    // hint_mode に基づいてヒント QR をフィルタ
+
+  const phaseById = new Map(phase.messages.map((m) => [m.id, m]));
+  const continuationIds = new Set<string>();
+  for (const m of phase.messages) {
+    if (m.next_message_id) continuationIds.add(m.next_message_id);
+  }
+
+  // 1 件の Phase message を LineMessage に変換するヘルパー (per-chain ループで再利用)。
+  const convert = (msg: typeof phase.messages[number]): LineMessage | null => {
     const visibleQrItems = (msg.hint_mode === "always" || !msg.hint_mode)
       ? msg.quick_replies
       : (msg.quick_replies ?? []).filter((i) => i.action !== "hint");
     const msgQr = visibleQrItems?.length
       ? buildQuickReplyFromItems(visibleQrItems)
       : undefined;
-
-    const lineMsg = convertMessageToLine({
+    return convertMessageToLine({
       id:        msg.id,
       kind:      msg.kind,
       mtype:     msg.message_type as string,
@@ -898,27 +920,45 @@ export function buildPhaseMessages(
       lagMs:     msg.lag_ms,
       timing:    msg.timing,
     }, "buildPhaseMessages", phase.id, vars);
+  };
 
-    if (lineMsg) {
-      messages.push(lineMsg);
-    } else {
-      console.warn(
-        `[buildPhaseMessages] ⚠️ メッセージ変換失敗（LINE送信から除外）`,
-        `id=${msg.id.slice(0, 8)} kind=${msg.kind} type=${msg.message_type} sort=${msg.sort_order}`,
-        `body=${msg.body ? `"${msg.body.slice(0, 30)}"` : "null"} asset=${msg.asset_url ? "あり" : "null"} alt=${msg.alt_text ? "あり" : "null"}`,
-      );
+  for (const head of phase.messages) {
+    // continuation はこのループでは扱わない (= head 経由で chain 内に展開する)。
+    if (continuationIds.has(head.id)) continue;
+
+    // chain を walk して LineMessage[] を作る (cap = LINE 上限分の余裕)。
+    const chainMessages: LineMessage[] = [];
+    const visited = new Set<string>([head.id]);
+    let cur: typeof phase.messages[number] | undefined = head;
+    while (cur && chainMessages.length < LINE_MSG_MAX) {
+      const lineMsg = convert(cur);
+      if (lineMsg) {
+        chainMessages.push(lineMsg);
+      } else {
+        console.warn(
+          `[buildPhaseMessages] ⚠️ メッセージ変換失敗（LINE送信から除外）`,
+          `id=${cur.id.slice(0, 8)} kind=${cur.kind} type=${cur.message_type} sort=${cur.sort_order}`,
+          `body=${cur.body ? `"${cur.body.slice(0, 30)}"` : "null"} asset=${cur.asset_url ? "あり" : "null"} alt=${cur.alt_text ? "あり" : "null"}`,
+        );
+      }
+      const nextId = cur.next_message_id;
+      if (!nextId || visited.has(nextId)) break;  // 終端 or 循環防止
+      const nextMsg = phaseById.get(nextId);
+      if (!nextMsg) break;  // 別 phase or orphan link は安全に停止
+      visited.add(nextId);
+      cur = nextMsg;
     }
+
+    // chain head の QR を chain tail へ集約 (chain 内で完結させる)。
+    moveQuickReplyToTail(chainMessages as { quickReply?: LineQuickReply }[]);
+
+    // phase 全体に append (chain 順は維持)。
+    for (const lm of chainMessages) messages.push(lm);
   }
 
   // ── サマリログ ──
   const prefixOffset = prefixText ? 1 : 0;
   logConversionSummary("buildPhaseMessages", phase.id, inputCount, messages.length - prefixOffset);
-
-  // ── chain head の quickReply を chain tail (= 最後のメッセージ) に集約 ──
-  // LINE は 1 通の reply で最後のメッセージの quickReply しか表示しないため、
-  // chain head (= msg1) に設定された quickReply を tail (= msg2) に移動する。
-  // 既に tail に quickReply があればそのまま (= tail の方を優先)。
-  moveQuickReplyToTail(messages as { quickReply?: LineQuickReply }[]);
 
   // ── エンディング or クイックリプライ付与 ──
   if (phase.transitions === null) {

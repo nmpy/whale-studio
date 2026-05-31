@@ -150,8 +150,11 @@ describe("Phase 2c: QR tail 移動後の _timing 保持", () => {
   });
 
   it("buildPhaseMessages の chain で QR を tail 移動した後でも、msg2._timing が落ちない", () => {
-    const m1 = baseMsg("m1", "msg1", TIMING_MSG1);
+    const m1 = baseMsg("m1", "msg1", TIMING_MSG1) as ReturnType<typeof baseMsg> & { next_message_id?: string | null };
     m1.quick_replies = [{ label: "次へ", action: "text" as const, value: "next" }];
+    // m1 → m2 を実際の chain として接続する (= buildPhaseMessages の chain-aware iteration で
+    // QR が chain tail である m2 に移動することを担保)。
+    m1.next_message_id = "m2";
     const m2 = baseMsg("m2", "msg2", TIMING_MSG2);
     const phase: RuntimePhase = {
       ...basePhase([m1, m2]),

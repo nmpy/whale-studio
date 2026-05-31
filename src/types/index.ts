@@ -663,6 +663,12 @@ export interface RuntimePhaseMessage {
   image_action_url:           string | null;
   image_action_liff_page_id:  string | null;
   image_action_postback_data: string | null;
+  /** 連続送信チェーン先メッセージ ID（null = チェーンなし）。
+   *  buildPhaseMessages で chain head / continuation を識別し、
+   *  per-chain で QR tail / 順序を制御するために使う。
+   *  optional: スプレッドシート由来 / playground 等の synthetic な
+   *  RuntimePhaseMessage では未指定でも no chain と等価に扱う。 */
+  next_message_id?:  string | null;
   character: {
     id:             string;
     name:           string;
