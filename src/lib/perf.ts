@@ -92,3 +92,63 @@ export function logSlow(kind: string, fields: Record<string, string | number>): 
   // eslint-disable-next-line no-console
   console.log(`[perf:${kind}] requestId=${getRequestId()} ${fieldStr}`);
 }
+
+/**
+ * fire-and-forget 用の duration 計測。
+ *
+ * 用途: `withAuth` の fire-and-forget hook (recordUserActivity / ensureProfile /
+ * checkMembershipIntegrity 等) のように、caller が await せず Promise を放置する
+ * 経路で duration を log したいとき。
+ *
+ * 動作:
+ *   - **同期的に void を返す** (= caller は await しない / できない)
+ *   - 内部で fn() を起動し、完了/失敗時に `[perf][<kind>] name=<name> durationMs=N` を log
+ *   - error は silent catch (= 既存 fire-and-forget の挙動と整合)
+ *   - PERF_LOG_ENABLED OFF 時は fn() を起動するだけで計測しない (overhead 最小)
+ *
+ * extras はログ末尾に追加情報 (key=value 形式)。userId は事前に mask して渡すこと。
+ */
+export function withTimingFnf(
+  kind: string,
+  name: string,
+  fn: () => Promise<unknown>,
+  extras?: Record<string, string | number>,
+): void {
+  if (!PERF_LOG_ENABLED) {
+    // overhead 最小: 計測なしで fn を起動して silent catch のみ
+    fn().catch(() => { /* silent */ });
+    return;
+  }
+  const start = performance.now();
+  const requestId = getRequestId();
+  fn()
+    .catch(() => { /* silent — caller と同じ挙動 */ })
+    .finally(() => {
+      const durationMs = Math.round(performance.now() - start);
+      const extraStr = extras
+        ? " " + Object.entries(extras).map(([k, v]) => `${k}=${v}`).join(" ")
+        : "";
+      // eslint-disable-next-line no-console
+      console.log(`[perf][${kind}] requestId=${requestId} name=${name} durationMs=${durationMs}${extraStr}`);
+    });
+}
+
+/**
+ * fire-and-forget hook が skip されたことを log する (PERF_LOG_ENABLED ON 時のみ)。
+ *
+ * skip reason は `throttled` / `alreadyChecked` / `dev-stub` 等。
+ * userId 等の PII は事前に mask して渡すこと。
+ */
+export function logFnfSkip(
+  kind: string,
+  name: string,
+  reason: string,
+  extras?: Record<string, string | number>,
+): void {
+  if (!PERF_LOG_ENABLED) return;
+  const extraStr = extras
+    ? " " + Object.entries(extras).map(([k, v]) => `${k}=${v}`).join(" ")
+    : "";
+  // eslint-disable-next-line no-console
+  console.log(`[perf][${kind}] requestId=${getRequestId()} name=${name} skipped reason=${reason}${extraStr}`);
+}
