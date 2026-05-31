@@ -78,6 +78,7 @@ function recordUserActivity(userId: string, email?: string): HookResult {
     return { skipped: "dev-stub" };
   }
 
+  // Layer 1: in-memory throttle (= 同一 Lambda 内の warm 高速 path)
   const now  = Date.now();
   const last = _activityThrottle.get(userId) ?? 0;
   if (now - last < ACTIVITY_THROTTLE_MS) {
@@ -85,11 +86,26 @@ function recordUserActivity(userId: string, email?: string): HookResult {
     return { skipped: "throttled" };
   }
 
+  // 先に Map をマークして race を最小化 (= 同一 Lambda 内で複数 request が同時に
+  // この check を通過することを防ぐ)。DB throttle で skip になった場合も同じく
+  // 30 分間は再 fire しない (= cold 2 回目以降の Lambda がさらに DB を叩かない)。
   _activityThrottle.set(userId, now);
 
-  // Fire-and-forget: リクエストをブロックしない
-  withTimingFnf("auth-hook", "recordUserActivity", () =>
-    prisma.appActivityLog.upsert({
+  // Layer 2: DB throttle (Lambda インスタンス切替で in-memory Map がリセットされる
+  //   cold start ケースに対応)。AppActivityLog.lastSeenAt を select し、30 分以内なら
+  //   upsert をスキップする。select は findUnique (userId は @id PK) で軽い。
+  // PR #162 (C): cold Lambda でも DB レベルで throttle を効かせる。
+  withTimingFnf("auth-hook", "recordUserActivity", async () => {
+    const existing = await prisma.appActivityLog.findUnique({
+      where:  { userId },
+      select: { lastSeenAt: true },
+    });
+    const recent = existing && (Date.now() - existing.lastSeenAt.getTime()) < ACTIVITY_THROTTLE_MS;
+    if (recent) {
+      logFnfSkip("auth-hook", "recordUserActivity", "db-throttled", { userId: maskUserId(userId) });
+      return;
+    }
+    await prisma.appActivityLog.upsert({
       where:  { userId },
       update: {
         lastSeenAt: new Date(),
@@ -100,9 +116,8 @@ function recordUserActivity(userId: string, email?: string): HookResult {
         email:     email ?? null,
         lastSeenAt: new Date(),
       },
-    }),
-    { userId: maskUserId(userId) },
-  );
+    });
+  }, { userId: maskUserId(userId) });
   return "fired";
 }
 
@@ -118,7 +133,19 @@ function recordUserActivity(userId: string, email?: string): HookResult {
  */
 const _membershipChecked = new Set<string>();
 
+// PR #162 (B): checkMembershipIntegrity を request hot path から外す。
+// warning ログ専用 hook (= auth correctness には関与しない) で、cold start のたびに
+// WorkspaceMember/Invitation findMany 計 3 query を発火させていたため。
+//   default: 無効 (= skipped reason=disabled-hot-path をログ)
+//   AUTH_HOOK_MEMBERSHIP_CHECK=true:  従来通り発火 (admin / debug 用途)
+//   将来的に admin endpoint 経由で明示的に呼ぶ運用に移行可能。
+const _MEMBERSHIP_HOOK_ENABLED = process.env.AUTH_HOOK_MEMBERSHIP_CHECK === "true";
+
 function checkMembershipIntegrity(userId: string, email?: string): HookResult {
+  if (!_MEMBERSHIP_HOOK_ENABLED) {
+    logFnfSkip("auth-hook", "checkMembershipIntegrity", "disabled-hot-path");
+    return { skipped: "disabled-hot-path" };
+  }
   if (userId === "bypass-admin" || userId === "dev-user") {
     logFnfSkip("auth-hook", "checkMembershipIntegrity", "dev-stub");
     return { skipped: "dev-stub" };
