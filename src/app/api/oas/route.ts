@@ -2,7 +2,7 @@
 // GET /api/oas  — OA一覧（ユーザーがメンバーの OA のみ）
 // POST /api/oas — OA作成（作成者を owner として自動登録）
 
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { ok, created, badRequest, serverError } from "@/lib/api-response";
 import { withAuth } from "@/lib/auth";
@@ -174,6 +174,38 @@ export const POST = withAuth(async (req, _ctx, user) => {
         userId: user.id,
         bypass: process.env.BYPASS_AUTH === "true",
       });
+    }
+
+    // OA 作成権限チェック (= 招待された editor/viewer/admin が直接 API を叩いて新 OA を作るのを防ぐ)
+    //   許可: platform owner / 既存 workspace owner / fresh user (memberships ゼロ = bootstrap path)
+    //   拒否: memberships あり & owner なし = 他人の OA に招待されたメンバー
+    // フロントの canCreateOa と同じ semantics で defense-in-depth。
+    if (!isPlatformOwner(user.id) && !isBypass) {
+      const memberships = await prisma.workspaceMember.findMany({
+        where:  { userId: user.id },
+        select: { role: true, status: true },
+      });
+      if (memberships.length > 0) {
+        const hasActiveOwner = memberships.some(
+          (m) => m.role === "owner" && m.status === "active",
+        );
+        if (!hasActiveOwner) {
+          console.warn(
+            `[POST /api/oas] 拒否: invited member が OA 作成を試行 userId=${user.id.slice(0, 8)}… memberships=${memberships.length}`,
+          );
+          return NextResponse.json(
+            {
+              success: false,
+              error: {
+                code:    "OA_CREATE_DENIED",
+                message: "OA を新規追加するにはオーナー権限が必要です",
+              },
+            },
+            { status: 403 },
+          );
+        }
+      }
+      // memberships ゼロ (fresh user) or owner ロールあり → 許可
     }
 
     const body = await req.json();
