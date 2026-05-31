@@ -235,6 +235,11 @@ model UserProgress {
   @@index([lineUserId])
   @@index([workId])
   @@index([lastInteractedAt])
+  /// /api/works の `groupBy by: [workId, reachedEnding] where: { workId IN (...), isPreview: false }`
+  /// を index-only scan で完結させるための 3 列複合 index。
+  /// filter（is_preview）+ groupBy 対象（reached_ending）を全て index 内で評価でき、
+  /// 既存 @@index([workId]) のみの場合に発生する heap fetch を回避する。
+  @@index([workId, isPreview, reachedEnding])
   @@map("user_progress")
 }
 
