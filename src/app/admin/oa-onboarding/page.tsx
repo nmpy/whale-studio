@@ -93,7 +93,21 @@ export default function AdminOaOnboardingPage() {
       });
       if (!res.ok) {
         const json = await res.json().catch(() => ({}));
-        throw new Error(json?.message || "更新に失敗しました");
+        // api-response.ts は { success: false, error: { message } } shape を返す。
+        // 旧形式 { message } も fallback で拾いつつ、最終的には HTTP status を含めて
+        // alert に出すことで「更新に失敗しました」だけで原因不明になることを防ぐ。
+        const msg =
+          json?.error?.message
+          || json?.message
+          || `更新に失敗しました (HTTP ${res.status})`;
+        // 詳細は console に出して開発者ツール側で追える形にしておく。
+        console.error("[admin/oa-onboarding] update failed", {
+          id,
+          status,
+          httpStatus: res.status,
+          body:       json,
+        });
+        throw new Error(msg);
       }
       await load();
     } catch (e) {
