@@ -661,7 +661,14 @@ async function applyFreeInputPostEffect(args: {
     orderBy: { sortOrder: "desc" },
     select: { id: true, freeInputVariableKey: true, freeInputNextMessageId: true },
   });
-  if (!freeInputMsg) return;
+  if (!freeInputMsg) {
+    console.log(
+      `[diag][free-input] applyFreeInputPostEffect: no freeInputEnabled=true in sent`,
+      `userId=${args.userId.slice(0, 8)}`,
+      `sentIds=[${args.sentMessageIds.map((id) => id.slice(0, 8)).join(",")}]`,
+    );
+    return;
+  }
   // variableKey は任意 (null = ログ用途・差し込み不要)。message へ進むだけで OK。
 
   const waitingJson = JSON.stringify({
@@ -1812,6 +1819,19 @@ async function handleTextEvent({
       }
 
       // nextMessage 未設定 / 取得失敗時のフォールバック: 静かに ack を返す
+      console.warn(
+        `[diag][free-input] fallback "ありがとうございます。" 送信`,
+        `userId=${userId.slice(0, 8)}`,
+        `currentPhaseId=${progress.currentPhaseId?.slice(0, 8) ?? "null"}`,
+        `promptMessageId=${waiting.messageId.slice(0, 8)}`,
+        `waitingNextMessageId=${waiting.nextMessageId?.slice(0, 8) ?? "null"}`,
+        `inputText="${text.slice(0, 30)}"`,
+        `理由="${
+          !waiting.nextMessageId
+            ? "nextMessageId が waiting に未設定"
+            : "上の warn で詳細 (nextMessage 未発見 or 変換失敗)"
+        }"`,
+      );
       await replyToLine(
         replyToken,
         [{ type: "text", text: "ありがとうございます。" }],
