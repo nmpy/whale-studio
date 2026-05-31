@@ -91,26 +91,37 @@ export const GET = withAuth(async (req, _ctx, user) => {
 
     // 各 OA の role を取得
     // プラットフォームオーナーはメンバー未登録の OA でも 'owner' として扱う
-    const rolesMap = new Map<string, string>();
+    // 各 OA に対する役割 + 実際のアクセス可否を計算する。
+    // my_role: 表示用（platform admin で showAll のとき、非 member OA でも 'owner' 表示）。
+    // has_workspace_access: 実際の workspace へのアクセス可否（owner_key 一致 or active WorkspaceMember のみ true）。
+    //   platform admin であってもメンバーでない OA に対する API 呼び出しは 403 になるため、
+    //   client 側で workApi.list 等を呼ぶ前にこのフラグを参照して判定する。
+    const rolesMap  = new Map<string, string>();
+    const accessMap = new Map<string, boolean>();
     for (const oa of items) {
       const m = await getWorkspaceRole(oa.id, user.id);
       const role = m?.status === 'active' ? m.role : (showAll ? 'owner' : 'none');
       rolesMap.set(oa.id, role);
+      // getWorkspaceRole は owner_key 一致なら { role: 'owner', status: 'active' } を返す。
+      // active member（owner / admin / editor / viewer / tester）なら status === 'active'。
+      // それ以外（null / inactive / suspended）は false。
+      accessMap.set(oa.id, m !== null && m.status === 'active');
     }
 
     const data = items.map((oa) => ({
-      id:             oa.id,
-      title:          oa.title,
-      description:    oa.description,
-      channel_id:     oa.channelId,
-      line_oa_id:     oa.lineOaId     ?? null,
-      publish_status: oa.publishStatus,
-      rich_menu_id:   oa.richMenuId   ?? null,
-      spreadsheet_id: oa.spreadsheetId ?? null,
-      created_at:     oa.createdAt,
-      updated_at:     oa.updatedAt,
-      _count:         oa._count,
-      my_role:        rolesMap.get(oa.id) ?? 'none',
+      id:                   oa.id,
+      title:                oa.title,
+      description:          oa.description,
+      channel_id:           oa.channelId,
+      line_oa_id:           oa.lineOaId     ?? null,
+      publish_status:       oa.publishStatus,
+      rich_menu_id:         oa.richMenuId   ?? null,
+      spreadsheet_id:       oa.spreadsheetId ?? null,
+      created_at:           oa.createdAt,
+      updated_at:           oa.updatedAt,
+      _count:               oa._count,
+      my_role:              rolesMap.get(oa.id) ?? 'none',
+      has_workspace_access: accessMap.get(oa.id) ?? false,
     }));
 
     return ok(data, {

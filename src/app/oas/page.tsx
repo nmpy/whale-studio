@@ -130,19 +130,21 @@ function SupportArea({ isOwner }: { isOwner: boolean }) {
 /* ── 作品名セル ──────────────────────────────────────────────────────────── */
 function WorksCell({
   oaId,
-  oaRole,
+  hasAccess,
   worksMap,
   worksLoading,
 }: {
   oaId: string;
-  /** 現ユーザーのこの OA に対する role（'none' = メンバー外 = 作品取得不可） */
-  oaRole?: string;
+  /** 現ユーザーが workspace へアクセス可能か（owner_key 一致 or active WorkspaceMember のみ true）。
+   *  platform admin の showAll 表示時、非メンバー OA では false。my_role は showAll 時 'owner'
+   *  が返るためここの判定には使わない。 */
+  hasAccess: boolean;
   worksMap: Record<string, WorkListItem[]>;
   worksLoading: boolean;
 }) {
   // メンバー外の OA は workApi.list をスキップしているため、件数が分からない。
   // 0 件と誤解されないよう「権限外」と表示する（platform admin の全OA表示時のみ発生）。
-  if (oaRole === "none") {
+  if (!hasAccess) {
     return (
       <span
         className="inline-flex items-center rounded-full border border-line bg-bg-tint px-2.5 py-0.5 text-[12px] text-ink-3 whitespace-nowrap"
@@ -242,11 +244,12 @@ export default function OaListPage() {
       // ⚠ workApi.list (= GET /api/works) は requireRole 経由で非メンバーには 403
       //   WORKSPACE_ACCESS_DENIED を返す。parseResponse はこのコードで即時 /access-denied に
       //   redirect する（catch を素通り）ため、ユーザーがメンバーでない OA に対しては叩かない。
-      //   platform admin が全 OA を見ているとき（my_role==="none"）はスキップする。
+      //   has_workspace_access は API 側で owner_key 一致 or active WorkspaceMember のみ true。
+      //   ※ my_role は platform admin の showAll 時 'owner' が返るためフィルタには使えない。
       const token = getDevToken();
       const pairs = await Promise.all(
         result.data.map((oa) =>
-          oa.my_role && oa.my_role !== "none"
+          oa.has_workspace_access
             ? workApi.list(token, oa.id)
                 .then((ws) => [oa.id, ws] as [string, WorkListItem[]])
                 .catch(() => [oa.id, [] as WorkListItem[]] as [string, WorkListItem[]])
@@ -432,7 +435,7 @@ export default function OaListPage() {
                           <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.06em] text-ink-3 whitespace-nowrap">
                             作品名
                           </div>
-                          <WorksCell oaId={oa.id} oaRole={oa.my_role} worksMap={worksMap} worksLoading={worksLoading} />
+                          <WorksCell oaId={oa.id} hasAccess={oa.has_workspace_access} worksMap={worksMap} worksLoading={worksLoading} />
                         </div>
 
                         <MetaItem label="作成日時">

@@ -308,6 +308,9 @@ async function parseResponse<T>(res: Response): Promise<T> {
 export interface OaListItem extends Omit<Oa, "channel_secret" | "channel_access_token"> {
   _count:   { works: number };
   my_role:  string; // 'owner' | 'admin' | 'editor' | 'viewer' | 'none'
+  /** workspace へ実際にアクセス可能か（owner_key 一致 or active WorkspaceMember のみ true）。
+   *  platform admin でもメンバーでなければ false。client で works fetch 等を出し分けるのに使う。 */
+  has_workspace_access: boolean;
 }
 
 /** POST /api/oas・PATCH /api/oas/:id の書き込みレスポンス（secret 類を除く） */
