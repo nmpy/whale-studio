@@ -11,6 +11,7 @@ import { ok, badRequest, serverError } from "@/lib/api-response";
 import { withAuth } from "@/lib/auth";
 import { submitOnboardingOaSchema } from "@/lib/validations/onboarding";
 import { formatZodErrors } from "@/lib/validations";
+import { notifyOaAccessRequestSubmitted } from "@/lib/slack/oa-access-request";
 import { ZodError } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -54,6 +55,24 @@ export const POST = withAuth(async (req, _ctx, user) => {
         reviewedBy:    null,
         reviewNote:    null,
       },
+    });
+
+    // Slack 通知 (fire-and-forget):
+    //   - webhook 未設定なら notifyOaAccessRequestSubmitted 内で silent no-op
+    //   - 通知失敗時も申請レスポンスはブロックしない (= console.error のみ)
+    //   - webhook URL はログに出さない (= helper 側で吸収)
+    const profile = await prisma.profile
+      .findUnique({ where: { userId: user.id }, select: { username: true } })
+      .catch(() => null);
+    void notifyOaAccessRequestSubmitted({
+      email:       user.email,
+      userId:      user.id,
+      username:    profile?.username ?? null,
+      oaName:      updated.oaName,
+      requestId:   updated.id,
+      submittedAt: updated.submittedAt ?? new Date(),
+    }).catch((err) => {
+      console.error("[slack] failed to notify OA access request", err);
     });
 
     return ok({
