@@ -20,11 +20,33 @@ import {
 
 /** メッセージ ID から next_message_id チェーンを辿り、2 通目以降を AdditionalMessageSlot[] に詰める。
  *  上限 4 件 (= 合計 5 件 = LINE 返信上限) でループを止める。
- *  循環参照防止 + 失敗時はそこまでの結果を返す (= UI に最大限のデータを引き渡す)。 */
+ *  循環参照防止 + 失敗時はそこまでの結果を返す (= UI に最大限のデータを引き渡す)。
+ *
+ *  PR #163 (perf): 旧実装は messageApi.get を serial に最大 4 回 await していた
+ *  (= chain 長 × ~1-2s の体感遅延)。messageApi.list(workId) で work の全 message を
+ *  1 回取得して Map lookup で chain を walk するように変更。backend 追加なし、
+ *  response shape 不変。期待短縮: chain 長 2 で ~700ms / chain 長 4 で ~3.7s。
+ *
+ *  注意: 別 work の id / 削除済み id を辿った場合 (= byId.get が undefined) は
+ *  従来の messageApi.get 失敗時と同じく break する。
+ */
 async function loadAdditionalChain(
   token: string,
+  workId: string,
   firstNextId: string | null,
 ): Promise<AdditionalMessageSlot[]> {
+  if (!firstNextId) return [];
+
+  // work 全 message を 1 fetch (with_relations は不要 = msgToAdditionalSlot は relation を使わない)
+  let allMessages;
+  try {
+    allMessages = await messageApi.list(token, workId);
+  } catch (err) {
+    console.warn(`[EditMessagePage] messageApi.list 失敗 workId=${workId.slice(0, 8)}:`, err);
+    return [];
+  }
+  const byId = new Map(allMessages.map((m) => [m.id, m]));
+
   const out: AdditionalMessageSlot[] = [];
   let currentId: string | null = firstNextId;
   const seen = new Set<string>();
@@ -33,16 +55,14 @@ async function loadAdditionalChain(
       console.warn(`[EditMessagePage] チェーン循環参照 (msgId=${currentId.slice(0, 8)}) — 中断`);
       break;
     }
-    const fetchingId = currentId;
-    seen.add(fetchingId);
-    try {
-      const msg = await messageApi.get(token, fetchingId);
-      out.push(msgToAdditionalSlot(msg));
-      currentId = (msg.next_message_id as string | null) ?? null;
-    } catch (err) {
-      console.warn(`[EditMessagePage] チェーン取得失敗 msgId=${fetchingId.slice(0, 8)}:`, err);
+    seen.add(currentId);
+    const msg = byId.get(currentId);
+    if (!msg) {
+      console.warn(`[EditMessagePage] チェーン継続不可 (msgId=${currentId.slice(0, 8)} not found in work ${workId.slice(0, 8)}) — 中断`);
       break;
     }
+    out.push(msgToAdditionalSlot(msg));
+    currentId = (msg.next_message_id as string | null) ?? null;
   }
   return out;
 }
@@ -71,9 +91,10 @@ export default function EditMessagePage() {
       .then(async ([w, msg]) => {
         setWorkTitle(w.title);
         // 2 通目以降 (next_message_id chain) も並行して読み込む。
+        // PR #163: serial messageApi.get → messageApi.list + local walk に変更 (workId 追加)。
         // 失敗しても 1 通目だけで UI を出す (= load 失敗時の degrade)。
         const additional = (msg.next_message_id as string | null)
-          ? await loadAdditionalChain(token, msg.next_message_id as string)
+          ? await loadAdditionalChain(token, workId, msg.next_message_id as string)
           : [];
         const form = msgToFormState(msg);
         setInitialForm({ ...form, additionalMessages: additional });
