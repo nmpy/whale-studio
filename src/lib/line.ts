@@ -10,6 +10,7 @@ import crypto from "crypto";
 import type { RuntimePhase, QuickReplyItem, MessageTimingConfig } from "@/types";
 import { interpolate } from "@/lib/template";
 import { moveQuickReplyToTail } from "@/lib/quick-reply-tail";
+import { isFreeInputPrompt } from "@/lib/free-input";
 import type { ReadReceiptController } from "@/lib/line-read-receipt";
 
 // ────────────────────────────────────────────────
@@ -884,7 +885,7 @@ export function buildPhaseMessages(
   const inputCount = phase.messages.length;
   console.log(
     `[buildPhaseMessages] 入力 ${inputCount}件`,
-    phase.messages.map((m) => `id=${m.id.slice(0, 8)} kind=${m.kind} type=${m.message_type} body=${m.body ? "あり" : "null"} asset=${m.asset_url ? "あり" : "null"}`).join(" / "),
+    phase.messages.map((m) => `id=${m.id.slice(0, 8)} kind=${m.kind} type=${m.message_type} sort=${m.sort_order} freeInput=${isFreeInputPrompt(m)} next=${(m.next_message_id ?? "null").slice(0, 8)} body=${m.body ? `"${m.body.slice(0, 20)}"` : "null"}`).join(" / "),
   );
 
   const phaseById = new Map(phase.messages.map((m) => [m.id, m]));
@@ -950,10 +951,13 @@ export function buildPhaseMessages(
         );
       }
       // この message が自由入力受付なら、その message を含めて chain walk + phase iteration を停止する。
-      if (cur.free_input_enabled === true) {
+      // 判定は camelCase / snake_case 両対応の helper を使う (= cache の shape ずれや
+      // 経路ごとのフィールド名差異で stop が漏れるのを構造的に防ぐ)。
+      if (isFreeInputPrompt(cur)) {
         stoppedAtFreeInput = true;
         console.log(
-          `[buildPhaseMessages] STOP at free_input_enabled=true id=${cur.id.slice(0, 8)} sort=${cur.sort_order} ` +
+          `[buildPhaseMessages] STOP at free_input id=${cur.id.slice(0, 8)} sort=${cur.sort_order} ` +
+          `freeInputEnabled=${(cur as { freeInputEnabled?: unknown }).freeInputEnabled} free_input_enabled=${cur.free_input_enabled} ` +
           `(phase iteration も停止。後続の独立 head は free_input_next_message_id 経由で送るのが正しい仕様)`,
         );
         break;
@@ -976,6 +980,17 @@ export function buildPhaseMessages(
   // ── サマリログ ──
   const prefixOffset = prefixText ? 1 : 0;
   logConversionSummary("buildPhaseMessages", phase.id, inputCount, messages.length - prefixOffset);
+
+  // ── [diag] 出力 payload の id / type / hasQR / body(20文字) を 1 行に
+  // (= buildPhaseMessages が誰を送るか / 自由入力プロンプトを正しく含めているかを可視化)。
+  console.log(
+    `[diag][phase] output count=${messages.length} stoppedAtFreeInput=${stoppedAtFreeInput} ` +
+    `payload=[${messages.map((m, idx) => {
+      const lm = m as { type?: string; text?: string; altText?: string; quickReply?: unknown };
+      const bodyPreview = (lm.text ?? lm.altText ?? "").slice(0, 20);
+      return `${idx}:type=${lm.type ?? "?"} hasQR=${!!lm.quickReply} body="${bodyPreview}"`;
+    }).join(" | ")}]`,
+  );
 
   // ── エンディング or クイックリプライ付与 ──
   if (phase.transitions === null) {

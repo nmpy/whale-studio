@@ -41,6 +41,7 @@ import {
   type LineWebhookBody, type LineEvent, type LineSender, type LineMessage, type KeywordMessageRecord,
 } from "@/lib/line";
 import { buildRuntimeState, matchTransition, applySetFlags, safeParseFlags, safeParseVariables, safeParseWaitingForInput, fetchPhaseWithIncludes, drainAutoSendableItems, type PhaseRow } from "@/lib/runtime";
+import { isFreeInputPrompt } from "@/lib/free-input";
 import { handleBeaconEvent, type LineBeaconEvent } from "@/lib/beacon";
 import { pushToLine as _pushToLine } from "@/lib/line";
 import { logEvent } from "@/lib/event-logger";
@@ -750,7 +751,7 @@ async function buildMessageChain(
   // セマンティクスを持つため、`first` が freeInputEnabled=true ならその時点で chain walk しない。
   // データ上 next_message_id が設定されていても、それは誤って付与された chain link (= 本来は
   // free_input_next_message_id に入れるべき遷移先) の可能性が高いので、warn log で可視化する。
-  if (first.freeInputEnabled === true) {
+  if (isFreeInputPrompt(first)) {
     if (first.nextMessageId) {
       console.warn(
         `[diag][chain] STOP at first — freeInputEnabled=true headId=${first.id.slice(0, 8)} ` +
@@ -801,7 +802,7 @@ async function buildMessageChain(
       // 自由入力受付メッセージに到達したら、この message を含めて chain walk を停止する。
       // この message の応答は free_input_next_message_id で別経路として送られる
       // (= waitingForInput をセットした上で、ユーザーの次入力でその message を送る仕様)。
-      if (next.freeInputEnabled === true) {
+      if (isFreeInputPrompt(next)) {
         if (next.nextMessageId) {
           console.warn(
             `[diag][chain] STOP at step=${i} — freeInputEnabled=true id=${next.id.slice(0, 8)} ` +
