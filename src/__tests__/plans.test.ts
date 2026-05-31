@@ -28,11 +28,11 @@ describe("PLAN_TIER / PLAN_LABELS / PLAN_TIER_ORDER", () => {
     expect(Object.keys(PLAN_TIER).sort()).toEqual(["basic", "plus", "pro", "standard"]);
   });
 
-  it("PLAN_LABELS は表示用名 (Basic/Standard/Plus/Pro) を返す", () => {
+  it("PLAN_LABELS は表示用名 (Basic/Standard/Plus/Pro Max) を返す", () => {
     expect(PLAN_LABELS.basic).toBe("Basic");
     expect(PLAN_LABELS.standard).toBe("Standard");
     expect(PLAN_LABELS.plus).toBe("Plus");
-    expect(PLAN_LABELS.pro).toBe("Pro");
+    expect(PLAN_LABELS.pro).toBe("Pro Max");
   });
 
   it("PLAN_TIER_ORDER は basic → standard → plus → pro の順", () => {
@@ -104,7 +104,7 @@ describe("PLAN_DESCRIPTIONS — 管理メニュー下部の説明文", () => {
     expect(PLAN_DESCRIPTIONS.basic).toContain("Basicプラン");
     expect(PLAN_DESCRIPTIONS.standard).toContain("Standardプラン");
     expect(PLAN_DESCRIPTIONS.plus).toContain("Plusプラン");
-    expect(PLAN_DESCRIPTIONS.pro).toContain("Proプラン");
+    expect(PLAN_DESCRIPTIONS.pro).toContain("Pro Maxプラン");
   });
 
   it("Pro の説明文は「すべて」を含む", () => {
@@ -235,20 +235,20 @@ describe("getPlanAccessState — UI のグレーアウト判定で使う", () =>
     expect(getPlanAccessState({ plan: "plus", featureKey: "destinations" }).allowed).toBe(true);
   });
 
-  it("Plus で location は plan_required + Pro 必要", () => {
+  it("Plus で location は plan_required + Pro Max 必要", () => {
     const s = getPlanAccessState({ plan: "plus", featureKey: "location" });
     expect(s.allowed).toBe(false);
     if (!s.allowed) {
-      expect(s.requiredPlanLabel).toBe("Pro");
-      expect(s.message).toContain("Pro");
+      expect(s.requiredPlanLabel).toBe("Pro Max");
+      expect(s.message).toContain("Pro Max");
     }
   });
 
-  it("Pro で location は allowed", () => {
+  it("Pro Max で location は allowed", () => {
     expect(getPlanAccessState({ plan: "pro", featureKey: "location" }).allowed).toBe(true);
   });
 
-  it("requiredPlanLabel は表示用 (Basic/Standard/Plus/Pro)", () => {
+  it("requiredPlanLabel は表示用 (Basic/Standard/Plus/Pro Max)", () => {
     expect(getPlanAccessState({ plan: "basic", featureKey: "audience" })).toMatchObject({
       requiredPlanLabel: "Standard",
     });
@@ -256,7 +256,7 @@ describe("getPlanAccessState — UI のグレーアウト判定で使う", () =>
       requiredPlanLabel: "Plus",
     });
     expect(getPlanAccessState({ plan: "basic", featureKey: "location" })).toMatchObject({
-      requiredPlanLabel: "Pro",
+      requiredPlanLabel: "Pro Max",
     });
   });
 });

@@ -78,7 +78,7 @@ export const PLAN_LABELS: Record<PlanTier, string> = {
   basic:    "Basic",
   standard: "Standard",
   plus:     "Plus",
-  pro:      "Pro",
+  pro:      "Pro Max",
 };
 
 // ────────────────────────────────────────────────
@@ -175,9 +175,9 @@ export const PLAN_DESCRIPTIONS: Record<PlanTier, string> = {
     "LIFF表示設定、遷移先URL設定、ロケーションは上位プランで利用できます。",
   plus:
     "Plusプランでは、作品情報・キャラクター・メッセージ・シナリオフロー・オーディエンス・LIFF表示設定・遷移先URL設定をご利用いただけます。" +
-    "ロケーション機能はProプランで利用できます。",
+    "ロケーション機能はPro Maxプランで利用できます。",
   pro:
-    "Proプランでは、すべての管理機能をご利用いただけます。",
+    "Pro Maxプランでは、すべての管理機能をご利用いただけます。",
 };
 
 // ────────────────────────────────────────────────

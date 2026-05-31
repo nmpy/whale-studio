@@ -188,16 +188,16 @@ describe("requirePlanFeature — feature × plan の判定", () => {
     expect(result.ok).toBe(true);
   });
 
-  it("Plus で location → 403 PLAN_REQUIRED (Pro 必要)", async () => {
+  it("Plus で location → 403 PLAN_REQUIRED (Pro Max 必要)", async () => {
     const result = await tryAccess("plus", FEATURE.location);
     expect(result.ok).toBe(false);
     if (!result.ok) {
       const body = await result.response.json();
-      expect(body.error.details.requiredPlanLabel).toBe("Pro");
+      expect(body.error.details.requiredPlanLabel).toBe("Pro Max");
     }
   });
 
-  it("Pro (= editor) で location → allowed", async () => {
+  it("Pro Max (= editor) で location → allowed", async () => {
     const result = await tryAccess("editor", FEATURE.location);
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.plan).toBe("pro");
@@ -210,7 +210,7 @@ describe("requirePlanFeature — feature × plan の判定", () => {
     expect(result.ok).toBe(false);
     if (!result.ok) {
       const body = await result.response.json();
-      expect(body.error.details.requiredPlanLabel).toBe("Pro");
+      expect(body.error.details.requiredPlanLabel).toBe("Pro Max");
     }
   });
 

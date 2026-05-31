@@ -167,7 +167,7 @@ const PERSONAL_PLAN_CARDS: readonly PersonalPlanCard[] = [
   },
   {
     tier:    "pro",
-    label:   "Pro",
+    label:   "Pro Max",
     tagline: "GPS・QR・現地チェックインなど、現場連動の体験まで運用したい方向け",
     price:   "準備中",
     priceUnit: "",
