@@ -229,13 +229,18 @@ export default function OaListPage() {
 
   const actAsOwner = isPlatformOwner && effectiveRole === "owner";
 
-  // 「+ アカウントを追加」(top-right) を表示する条件:
-  //   - Platform owner (= サービス全体の管理者) は常に追加できる
-  //   - もしくは既に何かしらの OA で owner ロールを持っているユーザー (= 既存オーナーが追加可)
-  // 招待された editor/viewer/admin (= owner ではない) や、まだ memberships がない fresh user は
-  // top-right ボタンを見せない。fresh user は empty state の「+ 最初のアカウントを追加する」
-  // から bootstrap できる (= 別 path)。
-  const canCreateOa = isPlatformOwner || items.some((oa) => oa.my_role === "owner");
+  // 「+ アカウントを追加」を表示する条件:
+  //   - Platform owner (= サービス全体の運営者) のみ
+  //
+  // 一般ユーザー (workspace owner / admin / editor / viewer / fresh user) は、
+  // 自分で LINE 公式アカウント / OA を追加できない方針。
+  //
+  // 通常 fresh user は onboarding-guard (`/oas/layout.tsx`) で `/onboarding/*` へ
+  // redirect されるため `/oas` に到達しない。`/oas` に items=0 で到達する稀ケースに
+  // 備えて、empty state も canCreateOa で「審査中案内 vs bootstrap CTA」を分岐する。
+  //
+  // OA の新規追加は admin 承認 (`/admin/oa-onboarding`) 経由でのみ可能。
+  const canCreateOa = isPlatformOwner;
 
   async function load(p: number) {
     setLoading(true);
@@ -348,19 +353,39 @@ export default function OaListPage() {
       {/* ── 一覧 / スケルトン / 空 ── */}
       {items.length === 0 && !loading ? (
         <div className="rounded-card border border-line bg-surface p-8 text-center shadow-sm">
-          <div className="text-[40px] leading-none">📡</div>
-          <p className="mt-3 text-[16px] font-bold text-ink">アカウントが未登録です</p>
-          <p className="mx-auto mt-2 max-w-[360px] text-[13px] leading-[1.75] text-ink-2">
-            まずLINE公式アカウントを登録してください。
-            <br />
-            登録後、アカウントに紐づく作品を追加できます。
-          </p>
-          <Link
-            href="/oas/new"
-            className={buttonClass({ variant: "primary", size: "md", className: "mt-4 !text-white hover:!text-white" })}
-          >
-            ＋ 最初のアカウントを追加する
-          </Link>
+          {canCreateOa ? (
+            // Platform owner で items=0 = まだ何も追加していない管理者
+            <>
+              <div className="text-[40px] leading-none">📡</div>
+              <p className="mt-3 text-[16px] font-bold text-ink">アカウントが未登録です</p>
+              <p className="mx-auto mt-2 max-w-[360px] text-[13px] leading-[1.75] text-ink-2">
+                まずLINE公式アカウントを登録してください。
+                <br />
+                登録後、アカウントに紐づく作品を追加できます。
+              </p>
+              <Link
+                href="/oas/new"
+                className={buttonClass({ variant: "primary", size: "md", className: "mt-4 !text-white hover:!text-white" })}
+              >
+                ＋ 最初のアカウントを追加する
+              </Link>
+            </>
+          ) : (
+            // 一般ユーザーで items=0 = 通常は onboarding-guard で redirect されるが、
+            // 稀に到達した場合の defensive 表示。管理者承認待ちを伝える。
+            <>
+              <div className="text-[40px] leading-none">⏳</div>
+              <p className="mt-3 text-[16px] font-bold text-ink">アカウント審査中です</p>
+              <p className="mx-auto mt-2 max-w-[420px] text-[13px] leading-[1.75] text-ink-2">
+                Whale Studio の利用には、管理者によるLINE公式アカウント連携の承認が必要です。
+                <br />
+                承認されると、この画面にアカウント一覧が表示されます。
+              </p>
+              <p className="mx-auto mt-3 max-w-[420px] text-[12px] leading-[1.6] text-ink-3">
+                お急ぎの場合は管理者にお問い合わせください。
+              </p>
+            </>
+          )}
         </div>
       ) : loading ? (
         <SkeletonList />

@@ -176,36 +176,29 @@ export const POST = withAuth(async (req, _ctx, user) => {
       });
     }
 
-    // OA 作成権限チェック (= 招待された editor/viewer/admin が直接 API を叩いて新 OA を作るのを防ぐ)
-    //   許可: platform owner / 既存 workspace owner / fresh user (memberships ゼロ = bootstrap path)
-    //   拒否: memberships あり & owner なし = 他人の OA に招待されたメンバー
-    // フロントの canCreateOa と同じ semantics で defense-in-depth。
+    // OA 作成権限チェック (PR #166 で更にタイトに)
+    //   許可: platform owner / BYPASS/DEV
+    //   拒否: それ以外全員 (= fresh user / 既存 workspace owner / admin / editor / viewer)
+    //
+    // 方針: Whale Studio では、ユーザーが自分で LINE 公式アカウント / OA を追加でき
+    // ないようにする。OA の新規追加は admin 承認フロー (`/admin/oa-onboarding`) 経由でのみ。
+    //
+    // この endpoint を直接呼べるのは platform owner のみ。一般ユーザーは onboarding
+    // 申請 → 運営承認 で OA を取得する経路。
     if (!isPlatformOwner(user.id) && !isBypass) {
-      const memberships = await prisma.workspaceMember.findMany({
-        where:  { userId: user.id },
-        select: { role: true, status: true },
-      });
-      if (memberships.length > 0) {
-        const hasActiveOwner = memberships.some(
-          (m) => m.role === "owner" && m.status === "active",
-        );
-        if (!hasActiveOwner) {
-          console.warn(
-            `[POST /api/oas] 拒否: invited member が OA 作成を試行 userId=${user.id.slice(0, 8)}… memberships=${memberships.length}`,
-          );
-          return NextResponse.json(
-            {
-              success: false,
-              error: {
-                code:    "OA_CREATE_DENIED",
-                message: "OA を新規追加するにはオーナー権限が必要です",
-              },
-            },
-            { status: 403 },
-          );
-        }
-      }
-      // memberships ゼロ (fresh user) or owner ロールあり → 許可
+      console.warn(
+        `[POST /api/oas] 拒否: non-platform-owner が OA 作成を試行 userId=${user.id.slice(0, 8)}…`,
+      );
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code:    "OA_CREATE_DENIED",
+            message: "OA を新規追加するには運営者権限が必要です。管理者にお問い合わせください。",
+          },
+        },
+        { status: 403 },
+      );
     }
 
     const body = await req.json();
