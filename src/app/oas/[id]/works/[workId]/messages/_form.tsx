@@ -2300,38 +2300,9 @@ function TimingConfigSection<T extends TimingFormFields>({
   /** 追加 (2 通目以降) のメッセージ用なら true。既読遅延の制約注記を出すために使う。 */
   isAdditional?: boolean;
 }) {
-  const [open, setOpen] = useState(
-    // 既に値が設定されていれば展開して表示
-    !!(form.read_receipt_mode || form.typing_enabled || form.loading_enabled),
-  );
-
-  const sectionStyle = {
-    marginTop: 16,
-    border: "1px solid #e5e7eb",
-    borderRadius: 8,
-    background: "#fafbfc",
-    overflow: "hidden" as const,
-  };
-
-  const headerStyle = {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    padding: "8px 12px",
-    cursor: "pointer" as const,
-    userSelect: "none" as const,
-    fontSize: 13,
-    fontWeight: 500,
-    color: "#4b5563",
-    background: open ? "#f3f4f6" : "transparent",
-  };
-
-  const bodyStyle = {
-    padding: "12px 12px 16px",
-    display: "flex",
-    flexDirection: "column" as const,
-    gap: 12,
-  };
+  // UI 統一: 自由入力受付セクションと同じ SectionAccordion をベースに使う。
+  // 値が既に設定されていれば初期展開する。
+  const hasValues = !!(form.read_receipt_mode || form.typing_enabled || form.loading_enabled);
 
   const miniLabel = {
     display: "block",
@@ -2353,15 +2324,19 @@ function TimingConfigSection<T extends TimingFormFields>({
   };
 
   return (
-    <div style={sectionStyle}>
-      <div style={headerStyle} onClick={() => setOpen(!open)}>
-        <span>{open ? "▼" : "▶"} 演出設定（既読・送信前の間・「入力中...」表示）</span>
-        {!open && (form.read_receipt_mode || form.typing_enabled || form.loading_enabled) && (
-          <span style={{ fontSize: 11, color: "#3b82f6" }}>設定あり</span>
-        )}
-      </div>
-      {open && (
-        <div style={bodyStyle}>
+    <SectionAccordion
+      title="演出設定"
+      optional
+      description="既読タイミング・送信前の待機時間・「入力中…」表示などを設定できます。"
+      defaultOpen={hasValues}
+      badge={hasValues ? (
+        <span style={{
+          fontSize: 10, fontWeight: 700, background: "#dbeafe", color: "#1d4ed8",
+          borderRadius: 4, padding: "1px 6px",
+        }}>設定あり</span>
+      ) : undefined}
+    >
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           {/* ── プリセット ── */}
           <div style={{ marginBottom: 4 }}>
             <label style={miniLabel}>プリセットから適用</label>
@@ -2543,9 +2518,8 @@ function TimingConfigSection<T extends TimingFormFields>({
             msgConfig={formToTimingConfig(form)}
             botReply={form.body || "返信テキスト"}
           />
-        </div>
-      )}
-    </div>
+      </div>
+    </SectionAccordion>
   );
 }
 
