@@ -444,7 +444,16 @@ export const oaApi = {
 // ────────────────────────────────────────────────
 
 export interface WorkListItem extends Work {
-  _count: { characters: number; phases: number; messages: number; userProgress: number };
+  _count: {
+    characters: number;
+    phases:     number;
+    messages:   number;
+    /**
+     * @deprecated use `progress_stats.total` instead. Synthesized server-side for
+     * backward compatibility — Prisma の per-work サブクエリは削除済み（API レスポンス互換のみ維持）。
+     */
+    userProgress: number;
+  };
   /**
    * start フェーズの開始トリガーキーワード（未設定時 null）。
    * 将来的に複数トリガーへ拡張する場合は string[] への変更を検討する。
@@ -452,7 +461,7 @@ export interface WorkListItem extends Work {
   start_trigger: string | null;
   /**
    * プレイヤー進行情報（isPreview=false のみ集計）。
-   * - total:       総プレイヤー数（= _count.userProgress と一致）
+   * - total:       総プレイヤー数（= _count.userProgress と同値）
    * - completed:   エンディング到達済み
    * - in_progress: 未完了（total - completed）
    */

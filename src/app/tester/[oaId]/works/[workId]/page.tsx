@@ -181,7 +181,7 @@ export default function TesterWorkHubPage() {
           boxShadow: "var(--shadow-xs)",
         }}>
           {[
-            { label: "プレイヤー",   value: (work._count.userProgress ?? 0).toLocaleString(), highlight: (work._count.userProgress ?? 0) > 0 },
+            { label: "プレイヤー",   value: (work.progress_stats?.total ?? 0).toLocaleString(), highlight: (work.progress_stats?.total ?? 0) > 0 },
             { label: "キャラクター", value: work._count.characters, highlight: false },
             { label: "フェーズ",     value: work._count.phases,     highlight: false },
             { label: "メッセージ",   value: work._count.messages,   highlight: false },

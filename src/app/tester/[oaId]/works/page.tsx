@@ -122,7 +122,7 @@ export default function TesterWorkListPage() {
           {[
             { label: "総作品数",     value: works.length,                                                                       color: "var(--text-primary)" },
             { label: "公開中",       value: activeCount,                                                                        color: "var(--color-success)" },
-            { label: "総プレイヤー数", value: works.reduce((s, w) => s + (w._count.userProgress ?? 0), 0).toLocaleString(),     color: "var(--color-info)" },
+            { label: "総プレイヤー数", value: works.reduce((s, w) => s + (w.progress_stats?.total ?? 0), 0).toLocaleString(), color: "var(--color-info)" },
           ].map((s) => (
             <div key={s.label} style={{ display: "flex", alignItems: "center", gap: 6, paddingRight: 18, borderRight: "1px solid var(--border-light)" }}>
               <span style={{ fontSize: 18, fontWeight: 800, color: s.color }}>{s.value}</span>

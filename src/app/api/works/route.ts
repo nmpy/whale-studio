@@ -97,6 +97,11 @@ export const GET = withAuth(async (req, _ctx, user) =>
     });
     if (!check.ok) return check.response;
 
+    // _count.userProgress { where: { isPreview: false } } は Work 件数分の per-work
+     // サブクエリになる（本番で 1185ms）。同じ集計は後段の progressGroups（groupBy）で
+     // 既に取得しているため、Prisma include からは外して per-work サブクエリを削減する。
+     // ただし API レスポンスからは _count.userProgress を消さず、shape 側で
+     // progress_stats.total から合成して返す（後方互換維持）。
     const works = await withTiming("api/works:db:list", () =>
       prisma.work.findMany({
         where: {
@@ -107,11 +112,9 @@ export const GET = withAuth(async (req, _ctx, user) =>
         include: {
           _count: {
             select: {
-              characters:   true,
-              phases:       true,
-              messages:     true,
-              // preview データを除外してプレイヤー実数を返す
-              userProgress: { where: { isPreview: false } },
+              characters: true,
+              phases:     true,
+              messages:   true,
             },
           },
           // 開始トリガーを持つ start フェーズを1件取得。
@@ -153,14 +156,21 @@ export const GET = withAuth(async (req, _ctx, user) =>
 
     return await withTiming("api/works:shape", async () => ok(
       works.map((w) => {
-        const ps = progressMap[w.id] ?? { completed: 0, in_progress: 0 };
+        const ps    = progressMap[w.id] ?? { completed: 0, in_progress: 0 };
+        const total = ps.completed + ps.in_progress;
         return {
           ...toResponse(w),
-          _count:        w._count,
+          // _count.userProgress は Prisma include から外したが、API レスポンス互換のため
+          // ここで progress_stats.total と同値の値を合成して返す。
+          // 既存 client は _count.userProgress を引き続き読めるが、新規は progress_stats.total を使う。
+          _count: {
+            ...w._count,
+            userProgress: total,
+          },
           // start フェーズが未作成の場合は null
           start_trigger: w.phases[0]?.startTrigger ?? null,
           progress_stats: {
-            total:       (ps.completed + ps.in_progress),
+            total,
             completed:   ps.completed,
             in_progress: ps.in_progress,
           },

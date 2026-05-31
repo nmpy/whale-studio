@@ -392,7 +392,7 @@ export default function WorkHubPage() {
         source:            "work_hub_primary_actions",
         status:            work?.publish_status              ?? "draft",
         has_start_trigger: !!work?.start_trigger,
-        players:           work?._count.userProgress         ?? 0,
+        players:           work?.progress_stats?.total       ?? 0,
         completed:         work?.progress_stats?.completed   ?? 0,
         in_progress:       work?.progress_stats?.in_progress ?? 0,
         work_id:           workId,
@@ -406,7 +406,7 @@ export default function WorkHubPage() {
   const resolvedActions = resolveActions({
     status:     work?.publish_status         ?? "draft",
     hasTrigger: !!work?.start_trigger,
-    players:    work?._count.userProgress    ?? 0,
+    players:    work?.progress_stats?.total  ?? 0,
     inProgress: work?.progress_stats?.in_progress ?? 0,
     completed:  work?.progress_stats?.completed   ?? 0,
   });
@@ -547,7 +547,7 @@ export default function WorkHubPage() {
           {/* 上段: 構成要素カウント */}
           <div className="flex flex-wrap gap-3 p-3.5 sm:gap-2.5 sm:px-5 sm:py-4">
             {[
-              { label: "プレイヤー",   value: (work._count.userProgress ?? 0).toLocaleString(), highlight: (work._count.userProgress ?? 0) > 0 },
+              { label: "プレイヤー",   value: (work.progress_stats?.total ?? 0).toLocaleString(), highlight: (work.progress_stats?.total ?? 0) > 0 },
               { label: "キャラクター", value: work._count.characters.toLocaleString(), highlight: false },
               { label: "フェーズ",     value: phaseCount.toLocaleString(),             highlight: false },
               { label: "メッセージ",   value: work._count.messages.toLocaleString(),   highlight: false },
@@ -574,7 +574,7 @@ export default function WorkHubPage() {
           </div>
 
           {/* 下段: 進行サマリー — プレイヤーが1人以上いる場合のみ表示 */}
-          {(work._count.userProgress ?? 0) > 0 && (() => {
+          {(work.progress_stats?.total ?? 0) > 0 && (() => {
             const completed  = work.progress_stats?.completed   ?? 0;
             const inProgress = work.progress_stats?.in_progress ?? 0;
             const needsCheck = inProgress > 0 && completed === 0;

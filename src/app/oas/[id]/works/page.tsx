@@ -325,7 +325,7 @@ export default function WorkListPage() {
             { label: "公開中", value: activeCount.toLocaleString(),    tone: "brand" },
             {
               label: "総プレイヤー数",
-              value: works.reduce((s, w) => s + (w._count.userProgress ?? 0), 0).toLocaleString(),
+              value: works.reduce((s, w) => s + (w.progress_stats?.total ?? 0), 0).toLocaleString(),
               tone:  "sky",
             },
           ].map((s, i, arr) => (

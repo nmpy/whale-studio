@@ -52,7 +52,7 @@ function SummaryBar({ items, worksMap }: { items: OaListItem[]; worksMap: Record
   const activeCount  = items.filter((o) => o.publish_status === "active").length;
   const totalWorks   = Object.values(worksMap).reduce((s, ws) => s + ws.length, 0);
   const totalPlayers = Object.values(worksMap).reduce(
-    (s, ws) => s + ws.reduce((ss, w) => ss + (w._count.userProgress ?? 0), 0), 0,
+    (s, ws) => s + ws.reduce((ss, w) => ss + (w.progress_stats?.total ?? 0), 0), 0,
   );
   const stats = [
     { label: "アカウント数",   value: items.length.toString() },
@@ -281,7 +281,7 @@ export default function OaListPage() {
   }
 
   function totalPlayers(oaId: string): number {
-    return (worksMap[oaId] ?? []).reduce((sum, w) => sum + (w._count.userProgress ?? 0), 0);
+    return (worksMap[oaId] ?? []).reduce((sum, w) => sum + (w.progress_stats?.total ?? 0), 0);
   }
 
   return (
