@@ -10,6 +10,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getServerUser } from "@/lib/supabase/server";
 import { CURRENT_TERMS_VERSION } from "@/lib/constants/terms";
+import { isPlatformOwner } from "@/lib/platform-admin";
 
 export type OnboardingRedirect =
   | { kind: "ok" }
@@ -23,12 +24,22 @@ export type OnboardingRedirect =
  *   - `{ kind: "redirect", to }`    指定パスへリダイレクト
  */
 export async function getOnboardingState(userId: string): Promise<OnboardingRedirect> {
-  // 1. 利用規約同意チェック
+  // 1. 利用規約同意チェック (platform owner にも適用 = 法的に必須)
   const terms = await prisma.termsAcceptance.findUnique({
     where: { userId_termsVersion: { userId, termsVersion: CURRENT_TERMS_VERSION } },
   });
   if (!terms) {
     return { kind: "redirect", to: "/onboarding/terms" };
+  }
+
+  // 1.5. (PR #166) Platform owner / 運営者は terms 同意後は無条件通過。
+  //   理由: OA の新規追加は platform owner のみ許可される仕様 (`/oas` の
+  //   「+ アカウントを追加」ボタンと `/api/oas` POST 参照) のため、
+  //   memberships=0 の platform owner も `/oas` に到達できる必要がある。
+  //   この bypass がないと onboarding-guard で `/onboarding/line-oa` へ
+  //   redirect され、platform owner が操作不能になる。
+  if (isPlatformOwner(userId)) {
+    return { kind: "ok" };
   }
 
   // 2. 既に OA を所有しているユーザー（= 既存ユーザー or 承認済み）は通過
