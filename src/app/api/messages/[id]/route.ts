@@ -309,29 +309,6 @@ export const PATCH = withAuth<{ id: string }>(async (req, { params }, user) => {
       include: MESSAGE_INCLUDE,
     });
 
-    // [diag] PATCH で実際に payload に含まれて DB へ届いた field 一覧と、
-    // freeInputEnabled / triggerKeyword / nextMessageId の前後値を可視化する。
-    // 「CMS でトグルを切り替えたのに反映されない」事象を log で切り分けるための診断。
-    // PII / token / body は出さない (= field name と boolean / id 8 文字のみ)。
-    try {
-      const dataKeys = Object.keys(data as Record<string, unknown>)
-        .filter((k) => (data as Record<string, unknown>)[k] !== undefined);
-      const sentFreeInput = (data as { free_input_enabled?: unknown }).free_input_enabled;
-      console.log(
-        `[diag][patch] messageId=${params.id.slice(0, 8)}`,
-        `keys=[${dataKeys.join(",")}]`,
-        `sent.free_input_enabled=${sentFreeInput === undefined ? "(absent)" : String(sentFreeInput)}`,
-        `before.freeInputEnabled=${existing.freeInputEnabled}`,
-        `after.freeInputEnabled=${updated.freeInputEnabled}`,
-        `before.triggerKeyword=${existing.triggerKeyword === null ? "null" : `"${existing.triggerKeyword.slice(0, 30)}"`}`,
-        `after.triggerKeyword=${updated.triggerKeyword === null ? "null" : `"${updated.triggerKeyword.slice(0, 30)}"`}`,
-        `before.nextMessageId=${existing.nextMessageId?.slice(0, 8) ?? "null"}`,
-        `after.nextMessageId=${updated.nextMessageId?.slice(0, 8) ?? "null"}`,
-      );
-    } catch (e) {
-      console.warn(`[diag][patch] log error`, e);
-    }
-
     // キャッシュ無効化（フェーズ内容・グローバルキーワードが変化する可能性があるため両方）
     // phaseId が変わった場合: 旧フェーズも新フェーズも無効化する
     const prevPhaseId = existing.phaseId;

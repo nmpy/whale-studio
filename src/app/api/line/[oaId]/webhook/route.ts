@@ -661,14 +661,7 @@ async function applyFreeInputPostEffect(args: {
     orderBy: { sortOrder: "desc" },
     select: { id: true, freeInputVariableKey: true, freeInputNextMessageId: true },
   });
-  if (!freeInputMsg) {
-    console.log(
-      `[diag][free-input] applyFreeInputPostEffect: no freeInputEnabled=true in sent`,
-      `userId=${args.userId.slice(0, 8)}`,
-      `sentIds=[${args.sentMessageIds.map((id) => id.slice(0, 8)).join(",")}]`,
-    );
-    return;
-  }
+  if (!freeInputMsg) return;
   // variableKey は任意 (null = ログ用途・差し込み不要)。message へ進むだけで OK。
 
   const waitingJson = JSON.stringify({
@@ -751,9 +744,6 @@ async function buildMessageChain(
 ): Promise<{ messages: import("@/lib/line").LineMessage[]; chainIds: string[] }> {
   const records: (typeof first & { freeInputEnabled?: boolean | null })[] = [first];
 
-  // [diag] チェーン展開の入口を記録 (next が無ければ chain=単発)
-  console.log(`[diag][chain] start head=${first.id.slice(0, 8)} next=${first.nextMessageId?.slice(0, 8) ?? "null"} hasQR=${!!first.quickReplies} sort=${first.sortOrder} freeInputEnabled=${first.freeInputEnabled === true} body="${(first.body ?? "").slice(0, 20)}"`);
-
   // 自由入力受付メッセージは「そこで一旦停止して waitingForInput をセットする」
   // セマンティクスを持つため、`first` が freeInputEnabled=true ならその時点で chain walk しない。
   // データ上 next_message_id が設定されていても、それは誤って付与された chain link (= 本来は
@@ -830,14 +820,6 @@ async function buildMessageChain(
       current = next;
     }
   }
-  // [diag] 展開後の各 record の詳細を出す (= LINE 送信直前の中間状態を可視化)。
-  // PII は出さない: body は先頭 20 文字 / id は先頭 8 文字。
-  console.log(
-    `[diag][chain] expanded count=${records.length} chain=[${
-      records.map((r, idx) => `${idx}:id=${r.id.slice(0, 8)} sort=${r.sortOrder} next=${r.nextMessageId?.slice(0, 8) ?? "null"} type=${r.messageType} hasQR=${!!r.quickReplies} body="${(r.body ?? "").slice(0, 20)}"`).join(" | ")
-    }]`,
-  );
-
   // KeywordMessageRecord 互換形式に変換（nextMessageId なし・triggerKeyword なし）
   // Phase 2c hotfix v4: r.timing が既に集約されていれば優先する (= matchKeywordsInMemory 経由)。
   // raw columns しか無い場合は buildKeywordTiming(r) で再計算 (= 再帰 findUnique 経由)。
@@ -1696,40 +1678,6 @@ async function handleTextEvent({
       if (progress.currentPhaseId) {
         const earlyPhase = await getCachedPhase(progress.currentPhaseId);
         const earlyQrMatched = earlyPhase ? matchQrItem(earlyPhase, text) : null;
-        // [diag] QR pre-check の入力と結果を毎回 print (matched / null 両方)。
-        // matched=null になる原因 (= currentPhase に QR が無い / label 不一致 / response/target 未設定) を実機で切り分け可能に。
-        // PII 安全: text は最初 30 文字、phase id 8 文字。
-        try {
-          const candidates = (earlyPhase?.messages ?? [])
-            .flatMap((m) => {
-              if (!m.quickReplies) return [];
-              try {
-                const parsed = JSON.parse(m.quickReplies);
-                if (!Array.isArray(parsed)) return [];
-                return (parsed as import("@/types").QuickReplyItem[]).map((it) => ({
-                  label: it.label,
-                  value: it.value ?? null,
-                  action: it.action ?? null,
-                  enabled: it.enabled !== false,
-                  hasResp: !!it.response_message_id,
-                  hasTargetMsg: !!it.target_message_id,
-                  hasTargetPhase: !!it.target_phase_id,
-                }));
-              } catch { return []; }
-            });
-          console.log(
-            `[diag][free-input][qr-precheck]`,
-            `userId=${userId.slice(0, 8)}`,
-            `currentPhaseId=${progress.currentPhaseId.slice(0, 8)}`,
-            `inputText="${text.slice(0, 30)}"`,
-            `phaseMsgs=${earlyPhase?.messages.length ?? 0}`,
-            `qrCandidates=${candidates.length}`,
-            `matched=${earlyQrMatched !== null}`,
-            `candidates=[${candidates.map((c) => `label="${c.label.slice(0, 16)}" val="${(c.value ?? "").slice(0, 16)}" act=${c.action} en=${c.enabled} resp=${c.hasResp} tgM=${c.hasTargetMsg} tgP=${c.hasTargetPhase}`).join(" | ")}]`,
-          );
-        } catch (e) {
-          console.warn(`[diag][free-input][qr-precheck] log error`, e);
-        }
         if (earlyQrMatched !== null) {
           console.log(
             `[diag][qr] free_input skip — QR tap detected`,
@@ -1822,17 +1770,6 @@ async function handleTextEvent({
           };
           const { messages: chain, chainIds } = await buildMessageChain(nextMsg, replyVars);
           if (chain.length > 0) {
-            // [diag] free_input 後の最終 payload を可視化 (= sort_order=3 の本文が
-            // 期待外に挿入されていないか追跡するため)。body は先頭 20 文字、id は先頭 8 文字のみ。
-            console.log(
-              `[diag][send][free_input_next] count=${chain.length} chainIds=[${chainIds.map((id) => id.slice(0, 8)).join(",")}] payload=[${
-                chain.map((m, idx) => {
-                  const lm = m as { type?: string; text?: string; altText?: string; quickReply?: unknown };
-                  const bodyPreview = (lm.text ?? lm.altText ?? "").slice(0, 20);
-                  return `${idx}:type=${lm.type ?? "?"} hasQR=${!!lm.quickReply} body="${bodyPreview}"`;
-                }).join(" | ")
-              }]`,
-            );
             // Phase 2c hotfix: chain (= length > 1) でも per-message timing が効くよう
             // replyWithLagToLine に統一。
             await replyWithLagToLine(replyToken, chain, userId, token);
@@ -1858,19 +1795,6 @@ async function handleTextEvent({
       }
 
       // nextMessage 未設定 / 取得失敗時のフォールバック: 静かに ack を返す
-      console.warn(
-        `[diag][free-input] fallback "ありがとうございます。" 送信`,
-        `userId=${userId.slice(0, 8)}`,
-        `currentPhaseId=${progress.currentPhaseId?.slice(0, 8) ?? "null"}`,
-        `promptMessageId=${waiting.messageId.slice(0, 8)}`,
-        `waitingNextMessageId=${waiting.nextMessageId?.slice(0, 8) ?? "null"}`,
-        `inputText="${text.slice(0, 30)}"`,
-        `理由="${
-          !waiting.nextMessageId
-            ? "nextMessageId が waiting に未設定"
-            : "上の warn で詳細 (nextMessage 未発見 or 変換失敗)"
-        }"`,
-      );
       await replyToLine(
         replyToken,
         [{ type: "text", text: "ありがとうございます。" }],
@@ -2129,19 +2053,9 @@ async function handleTextEvent({
           select: MSG_SELECT,
         });
         if (respMsg) {
-          console.log(
-            `[diag][qr] response_message fetched`,
-            `id=${respMsg.id.slice(0, 8)}`,
-            `type=${respMsg.messageType}`,
-            `next=${respMsg.nextMessageId?.slice(0, 8) ?? "null"}`,
-            `body="${(respMsg.body ?? "").slice(0, 20)}"`,
-            `freeInputEnabled=${respMsg.freeInputEnabled === true}`,
-          );
           const { messages: chain, chainIds } = await buildMessageChain(respMsg, vars);
           qrMsgs.push(...chain);
           qrSentIds.push(...chainIds);
-        } else {
-          console.warn(`[diag][qr] response_message not found or inactive id=${matchedQrItem.response_message_id.slice(0, 8)}`);
         }
       } catch (e) {
         console.warn("[Webhook] qrItem response_message fetch error:", e);
@@ -2156,35 +2070,14 @@ async function handleTextEvent({
           select: MSG_SELECT,
         });
         if (targetMsg) {
-          console.log(
-            `[diag][qr] target_message fetched`,
-            `id=${targetMsg.id.slice(0, 8)}`,
-            `type=${targetMsg.messageType}`,
-            `next=${targetMsg.nextMessageId?.slice(0, 8) ?? "null"}`,
-            `body="${(targetMsg.body ?? "").slice(0, 20)}"`,
-            `freeInputEnabled=${targetMsg.freeInputEnabled === true}`,
-          );
-          if (targetMsg.messageType === "image") {
-            console.log(
-              `[diag][image-action] target_message image`,
-              `id=${targetMsg.id.slice(0, 8)}`,
-              `actionType=${targetMsg.imageActionType ?? "none"}`,
-              `nextMessageId=${targetMsg.nextMessageId?.slice(0, 8) ?? "null"}`,
-            );
-          }
           const { messages: chain, chainIds } = await buildMessageChain(targetMsg, vars);
           qrMsgs.push(...chain);
           qrSentIds.push(...chainIds);
-        } else {
-          console.warn(`[diag][qr] target_message not found or inactive id=${matchedQrItem.target_message_id.slice(0, 8)}`);
         }
       } catch (e) {
         console.warn("[Webhook] qrItem target_message fetch error:", e);
       }
       if (qrMsgs.length > 0) {
-        console.log(
-          `[diag][qr] payload count=${qrMsgs.length} ids=[${qrSentIds.map((id) => id.slice(0, 8)).join(",")}]`,
-        );
         const tReplyQrMsg = Date.now();
         // Phase 2c hotfix: chain (= length > 1) でも per-message timing が効くよう、
         // replyWithLagToLine 経路に統一する。1 通でも replyWithLagToLine は内部で
@@ -2244,9 +2137,6 @@ async function handleTextEvent({
 
     // ── response_message のみ（遷移先なし）──
     if (qrMsgs.length > 0) {
-      console.log(
-        `[diag][qr] payload count=${qrMsgs.length} ids=[${qrSentIds.map((id) => id.slice(0, 8)).join(",")}] path=response_only`,
-      );
       const tReplyQrResp = Date.now();
       // Phase 2c hotfix: chain 内 per-message timing を効かせるため replyWithLagToLine に変更
       await replyWithLagToLine(replyToken, qrMsgs.slice(0, 5), userId, token);
@@ -2271,17 +2161,6 @@ async function handleTextEvent({
       `messages=${keywordMatched.length}件`,
       keywordMatched.map((m) => `id=${m.id.slice(0, 8)} kw="${m.triggerKeyword}" body="${(m.body ?? "").slice(0, 20)}"`).join(" / ")
     );
-    // [diag] matchKeywordsInMemory が返した各 match の詳細を 1 行で可視化。
-    //   freeInputEnabled / nextMessageId / messageType を含め、想定外の freeInput タグ付け
-    //   や nextMessageId 未設定を実機 log で発見できるようにする。
-    console.log(
-      `[diag][kw] matchedKeywords detail=[${
-        keywordMatched.map((m) => {
-          const fie = (m as { freeInputEnabled?: boolean | null }).freeInputEnabled === true;
-          return `id=${m.id.slice(0, 8)} kw="${m.triggerKeyword}" type=${m.messageType} next=${m.nextMessageId?.slice(0, 8) ?? "null"} freeInputEnabled=${fie} body="${(m.body ?? "").slice(0, 30)}"`;
-        }).join(" | ")
-      }]`,
-    );
     // nextMessageId チェーンを展開してすべてのメッセージをまとめて返信する
     const chainedMsgs: import("@/lib/line").LineMessage[] = [];
     const chainedIds: string[] = [];
@@ -2293,9 +2172,6 @@ async function handleTextEvent({
     const msgs = chainedMsgs.length > 0 ? chainedMsgs : buildKeywordMessages(keywordMatched, systemSender, vars);
     // 送信 ID: チェーンが成立していればチェーン全体、そうでなければ直接マッチ ID
     const sentIdsForFreeInput = chainedMsgs.length > 0 ? chainedIds : keywordMatched.map((m) => m.id);
-    // [diag] 送信直前の payload 内訳
-    const lastMsg = msgs[msgs.length - 1] as { type?: string; quickReply?: unknown } | undefined;
-    console.log(`[diag][kw] payload count=${msgs.length} chainIds=[${chainedIds.map((id) => id.slice(0, 8)).join(",")}] lastType=${lastMsg?.type ?? "none"} lastHasQR=${!!lastMsg?.quickReply}`);
     if (msgs.length > 0) {
       const tReplyKw = Date.now();
       // Phase 2c hotfix: chain (= length > 1) で per-message timing が効くよう replyWithLagToLine に統一
