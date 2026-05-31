@@ -35,21 +35,29 @@ export const GET = withAuth(async (req, _ctx, user) => {
     // それ以外は workspace_members に登録済みの OA のみ返す
     const showAll = isPlatformOwner(user.id);
 
-    // メンバーシップでフィルタ
+    // メンバーシップでフィルタ。user_id ベースで WorkspaceMember を取得し、
+    // さらに owner_key 一致 OA も補完（workspace_members 行が無くても owner と扱う rbac 方針に揃える）。
+    // email NULL でも user_id 一致でメンバーとして扱われる（getWorkspaceRole / rbac.ts と同方針）。
     const memberships = showAll
       ? []
       : await prisma.workspaceMember.findMany({
           where: { userId: user.id },
           select: { workspaceId: true, role: true, status: true },
         });
+    const ownedOaIds = showAll
+      ? []
+      : (await prisma.oa.findMany({
+          where:  { ownerKey: user.id },
+          select: { id: true },
+        })).map((o) => o.id);
     if (process.env.NODE_ENV !== "production" || process.env.DEBUG_OAS === "true") {
-      console.log(`[GET /api/oas] user.id=${user.id} showAll=${showAll} memberships=${JSON.stringify(memberships)}`);
+      console.log(`[GET /api/oas] user.id=${user.id} showAll=${showAll} memberships=${JSON.stringify(memberships)} ownedOaIds=${JSON.stringify(ownedOaIds)}`);
     }
 
     const memberFilter = showAll
       ? {}
       : {
-          id: { in: memberships.map((m) => m.workspaceId) },
+          id: { in: Array.from(new Set([...memberships.map((m) => m.workspaceId), ...ownedOaIds])) },
         };
 
     const where = {

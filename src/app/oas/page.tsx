@@ -223,13 +223,19 @@ export default function OaListPage() {
       // OA一覧が揃った時点で loading を解除 → OAカードを先行表示
       setLoading(false);
 
-      // 作品リストは OA 一覧とは独立してフェッチ
+      // 作品リストは OA 一覧とは独立してフェッチ。
+      // ⚠ workApi.list (= GET /api/works) は requireRole 経由で非メンバーには 403
+      //   WORKSPACE_ACCESS_DENIED を返す。parseResponse はこのコードで即時 /access-denied に
+      //   redirect する（catch を素通り）ため、ユーザーがメンバーでない OA に対しては叩かない。
+      //   platform admin が全 OA を見ているとき（my_role==="none"）はスキップする。
       const token = getDevToken();
       const pairs = await Promise.all(
         result.data.map((oa) =>
-          workApi.list(token, oa.id)
-            .then((ws) => [oa.id, ws] as [string, WorkListItem[]])
-            .catch(() => [oa.id, [] as WorkListItem[]] as [string, WorkListItem[]]),
+          oa.my_role && oa.my_role !== "none"
+            ? workApi.list(token, oa.id)
+                .then((ws) => [oa.id, ws] as [string, WorkListItem[]])
+                .catch(() => [oa.id, [] as WorkListItem[]] as [string, WorkListItem[]])
+            : Promise.resolve([oa.id, [] as WorkListItem[]] as [string, WorkListItem[]]),
         ),
       );
       const map: Record<string, WorkListItem[]> = {};
