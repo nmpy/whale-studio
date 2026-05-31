@@ -452,7 +452,7 @@ export default function OaListPage() {
                     <div className="flex flex-col gap-2 sm:min-w-[108px]">
                       <Link
                         href={`/oas/${oa.id}/works`}
-                        className={buttonClass({ variant: "primary", size: "sm", fullWidth: true })}
+                        className={buttonClass({ variant: "primary", size: "sm", fullWidth: true, className: "!text-white hover:!text-white" })}
                       >
                         作品管理
                       </Link>

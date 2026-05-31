@@ -266,7 +266,11 @@ export default function TesterHomePage() {
             <div style={{ flexShrink: 0 }}>
               <Link
                 href={`/tester/${oaId}/works`}
-                className="btn btn-primary"
+                // 既存 className 設計 (btn btn-primary) に Tailwind utility を併用。
+                // unlayered な `a {}` (= color: var(--brand-dark)) / `a:hover` rule が
+                // .btn-primary の color:#fff を上書きしてしまうため、!text-white +
+                // hover:!text-white を付けて Tailwind important で確実に白にする。
+                className="btn btn-primary !text-white hover:!text-white"
                 style={{
                   padding:    "9px 18px",
                   fontSize:   13,
