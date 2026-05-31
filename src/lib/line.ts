@@ -922,7 +922,15 @@ export function buildPhaseMessages(
     }, "buildPhaseMessages", phase.id, vars);
   };
 
+  // 自由入力プロンプト到達フラグ: chain walk が free_input_enabled=true の message に
+  // 到達したら、その時点で phase 全体の iteration も停止する。
+  // 仕様: 「自由入力受付メッセージは、そこで一旦停止して waitingForInput をセットする」。
+  // → 同 phase 内の sort_order が自由入力プロンプトより後の独立 head は、
+  //   応答メッセージ (free_input_next_message_id 経由) で送るのが正しいため、
+  //   この phase response では送らない。
+  let stoppedAtFreeInput = false;
   for (const head of phase.messages) {
+    if (stoppedAtFreeInput) break;
     // continuation はこのループでは扱わない (= head 経由で chain 内に展開する)。
     if (continuationIds.has(head.id)) continue;
 
@@ -940,6 +948,15 @@ export function buildPhaseMessages(
           `id=${cur.id.slice(0, 8)} kind=${cur.kind} type=${cur.message_type} sort=${cur.sort_order}`,
           `body=${cur.body ? `"${cur.body.slice(0, 30)}"` : "null"} asset=${cur.asset_url ? "あり" : "null"} alt=${cur.alt_text ? "あり" : "null"}`,
         );
+      }
+      // この message が自由入力受付なら、その message を含めて chain walk + phase iteration を停止する。
+      if (cur.free_input_enabled === true) {
+        stoppedAtFreeInput = true;
+        console.log(
+          `[buildPhaseMessages] STOP at free_input_enabled=true id=${cur.id.slice(0, 8)} sort=${cur.sort_order} ` +
+          `(phase iteration も停止。後続の独立 head は free_input_next_message_id 経由で送るのが正しい仕様)`,
+        );
+        break;
       }
       const nextId = cur.next_message_id;
       if (!nextId || visited.has(nextId)) break;  // 終端 or 循環防止

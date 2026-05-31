@@ -299,6 +299,7 @@ function messageRowToRuntime(
     image_action_liff_page_id:  m.imageActionLiffPageId   ?? null,
     image_action_postback_data: m.imageActionPostbackData ?? null,
     next_message_id:            m.nextMessageId           ?? null,
+    free_input_enabled:         m.freeInputEnabled         ?? false,
     character:         m.character
       ? {
           id:             m.character.id,
