@@ -368,7 +368,7 @@ export function WorkCard({ work, oaId, basePath, role, onDelete, onStatusChange 
       {/* ── メタ情報チップ ── */}
       <div className="flex flex-wrap gap-2">
         {[
-          { value: (work._count.userProgress ?? 0).toLocaleString(), label: "プレイヤー",   highlight: (work._count.userProgress ?? 0) > 0 },
+          { value: (work.progress_stats?.total ?? 0).toLocaleString(), label: "プレイヤー",   highlight: (work.progress_stats?.total ?? 0) > 0 },
           { value: work._count.phases.toLocaleString(),             label: "フェーズ",     highlight: false },
           { value: work._count.messages.toLocaleString(),           label: "メッセージ",   highlight: false },
           { value: work._count.characters.toLocaleString(),         label: "キャラクター", highlight: false },

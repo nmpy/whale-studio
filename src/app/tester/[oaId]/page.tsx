@@ -97,7 +97,7 @@ export default function TesterHomePage() {
 
   useEffect(() => { load(); }, [oaId]);
 
-  const totalPlayers  = works.reduce((s, w) => s + (w._count.userProgress ?? 0), 0);
+  const totalPlayers  = works.reduce((s, w) => s + (w.progress_stats?.total ?? 0), 0);
   const activeCount   = works.filter((w) => w.publish_status === "active").length;
   const statusStyle   = oa ? (STATUS_BADGE_STYLE[oa.publish_status] ?? STATUS_BADGE_STYLE.draft) : STATUS_BADGE_STYLE.draft;
 
