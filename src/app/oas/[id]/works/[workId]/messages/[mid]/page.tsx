@@ -87,8 +87,15 @@ export default function EditMessagePage() {
       const mainBody = formStateToMsgBody(form);
       await messageApi.update(getDevToken(), messageId, mainBody);
 
+      // 編集前のチェーン継続 ID 一覧 (= initialForm.additionalMessages から取得)。
+      // ループ後に「以前は繋がっていたが今回 form から消えた」継続を特定して削除するために使う。
+      const oldExistingIds: string[] = (initialForm?.additionalMessages ?? [])
+        .map((s) => s.existingId)
+        .filter((id): id is string => !!id);
+
       // 2通目以降のメッセージを作成してチェーン (= 演出設定込みで送る)
       let prevId: string = messageId;
+      const keptExistingIds: string[] = [];
       for (const slot of form.additionalMessages) {
         const additionalBody = additionalSlotToMsgBody(slot, {
           work_id:      workId,
@@ -103,11 +110,30 @@ export default function EditMessagePage() {
           await messageApi.update(getDevToken(), slot.existingId, additionalBody);
           await messageApi.update(getDevToken(), prevId, { next_message_id: slot.existingId });
           prevId = slot.existingId;
+          keptExistingIds.push(slot.existingId);
         } else {
           // 新規追加メッセージを作成 → chain 末尾に link
           const additionalCreated = await messageApi.create(getDevToken(), additionalBody);
           await messageApi.update(getDevToken(), prevId, { next_message_id: additionalCreated.id });
           prevId = additionalCreated.id;
+        }
+      }
+
+      // 新しいチェーンの末尾を null で終端する。これをやらないと、削除や入れ替えで使われなくなった
+      // 旧 chain link (prevId → 旧次メッセージ → ...) が DB に残り続け、loadAdditionalChain や
+      // LINE webhook が古い 2 通目を辿ってしまう（本 hotfix の主たる修正対象）。
+      await messageApi.update(getDevToken(), prevId, { next_message_id: null });
+
+      // 編集前のチェーンに居たが今回 form から取り除かれた継続メッセージを削除する。
+      // 削除 API は 'owner' 権限必須なので、非 owner ユーザーでは失敗するが、その場合でも
+      // 上の next_message_id = null によりチェーンからは切り離されているため LINE 応答は壊れない。
+      // 一覧画面に dangling head として残るのは cosmetic な副作用として許容（次 PR で別途整理）。
+      const removedIds = oldExistingIds.filter((id) => !keptExistingIds.includes(id));
+      for (const id of removedIds) {
+        try {
+          await messageApi.delete(getDevToken(), id);
+        } catch (err) {
+          console.warn(`[EditMessagePage] chain orphan delete failed (権限不足の可能性): id=${id.slice(0, 8)}`, err);
         }
       }
 

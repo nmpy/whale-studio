@@ -12,6 +12,10 @@ import { ZodError } from "zod";
 import { activeCache, CACHE_KEY } from "@/lib/cache";
 import { parseAnswerMatchType } from "@/lib/puzzle-answer";
 
+// Next.js の自動 static 化を防ぐ。withAuth が headers/cookies を読むため通常は dynamic 扱いだが
+// defensive に明示する（POST 側 route.ts と揃える）。
+export const dynamic = "force-dynamic";
+
 // ── リレーション include 定義（GET・PATCH 共通） ────────────
 const MESSAGE_INCLUDE = {
   phase: {
@@ -58,6 +62,10 @@ type PrismaMessageWithRelations = {
   imageActionUrl: string | null;
   imageActionLiffPageId: string | null;
   imageActionPostbackData: string | null;
+  // 自由入力受付
+  freeInputEnabled: boolean;
+  freeInputVariableKey: string | null;
+  freeInputNextMessageId: string | null;
   sortOrder: number; isActive: boolean; createdAt: Date; updatedAt: Date;
   phase:     { id: string; name: string; phaseType: string } | null;
   character: {
@@ -130,6 +138,10 @@ function toResponse(m: PrismaMessageWithRelations) {
     image_action_url:           m.imageActionUrl          ?? null,
     image_action_liff_page_id:  m.imageActionLiffPageId   ?? null,
     image_action_postback_data: m.imageActionPostbackData ?? null,
+    // 自由入力受付
+    free_input_enabled:         m.freeInputEnabled         ?? false,
+    free_input_variable_key:    m.freeInputVariableKey     ?? null,
+    free_input_next_message_id: m.freeInputNextMessageId   ?? null,
     sort_order:            m.sortOrder,
     is_active:             m.isActive,
     created_at:            m.createdAt,
@@ -287,6 +299,10 @@ export const PATCH = withAuth<{ id: string }>(async (req, { params }, user) => {
         ...(data.image_action_url          !== undefined && { imageActionUrl:          data.image_action_url }),
         ...(data.image_action_liff_page_id !== undefined && { imageActionLiffPageId:   data.image_action_liff_page_id }),
         ...(data.image_action_postback_data !== undefined && { imageActionPostbackData: data.image_action_postback_data }),
+        // 自由入力受付（schema・Zod・form は揃っていたが PATCH data に欠落していた pre-existing bug を修正）
+        ...(data.free_input_enabled         !== undefined && { freeInputEnabled:       data.free_input_enabled }),
+        ...(data.free_input_variable_key    !== undefined && { freeInputVariableKey:   data.free_input_variable_key }),
+        ...(data.free_input_next_message_id !== undefined && { freeInputNextMessageId: data.free_input_next_message_id }),
         ...(data.sort_order        !== undefined && { sortOrder:       data.sort_order }),
         ...(data.is_active         !== undefined && { isActive:        data.is_active }),
       },

@@ -553,18 +553,27 @@ export default function MessagesPage() {
     // chain continuation を除外した「先頭メッセージ」のみ
     const heads = messages.filter((m) => !chainContinuationIds.has(m.id));
 
+    // sort_order が同値の場合は created_at で tie-break して order を安定させる。
+    // 特に chain 継続メッセージは親と同じ sort_order を持つため、何らかの理由で chain link が
+    // 切れて head として扱われた場合に表示順が不定になるのを防ぐ。
+    const byOrderAndCreated = (a: MessageWithRelations, b: MessageWithRelations) => {
+      const so = a.sort_order - b.sort_order;
+      if (so !== 0) return so;
+      return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+    };
+
     const groups: PhaseGroup[] = phases
       .map((ph) => ({
         phase: ph,
         messages: heads
           .filter((m) => m.phase?.id === ph.id)
-          .sort((a, b) => a.sort_order - b.sort_order),
+          .sort(byOrderAndCreated),
       }))
       .filter((g) => g.messages.length > 0);
 
     const unassigned = heads
       .filter((m) => !m.phase || !phaseIds.has(m.phase.id))
-      .sort((a, b) => a.sort_order - b.sort_order);
+      .sort(byOrderAndCreated);
 
     if (unassigned.length > 0) {
       groups.push({ phase: null, messages: unassigned });

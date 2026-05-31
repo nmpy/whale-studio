@@ -733,11 +733,19 @@ async function buildMessageChain(
   const records: typeof first[] = [first];
 
   // [diag] チェーン展開の入口を記録 (next が無ければ chain=単発)
-  console.log(`[diag][chain] start head=${first.id.slice(0, 8)} next=${first.nextMessageId?.slice(0, 8) ?? "null"} hasQR=${!!first.quickReplies}`);
+  console.log(`[diag][chain] start head=${first.id.slice(0, 8)} next=${first.nextMessageId?.slice(0, 8) ?? "null"} hasQR=${!!first.quickReplies} sort=${first.sortOrder} body="${(first.body ?? "").slice(0, 20)}"`);
 
   // チェーンを最大 4 件追加（合計 5 件 = LINE 返信上限）
+  // 循環参照を visited Set で防止する。loop cap (i<4) だけでは saved DB の chain link が
+  // A→B→A のような cycle になっている場合に [A, B, A, B, A] のような重複展開が起きるため、
+  // 明示的に既に積んだ id を skip する (= 重複の原因経路を断つ)。
+  const visited = new Set<string>([first.id]);
   let current = first;
   for (let i = 0; i < 4 && current.nextMessageId; i++) {
+    if (visited.has(current.nextMessageId)) {
+      console.warn(`[diag][chain] CYCLE — nextMessageId=${current.nextMessageId.slice(0, 8)} already visited (step=${i}). stop expansion.`);
+      break;
+    }
     const next = await prisma.message.findUnique({
       where: { id: current.nextMessageId, isActive: true },
       select: {
@@ -759,10 +767,17 @@ async function buildMessageChain(
       console.warn(`[diag][chain] BREAK — nextMessageId=${current.nextMessageId.slice(0, 8)} not found in DB or isActive=false (step=${i})`);
       break;
     }
+    visited.add(next.id);
     records.push(next);
     current = next;
   }
-  console.log(`[diag][chain] expanded count=${records.length} ids=[${records.map((r) => r.id.slice(0, 8)).join(",")}]`);
+  // [diag] 展開後の各 record の詳細を出す (= LINE 送信直前の中間状態を可視化)。
+  // PII は出さない: body は先頭 20 文字 / id は先頭 8 文字。
+  console.log(
+    `[diag][chain] expanded count=${records.length} chain=[${
+      records.map((r, idx) => `${idx}:id=${r.id.slice(0, 8)} sort=${r.sortOrder} next=${r.nextMessageId?.slice(0, 8) ?? "null"} type=${r.messageType} hasQR=${!!r.quickReplies} body="${(r.body ?? "").slice(0, 20)}"`).join(" | ")
+    }]`,
+  );
 
   // KeywordMessageRecord 互換形式に変換（nextMessageId なし・triggerKeyword なし）
   // Phase 2c hotfix v4: r.timing が既に集約されていれば優先する (= matchKeywordsInMemory 経由)。
@@ -1661,6 +1676,17 @@ async function handleTextEvent({
           };
           const { messages: chain, chainIds } = await buildMessageChain(nextMsg, replyVars);
           if (chain.length > 0) {
+            // [diag] free_input 後の最終 payload を可視化 (= sort_order=3 の本文が
+            // 期待外に挿入されていないか追跡するため)。body は先頭 20 文字、id は先頭 8 文字のみ。
+            console.log(
+              `[diag][send][free_input_next] count=${chain.length} chainIds=[${chainIds.map((id) => id.slice(0, 8)).join(",")}] payload=[${
+                chain.map((m, idx) => {
+                  const lm = m as { type?: string; text?: string; altText?: string; quickReply?: unknown };
+                  const bodyPreview = (lm.text ?? lm.altText ?? "").slice(0, 20);
+                  return `${idx}:type=${lm.type ?? "?"} hasQR=${!!lm.quickReply} body="${bodyPreview}"`;
+                }).join(" | ")
+              }]`,
+            );
             // Phase 2c hotfix: chain (= length > 1) でも per-message timing が効くよう
             // replyWithLagToLine に統一。
             await replyWithLagToLine(replyToken, chain, userId, token);
