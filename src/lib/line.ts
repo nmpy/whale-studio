@@ -981,27 +981,38 @@ export function buildPhaseMessages(
   const prefixOffset = prefixText ? 1 : 0;
   logConversionSummary("buildPhaseMessages", phase.id, inputCount, messages.length - prefixOffset);
 
-  // ── safety guard: 未置換の placeholder (= {xxx} がそのまま残っている) を検出 ──
+  // ── safety guard: 未置換の placeholder (= {xxx} がそのまま残っている) を検出 + 除外 ──
   // 想定シナリオ: 自由入力プロンプトの応答 (= free_input_next_message_id 先) 用に
   // 本文 "{freeText}..." を持つメッセージが、誤って通常 phase response に
   // 混ざってしまった場合、ユーザー入力前なので `{freeText}` が未置換のまま LINE に
-  // 届く。これを runtime で警告として可視化する (= 削除はしない / データ修正の手がかり用)。
-  // `{user_name}` / `{account_name}` のような既知 placeholder は vars 側で必ず
-  // 置換される前提なので、ここで残っている場合だけが対象。
+  // 届いてしまう。runtime safety guard として:
+  //   1) warn ログでデータ修正の手がかりを残す
+  //   2) **該当メッセージを LINE 送信対象から除外する** (= 入力前に literal `{xxx}` が
+  //      ユーザーに届く事故を防ぐ)
+  // 既知 placeholder (`{user_name}` / `{account_name}` 等) は vars 側で必ず
+  // 置換される前提なので、ここで残っている = 未解決の placeholder のみ対象。
+  // ユーザー指示: 「freeInput 前の phase response では safety guard として除外する」
   const UNRESOLVED_PLACEHOLDER_RE = /\{[a-zA-Z_][a-zA-Z0-9_]*\}/;
+  const filteredMessages: LineMessage[] = [];
   for (const m of messages) {
     const lm = m as { type?: string; text?: string; altText?: string };
     const candidate = lm.text ?? lm.altText ?? "";
     if (UNRESOLVED_PLACEHOLDER_RE.test(candidate)) {
       const match = candidate.match(UNRESOLVED_PLACEHOLDER_RE);
       console.warn(
-        `[buildPhaseMessages] ⚠️ 未置換 placeholder 検出 phase=${phase.id.slice(0, 8)} ` +
+        `[buildPhaseMessages] ⚠️ 未置換 placeholder 検出 → 送信対象から除外 phase=${phase.id.slice(0, 8)} ` +
         `placeholder="${match?.[0]}" text(20)="${candidate.slice(0, 20)}" ` +
-        `(自由入力プロンプトの応答メッセージが phase response に混ざっている可能性。` +
+        `(自由入力プロンプトの応答メッセージが phase response に混ざっている。` +
         `データ確認: 該当 message は free_input_next_message_id 経由で送るのが正しい)`,
       );
+      continue;  // ← LINE 送信対象から除外
     }
+    filteredMessages.push(m);
   }
+  // 元の `messages` 配列を filtered 版に置き換える (= in-place 操作で後段の transition QR
+  // 付与処理にも反映させる)。
+  messages.length = 0;
+  messages.push(...filteredMessages);
 
   // ── [diag] 出力 payload の id / type / hasQR / body(20文字) を 1 行に
   // (= buildPhaseMessages が誰を送るか / 自由入力プロンプトを正しく含めているかを可視化)。
