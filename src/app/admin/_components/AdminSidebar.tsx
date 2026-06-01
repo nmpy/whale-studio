@@ -9,7 +9,6 @@ import { usePathname } from "next/navigation";
 
 const NAV_ITEMS = [
   { href: "/admin/announcements", label: "お知らせ管理" },
-  { href: "/admin/documents",     label: "ドキュメント" },
   { href: "/admin/audience",      label: "ユーザー概況" },
   { href: "/admin/onboarding",    label: "オンボーディング分析" },
   { href: "/admin/billing",       label: "課金導線分析" },

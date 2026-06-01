@@ -75,58 +75,6 @@ function SummaryBar({ items, worksMap }: { items: OaListItem[]; worksMap: Record
   );
 }
 
-/* ── サポートエリア ───────────────────────────────────────────────────────── */
-function SupportArea({ isOwner }: { isOwner: boolean }) {
-  return (
-    <div className="mt-10 border-t border-line pt-6">
-      <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.07em] text-ink-3">
-        サポート
-      </p>
-      <div className="flex flex-col items-stretch gap-4 rounded-card border border-line bg-surface p-5 sm:flex-row sm:items-center sm:gap-5">
-        <span
-          aria-hidden="true"
-          className="inline-flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-field bg-bg-tint text-[20px]"
-        >
-          📄
-        </span>
-        <div className="min-w-0 flex-1">
-          <div className="mb-1 text-[13px] font-bold text-ink">はじめての方へ — 使い方ガイド</div>
-          <div className="text-[11px] leading-[1.6] text-ink-2">
-            セットアップ・LINEチャンネル連携・シナリオ公開までの手順をまとめたPDFです。まずこちらをご確認ください。
-          </div>
-        </div>
-        <div className="flex-shrink-0 text-center">
-          {isOwner ? (
-            <Button
-              type="button"
-              variant="primary"
-              size="sm"
-              title="PDF ガイドのアップロード（近日公開）"
-              onClick={() => alert("PDF アップロード機能は近日公開予定です。")}
-              className="whitespace-nowrap"
-            >
-              📤 PDFをアップロード
-            </Button>
-          ) : (
-            <>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                disabled
-                className="whitespace-nowrap"
-              >
-                📥 PDFを開く
-              </Button>
-              <p className="mt-1.5 text-[11px] text-danger">※実装前のため、ご利用いただけません</p>
-            </>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 /* ── 作品名セル ──────────────────────────────────────────────────────────── */
 function WorksCell({
   oaId,
@@ -570,9 +518,6 @@ export default function OaListPage() {
       <div className="mt-8">
         <AnnouncementBanner canPost={actAsOwner} />
       </div>
-
-      {/* ── サポートエリア ── */}
-      <SupportArea isOwner={actAsOwner} />
     </>
   );
 }

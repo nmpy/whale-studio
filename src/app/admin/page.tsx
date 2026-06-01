@@ -27,12 +27,6 @@ const ADMIN_ITEMS = [
     color: "#2563eb",
   },
   {
-    href:  "/admin/documents",
-    title: "ドキュメント管理",
-    desc:  "利用ガイド PDF のアップロード・管理",
-    color: "#7c3aed",
-  },
-  {
     href:  "/admin/policies",
     title: "規約管理",
     desc:  "利用規約・プライバシーポリシーの編集と同意履歴を管理",
