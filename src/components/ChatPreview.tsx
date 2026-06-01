@@ -9,25 +9,6 @@ import type { CSSProperties } from "react";
 // 型
 // ────────────────────────────────────────────────
 
-/** 吹き出しの本体表示種別。未指定なら "text"。
- *  実際の LINE メッセージ種別 (image / video / voice / carousel / puzzle 等) を
- *  簡易表示するためのヒント。description / placeholder で代替する種別もある。 */
-export type ChatBubbleType =
-  | "text"
-  | "image"
-  | "video"
-  | "voice"
-  | "carousel"
-  | "other";
-
-/** QR チップ (= プレビューで吹き出し下に表示するボタン)。
- *  実際の onClick は何もしない (= 表示のみ)。 */
-export interface ChatQuickReply {
-  label: string;
-  /** action 種別を視覚的に区別したい場合に渡す (= 現状未使用 / 将来用)。 */
-  action?: string;
-}
-
 export interface ChatBubble {
   id: string;
   /** "user" = 右側, "bot" = 左側, "system" = 中央寄せのシステム通知（入室/退室/通話など） */
@@ -35,15 +16,6 @@ export interface ChatBubble {
   text: string;
   /** 既読表示するか（user 発話のみ。system では無視される） */
   read?: boolean;
-  /** 吹き出しの種別。"text" 以外は media 系として簡易描画する。 */
-  bubbleType?: ChatBubbleType;
-  /** bubbleType = "image" / "video" のとき表示する media URL。 */
-  mediaUrl?: string;
-  /** カルーセルの枚数 (= bubbleType = "carousel" のときの placeholder 用)。 */
-  carouselCount?: number;
-  /** この吹き出しの直下に表示する QuickReply チップ群。
-   *  通常は chain tail にのみ載せる (= 実送信時の moveQuickReplyToTail に合わせる)。 */
-  quickReplies?: ChatQuickReply[];
 }
 
 export interface ChatPreviewState {
@@ -151,92 +123,14 @@ const loadingBox: CSSProperties = {
   color: "#666",
 };
 
-// media (image / video) を吹き出しの中に直接置くときのスタイル。
-const mediaWrap: CSSProperties = {
-  maxWidth: 200,
-  borderRadius: 12,
-  overflow: "hidden",
-  background: "#fff",
-  boxShadow: "0 1px 1px rgba(0,0,0,0.06)",
-};
-
-const mediaImg: CSSProperties = {
-  display: "block",
-  width: "100%",
-  height: "auto",
-  maxHeight: 220,
-  objectFit: "contain",
-  background: "#f3f4f6",
-};
-
-const mediaPlaceholder: CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  gap: 6,
-  padding: "10px 14px",
-  background: "#fff",
-  borderRadius: 12,
-  fontSize: 12,
-  color: "#374151",
-  boxShadow: "0 1px 1px rgba(0,0,0,0.06)",
-};
-
-// QR チップ行 (= chain tail の下に並べる)。横スクロール可。
-const qrRow: CSSProperties = {
-  display: "flex",
-  gap: 6,
-  marginTop: 4,
-  overflowX: "auto",
-  paddingBottom: 2,
-};
-
-const qrChip: CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  padding: "5px 12px",
-  borderRadius: 999,
-  background: "rgba(255,255,255,0.95)",
-  border: "1px solid rgba(255,255,255,0.6)",
-  color: "#2F6F5E",
-  fontSize: 12,
-  fontWeight: 500,
-  whiteSpace: "nowrap",
-  flexShrink: 0,
-};
-
 // ────────────────────────────────────────────────
 // コンポーネント
 // ────────────────────────────────────────────────
 
-function renderBubbleContent(b: ChatBubble) {
-  const t = b.bubbleType ?? "text";
-  if (t === "image") {
-    if (b.mediaUrl) {
-      return (
-        <div style={mediaWrap}>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={b.mediaUrl} alt={b.text || "画像"} style={mediaImg} />
-        </div>
-      );
-    }
-    return <div style={mediaPlaceholder}>🖼 画像{b.text ? `（${b.text}）` : ""}</div>;
-  }
-  if (t === "video") {
-    return <div style={mediaPlaceholder}>🎬 動画{b.mediaUrl ? "" : " (未設定)"}</div>;
-  }
-  if (t === "voice") {
-    return <div style={mediaPlaceholder}>🎤 音声{b.mediaUrl ? "" : " (未設定)"}</div>;
-  }
-  if (t === "carousel") {
-    return <div style={mediaPlaceholder}>🃏 カルーセル ({b.carouselCount ?? 0} 枚)</div>;
-  }
-  return <div style={bubbleStyle(b.from === "user" ? "user" : "bot")}>{b.text}</div>;
-}
-
 export function ChatPreview({ state }: { state: ChatPreviewState }) {
   return (
     <div style={containerStyle}>
-      {state.bubbles.map((b, i) => {
+      {state.bubbles.map((b) => {
         if (b.from === "system") {
           return (
             <div key={b.id} style={systemRow}>
@@ -244,25 +138,10 @@ export function ChatPreview({ state }: { state: ChatPreviewState }) {
             </div>
           );
         }
-        // QR は「その bubble 自身に紐づいているメッセージの下」に描画する
-        // (= 実機 LINE の挙動: QR は付属しているメッセージの直下に表示される)。
-        // 空配列 / undefined の場合は表示しない。
-        const showQR = b.from === "bot" && (b.quickReplies?.length ?? 0) > 0;
         return (
-          <div key={b.id} style={{ display: "flex", flexDirection: "column", alignItems: b.from === "user" ? "flex-end" : "flex-start" }}>
-            <div style={bubbleRow(b.from)}>
-              {b.from === "user" && b.read && <span style={readLabel}>既読</span>}
-              {b.bubbleType && b.bubbleType !== "text" ? renderBubbleContent(b) : (
-                <div style={bubbleStyle(b.from)}>{b.text}</div>
-              )}
-            </div>
-            {showQR && b.quickReplies && (
-              <div style={qrRow}>
-                {b.quickReplies.map((qr, qi) => (
-                  <span key={qi} style={qrChip}>{qr.label}</span>
-                ))}
-              </div>
-            )}
+          <div key={b.id} style={bubbleRow(b.from)}>
+            {b.from === "user" && b.read && <span style={readLabel}>既読</span>}
+            <div style={bubbleStyle(b.from)}>{b.text}</div>
           </div>
         );
       })}

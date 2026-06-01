@@ -11,9 +11,6 @@ import type { PhaseWithCounts, Character, QuickReplyItem, QuickReplyAction, Read
 import type { Riddle } from "@/types";
 import { PhaseTransitionsSection } from "./_phase-transitions";
 import { BUILTIN_PRESETS, presetToFormValues } from "@/lib/timing-presets";
-import { PreviewPlayer, type PreviewChainItem } from "@/components/PreviewPlayer";
-import type { ChatBubbleType } from "@/components/ChatPreview";
-import type { MessageTimingConfig } from "@/types";
 import { TapDestinationSection } from "@/components/destination/TapDestinationSection";
 import type { TapMode } from "@/components/destination/TapDestinationSection";
 import { detectTapMode } from "@/lib/message-destination-utils";
@@ -1901,7 +1898,9 @@ function ImageUploader({ value, onChange, disabled }: ImageUploaderProps) {
 // ── LINEプレビューパネル ──────────────────────────────────
 
 interface PreviewPanelProps {
-  form:         MessageFormState;
+  /** 1 登録分のメッセージチェーン (= 親方向遡行 + 編集中 form + 追加 slot)。
+   *  常に 1 件以上 (= 最低でも編集中 form が含まれる)。 */
+  chain:        ChainPreviewItem[];
   characters:   Character[];
   riddles:      Riddle[];
   destinations: LineDestination[];
@@ -1916,11 +1915,213 @@ const QR_CHIP_COLORS: Record<QuickReplyAction, { bg: string; text: string; borde
   custom: { bg: "#f8fafc", text: "#475569",  border: "#e2e8f0" },
 };
 
-function PreviewPanel({ form, characters, riddles, destinations }: PreviewPanelProps) {
-  const selectedChar   = characters.find((c) => c.id === form.character_id) ?? null;
-  const selectedRiddle = riddles.find((r) => r.id === form.riddle_id);
+/** 1 件のチェーン item から bubble 内コンテンツ (本文 / 画像 / 動画 / カルーセル等) を生成する。
+ *  従来の PreviewPanel が form を直接見ていた箇所を ChainPreviewItem ベースに置き換えたもの。 */
+function renderBubbleContent(
+  item:         ChainPreviewItem,
+  selectedRiddle: Riddle | undefined,
+  destinations: LineDestination[],
+): React.ReactNode {
+  // 謎 (puzzle) は配信形式 (message_type) ごとのコンテンツ + 謎バッジ。chain head のみに来る想定。
+  if (item.kind === "puzzle") {
+    let puzzleContentEl: React.ReactNode;
+    switch (item.message_type) {
+      case "image":
+        puzzleContentEl = item.asset_url ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={item.asset_url} alt="謎画像プレビュー"
+            style={{ maxWidth: 200, maxHeight: 160, borderRadius: 8, objectFit: "cover", display: "block" }}
+            onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
+        ) : (
+          <div style={{ width: 160, height: 100, background: "#e5e7eb", borderRadius: 8,
+            display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, color: "#9ca3af" }}>🖼</div>
+        );
+        break;
+      case "video":
+        puzzleContentEl = (
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 24 }}>🎬</span>
+            <div>
+              <div style={{ fontSize: 12, color: "#6b7280" }}>動画</div>
+              {item.asset_url && <div style={{ fontSize: 10, color: "#9ca3af", maxWidth: 150, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.asset_url}</div>}
+            </div>
+          </div>
+        );
+        break;
+      case "carousel":
+        puzzleContentEl = item.carousel_items.length === 0
+          ? <span style={{ color: "#aaa", fontStyle: "italic", fontSize: 12 }}>カードを追加してください</span>
+          : (
+            <div style={{ overflowX: "auto", display: "flex", gap: 8, paddingBottom: 4 }}>
+              {item.carousel_items.map((card, idx) => (
+                <div key={idx} style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 8, width: 130, flexShrink: 0, overflow: "hidden" }}>
+                  {card.image_url
+                    ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={card.image_url} alt="" style={{ width: "100%", height: 70, objectFit: "cover", display: "block" }}
+                        onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
+                    )
+                    : <div style={{ width: "100%", height: 50, background: "#e5e7eb", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, color: "#9ca3af" }}>🖼</div>
+                  }
+                  <div style={{ padding: "5px 7px" }}>
+                    <div style={{ fontSize: 10, fontWeight: 600, color: "#111", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{card.title || `カード ${idx + 1}`}</div>
+                    {card.button_label && <div style={{ marginTop: 4, padding: "2px 6px", background: "#06C755", color: "#fff", borderRadius: 4, fontSize: 9, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{card.button_label}</div>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          );
+        break;
+      default: // text
+        puzzleContentEl = item.body
+          ? <span style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{item.body}</span>
+          : <span style={{ color: "#aaa", fontStyle: "italic" }}>謎の本文を入力してください</span>;
+    }
+    return (
+      <div>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6, flexWrap: "wrap" }}>
+          <span style={{
+            fontSize: 10, fontWeight: 700, background: "#fff7ed", color: "#c2410c",
+            border: "1px solid #fed7aa", padding: "1px 7px", borderRadius: 10,
+          }}>
+            🧩 謎チャレンジ
+          </span>
+          {item.puzzle_type && (
+            <span style={{ fontSize: 10, color: "#9ca3af" }}>{item.puzzle_type}</span>
+          )}
+        </div>
+        {puzzleContentEl}
+        {item.answer && (
+          <div style={{ fontSize: 10, color: "#9ca3af", marginTop: 5 }}>
+            答え: <span style={{ fontWeight: 600, color: "#6b7280" }}>{item.answer}</span>
+          </div>
+        )}
+      </div>
+    );
+  }
 
-  // ── キャラアイコン ──
+  switch (item.message_type) {
+    case "text": {
+      if (!item.body) {
+        return <span style={{ color: "#aaa", fontStyle: "italic" }}>テキストを入力してください</span>;
+      }
+      const PLACEHOLDER_MAP: Record<string, string> = {
+        "{{user_name}}":    "友だちの表示名",
+        "{{account_name}}": "アカウント名",
+      };
+      const parts = item.body.split(/({{user_name}}|{{account_name}})/g);
+      return (
+        <span style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+          {parts.map((part, i) =>
+            PLACEHOLDER_MAP[part] ? (
+              <span key={i} style={{
+                display: "inline-block", fontSize: 11, fontWeight: 700,
+                padding: "1px 7px", borderRadius: 12, margin: "0 1px",
+                background: "#E6F7ED", color: "#059669", border: "1px solid #06C755",
+              }}>
+                {PLACEHOLDER_MAP[part]}
+              </span>
+            ) : part
+          )}
+        </span>
+      );
+    }
+    case "image": {
+      const tapInfo = item.tap_destination_id
+        ? destinations.find((d) => d.id === item.tap_destination_id)?.name
+        : item.tap_url
+        ? "直接URL"
+        : null;
+      return (
+        <div>
+          {item.asset_url ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={item.asset_url} alt="画像プレビュー"
+              style={{ maxWidth: 200, maxHeight: 160, borderRadius: 8, objectFit: "cover", display: "block" }}
+              onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
+          ) : (
+            <div style={{ width: 160, height: 100, background: "#e5e7eb", borderRadius: 8,
+              display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, color: "#9ca3af" }}>🖼</div>
+          )}
+          {tapInfo && (
+            <div style={{ fontSize: 10, color: "#0d9488", marginTop: 4 }}>🔗 {tapInfo}</div>
+          )}
+        </div>
+      );
+    }
+    case "riddle":
+      return (
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+          <div>
+            <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 2 }}>謎チャレンジ</div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: "#111" }}>
+              {selectedRiddle
+                ? selectedRiddle.title
+                : <span style={{ color: "#aaa", fontStyle: "italic" }}>謎を選択してください</span>}
+            </div>
+          </div>
+        </div>
+      );
+    case "video":
+      return (
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontSize: 24 }}>🎬</span>
+          <div>
+            <div style={{ fontSize: 12, color: "#6b7280" }}>動画</div>
+            {item.asset_url && <div style={{ fontSize: 10, color: "#9ca3af", maxWidth: 150, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.asset_url}</div>}
+          </div>
+        </div>
+      );
+    case "voice":
+      return (
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontSize: 22 }}>🎙</span>
+          <div>
+            <div style={{ fontSize: 12, color: "#6b7280" }}>ボイスメッセージ</div>
+            {item.asset_url && <div style={{ fontSize: 10, color: "#9ca3af", maxWidth: 150, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.asset_url}</div>}
+          </div>
+        </div>
+      );
+    case "carousel":
+      return item.carousel_items.length === 0
+        ? <span style={{ color: "#aaa", fontStyle: "italic", fontSize: 12 }}>カードを追加してください</span>
+        : (
+          <div style={{ overflowX: "auto", display: "flex", gap: 8, paddingBottom: 4 }}>
+            {item.carousel_items.map((card, idx) => (
+              <div key={idx} style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 8, width: 130, flexShrink: 0, overflow: "hidden" }}>
+                {card.image_url
+                  ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={card.image_url} alt="" style={{ width: "100%", height: 70, objectFit: "cover", display: "block" }}
+                      onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
+                  )
+                  : <div style={{ width: "100%", height: 50, background: "#e5e7eb", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, color: "#9ca3af" }}>🖼</div>
+                }
+                <div style={{ padding: "5px 7px" }}>
+                  <div style={{ fontSize: 10, fontWeight: 600, color: "#111", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{card.title || `カード ${idx + 1}`}</div>
+                  {card.button_label && <div style={{ marginTop: 4, padding: "2px 6px", background: "#06C755", color: "#fff", borderRadius: 4, fontSize: 9, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{card.button_label}</div>}
+                </div>
+              </div>
+            ))}
+          </div>
+        );
+  }
+  return null;
+}
+
+/** チェーン 1 通分の行 (= キャラ icon + 吹き出し + 直下に QR)。
+ *  実機 LINE と同じく QR はその bubble の直下にのみ表示する (= 末尾集約しない)。 */
+function ChainBubbleRow({
+  item, characters, riddles, destinations,
+}: {
+  item:         ChainPreviewItem;
+  characters:   Character[];
+  riddles:      Riddle[];
+  destinations: LineDestination[];
+}) {
+  const selectedChar = characters.find((c) => c.id === item.character_id) ?? null;
+  const selectedRiddle = riddles.find((r) => r.id === item.riddle_id);
+
   const iconEl = selectedChar ? (
     selectedChar.icon_image_url ? (
       // eslint-disable-next-line @next/next/no-img-element
@@ -1950,195 +2151,86 @@ function PreviewPanel({ form, characters, riddles, destinations }: PreviewPanelP
     }}></div>
   );
 
-  // ── バブル内コンテンツ ──
-  const bubbleContent = (() => {
-    // puzzle は配信形式（message_type）ごとのコンテンツ + 謎バッジを表示
-    if (form.kind === "puzzle") {
-      let puzzleContentEl: React.ReactNode;
-      switch (form.message_type) {
-        case "image":
-          puzzleContentEl = form.asset_url ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={form.asset_url} alt="謎画像プレビュー"
-              style={{ maxWidth: 200, maxHeight: 160, borderRadius: 8, objectFit: "cover", display: "block" }}
-              onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
-          ) : (
-            <div style={{ width: 160, height: 100, background: "#e5e7eb", borderRadius: 8,
-              display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, color: "#9ca3af" }}>🖼</div>
-          );
-          break;
-        case "video":
-          puzzleContentEl = (
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span style={{ fontSize: 24 }}>🎬</span>
-              <div>
-                <div style={{ fontSize: 12, color: "#6b7280" }}>動画</div>
-                {form.asset_url && <div style={{ fontSize: 10, color: "#9ca3af", maxWidth: 150, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{form.asset_url}</div>}
-              </div>
-            </div>
-          );
-          break;
-        case "carousel":
-          puzzleContentEl = form.carousel_items.length === 0
-            ? <span style={{ color: "#aaa", fontStyle: "italic", fontSize: 12 }}>カードを追加してください</span>
-            : (
-              <div style={{ overflowX: "auto", display: "flex", gap: 8, paddingBottom: 4 }}>
-                {form.carousel_items.map((card, idx) => (
-                  <div key={idx} style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 8, width: 130, flexShrink: 0, overflow: "hidden" }}>
-                    {card.image_url
-                      ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={card.image_url} alt="" style={{ width: "100%", height: 70, objectFit: "cover", display: "block" }}
-                          onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
-                      )
-                      : <div style={{ width: "100%", height: 50, background: "#e5e7eb", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, color: "#9ca3af" }}>🖼</div>
-                    }
-                    <div style={{ padding: "5px 7px" }}>
-                      <div style={{ fontSize: 10, fontWeight: 600, color: "#111", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{card.title || `カード ${idx + 1}`}</div>
-                      {card.button_label && <div style={{ marginTop: 4, padding: "2px 6px", background: "#06C755", color: "#fff", borderRadius: 4, fontSize: 9, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{card.button_label}</div>}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            );
-          break;
-        default: // text
-          puzzleContentEl = form.body
-            ? <span style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{form.body}</span>
-            : <span style={{ color: "#aaa", fontStyle: "italic" }}>謎の本文を入力してください</span>;
-      }
-      return (
-        <div>
-          {/* 謎バッジ */}
-          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6, flexWrap: "wrap" }}>
-            <span style={{
-              fontSize: 10, fontWeight: 700, background: "#fff7ed", color: "#c2410c",
-              border: "1px solid #fed7aa", padding: "1px 7px", borderRadius: 10,
+  // この bubble 自身に紐づく QR を空文字 / 未入力ラベルでフィルタリング (= 表示価値のないチップを抑止)。
+  const visibleQRs = item.quick_replies.filter((qr) => qr.label || qr.action);
+
+  return (
+    <div>
+      {/* notify_text (テキスト以外) */}
+      {item.message_type !== "text" && item.notify_text && (
+        <div style={{ textAlign: "center", marginBottom: 10, fontSize: 11, color: "rgba(0,0,0,0.4)",
+          background: "rgba(255,255,255,0.45)", borderRadius: 10, padding: "3px 12px",
+          display: "inline-block", marginLeft: "50%", transform: "translateX(-50%)" }}>
+          {item.notify_text}
+        </div>
+      )}
+
+      {/* キャラ + 吹き出し */}
+      <div style={{ display: "flex", gap: 7, alignItems: "flex-start" }}>
+        <div style={{ flexShrink: 0 }}>{iconEl}</div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          {selectedChar && (
+            <p style={{ fontSize: 11, color: "rgba(0,0,0,0.5)", marginBottom: 4, fontWeight: 400 }}>
+              {selectedChar.name}
+            </p>
+          )}
+          <div style={{ position: "relative", display: "inline-block", maxWidth: 220 }}>
+            <div style={{
+              position: "absolute", left: -6, top: 10,
+              width: 0, height: 0, borderStyle: "solid",
+              borderWidth: "5px 7px 5px 0",
+              borderColor: "transparent #fff transparent transparent",
+            }} />
+            <div style={{
+              background: "#fff", borderRadius: "4px 16px 16px 16px",
+              padding: "8px 12px", fontSize: 14, color: "#111",
+              lineHeight: 1.55, wordBreak: "break-word",
+              boxShadow: "0 0.5px 1.5px rgba(0,0,0,0.1)",
             }}>
-              🧩 謎チャレンジ
-            </span>
-            {form.puzzle_type && (
-              <span style={{ fontSize: 10, color: "#9ca3af" }}>{form.puzzle_type}</span>
-            )}
+              {renderBubbleContent(item, selectedRiddle, destinations)}
+            </div>
           </div>
-          {/* コンテンツ */}
-          {puzzleContentEl}
-          {/* 答え（管理用ヒント） */}
-          {form.answer && (
-            <div style={{ fontSize: 10, color: "#9ca3af", marginTop: 5 }}>
-              答え: <span style={{ fontWeight: 600, color: "#6b7280" }}>{form.answer}</span>
+
+          {/* この bubble に付属する QR を直下に表示 (= 実機 LINE の挙動)。
+              quick_replies が空配列なら何も表示しない。 */}
+          {visibleQRs.length > 0 && (
+            <div style={{
+              display: "flex", flexWrap: "wrap", gap: 5, marginTop: 6,
+            }}>
+              {visibleQRs.map((qr, i) => {
+                const chipColor = QR_CHIP_COLORS[qr.action];
+                const actionDef = QR_ACTION_OPTIONS.find((o) => o.value === qr.action);
+                return (
+                  <span
+                    key={i}
+                    title={`${actionDef?.label ?? qr.action}${qr.value ? ` → ${qr.value}` : ""}`}
+                    style={{
+                      display: "inline-flex", alignItems: "center", gap: 3,
+                      padding: "4px 10px", borderRadius: 20,
+                      fontSize: 11, fontWeight: 600,
+                      background: chipColor.bg, color: chipColor.text,
+                      border: `1px solid ${chipColor.border}`,
+                      maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis",
+                      whiteSpace: "nowrap", cursor: "default",
+                    }}
+                  >
+                    {qr.label || <span style={{ fontStyle: "italic", opacity: 0.6 }}>ラベル未入力</span>}
+                  </span>
+                );
+              })}
             </div>
           )}
         </div>
-      );
-    }
-    switch (form.message_type) {
-      case "text": {
-        if (!form.body) {
-          return <span style={{ color: "#aaa", fontStyle: "italic" }}>テキストを入力してください</span>;
-        }
-        const PLACEHOLDER_MAP: Record<string, string> = {
-          "{{user_name}}":    "友だちの表示名",
-          "{{account_name}}": "アカウント名",
-        };
-        const parts = form.body.split(/({{user_name}}|{{account_name}})/g);
-        return (
-          <span style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
-            {parts.map((part, i) =>
-              PLACEHOLDER_MAP[part] ? (
-                <span key={i} style={{
-                  display: "inline-block", fontSize: 11, fontWeight: 700,
-                  padding: "1px 7px", borderRadius: 12, margin: "0 1px",
-                  background: "#E6F7ED", color: "#059669", border: "1px solid #06C755",
-                }}>
-                  {PLACEHOLDER_MAP[part]}
-                </span>
-              ) : part
-            )}
-          </span>
-        );
-      }
-      case "image": {
-        const tapInfo = form.tap_destination_id
-          ? destinations.find((d) => d.id === form.tap_destination_id)?.name
-          : form.tap_url
-          ? "直接URL"
-          : null;
-        return (
-          <div>
-            {form.asset_url ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={form.asset_url} alt="画像プレビュー"
-                style={{ maxWidth: 200, maxHeight: 160, borderRadius: 8, objectFit: "cover", display: "block" }}
-                onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
-            ) : (
-              <div style={{ width: 160, height: 100, background: "#e5e7eb", borderRadius: 8,
-                display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, color: "#9ca3af" }}>🖼</div>
-            )}
-            {tapInfo && (
-              <div style={{ fontSize: 10, color: "#0d9488", marginTop: 4 }}>🔗 {tapInfo}</div>
-            )}
-          </div>
-        );
-      }
-      case "riddle":
-        return (
-          <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
-            <div>
-              <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 2 }}>謎チャレンジ</div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: "#111" }}>
-                {selectedRiddle
-                  ? selectedRiddle.title
-                  : <span style={{ color: "#aaa", fontStyle: "italic" }}>謎を選択してください</span>}
-              </div>
-            </div>
-          </div>
-        );
-      case "video":
-        return (
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ fontSize: 24 }}>🎬</span>
-            <div>
-              <div style={{ fontSize: 12, color: "#6b7280" }}>動画</div>
-              {form.asset_url && <div style={{ fontSize: 10, color: "#9ca3af", maxWidth: 150, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{form.asset_url}</div>}
-            </div>
-          </div>
-        );
-      case "voice":
-        return (
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ fontSize: 22 }}>🎙</span>
-            <div>
-              <div style={{ fontSize: 12, color: "#6b7280" }}>ボイスメッセージ</div>
-              {form.asset_url && <div style={{ fontSize: 10, color: "#9ca3af", maxWidth: 150, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{form.asset_url}</div>}
-            </div>
-          </div>
-        );
-      case "carousel":
-        return form.carousel_items.length === 0
-          ? <span style={{ color: "#aaa", fontStyle: "italic", fontSize: 12 }}>カードを追加してください</span>
-          : (
-            <div style={{ overflowX: "auto", display: "flex", gap: 8, paddingBottom: 4 }}>
-              {form.carousel_items.map((card, idx) => (
-                <div key={idx} style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 8, width: 130, flexShrink: 0, overflow: "hidden" }}>
-                  {card.image_url
-                    ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={card.image_url} alt="" style={{ width: "100%", height: 70, objectFit: "cover", display: "block" }}
-                        onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
-                    )
-                    : <div style={{ width: "100%", height: 50, background: "#e5e7eb", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, color: "#9ca3af" }}>🖼</div>
-                  }
-                  <div style={{ padding: "5px 7px" }}>
-                    <div style={{ fontSize: 10, fontWeight: 600, color: "#111", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{card.title || `カード ${idx + 1}`}</div>
-                    {card.button_label && <div style={{ marginTop: 4, padding: "2px 6px", background: "#06C755", color: "#fff", borderRadius: 4, fontSize: 9, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{card.button_label}</div>}
-                  </div>
-                </div>
-              ))}
-            </div>
-          );
-    }
-  })();
+      </div>
+    </div>
+  );
+}
+
+function PreviewPanel({ chain, characters, riddles, destinations }: PreviewPanelProps) {
+  // ヘッダー (= LINE トーク画面の上部) は chain head の character を表示する。
+  // chain は最低でも 1 件持つ (= 編集中 form) ので head は常に存在する。
+  const head = chain[0];
+  const selectedChar = head ? (characters.find((c) => c.id === head.character_id) ?? null) : null;
 
   return (
     <div style={{
@@ -2147,7 +2239,7 @@ function PreviewPanel({ form, characters, riddles, destinations }: PreviewPanelP
       boxShadow: "0 4px 20px rgba(0,0,0,0.10), 0 1px 4px rgba(0,0,0,0.06)",
       background: "#fff",
     }}>
-      {/* トークヘッダー（プレイグラウンドと同一デザイン） */}
+      {/* トークヘッダー */}
       <div style={{
         background: "#fff", borderBottom: "1px solid #e9ecef",
         padding: "10px 16px", display: "flex", alignItems: "center", gap: 10,
@@ -2164,97 +2256,26 @@ function PreviewPanel({ form, characters, riddles, destinations }: PreviewPanelP
         </span>
       </div>
 
-      {/* チャットエリア */}
-      <div style={{ background: "#c4dde3", padding: "14px 12px 18px", minHeight: 280 }}>
-        {/* notify_text（テキスト以外） */}
-        {form.message_type !== "text" && form.notify_text && (
-          <div style={{ textAlign: "center", marginBottom: 10, fontSize: 11, color: "rgba(0,0,0,0.4)",
-            background: "rgba(255,255,255,0.45)", borderRadius: 10, padding: "3px 12px",
-            display: "inline-block", marginLeft: "50%", transform: "translateX(-50%)" }}>
-            {form.notify_text}
-          </div>
-        )}
-
-        {/* キャラ + 吹き出し */}
-        <div style={{ display: "flex", gap: 7, alignItems: "flex-start" }}>
-          <div style={{ flexShrink: 0 }}>{iconEl}</div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            {selectedChar && (
-              <p style={{ fontSize: 11, color: "rgba(0,0,0,0.5)", marginBottom: 4, fontWeight: 400 }}>
-                {selectedChar.name}
-              </p>
-            )}
-            {/* 吹き出し（しっぽ付き） */}
-            <div style={{ position: "relative", display: "inline-block", maxWidth: 220 }}>
-              <div style={{
-                position: "absolute", left: -6, top: 10,
-                width: 0, height: 0, borderStyle: "solid",
-                borderWidth: "5px 7px 5px 0",
-                borderColor: "transparent #fff transparent transparent",
-              }} />
-              <div style={{
-                background: "#fff", borderRadius: "4px 16px 16px 16px",
-                padding: "8px 12px", fontSize: 14, color: "#111",
-                lineHeight: 1.55, wordBreak: "break-word",
-                boxShadow: "0 0.5px 1.5px rgba(0,0,0,0.1)",
-              }}>
-                {bubbleContent}
-              </div>
-            </div>
-          </div>
-        </div>
+      {/* チャットエリア — チェーン 1 通分ずつ ChainBubbleRow で描画する */}
+      <div style={{
+        background: "#c4dde3", padding: "14px 12px 18px",
+        minHeight: 280,
+        display: "flex", flexDirection: "column", gap: 12,
+      }}>
+        {chain.map((item) => (
+          <ChainBubbleRow
+            key={item.key}
+            item={item}
+            characters={characters}
+            riddles={riddles}
+            destinations={destinations}
+          />
+        ))}
       </div>
-
-      {/* クイックリプライエリア（設定されている場合のみ表示） */}
-      {form.quick_replies.length > 0 && (
-        <div style={{
-          background: "#fff",
-          borderTop: "1px solid #e9ecef",
-          padding: "8px 10px",
-        }}>
-          <div style={{ fontSize: 10, color: "#9ca3af", marginBottom: 5, fontWeight: 600 }}>
-            クイックリプライ
-          </div>
-          <div style={{
-            display: "flex",
-            flexWrap: "wrap",
-            gap: 5,
-          }}>
-            {form.quick_replies.map((qr, i) => {
-              const chipColor = QR_CHIP_COLORS[qr.action];
-              const actionDef = QR_ACTION_OPTIONS.find((o) => o.value === qr.action);
-              return (
-                <span
-                  key={i}
-                  title={`${actionDef?.label}${qr.value ? ` → ${qr.value}` : ""}`}
-                  style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 3,
-                    padding: "4px 10px",
-                    borderRadius: 20,
-                    fontSize: 11,
-                    fontWeight: 600,
-                    background: chipColor.bg,
-                    color: chipColor.text,
-                    border: `1px solid ${chipColor.border}`,
-                    maxWidth: 120,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                    cursor: "default",
-                  }}
-                >
-                  {qr.label || <span style={{ fontStyle: "italic", opacity: 0.6 }}>ラベル未入力</span>}
-                </span>
-              );
-            })}
-          </div>
-        </div>
-      )}
     </div>
   );
 }
+
 
 // ────────────────────────────────────────────────────────
 // AdditionalMessageBlock — 2通目以降のメッセージブロック
@@ -2295,15 +2316,11 @@ function TimingConfigSection<T extends TimingFormFields>({
   form,
   set,
   isAdditional,
-  chain,
 }: {
   form: T;
   set: <K extends keyof T>(key: K, val: T[K]) => void;
   /** 追加 (2 通目以降) のメッセージ用なら true。既読遅延の制約注記を出すために使う。 */
   isAdditional?: boolean;
-  /** 1 登録分のチェーン (= 上流 + 編集中 + 下流)。指定があれば PreviewPlayer がチェーン全体を描画する。
-   *  未指定の場合は従来の単発 botReply にフォールバック。 */
-  chain?: PreviewChainItem[];
 }) {
   // UI 統一: 自由入力受付セクションと同じ SectionAccordion をベースに使う。
   // 値が既に設定されていれば初期展開する。
@@ -2517,13 +2534,6 @@ function TimingConfigSection<T extends TimingFormFields>({
           <div style={{ ...hintText, marginTop: 4 }}>
             未設定の項目はデフォルト設定（環境変数）を継承します
           </div>
-
-          {/* ── プレビュー ── */}
-          <PreviewPlayer
-            msgConfig={formToTimingConfig(form)}
-            botReply={form.body || "返信テキスト"}
-            chain={chain && chain.length > 0 ? chain : undefined}
-          />
       </div>
     </SectionAccordion>
   );
@@ -2533,7 +2543,7 @@ function TimingConfigSection<T extends TimingFormFields>({
 //
 // 1 登録 (= chain head + 連続メッセージ群) を form の live state + API データから
 // 組み立てる。実送信処理 (buildPhaseMessages) は一切変更せず、フロント側で
-// 同等の見た目を再現するための関数。
+// 同等の見た目を再現するためだけの関数。
 //
 // 入力:
 //   - messageId    : 編集中メッセージの ID (新規作成中は undefined)
@@ -2541,26 +2551,31 @@ function TimingConfigSection<T extends TimingFormFields>({
 //   - allMessages  : work 内の全 message (= API から取得済み snapshot)
 //
 // 出力:
-//   PreviewChainItem[] (= head→tail 順)。返り値が空配列なら呼び出し側は
-//   従来の単発 botReply にフォールバックする。
+//   ChainPreviewItem[] (= head→tail 順)。常に編集中 message を含む。
+//   1 通のみの登録なら長さ 1。最大 PREVIEW_CHAIN_MAX。
+//   循環は visited Set で防ぐ。
 const PREVIEW_CHAIN_MAX = 8; // safety cap (= LINE 仕様 5 + 多少の余裕)
 
-function messageTypeToBubble(t: string | undefined): ChatBubbleType {
-  switch (t) {
-    case "text":     return "text";
-    case "image":    return "image";
-    case "video":    return "video";
-    case "voice":    return "voice";
-    case "carousel": return "carousel";
-    default:         return "other";
-  }
-}
-
-function quickRepliesToChatQR(qrs: QuickReplyItem[] | null | undefined) {
-  if (!qrs || qrs.length === 0) return undefined;
-  return qrs
-    .filter((q) => q.label && q.label.trim())
-    .map((q) => ({ label: q.label, action: q.action }));
+/** PreviewPanel が 1 吹き出しを描画するのに必要な最小データセット。
+ *  form / AdditionalMessageSlot / API row どれから来ても同形になるよう正規化する。
+ *  - quick_replies は「この吹き出し自身に付属」する分のみ持つ (= per-bubble 表示)。
+ *  - tap_*, puzzle_*, riddle_id は puzzle / image-tap-action の表示判定で使う。
+ *    chain 継続側はこれらを持たないため空文字 / null で埋める。 */
+interface ChainPreviewItem {
+  key:                 string;
+  message_type:        ExtendedMessageType;
+  body:                string;
+  asset_url:           string;
+  notify_text:         string;
+  carousel_items:      MessageCarouselCard[];
+  character_id:        string;
+  quick_replies:       QuickReplyItem[];
+  kind:                MessageKind;
+  riddle_id:           string;
+  puzzle_type:         string;
+  answer:              string;
+  tap_destination_id:  string;
+  tap_url:             string;
 }
 
 function buildPreviewChain(args: {
@@ -2569,17 +2584,18 @@ function buildPreviewChain(args: {
   allMessages: {
     id: string;
     body: string | null;
+    kind: string;
     quick_replies?: QuickReplyItem[] | null;
     next_message_id?: string | null;
     message_type?: string;
     asset_url?: string | null;
     free_input_enabled?: boolean;
   }[];
-}): PreviewChainItem[] {
+}): ChainPreviewItem[] {
   const { messageId, form, allMessages } = args;
 
-  // 上流側 (= 編集中メッセージを next_message_id で指している親メッセージ列)。
-  // head→...→parent_of(messageId) の順で並べる。
+  // ── 上流側 (= 編集中メッセージを next_message_id で指している親メッセージ列) を辿る ──
+  // 終了条件: 親が見つからない / 循環検出 / 上限到達 のいずれか。
   const upstream: typeof allMessages = [];
   if (messageId) {
     const byNext = new Map<string, typeof allMessages[number]>();
@@ -2597,50 +2613,77 @@ function buildPreviewChain(args: {
     }
   }
 
-  const out: PreviewChainItem[] = [];
+  const out: ChainPreviewItem[] = [];
 
-  // 1. 上流 (= 親側) を順に追加。これらは API スナップショットなのでそのまま使う。
-  //    途中で free_input_enabled が true のメッセージがあれば、その時点で chain は切れる
-  //    (= 実送信処理と同じ姿勢)。ただし切れた以降は表示しない。
+  // 1. 上流 (= 親側)。API スナップショットそのまま。
+  //    free_input_enabled の親で chain は切れる (= 実送信仕様に揃える)。
   for (const m of upstream) {
     out.push({
-      key:           `up:${m.id}`,
-      bubbleType:    messageTypeToBubble(m.message_type),
-      text:          m.body ?? "",
-      mediaUrl:      m.asset_url ?? undefined,
-      quickReplies:  quickRepliesToChatQR(m.quick_replies),
+      key:                `up:${m.id}`,
+      message_type:       (m.message_type as ExtendedMessageType) ?? "text",
+      body:               m.body ?? "",
+      asset_url:          m.asset_url ?? "",
+      notify_text:        "",
+      carousel_items:     [],
+      character_id:       "",
+      quick_replies:      m.quick_replies ?? [],
+      kind:               (m.kind as MessageKind) ?? "normal",
+      riddle_id:          "",
+      puzzle_type:        "",
+      answer:             "",
+      tap_destination_id: "",
+      tap_url:            "",
     });
-    if (m.free_input_enabled) return out; // free input prompt 以降は表示しない
+    if (m.free_input_enabled) return out;
     if (out.length >= PREVIEW_CHAIN_MAX) return out;
   }
 
-  // 2. 編集中のメッセージ (= form 本体 = chain の "ここ"。新規でも 1 通目として扱う)
+  // 2. 編集中メッセージ (= form 本体 = live edit を反映)。
+  //    新規でも head として扱い、1 通目相当の bubble として描画する。
   out.push({
-    key:           messageId ? `cur:${messageId}` : "cur:new",
-    bubbleType:    messageTypeToBubble(form.message_type),
-    text:          form.body || "",
-    mediaUrl:      form.asset_url || undefined,
-    carouselCount: form.message_type === "carousel" ? form.carousel_items.length : undefined,
-    quickReplies:  quickRepliesToChatQR(form.quick_replies),
+    key:                messageId ? `cur:${messageId}` : "cur:new",
+    message_type:       form.message_type,
+    body:               form.body,
+    asset_url:          form.asset_url,
+    notify_text:        form.notify_text,
+    carousel_items:     form.carousel_items,
+    character_id:       form.character_id,
+    quick_replies:      form.quick_replies,
+    kind:               form.kind,
+    riddle_id:          form.riddle_id,
+    puzzle_type:        form.puzzle_type,
+    answer:             form.answer,
+    tap_destination_id: form.tap_destination_id,
+    tap_url:            form.tap_url,
   });
   if (form.free_input_enabled) return out;
   if (out.length >= PREVIEW_CHAIN_MAX) return out;
 
   // 3. form.additionalMessages (= 編集中の 2 通目以降。live edit を反映)。
-  //    AdditionalMessageSlot には quick_replies フィールドが無いため、保存済 slot は
-  //    existingId をキーに allMessages から QR を引き当てる (= 実 DB 値)。
-  //    新規追加 slot (existingId なし) は QR 未保存なので非表示。
+  //    AdditionalMessageSlot には quick_replies フィールドが無いため、
+  //    保存済 slot は existingId をキーに allMessages から QR を引き当てる
+  //    (= 実 DB 値)。新規追加 slot (existingId なし) は QR 未保存なので空配列。
   const byId = new Map(allMessages.map((m) => [m.id, m]));
   for (let i = 0; i < form.additionalMessages.length; i++) {
     const s = form.additionalMessages[i];
     const dbRow = s.existingId ? byId.get(s.existingId) : undefined;
     out.push({
-      key:           s.existingId ? `add:${s.existingId}` : `add-new:${i}`,
-      bubbleType:    messageTypeToBubble(s.message_type),
-      text:          s.body || "",
-      mediaUrl:      s.asset_url || undefined,
-      carouselCount: s.message_type === "carousel" ? s.carousel_items.length : undefined,
-      quickReplies:  quickRepliesToChatQR(dbRow?.quick_replies),
+      key:                s.existingId ? `add:${s.existingId}` : `add-new:${i}`,
+      message_type:       s.message_type,
+      body:               s.body,
+      asset_url:          s.asset_url,
+      notify_text:        s.notify_text,
+      carousel_items:     s.carousel_items,
+      // 空文字なら親 form の character を引き継ぐ (= AdditionalMessageBlock の UI 仕様と一致)。
+      character_id:       s.character_id || form.character_id,
+      quick_replies:      dbRow?.quick_replies ?? [],
+      // continuation は通常 kind=normal / puzzle 系フィールドは無い。
+      kind:               "normal",
+      riddle_id:          "",
+      puzzle_type:        "",
+      answer:             "",
+      tap_destination_id: "",
+      tap_url:            "",
     });
     if (s.free_input_enabled) return out;
     if (out.length >= PREVIEW_CHAIN_MAX) return out;
@@ -2649,30 +2692,10 @@ function buildPreviewChain(args: {
   return out;
 }
 
-/** フォーム文字列値を MessageTimingConfig に変換する */
-function formToTimingConfig(form: {
-  read_receipt_mode: string; read_delay_ms: string;
-  typing_enabled: string; typing_min_ms: string; typing_max_ms: string;
-  loading_enabled: string; loading_threshold_ms: string;
-  loading_min_seconds: string; loading_max_seconds: string;
-}): MessageTimingConfig {
-  return {
-    read_receipt_mode:    (form.read_receipt_mode || null) as MessageTimingConfig["read_receipt_mode"],
-    read_delay_ms:        form.read_delay_ms ? Number(form.read_delay_ms) : null,
-    typing_enabled:       form.typing_enabled === "true" ? true : form.typing_enabled === "false" ? false : null,
-    typing_min_ms:        form.typing_min_ms ? Number(form.typing_min_ms) : null,
-    typing_max_ms:        form.typing_max_ms ? Number(form.typing_max_ms) : null,
-    loading_enabled:      form.loading_enabled === "true" ? true : form.loading_enabled === "false" ? false : null,
-    loading_threshold_ms: form.loading_threshold_ms ? Number(form.loading_threshold_ms) : null,
-    loading_min_seconds:  form.loading_min_seconds ? Number(form.loading_min_seconds) : null,
-    loading_max_seconds:  form.loading_max_seconds ? Number(form.loading_max_seconds) : null,
-  };
-}
-
 // ────────────────────────────────────────────────────────
 
 function AdditionalMessageBlock({
-  index, slot, onChange, onRemove, oaId, workId, characters, allMessages, chain,
+  index, slot, onChange, onRemove, oaId, workId, characters, allMessages,
 }: {
   index:      number;
   slot:       AdditionalMessageSlot;
@@ -2687,8 +2710,6 @@ function AdditionalMessageBlock({
     phase_id?: string | null; quick_replies?: QuickReplyItem[] | null;
     trigger_keyword?: string | null;
   }[];
-  /** 1 登録分のチェーン (= 親 form 側で構築して渡す)。TimingConfigSection の preview に渡す。 */
-  chain?: PreviewChainItem[];
 }) {
   const bodyRef = useRef<HTMLTextAreaElement>(null);
 
@@ -2939,7 +2960,6 @@ function AdditionalMessageBlock({
           form={slot}
           set={(k, v) => onChange({ ...slot, [k]: v })}
           isAdditional
-          chain={chain}
         />
 
         {/* 自由入力受付 (= chain continuation でも freeInput プロンプトに設定可能)。
@@ -3191,41 +3211,8 @@ export function MessageForm({
   }
 
   // プレビュー用 chain (= 上流の親 + 編集中 form + form.additionalMessages を head→tail で並べたもの)。
-  // 構築は純関数 buildPreviewChain に切り出し済。空配列なら PreviewPlayer は従来の単発 botReply にフォールバック。
+  // 構築は純関数 buildPreviewChain に切り出し済。空配列なら PreviewPanel は head 1 通のみ描画する。
   const previewChain = buildPreviewChain({ messageId, form, allMessages });
-
-  // ── DEBUG (PR #182 review 用、merge 前に削除) ────────────────────
-  // chain 件数 / item id 一覧 / form.additionalMessages の長さを DevTools に出す。
-  // 本番ビルドでも出るので、ユーザー確認後に必ず削除すること。
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    console.log("[PreviewChain DEBUG]", {
-      currentMessageId: messageId ?? null,
-      allMessagesCount: allMessages.length,
-      formAdditionalCount: form.additionalMessages.length,
-      previewChainLength: previewChain.length,
-      formBodyLen: form.body.length,
-      formNextMessageId: form.next_message_id || null,
-      formAdditional: form.additionalMessages.map((s) => ({
-        existingId: s.existingId ?? null,
-        type:       s.message_type,
-        bodyLen:    s.body.length,
-      })),
-      chainItems: previewChain.map((c) => ({
-        key:        c.key,
-        type:       c.bubbleType,
-        bodyLen:    c.text.length,
-        hasMedia:   !!c.mediaUrl,
-        qrCount:    c.quickReplies?.length ?? 0,
-      })),
-      allMessagesIds: allMessages.map((m) => ({
-        id:        m.id.slice(0, 8),
-        next:      m.next_message_id?.slice(0, 8) ?? null,
-        bodyLen:   m.body?.length ?? 0,
-        hasQR:     !!(m.quick_replies && m.quick_replies.length),
-      })),
-    });
-  }, [messageId, allMessages, form.additionalMessages, form.body.length, form.next_message_id, previewChain]);
 
   function insertAtCursor(placeholder: string) {
     const el = bodyTextareaRef.current;
@@ -4433,7 +4420,7 @@ export function MessageForm({
               </div>
 
                 {/* ── 演出設定（既読・typing・ローディング）── */}
-                <TimingConfigSection form={form} set={set} chain={previewChain} />
+                <TimingConfigSection form={form} set={set} />
 
               </div>{/* /padding */}
             </div>{/* /1通目ラッパー */}
@@ -4448,7 +4435,6 @@ export function MessageForm({
                 workId={workId}
                 characters={characters}
                 allMessages={allMessages}
-                chain={previewChain}
                 onChange={(updated) => {
                   setForm((prev) => ({
                     ...prev,
@@ -4934,7 +4920,7 @@ export function MessageForm({
             </span>
           </div>
           <PreviewPanel
-            form={form}
+            chain={previewChain}
             characters={characters}
             riddles={riddles}
             destinations={destinations}
