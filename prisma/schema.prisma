@@ -47,6 +47,9 @@ model Oa {
   works              Work[]
   workspaceMembers   WorkspaceMember[]
   entitlements       OaEntitlement[]
+  liveSessions       LiveSession[]
+  liveParticipants   LiveParticipant[]
+  liveEventLogs      LiveEventLog[]
 
   @@index([title])
   @@index([publishStatus])
@@ -1536,4 +1539,101 @@ model OaEntitlement {
   @@unique([oaId, featureKey])
   @@index([oaId])
   @@map("oa_entitlements")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Whale Studio Live: Phase 2-A データ基盤
+// ─────────────────────────────────────────────────────────────────────────────
+// 既存の studio role / 課金 / メッセージ / webhook 系には影響しない、独立した
+// テーブル群。Live 有効 OA かつ Live 権限を持つユーザーのみが API/UI で参照する。
+
+enum LiveSessionStatus {
+  draft
+  active
+  ended
+}
+
+enum LiveParticipantStatus {
+  waiting
+  active
+  stuck
+  completed
+  dropped
+}
+
+enum LiveEventType {
+  qr_scanned
+  checked_in
+  puzzle_solved
+  message_sent
+  actor_contacted
+  note_added
+  alert
+}
+
+/// Live セッション（= 一回の実イベント）。oaId 単位で複数同時並行可。
+model LiveSession {
+  id        String            @id @default(uuid())
+  oaId      String            @map("oa_id")
+  name      String
+  status    LiveSessionStatus @default(draft)
+  startsAt  DateTime?         @map("starts_at")
+  endsAt    DateTime?         @map("ends_at")
+  createdAt DateTime          @default(now()) @map("created_at")
+  updatedAt DateTime          @updatedAt @map("updated_at")
+  oa        Oa                @relation(fields: [oaId], references: [id], onDelete: Cascade)
+
+  participants LiveParticipant[]
+  eventLogs    LiveEventLog[]
+
+  @@index([oaId, createdAt])
+  @@index([oaId, status])
+  @@map("live_sessions")
+}
+
+/// Live セッション参加者（= 1 プレイヤー or 1 グループ）。
+/// lineUserId は LINE 連携した場合のみ。displayName で匿名管理も可能。
+model LiveParticipant {
+  id             String                @id @default(uuid())
+  oaId           String                @map("oa_id")
+  liveSessionId  String                @map("live_session_id")
+  displayName    String?               @map("display_name")
+  lineUserId     String?               @map("line_user_id")
+  status         LiveParticipantStatus @default(waiting)
+  currentStep    String?               @map("current_step")
+  lastSeenAt     DateTime?             @map("last_seen_at")
+  createdAt      DateTime              @default(now()) @map("created_at")
+  updatedAt      DateTime              @updatedAt @map("updated_at")
+
+  oa             Oa                    @relation(fields: [oaId], references: [id], onDelete: Cascade)
+  liveSession    LiveSession           @relation(fields: [liveSessionId], references: [id], onDelete: Cascade)
+  eventLogs      LiveEventLog[]
+
+  @@index([liveSessionId, createdAt])
+  @@index([liveSessionId, status])
+  @@index([oaId])
+  @@map("live_participants")
+}
+
+/// Live セッション中のイベントログ（QR スキャン / チェックイン / 詰まり / アラート 等）。
+/// liveSessionId / participantId はどちらも nullable（= OA 単位のイベントも記録可能）。
+model LiveEventLog {
+  id             String           @id @default(uuid())
+  oaId           String           @map("oa_id")
+  liveSessionId  String?          @map("live_session_id")
+  participantId  String?          @map("participant_id")
+  type           LiveEventType
+  title          String
+  detail         String?
+  payload        Json?
+  createdAt      DateTime         @default(now()) @map("created_at")
+
+  oa             Oa               @relation(fields: [oaId], references: [id], onDelete: Cascade)
+  liveSession    LiveSession?     @relation(fields: [liveSessionId], references: [id], onDelete: SetNull)
+  participant    LiveParticipant? @relation(fields: [participantId], references: [id], onDelete: SetNull)
+
+  @@index([liveSessionId, createdAt])
+  @@index([participantId, createdAt])
+  @@index([oaId, createdAt])
+  @@map("live_event_logs")
 }

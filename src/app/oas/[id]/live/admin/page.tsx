@@ -1,10 +1,11 @@
 // src/app/oas/[id]/live/admin/page.tsx
-// Whale Studio Live for Admin（Phase 1 準備中ページ）。
+// Whale Studio Live for Admin — Phase 2-A 仮UI。
+// Server Component で section ガード → 中身は LiveAdminClient。
 
 import { notFound } from "next/navigation";
 import { getServerUser } from "@/lib/supabase/server";
 import { canViewLiveSection } from "@/lib/live";
-import { LivePlaceholder } from "../_LivePlaceholder";
+import { LiveAdminClient } from "./LiveAdminClient";
 
 export const dynamic = "force-dynamic";
 
@@ -13,14 +14,5 @@ export default async function LiveAdminPage({ params }: { params: { id: string }
   if (!user || !(await canViewLiveSection(params.id, user.id, "admin"))) {
     notFound();
   }
-  return (
-    <LivePlaceholder
-      oaId={params.id}
-      title="Whale Studio Live for Admin"
-      description={
-        "運営・主催者向けの管制画面です。\n" +
-        "全プレイヤーの進行状況、詰まり、接触状況、アラートを確認します。"
-      }
-    />
-  );
+  return <LiveAdminClient oaId={params.id} />;
 }
