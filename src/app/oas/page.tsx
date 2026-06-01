@@ -251,10 +251,10 @@ export default function OaListPage() {
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h2 className="font-round text-[clamp(20px,4vw,24px)] font-extrabold leading-[1.2] tracking-[-0.02em] text-ink">
-            アカウントリスト
+            アカウント管理
           </h2>
           <p className="mt-1 text-[12px] text-ink-3">
-            1つのLINE公式アカウントにつき複数の作品を管理できます
+            LINE公式アカウントごとに作品や設定を管理できます
           </p>
         </div>
         {canCreateOa && (
@@ -265,6 +265,11 @@ export default function OaListPage() {
             ＋ アカウントを追加
           </Link>
         )}
+      </div>
+
+      {/* ── お知らせ (= ページ見出し直下 / アカウントカード一覧の上) ── */}
+      <div className="mb-5">
+        <AnnouncementBanner canPost={actAsOwner} />
       </div>
 
       {/* ── β版 遅延注意バナー ── */}
@@ -514,10 +519,6 @@ export default function OaListPage() {
         </div>
       )}
 
-      {/* ── お知らせ (= 別管理コンポーネント、本 PR では触らない) ── */}
-      <div className="mt-8">
-        <AnnouncementBanner canPost={actAsOwner} />
-      </div>
     </>
   );
 }
