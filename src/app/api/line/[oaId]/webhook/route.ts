@@ -1206,6 +1206,28 @@ async function handleWebhook(req: NextRequest, oaId: string) {
     console.warn("[Webhook] 署名なし — 開発環境のためスキップします");
   }
 
+  // ── 4-b. サービス停止判定 (= 契約終了 OA は通常処理せず一律メッセージのみ) ──
+  // 必ず署名検証成功後に実行する (= 検証前に返信しない)。
+  // message event の replyToken にのみ「サービス終了」テキストを返し、postback /
+  // follow / beacon / unfollow 等は無視 (200 OK のみ)。reply 失敗は飲み込んで
+  // 200 を返す (LINE 仕様: 200 以外で再送されるため)。
+  if (oa.serviceSuspendedAt) {
+    console.log(`[Webhook] oa service suspended oaId=${oa.id} lineOaId=${oa.lineOaId} suspendedAt=${oa.serviceSuspendedAt.toISOString()} events=${webhookBody.events.length}`);
+    const suspendedReplyText = "このアカウントのサービスは終了しました。ご利用ありがとうございました。";
+    const messageEvents = webhookBody.events.filter(
+      (e): e is LineEvent & { replyToken: string } =>
+        e.type === "message" && typeof e.replyToken === "string"
+    );
+    await Promise.allSettled(messageEvents.map(async (ev) => {
+      try {
+        await _replyToLine(ev.replyToken, [{ type: "text", text: suspendedReplyText }], oa.channelAccessToken);
+      } catch (err) {
+        console.error(`[Webhook] suspended reply failed oaId=${oa.id} replyToken=${ev.replyToken.slice(0, 8)}…`, err);
+      }
+    }));
+    return NextResponse.json({ ok: true });
+  }
+
   // ── 5. follow イベント処理（友達追加 → トラッキング帰属）──
   // 自動開始は work 取得後（後述）に行う
   const followEvents = webhookBody.events.filter(

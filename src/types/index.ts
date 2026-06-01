@@ -123,6 +123,12 @@ export interface Oa {
   rich_menu_id: string | null;
   /** Google Sheets スプレッドシート ID（未設定なら null）*/
   spreadsheet_id: string | null;
+  /**
+   * サービス停止日時。null = 稼働中 / ISO 文字列 = 停止中 (停止された日時)。
+   * 非 null のとき LINE webhook は通常応答せず、message event の replyToken に
+   * 対してのみ一律「サービス終了」メッセージを返す。publish_status とは独立。
+   */
+  service_suspended_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -348,6 +354,11 @@ export interface UpdateOaBody {
   channel_access_token?: string;
   publish_status?: PublishStatus;
   spreadsheet_id?: string | null;
+  /**
+   * サービス稼働状態のトグル。true = 停止中に切替 / false = 稼働中に戻す。
+   * undefined (= 省略) なら変更なし。サーバー側で `serviceSuspendedAt` (DateTime?) に変換される。
+   */
+  service_suspended?: boolean;
 }
 
 export interface CreateWorkBody {

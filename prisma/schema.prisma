@@ -27,6 +27,11 @@ model Oa {
   lineOaId           String?            @unique @map("line_oa_id")
   /// OA オーナーの識別子（Supabase Auth userId）。RBAC で owner 判定に使う。
   ownerKey           String?            @map("owner_key")
+  /// サービス停止日時。null = 稼働中 / 非 null = 停止中（停止された日時を保持）。
+  /// 契約終了等で LINE webhook を通常応答させず、署名検証後に
+  /// 一律「このアカウントのサービスは終了しました。ご利用ありがとうございました。」
+  /// を message event の replyToken に対してのみ返す。
+  serviceSuspendedAt DateTime?          @map("service_suspended_at")
   friendAddSettings  FriendAddSettings?
   globalCommands     GlobalCommand[]
   hintLogs           HintLog[]
@@ -46,6 +51,7 @@ model Oa {
   @@index([title])
   @@index([publishStatus])
   @@index([createdAt])
+  @@index([serviceSuspendedAt])
   @@map("oas")
 }
 
