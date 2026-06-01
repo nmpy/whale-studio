@@ -14,7 +14,7 @@ import { usePathname } from "next/navigation";
 import dynamic from "next/dynamic";
 import { useTesterMode } from "@/hooks/useTesterMode";
 import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
-import { useAccessPreview } from "@/hooks/useAccessPreview";
+import { parsePreviewRole } from "@/lib/access-preview";
 import { getAuthHeaders } from "@/lib/api-client";
 import { RoleBadge } from "@/components/PermissionGuard";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
@@ -61,7 +61,22 @@ export default function AppHeader() {
   // 表示確認モード (= AccessPreviewBar) で「表示確認権限」を非 owner にした場合、
   // 右上 CTA も連動して「気づいたことを伝える」に切り替える (= UI 確認用)。
   // 実権限は引き続き bypass されるため、操作は壊れない。
-  const { effectiveRole, isPreviewingRole } = useAccessPreview(currentOaId);
+  //
+  // 実装メモ: useAccessPreview / useSearchParams は AppHeader (= root layout 配下)
+  // で使うと /404 / /access-denied 等の static prerender が Suspense 境界エラーで
+  // 失敗する。AppHeader は client component なので、URL ?previewRole の読み出しは
+  // window.location.search 経由で十分。route 遷移時 (= pathname 変化) に再評価する。
+  const [previewRole, setPreviewRole] = useState<ReturnType<typeof parsePreviewRole>>(null);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const raw = new URLSearchParams(window.location.search).get("previewRole");
+    setPreviewRole(parsePreviewRole(raw));
+  }, [pathname]);
+  // canUsePreviewMode は実 owner のみ。非 owner が URL を偽装しても preview 適用しない。
+  const canUsePreviewModeForHeader = isOwner;
+  const isPreviewingRole = canUsePreviewModeForHeader && previewRole !== null && previewRole !== workspaceRole;
+  const effectiveRoleForHeader: typeof previewRole | Role | null =
+    canUsePreviewModeForHeader && previewRole ? previewRole : workspaceRole;
 
   // ── OA 横断 owner 判定（OA ページ外でも CTA を切り替えるため）─────
   // /api/oas の my_role を見て、1つでも owner の OA があれば isAnyOaOwner = true
@@ -139,8 +154,8 @@ export default function AppHeader() {
   // バッジに表示する role。OA 内かつ表示確認モード中は preview role を反映する
   // (= CTA の切替と整合させ、UI 一致を保つ。Role 型に変換可能な値のみ受け入れる)。
   const displayRole: Role | null = currentOaId
-    ? (isPreviewingRole && effectiveRole && effectiveRole !== "client_operator" && effectiveRole !== "operator"
-        ? (effectiveRole as Role)
+    ? (isPreviewingRole && effectiveRoleForHeader && effectiveRoleForHeader !== "client_operator" && effectiveRoleForHeader !== "operator"
+        ? (effectiveRoleForHeader as Role)
         : workspaceRole)
     : (isAnyOaOwner ? "owner" : null);
 
@@ -148,7 +163,7 @@ export default function AppHeader() {
   // ただし表示確認モードで role を非 owner に切り替えている場合は、その表示用 role を優先する
   // (= 非 owner ユーザーから見た UI 確認を可能にする)。実権限は plan-guard / rbac で別途扱う。
   const isEffectiveOwner = currentOaId
-    ? (isPreviewingRole ? effectiveRole === "owner" : isOwner)
+    ? (isPreviewingRole ? effectiveRoleForHeader === "owner" : isOwner)
     : isAnyOaOwner;
 
   // スタジオ管理のリンク先: OA ページ内なら OA 設定、それ以外はスタジオ管理トップ
