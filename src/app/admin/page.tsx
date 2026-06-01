@@ -33,15 +33,9 @@ const ADMIN_ITEMS = [
     color: "#7c3aed",
   },
   {
-    href:  null,
-    title: "利用規約管理",
-    desc:  "利用規約の編集・公開（近日公開）",
-    color: "#6b7280",
-  },
-  {
-    href:  "/admin/privacy-acceptances",
-    title: "プライバシー同意履歴",
-    desc:  "ユーザーごとのプライバシーポリシー同意日時を確認",
+    href:  "/admin/policies",
+    title: "規約管理",
+    desc:  "利用規約・プライバシーポリシーの編集と同意履歴を管理",
     color: "#7c3aed",
   },
   {
@@ -95,9 +89,9 @@ export default function AdminIndexPage() {
         gap: 12,
       }}>
         {ADMIN_ITEMS.filter(({ href }) => (
-          // platform admin 専用カード (/admin/live, /admin/privacy-acceptances) は
+          // platform admin 専用カード (/admin/live, /admin/policies) は
           // isPlatform=true のときのみ表示。それ以外のカードは全員に表示。
-          href === "/admin/live" || href === "/admin/privacy-acceptances"
+          href === "/admin/live" || href === "/admin/policies"
             ? isPlatform
             : true
         )).map(({ href, title, desc, color }) => {

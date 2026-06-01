@@ -1,24 +1,20 @@
 // src/app/terms/page.tsx
 // 利用規約公開ページ (= 認証不要 / read-only)。
-//
-// 既存の同意画面 (= /onboarding/terms) は初回ログイン時の同意フロー用。
-// 本ページは公開ページとして閲覧専用に提供 (= /privacy と同じ位置付け)。
-//
-// レイアウト / metadata は /privacy と揃える。
+// DB の公開版を使う / なければ constants にフォールバック (= helper 経由)。
 
 import type { Metadata } from "next";
-import {
-  CURRENT_TERMS_VERSION,
-  TERMS_BODY,
-  TERMS_TITLE,
-} from "@/lib/constants/terms";
+import { getCurrentTermsDocument } from "@/lib/policy-document";
+
+export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title:       "利用規約 | Whale Studio",
   description: "Whale Studioの利用規約です。",
 };
 
-export default function TermsPage() {
+export default async function TermsPage() {
+  const doc = await getCurrentTermsDocument();
+
   return (
     <div
       style={{
@@ -29,7 +25,7 @@ export default function TermsPage() {
       }}
     >
       <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 20 }}>
-        {TERMS_TITLE}
+        {doc.title}
       </h1>
 
       <div
@@ -44,11 +40,11 @@ export default function TermsPage() {
           color:        "#374151",
         }}
       >
-        {TERMS_BODY}
+        {doc.body}
       </div>
 
       <p style={{ fontSize: 12, color: "#9ca3af", marginTop: 8 }}>
-        利用規約バージョン: {CURRENT_TERMS_VERSION}
+        利用規約バージョン: {doc.version}
       </p>
     </div>
   );

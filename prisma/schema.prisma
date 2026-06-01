@@ -1411,6 +1411,44 @@ model PrivacyPolicyAcceptance {
   @@map("privacy_policy_acceptances")
 }
 
+/// 規約文書 (= 利用規約 / プライバシーポリシー) のバージョン管理。
+///
+/// 設計方針:
+///   - 編集ごとに既存 row を上書きせず、新しいバージョンとして INSERT する。
+///   - `isPublished = true` の row が「現在公開中」を意味する。
+///   - 同 type 内で isPublished=true は 1 行のみ (= application 側で制御 / DB 制約は付けない)。
+///   - publish 時に既存公開版を isPublished=false に下げ、新版を isPublished=true にする。
+///   - DB に公開版がない type は constants/*.ts に fallback (= 既存 /privacy /terms 等が壊れない)。
+///   - 同意履歴 (TermsAcceptance / PrivacyPolicyAcceptance) は version 文字列で紐付けるため、
+///     旧版を非公開にしても同意履歴は残る。
+enum PolicyDocumentType {
+  TERMS
+  PRIVACY_POLICY
+}
+
+model PolicyDocumentVersion {
+  id           String             @id @default(uuid())
+  type         PolicyDocumentType
+  version      String
+  title        String
+  body         String
+  /// 表示用「最終更新日」(= "2026年5月26日" 等の自由文字列)
+  lastUpdated  String?            @map("last_updated")
+  /// 表示用「施行日」(= "2026年5月26日" 等の自由文字列)
+  effectiveAt  String?            @map("effective_at")
+  /// 現在公開中かどうか。同 type 内で true は 1 行のみが運用上の不変条件。
+  isPublished  Boolean            @default(false) @map("is_published")
+  publishedAt  DateTime?          @map("published_at")
+  createdBy    String?            @map("created_by")
+  createdAt    DateTime           @default(now()) @map("created_at")
+  updatedAt    DateTime           @updatedAt        @map("updated_at")
+
+  @@unique([type, version])
+  @@index([type, isPublished])
+  @@index([publishedAt])
+  @@map("policy_document_versions")
+}
+
 /// OA連携の審査ステータス。
 /// - DRAFT:      入力途中
 /// - SUBMITTED:  ユーザーが提出した直後

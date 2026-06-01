@@ -12,7 +12,7 @@ import { prisma } from "@/lib/prisma";
 import { created, badRequest, serverError } from "@/lib/api-response";
 import { withAuth } from "@/lib/auth";
 import { acceptPrivacyPolicySchema } from "@/lib/validations/onboarding";
-import { CURRENT_PRIVACY_POLICY_VERSION } from "@/lib/constants/privacy-policy";
+import { getCurrentPrivacyPolicyDocument } from "@/lib/policy-document";
 import { formatZodErrors } from "@/lib/validations";
 import { ZodError } from "zod";
 
@@ -23,9 +23,11 @@ export const POST = withAuth(async (req, _ctx, user) => {
     const body = await req.json().catch(() => ({}));
     const data = acceptPrivacyPolicySchema.parse(body);
 
-    if (data.privacy_policy_version !== CURRENT_PRIVACY_POLICY_VERSION) {
+    // 現在公開中のプライバシーポリシーバージョン (= DB 優先 / constants fallback) と一致確認
+    const currentDoc = await getCurrentPrivacyPolicyDocument();
+    if (data.privacy_policy_version !== currentDoc.version) {
       return badRequest(
-        `現在のプライバシーポリシーバージョンと一致しません (期待値: ${CURRENT_PRIVACY_POLICY_VERSION})`,
+        `現在のプライバシーポリシーバージョンと一致しません (期待値: ${currentDoc.version})`,
       );
     }
 

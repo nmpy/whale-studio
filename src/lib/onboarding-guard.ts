@@ -9,8 +9,10 @@
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getServerUser } from "@/lib/supabase/server";
-import { CURRENT_TERMS_VERSION } from "@/lib/constants/terms";
-import { CURRENT_PRIVACY_POLICY_VERSION } from "@/lib/constants/privacy-policy";
+import {
+  getCurrentTermsDocument,
+  getCurrentPrivacyPolicyDocument,
+} from "@/lib/policy-document";
 import { isPlatformOwner } from "@/lib/platform-admin";
 
 export type OnboardingRedirect =
@@ -26,17 +28,22 @@ export type OnboardingRedirect =
  */
 export async function getOnboardingState(userId: string): Promise<OnboardingRedirect> {
   // 1. 利用規約 / プライバシーポリシー同意チェック (= どちらも platform owner にも適用 / 法的に必須)
-  //    両方を並列に取得し、どちらか一方でも未同意なら同意画面 (/onboarding/terms) に redirect。
-  //    同意画面側で両方の同意 POST を実施 → 完了後にこのガードを通過するフロー。
+  //    現在公開中のバージョン (= DB の policy_document_versions 優先 / なければ constants fallback)
+  //    に対する同意があるかを確認する。新しいバージョンを公開すると、既存ユーザーは
+  //    そのバージョンへの同意 row が無いため再同意画面に redirect される。
+  const [termsDoc, privacyDoc] = await Promise.all([
+    getCurrentTermsDocument(),
+    getCurrentPrivacyPolicyDocument(),
+  ]);
   const [terms, privacy] = await Promise.all([
     prisma.termsAcceptance.findUnique({
-      where: { userId_termsVersion: { userId, termsVersion: CURRENT_TERMS_VERSION } },
+      where: { userId_termsVersion: { userId, termsVersion: termsDoc.version } },
     }),
     prisma.privacyPolicyAcceptance.findUnique({
       where: {
         userId_privacyPolicyVersion: {
           userId,
-          privacyPolicyVersion: CURRENT_PRIVACY_POLICY_VERSION,
+          privacyPolicyVersion: privacyDoc.version,
         },
       },
     }),
