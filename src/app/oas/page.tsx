@@ -247,6 +247,11 @@ export default function OaListPage() {
 
   return (
     <>
+      {/* ── お知らせ (= ページ最上部 / ユーザーが最初に気づく位置) ── */}
+      <div className="mb-6">
+        <AnnouncementBanner canPost={actAsOwner} />
+      </div>
+
       {/* ── ページヘッダー ── */}
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
@@ -265,15 +270,6 @@ export default function OaListPage() {
             ＋ アカウントを追加
           </Link>
         )}
-      </div>
-
-      {/* ── β版 遅延注意バナー ── */}
-      <div
-        role="status"
-        className="mb-4 rounded-field border border-warn/30 bg-warn-soft px-4 py-3 text-[13px] leading-[1.6] text-warn"
-      >
-        現在「Whale Studio β版」では、メッセージの処理に遅延が発生する場合があります。
-        現在改善を進めておりますので、あらかじめご了承ください。
       </div>
 
       {/* ── エラー ── */}
@@ -514,10 +510,6 @@ export default function OaListPage() {
         </div>
       )}
 
-      {/* ── お知らせ (= 別管理コンポーネント、本 PR では触らない) ── */}
-      <div className="mt-8">
-        <AnnouncementBanner canPost={actAsOwner} />
-      </div>
     </>
   );
 }
