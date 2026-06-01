@@ -1,27 +1,20 @@
 // src/app/privacy/page.tsx
 // プライバシーポリシー公開ページ (= 認証不要 / read-only)。
-//
-// レイアウト:
-//   - 利用規約同意画面 (= /onboarding/terms) のスクロール本文と同じ視覚スタイルに揃える。
-//   - ただし同意ボタンは持たず、純粋な閲覧用ページ。
-//   - SP でも崩れないよう maxWidth 720 + padding を /onboarding/layout.tsx と同等に設定。
-//
-// metadata: SEO / OGP 表示用。
+// DB の公開版を使う / なければ constants にフォールバック (= helper 経由)。
 
 import type { Metadata } from "next";
-import {
-  CURRENT_PRIVACY_POLICY_VERSION,
-  PRIVACY_POLICY_BODY,
-  PRIVACY_POLICY_EFFECTIVE_DATE,
-  PRIVACY_POLICY_LAST_UPDATED,
-} from "@/lib/constants/privacy-policy";
+import { getCurrentPrivacyPolicyDocument } from "@/lib/policy-document";
+
+export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title:       "プライバシーポリシー | Whale Studio",
   description: "Whale Studioのプライバシーポリシーです。",
 };
 
-export default function PrivacyPage() {
+export default async function PrivacyPage() {
+  const doc = await getCurrentPrivacyPolicyDocument();
+
   return (
     <div
       style={{
@@ -34,9 +27,13 @@ export default function PrivacyPage() {
       <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 8 }}>
         プライバシーポリシー
       </h1>
-      <p style={{ fontSize: 13, color: "#6b7280", marginBottom: 20 }}>
-        最終更新日：{PRIVACY_POLICY_LAST_UPDATED} ／ 施行日：{PRIVACY_POLICY_EFFECTIVE_DATE}
-      </p>
+      {(doc.lastUpdated || doc.effectiveAt) && (
+        <p style={{ fontSize: 13, color: "#6b7280", marginBottom: 20 }}>
+          {doc.lastUpdated ? `最終更新日：${doc.lastUpdated}` : null}
+          {doc.lastUpdated && doc.effectiveAt ? " ／ " : null}
+          {doc.effectiveAt ? `施行日：${doc.effectiveAt}` : null}
+        </p>
+      )}
 
       <div
         style={{
@@ -50,11 +47,11 @@ export default function PrivacyPage() {
           color:        "#374151",
         }}
       >
-        {PRIVACY_POLICY_BODY}
+        {doc.body}
       </div>
 
       <p style={{ fontSize: 12, color: "#9ca3af", marginTop: 8 }}>
-        プライバシーポリシーバージョン: {CURRENT_PRIVACY_POLICY_VERSION}
+        プライバシーポリシーバージョン: {doc.version}
       </p>
     </div>
   );

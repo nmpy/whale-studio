@@ -8,7 +8,7 @@ import { prisma } from "@/lib/prisma";
 import { created, badRequest, serverError } from "@/lib/api-response";
 import { withAuth } from "@/lib/auth";
 import { acceptTermsSchema } from "@/lib/validations/onboarding";
-import { CURRENT_TERMS_VERSION } from "@/lib/constants/terms";
+import { getCurrentTermsDocument } from "@/lib/policy-document";
 import { formatZodErrors } from "@/lib/validations";
 import { ZodError } from "zod";
 
@@ -19,8 +19,10 @@ export const POST = withAuth(async (req, _ctx, user) => {
     const body = await req.json().catch(() => ({}));
     const data = acceptTermsSchema.parse(body);
 
-    if (data.terms_version !== CURRENT_TERMS_VERSION) {
-      return badRequest(`現在の利用規約バージョンと一致しません (期待値: ${CURRENT_TERMS_VERSION})`);
+    // 現在公開中の利用規約バージョン (= DB の publish 状態 / なければ constants fallback) と一致確認
+    const currentDoc = await getCurrentTermsDocument();
+    if (data.terms_version !== currentDoc.version) {
+      return badRequest(`現在の利用規約バージョンと一致しません (期待値: ${currentDoc.version})`);
     }
 
     const acceptance = await prisma.termsAcceptance.upsert({
