@@ -9,12 +9,12 @@
 //   - owner 判定は workspace role === "owner" に統一
 //   - owner → 「スタジオ管理」 / 非 owner → 「気づいた点を送る」
 
-import { useState, useEffect } from "react";
-import { usePathname } from "next/navigation";
+import { Suspense, useState, useEffect } from "react";
+import { usePathname, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import { useTesterMode } from "@/hooks/useTesterMode";
 import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
-import { parsePreviewRole } from "@/lib/access-preview";
+import { parsePreviewRole, type PreviewRole } from "@/lib/access-preview";
 import { getAuthHeaders } from "@/lib/api-client";
 import { RoleBadge } from "@/components/PermissionGuard";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
@@ -37,6 +37,27 @@ function extractOaId(pathname: string): string {
   const oasMatch = pathname.match(/^\/oas\/([^/]+)/);
   if (oasMatch) return oasMatch[1];
   return "";
+}
+
+/**
+ * URL `?previewRole` を `useSearchParams` で reactive に監視し、コールバック経由で
+ * 親 (AppHeader) に伝える小さな client component。
+ *
+ * 役割:
+ *   - AppHeader が直接 `useSearchParams` を呼ぶと /404 / /access-denied の static
+ *     prerender が「Suspense 境界が必要」エラーで失敗する
+ *   - 本 reader を `<Suspense fallback={null}>` でラップすることで AppHeader 本体は
+ *     useSearchParams に依存せず済み、prerender に影響なし
+ *   - URL ?previewRole が変化すると useSearchParams が再評価され、effect で
+ *     onChange を呼んで AppHeader を再レンダリングさせる
+ */
+function PreviewRoleReader({ onChange }: { onChange: (role: PreviewRole | null) => void }) {
+  const sp = useSearchParams();
+  const raw = sp.get("previewRole");
+  useEffect(() => {
+    onChange(parsePreviewRole(raw));
+  }, [raw, onChange]);
+  return null;
 }
 
 export default function AppHeader() {
@@ -62,20 +83,16 @@ export default function AppHeader() {
   // 右上 CTA も連動して「気づいたことを伝える」に切り替える (= UI 確認用)。
   // 実権限は引き続き bypass されるため、操作は壊れない。
   //
-  // 実装メモ: useAccessPreview / useSearchParams は AppHeader (= root layout 配下)
-  // で使うと /404 / /access-denied 等の static prerender が Suspense 境界エラーで
-  // 失敗する。AppHeader は client component なので、URL ?previewRole の読み出しは
-  // window.location.search 経由で十分。route 遷移時 (= pathname 変化) に再評価する。
-  const [previewRole, setPreviewRole] = useState<ReturnType<typeof parsePreviewRole>>(null);
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const raw = new URLSearchParams(window.location.search).get("previewRole");
-    setPreviewRole(parsePreviewRole(raw));
-  }, [pathname]);
+  // 実装メモ: AppHeader は root layout 配下にあり、/404 / /access-denied が
+  // static prerender される。`useSearchParams` を直に使うと「Suspense 境界が必要」
+  // エラーで build が落ちるため、useSearchParams を呼ぶ最小限の reader を
+  // <Suspense fallback={null}> でラップし、コールバック経由で AppHeader 本体に
+  // preview role を伝える。これにより URL ?previewRole 変更時に reactive 追従する。
+  const [previewRole, setPreviewRole] = useState<PreviewRole | null>(null);
   // canUsePreviewMode は実 owner のみ。非 owner が URL を偽装しても preview 適用しない。
   const canUsePreviewModeForHeader = isOwner;
   const isPreviewingRole = canUsePreviewModeForHeader && previewRole !== null && previewRole !== workspaceRole;
-  const effectiveRoleForHeader: typeof previewRole | Role | null =
+  const effectiveRoleForHeader: PreviewRole | Role | null =
     canUsePreviewModeForHeader && previewRole ? previewRole : workspaceRole;
 
   // ── OA 横断 owner 判定（OA ページ外でも CTA を切り替えるため）─────
@@ -171,6 +188,11 @@ export default function AppHeader() {
 
   return (
     <>
+      {/* URL ?previewRole の変更を reactive に監視する。Suspense でラップして
+          /404 / /access-denied 等の static prerender でも build を通す。 */}
+      <Suspense fallback={null}>
+        <PreviewRoleReader onChange={setPreviewRole} />
+      </Suspense>
       <header>
         <div className="container">
           {/* ── サービスタイトル ── */}
