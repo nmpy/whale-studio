@@ -14,6 +14,7 @@ import { usePathname } from "next/navigation";
 import dynamic from "next/dynamic";
 import { useTesterMode } from "@/hooks/useTesterMode";
 import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
+import { useAccessPreview } from "@/hooks/useAccessPreview";
 import { getAuthHeaders } from "@/lib/api-client";
 import { RoleBadge } from "@/components/PermissionGuard";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
@@ -56,6 +57,11 @@ export default function AppHeader() {
 
   // 現在の OA の workspace role を取得（OA ページ外では workspaceId="" → role=null）
   const { role: workspaceRole, loading: roleLoading, isOwner } = useWorkspaceRole(currentOaId);
+
+  // 表示確認モード (= AccessPreviewBar) で「表示確認権限」を非 owner にした場合、
+  // 右上 CTA も連動して「気づいたことを伝える」に切り替える (= UI 確認用)。
+  // 実権限は引き続き bypass されるため、操作は壊れない。
+  const { effectiveRole, isPreviewingRole } = useAccessPreview(currentOaId);
 
   // ── OA 横断 owner 判定（OA ページ外でも CTA を切り替えるため）─────
   // /api/oas の my_role を見て、1つでも owner の OA があれば isAnyOaOwner = true
@@ -130,11 +136,20 @@ export default function AppHeader() {
     ? (!roleLoading && workspaceRole !== null)
     : isAnyOaOwner;
 
-  // バッジに表示する role
-  const displayRole: Role | null = currentOaId ? workspaceRole : (isAnyOaOwner ? "owner" : null);
+  // バッジに表示する role。OA 内かつ表示確認モード中は preview role を反映する
+  // (= CTA の切替と整合させ、UI 一致を保つ。Role 型に変換可能な値のみ受け入れる)。
+  const displayRole: Role | null = currentOaId
+    ? (isPreviewingRole && effectiveRole && effectiveRole !== "client_operator" && effectiveRole !== "operator"
+        ? (effectiveRole as Role)
+        : workspaceRole)
+    : (isAnyOaOwner ? "owner" : null);
 
-  // owner 判定: workspace owner（OA ページ内）または OA 横断 owner（OA ページ外）
-  const isEffectiveOwner = isOwner || isAnyOaOwner;
+  // owner 判定: workspace owner（OA ページ内）または OA 横断 owner（OA ページ外）。
+  // ただし表示確認モードで role を非 owner に切り替えている場合は、その表示用 role を優先する
+  // (= 非 owner ユーザーから見た UI 確認を可能にする)。実権限は plan-guard / rbac で別途扱う。
+  const isEffectiveOwner = currentOaId
+    ? (isPreviewingRole ? effectiveRole === "owner" : isOwner)
+    : isAnyOaOwner;
 
   // スタジオ管理のリンク先: OA ページ内なら OA 設定、それ以外はスタジオ管理トップ
   const studioHref = "/admin";
