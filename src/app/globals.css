@@ -232,6 +232,10 @@ header h1 a {
   font-weight: 900;
   letter-spacing: 0.04em;
   color: #1f2a25; /* ガイド §4: ブランド名のみ視認性のため専用色 */
+  /* SP 幅で「WHALE STUDIO」が 2 段に折り返される問題への対策 (= 常に 1 行で表示する)。
+     親 flex container 内で shrink されないように flex-shrink:0 も付与する。 */
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 .header-sep {
   color: var(--gray-300);

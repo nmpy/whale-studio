@@ -147,8 +147,10 @@ export default function AppHeader() {
           <h1>
             <a href={homeHref} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
               <span className="header-brand">WHALE STUDIO</span>
-              <span className="header-sep">|</span>
-              <span className="header-sub">
+              {/* セパレータ / サブタイトルは SP では非表示 (= ヘッダー高さ・横幅を圧迫するため)。
+                  sm (= 640px+) で表示。 */}
+              <span className="header-sep hidden sm:inline">|</span>
+              <span className="header-sub hidden sm:inline">
                 LINEでつくる物語体験
                 {isTester && (
                   <span style={{ color: "#9ca3af", fontSize: 12, fontWeight: 400, marginLeft: 4 }}>
@@ -169,10 +171,11 @@ export default function AppHeader() {
               既存ヘッダーの横並び (= ロゴ / 副題 / オーナーバッジ / ユーザー名 / ログアウト /
               スタジオ管理) の高さ・折り返しを崩さないため。 */}
 
-          {/* ── ユーザー名（ログイン済み時のみ） ── */}
+          {/* ── ユーザー名（ログイン済み時のみ / SP では非表示 = ヘッダー横幅圧迫の主因） ── */}
           {loggedIn && (
             <a
               href="/settings/profile"
+              className="hidden sm:inline-flex"
               style={{
                 fontSize:       12,
                 fontWeight:     600,
@@ -220,6 +223,7 @@ export default function AppHeader() {
               }}
               aria-label="ログアウト"
             >
+              {/* SP では「ログアウト」全文を維持しつつ font / padding は既存のまま (= 小サイズ済) */}
               ログアウト
             </button>
           )}
@@ -248,7 +252,10 @@ export default function AppHeader() {
               onMouseEnter={(e) => { e.currentTarget.style.opacity = "0.85"; }}
               onMouseLeave={(e) => { e.currentTarget.style.opacity = "1"; }}
             >
-              🏠 スタジオ管理
+              {/* SP では「管理」に短縮、PC では従来の「🏠 スタジオ管理」を維持。
+                  遷移先 / 表示条件は不変 (= 同一 <a href={studioHref}>)。 */}
+              <span className="hidden sm:inline">🏠 スタジオ管理</span>
+              <span className="sm:hidden">管理</span>
             </a>
           ) : (
             <button
@@ -281,7 +288,10 @@ export default function AppHeader() {
               }}
               aria-label="気づいたことを伝える"
             >
-              気づいたことを伝える
+              {/* SP では「気づき」に短縮、PC では従来の「気づいたことを伝える」を維持。
+                  onClick / 遷移先は不変。 */}
+              <span className="hidden sm:inline">気づいたことを伝える</span>
+              <span className="sm:hidden">気づき</span>
             </button>
           )}
         </div>
