@@ -46,12 +46,14 @@ export interface AdditionalMessageSlot {
   /** 前のメッセージ送信後この発話まで待機する ms。0 = 即時送信 */
   lag_ms:         number;
   // ── 演出設定 (空文字 = inherit、明示 "true"/"false" / 数値文字列で上書き) ──
-  read_receipt_mode:    string; // "" = inherit / "immediate" / "delayed" / "before_reply"
-  read_delay_ms:        string; // "" = inherit (数値入力との兼用)
-  typing_enabled:       string; // "" = inherit, "true", "false"
+  // 継承モード廃止: read_receipt_mode は常に "immediate"/"delayed"/"before_reply"、
+  // typing_enabled / loading_enabled は "true" / "false"。数値は空文字 = 未指定。
+  read_receipt_mode:    string; // "immediate" (OFF) | "delayed" | "before_reply"
+  read_delay_ms:        string;
+  typing_enabled:       string; // "true" | "false"
   typing_min_ms:        string;
   typing_max_ms:        string;
-  loading_enabled:      string; // "" = inherit, "true", "false"
+  loading_enabled:      string; // "true" | "false"
   loading_threshold_ms: string;
   loading_min_seconds:  string;
   loading_max_seconds:  string;
@@ -72,13 +74,13 @@ export const EMPTY_ADDITIONAL_SLOT: AdditionalMessageSlot = {
   notify_text:    "",
   carousel_items: [],
   lag_ms:         0,
-  // 演出設定 (= 空文字で inherit を意味する)
-  read_receipt_mode:    "",
+  // 演出設定 (= 継承モード廃止: すべて OFF 相当を初期値とする)
+  read_receipt_mode:    "immediate", // = OFF (人為的な既読遅延なし)
   read_delay_ms:        "",
-  typing_enabled:       "",
+  typing_enabled:       "false",
   typing_min_ms:        "",
   typing_max_ms:        "",
-  loading_enabled:      "",
+  loading_enabled:      "false",
   loading_threshold_ms: "",
   loading_min_seconds:  "",
   loading_max_seconds:  "",
@@ -93,10 +95,10 @@ export const EMPTY_ADDITIONAL_SLOT: AdditionalMessageSlot = {
 /** Message API レスポンス (1 件) を AdditionalMessageSlot に変換する。
  *  chain の 2 通目以降を編集 form に復元する際に使う。
  *
- *  正規化:
- *    - null / undefined → 空文字 (= inherit)
- *    - boolean → "true" / "false" 文字列 (= UI select 用)
- *    - number → 文字列化
+ *  正規化 (= 継承モード廃止):
+ *    - read_receipt_mode: null / 旧 "inherit" → "immediate" (= OFF)
+ *    - typing_enabled / loading_enabled: null → "false" (= OFF)
+ *    - 数値フィールド: null → 空文字 (= 未指定、runtime 固定デフォルトを使用)
  *    - 空 body / null body → 空文字 (= 既存挙動)
  */
 export function msgToAdditionalSlot(msg: {
@@ -139,15 +141,15 @@ export function msgToAdditionalSlot(msg: {
     notify_text:    msg.notify_text ?? "",
     carousel_items,
     lag_ms:         msg.lag_ms ?? 0,
-    // 演出設定 (null → 空文字 = inherit)。
-    // boolean は明示的に "true"/"false" で保持して、後段で `=== "true"` 判定する。
-    // (= 単に Boolean cast すると false が空文字と区別できなくなる)
-    read_receipt_mode:    msg.read_receipt_mode ?? "",
+    // 演出設定 (= 継承モード廃止: null / 旧 "inherit" は OFF 相当に正規化)。
+    read_receipt_mode:    (msg.read_receipt_mode === "delayed" || msg.read_receipt_mode === "before_reply")
+                            ? msg.read_receipt_mode
+                            : "immediate",
     read_delay_ms:        msg.read_delay_ms != null ? String(msg.read_delay_ms) : "",
-    typing_enabled:       msg.typing_enabled != null ? String(msg.typing_enabled) : "",
+    typing_enabled:       msg.typing_enabled === true ? "true" : "false",
     typing_min_ms:        msg.typing_min_ms != null ? String(msg.typing_min_ms) : "",
     typing_max_ms:        msg.typing_max_ms != null ? String(msg.typing_max_ms) : "",
-    loading_enabled:      msg.loading_enabled != null ? String(msg.loading_enabled) : "",
+    loading_enabled:      msg.loading_enabled === true ? "true" : "false",
     loading_threshold_ms: msg.loading_threshold_ms != null ? String(msg.loading_threshold_ms) : "",
     loading_min_seconds:  msg.loading_min_seconds != null ? String(msg.loading_min_seconds) : "",
     loading_max_seconds:  msg.loading_max_seconds != null ? String(msg.loading_max_seconds) : "",
@@ -224,19 +226,14 @@ export function additionalSlotToMsgBody(
     lag_ms:       slot.lag_ms,
     sort_order:   main.sort_order,
     is_active:    main.is_active,
-    // 演出設定 (空文字 → null = inherit、明示 false は false で保存)
+    // 演出設定 (= 継承モード廃止: slot は常に明示値 "immediate"/"true"/"false" 等を持つ。
+    // 数値フィールドは空文字なら null = 未指定、runtime 固定デフォルトを使用)。
     read_receipt_mode:    (slot.read_receipt_mode || null) as ReadReceiptMode | null,
     read_delay_ms:        slot.read_delay_ms ? Number(slot.read_delay_ms) : null,
-    typing_enabled:
-      slot.typing_enabled === "true"  ? true
-      : slot.typing_enabled === "false" ? false
-      : null,
+    typing_enabled:       slot.typing_enabled === "true" ? true : false,
     typing_min_ms:        slot.typing_min_ms ? Number(slot.typing_min_ms) : null,
     typing_max_ms:        slot.typing_max_ms ? Number(slot.typing_max_ms) : null,
-    loading_enabled:
-      slot.loading_enabled === "true"  ? true
-      : slot.loading_enabled === "false" ? false
-      : null,
+    loading_enabled:      slot.loading_enabled === "true" ? true : false,
     loading_threshold_ms: slot.loading_threshold_ms ? Number(slot.loading_threshold_ms) : null,
     loading_min_seconds:  slot.loading_min_seconds ? Number(slot.loading_min_seconds) : null,
     loading_max_seconds:  slot.loading_max_seconds ? Number(slot.loading_max_seconds) : null,
