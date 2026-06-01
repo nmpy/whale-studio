@@ -1395,6 +1395,22 @@ model TermsAcceptance {
   @@map("terms_acceptances")
 }
 
+/// プライバシーポリシーへの同意履歴。privacyPolicyVersion を上げると再同意が必要。
+/// TermsAcceptance と同方針 (= id uuid / userId は Supabase auth.users.id を文字列で保持 /
+/// Prisma relation は張らない / @@unique([userId, privacyPolicyVersion]))。
+model PrivacyPolicyAcceptance {
+  id                   String   @id @default(uuid())
+  userId               String   @map("user_id")
+  privacyPolicyVersion String   @map("privacy_policy_version")
+  acceptedAt           DateTime @default(now()) @map("accepted_at")
+  createdAt            DateTime @default(now()) @map("created_at")
+
+  @@unique([userId, privacyPolicyVersion])
+  @@index([userId])
+  @@index([acceptedAt])
+  @@map("privacy_policy_acceptances")
+}
+
 /// OA連携の審査ステータス。
 /// - DRAFT:      入力途中
 /// - SUBMITTED:  ユーザーが提出した直後

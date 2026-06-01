@@ -16,6 +16,9 @@ const NAV_ITEMS = [
   { href: "/admin/hub-actions",   label: "ハブ操作分析" },
   { href: "/admin/resume",        label: "再開分析" },
   { href: "/admin/audit",         label: "操作ログ" },
+  // 注: /admin/live と /admin/privacy-acceptances は platform admin 専用のため
+  //     sidebar には掲載せず、/admin トップで isPlatform 判定して条件表示する
+  //     (= 既存 /admin/live と同方針)。
 ] as const;
 
 export function AdminSidebar() {
