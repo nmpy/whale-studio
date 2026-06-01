@@ -202,6 +202,7 @@ export function PricingContent({
   to:       toParam,
   oaId,
   canceled,
+  priceOverrides,
 }: {
   source?:   string;
   from?:     string;
@@ -210,6 +211,10 @@ export function PricingContent({
   oaId?:     string;
   /** "1" のとき Stripe Checkout からのキャンセル戻りを示すバナーを表示 */
   canceled?: string;
+  /** Server Component (= page.tsx) で Stripe Price から取得した各プランの金額。
+   *  取得失敗時は { formatted: "お問い合わせください", priceUnit: "" } が入る。
+   *  カード描画時に `PERSONAL_PLAN_CARDS` の hardcoded `price` / `priceUnit` を上書きする。 */
+  priceOverrides?: Record<PersonalPlanCard["tier"], { formatted: string; priceUnit: string }>;
 }) {
   const [requested,            setRequested]            = useState(false);
   /** 押された個別プランの tier (= "basic"|"standard"|"pro"|"plus")。
@@ -419,8 +424,15 @@ export function PricingContent({
           // current が優先、それ以外で recommended のときに「おすすめ」バッジ
           const showCurrentBadge = isCurrent;
           const showRecommendedBadge = !isCurrent && isRecommended;
-          // price が長文 (= "詳細はお問い合わせください" や "準備中") のときは小さく muted で表示
-          const isPriceMuted = plan.price.length > 8 || plan.price === "準備中";
+          // Stripe Price からの取得値で hardcoded `price` / `priceUnit` を上書き。
+          // 取得失敗時 (= override の formatted="お問い合わせください") も hardcoded
+          // "準備中" を表示せず、fallback 文言を採用する。
+          const override     = priceOverrides?.[plan.tier];
+          const displayPrice = override?.formatted ?? plan.price;
+          const displayUnit  = override?.priceUnit ?? plan.priceUnit;
+          // price が長文 (= "お問い合わせください" / "詳細はお問い合わせください" / "準備中") のときは
+          // 小さく muted で表示
+          const isPriceMuted = displayPrice.length > 8 || displayPrice === "準備中";
           const isThisLoading  = checkoutLoadingTier === plan.tier;
           const isOtherLoading = checkoutLoadingTier !== null && !isThisLoading;
 
@@ -482,10 +494,10 @@ export function PricingContent({
                       : "text-[22px] text-ink")
                   }
                 >
-                  {plan.price}
-                  {plan.priceUnit && (
+                  {displayPrice}
+                  {displayUnit && (
                     <span className="ml-1 text-[11px] font-medium text-ink-3">
-                      {plan.priceUnit}
+                      {displayUnit}
                     </span>
                   )}
                 </p>

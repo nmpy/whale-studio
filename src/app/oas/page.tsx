@@ -267,19 +267,18 @@ export default function OaListPage() {
         )}
       </div>
 
-      {/* ── お知らせ (= ページ見出し直下 / アカウントカード一覧の上) ── */}
+      {/* ── お知らせ (= ページ見出し直下 / アカウント一覧見出しの上) ── */}
       <div className="mb-5">
         <AnnouncementBanner canPost={actAsOwner} />
       </div>
 
-      {/* ── β版 遅延注意バナー ── */}
-      <div
-        role="status"
-        className="mb-4 rounded-field border border-warn/30 bg-warn-soft px-4 py-3 text-[13px] leading-[1.6] text-warn"
+      {/* ── アカウント一覧セクション見出し (= お知らせと同階層スタイル) ── */}
+      <h3
+        className="mb-3 text-[13px] font-bold tracking-[0.02em] text-ink"
+        style={{ margin: "0 0 12px" }}
       >
-        現在「Whale Studio β版」では、メッセージの処理に遅延が発生する場合があります。
-        現在改善を進めておりますので、あらかじめご了承ください。
-      </div>
+        アカウント一覧
+      </h3>
 
       {/* ── エラー ── */}
       {error && (

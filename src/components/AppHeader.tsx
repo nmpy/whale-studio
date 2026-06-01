@@ -149,7 +149,7 @@ export default function AppHeader() {
               <span className="header-brand">WHALE STUDIO</span>
               <span className="header-sep">|</span>
               <span className="header-sub">
-                LINEでつくる物語体験 β版
+                LINEでつくる物語体験
                 {isTester && (
                   <span style={{ color: "#9ca3af", fontSize: 12, fontWeight: 400, marginLeft: 4 }}>
                     （テスターモード）
