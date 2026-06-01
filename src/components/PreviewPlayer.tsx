@@ -153,30 +153,29 @@ export function PreviewPlayer({
     clearTimers();
     const cfg = resolve(msgConfig, workConfig);
 
+    // DEBUG (PR #182 review, merge 前削除): PreviewPlayer 側に届いた chain を確認する。
+    // chain が undefined / 空 だと従来の単発 botReply にフォールバックされている。
+    console.log("[PreviewPlayer DEBUG] play()", {
+      chainLength: chain?.length ?? 0,
+      chainItems:  chain?.map((c) => ({ key: c.key, type: c.bubbleType, bodyLen: c.text.length, qrCount: c.quickReplies?.length ?? 0 })) ?? null,
+      botReplyFallbackUsed: !chain || chain.length === 0,
+    });
+
     const userBubble: ChatBubble = { id: "u1", from: "user", text: userMessage };
 
-    // chain 指定があれば QR を tail に集約し、複数 bot bubble を順に流す。
-    // chain が空 (= 既存呼び出し) なら従来の単発 botReply を使う。
+    // chain 指定があれば複数 bot bubble を順に流す。chain が空 (= 既存呼び出し) なら従来の単発 botReply。
+    // QR は各 chain item に紐づくものをそのまま、その bubble の直下に描画する
+    // (= 実機 LINE と同じ「QR は付属メッセージの下」挙動)。
     const chainBubbles: ChatBubble[] = (chain && chain.length > 0)
-      ? (() => {
-          // 末尾候補を後ろから探す = moveQuickReplyToTail と同じ姿勢。
-          // chain 中の最初に見つかった quickReplies を tail bubble に集約する。
-          let tailQuickReplies: ChatQuickReply[] | undefined;
-          for (let i = chain.length - 1; i >= 0; i--) {
-            const qrs = chain[i]?.quickReplies;
-            if (qrs && qrs.length > 0) { tailQuickReplies = qrs; break; }
-          }
-          return chain.map((c, i) => ({
-            id:            `b${i + 1}`,
-            from:          "bot" as const,
-            text:          c.text,
-            bubbleType:    c.bubbleType,
-            mediaUrl:      c.mediaUrl,
-            carouselCount: c.carouselCount,
-            // tail bubble にのみ QR を載せる (= 中間 bubble には付けない)。
-            quickReplies:  i === chain.length - 1 ? tailQuickReplies : undefined,
-          }));
-        })()
+      ? chain.map((c, i) => ({
+          id:            `b${i + 1}`,
+          from:          "bot" as const,
+          text:          c.text,
+          bubbleType:    c.bubbleType,
+          mediaUrl:      c.mediaUrl,
+          carouselCount: c.carouselCount,
+          quickReplies:  c.quickReplies,
+        }))
       : [{ id: "b1", from: "bot", text: botReply }];
 
     // 経過時間を積み上げてシーケンスを組み立てる

@@ -2627,15 +2627,20 @@ function buildPreviewChain(args: {
   if (out.length >= PREVIEW_CHAIN_MAX) return out;
 
   // 3. form.additionalMessages (= 編集中の 2 通目以降。live edit を反映)。
-  //    各 slot に quick_replies フィールドは無いため、QR は head 側の form.quick_replies のみ。
+  //    AdditionalMessageSlot には quick_replies フィールドが無いため、保存済 slot は
+  //    existingId をキーに allMessages から QR を引き当てる (= 実 DB 値)。
+  //    新規追加 slot (existingId なし) は QR 未保存なので非表示。
+  const byId = new Map(allMessages.map((m) => [m.id, m]));
   for (let i = 0; i < form.additionalMessages.length; i++) {
     const s = form.additionalMessages[i];
+    const dbRow = s.existingId ? byId.get(s.existingId) : undefined;
     out.push({
       key:           s.existingId ? `add:${s.existingId}` : `add-new:${i}`,
       bubbleType:    messageTypeToBubble(s.message_type),
       text:          s.body || "",
       mediaUrl:      s.asset_url || undefined,
       carouselCount: s.message_type === "carousel" ? s.carousel_items.length : undefined,
+      quickReplies:  quickRepliesToChatQR(dbRow?.quick_replies),
     });
     if (s.free_input_enabled) return out;
     if (out.length >= PREVIEW_CHAIN_MAX) return out;
@@ -3188,6 +3193,39 @@ export function MessageForm({
   // プレビュー用 chain (= 上流の親 + 編集中 form + form.additionalMessages を head→tail で並べたもの)。
   // 構築は純関数 buildPreviewChain に切り出し済。空配列なら PreviewPlayer は従来の単発 botReply にフォールバック。
   const previewChain = buildPreviewChain({ messageId, form, allMessages });
+
+  // ── DEBUG (PR #182 review 用、merge 前に削除) ────────────────────
+  // chain 件数 / item id 一覧 / form.additionalMessages の長さを DevTools に出す。
+  // 本番ビルドでも出るので、ユーザー確認後に必ず削除すること。
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    console.log("[PreviewChain DEBUG]", {
+      currentMessageId: messageId ?? null,
+      allMessagesCount: allMessages.length,
+      formAdditionalCount: form.additionalMessages.length,
+      previewChainLength: previewChain.length,
+      formBodyLen: form.body.length,
+      formNextMessageId: form.next_message_id || null,
+      formAdditional: form.additionalMessages.map((s) => ({
+        existingId: s.existingId ?? null,
+        type:       s.message_type,
+        bodyLen:    s.body.length,
+      })),
+      chainItems: previewChain.map((c) => ({
+        key:        c.key,
+        type:       c.bubbleType,
+        bodyLen:    c.text.length,
+        hasMedia:   !!c.mediaUrl,
+        qrCount:    c.quickReplies?.length ?? 0,
+      })),
+      allMessagesIds: allMessages.map((m) => ({
+        id:        m.id.slice(0, 8),
+        next:      m.next_message_id?.slice(0, 8) ?? null,
+        bodyLen:   m.body?.length ?? 0,
+        hasQR:     !!(m.quick_replies && m.quick_replies.length),
+      })),
+    });
+  }, [messageId, allMessages, form.additionalMessages, form.body.length, form.next_message_id, previewChain]);
 
   function insertAtCursor(placeholder: string) {
     const el = bodyTextareaRef.current;

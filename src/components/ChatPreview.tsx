@@ -244,12 +244,10 @@ export function ChatPreview({ state }: { state: ChatPreviewState }) {
             </div>
           );
         }
-        // 直後 (i+1) に bot 系の吹き出しが続かないかつ自分自身に QR が設定されている場合のみ
-        // QR チップ行を描画する。chain tail でのみ表示する想定。
-        const isLastBot =
-          b.from === "bot" &&
-          (b.quickReplies?.length ?? 0) > 0 &&
-          !state.bubbles.slice(i + 1).some((nb) => nb.from === "bot");
+        // QR は「その bubble 自身に紐づいているメッセージの下」に描画する
+        // (= 実機 LINE の挙動: QR は付属しているメッセージの直下に表示される)。
+        // 空配列 / undefined の場合は表示しない。
+        const showQR = b.from === "bot" && (b.quickReplies?.length ?? 0) > 0;
         return (
           <div key={b.id} style={{ display: "flex", flexDirection: "column", alignItems: b.from === "user" ? "flex-end" : "flex-start" }}>
             <div style={bubbleRow(b.from)}>
@@ -258,7 +256,7 @@ export function ChatPreview({ state }: { state: ChatPreviewState }) {
                 <div style={bubbleStyle(b.from)}>{b.text}</div>
               )}
             </div>
-            {isLastBot && b.quickReplies && (
+            {showQR && b.quickReplies && (
               <div style={qrRow}>
                 {b.quickReplies.map((qr, qi) => (
                   <span key={qi} style={qrChip}>{qr.label}</span>
