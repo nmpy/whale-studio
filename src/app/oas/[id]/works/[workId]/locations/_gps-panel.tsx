@@ -7,6 +7,7 @@ import { useEffect, useState, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { QRCodeSVG } from "qrcode.react";
 import { locationApi, workApi, getDevToken } from "@/lib/api-client";
+import { buttonClass } from "@/components/shared";
 import type { LocationWithTransition } from "@/types";
 
 function buildLiffUrl(args: {
@@ -156,7 +157,7 @@ export default function GpsPanel({ oaId, workId }: Props) {
           )}
           <Link
             href={`/oas/${oaId}/works/${workId}/locations/new`}
-            style={{ padding: "8px 18px", background: "#2563eb", color: "#fff", borderRadius: 8, fontSize: 14, fontWeight: 600, textDecoration: "none" }}
+            className={buttonClass({ variant: "primary", size: "md" })}
           >
             + ロケーションを追加
           </Link>
@@ -212,7 +213,7 @@ export default function GpsPanel({ oaId, workId }: Props) {
           </p>
           <Link
             href={`/oas/${oaId}/works/${workId}/locations/new`}
-            style={{ display: "inline-block", padding: "10px 24px", background: "#2563eb", color: "#fff", borderRadius: 8, fontSize: 14, fontWeight: 600, textDecoration: "none" }}
+            className={buttonClass({ variant: "primary", size: "md" })}
           >
             + 最初のロケーションを作成
           </Link>

@@ -9,7 +9,7 @@ import { Breadcrumb } from "@/components/Breadcrumb";
 import { TLink as Link } from "@/components/TLink";
 import { useTesterRouter } from "@/hooks/useTesterRouter";
 import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
-import { useWorkLimit } from "@/hooks/useWorkLimit";
+import { useEffectivePlanInfo } from "@/hooks/useEffectivePlanInfo";
 import { WorkLimitCard } from "@/components/upgrade/WorkLimitCard";
 import type { PublishStatus } from "@/types";
 
@@ -25,7 +25,8 @@ export default function WorkNewPage() {
   const router = useTesterRouter();
   const { showToast } = useToast();
   const { loading: roleLoading } = useWorkspaceRole(oaId);
-  const { maxWorks, planDisplayName, planName, loading: limitLoading } = useWorkLimit(oaId);
+  // 表示確認モード対応 (= preview tier の上限・アップグレード訴求が確認可能)。
+  const { maxWorks, planDisplayName, planName, loading: limitLoading } = useEffectivePlanInfo(oaId);
 
   const [title, setTitle]               = useState("");
   const [description, setDescription]   = useState("");
