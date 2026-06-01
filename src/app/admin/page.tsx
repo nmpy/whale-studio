@@ -39,10 +39,10 @@ const ADMIN_ITEMS = [
     color: "#6b7280",
   },
   {
-    href:  null,
-    title: "プライバシーポリシー管理",
-    desc:  "プライバシーポリシーの編集・公開（近日公開）",
-    color: "#6b7280",
+    href:  "/admin/privacy-acceptances",
+    title: "プライバシー同意履歴",
+    desc:  "ユーザーごとのプライバシーポリシー同意日時を確認",
+    color: "#7c3aed",
   },
   {
     href:  "/admin/billing",

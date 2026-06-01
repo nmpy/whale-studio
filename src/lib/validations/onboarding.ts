@@ -8,6 +8,11 @@ export const acceptTermsSchema = z.object({
   terms_version: z.string().min(1, "termsVersion は必須です"),
 });
 
+// ── プライバシーポリシー同意 ─────────────────────────────────────
+export const acceptPrivacyPolicySchema = z.object({
+  privacy_policy_version: z.string().min(1, "privacyPolicyVersion は必須です"),
+});
+
 // ── Step 2: OA 連携情報 ──────────────────────────────────────────
 export const updateOnboardingOaSchema = z.object({
   oa_name:        z.string().max(100).optional().nullable(),
