@@ -277,17 +277,8 @@ export default function FeedbackModal({ pathname, onClose, pricingSource }: Prop
       if (!json.ok) {
         const errMsg = json.error ?? "送信に失敗しました";
         console.error("[FeedbackModal] API エラー:", errMsg);
-
-        if (errMsg.includes("GAS_FEEDBACK_WEBHOOK_URL")) {
-          showToast(
-            "送信先が未設定です。サーバーの環境変数 GAS_FEEDBACK_WEBHOOK_URL を設定し、再起動してください。",
-            "error"
-          );
-        } else if (errMsg.startsWith("ネットワークエラー")) {
-          showToast("スプレッドシートへの接続に失敗しました。しばらく後に再試行してください。", "error");
-        } else {
-          showToast(`送信に失敗しました: ${errMsg}`, "error");
-        }
+        // API 側で既にユーザー向けに整形された文言を返す設計 (= env 名や URL を出さない)。
+        showToast(errMsg, "error");
         return;
       }
 
