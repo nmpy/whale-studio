@@ -36,13 +36,26 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getOaIdFromWorkId } from "@/lib/rbac";
 import { planRequired } from "@/lib/api-response";
+import { isPlatformOwner } from "@/lib/platform-admin";
+import { getCurrentUserId } from "@/lib/user-context";
 import {
   PLAN_LABELS,
+  PLAN_TIER,
   mapPlanNameToTier,
   getPlanAccessState,
   type PlanTier,
   type FeatureKey,
 } from "@/lib/constants/plans";
+
+/**
+ * 現在のリクエストの userId が PLATFORM_ADMIN_USER_IDS に含まれているかを判定する。
+ * withAuth / withRole が AsyncLocalStorage に userId を束ねている前提
+ * (= `runWithCurrentUserId` 経由)。context 外で呼ばれた場合は false。
+ */
+function isCurrentUserPlatformAdmin(): boolean {
+  const uid = getCurrentUserId();
+  return !!uid && isPlatformOwner(uid);
+}
 
 // ────────────────────────────────────────────────
 // 現在の plan tier を取得する
@@ -63,6 +76,10 @@ const FULL_ACCESS_STATUSES = new Set(["active", "trialing"]);
  *   UI 側の PlanCard はそのまま status を表示するため、表示と権限制御は別経路。
  */
 export async function getCurrentPlanTierForOa(oaId: string): Promise<PlanTier> {
+  // platform admin (PLATFORM_ADMIN_USER_IDS) は常に最上位プラン扱い (= 機能制限を一切受けない)。
+  // Subscription を引かずに早期 return することで DB クエリも省略できる。
+  if (isCurrentUserPlatformAdmin()) return PLAN_TIER.pro;
+
   if (!oaId) return mapPlanNameToTier(null);
   try {
     const sub = await prisma.subscription.findUnique({

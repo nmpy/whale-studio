@@ -11,6 +11,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { submitFeedback } from "@/lib/services/feedback";
 import { notifyFeedbackSubmitted } from "@/lib/slack/feedback";
+import { notifyEnterpriseInquirySubmitted } from "@/lib/slack/enterprise-inquiry";
+import { getAuthUser } from "@/lib/auth";
 
 // フロントから受け取る入力型（自動付与フィールドは除く）
 interface FeedbackInput {
@@ -38,7 +40,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, error: "content は必須です" }, { status: 400 });
     }
 
-    const validCategories = ["bug", "ux", "feature", "other"];
+    // "enterprise" は /pricing の「法人プランに申し込む」CTA からの送信に使う。
+    // 受け取った場合は専用 Slack チャネル (= ENTERPRISE_PLAN_SLACK_WEBHOOK_URL) に通知する。
+    const validCategories = ["bug", "ux", "feature", "other", "enterprise"];
     const category = validCategories.includes(body.category ?? "")
       ? body.category!
       : "other";
@@ -87,25 +91,51 @@ export async function POST(req: NextRequest) {
     console.info(`[POST /api/feedback] [${requestId}] ✅ 完了 id=${id}`);
 
     // Slack 通知 (fire-and-forget):
-    //   - webhook (= FEEDBACK_SLACK_WEBHOOK_URL) 未設定なら silent no-op
+    //   - webhook 未設定なら silent no-op
     //   - 通知失敗時もレスポンスはブロックしない (= console.error のみ)
     //   - webhook URL はログに出さない (= helper 側で吸収)
-    void notifyFeedbackSubmitted({
-      id:        payload.id,
-      category:  payload.category,
-      content:   payload.content,
-      userName:  payload.user_name  || null,
-      userEmail: payload.user_email || null,
-      pageName:  payload.page_name  || null,
-      pageUrl:   payload.page_url   || null,
-      oaId:      payload.oa_id,
-      oaName:    payload.oa_name,
-      workId:    payload.work_id,
-      workName:  payload.work_name,
-      createdAt: new Date(payload.created_at),
-    }).catch((err) => {
-      console.error("[slack] failed to notify feedback", err);
-    });
+    //
+    // category 別に通知先を分岐:
+    //   - "enterprise" → ENTERPRISE_PLAN_SLACK_WEBHOOK_URL (= 法人プラン申し込み専用)
+    //   - その他       → FEEDBACK_SLACK_WEBHOOK_URL (= 一般気づき)
+    if (payload.category === "enterprise") {
+      // 認証済みなら userId を取得 (= 任意。anonymous なら null)。
+      // getAuthUser は失敗時も throw しない設計だが、念のため try/catch で吸収。
+      const inquiryUserId = await getAuthUser(req).then((u) => u?.id ?? null).catch(() => null);
+      void notifyEnterpriseInquirySubmitted({
+        id:        payload.id,
+        content:   payload.content,
+        userName:  payload.user_name  || null,
+        userEmail: payload.user_email || null,
+        userId:    inquiryUserId,
+        pageName:  payload.page_name  || null,
+        pageUrl:   payload.page_url   || null,
+        oaId:      payload.oa_id,
+        oaName:    payload.oa_name,
+        workId:    payload.work_id,
+        workName:  payload.work_name,
+        createdAt: new Date(payload.created_at),
+      }).catch((err) => {
+        console.error("[slack] failed to notify enterprise inquiry", err);
+      });
+    } else {
+      void notifyFeedbackSubmitted({
+        id:        payload.id,
+        category:  payload.category,
+        content:   payload.content,
+        userName:  payload.user_name  || null,
+        userEmail: payload.user_email || null,
+        pageName:  payload.page_name  || null,
+        pageUrl:   payload.page_url   || null,
+        oaId:      payload.oa_id,
+        oaName:    payload.oa_name,
+        workId:    payload.work_id,
+        workName:  payload.work_name,
+        createdAt: new Date(payload.created_at),
+      }).catch((err) => {
+        console.error("[slack] failed to notify feedback", err);
+      });
+    }
 
     // dev_skip フラグをフロントに伝えて開発モードメッセージを出せるようにする
     return NextResponse.json({ ok: true, ...(result.dev_skip ? { dev_skip: true } : {}) });

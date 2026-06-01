@@ -9,6 +9,7 @@ import type { Role } from '@/lib/types/permissions';
 import { roleAtLeast } from '@/lib/types/permissions';
 import { prisma } from '@/lib/prisma';
 import { PERF_LOG_ENABLED, withTimingFnf, logFnfSkip } from '@/lib/perf';
+import { runWithCurrentUserId } from '@/lib/user-context';
 
 // fire-and-forget hooks 用の userId mask (PII 不出力)
 // PR #161: PERF_LOG_ENABLED=1 の時だけ duration log に含めるための短縮表記。
@@ -350,7 +351,9 @@ export function withAuth<T = Record<string, string>>(handler: Handler<T>) {
     if (bypassOn) {
       console.warn(`[withAuth] ⚠️ BYPASS_AUTH=true (dev) — 認証スキップ method=${method} path=${pathname}`);
       try {
-        return await handler(req, ctx, { id: "bypass-admin" });
+        // bypass-admin の userId を AsyncLocalStorage に束ねて handler 全体を実行する
+        // (= 下位レイヤの plan-guard / RBAC bypass などが getCurrentUserId() で参照できる)
+        return await runWithCurrentUserId("bypass-admin", () => handler(req, ctx, { id: "bypass-admin" }));
       } catch (err) {
         console.error(`[withAuth] BYPASS handler error method=${method} path=${pathname}:`, err);
         return NextResponse.json(
@@ -413,7 +416,10 @@ export function withAuth<T = Record<string, string>>(handler: Handler<T>) {
           `[perf][auth-hooks] fired=${fired} skipped=${skipped} userId=${maskUserId(user.id)}`,
         );
       }
-      return await handler(req, ctx, user);
+      // 認証済み userId を AsyncLocalStorage に束ねて handler 全体を実行する。
+      // 下位レイヤ (plan-guard 等) は getCurrentUserId() で参照可。引数経由で渡す
+      // 必要がなく、既存 API ルートを書き換えずに platform admin bypass を効かせられる。
+      return await runWithCurrentUserId(user.id, () => handler(req, ctx, user));
     } catch (err) {
       console.error(`[withAuth] UNCAUGHT in ${req.method} ${req.nextUrl.pathname}:`, err);
       return NextResponse.json(
