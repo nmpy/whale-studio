@@ -8,8 +8,26 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ChatPreview, type ChatBubble, type ChatPreviewState } from "./ChatPreview";
+import { ChatPreview, type ChatBubble, type ChatBubbleType, type ChatPreviewState, type ChatQuickReply } from "./ChatPreview";
 import type { MessageTimingConfig } from "@/types";
+
+/** chain prop で渡す 1 通分のプレビューデータ。
+ *  実送信処理 (= buildPhaseMessages) は触らず、フロント側でチェーン表示を組むためだけに使う。 */
+export interface PreviewChainItem {
+  /** 安定した key。 */
+  key:           string;
+  /** 表示種別。"text" 以外は media 系として描画する。 */
+  bubbleType:    ChatBubbleType;
+  /** 本文 (= text 用 / 画像/動画の alt 兼用)。 */
+  text:          string;
+  /** 画像/動画の URL。 */
+  mediaUrl?:     string;
+  /** カルーセル枚数 (= bubbleType="carousel" 用 placeholder)。 */
+  carouselCount?: number;
+  /** このメッセージに付いている QuickReply。chain 全体で末尾 1 件にのみ表示される
+   *  (= moveQuickReplyToTail と同じ姿勢で PreviewPlayer 側が tail に集約)。 */
+  quickReplies?: ChatQuickReply[];
+}
 
 // ────────────────────────────────────────────────
 // フロント用 resolve（サーバー側の line-read-receipt.ts と同等）
@@ -81,15 +99,19 @@ export function PreviewPlayer({
   workConfig,
   botReply = "了解しました！",
   userMessage = "テスト送信",
+  chain,
 }: {
   /** メッセージ単位の演出設定（フォーム値から変換して渡す） */
   msgConfig?: MessageTimingConfig | null;
   /** 作品単位の演出設定 */
   workConfig?: MessageTimingConfig | null;
-  /** Bot の返信テキスト */
+  /** Bot の返信テキスト (= chain 未指定時の fallback)。 */
   botReply?: string;
   /** ユーザー側の送信テキスト */
   userMessage?: string;
+  /** 1 登録分のメッセージ群 (= chain head → tail)。指定があれば botReply は無視され、
+   *  チェーンを順番に描画する。末尾の bubble の下に QR を集約表示する。 */
+  chain?: PreviewChainItem[];
 }) {
   const [phase, setPhase] = useState<Phase>("idle");
   const [chatState, setChatState] = useState<ChatPreviewState>({
@@ -132,7 +154,30 @@ export function PreviewPlayer({
     const cfg = resolve(msgConfig, workConfig);
 
     const userBubble: ChatBubble = { id: "u1", from: "user", text: userMessage };
-    const botBubble: ChatBubble  = { id: "b1", from: "bot",  text: botReply };
+
+    // chain 指定があれば QR を tail に集約し、複数 bot bubble を順に流す。
+    // chain が空 (= 既存呼び出し) なら従来の単発 botReply を使う。
+    const chainBubbles: ChatBubble[] = (chain && chain.length > 0)
+      ? (() => {
+          // 末尾候補を後ろから探す = moveQuickReplyToTail と同じ姿勢。
+          // chain 中の最初に見つかった quickReplies を tail bubble に集約する。
+          let tailQuickReplies: ChatQuickReply[] | undefined;
+          for (let i = chain.length - 1; i >= 0; i--) {
+            const qrs = chain[i]?.quickReplies;
+            if (qrs && qrs.length > 0) { tailQuickReplies = qrs; break; }
+          }
+          return chain.map((c, i) => ({
+            id:            `b${i + 1}`,
+            from:          "bot" as const,
+            text:          c.text,
+            bubbleType:    c.bubbleType,
+            mediaUrl:      c.mediaUrl,
+            carouselCount: c.carouselCount,
+            // tail bubble にのみ QR を載せる (= 中間 bubble には付けない)。
+            quickReplies:  i === chain.length - 1 ? tailQuickReplies : undefined,
+          }));
+        })()
+      : [{ id: "b1", from: "bot", text: botReply }];
 
     // 経過時間を積み上げてシーケンスを組み立てる
     let t = 0;
@@ -208,22 +253,27 @@ export function PreviewPlayer({
       t += 100;
     }
 
-    // 6. Bot 返信
-    schedule(() => {
-      setChatState((s) => ({
-        ...s,
-        bubbles: [...s.bubbles, botBubble],
-        showTyping: false,
-        showLoading: false,
-      }));
-      setPhase("replied");
-    }, t);
+    // 6. Bot 返信 (chain なら順番に積む)
+    chainBubbles.forEach((bb, i) => {
+      schedule(() => {
+        setChatState((s) => ({
+          ...s,
+          bubbles: [...s.bubbles, bb],
+          showTyping: false,
+          showLoading: false,
+        }));
+        if (i === chainBubbles.length - 1) setPhase("replied");
+      }, t);
+      // 後続 bubble は短い間隔で続けて描画する (= 実送信時の chain と同様、
+      // 演出 timing は 1 回まとめて表示する想定)。最終 bubble は遅延なし。
+      if (i < chainBubbles.length - 1) t += 350;
+    });
 
     // 7. finished
     schedule(() => {
       setPhase("finished");
     }, t + 500);
-  }, [msgConfig, workConfig, botReply, userMessage, clearTimers, schedule]);
+  }, [msgConfig, workConfig, botReply, userMessage, chain, clearTimers, schedule]);
 
   const isPlaying = phase !== "idle" && phase !== "finished";
 

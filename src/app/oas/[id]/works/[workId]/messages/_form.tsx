@@ -11,7 +11,8 @@ import type { PhaseWithCounts, Character, QuickReplyItem, QuickReplyAction, Read
 import type { Riddle } from "@/types";
 import { PhaseTransitionsSection } from "./_phase-transitions";
 import { BUILTIN_PRESETS, presetToFormValues } from "@/lib/timing-presets";
-import { PreviewPlayer } from "@/components/PreviewPlayer";
+import { PreviewPlayer, type PreviewChainItem } from "@/components/PreviewPlayer";
+import type { ChatBubbleType } from "@/components/ChatPreview";
 import type { MessageTimingConfig } from "@/types";
 import { TapDestinationSection } from "@/components/destination/TapDestinationSection";
 import type { TapMode } from "@/components/destination/TapDestinationSection";
@@ -2294,11 +2295,15 @@ function TimingConfigSection<T extends TimingFormFields>({
   form,
   set,
   isAdditional,
+  chain,
 }: {
   form: T;
   set: <K extends keyof T>(key: K, val: T[K]) => void;
   /** 追加 (2 通目以降) のメッセージ用なら true。既読遅延の制約注記を出すために使う。 */
   isAdditional?: boolean;
+  /** 1 登録分のチェーン (= 上流 + 編集中 + 下流)。指定があれば PreviewPlayer がチェーン全体を描画する。
+   *  未指定の場合は従来の単発 botReply にフォールバック。 */
+  chain?: PreviewChainItem[];
 }) {
   // UI 統一: 自由入力受付セクションと同じ SectionAccordion をベースに使う。
   // 値が既に設定されていれば初期展開する。
@@ -2517,10 +2522,126 @@ function TimingConfigSection<T extends TimingFormFields>({
           <PreviewPlayer
             msgConfig={formToTimingConfig(form)}
             botReply={form.body || "返信テキスト"}
+            chain={chain && chain.length > 0 ? chain : undefined}
           />
       </div>
     </SectionAccordion>
   );
+}
+
+// ── プレビュー用 chain build helper ───────────────────────
+//
+// 1 登録 (= chain head + 連続メッセージ群) を form の live state + API データから
+// 組み立てる。実送信処理 (buildPhaseMessages) は一切変更せず、フロント側で
+// 同等の見た目を再現するための関数。
+//
+// 入力:
+//   - messageId    : 編集中メッセージの ID (新規作成中は undefined)
+//   - form         : 現在の form state (= 1 通目 + additionalMessages を live で持つ)
+//   - allMessages  : work 内の全 message (= API から取得済み snapshot)
+//
+// 出力:
+//   PreviewChainItem[] (= head→tail 順)。返り値が空配列なら呼び出し側は
+//   従来の単発 botReply にフォールバックする。
+const PREVIEW_CHAIN_MAX = 8; // safety cap (= LINE 仕様 5 + 多少の余裕)
+
+function messageTypeToBubble(t: string | undefined): ChatBubbleType {
+  switch (t) {
+    case "text":     return "text";
+    case "image":    return "image";
+    case "video":    return "video";
+    case "voice":    return "voice";
+    case "carousel": return "carousel";
+    default:         return "other";
+  }
+}
+
+function quickRepliesToChatQR(qrs: QuickReplyItem[] | null | undefined) {
+  if (!qrs || qrs.length === 0) return undefined;
+  return qrs
+    .filter((q) => q.label && q.label.trim())
+    .map((q) => ({ label: q.label, action: q.action }));
+}
+
+function buildPreviewChain(args: {
+  messageId:   string | undefined;
+  form:        MessageFormState;
+  allMessages: {
+    id: string;
+    body: string | null;
+    quick_replies?: QuickReplyItem[] | null;
+    next_message_id?: string | null;
+    message_type?: string;
+    asset_url?: string | null;
+    free_input_enabled?: boolean;
+  }[];
+}): PreviewChainItem[] {
+  const { messageId, form, allMessages } = args;
+
+  // 上流側 (= 編集中メッセージを next_message_id で指している親メッセージ列)。
+  // head→...→parent_of(messageId) の順で並べる。
+  const upstream: typeof allMessages = [];
+  if (messageId) {
+    const byNext = new Map<string, typeof allMessages[number]>();
+    for (const m of allMessages) {
+      if (m.next_message_id) byNext.set(m.next_message_id, m);
+    }
+    const visited = new Set<string>();
+    let cursor: string | undefined = messageId;
+    while (cursor && !visited.has(cursor) && upstream.length < PREVIEW_CHAIN_MAX) {
+      visited.add(cursor);
+      const parent = byNext.get(cursor);
+      if (!parent) break;
+      upstream.unshift(parent); // head 方向に積む
+      cursor = parent.id;
+    }
+  }
+
+  const out: PreviewChainItem[] = [];
+
+  // 1. 上流 (= 親側) を順に追加。これらは API スナップショットなのでそのまま使う。
+  //    途中で free_input_enabled が true のメッセージがあれば、その時点で chain は切れる
+  //    (= 実送信処理と同じ姿勢)。ただし切れた以降は表示しない。
+  for (const m of upstream) {
+    out.push({
+      key:           `up:${m.id}`,
+      bubbleType:    messageTypeToBubble(m.message_type),
+      text:          m.body ?? "",
+      mediaUrl:      m.asset_url ?? undefined,
+      quickReplies:  quickRepliesToChatQR(m.quick_replies),
+    });
+    if (m.free_input_enabled) return out; // free input prompt 以降は表示しない
+    if (out.length >= PREVIEW_CHAIN_MAX) return out;
+  }
+
+  // 2. 編集中のメッセージ (= form 本体 = chain の "ここ"。新規でも 1 通目として扱う)
+  out.push({
+    key:           messageId ? `cur:${messageId}` : "cur:new",
+    bubbleType:    messageTypeToBubble(form.message_type),
+    text:          form.body || "",
+    mediaUrl:      form.asset_url || undefined,
+    carouselCount: form.message_type === "carousel" ? form.carousel_items.length : undefined,
+    quickReplies:  quickRepliesToChatQR(form.quick_replies),
+  });
+  if (form.free_input_enabled) return out;
+  if (out.length >= PREVIEW_CHAIN_MAX) return out;
+
+  // 3. form.additionalMessages (= 編集中の 2 通目以降。live edit を反映)。
+  //    各 slot に quick_replies フィールドは無いため、QR は head 側の form.quick_replies のみ。
+  for (let i = 0; i < form.additionalMessages.length; i++) {
+    const s = form.additionalMessages[i];
+    out.push({
+      key:           s.existingId ? `add:${s.existingId}` : `add-new:${i}`,
+      bubbleType:    messageTypeToBubble(s.message_type),
+      text:          s.body || "",
+      mediaUrl:      s.asset_url || undefined,
+      carouselCount: s.message_type === "carousel" ? s.carousel_items.length : undefined,
+    });
+    if (s.free_input_enabled) return out;
+    if (out.length >= PREVIEW_CHAIN_MAX) return out;
+  }
+
+  return out;
 }
 
 /** フォーム文字列値を MessageTimingConfig に変換する */
@@ -2546,7 +2667,7 @@ function formToTimingConfig(form: {
 // ────────────────────────────────────────────────────────
 
 function AdditionalMessageBlock({
-  index, slot, onChange, onRemove, oaId, workId, characters, allMessages,
+  index, slot, onChange, onRemove, oaId, workId, characters, allMessages, chain,
 }: {
   index:      number;
   slot:       AdditionalMessageSlot;
@@ -2561,6 +2682,8 @@ function AdditionalMessageBlock({
     phase_id?: string | null; quick_replies?: QuickReplyItem[] | null;
     trigger_keyword?: string | null;
   }[];
+  /** 1 登録分のチェーン (= 親 form 側で構築して渡す)。TimingConfigSection の preview に渡す。 */
+  chain?: PreviewChainItem[];
 }) {
   const bodyRef = useRef<HTMLTextAreaElement>(null);
 
@@ -2811,6 +2934,7 @@ function AdditionalMessageBlock({
           form={slot}
           set={(k, v) => onChange({ ...slot, [k]: v })}
           isAdditional
+          chain={chain}
         />
 
         {/* 自由入力受付 (= chain continuation でも freeInput プロンプトに設定可能)。
@@ -3011,6 +3135,11 @@ export function MessageForm({
     id: string; body: string | null; kind: string; sort_order: number;
     phase_id?: string | null; quick_replies?: QuickReplyItem[] | null;
     trigger_keyword?: string | null;
+    // chain プレビュー用 (= 編集対象が継続側のとき親方向を辿る + 親側の表示)
+    next_message_id?: string | null;
+    message_type?: string;
+    asset_url?: string | null;
+    free_input_enabled?: boolean;
   }[]>([]);
 
   // ── destination 選択用 ──
@@ -3037,13 +3166,17 @@ export function MessageForm({
       setCharacters(ch);
       setRiddles(rd);
       setAllMessages(msgs.map((m) => ({
-        id:              m.id,
-        body:            m.body,
-        kind:            m.kind,
-        sort_order:      m.sort_order,
-        phase_id:        m.phase_id,
-        quick_replies:   m.quick_replies,
-        trigger_keyword: m.trigger_keyword,
+        id:                 m.id,
+        body:               m.body,
+        kind:               m.kind,
+        sort_order:         m.sort_order,
+        phase_id:           m.phase_id,
+        quick_replies:      m.quick_replies,
+        trigger_keyword:    m.trigger_keyword,
+        next_message_id:    m.next_message_id,
+        message_type:       m.message_type,
+        asset_url:          m.asset_url,
+        free_input_enabled: m.free_input_enabled,
       })));
     }).catch(() => {});
   }, [workId, oaId]);
@@ -3051,6 +3184,10 @@ export function MessageForm({
   function set<K extends keyof MessageFormState>(k: K, v: MessageFormState[K]) {
     setForm((prev) => ({ ...prev, [k]: v }));
   }
+
+  // プレビュー用 chain (= 上流の親 + 編集中 form + form.additionalMessages を head→tail で並べたもの)。
+  // 構築は純関数 buildPreviewChain に切り出し済。空配列なら PreviewPlayer は従来の単発 botReply にフォールバック。
+  const previewChain = buildPreviewChain({ messageId, form, allMessages });
 
   function insertAtCursor(placeholder: string) {
     const el = bodyTextareaRef.current;
@@ -4258,7 +4395,7 @@ export function MessageForm({
               </div>
 
                 {/* ── 演出設定（既読・typing・ローディング）── */}
-                <TimingConfigSection form={form} set={set} />
+                <TimingConfigSection form={form} set={set} chain={previewChain} />
 
               </div>{/* /padding */}
             </div>{/* /1通目ラッパー */}
@@ -4273,6 +4410,7 @@ export function MessageForm({
                 workId={workId}
                 characters={characters}
                 allMessages={allMessages}
+                chain={previewChain}
                 onChange={(updated) => {
                   setForm((prev) => ({
                     ...prev,
