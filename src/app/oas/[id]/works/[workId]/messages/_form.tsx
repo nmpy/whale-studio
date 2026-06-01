@@ -144,12 +144,15 @@ export interface MessageFormState {
   image_action_postback_data: string;
   alt_text:                   string;
   // ── 演出設定 ──
-  read_receipt_mode:    string; // "" = inherit
-  read_delay_ms:        string; // "" = inherit（数値入力との兼用）
-  typing_enabled:       string; // "" = inherit, "true", "false"
+  // 継承モード廃止。read_receipt_mode は常に "immediate" / "delayed" / "before_reply"
+  // のいずれか。typing_enabled / loading_enabled は "true" / "false" のいずれか。
+  // 数値フィールド (read_delay_ms 等) は空文字 = 未指定 (= runtime の固定デフォルトを使用)。
+  read_receipt_mode:    string; // "immediate" (OFF) | "delayed" | "before_reply"
+  read_delay_ms:        string; // 数値入力 / 空文字 = デフォルト
+  typing_enabled:       string; // "true" | "false"
   typing_min_ms:        string;
   typing_max_ms:        string;
-  loading_enabled:      string; // "" = inherit, "true", "false"
+  loading_enabled:      string; // "true" | "false"
   loading_threshold_ms: string;
   loading_min_seconds:  string;
   loading_max_seconds:  string;
@@ -198,13 +201,13 @@ export const EMPTY_MESSAGE_FORM: MessageFormState = {
   image_action_liff_page_id:  "",
   image_action_postback_data: "",
   alt_text:                   "",
-  // 演出設定（空文字 = inherit）
-  read_receipt_mode:    "",
+  // 演出設定 (= 継承モード廃止: すべて OFF 相当を初期値とする)。
+  read_receipt_mode:    "immediate", // = OFF (人為的な既読遅延なし)
   read_delay_ms:        "",
-  typing_enabled:       "",
+  typing_enabled:       "false",
   typing_min_ms:        "",
   typing_max_ms:        "",
-  loading_enabled:      "",
+  loading_enabled:      "false",
   loading_threshold_ms: "",
   loading_min_seconds:  "",
   loading_max_seconds:  "",
@@ -325,13 +328,18 @@ export function msgToFormState(msg: {
     free_input_enabled:         msg.free_input_enabled         ?? false,
     free_input_variable_key:    msg.free_input_variable_key    ?? "",
     free_input_next_message_id: msg.free_input_next_message_id ?? "",
-    // 演出設定（null → 空文字 = inherit）
-    read_receipt_mode:    msg.read_receipt_mode ?? "",
+    // 演出設定 (= 継承モード廃止: null / 旧 "inherit" は OFF 相当に正規化)。
+    // - read_receipt_mode: null / "inherit" → "immediate" (= OFF)
+    // - typing_enabled / loading_enabled: null → "false" (= OFF)
+    // - 数値フィールドは null → 空文字 (= 未指定。runtime の固定デフォルトを使用)
+    read_receipt_mode:    (msg.read_receipt_mode === "delayed" || msg.read_receipt_mode === "before_reply")
+                            ? msg.read_receipt_mode
+                            : "immediate",
     read_delay_ms:        msg.read_delay_ms != null ? String(msg.read_delay_ms) : "",
-    typing_enabled:       msg.typing_enabled != null ? String(msg.typing_enabled) : "",
+    typing_enabled:       msg.typing_enabled === true ? "true" : "false",
     typing_min_ms:        msg.typing_min_ms != null ? String(msg.typing_min_ms) : "",
     typing_max_ms:        msg.typing_max_ms != null ? String(msg.typing_max_ms) : "",
-    loading_enabled:      msg.loading_enabled != null ? String(msg.loading_enabled) : "",
+    loading_enabled:      msg.loading_enabled === true ? "true" : "false",
     loading_threshold_ms: msg.loading_threshold_ms != null ? String(msg.loading_threshold_ms) : "",
     loading_min_seconds:  msg.loading_min_seconds != null ? String(msg.loading_min_seconds) : "",
     loading_max_seconds:  msg.loading_max_seconds != null ? String(msg.loading_max_seconds) : "",
@@ -422,13 +430,14 @@ export function formStateToMsgBody(form: MessageFormState) {
     // ON のときのみ key を保存。OFF のときは null にして整合性を保つ。
     free_input_variable_key:    form.free_input_enabled ? (form.free_input_variable_key.trim() || null) : null,
     free_input_next_message_id: form.free_input_enabled ? (form.free_input_next_message_id || null) : null,
-    // 演出設定（空文字 → null = inherit）
+    // 演出設定 (= 継承モード廃止により form は常に明示値 "immediate"/"true"/"false" 等を持つ)。
+    // 数値フィールドは空文字なら null (= 未指定、runtime 固定デフォルト適用)。
     read_receipt_mode:    (form.read_receipt_mode || null) as ReadReceiptMode | null,
     read_delay_ms:        form.read_delay_ms ? Number(form.read_delay_ms) : null,
-    typing_enabled:       form.typing_enabled === "true" ? true : form.typing_enabled === "false" ? false : null,
+    typing_enabled:       form.typing_enabled === "true" ? true : false,
     typing_min_ms:        form.typing_min_ms ? Number(form.typing_min_ms) : null,
     typing_max_ms:        form.typing_max_ms ? Number(form.typing_max_ms) : null,
-    loading_enabled:      form.loading_enabled === "true" ? true : form.loading_enabled === "false" ? false : null,
+    loading_enabled:      form.loading_enabled === "true" ? true : false,
     loading_threshold_ms: form.loading_threshold_ms ? Number(form.loading_threshold_ms) : null,
     loading_min_seconds:  form.loading_min_seconds ? Number(form.loading_min_seconds) : null,
     loading_max_seconds:  form.loading_max_seconds ? Number(form.loading_max_seconds) : null,
@@ -2301,17 +2310,18 @@ function PreviewPanel({ chain, characters, riddles, destinations }: PreviewPanel
 // 演出設定セクション
 // ────────────────────────────────────────────────────────
 
+// 既読モード選択肢。「OFF (人為的な既読遅延なし)」= "immediate"。
+// 継承モードは廃止 (= ユーザー方針: すべての演出設定は OFF をデフォルトとして明示する)。
 const READ_RECEIPT_MODE_OPTIONS = [
-  { value: "",              label: "継承（デフォルト）" },
-  { value: "immediate",     label: "即時" },
+  { value: "immediate",     label: "OFF（即時）" },
   { value: "delayed",       label: "遅延" },
   { value: "before_reply",  label: "返信直前" },
 ] as const;
 
-const BOOL_INHERIT_OPTIONS = [
-  { value: "",      label: "継承" },
-  { value: "true",  label: "ON" },
+// boolean 系演出設定 (送信前待機 / 「入力中...」表示) の選択肢。継承モード廃止。
+const BOOL_OPTIONS = [
   { value: "false", label: "OFF" },
+  { value: "true",  label: "ON" },
 ] as const;
 
 // 演出設定 UI が要求する最小フィールド集合。
@@ -2446,7 +2456,7 @@ function TimingConfigSection<T extends TimingFormFields>({
               value={form.typing_enabled}
               onChange={(e) => set("typing_enabled", e.target.value)}
             >
-              {BOOL_INHERIT_OPTIONS.map((o) => (
+              {BOOL_OPTIONS.map((o) => (
                 <option key={o.value} value={o.value}>{o.label}</option>
               ))}
             </select>
@@ -2489,7 +2499,7 @@ function TimingConfigSection<T extends TimingFormFields>({
               value={form.loading_enabled}
               onChange={(e) => set("loading_enabled", e.target.value)}
             >
-              {BOOL_INHERIT_OPTIONS.map((o) => (
+              {BOOL_OPTIONS.map((o) => (
                 <option key={o.value} value={o.value}>{o.label}</option>
               ))}
             </select>

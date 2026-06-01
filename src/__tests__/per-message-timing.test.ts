@@ -50,17 +50,20 @@ describe("msgToAdditionalSlot — Message API response から AdditionalMessageS
     expect(slot.loading_enabled).toBe("false");  // 明示 false は保持される
   });
 
-  it("legacy データ (timing 全 null) でもエラーにならず inherit (空文字) になる", () => {
+  it("legacy データ (timing 全 null) は OFF 相当に正規化される (= 継承モード廃止)", () => {
     const slot = msgToAdditionalSlot({
       id: "m-legacy",
       message_type: "text",
       body: "既存メッセージ",
     });
     expect(slot.lag_ms).toBe(0);
-    expect(slot.read_receipt_mode).toBe("");
+    // read_receipt_mode: null → "immediate" (= OFF, 人為的な既読遅延なし)
+    expect(slot.read_receipt_mode).toBe("immediate");
+    // 数値フィールドは null → 空文字 (= 未指定、runtime 固定デフォルト適用)
     expect(slot.read_delay_ms).toBe("");
-    expect(slot.typing_enabled).toBe("");
-    expect(slot.loading_enabled).toBe("");
+    // typing_enabled / loading_enabled: null → "false" (= OFF)
+    expect(slot.typing_enabled).toBe("false");
+    expect(slot.loading_enabled).toBe("false");
   });
 
   it("typing_enabled=false が文字列 \"false\" として保持される (= true/false 区別)", () => {
@@ -140,12 +143,13 @@ describe("additionalSlotToMsgBody — slot → API body", () => {
       notify_text:    "",
       carousel_items: [],
       lag_ms:         0,
-      read_receipt_mode:    "",
+      // 継承モード廃止: slot は常に明示 OFF 値を持つ。
+      read_receipt_mode:    "immediate",
       read_delay_ms:        "",
-      typing_enabled:       "",
+      typing_enabled:       "false",
       typing_min_ms:        "",
       typing_max_ms:        "",
-      loading_enabled:      "",
+      loading_enabled:      "false",
       loading_threshold_ms: "",
       loading_min_seconds:  "",
       loading_max_seconds:  "",
@@ -155,15 +159,18 @@ describe("additionalSlotToMsgBody — slot → API body", () => {
     };
   }
 
-  it("演出未設定スロットは全 timing が null (= inherit)", () => {
+  it("演出 OFF スロットは enable 系が false、数値系が null で送信される (= 継承モード廃止)", () => {
     const body = additionalSlotToMsgBody(baseSlot(), MAIN);
     expect(body.lag_ms).toBe(0);
-    expect(body.read_receipt_mode).toBeNull();
+    // read_receipt_mode は "immediate" (= OFF) を明示送信
+    expect(body.read_receipt_mode).toBe("immediate");
+    // 数値フィールドは未指定なら null (= runtime 固定デフォルトを使用)
     expect(body.read_delay_ms).toBeNull();
-    expect(body.typing_enabled).toBeNull();
+    // enable flag は明示 false で送信 (= 旧 null inherit ではなく)
+    expect(body.typing_enabled).toBe(false);
     expect(body.typing_min_ms).toBeNull();
     expect(body.typing_max_ms).toBeNull();
-    expect(body.loading_enabled).toBeNull();
+    expect(body.loading_enabled).toBe(false);
     expect(body.loading_threshold_ms).toBeNull();
     expect(body.loading_min_seconds).toBeNull();
     expect(body.loading_max_seconds).toBeNull();
@@ -287,15 +294,16 @@ describe("ラウンドトリップ — API response → slot → API body", () =
     expect(body.loading_enabled).toBe(false);  // 明示 false が保持
   });
 
-  it("legacy null データのラウンドトリップは全 inherit (= null) で消えない", () => {
+  it("legacy null データのラウンドトリップは OFF 相当に正規化される (= 継承モード廃止)", () => {
     const apiMsg = { id: "m", message_type: "text", body: "legacy" };
     const slot = msgToAdditionalSlot(apiMsg);
     const body = additionalSlotToMsgBody(slot, {
       work_id: "w", phase_id: null, character_id: null,
       kind: "normal", sort_order: 0, is_active: true,
     });
-    expect(body.read_receipt_mode).toBeNull();
-    expect(body.typing_enabled).toBeNull();
-    expect(body.loading_enabled).toBeNull();
+    // 旧 null inherit → 明示 OFF (= immediate / false) で再保存される
+    expect(body.read_receipt_mode).toBe("immediate");
+    expect(body.typing_enabled).toBe(false);
+    expect(body.loading_enabled).toBe(false);
   });
 });

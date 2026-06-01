@@ -163,42 +163,46 @@ export type ResolvedTimingConfig = {
 };
 
 /**
- * メッセージ単位 → 作品単位 → 環境変数デフォルト の優先順位で解決する。
+ * メッセージ単位の設定だけを参照して解決する。
  *
- * 各フィールドは null = inherit として上位に委譲。
- * ?? チェーンにより message > work > env の順で最初の非 null 値を採用する。
+ * 仕様 (= 継承モード廃止):
+ *   - msgConfig 内の各フィールドが null / undefined / "inherit" の場合は **OFF 扱い**:
+ *     - readReceiptMode → "immediate" (人為的な既読遅延なし)
+ *     - typingEnabled / loadingEnabled → false
+ *   - 数値フィールド (read_delay_ms / typing_min_ms 等) は、対応する enable flag が
+ *     true のときに参照される。null の場合はモジュール内の固定デフォルトを使う
+ *     (= 旧 envConfig fallback の代わり)。
+ *   - **作品単位の設定 (旧 workConfig) には fallback しない**。
+ *   - **環境変数の enable 系には fallback しない** (= READ_RECEIPT_ENABLED / TYPING_ENABLED 等)。
+ *     ※ `ReadReceiptController.config.enabled` は別系統の master-switch として残置 (= 後述)。
  *
- * @param msgConfig   メッセージ単位の設定（DB 保存値。null/undefined=inherit）
- * @param workConfig  作品単位の設定（DB 保存値。null/undefined=inherit）
- * @param envConfig   環境変数ベースの設定（getConfig() の戻り値）
+ * 後方互換のため第 2 / 第 3 引数は受け付けるが、内部では完全に無視する。
+ * 旧シグネチャの呼び出し元 (= webhook 等) を壊さないため。
  */
 export function resolveMessageTimingConfig(
   msgConfig: MessageTimingConfig | null | undefined,
-  workConfig: MessageTimingConfig | null | undefined = null,
-  envConfig: ReadReceiptConfig = globalConfig,
+  _legacyWorkConfig?: MessageTimingConfig | null,
+  _legacyEnvConfig?: ReadReceiptConfig,
 ): ResolvedTimingConfig {
-  // readReceiptMode の解決: message > work > env
-  const msgMode  = msgConfig?.read_receipt_mode;
-  const workMode = workConfig?.read_receipt_mode;
-  let readReceiptMode: ResolvedTimingConfig["readReceiptMode"];
-  if (msgMode && msgMode !== "inherit") {
-    readReceiptMode = msgMode;
-  } else if (workMode && workMode !== "inherit") {
-    readReceiptMode = workMode;
-  } else {
-    readReceiptMode = envConfig.enabled ? "delayed" : "immediate";
-  }
+  // 既読モード: msg 値が "immediate" / "delayed" / "before_reply" のときのみ採用、
+  // それ以外 (= null / undefined / "inherit") は OFF 相当の "immediate" に正規化。
+  const msgMode = msgConfig?.read_receipt_mode;
+  const readReceiptMode: ResolvedTimingConfig["readReceiptMode"] =
+    (msgMode === "immediate" || msgMode === "delayed" || msgMode === "before_reply")
+      ? msgMode
+      : "immediate";
 
   return {
     readReceiptMode,
-    readDelayMs:        msgConfig?.read_delay_ms        ?? workConfig?.read_delay_ms        ?? envConfig.readDelayMs,
-    typingEnabled:      msgConfig?.typing_enabled       ?? workConfig?.typing_enabled       ?? envConfig.typingEnabled,
-    typingMinMs:        msgConfig?.typing_min_ms        ?? workConfig?.typing_min_ms        ?? envConfig.typingMinMs,
-    typingMaxMs:        msgConfig?.typing_max_ms        ?? workConfig?.typing_max_ms        ?? envConfig.typingMaxMs,
-    loadingEnabled:     msgConfig?.loading_enabled      ?? workConfig?.loading_enabled      ?? envConfig.loadingEnabled,
-    loadingThresholdMs: msgConfig?.loading_threshold_ms ?? workConfig?.loading_threshold_ms ?? envConfig.loadingThresholdMs,
-    loadingMinSeconds:  msgConfig?.loading_min_seconds  ?? workConfig?.loading_min_seconds  ?? envConfig.loadingMinSeconds,
-    loadingMaxSeconds:  msgConfig?.loading_max_seconds  ?? workConfig?.loading_max_seconds  ?? envConfig.loadingMaxSeconds,
+    // 数値フィールドは enable flag が ON のときに参照される。null は固定デフォルトへ。
+    readDelayMs:        msgConfig?.read_delay_ms        ?? DEFAULT_READ_DELAY_MS,
+    typingEnabled:      msgConfig?.typing_enabled       ?? false,
+    typingMinMs:        msgConfig?.typing_min_ms        ?? DEFAULT_TYPING_MIN_MS,
+    typingMaxMs:        msgConfig?.typing_max_ms        ?? DEFAULT_TYPING_MAX_MS,
+    loadingEnabled:     msgConfig?.loading_enabled      ?? false,
+    loadingThresholdMs: msgConfig?.loading_threshold_ms ?? DEFAULT_LOADING_THRESHOLD_MS,
+    loadingMinSeconds:  msgConfig?.loading_min_seconds  ?? DEFAULT_LOADING_MIN_SECONDS,
+    loadingMaxSeconds:  msgConfig?.loading_max_seconds  ?? DEFAULT_LOADING_MAX_SECONDS,
   };
 }
 
@@ -309,9 +313,8 @@ export class ReadReceiptController {
   private readonly channelAccessToken: string;
   private readonly isOneOnOne: boolean;
 
-  // 演出設定（メッセージ単位/作品単位で上書き可能）
+  // 演出設定（メッセージ単位のみ。作品単位の参照は廃止 = 継承モード撤廃）
   private resolvedTiming: ResolvedTimingConfig | null = null;
-  private workTiming: MessageTimingConfig | null = null;
 
   // タイミング
   private readonly receivedAt: number;
@@ -348,25 +351,25 @@ export class ReadReceiptController {
   }
 
   /**
-   * 作品単位の演出設定をセットする。
-   * Webhook で Work 取得後に一度だけ呼ぶ。以降の resolve に反映される。
+   * @deprecated 継承モード廃止により no-op。後方互換のためシグネチャだけ残してある。
+   * 呼び出し元 (webhook) は影響なく動作する。
    */
-  setWorkTiming(workConfig: MessageTimingConfig | null | undefined): void {
-    this.workTiming = workConfig ?? null;
+  setWorkTiming(_workConfig: MessageTimingConfig | null | undefined): void {
+    // intentionally empty: work 単位の演出デフォルトは参照しない。
   }
 
   /**
    * メッセージ単位の演出設定を適用する。
-   * 返信するメッセージが確定した後に呼ぶことで、以降の typing / loading 判定に反映される。
-   * 優先順位: message > work > env
+   * 返信メッセージが確定した後に呼ぶことで、以降の typing / loading 判定に反映される。
+   * null / "inherit" は OFF として正規化される。
    */
   applyMessageTiming(msgConfig: MessageTimingConfig | null | undefined): void {
-    this.resolvedTiming = resolveMessageTimingConfig(msgConfig, this.workTiming, this.config);
+    this.resolvedTiming = resolveMessageTimingConfig(msgConfig);
   }
 
-  /** 現在有効な解決済み設定を返す */
+  /** 現在有効な解決済み設定を返す。未適用なら null から resolve した OFF 状態を返す。 */
   private getResolved(): ResolvedTimingConfig {
-    return this.resolvedTiming ?? resolveMessageTimingConfig(null, this.workTiming, this.config);
+    return this.resolvedTiming ?? resolveMessageTimingConfig(null);
   }
 
   // ── 既読遅延スケジュール ──
@@ -461,7 +464,7 @@ export class ReadReceiptController {
    * @param msgConfig 当該メッセージの timing 設定 (= LineMessage._timing)
    */
   async waitTypingForMessage(msgConfig: MessageTimingConfig | null | undefined): Promise<void> {
-    const resolved = resolveMessageTimingConfig(msgConfig, this.workTiming, this.config);
+    const resolved = resolveMessageTimingConfig(msgConfig);
     if (!resolved.typingEnabled) return;
 
     const minMs = Math.max(0, resolved.typingMinMs);
@@ -532,7 +535,7 @@ export class ReadReceiptController {
 
     // loadingShown guard を意図的にスキップ。LINE API への重複呼び出しは
     // best-effort で許容する (= 「入力中...」表示の per-message refresh を試みる)。
-    const resolved = resolveMessageTimingConfig(msgConfig, this.workTiming, this.config);
+    const resolved = resolveMessageTimingConfig(msgConfig);
     const elapsed = Date.now() - this.receivedAt;
     const seconds = computeLoadingSeconds(elapsed, resolved.loadingMinSeconds, resolved.loadingMaxSeconds);
     this.loadingShown = true;  // 統計用 (= legacy scheduleLoading の二重発火は防止)
