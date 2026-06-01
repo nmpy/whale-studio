@@ -3,15 +3,17 @@
 // プライバシーポリシー同意履歴の閲覧画面 (Server Component)。
 //
 // 設計方針:
-//   - /admin/layout.tsx で platform owner / workspace owner ガードが既に効いているため、
+//   - /admin/layout.tsx で platform owner / workspace owner ガードが効いているため、
 //     本ページは閲覧用 Server Component として直接 prisma を引く (= 専用 API 不要)。
-//   - 件数が増えてもまずは「最新 100 件 / acceptedAt desc」で十分。将来ページネーション要なら
-//     既存 /admin/audit 等の pagination パターンを真似する。
+//   - 件数が増えてもまずは「最新 100 件 / acceptedAt desc」で十分。
 //   - 日時は JST で「YYYY/MM/DD HH:mm」表記。
-//   - 個人情報 (= email / username) は Profile を join して取得。
-//     Profile 行が無い user (= 旧データ等) は username/メール null で表示。
+//   - **メールアドレス**: Supabase auth.users は Prisma スキーマ外のため、
+//     `SUPABASE_SERVICE_ROLE_KEY` を使った Supabase Admin API (`auth.admin.getUserById`)
+//     で取得する。未設定環境では `(取得不可)` を表示。
+//   - ユーザー名 (= Profile.username) は Prisma で JOIN。
 
 import { prisma } from "@/lib/prisma";
+import { createClient } from "@supabase/supabase-js";
 import type { Metadata } from "next";
 
 export const dynamic = "force-dynamic";
@@ -33,8 +35,39 @@ function formatJst(d: Date): string {
   });
 }
 
+/**
+ * Supabase Admin API でユーザー emails を取得する (= service role key 必須)。
+ * 未設定 / 失敗時は空 Map を返してフォールバック表示する。
+ */
+async function fetchUserEmails(userIds: string[]): Promise<Map<string, string | null>> {
+  const emailByUserId = new Map<string, string | null>();
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceKey  = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !serviceKey || userIds.length === 0) {
+    return emailByUserId;
+  }
+
+  const supabase = createClient(supabaseUrl, serviceKey, {
+    auth: { persistSession: false },
+  });
+
+  // 必要な userId だけ admin.getUserById で並列取得 (= 100 件想定なら数秒以内)。
+  // 失敗した行は null を保持し、UI 側で「(取得失敗)」表示にフォールバック。
+  const results = await Promise.allSettled(
+    userIds.map((id) => supabase.auth.admin.getUserById(id)),
+  );
+  results.forEach((r, i) => {
+    if (r.status === "fulfilled" && r.value.data?.user?.email) {
+      emailByUserId.set(userIds[i], r.value.data.user.email);
+    } else {
+      emailByUserId.set(userIds[i], null);
+    }
+  });
+  return emailByUserId;
+}
+
 export default async function PrivacyAcceptancesAdminPage() {
-  // 同意履歴 (= 最新 100 件 / acceptedAt desc)
   const acceptances = await prisma.privacyPolicyAcceptance.findMany({
     orderBy: { acceptedAt: "desc" },
     take:    LIMIT,
@@ -47,16 +80,21 @@ export default async function PrivacyAcceptancesAdminPage() {
     },
   });
 
-  // 同意ユーザーの username を Profile から join (= email は Supabase auth schema 側のため
-  // Prisma からは引かない / userId のみ表示)。
-  const userIds = acceptances.map((a) => a.userId);
-  const profiles = userIds.length === 0
-    ? []
-    : await prisma.profile.findMany({
-        where:  { userId: { in: userIds } },
-        select: { userId: true, username: true },
-      });
+  // Profile.username (= ユーザー名表示) と Supabase email を並列取得
+  const userIds = [...new Set(acceptances.map((a) => a.userId))];
+  const [profiles, emails] = await Promise.all([
+    userIds.length === 0
+      ? Promise.resolve([])
+      : prisma.profile.findMany({
+          where:  { userId: { in: userIds } },
+          select: { userId: true, username: true },
+        }),
+    fetchUserEmails(userIds),
+  ]);
   const profileByUserId = new Map(profiles.map((p) => [p.userId, p.username] as const));
+
+  // service role 未設定 → emails Map は空 / その場合「(取得不可)」表示を出す
+  const emailFetchDisabled = emails.size === 0 && userIds.length > 0;
 
   return (
     <>
@@ -80,6 +118,7 @@ export default async function PrivacyAcceptancesAdminPage() {
               <thead>
                 <tr style={{ background: "#f9fafb", borderBottom: "1px solid #e5e7eb" }}>
                   <th style={{ textAlign: "left", padding: "10px 12px", fontWeight: 700, color: "#374151" }}>ユーザー名</th>
+                  <th style={{ textAlign: "left", padding: "10px 12px", fontWeight: 700, color: "#374151" }}>メールアドレス</th>
                   <th style={{ textAlign: "left", padding: "10px 12px", fontWeight: 700, color: "#374151" }}>user_id</th>
                   <th style={{ textAlign: "left", padding: "10px 12px", fontWeight: 700, color: "#374151" }}>同意バージョン</th>
                   <th style={{ textAlign: "left", padding: "10px 12px", fontWeight: 700, color: "#374151" }}>同意日時 (JST)</th>
@@ -87,35 +126,48 @@ export default async function PrivacyAcceptancesAdminPage() {
                 </tr>
               </thead>
               <tbody>
-                {acceptances.map((a) => (
-                  <tr key={a.id} style={{ borderBottom: "1px solid #f3f4f6" }}>
-                    <td style={{ padding: "10px 12px", color: "#111827" }}>
-                      {profileByUserId.get(a.userId) ?? <span style={{ color: "#9ca3af" }}>(未登録)</span>}
-                    </td>
-                    <td style={{ padding: "10px 12px", color: "#6b7280", fontFamily: "monospace", fontSize: 11 }}>
-                      {a.userId}
-                    </td>
-                    <td style={{ padding: "10px 12px", color: "#374151", fontFamily: "monospace" }}>
-                      {a.privacyPolicyVersion}
-                    </td>
-                    <td style={{ padding: "10px 12px", color: "#374151", whiteSpace: "nowrap" }}>
-                      {formatJst(a.acceptedAt)}
-                    </td>
-                    <td style={{ padding: "10px 12px", color: "#6b7280", whiteSpace: "nowrap" }}>
-                      {formatJst(a.createdAt)}
-                    </td>
-                  </tr>
-                ))}
+                {acceptances.map((a) => {
+                  const username = profileByUserId.get(a.userId);
+                  const email    = emails.get(a.userId);
+                  return (
+                    <tr key={a.id} style={{ borderBottom: "1px solid #f3f4f6" }}>
+                      <td style={{ padding: "10px 12px", color: "#111827" }}>
+                        {username ?? <span style={{ color: "#9ca3af" }}>(未登録)</span>}
+                      </td>
+                      <td style={{ padding: "10px 12px", color: "#374151" }}>
+                        {email
+                          ? email
+                          : emailFetchDisabled
+                            ? <span style={{ color: "#9ca3af" }}>(取得不可)</span>
+                            : <span style={{ color: "#9ca3af" }}>(取得失敗)</span>}
+                      </td>
+                      <td style={{ padding: "10px 12px", color: "#6b7280", fontFamily: "monospace", fontSize: 11 }}>
+                        {a.userId}
+                      </td>
+                      <td style={{ padding: "10px 12px", color: "#374151", fontFamily: "monospace" }}>
+                        {a.privacyPolicyVersion}
+                      </td>
+                      <td style={{ padding: "10px 12px", color: "#374151", whiteSpace: "nowrap" }}>
+                        {formatJst(a.acceptedAt)}
+                      </td>
+                      <td style={{ padding: "10px 12px", color: "#6b7280", whiteSpace: "nowrap" }}>
+                        {formatJst(a.createdAt)}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
         )}
       </div>
 
-      <p style={{ fontSize: 11, color: "#9ca3af", marginTop: 12 }}>
-        メールアドレスは Supabase auth schema にあり、Whale Studio 側 DB からは取得できないため表示していません。
-        ユーザー特定が必要な場合は user_id を Supabase Dashboard で照合してください。
-      </p>
+      {emailFetchDisabled && (
+        <p style={{ fontSize: 11, color: "#9ca3af", marginTop: 12 }}>
+          メールアドレスは Supabase Admin API 経由で取得します。表示されない場合は
+          Vercel env に <code>SUPABASE_SERVICE_ROLE_KEY</code> が設定されているか確認してください。
+        </p>
+      )}
     </>
   );
 }
