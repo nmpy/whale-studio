@@ -61,7 +61,7 @@ export default function WorkListPage() {
   const { isTester } = useTesterMode();
   // 表示確認モード中は preview tier の Plan 情報を返す (= 価格・上限表示が preview に追随)。
   // 通常モード / 非 owner / 非 platform admin は実プラン情報 (= 既存挙動)。
-  const { maxWorks, planDisplayName, planName, loading: limitLoading } = useEffectivePlanInfo(oaId);
+  const { maxWorks, planDisplayName, planName, effectivePlan, isPreviewingPlan, loading: limitLoading } = useEffectivePlanInfo(oaId);
 
   const [oaTitle, setOaTitle]     = useState("");
   const [works, setWorks]         = useState<WorkListItem[]>([]);
@@ -78,9 +78,16 @@ export default function WorkListPage() {
   // loading / limitLoading 中は false（ちらつき防止）
   const atLimit = maxWorks !== null && maxWorks !== -1 && !loading && !limitLoading && works.length >= maxWorks;
   // "プランを見る" リンクの表示判定:
-  //   - subscription ベース（maxWorks に制限がある）→ 常時表示
-  //   - Subscription 未設定の旧 OA で tester ロールの場合も表示（フォールバック）
-  const showPricingLink = (maxWorks !== null && maxWorks !== -1) || isRoleTester;
+  //   - 表示確認モード中: effectivePlan が最上位 (pro / Pro Max) 以外なら表示
+  //       seed では Standard / Plus / Pro はすべて maxWorks=-1 のため、
+  //       既存の maxWorks ベースの判定では区別できない (= owner が
+  //       Standard プレビューしても CTA が出ない)。tier ベースに切り替える。
+  //   - 通常モード: 既存の maxWorks ベース判定を維持
+  //       - subscription ベース（maxWorks に制限あり）→ 表示
+  //       - Subscription 未設定の旧 OA で tester ロールの場合も表示（フォールバック）
+  const showPricingLink = isPreviewingPlan
+    ? effectivePlan !== "pro"
+    : (maxWorks !== null && maxWorks !== -1) || isRoleTester;
 
   async function load() {
     setLoading(true);

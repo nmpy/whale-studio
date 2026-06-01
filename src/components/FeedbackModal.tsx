@@ -74,6 +74,55 @@ const CATEGORIES = [
 
 type CategoryValue = typeof CATEGORIES[number]["value"];
 
+// ── モーダル共通ラッパー (= 必ず top-level で宣言する) ──────────────────
+// **注意**: 以前 FeedbackModal の内部関数として定義していたが、レンダリングごとに
+// 新しい関数参照が作られ、React が「異なる component type」と判定して毎キーストロークで
+// modal 全体を unmount → remount してしまうバグがあった (= textarea のフォーカスが
+// 1 文字ごとに失われる症状)。top-level で定義することで関数参照が安定し、内部 state
+// (= textarea のカーソル / フォーカス) が保持される。
+function ModalShell({
+  isMobile,
+  onBackdropClick,
+  children,
+}: {
+  isMobile: boolean;
+  onBackdropClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      onClick={onBackdropClick}
+      style={{
+        position: "fixed", inset: 0, zIndex: 9999,
+        background: "rgba(0,0,0,0.45)",
+        display: "flex",
+        // SP: 画面下部に張り付くボトムシート風
+        alignItems:     isMobile ? "flex-end" : "center",
+        justifyContent: "center",
+        padding: isMobile ? 0 : 16,
+        backdropFilter: "blur(2px)",
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: "#fff",
+          // SP: 上角のみ丸め、画面幅いっぱいに広がるシート
+          borderRadius: isMobile ? "16px 16px 0 0" : 14,
+          boxShadow: "0 8px 32px rgba(0,0,0,0.18)",
+          width: "100%",
+          maxWidth: isMobile ? "100%" : 480,
+          // SP: スクロール可能領域に制限
+          maxHeight: isMobile ? "92dvh" : "90vh",
+          overflowY: "auto",
+        }}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
 // ── pricing モード用テンプレート ───────────────────────────────────────────
 const PRICING_TEMPLATE = `Whale Studio のプランについて相談したいです。
 
@@ -142,15 +191,20 @@ export default function FeedbackModal({ pathname, onClose, pricingSource }: Prop
     return () => clearTimeout(t);
   }, []);
 
-  // ESC で閉じる
+  // ESC で閉じる: listener はマウント時に 1 回だけ追加する (= dep [] で再 bind を抑制)。
+  // 旧実装は [content] を dep に持っていたため、textarea を 1 文字打つたびに
+  // listener が remove → add されていた。本バグの主因ではないが、無駄なので解消する。
+  // handleClose 内で最新 state を ref 経由ではなくクロージャ経由で読むため、
+  // handleClose を ref に格納してハンドラから呼ぶ形に変更。
+  const handleCloseRef = useRef(handleClose);
+  handleCloseRef.current = handleClose;
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") handleClose();
+      if (e.key === "Escape") handleCloseRef.current();
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [content]);
+  }, []);
 
   function handleClose() {
     // 送信完了後はダイアログなしで閉じる
@@ -223,17 +277,8 @@ export default function FeedbackModal({ pathname, onClose, pricingSource }: Prop
       if (!json.ok) {
         const errMsg = json.error ?? "送信に失敗しました";
         console.error("[FeedbackModal] API エラー:", errMsg);
-
-        if (errMsg.includes("GAS_FEEDBACK_WEBHOOK_URL")) {
-          showToast(
-            "送信先が未設定です。サーバーの環境変数 GAS_FEEDBACK_WEBHOOK_URL を設定し、再起動してください。",
-            "error"
-          );
-        } else if (errMsg.startsWith("ネットワークエラー")) {
-          showToast("スプレッドシートへの接続に失敗しました。しばらく後に再試行してください。", "error");
-        } else {
-          showToast(`送信に失敗しました: ${errMsg}`, "error");
-        }
+        // API 側で既にユーザー向けに整形された文言を返す設計 (= env 名や URL を出さない)。
+        showToast(errMsg, "error");
         return;
       }
 
@@ -264,46 +309,10 @@ export default function FeedbackModal({ pathname, onClose, pricingSource }: Prop
   const pageName  = getPageName(pathname);
   const canSubmit = content.trim().length > 0 && !submitting;
 
-  // ── モーダル共通ラッパー ────────────────────────────────────────────────
-  function ModalShell({ children }: { children: React.ReactNode }) {
-    return (
-      <div
-        onClick={handleClose}
-        style={{
-          position: "fixed", inset: 0, zIndex: 9999,
-          background: "rgba(0,0,0,0.45)",
-          display: "flex",
-          // SP: 画面下部に張り付くボトムシート風
-          alignItems:     sp ? "flex-end" : "center",
-          justifyContent: "center",
-          padding: sp ? 0 : 16,
-          backdropFilter: "blur(2px)",
-        }}
-      >
-        <div
-          onClick={(e) => e.stopPropagation()}
-          style={{
-            background: "#fff",
-            // SP: 上角のみ丸め、画面幅いっぱいに広がるシート
-            borderRadius: sp ? "16px 16px 0 0" : 14,
-            boxShadow: "0 8px 32px rgba(0,0,0,0.18)",
-            width: "100%",
-            maxWidth: sp ? "100%" : 480,
-            // SP: スクロール可能領域に制限
-            maxHeight: sp ? "92dvh" : "90vh",
-            overflowY: "auto",
-          }}
-        >
-          {children}
-        </div>
-      </div>
-    );
-  }
-
   // ── 送信完了画面（全モード共通） ─────────────────────────────────────────
   if (submitted) {
     return (
-      <ModalShell>
+      <ModalShell isMobile={sp} onBackdropClick={handleClose}>
         <div style={{ padding: sp ? "28px 18px 32px" : "36px 28px 28px", textAlign: "center" }}>
 
           {/* アイコン */}
@@ -420,7 +429,7 @@ export default function FeedbackModal({ pathname, onClose, pricingSource }: Prop
 
   // ── 通常フォーム（pricing モード / 通常モード 共用） ─────────────────────
   return (
-    <ModalShell>
+    <ModalShell isMobile={sp} onBackdropClick={handleClose}>
       {/* ── ヘッダー ── */}
       <div style={{
         display: "flex", alignItems: "center",

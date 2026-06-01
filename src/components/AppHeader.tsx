@@ -9,11 +9,12 @@
 //   - owner 判定は workspace role === "owner" に統一
 //   - owner → 「スタジオ管理」 / 非 owner → 「気づいた点を送る」
 
-import { useState, useEffect } from "react";
-import { usePathname } from "next/navigation";
+import { Suspense, useState, useEffect } from "react";
+import { usePathname, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import { useTesterMode } from "@/hooks/useTesterMode";
 import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
+import { parsePreviewRole, type PreviewRole } from "@/lib/access-preview";
 import { getAuthHeaders } from "@/lib/api-client";
 import { RoleBadge } from "@/components/PermissionGuard";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
@@ -38,6 +39,27 @@ function extractOaId(pathname: string): string {
   return "";
 }
 
+/**
+ * URL `?previewRole` を `useSearchParams` で reactive に監視し、コールバック経由で
+ * 親 (AppHeader) に伝える小さな client component。
+ *
+ * 役割:
+ *   - AppHeader が直接 `useSearchParams` を呼ぶと /404 / /access-denied の static
+ *     prerender が「Suspense 境界が必要」エラーで失敗する
+ *   - 本 reader を `<Suspense fallback={null}>` でラップすることで AppHeader 本体は
+ *     useSearchParams に依存せず済み、prerender に影響なし
+ *   - URL ?previewRole が変化すると useSearchParams が再評価され、effect で
+ *     onChange を呼んで AppHeader を再レンダリングさせる
+ */
+function PreviewRoleReader({ onChange }: { onChange: (role: PreviewRole | null) => void }) {
+  const sp = useSearchParams();
+  const raw = sp.get("previewRole");
+  useEffect(() => {
+    onChange(parsePreviewRole(raw));
+  }, [raw, onChange]);
+  return null;
+}
+
 export default function AppHeader() {
   const pathname = usePathname();
   const { isTester, testerOaId } = useTesterMode();
@@ -56,6 +78,22 @@ export default function AppHeader() {
 
   // 現在の OA の workspace role を取得（OA ページ外では workspaceId="" → role=null）
   const { role: workspaceRole, loading: roleLoading, isOwner } = useWorkspaceRole(currentOaId);
+
+  // 表示確認モード (= AccessPreviewBar) で「表示確認権限」を非 owner にした場合、
+  // 右上 CTA も連動して「気づいたことを伝える」に切り替える (= UI 確認用)。
+  // 実権限は引き続き bypass されるため、操作は壊れない。
+  //
+  // 実装メモ: AppHeader は root layout 配下にあり、/404 / /access-denied が
+  // static prerender される。`useSearchParams` を直に使うと「Suspense 境界が必要」
+  // エラーで build が落ちるため、useSearchParams を呼ぶ最小限の reader を
+  // <Suspense fallback={null}> でラップし、コールバック経由で AppHeader 本体に
+  // preview role を伝える。これにより URL ?previewRole 変更時に reactive 追従する。
+  const [previewRole, setPreviewRole] = useState<PreviewRole | null>(null);
+  // canUsePreviewMode は実 owner のみ。非 owner が URL を偽装しても preview 適用しない。
+  const canUsePreviewModeForHeader = isOwner;
+  const isPreviewingRole = canUsePreviewModeForHeader && previewRole !== null && previewRole !== workspaceRole;
+  const effectiveRoleForHeader: PreviewRole | Role | null =
+    canUsePreviewModeForHeader && previewRole ? previewRole : workspaceRole;
 
   // ── OA 横断 owner 判定（OA ページ外でも CTA を切り替えるため）─────
   // /api/oas の my_role を見て、1つでも owner の OA があれば isAnyOaOwner = true
@@ -130,17 +168,31 @@ export default function AppHeader() {
     ? (!roleLoading && workspaceRole !== null)
     : isAnyOaOwner;
 
-  // バッジに表示する role
-  const displayRole: Role | null = currentOaId ? workspaceRole : (isAnyOaOwner ? "owner" : null);
+  // バッジに表示する role。OA 内かつ表示確認モード中は preview role を反映する
+  // (= CTA の切替と整合させ、UI 一致を保つ。Role 型に変換可能な値のみ受け入れる)。
+  const displayRole: Role | null = currentOaId
+    ? (isPreviewingRole && effectiveRoleForHeader && effectiveRoleForHeader !== "client_operator" && effectiveRoleForHeader !== "operator"
+        ? (effectiveRoleForHeader as Role)
+        : workspaceRole)
+    : (isAnyOaOwner ? "owner" : null);
 
-  // owner 判定: workspace owner（OA ページ内）または OA 横断 owner（OA ページ外）
-  const isEffectiveOwner = isOwner || isAnyOaOwner;
+  // owner 判定: workspace owner（OA ページ内）または OA 横断 owner（OA ページ外）。
+  // ただし表示確認モードで role を非 owner に切り替えている場合は、その表示用 role を優先する
+  // (= 非 owner ユーザーから見た UI 確認を可能にする)。実権限は plan-guard / rbac で別途扱う。
+  const isEffectiveOwner = currentOaId
+    ? (isPreviewingRole ? effectiveRoleForHeader === "owner" : isOwner)
+    : isAnyOaOwner;
 
   // スタジオ管理のリンク先: OA ページ内なら OA 設定、それ以外はスタジオ管理トップ
   const studioHref = "/admin";
 
   return (
     <>
+      {/* URL ?previewRole の変更を reactive に監視する。Suspense でラップして
+          /404 / /access-denied 等の static prerender でも build を通す。 */}
+      <Suspense fallback={null}>
+        <PreviewRoleReader onChange={setPreviewRole} />
+      </Suspense>
       <header>
         <div className="container">
           {/* ── サービスタイトル ── */}

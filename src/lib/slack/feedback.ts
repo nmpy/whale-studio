@@ -32,10 +32,30 @@ function formatJst(d: Date): string {
   return d.toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" });
 }
 
+// pageUrl が送信ページの URL を含む場合、表示確認モード関連のクエリパラメータを抽出する。
+// 解析失敗時は null/null を返す (= 表示確認モードではない or URL 不正)。
+function extractPreviewParams(pageUrl: string | null | undefined): {
+  previewPlan: string | null;
+  previewRole: string | null;
+} {
+  if (!pageUrl) return { previewPlan: null, previewRole: null };
+  try {
+    const u = new URL(pageUrl);
+    return {
+      previewPlan: u.searchParams.get("previewPlan"),
+      previewRole: u.searchParams.get("previewRole"),
+    };
+  } catch {
+    return { previewPlan: null, previewRole: null };
+  }
+}
+
 export type FeedbackNotifyInput = {
   id:         string;
   category:   string;
   content:    string;
+  /** 認証済みなら Supabase Auth userId。anonymous は null。 */
+  userId?:    string | null;
   userName?:  string | null;
   userEmail?: string | null;
   pageName?:  string | null;
@@ -64,16 +84,26 @@ export async function notifyFeedbackSubmitted(
   const safePageName = trunc(input.pageName, TRUNC_DEFAULT);
   const safePageUrl  = trunc(input.pageUrl, TRUNC_URL);
 
+  // 表示確認モード (= owner 限定 URL クエリ) の検出。
+  // pageUrl から抽出するため、表示確認していないユーザーには付かない。
+  const { previewPlan, previewRole } = extractPreviewParams(input.pageUrl);
+  const previewLine =
+    previewPlan || previewRole
+      ? `previewPlan=${previewPlan ?? "(なし)"} / previewRole=${previewRole ?? "(なし)"}`
+      : null;
+
   // fallback text (= Slack 通知センター / non-block 表示用)
   const text = [
-    `Whale Studio: 気づいたことが送信されました [${env}]`,
+    `Whale Studio: 気づいたことが届きました [${env}]`,
+    `送信日時: ${sentAt}`,
     `送信者: ${safeEmail}${safeName ? ` (${safeName})` : ""}`,
+    `userId: ${input.userId ?? "(anonymous)"}`,
     `カテゴリ: ${input.category}`,
     `OA: ${safeOaName}${input.oaId ? ` (${input.oaId})` : ""}`,
     `作品: ${safeWorkName}${input.workId ? ` (${input.workId})` : ""}`,
     `画面: ${safePageName}`,
     `確認URL: ${safePageUrl}`,
-    `送信日時: ${sentAt}`,
+    ...(previewLine ? [`表示確認モード: ${previewLine}`] : []),
     ``,
     `内容:`,
     safeContent,
@@ -83,12 +113,13 @@ export async function notifyFeedbackSubmitted(
   const blocks: unknown[] = [
     {
       type: "header",
-      text: { type: "plain_text", text: `気づいたことが送信されました [${env}]` },
+      text: { type: "plain_text", text: `気づいたことが届きました [${env}]` },
     },
     {
       type: "section",
       fields: [
         { type: "mrkdwn", text: `*送信者*\n${safeEmail}${safeName ? `\n${safeName}` : ""}` },
+        { type: "mrkdwn", text: `*userId*\n${input.userId ?? "(anonymous)"}` },
         { type: "mrkdwn", text: `*カテゴリ*\n${input.category}` },
         { type: "mrkdwn", text: `*OA*\n${safeOaName}` },
         { type: "mrkdwn", text: `*作品*\n${safeWorkName}` },
@@ -98,6 +129,16 @@ export async function notifyFeedbackSubmitted(
       type: "section",
       text: { type: "mrkdwn", text: `*内容*\n${safeContent}` },
     },
+    ...(previewLine
+      ? [
+          {
+            type: "context",
+            elements: [
+              { type: "mrkdwn", text: `*表示確認モード* ${previewLine}` },
+            ],
+          },
+        ]
+      : []),
     {
       type: "context",
       elements: [

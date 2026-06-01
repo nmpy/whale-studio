@@ -1,5 +1,12 @@
 // src/app/api/feedback/route.ts
-// POST /api/feedback — フィードバック受信・GAS 転送
+// POST /api/feedback — フィードバック受信・Slack 通知
+//
+// 通知先の振り分け:
+//   category === "enterprise" → ENTERPRISE_PLAN_SLACK_WEBHOOK_URL  (= apply-notify ch)
+//   それ以外                 → FEEDBACK_SLACK_WEBHOOK_URL           (= feedback-notify ch)
+//
+// FEEDBACK_SLACK_WEBHOOK_URL が未設定の場合に限り、後方互換として
+// GAS_FEEDBACK_WEBHOOK_URL (= 旧スプレッドシート連携) に fallback する。
 //
 // レスポンス:
 //   成功:         { ok: true }
@@ -13,6 +20,10 @@ import { submitFeedback } from "@/lib/services/feedback";
 import { notifyFeedbackSubmitted } from "@/lib/slack/feedback";
 import { notifyEnterpriseInquirySubmitted } from "@/lib/slack/enterprise-inquiry";
 import { getAuthUser } from "@/lib/auth";
+
+// ユーザー向けの柔らかいエラー文言 (= webhook URL や env 名は出さない)
+const USER_MSG_DEST_UNSET = "送信先の設定がまだ完了していません。管理者に連絡してください。";
+const USER_MSG_SEND_FAILED = "送信に失敗しました。しばらく後にもう一度お試しください。";
 
 // フロントから受け取る入力型（自動付与フィールドは除く）
 interface FeedbackInput {
@@ -74,76 +85,126 @@ export async function POST(req: NextRequest) {
       ` page="${payload.page_name}" content_len=${payload.content.length}`
     );
 
-    // ── GAS 送信 ──────────────────────────────────────────────────────────────
-    const result = await submitFeedback(payload);
-
-    if (!result.ok) {
-      // GAS 側の失敗は 500 で返す（フロントにエラーを伝える）
-      console.error(
-        `[POST /api/feedback] [${requestId}] ❌ submitFeedback 失敗: ${result.error}`
-      );
-      return NextResponse.json(
-        { ok: false, error: result.error ?? "送信に失敗しました" },
-        { status: 500 }
-      );
-    }
-
-    console.info(`[POST /api/feedback] [${requestId}] ✅ 完了 id=${id}`);
-
-    // Slack 通知 (fire-and-forget):
-    //   - webhook 未設定なら silent no-op
-    //   - 通知失敗時もレスポンスはブロックしない (= console.error のみ)
-    //   - webhook URL はログに出さない (= helper 側で吸収)
-    //
-    // category 別に通知先を分岐:
-    //   - "enterprise" → ENTERPRISE_PLAN_SLACK_WEBHOOK_URL (= 法人プラン申し込み専用)
-    //   - その他       → FEEDBACK_SLACK_WEBHOOK_URL (= 一般気づき)
+    // ──────────────────────────────────────────────────────────────────────────
+    // 法人プラン申し込み (= apply-notify ch / ENTERPRISE_PLAN_SLACK_WEBHOOK_URL)
+    // ──────────────────────────────────────────────────────────────────────────
     if (payload.category === "enterprise") {
+      if (!process.env.ENTERPRISE_PLAN_SLACK_WEBHOOK_URL) {
+        console.error(
+          `[POST /api/feedback] [${requestId}] ❌ enterprise: ENTERPRISE_PLAN_SLACK_WEBHOOK_URL 未設定`
+        );
+        return NextResponse.json(
+          { ok: false, error: USER_MSG_DEST_UNSET },
+          { status: 500 }
+        );
+      }
+
       // 認証済みなら userId を取得 (= 任意。anonymous なら null)。
-      // getAuthUser は失敗時も throw しない設計だが、念のため try/catch で吸収。
       const inquiryUserId = await getAuthUser(req).then((u) => u?.id ?? null).catch(() => null);
-      void notifyEnterpriseInquirySubmitted({
-        id:        payload.id,
-        content:   payload.content,
-        userName:  payload.user_name  || null,
-        userEmail: payload.user_email || null,
-        userId:    inquiryUserId,
-        pageName:  payload.page_name  || null,
-        pageUrl:   payload.page_url   || null,
-        oaId:      payload.oa_id,
-        oaName:    payload.oa_name,
-        workId:    payload.work_id,
-        workName:  payload.work_name,
-        createdAt: new Date(payload.created_at),
-      }).catch((err) => {
-        console.error("[slack] failed to notify enterprise inquiry", err);
-      });
-    } else {
-      void notifyFeedbackSubmitted({
-        id:        payload.id,
-        category:  payload.category,
-        content:   payload.content,
-        userName:  payload.user_name  || null,
-        userEmail: payload.user_email || null,
-        pageName:  payload.page_name  || null,
-        pageUrl:   payload.page_url   || null,
-        oaId:      payload.oa_id,
-        oaName:    payload.oa_name,
-        workId:    payload.work_id,
-        workName:  payload.work_name,
-        createdAt: new Date(payload.created_at),
-      }).catch((err) => {
-        console.error("[slack] failed to notify feedback", err);
-      });
+      try {
+        await notifyEnterpriseInquirySubmitted({
+          id:        payload.id,
+          content:   payload.content,
+          userName:  payload.user_name  || null,
+          userEmail: payload.user_email || null,
+          userId:    inquiryUserId,
+          pageName:  payload.page_name  || null,
+          pageUrl:   payload.page_url   || null,
+          oaId:      payload.oa_id,
+          oaName:    payload.oa_name,
+          workId:    payload.work_id,
+          workName:  payload.work_name,
+          createdAt: new Date(payload.created_at),
+        });
+      } catch (err) {
+        console.error(
+          `[POST /api/feedback] [${requestId}] ❌ enterprise slack 通知失敗:`,
+          err
+        );
+        return NextResponse.json(
+          { ok: false, error: USER_MSG_SEND_FAILED },
+          { status: 500 }
+        );
+      }
+
+      console.info(`[POST /api/feedback] [${requestId}] ✅ enterprise 完了 id=${id}`);
+      return NextResponse.json({ ok: true });
     }
 
-    // dev_skip フラグをフロントに伝えて開発モードメッセージを出せるようにする
-    return NextResponse.json({ ok: true, ...(result.dev_skip ? { dev_skip: true } : {}) });
+    // ──────────────────────────────────────────────────────────────────────────
+    // 一般 feedback (= feedback-notify ch / FEEDBACK_SLACK_WEBHOOK_URL)
+    //   - Slack を primary とする
+    //   - FEEDBACK_SLACK_WEBHOOK_URL 未設定 のときに限り GAS にフォールバック
+    //   - 両方未設定で FEEDBACK_DEV_SKIP も false ならユーザー向けにソフトエラー
+    // ──────────────────────────────────────────────────────────────────────────
+    const hasSlack  = !!process.env.FEEDBACK_SLACK_WEBHOOK_URL?.trim();
+    const hasGas    = !!process.env.GAS_FEEDBACK_WEBHOOK_URL?.trim();
+    const devSkip   = process.env.FEEDBACK_DEV_SKIP === "true";
+
+    if (hasSlack) {
+      // 認証済みなら userId を取得 (= 任意。anonymous なら null)。
+      const feedbackUserId = await getAuthUser(req).then((u) => u?.id ?? null).catch(() => null);
+      try {
+        await notifyFeedbackSubmitted({
+          id:        payload.id,
+          category:  payload.category,
+          content:   payload.content,
+          userId:    feedbackUserId,
+          userName:  payload.user_name  || null,
+          userEmail: payload.user_email || null,
+          pageName:  payload.page_name  || null,
+          pageUrl:   payload.page_url   || null,
+          oaId:      payload.oa_id,
+          oaName:    payload.oa_name,
+          workId:    payload.work_id,
+          workName:  payload.work_name,
+          createdAt: new Date(payload.created_at),
+        });
+      } catch (err) {
+        console.error(
+          `[POST /api/feedback] [${requestId}] ❌ feedback slack 通知失敗:`,
+          err
+        );
+        return NextResponse.json(
+          { ok: false, error: USER_MSG_SEND_FAILED },
+          { status: 500 }
+        );
+      }
+
+      console.info(`[POST /api/feedback] [${requestId}] ✅ feedback (slack) 完了 id=${id}`);
+      return NextResponse.json({ ok: true });
+    }
+
+    if (hasGas || devSkip) {
+      // 後方互換: Slack 未設定時のみ旧 GAS 経路を使う
+      const result = await submitFeedback(payload);
+      if (!result.ok) {
+        console.error(
+          `[POST /api/feedback] [${requestId}] ❌ GAS fallback 失敗: ${result.error}`
+        );
+        return NextResponse.json(
+          { ok: false, error: USER_MSG_SEND_FAILED },
+          { status: 500 }
+        );
+      }
+      console.info(`[POST /api/feedback] [${requestId}] ✅ feedback (gas fallback) 完了 id=${id}`);
+      return NextResponse.json({ ok: true, ...(result.dev_skip ? { dev_skip: true } : {}) });
+    }
+
+    // ── どちらの env も未設定 ───────────────────────────────────────────────
+    console.error(
+      `[POST /api/feedback] [${requestId}] ❌ feedback: FEEDBACK_SLACK_WEBHOOK_URL 未設定 ` +
+      `(GAS_FEEDBACK_WEBHOOK_URL も未設定 / FEEDBACK_DEV_SKIP も false)`
+    );
+    return NextResponse.json(
+      { ok: false, error: USER_MSG_DEST_UNSET },
+      { status: 500 }
+    );
 
   } catch (err) {
     console.error(`[POST /api/feedback] [${requestId}] ❌ 予期しない例外:`, err);
     return NextResponse.json(
-      { ok: false, error: err instanceof Error ? err.message : "Internal error" },
+      { ok: false, error: USER_MSG_SEND_FAILED },
       { status: 500 }
     );
   }

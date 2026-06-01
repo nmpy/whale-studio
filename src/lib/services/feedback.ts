@@ -1,6 +1,9 @@
 // src/lib/services/feedback.ts
-// フィードバック送信 service 層。
-// 将来 DB 保存に切り替える場合はこのファイルの submitFeedback だけ差し替えればよい。
+// フィードバック送信 service 層 (= 旧 Google Apps Script 連携の後方互換 fallback)。
+//
+// 現在の本線は Slack 通知 (= FEEDBACK_SLACK_WEBHOOK_URL / src/lib/slack/feedback.ts)。
+// このファイルは FEEDBACK_SLACK_WEBHOOK_URL が未設定の環境向けの fallback としてのみ呼ばれる。
+// ルーティング判定は /api/feedback の route handler が行う (= ここでは判定しない)。
 
 // ── スプレッドシートの列順（GAS の appendRow に対応） ──────────────────────
 // id | created_at | user_name | user_email | page_name | page_url |
@@ -33,10 +36,14 @@ export interface FeedbackResult {
 }
 
 /**
- * フィードバックを GAS Web App 経由でスプレッドシートに送信する。
+ * フィードバックを GAS Web App 経由でスプレッドシートに送信する (= 旧経路 / 後方互換)。
+ *
+ * ルーティング:
+ *   /api/feedback は FEEDBACK_SLACK_WEBHOOK_URL を primary とし、未設定時のみ本関数を呼ぶ。
+ *   そのため通常の本番運用では本関数は呼ばれない想定。
  *
  * 環境変数:
- *   GAS_FEEDBACK_WEBHOOK_URL  — Google Apps Script Web App の実行 URL（必須）
+ *   GAS_FEEDBACK_WEBHOOK_URL  — Google Apps Script Web App の実行 URL（fallback 用 / 任意）
  *   FEEDBACK_DEV_SKIP=true    — 開発中に URL なしでモーダルをテストしたい場合のみ設定
  *
  * GAS スクリプト例（doPost）:
@@ -87,18 +94,15 @@ export async function submitFeedback(payload: FeedbackPayload): Promise<Feedback
       return { ok: true, dev_skip: true };
     }
 
-    // GAS URL も FEEDBACK_DEV_SKIP も未設定 → エラー
-    const msg =
-      "GAS_FEEDBACK_WEBHOOK_URL が設定されていません。" +
-      ".env.local (ローカル) または Vercel 環境変数 (本番) に設定してください。" +
-      "設定後はサーバーを再起動してください。";
+    // GAS URL も FEEDBACK_DEV_SKIP も未設定 → fallback 失敗。
+    // 通常はルートハンドラ側で FEEDBACK_SLACK_WEBHOOK_URL 未設定の時のみ本関数が呼ばれ、
+    // さらに hasGas=true がガードされているため、このパスは到達しないはず (= defensive)。
     console.error(
-      "[feedback] ❌ " + msg + "\n" +
-      "[feedback] 確認: GAS_URL=" + String(gasUrl) +
+      "[feedback] ❌ GAS fallback: 環境変数未設定" +
       " / FEEDBACK_DEV_SKIP=" + String(devSkip) +
       " / NODE_ENV=" + process.env.NODE_ENV
     );
-    return { ok: false, error: msg };
+    return { ok: false, error: "fallback destination unset" };
   }
 
   // ── GAS への送信 ───────────────────────────────────────────────────────────
