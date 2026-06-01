@@ -39,6 +39,13 @@ export const updateOaSchema = createOaSchema.partial().omit({ publish_status: tr
   publish_status: z.enum(["draft", "active", "paused"]).optional(),
   line_oa_id:     z.string().max(50).optional().nullable(),
   spreadsheet_id: z.string().min(20).max(100).optional().nullable(),
+  /**
+   * サービス稼働状態のトグル。true → 停止中 (serviceSuspendedAt = now) / false → 稼働中 (null)。
+   * undefined (= 省略) なら変更なし。
+   * publish_status とは独立。契約終了等で LINE webhook を通常応答させず、
+   * 一律「サービス終了」メッセージのみ返す状態に切り替える。
+   */
+  service_suspended: z.boolean().optional(),
 });
 
 export const oaQuerySchema = z.object({

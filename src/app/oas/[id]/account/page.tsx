@@ -24,6 +24,12 @@ interface FormState {
   channel_secret:       string;
   channel_access_token: string;
   publish_status:       PublishStatus;
+  /**
+   * サービス稼働状態。true = 停止中 (= LINE webhook が一律「サービス終了」案内のみ返す) /
+   * false = 稼働中 (通常応答)。publish_status とは独立。
+   * サーバー側で serviceSuspendedAt (DateTime?) に変換される。
+   */
+  service_suspended:    boolean;
 }
 
 const STATUS_OPTIONS: { value: PublishStatus; label: string; desc: string }[] = [
@@ -68,6 +74,8 @@ export default function OaAccountPage() {
           channel_secret:       oa.channel_secret,
           channel_access_token: oa.channel_access_token,
           publish_status:       oa.publish_status,
+          // DB の DateTime? を UI のトグル真偽値に変換。null = 稼働中 / 非 null = 停止中。
+          service_suspended:    oa.service_suspended_at != null,
         });
       })
       .catch((e) => setLoadError(e instanceof Error ? e.message : "読み込みに失敗しました"));
@@ -98,6 +106,7 @@ export default function OaAccountPage() {
         channel_secret:       form.channel_secret.trim(),
         channel_access_token: form.channel_access_token.trim(),
         publish_status:       form.publish_status,
+        service_suspended:    form.service_suspended,
       });
       showToast("アカウント情報を保存しました", "success");
       router.push(`/oas/${oaId}/settings`);
@@ -245,6 +254,57 @@ export default function OaAccountPage() {
                 );
               })}
             </div>
+          </div>
+
+          <hr className="my-6 border-0 border-t border-line-2" />
+
+          {/* ── サービス稼働状態 (= 契約終了 / 停止中の切替) ──
+              publish_status とは独立。停止中にすると LINE webhook で署名検証 → OA 取得後に
+              一律「サービス終了」メッセージで応答し、通常の作品応答 / chain 送信 / QR /
+              free input / image tap は一切走らない。 */}
+          <div className="mb-5">
+            <span id="service-status-label" className="mb-1.5 block text-[13px] font-bold text-ink">
+              サービス稼働状態
+            </span>
+            <div
+              role="radiogroup"
+              aria-labelledby="service-status-label"
+              className="flex flex-col gap-2"
+            >
+              {([
+                { value: false, label: "稼働中", desc: "通常通り作品・メッセージで応答します" },
+                { value: true,  label: "停止中", desc: "LINEにはサービス終了メッセージのみ返します" },
+              ] as const).map(({ value, label, desc }) => {
+                const selected = form!.service_suspended === value;
+                return (
+                  <label
+                    key={String(value)}
+                    className={
+                      "flex cursor-pointer items-start gap-2.5 rounded-field border-2 px-3 py-2.5 transition-colors " +
+                      (selected
+                        ? "border-brand bg-brand-soft"
+                        : "border-line bg-surface hover:bg-bg-tint")
+                    }
+                  >
+                    <input
+                      type="radio"
+                      name="service_suspended"
+                      value={String(value)}
+                      checked={selected}
+                      onChange={() => setField("service_suspended", value)}
+                      className="mt-[3px] accent-brand"
+                    />
+                    <div className="min-w-0">
+                      <div className="text-[14px] font-semibold text-ink">{label}</div>
+                      <div className="text-[12px] text-ink-2">{desc}</div>
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
+            <p className="mt-2 text-[12px] text-ink-2">
+              停止中でも管理画面の閲覧・編集は可能です。
+            </p>
           </div>
 
           <hr className="my-6 border-0 border-t border-line-2" />

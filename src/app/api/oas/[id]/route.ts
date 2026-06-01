@@ -36,12 +36,13 @@ export const GET = withRole<{ id: string }>(
         title:                oa.title,
         description:          oa.description,
         channel_id:           oa.channelId,
-        line_oa_id:           oa.lineOaId           ?? null,
+        line_oa_id:           oa.lineOaId            ?? null,
         channel_secret:       oa.channelSecret,
         channel_access_token: oa.channelAccessToken,
         publish_status:       oa.publishStatus,
-        rich_menu_id:         oa.richMenuId ?? null,
-        spreadsheet_id:       oa.spreadsheetId ?? null,
+        rich_menu_id:         oa.richMenuId          ?? null,
+        spreadsheet_id:       oa.spreadsheetId       ?? null,
+        service_suspended_at: oa.serviceSuspendedAt  ?? null,
         live_enabled,
         created_at:           oa.createdAt,
         updated_at:           oa.updatedAt,
@@ -76,6 +77,9 @@ export const PATCH = withRole<{ id: string }>(
           ...(data.channel_access_token !== undefined && { channelAccessToken: data.channel_access_token }),
           ...(data.publish_status       !== undefined && { publishStatus: data.publish_status }),
           ...(data.spreadsheet_id       !== undefined && { spreadsheetId: data.spreadsheet_id }),
+          // サービス稼働状態トグル: true → 現在時刻をセット (= 停止中) / false → null (= 稼働中)。
+          // publish_status とは独立。webhook が serviceSuspendedAt 非 null を見て早期 bail out する。
+          ...(data.service_suspended    !== undefined && { serviceSuspendedAt: data.service_suspended ? new Date() : null }),
         },
       });
 
@@ -88,16 +92,17 @@ export const PATCH = withRole<{ id: string }>(
       await invalidateOaCacheById(params.id);
 
       return ok({
-        id:             updated.id,
-        title:          updated.title,
-        description:    updated.description,
-        channel_id:     updated.channelId,
-        line_oa_id:     updated.lineOaId     ?? null,
-        publish_status: updated.publishStatus,
-        rich_menu_id:   updated.richMenuId   ?? null,
-        spreadsheet_id: updated.spreadsheetId ?? null,
-        created_at:     updated.createdAt,
-        updated_at:     updated.updatedAt,
+        id:                   updated.id,
+        title:                updated.title,
+        description:          updated.description,
+        channel_id:           updated.channelId,
+        line_oa_id:           updated.lineOaId            ?? null,
+        publish_status:       updated.publishStatus,
+        rich_menu_id:         updated.richMenuId          ?? null,
+        spreadsheet_id:       updated.spreadsheetId       ?? null,
+        service_suspended_at: updated.serviceSuspendedAt  ?? null,
+        created_at:           updated.createdAt,
+        updated_at:           updated.updatedAt,
       });
     } catch (err) {
       if (err instanceof ZodError) return badRequest("入力値が不正です", formatZodErrors(err));
