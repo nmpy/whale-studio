@@ -6,6 +6,7 @@ import Link from "next/link";
 import { characterApi, getDevToken } from "@/lib/api-client";
 import { useToast } from "@/components/Toast";
 import { Breadcrumb } from "@/components/Breadcrumb";
+import { Button } from "@/components/shared";
 import { ImageUploadField } from "@/components/ImageUploadField";
 
 const ICON_ACCEPT = "image/jpeg,image/png,image/webp";
@@ -302,10 +303,16 @@ export default function CharacterNewPage() {
               <Link href={`/oas/${oaId}/characters`} className="btn btn-ghost">
                 キャンセル
               </Link>
-              <button type="submit" className="btn btn-primary" disabled={submitting}>
-                {submitting && <span className="spinner" />}
+              <Button
+                type="submit"
+                variant="primary"
+                size="md"
+                disabled={submitting}
+                aria-busy={submitting || undefined}
+              >
+                {submitting && <span className="spinner" aria-hidden="true" />}
                 {submitting ? "追加中..." : "キャラクターを追加"}
-              </button>
+              </Button>
             </div>
           </form>
         </div>

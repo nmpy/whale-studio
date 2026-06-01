@@ -14,6 +14,7 @@ import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
 import { useAccessPreview } from "@/hooks/useAccessPreview";
 import { ViewerBanner } from "@/components/PermissionGuard";
 import { PlanRequiredCard } from "@/components/PlanRequiredCard";
+import { Button } from "@/components/shared";
 import { FEATURE, getPlanAccessState } from "@/lib/constants/plans";
 import {
   liffConfigApi,
@@ -257,14 +258,17 @@ export default function LiffPagesIndex() {
       <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
         <h1 className="text-xl font-bold text-gray-900">LIFF ページ一覧</h1>
         {!isReadOnly && (
-          <button
+          <Button
             type="button"
+            variant="primary"
+            size="md"
             onClick={handleCreate}
             disabled={creating}
-            className="px-4 py-2 bg-violet-500 text-white rounded-lg text-sm font-semibold hover:bg-violet-600 disabled:opacity-50 transition-colors"
+            aria-busy={creating || undefined}
           >
+            {creating && <span className="spinner" aria-hidden="true" />}
             {creating ? "作成中..." : "＋ LIFFページを作成"}
-          </button>
+          </Button>
         )}
       </div>
 

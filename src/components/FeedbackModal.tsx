@@ -182,7 +182,9 @@ export default function FeedbackModal({ pathname, onClose, pricingSource }: Prop
 
       const body = {
         content:    content.trim(),
-        category:   isPricingMode ? "other" : category,
+        // pricing mode (= 「法人プランに申し込む」CTA 経由) は専用カテゴリ "enterprise"
+        // に振り分け、API 側で専用 Slack チャネルに通知する。それ以外は従来通り。
+        category:   isPricingMode ? "enterprise" : category,
         page_name:  getPageName(pathname),
         page_url:   pageUrl,
         // 将来: Supabase Auth から取得。現時点は空文字

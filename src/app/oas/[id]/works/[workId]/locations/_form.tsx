@@ -8,6 +8,7 @@
 import { useEffect, useState, useCallback } from "react";
 import dynamic from "next/dynamic";
 import { transitionApi, getDevToken } from "@/lib/api-client";
+import { Button } from "@/components/shared";
 import type { TransitionWithPhases } from "@/types";
 
 // Leaflet は SSR 非対応のため dynamic import
@@ -340,17 +341,17 @@ export function LocationForm({ onSubmit, saving, workId, defaultValues }: Locati
         <label htmlFor="is_active" style={{ fontSize: 14, fontWeight: 500, color: "#374151" }}>有効</label>
       </div>
 
-      <button
-        type="submit" disabled={saving || !canSubmit}
-        style={{
-          width: "100%", padding: "12px",
-          background: (saving || !canSubmit) ? "#93c5fd" : "#2563eb",
-          color: "#fff", border: "none", borderRadius: 8, fontSize: 15, fontWeight: 600,
-          cursor: (saving || !canSubmit) ? "not-allowed" : "pointer",
-        }}
+      <Button
+        type="submit"
+        variant="primary"
+        size="md"
+        fullWidth
+        disabled={saving || !canSubmit}
+        aria-busy={saving || undefined}
       >
+        {saving && <span className="spinner" aria-hidden="true" />}
         {saving ? "保存中..." : defaultValues ? "更新" : "作成"}
-      </button>
+      </Button>
     </>
   );
 

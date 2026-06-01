@@ -71,8 +71,10 @@ function fromApi(a: ApiAnnouncement): Announcement {
 function AnnouncementRow({ item, isLast }: { item: Announcement; isLast: boolean }) {
   const [expanded, setExpanded] = useState(false);
   const meta = TYPE_META[item.type];
-  const hasLongBody = item.body.length > 80;
-  const displayBody = expanded ? item.body : item.body.slice(0, 80) + (hasLongBody ? "…" : "");
+  // 本文が非空なら必ず「詳細 ▼」ボタンを出す。
+  // 旧仕様: `body.length > 80` のときだけボタン表示 → 短い本文 (= 80 文字以下) は
+  // どこからも展開できず、登録した本文が永久に見えないバグになっていた。
+  const hasBody = item.body.trim().length > 0;
 
   return (
     <div style={{
@@ -131,8 +133,8 @@ function AnnouncementRow({ item, isLast }: { item: Announcement; isLast: boolean
           {item.title}
         </span>
 
-        {/* 詳細展開ボタン */}
-        {hasLongBody && (
+        {/* 詳細展開ボタン: 本文が非空なら必ず出す */}
+        {hasBody && (
           <button
             type="button"
             onClick={() => setExpanded((v) => !v)}
@@ -156,8 +158,8 @@ function AnnouncementRow({ item, isLast }: { item: Announcement; isLast: boolean
         )}
       </div>
 
-      {/* ── 展開：本文 ── */}
-      {expanded && (
+      {/* ── 展開：本文 (= 詳細ボタンで開いた時、登録された body を全文表示) ── */}
+      {expanded && hasBody && (
         <div style={{
           padding: "0 20px 14px",
           paddingLeft: 20 + 72 + 16 + 80 + 16,
@@ -165,8 +167,9 @@ function AnnouncementRow({ item, isLast }: { item: Announcement; isLast: boolean
           color: "#374151",
           lineHeight: 1.75,
           whiteSpace: "pre-wrap",
+          wordBreak: "break-word",
         }}>
-          {displayBody}
+          {item.body}
         </div>
       )}
     </div>

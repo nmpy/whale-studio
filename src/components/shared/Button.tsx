@@ -30,8 +30,11 @@ const base =
   "focus:outline-none focus-visible:ring-4 focus-visible:ring-brand/20";
 
 const variants: Record<ButtonVariant, string> = {
+  // `!text-white` で <a>/<Link> の link 色 (= 既定 visited / hover で青になる挙動) を抑止。
+  // 個別呼び出し側で `!text-white hover:!text-white` を毎回付ける運用を排除し、
+  // 「作品を追加 / キャラクターを追加」等の primary CTA が必ず白文字になることを保証する。
   primary:
-    "text-white bg-gradient-to-br from-brand to-brand-deep " +
+    "!text-white hover:!text-white bg-gradient-to-br from-brand to-brand-deep " +
     "shadow-[0_3px_12px_rgba(34,197,94,.28)] " +
     "hover:-translate-y-px hover:shadow-[0_5px_16px_rgba(34,197,94,.32)] " +
     "active:translate-y-0",

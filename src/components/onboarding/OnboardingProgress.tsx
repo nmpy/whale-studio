@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { onboardingApi, getDevToken } from "@/lib/api-client";
+import { Accordion } from "@/components/shared";
 
 interface Props {
   oaId:           string;
@@ -78,110 +79,103 @@ export function OnboardingProgress({
   const basePath  = `/oas/${oaId}/works/${workId}`;
 
   return (
-    <div
-      className="rounded-2xl border border-sky-200 bg-gradient-to-r from-sky-50 to-emerald-50 relative"
-      style={{ padding: "14px 16px", marginBottom: 20 }}
-    >
-      {/* 非表示ボタン */}
+    // 共通 Accordion でラップし、デザインガイド §4「Accordion」+ §6「ヘルプを開きっぱなし NG」に揃える。
+    // defaultOpen=false で初期は閉じた状態。summary で進捗 (件数 + %) を閉じたまま見せる。
+    <div style={{ marginBottom: 20, position: "relative" }}>
+      {/* 非表示ボタン: Accordion ヘッダーの上に absolute 配置。クリック時に Accordion 開閉は発生させない (stopPropagation)。 */}
       <button
-        onClick={dismiss}
+        onClick={(e) => { e.stopPropagation(); dismiss(); }}
         aria-label="ガイドを非表示"
-        className="absolute text-neutral-300 hover:text-neutral-400 transition-colors"
-        style={{ top: 10, right: 12, background: "none", border: "none", cursor: "pointer", fontSize: 13 }}
+        className="absolute text-neutral-300 hover:text-neutral-400 transition-colors z-10"
+        style={{ top: 12, right: 44, background: "none", border: "none", cursor: "pointer", fontSize: 13 }}
       >
         ✕
       </button>
-
-      {/* ヘッダー */}
-      <div className="flex items-center" style={{ gap: 8, marginBottom: 10 }}>
-        <div>
-          <div className="font-bold text-sky-700" style={{ fontSize: 12 }}>
-            セットアップの進捗
-          </div>
-          <div className="text-neutral-400" style={{ fontSize: 11 }}>
-            {doneCount} / {STEPS.length} ステップ完了（{pct}%）
-          </div>
-        </div>
-      </div>
-
-      {/* プログレスバー */}
-      <div
-        className="rounded-full overflow-hidden bg-neutral-200"
-        style={{ height: 5, marginBottom: 12 }}
+      <Accordion
+        title="セットアップの進捗"
+        summary={`${doneCount} / ${STEPS.length} 完了（${pct}%）`}
+        helpTone
+        defaultOpen={false}
       >
+        {/* プログレスバー */}
         <div
-          className="h-full rounded-full bg-gradient-to-r from-sky-400 to-emerald-400"
-          style={{ width: `${pct}%`, transition: "width 0.5s ease" }}
-        />
-      </div>
+          className="rounded-full overflow-hidden bg-neutral-200 mt-1"
+          style={{ height: 5, marginBottom: 12 }}
+        >
+          <div
+            className="h-full rounded-full bg-gradient-to-r from-sky-400 to-emerald-400"
+            style={{ width: `${pct}%`, transition: "width 0.5s ease" }}
+          />
+        </div>
 
-      {/* ステップ一覧 */}
-      <div className="flex flex-col" style={{ gap: 4 }}>
-        {STEPS.map((step, i) => {
-          const done   = completion[step.key as StepKey];
-          const isNext = step.key === nextStep?.key;
+        {/* ステップ一覧 */}
+        <div className="flex flex-col" style={{ gap: 4 }}>
+          {STEPS.map((step, i) => {
+            const done   = completion[step.key as StepKey];
+            const isNext = step.key === nextStep?.key;
 
-          const href = step.isPreview
-            ? `/playground?work_id=${workId}&oa_id=${oaId}`
-            : step.href
-              ? `${basePath}/${step.href}`
-              : "";
+            const href = step.isPreview
+              ? `/playground?work_id=${workId}&oa_id=${oaId}`
+              : step.href
+                ? `${basePath}/${step.href}`
+                : "";
 
-          return (
-            <div
-              key={step.key}
-              className={[
-                "flex items-center rounded-xl transition-colors",
-                isNext ? "bg-white border border-sky-200 shadow-sm" : "",
-              ].join(" ")}
-              style={{ gap: 8, padding: isNext ? "7px 10px" : "3px 10px" }}
-            >
-              {/* アイコン */}
-              <span style={{
-                display: "inline-flex", alignItems: "center", justifyContent: "center",
-                width: 20, height: 20, borderRadius: "50%", fontSize: 10, fontWeight: 700,
-                background: done ? "#dcfce7" : isNext ? "#dbeafe" : "#f3f4f6",
-                color:      done ? "#16a34a" : isNext ? "#1d4ed8" : "#9ca3af",
-                border:     `1px solid ${done ? "#86efac" : isNext ? "#93c5fd" : "#e5e7eb"}`,
-                flexShrink: 0,
-              }}>
-                {done ? "✓" : i + 1}
-              </span>
-
-              {/* ラベル */}
-              <span
+            return (
+              <div
+                key={step.key}
                 className={[
-                  "flex-1",
-                  done   ? "line-through text-neutral-400" :
-                  isNext ? "font-semibold text-sky-800"    :
-                           "text-neutral-400",
+                  "flex items-center rounded-xl transition-colors",
+                  isNext ? "bg-white border border-sky-200 shadow-sm" : "",
                 ].join(" ")}
-                style={{ fontSize: 12 }}
+                style={{ gap: 8, padding: isNext ? "7px 10px" : "3px 10px" }}
               >
-                {i + 1}. {step.label}
-              </span>
+                {/* アイコン */}
+                <span style={{
+                  display: "inline-flex", alignItems: "center", justifyContent: "center",
+                  width: 20, height: 20, borderRadius: "50%", fontSize: 10, fontWeight: 700,
+                  background: done ? "#dcfce7" : isNext ? "#dbeafe" : "#f3f4f6",
+                  color:      done ? "#16a34a" : isNext ? "#1d4ed8" : "#9ca3af",
+                  border:     `1px solid ${done ? "#86efac" : isNext ? "#93c5fd" : "#e5e7eb"}`,
+                  flexShrink: 0,
+                }}>
+                  {done ? "✓" : i + 1}
+                </span>
 
-              {/* 次へリンク */}
-              {isNext && href && (
-                <Link
-                  href={href}
-                  className="flex-shrink-0 font-semibold text-sky-600 bg-sky-100 hover:bg-sky-200 rounded-lg transition-colors"
-                  style={{ fontSize: 11, padding: "3px 8px" }}
-                  onClick={() => {
-                    if (step.isPreview) {
-                      try { localStorage.setItem(`preview-confirmed-${workId}`, "1"); } catch {}
-                      // オンボーディング: previewed ステップを記録（fire-and-forget）
-                      onboardingApi.trackStep(getDevToken(), { work_id: workId, oa_id: oaId, step: "previewed" }).catch(() => {});
-                    }
-                  }}
+                {/* ラベル */}
+                <span
+                  className={[
+                    "flex-1",
+                    done   ? "line-through text-neutral-400" :
+                    isNext ? "font-semibold text-sky-800"    :
+                             "text-neutral-400",
+                  ].join(" ")}
+                  style={{ fontSize: 12 }}
                 >
-                  →
-                </Link>
-              )}
-            </div>
-          );
-        })}
-      </div>
+                  {i + 1}. {step.label}
+                </span>
+
+                {/* 次へリンク */}
+                {isNext && href && (
+                  <Link
+                    href={href}
+                    className="flex-shrink-0 font-semibold text-sky-600 bg-sky-100 hover:bg-sky-200 rounded-lg transition-colors"
+                    style={{ fontSize: 11, padding: "3px 8px" }}
+                    onClick={() => {
+                      if (step.isPreview) {
+                        try { localStorage.setItem(`preview-confirmed-${workId}`, "1"); } catch {}
+                        // オンボーディング: previewed ステップを記録（fire-and-forget）
+                        onboardingApi.trackStep(getDevToken(), { work_id: workId, oa_id: oaId, step: "previewed" }).catch(() => {});
+                      }
+                    }}
+                  >
+                    →
+                  </Link>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </Accordion>
     </div>
   );
 }
