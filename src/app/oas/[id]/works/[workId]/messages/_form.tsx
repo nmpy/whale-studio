@@ -1906,15 +1906,6 @@ interface PreviewPanelProps {
   destinations: LineDestination[];
 }
 
-/** クイックリプライボタンの表示色定義 */
-const QR_CHIP_COLORS: Record<QuickReplyAction, { bg: string; text: string; border: string }> = {
-  text:   { bg: "#f0fdf4", text: "#15803d",  border: "#bbf7d0" },
-  url:    { bg: "#eff6ff", text: "#1d4ed8",  border: "#bfdbfe" },
-  next:   { bg: "#faf5ff", text: "#7c3aed",  border: "#ddd6fe" },
-  hint:   { bg: "#fffbeb", text: "#b45309",  border: "#fde68a" },
-  custom: { bg: "#f8fafc", text: "#475569",  border: "#e2e8f0" },
-};
-
 /** 1 件のチェーン item から bubble 内コンテンツ (本文 / 画像 / 動画 / カルーセル等) を生成する。
  *  従来の PreviewPanel が form を直接見ていた箇所を ChainPreviewItem ベースに置き換えたもの。 */
 function renderBubbleContent(
@@ -2111,13 +2102,36 @@ function renderBubbleContent(
 
 /** チェーン 1 通分の行 (= キャラ icon + 吹き出し + 直下に QR)。
  *  実機 LINE と同じく QR はその bubble の直下にのみ表示する (= 末尾集約しない)。 */
+/** チェーン末尾の bubble の下に集約表示する QR の中立グレー系チップスタイル
+ *  (= 実機 LINE のクイックリプライ表示トーンに揃える)。 */
+const QR_TAIL_CHIP_STYLE = {
+  display:      "inline-flex" as const,
+  alignItems:   "center"      as const,
+  gap:          3,
+  padding:      "4px 12px",
+  borderRadius: 20,
+  fontSize:     11,
+  fontWeight:   500 as const,
+  background:   "#f8f8f8",
+  color:        "#444",
+  border:       "1px solid #d9d9d9",
+  maxWidth:     160,
+  overflow:     "hidden"      as const,
+  textOverflow: "ellipsis"    as const,
+  whiteSpace:   "nowrap"      as const,
+  cursor:       "default"     as const,
+};
+
 function ChainBubbleRow({
-  item, characters, riddles, destinations,
+  item, characters, riddles, destinations, tailQuickReplies,
 }: {
   item:         ChainPreviewItem;
   characters:   Character[];
   riddles:      Riddle[];
   destinations: LineDestination[];
+  /** chain 末尾の bubble にのみ表示する QR。それ以外の行は呼び出し側で空配列を渡す。
+   *  ここに値があるかどうかで「自分が chain 末尾かどうか」を判定する。 */
+  tailQuickReplies?: QuickReplyItem[];
 }) {
   const selectedChar = characters.find((c) => c.id === item.character_id) ?? null;
   const selectedRiddle = riddles.find((r) => r.id === item.riddle_id);
@@ -2151,8 +2165,8 @@ function ChainBubbleRow({
     }}></div>
   );
 
-  // この bubble 自身に紐づく QR を空文字 / 未入力ラベルでフィルタリング (= 表示価値のないチップを抑止)。
-  const visibleQRs = item.quick_replies.filter((qr) => qr.label || qr.action);
+  // tail QR から空ラベル / 未設定 entry を除外する (= 表示価値のないチップを抑止)。
+  const visibleQRs = (tailQuickReplies ?? []).filter((qr) => qr.label || qr.action);
 
   return (
     <div>
@@ -2191,28 +2205,19 @@ function ChainBubbleRow({
             </div>
           </div>
 
-          {/* この bubble に付属する QR を直下に表示 (= 実機 LINE の挙動)。
-              quick_replies が空配列なら何も表示しない。 */}
+          {/* QR は chain 末尾の bubble の下にのみ表示 (= 実送信仕様 moveQuickReplyToTail に揃える)。
+              tailQuickReplies が空 / 未指定なら何も表示しない。 */}
           {visibleQRs.length > 0 && (
             <div style={{
               display: "flex", flexWrap: "wrap", gap: 5, marginTop: 6,
             }}>
               {visibleQRs.map((qr, i) => {
-                const chipColor = QR_CHIP_COLORS[qr.action];
                 const actionDef = QR_ACTION_OPTIONS.find((o) => o.value === qr.action);
                 return (
                   <span
                     key={i}
                     title={`${actionDef?.label ?? qr.action}${qr.value ? ` → ${qr.value}` : ""}`}
-                    style={{
-                      display: "inline-flex", alignItems: "center", gap: 3,
-                      padding: "4px 10px", borderRadius: 20,
-                      fontSize: 11, fontWeight: 600,
-                      background: chipColor.bg, color: chipColor.text,
-                      border: `1px solid ${chipColor.border}`,
-                      maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis",
-                      whiteSpace: "nowrap", cursor: "default",
-                    }}
+                    style={QR_TAIL_CHIP_STYLE}
                   >
                     {qr.label || <span style={{ fontStyle: "italic", opacity: 0.6 }}>ラベル未入力</span>}
                   </span>
@@ -2231,6 +2236,17 @@ function PreviewPanel({ chain, characters, riddles, destinations }: PreviewPanel
   // chain は最低でも 1 件持つ (= 編集中 form) ので head は常に存在する。
   const head = chain[0];
   const selectedChar = head ? (characters.find((c) => c.id === head.character_id) ?? null) : null;
+
+  // chain 内のどこかに QR がある場合、それを chain 末尾の bubble に集約して表示する。
+  // 探索順は後ろから前 = 実送信処理の moveQuickReplyToTail と同じ姿勢 (= tail が
+  // 既に QR を持っていればそれを使い、無ければ後方から遡って見つけた最初のものを使う)。
+  let tailQR: QuickReplyItem[] = [];
+  for (let i = chain.length - 1; i >= 0; i--) {
+    if (chain[i].quick_replies.length > 0) {
+      tailQR = chain[i].quick_replies;
+      break;
+    }
+  }
 
   return (
     <div style={{
@@ -2262,13 +2278,15 @@ function PreviewPanel({ chain, characters, riddles, destinations }: PreviewPanel
         minHeight: 280,
         display: "flex", flexDirection: "column", gap: 12,
       }}>
-        {chain.map((item) => (
+        {chain.map((item, i) => (
           <ChainBubbleRow
             key={item.key}
             item={item}
             characters={characters}
             riddles={riddles}
             destinations={destinations}
+            // 末尾 bubble にのみ集約 QR を渡す。途中の bubble は QR を出さない。
+            tailQuickReplies={i === chain.length - 1 ? tailQR : []}
           />
         ))}
       </div>
