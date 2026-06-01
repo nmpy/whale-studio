@@ -11,7 +11,7 @@ import { workApi, oaApi, phaseApi, transitionApi, onboardingApi, getDevToken } f
 import type { WorkListItem } from "@/lib/api-client";
 import { HelpAccordion } from "@/components/HelpAccordion";
 import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
-import { useWorkLimit } from "@/hooks/useWorkLimit";
+import { useEffectivePlanInfo } from "@/hooks/useEffectivePlanInfo";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { trackEvent } from "@/lib/event-tracker";
 import { ViewerBanner } from "@/components/PermissionGuard";
@@ -240,7 +240,8 @@ export default function WorkHubPage() {
   const workId = params.workId;
   const sp = useIsMobile();
   const { role } = useWorkspaceRole(oaId);
-  const { maxWorks, planDisplayName, planName } = useWorkLimit(oaId);
+  // 表示確認モードに追随したプラン表示情報を取得 (= 価格・上限・アップグレード訴求を preview tier で確認可能)。
+  const { maxWorks, planDisplayName, planName } = useEffectivePlanInfo(oaId);
   // 既存 plan.name (e.g. "tester" / "editor") を 4 段階ティアに正規化する。
   // Subscription 未設定 (= planName=null) は基本 Basic 扱いで安全側 fallback。
   //

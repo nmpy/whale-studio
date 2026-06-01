@@ -19,7 +19,7 @@ import { buildPricingUrl } from "@/lib/pricing-url";
 import type { FriendAddSettings, PublishStatus } from "@/types";
 import { useToast } from "@/components/Toast";
 import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
-import { useWorkLimit } from "@/hooks/useWorkLimit";
+import { useEffectivePlanInfo } from "@/hooks/useEffectivePlanInfo";
 import { ViewerBanner } from "@/components/PermissionGuard";
 import { trackEvent } from "@/lib/event-tracker";
 import { useTesterMode } from "@/hooks/useTesterMode";
@@ -59,7 +59,9 @@ export default function WorkListPage() {
   const { showToast } = useToast();
   const { role, isTester: isRoleTester } = useWorkspaceRole(oaId);
   const { isTester } = useTesterMode();
-  const { maxWorks, planDisplayName, planName, loading: limitLoading } = useWorkLimit(oaId);
+  // 表示確認モード中は preview tier の Plan 情報を返す (= 価格・上限表示が preview に追随)。
+  // 通常モード / 非 owner / 非 platform admin は実プラン情報 (= 既存挙動)。
+  const { maxWorks, planDisplayName, planName, loading: limitLoading } = useEffectivePlanInfo(oaId);
 
   const [oaTitle, setOaTitle]     = useState("");
   const [works, setWorks]         = useState<WorkListItem[]>([]);
