@@ -11,6 +11,11 @@
 
 import { Suspense } from "react";
 import { PricingContent } from "./_content";
+import { fetchAllPlanPrices } from "@/lib/stripe-price-display";
+
+// Stripe Price API を毎リクエストで叩くため dynamic を明示。
+// env 未設定 / Stripe 障害時も helper が fallback を返すため build/runtime は落ちない。
+export const dynamic = "force-dynamic";
 
 // ── ローディングフォールバック ────────────────────────────────────────
 // Client Component のハイドレーション前に表示されるスケルトン。
@@ -50,7 +55,7 @@ function PricingFallback() {
 // oa_id    — Stripe Checkout のキャンセル時に pricing へ戻る際に付与される OA ID
 // checkout — "cancelled" のとき Stripe Checkout からのキャンセル戻りを示す
 //            (legacy "canceled=1" もサポート)
-export default function PricingPage({
+export default async function PricingPage({
   searchParams,
 }: {
   searchParams: {
@@ -64,6 +69,10 @@ export default function PricingPage({
 }) {
   const isCancelled =
     searchParams.checkout === "cancelled" || searchParams.canceled === "1";
+
+  // Stripe Price から各プランの金額を取得 (= server-side / 失敗時は fallback)
+  const priceOverrides = await fetchAllPlanPrices();
+
   return (
     <Suspense fallback={<PricingFallback />}>
       <PricingContent
@@ -72,6 +81,7 @@ export default function PricingPage({
         to={searchParams.to}
         oaId={searchParams.oa_id}
         canceled={isCancelled ? "1" : undefined}
+        priceOverrides={priceOverrides}
       />
     </Suspense>
   );
