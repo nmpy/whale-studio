@@ -94,7 +94,13 @@ export default function AdminIndexPage() {
         gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))",
         gap: 12,
       }}>
-        {ADMIN_ITEMS.filter(({ href }) => (href === "/admin/live" ? isPlatform : true)).map(({ href, title, desc, color }) => {
+        {ADMIN_ITEMS.filter(({ href }) => (
+          // platform admin 専用カード (/admin/live, /admin/privacy-acceptances) は
+          // isPlatform=true のときのみ表示。それ以外のカードは全員に表示。
+          href === "/admin/live" || href === "/admin/privacy-acceptances"
+            ? isPlatform
+            : true
+        )).map(({ href, title, desc, color }) => {
           const isDisabled = !href;
 
           const cardStyle: React.CSSProperties = {

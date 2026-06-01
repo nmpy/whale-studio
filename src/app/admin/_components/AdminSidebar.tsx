@@ -8,15 +8,17 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const NAV_ITEMS = [
-  { href: "/admin/announcements",         label: "お知らせ管理" },
-  { href: "/admin/documents",             label: "ドキュメント" },
-  { href: "/admin/audience",              label: "ユーザー概況" },
-  { href: "/admin/onboarding",            label: "オンボーディング分析" },
-  { href: "/admin/billing",               label: "課金導線分析" },
-  { href: "/admin/hub-actions",           label: "ハブ操作分析" },
-  { href: "/admin/resume",                label: "再開分析" },
-  { href: "/admin/audit",                 label: "操作ログ" },
-  { href: "/admin/privacy-acceptances",   label: "プライバシー同意履歴" },
+  { href: "/admin/announcements", label: "お知らせ管理" },
+  { href: "/admin/documents",     label: "ドキュメント" },
+  { href: "/admin/audience",      label: "ユーザー概況" },
+  { href: "/admin/onboarding",    label: "オンボーディング分析" },
+  { href: "/admin/billing",       label: "課金導線分析" },
+  { href: "/admin/hub-actions",   label: "ハブ操作分析" },
+  { href: "/admin/resume",        label: "再開分析" },
+  { href: "/admin/audit",         label: "操作ログ" },
+  // 注: /admin/live と /admin/privacy-acceptances は platform admin 専用のため
+  //     sidebar には掲載せず、/admin トップで isPlatform 判定して条件表示する
+  //     (= 既存 /admin/live と同方針)。
 ] as const;
 
 export function AdminSidebar() {

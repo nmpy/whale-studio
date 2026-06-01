@@ -1,10 +1,16 @@
 // src/app/admin/privacy-acceptances/page.tsx
 //
 // プライバシーポリシー同意履歴の閲覧画面 (Server Component)。
+// **本ページは platform admin (= 運営者) 専用** で、workspace owner は閲覧不可。
 //
 // 設計方針:
-//   - /admin/layout.tsx で platform owner / workspace owner ガードが効いているため、
-//     本ページは閲覧用 Server Component として直接 prisma を引く (= 専用 API 不要)。
+//   - /admin/layout.tsx の汎用 guard (= platform owner OR workspace owner) では
+//     workspace owner も通してしまうため、本ページに **追加で isPlatformOwner ガード** を
+//     掛ける (= 既存 /admin/live と同方針)。
+//   - 全ユーザーの個人情報 (= email 含む同意履歴) を表示するため、認可スコープを
+//     最小化する設計。
+//   - 一般ユーザー / workspace owner が直接アクセス → /admin にリダイレクト
+//     (= /admin/layout.tsx の guard と同じ「より上位」へ戻す挙動)。
 //   - 件数が増えてもまずは「最新 100 件 / acceptedAt desc」で十分。
 //   - 日時は JST で「YYYY/MM/DD HH:mm」表記。
 //   - **メールアドレス**: Supabase auth.users は Prisma スキーマ外のため、
@@ -14,6 +20,9 @@
 
 import { prisma } from "@/lib/prisma";
 import { createClient } from "@supabase/supabase-js";
+import { redirect } from "next/navigation";
+import { getServerUser } from "@/lib/supabase/server";
+import { isPlatformOwner } from "@/lib/platform-admin";
 import type { Metadata } from "next";
 
 export const dynamic = "force-dynamic";
@@ -68,6 +77,16 @@ async function fetchUserEmails(userIds: string[]): Promise<Map<string, string | 
 }
 
 export default async function PrivacyAcceptancesAdminPage() {
+  // ── 追加 platform admin ガード ────────────────────────────────────
+  // /admin/layout.tsx は platform OR workspace owner を通すため、
+  // 本ページのスコープに合わせて isPlatformOwner のみに絞る。
+  // 一般ユーザーは layout 側で既に /oas に弾かれているため、ここに到達するのは
+  // platform admin or workspace owner のみ。workspace owner は /admin に戻す。
+  const user = await getServerUser();
+  if (!user || !isPlatformOwner(user.id)) {
+    redirect("/admin");
+  }
+
   const acceptances = await prisma.privacyPolicyAcceptance.findMany({
     orderBy: { acceptedAt: "desc" },
     take:    LIMIT,
