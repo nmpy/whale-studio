@@ -10,21 +10,20 @@ import type { LiveSection } from "@/lib/types/permissions";
 
 export const dynamic = "force-dynamic";
 
+// Whale Studio Live は Admin / Actor 集約の運営機能。
+// Player 本人用ダッシュボードは作らない方針 (= Phase 2-C 整理)。
+// /oas/[id]/live/player URL は placeholder として直アクセス時のみ表示するが、
+// hub メニューには出さない。
 const SECTIONS: { section: LiveSection; title: string; desc: string }[] = [
-  {
-    section: "player",
-    title: "Whale Studio Live for Player",
-    desc: "プレイヤーの行動・進行・演出連携を設定する画面。QR、チェックイン、謎の正解、メッセージ送信などを Admin / Actor 側にどう表示するかを管理します。",
-  },
   {
     section: "admin",
     title: "Whale Studio Live for Admin",
-    desc: "運営・主催者向けの管制画面。全プレイヤーの進行状況、詰まり、接触状況、アラートを確認します。",
+    desc: "運営・主催者向けの管制画面。セッション、体験参加者、進行状況、イベントログを管理します。",
   },
   {
     section: "actor",
     title: "Whale Studio Live for Actor",
-    desc: "演者向けの演出支援画面。自分が接触すべきプレイヤー、プレイヤーの状態、推奨セリフ、接触後アクションを確認します。",
+    desc: "演者向けの演出支援画面。担当プレイヤーの状態、推奨セリフ、接触後アクションを確認します。",
   },
 ];
 

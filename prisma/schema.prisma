@@ -1591,8 +1591,10 @@ model LiveSession {
   @@map("live_sessions")
 }
 
-/// Live セッション参加者（= 1 プレイヤー or 1 グループ）。
+/// Live セッション参加者（= 運営が管理する体験参加者レコード）。
+/// 「Auth user 本人ログインの紐付け」ではなく、Admin / Actor 側から参照する運営用レコード。
 /// lineUserId は LINE 連携した場合のみ。displayName で匿名管理も可能。
+/// memo は Admin が自由に追記する管理メモ（= 連絡先・特記事項・接触メモ等）。
 model LiveParticipant {
   id             String                @id @default(uuid())
   oaId           String                @map("oa_id")
@@ -1601,6 +1603,7 @@ model LiveParticipant {
   lineUserId     String?               @map("line_user_id")
   status         LiveParticipantStatus @default(waiting)
   currentStep    String?               @map("current_step")
+  memo           String?
   lastSeenAt     DateTime?             @map("last_seen_at")
   createdAt      DateTime              @default(now()) @map("created_at")
   updatedAt      DateTime              @updatedAt @map("updated_at")

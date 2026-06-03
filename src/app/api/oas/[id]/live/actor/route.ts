@@ -61,6 +61,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
         line_user_id:     p.lineUserId,
         status:           p.status,
         current_step:     p.currentStep,
+        memo:             p.memo,
         last_seen_at:     p.lastSeenAt,
         created_at:       p.createdAt,
         updated_at:       p.updatedAt,

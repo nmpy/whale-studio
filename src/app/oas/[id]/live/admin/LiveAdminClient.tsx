@@ -36,10 +36,15 @@ type LiveParticipant = {
   line_user_id: string | null;
   status: "waiting" | "active" | "stuck" | "completed" | "dropped";
   current_step: string | null;
+  /** Phase 2-C: 管理メモ */
+  memo: string | null;
   last_seen_at: string | null;
   created_at: string;
   updated_at: string;
 };
+
+const PARTICIPANT_STATUSES = ["waiting", "active", "stuck", "completed", "dropped"] as const;
+type ParticipantStatus = typeof PARTICIPANT_STATUSES[number];
 
 type LiveEventLog = {
   id: string;
@@ -154,6 +159,191 @@ const errorBox: React.CSSProperties = {
   fontSize: 13,
   margin: "8px 0",
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ParticipantRow — 参加者 1 行の表示 / 行内編集
+// ─────────────────────────────────────────────────────────────────────────────
+function ParticipantRow({
+  participant,
+  oaId,
+  sessionId,
+  onSaved,
+  onError,
+}: {
+  participant: LiveParticipant;
+  oaId: string;
+  sessionId: string;
+  onSaved: () => void;
+  onError: (msg: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draftName,   setDraftName]   = useState(participant.display_name ?? "");
+  const [draftLine,   setDraftLine]   = useState(participant.line_user_id ?? "");
+  const [draftStatus, setDraftStatus] = useState<ParticipantStatus>(participant.status);
+  const [draftStep,   setDraftStep]   = useState(participant.current_step ?? "");
+  const [draftMemo,   setDraftMemo]   = useState(participant.memo ?? "");
+  const [saving, setSaving] = useState(false);
+
+  // 元データが変わったとき (= 再読込後) は draft も同期する
+  useEffect(() => {
+    if (!editing) {
+      setDraftName(participant.display_name ?? "");
+      setDraftLine(participant.line_user_id ?? "");
+      setDraftStatus(participant.status);
+      setDraftStep(participant.current_step ?? "");
+      setDraftMemo(participant.memo ?? "");
+    }
+  }, [participant, editing]);
+
+  const handleStartEdit = () => {
+    setDraftName(participant.display_name ?? "");
+    setDraftLine(participant.line_user_id ?? "");
+    setDraftStatus(participant.status);
+    setDraftStep(participant.current_step ?? "");
+    setDraftMemo(participant.memo ?? "");
+    setEditing(true);
+  };
+
+  const handleCancel = () => {
+    setEditing(false);
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch(
+        `/api/oas/${oaId}/live/sessions/${sessionId}/participants/${participant.id}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            display_name: draftName.trim() || null,
+            line_user_id: draftLine.trim() || null,
+            status:       draftStatus,
+            current_step: draftStep.trim() || null,
+            memo:         draftMemo.trim() || null,
+          }),
+        },
+      );
+      if (!res.ok) {
+        const j = await res.json().catch(() => null);
+        throw new Error(j?.error?.message ?? `保存に失敗しました (HTTP ${res.status})`);
+      }
+      setEditing(false);
+      onSaved();
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "保存に失敗しました");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!editing) {
+    return (
+      <tr style={{ borderBottom: "1px solid #f3f4f6" }}>
+        <td style={{ padding: "8px 6px", color: "#111827" }}>
+          {participant.display_name ?? <span style={{ color: "#9ca3af" }}>(匿名)</span>}
+        </td>
+        <td style={{ padding: "8px 6px" }}>
+          <span style={{ fontSize: 11, color: "#374151" }}>
+            {PARTICIPANT_STATUS_LABEL[participant.status]}
+          </span>
+        </td>
+        <td style={{ padding: "8px 6px", color: "#374151" }}>{participant.current_step ?? "—"}</td>
+        <td
+          style={{ padding: "8px 6px", color: "#374151", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+          title={participant.memo ?? undefined}
+        >
+          {participant.memo ?? <span style={{ color: "#9ca3af" }}>—</span>}
+        </td>
+        <td style={{ padding: "8px 6px", color: "#6b7280", fontSize: 11, fontFamily: "ui-monospace, monospace" }}>
+          {participant.line_user_id ?? <span style={{ color: "#9ca3af" }}>—</span>}
+        </td>
+        <td style={{ padding: "8px 6px", color: "#6b7280", fontSize: 12 }}>
+          {formatDateTime(participant.last_seen_at)}
+        </td>
+        <td style={{ padding: "8px 6px" }}>
+          <button type="button" onClick={handleStartEdit} style={buttonSecondary}>
+            編集
+          </button>
+        </td>
+      </tr>
+    );
+  }
+
+  return (
+    <tr style={{ borderBottom: "1px solid #f3f4f6", background: "#f9fafb" }}>
+      <td colSpan={7} style={{ padding: "10px 6px" }}>
+        <div style={{ display: "grid", gap: 8 }}>
+          <div style={{ display: "grid", gap: 8, gridTemplateColumns: "1fr 1fr 1fr 1fr" }}>
+            <label style={{ fontSize: 11, color: "#374151" }}>
+              表示名
+              <input
+                value={draftName}
+                onChange={(e) => setDraftName(e.target.value)}
+                placeholder="(匿名)"
+                style={inputStyle}
+                disabled={saving}
+              />
+            </label>
+            <label style={{ fontSize: 11, color: "#374151" }}>
+              状態
+              <select
+                value={draftStatus}
+                onChange={(e) => setDraftStatus(e.target.value as ParticipantStatus)}
+                style={inputStyle}
+                disabled={saving}
+              >
+                {PARTICIPANT_STATUSES.map((s) => (
+                  <option key={s} value={s}>{PARTICIPANT_STATUS_LABEL[s]}</option>
+                ))}
+              </select>
+            </label>
+            <label style={{ fontSize: 11, color: "#374151" }}>
+              現在ステップ
+              <input
+                value={draftStep}
+                onChange={(e) => setDraftStep(e.target.value)}
+                placeholder="(なし)"
+                style={inputStyle}
+                disabled={saving}
+              />
+            </label>
+            <label style={{ fontSize: 11, color: "#374151" }}>
+              LINE user ID
+              <input
+                value={draftLine}
+                onChange={(e) => setDraftLine(e.target.value)}
+                placeholder="(なし)"
+                style={inputStyle}
+                disabled={saving}
+              />
+            </label>
+          </div>
+          <label style={{ fontSize: 11, color: "#374151" }}>
+            メモ
+            <textarea
+              value={draftMemo}
+              onChange={(e) => setDraftMemo(e.target.value)}
+              placeholder="連絡先・特記事項・接触メモ等(任意 / 最大 2000 文字)"
+              style={{ ...inputStyle, minHeight: 60 }}
+              disabled={saving}
+            />
+          </label>
+          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+            <button type="button" onClick={handleCancel} style={buttonSecondary} disabled={saving}>
+              キャンセル
+            </button>
+            <button type="button" onClick={handleSave} style={buttonPrimary} disabled={saving}>
+              {saving ? "保存中…" : "保存"}
+            </button>
+          </div>
+        </div>
+      </td>
+    </tr>
+  );
+}
 
 export function LiveAdminClient({ oaId }: { oaId: string }) {
   const [sessions, setSessions] = useState<LiveSession[]>([]);
@@ -447,25 +637,22 @@ export function LiveAdminClient({ oaId }: { oaId: string }) {
                     <th style={{ padding: "8px 6px" }}>表示名</th>
                     <th style={{ padding: "8px 6px" }}>状態</th>
                     <th style={{ padding: "8px 6px" }}>現在ステップ</th>
+                    <th style={{ padding: "8px 6px" }}>メモ</th>
+                    <th style={{ padding: "8px 6px" }}>LINE</th>
                     <th style={{ padding: "8px 6px" }}>最終接触</th>
+                    <th style={{ padding: "8px 6px" }}></th>
                   </tr>
                 </thead>
                 <tbody>
                   {participants.map((p) => (
-                    <tr key={p.id} style={{ borderBottom: "1px solid #f3f4f6" }}>
-                      <td style={{ padding: "8px 6px", color: "#111827" }}>
-                        {p.display_name ?? <span style={{ color: "#9ca3af" }}>(匿名)</span>}
-                      </td>
-                      <td style={{ padding: "8px 6px" }}>
-                        <span style={{ fontSize: 11, color: "#374151" }}>
-                          {PARTICIPANT_STATUS_LABEL[p.status]}
-                        </span>
-                      </td>
-                      <td style={{ padding: "8px 6px", color: "#374151" }}>{p.current_step ?? "—"}</td>
-                      <td style={{ padding: "8px 6px", color: "#6b7280", fontSize: 12 }}>
-                        {formatDateTime(p.last_seen_at)}
-                      </td>
-                    </tr>
+                    <ParticipantRow
+                      key={p.id}
+                      participant={p}
+                      oaId={oaId}
+                      sessionId={selectedSessionId!}
+                      onSaved={() => selectedSessionId && void fetchChildren(selectedSessionId)}
+                      onError={(msg) => setError(msg)}
+                    />
                   ))}
                 </tbody>
               </table>
