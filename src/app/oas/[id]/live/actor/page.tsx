@@ -1,10 +1,11 @@
 // src/app/oas/[id]/live/actor/page.tsx
-// Whale Studio Live for Actor（Phase 1 準備中ページ）。
+// Whale Studio Live for Actor — Phase 2-B 最小UI。
+// Server Component で section ガード → 中身は LiveActorClient。
 
 import { notFound } from "next/navigation";
 import { getServerUser } from "@/lib/supabase/server";
 import { canViewLiveSection } from "@/lib/live";
-import { LivePlaceholder } from "../_LivePlaceholder";
+import { LiveActorClient } from "./LiveActorClient";
 
 export const dynamic = "force-dynamic";
 
@@ -13,14 +14,5 @@ export default async function LiveActorPage({ params }: { params: { id: string }
   if (!user || !(await canViewLiveSection(params.id, user.id, "actor"))) {
     notFound();
   }
-  return (
-    <LivePlaceholder
-      oaId={params.id}
-      title="Whale Studio Live for Actor"
-      description={
-        "演者向けの演出支援画面です。\n" +
-        "自分が接触すべきプレイヤー、プレイヤーの状態、推奨セリフ、接触後アクションを確認します。"
-      }
-    />
-  );
+  return <LiveActorClient oaId={params.id} />;
 }
