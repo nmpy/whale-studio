@@ -21,6 +21,8 @@ export type LiveParticipant = {
   line_user_id: string | null;
   status: "waiting" | "active" | "stuck" | "completed" | "dropped";
   current_step: string | null;
+  /** Phase 2-C: Admin が自由に追記する管理メモ (= 連絡先・特記事項・接触メモ等) */
+  memo: string | null;
   last_seen_at: string | null;
   created_at: string;
   updated_at: string;

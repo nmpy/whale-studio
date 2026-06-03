@@ -18,6 +18,7 @@ const createParticipantSchema = z.object({
   line_user_id:  z.string().min(1).max(120).optional().nullable(),
   status:        z.enum(["waiting", "active", "stuck", "completed", "dropped"]).optional(),
   current_step:  z.string().max(200).optional().nullable(),
+  memo:          z.string().max(2000).optional().nullable(),
 });
 
 type ParticipantRow = {
@@ -28,6 +29,7 @@ type ParticipantRow = {
   lineUserId: string | null;
   status: string;
   currentStep: string | null;
+  memo: string | null;
   lastSeenAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
@@ -42,6 +44,7 @@ function toResponse(p: ParticipantRow) {
     line_user_id:     p.lineUserId,
     status:           p.status,
     current_step:     p.currentStep,
+    memo:             p.memo,
     last_seen_at:     p.lastSeenAt,
     created_at:       p.createdAt,
     updated_at:       p.updatedAt,
@@ -98,6 +101,7 @@ export async function POST(
         lineUserId:    data.line_user_id  ?? null,
         status:        data.status        ?? "waiting",
         currentStep:   data.current_step  ?? null,
+        memo:          data.memo          ?? null,
       },
     });
     return created(toResponse(participant));
