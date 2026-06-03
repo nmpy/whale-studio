@@ -214,25 +214,45 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   if (file.size > 5 * 1024 * 1024) return badRequest("ファイルサイズは 5MB 以内にしてください");
 
   const buf = Buffer.from(await file.arrayBuffer());
-  const decoded = decodeBuffer(buf);
-  const delim = detectDelimiter(file.name, decoded.text, options.delimiter);
 
-  // ── CSV parse ────────────────────────────────────────────────────────
-  const parsed = Papa.parse<Record<string, string>>(decoded.text, {
-    header:           true,
-    delimiter:        delim,
-    skipEmptyLines:   true,
-    transformHeader:  (h) => h.trim(),
-  });
+  // Phase 2-H では .xlsx import は同 PR に含めない (= xlsx パッケージの
+  // 既知 high severity 脆弱性 / 修正未提供のため別 PR で代替ライブラリ検討)。
+  // ここでは CSV/TSV のみを処理する。.xlsx は明示的に拒否する。
+  if (file.name.toLowerCase().endsWith(".xlsx") || file.name.toLowerCase().endsWith(".xlsm")) {
+    return badRequest("Excel(.xlsx)インポートは別フェーズで対応予定です。CSV / TSV をご利用ください。");
+  }
 
-  if (parsed.errors.length > 0) {
-    const msg = parsed.errors.slice(0, 3).map((e) => `${e.row ?? "?"}: ${e.message}`).join(" / ");
-    return badRequest(`CSV 解析エラー: ${msg}`);
+  let inputHeaders: string[] = [];
+  let parsedData: Record<string, string>[] = [];
+  let fileFormat: "csv" | "tsv" = "csv";
+  let detectedEncoding: "utf-8" | "shift_jis" | "n/a" = "n/a";
+  let detectedDelimiter: "comma" | "tab" | "n/a" = "n/a";
+
+  {
+    const decoded = decodeBuffer(buf);
+    const delim = detectDelimiter(file.name, decoded.text, options.delimiter);
+    detectedEncoding = decoded.encoding;
+    detectedDelimiter = delim === "\t" ? "tab" : "comma";
+    fileFormat = delim === "\t" ? "tsv" : "csv";
+
+    const parsed = Papa.parse<Record<string, string>>(decoded.text, {
+      header:           true,
+      delimiter:        delim,
+      skipEmptyLines:   true,
+      transformHeader:  (h) => h.trim(),
+    });
+
+    if (parsed.errors.length > 0) {
+      const msg = parsed.errors.slice(0, 3).map((e) => `${e.row ?? "?"}: ${e.message}`).join(" / ");
+      return badRequest(`CSV 解析エラー: ${msg}`);
+    }
+
+    inputHeaders = parsed.meta.fields ?? [];
+    parsedData = (parsed.data ?? []) as Record<string, string>[];
   }
 
   // ── 列マッピング解決 ─────────────────────────────────────────────────
   const headerFields: Record<string, InternalField | null> = {};
-  const inputHeaders = parsed.meta.fields ?? [];
 
   // 任意上書き: form の column_mapping (= { "<header>": "<field>" })
   let userMapping: Record<string, InternalField> = {};
@@ -256,7 +276,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   }
 
   // ── 各行を ParsedRow に変換 ──────────────────────────────────────────
-  const rows: ParsedRow[] = (parsed.data ?? []).map((raw) => {
+  const rows: ParsedRow[] = parsedData.map((raw) => {
     const get = (f: InternalField): string | null => {
       const h = fieldToHeader.get(f);
       if (!h) return null;
@@ -303,8 +323,9 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   if (options.mode === "preview") {
     return ok({
       mode:               "preview",
-      encoding:           decoded.encoding,
-      delimiter:          delim === "\t" ? "tab" : "comma",
+      file_format:        fileFormat,
+      encoding:           detectedEncoding,
+      delimiter:          detectedDelimiter,
       detected_columns:   Object.entries(headerFields).map(([h, f]) => ({ header: h, mapped_field: f })),
       preview_rows:       rows.slice(0, 20).map((r) => ({
         raw:                r.raw,
@@ -544,8 +565,9 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   return ok({
     mode:         "apply",
-    encoding:     decoded.encoding,
-    delimiter:    delim === "\t" ? "tab" : "comma",
+    file_format:  fileFormat,
+    encoding:     detectedEncoding,
+    delimiter:    detectedDelimiter,
     created,
     skipped,
     overwritten,

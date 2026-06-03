@@ -54,6 +54,7 @@ model Oa {
   liveAssignments    LiveAssignment[]
   liveActorInstructions LiveActorInstruction[]
   liveTeams          LiveTeam[]
+  liveImportPresets  LiveImportPreset[]
 
   @@index([title])
   @@index([publishStatus])
@@ -1784,4 +1785,33 @@ model LiveActorInstruction {
   @@index([liveSessionId, participantId])
   @@index([oaId])
   @@map("live_actor_instructions")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 2-H: インポートプリセット (OA 単位で保存される列マッピング雛形)
+// ─────────────────────────────────────────────────────────────────────────────
+/// チケットサイト別の列マッピングや、よく使う設定をプリセット保存する。
+/// built-in (= ハードコーディング) のプリセットとは独立。OA 単位で隔離。
+model LiveImportPreset {
+  id            String   @id @default(uuid())
+  oaId          String   @map("oa_id")
+  name          String
+  description   String?
+  /// 列マッピング (= 内部 field 名 → CSV/Excel ヘッダー文字列)。
+  /// 例: { "display_name": "氏名", "email": "メールアドレス", ... }
+  mapping       Json
+  /// "by_reservation" | "by_4" | "by_team_name_column" | "none"
+  teamMode      String   @map("team_mode")
+  /// "skip" | "overwrite" | "duplicate"
+  duplicateMode String   @map("duplicate_mode")
+  /// "auto" | "comma" | "tab" (= CSV/TSV のみ意味あり / xlsx では無視)
+  delimiter     String?
+  /// "auto" | "utf-8" | "shift_jis" (= 将来拡張用 / 現状は auto のみ)
+  encoding      String?
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+  oa            Oa       @relation(fields: [oaId], references: [id], onDelete: Cascade)
+
+  @@index([oaId, createdAt])
+  @@map("live_import_presets")
 }
