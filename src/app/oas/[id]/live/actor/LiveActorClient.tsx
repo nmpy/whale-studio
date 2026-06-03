@@ -22,9 +22,14 @@ import {
   type LiveSession,
   type LiveParticipant,
   type LiveEventLog,
+  type LiveActor,
+  type LiveAssignment,
+  type LiveActorInstruction,
   SESSION_STATUS_LABEL,
   PARTICIPANT_STATUS_LABEL,
   EVENT_TYPE_LABEL,
+  INSTRUCTION_PRIORITY_LABEL,
+  INSTRUCTION_STATUS_LABEL,
   formatDateTime,
   buttonPrimary,
   buttonSecondary,
@@ -37,11 +42,103 @@ const PARTICIPANT_STATUSES = ["waiting", "active", "stuck", "completed", "droppe
 type ParticipantStatus = typeof PARTICIPANT_STATUSES[number];
 
 // ─────────────────────────────────────────────────────────────────────────────
+// InstructionCardActor — Actor が指示を表示・完了切替する小コンポーネント
+// ─────────────────────────────────────────────────────────────────────────────
+function InstructionCardActor({
+  instruction,
+  oaId,
+  sessionId,
+  onMutated,
+  onError,
+}: {
+  instruction: LiveActorInstruction;
+  oaId: string;
+  sessionId: string;
+  onMutated: () => void;
+  onError: (msg: string) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+
+  const handleToggle = async () => {
+    const next: "active" | "done" = instruction.status === "done" ? "active" : "done";
+    setBusy(true);
+    try {
+      const res = await fetch(
+        `/api/oas/${oaId}/live/sessions/${sessionId}/instructions/${instruction.id}/actor`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ status: next }),
+        },
+      );
+      if (!res.ok) {
+        const j = await res.json().catch(() => null);
+        throw new Error(j?.error?.message ?? `指示更新に失敗しました (HTTP ${res.status})`);
+      }
+      onMutated();
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "指示更新に失敗しました");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <li
+      style={{
+        padding: 8,
+        borderRadius: 6,
+        background: instruction.status === "done" ? "#f3f4f6" : "#ffffff",
+        border: "1px solid #e5e7eb",
+        opacity: instruction.status === "archived" ? 0.5 : 1,
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+        <span style={{
+          padding: "1px 6px",
+          borderRadius: 999,
+          fontSize: 10,
+          fontWeight: 700,
+          background: instruction.priority === "high"  ? "#fee2e2" : instruction.priority === "low" ? "#f3f4f6" : "#fef3c7",
+          color:      instruction.priority === "high"  ? "#991b1b" : instruction.priority === "low" ? "#6b7280" : "#92400e",
+        }}>
+          {INSTRUCTION_PRIORITY_LABEL[instruction.priority]}
+        </span>
+        <strong style={{ fontSize: 13, color: "#111827", flex: 1, textDecoration: instruction.status === "done" ? "line-through" : "none" }}>
+          {instruction.title}
+        </strong>
+        {instruction.status !== "archived" && (
+          <button
+            type="button"
+            onClick={handleToggle}
+            style={{
+              ...buttonSecondary,
+              background: instruction.status === "done" ? "#ffffff" : "#10b981",
+              color:      instruction.status === "done" ? "#374151" : "#ffffff",
+              border:     instruction.status === "done" ? "1px solid #e5e7eb" : "none",
+            }}
+            disabled={busy}
+          >
+            {busy ? "…" : instruction.status === "done" ? "未完了に戻す" : "完了にする"}
+          </button>
+        )}
+      </div>
+      <p style={{ margin: "2px 0 0", fontSize: 12, color: "#374151", whiteSpace: "pre-wrap" }}>
+        {instruction.body}
+      </p>
+    </li>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // ParticipantCard — 参加者 1 名分の詳細 + 操作カード
 // ─────────────────────────────────────────────────────────────────────────────
 function ParticipantCard({
   participant,
   events,
+  participantInstructions,
+  isAssignedToMe,
   oaId,
   sessionId,
   onMutated,
@@ -49,6 +146,8 @@ function ParticipantCard({
 }: {
   participant: LiveParticipant;
   events: LiveEventLog[];
+  participantInstructions: LiveActorInstruction[];
+  isAssignedToMe: boolean;
   oaId: string;
   sessionId: string;
   onMutated: () => void;
@@ -179,9 +278,27 @@ function ParticipantCard({
                                          "#92400e";
 
   return (
-    <div style={card}>
+    <div
+      style={{
+        ...card,
+        borderColor: isAssignedToMe ? "#10b981" : "#e5e7eb",
+        borderWidth: isAssignedToMe ? 2 : 1,
+      }}
+    >
       {/* ── 見出し行 ── */}
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+        {isAssignedToMe && (
+          <span style={{
+            padding: "2px 8px",
+            borderRadius: 999,
+            fontSize: 10,
+            fontWeight: 700,
+            background: "#10b981",
+            color: "#ffffff",
+          }}>
+            あなたの担当
+          </span>
+        )}
         <span
           style={{
             padding: "2px 10px",
@@ -315,6 +432,27 @@ function ParticipantCard({
         </div>
       )}
 
+      {/* ── 当該 participant への指示 (Phase 2-E) ── */}
+      {participantInstructions.length > 0 && (
+        <div style={{ marginBottom: 12, padding: 8, background: "#fffbeb", border: "1px solid #fcd34d", borderRadius: 8 }}>
+          <div style={{ fontSize: 11, color: "#92400e", fontWeight: 700, marginBottom: 6 }}>
+            この参加者への指示({participantInstructions.length} 件)
+          </div>
+          <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 6 }}>
+            {participantInstructions.map((ins) => (
+              <InstructionCardActor
+                key={ins.id}
+                instruction={ins}
+                oaId={oaId}
+                sessionId={sessionId}
+                onMutated={onMutated}
+                onError={onError}
+              />
+            ))}
+          </ul>
+        </div>
+      )}
+
       {/* ── 当該 participant のイベント履歴 ── */}
       <div>
         <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 6 }}>
@@ -368,6 +506,11 @@ export function LiveActorClient({ oaId }: { oaId: string }) {
   const [sessions, setSessions] = useState<LiveSession[]>([]);
   const [participants, setParticipants] = useState<LiveParticipant[]>([]);
   const [events, setEvents] = useState<LiveEventLog[]>([]);
+  // Phase 2-E:
+  const [actors, setActors] = useState<LiveActor[]>([]);
+  const [assignments, setAssignments] = useState<LiveAssignment[]>([]);
+  const [instructions, setInstructions] = useState<LiveActorInstruction[]>([]);
+  const [myActorIds, setMyActorIds] = useState<string[]>([]);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -384,6 +527,10 @@ export function LiveActorClient({ oaId }: { oaId: string }) {
       setSessions(data.sessions ?? []);
       setParticipants(data.participants ?? []);
       setEvents(data.events ?? []);
+      setActors(data.actors ?? []);
+      setAssignments(data.assignments ?? []);
+      setInstructions(data.instructions ?? []);
+      setMyActorIds(data.my_actor_ids ?? []);
       if (!selectedSessionId && data.sessions?.length > 0) {
         setSelectedSessionId(data.sessions[0].id);
       }
@@ -395,6 +542,50 @@ export function LiveActorClient({ oaId }: { oaId: string }) {
   }, [oaId, selectedSessionId]);
 
   useEffect(() => { void fetchAll(); }, [fetchAll]);
+
+  // ── 担当 participant 判定 + 並び替え ──
+  const linkedToMe = myActorIds.length > 0;
+  const assignedParticipantIds = useMemo(() => {
+    if (!linkedToMe) return new Set<string>();
+    return new Set(
+      assignments
+        .filter((as) => myActorIds.includes(as.actor_id))
+        .map((as) => as.participant_id),
+    );
+  }, [assignments, myActorIds, linkedToMe]);
+
+  // 担当 participant を上に、その後それ以外
+  const orderedParticipants = useMemo(() => {
+    if (!linkedToMe || assignedParticipantIds.size === 0) return participants;
+    const mine = participants.filter((p) => assignedParticipantIds.has(p.id));
+    const others = participants.filter((p) => !assignedParticipantIds.has(p.id));
+    return [...mine, ...others];
+  }, [participants, assignedParticipantIds, linkedToMe]);
+
+  // 自分宛て instructions: actorId が自分の myActorIds に含まれる OR actorId が null
+  const myInstructions = useMemo(() => {
+    if (!linkedToMe) {
+      // 未紐付け Actor は actorId=null の instructions のみ "自分宛て扱い"
+      return instructions.filter((i) => i.actor_id === null && i.status === "active");
+    }
+    return instructions.filter(
+      (i) => (i.actor_id === null || myActorIds.includes(i.actor_id)) && i.status === "active",
+    );
+  }, [instructions, myActorIds, linkedToMe]);
+
+  // participant ごとの instructions マップ (= active のみ表示)
+  const instructionsByPid = useMemo(() => {
+    const map = new Map<string, LiveActorInstruction[]>();
+    for (const i of instructions) {
+      if (i.status !== "active" || !i.participant_id) continue;
+      // 自分宛て or 全 actor 向け
+      if (i.actor_id !== null && !myActorIds.includes(i.actor_id) && linkedToMe) continue;
+      const list = map.get(i.participant_id) ?? [];
+      list.push(i);
+      map.set(i.participant_id, list);
+    }
+    return map;
+  }, [instructions, myActorIds, linkedToMe]);
 
   return (
     <div style={{ maxWidth: 960, margin: "0 auto", padding: "8px 0 40px" }}>
@@ -474,23 +665,58 @@ export function LiveActorClient({ oaId }: { oaId: string }) {
         )}
       </section>
 
+      {/* ── 自分宛ての指示 (Phase 2-E / active のみ) ── */}
+      {selectedSessionId && myInstructions.length > 0 && (
+        <section style={{ ...card, marginBottom: 16, borderColor: "#fcd34d", background: "#fffbeb" }}>
+          <h2 style={{ fontSize: 14, fontWeight: 700, margin: "0 0 8px", color: "#92400e" }}>
+            あなた宛ての指示({myInstructions.length} 件)
+          </h2>
+          <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 6 }}>
+            {myInstructions.map((ins) => {
+              const p = ins.participant_id ? participants.find((pp) => pp.id === ins.participant_id) : null;
+              return (
+                <li key={ins.id} style={{ display: "grid", gap: 4 }}>
+                  <div style={{ fontSize: 11, color: "#6b7280" }}>
+                    対象: {p?.display_name ?? "(セッション全体)"} / 状態: {INSTRUCTION_STATUS_LABEL[ins.status]}
+                  </div>
+                  <InstructionCardActor
+                    instruction={ins}
+                    oaId={oaId}
+                    sessionId={selectedSessionId}
+                    onMutated={() => void fetchAll()}
+                    onError={(msg) => setError(msg)}
+                  />
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
+
       {/* ── 参加者カード群 ── */}
       {selectedSessionId && (
         <>
           <div style={{ display: "flex", alignItems: "baseline", marginBottom: 8 }}>
             <h2 style={{ fontSize: 16, fontWeight: 700, color: "#111827", margin: 0 }}>
-              参加者 ({participants.length})
+              参加者 ({participants.length}{linkedToMe && assignedParticipantIds.size > 0 ? ` / あなたの担当 ${assignedParticipantIds.size}` : ""})
             </h2>
           </div>
+          {!linkedToMe && (
+            <p style={{ fontSize: 12, color: "#6b7280", marginBottom: 8 }}>
+              ※ あなたのアカウントは Actor レコードに紐付いていません。OA 内の全 participant を表示しています。
+            </p>
+          )}
           {participants.length === 0 ? (
             <p style={{ fontSize: 13, color: "#6b7280" }}>参加者がまだ登録されていません。</p>
           ) : (
             <div style={{ display: "grid", gap: 12, marginBottom: 16 }}>
-              {participants.map((p) => (
+              {orderedParticipants.map((p) => (
                 <ParticipantCard
                   key={p.id}
                   participant={p}
                   events={events}
+                  participantInstructions={instructionsByPid.get(p.id) ?? []}
+                  isAssignedToMe={assignedParticipantIds.has(p.id)}
                   oaId={oaId}
                   sessionId={selectedSessionId}
                   onMutated={() => void fetchAll()}
