@@ -25,6 +25,7 @@ import {
   type LiveActor,
   type LiveAssignment,
   type LiveActorInstruction,
+  type LiveTeam,
   SESSION_STATUS_LABEL,
   PARTICIPANT_STATUS_LABEL,
   EVENT_TYPE_LABEL,
@@ -139,6 +140,7 @@ function ParticipantCard({
   events,
   participantInstructions,
   isAssignedToMe,
+  teamName,
   oaId,
   sessionId,
   onMutated,
@@ -148,6 +150,7 @@ function ParticipantCard({
   events: LiveEventLog[];
   participantInstructions: LiveActorInstruction[];
   isAssignedToMe: boolean;
+  teamName: string | null;
   oaId: string;
   sessionId: string;
   onMutated: () => void;
@@ -321,8 +324,19 @@ function ParticipantCard({
 
       {/* ── 詳細フィールド ── */}
       <dl style={{ fontSize: 12, color: "#374151", lineHeight: 1.7, margin: "0 0 12px", display: "grid", gridTemplateColumns: "120px 1fr", gap: "2px 8px" }}>
+        {teamName && (
+          <>
+            <dt style={{ color: "#6b7280" }}>チーム</dt>
+            <dd style={{ margin: 0 }}>{teamName}</dd>
+          </>
+        )}
         <dt style={{ color: "#6b7280" }}>現在ステップ</dt>
-        <dd style={{ margin: 0 }}>{participant.current_step ?? "—"}</dd>
+        <dd style={{ margin: 0 }}>
+          {participant.current_phase_name ?? participant.current_step ?? "—"}
+          {participant.current_phase_id && (
+            <span style={{ fontSize: 10, color: "#9ca3af", marginLeft: 4 }}>(phase)</span>
+          )}
+        </dd>
         <dt style={{ color: "#6b7280" }}>LINE</dt>
         <dd style={{ margin: 0, fontFamily: "ui-monospace, monospace", fontSize: 11 }}>
           {participant.line_user_id ?? "—"}
@@ -511,6 +525,8 @@ export function LiveActorClient({ oaId }: { oaId: string }) {
   const [assignments, setAssignments] = useState<LiveAssignment[]>([]);
   const [instructions, setInstructions] = useState<LiveActorInstruction[]>([]);
   const [myActorIds, setMyActorIds] = useState<string[]>([]);
+  // Phase 2-G:
+  const [teams, setTeams] = useState<LiveTeam[]>([]);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -531,6 +547,7 @@ export function LiveActorClient({ oaId }: { oaId: string }) {
       setAssignments(data.assignments ?? []);
       setInstructions(data.instructions ?? []);
       setMyActorIds(data.my_actor_ids ?? []);
+      setTeams(data.teams ?? []);
       if (!selectedSessionId && data.sessions?.length > 0) {
         setSelectedSessionId(data.sessions[0].id);
       }
@@ -733,6 +750,7 @@ export function LiveActorClient({ oaId }: { oaId: string }) {
                   events={events}
                   participantInstructions={instructionsByPid.get(p.id) ?? []}
                   isAssignedToMe={assignedParticipantIds.has(p.id)}
+                  teamName={p.team_id ? (teams.find((t) => t.id === p.team_id)?.name ?? null) : null}
                   oaId={oaId}
                   sessionId={selectedSessionId}
                   onMutated={() => void fetchAll()}

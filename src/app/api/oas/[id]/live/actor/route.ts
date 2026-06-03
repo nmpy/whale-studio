@@ -44,15 +44,18 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
       actors,
       assignments,
       instructions,
+      teams,
     ] = await Promise.all([
       prisma.liveSession.findMany({
         where:   { oaId: params.id },
         orderBy: [{ status: "asc" }, { createdAt: "desc" }],
+        include: { work: { select: { id: true, title: true } } },
         take:    50,
       }),
       prisma.liveParticipant.findMany({
         where:   participantWhere,
         orderBy: { createdAt: "asc" },
+        include: { currentPhase: { select: { id: true, name: true } } },
         take:    200,
       }),
       prisma.liveEventLog.findMany({
@@ -89,6 +92,13 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
             take:    200,
           })
         : Promise.resolve([]),
+      sessionId
+        ? prisma.liveTeam.findMany({
+            where:   { liveSessionId: sessionId },
+            orderBy: { createdAt: "asc" },
+            take:    200,
+          })
+        : Promise.resolve([]),
     ]);
 
     const lastContactByPid = new Map<string, Date | null>();
@@ -107,6 +117,8 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
       sessions: sessions.map((s) => ({
         id:         s.id,
         oa_id:      s.oaId,
+        work_id:    s.workId,
+        work_title: s.work?.title ?? null,
         name:       s.name,
         status:     s.status,
         starts_at:  s.startsAt,
@@ -115,18 +127,22 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
         updated_at: s.updatedAt,
       })),
       participants: participants.map((p) => ({
-        id:               p.id,
-        oa_id:            p.oaId,
-        live_session_id:  p.liveSessionId,
-        display_name:     p.displayName,
-        line_user_id:     p.lineUserId,
-        status:           p.status,
-        current_step:     p.currentStep,
-        memo:             p.memo,
-        last_seen_at:     p.lastSeenAt,
-        last_contact_at:  lastContactByPid.get(p.id) ?? null,
-        created_at:       p.createdAt,
-        updated_at:       p.updatedAt,
+        id:                 p.id,
+        oa_id:              p.oaId,
+        live_session_id:    p.liveSessionId,
+        team_id:            p.teamId,
+        display_name:       p.displayName,
+        line_user_id:       p.lineUserId,
+        status:             p.status,
+        current_step:       p.currentStep,
+        current_phase_id:   p.currentPhaseId,
+        current_phase_name: p.currentPhase?.name ?? null,
+        reservation_number: p.reservationNumber,
+        memo:               p.memo,
+        last_seen_at:       p.lastSeenAt,
+        last_contact_at:    lastContactByPid.get(p.id) ?? null,
+        created_at:         p.createdAt,
+        updated_at:         p.updatedAt,
       })),
       events: events.map((e) => ({
         id:               e.id,
@@ -171,6 +187,16 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
         status:           i.status,
         created_at:       i.createdAt,
         updated_at:       i.updatedAt,
+      })),
+      teams: teams.map((t) => ({
+        id:                 t.id,
+        oa_id:              t.oaId,
+        live_session_id:    t.liveSessionId,
+        name:               t.name,
+        reservation_number: t.reservationNumber,
+        memo:               t.memo,
+        created_at:         t.createdAt,
+        updated_at:         t.updatedAt,
       })),
       my_actor_ids: myActorIds,
     });

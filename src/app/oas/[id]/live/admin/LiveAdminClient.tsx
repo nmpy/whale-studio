@@ -20,6 +20,8 @@ import { useCallback, useEffect, useState } from "react";
 type LiveSession = {
   id: string;
   oa_id: string;
+  work_id: string | null;
+  work_title: string | null;
   name: string;
   status: "draft" | "active" | "ended";
   starts_at: string | null;
@@ -32,15 +34,42 @@ type LiveParticipant = {
   id: string;
   oa_id: string;
   live_session_id: string;
+  team_id: string | null;
   display_name: string | null;
   line_user_id: string | null;
   status: "waiting" | "active" | "stuck" | "completed" | "dropped";
   current_step: string | null;
+  current_phase_id: string | null;
+  current_phase_name: string | null;
+  reservation_number: string | null;
   /** Phase 2-C: 管理メモ */
   memo: string | null;
   last_seen_at: string | null;
   created_at: string;
   updated_at: string;
+};
+
+type LiveTeam = {
+  id: string;
+  oa_id: string;
+  live_session_id: string;
+  name: string;
+  reservation_number: string | null;
+  memo: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type WorkSummary = {
+  id: string;
+  title: string;
+};
+
+type PhaseSummary = {
+  id: string;
+  name: string;
+  sort_order: number;
+  phase_type: string;
 };
 
 const PARTICIPANT_STATUSES = ["waiting", "active", "stuck", "completed", "dropped"] as const;
@@ -160,6 +189,36 @@ const errorBox: React.CSSProperties = {
   margin: "8px 0",
 };
 
+// Phase 2-G.1: 共通 spinner (= 処理中インジケータ)
+function Spinner({ size = 12, color = "currentColor" }: { size?: number; color?: string }) {
+  return (
+    <span
+      aria-hidden
+      style={{
+        display: "inline-block",
+        width: size,
+        height: size,
+        border: `2px solid ${color}`,
+        borderRightColor: "transparent",
+        borderRadius: "50%",
+        animation: "live-spin 0.6s linear infinite",
+      }}
+    />
+  );
+}
+
+// inline style では @keyframes が書けないので、グローバル <style> を 1 回だけ挿入
+function SpinnerStyles() {
+  return (
+    <style>{`
+      @keyframes live-spin {
+        from { transform: rotate(0deg); }
+        to   { transform: rotate(360deg); }
+      }
+    `}</style>
+  );
+}
+
 // Phase 2-E 用の型 (Admin 内部用 / shared types とは別)
 type LiveActor = {
   id: string;
@@ -216,6 +275,8 @@ function ParticipantRow({
   onSaved,
   onError,
   onAssignmentChanged,
+  teamList,
+  phaseList,
 }: {
   participant: LiveParticipant;
   oaId: string;
@@ -225,6 +286,8 @@ function ParticipantRow({
   onSaved: () => void;
   onError: (msg: string) => void;
   onAssignmentChanged: () => void;
+  teamList: LiveTeam[];
+  phaseList: PhaseSummary[];
 }) {
   const [editing, setEditing] = useState(false);
   const [draftName,   setDraftName]   = useState(participant.display_name ?? "");
@@ -232,6 +295,10 @@ function ParticipantRow({
   const [draftStatus, setDraftStatus] = useState<ParticipantStatus>(participant.status);
   const [draftStep,   setDraftStep]   = useState(participant.current_step ?? "");
   const [draftMemo,   setDraftMemo]   = useState(participant.memo ?? "");
+  // Phase 2-G:
+  const [draftTeamId, setDraftTeamId] = useState(participant.team_id ?? "");
+  const [draftPhaseId, setDraftPhaseId] = useState(participant.current_phase_id ?? "");
+  const [draftReservation, setDraftReservation] = useState(participant.reservation_number ?? "");
   const [saving, setSaving] = useState(false);
 
   // 元データが変わったとき (= 再読込後) は draft も同期する
@@ -242,6 +309,9 @@ function ParticipantRow({
       setDraftStatus(participant.status);
       setDraftStep(participant.current_step ?? "");
       setDraftMemo(participant.memo ?? "");
+      setDraftTeamId(participant.team_id ?? "");
+      setDraftPhaseId(participant.current_phase_id ?? "");
+      setDraftReservation(participant.reservation_number ?? "");
     }
   }, [participant, editing]);
 
@@ -251,6 +321,9 @@ function ParticipantRow({
     setDraftStatus(participant.status);
     setDraftStep(participant.current_step ?? "");
     setDraftMemo(participant.memo ?? "");
+    setDraftTeamId(participant.team_id ?? "");
+    setDraftPhaseId(participant.current_phase_id ?? "");
+    setDraftReservation(participant.reservation_number ?? "");
     setEditing(true);
   };
 
@@ -268,11 +341,14 @@ function ParticipantRow({
           headers: { "Content-Type": "application/json" },
           credentials: "include",
           body: JSON.stringify({
-            display_name: draftName.trim() || null,
-            line_user_id: draftLine.trim() || null,
-            status:       draftStatus,
-            current_step: draftStep.trim() || null,
-            memo:         draftMemo.trim() || null,
+            display_name:       draftName.trim() || null,
+            line_user_id:       draftLine.trim() || null,
+            status:             draftStatus,
+            current_step:       draftStep.trim() || null,
+            memo:               draftMemo.trim() || null,
+            team_id:            draftTeamId || null,
+            current_phase_id:   draftPhaseId || null,
+            reservation_number: draftReservation.trim() || null,
           }),
         },
       );
@@ -295,6 +371,13 @@ function ParticipantRow({
     .map((as) => actors.find((ac) => ac.id === as.actor_id)?.display_name ?? "(unknown)")
     .join(", ");
 
+  // チーム名解決
+  const teamName = participant.team_id
+    ? (teamList.find((t) => t.id === participant.team_id)?.name ?? "(unknown)")
+    : null;
+  // フェーズ/ステップ表示: Phase 名優先 / 無ければ legacy currentStep
+  const phaseLabel = participant.current_phase_name ?? participant.current_step ?? null;
+
   if (!editing) {
     return (
       <tr style={{ borderBottom: "1px solid #f3f4f6" }}>
@@ -306,7 +389,18 @@ function ParticipantRow({
             {PARTICIPANT_STATUS_LABEL[participant.status]}
           </span>
         </td>
-        <td style={{ padding: "8px 6px", color: "#374151" }}>{participant.current_step ?? "—"}</td>
+        <td style={{ padding: "8px 6px", color: "#374151" }}>
+          {phaseLabel ?? "—"}
+          {participant.current_phase_id && (
+            <span style={{ fontSize: 10, color: "#9ca3af", marginLeft: 4 }}>(phase)</span>
+          )}
+        </td>
+        <td style={{ padding: "8px 6px", color: "#374151", fontSize: 12 }}>
+          {teamName ?? <span style={{ color: "#9ca3af" }}>—</span>}
+        </td>
+        <td style={{ padding: "8px 6px", color: "#374151", fontSize: 11 }}>
+          {participant.reservation_number ?? <span style={{ color: "#9ca3af" }}>—</span>}
+        </td>
         <td
           style={{ padding: "8px 6px", color: "#374151", maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
           title={participant.memo ?? undefined}
@@ -319,9 +413,6 @@ function ParticipantRow({
         <td style={{ padding: "8px 6px", color: "#6b7280", fontSize: 11, fontFamily: "ui-monospace, monospace" }}>
           {participant.line_user_id ?? <span style={{ color: "#9ca3af" }}>—</span>}
         </td>
-        <td style={{ padding: "8px 6px", color: "#6b7280", fontSize: 12 }}>
-          {formatDateTime(participant.last_seen_at)}
-        </td>
         <td style={{ padding: "8px 6px" }}>
           <button type="button" onClick={handleStartEdit} style={buttonSecondary}>
             編集
@@ -333,7 +424,7 @@ function ParticipantRow({
 
   return (
     <tr style={{ borderBottom: "1px solid #f3f4f6", background: "#f9fafb" }}>
-      <td colSpan={8} style={{ padding: "10px 6px" }}>
+      <td colSpan={9} style={{ padding: "10px 6px" }}>
         <div style={{ display: "grid", gap: 8 }}>
           <div style={{ display: "grid", gap: 8, gridTemplateColumns: "1fr 1fr 1fr 1fr" }}>
             <label style={{ fontSize: 11, color: "#374151" }}>
@@ -380,6 +471,53 @@ function ParticipantRow({
               />
             </label>
           </div>
+          {/* Phase 2-G: チーム / フェーズ / 予約番号 */}
+          <div style={{ display: "grid", gap: 8, gridTemplateColumns: "1fr 1fr 1fr" }}>
+            <label style={{ fontSize: 11, color: "#374151" }}>
+              チーム
+              <select
+                value={draftTeamId}
+                onChange={(e) => setDraftTeamId(e.target.value)}
+                style={inputStyle}
+                disabled={saving}
+              >
+                <option value="">— なし —</option>
+                {teamList.map((t) => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </select>
+            </label>
+            <label style={{ fontSize: 11, color: "#374151" }}>
+              現在ステップ (作品フェーズ)
+              <select
+                value={draftPhaseId}
+                onChange={(e) => setDraftPhaseId(e.target.value)}
+                style={inputStyle}
+                disabled={saving}
+              >
+                <option value="">— なし(下の自由入力 を参照) —</option>
+                {phaseList
+                  .slice()
+                  .sort((a, b) => a.sort_order - b.sort_order)
+                  .map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}{p.phase_type !== "normal" ? ` (${p.phase_type})` : ""}
+                    </option>
+                  ))}
+              </select>
+            </label>
+            <label style={{ fontSize: 11, color: "#374151" }}>
+              予約番号 / 注文番号
+              <input
+                value={draftReservation}
+                onChange={(e) => setDraftReservation(e.target.value)}
+                placeholder="(任意 / CSV import の dedup キー)"
+                style={inputStyle}
+                disabled={saving}
+              />
+            </label>
+          </div>
+
           <label style={{ fontSize: 11, color: "#374151" }}>
             メモ
             <textarea
@@ -598,10 +736,22 @@ export function LiveAdminClient({ oaId }: { oaId: string }) {
   const [actors, setActors] = useState<LiveActor[]>([]);
   const [assignments, setAssignments] = useState<LiveAssignment[]>([]);
   const [instructions, setInstructions] = useState<LiveActorInstruction[]>([]);
+  // Phase 2-G: Works / Phases / Teams + selectedWorkId
+  const [works, setWorks] = useState<WorkSummary[]>([]);
+  const [worksLoading, setWorksLoading] = useState(false);
+  const [worksError, setWorksError] = useState<string | null>(null);
+  const [selectedWorkId, setSelectedWorkId] = useState<string | null>(null);
+  const [phases, setPhases] = useState<PhaseSummary[]>([]);
+  const [teams, setTeams] = useState<LiveTeam[]>([]);
   const [loadingSessions, setLoadingSessions] = useState(false);
   const [loadingChildren, setLoadingChildren] = useState(false);
   const [loadingActors, setLoadingActors] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // 選択中の Work / セッション
+  const selectedSession = sessions.find((s) => s.id === selectedSessionId) ?? null;
+  // セッションが workId を持っていればそれを優先、無ければ selectedWorkId
+  const effectiveWorkId = selectedSession?.work_id ?? selectedWorkId;
 
   // ── 一覧取得 ──
   const fetchSessions = useCallback(async () => {
@@ -627,30 +777,94 @@ export function LiveAdminClient({ oaId }: { oaId: string }) {
     setLoadingChildren(true);
     setError(null);
     try {
-      const [pr, er, asr, ir] = await Promise.all([
+      const [pr, er, asr, ir, tr] = await Promise.all([
         fetch(`/api/oas/${oaId}/live/sessions/${sessionId}/participants`, { credentials: "include" }),
         fetch(`/api/oas/${oaId}/live/sessions/${sessionId}/events`,       { credentials: "include" }),
         fetch(`/api/oas/${oaId}/live/sessions/${sessionId}/assignments`,  { credentials: "include" }),
         fetch(`/api/oas/${oaId}/live/sessions/${sessionId}/instructions`, { credentials: "include" }),
+        fetch(`/api/oas/${oaId}/live/sessions/${sessionId}/teams`,        { credentials: "include" }),
       ]);
       if (!pr.ok)  throw new Error(`参加者一覧の取得に失敗しました (HTTP ${pr.status})`);
       if (!er.ok)  throw new Error(`イベント一覧の取得に失敗しました (HTTP ${er.status})`);
       if (!asr.ok) throw new Error(`担当割当の取得に失敗しました (HTTP ${asr.status})`);
       if (!ir.ok)  throw new Error(`指示一覧の取得に失敗しました (HTTP ${ir.status})`);
+      if (!tr.ok)  throw new Error(`チーム一覧の取得に失敗しました (HTTP ${tr.status})`);
       const pj  = await pr.json();
       const ej  = await er.json();
       const asj = await asr.json();
       const ij  = await ir.json();
+      const tj  = await tr.json();
       setParticipants(pj?.data?.participants ?? []);
       setEvents(ej?.data?.events ?? []);
       setAssignments(asj?.data?.assignments ?? []);
       setInstructions(ij?.data?.instructions ?? []);
+      setTeams(tj?.data?.teams ?? []);
     } catch (err) {
       setError(err instanceof Error ? err.message : "取得に失敗しました");
     } finally {
       setLoadingChildren(false);
     }
   }, [oaId]);
+
+  // Phase 2-G: Work 一覧 + 選択中 Work のフェーズ一覧
+  // Phase 2-G.2: API path 修正 (= /api/oas/[id]/works ではなく /api/works?oa_id=xxx)
+  // Phase 2-G.3: response shape 修正 — /api/works は ok(works.map(...)) を返すため、
+  //              data 直下が配列。誤って data.works を読んでいて空配列になっていた。
+  //              さらに publish_status 既定を "active" に置いていたため、null/undefined
+  //              でも除外されず正しく拾うよう "draft" にしておく (= drafts も含める)。
+  const fetchWorks = useCallback(async () => {
+    setWorksLoading(true);
+    setWorksError(null);
+    try {
+      const res = await fetch(`/api/works?oa_id=${encodeURIComponent(oaId)}`, { credentials: "include" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+      // /api/works の shape: { success: true, data: WorkListItem[] }
+      // 後方互換として data.works / works も読めるようにフォールバック
+      const list = Array.isArray(json?.data)
+        ? (json.data as Array<{ id: string; title: string; publish_status?: string }>)
+        : Array.isArray(json?.data?.works)
+          ? (json.data.works as Array<{ id: string; title: string; publish_status?: string }>)
+          : Array.isArray(json?.works)
+            ? (json.works as Array<{ id: string; title: string; publish_status?: string }>)
+            : [];
+      // archived / paused 以外を選択肢に出す (= draft / active / 未設定 を含む)
+      const filtered = list.filter((w) => {
+        const s = w.publish_status; // null / undefined はそのまま通す
+        return s !== "archived" && s !== "paused";
+      });
+      setWorks(filtered.map((w) => ({ id: w.id, title: w.title })));
+    } catch (err) {
+      setWorksError(err instanceof Error ? err.message : "fetch error");
+      setWorks([]);
+    } finally {
+      setWorksLoading(false);
+    }
+  }, [oaId]);
+
+  const fetchPhases = useCallback(async (workId: string) => {
+    try {
+      // 既存の /api/phases?work_id=xxx を利用 (= プロジェクト既存規約)
+      const res = await fetch(`/api/phases?work_id=${encodeURIComponent(workId)}`, { credentials: "include" });
+      if (!res.ok) {
+        setPhases([]);
+        return;
+      }
+      const json = await res.json();
+      // ok() ラップ済 or 生 array の両方に対応
+      const list = (json?.data?.phases ?? json?.phases ?? (Array.isArray(json) ? json : [])) as Array<{ id: string; name: string; sort_order?: number; sortOrder?: number; phase_type?: string; phaseType?: string }>;
+      setPhases(
+        list.map((p) => ({
+          id:         p.id,
+          name:       p.name,
+          sort_order: (p.sort_order ?? p.sortOrder ?? 0),
+          phase_type: (p.phase_type ?? p.phaseType ?? "normal"),
+        })),
+      );
+    } catch {
+      setPhases([]);
+    }
+  }, []);
 
   // Actor 一覧 (= OA 単位 / セッションに依存しない)
   const fetchActors = useCallback(async () => {
@@ -669,6 +883,7 @@ export function LiveAdminClient({ oaId }: { oaId: string }) {
 
   useEffect(() => { void fetchSessions(); }, [fetchSessions]);
   useEffect(() => { void fetchActors(); }, [fetchActors]);
+  useEffect(() => { void fetchWorks(); }, [fetchWorks]);
 
   useEffect(() => {
     if (selectedSessionId) {
@@ -678,8 +893,18 @@ export function LiveAdminClient({ oaId }: { oaId: string }) {
       setEvents([]);
       setAssignments([]);
       setInstructions([]);
+      setTeams([]);
     }
   }, [selectedSessionId, fetchChildren]);
+
+  // effectiveWorkId 変化で Phase 一覧を取得
+  useEffect(() => {
+    if (effectiveWorkId) {
+      void fetchPhases(effectiveWorkId);
+    } else {
+      setPhases([]);
+    }
+  }, [effectiveWorkId, fetchPhases]);
 
   // ── セッション作成 ──
   const [newSessionName, setNewSessionName] = useState("");
@@ -694,7 +919,10 @@ export function LiveAdminClient({ oaId }: { oaId: string }) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ name: newSessionName.trim() }),
+        body: JSON.stringify({
+          name: newSessionName.trim(),
+          ...(selectedWorkId ? { work_id: selectedWorkId } : {}),
+        }),
       });
       if (!res.ok) {
         const j = await res.json().catch(() => null);
@@ -785,6 +1013,7 @@ export function LiveAdminClient({ oaId }: { oaId: string }) {
 
   return (
     <div style={{ maxWidth: 960, margin: "0 auto", padding: "8px 0 40px" }}>
+      <SpinnerStyles />
       <Link
         href={`/oas/${oaId}/live`}
         style={{ fontSize: 12, color: "#6b7280", textDecoration: "none" }}
@@ -800,6 +1029,49 @@ export function LiveAdminClient({ oaId }: { oaId: string }) {
 
       {error && <div style={errorBox}>{error}</div>}
 
+      {/* ── 対象作品セレクタ (Phase 2-G / 2-G.1 で必須化 / 2-G.2 で loading/error/empty 対応) ── */}
+      <section style={{ ...card, marginBottom: 16, background: "#f9fafb" }}>
+        <label style={{ fontSize: 12, color: "#374151", display: "block", marginBottom: 4 }}>
+          対象作品 <span style={{ color: "#dc2626" }}>*</span>
+        </label>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <select
+            value={selectedWorkId ?? ""}
+            onChange={(e) => setSelectedWorkId(e.target.value || null)}
+            style={{ ...inputStyle, maxWidth: 320 }}
+            disabled={worksLoading}
+          >
+            <option value="">
+              {worksLoading
+                ? "作品を読み込み中..."
+                : worksError
+                  ? "作品の取得に失敗しました"
+                  : works.length === 0
+                    ? "このOAには作品がありません"
+                    : "作品を選択してください"}
+            </option>
+            {works.map((w) => (
+              <option key={w.id} value={w.id}>{w.title}</option>
+            ))}
+          </select>
+          {worksLoading && (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, color: "#6b7280" }}>
+              <Spinner /> 作品を読み込み中...
+            </span>
+          )}
+          {!worksLoading && worksError && (
+            <button onClick={() => void fetchWorks()} style={buttonSecondary}>再試行</button>
+          )}
+          <span style={{ fontSize: 11, color: "#6b7280" }}>
+            {selectedWorkId
+              ? `フェーズ ${phases.length} 件 / 新規セッション・CSV import で使用`
+              : works.length === 0 && !worksLoading && !worksError
+                ? "Whale Studio の作品ページで作品を作成してください"
+                : "作品を選択すると、新規セッション作成と CSV import が可能になります"}
+          </span>
+        </div>
+      </section>
+
       {/* ── セッション ── */}
       <section style={{ ...card, marginBottom: 16 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
@@ -813,14 +1085,28 @@ export function LiveAdminClient({ oaId }: { oaId: string }) {
           <input
             value={newSessionName}
             onChange={(e) => setNewSessionName(e.target.value)}
-            placeholder="新規セッション名 (例: 2026/06/15 夜公演)"
+            placeholder={selectedWorkId ? "新規セッション名 (例: 2026/06/15 12:00回)" : "先に対象作品を選択してください"}
             style={inputStyle}
-            disabled={creatingSession}
+            disabled={creatingSession || !selectedWorkId}
           />
-          <button type="submit" style={buttonPrimary} disabled={creatingSession || !newSessionName.trim()}>
-            {creatingSession ? "作成中…" : "作成"}
+          <button
+            type="submit"
+            style={buttonPrimary}
+            disabled={creatingSession || !newSessionName.trim() || !selectedWorkId}
+            title={!selectedWorkId ? "新規セッションには対象作品の選択が必要です" : undefined}
+          >
+            {creatingSession ? (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                <Spinner /> 作成中…
+              </span>
+            ) : "作成"}
           </button>
         </form>
+        {!selectedWorkId && (
+          <p style={{ fontSize: 11, color: "#92400e", margin: "0 0 8px" }}>
+            ※ 新規セッション作成には対象作品の選択が必要です(既存セッションの編集には影響しません)。
+          </p>
+        )}
 
         {sessions.length === 0 ? (
           <p style={{ fontSize: 13, color: "#6b7280" }}>セッションがまだありません。</p>
@@ -877,17 +1163,44 @@ export function LiveAdminClient({ oaId }: { oaId: string }) {
 
       {selectedSessionId && (
         <>
+          {/* ── チーム管理 (Phase 2-G / セッション単位) ── */}
+          <TeamsSection
+            oaId={oaId}
+            sessionId={selectedSessionId}
+            teams={teams}
+            onChanged={() => selectedSessionId && void fetchChildren(selectedSessionId)}
+            onError={(msg) => setError(msg)}
+          />
+
+          {/* ── CSV import wizard (Phase 2-G / セッション単位) ── */}
+          <ImportSection
+            oaId={oaId}
+            workId={effectiveWorkId}
+            onApplied={() => {
+              void fetchSessions();
+              if (selectedSessionId) void fetchChildren(selectedSessionId);
+            }}
+            onError={(msg) => setError(msg)}
+          />
+
           {/* ── 参加者 ── */}
           <section style={{ ...card, marginBottom: 16 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
               {sectionTitle("参加者")}
-              <button
-                onClick={() => selectedSessionId && void fetchChildren(selectedSessionId)}
-                style={buttonSecondary}
-                disabled={loadingChildren}
-              >
-                {loadingChildren ? "読込中…" : "再読込"}
-              </button>
+              <div style={{ display: "flex", gap: 8 }}>
+                <ExportButton oaId={oaId} sessionId={selectedSessionId} onError={(msg) => setError(msg)} />
+                <button
+                  onClick={() => selectedSessionId && void fetchChildren(selectedSessionId)}
+                  style={buttonSecondary}
+                  disabled={loadingChildren}
+                >
+                  {loadingChildren ? (
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                      <Spinner /> 読込中…
+                    </span>
+                  ) : "再読込"}
+                </button>
+              </div>
             </div>
 
             <form onSubmit={handleCreateParticipant} style={{ display: "flex", gap: 8, marginBottom: 12 }}>
@@ -911,11 +1224,12 @@ export function LiveAdminClient({ oaId }: { oaId: string }) {
                   <tr style={{ textAlign: "left", color: "#6b7280", borderBottom: "1px solid #e5e7eb" }}>
                     <th style={{ padding: "8px 6px" }}>表示名</th>
                     <th style={{ padding: "8px 6px" }}>状態</th>
-                    <th style={{ padding: "8px 6px" }}>現在ステップ</th>
+                    <th style={{ padding: "8px 6px" }}>フェーズ/ステップ</th>
+                    <th style={{ padding: "8px 6px" }}>チーム</th>
+                    <th style={{ padding: "8px 6px" }}>予約番号</th>
                     <th style={{ padding: "8px 6px" }}>メモ</th>
                     <th style={{ padding: "8px 6px" }}>担当</th>
                     <th style={{ padding: "8px 6px" }}>LINE</th>
-                    <th style={{ padding: "8px 6px" }}>最終接触</th>
                     <th style={{ padding: "8px 6px" }}></th>
                   </tr>
                 </thead>
@@ -928,6 +1242,8 @@ export function LiveAdminClient({ oaId }: { oaId: string }) {
                       sessionId={selectedSessionId!}
                       actors={actors}
                       assignments={assignments}
+                      teamList={teams}
+                      phaseList={phases}
                       onSaved={() => selectedSessionId && void fetchChildren(selectedSessionId)}
                       onError={(msg) => setError(msg)}
                       onAssignmentChanged={() => selectedSessionId && void fetchChildren(selectedSessionId)}
@@ -1482,5 +1798,549 @@ function InstructionRow({
         {i.status !== "archived" && <button onClick={() => onStatus(i.id, "archived")} style={buttonSecondary} disabled={busy}>アーカイブ</button>}
       </div>
     </li>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TeamsSection — チーム管理 (Phase 2-G / セッション単位)
+// ─────────────────────────────────────────────────────────────────────────────
+function TeamsSection({
+  oaId,
+  sessionId,
+  teams,
+  onChanged,
+  onError,
+}: {
+  oaId: string;
+  sessionId: string;
+  teams: LiveTeam[];
+  onChanged: () => void;
+  onError: (msg: string) => void;
+}) {
+  const [name, setName] = useState("");
+  const [reservation, setReservation] = useState("");
+  const [memo, setMemo] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [deleteBusyId, setDeleteBusyId] = useState<string | null>(null);
+
+  const handleAdd = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim()) return;
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/oas/${oaId}/live/sessions/${sessionId}/teams`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          name:               name.trim(),
+          reservation_number: reservation.trim() || null,
+          memo:               memo.trim() || null,
+        }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => null);
+        throw new Error(j?.error?.message ?? `チーム追加に失敗しました (HTTP ${res.status})`);
+      }
+      setName(""); setReservation(""); setMemo("");
+      onChanged();
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "チーム追加に失敗しました");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleDelete = async (teamId: string, teamName: string) => {
+    if (!confirm(`チーム「${teamName}」を削除しますか?(所属 participant は teamId=null になります)`)) return;
+    setDeleteBusyId(teamId);
+    try {
+      const res = await fetch(`/api/oas/${oaId}/live/sessions/${sessionId}/teams/${teamId}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok && res.status !== 204) {
+        const j = await res.json().catch(() => null);
+        throw new Error(j?.error?.message ?? `削除に失敗しました (HTTP ${res.status})`);
+      }
+      onChanged();
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "削除に失敗しました");
+    } finally {
+      setDeleteBusyId(null);
+    }
+  };
+
+  return (
+    <section style={{ ...card, marginBottom: 16 }}>
+      {sectionTitle("チーム")}
+      <form onSubmit={handleAdd} style={{ display: "grid", gap: 8, gridTemplateColumns: "1fr 1fr 2fr auto", marginBottom: 12 }}>
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="チーム名 (例: チーム A / ペア 1)" style={inputStyle} disabled={busy} />
+        <input value={reservation} onChange={(e) => setReservation(e.target.value)} placeholder="予約番号 (任意)" style={inputStyle} disabled={busy} />
+        <input value={memo} onChange={(e) => setMemo(e.target.value)} placeholder="メモ (任意)" style={inputStyle} disabled={busy} />
+        <button type="submit" style={buttonPrimary} disabled={busy || !name.trim()}>
+          {busy ? "追加中…" : "追加"}
+        </button>
+      </form>
+
+      {teams.length === 0 ? (
+        <p style={{ fontSize: 13, color: "#6b7280" }}>チームがまだありません。</p>
+      ) : (
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+          <thead>
+            <tr style={{ textAlign: "left", color: "#6b7280", borderBottom: "1px solid #e5e7eb" }}>
+              <th style={{ padding: "8px 6px" }}>チーム名</th>
+              <th style={{ padding: "8px 6px" }}>予約番号</th>
+              <th style={{ padding: "8px 6px" }}>メモ</th>
+              <th style={{ padding: "8px 6px" }}></th>
+            </tr>
+          </thead>
+          <tbody>
+            {teams.map((t) => (
+              <tr key={t.id} style={{ borderBottom: "1px solid #f3f4f6" }}>
+                <td style={{ padding: "8px 6px", color: "#111827" }}>{t.name}</td>
+                <td style={{ padding: "8px 6px", color: "#374151" }}>{t.reservation_number ?? "—"}</td>
+                <td style={{ padding: "8px 6px", color: "#374151", maxWidth: 320, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={t.memo ?? undefined}>
+                  {t.memo ?? "—"}
+                </td>
+                <td style={{ padding: "8px 6px" }}>
+                  <button onClick={() => handleDelete(t.id, t.name)} style={buttonSecondary} disabled={deleteBusyId === t.id}>
+                    {deleteBusyId === t.id ? "削除中…" : "削除"}
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </section>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ImportSection — CSV/TSV import wizard (Phase 2-G / 5-step)
+// ─────────────────────────────────────────────────────────────────────────────
+type PreviewResult = {
+  mode: "preview";
+  encoding: string;
+  delimiter: string;
+  detected_columns: { header: string; mapped_field: string | null }[];
+  preview_rows: Array<{
+    raw: Record<string, string>;
+    display_name: string | null;
+    reservation_number: string | null;
+    date: string | null;
+    time: string | null;
+    scheduled_at: string | null;
+    team_name: string | null;
+    current_step: string | null;
+    memo: string | null;
+    warnings: string[];
+  }>;
+  total_rows: number;
+  file_warnings: string[];
+  work: { id: string; title: string; phase_count: number };
+};
+
+type ApplyResult = {
+  mode: "apply";
+  created: number;
+  skipped: number;
+  overwritten: number;
+  duplicated: number;
+  errors: { row_index: number; message: string }[];
+  file_warnings: string[];
+};
+
+function ImportSection({
+  oaId,
+  workId,
+  onApplied,
+  onError,
+}: {
+  oaId: string;
+  workId: string | null;
+  onApplied: () => void;
+  onError: (msg: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [file, setFile] = useState<File | null>(null);
+  const [dedup, setDedup] = useState<"skip" | "overwrite" | "duplicate">("skip");
+  const [teaming, setTeaming] = useState<"by_reservation" | "by_4" | "by_team_name_column" | "none">("by_reservation");
+  const [delimiter, setDelimiter] = useState<"auto" | "comma" | "tab">("auto");
+  const [preview, setPreview] = useState<PreviewResult | null>(null);
+  const [result, setResult] = useState<ApplyResult | null>(null);
+  // Phase 2-G.1: モード別 busy 状態 (= ボタン spinner / 個別 disabled)
+  const [busyMode, setBusyMode] = useState<"preview" | "apply" | null>(null);
+  // Phase 2-G では minimum: 列マッピングの上書きは preview の結果を見て手動編集可
+  const [mappingOverrides, setMappingOverrides] = useState<Record<string, string>>({});
+
+  // サンプル CSV / Excel(HTML table 形式 .xls) の共通データ
+  const SAMPLE_HEADERS = ["予約番号", "参加日", "開始時間", "チーム名", "参加者名", "メールアドレス", "LINE ID", "現在ステップ", "メモ"];
+  const SAMPLE_ROWS: string[][] = [
+    ["R001", "2026/06/10", "12:00", "Aチーム", "田中太郎", "tanaka@example.com", "Uxxxxxxxx", "導入", "テストメモ"],
+    ["R001", "2026/06/10", "12:00", "Aチーム", "佐藤花子", "sato@example.com",   "Uyyyyyyyy", "導入", ""],
+    ["R002", "2026/06/10", "12:30", "Bチーム", "鈴木一郎", "suzuki@example.com", "Uzzzzzzzz", "探索", ""],
+  ];
+
+  // サンプル CSV ダウンロード (= UTF-8 BOM 付)
+  const handleDownloadSample = () => {
+    const lines = [SAMPLE_HEADERS, ...SAMPLE_ROWS].map((row) => row.join(",")).join("\n");
+    const body = "﻿" + lines + "\n";
+    const blob = new Blob([body], { type: "text/csv;charset=utf-8" });
+    triggerDownload(blob, "live-import-sample.csv");
+  };
+
+  // サンプル Excel ダウンロード (= HTML table を .xls として保存 / xlsx 依存なし)
+  //   Excel / Numbers が HTML table 入りの .xls を読み込めるため、
+  //   xlsx パッケージ(~500KB+)を追加せずに同等の体験を提供する。
+  //   外形は .xls だが内部は UTF-8 HTML なので、Excel 側で「形式は xls ですが…」の
+  //   警告が出る可能性がある。日本語の表示は問題なし。
+  const handleDownloadSampleExcel = () => {
+    const escapeHtml = (s: string) =>
+      s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    const headerCells = SAMPLE_HEADERS.map((h) => `<th>${escapeHtml(h)}</th>`).join("");
+    const bodyRows = SAMPLE_ROWS
+      .map((row) => `<tr>${row.map((c) => `<td>${escapeHtml(c)}</td>`).join("")}</tr>`)
+      .join("");
+    const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="UTF-8"/></head><body><table border="1"><thead><tr>${headerCells}</tr></thead><tbody>${bodyRows}</tbody></table></body></html>`;
+    const body = "﻿" + html;
+    const blob = new Blob([body], { type: "application/vnd.ms-excel;charset=utf-8" });
+    triggerDownload(blob, "live-import-sample.xls");
+  };
+
+  const triggerDownload = (blob: Blob, filename: string) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const busy = busyMode !== null;
+  const submit = async (mode: "preview" | "apply") => {
+    if (!file)   { onError("ファイルを選択してください"); return; }
+    if (!workId) { onError("先に対象作品を選択してください"); return; }
+    setBusyMode(mode);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      form.append("work_id", workId);
+      form.append("dedup", dedup);
+      form.append("teaming", teaming);
+      form.append("delimiter", delimiter);
+      form.append("mode", mode);
+      if (Object.keys(mappingOverrides).length > 0) {
+        form.append("column_mapping", JSON.stringify(mappingOverrides));
+      }
+      const res = await fetch(`/api/oas/${oaId}/live/import?mode=${mode}`, {
+        method: "POST",
+        credentials: "include",
+        body: form,
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => null);
+        throw new Error(j?.error?.message ?? `import に失敗しました (HTTP ${res.status})`);
+      }
+      const json = await res.json();
+      const data = json?.data ?? json;
+      if (mode === "preview") {
+        setPreview(data as PreviewResult);
+        setResult(null);
+      } else {
+        setResult(data as ApplyResult);
+        onApplied();
+      }
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "import に失敗しました");
+    } finally {
+      setBusyMode(null);
+    }
+  };
+
+  return (
+    <section style={{ ...card, marginBottom: 16 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+        {sectionTitle("CSV / TSV インポート")}
+        <button onClick={() => setOpen((v) => !v)} style={buttonSecondary}>
+          {open ? "閉じる" : "開く"}
+        </button>
+      </div>
+
+      {open && (
+        <div style={{ display: "grid", gap: 12 }}>
+          {!workId && (
+            <div style={{ background: "#fef3c7", color: "#92400e", border: "1px solid #fcd34d", borderRadius: 8, padding: "8px 12px", fontSize: 12 }}>
+              対象作品が未選択です。上部の「対象作品」セレクタから作品を選んでから取込してください。
+            </div>
+          )}
+
+          {/* ── 説明文 (Phase 2-G.1) ── */}
+          <div style={{ background: "#eff6ff", color: "#1e40af", border: "1px solid #bfdbfe", borderRadius: 8, padding: "8px 12px", fontSize: 12, lineHeight: 1.7 }}>
+            <p style={{ margin: 0 }}>
+              チケットサイトからダウンロードした CSV / TSV を取り込めます。列名が異なる場合も、次のステップで列マッピングできます。
+            </p>
+            <p style={{ margin: "4px 0 0" }}>
+              参加日と開始時間から Live セッション(回)を自動判定します。該当する回がない場合は、選択中の作品に紐づく回を自動作成します。
+            </p>
+          </div>
+
+          {/* ── アップロードルール表示 + サンプル CSV ── */}
+          <details style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 8, padding: "8px 12px", fontSize: 12 }}>
+            <summary style={{ cursor: "pointer", fontWeight: 600, color: "#111827" }}>
+              アップロードできるファイル形式・列ルール(クリックで展開)
+            </summary>
+            <div style={{ marginTop: 8, color: "#374151", lineHeight: 1.8 }}>
+              <ul style={{ paddingLeft: 18, margin: 0 }}>
+                <li>対応形式: <strong>CSV / TSV</strong></li>
+                <li>文字コード: <strong>UTF-8 / UTF-8 BOM / Shift_JIS</strong>(自動判定)</li>
+                <li>1 行目はヘッダー行(列名)</li>
+                <li>参加者 1 人につき 1 行</li>
+                <li>参加日 + 開始時間から「回」を判定し、なければ自動作成</li>
+                <li>同じ予約番号は同じチームとして扱える(チーム化方針で選択)</li>
+                <li>4 人ずつ自動チーム化も可能(チーム化方針で選択)</li>
+              </ul>
+              <div style={{ marginTop: 8 }}>
+                <strong>推奨列順:</strong>
+                <ol style={{ paddingLeft: 18, margin: "2px 0 0", color: "#6b7280" }}>
+                  <li>予約番号</li>
+                  <li>参加日(YYYY/MM/DD or YYYY-MM-DD)</li>
+                  <li>開始時間(HH:MM)</li>
+                  <li>チーム名(任意)</li>
+                  <li>参加者名</li>
+                  <li>メールアドレス(任意)</li>
+                  <li>LINE ID(任意)</li>
+                  <li>現在ステップ(任意 / 作品のフェーズ名と一致すれば自動紐付け)</li>
+                  <li>メモ(任意)</li>
+                </ol>
+                <p style={{ marginTop: 6, color: "#6b7280" }}>
+                  ※ 列マッピング機能があるため、<strong>列順が完全一致しなくても取り込めます</strong>。日本語ヘッダーは自動検出されます。
+                </p>
+              </div>
+              <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  onClick={handleDownloadSample}
+                  style={buttonSecondary}
+                >
+                  サンプル CSV をダウンロード
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDownloadSampleExcel}
+                  style={buttonSecondary}
+                >
+                  サンプル Excel 形式をダウンロード
+                </button>
+              </div>
+              <p style={{ fontSize: 10, color: "#9ca3af", margin: "4px 0 0" }}>
+                ※ Excel 形式は .xls(HTML テーブル形式 / Excel ・ Numbers で開けます)。本 PR では Excel インポートは未対応で、サンプルダウンロードのみです。
+              </p>
+            </div>
+          </details>
+
+          {/* Step 1: ファイル + オプション */}
+          <div style={{ display: "grid", gap: 8, gridTemplateColumns: "1fr 1fr 1fr 1fr" }}>
+            <label style={{ fontSize: 11, color: "#374151" }}>
+              ファイル (CSV / TSV)
+              <input
+                type="file"
+                accept=".csv,.tsv,text/csv,text/tab-separated-values"
+                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+                style={{ ...inputStyle, padding: 4 }}
+              />
+            </label>
+            <label style={{ fontSize: 11, color: "#374151" }}>
+              区切り
+              <select value={delimiter} onChange={(e) => setDelimiter(e.target.value as "auto" | "comma" | "tab")} style={inputStyle}>
+                <option value="auto">自動判定</option>
+                <option value="comma">カンマ (CSV)</option>
+                <option value="tab">タブ (TSV)</option>
+              </select>
+            </label>
+            <label style={{ fontSize: 11, color: "#374151" }}>
+              重複時の挙動
+              <select value={dedup} onChange={(e) => setDedup(e.target.value as "skip" | "overwrite" | "duplicate")} style={inputStyle}>
+                <option value="skip">skip (= 既存があればそのまま)</option>
+                <option value="overwrite">overwrite (= 既存を上書き)</option>
+                <option value="duplicate">duplicate (= 重複を許容して新規)</option>
+              </select>
+            </label>
+            <label style={{ fontSize: 11, color: "#374151" }}>
+              チーム化方針
+              <select value={teaming} onChange={(e) => setTeaming(e.target.value as "by_reservation" | "by_4" | "by_team_name_column" | "none")} style={inputStyle}>
+                <option value="by_reservation">予約番号ごと (推奨)</option>
+                <option value="by_4">4 人ずつ自動採番</option>
+                <option value="by_team_name_column">チーム名列を使う</option>
+                <option value="none">チーム化しない</option>
+              </select>
+            </label>
+          </div>
+
+          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+            <button onClick={() => void submit("preview")} style={buttonSecondary} disabled={busy || !file || !workId}>
+              {busyMode === "preview" ? (
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                  <Spinner /> プレビュー生成中…
+                </span>
+              ) : "プレビュー"}
+            </button>
+            <button onClick={() => void submit("apply")} style={buttonPrimary} disabled={busy || !file || !workId || !preview}>
+              {busyMode === "apply" ? (
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                  <Spinner color="#ffffff" /> 取り込み中…
+                </span>
+              ) : "取込実行"}
+            </button>
+          </div>
+
+          {/* Step 2-3: preview 結果 */}
+          {preview && (
+            <div style={{ background: "#f9fafb", padding: 10, borderRadius: 8, fontSize: 12 }}>
+              <div style={{ marginBottom: 6 }}>
+                解析結果: 全 {preview.total_rows} 行 / encoding {preview.encoding} / 区切り {preview.delimiter} / 作品 {preview.work.title} (フェーズ {preview.work.phase_count} 件)
+              </div>
+              {preview.file_warnings.length > 0 && (
+                <ul style={{ color: "#92400e", marginBottom: 6 }}>
+                  {preview.file_warnings.map((w, i) => <li key={i}>{w}</li>)}
+                </ul>
+              )}
+              <div style={{ overflow: "auto", maxHeight: 220, border: "1px solid #e5e7eb", borderRadius: 6, marginBottom: 8 }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
+                  <thead>
+                    <tr style={{ background: "#f3f4f6", color: "#6b7280" }}>
+                      <th style={{ padding: "4px 6px", textAlign: "left" }}>row</th>
+                      <th style={{ padding: "4px 6px", textAlign: "left" }}>display_name</th>
+                      <th style={{ padding: "4px 6px", textAlign: "left" }}>reservation</th>
+                      <th style={{ padding: "4px 6px", textAlign: "left" }}>date / time</th>
+                      <th style={{ padding: "4px 6px", textAlign: "left" }}>team_name</th>
+                      <th style={{ padding: "4px 6px", textAlign: "left" }}>current_step</th>
+                      <th style={{ padding: "4px 6px", textAlign: "left" }}>warnings</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {preview.preview_rows.map((r, i) => (
+                      <tr key={i} style={{ borderBottom: "1px solid #f3f4f6" }}>
+                        <td style={{ padding: "4px 6px" }}>{i + 1}</td>
+                        <td style={{ padding: "4px 6px" }}>{r.display_name ?? "—"}</td>
+                        <td style={{ padding: "4px 6px" }}>{r.reservation_number ?? "—"}</td>
+                        <td style={{ padding: "4px 6px" }}>{r.date ?? "—"} {r.time ?? ""}</td>
+                        <td style={{ padding: "4px 6px" }}>{r.team_name ?? "—"}</td>
+                        <td style={{ padding: "4px 6px" }}>{r.current_step ?? "—"}</td>
+                        <td style={{ padding: "4px 6px", color: r.warnings.length > 0 ? "#92400e" : "#9ca3af" }}>
+                          {r.warnings.length > 0 ? r.warnings.join(" / ") : "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <details style={{ fontSize: 11, color: "#6b7280" }}>
+                <summary>列マッピング詳細(必要なら上書き)</summary>
+                <div style={{ marginTop: 6, display: "grid", gap: 4 }}>
+                  {preview.detected_columns.map((c, i) => (
+                    <div key={i} style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                      <span style={{ width: 200, fontFamily: "ui-monospace, monospace" }}>{c.header}</span>
+                      <span style={{ color: "#9ca3af" }}>→</span>
+                      <select
+                        value={mappingOverrides[c.header] ?? c.mapped_field ?? ""}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setMappingOverrides((prev) => ({ ...prev, [c.header]: v }));
+                        }}
+                        style={{ ...inputStyle, maxWidth: 220 }}
+                      >
+                        <option value="">— マップしない —</option>
+                        <option value="display_name">display_name</option>
+                        <option value="email">email</option>
+                        <option value="line_user_id">line_user_id</option>
+                        <option value="reservation_number">reservation_number</option>
+                        <option value="__date">参加日 (date)</option>
+                        <option value="__time">開始時間 (time)</option>
+                        <option value="team_name">team_name</option>
+                        <option value="current_step">current_step (= phase 名)</option>
+                        <option value="memo">memo</option>
+                        <option value="status">status</option>
+                      </select>
+                    </div>
+                  ))}
+                  <p style={{ color: "#6b7280" }}>※ 変更後、再度「プレビュー」を押すと反映されます。</p>
+                </div>
+              </details>
+            </div>
+          )}
+
+          {/* 結果サマリ */}
+          {result && (
+            <div style={{ background: "#ecfdf5", color: "#065f46", padding: 10, borderRadius: 8, fontSize: 12 }}>
+              取込完了: 作成 {result.created} / skip {result.skipped} / 上書き {result.overwritten} / 重複新規 {result.duplicated}
+              {result.errors.length > 0 && (
+                <ul style={{ color: "#991b1b", marginTop: 6 }}>
+                  {result.errors.map((e, i) => <li key={i}>row {e.row_index + 1}: {e.message}</li>)}
+                </ul>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ExportButton — Phase 2-G.1: spinner 付き CSV export
+// ─────────────────────────────────────────────────────────────────────────────
+function ExportButton({
+  oaId,
+  sessionId,
+  onError,
+}: {
+  oaId: string;
+  sessionId: string;
+  onError: (msg: string) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+
+  const handleExport = async () => {
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/oas/${oaId}/live/sessions/${sessionId}/export`, {
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => null);
+        throw new Error(j?.error?.message ?? `CSV 生成に失敗しました (HTTP ${res.status})`);
+      }
+      const blob = await res.blob();
+      // Content-Disposition の filename を尊重
+      const dispo = res.headers.get("content-disposition") ?? "";
+      const m = dispo.match(/filename="([^"]+)"/);
+      const filename = m?.[1] ?? `live-export-${new Date().toISOString().slice(0, 10)}.csv`;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "CSV 生成に失敗しました");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <button onClick={handleExport} style={buttonSecondary} disabled={busy}>
+      {busy ? (
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+          <Spinner /> CSV 生成中…
+        </span>
+      ) : "CSV エクスポート"}
+    </button>
   );
 }
