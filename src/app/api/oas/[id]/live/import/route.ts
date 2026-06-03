@@ -51,7 +51,6 @@ import { ok, badRequest, notFound, serverError } from "@/lib/api-response";
 import { authorizeLive } from "@/lib/live-auth";
 import Papa from "papaparse";
 import iconv from "iconv-lite";
-import * as XLSX from "xlsx";
 
 export const dynamic = "force-dynamic";
 
@@ -115,56 +114,6 @@ function decodeBuffer(buf: Buffer): { text: string; encoding: "utf-8" | "shift_j
     return { text: iconv.decode(buf, "Shift_JIS"), encoding: "shift_jis" };
   }
   return { text: asUtf8, encoding: "utf-8" };
-}
-
-// Phase 2-H: xlsx 判定 + パース
-//
-// セキュリティ補足: 本プロジェクトでは npm の `xlsx` パッケージを採用。
-// 当該パッケージには Prototype Pollution / ReDoS の高 severity 警告がある (GHSA-4r6h-8v6p-xvw6 / GHSA-5pgg-2g8v-p4x9 / 修正なし)。
-// 本機能は live admin 集合 (= platform admin / OA owner / live_owner / live_admin)
-// のみアップロード可能で、これらのロールは既存 API で DB フルアクセス可能なため、
-// 当該脆弱性が新規攻撃ベクトルを増やすことは無い (= 既存の脅威モデルに収まる)。
-// 加えて parse 時には cellFormula / cellHTML / bookVBA を全て無効化し、
-// 信頼境界の意味でも attack surface を最小化する。
-function isXlsxFile(filename: string, mime: string): boolean {
-  const name = filename.toLowerCase();
-  if (name.endsWith(".xlsx") || name.endsWith(".xlsm")) return true;
-  if (mime === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet") return true;
-  if (mime === "application/vnd.ms-excel.sheet.macroEnabled.12") return true;
-  return false;
-}
-
-function parseXlsx(buf: Buffer): { headers: string[]; rows: Record<string, string>[] } {
-  const workbook = XLSX.read(buf, {
-    type:         "buffer",
-    cellFormula:  false,
-    cellHTML:     false,
-    cellNF:       false,
-    cellStyles:   false,
-    sheetStubs:   false,
-    bookVBA:      false,
-  });
-  const firstSheetName = workbook.SheetNames[0];
-  if (!firstSheetName) throw new Error("シートがありません");
-  const sheet = workbook.Sheets[firstSheetName];
-  // 2D 配列 (= [[header...], [row1...], ...]) で取り出す
-  const aoa = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
-    header:  1,
-    defval:  "",
-    raw:     false, // = 数値・日付も文字列化 (CSV と揃える)
-    blankrows: false,
-  });
-  if (aoa.length === 0) return { headers: [], rows: [] };
-  const headers = (aoa[0] as unknown[]).map((v) => String(v ?? "").trim());
-  const rows = aoa.slice(1).map((row) => {
-    const out: Record<string, string> = {};
-    for (let i = 0; i < headers.length; i++) {
-      const v = (row as unknown[])[i];
-      out[headers[i]] = v === undefined || v === null ? "" : String(v);
-    }
-    return out;
-  });
-  return { headers, rows };
 }
 
 function detectDelimiter(filename: string, content: string, override: "auto" | "comma" | "tab"): "," | "\t" {
@@ -265,25 +214,21 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   if (file.size > 5 * 1024 * 1024) return badRequest("ファイルサイズは 5MB 以内にしてください");
 
   const buf = Buffer.from(await file.arrayBuffer());
-  const isXlsx = isXlsxFile(file.name, file.type);
 
-  // ── parse: xlsx 分岐 + CSV/TSV 既存フロー ──────────────────────────
+  // Phase 2-H では .xlsx import は同 PR に含めない (= xlsx パッケージの
+  // 既知 high severity 脆弱性 / 修正未提供のため別 PR で代替ライブラリ検討)。
+  // ここでは CSV/TSV のみを処理する。.xlsx は明示的に拒否する。
+  if (file.name.toLowerCase().endsWith(".xlsx") || file.name.toLowerCase().endsWith(".xlsm")) {
+    return badRequest("Excel(.xlsx)インポートは別フェーズで対応予定です。CSV / TSV をご利用ください。");
+  }
+
   let inputHeaders: string[] = [];
   let parsedData: Record<string, string>[] = [];
-  let fileFormat: "xlsx" | "csv" | "tsv" = "csv";
+  let fileFormat: "csv" | "tsv" = "csv";
   let detectedEncoding: "utf-8" | "shift_jis" | "n/a" = "n/a";
   let detectedDelimiter: "comma" | "tab" | "n/a" = "n/a";
 
-  if (isXlsx) {
-    fileFormat = "xlsx";
-    try {
-      const parsed = parseXlsx(buf);
-      inputHeaders = parsed.headers;
-      parsedData = parsed.rows;
-    } catch (err) {
-      return badRequest(`Excel 解析エラー: ${err instanceof Error ? err.message : "unknown"}`);
-    }
-  } else {
+  {
     const decoded = decodeBuffer(buf);
     const delim = detectDelimiter(file.name, decoded.text, options.delimiter);
     detectedEncoding = decoded.encoding;

@@ -2354,10 +2354,10 @@ function ImportSection({
           {/* Step 1: ファイル + オプション */}
           <div style={{ display: "grid", gap: 8, gridTemplateColumns: "1fr 1fr 1fr 1fr" }}>
             <label style={{ fontSize: 11, color: "#374151" }}>
-              ファイル (CSV / TSV / XLSX)
+              ファイル (CSV / TSV)
               <input
                 type="file"
-                accept=".csv,.tsv,.xlsx,text/csv,text/tab-separated-values,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                accept=".csv,.tsv,text/csv,text/tab-separated-values"
                 onChange={(e) => setFile(e.target.files?.[0] ?? null)}
                 style={{ ...inputStyle, padding: 4 }}
               />
@@ -2369,15 +2369,10 @@ function ImportSection({
                   borderRadius: 999,
                   fontSize: 10,
                   fontWeight: 700,
-                  background: file.name.toLowerCase().endsWith(".xlsx") ? "#dbeafe" :
-                              file.name.toLowerCase().endsWith(".tsv")  ? "#fef3c7" :
-                                                                          "#d1fae5",
-                  color:      file.name.toLowerCase().endsWith(".xlsx") ? "#1e40af" :
-                              file.name.toLowerCase().endsWith(".tsv")  ? "#92400e" :
-                                                                          "#065f46",
+                  background: file.name.toLowerCase().endsWith(".tsv") ? "#fef3c7" : "#d1fae5",
+                  color:      file.name.toLowerCase().endsWith(".tsv") ? "#92400e" : "#065f46",
                 }}>
-                  {file.name.toLowerCase().endsWith(".xlsx") ? "XLSX" :
-                   file.name.toLowerCase().endsWith(".tsv")  ? "TSV"  : "CSV"}
+                  {file.name.toLowerCase().endsWith(".tsv") ? "TSV" : "CSV"}
                 </span>
               )}
             </label>
