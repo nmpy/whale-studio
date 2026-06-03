@@ -34,6 +34,59 @@ export type LiveParticipant = {
   updated_at: string;
 };
 
+// Phase 2-E: Actor (= 演者) のレコード
+export type LiveActor = {
+  id: string;
+  oa_id: string;
+  display_name: string;
+  user_id: string | null;
+  character_name: string | null;
+  memo: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+// Phase 2-E: participant ↔ actor の担当割当
+export type LiveAssignment = {
+  id: string;
+  oa_id: string;
+  live_session_id: string;
+  participant_id: string;
+  actor_id: string;
+  note: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+// Phase 2-E: Admin → Actor 向けの指示
+export type LiveInstructionPriority = "low" | "normal" | "high";
+export type LiveInstructionStatus = "active" | "done" | "archived";
+export type LiveActorInstruction = {
+  id: string;
+  oa_id: string;
+  live_session_id: string;
+  participant_id: string | null;
+  actor_id: string | null;
+  title: string;
+  body: string;
+  priority: LiveInstructionPriority;
+  status: LiveInstructionStatus;
+  created_at: string;
+  updated_at: string;
+};
+
+export const INSTRUCTION_PRIORITY_LABEL: Record<LiveInstructionPriority, string> = {
+  low:    "低",
+  normal: "中",
+  high:   "高",
+};
+
+export const INSTRUCTION_STATUS_LABEL: Record<LiveInstructionStatus, string> = {
+  active:   "未完了",
+  done:     "完了",
+  archived: "アーカイブ",
+};
+
 export type LiveEventLog = {
   id: string;
   oa_id: string;

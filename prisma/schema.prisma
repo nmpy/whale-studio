@@ -50,6 +50,9 @@ model Oa {
   liveSessions       LiveSession[]
   liveParticipants   LiveParticipant[]
   liveEventLogs      LiveEventLog[]
+  liveActors         LiveActor[]
+  liveAssignments    LiveAssignment[]
+  liveActorInstructions LiveActorInstruction[]
 
   @@index([title])
   @@index([publishStatus])
@@ -1585,6 +1588,8 @@ model LiveSession {
 
   participants LiveParticipant[]
   eventLogs    LiveEventLog[]
+  assignments  LiveAssignment[]
+  instructions LiveActorInstruction[]
 
   @@index([oaId, createdAt])
   @@index([oaId, status])
@@ -1611,6 +1616,8 @@ model LiveParticipant {
   oa             Oa                    @relation(fields: [oaId], references: [id], onDelete: Cascade)
   liveSession    LiveSession           @relation(fields: [liveSessionId], references: [id], onDelete: Cascade)
   eventLogs      LiveEventLog[]
+  assignments    LiveAssignment[]
+  instructions   LiveActorInstruction[]
 
   @@index([liveSessionId, createdAt])
   @@index([liveSessionId, status])
@@ -1639,4 +1646,96 @@ model LiveEventLog {
   @@index([participantId, createdAt])
   @@index([oaId, createdAt])
   @@map("live_event_logs")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Whale Studio Live: Phase 2-E Actor assignment / 指示管理
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum LiveInstructionPriority {
+  low
+  normal
+  high
+}
+
+enum LiveInstructionStatus {
+  active
+  done
+  archived
+}
+
+/// Live セッションで現場対応する Actor (= 演者) のレコード。
+/// userId は Supabase Auth user_id への optional 紐付け (= live_actor ユーザーが
+/// 自分宛ての assignment / instruction を絞り込めるようにするため)。
+model LiveActor {
+  id            String   @id @default(uuid())
+  oaId          String   @map("oa_id")
+  displayName   String   @map("display_name")
+  /// Supabase Auth user_id への紐付け。null = 未紐付け (= 表示専用 Actor レコード)。
+  userId        String?  @map("user_id")
+  /// 役柄・キャラクター名 (任意 / 例: 「探偵 A」「店主」)。
+  characterName String?  @map("character_name")
+  memo          String?
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  oa            Oa       @relation(fields: [oaId], references: [id], onDelete: Cascade)
+  assignments  LiveAssignment[]
+  instructions LiveActorInstruction[]
+
+  @@index([oaId, createdAt])
+  @@index([oaId, userId])
+  @@map("live_actors")
+}
+
+/// participant ↔ actor の担当割当。
+/// 同セッション内で同じ (participant, actor) の組合せは 1 件のみ (= 重複防止)。
+model LiveAssignment {
+  id             String   @id @default(uuid())
+  oaId           String   @map("oa_id")
+  liveSessionId  String   @map("live_session_id")
+  participantId  String   @map("participant_id")
+  actorId        String   @map("actor_id")
+  note           String?
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  oa             Oa              @relation(fields: [oaId], references: [id], onDelete: Cascade)
+  liveSession    LiveSession     @relation(fields: [liveSessionId], references: [id], onDelete: Cascade)
+  participant    LiveParticipant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  actor          LiveActor       @relation(fields: [actorId], references: [id], onDelete: Cascade)
+
+  @@unique([liveSessionId, participantId, actorId])
+  @@index([liveSessionId, actorId])
+  @@index([liveSessionId, participantId])
+  @@index([oaId])
+  @@map("live_assignments")
+}
+
+/// Admin から Actor 向けに発行する指示 (= ヒント・接触依頼・注意喚起 等)。
+/// participantId は「特定参加者についての指示」を示し、null なら「セッション全体への指示」。
+/// actorId は「特定 actor 宛て」を示し、null なら「actor 全員向け」。
+model LiveActorInstruction {
+  id             String                  @id @default(uuid())
+  oaId           String                  @map("oa_id")
+  liveSessionId  String                  @map("live_session_id")
+  participantId  String?                 @map("participant_id")
+  actorId        String?                 @map("actor_id")
+  title          String
+  body           String
+  priority       LiveInstructionPriority @default(normal)
+  status         LiveInstructionStatus   @default(active)
+  createdAt      DateTime                @default(now()) @map("created_at")
+  updatedAt      DateTime                @updatedAt @map("updated_at")
+
+  oa             Oa               @relation(fields: [oaId], references: [id], onDelete: Cascade)
+  liveSession    LiveSession      @relation(fields: [liveSessionId], references: [id], onDelete: Cascade)
+  participant    LiveParticipant? @relation(fields: [participantId], references: [id], onDelete: SetNull)
+  actor          LiveActor?       @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([liveSessionId, status, createdAt])
+  @@index([liveSessionId, actorId])
+  @@index([liveSessionId, participantId])
+  @@index([oaId])
+  @@map("live_actor_instructions")
 }
