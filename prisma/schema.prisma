@@ -53,6 +53,7 @@ model Oa {
   liveActors         LiveActor[]
   liveAssignments    LiveAssignment[]
   liveActorInstructions LiveActorInstruction[]
+  liveTeams          LiveTeam[]
 
   @@index([title])
   @@index([publishStatus])
@@ -119,6 +120,7 @@ model Work {
   liffEventLogs       LiffEventLog[]
   werewolfTitles      WerewolfTitle[]
   locations           Location[]
+  liveSessions        LiveSession[]
   oa                  Oa                   @relation(fields: [oaId], references: [id], onDelete: Cascade)
   systemCharacter     Character?           @relation("WorkSystemCharacter", fields: [systemCharacterId], references: [id])
 
@@ -175,6 +177,7 @@ model Phase {
   transitionsFrom Transition[]   @relation("TransitionFrom")
   transitionsTo   Transition[]   @relation("TransitionTo")
   userProgress    UserProgress[]
+  liveParticipantsCurrent LiveParticipant[] @relation("LiveParticipantCurrentPhase")
 
   @@index([workId])
   @@index([phaseType])
@@ -1574,10 +1577,15 @@ enum LiveEventType {
   alert
 }
 
-/// Live セッション（= 一回の実イベント）。oaId 単位で複数同時並行可。
+/// Live セッション（= 一回の実イベント / 例: "2026/06/10 12:00回"）。
+/// Phase 2-G で workId を追加し、各回は特定作品 (Work) に紐付ける運用へ。
+/// startsAt が参加日 + 開始時間の正。
 model LiveSession {
   id        String            @id @default(uuid())
   oaId      String            @map("oa_id")
+  /// 紐付く Work (= 作品)。既存セッション互換のため nullable。
+  /// 新規セッションは UI 上で必須化する。
+  workId    String?           @map("work_id")
   name      String
   status    LiveSessionStatus @default(draft)
   startsAt  DateTime?         @map("starts_at")
@@ -1585,14 +1593,17 @@ model LiveSession {
   createdAt DateTime          @default(now()) @map("created_at")
   updatedAt DateTime          @updatedAt @map("updated_at")
   oa        Oa                @relation(fields: [oaId], references: [id], onDelete: Cascade)
+  work      Work?             @relation(fields: [workId], references: [id], onDelete: SetNull)
 
   participants LiveParticipant[]
   eventLogs    LiveEventLog[]
   assignments  LiveAssignment[]
   instructions LiveActorInstruction[]
+  teams        LiveTeam[]
 
   @@index([oaId, createdAt])
   @@index([oaId, status])
+  @@index([workId])
   @@map("live_sessions")
 }
 
@@ -1604,10 +1615,18 @@ model LiveParticipant {
   id             String                @id @default(uuid())
   oaId           String                @map("oa_id")
   liveSessionId  String                @map("live_session_id")
+  /// Phase 2-G: 同じ回の中で参加者をグループ化する単位 (= LiveTeam 参照)。
+  /// onDelete: SetNull で「チームを消しても participant は残す」運用に。
+  teamId         String?               @map("team_id")
   displayName    String?               @map("display_name")
   lineUserId     String?               @map("line_user_id")
   status         LiveParticipantStatus @default(waiting)
+  /// Phase 2-G: 現在ステップを Work の Phase に紐付ける場合に設定。
+  /// 既存 free-text currentStep は legacy fallback として残す (= 旧データ温存)。
+  currentPhaseId String?               @map("current_phase_id")
   currentStep    String?               @map("current_step")
+  /// Phase 2-G: チケットサイト由来の予約番号 / 注文番号。CSV import の dedup key。
+  reservationNumber String?            @map("reservation_number")
   memo           String?
   lastSeenAt     DateTime?             @map("last_seen_at")
   createdAt      DateTime              @default(now()) @map("created_at")
@@ -1615,14 +1634,41 @@ model LiveParticipant {
 
   oa             Oa                    @relation(fields: [oaId], references: [id], onDelete: Cascade)
   liveSession    LiveSession           @relation(fields: [liveSessionId], references: [id], onDelete: Cascade)
+  team           LiveTeam?             @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  currentPhase   Phase?                @relation("LiveParticipantCurrentPhase", fields: [currentPhaseId], references: [id], onDelete: SetNull)
   eventLogs      LiveEventLog[]
   assignments    LiveAssignment[]
   instructions   LiveActorInstruction[]
 
   @@index([liveSessionId, createdAt])
   @@index([liveSessionId, status])
+  @@index([liveSessionId, teamId])
+  @@index([liveSessionId, reservationNumber])
   @@index([oaId])
   @@map("live_participants")
+}
+
+/// Phase 2-G: 回 (LiveSession) 内のチーム。
+/// 4人1チームを基本として、予約番号ごと or 順番割当 or CSV のチーム名列から作成。
+/// reservationNumber は CSV import で予約番号ごとにチーム化したとき使う dedup key。
+model LiveTeam {
+  id                String   @id @default(uuid())
+  oaId              String   @map("oa_id")
+  liveSessionId     String   @map("live_session_id")
+  name              String
+  reservationNumber String?  @map("reservation_number")
+  memo              String?
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  oa                Oa                @relation(fields: [oaId], references: [id], onDelete: Cascade)
+  liveSession       LiveSession       @relation(fields: [liveSessionId], references: [id], onDelete: Cascade)
+  participants      LiveParticipant[]
+
+  @@index([liveSessionId, createdAt])
+  @@index([liveSessionId, reservationNumber])
+  @@index([oaId])
+  @@map("live_teams")
 }
 
 /// Live セッション中のイベントログ（QR スキャン / チェックイン / 詰まり / アラート 等）。

@@ -22,11 +22,12 @@ import { authorizeLiveSection } from "@/lib/live-auth";
 export const dynamic = "force-dynamic";
 
 const patchActorParticipantSchema = z.object({
-  status:        z.enum(["waiting", "active", "stuck", "completed", "dropped"]).optional(),
-  memo:          z.string().max(2000).optional().nullable(),
-  current_step:  z.string().max(200).optional().nullable(),
+  status:           z.enum(["waiting", "active", "stuck", "completed", "dropped"]).optional(),
+  memo:             z.string().max(2000).optional().nullable(),
+  current_step:     z.string().max(200).optional().nullable(),
+  current_phase_id: z.string().uuid().optional().nullable(),
 }).refine(
-  (v) => v.status !== undefined || v.memo !== undefined || v.current_step !== undefined,
+  (v) => v.status !== undefined || v.memo !== undefined || v.current_step !== undefined || v.current_phase_id !== undefined,
   { message: "少なくとも 1 つのフィールドを指定してください" },
 );
 
@@ -34,29 +35,37 @@ type ParticipantRow = {
   id: string;
   oaId: string;
   liveSessionId: string;
+  teamId: string | null;
   displayName: string | null;
   lineUserId: string | null;
   status: string;
   currentStep: string | null;
+  currentPhaseId: string | null;
+  reservationNumber: string | null;
   memo: string | null;
   lastSeenAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
+  currentPhase: { id: string; name: string } | null;
 };
 
 function toResponse(p: ParticipantRow) {
   return {
-    id:               p.id,
-    oa_id:            p.oaId,
-    live_session_id:  p.liveSessionId,
-    display_name:     p.displayName,
-    line_user_id:     p.lineUserId,
-    status:           p.status,
-    current_step:     p.currentStep,
-    memo:             p.memo,
-    last_seen_at:     p.lastSeenAt,
-    created_at:       p.createdAt,
-    updated_at:       p.updatedAt,
+    id:                 p.id,
+    oa_id:              p.oaId,
+    live_session_id:    p.liveSessionId,
+    team_id:            p.teamId,
+    display_name:       p.displayName,
+    line_user_id:       p.lineUserId,
+    status:             p.status,
+    current_step:       p.currentStep,
+    current_phase_id:   p.currentPhaseId,
+    current_phase_name: p.currentPhase?.name ?? null,
+    reservation_number: p.reservationNumber,
+    memo:               p.memo,
+    last_seen_at:       p.lastSeenAt,
+    created_at:         p.createdAt,
+    updated_at:         p.updatedAt,
   };
 }
 
@@ -70,7 +79,7 @@ export async function PATCH(
   // session + participant が OA / session 階層に紐付くことを毎回検証 (= 横断アクセス防止)
   const session = await prisma.liveSession.findFirst({
     where:  { id: params.sessionId, oaId: params.id },
-    select: { id: true },
+    select: { id: true, workId: true },
   });
   if (!session) return notFound("LiveSession");
 
@@ -84,13 +93,25 @@ export async function PATCH(
     const body = await req.json();
     const data = patchActorParticipantSchema.parse(body);
 
+    if (data.current_phase_id) {
+      const ph = await prisma.phase.findFirst({
+        where:  session.workId
+          ? { id: data.current_phase_id, workId: session.workId }
+          : { id: data.current_phase_id },
+        select: { id: true },
+      });
+      if (!ph) return badRequest("current_phase_id が選択中作品のフェーズではありません");
+    }
+
     const participant = await prisma.liveParticipant.update({
       where: { id: params.participantId },
       data: {
-        ...(data.status       !== undefined ? { status:      data.status       } : {}),
-        ...(data.memo         !== undefined ? { memo:        data.memo         } : {}),
-        ...(data.current_step !== undefined ? { currentStep: data.current_step } : {}),
+        ...(data.status           !== undefined ? { status:         data.status           } : {}),
+        ...(data.memo             !== undefined ? { memo:           data.memo             } : {}),
+        ...(data.current_step     !== undefined ? { currentStep:    data.current_step     } : {}),
+        ...(data.current_phase_id !== undefined ? { currentPhaseId: data.current_phase_id } : {}),
       },
+      include: { currentPhase: { select: { id: true, name: true } } },
     });
 
     return ok(toResponse(participant));

@@ -5,6 +5,10 @@
 export type LiveSession = {
   id: string;
   oa_id: string;
+  /** Phase 2-G: 紐付く Work id (= 既存セッションは null) */
+  work_id?: string | null;
+  /** Phase 2-G: 表示用 (= server-side で join) */
+  work_title?: string | null;
   name: string;
   status: "draft" | "active" | "ended";
   starts_at: string | null;
@@ -17,19 +21,36 @@ export type LiveParticipant = {
   id: string;
   oa_id: string;
   live_session_id: string;
+  /** Phase 2-G: 同じ回のチーム参照 */
+  team_id?: string | null;
   display_name: string | null;
   line_user_id: string | null;
   status: "waiting" | "active" | "stuck" | "completed" | "dropped";
+  /** legacy free-text / fallback */
   current_step: string | null;
-  /** Phase 2-C: Admin が自由に追記する管理メモ (= 連絡先・特記事項・接触メモ等) */
+  /** Phase 2-G: Work の Phase 参照 (= 優先) */
+  current_phase_id?: string | null;
+  /** Phase 2-G: server-side で join した Phase.name */
+  current_phase_name?: string | null;
+  /** Phase 2-G: チケットサイトの予約番号 */
+  reservation_number?: string | null;
+  /** Phase 2-C: Admin が自由に追記する管理メモ */
   memo: string | null;
   last_seen_at: string | null;
-  /**
-   * Phase 2-D: Actor API GET の応答にのみ含まれる server-side 算出フィールド。
-   * 当該 participant に対する最新の LiveEventLog (type='actor_contacted') の created_at。
-   * Admin API では返却しない (= undefined) ため optional。
-   */
+  /** Phase 2-D: events から導出 (Actor API のみ) */
   last_contact_at?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+// Phase 2-G: チーム
+export type LiveTeam = {
+  id: string;
+  oa_id: string;
+  live_session_id: string;
+  name: string;
+  reservation_number: string | null;
+  memo: string | null;
   created_at: string;
   updated_at: string;
 };
