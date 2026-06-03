@@ -18,6 +18,8 @@ import Papa from "papaparse";
 
 export const dynamic = "force-dynamic";
 
+// Phase 2-G.1: current_step は「Phase.name 優先 / 無ければ legacy free-text」の統合 1 列。
+// Phase 2-G 初版で別途出していた current_phase_name 列は廃止。
 const CSV_COLUMNS = [
   "session_name",
   "session_starts_at",
@@ -26,7 +28,6 @@ const CSV_COLUMNS = [
   "display_name",
   "status",
   "current_step",
-  "current_phase_name",
   "line_user_id",
   "memo",
   "assigned_actors",
@@ -118,8 +119,8 @@ export async function GET(
       reservation_number:       p.reservationNumber ?? "",
       display_name:             p.displayName ?? "",
       status:                   p.status,
-      current_step:             p.currentStep ?? "",
-      current_phase_name:       p.currentPhase?.name ?? "",
+      // Phase 2-G.1: Phase.name 優先 / 無ければ legacy free-text
+      current_step:             p.currentPhase?.name ?? p.currentStep ?? "",
       line_user_id:             p.lineUserId ?? "",
       memo:                     p.memo ?? "",
       assigned_actors:          (assignedActorsByPid.get(p.id) ?? []).join(" / "),

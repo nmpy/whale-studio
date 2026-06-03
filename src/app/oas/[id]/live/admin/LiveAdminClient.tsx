@@ -189,6 +189,36 @@ const errorBox: React.CSSProperties = {
   margin: "8px 0",
 };
 
+// Phase 2-G.1: 共通 spinner (= 処理中インジケータ)
+function Spinner({ size = 12, color = "currentColor" }: { size?: number; color?: string }) {
+  return (
+    <span
+      aria-hidden
+      style={{
+        display: "inline-block",
+        width: size,
+        height: size,
+        border: `2px solid ${color}`,
+        borderRightColor: "transparent",
+        borderRadius: "50%",
+        animation: "live-spin 0.6s linear infinite",
+      }}
+    />
+  );
+}
+
+// inline style では @keyframes が書けないので、グローバル <style> を 1 回だけ挿入
+function SpinnerStyles() {
+  return (
+    <style>{`
+      @keyframes live-spin {
+        from { transform: rotate(0deg); }
+        to   { transform: rotate(360deg); }
+      }
+    `}</style>
+  );
+}
+
 // Phase 2-E 用の型 (Admin 内部用 / shared types とは別)
 type LiveActor = {
   id: string;
@@ -959,6 +989,7 @@ export function LiveAdminClient({ oaId }: { oaId: string }) {
 
   return (
     <div style={{ maxWidth: 960, margin: "0 auto", padding: "8px 0 40px" }}>
+      <SpinnerStyles />
       <Link
         href={`/oas/${oaId}/live`}
         style={{ fontSize: 12, color: "#6b7280", textDecoration: "none" }}
@@ -974,10 +1005,10 @@ export function LiveAdminClient({ oaId }: { oaId: string }) {
 
       {error && <div style={errorBox}>{error}</div>}
 
-      {/* ── 対象作品セレクタ (Phase 2-G) ── */}
+      {/* ── 対象作品セレクタ (Phase 2-G / 2-G.1 で必須化) ── */}
       <section style={{ ...card, marginBottom: 16, background: "#f9fafb" }}>
         <label style={{ fontSize: 12, color: "#374151", display: "block", marginBottom: 4 }}>
-          対象作品
+          対象作品 <span style={{ color: "#dc2626" }}>*</span>
         </label>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <select
@@ -985,15 +1016,15 @@ export function LiveAdminClient({ oaId }: { oaId: string }) {
             onChange={(e) => setSelectedWorkId(e.target.value || null)}
             style={{ ...inputStyle, maxWidth: 320 }}
           >
-            <option value="">— 作品を選択(新規セッション作成・CSV import 時の文脈) —</option>
+            <option value="">作品を選択してください</option>
             {works.map((w) => (
               <option key={w.id} value={w.id}>{w.title}</option>
             ))}
           </select>
           <span style={{ fontSize: 11, color: "#6b7280" }}>
-            {effectiveWorkId
-              ? `現在の文脈: ${(works.find((w) => w.id === effectiveWorkId)?.title) ?? "(未取得)"} / フェーズ ${phases.length} 件`
-              : "作品未選択 — 既存セッションの編集はそのセッションの作品で動作"}
+            {selectedWorkId
+              ? `フェーズ ${phases.length} 件 / 新規セッション・CSV import で使用`
+              : "作品を選択すると、新規セッション作成と CSV import が可能になります"}
           </span>
         </div>
       </section>
@@ -1011,14 +1042,28 @@ export function LiveAdminClient({ oaId }: { oaId: string }) {
           <input
             value={newSessionName}
             onChange={(e) => setNewSessionName(e.target.value)}
-            placeholder="新規セッション名 (例: 2026/06/15 夜公演)"
+            placeholder={selectedWorkId ? "新規セッション名 (例: 2026/06/15 12:00回)" : "先に対象作品を選択してください"}
             style={inputStyle}
-            disabled={creatingSession}
+            disabled={creatingSession || !selectedWorkId}
           />
-          <button type="submit" style={buttonPrimary} disabled={creatingSession || !newSessionName.trim()}>
-            {creatingSession ? "作成中…" : "作成"}
+          <button
+            type="submit"
+            style={buttonPrimary}
+            disabled={creatingSession || !newSessionName.trim() || !selectedWorkId}
+            title={!selectedWorkId ? "新規セッションには対象作品の選択が必要です" : undefined}
+          >
+            {creatingSession ? (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                <Spinner /> 作成中…
+              </span>
+            ) : "作成"}
           </button>
         </form>
+        {!selectedWorkId && (
+          <p style={{ fontSize: 11, color: "#92400e", margin: "0 0 8px" }}>
+            ※ 新規セッション作成には対象作品の選択が必要です(既存セッションの編集には影響しません)。
+          </p>
+        )}
 
         {sessions.length === 0 ? (
           <p style={{ fontSize: 13, color: "#6b7280" }}>セッションがまだありません。</p>
@@ -1100,18 +1145,17 @@ export function LiveAdminClient({ oaId }: { oaId: string }) {
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
               {sectionTitle("参加者")}
               <div style={{ display: "flex", gap: 8 }}>
-                <a
-                  href={`/api/oas/${oaId}/live/sessions/${selectedSessionId}/export`}
-                  style={{ ...buttonSecondary, textDecoration: "none", display: "inline-block", lineHeight: "20px" }}
-                >
-                  CSV エクスポート
-                </a>
+                <ExportButton oaId={oaId} sessionId={selectedSessionId} onError={(msg) => setError(msg)} />
                 <button
                   onClick={() => selectedSessionId && void fetchChildren(selectedSessionId)}
                   style={buttonSecondary}
                   disabled={loadingChildren}
                 >
-                  {loadingChildren ? "読込中…" : "再読込"}
+                  {loadingChildren ? (
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                      <Spinner /> 読込中…
+                    </span>
+                  ) : "再読込"}
                 </button>
               </div>
             </div>
@@ -1883,14 +1927,36 @@ function ImportSection({
   const [delimiter, setDelimiter] = useState<"auto" | "comma" | "tab">("auto");
   const [preview, setPreview] = useState<PreviewResult | null>(null);
   const [result, setResult] = useState<ApplyResult | null>(null);
-  const [busy, setBusy] = useState(false);
+  // Phase 2-G.1: モード別 busy 状態 (= ボタン spinner / 個別 disabled)
+  const [busyMode, setBusyMode] = useState<"preview" | "apply" | null>(null);
   // Phase 2-G では minimum: 列マッピングの上書きは preview の結果を見て手動編集可
   const [mappingOverrides, setMappingOverrides] = useState<Record<string, string>>({});
 
+  // サンプル CSV ダウンロード (= UTF-8 BOM 付)
+  const handleDownloadSample = () => {
+    const lines = [
+      "予約番号,参加日,開始時間,チーム名,参加者名,メールアドレス,LINE ID,現在ステップ,メモ",
+      "R001,2026/06/10,12:00,Aチーム,田中太郎,tanaka@example.com,Uxxxxxxxx,導入,テストメモ",
+      "R001,2026/06/10,12:00,Aチーム,佐藤花子,sato@example.com,Uyyyyyyyy,導入,",
+      "R002,2026/06/10,12:30,Bチーム,鈴木一郎,suzuki@example.com,Uzzzzzzzz,探索,",
+    ].join("\n");
+    const body = "﻿" + lines + "\n";
+    const blob = new Blob([body], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "live-import-sample.csv";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const busy = busyMode !== null;
   const submit = async (mode: "preview" | "apply") => {
     if (!file)   { onError("ファイルを選択してください"); return; }
     if (!workId) { onError("先に対象作品を選択してください"); return; }
-    setBusy(true);
+    setBusyMode(mode);
     try {
       const form = new FormData();
       form.append("file", file);
@@ -1899,7 +1965,6 @@ function ImportSection({
       form.append("teaming", teaming);
       form.append("delimiter", delimiter);
       form.append("mode", mode);
-      // mapping override (= header → internal field)
       if (Object.keys(mappingOverrides).length > 0) {
         form.append("column_mapping", JSON.stringify(mappingOverrides));
       }
@@ -1924,7 +1989,7 @@ function ImportSection({
     } catch (err) {
       onError(err instanceof Error ? err.message : "import に失敗しました");
     } finally {
-      setBusy(false);
+      setBusyMode(null);
     }
   };
 
@@ -1944,6 +2009,60 @@ function ImportSection({
               対象作品が未選択です。上部の「対象作品」セレクタから作品を選んでから取込してください。
             </div>
           )}
+
+          {/* ── 説明文 (Phase 2-G.1) ── */}
+          <div style={{ background: "#eff6ff", color: "#1e40af", border: "1px solid #bfdbfe", borderRadius: 8, padding: "8px 12px", fontSize: 12, lineHeight: 1.7 }}>
+            <p style={{ margin: 0 }}>
+              チケットサイトからダウンロードした CSV / TSV を取り込めます。列名が異なる場合も、次のステップで列マッピングできます。
+            </p>
+            <p style={{ margin: "4px 0 0" }}>
+              参加日と開始時間から Live セッション(回)を自動判定します。該当する回がない場合は、選択中の作品に紐づく回を自動作成します。
+            </p>
+          </div>
+
+          {/* ── アップロードルール表示 + サンプル CSV ── */}
+          <details style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 8, padding: "8px 12px", fontSize: 12 }}>
+            <summary style={{ cursor: "pointer", fontWeight: 600, color: "#111827" }}>
+              アップロードできるファイル形式・列ルール(クリックで展開)
+            </summary>
+            <div style={{ marginTop: 8, color: "#374151", lineHeight: 1.8 }}>
+              <ul style={{ paddingLeft: 18, margin: 0 }}>
+                <li>対応形式: <strong>CSV / TSV</strong></li>
+                <li>文字コード: <strong>UTF-8 / UTF-8 BOM / Shift_JIS</strong>(自動判定)</li>
+                <li>1 行目はヘッダー行(列名)</li>
+                <li>参加者 1 人につき 1 行</li>
+                <li>参加日 + 開始時間から「回」を判定し、なければ自動作成</li>
+                <li>同じ予約番号は同じチームとして扱える(チーム化方針で選択)</li>
+                <li>4 人ずつ自動チーム化も可能(チーム化方針で選択)</li>
+              </ul>
+              <div style={{ marginTop: 8 }}>
+                <strong>推奨列順:</strong>
+                <ol style={{ paddingLeft: 18, margin: "2px 0 0", color: "#6b7280" }}>
+                  <li>予約番号</li>
+                  <li>参加日(YYYY/MM/DD or YYYY-MM-DD)</li>
+                  <li>開始時間(HH:MM)</li>
+                  <li>チーム名(任意)</li>
+                  <li>参加者名</li>
+                  <li>メールアドレス(任意)</li>
+                  <li>LINE ID(任意)</li>
+                  <li>現在ステップ(任意 / 作品のフェーズ名と一致すれば自動紐付け)</li>
+                  <li>メモ(任意)</li>
+                </ol>
+                <p style={{ marginTop: 6, color: "#6b7280" }}>
+                  ※ 列マッピング機能があるため、<strong>列順が完全一致しなくても取り込めます</strong>。日本語ヘッダーは自動検出されます。
+                </p>
+              </div>
+              <div style={{ marginTop: 8 }}>
+                <button
+                  type="button"
+                  onClick={handleDownloadSample}
+                  style={buttonSecondary}
+                >
+                  サンプル CSV をダウンロード
+                </button>
+              </div>
+            </div>
+          </details>
 
           {/* Step 1: ファイル + オプション */}
           <div style={{ display: "grid", gap: 8, gridTemplateColumns: "1fr 1fr 1fr 1fr" }}>
@@ -1985,10 +2104,18 @@ function ImportSection({
 
           <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
             <button onClick={() => void submit("preview")} style={buttonSecondary} disabled={busy || !file || !workId}>
-              {busy ? "解析中…" : "プレビュー"}
+              {busyMode === "preview" ? (
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                  <Spinner /> プレビュー生成中…
+                </span>
+              ) : "プレビュー"}
             </button>
             <button onClick={() => void submit("apply")} style={buttonPrimary} disabled={busy || !file || !workId || !preview}>
-              {busy ? "実行中…" : "取込実行"}
+              {busyMode === "apply" ? (
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                  <Spinner color="#ffffff" /> 取り込み中…
+                </span>
+              ) : "取込実行"}
             </button>
           </div>
 
@@ -2082,5 +2209,60 @@ function ImportSection({
         </div>
       )}
     </section>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ExportButton — Phase 2-G.1: spinner 付き CSV export
+// ─────────────────────────────────────────────────────────────────────────────
+function ExportButton({
+  oaId,
+  sessionId,
+  onError,
+}: {
+  oaId: string;
+  sessionId: string;
+  onError: (msg: string) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+
+  const handleExport = async () => {
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/oas/${oaId}/live/sessions/${sessionId}/export`, {
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => null);
+        throw new Error(j?.error?.message ?? `CSV 生成に失敗しました (HTTP ${res.status})`);
+      }
+      const blob = await res.blob();
+      // Content-Disposition の filename を尊重
+      const dispo = res.headers.get("content-disposition") ?? "";
+      const m = dispo.match(/filename="([^"]+)"/);
+      const filename = m?.[1] ?? `live-export-${new Date().toISOString().slice(0, 10)}.csv`;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "CSV 生成に失敗しました");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <button onClick={handleExport} style={buttonSecondary} disabled={busy}>
+      {busy ? (
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+          <Spinner /> CSV 生成中…
+        </span>
+      ) : "CSV エクスポート"}
+    </button>
   );
 }
