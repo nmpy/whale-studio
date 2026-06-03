@@ -738,6 +738,8 @@ export function LiveAdminClient({ oaId }: { oaId: string }) {
   const [instructions, setInstructions] = useState<LiveActorInstruction[]>([]);
   // Phase 2-G: Works / Phases / Teams + selectedWorkId
   const [works, setWorks] = useState<WorkSummary[]>([]);
+  const [worksLoading, setWorksLoading] = useState(false);
+  const [worksError, setWorksError] = useState<string | null>(null);
   const [selectedWorkId, setSelectedWorkId] = useState<string | null>(null);
   const [phases, setPhases] = useState<PhaseSummary[]>([]);
   const [teams, setTeams] = useState<LiveTeam[]>([]);
@@ -805,16 +807,27 @@ export function LiveAdminClient({ oaId }: { oaId: string }) {
   }, [oaId]);
 
   // Phase 2-G: Work 一覧 + 選択中 Work のフェーズ一覧
+  // Phase 2-G.2: API path 修正 (= /api/oas/[id]/works ではなく /api/works?oa_id=xxx)
+  //              + loading / error state を追加して UI で可視化
   const fetchWorks = useCallback(async () => {
+    setWorksLoading(true);
+    setWorksError(null);
     try {
-      // 既存の Whale Studio の Works API を使う (= /api/oas/[id]/works が存在する想定)
-      const res = await fetch(`/api/oas/${oaId}/works`, { credentials: "include" });
-      if (!res.ok) return;
+      const res = await fetch(`/api/works?oa_id=${encodeURIComponent(oaId)}`, { credentials: "include" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
-      const list = (json?.data?.works ?? json?.works ?? []) as Array<{ id: string; title: string }>;
-      setWorks(list.map((w) => ({ id: w.id, title: w.title })));
-    } catch {
-      // works API が無くても admin 画面自体は動くので silent fail
+      const list = (json?.data?.works ?? json?.works ?? []) as Array<{ id: string; title: string; publish_status?: string }>;
+      // archived / paused 以外を選択肢に出す (= draft / active は OK)
+      const filtered = list.filter((w) => {
+        const s = w.publish_status ?? "active";
+        return s !== "archived" && s !== "paused";
+      });
+      setWorks(filtered.map((w) => ({ id: w.id, title: w.title })));
+    } catch (err) {
+      setWorksError(err instanceof Error ? err.message : "fetch error");
+      setWorks([]);
+    } finally {
+      setWorksLoading(false);
     }
   }, [oaId]);
 
@@ -1005,26 +1018,45 @@ export function LiveAdminClient({ oaId }: { oaId: string }) {
 
       {error && <div style={errorBox}>{error}</div>}
 
-      {/* ── 対象作品セレクタ (Phase 2-G / 2-G.1 で必須化) ── */}
+      {/* ── 対象作品セレクタ (Phase 2-G / 2-G.1 で必須化 / 2-G.2 で loading/error/empty 対応) ── */}
       <section style={{ ...card, marginBottom: 16, background: "#f9fafb" }}>
         <label style={{ fontSize: 12, color: "#374151", display: "block", marginBottom: 4 }}>
           対象作品 <span style={{ color: "#dc2626" }}>*</span>
         </label>
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
           <select
             value={selectedWorkId ?? ""}
             onChange={(e) => setSelectedWorkId(e.target.value || null)}
             style={{ ...inputStyle, maxWidth: 320 }}
+            disabled={worksLoading}
           >
-            <option value="">作品を選択してください</option>
+            <option value="">
+              {worksLoading
+                ? "作品を読み込み中..."
+                : worksError
+                  ? "作品の取得に失敗しました"
+                  : works.length === 0
+                    ? "このOAには作品がありません"
+                    : "作品を選択してください"}
+            </option>
             {works.map((w) => (
               <option key={w.id} value={w.id}>{w.title}</option>
             ))}
           </select>
+          {worksLoading && (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, color: "#6b7280" }}>
+              <Spinner /> 作品を読み込み中...
+            </span>
+          )}
+          {!worksLoading && worksError && (
+            <button onClick={() => void fetchWorks()} style={buttonSecondary}>再試行</button>
+          )}
           <span style={{ fontSize: 11, color: "#6b7280" }}>
             {selectedWorkId
               ? `フェーズ ${phases.length} 件 / 新規セッション・CSV import で使用`
-              : "作品を選択すると、新規セッション作成と CSV import が可能になります"}
+              : works.length === 0 && !worksLoading && !worksError
+                ? "Whale Studio の作品ページで作品を作成してください"
+                : "作品を選択すると、新規セッション作成と CSV import が可能になります"}
           </span>
         </div>
       </section>
@@ -1932,20 +1964,45 @@ function ImportSection({
   // Phase 2-G では minimum: 列マッピングの上書きは preview の結果を見て手動編集可
   const [mappingOverrides, setMappingOverrides] = useState<Record<string, string>>({});
 
+  // サンプル CSV / Excel(HTML table 形式 .xls) の共通データ
+  const SAMPLE_HEADERS = ["予約番号", "参加日", "開始時間", "チーム名", "参加者名", "メールアドレス", "LINE ID", "現在ステップ", "メモ"];
+  const SAMPLE_ROWS: string[][] = [
+    ["R001", "2026/06/10", "12:00", "Aチーム", "田中太郎", "tanaka@example.com", "Uxxxxxxxx", "導入", "テストメモ"],
+    ["R001", "2026/06/10", "12:00", "Aチーム", "佐藤花子", "sato@example.com",   "Uyyyyyyyy", "導入", ""],
+    ["R002", "2026/06/10", "12:30", "Bチーム", "鈴木一郎", "suzuki@example.com", "Uzzzzzzzz", "探索", ""],
+  ];
+
   // サンプル CSV ダウンロード (= UTF-8 BOM 付)
   const handleDownloadSample = () => {
-    const lines = [
-      "予約番号,参加日,開始時間,チーム名,参加者名,メールアドレス,LINE ID,現在ステップ,メモ",
-      "R001,2026/06/10,12:00,Aチーム,田中太郎,tanaka@example.com,Uxxxxxxxx,導入,テストメモ",
-      "R001,2026/06/10,12:00,Aチーム,佐藤花子,sato@example.com,Uyyyyyyyy,導入,",
-      "R002,2026/06/10,12:30,Bチーム,鈴木一郎,suzuki@example.com,Uzzzzzzzz,探索,",
-    ].join("\n");
+    const lines = [SAMPLE_HEADERS, ...SAMPLE_ROWS].map((row) => row.join(",")).join("\n");
     const body = "﻿" + lines + "\n";
     const blob = new Blob([body], { type: "text/csv;charset=utf-8" });
+    triggerDownload(blob, "live-import-sample.csv");
+  };
+
+  // サンプル Excel ダウンロード (= HTML table を .xls として保存 / xlsx 依存なし)
+  //   Excel / Numbers が HTML table 入りの .xls を読み込めるため、
+  //   xlsx パッケージ(~500KB+)を追加せずに同等の体験を提供する。
+  //   外形は .xls だが内部は UTF-8 HTML なので、Excel 側で「形式は xls ですが…」の
+  //   警告が出る可能性がある。日本語の表示は問題なし。
+  const handleDownloadSampleExcel = () => {
+    const escapeHtml = (s: string) =>
+      s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    const headerCells = SAMPLE_HEADERS.map((h) => `<th>${escapeHtml(h)}</th>`).join("");
+    const bodyRows = SAMPLE_ROWS
+      .map((row) => `<tr>${row.map((c) => `<td>${escapeHtml(c)}</td>`).join("")}</tr>`)
+      .join("");
+    const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="UTF-8"/></head><body><table border="1"><thead><tr>${headerCells}</tr></thead><tbody>${bodyRows}</tbody></table></body></html>`;
+    const body = "﻿" + html;
+    const blob = new Blob([body], { type: "application/vnd.ms-excel;charset=utf-8" });
+    triggerDownload(blob, "live-import-sample.xls");
+  };
+
+  const triggerDownload = (blob: Blob, filename: string) => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "live-import-sample.csv";
+    a.download = filename;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -2052,7 +2109,7 @@ function ImportSection({
                   ※ 列マッピング機能があるため、<strong>列順が完全一致しなくても取り込めます</strong>。日本語ヘッダーは自動検出されます。
                 </p>
               </div>
-              <div style={{ marginTop: 8 }}>
+              <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
                 <button
                   type="button"
                   onClick={handleDownloadSample}
@@ -2060,7 +2117,17 @@ function ImportSection({
                 >
                   サンプル CSV をダウンロード
                 </button>
+                <button
+                  type="button"
+                  onClick={handleDownloadSampleExcel}
+                  style={buttonSecondary}
+                >
+                  サンプル Excel 形式をダウンロード
+                </button>
               </div>
+              <p style={{ fontSize: 10, color: "#9ca3af", margin: "4px 0 0" }}>
+                ※ Excel 形式は .xls(HTML テーブル形式 / Excel ・ Numbers で開けます)。本 PR では Excel インポートは未対応で、サンプルダウンロードのみです。
+              </p>
             </div>
           </details>
 
