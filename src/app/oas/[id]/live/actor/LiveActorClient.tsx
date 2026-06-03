@@ -1,18 +1,23 @@
 "use client";
 
 // src/app/oas/[id]/live/actor/LiveActorClient.tsx
-// Whale Studio Live for Actor — Phase 2-B 最小UI。
+// Whale Studio Live for Actor — Phase 2-D 強化UI。
 //
 // 表示:
-//   - セッション一覧 (= 選択式)
-//   - 参加者一覧 (= 演者が状態把握する対象)
-//   - 直近のイベントログ (= actor_contacted / alert / note_added を含む)
-//   - 演者用イベント追加フォーム (= 対象 participant 選択 + event_type + note)
+//   - セッション選択
+//   - 参加者ごとのカード (= display_name / status / current_step / line_user_id / memo / last_contact_at)
+//   - 各カードに 4 つの Actor 操作:
+//       (a) 接触済みにする (= POST event type=actor_contacted)
+//       (b) メモ追加       (= POST event type=note_added / 履歴に積む)
+//       (c) アラート追加   (= POST event type=alert)
+//       (d) 状態更新       (= PATCH /actor で status / current_step を更新)
+//   - 参加者ごとのイベントログ (= 該当 participant_id でフィルタした履歴 / 最新 10 件)
+//   - 「台本・セリフ候補」placeholder セクション (= 次 Phase で本格実装予定)
 //
-// リアルタイム更新は未実装。各セクションに「再読込」ボタン。
+// リアルタイム更新は未実装。アクション実行後に自動 refetch / 上部「再読込」も維持。
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   type LiveSession,
   type LiveParticipant,
@@ -20,7 +25,6 @@ import {
   SESSION_STATUS_LABEL,
   PARTICIPANT_STATUS_LABEL,
   EVENT_TYPE_LABEL,
-  ACTOR_EVENT_TYPES,
   formatDateTime,
   buttonPrimary,
   buttonSecondary,
@@ -29,8 +33,337 @@ import {
   errorBox,
 } from "../_shared";
 
-type ActorEventType = typeof ACTOR_EVENT_TYPES[number];
+const PARTICIPANT_STATUSES = ["waiting", "active", "stuck", "completed", "dropped"] as const;
+type ParticipantStatus = typeof PARTICIPANT_STATUSES[number];
 
+// ─────────────────────────────────────────────────────────────────────────────
+// ParticipantCard — 参加者 1 名分の詳細 + 操作カード
+// ─────────────────────────────────────────────────────────────────────────────
+function ParticipantCard({
+  participant,
+  events,
+  oaId,
+  sessionId,
+  onMutated,
+  onError,
+}: {
+  participant: LiveParticipant;
+  events: LiveEventLog[];
+  oaId: string;
+  sessionId: string;
+  onMutated: () => void;
+  onError: (msg: string) => void;
+}) {
+  const [busy, setBusy] = useState<null | "contact" | "note" | "alert" | "status">(null);
+  const [noteOpen, setNoteOpen] = useState(false);
+  const [noteText, setNoteText] = useState("");
+  const [alertOpen, setAlertOpen] = useState(false);
+  const [alertText, setAlertText] = useState("");
+  const [statusOpen, setStatusOpen] = useState(false);
+  const [draftStatus, setDraftStatus] = useState<ParticipantStatus>(participant.status);
+  const [draftStep, setDraftStep] = useState(participant.current_step ?? "");
+
+  // 親が refetch して participant 値が変わったら local draft も同期
+  useEffect(() => {
+    if (!statusOpen) {
+      setDraftStatus(participant.status);
+      setDraftStep(participant.current_step ?? "");
+    }
+  }, [participant.status, participant.current_step, statusOpen]);
+
+  const postEvent = async (type: "actor_contacted" | "note_added" | "alert", title: string, detail?: string) => {
+    const res = await fetch(`/api/oas/${oaId}/live/actor/events`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({
+        session_id:     sessionId,
+        type,
+        title,
+        detail:         detail || null,
+        participant_id: participant.id,
+      }),
+    });
+    if (!res.ok) {
+      const j = await res.json().catch(() => null);
+      throw new Error(j?.error?.message ?? `送信に失敗しました (HTTP ${res.status})`);
+    }
+  };
+
+  const handleContact = async () => {
+    setBusy("contact");
+    try {
+      await postEvent("actor_contacted", `${participant.display_name ?? "(匿名)"} に接触`);
+      onMutated();
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "接触記録に失敗しました");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handleNoteSubmit = async () => {
+    if (!noteText.trim()) return;
+    setBusy("note");
+    try {
+      await postEvent("note_added", `${participant.display_name ?? "(匿名)"} にメモ`, noteText.trim());
+      setNoteText("");
+      setNoteOpen(false);
+      onMutated();
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "メモ追加に失敗しました");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handleAlertSubmit = async () => {
+    if (!alertText.trim()) return;
+    setBusy("alert");
+    try {
+      await postEvent("alert", alertText.trim());
+      setAlertText("");
+      setAlertOpen(false);
+      onMutated();
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "アラート追加に失敗しました");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handleStatusSubmit = async () => {
+    setBusy("status");
+    try {
+      const res = await fetch(
+        `/api/oas/${oaId}/live/sessions/${sessionId}/participants/${participant.id}/actor`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            status:       draftStatus,
+            current_step: draftStep.trim() || null,
+          }),
+        },
+      );
+      if (!res.ok) {
+        const j = await res.json().catch(() => null);
+        throw new Error(j?.error?.message ?? `状態更新に失敗しました (HTTP ${res.status})`);
+      }
+      setStatusOpen(false);
+      onMutated();
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "状態更新に失敗しました");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const myEvents = useMemo(
+    () => events.filter((e) => e.participant_id === participant.id).slice(0, 10),
+    [events, participant.id],
+  );
+
+  const statusBg =
+    participant.status === "active"    ? "#d1fae5" :
+    participant.status === "stuck"     ? "#fee2e2" :
+    participant.status === "completed" ? "#e0e7ff" :
+    participant.status === "dropped"   ? "#f3f4f6" :
+                                         "#fef3c7";
+  const statusColor =
+    participant.status === "active"    ? "#065f46" :
+    participant.status === "stuck"     ? "#991b1b" :
+    participant.status === "completed" ? "#3730a3" :
+    participant.status === "dropped"   ? "#6b7280" :
+                                         "#92400e";
+
+  return (
+    <div style={card}>
+      {/* ── 見出し行 ── */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+        <span
+          style={{
+            padding: "2px 10px",
+            borderRadius: 999,
+            fontSize: 11,
+            fontWeight: 700,
+            background: statusBg,
+            color: statusColor,
+          }}
+        >
+          {PARTICIPANT_STATUS_LABEL[participant.status]}
+        </span>
+        <span style={{ fontSize: 16, fontWeight: 700, color: "#111827", flex: 1 }}>
+          {participant.display_name ?? <span style={{ color: "#9ca3af" }}>(匿名)</span>}
+        </span>
+        <span style={{ fontSize: 11, color: "#6b7280" }}>
+          最終接触 {formatDateTime(participant.last_contact_at ?? null)}
+        </span>
+      </div>
+
+      {/* ── 詳細フィールド ── */}
+      <dl style={{ fontSize: 12, color: "#374151", lineHeight: 1.7, margin: "0 0 12px", display: "grid", gridTemplateColumns: "120px 1fr", gap: "2px 8px" }}>
+        <dt style={{ color: "#6b7280" }}>現在ステップ</dt>
+        <dd style={{ margin: 0 }}>{participant.current_step ?? "—"}</dd>
+        <dt style={{ color: "#6b7280" }}>LINE</dt>
+        <dd style={{ margin: 0, fontFamily: "ui-monospace, monospace", fontSize: 11 }}>
+          {participant.line_user_id ?? "—"}
+        </dd>
+        <dt style={{ color: "#6b7280" }}>メモ</dt>
+        <dd style={{ margin: 0, whiteSpace: "pre-wrap" }}>
+          {participant.memo ?? <span style={{ color: "#9ca3af" }}>(なし)</span>}
+        </dd>
+        <dt style={{ color: "#6b7280" }}>最終接触</dt>
+        <dd style={{ margin: 0, color: "#6b7280" }}>{formatDateTime(participant.last_contact_at ?? null)}</dd>
+      </dl>
+
+      {/* ── アクションボタン ── */}
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+        <button onClick={handleContact} style={buttonPrimary} disabled={busy !== null}>
+          {busy === "contact" ? "送信中…" : "接触済みにする"}
+        </button>
+        <button onClick={() => { setNoteOpen((v) => !v); setAlertOpen(false); setStatusOpen(false); }} style={buttonSecondary} disabled={busy !== null}>
+          メモ追加
+        </button>
+        <button onClick={() => { setAlertOpen((v) => !v); setNoteOpen(false); setStatusOpen(false); }} style={{ ...buttonSecondary, color: "#991b1b", borderColor: "#fecaca" }} disabled={busy !== null}>
+          アラート追加
+        </button>
+        <button onClick={() => { setStatusOpen((v) => !v); setNoteOpen(false); setAlertOpen(false); }} style={buttonSecondary} disabled={busy !== null}>
+          状態更新
+        </button>
+      </div>
+
+      {/* ── メモ入力 ── */}
+      {noteOpen && (
+        <div style={{ background: "#f9fafb", padding: 10, borderRadius: 8, marginBottom: 8 }}>
+          <textarea
+            value={noteText}
+            onChange={(e) => setNoteText(e.target.value)}
+            placeholder="メモを入力(例: ヒント1を口頭で渡した / 詰まり気味)"
+            style={{ ...inputStyle, minHeight: 60 }}
+            disabled={busy !== null}
+          />
+          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 6 }}>
+            <button onClick={() => { setNoteOpen(false); setNoteText(""); }} style={buttonSecondary} disabled={busy !== null}>
+              キャンセル
+            </button>
+            <button onClick={handleNoteSubmit} style={buttonPrimary} disabled={busy !== null || !noteText.trim()}>
+              {busy === "note" ? "追加中…" : "メモを追加"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── アラート入力 ── */}
+      {alertOpen && (
+        <div style={{ background: "#fef2f2", padding: 10, borderRadius: 8, marginBottom: 8 }}>
+          <input
+            value={alertText}
+            onChange={(e) => setAlertText(e.target.value)}
+            placeholder="アラート内容(例: ペースが極端に遅れている)"
+            style={inputStyle}
+            disabled={busy !== null}
+          />
+          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 6 }}>
+            <button onClick={() => { setAlertOpen(false); setAlertText(""); }} style={buttonSecondary} disabled={busy !== null}>
+              キャンセル
+            </button>
+            <button onClick={handleAlertSubmit} style={{ ...buttonPrimary, background: "#dc2626" }} disabled={busy !== null || !alertText.trim()}>
+              {busy === "alert" ? "送信中…" : "アラートを追加"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── 状態更新 ── */}
+      {statusOpen && (
+        <div style={{ background: "#f9fafb", padding: 10, borderRadius: 8, marginBottom: 8 }}>
+          <div style={{ display: "grid", gap: 8, gridTemplateColumns: "160px 1fr" }}>
+            <label style={{ fontSize: 11, color: "#374151" }}>
+              状態
+              <select
+                value={draftStatus}
+                onChange={(e) => setDraftStatus(e.target.value as ParticipantStatus)}
+                style={inputStyle}
+                disabled={busy !== null}
+              >
+                {PARTICIPANT_STATUSES.map((s) => (
+                  <option key={s} value={s}>{PARTICIPANT_STATUS_LABEL[s]}</option>
+                ))}
+              </select>
+            </label>
+            <label style={{ fontSize: 11, color: "#374151" }}>
+              現在ステップ
+              <input
+                value={draftStep}
+                onChange={(e) => setDraftStep(e.target.value)}
+                placeholder="(任意)"
+                style={inputStyle}
+                disabled={busy !== null}
+              />
+            </label>
+          </div>
+          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 6 }}>
+            <button onClick={() => setStatusOpen(false)} style={buttonSecondary} disabled={busy !== null}>
+              キャンセル
+            </button>
+            <button onClick={handleStatusSubmit} style={buttonPrimary} disabled={busy !== null}>
+              {busy === "status" ? "保存中…" : "状態を更新"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── 当該 participant のイベント履歴 ── */}
+      <div>
+        <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 6 }}>
+          イベント履歴(最新 {myEvents.length} 件)
+        </div>
+        {myEvents.length === 0 ? (
+          <p style={{ fontSize: 12, color: "#9ca3af", margin: 0 }}>(まだ記録なし)</p>
+        ) : (
+          <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 4 }}>
+            {myEvents.map((e) => (
+              <li
+                key={e.id}
+                style={{
+                  fontSize: 12,
+                  color: "#374151",
+                  padding: "6px 8px",
+                  borderRadius: 6,
+                  background: e.type === "alert" ? "#fef2f2" : "#f9fafb",
+                }}
+              >
+                <span style={{
+                  display: "inline-block",
+                  padding: "1px 6px",
+                  borderRadius: 999,
+                  fontSize: 10,
+                  fontWeight: 700,
+                  background: e.type === "alert" ? "#fee2e2" : "#ecfdf5",
+                  color:      e.type === "alert" ? "#991b1b" : "#065f46",
+                  marginRight: 6,
+                }}>
+                  {EVENT_TYPE_LABEL[e.type] ?? e.type}
+                </span>
+                <strong>{e.title}</strong>
+                {e.detail && <span style={{ color: "#6b7280" }}> — {e.detail}</span>}
+                <span style={{ color: "#9ca3af", marginLeft: 6, fontSize: 11 }}>
+                  {formatDateTime(e.created_at)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LiveActorClient — Actor Console 全体
+// ─────────────────────────────────────────────────────────────────────────────
 export function LiveActorClient({ oaId }: { oaId: string }) {
   const [sessions, setSessions] = useState<LiveSession[]>([]);
   const [participants, setParticipants] = useState<LiveParticipant[]>([]);
@@ -63,47 +396,6 @@ export function LiveActorClient({ oaId }: { oaId: string }) {
 
   useEffect(() => { void fetchAll(); }, [fetchAll]);
 
-  // ── イベント追加 ──
-  const [newParticipantId, setNewParticipantId] = useState<string>("");
-  const [newType, setNewType] = useState<ActorEventType>("actor_contacted");
-  const [newTitle, setNewTitle] = useState("");
-  const [newDetail, setNewDetail] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const canSubmit = !!selectedSessionId && newTitle.trim().length > 0 && !submitting;
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedSessionId) return;
-    setSubmitting(true);
-    setError(null);
-    try {
-      const res = await fetch(`/api/oas/${oaId}/live/actor/events`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          session_id:     selectedSessionId,
-          type:           newType,
-          title:          newTitle.trim(),
-          detail:         newDetail.trim() || null,
-          participant_id: newParticipantId || null,
-        }),
-      });
-      if (!res.ok) {
-        const j = await res.json().catch(() => null);
-        throw new Error(j?.error?.message ?? `送信に失敗しました (HTTP ${res.status})`);
-      }
-      setNewTitle("");
-      setNewDetail("");
-      setNewParticipantId("");
-      await fetchAll();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "送信に失敗しました");
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
   return (
     <div style={{ maxWidth: 960, margin: "0 auto", padding: "8px 0 40px" }}>
       <Link
@@ -116,12 +408,12 @@ export function LiveActorClient({ oaId }: { oaId: string }) {
         Whale Studio Live for Actor
       </h1>
       <p style={{ fontSize: 13, color: "#6b7280", margin: "0 0 16px" }}>
-        Phase 2-B: 演者向け。対象プレイヤーへの接触・メモ・アラートを記録できます。リアルタイム更新は未実装のため、各セクションの「再読込」ボタンで更新してください。
+        Phase 2-D: 担当プレイヤーの状態確認・接触記録・メモ・アラートを記録できます。リアルタイム更新は未実装のため、操作後は自動 refetch、状況の手動更新は「再読込」ボタンで行ってください。
       </p>
 
       {error && <div style={errorBox}>{error}</div>}
 
-      {/* ── セッション ── */}
+      {/* ── セッション選択 ── */}
       <section style={{ ...card, marginBottom: 16 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
           <h2 style={{ fontSize: 16, fontWeight: 700, color: "#111827", margin: 0 }}>
@@ -174,9 +466,6 @@ export function LiveActorClient({ oaId }: { oaId: string }) {
                     <span style={{ fontSize: 14, fontWeight: 600, color: "#111827", flex: 1 }}>
                       {s.name}
                     </span>
-                    <span style={{ fontSize: 11, color: "#9ca3af" }}>
-                      作成 {formatDateTime(s.created_at)}
-                    </span>
                   </button>
                 </li>
               );
@@ -185,148 +474,48 @@ export function LiveActorClient({ oaId }: { oaId: string }) {
         )}
       </section>
 
+      {/* ── 参加者カード群 ── */}
       {selectedSessionId && (
         <>
-          {/* ── 参加者 ── */}
-          <section style={{ ...card, marginBottom: 16 }}>
-            <h2 style={{ fontSize: 16, fontWeight: 700, color: "#111827", margin: "0 0 12px" }}>
-              参加者
+          <div style={{ display: "flex", alignItems: "baseline", marginBottom: 8 }}>
+            <h2 style={{ fontSize: 16, fontWeight: 700, color: "#111827", margin: 0 }}>
+              参加者 ({participants.length})
             </h2>
-            {participants.length === 0 ? (
-              <p style={{ fontSize: 13, color: "#6b7280" }}>参加者がまだ登録されていません。</p>
-            ) : (
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-                <thead>
-                  <tr style={{ textAlign: "left", color: "#6b7280", borderBottom: "1px solid #e5e7eb" }}>
-                    <th style={{ padding: "8px 6px" }}>表示名</th>
-                    <th style={{ padding: "8px 6px" }}>状態</th>
-                    <th style={{ padding: "8px 6px" }}>現在ステップ</th>
-                    <th style={{ padding: "8px 6px" }}>最終接触</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {participants.map((p) => (
-                    <tr key={p.id} style={{ borderBottom: "1px solid #f3f4f6" }}>
-                      <td style={{ padding: "8px 6px", color: "#111827" }}>
-                        {p.display_name ?? <span style={{ color: "#9ca3af" }}>(匿名)</span>}
-                      </td>
-                      <td style={{ padding: "8px 6px", color: "#374151" }}>
-                        {PARTICIPANT_STATUS_LABEL[p.status]}
-                      </td>
-                      <td style={{ padding: "8px 6px", color: "#374151" }}>{p.current_step ?? "—"}</td>
-                      <td style={{ padding: "8px 6px", color: "#6b7280", fontSize: 12 }}>
-                        {formatDateTime(p.last_seen_at)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </section>
-
-          {/* ── イベント追加 (= 演者用) ── */}
-          <section style={{ ...card, marginBottom: 16 }}>
-            <h2 style={{ fontSize: 16, fontWeight: 700, color: "#111827", margin: "0 0 12px" }}>
-              演者用イベント追加
-            </h2>
-            <form onSubmit={handleSubmit} style={{ display: "grid", gap: 8 }}>
-              <div style={{ display: "grid", gap: 8, gridTemplateColumns: "200px 200px 1fr auto" }}>
-                <select
-                  value={newParticipantId}
-                  onChange={(e) => setNewParticipantId(e.target.value)}
-                  style={inputStyle}
-                  disabled={submitting}
-                >
-                  <option value="">— 参加者未指定 —</option>
-                  {participants.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.display_name ?? "(匿名)"}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  value={newType}
-                  onChange={(e) => setNewType(e.target.value as ActorEventType)}
-                  style={inputStyle}
-                  disabled={submitting}
-                >
-                  {ACTOR_EVENT_TYPES.map((t) => (
-                    <option key={t} value={t}>{EVENT_TYPE_LABEL[t] ?? t}</option>
-                  ))}
-                </select>
-                <input
-                  value={newTitle}
-                  onChange={(e) => setNewTitle(e.target.value)}
-                  placeholder="タイトル (例: ヒント1を口頭で渡した / 動線で詰まり中)"
-                  style={inputStyle}
-                  disabled={submitting}
+          </div>
+          {participants.length === 0 ? (
+            <p style={{ fontSize: 13, color: "#6b7280" }}>参加者がまだ登録されていません。</p>
+          ) : (
+            <div style={{ display: "grid", gap: 12, marginBottom: 16 }}>
+              {participants.map((p) => (
+                <ParticipantCard
+                  key={p.id}
+                  participant={p}
+                  events={events}
+                  oaId={oaId}
+                  sessionId={selectedSessionId}
+                  onMutated={() => void fetchAll()}
+                  onError={(msg) => setError(msg)}
                 />
-                <button type="submit" style={buttonPrimary} disabled={!canSubmit}>
-                  {submitting ? "送信中…" : "送信"}
-                </button>
-              </div>
-              <textarea
-                value={newDetail}
-                onChange={(e) => setNewDetail(e.target.value)}
-                placeholder="詳細 (任意 / メモ・状況補足など)"
-                style={{ ...inputStyle, minHeight: 60 }}
-                disabled={submitting}
-              />
-            </form>
-          </section>
-
-          {/* ── イベントログ ── */}
-          <section style={card}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-              <h2 style={{ fontSize: 16, fontWeight: 700, color: "#111827", margin: 0 }}>
-                直近のイベント
-              </h2>
-              <button onClick={() => void fetchAll()} style={buttonSecondary} disabled={loading}>
-                {loading ? "読込中…" : "再読込"}
-              </button>
+              ))}
             </div>
+          )}
 
-            {events.length === 0 ? (
-              <p style={{ fontSize: 13, color: "#6b7280" }}>まだイベントログがありません。</p>
-            ) : (
-              <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 8 }}>
-                {events.map((e) => (
-                  <li
-                    key={e.id}
-                    style={{
-                      padding: "10px 12px",
-                      borderRadius: 10,
-                      border: "1px solid #e5e7eb",
-                      background: "#ffffff",
-                    }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                      <span style={{
-                        padding: "2px 8px",
-                        borderRadius: 999,
-                        fontSize: 11,
-                        fontWeight: 700,
-                        background: e.type === "alert" ? "#fee2e2" : "#ecfdf5",
-                        color:      e.type === "alert" ? "#991b1b" : "#065f46",
-                      }}>
-                        {EVENT_TYPE_LABEL[e.type] ?? e.type}
-                      </span>
-                      <span style={{ fontSize: 13, fontWeight: 600, color: "#111827", flex: 1 }}>
-                        {e.title}
-                      </span>
-                      <span style={{ fontSize: 11, color: "#9ca3af" }}>
-                        {formatDateTime(e.created_at)}
-                      </span>
-                    </div>
-                    {e.detail && (
-                      <p style={{ margin: "4px 0 0", fontSize: 12, color: "#374151", whiteSpace: "pre-wrap" }}>
-                        {e.detail}
-                      </p>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            )}
+          {/* ── 台本 placeholder ── */}
+          <section
+            style={{
+              ...card,
+              background: "#f0f9ff",
+              borderColor: "#bae6fd",
+              color: "#0369a1",
+            }}
+          >
+            <h2 style={{ fontSize: 14, fontWeight: 700, margin: "0 0 6px" }}>
+              台本・セリフ候補
+            </h2>
+            <p style={{ fontSize: 12, margin: 0, lineHeight: 1.8 }}>
+              🐋 演者向けの台本・推奨セリフ表示は次フェーズで追加予定です。<br />
+              現状はメモ・アラート・接触記録を活用してください。
+            </p>
           </section>
         </>
       )}

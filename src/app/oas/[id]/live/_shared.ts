@@ -24,6 +24,12 @@ export type LiveParticipant = {
   /** Phase 2-C: Admin が自由に追記する管理メモ (= 連絡先・特記事項・接触メモ等) */
   memo: string | null;
   last_seen_at: string | null;
+  /**
+   * Phase 2-D: Actor API GET の応答にのみ含まれる server-side 算出フィールド。
+   * 当該 participant に対する最新の LiveEventLog (type='actor_contacted') の created_at。
+   * Admin API では返却しない (= undefined) ため optional。
+   */
+  last_contact_at?: string | null;
   created_at: string;
   updated_at: string;
 };
