@@ -3,16 +3,29 @@
 //
 // 認可: player section (= live_player / live_owner / OA owner / platform admin)
 // 返却:
-//   sessions     : OA で active か直近の LiveSession (最大 50)
-//   participants : 同 OA 内の LiveParticipant (= 一覧表示用 / "他の参加者" 含む)
-//   events       : 同 OA 内の直近 LiveEventLog (最大 100)
-//   me           : ログイン中の Auth user に authUserId で紐づく LiveParticipant、無ければ null
-//                  (= Phase 2-B.5 で追加。"自分に紐づく participant" を安全に特定する)
+//   sessions       : OA の LiveSession 一覧 (= UI のセッション選択用)
+//   participants   : 同 OA 内の LiveParticipant (= "他の参加者" 含む一覧表示用)
+//   events         : 同 OA 内の直近 LiveEventLog
+//   me             : 自分に紐づく LiveParticipant 1 件 / 曖昧時 or 未紐付け時は null
+//   me_candidates  : 自分に紐づく LiveParticipant 一覧 (= 複数セッション参加時の UI 表示用)
+//   me_ambiguous   : true なら me_candidates が複数で sessionId が指定されていない状態
+//                    (= UI は「参加セッションを選択してください」を案内する)
+//
+// Phase 2-B.5 拡張:
+//   - 同じ authUserId は OA 内の複数セッションに存在し得る (= 同一 Player が複数公演に参加 など)。
+//   - そのため me 解決は (oaId, authUserId) だけでなく liveSessionId も含める。
+//   - sessionId 指定時:
+//       me = (oaId, sessionId, authUserId) 一致の 1 件
+//   - sessionId 未指定時:
+//       1) 紐付き候補 (me_candidates) を全件取得
+//       2) status='active' のものを優先。1 件のみなら me に確定
+//       3) active が 2 件以上 → 曖昧 (me=null / me_ambiguous=true)
+//       4) active 0 件なら全候補の最新 createdAt を me として返す
+//       5) 候補ゼロ なら me=null / me_ambiguous=false (= 未紐付け)
 //
 // 注意:
-//   - participants が「自分」かどうかは認証ユーザーに対して LiveParticipant.authUserId 一致で判定する。
-//   - authUserId が未紐付け (= Admin が email だけ登録 / 旧 participant) の場合、me=null になる。
-//     UI は me=null のときは "参加者情報が紐付いていません" を案内し、イベント送信は無効化する想定。
+//   - クライアント由来の participant_id は POST 側でも信用しない (= なりすまし防止)。
+//   - 未紐付け時は POST 側で 409 を返す挙動と組み合わせて整合性を担保。
 
 import type { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
@@ -65,7 +78,9 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
       ? { oaId: params.id, liveSessionId: sessionId }
       : { oaId: params.id };
 
-    const [sessions, participants, events, me] = await Promise.all([
+    // me_candidates: 同 OA 内で自分の authUserId に紐づく participant を全件。
+    // session の status を join 的に取りたいため、include で session を引いておく。
+    const [sessions, participants, events, candidates] = await Promise.all([
       prisma.liveSession.findMany({
         where:   { oaId: params.id },
         orderBy: [{ status: "asc" }, { createdAt: "desc" }],
@@ -81,15 +96,33 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
         orderBy: { createdAt: "desc" },
         take:    100,
       }),
-      // 自分に紐づく participant を特定する。
-      // sessionId 指定があればそのセッション配下のもの、なければ OA 内で最新のものを 1 件。
-      prisma.liveParticipant.findFirst({
-        where: sessionId
-          ? { oaId: params.id, liveSessionId: sessionId, authUserId: auth.user.id }
-          : { oaId: params.id, authUserId: auth.user.id },
+      prisma.liveParticipant.findMany({
+        where:   { oaId: params.id, authUserId: auth.user.id },
+        include: { liveSession: { select: { id: true, status: true } } },
         orderBy: { createdAt: "desc" },
       }),
     ]);
+
+    // ── me 解決 ─────────────────────────────────────────────────────────────
+    let me: typeof candidates[number] | null = null;
+    let meAmbiguous = false;
+
+    if (sessionId) {
+      // sessionId 指定時: そのセッション配下の候補 1 件のみが me
+      me = candidates.find((c) => c.liveSessionId === sessionId) ?? null;
+    } else if (candidates.length > 0) {
+      const activeCandidates = candidates.filter((c) => c.liveSession.status === "active");
+      if (activeCandidates.length === 1) {
+        me = activeCandidates[0];
+      } else if (activeCandidates.length >= 2) {
+        // active が 2 件以上 → 曖昧。UI でセッション選択を促す。
+        me = null;
+        meAmbiguous = true;
+      } else {
+        // active 0 件 → 全候補のうち最新 createdAt (= candidates は createdAt desc で取得済み)
+        me = candidates[0];
+      }
+    }
 
     return ok({
       sessions: sessions.map((s) => ({
@@ -115,6 +148,8 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
         created_at:       e.createdAt,
       })),
       me: me ? toParticipantResponse(me) : null,
+      me_candidates: candidates.map(toParticipantResponse),
+      me_ambiguous: meAmbiguous,
     });
   } catch (err) {
     return serverError(err);

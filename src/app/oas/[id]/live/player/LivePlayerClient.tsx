@@ -36,6 +36,9 @@ export function LivePlayerClient({ oaId }: { oaId: string }) {
   const [participants, setParticipants] = useState<LiveParticipant[]>([]);
   const [events, setEvents] = useState<LiveEventLog[]>([]);
   const [me, setMe] = useState<LiveParticipant | null>(null);
+  // Phase 2-B.5: 複数セッション参加時に UI で選択させるための候補リスト + 曖昧フラグ
+  const [meCandidates, setMeCandidates] = useState<LiveParticipant[]>([]);
+  const [meAmbiguous, setMeAmbiguous] = useState(false);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -54,8 +57,22 @@ export function LivePlayerClient({ oaId }: { oaId: string }) {
       setParticipants(data.participants ?? []);
       setEvents(data.events ?? []);
       setMe(data.me ?? null);
-      if (!selectedSessionId && data.sessions?.length > 0) {
-        setSelectedSessionId(data.sessions[0].id);
+      setMeCandidates(data.me_candidates ?? []);
+      setMeAmbiguous(!!data.me_ambiguous);
+
+      // セッション初期選択ルール:
+      //   - 既に選択済みなら何もしない
+      //   - 紐付き候補が複数 (= meAmbiguous) のときは自動選択しない (= UI で選ばせる)
+      //   - 候補があれば、その候補のうち最新の participant の session を自動選択
+      //   - それも無ければ、sessions の先頭 (= 通常 active 優先で並んでいる)
+      if (!selectedSessionId) {
+        if (data.me_ambiguous) {
+          // 自動選択しない — UI で promotion させる
+        } else if (data.me?.live_session_id) {
+          setSelectedSessionId(data.me.live_session_id);
+        } else if ((data.sessions?.length ?? 0) > 0) {
+          setSelectedSessionId(data.sessions[0].id);
+        }
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "取得に失敗しました");
@@ -130,8 +147,12 @@ export function LivePlayerClient({ oaId }: { oaId: string }) {
         style={{
           ...card,
           marginBottom: 16,
-          borderColor: linkedMe ? "#10b981" : "#fcd34d",
-          background:  linkedMe ? "#ecfdf5" : "#fffbeb",
+          borderColor: linkedMe       ? "#10b981"
+                     : meAmbiguous    ? "#3b82f6"
+                                      : "#fcd34d",
+          background:  linkedMe       ? "#ecfdf5"
+                     : meAmbiguous    ? "#eff6ff"
+                                      : "#fffbeb",
         }}
       >
         <h2 style={{ fontSize: 16, fontWeight: 700, color: "#111827", margin: "0 0 8px" }}>
@@ -148,6 +169,24 @@ export function LivePlayerClient({ oaId }: { oaId: string }) {
             <div>
               <strong>現在ステップ:</strong> {me?.current_step ?? "—"}
             </div>
+          </div>
+        ) : meAmbiguous ? (
+          <div style={{ fontSize: 13, color: "#1e40af", lineHeight: 1.8 }}>
+            <p style={{ margin: 0 }}>
+              参加中のセッションが複数あります。下記の「Live セッション」一覧から、操作したいセッションを選択してください。
+            </p>
+            {meCandidates.length > 0 && (
+              <ul style={{ marginTop: 6, paddingLeft: 18 }}>
+                {meCandidates.map((c) => {
+                  const s = sessions.find((ss) => ss.id === c.live_session_id);
+                  return (
+                    <li key={c.id} style={{ marginBottom: 2 }}>
+                      {s ? `${s.name} (${s.status})` : c.live_session_id} — {c.display_name ?? "(匿名)"}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
           </div>
         ) : (
           <div style={{ fontSize: 13, color: "#92400e", lineHeight: 1.8 }}>
