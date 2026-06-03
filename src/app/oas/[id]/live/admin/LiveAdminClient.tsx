@@ -808,7 +808,10 @@ export function LiveAdminClient({ oaId }: { oaId: string }) {
 
   // Phase 2-G: Work 一覧 + 選択中 Work のフェーズ一覧
   // Phase 2-G.2: API path 修正 (= /api/oas/[id]/works ではなく /api/works?oa_id=xxx)
-  //              + loading / error state を追加して UI で可視化
+  // Phase 2-G.3: response shape 修正 — /api/works は ok(works.map(...)) を返すため、
+  //              data 直下が配列。誤って data.works を読んでいて空配列になっていた。
+  //              さらに publish_status 既定を "active" に置いていたため、null/undefined
+  //              でも除外されず正しく拾うよう "draft" にしておく (= drafts も含める)。
   const fetchWorks = useCallback(async () => {
     setWorksLoading(true);
     setWorksError(null);
@@ -816,10 +819,18 @@ export function LiveAdminClient({ oaId }: { oaId: string }) {
       const res = await fetch(`/api/works?oa_id=${encodeURIComponent(oaId)}`, { credentials: "include" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
-      const list = (json?.data?.works ?? json?.works ?? []) as Array<{ id: string; title: string; publish_status?: string }>;
-      // archived / paused 以外を選択肢に出す (= draft / active は OK)
+      // /api/works の shape: { success: true, data: WorkListItem[] }
+      // 後方互換として data.works / works も読めるようにフォールバック
+      const list = Array.isArray(json?.data)
+        ? (json.data as Array<{ id: string; title: string; publish_status?: string }>)
+        : Array.isArray(json?.data?.works)
+          ? (json.data.works as Array<{ id: string; title: string; publish_status?: string }>)
+          : Array.isArray(json?.works)
+            ? (json.works as Array<{ id: string; title: string; publish_status?: string }>)
+            : [];
+      // archived / paused 以外を選択肢に出す (= draft / active / 未設定 を含む)
       const filtered = list.filter((w) => {
-        const s = w.publish_status ?? "active";
+        const s = w.publish_status; // null / undefined はそのまま通す
         return s !== "archived" && s !== "paused";
       });
       setWorks(filtered.map((w) => ({ id: w.id, title: w.title })));
