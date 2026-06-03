@@ -391,7 +391,7 @@ function ParticipantRow({
             />
           </label>
 
-          {/* ── 担当 Actor 割当 (Phase 2-E) ── */}
+          {/* ── 担当 Actor 割当 (Phase 2-E / 2-F で解除追加) ── */}
           <div style={{ fontSize: 11, color: "#374151" }}>
             担当 Actor:
             {myAssignments.length === 0 ? (
@@ -401,10 +401,16 @@ function ParticipantRow({
                 {myAssignments.map((as) => {
                   const a = actors.find((ac) => ac.id === as.actor_id);
                   return (
-                    <li key={as.id} style={{ background: "#ecfdf5", color: "#065f46", padding: "2px 8px", borderRadius: 999, fontSize: 11 }}>
-                      {a?.display_name ?? "(unknown)"}
-                      {a?.character_name && <span style={{ color: "#10b981", marginLeft: 4 }}>/ {a.character_name}</span>}
-                    </li>
+                    <AssignmentChip
+                      key={as.id}
+                      assignmentId={as.id}
+                      actorName={a?.display_name ?? "(unknown)"}
+                      characterName={a?.character_name ?? null}
+                      oaId={oaId}
+                      sessionId={sessionId}
+                      onRemoved={onAssignmentChanged}
+                      onError={onError}
+                    />
                   );
                 })}
               </ul>
@@ -431,6 +437,74 @@ function ParticipantRow({
         </div>
       </td>
     </tr>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AssignmentChip — 担当割当 1 件のチップ表示 + 解除ボタン (Phase 2-F)
+// ─────────────────────────────────────────────────────────────────────────────
+function AssignmentChip({
+  assignmentId,
+  actorName,
+  characterName,
+  oaId,
+  sessionId,
+  onRemoved,
+  onError,
+}: {
+  assignmentId: string;
+  actorName: string;
+  characterName: string | null;
+  oaId: string;
+  sessionId: string;
+  onRemoved: () => void;
+  onError: (msg: string) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+
+  const handleRemove = async () => {
+    if (!confirm(`「${actorName}」の担当を解除しますか?`)) return;
+    setBusy(true);
+    try {
+      const res = await fetch(
+        `/api/oas/${oaId}/live/sessions/${sessionId}/assignments/${assignmentId}`,
+        { method: "DELETE", credentials: "include" },
+      );
+      if (!res.ok && res.status !== 204) {
+        const j = await res.json().catch(() => null);
+        throw new Error(j?.error?.message ?? `担当解除に失敗しました (HTTP ${res.status})`);
+      }
+      onRemoved();
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "担当解除に失敗しました");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <li style={{ background: "#ecfdf5", color: "#065f46", padding: "2px 4px 2px 8px", borderRadius: 999, fontSize: 11, display: "inline-flex", alignItems: "center", gap: 4 }}>
+      {actorName}
+      {characterName && <span style={{ color: "#10b981" }}>/ {characterName}</span>}
+      <button
+        type="button"
+        onClick={handleRemove}
+        disabled={busy}
+        title="この Actor の担当を解除"
+        style={{
+          border: "none",
+          background: "transparent",
+          color: "#065f46",
+          cursor: busy ? "not-allowed" : "pointer",
+          padding: "0 4px",
+          fontSize: 13,
+          lineHeight: 1,
+        }}
+        aria-label={`${actorName} の担当を解除`}
+      >
+        {busy ? "…" : "×"}
+      </button>
+    </li>
   );
 }
 
@@ -1175,6 +1249,12 @@ function InstructionsSection({
     }
   };
 
+  // Phase 2-F: archived filter / 一覧表示の整理
+  const [showArchived, setShowArchived] = useState(false);
+  const visibleInstructions = showArchived
+    ? instructions
+    : instructions.filter((i) => i.status !== "archived");
+
   return (
     <section style={{ ...card, marginBottom: 16 }}>
       {sectionTitle("Actor 向け指示")}
@@ -1208,56 +1288,199 @@ function InstructionsSection({
         </div>
       </form>
 
-      {instructions.length === 0 ? (
-        <p style={{ fontSize: 13, color: "#6b7280" }}>指示はまだありません。</p>
+      {/* archived 表示切替 */}
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
+        <label style={{ fontSize: 11, color: "#6b7280", display: "inline-flex", alignItems: "center", gap: 4 }}>
+          <input
+            type="checkbox"
+            checked={showArchived}
+            onChange={(e) => setShowArchived(e.target.checked)}
+          />
+          アーカイブも表示
+        </label>
+      </div>
+
+      {visibleInstructions.length === 0 ? (
+        <p style={{ fontSize: 13, color: "#6b7280" }}>
+          {instructions.length === 0 ? "指示はまだありません。" : "表示対象の指示がありません(アーカイブ済みのみ存在)。"}
+        </p>
       ) : (
         <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 8 }}>
-          {instructions.map((i) => {
-            const p = i.participant_id ? participants.find((pp) => pp.id === i.participant_id) : null;
-            const a = i.actor_id ? actors.find((aa) => aa.id === i.actor_id) : null;
-            return (
-              <li
-                key={i.id}
-                style={{
-                  border: "1px solid #e5e7eb",
-                  borderRadius: 10,
-                  padding: 10,
-                  background: i.status === "active" ? "#ffffff" : "#f9fafb",
-                  opacity:    i.status === "archived" ? 0.6 : 1,
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                  <span style={{
-                    padding: "1px 8px", borderRadius: 999, fontSize: 10, fontWeight: 700,
-                    background: i.priority === "high" ? "#fee2e2" : i.priority === "low" ? "#f3f4f6" : "#fef3c7",
-                    color:      i.priority === "high" ? "#991b1b" : i.priority === "low" ? "#6b7280" : "#92400e",
-                  }}>
-                    優先 {INSTR_PRIORITY_LABEL[i.priority]}
-                  </span>
-                  <span style={{
-                    padding: "1px 8px", borderRadius: 999, fontSize: 10, fontWeight: 700,
-                    background: i.status === "active" ? "#fef3c7" : i.status === "done" ? "#d1fae5" : "#e5e7eb",
-                    color:      i.status === "active" ? "#92400e" : i.status === "done" ? "#065f46" : "#6b7280",
-                  }}>
-                    {INSTR_STATUS_LABEL[i.status]}
-                  </span>
-                  <strong style={{ fontSize: 13, color: "#111827", flex: 1 }}>{i.title}</strong>
-                  <span style={{ fontSize: 11, color: "#9ca3af" }}>{formatDateTime(i.created_at)}</span>
-                </div>
-                <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 4 }}>
-                  対象: {p?.display_name ?? "(セッション全体)"} / Actor: {a?.display_name ?? "(全員)"}
-                </div>
-                <p style={{ margin: "4px 0", fontSize: 13, color: "#374151", whiteSpace: "pre-wrap" }}>{i.body}</p>
-                <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-                  {i.status !== "active"   && <button onClick={() => handleStatus(i.id, "active")}   style={buttonSecondary} disabled={statusBusyId === i.id}>未完了に戻す</button>}
-                  {i.status !== "done"     && <button onClick={() => handleStatus(i.id, "done")}     style={buttonSecondary} disabled={statusBusyId === i.id}>完了にする</button>}
-                  {i.status !== "archived" && <button onClick={() => handleStatus(i.id, "archived")} style={buttonSecondary} disabled={statusBusyId === i.id}>アーカイブ</button>}
-                </div>
-              </li>
-            );
-          })}
+          {visibleInstructions.map((i) => (
+            <InstructionRow
+              key={i.id}
+              instruction={i}
+              participants={participants}
+              actors={actors}
+              oaId={oaId}
+              sessionId={sessionId}
+              busy={statusBusyId === i.id}
+              onStatus={handleStatus}
+              onChanged={onChanged}
+              onError={onError}
+            />
+          ))}
         </ul>
       )}
     </section>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// InstructionRow — 指示 1 件の表示 + inline 編集 (Phase 2-F)
+// ─────────────────────────────────────────────────────────────────────────────
+function InstructionRow({
+  instruction: i,
+  participants,
+  actors,
+  oaId,
+  sessionId,
+  busy,
+  onStatus,
+  onChanged,
+  onError,
+}: {
+  instruction: LiveActorInstruction;
+  participants: LiveParticipant[];
+  actors: LiveActor[];
+  oaId: string;
+  sessionId: string;
+  busy: boolean;
+  onStatus: (id: string, status: LiveActorInstruction["status"]) => void;
+  onChanged: () => void;
+  onError: (msg: string) => void;
+}) {
+  const p = i.participant_id ? participants.find((pp) => pp.id === i.participant_id) : null;
+  const a = i.actor_id ? actors.find((aa) => aa.id === i.actor_id) : null;
+
+  const [editing, setEditing] = useState(false);
+  const [draftTitle, setDraftTitle] = useState(i.title);
+  const [draftBody, setDraftBody] = useState(i.body);
+  const [draftPriority, setDraftPriority] = useState<LiveActorInstruction["priority"]>(i.priority);
+  const [draftPid, setDraftPid] = useState(i.participant_id ?? "");
+  const [draftAid, setDraftAid] = useState(i.actor_id ?? "");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!editing) {
+      setDraftTitle(i.title);
+      setDraftBody(i.body);
+      setDraftPriority(i.priority);
+      setDraftPid(i.participant_id ?? "");
+      setDraftAid(i.actor_id ?? "");
+    }
+  }, [i, editing]);
+
+  const handleSave = async () => {
+    if (!draftTitle.trim() || !draftBody.trim()) return;
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/oas/${oaId}/live/sessions/${sessionId}/instructions/${i.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          title:          draftTitle.trim(),
+          body:           draftBody.trim(),
+          priority:       draftPriority,
+          participant_id: draftPid || null,
+          actor_id:       draftAid || null,
+        }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => null);
+        throw new Error(j?.error?.message ?? `指示更新に失敗しました (HTTP ${res.status})`);
+      }
+      setEditing(false);
+      onChanged();
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "指示更新に失敗しました");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (editing) {
+    return (
+      <li
+        style={{
+          border: "1px solid #10b981",
+          borderRadius: 10,
+          padding: 10,
+          background: "#f0fdf4",
+        }}
+      >
+        <div style={{ display: "grid", gap: 8 }}>
+          <div style={{ display: "grid", gap: 8, gridTemplateColumns: "1fr 120px 1fr 1fr" }}>
+            <input value={draftTitle} onChange={(e) => setDraftTitle(e.target.value)} placeholder="タイトル" style={inputStyle} disabled={saving} />
+            <select value={draftPriority} onChange={(e) => setDraftPriority(e.target.value as LiveActorInstruction["priority"])} style={inputStyle} disabled={saving}>
+              <option value="low">優先度: 低</option>
+              <option value="normal">優先度: 中</option>
+              <option value="high">優先度: 高</option>
+            </select>
+            <select value={draftPid} onChange={(e) => setDraftPid(e.target.value)} style={inputStyle} disabled={saving}>
+              <option value="">— 参加者: 全体 —</option>
+              {participants.map((pp) => (
+                <option key={pp.id} value={pp.id}>{pp.display_name ?? "(匿名)"}</option>
+              ))}
+            </select>
+            <select value={draftAid} onChange={(e) => setDraftAid(e.target.value)} style={inputStyle} disabled={saving}>
+              <option value="">— Actor: 全員 —</option>
+              {actors.map((aa) => (
+                <option key={aa.id} value={aa.id}>{aa.display_name}{aa.character_name ? ` / ${aa.character_name}` : ""}</option>
+              ))}
+            </select>
+          </div>
+          <textarea value={draftBody} onChange={(e) => setDraftBody(e.target.value)} placeholder="本文" style={{ ...inputStyle, minHeight: 60 }} disabled={saving} />
+          <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+            <button onClick={() => setEditing(false)} style={buttonSecondary} disabled={saving}>キャンセル</button>
+            <button onClick={handleSave} style={buttonPrimary} disabled={saving || !draftTitle.trim() || !draftBody.trim()}>
+              {saving ? "保存中…" : "保存"}
+            </button>
+          </div>
+        </div>
+      </li>
+    );
+  }
+
+  return (
+    <li
+      style={{
+        border: "1px solid #e5e7eb",
+        borderRadius: 10,
+        padding: 10,
+        background: i.status === "active" ? "#ffffff" : "#f9fafb",
+        opacity:    i.status === "archived" ? 0.6 : 1,
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+        <span style={{
+          padding: "1px 8px", borderRadius: 999, fontSize: 10, fontWeight: 700,
+          background: i.priority === "high" ? "#fee2e2" : i.priority === "low" ? "#f3f4f6" : "#fef3c7",
+          color:      i.priority === "high" ? "#991b1b" : i.priority === "low" ? "#6b7280" : "#92400e",
+        }}>
+          優先 {INSTR_PRIORITY_LABEL[i.priority]}
+        </span>
+        <span style={{
+          padding: "1px 8px", borderRadius: 999, fontSize: 10, fontWeight: 700,
+          background: i.status === "active" ? "#fef3c7" : i.status === "done" ? "#d1fae5" : "#e5e7eb",
+          color:      i.status === "active" ? "#92400e" : i.status === "done" ? "#065f46" : "#6b7280",
+        }}>
+          {INSTR_STATUS_LABEL[i.status]}
+        </span>
+        <strong style={{ fontSize: 13, color: "#111827", flex: 1 }}>{i.title}</strong>
+        <span style={{ fontSize: 11, color: "#9ca3af" }}>{formatDateTime(i.created_at)}</span>
+      </div>
+      <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 4 }}>
+        対象: {p?.display_name ?? "(セッション全体)"} / Actor: {a?.display_name ?? "(全員)"}
+      </div>
+      <p style={{ margin: "4px 0", fontSize: 13, color: "#374151", whiteSpace: "pre-wrap" }}>{i.body}</p>
+      <div style={{ display: "flex", gap: 6, justifyContent: "flex-end", flexWrap: "wrap" }}>
+        <button onClick={() => setEditing(true)} style={buttonSecondary} disabled={busy}>編集</button>
+        {i.status !== "active"   && <button onClick={() => onStatus(i.id, "active")}   style={buttonSecondary} disabled={busy}>未完了に戻す</button>}
+        {i.status !== "done"     && <button onClick={() => onStatus(i.id, "done")}     style={buttonSecondary} disabled={busy}>完了にする</button>}
+        {i.status !== "archived" && <button onClick={() => onStatus(i.id, "archived")} style={buttonSecondary} disabled={busy}>アーカイブ</button>}
+      </div>
+    </li>
   );
 }
