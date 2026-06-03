@@ -562,18 +562,29 @@ export function LiveActorClient({ oaId }: { oaId: string }) {
     return [...mine, ...others];
   }, [participants, assignedParticipantIds, linkedToMe]);
 
+  // Phase 2-F: priority desc (high→normal→low) + createdAt desc でソート
+  const PRIORITY_RANK: Record<LiveActorInstruction["priority"], number> = { high: 0, normal: 1, low: 2 };
+  const sortByPriorityThenCreated = (xs: LiveActorInstruction[]) =>
+    [...xs].sort((x, y) => {
+      const r = PRIORITY_RANK[x.priority] - PRIORITY_RANK[y.priority];
+      if (r !== 0) return r;
+      return y.created_at.localeCompare(x.created_at);
+    });
+
   // 自分宛て instructions: actorId が自分の myActorIds に含まれる OR actorId が null
+  // active のみ / 優先度高い順
   const myInstructions = useMemo(() => {
-    if (!linkedToMe) {
-      // 未紐付け Actor は actorId=null の instructions のみ "自分宛て扱い"
-      return instructions.filter((i) => i.actor_id === null && i.status === "active");
-    }
-    return instructions.filter(
-      (i) => (i.actor_id === null || myActorIds.includes(i.actor_id)) && i.status === "active",
-    );
+    const base = linkedToMe
+      ? instructions.filter(
+          (i) => (i.actor_id === null || myActorIds.includes(i.actor_id)) && i.status === "active",
+        )
+      : // 未紐付け Actor は actorId=null の instructions のみ "自分宛て扱い"
+        instructions.filter((i) => i.actor_id === null && i.status === "active");
+    return sortByPriorityThenCreated(base);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [instructions, myActorIds, linkedToMe]);
 
-  // participant ごとの instructions マップ (= active のみ表示)
+  // participant ごとの instructions マップ (= active のみ / 優先度ソート済み)
   const instructionsByPid = useMemo(() => {
     const map = new Map<string, LiveActorInstruction[]>();
     for (const i of instructions) {
@@ -584,7 +595,12 @@ export function LiveActorClient({ oaId }: { oaId: string }) {
       list.push(i);
       map.set(i.participant_id, list);
     }
+    // 各 participant のリストを優先度順にソート
+    for (const [pid, list] of map) {
+      map.set(pid, sortByPriorityThenCreated(list));
+    }
     return map;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [instructions, myActorIds, linkedToMe]);
 
   return (
