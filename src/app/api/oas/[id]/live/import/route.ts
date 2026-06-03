@@ -51,6 +51,7 @@ import { ok, badRequest, notFound, serverError } from "@/lib/api-response";
 import { authorizeLive } from "@/lib/live-auth";
 import Papa from "papaparse";
 import iconv from "iconv-lite";
+import * as XLSX from "xlsx";
 
 export const dynamic = "force-dynamic";
 
@@ -114,6 +115,56 @@ function decodeBuffer(buf: Buffer): { text: string; encoding: "utf-8" | "shift_j
     return { text: iconv.decode(buf, "Shift_JIS"), encoding: "shift_jis" };
   }
   return { text: asUtf8, encoding: "utf-8" };
+}
+
+// Phase 2-H: xlsx 判定 + パース
+//
+// セキュリティ補足: 本プロジェクトでは npm の `xlsx` パッケージを採用。
+// 当該パッケージには Prototype Pollution / ReDoS の高 severity 警告がある (GHSA-4r6h-8v6p-xvw6 / GHSA-5pgg-2g8v-p4x9 / 修正なし)。
+// 本機能は live admin 集合 (= platform admin / OA owner / live_owner / live_admin)
+// のみアップロード可能で、これらのロールは既存 API で DB フルアクセス可能なため、
+// 当該脆弱性が新規攻撃ベクトルを増やすことは無い (= 既存の脅威モデルに収まる)。
+// 加えて parse 時には cellFormula / cellHTML / bookVBA を全て無効化し、
+// 信頼境界の意味でも attack surface を最小化する。
+function isXlsxFile(filename: string, mime: string): boolean {
+  const name = filename.toLowerCase();
+  if (name.endsWith(".xlsx") || name.endsWith(".xlsm")) return true;
+  if (mime === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet") return true;
+  if (mime === "application/vnd.ms-excel.sheet.macroEnabled.12") return true;
+  return false;
+}
+
+function parseXlsx(buf: Buffer): { headers: string[]; rows: Record<string, string>[] } {
+  const workbook = XLSX.read(buf, {
+    type:         "buffer",
+    cellFormula:  false,
+    cellHTML:     false,
+    cellNF:       false,
+    cellStyles:   false,
+    sheetStubs:   false,
+    bookVBA:      false,
+  });
+  const firstSheetName = workbook.SheetNames[0];
+  if (!firstSheetName) throw new Error("シートがありません");
+  const sheet = workbook.Sheets[firstSheetName];
+  // 2D 配列 (= [[header...], [row1...], ...]) で取り出す
+  const aoa = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
+    header:  1,
+    defval:  "",
+    raw:     false, // = 数値・日付も文字列化 (CSV と揃える)
+    blankrows: false,
+  });
+  if (aoa.length === 0) return { headers: [], rows: [] };
+  const headers = (aoa[0] as unknown[]).map((v) => String(v ?? "").trim());
+  const rows = aoa.slice(1).map((row) => {
+    const out: Record<string, string> = {};
+    for (let i = 0; i < headers.length; i++) {
+      const v = (row as unknown[])[i];
+      out[headers[i]] = v === undefined || v === null ? "" : String(v);
+    }
+    return out;
+  });
+  return { headers, rows };
 }
 
 function detectDelimiter(filename: string, content: string, override: "auto" | "comma" | "tab"): "," | "\t" {
@@ -214,25 +265,49 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   if (file.size > 5 * 1024 * 1024) return badRequest("ファイルサイズは 5MB 以内にしてください");
 
   const buf = Buffer.from(await file.arrayBuffer());
-  const decoded = decodeBuffer(buf);
-  const delim = detectDelimiter(file.name, decoded.text, options.delimiter);
+  const isXlsx = isXlsxFile(file.name, file.type);
 
-  // ── CSV parse ────────────────────────────────────────────────────────
-  const parsed = Papa.parse<Record<string, string>>(decoded.text, {
-    header:           true,
-    delimiter:        delim,
-    skipEmptyLines:   true,
-    transformHeader:  (h) => h.trim(),
-  });
+  // ── parse: xlsx 分岐 + CSV/TSV 既存フロー ──────────────────────────
+  let inputHeaders: string[] = [];
+  let parsedData: Record<string, string>[] = [];
+  let fileFormat: "xlsx" | "csv" | "tsv" = "csv";
+  let detectedEncoding: "utf-8" | "shift_jis" | "n/a" = "n/a";
+  let detectedDelimiter: "comma" | "tab" | "n/a" = "n/a";
 
-  if (parsed.errors.length > 0) {
-    const msg = parsed.errors.slice(0, 3).map((e) => `${e.row ?? "?"}: ${e.message}`).join(" / ");
-    return badRequest(`CSV 解析エラー: ${msg}`);
+  if (isXlsx) {
+    fileFormat = "xlsx";
+    try {
+      const parsed = parseXlsx(buf);
+      inputHeaders = parsed.headers;
+      parsedData = parsed.rows;
+    } catch (err) {
+      return badRequest(`Excel 解析エラー: ${err instanceof Error ? err.message : "unknown"}`);
+    }
+  } else {
+    const decoded = decodeBuffer(buf);
+    const delim = detectDelimiter(file.name, decoded.text, options.delimiter);
+    detectedEncoding = decoded.encoding;
+    detectedDelimiter = delim === "\t" ? "tab" : "comma";
+    fileFormat = delim === "\t" ? "tsv" : "csv";
+
+    const parsed = Papa.parse<Record<string, string>>(decoded.text, {
+      header:           true,
+      delimiter:        delim,
+      skipEmptyLines:   true,
+      transformHeader:  (h) => h.trim(),
+    });
+
+    if (parsed.errors.length > 0) {
+      const msg = parsed.errors.slice(0, 3).map((e) => `${e.row ?? "?"}: ${e.message}`).join(" / ");
+      return badRequest(`CSV 解析エラー: ${msg}`);
+    }
+
+    inputHeaders = parsed.meta.fields ?? [];
+    parsedData = (parsed.data ?? []) as Record<string, string>[];
   }
 
   // ── 列マッピング解決 ─────────────────────────────────────────────────
   const headerFields: Record<string, InternalField | null> = {};
-  const inputHeaders = parsed.meta.fields ?? [];
 
   // 任意上書き: form の column_mapping (= { "<header>": "<field>" })
   let userMapping: Record<string, InternalField> = {};
@@ -256,7 +331,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   }
 
   // ── 各行を ParsedRow に変換 ──────────────────────────────────────────
-  const rows: ParsedRow[] = (parsed.data ?? []).map((raw) => {
+  const rows: ParsedRow[] = parsedData.map((raw) => {
     const get = (f: InternalField): string | null => {
       const h = fieldToHeader.get(f);
       if (!h) return null;
@@ -303,8 +378,9 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   if (options.mode === "preview") {
     return ok({
       mode:               "preview",
-      encoding:           decoded.encoding,
-      delimiter:          delim === "\t" ? "tab" : "comma",
+      file_format:        fileFormat,
+      encoding:           detectedEncoding,
+      delimiter:          detectedDelimiter,
       detected_columns:   Object.entries(headerFields).map(([h, f]) => ({ header: h, mapped_field: f })),
       preview_rows:       rows.slice(0, 20).map((r) => ({
         raw:                r.raw,
@@ -544,8 +620,9 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   return ok({
     mode:         "apply",
-    encoding:     decoded.encoding,
-    delimiter:    delim === "\t" ? "tab" : "comma",
+    file_format:  fileFormat,
+    encoding:     detectedEncoding,
+    delimiter:    detectedDelimiter,
     created,
     skipped,
     overwritten,

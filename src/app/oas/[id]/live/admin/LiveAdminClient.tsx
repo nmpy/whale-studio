@@ -1918,10 +1918,37 @@ function TeamsSection({
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ImportSection — CSV/TSV import wizard (Phase 2-G / 5-step)
+// ImportSection — CSV/TSV/XLSX import wizard (Phase 2-G / 2-H で preset + xlsx 対応)
 // ─────────────────────────────────────────────────────────────────────────────
+type InternalImportField =
+  | "display_name" | "email" | "line_user_id" | "reservation_number"
+  | "__date" | "__time" | "team_name" | "current_step" | "memo" | "status";
+type LiveImportMapping = Partial<Record<InternalImportField, string>>;
+
+type BuiltinPreset = {
+  id: string; name: string; description: string;
+  mapping: LiveImportMapping;
+  teamMode: "by_reservation" | "by_4" | "by_team_name_column" | "none";
+  duplicateMode: "skip" | "overwrite" | "duplicate";
+};
+
+type SavedPreset = {
+  id: string;
+  oa_id: string;
+  name: string;
+  description: string | null;
+  mapping: LiveImportMapping;
+  team_mode: "by_reservation" | "by_4" | "by_team_name_column" | "none";
+  duplicate_mode: "skip" | "overwrite" | "duplicate";
+  delimiter: "auto" | "comma" | "tab" | null;
+  encoding: "auto" | "utf-8" | "shift_jis" | null;
+  created_at: string;
+  updated_at: string;
+};
+
 type PreviewResult = {
   mode: "preview";
+  file_format?: "csv" | "tsv" | "xlsx";
   encoding: string;
   delimiter: string;
   detected_columns: { header: string; mapped_field: string | null }[];
@@ -1974,6 +2001,130 @@ function ImportSection({
   const [busyMode, setBusyMode] = useState<"preview" | "apply" | null>(null);
   // Phase 2-G では minimum: 列マッピングの上書きは preview の結果を見て手動編集可
   const [mappingOverrides, setMappingOverrides] = useState<Record<string, string>>({});
+  // Phase 2-H: preset 関連 state
+  const [builtinPresets, setBuiltinPresets] = useState<BuiltinPreset[]>([]);
+  const [savedPresets, setSavedPresets] = useState<SavedPreset[]>([]);
+  const [presetsLoaded, setPresetsLoaded] = useState(false);
+  const [selectedPresetKey, setSelectedPresetKey] = useState<string>(""); // "builtin:xxx" | "saved:xxx" | ""
+  const [presetNotice, setPresetNotice] = useState<string | null>(null);
+  const [presetSavingBusy, setPresetSavingBusy] = useState(false);
+
+  // ── preset 一覧取得 ──
+  useEffect(() => {
+    if (!open || presetsLoaded) return;
+    (async () => {
+      try {
+        const res = await fetch(`/api/oas/${oaId}/live/import-presets`, { credentials: "include" });
+        if (!res.ok) return;
+        const json = await res.json();
+        const data = json?.data ?? json;
+        setBuiltinPresets((data?.builtin as BuiltinPreset[]) ?? []);
+        setSavedPresets((data?.saved as SavedPreset[]) ?? []);
+        setPresetsLoaded(true);
+      } catch {
+        // silent (= preset 無くても CSV import は動く)
+      }
+    })();
+  }, [open, presetsLoaded, oaId]);
+
+  // ── preset 適用 ──
+  const applyPreset = (key: string) => {
+    setSelectedPresetKey(key);
+    setPresetNotice(null);
+    if (!key) return;
+    const [kind, id] = key.split(":");
+    if (kind === "builtin") {
+      const p = builtinPresets.find((x) => x.id === id);
+      if (!p) return;
+      // mapping: { field: header } → mappingOverrides: { header: field }
+      const overrides: Record<string, string> = {};
+      for (const [field, header] of Object.entries(p.mapping)) {
+        if (header) overrides[header] = field;
+      }
+      setMappingOverrides(overrides);
+      setTeaming(p.teamMode);
+      setDedup(p.duplicateMode);
+      setPresetNotice(`プリセット「${p.name}」を適用しました`);
+    } else if (kind === "saved") {
+      const p = savedPresets.find((x) => x.id === id);
+      if (!p) return;
+      const overrides: Record<string, string> = {};
+      for (const [field, header] of Object.entries(p.mapping)) {
+        if (header) overrides[header] = field;
+      }
+      setMappingOverrides(overrides);
+      setTeaming(p.team_mode);
+      setDedup(p.duplicate_mode);
+      if (p.delimiter) setDelimiter(p.delimiter);
+      setPresetNotice(`プリセット「${p.name}」を適用しました`);
+    }
+  };
+
+  // ── 現在のマッピングを保存 ──
+  const handleSavePreset = async () => {
+    const name = prompt("プリセット名を入力してください(例: 自社チケットサイト用)");
+    if (!name || !name.trim()) return;
+    setPresetSavingBusy(true);
+    try {
+      // mappingOverrides は { header: field } 形式なので、{ field: header } に反転
+      const mapping: Record<string, string> = {};
+      for (const [header, field] of Object.entries(mappingOverrides)) {
+        if (field) mapping[field] = header;
+      }
+      const res = await fetch(`/api/oas/${oaId}/live/import-presets`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          name:           name.trim(),
+          mapping,
+          team_mode:      teaming,
+          duplicate_mode: dedup,
+          delimiter,
+        }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => null);
+        throw new Error(j?.error?.message ?? `保存に失敗しました (HTTP ${res.status})`);
+      }
+      const json = await res.json();
+      const saved = (json?.data ?? json) as SavedPreset;
+      setSavedPresets((prev) => [...prev, saved]);
+      setSelectedPresetKey(`saved:${saved.id}`);
+      setPresetNotice(`プリセット「${saved.name}」を保存しました`);
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "プリセット保存に失敗しました");
+    } finally {
+      setPresetSavingBusy(false);
+    }
+  };
+
+  // ── プリセットを削除 ──
+  const handleDeletePreset = async () => {
+    if (!selectedPresetKey.startsWith("saved:")) return;
+    const id = selectedPresetKey.slice("saved:".length);
+    const p = savedPresets.find((x) => x.id === id);
+    if (!p) return;
+    if (!confirm(`プリセット「${p.name}」を削除しますか?`)) return;
+    setPresetSavingBusy(true);
+    try {
+      const res = await fetch(`/api/oas/${oaId}/live/import-presets/${id}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok && res.status !== 204) {
+        const j = await res.json().catch(() => null);
+        throw new Error(j?.error?.message ?? `削除に失敗しました (HTTP ${res.status})`);
+      }
+      setSavedPresets((prev) => prev.filter((x) => x.id !== id));
+      setSelectedPresetKey("");
+      setPresetNotice(`プリセット「${p.name}」を削除しました`);
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "プリセット削除に失敗しました");
+    } finally {
+      setPresetSavingBusy(false);
+    }
+  };
 
   // サンプル CSV / Excel(HTML table 形式 .xls) の共通データ
   const SAMPLE_HEADERS = ["予約番号", "参加日", "開始時間", "チーム名", "参加者名", "メールアドレス", "LINE ID", "現在ステップ", "メモ"];
@@ -2142,16 +2293,93 @@ function ImportSection({
             </div>
           </details>
 
+          {/* Phase 2-H: プリセット選択 + 保存・削除 */}
+          <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 8, padding: "8px 12px", display: "grid", gap: 8 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#065f46" }}>列マッピングプリセット</div>
+            <div style={{ display: "grid", gap: 6, gridTemplateColumns: "1fr auto auto", alignItems: "center" }}>
+              <select
+                value={selectedPresetKey}
+                onChange={(e) => applyPreset(e.target.value)}
+                style={inputStyle}
+                disabled={presetSavingBusy}
+              >
+                <option value="">— プリセットを選択(任意) —</option>
+                {builtinPresets.length > 0 && (
+                  <optgroup label="ビルトイン(チケットサイト雛形)">
+                    {builtinPresets.map((p) => (
+                      <option key={`builtin:${p.id}`} value={`builtin:${p.id}`}>{p.name}</option>
+                    ))}
+                  </optgroup>
+                )}
+                {savedPresets.length > 0 && (
+                  <optgroup label="保存済み(このOA)">
+                    {savedPresets.map((p) => (
+                      <option key={`saved:${p.id}`} value={`saved:${p.id}`}>{p.name}</option>
+                    ))}
+                  </optgroup>
+                )}
+              </select>
+              <button type="button" onClick={handleSavePreset} style={buttonSecondary} disabled={presetSavingBusy} title="現在の列マッピングをこの OA のプリセットとして保存">
+                {presetSavingBusy ? (
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Spinner /> 保存中…</span>
+                ) : "現在のマッピングを保存"}
+              </button>
+              <button
+                type="button"
+                onClick={handleDeletePreset}
+                style={{ ...buttonSecondary, color: "#991b1b", borderColor: "#fecaca" }}
+                disabled={presetSavingBusy || !selectedPresetKey.startsWith("saved:")}
+                title={selectedPresetKey.startsWith("saved:") ? "選択中の保存プリセットを削除" : "削除は保存済みプリセット選択時のみ"}
+              >
+                プリセットを削除
+              </button>
+            </div>
+            {selectedPresetKey && (() => {
+              const [kind, id] = selectedPresetKey.split(":");
+              const desc = kind === "builtin"
+                ? builtinPresets.find((p) => p.id === id)?.description
+                : savedPresets.find((p) => p.id === id)?.description;
+              return desc ? (
+                <p style={{ fontSize: 11, color: "#065f46", margin: 0 }}>{desc}</p>
+              ) : null;
+            })()}
+            {presetNotice && (
+              <p style={{ fontSize: 11, color: "#065f46", margin: 0 }}>✓ {presetNotice}</p>
+            )}
+            <p style={{ fontSize: 10, color: "#6b7280", margin: 0 }}>
+              ※ プリセット適用後もプレビューの列マッピング詳細から手動修正できます。
+            </p>
+          </div>
+
           {/* Step 1: ファイル + オプション */}
           <div style={{ display: "grid", gap: 8, gridTemplateColumns: "1fr 1fr 1fr 1fr" }}>
             <label style={{ fontSize: 11, color: "#374151" }}>
-              ファイル (CSV / TSV)
+              ファイル (CSV / TSV / XLSX)
               <input
                 type="file"
-                accept=".csv,.tsv,text/csv,text/tab-separated-values"
+                accept=".csv,.tsv,.xlsx,text/csv,text/tab-separated-values,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 onChange={(e) => setFile(e.target.files?.[0] ?? null)}
                 style={{ ...inputStyle, padding: 4 }}
               />
+              {file && (
+                <span style={{
+                  display: "inline-block",
+                  marginTop: 4,
+                  padding: "1px 6px",
+                  borderRadius: 999,
+                  fontSize: 10,
+                  fontWeight: 700,
+                  background: file.name.toLowerCase().endsWith(".xlsx") ? "#dbeafe" :
+                              file.name.toLowerCase().endsWith(".tsv")  ? "#fef3c7" :
+                                                                          "#d1fae5",
+                  color:      file.name.toLowerCase().endsWith(".xlsx") ? "#1e40af" :
+                              file.name.toLowerCase().endsWith(".tsv")  ? "#92400e" :
+                                                                          "#065f46",
+                }}>
+                  {file.name.toLowerCase().endsWith(".xlsx") ? "XLSX" :
+                   file.name.toLowerCase().endsWith(".tsv")  ? "TSV"  : "CSV"}
+                </span>
+              )}
             </label>
             <label style={{ fontSize: 11, color: "#374151" }}>
               区切り
