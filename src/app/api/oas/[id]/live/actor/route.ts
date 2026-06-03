@@ -59,6 +59,8 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
         live_session_id:  p.liveSessionId,
         display_name:     p.displayName,
         line_user_id:     p.lineUserId,
+        auth_user_id:     p.authUserId,
+        email:            p.email,
         status:           p.status,
         current_step:     p.currentStep,
         last_seen_at:     p.lastSeenAt,

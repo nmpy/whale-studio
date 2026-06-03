@@ -19,6 +19,10 @@ export type LiveParticipant = {
   live_session_id: string;
   display_name: string | null;
   line_user_id: string | null;
+  /** Phase 2-B.5: Supabase Auth user_id 紐付け */
+  auth_user_id: string | null;
+  /** Phase 2-B.5: Player の連絡先メール */
+  email: string | null;
   status: "waiting" | "active" | "stuck" | "completed" | "dropped";
   current_step: string | null;
   last_seen_at: string | null;

@@ -34,6 +34,8 @@ type LiveParticipant = {
   live_session_id: string;
   display_name: string | null;
   line_user_id: string | null;
+  auth_user_id: string | null;
+  email: string | null;
   status: "waiting" | "active" | "stuck" | "completed" | "dropped";
   current_step: string | null;
   last_seen_at: string | null;
@@ -244,8 +246,10 @@ export function LiveAdminClient({ oaId }: { oaId: string }) {
     }
   };
 
-  // ── 参加者追加 ──
+  // ── 参加者追加 (Phase 2-B.5: email / auth_user_id を任意で受け付ける) ──
   const [newParticipantName, setNewParticipantName] = useState("");
+  const [newParticipantEmail, setNewParticipantEmail] = useState("");
+  const [newParticipantAuthUserId, setNewParticipantAuthUserId] = useState("");
   const [creatingParticipant, setCreatingParticipant] = useState(false);
   const handleCreateParticipant = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -260,7 +264,9 @@ export function LiveAdminClient({ oaId }: { oaId: string }) {
           headers: { "Content-Type": "application/json" },
           credentials: "include",
           body: JSON.stringify({
-            display_name: newParticipantName.trim() || null,
+            display_name:  newParticipantName.trim() || null,
+            email:         newParticipantEmail.trim() || null,
+            auth_user_id:  newParticipantAuthUserId.trim() || null,
           }),
         },
       );
@@ -269,6 +275,8 @@ export function LiveAdminClient({ oaId }: { oaId: string }) {
         throw new Error(j?.error?.message ?? `参加者追加に失敗しました (HTTP ${res.status})`);
       }
       setNewParticipantName("");
+      setNewParticipantEmail("");
+      setNewParticipantAuthUserId("");
       await fetchChildren(selectedSessionId);
     } catch (err) {
       setError(err instanceof Error ? err.message : "追加に失敗しました");
@@ -425,11 +433,29 @@ export function LiveAdminClient({ oaId }: { oaId: string }) {
               </button>
             </div>
 
-            <form onSubmit={handleCreateParticipant} style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+            <form
+              onSubmit={handleCreateParticipant}
+              style={{ display: "grid", gap: 8, gridTemplateColumns: "1fr 1fr 1fr auto", marginBottom: 12 }}
+            >
               <input
                 value={newParticipantName}
                 onChange={(e) => setNewParticipantName(e.target.value)}
                 placeholder="表示名 (例: ペア A / 匿名でも可)"
+                style={inputStyle}
+                disabled={creatingParticipant}
+              />
+              <input
+                type="email"
+                value={newParticipantEmail}
+                onChange={(e) => setNewParticipantEmail(e.target.value)}
+                placeholder="email (任意)"
+                style={inputStyle}
+                disabled={creatingParticipant}
+              />
+              <input
+                value={newParticipantAuthUserId}
+                onChange={(e) => setNewParticipantAuthUserId(e.target.value)}
+                placeholder="auth_user_id (任意 / Supabase Auth user_id)"
                 style={inputStyle}
                 disabled={creatingParticipant}
               />
@@ -445,6 +471,8 @@ export function LiveAdminClient({ oaId }: { oaId: string }) {
                 <thead>
                   <tr style={{ textAlign: "left", color: "#6b7280", borderBottom: "1px solid #e5e7eb" }}>
                     <th style={{ padding: "8px 6px" }}>表示名</th>
+                    <th style={{ padding: "8px 6px" }}>email</th>
+                    <th style={{ padding: "8px 6px" }}>auth_user_id</th>
                     <th style={{ padding: "8px 6px" }}>状態</th>
                     <th style={{ padding: "8px 6px" }}>現在ステップ</th>
                     <th style={{ padding: "8px 6px" }}>最終接触</th>
@@ -455,6 +483,14 @@ export function LiveAdminClient({ oaId }: { oaId: string }) {
                     <tr key={p.id} style={{ borderBottom: "1px solid #f3f4f6" }}>
                       <td style={{ padding: "8px 6px", color: "#111827" }}>
                         {p.display_name ?? <span style={{ color: "#9ca3af" }}>(匿名)</span>}
+                      </td>
+                      <td style={{ padding: "8px 6px", color: "#374151" }}>
+                        {p.email ?? <span style={{ color: "#9ca3af" }}>—</span>}
+                      </td>
+                      <td style={{ padding: "8px 6px", color: "#374151", fontFamily: "ui-monospace, monospace", fontSize: 11 }}>
+                        {p.auth_user_id
+                          ? <span title={p.auth_user_id}>{p.auth_user_id.slice(0, 8)}…</span>
+                          : <span style={{ color: "#9ca3af" }}>—</span>}
                       </td>
                       <td style={{ padding: "8px 6px" }}>
                         <span style={{ fontSize: 11, color: "#374151" }}>

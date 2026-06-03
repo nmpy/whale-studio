@@ -35,6 +35,7 @@ export function LivePlayerClient({ oaId }: { oaId: string }) {
   const [sessions, setSessions] = useState<LiveSession[]>([]);
   const [participants, setParticipants] = useState<LiveParticipant[]>([]);
   const [events, setEvents] = useState<LiveEventLog[]>([]);
+  const [me, setMe] = useState<LiveParticipant | null>(null);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -52,6 +53,7 @@ export function LivePlayerClient({ oaId }: { oaId: string }) {
       setSessions(data.sessions ?? []);
       setParticipants(data.participants ?? []);
       setEvents(data.events ?? []);
+      setMe(data.me ?? null);
       if (!selectedSessionId && data.sessions?.length > 0) {
         setSelectedSessionId(data.sessions[0].id);
       }
@@ -69,7 +71,11 @@ export function LivePlayerClient({ oaId }: { oaId: string }) {
   const [newTitle, setNewTitle] = useState("");
   const [newDetail, setNewDetail] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const canSubmit = !!selectedSessionId && newTitle.trim().length > 0 && !submitting;
+  // 自分の participant が紐付いている場合のみイベント送信可 (= Phase 2-B.5 のなりすまし防止)。
+  // 紐付けがなくても owner / admin / live_owner はサーバー側で参加可能だが、一般 Player UI
+  // としては「自分の participant が紐付いていれば送信可」の挙動に揃える。
+  const linkedMe = !!me;
+  const canSubmit = !!selectedSessionId && newTitle.trim().length > 0 && !submitting && linkedMe;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -118,6 +124,43 @@ export function LivePlayerClient({ oaId }: { oaId: string }) {
       </p>
 
       {error && <div style={errorBox}>{error}</div>}
+
+      {/* ── 自分の参加者情報 (Phase 2-B.5) ── */}
+      <section
+        style={{
+          ...card,
+          marginBottom: 16,
+          borderColor: linkedMe ? "#10b981" : "#fcd34d",
+          background:  linkedMe ? "#ecfdf5" : "#fffbeb",
+        }}
+      >
+        <h2 style={{ fontSize: 16, fontWeight: 700, color: "#111827", margin: "0 0 8px" }}>
+          あなたの参加者情報
+        </h2>
+        {linkedMe ? (
+          <div style={{ fontSize: 13, color: "#065f46", lineHeight: 1.8 }}>
+            <div>
+              <strong>表示名:</strong> {me?.display_name ?? "(匿名)"}
+            </div>
+            <div>
+              <strong>状態:</strong> {me ? PARTICIPANT_STATUS_LABEL[me.status] : "—"}
+            </div>
+            <div>
+              <strong>現在ステップ:</strong> {me?.current_step ?? "—"}
+            </div>
+          </div>
+        ) : (
+          <div style={{ fontSize: 13, color: "#92400e", lineHeight: 1.8 }}>
+            <p style={{ margin: 0 }}>
+              あなたのアカウントに参加者情報がまだ紐付いていません。
+            </p>
+            <p style={{ margin: "4px 0 0" }}>
+              運営に依頼して、参加者として登録してもらってください(= email / auth_user_id の登録が必要です)。
+              登録後はこのページを再読込してください。
+            </p>
+          </div>
+        )}
+      </section>
 
       {/* ── セッション ── */}
       <section style={{ ...card, marginBottom: 16 }}>
@@ -223,13 +266,28 @@ export function LivePlayerClient({ oaId }: { oaId: string }) {
             <h2 style={{ fontSize: 16, fontWeight: 700, color: "#111827", margin: "0 0 12px" }}>
               進行イベント送信
             </h2>
+            {!linkedMe && (
+              <div
+                style={{
+                  background: "#fef3c7",
+                  color: "#92400e",
+                  border: "1px solid #fcd34d",
+                  borderRadius: 8,
+                  padding: "8px 12px",
+                  fontSize: 12,
+                  marginBottom: 8,
+                }}
+              >
+                参加者情報がまだ紐付いていないため、イベントは送信できません。運営に登録依頼後、再読込してください。
+              </div>
+            )}
             <form onSubmit={handleSubmit} style={{ display: "grid", gap: 8 }}>
               <div style={{ display: "grid", gap: 8, gridTemplateColumns: "200px 1fr auto" }}>
                 <select
                   value={newType}
                   onChange={(e) => setNewType(e.target.value as PlayerEventType)}
                   style={inputStyle}
-                  disabled={submitting}
+                  disabled={submitting || !linkedMe}
                 >
                   {PLAYER_EVENT_TYPES.map((t) => (
                     <option key={t} value={t}>{EVENT_TYPE_LABEL[t] ?? t}</option>
@@ -240,7 +298,7 @@ export function LivePlayerClient({ oaId }: { oaId: string }) {
                   onChange={(e) => setNewTitle(e.target.value)}
                   placeholder="タイトル (例: 第3ピース回収 / チェックイン完了)"
                   style={inputStyle}
-                  disabled={submitting}
+                  disabled={submitting || !linkedMe}
                 />
                 <button type="submit" style={buttonPrimary} disabled={!canSubmit}>
                   {submitting ? "送信中…" : "送信"}
@@ -251,7 +309,7 @@ export function LivePlayerClient({ oaId }: { oaId: string }) {
                 onChange={(e) => setNewDetail(e.target.value)}
                 placeholder="詳細 (任意 / メモ・本文など)"
                 style={{ ...inputStyle, minHeight: 60 }}
-                disabled={submitting}
+                disabled={submitting || !linkedMe}
               />
             </form>
           </section>

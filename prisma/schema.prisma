@@ -1593,12 +1593,22 @@ model LiveSession {
 
 /// Live セッション参加者（= 1 プレイヤー or 1 グループ）。
 /// lineUserId は LINE 連携した場合のみ。displayName で匿名管理も可能。
+///
+/// Phase 2-B.5 で authUserId / email を追加:
+///   - authUserId: Supabase Auth user_id（= 紐付いた Player 本人。null 可 = 匿名・未紐付け）
+///   - email:      ログインユーザー識別用の補助フィールド（authUserId 未取得時の手入力など）
+///   - 既存 participant は authUserId=null のまま温存。Phase 2-B との互換性は維持。
 model LiveParticipant {
   id             String                @id @default(uuid())
   oaId           String                @map("oa_id")
   liveSessionId  String                @map("live_session_id")
   displayName    String?               @map("display_name")
   lineUserId     String?               @map("line_user_id")
+  /// Supabase Auth user_id。null = 未紐付け（匿名参加者）。
+  /// Player API が「自分の participant」を特定する一次キー。
+  authUserId     String?               @map("auth_user_id")
+  /// Player の連絡先メール。authUserId 未解決時の手動入力に利用。
+  email          String?
   status         LiveParticipantStatus @default(waiting)
   currentStep    String?               @map("current_step")
   lastSeenAt     DateTime?             @map("last_seen_at")
@@ -1612,6 +1622,7 @@ model LiveParticipant {
   @@index([liveSessionId, createdAt])
   @@index([liveSessionId, status])
   @@index([oaId])
+  @@index([oaId, authUserId])
   @@map("live_participants")
 }
 

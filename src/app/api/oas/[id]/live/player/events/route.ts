@@ -3,6 +3,13 @@
 //
 // 認可: player section (= live_player / live_owner / OA owner / platform admin)
 //
+// Phase 2-B.5 で identity 解決を追加:
+//   - 通常の Player (= via=live_player): サーバー側で auth.user.id → LiveParticipant.authUserId
+//     一致の participant を必須解決。未紐付けなら 409 (= 明示エラー)。
+//     クライアント由来の participant_id は無視 (= 他人なりすまし防止)。
+//   - 特権 (= via=platform_admin / oa_owner / live_owner): テスト目的で任意の participant_id
+//     を指定可。authUserId 紐付けがあればそちらを優先する。
+//
 // 想定 event_type (= Player 寄り):
 //   qr_scanned / checked_in / puzzle_solved / message_sent
 // note_added / actor_contacted / alert も enum 上は許可するが UI には出さない (= 仕様上は Actor 寄り)。
@@ -11,7 +18,7 @@ import type { NextRequest } from "next/server";
 import { z, ZodError } from "zod";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { created, badRequest, notFound, serverError } from "@/lib/api-response";
+import { created, badRequest, conflict, notFound, serverError } from "@/lib/api-response";
 import { authorizeLiveSection } from "@/lib/live-auth";
 
 export const dynamic = "force-dynamic";
@@ -50,20 +57,39 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     });
     if (!session) return notFound("LiveSession");
 
-    // participant_id が指定された場合、同セッション配下の参加者であることを確認
-    if (data.participant_id) {
+    // ── participant 解決 ─────────────────────────────────────────────
+    // 自分 (auth.user.id) に紐づく participant を最初に検索。
+    const myParticipant = await prisma.liveParticipant.findFirst({
+      where:  { oaId: params.id, liveSessionId: data.session_id, authUserId: auth.user.id },
+      select: { id: true },
+    });
+
+    let resolvedParticipantId: string | null = null;
+
+    if (myParticipant) {
+      // 自分の participant があれば、それを使う (= クライアント指定値は無視)
+      resolvedParticipantId = myParticipant.id;
+    } else if (auth.via === "live_player") {
+      // 通常 Player で紐付けが無い場合は明示エラー
+      return conflict(
+        "あなたの参加者情報が登録されていません。運営に依頼して参加者として登録してもらってください。",
+      );
+    } else if (data.participant_id) {
+      // 特権ユーザー (= owner / admin / live_owner) はテスト用に participant_id を任意指定可
       const p = await prisma.liveParticipant.findFirst({
         where:  { id: data.participant_id, liveSessionId: data.session_id },
         select: { id: true },
       });
       if (!p) return badRequest("participant_id がセッションに紐付いていません");
+      resolvedParticipantId = p.id;
     }
+    // 特権ユーザーが participant_id を指定しなかった場合は null のまま (= OA 単位のイベント)
 
     const event = await prisma.liveEventLog.create({
       data: {
         oaId:          params.id,
         liveSessionId: data.session_id,
-        participantId: data.participant_id ?? null,
+        participantId: resolvedParticipantId,
         type:          data.type,
         title:         data.title,
         detail:        data.detail ?? null,

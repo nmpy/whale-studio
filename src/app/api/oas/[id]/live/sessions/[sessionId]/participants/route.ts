@@ -16,6 +16,9 @@ export const dynamic = "force-dynamic";
 const createParticipantSchema = z.object({
   display_name:  z.string().min(1).max(120).optional().nullable(),
   line_user_id:  z.string().min(1).max(120).optional().nullable(),
+  // Phase 2-B.5: Supabase Auth 紐付け
+  auth_user_id:  z.string().min(1).max(120).optional().nullable(),
+  email:         z.string().email("email の形式が不正です").max(254).optional().nullable(),
   status:        z.enum(["waiting", "active", "stuck", "completed", "dropped"]).optional(),
   current_step:  z.string().max(200).optional().nullable(),
 });
@@ -26,6 +29,8 @@ type ParticipantRow = {
   liveSessionId: string;
   displayName: string | null;
   lineUserId: string | null;
+  authUserId: string | null;
+  email: string | null;
   status: string;
   currentStep: string | null;
   lastSeenAt: Date | null;
@@ -40,6 +45,8 @@ function toResponse(p: ParticipantRow) {
     live_session_id:  p.liveSessionId,
     display_name:     p.displayName,
     line_user_id:     p.lineUserId,
+    auth_user_id:     p.authUserId,
+    email:            p.email,
     status:           p.status,
     current_step:     p.currentStep,
     last_seen_at:     p.lastSeenAt,
@@ -96,6 +103,8 @@ export async function POST(
         liveSessionId: params.sessionId,
         displayName:   data.display_name  ?? null,
         lineUserId:    data.line_user_id  ?? null,
+        authUserId:    data.auth_user_id  ?? null,
+        email:         data.email         ?? null,
         status:        data.status        ?? "waiting",
         currentStep:   data.current_step  ?? null,
       },
