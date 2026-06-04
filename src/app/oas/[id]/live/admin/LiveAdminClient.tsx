@@ -2830,23 +2830,15 @@ function ScriptsAndCuesSection({
       ) : (
         <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 6, marginBottom: 16 }}>
           {scripts.map((s) => (
-            <li key={s.id} style={{ padding: 10, border: "1px solid #e5e7eb", borderRadius: 8, background: s.is_active ? "#ffffff" : "#f9fafb", opacity: s.is_active ? 1 : 0.6 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                <span style={{ padding: "1px 8px", borderRadius: 999, fontSize: 10, fontWeight: 700, background: s.is_active ? "#d1fae5" : "#e5e7eb", color: s.is_active ? "#065f46" : "#6b7280" }}>
-                  {s.is_active ? "公開" : "非公開"}
-                </span>
-                <strong style={{ fontSize: 13, color: "#111827", flex: 1 }}>{s.title}</strong>
-                <span style={{ fontSize: 10, color: "#9ca3af" }}>{s.work_id ? "作品" : "OA共通"}</span>
-              </div>
-              <p style={{ margin: "2px 0", fontSize: 12, color: "#374151", whiteSpace: "pre-wrap" }}>{s.body}</p>
-              {s.memo && <p style={{ margin: "2px 0", fontSize: 11, color: "#6b7280" }}>📝 {s.memo}</p>}
-              <div style={{ display: "flex", gap: 6, justifyContent: "flex-end", marginTop: 4 }}>
-                <button onClick={() => void handleToggleScriptActive(s)} style={buttonSecondary}>
-                  {s.is_active ? "非公開にする" : "公開にする"}
-                </button>
-                <button onClick={() => void handleDeleteScript(s)} style={{ ...buttonSecondary, color: "#991b1b", borderColor: "#fecaca" }}>削除</button>
-              </div>
-            </li>
+            <ScriptRow
+              key={s.id}
+              script={s}
+              oaId={oaId}
+              onChanged={fetchAll}
+              onError={onError}
+              onToggleActive={() => void handleToggleScriptActive(s)}
+              onDelete={() => void handleDeleteScript(s)}
+            />
           ))}
         </ul>
       )}
@@ -2896,39 +2888,282 @@ function ScriptsAndCuesSection({
       ) : (
         <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 6 }}>
           {cues.map((c) => {
-            const ph = c.phase_id ? phases.find((p) => p.id === c.phase_id) : null;
-            const ac = c.actor_id ? actors.find((a) => a.id === c.actor_id) : null;
             return (
-              <li key={c.id} style={{ padding: 10, border: "1px solid #e5e7eb", borderRadius: 8, background: c.is_active ? "#ffffff" : "#f9fafb", opacity: c.is_active ? 1 : 0.6 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                  <span style={{
-                    padding: "1px 8px", borderRadius: 999, fontSize: 10, fontWeight: 700,
-                    background: c.priority === "high" ? "#fee2e2" : c.priority === "low" ? "#f3f4f6" : "#fef3c7",
-                    color:      c.priority === "high" ? "#991b1b" : c.priority === "low" ? "#6b7280" : "#92400e",
-                  }}>
-                    優先 {CUE_PRIORITY_LABEL[c.priority]}
-                  </span>
-                  <span style={{ padding: "1px 8px", borderRadius: 999, fontSize: 10, fontWeight: 700, background: c.is_active ? "#d1fae5" : "#e5e7eb", color: c.is_active ? "#065f46" : "#6b7280" }}>
-                    {c.is_active ? "公開" : "非公開"}
-                  </span>
-                  <strong style={{ fontSize: 13, color: "#111827", flex: 1 }}>{c.title}</strong>
-                  <span style={{ fontSize: 11, color: "#9ca3af" }}>sort {c.sort_order}</span>
-                </div>
-                <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 2 }}>
-                  Phase: {ph?.name ?? "(全体)"} / Actor: {ac?.display_name ?? "(全員)"}
-                </div>
-                <p style={{ margin: "2px 0", fontSize: 12, color: "#374151", whiteSpace: "pre-wrap" }}>{c.body}</p>
-                <div style={{ display: "flex", gap: 6, justifyContent: "flex-end", marginTop: 4 }}>
-                  <button onClick={() => void handleToggleCueActive(c)} style={buttonSecondary}>
-                    {c.is_active ? "非公開にする" : "公開にする"}
-                  </button>
-                  <button onClick={() => void handleDeleteCue(c)} style={{ ...buttonSecondary, color: "#991b1b", borderColor: "#fecaca" }}>削除</button>
-                </div>
-              </li>
+              <CueRow
+                key={c.id}
+                cue={c}
+                oaId={oaId}
+                phases={phases}
+                actors={actors}
+                onChanged={fetchAll}
+                onError={onError}
+                onToggleActive={() => void handleToggleCueActive(c)}
+                onDelete={() => void handleDeleteCue(c)}
+              />
             );
           })}
         </ul>
       )}
     </section>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ScriptRow — Phase 2-I.1: 台本 1 件の表示 + inline 編集
+// ─────────────────────────────────────────────────────────────────────────────
+function ScriptRow({
+  script,
+  oaId,
+  onChanged,
+  onError,
+  onToggleActive,
+  onDelete,
+}: {
+  script: LiveScriptRow;
+  oaId: string;
+  onChanged: () => void;
+  onError: (msg: string) => void;
+  onToggleActive: () => void;
+  onDelete: () => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draftTitle, setDraftTitle] = useState(script.title);
+  const [draftBody, setDraftBody] = useState(script.body);
+  const [draftMemo, setDraftMemo] = useState(script.memo ?? "");
+  const [draftActive, setDraftActive] = useState(script.is_active);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!editing) {
+      setDraftTitle(script.title);
+      setDraftBody(script.body);
+      setDraftMemo(script.memo ?? "");
+      setDraftActive(script.is_active);
+    }
+  }, [script, editing]);
+
+  const handleSave = async () => {
+    if (!draftTitle.trim() || !draftBody.trim()) return;
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/oas/${oaId}/live/scripts/${script.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          title:     draftTitle.trim(),
+          body:      draftBody.trim(),
+          memo:      draftMemo.trim() || null,
+          is_active: draftActive,
+        }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => null);
+        throw new Error(j?.error?.message ?? `台本更新に失敗 (HTTP ${res.status})`);
+      }
+      setEditing(false);
+      onChanged();
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "台本更新に失敗しました");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (editing) {
+    return (
+      <li style={{ padding: 10, border: "1px solid #10b981", borderRadius: 8, background: "#f0fdf4" }}>
+        <div style={{ display: "grid", gap: 6 }}>
+          <input value={draftTitle} onChange={(e) => setDraftTitle(e.target.value)} placeholder="タイトル" style={inputStyle} disabled={saving} />
+          <textarea value={draftBody} onChange={(e) => setDraftBody(e.target.value)} placeholder="本文" style={{ ...inputStyle, minHeight: 80 }} disabled={saving} />
+          <input value={draftMemo} onChange={(e) => setDraftMemo(e.target.value)} placeholder="メモ (任意)" style={inputStyle} disabled={saving} />
+          <label style={{ fontSize: 11, color: "#374151", display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <input type="checkbox" checked={draftActive} onChange={(e) => setDraftActive(e.target.checked)} disabled={saving} />
+            公開状態(チェック = 公開)
+          </label>
+          <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+            <button onClick={() => setEditing(false)} style={buttonSecondary} disabled={saving}>キャンセル</button>
+            <button onClick={handleSave} style={buttonPrimary} disabled={saving || !draftTitle.trim() || !draftBody.trim()}>
+              {saving ? (
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Spinner color="#ffffff" /> 保存中…</span>
+              ) : "保存"}
+            </button>
+          </div>
+        </div>
+      </li>
+    );
+  }
+
+  return (
+    <li style={{ padding: 10, border: "1px solid #e5e7eb", borderRadius: 8, background: script.is_active ? "#ffffff" : "#f9fafb", opacity: script.is_active ? 1 : 0.6 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+        <span style={{ padding: "1px 8px", borderRadius: 999, fontSize: 10, fontWeight: 700, background: script.is_active ? "#d1fae5" : "#e5e7eb", color: script.is_active ? "#065f46" : "#6b7280" }}>
+          {script.is_active ? "公開" : "非公開"}
+        </span>
+        <strong style={{ fontSize: 13, color: "#111827", flex: 1 }}>{script.title}</strong>
+        <span style={{ fontSize: 10, color: "#9ca3af" }}>{script.work_id ? "作品" : "OA共通"}</span>
+      </div>
+      <p style={{ margin: "2px 0", fontSize: 12, color: "#374151", whiteSpace: "pre-wrap" }}>{script.body}</p>
+      {script.memo && <p style={{ margin: "2px 0", fontSize: 11, color: "#6b7280" }}>📝 {script.memo}</p>}
+      <div style={{ display: "flex", gap: 6, justifyContent: "flex-end", marginTop: 4 }}>
+        <button onClick={() => setEditing(true)} style={buttonSecondary}>編集</button>
+        <button onClick={onToggleActive} style={buttonSecondary}>
+          {script.is_active ? "非公開にする" : "公開にする"}
+        </button>
+        <button onClick={onDelete} style={{ ...buttonSecondary, color: "#991b1b", borderColor: "#fecaca" }}>削除</button>
+      </div>
+    </li>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CueRow — Phase 2-I.1: セリフ候補 1 件の表示 + inline 編集
+// ─────────────────────────────────────────────────────────────────────────────
+function CueRow({
+  cue,
+  oaId,
+  phases,
+  actors,
+  onChanged,
+  onError,
+  onToggleActive,
+  onDelete,
+}: {
+  cue: LiveCueRow;
+  oaId: string;
+  phases: PhaseSummary[];
+  actors: LiveActor[];
+  onChanged: () => void;
+  onError: (msg: string) => void;
+  onToggleActive: () => void;
+  onDelete: () => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draftTitle, setDraftTitle] = useState(cue.title);
+  const [draftBody, setDraftBody] = useState(cue.body);
+  const [draftPriority, setDraftPriority] = useState<LiveCueRow["priority"]>(cue.priority);
+  const [draftPhaseId, setDraftPhaseId] = useState(cue.phase_id ?? "");
+  const [draftActorId, setDraftActorId] = useState(cue.actor_id ?? "");
+  const [draftSortOrder, setDraftSortOrder] = useState<number>(cue.sort_order);
+  const [draftActive, setDraftActive] = useState(cue.is_active);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!editing) {
+      setDraftTitle(cue.title);
+      setDraftBody(cue.body);
+      setDraftPriority(cue.priority);
+      setDraftPhaseId(cue.phase_id ?? "");
+      setDraftActorId(cue.actor_id ?? "");
+      setDraftSortOrder(cue.sort_order);
+      setDraftActive(cue.is_active);
+    }
+  }, [cue, editing]);
+
+  const handleSave = async () => {
+    if (!draftTitle.trim() || !draftBody.trim()) return;
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/oas/${oaId}/live/cues/${cue.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          title:      draftTitle.trim(),
+          body:       draftBody.trim(),
+          priority:   draftPriority,
+          phase_id:   draftPhaseId || null,
+          actor_id:   draftActorId || null,
+          sort_order: draftSortOrder,
+          is_active:  draftActive,
+        }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => null);
+        throw new Error(j?.error?.message ?? `セリフ更新に失敗 (HTTP ${res.status})`);
+      }
+      setEditing(false);
+      onChanged();
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "セリフ更新に失敗しました");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (editing) {
+    return (
+      <li style={{ padding: 10, border: "1px solid #10b981", borderRadius: 8, background: "#f0fdf4" }}>
+        <div style={{ display: "grid", gap: 6 }}>
+          <div style={{ display: "grid", gap: 6, gridTemplateColumns: "1fr 100px 1fr 1fr 80px" }}>
+            <input value={draftTitle} onChange={(e) => setDraftTitle(e.target.value)} placeholder="セリフタイトル" style={inputStyle} disabled={saving} />
+            <select value={draftPriority} onChange={(e) => setDraftPriority(e.target.value as LiveCueRow["priority"])} style={inputStyle} disabled={saving}>
+              <option value="low">優先 低</option>
+              <option value="normal">優先 中</option>
+              <option value="high">優先 高</option>
+            </select>
+            <select value={draftPhaseId} onChange={(e) => setDraftPhaseId(e.target.value)} style={inputStyle} disabled={saving}>
+              <option value="">— Phase: 全体 —</option>
+              {phases.slice().sort((a, b) => a.sort_order - b.sort_order).map((p) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+            <select value={draftActorId} onChange={(e) => setDraftActorId(e.target.value)} style={inputStyle} disabled={saving}>
+              <option value="">— Actor: 全員 —</option>
+              {actors.map((a) => (
+                <option key={a.id} value={a.id}>{a.display_name}{a.character_name ? ` / ${a.character_name}` : ""}</option>
+              ))}
+            </select>
+            <input type="number" value={draftSortOrder} onChange={(e) => setDraftSortOrder(Number(e.target.value) || 0)} placeholder="並び順" style={inputStyle} disabled={saving} />
+          </div>
+          <textarea value={draftBody} onChange={(e) => setDraftBody(e.target.value)} placeholder="本文" style={{ ...inputStyle, minHeight: 60 }} disabled={saving} />
+          <label style={{ fontSize: 11, color: "#374151", display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <input type="checkbox" checked={draftActive} onChange={(e) => setDraftActive(e.target.checked)} disabled={saving} />
+            公開状態(チェック = 公開)
+          </label>
+          <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+            <button onClick={() => setEditing(false)} style={buttonSecondary} disabled={saving}>キャンセル</button>
+            <button onClick={handleSave} style={buttonPrimary} disabled={saving || !draftTitle.trim() || !draftBody.trim()}>
+              {saving ? (
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Spinner color="#ffffff" /> 保存中…</span>
+              ) : "保存"}
+            </button>
+          </div>
+        </div>
+      </li>
+    );
+  }
+
+  const ph = cue.phase_id ? phases.find((p) => p.id === cue.phase_id) : null;
+  const ac = cue.actor_id ? actors.find((a) => a.id === cue.actor_id) : null;
+
+  return (
+    <li style={{ padding: 10, border: "1px solid #e5e7eb", borderRadius: 8, background: cue.is_active ? "#ffffff" : "#f9fafb", opacity: cue.is_active ? 1 : 0.6 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+        <span style={{
+          padding: "1px 8px", borderRadius: 999, fontSize: 10, fontWeight: 700,
+          background: cue.priority === "high" ? "#fee2e2" : cue.priority === "low" ? "#f3f4f6" : "#fef3c7",
+          color:      cue.priority === "high" ? "#991b1b" : cue.priority === "low" ? "#6b7280" : "#92400e",
+        }}>
+          優先 {CUE_PRIORITY_LABEL[cue.priority]}
+        </span>
+        <span style={{ padding: "1px 8px", borderRadius: 999, fontSize: 10, fontWeight: 700, background: cue.is_active ? "#d1fae5" : "#e5e7eb", color: cue.is_active ? "#065f46" : "#6b7280" }}>
+          {cue.is_active ? "公開" : "非公開"}
+        </span>
+        <strong style={{ fontSize: 13, color: "#111827", flex: 1 }}>{cue.title}</strong>
+        <span style={{ fontSize: 11, color: "#9ca3af" }}>sort {cue.sort_order}</span>
+      </div>
+      <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 2 }}>
+        Phase: {ph?.name ?? "(全体)"} / Actor: {ac?.display_name ?? "(全員)"}
+      </div>
+      <p style={{ margin: "2px 0", fontSize: 12, color: "#374151", whiteSpace: "pre-wrap" }}>{cue.body}</p>
+      <div style={{ display: "flex", gap: 6, justifyContent: "flex-end", marginTop: 4 }}>
+        <button onClick={() => setEditing(true)} style={buttonSecondary}>編集</button>
+        <button onClick={onToggleActive} style={buttonSecondary}>
+          {cue.is_active ? "非公開にする" : "公開にする"}
+        </button>
+        <button onClick={onDelete} style={{ ...buttonSecondary, color: "#991b1b", borderColor: "#fecaca" }}>削除</button>
+      </div>
+    </li>
   );
 }
