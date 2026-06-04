@@ -9,6 +9,7 @@ import { withRole } from "@/lib/auth";
 import { ok, serverError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { isPlatformOwner } from "@/lib/platform-admin";
+import { genRequestId, runWithRequestId, withTiming } from "@/lib/perf";
 
 /** ?previewPlan で受け取り可能な値 (= UI tier の小文字キー)。
  *  これ以外は無視 (= 通常レスポンスを返す)。 */
@@ -17,7 +18,8 @@ const VALID_PREVIEW_PLANS = new Set(["basic", "standard", "plus", "pro"]);
 export const GET = withRole<{ id: string }>(
   ({ params }) => params.id,
   "viewer",
-  async (req, { params }, user, role) => {
+  async (req, { params }, user, role) =>
+    runWithRequestId(genRequestId(), () => withTiming("api/plan-info:GET", async () => {
     const oaId = params.id;
 
     // 表示確認モード (= access preview) からの呼び出し。
@@ -34,10 +36,12 @@ export const GET = withRole<{ id: string }>(
     if (previewPlan) {
       try {
         // Plan テーブルから tier 名と完全一致する row を取得 (= seed 上 name は tier 値と同じ前提)。
-        const plan = await prisma.plan.findUnique({
-          where: { name: previewPlan },
-          select: { name: true, displayName: true, maxWorks: true, maxPlayers: true, priceMonthly: true },
-        });
+        const plan = await withTiming("api/plan-info:db:planLookup", () =>
+          prisma.plan.findUnique({
+            where: { name: previewPlan },
+            select: { name: true, displayName: true, maxWorks: true, maxPlayers: true, priceMonthly: true },
+          }),
+        );
         if (plan) {
           return ok({
             plan_name:       plan.name,
@@ -70,20 +74,22 @@ export const GET = withRole<{ id: string }>(
     }
 
     try {
-      const sub = await prisma.subscription.findUnique({
-        where:   { oaId },
-        include: {
-          plan: {
-            select: {
-              name:         true,
-              displayName:  true,
-              maxWorks:     true,
-              maxPlayers:   true,
-              priceMonthly: true,
+      const sub = await withTiming("api/plan-info:db:subscription", () =>
+        prisma.subscription.findUnique({
+          where:   { oaId },
+          include: {
+            plan: {
+              select: {
+                name:         true,
+                displayName:  true,
+                maxWorks:     true,
+                maxPlayers:   true,
+                priceMonthly: true,
+              },
             },
           },
-        },
-      });
+        }),
+      );
 
       if (!sub || !sub.plan) {
         // Subscription 未設定（シード未実行 or 旧 OA）→ null を返す
@@ -101,5 +107,5 @@ export const GET = withRole<{ id: string }>(
     } catch (err) {
       return serverError(err);
     }
-  }
+    })),
 );

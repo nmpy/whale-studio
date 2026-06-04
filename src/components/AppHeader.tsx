@@ -97,13 +97,32 @@ export default function AppHeader() {
 
   // ── OA 横断 owner 判定（OA ページ外でも CTA を切り替えるため）─────
   // /api/oas の my_role を見て、1つでも owner の OA があれば isAnyOaOwner = true
+  // perf: 全ページ mount 時に毎回 fetch していた → sessionStorage に短 TTL でキャッシュ。
+  //       owner 判定は短時間ではほぼ変化しないため、5 分 TTL で十分。新規 OA 作成や
+  //       既存 OA の退会で結果が変わる可能性はあるが、その操作の戻り先で再取得される。
   useEffect(() => {
+    const CACHE_KEY = "ws_app_header_is_any_oa_owner";
+    const TTL_MS    = 5 * 60 * 1000; // 5 分
+    // 起動時 sessionStorage を確認
+    try {
+      const cached = sessionStorage.getItem(CACHE_KEY);
+      if (cached) {
+        const parsed = JSON.parse(cached) as { v: boolean; t: number };
+        if (parsed && typeof parsed.t === "number" && Date.now() - parsed.t < TTL_MS) {
+          if (parsed.v) setIsAnyOaOwner(true);
+          return;
+        }
+      }
+    } catch { /* ignore parse error */ }
+
     fetch("/api/oas?limit=100", { headers: { ...getAuthHeaders() }, cache: "no-store" })
       .then((r) => r.ok ? r.json() : null)
       .then((body) => {
-        if (body?.data?.some((oa: { my_role?: string }) => oa.my_role === "owner")) {
-          setIsAnyOaOwner(true);
-        }
+        const isOwner = !!body?.data?.some?.((oa: { my_role?: string }) => oa.my_role === "owner");
+        if (isOwner) setIsAnyOaOwner(true);
+        try {
+          sessionStorage.setItem(CACHE_KEY, JSON.stringify({ v: isOwner, t: Date.now() }));
+        } catch { /* quota / private mode */ }
       })
       .catch(() => {});
   }, []);

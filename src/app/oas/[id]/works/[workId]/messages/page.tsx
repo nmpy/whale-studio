@@ -61,6 +61,8 @@ function CharIcon({ character }: { character: MessageWithRelations["character"];
       <img
         src={character.icon_image_url}
         alt={character.name}
+        loading="lazy"
+        decoding="async"
         style={{
           width: size, height: size, borderRadius: "50%",
           objectFit: "cover", flexShrink: 0,
@@ -1046,6 +1048,8 @@ export default function MessagesPage() {
                                 <img
                                   src={msg.asset_url}
                                   alt="画像"
+                                  loading="lazy"
+                                  decoding="async"
                                   style={{ width: 48, height: 36, objectFit: "cover", borderRadius: 4, border: "1px solid #e5e5e5" }}
                                   onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
                                 />
@@ -1239,6 +1243,8 @@ export default function MessagesPage() {
                                   <img
                                     src={cont.asset_url}
                                     alt="画像"
+                                    loading="lazy"
+                                    decoding="async"
                                     style={{ width: 36, height: 27, objectFit: "cover", borderRadius: 3, border: "1px solid #e5e7eb" }}
                                     onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
                                   />
