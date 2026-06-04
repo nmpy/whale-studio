@@ -97,11 +97,27 @@ export async function middleware(req: NextRequest) {
 
   // ── /login: 認証済み → リダイレクト先 or /oas へ ─────────────────
   if (pathname === "/login" && user) {
-    const next  = req.nextUrl.searchParams.get("next");
-    const dest  = req.nextUrl.clone();
-    // ?next= が保護ルートの場合のみ信頼する（open redirect 防止）
-    dest.pathname = next && isProtected(next) ? next : "/oas";
-    dest.search   = "";
+    const next = req.nextUrl.searchParams.get("next");
+    const dest = req.nextUrl.clone();
+    // open redirect 防止: next は site-relative (= "/" で始まり "//" で始まらない) のみ信頼。
+    // 信頼できる next なら pathname + search + hash を保持して redirect する。
+    // (= 招待 URL のような query 必須リンクが ログイン経由でも壊れないようにする)
+    if (typeof next === "string" && next.startsWith("/") && !next.startsWith("//")) {
+      try {
+        const parsed = new URL(next, req.nextUrl.origin);
+        dest.pathname = parsed.pathname;
+        dest.search   = parsed.search;
+        dest.hash     = parsed.hash;
+      } catch {
+        dest.pathname = "/oas";
+        dest.search   = "";
+        dest.hash     = "";
+      }
+    } else {
+      dest.pathname = "/oas";
+      dest.search   = "";
+      dest.hash     = "";
+    }
     return NextResponse.redirect(dest);
   }
 
