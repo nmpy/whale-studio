@@ -26,6 +26,9 @@ import {
   type LiveAssignment,
   type LiveActorInstruction,
   type LiveTeam,
+  type LiveScript,
+  type LiveCue,
+  CUE_PRIORITY_LABEL,
   SESSION_STATUS_LABEL,
   PARTICIPANT_STATUS_LABEL,
   EVENT_TYPE_LABEL,
@@ -139,6 +142,7 @@ function ParticipantCard({
   participant,
   events,
   participantInstructions,
+  participantCues,
   isAssignedToMe,
   teamName,
   oaId,
@@ -149,6 +153,7 @@ function ParticipantCard({
   participant: LiveParticipant;
   events: LiveEventLog[];
   participantInstructions: LiveActorInstruction[];
+  participantCues: LiveCue[];
   isAssignedToMe: boolean;
   teamName: string | null;
   oaId: string;
@@ -467,6 +472,41 @@ function ParticipantCard({
         </div>
       )}
 
+      {/* ── 当該 participant の現在フェーズに合うセリフ候補 (Phase 2-I) ── */}
+      {participantCues.length > 0 && (
+        <div style={{ marginBottom: 12, padding: 8, background: "#f0f9ff", border: "1px solid #bae6fd", borderRadius: 8 }}>
+          <div style={{ fontSize: 11, color: "#0369a1", fontWeight: 700, marginBottom: 6 }}>
+            現在フェーズのセリフ候補({participantCues.length} 件)
+          </div>
+          <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 4 }}>
+            {participantCues.map((c) => (
+              <li
+                key={c.id}
+                style={{
+                  background: "#ffffff",
+                  border: "1px solid #bae6fd",
+                  borderLeft: c.priority === "high" ? "3px solid #dc2626" : "3px solid transparent",
+                  borderRadius: 6,
+                  padding: 6,
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
+                  <span style={{
+                    padding: "0 6px", borderRadius: 999, fontSize: 9, fontWeight: 700,
+                    background: c.priority === "high" ? "#fee2e2" : c.priority === "low" ? "#f3f4f6" : "#fef3c7",
+                    color:      c.priority === "high" ? "#991b1b" : c.priority === "low" ? "#6b7280" : "#92400e",
+                  }}>
+                    {CUE_PRIORITY_LABEL[c.priority]}
+                  </span>
+                  <strong style={{ fontSize: 12, color: "#111827" }}>{c.title}</strong>
+                </div>
+                <p style={{ margin: "2px 0 0", fontSize: 12, color: "#374151", whiteSpace: "pre-wrap" }}>{c.body}</p>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {/* ── 当該 participant のイベント履歴 ── */}
       <div>
         <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 6 }}>
@@ -527,6 +567,9 @@ export function LiveActorClient({ oaId }: { oaId: string }) {
   const [myActorIds, setMyActorIds] = useState<string[]>([]);
   // Phase 2-G:
   const [teams, setTeams] = useState<LiveTeam[]>([]);
+  // Phase 2-I:
+  const [scripts, setScripts] = useState<LiveScript[]>([]);
+  const [cues, setCues] = useState<LiveCue[]>([]);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -548,6 +591,8 @@ export function LiveActorClient({ oaId }: { oaId: string }) {
       setInstructions(data.instructions ?? []);
       setMyActorIds(data.my_actor_ids ?? []);
       setTeams(data.teams ?? []);
+      setScripts(data.scripts ?? []);
+      setCues(data.cues ?? []);
       if (!selectedSessionId && data.sessions?.length > 0) {
         setSelectedSessionId(data.sessions[0].id);
       }
@@ -619,6 +664,36 @@ export function LiveActorClient({ oaId }: { oaId: string }) {
     return map;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [instructions, myActorIds, linkedToMe]);
+
+  // Phase 2-I: participant の currentPhase に合う cue を抽出
+  // - is_active 必須
+  // - actor_id が null (= 全 actor 向け) or myActorIds に含まれる
+  // - phase_id が participant.currentPhaseId と一致
+  // - priority desc, sort_order asc
+  const PRIORITY_RANK_C: Record<LiveCue["priority"], number> = { high: 0, normal: 1, low: 2 };
+  const cuesByParticipantId = useMemo(() => {
+    const map = new Map<string, LiveCue[]>();
+    for (const p of participants) {
+      if (!p.current_phase_id) continue;
+      const matched = cues
+        .filter((c) => {
+          if (!c.is_active) return false;
+          if (c.phase_id !== p.current_phase_id) return false;
+          if (c.actor_id === null) return true;
+          if (linkedToMe && myActorIds.includes(c.actor_id)) return true;
+          if (!linkedToMe) return true; // 未紐付け Actor は全 actor 向けを見せる
+          return false;
+        })
+        .sort((a, b) => {
+          const r = PRIORITY_RANK_C[a.priority] - PRIORITY_RANK_C[b.priority];
+          if (r !== 0) return r;
+          return a.sort_order - b.sort_order;
+        });
+      if (matched.length > 0) map.set(p.id, matched);
+    }
+    return map;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [participants, cues, myActorIds, linkedToMe]);
 
   return (
     <div style={{ maxWidth: 960, margin: "0 auto", padding: "8px 0 40px" }}>
@@ -749,6 +824,7 @@ export function LiveActorClient({ oaId }: { oaId: string }) {
                   participant={p}
                   events={events}
                   participantInstructions={instructionsByPid.get(p.id) ?? []}
+                  participantCues={cuesByParticipantId.get(p.id) ?? []}
                   isAssignedToMe={assignedParticipantIds.has(p.id)}
                   teamName={p.team_id ? (teams.find((t) => t.id === p.team_id)?.name ?? null) : null}
                   oaId={oaId}
@@ -760,25 +836,114 @@ export function LiveActorClient({ oaId }: { oaId: string }) {
             </div>
           )}
 
-          {/* ── 台本 placeholder ── */}
-          <section
-            style={{
-              ...card,
-              background: "#f0f9ff",
-              borderColor: "#bae6fd",
-              color: "#0369a1",
-            }}
-          >
-            <h2 style={{ fontSize: 14, fontWeight: 700, margin: "0 0 6px" }}>
-              台本・セリフ候補
-            </h2>
-            <p style={{ fontSize: 12, margin: 0, lineHeight: 1.8 }}>
-              🐋 演者向けの台本・推奨セリフ表示は次フェーズで追加予定です。<br />
-              現状はメモ・アラート・接触記録を活用してください。
-            </p>
-          </section>
+          {/* ── 台本・セリフ候補 (Phase 2-I) ── */}
+          <ScriptsCuesSection
+            scripts={scripts}
+            cues={cues}
+            myActorIds={myActorIds}
+            linkedToMe={linkedToMe}
+          />
         </>
       )}
     </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ScriptsCuesSection — 台本・セリフ候補 (Phase 2-I)
+//   - scripts: is_active=true のみ表示 (= API 側で既に filter 済)
+//   - cues: 自分担当 (= actor_id が myActorIds) + actor_id=null (= 共通) のみ
+//     priority high → normal → low の順
+// ─────────────────────────────────────────────────────────────────────────────
+function ScriptsCuesSection({
+  scripts,
+  cues,
+  myActorIds,
+  linkedToMe,
+}: {
+  scripts: LiveScript[];
+  cues: LiveCue[];
+  myActorIds: string[];
+  linkedToMe: boolean;
+}) {
+  // 自分に関係する cue のみ抽出 (= actor_id=null or myActorIds に含まれる)
+  const visibleCues = cues.filter((c) => {
+    if (!c.is_active) return false;
+    if (c.actor_id === null) return true;
+    if (linkedToMe && myActorIds.includes(c.actor_id)) return true;
+    if (!linkedToMe) return true; // 未紐付け Actor は全 cue を見せる (= 安全側)
+    return false;
+  });
+
+  if (scripts.length === 0 && visibleCues.length === 0) {
+    return (
+      <section style={{ ...card, background: "#f0f9ff", borderColor: "#bae6fd" }}>
+        <h2 style={{ fontSize: 14, fontWeight: 700, margin: "0 0 6px", color: "#0369a1" }}>
+          台本・セリフ候補
+        </h2>
+        <p style={{ fontSize: 12, color: "#0369a1", margin: 0, lineHeight: 1.8 }}>
+          🐋 台本・セリフ候補はまだ登録されていません。Admin Console で登録してください。
+        </p>
+      </section>
+    );
+  }
+
+  return (
+    <section style={{ ...card, background: "#f0f9ff", borderColor: "#bae6fd" }}>
+      <h2 style={{ fontSize: 14, fontWeight: 700, margin: "0 0 8px", color: "#0369a1" }}>
+        台本・セリフ候補
+      </h2>
+
+      {scripts.length > 0 && (
+        <details open style={{ marginBottom: 12 }}>
+          <summary style={{ cursor: "pointer", fontSize: 12, fontWeight: 600, color: "#0369a1" }}>
+            台本 ({scripts.length})
+          </summary>
+          <ul style={{ listStyle: "none", padding: 0, margin: "6px 0 0", display: "grid", gap: 6 }}>
+            {scripts.map((s) => (
+              <li key={s.id} style={{ background: "#ffffff", border: "1px solid #bae6fd", borderRadius: 6, padding: 8 }}>
+                <strong style={{ fontSize: 13, color: "#111827" }}>{s.title}</strong>
+                {s.memo && <span style={{ fontSize: 11, color: "#6b7280", marginLeft: 6 }}>📝 {s.memo}</span>}
+                <p style={{ margin: "4px 0 0", fontSize: 12, color: "#374151", whiteSpace: "pre-wrap" }}>{s.body}</p>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+
+      {visibleCues.length > 0 && (
+        <details open>
+          <summary style={{ cursor: "pointer", fontSize: 12, fontWeight: 600, color: "#0369a1" }}>
+            セリフ候補 ({visibleCues.length} / 優先度高い順)
+          </summary>
+          <ul style={{ listStyle: "none", padding: 0, margin: "6px 0 0", display: "grid", gap: 4 }}>
+            {visibleCues.map((c) => (
+              <li
+                key={c.id}
+                style={{
+                  background: "#ffffff",
+                  border: "1px solid #bae6fd",
+                  borderLeft: c.priority === "high" ? "3px solid #dc2626" : "3px solid transparent",
+                  borderRadius: 6,
+                  padding: 8,
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
+                  <span style={{
+                    padding: "0 6px", borderRadius: 999, fontSize: 9, fontWeight: 700,
+                    background: c.priority === "high" ? "#fee2e2" : c.priority === "low" ? "#f3f4f6" : "#fef3c7",
+                    color:      c.priority === "high" ? "#991b1b" : c.priority === "low" ? "#6b7280" : "#92400e",
+                  }}>
+                    {CUE_PRIORITY_LABEL[c.priority]}
+                  </span>
+                  <strong style={{ fontSize: 12, color: "#111827" }}>{c.title}</strong>
+                </div>
+                <p style={{ margin: "2px 0 0", fontSize: 12, color: "#374151", whiteSpace: "pre-wrap" }}>{c.body}</p>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+    </section>
   );
 }

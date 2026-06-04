@@ -55,6 +55,8 @@ model Oa {
   liveActorInstructions LiveActorInstruction[]
   liveTeams          LiveTeam[]
   liveImportPresets  LiveImportPreset[]
+  liveScripts        LiveScript[]
+  liveCues           LiveCue[]
 
   @@index([title])
   @@index([publishStatus])
@@ -122,6 +124,8 @@ model Work {
   werewolfTitles      WerewolfTitle[]
   locations           Location[]
   liveSessions        LiveSession[]
+  liveScripts         LiveScript[]
+  liveCues            LiveCue[]
   oa                  Oa                   @relation(fields: [oaId], references: [id], onDelete: Cascade)
   systemCharacter     Character?           @relation("WorkSystemCharacter", fields: [systemCharacterId], references: [id])
 
@@ -179,6 +183,7 @@ model Phase {
   transitionsTo   Transition[]   @relation("TransitionTo")
   userProgress    UserProgress[]
   liveParticipantsCurrent LiveParticipant[] @relation("LiveParticipantCurrentPhase")
+  liveCues                LiveCue[]
 
   @@index([workId])
   @@index([phaseType])
@@ -1729,6 +1734,7 @@ model LiveActor {
   oa            Oa       @relation(fields: [oaId], references: [id], onDelete: Cascade)
   assignments  LiveAssignment[]
   instructions LiveActorInstruction[]
+  cues         LiveCue[]
 
   @@index([oaId, createdAt])
   @@index([oaId, userId])
@@ -1814,4 +1820,67 @@ model LiveImportPreset {
 
   @@index([oaId, createdAt])
   @@map("live_import_presets")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 2-I: 台本・セリフ候補 (LiveScript / LiveCue)
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// LiveScript = 作品全体の台本・演出メモ (= Work 単位 / 長文 body)
+// LiveCue    = フェーズ別 / Actor 別のセリフ候補 (= Work 単位 / 短〜中文 body)
+// workId が null の場合は OA 共通として扱う。
+
+enum LiveCuePriority {
+  low
+  normal
+  high
+}
+
+/// 作品全体の台本・演出メモ。
+/// 日付・回ごとには変えず、作品単位で一貫して使う前提。
+/// workId が null なら OA 共通。
+model LiveScript {
+  id        String   @id @default(uuid())
+  oaId      String   @map("oa_id")
+  workId    String?  @map("work_id")
+  title     String
+  body      String
+  memo      String?
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  oa        Oa       @relation(fields: [oaId], references: [id], onDelete: Cascade)
+  work      Work?    @relation(fields: [workId], references: [id], onDelete: SetNull)
+
+  @@index([oaId, workId, isActive])
+  @@index([oaId, createdAt])
+  @@map("live_scripts")
+}
+
+/// フェーズ別 / Actor 別の セリフ候補。
+/// Actor Console で、participant の currentPhase に合致する cue を上位表示する。
+/// priority high を上に / sortOrder で同 priority 内の並び順を制御。
+model LiveCue {
+  id         String          @id @default(uuid())
+  oaId       String          @map("oa_id")
+  workId     String?         @map("work_id")
+  phaseId    String?         @map("phase_id")
+  actorId    String?         @map("actor_id")
+  title      String
+  body       String
+  priority   LiveCuePriority @default(normal)
+  sortOrder  Int             @default(0) @map("sort_order")
+  isActive   Boolean         @default(true) @map("is_active")
+  createdAt  DateTime        @default(now()) @map("created_at")
+  updatedAt  DateTime        @updatedAt @map("updated_at")
+  oa         Oa              @relation(fields: [oaId], references: [id], onDelete: Cascade)
+  work       Work?           @relation(fields: [workId], references: [id], onDelete: SetNull)
+  phase      Phase?          @relation(fields: [phaseId], references: [id], onDelete: SetNull)
+  actor      LiveActor?      @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([oaId, workId, isActive])
+  @@index([workId, phaseId, isActive])
+  @@index([workId, actorId, isActive])
+  @@index([oaId, createdAt])
+  @@map("live_cues")
 }

@@ -96,6 +96,42 @@ export type LiveActorInstruction = {
   updated_at: string;
 };
 
+// Phase 2-I: 台本・セリフ候補
+export type LiveScript = {
+  id: string;
+  oa_id: string;
+  work_id: string | null;
+  title: string;
+  body: string;
+  memo: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type LiveCuePriority = "low" | "normal" | "high";
+
+export type LiveCue = {
+  id: string;
+  oa_id: string;
+  work_id: string | null;
+  phase_id: string | null;
+  actor_id: string | null;
+  title: string;
+  body: string;
+  priority: LiveCuePriority;
+  sort_order: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export const CUE_PRIORITY_LABEL: Record<LiveCuePriority, string> = {
+  low:    "低",
+  normal: "中",
+  high:   "高",
+};
+
 export const INSTRUCTION_PRIORITY_LABEL: Record<LiveInstructionPriority, string> = {
   low:    "低",
   normal: "中",

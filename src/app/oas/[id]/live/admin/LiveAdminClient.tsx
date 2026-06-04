@@ -1377,6 +1377,16 @@ export function LiveAdminClient({ oaId }: { oaId: string }) {
         onChanged={() => void fetchActors()}
         onError={(msg) => setError(msg)}
       />
+
+      {/* ── 台本・セリフ候補 (Phase 2-I / 対象作品スコープ) ── */}
+      <ScriptsAndCuesSection
+        oaId={oaId}
+        workId={effectiveWorkId}
+        works={works}
+        phases={phases}
+        actors={actors}
+        onError={(msg) => setError(msg)}
+      />
     </div>
   );
 }
@@ -2565,5 +2575,360 @@ function ExportButton({
         </span>
       ) : "CSV エクスポート"}
     </button>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 2-I: ScriptsAndCuesSection — 台本・セリフ候補 管理
+// ─────────────────────────────────────────────────────────────────────────────
+type LiveScriptRow = {
+  id: string;
+  oa_id: string;
+  work_id: string | null;
+  title: string;
+  body: string;
+  memo: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+type LiveCueRow = {
+  id: string;
+  oa_id: string;
+  work_id: string | null;
+  phase_id: string | null;
+  actor_id: string | null;
+  title: string;
+  body: string;
+  priority: "low" | "normal" | "high";
+  sort_order: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+const CUE_PRIORITY_LABEL: Record<LiveCueRow["priority"], string> = {
+  low: "低", normal: "中", high: "高",
+};
+
+function ScriptsAndCuesSection({
+  oaId,
+  workId,
+  works,
+  phases,
+  actors,
+  onError,
+}: {
+  oaId: string;
+  workId: string | null;
+  works: WorkSummary[];
+  phases: PhaseSummary[];
+  actors: LiveActor[];
+  onError: (msg: string) => void;
+}) {
+  const [scripts, setScripts] = useState<LiveScriptRow[]>([]);
+  const [cues, setCues] = useState<LiveCueRow[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const workTitle = workId ? (works.find((w) => w.id === workId)?.title ?? "(未取得)") : null;
+
+  const fetchAll = useCallback(async () => {
+    setLoading(true);
+    try {
+      const qs = workId ? `?work_id=${encodeURIComponent(workId)}` : "";
+      const [sr, cr] = await Promise.all([
+        fetch(`/api/oas/${oaId}/live/scripts${qs}`, { credentials: "include" }),
+        fetch(`/api/oas/${oaId}/live/cues${qs}`, { credentials: "include" }),
+      ]);
+      if (!sr.ok) throw new Error(`台本取得に失敗 (HTTP ${sr.status})`);
+      if (!cr.ok) throw new Error(`セリフ候補取得に失敗 (HTTP ${cr.status})`);
+      const sj = await sr.json();
+      const cj = await cr.json();
+      setScripts(sj?.data?.scripts ?? []);
+      setCues(cj?.data?.cues ?? []);
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "取得に失敗しました");
+    } finally {
+      setLoading(false);
+    }
+  }, [oaId, workId, onError]);
+
+  useEffect(() => { void fetchAll(); }, [fetchAll]);
+
+  // ── 台本作成 ──
+  const [newScriptTitle, setNewScriptTitle] = useState("");
+  const [newScriptBody, setNewScriptBody] = useState("");
+  const [newScriptMemo, setNewScriptMemo] = useState("");
+  const [creatingScript, setCreatingScript] = useState(false);
+
+  const handleCreateScript = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newScriptTitle.trim() || !newScriptBody.trim()) return;
+    setCreatingScript(true);
+    try {
+      const res = await fetch(`/api/oas/${oaId}/live/scripts`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          work_id: workId || null,
+          title:   newScriptTitle.trim(),
+          body:    newScriptBody.trim(),
+          memo:    newScriptMemo.trim() || null,
+        }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => null);
+        throw new Error(j?.error?.message ?? `台本作成に失敗 (HTTP ${res.status})`);
+      }
+      setNewScriptTitle(""); setNewScriptBody(""); setNewScriptMemo("");
+      await fetchAll();
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "台本作成に失敗しました");
+    } finally {
+      setCreatingScript(false);
+    }
+  };
+
+  // ── セリフ候補作成 ──
+  const [newCueTitle, setNewCueTitle] = useState("");
+  const [newCueBody, setNewCueBody] = useState("");
+  const [newCuePriority, setNewCuePriority] = useState<"low" | "normal" | "high">("normal");
+  const [newCuePhaseId, setNewCuePhaseId] = useState("");
+  const [newCueActorId, setNewCueActorId] = useState("");
+  const [newCueSortOrder, setNewCueSortOrder] = useState<number>(0);
+  const [creatingCue, setCreatingCue] = useState(false);
+
+  const handleCreateCue = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newCueTitle.trim() || !newCueBody.trim()) return;
+    setCreatingCue(true);
+    try {
+      const res = await fetch(`/api/oas/${oaId}/live/cues`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          work_id:    workId || null,
+          phase_id:   newCuePhaseId || null,
+          actor_id:   newCueActorId || null,
+          title:      newCueTitle.trim(),
+          body:       newCueBody.trim(),
+          priority:   newCuePriority,
+          sort_order: newCueSortOrder,
+        }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => null);
+        throw new Error(j?.error?.message ?? `セリフ候補作成に失敗 (HTTP ${res.status})`);
+      }
+      setNewCueTitle(""); setNewCueBody(""); setNewCuePhaseId(""); setNewCueActorId(""); setNewCueSortOrder(0); setNewCuePriority("normal");
+      await fetchAll();
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "セリフ候補作成に失敗しました");
+    } finally {
+      setCreatingCue(false);
+    }
+  };
+
+  const handleDeleteScript = async (s: LiveScriptRow) => {
+    if (!confirm(`台本「${s.title}」を削除しますか?`)) return;
+    try {
+      const res = await fetch(`/api/oas/${oaId}/live/scripts/${s.id}`, { method: "DELETE", credentials: "include" });
+      if (!res.ok && res.status !== 204) {
+        const j = await res.json().catch(() => null);
+        throw new Error(j?.error?.message ?? `削除に失敗 (HTTP ${res.status})`);
+      }
+      await fetchAll();
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "削除に失敗しました");
+    }
+  };
+
+  const handleToggleScriptActive = async (s: LiveScriptRow) => {
+    try {
+      const res = await fetch(`/api/oas/${oaId}/live/scripts/${s.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ is_active: !s.is_active }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => null);
+        throw new Error(j?.error?.message ?? `更新に失敗 (HTTP ${res.status})`);
+      }
+      await fetchAll();
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "更新に失敗しました");
+    }
+  };
+
+  const handleDeleteCue = async (c: LiveCueRow) => {
+    if (!confirm(`セリフ候補「${c.title}」を削除しますか?`)) return;
+    try {
+      const res = await fetch(`/api/oas/${oaId}/live/cues/${c.id}`, { method: "DELETE", credentials: "include" });
+      if (!res.ok && res.status !== 204) {
+        const j = await res.json().catch(() => null);
+        throw new Error(j?.error?.message ?? `削除に失敗 (HTTP ${res.status})`);
+      }
+      await fetchAll();
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "削除に失敗しました");
+    }
+  };
+
+  const handleToggleCueActive = async (c: LiveCueRow) => {
+    try {
+      const res = await fetch(`/api/oas/${oaId}/live/cues/${c.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ is_active: !c.is_active }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => null);
+        throw new Error(j?.error?.message ?? `更新に失敗 (HTTP ${res.status})`);
+      }
+      await fetchAll();
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "更新に失敗しました");
+    }
+  };
+
+  return (
+    <section style={{ ...card, marginTop: 16 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+        {sectionTitle("台本・セリフ候補")}
+        <button onClick={() => void fetchAll()} style={buttonSecondary} disabled={loading}>
+          {loading ? (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Spinner /> 読込中…</span>
+          ) : "再読込"}
+        </button>
+      </div>
+      <p style={{ fontSize: 11, color: "#6b7280", margin: "0 0 12px" }}>
+        対象作品: <strong>{workTitle ?? "(未選択 / OA 共通)"}</strong>
+        {workTitle ? "(作品スコープ + OA 共通)" : "(work_id=null の OA 共通のみ表示)"}
+      </p>
+
+      {/* ── 台本 ── */}
+      <h3 style={{ fontSize: 13, fontWeight: 700, color: "#111827", margin: "12px 0 6px" }}>台本(長文 / 演出メモ)</h3>
+      <form onSubmit={handleCreateScript} style={{ display: "grid", gap: 6, marginBottom: 12 }}>
+        <input value={newScriptTitle} onChange={(e) => setNewScriptTitle(e.target.value)} placeholder="台本タイトル (例: 全体台本 / 開幕シーン)" style={inputStyle} disabled={creatingScript} />
+        <textarea value={newScriptBody} onChange={(e) => setNewScriptBody(e.target.value)} placeholder="本文(長文OK)" style={{ ...inputStyle, minHeight: 80 }} disabled={creatingScript} />
+        <input value={newScriptMemo} onChange={(e) => setNewScriptMemo(e.target.value)} placeholder="メモ (任意)" style={inputStyle} disabled={creatingScript} />
+        <div style={{ display: "flex", justifyContent: "flex-end" }}>
+          <button type="submit" style={buttonPrimary} disabled={creatingScript || !newScriptTitle.trim() || !newScriptBody.trim()}>
+            {creatingScript ? (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Spinner color="#ffffff" /> 作成中…</span>
+            ) : "台本を追加"}
+          </button>
+        </div>
+      </form>
+      {scripts.length === 0 ? (
+        <p style={{ fontSize: 12, color: "#6b7280" }}>台本がまだありません。</p>
+      ) : (
+        <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 6, marginBottom: 16 }}>
+          {scripts.map((s) => (
+            <li key={s.id} style={{ padding: 10, border: "1px solid #e5e7eb", borderRadius: 8, background: s.is_active ? "#ffffff" : "#f9fafb", opacity: s.is_active ? 1 : 0.6 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                <span style={{ padding: "1px 8px", borderRadius: 999, fontSize: 10, fontWeight: 700, background: s.is_active ? "#d1fae5" : "#e5e7eb", color: s.is_active ? "#065f46" : "#6b7280" }}>
+                  {s.is_active ? "公開" : "非公開"}
+                </span>
+                <strong style={{ fontSize: 13, color: "#111827", flex: 1 }}>{s.title}</strong>
+                <span style={{ fontSize: 10, color: "#9ca3af" }}>{s.work_id ? "作品" : "OA共通"}</span>
+              </div>
+              <p style={{ margin: "2px 0", fontSize: 12, color: "#374151", whiteSpace: "pre-wrap" }}>{s.body}</p>
+              {s.memo && <p style={{ margin: "2px 0", fontSize: 11, color: "#6b7280" }}>📝 {s.memo}</p>}
+              <div style={{ display: "flex", gap: 6, justifyContent: "flex-end", marginTop: 4 }}>
+                <button onClick={() => void handleToggleScriptActive(s)} style={buttonSecondary}>
+                  {s.is_active ? "非公開にする" : "公開にする"}
+                </button>
+                <button onClick={() => void handleDeleteScript(s)} style={{ ...buttonSecondary, color: "#991b1b", borderColor: "#fecaca" }}>削除</button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {/* ── セリフ候補 ── */}
+      <h3 style={{ fontSize: 13, fontWeight: 700, color: "#111827", margin: "12px 0 6px" }}>セリフ候補(フェーズ / Actor 別)</h3>
+      <form onSubmit={handleCreateCue} style={{ display: "grid", gap: 6, marginBottom: 12 }}>
+        <div style={{ display: "grid", gap: 6, gridTemplateColumns: "1fr 100px 1fr 1fr 80px" }}>
+          <input value={newCueTitle} onChange={(e) => setNewCueTitle(e.target.value)} placeholder="セリフタイトル (例: 第3ヒント口頭)" style={inputStyle} disabled={creatingCue} />
+          <select value={newCuePriority} onChange={(e) => setNewCuePriority(e.target.value as "low" | "normal" | "high")} style={inputStyle} disabled={creatingCue}>
+            <option value="low">優先 低</option>
+            <option value="normal">優先 中</option>
+            <option value="high">優先 高</option>
+          </select>
+          <select value={newCuePhaseId} onChange={(e) => setNewCuePhaseId(e.target.value)} style={inputStyle} disabled={creatingCue}>
+            <option value="">— Phase: 全体 —</option>
+            {phases.slice().sort((a, b) => a.sort_order - b.sort_order).map((p) => (
+              <option key={p.id} value={p.id}>{p.name}</option>
+            ))}
+          </select>
+          <select value={newCueActorId} onChange={(e) => setNewCueActorId(e.target.value)} style={inputStyle} disabled={creatingCue}>
+            <option value="">— Actor: 全員 —</option>
+            {actors.map((a) => (
+              <option key={a.id} value={a.id}>{a.display_name}{a.character_name ? ` / ${a.character_name}` : ""}</option>
+            ))}
+          </select>
+          <input
+            type="number"
+            value={newCueSortOrder}
+            onChange={(e) => setNewCueSortOrder(Number(e.target.value) || 0)}
+            placeholder="並び順"
+            style={inputStyle}
+            disabled={creatingCue}
+          />
+        </div>
+        <textarea value={newCueBody} onChange={(e) => setNewCueBody(e.target.value)} placeholder="セリフ本文 / 演出メモ" style={{ ...inputStyle, minHeight: 60 }} disabled={creatingCue} />
+        <div style={{ display: "flex", justifyContent: "flex-end" }}>
+          <button type="submit" style={buttonPrimary} disabled={creatingCue || !newCueTitle.trim() || !newCueBody.trim()}>
+            {creatingCue ? (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Spinner color="#ffffff" /> 作成中…</span>
+            ) : "セリフを追加"}
+          </button>
+        </div>
+      </form>
+      {cues.length === 0 ? (
+        <p style={{ fontSize: 12, color: "#6b7280" }}>セリフ候補がまだありません。</p>
+      ) : (
+        <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 6 }}>
+          {cues.map((c) => {
+            const ph = c.phase_id ? phases.find((p) => p.id === c.phase_id) : null;
+            const ac = c.actor_id ? actors.find((a) => a.id === c.actor_id) : null;
+            return (
+              <li key={c.id} style={{ padding: 10, border: "1px solid #e5e7eb", borderRadius: 8, background: c.is_active ? "#ffffff" : "#f9fafb", opacity: c.is_active ? 1 : 0.6 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                  <span style={{
+                    padding: "1px 8px", borderRadius: 999, fontSize: 10, fontWeight: 700,
+                    background: c.priority === "high" ? "#fee2e2" : c.priority === "low" ? "#f3f4f6" : "#fef3c7",
+                    color:      c.priority === "high" ? "#991b1b" : c.priority === "low" ? "#6b7280" : "#92400e",
+                  }}>
+                    優先 {CUE_PRIORITY_LABEL[c.priority]}
+                  </span>
+                  <span style={{ padding: "1px 8px", borderRadius: 999, fontSize: 10, fontWeight: 700, background: c.is_active ? "#d1fae5" : "#e5e7eb", color: c.is_active ? "#065f46" : "#6b7280" }}>
+                    {c.is_active ? "公開" : "非公開"}
+                  </span>
+                  <strong style={{ fontSize: 13, color: "#111827", flex: 1 }}>{c.title}</strong>
+                  <span style={{ fontSize: 11, color: "#9ca3af" }}>sort {c.sort_order}</span>
+                </div>
+                <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 2 }}>
+                  Phase: {ph?.name ?? "(全体)"} / Actor: {ac?.display_name ?? "(全員)"}
+                </div>
+                <p style={{ margin: "2px 0", fontSize: 12, color: "#374151", whiteSpace: "pre-wrap" }}>{c.body}</p>
+                <div style={{ display: "flex", gap: 6, justifyContent: "flex-end", marginTop: 4 }}>
+                  <button onClick={() => void handleToggleCueActive(c)} style={buttonSecondary}>
+                    {c.is_active ? "非公開にする" : "公開にする"}
+                  </button>
+                  <button onClick={() => void handleDeleteCue(c)} style={{ ...buttonSecondary, color: "#991b1b", borderColor: "#fecaca" }}>削除</button>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
   );
 }
