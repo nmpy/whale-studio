@@ -57,7 +57,11 @@ export default function WorkListPage() {
   const params  = useParams<{ id: string }>();
   const oaId    = params.id;
   const { showToast } = useToast();
-  const { role, isTester: isRoleTester } = useWorkspaceRole(oaId);
+  const { role, isTester: isRoleTester, liveEnabled, liveRole } = useWorkspaceRole(oaId);
+  // Phase 2-K: 作品リストに Live Admin / Live Actor 表示確認 導線を出す条件 =
+  //   Live が有効 OA かつ自分が live admin 集合 (= OA owner / live_owner / live_admin)
+  const canEnterLive =
+    liveEnabled && (role === "owner" || liveRole === "live_owner" || liveRole === "live_admin");
   const { isTester } = useTesterMode();
   // 表示確認モード中は preview tier の Plan 情報を返す (= 価格・上限表示が preview に追随)。
   // 通常モード / 非 owner / 非 platform admin は実プラン情報 (= 既存挙動)。
@@ -505,6 +509,7 @@ export default function WorkListPage() {
               role={role}
               onDelete={!isTester ? handleDelete : undefined}
               onStatusChange={handleStatusChange}
+              canEnterLive={canEnterLive}
             />
           ))}
         </div>

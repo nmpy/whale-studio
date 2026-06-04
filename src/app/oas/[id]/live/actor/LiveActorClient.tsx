@@ -558,7 +558,16 @@ function ParticipantCard({
 // ─────────────────────────────────────────────────────────────────────────────
 // LiveActorClient — Actor Console 全体
 // ─────────────────────────────────────────────────────────────────────────────
-export function LiveActorClient({ oaId, canPreview = false }: { oaId: string; canPreview?: boolean }) {
+export function LiveActorClient({
+  oaId,
+  canPreview = false,
+  lockedWorkId = null,
+}: {
+  oaId: string;
+  canPreview?: boolean;
+  /** Phase 2-K: 作品リスト導線から ?workId=xxx で入った場合に対象 Work を固定 */
+  lockedWorkId?: string | null;
+}) {
   const [sessions, setSessions] = useState<LiveSession[]>([]);
   const [participants, setParticipants] = useState<LiveParticipant[]>([]);
   const [events, setEvents] = useState<LiveEventLog[]>([]);
@@ -596,7 +605,12 @@ export function LiveActorClient({ oaId, canPreview = false }: { oaId: string; ca
       if (!res.ok) throw new Error(`取得に失敗しました (HTTP ${res.status})`);
       const json = await res.json();
       const data = json?.data ?? json;
-      setSessions(data.sessions ?? []);
+      // Phase 2-K: lockedWorkId 指定時は該当 work の session のみに絞る
+      const allSessions: LiveSession[] = data.sessions ?? [];
+      const scopedSessions = lockedWorkId
+        ? allSessions.filter((s) => s.work_id === lockedWorkId)
+        : allSessions;
+      setSessions(scopedSessions);
       setParticipants(data.participants ?? []);
       setEvents(data.events ?? []);
       setActors(data.actors ?? []);
@@ -607,16 +621,16 @@ export function LiveActorClient({ oaId, canPreview = false }: { oaId: string; ca
       setCues(data.cues ?? []);
       setActivePreview(data.preview ?? null);
       // Phase 2-I.3: 初回ロード時は現在時刻に最も近い session を自動選択
-      if (!selectedSessionId && data.sessions?.length > 0) {
-        const nearest = pickNearestSession(data.sessions);
-        setSelectedSessionId(nearest?.id ?? data.sessions[0].id);
+      if (!selectedSessionId && scopedSessions.length > 0) {
+        const nearest = pickNearestSession(scopedSessions);
+        setSelectedSessionId(nearest?.id ?? scopedSessions[0].id);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "取得に失敗しました");
     } finally {
       setLoading(false);
     }
-  }, [oaId, selectedSessionId, canPreview, previewActorId]);
+  }, [oaId, selectedSessionId, canPreview, previewActorId, lockedWorkId]);
 
   useEffect(() => { void fetchAll(); }, [fetchAll]);
 
@@ -738,6 +752,34 @@ export function LiveActorClient({ oaId, canPreview = false }: { oaId: string; ca
       <p style={{ fontSize: 13, color: "#6b7280", margin: "0 0 16px" }}>
         Phase 2-D: 担当プレイヤーの状態確認・接触記録・メモ・アラートを記録できます。リアルタイム更新は未実装のため、操作後は自動 refetch、状況の手動更新は「再読込」ボタンで行ってください。
       </p>
+
+      {/* Phase 2-K: workId 固定モード (= 作品リスト導線から入った場合) */}
+      {lockedWorkId && (
+        <div
+          style={{
+            background: "#eef2ff",
+            border: "1px solid #6366f1",
+            borderRadius: 10,
+            padding: "8px 12px",
+            marginBottom: 12,
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            flexWrap: "wrap",
+            fontSize: 12,
+            color: "#3730a3",
+          }}
+        >
+          <span style={{ fontWeight: 700 }}>対象作品:</span>
+          <span>
+            {sessions.find((s) => s.work_id === lockedWorkId)?.work_title ?? "(作品名取得中…)"}
+          </span>
+          <span style={{ flex: 1 }} />
+          <Link href={`/oas/${oaId}/works`} style={{ fontSize: 11, color: "#3730a3", textDecoration: "underline" }}>
+            ← 作品リストへ戻る
+          </Link>
+        </div>
+      )}
 
       {/* Phase 2-J: 表示確認モード (= Owner/Admin だけ表示) */}
       {canPreview && (
