@@ -29,7 +29,15 @@ export type LiveAuthOk = {
   ok: true;
   user: { id: string; email?: string };
   /** 判定根拠 (= デバッグ・ログ用) */
-  via: "platform_admin" | "oa_owner" | "live_owner" | "live_admin" | "live_actor" | "live_player";
+  via:
+    | "platform_admin"
+    | "oa_owner"
+    | "live_owner"
+    | "live_admin"
+    | "live_actor"
+    | "live_player"
+    /// Phase 2-J: 招待 URL 受諾済みの LiveActor.userId 経由 (= WorkspaceMember 非依存)
+    | "live_actor_invited";
 };
 export type LiveAuthFail = { ok: false; response: NextResponse };
 
@@ -161,6 +169,19 @@ export async function authorizeLiveSection(
   }
   if (section === "admin" && liveRole === "live_admin") {
     return { ok: true, user, via: "live_admin" };
+  }
+
+  // Phase 2-J: actor section のみ、LiveActor.userId 経由で許可。
+  // 受諾済み演者は WorkspaceMember 非依存で Actor Console だけ閲覧できる
+  // (= studio role / liveRole は付与しない設計)。
+  if (section === "actor") {
+    const linkedActor = await prisma.liveActor.findFirst({
+      where:  { oaId, userId: user.id },
+      select: { id: true },
+    });
+    if (linkedActor) {
+      return { ok: true, user, via: "live_actor_invited" };
+    }
   }
 
   return { ok: false, response: notFoundResponse() };

@@ -56,6 +56,7 @@ export type LiveTeam = {
 };
 
 // Phase 2-E: Actor (= 演者) のレコード
+// Phase 2-J: GET /actors では invite_* も含まれる (= POST 直後など payload 都合により optional)
 export type LiveActor = {
   id: string;
   oa_id: string;
@@ -65,6 +66,12 @@ export type LiveActor = {
   memo: string | null;
   created_at: string;
   updated_at: string;
+  /** Phase 2-J: 最新 invite から導出した state ("none"|"active"|"used"|"expired"|"revoked") */
+  invite_state?: "none" | "active" | "used" | "expired" | "revoked";
+  invite_expires_at?: string | null;
+  invite_used_at?: string | null;
+  invite_revoked_at?: string | null;
+  invite_created_at?: string | null;
 };
 
 // Phase 2-E: participant ↔ actor の担当割当
