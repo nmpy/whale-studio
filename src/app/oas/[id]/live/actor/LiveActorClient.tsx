@@ -26,7 +26,6 @@ import {
   type LiveAssignment,
   type LiveActorInstruction,
   type LiveTeam,
-  type LiveScript,
   type LiveCue,
   CUE_PRIORITY_LABEL,
   SESSION_STATUS_LABEL,
@@ -40,6 +39,9 @@ import {
   inputStyle,
   card,
   errorBox,
+  pickNearestSession,
+  sessionYearMonth,
+  sessionAmPm,
 } from "../_shared";
 
 const PARTICIPANT_STATUSES = ["waiting", "active", "stuck", "completed", "dropped"] as const;
@@ -567,12 +569,17 @@ export function LiveActorClient({ oaId }: { oaId: string }) {
   const [myActorIds, setMyActorIds] = useState<string[]>([]);
   // Phase 2-G:
   const [teams, setTeams] = useState<LiveTeam[]>([]);
-  // Phase 2-I:
-  const [scripts, setScripts] = useState<LiveScript[]>([]);
+  // Phase 2-I.3: LiveScript は廃止 (= LiveCue に一本化)。state は cues のみ。
   const [cues, setCues] = useState<LiveCue[]>([]);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Phase 2-I.3: セッション絞り込み (月 / 午前午後)
+  const [sessionFilterMonth, setSessionFilterMonth] = useState<string>("");
+  const [sessionFilterAmPm, setSessionFilterAmPm] = useState<"" | "am" | "pm">("");
+  // Phase 2-I.3: チーム / 参加者 collapse 状態
+  const [collapsedTeams, setCollapsedTeams] = useState<Record<string, boolean>>({});
+  const [collapsedParticipants, setCollapsedParticipants] = useState<Record<string, boolean>>({});
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
@@ -591,10 +598,11 @@ export function LiveActorClient({ oaId }: { oaId: string }) {
       setInstructions(data.instructions ?? []);
       setMyActorIds(data.my_actor_ids ?? []);
       setTeams(data.teams ?? []);
-      setScripts(data.scripts ?? []);
       setCues(data.cues ?? []);
+      // Phase 2-I.3: 初回ロード時は現在時刻に最も近い session を自動選択
       if (!selectedSessionId && data.sessions?.length > 0) {
-        setSelectedSessionId(data.sessions[0].id);
+        const nearest = pickNearestSession(data.sessions);
+        setSelectedSessionId(nearest?.id ?? data.sessions[0].id);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "取得に失敗しました");
@@ -623,6 +631,20 @@ export function LiveActorClient({ oaId }: { oaId: string }) {
     const others = participants.filter((p) => !assignedParticipantIds.has(p.id));
     return [...mine, ...others];
   }, [participants, assignedParticipantIds, linkedToMe]);
+
+  // Phase 2-I.3: 参加者をチームでグループ化 (= 担当優先順を保持)
+  const participantsByTeam = useMemo(() => {
+    const grouped = new Map<string, LiveParticipant[]>();
+    for (const p of orderedParticipants) {
+      const key = p.team_id ?? "__none__";
+      const list = grouped.get(key) ?? [];
+      list.push(p);
+      grouped.set(key, list);
+    }
+    return grouped;
+  }, [orderedParticipants]);
+
+  const selectedSession = sessions.find((s) => s.id === selectedSessionId) ?? null;
 
   // Phase 2-F: priority desc (high→normal→low) + createdAt desc でソート
   const PRIORITY_RANK: Record<LiveActorInstruction["priority"], number> = { high: 0, normal: 1, low: 2 };
@@ -726,50 +748,119 @@ export function LiveActorClient({ oaId }: { oaId: string }) {
         {sessions.length === 0 ? (
           <p style={{ fontSize: 13, color: "#6b7280" }}>セッションがまだありません。</p>
         ) : (
-          <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 8 }}>
-            {sessions.map((s) => {
-              const selected = s.id === selectedSessionId;
+          <>
+            {/* Phase 2-I.3: 月 / 午前午後 フィルタ */}
+            {(() => {
+              const months = Array.from(new Set(
+                sessions.map((s) => sessionYearMonth(s)).filter((m): m is string => m !== null),
+              )).sort();
               return (
-                <li key={s.id}>
-                  <button
-                    onClick={() => setSelectedSessionId(s.id)}
-                    style={{
-                      width: "100%",
-                      textAlign: "left",
-                      padding: "10px 12px",
-                      borderRadius: 10,
-                      background: selected ? "#ecfdf5" : "#ffffff",
-                      border: selected ? "1px solid #10b981" : "1px solid #e5e7eb",
-                      cursor: "pointer",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 12,
-                    }}
-                  >
-                    <span
-                      style={{
-                        padding: "2px 8px",
-                        borderRadius: 999,
-                        fontSize: 11,
-                        fontWeight: 700,
-                        background: s.status === "active" ? "#d1fae5"
-                                  : s.status === "ended"  ? "#f3f4f6"
-                                                          : "#fef3c7",
-                        color:      s.status === "active" ? "#065f46"
-                                  : s.status === "ended"  ? "#6b7280"
-                                                          : "#92400e",
-                      }}
+                <div style={{ display: "flex", gap: 8, marginBottom: 8, fontSize: 11, color: "#6b7280" }}>
+                  <label>
+                    月:&nbsp;
+                    <select
+                      value={sessionFilterMonth}
+                      onChange={(e) => setSessionFilterMonth(e.target.value)}
+                      style={{ ...inputStyle, maxWidth: 140, padding: "4px 8px" }}
                     >
-                      {SESSION_STATUS_LABEL[s.status]}
-                    </span>
-                    <span style={{ fontSize: 14, fontWeight: 600, color: "#111827", flex: 1 }}>
-                      {s.name}
-                    </span>
-                  </button>
-                </li>
+                      <option value="">すべて</option>
+                      {months.map((m) => {
+                        const [y, mm] = m.split("-");
+                        return <option key={m} value={m}>{`${y}年${Number(mm)}月`}</option>;
+                      })}
+                    </select>
+                  </label>
+                  <label>
+                    時間帯:&nbsp;
+                    <select
+                      value={sessionFilterAmPm}
+                      onChange={(e) => setSessionFilterAmPm(e.target.value as "" | "am" | "pm")}
+                      style={{ ...inputStyle, maxWidth: 100, padding: "4px 8px" }}
+                    >
+                      <option value="">すべて</option>
+                      <option value="am">午前</option>
+                      <option value="pm">午後</option>
+                    </select>
+                  </label>
+                </div>
               );
-            })}
-          </ul>
+            })()}
+            {/* Phase 2-I.3: 現在選択中の session を prominent 表示 */}
+            {selectedSession && (
+              <div
+                style={{
+                  background: "#ecfdf5",
+                  border: "2px solid #10b981",
+                  borderRadius: 10,
+                  padding: "10px 14px",
+                  marginBottom: 10,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  flexWrap: "wrap",
+                }}
+              >
+                <span style={{ fontSize: 11, fontWeight: 700, color: "#065f46" }}>選択中</span>
+                <span style={{ fontSize: 14, fontWeight: 700, color: "#065f46" }}>{selectedSession.name}</span>
+                {selectedSession.work_title && (
+                  <span style={{ fontSize: 12, color: "#065f46" }}>/ {selectedSession.work_title}</span>
+                )}
+                {selectedSession.starts_at && (
+                  <span style={{ fontSize: 12, color: "#065f46" }}>/ {formatDateTime(selectedSession.starts_at)}</span>
+                )}
+              </div>
+            )}
+            <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 8 }}>
+              {sessions
+                .filter((s) => {
+                  if (sessionFilterMonth && sessionYearMonth(s) !== sessionFilterMonth) return false;
+                  if (sessionFilterAmPm && sessionAmPm(s) !== sessionFilterAmPm) return false;
+                  return true;
+                })
+                .map((s) => {
+                  const selected = s.id === selectedSessionId;
+                  return (
+                    <li key={s.id}>
+                      <button
+                        onClick={() => setSelectedSessionId(s.id)}
+                        style={{
+                          width: "100%",
+                          textAlign: "left",
+                          padding: "10px 12px",
+                          borderRadius: 10,
+                          background: selected ? "#ecfdf5" : "#ffffff",
+                          border: selected ? "1px solid #10b981" : "1px solid #e5e7eb",
+                          cursor: "pointer",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 12,
+                        }}
+                      >
+                        <span
+                          style={{
+                            padding: "2px 8px",
+                            borderRadius: 999,
+                            fontSize: 11,
+                            fontWeight: 700,
+                            background: s.status === "active" ? "#d1fae5"
+                                      : s.status === "ended"  ? "#f3f4f6"
+                                                              : "#fef3c7",
+                            color:      s.status === "active" ? "#065f46"
+                                      : s.status === "ended"  ? "#6b7280"
+                                                              : "#92400e",
+                          }}
+                        >
+                          {SESSION_STATUS_LABEL[s.status]}
+                        </span>
+                        <span style={{ fontSize: 14, fontWeight: 600, color: "#111827", flex: 1 }}>
+                          {s.name}
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+            </ul>
+          </>
         )}
       </section>
 
@@ -817,28 +908,114 @@ export function LiveActorClient({ oaId }: { oaId: string }) {
           {participants.length === 0 ? (
             <p style={{ fontSize: 13, color: "#6b7280" }}>参加者がまだ登録されていません。</p>
           ) : (
+            // Phase 2-I.3: チーム → 参加者の二段アコーディオン
             <div style={{ display: "grid", gap: 12, marginBottom: 16 }}>
-              {orderedParticipants.map((p) => (
-                <ParticipantCard
-                  key={p.id}
-                  participant={p}
-                  events={events}
-                  participantInstructions={instructionsByPid.get(p.id) ?? []}
-                  participantCues={cuesByParticipantId.get(p.id) ?? []}
-                  isAssignedToMe={assignedParticipantIds.has(p.id)}
-                  teamName={p.team_id ? (teams.find((t) => t.id === p.team_id)?.name ?? null) : null}
-                  oaId={oaId}
-                  sessionId={selectedSessionId}
-                  onMutated={() => void fetchAll()}
-                  onError={(msg) => setError(msg)}
-                />
-              ))}
+              {Array.from(participantsByTeam.entries()).map(([teamKey, list]) => {
+                const team = teamKey === "__none__" ? null : teams.find((t) => t.id === teamKey) ?? null;
+                const teamLabel = team?.name ?? "(チーム未割当)";
+                const isTeamCollapsed = collapsedTeams[teamKey] ?? false;
+                return (
+                  <div
+                    key={teamKey}
+                    style={{
+                      background: "#ffffff",
+                      border: "1px solid #e5e7eb",
+                      borderRadius: 10,
+                      padding: "8px 10px",
+                      display: "grid",
+                      gap: 8,
+                    }}
+                  >
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setCollapsedTeams((s) => ({ ...s, [teamKey]: !isTeamCollapsed }))
+                      }
+                      style={{
+                        all: "unset",
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        fontSize: 13,
+                        fontWeight: 700,
+                        color: "#111827",
+                      }}
+                    >
+                      <span style={{ width: 12, color: "#6b7280" }}>{isTeamCollapsed ? "▶" : "▼"}</span>
+                      <span>{teamLabel}</span>
+                      <span style={{ fontSize: 11, color: "#6b7280", fontWeight: 400 }}>
+                        ({list.length})
+                      </span>
+                    </button>
+                    {!isTeamCollapsed && (
+                      <div style={{ display: "grid", gap: 10 }}>
+                        {list.map((p) => {
+                          const isPCollapsed = collapsedParticipants[p.id] ?? false;
+                          return (
+                            <div key={p.id}>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setCollapsedParticipants((s) => ({ ...s, [p.id]: !isPCollapsed }))
+                                }
+                                style={{
+                                  all: "unset",
+                                  cursor: "pointer",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: 6,
+                                  fontSize: 12,
+                                  color: "#374151",
+                                  marginBottom: 4,
+                                }}
+                              >
+                                <span style={{ width: 10, color: "#9ca3af" }}>
+                                  {isPCollapsed ? "▶" : "▼"}
+                                </span>
+                                <span style={{ fontWeight: 600 }}>{p.display_name ?? "(無名)"}</span>
+                                <span style={{ fontSize: 10, color: "#9ca3af" }}>
+                                  {PARTICIPANT_STATUS_LABEL[p.status]}
+                                </span>
+                                {assignedParticipantIds.has(p.id) && (
+                                  <span
+                                    style={{
+                                      fontSize: 9, fontWeight: 700,
+                                      background: "#fef3c7", color: "#92400e",
+                                      padding: "1px 6px", borderRadius: 999,
+                                    }}
+                                  >
+                                    担当
+                                  </span>
+                                )}
+                              </button>
+                              {!isPCollapsed && (
+                                <ParticipantCard
+                                  participant={p}
+                                  events={events}
+                                  participantInstructions={instructionsByPid.get(p.id) ?? []}
+                                  participantCues={cuesByParticipantId.get(p.id) ?? []}
+                                  isAssignedToMe={assignedParticipantIds.has(p.id)}
+                                  teamName={team?.name ?? null}
+                                  oaId={oaId}
+                                  sessionId={selectedSessionId}
+                                  onMutated={() => void fetchAll()}
+                                  onError={(msg) => setError(msg)}
+                                />
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
 
-          {/* ── 台本・セリフ候補 (Phase 2-I) ── */}
-          <ScriptsCuesSection
-            scripts={scripts}
+          {/* ── 台本 (Phase 2-I.3: scripts は廃止、cues のみ表示) ── */}
+          <ScriptsSection
             cues={cues}
             myActorIds={myActorIds}
             linkedToMe={linkedToMe}
@@ -850,39 +1027,34 @@ export function LiveActorClient({ oaId }: { oaId: string }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ScriptsCuesSection — 台本・セリフ候補 (Phase 2-I)
-//   - scripts: is_active=true のみ表示 (= API 側で既に filter 済)
-//   - cues: 自分担当 (= actor_id が myActorIds) + actor_id=null (= 共通) のみ
+// ScriptsSection — 台本 (Phase 2-I.3)
+//   - 旧 ScriptsCuesSection から LiveScript を削除し、LiveCue (= 台本項目) のみ表示
+//   - 自分担当 (= actor_id が myActorIds) + actor_id=null (= 共通) のみ
 //     priority high → normal → low の順
 // ─────────────────────────────────────────────────────────────────────────────
-function ScriptsCuesSection({
-  scripts,
+function ScriptsSection({
   cues,
   myActorIds,
   linkedToMe,
 }: {
-  scripts: LiveScript[];
   cues: LiveCue[];
   myActorIds: string[];
   linkedToMe: boolean;
 }) {
-  // 自分に関係する cue のみ抽出 (= actor_id=null or myActorIds に含まれる)
   const visibleCues = cues.filter((c) => {
     if (!c.is_active) return false;
     if (c.actor_id === null) return true;
     if (linkedToMe && myActorIds.includes(c.actor_id)) return true;
-    if (!linkedToMe) return true; // 未紐付け Actor は全 cue を見せる (= 安全側)
+    if (!linkedToMe) return true;
     return false;
   });
 
-  if (scripts.length === 0 && visibleCues.length === 0) {
+  if (visibleCues.length === 0) {
     return (
       <section style={{ ...card, background: "#f0f9ff", borderColor: "#bae6fd" }}>
-        <h2 style={{ fontSize: 14, fontWeight: 700, margin: "0 0 6px", color: "#0369a1" }}>
-          台本・セリフ候補
-        </h2>
+        <h2 style={{ fontSize: 14, fontWeight: 700, margin: "0 0 6px", color: "#0369a1" }}>台本</h2>
         <p style={{ fontSize: 12, color: "#0369a1", margin: 0, lineHeight: 1.8 }}>
-          🐋 台本・セリフ候補はまだ登録されていません。Admin Console で登録してください。
+          🐋 台本項目はまだ登録されていません。Admin Console で登録してください。
         </p>
       </section>
     );
@@ -891,59 +1063,34 @@ function ScriptsCuesSection({
   return (
     <section style={{ ...card, background: "#f0f9ff", borderColor: "#bae6fd" }}>
       <h2 style={{ fontSize: 14, fontWeight: 700, margin: "0 0 8px", color: "#0369a1" }}>
-        台本・セリフ候補
+        台本 ({visibleCues.length} / 優先度高い順)
       </h2>
-
-      {scripts.length > 0 && (
-        <details open style={{ marginBottom: 12 }}>
-          <summary style={{ cursor: "pointer", fontSize: 12, fontWeight: 600, color: "#0369a1" }}>
-            台本 ({scripts.length})
-          </summary>
-          <ul style={{ listStyle: "none", padding: 0, margin: "6px 0 0", display: "grid", gap: 6 }}>
-            {scripts.map((s) => (
-              <li key={s.id} style={{ background: "#ffffff", border: "1px solid #bae6fd", borderRadius: 6, padding: 8 }}>
-                <strong style={{ fontSize: 13, color: "#111827" }}>{s.title}</strong>
-                {s.memo && <span style={{ fontSize: 11, color: "#6b7280", marginLeft: 6 }}>📝 {s.memo}</span>}
-                <p style={{ margin: "4px 0 0", fontSize: 12, color: "#374151", whiteSpace: "pre-wrap" }}>{s.body}</p>
-              </li>
-            ))}
-          </ul>
-        </details>
-      )}
-
-      {visibleCues.length > 0 && (
-        <details open>
-          <summary style={{ cursor: "pointer", fontSize: 12, fontWeight: 600, color: "#0369a1" }}>
-            セリフ候補 ({visibleCues.length} / 優先度高い順)
-          </summary>
-          <ul style={{ listStyle: "none", padding: 0, margin: "6px 0 0", display: "grid", gap: 4 }}>
-            {visibleCues.map((c) => (
-              <li
-                key={c.id}
-                style={{
-                  background: "#ffffff",
-                  border: "1px solid #bae6fd",
-                  borderLeft: c.priority === "high" ? "3px solid #dc2626" : "3px solid transparent",
-                  borderRadius: 6,
-                  padding: 8,
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
-                  <span style={{
-                    padding: "0 6px", borderRadius: 999, fontSize: 9, fontWeight: 700,
-                    background: c.priority === "high" ? "#fee2e2" : c.priority === "low" ? "#f3f4f6" : "#fef3c7",
-                    color:      c.priority === "high" ? "#991b1b" : c.priority === "low" ? "#6b7280" : "#92400e",
-                  }}>
-                    {CUE_PRIORITY_LABEL[c.priority]}
-                  </span>
-                  <strong style={{ fontSize: 12, color: "#111827" }}>{c.title}</strong>
-                </div>
-                <p style={{ margin: "2px 0 0", fontSize: 12, color: "#374151", whiteSpace: "pre-wrap" }}>{c.body}</p>
-              </li>
-            ))}
-          </ul>
-        </details>
-      )}
+      <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 4 }}>
+        {visibleCues.map((c) => (
+          <li
+            key={c.id}
+            style={{
+              background: "#ffffff",
+              border: "1px solid #bae6fd",
+              borderLeft: c.priority === "high" ? "3px solid #dc2626" : "3px solid transparent",
+              borderRadius: 6,
+              padding: 8,
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
+              <span style={{
+                padding: "0 6px", borderRadius: 999, fontSize: 9, fontWeight: 700,
+                background: c.priority === "high" ? "#fee2e2" : c.priority === "low" ? "#f3f4f6" : "#fef3c7",
+                color:      c.priority === "high" ? "#991b1b" : c.priority === "low" ? "#6b7280" : "#92400e",
+              }}>
+                {CUE_PRIORITY_LABEL[c.priority]}
+              </span>
+              <strong style={{ fontSize: 12, color: "#111827" }}>{c.title}</strong>
+            </div>
+            <p style={{ margin: "2px 0 0", fontSize: 12, color: "#374151", whiteSpace: "pre-wrap" }}>{c.body}</p>
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }

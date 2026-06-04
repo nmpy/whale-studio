@@ -110,14 +110,8 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
             take:    200,
           })
         : Promise.resolve([]),
-      // Phase 2-I: scripts (= work scope or OA 共通の active)
-      prisma.liveScript.findMany({
-        where:   scopedWorkId
-          ? { oaId: params.id, isActive: true, OR: [{ workId: scopedWorkId }, { workId: null }] }
-          : { oaId: params.id, isActive: true, workId: null },
-        orderBy: { createdAt: "asc" },
-        take:    200,
-      }),
+      // Phase 2-I.3: 「台本」を LiveCue に一本化。LiveScript は fetch せず空配列で返す。
+      Promise.resolve([] as never[]),
       // Phase 2-I: cues (= work scope or OA 共通の active / 優先度高 → 低)
       prisma.liveCue.findMany({
         where:   scopedWorkId
@@ -225,18 +219,9 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
         created_at:         t.createdAt,
         updated_at:         t.updatedAt,
       })),
-      // Phase 2-I: 台本・セリフ候補 (= active のみ / scope は work or OA 共通)
-      scripts: scripts.map((s) => ({
-        id:         s.id,
-        oa_id:      s.oaId,
-        work_id:    s.workId,
-        title:      s.title,
-        body:       s.body,
-        memo:       s.memo,
-        is_active:  s.isActive,
-        created_at: s.createdAt,
-        updated_at: s.updatedAt,
-      })),
+      // Phase 2-I.3: 「台本」を LiveCue に一本化。LiveScript は UI/API レベルで非表示化
+      // (= DB データは残る / 後続 PR で整理予定)。scripts は空配列で互換維持。
+      scripts: [],
       cues: cues.map((c) => ({
         id:         c.id,
         oa_id:      c.oaId,
