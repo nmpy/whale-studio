@@ -562,11 +562,14 @@ export function LiveActorClient({
   oaId,
   canPreview = false,
   lockedWorkId = null,
+  lockedWorkTitle = null,
 }: {
   oaId: string;
   canPreview?: boolean;
   /** Phase 2-K: 作品リスト導線から ?workId=xxx で入った場合に対象 Work を固定 */
   lockedWorkId?: string | null;
+  /** Phase 2-K: server side で解決済みの work.title (= 即時表示用) */
+  lockedWorkTitle?: string | null;
 }) {
   const [sessions, setSessions] = useState<LiveSession[]>([]);
   const [participants, setParticipants] = useState<LiveParticipant[]>([]);
@@ -772,7 +775,9 @@ export function LiveActorClient({
         >
           <span style={{ fontWeight: 700 }}>対象作品:</span>
           <span>
-            {sessions.find((s) => s.work_id === lockedWorkId)?.work_title ?? "(作品名取得中…)"}
+            {lockedWorkTitle
+              ?? sessions.find((s) => s.work_id === lockedWorkId)?.work_title
+              ?? "(作品名取得中…)"}
           </span>
           <span style={{ flex: 1 }} />
           <Link href={`/oas/${oaId}/works`} style={{ fontSize: 11, color: "#3730a3", textDecoration: "underline" }}>

@@ -24,15 +24,27 @@ export default async function LiveActorPage({
   // Phase 2-J: 「表示確認モード」(= Owner/Admin が任意 Actor 視点で閲覧) の可否
   const canPreview = await canPreviewLiveActor(params.id, user.id);
 
-  // Phase 2-K: workId 指定があれば同 OA 配下を検証 (= OA 外なら無視)
-  let lockedWorkId: string | null = null;
+  // Phase 2-K: workId 指定があれば同 OA 配下を検証 (= OA 外なら無視)。
+  //            title も同時に取得して client に prop で渡す。
+  let lockedWorkId:    string | null = null;
+  let lockedWorkTitle: string | null = null;
   if (searchParams.workId) {
     const work = await prisma.work.findFirst({
       where:  { id: searchParams.workId, oaId: params.id },
-      select: { id: true },
+      select: { id: true, title: true },
     });
-    if (work) lockedWorkId = work.id;
+    if (work) {
+      lockedWorkId    = work.id;
+      lockedWorkTitle = work.title;
+    }
   }
 
-  return <LiveActorClient oaId={params.id} canPreview={canPreview} lockedWorkId={lockedWorkId} />;
+  return (
+    <LiveActorClient
+      oaId={params.id}
+      canPreview={canPreview}
+      lockedWorkId={lockedWorkId}
+      lockedWorkTitle={lockedWorkTitle}
+    />
+  );
 }

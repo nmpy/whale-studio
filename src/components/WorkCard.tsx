@@ -337,23 +337,6 @@ export function WorkCard({ work, oaId, basePath, role, onDelete, onStatusChange,
           <QuickActionBtn href={previewHref} ariaLabel={`「${work.title}」をプレビュー`}>
             <IconPlay />
           </QuickActionBtn>
-          {/* Phase 2-K: Live 導線 (= live admin 集合のみ表示) */}
-          {canEnterLive && (
-            <>
-              <QuickActionBtn
-                href={`/oas/${oaId}/live/admin?workId=${work.id}`}
-                ariaLabel={`「${work.title}」の Whale Studio Live Admin`}
-              >
-                <IconLive />
-              </QuickActionBtn>
-              <QuickActionBtn
-                href={`/oas/${oaId}/live/actor?workId=${work.id}`}
-                ariaLabel={`「${work.title}」の Whale Studio Live Actor 表示確認`}
-              >
-                <IconLiveEye />
-              </QuickActionBtn>
-            </>
-          )}
           {role === "owner" && onDelete && (
             <QuickActionBtn
               onClick={() => onDelete(work.id, work.title)}
@@ -477,6 +460,36 @@ export function WorkCard({ work, oaId, basePath, role, onDelete, onStatusChange,
           更新 {formatDate(work.updated_at)}
         </time>
       </div>
+
+      {/* ── Phase 2-K: Live 導線 (= live admin 集合のみ表示) ── */}
+      {canEnterLive && (
+        <div className="mt-3 flex flex-wrap gap-2 border-t border-line pt-3">
+          <Link
+            href={`/oas/${oaId}/live/admin?workId=${work.id}`}
+            title={`「${work.title}」の Whale Studio Live Admin を開く`}
+            className={
+              "inline-flex items-center gap-1.5 rounded-md border border-brand/30 " +
+              "bg-brand-soft px-3 py-1.5 text-[12px] font-semibold text-brand-ink " +
+              "no-underline transition-shadow hover:shadow-sm"
+            }
+          >
+            <IconLive />
+            Live管理
+          </Link>
+          <Link
+            href={`/oas/${oaId}/live/actor?workId=${work.id}`}
+            title={`「${work.title}」の Whale Studio Live Actor 表示確認を開く`}
+            className={
+              "inline-flex items-center gap-1.5 rounded-md border border-sky/30 " +
+              "bg-sky-soft px-3 py-1.5 text-[12px] font-semibold text-sky-ink " +
+              "no-underline transition-shadow hover:shadow-sm"
+            }
+          >
+            <IconLiveEye />
+            Actor確認
+          </Link>
+        </div>
+      )}
     </div>
   );
 }

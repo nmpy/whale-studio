@@ -25,15 +25,26 @@ export default async function LiveAdminPage({
     notFound();
   }
 
-  // Phase 2-K: workId が指定されていれば同 OA 配下か検証 (= OA 外なら無視)
-  let lockedWorkId: string | null = null;
+  // Phase 2-K: workId が指定されていれば同 OA 配下か検証 (= OA 外なら無視)。
+  //            title も同時に取得して client に prop で渡す (= 「作品名取得中...」を回避)。
+  let lockedWorkId:    string | null = null;
+  let lockedWorkTitle: string | null = null;
   if (searchParams.workId) {
     const work = await prisma.work.findFirst({
       where:  { id: searchParams.workId, oaId: params.id },
-      select: { id: true },
+      select: { id: true, title: true },
     });
-    if (work) lockedWorkId = work.id;
+    if (work) {
+      lockedWorkId    = work.id;
+      lockedWorkTitle = work.title;
+    }
   }
 
-  return <LiveAdminClient oaId={params.id} lockedWorkId={lockedWorkId} />;
+  return (
+    <LiveAdminClient
+      oaId={params.id}
+      lockedWorkId={lockedWorkId}
+      lockedWorkTitle={lockedWorkTitle}
+    />
+  );
 }

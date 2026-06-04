@@ -736,10 +736,13 @@ function AssignActor({
 export function LiveAdminClient({
   oaId,
   lockedWorkId = null,
+  lockedWorkTitle = null,
 }: {
   oaId: string;
   /** Phase 2-K: 作品リスト導線から ?workId=xxx で入った場合、対象作品を固定する */
   lockedWorkId?: string | null;
+  /** Phase 2-K: server side で解決済みの work.title (= 即時表示用 / works fetch を待たない) */
+  lockedWorkTitle?: string | null;
 }) {
   const [sessions, setSessions] = useState<LiveSession[]>([]);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
@@ -1066,7 +1069,9 @@ export function LiveAdminClient({
           <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
             <span style={{ fontSize: 12, color: "#374151" }}>対象作品:</span>
             <strong style={{ fontSize: 14, color: "#111827" }}>
-              {works.find((w) => w.id === lockedWorkId)?.title ?? (worksLoading ? "読み込み中…" : "(不明な作品)")}
+              {lockedWorkTitle
+                ?? works.find((w) => w.id === lockedWorkId)?.title
+                ?? (worksLoading ? "読み込み中…" : "(不明な作品)")}
             </strong>
             <span style={{ fontSize: 11, color: "#6b7280" }}>
               フェーズ {phases.length} 件 / 作品リストから固定で入っています
