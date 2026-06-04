@@ -733,7 +733,17 @@ function AssignActor({
   );
 }
 
-export function LiveAdminClient({ oaId }: { oaId: string }) {
+export function LiveAdminClient({
+  oaId,
+  lockedWorkId = null,
+  lockedWorkTitle = null,
+}: {
+  oaId: string;
+  /** Phase 2-K: 作品リスト導線から ?workId=xxx で入った場合、対象作品を固定する */
+  lockedWorkId?: string | null;
+  /** Phase 2-K: server side で解決済みの work.title (= 即時表示用 / works fetch を待たない) */
+  lockedWorkTitle?: string | null;
+}) {
   const [sessions, setSessions] = useState<LiveSession[]>([]);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [participants, setParticipants] = useState<LiveParticipant[]>([]);
@@ -746,7 +756,8 @@ export function LiveAdminClient({ oaId }: { oaId: string }) {
   const [works, setWorks] = useState<WorkSummary[]>([]);
   const [worksLoading, setWorksLoading] = useState(false);
   const [worksError, setWorksError] = useState<string | null>(null);
-  const [selectedWorkId, setSelectedWorkId] = useState<string | null>(null);
+  // Phase 2-K: lockedWorkId があれば初期値に使う (= プルダウン非表示で固定動作)
+  const [selectedWorkId, setSelectedWorkId] = useState<string | null>(lockedWorkId);
   const [phases, setPhases] = useState<PhaseSummary[]>([]);
   const [teams, setTeams] = useState<LiveTeam[]>([]);
   const [loadingSessions, setLoadingSessions] = useState(false);
@@ -1052,46 +1063,67 @@ export function LiveAdminClient({ oaId }: { oaId: string }) {
       {error && <div style={errorBox}>{error}</div>}
 
       {/* ── 対象作品セレクタ (Phase 2-G / 2-G.1 で必須化 / 2-G.2 で loading/error/empty 対応) ── */}
+      {/* Phase 2-K: lockedWorkId があるときはプルダウンの代わりに「対象作品: <名前>」の読み取り表示 */}
       <section style={{ ...card, marginBottom: 16, background: "#f9fafb" }}>
-        <label style={{ fontSize: 12, color: "#374151", display: "block", marginBottom: 4 }}>
-          対象作品 <span style={{ color: "#dc2626" }}>*</span>
-        </label>
-        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-          <select
-            value={selectedWorkId ?? ""}
-            onChange={(e) => setSelectedWorkId(e.target.value || null)}
-            style={{ ...inputStyle, maxWidth: 320 }}
-            disabled={worksLoading}
-          >
-            <option value="">
-              {worksLoading
-                ? "作品を読み込み中..."
-                : worksError
-                  ? "作品の取得に失敗しました"
-                  : works.length === 0
-                    ? "このOAには作品がありません"
-                    : "作品を選択してください"}
-            </option>
-            {works.map((w) => (
-              <option key={w.id} value={w.id}>{w.title}</option>
-            ))}
-          </select>
-          {worksLoading && (
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, color: "#6b7280" }}>
-              <Spinner /> 作品を読み込み中...
+        {lockedWorkId ? (
+          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+            <span style={{ fontSize: 12, color: "#374151" }}>対象作品:</span>
+            <strong style={{ fontSize: 14, color: "#111827" }}>
+              {lockedWorkTitle
+                ?? works.find((w) => w.id === lockedWorkId)?.title
+                ?? (worksLoading ? "読み込み中…" : "(不明な作品)")}
+            </strong>
+            <span style={{ fontSize: 11, color: "#6b7280" }}>
+              フェーズ {phases.length} 件 / 作品リストから固定で入っています
             </span>
-          )}
-          {!worksLoading && worksError && (
-            <button onClick={() => void fetchWorks()} style={buttonSecondary}>再試行</button>
-          )}
-          <span style={{ fontSize: 11, color: "#6b7280" }}>
-            {selectedWorkId
-              ? `フェーズ ${phases.length} 件 / 新規セッション・CSV import で使用`
-              : works.length === 0 && !worksLoading && !worksError
-                ? "Whale Studio の作品ページで作品を作成してください"
-                : "作品を選択すると、新規セッション作成と CSV import が可能になります"}
-          </span>
-        </div>
+            <span style={{ flex: 1 }} />
+            <Link href={`/oas/${oaId}/works`} style={{ fontSize: 11, color: "#0369a1", textDecoration: "underline" }}>
+              ← 作品リストへ戻る
+            </Link>
+          </div>
+        ) : (
+          <>
+            <label style={{ fontSize: 12, color: "#374151", display: "block", marginBottom: 4 }}>
+              対象作品 <span style={{ color: "#dc2626" }}>*</span>
+            </label>
+            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <select
+                value={selectedWorkId ?? ""}
+                onChange={(e) => setSelectedWorkId(e.target.value || null)}
+                style={{ ...inputStyle, maxWidth: 320 }}
+                disabled={worksLoading}
+              >
+                <option value="">
+                  {worksLoading
+                    ? "作品を読み込み中..."
+                    : worksError
+                      ? "作品の取得に失敗しました"
+                      : works.length === 0
+                        ? "このOAには作品がありません"
+                        : "作品を選択してください"}
+                </option>
+                {works.map((w) => (
+                  <option key={w.id} value={w.id}>{w.title}</option>
+                ))}
+              </select>
+              {worksLoading && (
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, color: "#6b7280" }}>
+                  <Spinner /> 作品を読み込み中...
+                </span>
+              )}
+              {!worksLoading && worksError && (
+                <button onClick={() => void fetchWorks()} style={buttonSecondary}>再試行</button>
+              )}
+              <span style={{ fontSize: 11, color: "#6b7280" }}>
+                {selectedWorkId
+                  ? `フェーズ ${phases.length} 件 / 新規セッション・CSV import で使用`
+                  : works.length === 0 && !worksLoading && !worksError
+                    ? "Whale Studio の作品ページで作品を作成してください"
+                    : "作品を選択すると、新規セッション作成と CSV import が可能になります"}
+              </span>
+            </div>
+          </>
+        )}
       </section>
 
       {/* ── タブナビ (Phase 2-I.2) ── */}

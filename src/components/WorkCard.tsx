@@ -196,6 +196,29 @@ const IconTrash = () => (
   </svg>
 );
 
+// Phase 2-K: Live 導線用アイコン (= 円形のラジオ風 = 「現場・配信」のメタファ)
+const IconLive = () => (
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
+    stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+    aria-hidden="true">
+    <circle cx="12" cy="12" r="3" fill="currentColor" stroke="none" />
+    <path d="M5.6 5.6a9 9 0 0 0 0 12.8" />
+    <path d="M18.4 5.6a9 9 0 0 1 0 12.8" />
+    <path d="M2.5 2.5a13 13 0 0 0 0 19" />
+    <path d="M21.5 2.5a13 13 0 0 1 0 19" />
+  </svg>
+);
+
+// Phase 2-K: Live Actor 表示確認 用アイコン (= 目玉 = preview のメタファ)
+const IconLiveEye = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+    stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+    aria-hidden="true">
+    <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z" />
+    <circle cx="12" cy="12" r="3" />
+  </svg>
+);
+
 // ── WorkCard Props ────────────────────────────────────────────────────────
 
 interface WorkCardProps {
@@ -206,11 +229,13 @@ interface WorkCardProps {
   onDelete?:        (id: string, title: string) => void;
   /** ステータス変更後のコールバック。親 state を refetch なしで更新するために使う */
   onStatusChange?:  (id: string, newStatus: PublishStatus) => void;
+  /** Phase 2-K: Live Admin / Live Actor 表示確認 導線を出すか (= live admin 集合のみ true) */
+  canEnterLive?:    boolean;
 }
 
 // ── メインコンポーネント ──────────────────────────────────────────────────
 
-export function WorkCard({ work, oaId, basePath, role, onDelete, onStatusChange }: WorkCardProps) {
+export function WorkCard({ work, oaId, basePath, role, onDelete, onStatusChange, canEnterLive = false }: WorkCardProps) {
   const { showToast } = useToast();
 
   const [copied,         setCopied]         = useState(false);
@@ -435,6 +460,36 @@ export function WorkCard({ work, oaId, basePath, role, onDelete, onStatusChange 
           更新 {formatDate(work.updated_at)}
         </time>
       </div>
+
+      {/* ── Phase 2-K: Live 導線 (= live admin 集合のみ表示) ── */}
+      {canEnterLive && (
+        <div className="mt-3 flex flex-wrap gap-2 border-t border-line pt-3">
+          <Link
+            href={`/oas/${oaId}/live/admin?workId=${work.id}`}
+            title={`「${work.title}」の Whale Studio Live Admin を開く`}
+            className={
+              "inline-flex items-center gap-1.5 rounded-md border border-brand/30 " +
+              "bg-brand-soft px-3 py-1.5 text-[12px] font-semibold text-brand-ink " +
+              "no-underline transition-shadow hover:shadow-sm"
+            }
+          >
+            <IconLive />
+            Live管理
+          </Link>
+          <Link
+            href={`/oas/${oaId}/live/actor?workId=${work.id}`}
+            title={`「${work.title}」の Whale Studio Live Actor 表示確認を開く`}
+            className={
+              "inline-flex items-center gap-1.5 rounded-md border border-sky/30 " +
+              "bg-sky-soft px-3 py-1.5 text-[12px] font-semibold text-sky-ink " +
+              "no-underline transition-shadow hover:shadow-sm"
+            }
+          >
+            <IconLiveEye />
+            Actor確認
+          </Link>
+        </div>
+      )}
     </div>
   );
 }
