@@ -6,6 +6,7 @@ import { Fragment, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { TLink as Link } from "@/components/TLink";
 import { workApi, messageApi, phaseApi, transitionApi, getDevToken } from "@/lib/api-client";
+import { clientPerfStart, clientPerfEnd } from "@/lib/perf-client";
 import { HelpAccordion } from "@/components/HelpAccordion";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { useToast } from "@/components/Toast";
@@ -515,9 +516,15 @@ export default function MessagesPage() {
     const token = getDevToken();
     setLoading(true);
     setLoadError(null);
+    // perf: NEXT_PUBLIC_PERF_LOG_ENABLED=1 のとき browser console に 4 並列 fetch の
+    //       wall time を出力 (= server-side perf log と組み合わせて waterfall を可視化)
+    const t0 = clientPerfStart();
     Promise.all([
       workApi.get(token, workId),
-      messageApi.list(token, workId, { with_relations: true }) as Promise<MessageWithRelations[]>,
+      // perf: 一覧では summary mode を使い、編集画面用 field (= free_input_* / image_action_* /
+      //       tap_* / puzzle_* / 演出設定等) を返さない (= payload 50-70% 削減見込み)。
+      //       limit 500 で初期 burst を抑制 (= 既存挙動に近いが、極端な件数を保護)。
+      messageApi.list(token, workId, { summary: true, limit: 500 }) as Promise<MessageWithRelations[]>,
       phaseApi.list(token, workId),
       transitionApi.listByWork(token, workId),
     ])
@@ -527,8 +534,15 @@ export default function MessagesPage() {
         setMessages(list);
         setPhases(phaseList.sort((a, b) => a.sort_order - b.sort_order));
         setTransitions(transList);
+        clientPerfEnd("page:/messages:initialLoad", t0, {
+          messages: list.length,
+          phases:   phaseList.length,
+        });
       })
-      .catch((e) => setLoadError(e instanceof Error ? e.message : "読み込みに失敗しました"))
+      .catch((e) => {
+        setLoadError(e instanceof Error ? e.message : "読み込みに失敗しました");
+        clientPerfEnd("page:/messages:initialLoad", t0, { error: 1 });
+      })
       .finally(() => setLoading(false));
   }, [workId]);
 

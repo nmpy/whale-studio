@@ -927,13 +927,24 @@ export const messageApi = {
   async list(
     token: string,
     workId: string,
-    params?: { phase_id?: string; character_id?: string; is_active?: boolean; with_relations?: boolean }
+    params?: {
+      phase_id?:       string;
+      character_id?:   string;
+      is_active?:      boolean;
+      with_relations?: boolean;
+      /** perf: 一覧用 summary mode (= 編集画面用 field を返さない / payload 削減) */
+      summary?:        boolean;
+      /** perf: 初期表示件数の上限 (= 一覧の重さ抑制) */
+      limit?:          number;
+    },
   ): Promise<(Message | MessageWithRelations)[]> {
     const query = new URLSearchParams({ work_id: workId });
     if (params?.phase_id       !== undefined) query.set("phase_id",       params.phase_id);
     if (params?.character_id   !== undefined) query.set("character_id",   params.character_id);
     if (params?.is_active      !== undefined) query.set("is_active",      String(params.is_active));
     if (params?.with_relations !== undefined) query.set("with_relations", String(params.with_relations));
+    if (params?.summary        !== undefined) query.set("summary",        String(params.summary));
+    if (params?.limit          !== undefined) query.set("limit",          String(params.limit));
     const res = await fetch(`/api/messages?${query}`, { headers: authHeaders(token) });
     return parseResponse(res);
   },
