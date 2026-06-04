@@ -747,6 +747,9 @@ export function LiveAdminClient({ oaId }: { oaId: string }) {
   const [loadingChildren, setLoadingChildren] = useState(false);
   const [loadingActors, setLoadingActors] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Phase 2-I.2: タブ切替
+  type AdminTab = "overview" | "session" | "team-csv" | "actor" | "scripts";
+  const [activeTab, setActiveTab] = useState<AdminTab>("overview");
 
   // 選択中の Work / セッション
   const selectedSession = sessions.find((s) => s.id === selectedSessionId) ?? null;
@@ -851,8 +854,16 @@ export function LiveAdminClient({ oaId }: { oaId: string }) {
         return;
       }
       const json = await res.json();
-      // ok() ラップ済 or 生 array の両方に対応
-      const list = (json?.data?.phases ?? json?.phases ?? (Array.isArray(json) ? json : [])) as Array<{ id: string; name: string; sort_order?: number; sortOrder?: number; phase_type?: string; phaseType?: string }>;
+      // Phase 2-I.2: /api/phases の shape は { success: true, data: PhaseObject[] }
+      // (= data 直下が配列)。works fetch と同じ shape 取り違えで Phase 一覧が空になる
+      // バグがあったため、data 直下配列のケースを最優先で読む。
+      const list = (
+        Array.isArray(json?.data)            ? json.data
+        : Array.isArray(json?.data?.phases)  ? json.data.phases
+        : Array.isArray(json?.phases)         ? json.phases
+        : Array.isArray(json)                 ? json
+        : []
+      ) as Array<{ id: string; name: string; sort_order?: number; sortOrder?: number; phase_type?: string; phaseType?: string }>;
       setPhases(
         list.map((p) => ({
           id:         p.id,
@@ -1072,6 +1083,50 @@ export function LiveAdminClient({ oaId }: { oaId: string }) {
         </div>
       </section>
 
+      {/* ── タブナビ (Phase 2-I.2) ── */}
+      <nav style={{ display: "flex", gap: 4, borderBottom: "1px solid #e5e7eb", marginBottom: 12, overflowX: "auto" }}>
+        {([
+          { id: "overview",  label: "概要" },
+          { id: "session",   label: "セッション・参加者" },
+          { id: "team-csv",  label: "チーム・CSV" },
+          { id: "actor",     label: "Actor・指示" },
+          { id: "scripts",   label: "台本・セリフ候補" },
+        ] as { id: AdminTab; label: string }[]).map((t) => (
+          <button
+            key={t.id}
+            onClick={() => setActiveTab(t.id)}
+            style={{
+              padding: "8px 16px",
+              border: "none",
+              borderBottom: activeTab === t.id ? "2px solid #10b981" : "2px solid transparent",
+              background: "transparent",
+              fontSize: 13,
+              fontWeight: activeTab === t.id ? 700 : 500,
+              color: activeTab === t.id ? "#065f46" : "#6b7280",
+              cursor: "pointer",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {t.label}
+          </button>
+        ))}
+      </nav>
+
+      {/* ── 概要 タブ ── */}
+      {activeTab === "overview" && (
+        <OverviewTab
+          selectedWork={works.find((w) => w.id === effectiveWorkId) ?? null}
+          sessionsCount={sessions.length}
+          participantsCount={participants.length}
+          alertsCount={events.filter((e) => e.type === "alert").length}
+          activeInstructionsCount={instructions.filter((i) => i.status === "active").length}
+          recentEvents={events.slice(0, 5)}
+        />
+      )}
+
+      {/* ── セッション(セッション・参加者 タブ で表示) ── */}
+      {activeTab === "session" && (
+      <>
       {/* ── セッション ── */}
       <section style={{ ...card, marginBottom: 16 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
@@ -1163,26 +1218,6 @@ export function LiveAdminClient({ oaId }: { oaId: string }) {
 
       {selectedSessionId && (
         <>
-          {/* ── チーム管理 (Phase 2-G / セッション単位) ── */}
-          <TeamsSection
-            oaId={oaId}
-            sessionId={selectedSessionId}
-            teams={teams}
-            onChanged={() => selectedSessionId && void fetchChildren(selectedSessionId)}
-            onError={(msg) => setError(msg)}
-          />
-
-          {/* ── CSV import wizard (Phase 2-G / セッション単位) ── */}
-          <ImportSection
-            oaId={oaId}
-            workId={effectiveWorkId}
-            onApplied={() => {
-              void fetchSessions();
-              if (selectedSessionId) void fetchChildren(selectedSessionId);
-            }}
-            onError={(msg) => setError(msg)}
-          />
-
           {/* ── 参加者 ── */}
           <section style={{ ...card, marginBottom: 16 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
@@ -1356,37 +1391,89 @@ export function LiveAdminClient({ oaId }: { oaId: string }) {
             )}
           </section>
 
-          {/* ── Actor 向け指示 (Phase 2-E / session-scoped) ── */}
-          <InstructionsSection
-            oaId={oaId}
-            sessionId={selectedSessionId}
-            instructions={instructions}
-            participants={participants}
-            actors={actors}
-            onChanged={() => selectedSessionId && void fetchChildren(selectedSessionId)}
-            onError={(msg) => setError(msg)}
-          />
+        </>
+      )}
+      </>
+      )}
+
+      {/* ── チーム・CSV タブ ── */}
+      {activeTab === "team-csv" && (
+        <>
+          {selectedSessionId ? (
+            <>
+              <TeamsSection
+                oaId={oaId}
+                sessionId={selectedSessionId}
+                teams={teams}
+                onChanged={() => selectedSessionId && void fetchChildren(selectedSessionId)}
+                onError={(msg) => setError(msg)}
+              />
+              <ImportSection
+                oaId={oaId}
+                workId={effectiveWorkId}
+                onApplied={() => {
+                  void fetchSessions();
+                  if (selectedSessionId) void fetchChildren(selectedSessionId);
+                }}
+                onError={(msg) => setError(msg)}
+              />
+              <section style={{ ...card, marginBottom: 16 }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  {sectionTitle("CSV エクスポート")}
+                  <ExportButton oaId={oaId} sessionId={selectedSessionId} onError={(msg) => setError(msg)} />
+                </div>
+                <p style={{ fontSize: 11, color: "#6b7280", margin: "4px 0 0" }}>
+                  選択中セッションの participants を UTF-8 BOM 付き CSV でダウンロードします。
+                </p>
+              </section>
+            </>
+          ) : (
+            <p style={{ fontSize: 13, color: "#6b7280", padding: 16, background: "#f9fafb", borderRadius: 8 }}>
+              「セッション・参加者」タブで対象のセッションを選択すると、チーム管理・CSV 操作が利用できます。
+            </p>
+          )}
         </>
       )}
 
-      {/* ── Actor 管理 (Phase 2-E / OA-scoped / セッション非依存) ── */}
-      <ActorsSection
-        oaId={oaId}
-        actors={actors}
-        loading={loadingActors}
-        onChanged={() => void fetchActors()}
-        onError={(msg) => setError(msg)}
-      />
+      {/* ── Actor・指示 タブ ── */}
+      {activeTab === "actor" && (
+        <>
+          <ActorsSection
+            oaId={oaId}
+            actors={actors}
+            loading={loadingActors}
+            onChanged={() => void fetchActors()}
+            onError={(msg) => setError(msg)}
+          />
+          {selectedSessionId ? (
+            <InstructionsSection
+              oaId={oaId}
+              sessionId={selectedSessionId}
+              instructions={instructions}
+              participants={participants}
+              actors={actors}
+              onChanged={() => selectedSessionId && void fetchChildren(selectedSessionId)}
+              onError={(msg) => setError(msg)}
+            />
+          ) : (
+            <p style={{ fontSize: 12, color: "#6b7280", padding: 12, background: "#f9fafb", borderRadius: 8, marginTop: 8 }}>
+              ※「セッション・参加者」タブでセッションを選択すると、そのセッションに紐づく Actor 指示を管理できます。
+            </p>
+          )}
+        </>
+      )}
 
-      {/* ── 台本・セリフ候補 (Phase 2-I / 対象作品スコープ) ── */}
-      <ScriptsAndCuesSection
-        oaId={oaId}
-        workId={effectiveWorkId}
-        works={works}
-        phases={phases}
-        actors={actors}
-        onError={(msg) => setError(msg)}
-      />
+      {/* ── 台本・セリフ候補 タブ ── */}
+      {activeTab === "scripts" && (
+        <ScriptsAndCuesSection
+          oaId={oaId}
+          workId={effectiveWorkId}
+          works={works}
+          phases={phases}
+          actors={actors}
+          onError={(msg) => setError(msg)}
+        />
+      )}
     </div>
   );
 }
@@ -3165,5 +3252,92 @@ function CueRow({
         <button onClick={onDelete} style={{ ...buttonSecondary, color: "#991b1b", borderColor: "#fecaca" }}>削除</button>
       </div>
     </li>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// OverviewTab — Phase 2-I.2: 「概要」タブ
+// ─────────────────────────────────────────────────────────────────────────────
+function OverviewTab({
+  selectedWork,
+  sessionsCount,
+  participantsCount,
+  alertsCount,
+  activeInstructionsCount,
+  recentEvents,
+}: {
+  selectedWork: { id: string; title: string } | null;
+  sessionsCount: number;
+  participantsCount: number;
+  alertsCount: number;
+  activeInstructionsCount: number;
+  recentEvents: LiveEventLog[];
+}) {
+  return (
+    <div style={{ display: "grid", gap: 12 }}>
+      <section style={card}>
+        {sectionTitle("選択中の作品")}
+        <p style={{ fontSize: 14, color: "#111827", margin: 0 }}>
+          {selectedWork ? selectedWork.title : <span style={{ color: "#9ca3af" }}>(未選択)</span>}
+        </p>
+      </section>
+
+      <div style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(4, 1fr)" }}>
+        <StatCard label="セッション数" value={sessionsCount} />
+        <StatCard label="参加者数(選択中セッション)" value={participantsCount} />
+        <StatCard label="アラート" value={alertsCount} accent={alertsCount > 0 ? "warn" : undefined} />
+        <StatCard label="未完了の指示" value={activeInstructionsCount} accent={activeInstructionsCount > 0 ? "info" : undefined} />
+      </div>
+
+      <section style={card}>
+        {sectionTitle("直近のイベント (最新 5 件)")}
+        {recentEvents.length === 0 ? (
+          <p style={{ fontSize: 12, color: "#6b7280" }}>まだイベントログがありません。</p>
+        ) : (
+          <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 4 }}>
+            {recentEvents.map((e) => (
+              <li
+                key={e.id}
+                style={{
+                  fontSize: 12,
+                  color: "#374151",
+                  padding: "6px 8px",
+                  borderRadius: 6,
+                  background: e.type === "alert" ? "#fef2f2" : "#f9fafb",
+                }}
+              >
+                <span style={{
+                  display: "inline-block",
+                  padding: "1px 6px",
+                  borderRadius: 999,
+                  fontSize: 10,
+                  fontWeight: 700,
+                  background: e.type === "alert" ? "#fee2e2" : "#ecfdf5",
+                  color:      e.type === "alert" ? "#991b1b" : "#065f46",
+                  marginRight: 6,
+                }}>
+                  {EVENT_TYPE_LABEL[e.type as EventType] ?? e.type}
+                </span>
+                <strong>{e.title}</strong>
+                <span style={{ color: "#9ca3af", marginLeft: 6, fontSize: 11 }}>
+                  {formatDateTime(e.created_at)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function StatCard({ label, value, accent }: { label: string; value: number; accent?: "warn" | "info" }) {
+  const bg = accent === "warn" ? "#fef2f2" : accent === "info" ? "#eff6ff" : "#ffffff";
+  const fg = accent === "warn" ? "#991b1b" : accent === "info" ? "#1e40af" : "#111827";
+  return (
+    <div style={{ ...card, background: bg }}>
+      <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 4 }}>{label}</div>
+      <div style={{ fontSize: 24, fontWeight: 800, color: fg }}>{value}</div>
+    </div>
   );
 }
