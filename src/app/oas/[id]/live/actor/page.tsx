@@ -4,7 +4,7 @@
 
 import { notFound } from "next/navigation";
 import { getServerUser } from "@/lib/supabase/server";
-import { canViewLiveSection } from "@/lib/live";
+import { canViewLiveSection, canPreviewLiveActor } from "@/lib/live";
 import { LiveActorClient } from "./LiveActorClient";
 
 export const dynamic = "force-dynamic";
@@ -14,5 +14,7 @@ export default async function LiveActorPage({ params }: { params: { id: string }
   if (!user || !(await canViewLiveSection(params.id, user.id, "actor"))) {
     notFound();
   }
-  return <LiveActorClient oaId={params.id} />;
+  // Phase 2-J: 「表示確認モード」(= Owner/Admin が任意 Actor 視点で閲覧) の可否
+  const canPreview = await canPreviewLiveActor(params.id, user.id);
+  return <LiveActorClient oaId={params.id} canPreview={canPreview} />;
 }

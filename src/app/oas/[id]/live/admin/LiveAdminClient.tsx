@@ -220,6 +220,7 @@ function SpinnerStyles() {
 }
 
 // Phase 2-E 用の型 (Admin 内部用 / shared types とは別)
+// Phase 2-J: invite_state / invite_expires_at を含む
 type LiveActor = {
   id: string;
   oa_id: string;
@@ -229,6 +230,11 @@ type LiveActor = {
   memo: string | null;
   created_at: string;
   updated_at: string;
+  invite_state?: "none" | "active" | "used" | "expired" | "revoked";
+  invite_expires_at?: string | null;
+  invite_used_at?: string | null;
+  invite_revoked_at?: string | null;
+  invite_created_at?: string | null;
 };
 
 type LiveAssignment = {
@@ -1540,7 +1546,6 @@ function ActorsSection({
   onError: (msg: string) => void;
 }) {
   const [name, setName] = useState("");
-  const [userId, setUserId] = useState("");
   const [characterName, setCharacterName] = useState("");
   const [memo, setMemo] = useState("");
   const [busy, setBusy] = useState(false);
@@ -1550,13 +1555,14 @@ function ActorsSection({
     if (!name.trim()) return;
     setBusy(true);
     try {
+      // Phase 2-J: 新規 Actor は user_id 未紐付け (= 招待 URL 受諾で紐付ける)
       const res = await fetch(`/api/oas/${oaId}/live/actors`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
           display_name:   name.trim(),
-          user_id:        userId.trim() || null,
+          user_id:        null,
           character_name: characterName.trim() || null,
           memo:           memo.trim() || null,
         }),
@@ -1565,7 +1571,7 @@ function ActorsSection({
         const j = await res.json().catch(() => null);
         throw new Error(j?.error?.message ?? `Actor 追加に失敗しました (HTTP ${res.status})`);
       }
-      setName(""); setUserId(""); setCharacterName(""); setMemo("");
+      setName(""); setCharacterName(""); setMemo("");
       onChanged();
     } catch (err) {
       onError(err instanceof Error ? err.message : "Actor 追加に失敗しました");
@@ -1577,7 +1583,7 @@ function ActorsSection({
   return (
     <section style={{ ...card, marginTop: 16 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-        {sectionTitle("Actor (= 演者) 管理")}
+        {sectionTitle("演者管理")}
         <button onClick={onChanged} style={buttonSecondary} disabled={loading}>
           {loading ? "読込中…" : "再読込"}
         </button>
@@ -1585,11 +1591,10 @@ function ActorsSection({
 
       <form
         onSubmit={handleAdd}
-        style={{ display: "grid", gap: 8, gridTemplateColumns: "1fr 1fr 1fr auto", marginBottom: 12 }}
+        style={{ display: "grid", gap: 8, gridTemplateColumns: "1fr 1fr auto", marginBottom: 12 }}
       >
         <input value={name} onChange={(e) => setName(e.target.value)} placeholder="表示名 (例: 山田 / 探偵A)" style={inputStyle} disabled={busy} />
         <input value={characterName} onChange={(e) => setCharacterName(e.target.value)} placeholder="役柄名 (任意 / 例: 店主)" style={inputStyle} disabled={busy} />
-        <input value={userId} onChange={(e) => setUserId(e.target.value)} placeholder="auth user_id (任意)" style={inputStyle} disabled={busy} />
         <button type="submit" style={buttonPrimary} disabled={busy || !name.trim()}>
           {busy ? "追加中…" : "追加"}
         </button>
@@ -1597,34 +1602,266 @@ function ActorsSection({
       <input value={memo} onChange={(e) => setMemo(e.target.value)} placeholder="メモ (任意)" style={{ ...inputStyle, marginBottom: 12 }} disabled={busy} />
 
       {actors.length === 0 ? (
-        <p style={{ fontSize: 13, color: "#6b7280" }}>Actor がまだ登録されていません。</p>
+        <p style={{ fontSize: 13, color: "#6b7280" }}>演者がまだ登録されていません。</p>
       ) : (
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-          <thead>
-            <tr style={{ textAlign: "left", color: "#6b7280", borderBottom: "1px solid #e5e7eb" }}>
-              <th style={{ padding: "8px 6px" }}>表示名</th>
-              <th style={{ padding: "8px 6px" }}>役柄</th>
-              <th style={{ padding: "8px 6px" }}>auth_user_id</th>
-              <th style={{ padding: "8px 6px" }}>メモ</th>
-            </tr>
-          </thead>
-          <tbody>
-            {actors.map((a) => (
-              <tr key={a.id} style={{ borderBottom: "1px solid #f3f4f6" }}>
-                <td style={{ padding: "8px 6px", color: "#111827" }}>{a.display_name}</td>
-                <td style={{ padding: "8px 6px", color: "#374151" }}>{a.character_name ?? "—"}</td>
-                <td style={{ padding: "8px 6px", color: "#6b7280", fontSize: 11, fontFamily: "ui-monospace, monospace" }}>
-                  {a.user_id ? <span title={a.user_id}>{a.user_id.slice(0, 8)}…</span> : "—"}
-                </td>
-                <td style={{ padding: "8px 6px", color: "#374151", maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={a.memo ?? undefined}>
-                  {a.memo ?? "—"}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 8 }}>
+          {actors.map((a) => (
+            <ActorRow
+              key={a.id}
+              actor={a}
+              oaId={oaId}
+              onChanged={onChanged}
+              onError={onError}
+            />
+          ))}
+        </ul>
       )}
     </section>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ActorRow — Phase 2-J: 演者 1 件の行 (= 表示 / 編集 / 招待 URL 操作)
+// ─────────────────────────────────────────────────────────────────────────────
+function ActorRow({
+  actor,
+  oaId,
+  onChanged,
+  onError,
+}: {
+  actor: LiveActor;
+  oaId: string;
+  onChanged: () => void;
+  onError: (msg: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(actor.display_name);
+  const [characterName, setCharacterName] = useState(actor.character_name ?? "");
+  const [memo, setMemo] = useState(actor.memo ?? "");
+  const [busy, setBusy] = useState(false);
+  const [issuedUrl, setIssuedUrl] = useState<string | null>(null);
+  const [copyOk, setCopyOk] = useState(false);
+
+  const inviteState = actor.invite_state ?? "none";
+  const inviteLabel: Record<typeof inviteState, { text: string; color: string; bg: string }> = {
+    none:    { text: "未発行",     color: "#6b7280", bg: "#f3f4f6" },
+    active:  { text: "有効",       color: "#065f46", bg: "#d1fae5" },
+    used:    { text: "使用済み",   color: "#1e40af", bg: "#dbeafe" },
+    expired: { text: "期限切れ",   color: "#92400e", bg: "#fef3c7" },
+    revoked: { text: "無効",       color: "#991b1b", bg: "#fee2e2" },
+  };
+
+  const issueInvite = async (regenerate: boolean) => {
+    if (regenerate && !confirm("招待 URL を再発行すると、既存の有効な URL は無効になります。続行しますか？")) {
+      return;
+    }
+    setBusy(true);
+    setIssuedUrl(null);
+    setCopyOk(false);
+    try {
+      const res = await fetch(`/api/oas/${oaId}/live/actors/${actor.id}/invite`, {
+        method:      "POST",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => null);
+        throw new Error(j?.error?.message ?? `招待 URL の発行に失敗しました (HTTP ${res.status})`);
+      }
+      const json = await res.json();
+      const url = json?.data?.invite_url ?? "";
+      setIssuedUrl(url);
+      onChanged();
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "招待 URL の発行に失敗しました");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const revokeInvite = async () => {
+    if (!confirm("この演者の招待 URL を無効化します。続行しますか？")) return;
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/oas/${oaId}/live/actors/${actor.id}/invite`, {
+        method:      "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => null);
+        throw new Error(j?.error?.message ?? `招待 URL の無効化に失敗しました (HTTP ${res.status})`);
+      }
+      setIssuedUrl(null);
+      onChanged();
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "招待 URL の無効化に失敗しました");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const copyInvite = async () => {
+    if (!issuedUrl) return;
+    try {
+      await navigator.clipboard.writeText(issuedUrl);
+      setCopyOk(true);
+      setTimeout(() => setCopyOk(false), 2000);
+    } catch {
+      onError("クリップボードへのコピーに失敗しました");
+    }
+  };
+
+  const saveEdit = async () => {
+    if (!name.trim()) return;
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/oas/${oaId}/live/actors/${actor.id}`, {
+        method:      "PATCH",
+        headers:     { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          display_name:   name.trim(),
+          character_name: characterName.trim() || null,
+          memo:           memo.trim() || null,
+        }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => null);
+        throw new Error(j?.error?.message ?? `演者の更新に失敗しました (HTTP ${res.status})`);
+      }
+      setEditing(false);
+      onChanged();
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "演者の更新に失敗しました");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const unlinkUser = async () => {
+    if (!confirm("この演者の auth user 紐付けを解除します。続行しますか？")) return;
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/oas/${oaId}/live/actors/${actor.id}`, {
+        method:      "PATCH",
+        headers:     { "Content-Type": "application/json" },
+        credentials: "include",
+        body:        JSON.stringify({ user_id: null }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => null);
+        throw new Error(j?.error?.message ?? `紐付け解除に失敗しました (HTTP ${res.status})`);
+      }
+      onChanged();
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "紐付け解除に失敗しました");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <li
+      style={{
+        background: "#ffffff",
+        border: "1px solid #e5e7eb",
+        borderRadius: 10,
+        padding: "12px 14px",
+        display: "grid",
+        gap: 8,
+      }}
+    >
+      {editing ? (
+        <div style={{ display: "grid", gap: 8 }}>
+          <div style={{ display: "grid", gap: 8, gridTemplateColumns: "1fr 1fr" }}>
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="表示名" style={inputStyle} disabled={busy} />
+            <input value={characterName} onChange={(e) => setCharacterName(e.target.value)} placeholder="役柄名" style={inputStyle} disabled={busy} />
+          </div>
+          <input value={memo} onChange={(e) => setMemo(e.target.value)} placeholder="メモ" style={inputStyle} disabled={busy} />
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={saveEdit} style={buttonPrimary} disabled={busy || !name.trim()}>
+              {busy ? "保存中…" : "保存"}
+            </button>
+            <button onClick={() => { setEditing(false); setName(actor.display_name); setCharacterName(actor.character_name ?? ""); setMemo(actor.memo ?? ""); }} style={buttonSecondary} disabled={busy}>
+              キャンセル
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <strong style={{ fontSize: 14, color: "#111827" }}>{actor.display_name}</strong>
+          {actor.character_name && (
+            <span style={{ fontSize: 12, color: "#6b7280" }}>/ {actor.character_name}</span>
+          )}
+          <span
+            style={{
+              padding: "2px 8px", borderRadius: 999, fontSize: 10, fontWeight: 700,
+              color: inviteLabel[inviteState].color, background: inviteLabel[inviteState].bg,
+            }}
+            title={
+              actor.invite_expires_at
+                ? `期限: ${new Date(actor.invite_expires_at).toLocaleString("ja-JP")}`
+                : undefined
+            }
+          >
+            招待: {inviteLabel[inviteState].text}
+          </span>
+          {actor.user_id ? (
+            <span style={{ fontSize: 10, color: "#065f46", background: "#d1fae5", padding: "2px 6px", borderRadius: 4 }}>
+              user 紐付け済み
+            </span>
+          ) : (
+            <span style={{ fontSize: 10, color: "#6b7280", background: "#f3f4f6", padding: "2px 6px", borderRadius: 4 }}>
+              未紐付け
+            </span>
+          )}
+          <span style={{ flex: 1 }} />
+          <button onClick={() => setEditing(true)} style={buttonSecondary} disabled={busy}>編集</button>
+        </div>
+      )}
+
+      {actor.memo && !editing && (
+        <p style={{ fontSize: 12, color: "#6b7280", margin: 0 }}>{actor.memo}</p>
+      )}
+
+      {issuedUrl && (
+        <div
+          style={{
+            background: "#ecfdf5",
+            border: "1px solid #10b981",
+            borderRadius: 8,
+            padding: "8px 10px",
+            display: "grid",
+            gap: 6,
+          }}
+        >
+          <div style={{ fontSize: 11, fontWeight: 700, color: "#065f46" }}>
+            招待 URL を発行しました (この表示を閉じると再度は表示されません)
+          </div>
+          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+            <input value={issuedUrl} readOnly style={{ ...inputStyle, fontSize: 11, fontFamily: "ui-monospace, monospace" }} onFocus={(e) => e.currentTarget.select()} />
+            <button onClick={copyInvite} style={buttonSecondary}>
+              {copyOk ? "コピー済み" : "コピー"}
+            </button>
+            <button onClick={() => setIssuedUrl(null)} style={buttonSecondary}>閉じる</button>
+          </div>
+        </div>
+      )}
+
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        {inviteState === "none" && (
+          <button onClick={() => issueInvite(false)} style={buttonPrimary} disabled={busy}>招待 URL 発行</button>
+        )}
+        {(inviteState === "active" || inviteState === "used" || inviteState === "expired" || inviteState === "revoked") && (
+          <button onClick={() => issueInvite(true)} style={buttonSecondary} disabled={busy}>招待 URL 再発行</button>
+        )}
+        {inviteState === "active" && (
+          <button onClick={revokeInvite} style={buttonSecondary} disabled={busy}>無効化</button>
+        )}
+        {actor.user_id && (
+          <button onClick={unlinkUser} style={buttonSecondary} disabled={busy}>user 紐付け解除</button>
+        )}
+      </div>
+    </li>
   );
 }
 

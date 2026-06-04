@@ -558,7 +558,7 @@ function ParticipantCard({
 // ─────────────────────────────────────────────────────────────────────────────
 // LiveActorClient — Actor Console 全体
 // ─────────────────────────────────────────────────────────────────────────────
-export function LiveActorClient({ oaId }: { oaId: string }) {
+export function LiveActorClient({ oaId, canPreview = false }: { oaId: string; canPreview?: boolean }) {
   const [sessions, setSessions] = useState<LiveSession[]>([]);
   const [participants, setParticipants] = useState<LiveParticipant[]>([]);
   const [events, setEvents] = useState<LiveEventLog[]>([]);
@@ -580,13 +580,19 @@ export function LiveActorClient({ oaId }: { oaId: string }) {
   // Phase 2-I.3: チーム / 参加者 collapse 状態
   const [collapsedTeams, setCollapsedTeams] = useState<Record<string, boolean>>({});
   const [collapsedParticipants, setCollapsedParticipants] = useState<Record<string, boolean>>({});
+  // Phase 2-J: Owner Actor Preview Mode (= 特定 Actor 視点で表示確認)
+  const [previewActorId, setPreviewActorId] = useState<string>("");
+  const [activePreview, setActivePreview] = useState<{ actor_id: string; actor_display_name: string } | null>(null);
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const qs = selectedSessionId ? `?sessionId=${encodeURIComponent(selectedSessionId)}` : "";
-      const res = await fetch(`/api/oas/${oaId}/live/actor${qs}`, { credentials: "include" });
+      const qs = new URLSearchParams();
+      if (selectedSessionId) qs.set("sessionId", selectedSessionId);
+      if (canPreview && previewActorId) qs.set("previewActorId", previewActorId);
+      const url = `/api/oas/${oaId}/live/actor${qs.toString() ? `?${qs.toString()}` : ""}`;
+      const res = await fetch(url, { credentials: "include" });
       if (!res.ok) throw new Error(`取得に失敗しました (HTTP ${res.status})`);
       const json = await res.json();
       const data = json?.data ?? json;
@@ -599,6 +605,7 @@ export function LiveActorClient({ oaId }: { oaId: string }) {
       setMyActorIds(data.my_actor_ids ?? []);
       setTeams(data.teams ?? []);
       setCues(data.cues ?? []);
+      setActivePreview(data.preview ?? null);
       // Phase 2-I.3: 初回ロード時は現在時刻に最も近い session を自動選択
       if (!selectedSessionId && data.sessions?.length > 0) {
         const nearest = pickNearestSession(data.sessions);
@@ -609,7 +616,7 @@ export function LiveActorClient({ oaId }: { oaId: string }) {
     } finally {
       setLoading(false);
     }
-  }, [oaId, selectedSessionId]);
+  }, [oaId, selectedSessionId, canPreview, previewActorId]);
 
   useEffect(() => { void fetchAll(); }, [fetchAll]);
 
@@ -731,6 +738,50 @@ export function LiveActorClient({ oaId }: { oaId: string }) {
       <p style={{ fontSize: 13, color: "#6b7280", margin: "0 0 16px" }}>
         Phase 2-D: 担当プレイヤーの状態確認・接触記録・メモ・アラートを記録できます。リアルタイム更新は未実装のため、操作後は自動 refetch、状況の手動更新は「再読込」ボタンで行ってください。
       </p>
+
+      {/* Phase 2-J: 表示確認モード (= Owner/Admin だけ表示) */}
+      {canPreview && (
+        <div
+          style={{
+            background: activePreview ? "#fef3c7" : "#f9fafb",
+            border: activePreview ? "2px solid #f59e0b" : "1px solid #e5e7eb",
+            borderRadius: 10,
+            padding: "10px 14px",
+            marginBottom: 12,
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            flexWrap: "wrap",
+          }}
+        >
+          <span style={{ fontSize: 12, fontWeight: 700, color: activePreview ? "#92400e" : "#374151" }}>
+            🔍 表示確認モード
+          </span>
+          <select
+            value={previewActorId}
+            onChange={(e) => setPreviewActorId(e.target.value)}
+            style={{ ...inputStyle, maxWidth: 240, padding: "4px 8px", fontSize: 12 }}
+          >
+            <option value="">(自分として表示)</option>
+            {actors.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.display_name}
+                {a.character_name ? ` / ${a.character_name}` : ""}
+              </option>
+            ))}
+          </select>
+          {activePreview && (
+            <>
+              <span style={{ fontSize: 11, color: "#92400e" }}>
+                → 「{activePreview.actor_display_name}」として表示中
+              </span>
+              <button onClick={() => setPreviewActorId("")} style={buttonSecondary}>
+                解除
+              </button>
+            </>
+          )}
+        </div>
+      )}
 
       {error && <div style={errorBox}>{error}</div>}
 

@@ -51,6 +51,7 @@ model Oa {
   liveParticipants   LiveParticipant[]
   liveEventLogs      LiveEventLog[]
   liveActors         LiveActor[]
+  liveActorInvites   LiveActorInvite[]
   liveAssignments    LiveAssignment[]
   liveActorInstructions LiveActorInstruction[]
   liveTeams          LiveTeam[]
@@ -1735,10 +1736,36 @@ model LiveActor {
   assignments  LiveAssignment[]
   instructions LiveActorInstruction[]
   cues         LiveCue[]
+  invites      LiveActorInvite[]
 
   @@index([oaId, createdAt])
   @@index([oaId, userId])
   @@map("live_actors")
+}
+
+/// Phase 2-J: 演者を Actor Console に招待する一回限りの URL token。
+/// 平文 token は DB に保存しない。tokenHash (sha256 hex) のみ保存し、URL に含めた
+/// 平文 token を受諾時に同じ方式で hash → 一致する row を検索する。
+/// 有効性は (expiresAt > now()) AND (usedAt IS NULL) AND (revokedAt IS NULL)。
+model LiveActorInvite {
+  id                String    @id @default(uuid())
+  oaId              String    @map("oa_id")
+  actorId           String    @map("actor_id")
+  /// sha256 hex 表現の token hash (= 64 char hex)。平文 token は保存しない。
+  tokenHash         String    @unique @map("token_hash")
+  expiresAt         DateTime? @map("expires_at")
+  usedAt            DateTime? @map("used_at")
+  revokedAt         DateTime? @map("revoked_at")
+  createdByUserId   String?   @map("created_by_user_id")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  oa    Oa        @relation(fields: [oaId], references: [id], onDelete: Cascade)
+  actor LiveActor @relation(fields: [actorId], references: [id], onDelete: Cascade)
+
+  @@index([oaId, actorId, createdAt])
+  @@index([actorId, revokedAt, usedAt])
+  @@map("live_actor_invites")
 }
 
 /// participant ↔ actor の担当割当。

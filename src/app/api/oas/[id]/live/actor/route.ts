@@ -31,6 +31,14 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   try {
     const url = new URL(req.url);
     const sessionId = url.searchParams.get("sessionId");
+    // Phase 2-J: Owner Actor Preview Mode. admin 集合のみ任意 Actor 視点に切替可。
+    const previewActorIdRaw = url.searchParams.get("previewActorId");
+    const canPreview =
+      auth.via === "platform_admin" ||
+      auth.via === "oa_owner"       ||
+      auth.via === "live_owner"     ||
+      auth.via === "live_admin";
+    const previewActorId = canPreview ? previewActorIdRaw : null;
 
     const participantWhere = sessionId
       ? { oaId: params.id, liveSessionId: sessionId }
@@ -130,9 +138,26 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     }
 
     // my_actor_ids: ログインユーザーに紐づく LiveActor の id (複数あり得る)
-    const myActorIds = actors
-      .filter((a) => a.userId === auth.user.id)
-      .map((a) => a.id);
+    // Phase 2-J: preview mode 時は admin 集合の閲覧者が「対象 Actor として」見るため、
+    // my_actor_ids を [previewActorId] に上書き (= 同 OA に存在する場合のみ)。
+    let myActorIds: string[];
+    let previewActor: { id: string; display_name: string } | null = null;
+    if (previewActorId) {
+      const actor = actors.find((a) => a.id === previewActorId);
+      if (actor) {
+        myActorIds = [actor.id];
+        previewActor = { id: actor.id, display_name: actor.displayName };
+      } else {
+        // 不正 / OA 外の actorId → preview 無効として通常挙動
+        myActorIds = actors
+          .filter((a) => a.userId === auth.user.id)
+          .map((a) => a.id);
+      }
+    } else {
+      myActorIds = actors
+        .filter((a) => a.userId === auth.user.id)
+        .map((a) => a.id);
+    }
 
     return ok({
       sessions: sessions.map((s) => ({
@@ -237,6 +262,12 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
         updated_at: c.updatedAt,
       })),
       my_actor_ids: myActorIds,
+      // Phase 2-J: Owner Actor Preview Mode の状態
+      preview: previewActor
+        ? { actor_id: previewActor.id, actor_display_name: previewActor.display_name }
+        : null,
+      // canPreview = true なら UI に「表示確認モード」切替 UI を出す
+      can_preview: canPreview,
     });
   } catch (err) {
     return serverError(err);
