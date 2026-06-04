@@ -34,6 +34,15 @@ type PlanInfoResponse = {
 
 // 同一 (oaId, previewPlan) への未解決 fetch を共有して重複排除する。
 // settle 時に Map から削除し、stale 値の再利用を防ぐ。
+//
+// 安全性:
+//   - key には oaId が必ず入る → OA 跨ぎ汚染なし。
+//   - settle (= resolve / reject) 時点で entry を必ず削除 → 完了済みの古い Promise を
+//     後続の呼び出し元が再利用することは無い (= "完了済みキャッシュ" として残らない)。
+//   - ユーザー切替 (= ログアウト → 別ユーザーログイン) は通常ページ全体 reload を伴い、
+//     module-scope Map は reset される。SPA 内だけで認証コンテキストが切り替わる経路は
+//     現状想定しないため、ここでは userId を key に含めない。
+//   - cancelled flag で unmount 後 setState を抑止し、stale 状態を component に反映しない。
 const inflight = new Map<string, Promise<PlanInfoResponse>>();
 
 export interface WorkLimitState {

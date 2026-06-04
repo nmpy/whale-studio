@@ -98,33 +98,81 @@ export default function AppHeader() {
   // ── OA 横断 owner 判定（OA ページ外でも CTA を切り替えるため）─────
   // /api/oas の my_role を見て、1つでも owner の OA があれば isAnyOaOwner = true
   // perf: 全ページ mount 時に毎回 fetch していた → sessionStorage に短 TTL でキャッシュ。
-  //       owner 判定は短時間ではほぼ変化しないため、5 分 TTL で十分。新規 OA 作成や
-  //       既存 OA の退会で結果が変わる可能性はあるが、その操作の戻り先で再取得される。
+  //
+  // セキュリティ:
+  //   - cache key に userId を含める (= 別ユーザーは別 entry / 共有同一ブラウザでも汚染しない)
+  //   - onAuthStateChange (= ログアウト / ユーザー切替) で `ws_app_header_is_any_oa_owner_`
+  //     prefix の全 entry を clear (= 二重防御)
+  //   - TTL 60 秒に短縮 (= 元 5 分から短く / OA 作成・退会後の反映遅延を最大 60 秒に抑制)
+  //
+  // 互換: 古い key (= "ws_app_header_is_any_oa_owner") を起動時に削除 (= migrate)。
+  const CACHE_KEY_PREFIX = "ws_app_header_is_any_oa_owner_";
+  const LEGACY_CACHE_KEY = "ws_app_header_is_any_oa_owner";
+  const CACHE_TTL_MS     = 60 * 1000; // 60 秒
   useEffect(() => {
-    const CACHE_KEY = "ws_app_header_is_any_oa_owner";
-    const TTL_MS    = 5 * 60 * 1000; // 5 分
-    // 起動時 sessionStorage を確認
-    try {
-      const cached = sessionStorage.getItem(CACHE_KEY);
-      if (cached) {
-        const parsed = JSON.parse(cached) as { v: boolean; t: number };
-        if (parsed && typeof parsed.t === "number" && Date.now() - parsed.t < TTL_MS) {
-          if (parsed.v) setIsAnyOaOwner(true);
-          return;
-        }
-      }
-    } catch { /* ignore parse error */ }
+    const supabaseUrl     = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    if (!supabaseUrl || !supabaseAnonKey) return;
 
-    fetch("/api/oas?limit=100", { headers: { ...getAuthHeaders() }, cache: "no-store" })
-      .then((r) => r.ok ? r.json() : null)
-      .then((body) => {
-        const isOwner = !!body?.data?.some?.((oa: { my_role?: string }) => oa.my_role === "owner");
-        if (isOwner) setIsAnyOaOwner(true);
-        try {
-          sessionStorage.setItem(CACHE_KEY, JSON.stringify({ v: isOwner, t: Date.now() }));
-        } catch { /* quota / private mode */ }
-      })
-      .catch(() => {});
+    let cancelled = false;
+    const supabase = createSupabaseBrowserClient();
+
+    // 古い user-agnostic key は migration として 1 度削除する。
+    try { sessionStorage.removeItem(LEGACY_CACHE_KEY); } catch { /* ignore */ }
+
+    function clearAllOwnerCacheEntries(): void {
+      try {
+        const toDel: string[] = [];
+        for (let i = 0; i < sessionStorage.length; i++) {
+          const k = sessionStorage.key(i);
+          if (k && k.startsWith(CACHE_KEY_PREFIX)) toDel.push(k);
+        }
+        for (const k of toDel) sessionStorage.removeItem(k);
+      } catch { /* ignore */ }
+    }
+
+    // 認証状態の変化 (= ログイン / ログアウト / ユーザー切替) で cache を全消去。
+    // これにより別ユーザーが直前に取得した結果を、新ユーザーが見ることが無い。
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, _session) => {
+      clearAllOwnerCacheEntries();
+      setIsAnyOaOwner(false); // state も初期化 (= ログアウト直後に owner CTA を残さない)
+    });
+
+    void supabase.auth.getSession().then(({ data }) => {
+      if (cancelled) return;
+      const userId = data.session?.user?.id;
+      if (!userId) return; // 未ログインなら判定不要
+
+      const cacheKey = CACHE_KEY_PREFIX + userId;
+      try {
+        const cached = sessionStorage.getItem(cacheKey);
+        if (cached) {
+          const parsed = JSON.parse(cached) as { v: boolean; t: number };
+          if (parsed && typeof parsed.t === "number" && Date.now() - parsed.t < CACHE_TTL_MS) {
+            if (parsed.v) setIsAnyOaOwner(true);
+            return;
+          }
+        }
+      } catch { /* ignore parse error */ }
+
+      fetch("/api/oas?limit=100", { headers: { ...getAuthHeaders() }, cache: "no-store" })
+        .then((r) => r.ok ? r.json() : null)
+        .then((body) => {
+          if (cancelled) return;
+          const isOwner = !!body?.data?.some?.((oa: { my_role?: string }) => oa.my_role === "owner");
+          if (isOwner) setIsAnyOaOwner(true);
+          try {
+            sessionStorage.setItem(cacheKey, JSON.stringify({ v: isOwner, t: Date.now() }));
+          } catch { /* quota / private mode */ }
+        })
+        .catch(() => {});
+    });
+
+    return () => {
+      cancelled = true;
+      subscription.unsubscribe();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ── ログイン状態を取得（Supabase 設定済みのときのみ） ─────────────
