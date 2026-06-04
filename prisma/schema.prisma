@@ -133,6 +133,8 @@ model Work {
   @@index([oaId])
   @@index([publishStatus])
   @@index([sortOrder])
+  /// perf: 作品一覧 `WHERE oa_id=? ORDER BY sort_order` を sorted index scan に乗せる。
+  @@index([oaId, sortOrder])
   @@map("works")
 }
 
@@ -191,6 +193,8 @@ model Phase {
   @@index([name])
   @@index([sortOrder])
   @@index([isActive])
+  /// perf: Phase 一覧 `WHERE work_id=? ORDER BY sort_order` を sorted index scan に。
+  @@index([workId, sortOrder])
   @@map("phases")
 }
 
@@ -397,6 +401,10 @@ model Message {
   @@index([sortOrder])
   @@index([isActive])
   @@index([freeInputNextMessageId])
+  /// perf: メッセージ一覧 `WHERE work_id=? ORDER BY sort_order` を sorted index scan に。
+  @@index([workId, sortOrder])
+  /// perf: フェーズ詳細でのメッセージ取得 `WHERE work_id=? AND phase_id=? ORDER BY sort_order`。
+  @@index([workId, phaseId, sortOrder])
   @@map("messages")
 }
 

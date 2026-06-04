@@ -9,11 +9,19 @@
 //   studio role が admin/editor/viewer でも liveRole が無ければ Live には一切入れない。
 //   権限がないユーザーには存在を露出しない（呼び出し側で notFound / 非表示にする）。
 
+import { cache } from "react";
 import { prisma } from "@/lib/prisma";
 import { isPlatformOwner } from "@/lib/platform-admin";
 import { getWorkspaceRole } from "@/lib/rbac";
 import { LIVE_ROLE_SECTION, type LiveRole, type LiveSection } from "@/lib/types/permissions";
 import { activeCache, CACHE_KEY, TTL } from "@/lib/cache";
+
+// perf: React.cache で同一 request 内の重複呼び出しを排除する。
+// 例) /oas/[id]/live/actor の page.tsx で canViewLiveSection と canPreviewLiveActor
+//     を続けて await すると、内部の isLiveEnabled / getLiveRole / isOaOwner が
+//     それぞれ 2 回ずつ走る → React.cache でラップして 1 回に短絡する。
+// activeCache (= cross-request, TTL あり) と独立。同 request 内のみ短絡し、
+// 次の request では普通に実行される (= 即時反映 / invalidation 互換)。
 
 /** OaEntitlement.featureKey の第一弾 */
 export const LIVE_FEATURE_KEY = "whale_studio_live";
@@ -26,7 +34,7 @@ export const LIVE_FEATURE_KEY = "whale_studio_live";
  * PATCH 成功時には {@link invalidateLiveEnabledCache} で write-through invalidation
  * を行うため、ON/OFF 操作の即時反映は維持される。
  */
-export async function isLiveEnabled(oaId: string): Promise<boolean> {
+export const isLiveEnabled = cache(async (oaId: string): Promise<boolean> => {
   const key = CACHE_KEY.liveEnabled(oaId);
   const cached = await activeCache.get<boolean>(key);
   if (cached !== null) return cached;
@@ -38,7 +46,7 @@ export async function isLiveEnabled(oaId: string): Promise<boolean> {
   const enabled = ent?.enabled === true;
   await activeCache.set(key, enabled, TTL.LIVE_ENABLED);
   return enabled;
-}
+});
 
 /** /api/admin/oa-entitlements PATCH 成功時に呼ぶ。Live ON/OFF を即時反映するため。 */
 export async function invalidateLiveEnabledCache(oaId: string): Promise<void> {
@@ -46,31 +54,31 @@ export async function invalidateLiveEnabledCache(oaId: string): Promise<void> {
 }
 
 /** メンバーの liveRole を取得（owner_key 判定の owner などメンバー行が無い場合は null）。 */
-export async function getLiveRole(oaId: string, userId: string): Promise<LiveRole | null> {
+export const getLiveRole = cache(async (oaId: string, userId: string): Promise<LiveRole | null> => {
   const member = await prisma.workspaceMember.findUnique({
     where:  { workspaceId_userId: { workspaceId: oaId, userId } },
     select: { liveRole: true },
   });
   return (member?.liveRole as LiveRole | null) ?? null;
-}
+});
 
 /** OA owner（実効ロール）か。owner_key / ADMIN_IDENTITY も考慮する。 */
-async function isOaOwner(oaId: string, userId: string): Promise<boolean> {
+const isOaOwner = cache(async (oaId: string, userId: string): Promise<boolean> => {
   const info = await getWorkspaceRole(oaId, userId); // MemberInfo | null
   return info?.role === "owner" && info.status === "active";
-}
+});
 
 /**
  * Phase 2-J: 招待 URL を受諾済みの LiveActor.userId == user.id が存在するか。
  * Studio role / liveRole とは独立に、Actor Console だけ閲覧できるルートを提供する。
  */
-async function isLinkedAsLiveActor(oaId: string, userId: string): Promise<boolean> {
+const isLinkedAsLiveActor = cache(async (oaId: string, userId: string): Promise<boolean> => {
   const actor = await prisma.liveActor.findFirst({
     where:  { oaId, userId },
     select: { id: true },
   });
   return actor !== null;
-}
+});
 
 /**
  * Phase 2-J: Actor Console の「表示確認モード」(= 任意 Actor 視点プレビュー) を

@@ -10,6 +10,7 @@ import { requireRole } from "@/lib/rbac";
 import { updateWorkSchema, formatZodErrors } from "@/lib/validations";
 import { ZodError } from "zod";
 import { activeCache, CACHE_KEY } from "@/lib/cache";
+import { genRequestId, runWithRequestId, withTiming } from "@/lib/perf";
 
 function toResponse(w: {
   id: string; publicId?: string | null; oaId: string; title: string; description: string | null;
@@ -52,26 +53,32 @@ function toResponse(w: {
 }
 
 // ── GET /api/works/:workId ───────────────────────────
-export const GET = withAuth<{ workId: string }>(async (_req, { params }, user) => {
-  try {
-    const work = await prisma.work.findUnique({
-      where: { id: params.workId },
-      include: {
-        _count: {
-          select: { characters: true, phases: true, messages: true, userProgress: true },
-        },
-      },
-    });
-    if (!work) return notFound("作品");
+export const GET = withAuth<{ workId: string }>(async (_req, { params }, user) =>
+  runWithRequestId(genRequestId(), () => withTiming("api/works-detail:GET", async () => {
+    try {
+      const work = await withTiming("api/works-detail:db:findUnique", () =>
+        prisma.work.findUnique({
+          where: { id: params.workId },
+          include: {
+            _count: {
+              select: { characters: true, phases: true, messages: true, userProgress: true },
+            },
+          },
+        }),
+      );
+      if (!work) return notFound("作品");
 
-    const check = await requireRole(work.oaId, user.id, 'viewer');
-    if (!check.ok) return check.response;
+      const check = await withTiming("api/works-detail:rbac", () =>
+        requireRole(work.oaId, user.id, 'viewer'),
+      );
+      if (!check.ok) return check.response;
 
-    return ok({ ...toResponse(work), _count: work._count });
-  } catch (err) {
-    return serverError(err);
-  }
-});
+      return ok({ ...toResponse(work), _count: work._count });
+    } catch (err) {
+      return serverError(err);
+    }
+  })),
+);
 
 // ── PATCH /api/works/:workId ─────────────────────────
 export const PATCH = withAuth<{ workId: string }>(async (req, { params }, user) => {
