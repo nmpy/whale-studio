@@ -747,6 +747,12 @@ export function LiveAdminClient({ oaId }: { oaId: string }) {
   const [loadingChildren, setLoadingChildren] = useState(false);
   const [loadingActors, setLoadingActors] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Phase 2-I.2 / 2-I.3: タブ切替 (= Actor・指示 → 演者管理 + 指示 に分割)
+  type AdminTab = "overview" | "session" | "team-csv" | "performers" | "instructions" | "scripts";
+  const [activeTab, setActiveTab] = useState<AdminTab>("overview");
+  // Phase 2-I.3: セッション絞り込み (= 月 / 午前午後)
+  const [sessionFilterMonth, setSessionFilterMonth] = useState<string>("");
+  const [sessionFilterAmPm, setSessionFilterAmPm] = useState<"" | "am" | "pm">("");
 
   // 選択中の Work / セッション
   const selectedSession = sessions.find((s) => s.id === selectedSessionId) ?? null;
@@ -763,8 +769,10 @@ export function LiveAdminClient({ oaId }: { oaId: string }) {
       const json = await res.json();
       const list: LiveSession[] = json?.data?.sessions ?? [];
       setSessions(list);
+      // Phase 2-I.3: 初回ロード時は現在時刻に最も近い session を自動選択
       if (!selectedSessionId && list.length > 0) {
-        setSelectedSessionId(list[0].id);
+        const nearest = pickNearestSessionLocal(list);
+        setSelectedSessionId(nearest?.id ?? list[0].id);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "取得に失敗しました");
@@ -851,8 +859,16 @@ export function LiveAdminClient({ oaId }: { oaId: string }) {
         return;
       }
       const json = await res.json();
-      // ok() ラップ済 or 生 array の両方に対応
-      const list = (json?.data?.phases ?? json?.phases ?? (Array.isArray(json) ? json : [])) as Array<{ id: string; name: string; sort_order?: number; sortOrder?: number; phase_type?: string; phaseType?: string }>;
+      // Phase 2-I.2: /api/phases の shape は { success: true, data: PhaseObject[] }
+      // (= data 直下が配列)。works fetch と同じ shape 取り違えで Phase 一覧が空になる
+      // バグがあったため、data 直下配列のケースを最優先で読む。
+      const list = (
+        Array.isArray(json?.data)            ? json.data
+        : Array.isArray(json?.data?.phases)  ? json.data.phases
+        : Array.isArray(json?.phases)         ? json.phases
+        : Array.isArray(json)                 ? json
+        : []
+      ) as Array<{ id: string; name: string; sort_order?: number; sortOrder?: number; phase_type?: string; phaseType?: string }>;
       setPhases(
         list.map((p) => ({
           id:         p.id,
@@ -1072,6 +1088,51 @@ export function LiveAdminClient({ oaId }: { oaId: string }) {
         </div>
       </section>
 
+      {/* ── タブナビ (Phase 2-I.2) ── */}
+      <nav style={{ display: "flex", gap: 4, borderBottom: "1px solid #e5e7eb", marginBottom: 12, overflowX: "auto" }}>
+        {([
+          { id: "overview",  label: "概要" },
+          { id: "session",   label: "セッション・参加者" },
+          { id: "team-csv",  label: "チーム・CSV" },
+          { id: "performers", label: "演者管理" },
+          { id: "instructions", label: "指示" },
+          { id: "scripts",   label: "台本" },
+        ] as { id: AdminTab; label: string }[]).map((t) => (
+          <button
+            key={t.id}
+            onClick={() => setActiveTab(t.id)}
+            style={{
+              padding: "8px 16px",
+              border: "none",
+              borderBottom: activeTab === t.id ? "2px solid #10b981" : "2px solid transparent",
+              background: "transparent",
+              fontSize: 13,
+              fontWeight: activeTab === t.id ? 700 : 500,
+              color: activeTab === t.id ? "#065f46" : "#6b7280",
+              cursor: "pointer",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {t.label}
+          </button>
+        ))}
+      </nav>
+
+      {/* ── 概要 タブ ── */}
+      {activeTab === "overview" && (
+        <OverviewTab
+          selectedWork={works.find((w) => w.id === effectiveWorkId) ?? null}
+          sessionsCount={sessions.length}
+          participantsCount={participants.length}
+          alertsCount={events.filter((e) => e.type === "alert").length}
+          activeInstructionsCount={instructions.filter((i) => i.status === "active").length}
+          recentEvents={events.slice(0, 5)}
+        />
+      )}
+
+      {/* ── セッション(セッション・参加者 タブ で表示) ── */}
+      {activeTab === "session" && (
+      <>
       {/* ── セッション ── */}
       <section style={{ ...card, marginBottom: 16 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
@@ -1111,8 +1172,44 @@ export function LiveAdminClient({ oaId }: { oaId: string }) {
         {sessions.length === 0 ? (
           <p style={{ fontSize: 13, color: "#6b7280" }}>セッションがまだありません。</p>
         ) : (
+          <>
+          {/* Phase 2-I.3: 月 / 午前午後 フィルタ */}
+          <SessionFilterBar
+            sessions={sessions}
+            filterMonth={sessionFilterMonth}
+            filterAmPm={sessionFilterAmPm}
+            onChangeMonth={setSessionFilterMonth}
+            onChangeAmPm={setSessionFilterAmPm}
+          />
+          {/* Phase 2-I.3: 現在選択中の session を上部に prominent 表示 */}
+          {selectedSession && (
+            <div
+              style={{
+                background: "#ecfdf5",
+                border: "2px solid #10b981",
+                borderRadius: 10,
+                padding: "10px 14px",
+                marginBottom: 10,
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                flexWrap: "wrap",
+              }}
+            >
+              <span style={{ fontSize: 11, fontWeight: 700, color: "#065f46" }}>選択中</span>
+              <span style={{ fontSize: 14, fontWeight: 700, color: "#065f46" }}>{selectedSession.name}</span>
+              {selectedSession.work_title && (
+                <span style={{ fontSize: 12, color: "#065f46" }}>/ {selectedSession.work_title}</span>
+              )}
+              {selectedSession.starts_at && (
+                <span style={{ fontSize: 12, color: "#065f46" }}>/ {formatDateTime(selectedSession.starts_at)}</span>
+              )}
+            </div>
+          )}
           <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 8 }}>
-            {sessions.map((s) => {
+            {sessions
+              .filter((s) => filterSessionMatches(s, sessionFilterMonth, sessionFilterAmPm))
+              .map((s) => {
               const selected = s.id === selectedSessionId;
               return (
                 <li key={s.id}>
@@ -1158,31 +1255,12 @@ export function LiveAdminClient({ oaId }: { oaId: string }) {
               );
             })}
           </ul>
+          </>
         )}
       </section>
 
       {selectedSessionId && (
         <>
-          {/* ── チーム管理 (Phase 2-G / セッション単位) ── */}
-          <TeamsSection
-            oaId={oaId}
-            sessionId={selectedSessionId}
-            teams={teams}
-            onChanged={() => selectedSessionId && void fetchChildren(selectedSessionId)}
-            onError={(msg) => setError(msg)}
-          />
-
-          {/* ── CSV import wizard (Phase 2-G / セッション単位) ── */}
-          <ImportSection
-            oaId={oaId}
-            workId={effectiveWorkId}
-            onApplied={() => {
-              void fetchSessions();
-              if (selectedSessionId) void fetchChildren(selectedSessionId);
-            }}
-            onError={(msg) => setError(msg)}
-          />
-
           {/* ── 参加者 ── */}
           <section style={{ ...card, marginBottom: 16 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
@@ -1356,7 +1434,64 @@ export function LiveAdminClient({ oaId }: { oaId: string }) {
             )}
           </section>
 
-          {/* ── Actor 向け指示 (Phase 2-E / session-scoped) ── */}
+        </>
+      )}
+      </>
+      )}
+
+      {/* ── チーム・CSV タブ ── */}
+      {activeTab === "team-csv" && (
+        <>
+          {selectedSessionId ? (
+            <>
+              <TeamsSection
+                oaId={oaId}
+                sessionId={selectedSessionId}
+                teams={teams}
+                onChanged={() => selectedSessionId && void fetchChildren(selectedSessionId)}
+                onError={(msg) => setError(msg)}
+              />
+              <ImportSection
+                oaId={oaId}
+                workId={effectiveWorkId}
+                onApplied={() => {
+                  void fetchSessions();
+                  if (selectedSessionId) void fetchChildren(selectedSessionId);
+                }}
+                onError={(msg) => setError(msg)}
+              />
+              <section style={{ ...card, marginBottom: 16 }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  {sectionTitle("CSV エクスポート")}
+                  <ExportButton oaId={oaId} sessionId={selectedSessionId} onError={(msg) => setError(msg)} />
+                </div>
+                <p style={{ fontSize: 11, color: "#6b7280", margin: "4px 0 0" }}>
+                  選択中セッションの participants を UTF-8 BOM 付き CSV でダウンロードします。
+                </p>
+              </section>
+            </>
+          ) : (
+            <p style={{ fontSize: 13, color: "#6b7280", padding: 16, background: "#f9fafb", borderRadius: 8 }}>
+              「セッション・参加者」タブで対象のセッションを選択すると、チーム管理・CSV 操作が利用できます。
+            </p>
+          )}
+        </>
+      )}
+
+      {/* ── 演者管理 タブ (Phase 2-I.3) ── */}
+      {activeTab === "performers" && (
+        <ActorsSection
+          oaId={oaId}
+          actors={actors}
+          loading={loadingActors}
+          onChanged={() => void fetchActors()}
+          onError={(msg) => setError(msg)}
+        />
+      )}
+
+      {/* ── 指示 タブ (Phase 2-I.3) ── */}
+      {activeTab === "instructions" && (
+        selectedSessionId ? (
           <InstructionsSection
             oaId={oaId}
             sessionId={selectedSessionId}
@@ -1366,17 +1501,24 @@ export function LiveAdminClient({ oaId }: { oaId: string }) {
             onChanged={() => selectedSessionId && void fetchChildren(selectedSessionId)}
             onError={(msg) => setError(msg)}
           />
-        </>
+        ) : (
+          <p style={{ fontSize: 13, color: "#6b7280", padding: 16, background: "#f9fafb", borderRadius: 8 }}>
+            ※「セッション・参加者」タブでセッションを選択すると、そのセッションに紐づく Actor 指示を管理できます。
+          </p>
+        )
       )}
 
-      {/* ── Actor 管理 (Phase 2-E / OA-scoped / セッション非依存) ── */}
-      <ActorsSection
-        oaId={oaId}
-        actors={actors}
-        loading={loadingActors}
-        onChanged={() => void fetchActors()}
-        onError={(msg) => setError(msg)}
-      />
+      {/* ── 台本 タブ (Phase 2-I.3) ── */}
+      {activeTab === "scripts" && (
+        <ScriptsAndCuesSection
+          oaId={oaId}
+          workId={effectiveWorkId}
+          works={works}
+          phases={phases}
+          actors={actors}
+          onError={(msg) => setError(msg)}
+        />
+      )}
     </div>
   );
 }
@@ -2566,4 +2708,547 @@ function ExportButton({
       ) : "CSV エクスポート"}
     </button>
   );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 2-I.3: ScriptsAndCuesSection — 「台本」管理 (= LiveCue 単独 / LiveScript は廃止)
+// ─────────────────────────────────────────────────────────────────────────────
+
+type LiveCueRow = {
+  id: string;
+  oa_id: string;
+  work_id: string | null;
+  phase_id: string | null;
+  actor_id: string | null;
+  title: string;
+  body: string;
+  priority: "low" | "normal" | "high";
+  sort_order: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+const CUE_PRIORITY_LABEL: Record<LiveCueRow["priority"], string> = {
+  low: "低", normal: "中", high: "高",
+};
+
+function ScriptsAndCuesSection({
+  oaId,
+  workId,
+  works,
+  phases,
+  actors,
+  onError,
+}: {
+  oaId: string;
+  workId: string | null;
+  works: WorkSummary[];
+  phases: PhaseSummary[];
+  actors: LiveActor[];
+  onError: (msg: string) => void;
+}) {
+  // Phase 2-I.3: 「台本」を LiveCue 単独に一本化。LiveScript は UI 上廃止。
+  const [cues, setCues] = useState<LiveCueRow[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const workTitle = workId ? (works.find((w) => w.id === workId)?.title ?? "(未取得)") : null;
+
+  const fetchAll = useCallback(async () => {
+    setLoading(true);
+    try {
+      const qs = workId ? `?work_id=${encodeURIComponent(workId)}` : "";
+      const cr = await fetch(`/api/oas/${oaId}/live/cues${qs}`, { credentials: "include" });
+      if (!cr.ok) throw new Error(`台本取得に失敗 (HTTP ${cr.status})`);
+      const cj = await cr.json();
+      setCues(cj?.data?.cues ?? []);
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "取得に失敗しました");
+    } finally {
+      setLoading(false);
+    }
+  }, [oaId, workId, onError]);
+
+  useEffect(() => { void fetchAll(); }, [fetchAll]);
+
+  // ── 台本作成 ──
+  // Phase 2-I.3: LiveScript の UI/API 経路は廃止。下記 LiveCue を「台本項目」として一本化。
+
+  // ── 台本項目作成 ──
+  const [newCueTitle, setNewCueTitle] = useState("");
+  const [newCueBody, setNewCueBody] = useState("");
+  const [newCuePriority, setNewCuePriority] = useState<"low" | "normal" | "high">("normal");
+  const [newCuePhaseId, setNewCuePhaseId] = useState("");
+  const [newCueActorId, setNewCueActorId] = useState("");
+  const [newCueSortOrder, setNewCueSortOrder] = useState<number>(0);
+  const [creatingCue, setCreatingCue] = useState(false);
+
+  const handleCreateCue = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newCueTitle.trim() || !newCueBody.trim()) return;
+    setCreatingCue(true);
+    try {
+      const res = await fetch(`/api/oas/${oaId}/live/cues`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          work_id:    workId || null,
+          phase_id:   newCuePhaseId || null,
+          actor_id:   newCueActorId || null,
+          title:      newCueTitle.trim(),
+          body:       newCueBody.trim(),
+          priority:   newCuePriority,
+          sort_order: newCueSortOrder,
+        }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => null);
+        throw new Error(j?.error?.message ?? `台本項目作成に失敗 (HTTP ${res.status})`);
+      }
+      setNewCueTitle(""); setNewCueBody(""); setNewCuePhaseId(""); setNewCueActorId(""); setNewCueSortOrder(0); setNewCuePriority("normal");
+      await fetchAll();
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "台本項目作成に失敗しました");
+    } finally {
+      setCreatingCue(false);
+    }
+  };
+
+  const handleDeleteCue = async (c: LiveCueRow) => {
+    if (!confirm(`台本項目「${c.title}」を削除しますか?`)) return;
+    try {
+      const res = await fetch(`/api/oas/${oaId}/live/cues/${c.id}`, { method: "DELETE", credentials: "include" });
+      if (!res.ok && res.status !== 204) {
+        const j = await res.json().catch(() => null);
+        throw new Error(j?.error?.message ?? `削除に失敗 (HTTP ${res.status})`);
+      }
+      await fetchAll();
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "削除に失敗しました");
+    }
+  };
+
+  const handleToggleCueActive = async (c: LiveCueRow) => {
+    try {
+      const res = await fetch(`/api/oas/${oaId}/live/cues/${c.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ is_active: !c.is_active }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => null);
+        throw new Error(j?.error?.message ?? `更新に失敗 (HTTP ${res.status})`);
+      }
+      await fetchAll();
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "更新に失敗しました");
+    }
+  };
+
+  return (
+    <section style={{ ...card, marginTop: 16 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+        {sectionTitle("台本")}
+        <button onClick={() => void fetchAll()} style={buttonSecondary} disabled={loading}>
+          {loading ? (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Spinner /> 読込中…</span>
+          ) : "再読込"}
+        </button>
+      </div>
+      <p style={{ fontSize: 11, color: "#6b7280", margin: "0 0 12px" }}>
+        対象作品: <strong>{workTitle ?? "(未選択 / OA 共通)"}</strong>
+        {workTitle ? "(作品スコープ + OA 共通)" : "(work_id=null の OA 共通のみ表示)"}
+        <br />
+        ※ phase 未指定 = 全体共通 / actor 未指定 = 全演者向け / phase + actor 両指定で「特定フェーズの特定演者向け」
+      </p>
+
+      {/* Phase 2-I.3: 台本項目 (= 旧 LiveCue / 台本項目) */}
+      <h3 style={{ fontSize: 13, fontWeight: 700, color: "#111827", margin: "12px 0 6px" }}>台本項目(タイトル / 本文 / フェーズ / 演者)</h3>
+      <form onSubmit={handleCreateCue} style={{ display: "grid", gap: 6, marginBottom: 12 }}>
+        <div style={{ display: "grid", gap: 6, gridTemplateColumns: "1fr 100px 1fr 1fr 80px" }}>
+          <input value={newCueTitle} onChange={(e) => setNewCueTitle(e.target.value)} placeholder="台本項目タイトル (例: 第3ヒント口頭)" style={inputStyle} disabled={creatingCue} />
+          <select value={newCuePriority} onChange={(e) => setNewCuePriority(e.target.value as "low" | "normal" | "high")} style={inputStyle} disabled={creatingCue}>
+            <option value="low">優先 低</option>
+            <option value="normal">優先 中</option>
+            <option value="high">優先 高</option>
+          </select>
+          <select value={newCuePhaseId} onChange={(e) => setNewCuePhaseId(e.target.value)} style={inputStyle} disabled={creatingCue}>
+            <option value="">— Phase: 全体 —</option>
+            {phases.slice().sort((a, b) => a.sort_order - b.sort_order).map((p) => (
+              <option key={p.id} value={p.id}>{p.name}</option>
+            ))}
+          </select>
+          <select value={newCueActorId} onChange={(e) => setNewCueActorId(e.target.value)} style={inputStyle} disabled={creatingCue}>
+            <option value="">— Actor: 全員 —</option>
+            {actors.map((a) => (
+              <option key={a.id} value={a.id}>{a.display_name}{a.character_name ? ` / ${a.character_name}` : ""}</option>
+            ))}
+          </select>
+          <input
+            type="number"
+            value={newCueSortOrder}
+            onChange={(e) => setNewCueSortOrder(Number(e.target.value) || 0)}
+            placeholder="並び順"
+            style={inputStyle}
+            disabled={creatingCue}
+          />
+        </div>
+        <textarea value={newCueBody} onChange={(e) => setNewCueBody(e.target.value)} placeholder="セリフ本文 / 演出メモ" style={{ ...inputStyle, minHeight: 60 }} disabled={creatingCue} />
+        <div style={{ display: "flex", justifyContent: "flex-end" }}>
+          <button type="submit" style={buttonPrimary} disabled={creatingCue || !newCueTitle.trim() || !newCueBody.trim()}>
+            {creatingCue ? (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Spinner color="#ffffff" /> 作成中…</span>
+            ) : "台本項目を追加"}
+          </button>
+        </div>
+      </form>
+      {cues.length === 0 ? (
+        <p style={{ fontSize: 12, color: "#6b7280" }}>台本項目がまだありません。</p>
+      ) : (
+        <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 6 }}>
+          {cues.map((c) => {
+            return (
+              <CueRow
+                key={c.id}
+                cue={c}
+                oaId={oaId}
+                phases={phases}
+                actors={actors}
+                onChanged={fetchAll}
+                onError={onError}
+                onToggleActive={() => void handleToggleCueActive(c)}
+                onDelete={() => void handleDeleteCue(c)}
+              />
+            );
+          })}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CueRow — Phase 2-I.1: 台本項目 1 件の表示 + inline 編集
+// ─────────────────────────────────────────────────────────────────────────────
+function CueRow({
+  cue,
+  oaId,
+  phases,
+  actors,
+  onChanged,
+  onError,
+  onToggleActive,
+  onDelete,
+}: {
+  cue: LiveCueRow;
+  oaId: string;
+  phases: PhaseSummary[];
+  actors: LiveActor[];
+  onChanged: () => void;
+  onError: (msg: string) => void;
+  onToggleActive: () => void;
+  onDelete: () => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draftTitle, setDraftTitle] = useState(cue.title);
+  const [draftBody, setDraftBody] = useState(cue.body);
+  const [draftPriority, setDraftPriority] = useState<LiveCueRow["priority"]>(cue.priority);
+  const [draftPhaseId, setDraftPhaseId] = useState(cue.phase_id ?? "");
+  const [draftActorId, setDraftActorId] = useState(cue.actor_id ?? "");
+  const [draftSortOrder, setDraftSortOrder] = useState<number>(cue.sort_order);
+  const [draftActive, setDraftActive] = useState(cue.is_active);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!editing) {
+      setDraftTitle(cue.title);
+      setDraftBody(cue.body);
+      setDraftPriority(cue.priority);
+      setDraftPhaseId(cue.phase_id ?? "");
+      setDraftActorId(cue.actor_id ?? "");
+      setDraftSortOrder(cue.sort_order);
+      setDraftActive(cue.is_active);
+    }
+  }, [cue, editing]);
+
+  const handleSave = async () => {
+    if (!draftTitle.trim() || !draftBody.trim()) return;
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/oas/${oaId}/live/cues/${cue.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          title:      draftTitle.trim(),
+          body:       draftBody.trim(),
+          priority:   draftPriority,
+          phase_id:   draftPhaseId || null,
+          actor_id:   draftActorId || null,
+          sort_order: draftSortOrder,
+          is_active:  draftActive,
+        }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => null);
+        throw new Error(j?.error?.message ?? `台本項目更新に失敗 (HTTP ${res.status})`);
+      }
+      setEditing(false);
+      onChanged();
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "台本項目更新に失敗しました");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (editing) {
+    return (
+      <li style={{ padding: 10, border: "1px solid #10b981", borderRadius: 8, background: "#f0fdf4" }}>
+        <div style={{ display: "grid", gap: 6 }}>
+          <div style={{ display: "grid", gap: 6, gridTemplateColumns: "1fr 100px 1fr 1fr 80px" }}>
+            <input value={draftTitle} onChange={(e) => setDraftTitle(e.target.value)} placeholder="台本項目タイトル" style={inputStyle} disabled={saving} />
+            <select value={draftPriority} onChange={(e) => setDraftPriority(e.target.value as LiveCueRow["priority"])} style={inputStyle} disabled={saving}>
+              <option value="low">優先 低</option>
+              <option value="normal">優先 中</option>
+              <option value="high">優先 高</option>
+            </select>
+            <select value={draftPhaseId} onChange={(e) => setDraftPhaseId(e.target.value)} style={inputStyle} disabled={saving}>
+              <option value="">— Phase: 全体 —</option>
+              {phases.slice().sort((a, b) => a.sort_order - b.sort_order).map((p) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+            <select value={draftActorId} onChange={(e) => setDraftActorId(e.target.value)} style={inputStyle} disabled={saving}>
+              <option value="">— Actor: 全員 —</option>
+              {actors.map((a) => (
+                <option key={a.id} value={a.id}>{a.display_name}{a.character_name ? ` / ${a.character_name}` : ""}</option>
+              ))}
+            </select>
+            <input type="number" value={draftSortOrder} onChange={(e) => setDraftSortOrder(Number(e.target.value) || 0)} placeholder="並び順" style={inputStyle} disabled={saving} />
+          </div>
+          <textarea value={draftBody} onChange={(e) => setDraftBody(e.target.value)} placeholder="本文" style={{ ...inputStyle, minHeight: 60 }} disabled={saving} />
+          <label style={{ fontSize: 11, color: "#374151", display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <input type="checkbox" checked={draftActive} onChange={(e) => setDraftActive(e.target.checked)} disabled={saving} />
+            公開状態(チェック = 公開)
+          </label>
+          <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+            <button onClick={() => setEditing(false)} style={buttonSecondary} disabled={saving}>キャンセル</button>
+            <button onClick={handleSave} style={buttonPrimary} disabled={saving || !draftTitle.trim() || !draftBody.trim()}>
+              {saving ? (
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Spinner color="#ffffff" /> 保存中…</span>
+              ) : "保存"}
+            </button>
+          </div>
+        </div>
+      </li>
+    );
+  }
+
+  const ph = cue.phase_id ? phases.find((p) => p.id === cue.phase_id) : null;
+  const ac = cue.actor_id ? actors.find((a) => a.id === cue.actor_id) : null;
+
+  return (
+    <li style={{ padding: 10, border: "1px solid #e5e7eb", borderRadius: 8, background: cue.is_active ? "#ffffff" : "#f9fafb", opacity: cue.is_active ? 1 : 0.6 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+        <span style={{
+          padding: "1px 8px", borderRadius: 999, fontSize: 10, fontWeight: 700,
+          background: cue.priority === "high" ? "#fee2e2" : cue.priority === "low" ? "#f3f4f6" : "#fef3c7",
+          color:      cue.priority === "high" ? "#991b1b" : cue.priority === "low" ? "#6b7280" : "#92400e",
+        }}>
+          優先 {CUE_PRIORITY_LABEL[cue.priority]}
+        </span>
+        <span style={{ padding: "1px 8px", borderRadius: 999, fontSize: 10, fontWeight: 700, background: cue.is_active ? "#d1fae5" : "#e5e7eb", color: cue.is_active ? "#065f46" : "#6b7280" }}>
+          {cue.is_active ? "公開" : "非公開"}
+        </span>
+        <strong style={{ fontSize: 13, color: "#111827", flex: 1 }}>{cue.title}</strong>
+        <span style={{ fontSize: 11, color: "#9ca3af" }}>sort {cue.sort_order}</span>
+      </div>
+      <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 2 }}>
+        Phase: {ph?.name ?? "(全体)"} / Actor: {ac?.display_name ?? "(全員)"}
+      </div>
+      <p style={{ margin: "2px 0", fontSize: 12, color: "#374151", whiteSpace: "pre-wrap" }}>{cue.body}</p>
+      <div style={{ display: "flex", gap: 6, justifyContent: "flex-end", marginTop: 4 }}>
+        <button onClick={() => setEditing(true)} style={buttonSecondary}>編集</button>
+        <button onClick={onToggleActive} style={buttonSecondary}>
+          {cue.is_active ? "非公開にする" : "公開にする"}
+        </button>
+        <button onClick={onDelete} style={{ ...buttonSecondary, color: "#991b1b", borderColor: "#fecaca" }}>削除</button>
+      </div>
+    </li>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// OverviewTab — Phase 2-I.2: 「概要」タブ
+// ─────────────────────────────────────────────────────────────────────────────
+function OverviewTab({
+  selectedWork,
+  sessionsCount,
+  participantsCount,
+  alertsCount,
+  activeInstructionsCount,
+  recentEvents,
+}: {
+  selectedWork: { id: string; title: string } | null;
+  sessionsCount: number;
+  participantsCount: number;
+  alertsCount: number;
+  activeInstructionsCount: number;
+  recentEvents: LiveEventLog[];
+}) {
+  return (
+    <div style={{ display: "grid", gap: 12 }}>
+      <section style={card}>
+        {sectionTitle("選択中の作品")}
+        <p style={{ fontSize: 14, color: "#111827", margin: 0 }}>
+          {selectedWork ? selectedWork.title : <span style={{ color: "#9ca3af" }}>(未選択)</span>}
+        </p>
+      </section>
+
+      <div style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(4, 1fr)" }}>
+        <StatCard label="セッション数" value={sessionsCount} />
+        <StatCard label="参加者数(選択中セッション)" value={participantsCount} />
+        <StatCard label="アラート" value={alertsCount} accent={alertsCount > 0 ? "warn" : undefined} />
+        <StatCard label="未完了の指示" value={activeInstructionsCount} accent={activeInstructionsCount > 0 ? "info" : undefined} />
+      </div>
+
+      <section style={card}>
+        {sectionTitle("直近のイベント (最新 5 件)")}
+        {recentEvents.length === 0 ? (
+          <p style={{ fontSize: 12, color: "#6b7280" }}>まだイベントログがありません。</p>
+        ) : (
+          <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gap: 4 }}>
+            {recentEvents.map((e) => (
+              <li
+                key={e.id}
+                style={{
+                  fontSize: 12,
+                  color: "#374151",
+                  padding: "6px 8px",
+                  borderRadius: 6,
+                  background: e.type === "alert" ? "#fef2f2" : "#f9fafb",
+                }}
+              >
+                <span style={{
+                  display: "inline-block",
+                  padding: "1px 6px",
+                  borderRadius: 999,
+                  fontSize: 10,
+                  fontWeight: 700,
+                  background: e.type === "alert" ? "#fee2e2" : "#ecfdf5",
+                  color:      e.type === "alert" ? "#991b1b" : "#065f46",
+                  marginRight: 6,
+                }}>
+                  {EVENT_TYPE_LABEL[e.type as EventType] ?? e.type}
+                </span>
+                <strong>{e.title}</strong>
+                <span style={{ color: "#9ca3af", marginLeft: 6, fontSize: 11 }}>
+                  {formatDateTime(e.created_at)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function StatCard({ label, value, accent }: { label: string; value: number; accent?: "warn" | "info" }) {
+  const bg = accent === "warn" ? "#fef2f2" : accent === "info" ? "#eff6ff" : "#ffffff";
+  const fg = accent === "warn" ? "#991b1b" : accent === "info" ? "#1e40af" : "#111827";
+  return (
+    <div style={{ ...card, background: bg }}>
+      <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 4 }}>{label}</div>
+      <div style={{ fontSize: 24, fontWeight: 800, color: fg }}>{value}</div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SessionFilterBar — Phase 2-I.3: セッション絞り込み (月 / 午前午後)
+// ─────────────────────────────────────────────────────────────────────────────
+function sessionYearMonthLocal(s: LiveSession): string | null {
+  if (!s.starts_at) return null;
+  const d = new Date(s.starts_at);
+  if (isNaN(d.getTime())) return null;
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Tokyo", year: "numeric", month: "2-digit" }).formatToParts(d);
+  const yyyy = parts.find((p) => p.type === "year")?.value;
+  const mm = parts.find((p) => p.type === "month")?.value;
+  return yyyy && mm ? `${yyyy}-${mm}` : null;
+}
+function sessionAmPmLocal(s: LiveSession): "am" | "pm" | null {
+  if (!s.starts_at) return null;
+  const d = new Date(s.starts_at);
+  if (isNaN(d.getTime())) return null;
+  const hh = Number(new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Tokyo", hour: "2-digit", hour12: false }).formatToParts(d).find((p) => p.type === "hour")?.value);
+  return Number.isNaN(hh) ? null : hh < 12 ? "am" : "pm";
+}
+function filterSessionMatches(s: LiveSession, month: string, ampm: "" | "am" | "pm"): boolean {
+  if (month) {
+    if (sessionYearMonthLocal(s) !== month) return false;
+  }
+  if (ampm) {
+    if (sessionAmPmLocal(s) !== ampm) return false;
+  }
+  return true;
+}
+
+function SessionFilterBar({
+  sessions,
+  filterMonth,
+  filterAmPm,
+  onChangeMonth,
+  onChangeAmPm,
+}: {
+  sessions: LiveSession[];
+  filterMonth: string;
+  filterAmPm: "" | "am" | "pm";
+  onChangeMonth: (v: string) => void;
+  onChangeAmPm: (v: "" | "am" | "pm") => void;
+}) {
+  const months = Array.from(new Set(
+    sessions.map((s) => sessionYearMonthLocal(s)).filter((m): m is string => m !== null),
+  )).sort();
+  return (
+    <div style={{ display: "flex", gap: 8, marginBottom: 8, fontSize: 11, color: "#6b7280" }}>
+      <label>
+        月:&nbsp;
+        <select value={filterMonth} onChange={(e) => onChangeMonth(e.target.value)} style={{ ...inputStyle, maxWidth: 140, padding: "4px 8px" }}>
+          <option value="">すべて</option>
+          {months.map((m) => {
+            const [y, mm] = m.split("-");
+            return <option key={m} value={m}>{`${y}年${Number(mm)}月`}</option>;
+          })}
+        </select>
+      </label>
+      <label>
+        時間帯:&nbsp;
+        <select value={filterAmPm} onChange={(e) => onChangeAmPm(e.target.value as "" | "am" | "pm")} style={{ ...inputStyle, maxWidth: 100, padding: "4px 8px" }}>
+          <option value="">すべて</option>
+          <option value="am">午前</option>
+          <option value="pm">午後</option>
+        </select>
+      </label>
+    </div>
+  );
+}
+
+// Phase 2-I.3: 現在時刻に最も近い session を 1 件返す (= startsAt が未来で最小 / 無ければ過去で最新)
+function pickNearestSessionLocal(sessions: LiveSession[]): LiveSession | null {
+  if (sessions.length === 0) return null;
+  const now = Date.now();
+  const withTime = sessions
+    .filter((s) => s.starts_at)
+    .map((s) => ({ s, t: new Date(s.starts_at!).getTime() }))
+    .filter((x) => !isNaN(x.t));
+  if (withTime.length === 0) return sessions[0];
+  const future = withTime.filter((x) => x.t >= now).sort((a, b) => a.t - b.t);
+  if (future.length > 0) return future[0].s;
+  const past = withTime.sort((a, b) => b.t - a.t);
+  return past[0].s;
 }

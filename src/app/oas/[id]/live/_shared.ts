@@ -96,6 +96,42 @@ export type LiveActorInstruction = {
   updated_at: string;
 };
 
+// Phase 2-I: 台本・セリフ候補
+export type LiveScript = {
+  id: string;
+  oa_id: string;
+  work_id: string | null;
+  title: string;
+  body: string;
+  memo: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type LiveCuePriority = "low" | "normal" | "high";
+
+export type LiveCue = {
+  id: string;
+  oa_id: string;
+  work_id: string | null;
+  phase_id: string | null;
+  actor_id: string | null;
+  title: string;
+  body: string;
+  priority: LiveCuePriority;
+  sort_order: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export const CUE_PRIORITY_LABEL: Record<LiveCuePriority, string> = {
+  low:    "低",
+  normal: "中",
+  high:   "高",
+};
+
 export const INSTRUCTION_PRIORITY_LABEL: Record<LiveInstructionPriority, string> = {
   low:    "低",
   normal: "中",
@@ -220,3 +256,57 @@ export const errorBox: React.CSSProperties = {
   fontSize: 13,
   margin: "8px 0",
 };
+
+// Phase 2-I.3: セッション選択ヘルパー
+// JST で startsAt を年月 (YYYY-MM) / 午前午後 / HH:MM 回名 に分解する。
+export function sessionYearMonth(s: LiveSession): string | null {
+  if (!s.starts_at) return null;
+  const d = new Date(s.starts_at);
+  if (isNaN(d.getTime())) return null;
+  // JST に揃える: toLocaleString で "Asia/Tokyo" 経由
+  const fmt = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Tokyo", year: "numeric", month: "2-digit" });
+  const parts = fmt.formatToParts(d);
+  const yyyy = parts.find((p) => p.type === "year")?.value;
+  const mm   = parts.find((p) => p.type === "month")?.value;
+  if (!yyyy || !mm) return null;
+  return `${yyyy}-${mm}`;
+}
+
+export function sessionAmPm(s: LiveSession): "am" | "pm" | null {
+  if (!s.starts_at) return null;
+  const d = new Date(s.starts_at);
+  if (isNaN(d.getTime())) return null;
+  const fmt = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Tokyo", hour: "2-digit", hour12: false });
+  const hh = Number(fmt.formatToParts(d).find((p) => p.type === "hour")?.value);
+  if (Number.isNaN(hh)) return null;
+  return hh < 12 ? "am" : "pm";
+}
+
+export function sessionHourMinuteLabel(s: LiveSession): string | null {
+  if (!s.starts_at) return null;
+  const d = new Date(s.starts_at);
+  if (isNaN(d.getTime())) return null;
+  const fmt = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Tokyo", hour: "2-digit", minute: "2-digit", hour12: false });
+  const parts = fmt.formatToParts(d);
+  const hh = parts.find((p) => p.type === "hour")?.value;
+  const mi = parts.find((p) => p.type === "minute")?.value;
+  if (!hh || !mi) return null;
+  return `${hh}:${mi}回`;
+}
+
+/// 現在時刻に最も近いセッションを 1 件返す (= startsAt が未来で最小 / 未来が無ければ過去で最新)
+export function pickNearestSession(sessions: LiveSession[]): LiveSession | null {
+  if (sessions.length === 0) return null;
+  const now = Date.now();
+  const withTime = sessions
+    .filter((s) => s.starts_at)
+    .map((s) => ({ s, t: new Date(s.starts_at!).getTime() }))
+    .filter((x) => !isNaN(x.t));
+  if (withTime.length === 0) return sessions[0];
+  // 未来優先 / 同条件は startsAt 昇順 (= 直近)
+  const future = withTime.filter((x) => x.t >= now).sort((a, b) => a.t - b.t);
+  if (future.length > 0) return future[0].s;
+  // 未来が無ければ過去の最新
+  const past = withTime.sort((a, b) => b.t - a.t);
+  return past[0].s;
+}

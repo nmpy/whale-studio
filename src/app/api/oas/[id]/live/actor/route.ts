@@ -36,6 +36,15 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
       ? { oaId: params.id, liveSessionId: sessionId }
       : { oaId: params.id };
 
+    // 選択中セッションが work に紐付くか確認 (= scripts / cues のスコープ決定用)
+    const selectedSessionForWork = sessionId
+      ? await prisma.liveSession.findFirst({
+          where:  { id: sessionId, oaId: params.id },
+          select: { workId: true },
+        })
+      : null;
+    const scopedWorkId = selectedSessionForWork?.workId ?? null;
+
     const [
       sessions,
       participants,
@@ -45,6 +54,8 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
       assignments,
       instructions,
       teams,
+      scripts,
+      cues,
     ] = await Promise.all([
       prisma.liveSession.findMany({
         where:   { oaId: params.id },
@@ -99,6 +110,16 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
             take:    200,
           })
         : Promise.resolve([]),
+      // Phase 2-I.3: 「台本」を LiveCue に一本化。LiveScript は fetch せず空配列で返す。
+      Promise.resolve([] as never[]),
+      // Phase 2-I: cues (= work scope or OA 共通の active / 優先度高 → 低)
+      prisma.liveCue.findMany({
+        where:   scopedWorkId
+          ? { oaId: params.id, isActive: true, OR: [{ workId: scopedWorkId }, { workId: null }] }
+          : { oaId: params.id, isActive: true, workId: null },
+        orderBy: [{ priority: "desc" }, { sortOrder: "asc" }, { createdAt: "asc" }],
+        take:    500,
+      }),
     ]);
 
     const lastContactByPid = new Map<string, Date | null>();
@@ -197,6 +218,23 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
         memo:               t.memo,
         created_at:         t.createdAt,
         updated_at:         t.updatedAt,
+      })),
+      // Phase 2-I.3: 「台本」を LiveCue に一本化。LiveScript は UI/API レベルで非表示化
+      // (= DB データは残る / 後続 PR で整理予定)。scripts は空配列で互換維持。
+      scripts: [],
+      cues: cues.map((c) => ({
+        id:         c.id,
+        oa_id:      c.oaId,
+        work_id:    c.workId,
+        phase_id:   c.phaseId,
+        actor_id:   c.actorId,
+        title:      c.title,
+        body:       c.body,
+        priority:   c.priority,
+        sort_order: c.sortOrder,
+        is_active:  c.isActive,
+        created_at: c.createdAt,
+        updated_at: c.updatedAt,
       })),
       my_actor_ids: myActorIds,
     });
