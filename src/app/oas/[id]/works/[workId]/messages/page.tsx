@@ -516,6 +516,13 @@ export default function MessagesPage() {
     const token = getDevToken();
     setLoading(true);
     setLoadError(null);
+    // perf:diag: messages 一覧の useEffect が発火したことをブラウザに必ず出す (= 一時)。
+    //   目的: 「画面に居るのに client perf log が出ない」場合に、useEffect 自体は
+    //         発火しているのか、それとも PERF flag が false で suppress されているのかを
+    //         切り分ける。PII は出さない (= workId UUID 末尾 4 文字だけマスク表示)。
+    //   計測完了後は削除する想定。
+    // eslint-disable-next-line no-console
+    console.info(`[perf:client:diag] page=/messages initialLoad fired workId=...${workId.slice(-4)}`);
     // perf: NEXT_PUBLIC_PERF_LOG_ENABLED=1 のとき browser console に 4 並列 fetch の
     //       wall time を出力 (= server-side perf log と組み合わせて waterfall を可視化)
     const t0 = clientPerfStart();

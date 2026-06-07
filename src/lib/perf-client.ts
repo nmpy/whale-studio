@@ -20,6 +20,16 @@ export const PERF_LOG_ENABLED_CLIENT = (() => {
   return v === "1" || v === "true";
 })();
 
+// perf:diag: モジュール load 時に flag 値を 1 回 console に出力する。
+// 目的: NEXT_PUBLIC_PERF_LOG_ENABLED が build に反映されているかをブラウザ DevTools
+//       で確認するため (= 出ない場合は build cache 等で env が古い可能性)。
+// PII / token / 本文は出さない (= boolean のみ)。
+// 計測完了後はこの diag を削除する想定 (= 一時)。
+if (typeof window !== "undefined") {
+  // eslint-disable-next-line no-console
+  console.info(`[perf:client:diag] PERF_LOG_ENABLED_CLIENT=${PERF_LOG_ENABLED_CLIENT}`);
+}
+
 /**
  * Browser console に phase / durationMs を出す (= ON 時のみ)。
  * OFF 時は overhead 0 (= performance.now も呼ばない)。

@@ -239,6 +239,13 @@ export const GET = withAuth(async (req, _ctx, user) =>
       limit:          searchParams.get("limit")          ?? undefined,
     });
 
+    // perf:diag: GET /api/messages の呼び出し条件 (= summary / with_relations / limit) を
+    //   一時的に server log へ出す。目的:「summary=true に切り替わっているか」を
+    //   Vercel logs から確認するため。PII は含まない (= boolean / number のみ)。
+    //   計測完了後に削除する想定。
+    // eslint-disable-next-line no-console
+    console.info(`[perf:diag] api/messages summary=${query.summary} with_relations=${query.with_relations} limit=${query.limit ?? "-"} PERF_LOG_ENABLED_SERVER=${process.env.PERF_LOG_ENABLED ?? "-"}`);
+
     // PR #159: prisma.work.findUnique で oaId も同時取得 (= getOaIdFromWorkId 重複削除)
     // PR #160: 取得した oaId で getCachedOaById → preloadedOa を requireRole に渡して
     //          requireRole 内部の Oa.findUnique をスキップする (warm hit 時 ~500ms 短縮)。
