@@ -552,6 +552,12 @@ export const messageQuerySchema = z.object({
   message_type:   z.enum(["text", "image", "riddle", "video", "carousel", "voice"]).optional(),
   is_active:      z.coerce.boolean().optional(),
   with_relations: z.coerce.boolean().default(false),
+  // perf: 一覧画面で詳細編集用 field を返さない軽量レスポンス mode。
+  //       summary=true のとき phase / character を minimum select で include し、
+  //       free_input_* / image_action_* / tap_* / puzzle_* / 演出設定等は null で埋める。
+  summary:        z.coerce.boolean().default(false),
+  // perf: ページネーション (= 一覧の初期表示件数を制限)。limit 上限 500。
+  limit:          z.coerce.number().int().positive().max(500).optional(),
 });
 
 // ────────────────────────────────────────────────

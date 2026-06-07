@@ -32,6 +32,85 @@ function parseQuickReplies(raw: string | null, msgId?: string) {
   }
 }
 
+// perf: 一覧画面 (= /messages) で使う最小 field だけを返す summary shape。
+// 既存 toResponse の戻り型 (= 全 field) と互換にするため、含めない field は null / 既定値で埋める。
+// client は MessageWithRelations 型のまま扱える (= 不要 field は触らないので破壊なし)。
+function toResponseSummary(m: {
+  id: string; workId: string; phaseId: string | null; characterId: string | null;
+  messageType: string; kind: string; body: string | null; assetUrl: string | null;
+  triggerKeyword: string | null; quickReplies: string | null;
+  nextMessageId: string | null; sortOrder: number; isActive: boolean;
+  createdAt: Date; updatedAt: Date;
+  phase?:     { id: string; name: string; phaseType: string } | null;
+  character?: { id: string; name: string; iconType: string; iconText: string | null; iconImageUrl: string | null; iconColor: string | null } | null;
+}) {
+  return {
+    id:                   m.id,
+    work_id:              m.workId,
+    phase_id:             m.phaseId,
+    character_id:         m.characterId,
+    message_type:         m.messageType,
+    kind:                 m.kind,
+    body:                 m.body,
+    asset_url:            m.assetUrl,
+    trigger_keyword:      m.triggerKeyword,
+    target_segment:       null,
+    notify_text:          null,
+    riddle_id:            null,
+    quick_replies:        parseQuickReplies(m.quickReplies, m.id),
+    next_message_id:      m.nextMessageId ?? null,
+    alt_text:             null,
+    flex_payload_json:    null,
+    puzzle_type:          null,
+    answer:               null,
+    puzzle_hint_text:     null,
+    answer_match_type:    parseAnswerMatchType(null),
+    correct_action:       null,
+    correct_text:         null,
+    incorrect_text:          null,
+    incorrect_quick_replies: null,
+    correct_next_phase_id:   null,
+    hint_mode:            "always" as import("@/types").HintMode,
+    lag_ms:               0,
+    read_receipt_mode:    null,
+    read_delay_ms:        null,
+    typing_enabled:       null,
+    typing_min_ms:        null,
+    typing_max_ms:        null,
+    loading_enabled:      null,
+    loading_threshold_ms: null,
+    loading_min_seconds:  null,
+    loading_max_seconds:  null,
+    tap_destination_id:   null,
+    tap_url:              null,
+    image_action_type:          null,
+    image_action_text:          null,
+    image_action_url:           null,
+    image_action_liff_page_id:  null,
+    image_action_postback_data: null,
+    free_input_enabled:         false,
+    free_input_variable_key:    null,
+    free_input_next_message_id: null,
+    sort_order:           m.sortOrder,
+    is_active:            m.isActive,
+    created_at:           m.createdAt,
+    updated_at:           m.updatedAt,
+    ...(m.phase !== undefined && {
+      phase: m.phase ? { id: m.phase.id, name: m.phase.name, phase_type: m.phase.phaseType } : null,
+    }),
+    ...(m.character !== undefined && {
+      character: m.character ? {
+        id:             m.character.id,
+        name:           m.character.name,
+        icon_type:      m.character.iconType,
+        icon_text:      m.character.iconText,
+        icon_image_url: m.character.iconImageUrl,
+        icon_color:     m.character.iconColor,
+      } : null,
+    }),
+  };
+}
+
 function toResponse(m: {
   id: string; workId: string; phaseId: string | null; characterId: string | null;
   messageType: string; kind: string; body: string | null; assetUrl: string | null;
@@ -156,7 +235,16 @@ export const GET = withAuth(async (req, _ctx, user) =>
       message_type:   searchParams.get("message_type")   ?? undefined,
       is_active:      searchParams.get("is_active")      ?? undefined,
       with_relations: searchParams.get("with_relations") ?? undefined,
+      summary:        searchParams.get("summary")        ?? undefined,
+      limit:          searchParams.get("limit")          ?? undefined,
     });
+
+    // perf:diag: GET /api/messages の呼び出し条件 (= summary / with_relations / limit) を
+    //   一時的に server log へ出す。目的:「summary=true に切り替わっているか」を
+    //   Vercel logs から確認するため。PII は含まない (= boolean / number のみ)。
+    //   計測完了後に削除する想定。
+    // eslint-disable-next-line no-console
+    console.info(`[perf:diag] api/messages summary=${query.summary} with_relations=${query.with_relations} limit=${query.limit ?? "-"} PERF_LOG_ENABLED_SERVER=${process.env.PERF_LOG_ENABLED ?? "-"}`);
 
     // PR #159: prisma.work.findUnique で oaId も同時取得 (= getOaIdFromWorkId 重複削除)
     // PR #160: 取得した oaId で getCachedOaById → preloadedOa を requireRole に渡して
@@ -180,6 +268,38 @@ export const GET = withAuth(async (req, _ctx, user) =>
       if (!check.ok) return check.response;
     }
 
+    // perf: summary mode のときは一覧画面で実際に使う field のみ select。
+    //   一覧で使う: id / phaseId / characterId / messageType / kind / body / assetUrl /
+    //              triggerKeyword / quickReplies / nextMessageId / sortOrder / isActive /
+    //              createdAt / updatedAt + phase{id,name,phaseType} + character{id,name,icon*}
+    //   不要 (= 編集画面でのみ取得すべき): free_input_* / image_action_* / tap_* / puzzle_* /
+    //              read_receipt_* / typing_* / loading_* / hint_* / lag_* / answer / correct_*
+    //              incorrect_* / alt_text / flex_payload_json / target_segment / notify_text /
+    //              riddle_id
+    const summarySelect = {
+      id:              true,
+      workId:          true,
+      phaseId:         true,
+      characterId:     true,
+      messageType:     true,
+      kind:            true,
+      body:            true,
+      assetUrl:        true,
+      triggerKeyword:  true,
+      quickReplies:    true,
+      nextMessageId:   true,
+      sortOrder:       true,
+      isActive:        true,
+      createdAt:       true,
+      updatedAt:       true,
+      phase: {
+        select: { id: true, name: true, phaseType: true },
+      },
+      character: {
+        select: { id: true, name: true, iconType: true, iconText: true, iconImageUrl: true, iconColor: true },
+      },
+    } as const;
+
     const messages = await withTiming("api/messages:db:list", () =>
       prisma.message.findMany({
         where: {
@@ -190,20 +310,29 @@ export const GET = withAuth(async (req, _ctx, user) =>
           ...(query.is_active !== undefined && { isActive: query.is_active }),
         },
         orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
-        ...(query.with_relations && {
-          include: {
-            phase: {
-              select: { id: true, name: true, phaseType: true },
-            },
-            character: {
-              select: { id: true, name: true, iconType: true, iconText: true, iconImageUrl: true, iconColor: true },
-            },
-          },
-        }),
+        ...(query.limit !== undefined && { take: query.limit }),
+        ...(query.summary
+          ? { select: summarySelect }
+          : query.with_relations
+            ? {
+                include: {
+                  phase:     { select: { id: true, name: true, phaseType: true } },
+                  character: { select: { id: true, name: true, iconType: true, iconText: true, iconImageUrl: true, iconColor: true } },
+                },
+              }
+            : {}),
       }),
     );
 
-    return await withTiming("api/messages:shape", async () => ok(messages.map(toResponse)));
+    return await withTiming("api/messages:shape", async () => {
+      // perf: PERF_LOG_ENABLED=1 のとき count を出すと "一覧の取得件数が多すぎる" 等の
+      //       傾向が観察できる。PII / 本文は含めない。
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const shaped = query.summary
+        ? messages.map((m) => toResponseSummary(m as Parameters<typeof toResponseSummary>[0]))
+        : messages.map((m) => toResponse(m as Parameters<typeof toResponse>[0]));
+      return ok(shaped, { count: shaped.length });
+    });
   } catch (err) {
     if (err instanceof ZodError) return badRequest("クエリパラメータが不正です", formatZodErrors(err));
     return serverError(err);

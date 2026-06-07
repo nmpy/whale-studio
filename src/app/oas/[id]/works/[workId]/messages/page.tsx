@@ -6,6 +6,7 @@ import { Fragment, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { TLink as Link } from "@/components/TLink";
 import { workApi, messageApi, phaseApi, transitionApi, getDevToken } from "@/lib/api-client";
+import { clientPerfStart, clientPerfEnd } from "@/lib/perf-client";
 import { HelpAccordion } from "@/components/HelpAccordion";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { useToast } from "@/components/Toast";
@@ -61,6 +62,8 @@ function CharIcon({ character }: { character: MessageWithRelations["character"];
       <img
         src={character.icon_image_url}
         alt={character.name}
+        loading="lazy"
+        decoding="async"
         style={{
           width: size, height: size, borderRadius: "50%",
           objectFit: "cover", flexShrink: 0,
@@ -513,9 +516,22 @@ export default function MessagesPage() {
     const token = getDevToken();
     setLoading(true);
     setLoadError(null);
+    // perf:diag: messages 一覧の useEffect が発火したことをブラウザに必ず出す (= 一時)。
+    //   目的: 「画面に居るのに client perf log が出ない」場合に、useEffect 自体は
+    //         発火しているのか、それとも PERF flag が false で suppress されているのかを
+    //         切り分ける。PII は出さない (= workId UUID 末尾 4 文字だけマスク表示)。
+    //   計測完了後は削除する想定。
+    // eslint-disable-next-line no-console
+    console.info(`[perf:client:diag] page=/messages initialLoad fired workId=...${workId.slice(-4)}`);
+    // perf: NEXT_PUBLIC_PERF_LOG_ENABLED=1 のとき browser console に 4 並列 fetch の
+    //       wall time を出力 (= server-side perf log と組み合わせて waterfall を可視化)
+    const t0 = clientPerfStart();
     Promise.all([
       workApi.get(token, workId),
-      messageApi.list(token, workId, { with_relations: true }) as Promise<MessageWithRelations[]>,
+      // perf: 一覧では summary mode を使い、編集画面用 field (= free_input_* / image_action_* /
+      //       tap_* / puzzle_* / 演出設定等) を返さない (= payload 50-70% 削減見込み)。
+      //       limit 500 で初期 burst を抑制 (= 既存挙動に近いが、極端な件数を保護)。
+      messageApi.list(token, workId, { summary: true, limit: 500 }) as Promise<MessageWithRelations[]>,
       phaseApi.list(token, workId),
       transitionApi.listByWork(token, workId),
     ])
@@ -525,8 +541,15 @@ export default function MessagesPage() {
         setMessages(list);
         setPhases(phaseList.sort((a, b) => a.sort_order - b.sort_order));
         setTransitions(transList);
+        clientPerfEnd("page:/messages:initialLoad", t0, {
+          messages: list.length,
+          phases:   phaseList.length,
+        });
       })
-      .catch((e) => setLoadError(e instanceof Error ? e.message : "読み込みに失敗しました"))
+      .catch((e) => {
+        setLoadError(e instanceof Error ? e.message : "読み込みに失敗しました");
+        clientPerfEnd("page:/messages:initialLoad", t0, { error: 1 });
+      })
       .finally(() => setLoading(false));
   }, [workId]);
 
@@ -1046,6 +1069,8 @@ export default function MessagesPage() {
                                 <img
                                   src={msg.asset_url}
                                   alt="画像"
+                                  loading="lazy"
+                                  decoding="async"
                                   style={{ width: 48, height: 36, objectFit: "cover", borderRadius: 4, border: "1px solid #e5e5e5" }}
                                   onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
                                 />
@@ -1239,6 +1264,8 @@ export default function MessagesPage() {
                                   <img
                                     src={cont.asset_url}
                                     alt="画像"
+                                    loading="lazy"
+                                    decoding="async"
                                     style={{ width: 36, height: 27, objectFit: "cover", borderRadius: 3, border: "1px solid #e5e7eb" }}
                                     onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
                                   />
