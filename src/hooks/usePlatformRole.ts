@@ -15,11 +15,22 @@
 import { useEffect, useState, useCallback } from "react";
 import { getAuthHeaders } from "@/lib/api-client";
 import type { Role } from "@/lib/types/permissions";
+import { parseOasViewRole, type OasViewRole } from "@/lib/oas-preview";
 
 /** プラットフォームロール: サービス全体の管理権限 */
 export type PlatformRole = "owner" | "user";
 
 const PREVIEW_KEY = "ws_platform_preview";
+
+/**
+ * `/oas` (= OA 一覧) の「表示確認モード」用 localStorage キー。
+ * platform owner が platform owner / owner / admin / editor / viewer の視点を切り替える。
+ *
+ * ⚠ PREVIEW_WS_ROLE_KEY ("ws_ws_role_preview") とは別キー。後者は useWorkspaceRole が
+ *   mount 時に毎回 removeItem する旧残骸クリーンアップ対象で、永続化に使えない。
+ *   こちらは誰も消さない専用キーとして新設する (= UI 表示専用 / API 権限には無関係)。
+ */
+const OAS_VIEW_PREVIEW_KEY = "ws_oas_view_preview";
 
 /**
  * platform owner が workspace role プレビューに使う localStorage キー。
@@ -37,6 +48,7 @@ export function usePlatformRole() {
   const [isPlatformOwner,   setIsPlatformOwner]   = useState(false);
   const [previewRole,       setPreviewRoleState]   = useState<PlatformRole | null>(null);
   const [previewWsRole,     setPreviewWsRoleState] = useState<Role | null>(null);
+  const [previewViewRole,   setPreviewViewRoleState] = useState<OasViewRole | null>(null);
   const [loading,           setLoading]            = useState(true);
 
   useEffect(() => {
@@ -55,6 +67,12 @@ export function usePlatformRole() {
       if (savedWs && (["owner", "admin", "editor", "viewer"] as string[]).includes(savedWs)) {
         setPreviewWsRoleState(savedWs);
       }
+    } catch {}
+
+    // `/oas` 表示確認モードの視点を復元（不正値は parse で弾かれて null）
+    try {
+      const savedView = parseOasViewRole(localStorage.getItem(OAS_VIEW_PREVIEW_KEY));
+      if (savedView) setPreviewViewRoleState(savedView);
     } catch {}
 
     // /api/admin/me からプラットフォームオーナー判定を取得
@@ -109,6 +127,22 @@ export function usePlatformRole() {
     );
   }, []);
 
+  /**
+   * `/oas` 表示確認モードの視点を切り替える（null = platform owner 既定に戻す）。
+   * UI 表示専用。実権限・API には一切影響しない。
+   */
+  const setPreviewViewRole = useCallback((role: OasViewRole | null) => {
+    // "platform_owner" は「preview なし（実 platform owner 視点）」と同義なので null に正規化する。
+    const next = role === "platform_owner" ? null : role;
+    setPreviewViewRoleState(next);
+    try {
+      if (next) localStorage.setItem(OAS_VIEW_PREVIEW_KEY, next);
+      else localStorage.removeItem(OAS_VIEW_PREVIEW_KEY);
+    } catch {
+      // localStorage 使用不可環境では無視
+    }
+  }, []);
+
   // プレビュー中かどうか（プラットフォームロール）
   const isPreviewing = isPlatformOwner && previewRole !== null;
 
@@ -128,6 +162,8 @@ export function usePlatformRole() {
     previewRole,
     /** 現在プレビュー中の workspace role（null = プレビューなし） */
     previewWsRole,
+    /** `/oas` 表示確認モードで選択中の視点（null = platform owner 既定） */
+    previewViewRole,
     /** UI 制御に使うプラットフォームロール（プレビュー中はそのロール） */
     effectiveRole,
     /** オーナーがプラットフォームロールをプレビュー中かどうか */
@@ -139,5 +175,7 @@ export function usePlatformRole() {
     setPreviewRole,
     /** workspace role プレビューを切り替える（null でリセット） */
     setPreviewWsRole,
+    /** `/oas` 表示確認モードの視点を切り替える（null / "platform_owner" でリセット） */
+    setPreviewViewRole,
   };
 }
