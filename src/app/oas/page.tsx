@@ -8,6 +8,8 @@ import { AnnouncementBanner } from "@/components/AnnouncementBanner";
 import { usePlatformRole } from "@/hooks/usePlatformRole";
 import { RoleBadge } from "@/components/PermissionGuard";
 import { Button, StatusBadge, buttonClass } from "@/components/shared";
+import { OasViewPreviewBar } from "@/components/OasViewPreviewBar";
+import { canCreateOaInView, isPreviewingOasView, OAS_VIEW_ROLE_LABELS } from "@/lib/oas-preview";
 import type { Role } from "@/lib/types/permissions";
 
 // ── 定数 ─────────────────────────────────────────────────────────────────
@@ -173,22 +175,30 @@ export default function OaListPage() {
   const [page,         setPage]         = useState(1);
   const [worksMap,     setWorksMap]     = useState<Record<string, WorkListItem[]>>({});
   const { showToast }           = useToast();
-  const { effectiveRole, isPlatformOwner, setPreviewRole } = usePlatformRole();
+  const { isPlatformOwner, previewViewRole, setPreviewViewRole } = usePlatformRole();
 
-  const actAsOwner = isPlatformOwner && effectiveRole === "owner";
+  // 表示確認モードの視点。実 platform owner のみ有効 (= 一般ユーザーは preview を無視)。
+  // platform_owner 視点 (= 既定 / preview 未指定) のときだけ「運営者として」振る舞う表示にする。
+  const previewArgs = { isPlatformOwner, previewViewRole };
+  const previewingNonOwner = isPreviewingOasView(previewArgs);
+  const actAsOwner = canCreateOaInView(previewArgs);
 
   // 「+ アカウントを追加」を表示する条件:
-  //   - Platform owner (= サービス全体の運営者) のみ
+  //   - platform owner 視点 (= 実 platform owner かつ表示確認で owner 以外を選んでいない) のみ
   //
   // 一般ユーザー (workspace owner / admin / editor / viewer / fresh user) は、
-  // 自分で LINE 公式アカウント / OA を追加できない方針。
+  // 自分で LINE 公式アカウント / OA を追加できない方針。表示確認モードで owner / admin /
+  // editor / viewer を選ぶと、この CTA は (UI 上だけ) 非表示になり一般ユーザーの見え方を確認できる。
+  //
+  // ⚠ これは UI 表示専用。`POST /api/oas` は server 側で実 platform owner を別途検証するため、
+  //   表示確認で視点を変えても本物の platform owner 以外は 403 のまま (= 権限は広がらない)。
   //
   // 通常 fresh user は onboarding-guard (`/oas/layout.tsx`) で `/onboarding/*` へ
   // redirect されるため `/oas` に到達しない。`/oas` に items=0 で到達する稀ケースに
   // 備えて、empty state も canCreateOa で「審査中案内 vs bootstrap CTA」を分岐する。
   //
   // OA の新規追加は admin 承認 (`/admin/oa-onboarding`) 経由でのみ可能。
-  const canCreateOa = isPlatformOwner;
+  const canCreateOa = canCreateOaInView(previewArgs);
 
   async function load(p: number) {
     setLoading(true);
@@ -247,6 +257,13 @@ export default function OaListPage() {
 
   return (
     <>
+      {/* ── 表示確認モード (= platform owner 限定 / UI 表示専用) ── */}
+      <OasViewPreviewBar
+        isPlatformOwner={isPlatformOwner}
+        previewViewRole={previewViewRole}
+        onChange={setPreviewViewRole}
+      />
+
       {/* ── ページヘッダー ── */}
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
@@ -496,21 +513,22 @@ export default function OaListPage() {
         </>
       )}
 
-      {/* ── 一般ユーザープレビュー中バナー ── */}
-      {isPlatformOwner && !actAsOwner && (
+      {/* ── 表示確認中バナー (= owner 以外の視点を確認中) ── */}
+      {previewingNonOwner && (
         <div
           role="status"
           className="mt-4 flex items-center gap-3 rounded-field border border-warn/30 bg-warn-soft px-4 py-2.5 text-[13px] text-warn"
         >
           <span aria-hidden="true" className="flex-shrink-0 text-[16px]">👁</span>
           <span className="flex-1">
-            <strong>一般ユーザープレビュー中</strong> — 一般ユーザーからの見え方を表示しています。
+            <strong>{previewViewRole ? OAS_VIEW_ROLE_LABELS[previewViewRole] : "一般ユーザー"}の表示を確認中</strong>
+            {" "}— この視点からの見え方を表示しています（表示のみ・権限は変わりません）。
           </span>
           <Button
             type="button"
             variant="ghost"
             size="sm"
-            onClick={() => setPreviewRole(null)}
+            onClick={() => setPreviewViewRole(null)}
             className="whitespace-nowrap"
           >
             オーナー表示に戻す
