@@ -310,9 +310,14 @@ export default function LiffPagesIndex() {
                         {PUBLISH_LABELS[p.publish_status] ?? p.publish_status}
                       </span>
                     </div>
-                    <div className="text-[11px] text-gray-500 flex flex-wrap gap-x-3 gap-y-0.5">
+                    <div className="text-[11px] text-gray-500 flex flex-wrap gap-x-3 gap-y-0.5 items-center">
                       <span>作成: {formatDateTime(p.created_at)}</span>
                       <span>更新: {formatDateTime(p.updated_at)}</span>
+                      {(p.submission_count ?? 0) > 0 && (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-brand-soft text-brand-ink border border-brand/30">
+                          回答 {p.submission_count}
+                        </span>
+                      )}
                     </div>
                     {/* KPI 行 — 計測 API 取得後に表示。失敗時は "-" にフォールバック */}
                     {analytics && (
@@ -360,6 +365,13 @@ export default function LiffPagesIndex() {
                         {copied === p.id ? "コピーしました!" : "URLコピー"}
                       </button>
                     )}
+                    <a
+                      href={`/oas/${oaId}/works/${workId}/liff/pages/${p.id}/submissions`}
+                      className="px-3 py-1.5 border border-gray-200 text-gray-600 rounded-md text-xs hover:bg-gray-50"
+                      title="回答結果を見る"
+                    >
+                      回答を見る
+                    </a>
                     <a
                       href={`/oas/${oaId}/works/${workId}/liff/${p.id}`}
                       className={buttonClass({ variant: "primary", size: "sm" })}

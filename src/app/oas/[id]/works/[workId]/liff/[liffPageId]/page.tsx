@@ -126,7 +126,15 @@ export default function LiffPageEditor() {
         >
           ← 一覧に戻る
         </a>
-        <SaveStatusIndicator status={liff.saveStatus} />
+        <div className="flex items-center gap-3">
+          <a
+            href={`/oas/${oaId}/works/${workId}/liff/pages/${liffPageId}/submissions`}
+            className="text-xs text-brand-ink underline"
+          >
+            回答結果を見る
+          </a>
+          <SaveStatusIndicator status={liff.saveStatus} />
+        </div>
       </div>
 
       <LiffConfigHeader

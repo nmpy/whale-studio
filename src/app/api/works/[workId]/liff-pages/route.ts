@@ -48,6 +48,21 @@ export const GET = withAuth(async (req, ctx, user) => {
       },
     });
 
+    // 回答数バッジ用に submission 件数を 1 クエリで集計する（N+1 を避ける）。
+    // ※ migration 未適用（liff_submissions 未作成）でも既存の一覧表示を壊さないよう、
+    //   集計失敗は count=0 にフォールバックする（deploy が migration より先行しても安全）。
+    const countByPage = new Map<string, number>();
+    try {
+      const counts = await prisma.liffSubmission.groupBy({
+        by: ["liffPageId"],
+        where: { workId },
+        _count: { _all: true },
+      });
+      for (const c of counts) countByPage.set(c.liffPageId, c._count._all);
+    } catch (e) {
+      console.warn("[liff-pages] submission count skipped (table may be pre-migration):", e);
+    }
+
     return ok({
       work_id: workId,
       pages: pages.map((p) => ({
@@ -60,6 +75,7 @@ export const GET = withAuth(async (req, ctx, user) => {
         page_type:       p.pageType,
         publish_status:  p.publishStatus,
         is_enabled:      p.isEnabled,
+        submission_count: countByPage.get(p.id) ?? 0,
         created_at:      p.createdAt,
         updated_at:      p.updatedAt,
       })),

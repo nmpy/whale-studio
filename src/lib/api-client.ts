@@ -1549,6 +1549,8 @@ export interface LiffPageSummary {
   page_type:       string;
   publish_status:  string;
   is_enabled:      boolean;
+  /** 回答結果（LiffSubmission）件数。回答数バッジ用。 */
+  submission_count?: number;
   created_at:      string;
   updated_at:      string;
 }
