@@ -2378,7 +2378,7 @@ function TimingConfigSection<T extends TimingFormFields>({
     <SectionAccordion
       title="演出設定"
       optional
-      description="既読タイミング・送信前の待機時間・「入力中…」表示などを設定できます。"
+      description="既読タイミング・「入力中…」表示などを設定できます。"
       defaultOpen={hasValues}
       badge={hasValues ? (
         <span style={{
@@ -2441,53 +2441,16 @@ function TimingConfigSection<T extends TimingFormFields>({
           )}
           {isAdditional && (
             <div style={{ ...hintText, color: "#92400e", marginTop: -4 }}>
-              ※ 既読遅延は現在、最初のメッセージにのみ実機反映されます。送信前の待機時間 / 「入力中...」表示は反映されます。
+              ※ 既読遅延は現在、最初のメッセージにのみ実機反映されます。「入力中...」表示は反映されます。
             </div>
           )}
 
-          {/* ── 送信前の待機時間（旧: typing 風の間） ──
-              実装: ReadReceiptController.waitTypingForMessage / waitTypingBeforeReply
-              内部 sleep() のみで、LINE 画面上には何も表示されない (= 不可視の「間」)。
-              UI 文言は「typing」を避け、「入力中...」表示 (= loading) と区別する。 */}
-          <div>
-            <label style={miniLabel}>送信前の待機時間（画面には表示されません）</label>
-            <select
-              className="form-input"
-              style={{ maxWidth: 120 }}
-              value={form.typing_enabled}
-              onChange={(e) => set("typing_enabled", e.target.value)}
-            >
-              {BOOL_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
-            </select>
-          </div>
-          {form.typing_enabled === "true" && (
-            <div style={inlineRow}>
-              <div>
-                <label style={miniLabel}>最小</label>
-                <DurationInput
-                  valueMs={Number(form.typing_min_ms || 0)}
-                  onChange={(ms) => {
-                    const next = Math.min(ms, 600000);
-                    const currentMax = Number(form.typing_max_ms || 0);
-                    set("typing_min_ms", String(currentMax > 0 ? Math.min(next, currentMax) : next));
-                  }}
-                />
-              </div>
-              <div>
-                <label style={miniLabel}>最大</label>
-                <DurationInput
-                  valueMs={Number(form.typing_max_ms || 0)}
-                  onChange={(ms) => {
-                    const next = Math.min(ms, 600000);
-                    const currentMin = Number(form.typing_min_ms || 0);
-                    set("typing_max_ms", String(Math.max(next, currentMin)));
-                  }}
-                />
-              </div>
-            </div>
-          )}
+          {/* ── 旧「送信前の待機時間（画面には表示されません）」(= typing 風の不可視 sleep) は UI から撤去 ──
+              理由: 実機の待機は lag_ms（「返信までの待機時間」/「前のメッセージからの待機時間」）に一本化。
+              typing 系（typing_enabled / typing_min_ms / typing_max_ms）は「返信までの待機時間」と
+              区別がつかずユーザーを混乱させていたため非表示にする。
+              既存データは form state（typing_*）として load/save され続けるので破壊しない（runtime 挙動も不変）。
+              新規に typing を設定する導線のみ廃止する。 */}
 
           {/* ── 「入力中...」表示（旧: ローディングアニメーション） ──
               実装: LINE LoadingAnimation API (POST /chat/loading/start)。
@@ -2507,7 +2470,7 @@ function TimingConfigSection<T extends TimingFormFields>({
           </div>
           {isAdditional && form.loading_enabled === "true" && (
             <div style={{ ...hintText, color: "#92400e", marginTop: -4 }}>
-              ※ 「入力中...」表示は LINE 側の挙動 (最小 5 秒・1 チャットに 1 つ) により、連続メッセージそれぞれの直前に必ず表示されるとは限りません (= best-effort)。確実に「間」を作りたい場合は「送信前の待機時間」を併用してください。
+              ※ 「入力中...」表示は LINE 側の挙動 (最小 5 秒・1 チャットに 1 つ) により、連続メッセージそれぞれの直前に必ず表示されるとは限りません (= best-effort)。確実に「間」を作りたい場合は「前のメッセージからの待機時間」を設定してください。
             </div>
           )}
           {form.loading_enabled === "true" && (
@@ -2974,13 +2937,14 @@ function AdditionalMessageBlock({
           </div>
         )}
 
-        {/* 次のメッセージまでの待機時間 */}
+        {/* 前のメッセージからの待機時間（2通目以降の lag_ms） */}
         <div className="form-group" style={{ marginTop: 10, marginBottom: 0 }}>
-          <label style={fieldLabel}>次の発話までの待機時間</label>
+          <label style={fieldLabel}>前のメッセージからの待機時間</label>
           <DurationInput
             valueMs={slot.lag_ms ?? 0}
             onChange={(ms) => onChange({ ...slot, lag_ms: ms })}
             />
+          <div style={hintText}>前の吹き出しを送ったあと、このメッセージを送る前に待つ時間です</div>
         </div>
 
         {/* 演出設定 (既読 / typing / loading) — 折りたたみ。
@@ -4439,13 +4403,14 @@ export function MessageForm({
               </>
             )}
 
-                {/* 次の発話までの待機時間（1通目） */}
+                {/* 返信までの待機時間（1通目の lag_ms = 実機反映される唯一の待機項目） */}
                 <div className="form-group" style={{ marginTop: 10, marginBottom: 0 }}>
-               <label style={fieldLabel}>次の発話までの待機時間</label>
+               <label style={fieldLabel}>返信までの待機時間</label>
                <DurationInput
                 valueMs={form.lag_ms}
                 onChange={(ms) => set("lag_ms", ms)}
                 />
+               <div style={hintText}>ユーザーの入力後、このメッセージを送る前に待つ時間です</div>
               </div>
 
                 {/* ── 演出設定（既読・typing・ローディング）── */}
