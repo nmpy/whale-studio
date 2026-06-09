@@ -38,6 +38,7 @@ import {
   replyToLine as _replyToLine, replyWithLagToLine as _replyWithLagToLine,
   buildPhaseMessages as _buildPhaseMessages, buildQuickReply, buildKeywordMessages as _buildKeywordMessages, buildQuickReplyFromItems,
   RICHMENU_ACTIONS,
+  sleep, resolveHeadSendDelayMs,
   type LineWebhookBody, type LineEvent, type LineSender, type LineMessage, type KeywordMessageRecord,
 } from "@/lib/line";
 import { buildRuntimeState, matchTransition, applySetFlags, safeParseFlags, safeParseVariables, safeParseWaitingForInput, fetchPhaseWithIncludes, drainAutoSendableItems, type PhaseRow } from "@/lib/runtime";
@@ -120,6 +121,12 @@ async function replyToLine(
     }
     await ctrl.ensureReadBeforeReply();
   }
+  // 送信前待機（head/単発）: lag_ms を head にも適用する（従来は chain 2通目以降のみ＝バグ）。
+  const headLag = resolveHeadSendDelayMs(messages[0]);
+  if (headLag > 0) {
+    console.log(`[timing] head send delay applied: resolvedLagMs=${headLag} source=message-lag path=reply`);
+    await sleep(headLag);
+  }
   await _replyToLine(replyToken, messages, channelAccessToken);
   if (ctrl) ctrl.markReplySent();
 }
@@ -169,6 +176,12 @@ async function replyWithLagToLine(
       await ctrl.showLoadingForMessage(first._timing);
     }
     await ctrl.ensureReadBeforeReply();
+  }
+  // 送信前待機（chain head）: head の lag_ms を適用する（chain 2通目以降は _replyWithLagToLine 側で適用）。
+  const headLag = resolveHeadSendDelayMs(messages[0]);
+  if (headLag > 0) {
+    console.log(`[timing] head send delay applied: resolvedLagMs=${headLag} source=message-lag path=chain-head`);
+    await sleep(headLag);
   }
   await _replyWithLagToLine(replyToken, messages, userId, channelAccessToken, ctrl);
   if (ctrl) ctrl.markReplySent();
