@@ -20,6 +20,7 @@ import {
   getRecommendedEndpointUrl,
   getLiffEndpointPath,
   buildLiffCheckinUrl,
+  getLiffIdForUrlGeneration,
 } from "@/lib/liff/config";
 
 const ENV_KEYS = ["NEXT_PUBLIC_LIFF_ID", "NEXT_PUBLIC_APP_URL", "NEXT_PUBLIC_BASE_URL"] as const;
@@ -132,5 +133,27 @@ describe("buildLiffCheckinUrl（liff.state 形式）", () => {
   it("workId / locationId 欠落なら null", () => {
     expect(buildLiffCheckinUrl({ liffId: "id", workId: "", locationId: "L" })).toBeNull();
     expect(buildLiffCheckinUrl({ liffId: "id", workId: "W", locationId: "" })).toBeNull();
+  });
+});
+
+describe("getLiffIdForUrlGeneration（URL生成は Oa.liffId のみ・env fallback なし）", () => {
+  it("Oa.liffId 設定済み → env があっても Oa.liffId を返す", () => {
+    process.env.NEXT_PUBLIC_LIFF_ID = "2010049684-OLD"; // 古い焼き込み env を模す
+    expect(getLiffIdForUrlGeneration({ liffId: "2010342756-NEW" })).toBe("2010342756-NEW");
+  });
+
+  it("Oa.liffId 設定済み + env 未設定 → Oa.liffId を返す", () => {
+    expect(getLiffIdForUrlGeneration({ liffId: "2010342756-NEW" })).toBe("2010342756-NEW");
+  });
+
+  it("Oa.liffId 未設定 → null（古い env を URL に使わない）", () => {
+    process.env.NEXT_PUBLIC_LIFF_ID = "2010049684-OLD";
+    expect(getLiffIdForUrlGeneration({ liffId: null })).toBeNull();
+    expect(getLiffIdForUrlGeneration({})).toBeNull();
+    expect(getLiffIdForUrlGeneration(null)).toBeNull();
+  });
+
+  it("空白のみの Oa.liffId は未設定扱い（null）", () => {
+    expect(getLiffIdForUrlGeneration({ liffId: "   " })).toBeNull();
   });
 });

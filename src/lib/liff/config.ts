@@ -97,6 +97,22 @@ export function getRecommendedEndpointUrl(originOverride?: string | null): strin
 }
 
 /**
+ * 実機確認 URL / QR 生成専用の liffId 解決。
+ *
+ * 管理画面の Location URL/QR は **対象 OA の Oa.liffId を最優先**し、
+ * **NEXT_PUBLIC_LIFF_ID への env fallback は使わない**。
+ * 理由: NEXT_PUBLIC_* はビルド時に bundle へ焼き込まれるため、古い値が残った build では
+ * 誤った（別 OA / 旧）LIFF ID で URL を生成してしまう。OA.liffId 未設定なら null を返し、
+ * 呼び出し側で「LIFF ID 未設定」を表示させる（古い ID で生成しない）。
+ *
+ * Runtime 側（/liff）の解決は従来どおり getLiffIdForOa（env fallback あり）を使う。
+ */
+export function getLiffIdForUrlGeneration(oa: { liffId?: string | null } | null | undefined): string | null {
+  const id = oa?.liffId?.trim();
+  return id ? id : null;
+}
+
+/**
  * ロケーションチェックイン用の LIFF URL を `liff.state` 形式で組み立てる。
  *
  * `https://liff.line.me/{liffId}?liff.state=%2Fliff%3Fwork_id%3D...%26location_id%3D...`

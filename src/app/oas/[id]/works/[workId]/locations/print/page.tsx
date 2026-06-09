@@ -7,7 +7,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { QRCodeSVG } from "qrcode.react";
-import { locationApi, workApi, getDevToken } from "@/lib/api-client";
+import { locationApi, workApi, getDevToken, fetchOaLiffId } from "@/lib/api-client";
 import { buildLiffCheckinUrl } from "@/lib/liff/config";
 import type { LocationWithTransition } from "@/types";
 
@@ -18,11 +18,12 @@ export default function LocationsPrintPage() {
 
   const [locations, setLocations] = useState<LocationWithTransition[]>([]);
   const [workTitle, setWorkTitle] = useState("");
-  const [workPublicId, setWorkPublicId] = useState<string | undefined>(undefined);
+  // 実機確認 URL は対象 OA の Oa.liffId のみを使う（NEXT_PUBLIC_LIFF_ID は使わない）。
+  const [liffId, setLiffId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const liffId = process.env.NEXT_PUBLIC_LIFF_ID;
+  useEffect(() => { fetchOaLiffId(oaId).then(setLiffId).catch(() => setLiffId(null)); }, [oaId]);
 
   useEffect(() => {
     (async () => {
@@ -34,7 +35,6 @@ export default function LocationsPrintPage() {
         ]);
         setLocations(locs);
         setWorkTitle(work.title);
-        setWorkPublicId(work.public_id);
       } catch (err) {
         setError(err instanceof Error ? err.message : "読み込みに失敗しました");
       } finally {
@@ -47,8 +47,8 @@ export default function LocationsPrintPage() {
     return (
       <div style={{ maxWidth: 700, margin: "0 auto", padding: "40px 16px", textAlign: "center" }}>
         <div style={{ padding: 24, background: "#fef3c7", border: "1px solid #fcd34d", borderRadius: 12, color: "#92400e", fontSize: 14 }}>
-          LIFF ID 未設定のため印刷用 QR を生成できません。<br />
-          <code style={{ fontSize: 12 }}>NEXT_PUBLIC_LIFF_ID</code> を設定してください。
+          このOAの LIFF ID が未設定のため印刷用 QR を生成できません。<br />
+          <Link href={`/oas/${oaId}/settings/liff`} style={{ color: "#2563eb", textDecoration: "underline" }}>アカウント設定 → LIFF設定</Link> で LIFF ID を設定してください。
         </div>
         <Link href={`/oas/${oaId}/works/${workId}/locations`} style={{ display: "inline-block", marginTop: 16, fontSize: 14, color: "#2563eb" }}>
           ← ロケーション一覧に戻る
