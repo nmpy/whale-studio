@@ -2345,15 +2345,27 @@ function TimingConfigSection<T extends TimingFormFields>({
   form,
   set,
   isAdditional,
+  headDelayMs,
+  onHeadDelayChange,
 }: {
   form: T;
   set: <K extends keyof T>(key: K, val: T[K]) => void;
   /** 追加 (2 通目以降) のメッセージ用なら true。既読遅延の制約注記を出すために使う。 */
   isAdditional?: boolean;
+  /**
+   * 1 通目のみ: 「返信までの待機時間」(= lag_ms) を演出設定の最上部に表示する。
+   * onHeadDelayChange を渡したときだけ描画する（2 通目以降は各ブロック側で持つため渡さない）。
+   * 値の保存は呼び出し側 (form.lag_ms / set("lag_ms")) が担い、本コンポーネントは表示のみ。
+   */
+  headDelayMs?: number;
+  onHeadDelayChange?: (ms: number) => void;
 }) {
   // UI 統一: 自由入力受付セクションと同じ SectionAccordion をベースに使う。
   // 値が既に設定されていれば初期展開する。
   const hasValues = !!(form.read_receipt_mode || form.typing_enabled || form.loading_enabled);
+  // 「返信までの待機時間」が設定されているか（折りたたみ時のバッジ表示用）。
+  const hasHeadDelay = typeof headDelayMs === "number" && headDelayMs > 0;
+  const headDelayLabel = hasHeadDelay ? `待機${Math.round((headDelayMs as number) / 100) / 10}秒` : null;
 
   const miniLabel = {
     display: "block",
@@ -2378,16 +2390,41 @@ function TimingConfigSection<T extends TimingFormFields>({
     <SectionAccordion
       title="演出設定"
       optional
-      description="既読タイミング・「入力中…」表示などを設定できます。"
-      defaultOpen={hasValues}
-      badge={hasValues ? (
-        <span style={{
-          fontSize: 10, fontWeight: 700, background: "#dbeafe", color: "#1d4ed8",
-          borderRadius: 4, padding: "1px 6px",
-        }}>設定あり</span>
+      description={onHeadDelayChange
+        ? "返信までの待機時間・既読タイミング・「入力中…」表示などを設定できます。"
+        : "既読タイミング・「入力中…」表示などを設定できます。"}
+      defaultOpen={hasValues || hasHeadDelay}
+      badge={(hasValues || hasHeadDelay) ? (
+        <span style={{ display: "inline-flex", gap: 4, alignItems: "center" }}>
+          {headDelayLabel && (
+            <span style={{
+              fontSize: 10, fontWeight: 700, background: "#fef3c7", color: "#92400e",
+              borderRadius: 4, padding: "1px 6px",
+            }}>{headDelayLabel}</span>
+          )}
+          {hasValues && (
+            <span style={{
+              fontSize: 10, fontWeight: 700, background: "#dbeafe", color: "#1d4ed8",
+              borderRadius: 4, padding: "1px 6px",
+            }}>設定あり</span>
+          )}
+        </span>
       ) : undefined}
     >
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {/* ── 返信までの待機時間（1通目の lag_ms = 実機反映される唯一の待機項目） ──
+              演出設定の最上部に配置。保存挙動は呼び出し側 set("lag_ms") に委譲（表示のみ移動）。 */}
+          {onHeadDelayChange && (
+            <div>
+              <label style={miniLabel}>返信までの待機時間</label>
+              <DurationInput
+                valueMs={headDelayMs ?? 0}
+                onChange={(ms) => onHeadDelayChange(ms)}
+              />
+              <div style={hintText}>ユーザーの入力後、このメッセージを送る前に待つ時間です</div>
+            </div>
+          )}
+
           {/* ── プリセット ── */}
           <div style={{ marginBottom: 4 }}>
             <label style={miniLabel}>プリセットから適用</label>
@@ -4403,18 +4440,14 @@ export function MessageForm({
               </>
             )}
 
-                {/* 返信までの待機時間（1通目の lag_ms = 実機反映される唯一の待機項目） */}
-                <div className="form-group" style={{ marginTop: 10, marginBottom: 0 }}>
-               <label style={fieldLabel}>返信までの待機時間</label>
-               <DurationInput
-                valueMs={form.lag_ms}
-                onChange={(ms) => set("lag_ms", ms)}
+                {/* ── 演出設定（返信までの待機時間・既読・ローディング）──
+                    「返信までの待機時間」(lag_ms) は演出設定の最上部に表示（headDelayMs/onHeadDelayChange）。 */}
+                <TimingConfigSection
+                  form={form}
+                  set={set}
+                  headDelayMs={form.lag_ms}
+                  onHeadDelayChange={(ms) => set("lag_ms", ms)}
                 />
-               <div style={hintText}>ユーザーの入力後、このメッセージを送る前に待つ時間です</div>
-              </div>
-
-                {/* ── 演出設定（既読・typing・ローディング）── */}
-                <TimingConfigSection form={form} set={set} />
 
               </div>{/* /padding */}
             </div>{/* /1通目ラッパー */}
