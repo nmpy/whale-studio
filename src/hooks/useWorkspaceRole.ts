@@ -23,6 +23,7 @@ import { useState, useEffect, useRef } from "react";
 import { getAuthHeaders } from "@/lib/api-client";
 import type { Role, LiveRole } from "@/lib/types/permissions";
 import { roleAtLeast } from "@/lib/types/permissions";
+import { createTtlCache } from "@/lib/client-cache";
 
 /**
  * 同一 workspaceId に対する未解決の /members/me fetch を共有するための module-scope Map。
@@ -42,6 +43,17 @@ type MeResponse = {
   };
 };
 const inflight = new Map<string, Promise<MeResponse>>();
+
+/** /members/me の data 部（role + Live 情報）。stale-while-revalidate cache に格納する。 */
+type MeData = NonNullable<MeResponse["data"]>;
+
+// workspaceId ごとの role/Live 情報を 45s 共有する。AppHeader / page / AccessPreviewBar の
+// 重複呼び出し + 画面遷移ごとの再 fetch を抑え、warm 遷移で role を即時描画する。
+// ⚠ 常に裏で revalidate するため認可表示は次サイクルで自己修復。auth 変化時は
+//   clearAllTtlCaches() で破棄（別ユーザーの role を引きずらない）。
+//   実際の認可は server 側 requireRole が毎回判定するため、これは UI 表示用 cache に過ぎない。
+const ROLE_TTL_MS = 45_000;
+const roleCache = createTtlCache<MeData>(ROLE_TTL_MS);
 
 export interface WorkspaceRoleState {
   role:     Role | null;
@@ -93,7 +105,22 @@ export function useWorkspaceRole(workspaceId: string): WorkspaceRoleState {
     const requestedId = workspaceId;
     let cancelled = false;
 
-    setLoading(true);
+    function applyMe(data: MeData) {
+      setRole(data.role);
+      setLiveEnabled(data.live_enabled === true);
+      setLiveRole(data.live_role ?? null);
+      setLiveAccess(data.live_access === true);
+    }
+
+    // cache hit があれば即時描画（loading フラッシュ・遷移ごとの再取得待ちを消す）。
+    // hit でも下で必ず revalidate するため、role の変更は次サイクルで反映される。
+    const cached = roleCache.get(requestedId);
+    if (cached) {
+      applyMe(cached);
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
 
     // 同一 workspaceId への未解決 fetch があれば共有、無ければ新規発行して Map に登録。
     // settle 時点（成功/失敗いずれでも）で Map から削除し、stale な値の再利用を防ぐ。
@@ -111,14 +138,11 @@ export function useWorkspaceRole(workspaceId: string): WorkspaceRoleState {
     promise
       .then((json) => {
         // unmount または workspaceId 変更後の resolve は捨てる
+        // 取得成功時は cache を更新（unmount/別 OA への遷移後でも cache は埋めてよい）。
+        if (json.success && json.data) roleCache.set(requestedId, json.data);
         if (cancelled || !mountedRef.current) return;
         if (workspaceId !== requestedId) return;
-        if (json.success && json.data) {
-          setRole(json.data.role);
-          setLiveEnabled(json.data.live_enabled === true);
-          setLiveRole(json.data.live_role ?? null);
-          setLiveAccess(json.data.live_access === true);
-        }
+        if (json.success && json.data) applyMe(json.data);
       })
       .catch(() => {
         if (cancelled || !mountedRef.current) return;

@@ -17,6 +17,7 @@ import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
 import { parsePreviewRole, type PreviewRole } from "@/lib/access-preview";
 import { getAuthHeaders } from "@/lib/api-client";
 import { clearAllBootstrap } from "@/lib/admin-bootstrap-cache";
+import { clearAllTtlCaches } from "@/lib/client-cache";
 import { RoleBadge } from "@/components/PermissionGuard";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { useProfile } from "@/hooks/useProfile";
@@ -186,6 +187,7 @@ export default function AppHeader() {
       // 全リロードで module 状態ごと消えるが、SPA 的な auth 変化にも備える）。
       clearAllBootstrap();
       clearOwnerCache();
+      clearAllTtlCaches(); // role / plan-info の TTL cache も破棄（別ユーザーを引きずらない）
     });
     return () => subscription.unsubscribe();
   }, []);

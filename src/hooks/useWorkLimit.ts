@@ -18,6 +18,26 @@
 import { useState, useEffect } from "react";
 import { getAuthHeaders } from "@/lib/api-client";
 import type { PlanTier } from "@/lib/constants/plans";
+import { createTtlCache } from "@/lib/client-cache";
+
+/** plan-info の取得結果。stale-while-revalidate cache に格納する形。 */
+type PlanInfo = {
+  maxWorks:        number | null;
+  planDisplayName: string | null;
+  planName:        string | null;
+};
+
+// (oaId, previewPlan) ごとの plan-info を 45s だけ共有する。
+// AppHeader / page / AccessPreviewBar の重複呼び出し + 画面遷移ごとの再 fetch を抑える。
+// auth 変化時は clearAllTtlCaches() で破棄される（client-cache.ts 参照）。
+const PLAN_TTL_MS = 45_000;
+const planCache = createTtlCache<PlanInfo>(PLAN_TTL_MS);
+// 同一 key の未解決 fetch を共有して同時多発を 1 本に束ねる。
+const planInflight = new Map<string, Promise<PlanInfo>>();
+
+function planKey(oaId: string, previewPlan: PlanTier | null): string {
+  return `${oaId}::${previewPlan ?? ""}`;
+}
 
 export interface WorkLimitState {
   /** 作品数上限。-1 = 無制限、null = 未設定（Subscription なし） */
@@ -51,31 +71,48 @@ export function useWorkLimit(oaId: string, options?: UseWorkLimitOptions): WorkL
       return;
     }
 
-    setLoading(true);
-    const qs = previewPlan ? `?previewPlan=${encodeURIComponent(previewPlan)}` : "";
-    fetch(`/api/oas/${oaId}/plan-info${qs}`, {
-      headers: { ...getAuthHeaders() },
-    })
-      .then((res) => (res.ok ? res.json() : Promise.reject(res.status)))
-      .then((json) => {
-        if (json.success && json.data) {
-          setMaxWorks(json.data.max_works);
-          setPlanDisplayName(json.data.display_name);
-          setPlanName(json.data.plan_name);
-        } else {
-          // Subscription 未設定
-          setMaxWorks(null);
-          setPlanDisplayName(null);
-          setPlanName(null);
-        }
-      })
-      .catch(() => {
-        // 取得失敗時は未設定扱い（制限なしとして動作）
-        setMaxWorks(null);
-        setPlanDisplayName(null);
-        setPlanName(null);
-      })
-      .finally(() => setLoading(false));
+    let cancelled = false;
+    const key = planKey(oaId, previewPlan);
+
+    function apply(info: PlanInfo) {
+      setMaxWorks(info.maxWorks);
+      setPlanDisplayName(info.planDisplayName);
+      setPlanName(info.planName);
+    }
+
+    // 1) cache hit があれば即時反映（loading フラッシュ・遷移ごとの再取得待ちをなくす）。
+    const cached = planCache.get(key);
+    if (cached) {
+      apply(cached);
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
+
+    // 2) 常に revalidate（同一 key の同時 fetch は inflight で 1 本に束ねる）。
+    let promise = planInflight.get(key);
+    if (!promise) {
+      const qs = previewPlan ? `?previewPlan=${encodeURIComponent(previewPlan)}` : "";
+      promise = fetch(`/api/oas/${oaId}/plan-info${qs}`, { headers: { ...getAuthHeaders() } })
+        .then((res) => (res.ok ? res.json() : Promise.reject(res.status)))
+        .then((json): PlanInfo =>
+          json.success && json.data
+            ? { maxWorks: json.data.max_works, planDisplayName: json.data.display_name, planName: json.data.plan_name }
+            : { maxWorks: null, planDisplayName: null, planName: null },
+        )
+        .catch((): PlanInfo => ({ maxWorks: null, planDisplayName: null, planName: null }))
+        .finally(() => { planInflight.delete(key); });
+      planInflight.set(key, promise);
+    }
+
+    promise.then((info) => {
+      planCache.set(key, info);
+      if (cancelled) return;
+      apply(info);
+      setLoading(false);
+    });
+
+    return () => { cancelled = true; };
   }, [oaId, previewPlan]);
 
   return { maxWorks, planDisplayName, planName, loading };
