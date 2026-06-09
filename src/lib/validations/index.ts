@@ -2,6 +2,7 @@
 // Zod バリデーションスキーマ
 
 import { z } from "zod";
+import { normalizeFlexJson, FLEX_ERRORS } from "@/lib/flex";
 
 // ────────────────────────────────────────────────
 // 共通プリミティブ
@@ -317,7 +318,7 @@ export const createMessageSchema = z.object({
   work_id:          uuidSchema,
   phase_id:         uuidSchema.optional().nullable(),
   character_id:     uuidSchema.optional().nullable(),
-  message_type:     z.enum(["text", "image", "riddle", "video", "carousel", "voice"]).default("text"),
+  message_type:     z.enum(["text", "image", "riddle", "video", "carousel", "voice", "flex"]).default("text"),
   /** メッセージ役割種別: "start" | "normal" | "response" | "hint" | "puzzle" | "system_notice" */
   kind:             z.enum(["start", "normal", "response", "hint", "puzzle", "system_notice"]).default("normal"),
   body:             z.string().max(10000).optional(),
@@ -438,6 +439,15 @@ export const createMessageSchema = z.object({
     if (val.message_type === "riddle" && !val.riddle_id) {
       ctx.addIssue({ code: "custom", path: ["riddle_id"], message: "riddle型の場合は riddle_id が必要です" });
     }
+    if (val.message_type === "flex") {
+      const norm = normalizeFlexJson(val.flex_payload_json);
+      if (!norm.ok) {
+        ctx.addIssue({ code: "custom", path: ["flex_payload_json"], message: norm.error });
+      }
+      if (!val.alt_text?.trim()) {
+        ctx.addIssue({ code: "custom", path: ["alt_text"], message: FLEX_ERRORS.emptyAltText });
+      }
+    }
   }
 });
 
@@ -449,7 +459,7 @@ export const createMessageSchema = z.object({
 export const updateMessageSchema = z.object({
   phase_id:          uuidSchema.optional().nullable(),
   character_id:      uuidSchema.optional().nullable(),
-  message_type:      z.enum(["text", "image", "riddle", "video", "carousel", "voice"]).optional(),
+  message_type:      z.enum(["text", "image", "riddle", "video", "carousel", "voice", "flex"]).optional(),
   /** メッセージ役割種別 */
   kind:              z.enum(["start", "normal", "response", "hint", "puzzle", "system_notice"]).optional(),
   body:              z.string().max(10000).optional().nullable(),
@@ -524,6 +534,17 @@ export const updateMessageSchema = z.object({
     }
     if ((val.message_type === "image" || val.message_type === "video" || val.message_type === "voice") && val.asset_url === null) {
       ctx.addIssue({ code: "custom", path: ["asset_url"], message: `${val.message_type}型の場合、asset_url を null にはできません` });
+    }
+    // flex: message_type が flex のとき（= 種別を flex に切り替える PATCH）は contents/altText を検証する。
+    // message_type を含まない部分更新では skip される。
+    if (val.message_type === "flex") {
+      const norm = normalizeFlexJson(val.flex_payload_json);
+      if (!norm.ok) {
+        ctx.addIssue({ code: "custom", path: ["flex_payload_json"], message: norm.error });
+      }
+      if (!val.alt_text?.trim()) {
+        ctx.addIssue({ code: "custom", path: ["alt_text"], message: FLEX_ERRORS.emptyAltText });
+      }
     }
   }
   if (val.kind === "system_notice" && val.body === null) {

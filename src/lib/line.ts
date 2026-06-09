@@ -12,6 +12,7 @@ import { interpolate } from "@/lib/template";
 import { moveQuickReplyToTail } from "@/lib/quick-reply-tail";
 import { isFreeInputPrompt } from "@/lib/free-input";
 import type { ReadReceiptController } from "@/lib/line-read-receipt";
+import { buildFlexSendParts, type FlexContents } from "@/lib/flex";
 
 // ────────────────────────────────────────────────
 // 型
@@ -103,8 +104,28 @@ export type LineFlexAction =
   | { type: "uri";     label?: string; uri:  string }
   | { type: "postback"; label?: string; data: string; displayText?: string };
 
-/** Flex Message (画像 + アクション用 = 1 bubble に hero image)。 */
+/**
+ * Flex Message。
+ * contents は bubble / carousel の任意の LINE Flex コンテナ (= FlexContents)。
+ * 画像 + アクション用の自動生成 (buildImageActionFlex) と、ユーザーが Simulator で
+ * 作成して貼り付けた flex (message_type="flex") の両方で使う。
+ */
 export type LineFlexMessage = {
+  type: "flex";
+  altText: string;
+  contents: FlexContents;
+  sender?: LineSender;
+  quickReply?: LineQuickReply;
+  _lagMs?: number;
+  _timing?: MessageTimingConfig;
+};
+
+/**
+ * 画像 + アクション用に自動生成する Flex (hero image bubble)。
+ * contents の具体型を保持し、buildImageActionFlex の戻り値で使う。
+ * contents は FlexContents に代入可能なため LineFlexMessage の部分型。
+ */
+export type ImageActionFlexMessage = {
   type: "flex";
   altText: string;
   contents: {
@@ -263,6 +284,8 @@ type ConvertibleMessage = {
   body:       string | null;
   asset_url:  string | null;
   alt_text:   string | null;
+  /** Flex Message の contents JSON (messageType="flex" のときのみ使用)。bubble/carousel または flex 全体。 */
+  flexPayloadJson?: string | null;
   /** 画像タップ時アクション (messageType="image" のときのみ有効、未指定は null) */
   imageAction?: ImageActionSpec | null;
   /** LIFF endpoint URL (type="liff" 時の解決用)。未指定なら liff URL は生成しない */
@@ -284,7 +307,7 @@ export function buildImageActionFlex(args: {
   altText:  string | null;
   imageAction: ImageActionSpec | null;
   liffEndpointUrl?: string | null;
-}): LineFlexMessage | null {
+}): ImageActionFlexMessage | null {
   const { imageUrl, imageAction, liffEndpointUrl } = args;
   if (!imageAction || !imageAction.type || imageAction.type === "none") return null;
   if (!imageUrl.startsWith("https://")) {
@@ -349,7 +372,7 @@ function convertMessageToLine(
   phaseId: string,
   vars:    PlaceholderVars = {},
 ): LineMessage | null {
-  const { id, kind, mtype, body, asset_url, alt_text, sender, quickReply, lagMs, timing } = msg;
+  const { id, kind, mtype, body, asset_url, alt_text, flexPayloadJson, sender, quickReply, lagMs, timing } = msg;
   const isPuzzle = kind === "puzzle";
 
   /** LINE メッセージ共通フィールドを付与するヘルパー */
@@ -408,7 +431,23 @@ function convertMessageToLine(
     return null;
   }
 
-  // ── フォールバック（carousel / voice / riddle / flex / 未知型）──
+  // ── Flex Message（ユーザーが Simulator で作成した JSON を貼り付け）──
+  if (mtype === "flex") {
+    const parts = buildFlexSendParts(flexPayloadJson, alt_text);
+    if (parts) {
+      return attach({ type: "flex", altText: parts.altText, contents: parts.contents } as LineFlexMessage);
+    }
+    // contents が不正 / 未設定 → altText か body をテキストでフォールバック（送信ゼロを避ける）
+    const fb = alt_text || body;
+    if (fb) {
+      console.warn(`[${caller}] flex payload が不正/空のためテキストフォールバック id=${id.slice(0, 8)}`);
+      return attach({ type: "text", text: replacePlaceholders(truncateText(fb), vars) } as LineTextMessage);
+    }
+    console.warn(`[${caller}] ⚠️ flex メッセージの payload が空 id=${id.slice(0, 8)} phase=${phaseId.slice(0, 8)}`);
+    return null;
+  }
+
+  // ── フォールバック（carousel / voice / riddle / 未知型）──
   const fallbackText = (mtype === "carousel" && alt_text) ? alt_text : (alt_text || body);
   if (fallbackText) {
     return attach({ type: "text", text: replacePlaceholders(truncateText(fallbackText), vars) } as LineTextMessage);
@@ -927,6 +966,7 @@ export function buildPhaseMessages(
       body:      msg.body,
       asset_url: msg.asset_url,
       alt_text:  msg.alt_text,
+      flexPayloadJson: msg.flex_payload_json,
       imageAction: msg.image_action_type ? {
         type:         msg.image_action_type,
         text:         msg.image_action_text         ?? null,
@@ -1160,6 +1200,7 @@ export function buildKeywordMessages(
       body:      msg.body,
       asset_url: msg.assetUrl,
       alt_text:  msg.altText,
+      flexPayloadJson: msg.flexPayloadJson,
       imageAction: msg.imageActionType ? {
         type:         msg.imageActionType,
         text:         msg.imageActionText         ?? null,

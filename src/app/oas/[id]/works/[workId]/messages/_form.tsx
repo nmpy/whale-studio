@@ -16,6 +16,7 @@ import type { TapMode } from "@/components/destination/TapDestinationSection";
 import { detectTapMode } from "@/lib/message-destination-utils";
 import { destinationApi } from "@/lib/api-client";
 import type { LineDestination } from "@/types";
+import { normalizeFlexJson, prettyFlexJson, FLEX_SIMULATOR_URL, FLEX_ERRORS } from "@/lib/flex";
 
 // ── 拡張メッセージ種別 ────────────────────────────────────
 
@@ -25,7 +26,8 @@ export type ExtendedMessageType =
   | "riddle"
   | "video"
   | "carousel"
-  | "voice";
+  | "voice"
+  | "flex";
 
 // ── 定数 ────────────────────────────────────────────────
 
@@ -39,12 +41,31 @@ export const MESSAGE_TYPE_OPTIONS: {
   { value: "video",    label: "動画",         desc: "動画メッセージ" },
   { value: "carousel", label: "カルーセル",   desc: "カルーセルメッセージ" },
   { value: "voice",    label: "ボイス",       desc: "ボイスメッセージ" },
+  { value: "flex",     label: "Flex Message", desc: "LINE公式のFlex Message Simulatorで作成したJSONを貼り付けて送信できます。" },
 ];
 
 /** 謎の配信形式セレクター用（riddle / voice / flex は謎では使用しない） */
 const PUZZLE_DELIVERY_TYPE_OPTIONS = MESSAGE_TYPE_OPTIONS.filter(
   (opt) => ["text", "image", "video", "carousel"].includes(opt.value)
 );
+
+/** 2 通目以降（チェーン）の種別セレクター用。Flex は 1 通目のみ対応のため除外する。 */
+const CHAIN_MESSAGE_TYPE_OPTIONS = MESSAGE_TYPE_OPTIONS.filter((opt) => opt.value !== "flex");
+
+/** Flex Message JSON textarea のプレースホルダ（Simulator の最小 bubble 例）。 */
+const FLEX_JSON_PLACEHOLDER = `{
+  "type": "bubble",
+  "body": {
+    "type": "box",
+    "layout": "vertical",
+    "contents": [
+      {
+        "type": "text",
+        "text": "Hello, Flex Message!"
+      }
+    ]
+  }
+}`;
 
 // ── カルーセルカード型 ────────────────────────────────────
 
@@ -143,6 +164,9 @@ export interface MessageFormState {
   image_action_liff_page_id:  string;
   image_action_postback_data: string;
   alt_text:                   string;
+  // ── Flex Message (message_type="flex" 用) ──
+  /** 貼り付け JSON (bubble/carousel または flex 全体)。編集時は整形済みで復元する。 */
+  flex_payload_json:          string;
   // ── 演出設定 ──
   // 継承モード廃止。read_receipt_mode は常に "immediate" / "delayed" / "before_reply"
   // のいずれか。typing_enabled / loading_enabled は "true" / "false" のいずれか。
@@ -201,6 +225,7 @@ export const EMPTY_MESSAGE_FORM: MessageFormState = {
   image_action_liff_page_id:  "",
   image_action_postback_data: "",
   alt_text:                   "",
+  flex_payload_json:          "",
   // 演出設定 (= 継承モード廃止: すべて OFF 相当を初期値とする)。
   read_receipt_mode:    "immediate", // = OFF (人為的な既読遅延なし)
   read_delay_ms:        "",
@@ -252,6 +277,7 @@ export function msgToFormState(msg: {
   image_action_liff_page_id?: string | null;
   image_action_postback_data?: string | null;
   alt_text?:                  string | null;
+  flex_payload_json?:         string | null;
   // 自由入力受付
   free_input_enabled?:         boolean | null;
   free_input_variable_key?:    string | null;
@@ -324,6 +350,8 @@ export function msgToFormState(msg: {
     image_action_liff_page_id:  msg.image_action_liff_page_id ?? "",
     image_action_postback_data: msg.image_action_postback_data ?? "",
     alt_text:                   msg.alt_text                  ?? "",
+    // Flex Message: 保存済み contents JSON を整形して textarea に復元
+    flex_payload_json:          prettyFlexJson(msg.flex_payload_json),
     // 自由入力受付
     free_input_enabled:         msg.free_input_enabled         ?? false,
     free_input_variable_key:    msg.free_input_variable_key    ?? "",
@@ -420,11 +448,20 @@ export function formStateToMsgBody(form: MessageFormState) {
       form.message_type === "image" && form.image_action_type === "postback"
         ? (form.image_action_postback_data.trim() || null)
         : null,
-    // alt_text (画像メッセージで Flex 変換時に使用)
+    // alt_text (画像メッセージの Flex 変換 / Flex Message の代替テキストとして使用)
     alt_text:
       form.message_type === "image"
         ? (form.alt_text.trim() || null)
         : (form.alt_text.trim() || null),
+    // Flex Message: 貼り付け JSON を contents (bubble/carousel) へ正規化して保存。
+    // 不正な場合は raw を送り、サーバー側 Zod で同じ判定によりエラーにする（client 検証で通常はブロック済み）。
+    flex_payload_json:
+      form.message_type === "flex"
+        ? (() => {
+            const norm = normalizeFlexJson(form.flex_payload_json);
+            return norm.ok ? JSON.stringify(norm.value.contents) : (form.flex_payload_json.trim() || null);
+          })()
+        : null,
     // 自由入力受付
     free_input_enabled:         !!form.free_input_enabled,
     // ON のときのみ key を保存。OFF のときは null にして整合性を保つ。
@@ -561,6 +598,11 @@ export function validateMessageForm(form: MessageFormState): string | null {
   }
   if (form.message_type === "carousel" && form.carousel_items.length === 0) {
     return "カードを1枚以上追加してください";
+  }
+  if (form.message_type === "flex") {
+    if (!form.alt_text.trim()) return FLEX_ERRORS.emptyAltText;
+    const norm = normalizeFlexJson(form.flex_payload_json);
+    if (!norm.ok) return norm.error;
   }
   return null;
 }
@@ -2771,11 +2813,11 @@ function AdditionalMessageBlock({
           </select>
         </div>
 
-        {/* 種別選択 */}
+        {/* 種別選択（2通目以降は Flex 非対応のため除外） */}
         <div className="form-group">
           <label style={fieldLabel}>種別</label>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-            {MESSAGE_TYPE_OPTIONS.map((opt) => (
+            {CHAIN_MESSAGE_TYPE_OPTIONS.map((opt) => (
               <button
                 key={opt.value}
                 type="button"
@@ -3926,6 +3968,76 @@ export function MessageForm({
                 ))}
               </div>
             </div>
+
+            {/* ── Flex Message ── */}
+            {mtype === "flex" && (
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                {/* A. Simulator への外部リンク */}
+                <div style={{ marginBottom: 14 }}>
+                  <a
+                    href={FLEX_SIMULATOR_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      display: "inline-flex", alignItems: "center", gap: 6,
+                      padding: "7px 14px", borderRadius: 6, border: "1px solid #06C755",
+                      color: "#06C755", fontSize: 12, fontWeight: 600, textDecoration: "none",
+                    }}
+                  >
+                    Flex Message Simulatorを開く ↗
+                  </a>
+                  <div style={{ ...hintText, marginTop: 6 }}>
+                    SimulatorでFlex Messageを作成し、右上の「View as JSON」からJSONをコピーして貼り付けてください。
+                  </div>
+                </div>
+
+                {/* B. 代替テキスト (altText) */}
+                <label style={fieldLabel} htmlFor="flex_alt_text">
+                  代替テキスト <span style={{ color: "#dc2626" }}>*</span>
+                </label>
+                <input
+                  id="flex_alt_text"
+                  type="text"
+                  className="form-input"
+                  maxLength={400}
+                  value={form.alt_text}
+                  onChange={(e) => set("alt_text", e.target.value)}
+                  placeholder="Flex Message"
+                />
+                <div style={hintText}>通知や未対応端末で表示されるテキストです。</div>
+
+                {/* C. Flex Message JSON */}
+                <label style={{ ...fieldLabel, marginTop: 14 }} htmlFor="flex_json">
+                  Flex Message JSON <span style={{ color: "#dc2626" }}>*</span>
+                </label>
+                <textarea
+                  id="flex_json"
+                  value={form.flex_payload_json}
+                  onChange={(e) => set("flex_payload_json", e.target.value)}
+                  rows={14}
+                  spellCheck={false}
+                  style={{
+                    width: "100%",
+                    fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
+                    fontSize: 12, lineHeight: 1.5, padding: 10,
+                    border: "1px solid #d1d5db", borderRadius: 6, resize: "vertical",
+                  }}
+                  placeholder={FLEX_JSON_PLACEHOLDER}
+                />
+                <div style={hintText}>
+                  Flex Message SimulatorからコピーしたJSONを貼り付けてください。contentsだけ・flex全体のどちらでも保存できます。
+                </div>
+                {/* インライン検証エラー (入力がある場合のみ) */}
+                {form.flex_payload_json.trim() && (() => {
+                  const r = normalizeFlexJson(form.flex_payload_json);
+                  return r.ok ? null : (
+                    <div style={{ marginTop: 6, color: "#dc2626", fontSize: 12, lineHeight: 1.5 }}>
+                      {r.error}
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
 
             {/* ── テキスト ── */}
             {mtype === "text" && (
