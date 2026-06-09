@@ -33,7 +33,7 @@ export function LiffAddBlockModal({ saving, onAdd, onClose }: Props) {
                 key={type}
                 onClick={() => onAdd(type)}
                 disabled={saving}
-                className="flex items-center gap-2.5 p-3 bg-gray-50 rounded-lg border border-gray-200 cursor-pointer text-left hover:bg-violet-50 transition-colors disabled:opacity-50"
+                className="flex items-center gap-2.5 p-3 bg-gray-50 rounded-lg border border-gray-200 cursor-pointer text-left hover:bg-brand-mist transition-colors disabled:opacity-50"
               >
                 <span className="text-xl">{entry.icon}</span>
                 <div>

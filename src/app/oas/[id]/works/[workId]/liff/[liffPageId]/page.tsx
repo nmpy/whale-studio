@@ -7,6 +7,7 @@
 import { useState, useCallback } from "react";
 import { useParams } from "next/navigation";
 import { Breadcrumb } from "@/components/Breadcrumb";
+import { buttonClass } from "@/components/shared";
 import { useToast } from "@/components/Toast";
 import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
 import { useLiffConfig, type LiffSaveStatus } from "@/hooks/useLiffConfig";
@@ -97,7 +98,7 @@ export default function LiffPageEditor() {
         <p className="text-sm text-red-500 mt-4">LIFF ページが見つかりませんでした。</p>
         <a
           href={`/oas/${oaId}/works/${workId}/liff`}
-          className="inline-block mt-3 text-sm text-violet-600 underline"
+          className="inline-block mt-3 text-sm text-brand-ink underline"
         >
           一覧に戻る
         </a>
@@ -121,7 +122,7 @@ export default function LiffPageEditor() {
       <div className="flex items-center justify-between mb-2 h-4">
         <a
           href={`/oas/${oaId}/works/${workId}/liff`}
-          className="text-xs text-violet-600 underline"
+          className="text-xs text-brand-ink underline"
         >
           ← 一覧に戻る
         </a>
@@ -193,7 +194,7 @@ export default function LiffPageEditor() {
                 {!isReadOnly && (
                   <button
                     onClick={() => setShowAddModal(true)}
-                    className="px-4 py-1.5 bg-violet-500 text-white rounded-lg text-sm font-semibold cursor-pointer hover:bg-violet-600 transition-colors"
+                    className={buttonClass({ variant: "primary", size: "sm" })}
                   >
                     + ブロック追加
                   </button>

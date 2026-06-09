@@ -94,7 +94,7 @@ export function LiffWerewolfEditor({ workId, liffPageConfigId, readOnly }: Props
           <button
             type="button"
             onClick={() => setShowAddModal(true)}
-            className="px-3 py-1.5 bg-violet-500 text-white rounded-md text-xs font-semibold hover:bg-violet-600"
+            className="px-3 py-1.5 bg-brand text-white rounded-md text-xs font-semibold hover:bg-brand-deep"
           >
             ＋ タイトル追加
           </button>
@@ -138,7 +138,7 @@ export function LiffWerewolfEditor({ workId, liffPageConfigId, readOnly }: Props
               <div className="flex items-center gap-2 shrink-0">
                 <Link
                   href={`/oas/${oaId}/works/${workId}/liff/${liffPageConfigId}/werewolf/${t.id}`}
-                  className="px-2.5 py-1 text-xs bg-violet-500 text-white rounded font-semibold hover:bg-violet-600"
+                  className="px-2.5 py-1 text-xs bg-brand text-white rounded font-semibold hover:bg-brand-deep"
                 >
                   編集
                 </Link>
@@ -221,7 +221,7 @@ function AddTitleModal({
           <div>
             <label className="block text-xs font-medium text-gray-500 mb-1">タイトル名 <span className="text-red-500">*</span></label>
             <input
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-300"
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand/30"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="例: パンドラの人狼 第1ゲーム"
@@ -232,7 +232,7 @@ function AddTitleModal({
           <div>
             <label className="block text-xs font-medium text-gray-500 mb-1">説明 (任意)</label>
             <textarea
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm resize-y min-h-[60px] focus:outline-none focus:ring-2 focus:ring-violet-300"
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm resize-y min-h-[60px] focus:outline-none focus:ring-2 focus:ring-brand/30"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="例: テストプレイA卓"
@@ -245,7 +245,7 @@ function AddTitleModal({
               <label className="block text-xs font-medium text-gray-500 mb-1">プレイ予定日時 (任意)</label>
               <input
                 type="datetime-local"
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-300"
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand/30"
                 value={scheduledAt}
                 onChange={(e) => setScheduledAt(e.target.value)}
               />
@@ -254,7 +254,7 @@ function AddTitleModal({
               <label className="block text-xs font-medium text-gray-500 mb-1">プレイヤー人数 <span className="text-red-500">*</span></label>
               <input
                 type="number"
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-300"
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand/30"
                 value={playerCount}
                 onChange={(e) => {
                   const n = Number(e.target.value);
@@ -279,7 +279,7 @@ function AddTitleModal({
             <button
               type="submit"
               disabled={saving}
-              className="px-4 py-2 bg-violet-500 text-white rounded-md text-sm font-semibold hover:bg-violet-600 disabled:opacity-50"
+              className="px-4 py-2 bg-brand text-white rounded-md text-sm font-semibold hover:bg-brand-deep disabled:opacity-50"
             >
               {saving ? "作成中..." : "作成"}
             </button>

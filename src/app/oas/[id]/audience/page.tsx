@@ -27,7 +27,7 @@ const FILTER_LABEL: Record<string, string> = {
 const FILTER_COLOR: Record<string, { bg: string; color: string }> = {
   friend_7d:   { bg: "#dbeafe", color: "#1d4ed8" },
   inactive_7d: { bg: "#fef3c7", color: "#92400e" },
-  phase:       { bg: "#ede9fe", color: "#5b21b6" },
+  phase:       { bg: "#ccfbf1", color: "#5b21b6" },
 };
 const STATUS_META: Record<string, { label: string; bg: string; color: string }> = {
   active:   { label: "有効", bg: "#dcfce7", color: "#16a34a" },
@@ -35,9 +35,9 @@ const STATUS_META: Record<string, { label: string; bg: string; color: string }> 
 };
 const PLAYER_STATUS: Record<string, { bg: string; color: string; label: string }> = {
   active:    { bg: "#dcfce7", color: "#16a34a", label: "プレイ中" },
-  stuck:     { bg: "#fef3c7", color: "#d97706", label: "詰まり中" },
-  dropped:   { bg: "#fee2e2", color: "#dc2626", label: "離脱" },
-  completed: { bg: "#ede9fe", color: "#7c3aed", label: "クリア" },
+  stuck:     { bg: "#fef3c7", color: "#b45309", label: "詰まり中" },
+  dropped:   { bg: "#ffe4e6", color: "#be123c", label: "離脱" },
+  completed: { bg: "#ccfbf1", color: "#0d9488", label: "クリア" },
 };
 
 function fmtMin(min: number): string {
@@ -86,15 +86,15 @@ function PhaseRow({ ps, total }: { ps: AnalyticsPhaseStats; total: number }) {
       <td style={{ padding: "12px 14px", textAlign: "center", fontWeight: 600, color: "#374151" }}>{ps.reached}</td>
       <td style={{ padding: "12px 14px", textAlign: "center", fontWeight: 600, color: "#16a34a" }}>{ps.cleared}</td>
       <td style={{ padding: "12px 14px", textAlign: "center", fontWeight: 600, color: "#2563eb" }}>{ps.currently_at}</td>
-      <td style={{ padding: "12px 14px", textAlign: "center", fontWeight: 600, color: "#dc2626" }}>{ps.dropped_out}</td>
-      <td style={{ padding: "12px 14px", textAlign: "center", fontWeight: 600, color: "#d97706" }}>{ps.stuck}</td>
+      <td style={{ padding: "12px 14px", textAlign: "center", fontWeight: 600, color: "#be123c" }}>{ps.dropped_out}</td>
+      <td style={{ padding: "12px 14px", textAlign: "center", fontWeight: 600, color: "#b45309" }}>{ps.stuck}</td>
       <td style={{ padding: "12px 14px", textAlign: "center" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6, justifyContent: "center" }}>
           <div style={{ width: 48, height: 6, background: "#f3f4f6", borderRadius: 3, overflow: "hidden" }}>
             <div style={{ height: "100%", borderRadius: 3, width: `${ps.clear_rate}%`,
-              background: ps.clear_rate >= 70 ? "#16a34a" : ps.clear_rate >= 40 ? "#d97706" : "#dc2626" }} />
+              background: ps.clear_rate >= 70 ? "#16a34a" : ps.clear_rate >= 40 ? "#b45309" : "#be123c" }} />
           </div>
-          <span style={{ fontSize: 12, fontWeight: 700, color: ps.clear_rate >= 70 ? "#16a34a" : ps.clear_rate >= 40 ? "#d97706" : "#dc2626" }}>
+          <span style={{ fontSize: 12, fontWeight: 700, color: ps.clear_rate >= 70 ? "#16a34a" : ps.clear_rate >= 40 ? "#b45309" : "#be123c" }}>
             {ps.clear_rate}%
           </span>
         </div>
@@ -361,21 +361,21 @@ export default function AudiencePage() {
             <KpiCard
               label="クリア率"
               value={analytics ? `${analytics.summary.clear_rate}%` : undefined}
-              color={analytics ? (analytics.summary.clear_rate >= 70 ? "#16a34a" : analytics.summary.clear_rate >= 40 ? "#d97706" : "#ef4444") : "#9ca3af"}
+              color={analytics ? (analytics.summary.clear_rate >= 70 ? "#16a34a" : analytics.summary.clear_rate >= 40 ? "#b45309" : "#be123c") : "#9ca3af"}
               loading={anaLoading}
               note={analytics ? `${analytics.summary.total_clears}人クリア` : undefined}
             />
             <KpiCard
               label="離脱率"
               value={analytics ? `${analytics.summary.dropout_rate}%` : undefined}
-              color={analytics ? (analytics.summary.dropout_rate <= 20 ? "#16a34a" : analytics.summary.dropout_rate <= 40 ? "#d97706" : "#ef4444") : "#9ca3af"}
+              color={analytics ? (analytics.summary.dropout_rate <= 20 ? "#16a34a" : analytics.summary.dropout_rate <= 40 ? "#b45309" : "#be123c") : "#9ca3af"}
               loading={anaLoading}
               note="24h以上未操作"
             />
             <KpiCard
               label="ヒント使用率"
               value={analytics ? `${analytics.summary.hint_usage_rate}%` : undefined}
-              color="#7c3aed"
+              color="#0d9488"
               loading={anaLoading}
               note="1回以上使用"
             />
@@ -455,12 +455,12 @@ export default function AudiencePage() {
                   <div key={d.phase_id}>
                     <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 4 }}>
                       <span style={{ color: "#374151", fontWeight: 500 }}>{d.phase_name}</span>
-                      <span style={{ fontWeight: 700, color: "#dc2626" }}>
+                      <span style={{ fontWeight: 700, color: "#be123c" }}>
                         {d.dropout_count} 人 <span style={{ fontSize: 11, color: "#9ca3af", fontWeight: 400 }}>({d.dropout_pct}%)</span>
                       </span>
                     </div>
                     <div style={{ background: "#fef2f2", borderRadius: 4, height: 8 }}>
-                      <div style={{ background: "#dc2626", borderRadius: 4, height: 8, width: `${d.dropout_pct}%`, transition: "width .4s" }} />
+                      <div style={{ background: "#be123c", borderRadius: 4, height: 8, width: `${d.dropout_pct}%`, transition: "width .4s" }} />
                     </div>
                   </div>
                 ))}
@@ -496,8 +496,8 @@ export default function AudiencePage() {
             {[
               { label: "現在プレイ中",    v: analytics?.realtime.currently_playing, color: "#16a34a", note: "30分以内にアクティブ" },
               { label: "本日開始",        v: analytics?.realtime.started_today,     color: "#2563eb", note: "" },
-              { label: "本日クリア",      v: analytics?.realtime.cleared_today,     color: "#7c3aed", note: "" },
-              { label: "7日間アクティブ", v: analytics?.realtime.active_last_7d,   color: "#d97706", note: "" },
+              { label: "本日クリア",      v: analytics?.realtime.cleared_today,     color: "#0d9488", note: "" },
+              { label: "7日間アクティブ", v: analytics?.realtime.active_last_7d,   color: "#b45309", note: "" },
             ].map(({ label, v, color, note }) => (
               <div key={label} className="card" style={{ padding: "16px 20px", textAlign: "center" }}>
                 <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 6, fontWeight: 600 }}>{label}</div>
@@ -551,13 +551,13 @@ export default function AudiencePage() {
               </div>
             ) : (
               <>
-                <div style={{ marginBottom: 8, fontSize: 13, color: "#d97706", fontWeight: 600 }}>{analytics.stuck_players.length} 人が詰まっています</div>
+                <div style={{ marginBottom: 8, fontSize: 13, color: "#b45309", fontWeight: 600 }}>{analytics.stuck_players.length} 人が詰まっています</div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                   {analytics.stuck_players.map((sp) => (
                     <div key={sp.anonymous_id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 14px", background: "#fffbeb", borderRadius: 8, border: "1px solid #fde68a" }}>
                       <code style={{ fontSize: 12, color: "#374151", background: "#fef3c7", padding: "1px 6px", borderRadius: 4, flexShrink: 0 }}>{sp.anonymous_id}</code>
                       <span style={{ fontSize: 13, color: "#374151", flex: 1 }}>{sp.current_phase_name}</span>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: "#d97706", flexShrink: 0 }}>{sp.stuck_minutes}分停滞</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: "#b45309", flexShrink: 0 }}>{sp.stuck_minutes}分停滞</span>
                       <span style={{ fontSize: 11, color: "#9ca3af", flexShrink: 0 }}>{timeAgo(sp.last_active)}</span>
                     </div>
                   ))}
@@ -636,7 +636,7 @@ export default function AudiencePage() {
             {[
               { label: "総プレイヤー数", v: analytics?.summary.total_players,            color: "#111827" },
               { label: "クリア率",       v: analytics ? `${analytics.summary.clear_rate}%` : undefined, color: "#16a34a" },
-              { label: "詰まり中",       v: analytics?.stuck_players.length,              color: "#d97706" },
+              { label: "詰まり中",       v: analytics?.stuck_players.length,              color: "#b45309" },
             ].map(({ label, v, color }) => (
               <div key={label} className="card" style={{ padding: "16px 20px", textAlign: "center" }}>
                 <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 6, fontWeight: 600 }}>{label}</div>
@@ -705,9 +705,9 @@ export default function AudiencePage() {
                       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                         {[
                           { label: "クリア",  value: ps.cleared,      pct: ps.clear_rate,  color: "#16a34a", bg: "#f0fdf4" },
-                          { label: "離脱",    value: ps.dropped_out,  pct: dropPct,        color: "#ef4444", bg: "#fef2f2" },
+                          { label: "離脱",    value: ps.dropped_out,  pct: dropPct,        color: "#be123c", bg: "#fef2f2" },
                           { label: "現在地",  value: ps.currently_at, pct: ps.reached > 0 ? Math.round((ps.currently_at / ps.reached) * 100) : 0, color: "#2563eb", bg: "#eff6ff" },
-                          ...(ps.stuck > 0 ? [{ label: "詰まり", value: ps.stuck, pct: ps.reached > 0 ? Math.round((ps.stuck / ps.reached) * 100) : 0, color: "#d97706", bg: "#fffbeb" }] : []),
+                          ...(ps.stuck > 0 ? [{ label: "詰まり", value: ps.stuck, pct: ps.reached > 0 ? Math.round((ps.stuck / ps.reached) * 100) : 0, color: "#b45309", bg: "#fffbeb" }] : []),
                         ].map(({ label, value, pct, color, bg }) => (
                           <span key={label} style={{
                             display: "inline-flex", alignItems: "center", gap: 4,
@@ -736,12 +736,12 @@ export default function AudiencePage() {
                   <div key={d.phase_id}>
                     <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 4 }}>
                       <span style={{ color: "#374151", fontWeight: 500 }}>{d.phase_name}</span>
-                      <span style={{ fontWeight: 700, color: "#dc2626" }}>
+                      <span style={{ fontWeight: 700, color: "#be123c" }}>
                         {d.dropout_count}人 <span style={{ fontSize: 11, color: "#9ca3af", fontWeight: 400 }}>({d.dropout_pct}%)</span>
                       </span>
                     </div>
                     <div style={{ background: "#fef2f2", borderRadius: 4, height: 8 }}>
-                      <div style={{ background: "#dc2626", borderRadius: 4, height: 8, width: `${d.dropout_pct}%`, transition: "width .4s" }} />
+                      <div style={{ background: "#be123c", borderRadius: 4, height: 8, width: `${d.dropout_pct}%`, transition: "width .4s" }} />
                     </div>
                   </div>
                 ))}
@@ -845,7 +845,7 @@ export default function AudiencePage() {
                             { label: "対象人数",       value: `${ana.total_matched}人`,      color: "#111827" },
                             { label: "クリア率",       value: `${ana.clear_rate}%`,          color: "#16a34a" },
                             { label: "平均プレイ時間", value: fmtMin(ana.avg_play_time_min), color: "#0891b2" },
-                            { label: "離脱率",         value: `${ana.dropout_rate}%`,        color: "#dc2626" },
+                            { label: "離脱率",         value: `${ana.dropout_rate}%`,        color: "#be123c" },
                           ].map(({ label, value, color }) => (
                             <div key={label} style={{ background: "#f9fafb", borderRadius: 8, padding: "8px 12px", textAlign: "center" }}>
                               <div style={{ fontSize: 10, color: "#6b7280", fontWeight: 600, marginBottom: 4 }}>{label}</div>
