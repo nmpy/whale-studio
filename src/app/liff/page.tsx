@@ -11,6 +11,8 @@ import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { GpsCheckin } from "./_gps-checkin";
 import { StampRallyProgressView } from "./_stamp-rally-progress";
+import { QrScanner } from "./_components/QrScanner";
+import { recordLiffEvent } from "@/lib/liff-events";
 import type { CheckinResult, CheckinMode } from "@/types";
 
 type LiffStep =
@@ -71,6 +73,12 @@ function CheckinContent() {
 
   const [state, setState] = useState<LiffStep>({ step: "init", detail: "LIFF を初期化中..." });
   const [lineUserId, setLineUserId] = useState<string | null>(null);
+  // slice 4: QR 導線 / イベント計測に必要な runtime コンテキスト。
+  // verified（サーバー検証済み）と effective(lineUserId) を区別して保持する（#211 の方針を維持）。
+  const [isLineUserVerified, setIsLineUserVerified] = useState(false);
+  const [scanQrEnabled, setScanQrEnabled] = useState(false);
+  const [isInClient, setIsInClient] = useState(false);
+  const [oaId, setOaId] = useState<string | null>(null);
   const [stampRefreshKey, setStampRefreshKey] = useState(0);
   const submittingRef = useRef(false);
 
@@ -104,6 +112,8 @@ function CheckinContent() {
       return;
     }
     let cancelled = false;
+    // 失敗イベント (liff_init_failed) でも oaId を残せるよう try の外で保持する。
+    let cfgOaId: string | null = null;
 
     (async () => {
       try {
@@ -111,12 +121,17 @@ function CheckinContent() {
         // Oa.liffId → NEXT_PUBLIC_LIFF_ID フォールバックはサーバー側 /api/liff/config で解決される。
         setState({ step: "init", detail: "LIFF 設定を確認中..." });
         let liffId: string | null = null;
+        let cfgScanQr = false;
         try {
           const cfgRes = await fetch(`/api/liff/config?workId=${encodeURIComponent(workId)}&locationId=${encodeURIComponent(locationId)}`, { cache: "no-store" });
           const cfg = await cfgRes.json();
           liffId = cfg?.data?.liffId ?? null;
+          cfgOaId = cfg?.data?.oaId ?? null;
+          cfgScanQr = cfg?.data?.features?.scanQr === true;
         } catch { /* 解決失敗は下で NO_LIFF_ID として扱う */ }
         if (cancelled) return;
+        setOaId(cfgOaId);
+        setScanQrEnabled(cfgScanQr);
         if (!liffId) {
           // 白画面にせず、管理者向けに原因がわかる文言を出す。
           setState({
@@ -132,6 +147,9 @@ function CheckinContent() {
 
         setState({ step: "init", detail: "LINE に接続中..." });
         await liff.init({ liffId });
+        const inClient = liff.isInClient();
+        setIsInClient(inClient);
+        recordLiffEvent({ workId, eventType: "liff_init_success", metadata: { oaId: cfgOaId, locationId, isInClient: inClient } });
 
         if (!liff.isLoggedIn()) {
           setState({ step: "init", detail: "LINE ログインへ移動します..." });
@@ -170,6 +188,14 @@ function CheckinContent() {
         }
         if (cancelled) return;
 
+        setIsLineUserVerified(isLineUserVerified);
+        recordLiffEvent({
+          workId,
+          eventType:  isLineUserVerified ? "session_success" : "session_failed",
+          lineUserId: isLineUserVerified ? verifiedLineUserId : null,
+          metadata:   { oaId: cfgOaId, locationId, isLineUserVerified },
+        });
+
         // fallback は「未検証」の client 値。verified を最優先し、無ければ既存挙動維持のため
         // 未検証 client userId を使う（変数名・フラグで verified と区別して混同を防ぐ）。
         // TODO(認可強化 / 後続スライス): checkin API 側で isLineUserVerified を要求し、
@@ -182,11 +208,18 @@ function CheckinContent() {
         const mode: CheckinMode = (locData?.checkin_mode as CheckinMode) ?? "qr_only";
         const locationName = locData?.name ?? "この場所";
 
+        recordLiffEvent({
+          workId,
+          eventType:  "page_view",
+          lineUserId: isLineUserVerified ? verifiedLineUserId : null,
+          metadata:   { oaId: cfgOaId, locationId, mode, isLineUserVerified },
+        });
         setState({ step: "confirm", mode, locationName });
       } catch (err) {
         if (cancelled) return;
         console.error("[LIFF] init error:", err);
         const msg = err instanceof Error ? err.message : "";
+        recordLiffEvent({ workId, eventType: "liff_init_failed", metadata: { oaId: cfgOaId, locationId, errorMessage: msg.slice(0, 200) } });
         if (msg.includes("INIT_FAILED") || msg.includes("INVALID_CONFIG")) {
           setState({ step: "error", code: "LIFF_INIT_FAILED", message: "LIFF の初期化に失敗しました。" });
         } else {
@@ -227,9 +260,16 @@ function CheckinContent() {
   // ── GPS チェックイン結果（gps_only / qr_and_gps 共通） ──
   const handleGpsResult = useCallback((data: unknown) => {
     const result = data as CheckinResult;
+    const ok = result.status === "checked_in";
+    if (workId) recordLiffEvent({
+      workId,
+      eventType:  ok ? "gps_checkin_success" : "gps_checkin_failed",
+      lineUserId: isLineUserVerified ? lineUserId : null,
+      metadata:   { oaId, locationId, isLineUserVerified, status: result.status },
+    });
     setState({ step: "result", result });
-    if (result.status === "checked_in") setStampRefreshKey((k) => k + 1);
-  }, []);
+    if (ok) setStampRefreshKey((k) => k + 1);
+  }, [workId, oaId, locationId, isLineUserVerified, lineUserId]);
 
   const handleClose = useCallback(async () => {
     try { const liff = (await import("@line/liff")).default; if (liff.isInClient()) { liff.closeWindow(); return; } } catch {}
@@ -311,6 +351,22 @@ function CheckinContent() {
                   onResult={handleGpsResult}
                 />
               </>
+            )}
+
+            {/* ── QR 読み取り導線（slice 4） ──
+                scanQrEnabled=false の OA では導線自体を出さない（白画面にしない＝そもそも描画しない）。
+                読み取り結果は本スライスでは表示までで、認可・遷移には使わない。 */}
+            {scanQrEnabled && workId && lineUserId && (
+              <QrScanner
+                workId={workId}
+                oaId={oaId}
+                locationId={locationId}
+                mode={state.mode}
+                verifiedLineUserId={isLineUserVerified ? lineUserId : null}
+                isLineUserVerified={isLineUserVerified}
+                scanQrEnabled={scanQrEnabled}
+                isInClient={isInClient}
+              />
             )}
 
             <button onClick={handleClose} style={btnGhost}>キャンセル</button>
