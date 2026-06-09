@@ -148,9 +148,9 @@ function CheckinContent() {
 
         // ── サーバー検証セッション確立（lineUserId をサーバーで取り直す）──
         // フロントの profile.userId は信用せず、accessToken を /api/liff/session で検証する。
-        // 検証に失敗してもチェックイン体験を止めないよう、client profile.userId にフォールバック
-        // （その場合は管理者ログに残す）。完全な認可強化は後続スライスで checkin API 側に適用。
-        let resolvedUserId = profile.userId;
+        // verified（サーバー検証済み）と fallback（未検証の client 値）を**明確に区別**する。
+        let verifiedLineUserId: string | null = null;
+        let isLineUserVerified = false;
         try {
           const accessToken = liff.getAccessToken();
           const sres = await fetch("/api/liff/session", {
@@ -160,16 +160,23 @@ function CheckinContent() {
           });
           const sjson = await sres.json().catch(() => ({}));
           if (sjson?.success && sjson.data?.lineUserId) {
-            resolvedUserId = sjson.data.lineUserId as string;
+            verifiedLineUserId = sjson.data.lineUserId as string;
+            isLineUserVerified = true;
           } else {
-            console.warn("[LIFF] session verify failed — client userId にフォールバック");
+            console.warn("[LIFF] session verify failed — 未検証の client userId にフォールバック");
           }
         } catch (e) {
-          console.warn("[LIFF] session API error — client userId にフォールバック", e);
+          console.warn("[LIFF] session API error — 未検証の client userId にフォールバック", e);
         }
         if (cancelled) return;
 
-        setLineUserId(resolvedUserId);
+        // fallback は「未検証」の client 値。verified を最優先し、無ければ既存挙動維持のため
+        // 未検証 client userId を使う（変数名・フラグで verified と区別して混同を防ぐ）。
+        // TODO(認可強化 / 後続スライス): checkin API 側で isLineUserVerified を要求し、
+        //   未検証セッションでの書き込みを拒否できる余地を残す。本スライスは体験維持を優先。
+        const fallbackClientUserId = profile.userId; // ⚠ 未検証
+        const effectiveLineUserId = isLineUserVerified ? verifiedLineUserId! : fallbackClientUserId;
+        setLineUserId(effectiveLineUserId);
 
         const locData = locRes.success ? locRes.data : null;
         const mode: CheckinMode = (locData?.checkin_mode as CheckinMode) ?? "qr_only";
