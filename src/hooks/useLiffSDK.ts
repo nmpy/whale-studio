@@ -13,10 +13,13 @@ export interface LiffSDKState {
   loading: boolean;
   /** LIFF アプリ内ブラウザかどうか */
   isInClient: boolean;
-  /** LINE ユーザーID（ログイン済みの場合） */
+  /** LINE ユーザーID（ログイン済みの場合）。※ client 取得値。サーバー検証には
+   *  accessToken を POST /api/liff/session に渡して lineUserId を取り直すこと。 */
   lineUserId: string | null;
   /** 表示名 */
   displayName: string | null;
+  /** LIFF アクセストークン（ログイン済みの場合）。POST /api/liff/session に渡してサーバー検証する。 */
+  accessToken: string | null;
   /** エラーメッセージ（初期化失敗時） */
   error: string | null;
   /** LIFF ウィンドウを閉じる */
@@ -38,6 +41,7 @@ export function useLiffSDK(liffId?: string): LiffSDKState {
     isInClient: false,
     lineUserId: null,
     displayName: null,
+    accessToken: null,
     error: null,
     closeWindow: () => {},
   });
@@ -80,12 +84,15 @@ export function useLiffSDK(liffId?: string): LiffSDKState {
 
         if (isLoggedIn) {
           const profile = await liff.getProfile();
+          let accessToken: string | null = null;
+          try { accessToken = liff.getAccessToken(); } catch { accessToken = null; }
           setState({
             ready: true,
             loading: false,
             isInClient: inClient,
             lineUserId: profile.userId,
             displayName: profile.displayName,
+            accessToken,
             error: null,
             closeWindow: () => {
               if (inClient) {
@@ -101,6 +108,7 @@ export function useLiffSDK(liffId?: string): LiffSDKState {
             isInClient: inClient,
             lineUserId: null,
             displayName: null,
+            accessToken: null,
             error: null,
             closeWindow: () => {},
           });
