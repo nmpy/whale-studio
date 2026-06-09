@@ -48,6 +48,14 @@ export const GET = withAuth(async (req, ctx, user) => {
       },
     });
 
+    // 回答数バッジ用に submission 件数を 1 クエリで集計する（N+1 を避ける）。
+    const counts = await prisma.liffSubmission.groupBy({
+      by: ["liffPageId"],
+      where: { workId },
+      _count: { _all: true },
+    });
+    const countByPage = new Map(counts.map((c) => [c.liffPageId, c._count._all]));
+
     return ok({
       work_id: workId,
       pages: pages.map((p) => ({
@@ -60,6 +68,7 @@ export const GET = withAuth(async (req, ctx, user) => {
         page_type:       p.pageType,
         publish_status:  p.publishStatus,
         is_enabled:      p.isEnabled,
+        submission_count: countByPage.get(p.id) ?? 0,
         created_at:      p.createdAt,
         updated_at:      p.updatedAt,
       })),

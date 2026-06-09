@@ -12,6 +12,8 @@ import {
   findWorkByIdOrPublicId,
   findLiffPageConfigByIdOrPublicId,
 } from "@/lib/public-id-resolver";
+import { buildSubmissionAnswers } from "@/lib/liff/submission";
+import type { SurveyItem } from "@/types";
 
 export const dynamic = "force-dynamic";
 
@@ -20,6 +22,8 @@ const answerValueSchema = z.union([z.string().max(5000), z.array(z.string().max(
 
 const surveyResponseBodySchema = z.object({
   line_user_id: z.string().max(100).optional().nullable(),
+  /** LIFF profile 表示名（取得できた場合のみ）。回答結果画面で表示する。 */
+  display_name: z.string().max(200).optional().nullable(),
   /** どの LIFF ページから送信されたか。UUID か publicId のどちらでも受け付ける。
    *  指定なしでも回答自体は成功するが、その場合 LiffEventLog の liffPageConfigId は null になり、
    *  LIFF ページ詳細の "計測" タブには集計されない。 */
@@ -72,7 +76,30 @@ export async function POST(
     let liffPageConfigId: string | null = null;
     if (data.page_id) {
       const page = await findLiffPageConfigByIdOrPublicId(data.page_id, { workScope: work.id });
-      if (page) liffPageConfigId = page.id;
+      if (page) {
+        liffPageConfigId = page.id;
+        // 回答結果画面（LiffSubmission）にも保存する。survey_items から
+        // ブロック単位（label / answerType / value）の rich answers を組み立てる。
+        // 失敗してもアンケート登録は成功扱いとし、UX を阻害しない。
+        try {
+          const pageSettings = (page.settingsJson ?? {}) as { survey_items?: SurveyItem[] };
+          const blocks = buildSubmissionAnswers(pageSettings.survey_items, data.answers);
+          if (blocks.length > 0) {
+            await prisma.liffSubmission.create({
+              data: {
+                oaId:        work.oaId,
+                workId:      work.id,
+                liffPageId:  page.id,
+                lineUserId:  data.line_user_id ?? null,
+                displayName: data.display_name ?? null,
+                answersJson: { blocks } as unknown as Prisma.InputJsonValue,
+              },
+            });
+          }
+        } catch (e) {
+          console.error("[LIFF Survey] LiffSubmission save failed:", e);
+        }
+      }
     }
 
     // 計測: survey_submit (失敗してもアンケート登録は成功扱いとし、UX を阻害しない)

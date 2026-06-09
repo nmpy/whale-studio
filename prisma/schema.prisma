@@ -46,6 +46,7 @@ model Oa {
   globalCommands     GlobalCommand[]
   hintLogs           HintLog[]
   invitations        Invitation[]
+  liffSubmissions    LiffSubmission[]
   onboardingEvents   OnboardingEvent[]
   richMenus          RichMenu[]
   riddles            Riddle[]           @relation("OaRiddles")
@@ -139,6 +140,7 @@ model Work {
   liffPageConfigs     LiffPageConfig[]
   liffSurveyResponses LiffSurveyResponse[]
   liffEventLogs       LiffEventLog[]
+  liffSubmissions     LiffSubmission[]
   werewolfTitles      WerewolfTitle[]
   locations           Location[]
   liveSessions        LiveSession[]
@@ -1225,6 +1227,7 @@ model LiffPageConfig {
   updatedAt   DateTime        @updatedAt @map("updated_at")
   blocks      LiffPageBlock[]
   werewolfTitles WerewolfTitle[]
+  submissions LiffSubmission[]
   work        Work            @relation(fields: [workId], references: [id], onDelete: Cascade)
 
   @@index([workId])
@@ -1283,6 +1286,36 @@ model LiffSurveyResponse {
   @@index([lineUserId])
   @@index([submittedAt])
   @@map("liff_survey_responses")
+}
+
+/// LIFF ページ上のフォーム/アンケート送信を 1 件 1 行で保存する（管理画面の「回答結果」用）。
+/// answersJson はブロック単位の配列形式: { blocks: [{ blockId, blockType, label, answerType, value }] }。
+/// 既存の LiffSurveyResponse（質問id キー）とは別に、pageId/oaId スコープ + 表示名つきで保持する。
+model LiffSubmission {
+  id          String   @id @default(uuid())
+  oaId        String   @map("oa_id")
+  workId      String   @map("work_id")
+  liffPageId  String   @map("liff_page_id")
+  /// LINE ユーザー ID（LIFF profile から取得できた場合のみ）。
+  lineUserId  String?  @map("line_user_id")
+  /// 将来の Player/Participant 連携用（現状は未使用・null 許容）。
+  playerId    String?  @map("player_id")
+  displayName String?  @map("display_name")
+  /// 回答データ（ブロック単位の配列を含むオブジェクト）。defensive に扱う。
+  answersJson Json     @map("answers_json") @db.JsonB
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  oa          Oa             @relation(fields: [oaId], references: [id], onDelete: Cascade)
+  work        Work           @relation(fields: [workId], references: [id], onDelete: Cascade)
+  liffPage    LiffPageConfig @relation(fields: [liffPageId], references: [id], onDelete: Cascade)
+
+  @@index([oaId])
+  @@index([workId])
+  @@index([liffPageId])
+  @@index([lineUserId])
+  @@index([createdAt])
+  @@map("liff_submissions")
 }
 
 model LiffPageBlock {
