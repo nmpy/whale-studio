@@ -40,7 +40,7 @@ const HUB_CARDS = [
   },
   {
     key:   "messages",
-    title: "メッセージ・謎",
+    title: "メッセージ",
     desc:  "フェーズごとに送信するメッセージ・謎チャレンジを管理します",
     color: "#06C755",
     bg:    "#E6F7ED",

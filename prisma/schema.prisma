@@ -88,6 +88,13 @@ model Work {
   /// 未設定の場合はシステムデフォルト文にフォールバックする。
   welcomeMessage    String?        @map("welcome_message")
 
+  /// 途中再開機能の有効/無効（作品単位のデフォルト挙動）。
+  /// true:  フェーズ途中で離脱したユーザーが開始トリガーを再送したとき、
+  ///        「途中から再開する / 最初からやり直す」の選択肢を表示する（従来挙動）。
+  /// false: 途中状態があっても選択肢を出さず、通常の開始（最初から）に寄せる。
+  /// 既存挙動（常に再開選択肢を表示）を壊さないため default(true)。
+  resumeEnabled     Boolean        @default(true) @map("resume_enabled")
+
   // ── 演出デフォルト設定（既読・typing・ローディング）──────
   /// 既読制御モード: "inherit" | "immediate" | "delayed" | "before_reply"
   readReceiptMode       String?    @map("read_receipt_mode")

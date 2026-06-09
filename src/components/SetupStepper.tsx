@@ -7,7 +7,7 @@
  *   1. 作品作成        — 常に完了（このコンポーネントが表示されている時点で完了）
  *   2. キャラクター作成 — work._count.characters > 0
  *   3. フェーズ作成    — localStorage "phase-created-{workId}" (scenario/page.tsx がセット)
- *   4. メッセージ・謎  — work._count.messages > 0
+ *   4. メッセージ  — work._count.messages > 0
  *   5. シナリオフロー  — localStorage "scenario-setup-{workId}" (scenario/page.tsx がセット)
  *   6. プレビュー確認  — localStorage "preview-confirmed-{workId}" (hub の▶ボタンクリックでセット)
  *
@@ -30,7 +30,7 @@ const STEPS: StepDef[] = [
   { key: "work",      label: "作品作成",          desc: "タイトルや説明を設定",           href: "" },
   { key: "character", label: "キャラクター作成",   desc: "名前・アイコンを設定",           href: "characters" },
   { key: "phase",     label: "フェーズ作成",       desc: "開始〜エンディングの場面を作る", href: "scenario" },
-  { key: "message",   label: "メッセージ・謎追加", desc: "会話や謎チャレンジを作成",       href: "messages" },
+  { key: "message",   label: "メッセージ追加", desc: "会話や謎チャレンジを作成",       href: "messages" },
   { key: "scenario",  label: "シナリオフロー設定", desc: "フェーズの分岐・遷移を整理",     href: "scenario" },
   { key: "preview",   label: "プレビュー確認",     desc: "実際の体験に近い形で確認",       href: "preview", isExternal: true },
 ];

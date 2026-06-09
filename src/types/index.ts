@@ -145,6 +145,10 @@ export interface Work {
   /** LIFF プレイヤー機能 (作品メニュー + 個別 LIFF ページ) の有効/無効。
    *  既定 true。false にすると `/liff/w/[workPublicId]` などからアクセスできなくなる。 */
   liff_enabled: boolean;
+  /** 途中再開機能の有効/無効（作品単位）。既定 true。
+   *  false にすると、途中状態があっても再開選択肢を出さず最初から開始する。
+   *  一覧 API では返さないため optional。 */
+  resume_enabled?: boolean;
   /** システムメッセージ送信者として使うキャラクター ID（任意） */
   system_character_id: string | null;
   /**
@@ -376,6 +380,8 @@ export interface UpdateWorkBody {
   sort_order?: number;
   /** LIFF プレイヤー機能の有効/無効。 */
   liff_enabled?: boolean;
+  /** 途中再開機能の有効/無効（作品単位）。 */
+  resume_enabled?: boolean;
   /** システムメッセージ送信者キャラクター ID（null で解除） */
   system_character_id?: string | null;
   /**

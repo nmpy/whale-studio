@@ -18,7 +18,7 @@ const STEPS: { key: string; label: string; href: string; isPreview?: boolean }[]
   { key: "work",      label: "作品作成",          href: "" },
   { key: "character", label: "キャラクター作成",   href: "characters" },
   { key: "phase",     label: "フェーズ作成",       href: "scenario" },
-  { key: "message",   label: "メッセージ・謎追加", href: "messages" },
+  { key: "message",   label: "メッセージ追加", href: "messages" },
   { key: "scenario",  label: "フロー設定",         href: "scenario" },
   { key: "preview",   label: "プレビュー確認",     href: "preview", isPreview: true },
 ];

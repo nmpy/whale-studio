@@ -41,6 +41,7 @@ import {
   type LineWebhookBody, type LineEvent, type LineSender, type LineMessage, type KeywordMessageRecord,
 } from "@/lib/line";
 import { buildRuntimeState, matchTransition, applySetFlags, safeParseFlags, safeParseVariables, safeParseWaitingForInput, fetchPhaseWithIncludes, drainAutoSendableItems, type PhaseRow } from "@/lib/runtime";
+import { shouldOfferResumeChoice } from "@/lib/message-flow";
 import { isFreeInputPrompt } from "@/lib/free-input";
 import { handleBeaconEvent, type LineBeaconEvent } from "@/lib/beacon";
 import { pushToLine as _pushToLine } from "@/lib/line";
@@ -1545,6 +1546,9 @@ type WorkRecord = {
   title: string;
   /** あいさつメッセージ。null のときはシステムデフォルト文を使う */
   welcomeMessage: string | null;
+  /** 途中再開機能の有効/無効（作品単位）。false のとき再開選択肢を出さず最初から開始に寄せる。
+   *  runtime の work は full row (fetchActiveWork) なのでこの列を保持する。undefined は従来=true 扱い。 */
+  resumeEnabled?: boolean;
 } | null;
 
 // handleTextEvent / handlePostbackEvent / handleStart / handleContinue で共通使用
@@ -1862,13 +1866,17 @@ async function handleTextEvent({
         `userId=${userId}`,
       );
 
-      // 途中離脱ユーザーには即リセットせず「再開 or やり直し」の選択肢を提示する
-      const isMidProgress =
-        progress !== null &&
-        !progress.reachedEnding &&
-        progress.currentPhaseId !== null;
+      // 途中離脱ユーザーには即リセットせず「再開 or やり直し」の選択肢を提示する。
+      // ただし作品設定で resumeEnabled=false の場合は選択肢を出さず、通常の開始
+      // （= 最初からやり直す）に寄せる（undefined は従来挙動 = true 扱い）。
+      const isMidProgress = shouldOfferResumeChoice({
+        resumeEnabled:  work?.resumeEnabled,
+        hasProgress:    progress !== null,
+        reachedEnding:  !!progress?.reachedEnding,
+        currentPhaseId: progress?.currentPhaseId ?? null,
+      });
 
-      if (isMidProgress) {
+      if (isMidProgress && progress) {
         console.log(
           `[Webhook][STEP] 途中離脱ユーザー検出 → 再開選択肢を提示`,
           `currentPhaseId=${progress.currentPhaseId}`,
@@ -2394,7 +2402,11 @@ async function handlePostbackEvent({
     const mode   = params.get("mode");
     const wid    = params.get("workId");
     if ((mode === "resume" || mode === "restart") && wid && work && work.id === wid) {
-      await handleResumeChoice({ oa, work, systemSender, userId, replyToken, vars, mode });
+      // resumeEnabled=false の作品では再開選択肢を出さない方針のため、
+      // 万一 stale な resume postback が届いても "resume" を "restart"（最初から）に倒す。
+      // action=resume_work は ON 時のみ意味を持つ、という仕様に揃える。
+      const effectiveMode = work.resumeEnabled === false ? "restart" : mode;
+      await handleResumeChoice({ oa, work, systemSender, userId, replyToken, vars, mode: effectiveMode });
       return;
     }
     // workId 不一致や不正パラメータは無視してログのみ

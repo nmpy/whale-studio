@@ -10,6 +10,7 @@ import { Breadcrumb } from "@/components/Breadcrumb";
 import type { PhaseWithCounts, Character, QuickReplyItem, QuickReplyAction, ReadReceiptMode } from "@/types";
 import type { Riddle } from "@/types";
 import { PhaseTransitionsSection } from "./_phase-transitions";
+import { nextTransitionDisabledByPuzzle } from "@/lib/message-flow";
 import { BUILTIN_PRESETS, presetToFormValues } from "@/lib/timing-presets";
 import { TapDestinationSection } from "@/components/destination/TapDestinationSection";
 import type { TapMode } from "@/components/destination/TapDestinationSection";
@@ -3432,7 +3433,7 @@ export function MessageForm({
             { label: "アカウントリスト", href: "/oas" },
             { label: "作品リスト", href: `/oas/${oaId}/works` },
             ...(workTitle ? [{ label: workTitle, href: `/oas/${oaId}/works/${workId}` }] : []),
-            { label: "メッセージ・謎", href: `/oas/${oaId}/works/${workId}/messages` },
+            { label: "メッセージ", href: `/oas/${oaId}/works/${workId}/messages` },
             { label: isNew ? "新規作成" : "編集" },
           ]} />
           <h2>{isNew ? "メッセージを追加" : "メッセージを編集"}</h2>
@@ -4880,12 +4881,16 @@ export function MessageForm({
           )} {/* /isPuzzle 謎の回答設定 */}
 
           {/* ── このメッセージの後の遷移 ── */}
+          {/* 謎・問題で正解時アクションがフェーズ遷移の場合は、遷移が競合するため
+              このセクションを編集不可（グレーアウト）にする。正解時アクションを
+              フェーズ遷移以外に戻すと自動的に再び編集可能になる（reactive）。 */}
           {form.phase_id && form.kind !== "global" && (
             <PhaseTransitionsSection
               oaId={oaId}
               workId={workId}
               phaseId={form.phase_id}
               phases={phases}
+              disabled={nextTransitionDisabledByPuzzle({ isPuzzle, correctAction: form.correct_action })}
             />
           )}
 

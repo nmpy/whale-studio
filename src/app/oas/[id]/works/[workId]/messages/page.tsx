@@ -5,7 +5,7 @@
 import { Fragment, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { TLink as Link } from "@/components/TLink";
-import { bootstrapApi, messageApi, getDevToken } from "@/lib/api-client";
+import { bootstrapApi, messageApi, workApi, getDevToken } from "@/lib/api-client";
 import { getCachedBootstrap, setCachedBootstrap, invalidateBootstrap } from "@/lib/admin-bootstrap-cache";
 import { logAdminPerf, resourceSummary, maskId } from "@/lib/perf-client";
 import { HelpAccordion } from "@/components/HelpAccordion";
@@ -406,6 +406,9 @@ export default function MessagesPage() {
   const [activeTab, setActiveTab]       = useState<Tab>("messages");
   const [workTitle, setWorkTitle]       = useState("");
   const [welcomeMsg, setWelcomeMsg]     = useState<string | null>(null);
+  // 途中再開機能の有効/無効（作品単位デフォルト設定）。Bootstrap の work.resume_enabled 由来。
+  const [resumeEnabled, setResumeEnabled] = useState(true);
+  const [savingResume, setSavingResume]   = useState(false);
   const [messages, setMessages]         = useState<MessageWithRelations[]>([]);
   const [phases, setPhases]             = useState<PhaseWithCounts[]>([]);
   const [transitions, setTransitions]   = useState<TransitionWithPhases[]>([]);
@@ -520,6 +523,27 @@ export default function MessagesPage() {
     }
   }
 
+  /** 途中再開（作品単位デフォルト設定）をトグルする。
+   *  楽観的更新で即時反映し、PATCH /api/works/[workId] に resume_enabled を保存。
+   *  失敗時は元に戻して toast を表示する。 */
+  async function handleToggleResume(next: boolean) {
+    if (savingResume) return;
+    const prev = resumeEnabled;
+    setResumeEnabled(next); // 楽観的更新
+    setSavingResume(true);
+    try {
+      await workApi.update(getDevToken(), workId, { resume_enabled: next });
+      invalidateBootstrap(oaId, workId); // 次回再訪で最新を取得（stale 表示防止）
+      showToast(next ? "途中再開を有効にしました" : "途中再開を無効にしました", "success");
+    } catch (err) {
+      console.error("[messages] toggle resume_enabled error:", err);
+      setResumeEnabled(prev); // ロールバック
+      showToast(err instanceof Error ? err.message : "設定の保存に失敗しました", "error");
+    } finally {
+      setSavingResume(false);
+    }
+  }
+
   useEffect(() => {
     let cancelled = false;
     const t0 = (typeof performance !== "undefined" ? performance.now() : Date.now());
@@ -528,6 +552,7 @@ export default function MessagesPage() {
     function applyData(data: import("@/lib/api-client").MessagesBootstrapData) {
       setWorkTitle(data.work.title);
       setWelcomeMsg(data.work.welcome_message ?? "");
+      setResumeEnabled(data.work.resume_enabled !== false);
       setMessages(data.messages);
       setPhases([...data.phases].sort((a, b) => a.sort_order - b.sort_order));
       setTransitions(data.transitions);
@@ -647,7 +672,7 @@ export default function MessagesPage() {
       { label: "アカウントリスト", href: "/oas" },
       { label: "作品リスト", href: `/oas/${oaId}/works` },
       ...(workTitle ? [{ label: workTitle, href: `/oas/${oaId}/works/${workId}` }] : []),
-      { label: "メッセージ・謎" },
+      { label: "メッセージ" },
     ]} />
   );
 
@@ -655,7 +680,7 @@ export default function MessagesPage() {
     return (
       <>
         <div className="page-header">
-          <div>{breadcrumb}<h2>メッセージ・謎</h2></div>
+          <div>{breadcrumb}<h2>メッセージ</h2></div>
         </div>
         <div className="card" style={{ padding: 0 }}>
           {[1, 2, 3].map((i) => (
@@ -675,7 +700,7 @@ export default function MessagesPage() {
     return (
       <>
         <div className="page-header">
-          <div>{breadcrumb}<h2>メッセージ・謎</h2></div>
+          <div>{breadcrumb}<h2>メッセージ</h2></div>
         </div>
         <div className="alert alert-error">{loadError}</div>
       </>
@@ -708,7 +733,7 @@ export default function MessagesPage() {
       <div className="page-header">
         <div>
           {breadcrumb}
-          <h2>{activeTab === "welcome" ? "あいさつメッセージ" : "メッセージ・謎"}</h2>
+          <h2>{activeTab === "welcome" ? "あいさつメッセージ" : "メッセージ"}</h2>
           <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 3 }}>
             {activeTab === "welcome"
               ? "友だち追加・シナリオ開始前に送る特別なメッセージです"
@@ -739,7 +764,7 @@ export default function MessagesPage() {
         gap: 0,
       }}>
         <button type="button" style={tabStyle("messages")} onClick={() => setActiveTab("messages")}>
-          メッセージ・謎
+          メッセージ
           <span style={{
             fontSize: 10, fontWeight: 700,
             background: activeTab === "messages" ? "#dcfce7" : "#f3f4f6",
@@ -922,9 +947,46 @@ export default function MessagesPage() {
       )}
 
       {/* ══════════════════════════════════════════════
-          タブ: メッセージ・謎
+          タブ: メッセージ
       ══════════════════════════════════════════════ */}
       {activeTab === "messages" && (<>
+      {/* ── デフォルト設定（作品単位） ── */}
+      <div
+        className="card"
+        style={{ padding: "12px 16px", marginBottom: 16, borderTop: "3px solid #e0e7ff" }}
+      >
+        <div style={{ fontSize: 13, fontWeight: 700, color: "#374151", marginBottom: 8 }}>
+          デフォルト設定
+        </div>
+        <label
+          style={{
+            display: "flex", alignItems: "flex-start", gap: 8,
+            cursor: canEdit && !savingResume ? "pointer" : "default",
+            opacity: canEdit ? 1 : 0.6,
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={resumeEnabled}
+            disabled={!canEdit || savingResume}
+            onChange={(e) => handleToggleResume(e.target.checked)}
+            style={{ marginTop: 3, flexShrink: 0 }}
+          />
+          <span>
+            <span style={{ fontSize: 13, fontWeight: 600, color: "#374151" }}>
+              途中再開を有効にする
+            </span>
+            {savingResume && (
+              <span style={{ fontSize: 11, color: "#9ca3af", marginLeft: 8 }}>保存中…</span>
+            )}
+            <span style={{ display: "block", fontSize: 12, color: "#6b7280", marginTop: 2, lineHeight: 1.6 }}>
+              ユーザーがフェーズの途中で開始トリガーを再送したときに、「途中から再開する / 最初からやり直す」を表示します。
+              無効にすると、途中状態があっても選択肢を出さず、最初から開始します。
+            </span>
+          </span>
+        </label>
+      </div>
+
       {/* ── 初回ガイド（メッセージ未作成時） ── */}
       {!loading && messages.length === 0 && (
         <GuideCard

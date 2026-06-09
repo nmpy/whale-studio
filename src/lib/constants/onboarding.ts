@@ -17,7 +17,7 @@ export const ONBOARDING_STEP_LABELS = {
   work_created:      "作品作成",
   character_created: "キャラクター作成",
   phase_created:     "フェーズ作成",
-  message_created:   "メッセージ・謎追加",
+  message_created:   "メッセージ追加",
   flow_connected:    "シナリオフロー設定",
   previewed:         "プレビュー確認",
 } as const;

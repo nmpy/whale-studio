@@ -27,7 +27,7 @@ const STEPS = [
   },
   {
     key:   "message",
-    label: "メッセージ・謎を追加する",
+    label: "メッセージを追加する",
     desc:  "会話や問題を作成して、フェーズに紐づけます",
     href:  "messages",
   },

@@ -18,7 +18,7 @@ function getPageName(pathname: string): string {
   const patterns: [RegExp, string][] = [
     [/^\/oas\/[^/]+\/works\/[^/]+\/messages\/new$/,            "メッセージ作成"],
     [/^\/oas\/[^/]+\/works\/[^/]+\/messages\/[^/]+$/,          "メッセージ編集"],
-    [/^\/oas\/[^/]+\/works\/[^/]+\/messages$/,                 "メッセージ・謎一覧"],
+    [/^\/oas\/[^/]+\/works\/[^/]+\/messages$/,                 "メッセージ一覧"],
     [/^\/oas\/[^/]+\/works\/[^/]+\/phases\/[^/]+$/,            "フェーズ編集"],
     [/^\/oas\/[^/]+\/works\/[^/]+\/phases$/,                   "フェーズ管理"],
     [/^\/oas\/[^/]+\/works\/[^/]+\/characters\/[^/]+\/edit$/,  "キャラクター編集"],
