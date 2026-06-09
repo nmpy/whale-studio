@@ -364,7 +364,15 @@ export function withAuth<T = Record<string, string>>(handler: Handler<T>) {
     }
 
     try {
+      // 認証 (= Supabase auth.getUser の往復) の所要時間を計測。
+      // 管理画面の各 API は withAuth を通るため、ここが共通のボトルネック候補。
+      // PERF_LOG_ENABLED=1 のときのみ出力（OFF 時は performance.now も呼ばない）。
+      const authStart = PERF_LOG_ENABLED ? performance.now() : 0;
       const user = await getAuthUser(req);
+      if (PERF_LOG_ENABLED) {
+        // eslint-disable-next-line no-console
+        console.log(`[perf:auth] getUser durationMs=${Math.round(performance.now() - authStart)} path=${method} ${pathname}`);
+      }
       if (!user) {
         const bypassRaw2   = process.env.BYPASS_AUTH;
         const hasBypass    = bypassRaw2?.trim().toLowerCase() === "true";

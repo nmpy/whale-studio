@@ -8,6 +8,7 @@ import { NextResponse } from 'next/server';
 import type { Role, MemberStatus } from '@/lib/types/permissions';
 import { roleAtLeast } from '@/lib/types/permissions';
 import { isPlatformOwner } from '@/lib/platform-admin';
+import { PERF_LOG_ENABLED } from '@/lib/perf';
 
 // ── 型 ────────────────────────────────────────────────────────────────
 
@@ -203,7 +204,14 @@ export async function requireRole(
   | { ok: true;  role: Role; status: MemberStatus }
   | { ok: false; response: NextResponse }
 > {
+  // role 解決 (= getWorkspaceRole: owner_key / WorkspaceMember 等の DB 判定) の所要時間を計測。
+  // preloadedOa の有無で内部 Oa.findUnique がスキップされるかが分かる。PERF_LOG_ENABLED 時のみ。
+  const roleStart = PERF_LOG_ENABLED ? performance.now() : 0;
   const member = await getWorkspaceRole(workspaceId, userId, options);
+  if (PERF_LOG_ENABLED) {
+    // eslint-disable-next-line no-console
+    console.log(`[perf:rbac] requireRole durationMs=${Math.round(performance.now() - roleStart)} preloaded=${options?.preloadedOa !== undefined} workspace=${maskId(workspaceId)}`);
+  }
 
   // 1. 未所属
   if (!member) {
