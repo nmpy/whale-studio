@@ -3,7 +3,9 @@
 // LIFF プレイヤー画面からのイベント計測ユーティリティ + イベント定数。
 // サーバー側 (API ルート) からも参照できる単純な共有モジュール。
 
-/** 計測対象のイベント種別。 */
+/** 計測対象のイベント種別。
+ *  ※ LiffEventLog.eventType は文字列カラム（DB enum ではない）。新イベントは本配列への
+ *    追加のみで有効化でき、migration は不要。 */
 export const LIFF_EVENT_TYPES = [
   "page_view",
   "block_view",
@@ -13,6 +15,16 @@ export const LIFF_EVENT_TYPES = [
   "survey_submit",
   "checkin_success",
   "checkin_failed",
+  // ── slice 4: LIFF Runtime / GPS / QR の最低限イベント ──
+  "liff_init_success",
+  "liff_init_failed",
+  "session_success",
+  "session_failed",
+  "gps_checkin_success",
+  "gps_checkin_failed",
+  "qr_scan_success",
+  "qr_scan_failed",
+  "qr_scan_cancelled",
 ] as const;
 
 export type LiffEventType = (typeof LIFF_EVENT_TYPES)[number];
