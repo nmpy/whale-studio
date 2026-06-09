@@ -11,7 +11,6 @@ import type { PhaseWithCounts, Character, QuickReplyItem, QuickReplyAction, Read
 import type { Riddle } from "@/types";
 import { PhaseTransitionsSection } from "./_phase-transitions";
 import { nextTransitionDisabledByPuzzle } from "@/lib/message-flow";
-import { BUILTIN_PRESETS, presetToFormValues } from "@/lib/timing-presets";
 import { TapDestinationSection } from "@/components/destination/TapDestinationSection";
 import type { TapMode } from "@/components/destination/TapDestinationSection";
 import { detectTapMode } from "@/lib/message-destination-utils";
@@ -2424,33 +2423,6 @@ function TimingConfigSection<T extends TimingFormFields>({
               <div style={hintText}>ユーザーの入力後、このメッセージを送る前に待つ時間です</div>
             </div>
           )}
-
-          {/* ── プリセット ── */}
-          <div style={{ marginBottom: 4 }}>
-            <label style={miniLabel}>プリセットから適用</label>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              {BUILTIN_PRESETS.map((p) => (
-                <button
-                  key={p.key}
-                  type="button"
-                  style={{
-                    fontSize: 11, padding: "3px 8px", border: "1px solid #d1d5db",
-                    borderRadius: 4, background: "#fff", cursor: "pointer", color: "#374151",
-                  }}
-                  title={p.description}
-                  onClick={() => {
-                    const vals = presetToFormValues(p);
-                    for (const [k, v] of Object.entries(vals)) {
-                      // k は timing キーで TimingFormFields に含まれる
-                      set(k as keyof T, v as T[keyof T]);
-                    }
-                  }}
-                >
-                  {p.label}
-                </button>
-              ))}
-            </div>
-          </div>
 
           {/* ── 既読 ── */}
           <div>
