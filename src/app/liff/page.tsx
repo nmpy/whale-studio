@@ -103,16 +103,30 @@ function CheckinContent() {
       });
       return;
     }
-    const liffId = process.env.NEXT_PUBLIC_LIFF_ID;
-    if (!liffId) {
-      setState({ step: "error", code: "NO_LIFF_ID", message: "システム設定エラーが発生しました" });
-      return;
-    }
-
     let cancelled = false;
 
     (async () => {
       try {
+        // ── per-OA liffId 解決（slice 1 の Runtime config を消費）──
+        // Oa.liffId → NEXT_PUBLIC_LIFF_ID フォールバックはサーバー側 /api/liff/config で解決される。
+        setState({ step: "init", detail: "LIFF 設定を確認中..." });
+        let liffId: string | null = null;
+        try {
+          const cfgRes = await fetch(`/api/liff/config?workId=${encodeURIComponent(workId)}&locationId=${encodeURIComponent(locationId)}`, { cache: "no-store" });
+          const cfg = await cfgRes.json();
+          liffId = cfg?.data?.liffId ?? null;
+        } catch { /* 解決失敗は下で NO_LIFF_ID として扱う */ }
+        if (cancelled) return;
+        if (!liffId) {
+          // 白画面にせず、管理者向けに原因がわかる文言を出す。
+          setState({
+            step: "error",
+            code: "NO_LIFF_ID",
+            message: "LIFF ID が設定されていません。管理画面（アカウント設定 → LIFF設定）で LIFF ID を設定するか、環境変数 NEXT_PUBLIC_LIFF_ID を設定してください。",
+          });
+          return;
+        }
+
         setState({ step: "init", detail: "LINE SDK を読み込み中..." });
         const liff = (await import("@line/liff")).default;
 
@@ -132,7 +146,30 @@ function CheckinContent() {
         ]);
         if (cancelled) return;
 
-        setLineUserId(profile.userId);
+        // ── サーバー検証セッション確立（lineUserId をサーバーで取り直す）──
+        // フロントの profile.userId は信用せず、accessToken を /api/liff/session で検証する。
+        // 検証に失敗してもチェックイン体験を止めないよう、client profile.userId にフォールバック
+        // （その場合は管理者ログに残す）。完全な認可強化は後続スライスで checkin API 側に適用。
+        let resolvedUserId = profile.userId;
+        try {
+          const accessToken = liff.getAccessToken();
+          const sres = await fetch("/api/liff/session", {
+            method:  "POST",
+            headers: { "Content-Type": "application/json" },
+            body:    JSON.stringify({ accessToken, workId, locationId }),
+          });
+          const sjson = await sres.json().catch(() => ({}));
+          if (sjson?.success && sjson.data?.lineUserId) {
+            resolvedUserId = sjson.data.lineUserId as string;
+          } else {
+            console.warn("[LIFF] session verify failed — client userId にフォールバック");
+          }
+        } catch (e) {
+          console.warn("[LIFF] session API error — client userId にフォールバック", e);
+        }
+        if (cancelled) return;
+
+        setLineUserId(resolvedUserId);
 
         const locData = locRes.success ? locRes.data : null;
         const mode: CheckinMode = (locData?.checkin_mode as CheckinMode) ?? "qr_only";
