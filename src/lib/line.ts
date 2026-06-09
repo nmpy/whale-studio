@@ -203,8 +203,25 @@ const DEFAULT_MSG_LAG_MS = 1000; // lag_ms 未設定時のメッセージ間待�
 const MAX_MSG_LAG_MS = 600000; // lag_ms の上限値（ms）
 
 /** ms ミリ秒待機する */
-function sleep(ms: number): Promise<void> {
+export function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * 送信前待機（head / 単発メッセージの lag_ms）を解決する。
+ *
+ * 仕様:
+ *   - `_lagMs`（= DB の lag_ms。convertMessageToLine で設定）をそのまま使う。
+ *   - 0 / undefined = OFF（待機なし）。
+ *   - 0 超は MAX_MSG_LAG_MS で上限クランプ。
+ *
+ * 従来 `replyWithLagToLine` は chain 2 通目以降にしか lag を適用せず、
+ * head（= reply / 単発）の lag_ms が無視されていた（送信前待機が効かないバグ）。
+ * 本関数を webhook の reply 経路から head に対して必ず通すことで、設定どおり待機させる。
+ */
+export function resolveHeadSendDelayMs(message: { _lagMs?: number } | null | undefined): number {
+  const raw = message?._lagMs ?? 0;
+  return raw > 0 ? Math.min(raw, MAX_MSG_LAG_MS) : 0;
 }
 
 // ────────────────────────────────────────────────
