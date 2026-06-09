@@ -1326,7 +1326,7 @@ async function handleWebhook(req: NextRequest, oaId: string) {
           event,
           line: {
             reply: (token, msgs) => _replyToLine(token, msgs, oa.channelAccessToken),
-            push:  (uid, msgs)   => _pushToLine(uid,   msgs, oa.channelAccessToken),
+            push:  async (uid, msgs) => { await _pushToLine(uid, msgs, oa.channelAccessToken); },
           },
         });
         console.log(

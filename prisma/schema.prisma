@@ -408,6 +408,7 @@ model Message {
   prevMessages          Message[]  @relation("MessageChain")
   freeInputNextMessage  Message?   @relation("MessageFreeInputNext", fields: [freeInputNextMessageId], references: [id], onDelete: SetNull)
   freeInputPrevMessages Message[]  @relation("MessageFreeInputNext")
+  qrSuccessLocations    Location[] @relation("LocationQrSuccessMessage")
   phase                 Phase?     @relation(fields: [phaseId], references: [id])
   work                  Work       @relation(fields: [workId], references: [id], onDelete: Cascade)
 
@@ -1125,6 +1126,9 @@ model Location {
   cooldownSeconds Int             @default(300) @map("cooldown_seconds")
   /// チェックイン時に自動発火する遷移（任意）
   transitionId    String?         @map("transition_id")
+  /// QR 読み取り成功時に LINE push 送信するメッセージ（任意 / null = 未設定）。
+  /// 設定されていない場合、QR 成功 API は message_not_configured を返し送信しない。
+  qrSuccessMessageId String?      @map("qr_success_message_id")
   /// チェックイン時に UserProgress.flags へマージする JSON オブジェクト
   setFlags        String          @default("{}") @map("set_flags")
   sortOrder       Int             @default(0) @map("sort_order")
@@ -1137,13 +1141,15 @@ model Location {
   stampOrder      Int?            @map("stamp_order")
   createdAt       DateTime        @default(now()) @map("created_at")
   updatedAt       DateTime        @updatedAt @map("updated_at")
-  work            Work            @relation(fields: [workId], references: [id], onDelete: Cascade)
-  transition      Transition?     @relation(fields: [transitionId], references: [id], onDelete: SetNull)
-  visits          LocationVisit[]
+  work             Work            @relation(fields: [workId], references: [id], onDelete: Cascade)
+  transition       Transition?     @relation(fields: [transitionId], references: [id], onDelete: SetNull)
+  qrSuccessMessage Message?        @relation("LocationQrSuccessMessage", fields: [qrSuccessMessageId], references: [id], onDelete: SetNull)
+  visits           LocationVisit[]
 
   @@index([workId])
   @@index([beaconUuid, beaconMajor, beaconMinor])
   @@index([isActive])
+  @@index([qrSuccessMessageId])
   @@map("locations")
 }
 

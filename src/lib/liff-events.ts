@@ -25,6 +25,12 @@ export const LIFF_EVENT_TYPES = [
   "qr_scan_success",
   "qr_scan_failed",
   "qr_scan_cancelled",
+  // ── QR 成功後のメッセージ push 送信（follow-up）──
+  "qr_message_send_started",
+  "qr_message_send_success",
+  "qr_message_send_failed",
+  "qr_message_send_skipped",
+  "qr_message_duplicate",
 ] as const;
 
 export type LiffEventType = (typeof LIFF_EVENT_TYPES)[number];
