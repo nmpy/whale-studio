@@ -72,6 +72,8 @@ export const updateWorkSchema = z.object({
   sort_order:          z.number().int().min(0).optional(),
   /** LIFF プレイヤー機能 (作品メニュー + 個別 LIFF ページ) の有効/無効。 */
   liff_enabled:        z.boolean().optional(),
+  /** 途中再開機能の有効/無効（作品単位）。true=再開選択肢を表示 / false=最初から開始に寄せる。 */
+  resume_enabled:      z.boolean().optional(),
   system_character_id: z.string().uuid().optional().nullable(),
   /**
    * あいさつメッセージ。最大 1000 文字。

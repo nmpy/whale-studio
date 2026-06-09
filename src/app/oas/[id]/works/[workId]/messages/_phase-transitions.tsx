@@ -70,12 +70,17 @@ interface PhaseTransitionsSectionProps {
   workId:  string;
   phaseId: string;
   phases:  PhaseWithCounts[];
+  /** true のとき、このセクションを編集不可（グレーアウト）にする。
+   *  謎・問題で正解時アクションにフェーズ遷移が設定されている場合に使う。 */
+  disabled?: boolean;
+  /** disabled 時に表示する補足テキスト（理由）。 */
+  disabledNote?: string;
 }
 
 // ── メインコンポーネント ─────────────────────────────────────────────────
 
 export function PhaseTransitionsSection({
-  oaId, workId, phaseId, phases,
+  oaId, workId, phaseId, phases, disabled = false, disabledNote,
 }: PhaseTransitionsSectionProps) {
 
   const [transitions, setTransitions] = useState<TransitionWithPhases[]>([]);
@@ -252,6 +257,34 @@ export function PhaseTransitionsSection({
         </Link>
       </div>
 
+      {/* 競合時の補足（謎・問題の正解時アクション=フェーズ遷移）。
+          グレーアウトした内容より前に、無効化理由を明示する。 */}
+      {disabled && (
+        <div
+          role="note"
+          style={{
+            fontSize:     12,
+            color:        "#92400e",
+            background:   "#fffbeb",
+            border:       "1px solid #fde68a",
+            borderRadius: 8,
+            padding:      "8px 12px",
+            marginBottom: 10,
+            lineHeight:   1.6,
+          }}
+        >
+          <strong>正解時アクションでフェーズ遷移が設定されています</strong>
+          <div style={{ marginTop: 2 }}>
+            {disabledNote ?? "謎・問題の正解時にフェーズ遷移するため、このメッセージの後の遷移は使用されません。"}
+          </div>
+        </div>
+      )}
+
+      {/* disabled のときはグレーアウト + 非インタラクティブにする（編集不可） */}
+      <div
+        aria-disabled={disabled || undefined}
+        style={disabled ? { opacity: 0.5, pointerEvents: "none", userSelect: "none" } : undefined}
+      >
       {/* コンテンツ */}
       {loading ? (
         <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "#9ca3af", padding: "8px 0" }}>
@@ -617,6 +650,7 @@ export function PhaseTransitionsSection({
           ＋ 遷移を追加
         </button>
       )}
+      </div>{/* /grey-out wrapper */}
     </div>
   );
 }

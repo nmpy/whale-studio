@@ -48,7 +48,7 @@ export function WorksEmptyState({ oaId, isTester }: Props) {
           {[
             { n: "1", label: "作品情報を入力",       desc: "タイトルと説明を設定" },
             { n: "2", label: "キャラクターを作成",   desc: "送信者の名前・アイコンを設定" },
-            { n: "3", label: "メッセージ・謎を追加", desc: "会話や謎チャレンジを作成" },
+            { n: "3", label: "メッセージを追加", desc: "会話や謎チャレンジを作成" },
           ].map(({ n, label, desc }) => (
             <div key={n} className="flex items-start" style={{ gap: 12 }}>
               <span

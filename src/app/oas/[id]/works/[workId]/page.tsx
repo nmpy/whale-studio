@@ -50,7 +50,7 @@ function statusTone(status: string): "active" | "muted" | "warn" {
 const HUB_CARDS = [
   { key: "edit",         title: "作品情報",       desc: "タイトル・説明・公開ステータス・あいさつメッセージを編集します" },
   { key: "characters",   title: "キャラクター",   desc: "メッセージ送信者となるキャラクターを管理します" },
-  { key: "messages",     title: "メッセージ・謎", desc: "フェーズごとに送信するメッセージ・謎チャレンジを管理します" },
+  { key: "messages",     title: "メッセージ", desc: "フェーズごとに送信するメッセージ・謎チャレンジを管理します" },
   { key: "scenario",     title: "シナリオフロー", desc: "フェーズの追加・並び替え・編集と遷移フローを1画面で管理します" },
   { key: "audience",     title: "オーディエンス", desc: "プレイ統計・リアルタイム・フロー・セグメント・トラッキングを確認します" },
   { key: "liff",         title: "LIFF表示設定",   desc: "LIFFページに表示するブロックの追加・編集・並び替えを行います" },

@@ -28,7 +28,7 @@ function stub(title: string): MessagesBootstrapData {
   return {
     work: {
       id: "w1", oa_id: "oa1", title, welcome_message: null,
-      publish_status: "draft", liff_enabled: true, system_character_id: null,
+      publish_status: "draft", liff_enabled: true, resume_enabled: true, system_character_id: null,
     },
     messages: [],
     phases: [],

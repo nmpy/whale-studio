@@ -540,6 +540,7 @@ export interface MessagesBootstrapData {
     welcome_message:     string | null;
     publish_status:      string;
     liff_enabled:        boolean;
+    resume_enabled:      boolean;
     system_character_id: string | null;
   };
   messages:    MessageWithRelations[];

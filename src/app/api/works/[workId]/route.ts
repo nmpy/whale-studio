@@ -16,6 +16,7 @@ function toResponse(w: {
   id: string; publicId?: string | null; oaId: string; title: string; description: string | null;
   publishStatus: string; sortOrder: number;
   liffEnabled?: boolean | null;
+  resumeEnabled?: boolean | null;
   systemCharacterId: string | null;
   welcomeMessage: string | null;
   readReceiptMode: string | null; readDelayMs: number | null;
@@ -35,6 +36,7 @@ function toResponse(w: {
     // 既存 DB 行は migration 後 default(true) なので false 単体での null は来ない想定。
     // null/undefined のときは true 扱い (= LIFF 有効)。
     liff_enabled:        w.liffEnabled ?? true,
+    resume_enabled:      w.resumeEnabled ?? true,
     system_character_id: w.systemCharacterId,
     welcome_message:     w.welcomeMessage,
     // 演出設定
@@ -100,6 +102,7 @@ export const PATCH = withAuth<{ workId: string }>(async (req, { params }, user) 
         ...(data.publish_status      !== undefined && { publishStatus:      data.publish_status }),
         ...(data.sort_order          !== undefined && { sortOrder:          data.sort_order }),
         ...(data.liff_enabled        !== undefined && { liffEnabled:        data.liff_enabled }),
+        ...(data.resume_enabled      !== undefined && { resumeEnabled:      data.resume_enabled }),
         ...(data.system_character_id !== undefined && { systemCharacterId:  data.system_character_id }),
         ...(data.welcome_message     !== undefined && { welcomeMessage:     data.welcome_message }),
         // 演出設定
