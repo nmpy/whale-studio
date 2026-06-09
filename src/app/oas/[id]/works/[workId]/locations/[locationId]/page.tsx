@@ -195,6 +195,7 @@ export default function EditLocationPage() {
             checkin_mode: location.checkin_mode,
             cooldown_seconds: location.cooldown_seconds,
             transition_id: location.transition_id ?? "",
+            qr_success_message_id: location.qr_success_message_id ?? "",
             set_flags: location.set_flags,
             is_active: location.is_active,
             stamp_enabled: location.stamp_enabled,

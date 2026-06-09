@@ -1368,6 +1368,13 @@ const latSchema  = z.number().min(-90).max(90);
 const lngSchema  = z.number().min(-180).max(180);
 const checkinModeSchema = z.enum(["qr_only", "gps_only", "qr_and_gps"]).default("qr_only");
 
+// QR 成功時に送るメッセージ ID。空文字は null（未設定）に正規化し、値があれば UUID 検証する。
+// 同一 Work scope の検証は route 側で DB に対して行う（client 値を信用しない）。
+const qrSuccessMessageIdSchema = z.preprocess(
+  (v) => (v === "" ? null : v),
+  uuidSchema.nullable().optional(),
+);
+
 export const createLocationSchema = z.object({
   work_id:          uuidSchema,
   name:             z.string().min(1, "ロケーション名は必須です").max(100),
@@ -1382,6 +1389,7 @@ export const createLocationSchema = z.object({
   checkin_mode:     checkinModeSchema,
   cooldown_seconds: z.number().int().min(0).max(86400).default(300),
   transition_id:    uuidSchema.optional(),
+  qr_success_message_id: qrSuccessMessageIdSchema,
   set_flags:        setFlagsSchema,
   sort_order:       sortSchema,
   is_active:        z.boolean().default(true),
@@ -1409,6 +1417,7 @@ export const updateLocationSchema = z.object({
   checkin_mode:     z.enum(["qr_only", "gps_only", "qr_and_gps"]).optional(),
   cooldown_seconds: z.number().int().min(0).max(86400).optional(),
   transition_id:    uuidSchema.optional().nullable(),
+  qr_success_message_id: qrSuccessMessageIdSchema,
   set_flags:        setFlagsSchema,
   sort_order:       z.number().int().min(0).optional(),
   is_active:        z.boolean().optional(),
