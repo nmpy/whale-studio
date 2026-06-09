@@ -105,10 +105,18 @@ export function interpretQrComplete(
     return { outcome: "failed", message: "処理結果を確認できませんでした。もう一度お試しください。" };
   }
 
-  // ── error エンベロープ ──
+  // ── error エンベロープ（原因別に文言を出し分ける） ──
   const code = b.error?.code;
   if (code === "FEATURE_DISABLED") {
     return { outcome: "failed", message: "この作品ではQR読み取りが有効になっていません。" };
+  }
+  if (code === "PLAN_REQUIRED") {
+    // runtime からは原則出ない想定（plan guard 撤去済み）が、出た場合に分かる文言にする。
+    return { outcome: "failed", message: b.error?.message || "この機能を使うにはプラン変更が必要です。" };
+  }
+  if (code === "SEND_FAILED") {
+    // push 失敗。最も多い原因は「公式アカウント未友だち」。次の行動が分かる文言にする。
+    return { outcome: "failed", message: "メッセージ送信に失敗しました。公式アカウントを友だち追加しているかご確認のうえ、もう一度お試しください。" };
   }
   if (httpStatus === 401) {
     return { outcome: "failed", message: "LINE連携に失敗しました。もう一度開き直してください。" };

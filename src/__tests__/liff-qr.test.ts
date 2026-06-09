@@ -158,10 +158,17 @@ describe("interpretQrComplete (PR 2/2)", () => {
     expect(r.message).toContain("有効になっていません");
   });
 
-  it("502 SEND_FAILED → failed（汎用送信失敗文言）", () => {
+  it("403 PLAN_REQUIRED → failed（プラン変更が必要の文言）", () => {
+    const r = interpretQrComplete(403, { success: false, error: { code: "PLAN_REQUIRED" } });
+    expect(r.outcome).toBe("failed");
+    expect(r.message).toContain("プラン");
+  });
+
+  it("502 SEND_FAILED → failed（友だち追加を促す文言）", () => {
     const r = interpretQrComplete(502, { success: false, error: { code: "SEND_FAILED" } });
     expect(r.outcome).toBe("failed");
     expect(r.message).toContain("送信に失敗");
+    expect(r.message).toContain("友だち追加");
   });
 
   it("body が null / 想定外でも failed に倒れる（白画面にしない）", () => {

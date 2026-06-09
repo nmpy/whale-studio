@@ -28,12 +28,6 @@ vi.mock("@/lib/line", () => ({
   buildKeywordMessages: () => [{ type: "text", text: "hi" }],
 }));
 
-// ── plan guard mock ──
-const mockRequirePlan = vi.fn();
-vi.mock("@/lib/plan-guard", () => ({
-  requirePlanFeature: (...a: unknown[]) => mockRequirePlan(...a),
-}));
-
 // ── QR → Location 解決 mock ──
 const mockFindLocation = vi.fn();
 vi.mock("@/lib/public-id-resolver", () => ({
@@ -60,7 +54,6 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockVerify.mockResolvedValue({ ok: true, lineUserId: "U1", displayName: "なみ" });
   mockOa.findUnique.mockResolvedValue({ id: "oa-1", title: "OA", channelAccessToken: "cat", liffScanQrEnabled: true, serviceSuspendedAt: null });
-  mockRequirePlan.mockResolvedValue({ ok: true, plan: "pro" });
   mockWork.findUnique.mockResolvedValue({ id: "work-1", oaId: "oa-1" });
   mockFindLocation.mockResolvedValue({ id: "loc-1", name: "スポットA", workId: "work-1", qrSuccessMessageId: "msg-1" });
   mockMessage.findUnique.mockResolvedValue({
@@ -99,14 +92,12 @@ describe("POST /api/liff/qr/complete", () => {
     expect(mockPush).not.toHaveBeenCalled();
   });
 
-  it("プラン不足 → guard の 403 をそのまま返す", async () => {
-    mockRequirePlan.mockResolvedValue({
-      ok: false,
-      response: new Response(JSON.stringify({ success: false, error: { code: "PLAN_REQUIRED" } }), { status: 403, headers: { "content-type": "application/json" } }),
-    });
+  it("scanQrEnabled=true なら plan guard で 403 にならず push 経路へ進む（plan guard 撤去）", async () => {
     const res = await callPost(makeReq(VALID_BODY));
-    expect(res.status).toBe(403);
-    expect(mockPush).not.toHaveBeenCalled();
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.data.sent).toBe(true);
+    expect(mockPush).toHaveBeenCalledTimes(1);
   });
 
   it("他 OA の work → 404（テナント分離）", async () => {

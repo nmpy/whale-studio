@@ -21,8 +21,6 @@ import { prisma } from "@/lib/prisma";
 import { ok, badRequest, notFound, serverError } from "@/lib/api-response";
 import { NextResponse } from "next/server";
 import { verifyLiffAccessToken } from "@/lib/liff/session";
-import { requirePlanFeature } from "@/lib/plan-guard";
-import { FEATURE } from "@/lib/constants/plans";
 import { parseQrValue, qrValuePreview } from "@/lib/liff/qr-resolve";
 import { findLocationByIdOrPublicId } from "@/lib/public-id-resolver";
 import { pushToLine, buildKeywordMessages, type KeywordMessageRecord, type PlaceholderVars } from "@/lib/line";
@@ -174,17 +172,16 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     });
     if (!oa) return notFound("OA");
 
-    // QR 機能 OFF → feature disabled（403）
+    // QR 実行可否は Oa.liffScanQrEnabled トグルに一本化する（runtime は GPS checkin と同様に
+    // plan guard を持たない）。トグルの有効化自体は管理画面側で既存プラン制御済み。
+    // ※ 以前は requirePlanFeature(FEATURE.location) を課していたが、UI 上は QR が表示されるのに
+    //   実行時だけ 403 になる不整合（GPS checkin は無ゲート）を解消するため撤去。
     if (!oa.liffScanQrEnabled) {
       return NextResponse.json(
         { success: false, error: { code: "FEATURE_DISABLED", message: "この作品では QR 読み取りが有効になっていません" } },
         { status: 403 },
       );
     }
-
-    // プラン判定（QR/ロケーションは location feature）。platform admin preview は本番判定に影響しない。
-    const guard = await requirePlanFeature({ oaId: oa.id, featureKey: FEATURE.location });
-    if (!guard.ok) return guard.response;
 
     // ── Work が OA に属することを検証 ──
     const work = await prisma.work.findUnique({ where: { id: workId }, select: { id: true, oaId: true } });
