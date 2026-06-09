@@ -15,29 +15,9 @@ import { ZodError } from "zod";
 import { activeCache, CACHE_KEY } from "@/lib/cache";
 // OnboardingEvent write 停止済み（Phase 3）— trackOnboardingStep import を削除
 import { trackOnboardingProgress } from "@/lib/onboarding";
+import { phaseToResponse as toResponse } from "@/lib/api/list-shapes";
 
 export const dynamic = "force-dynamic";
-function toResponse(p: {
-  id: string; workId: string; phaseType: string; name: string; description: string | null;
-  startTrigger: string | null; resumeSummary: string | null;
-  sortOrder: number; isActive: boolean; createdAt: Date; updatedAt: Date;
-  _count?: { messages: number; transitionsFrom: number };
-}) {
-  return {
-    id:             p.id,
-    work_id:        p.workId,
-    phase_type:     p.phaseType,
-    name:           p.name,
-    description:    p.description,
-    start_trigger:  p.startTrigger,
-    resume_summary: p.resumeSummary,
-    sort_order:     p.sortOrder,
-    is_active:      p.isActive,
-    created_at:     p.createdAt,
-    updated_at:     p.updatedAt,
-    ...(p._count !== undefined && { _count: p._count }),
-  };
-}
 
 // ── GET /api/phases ──────────────────────────────
 export const GET = withAuth(async (req, _ctx, user) => {
