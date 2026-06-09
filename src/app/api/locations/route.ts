@@ -33,6 +33,7 @@ function toResponse(l: any, transition?: any) {
     checkin_mode:     l.checkinMode,
     cooldown_seconds: l.cooldownSeconds,
     transition_id:    l.transitionId,
+    qr_success_message_id: l.qrSuccessMessageId ?? null,
     set_flags:        l.setFlags,
     sort_order:       l.sortOrder,
     is_active:        l.isActive,
@@ -116,6 +117,13 @@ export const POST = withAuth(async (req, _ctx, user) => {
       if (transition.workId !== data.work_id) return badRequest("指定された遷移が同じ作品に属していません");
     }
 
+    // qr_success_message_id が指定されている場合、同じ作品に属するか確認（client 値は信用しない）
+    if (data.qr_success_message_id) {
+      const msg = await prisma.message.findUnique({ where: { id: data.qr_success_message_id }, select: { workId: true } });
+      if (!msg) return notFound("メッセージ");
+      if (msg.workId !== data.work_id) return badRequest("指定されたメッセージが同じ作品に属していません");
+    }
+
     const location = await prisma.location.create({
       data: {
         workId:          data.work_id,
@@ -131,6 +139,7 @@ export const POST = withAuth(async (req, _ctx, user) => {
         checkinMode:     data.checkin_mode ?? "qr_only",
         cooldownSeconds: data.cooldown_seconds,
         transitionId:    data.transition_id,
+        qrSuccessMessageId: data.qr_success_message_id ?? null,
         setFlags:        data.set_flags ?? "{}",
         sortOrder:       data.sort_order,
         isActive:        data.is_active,

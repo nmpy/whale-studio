@@ -7,9 +7,10 @@
 
 import { useEffect, useState, useCallback } from "react";
 import dynamic from "next/dynamic";
-import { transitionApi, getDevToken } from "@/lib/api-client";
+import { transitionApi, messageApi, getDevToken } from "@/lib/api-client";
 import { Button } from "@/components/shared";
-import type { TransitionWithPhases } from "@/types";
+import { formatMessageOptionLabel } from "@/lib/message-option-label";
+import type { TransitionWithPhases, Message, MessageWithRelations } from "@/types";
 
 // Leaflet は SSR 非対応のため dynamic import
 const LocationMapPicker = dynamic(() => import("@/components/LocationMapPicker"), { ssr: false });
@@ -30,6 +31,7 @@ interface LocationFormProps {
     checkin_mode: string;
     cooldown_seconds: number;
     transition_id: string;
+    qr_success_message_id: string;
     set_flags: string;
     is_active: boolean;
     stamp_enabled: boolean;
@@ -93,6 +95,7 @@ export function LocationForm({ onSubmit, saving, workId, defaultValues }: Locati
   // Core
   const [cooldownSeconds, setCooldownSeconds] = useState(defaultValues?.cooldown_seconds?.toString() ?? "300");
   const [transitionId, setTransitionId] = useState(defaultValues?.transition_id ?? "");
+  const [qrSuccessMessageId, setQrSuccessMessageId] = useState(defaultValues?.qr_success_message_id ?? "");
   const [setFlags, setSetFlags] = useState(defaultValues?.set_flags ?? "{}");
   const [isActive, setIsActive] = useState(defaultValues?.is_active ?? true);
   // Stamp
@@ -101,6 +104,7 @@ export function LocationForm({ onSubmit, saving, workId, defaultValues }: Locati
   const [stampOrder, setStampOrder] = useState(defaultValues?.stamp_order?.toString() ?? "");
 
   const [transitions, setTransitions] = useState<TransitionWithPhases[]>([]);
+  const [messages, setMessages] = useState<(Message | MessageWithRelations)[]>([]);
   const jsonCheck = validateJson(setFlags);
 
   const radiusNum = Number(radiusMeters);
@@ -132,6 +136,13 @@ export function LocationForm({ onSubmit, saving, workId, defaultValues }: Locati
     })();
   }, [workId]);
 
+  useEffect(() => {
+    (async () => {
+      // QR 成功時メッセージ選択用。フェーズ名を出すため with_relations を付ける。
+      try { setMessages(await messageApi.list(getDevToken(), workId, { is_active: true, with_relations: true })); } catch { /* ignore */ }
+    })();
+  }, [workId]);
+
   const canSubmit = name.trim() && jsonCheck.valid && !gpsIncomplete && !latInvalid && !lngInvalid;
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -143,6 +154,7 @@ export function LocationForm({ onSubmit, saving, workId, defaultValues }: Locati
       description: description || undefined,
       cooldown_seconds: Number(cooldownSeconds) || 300,
       transition_id: transitionId || (defaultValues ? null : undefined),
+      qr_success_message_id: qrSuccessMessageId || (defaultValues ? null : undefined),
       set_flags: setFlags.trim() || "{}",
       is_active: isActive,
       stamp_enabled: stampEnabled,
@@ -315,6 +327,25 @@ export function LocationForm({ onSubmit, saving, workId, defaultValues }: Locati
           <p style={helpStyle}>遷移元フェーズが現在フェーズと一致する場合のみ発火します。</p>
         </div>
 
+        {/* ── QR 成功時に送るメッセージ ── */}
+        <div style={groupStyle}>
+          <label style={labelStyle}>QR成功時に送るメッセージ</label>
+          <select style={inputStyle} value={qrSuccessMessageId} onChange={(e) => setQrSuccessMessageId(e.target.value)}>
+            <option value="">送信しない</option>
+            {/* 選択中の値が一覧に無い（無効化/削除途中など）場合でも値が消えないようフォールバック表示 */}
+            {qrSuccessMessageId && !messages.some((m) => m.id === qrSuccessMessageId) && (
+              <option value={qrSuccessMessageId}>（選択中のメッセージ: 表示できません）</option>
+            )}
+            {messages.map((m) => (
+              <option key={m.id} value={m.id}>{formatMessageOptionLabel(m)}</option>
+            ))}
+          </select>
+          <p style={helpStyle}>
+            LIFFでこのロケーションのQRを読み取ったとき、LINEトークに送信するメッセージを選択します。
+            「送信しない」で解除できます。OAのScan QRがOFFの場合、このメッセージは送信されません。
+          </p>
+        </div>
+
         <div style={groupStyle}>
           <label style={labelStyle}>チェックイン時に設定するフラグ（JSON）</label>
           <textarea
@@ -326,7 +357,7 @@ export function LocationForm({ onSubmit, saving, workId, defaultValues }: Locati
         </div>
 
         <p style={{ fontSize: 11, color: "#9ca3af", lineHeight: 1.6 }}>
-          将来拡張: メッセージ送信・報酬付与・ヒント解放などのアクションは今後追加予定です。
+          将来拡張: 報酬付与・ヒント解放などのアクションは今後追加予定です。
         </p>
       </div>
 

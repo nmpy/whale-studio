@@ -1725,6 +1725,8 @@ export interface Location {
   checkin_mode:     CheckinMode;
   cooldown_seconds: number;
   transition_id:    string | null;
+  /** QR 読み取り成功時に LINE push 送信するメッセージ ID（null = 未設定）。 */
+  qr_success_message_id: string | null;
   set_flags:        string;
   sort_order:       number;
   is_active:        boolean;
@@ -1769,6 +1771,7 @@ export interface CreateLocationBody {
   checkin_mode?:    CheckinMode;
   cooldown_seconds?: number;
   transition_id?:   string;
+  qr_success_message_id?: string | null;
   set_flags?:       string;
   sort_order?:      number;
   is_active?:       boolean;
@@ -1791,6 +1794,7 @@ export interface UpdateLocationBody {
   checkin_mode?:     CheckinMode;
   cooldown_seconds?: number;
   transition_id?:    string | null;
+  qr_success_message_id?: string | null;
   set_flags?:        string;
   sort_order?:       number;
   is_active?:        boolean;
