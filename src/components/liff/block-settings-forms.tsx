@@ -20,6 +20,7 @@ import type {
   ButtonLinkSettings,
   DividerSettings,
   AccordionSettings,
+  CodeReaderSettings,
   NestedLiffBlock,
   LiffSectionVariant,
 } from "@/types";
@@ -547,6 +548,58 @@ export function DividerForm({ settings, onChange, readOnly }: FieldProps<Divider
           <option value="solid">実線</option>
           <option value="dashed">点線</option>
         </select>
+      </div>
+    </div>
+  );
+}
+
+export function CodeReaderForm({ settings, onChange, readOnly }: FieldProps<CodeReaderSettings>) {
+  return (
+    <div className="space-y-3">
+      <div>
+        <label className={labelClass}>表示ラベル</label>
+        <input
+          className={inputClass}
+          value={settings.label ?? ""}
+          onChange={(e) => onChange({ ...settings, label: e.target.value })}
+          disabled={readOnly}
+          placeholder="チェックインする"
+        />
+      </div>
+      <div>
+        <label className={labelClass}>モーダルタイトル</label>
+        <input
+          className={inputClass}
+          value={settings.modal_title ?? ""}
+          onChange={(e) => onChange({ ...settings, modal_title: e.target.value })}
+          disabled={readOnly}
+          placeholder="コードリーダー"
+        />
+      </div>
+      <div>
+        <label className={labelClass}>説明文（任意）</label>
+        <input
+          className={inputClass}
+          value={settings.description ?? ""}
+          onChange={(e) => onChange({ ...settings, description: e.target.value })}
+          disabled={readOnly}
+          placeholder="QRコードを読み取ってチェックインします"
+        />
+      </div>
+      <div>
+        <label className={labelClass}>読み取り後の動作</label>
+        <select
+          className={selectClass}
+          value={settings.after_scan ?? "location_checkin"}
+          onChange={(e) => onChange({ ...settings, after_scan: e.target.value as "location_checkin" | "show_result" })}
+          disabled={readOnly}
+        >
+          <option value="location_checkin">ロケーションチェックイン</option>
+          <option value="show_result">読み取り結果を表示</option>
+        </select>
+        <p className="text-[11px] text-gray-400 mt-1">
+          ロケーションチェックイン: 読み取ったQRから既存のチェックイン画面へ進みます。
+        </p>
       </div>
     </div>
   );

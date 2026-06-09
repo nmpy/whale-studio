@@ -17,3 +17,5 @@ export { WarningBlock } from "./WarningBlock";
 export { DividerBlock } from "./DividerBlock";
 export { ButtonLinkBlock } from "./ButtonLinkBlock";
 export { AccordionBlock } from "./AccordionBlock";
+// ── ロケーションチェックイン用 ──
+export { CodeReaderBlock } from "./CodeReaderBlock";

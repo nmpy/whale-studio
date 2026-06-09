@@ -894,6 +894,8 @@ export const LIFF_BLOCK_TYPES = [
   "evidence_list", "hint_list", "character_list", "image", "video",
   // ── ヒントサイト用 ──
   "heading", "text", "warning", "button_link", "divider", "accordion",
+  // ── ロケーションチェックイン用 ──
+  "code_reader",
 ] as const;
 
 export const VISIBILITY_CONDITIONS = [
@@ -1023,6 +1025,13 @@ const accordionSettingsSchema: z.ZodTypeAny = z.object({
   children:     z.array(nestedBlockBaseSchema).optional(),
 }).passthrough();
 
+const codeReaderSettingsSchema = z.object({
+  label:       z.string().max(100).optional(),
+  modal_title: z.string().max(100).optional(),
+  description: z.string().max(500).optional(),
+  after_scan:  z.enum(["location_checkin", "show_result"]).optional(),
+}).passthrough();
+
 const SETTINGS_SCHEMA_MAP: Record<string, z.ZodTypeAny> = {
   free_text:       freeTextSettingsSchema,
   start_button:    startButtonSettingsSchema,
@@ -1040,6 +1049,7 @@ const SETTINGS_SCHEMA_MAP: Record<string, z.ZodTypeAny> = {
   button_link:     buttonLinkSettingsSchema,
   divider:         dividerSettingsSchema,
   accordion:       accordionSettingsSchema,
+  code_reader:     codeReaderSettingsSchema,
 };
 
 /**
