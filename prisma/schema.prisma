@@ -32,6 +32,16 @@ model Oa {
   /// 一律「このアカウントのサービスは終了しました。ご利用ありがとうございました。」
   /// を message event の replyToken に対してのみ返す。
   serviceSuspendedAt DateTime?          @map("service_suspended_at")
+  /// LIFF (LINE Front-end Framework) 設定（OA 単位）。
+  /// liffId: この OA 専用の LIFF アプリ ID。未設定時は NEXT_PUBLIC_LIFF_ID にフォールバックする。
+  ///   解決順: Oa.liffId → process.env.NEXT_PUBLIC_LIFF_ID → 未設定（管理画面/Runtime でエラー表示）。
+  liffId             String?            @map("liff_id")
+  /// LINE Developers Console で設定した Endpoint URL のメモ（任意・表示確認用）。
+  /// 実際の Runtime 挙動には影響しない（推奨値は app の /liff）。
+  liffEndpointUrl    String?            @map("liff_endpoint_url")
+  /// QR 読み取り（liff.scanCodeV2）導線を使う想定か（UI 表示フラグ）。
+  /// ※ 実際に動かすには LINE Developers Console の LIFF 設定で Scan QR を ON にする必要がある。
+  liffScanQrEnabled  Boolean            @default(false) @map("liff_scan_qr_enabled")
   friendAddSettings  FriendAddSettings?
   globalCommands     GlobalCommand[]
   hintLogs           HintLog[]

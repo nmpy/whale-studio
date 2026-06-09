@@ -22,6 +22,7 @@ const HUB_ITEM_DEFS = [
   { key: "works",                title: "作品管理",         desc: "作品シナリオの作成・編集・公開管理" },
   { key: "account",              title: "アカウント情報",   desc: "アカウント名・メモ・接続ステータスを管理" },
   { key: "richmenu-editor",      title: "リッチメニュー",   desc: "ユーザー画面下部のメニューをカスタマイズ" },
+  { key: "settings/liff",        title: "LIFF設定",         desc: "LIFF ID・実機確認用 URL/QR・Scan QR 設定（OA 単位）" },
   { key: "friend-add",           title: "友だち追加設定",   desc: "招待 URL・シェア用画像を管理" },
   { key: "sns",                  title: "SNS 投稿管理",     desc: "投稿文・画像・掲載 URL を管理" },
   { key: "trackings",            title: "トラッキング管理", desc: "流入元ごとのクリック数・ユーザー数を計測" },
@@ -122,7 +123,7 @@ export default function OaSettingsPage() {
           {HUB_ITEM_DEFS.filter(({ key }) => {
             if (key === "onboarding-analytics") return isOwner;
             if (key === "settings/members") return isOwner || isAdmin;
-            if (key === "account" || key === "richmenu-editor" || key === "friend-add" || key === "sns") return isAdmin;
+            if (key === "account" || key === "richmenu-editor" || key === "friend-add" || key === "sns" || key === "settings/liff") return isAdmin;
             if (key === "live") return liveAccess; // Live 可ユーザーのみ。それ以外には存在を見せない
             return true; // works, trackings — visible to all
           }).map(({ key, title, desc }) => (
