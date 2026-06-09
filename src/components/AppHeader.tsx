@@ -30,6 +30,23 @@ const FeedbackModal = dynamic(() => import("@/components/FeedbackModal"), { ssr:
 // AppHeader を表示しないルート
 const HEADER_HIDDEN_ROUTES = ["/login", "/access-denied"];
 
+// OA 横断 owner 判定 (isAnyOaOwner) の sessionStorage cache 設定。
+// key は per-user (= `${PREFIX}${userId}`)。auth 変化時に prefix 一致を全消去する。
+const OWNER_CACHE_PREFIX = "ws_is_any_oa_owner_";
+const OWNER_CACHE_TTL_MS = 60_000; // 60s
+
+/** owner 判定 cache を全消去する（auth 変化時 = login/logout/switch）。 */
+function clearOwnerCache(): void {
+  try {
+    const toDel: string[] = [];
+    for (let i = 0; i < sessionStorage.length; i++) {
+      const k = sessionStorage.key(i);
+      if (k && k.startsWith(OWNER_CACHE_PREFIX)) toDel.push(k);
+    }
+    for (const k of toDel) sessionStorage.removeItem(k);
+  } catch { /* sessionStorage 使用不可は無視 */ }
+}
+
 /**
  * pathname から OA ID を抽出する。
  * /oas/[id]/... の形式に対応。
@@ -97,16 +114,57 @@ export default function AppHeader() {
     canUsePreviewModeForHeader && previewRole ? previewRole : workspaceRole;
 
   // ── OA 横断 owner 判定（OA ページ外でも CTA を切り替えるため）─────
-  // /api/oas の my_role を見て、1つでも owner の OA があれば isAnyOaOwner = true
+  // /api/oas の my_role を見て、1つでも owner の OA があれば isAnyOaOwner = true。
+  //
+  // ⚠ パフォーマンス (2nd pass):
+  //   この fetch は AppHeader が全管理画面に乗るため「毎ページ mount で /api/oas?limit=100
+  //   を no-store 取得」していた (= 全 OA の payload を CTA 判定のためだけに毎回取得)。
+  //   管理画面全体が遅い一因。判定結果 (boolean) を sessionStorage に per-user / 60s TTL で
+  //   cache し、ページ遷移のたびの再取得を止める。
+  //   - key に userId を含める → 別ユーザーは別 entry (汚染なし)
+  //   - auth 変化時 (login/logout/switch) に全 entry を clear (下の onAuthStateChange)
+  //   - 新規 owner 化の反映遅延は最大 60s (CTA 切替のみ。実権限は別途 server 判定)
   useEffect(() => {
-    fetch("/api/oas?limit=100", { headers: { ...getAuthHeaders() }, cache: "no-store" })
-      .then((r) => r.ok ? r.json() : null)
-      .then((body) => {
-        if (body?.data?.some((oa: { my_role?: string }) => oa.my_role === "owner")) {
-          setIsAnyOaOwner(true);
+    const supabaseUrl     = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    let cancelled = false;
+
+    (async () => {
+      let userId = "anon";
+      if (supabaseUrl && supabaseAnonKey) {
+        try {
+          const { data } = await createSupabaseBrowserClient().auth.getSession();
+          if (!data.session) return; // 未ログインなら判定不要
+          userId = data.session.user.id;
+        } catch { /* セッション取得不可なら anon 扱いで続行 */ }
+      }
+      if (cancelled) return;
+
+      const cacheKey = OWNER_CACHE_PREFIX + userId;
+      // fast path: per-user sessionStorage cache（fresh ならネットワークを張らない）
+      try {
+        const raw = sessionStorage.getItem(cacheKey);
+        if (raw) {
+          const p = JSON.parse(raw) as { v: boolean; t: number };
+          if (p && typeof p.t === "number" && Date.now() - p.t < OWNER_CACHE_TTL_MS) {
+            if (p.v) setIsAnyOaOwner(true);
+            return;
+          }
         }
-      })
-      .catch(() => {});
+      } catch { /* parse 失敗は無視して fetch */ }
+
+      try {
+        const r = await fetch("/api/oas?limit=100", { headers: { ...getAuthHeaders() }, cache: "no-store" });
+        if (!r.ok || cancelled) return;
+        const body = await r.json();
+        const owner = !!body?.data?.some?.((oa: { my_role?: string }) => oa.my_role === "owner");
+        if (cancelled) return;
+        if (owner) setIsAnyOaOwner(true);
+        try { sessionStorage.setItem(cacheKey, JSON.stringify({ v: owner, t: Date.now() })); } catch { /* quota */ }
+      } catch { /* ネットワークエラーは無視（CTA は非 owner 側に倒れる） */ }
+    })();
+
+    return () => { cancelled = true; };
   }, []);
 
   // ── ログイン状態を取得（Supabase 設定済みのときのみ） ─────────────
@@ -121,11 +179,13 @@ export default function AppHeader() {
     });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, session) => {
       setLoggedIn(!!session);
-      // 認証状態が変わったら管理画面 Bootstrap の module-scope cache を一掃する。
-      // 同一タブで別ユーザーに切り替わった際に、前ユーザーの一覧 payload を
-      // 一瞬でも描画しないための二重防御（通常ログアウトは window.location 全リロードで
-      // module 状態ごと消えるが、SPA 的な auth 変化にも備える）。
+      setIsAnyOaOwner(false); // ログアウト直後に owner CTA を残さない
+      // 認証状態が変わったら管理画面の各種 client cache を一掃する。
+      // 同一タブで別ユーザーに切り替わった際に、前ユーザーのデータ（Bootstrap payload /
+      // owner 判定）を一瞬でも描画しないための二重防御（通常ログアウトは window.location
+      // 全リロードで module 状態ごと消えるが、SPA 的な auth 変化にも備える）。
       clearAllBootstrap();
+      clearOwnerCache();
     });
     return () => subscription.unsubscribe();
   }, []);

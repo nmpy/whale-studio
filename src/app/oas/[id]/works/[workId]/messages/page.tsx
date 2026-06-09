@@ -7,6 +7,7 @@ import { useParams } from "next/navigation";
 import { TLink as Link } from "@/components/TLink";
 import { bootstrapApi, messageApi, getDevToken } from "@/lib/api-client";
 import { getCachedBootstrap, setCachedBootstrap, invalidateBootstrap } from "@/lib/admin-bootstrap-cache";
+import { logAdminPerf, resourceSummary, maskId } from "@/lib/perf-client";
 import { HelpAccordion } from "@/components/HelpAccordion";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { useToast } from "@/components/Toast";
@@ -62,6 +63,8 @@ function CharIcon({ character }: { character: MessageWithRelations["character"];
       <img
         src={character.icon_image_url}
         alt={character.name}
+        loading="lazy"
+        decoding="async"
         style={{
           width: size, height: size, borderRadius: "50%",
           objectFit: "cover", flexShrink: 0,
@@ -532,12 +535,17 @@ export default function MessagesPage() {
       setCanEdit(data.permissions.can_edit);
     }
 
+    const ROUTE = "/oas/[id]/works/[workId]/messages";
+    logAdminPerf(ROUTE, { pageStart: 0, oa: maskId(oaId), work: maskId(workId) });
+
     // 1) cache hit があれば即時表示（真っ白待ちをなくす / 再訪を即時化）。
     const cached = getCachedBootstrap(oaId, workId);
+    const cacheState = cached ? (cached.isFresh ? "hit" : "stale") : "miss";
     if (cached) {
       applyData(cached.data);
       setLoading(false);
       setLoadError(null);
+      logAdminPerf(ROUTE, { firstListPaint: Math.round(performance.now() - t0), cache: cacheState });
     } else {
       setLoading(true);
       setLoadError(null);
@@ -550,17 +558,26 @@ export default function MessagesPage() {
     //    仕込まなくても次 mount で必ず最新へ自己修復される（cache hit 時は即描画 →
     //    裏で最新に差し替え）。一覧自身の楽観更新 (delete/reorder/toggle) は即時整合の
     //    ため invalidateBootstrap でも消している。
+    const fetchStart = (typeof performance !== "undefined" ? performance.now() : 0);
     bootstrapApi.messages(getDevToken(), oaId, workId)
       .then((data) => {
         if (cancelled) return;
         applyData(data);
         setCachedBootstrap(oaId, workId, data);
         setLoadError(null);
-        if (process.env.NEXT_PUBLIC_PERF_LOG === "1" && typeof performance !== "undefined") {
-          const ms = Math.round(performance.now() - t0);
-          // eslint-disable-next-line no-console
-          console.log(`[perf:admin:messages-page] clientReady=${ms}ms msgs=${data.counts.messages} cache=${cached ? "revalidate" : "miss"}`);
-        }
+        const res = resourceSummary();
+        logAdminPerf(ROUTE, {
+          bootstrapFetch: Math.round(performance.now() - fetchStart),
+          cache:          cacheState,
+          firstData:      Math.round(performance.now() - t0),
+          // 初期表示で Bootstrap 1 本に集約済み（旧 5 API は走らない）。
+          apiCount:       1,
+          msgs:           data.counts.messages,
+          phases:         data.counts.phases,
+          trans:          data.counts.transitions,
+          resourceCount:  res.count,
+          transferredKB:  res.transferredKB,
+        });
       })
       .catch((e) => {
         if (cancelled) return;
@@ -1090,6 +1107,8 @@ export default function MessagesPage() {
                                 <img
                                   src={msg.asset_url}
                                   alt="画像"
+                                  loading="lazy"
+                                  decoding="async"
                                   style={{ width: 48, height: 36, objectFit: "cover", borderRadius: 4, border: "1px solid #e5e5e5" }}
                                   onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
                                 />
@@ -1283,6 +1302,8 @@ export default function MessagesPage() {
                                   <img
                                     src={cont.asset_url}
                                     alt="画像"
+                                    loading="lazy"
+                                    decoding="async"
                                     style={{ width: 36, height: 27, objectFit: "cover", borderRadius: 3, border: "1px solid #e5e7eb" }}
                                     onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
                                   />

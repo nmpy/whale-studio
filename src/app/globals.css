@@ -54,10 +54,19 @@
   --color-danger:      #d9776a;
   --color-danger-soft: #fbecea;
 
-  /* === フォント (next/font/google から layout.tsx で注入) === */
-  --font-round: var(--font-zen-maru, "Zen Maru Gothic"), sans-serif;
-  --font-body:  var(--font-zen-kaku, "Zen Kaku Gothic New"), sans-serif;
-  --font-num:   var(--font-quicksand, "Quicksand"), sans-serif;
+  /* === フォント ===
+     管理画面 (= app) は速度優先で日本語 Web フォントを撤去 (PR: admin 2nd pass)。
+     --font-zen-maru / --font-zen-kaku は root layout から注入しなくなったため、
+     下記は **システム日本語フォントスタック**にフォールバックする (= Web フォント DL ゼロ)。
+     将来ブランド面で Web フォントを使う場合は、その subtree の layout で
+     `className={zenMaru.variable}` を当てて --font-zen-* を再注入すれば opt-in で上書きできる。
+     数字・英数字用の Quicksand のみ next/font で残す (latin subset = 軽量)。 */
+  --font-jp-system: -apple-system, BlinkMacSystemFont, "Hiragino Sans",
+    "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Yu Gothic UI", "Yu Gothic",
+    Meiryo, system-ui, sans-serif;
+  --font-round: var(--font-zen-maru, var(--font-jp-system));
+  --font-body:  var(--font-zen-kaku, var(--font-jp-system));
+  --font-num:   var(--font-quicksand, "Quicksand"), var(--font-jp-system);
 
   /* === Radius (専用名。既存の --radius-sm 等は :root に残す) === */
   --radius-card:  20px;

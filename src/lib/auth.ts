@@ -364,7 +364,21 @@ export function withAuth<T = Record<string, string>>(handler: Handler<T>) {
     }
 
     try {
+      // 認証 (= Supabase auth.getUser の往復) の所要時間を計測。
+      // 管理画面の各 API は withAuth を通るため、ここが共通のボトルネック候補。
+      // PERF_LOG_ENABLED=1 のときのみ出力（OFF 時は performance.now も呼ばない）。
+      const authStart = PERF_LOG_ENABLED ? performance.now() : 0;
       const user = await getAuthUser(req);
+      if (PERF_LOG_ENABLED) {
+        // path 内の id セグメント (oaId / workId 等。UUID / cuid) はマスクして出す
+        // (= 16 文字超のセグメントは先頭 8 文字 + "…")。PII / 識別子の全長を出さない。
+        const maskedPath = pathname
+          .split("/")
+          .map((seg) => (seg.length > 16 ? `${seg.slice(0, 8)}…` : seg))
+          .join("/");
+        // eslint-disable-next-line no-console
+        console.log(`[perf:auth] getUser durationMs=${Math.round(performance.now() - authStart)} path=${method} ${maskedPath}`);
+      }
       if (!user) {
         const bypassRaw2   = process.env.BYPASS_AUTH;
         const hasBypass    = bypassRaw2?.trim().toLowerCase() === "true";
