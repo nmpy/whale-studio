@@ -16,6 +16,7 @@ import { useTesterMode } from "@/hooks/useTesterMode";
 import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
 import { parsePreviewRole, type PreviewRole } from "@/lib/access-preview";
 import { getAuthHeaders } from "@/lib/api-client";
+import { clearAllBootstrap } from "@/lib/admin-bootstrap-cache";
 import { RoleBadge } from "@/components/PermissionGuard";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { useProfile } from "@/hooks/useProfile";
@@ -120,6 +121,11 @@ export default function AppHeader() {
     });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, session) => {
       setLoggedIn(!!session);
+      // 認証状態が変わったら管理画面 Bootstrap の module-scope cache を一掃する。
+      // 同一タブで別ユーザーに切り替わった際に、前ユーザーの一覧 payload を
+      // 一瞬でも描画しないための二重防御（通常ログアウトは window.location 全リロードで
+      // module 状態ごと消えるが、SPA 的な auth 変化にも備える）。
+      clearAllBootstrap();
     });
     return () => subscription.unsubscribe();
   }, []);

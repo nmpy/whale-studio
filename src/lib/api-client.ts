@@ -77,6 +77,7 @@ import type {
   UpdateWerewolfRoleCardBody,
   ReorderWerewolfRoleCardsBody,
 } from "@/types";
+import type { Role } from "@/lib/types/permissions";
 
 // ────────────────────────────────────────────────
 // トークン取得ヘルパー
@@ -516,6 +517,56 @@ export const workApi = {
     const res = await fetch(`/api/works/${id}/duplicate`, {
       method:  "POST",
       headers: authHeaders(token),
+    });
+    return parseResponse(res);
+  },
+};
+
+// ────────────────────────────────────────────────
+// Admin Bootstrap API（管理画面の初期表示まとめ取得）
+// ────────────────────────────────────────────────
+
+/**
+ * メッセージ一覧画面の初期表示に必要なデータをまとめて返す Bootstrap API のレスポンス。
+ *
+ * 従来の 5 本（work / messages / phases / transitions / members-me）の並列 fetch を
+ * 1 本に集約したもの。`role` は **実 role**（previewRole は UI 表示専用で API には影響しない）。
+ */
+export interface MessagesBootstrapData {
+  work: {
+    id:                  string;
+    oa_id:               string;
+    title:               string;
+    welcome_message:     string | null;
+    publish_status:      string;
+    liff_enabled:        boolean;
+    system_character_id: string | null;
+  };
+  messages:    MessageWithRelations[];
+  phases:      PhaseWithCounts[];
+  transitions: TransitionWithPhases[];
+  /** 現在ユーザーの実 role（owner/admin/editor/tester/viewer）。 */
+  role:        Role;
+  /** UI 表示用に server で算出した権限フラグ（実 role ベース）。 */
+  permissions: {
+    can_edit:  boolean;
+    is_owner:  boolean;
+    is_admin:  boolean;
+    is_viewer: boolean;
+  };
+  counts: {
+    messages:    number;
+    phases:      number;
+    transitions: number;
+  };
+}
+
+export const bootstrapApi = {
+  /** GET /api/oas/[oaId]/works/[workId]/messages/bootstrap */
+  async messages(token: string, oaId: string, workId: string): Promise<MessagesBootstrapData> {
+    const res = await fetch(`/api/oas/${oaId}/works/${workId}/messages/bootstrap`, {
+      headers: authHeaders(token),
+      cache:   "no-store",
     });
     return parseResponse(res);
   },

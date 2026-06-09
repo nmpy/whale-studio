@@ -5,14 +5,15 @@
 import { Fragment, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { TLink as Link } from "@/components/TLink";
-import { workApi, messageApi, phaseApi, transitionApi, getDevToken } from "@/lib/api-client";
+import { bootstrapApi, messageApi, getDevToken } from "@/lib/api-client";
+import { getCachedBootstrap, setCachedBootstrap, invalidateBootstrap } from "@/lib/admin-bootstrap-cache";
 import { HelpAccordion } from "@/components/HelpAccordion";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { useToast } from "@/components/Toast";
-import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
 import { ViewerBanner } from "@/components/PermissionGuard";
 import { GuideCard } from "@/components/onboarding/GuideCard";
 import type { MessageWithRelations, MessageType, PhaseWithCounts, TransitionWithPhases, QuickReplyItem } from "@/types";
+import type { Role } from "@/lib/types/permissions";
 import { collectChainContinuationIds, chainSizeFrom, getChainContinuations, hasAnyTiming, summarizeTiming } from "./_list-helpers";
 
 const MESSAGE_TYPE_LABEL: Record<MessageType, string> = {
@@ -393,8 +394,12 @@ export default function MessagesPage() {
   const params  = useParams<{ id: string; workId: string }>();
   const oaId    = params.id;
   const workId  = params.workId;
-  const { role, canEdit } = useWorkspaceRole(oaId);
   const { showToast } = useToast();
+  // role / canEdit は Bootstrap API のレスポンス（実 role）から初期化する。
+  // 従来は useWorkspaceRole が /api/oas/[id]/members/me を別途 fetch していたが、
+  // Bootstrap に集約して初期表示の往復を削減した（preview は UI 専用のため挙動不変）。
+  const [role, setRole]                 = useState<Role | null>(null);
+  const [canEdit, setCanEdit]           = useState(false);
   const [activeTab, setActiveTab]       = useState<Tab>("messages");
   const [workTitle, setWorkTitle]       = useState("");
   const [welcomeMsg, setWelcomeMsg]     = useState<string | null>(null);
@@ -427,6 +432,7 @@ export default function MessagesPage() {
     setBusyMessageId(headMsg.id);
     try {
       await messageApi.delete(getDevToken(), headMsg.id);
+      invalidateBootstrap(oaId, workId); // 次回再訪で最新を取得（stale 表示防止）
       // local state からも該当メッセージ + chain continuation を除去
       const contIds = new Set(getChainContinuations(messages, headMsg.id).map((c) => c.id));
       setMessages((prev) => prev.filter((m) => m.id !== headMsg.id && !contIds.has(m.id)));
@@ -472,6 +478,7 @@ export default function MessagesPage() {
         work_id:     workId,
         message_ids: newOrder.map((m) => m.id),
       });
+      invalidateBootstrap(oaId, workId); // 次回再訪で最新を取得（stale 表示防止）
       // local state を新しい順序で更新 (= sortOrder を 0,1,2,... で再付番)
       const newSortByMsgId = new Map(newOrder.map((m, i) => [m.id, i]));
       setMessages((prev) =>
@@ -498,6 +505,7 @@ export default function MessagesPage() {
     setMessages((prev) => prev.map((m) => (m.id === msg.id ? { ...m, is_active: nextActive } : m)));
     try {
       await messageApi.update(getDevToken(), msg.id, { is_active: nextActive });
+      invalidateBootstrap(oaId, workId); // 次回再訪で最新を取得（stale 表示防止）
       showToast(nextActive ? "メッセージを有効化しました" : "メッセージを無効化しました", "success");
     } catch (err) {
       console.error("[messages] toggle is_active error:", err);
@@ -510,25 +518,61 @@ export default function MessagesPage() {
   }
 
   useEffect(() => {
-    const token = getDevToken();
-    setLoading(true);
-    setLoadError(null);
-    Promise.all([
-      workApi.get(token, workId),
-      messageApi.list(token, workId, { with_relations: true }) as Promise<MessageWithRelations[]>,
-      phaseApi.list(token, workId),
-      transitionApi.listByWork(token, workId),
-    ])
-      .then(([w, list, phaseList, transList]) => {
-        setWorkTitle(w.title);
-        setWelcomeMsg(w.welcome_message ?? "");
-        setMessages(list);
-        setPhases(phaseList.sort((a, b) => a.sort_order - b.sort_order));
-        setTransitions(transList);
+    let cancelled = false;
+    const t0 = (typeof performance !== "undefined" ? performance.now() : Date.now());
+
+    // Bootstrap レスポンスを各 state に反映する共通処理。
+    function applyData(data: import("@/lib/api-client").MessagesBootstrapData) {
+      setWorkTitle(data.work.title);
+      setWelcomeMsg(data.work.welcome_message ?? "");
+      setMessages(data.messages);
+      setPhases([...data.phases].sort((a, b) => a.sort_order - b.sort_order));
+      setTransitions(data.transitions);
+      setRole(data.role);
+      setCanEdit(data.permissions.can_edit);
+    }
+
+    // 1) cache hit があれば即時表示（真っ白待ちをなくす / 再訪を即時化）。
+    const cached = getCachedBootstrap(oaId, workId);
+    if (cached) {
+      applyData(cached.data);
+      setLoading(false);
+      setLoadError(null);
+    } else {
+      setLoading(true);
+      setLoadError(null);
+    }
+
+    // 2) cache の有無に関わらず、必ず Bootstrap を 1 本取得して revalidate する
+    //    (= stale-while-revalidate)。
+    //    こうすることで、メッセージ作成/編集や phase/transition/シナリオ編集など
+    //    **他ページでの更新**後にこの一覧へ戻ったとき、各更新ページに invalidate を
+    //    仕込まなくても次 mount で必ず最新へ自己修復される（cache hit 時は即描画 →
+    //    裏で最新に差し替え）。一覧自身の楽観更新 (delete/reorder/toggle) は即時整合の
+    //    ため invalidateBootstrap でも消している。
+    bootstrapApi.messages(getDevToken(), oaId, workId)
+      .then((data) => {
+        if (cancelled) return;
+        applyData(data);
+        setCachedBootstrap(oaId, workId, data);
+        setLoadError(null);
+        if (process.env.NEXT_PUBLIC_PERF_LOG === "1" && typeof performance !== "undefined") {
+          const ms = Math.round(performance.now() - t0);
+          // eslint-disable-next-line no-console
+          console.log(`[perf:admin:messages-page] clientReady=${ms}ms msgs=${data.counts.messages} cache=${cached ? "revalidate" : "miss"}`);
+        }
       })
-      .catch((e) => setLoadError(e instanceof Error ? e.message : "読み込みに失敗しました"))
-      .finally(() => setLoading(false));
-  }, [workId]);
+      .catch((e) => {
+        if (cancelled) return;
+        // cache 表示済みなら、裏 revalidate の失敗で画面を壊さない（既存表示を維持）。
+        if (!cached) setLoadError(e instanceof Error ? e.message : "読み込みに失敗しました");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [oaId, workId]);
 
   // ────────────────────────────────────────────────
   // chain continuation メッセージ (= 他メッセージの next_message_id から指されているもの)

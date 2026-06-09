@@ -12,38 +12,9 @@ import { ZodError } from "zod";
 import { activeCache, CACHE_KEY } from "@/lib/cache";
 // OnboardingEvent write 停止済み（Phase 3）— trackOnboardingStep import を削除
 import { trackOnboardingProgress } from "@/lib/onboarding";
+import { transitionToResponse as toResponse } from "@/lib/api/list-shapes";
 
 export const dynamic = "force-dynamic";
-function toResponse(
-  t: {
-    id: string; workId: string; fromPhaseId: string; toPhaseId: string;
-    label: string; condition: string | null;
-    flagCondition: string | null; setFlags: string;
-    sortOrder: number; isActive: boolean;
-    createdAt: Date; updatedAt: Date;
-  },
-  toPhase?: { id: string; name: string; phaseType: string } | null,
-) {
-  return {
-    id:             t.id,
-    work_id:        t.workId,
-    from_phase_id:  t.fromPhaseId,
-    to_phase_id:    t.toPhaseId,
-    label:          t.label,
-    condition:      t.condition,
-    flag_condition: t.flagCondition,
-    set_flags:      t.setFlags,
-    sort_order:     t.sortOrder,
-    is_active:      t.isActive,
-    created_at:     t.createdAt,
-    updated_at:     t.updatedAt,
-    ...(toPhase !== undefined && {
-      to_phase: toPhase
-        ? { id: toPhase.id, name: toPhase.name, phase_type: toPhase.phaseType }
-        : null,
-    }),
-  };
-}
 
 // ── GET /api/transitions ─────────────────────────
 export const GET = withAuth(async (req, _ctx, user) => {
