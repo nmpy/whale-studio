@@ -6,7 +6,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Breadcrumb } from "@/components/Breadcrumb";
-import { locationApi, getDevToken } from "@/lib/api-client";
+import { locationApi, getDevToken, fetchOaLiffId } from "@/lib/api-client";
 import { buildLiffCheckinUrl } from "@/lib/liff/config";
 import { LocationForm } from "../_form";
 import type { LocationWithTransition, LocationVisit } from "@/types";
@@ -35,6 +35,10 @@ export default function EditLocationPage() {
   const [visits, setVisits] = useState<LocationVisit[]>([]);
   const [visitsLoading, setVisitsLoading] = useState(true);
   const [analytics, setAnalytics] = useState<LocAnalytics | null>(null);
+  // 実機確認 URL は対象 OA の Oa.liffId のみを使う（NEXT_PUBLIC_LIFF_ID は使わない）。
+  const [liffId, setLiffId] = useState<string | null>(null);
+
+  useEffect(() => { fetchOaLiffId(oaId).then(setLiffId).catch(() => setLiffId(null)); }, [oaId]);
 
   useEffect(() => {
     const token = getDevToken();
@@ -105,8 +109,6 @@ export default function EditLocationPage() {
       setError(err instanceof Error ? err.message : "削除に失敗しました");
     }
   };
-
-  const liffId = process.env.NEXT_PUBLIC_LIFF_ID;
 
   if (loading) {
     return <div style={{ maxWidth: 1100, margin: "0 auto", padding: "24px 16px" }}><p style={{ color: "#6b7280", textAlign: "center", padding: 40 }}>読み込み中...</p></div>;

@@ -6,7 +6,7 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { QRCodeSVG } from "qrcode.react";
-import { locationApi, workApi, getDevToken } from "@/lib/api-client";
+import { locationApi, getDevToken, fetchOaLiffId } from "@/lib/api-client";
 import { buildLiffCheckinUrl } from "@/lib/liff/config";
 import { buttonClass } from "@/components/shared";
 import type { LocationWithTransition } from "@/types";
@@ -70,7 +70,8 @@ interface Props {
 
 export default function GpsPanel({ oaId, workId }: Props) {
   const [locations, setLocations] = useState<LocationWithTransition[]>([]);
-  const [workPublicId, setWorkPublicId] = useState<string | undefined>(undefined);
+  // 実機確認 URL は対象 OA の Oa.liffId のみを使う（NEXT_PUBLIC_LIFF_ID は使わない）。
+  const [liffId, setLiffId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedQR, setExpandedQR] = useState<string | null>(null);
@@ -80,10 +81,10 @@ export default function GpsPanel({ oaId, workId }: Props) {
 
   const [locStats, setLocStats] = useState<Map<string, LocStatSummary>>(new Map());
 
+  useEffect(() => { fetchOaLiffId(oaId).then(setLiffId).catch(() => setLiffId(null)); }, [oaId]);
+
   useEffect(() => {
     const token = getDevToken();
-    // 短縮 LIFF URL 生成のため work.publicId を取得 (失敗しても旧 UUID URL にフォールバック)
-    workApi.get(token, workId).then((w) => setWorkPublicId(w.public_id)).catch(() => {});
     (async () => {
       try {
         const data = await locationApi.list(token, workId);
@@ -123,8 +124,6 @@ export default function GpsPanel({ oaId, workId }: Props) {
       return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
     });
   }, [locations, search, sortKey]);
-
-  const liffId = process.env.NEXT_PUBLIC_LIFF_ID;
 
   return (
     <div data-panel="gps">
@@ -180,7 +179,9 @@ export default function GpsPanel({ oaId, workId }: Props) {
 
       {!liffId && (
         <div style={{ padding: 12, background: "#fef3c7", border: "1px solid #fcd34d", borderRadius: 8, color: "#92400e", fontSize: 13, marginBottom: 16 }}>
-          LIFF ID が未設定のため QR コードを生成できません。<code style={{ fontSize: 11 }}>NEXT_PUBLIC_LIFF_ID</code> を設定してください。
+          このOAの LIFF ID が未設定のため QR コードを生成できません。
+          <Link href={`/oas/${oaId}/settings/liff`} style={{ color: "#2563eb", textDecoration: "underline" }}>アカウント設定 → LIFF設定</Link>
+          で LIFF ID を設定してください。
         </div>
       )}
 

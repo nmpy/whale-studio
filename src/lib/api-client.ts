@@ -116,6 +116,22 @@ export function getAuthHeaders(): HeadersInit {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
+/**
+ * 管理画面の実機確認 URL/QR 生成用に、対象 OA の Oa.liffId を取得する。
+ * liff-settings API の `liff_id`（= Oa.liffId、env fallback なし）を返す。未設定 / 失敗時は null。
+ * NEXT_PUBLIC_LIFF_ID は使わない（古いビルドの焼き込み値で誤生成しないため）。
+ */
+export async function fetchOaLiffId(oaId: string): Promise<string | null> {
+  try {
+    const res = await fetch(`/api/oas/${oaId}/liff-settings`, { headers: { ...getAuthHeaders() }, cache: "no-store" });
+    if (!res.ok) return null;
+    const json = await res.json();
+    return (json?.data?.liff_id as string | null) ?? null;
+  } catch {
+    return null;
+  }
+}
+
 // ────────────────────────────────────────────────
 // エラークラス
 // ────────────────────────────────────────────────
