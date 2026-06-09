@@ -24,6 +24,7 @@ const MESSAGE_TYPE_LABEL: Record<MessageType, string> = {
   video:    "動画",
   carousel: "カルーセル",
   voice:    "ボイス",
+  flex:     "Flex Message",
 };
 
 const MESSAGE_TYPE_ICON: Record<MessageType, string> = {
@@ -33,6 +34,7 @@ const MESSAGE_TYPE_ICON: Record<MessageType, string> = {
   video:    "🎬",
   carousel: "🎠",
   voice:    "🎙",
+  flex:     "🧱",
 };
 
 const PHASE_TYPE_LABEL: Record<string, string> = {
@@ -177,6 +179,7 @@ function msgPreview(m: MessageWithRelations | undefined): string {
   if (m.message_type === "video")    return "🎬 動画";
   if (m.message_type === "voice")    return "🎙 ボイス";
   if (m.message_type === "carousel") return "🎠 カルーセル";
+  if (m.message_type === "flex")     return m.alt_text ? `🧱 ${m.alt_text.length > 24 ? m.alt_text.slice(0, 24) + "…" : m.alt_text}` : "🧱 Flex Message";
   return "(メッセージ)";
 }
 
@@ -1177,6 +1180,12 @@ export default function MessagesPage() {
                               ) : null}
                               <span style={{ fontSize: 11, color: "#9ca3af" }}>画像メッセージ</span>
                             </div>
+                          ) : msg.message_type === "flex" ? (
+                            <span style={{ fontSize: 12, color: "#6b7280" }}>
+                              🧱 {msg.alt_text
+                                ? (msg.alt_text.length > 28 ? msg.alt_text.slice(0, 28) + "…" : msg.alt_text)
+                                : <span style={{ fontStyle: "italic", color: "#9ca3af" }}>Flex Message</span>}
+                            </span>
                           ) : (
                             <span style={{
                               display: "-webkit-box", WebkitLineClamp: 2,

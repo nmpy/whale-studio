@@ -13,7 +13,8 @@ import type { ReadReceiptMode } from "@/types";
 
 // ── 型定義 (= _form.tsx と共有) ─────────────────────────────
 
-export type ExtendedMessageType = "text" | "image" | "video" | "voice" | "carousel" | "riddle";
+// "flex" は 1 通目のみ対応（2 通目以降のチェーンでは選択不可）。型としては許容する。
+export type ExtendedMessageType = "text" | "image" | "video" | "voice" | "carousel" | "riddle" | "flex";
 
 export type MessageKindHelper =
   "start" | "normal" | "response" | "hint" | "puzzle" | "global" | "system_notice";
