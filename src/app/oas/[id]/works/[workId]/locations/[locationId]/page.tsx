@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { locationApi, getDevToken } from "@/lib/api-client";
+import { buildLiffCheckinUrl } from "@/lib/liff/config";
 import { LocationForm } from "../_form";
 import type { LocationWithTransition, LocationVisit } from "@/types";
 
@@ -124,10 +125,8 @@ export default function EditLocationPage() {
       {error && <div style={{ padding: 12, background: "#fef2f2", border: "1px solid #fca5a5", borderRadius: 8, color: "#dc2626", marginBottom: 16, fontSize: 14 }}>{error}</div>}
 
       {liffId && location && (() => {
-        // publicId が揃えば短縮 URL を使う。揃わなければ旧 UUID 形式へフォールバック。
-        const shortUrl = location.public_id && (location as { work_public_id?: string }).work_public_id
-          ? `https://liff.line.me/${liffId}/c/${(location as { work_public_id?: string }).work_public_id}/${location.public_id}`
-          : `https://liff.line.me/${liffId}?location_id=${location.id}&work_id=${workId}`;
+        // liff.state 形式で生成（Endpoint URL のパス設定に依存せず work_id/location_id を確実に復元）。
+        const shortUrl = buildLiffCheckinUrl({ liffId, workId, locationId: location.id }) ?? "";
         return (
           <div style={{ marginBottom: 16, padding: "10px 14px", background: "#f0f9ff", borderRadius: 8, fontSize: 12, color: "#3b82f6", wordBreak: "break-all", display: "flex", alignItems: "center", gap: 8 }}>
             <span style={{ flex: 1 }}>

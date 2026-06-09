@@ -8,20 +8,8 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { QRCodeSVG } from "qrcode.react";
 import { locationApi, workApi, getDevToken } from "@/lib/api-client";
+import { buildLiffCheckinUrl } from "@/lib/liff/config";
 import type { LocationWithTransition } from "@/types";
-
-function buildLiffUrl(args: {
-  liffId: string;
-  locationId: string;
-  locationPublicId?: string;
-  workId: string;
-  workPublicId?: string;
-}): string {
-  if (args.workPublicId && args.locationPublicId) {
-    return `https://liff.line.me/${args.liffId}/c/${args.workPublicId}/${args.locationPublicId}`;
-  }
-  return `https://liff.line.me/${args.liffId}?location_id=${args.locationId}&work_id=${args.workId}`;
-}
 
 export default function LocationsPrintPage() {
   const params = useParams();
@@ -96,13 +84,7 @@ export default function LocationsPrintPage() {
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
             {locations.map((loc) => {
-              const url = buildLiffUrl({
-                liffId,
-                locationId: loc.id,
-                locationPublicId: loc.public_id,
-                workId,
-                workPublicId,
-              });
+              const url = buildLiffCheckinUrl({ liffId, workId, locationId: loc.id }) ?? "";
               return (
                 <div
                   key={loc.id}

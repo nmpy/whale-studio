@@ -62,10 +62,24 @@ function resolveLiffStateRedirect(): string | null {
   return `${targetPath}${remainingQuery ? `?${remainingQuery}` : ""}${hash}`;
 }
 
+/** liff.state（= "/liff?work_id=...&location_id=..."）から指定キーの値を取り出す。
+ *  LINE が primary redirect 前に元のクエリを liff.state に退避するケースで、
+ *  resolveLiffStateRedirect による再遷移が走らなくても work_id/location_id を復元できるようにする。 */
+function readFromLiffState(searchParams: { get(name: string): string | null }, key: string): string | null {
+  const liffState = searchParams.get("liff.state");
+  if (!liffState) return null;
+  try {
+    return new URL(liffState, "https://placeholder.invalid").searchParams.get(key);
+  } catch {
+    return null;
+  }
+}
+
 function CheckinContent() {
   const searchParams = useSearchParams();
-  const locationId = searchParams.get("location_id");
-  const workId = searchParams.get("work_id");
+  // 直 query を最優先し、無ければ liff.state から復元する（直URL互換 + liff.state 形式の両対応）。
+  const locationId = searchParams.get("location_id") ?? readFromLiffState(searchParams, "location_id");
+  const workId = searchParams.get("work_id") ?? readFromLiffState(searchParams, "work_id");
 
   // SSR / 初回 render では window が無いので false 開始。
   // dispatch 用に "redirecting" 状態を持ち、redirect 中は画面を白くしすぎないようロード表示する。
@@ -96,8 +110,10 @@ function CheckinContent() {
 
   // ── LIFF 初期化 + ロケーション情報取得 ──
   useEffect(() => {
-    // dispatch 中は何もしない
+    // dispatch 中 / これから liff.state dispatch する場合は init を始めない
+    // （redirect 直前に init が走って二重初期化・競合するのを防ぐ）。
     if (redirecting) return;
+    if (resolveLiffStateRedirect()) return;
 
     if (!locationId || !workId) {
       // ここは「チェックイン専用ページ」(ロケーション QR コードから開く想定)。
@@ -220,10 +236,20 @@ function CheckinContent() {
         console.error("[LIFF] init error:", err);
         const msg = err instanceof Error ? err.message : "";
         recordLiffEvent({ workId, eventType: "liff_init_failed", metadata: { oaId: cfgOaId, locationId, errorMessage: msg.slice(0, 200) } });
-        if (msg.includes("INIT_FAILED") || msg.includes("INVALID_CONFIG")) {
-          setState({ step: "error", code: "LIFF_INIT_FAILED", message: "LIFF の初期化に失敗しました。" });
+        // init 失敗の理由を分ける。LINE 内で開いていても起こりうる初期化エラーを
+        // 「LINEで開いてください」と誤表示しない（外部ブラウザ判定は init 成功後の isInClient で行う）。
+        if (msg.includes("INIT_FAILED") || msg.includes("INVALID_CONFIG") || /liff\s*id|liffId/i.test(msg)) {
+          setState({
+            step: "error",
+            code: "LIFF_INIT_FAILED",
+            message: "LIFF の初期化に失敗しました。LIFF ID と Endpoint URL（https://app.whale-studio.app/liff）の設定をご確認ください。",
+          });
         } else {
-          setState({ step: "error", code: "NOT_IN_LINE", message: "LINE アプリ内でこのページを開いてください。" });
+          setState({
+            step: "error",
+            code: "LIFF_ERROR",
+            message: "ページを開けませんでした。お手数ですが、LINEアプリ内のリンク（または現地のQRコード）から開き直してください。",
+          });
         }
       }
     })();
