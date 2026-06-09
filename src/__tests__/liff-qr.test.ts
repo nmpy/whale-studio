@@ -4,7 +4,7 @@
 // UI 状態遷移は QrScanner のレンダリングテストで別途検証する。
 
 import { describe, it, expect } from "vitest";
-import { qrScanGuidance, truncateQrValue, isScanCancelError } from "@/lib/liff/qr";
+import { qrScanGuidance, truncateQrValue, isScanCancelError, interpretQrComplete } from "@/lib/liff/qr";
 import { isValidLiffEventType, LIFF_EVENT_TYPES } from "@/lib/liff-events";
 
 describe("qrScanGuidance", () => {
@@ -109,5 +109,63 @@ describe("LIFF_EVENT_TYPES (slice 4 追加分)", () => {
     for (const t of ["page_view", "checkin_success", "checkin_failed", "button_click"]) {
       expect(isValidLiffEventType(t)).toBe(true);
     }
+  });
+
+  it("QR 成功メッセージ送信イベントが有効", () => {
+    for (const t of ["qr_message_send_started", "qr_message_send_success", "qr_message_send_failed", "qr_message_send_skipped", "qr_message_duplicate"]) {
+      expect(isValidLiffEventType(t)).toBe(true);
+    }
+  });
+});
+
+describe("interpretQrComplete (PR 2/2)", () => {
+  it("2xx + data.sent=true → sent", () => {
+    const r = interpretQrComplete(200, { success: true, data: { ok: true, sent: true, message: "送信しました" } });
+    expect(r.outcome).toBe("sent");
+    expect(r.message).toBe("送信しました");
+  });
+
+  it("2xx + alreadyProcessed=true → already_processed", () => {
+    const r = interpretQrComplete(200, { success: true, data: { ok: true, sent: false, alreadyProcessed: true } });
+    expect(r.outcome).toBe("already_processed");
+  });
+
+  it("2xx + code=message_not_configured → message_not_configured", () => {
+    const r = interpretQrComplete(200, { success: true, data: { ok: true, sent: false, code: "message_not_configured" } });
+    expect(r.outcome).toBe("message_not_configured");
+  });
+
+  it("2xx + code=qr_not_matched / data.ok=false → unmatched", () => {
+    expect(interpretQrComplete(200, { success: true, data: { ok: false, sent: false, code: "qr_not_matched" } }).outcome).toBe("unmatched");
+    expect(interpretQrComplete(200, { success: true, data: { ok: false } }).outcome).toBe("unmatched");
+  });
+
+  it("2xx + service_suspended → failed（文言はサーバー優先）", () => {
+    const r = interpretQrComplete(200, { success: true, data: { ok: true, sent: false, code: "service_suspended", message: "利用できません" } });
+    expect(r.outcome).toBe("failed");
+    expect(r.message).toBe("利用できません");
+  });
+
+  it("401 → failed（LINE連携エラー）", () => {
+    const r = interpretQrComplete(401, { success: false, error: { code: "UNAUTHORIZED" } });
+    expect(r.outcome).toBe("failed");
+    expect(r.message).toContain("LINE連携");
+  });
+
+  it("403 FEATURE_DISABLED → failed（QR未有効の文言）", () => {
+    const r = interpretQrComplete(403, { success: false, error: { code: "FEATURE_DISABLED" } });
+    expect(r.outcome).toBe("failed");
+    expect(r.message).toContain("有効になっていません");
+  });
+
+  it("502 SEND_FAILED → failed（汎用送信失敗文言）", () => {
+    const r = interpretQrComplete(502, { success: false, error: { code: "SEND_FAILED" } });
+    expect(r.outcome).toBe("failed");
+    expect(r.message).toContain("送信に失敗");
+  });
+
+  it("body が null / 想定外でも failed に倒れる（白画面にしない）", () => {
+    expect(interpretQrComplete(500, null).outcome).toBe("failed");
+    expect(interpretQrComplete(200, {}).outcome).toBe("failed");
   });
 });
