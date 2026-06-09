@@ -1208,7 +1208,9 @@ export type LiffBlockType =
   | "warning"
   | "button_link"
   | "divider"
-  | "accordion";
+  | "accordion"
+  // ── ロケーションチェックイン用 ──
+  | "code_reader";
 
 export type VisibilityCondition = "always" | "before_start" | "in_progress" | "completed";
 
@@ -1361,6 +1363,20 @@ export interface AccordionSettings {
   children?: NestedLiffBlock[];
 }
 
+/** コードリーダー（QR読み取り）ブロック設定。
+ *  実機では liff.scanCodeV2() で読み取り、location_checkin の場合は既存のチェックイン導線
+ *  (/liff?work_id=..&location_id=..) へ接続する。プレビューではカメラを起動せずプレースホルダ表示。 */
+export interface CodeReaderSettings {
+  /** 行に表示するラベル（デフォルト「チェックインする」） */
+  label?: string;
+  /** モーダル（ボトムシート）タイトル（デフォルト「コードリーダー」） */
+  modal_title?: string;
+  /** 任意の説明文 */
+  description?: string;
+  /** 読み取り後の動作。location_checkin = 既存チェックイン導線へ / show_result = 値を表示のみ */
+  after_scan?: "location_checkin" | "show_result";
+}
+
 /** accordion の中に直接埋め込めるネスト可能ブロック（DBには載らないインライン構造） */
 export interface NestedLiffBlock {
   /** 子要素の安定 ID（クライアントで生成・保存） */
@@ -1385,7 +1401,8 @@ export type AnyLiffBlockSettings =
   | WarningSettings
   | ButtonLinkSettings
   | DividerSettings
-  | AccordionSettings;
+  | AccordionSettings
+  | CodeReaderSettings;
 
 export type LiffBlockSettings = AnyLiffBlockSettings;
 

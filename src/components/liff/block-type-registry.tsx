@@ -22,6 +22,7 @@ import type {
   ButtonLinkSettings,
   DividerSettings,
   AccordionSettings,
+  CodeReaderSettings,
 } from "@/types";
 
 import {
@@ -40,6 +41,7 @@ import {
   ButtonLinkForm,
   DividerForm,
   AccordionForm,
+  CodeReaderForm,
 } from "./block-settings-forms";
 
 export type SettingsFormProps<T = Record<string, unknown>> = {
@@ -161,6 +163,13 @@ export const BLOCK_TYPE_REGISTRY: Record<LiffBlockType, BlockTypeEntry> = {
     description:     "STAGE 用の開閉セクション（子要素を持てる）",
     defaultSettings: { title: "", default_open: false, variant: "default", children: [] } satisfies AccordionSettings,
     SettingsForm:    AccordionForm as ComponentType<SettingsFormProps<any>>,
+  },
+  code_reader: {
+    label:           "コードリーダー",
+    icon:            "📷",
+    description:     "QRコードを読み取ってチェックイン",
+    defaultSettings: { label: "チェックインする", modal_title: "コードリーダー", description: "", after_scan: "location_checkin" } satisfies CodeReaderSettings,
+    SettingsForm:    CodeReaderForm as ComponentType<SettingsFormProps<any>>,
   },
 };
 

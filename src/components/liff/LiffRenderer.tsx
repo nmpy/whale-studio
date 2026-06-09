@@ -13,6 +13,7 @@ import type {
   ButtonLinkSettings,
   DividerSettings,
   AccordionSettings,
+  CodeReaderSettings,
 } from "@/types";
 import { LiffShareButton } from "./LiffShareButton";
 import {
@@ -31,6 +32,7 @@ import {
   ButtonLinkBlock,
   DividerBlock,
   AccordionBlock,
+  CodeReaderBlock,
 } from "./renderers";
 import type { Evidence, Hint, CharacterInfo } from "./renderers";
 import { liffRootClass } from "./liff-style-helpers";
@@ -62,7 +64,7 @@ function shouldShow(condition: VisibilityCondition | null, userState: UserState)
   return condition === userState;
 }
 
-function RenderBlock({ block, ctx }: { block: LiffBlock; ctx: LiffRenderContext }) {
+function RenderBlock({ block, ctx, preview }: { block: LiffBlock; ctx: LiffRenderContext; preview?: boolean }) {
   const s = block.settings_json;
   switch (block.block_type) {
     case "free_text":
@@ -102,6 +104,8 @@ function RenderBlock({ block, ctx }: { block: LiffBlock; ctx: LiffRenderContext 
       return <DividerBlock settings={s as DividerSettings} />;
     case "accordion":
       return <AccordionBlock title={block.title} settings={s as AccordionSettings} depth={1} blockId={block.id} />;
+    case "code_reader":
+      return <CodeReaderBlock settings={s as CodeReaderSettings} preview={preview} blockId={block.id} />;
     default:
       return null;
   }
@@ -156,7 +160,7 @@ export function LiffRenderer({
                 : "pb-6 mb-6 border-b border-[color:var(--liff-border)]";
             return (
               <div key={block.id} className={sectionCls}>
-                <RenderBlock block={block} ctx={ctx} />
+                <RenderBlock block={block} ctx={ctx} preview={preview} />
               </div>
             );
           })

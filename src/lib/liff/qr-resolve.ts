@@ -87,6 +87,28 @@ export function parseQrValue(value: string): ParsedQrValue {
   return { raw, isUrl: true, locationRef, workRef, pageRef, code: null };
 }
 
+/**
+ * コードリーダーブロック（location_checkin）用: 読み取った QR 値を、既存チェックイン導線
+ * `/liff?work_id=..&location_id=..` への遷移先に解決する純関数。
+ *
+ * - QR が Whale のチェックイン URL / liff.state なら work_id / location_id を抽出。
+ * - 生コードなら location_id 候補として扱い、work は fallbackWorkId（現在ページの workId）で補う。
+ * - location / work が揃わなければ invalid（呼出側で「このQRコードは利用できません」を表示）。
+ * - 遷移先は現在オリジンの相対パスに再構成する（QR 内の絶対 URL/ドメインには遷移しない＝安全側）。
+ */
+export function resolveCheckinFromQr(
+  value: string,
+  opts?: { fallbackWorkId?: string | null },
+): { kind: "checkin"; path: string; workRef: string; locationRef: string } | { kind: "invalid" } {
+  const parsed = parseQrValue(value);
+  const locationRef = parsed.locationRef;
+  if (!locationRef) return { kind: "invalid" };
+  const workRef = parsed.workRef ?? opts?.fallbackWorkId ?? null;
+  if (!workRef) return { kind: "invalid" };
+  const path = `/liff?work_id=${encodeURIComponent(workRef)}&location_id=${encodeURIComponent(locationRef)}`;
+  return { kind: "checkin", path, workRef, locationRef };
+}
+
 /** route 側で記録/ログ用に QR 値を安全化する（生値を長文のまま保存しない）。
  *  truncateQrValue（qr.ts）と役割が重複しないよう、ここでは「ログ向けの短い preview」を返す。 */
 export function qrValuePreview(value: string, max = 64): string {
