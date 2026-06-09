@@ -14,6 +14,7 @@ export type GpsStatus =
   | "blocked"     // 恒久ブロック（設定変更が必要）
   | "unavailable" // 位置取得不能（電波等）
   | "timeout"     // 取得タイムアウト
+  | "scenario_not_started" // 作品（シナリオ）未開始（checkin API: SCENARIO_NOT_STARTED）
   | "error";      // その他
 
 /** チェックイン試行ログ (POST /api/liff/checkin-attempt) に送る status 値。 */
@@ -129,6 +130,13 @@ export function gpsStatusPresentation(status: GpsStatus, ctx: GpsPresentationCon
         title: "位置情報の取得に時間がかかっています",
         message: "通信が不安定かもしれません。少し時間をおいて、もう一度お試しください。",
         tone: "warn", showRetry: true, showQrFallback: true,
+      };
+    case "scenario_not_started":
+      return {
+        title: "作品がまだ始まっていません",
+        // ここでの再試行は無意味（先に LINE トークで作品開始が必要）なので showRetry=false。
+        message: ctx.detailMessage || "この作品はまだ開始されていません。LINEのトーク画面に戻り、開始メッセージ（合言葉）を送って作品を始めてから、もう一度チェックインしてください。",
+        tone: "info", showRetry: false, showQrFallback: false,
       };
     case "error":
     default:

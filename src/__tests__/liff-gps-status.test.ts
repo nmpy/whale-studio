@@ -102,4 +102,17 @@ describe("gpsStatusPresentation", () => {
     expect(gpsStatusPresentation("unavailable", { detailMessage: "電波が弱いです" }).message).toBe("電波が弱いです");
     expect(gpsStatusPresentation("error", { detailMessage: "サーバーエラー" }).message).toBe("サーバーエラー");
   });
+
+  it("scenario_not_started: info トーン / 再試行を出さない / 開始導線の文言", () => {
+    const p = gpsStatusPresentation("scenario_not_started");
+    expect(p.tone).toBe("info");
+    expect(p.showRetry).toBe(false);
+    expect(p.title).toBe("作品がまだ始まっていません");
+    expect(p.message).toContain("LINE");
+    expect(p.message).toContain("開始");
+  });
+
+  it("scenario_not_started: detailMessage で本文上書き可（API 文言を表示できる）", () => {
+    expect(gpsStatusPresentation("scenario_not_started", { detailMessage: "サーバー文言" }).message).toBe("サーバー文言");
+  });
 });

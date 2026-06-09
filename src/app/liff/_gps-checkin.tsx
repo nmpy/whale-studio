@@ -122,6 +122,12 @@ export function GpsCheckin({ locationId, workId, lineUserId, locationName, onRes
       const json = await res.json();
 
       if (!json.success) {
+        // 作品未開始は専用状態にし、「LINEトークに戻って開始してください」の導線を出す。
+        if (json.error?.code === "SCENARIO_NOT_STARTED") {
+          setStatus("scenario_not_started");
+          setMessage(json.error?.message ?? gpsStatusPresentation("scenario_not_started").message);
+          return;
+        }
         setStatus("error");
         setMessage(json.error?.message ?? "チェックインに失敗しました");
         return;
@@ -347,6 +353,29 @@ export function GpsCheckin({ locationId, workId, lineUserId, locationName, onRes
           <p style={{ fontSize: 12, color: "#9ca3af", marginTop: 8 }}>
             または QR コードからチェックインしてください
           </p>
+        </div>
+      )}
+
+      {/* ── scenario_not_started: 作品未開始（先に LINE トークで開始が必要） ── */}
+      {status === "scenario_not_started" && (
+        <div style={{ textAlign: "center", padding: "16px 0" }}>
+          <div style={{
+            background: "#eff6ff", borderRadius: 10, padding: "16px",
+            border: "1px solid #bfdbfe", marginBottom: 12,
+          }}>
+            <p style={{ fontSize: 14, fontWeight: 700, color: "#1d4ed8", marginBottom: 6 }}>作品がまだ始まっていません</p>
+            <p style={{ fontSize: 13, color: "#435068", lineHeight: 1.7, whiteSpace: "pre-line" }}>{message}</p>
+          </div>
+          <button
+            type="button"
+            onClick={async () => {
+              try { const liff = (await import("@line/liff")).default; if (liff.isInClient()) { liff.closeWindow(); return; } } catch { /* noop */ }
+              window.close();
+            }}
+            style={retryBtnStyle}
+          >
+            LINEのトークに戻る
+          </button>
         </div>
       )}
 
