@@ -6,17 +6,15 @@
 // クライアント側で分かる失敗（権限拒否等）も試行ログとして API に送信する。
 
 import { useState, useCallback, useRef } from "react";
+import {
+  gpsStatusPresentation,
+  classifyGeolocationError,
+  attemptStatusFor,
+  type GpsStatus,
+} from "@/lib/liff/gps-status";
 
-export type GpsStatus =
-  | "idle"
-  | "acquiring"
-  | "submitting"
-  | "success"
-  | "out_of_range"
-  | "denied"
-  | "blocked"
-  | "unavailable"
-  | "error";
+// 状態の型は src/lib/liff/gps-status.ts に集約（テスト可能な表示ロジックと共有）。
+export type { GpsStatus };
 
 interface GpsCheckinProps {
   locationId: string;
@@ -24,6 +22,11 @@ interface GpsCheckinProps {
   lineUserId: string;
   locationName?: string;
   onResult: (result: unknown) => void;
+  /** チェックイン方式。"gps"（既定・補助/gps_only）または "qr_and_gps"（QR+GPS 二段階）。
+   *  API の checkin_method にそのまま渡す（既存 API 値を踏襲）。 */
+  checkinMethod?: "gps" | "qr_and_gps";
+  /** idle 時のチェックインボタン文言（既定: 「📍 現在地でチェックイン」）。 */
+  buttonLabel?: string;
 }
 
 /** クライアント側失敗をログ送信（fire-and-forget） */
@@ -61,7 +64,7 @@ function formatDistance(meters: number): string {
   return `約${(meters / 1000).toFixed(1)}km`;
 }
 
-export function GpsCheckin({ locationId, workId, lineUserId, locationName, onResult }: GpsCheckinProps) {
+export function GpsCheckin({ locationId, workId, lineUserId, locationName, onResult, checkinMethod = "gps", buttonLabel = "📍 現在地でチェックイン" }: GpsCheckinProps) {
   const [status, setStatus] = useState<GpsStatus>("idle");
   const [message, setMessage] = useState("");
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
@@ -112,7 +115,7 @@ export function GpsCheckin({ locationId, workId, lineUserId, locationName, onRes
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           line_user_id: lineUserId, location_id: locationId, work_id: workId,
-          checkin_method: "gps", lat, lng,
+          checkin_method: checkinMethod, lat, lng,
         }),
       });
 
@@ -141,35 +144,20 @@ export function GpsCheckin({ locationId, workId, lineUserId, locationName, onRes
       setTimeout(() => onResult(data), 1200);
     } catch (err) {
       if (err instanceof GeolocationPositionError) {
-        switch (err.code) {
-          case err.PERMISSION_DENIED:
-            setStatus("denied");
-            setMessage("位置情報の利用が許可されていません");
-            sendAttemptLog({ workId, locationId, lineUserId, status: "permission_denied" });
-            break;
-          case err.POSITION_UNAVAILABLE:
-            setStatus("unavailable");
-            setMessage("現在地を取得できませんでした。電波状況のよい場所でお試しください。");
-            sendAttemptLog({ workId, locationId, lineUserId, status: "gps_unavailable" });
-            break;
-          case err.TIMEOUT:
-            setStatus("error");
-            setMessage("位置情報の取得に時間がかかっています。もう一度お試しください。");
-            sendAttemptLog({ workId, locationId, lineUserId, status: "timeout" });
-            break;
-          default:
-            setStatus("error");
-            setMessage("位置情報の取得に失敗しました");
-            sendAttemptLog({ workId, locationId, lineUserId, status: "unknown_error" });
-        }
+        // 状態分類・文言・試行ログ status を gps-status ヘルパーに集約（denied/unavailable/timeout/error）。
+        const s = classifyGeolocationError(err);
+        setStatus(s);
+        setMessage(gpsStatusPresentation(s).message);
+        const logStatus = attemptStatusFor(s);
+        if (logStatus) sendAttemptLog({ workId, locationId, lineUserId, status: logStatus });
       } else {
         setStatus("error");
-        setMessage("通信エラーが発生しました");
+        setMessage(gpsStatusPresentation("error").message);
       }
     } finally {
       submittingRef.current = false;
     }
-  }, [supported, locationId, workId, lineUserId, onResult]);
+  }, [supported, locationId, workId, lineUserId, onResult, checkinMethod]);
 
   const handleRetry = useCallback(() => {
     setStatus("idle");
@@ -208,7 +196,7 @@ export function GpsCheckin({ locationId, workId, lineUserId, locationName, onRes
               fontSize: 14, fontWeight: 600, cursor: "pointer",
             }}
           >
-            📍 現在地でチェックイン
+            {buttonLabel}
           </button>
         </div>
       )}
@@ -344,14 +332,14 @@ export function GpsCheckin({ locationId, workId, lineUserId, locationName, onRes
         </div>
       )}
 
-      {/* ── unavailable: 位置取得不能 ── */}
-      {status === "unavailable" && (
+      {/* ── unavailable / timeout: 位置取得不能・タイムアウト ── */}
+      {(status === "unavailable" || status === "timeout") && (
         <div style={{ textAlign: "center", padding: "16px 0" }}>
           <div style={{
             background: "#fffbeb", borderRadius: 10, padding: "16px",
             border: "1px solid #fde68a", marginBottom: 12,
           }}>
-            <p style={{ fontSize: 13, color: "#92400e", lineHeight: 1.6 }}>{message}</p>
+            <p style={{ fontSize: 13, color: "#92400e", lineHeight: 1.6, whiteSpace: "pre-line" }}>{message}</p>
           </div>
           <button type="button" onClick={handleRetry} style={retryBtnStyle}>
             もう一度試す

@@ -220,49 +220,11 @@ function CheckinContent() {
   }, [lineUserId, locationId, workId]);
 
   // ── QR+GPS 二段階チェックイン ──
-  const handleQrAndGpsCheckin = useCallback(async () => {
-    if (!lineUserId || !locationId || !workId || submittingRef.current) return;
-    submittingRef.current = true;
-    setState({ step: "gps_acquiring" });
+  // slice 3: 旧インライン実装（denied/unavailable の 2 分岐＋汎用文言・retry なし）を廃止し、
+  // gps_only と同じ GpsCheckin コンポーネント（denied/blocked/unavailable/timeout/out_of_range/
+  // retry/QR フォールバックの一貫 UX）に統一する。API の checkin_method は "qr_and_gps" を渡す。
 
-    try {
-      // GPS 取得
-      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
-        navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
-      });
-
-      setState({ step: "submitting" });
-      const res = await fetch("/api/liff/checkin", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          line_user_id: lineUserId, location_id: locationId, work_id: workId,
-          checkin_method: "qr_and_gps", lat: position.coords.latitude, lng: position.coords.longitude,
-        }),
-      });
-      const json = await res.json();
-      if (!json.success) { setState({ step: "error", code: "API_ERROR", message: json.error?.message ?? "チェックインに失敗しました" }); return; }
-      const result = json.data as CheckinResult;
-      setState({ step: "result", result });
-      if (result.status === "checked_in") setStampRefreshKey((k) => k + 1);
-    } catch (err) {
-      if (err instanceof GeolocationPositionError) {
-        // クライアント失敗ログ
-        fetch("/api/liff/checkin-attempt", {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ work_id: workId, location_id: locationId, line_user_id: lineUserId, status: err.code === err.PERMISSION_DENIED ? "permission_denied" : "gps_unavailable" }),
-        }).catch(() => {});
-
-        const msg = err.code === err.PERMISSION_DENIED
-          ? "位置情報の利用が許可されていません。端末の設定から許可してください。"
-          : "位置情報を取得できませんでした。";
-        setState({ step: "error", code: "GPS_FAILED", message: msg });
-      } else {
-        setState({ step: "error", code: "NETWORK", message: "通信エラーが発生しました。" });
-      }
-    } finally { submittingRef.current = false; }
-  }, [lineUserId, locationId, workId]);
-
-  // ── GPS チェックイン結果（gps_only 用） ──
+  // ── GPS チェックイン結果（gps_only / qr_and_gps 共通） ──
   const handleGpsResult = useCallback((data: unknown) => {
     const result = data as CheckinResult;
     setState({ step: "result", result });
@@ -334,14 +296,20 @@ function CheckinContent() {
             )}
 
             {/* ── qr_and_gps ── */}
-            {state.mode === "qr_and_gps" && (
+            {state.mode === "qr_and_gps" && lineUserId && locationId && workId && (
               <>
-                <div style={{ padding: "10px 14px", background: "#eff6ff", borderRadius: 8, marginBottom: 16, fontSize: 12, color: "#1d4ed8", lineHeight: 1.6 }}>
-                  このスポットは QR + 位置情報の二段階チェックインが必要です。ボタンを押すと位置情報を確認してチェックインします。
+                <div style={{ padding: "10px 14px", background: "#eff6ff", borderRadius: 8, marginBottom: 8, fontSize: 12, color: "#1d4ed8", lineHeight: 1.6 }}>
+                  このスポットは QR + 位置情報の二段階チェックインが必要です。下のボタンを押すと位置情報を確認してチェックインします。
                 </div>
-                <button onClick={handleQrAndGpsCheckin} style={btnPrimary}>
-                  位置情報を確認してチェックイン
-                </button>
+                <GpsCheckin
+                  locationId={locationId}
+                  workId={workId}
+                  lineUserId={lineUserId}
+                  locationName={state.step === "confirm" ? state.locationName : undefined}
+                  checkinMethod="qr_and_gps"
+                  buttonLabel="位置情報を確認してチェックイン"
+                  onResult={handleGpsResult}
+                />
               </>
             )}
 
