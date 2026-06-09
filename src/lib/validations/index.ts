@@ -48,6 +48,18 @@ export const updateOaSchema = createOaSchema.partial().omit({ publish_status: tr
   service_suspended: z.boolean().optional(),
 });
 
+/**
+ * OA の LIFF 設定更新スキーマ（PATCH /api/oas/:id/liff-settings）。
+ * - liff_id: LIFF アプリ ID（例: "1234567890-abcdEFGH"）。空文字 / null は「クリア」扱い。
+ * - liff_endpoint_url: 表示用メモ（任意・挙動には影響しない）。
+ * - liff_scan_qr_enabled: QR 読み取り導線を使う想定かの UI フラグ。
+ */
+export const updateOaLiffSettingsSchema = z.object({
+  liff_id:              z.string().trim().max(200).optional().nullable(),
+  liff_endpoint_url:    z.string().trim().max(500).optional().nullable(),
+  liff_scan_qr_enabled: z.boolean().optional(),
+});
+
 export const oaQuerySchema = z.object({
   publish_status: z.enum(["draft", "active", "paused"]).optional(),
   page:           z.coerce.number().int().min(1).default(1),
