@@ -51,3 +51,67 @@ export function isScanCancelError(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : typeof err === "string" ? err : "";
   return /cancel|abort|user.?cancel|closed/i.test(msg);
 }
+
+// ─────────────────────────────────────────────────────────────
+// POST /api/liff/qr/complete のレスポンス解釈（純関数・テスト可能）
+// ─────────────────────────────────────────────────────────────
+
+/** QR 成功 API 呼び出し後の UI 終端状態。 */
+export type QrSendOutcome =
+  | "sent"                  // メッセージ送信成功
+  | "already_processed"     // 二重送信抑止（既読み取り済み）
+  | "unmatched"             // この作品では使えない QR
+  | "message_not_configured"// QR は解決できたが送信メッセージ未設定
+  | "failed";               // 認証/権限/送信失敗など
+
+export interface QrCompleteInterpretation {
+  outcome: QrSendOutcome;
+  /** ユーザー向け表示文言（サーバーの message があれば優先）。 */
+  message: string;
+}
+
+/**
+ * `/api/liff/qr/complete` の HTTP ステータス + レスポンス body を UI 状態へ写像する。
+ * - 業務結果（sent / alreadyProcessed / code）は 2xx の `data` に入る。
+ * - 認証/権限/送信失敗は error エンベロープ（4xx/5xx）。
+ * いずれも白画面にせず、ユーザー向けの安全な文言を返す。
+ */
+export function interpretQrComplete(
+  httpStatus: number,
+  body: unknown,
+): QrCompleteInterpretation {
+  const b = (body ?? {}) as {
+    data?: { ok?: boolean; sent?: boolean; alreadyProcessed?: boolean; code?: string; message?: string };
+    error?: { code?: string; message?: string };
+  };
+
+  if (httpStatus >= 200 && httpStatus < 300 && b.data) {
+    const d = b.data;
+    if (d.sent === true) {
+      return { outcome: "sent", message: d.message || "メッセージを送信しました。LINEのトーク画面をご確認ください。" };
+    }
+    if (d.alreadyProcessed === true) {
+      return { outcome: "already_processed", message: d.message || "このQRはすでに読み取り済みです。" };
+    }
+    if (d.code === "message_not_configured") {
+      return { outcome: "message_not_configured", message: d.message || "QRは読み取りましたが、送信するメッセージが設定されていません。" };
+    }
+    if (d.code === "qr_not_matched" || d.ok === false) {
+      return { outcome: "unmatched", message: d.message || "このQRコードはこの作品では使えません。" };
+    }
+    if (d.code === "service_suspended") {
+      return { outcome: "failed", message: d.message || "現在このアカウントのサービスは利用できません。" };
+    }
+    return { outcome: "failed", message: "処理結果を確認できませんでした。もう一度お試しください。" };
+  }
+
+  // ── error エンベロープ ──
+  const code = b.error?.code;
+  if (code === "FEATURE_DISABLED") {
+    return { outcome: "failed", message: "この作品ではQR読み取りが有効になっていません。" };
+  }
+  if (httpStatus === 401) {
+    return { outcome: "failed", message: "LINE連携に失敗しました。もう一度開き直してください。" };
+  }
+  return { outcome: "failed", message: "メッセージ送信に失敗しました。もう一度お試しください。" };
+}
