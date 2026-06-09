@@ -7,25 +7,9 @@ import { useEffect, useState, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { QRCodeSVG } from "qrcode.react";
 import { locationApi, workApi, getDevToken } from "@/lib/api-client";
+import { buildLiffCheckinUrl } from "@/lib/liff/config";
 import { buttonClass } from "@/components/shared";
 import type { LocationWithTransition } from "@/types";
-
-function buildLiffUrl(args: {
-  liffId: string;
-  locationId: string;
-  locationPublicId?: string;
-  workId: string;
-  workPublicId?: string;
-}): string {
-  const { liffId } = args;
-  // publicId が両方揃えば短縮 URL (https://liff.line.me/{ID}/c/{wp}/{lp}) を使う。
-  // /liff/c/[workPublicId]/[locationPublicId] route が /liff?work_id=...&location_id=... へ redirect する。
-  if (args.workPublicId && args.locationPublicId) {
-    return `https://liff.line.me/${liffId}/c/${args.workPublicId}/${args.locationPublicId}`;
-  }
-  // 旧 query 形式 (UUID)。後方互換維持。
-  return `https://liff.line.me/${liffId}?location_id=${args.locationId}&work_id=${args.workId}`;
-}
 
 const MODE_BADGE: Record<string, { label: string; color: string; bg: string }> = {
   qr_only:    { label: "QR",      color: "#7c3aed", bg: "#f5f3ff" },
@@ -223,13 +207,7 @@ export default function GpsPanel({ oaId, workId }: Props) {
       {!loading && filteredLocations.length > 0 && (
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           {filteredLocations.map((loc) => {
-            const liffUrl = liffId ? buildLiffUrl({
-              liffId,
-              locationId: loc.id,
-              locationPublicId: loc.public_id,
-              workId,
-              workPublicId,
-            }) : null;
+            const liffUrl = liffId ? buildLiffCheckinUrl({ liffId, workId, locationId: loc.id }) : null;
             const isExpanded = expandedQR === loc.id;
             const stats = locStats.get(loc.id);
             const modeBadge = MODE_BADGE[loc.checkin_mode] ?? MODE_BADGE.qr_only;

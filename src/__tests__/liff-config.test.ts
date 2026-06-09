@@ -19,6 +19,7 @@ import {
   buildLiffUrl,
   getRecommendedEndpointUrl,
   getLiffEndpointPath,
+  buildLiffCheckinUrl,
 } from "@/lib/liff/config";
 
 const ENV_KEYS = ["NEXT_PUBLIC_LIFF_ID", "NEXT_PUBLIC_APP_URL", "NEXT_PUBLIC_BASE_URL"] as const;
@@ -106,5 +107,30 @@ describe("getRecommendedEndpointUrl / getLiffEndpointPath", () => {
   it("originOverride を最優先", () => {
     process.env.NEXT_PUBLIC_APP_URL = "https://app.example.com";
     expect(getRecommendedEndpointUrl("https://preview.example.com")).toBe("https://preview.example.com/liff");
+  });
+});
+
+describe("buildLiffCheckinUrl（liff.state 形式）", () => {
+  it("liff.state=/liff?work_id=...&location_id=... を URL エンコードして付与する", () => {
+    const url = buildLiffCheckinUrl({ liffId: "1234567890-abc", workId: "W1", locationId: "L1" });
+    expect(url).toBe("https://liff.line.me/1234567890-abc?liff.state=%2Fliff%3Fwork_id%3DW1%26location_id%3DL1");
+  });
+
+  it("デコードすると /liff?work_id / location_id を復元できる（二重エンコードしない）", () => {
+    const url = buildLiffCheckinUrl({ liffId: "id", workId: "11111111-1111-1111-1111-111111111111", locationId: "22222222-2222-2222-2222-222222222222" })!;
+    const state = new URL(url).searchParams.get("liff.state")!;
+    expect(state).toBe("/liff?work_id=11111111-1111-1111-1111-111111111111&location_id=22222222-2222-2222-2222-222222222222");
+    const inner = new URL(state, "https://x.invalid").searchParams;
+    expect(inner.get("work_id")).toBe("11111111-1111-1111-1111-111111111111");
+    expect(inner.get("location_id")).toBe("22222222-2222-2222-2222-222222222222");
+  });
+
+  it("liffId 未設定なら null", () => {
+    expect(buildLiffCheckinUrl({ liffId: null, workId: "W", locationId: "L" })).toBeNull();
+  });
+
+  it("workId / locationId 欠落なら null", () => {
+    expect(buildLiffCheckinUrl({ liffId: "id", workId: "", locationId: "L" })).toBeNull();
+    expect(buildLiffCheckinUrl({ liffId: "id", workId: "W", locationId: "" })).toBeNull();
   });
 });

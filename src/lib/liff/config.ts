@@ -95,3 +95,28 @@ export function getRecommendedEndpointUrl(originOverride?: string | null): strin
     "https://app.whale-studio.app";
   return `${origin.replace(/\/$/, "")}${getLiffEndpointPath()}`;
 }
+
+/**
+ * ロケーションチェックイン用の LIFF URL を `liff.state` 形式で組み立てる。
+ *
+ * `https://liff.line.me/{liffId}?liff.state=%2Fliff%3Fwork_id%3D...%26location_id%3D...`
+ *
+ * なぜ liff.state 形式か:
+ *   - LINE は LIFF URL の `liff.state` 値を endpoint 側へそのまま引き渡す。これにより
+ *     LINE Developers Console の Endpoint URL のパス設定（/liff の有無等）に依存せず、
+ *     `/liff?work_id=...&location_id=...` を確実に復元できる。
+ *   - 旧来の `?work_id=...&location_id=...`（liffId 直下クエリ）形式は、endpoint のパスや
+ *     primary redirect の挙動差で work_id/location_id が落ちるケースがあった。
+ *
+ * work_id / location_id は UUID（または publicId）をそのまま渡す。URLSearchParams が
+ * liff.state 値全体を 1 回だけ URL エンコードする（二重エンコードしない）。
+ */
+export function buildLiffCheckinUrl(args: {
+  liffId:     string | null | undefined;
+  workId:     string;
+  locationId: string;
+}): string | null {
+  if (!args.workId || !args.locationId) return null;
+  const liffState = `${getLiffEndpointPath()}?work_id=${args.workId}&location_id=${args.locationId}`;
+  return buildLiffUrl({ liffId: args.liffId, query: { "liff.state": liffState } });
+}
