@@ -589,8 +589,10 @@ export async function pushToLine(
   userId:             string,
   messages:           LineMessage[],
   channelAccessToken: string,
-): Promise<void> {
-  if (!userId || messages.length === 0) return;
+): Promise<{ ok: boolean; status?: number }> {
+  // 送信結果を返す（成功/失敗を呼出側で判定できるようにする。
+  // 既存の `await pushToLine(...)` 呼出は戻り値を無視するため後方互換）。
+  if (!userId || messages.length === 0) return { ok: false };
 
   const cleanMessages = messages.map(stripInternalFields);
 
@@ -611,9 +613,12 @@ export async function pushToLine(
     if (!res.ok) {
       const body = await res.text().catch(() => "(読み取り不能)");
       console.error(`[LINE Push] HTTP ${res.status}:`, body);
+      return { ok: false, status: res.status };
     }
+    return { ok: true, status: res.status };
   } catch (err) {
     console.error("[LINE Push] ネットワークエラー:", err);
+    return { ok: false };
   }
 }
 
