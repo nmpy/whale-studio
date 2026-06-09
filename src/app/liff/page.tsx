@@ -269,7 +269,12 @@ function CheckinContent() {
         body: JSON.stringify({ line_user_id: lineUserId, location_id: locationId, work_id: workId, checkin_method: "qr" }),
       });
       const json = await res.json();
-      if (!json.success) { setState({ step: "error", code: "API_ERROR", message: json.error?.message ?? "チェックインに失敗しました" }); return; }
+      if (!json.success) {
+        // 作品未開始は専用コードにして、次の行動（LINEトークで開始）が分かる文言を出す。
+        const code = json.error?.code === "SCENARIO_NOT_STARTED" ? "SCENARIO_NOT_STARTED" : "API_ERROR";
+        setState({ step: "error", code, message: json.error?.message ?? "チェックインに失敗しました" });
+        return;
+      }
       const result = json.data as CheckinResult;
       setState({ step: "result", result });
       if (result.status === "checked_in") setStampRefreshKey((k) => k + 1);
@@ -325,16 +330,18 @@ function CheckinContent() {
             {state.code === "NOT_IN_LINE" ? "📱"
               : state.code === "GPS_FAILED" ? "📍"
               : state.code === "MISSING_PARAMS" ? "🔗"
+              : state.code === "SCENARIO_NOT_STARTED" ? "▶️"
               : "⚠️"}
           </div>
           <p style={{ fontWeight: 600, fontSize: 16, color: "#111827", marginBottom: 8 }}>
             {state.code === "NOT_IN_LINE" ? "LINE で開いてください"
               : state.code === "GPS_FAILED" ? "位置情報を取得できません"
               : state.code === "MISSING_PARAMS" ? "このページはチェックイン用です"
+              : state.code === "SCENARIO_NOT_STARTED" ? "作品がまだ始まっていません"
               : "エラーが発生しました"}
           </p>
-          <p style={{ fontSize: 13, color: "#6b7280", lineHeight: 1.7 }}>{state.message}</p>
-          <button onClick={handleClose} style={btnGhost}>閉じる</button>
+          <p style={{ fontSize: 13, color: "#6b7280", lineHeight: 1.7, whiteSpace: "pre-line" }}>{state.message}</p>
+          <button onClick={handleClose} style={btnGhost}>{state.code === "SCENARIO_NOT_STARTED" ? "LINEのトークに戻る" : "閉じる"}</button>
         </div>
       )}
 

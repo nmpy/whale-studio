@@ -8,7 +8,7 @@
 //
 // Location.checkinMode に基づいて判定。既存 QR/GPS チェックインとの後方互換を維持。
 
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { ok, badRequest, notFound, serverError } from "@/lib/api-response";
@@ -168,7 +168,19 @@ export async function POST(req: NextRequest) {
     const progress = await prisma.userProgress.findUnique({
       where: { lineUserId_workId: { lineUserId: data.line_user_id, workId: data.work_id } },
     });
-    if (!progress) return badRequest("シナリオが開始されていません。まずシナリオを開始してください。");
+    if (!progress) {
+      // 専用コードで返し、LIFF 側で「LINEトークに戻って開始してください」の導線を出せるようにする。
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: "SCENARIO_NOT_STARTED",
+            message: "この作品はまだ開始されていません。LINEのトーク画面に戻り、開始メッセージ（合言葉）を送って作品を始めてから、もう一度チェックインしてください。",
+          },
+        },
+        { status: 400 },
+      );
+    }
     if (progress.reachedEnding) return badRequest("シナリオは既に完了しています");
 
     // ── 4. クールダウン ──
