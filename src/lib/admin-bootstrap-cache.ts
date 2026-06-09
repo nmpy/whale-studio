@@ -72,6 +72,19 @@ export function invalidateBootstrap(oaId: string, workId: string): void {
   store.delete(keyOf(oaId, workId));
 }
 
+/**
+ * 全 cache をクリアする。
+ *
+ * 主な用途: 認証状態の変化（ログイン / ログアウト / ユーザー切替）。
+ * module-scope の Map は同一ブラウザタブで永続するため、別ユーザーに切り替わった
+ * 際に前ユーザーの管理画面 payload を一瞬でも描画しないよう、ここで一掃する。
+ * （通常のログアウト導線は window.location 全リロードで module 状態ごと消えるが、
+ *   SPA 的な auth 変化に対する二重防御として明示的に clear する。）
+ */
+export function clearAllBootstrap(): void {
+  store.clear();
+}
+
 /** テスト用: 全 cache をクリアする。 */
 export function _clearBootstrapCacheForTest(): void {
   store.clear();

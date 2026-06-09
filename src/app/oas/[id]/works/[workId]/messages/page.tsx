@@ -538,14 +538,18 @@ export default function MessagesPage() {
       applyData(cached.data);
       setLoading(false);
       setLoadError(null);
-      // fresh（直近取得）なら network を張らず終了。stale なら裏で revalidate する。
-      if (cached.isFresh) return () => { cancelled = true; };
     } else {
       setLoading(true);
       setLoadError(null);
     }
 
-    // 2) Bootstrap を 1 本だけ取得（従来の 5 並列 fetch を集約）。
+    // 2) cache の有無に関わらず、必ず Bootstrap を 1 本取得して revalidate する
+    //    (= stale-while-revalidate)。
+    //    こうすることで、メッセージ作成/編集や phase/transition/シナリオ編集など
+    //    **他ページでの更新**後にこの一覧へ戻ったとき、各更新ページに invalidate を
+    //    仕込まなくても次 mount で必ず最新へ自己修復される（cache hit 時は即描画 →
+    //    裏で最新に差し替え）。一覧自身の楽観更新 (delete/reorder/toggle) は即時整合の
+    //    ため invalidateBootstrap でも消している。
     bootstrapApi.messages(getDevToken(), oaId, workId)
       .then((data) => {
         if (cancelled) return;

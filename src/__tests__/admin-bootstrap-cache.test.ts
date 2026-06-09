@@ -17,6 +17,7 @@ import {
   getCachedBootstrap,
   setCachedBootstrap,
   invalidateBootstrap,
+  clearAllBootstrap,
   _clearBootstrapCacheForTest,
   BOOTSTRAP_FRESH_MS,
   BOOTSTRAP_MAX_AGE_MS,
@@ -81,5 +82,13 @@ describe("admin-bootstrap-cache", () => {
     expect(getCachedBootstrap("oa1", "w2", 1000)).toBeNull();
     expect(getCachedBootstrap("oa2", "w1", 1000)).toBeNull();
     expect(getCachedBootstrap("oa1", "w1", 1000)!.data.work.title).toBe("A");
+  });
+
+  it("clearAllBootstrap は全 entry を一掃する（ユーザー切替/ログアウト用）", () => {
+    setCachedBootstrap("oa1", "w1", stub("A"), 1000);
+    setCachedBootstrap("oa2", "w9", stub("B"), 1000);
+    clearAllBootstrap();
+    expect(getCachedBootstrap("oa1", "w1", 1000)).toBeNull();
+    expect(getCachedBootstrap("oa2", "w9", 1000)).toBeNull();
   });
 });

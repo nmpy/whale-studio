@@ -52,6 +52,7 @@ export const dynamic = "force-dynamic";
 export const GET = withAuth<{ id: string; workId: string }>(async (_req, { params }, user) =>
   runWithRequestId(genRequestId(), () => withTiming("api/messages-bootstrap:GET", async () => {
     const startedAt = performance.now();
+    const dbStartedAt = performance.now();
     try {
       // 1. work 取得 (存在確認 + oaId 取得 + 画面が使う最小 work 情報を 1 query で)。
       const work = await withTiming("api/messages-bootstrap:db:work", () =>
@@ -111,6 +112,8 @@ export const GET = withAuth<{ id: string; workId: string }>(async (_req, { param
             }),
           ]),
       );
+      // DB 寄りの所要時間 (work 取得 → OA 認可 → 3 list の並列取得まで)。
+      const dbMs = Math.round(performance.now() - dbStartedAt);
 
       const payload = {
         // work の最小情報 (snake_case = 既存 client の shape に合わせる)
@@ -146,7 +149,7 @@ export const GET = withAuth<{ id: string; workId: string }>(async (_req, { param
         // PII は出さない (oaId / workId は識別子だが UUID 全長は出さず先頭のみ)。
         // eslint-disable-next-line no-console
         console.log(
-          `[perf:admin:bootstrap] total=${total}ms oa=${params.id.slice(0, 8)}… work=${params.workId.slice(0, 8)}… ` +
+          `[perf:admin:bootstrap] total=${total}ms db=${dbMs}ms oa=${params.id.slice(0, 8)}… work=${params.workId.slice(0, 8)}… ` +
           `msgs=${messages.length} phases=${phases.length} trans=${transitions.length}`,
         );
       }
