@@ -123,6 +123,8 @@ async function replyToLine(
   }
   // 送信前待機（head/単発）: lag_ms を head にも適用する（従来は chain 2通目以降のみ＝バグ）。
   const headLag = resolveHeadSendDelayMs(messages[0]);
+  // [diag] 保存値が webhook 実行時に messages[0] へ届いているかを常時出力（PII なし）。
+  console.log(`[timing][diag] path=reply msgCount=${messages.length} resolvedLagMs=${headLag} rawLagMs=${messages[0]?._lagMs ?? "none"} hasTiming=${!!messages[0]?._timing}`);
   if (headLag > 0) {
     console.log(`[timing] head send delay applied: resolvedLagMs=${headLag} source=message-lag path=reply`);
     await sleep(headLag);
@@ -179,6 +181,8 @@ async function replyWithLagToLine(
   }
   // 送信前待機（chain head）: head の lag_ms を適用する（chain 2通目以降は _replyWithLagToLine 側で適用）。
   const headLag = resolveHeadSendDelayMs(messages[0]);
+  // [diag] 保存値が webhook 実行時に messages[0] へ届いているかを常時出力（PII なし）。
+  console.log(`[timing][diag] path=chain-head msgCount=${messages.length} resolvedLagMs=${headLag} rawLagMs=${messages[0]?._lagMs ?? "none"} hasTiming=${!!messages[0]?._timing}`);
   if (headLag > 0) {
     console.log(`[timing] head send delay applied: resolvedLagMs=${headLag} source=message-lag path=chain-head`);
     await sleep(headLag);
@@ -317,9 +321,17 @@ type WorkRow = NonNullable<Awaited<ReturnType<typeof fetchActiveWork>>>;
 async function getCachedPhase(phaseId: string): Promise<PhaseRow | null> {
   const key = CACHE_KEY.phase(phaseId);
   const hit = await activeCache.get<PhaseRow>(key);
-  if (hit) return hit;
+  // [diag] 取得元（HIT=キャッシュ / MISS=DB）と lag_ms を持つメッセージ数を出力。
+  // stale cache（lag 反映前の phase が残存）を behavior から切り分けるため。
+  const lagCountOf = (p: PhaseRow | null) =>
+    (p?.messages ?? []).filter((m) => (m.lagMs ?? 0) > 0).length;
+  if (hit) {
+    console.log(`[cache][diag] phase HIT phaseId=${phaseId.slice(0, 8)} msgsWithLag=${lagCountOf(hit)}`);
+    return hit;
+  }
   console.log(`[cache] phase MISS phaseId=${phaseId.slice(0, 8)}`);
   const phase = await fetchPhaseWithIncludes(phaseId);
+  console.log(`[cache][diag] phase fromDB phaseId=${phaseId.slice(0, 8)} msgsWithLag=${lagCountOf(phase)}`);
   if (phase) await activeCache.set(key, phase, TTL.PHASE);
   return phase ?? null;
 }
