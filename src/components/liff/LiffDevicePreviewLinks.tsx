@@ -33,6 +33,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
+import { buttonClass } from "@/components/shared";
 
 interface Props {
   /** Work の DB 内部 ID (UUID)。URL 生成自体には publicId を優先する */
@@ -233,7 +234,7 @@ function UrlRow({
             type="button"
             onClick={onCopy}
             disabled={disabled}
-            className="px-3 py-1 bg-violet-500 text-white rounded text-xs font-semibold hover:bg-violet-600 disabled:opacity-40 disabled:cursor-not-allowed"
+            className={buttonClass({ variant: "primary", size: "sm" })}
           >
             {copied ? "コピーしました!" : "URL をコピー"}
           </button>

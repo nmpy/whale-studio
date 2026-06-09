@@ -55,7 +55,7 @@ export function WerewolfCardFormModal({ card, saving, onCancel, onSubmit }: Prop
               カード見出し <span className="text-red-500">*</span>
             </label>
             <input
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-300"
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand/30"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="例: 守護騎士"
@@ -68,7 +68,7 @@ export function WerewolfCardFormModal({ card, saving, onCancel, onSubmit }: Prop
             <div>
               <label className="block text-xs font-medium text-gray-500 mb-1">サブテキスト</label>
               <input
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-300"
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand/30"
                 value={subtitle}
                 onChange={(e) => setSubtitle(e.target.value)}
                 placeholder="例: あなたは……"
@@ -79,7 +79,7 @@ export function WerewolfCardFormModal({ card, saving, onCancel, onSubmit }: Prop
             <div>
               <label className="block text-xs font-medium text-gray-500 mb-1">バッジ</label>
               <input
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-300"
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand/30"
                 value={badgeLabel}
                 onChange={(e) => setBadgeLabel(e.target.value)}
                 placeholder="例: 役職"
@@ -94,7 +94,7 @@ export function WerewolfCardFormModal({ card, saving, onCancel, onSubmit }: Prop
               本文 <span className="text-red-500">*</span>
             </label>
             <textarea
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm resize-y min-h-[140px] focus:outline-none focus:ring-2 focus:ring-violet-300"
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm resize-y min-h-[140px] focus:outline-none focus:ring-2 focus:ring-brand/30"
               value={body}
               onChange={(e) => setBody(e.target.value)}
               placeholder="例: あなたは村の命を守る誇り高き騎士です。&#10;あなたは毎晩クエストに参加する者を1人選び……"
@@ -116,7 +116,7 @@ export function WerewolfCardFormModal({ card, saving, onCancel, onSubmit }: Prop
             <button
               type="submit"
               disabled={saving || !title.trim() || !body.trim()}
-              className="px-4 py-2 bg-violet-500 text-white rounded-md text-sm font-semibold hover:bg-violet-600 disabled:opacity-50"
+              className="px-4 py-2 bg-brand text-white rounded-md text-sm font-semibold hover:bg-brand-deep disabled:opacity-50"
             >
               {saving ? "保存中..." : isEdit ? "更新" : "追加"}
             </button>

@@ -100,7 +100,7 @@ export function AccordionChildrenEditor({ items, depth, readOnly, onChange }: Pr
                 onClick={() => addChild(t)}
                 disabled={disabled}
                 title={disabled ? `accordion は最大 ${LIFF_MAX_ACCORDION_DEPTH} 階層までです` : undefined}
-                className="px-2.5 py-1 text-[11px] bg-violet-50 border border-violet-200 rounded-md text-violet-700 hover:bg-violet-100 disabled:opacity-40 disabled:cursor-not-allowed"
+                className="px-2.5 py-1 text-[11px] bg-brand-soft border border-brand/30 rounded-md text-brand-ink hover:bg-brand-mist disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 + {entry.icon} {entry.label}
               </button>

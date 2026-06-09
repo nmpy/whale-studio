@@ -278,7 +278,7 @@ export function WerewolfTitleDetailEditor({
         <div>
           <label className="block text-xs font-medium text-gray-500 mb-1">タイトル名 <span className="text-red-500">*</span></label>
           <input
-            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-300"
+            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand/30"
             value={draftTitle}
             onChange={(e) => setDraftTitle(e.target.value)}
             disabled={readOnly}
@@ -289,7 +289,7 @@ export function WerewolfTitleDetailEditor({
         <div>
           <label className="block text-xs font-medium text-gray-500 mb-1">説明 (任意)</label>
           <textarea
-            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm resize-y min-h-[60px] focus:outline-none focus:ring-2 focus:ring-violet-300"
+            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm resize-y min-h-[60px] focus:outline-none focus:ring-2 focus:ring-brand/30"
             value={draftDescription}
             onChange={(e) => setDraftDescription(e.target.value)}
             disabled={readOnly}
@@ -303,7 +303,7 @@ export function WerewolfTitleDetailEditor({
             <label className="block text-xs font-medium text-gray-500 mb-1">プレイ予定日時 (任意)</label>
             <input
               type="datetime-local"
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-300"
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand/30"
               value={draftScheduledAt}
               onChange={(e) => setDraftScheduledAt(e.target.value)}
               disabled={readOnly}
@@ -313,7 +313,7 @@ export function WerewolfTitleDetailEditor({
             <label className="block text-xs font-medium text-gray-500 mb-1">プレイヤー人数</label>
             <input
               type="number"
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-300 disabled:bg-gray-50"
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand/30 disabled:bg-gray-50"
               value={draftPlayerCount}
               onChange={(e) => {
                 const n = Number(e.target.value);
@@ -339,7 +339,7 @@ export function WerewolfTitleDetailEditor({
               type="button"
               onClick={handleSaveTitle}
               disabled={savingTitle}
-              className="px-4 py-2 bg-violet-500 text-white rounded-md text-sm font-semibold hover:bg-violet-600 disabled:opacity-50"
+              className="px-4 py-2 bg-brand text-white rounded-md text-sm font-semibold hover:bg-brand-deep disabled:opacity-50"
             >
               {savingTitle ? "保存中..." : "タイトル設定を保存"}
             </button>

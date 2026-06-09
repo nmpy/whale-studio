@@ -14,7 +14,7 @@ import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
 import { useAccessPreview } from "@/hooks/useAccessPreview";
 import { ViewerBanner } from "@/components/PermissionGuard";
 import { PlanRequiredCard } from "@/components/PlanRequiredCard";
-import { Button } from "@/components/shared";
+import { Button, buttonClass } from "@/components/shared";
 import { FEATURE, getPlanAccessState } from "@/lib/constants/plans";
 import {
   liffConfigApi,
@@ -340,7 +340,7 @@ export default function LiffPagesIndex() {
                           href={url}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-[11px] text-violet-600 underline truncate max-w-full"
+                          className="text-[11px] text-brand-ink underline truncate max-w-full"
                           title={url}
                         >
                           {url}
@@ -362,7 +362,7 @@ export default function LiffPagesIndex() {
                     )}
                     <a
                       href={`/oas/${oaId}/works/${workId}/liff/${p.id}`}
-                      className="px-3 py-1.5 bg-violet-500 text-white rounded-md text-xs font-semibold hover:bg-violet-600"
+                      className={buttonClass({ variant: "primary", size: "sm" })}
                     >
                       編集
                     </a>

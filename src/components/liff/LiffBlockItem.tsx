@@ -40,7 +40,7 @@ export function LiffBlockItem({
       onDragOver={onDragOver}
       onDragEnd={onDragEnd}
       className={`bg-white rounded-lg p-3 transition-all ${
-        isEditing ? "border-2 border-violet-500" : "border border-gray-200"
+        isEditing ? "border-2 border-brand" : "border border-gray-200"
       } ${!block.is_enabled ? "opacity-50" : ""} ${!readOnly ? "cursor-grab" : ""}`}
     >
       {/* ヘッダー */}
@@ -112,7 +112,7 @@ export function LiffBlockItem({
               ブロックタイトル
             </label>
             <input
-              className="w-full px-2.5 py-1.5 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-violet-300"
+              className="w-full px-2.5 py-1.5 border border-gray-200 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-brand/30"
               value={block.title ?? ""}
               onChange={(e) => onLocalChange({ title: e.target.value || null })}
               disabled={readOnly}
@@ -124,7 +124,7 @@ export function LiffBlockItem({
               表示条件
             </label>
             <select
-              className="w-full px-2.5 py-1.5 border border-gray-200 rounded-md text-sm bg-white focus:outline-none focus:ring-2 focus:ring-violet-300"
+              className="w-full px-2.5 py-1.5 border border-gray-200 rounded-md text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30"
               value={block.visibility_condition_json ?? "always"}
               onChange={(e) => onLocalChange({ visibility_condition_json: e.target.value as VisibilityCondition })}
               disabled={readOnly}
@@ -147,7 +147,7 @@ export function LiffBlockItem({
               <button
                 onClick={() => onSave(block)}
                 disabled={saving}
-                className="px-5 py-2 bg-violet-500 text-white rounded-lg text-sm font-semibold cursor-pointer disabled:opacity-60"
+                className="px-5 py-2 bg-brand text-white rounded-lg text-sm font-semibold cursor-pointer disabled:opacity-60"
               >
                 {saving ? "保存中..." : "保存"}
               </button>

@@ -37,7 +37,7 @@ export function LiffSurveyEditor({ settings, readOnly, onChange }: Props) {
   }, [settings.survey_items]);
 
   const labelCls = "block text-xs font-medium text-gray-500 mb-1";
-  const inputCls = "w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-300 disabled:bg-gray-50";
+  const inputCls = "w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand/30 disabled:bg-gray-50";
 
   const update = (next: SurveyItem[]) => onChange({ survey_items: next });
 
@@ -70,7 +70,7 @@ export function LiffSurveyEditor({ settings, readOnly, onChange }: Props) {
           <button
             type="button"
             onClick={addItem}
-            className="px-3 py-1.5 bg-violet-500 text-white rounded-md text-xs font-semibold hover:bg-violet-600 transition-colors"
+            className="px-3 py-1.5 bg-brand text-white rounded-md text-xs font-semibold hover:bg-brand-deep transition-colors"
           >
             ＋ 質問を追加
           </button>

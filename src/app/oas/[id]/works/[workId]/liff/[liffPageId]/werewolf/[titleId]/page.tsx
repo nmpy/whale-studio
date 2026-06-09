@@ -54,7 +54,7 @@ export default function WerewolfTitleDetailPage() {
         <h1 className="text-xl font-bold text-gray-900">人狼 / 配役閲覧 — タイトル詳細</h1>
         <Link
           href={`/oas/${oaId}/works/${workId}/liff/${liffPageId}`}
-          className="text-xs text-violet-600 underline"
+          className="text-xs text-brand-ink underline"
         >
           ← LIFFページ編集に戻る
         </Link>

@@ -32,10 +32,10 @@ type FieldProps<T> = {
 };
 
 const inputClass =
-  "w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-300 focus:border-violet-400 disabled:bg-gray-50 disabled:text-gray-500";
+  "w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand disabled:bg-gray-50 disabled:text-gray-500";
 const labelClass = "block text-xs font-medium text-gray-600 mb-1";
 const selectClass =
-  "w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-violet-300 disabled:bg-gray-50";
+  "w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 disabled:bg-gray-50";
 
 export function FreeTextForm({ settings, onChange, readOnly }: FieldProps<FreeTextSettings>) {
   return (

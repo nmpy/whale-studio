@@ -97,7 +97,7 @@ export function WerewolfSlotEditorItem({
           disabled={readOnly || savingLabel}
           placeholder={`プレイヤー${slot.slot_number}`}
           maxLength={50}
-          className="flex-1 min-w-[120px] text-sm bg-white border border-gray-200 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-violet-300"
+          className="flex-1 min-w-[120px] text-sm bg-white border border-gray-200 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-brand/30"
         />
       </div>
 
@@ -168,7 +168,7 @@ export function WerewolfSlotEditorItem({
           <button
             type="button"
             onClick={() => { setEditingCard(null); setShowCardModal(true); }}
-            className="mt-2 text-[11px] px-2.5 py-1 border border-dashed border-violet-300 text-violet-600 rounded hover:bg-violet-50"
+            className="mt-2 text-[11px] px-2.5 py-1 border border-dashed border-brand/40 text-brand-ink rounded hover:bg-brand-mist"
           >
             ＋ カード追加
           </button>
