@@ -15,7 +15,7 @@ import { ViewerBanner } from "@/components/PermissionGuard";
 import { GuideCard } from "@/components/onboarding/GuideCard";
 import type { MessageWithRelations, MessageType, PhaseWithCounts, TransitionWithPhases, QuickReplyItem } from "@/types";
 import type { Role } from "@/lib/types/permissions";
-import { collectChainContinuationIds, chainSizeFrom, getChainContinuations, hasAnyTiming, summarizeTiming } from "./_list-helpers";
+import { collectChainContinuationIds, chainSizeFrom, chainLengthFrom, estimatePhaseSendBatch, LINE_REPLY_MAX, getChainContinuations, hasAnyTiming, summarizeTiming } from "./_list-helpers";
 
 const MESSAGE_TYPE_LABEL: Record<MessageType, string> = {
   text:     "テキスト",
@@ -1094,6 +1094,32 @@ export default function MessagesPage() {
                   </span>
                 </div>
 
+                {/* 送信通数の警告: このフェーズに入った際の一括送信が LINE Reply 上限(5件)を超える場合 */}
+                {ph && (() => {
+                  const phaseMsgs = messages
+                    .filter((m) => m.phase?.id === ph.id)
+                    .sort((a, b) =>
+                      a.sort_order - b.sort_order ||
+                      new Date(a.created_at).getTime() - new Date(b.created_at).getTime() ||
+                      a.id.localeCompare(b.id),
+                    );
+                  const batch = estimatePhaseSendBatch(phaseMsgs);
+                  if (batch <= LINE_REPLY_MAX) return null;
+                  return (
+                    <div style={{
+                      padding: "8px 18px", background: "#fff7ed",
+                      borderBottom: "1px solid #fed7aa", color: "#9a3412",
+                      fontSize: 11, lineHeight: 1.6,
+                    }}>
+                      ⚠️ このフェーズは1回の送信が<strong>合計{batch}通以上</strong>になります。
+                      LINE Reply API で一度に送れるのは<strong>最大5通</strong>までです。
+                      6通目以降は Push API で送信されるため、月間メッセージ通数を消費します
+                      （Push 上限に達している場合、6通目以降は届きません）。
+                      途中に QR / 入力 / フェーズ遷移を挟むか、フェーズを分けて1回の送信を5通以内にすることを推奨します。
+                    </div>
+                  );
+                })()}
+
                 {/* テーブル */}
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                   <thead>
@@ -1209,27 +1235,39 @@ export default function MessagesPage() {
                               {msg.body || <span style={{ color: "#9ca3af" }}>—</span>}
                             </span>
                           )}
-                          {/* chain head のとき、連続送信通数を青バッジで表示 (= クリックで展開トグル) */}
-                          {msg.next_message_id && chainSizeFrom(messages, msg.id) > 1 && (() => {
+                          {/* chain head のとき、連続送信通数を青バッジで表示 (= クリックで展開トグル)。
+                              件数は実 chain 長（上限なし）で出す。LINE_REPLY_MAX(5) 超は
+                              6通目以降が通常応答で送れないため強い警告を併記する。 */}
+                          {msg.next_message_id && chainLengthFrom(messages, msg.id) > 1 && (() => {
                             const isExpanded = expandedChains.has(msg.id);
-                            const chainCount = chainSizeFrom(messages, msg.id);
+                            const chainTotal = chainLengthFrom(messages, msg.id);
+                            const overLimit = chainTotal > LINE_REPLY_MAX;
                             return (
-                              <button
-                                type="button"
-                                onClick={() => toggleChainExpansion(msg.id)}
-                                aria-expanded={isExpanded}
-                                style={{
-                                  marginTop: 4, display: "inline-flex", alignItems: "center", gap: 4,
-                                  fontSize: 10, fontWeight: 600,
-                                  background: "#eff6ff", color: "#1d4ed8",
-                                  border: "1px solid #bfdbfe",
-                                  borderRadius: 10, padding: "1px 7px",
-                                  cursor: "pointer",
-                                }}
-                                title={isExpanded ? "連続メッセージを閉じる" : "連続メッセージを展開して内容を確認"}
-                              >
-                                {isExpanded ? "▴" : "▾"} {chainCount} 通の連続メッセージ
-                              </button>
+                              <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 4, alignItems: "flex-start" }}>
+                                <button
+                                  type="button"
+                                  onClick={() => toggleChainExpansion(msg.id)}
+                                  aria-expanded={isExpanded}
+                                  style={{
+                                    display: "inline-flex", alignItems: "center", gap: 4,
+                                    fontSize: 10, fontWeight: 600,
+                                    background: overLimit ? "#fef2f2" : "#eff6ff",
+                                    color: overLimit ? "#b91c1c" : "#1d4ed8",
+                                    border: `1px solid ${overLimit ? "#fecaca" : "#bfdbfe"}`,
+                                    borderRadius: 10, padding: "1px 7px",
+                                    cursor: "pointer",
+                                  }}
+                                  title={isExpanded ? "連続メッセージを閉じる" : "連続メッセージを展開して内容を確認"}
+                                >
+                                  {isExpanded ? "▴" : "▾"} 合計{chainTotal}通（このメッセージを含む）
+                                </button>
+                                {overLimit && (
+                                  <span style={{ fontSize: 10, color: "#b91c1c", lineHeight: 1.5 }}>
+                                    ⚠️ この連続メッセージは5通を超えています。LINE Reply API の上限を超えるため、
+                                    6通目以降は通常応答では送れません。5通以内に分割するか、途中に入力 / QR / フェーズ遷移を挟んでください。
+                                  </span>
+                                )}
+                              </div>
                             );
                           })()}
                         </td>
