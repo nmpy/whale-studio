@@ -37,7 +37,24 @@ export type LineBeaconEvent = {
 export type BeaconOaContext = {
   id: string;
   channelAccessToken: string;
+  /** OA サービス停止中（Oa.serviceSuspendedAt）。非 null なら送信しない。 */
+  serviceSuspendedAt?: Date | null;
+  /**
+   * Beacon 連動が現在のプランで利用可能か（= Pro 相当 / FEATURE.location）。
+   * 未指定（undefined）は「判定不要」として扱い、false のときのみ plan_blocked。
+   */
+  planAllowed?: boolean;
 };
+
+/**
+ * messageId（DB の Message）を既存のメッセージ送信パイプライン（chain + 演出）で
+ * LineMessage[] に解決するための注入関数。webhook 側から渡す（テスト時はモック）。
+ * messageId 未設定/解決不能なら null を返す。
+ */
+export type BeaconMessageResolver = (args: {
+  messageId: string;
+  workId: string | null;
+}) => Promise<LineMessage[] | null>;
 
 /** LINE 送信ヘルパーの差し込みポイント（テスト時にモック差し替え） */
 export interface BeaconLineGateway {
@@ -79,10 +96,20 @@ async function buildActionMessages(
     actionPayload: unknown;
     workId: string | null;
   },
+  resolveMessage?: BeaconMessageResolver,
 ): Promise<LineMessage[] | null> {
   const payload = (trigger.actionPayload ?? {}) as Record<string, unknown>;
 
   switch (trigger.actionType) {
+    // 登録済みメッセージ（messageId）を既存のメッセージ送信パイプラインで送る。
+    // lag_ms / typing / loading / quickReply / chain など通常メッセージと同じ挙動になる。
+    case "message": {
+      const messageId = typeof payload.message_id === "string" ? payload.message_id.trim() : "";
+      if (!messageId || !resolveMessage) return null; // message_not_configured
+      const msgs = await resolveMessage({ messageId, workId: trigger.workId });
+      return msgs && msgs.length > 0 ? msgs : null;
+    }
+
     case "send_message": {
       const text = typeof payload.text === "string" ? payload.text.trim() : "";
       if (!text) return null;
@@ -134,11 +161,17 @@ export async function handleBeaconEvent(args: {
   oa: BeaconOaContext;
   event: LineBeaconEvent;
   line: BeaconLineGateway;
+  /** messageId（DB Message）を LineMessage[] に解決する注入関数（action_type="message" 用）。 */
+  resolveMessage?: BeaconMessageResolver;
   /** 現在時刻（テスト用に注入可） */
   now?: () => Date;
 }): Promise<HandleBeaconResult> {
-  const { prisma, oa, event, line } = args;
+  const { prisma, oa, event, line, resolveMessage } = args;
   const now = args.now ?? (() => new Date());
+
+  console.log(
+    `[LINE Beacon] received oa=${oa.id} hwid="${event.beacon?.hwid ?? ""}" type=${event.beacon?.type ?? "-"} userId=${(event.source?.userId ?? "-").slice(0, 8)}`,
+  );
 
   const lineUserId = event.source?.userId ?? null;
   const beaconType = event.beacon?.type ?? "";
@@ -191,6 +224,7 @@ export async function handleBeaconEvent(args: {
   });
 
   if (!trigger) {
+    console.log(`[LINE Beacon] unknown_beacon oa=${oa.id} hwid="${hwid}" userId=${(lineUserId ?? "-").slice(0, 8)}`);
     await prisma.beaconEventLog.create({
       data: {
         oaId:           oa.id,
@@ -202,7 +236,7 @@ export async function handleBeaconEvent(args: {
         deviceMessage,
         webhookEventId,
         isRedelivery,
-        actionStatus:   "ignored",
+        actionStatus:   "unknown_beacon",
         errorMessage:   "no matching trigger",
         rawEvent:       event as unknown as object,
       },
@@ -229,6 +263,34 @@ export async function handleBeaconEvent(args: {
       },
     });
     return { status: "ignored", reason: "trigger disabled", triggerId: trigger.id };
+  }
+
+  // ── 4.5. OA サービス停止中 → 送信しない（既存のサービス停止仕様に従う）──
+  if (oa.serviceSuspendedAt) {
+    console.log(`[LINE Beacon] service_stopped oa=${oa.id} hwid=${hwid} trigger=${trigger.id}`);
+    await prisma.beaconEventLog.create({
+      data: {
+        oaId: oa.id, workId: trigger.workId, beaconTriggerId: trigger.id, lineUserId,
+        hwid, beaconType, deviceMessage, webhookEventId, isRedelivery,
+        actionStatus: "service_stopped", errorMessage: "OA service suspended",
+        rawEvent: event as unknown as object,
+      },
+    });
+    return { status: "ignored", reason: "service_stopped", triggerId: trigger.id };
+  }
+
+  // ── 4.6. プラン gate（Beacon 連動は Pro 相当 / FEATURE.location）──
+  if (oa.planAllowed === false) {
+    console.log(`[LINE Beacon] plan_blocked oa=${oa.id} hwid=${hwid} trigger=${trigger.id}`);
+    await prisma.beaconEventLog.create({
+      data: {
+        oaId: oa.id, workId: trigger.workId, beaconTriggerId: trigger.id, lineUserId,
+        hwid, beaconType, deviceMessage, webhookEventId, isRedelivery,
+        actionStatus: "plan_blocked", errorMessage: "plan does not allow beacon",
+        rawEvent: event as unknown as object,
+      },
+    });
+    return { status: "ignored", reason: "plan_blocked", triggerId: trigger.id };
   }
 
   // ── 5. eventTypes フィルタ（MVP: enter のみ想定）──
@@ -267,6 +329,7 @@ export async function handleBeaconEvent(args: {
       select: { id: true, createdAt: true },
     });
     if (recent) {
+      console.log(`[LINE Beacon] suppressed_cooldown oa=${oa.id} hwid=${hwid} trigger=${trigger.id} userId=${lineUserId.slice(0, 8)}`);
       await prisma.beaconEventLog.create({
         data: {
           oaId:           oa.id,
@@ -294,13 +357,18 @@ export async function handleBeaconEvent(args: {
       actionType:    trigger.actionType,
       actionPayload: trigger.actionPayload,
       workId:        trigger.workId,
-    });
+    }, resolveMessage);
   } catch (e) {
     messages = null;
     console.warn("[beacon] buildActionMessages threw", e);
   }
 
   if (messages === null) {
+    // action_type="message" で messageId 未設定/解決不能なら message_not_configured として扱う。
+    const isMessageAction = trigger.actionType === "message";
+    const status = isMessageAction ? "message_not_configured" : "failed";
+    const reason = isMessageAction ? "message not configured" : `invalid action config (type=${trigger.actionType})`;
+    console.log(`[LINE Beacon] ${status} oa=${oa.id} hwid=${hwid} trigger=${trigger.id}`);
     await prisma.beaconEventLog.create({
       data: {
         oaId:           oa.id,
@@ -312,12 +380,12 @@ export async function handleBeaconEvent(args: {
         deviceMessage,
         webhookEventId,
         isRedelivery,
-        actionStatus:   "failed",
-        errorMessage:   `invalid action config (type=${trigger.actionType})`,
+        actionStatus:   status,
+        errorMessage:   reason,
         rawEvent:       event as unknown as object,
       },
     });
-    return { status: "failed", reason: "invalid action config", triggerId: trigger.id };
+    return { status: isMessageAction ? "ignored" : "failed", reason, triggerId: trigger.id };
   }
 
   // noop（ログ専用トリガー）の場合は matched で記録して終わり
@@ -372,7 +440,9 @@ export async function handleBeaconEvent(args: {
   });
 
   if (sendError) {
+    console.log(`[LINE Beacon] failed oa=${oa.id} hwid=${hwid} trigger=${trigger.id} error="${sendError}"`);
     return { status: "failed", reason: sendError, triggerId: trigger.id };
   }
+  console.log(`[LINE Beacon] sent oa=${oa.id} hwid=${hwid} trigger=${trigger.id} userId=${(lineUserId ?? "-").slice(0, 8)} via=${event.replyToken ? "reply" : "push"}`);
   return { status: "sent", triggerId: trigger.id };
 }

@@ -45,6 +45,11 @@ vi.mock("@/lib/rbac", () => ({
   getOaIdFromWorkId:  (...args: unknown[]) => mockGetOaIdFromWorkId(...args),
 }));
 
+// プラン gate は本テストの対象外（RBAC 検証）。常に許可で素通り。
+vi.mock("@/lib/plan-guard", () => ({
+  requirePlanFeature: vi.fn(async () => ({ ok: true, plan: "pro" })),
+}));
+
 // ── ヘルパー ─────────────────────────────────────────────
 function forbiddenResponse() {
   return {

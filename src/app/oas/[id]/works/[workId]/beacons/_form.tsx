@@ -3,7 +3,7 @@
 // src/app/oas/[id]/works/[workId]/beacons/_form.tsx
 // ビーコン作成 / 編集フォーム（共通）
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { getAuthHeaders } from "@/lib/api-client";
@@ -15,9 +15,11 @@ export type BeaconFormValue = {
   enabled: boolean;
   event_types: string;
   cooldown_seconds: number;
-  action_type: "send_message" | "destination" | "noop";
+  action_type: "message" | "send_message" | "destination" | "noop";
   action_payload: Record<string, unknown> | null;
 };
+
+type MessageOption = { id: string; label: string };
 
 interface Props {
   oaId: string;
@@ -27,6 +29,7 @@ interface Props {
 }
 
 const DEFAULT_PAYLOADS: Record<BeaconFormValue["action_type"], Record<string, unknown>> = {
+  message:      { message_id: "" },
   send_message: { text: "" },
   destination:  { destination_id: "", text: "" },
   noop:         {},
@@ -46,6 +49,25 @@ export default function BeaconForm({ oaId, workId, initial, mode }: Props) {
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [messages, setMessages] = useState<MessageOption[]>([]);
+
+  // action_type="message" 用のメッセージ候補（同一 work）を取得する。
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/messages?work_id=${encodeURIComponent(workId)}`, { headers: getAuthHeaders() });
+        const json = await res.json();
+        if (cancelled || !json?.success || !Array.isArray(json.data)) return;
+        const opts: MessageOption[] = json.data.map((m: { id: string; body?: string | null; message_type?: string }) => ({
+          id: m.id,
+          label: (m.body && m.body.trim() ? m.body.trim().slice(0, 30) : (m.message_type ?? "メッセージ")),
+        }));
+        setMessages(opts);
+      } catch { /* 取得失敗時は手入力にフォールバック */ }
+    })();
+    return () => { cancelled = true; };
+  }, [workId]);
 
   function updatePayload(key: string, value: string) {
     setActionPayload((prev) => ({ ...prev, [key]: value }));
@@ -124,6 +146,13 @@ export default function BeaconForm({ oaId, workId, initial, mode }: Props) {
         </div>
       )}
 
+      <div style={{ padding: "12px 14px", background: "#f1f7fb", border: "1px solid #dbe8f2", borderRadius: 10, fontSize: 12, color: "#435068", lineHeight: 1.8 }}>
+        <div>・LINE Official Account Manager 側でビーコンを対象 OA に登録し、発行された HWID をここに入力してください。</div>
+        <div>・ユーザー側は Bluetooth と LINE Beacon 設定が ON、かつ OA を友だち追加済みである必要があります。</div>
+        <div>・連続通知を防ぐため、同じユーザー・同じビーコンの再検知にはクールダウンが適用されます。</div>
+        <div>・日本では <strong>enter</strong> 検知を前提にしています。Beacon 連動は Pro Max 機能です。</div>
+      </div>
+
       <Field label="ビーコン名" required>
         <input
           type="text"
@@ -188,11 +217,37 @@ export default function BeaconForm({ oaId, workId, initial, mode }: Props) {
 
       <Field label="発火時アクション" required>
         <select value={actionType} onChange={(e) => changeActionType(e.target.value as BeaconFormValue["action_type"])} style={inputStyle}>
+          <option value="message">登録済みメッセージを送信</option>
           <option value="send_message">テキストメッセージを送信</option>
           <option value="destination">遷移先 URL を送信（destination 参照）</option>
           <option value="noop">ログのみ（送信しない）</option>
         </select>
       </Field>
+
+      {actionType === "message" && (
+        <Field label="送信メッセージ" required hint="この作品に登録済みのメッセージを送信します。lag_ms / 「入力中…」/ 既読 / クイックリプライ等の演出は通常メッセージと同様に適用されます。">
+          {messages.length > 0 ? (
+            <select
+              value={String(actionPayload.message_id ?? "")}
+              onChange={(e) => updatePayload("message_id", e.target.value)}
+              style={inputStyle}
+            >
+              <option value="">— メッセージを選択 —</option>
+              {messages.map((m) => (
+                <option key={m.id} value={m.id}>{m.label}</option>
+              ))}
+            </select>
+          ) : (
+            <input
+              type="text"
+              value={String(actionPayload.message_id ?? "")}
+              onChange={(e) => updatePayload("message_id", e.target.value)}
+              style={{ ...inputStyle, fontFamily: "ui-monospace, monospace" }}
+              placeholder="メッセージ ID（同一作品のメッセージのみ）"
+            />
+          )}
+        </Field>
+      )}
 
       {actionType === "send_message" && (
         <Field label="送信テキスト" required>

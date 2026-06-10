@@ -46,6 +46,8 @@ import { shouldOfferResumeChoice } from "@/lib/message-flow";
 import { isFreeInputPrompt } from "@/lib/free-input";
 import { handleBeaconEvent, type LineBeaconEvent } from "@/lib/beacon";
 import { pushToLine as _pushToLine } from "@/lib/line";
+import { getCurrentPlanTierForOa } from "@/lib/plan-guard";
+import { getPlanAccessState, FEATURE } from "@/lib/constants/plans";
 import { logEvent } from "@/lib/event-logger";
 import { activeCache, TTL, CACHE_KEY } from "@/lib/cache";
 import { linkRichMenuToUser } from "@/lib/line-richmenu";
@@ -488,6 +490,43 @@ async function getCachedStartMsgs(
   }));
   await activeCache.set(key, result, TTL.START_MSGS);
   return result;
+}
+
+/**
+ * beacon の action_type="message": messageId から DB Message chain を読み、
+ * 既存のメッセージ送信パイプライン（buildKeywordMessages = lag/typing/loading/quickReply/chain 尊重）で
+ * LineMessage[] を構築する。head が無い/非アクティブなら null。
+ */
+const BEACON_MSG_SELECT = {
+  id: true, messageType: true, body: true, assetUrl: true, altText: true, flexPayloadJson: true,
+  quickReplies: true, nextMessageId: true, sortOrder: true,
+  imageActionType: true, imageActionText: true, imageActionUrl: true,
+  imageActionLiffPageId: true, imageActionPostbackData: true,
+  freeInputEnabled: true,
+  lagMs: true, readReceiptMode: true, readDelayMs: true,
+  typingEnabled: true, typingMinMs: true, typingMaxMs: true,
+  loadingEnabled: true, loadingThresholdMs: true, loadingMinSeconds: true, loadingMaxSeconds: true,
+  character: { select: { name: true, iconImageUrl: true } },
+} as const;
+
+async function loadBeaconMessageChain(messageId: string, accountName: string): Promise<LineMessage[] | null> {
+  const head = await prisma.message.findFirst({ where: { id: messageId, isActive: true }, select: BEACON_MSG_SELECT });
+  if (!head) return null;
+  const rows: (typeof head)[] = [head];
+  const visited = new Set<string>([head.id]);
+  let cur = head;
+  while (rows.length < 5 && cur.nextMessageId && !cur.freeInputEnabled) {
+    if (visited.has(cur.nextMessageId)) break;
+    const next = await prisma.message.findFirst({ where: { id: cur.nextMessageId, isActive: true }, select: BEACON_MSG_SELECT });
+    if (!next) break;
+    visited.add(next.id);
+    rows.push(next);
+    if (next.freeInputEnabled) break;
+    cur = next;
+  }
+  const records: KeywordMessageRecord[] = rows.map((m) => ({ ...m, timing: buildKeywordTiming(m) }));
+  const msgs = buildKeywordMessages(records, undefined, { accountName });
+  return msgs.length > 0 ? msgs : null;
 }
 
 // ── userProgress キャッシュ（TTL 10秒 / write-through）──────────────────
@@ -1331,12 +1370,26 @@ async function handleWebhook(req: NextRequest, oaId: string) {
   });
 
   if (beaconEvents.length > 0) {
+    // プラン gate（Beacon 連動は Pro 相当 / FEATURE.location）を OA 単位で 1 回だけ判定。
+    let beaconPlanAllowed = true;
+    try {
+      const plan = await getCurrentPlanTierForOa(oa.id);
+      beaconPlanAllowed = getPlanAccessState({ plan, featureKey: FEATURE.location }).allowed;
+    } catch (e) {
+      console.warn("[LINE Beacon] plan check failed, defaulting to allowed", e);
+    }
     await Promise.allSettled(beaconEvents.map(async (event) => {
       try {
         const result = await handleBeaconEvent({
           prisma,
-          oa: { id: oa.id, channelAccessToken: oa.channelAccessToken },
+          oa: {
+            id: oa.id,
+            channelAccessToken: oa.channelAccessToken,
+            serviceSuspendedAt: oa.serviceSuspendedAt,
+            planAllowed: beaconPlanAllowed,
+          },
           event,
+          resolveMessage: ({ messageId }) => loadBeaconMessageChain(messageId, oa.title ?? ""),
           line: {
             reply: (token, msgs) => _replyToLine(token, msgs, oa.channelAccessToken),
             push:  async (uid, msgs) => { await _pushToLine(uid, msgs, oa.channelAccessToken); },

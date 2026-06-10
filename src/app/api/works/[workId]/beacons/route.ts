@@ -7,6 +7,8 @@ import { Prisma } from "@prisma/client";
 import { ok, created, badRequest, notFound, conflict, serverError } from "@/lib/api-response";
 import { withAuth } from "@/lib/auth";
 import { requireRole, getOaIdFromWorkId } from "@/lib/rbac";
+import { requirePlanFeature } from "@/lib/plan-guard";
+import { FEATURE } from "@/lib/constants/plans";
 import { createBeaconTriggerSchema, formatZodErrors } from "@/lib/validations";
 import { normalizeBeaconHwid, InvalidBeaconHwidError } from "@/lib/beacon-hwid";
 import { ZodError } from "zod";
@@ -60,6 +62,10 @@ export const POST = withAuth<{ workId: string }>(async (req, ctx, user) => {
     const check = await requireRole(oaId, user.id, "editor");
     if (!check.ok) return check.response;
 
+    // Beacon 連動は Pro 相当（FEATURE.location）。直 API でも必ずガードする。
+    const gate = await requirePlanFeature({ oaId, featureKey: FEATURE.location });
+    if (!gate.ok) return gate.response;
+
     const body = await req.json();
     const data = createBeaconTriggerSchema.parse(body);
 
@@ -88,6 +94,17 @@ export const POST = withAuth<{ workId: string }>(async (req, ctx, user) => {
       });
       if (!w || w.oaId !== oaId) {
         return badRequest("指定された work_id がこの OA に属していません");
+      }
+    }
+
+    // action_type="message" の場合、messageId は同一 work のメッセージのみ許可。
+    if (data.action_type === "message") {
+      const messageId = (data.action_payload as Record<string, unknown> | null | undefined)?.message_id;
+      if (typeof messageId === "string" && messageId) {
+        const m = await prisma.message.findUnique({ where: { id: messageId }, select: { workId: true } });
+        if (!m || m.workId !== targetWorkId) {
+          return badRequest("指定されたメッセージがこの作品に属していません", { action_payload: ["message が不正です"] });
+        }
       }
     }
 
