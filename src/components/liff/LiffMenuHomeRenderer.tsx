@@ -77,18 +77,18 @@ export function LiffMenuHomeRenderer({
   const showCredit = shouldShowWhaleStudioCredit(firstSettings);
 
   return (
-    <div className={`liff-font ${liffRootClass(firstSettings)} min-h-screen bg-[color:var(--liff-background)] text-[color:var(--liff-primary-text)]`}>
+    <div className={`liff-font ${liffRootClass(firstSettings)} min-h-screen bg-[#f6f8f7] text-[color:var(--liff-primary-text)]`}>
       <MenuHomeHeader workTitle={workTitle} onClose={preview ? undefined : onClose} />
 
       {/* メニュー見出し */}
-      <div className="liff-player-main pt-5 pb-4">
+      <div className="liff-player-main pt-5 pb-3">
         <h2 className="text-[18px] font-bold leading-snug">メニュー</h2>
       </div>
 
       {/* カードグリッド */}
       <div className="liff-player-main pb-6">
         {cards.length === 0 ? (
-          <div className="bg-[color:var(--liff-surface)] border border-[color:var(--liff-border)] rounded-[12px] px-4 py-8 text-center">
+          <div className="bg-[color:var(--liff-surface,#fff)] border border-[#eef2f5] rounded-[20px] shadow-[0_6px_20px_rgba(31,64,92,0.06)] px-4 py-10 text-center">
             <p className="text-3xl mb-2">📭</p>
             <p className="text-[15px] leading-[1.6] text-[color:var(--liff-secondary-text)]">
               メニュー項目がまだ登録されていません
@@ -129,14 +129,20 @@ function MenuCardItem({
 }) {
   const inner = (
     <>
-      <div className="text-[28px] leading-none mb-2" aria-hidden="true">{card.icon}</div>
+      <div className="text-[26px] leading-none mb-2" aria-hidden="true">{card.icon}</div>
       <div className="text-[14px] font-bold leading-snug text-[color:var(--liff-primary-text)] line-clamp-2 break-words">
         {card.label}
       </div>
+      {page.description && (
+        <div className="mt-1.5 text-[11px] leading-[1.5] text-[color:var(--liff-tertiary-text,#8C8C8C)] line-clamp-2 break-words">
+          {page.description}
+        </div>
+      )}
     </>
   );
 
-  const baseCls = "flex flex-col items-start text-left bg-[color:var(--liff-surface)] border border-[color:var(--liff-border)] rounded-[16px] px-4 py-5 min-h-[110px] transition-colors active:bg-[color:var(--liff-surface-subtle,#F7F8FA)]";
+  // 管理画面トーン: 白カード + 薄い境界線 + 控えめな影 + 角丸 + 広いタップ領域。
+  const baseCls = "flex flex-col items-start text-left bg-[color:var(--liff-surface,#fff)] border border-[#eef2f5] rounded-[18px] px-4 py-4 min-h-[112px] shadow-[0_2px_10px_rgba(31,64,92,0.05)] transition-all active:bg-[color:var(--liff-surface-subtle,#FAFAFA)] active:shadow-none";
 
   if (buildPageHref) {
     return (
