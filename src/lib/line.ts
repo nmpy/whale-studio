@@ -68,6 +68,8 @@ export type LineTextMessage = {
   _lagMs?: number;
   /** @internal LINE API には送信しない。replyWithLagToLine で per-message timing 適用に使用 */
   _timing?: MessageTimingConfig;
+  /** @internal 送信順デバッグ用の由来 message id（送信直前 strip）。 */
+  _sourceMessageId?: string;
 };
 
 export type LineImageMessage = {
@@ -82,6 +84,8 @@ export type LineImageMessage = {
   _lagMs?: number;
   /** @internal LINE API には送信しない。replyWithLagToLine で per-message timing 適用に使用 */
   _timing?: MessageTimingConfig;
+  /** @internal 送信順デバッグ用の由来 message id（送信直前 strip）。 */
+  _sourceMessageId?: string;
 };
 
 export type LineVideoMessage = {
@@ -96,6 +100,8 @@ export type LineVideoMessage = {
   _lagMs?: number;
   /** @internal LINE API には送信しない。replyWithLagToLine で per-message timing 適用に使用 */
   _timing?: MessageTimingConfig;
+  /** @internal 送信順デバッグ用の由来 message id（送信直前 strip）。 */
+  _sourceMessageId?: string;
 };
 
 /** Flex Message action (LINE 仕様の部分集合)。message / uri / postback のみ実装。 */
@@ -118,6 +124,8 @@ export type LineFlexMessage = {
   quickReply?: LineQuickReply;
   _lagMs?: number;
   _timing?: MessageTimingConfig;
+  /** 由来の DB Message id（送信順デバッグ用。送信直前に strip される）。 */
+  _sourceMessageId?: string;
 };
 
 /**
@@ -143,6 +151,8 @@ export type ImageActionFlexMessage = {
   quickReply?: LineQuickReply;
   _lagMs?: number;
   _timing?: MessageTimingConfig;
+  /** 由来の DB Message id（送信順デバッグ用。送信直前に strip される）。 */
+  _sourceMessageId?: string;
 };
 
 export type LineMessage = LineTextMessage | LineImageMessage | LineVideoMessage | LineFlexMessage;
@@ -382,6 +392,8 @@ function convertMessageToLine(
     if (lagMs && lagMs > 0) m._lagMs = lagMs;
     // null は inherit。undefined と区別して扱う必要はないので、非 null/undefined のときのみセット。
     if (timing) m._timing = timing;
+    // 送信順デバッグ用に由来 message id を保持（送信直前 stripInternalFields で除去）。
+    if (id) m._sourceMessageId = id;
     return m;
   };
 
@@ -486,7 +498,18 @@ function stripInternalFields(msg: LineMessage): Record<string, unknown> {
   const m = { ...msg } as Record<string, unknown>;
   delete m._lagMs;
   delete m._timing;
+  delete m._sourceMessageId;
   return m;
+}
+
+/** LINE API に渡す直前の最終送信順を構造化ログに出す（PII なし＝由来 messageId と type のみ）。 */
+function logFinalDeliveryOrder(route: string, messages: LineMessage[]): void {
+  console.info("[line:delivery:final-order]", JSON.stringify({
+    route,
+    count: messages.length,
+    messageIds: messages.map((m) => m._sourceMessageId ?? null),
+    types: messages.map((m) => m.type),
+  }));
 }
 
 /** 「はじめる」に準じる（再）開始コマンド */
@@ -596,6 +619,7 @@ export async function replyToLine(
 
   // 最大 LINE_MSG_MAX 件に切り詰める
   const sliced = messages.slice(0, LINE_MSG_MAX);
+  logFinalDeliveryOrder("reply", sliced);
   // _lagMs など内部フィールドを除去（LINE API は未知フィールドをエラーにする場合がある）
   const cleanMessages = sliced.map(stripInternalFields);
   const payload = {
@@ -650,6 +674,7 @@ export async function pushToLine(
   // 既存の `await pushToLine(...)` 呼出は戻り値を無視するため後方互換）。
   if (!userId || messages.length === 0) return { ok: false };
 
+  logFinalDeliveryOrder("push", messages);
   const cleanMessages = messages.map(stripInternalFields);
 
   console.log(

@@ -898,6 +898,13 @@ async function buildMessageChain(
                       ?? buildKeywordTiming(r),
     character:       r.character,
   }));
+  // nextMessageId 連鎖の展開順を構造化ログに出す（管理画面表示順とのズレ調査用・PII なし）。
+  console.info("[line:chain:expanded]", JSON.stringify({
+    rootMessageId: records[0]?.id ?? null,
+    messageIds:    records.map((r) => r.id),
+    sortOrders:    records.map((r) => r.sortOrder ?? null),
+    nextMessageIds: records.map((r) => r.nextMessageId ?? null),
+  }));
   return {
     messages: buildKeywordMessages(asKeywordRecords, undefined, vars),
     chainIds: records.map((r) => r.id),
