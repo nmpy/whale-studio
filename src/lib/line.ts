@@ -692,13 +692,28 @@ export async function pushToLine(
       body: JSON.stringify({ to: userId, messages: cleanMessages }),
     });
     if (!res.ok) {
-      const body = await res.text().catch(() => "(読み取り不能)");
-      console.error(`[LINE Push] HTTP ${res.status}:`, body);
+      const body = await res.text().catch(() => "");
+      // LINE error body: {"message":"...","details":[{"message":"...","property":"..."}]}
+      // message 本文（PII）は出さず、LINE API のエラーメッセージ（例: "You have reached your monthly limit."）のみ記録する。
+      let lineMessage: string | null = null;
+      try { lineMessage = (JSON.parse(body) as { message?: string })?.message ?? null; } catch { /* 非JSON */ }
+      // 見つけやすい構造化ログ。push 上限超過 / token / userId 等の切り分け用（PII・本文なし）。
+      console.error("[line:push:failed]", JSON.stringify({
+        userId: userId.slice(0, 8),
+        count: cleanMessages.length,
+        status: res.status,
+        lineMessage,
+      }));
       return { ok: false, status: res.status };
     }
     return { ok: true, status: res.status };
   } catch (err) {
-    console.error("[LINE Push] ネットワークエラー:", err);
+    console.error("[line:push:failed]", JSON.stringify({
+      userId: userId.slice(0, 8),
+      count: cleanMessages.length,
+      status: null,
+      error: err instanceof Error ? err.message : String(err),
+    }));
     return { ok: false };
   }
 }
@@ -765,8 +780,12 @@ export async function replyWithLagToLine(
 
   // 2 件目以降を Push API でラグ付き 1 件ずつ送信（件数制限なし）
   console.log(`[replyWithLagToLine] reply=1件 push=${rest.length}件 total=${messages.length}件`);
+  let pushOk = 0;
+  let pushFail = 0;
+  const pushFailures: { idx: number; msgId: string | null; status: number | null }[] = [];
   for (let i = 0; i < rest.length; i++) {
     const msg = rest[i];
+    const msgId = msg._sourceMessageId ?? null; // strip 前に控える（PII の本文ではなく由来 messageId）
     const rawLag = msg._lagMs ?? 0;
     const delay  = rawLag > 0 ? Math.min(rawLag, MAX_MSG_LAG_MS) : DEFAULT_MSG_LAG_MS;
     console.log(
@@ -791,10 +810,25 @@ export async function replyWithLagToLine(
     }
     const typingWaited = Date.now() - typingStart;
     console.log(`[diag][typing-after] msg=${idOf(msg)} waitedMs=${typingWaited} (chain push #${i + 1})`);
-    await pushToLine(userId, [msg], channelAccessToken);
-    console.log(`[diag][timing-send-after] msg=${idOf(msg)} pushed=true typingWaited=${typingWaited}ms`);
+    const result = await pushToLine(userId, [msg], channelAccessToken);
+    if (result.ok) {
+      pushOk++;
+    } else {
+      pushFail++;
+      pushFailures.push({ idx: i + 1, msgId, status: result.status ?? null });
+    }
+    console.log(`[diag][timing-send-after] msg=${idOf(msg)} pushed=${result.ok} typingWaited=${typingWaited}ms`);
   }
-  console.log(`[replyWithLagToLine] 完了 reply=1 push=${rest.length} total=${messages.length}`);
+  // 送信結果サマリ（PII・本文なし）。1通目 reply は成功扱い（呼出時に throw していない）。
+  // push が一部/全部失敗していても webhook は 200 で返るため、ここで可視化して「1通目だけ届く」を検知可能にする。
+  console.info("[line:reply-lag:summary]", JSON.stringify({
+    replyOk: true,
+    pushTotal: rest.length,
+    pushOk,
+    pushFail,
+    failures: pushFailures,
+  }));
+  console.log(`[replyWithLagToLine] 完了 reply=1 push=${rest.length}(ok=${pushOk}/fail=${pushFail}) total=${messages.length}`);
 }
 
 /** [diag] LineMessage の識別用に内部 id を取り出す。
