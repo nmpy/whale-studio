@@ -142,6 +142,8 @@ describe("additionalSlotToMsgBody — slot → API body", () => {
       asset_url:      "",
       notify_text:    "",
       carousel_items: [],
+      alt_text:           "",
+      flex_payload_json:  "",
       lag_ms:         0,
       // 継承モード廃止: slot は常に明示 OFF 値を持つ。
       read_receipt_mode:    "immediate",

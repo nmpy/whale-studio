@@ -10,10 +10,10 @@
 //   - additionalSlotToMsgBody: AdditionalMessageSlot を /api/messages 用 body に整形
 
 import type { ReadReceiptMode } from "@/types";
+import { normalizeFlexJson, prettyFlexJson } from "@/lib/flex";
 
 // ── 型定義 (= _form.tsx と共有) ─────────────────────────────
 
-// "flex" は 1 通目のみ対応（2 通目以降のチェーンでは選択不可）。型としては許容する。
 export type ExtendedMessageType = "text" | "image" | "video" | "voice" | "carousel" | "riddle" | "flex";
 
 export type MessageKindHelper =
@@ -44,6 +44,11 @@ export interface AdditionalMessageSlot {
   asset_url:      string;
   notify_text:    string;
   carousel_items: MessageCarouselCard[];
+  // ── Flex Message (message_type="flex" 用) ──
+  /** 代替テキスト（altText）。flex のとき必須。 */
+  alt_text:       string;
+  /** 貼り付け JSON (bubble/carousel または flex 全体)。編集時は整形済みで復元。 */
+  flex_payload_json: string;
   /** 前のメッセージ送信後この発話まで待機する ms。0 = 即時送信 */
   lag_ms:         number;
   // ── 演出設定 (空文字 = inherit、明示 "true"/"false" / 数値文字列で上書き) ──
@@ -74,6 +79,8 @@ export const EMPTY_ADDITIONAL_SLOT: AdditionalMessageSlot = {
   asset_url:      "",
   notify_text:    "",
   carousel_items: [],
+  alt_text:           "",
+  flex_payload_json:  "",
   lag_ms:         0,
   // 演出設定 (= 継承モード廃止: すべて OFF 相当を初期値とする)
   read_receipt_mode:    "immediate", // = OFF (人為的な既読遅延なし)
@@ -109,6 +116,8 @@ export function msgToAdditionalSlot(msg: {
   body?:             string | null;
   asset_url?:        string | null;
   notify_text?:      string | null;
+  alt_text?:         string | null;
+  flex_payload_json?: string | null;
   lag_ms?:           number | null;
   read_receipt_mode?:    string | null;
   read_delay_ms?:        number | null;
@@ -141,6 +150,8 @@ export function msgToAdditionalSlot(msg: {
     asset_url:      msg.asset_url   ?? "",
     notify_text:    msg.notify_text ?? "",
     carousel_items,
+    alt_text:           msg.alt_text ?? "",
+    flex_payload_json:  prettyFlexJson(msg.flex_payload_json),
     lag_ms:         msg.lag_ms ?? 0,
     // 演出設定 (= 継承モード廃止: null / 旧 "inherit" は OFF 相当に正規化)。
     read_receipt_mode:    (msg.read_receipt_mode === "delayed" || msg.read_receipt_mode === "before_reply")
@@ -189,6 +200,8 @@ export function additionalSlotToMsgBody(
   body?:        string;
   asset_url?:   string;
   notify_text?: string;
+  alt_text:          string | null;
+  flex_payload_json: string | null;
   lag_ms:       number;
   sort_order:   number;
   is_active:    boolean;
@@ -223,7 +236,16 @@ export function additionalSlotToMsgBody(
       slot.message_type === "image" || slot.message_type === "video" || slot.message_type === "voice"
         ? (slot.asset_url || undefined)
         : undefined,
-    notify_text:  slot.message_type !== "text" ? (slot.notify_text || undefined) : undefined,
+    notify_text:  (slot.message_type !== "text" && slot.message_type !== "flex") ? (slot.notify_text || undefined) : undefined,
+    // Flex Message: altText と contents (正規化) を保存。flex 以外は null。
+    alt_text:     slot.message_type === "flex" ? (slot.alt_text.trim() || null) : null,
+    flex_payload_json:
+      slot.message_type === "flex"
+        ? (() => {
+            const n = normalizeFlexJson(slot.flex_payload_json);
+            return n.ok ? JSON.stringify(n.value.contents) : (slot.flex_payload_json.trim() || null);
+          })()
+        : null,
     lag_ms:       slot.lag_ms,
     sort_order:   main.sort_order,
     is_active:    main.is_active,
