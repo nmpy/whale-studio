@@ -5,8 +5,11 @@
 //
 // 対応環境が限定的なため、非対応時は graceful degradation し、
 // QR チェックインを常にメインの逃げ道として維持する。
+// 表示は LIFF 体験画面の共通コンポーネント（LiffResultState / LiffLoadingState）にトーンを合わせる。
 
 import { useState, useCallback } from "react";
+import { LiffResultState, LiffLoadingState } from "@/components/liff/experience";
+import { LiffButton } from "@/components/liff/primitives/LiffButton";
 
 // ── 型定義 ──
 export type BeaconSupportStatus = "supported" | "unsupported" | "unknown";
@@ -26,7 +29,7 @@ interface BeaconScannerProps {
   onDetected: (candidate: BeaconCandidate) => void;
 }
 
-/** Web Bluetooth 対応状況を��定 */
+/** Web Bluetooth 対応状況を判定 */
 export function getBeaconSupport(): BeaconSupportStatus {
   if (typeof navigator === "undefined") return "unknown";
   if (!("bluetooth" in navigator)) return "unsupported";
@@ -76,7 +79,7 @@ export function BeaconScanner({ expectedUuids, onDetected }: BeaconScannerProps)
       }, 10000);
 
       const handler = (event: unknown) => {
-        // BLE 広告���ベントから iBeacon データを抽出
+        // BLE 広告イベントから iBeacon データを抽出
         const adEvent = event as { manufacturerData?: Map<number, DataView> };
         if (!adEvent.manufacturerData) return;
 
@@ -84,7 +87,7 @@ export function BeaconScanner({ expectedUuids, onDetected }: BeaconScannerProps)
         const appleData = adEvent.manufacturerData.get(0x004c);
         if (!appleData || appleData.byteLength < 23) return;
 
-        // iBeacon パケッ��解析
+        // iBeacon パケット解析
         const uuid = [
           hex(appleData, 2, 6), hex(appleData, 6, 8),
           hex(appleData, 8, 10), hex(appleData, 10, 12),
@@ -94,7 +97,7 @@ export function BeaconScanner({ expectedUuids, onDetected }: BeaconScannerProps)
         const major = appleData.getUint16(18, false);
         const minor = appleData.getUint16(20, false);
 
-        // 期待する UUID ���照合
+        // 期待する UUID と照合
         if (expectedUuids.some((u) => u.toLowerCase() === uuid)) {
           scan.stop();
           clearTimeout(timeout);
@@ -113,57 +116,42 @@ export function BeaconScanner({ expectedUuids, onDetected }: BeaconScannerProps)
     }
   }, [support, expectedUuids, onDetected]);
 
+  // 非対応端末: 控えめな案内のみ（QR が常にメイン導線）。
   if (support === "unsupported") {
     return (
-      <div style={{ textAlign: "center", padding: "12px 0", fontSize: 12, color: "#9ca3af" }}>
-        この端末 / ブラウザでは���動検知に対応していません
+      <div style={{ textAlign: "center", padding: "12px 0", fontSize: 12, color: "var(--liff-tertiary-text,#8C8C8C)" }}>
+        この端末 / ブラウザでは自動検知に対応していません
       </div>
     );
   }
 
   return (
-    <div style={{ textAlign: "center", padding: "16px 0" }}>
-      <div style={{ borderTop: "1px solid #e5e7eb", marginBottom: 16, paddingTop: 16 }}>
-        <p style={{ fontSize: 12, color: "#9ca3af", marginBottom: 8 }}>または</p>
-      </div>
+    <div style={{ marginTop: 16, borderTop: "1px solid var(--liff-border,#EAEAEA)", paddingTop: 16 }}>
+      <p style={{ fontSize: 12, color: "var(--liff-tertiary-text,#8C8C8C)", textAlign: "center", margin: "0 0 12px" }}>または</p>
 
       {status === "idle" && (
-        <button
-          type="button"
-          onClick={handleScan}
-          style={{
-            padding: "10px 20px", background: "#f3f4f6", color: "#374151",
-            border: "1px solid #e5e7eb", borderRadius: 10, fontSize: 13,
-            fontWeight: 500, cursor: "pointer",
-          }}
-        >
+        <LiffButton type="button" variant="outline" size="sm" onClick={handleScan}>
           近くのビーコンを検知
-        </button>
+        </LiffButton>
       )}
 
       {status === "scanning" && (
-        <div>
-          <div style={{ width: 28, height: 28, border: "3px solid #e5e7eb", borderTopColor: "#6366f1", borderRadius: "50%", animation: "spin 1s linear infinite", margin: "0 auto 8px" }} />
-          <p style={{ fontSize: 13, color: "#6b7280" }}>ビーコンを検���中...</p>
-          <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-        </div>
+        <LiffLoadingState title="ビーコンを探しています" description="このまま少しだけお待ちください。" />
       )}
 
       {status === "detected" && (
-        <p style={{ fontSize: 13, color: "#16a34a", fontWeight: 600 }}>ビーコンを検知しました</p>
+        <LiffResultState variant="success" title="ビーコンを検知しました" />
       )}
 
       {status === "error" && (
-        <div>
-          <p style={{ fontSize: 13, color: "#dc2626", marginBottom: 8 }}>{errorMsg}</p>
-          <button
-            type="button"
-            onClick={() => { setStatus("idle"); setErrorMsg(null); }}
-            style={{ fontSize: 12, color: "#6b7280", background: "none", border: "none", cursor: "pointer", textDecoration: "underline" }}
-          >
-            もう一度試す
-          </button>
-        </div>
+        <LiffResultState
+          variant="warning"
+          icon="📡"
+          title="ビーコンが見つかりませんでした"
+          description={errorMsg ?? undefined}
+          primaryActionLabel="もう一度試す"
+          onPrimaryAction={() => { setStatus("idle"); setErrorMsg(null); }}
+        />
       )}
     </div>
   );
