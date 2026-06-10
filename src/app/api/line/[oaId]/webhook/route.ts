@@ -305,7 +305,7 @@ console.log("[build] webhook cache=phase-c-v4 cache-provider=" + activeCache.con
 async function fetchActiveWork(oaId: string) {
   return prisma.work.findFirst({
     where:   { oaId, publishStatus: "active" },
-    orderBy: { sortOrder: "asc" },
+    orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }, { id: "asc" }],
     include: {
       systemCharacter: {
         select: { name: true, iconImageUrl: true },
@@ -351,7 +351,7 @@ async function getCachedStartPhase(workId: string): Promise<StartPhaseRow | null
   console.log(`[cache] startPhase MISS workId=${workId.slice(0, 8)}`);
   const phase = await prisma.phase.findFirst({
     where:   { workId, phaseType: "start", isActive: true },
-    orderBy: { sortOrder: "asc" },
+    orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }, { id: "asc" }],
     select:  { id: true, phaseType: true, startTrigger: true, resumeSummary: true },
   });
   if (phase) await activeCache.set(key, phase, TTL.START_PHASE);
@@ -429,7 +429,7 @@ async function getCachedGlobalKeywords(
         select: { name: true, iconImageUrl: true },
       },
     },
-    orderBy: { sortOrder: "asc" },
+    orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }, { id: "asc" }],
   });
   const result = msgs
     .filter((m): m is typeof m & { triggerKeyword: string } => m.triggerKeyword !== null)
@@ -482,7 +482,7 @@ async function getCachedStartMsgs(
         select: { name: true, iconImageUrl: true },
       },
     },
-    orderBy: { sortOrder: "asc" },
+    orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }, { id: "asc" }],
   });
   const result = msgs.map((m) => ({
     ...m,
@@ -3255,7 +3255,7 @@ async function matchHintQuickReply(
       quickReplies: { not: null },
     },
     select: { id: true, quickReplies: true },
-    orderBy: { sortOrder: "asc" },
+    orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }, { id: "asc" }],
   });
 
   if (messages.length === 0) return null;
@@ -3356,7 +3356,7 @@ async function matchPuzzleAnswer(
       hintMode:              true,
       quickReplies:          true,
     },
-    orderBy: { sortOrder: "asc" },
+    orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }, { id: "asc" }],
   });
 
   if (puzzles.length === 0) return null; // パズルなし → 遷移照合へ
@@ -3584,7 +3584,7 @@ async function matchTriggerKeyword(
         select: { name: true, iconImageUrl: true },
       },
     },
-    orderBy: { sortOrder: "asc" },
+    orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }, { id: "asc" }],
   });
 
   console.log(

@@ -190,7 +190,8 @@ export async function fetchPhaseWithIncludes(id: string) {
     include: {
       messages: {
         where:   { isActive: true },
-        orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+        // 送信順を決定論的にする: 同 sortOrder でも createdAt → id で安定ソート（Postgres の無保証順を防ぐ）。
+        orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }, { id: "asc" }],
         include: {
           character: {
             select: {
@@ -202,7 +203,7 @@ export async function fetchPhaseWithIncludes(id: string) {
       },
       transitionsFrom: {
         where:   { isActive: true },
-        orderBy: [{ sortOrder: "asc" }],
+        orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
         include: {
           toPhase: { select: { id: true, name: true, phaseType: true } },
         },
@@ -222,7 +223,7 @@ export function buildPhaseInclude() {
   return {
     messages: {
       where:   { isActive: true } as const,
-      orderBy: [{ sortOrder: "asc" as const }, { createdAt: "asc" as const }] as { sortOrder?: "asc" | "desc"; createdAt?: "asc" | "desc" }[],
+      orderBy: [{ sortOrder: "asc" as const }, { createdAt: "asc" as const }, { id: "asc" as const }] as { sortOrder?: "asc" | "desc"; createdAt?: "asc" | "desc"; id?: "asc" | "desc" }[],
       include: {
         character: {
           select: {
@@ -234,7 +235,7 @@ export function buildPhaseInclude() {
     },
     transitionsFrom: {
       where:   { isActive: true } as const,
-      orderBy: [{ sortOrder: "asc" as const }] as { sortOrder?: "asc" | "desc" }[],
+      orderBy: [{ sortOrder: "asc" as const }, { id: "asc" as const }] as { sortOrder?: "asc" | "desc"; id?: "asc" | "desc" }[],
       include: {
         toPhase: { select: { id: true, name: true, phaseType: true } },
       },

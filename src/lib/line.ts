@@ -1045,6 +1045,14 @@ export function buildPhaseMessages(
   const prefixOffset = prefixText ? 1 : 0;
   logConversionSummary("buildPhaseMessages", phase.id, inputCount, messages.length - prefixOffset);
 
+  // 送信順の決定論ログ（phase.messages は sortOrder→createdAt→id で取得済み。実機順調査用）。
+  console.info("[line:delivery:order]", JSON.stringify({
+    source: "buildPhaseMessages",
+    phaseId: phase.id,
+    messageIds: phase.messages.map((m) => m.id),
+    sortOrders: phase.messages.map((m) => m.sort_order ?? null),
+  }));
+
   // ── safety guard: 未置換の placeholder (= {xxx} がそのまま残っている) を検出 + 除外 ──
   // 想定シナリオ: 自由入力プロンプトの応答 (= free_input_next_message_id 先) 用に
   // 本文 "{freeText}..." を持つメッセージが、誤って通常 phase response に
@@ -1219,6 +1227,13 @@ export function buildKeywordMessages(
 
   // サマリログ
   logConversionSummary("buildKeywordMessages", "keyword", inputCount, messages.length);
+
+  // 送信順の決定論ログ（実機順とのズレ調査用。PII は出さない＝id/sortOrder のみ）。
+  console.info("[line:delivery:order]", JSON.stringify({
+    source: "buildKeywordMessages",
+    messageIds: records.map((r) => r.id),
+    sortOrders: records.map((r) => r.sortOrder ?? null),
+  }));
 
   // LINE は最後のメッセージの quickReply のみ表示する仕様のため、
   // 中間メッセージに quickReply が設定されていたら最後のメッセージに移動する。
