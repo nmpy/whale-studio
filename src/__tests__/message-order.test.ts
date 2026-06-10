@@ -83,4 +83,14 @@ describe("buildKeywordMessages は入力レコード順を保持する", () => {
     });
     expect(ids).toEqual(["A", "B-image", "C", "D"]);
   });
+
+  it("各 LineMessage に由来 messageId (_sourceMessageId) が入力順で付与される（final-order ログ用）", () => {
+    const records: KeywordMessageRecord[] = [
+      rec({ id: "id-1", body: "1" }),
+      rec({ id: "id-2", body: "2" }),
+      rec({ id: "id-3", body: "3" }),
+    ];
+    const out = buildKeywordMessages(records);
+    expect(out.map((m) => (m as { _sourceMessageId?: string })._sourceMessageId)).toEqual(["id-1", "id-2", "id-3"]);
+  });
 });
