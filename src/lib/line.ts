@@ -814,6 +814,8 @@ export async function replyWithLagToLine(
   // 送信結果サマリ（PII・本文なし）。push が失敗しても webhook は 200 で返るため可視化する。
   console.info("[line:reply-lag:summary]", JSON.stringify({
     strategy:   "reply_first_5_push_rest",
+    // Push fallback が起きた理由を明示（LINE Reply API は 1 回最大 5 件のため）。
+    reason:     "line_reply_limit_5",
     replyTotal: replyBatch.length,
     pushTotal:  pushRest.length,
     pushOk,

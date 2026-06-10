@@ -130,3 +130,55 @@ export function chainSizeFrom(messages: MessageLike[], headId: string): number {
   }
   return count;
 }
+
+/** LINE が 1 回の reply で送れる最大メッセージ数（line.ts と一致）。 */
+export const LINE_REPLY_MAX = 5;
+
+/** headId 起点の chain の「実際の総通数」(head 含む・**上限なし**・循環防止)。
+ *  chainSizeFrom は LINE 上限 5 で打ち切るが、こちらは実長を返す。
+ *  管理画面で「合計N通」「5通を超える」を正確に表示するために使う。 */
+export function chainLengthFrom(messages: MessageLike[], headId: string): number {
+  const byId = new Map(messages.map((m) => [m.id, m]));
+  let count = 0;
+  const visited = new Set<string>();
+  let currentId: string | null = headId;
+  while (currentId && !visited.has(currentId)) {
+    if (!byId.has(currentId)) break;
+    visited.add(currentId);
+    count++;
+    currentId = byId.get(currentId)?.next_message_id ?? null;
+  }
+  return count;
+}
+
+type SendBatchMessageLike = MessageLike & { free_input_enabled?: boolean | null };
+
+/** buildPhaseMessages が「1 回の送信」で出すメッセージ総数を推定する（runtime の挙動を踏襲）。
+ *  - 非 continuation の head を入力順に走査
+ *  - 各 chain は最大 5 件 walk（LINE_REPLY_MAX。runtime も 1 chain を 5 で打ち切る）
+ *  - free_input_enabled の message に達したら、それを含めてフェーズ全体の走査を停止
+ *  返り値 > 5 のとき、6 通目以降は Reply に乗らず Push fallback になる（reply は最大 5 件）。
+ *  ※ messages は表示順（sortOrder→createdAt）で渡すこと。 */
+export function estimatePhaseSendBatch(messages: SendBatchMessageLike[]): number {
+  const byId = new Map(messages.map((m) => [m.id, m]));
+  const continuationIds = collectChainContinuationIds(messages);
+  let total = 0;
+  for (const head of messages) {
+    if (continuationIds.has(head.id)) continue;
+    let cur: SendBatchMessageLike | undefined = head;
+    const visited = new Set<string>([head.id]);
+    let chainCount = 0;
+    let stoppedAtFreeInput = false;
+    while (cur && chainCount < LINE_REPLY_MAX) {
+      chainCount++;
+      total++;
+      if (cur.free_input_enabled) { stoppedAtFreeInput = true; break; }
+      const nextId = cur.next_message_id;
+      if (!nextId || visited.has(nextId) || !byId.has(nextId)) break;
+      visited.add(nextId);
+      cur = byId.get(nextId);
+    }
+    if (stoppedAtFreeInput) break; // free_input でフェーズ全体停止
+  }
+  return total;
+}

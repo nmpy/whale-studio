@@ -42,3 +42,29 @@ LINE への複数メッセージ送信 (`replyWithLagToLine`) は次の構成:
 - Vercel Dashboard → 該当 deployment → Runtime Logs → 送信時刻付近の `/api/line/<oaId>/webhook` を開く。
 - 上表のログ名で絞り込み、`[line:push:failed]` の `status` / `lineMessage` を確認する。
 - ※ ログ閲覧ツールによっては JSON が省略表示されることがあるため、**ダッシュボードで全文**を確認するのが確実。
+
+## 送信戦略と Reply 5件上限（重要）
+
+`replyWithLagToLine` の送信戦略:
+
+| 件数 | strategy | reply | push |
+|---|---|---|---|
+| **≤5** | `reply_all` | 全件（1リクエスト） | 0（Push 不使用＝月間通数を消費しない・確実に届く） |
+| **>5** | `reply_first_5_push_rest`（`reason="line_reply_limit_5"`） | 先頭5件 | 6件目以降 |
+
+- **LINE Reply API は 1 回最大 5 件**。`replyToken` は 1 回限りだが、その 1 回で 5 件まで送れる。
+- **Reply は月間メッセージ通数にカウントされない**。**Push はカウントされる**。
+- そのため **5 件以内は Reply 一括**で送り、Push 通数を消費しない（Push 上限超過中でも届く）。
+- **6 件以上**は LINE 仕様上 6 件目以降を **Push** にせざるを得ない。Push 上限到達時は **6 件目以降が届かない**（`[line:reply-lag:summary]` が `strategy=reply_first_5_push_rest` / `[line:push:failed]` が `status=429 monthly limit`）。
+
+### 単一チェーンが 5 件超のとき（さらに注意）
+
+`buildMessageChain` / `buildPhaseMessages` は **1 チェーンを 5 件で打ち切る**。そのため**単一チェーンが 6 件以上ある場合、6 件目以降は Push ですらなく無言で消える**。チェーンは 5 件以内推奨。管理画面の連続メッセージバッジは実チェーン長を「合計N通（このメッセージを含む）」で表示し、5 件超は警告を出す。
+
+### 演出（lag / typing / loading）のトレードオフ
+
+- **Reply 一括（≤5）では、メッセージ間の lag / 2 通目以降の typing / loading は再現できない**（LINE 仕様上、1 reply 内のメッセージ間に個別待機を挟めないため）。全件ほぼ同時着になる。
+- **演出を効かせるには Push（時間差送信）が必要**だが、Push は月間通数を消費し、上限超過時に届かない。
+- 現状は **配信確実性を優先**（届かない / 1通目だけ届いて止まる方が致命的）。
+- 制作上は **1 回の送信を 5 通以内に分ける**（途中に QR / 入力 / フェーズ遷移を挟む）のが安全。
+- 将来案: 作品 / チェーン単位で「安定優先（Reply一括）/ 演出優先（Reply+Push分割）」を選べる送信モード（別途設計）。
