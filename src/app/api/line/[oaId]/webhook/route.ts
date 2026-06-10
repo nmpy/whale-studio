@@ -45,6 +45,7 @@ import { buildRuntimeState, matchTransition, applySetFlags, safeParseFlags, safe
 import { shouldOfferResumeChoice } from "@/lib/message-flow";
 import { isFreeInputPrompt } from "@/lib/free-input";
 import { resolveQrBranchDelivery } from "@/lib/qr-branch";
+import { parseFrontier, selectQrScope } from "@/lib/qr-frontier";
 import { handleBeaconEvent, type LineBeaconEvent } from "@/lib/beacon";
 import { pushToLine as _pushToLine } from "@/lib/line";
 import { getCurrentPlanTierForOa } from "@/lib/plan-guard";
@@ -652,11 +653,25 @@ function matchHintFromPhase(
 function matchQrItem(
   phase:     PhaseRow,
   inputText: string,
+  frontier:  Set<string> | null = null,
+  logCtx?:   { oaId: string; workId: string; userId: string },
 ): import("@/types").QuickReplyItem | null {
   const inputNorm  = normKw(inputText);
   const inputLoose = normKwLoose(inputText);
 
-  for (const msg of phase.messages) {
+  // frontier（直近送信 chain の messageId 群）が有れば、その範囲の QR だけを照合する。
+  // null（レガシー progress）なら従来どおりフェーズ全体を走査（後方互換）。
+  const { scoped, mode } = selectQrScope(phase.messages, frontier);
+  console.info("[line:qr:scope]", JSON.stringify({
+    oaId:               logCtx?.oaId ?? null,
+    workId:             logCtx?.workId ?? null,
+    userIdPrefix:       logCtx?.userId ? logCtx.userId.slice(0, 8) : null,
+    mode,
+    frontierMessageIds: frontier ? [...frontier] : null,
+    candidateCount:     scoped.length,
+  }));
+
+  for (const msg of scoped) {
     if (!msg.quickReplies) continue;
     let items: import("@/types").QuickReplyItem[];
     try {
@@ -707,51 +722,65 @@ async function applyFreeInputPostEffect(args: {
   userId:         string;
   workId:         string;
   progressId?:    string;
+  oaId?:          string;
+  route?:         string;
 }): Promise<void> {
   if (args.sentMessageIds.length === 0) return;
 
+  // ── frontier 更新（常に実行） ──
+  // 直近送信した chain の messageId 群を保存する。QR/Quick Reply の有効範囲を
+  // 「現在地に紐づくものだけ」に限定し、過去 QR の再タップによる無限再送を防ぐ。
+  const frontierJson = JSON.stringify(args.sentMessageIds);
+  console.info("[line:progress:frontier:update]", JSON.stringify({
+    oaId:         args.oaId ?? null,
+    workId:       args.workId,
+    userIdPrefix: args.userId.slice(0, 8),
+    route:        args.route ?? null,
+    messageIds:   args.sentMessageIds,
+  }));
+
+  // 自由入力受付メッセージが送信群に含まれていれば waitingForInput も立てる。
   const freeInputMsg = await prisma.message.findFirst({
     where:  { id: { in: args.sentMessageIds }, isActive: true, freeInputEnabled: true },
     orderBy: { sortOrder: "desc" },
     select: { id: true, freeInputVariableKey: true, freeInputNextMessageId: true },
   });
-  if (!freeInputMsg) return;
   // variableKey は任意 (null = ログ用途・差し込み不要)。message へ進むだけで OK。
+  const waitingJson = freeInputMsg
+    ? JSON.stringify({
+        messageId:     freeInputMsg.id,
+        variableKey:   freeInputMsg.freeInputVariableKey ?? null,
+        nextMessageId: freeInputMsg.freeInputNextMessageId ?? null,
+        setAt:         new Date().toISOString(),
+      })
+    : null;
 
-  const waitingJson = JSON.stringify({
-    messageId:     freeInputMsg.id,
-    variableKey:   freeInputMsg.freeInputVariableKey ?? null,
-    nextMessageId: freeInputMsg.freeInputNextMessageId ?? null,
-    setAt:         new Date().toISOString(),
-  });
+  // frontier は常に更新。waitingForInput は freeInput メッセージがある場合のみ更新（無ければ既存値を保持）。
+  const data: { lastSentMessageIds: string; waitingForInput?: string } = { lastSentMessageIds: frontierJson };
+  if (waitingJson !== null) data.waitingForInput = waitingJson;
 
   try {
     if (args.progressId) {
-      await prisma.userProgress.update({
-        where: { id: args.progressId },
-        data:  { waitingForInput: waitingJson },
-      });
+      await prisma.userProgress.update({ where: { id: args.progressId }, data });
     } else {
       // 開始直後で progress 行が未作成のケース。upsert で安全に新規作成。
       await prisma.userProgress.upsert({
-        where: { lineUserId_workId: { lineUserId: args.userId, workId: args.workId } },
-        create: {
-          lineUserId:      args.userId,
-          workId:          args.workId,
-          waitingForInput: waitingJson,
-        },
-        update: { waitingForInput: waitingJson },
+        where:  { lineUserId_workId: { lineUserId: args.userId, workId: args.workId } },
+        create: { lineUserId: args.userId, workId: args.workId, ...data },
+        update: data,
       });
     }
     await activeCache.delete(CACHE_KEY.progress(args.userId, args.workId));
-    console.log(
-      `[Webhook][free-input] waiting セット完了`,
-      `userId=${args.userId.slice(0, 8)}`,
-      `msgId=${freeInputMsg.id.slice(0, 8)}`,
-      `key=${freeInputMsg.freeInputVariableKey}`,
-    );
+    if (waitingJson) {
+      console.log(
+        `[Webhook][free-input] waiting セット完了`,
+        `userId=${args.userId.slice(0, 8)}`,
+        `msgId=${freeInputMsg!.id.slice(0, 8)}`,
+        `key=${freeInputMsg!.freeInputVariableKey}`,
+      );
+    }
   } catch (err) {
-    console.error(`[Webhook][free-input] waiting セット失敗 userId=${args.userId}`, err);
+    console.error(`[Webhook][post-send] frontier/waiting 更新失敗 userId=${args.userId}`, err);
   }
 }
 
@@ -1777,7 +1806,9 @@ async function handleTextEvent({
       // 同一キャッシュキーを引くため DB ラウンドトリップは発生しない (cache HIT)。
       if (progress.currentPhaseId) {
         const earlyPhase = await getCachedPhase(progress.currentPhaseId);
-        const earlyQrMatched = earlyPhase ? matchQrItem(earlyPhase, text) : null;
+        const earlyQrMatched = earlyPhase
+          ? matchQrItem(earlyPhase, text, parseFrontier(progress.lastSentMessageIds), { oaId: oa.id, workId: work.id, userId })
+          : null;
         if (earlyQrMatched !== null) {
           console.log(
             `[diag][qr] free_input skip — QR tap detected`,
@@ -1876,6 +1907,8 @@ async function handleTextEvent({
             // 連鎖した nextMessage の末尾も freeInputEnabled の対象にする
             await applyFreeInputPostEffect({
               sentMessageIds: chainIds,
+              oaId: oa.id,
+              route: "free_input_next",
               userId,
               workId:    work.id,
               progressId: progress?.id,
@@ -2033,7 +2066,7 @@ async function handleTextEvent({
 
   // DB クエリなしでインメモリ照合
   const hintResult     = currentPhase ? matchHintFromPhase(currentPhase, text)                                           : null;
-  const matchedQrItem  = currentPhase ? matchQrItem(currentPhase, text)                                                  : null;
+  const matchedQrItem  = currentPhase ? matchQrItem(currentPhase, text, parseFrontier(progress.lastSentMessageIds), { oaId: oa.id, workId: work.id, userId }) : null;
   const keywordMatched = currentPhase ? matchKeywordsInMemory(currentPhase.messages, globalKwMsgs, text)                 : [];
   const puzzleResult   = currentPhase ? matchPuzzleFromPhase(currentPhase, text, solvedPuzzleIds, userSegment)           : null;
 
@@ -2213,6 +2246,8 @@ async function handleTextEvent({
         // qrItem_message パス: 応答 + 遷移先チェーンの末尾を自由入力候補とする
         await applyFreeInputPostEffect({
           sentMessageIds: qrSentIds,
+          oaId: oa.id,
+          route: "qr_target_message",
           userId,
           workId:    work.id,
           progressId: progress?.id,
@@ -2248,6 +2283,8 @@ async function handleTextEvent({
           await replyWithLagToLine(replyToken, qrMsgs.slice(0, 5), userId, token);
           await applyFreeInputPostEffect({
             sentMessageIds: [...qrSentIds, ...phaseMessageIds],
+            oaId: oa.id,
+            route: "qr_target_phase",
             userId,
             workId:    work.id,
             progressId: updated.id,
@@ -2269,6 +2306,8 @@ async function handleTextEvent({
       await replyWithLagToLine(replyToken, qrMsgs.slice(0, 5), userId, token);
       await applyFreeInputPostEffect({
         sentMessageIds: qrSentIds,
+        oaId: oa.id,
+        route: "qr_response",
         userId,
         workId:    work.id,
         progressId: progress?.id,
@@ -2308,6 +2347,8 @@ async function handleTextEvent({
       // ユースケースを正しくサポートする。
       await applyFreeInputPostEffect({
         sentMessageIds: sentIdsForFreeInput,
+        oaId: oa.id,
+        route: "keyword",
         userId,
         workId:    work.id,
         progressId: progress?.id,
@@ -2469,6 +2510,8 @@ async function handleTextEvent({
   if (transitionSentIds.length > 0) {
     await applyFreeInputPostEffect({
       sentMessageIds: transitionSentIds,
+      oaId: oa.id,
+      route: "transition",
       userId,
       workId:    work.id,
       progressId: updated.id,
@@ -2637,6 +2680,8 @@ async function handleStart({
   if (startSentIds.length > 0) {
     await applyFreeInputPostEffect({
       sentMessageIds: startSentIds,
+      oaId: oa.id,
+      route: "start",
       userId,
       workId:    work.id,
       progressId: progress.id,
@@ -2735,6 +2780,7 @@ async function handleStartTrigger({
     flags:            "{}",
     variables:        "{}",
     waitingForInput:  null,
+    lastSentMessageIds: null,
     lastInteractedAt: now,
     isPreview:        false,
     previewBy:        null,
@@ -2753,6 +2799,8 @@ async function handleStartTrigger({
       // kind="start" メッセージも自由入力候補に含める
       await applyFreeInputPostEffect({
         sentMessageIds: startKindMessages.map((m) => m.id),
+        oaId: oa.id,
+        route: "start_trigger_kind",
         userId,
         workId:    work.id,
         progressId: progress.id,
@@ -2782,6 +2830,8 @@ async function handleStartTrigger({
     if (startTriggerFallbackIds.length > 0) {
       await applyFreeInputPostEffect({
         sentMessageIds: startTriggerFallbackIds,
+        oaId: oa.id,
+        route: "start_trigger_fallback",
         userId,
         workId:    work.id,
         progressId: progress.id,

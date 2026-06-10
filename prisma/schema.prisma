@@ -266,6 +266,10 @@ model UserProgress {
   /// 例: {"messageId":"...", "variableKey":"userName", "nextMessageId":"..."}
   /// Message.freeInputEnabled=true のメッセージ送信時に立ち、次のテキスト入力で消化される。
   waitingForInput  String?  @map("waiting_for_input")
+  /// 直近送信した chain の messageId 群（JSON 文字列の string[]）。
+  /// QR/Quick Reply の有効範囲（frontier）を「現在地に紐づくものだけ」に限定するために使う。
+  /// null = レガシー progress（従来どおりフェーズ全体の QR を走査する後方互換挙動）。
+  lastSentMessageIds String? @map("last_sent_message_ids")
   lastInteractedAt DateTime @default(now()) @map("last_interacted_at")
   /// プレビューモード（管理者・テスターが疑似プレイする場合 true）
   isPreview        Boolean  @default(false) @map("is_preview")
