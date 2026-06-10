@@ -128,12 +128,16 @@ export function LiffPreview({
   }, [mergedPages, viewingPageId]);
 
   // ── フレーム ──
+  // 濃紺ヘッダー/太い黒ベゼルを廃止し、管理画面のカードトーン（白〜淡いグレー・薄い境界線・
+  // やわらかい影・角丸）に揃えた軽い端末枠にする。「LIFF プレビュー」は小さなラベル扱い。
   const frame = (content: React.ReactNode) => (
-    <div className="w-[375px] min-h-[600px] bg-white rounded-2xl overflow-hidden border-[8px] border-gray-800 shadow-xl shrink-0">
-      <div className="bg-gray-800 text-white py-2 px-4 text-[11px] font-semibold text-center">
-        LIFF プレビュー
+    <div className="w-[375px] min-h-[600px] rounded-[32px] overflow-hidden border border-[#e3e8ec] bg-[#f5f8f6] shadow-[0_10px_30px_rgba(31,64,92,0.10)] shrink-0">
+      <div className="flex items-center justify-center gap-2 py-2.5 bg-white border-b border-[#eef2f5]">
+        <span className="w-7 h-1 rounded-full bg-[#e3e8ec]" />
+        <span className="text-[10px] font-semibold tracking-[0.06em] text-[#9aa8a2]">LIFF プレビュー</span>
+        <span className="w-7 h-1 rounded-full bg-[#e3e8ec]" />
       </div>
-      <div className="overflow-auto" style={{ maxHeight: 720 }}>{content}</div>
+      <div className="overflow-auto bg-[#f5f8f6]" style={{ maxHeight: 720 }}>{content}</div>
     </div>
   );
 

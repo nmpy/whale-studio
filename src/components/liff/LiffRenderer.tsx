@@ -139,32 +139,36 @@ export function LiffRenderer({
     //   - 背景白、画面内ヘッダーは廃止 (上部バー = document.title で表現)
     //   - 本文は .liff-player-main で max-w-md + 左右 16px を保証
     //   - ブロックは縦に並ぶフラットセクション (角丸カード積み重ねは廃止)
-    <div className={`liff-font ${liffRootClass(settings)} min-h-screen bg-[color:var(--liff-background)] text-[color:var(--liff-primary-text)]`}>
-      <main className="liff-player-main pt-6 pb-8">
-        {visibleBlocks.length === 0 ? (
-          <p className="text-center text-[color:var(--liff-tertiary-text)] py-12 text-sm">
-            表示する項目がありません
-          </p>
-        ) : (
-          /* セクションリスト:
-             各ブロックの下に細い区切り線 + 上下に padding でメリハリを付ける。
-             ただし accordion 自体が border-bottom を持つので二重罫線にならないよう、
-             accordion ブロックは独自セパレータに任せる (親の border は出さない)。 */
-          visibleBlocks.map((block, i) => {
-            const isAccordion = block.block_type === "accordion";
-            const isLast = i === visibleBlocks.length - 1;
-            const sectionCls = isAccordion
-              ? ""
-              : isLast
-                ? "pb-2"
-                : "pb-6 mb-6 border-b border-[color:var(--liff-border)]";
-            return (
-              <div key={block.id} className={sectionCls}>
-                <RenderBlock block={block} ctx={ctx} preview={preview} />
-              </div>
-            );
-          })
-        )}
+    // 管理画面のカードトーンに合わせ、淡いグレー背景の上に白い「資料集シート」カードを 1 枚置き、
+    // その中にブロックを区切り線つきセクションで縦に並べる（LINE Gift 風の閲覧 UI）。
+    <div className={`liff-font ${liffRootClass(settings)} min-h-screen bg-[#f6f8f7] text-[color:var(--liff-primary-text)]`}>
+      <main className="liff-player-main pt-3 pb-8">
+        <div className="rounded-[20px] border border-[#eef2f5] bg-[color:var(--liff-surface,#fff)] shadow-[0_6px_20px_rgba(31,64,92,0.06)] px-5 py-4">
+          {visibleBlocks.length === 0 ? (
+            <p className="text-center text-[color:var(--liff-tertiary-text)] py-12 text-sm">
+              表示する項目がありません
+            </p>
+          ) : (
+            /* セクションリスト:
+               各ブロックの下に細い区切り線 + 上下に padding でメリハリを付ける。
+               ただし accordion 自体が border-bottom を持つので二重罫線にならないよう、
+               accordion ブロックは独自セパレータに任せる (親の border は出さない)。 */
+            visibleBlocks.map((block, i) => {
+              const isAccordion = block.block_type === "accordion";
+              const isLast = i === visibleBlocks.length - 1;
+              const sectionCls = isAccordion
+                ? ""
+                : isLast
+                  ? "pb-1"
+                  : "pb-5 mb-5 border-b border-[color:var(--liff-border)]";
+              return (
+                <div key={block.id} className={sectionCls}>
+                  <RenderBlock block={block} ctx={ctx} preview={preview} />
+                </div>
+              );
+            })
+          )}
+        </div>
 
         {settings?.share_enabled && (
           <div className="pt-6">
