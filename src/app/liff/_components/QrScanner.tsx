@@ -26,6 +26,8 @@ import {
   qrScanGuidance, truncateQrValue, isScanCancelError,
   interpretQrComplete, type QrSendOutcome,
 } from "@/lib/liff/qr";
+import { LiffResultState, LiffLoadingState, type LiffStateVariant } from "@/components/liff/experience";
+import { LiffButton } from "@/components/liff/primitives/LiffButton";
 
 type QrState =
   | "idle" | "scanning" | "sending"
@@ -159,77 +161,75 @@ export function QrScanner({
   const guidance = qrScanGuidance({ scanQrEnabled, isInClient, scanCodeV2Available: true });
   if (!guidance.canScan && guidance.notice) {
     return (
-      <div style={cardNoticeStyle}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: "#92400e" }}>{guidance.notice.title}</div>
-        <p style={{ fontSize: 12, color: "#78716c", lineHeight: 1.6, marginTop: 4 }}>{guidance.notice.message}</p>
+      <div style={{ marginTop: 16, borderTop: "1px solid var(--liff-border,#EAEAEA)", paddingTop: 16 }}>
+        <LiffResultState variant="warning" icon="📷" title={guidance.notice.title} description={guidance.notice.message} />
       </div>
     );
   }
 
   return (
-    <div style={{ marginTop: 16, borderTop: "1px solid #e5e7eb", paddingTop: 16 }}>
+    <div style={{ marginTop: 16, borderTop: "1px solid var(--liff-border,#EAEAEA)", paddingTop: 16 }}>
       {state === "idle" && (
-        <button type="button" onClick={handleScan} style={scanBtnStyle}>📷 QR コードを読み取る</button>
+        <LiffButton type="button" variant="primary" onClick={handleScan}>📷 QR コードを読み取る</LiffButton>
       )}
 
       {(state === "scanning" || state === "sending") && (
-        <div style={{ textAlign: "center", padding: "12px 0" }}>
-          <div style={spinnerStyle} />
-          <p style={{ fontSize: 13, color: "#6b7280", marginTop: 8 }}>
-            {state === "scanning" ? "カメラを起動しています..." : "送信しています..."}
-          </p>
-          <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-        </div>
+        <LiffLoadingState
+          title={state === "scanning" ? "カメラを起動しています" : "送信しています"}
+          description="このまま少しだけお待ちください。"
+        />
       )}
 
       {state === "sent" && (
-        <div style={successCardStyle}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: "#16a34a", marginBottom: 4 }}>メッセージを送信しました</div>
-          <p style={{ fontSize: 12, color: "#435068", lineHeight: 1.6 }}>{notice ?? "LINEのトーク画面をご確認ください。"}</p>
-          {value && <p style={{ fontSize: 11, color: "#9ca3af", wordBreak: "break-all", marginTop: 8 }}>{value}</p>}
-          <button type="button" onClick={reset} style={{ ...retryBtnStyle, marginTop: 10 }}>もう一度読み取る</button>
-        </div>
+        <LiffResultState
+          variant="success"
+          title="メッセージを送信しました"
+          description={notice ?? "LINEのトーク画面をご確認ください。"}
+          primaryActionLabel="もう一度読み取る"
+          onPrimaryAction={reset}
+        >
+          {value && <p style={{ fontSize: 11, color: "var(--liff-tertiary-text,#8C8C8C)", wordBreak: "break-all", margin: 0 }}>{value}</p>}
+        </LiffResultState>
       )}
 
       {state === "already_processed" && (
-        <div style={{ textAlign: "center", padding: "8px 0" }}>
-          <div style={infoCardStyle}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: "#2563eb" }}>読み取り済みです</div>
-            <p style={{ fontSize: 12, color: "#78716c", lineHeight: 1.6, marginTop: 4 }}>{notice ?? "このQRはすでに読み取り済みです。"}</p>
-          </div>
-          <button type="button" onClick={reset} style={{ ...retryBtnStyle, marginTop: 10 }}>別のQRを読み取る</button>
-        </div>
+        <LiffResultState
+          variant="info" icon="📩"
+          title="読み取り済みです"
+          description={notice ?? "このQRはすでに読み取り済みです。"}
+          primaryActionLabel="別のQRを読み取る"
+          onPrimaryAction={reset}
+        />
       )}
 
       {(state === "unmatched" || state === "message_not_configured") && (
-        <div style={{ textAlign: "center", padding: "8px 0" }}>
-          <div style={cardNoticeStyle}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: "#92400e" }}>
-              {state === "unmatched" ? "このQRは使えません" : "メッセージ未設定"}
-            </div>
-            <p style={{ fontSize: 12, color: "#78716c", lineHeight: 1.6, marginTop: 4 }}>{notice}</p>
-          </div>
-          <button type="button" onClick={reset} style={{ ...retryBtnStyle, marginTop: 10 }}>もう一度読み取る</button>
-        </div>
+        <LiffResultState
+          variant="warning"
+          icon={state === "unmatched" ? "🔍" : "✉️"}
+          title={state === "unmatched" ? "このQRはこの作品では使えません" : "送信するメッセージが未設定です"}
+          description={notice ?? undefined}
+          primaryActionLabel="もう一度読み取る"
+          onPrimaryAction={reset}
+        />
       )}
 
       {state === "cancelled" && (
-        <div style={{ textAlign: "center", padding: "8px 0" }}>
-          <p style={{ fontSize: 13, color: "#6b7280", marginBottom: 10 }}>読み取りをキャンセルしました。</p>
-          <button type="button" onClick={reset} style={retryBtnStyle}>もう一度読み取る</button>
-        </div>
+        <LiffResultState
+          variant="info" icon="📷"
+          title="読み取りをキャンセルしました"
+          primaryActionLabel="もう一度読み取る"
+          onPrimaryAction={reset}
+        />
       )}
 
       {state === "failed" && (
-        <div style={{ textAlign: "center", padding: "8px 0" }}>
-          <div style={cardNoticeStyle}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: "#dc2626" }}>QR を処理できませんでした</div>
-            <p style={{ fontSize: 12, color: "#78716c", lineHeight: 1.6, marginTop: 4 }}>
-              {notice ?? "もう一度お試しください。読み取りができない場合は、LINE アプリ内で開いているかご確認ください。"}
-            </p>
-          </div>
-          <button type="button" onClick={reset} style={{ ...retryBtnStyle, marginTop: 10 }}>もう一度試す</button>
-        </div>
+        <LiffResultState
+          variant="error" icon="🌊"
+          title="QR を読み取れませんでした"
+          description={notice ?? "もう一度お試しください。読み取りができない場合は、LINE アプリ内で開いているかご確認ください。"}
+          primaryActionLabel="もう一度試す"
+          onPrimaryAction={reset}
+        />
       )}
     </div>
   );
@@ -239,32 +239,3 @@ export function QrScanner({
 function outcomeToState(outcome: QrSendOutcome): QrState {
   return outcome; // QrSendOutcome は QrState の部分集合
 }
-
-const scanBtnStyle: React.CSSProperties = {
-  width: "100%", padding: "14px 0",
-  background: "#f3f4f6", color: "#374151",
-  border: "1px solid #e5e7eb", borderRadius: 10,
-  fontSize: 14, fontWeight: 600, cursor: "pointer",
-};
-const retryBtnStyle: React.CSSProperties = {
-  width: "100%", padding: "12px 0",
-  background: "#f3f4f6", color: "#374151",
-  border: "1px solid #e5e7eb", borderRadius: 10,
-  fontSize: 13, fontWeight: 500, cursor: "pointer",
-};
-const cardNoticeStyle: React.CSSProperties = {
-  background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 10,
-  padding: "12px 14px", marginTop: 16,
-};
-const successCardStyle: React.CSSProperties = {
-  background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 10, padding: "14px 16px",
-};
-const infoCardStyle: React.CSSProperties = {
-  background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 10, padding: "12px 14px", marginTop: 16,
-};
-const spinnerStyle: React.CSSProperties = {
-  width: 28, height: 28,
-  border: "3px solid #e5e7eb", borderTopColor: "#2563eb",
-  borderRadius: "50%", animation: "spin 1s linear infinite",
-  margin: "0 auto",
-};

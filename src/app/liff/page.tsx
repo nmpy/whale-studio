@@ -14,6 +14,9 @@ import { StampRallyProgressView } from "./_stamp-rally-progress";
 import { QrScanner } from "./_components/QrScanner";
 import { recordLiffEvent } from "@/lib/liff-events";
 import type { CheckinResult, CheckinMode } from "@/types";
+import { LiffExperienceShell, LiffResultState, LiffLoadingState, LiffIconBadge } from "@/components/liff/experience";
+import { LiffButton } from "@/components/liff/primitives/LiffButton";
+import { resolveLiffErrorPresentation, resolveCheckinResultPresentation, LIFF_LOADING_COPY } from "@/lib/liff/copy";
 
 type LiffStep =
   | { step: "init"; detail: string }
@@ -307,175 +310,157 @@ function CheckinContent() {
     window.close();
   }, []);
 
-  // dispatch 中は spinner だけ出して、誤って checkin ページが見えないようにする。
+  // dispatch 中はローディングだけ出して、誤って checkin ページが見えないようにする。
   if (redirecting) {
     return (
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100vh", padding: "24px" }}>
-        <div style={{ textAlign: "center" }}>
-          <Spinner />
-          <p style={{ fontSize: 14, color: "#6b7280" }}>ページを読み込み中...</p>
-        </div>
-      </div>
+      <LiffExperienceShell showCredit={false}>
+        <LiffLoadingState title="ページを読み込んでいます" description="このまま少しだけお待ちください。" />
+      </LiffExperienceShell>
     );
   }
 
+  const stampPanel =
+    (state.step === "confirm" || state.step === "result") && lineUserId && workId
+      ? <StampRallyProgressView workId={workId} lineUserId={lineUserId} refreshKey={stampRefreshKey} />
+      : undefined;
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100vh", padding: "24px" }}>
+    <LiffExperienceShell belowCard={stampPanel}>
 
-      {state.step === "init" && <div style={{ textAlign: "center" }}><Spinner /><p style={{ fontSize: 14, color: "#6b7280" }}>{state.detail}</p></div>}
+      {state.step === "init" && (
+        <LiffLoadingState title={LIFF_LOADING_COPY.title} description={state.detail || LIFF_LOADING_COPY.description} />
+      )}
 
-      {state.step === "error" && (
-        <div style={cardStyle}>
-          <div style={{ fontSize: 40, marginBottom: 12 }}>
-            {state.code === "NOT_IN_LINE" ? "📱"
-              : state.code === "GPS_FAILED" ? "📍"
-              : state.code === "MISSING_PARAMS" ? "🔗"
-              : state.code === "SCENARIO_NOT_STARTED" ? "▶️"
-              : "⚠️"}
+      {state.step === "error" && (() => {
+        const p = resolveLiffErrorPresentation(state.code);
+        return (
+          <LiffResultState
+            variant={p.variant}
+            icon={p.icon}
+            title={p.title}
+            description={state.message}
+            primaryActionLabel={p.closeLabel}
+            onPrimaryAction={handleClose}
+          />
+        );
+      })()}
+
+      {state.step === "confirm" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8, textAlign: "center" }}>
+            <LiffIconBadge variant="info" icon="📍" />
+            <h1 style={{ fontSize: 19, fontWeight: 700, color: "var(--liff-primary-text,#1F2329)", margin: 0 }}>チェックイン</h1>
+            <p style={{ fontSize: 14, color: "var(--liff-secondary-text,#5B6168)", margin: 0 }}>{state.locationName}</p>
           </div>
-          <p style={{ fontWeight: 600, fontSize: 16, color: "#111827", marginBottom: 8 }}>
-            {state.code === "NOT_IN_LINE" ? "LINE で開いてください"
-              : state.code === "GPS_FAILED" ? "位置情報を取得できません"
-              : state.code === "MISSING_PARAMS" ? "このページはチェックイン用です"
-              : state.code === "SCENARIO_NOT_STARTED" ? "作品がまだ始まっていません"
-              : "エラーが発生しました"}
-          </p>
-          <p style={{ fontSize: 13, color: "#6b7280", lineHeight: 1.7, whiteSpace: "pre-line" }}>{state.message}</p>
-          <button onClick={handleClose} style={btnGhost}>{state.code === "SCENARIO_NOT_STARTED" ? "LINEのトークに戻る" : "閉じる"}</button>
+
+          {/* ── qr_only ── */}
+          {state.mode === "qr_only" && (
+            <>
+              <LiffButton type="button" variant="primary" onClick={handleQrCheckin}>チェックインする</LiffButton>
+              {/* GPS 補助（任意） */}
+              {lineUserId && locationId && workId && (
+                <GpsCheckin locationId={locationId} workId={workId} lineUserId={lineUserId} locationName={state.locationName} onResult={handleGpsResult} />
+              )}
+            </>
+          )}
+
+          {/* ── gps_only ── */}
+          {state.mode === "gps_only" && lineUserId && locationId && workId && (
+            <GpsCheckin locationId={locationId} workId={workId} lineUserId={lineUserId} locationName={state.locationName} onResult={handleGpsResult} />
+          )}
+
+          {/* ── qr_and_gps ── */}
+          {state.mode === "qr_and_gps" && lineUserId && locationId && workId && (
+            <>
+              <div style={{ padding: "12px 14px", background: "#eef6fd", borderRadius: 12, fontSize: 13, color: "var(--liff-secondary-text,#435068)", lineHeight: 1.7 }}>
+                このスポットは QR と位置情報の二段階で進みます。下のボタンを押すと現在地を確認してチェックインします。
+              </div>
+              <GpsCheckin
+                locationId={locationId}
+                workId={workId}
+                lineUserId={lineUserId}
+                locationName={state.locationName}
+                checkinMethod="qr_and_gps"
+                buttonLabel="現在地を確認してチェックイン"
+                onResult={handleGpsResult}
+              />
+            </>
+          )}
+
+          {/* ── QR 読み取り導線（slice 4） ──
+              scanQrEnabled=false の OA では導線自体を出さない（白画面にしない＝そもそも描画しない）。 */}
+          {scanQrEnabled && workId && lineUserId && (
+            <QrScanner
+              workId={workId}
+              oaId={oaId}
+              locationId={locationId}
+              mode={state.mode}
+              verifiedLineUserId={isLineUserVerified ? lineUserId : null}
+              isLineUserVerified={isLineUserVerified}
+              scanQrEnabled={scanQrEnabled}
+              isInClient={isInClient}
+            />
+          )}
+
+          <LiffButton type="button" variant="ghost" size="sm" onClick={handleClose}>キャンセル</LiffButton>
         </div>
       )}
 
-      {state.step === "confirm" && (
-        <>
-          <div style={cardStyle}>
-            <div style={{ fontSize: 40, marginBottom: 12 }}>📍</div>
-            <h1 style={{ fontSize: 20, fontWeight: 700, color: "#111827", marginBottom: 4 }}>チェックイン</h1>
-            <p style={{ fontSize: 14, color: "#6b7280", marginBottom: 20 }}>{state.locationName}</p>
-
-            {/* ── qr_only ── */}
-            {state.mode === "qr_only" && (
-              <>
-                <button onClick={handleQrCheckin} style={btnPrimary}>チェックインする</button>
-                {/* GPS 補助（任意） */}
-                {lineUserId && locationId && workId && (
-                  <GpsCheckin locationId={locationId} workId={workId} lineUserId={lineUserId} locationName={state.step === "confirm" ? state.locationName : undefined} onResult={handleGpsResult} />
-                )}
-              </>
-            )}
-
-            {/* ── gps_only ── */}
-            {state.mode === "gps_only" && lineUserId && locationId && workId && (
-              <GpsCheckin locationId={locationId} workId={workId} lineUserId={lineUserId} locationName={state.step === "confirm" ? state.locationName : undefined} onResult={handleGpsResult} />
-            )}
-
-            {/* ── qr_and_gps ── */}
-            {state.mode === "qr_and_gps" && lineUserId && locationId && workId && (
-              <>
-                <div style={{ padding: "10px 14px", background: "#eff6ff", borderRadius: 8, marginBottom: 8, fontSize: 12, color: "#1d4ed8", lineHeight: 1.6 }}>
-                  このスポットは QR + 位置情報の二段階チェックインが必要です。下のボタンを押すと位置情報を確認してチェックインします。
-                </div>
-                <GpsCheckin
-                  locationId={locationId}
-                  workId={workId}
-                  lineUserId={lineUserId}
-                  locationName={state.step === "confirm" ? state.locationName : undefined}
-                  checkinMethod="qr_and_gps"
-                  buttonLabel="位置情報を確認してチェックイン"
-                  onResult={handleGpsResult}
-                />
-              </>
-            )}
-
-            {/* ── QR 読み取り導線（slice 4） ──
-                scanQrEnabled=false の OA では導線自体を出さない（白画面にしない＝そもそも描画しない）。
-                読み取り結果は本スライスでは表示までで、認可・遷移には使わない。 */}
-            {scanQrEnabled && workId && lineUserId && (
-              <QrScanner
-                workId={workId}
-                oaId={oaId}
-                locationId={locationId}
-                mode={state.mode}
-                verifiedLineUserId={isLineUserVerified ? lineUserId : null}
-                isLineUserVerified={isLineUserVerified}
-                scanQrEnabled={scanQrEnabled}
-                isInClient={isInClient}
-              />
-            )}
-
-            <button onClick={handleClose} style={btnGhost}>キャンセル</button>
-          </div>
-
-          {lineUserId && workId && <StampRallyProgressView workId={workId} lineUserId={lineUserId} refreshKey={stampRefreshKey} />}
-        </>
+      {state.step === "gps_acquiring" && (
+        <LiffLoadingState title="現在地を確認しています" description="このまま少しだけお待ちください。" />
+      )}
+      {state.step === "submitting" && (
+        <LiffLoadingState title="チェックインしています" description="このまま少しだけお待ちください。" />
       )}
 
-      {state.step === "gps_acquiring" && <div style={{ textAlign: "center" }}><Spinner /><p style={{ fontSize: 14, color: "#6b7280" }}>位置情報を取得中...</p></div>}
-      {state.step === "submitting" && <div style={{ textAlign: "center" }}><Spinner /><p style={{ fontSize: 14, color: "#6b7280" }}>チェックイン中...</p></div>}
-
-      {state.step === "result" && (
-        <>
-          <div style={cardStyle}>
-            {state.result.status === "checked_in" ? (
+      {state.step === "result" && (() => {
+        const r = state.result;
+        const p = resolveCheckinResultPresentation(r.status);
+        return (
+          <LiffResultState
+            variant={p.variant}
+            icon={p.icon}
+            title={r.status === "cooldown" && r.location_name ? r.location_name : p.title}
+            description={r.message}
+            primaryActionLabel="閉じる"
+            onPrimaryAction={handleClose}
+          >
+            {r.status === "checked_in" && (
               <>
-                <div style={{ fontSize: 40, marginBottom: 12 }}>✅</div>
-                <h2 style={{ fontSize: 20, fontWeight: 700, color: "#111827", marginBottom: 8 }}>チェックイン完了</h2>
-                <p style={{ fontSize: 14, color: "#6b7280" }}>{state.result.message}</p>
-                {state.result.stamp && (
-                  <div style={{ marginTop: 12, padding: "10px 14px", background: state.result.stamp.newly_collected ? "#f0fdf4" : "#f9fafb", borderRadius: 8, fontSize: 13 }}>
-                    {state.result.stamp.newly_collected
-                      ? <span style={{ color: "#16a34a", fontWeight: 600 }}>新しいスタンプを獲得！（{state.result.stamp.completed_count}/{state.result.stamp.total_count}）</span>
-                      : <span style={{ color: "#6b7280" }}>達成済み（{state.result.stamp.completed_count}/{state.result.stamp.total_count}）</span>}
-                    {state.result.stamp.is_completed && <div style={{ marginTop: 4, fontWeight: 700, color: "#16a34a" }}>全スポットコンプリート！</div>}
+                {r.stamp && (
+                  <div style={{ width: "100%", padding: "10px 14px", background: r.stamp.newly_collected ? "#e7f7ee" : "#f6f8fa", borderRadius: 12, fontSize: 13 }}>
+                    {r.stamp.newly_collected
+                      ? <span style={{ color: "#0f9d58", fontWeight: 700 }}>新しいスタンプを獲得！（{r.stamp.completed_count}/{r.stamp.total_count}）</span>
+                      : <span style={{ color: "var(--liff-secondary-text,#5B6168)" }}>達成済み（{r.stamp.completed_count}/{r.stamp.total_count}）</span>}
+                    {r.stamp.is_completed && <div style={{ marginTop: 4, fontWeight: 700, color: "#0f9d58" }}>全スポットコンプリート！</div>}
                   </div>
                 )}
-                {state.result.distance_meters !== undefined && (
-                  <p style={{ marginTop: 8, fontSize: 11, color: "#9ca3af" }}>距離: 約{state.result.distance_meters}m</p>
+                {r.distance_meters !== undefined && (
+                  <p style={{ fontSize: 11, color: "var(--liff-tertiary-text,#8C8C8C)", margin: 0 }}>距離: 約{r.distance_meters}m</p>
                 )}
-                {state.result.transition && (
-                  <div style={{ marginTop: 12, padding: "8px 12px", background: "#eff6ff", borderRadius: 8, fontSize: 13, color: "#1d4ed8" }}>次のフェーズ: {state.result.transition.name}</div>
+                {r.transition && (
+                  <div style={{ width: "100%", padding: "8px 12px", background: "#eef6fd", borderRadius: 12, fontSize: 13, color: "#2563eb" }}>次のフェーズ: {r.transition.name}</div>
                 )}
-              </>
-            ) : state.result.status === "cooldown" ? (
-              <>
-                <div style={{ fontSize: 40, marginBottom: 12 }}>⏳</div>
-                <h2 style={{ fontSize: 20, fontWeight: 700, color: "#111827", marginBottom: 8 }}>{state.result.location_name}</h2>
-                <p style={{ fontSize: 14, color: "#6b7280" }}>{state.result.message}</p>
-                <CooldownTimer seconds={state.result.cooldown_remaining_seconds} />
-              </>
-            ) : (
-              <>
-                <div style={{ fontSize: 40, marginBottom: 12 }}>📏</div>
-                <h2 style={{ fontSize: 20, fontWeight: 700, color: "#111827", marginBottom: 8 }}>範囲外です</h2>
-                <p style={{ fontSize: 14, color: "#6b7280" }}>{state.result.message}</p>
               </>
             )}
-            <button onClick={handleClose} style={btnGhost}>閉じる</button>
-          </div>
-          {lineUserId && workId && <StampRallyProgressView workId={workId} lineUserId={lineUserId} refreshKey={stampRefreshKey} />}
-        </>
-      )}
-    </div>
+            {r.status === "cooldown" && <CooldownTimer seconds={r.cooldown_remaining_seconds} />}
+          </LiffResultState>
+        );
+      })()}
+    </LiffExperienceShell>
   );
-}
-
-function Spinner() {
-  return <><div style={{ width: 40, height: 40, border: "3px solid #e5e7eb", borderTopColor: "#2563eb", borderRadius: "50%", animation: "spin 1s linear infinite", margin: "0 auto 16px" }} /><style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style></>;
 }
 
 function CooldownTimer({ seconds }: { seconds: number }) {
   const [remaining, setRemaining] = useState(seconds);
   useEffect(() => { if (remaining <= 0) return; const t = setInterval(() => setRemaining((r) => Math.max(0, r - 1)), 1000); return () => clearInterval(t); }, [remaining]);
-  if (remaining <= 0) return <p style={{ marginTop: 12, fontSize: 13, color: "#16a34a", fontWeight: 600 }}>再チェックインできます</p>;
-  return <p style={{ marginTop: 12, fontSize: 13, color: "#9ca3af" }}>再チェックインまで: <span style={{ fontFamily: "monospace", fontWeight: 600 }}>{Math.floor(remaining / 60)}:{String(remaining % 60).padStart(2, "0")}</span></p>;
+  if (remaining <= 0) return <p style={{ fontSize: 13, color: "#0f9d58", fontWeight: 600, margin: 0 }}>再チェックインできます</p>;
+  return <p style={{ fontSize: 13, color: "var(--liff-tertiary-text,#8C8C8C)", margin: 0 }}>再チェックインまで: <span style={{ fontFamily: "monospace", fontWeight: 600 }}>{Math.floor(remaining / 60)}:{String(remaining % 60).padStart(2, "0")}</span></p>;
 }
-
-const cardStyle: React.CSSProperties = { background: "#fff", borderRadius: 16, boxShadow: "0 4px 20px rgba(0,0,0,0.08)", padding: 32, maxWidth: 360, width: "100%", textAlign: "center" };
-const btnPrimary: React.CSSProperties = { width: "100%", padding: "14px 0", background: "#2563eb", color: "#fff", border: "none", borderRadius: 12, fontSize: 15, fontWeight: 600, cursor: "pointer", marginTop: 8 };
-const btnGhost: React.CSSProperties = { width: "100%", padding: "12px 0", background: "#f3f4f6", color: "#374151", border: "none", borderRadius: 12, fontSize: 14, fontWeight: 500, cursor: "pointer", marginTop: 8 };
 
 export default function LiffPage() {
   return (
-    <Suspense fallback={<div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh" }}><Spinner /></div>}>
+    <Suspense fallback={<LiffExperienceShell showCredit={false}><LiffLoadingState /></LiffExperienceShell>}>
       <CheckinContent />
     </Suspense>
   );
