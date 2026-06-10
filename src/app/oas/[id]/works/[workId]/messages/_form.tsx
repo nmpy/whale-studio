@@ -64,6 +64,23 @@ const FLEX_JSON_PLACEHOLDER = `{
   }
 }`;
 
+/** 「サンプルを挿入」で textarea に入れる最小構成 bubble。 */
+const FLEX_SAMPLE_JSON = `{
+  "type": "bubble",
+  "body": {
+    "type": "box",
+    "layout": "vertical",
+    "contents": [
+      {
+        "type": "text",
+        "text": "Hello, Flex Message!",
+        "weight": "bold",
+        "size": "lg"
+      }
+    ]
+  }
+}`;
+
 // ── カルーセルカード型 ────────────────────────────────────
 
 export interface MessageCarouselCard {
@@ -603,9 +620,10 @@ export function validateMessageForm(form: MessageFormState): string | null {
     return "カードを1枚以上追加してください";
   }
   if (form.message_type === "flex") {
-    if (!form.alt_text.trim()) return FLEX_ERRORS.emptyAltText;
+    // チェーンの「N通目: …」表記に合わせて 1通目も同じ文言設計にする。
+    if (!form.alt_text.trim()) return `1通目: ${FLEX_ERRORS.emptyAltText}`;
     const norm = normalizeFlexJson(form.flex_payload_json);
-    if (!norm.ok) return norm.error;
+    if (!norm.ok) return `1通目: ${norm.error}`;
   }
   return null;
 }
@@ -3023,6 +3041,24 @@ function AdditionalMessageBlock({
             <label style={{ ...fieldLabel, marginTop: 14 }}>
               Flex Message JSON <span style={{ color: "#dc2626" }}>*</span>
             </label>
+            <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                style={{ fontSize: 12, padding: "5px 12px" }}
+                onClick={() => onChange({ ...slot, flex_payload_json: FLEX_SAMPLE_JSON })}
+              >
+                サンプルを挿入
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                style={{ fontSize: 12, padding: "5px 12px" }}
+                onClick={() => onChange({ ...slot, flex_payload_json: prettyFlexJson(slot.flex_payload_json) })}
+              >
+                JSONを整形
+              </button>
+            </div>
             <textarea
               value={slot.flex_payload_json}
               onChange={(e) => onChange({ ...slot, flex_payload_json: e.target.value })}
@@ -4087,6 +4123,24 @@ export function MessageForm({
                 <label style={{ ...fieldLabel, marginTop: 14 }} htmlFor="flex_json">
                   Flex Message JSON <span style={{ color: "#dc2626" }}>*</span>
                 </label>
+                <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    style={{ fontSize: 12, padding: "5px 12px" }}
+                    onClick={() => set("flex_payload_json", FLEX_SAMPLE_JSON)}
+                  >
+                    サンプルを挿入
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    style={{ fontSize: 12, padding: "5px 12px" }}
+                    onClick={() => set("flex_payload_json", prettyFlexJson(form.flex_payload_json))}
+                  >
+                    JSONを整形
+                  </button>
+                </div>
                 <textarea
                   id="flex_json"
                   value={form.flex_payload_json}
