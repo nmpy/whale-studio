@@ -12,6 +12,11 @@ import {
   FLEX_DEFAULT_ALT_TEXT,
 } from "@/lib/flex";
 import { buildKeywordMessages, type KeywordMessageRecord } from "@/lib/line";
+import {
+  msgToAdditionalSlot,
+  additionalSlotToMsgBody,
+  EMPTY_ADDITIONAL_SLOT,
+} from "@/app/oas/[id]/works/[workId]/messages/_form-helpers";
 
 const BUBBLE = '{"type":"bubble","body":{"type":"box","layout":"vertical","contents":[{"type":"text","text":"Hello"}]}}';
 const CAROUSEL = '{"type":"carousel","contents":[{"type":"bubble"}]}';
@@ -170,5 +175,54 @@ describe("buildKeywordMessages（LINE 送信 payload 変換）", () => {
     const m = out[0] as { type: string };
     // 画像タップアクション無し → image message
     expect(m.type).toBe("image");
+  });
+});
+
+describe("チェーン (2通目以降) の Flex 保存・復元", () => {
+  const mainCtx = {
+    work_id: "w1", phase_id: "p1", character_id: null,
+    kind: "normal" as const, sort_order: 1, is_active: true,
+  };
+
+  it("additionalSlotToMsgBody: flex slot → contents 正規化 + altText を body に載せる", () => {
+    const body = additionalSlotToMsgBody(
+      { ...EMPTY_ADDITIONAL_SLOT, message_type: "flex", alt_text: "代替", flex_payload_json: BUBBLE },
+      mainCtx,
+    );
+    expect(body.message_type).toBe("flex");
+    expect(body.alt_text).toBe("代替");
+    expect(JSON.parse(body.flex_payload_json!).type).toBe("bubble");
+    // flex は body/asset_url を持たない
+    expect(body.body).toBeUndefined();
+    expect(body.asset_url).toBeUndefined();
+  });
+
+  it("additionalSlotToMsgBody: 全体 flex JSON を貼っても contents に正規化", () => {
+    const body = additionalSlotToMsgBody(
+      { ...EMPTY_ADDITIONAL_SLOT, message_type: "flex", alt_text: "代替", flex_payload_json: FULL_FLEX },
+      mainCtx,
+    );
+    expect(JSON.parse(body.flex_payload_json!).type).toBe("bubble");
+  });
+
+  it("additionalSlotToMsgBody: text slot は flex フィールドを持たない (regression)", () => {
+    const body = additionalSlotToMsgBody(
+      { ...EMPTY_ADDITIONAL_SLOT, message_type: "text", body: "やあ" },
+      mainCtx,
+    );
+    expect(body.message_type).toBe("text");
+    expect(body.alt_text).toBeNull();
+    expect(body.flex_payload_json).toBeNull();
+    expect(body.body).toBe("やあ");
+  });
+
+  it("msgToAdditionalSlot: flex メッセージを編集スロットへ復元（altText + 整形 JSON）", () => {
+    const slot = msgToAdditionalSlot({
+      id: "m1", message_type: "flex", alt_text: "代替", flex_payload_json: BUBBLE,
+    });
+    expect(slot.message_type).toBe("flex");
+    expect(slot.alt_text).toBe("代替");
+    expect(slot.flex_payload_json).toContain("\n"); // pretty 整形済み
+    expect(JSON.parse(slot.flex_payload_json).type).toBe("bubble");
   });
 });

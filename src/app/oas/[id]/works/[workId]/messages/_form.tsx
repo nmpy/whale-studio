@@ -49,9 +49,6 @@ const PUZZLE_DELIVERY_TYPE_OPTIONS = MESSAGE_TYPE_OPTIONS.filter(
   (opt) => ["text", "image", "video", "carousel"].includes(opt.value)
 );
 
-/** 2 通目以降（チェーン）の種別セレクター用。Flex は 1 通目のみ対応のため除外する。 */
-const CHAIN_MESSAGE_TYPE_OPTIONS = MESSAGE_TYPE_OPTIONS.filter((opt) => opt.value !== "flex");
-
 /** Flex Message JSON textarea のプレースホルダ（Simulator の最小 bubble 例）。 */
 const FLEX_JSON_PLACEHOLDER = `{
   "type": "bubble",
@@ -503,6 +500,12 @@ export function validateMessageForm(form: MessageFormState): string | null {
       if (key && !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(key)) {
         return `${i + 2}通目: 変数名は半角英数字とアンダースコアで入力してください。先頭に数字は使えません。`;
       }
+    }
+    // chain 内 Flex Message: altText 必須 + JSON 検証
+    if (slot.message_type === "flex") {
+      if (!slot.alt_text.trim()) return `${i + 2}通目: ${FLEX_ERRORS.emptyAltText}`;
+      const norm = normalizeFlexJson(slot.flex_payload_json);
+      if (!norm.ok) return `${i + 2}通目: ${norm.error}`;
     }
   }
   // ── 画像タップ時アクションバリデーション ──
@@ -2147,6 +2150,13 @@ function renderBubbleContent(
             ))}
           </div>
         );
+    case "flex":
+      return (
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontSize: 22 }}>🧱</span>
+          <div style={{ fontSize: 12, color: "#6b7280" }}>Flex Message</div>
+        </div>
+      );
   }
   return null;
 }
@@ -2813,11 +2823,11 @@ function AdditionalMessageBlock({
           </select>
         </div>
 
-        {/* 種別選択（2通目以降は Flex 非対応のため除外） */}
+        {/* 種別選択 */}
         <div className="form-group">
           <label style={fieldLabel}>種別</label>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-            {CHAIN_MESSAGE_TYPE_OPTIONS.map((opt) => (
+            {MESSAGE_TYPE_OPTIONS.map((opt) => (
               <button
                 key={opt.value}
                 type="button"
@@ -2973,8 +2983,75 @@ function AdditionalMessageBlock({
           </div>
         )}
 
-        {/* 通知メッセージ（テキスト以外） */}
-        {mtype !== "text" && mtype !== "riddle" && (
+        {/* Flex Message（1通目と同じ入力 UI） */}
+        {mtype === "flex" && (
+          <div className="form-group" style={{ marginBottom: 0 }}>
+            {/* A. Simulator への外部リンク */}
+            <div style={{ marginBottom: 14 }}>
+              <a
+                href={FLEX_SIMULATOR_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  display: "inline-flex", alignItems: "center", gap: 6,
+                  padding: "7px 14px", borderRadius: 6, border: "1px solid #06C755",
+                  color: "#06C755", fontSize: 12, fontWeight: 600, textDecoration: "none",
+                }}
+              >
+                Flex Message Simulatorを開く ↗
+              </a>
+              <div style={{ ...hintText, marginTop: 6 }}>
+                SimulatorでFlex Messageを作成し、右上の「View as JSON」からJSONをコピーして貼り付けてください。
+              </div>
+            </div>
+
+            {/* B. 代替テキスト */}
+            <label style={fieldLabel}>
+              代替テキスト <span style={{ color: "#dc2626" }}>*</span>
+            </label>
+            <input
+              type="text"
+              className="form-input"
+              maxLength={400}
+              value={slot.alt_text}
+              onChange={(e) => onChange({ ...slot, alt_text: e.target.value })}
+              placeholder="Flex Message"
+            />
+            <div style={hintText}>通知や未対応端末で表示されるテキストです。</div>
+
+            {/* C. Flex Message JSON */}
+            <label style={{ ...fieldLabel, marginTop: 14 }}>
+              Flex Message JSON <span style={{ color: "#dc2626" }}>*</span>
+            </label>
+            <textarea
+              value={slot.flex_payload_json}
+              onChange={(e) => onChange({ ...slot, flex_payload_json: e.target.value })}
+              rows={14}
+              spellCheck={false}
+              style={{
+                width: "100%",
+                fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
+                fontSize: 12, lineHeight: 1.5, padding: 10,
+                border: "1px solid #d1d5db", borderRadius: 6, resize: "vertical",
+              }}
+              placeholder={FLEX_JSON_PLACEHOLDER}
+            />
+            <div style={hintText}>
+              Flex Message SimulatorからコピーしたJSONを貼り付けてください。contentsだけ・flex全体のどちらでも保存できます。
+            </div>
+            {slot.flex_payload_json.trim() && (() => {
+              const r = normalizeFlexJson(slot.flex_payload_json);
+              return r.ok ? null : (
+                <div style={{ marginTop: 6, color: "#dc2626", fontSize: 12, lineHeight: 1.5 }}>
+                  {r.error}
+                </div>
+              );
+            })()}
+          </div>
+        )}
+
+        {/* 通知メッセージ（テキスト以外。flex は不要） */}
+        {mtype !== "text" && mtype !== "riddle" && mtype !== "flex" && (
           <div className="form-group" style={{ marginTop: 10 }}>
             <label style={fieldLabel}>通知メッセージ（任意）</label>
             <input
