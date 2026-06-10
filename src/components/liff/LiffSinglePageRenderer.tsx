@@ -96,17 +96,17 @@ export function LiffSinglePageRenderer({
 
   return (
     <LiffPlayerProvider value={playerCtxValue}>
-      <div className={`liff-font ${liffRootClass(settings)} min-h-screen bg-[color:var(--liff-background)] text-[color:var(--liff-primary-text)]`}>
+      <div className={`liff-font ${liffRootClass(settings)} min-h-screen bg-[#f6f8f7] text-[color:var(--liff-primary-text)]`}>
         <SinglePageHeader workTitle={workTitle} onClose={preview ? undefined : onClose} />
 
-        {/* 戻るボタン */}
-        <div className="liff-player-main pt-3 pb-2">
+        {/* 戻るボタン — 管理画面トーンの ghost ボタン（白チップ + 薄い境界線 + 角丸） */}
+        <div className="liff-player-main pt-3 pb-1">
           <button
             type="button"
             onClick={onBack}
-            className="inline-flex items-center gap-1.5 text-[14px] font-semibold text-[color:var(--liff-secondary-text)] active:opacity-70 -ml-1 px-1 py-1"
+            className="inline-flex items-center gap-1 rounded-full border border-[#e6ebe8] bg-white px-3 py-1.5 text-[13px] font-semibold text-[color:var(--liff-secondary-text)] shadow-[0_1px_2px_rgba(31,64,92,0.04)] active:bg-[color:var(--liff-surface-subtle,#FAFAFA)]"
           >
-            <svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="15 18 9 12 15 6" />
             </svg>
             メニューに戻る
@@ -115,8 +115,11 @@ export function LiffSinglePageRenderer({
 
         {/* ページタイトル — LiffPageConfig.title をそのまま使う (固定文言は出さない) */}
         {page.title && (
-          <div className="liff-player-main pt-2 pb-3">
+          <div className="liff-player-main pt-3 pb-2">
             <h2 className="text-[20px] font-bold leading-snug">{page.title}</h2>
+            {page.description && (
+              <p className="mt-1 text-[13px] leading-[1.7] text-[color:var(--liff-secondary-text)] break-words whitespace-pre-line">{page.description}</p>
+            )}
           </div>
         )}
 
