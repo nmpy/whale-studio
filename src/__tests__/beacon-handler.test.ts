@@ -147,7 +147,7 @@ describe("handleBeaconEvent", () => {
     expect(reply).not.toHaveBeenCalled();
     expect(prisma.beaconEventLog.create).toHaveBeenCalledTimes(1);
     const logged = prisma.created[0];
-    expect(logged.actionStatus).toBe("ignored");
+    expect(logged.actionStatus).toBe("unknown_beacon");
     expect(logged.hwid).toBe("deadbeef");
   });
 
@@ -334,5 +334,80 @@ describe("handleBeaconEvent", () => {
     expect(reply).not.toHaveBeenCalled();
     expect(push).not.toHaveBeenCalled();
     expect(prisma.created[0]?.actionStatus).toBe("matched");
+  });
+
+  it("action_type=message: resolveMessage が返したメッセージを reply 送信し sent ログ", async () => {
+    const prisma = makePrismaMock({
+      trigger: { ...baseTrigger, actionType: "message", actionPayload: { message_id: "msg-1" } },
+    });
+    const { gw, reply, push } = makeLineMock();
+    const resolveMessage = vi.fn(async () => [{ type: "text", text: "登録メッセージ" } as const]);
+
+    const result = await handleBeaconEvent({
+      prisma: prisma as any,
+      oa: OA,
+      event: makeEvent(),
+      line: gw,
+      resolveMessage: resolveMessage as any,
+    });
+
+    expect(result.status).toBe("sent");
+    expect(resolveMessage).toHaveBeenCalledWith({ messageId: "msg-1", workId: "work-1" });
+    expect(reply).toHaveBeenCalledTimes(1);
+    expect(prisma.created[0]?.actionStatus).toBe("sent");
+  });
+
+  it("action_type=message で messageId 未設定なら message_not_configured で送信しない", async () => {
+    const prisma = makePrismaMock({
+      trigger: { ...baseTrigger, actionType: "message", actionPayload: {} },
+    });
+    const { gw, reply, push } = makeLineMock();
+
+    const result = await handleBeaconEvent({
+      prisma: prisma as any,
+      oa: OA,
+      event: makeEvent(),
+      line: gw,
+      resolveMessage: (async () => null) as any,
+    });
+
+    expect(reply).not.toHaveBeenCalled();
+    expect(push).not.toHaveBeenCalled();
+    expect(prisma.created[0]?.actionStatus).toBe("message_not_configured");
+  });
+
+  it("OA 停止中（serviceSuspendedAt）は送信せず service_stopped ログ", async () => {
+    const prisma = makePrismaMock({ trigger: { ...baseTrigger } });
+    const { gw, reply, push } = makeLineMock();
+
+    const result = await handleBeaconEvent({
+      prisma: prisma as any,
+      oa: { ...OA, serviceSuspendedAt: new Date() },
+      event: makeEvent(),
+      line: gw,
+    });
+
+    expect(result.status).toBe("ignored");
+    expect(result.reason).toBe("service_stopped");
+    expect(reply).not.toHaveBeenCalled();
+    expect(push).not.toHaveBeenCalled();
+    expect(prisma.created[0]?.actionStatus).toBe("service_stopped");
+  });
+
+  it("プラン未許可（planAllowed=false）は送信せず plan_blocked ログ", async () => {
+    const prisma = makePrismaMock({ trigger: { ...baseTrigger } });
+    const { gw, reply, push } = makeLineMock();
+
+    const result = await handleBeaconEvent({
+      prisma: prisma as any,
+      oa: { ...OA, planAllowed: false },
+      event: makeEvent(),
+      line: gw,
+    });
+
+    expect(result.status).toBe("ignored");
+    expect(result.reason).toBe("plan_blocked");
+    expect(reply).not.toHaveBeenCalled();
+    expect(prisma.created[0]?.actionStatus).toBe("plan_blocked");
   });
 });

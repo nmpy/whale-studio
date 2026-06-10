@@ -1535,7 +1535,7 @@ export const updateDestinationSchema = z.object({
 // BeaconTrigger — LINE Beacon HWID トリガー
 // ────────────────────────────────────────────────
 
-export const BEACON_ACTION_TYPES = ["send_message", "destination", "noop"] as const;
+export const BEACON_ACTION_TYPES = ["message", "send_message", "destination", "noop"] as const;
 export const BEACON_EVENT_TYPES = ["enter", "stay", "banner"] as const;
 
 const beaconHwidSchema = z.string()
@@ -1561,6 +1561,13 @@ export const createBeaconTriggerSchema = z.object({
   cooldown_seconds: z.number().int().min(0).max(86400).optional(),
   action_type:      z.enum(BEACON_ACTION_TYPES),
   action_payload:   z.record(z.string(), z.unknown()).optional().nullable(),
+}).superRefine((val, ctx) => {
+  if (val.action_type === "message") {
+    const mid = (val.action_payload as Record<string, unknown> | null | undefined)?.message_id;
+    if (typeof mid !== "string" || !mid.trim()) {
+      ctx.addIssue({ code: "custom", path: ["action_payload", "message_id"], message: "送信するメッセージを選択してください" });
+    }
+  }
 });
 
 export const updateBeaconTriggerSchema = z.object({
@@ -1572,6 +1579,13 @@ export const updateBeaconTriggerSchema = z.object({
   cooldown_seconds: z.number().int().min(0).max(86400).optional(),
   action_type:      z.enum(BEACON_ACTION_TYPES).optional(),
   action_payload:   z.record(z.string(), z.unknown()).optional().nullable(),
+}).superRefine((val, ctx) => {
+  if (val.action_type === "message") {
+    const mid = (val.action_payload as Record<string, unknown> | null | undefined)?.message_id;
+    if (typeof mid !== "string" || !mid.trim()) {
+      ctx.addIssue({ code: "custom", path: ["action_payload", "message_id"], message: "送信するメッセージを選択してください" });
+    }
+  }
 });
 
 // ────────────────────────────────────────────────

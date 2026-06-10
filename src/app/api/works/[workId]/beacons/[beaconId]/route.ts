@@ -7,6 +7,8 @@ import { Prisma } from "@prisma/client";
 import { ok, badRequest, notFound, noContent, conflict, serverError } from "@/lib/api-response";
 import { withAuth } from "@/lib/auth";
 import { requireRole, getOaIdFromWorkId } from "@/lib/rbac";
+import { requirePlanFeature } from "@/lib/plan-guard";
+import { FEATURE } from "@/lib/constants/plans";
 import { updateBeaconTriggerSchema, formatZodErrors } from "@/lib/validations";
 import { normalizeBeaconHwid, InvalidBeaconHwidError } from "@/lib/beacon-hwid";
 import { toBeaconTriggerResponse } from "@/lib/beacon-utils";
@@ -23,6 +25,10 @@ export const PATCH = withAuth<{ workId: string; beaconId: string }>(async (req, 
     const check = await requireRole(oaId, user.id, "editor");
     if (!check.ok) return check.response;
 
+    // Beacon 連動は Pro 相当（FEATURE.location）。
+    const gate = await requirePlanFeature({ oaId, featureKey: FEATURE.location });
+    if (!gate.ok) return gate.response;
+
     const existing = await prisma.beaconTrigger.findUnique({
       where: { id: beaconId },
     });
@@ -32,6 +38,19 @@ export const PATCH = withAuth<{ workId: string; beaconId: string }>(async (req, 
 
     const body = await req.json();
     const data = updateBeaconTriggerSchema.parse(body);
+
+    // action_type="message" の場合、messageId は同一 work のメッセージのみ許可。
+    const effectiveActionType = data.action_type ?? existing.actionType;
+    if (effectiveActionType === "message" && data.action_payload !== undefined && data.action_payload !== null) {
+      const messageId = (data.action_payload as Record<string, unknown>)?.message_id;
+      if (typeof messageId === "string" && messageId) {
+        const effectiveWorkId = data.work_id !== undefined ? data.work_id : existing.workId;
+        const m = await prisma.message.findUnique({ where: { id: messageId }, select: { workId: true } });
+        if (!m || m.workId !== effectiveWorkId) {
+          return badRequest("指定されたメッセージがこの作品に属していません", { action_payload: ["message が不正です"] });
+        }
+      }
+    }
 
     let nextHwid = existing.hwid;
     if (data.hwid !== undefined) {
@@ -97,6 +116,9 @@ export const DELETE = withAuth<{ workId: string; beaconId: string }>(async (req,
 
     const check = await requireRole(oaId, user.id, "editor");
     if (!check.ok) return check.response;
+
+    const gate = await requirePlanFeature({ oaId, featureKey: FEATURE.location });
+    if (!gate.ok) return gate.response;
 
     const existing = await prisma.beaconTrigger.findUnique({
       where: { id: beaconId },
