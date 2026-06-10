@@ -183,6 +183,15 @@ function msgPreview(m: MessageWithRelations | undefined): string {
   return "(メッセージ)";
 }
 
+/** 分岐フローの「結果」表示用: キャラクター名 + 本文冒頭。例: くらげさん「あっ」
+ *  キャラクター未設定なら本文プレビューのみ。 */
+function msgPreviewWithChar(m: MessageWithRelations | undefined): string {
+  if (!m) return "";
+  const body = msgPreview(m);
+  const name = m.character?.name;
+  return name ? `${name}「${body}」` : body;
+}
+
 const normKw = (s: string) => s.trim().toLowerCase().normalize("NFKC");
 
 /** QR ボタン 1 件分の「入力 → 応答 → 結果」行 */
@@ -290,7 +299,7 @@ function BranchItemRow({
       {firstResp && (
         <>
           <BranchArrow />
-          <BranchChip color="orange">{msgPreview(firstResp)}</BranchChip>
+          <BranchChip color="orange">{msgPreviewWithChar(firstResp)}</BranchChip>
           {respCount > 1 && (
             <span style={{ fontSize: 10, color: "#9ca3af" }}>+{respCount - 1}件</span>
           )}
@@ -309,8 +318,13 @@ function BranchItemRow({
         <>
           <BranchArrow />
           <BranchChip color="purple">
-            → {msgPreview(directTargetMsg)}
+            → {msgPreviewWithChar(directTargetMsg)}
           </BranchChip>
+          {chainSizeFrom(allMessages, directTargetMsg.id) > 1 && (
+            <span style={{ fontSize: 10, color: "#9ca3af" }}>
+              +{chainSizeFrom(allMessages, directTargetMsg.id) - 1}通の連続
+            </span>
+          )}
         </>
       ) : firstTrans ? (
         <>
@@ -320,7 +334,7 @@ function BranchItemRow({
       ) : chainMsg ? (
         <>
           <BranchArrow />
-          <BranchChip color="gray">→ {msgPreview(chainMsg)}</BranchChip>
+          <BranchChip color="gray">→ {msgPreviewWithChar(chainMsg)}</BranchChip>
         </>
       ) : firstResp ? (
         <>

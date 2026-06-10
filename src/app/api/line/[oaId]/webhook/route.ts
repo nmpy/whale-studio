@@ -44,6 +44,7 @@ import {
 import { buildRuntimeState, matchTransition, applySetFlags, safeParseFlags, safeParseVariables, safeParseWaitingForInput, fetchPhaseWithIncludes, drainAutoSendableItems, type PhaseRow } from "@/lib/runtime";
 import { shouldOfferResumeChoice } from "@/lib/message-flow";
 import { isFreeInputPrompt } from "@/lib/free-input";
+import { resolveQrBranchDelivery } from "@/lib/qr-branch";
 import { handleBeaconEvent, type LineBeaconEvent } from "@/lib/beacon";
 import { pushToLine as _pushToLine } from "@/lib/line";
 import { getCurrentPlanTierForOa } from "@/lib/plan-guard";
@@ -2148,8 +2149,31 @@ async function handleTextEvent({
     // 自由入力受付モード用: 実際にユーザーへ送信される全メッセージ ID
     const qrSentIds: string[] = [];
 
+    // ── QR 分岐の送信仕様 ──
+    //  target_message_id（target_type="message"）が設定されている場合は、
+    //  「target chain」を正として送る = response_message_id のチェーンを target より前に
+    //  自動で割り込ませない。これにより管理画面で「入力 → あっ」と設定したとおり
+    //  「入力 → target → target の nextMessageId chain」の順で届く。
+    //  target_message_id が無い場合は従来どおり response_message_id のチェーンを送る（既存互換）。
+    //  （target_phase_id 遷移は別パス。response は従来どおり Step 3b の前段で送られる）
+    const qrBranch = resolveQrBranchDelivery(matchedQrItem);
+    const hasMessageTarget = !qrBranch.sendResponseChain;
+
+    // 解決結果を構造化ログに残す（PII / 本文は出さない）。
+    console.info("[line:qr-branch:resolved]", JSON.stringify({
+      oaId: oa.id,
+      workId: work.id,
+      itemLabel: matchedQrItem.label ?? null,
+      responseMessageId: matchedQrItem.response_message_id ?? null,
+      targetMessageId: matchedQrItem.target_message_id ?? null,
+      targetPhaseId: matchedQrItem.target_phase_id ?? null,
+      selectedRootMessageId: qrBranch.selectedRootMessageId,
+      mode: qrBranch.mode,
+    }));
+
     // ── Step 2: 応答メッセージ（返す内容）──
-    if (matchedQrItem.response_message_id) {
+    //  target_message_id がある場合は送らない（target chain を正とするため）。
+    if (!hasMessageTarget && matchedQrItem.response_message_id) {
       try {
         const respMsg = await prisma.message.findUnique({
           where: { id: matchedQrItem.response_message_id, isActive: true },
@@ -2166,7 +2190,7 @@ async function handleTextEvent({
     }
 
     // ── Step 3a: 遷移先メッセージ（フェーズ遷移なし）──
-    if (matchedQrItem.target_type === "message" && matchedQrItem.target_message_id) {
+    if (hasMessageTarget) {
       try {
         const targetMsg = await prisma.message.findUnique({
           where: { id: matchedQrItem.target_message_id, isActive: true },
