@@ -741,75 +741,67 @@ export async function replyWithLagToLine(
 ): Promise<void> {
   if (!replyToken || messages.length === 0) return;
 
-  // 1 件のみ → 通常の replyToLine と同じ（ラグなし）
-  if (messages.length <= 1) {
+  // ── 送信戦略 ──
+  //  LINE Reply API は 1 リクエストに最大 5 件の message を含められる（replyToken は 1 回限りだが複数件 OK）。
+  //  Reply は月間メッセージ通数にカウントされないが、Push はカウントされる。
+  //  → 5 件以内なら「全件を 1 回の Reply」で送ることで Push 通数を消費せず確実に届ける。
+  //  トレードオフ: Reply 一括では message 間の lag/typing/loading 演出は付かない（全件ほぼ同時着）。
+  //  物語体験では「届かない / Push 月間上限で 1 通目だけ届いて止まる」方が致命的なため、配信確実性を優先する。
+  //  6 件以上のときだけ、やむを得ず先頭 5 件を Reply・残りを Push（lag/typing 演出付き）で送る。
+  const REPLY_MAX = 5;
+
+  // ≤5 件: 全件 Reply 1 リクエスト（Push 通数を消費しない・確実に届く）
+  if (messages.length <= REPLY_MAX) {
     await replyToLine(replyToken, messages, channelAccessToken);
+    console.info("[line:reply-lag:summary]", JSON.stringify({
+      strategy:   "reply_all",
+      replyTotal: messages.length,
+      pushTotal:  0,
+      pushOk:     0,
+      pushFail:   0,
+      failures:   [],
+    }));
+    console.log(`[replyWithLagToLine] strategy=reply_all reply=${messages.length} push=0 total=${messages.length}`);
     return;
   }
+
+  // ── >5 件: 先頭 5 件を Reply・6 件目以降を Push（fallback・lag/typing 演出付き） ──
+  const replyBatch = messages.slice(0, REPLY_MAX);
+  const pushRest   = messages.slice(REPLY_MAX);
 
   // [diag] sequence 全体: 各 message の id + lag + timing 概要を出す
   console.log(
     `[diag][timing-sequence] count=${messages.length} ids=[${messages.map((m) => idOf(m)).join(",")}]`,
   );
-  for (let i = 0; i < messages.length; i++) {
-    const m = messages[i];
-    const t = m._timing;
-    console.log(
-      `[diag][timing-sequence][${i}] msg=${idOf(m)} lag=${m._lagMs ?? "—"}`,
-      `typing=${t?.typing_enabled ?? "—"}`,
-      `typingMin=${t?.typing_min_ms ?? "—"}`,
-      `typingMax=${t?.typing_max_ms ?? "—"}`,
-      `loading=${t?.loading_enabled ?? "—"}`,
-      `readMode=${t?.read_receipt_mode ?? "—"}`,
-    );
-  }
 
-  // 1 件目を Reply API で即送信（replyToken の有効期限内に必ず呼ぶ）
-  const [first, ...rest] = messages;
-  await replyToLine(replyToken, [first], channelAccessToken);
+  // 先頭 5 件を Reply API で即送信（replyToken の有効期限内に必ず呼ぶ）
+  await replyToLine(replyToken, replyBatch, channelAccessToken);
 
-  // Phase 2c hotfix: chain 送信に入る前に webhook-level scheduleLoading を抑止する。
-  // 理由: webhook 開始時に予約された loading が msg1/msg2 の間 (= lag/typing 待機中) に
-  //       発火すると、ユーザー体感では「msg1/msg2 の合間にランダムに loading が出る」
-  //       不安定さに見える。chain 内 per-message の loading は下のループで明示的に
-  //       showLoadingForMessage で処理する。
+  // chain 送信に入る前に webhook-level scheduleLoading を抑止（push ループで per-message に処理する）
   if (controller) {
     controller.abortPendingLoading();
-    console.log(`[diag][timing-loading-abort] chain送信開始のため webhook scheduleLoading を abort`);
+    console.log(`[diag][timing-loading-abort] push fallback 開始のため webhook scheduleLoading を abort`);
   }
 
-  // 2 件目以降を Push API でラグ付き 1 件ずつ送信（件数制限なし）
-  console.log(`[replyWithLagToLine] reply=1件 push=${rest.length}件 total=${messages.length}件`);
+  console.log(`[replyWithLagToLine] strategy=reply_first_5_push_rest reply=${replyBatch.length}件 push=${pushRest.length}件 total=${messages.length}件`);
   let pushOk = 0;
   let pushFail = 0;
   const pushFailures: { idx: number; msgId: string | null; status: number | null }[] = [];
-  for (let i = 0; i < rest.length; i++) {
-    const msg = rest[i];
+  for (let i = 0; i < pushRest.length; i++) {
+    const msg = pushRest[i];
     const msgId = msg._sourceMessageId ?? null; // strip 前に控える（PII の本文ではなく由来 messageId）
     const rawLag = msg._lagMs ?? 0;
     const delay  = rawLag > 0 ? Math.min(rawLag, MAX_MSG_LAG_MS) : DEFAULT_MSG_LAG_MS;
     console.log(
       `[diag][timing-send-before] msg=${idOf(msg)} waitLag=${delay}ms`,
-      `typing=${msg._timing?.typing_enabled ?? "—"}`,
-      `loading=${msg._timing?.loading_enabled ?? "—"}`,
       `lagSource=${msg._lagMs != null ? "_lagMs" : "default"}`,
     );
     await sleep(delay);
-    // Phase 2c: per-message 演出を反映する (typing → loading の順)。
-    // chain head の typing は waitTypingBeforeReply で適用済み。
-    // 2 通目以降は waitTypingForMessage / showLoadingForMessage を使い、
-    // receivedAt 経過時間に縛られずメッセージ作者の設定を効かせる。
-    // _timing が無ければ何もしない (= 単に lag のみ待つ)。
-    const typingStart = Date.now();
+    // per-message 演出を反映（typing → loading）。_timing / controller が無ければ lag のみ。
     if (controller && msg._timing) {
-      console.log(`[diag][typing-before] msg=${idOf(msg)} via=perMessage (chain push #${i + 1})`);
       await controller.waitTypingForMessage(msg._timing);
       await controller.showLoadingForMessage(msg._timing);
-    } else {
-      console.log(`[diag][typing-before] msg=${idOf(msg)} via=none (no _timing or no ctrl)`);
     }
-    const typingWaited = Date.now() - typingStart;
-    console.log(`[diag][typing-after] msg=${idOf(msg)} waitedMs=${typingWaited} (chain push #${i + 1})`);
     const result = await pushToLine(userId, [msg], channelAccessToken);
     if (result.ok) {
       pushOk++;
@@ -817,18 +809,18 @@ export async function replyWithLagToLine(
       pushFail++;
       pushFailures.push({ idx: i + 1, msgId, status: result.status ?? null });
     }
-    console.log(`[diag][timing-send-after] msg=${idOf(msg)} pushed=${result.ok} typingWaited=${typingWaited}ms`);
+    console.log(`[diag][timing-send-after] msg=${idOf(msg)} pushed=${result.ok}`);
   }
-  // 送信結果サマリ（PII・本文なし）。1通目 reply は成功扱い（呼出時に throw していない）。
-  // push が一部/全部失敗していても webhook は 200 で返るため、ここで可視化して「1通目だけ届く」を検知可能にする。
+  // 送信結果サマリ（PII・本文なし）。push が失敗しても webhook は 200 で返るため可視化する。
   console.info("[line:reply-lag:summary]", JSON.stringify({
-    replyOk: true,
-    pushTotal: rest.length,
+    strategy:   "reply_first_5_push_rest",
+    replyTotal: replyBatch.length,
+    pushTotal:  pushRest.length,
     pushOk,
     pushFail,
-    failures: pushFailures,
+    failures:   pushFailures,
   }));
-  console.log(`[replyWithLagToLine] 完了 reply=1 push=${rest.length}(ok=${pushOk}/fail=${pushFail}) total=${messages.length}`);
+  console.log(`[replyWithLagToLine] 完了 strategy=reply_first_5_push_rest reply=${replyBatch.length} push=${pushRest.length}(ok=${pushOk}/fail=${pushFail}) total=${messages.length}`);
 }
 
 /** [diag] LineMessage の識別用に内部 id を取り出す。
