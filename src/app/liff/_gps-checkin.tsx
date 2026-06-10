@@ -12,6 +12,8 @@ import {
   attemptStatusFor,
   type GpsStatus,
 } from "@/lib/liff/gps-status";
+import { LiffResultState, LiffLoadingState, type LiffStateVariant } from "@/components/liff/experience";
+import { LiffButton } from "@/components/liff/primitives/LiffButton";
 
 // 状態の型は src/lib/liff/gps-status.ts に集約（テスト可能な表示ロジックと共有）。
 export type { GpsStatus };
@@ -174,239 +176,83 @@ export function GpsCheckin({ locationId, workId, lineUserId, locationName, onRes
 
   if (!supported) return null;
 
+  const pres = gpsStatusPresentation(status, {
+    locationName,
+    distanceMeters: distanceInfo?.distance ?? null,
+    radiusMeters: distanceInfo?.radius ?? null,
+    successMessage: successData?.message ?? null,
+    hasTransition: !!successData?.transition,
+    detailMessage: message || null,
+  });
+
+  const backToLine = async () => {
+    try { const liff = (await import("@line/liff")).default; if (liff.isInClient()) { liff.closeWindow(); return; } } catch { /* noop */ }
+    window.close();
+  };
+
   return (
-    <div style={{ marginTop: 16, borderTop: "1px solid #e5e7eb", paddingTop: 16 }}>
+    <div style={{ marginTop: 16, borderTop: "1px solid var(--liff-border,#EAEAEA)", paddingTop: 16 }}>
 
       {/* ── idle: 事前説明 + チェックインボタン ── */}
       {status === "idle" && (
-        <div>
-          <div style={{
-            background: "#f7f9fc", borderRadius: 10, padding: "14px 16px",
-            marginBottom: 12, lineHeight: 1.7,
-          }}>
-            <p style={{ fontSize: 13, color: "#435068", marginBottom: 6 }}>
-              このチェックインでは現在地を使って、目的地に到着したかを確認します。
-            </p>
-            <p style={{ fontSize: 12, color: "#97a3b6" }}>
-              位置情報はこのチェックイン判定のために使用し、常時追跡は行いません。
-              下のボタンを押すと、位置情報の利用確認が表示されます。
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <div style={{ background: "#f1f7fb", borderRadius: 12, padding: "14px 16px", lineHeight: 1.75 }}>
+            <p style={{ fontSize: 13, color: "var(--liff-secondary-text,#435068)", margin: 0 }}>
+              {gpsStatusPresentation("idle").message}
             </p>
           </div>
-          <button
-            type="button"
-            onClick={handleGpsCheckin}
-            style={{
-              width: "100%", padding: "14px 0",
-              background: "#f3f4f6", color: "#374151",
-              border: "1px solid #e5e7eb", borderRadius: 10,
-              fontSize: 14, fontWeight: 600, cursor: "pointer",
-            }}
-          >
-            {buttonLabel}
-          </button>
+          <LiffButton type="button" variant="primary" onClick={handleGpsCheckin}>{buttonLabel}</LiffButton>
         </div>
       )}
 
-      {/* ── acquiring / submitting: スピナー ── */}
+      {/* ── acquiring / submitting: ローディング ── */}
       {(status === "acquiring" || status === "submitting") && (
-        <div style={{ textAlign: "center", padding: "16px 0" }}>
-          <div style={spinnerStyle} />
-          <p style={{ fontSize: 13, color: "#6b7280", marginTop: 8 }}>{message}</p>
-          <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-        </div>
+        <LiffLoadingState
+          title={status === "acquiring" ? "現在地を確認しています" : "チェックインしています"}
+          description="このまま少しだけお待ちください。"
+        />
       )}
 
-      {/* ── success: 成功表示 ── */}
-      {status === "success" && (
-        <div style={{
-          textAlign: "center", padding: "20px 16px",
-          background: "#f0fdf4", borderRadius: 12, border: "1px solid #bbf7d0",
-        }}>
-          <div style={{
-            width: 48, height: 48, borderRadius: "50%",
-            background: "#16a34a", display: "flex", alignItems: "center", justifyContent: "center",
-            margin: "0 auto 12px",
-          }}>
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M4.5 12.75l6 6 9-13.5" />
-            </svg>
-          </div>
-          <p style={{ fontSize: 16, fontWeight: 700, color: "#16a34a", marginBottom: 4 }}>
-            チェックイン完了！
-          </p>
-          {successData?.message && (
-            <p style={{ fontSize: 13, color: "#435068" }}>{successData.message}</p>
-          )}
-          {successData?.transition && (
-            <p style={{ fontSize: 12, color: "#2563eb", marginTop: 8 }}>
-              物語が進行します…
+      {/* ── それ以外の状態: 統一カード ── */}
+      {status !== "idle" && status !== "acquiring" && status !== "submitting" && (
+        <LiffResultState
+          variant={STATUS_VARIANT[status]}
+          icon={STATUS_ICON[status]}
+          title={pres.title ?? undefined}
+          description={pres.message}
+          primaryActionLabel={
+            status === "scenario_not_started" ? "LINEのトークに戻る"
+              : pres.showRetry ? (RETRY_LABEL[status] ?? "もう一度試す")
+              : undefined
+          }
+          onPrimaryAction={
+            status === "scenario_not_started" ? backToLine
+              : pres.showRetry ? handleRetry
+              : undefined
+          }
+        >
+          {pres.showQrFallback && (
+            <p style={{ fontSize: 12, color: "var(--liff-tertiary-text,#8C8C8C)", margin: 0, lineHeight: 1.6 }}>
+              うまくいかない場合は、QR コードからのチェックインもお試しください。
             </p>
           )}
-        </div>
-      )}
-
-      {/* ── out_of_range: 未到着 ── */}
-      {status === "out_of_range" && (
-        <div style={{ textAlign: "center", padding: "16px 0" }}>
-          <div style={{
-            background: "#fffbeb", borderRadius: 10, padding: "16px",
-            border: "1px solid #fde68a", marginBottom: 12,
-          }}>
-            <div style={{ fontSize: 28, marginBottom: 8 }}>📡</div>
-            <p style={{ fontSize: 14, fontWeight: 600, color: "#92400e", marginBottom: 6 }}>
-              まだ目的地に到着していません
-            </p>
-            <p style={{ fontSize: 13, color: "#78716c", marginBottom: 10, lineHeight: 1.6 }}>
-              現在地の取得には成功しましたが、チェックイン可能範囲外です。
-            </p>
-            <div style={{
-              background: "rgba(255,255,255,0.7)", borderRadius: 8, padding: "10px 12px",
-              fontSize: 12, color: "#57534e", lineHeight: 1.8, textAlign: "left",
-            }}>
-              {locationName && <div><span style={{ fontWeight: 600 }}>対象地点：</span>{locationName}</div>}
-              {distanceInfo && (
-                <>
-                  <div><span style={{ fontWeight: 600 }}>チェックイン範囲：</span>半径{distanceInfo.radius}m 以内</div>
-                  <div><span style={{ fontWeight: 600 }}>現在の距離：</span>{formatDistance(distanceInfo.distance)}</div>
-                </>
-              )}
-            </div>
-            <p style={{ fontSize: 12, color: "#97a3b6", marginTop: 10 }}>
-              目的地の近くに到着したら、もう一度お試しください。
-            </p>
-          </div>
-          <button type="button" onClick={handleRetry} style={retryBtnStyle}>
-            もう一度確認する
-          </button>
-        </div>
-      )}
-
-      {/* ── denied: 今回拒否 ── */}
-      {status === "denied" && (
-        <div style={{ textAlign: "center", padding: "16px 0" }}>
-          <div style={{
-            background: "#fef2f2", borderRadius: 10, padding: "16px",
-            border: "1px solid #fecaca", marginBottom: 12,
-          }}>
-            <div style={{ fontSize: 28, marginBottom: 8 }}>🚫</div>
-            <p style={{ fontSize: 14, fontWeight: 600, color: "#dc2626", marginBottom: 6 }}>
-              位置情報の利用が許可されていません
-            </p>
-            <p style={{ fontSize: 13, color: "#78716c", lineHeight: 1.6 }}>
-              チェックインには位置情報の許可が必要です。
-              もう一度お試しいただくか、端末やブラウザの設定をご確認ください。
-            </p>
-          </div>
-          <button type="button" onClick={handleRetry} style={retryBtnStyle}>
-            もう一度試す
-          </button>
-          <p style={{ fontSize: 12, color: "#9ca3af", marginTop: 8 }}>
-            または QR コードからチェックインしてください
-          </p>
-        </div>
-      )}
-
-      {/* ── blocked: 恒久ブロック（設定変更が必要） ── */}
-      {status === "blocked" && (
-        <div style={{ textAlign: "center", padding: "16px 0" }}>
-          <div style={{
-            background: "#fef2f2", borderRadius: 10, padding: "16px",
-            border: "1px solid #fecaca", marginBottom: 12,
-          }}>
-            <div style={{ fontSize: 28, marginBottom: 8 }}>⚙️</div>
-            <p style={{ fontSize: 14, fontWeight: 600, color: "#dc2626", marginBottom: 6 }}>
-              位置情報がブロックされています
-            </p>
-            <p style={{ fontSize: 13, color: "#78716c", lineHeight: 1.6, marginBottom: 10 }}>
-              以前に位置情報の利用を拒否したため、ブラウザが自動的にブロックしています。
-            </p>
-            <div style={{
-              background: "rgba(255,255,255,0.7)", borderRadius: 8, padding: "12px",
-              fontSize: 12, color: "#57534e", lineHeight: 1.8, textAlign: "left",
-            }}>
-              <p style={{ fontWeight: 600, marginBottom: 4 }}>設定を変更するには：</p>
-              <p>LINE アプリ、ブラウザ、または端末の設定から「位置情報」の許可をご確認ください。</p>
-              <p>設定変更後、この画面に戻って再試行してください。</p>
-            </div>
-          </div>
-          <button type="button" onClick={handleRetry} style={retryBtnStyle}>
-            設定を変更したので再試行する
-          </button>
-          <p style={{ fontSize: 12, color: "#9ca3af", marginTop: 8 }}>
-            または QR コードからチェックインしてください
-          </p>
-        </div>
-      )}
-
-      {/* ── unavailable / timeout: 位置取得不能・タイムアウト ── */}
-      {(status === "unavailable" || status === "timeout") && (
-        <div style={{ textAlign: "center", padding: "16px 0" }}>
-          <div style={{
-            background: "#fffbeb", borderRadius: 10, padding: "16px",
-            border: "1px solid #fde68a", marginBottom: 12,
-          }}>
-            <p style={{ fontSize: 13, color: "#92400e", lineHeight: 1.6, whiteSpace: "pre-line" }}>{message}</p>
-          </div>
-          <button type="button" onClick={handleRetry} style={retryBtnStyle}>
-            もう一度試す
-          </button>
-          <p style={{ fontSize: 12, color: "#9ca3af", marginTop: 8 }}>
-            または QR コードからチェックインしてください
-          </p>
-        </div>
-      )}
-
-      {/* ── scenario_not_started: 作品未開始（先に LINE トークで開始が必要） ── */}
-      {status === "scenario_not_started" && (
-        <div style={{ textAlign: "center", padding: "16px 0" }}>
-          <div style={{
-            background: "#eff6ff", borderRadius: 10, padding: "16px",
-            border: "1px solid #bfdbfe", marginBottom: 12,
-          }}>
-            <p style={{ fontSize: 14, fontWeight: 700, color: "#1d4ed8", marginBottom: 6 }}>作品がまだ始まっていません</p>
-            <p style={{ fontSize: 13, color: "#435068", lineHeight: 1.7, whiteSpace: "pre-line" }}>{message}</p>
-          </div>
-          <button
-            type="button"
-            onClick={async () => {
-              try { const liff = (await import("@line/liff")).default; if (liff.isInClient()) { liff.closeWindow(); return; } } catch { /* noop */ }
-              window.close();
-            }}
-            style={retryBtnStyle}
-          >
-            LINEのトークに戻る
-          </button>
-        </div>
-      )}
-
-      {/* ── error: その他エラー ── */}
-      {status === "error" && (
-        <div style={{ textAlign: "center", padding: "16px 0" }}>
-          <div style={{
-            background: "#fef2f2", borderRadius: 10, padding: "16px",
-            border: "1px solid #fecaca", marginBottom: 12,
-          }}>
-            <p style={{ fontSize: 13, color: "#dc2626", lineHeight: 1.6 }}>{message}</p>
-          </div>
-          <button type="button" onClick={handleRetry} style={retryBtnStyle}>
-            もう一度試す
-          </button>
-        </div>
+        </LiffResultState>
       )}
     </div>
   );
 }
 
-const spinnerStyle: React.CSSProperties = {
-  width: 28, height: 28,
-  border: "3px solid #e5e7eb", borderTopColor: "#2563eb",
-  borderRadius: "50%", animation: "spin 1s linear infinite",
-  margin: "0 auto",
+// 状態 → 見た目バリアント（denied/blocked は権限系として permission 表示）。
+const STATUS_VARIANT: Record<GpsStatus, LiffStateVariant> = {
+  idle: "info", acquiring: "loading", submitting: "loading",
+  success: "success", out_of_range: "warning",
+  denied: "permission", blocked: "permission",
+  unavailable: "warning", timeout: "warning",
+  scenario_not_started: "info", error: "error",
 };
-
-const retryBtnStyle: React.CSSProperties = {
-  width: "100%", padding: "12px 0",
-  background: "#f3f4f6", color: "#374151",
-  border: "1px solid #e5e7eb", borderRadius: 10,
-  fontSize: 13, fontWeight: 500, cursor: "pointer",
+const STATUS_ICON: Partial<Record<GpsStatus, string>> = {
+  out_of_range: "📍", denied: "🚫", blocked: "⚙️", unavailable: "📡", timeout: "⏳", scenario_not_started: "▶️", error: "🌊",
+};
+const RETRY_LABEL: Partial<Record<GpsStatus, string>> = {
+  out_of_range: "もう一度確認する", blocked: "設定を変更したので再試行する",
 };
