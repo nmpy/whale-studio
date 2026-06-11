@@ -3432,6 +3432,11 @@ export function MessageForm({
   // ── 既存メッセージ取り込み（PR3b-2）──
   const [importPicker, setImportPicker] = useState<{ insertIndex: number; appendAtEnd: boolean } | null>(null);
 
+  // まとめ送信廃止方針: 連続メッセージ（2通目以降）の新規追加は不可（新規作成・既存編集とも）。
+  // 既存の 2通目以降は表示・編集・削除・並べ替え可能だが、新しいスロットの追加（＋追加 / ＋ここに追加 /
+  // ＋既存を取り込む）は無効化する。
+  const allowAddMessage = false;
+
   // ── destination 選択用 ──
   const [destinations, setDestinations] = useState<LineDestination[]>([]);
   const [tapMode, setTapMode] = useState<TapMode>(() =>
@@ -4784,6 +4789,9 @@ export function MessageForm({
                 runtime（buildMessageChain/buildPhaseMessages）は freeInput で即時送信を停止するため、
                 以降のスロットは通常の連続送信では届かない。編集UI上でも区切って明示する。 */}
             {(() => {
+              // まとめ送信廃止: 新規作成では 2通目以降のスロットを一切レンダーしない（初期 state は
+              // 空だが、state 紛れ込み時も UI 上に「2通目ブロック」を出さない防御ガード）。
+              if (isNew) return null;
               const headFree   = !!form.free_input_enabled;
               const fiSlotIdx  = form.additionalMessages.findIndex((s) => s.free_input_enabled);
               const firstAfter = headFree ? 0 : (fiSlotIdx >= 0 ? fiSlotIdx + 1 : -1);
@@ -4839,7 +4847,7 @@ export function MessageForm({
                     />
                     {/* スロット間「＋ここに追加」（#6-3）。freeInput より下には出さない（末尾固定）。
                         head 自体が freeInput プロンプトのときは送信 chain に slot を足せない。 */}
-                    {!headFree && canInsertAt(form.additionalMessages, idx + 1) && (
+                    {allowAddMessage && !headFree && canInsertAt(form.additionalMessages, idx + 1) && (
                       <div style={{ display: "flex", justifyContent: "center", gap: 6, margin: "6px 0" }}>
                         <button
                           type="button"
@@ -4876,39 +4884,47 @@ export function MessageForm({
               });
             })()}
 
-            {/* 末尾追加（#6-3）。freeInput がある場合はその直前に追加し、末尾固定を保つ。
-                head 自体が freeInput プロンプトのときは送信 chain に追加できない（応答は別枠）。 */}
-            {form.free_input_enabled ? (
-              <div style={{ marginTop: 14, padding: "8px 12px", background: "#faf5ff", border: "1px dashed #d8b4fe", borderRadius: 8, fontSize: 11, color: "#7c3aed", lineHeight: 1.6 }}>
-                1通目が自由入力プロンプトのため、連続メッセージは追加できません（自由入力後の応答は別枠で管理します）。
+            {/* まとめ送信廃止方針: 連続メッセージの新規追加は無効化。
+                allowAddMessage=true（将来用）のときのみ末尾追加ボタンを出す。
+                新規作成では「1通のみ」の案内文言、既存編集では追加ボタンを出さない（既存スロットは編集可）。 */}
+            {allowAddMessage ? (
+              form.free_input_enabled ? (
+                <div style={{ marginTop: 14, padding: "8px 12px", background: "#faf5ff", border: "1px dashed #d8b4fe", borderRadius: 8, fontSize: 11, color: "#7c3aed", lineHeight: 1.6 }}>
+                  1通目が自由入力プロンプトのため、連続メッセージは追加できません（自由入力後の応答は別枠で管理します）。
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() =>
+                    setForm((prev) => ({
+                      ...prev,
+                      additionalMessages: appendSlot(prev.additionalMessages, { ...EMPTY_ADDITIONAL_SLOT, carousel_items: [] }),
+                    }))
+                  }
+                  style={{
+                    marginTop: 14, width: "100%", padding: "10px 0",
+                    border: "2px dashed #d1d5db", borderRadius: 8, background: "#f9fafb",
+                    color: "#6b7280", fontSize: 13, fontWeight: 600, cursor: "pointer",
+                    display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                    transition: "all 0.15s",
+                  }}
+                  onMouseOver={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "#06C755"; (e.currentTarget as HTMLButtonElement).style.color = "#059669"; }}
+                  onMouseOut={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "#d1d5db"; (e.currentTarget as HTMLButtonElement).style.color = "#6b7280"; }}
+                >
+                  {hasFreeInputSlot(form.additionalMessages)
+                    ? "＋ 自由入力の前にメッセージを追加"
+                    : `＋ メッセージを追加（${form.additionalMessages.length + 2}通目）`}
+                </button>
+              )
+            ) : isNew ? (
+              <div style={{ marginTop: 14, padding: "10px 12px", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, fontSize: 12, color: "#1e40af", lineHeight: 1.6 }}>
+                新規作成では、1つのメッセージにつき<strong>1通のみ</strong>作成できます。次のメッセージへ進めたい場合は、作成後に Quick Reply・キーワード・QR・GPS などの<strong>遷移条件</strong>を設定してください。
               </div>
-            ) : (
-              <button
-                type="button"
-                onClick={() =>
-                  setForm((prev) => ({
-                    ...prev,
-                    additionalMessages: appendSlot(prev.additionalMessages, { ...EMPTY_ADDITIONAL_SLOT, carousel_items: [] }),
-                  }))
-                }
-                style={{
-                  marginTop: 14, width: "100%", padding: "10px 0",
-                  border: "2px dashed #d1d5db", borderRadius: 8, background: "#f9fafb",
-                  color: "#6b7280", fontSize: 13, fontWeight: 600, cursor: "pointer",
-                  display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-                  transition: "all 0.15s",
-                }}
-                onMouseOver={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "#06C755"; (e.currentTarget as HTMLButtonElement).style.color = "#059669"; }}
-                onMouseOut={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "#d1d5db"; (e.currentTarget as HTMLButtonElement).style.color = "#6b7280"; }}
-              >
-                {hasFreeInputSlot(form.additionalMessages)
-                  ? "＋ 自由入力の前にメッセージを追加"
-                  : `＋ メッセージを追加（${form.additionalMessages.length + 2}通目）`}
-              </button>
-            )}
+            ) : null}
 
-            {/* 既存メッセージ取り込み（#6-4d・PR3b-2）。head が確定している編集時のみ。 */}
-            {!form.free_input_enabled && !isNew && messageId && (
+            {/* 既存メッセージ取り込み（#6-4d・PR3b-2）。head が確定している編集時のみ。
+                まとめ送信廃止方針により allowAddMessage=false の間は無効化。 */}
+            {allowAddMessage && !form.free_input_enabled && !isNew && messageId && (
               <button
                 type="button"
                 onClick={() => setImportPicker({

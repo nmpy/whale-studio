@@ -5,6 +5,7 @@ import {
   loadChainSplit,
   buildChainSaveBody,
   chainErrorToMessage,
+  sendSlotsForSave,
   type ChainMsgRow,
 } from "@/app/oas/[id]/works/[workId]/messages/_chain-edit";
 import { EMPTY_ADDITIONAL_SLOT, type AdditionalMessageSlot } from "@/app/oas/[id]/works/[workId]/messages/_form-helpers";
@@ -201,6 +202,33 @@ describe("buildChainSaveBody", () => {
       });
       expect(body.detached_message_ids).toEqual([]);
     });
+  });
+});
+
+// まとめ送信廃止方針: 新規作成では 2通目以降を保存させない（保存ガード）。
+describe("sendSlotsForSave（新規作成は 1通目のみ・保存ガード）", () => {
+  const slots = [slot({ existingId: "s1" }), slot({ existingId: "s2" })];
+
+  it("新規作成(isNew=true): スロットを空に丸める（2通目以降は保存されない）", () => {
+    expect(sendSlotsForSave(true, slots)).toEqual([]);
+    expect(sendSlotsForSave(true, [])).toEqual([]);
+  });
+
+  it("既存編集(isNew=false): スロットはそのまま保持（既存チェーンを壊さない）", () => {
+    expect(sendSlotsForSave(false, slots)).toBe(slots);
+    expect(sendSlotsForSave(false, slots).map((s) => s.existingId)).toEqual(["s1", "s2"]);
+  });
+
+  it("新規作成で state に 2通目が紛れ込んでも、buildChainSaveBody.slots は空（1通目のみ保存）", () => {
+    const body = buildChainSaveBody({
+      workId: "w", headId: "new-head", headBody: { body: "1通目" },
+      headFreeInputEnabled: false, headFreeInputNextMessageId: "",
+      // 新規ページは sendSlotsForSave(true, …) で必ず [] を渡す
+      sendSlots: sendSlotsForSave(true, [slot({ body: "紛れ込んだ2通目" })]),
+      slotMain, initialSendSlotIds: [],
+    });
+    expect(body.slots).toEqual([]);
+    expect(body.removed_message_ids).toEqual([]); // 新規なので削除も発生しない
   });
 });
 

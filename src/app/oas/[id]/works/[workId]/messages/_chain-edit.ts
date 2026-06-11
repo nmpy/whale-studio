@@ -168,6 +168,15 @@ export function buildChainSaveBody(args: BuildChainBodyArgs): ChainSaveBodyShape
   };
 }
 
+/**
+ * まとめ送信廃止方針: 新規作成では連続メッセージ（2通目以降）を作らせない。
+ * isNew のとき送信スロットを空に丸める（UI でも追加不可だが、URL/state 操作で
+ * 紛れ込んでも保存時に 1通目だけに丸める保存ガード）。既存編集（!isNew）は不変。
+ */
+export function sendSlotsForSave<T>(isNew: boolean, slots: T[]): T[] {
+  return isNew ? [] : slots;
+}
+
 // ── エラーコード → 日本語 ────────────────────────────────────
 
 const CHAIN_ERROR_JP: Record<string, string> = {
