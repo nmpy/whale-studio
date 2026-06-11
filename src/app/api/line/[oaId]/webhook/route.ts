@@ -46,6 +46,7 @@ import { shouldOfferResumeChoice } from "@/lib/message-flow";
 import { isFreeInputPrompt } from "@/lib/free-input";
 import { resolveQrBranchDelivery } from "@/lib/qr-branch";
 import { parseFrontier, selectQrScope } from "@/lib/qr-frontier";
+import { applyFreeInputPostEffect } from "@/lib/frontier-effect";
 import { handleBeaconEvent, type LineBeaconEvent } from "@/lib/beacon";
 import { pushToLine as _pushToLine } from "@/lib/line";
 import { getCurrentPlanTierForOa } from "@/lib/plan-guard";
@@ -703,85 +704,6 @@ function matchQrItem(
     }
   }
   return null;
-}
-
-/**
- * 自由入力受付モードの post-send effect。
- *   - 直前に送信した message ID 群のうち、freeInputEnabled=true のものがあれば
- *     UserProgress.waitingForInput を立てる (= 次の text を変数として受け取る状態にする)
- *   - 該当なしなら no-op
- *   - 複数該当の場合は最も後の sortOrder のものを採用 (連続送信チェーンの末尾)
- *
- * webhook の主要な送信パス (triggerKeyword / フェーズ遷移メッセージ / start メッセージ等)
- * の reply 後に呼ぶことで、自由入力受付状態を確実に立てる。
- *
- * progress が null の場合は upsert で新規作成する (= 開始直後でも waiting を立てられる)。
- */
-async function applyFreeInputPostEffect(args: {
-  sentMessageIds: string[];
-  userId:         string;
-  workId:         string;
-  progressId?:    string;
-  oaId?:          string;
-  route?:         string;
-}): Promise<void> {
-  if (args.sentMessageIds.length === 0) return;
-
-  // ── frontier 更新（常に実行） ──
-  // 直近送信した chain の messageId 群を保存する。QR/Quick Reply の有効範囲を
-  // 「現在地に紐づくものだけ」に限定し、過去 QR の再タップによる無限再送を防ぐ。
-  const frontierJson = JSON.stringify(args.sentMessageIds);
-  console.info("[line:progress:frontier:update]", JSON.stringify({
-    oaId:         args.oaId ?? null,
-    workId:       args.workId,
-    userIdPrefix: args.userId.slice(0, 8),
-    route:        args.route ?? null,
-    messageIds:   args.sentMessageIds,
-  }));
-
-  // 自由入力受付メッセージが送信群に含まれていれば waitingForInput も立てる。
-  const freeInputMsg = await prisma.message.findFirst({
-    where:  { id: { in: args.sentMessageIds }, isActive: true, freeInputEnabled: true },
-    orderBy: { sortOrder: "desc" },
-    select: { id: true, freeInputVariableKey: true, freeInputNextMessageId: true },
-  });
-  // variableKey は任意 (null = ログ用途・差し込み不要)。message へ進むだけで OK。
-  const waitingJson = freeInputMsg
-    ? JSON.stringify({
-        messageId:     freeInputMsg.id,
-        variableKey:   freeInputMsg.freeInputVariableKey ?? null,
-        nextMessageId: freeInputMsg.freeInputNextMessageId ?? null,
-        setAt:         new Date().toISOString(),
-      })
-    : null;
-
-  // frontier は常に更新。waitingForInput は freeInput メッセージがある場合のみ更新（無ければ既存値を保持）。
-  const data: { lastSentMessageIds: string; waitingForInput?: string } = { lastSentMessageIds: frontierJson };
-  if (waitingJson !== null) data.waitingForInput = waitingJson;
-
-  try {
-    if (args.progressId) {
-      await prisma.userProgress.update({ where: { id: args.progressId }, data });
-    } else {
-      // 開始直後で progress 行が未作成のケース。upsert で安全に新規作成。
-      await prisma.userProgress.upsert({
-        where:  { lineUserId_workId: { lineUserId: args.userId, workId: args.workId } },
-        create: { lineUserId: args.userId, workId: args.workId, ...data },
-        update: data,
-      });
-    }
-    await activeCache.delete(CACHE_KEY.progress(args.userId, args.workId));
-    if (waitingJson) {
-      console.log(
-        `[Webhook][free-input] waiting セット完了`,
-        `userId=${args.userId.slice(0, 8)}`,
-        `msgId=${freeInputMsg!.id.slice(0, 8)}`,
-        `key=${freeInputMsg!.freeInputVariableKey}`,
-      );
-    }
-  } catch (err) {
-    console.error(`[Webhook][post-send] frontier/waiting 更新失敗 userId=${args.userId}`, err);
-  }
 }
 
 /**
@@ -3540,6 +3462,20 @@ async function handlePuzzleCorrect({
           nextMsgs.map((m, i) => `[${i}]type=${m.type}`).join(" / "),
         );
         messagesToSend.push(...nextMsgs);
+
+        // #243 frontier 更新漏れ修正: puzzle 正解で新 phase へ遷移したら、QR target_phase 経路と同様に
+        // frontier(lastSentMessageIds) を新 phase の送信 message ids へ更新する。これを行わないと
+        // frontier が前 phase のまま stale になり、新 phase の QR が matchQrItem の frontier スコープ外と
+        // なって照合されない（正解後に新 phase の QR をタップしても無反応になる）。
+        // frontier guard の思想は維持し「正しい現在地」へ更新するのみ（スコープ拡大はしない）。
+        await applyFreeInputPostEffect({
+          sentMessageIds: state.phase?.messages.map((m) => m.id) ?? [],
+          oaId:           oa.id,
+          route:          "puzzle_correct_phase",
+          userId,
+          workId:         work.id,
+          progressId:     updated.id,
+        });
       } else {
         // correctNextPhaseId が存在するが取得できなかった場合: solved だけ保存
         const updated = await prisma.userProgress.update({
