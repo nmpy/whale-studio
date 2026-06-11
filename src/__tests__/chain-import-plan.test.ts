@@ -3,7 +3,7 @@
 import { describe, it, expect } from "vitest";
 import {
   buildImportedSendOrder, simulateImportedMessages, importBeforeAfterSummary,
-  importBlockToSlots, extractImportBlock, validateImport, type ImportMessage,
+  importBlockToSlots, extractImportBlock, validateImport, insertImportedSlots, toImportMessage, type ImportMessage,
 } from "@/app/oas/[id]/works/[workId]/messages/_chain-import";
 
 const m = (o: Partial<ImportMessage> & { id: string }): ImportMessage =>
@@ -93,6 +93,19 @@ describe("importBlockToSlots（5/6. block → existingId 付き slots・freeInpu
     const fiSlot = slots.find((s) => s.existingId === "bfi")!;
     expect(fiSlot.free_input_enabled).toBe(true);
     expect(fiSlot.free_input_next_message_id).toBe("resp"); // 応答 id は select に復元（別枠）
+  });
+});
+
+describe("insertImportedSlots / toImportMessage（form 反映・正規化）", () => {
+  it("additionalMessages の指定位置に取り込みスロットを挿入する", () => {
+    const cur = [{ existingId: "s1" }, { existingId: "s2" }];
+    const imported = [{ existingId: "i1" }, { existingId: "i2" }];
+    expect(insertImportedSlots(cur, 1, imported).map((s) => s.existingId)).toEqual(["s1", "i1", "i2", "s2"]);
+    expect(insertImportedSlots(cur, 2, imported).map((s) => s.existingId)).toEqual(["s1", "s2", "i1", "i2"]); // 末尾
+  });
+  it("snake_case メッセージを ImportMessage に正規化（work_id→workId 等）", () => {
+    const im = toImportMessage({ id: "x", work_id: "w", phase_id: "p", is_active: true, next_message_id: "y", free_input_enabled: true });
+    expect(im).toMatchObject({ id: "x", workId: "w", phaseId: "p", isActive: true, next_message_id: "y", free_input_enabled: true });
   });
 });
 

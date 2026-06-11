@@ -269,3 +269,23 @@ export function importBlockToSlots(
   }
   return { slots, freeInputResponseId: block.freeInputResponseId };
 }
+
+/** additionalMessages の指定 index に取り込みスロットを挿入した新配列を返す（純粋・form state 反映用）。 */
+export function insertImportedSlots<T>(additionalMessages: T[], insertIndex: number, importedSlots: T[]): T[] {
+  const i = Math.max(0, Math.min(insertIndex, additionalMessages.length));
+  return [...additionalMessages.slice(0, i), ...importedSlots, ...additionalMessages.slice(i)];
+}
+
+/** API/フォームの snake_case メッセージを ImportMessage（一部 camelCase）へ正規化する。 */
+export function toImportMessage(m: {
+  id: string; work_id?: string | null; phase_id?: string | null; is_active?: boolean | null;
+  body?: string | null; message_type?: string | null; sort_order?: number | null; created_at?: string | null;
+  next_message_id?: string | null; free_input_enabled?: boolean | null; free_input_next_message_id?: string | null; quick_replies?: unknown;
+}): ImportMessage {
+  return {
+    id: m.id, workId: m.work_id ?? null, phaseId: m.phase_id ?? null, isActive: m.is_active ?? true,
+    body: m.body ?? null, message_type: m.message_type ?? null, sort_order: m.sort_order ?? 0, created_at: m.created_at ?? null,
+    next_message_id: m.next_message_id ?? null, free_input_enabled: m.free_input_enabled ?? false,
+    free_input_next_message_id: m.free_input_next_message_id ?? null, quick_replies: m.quick_replies,
+  };
+}
