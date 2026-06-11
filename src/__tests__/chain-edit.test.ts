@@ -117,6 +117,57 @@ describe("buildChainSaveBody", () => {
     });
     expect(body.free_input_response_id).toBe("resp");
   });
+
+  // new page は edit page と同じ buildChainSaveBody を通る（spec 生成ロジック共通）。
+  describe("new page シナリオ（initialSendSlotIds=[] / 全 slot 新規）", () => {
+    it("通常 head のみ: slots/removed 空", () => {
+      const body = buildChainSaveBody({
+        workId: "w", headId: "new-head", headBody: { body: "1通目" }, headFreeInputEnabled: false, headFreeInputNextMessageId: "",
+        sendSlots: [], slotMain, initialSendSlotIds: [],
+      });
+      expect(body.head_id).toBe("new-head");
+      expect(body.slots).toEqual([]);
+      expect(body.removed_message_ids).toEqual([]);
+      expect(body.free_input_response_id).toBeNull();
+    });
+
+    it("head + 新規 sendSlots: id なしスロット・removed なし", () => {
+      const body = buildChainSaveBody({
+        workId: "w", headId: "new-head", headBody: { body: "1" }, headFreeInputEnabled: false, headFreeInputNextMessageId: "",
+        sendSlots: [slot({ body: "2" }), slot({ body: "3" })], slotMain, initialSendSlotIds: [],
+      });
+      expect(body.slots.length).toBe(2);
+      expect(body.slots.every((s) => s.id === undefined)).toBe(true);
+      expect(body.removed_message_ids).toEqual([]);
+    });
+
+    it("freeInput + 応答 / 応答なし(null) の両方を扱える", () => {
+      const withResp = buildChainSaveBody({
+        workId: "w", headId: "h", headBody: { body: "1" }, headFreeInputEnabled: false, headFreeInputNextMessageId: "",
+        sendSlots: [slot({ body: "2", free_input_enabled: true, free_input_next_message_id: "resp" })],
+        slotMain, initialSendSlotIds: [],
+      });
+      expect(withResp.free_input_response_id).toBe("resp");
+
+      const noResp = buildChainSaveBody({
+        workId: "w", headId: "h", headBody: { body: "1" }, headFreeInputEnabled: false, headFreeInputNextMessageId: "",
+        sendSlots: [slot({ body: "2", free_input_enabled: true, free_input_next_message_id: "" })],
+        slotMain, initialSendSlotIds: [],
+      });
+      expect(noResp.free_input_response_id).toBeNull(); // 応答なし許容
+    });
+
+    it("edit と new で同一 form 入力なら同一 spec（共通ロジック）", () => {
+      const args = {
+        workId: "w", headId: "h", headBody: { body: "1", quick_replies: [{ label: "a", action: "text", value: "x" }] },
+        headFreeInputEnabled: false, headFreeInputNextMessageId: "",
+        sendSlots: [slot({ existingId: "s1", body: "2" })], slotMain, initialSendSlotIds: ["s1"],
+      };
+      const a = buildChainSaveBody(args);
+      const b = buildChainSaveBody(args);
+      expect(a).toEqual(b);
+    });
+  });
 });
 
 describe("chainErrorToMessage", () => {

@@ -5,7 +5,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { useTesterRouter as useRouter } from "@/hooks/useTesterRouter";
-import { workApi, messageApi, getDevToken, ValidationError, ConflictError, UnprocessableError } from "@/lib/api-client";
+import { workApi, messageApi, getDevToken } from "@/lib/api-client";
 import { useToast } from "@/components/Toast";
 import {
   MessageForm,
@@ -14,8 +14,8 @@ import {
   EMPTY_MESSAGE_FORM,
   type MessageFormState,
 } from "../_form";
-import { verifyMessageSave } from "../_save-verify";
-import { loadChainSplit, buildChainSaveBody, chainErrorToMessage, type ChainMsgRow } from "../_chain-edit";
+import { loadChainSplit, type ChainMsgRow } from "../_chain-edit";
+import { submitChainSave, verifyFailedBanner } from "../_chain-submit";
 
 export default function EditMessagePage() {
   const params    = useParams<{ id: string; workId: string; mid: string }>();
@@ -77,8 +77,8 @@ export default function EditMessagePage() {
     setSaveError(null);
     const token = getDevToken();
     const mainBody = formStateToMsgBody(form);
-    let step = "build spec";
     console.info("[msg-save] start", JSON.stringify({
+      mode:                   "edit",
       messageId:              messageId.slice(0, 8),
       phaseId:                mainBody.phase_id ? String(mainBody.phase_id).slice(0, 8) : null,
       sendSlotCount:          form.additionalMessages.length,
@@ -87,8 +87,8 @@ export default function EditMessagePage() {
       freeInputNextMessageId: form.free_input_next_message_id ? form.free_input_next_message_id.slice(0, 8) : null,
     }));
     try {
-      // chain spec を構築 → PUT /api/messages/chain で transaction 一括保存（部分反映なし）。
-      const body = buildChainSaveBody({
+      // edit/new 共通: chain spec 構築 → PUT /api/messages/chain 一括保存 → 保存後 verify。
+      const result = await submitChainSave(token, {
         workId,
         headId:                     messageId,
         expectedHeadUpdatedAt:      headUpdatedAtRef.current,
@@ -107,91 +107,31 @@ export default function EditMessagePage() {
         initialSendSlotIds:         initialSendSlotIdsRef.current,
       });
 
-      step = "saveChain";
-      const result = await messageApi.saveChain(token, body);
-      const expectedChainIds = result.chain.map((c) => c.id);
-      const removedIds = body.removed_message_ids;
-
-      // ── 保存後の DB 反映検証（再fetch）── no-op/反映漏れを検知し成功扱いにしない（PR #246 維持）
-      step = "post-save verify";
-      const all = await messageApi.list(token, workId);
-      const byId = new Map(all.map((m) => [m.id, m]));
-      const headActual = byId.get(messageId);
-      // 楽観ロック基準を最新へ更新（verify 失敗→修正→再保存で誤って 409 にならないように）。
-      if (headActual?.updated_at) headUpdatedAtRef.current = headActual.updated_at as string;
-      // 削除済みスロットは sendSlot 基準から除外（再保存時の二重削除/誤判定防止）。
-      initialSendSlotIdsRef.current = expectedChainIds.filter((id) => id !== messageId);
-      const walked: string[] = [messageId];
-      {
-        const seen = new Set(walked);
-        let cur: string | null = (headActual?.next_message_id as string | null) ?? null;
-        while (cur && !seen.has(cur) && walked.length < 12) {
-          seen.add(cur);
-          walked.push(cur);
-          cur = (byId.get(cur)?.next_message_id as string | null) ?? null;
-        }
-      }
-      const verify = verifyMessageSave(
-        {
-          body:                   mainBody.body ?? null,
-          characterId:            mainBody.character_id ?? null,
-          quickRepliesJson:       mainBody.quick_replies ? JSON.stringify(mainBody.quick_replies) : null,
-          freeInputEnabled:       !!mainBody.free_input_enabled,
-          // head 自身の freeInputNext（head が prompt のときのみ応答 id、それ以外は null）。
-          // slot が prompt の場合 result.freeInputResponseId は slot 側の応答なので head には使わない。
-          freeInputNextMessageId: mainBody.free_input_next_message_id ?? null,
-          chainIds:               expectedChainIds,
-          removedIds,
-        },
-        {
-          body:                   (headActual?.body as string | null) ?? null,
-          characterId:            (headActual?.character_id as string | null) ?? null,
-          quickRepliesJson:       headActual?.quick_replies ? JSON.stringify(headActual.quick_replies) : null,
-          freeInputEnabled:       !!headActual?.free_input_enabled,
-          freeInputNextMessageId: (headActual?.free_input_next_message_id as string | null) ?? null,
-          walkedChainIds:         walked,
-          existingIds:            all.map((m) => m.id),
-        },
-      );
-      console.info("[msg-save] verify", JSON.stringify({
-        ok: verify.ok, mismatches: verify.mismatches,
-        sendCount: result.sendCount, exceedsReplyLimit: result.exceedsReplyLimit,
-        expectedChain: expectedChainIds.length, walkedChain: walked.length, removed: removedIds.length,
-      }));
-      if (!verify.ok) {
-        setSaveError(
-          "保存処理は完了しましたが、内容が DB に反映されているか確認できませんでした。\n" +
-          `不一致: ${verify.mismatches.join(" / ")}\n` +
-          "お手数ですが、画面を再読み込みして内容をご確認ください（必要なら再保存してください）。",
-        );
-        showToast("保存内容の DB 反映を確認できませんでした。再読み込みして確認してください。", "error");
-        return; // 成功扱いにしない・一覧へ遷移しない
+      // 楽観ロック基準・削除基準を最新へ更新（verify 失敗→修正→再保存で誤判定しないように）。
+      if (result.kind === "ok" || result.kind === "verify-failed") {
+        if (result.headUpdatedAt) headUpdatedAtRef.current = result.headUpdatedAt;
+        initialSendSlotIdsRef.current = result.sentChainIds.filter((id) => id !== messageId);
       }
 
-      showToast("メッセージを保存しました", "success");
-      router.push(`/oas/${oaId}/works/${workId}/messages`);
-    } catch (err) {
-      // 409（楽観ロック競合）/ 422（ドメイン違反）は専用文言でバナー表示。成功トースト・遷移はしない。
-      if (err instanceof ConflictError) {
-        const m = chainErrorToMessage("CONFLICT", err.message);
-        console.warn("[msg-save] CONFLICT(409):", err.message);
-        setSaveError(m);
-        showToast("他の編集と競合しました。再読み込みしてください。", "error");
-        return;
+      switch (result.kind) {
+        case "ok":
+          showToast("メッセージを保存しました", "success");
+          router.push(`/oas/${oaId}/works/${workId}/messages`);
+          return;
+        case "verify-failed":
+          setSaveError(verifyFailedBanner(result.mismatches));
+          showToast("保存内容の DB 反映を確認できませんでした。再読み込みして確認してください。", "error");
+          return;
+        case "conflict":
+          setSaveError(result.message);
+          showToast("他の編集と競合しました。再読み込みしてください。", "error");
+          return;
+        case "unprocessable":
+        case "error":
+          setSaveError(result.message);
+          showToast(result.message, "error");
+          return;
       }
-      if (err instanceof UnprocessableError) {
-        const m = chainErrorToMessage(err.code, err.message);
-        console.warn(`[msg-save] UNPROCESSABLE(422) code=${err.code}:`, err.message);
-        setSaveError(m);
-        showToast(m, "error");
-        return;
-      }
-      const msg = err instanceof ValidationError
-        ? err.toDetailString()
-        : err instanceof Error ? err.message : "保存に失敗しました";
-      console.error(`[msg-save] FAILED step="${step}":`, msg, err);
-      setSaveError(`保存に失敗しました（処理: ${step}）: ${msg}`);
-      showToast(msg, "error");
     } finally {
       setSubmitting(false);
     }
