@@ -2647,6 +2647,11 @@ function TimingConfigSection<T extends TimingFormFields>({
           <div style={{ ...hintText, marginTop: 4 }}>
             未設定の項目はデフォルト設定（環境変数）を継承します
           </div>
+
+          {/* 演出は「このメッセージ送信前」にのみ反映される旨の誤解防止文言（まとめ送信廃止方針・Phase 1）。 */}
+          <div style={{ marginTop: 8, padding: "8px 10px", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 6, fontSize: 11, color: "#1e40af", lineHeight: 1.6 }}>
+            待機時間・入力中表示は、<strong>このメッセージを送信する前</strong>に反映されます。次のメッセージにも演出を入れたい場合は、Quick Reply やキーワードなど、<strong>ユーザー操作を挟んで</strong>次のメッセージへ進めてください。
+          </div>
       </div>
     </SectionAccordion>
   );
@@ -4983,7 +4988,14 @@ export function MessageForm({
                   )}
                   {pv.overLimit && (
                     <div style={{ marginTop: 8, color: "#b91c1c" }}>
-                      ⚠️ 一度に送るメッセージが{pv.total}通で、5通を超えています。6通目以降は Push 送信となり、月間上限などにより届かない可能性があります。QR・自由入力・フェーズ遷移で5通以内に区切ってください。
+                      ⚠️ 一度に送るメッセージが{pv.total}通で、5通を超えています。6通目以降は <strong>Push 送信</strong>となり、LINE 公式アカウントの<strong>月間メッセージ通数を消費</strong>する可能性があります（届かない場合あり）。QR・自由入力・フェーズ遷移で5通以内に区切ってください。
+                    </div>
+                  )}
+                  {/* まとめ送信廃止方針（Phase 1）: 2通以上を自動連続送信している箇所に廃止予定を明示。 */}
+                  {pv.sendMessages.length > 1 && (
+                    <div style={{ marginTop: 8, padding: "8px 10px", background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: 6, color: "#9a3412", fontSize: 11, lineHeight: 1.6 }}>
+                      ⚠️ <strong>複数メッセージの自動まとめ送信は廃止予定です。</strong>次のメッセージへ進めるには、Quick Reply・キーワード・QR・GPS などの遷移条件を設定してください。<br />
+                      （現状、この {pv.total} 通は1回の送信でまとめて届きますが、各メッセージ個別の待機時間・入力中表示は反映されません）
                     </div>
                   )}
                   {form.quick_replies.length > 0 && (

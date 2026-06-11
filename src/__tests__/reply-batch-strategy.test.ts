@@ -120,4 +120,27 @@ describe("replyWithLagToLine 送信戦略", () => {
     expect((s?.failures as unknown[])).toHaveLength(1);
     expect((s?.failures as { status: number }[])[0].status).toBe(429);
   });
+
+  // ── まとめ送信廃止方針 Phase 1: 意図しない Push 化を防ぐ回帰テスト ──
+  // 演出（_lagMs / _timing）ありのチェーンでも、5件以内なら自動で Push 化せず Reply 一括のまま。
+  // （per-message 自動 Push 戦略には切り替えない＝LINE 月間通数を勝手に消費しない）
+  it("演出(_lagMs)ありでも5件以内は自動 Push されず Reply 一括のまま（Push API を呼ばない）", async () => {
+    setupFetch();
+    await replyWithLagToLine("rt", texts(3, 5000), "U1", "tok"); // 全件 _lagMs=5000（2通目以降に演出あり）
+    expect(replies()).toHaveLength(1);
+    expect(replies()[0].count).toBe(3);   // 3件まとめて Reply
+    expect(pushes()).toHaveLength(0);     // Push API は一切呼ばれない
+    const s = summary();
+    expect(s).toMatchObject({ strategy: "reply_all", replyTotal: 3, pushTotal: 0, pushFail: 0 });
+    expect(s?.strategy).not.toBe("reply_head_push_rest_timed"); // per-message 自動 Push 戦略に切り替わらない
+  });
+
+  it("演出ありちょうど5件でも自動 Push されない（境界・意図しない Push 化防止）", async () => {
+    setupFetch();
+    await replyWithLagToLine("rt", texts(5, 5000), "U1", "tok");
+    expect(replies()).toHaveLength(1);
+    expect(replies()[0].count).toBe(5);
+    expect(pushes()).toHaveLength(0);
+    expect(summary()).toMatchObject({ strategy: "reply_all", pushTotal: 0 });
+  });
 });
