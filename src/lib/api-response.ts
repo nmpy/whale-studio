@@ -75,6 +75,19 @@ export function conflict(message: string): NextResponse<ApiError> {
   );
 }
 
+/**
+ * 422 Unprocessable Entity。
+ * body の構文は正しい（Zod は通る）が、ドメイン規則上保存できない場合に使う
+ * （例: 連続メッセージ内に自由入力が複数 / 削除対象が他から参照されている）。
+ * code はドメイン側のコードを渡せる（既定 UNPROCESSABLE）。
+ */
+export function unprocessable(message: string, code = "UNPROCESSABLE", details?: Record<string, unknown>): NextResponse<ApiError> {
+  return NextResponse.json(
+    { success: false, error: { code, message, ...(details ? { details } : {}) } } as ApiError,
+    { status: 422 }
+  );
+}
+
 export function serverError(err: unknown): NextResponse<ApiError> {
   console.error("[API Error]", err);
   return NextResponse.json(
