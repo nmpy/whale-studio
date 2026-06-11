@@ -196,6 +196,19 @@ export const PUT = withAuth(async (req: NextRequest, _ctx, user) => {
     const removedIds = input.removed_message_ids ?? [];
     const detachedIds = input.detached_message_ids ?? [];
 
+    // ── 一時診断ログ（#6-4d 取り込み保存の slot 欠落調査）。原因特定後に削除すること。 ──
+    // PII を出さない（id / 件数のみ）。validation / planChainSave 前の「受信 payload」を記録する。
+    console.info("[chain-save:received]", JSON.stringify({
+      headId:                 input.head_id,
+      workId:                 input.work_id,
+      phaseId:                input.head?.phase_id ?? null,
+      slotCount:              input.slots.length,
+      slotIds:                input.slots.map((s) => s.id ?? "(new)"),
+      freeInputResponseId:    input.free_input_response_id ?? null,
+      detachedMessageIds:     detachedIds,
+      removedMessageIds:      removedIds,
+    }));
+
     // 認可: 実体削除を含むなら owner、内容更新 / 切り離し（非破壊）のみなら tester。
     const oaId = await getOaIdFromWorkId(input.work_id);
     if (!oaId) return badRequest("work_id に該当する作品が見つかりません");
