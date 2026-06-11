@@ -198,6 +198,35 @@ export class ForbiddenError extends Error {
 }
 
 /**
+ * API が 409 (Conflict) を返したときに throw されるエラー。
+ * 楽観ロック競合（他の編集とぶつかった）等で使う。
+ */
+export class ConflictError extends Error {
+  readonly status = 409;
+  readonly code: string;
+  constructor(message?: string, code = "CONFLICT") {
+    super(message ?? "Conflict");
+    this.name = "ConflictError";
+    this.code = code;
+  }
+}
+
+/**
+ * API が 422 (Unprocessable) を返したときに throw されるエラー。
+ * body 構文は正しいがドメイン規則上保存できない場合（chain 保存の参照ガード等）。
+ * `code` にドメインコード（MULTIPLE_FREE_INPUT 等）が入る。
+ */
+export class UnprocessableError extends Error {
+  readonly status = 422;
+  readonly code: string;
+  constructor(message?: string, code = "UNPROCESSABLE") {
+    super(message ?? "Unprocessable");
+    this.name = "UnprocessableError";
+    this.code = code;
+  }
+}
+
+/**
  * API が 400 (Validation error) を返したときに throw されるエラー。
  * `details` にフィールド別のエラーメッセージが入る。
  *
@@ -311,6 +340,8 @@ async function parseResponse<T>(res: Response): Promise<T> {
     checkForbidden(res, json);
     // 専用クラスで throw — 呼び出し側が instanceof で確実に分岐できる
     if (res.status === 404) throw new NotFoundError(msg);
+    if (res.status === 409) throw new ConflictError(msg, json.error?.code ?? "CONFLICT");
+    if (res.status === 422) throw new UnprocessableError(msg, json.error?.code ?? "UNPROCESSABLE");
     if (res.status === 400) throw new ValidationError(msg, details);
     throw new Error(msg);
   }
@@ -1041,7 +1072,46 @@ export const messageApi = {
     });
     return parseResponse(res);
   },
+
+  /**
+   * 連続メッセージ chain を 1 リクエストで transaction 一括保存する（PUT /api/messages/chain）。
+   * head + sendSlots の内容更新・連結・freeInput 正規化・削除を all-or-nothing で行う。
+   * 409=ConflictError（楽観ロック競合）/ 422=UnprocessableError（ドメイン違反）/ 400=ValidationError。
+   */
+  async saveChain(token: string, body: ChainSaveBody): Promise<ChainSaveResponse> {
+    const res = await fetch("/api/messages/chain", {
+      method:  "PUT",
+      headers: authHeaders(token),
+      body:    JSON.stringify(body),
+    });
+    return parseResponse(res);
+  },
 };
+
+/** chain 保存 1 件分の内容（head / slot）。snake_case の message body 形（formStateToMsgBody 互換）。 */
+export type ChainMessageContent = Record<string, unknown>;
+
+/** PUT /api/messages/chain のリクエスト body。 */
+export interface ChainSaveBody {
+  work_id: string;
+  head_id: string;
+  /** 楽観ロック用。head.updated_at（ISO）。不一致なら 409。 */
+  expected_head_updated_at?: string | null;
+  head?: ChainMessageContent;
+  /** 2通目以降（即時送信順）。既存は id 付き、新規は id なし。 */
+  slots: (ChainMessageContent & { id?: string | null })[];
+  /** 自由入力後の応答 message id（freeInputNext に正規化される）。null 許容。 */
+  free_input_response_id?: string | null;
+  removed_message_ids?: string[];
+}
+
+/** PUT /api/messages/chain のレスポンス data。 */
+export interface ChainSaveResponse {
+  chain: { id: string; nextMessageId: string | null; freeInputEnabled?: boolean; freeInputNextMessageId?: string | null; body?: string | null; characterId?: string | null; quickReplies?: string | null; sortOrder?: number }[];
+  sendCount: number;
+  exceedsReplyLimit: boolean;
+  freeInputResponseId: string | null;
+}
 
 // ────────────────────────────────────────────────
 // Riddle API

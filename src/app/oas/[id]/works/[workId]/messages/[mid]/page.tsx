@@ -2,71 +2,20 @@
 
 // src/app/oas/[id]/works/[workId]/messages/[mid]/page.tsx
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { useTesterRouter as useRouter } from "@/hooks/useTesterRouter";
-import { workApi, messageApi, getDevToken, ValidationError } from "@/lib/api-client";
+import { workApi, messageApi, getDevToken, ValidationError, ConflictError, UnprocessableError } from "@/lib/api-client";
 import { useToast } from "@/components/Toast";
 import {
   MessageForm,
   msgToFormState,
   formStateToMsgBody,
-  msgToAdditionalSlot,
-  additionalSlotToMsgBody,
   EMPTY_MESSAGE_FORM,
   type MessageFormState,
-  type AdditionalMessageSlot,
 } from "../_form";
 import { verifyMessageSave } from "../_save-verify";
-
-/** メッセージ ID から next_message_id チェーンを辿り、2 通目以降を AdditionalMessageSlot[] に詰める。
- *  上限 4 件 (= 合計 5 件 = LINE 返信上限) でループを止める。
- *  循環参照防止 + 失敗時はそこまでの結果を返す (= UI に最大限のデータを引き渡す)。
- *
- *  PR #163 (perf): 旧実装は messageApi.get を serial に最大 4 回 await していた
- *  (= chain 長 × ~1-2s の体感遅延)。messageApi.list(workId) で work の全 message を
- *  1 回取得して Map lookup で chain を walk するように変更。backend 追加なし、
- *  response shape 不変。期待短縮: chain 長 2 で ~700ms / chain 長 4 で ~3.7s。
- *
- *  注意: 別 work の id / 削除済み id を辿った場合 (= byId.get が undefined) は
- *  従来の messageApi.get 失敗時と同じく break する。
- */
-async function loadAdditionalChain(
-  token: string,
-  workId: string,
-  firstNextId: string | null,
-): Promise<AdditionalMessageSlot[]> {
-  if (!firstNextId) return [];
-
-  // work 全 message を 1 fetch (with_relations は不要 = msgToAdditionalSlot は relation を使わない)
-  let allMessages;
-  try {
-    allMessages = await messageApi.list(token, workId);
-  } catch (err) {
-    console.warn(`[EditMessagePage] messageApi.list 失敗 workId=${workId.slice(0, 8)}:`, err);
-    return [];
-  }
-  const byId = new Map(allMessages.map((m) => [m.id, m]));
-
-  const out: AdditionalMessageSlot[] = [];
-  let currentId: string | null = firstNextId;
-  const seen = new Set<string>();
-  for (let i = 0; i < 4 && currentId; i++) {
-    if (seen.has(currentId)) {
-      console.warn(`[EditMessagePage] チェーン循環参照 (msgId=${currentId.slice(0, 8)}) — 中断`);
-      break;
-    }
-    seen.add(currentId);
-    const msg = byId.get(currentId);
-    if (!msg) {
-      console.warn(`[EditMessagePage] チェーン継続不可 (msgId=${currentId.slice(0, 8)} not found in work ${workId.slice(0, 8)}) — 中断`);
-      break;
-    }
-    out.push(msgToAdditionalSlot(msg));
-    currentId = (msg.next_message_id as string | null) ?? null;
-  }
-  return out;
-}
+import { loadChainSplit, buildChainSaveBody, chainErrorToMessage, type ChainMsgRow } from "../_chain-edit";
 
 export default function EditMessagePage() {
   const params    = useParams<{ id: string; workId: string; mid: string }>();
@@ -84,6 +33,10 @@ export default function EditMessagePage() {
   /** 保存後検証で不一致 / 保存失敗時に、フォーム上部へ目立つエラーを出す。 */
   const [saveError, setSaveError]       = useState<string | null>(null);
 
+  // 保存時に使う load 時点のコンテキスト（楽観ロック・削除判定の基準）。
+  const headUpdatedAtRef     = useRef<string | null>(null);
+  const initialSendSlotIdsRef = useRef<string[]>([]);
+
   useEffect(() => {
     const token = getDevToken();
     Promise.all([
@@ -93,14 +46,28 @@ export default function EditMessagePage() {
     ])
       .then(async ([w, msg]) => {
         setWorkTitle(w.title);
-        // 2 通目以降 (next_message_id chain) も並行して読み込む。
-        // PR #163: serial messageApi.get → messageApi.list + local walk に変更 (workId 追加)。
-        // 失敗しても 1 通目だけで UI を出す (= load 失敗時の degrade)。
-        const additional = (msg.next_message_id as string | null)
-          ? await loadAdditionalChain(token, workId, msg.next_message_id as string)
-          : [];
+        headUpdatedAtRef.current = (msg.updated_at as string | null) ?? null;
+
+        // chain を runtime 仕様で分割: head→sendSlots（freeInput プロンプト含む末尾で停止）+ 応答(別枠)。
+        // legacy（freeInputEnabled=true / next=応答 / freeInputNext=null）も応答として読み替える。
+        // work 全 message を 1 fetch して local walk（PR #163 と同方針・backend 追加なし）。
+        let allMessages: ChainMsgRow[] = [];
+        try {
+          allMessages = (await messageApi.list(token, workId)) as unknown as ChainMsgRow[];
+        } catch (err) {
+          console.warn(`[EditMessagePage] messageApi.list 失敗 workId=${workId.slice(0, 8)}:`, err);
+        }
+        const split = loadChainSplit(msg as unknown as ChainMsgRow, allMessages);
+        initialSendSlotIdsRef.current = split.initialSendSlotIds;
+
         const form = msgToFormState(msg);
-        setInitialForm({ ...form, additionalMessages: additional });
+        // head 自体が freeInput プロンプトの legacy（next=応答）では応答 id を select に復元。
+        const freeInputNextOverride = split.headFreeInputResponseId ?? form.free_input_next_message_id;
+        setInitialForm({
+          ...form,
+          free_input_next_message_id: freeInputNextOverride,
+          additionalMessages: split.sendSlots,
+        });
       })
       .catch((e) => setLoadError(e instanceof Error ? e.message : "読み込みに失敗しました"));
   }, [workId, messageId]);
@@ -110,75 +77,50 @@ export default function EditMessagePage() {
     setSaveError(null);
     const token = getDevToken();
     const mainBody = formStateToMsgBody(form);
-    let step = "head update";
-    // 保存中に「期待 chain（head 含む送信順 messageId 列）」を構築し、保存後検証に使う。
-    const expectedChainIds: string[] = [messageId];
-    let removedIds: string[] = [];
+    let step = "build spec";
     console.info("[msg-save] start", JSON.stringify({
       messageId:              messageId.slice(0, 8),
       phaseId:                mainBody.phase_id ? String(mainBody.phase_id).slice(0, 8) : null,
-      additionalCount:        form.additionalMessages.length,
+      sendSlotCount:          form.additionalMessages.length,
       quickRepliesCount:      form.quick_replies.length,
       freeInputEnabled:       form.free_input_enabled,
       freeInputNextMessageId: form.free_input_next_message_id ? form.free_input_next_message_id.slice(0, 8) : null,
     }));
     try {
-      await messageApi.update(token, messageId, mainBody);
-
-      // 編集前のチェーン継続 ID 一覧。ループ後に「今回 form から消えた」継続を特定して削除する。
-      const oldExistingIds: string[] = (initialForm?.additionalMessages ?? [])
-        .map((s) => s.existingId)
-        .filter((id): id is string => !!id);
-
-      // 2通目以降のメッセージを作成/更新してチェーン (= 演出設定込みで送る)
-      let prevId: string = messageId;
-      const keptExistingIds: string[] = [];
-      for (let i = 0; i < form.additionalMessages.length; i++) {
-        const slot = form.additionalMessages[i];
-        const additionalBody = additionalSlotToMsgBody(slot, {
+      // chain spec を構築 → PUT /api/messages/chain で transaction 一括保存（部分反映なし）。
+      const body = buildChainSaveBody({
+        workId,
+        headId:                     messageId,
+        expectedHeadUpdatedAt:      headUpdatedAtRef.current,
+        headBody:                   mainBody as Record<string, unknown>,
+        headFreeInputEnabled:       !!form.free_input_enabled,
+        headFreeInputNextMessageId: form.free_input_next_message_id,
+        sendSlots:                  form.additionalMessages,
+        slotMain: {
           work_id:      workId,
           phase_id:     mainBody.phase_id ?? null,
           character_id: mainBody.character_id ?? null,
           kind:         mainBody.kind,
           sort_order:   mainBody.sort_order,
           is_active:    mainBody.is_active,
-        });
-        if (slot.existingId) {
-          step = `additional ${i + 1} update`;
-          await messageApi.update(token, slot.existingId, additionalBody);
-          await messageApi.update(token, prevId, { next_message_id: slot.existingId });
-          prevId = slot.existingId;
-          keptExistingIds.push(slot.existingId);
-          expectedChainIds.push(slot.existingId);
-        } else {
-          step = `additional ${i + 1} create`;
-          const additionalCreated = await messageApi.create(token, additionalBody);
-          await messageApi.update(token, prevId, { next_message_id: additionalCreated.id });
-          prevId = additionalCreated.id;
-          expectedChainIds.push(additionalCreated.id);
-        }
-      }
+        },
+        initialSendSlotIds:         initialSendSlotIdsRef.current,
+      });
 
-      // 新しいチェーンの末尾を null で終端（旧 chain link の残留防止）。
-      step = "terminate chain";
-      await messageApi.update(token, prevId, { next_message_id: null });
+      step = "saveChain";
+      const result = await messageApi.saveChain(token, body);
+      const expectedChainIds = result.chain.map((c) => c.id);
+      const removedIds = body.removed_message_ids;
 
-      // 今回 form から取り除かれた継続メッセージを削除（owner 権限必須・失敗しても切り離し済み）。
-      step = "delete removed slots";
-      removedIds = oldExistingIds.filter((id) => !keptExistingIds.includes(id));
-      for (const id of removedIds) {
-        try {
-          await messageApi.delete(token, id);
-        } catch (err) {
-          console.warn(`[msg-save] removed slot delete failed (権限不足の可能性): id=${id.slice(0, 8)}`, err);
-        }
-      }
-
-      // ── 保存後の DB 反映検証（再fetch）── no-op/途中失敗/反映漏れを検知し成功扱いにしない
+      // ── 保存後の DB 反映検証（再fetch）── no-op/反映漏れを検知し成功扱いにしない（PR #246 維持）
       step = "post-save verify";
       const all = await messageApi.list(token, workId);
       const byId = new Map(all.map((m) => [m.id, m]));
       const headActual = byId.get(messageId);
+      // 楽観ロック基準を最新へ更新（verify 失敗→修正→再保存で誤って 409 にならないように）。
+      if (headActual?.updated_at) headUpdatedAtRef.current = headActual.updated_at as string;
+      // 削除済みスロットは sendSlot 基準から除外（再保存時の二重削除/誤判定防止）。
+      initialSendSlotIdsRef.current = expectedChainIds.filter((id) => id !== messageId);
       const walked: string[] = [messageId];
       {
         const seen = new Set(walked);
@@ -195,6 +137,8 @@ export default function EditMessagePage() {
           characterId:            mainBody.character_id ?? null,
           quickRepliesJson:       mainBody.quick_replies ? JSON.stringify(mainBody.quick_replies) : null,
           freeInputEnabled:       !!mainBody.free_input_enabled,
+          // head 自身の freeInputNext（head が prompt のときのみ応答 id、それ以外は null）。
+          // slot が prompt の場合 result.freeInputResponseId は slot 側の応答なので head には使わない。
           freeInputNextMessageId: mainBody.free_input_next_message_id ?? null,
           chainIds:               expectedChainIds,
           removedIds,
@@ -211,6 +155,7 @@ export default function EditMessagePage() {
       );
       console.info("[msg-save] verify", JSON.stringify({
         ok: verify.ok, mismatches: verify.mismatches,
+        sendCount: result.sendCount, exceedsReplyLimit: result.exceedsReplyLimit,
         expectedChain: expectedChainIds.length, walkedChain: walked.length, removed: removedIds.length,
       }));
       if (!verify.ok) {
@@ -226,6 +171,21 @@ export default function EditMessagePage() {
       showToast("メッセージを保存しました", "success");
       router.push(`/oas/${oaId}/works/${workId}/messages`);
     } catch (err) {
+      // 409（楽観ロック競合）/ 422（ドメイン違反）は専用文言でバナー表示。成功トースト・遷移はしない。
+      if (err instanceof ConflictError) {
+        const m = chainErrorToMessage("CONFLICT", err.message);
+        console.warn("[msg-save] CONFLICT(409):", err.message);
+        setSaveError(m);
+        showToast("他の編集と競合しました。再読み込みしてください。", "error");
+        return;
+      }
+      if (err instanceof UnprocessableError) {
+        const m = chainErrorToMessage(err.code, err.message);
+        console.warn(`[msg-save] UNPROCESSABLE(422) code=${err.code}:`, err.message);
+        setSaveError(m);
+        showToast(m, "error");
+        return;
+      }
       const msg = err instanceof ValidationError
         ? err.toDetailString()
         : err instanceof Error ? err.message : "保存に失敗しました";

@@ -217,6 +217,37 @@ describe("PUT /api/messages/chain", () => {
     expect(updates["created-1"].nextMessageId).toBe(null);
   });
 
+  it("演出/notify/tap 等の全フィールドが update data に渡る（データ損失なし）", async () => {
+    setWork([
+      { id: HEAD, phaseId: "ph-1", sortOrder: 0, nextMessageId: null, updatedAt: new Date() },
+    ]);
+    mockMessage.findMany
+      .mockReset()
+      .mockResolvedValueOnce([{ id: HEAD, phaseId: "ph-1", sortOrder: 0, nextMessageId: null, updatedAt: new Date() }])
+      .mockResolvedValue([{ id: HEAD, nextMessageId: null }]);
+
+    const res = await PUT(req({
+      work_id: WORK, head_id: HEAD,
+      head: {
+        body: "本文", notify_text: "通知", typing_enabled: true, typing_min_ms: 500,
+        read_receipt_mode: "delayed", read_delay_ms: 1000, tap_url: "https://x.test",
+        lag_ms: 200,
+      },
+      slots: [],
+    }), ctx) as Response;
+    expect(res.status).toBe(200);
+    const headCall = mockMessage.update.mock.calls.find((c) => c[0].where.id === HEAD);
+    if (!headCall) throw new Error("HEAD update not called");
+    const data = headCall[0].data;
+    expect(data.notifyText).toBe("通知");
+    expect(data.typingEnabled).toBe(true);
+    expect(data.typingMinMs).toBe(500);
+    expect(data.readReceiptMode).toBe("delayed");
+    expect(data.readDelayMs).toBe(1000);
+    expect(data.tapUrl).toBe("https://x.test");
+    expect(data.lagMs).toBe(200);
+  });
+
   it("transaction 途中失敗は 500（部分反映させない）", async () => {
     setWork([
       { id: HEAD, phaseId: "ph-1", sortOrder: 0, nextMessageId: S1, updatedAt: new Date() },

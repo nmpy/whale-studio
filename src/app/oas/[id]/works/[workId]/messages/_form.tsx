@@ -4779,6 +4779,15 @@ export function MessageForm({
                 { body: form.body, message_type: form.message_type, free_input_enabled: form.free_input_enabled },
                 form.additionalMessages.map((s) => ({ body: s.body, message_type: s.message_type, free_input_enabled: s.free_input_enabled })),
               );
+              // #6-2b: 自由入力後の応答は連続スロットではなく「別枠の参照メッセージ」。
+              // freeInput プロンプト（head か末尾スロット）の free_input_next_message_id を解決して表示する。
+              const fiResponseId = form.free_input_enabled
+                ? form.free_input_next_message_id
+                : (form.additionalMessages.find((s) => s.free_input_enabled)?.free_input_next_message_id ?? "");
+              const fiResponseMsg = fiResponseId ? allMessages.find((m) => m.id === fiResponseId) : undefined;
+              const fiResponseLabel = fiResponseMsg
+                ? ((fiResponseMsg.body ?? "").replace(/\n/g, " ").trim().slice(0, 36) || `(${fiResponseMsg.message_type ?? "メッセージ"})`)
+                : null;
               return (
                 <div style={{ marginTop: 16, padding: "12px 14px", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 12, lineHeight: 1.7 }}>
                   <div style={{ fontWeight: 700, color: "#334155", marginBottom: 4 }}>
@@ -4806,6 +4815,23 @@ export function MessageForm({
                       <ol style={{ margin: "4px 0 0", paddingLeft: 20, color: "#6d28d9" }}>
                         {pv.responseMessages.map((m) => (<li key={`r-${m.index}`}>{m.label}</li>))}
                       </ol>
+                    </div>
+                  )}
+                  {/* #6-2b: freeInputNext で参照される応答メッセージ（別枠）。 */}
+                  {pv.freeInputAt !== null && fiResponseLabel && (
+                    <div style={{ marginTop: 8 }}>
+                      <div style={{ fontWeight: 700, color: "#6d28d9" }}>自由入力後の応答（別枠で管理）</div>
+                      <div style={{ color: "#7c3aed", fontSize: 11 }}>
+                        ユーザーが自由入力を送信した後にこのメッセージへ進みます（連続メッセージ本体には含まれません。内容は応答メッセージ側の編集画面で編集します）。
+                      </div>
+                      <ol style={{ margin: "4px 0 0", paddingLeft: 20, color: "#6d28d9" }}>
+                        <li>{fiResponseLabel}</li>
+                      </ol>
+                    </div>
+                  )}
+                  {pv.freeInputAt !== null && !fiResponseLabel && (
+                    <div style={{ marginTop: 8, color: "#7c3aed", fontSize: 11 }}>
+                      ℹ️ 自由入力の受付のみで、応答メッセージは未設定です（自由入力後に追加で送るメッセージはありません）。
                     </div>
                   )}
                   {pv.overLimit && (

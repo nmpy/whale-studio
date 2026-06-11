@@ -39,19 +39,62 @@ import { planChainSave, type ChainSaveSpec, type WorkMessageRef } from "@/lib/ch
 
 export const dynamic = "force-dynamic";
 
-// チェーン編集で扱うメッセージ内容フィールド（テキスト連続送信が主対象）。
+// チェーン編集で扱うメッセージ内容フィールド。
+// 編集画面（formStateToMsgBody / additionalSlotToMsgBody）が保存する全フィールドを
+// データ損失なく受けられるように網羅する。
+// 注意: next_message_id / free_input_next_message_id は **このルートが計画に従って制御する**ため
+//       content として受け取らない（z.object は未知キーを silently drop するので送られても無害）。
+//       free_input_enabled は plan 判定に使うが、列への書き込みは link/正規化ステップが行う。
 const contentSchema = z.object({
+  trigger_keyword:  z.string().max(200).optional().nullable(),
+  target_segment:   z.string().max(100).optional().nullable(),
+  phase_id:         z.string().uuid().optional().nullable(),
+  character_id:     z.string().uuid().optional().nullable(),
   message_type:     z.enum(["text", "image", "riddle", "video", "carousel", "voice", "flex"]).optional(),
   kind:             z.enum(["start", "normal", "response", "hint", "puzzle", "system_notice"]).optional(),
-  character_id:     z.string().uuid().optional().nullable(),
   body:             z.string().max(10000).optional().nullable(),
   asset_url:        z.string().url().optional().nullable(),
+  notify_text:      z.string().max(500).optional().nullable(),
+  riddle_id:        z.string().uuid().optional().nullable(),
+  quick_replies:    z.array(quickReplyItemSchema).max(13).optional().nullable(),
   alt_text:         z.string().max(400).optional().nullable(),
   flex_payload_json: z.string().max(50000).optional().nullable(),
-  quick_replies:    z.array(quickReplyItemSchema).max(13).optional().nullable(),
   lag_ms:           z.number().int().min(0).optional(),
+  sort_order:       z.number().int().min(0).optional(),
+  is_active:        z.boolean().optional(),
+  // puzzle
+  puzzle_type:      z.enum(["text", "image", "video", "carousel"]).optional().nullable(),
+  answer:           z.string().max(500).optional().nullable(),
+  puzzle_hint_text: z.string().max(1000).optional().nullable(),
+  answer_match_type: z.array(z.enum(["exact", "partial", "ignore_punctuation", "normalize_width"])).optional(),
+  correct_action:   z.enum(["text", "text_and_transition", "transition"]).optional().nullable(),
+  correct_text:     z.string().max(2000).optional().nullable(),
+  incorrect_text:   z.string().max(2000).optional().nullable(),
+  incorrect_quick_replies: z.array(quickReplyItemSchema).max(13).optional().nullable(),
+  correct_next_phase_id:   z.string().uuid().optional().nullable(),
+  hint_mode:        z.enum(["always", "on_wrong", "hidden"]).optional(),
+  // タップ遷移先
+  tap_destination_id: z.string().uuid().optional().nullable(),
+  tap_url:            z.string().max(2000).optional().nullable(),
+  // 画像タップ時アクション
+  image_action_type: z.enum(["none", "message", "uri", "liff", "postback"]).optional().nullable(),
+  image_action_text: z.string().max(300).optional().nullable(),
+  image_action_url:  z.string().max(2000).optional().nullable(),
+  image_action_liff_page_id:  z.string().uuid().optional().nullable(),
+  image_action_postback_data: z.string().max(300).optional().nullable(),
+  // 自由入力受付
   free_input_enabled:      z.boolean().optional(),
   free_input_variable_key: z.string().max(100).optional().nullable(),
+  // 演出設定
+  read_receipt_mode:    z.enum(["inherit", "immediate", "delayed", "before_reply"]).optional().nullable(),
+  read_delay_ms:        z.number().int().min(0).max(600000).optional().nullable(),
+  typing_enabled:       z.boolean().optional().nullable(),
+  typing_min_ms:        z.number().int().min(0).max(600000).optional().nullable(),
+  typing_max_ms:        z.number().int().min(0).max(600000).optional().nullable(),
+  loading_enabled:      z.boolean().optional().nullable(),
+  loading_threshold_ms: z.number().int().min(0).max(30000).optional().nullable(),
+  loading_min_seconds:  z.number().int().min(3).max(60).optional().nullable(),
+  loading_max_seconds:  z.number().int().min(3).max(60).optional().nullable(),
 });
 
 const slotSchema = contentSchema.extend({
@@ -71,19 +114,59 @@ const chainSaveSchema = z.object({
 type ContentInput = z.infer<typeof contentSchema>;
 
 // 内容フィールド → prisma data（undefined は据え置き、null は明示クリア）。
+// next/freeInputNext/freeInputEnabled は link/正規化ステップが設定するため含めない。
 function contentToData(c: ContentInput | undefined): Record<string, unknown> {
   if (!c) return {};
   const d: Record<string, unknown> = {};
-  if (c.message_type !== undefined) d.messageType = c.message_type;
-  if (c.kind !== undefined) d.kind = c.kind;
-  if (c.character_id !== undefined) d.characterId = c.character_id;
-  if (c.body !== undefined) d.body = c.body;
-  if (c.asset_url !== undefined) d.assetUrl = c.asset_url;
-  if (c.alt_text !== undefined) d.altText = c.alt_text;
-  if (c.flex_payload_json !== undefined) d.flexPayloadJson = c.flex_payload_json;
+  const set = (k: string, v: unknown) => { if (v !== undefined) d[k] = v; };
+  set("triggerKeyword", c.trigger_keyword);
+  set("targetSegment", c.target_segment);
+  set("phaseId", c.phase_id);
+  set("characterId", c.character_id);
+  set("messageType", c.message_type);
+  set("kind", c.kind);
+  set("body", c.body);
+  set("assetUrl", c.asset_url);
+  set("notifyText", c.notify_text);
+  set("riddleId", c.riddle_id);
   if (c.quick_replies !== undefined) d.quickReplies = c.quick_replies ? JSON.stringify(c.quick_replies) : null;
-  if (c.lag_ms !== undefined) d.lagMs = c.lag_ms;
-  if (c.free_input_variable_key !== undefined) d.freeInputVariableKey = c.free_input_variable_key;
+  set("altText", c.alt_text);
+  set("flexPayloadJson", c.flex_payload_json);
+  set("lagMs", c.lag_ms);
+  set("sortOrder", c.sort_order);
+  set("isActive", c.is_active);
+  // puzzle
+  set("puzzleType", c.puzzle_type);
+  set("answer", c.answer);
+  set("puzzleHintText", c.puzzle_hint_text);
+  if (c.answer_match_type !== undefined) d.answerMatchType = JSON.stringify(c.answer_match_type);
+  set("correctAction", c.correct_action);
+  set("correctText", c.correct_text);
+  set("incorrectText", c.incorrect_text);
+  if (c.incorrect_quick_replies !== undefined) d.incorrectQuickReplies = c.incorrect_quick_replies ? JSON.stringify(c.incorrect_quick_replies) : null;
+  set("correctNextPhaseId", c.correct_next_phase_id);
+  set("hintMode", c.hint_mode);
+  // タップ遷移先
+  set("tapDestinationId", c.tap_destination_id);
+  set("tapUrl", c.tap_url);
+  // 画像タップ時アクション
+  set("imageActionType", c.image_action_type);
+  set("imageActionText", c.image_action_text);
+  set("imageActionUrl", c.image_action_url);
+  set("imageActionLiffPageId", c.image_action_liff_page_id);
+  set("imageActionPostbackData", c.image_action_postback_data);
+  // 自由入力（key のみ。enabled / next は link/正規化が設定）
+  set("freeInputVariableKey", c.free_input_variable_key);
+  // 演出設定
+  set("readReceiptMode", c.read_receipt_mode);
+  set("readDelayMs", c.read_delay_ms);
+  set("typingEnabled", c.typing_enabled);
+  set("typingMinMs", c.typing_min_ms);
+  set("typingMaxMs", c.typing_max_ms);
+  set("loadingEnabled", c.loading_enabled);
+  set("loadingThresholdMs", c.loading_threshold_ms);
+  set("loadingMinSeconds", c.loading_min_seconds);
+  set("loadingMaxSeconds", c.loading_max_seconds);
   return d;
 }
 
