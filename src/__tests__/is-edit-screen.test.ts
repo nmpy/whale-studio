@@ -47,4 +47,11 @@ describe("isEditScreen", () => {
     expect(isEditScreen("/oas/oa-123456/settings/liff")).toBe(false);
     expect(isEditScreen("/oas/oa-123456/settings/liff/block-1")).toBe(true);
   });
+
+  it("将来の設定編集フォームも末尾 new/edit/create で自動的に編集扱い（導線非表示）", () => {
+    expect(isEditScreen("/oas/oa-123456/settings")).toBe(false);            // 設定ハブ → 表示
+    expect(isEditScreen("/oas/oa-123456/settings/edit")).toBe(true);        // 設定編集 → 非表示
+    expect(isEditScreen("/oas/oa-123456/settings/profile/edit")).toBe(true);
+    expect(isEditScreen("/oas/oa-123456/settings/members/new")).toBe(true);
+  });
 });
