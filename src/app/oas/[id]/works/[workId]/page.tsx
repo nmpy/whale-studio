@@ -619,48 +619,6 @@ export default function WorkHubPage() {
         </div>
       )}
 
-      {/* ══ 主要アクション行（次の操作への主導線） ═══════════════════
-          情報設計: 上部 = 次の一手 / 下部ハブカード = 全機能の見取り図
-          ─────────────────────────────────────────────────────────────
-          拡張ポイント: 将来は publish_status / setup 状態で順序を変える
-            例) active → "audience" 先頭 / draft+未完了 → "messages" 先頭
-      ════════════════════════════════════════════════════════════════ */}
-      <div className="mb-5 flex flex-wrap items-center gap-2 rounded-card border border-line bg-bg-tint px-3 py-2.5 sm:px-4">
-        {/* セクションラベル */}
-        <span className="flex-shrink-0 whitespace-nowrap pr-1.5 text-[10px] font-bold uppercase tracking-wider text-ink-3">
-          次の操作
-        </span>
-
-        {/* アクション pill リスト（resolveActions による状態ベースの並び・強調） */}
-        {resolvedActions.map((action, idx) => {
-          const href = action.isPreview
-            ? `/playground?work_id=${workId}&oa_id=${oaId}`
-            : `${basePath}/${action.key}`;
-          return (
-            <Link
-              key={action.key}
-              href={href}
-              onClick={() => {
-                // 計測: fire-and-forget（失敗しても遷移は止まらない）
-                trackHubActionClick(action, idx);
-                // preview 固有の処理（localStorage 書き込み・onboarding 記録）
-                if (action.isPreview) handlePreviewClick();
-              }}
-              className={
-                "inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border " +
-                "px-3 py-1.5 text-[13px] font-semibold no-underline " +
-                "transition-[background-color,border-color,color,box-shadow] duration-150 " +
-                ACTION_EMPHASIS_STYLE[action.emphasis]
-              }
-            >
-              {/* アイコン色は親の text-* class (= ACTION_EMPHASIS_STYLE) から currentColor で継承 */}
-              <HubCardIcon cardKey={action.key} />
-              {action.label}
-            </Link>
-          );
-        })}
-      </div>
-
       {/* ── ハブカード（全機能の見取り図） ── */}
       {/* 上部アクション行との役割分離: ハブカードは機能一覧・補助導線として機能する */}
       <div className="mb-2.5 flex items-center gap-2">

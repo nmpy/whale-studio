@@ -19,8 +19,10 @@
 
 import { Suspense } from "react";
 import { usePathname } from "next/navigation";
+import Link from "next/link";
 import AppHeader from "@/components/AppHeader";
 import { AccessPreviewBar } from "@/components/AccessPreviewBar";
+import { isEditScreen } from "@/lib/is-edit-screen";
 
 function isBareLayoutRoute(pathname: string | null): boolean {
   if (!pathname) return false;
@@ -60,9 +62,26 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // - oaId は AppShell が決定し、Bar には props で渡す (= 重複 pathname 解析を避ける)。
   const oaId = extractOaIdForPreviewBar(pathname);
 
+  // OA 配下かつ非編集画面では「アカウント設定」への共通導線をデフォルト表示する。
+  // 編集（フォーム）画面では出さない（作業中の画面を煩雑にしないため）。
+  const showAccountSettings = !!oaId && !isEditScreen(pathname);
+
   return (
     <>
       <AppHeader />
+      {/* OA 配下・非編集画面のアカウント設定への共通導線（パンくず上の補助サブナビ）。 */}
+      {showAccountSettings && (
+        <div className="border-b border-line bg-bg-tint">
+          <div className="container flex justify-end py-1.5">
+            <Link
+              href={`/oas/${oaId}/settings`}
+              className="inline-flex items-center gap-1 text-[12px] font-semibold text-ink-3 no-underline transition-colors hover:text-brand-ink"
+            >
+              <span aria-hidden="true">⚙</span> アカウント設定
+            </Link>
+          </div>
+        </div>
+      )}
       {/* OA 配下のみ owner 限定バーを mount。内部で更に owner 判定して描画する。
           useSearchParams を使うため Suspense で包む (= 静的ページ CSR bailout 防止)。 */}
       {oaId && (
