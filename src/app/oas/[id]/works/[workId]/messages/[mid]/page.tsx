@@ -17,6 +17,7 @@ import {
   type MessageFormState,
   type AdditionalMessageSlot,
 } from "../_form";
+import { verifyMessageSave } from "../_save-verify";
 
 /** メッセージ ID から next_message_id チェーンを辿り、2 通目以降を AdditionalMessageSlot[] に詰める。
  *  上限 4 件 (= 合計 5 件 = LINE 返信上限) でループを止める。
@@ -80,6 +81,8 @@ export default function EditMessagePage() {
   const [loadError, setLoadError]       = useState<string | null>(null);
   const [submitting, setSubmitting]     = useState(false);
   const [deleting, setDeleting]         = useState(false);
+  /** 保存後検証で不一致 / 保存失敗時に、フォーム上部へ目立つエラーを出す。 */
+  const [saveError, setSaveError]       = useState<string | null>(null);
 
   useEffect(() => {
     const token = getDevToken();
@@ -104,20 +107,34 @@ export default function EditMessagePage() {
 
   async function handleSubmit(form: MessageFormState) {
     setSubmitting(true);
+    setSaveError(null);
+    const token = getDevToken();
+    const mainBody = formStateToMsgBody(form);
+    let step = "head update";
+    // 保存中に「期待 chain（head 含む送信順 messageId 列）」を構築し、保存後検証に使う。
+    const expectedChainIds: string[] = [messageId];
+    let removedIds: string[] = [];
+    console.info("[msg-save] start", JSON.stringify({
+      messageId:              messageId.slice(0, 8),
+      phaseId:                mainBody.phase_id ? String(mainBody.phase_id).slice(0, 8) : null,
+      additionalCount:        form.additionalMessages.length,
+      quickRepliesCount:      form.quick_replies.length,
+      freeInputEnabled:       form.free_input_enabled,
+      freeInputNextMessageId: form.free_input_next_message_id ? form.free_input_next_message_id.slice(0, 8) : null,
+    }));
     try {
-      const mainBody = formStateToMsgBody(form);
-      await messageApi.update(getDevToken(), messageId, mainBody);
+      await messageApi.update(token, messageId, mainBody);
 
-      // 編集前のチェーン継続 ID 一覧 (= initialForm.additionalMessages から取得)。
-      // ループ後に「以前は繋がっていたが今回 form から消えた」継続を特定して削除するために使う。
+      // 編集前のチェーン継続 ID 一覧。ループ後に「今回 form から消えた」継続を特定して削除する。
       const oldExistingIds: string[] = (initialForm?.additionalMessages ?? [])
         .map((s) => s.existingId)
         .filter((id): id is string => !!id);
 
-      // 2通目以降のメッセージを作成してチェーン (= 演出設定込みで送る)
+      // 2通目以降のメッセージを作成/更新してチェーン (= 演出設定込みで送る)
       let prevId: string = messageId;
       const keptExistingIds: string[] = [];
-      for (const slot of form.additionalMessages) {
+      for (let i = 0; i < form.additionalMessages.length; i++) {
+        const slot = form.additionalMessages[i];
         const additionalBody = additionalSlotToMsgBody(slot, {
           work_id:      workId,
           phase_id:     mainBody.phase_id ?? null,
@@ -127,35 +144,83 @@ export default function EditMessagePage() {
           is_active:    mainBody.is_active,
         });
         if (slot.existingId) {
-          // 既存の追加メッセージを更新 (= 内容 + chain link を両方再確認)
-          await messageApi.update(getDevToken(), slot.existingId, additionalBody);
-          await messageApi.update(getDevToken(), prevId, { next_message_id: slot.existingId });
+          step = `additional ${i + 1} update`;
+          await messageApi.update(token, slot.existingId, additionalBody);
+          await messageApi.update(token, prevId, { next_message_id: slot.existingId });
           prevId = slot.existingId;
           keptExistingIds.push(slot.existingId);
+          expectedChainIds.push(slot.existingId);
         } else {
-          // 新規追加メッセージを作成 → chain 末尾に link
-          const additionalCreated = await messageApi.create(getDevToken(), additionalBody);
-          await messageApi.update(getDevToken(), prevId, { next_message_id: additionalCreated.id });
+          step = `additional ${i + 1} create`;
+          const additionalCreated = await messageApi.create(token, additionalBody);
+          await messageApi.update(token, prevId, { next_message_id: additionalCreated.id });
           prevId = additionalCreated.id;
+          expectedChainIds.push(additionalCreated.id);
         }
       }
 
-      // 新しいチェーンの末尾を null で終端する。これをやらないと、削除や入れ替えで使われなくなった
-      // 旧 chain link (prevId → 旧次メッセージ → ...) が DB に残り続け、loadAdditionalChain や
-      // LINE webhook が古い 2 通目を辿ってしまう（本 hotfix の主たる修正対象）。
-      await messageApi.update(getDevToken(), prevId, { next_message_id: null });
+      // 新しいチェーンの末尾を null で終端（旧 chain link の残留防止）。
+      step = "terminate chain";
+      await messageApi.update(token, prevId, { next_message_id: null });
 
-      // 編集前のチェーンに居たが今回 form から取り除かれた継続メッセージを削除する。
-      // 削除 API は 'owner' 権限必須なので、非 owner ユーザーでは失敗するが、その場合でも
-      // 上の next_message_id = null によりチェーンからは切り離されているため LINE 応答は壊れない。
-      // 一覧画面に dangling head として残るのは cosmetic な副作用として許容（次 PR で別途整理）。
-      const removedIds = oldExistingIds.filter((id) => !keptExistingIds.includes(id));
+      // 今回 form から取り除かれた継続メッセージを削除（owner 権限必須・失敗しても切り離し済み）。
+      step = "delete removed slots";
+      removedIds = oldExistingIds.filter((id) => !keptExistingIds.includes(id));
       for (const id of removedIds) {
         try {
-          await messageApi.delete(getDevToken(), id);
+          await messageApi.delete(token, id);
         } catch (err) {
-          console.warn(`[EditMessagePage] chain orphan delete failed (権限不足の可能性): id=${id.slice(0, 8)}`, err);
+          console.warn(`[msg-save] removed slot delete failed (権限不足の可能性): id=${id.slice(0, 8)}`, err);
         }
+      }
+
+      // ── 保存後の DB 反映検証（再fetch）── no-op/途中失敗/反映漏れを検知し成功扱いにしない
+      step = "post-save verify";
+      const all = await messageApi.list(token, workId);
+      const byId = new Map(all.map((m) => [m.id, m]));
+      const headActual = byId.get(messageId);
+      const walked: string[] = [messageId];
+      {
+        const seen = new Set(walked);
+        let cur: string | null = (headActual?.next_message_id as string | null) ?? null;
+        while (cur && !seen.has(cur) && walked.length < 12) {
+          seen.add(cur);
+          walked.push(cur);
+          cur = (byId.get(cur)?.next_message_id as string | null) ?? null;
+        }
+      }
+      const verify = verifyMessageSave(
+        {
+          body:                   mainBody.body ?? null,
+          characterId:            mainBody.character_id ?? null,
+          quickRepliesJson:       mainBody.quick_replies ? JSON.stringify(mainBody.quick_replies) : null,
+          freeInputEnabled:       !!mainBody.free_input_enabled,
+          freeInputNextMessageId: mainBody.free_input_next_message_id ?? null,
+          chainIds:               expectedChainIds,
+          removedIds,
+        },
+        {
+          body:                   (headActual?.body as string | null) ?? null,
+          characterId:            (headActual?.character_id as string | null) ?? null,
+          quickRepliesJson:       headActual?.quick_replies ? JSON.stringify(headActual.quick_replies) : null,
+          freeInputEnabled:       !!headActual?.free_input_enabled,
+          freeInputNextMessageId: (headActual?.free_input_next_message_id as string | null) ?? null,
+          walkedChainIds:         walked,
+          existingIds:            all.map((m) => m.id),
+        },
+      );
+      console.info("[msg-save] verify", JSON.stringify({
+        ok: verify.ok, mismatches: verify.mismatches,
+        expectedChain: expectedChainIds.length, walkedChain: walked.length, removed: removedIds.length,
+      }));
+      if (!verify.ok) {
+        setSaveError(
+          "保存処理は完了しましたが、内容が DB に反映されているか確認できませんでした。\n" +
+          `不一致: ${verify.mismatches.join(" / ")}\n` +
+          "お手数ですが、画面を再読み込みして内容をご確認ください（必要なら再保存してください）。",
+        );
+        showToast("保存内容の DB 反映を確認できませんでした。再読み込みして確認してください。", "error");
+        return; // 成功扱いにしない・一覧へ遷移しない
       }
 
       showToast("メッセージを保存しました", "success");
@@ -164,7 +229,8 @@ export default function EditMessagePage() {
       const msg = err instanceof ValidationError
         ? err.toDetailString()
         : err instanceof Error ? err.message : "保存に失敗しました";
-      console.error("[EditMessagePage] save error:", msg, err);
+      console.error(`[msg-save] FAILED step="${step}":`, msg, err);
+      setSaveError(`保存に失敗しました（処理: ${step}）: ${msg}`);
       showToast(msg, "error");
     } finally {
       setSubmitting(false);
@@ -231,17 +297,24 @@ export default function EditMessagePage() {
   }
 
   return (
-    <MessageForm
-      oaId={oaId}
-      workId={workId}
-      workTitle={workTitle}
-      initialForm={initialForm ?? EMPTY_MESSAGE_FORM}
-      isNew={false}
-      submitting={submitting}
-      deleting={deleting}
-      onSubmit={handleSubmit}
-      onDelete={handleDelete}
-      messageId={messageId}
-    />
+    <>
+      {saveError && (
+        <div style={{ maxWidth: 900, margin: "0 auto 12px" }}>
+          <div className="alert alert-error" style={{ whiteSpace: "pre-wrap" }}>{saveError}</div>
+        </div>
+      )}
+      <MessageForm
+        oaId={oaId}
+        workId={workId}
+        workTitle={workTitle}
+        initialForm={initialForm ?? EMPTY_MESSAGE_FORM}
+        isNew={false}
+        submitting={submitting}
+        deleting={deleting}
+        onSubmit={handleSubmit}
+        onDelete={handleDelete}
+        messageId={messageId}
+      />
+    </>
   );
 }
