@@ -41,6 +41,8 @@ export type EnterpriseInquiryNotifyInput = {
   oaName?:   string | null;
   workId?:   string | null;
   workName?: string | null;
+  /** 希望プラン表示名（"Basic" / "委託プラン" など）。未指定 / 個人問い合わせは null。 */
+  hopedPlan?: string | null;
   createdAt: Date;
 };
 
@@ -60,11 +62,13 @@ export async function notifyEnterpriseInquirySubmitted(
   const safeOaName   = trunc(input.oaName, TRUNC_DEFAULT);
   const safeWorkName = trunc(input.workName, TRUNC_DEFAULT);
   const safePageName = trunc(input.pageName, TRUNC_DEFAULT);
+  const safeHopedPlan = input.hopedPlan ? trunc(input.hopedPlan, TRUNC_DEFAULT) : "(未選択)";
 
   // fallback text (= Slack 通知センター / non-block 表示用)
   const text = [
     `Whale Studio: 法人プラン申し込み [${env}]`,
     `送信日時: ${sentAt}`,
+    `希望プラン: ${safeHopedPlan}`,
     `申込者: ${safeName ?? "(unknown)"}`,
     `メール: ${safeEmail}`,
     `userId: ${input.userId ?? "(anonymous)"}`,
@@ -85,6 +89,7 @@ export async function notifyEnterpriseInquirySubmitted(
     {
       type: "section",
       fields: [
+        { type: "mrkdwn", text: `*希望プラン*\n${safeHopedPlan}` },
         { type: "mrkdwn", text: `*申込者*\n${safeName ?? "(unknown)"}` },
         { type: "mrkdwn", text: `*メール*\n${safeEmail}` },
         { type: "mrkdwn", text: `*userId*\n${input.userId ?? "(anonymous)"}` },

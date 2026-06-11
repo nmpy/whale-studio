@@ -141,10 +141,16 @@ interface Props {
   onClose:       () => void;
   /** pricing ページ起点で開いた場合の流入元（"header" / "banner" / "gate" / "preview" など） */
   pricingSource?: string;
+  /** 法人プランカードから開いた場合の希望プラン表示名（"Basic" / "委託プラン" など）。
+   *  「希望プラン」select の初期選択に使う。 */
+  hopedPlan?: string;
 }
 
+/** 法人プランの希望プラン選択肢（= 表示名ベース、PLAN_LABELS と一致）。 */
+const HOPED_PLAN_OPTIONS = ["Basic", "Standard", "Pro", "Pro Max", "委託プラン", "未定 / 相談したい"] as const;
+
 // ── コンポーネント ──────────────────────────────────────────────────────────
-export default function FeedbackModal({ pathname, onClose, pricingSource }: Props) {
+export default function FeedbackModal({ pathname, onClose, pricingSource, hopedPlan }: Props) {
   const { showToast } = useToast();
   const sp = useIsMobile();
 
@@ -153,6 +159,12 @@ export default function FeedbackModal({ pathname, onClose, pricingSource }: Prop
 
   const [content,    setContent]    = useState(isPricingMode ? PRICING_TEMPLATE : "");
   const [category,   setCategory]   = useState<CategoryValue>("other");
+  // 希望プラン: 法人カード起点なら押されたプランを初期選択、それ以外は「未定」。
+  const [selectedHopedPlan, setSelectedHopedPlan] = useState<string>(
+    hopedPlan && (HOPED_PLAN_OPTIONS as readonly string[]).includes(hopedPlan)
+      ? hopedPlan
+      : "未定 / 相談したい"
+  );
   const [submitting, setSubmitting] = useState(false);
   const [submitted,  setSubmitted]  = useState(false);  // 送信完了画面の表示フラグ（全モード共通）
   const [copied,     setCopied]     = useState(false);  // メールコピー完了フィードバック
@@ -248,6 +260,8 @@ export default function FeedbackModal({ pathname, onClose, pricingSource }: Prop
         oa_name:    null,
         work_id:    workMatch?.[1] ?? null,
         work_name:  null,
+        // 法人プラン相談時のみ希望プランを添付（それ以外は null）。
+        hoped_plan: isPricingMode ? selectedHopedPlan : null,
       };
 
       // ── API 呼び出し ──
@@ -473,9 +487,44 @@ export default function FeedbackModal({ pathname, onClose, pricingSource }: Prop
             color: "#2d5a4e",
             lineHeight: 1.8,
           }}>
-            editorプランにご興味をお持ちいただきありがとうございます。<br />
+            法人プランにご興味をお持ちいただきありがとうございます。<br />
             ご利用予定や検討状況を確認のうえ、個別にご案内します。<br />
             まだ検討中の段階でも、お気軽にご相談ください。
+          </div>
+        )}
+
+        {/* pricing モード: 希望プラン選択（法人カードから開いた場合は初期選択済み） */}
+        {isPricingMode && (
+          <div style={{ marginBottom: 16 }}>
+            <label
+              htmlFor="feedback-hoped-plan"
+              style={{
+                display: "block", fontSize: 12, fontWeight: 600,
+                color: "#374151", marginBottom: 6,
+              }}
+            >
+              希望プラン
+            </label>
+            <select
+              id="feedback-hoped-plan"
+              value={selectedHopedPlan}
+              onChange={(e) => setSelectedHopedPlan(e.target.value)}
+              style={{
+                width: "100%",
+                padding: "9px 12px",
+                fontSize: 13,
+                lineHeight: 1.6,
+                border: "1.5px solid #e5e7eb",
+                borderRadius: 8,
+                background: "#fff",
+                color: "#374151",
+                cursor: "pointer",
+              }}
+            >
+              {HOPED_PLAN_OPTIONS.map((opt) => (
+                <option key={opt} value={opt}>{opt}</option>
+              ))}
+            </select>
           </div>
         )}
 
