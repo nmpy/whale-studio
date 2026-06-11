@@ -7,7 +7,7 @@ import { useEffect, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Breadcrumb } from "@/components/Breadcrumb";
-import { workApi, oaApi, phaseApi, transitionApi, onboardingApi, getDevToken } from "@/lib/api-client";
+import { workApi, oaApi, phaseApi, transitionApi, getDevToken } from "@/lib/api-client";
 import type { WorkListItem } from "@/lib/api-client";
 import { HelpAccordion } from "@/components/HelpAccordion";
 import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
@@ -121,116 +121,9 @@ function HubCardIcon({ cardKey }: { cardKey: string }) {
   return null;
 }
 
-// ── 主要アクション — 型定義 ──────────────────────────────────
-type ActionKey      = "messages" | "scenario" | "preview" | "characters" | "audience";
-// emphasis:
-//   "preview" — sky-blue（プレビュー固定トーン）
-//   "warning" — amber（要確認を促す状態で付与）
-//   "normal"  — neutral（デフォルト）
-type ActionEmphasis = "preview" | "warning" | "normal";
-
-interface ActionDef {
-  key:       ActionKey;
-  label:     string;
-  isPreview: boolean;
-}
-interface ResolvedAction extends ActionDef {
-  emphasis: ActionEmphasis;
-}
-
-// ── ベース定義（デフォルトの並び順） ─────────────────────────
-// 状態ベースの並び替えは resolveActions() が担う
-const BASE_ACTIONS: readonly ActionDef[] = [
-  { key: "messages",   label: "メッセージ",   isPreview: false },
-  { key: "scenario",   label: "シナリオ",     isPreview: false },
-  { key: "preview",    label: "プレビュー",   isPreview: true  },
-  { key: "characters", label: "キャラクター", isPreview: false },
-  { key: "audience",   label: "分析",         isPreview: false },
-];
-
-// ── 状態ベースの並び替え・強調ロジック ───────────────────────
-// priority 数値が小さいほど前に表示される（デフォルト = 配列インデックス順）
-// 将来の拡張: このルールセットに条件を追加するだけでよい
-interface ResolveActionsParams {
-  status:     string;  // publish_status
-  hasTrigger: boolean; // start_trigger が設定済みか
-  players:    number;  // 総プレイヤー数（isPreview:false のみ）
-  inProgress: number;  // 進行中ユーザー数
-  completed:  number;  // 完了ユーザー数
-}
-
-function resolveActions({
-  status, hasTrigger, players, inProgress, completed,
-}: ResolveActionsParams): ResolvedAction[] {
-  const priority: Record<ActionKey, number> = {
-    messages:   0,
-    scenario:   1,
-    preview:    2,
-    characters: 3,
-    audience:   4,
-  };
-  // warning 強調が必要なキーを収集
-  const warned = new Set<ActionKey>();
-
-  // ── Rule 1: 開始トリガー未設定 → メッセージを最優先
-  //    トリガーがないと LINE 側でシナリオを起動できない。
-  //    まずコンテンツ（メッセージ）を整えてからトリガーを設定する流れを支援する。
-  if (!hasTrigger) {
-    priority.messages = -1;
-  }
-
-  // ── Rule 2: draft → 編集系（メッセージ・シナリオ・プレビュー）を前面に
-  //    公開前は完成度を上げるフェーズ。コンテンツ編集と動作確認を優先する。
-  //    分析は後ろへ（draft 中はデータが少なく見ても参考にならない）。
-  if (status === "draft") {
-    priority.messages  = Math.min(priority.messages, 0);
-    priority.scenario  = Math.min(priority.scenario, 1);
-    priority.preview   = Math.min(priority.preview,  2);
-    priority.audience  = 4;
-  }
-
-  // ── Rule 3: active → 分析を少し上げる
-  //    運用フェーズではプレイヤーの動向把握が重要になるため。
-  if (status === "active") {
-    priority.audience = Math.min(priority.audience, 2);
-  }
-
-  // ── Rule 4: プレイヤー数 0 → プレビューを前に上げる
-  //    誰も体験していない = まず動作確認を促す。
-  if (players === 0) {
-    priority.preview = Math.min(priority.preview, 1);
-  }
-
-  // ── Rule 5: 進行中ありで完了者ゼロ → シナリオ・分析を上げて amber 強調
-  //    エンディングに到達できていない = シナリオフローに問題がある可能性。
-  //    "要確認" として視覚的に訴求する（amber は既存の warning トーンと統一）。
-  if (inProgress > 0 && completed === 0) {
-    priority.scenario = Math.min(priority.scenario, 0.5);
-    priority.audience = Math.min(priority.audience, 1.5);
-    warned.add("scenario");
-    warned.add("audience");
-  }
-
-  return [...BASE_ACTIONS]
-    .sort((a, b) => priority[a.key] - priority[b.key])
-    .map((a): ResolvedAction => ({
-      ...a,
-      // preview は常に sky-blue / warned に入ったキーは amber / それ以外は neutral
-      emphasis: a.isPreview ? "preview" : warned.has(a.key) ? "warning" : "normal",
-    }));
-}
-
-// ── アクション emphasis ごとのスタイル定義 ───────────────────
-// Phase 3.3b/c: className ベース + currentColor 化。
-// アイコン色は className の text-* で親から継承される (= HubCardIcon は currentColor)。
-const ACTION_EMPHASIS_STYLE: Record<ActionEmphasis, string> = {
-  // 情報系 sky (= プレビュー固定トーン)
-  preview: "bg-sky-soft border-sky/30 text-sky-ink hover:border-sky/50 hover:shadow-sm",
-  // 要確認トーン — WorkCard / ハブの "完了者未発生" と同トーン
-  warning: "bg-warn-soft border-warn/30 text-warn hover:border-warn/50 hover:shadow-sm",
-  // 通常 (= ニュートラル) — hover で bg-bg-tint へ
-  normal:  "bg-surface border-line text-ink-2 hover:bg-bg-tint hover:border-line-2 hover:text-ink",
-} as const;
+// （「次の操作」ショートカット行の削除に伴い、その並び替え/強調ロジック・型・スタイル定義
+//   〔resolveActions / BASE_ACTIONS / ACTION_EMPHASIS_STYLE / ActionKey 等〕も削除した。
+//   管理メニューカードはこれらに依存しない。）
 
 // ── コンポーネント ────────────────────────────────────────
 export default function WorkHubPage() {
@@ -363,54 +256,8 @@ export default function WorkHubPage() {
     return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}`;
   }
 
-  // プレビュー共通クリックハンドラ（主要アクション行から呼ばれる）
-  function handlePreviewClick() {
-    try { localStorage.setItem(`preview-confirmed-${workId}`, "1"); } catch {}
-    onboardingApi.trackStep(getDevToken(), { work_id: workId, oa_id: oaId, step: "previewed" }).catch(() => {});
-    if (maxWorks !== null && maxWorks !== -1) setShowUpgradeCard(true);
-  }
-
-  // ── 主要アクション クリック計測 ─────────────────────────────
-  // fire-and-forget — 計測失敗時でも遷移・操作は通常通り動く。
-  //
-  // 分析ポイント（後からクエリで確認できること）:
-  //   - 最もクリックされる action_key は何か
-  //   - emphasis="warning" 付与で scenario/audience の CTR が上がるか
-  //     → Rule5（inProgress>0 && completed=0）の施策効果を検証
-  //   - players=0 のとき preview を上位に出す判断が効いているか
-  //     → position_index と CTR の相関を見る
-  //   - status="active" 時に audience を上げた効果の検証
-  //
-  // 計測先: event_logs テーブル（既存の汎用イベントログ基盤）
-  // イベント名: "hub_action_click"  /  ペイロード型: HubActionClickPayload
-  function trackHubActionClick(action: ResolvedAction, positionIndex: number): void {
-    trackEvent(
-      "hub_action_click",
-      {
-        action_key:        action.key,
-        emphasis:          action.emphasis,
-        position_index:    positionIndex,
-        source:            "work_hub_primary_actions",
-        status:            work?.publish_status              ?? "draft",
-        has_start_trigger: !!work?.start_trigger,
-        players:           work?.progress_stats?.total       ?? 0,
-        completed:         work?.progress_stats?.completed   ?? 0,
-        in_progress:       work?.progress_stats?.in_progress ?? 0,
-        work_id:           workId,
-      },
-      { token: getDevToken(), oa_id: oaId },
-    );
-  }
-
-  // 状態ベースの主要アクション並び替え・強調
-  // work が null のときはデフォルト順（ローディング後には再計算される）
-  const resolvedActions = resolveActions({
-    status:     work?.publish_status         ?? "draft",
-    hasTrigger: !!work?.start_trigger,
-    players:    work?.progress_stats?.total  ?? 0,
-    inProgress: work?.progress_stats?.in_progress ?? 0,
-    completed:  work?.progress_stats?.completed   ?? 0,
-  });
+  // （「次の操作」ショートカット行の削除に伴い、その preview クリックハンドラ・クリック計測
+  //   〔handlePreviewClick / trackHubActionClick〕と並び替え結果〔resolvedActions〕も削除した。）
 
   return (
     <>
@@ -618,48 +465,6 @@ export default function WorkHubPage() {
           })()}
         </div>
       )}
-
-      {/* ══ 主要アクション行（次の操作への主導線） ═══════════════════
-          情報設計: 上部 = 次の一手 / 下部ハブカード = 全機能の見取り図
-          ─────────────────────────────────────────────────────────────
-          拡張ポイント: 将来は publish_status / setup 状態で順序を変える
-            例) active → "audience" 先頭 / draft+未完了 → "messages" 先頭
-      ════════════════════════════════════════════════════════════════ */}
-      <div className="mb-5 flex flex-wrap items-center gap-2 rounded-card border border-line bg-bg-tint px-3 py-2.5 sm:px-4">
-        {/* セクションラベル */}
-        <span className="flex-shrink-0 whitespace-nowrap pr-1.5 text-[10px] font-bold uppercase tracking-wider text-ink-3">
-          次の操作
-        </span>
-
-        {/* アクション pill リスト（resolveActions による状態ベースの並び・強調） */}
-        {resolvedActions.map((action, idx) => {
-          const href = action.isPreview
-            ? `/playground?work_id=${workId}&oa_id=${oaId}`
-            : `${basePath}/${action.key}`;
-          return (
-            <Link
-              key={action.key}
-              href={href}
-              onClick={() => {
-                // 計測: fire-and-forget（失敗しても遷移は止まらない）
-                trackHubActionClick(action, idx);
-                // preview 固有の処理（localStorage 書き込み・onboarding 記録）
-                if (action.isPreview) handlePreviewClick();
-              }}
-              className={
-                "inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border " +
-                "px-3 py-1.5 text-[13px] font-semibold no-underline " +
-                "transition-[background-color,border-color,color,box-shadow] duration-150 " +
-                ACTION_EMPHASIS_STYLE[action.emphasis]
-              }
-            >
-              {/* アイコン色は親の text-* class (= ACTION_EMPHASIS_STYLE) から currentColor で継承 */}
-              <HubCardIcon cardKey={action.key} />
-              {action.label}
-            </Link>
-          );
-        })}
-      </div>
 
       {/* ── ハブカード（全機能の見取り図） ── */}
       {/* 上部アクション行との役割分離: ハブカードは機能一覧・補助導線として機能する */}
