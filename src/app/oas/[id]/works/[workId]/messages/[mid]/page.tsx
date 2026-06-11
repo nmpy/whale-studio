@@ -16,6 +16,7 @@ import {
 } from "../_form";
 import { loadChainSplit, type ChainMsgRow } from "../_chain-edit";
 import { submitChainSave, verifyFailedBanner } from "../_chain-submit";
+import { findReferrers, REFERRER_KIND_LABEL, type Referrer, type RefMessage } from "../_chain-refs";
 
 export default function EditMessagePage() {
   const params    = useParams<{ id: string; workId: string; mid: string }>();
@@ -32,6 +33,8 @@ export default function EditMessagePage() {
   const [deleting, setDeleting]         = useState(false);
   /** 保存後検証で不一致 / 保存失敗時に、フォーム上部へ目立つエラーを出す。 */
   const [saveError, setSaveError]       = useState<string | null>(null);
+  /** このメッセージを参照しているメッセージ（#6-4a・読み取りのみ）。 */
+  const [referrers, setReferrers]       = useState<Referrer[]>([]);
 
   // 保存時に使う load 時点のコンテキスト（楽観ロック・削除判定の基準）。
   const headUpdatedAtRef     = useRef<string | null>(null);
@@ -59,6 +62,9 @@ export default function EditMessagePage() {
         }
         const split = loadChainSplit(msg as unknown as ChainMsgRow, allMessages);
         initialSendSlotIdsRef.current = split.initialSendSlotIds;
+
+        // #6-4a: このメッセージの参照元（読み取りのみ・削除/移動前の影響確認用）。
+        setReferrers(findReferrers(messageId, allMessages as unknown as RefMessage[]));
 
         const form = msgToFormState(msg);
         // head 自体が freeInput プロンプトの legacy（next=応答）では応答 id を select に復元。
@@ -203,6 +209,44 @@ export default function EditMessagePage() {
           <div className="alert alert-error" style={{ whiteSpace: "pre-wrap" }}>{saveError}</div>
         </div>
       )}
+      {/* #6-4a: このメッセージの参照元（読み取りのみ）。削除/移動の前に影響を確認するための表示。 */}
+      <div style={{ maxWidth: 900, margin: "0 auto 12px" }}>
+        <div style={{
+          border: "1px solid #e2e8f0", borderRadius: 8, background: "#f8fafc",
+          padding: "10px 14px", fontSize: 12, lineHeight: 1.7, color: "#475569",
+        }}>
+          <div style={{ fontWeight: 700, color: "#334155", marginBottom: 4 }}>このメッセージの参照元</div>
+          {referrers.length === 0 ? (
+            <div>このメッセージを参照しているメッセージはありません。</div>
+          ) : (
+            <>
+              <div style={{ color: "#b45309", marginBottom: 6 }}>
+                このメッセージは <strong>{referrers.length}件</strong>の参照があります。削除や移動を行う前に、参照元を確認してください。
+              </div>
+              <ul style={{ margin: 0, paddingLeft: 18 }}>
+                {referrers.map((r, i) => (
+                  <li key={`${r.referrerId}-${r.kind}-${i}`} style={{ marginBottom: 2 }}>
+                    <span>{r.referrerLabel}</span>
+                    <span style={{ color: "#64748b" }}>（{REFERRER_KIND_LABEL[r.kind]}）</span>
+                    {r.referrerId !== messageId && (
+                      <button
+                        type="button"
+                        onClick={() => router.push(`/oas/${oaId}/works/${workId}/messages/${r.referrerId}`)}
+                        style={{
+                          marginLeft: 8, fontSize: 11, padding: "1px 8px", border: "1px solid #cbd5e1",
+                          borderRadius: 5, background: "#fff", color: "#2563eb", cursor: "pointer",
+                        }}
+                      >
+                        参照元を開く
+                      </button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </div>
+      </div>
       <MessageForm
         oaId={oaId}
         workId={workId}
