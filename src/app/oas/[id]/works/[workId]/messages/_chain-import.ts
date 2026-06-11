@@ -14,6 +14,8 @@
 //   - target chain と重複する message を含むブロックは拒否（循環防止）。
 
 import { findReferrers, type ReferrerKind, type RefMessage } from "@/lib/message-refs";
+import { computePhaseEntryPlan, type EntryPlanMessage } from "./_phase-entry-plan";
+import { msgToAdditionalSlot, type AdditionalMessageSlot } from "./_form-helpers";
 
 export const IMPORT_REPLY_MAX = 5;
 const BLOCK_WALK_CAP = 20;
@@ -21,9 +23,12 @@ const BLOCK_WALK_CAP = 20;
 export type ImportMessage = {
   id:                          string;
   workId?:                     string | null;
+  phaseId?:                    string | null;
   isActive?:                   boolean | null;
   body?:                       string | null;
   message_type?:               string | null;
+  sort_order?:                 number | null;
+  created_at?:                 string | null;
   next_message_id?:            string | null;
   free_input_enabled?:         boolean | null;
   free_input_next_message_id?: string | null;
@@ -132,6 +137,7 @@ export function validateImport(args: {
   appendAtEnd:     boolean;
   allMessages:     ImportMessage[];
   workId?:         string | null;
+  targetPhaseId?:  string | null;
   targetSendCount?: number;
   detachedMessageIds?: string[];
   removedMessageIds?:  string[];
@@ -166,6 +172,10 @@ export function validateImport(args: {
   if (kinds.some((k) => k === "qr_target" || k === "qr_response" || k === "freeInputNext")) {
     warnings.push("このメッセージは QR / 自由入力応答からも参照されています。取り込むと入場 chain と QR の両方から到達される可能性があります（共有）。");
   }
+  // 別フェーズの entry head を取り込む場合の注意。
+  if (args.targetPhaseId && m.phaseId && m.phaseId !== args.targetPhaseId) {
+    warnings.push("このメッセージは別フェーズの entry head です。取り込むと現在の連続メッセージの一部として送信され、元フェーズの入場 head から外れます。意図した構成か確認してください。");
+  }
   // 5通超え: freeInput を含まないブロックは送信 chain が伸び、Reply 上限(5)に触れうる。
   const baseCount = args.targetSendCount ?? args.targetChainIds.length;
   if (!block.containsFreeInput && baseCount + block.length > IMPORT_REPLY_MAX) {
@@ -173,4 +183,89 @@ export function validateImport(args: {
   }
 
   return { ok: true, block, warnings };
+}
+
+// ── PR3b-1: 取り込み反映の純関数（before/after シミュレート・block→slots 変換）──
+
+/** 取り込み後の送信 chain id 順を作る（target の sendChain に block を index 位置で挿入）。 */
+export function buildImportedSendOrder(targetSendChainIds: string[], insertIndex: number, blockIds: string[]): string[] {
+  const i = Math.max(0, Math.min(insertIndex, targetSendChainIds.length));
+  return [...targetSendChainIds.slice(0, i), ...blockIds, ...targetSendChainIds.slice(i)];
+}
+
+/**
+ * 取り込み後の message 集合を pure に合成する（DB write なし）。
+ * sendOrder の各 message の next を「次の sendOrder（freeInput プロンプトは null）」へ書き換える。
+ * これにより取り込んだ head は next 参照され entry head から外れる（＝保存後の構造を忠実に再現）。
+ */
+export function simulateImportedMessages<T extends EntryPlanMessage & { phaseId?: string | null }>(
+  allMessages: T[],
+  sendOrder: string[],
+  targetPhaseId?: string | null,
+): T[] {
+  const orderIdx = new Map(sendOrder.map((id, i) => [id, i]));
+  return allMessages.map((m) => {
+    if (!orderIdx.has(m.id)) return m;
+    const i = orderIdx.get(m.id)!;
+    const nextId = m.free_input_enabled ? null : (sendOrder[i + 1] ?? null);
+    // 取り込み保存時、slot は target head の phase_id を継承する（additionalSlotToMsgBody）。
+    // cross-phase 取り込みでは block が target phase へ移るため、シミュレートでも phaseId を寄せる。
+    return { ...m, next_message_id: nextId, ...(targetPhaseId ? { phaseId: targetPhaseId } : {}) };
+  });
+}
+
+export type EntryPlanSummary = {
+  entryHeadCount:       number;
+  total:                number;
+  stoppedAtFreeInputId: string | null;
+  overLimit:            boolean;
+  qrHeadCount:          number;
+};
+export type ImportBeforeAfter = { before: EntryPlanSummary; after: EntryPlanSummary };
+
+function summarize(messages: ImportMessage[], phaseId: string): EntryPlanSummary {
+  const phaseMsgs = messages.filter((m) => m.phaseId === phaseId) as unknown as EntryPlanMessage[];
+  const plan = computePhaseEntryPlan(phaseMsgs, messages as unknown as RefMessage[]);
+  return {
+    entryHeadCount:       plan.heads.length,
+    total:                plan.total,
+    stoppedAtFreeInputId: plan.stoppedAtFreeInputId,
+    overLimit:            plan.overLimit,
+    qrHeadCount:          plan.heads.filter((h) => h.reachedViaNonNext).length,
+  };
+}
+
+/** 取り込み前/後の phase 入場送信サマリを算出する（PR1 computePhaseEntryPlan を before/after で実行）。 */
+export function importBeforeAfterSummary(
+  allMessages: ImportMessage[],
+  phaseId: string,
+  sendOrderAfter: string[],
+): ImportBeforeAfter {
+  const before = summarize(allMessages, phaseId);
+  const after  = summarize(
+    simulateImportedMessages(allMessages as unknown as (EntryPlanMessage & { phaseId?: string | null })[], sendOrderAfter, phaseId) as unknown as ImportMessage[],
+    phaseId,
+  );
+  return { before, after };
+}
+
+/**
+ * 取り込みブロック（id 列）を AdditionalMessageSlot[] に変換する（existingId 付き）。
+ * freeInput プロンプトの応答（freeInputResponseId）はブロックに含めず別枠で返す。
+ */
+export function importBlockToSlots(
+  block: ImportBlock,
+  allMessages: ImportMessage[],
+): { slots: AdditionalMessageSlot[]; freeInputResponseId: string | null } {
+  const byId = new Map(allMessages.map((m) => [m.id, m]));
+  const slots: AdditionalMessageSlot[] = [];
+  for (const id of block.blockIds) {
+    const m = byId.get(id);
+    if (!m) continue;
+    const slot = msgToAdditionalSlot(m as Parameters<typeof msgToAdditionalSlot>[0]);
+    // freeInput プロンプトの応答は legacy(next) の場合もあるので、ブロックの解決済み応答 id を select に復元。
+    if (slot.free_input_enabled) slot.free_input_next_message_id = block.freeInputResponseId ?? "";
+    slots.push(slot);
+  }
+  return { slots, freeInputResponseId: block.freeInputResponseId };
 }
