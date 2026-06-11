@@ -4789,6 +4789,9 @@ export function MessageForm({
                 runtime（buildMessageChain/buildPhaseMessages）は freeInput で即時送信を停止するため、
                 以降のスロットは通常の連続送信では届かない。編集UI上でも区切って明示する。 */}
             {(() => {
+              // まとめ送信廃止: 新規作成では 2通目以降のスロットを一切レンダーしない（初期 state は
+              // 空だが、state 紛れ込み時も UI 上に「2通目ブロック」を出さない防御ガード）。
+              if (isNew) return null;
               const headFree   = !!form.free_input_enabled;
               const fiSlotIdx  = form.additionalMessages.findIndex((s) => s.free_input_enabled);
               const firstAfter = headFree ? 0 : (fiSlotIdx >= 0 ? fiSlotIdx + 1 : -1);
