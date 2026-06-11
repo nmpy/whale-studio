@@ -70,7 +70,8 @@ export async function fetchPlanPriceDisplay(plan: PlanTier): Promise<PlanPriceDi
   }
 }
 
-/** 4 ティア全プランの価格を並列取得。 */
+/** 全プランの価格を並列取得。
+ *  delegated（委託プラン）は Stripe checkout を持たない（相談ベース）ため FALLBACK 固定。 */
 export async function fetchAllPlanPrices(): Promise<Record<PlanTier, PlanPriceDisplay>> {
   const [basic, standard, plus, pro] = await Promise.all([
     fetchPlanPriceDisplay("basic"),
@@ -78,5 +79,5 @@ export async function fetchAllPlanPrices(): Promise<Record<PlanTier, PlanPriceDi
     fetchPlanPriceDisplay("plus"),
     fetchPlanPriceDisplay("pro"),
   ]);
-  return { basic, standard, plus, pro };
+  return { basic, standard, plus, pro, delegated: FALLBACK };
 }

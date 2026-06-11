@@ -59,26 +59,32 @@
 // プランティア定義
 // ────────────────────────────────────────────────
 
-/** 4 段階のプランティア (= 内部値、API / DB / コードで利用する小文字キー) */
+/** プランティア (= 内部値、API / DB / コードで利用する小文字キー)。
+ *  delegated（委託プラン）は機能上 Pro Max(=pro) 相当として扱う（PLAN_FEATURES は pro と同一）。
+ *  表示名は「委託プラン」（PLAN_LABELS）。課金は相談ベースで Stripe checkout は持たない。 */
 export const PLAN_TIER = {
-  basic:    "basic",
-  standard: "standard",
-  plus:     "plus",
-  pro:      "pro",
+  basic:     "basic",
+  standard:  "standard",
+  plus:      "plus",
+  pro:       "pro",
+  delegated: "delegated",
 } as const;
 
-/** PlanTier 型 (= "basic" | "standard" | "plus" | "pro") */
+/** PlanTier 型 (= "basic" | "standard" | "plus" | "pro" | "delegated") */
 export type PlanTier = typeof PLAN_TIER[keyof typeof PLAN_TIER];
 
-/** プランティアの順序 (= index でランクを表す。basic=0, pro=3) */
-export const PLAN_TIER_ORDER: readonly PlanTier[] = ["basic", "standard", "plus", "pro"];
+/** プランティアの順序 (= index でランクを表す。basic=0)。
+ *  delegated は Pro Max 相当のため pro と同等の最上位扱い（末尾）。getRequiredPlanForFeature は
+ *  「最小プラン」を返すため delegated を末尾に置いても必要プラン表示は pro のまま正しい。 */
+export const PLAN_TIER_ORDER: readonly PlanTier[] = ["basic", "standard", "plus", "pro", "delegated"];
 
 /** ユーザー向け表示名 (= UI 文言用)。内部キーから分離して別変更を許容する。 */
 export const PLAN_LABELS: Record<PlanTier, string> = {
-  basic:    "Basic",
-  standard: "Standard",
-  plus:     "Pro",
-  pro:      "Pro Max",
+  basic:     "Basic",
+  standard:  "Standard",
+  plus:      "Pro",
+  pro:       "Pro Max",
+  delegated: "委託プラン",
 };
 
 // ────────────────────────────────────────────────
@@ -158,6 +164,17 @@ export const PLAN_FEATURES: Record<PlanTier, readonly FeatureKey[]> = {
     FEATURE.destinations,
     FEATURE.location,
   ],
+  // 委託プランは機能上 Pro Max(=pro) 相当 = 全機能利用可。
+  delegated: [
+    FEATURE.workInfo,
+    FEATURE.characters,
+    FEATURE.messages,
+    FEATURE.scenarioFlow,
+    FEATURE.audience,
+    FEATURE.liffDisplay,
+    FEATURE.destinations,
+    FEATURE.location,
+  ],
 };
 
 // ────────────────────────────────────────────────
@@ -178,6 +195,8 @@ export const PLAN_DESCRIPTIONS: Record<PlanTier, string> = {
     "ロケーション機能はPro Maxプランで利用できます。",
   pro:
     "Pro Maxプランでは、すべての管理機能をご利用いただけます。",
+  delegated:
+    "委託プランでは、企画〜実装までお任せいただけます。利用可能な機能は Pro Max 相当（すべての管理機能）を含みます。",
 };
 
 // ────────────────────────────────────────────────
@@ -211,6 +230,7 @@ export function mapPlanNameToTier(planName: string | null | undefined): PlanTier
     case "standard":   return PLAN_TIER.standard;
     case "plus":       return PLAN_TIER.plus;
     case "pro":        return PLAN_TIER.pro;
+    case "delegated":  return PLAN_TIER.delegated;
     default:           return PLAN_TIER.basic;
   }
 }

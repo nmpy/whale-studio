@@ -24,19 +24,20 @@ import {
 // ──────────────────────────────────────────────────────────
 
 describe("PLAN_TIER / PLAN_LABELS / PLAN_TIER_ORDER", () => {
-  it("PLAN_TIER は 4 段階", () => {
-    expect(Object.keys(PLAN_TIER).sort()).toEqual(["basic", "plus", "pro", "standard"]);
+  it("PLAN_TIER は 5 段階 (basic/standard/plus/pro/delegated)", () => {
+    expect(Object.keys(PLAN_TIER).sort()).toEqual(["basic", "delegated", "plus", "pro", "standard"]);
   });
 
-  it("PLAN_LABELS は表示用名 (Basic/Standard/Pro/Pro Max) を返す", () => {
+  it("PLAN_LABELS は表示用名 (Basic/Standard/Pro/Pro Max/委託プラン) を返す", () => {
     expect(PLAN_LABELS.basic).toBe("Basic");
     expect(PLAN_LABELS.standard).toBe("Standard");
     expect(PLAN_LABELS.plus).toBe("Pro");
     expect(PLAN_LABELS.pro).toBe("Pro Max");
+    expect(PLAN_LABELS.delegated).toBe("委託プラン");
   });
 
-  it("PLAN_TIER_ORDER は basic → standard → plus → pro の順", () => {
-    expect(PLAN_TIER_ORDER).toEqual(["basic", "standard", "plus", "pro"]);
+  it("PLAN_TIER_ORDER は basic → standard → plus → pro → delegated の順", () => {
+    expect(PLAN_TIER_ORDER).toEqual(["basic", "standard", "plus", "pro", "delegated"]);
   });
 });
 
@@ -100,11 +101,12 @@ describe("PLAN_FEATURES — プラン階段", () => {
 // ──────────────────────────────────────────────────────────
 
 describe("PLAN_DESCRIPTIONS — 管理メニュー下部の説明文", () => {
-  it("4 プラン全てに説明文がある", () => {
+  it("全プランに説明文がある", () => {
     expect(PLAN_DESCRIPTIONS.basic).toContain("Basicプラン");
     expect(PLAN_DESCRIPTIONS.standard).toContain("Standardプラン");
     expect(PLAN_DESCRIPTIONS.plus).toContain("Proプラン");
     expect(PLAN_DESCRIPTIONS.pro).toContain("Pro Maxプラン");
+    expect(PLAN_DESCRIPTIONS.delegated).toContain("委託プラン");
   });
 
   it("Pro の説明文は「すべて」を含む", () => {
@@ -129,11 +131,12 @@ describe("mapPlanNameToTier — 既存 plan.name → tier", () => {
     expect(mapPlanNameToTier("enterprise")).toBe("pro");
   });
 
-  it("4 ティア名 (basic/standard/plus/pro) はそのまま返す", () => {
+  it("ティア名 (basic/standard/plus/pro/delegated) はそのまま返す", () => {
     expect(mapPlanNameToTier("basic")).toBe("basic");
     expect(mapPlanNameToTier("standard")).toBe("standard");
     expect(mapPlanNameToTier("plus")).toBe("plus");
     expect(mapPlanNameToTier("pro")).toBe("pro");
+    expect(mapPlanNameToTier("delegated")).toBe("delegated");
   });
 
   it("null / undefined / 不明な値は basic にフォールバック", () => {

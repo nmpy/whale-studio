@@ -16,7 +16,7 @@ import { trackBillingEvent } from "@/lib/billing-tracker";
 import { trackEvent } from "@/lib/event-tracker";
 import { getDevToken } from "@/lib/api-client";
 import { Button } from "@/components/shared";
-import { mapPlanNameToTier, PLAN_TIER_ORDER } from "@/lib/constants/plans";
+import { mapPlanNameToTier, PLAN_TIER_ORDER, PLAN_LABELS, type PlanTier } from "@/lib/constants/plans";
 
 // ── チェックアイテム ─────────────────────────────────────────────────
 function CheckItem({ children }: { children: React.ReactNode }) {
@@ -51,7 +51,7 @@ function SectionHeading({ children }: { children: React.ReactNode }) {
 type CurrentPlanState =
   | { kind: "loading" }
   | { kind: "no_plan" }
-  | { kind: "active"; tier: PersonalPlanCard["tier"] };
+  | { kind: "active"; tier: PlanTier };
 
 // ── カードごとの表示状態 ────────────────────────────────────────────
 //   loading_current_plan    : current plan info ロード中、CTA を仮 disable
@@ -72,7 +72,7 @@ function computeCardState(
   if (current.kind === "no_plan") return "upgradable";
   if (tier === current.tier) return "current";
   // ranking 比較: PLAN_TIER_ORDER の indexOf で確実に判定
-  const order = PLAN_TIER_ORDER as readonly PersonalPlanCard["tier"][];
+  const order = PLAN_TIER_ORDER as readonly PlanTier[];
   return order.indexOf(tier) < order.indexOf(current.tier) ? "downgrade_not_supported" : "upgradable";
 }
 
@@ -194,6 +194,70 @@ const ENTERPRISE_PLAN = {
   ctaText:     "法人プランについて相談する",
 };
 
+/** 法人プランカード定義 (= 個人プランと同じ機能階段を法人利用向けに提示)。
+ *  個人プランと違い Stripe Checkout は持たず、すべて「相談する」→ FeedbackModal に集約する
+ *  (= 法人は個別要件・契約形態が異なるため、申込ではなく相談導線に一本化)。
+ *  各カードの planLabel は FeedbackModal の「希望プラン」初期値として渡す
+ *  (= PLAN_LABELS と一致させ、Slack 通知の希望プラン表記とも揃える)。
+ *  委託プラン (delegated) は Pro Max 相当の全機能 + 企画〜運用の代行を含む最上位。 */
+interface BusinessPlanCard {
+  /** 希望プランとして相談フォームに渡す表示名 (= PLAN_LABELS と一致) */
+  planLabel:    string;
+  tagline:      string;
+  features:     string[];
+  /** 推奨タグを出すか */
+  recommended?: boolean;
+}
+
+const BUSINESS_PLAN_CARDS: readonly BusinessPlanCard[] = [
+  {
+    planLabel: PLAN_LABELS.basic,        // "Basic"
+    tagline:   "作品の基本設計とLINE上の体験づくりを、法人利用で始めたい方向け",
+    features: [
+      "作品情報・キャラクター管理",
+      "メッセージ・謎の作成",
+      "シナリオフロー設計",
+    ],
+  },
+  {
+    planLabel: PLAN_LABELS.standard,     // "Standard"
+    tagline:   "参加者管理も含めて、継続的に作品を運用したい法人向け",
+    features: [
+      "Basic の全機能",
+      "オーディエンス管理",
+      "参加者の状態確認",
+    ],
+  },
+  {
+    planLabel: PLAN_LABELS.plus,         // "Pro"
+    tagline:   "LIFFページや外部導線を使って、体験の幅を広げたい法人向け",
+    recommended: true,
+    features: [
+      "Standard の全機能",
+      "LIFF表示設定",
+      "遷移先URL設定",
+    ],
+  },
+  {
+    planLabel: PLAN_LABELS.pro,          // "Pro Max"
+    tagline:   "GPS・QR・現地チェックインなど、現場連動の体験まで運用したい法人向け",
+    features: [
+      "Pro の全機能",
+      "ロケーション機能",
+      "GPS / QR / 現地チェックイン",
+    ],
+  },
+  {
+    planLabel: PLAN_LABELS.delegated,    // "委託プラン"
+    tagline:   "企画から実装・運用までまるごとお任せいただける委託プラン",
+    features: [
+      "Pro Max 相当の全機能",
+      "企画・シナリオ制作の代行",
+      "導入〜運用の伴走サポート",
+    ],
+  },
+];
+
 // ── クライアントコンポーネント本体 ────────────────────────────────────
 // props は page.tsx（Server Component）が searchParams から渡す
 export function PricingContent({
@@ -285,14 +349,16 @@ export function PricingContent({
       .catch(() => setCurrentPlan({ kind: "no_plan" }));
   }, [oaId]);
 
-  /** 法人プラン用 CTA — FeedbackModal を開く既存導線。 */
-  function handleEnterpriseInquiry() {
+  /** 法人プラン用 CTA — FeedbackModal を開く既存導線。
+   *  hopedPlan: 押されたカードの希望プラン表示名 (= PLAN_LABELS)。
+   *  指定時はモーダルの「希望プラン」初期選択に使う (= 改ざん防止のため値ではなく表示名を渡す)。 */
+  function handleEnterpriseInquiry(hopedPlan?: string) {
     const token = getDevToken();
     trackBillingEvent("pricing_cta_click", token, source, { from: fromParam, to: "enterprise" });
     trackEvent("upgrade_interest", { action: "cta_click", source, from: fromParam, to: "enterprise" }, { token });
     window.dispatchEvent(
       new CustomEvent("open-feedback-modal", {
-        detail: { pricingSource: source },
+        detail: { pricingSource: source, hopedPlan },
       })
     );
     setRequested(true);
@@ -537,37 +603,66 @@ export function PricingContent({
         })}
       </div>
 
-      {/* ── 法人プラン (個人利用とは分けて表示、導入支援・個別相談・運用支援の位置づけ) ── */}
+      {/* ── 法人プラン (個人利用とは分けて表示、すべて相談導線に一本化) ── */}
       <SectionHeading>法人プラン</SectionHeading>
-      <div className="mb-7 mt-2.5 flex flex-col items-stretch justify-between gap-4 rounded-card border border-dashed border-line bg-bg-tint px-[18px] py-[22px] sm:flex-row sm:items-start sm:gap-6 sm:p-7">
-        <div className="min-w-0 flex-1">
-          <h3 className="font-round mb-1.5 text-[18px] font-extrabold text-ink">
-            {ENTERPRISE_PLAN.label}
-          </h3>
-          <p className="mb-1.5 text-[16px] font-bold text-ink">
-            {ENTERPRISE_PLAN.price}
-          </p>
-          <p className="mb-3 text-[12px] leading-[1.7] text-ink-2">
-            {ENTERPRISE_PLAN.description}
-          </p>
-          <div className="flex flex-col gap-[7px]">
-            {ENTERPRISE_PLAN.features.map((f) => (
-              <CheckItem key={f}>{f}</CheckItem>
-            ))}
-          </div>
-        </div>
-        <div className="flex-shrink-0 sm:self-center">
-          {/* 個人プランカードと一貫した見た目を保ちつつ、相談・問い合わせ寄りの ghost トーン */}
-          <Button
-            type="button"
-            onClick={handleEnterpriseInquiry}
-            variant="ghost"
-            size="sm"
-            className="whitespace-nowrap"
-          >
-            {ENTERPRISE_PLAN.ctaText}
-          </Button>
-        </div>
+      <p className="mb-4 text-[13px] leading-[1.7] text-ink-2">
+        {ENTERPRISE_PLAN.description}
+        <br />
+        各プランは個別要件・契約形態に合わせてご案内します。気になるプランの「相談する」からお問い合わせください。
+      </p>
+      <div className="mb-9 grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-3.5 lg:grid-cols-5">
+        {BUSINESS_PLAN_CARDS.map((plan) => {
+          const isRecommended = plan.recommended === true;
+          const cardBorder = isRecommended
+            ? "border-2 border-brand shadow-card"
+            : "border border-line shadow-sm";
+          return (
+            <div
+              key={plan.planLabel}
+              className={
+                "relative flex h-full flex-col gap-2.5 rounded-card bg-surface px-[18px] py-[20px] sm:px-5 sm:py-[22px] " +
+                cardBorder
+              }
+            >
+              {isRecommended && (
+                <span className="absolute -top-2.5 left-3.5 rounded-full bg-brand px-2.5 py-0.5 text-[10px] font-bold tracking-[0.05em] text-white">
+                  おすすめ
+                </span>
+              )}
+
+              <h3 className="font-round text-[18px] font-extrabold tracking-[-0.02em] text-ink">
+                {plan.planLabel}
+              </h3>
+              <p className="text-[12px] leading-[1.6] text-ink-2">
+                {plan.tagline}
+              </p>
+
+              <div className="py-1">
+                <p className="text-[14px] font-bold tracking-[-0.02em] text-ink-3">
+                  お問い合わせください
+                </p>
+              </div>
+
+              <div className="mt-1 flex flex-col gap-[7px]">
+                {plan.features.map((f) => (
+                  <CheckItem key={f}>{f}</CheckItem>
+                ))}
+              </div>
+
+              <Button
+                type="button"
+                onClick={() => handleEnterpriseInquiry(plan.planLabel)}
+                variant={isRecommended ? "primary" : "ghost"}
+                size="sm"
+                fullWidth
+                aria-label={`${plan.planLabel}（法人）について相談する`}
+                className="mt-auto"
+              >
+                相談する
+              </Button>
+            </div>
+          );
+        })}
       </div>
 
       {/* CTA フィードバック (= 相談フォームを開いた後の確認表示) */}

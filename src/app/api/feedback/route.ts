@@ -37,6 +37,8 @@ interface FeedbackInput {
   oa_name:    string | null;
   work_id:    string | null;
   work_name:  string | null;
+  /** 法人プラン相談時の希望プラン表示名（"Basic" / "委託プラン" など）。それ以外は null。 */
+  hoped_plan: string | null;
 }
 
 export async function POST(req: NextRequest) {
@@ -73,6 +75,7 @@ export async function POST(req: NextRequest) {
       oa_name:     body.oa_name    ?? null,
       work_id:     body.work_id    ?? null,
       work_name:   body.work_name  ?? null,
+      hoped_plan:  body.hoped_plan ?? null,
       category,
       content:     body.content.trim(),
       status:      "未対応",
@@ -114,6 +117,7 @@ export async function POST(req: NextRequest) {
           oaName:    payload.oa_name,
           workId:    payload.work_id,
           workName:  payload.work_name,
+          hopedPlan: payload.hoped_plan,
           createdAt: new Date(payload.created_at),
         });
       } catch (err) {

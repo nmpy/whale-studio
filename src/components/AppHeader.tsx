@@ -91,6 +91,7 @@ export default function AppHeader() {
   const displayName                             = getDisplayName(profile);
   // pricing ページ起点で開いたときの流入元（"header" / "banner" 等）
   const [pricingSource,    setPricingSource]    = useState<string | undefined>(undefined);
+  const [hopedPlan,        setHopedPlan]         = useState<string | undefined>(undefined);
 
   // 現在の OA ID をパスから取得
   const currentOaId = extractOaId(pathname);
@@ -209,9 +210,10 @@ export default function AppHeader() {
   // ── フィードバックモーダル: 外部イベントで開く ─────────────────────
   useEffect(() => {
     const handler = (e: Event) => {
-      // pricing ページから開く場合は detail.pricingSource が付いてくる
-      const detail = (e as CustomEvent<{ pricingSource?: string }>).detail;
+      // pricing ページから開く場合は detail.pricingSource / detail.hopedPlan が付いてくる
+      const detail = (e as CustomEvent<{ pricingSource?: string; hopedPlan?: string }>).detail;
       setPricingSource(detail?.pricingSource ?? undefined);
+      setHopedPlan(detail?.hopedPlan ?? undefined);
       setFeedbackOpen(true);
     };
     window.addEventListener("open-feedback-modal", handler);
@@ -422,7 +424,8 @@ export default function AppHeader() {
         <FeedbackModal
           pathname={pathname}
           pricingSource={pricingSource}
-          onClose={() => { setFeedbackOpen(false); setPricingSource(undefined); }}
+          hopedPlan={hopedPlan}
+          onClose={() => { setFeedbackOpen(false); setPricingSource(undefined); setHopedPlan(undefined); }}
         />
       )}
     </>
