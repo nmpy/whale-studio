@@ -203,6 +203,32 @@ describe("planChainSave", () => {
     if (!r.ok) expect(r.code).toBe("DETACHED_AND_REMOVED");
   });
 
+  // ── #6-4d 取り込み: 既存 id を sendSlots に追加して連結する経路 ──
+  it("取り込み: 既存 id ブロックを sendSlots に追加して連結できる（sendCount 反映）", () => {
+    // A(head) の chain に B,B2 を取り込む = sendSlots に既存 id を追加
+    const spec: ChainSaveSpec = { headId: "A", sendSlots: [{ id: "A2" }, { id: "B" }, { id: "B2" }] };
+    const r = ok(planChainSave(spec, [
+      { id: "A", nextMessageId: "A2" }, { id: "A2", nextMessageId: null },
+      { id: "B", nextMessageId: "B2" }, { id: "B2", nextMessageId: null },
+    ]));
+    expect(r.sendCount).toBe(4); // head + 3 slots
+  });
+
+  it("取り込み: 既に chain にある id を再度 sendSlot に入れると 422（DUPLICATE_MESSAGE・循環防止）", () => {
+    const spec: ChainSaveSpec = { headId: "A", sendSlots: [{ id: "A2" }, { id: "A" }] }; // head を再取り込み
+    const r = planChainSave(spec, []);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe("DUPLICATE_MESSAGE");
+  });
+
+  it("取り込み: freeInput を含むブロックは末尾でなければ 422（FREE_INPUT_NOT_LAST）", () => {
+    // freeInput を含む B を中間に取り込む（末尾でない）
+    const spec: ChainSaveSpec = { headId: "A", sendSlots: [{ id: "B", freeInputEnabled: true }, { id: "tail" }] };
+    const r = planChainSave(spec, []);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe("FREE_INPUT_NOT_LAST");
+  });
+
   it("removed は従来どおり外部参照されていれば 422（detach とは別扱い）", () => {
     const spec: ChainSaveSpec = { headId: "h", sendSlots: [{ id: "s1" }], removedMessageIds: ["old"] };
     const work: WorkMessageRef[] = [
