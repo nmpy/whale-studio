@@ -12,6 +12,7 @@ import type { Riddle } from "@/types";
 import { PhaseTransitionsSection } from "./_phase-transitions";
 import { previewQrSend, type QrPreviewMessage } from "./_qr-preview";
 import { previewChainSend } from "./_chain-send-preview";
+import { moveSlot, insertSlotAt, appendSlot, canMove, canInsertAt, hasFreeInputSlot } from "./_chain-reorder";
 import { nextTransitionDisabledByPuzzle } from "@/lib/message-flow";
 import { TapDestinationSection } from "@/components/destination/TapDestinationSection";
 import type { TapMode } from "@/components/destination/TapDestinationSection";
@@ -2803,12 +2804,17 @@ function buildPreviewChain(args: {
 // ────────────────────────────────────────────────────────
 
 function AdditionalMessageBlock({
-  index, slot, onChange, onRemove, oaId, workId, characters, allMessages,
+  index, slot, onChange, onRemove, onMoveUp, onMoveDown, canMoveUp, canMoveDown, oaId, workId, characters, allMessages,
 }: {
   index:      number;
   slot:       AdditionalMessageSlot;
   onChange:   (slot: AdditionalMessageSlot) => void;
   onRemove:   () => void;
+  /** 上下移動（#6-3）。freeInput プロンプトは末尾固定のため両方 disabled になる。 */
+  onMoveUp?:    () => void;
+  onMoveDown?:  () => void;
+  canMoveUp?:   boolean;
+  canMoveDown?: boolean;
   oaId:       string;
   workId:     string;
   characters: Character[];
@@ -2848,18 +2854,49 @@ function AdditionalMessageBlock({
         padding: "10px 14px", background: "#f3f4f6", borderBottom: "1px solid #e5e7eb",
       }}>
         <span style={{ fontSize: 13, fontWeight: 600, color: "#374151" }}>
-          {index + 2}通目のメッセージ
+          {index + 2}通目のメッセージ{slot.free_input_enabled ? "（自由入力・末尾固定）" : ""}
         </span>
-        <button
-          type="button"
-          onClick={onRemove}
-          style={{
-            fontSize: 11, padding: "2px 10px", border: "1px solid #fecaca",
-            borderRadius: 6, background: "#fff5f5", color: "#ef4444", cursor: "pointer",
-          }}
-        >
-          削除
-        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          {/* 上下移動（#6-3）。freeInput プロンプトは末尾固定のため無効。 */}
+          <button
+            type="button"
+            onClick={onMoveUp}
+            disabled={!canMoveUp}
+            title="上へ移動"
+            aria-label="上へ移動"
+            style={{
+              fontSize: 12, padding: "2px 8px", border: "1px solid #d1d5db", borderRadius: 6,
+              background: canMoveUp ? "#fff" : "#f3f4f6", color: canMoveUp ? "#374151" : "#cbd5e1",
+              cursor: canMoveUp ? "pointer" : "not-allowed",
+            }}
+          >
+            ↑
+          </button>
+          <button
+            type="button"
+            onClick={onMoveDown}
+            disabled={!canMoveDown}
+            title="下へ移動"
+            aria-label="下へ移動"
+            style={{
+              fontSize: 12, padding: "2px 8px", border: "1px solid #d1d5db", borderRadius: 6,
+              background: canMoveDown ? "#fff" : "#f3f4f6", color: canMoveDown ? "#374151" : "#cbd5e1",
+              cursor: canMoveDown ? "pointer" : "not-allowed",
+            }}
+          >
+            ↓
+          </button>
+          <button
+            type="button"
+            onClick={onRemove}
+            style={{
+              fontSize: 11, padding: "2px 10px", border: "1px solid #fecaca",
+              borderRadius: 6, background: "#fff5f5", color: "#ef4444", cursor: "pointer",
+            }}
+          >
+            削除
+          </button>
+        </div>
       </div>
 
       <div style={{ padding: "12px 14px" }}>
@@ -4728,6 +4765,10 @@ export function MessageForm({
                       workId={workId}
                       characters={characters}
                       allMessages={allMessages}
+                      canMoveUp={canMove(form.additionalMessages, idx, "up")}
+                      canMoveDown={canMove(form.additionalMessages, idx, "down")}
+                      onMoveUp={() => setForm((prev) => ({ ...prev, additionalMessages: moveSlot(prev.additionalMessages, idx, "up") }))}
+                      onMoveDown={() => setForm((prev) => ({ ...prev, additionalMessages: moveSlot(prev.additionalMessages, idx, "down") }))}
                       onChange={(updated) => {
                         setForm((prev) => ({
                           ...prev,
@@ -4743,35 +4784,60 @@ export function MessageForm({
                         }));
                       }}
                     />
+                    {/* スロット間「＋ここに追加」（#6-3）。freeInput より下には出さない（末尾固定）。
+                        head 自体が freeInput プロンプトのときは送信 chain に slot を足せない。 */}
+                    {!headFree && canInsertAt(form.additionalMessages, idx + 1) && (
+                      <div style={{ display: "flex", justifyContent: "center", margin: "6px 0" }}>
+                        <button
+                          type="button"
+                          onClick={() => setForm((prev) => ({
+                            ...prev,
+                            additionalMessages: insertSlotAt(prev.additionalMessages, idx + 1, { ...EMPTY_ADDITIONAL_SLOT, carousel_items: [] }),
+                          }))}
+                          style={{
+                            fontSize: 11, padding: "3px 12px", border: "1px dashed #cbd5e1", borderRadius: 999,
+                            background: "#fff", color: "#64748b", cursor: "pointer",
+                          }}
+                        >
+                          ＋ ここに追加
+                        </button>
+                      </div>
+                    )}
                   </div>
                 );
               });
             })()}
 
-            {/* 追加ボタン */}
-            <button
-              type="button"
-              onClick={() =>
-                setForm((prev) => ({
-                  ...prev,
-                  additionalMessages: [
-                    ...prev.additionalMessages,
-                    { ...EMPTY_ADDITIONAL_SLOT, carousel_items: [] },
-                  ],
-                }))
-              }
-              style={{
-                marginTop: 14, width: "100%", padding: "10px 0",
-                border: "2px dashed #d1d5db", borderRadius: 8, background: "#f9fafb",
-                color: "#6b7280", fontSize: 13, fontWeight: 600, cursor: "pointer",
-                display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-                transition: "all 0.15s",
-              }}
-              onMouseOver={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "#06C755"; (e.currentTarget as HTMLButtonElement).style.color = "#059669"; }}
-              onMouseOut={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "#d1d5db"; (e.currentTarget as HTMLButtonElement).style.color = "#6b7280"; }}
-            >
-              ＋ メッセージを追加（{form.additionalMessages.length + 2}通目）
-            </button>
+            {/* 末尾追加（#6-3）。freeInput がある場合はその直前に追加し、末尾固定を保つ。
+                head 自体が freeInput プロンプトのときは送信 chain に追加できない（応答は別枠）。 */}
+            {form.free_input_enabled ? (
+              <div style={{ marginTop: 14, padding: "8px 12px", background: "#faf5ff", border: "1px dashed #d8b4fe", borderRadius: 8, fontSize: 11, color: "#7c3aed", lineHeight: 1.6 }}>
+                1通目が自由入力プロンプトのため、連続メッセージは追加できません（自由入力後の応答は別枠で管理します）。
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() =>
+                  setForm((prev) => ({
+                    ...prev,
+                    additionalMessages: appendSlot(prev.additionalMessages, { ...EMPTY_ADDITIONAL_SLOT, carousel_items: [] }),
+                  }))
+                }
+                style={{
+                  marginTop: 14, width: "100%", padding: "10px 0",
+                  border: "2px dashed #d1d5db", borderRadius: 8, background: "#f9fafb",
+                  color: "#6b7280", fontSize: 13, fontWeight: 600, cursor: "pointer",
+                  display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                  transition: "all 0.15s",
+                }}
+                onMouseOver={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "#06C755"; (e.currentTarget as HTMLButtonElement).style.color = "#059669"; }}
+                onMouseOut={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "#d1d5db"; (e.currentTarget as HTMLButtonElement).style.color = "#6b7280"; }}
+              >
+                {hasFreeInputSlot(form.additionalMessages)
+                  ? "＋ 自由入力の前にメッセージを追加"
+                  : `＋ メッセージを追加（${form.additionalMessages.length + 2}通目）`}
+              </button>
+            )}
 
             {/* 実機での送信プレビュー（freeInput停止・応答分離・5通超え・QR末尾。runtime準拠） */}
             {(() => {
