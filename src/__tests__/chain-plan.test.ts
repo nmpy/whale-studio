@@ -153,4 +153,64 @@ describe("planChainSave", () => {
     expect(r.sendCount).toBe(5);
     expect(r.exceedsReplyLimit).toBe(false);
   });
+
+  // ── #6-4c: chain から外す（detach）──────────────────────
+  it("detachedMessageIds を結果に返す", () => {
+    const spec: ChainSaveSpec = { headId: "h", sendSlots: [{ id: "s1" }], detachedMessageIds: ["old"] };
+    const r = ok(planChainSave(spec, [
+      { id: "h", nextMessageId: "s1" }, { id: "s1", nextMessageId: null }, { id: "old", nextMessageId: null },
+    ]));
+    expect(r.detachedMessageIds).toEqual(["old"]);
+  });
+
+  it("detach は外部参照されていても許可（参照ガード対象外）", () => {
+    const spec: ChainSaveSpec = { headId: "h", sendSlots: [{ id: "s1" }], detachedMessageIds: ["old"] };
+    const work: WorkMessageRef[] = [
+      { id: "h", nextMessageId: "s1" }, { id: "s1", nextMessageId: null },
+      { id: "outside", nextMessageId: "old" }, // 外部から old を参照 → detach はブロックしない
+      { id: "old", nextMessageId: null },
+    ];
+    expect(planChainSave(spec, work).ok).toBe(true);
+  });
+
+  it("detach が send chain に含まれれば 422（DETACHED_IN_CHAIN）", () => {
+    const spec: ChainSaveSpec = { headId: "h", sendSlots: [{ id: "s1" }], detachedMessageIds: ["s1"] };
+    const r = planChainSave(spec, []);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe("DETACHED_IN_CHAIN");
+  });
+
+  it("detach が headId なら 422（DETACHED_IN_CHAIN）", () => {
+    const spec: ChainSaveSpec = { headId: "h", sendSlots: [], detachedMessageIds: ["h"] };
+    const r = planChainSave(spec, []);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe("DETACHED_IN_CHAIN");
+  });
+
+  it("detach が freeInputResponse なら 422（DETACHED_IN_CHAIN）", () => {
+    const spec: ChainSaveSpec = { headId: "h", sendSlots: [{ id: "s1", freeInputEnabled: true }], freeInputResponseId: "resp", detachedMessageIds: ["resp"] };
+    const r = planChainSave(spec, []);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe("DETACHED_IN_CHAIN");
+  });
+
+  it("detach と removed の重複は 422（DETACHED_AND_REMOVED）", () => {
+    const spec: ChainSaveSpec = { headId: "h", sendSlots: [{ id: "s1" }], removedMessageIds: ["old"], detachedMessageIds: ["old"] };
+    const r = planChainSave(spec, [
+      { id: "h", nextMessageId: "s1" }, { id: "s1", nextMessageId: null }, { id: "old", nextMessageId: null },
+    ]);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe("DETACHED_AND_REMOVED");
+  });
+
+  it("removed は従来どおり外部参照されていれば 422（detach とは別扱い）", () => {
+    const spec: ChainSaveSpec = { headId: "h", sendSlots: [{ id: "s1" }], removedMessageIds: ["old"] };
+    const work: WorkMessageRef[] = [
+      { id: "h", nextMessageId: "s1" }, { id: "s1", nextMessageId: null },
+      { id: "outside", nextMessageId: "old" }, { id: "old", nextMessageId: null },
+    ];
+    const r = planChainSave(spec, work);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe("REFERENCE_GUARD");
+  });
 });

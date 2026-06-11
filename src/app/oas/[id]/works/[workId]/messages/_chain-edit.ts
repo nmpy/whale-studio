@@ -115,6 +115,8 @@ export type BuildChainBodyArgs = {
   };
   /** ロード時点の既存 sendSlot id 列（削除判定の基準）。 */
   initialSendSlotIds:         string[];
+  /** chain から外す（実体は残し nextMessageId=null）既存メッセージ id（#6-4c）。 */
+  detachedMessageIds?:        string[];
 };
 
 export type ChainSaveBodyShape = {
@@ -125,6 +127,7 @@ export type ChainSaveBodyShape = {
   slots: (Record<string, unknown> & { id?: string })[];
   free_input_response_id: string | null;
   removed_message_ids: string[];
+  detached_message_ids: string[];
 };
 
 /** 編集 form から PUT /api/messages/chain の body を構築する。 */
@@ -145,9 +148,13 @@ export function buildChainSaveBody(args: BuildChainBodyArgs): ChainSaveBodyShape
     freeInputResponseId = promptSlot ? norm(promptSlot.free_input_next_message_id) : null;
   }
 
-  // 削除: ロード時にあった sendSlot のうち、現在の sendSlot に存在しない既存 id。
+  // 切り離し（detach）: 実体は残すので removed には入れない。
+  const detachedMessageIds = args.detachedMessageIds ?? [];
+  const detachedSet = new Set(detachedMessageIds);
+
+  // 削除: ロード時にあった sendSlot のうち、現在の sendSlot にも detach にも無い既存 id。
   const currentIds = new Set(args.sendSlots.map((s) => s.existingId).filter((id): id is string => !!id));
-  const removed_message_ids = args.initialSendSlotIds.filter((id) => !currentIds.has(id));
+  const removed_message_ids = args.initialSendSlotIds.filter((id) => !currentIds.has(id) && !detachedSet.has(id));
 
   return {
     work_id:                  args.workId,
@@ -157,6 +164,7 @@ export function buildChainSaveBody(args: BuildChainBodyArgs): ChainSaveBodyShape
     slots,
     free_input_response_id:   freeInputResponseId,
     removed_message_ids,
+    detached_message_ids:     detachedMessageIds.filter((id) => !currentIds.has(id)),
   };
 }
 
@@ -169,6 +177,8 @@ const CHAIN_ERROR_JP: Record<string, string> = {
   RESPONSE_IN_SEND_CHAIN:  "自由入力後の応答が連続メッセージ本体に含まれています。別のメッセージを応答に指定してください。",
   DUPLICATE_MESSAGE:       "同じメッセージが連続メッセージ内で重複して使われています。",
   REMOVED_IN_CHAIN:        "削除対象が連続メッセージ／応答として使用されています。",
+  DETACHED_IN_CHAIN:       "切り離し対象が連続メッセージ／応答として使用されています。",
+  DETACHED_AND_REMOVED:    "同じメッセージを削除と切り離しの両方に指定できません。",
   REFERENCE_GUARD:         "参照されているため削除できません（他のメッセージ・クイックリプライ・自由入力応答から参照されています）。",
   CYCLE:                   "メッセージの参照が循環しています。",
   CONFLICT:                "他の編集と競合しました。画面を再読み込みして、最新の内容を確認してください。",

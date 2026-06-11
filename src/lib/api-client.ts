@@ -1106,6 +1106,8 @@ export interface ChainSaveBody {
   /** 自由入力後の応答 message id（freeInputNext に正規化される）。null 許容。 */
   free_input_response_id?: string | null;
   removed_message_ids?: string[];
+  /** chain から外す（実体は残し nextMessageId=null）既存メッセージ id（#6-4c）。 */
+  detached_message_ids?: string[];
 }
 
 /** PUT /api/messages/chain のレスポンス data。 */

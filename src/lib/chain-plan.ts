@@ -27,8 +27,10 @@ export type ChainSaveSpec = {
   sendSlots:              ChainSlotSpec[];
   /** 自由入力後の応答メッセージ id（freeInputNextMessageId に設定）。null 許容。 */
   freeInputResponseId?:   string | null;
-  /** 削除するメッセージ id。 */
+  /** 削除するメッセージ id（実体削除。参照ガード対象）。 */
   removedMessageIds?:     string[];
+  /** chain から外すメッセージ id（実体は残し nextMessageId=null。非破壊・参照ガード対象外）。 */
+  detachedMessageIds?:    string[];
 };
 
 export type WorkMessageRef = {
@@ -46,6 +48,8 @@ export type ChainPlanCode =
   | "RESPONSE_IN_SEND_CHAIN"
   | "DUPLICATE_MESSAGE"
   | "REMOVED_IN_CHAIN"
+  | "DETACHED_IN_CHAIN"
+  | "DETACHED_AND_REMOVED"
   | "REFERENCE_GUARD"
   | "CYCLE";
 
@@ -56,6 +60,8 @@ export type ChainPlanResult =
       freeInputAt:         number | null;
       freeInputResponseId: string | null;
       removedMessageIds:   string[];
+      /** chain から外す（nextMessageId=null・非破壊）id 群。 */
+      detachedMessageIds:  string[];
       /** 即時送信通数（head + sendSlots） */
       sendCount:           number;
       exceedsReplyLimit:   boolean;
@@ -77,6 +83,7 @@ function qrTargets(json: string | null | undefined): string[] {
 export function planChainSave(spec: ChainSaveSpec, work: WorkMessageRef[]): ChainPlanResult {
   const sendSlots = spec.sendSlots ?? [];
   const removedMessageIds = spec.removedMessageIds ?? [];
+  const detachedMessageIds = spec.detachedMessageIds ?? [];
   const responseId = spec.freeInputResponseId ?? null;
 
   // send chain の freeInput フラグ列（head 含む）
@@ -114,6 +121,17 @@ export function planChainSave(spec: ChainSaveSpec, work: WorkMessageRef[]): Chai
       return { ok: false, code: "REMOVED_IN_CHAIN", message: "削除対象が連続メッセージ/応答として使用されています。", detail: id };
     }
   }
+  // 切り離し対象（detach）の検証: send chain / 応答に含めない・削除と重複させない。
+  // detach は非破壊（実体を残し nextMessageId=null）なので参照ガードは掛けない。
+  const removedSet = new Set(removedMessageIds);
+  for (const id of detachedMessageIds) {
+    if (sendChainIds.includes(id) || id === responseId) {
+      return { ok: false, code: "DETACHED_IN_CHAIN", message: "切り離し対象が連続メッセージ/応答として使用されています。", detail: id };
+    }
+    if (removedSet.has(id)) {
+      return { ok: false, code: "DETACHED_AND_REMOVED", message: "同じメッセージを削除と切り離しの両方に指定できません。", detail: id };
+    }
+  }
 
   // 参照ガード: 削除対象が「この chain 外」から next/freeInputNext/QR target で参照されていないか
   const chainSet = new Set<string>([...sendChainIds, ...(responseId ? [responseId] : []), ...removedMessageIds]);
@@ -137,6 +155,7 @@ export function planChainSave(spec: ChainSaveSpec, work: WorkMessageRef[]): Chai
     freeInputAt,
     freeInputResponseId: responseId,
     removedMessageIds,
+    detachedMessageIds,
     sendCount,
     exceedsReplyLimit: sendCount > LINE_REPLY_LIMIT,
   };

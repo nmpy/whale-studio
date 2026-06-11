@@ -248,6 +248,62 @@ describe("PUT /api/messages/chain", () => {
     expect(data.lagMs).toBe(200);
   });
 
+  it("detach: 対象は nextMessageId=null に update され、削除されない（#6-4c）", async () => {
+    setWork([
+      { id: HEAD, phaseId: "ph-1", sortOrder: 0, nextMessageId: S1, updatedAt: new Date() },
+      { id: S1, phaseId: "ph-1", sortOrder: 1, nextMessageId: S2, updatedAt: new Date() },
+      { id: S2, phaseId: "ph-1", sortOrder: 2, nextMessageId: null, updatedAt: new Date() },
+    ]);
+    mockMessage.findMany
+      .mockReset()
+      .mockResolvedValueOnce([
+        { id: HEAD, phaseId: "ph-1", sortOrder: 0, nextMessageId: S1, updatedAt: new Date() },
+        { id: S1, phaseId: "ph-1", sortOrder: 1, nextMessageId: S2, updatedAt: new Date() },
+        { id: S2, phaseId: "ph-1", sortOrder: 2, nextMessageId: null, updatedAt: new Date() },
+      ])
+      .mockResolvedValue([{ id: HEAD, nextMessageId: S1 }, { id: S1, nextMessageId: null }]);
+
+    // H→S1→S2 のうち S2 を chain から外す（slots は S1 のみ）。
+    const res = await PUT(req({
+      work_id: WORK, head_id: HEAD, head: { body: "1" },
+      slots: [{ id: S1, body: "2" }],
+      detached_message_ids: [S2],
+    }), ctx) as Response;
+    expect(res.status).toBe(200);
+    // detach 対象は nextMessageId=null に update
+    const updates = Object.fromEntries(mockMessage.update.mock.calls.map((c) => [c[0].where.id, c[0].data]));
+    expect(updates[S2]).toEqual({ nextMessageId: null });
+    // 削除は呼ばれない
+    expect(mockMessage.deleteMany).not.toHaveBeenCalled();
+    // 残った chain は H→S1（S1.next=null）
+    expect(updates[HEAD].nextMessageId).toBe(S1);
+    expect(updates[S1].nextMessageId).toBe(null);
+  });
+
+  it("detach のみ（削除なし）は tester 権限で可", async () => {
+    setWork([
+      { id: HEAD, phaseId: "ph-1", sortOrder: 0, nextMessageId: S1, updatedAt: new Date() },
+      { id: S1, phaseId: "ph-1", sortOrder: 1, nextMessageId: null, updatedAt: new Date() },
+    ]);
+    await PUT(req({ work_id: WORK, head_id: HEAD, slots: [], detached_message_ids: [S1] }), ctx);
+    expect(mockRequireRole).toHaveBeenCalledWith("oa-1", "user-1", "tester");
+  });
+
+  it("detach と removed の重複は 422", async () => {
+    setWork([
+      { id: HEAD, phaseId: "ph-1", sortOrder: 0, nextMessageId: S1, updatedAt: new Date() },
+      { id: S1, phaseId: "ph-1", sortOrder: 1, nextMessageId: null, updatedAt: new Date() },
+    ]);
+    const res = await PUT(req({ work_id: WORK, head_id: HEAD, slots: [], removed_message_ids: [S1], detached_message_ids: [S1] }), ctx) as Response;
+    expect(res.status).toBe(422);
+  });
+
+  it("cross-work の detach id は 400", async () => {
+    setWork([{ id: HEAD, phaseId: "ph-1", sortOrder: 0, nextMessageId: null, updatedAt: new Date() }]);
+    const res = await PUT(req({ work_id: WORK, head_id: HEAD, slots: [], detached_message_ids: [OUT] }), ctx) as Response;
+    expect(res.status).toBe(400);
+  });
+
   it("transaction 途中失敗は 500（部分反映させない）", async () => {
     setWork([
       { id: HEAD, phaseId: "ph-1", sortOrder: 0, nextMessageId: S1, updatedAt: new Date() },

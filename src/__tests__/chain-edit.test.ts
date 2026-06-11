@@ -168,6 +168,40 @@ describe("buildChainSaveBody", () => {
       expect(a).toEqual(b);
     });
   });
+
+  // ── #6-4c: chain から外す（detach）──────────────────────
+  describe("detach（chainから外す）", () => {
+    it("detachedMessageIds が body に入り、detach した id は removed に入らない", () => {
+      // s2 を chain から外す（additionalMessages から除外 + detachedMessageIds に積む）
+      const body = buildChainSaveBody({
+        workId: "w", headId: "h", headBody: {}, headFreeInputEnabled: false, headFreeInputNextMessageId: "",
+        sendSlots: [slot({ existingId: "s1" })], // s2 は外したので残っていない
+        slotMain, initialSendSlotIds: ["s1", "s2"], detachedMessageIds: ["s2"],
+      });
+      expect(body.detached_message_ids).toEqual(["s2"]);
+      expect(body.removed_message_ids).toEqual([]); // 外しただけ＝削除しない
+      expect(body.slots.map((s) => s.id)).toEqual(["s1"]);
+    });
+
+    it("外していない欠落スロットは従来どおり removed に入る（detach と区別）", () => {
+      // s2 を外す / s3 は単純削除（detach 指定なし）
+      const body = buildChainSaveBody({
+        workId: "w", headId: "h", headBody: {}, headFreeInputEnabled: false, headFreeInputNextMessageId: "",
+        sendSlots: [slot({ existingId: "s1" })],
+        slotMain, initialSendSlotIds: ["s1", "s2", "s3"], detachedMessageIds: ["s2"],
+      });
+      expect(body.detached_message_ids).toEqual(["s2"]);
+      expect(body.removed_message_ids).toEqual(["s3"]);
+    });
+
+    it("detachedMessageIds 未指定なら空配列", () => {
+      const body = buildChainSaveBody({
+        workId: "w", headId: "h", headBody: {}, headFreeInputEnabled: false, headFreeInputNextMessageId: "",
+        sendSlots: [slot({ existingId: "s1" })], slotMain, initialSendSlotIds: ["s1"],
+      });
+      expect(body.detached_message_ids).toEqual([]);
+    });
+  });
 });
 
 describe("chainErrorToMessage", () => {

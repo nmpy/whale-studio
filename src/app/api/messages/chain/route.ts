@@ -109,6 +109,8 @@ const chainSaveSchema = z.object({
   slots:                     z.array(slotSchema).max(50),
   free_input_response_id:    z.string().uuid().optional().nullable(),
   removed_message_ids:       z.array(z.string().uuid()).optional(),
+  /** chain から外す（実体は残し nextMessageId=null）。非破壊・参照ガード対象外。 */
+  detached_message_ids:      z.array(z.string().uuid()).optional(),
 });
 
 type ContentInput = z.infer<typeof contentSchema>;
@@ -177,6 +179,8 @@ const PLAN_CODE_MESSAGE: Record<string, string> = {
   RESPONSE_IN_SEND_CHAIN: "RESPONSE_IN_SEND_CHAIN",
   DUPLICATE_MESSAGE: "DUPLICATE_MESSAGE",
   REMOVED_IN_CHAIN: "REMOVED_IN_CHAIN",
+  DETACHED_IN_CHAIN: "DETACHED_IN_CHAIN",
+  DETACHED_AND_REMOVED: "DETACHED_AND_REMOVED",
   REFERENCE_GUARD: "REFERENCE_GUARD",
   CYCLE: "CYCLE",
 };
@@ -190,8 +194,9 @@ export const PUT = withAuth(async (req: NextRequest, _ctx, user) => {
     }
     const input = parsed.data;
     const removedIds = input.removed_message_ids ?? [];
+    const detachedIds = input.detached_message_ids ?? [];
 
-    // 認可: 削除を含むなら owner、内容更新のみなら tester。
+    // 認可: 実体削除を含むなら owner、内容更新 / 切り離し（非破壊）のみなら tester。
     const oaId = await getOaIdFromWorkId(input.work_id);
     if (!oaId) return badRequest("work_id に該当する作品が見つかりません");
     const role = removedIds.length > 0 ? "owner" : "tester";
@@ -210,7 +215,7 @@ export const PUT = withAuth(async (req: NextRequest, _ctx, user) => {
 
     // 関係する全 id が work に属することを保証（cross-work 防御）
     const slotIds = input.slots.map((s) => s.id).filter((id): id is string => !!id);
-    const mustBelong = [...slotIds, ...removedIds, ...(input.free_input_response_id ? [input.free_input_response_id] : [])];
+    const mustBelong = [...slotIds, ...removedIds, ...detachedIds, ...(input.free_input_response_id ? [input.free_input_response_id] : [])];
     for (const id of mustBelong) {
       if (!byId.has(id)) return badRequest(`message ${id.slice(0, 8)} は work=${input.work_id.slice(0, 8)} に属していません`);
     }
@@ -230,6 +235,7 @@ export const PUT = withAuth(async (req: NextRequest, _ctx, user) => {
       sendSlots:             input.slots.map((s) => ({ id: s.id ?? null, freeInputEnabled: s.free_input_enabled ?? false })),
       freeInputResponseId:   input.free_input_response_id ?? null,
       removedMessageIds:     removedIds,
+      detachedMessageIds:    detachedIds,
     };
     const workRefs: WorkMessageRef[] = work.map((m) => ({
       id: m.id, nextMessageId: m.nextMessageId, freeInputNextMessageId: m.freeInputNextMessageId, quickReplies: m.quickReplies,
@@ -274,7 +280,13 @@ export const PUT = withAuth(async (req: NextRequest, _ctx, user) => {
         await tx.message.update({ where: { id }, data: data as Prisma.MessageUpdateInput });
       }
 
-      // 3) 削除
+      // 3) chain から外す（非破壊）: nextMessageId=null にして単体化。実体は残す。
+      //    freeInputEnabled / freeInputNextMessageId は保持（単体の freeInput メッセージとして残せる）。
+      for (const id of detachedIds) {
+        await tx.message.update({ where: { id }, data: { nextMessageId: null } });
+      }
+
+      // 4) 削除（実体消去）
       if (removedIds.length > 0) {
         await tx.message.deleteMany({ where: { id: { in: removedIds }, workId: input.work_id } });
       }

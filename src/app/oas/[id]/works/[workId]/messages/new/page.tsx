@@ -78,6 +78,7 @@ export default function NewMessagePage() {
           is_active:    mainBody.is_active,
         },
         initialSendSlotIds:         initialSendSlotIdsRef.current,
+        detachedMessageIds:         form.detachedMessageIds ?? [],
       });
 
       // 楽観ロック基準・削除基準を最新へ更新（再保存で誤判定・二重削除しないように）。

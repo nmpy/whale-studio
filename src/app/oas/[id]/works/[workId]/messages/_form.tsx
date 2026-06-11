@@ -170,6 +170,8 @@ export interface MessageFormState {
   correct_next_phase_id:    string;
   /** 2通目以降のメッセージ（チェーン送信） */
   additionalMessages: AdditionalMessageSlot[];
+  /** chain から外した既存メッセージ id（実体は残し保存時 nextMessageId=null・#6-4c）。 */
+  detachedMessageIds?: string[];
   // ── タップ遷移先 ──
   tap_destination_id:  string; // "" = 未設定
   tap_url:             string; // "" = 未設定
@@ -2804,12 +2806,15 @@ function buildPreviewChain(args: {
 // ────────────────────────────────────────────────────────
 
 function AdditionalMessageBlock({
-  index, slot, onChange, onRemove, onMoveUp, onMoveDown, canMoveUp, canMoveDown, oaId, workId, characters, allMessages,
+  index, slot, onChange, onRemove, onDetach, canDetach, onMoveUp, onMoveDown, canMoveUp, canMoveDown, oaId, workId, characters, allMessages,
 }: {
   index:      number;
   slot:       AdditionalMessageSlot;
   onChange:   (slot: AdditionalMessageSlot) => void;
   onRemove:   () => void;
+  /** chain から外す（#6-4c・非破壊）。保存済みスロット（existingId あり）でのみ有効。 */
+  onDetach?:    () => void;
+  canDetach?:   boolean;
   /** 上下移動（#6-3）。freeInput プロンプトは末尾固定のため両方 disabled になる。 */
   onMoveUp?:    () => void;
   onMoveDown?:  () => void;
@@ -2886,9 +2891,23 @@ function AdditionalMessageBlock({
           >
             ↓
           </button>
+          {canDetach && (
+            <button
+              type="button"
+              onClick={onDetach}
+              title="このメッセージは削除されません。連続メッセージから外れ、単体メッセージとして残ります。"
+              style={{
+                fontSize: 11, padding: "2px 10px", border: "1px solid #cbd5e1",
+                borderRadius: 6, background: "#fff", color: "#475569", cursor: "pointer",
+              }}
+            >
+              chainから外す
+            </button>
+          )}
           <button
             type="button"
             onClick={onRemove}
+            title="このメッセージを削除します。参照されている場合は削除できません。"
             style={{
               fontSize: 11, padding: "2px 10px", border: "1px solid #fecaca",
               borderRadius: 6, background: "#fff5f5", color: "#ef4444", cursor: "pointer",
@@ -4769,6 +4788,21 @@ export function MessageForm({
                       canMoveDown={canMove(form.additionalMessages, idx, "down")}
                       onMoveUp={() => setForm((prev) => ({ ...prev, additionalMessages: moveSlot(prev.additionalMessages, idx, "up") }))}
                       onMoveDown={() => setForm((prev) => ({ ...prev, additionalMessages: moveSlot(prev.additionalMessages, idx, "down") }))}
+                      canDetach={!!slot.existingId}
+                      onDetach={() => {
+                        const detachId = slot.existingId;
+                        if (!detachId) return;
+                        // 非破壊の切り離し。freeInput プロンプトの場合は応答保持の注意を添える。
+                        const note = slot.free_input_enabled
+                          ? "この自由入力メッセージはchainから外され、単体メッセージとして残ります。\n自由入力後の応答設定は保持されます。"
+                          : "このメッセージは削除されません。連続メッセージから外れ、単体メッセージとして残ります。";
+                        if (!window.confirm(`${note}\n\nchainから外しますか？`)) return;
+                        setForm((prev) => ({
+                          ...prev,
+                          additionalMessages: prev.additionalMessages.filter((_, i) => i !== idx),
+                          detachedMessageIds: [...(prev.detachedMessageIds ?? []), detachId],
+                        }));
+                      }}
                       onChange={(updated) => {
                         setForm((prev) => ({
                           ...prev,
