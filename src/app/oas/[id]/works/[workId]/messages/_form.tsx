@@ -10,6 +10,7 @@ import { Breadcrumb } from "@/components/Breadcrumb";
 import type { PhaseWithCounts, Character, QuickReplyItem, QuickReplyAction, ReadReceiptMode } from "@/types";
 import type { Riddle } from "@/types";
 import { PhaseTransitionsSection } from "./_phase-transitions";
+import { previewQrSend, type QrPreviewMessage } from "./_qr-preview";
 import { nextTransitionDisabledByPuzzle } from "@/lib/message-flow";
 import { TapDestinationSection } from "@/components/destination/TapDestinationSection";
 import type { TapMode } from "@/components/destination/TapDestinationSection";
@@ -792,9 +793,11 @@ interface QuickReplyEditorProps {
   workId?: string;
   oaId?: string;
   destinations?: LineDestination[];
+  /** 配信単位プレビュー用: work 内の全 message（chain walk / フェーズ入場算出） */
+  allMessages?: QrPreviewMessage[];
 }
 
-function QuickReplyEditor({ items, onChange, responseMessages, phases, transitionMessages, characters = [], workId, oaId, destinations = [] }: QuickReplyEditorProps) {
+function QuickReplyEditor({ items, onChange, responseMessages, phases, transitionMessages, characters = [], workId, oaId, destinations = [], allMessages = [] }: QuickReplyEditorProps) {
   const [open, setOpen]               = useState(false);
   const [expandedSet, setExpandedSet] = useState<Set<number>>(new Set());
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
@@ -1264,6 +1267,39 @@ function QuickReplyEditor({ items, onChange, responseMessages, phases, transitio
                                 Step 2 の応答メッセージを返した後、ここへ進みます。どのフェーズも選択可能です。
                               </div>
                             )}
+
+                            {/* 配信単位プレビュー（実送信ロジック準拠） */}
+                            {(() => {
+                              const pv = previewQrSend(item, allMessages);
+                              if (pv.mode === "none" || allMessages.length === 0) return null;
+                              return (
+                                <div style={{ marginTop: 8, padding: "8px 10px", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 6, fontSize: 11, lineHeight: 1.6 }}>
+                                  {pv.mode === "message_chain" && (
+                                    <div style={{ color: "#7c3aed", marginBottom: 6 }}>
+                                      ℹ️ このQRは<strong>指定メッセージの連続メッセージのみ</strong>送信します。同じフェーズ内の後続メッセージは自動では送信されません（続けたい場合は QR / 自由入力 / フェーズ遷移で明示的に接続してください）。
+                                    </div>
+                                  )}
+                                  <div style={{ fontWeight: 700, color: "#475569" }}>
+                                    このQRで送信されるメッセージ: {pv.total}通{pv.mode === "phase_entry" ? "（フェーズ入場）" : ""}
+                                  </div>
+                                  <ol style={{ margin: "4px 0 0", paddingLeft: 18, color: "#475569" }}>
+                                    {pv.messages.map((mm) => (
+                                      <li key={mm.id}>{(mm.body ?? `(${mm.message_type ?? "?"})`).replace(/\n/g, " ").slice(0, 24)}</li>
+                                    ))}
+                                  </ol>
+                                  {pv.overLimit && pv.overflowKind === "dropped" && (
+                                    <div style={{ marginTop: 6, color: "#b91c1c" }}>
+                                      ⚠️ この連続メッセージは{pv.fullTotal}通あり、5通を超えています。<strong>6通目以降は送信されません</strong>（1チェーン最大5通）。5通以内に分割するか、QR / 自由入力 / フェーズ遷移で区切ってください。
+                                    </div>
+                                  )}
+                                  {pv.overLimit && pv.overflowKind === "push" && (
+                                    <div style={{ marginTop: 6, color: "#b91c1c" }}>
+                                      ⚠️ この送信は合計{pv.total}通で、5通を超えています。<strong>6通目以降は Push 送信</strong>となり、月間上限などにより届かない可能性があります。QR / 自由入力 / フェーズ遷移で5通以内に区切ることをおすすめします。
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })()}
                           </div>
                         )}
 
@@ -4742,6 +4778,7 @@ export function MessageForm({
             workId={workId}
             oaId={oaId}
             destinations={destinations}
+            allMessages={allMessages}
           />
 
           {/* ════════════════════════════════════════
@@ -5039,6 +5076,7 @@ export function MessageForm({
                 workId={workId}
                 oaId={oaId}
                 destinations={destinations}
+                allMessages={allMessages}
               />
             </div>
 
