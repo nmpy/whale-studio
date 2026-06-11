@@ -12,7 +12,9 @@ import type { Riddle } from "@/types";
 import { PhaseTransitionsSection } from "./_phase-transitions";
 import { previewQrSend, type QrPreviewMessage } from "./_qr-preview";
 import { previewChainSend } from "./_chain-send-preview";
-import { moveSlot, insertSlotAt, appendSlot, canMove, canInsertAt, hasFreeInputSlot } from "./_chain-reorder";
+import { moveSlot, insertSlotAt, appendSlot, canMove, canInsertAt, hasFreeInputSlot, appendIndex } from "./_chain-reorder";
+import { ImportPicker } from "./_import-picker";
+import { toImportMessage, insertImportedSlots } from "./_chain-import";
 import { nextTransitionDisabledByPuzzle } from "@/lib/message-flow";
 import { TapDestinationSection } from "@/components/destination/TapDestinationSection";
 import type { TapMode } from "@/components/destination/TapDestinationSection";
@@ -3415,7 +3417,15 @@ export function MessageForm({
     message_type?: string;
     asset_url?: string | null;
     free_input_enabled?: boolean;
+    // 既存メッセージ取り込み（PR3b）用
+    work_id?: string | null;
+    is_active?: boolean;
+    created_at?: string | null;
+    free_input_next_message_id?: string | null;
   }[]>([]);
+
+  // ── 既存メッセージ取り込み（PR3b-2）──
+  const [importPicker, setImportPicker] = useState<{ insertIndex: number; appendAtEnd: boolean } | null>(null);
 
   // ── destination 選択用 ──
   const [destinations, setDestinations] = useState<LineDestination[]>([]);
@@ -3452,6 +3462,10 @@ export function MessageForm({
         message_type:       m.message_type,
         asset_url:          m.asset_url,
         free_input_enabled: m.free_input_enabled,
+        work_id:                    m.work_id,
+        is_active:                  m.is_active,
+        created_at:                 m.created_at,
+        free_input_next_message_id: m.free_input_next_message_id,
       })));
     }).catch(() => {});
   }, [workId, oaId]);
@@ -4821,7 +4835,7 @@ export function MessageForm({
                     {/* スロット間「＋ここに追加」（#6-3）。freeInput より下には出さない（末尾固定）。
                         head 自体が freeInput プロンプトのときは送信 chain に slot を足せない。 */}
                     {!headFree && canInsertAt(form.additionalMessages, idx + 1) && (
-                      <div style={{ display: "flex", justifyContent: "center", margin: "6px 0" }}>
+                      <div style={{ display: "flex", justifyContent: "center", gap: 6, margin: "6px 0" }}>
                         <button
                           type="button"
                           onClick={() => setForm((prev) => ({
@@ -4835,6 +4849,21 @@ export function MessageForm({
                         >
                           ＋ ここに追加
                         </button>
+                        {!isNew && messageId && (
+                          <button
+                            type="button"
+                            onClick={() => setImportPicker({
+                              insertIndex: idx + 1,
+                              appendAtEnd: !hasFreeInputSlot(form.additionalMessages) && idx + 1 === form.additionalMessages.length,
+                            })}
+                            style={{
+                              fontSize: 11, padding: "3px 12px", border: "1px dashed #93c5fd", borderRadius: 999,
+                              background: "#fff", color: "#2563eb", cursor: "pointer",
+                            }}
+                          >
+                            ＋ 既存を取り込む
+                          </button>
+                        )}
                       </div>
                     )}
                   </div>
@@ -4870,6 +4899,24 @@ export function MessageForm({
                 {hasFreeInputSlot(form.additionalMessages)
                   ? "＋ 自由入力の前にメッセージを追加"
                   : `＋ メッセージを追加（${form.additionalMessages.length + 2}通目）`}
+              </button>
+            )}
+
+            {/* 既存メッセージ取り込み（#6-4d・PR3b-2）。head が確定している編集時のみ。 */}
+            {!form.free_input_enabled && !isNew && messageId && (
+              <button
+                type="button"
+                onClick={() => setImportPicker({
+                  insertIndex: appendIndex(form.additionalMessages),
+                  appendAtEnd: !hasFreeInputSlot(form.additionalMessages),
+                })}
+                style={{
+                  marginTop: 8, width: "100%", padding: "8px 0",
+                  border: "1px dashed #93c5fd", borderRadius: 8, background: "#eff6ff",
+                  color: "#2563eb", fontSize: 12, fontWeight: 600, cursor: "pointer",
+                }}
+              >
+                ＋ 既存メッセージを取り込む
               </button>
             )}
 
@@ -5404,6 +5451,39 @@ export function MessageForm({
           />
         </div>
       </div>
+
+      {/* 既存メッセージ取り込み modal（#6-4d・PR3b-2）。form state へ反映するのみ（DB保存は通常の「保存」）。 */}
+      {importPicker && messageId && (() => {
+        const targetChainIds = [
+          messageId,
+          ...form.additionalMessages.map((s) => s.existingId).filter((x): x is string => !!x),
+        ];
+        const pv = previewChainSend(
+          { body: form.body, message_type: form.message_type, free_input_enabled: form.free_input_enabled },
+          form.additionalMessages.map((s) => ({ body: s.body, message_type: s.message_type, free_input_enabled: s.free_input_enabled })),
+        );
+        return (
+          <ImportPicker
+            open
+            onClose={() => setImportPicker(null)}
+            targetHeadId={messageId}
+            workId={workId}
+            targetPhaseId={form.phase_id || null}
+            targetChainIds={targetChainIds}
+            targetSendCount={pv.total}
+            insertIndex={importPicker.insertIndex}
+            appendAtEnd={importPicker.appendAtEnd}
+            importMessages={allMessages.map(toImportMessage)}
+            phaseNames={Object.fromEntries(phases.map((p) => [p.id, p.name]))}
+            onImport={(slots, insertIndex) =>
+              setForm((prev) => ({
+                ...prev,
+                additionalMessages: insertImportedSlots(prev.additionalMessages, insertIndex, slots),
+              }))
+            }
+          />
+        );
+      })()}
     </>
   );
 }
