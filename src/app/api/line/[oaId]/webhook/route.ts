@@ -1942,16 +1942,13 @@ async function handleTextEvent({
     return;
   }
 
-  // ─ エンディング到達済み ─
-  //   開始意図がある場合（isStartIntent）→ 再スタート。
-  //   それ以外のテキスト → 無視（シナリオ定義に委ねる）。
-  if (progress.reachedEnding) {
-    if (isStartIntent(text)) {
-      console.log(`[Webhook][STEP] エンディング到達済み + 開始意図あり → handleStart userId=${userId}`);
-      await handleStart({ oa, work, systemSender, userId, replyToken, vars });
-      return;
-    }
-    console.log(`[Webhook][STEP] エンディング到達済み → 無視 userId=${userId} text="${text.slice(0, 40)}"`);
+  // ─ エンディング到達済み + 開始意図 → 再スタート（最優先・phase ロード前）─
+  //   #243/案A: 開始意図以外のテキストはここで即 return せず、currentPhase + matchedQrItem を
+  //   算出した後に判定する。ending 内でも frontier スコープの QR ナビゲーション（E→D 等）だけは
+  //   許可したいため（reachedEnding 短絡で QR が評価されない不具合の対応）。
+  if (progress.reachedEnding && isStartIntent(text)) {
+    console.log(`[Webhook][STEP] エンディング到達済み + 開始意図あり → handleStart userId=${userId}`);
+    await handleStart({ oa, work, systemSender, userId, replyToken, vars });
     return;
   }
 
@@ -1992,87 +1989,10 @@ async function handleTextEvent({
   const keywordMatched = currentPhase ? matchKeywordsInMemory(currentPhase.messages, globalKwMsgs, text)                 : [];
   const puzzleResult   = currentPhase ? matchPuzzleFromPhase(currentPhase, text, solvedPuzzleIds, userSegment)           : null;
 
-  if (!currentPhase) {
-    console.log(`[Webhook][STEP] メッセージ送信前 (currentPhaseなし) userId=${userId}`);
-    await replyToLine(replyToken, [{
-      type:   "text",
-      text:   "「はじめる」と送ってシナリオをスタートしてください。",
-      sender: systemSender,
-    }], token);
-    return;
-  }
-
-  // ─ hint quickReply 照合（最優先）─
-  // ℹ️ ヒント返答は進行状態（currentPhaseId / reachedEnding）を変えない。
-  //    ただしヒント使用率の集計のため、初回タップ時のみ flags.hint_used = true をセットする。
-  if (hintResult !== null) {
-    console.log(`[Webhook][STEP] hint quickReply マッチ userId=${userId} hintText="${hintResult.hintText.slice(0, 40)}"`);
-
-    // ヒント使用フラグを flags に記録（初回のみ書き込み。レスポンス遅延を避けるため fire-and-forget）
-    if (!currentFlags.hint_used) {
-      const newFlagsWithHint = applySetFlags(currentFlags, '{"hint_used": true}');
-      prisma.userProgress.update({
-        where: { id: progress.id },
-        data:  { flags: JSON.stringify(newFlagsWithHint) },
-      }).catch((e) => console.warn("[Webhook] hint_used flag update failed:", e));
-    }
-
-    // ヒント話者を解決する（hint_character_id が設定されていればそのキャラクター、なければ systemSender）
-    const hintCharId = (hintResult.matchedItem as { hint_character_id?: string | null }).hint_character_id;
-    let hintSender = systemSender;
-    if (hintCharId) {
-      const hintChar = await getCachedCharacter(hintCharId);
-      if (hintChar) hintSender = buildSenderFromCharacter(hintChar);
-    }
-
-    const hintMsgs: import("@/lib/line").LineMessage[] = [
-      { type: "text" as const, text: hintResult.hintText, sender: hintSender },
-      ...(hintResult.hintFollowup
-        ? [{ type: "text" as const, text: hintResult.hintFollowup, sender: hintSender } as import("@/lib/line").LineMessage]
-        : []),
-    ];
-    // ヒント返答後の導線 QR（同じ QR を再表示せず、「さらにヒント」「問題に戻る」を構築）
-    const hintItems = hintResult.qrItems
-      .filter((i) => i.action === "hint" && i.enabled !== false)
-      .sort((a, b) => ((a as { hint_level?: number }).hint_level ?? 999) - ((b as { hint_level?: number }).hint_level ?? 999));
-    const currentHintIdx = hintItems.indexOf(hintResult.matchedItem);
-    const nextHintItem   = currentHintIdx >= 0 && currentHintIdx + 1 < hintItems.length
-      ? hintItems[currentHintIdx + 1]
-      : null;
-
-    const navQrItems: import("@/types").QuickReplyItem[] = [];
-    if (nextHintItem) {
-      const nextLabel = (hintResult.matchedItem as { hint_next_label?: string }).hint_next_label?.trim() || "さらにヒント";
-      navQrItems.push({
-        label:  nextLabel,
-        action: "text",
-        value:  (nextHintItem.value?.trim() || nextHintItem.label).slice(0, 20),
-      });
-    }
-    const cancelLabel = (hintResult.matchedItem as { hint_cancel_label?: string }).hint_cancel_label?.trim() || "問題に戻る";
-    navQrItems.push({ label: cancelLabel, action: "text", value: cancelLabel });
-
-    const hintNavQr = buildQuickReplyFromItems(navQrItems);
-    if (hintNavQr) (hintMsgs[hintMsgs.length - 1] as import("@/lib/line").LineTextMessage).quickReply = hintNavQr;
-    const tReplyHint = Date.now();
-    await replyToLine(replyToken, hintMsgs, token);
-    console.log(
-      `[perf][event] path=hint total=${Date.now() - t0e}ms` +
-      ` progress=${progressHit ? "HIT" : "MISS"}:${progressFindMs}ms` +
-      ` phase=${phaseHit ? "hit" : "miss"}` +
-      ` reply:${Date.now() - tReplyHint}ms`,
-    );
-    return;
-  }
-
-  // ─ 統合 QR アイテム処理（ヒント照合の次）─
-  //
-  //  QR タップ時の処理フロー:
-  //    Step 1 — ユーザー入力として QR ラベルを送信（LINE が自動で行う）
-  //    Step 2 — response_message_id が設定されていれば応答メッセージを返す
-  //    Step 3 — target_message_id / target_phase_id が設定されていれば遷移先へ進む
-  //
-  if (matchedQrItem !== null) {
+  // QR マッチ時の送信処理（response_message / target_message / target_phase）を関数化。
+  // 通常フローと「ending 到達後の frontier QR ナビ（案A）」で共用し重複を避ける。
+  // 送信して完了したら true、何も送れずフォールスルーすべきときは false を返す。
+  const deliverMatchedQr = async (matchedQrItem: import("@/types").QuickReplyItem): Promise<boolean> => {
     console.log(`[Webhook][STEP] qrItem マッチ userId=${userId}`,
       `response_message_id=${matchedQrItem.response_message_id?.slice(0, 8) ?? "none"}`,
       `target_type=${matchedQrItem.target_type ?? "none"}`,
@@ -2175,7 +2095,7 @@ async function handleTextEvent({
           progressId: progress?.id,
         });
         console.log(`[perf][event] path=qrItem_message total=${Date.now() - t0e}ms reply:${Date.now() - tReplyQrMsg}ms`);
-        return;
+        return true;
       }
       // qrMsgs が空の場合はフォールスルー（keyword/transition へ）
     }
@@ -2213,7 +2133,7 @@ async function handleTextEvent({
           });
           console.log(`[perf][event] path=qrItem_phase total=${Date.now() - t0e}ms reply:${Date.now() - tReplyQrPh}ms`);
           void switchRichMenuForUser(oa, userId, toPhaseRow.phaseType);
-          return;
+          return true;
         }
       } catch (e) {
         console.warn("[Webhook] qrItem target_phase transition error:", e);
@@ -2235,9 +2155,110 @@ async function handleTextEvent({
         progressId: progress?.id,
       });
       console.log(`[perf][event] path=qrItem_response total=${Date.now() - t0e}ms reply:${Date.now() - tReplyQrResp}ms`);
-      return;
+      return true;
     }
     // qrMsgs が空（応答メッセージも遷移先も解決できなかった）→ フォールスルー
+    return false;
+  };
+
+  // ─ エンディング到達済み（startIntent は phase ロード前に処理済み）─
+  //   案A: frontier がある場合のみ matchedQrItem を評価し、ending 内 QR ナビ（E→D 等）だけ許可する。
+  //   frontier=null（レガシー/空）や無関係テキストは従来どおり無視し、
+  //   hint / keyword / puzzle / transition には進めない（reachedEnding の意味を維持）。
+  if (progress.reachedEnding) {
+    const endingFrontier = parseFrontier(progress.lastSentMessageIds);
+    if (endingFrontier && matchedQrItem && (await deliverMatchedQr(matchedQrItem))) {
+      console.log(`[Webhook][STEP] エンディング到達済み + frontier QR ナビ実行 userId=${userId}`);
+      return;
+    }
+    console.log(`[Webhook][STEP] エンディング到達済み → 無視 userId=${userId} text="${text.slice(0, 40)}"`);
+    return;
+  }
+
+  if (!currentPhase) {
+    console.log(`[Webhook][STEP] メッセージ送信前 (currentPhaseなし) userId=${userId}`);
+    await replyToLine(replyToken, [{
+      type:   "text",
+      text:   "「はじめる」と送ってシナリオをスタートしてください。",
+      sender: systemSender,
+    }], token);
+    return;
+  }
+
+  // ─ hint quickReply 照合（最優先）─
+  // ℹ️ ヒント返答は進行状態（currentPhaseId / reachedEnding）を変えない。
+  //    ただしヒント使用率の集計のため、初回タップ時のみ flags.hint_used = true をセットする。
+  if (hintResult !== null) {
+    console.log(`[Webhook][STEP] hint quickReply マッチ userId=${userId} hintText="${hintResult.hintText.slice(0, 40)}"`);
+
+    // ヒント使用フラグを flags に記録（初回のみ書き込み。レスポンス遅延を避けるため fire-and-forget）
+    if (!currentFlags.hint_used) {
+      const newFlagsWithHint = applySetFlags(currentFlags, '{"hint_used": true}');
+      prisma.userProgress.update({
+        where: { id: progress.id },
+        data:  { flags: JSON.stringify(newFlagsWithHint) },
+      }).catch((e) => console.warn("[Webhook] hint_used flag update failed:", e));
+    }
+
+    // ヒント話者を解決する（hint_character_id が設定されていればそのキャラクター、なければ systemSender）
+    const hintCharId = (hintResult.matchedItem as { hint_character_id?: string | null }).hint_character_id;
+    let hintSender = systemSender;
+    if (hintCharId) {
+      const hintChar = await getCachedCharacter(hintCharId);
+      if (hintChar) hintSender = buildSenderFromCharacter(hintChar);
+    }
+
+    const hintMsgs: import("@/lib/line").LineMessage[] = [
+      { type: "text" as const, text: hintResult.hintText, sender: hintSender },
+      ...(hintResult.hintFollowup
+        ? [{ type: "text" as const, text: hintResult.hintFollowup, sender: hintSender } as import("@/lib/line").LineMessage]
+        : []),
+    ];
+    // ヒント返答後の導線 QR（同じ QR を再表示せず、「さらにヒント」「問題に戻る」を構築）
+    const hintItems = hintResult.qrItems
+      .filter((i) => i.action === "hint" && i.enabled !== false)
+      .sort((a, b) => ((a as { hint_level?: number }).hint_level ?? 999) - ((b as { hint_level?: number }).hint_level ?? 999));
+    const currentHintIdx = hintItems.indexOf(hintResult.matchedItem);
+    const nextHintItem   = currentHintIdx >= 0 && currentHintIdx + 1 < hintItems.length
+      ? hintItems[currentHintIdx + 1]
+      : null;
+
+    const navQrItems: import("@/types").QuickReplyItem[] = [];
+    if (nextHintItem) {
+      const nextLabel = (hintResult.matchedItem as { hint_next_label?: string }).hint_next_label?.trim() || "さらにヒント";
+      navQrItems.push({
+        label:  nextLabel,
+        action: "text",
+        value:  (nextHintItem.value?.trim() || nextHintItem.label).slice(0, 20),
+      });
+    }
+    const cancelLabel = (hintResult.matchedItem as { hint_cancel_label?: string }).hint_cancel_label?.trim() || "問題に戻る";
+    navQrItems.push({ label: cancelLabel, action: "text", value: cancelLabel });
+
+    const hintNavQr = buildQuickReplyFromItems(navQrItems);
+    if (hintNavQr) (hintMsgs[hintMsgs.length - 1] as import("@/lib/line").LineTextMessage).quickReply = hintNavQr;
+    const tReplyHint = Date.now();
+    await replyToLine(replyToken, hintMsgs, token);
+    console.log(
+      `[perf][event] path=hint total=${Date.now() - t0e}ms` +
+      ` progress=${progressHit ? "HIT" : "MISS"}:${progressFindMs}ms` +
+      ` phase=${phaseHit ? "hit" : "miss"}` +
+      ` reply:${Date.now() - tReplyHint}ms`,
+    );
+    return;
+  }
+
+  // ─ 統合 QR アイテム処理（ヒント照合の次）─
+  //
+  //  QR タップ時の処理フロー:
+  //    Step 1 — ユーザー入力として QR ラベルを送信（LINE が自動で行う）
+  //    Step 2 — response_message_id が設定されていれば応答メッセージを返す
+  //    Step 3 — target_message_id / target_phase_id が設定されていれば遷移先へ進む
+  //
+  // QR マッチ時は共通の deliverMatchedQr で送信（ending 内ナビと処理を共用）。
+  // 送信できれば終了、フォールスルー（qrMsgs 空）時のみ keyword/transition へ進む。
+  if (matchedQrItem !== null) {
+    if (await deliverMatchedQr(matchedQrItem)) return;
   }
 
   // ─ triggerKeyword 照合 ─
