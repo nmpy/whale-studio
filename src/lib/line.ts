@@ -750,40 +750,57 @@ export async function replyWithLagToLine(
   //  6 件以上のときだけ、やむを得ず先頭 5 件を Reply・残りを Push（lag/typing 演出付き）で送る。
   const REPLY_MAX = 5;
 
-  // ≤5 件: 全件 Reply 1 リクエスト（Push 通数を消費しない・確実に届く）
-  if (messages.length <= REPLY_MAX) {
+  // ── 送信戦略の決定 ──
+  //  2 通目以降に per-message 演出（_timing / _lagMs）が設定されていれば、head のみ Reply・
+  //  残りを Push で 1 件ずつ送り「各メッセージ送信前に演出（typing / loading / 待機）を反映」する。
+  //  LINE Reply API は 1 リクエストで複数件を“ほぼ同時着”させるため、Reply 一括では message 間に
+  //  演出を挟めない（＝従来は 2 通目以降の typing/loading/lag が無視されていた）。
+  //  演出設定が無ければ従来どおり最大 5 件を 1 回の Reply にまとめ、Push 通数節約・配信確実性を優先する。
+  //  ※ head (= messages[0]) の演出は呼び出し元 wrapper が Reply 前に適用済み。ここでは 2 通目以降を担う。
+  const perMessageTiming = messages
+    .slice(1)
+    .some((m) => m._timing != null || (m._lagMs != null && m._lagMs > 0));
+  const replyCount = perMessageTiming ? 1 : REPLY_MAX;
+
+  // reply 件数以内に収まる: 全件 Reply 1 リクエスト（Push 通数を消費しない・確実に届く）
+  // （perMessageTiming=true のときは head 1 件のみがここに該当＝単発相当）
+  if (messages.length <= replyCount) {
     await replyToLine(replyToken, messages, channelAccessToken);
     console.info("[line:reply-lag:summary]", JSON.stringify({
-      strategy:   "reply_all",
-      replyTotal: messages.length,
-      pushTotal:  0,
-      pushOk:     0,
-      pushFail:   0,
-      failures:   [],
+      strategy:        "reply_all",
+      perMessageTiming,
+      replyTotal:      messages.length,
+      pushTotal:       0,
+      pushOk:          0,
+      pushFail:        0,
+      failures:        [],
     }));
-    console.log(`[replyWithLagToLine] strategy=reply_all reply=${messages.length} push=0 total=${messages.length}`);
+    console.log(`[replyWithLagToLine] strategy=reply_all reply=${messages.length} push=0 total=${messages.length} perMessageTiming=${perMessageTiming}`);
     return;
   }
 
-  // ── >5 件: 先頭 5 件を Reply・6 件目以降を Push（fallback・lag/typing 演出付き） ──
-  const replyBatch = messages.slice(0, REPLY_MAX);
-  const pushRest   = messages.slice(REPLY_MAX);
+  // ── head を Reply・残りを Push（per-message 演出付き） ──
+  //  perMessageTiming=true  → head 1 件のみ Reply、2 通目以降を Push で個別演出（typing/loading/lag）。
+  //  perMessageTiming=false → 先頭 5 件を Reply、6 件目以降を Push（従来の通数節約 fallback）。
+  const replyBatch = messages.slice(0, replyCount);
+  const pushRest   = messages.slice(replyCount);
 
-  // [diag] sequence 全体: 各 message の id + lag + timing 概要を出す
+  // [diag] sequence 全体: 各 message の id + 戦略を出す
   console.log(
-    `[diag][timing-sequence] count=${messages.length} ids=[${messages.map((m) => idOf(m)).join(",")}]`,
+    `[diag][timing-sequence] count=${messages.length} perMessageTiming=${perMessageTiming} ids=[${messages.map((m) => idOf(m)).join(",")}]`,
   );
 
-  // 先頭 5 件を Reply API で即送信（replyToken の有効期限内に必ず呼ぶ）
+  // head を Reply API で即送信（replyToken の有効期限内に必ず呼ぶ）
   await replyToLine(replyToken, replyBatch, channelAccessToken);
 
-  // chain 送信に入る前に webhook-level scheduleLoading を抑止（push ループで per-message に処理する）
+  // push ループに入る前に webhook-level scheduleLoading を抑止（push ループで per-message に処理する）
   if (controller) {
     controller.abortPendingLoading();
-    console.log(`[diag][timing-loading-abort] push fallback 開始のため webhook scheduleLoading を abort`);
+    console.log(`[diag][timing-loading-abort] push 開始のため webhook scheduleLoading を abort`);
   }
 
-  console.log(`[replyWithLagToLine] strategy=reply_first_5_push_rest reply=${replyBatch.length}件 push=${pushRest.length}件 total=${messages.length}件`);
+  const strategy = perMessageTiming ? "reply_head_push_rest_timed" : "reply_first_5_push_rest";
+  console.log(`[replyWithLagToLine] strategy=${strategy} reply=${replyBatch.length}件 push=${pushRest.length}件 total=${messages.length}件`);
   let pushOk = 0;
   let pushFail = 0;
   const pushFailures: { idx: number; msgId: string | null; status: number | null }[] = [];
@@ -813,16 +830,17 @@ export async function replyWithLagToLine(
   }
   // 送信結果サマリ（PII・本文なし）。push が失敗しても webhook は 200 で返るため可視化する。
   console.info("[line:reply-lag:summary]", JSON.stringify({
-    strategy:   "reply_first_5_push_rest",
-    // Push fallback が起きた理由を明示（LINE Reply API は 1 回最大 5 件のため）。
-    reason:     "line_reply_limit_5",
+    strategy,
+    perMessageTiming,
+    // Push が起きた理由: per-message 演出のため or LINE Reply 1 回 5 件上限のため。
+    reason:     perMessageTiming ? "per_message_timing" : "line_reply_limit_5",
     replyTotal: replyBatch.length,
     pushTotal:  pushRest.length,
     pushOk,
     pushFail,
     failures:   pushFailures,
   }));
-  console.log(`[replyWithLagToLine] 完了 strategy=reply_first_5_push_rest reply=${replyBatch.length} push=${pushRest.length}(ok=${pushOk}/fail=${pushFail}) total=${messages.length}`);
+  console.log(`[replyWithLagToLine] 完了 strategy=${strategy} reply=${replyBatch.length} push=${pushRest.length}(ok=${pushOk}/fail=${pushFail}) total=${messages.length}`);
 }
 
 /** [diag] LineMessage の識別用に内部 id を取り出す。
