@@ -11,6 +11,7 @@ import type { PhaseWithCounts, Character, QuickReplyItem, QuickReplyAction, Read
 import type { Riddle } from "@/types";
 import { PhaseTransitionsSection } from "./_phase-transitions";
 import { previewQrSend, type QrPreviewMessage } from "./_qr-preview";
+import { previewChainSend } from "./_chain-send-preview";
 import { nextTransitionDisabledByPuzzle } from "@/lib/message-flow";
 import { TapDestinationSection } from "@/components/destination/TapDestinationSection";
 import type { TapMode } from "@/components/destination/TapDestinationSection";
@@ -4704,31 +4705,48 @@ export function MessageForm({
             </div>{/* /1通目ラッパー */}
 
             {/* === 2通目以降 === */}
-            {form.additionalMessages.map((slot, idx) => (
-              <AdditionalMessageBlock
-                key={slot.existingId ?? `slot-${idx}`}
-                index={idx}
-                slot={slot}
-                oaId={oaId}
-                workId={workId}
-                characters={characters}
-                allMessages={allMessages}
-                onChange={(updated) => {
-                  setForm((prev) => ({
-                    ...prev,
-                    additionalMessages: prev.additionalMessages.map((s, i) =>
-                      i === idx ? updated : s
-                    ),
-                  }));
-                }}
-                onRemove={() => {
-                  setForm((prev) => ({
-                    ...prev,
-                    additionalMessages: prev.additionalMessages.filter((_, i) => i !== idx),
-                  }));
-                }}
-              />
-            ))}
+            {/* freeInput 境界: head か途中スロットが freeInput なら、それ以降は「自由入力後の応答」。
+                runtime（buildMessageChain/buildPhaseMessages）は freeInput で即時送信を停止するため、
+                以降のスロットは通常の連続送信では届かない。編集UI上でも区切って明示する。 */}
+            {(() => {
+              const headFree   = !!form.free_input_enabled;
+              const fiSlotIdx  = form.additionalMessages.findIndex((s) => s.free_input_enabled);
+              const firstAfter = headFree ? 0 : (fiSlotIdx >= 0 ? fiSlotIdx + 1 : -1);
+              return form.additionalMessages.map((slot, idx) => {
+                const afterFreeInput = firstAfter >= 0 && idx >= firstAfter;
+                return (
+                  <div key={slot.existingId ?? `slot-${idx}`}>
+                    {afterFreeInput && idx === firstAfter && (
+                      <div style={{ margin: "12px 0 4px", padding: "6px 10px", background: "#faf5ff", border: "1px dashed #d8b4fe", borderRadius: 6, fontSize: 11, color: "#7c3aed", lineHeight: 1.6 }}>
+                        ── ここから下は<strong>自由入力後の応答</strong>です。通常の連続メッセージとしては送信されず、ユーザーが自由入力を送信した後に配信されます。──
+                      </div>
+                    )}
+                    <AdditionalMessageBlock
+                      index={idx}
+                      slot={slot}
+                      oaId={oaId}
+                      workId={workId}
+                      characters={characters}
+                      allMessages={allMessages}
+                      onChange={(updated) => {
+                        setForm((prev) => ({
+                          ...prev,
+                          additionalMessages: prev.additionalMessages.map((s, i) =>
+                            i === idx ? updated : s
+                          ),
+                        }));
+                      }}
+                      onRemove={() => {
+                        setForm((prev) => ({
+                          ...prev,
+                          additionalMessages: prev.additionalMessages.filter((_, i) => i !== idx),
+                        }));
+                      }}
+                    />
+                  </div>
+                );
+              });
+            })()}
 
             {/* 追加ボタン */}
             <button
@@ -4754,6 +4772,55 @@ export function MessageForm({
             >
               ＋ メッセージを追加（{form.additionalMessages.length + 2}通目）
             </button>
+
+            {/* 実機での送信プレビュー（freeInput停止・応答分離・5通超え・QR末尾。runtime準拠） */}
+            {(() => {
+              const pv = previewChainSend(
+                { body: form.body, message_type: form.message_type, free_input_enabled: form.free_input_enabled },
+                form.additionalMessages.map((s) => ({ body: s.body, message_type: s.message_type, free_input_enabled: s.free_input_enabled })),
+              );
+              return (
+                <div style={{ marginTop: 16, padding: "12px 14px", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 12, lineHeight: 1.7 }}>
+                  <div style={{ fontWeight: 700, color: "#334155", marginBottom: 4 }}>
+                    📤 実機での送信プレビュー（このメッセージで一度に届く順）
+                  </div>
+                  <div style={{ color: "#475569" }}>このメッセージで送信: <strong>{pv.total}通</strong></div>
+                  <ol style={{ margin: "4px 0 0", paddingLeft: 20 }}>
+                    {pv.sendMessages.map((m) => (
+                      <li key={m.index} style={{ color: m.freeInput ? "#b45309" : "#334155" }}>
+                        {m.label}{m.freeInput ? "（自由入力プロンプト）" : ""}
+                      </li>
+                    ))}
+                  </ol>
+                  {pv.freeInputAt !== null && (
+                    <div style={{ marginTop: 6, padding: "6px 8px", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 6, color: "#92400e" }}>
+                      ⏸ ここでユーザー入力を待ちます。以降のメッセージは入力後に送信されます。
+                    </div>
+                  )}
+                  {pv.responseMessages.length > 0 && (
+                    <div style={{ marginTop: 8 }}>
+                      <div style={{ fontWeight: 700, color: "#6d28d9" }}>自由入力後に送るメッセージ（応答）</div>
+                      <div style={{ color: "#7c3aed", fontSize: 11 }}>
+                        これらは通常の連続メッセージとしては送信されず、ユーザーが自由入力を送信した後に配信されます。
+                      </div>
+                      <ol style={{ margin: "4px 0 0", paddingLeft: 20, color: "#6d28d9" }}>
+                        {pv.responseMessages.map((m) => (<li key={`r-${m.index}`}>{m.label}</li>))}
+                      </ol>
+                    </div>
+                  )}
+                  {pv.overLimit && (
+                    <div style={{ marginTop: 8, color: "#b91c1c" }}>
+                      ⚠️ 一度に送るメッセージが{pv.total}通で、5通を超えています。6通目以降は Push 送信となり、月間上限などにより届かない可能性があります。QR・自由入力・フェーズ遷移で5通以内に区切ってください。
+                    </div>
+                  )}
+                  {form.quick_replies.length > 0 && (
+                    <div style={{ marginTop: 8, color: "#0369a1", fontSize: 11 }}>
+                      ℹ️ Quick Reply は編集上は先頭メッセージに設定しますが、実機ではこの連続メッセージの<strong>末尾</strong>に表示されます。
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </SectionAccordion>
           )} {/* /!isPuzzle */}
 
