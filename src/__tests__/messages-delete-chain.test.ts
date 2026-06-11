@@ -15,6 +15,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 // ── モック ───────────────────────────────────────────────
 const mockMessage = {
   findUnique: vi.fn(),
+  findMany:   vi.fn(),
   delete:     vi.fn(),
 };
 const mockTransaction = vi.fn();
@@ -67,6 +68,8 @@ function makeReq() {
 describe("DELETE /api/messages/:id chain cascade", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // 既定では外部参照なし（#6-4b 逆参照ガードを通過させる）。
+    mockMessage.findMany.mockResolvedValue([]);
     mockTransaction.mockImplementation(async (queries: unknown[]) => {
       if (!Array.isArray(queries)) return queries;
       return queries.map(() => ({ id: "deleted" }));
@@ -186,6 +189,69 @@ describe("DELETE /api/messages/:id chain cascade", () => {
     const { DELETE } = await import("@/app/api/messages/[id]/route");
     const res = await DELETE(makeReq() as never, { params: { id: "missing" } } as never);
     expect((res as Response).status).toBe(404);
+    expect(mockTransaction).not.toHaveBeenCalled();
+  });
+
+  // ── #6-4b: 逆参照ガード ──────────────────────────────────
+  it("外部参照なしなら従来通り削除できる（findMany=[]）", async () => {
+    mockRequireRole.mockResolvedValue(okRole());
+    mockMessage.findUnique.mockResolvedValueOnce({
+      id: "m1", workId: "w1", phaseId: "p1", nextMessageId: null,
+      work: { oaId: "oa1" }, phase: { phaseType: "normal" },
+    });
+    mockMessage.findMany.mockResolvedValue([
+      { id: "m1", body: "", messageType: "text", nextMessageId: null, freeInputNextMessageId: null, quickReplies: null },
+      { id: "x", body: "", messageType: "text", nextMessageId: null, freeInputNextMessageId: null, quickReplies: null },
+    ]);
+    mockMessage.delete.mockImplementation((args: { where: { id: string } }) => args);
+
+    const { DELETE } = await import("@/app/api/messages/[id]/route");
+    const res = await DELETE(makeReq() as never, { params: { id: "m1" } } as never);
+    expect((res as Response).status).toBe(204);
+    expect(mockTransaction).toHaveBeenCalledTimes(1);
+  });
+
+  it("対象メッセージへの外部参照ありなら 422（REFERENCE_GUARD）＋参照元一覧", async () => {
+    mockRequireRole.mockResolvedValue(okRole());
+    mockMessage.findUnique.mockResolvedValueOnce({
+      id: "m1", workId: "w1", phaseId: "p1", nextMessageId: null,
+      work: { oaId: "oa1" }, phase: { phaseType: "normal" },
+    });
+    mockMessage.findMany.mockResolvedValue([
+      { id: "m1", body: "本体", messageType: "text", nextMessageId: null, freeInputNextMessageId: null, quickReplies: null },
+      { id: "x", body: "参照元", messageType: "text", nextMessageId: "m1", freeInputNextMessageId: null, quickReplies: null },
+    ]);
+
+    const { DELETE } = await import("@/app/api/messages/[id]/route");
+    const res = await DELETE(makeReq() as never, { params: { id: "m1" } } as never) as Response;
+    expect(res.status).toBe(422);
+    const json = await res.json();
+    expect(json.error.code).toBe("REFERENCE_GUARD");
+    expect(json.error.details.referrers).toHaveLength(1);
+    expect(json.error.details.referrers[0]).toMatchObject({ referrerId: "x", kind: "next" });
+    expect(json.error.details.referrers[0].kindLabel).toContain("連続");
+    expect(mockTransaction).not.toHaveBeenCalled();
+  });
+
+  it("後続メッセージへの外部参照ありなら 422（m1→m2 削除予定 / x→m2）", async () => {
+    mockRequireRole.mockResolvedValue(okRole());
+    mockMessage.findUnique
+      .mockResolvedValueOnce({
+        id: "m1", workId: "w1", phaseId: "p1", nextMessageId: "m2",
+        work: { oaId: "oa1" }, phase: { phaseType: "normal" },
+      })
+      .mockResolvedValueOnce({ id: "m2", workId: "w1", nextMessageId: null });
+    mockMessage.findMany.mockResolvedValue([
+      { id: "m1", body: "", messageType: "text", nextMessageId: "m2", freeInputNextMessageId: null, quickReplies: null },
+      { id: "m2", body: "後続", messageType: "text", nextMessageId: null, freeInputNextMessageId: null, quickReplies: null },
+      { id: "x", body: "外部", messageType: "text", nextMessageId: null, freeInputNextMessageId: null, quickReplies: JSON.stringify([{ target_message_id: "m2" }]) },
+    ]);
+
+    const { DELETE } = await import("@/app/api/messages/[id]/route");
+    const res = await DELETE(makeReq() as never, { params: { id: "m1" } } as never) as Response;
+    expect(res.status).toBe(422);
+    const json = await res.json();
+    expect(json.error.details.referrers[0]).toMatchObject({ referrerId: "x", kind: "qr_target", targetId: "m2" });
     expect(mockTransaction).not.toHaveBeenCalled();
   });
 });

@@ -219,10 +219,13 @@ export class ConflictError extends Error {
 export class UnprocessableError extends Error {
   readonly status = 422;
   readonly code: string;
-  constructor(message?: string, code = "UNPROCESSABLE") {
+  /** ドメイン固有の付加情報（例: REFERENCE_GUARD の参照元一覧 referrers）。 */
+  readonly details?: Record<string, unknown>;
+  constructor(message?: string, code = "UNPROCESSABLE", details?: Record<string, unknown>) {
     super(message ?? "Unprocessable");
     this.name = "UnprocessableError";
     this.code = code;
+    this.details = details;
   }
 }
 
@@ -341,7 +344,7 @@ async function parseResponse<T>(res: Response): Promise<T> {
     // 専用クラスで throw — 呼び出し側が instanceof で確実に分岐できる
     if (res.status === 404) throw new NotFoundError(msg);
     if (res.status === 409) throw new ConflictError(msg, json.error?.code ?? "CONFLICT");
-    if (res.status === 422) throw new UnprocessableError(msg, json.error?.code ?? "UNPROCESSABLE");
+    if (res.status === 422) throw new UnprocessableError(msg, json.error?.code ?? "UNPROCESSABLE", json.error?.details as Record<string, unknown> | undefined);
     if (res.status === 400) throw new ValidationError(msg, details);
     throw new Error(msg);
   }

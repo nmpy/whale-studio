@@ -4,13 +4,14 @@
 // DELETE /api/messages/:id — メッセージ削除
 
 import { prisma } from "@/lib/prisma";
-import { ok, noContent, badRequest, notFound, serverError } from "@/lib/api-response";
+import { ok, noContent, badRequest, notFound, unprocessable, serverError } from "@/lib/api-response";
 import { withAuth } from "@/lib/auth";
 import { requireRole } from "@/lib/rbac";
 import { updateMessageSchema, formatZodErrors } from "@/lib/validations";
 import { ZodError } from "zod";
 import { activeCache, CACHE_KEY } from "@/lib/cache";
 import { parseAnswerMatchType } from "@/lib/puzzle-answer";
+import { findExternalReferrers, REFERRER_KIND_LABEL, type RefMessage } from "@/lib/message-refs";
 
 // Next.js の自動 static 化を防ぐ。withAuth が headers/cookies を読むため通常は dynamic 扱いだが
 // defensive に明示する（POST 側 route.ts と揃える）。
@@ -390,6 +391,35 @@ export const DELETE = withAuth<{ id: string }>(async (_req, { params }, user) =>
       visited.add(next.id);
       idsToDelete.push(next.id);
       currentNextId = next.nextMessageId ?? null;
+    }
+
+    // ── 逆参照ガード（#6-4b）─────────────────────────────────────────
+    // 削除対象集合（対象 + 連鎖削除される後続）の「外側」から next / freeInputNext /
+    // QR target / QR response で参照されていたら、ダングリング参照を防ぐため 422 でブロックする。
+    // 集合内部同士の参照（A→B→C をまとめて削除）はブロックしない。
+    const workMessages = await prisma.message.findMany({
+      where:  { workId: existing.workId },
+      select: { id: true, body: true, messageType: true, nextMessageId: true, freeInputNextMessageId: true, quickReplies: true },
+    });
+    const refMessages: RefMessage[] = workMessages.map((m) => ({
+      id: m.id, body: m.body, message_type: m.messageType,
+      next_message_id: m.nextMessageId, free_input_next_message_id: m.freeInputNextMessageId,
+      quick_replies: m.quickReplies,
+    }));
+    const externalReferrers = findExternalReferrers(idsToDelete, refMessages);
+    if (externalReferrers.length > 0) {
+      const referrers = externalReferrers.map((r) => ({
+        referrerId:    r.referrerId,
+        referrerLabel: r.referrerLabel,
+        kind:          r.kind,
+        kindLabel:     REFERRER_KIND_LABEL[r.kind],
+        targetId:      r.targetId,
+      }));
+      return unprocessable(
+        "このメッセージは他のメッセージから参照されているため削除できません。先に参照元を変更してください。",
+        "REFERENCE_GUARD",
+        { referrers },
+      );
     }
 
     // transaction で一括削除

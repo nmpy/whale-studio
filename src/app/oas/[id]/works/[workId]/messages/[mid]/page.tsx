@@ -5,7 +5,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { useTesterRouter as useRouter } from "@/hooks/useTesterRouter";
-import { workApi, messageApi, getDevToken } from "@/lib/api-client";
+import { workApi, messageApi, getDevToken, UnprocessableError } from "@/lib/api-client";
 import { useToast } from "@/components/Toast";
 import {
   MessageForm,
@@ -145,11 +145,23 @@ export default function EditMessagePage() {
 
   async function handleDelete() {
     setDeleting(true);
+    setSaveError(null);
     try {
       await messageApi.delete(getDevToken(), messageId);
       showToast("メッセージを削除しました", "success");
       router.push(`/oas/${oaId}/works/${workId}/messages`);
     } catch (err) {
+      // 参照中（REFERENCE_GUARD / 422）は成功扱いにせず、削除できない理由＋参照元を表示（#6-4b）。
+      if (err instanceof UnprocessableError && err.code === "REFERENCE_GUARD") {
+        const list = (err.details?.referrers as Array<{ referrerLabel: string; kindLabel: string }> | undefined) ?? [];
+        const lines = list.map((r) => `・${r.referrerLabel}（${r.kindLabel}）`).join("\n");
+        setSaveError(
+          "このメッセージは他のメッセージから参照されているため削除できません。先に参照元を変更してください。\n" +
+          (lines ? `参照元:\n${lines}` : ""),
+        );
+        showToast("参照されているため削除できません。参照元を先に変更してください。", "error");
+        return;
+      }
       showToast(err instanceof Error ? err.message : "削除に失敗しました", "error");
     } finally {
       setDeleting(false);
