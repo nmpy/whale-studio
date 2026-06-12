@@ -2047,9 +2047,25 @@ model BusinessInviteApplication {
   snapshotUsageType BusinessUsageType @map("snapshot_usage_type")
   /// 認証済みなら申込者の Supabase userId (任意)。
   submittedByUserId String?           @map("submitted_by_user_id")
+  /// 運営の対応ステータス (= pending/approved/rejected)。既存申込は pending。
+  /// 承認はあくまで運営管理用のステータス変更。自動 OA 作成 / 権限付与 / 課金はしない。
+  status            BusinessInviteApplicationStatus @default(pending)
+  /// 承認 / 却下した日時。
+  reviewedAt        DateTime?         @map("reviewed_at")
+  /// 承認 / 却下した platform admin の Supabase userId。
+  reviewedByUserId  String?           @map("reviewed_by_user_id")
+  /// 運営メモ (= 承認 / 却下時の任意コメント)。
+  reviewNote        String?           @map("review_note")
   createdAt         DateTime          @default(now()) @map("created_at")
 
   link              BusinessInviteLink @relation(fields: [linkId], references: [id], onDelete: Cascade)
 
   @@map("business_invite_applications")
+}
+
+/// 法人申込の運営対応ステータス。pending=未対応 / approved=承認済み / rejected=却下。
+enum BusinessInviteApplicationStatus {
+  pending
+  approved
+  rejected
 }
