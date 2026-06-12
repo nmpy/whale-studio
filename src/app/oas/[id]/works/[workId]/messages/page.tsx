@@ -425,6 +425,10 @@ export default function MessagesPage() {
   const [activeTab, setActiveTab]       = useState<Tab>("messages");
   const [workTitle, setWorkTitle]       = useState("");
   const [welcomeMsg, setWelcomeMsg]     = useState<string | null>(null);
+  // あいさつメッセージのタブ内インライン編集。画面遷移せずこのタブで設定/編集/解除する。
+  const [editingWelcome, setEditingWelcome] = useState(false);
+  const [welcomeDraft,   setWelcomeDraft]   = useState("");
+  const [savingWelcome,  setSavingWelcome]  = useState(false);
   // 途中再開機能の有効/無効（作品単位デフォルト設定）。Bootstrap の work.resume_enabled 由来。
   const [resumeEnabled, setResumeEnabled] = useState(true);
   const [savingResume, setSavingResume]   = useState(false);
@@ -560,6 +564,50 @@ export default function MessagesPage() {
       showToast(err instanceof Error ? err.message : "設定の保存に失敗しました", "error");
     } finally {
       setSavingResume(false);
+    }
+  }
+
+  // ── あいさつメッセージ（Work.welcomeMessage）のタブ内インライン編集 ──
+  // 画面遷移せず、このタブで作成・編集・解除まで完結する。保存は PATCH /api/works/[workId]。
+  function startEditWelcome() {
+    setWelcomeDraft(welcomeMsg ?? "");
+    setEditingWelcome(true);
+  }
+  function cancelEditWelcome() {
+    setEditingWelcome(false);
+    setWelcomeDraft("");
+  }
+  async function saveWelcome() {
+    const text = welcomeDraft.trim();
+    if (!text || savingWelcome) return; // 空のときは保存しない（解除は専用ボタン）
+    setSavingWelcome(true);
+    try {
+      const updated = await workApi.update(getDevToken(), workId, { welcome_message: text });
+      setWelcomeMsg(updated.welcome_message ?? text);
+      invalidateBootstrap(oaId, workId); // 次回再訪で最新取得（stale 防止）
+      setEditingWelcome(false);
+      showToast("あいさつメッセージを保存しました", "success");
+    } catch (err) {
+      // 画面遷移せず toast でエラー表示
+      showToast(err instanceof Error ? err.message : "保存に失敗しました", "error");
+    } finally {
+      setSavingWelcome(false);
+    }
+  }
+  async function clearWelcome() {
+    if (savingWelcome) return;
+    if (!confirm("あいさつメッセージを未設定に戻しますか？\n（本文の紐付けを解除します。未設定時はシステムの既定文が使われます）")) return;
+    setSavingWelcome(true);
+    try {
+      await workApi.update(getDevToken(), workId, { welcome_message: null });
+      setWelcomeMsg(null);
+      invalidateBootstrap(oaId, workId);
+      setEditingWelcome(false);
+      showToast("あいさつメッセージを未設定に戻しました", "success");
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "解除に失敗しました", "error");
+    } finally {
+      setSavingWelcome(false);
     }
   }
 
@@ -764,15 +812,8 @@ export default function MessagesPage() {
             ＋ メッセージを追加
           </Link>
         )}
-        {activeTab === "welcome" && (
-          <a
-            href={`/oas/${oaId}/account#welcome-message`}
-            className="btn btn-primary"
-            style={{ textDecoration: "none" }}
-          >
-            設定で編集する →
-          </a>
-        )}
+        {/* あいさつメッセージはタブ内（カード内）で設定・編集・解除する（画面遷移しない）。
+            ヘッダーのアカウント情報画面への遷移ボタンは廃止。 */}
       </div>
 
       {/* ── タブバー ── */}
@@ -837,7 +878,7 @@ export default function MessagesPage() {
                 {[
                   { text: "友だち追加時に自動送信" },
                   { text: "シナリオ開始前の一度きり" },
-                  { text: "OA設定で一元管理" },
+                  { text: "このタブで作成・編集可能" },
                 ].map(({ text }) => (
                   <span key={text} style={{
                     display: "inline-flex", alignItems: "center", gap: 5,
@@ -876,21 +917,59 @@ export default function MessagesPage() {
               </div>
             </div>
 
-            {welcomeMsg?.trim() ? (
+            {/* OA Manager 側との二重送信に関する注意書き */}
+            <div style={{
+              display: "flex", alignItems: "flex-start", gap: 8,
+              background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 8,
+              padding: "10px 14px", marginBottom: 16,
+              fontSize: 12, color: "#92400e", lineHeight: 1.7,
+            }}>
+              <span aria-hidden="true">⚠️</span>
+              <span>
+                LINE Official Account Manager 側のあいさつメッセージが ON の場合、メッセージが二重で
+                送信される可能性があります。Whale Studio 側で管理する場合は、OA Manager 側の
+                あいさつメッセージを OFF にしてください。
+              </span>
+            </div>
+
+            {editingWelcome ? (
+              /* ── 編集モード（タブ内・画面遷移なし） ── */
               <>
-                {/* メッセージ本文プレビュー（LINEの吹き出し風） */}
+                <textarea
+                  value={welcomeDraft}
+                  onChange={(e) => setWelcomeDraft(e.target.value)}
+                  maxLength={2000}
+                  rows={5}
+                  placeholder="例：はじめまして！この物語体験へようこそ。「はじめる」と送ると物語がスタートします。"
+                  style={{
+                    width: "100%", boxSizing: "border-box",
+                    padding: "12px 14px", fontSize: 14, lineHeight: 1.7,
+                    border: "1.5px solid #e5e7eb", borderRadius: 10,
+                    resize: "vertical", color: "#111827",
+                  }}
+                />
+                <p style={{ fontSize: 11, color: "#9ca3af", margin: "6px 0 0" }}>
+                  {welcomeDraft.length} / 2000
+                </p>
+                <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 14 }}>
+                  <button type="button" className="btn btn-ghost" onClick={cancelEditWelcome} disabled={savingWelcome}>
+                    キャンセル
+                  </button>
+                  <button type="button" className="btn btn-primary" onClick={saveWelcome} disabled={savingWelcome || !welcomeDraft.trim()}>
+                    {savingWelcome ? "保存中..." : "保存する"}
+                  </button>
+                </div>
+              </>
+            ) : welcomeMsg?.trim() ? (
+              /* ── 設定済み（プレビュー + 編集 / 未設定に戻す） ── */
+              <>
                 <div style={{
-                  background: "#f0fdf4",
-                  border: "1px solid #bbf7d0",
-                  borderRadius: 12,
-                  padding: "16px 18px",
-                  marginBottom: 16,
-                  position: "relative",
+                  background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 12,
+                  padding: "16px 18px", marginBottom: 16, position: "relative",
                 }}>
                   <div style={{
                     fontSize: 10, fontWeight: 700, color: "#16a34a",
-                    letterSpacing: 0.5, marginBottom: 8,
-                    textTransform: "uppercase",
+                    letterSpacing: 0.5, marginBottom: 8, textTransform: "uppercase",
                   }}>
                     PREVIEW
                   </div>
@@ -901,23 +980,22 @@ export default function MessagesPage() {
                     {welcomeMsg}
                   </p>
                 </div>
-                <div style={{
-                  display: "flex", alignItems: "flex-start", gap: 8,
-                  background: "#f8fafc", borderRadius: 8, padding: "10px 14px",
-                  fontSize: 12, color: "#64748b",
-                }}>
-                  <span>ℹ️</span>
-                  <span>
-                    変更する場合は「設定で編集する」ボタンから OA 設定ページへ移動してください。
-                    あいさつメッセージは OA 単位で管理されています。
-                  </span>
-                </div>
+                {canEdit && (
+                  <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                    <button type="button" className="btn btn-ghost" onClick={clearWelcome} disabled={savingWelcome}>
+                      未設定に戻す
+                    </button>
+                    <button type="button" className="btn btn-primary" onClick={startEditWelcome} disabled={savingWelcome}>
+                      編集する
+                    </button>
+                  </div>
+                )}
               </>
             ) : (
+              /* ── 未設定（このタブで設定開始・画面遷移なし） ── */
               <div style={{
                 background: "#fffbeb", border: "1px solid #fde68a",
-                borderRadius: 10, padding: "24px 20px",
-                textAlign: "center",
+                borderRadius: 10, padding: "24px 20px", textAlign: "center",
               }}>
                 <div style={{ fontSize: 32, marginBottom: 10 }}>📭</div>
                 <p style={{ fontWeight: 700, fontSize: 14, color: "#92400e", margin: "0 0 6px" }}>
@@ -927,25 +1005,11 @@ export default function MessagesPage() {
                   友だち追加時に何も届かない状態です。<br />
                   ユーザーへの最初の接触なので、必ず設定することをおすすめします。
                 </p>
-                <a
-                  href={`/oas/${oaId}/account#welcome-message`}
-                  className="btn btn-primary"
-                  style={{ textDecoration: "none" }}
-                >
-                  今すぐ設定する →
-                </a>
-              </div>
-            )}
-
-            {welcomeMsg?.trim() && (
-              <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 16 }}>
-                <a
-                  href={`/oas/${oaId}/account#welcome-message`}
-                  className="btn btn-primary"
-                  style={{ textDecoration: "none" }}
-                >
-                  設定で編集する →
-                </a>
+                {canEdit && (
+                  <button type="button" className="btn btn-primary" onClick={startEditWelcome}>
+                    今すぐ設定する
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -958,8 +1022,9 @@ export default function MessagesPage() {
               "「はじめる」と送ることでシナリオが開始される旨を明記すると分かりやすいです",
             ]},
             { title: "編集場所について", points: [
-              "あいさつメッセージは「OA設定 → アカウント情報」で管理しています",
-              "同じ OA の複数の作品で共通のあいさつを使う設計になっています",
+              "あいさつメッセージはこのタブ内で作成・編集・解除できます（作品単位の設定です）",
+              "未設定のときはシステムの既定文が使われます",
+              "OA Manager 側のあいさつメッセージが ON だと二重送信になる可能性があるため、Whale Studio 側で管理する場合は OA Manager 側を OFF にしてください",
             ]},
           ]} />
         </div>
