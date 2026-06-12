@@ -12,10 +12,37 @@
 import { Suspense } from "react";
 import { PricingContent } from "./_content";
 import { fetchAllPlanPrices } from "@/lib/stripe-price-display";
+import { prisma } from "@/lib/prisma";
+import { getServerUser } from "@/lib/supabase/server";
+import { getWorkspaceRole } from "@/lib/rbac";
 
 // Stripe Price API を毎リクエストで叩くため dynamic を明示。
 // env 未設定 / Stripe 障害時も helper が fallback を返すため build/runtime は落ちない。
 export const dynamic = "force-dynamic";
+
+/** 対象 OA の利用区分を、アクセス権のあるユーザーにのみ解決して返す。
+ *  - oa_id なし / 未ログイン / OA への有効なアクセスがない / 解決不可 → null（= 両方表示）。
+ *  - 権限のない OA の usageType は返さない（情報露出を防ぐ）。
+ *  既存の OA アクセス判定 (getWorkspaceRole: platform admin / owner_key / active member) に合わせる。 */
+async function resolveOaUsageType(
+  oaId: string | undefined,
+): Promise<"personal" | "business" | null> {
+  if (!oaId) return null;
+  try {
+    const user = await getServerUser();
+    if (!user) return null;
+    const info = await getWorkspaceRole(oaId, user.id);
+    // active なアクセス（owner/platform admin 含む）のみ許可。それ以外は露出しない。
+    if (!info || info.status !== "active") return null;
+    const oa = await prisma.oa.findUnique({
+      where:  { id: oaId },
+      select: { usageType: true },
+    });
+    return (oa?.usageType as "personal" | "business" | undefined) ?? null;
+  } catch {
+    return null; // 解決失敗時は安全側（両方表示）
+  }
+}
 
 // ── ローディングフォールバック ────────────────────────────────────────
 // Client Component のハイドレーション前に表示されるスケルトン。
@@ -71,7 +98,11 @@ export default async function PricingPage({
     searchParams.checkout === "cancelled" || searchParams.canceled === "1";
 
   // Stripe Price から各プランの金額を取得 (= server-side / 失敗時は fallback)
-  const priceOverrides = await fetchAllPlanPrices();
+  // 対象 OA の利用区分 (= アクセス権のあるユーザーのみ) を並行解決。
+  const [priceOverrides, usageType] = await Promise.all([
+    fetchAllPlanPrices(),
+    resolveOaUsageType(searchParams.oa_id),
+  ]);
 
   return (
     <Suspense fallback={<PricingFallback />}>
@@ -82,6 +113,7 @@ export default async function PricingPage({
         oaId={searchParams.oa_id}
         canceled={isCancelled ? "1" : undefined}
         priceOverrides={priceOverrides}
+        usageType={usageType}
       />
     </Suspense>
   );
