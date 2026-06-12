@@ -12,8 +12,6 @@ import { oaApi, getDevToken } from "@/lib/api-client";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
 import { ViewerBanner } from "@/components/PermissionGuard";
-import { PlanCard } from "@/components/PlanCard";
-import { PlanInfoAccordion } from "@/components/PlanInfoAccordion";
 
 /** ハブに並べる機能カード定義。
  *  Phase 1.4 で per-feature の vivid color を削除し、見た目を uniform に揃える
@@ -29,6 +27,8 @@ const HUB_ITEM_DEFS = [
   { key: "trackings",            title: "トラッキング管理", desc: "流入元ごとのクリック数・ユーザー数を計測" },
   { key: "settings/members",     title: "メンバー管理",     desc: "ワークスペースメンバーのロール（owner/admin/editor/viewer）を管理" },
   { key: "onboarding-analytics", title: "オンボーディング分析", desc: "作品作成〜セットアップ完了の各ステップ到達率を確認（owner のみ）" },
+  // 現在のプラン・利用条件の確認導線（owner / admin）。売り込みではなく設定情報の確認として並べる。
+  { key: "settings/plan",        title: "プラン・利用条件",   desc: "現在のご利用プランと利用条件を確認" },
   // Whale Studio Live（隠し上位機能）。Live にアクセス可能なユーザーにのみ表示する。
   { key: "live",                 title: "Whale Studio Live", desc: "リアルタイムに進行・管制・演出支援を行う上位機能" },
 ] as const;
@@ -123,6 +123,7 @@ export default function OaSettingsPage() {
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-[repeat(auto-fill,minmax(220px,1fr))]">
           {HUB_ITEM_DEFS.filter(({ key }) => {
             if (key === "onboarding-analytics") return isOwner;
+            if (key === "settings/plan") return isOwner || isAdmin;
             if (key === "settings/members") return isOwner || isAdmin;
             if (key === "account" || key === "richmenu-editor" || key === "friend-add" || key === "sns" || key === "settings/liff") return isAdmin;
             if (key === "live") return liveAccess; // Live 可ユーザーのみ。それ以外には存在を見せない
@@ -152,15 +153,6 @@ export default function OaSettingsPage() {
           ))}
         </div>
       </section>
-
-      {/* ── プラン・利用条件（補助情報・アコーディオン / デフォルト閉じ） ──
-          開いたときだけ現在プラン情報（owner/admin は embedded PlanCard）+ 料金リンクを表示。
-          現在プラン情報は既存 PlanCard と同じ値・算出ロジック（subscription 由来）。 */}
-      <div className="mt-5">
-        <PlanInfoAccordion oaId={oaId}>
-          {(isOwner || isAdmin) && <PlanCard oaId={oaId} variant="embedded" />}
-        </PlanInfoAccordion>
-      </div>
     </>
   );
 }
