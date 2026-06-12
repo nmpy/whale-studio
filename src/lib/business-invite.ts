@@ -93,6 +93,24 @@ export const validateBusinessInviteSchema = z.object({
   token: z.string().min(1).max(256),
 });
 
+/** 法人申込の運営対応ステータス。 */
+export const BUSINESS_APP_STATUSES = ["pending", "approved", "rejected"] as const;
+export type BusinessAppStatus = (typeof BUSINESS_APP_STATUSES)[number];
+
+/** ステータス表示名 (= 未対応 / 承認済み / 却下)。 */
+export const BUSINESS_APP_STATUS_LABELS: Record<BusinessAppStatus, string> = {
+  pending:  "未対応",
+  approved: "承認済み",
+  rejected: "却下",
+};
+
+/** 申込承認 / 却下 (POST /api/admin/business-invite-applications/[id]/review) の入力スキーマ。
+ *  承認 / 却下はステータス変更のみ (= 自動 OA 作成 / 権限付与 / 課金はしない)。 */
+export const reviewBusinessApplicationSchema = z.object({
+  status:     z.enum(["approved", "rejected"]),
+  reviewNote: z.string().trim().max(2000).optional(),
+});
+
 // ── 表示ラベル ──────────────────────────────────────────────────────
 
 /** plan tier → 表示名 ("Basic" / "委託プラン" など)。未知は tier をそのまま返す。 */

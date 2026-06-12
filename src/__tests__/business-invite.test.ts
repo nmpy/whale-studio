@@ -10,6 +10,8 @@ import {
   businessInviteState,
   issueBusinessInviteSchema,
   applyBusinessInviteSchema,
+  reviewBusinessApplicationSchema,
+  BUSINESS_APP_STATUS_LABELS,
   planTierLabel,
   roleLabel,
   usageTypeLabel,
@@ -130,6 +132,27 @@ describe("applyBusinessInviteSchema", () => {
   it("会社名・氏名の空は弾く", () => {
     expect(applyBusinessInviteSchema.safeParse({ ...valid, companyName: "" }).success).toBe(false);
     expect(applyBusinessInviteSchema.safeParse({ ...valid, contactName: "  " }).success).toBe(false);
+  });
+});
+
+describe("reviewBusinessApplicationSchema", () => {
+  it("approved / rejected のみ許可、reviewNote は任意", () => {
+    expect(reviewBusinessApplicationSchema.safeParse({ status: "approved" }).success).toBe(true);
+    expect(reviewBusinessApplicationSchema.safeParse({ status: "rejected", reviewNote: "ng" }).success).toBe(true);
+  });
+
+  it("pending / 未知ステータスは弾く", () => {
+    expect(reviewBusinessApplicationSchema.safeParse({ status: "pending" }).success).toBe(false);
+    expect(reviewBusinessApplicationSchema.safeParse({ status: "approve" }).success).toBe(false);
+    expect(reviewBusinessApplicationSchema.safeParse({}).success).toBe(false);
+  });
+});
+
+describe("BUSINESS_APP_STATUS_LABELS", () => {
+  it("pending=未対応 / approved=承認済み / rejected=却下", () => {
+    expect(BUSINESS_APP_STATUS_LABELS.pending).toBe("未対応");
+    expect(BUSINESS_APP_STATUS_LABELS.approved).toBe("承認済み");
+    expect(BUSINESS_APP_STATUS_LABELS.rejected).toBe("却下");
   });
 });
 

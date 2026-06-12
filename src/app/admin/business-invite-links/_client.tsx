@@ -30,13 +30,41 @@ interface InviteLink {
   used_at:          string | null;
   revoked_at:       string | null;
   created_at:       string;
-  application: { id: string; company_name: string; contact_name: string; created_at: string } | null;
+  application: Application | null;
+}
+
+type AppStatus = "pending" | "approved" | "rejected";
+
+interface Application {
+  id:                          string;
+  company_name:                string;
+  contact_name:                string;
+  contact_email:               string;
+  line_official_account_name:  string | null;
+  message:                     string | null;
+  plan_tier:                   string;
+  plan_label:                  string;
+  role:                        string;
+  role_label:                  string;
+  usage_type:                  string;
+  usage_type_label:            string;
+  status:                      AppStatus;
+  status_label:                string;
+  reviewed_at:                 string | null;
+  review_note:                 string | null;
+  created_at:                  string;
 }
 
 interface IssuedLink extends InviteLink {
   token:      string;
   invite_url: string;
 }
+
+const APP_STATUS_META: Record<AppStatus, { label: string; color: string; bg: string }> = {
+  pending:  { label: "未対応",   color: "#92400e", bg: "#fffbeb" },
+  approved: { label: "承認済み", color: "#166534", bg: "#f0fdf4" },
+  rejected: { label: "却下",     color: "#991b1b", bg: "#fef2f2" },
+};
 
 const ISSUE_ROLES = ["admin", "editor", "viewer"] as const;
 type IssueRole = (typeof ISSUE_ROLES)[number];
@@ -147,6 +175,33 @@ export function BusinessInviteLinksClient() {
       void load();
     } catch {
       showToast("無効化に失敗しました", "error");
+    }
+  }
+
+  async function handleReview(applicationId: string, status: "approved" | "rejected") {
+    const verb = status === "approved" ? "承認" : "却下";
+    const note = window.prompt(`${verb}メモ（任意）。OK で${verb}します。`, "");
+    if (note === null) return; // キャンセル
+    try {
+      const res = await fetch(`/api/admin/business-invite-applications/${applicationId}/review`, {
+        method:  "POST",
+        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
+        body:    JSON.stringify({ status, reviewNote: note.trim() || undefined }),
+      });
+      const json = await res.json().catch(() => null);
+      if (!res.ok) {
+        showToast(json?.error?.message ?? `${verb}に失敗しました`, "error");
+        return;
+      }
+      showToast(
+        status === "approved"
+          ? "承認しました。OA作成・権限付与・請求対応は手動で行ってください。"
+          : "却下しました。",
+        "success",
+      );
+      void load();
+    } catch {
+      showToast(`${verb}に失敗しました`, "error");
     }
   }
 
@@ -273,8 +328,58 @@ export function BusinessInviteLinksClient() {
                 </div>
                 <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 6 }}>
                   発行 {fmt(l.created_at)} ｜ 期限 {l.expires_at ? fmt(l.expires_at) : "無期限"} ｜ 申込 {fmt(l.used_at)}
-                  {l.application && `（${l.application.company_name} / ${l.application.contact_name}）`}
                 </div>
+
+                {/* ── 申込内容（申込済みのみ） ── */}
+                {l.application && (() => {
+                  const app = l.application;
+                  const asm = APP_STATUS_META[app.status] ?? APP_STATUS_META.pending;
+                  return (
+                    <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px dashed #e5e7eb" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+                        <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 999, color: asm.color, background: asm.bg }}>
+                          {asm.label}
+                        </span>
+                        <span style={{ fontSize: 12, color: "#6b7280" }}>申込内容</span>
+                        <span style={{ marginLeft: "auto" }} />
+                        {app.status === "pending" && (
+                          <>
+                            <button type="button" onClick={() => handleReview(app.id, "approved")}
+                              style={{ fontSize: 12, fontWeight: 700, padding: "4px 12px", borderRadius: 6, border: "none", background: "#06C755", color: "#fff", cursor: "pointer" }}>
+                              承認
+                            </button>
+                            <button type="button" onClick={() => handleReview(app.id, "rejected")}
+                              style={{ fontSize: 12, fontWeight: 600, padding: "4px 12px", borderRadius: 6, border: "1.5px solid #fca5a5", background: "#fff", color: "#991b1b", cursor: "pointer" }}>
+                              却下
+                            </button>
+                          </>
+                        )}
+                      </div>
+
+                      <dl style={{ display: "grid", gridTemplateColumns: "104px 1fr", gap: "3px 10px", fontSize: 12, color: "#374151", margin: 0 }}>
+                        <dt style={{ color: "#9ca3af" }}>希望プラン</dt><dd style={{ margin: 0 }}>{app.plan_label} / {app.role_label} / {app.usage_type_label}</dd>
+                        <dt style={{ color: "#9ca3af" }}>会社 / 団体</dt><dd style={{ margin: 0 }}>{app.company_name}</dd>
+                        <dt style={{ color: "#9ca3af" }}>お名前</dt><dd style={{ margin: 0 }}>{app.contact_name}</dd>
+                        <dt style={{ color: "#9ca3af" }}>メール</dt><dd style={{ margin: 0 }}>{app.contact_email}</dd>
+                        <dt style={{ color: "#9ca3af" }}>LINE公式</dt><dd style={{ margin: 0 }}>{app.line_official_account_name || "—"}</dd>
+                        <dt style={{ color: "#9ca3af" }}>相談 / 備考</dt><dd style={{ margin: 0, whiteSpace: "pre-wrap" }}>{app.message || "—"}</dd>
+                        <dt style={{ color: "#9ca3af" }}>申込日時</dt><dd style={{ margin: 0 }}>{fmt(app.created_at)}</dd>
+                      </dl>
+
+                      {app.status !== "pending" && (
+                        <div style={{ marginTop: 8, padding: "8px 10px", borderRadius: 8, background: "#f9fafb", border: "1px solid #e5e7eb", fontSize: 11, color: "#6b7280" }}>
+                          {asm.label}（{fmt(app.reviewed_at)}）
+                          {app.review_note && <> ｜ メモ: {app.review_note}</>}
+                          {app.status === "approved" && (
+                            <div style={{ marginTop: 4, color: "#92400e" }}>
+                              ※ 承認済みです。OA作成・権限付与・請求対応は手動で行ってください。
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
             );
           })}

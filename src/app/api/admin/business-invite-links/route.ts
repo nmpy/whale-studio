@@ -23,6 +23,7 @@ import {
   planTierLabel,
   roleLabel,
   usageTypeLabel,
+  BUSINESS_APP_STATUS_LABELS,
 } from "@/lib/business-invite";
 import { ZodError } from "zod";
 import { formatZodErrors } from "@/lib/validations";
@@ -38,8 +39,53 @@ type LinkRow = {
   revokedAt: Date | null;
   createdByUserId: string;
   createdAt: Date;
-  application: { id: string; companyName: string; contactName: string; createdAt: Date } | null;
+  application: ApplicationRow | null;
 };
+
+type ApplicationRow = {
+  id: string;
+  companyName: string;
+  contactName: string;
+  contactEmail: string;
+  lineOfficialAccountName: string | null;
+  message: string | null;
+  snapshotPlanTier: string;
+  snapshotRole: string;
+  snapshotUsageType: string;
+  status: string;
+  reviewedAt: Date | null;
+  reviewNote: string | null;
+  createdAt: Date;
+};
+
+const APPLICATION_SELECT = {
+  id: true, companyName: true, contactName: true, contactEmail: true,
+  lineOfficialAccountName: true, message: true,
+  snapshotPlanTier: true, snapshotRole: true, snapshotUsageType: true,
+  status: true, reviewedAt: true, reviewNote: true, createdAt: true,
+} as const;
+
+function applicationToResponse(a: ApplicationRow) {
+  return {
+    id:                         a.id,
+    company_name:               a.companyName,
+    contact_name:               a.contactName,
+    contact_email:              a.contactEmail,
+    line_official_account_name: a.lineOfficialAccountName,
+    message:                    a.message,
+    plan_tier:                  a.snapshotPlanTier,
+    plan_label:                 planTierLabel(a.snapshotPlanTier),
+    role:                       a.snapshotRole,
+    role_label:                 roleLabel(a.snapshotRole),
+    usage_type:                 a.snapshotUsageType,
+    usage_type_label:           usageTypeLabel(a.snapshotUsageType),
+    status:                     a.status,
+    status_label:               BUSINESS_APP_STATUS_LABELS[a.status as keyof typeof BUSINESS_APP_STATUS_LABELS] ?? a.status,
+    reviewed_at:                a.reviewedAt?.toISOString() ?? null,
+    review_note:                a.reviewNote,
+    created_at:                 a.createdAt.toISOString(),
+  };
+}
 
 function toResponse(link: LinkRow) {
   return {
@@ -56,14 +102,7 @@ function toResponse(link: LinkRow) {
     used_at:          link.usedAt?.toISOString() ?? null,
     revoked_at:       link.revokedAt?.toISOString() ?? null,
     created_at:       link.createdAt.toISOString(),
-    application: link.application
-      ? {
-          id:           link.application.id,
-          company_name: link.application.companyName,
-          contact_name: link.application.contactName,
-          created_at:   link.application.createdAt.toISOString(),
-        }
-      : null,
+    application: link.application ? applicationToResponse(link.application) : null,
   };
 }
 
@@ -76,9 +115,7 @@ export const GET = withAuth(async (_req: NextRequest, _ctx, user) => {
     const links = await prisma.businessInviteLink.findMany({
       orderBy: { createdAt: "desc" },
       include: {
-        application: {
-          select: { id: true, companyName: true, contactName: true, createdAt: true },
-        },
+        application: { select: APPLICATION_SELECT },
       },
     });
 
@@ -116,9 +153,7 @@ export const POST = withAuth(async (req: NextRequest, _ctx, user) => {
         createdByUserId: user.id,
       },
       include: {
-        application: {
-          select: { id: true, companyName: true, contactName: true, createdAt: true },
-        },
+        application: { select: APPLICATION_SELECT },
       },
     });
 
