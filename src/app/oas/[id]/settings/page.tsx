@@ -13,6 +13,7 @@ import { Breadcrumb } from "@/components/Breadcrumb";
 import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
 import { ViewerBanner } from "@/components/PermissionGuard";
 import { PlanCard } from "@/components/PlanCard";
+import { PlanInfoAccordion } from "@/components/PlanInfoAccordion";
 
 /** ハブに並べる機能カード定義。
  *  Phase 1.4 で per-feature の vivid color を削除し、見た目を uniform に揃える
@@ -151,6 +152,12 @@ export default function OaSettingsPage() {
           ))}
         </div>
       </section>
+
+      {/* ── プラン・利用条件（補助情報・アコーディオン / デフォルト閉じ） ──
+          売り込み感を出さず、現在の利用条件確認と料金・プランページへの導線のみ。 */}
+      <div className="mt-5">
+        <PlanInfoAccordion oaId={oaId} />
+      </div>
     </>
   );
 }
