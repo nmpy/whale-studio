@@ -429,6 +429,9 @@ export default function MessagesPage() {
   const [editingWelcome, setEditingWelcome] = useState(false);
   const [welcomeDraft,   setWelcomeDraft]   = useState("");
   const [savingWelcome,  setSavingWelcome]  = useState(false);
+  // 友だち追加（follow）時の動作（作品単位）。Bootstrap の work.follow_action 由来。
+  const [followAction,   setFollowAction]   = useState<"auto_start" | "welcome_wait" | "none">("auto_start");
+  const [savingFollow,   setSavingFollow]   = useState(false);
   // 途中再開機能の有効/無効（作品単位デフォルト設定）。Bootstrap の work.resume_enabled 由来。
   const [resumeEnabled, setResumeEnabled] = useState(true);
   const [savingResume, setSavingResume]   = useState(false);
@@ -611,6 +614,24 @@ export default function MessagesPage() {
     }
   }
 
+  // 友だち追加時の動作を変更する（PATCH /api/works/[workId] follow_action）。楽観的更新。
+  async function changeFollowAction(next: "auto_start" | "welcome_wait" | "none") {
+    if (savingFollow || next === followAction) return;
+    const prev = followAction;
+    setFollowAction(next); // 楽観的更新
+    setSavingFollow(true);
+    try {
+      await workApi.update(getDevToken(), workId, { follow_action: next });
+      invalidateBootstrap(oaId, workId);
+      showToast("友だち追加時の動作を変更しました", "success");
+    } catch (err) {
+      setFollowAction(prev); // ロールバック
+      showToast(err instanceof Error ? err.message : "保存に失敗しました", "error");
+    } finally {
+      setSavingFollow(false);
+    }
+  }
+
   useEffect(() => {
     let cancelled = false;
     const t0 = (typeof performance !== "undefined" ? performance.now() : Date.now());
@@ -619,6 +640,7 @@ export default function MessagesPage() {
     function applyData(data: import("@/lib/api-client").MessagesBootstrapData) {
       setWorkTitle(data.work.title);
       setWelcomeMsg(data.work.welcome_message ?? "");
+      setFollowAction((data.work.follow_action as "auto_start" | "welcome_wait" | "none" | undefined) ?? "auto_start");
       setResumeEnabled(data.work.resume_enabled !== false);
       setMessages(data.messages);
       setPhases([...data.phases].sort((a, b) => a.sort_order - b.sort_order));
@@ -891,7 +913,51 @@ export default function MessagesPage() {
             </div>
           </div>
 
-          {/* 現在の設定 */}
+          {/* 友だち追加時の動作（作品単位）。welcome_wait のときだけ下のあいさつ設定が有効。 */}
+          <div className="card" style={{ padding: "20px 24px", marginBottom: 24 }}>
+            <p style={{ fontWeight: 700, fontSize: 14, color: "#111827", margin: "0 0 4px" }}>
+              友だち追加時の動作
+            </p>
+            <p style={{ fontSize: 12, color: "#6b7280", margin: "0 0 14px", lineHeight: 1.7 }}>
+              友だち追加（フォロー）された直後の挙動を作品単位で選べます。
+            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {([
+                { value: "welcome_wait", label: "あいさつメッセージを送って「はじめる」を待つ" },
+                { value: "auto_start",   label: "すぐにシナリオを開始する" },
+                { value: "none",         label: "何もしない" },
+              ] as const).map(({ value, label }) => (
+                <label key={value} style={{
+                  display: "flex", alignItems: "flex-start", gap: 8,
+                  fontSize: 13, color: "#374151", cursor: canEdit ? "pointer" : "default",
+                }}>
+                  <input
+                    type="radio"
+                    name="follow_action"
+                    value={value}
+                    checked={followAction === value}
+                    disabled={!canEdit || savingFollow}
+                    onChange={() => changeFollowAction(value)}
+                    style={{ marginTop: 2 }}
+                  />
+                  <span>{label}</span>
+                </label>
+              ))}
+            </div>
+            {followAction === "auto_start" && (
+              <p style={{ fontSize: 12, color: "#92400e", margin: "12px 0 0", lineHeight: 1.7 }}>
+                この設定では友だち追加直後に本編が始まるため、あいさつメッセージは送信されません。
+              </p>
+            )}
+            {followAction === "none" && (
+              <p style={{ fontSize: 12, color: "#6b7280", margin: "12px 0 0", lineHeight: 1.7 }}>
+                友だち追加時には何も送信されません。
+              </p>
+            )}
+          </div>
+
+          {/* 現在の設定（あいさつメッセージ）。「はじめる」を待つモードのときのみ表示・編集可能。 */}
+          {followAction === "welcome_wait" ? (
           <div className="card" style={{ padding: "20px 24px" }}>
             <div style={{
               display: "flex", alignItems: "center", justifyContent: "space-between",
@@ -1002,8 +1068,8 @@ export default function MessagesPage() {
                   あいさつメッセージが未設定です
                 </p>
                 <p style={{ fontSize: 12, color: "#b45309", margin: "0 0 16px", lineHeight: 1.7 }}>
-                  友だち追加時に何も届かない状態です。<br />
-                  ユーザーへの最初の接触なので、必ず設定することをおすすめします。
+                  あいさつメッセージが未設定のため、友だち追加時には案内文（既定文）のみが送信されます。<br />
+                  ユーザーへの最初の接触なので、独自のあいさつ文を設定することをおすすめします。
                 </p>
                 {canEdit && (
                   <button type="button" className="btn btn-primary" onClick={startEditWelcome}>
@@ -1013,6 +1079,15 @@ export default function MessagesPage() {
               </div>
             )}
           </div>
+          ) : (
+            <div className="card" style={{ padding: "16px 24px" }}>
+              <p style={{ fontSize: 13, color: "#6b7280", margin: 0, lineHeight: 1.8 }}>
+                {followAction === "auto_start"
+                  ? "現在は「すぐにシナリオを開始する」設定です。友だち追加直後に本編が始まるため、あいさつメッセージは送信されません。保存済みのあいさつメッセージは削除されず保持されます。あいさつメッセージを使う場合は、上の「友だち追加時の動作」で「あいさつメッセージを送って『はじめる』を待つ」を選択してください。"
+                  : "現在は「何もしない」設定です。友だち追加時には何も送信されません。保存済みのあいさつメッセージは削除されず保持されます。あいさつメッセージを使う場合は、上の「友だち追加時の動作」で「あいさつメッセージを送って『はじめる』を待つ」を選択してください。"}
+              </p>
+            </div>
+          )}
 
           {/* 使い方ガイド */}
           <HelpAccordion items={[

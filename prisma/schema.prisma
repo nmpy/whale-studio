@@ -103,6 +103,13 @@ model Work {
   /// 未設定の場合はシステムデフォルト文にフォールバックする。
   welcomeMessage    String?        @map("welcome_message")
 
+  /// 友だち追加（follow）時の動作（作品単位）:
+  ///   "auto_start"    = 友だち追加直後にシナリオを自動開始（既存挙動・既定）。
+  ///   "welcome_wait"  = あいさつメッセージを送り、ユーザーの「はじめる」を待つ（progress は作らない）。
+  ///   "none"          = 友だち追加時には何も送らない。
+  /// 既存作品の挙動を壊さないため default("auto_start")。
+  followAction      String         @default("auto_start") @map("follow_action")
+
   /// 途中再開機能の有効/無効（作品単位のデフォルト挙動）。
   /// true:  フェーズ途中で離脱したユーザーが開始トリガーを再送したとき、
   ///        「途中から再開する / 最初からやり直す」の選択肢を表示する（従来挙動）。

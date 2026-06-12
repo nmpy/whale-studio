@@ -95,6 +95,8 @@ export const updateWorkSchema = z.object({
    * null を送ると削除、undefined（省略）は変更なし。
    */
   welcome_message:     z.string().max(1000).optional().nullable(),
+  /** 友だち追加時の動作。"auto_start" | "welcome_wait" | "none"。 */
+  follow_action:       z.enum(["auto_start", "welcome_wait", "none"]).optional(),
   // ── 演出デフォルト設定 ──
   read_receipt_mode:    z.enum(["inherit", "immediate", "delayed", "before_reply"]).optional().nullable(),
   read_delay_ms:        z.number().int().min(0).max(600000).optional().nullable(),

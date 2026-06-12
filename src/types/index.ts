@@ -159,6 +159,11 @@ export interface Work {
    * 未設定（null）のときはシステムデフォルト文にフォールバックする。
    */
   welcome_message: string | null;
+  /**
+   * 友だち追加（follow）時の動作（作品単位）。
+   * "auto_start"（既定・友だち追加直後に自動開始）/ "welcome_wait"（あいさつを送り「はじめる」を待つ）/ "none"（何もしない）。
+   */
+  follow_action?: "auto_start" | "welcome_wait" | "none";
   // ── 演出デフォルト設定 ──
   read_receipt_mode: ReadReceiptMode | null;
   read_delay_ms: number | null;
@@ -393,6 +398,8 @@ export interface UpdateWorkBody {
    * 未開始ユーザーへの導入文。未設定ならシステムデフォルト文を使用。
    */
   welcome_message?: string | null;
+  /** 友だち追加時の動作。"auto_start" | "welcome_wait" | "none"。 */
+  follow_action?: "auto_start" | "welcome_wait" | "none";
   // 演出デフォルト設定
   read_receipt_mode?: ReadReceiptMode | null;
   read_delay_ms?: number | null;

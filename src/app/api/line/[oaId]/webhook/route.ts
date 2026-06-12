@@ -1455,10 +1455,25 @@ async function handleWebhook(req: NextRequest, oaId: string) {
     accountName: oa.title,
   });
 
-  // ── 6-c. follow 自動開始（β: 友だち追加直後に作品を開始）──
+  // ── 6-c. follow（友だち追加）時の動作 — 作品単位の followAction で分岐 ──
+  //   auto_start   : 友だち追加直後にシナリオ自動開始（既存挙動・既定）
+  //   welcome_wait : あいさつメッセージを送り「はじめる」を待つ（progress は作らない）
+  //   none         : 何もしない
+  // ※ OA 停止中は上部（serviceSuspendedAt）で early return 済みのためここには来ない。
   if (followEvents.length > 0 && work) {
+    const followAction = work.followAction ?? "auto_start";
     await Promise.allSettled(
       followEvents.map((e) => {
+        if (followAction === "none") {
+          console.log(`[Webhook] follow → none（送信なし） userId=${e.source.userId}`);
+          return Promise.resolve();
+        }
+        if (followAction === "welcome_wait") {
+          // あいさつメッセージのみ送信。progress は作らず、ユーザーの「はじめる」を待つ。
+          console.log(`[Webhook] follow → welcome_wait（あいさつ送信） userId=${e.source.userId}`);
+          return replyToLine(e.replyToken, buildWelcomeMessages(work, systemSender), oa.channelAccessToken);
+        }
+        // auto_start（既定）
         console.log(`[Webhook] follow → 自動開始 userId=${e.source.userId}`);
         return handleStart({ oa, work, systemSender, userId: e.source.userId, replyToken: e.replyToken, vars: buildVars(e.source.userId) });
       })

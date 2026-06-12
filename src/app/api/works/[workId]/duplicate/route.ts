@@ -61,6 +61,7 @@ export const POST = withAuth<{ workId: string }>(async (_req, { params }, user) 
           publishStatus:  "draft",                        // 複製後は常に下書き
           sortOrder:      (maxSortOrder._max.sortOrder ?? 0) + 1,
           welcomeMessage: original.welcomeMessage,        // あいさつメッセージも引き継ぐ
+          followAction:   original.followAction,           // 友だち追加時の動作も引き継ぐ
         },
       });
 
@@ -166,6 +167,7 @@ export const POST = withAuth<{ workId: string }>(async (_req, { params }, user) 
       sort_order:          result!.sortOrder,
       system_character_id: result!.systemCharacterId,
       welcome_message:     result!.welcomeMessage,
+      follow_action:       (result!.followAction as "auto_start" | "welcome_wait" | "none" | undefined) ?? "auto_start",
       created_at:          result!.createdAt,
       updated_at:          result!.updatedAt,
       _count:              result!._count,
