@@ -20,8 +20,17 @@ const NAV_ITEMS = [
   //     (= 既存 /admin/live と同方針)。
 ] as const;
 
-export function AdminSidebar() {
+// platform admin だけに表示する導線 (= isPlatform が true のときのみ描画)。
+// ページ自体の server-side gate / API gate はそのまま維持し、ここは「ナビ表示」のみを制御する。
+const PLATFORM_NAV_ITEMS = [
+  { href: "/admin/business-invite-links", label: "法人プラン権限" },
+] as const;
+
+export function AdminSidebar({ isPlatform = false }: { isPlatform?: boolean }) {
   const pathname = usePathname();
+
+  // 共通項目 + (platform admin のみ) 専用項目
+  const navItems = isPlatform ? [...NAV_ITEMS, ...PLATFORM_NAV_ITEMS] : NAV_ITEMS;
 
   return (
     <aside style={{
@@ -43,7 +52,7 @@ export function AdminSidebar() {
       </div>
 
       <nav>
-        {NAV_ITEMS.map((item) => {
+        {navItems.map((item) => {
           const active = pathname === item.href || pathname.startsWith(item.href + "/");
           return (
             <Link

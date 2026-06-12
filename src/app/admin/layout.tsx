@@ -45,7 +45,8 @@ export default async function AdminLayout({
       }}
     >
       {/* ── サイドバー（Client Component: usePathname 使用） ── */}
-      <AdminSidebar />
+      {/* isPlatform を渡し、platform admin 専用導線（法人プラン権限）の表示可否を制御する。 */}
+      <AdminSidebar isPlatform={isPlatform} />
 
       {/* ── メインコンテンツ ── */}
       <div style={{ flex: 1, minWidth: 0, paddingTop: 8 }}>
