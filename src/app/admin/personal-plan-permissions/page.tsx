@@ -11,6 +11,7 @@
 import { redirect } from "next/navigation";
 import { getServerUser } from "@/lib/supabase/server";
 import { isPlatformOwner } from "@/lib/platform-admin";
+import { PersonalPlanPermissionsClient } from "./_client";
 
 export const dynamic = "force-dynamic";
 
@@ -23,29 +24,5 @@ export default async function PersonalPlanPermissionsPage() {
     redirect("/oas");
   }
 
-  return (
-    <div style={{ maxWidth: 880 }}>
-      <h1 style={{ fontSize: 20, fontWeight: 700, marginBottom: 4 }}>個人プラン権限</h1>
-      <p style={{ fontSize: 13, color: "#6b7280", marginBottom: 20, lineHeight: 1.7 }}>
-        個人利用アカウントのプラン・権限を管理します。
-      </p>
-
-      <div
-        style={{
-          border: "1px dashed #e5e7eb",
-          borderRadius: 12,
-          background: "#f9fafb",
-          padding: 24,
-          textAlign: "center",
-        }}
-      >
-        <p style={{ fontSize: 14, fontWeight: 600, color: "#374151", marginBottom: 6 }}>
-          個人プラン権限の管理機能は今後追加予定です。
-        </p>
-        <p style={{ fontSize: 13, color: "#6b7280", lineHeight: 1.7 }}>
-          現在は各OAの設定画面からプラン・利用区分を確認してください。
-        </p>
-      </div>
-    </div>
-  );
+  return <PersonalPlanPermissionsClient />;
 }
