@@ -13,10 +13,11 @@ import { prisma } from "@/lib/prisma";
 import { ok, notFound, serverError } from "@/lib/api-response";
 import { withAuth } from "@/lib/auth";
 import { isPlatformOwner } from "@/lib/platform-admin";
-import { mapPlanNameToTier, PLAN_LABELS } from "@/lib/constants/plans";
+import { PLAN_LABELS } from "@/lib/constants/plans";
+import { effectiveTierFromSub, grantDisplayKind, formatTrialEndDate } from "@/lib/subscription-grant";
 
-/** status → トライアル状態表示。 */
-function trialLabel(status: string | null): string {
+/** 通常サブスクの status → トライアル状態表示（β版/trial は grantDisplayKind 側で扱う）。 */
+function normalStatusLabel(status: string | null): string {
   switch (status) {
     case "trialing": return "トライアル中";
     case "active":   return "通常";
@@ -39,7 +40,7 @@ export const GET = withAuth(async (_req: NextRequest, _ctx, user) => {
         createdAt: true, updatedAt: true,
         subscription: {
           select: {
-            status: true, externalId: true,
+            status: true, externalId: true, grantType: true, trialEndsAt: true,
             currentPeriodStart: true, currentPeriodEnd: true,
             plan: { select: { name: true, displayName: true, maxWorks: true, maxPlayers: true } },
           },
@@ -73,17 +74,36 @@ export const GET = withAuth(async (_req: NextRequest, _ctx, user) => {
 
     const data = oas.map((oa) => {
       const sub  = oa.subscription;
-      const name = sub?.plan?.name ?? null;
-      const tier = name ? mapPlanNameToTier(name) : null;
+      const subLike = sub
+        ? { status: sub.status, grantType: sub.grantType, trialEndsAt: sub.trialEndsAt, planName: sub.plan?.name ?? null }
+        : null;
+      // 実効ティア（β版=pro / トライアル内=pro / 失効=basic / 通常=plan tier）。
+      const effTier = effectiveTierFromSub(subLike);
+      const kind    = grantDisplayKind(subLike); // "beta" | "trial_active" | "trial_expired" | "normal"
+
+      // 表示用の現在プラン・状態ラベル。
+      const planLabel =
+        kind === "beta"          ? `β版（${PLAN_LABELS.pro}相当）`
+        : sub                    ? PLAN_LABELS[effTier]
+        :                          null; // サブスクなし
+      const statusLabel =
+        kind === "beta"          ? "β版"
+        : kind === "trial_active"  ? "トライアル中"
+        : kind === "trial_expired" ? "トライアル終了"
+        :                            normalStatusLabel(sub?.status ?? null);
+
       return {
         id:                oa.id,
         title:             oa.title,
         usage_type:        oa.usageType,
-        plan_name:         name,
-        plan_tier:         tier,
-        plan_label:        tier ? PLAN_LABELS[tier] : null,
+        plan_name:         sub?.plan?.name ?? null,
+        plan_tier:         sub ? effTier : null,
+        plan_label:        planLabel,
+        grant_kind:        kind,
         status:            sub?.status ?? null,
-        trial_label:       trialLabel(sub?.status ?? null),
+        status_label:      statusLabel,
+        trial_end_label:   formatTrialEndDate(sub?.trialEndsAt ?? null),
+        is_beta:           kind === "beta",
         max_works:         sub?.plan?.maxWorks ?? null,
         max_players:       sub?.plan?.maxPlayers ?? null,
         // Stripe 連動（externalId 有）なら手動変更不可。

@@ -9,6 +9,7 @@
 import { withRole }          from "@/lib/auth";
 import { ok, serverError }   from "@/lib/api-response";
 import { prisma }            from "@/lib/prisma";
+import { grantDisplayKind, formatTrialEndDate } from "@/lib/subscription-grant";
 
 export const GET = withRole<{ id: string }>(
   ({ params }) => params.id,
@@ -39,6 +40,11 @@ export const GET = withRole<{ id: string }>(
           current_period_end:   sub.currentPeriodEnd,
           canceled_at:          sub.canceledAt,
           external_id:          sub.externalId,
+          // β版 / トライアル表示用（追加のみ・既存フィールド不変）。
+          grant_type:           sub.grantType ?? null,
+          grant_kind:           grantDisplayKind({ status: sub.status, grantType: sub.grantType, trialEndsAt: sub.trialEndsAt }),
+          trial_ends_at:        sub.trialEndsAt?.toISOString() ?? null,
+          trial_end_label:      formatTrialEndDate(sub.trialEndsAt),
         },
       });
     } catch (err) {

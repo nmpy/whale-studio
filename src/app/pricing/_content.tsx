@@ -303,6 +303,8 @@ export function PricingContent({
   const [currentPlan, setCurrentPlan] = useState<CurrentPlanState>(
     oaId ? { kind: "loading" } : { kind: "no_plan" }
   );
+  // 対象 OA が β版利用中か（plan-info の grant_kind="beta"）。現在プラン表示の注記に使う。
+  const [isBetaPlan, setIsBetaPlan] = useState(false);
 
   // source ごとのサブ見出し (= gate / banner / preview / settings)。
   // ユーザー要望でデフォルトの大きなヒーローエリアは削除。source 指定時のみ
@@ -342,11 +344,12 @@ export function PricingContent({
         }
         let payload: unknown = null;
         try { payload = await res.json(); } catch { /* 非 JSON: 落とさない */ }
-        const data = (payload as { data?: { plan_name?: unknown; status?: unknown } } | null)?.data;
+        const data = (payload as { data?: { plan_name?: unknown; status?: unknown; grant_kind?: unknown } } | null)?.data;
         if (!data || typeof data.plan_name !== "string") {
           setCurrentPlan({ kind: "no_plan" });
           return;
         }
+        setIsBetaPlan(data.grant_kind === "beta");
         const isActive = data.status === "active" || data.status === "trialing";
         if (!isActive) {
           setCurrentPlan({ kind: "no_plan" });
@@ -483,6 +486,16 @@ export function PricingContent({
           className="mb-2.5 rounded-field border border-danger/30 bg-danger-soft px-3.5 py-2.5 text-[12px] leading-[1.6] text-danger"
         >
           {checkoutError}
+        </div>
+      )}
+
+      {/* β版利用中の注記（現在プラン表示）。課金導線・Stripe 処理は一切動かさない。 */}
+      {isBetaPlan && (
+        <div
+          role="status"
+          className="mb-4 rounded-field border border-brand/30 bg-brand-soft px-3.5 py-2.5 text-[13px] font-semibold text-brand-ink"
+        >
+          現在のプラン: β版（Pro Max相当）— 機能・期間制限なくご利用いただけます。
         </div>
       )}
 

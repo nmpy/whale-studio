@@ -12,10 +12,11 @@ import { getAuthHeaders } from "@/lib/api-client";
 import { useToast } from "@/components/Toast";
 import { PLAN_LABELS } from "@/lib/constants/plans";
 
-type PlanTierKey = "basic" | "standard" | "plus" | "pro";
+type PlanChangeKey = "beta" | "basic" | "standard" | "plus" | "pro";
 
-// 個人プラン権限で扱うプラン（delegated=委託は法人向けのため除外）
-const PLAN_CHANGE_OPTIONS: { value: PlanTierKey; label: string }[] = [
+// 個人プラン権限で選べる変更先（β版 + 個人4ティア。delegated=委託は法人向けのため除外）
+const PLAN_CHANGE_OPTIONS: { value: PlanChangeKey; label: string }[] = [
+  { value: "beta",     label: "β版" },
   { value: "basic",    label: PLAN_LABELS.basic },
   { value: "standard", label: PLAN_LABELS.standard },
   { value: "plus",     label: PLAN_LABELS.plus },  // "Pro"
@@ -28,9 +29,12 @@ interface Row {
   usage_type:       string;
   plan_name:        string | null;
   plan_tier:        string | null;
-  plan_label:       string | null;
+  plan_label:       string | null;  // β版は「β版（Pro Max相当）」
+  grant_kind:       "beta" | "trial_active" | "trial_expired" | "normal";
   status:           string | null;
-  trial_label:      string;
+  status_label:     string;         // β版 / トライアル中 / トライアル終了 / 通常 / 期限切れ / 不明
+  trial_end_label:  string | null;  // YYYY/MM/DD（trial のみ）
+  is_beta:          boolean;
   max_works:        number | null;
   max_players:      number | null;
   external_billing: boolean;
@@ -55,10 +59,12 @@ function limitLabel(n: number | null): string {
   return n < 0 ? "無制限" : String(n);
 }
 const TRIAL_META: Record<string, { color: string; bg: string }> = {
-  "トライアル中": { color: "#1d4ed8", bg: "#eff6ff" },
-  "通常":         { color: "#166534", bg: "#f0fdf4" },
-  "期限切れ":     { color: "#92400e", bg: "#fffbeb" },
-  "不明":         { color: "#374151", bg: "#f3f4f6" },
+  "β版":           { color: "#3730a3", bg: "#eef2ff" },
+  "トライアル中":   { color: "#1d4ed8", bg: "#eff6ff" },
+  "トライアル終了": { color: "#92400e", bg: "#fffbeb" },
+  "通常":           { color: "#166534", bg: "#f0fdf4" },
+  "期限切れ":       { color: "#92400e", bg: "#fffbeb" },
+  "不明":           { color: "#374151", bg: "#f3f4f6" },
 };
 
 export function PersonalPlanPermissionsClient() {
@@ -92,14 +98,17 @@ export function PersonalPlanPermissionsClient() {
   const filtered = useMemo(() => rows.filter((r) => {
     if (qName.trim()  && !r.title.toLowerCase().includes(qName.trim().toLowerCase())) return false;
     if (qEmail.trim() && !(r.owner_email ?? "").toLowerCase().includes(qEmail.trim().toLowerCase())) return false;
-    if (fPlan  !== "all" && r.plan_tier !== fPlan) return false;
-    if (fTrial !== "all" && r.trial_label !== fTrial) return false;
+    // プラン絞り込み: β版は plan_tier=pro になるため grant_kind で区別する。
+    if (fPlan === "beta") { if (r.grant_kind !== "beta") return false; }
+    else if (fPlan !== "all" && (r.grant_kind === "beta" || r.plan_tier !== fPlan)) return false;
+    if (fTrial !== "all" && r.status_label !== fTrial) return false;
     return true;
   }), [rows, qName, qEmail, fPlan, fTrial]);
 
   async function handleChangePlan(oaId: string, planTier: string) {
     if (!planTier) return;
-    if (!confirm(`このアカウントのプランを「${PLAN_LABELS[planTier as PlanTierKey]}」に変更しますか？\n（運営による手動付与です。Stripe の課金状態は変更されません）`)) return;
+    const label = PLAN_CHANGE_OPTIONS.find((o) => o.value === planTier)?.label ?? planTier;
+    if (!confirm(`このアカウントのプランを「${label}」に変更しますか？\n（運営による手動付与です。Stripe の課金状態は変更されません）`)) return;
     setChangingId(oaId);
     try {
       const res = await fetch(`/api/admin/personal-plan-permissions/${oaId}/plan`, {
@@ -137,8 +146,10 @@ export function PersonalPlanPermissionsClient() {
           {PLAN_CHANGE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
         <select style={inputStyle} value={fTrial} onChange={(e) => setFTrial(e.target.value)}>
-          <option value="all">トライアル状態: すべて</option>
+          <option value="all">状態: すべて</option>
+          <option value="β版">β版</option>
           <option value="トライアル中">トライアル中</option>
+          <option value="トライアル終了">トライアル終了</option>
           <option value="通常">通常</option>
           <option value="期限切れ">期限切れ</option>
           <option value="不明">不明</option>
@@ -155,14 +166,20 @@ export function PersonalPlanPermissionsClient() {
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {filtered.map((r) => {
-            const tm = TRIAL_META[r.trial_label] ?? TRIAL_META["不明"];
+            const tm = TRIAL_META[r.status_label] ?? TRIAL_META["不明"];
+            const statusText = r.grant_kind === "trial_active" && r.trial_end_label
+              ? `${r.status_label}（${r.trial_end_label}まで）`
+              : r.status_label;
             return (
               <div key={r.id} style={card}>
                 <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                   <span style={{ fontSize: 14, fontWeight: 700 }}>{r.title}</span>
                   <span style={{ fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 999, border: "1px solid #e5e7eb", background: "#f3f4f6", color: "#6b7280" }}>個人</span>
                   <span style={{ fontSize: 12, fontWeight: 700, color: "#374151" }}>{r.plan_label ?? "未契約"}</span>
-                  <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 999, color: tm.color, background: tm.bg }}>{r.trial_label}</span>
+                  <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 999, color: tm.color, background: tm.bg }}>{statusText}</span>
+                  {r.is_beta && (
+                    <span style={{ fontSize: 11, color: "#6b7280" }}>機能・期間制限なし</span>
+                  )}
                   {r.external_billing && (
                     <span style={{ fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 999, border: "1px solid #c7d2fe", background: "#eef2ff", color: "#3730a3" }}>Stripe連動</span>
                   )}

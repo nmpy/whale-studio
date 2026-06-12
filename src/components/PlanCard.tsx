@@ -25,6 +25,9 @@ interface SubscriptionData {
   current_period_start: string;
   current_period_end:   string;
   canceled_at:          string | null;
+  // β版 / トライアル表示用
+  grant_kind?:          "beta" | "trial_active" | "trial_expired" | "normal";
+  trial_end_label?:     string | null;
 }
 interface FullPlanInfo {
   plan:         PlanData         | null;
@@ -110,13 +113,24 @@ export function PlanCard({ oaId }: { oaId: string }) {
   const playersLabel = plan.max_players === -1 ? "無制限" : `${plan.max_players} 人`;
   const priceLabel   = isFree ? "無料" : `¥${plan.price_monthly.toLocaleString()}/月`;
 
-  const isPeriodEnd  = subscription.status === "trialing";
-  const periodLabel  = isPeriodEnd ? "トライアル終了" : "次回更新";
-  const periodDate   = formatDate(subscription.current_period_end);
+  // β版 / トライアルの表示区分（subscription-grant 由来）。
+  const grantKind  = subscription.grant_kind ?? "normal";
+  const isBeta     = grantKind === "beta";
+  const isTrial    = grantKind === "trial_active";
 
-  const statusMeta   = STATUS_META[subscription.status] ?? {
-    label: subscription.status, color: "#6b7280", bg: "#f3f4f6",
-  };
+  // 期限表示: β版は期限なし（非表示）/ トライアルは trial_end_label / それ以外は currentPeriodEnd。
+  const isPeriodEnd  = subscription.status === "trialing";
+  const periodLabel  = isTrial ? "トライアル終了" : isPeriodEnd ? "トライアル終了" : "次回更新";
+  const periodDate   = isTrial && subscription.trial_end_label
+    ? subscription.trial_end_label
+    : formatDate(subscription.current_period_end);
+
+  // ステータスバッジ: β版/トライアルは専用表示、それ以外は status 由来。
+  const statusMeta   = isBeta
+    ? { label: "β版", color: "#3730a3", bg: "#eef2ff" }
+    : isTrial
+      ? { label: "トライアル中", color: "#92400e", bg: "#fef3c7" }
+      : (STATUS_META[subscription.status] ?? { label: subscription.status, color: "#6b7280", bg: "#f3f4f6" });
   return (
     <div style={{
       padding:      "16px 18px",
@@ -161,8 +175,16 @@ export function PlanCard({ oaId }: { oaId: string }) {
       }}>
         <MetaStat label="作品数上限"       value={worksLabel} />
         <MetaStat label="プレイヤー上限"   value={playersLabel} />
-        <MetaStat label={periodLabel}      value={`${periodDate}まで`} />
+        {/* β版は期間制限なし → 期限を表示しない。 */}
+        {isBeta
+          ? <MetaStat label="期間"         value="制限なし" />
+          : <MetaStat label={periodLabel}  value={`${periodDate}まで`} />}
       </div>
+      {isBeta && (
+        <p style={{ fontSize: 12, color: "var(--text-secondary, #6b7280)", margin: "10px 0 0", lineHeight: 1.5 }}>
+          β版（{plan.display_name}相当）— 機能・期間制限なくご利用いただけます。
+        </p>
+      )}
 
       {/* ── CTA（上限ありプランのみ） ── */}
       {isLimited && (
