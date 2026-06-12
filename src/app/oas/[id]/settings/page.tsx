@@ -126,7 +126,9 @@ export default function OaSettingsPage() {
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-[repeat(auto-fill,minmax(220px,1fr))]">
           {HUB_ITEM_DEFS.filter(({ key }) => {
             if (key === "onboarding-analytics") return isOwner;
-            if (key === "settings/plan") return isOwner || isAdmin;
+            // 個人プランカードは「個人 OA（= 法人以外）」かつ owner/admin のみ。
+            // 法人 OA では「法人契約・利用条件」カードに一本化（二重導線を避ける）。
+            if (key === "settings/plan") return (isOwner || isAdmin) && usageType !== "business";
             // 法人契約カードは法人利用 OA かつ owner/admin のときのみ表示。
             if (key === "settings/business-plan") return (isOwner || isAdmin) && usageType === "business";
             if (key === "settings/members") return isOwner || isAdmin;
