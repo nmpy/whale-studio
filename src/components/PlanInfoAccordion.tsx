@@ -14,7 +14,14 @@ import { useState } from "react";
 import Link from "next/link";
 import { buildPricingUrl } from "@/lib/pricing-url";
 
-export function PlanInfoAccordion({ oaId }: { oaId: string }) {
+export function PlanInfoAccordion({
+  oaId,
+  children,
+}: {
+  oaId: string;
+  /** 開いたときに説明文の上へ表示する現在プラン情報（例: 埋め込み PlanCard）。 */
+  children?: React.ReactNode;
+}) {
   const [open, setOpen] = useState(false); // デフォルト閉じ
 
   return (
@@ -42,6 +49,15 @@ export function PlanInfoAccordion({ oaId }: { oaId: string }) {
 
         {open && (
           <div className="border-t border-line px-4 py-3.5">
+            {/* 現在のご利用プラン（embedded PlanCard 等）。閉じている間はマウントされない。 */}
+            {children && (
+              <div className="mb-3.5">
+                <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-ink-3">
+                  現在のご利用プラン
+                </p>
+                {children}
+              </div>
+            )}
             <p className="mb-3 text-[12px] leading-[1.7] text-ink-2">
               現在利用できる機能やプランごとの条件を確認できます。
               <br />

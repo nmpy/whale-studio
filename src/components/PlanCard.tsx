@@ -63,7 +63,12 @@ function MetaStat({ label, value }: { label: string; value: string }) {
 }
 
 // ── メインコンポーネント ─────────────────────────────────────────────
-export function PlanCard({ oaId }: { oaId: string }) {
+// variant:
+//   "card"     … 既定。独立したカード（枠線・余白・アップグレード CTA あり）。
+//   "embedded" … アコーディオン等に埋め込む用。外枠/余白/CTA を外し、設定情報の一部として
+//                落ち着いて表示する（売り込み感を出さない）。
+export function PlanCard({ oaId, variant = "card" }: { oaId: string; variant?: "card" | "embedded" }) {
+  const embedded = variant === "embedded";
   const [data,    setData]    = useState<FullPlanInfo | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -77,16 +82,16 @@ export function PlanCard({ oaId }: { oaId: string }) {
       .finally(() => setLoading(false));
   }, [oaId]);
 
-  // ロード中: コンパクトスケルトン
+  // ロード中: コンパクトスケルトン（embedded は外枠なしの最小表示）
   if (loading) {
     return (
-      <div style={{
+      <div style={embedded ? { padding: 0 } : {
         padding: "14px 18px", borderRadius: "var(--radius-md, 10px)",
         background: "var(--surface)", border: "1px solid var(--border-light)",
         marginBottom: 20,
       }}>
         <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 10 }}>
-          <div className="skeleton" style={{ width: 28, height: 28, borderRadius: 8 }} />
+          {!embedded && <div className="skeleton" style={{ width: 28, height: 28, borderRadius: 8 }} />}
           <div className="skeleton" style={{ width: 120, height: 14 }} />
           <div className="skeleton" style={{ width: 72, height: 20, borderRadius: 999 }} />
         </div>
@@ -132,7 +137,7 @@ export function PlanCard({ oaId }: { oaId: string }) {
       ? { label: "トライアル中", color: "#92400e", bg: "#fef3c7" }
       : (STATUS_META[subscription.status] ?? { label: subscription.status, color: "#6b7280", bg: "#f3f4f6" });
   return (
-    <div style={{
+    <div style={embedded ? { padding: 0 } : {
       padding:      "16px 18px",
       borderRadius: "var(--radius-md, 10px)",
       background:   "var(--surface, #fff)",
@@ -186,8 +191,8 @@ export function PlanCard({ oaId }: { oaId: string }) {
         </p>
       )}
 
-      {/* ── CTA（上限ありプランのみ） ── */}
-      {isLimited && (
+      {/* ── CTA（上限ありプランのみ）。embedded ではアコーディオン側の控えめリンクに委ねるため非表示。 ── */}
+      {!embedded && isLimited && (
         <div style={{
           display: "flex", alignItems: "center", justifyContent: "space-between",
           paddingTop: 12, gap: 8, flexWrap: "wrap",
