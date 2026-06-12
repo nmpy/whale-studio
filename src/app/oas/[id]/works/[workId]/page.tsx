@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Breadcrumb } from "@/components/Breadcrumb";
+import { OaHeaderActions } from "@/components/OaHeaderActions";
 import { workApi, oaApi, phaseApi, transitionApi, getDevToken } from "@/lib/api-client";
 import type { WorkListItem } from "@/lib/api-client";
 import { HelpAccordion } from "@/components/HelpAccordion";
@@ -262,7 +263,8 @@ export default function WorkHubPage() {
   return (
     <>
       {/* ── ページヘッダー ── */}
-      <div className="mb-5 min-w-0">
+      <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
         <Breadcrumb items={[
           { label: "アカウントリスト", href: "/oas" },
           { label: "作品リスト",       href: `/oas/${oaId}/works` },
@@ -318,6 +320,18 @@ export default function WorkHubPage() {
             {work.description}
           </p>
         )}
+        </div>
+
+        {/* OA 単位の共通導線（プラン / 設定）。作品固有アクションとは分けて右上に配置。
+            作品リストと見た目・並びを統一。設定は tester ロールには出さない（既存挙動踏襲）。 */}
+        <div className="flex flex-shrink-0 flex-wrap items-center gap-2">
+          <OaHeaderActions
+            oaId={oaId}
+            planName={planName ?? undefined}
+            source="work_detail"
+            showSettings={role !== "tester"}
+          />
+        </div>
       </div>
 
       {/* ── 閲覧専用バナー ── */}

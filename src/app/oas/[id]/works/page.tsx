@@ -14,8 +14,7 @@ import { Breadcrumb } from "@/components/Breadcrumb";
 import { WorkCard } from "@/components/WorkCard";
 import { FriendAddSection } from "@/components/FriendAddSection";
 import { oaApi, workApi, friendAddApi, getDevToken, type WorkListItem } from "@/lib/api-client";
-import { trackBillingEvent } from "@/lib/billing-tracker";
-import { buildPricingUrl } from "@/lib/pricing-url";
+import { OaHeaderActions } from "@/components/OaHeaderActions";
 import type { FriendAddSettings, PublishStatus } from "@/types";
 import { useToast } from "@/components/Toast";
 import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
@@ -65,7 +64,7 @@ export default function WorkListPage() {
   const { isTester } = useTesterMode();
   // 表示確認モード中は preview tier の Plan 情報を返す (= 価格・上限表示が preview に追随)。
   // 通常モード / 非 owner / 非 platform admin は実プラン情報 (= 既存挙動)。
-  const { maxWorks, planDisplayName, planName, effectivePlan, isPreviewingPlan, loading: limitLoading } = useEffectivePlanInfo(oaId);
+  const { maxWorks, planDisplayName, planName, loading: limitLoading } = useEffectivePlanInfo(oaId);
 
   const [oaTitle, setOaTitle]     = useState("");
   const [works, setWorks]         = useState<WorkListItem[]>([]);
@@ -81,18 +80,6 @@ export default function WorkListPage() {
   // maxWorks === null（未設定）または -1（無制限）の場合は上限なし
   // loading / limitLoading 中は false（ちらつき防止）
   const atLimit = maxWorks !== null && maxWorks !== -1 && !loading && !limitLoading && works.length >= maxWorks;
-  // "プランを見る" リンクの表示判定:
-  //   - 表示確認モード中: effectivePlan が最上位 (pro / Pro Max) 以外なら表示
-  //       seed では Standard / Plus / Pro はすべて maxWorks=-1 のため、
-  //       既存の maxWorks ベースの判定では区別できない (= owner が
-  //       Standard プレビューしても CTA が出ない)。tier ベースに切り替える。
-  //   - 通常モード: 既存の maxWorks ベース判定を維持
-  //       - subscription ベース（maxWorks に制限あり）→ 表示
-  //       - Subscription 未設定の旧 OA で tester ロールの場合も表示（フォールバック）
-  const showPricingLink = isPreviewingPlan
-    ? effectivePlan !== "pro"
-    : (maxWorks !== null && maxWorks !== -1) || isRoleTester;
-
   async function load() {
     setLoading(true);
     setError(null);
@@ -221,12 +208,6 @@ export default function WorkListPage() {
 
   const activeCount = works.filter((w) => w.publish_status === "active").length;
 
-  // ── 「プランを見る」リンク用 className (= brand-soft 系の専用トーン、primary より控えめ) ──
-  const pricingLinkClass =
-    "inline-flex items-center justify-center whitespace-nowrap rounded-md " +
-    "border border-brand/30 bg-brand-soft px-3 py-1.5 text-[12px] font-semibold " +
-    "text-brand-ink no-underline transition-shadow hover:shadow-sm";
-
   return (
     <>
       {/* ── ページヘッダー ── */}
@@ -244,29 +225,14 @@ export default function WorkListPage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {/* 作品数制限があるプランには「プランを見る」リンクを常時表示 */}
-          {showPricingLink && (
-            <Link
-              href={buildPricingUrl({ source: "header", from: planName ?? undefined, to: "editor", oaId })}
-              onClick={() => trackBillingEvent(
-                "pricing_click_from_header",
-                getDevToken(),
-                "header",
-                { from: planName ?? undefined, to: "editor" },
-              )}
-              className={pricingLinkClass}
-            >
-              プランを見る
-            </Link>
-          )}
-          {!isTester && !isRoleTester && (
-            <Link
-              href={`/oas/${oaId}/settings`}
-              className={buttonClass({ variant: "ghost", size: "md" })}
-            >
-              ⚙ 設定
-            </Link>
-          )}
+          {/* OA 単位の共通導線（プラン / 設定）。作品詳細と見た目・並びを統一。
+              設定は既存の tester 非表示挙動を踏襲（showSettings）。 */}
+          <OaHeaderActions
+            oaId={oaId}
+            planName={planName ?? undefined}
+            source="header"
+            showSettings={!isTester && !isRoleTester}
+          />
           {/* 「＋ 作品を追加」:
               - isTester は表示しない (= 上限状態に関係なく非表示。既存挙動)
               - atLimit (= 上限到達) は disabled な primary button (Link は無効化不可のため Button で表現)
