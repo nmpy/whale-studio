@@ -268,6 +268,7 @@ export function PricingContent({
   canceled,
   priceOverrides,
   usageType,
+  embedded = false,
 }: {
   source?:   string;
   from?:     string;
@@ -284,6 +285,11 @@ export function PricingContent({
    *  personal → 個人利用プランのみ / business → 法人プランのみ表示。
    *  null/undefined（oa_id なし / 権限なし / 解決不可）→ 両方表示（既存挙動）。 */
   usageType?: "personal" | "business" | null;
+  /** 設定の専用ページ等に料金カードだけ埋め込むモード。
+   *  ヒーロー見出し / キャンセルバナー / β版バナー / 「もう少し試してみる」/ ページ外枠 /
+   *  mount 時の画面遷移トラッキングを省き、カード比較のみを表示する（現在プラン判定・checkout・
+   *  法人相談は維持）。 */
+  embedded?: boolean;
 }) {
   // 利用区分によるプラン群の出し分け。usageType が無い（LP 直開き / 権限なし等）は両方表示。
   const showPersonalPlans = usageType !== "business";
@@ -312,6 +318,8 @@ export function PricingContent({
   const sourceHeading = source ? SOURCE_HEADING[source] ?? null : null;
 
   useEffect(() => {
+    // embedded（設定ページ埋め込み）では /pricing の画面遷移ログを出さない（計測汚染防止）。
+    if (embedded) return;
     const token = getDevToken();
 
     // 課金専用ログ（from/to コンテキスト付き）
@@ -455,10 +463,10 @@ export function PricingContent({
   }
 
   return (
-    <div className="mx-auto w-full max-w-[640px] px-5 py-6 sm:px-0 sm:py-8 lg:max-w-[1120px]">
+    <div className={embedded ? "w-full" : "mx-auto w-full max-w-[640px] px-5 py-6 sm:px-0 sm:py-8 lg:max-w-[1120px]"}>
 
       {/* ── ヒーローエリアは削除 (= ユーザー要望)。source 指定時のみ軽量な context 見出しを表示。 ── */}
-      {sourceHeading && (
+      {!embedded && sourceHeading && (
         <div className="mb-6 text-center">
           <h1 className="font-round mb-2 text-[clamp(18px,3vw,22px)] font-bold leading-[1.3] tracking-[-0.02em] text-ink">
             {sourceHeading.title}
@@ -470,7 +478,7 @@ export function PricingContent({
       )}
 
       {/* キャンセル戻りバナー（Stripe Checkout キャンセル時） */}
-      {canceled === "1" && (
+      {!embedded && canceled === "1" && (
         <div
           role="status"
           className="mb-3.5 rounded-field border border-warn/30 bg-warn-soft px-3.5 py-2.5 text-[12px] leading-[1.6] text-warn"
@@ -489,8 +497,9 @@ export function PricingContent({
         </div>
       )}
 
-      {/* β版利用中の注記（現在プラン表示）。課金導線・Stripe 処理は一切動かさない。 */}
-      {isBetaPlan && (
+      {/* β版利用中の注記（現在プラン表示）。課金導線・Stripe 処理は一切動かさない。
+          embedded（設定ページ）では現在プランを上部に別表示するため省略。 */}
+      {!embedded && isBetaPlan && (
         <div
           role="status"
           className="mb-4 rounded-field border border-brand/30 bg-brand-soft px-3.5 py-2.5 text-[13px] font-semibold text-brand-ink"
@@ -502,7 +511,7 @@ export function PricingContent({
       {/* ── 個人利用プラン (= PC で 4 列、tablet で 2 列、mobile で 1 列) ──
           対象 OA が法人利用 (usageType=business) のときは非表示。 */}
       {showPersonalPlans && (<>
-      <SectionHeading>個人利用プラン</SectionHeading>
+      {!embedded && <SectionHeading>個人利用プラン</SectionHeading>}
       <div className="mb-9 grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-3.5 lg:grid-cols-4">
         {PERSONAL_PLAN_CARDS.map((plan) => {
           const cardState = computeCardState(plan.tier, currentPlan);
@@ -630,7 +639,7 @@ export function PricingContent({
       {/* ── 法人プラン (個人利用とは分けて表示、すべて相談導線に一本化) ──
           対象 OA が個人利用 (usageType=personal) のときは非表示。 */}
       {showBusinessPlans && (<>
-      <SectionHeading>法人プラン</SectionHeading>
+      {!embedded && <SectionHeading>法人プラン</SectionHeading>}
       <p className="mb-4 text-[13px] leading-[1.7] text-ink-2">
         {ENTERPRISE_PLAN.description}
         <br />
@@ -702,12 +711,14 @@ export function PricingContent({
         </div>
       )}
 
-      <Link
-        href="/oas"
-        className="mt-2 block text-center text-[13px] text-ink-3 transition-colors hover:text-brand-ink hover:underline"
-      >
-        もう少し試してみる
-      </Link>
+      {!embedded && (
+        <Link
+          href="/oas"
+          className="mt-2 block text-center text-[13px] text-ink-3 transition-colors hover:text-brand-ink hover:underline"
+        >
+          もう少し試してみる
+        </Link>
+      )}
 
     </div>
   );
