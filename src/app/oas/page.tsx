@@ -9,7 +9,8 @@ import { usePlatformRole } from "@/hooks/usePlatformRole";
 import { RoleBadge } from "@/components/PermissionGuard";
 import { Button, StatusBadge, buttonClass } from "@/components/shared";
 import { OasViewPreviewBar } from "@/components/OasViewPreviewBar";
-import { canCreateOaInView, isPreviewingOasView, OAS_VIEW_ROLE_LABELS } from "@/lib/oas-preview";
+import { canCreateOaInView, isPreviewingOasView, viewingAsOwnerOrAbove, OAS_VIEW_ROLE_LABELS } from "@/lib/oas-preview";
+import { usageTypeShortLabel } from "@/lib/usage-type";
 import type { Role } from "@/lib/types/permissions";
 
 // ── 定数 ─────────────────────────────────────────────────────────────────
@@ -182,6 +183,10 @@ export default function OaListPage() {
   const previewArgs = { isPlatformOwner, previewViewRole };
   const previewingNonOwner = isPreviewingOasView(previewArgs);
   const actAsOwner = canCreateOaInView(previewArgs);
+  // 利用区分（個人/法人）を表示してよい「オーナー視点」か。
+  // - platform owner: 視点が platform_owner / owner のときのみ表示（admin/editor/viewer 確認中は隠す）。
+  // - 一般ユーザー: 各 OA の my_role === "owner" のときのみ（下のループ内で OR 判定）。
+  const ownerOrAboveView = viewingAsOwnerOrAbove(previewArgs);
 
   // 「+ アカウントを追加」を表示する条件:
   //   - platform owner 視点 (= 実 platform owner かつ表示確認で owner 以外を選んでいない) のみ
@@ -365,6 +370,9 @@ export default function OaListPage() {
               const players  = totalPlayers(oa.id);
               const hasRole  = oa.my_role && oa.my_role !== "none";
               const isOwner  = oa.my_role === "owner" && actAsOwner;
+              // 利用区分は「オーナー視点」のときのみ表示する（非オーナー権限の表示モードには出さない）。
+              //   platform owner → preview 視点に従う / 一般ユーザー → 当該 OA の owner 本人のみ。
+              const showUsageType = ownerOrAboveView || (!isPlatformOwner && oa.my_role === "owner");
               return (
                 <article
                   key={oa.id}
@@ -421,6 +429,21 @@ export default function OaListPage() {
                         {hasRole && (
                           <MetaItem label="権限">
                             <RoleBadge role={oa.my_role as Role} />
+                          </MetaItem>
+                        )}
+
+                        {showUsageType && (
+                          <MetaItem label="利用区分">
+                            <span
+                              className={
+                                "inline-flex items-center rounded border px-1.5 py-0.5 text-[11px] font-semibold " +
+                                (oa.usage_type === "business"
+                                  ? "border-brand/30 bg-brand-soft text-brand-ink"
+                                  : "border-line bg-bg-tint text-ink-2")
+                              }
+                            >
+                              {usageTypeShortLabel(oa.usage_type)}
+                            </span>
                           </MetaItem>
                         )}
 

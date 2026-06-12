@@ -47,6 +47,8 @@ export const updateOaSchema = createOaSchema.partial().omit({ publish_status: tr
    * 一律「サービス終了」メッセージのみ返す状態に切り替える。
    */
   service_suspended: z.boolean().optional(),
+  /** 利用区分（個人/法人）。owner のみ編集可（PATCH /api/oas/[id] は owner gate）。 */
+  usage_type: z.enum(["personal", "business"]).optional(),
 });
 
 /**

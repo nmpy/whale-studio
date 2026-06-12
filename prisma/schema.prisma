@@ -42,6 +42,10 @@ model Oa {
   /// QR 読み取り（liff.scanCodeV2）導線を使う想定か（UI 表示フラグ）。
   /// ※ 実際に動かすには LINE Developers Console の LIFF 設定で Scan QR を ON にする必要がある。
   liffScanQrEnabled  Boolean            @default(false) @map("liff_scan_qr_enabled")
+  /// 利用区分（個人利用 / 法人利用）。オーナー / platform admin 表示モードでの区別用。
+  /// Phase2 で追加済みの enum BusinessUsageType を再利用する。既存 OA は default = personal。
+  /// 法人招待リンク (business_invite_links.usage_type) とは別物（自動連携はしない）。
+  usageType          BusinessUsageType  @default(personal) @map("usage_type")
   friendAddSettings  FriendAddSettings?
   globalCommands     GlobalCommand[]
   hintLogs           HintLog[]

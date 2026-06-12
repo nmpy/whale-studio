@@ -82,6 +82,7 @@ export const GET = withAuth(async (req, _ctx, user) =>
           publishStatus:  true,
           richMenuId:     true,
           spreadsheetId:  true,
+          usageType:      true,    // 利用区分（個人/法人）— owner / platform admin 表示用
           ownerKey:       true,    // ループ内の getWorkspaceRole 呼び出しを排除するため追加（レスポンスには出さない）
           createdAt:      true,
           updatedAt:      true,
@@ -139,6 +140,7 @@ export const GET = withAuth(async (req, _ctx, user) =>
       publish_status:       oa.publishStatus,
       rich_menu_id:         oa.richMenuId   ?? null,
       spreadsheet_id:       oa.spreadsheetId ?? null,
+      usage_type:           oa.usageType,
       created_at:           oa.createdAt,
       updated_at:           oa.updatedAt,
       _count:               oa._count,
