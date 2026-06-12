@@ -19,6 +19,7 @@ function toResponse(w: {
   resumeEnabled?: boolean | null;
   systemCharacterId: string | null;
   welcomeMessage: string | null;
+  followAction?: string | null;
   readReceiptMode: string | null; readDelayMs: number | null;
   typingEnabled: boolean | null; typingMinMs: number | null; typingMaxMs: number | null;
   loadingEnabled: boolean | null; loadingThresholdMs: number | null;
@@ -39,6 +40,7 @@ function toResponse(w: {
     resume_enabled:      w.resumeEnabled ?? true,
     system_character_id: w.systemCharacterId,
     welcome_message:     w.welcomeMessage,
+    follow_action:       (w.followAction as "auto_start" | "welcome_wait" | "none" | undefined) ?? "auto_start",
     // 演出設定
     read_receipt_mode:    (w.readReceiptMode as import("@/types").ReadReceiptMode) ?? null,
     read_delay_ms:        w.readDelayMs ?? null,
@@ -105,6 +107,7 @@ export const PATCH = withAuth<{ workId: string }>(async (req, { params }, user) 
         ...(data.resume_enabled      !== undefined && { resumeEnabled:      data.resume_enabled }),
         ...(data.system_character_id !== undefined && { systemCharacterId:  data.system_character_id }),
         ...(data.welcome_message     !== undefined && { welcomeMessage:     data.welcome_message }),
+        ...(data.follow_action       !== undefined && { followAction:       data.follow_action }),
         // 演出設定
         ...(data.read_receipt_mode    !== undefined && { readReceiptMode:    data.read_receipt_mode }),
         ...(data.read_delay_ms        !== undefined && { readDelayMs:        data.read_delay_ms }),

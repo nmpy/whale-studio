@@ -590,6 +590,7 @@ export interface MessagesBootstrapData {
     oa_id:               string;
     title:               string;
     welcome_message:     string | null;
+    follow_action:       "auto_start" | "welcome_wait" | "none";
     publish_status:      string;
     liff_enabled:        boolean;
     resume_enabled:      boolean;
