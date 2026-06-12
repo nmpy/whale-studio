@@ -1979,3 +1979,73 @@ model LiveCue {
   @@index([oaId, createdAt])
   @@map("live_cues")
 }
+
+// ─────────────────────────────────────────────────────────────
+// 法人招待リンク (= Phase2 / business invite link)
+//   platform admin が「事前に plan / role / usageType を指定した法人申込 URL」を発行する。
+//   - URL には token (平文) のみを含め、plan / role / usageType は DB 解決する (= 改ざん防止)。
+//   - DB には tokenHash (sha256 hex) のみ保存。平文 token は保存しない。
+//   - token URL を開いただけでは usedAt を更新しない (= 申込フォーム送信時のみ)。
+//   - 送信時に BusinessInviteApplication を作成し、link.usedAt をセット (= 再申請不可)。
+//   - URL アクセスで自動 OA 作成 / 権限付与 / 課金は行わない (= 申請後に運営が手動対応)。
+// ─────────────────────────────────────────────────────────────
+
+/// 利用区分。当面は business 固定で発行するが、将来 personal も扱える余地を残す。
+enum BusinessUsageType {
+  personal
+  business
+}
+
+model BusinessInviteLink {
+  id              String            @id @default(uuid())
+  /// sha256 hex(64char) の token hash。平文 token は保存しない。
+  tokenHash       String            @unique @map("token_hash")
+  /// 発行時に運営が指定する利用区分。URL には出さず DB 解決する。
+  usageType       BusinessUsageType @default(business) @map("usage_type")
+  /// 付与予定プラン tier (= "basic"|"standard"|"plus"|"pro"|"delegated")。app 側 zod で検証。
+  planTier        String            @map("plan_tier")
+  /// 付与予定ロール。admin|editor|viewer のみ app 側 zod で許可 (owner/tester は弾く)。
+  role            MemberRole        @map("role")
+  /// 運営用メモ (= 宛先企業名など)。
+  note            String?
+  /// 有効期限。null = 無期限。期限切れは申請不可。
+  expiresAt       DateTime?         @map("expires_at")
+  /// 申込フォーム送信時のみセット。セット済み = 再申請不可。
+  usedAt          DateTime?         @map("used_at")
+  /// 運営が無効化した日時。
+  revokedAt       DateTime?         @map("revoked_at")
+  /// 発行した platform admin の Supabase userId。
+  createdByUserId String            @map("created_by_user_id")
+  createdAt       DateTime          @default(now()) @map("created_at")
+  updatedAt       DateTime          @updatedAt @map("updated_at")
+
+  /// 1 link = 1 application (= 再申請不可を DB 制約でも担保)。
+  application     BusinessInviteApplication?
+
+  @@index([createdByUserId, createdAt])
+  @@index([usedAt, revokedAt])
+  @@map("business_invite_links")
+}
+
+model BusinessInviteApplication {
+  id                String            @id @default(uuid())
+  /// 紐づく link。@unique で 1 link = 1 application を担保。
+  linkId            String            @unique @map("link_id")
+  companyName       String            @map("company_name")
+  contactName       String            @map("contact_name")
+  contactEmail      String            @map("contact_email")
+  /// 申込者の LINE 公式アカウント名 (任意)。
+  lineOfficialAccountName String?     @map("line_official_account_name")
+  message           String?
+  /// 申込時点の link スナップショット (= 後から link が変更/revoke されても申請内容を保全)。
+  snapshotPlanTier  String            @map("snapshot_plan_tier")
+  snapshotRole      MemberRole        @map("snapshot_role")
+  snapshotUsageType BusinessUsageType @map("snapshot_usage_type")
+  /// 認証済みなら申込者の Supabase userId (任意)。
+  submittedByUserId String?           @map("submitted_by_user_id")
+  createdAt         DateTime          @default(now()) @map("created_at")
+
+  link              BusinessInviteLink @relation(fields: [linkId], references: [id], onDelete: Cascade)
+
+  @@map("business_invite_applications")
+}
