@@ -110,7 +110,7 @@ export function SettingsBusinessPlanView({
       {/* ── 2. 法人向けプラン（既存 /pricing の法人プランカードを embedded で再利用） ──
           法人利用 OA のときのみ表示。各カードの「相談する」が法人相談 FeedbackModal を開く。 */}
       {isBusiness && (
-        <section className="mt-6">
+        <section className="mt-6 border-t border-line pt-6">
           <h2 className="font-round mb-1 text-[18px] font-bold tracking-[-0.01em] text-ink">
             法人向けプラン
           </h2>

@@ -49,8 +49,9 @@ export default async function SettingsPlanPage({ params }: { params: { id: strin
         <PlanCard oaId={oaId} variant="embedded" />
       </section>
 
-      {/* ── 2. 料金プラン（既存 /pricing の個人プランカードを embedded で再利用） ── */}
-      <section className="mt-6">
+      {/* ── 2. 料金プラン（既存 /pricing の個人プランカードを embedded で再利用） ──
+          現在プランとの区切りを明確にするため上罫線 + 余白を付けたセクション見出し。 */}
+      <section className="mt-6 border-t border-line pt-6">
         <h2 className="font-round mb-1 text-[18px] font-bold tracking-[-0.01em] text-ink">
           料金プラン
         </h2>
