@@ -29,6 +29,8 @@ const HUB_ITEM_DEFS = [
   { key: "onboarding-analytics", title: "オンボーディング分析", desc: "作品作成〜セットアップ完了の各ステップ到達率を確認（owner のみ）" },
   // 現在のプラン・利用条件の確認導線（owner / admin）。売り込みではなく設定情報の確認として並べる。
   { key: "settings/plan",        title: "プラン・利用条件",   desc: "現在のご利用プランと利用条件を確認" },
+  // 法人契約・利用条件の確認導線（法人利用 OA かつ owner / admin のときのみ表示）。
+  { key: "settings/business-plan", title: "法人契約・利用条件", desc: "法人向けの契約内容・利用条件を確認" },
   // Whale Studio Live（隠し上位機能）。Live にアクセス可能なユーザーにのみ表示する。
   { key: "live",                 title: "Whale Studio Live", desc: "リアルタイムに進行・管制・演出支援を行う上位機能" },
 ] as const;
@@ -38,12 +40,13 @@ export default function OaSettingsPage() {
   const oaId   = params.id;
   const { role, isOwner, isAdmin, liveAccess } = useWorkspaceRole(oaId);
   const [oaTitle,        setOaTitle]        = useState<string>("");
+  const [usageType,      setUsageType]      = useState<string | null>(null);
   const [billingSuccess, setBillingSuccess] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     oaApi.get(getDevToken(), oaId)
-      .then((oa) => setOaTitle(oa.title))
+      .then((oa) => { setOaTitle(oa.title); setUsageType(oa.usage_type ?? "personal"); })
       .catch(() => {});
   }, [oaId]);
 
@@ -124,6 +127,8 @@ export default function OaSettingsPage() {
           {HUB_ITEM_DEFS.filter(({ key }) => {
             if (key === "onboarding-analytics") return isOwner;
             if (key === "settings/plan") return isOwner || isAdmin;
+            // 法人契約カードは法人利用 OA かつ owner/admin のときのみ表示。
+            if (key === "settings/business-plan") return (isOwner || isAdmin) && usageType === "business";
             if (key === "settings/members") return isOwner || isAdmin;
             if (key === "account" || key === "richmenu-editor" || key === "friend-add" || key === "sns" || key === "settings/liff") return isAdmin;
             if (key === "live") return liveAccess; // Live 可ユーザーのみ。それ以外には存在を見せない
