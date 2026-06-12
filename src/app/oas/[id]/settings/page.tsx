@@ -111,8 +111,8 @@ export default function OaSettingsPage() {
         </p>
       </div>
 
-      {/* ── プランカード（owner / admin のみ、別管理コンポーネント） ── */}
-      {(isOwner || isAdmin) && <PlanCard oaId={oaId} />}
+      {/* 上段の大きな現在プランカードは廃止。現在プラン情報は下部「プラン・利用条件」
+          アコーディオン内（デフォルト閉じ）へ移設し、売り込み感を抑える。 */}
 
       {/* ── 機能カード グリッド ── */}
       <section>
@@ -154,9 +154,12 @@ export default function OaSettingsPage() {
       </section>
 
       {/* ── プラン・利用条件（補助情報・アコーディオン / デフォルト閉じ） ──
-          売り込み感を出さず、現在の利用条件確認と料金・プランページへの導線のみ。 */}
+          開いたときだけ現在プラン情報（owner/admin は embedded PlanCard）+ 料金リンクを表示。
+          現在プラン情報は既存 PlanCard と同じ値・算出ロジック（subscription 由来）。 */}
       <div className="mt-5">
-        <PlanInfoAccordion oaId={oaId} />
+        <PlanInfoAccordion oaId={oaId}>
+          {(isOwner || isAdmin) && <PlanCard oaId={oaId} variant="embedded" />}
+        </PlanInfoAccordion>
       </div>
     </>
   );
