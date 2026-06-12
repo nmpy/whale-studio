@@ -129,6 +129,8 @@ export interface Oa {
    * 対してのみ一律「サービス終了」メッセージを返す。publish_status とは独立。
    */
   service_suspended_at: string | null;
+  /** 利用区分（個人/法人）。owner / platform admin 表示モードでの区別用（既定 personal）。 */
+  usage_type?: "personal" | "business";
   created_at: string;
   updated_at: string;
 }
@@ -363,6 +365,8 @@ export interface UpdateOaBody {
    * undefined (= 省略) なら変更なし。サーバー側で `serviceSuspendedAt` (DateTime?) に変換される。
    */
   service_suspended?: boolean;
+  /** 利用区分（個人/法人）。owner のみ更新可。 */
+  usage_type?: "personal" | "business";
 }
 
 export interface CreateWorkBody {

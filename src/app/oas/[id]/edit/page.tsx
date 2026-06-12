@@ -18,12 +18,18 @@ interface FormState {
   channel_access_token: string;
   publish_status: PublishStatus;
   spreadsheet_id: string;
+  usage_type: "personal" | "business";
 }
 
 const STATUS_OPTIONS: { value: PublishStatus; label: string }[] = [
   { value: "draft",  label: "下書き（非公開）" },
   { value: "active", label: "公開中" },
   { value: "paused", label: "停止中" },
+];
+
+const USAGE_TYPE_OPTIONS: { value: "personal" | "business"; label: string }[] = [
+  { value: "personal", label: "個人" },
+  { value: "business", label: "法人" },
 ];
 
 export default function OaEditPage() {
@@ -51,6 +57,7 @@ export default function OaEditPage() {
           channel_access_token: oa.channel_access_token,
           publish_status:       oa.publish_status,
           spreadsheet_id:       oa.spreadsheet_id ?? "",
+          usage_type:           oa.usage_type ?? "personal",
         });
       })
       .catch((e) => setLoadError(e instanceof Error ? e.message : "読み込みに失敗しました"));
@@ -89,6 +96,7 @@ export default function OaEditPage() {
         channel_access_token: form.channel_access_token.trim(),
         publish_status:       form.publish_status,
         spreadsheet_id:       form.spreadsheet_id.trim() || null,
+        usage_type:           form.usage_type,
       });
       showToast("OA情報を保存しました", "success");
       router.push("/oas");
@@ -188,6 +196,27 @@ export default function OaEditPage() {
                 </label>
               ))}
             </div>
+          </div>
+
+          <div className="form-group">
+            <label>利用区分</label>
+            <div className="radio-group">
+              {USAGE_TYPE_OPTIONS.map(({ value, label }) => (
+                <label key={value}>
+                  <input
+                    type="radio"
+                    name="usage_type"
+                    value={value}
+                    checked={form!.usage_type === value}
+                    onChange={() => setField("usage_type", value)}
+                  />
+                  {label}
+                </label>
+              ))}
+            </div>
+            <p style={{ fontSize: 11, color: "#6b7280", marginTop: 3 }}>
+              個人利用か法人利用かの区分です。表示・管理用で、プランや権限の挙動には影響しません。
+            </p>
           </div>
 
           <hr className="section-divider" />

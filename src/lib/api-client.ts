@@ -358,6 +358,8 @@ async function parseResponse<T>(res: Response): Promise<T> {
 /** GET /api/oas 一覧アイテム（channel_secret / channel_access_token を除く） */
 export interface OaListItem extends Omit<Oa, "channel_secret" | "channel_access_token"> {
   _count:   { works: number };
+  /** 利用区分（個人/法人）。owner / platform admin 表示モードでのみ UI に出す。 */
+  usage_type: "personal" | "business";
   my_role:  string; // 'owner' | 'admin' | 'editor' | 'viewer' | 'none'
   /** workspace へ実際にアクセス可能か（owner_key 一致 or active WorkspaceMember のみ true）。
    *  platform admin でもメンバーでなければ false。client で works fetch 等を出し分けるのに使う。 */

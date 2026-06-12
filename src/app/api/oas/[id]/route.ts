@@ -42,6 +42,7 @@ export const GET = withRole<{ id: string }>(
         publish_status:       oa.publishStatus,
         rich_menu_id:         oa.richMenuId          ?? null,
         spreadsheet_id:       oa.spreadsheetId       ?? null,
+        usage_type:           oa.usageType,
         service_suspended_at: oa.serviceSuspendedAt  ?? null,
         live_enabled,
         created_at:           oa.createdAt,
@@ -80,6 +81,7 @@ export const PATCH = withRole<{ id: string }>(
           // サービス稼働状態トグル: true → 現在時刻をセット (= 停止中) / false → null (= 稼働中)。
           // publish_status とは独立。webhook が serviceSuspendedAt 非 null を見て早期 bail out する。
           ...(data.service_suspended    !== undefined && { serviceSuspendedAt: data.service_suspended ? new Date() : null }),
+          ...(data.usage_type           !== undefined && { usageType: data.usage_type }),
         },
       });
 
@@ -100,6 +102,7 @@ export const PATCH = withRole<{ id: string }>(
         publish_status:       updated.publishStatus,
         rich_menu_id:         updated.richMenuId          ?? null,
         spreadsheet_id:       updated.spreadsheetId       ?? null,
+        usage_type:           updated.usageType,
         service_suspended_at: updated.serviceSuspendedAt  ?? null,
         created_at:           updated.createdAt,
         updated_at:           updated.updatedAt,

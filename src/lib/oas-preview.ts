@@ -94,6 +94,26 @@ export function canCreateOaInView(args: {
   return viewingAsPlatformOwner(args);
 }
 
+/** 「オーナー以上の視点」で `/oas` を見ているか (= 利用区分など owner 向け情報の表示判定)。
+ *  - 実 platform owner かつ視点が platform_owner / owner のとき true
+ *    (= platform_owner 既定、または owner 表示確認中も含む)。
+ *  - admin / editor / viewer を表示確認中、または非 platform owner のときは false。
+ *
+ *  ⚠ 一般 workspace owner (= 実 platform owner ではない) の判定はここに含めない。
+ *     呼び出し側で当該 OA の `my_role === "owner"` と OR して扱うこと
+ *     (= platform owner は preview 視点に従い、一般ユーザーは自分の実ロールに従う)。 */
+export function viewingAsOwnerOrAbove(args: {
+  isPlatformOwner: boolean;
+  previewViewRole: OasViewRole | null;
+}): boolean {
+  if (!args.isPlatformOwner) return false;
+  return (
+    args.previewViewRole === null ||
+    args.previewViewRole === "platform_owner" ||
+    args.previewViewRole === "owner"
+  );
+}
+
 /** 表示確認中か (= platform owner が platform_owner 以外の視点を選択中)。
  *  バッジ / 解除ボタンの表示判定に使う。 */
 export function isPreviewingOasView(args: {

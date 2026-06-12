@@ -19,6 +19,7 @@ import {
   canCreateOaInView,
   isPreviewingOasView,
   previewWsRoleOf,
+  viewingAsOwnerOrAbove,
   OAS_VIEW_ROLES,
 } from "@/lib/oas-preview";
 
@@ -125,5 +126,28 @@ describe("previewWsRoleOf", () => {
     expect(previewWsRoleOf({ isPlatformOwner: true, previewViewRole: "platform_owner" })).toBeNull();
     expect(previewWsRoleOf({ isPlatformOwner: true, previewViewRole: null })).toBeNull();
     expect(previewWsRoleOf({ isPlatformOwner: false, previewViewRole: "admin" })).toBeNull();
+  });
+});
+
+// ──────────────────────────────────────────────────────────
+// viewingAsOwnerOrAbove (= 利用区分など owner 向け情報の表示判定)
+// ──────────────────────────────────────────────────────────
+
+describe("viewingAsOwnerOrAbove", () => {
+  it("platform owner の platform_owner / owner 視点では true", () => {
+    expect(viewingAsOwnerOrAbove({ isPlatformOwner: true, previewViewRole: null })).toBe(true);
+    expect(viewingAsOwnerOrAbove({ isPlatformOwner: true, previewViewRole: "platform_owner" })).toBe(true);
+    expect(viewingAsOwnerOrAbove({ isPlatformOwner: true, previewViewRole: "owner" })).toBe(true);
+  });
+
+  it("admin / editor / viewer を表示確認中は false (= 非オーナー視点には出さない)", () => {
+    expect(viewingAsOwnerOrAbove({ isPlatformOwner: true, previewViewRole: "admin" })).toBe(false);
+    expect(viewingAsOwnerOrAbove({ isPlatformOwner: true, previewViewRole: "editor" })).toBe(false);
+    expect(viewingAsOwnerOrAbove({ isPlatformOwner: true, previewViewRole: "viewer" })).toBe(false);
+  });
+
+  it("非 platform owner は常に false (= 一般ユーザーは my_role で別途判定する)", () => {
+    expect(viewingAsOwnerOrAbove({ isPlatformOwner: false, previewViewRole: null })).toBe(false);
+    expect(viewingAsOwnerOrAbove({ isPlatformOwner: false, previewViewRole: "owner" })).toBe(false);
   });
 });
