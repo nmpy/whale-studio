@@ -46,6 +46,7 @@ import {
   type PlanTier,
   type FeatureKey,
 } from "@/lib/constants/plans";
+import { effectiveTierFromSub } from "@/lib/subscription-grant";
 
 /**
  * 現在のリクエストの userId が PLATFORM_ADMIN_USER_IDS に含まれているかを判定する。
@@ -60,11 +61,6 @@ function isCurrentUserPlatformAdmin(): boolean {
 // ────────────────────────────────────────────────
 // 現在の plan tier を取得する
 // ────────────────────────────────────────────────
-
-/** Subscription.status のうち「full access を許可する」状態。
- *  past_due / canceled / unpaid / incomplete / incomplete_expired / paused は basic に
- *  ダウングレードする (= 課金状態とアクセス権限を一致させる)。 */
-const FULL_ACCESS_STATUSES = new Set(["active", "trialing"]);
 
 /**
  * 指定 OA の現在のプランティアを返す。
@@ -84,12 +80,19 @@ export async function getCurrentPlanTierForOa(oaId: string): Promise<PlanTier> {
   try {
     const sub = await prisma.subscription.findUnique({
       where:   { oaId },
-      include: { plan: { select: { name: true } } },
+      select:  { status: true, grantType: true, trialEndsAt: true, plan: { select: { name: true } } },
     });
     if (!sub) return mapPlanNameToTier(null);
-    // active / trialing 以外は basic 扱い (= フル機能解放しない)
-    if (!FULL_ACCESS_STATUSES.has(sub.status)) return mapPlanNameToTier(null);
-    return mapPlanNameToTier(sub.plan?.name ?? null);
+    // β版 / トライアルの実効ティアを純ロジックで判定 (= UI と同じ subscription-grant を共有):
+    //   - grantType="beta"  → 無期限・plan(pro)=Pro Max 相当
+    //   - grantType="trial" → trialEndsAt 内は plan(pro)、失効後は basic
+    //   - それ以外          → status が full access のとき plan の tier、それ以外 basic
+    return effectiveTierFromSub({
+      status:      sub.status,
+      grantType:   sub.grantType,
+      trialEndsAt: sub.trialEndsAt,
+      planName:    sub.plan?.name ?? null,
+    });
   } catch (err) {
     // DB エラー時は最低プラン扱い (= 機能を不用意に開放しない)
     console.error("[plan-guard] getCurrentPlanTierForOa failed:", err);

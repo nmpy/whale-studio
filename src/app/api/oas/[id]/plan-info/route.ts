@@ -9,6 +9,7 @@ import { withRole } from "@/lib/auth";
 import { ok, serverError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { isPlatformOwner } from "@/lib/platform-admin";
+import { grantDisplayKind, formatTrialEndDate } from "@/lib/subscription-grant";
 
 /** ?previewPlan で受け取り可能な値 (= UI tier の小文字キー)。
  *  これ以外は無視 (= 通常レスポンスを返す)。 */
@@ -90,6 +91,11 @@ export const GET = withRole<{ id: string }>(
         return ok(null);
       }
 
+      // β版 / トライアルの表示区分（"beta" / "trial_active" / "trial_expired" / "normal"）。
+      const grantKind = grantDisplayKind({
+        status: sub.status, grantType: sub.grantType, trialEndsAt: sub.trialEndsAt,
+      });
+
       return ok({
         plan_name:       sub.plan.name,
         display_name:    sub.plan.displayName,
@@ -97,6 +103,11 @@ export const GET = withRole<{ id: string }>(
         max_players:     sub.plan.maxPlayers, // -1 = 無制限
         price_monthly:   sub.plan.priceMonthly,
         status:          sub.status,
+        // β版 / トライアル表示用（既存フィールドは互換維持し追加のみ）。
+        grant_type:      sub.grantType ?? null,
+        grant_kind:      grantKind,
+        trial_ends_at:   sub.trialEndsAt?.toISOString() ?? null,
+        trial_end_label: formatTrialEndDate(sub.trialEndsAt),
       });
     } catch (err) {
       return serverError(err);

@@ -19,9 +19,11 @@ import { isPlatformOwner } from "@/lib/platform-admin";
 import { mapPlanNameToTier, PLAN_LABELS } from "@/lib/constants/plans";
 import { z, ZodError } from "zod";
 
-// 個人プラン権限で選べるのは個人 4 ティアのみ（delegated は法人向けで除外）。
+// 個人プラン権限で選べるのは「β版」+ 個人 4 ティア（delegated は法人向けで除外）。
+//   "beta"                       → β版（無期限・Pro Max 相当）
+//   "basic"/"standard"/"plus"/"pro" → 通常の手動付与
 const changePlanSchema = z.object({
-  planTier: z.enum(["basic", "standard", "plus", "pro"]),
+  planTier: z.enum(["beta", "basic", "standard", "plus", "pro"]),
   note:     z.string().trim().max(500).optional(),
 });
 
@@ -48,24 +50,31 @@ export const POST = withAuth<{ oaId: string }>(async (req: NextRequest, ctx, use
       return conflict("このアカウントは外部決済（Stripe）と連動しているため、ここでは変更できません。");
     }
 
-    // 対象プラン Plan 行を name で解決（Plan.name は basic/standard/plus/pro）。
-    const plan = await prisma.plan.findUnique({ where: { name: data.planTier }, select: { id: true, name: true } });
+    // β版は plan=pro（Pro Max 相当）に解決。通常プランは name = planTier。
+    const grantType: "beta" | null = data.planTier === "beta" ? "beta" : null;
+    const planName  = data.planTier === "beta" ? "pro" : data.planTier;
+
+    const plan = await prisma.plan.findUnique({ where: { name: planName }, select: { id: true, name: true } });
     if (!plan) {
-      return badRequest(`プラン "${data.planTier}" が見つかりません（Plan 未seed の可能性）。`);
+      return badRequest(`プラン "${planName}" が見つかりません（Plan 未seed の可能性）。`);
     }
 
     const now = new Date();
     const oneYearOut = new Date(now);
     oneYearOut.setFullYear(oneYearOut.getFullYear() + 1);
 
-    // 手動付与: planId を変更し status=active（即時有効）。externalId は触らない（null のまま）。
+    // 手動付与: planId 変更 + status=active（即時有効）。externalId は触らない（null のまま）。
+    //   β版    → grantType=beta / trialEndsAt=null（無期限・期限切れにならない）
+    //   通常    → grantType=null / trialEndsAt=null（β版/トライアル指定を解除）
     await prisma.subscription.upsert({
       where:  { oaId: oa.id },
-      update: { planId: plan.id, status: "active", canceledAt: null },
+      update: { planId: plan.id, status: "active", canceledAt: null, grantType, trialEndsAt: null },
       create: {
         oaId:               oa.id,
         planId:             plan.id,
         status:             "active",
+        grantType,
+        trialEndsAt:        null,
         currentPeriodStart: now,
         currentPeriodEnd:   oneYearOut,
       },
@@ -86,7 +95,8 @@ export const POST = withAuth<{ oaId: string }>(async (req: NextRequest, ctx, use
       oa_id:      oa.id,
       plan_name:  plan.name,
       plan_tier:  tier,
-      plan_label: PLAN_LABELS[tier],
+      plan_label: grantType === "beta" ? `β版（${PLAN_LABELS.pro}相当）` : PLAN_LABELS[tier],
+      grant_type: grantType,
       status:     "active",
       note:       data.note ?? null,
     });
