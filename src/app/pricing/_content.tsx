@@ -267,6 +267,7 @@ export function PricingContent({
   oaId,
   canceled,
   priceOverrides,
+  usageType,
 }: {
   source?:   string;
   from?:     string;
@@ -279,7 +280,14 @@ export function PricingContent({
    *  取得失敗時は { formatted: "お問い合わせください", priceUnit: "" } が入る。
    *  カード描画時に `PERSONAL_PLAN_CARDS` の hardcoded `price` / `priceUnit` を上書きする。 */
   priceOverrides?: Record<PersonalPlanCard["tier"], { formatted: string; priceUnit: string }>;
+  /** 対象 OA の利用区分 (= page.tsx でアクセス判定込みに解決)。
+   *  personal → 個人利用プランのみ / business → 法人プランのみ表示。
+   *  null/undefined（oa_id なし / 権限なし / 解決不可）→ 両方表示（既存挙動）。 */
+  usageType?: "personal" | "business" | null;
 }) {
+  // 利用区分によるプラン群の出し分け。usageType が無い（LP 直開き / 権限なし等）は両方表示。
+  const showPersonalPlans = usageType !== "business";
+  const showBusinessPlans = usageType !== "personal";
   const [requested,            setRequested]            = useState(false);
   /** 押された個別プランの tier (= "basic"|"standard"|"pro"|"plus")。
    *  null = checkout 進行中ではない。
@@ -478,7 +486,9 @@ export function PricingContent({
         </div>
       )}
 
-      {/* ── 個人利用プラン (= PC で 4 列、tablet で 2 列、mobile で 1 列) ── */}
+      {/* ── 個人利用プラン (= PC で 4 列、tablet で 2 列、mobile で 1 列) ──
+          対象 OA が法人利用 (usageType=business) のときは非表示。 */}
+      {showPersonalPlans && (<>
       <SectionHeading>個人利用プラン</SectionHeading>
       <div className="mb-9 grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-3.5 lg:grid-cols-4">
         {PERSONAL_PLAN_CARDS.map((plan) => {
@@ -602,8 +612,11 @@ export function PricingContent({
           );
         })}
       </div>
+      </>)}
 
-      {/* ── 法人プラン (個人利用とは分けて表示、すべて相談導線に一本化) ── */}
+      {/* ── 法人プラン (個人利用とは分けて表示、すべて相談導線に一本化) ──
+          対象 OA が個人利用 (usageType=personal) のときは非表示。 */}
+      {showBusinessPlans && (<>
       <SectionHeading>法人プラン</SectionHeading>
       <p className="mb-4 text-[13px] leading-[1.7] text-ink-2">
         {ENTERPRISE_PLAN.description}
@@ -664,6 +677,7 @@ export function PricingContent({
           );
         })}
       </div>
+      </>)}
 
       {/* CTA フィードバック (= 相談フォームを開いた後の確認表示) */}
       {requested && (
