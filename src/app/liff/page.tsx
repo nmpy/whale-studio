@@ -21,7 +21,7 @@ import { resolveLiffErrorPresentation, resolveCheckinResultPresentation, LIFF_LO
 type LiffStep =
   | { step: "init"; detail: string }
   | { step: "error"; code: string; message: string }
-  | { step: "confirm"; mode: CheckinMode; locationName: string }
+  | { step: "confirm"; mode: CheckinMode; locationName: string; targetLat?: number | null; targetLng?: number | null; radiusMeters?: number | null }
   | { step: "gps_acquiring" }
   | { step: "submitting" }
   | { step: "result"; result: CheckinResult };
@@ -226,6 +226,10 @@ function CheckinContent() {
         const locData = locRes.success ? locRes.data : null;
         const mode: CheckinMode = (locData?.checkin_mode as CheckinMode) ?? "qr_only";
         const locationName = locData?.name ?? "この場所";
+        // 地図表示用の目的地座標 / 範囲（additive。null 可。判定には使わない）
+        const targetLat = typeof locData?.latitude === "number" ? locData.latitude : null;
+        const targetLng = typeof locData?.longitude === "number" ? locData.longitude : null;
+        const radiusMeters = typeof locData?.radius_meters === "number" ? locData.radius_meters : null;
 
         recordLiffEvent({
           workId,
@@ -233,7 +237,7 @@ function CheckinContent() {
           lineUserId: isLineUserVerified ? verifiedLineUserId : null,
           metadata:   { oaId: cfgOaId, locationId, mode, isLineUserVerified },
         });
-        setState({ step: "confirm", mode, locationName });
+        setState({ step: "confirm", mode, locationName, targetLat, targetLng, radiusMeters });
       } catch (err) {
         if (cancelled) return;
         console.error("[LIFF] init error:", err);
@@ -359,14 +363,14 @@ function CheckinContent() {
               <LiffButton type="button" variant="primary" onClick={handleQrCheckin}>チェックインする</LiffButton>
               {/* GPS 補助（任意） */}
               {lineUserId && locationId && workId && (
-                <GpsCheckin locationId={locationId} workId={workId} lineUserId={lineUserId} locationName={state.locationName} onResult={handleGpsResult} />
+                <GpsCheckin locationId={locationId} workId={workId} lineUserId={lineUserId} locationName={state.locationName} targetLat={state.targetLat} targetLng={state.targetLng} radiusMeters={state.radiusMeters} onResult={handleGpsResult} />
               )}
             </>
           )}
 
           {/* ── gps_only ── */}
           {state.mode === "gps_only" && lineUserId && locationId && workId && (
-            <GpsCheckin locationId={locationId} workId={workId} lineUserId={lineUserId} locationName={state.locationName} onResult={handleGpsResult} />
+            <GpsCheckin locationId={locationId} workId={workId} lineUserId={lineUserId} locationName={state.locationName} targetLat={state.targetLat} targetLng={state.targetLng} radiusMeters={state.radiusMeters} onResult={handleGpsResult} />
           )}
 
           {/* ── qr_and_gps ── */}
@@ -380,6 +384,9 @@ function CheckinContent() {
                 workId={workId}
                 lineUserId={lineUserId}
                 locationName={state.locationName}
+                targetLat={state.targetLat}
+                targetLng={state.targetLng}
+                radiusMeters={state.radiusMeters}
                 checkinMethod="qr_and_gps"
                 buttonLabel="現在地を確認してチェックイン"
                 onResult={handleGpsResult}
