@@ -13,7 +13,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 const h = vi.hoisted(() => ({
   mockBeaconTrigger: { findUnique: vi.fn() },
   mockOa: { findUnique: vi.fn() },
-  mockHandle: vi.fn(async () => ({ status: "sent", reason: undefined, triggerId: "trg-1" })),
+  mockHandle: vi.fn((..._args: unknown[]) => Promise.resolve({ status: "sent" as const, reason: null as string | null, triggerId: "trg-1" })),
   state: { platformOwner: false },
 }));
 const { mockBeaconTrigger, mockOa, mockHandle } = h;
