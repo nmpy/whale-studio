@@ -108,6 +108,20 @@ export default function LocationLogsPage() {
   useEffect(() => { load(); /* 初回のみ自動 */ // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [oaId]);
 
+  // CSV エクスポート URL（現在の絞り込み条件を引き継ぐ）
+  const exportHref = (() => {
+    const qs = new URLSearchParams();
+    if (workId) qs.set("workId", workId);
+    if (type) qs.set("type", type);
+    if (status) qs.set("status", status);
+    if (userId.trim()) qs.set("userId", userId.trim());
+    if (from) { const d = new Date(from); if (!isNaN(d.getTime())) qs.set("from", d.toISOString()); }
+    if (to) { const d = new Date(to); if (!isNaN(d.getTime())) qs.set("to", d.toISOString()); }
+    if (locationId) qs.set("locationId", locationId);
+    if (beaconTriggerId) qs.set("beaconTriggerId", beaconTriggerId);
+    return `/api/oas/${oaId}/locations/logs/export?${qs.toString()}`;
+  })();
+
   return (
     <div style={{ maxWidth: 1040, margin: "0 auto", padding: "24px 16px" }}>
       <Breadcrumb items={[
@@ -115,9 +129,14 @@ export default function LocationLogsPage() {
         { label: "ロケーション管理", href: `/oas/${oaId}/locations` },
         { label: "ログ" },
       ]} />
-      <div className="mb-4 flex items-center justify-between">
+      <div className="mb-4 flex items-center justify-between gap-3">
         <h1 className="font-round text-[clamp(18px,3.5vw,22px)] font-extrabold tracking-[-0.02em] text-ink">ロケーション統合ログ</h1>
-        <Link href={`/oas/${oaId}/locations`} className="text-[12px] font-semibold text-brand-ink underline">ロケーション管理へ</Link>
+        <div className="flex items-center gap-3">
+          {planAccess.allowed && (
+            <a href={exportHref} className="text-[12px] font-semibold text-brand-ink underline" download>CSVエクスポート</a>
+          )}
+          <Link href={`/oas/${oaId}/locations`} className="text-[12px] font-semibold text-brand-ink underline">ロケーション管理へ</Link>
+        </div>
       </div>
 
       {planLoading ? (
