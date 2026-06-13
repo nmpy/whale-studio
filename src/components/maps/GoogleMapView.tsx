@@ -169,11 +169,16 @@ export function GoogleMapView({
           circleRef.current.setMap(null);
         }
 
-        // recenter（target 優先）
+        // recenter（target 優先）。検索/手入力/クリック/ドラッグのいずれでも選択地点へ確実に移動。
         const c = isValidLatLng(target) ? target
           : isValidLatLng(currentLocation) ? currentLocation
           : isValidLatLng(center) ? center : null;
-        if (c) map.setCenter(c);
+        if (c) {
+          map.panTo(c);
+          // 広域表示のままだとピン移動が分かりにくいので、ズームが浅い場合だけ寄せる。
+          const z = map.getZoom();
+          if (typeof z === "number" && z < 14) map.setZoom(16);
+        }
       } catch { /* ignore */ }
     })();
     return () => { cancelled = true; };
