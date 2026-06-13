@@ -146,9 +146,9 @@ export function CheckpointList({
                       </button>
                     )}
                     {includesQr(c.checkin_mode) && (
-                      <Link href={`/oas/${oaId}/works/${c.work_id}/locations/print`} className={buttonClass({ variant: "ghost", size: "sm" })}>QR印刷</Link>
+                      <Link href={`/oas/${oaId}/locations/print?workId=${c.work_id}`} className={buttonClass({ variant: "ghost", size: "sm" })}>QR印刷</Link>
                     )}
-                    <Link href={`/oas/${oaId}/works/${c.work_id}/locations/${c.id}`} className={buttonClass({ variant: "ghost", size: "sm" })}>
+                    <Link href={`/oas/${oaId}/locations/${c.id}`} className={buttonClass({ variant: "ghost", size: "sm" })}>
                       {readOnly ? "分析" : "編集 / 分析"}
                     </Link>
                   </div>
