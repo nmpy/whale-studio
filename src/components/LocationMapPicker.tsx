@@ -1,35 +1,21 @@
 "use client";
 
 // src/components/LocationMapPicker.tsx
-// Leaflet ベースの座標 + 半径ピッカー。
-// Location フォームで GPS 設定時に使用する。
+// Google Maps ベースの座標 + 半径ピッカー（管理画面の Location フォーム用）。
+// PR #281 で作成した共通 GoogleMapView を editable モードで再利用する。
 //
 // 機能:
 //   - 地図クリックでピン移動 → lat/lng をコールバック
-//   - ピンドラッグでも座標変更
+//   - 目的地ピンのドラッグでも座標変更
 //   - radius_meters を円で可視化
 //   - 「現在地を設定」ボタン
 //   - 半径クイック選択 + スライダー
 //   - 数値入力と双方向同期（props 経由）
 //
-// SSR 非対応のため dynamic import で使うこと:
-//   const LocationMapPicker = dynamic(() => import("@/components/LocationMapPicker"), { ssr: false });
+// 公開 props / 既存の使用箇所（_form.tsx）は不変。内部地図を Leaflet → Google Maps に置換。
 
-import { useEffect, useRef, useCallback, useState } from "react";
-import { MapContainer, TileLayer, Marker, Circle, useMapEvents, useMap } from "react-leaflet";
-import L from "leaflet";
-import "leaflet/dist/leaflet.css";
-
-// Leaflet のデフォルトアイコンを修正（webpack で壊れる問題の回避）
-const defaultIcon = L.icon({
-  iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
-  iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
-  shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-  popupAnchor: [1, -34],
-  shadowSize: [41, 41],
-});
+import { useCallback, useState } from "react";
+import { GoogleMapView, type LatLng } from "@/components/maps/GoogleMapView";
 
 interface LocationMapPickerProps {
   latitude: number | null;
@@ -40,39 +26,12 @@ interface LocationMapPickerProps {
   height?: number;
 }
 
-const DEFAULT_CENTER: [number, number] = [35.6812, 139.7671]; // 東京駅
-const DEFAULT_ZOOM = 15;
+const DEFAULT_CENTER: LatLng = { lat: 35.6812, lng: 139.7671 }; // 東京駅
 
 const RADIUS_PRESETS = [20, 50, 100, 200, 500] as const;
 const RADIUS_LABELS: Record<number, string> = {
   10: "建物内", 20: "ごく近く", 50: "敷地内", 100: "ブロック", 200: "周辺", 300: "エリア", 500: "広域",
 };
-
-/** 地図クリックのハンドラ */
-function MapClickHandler({ onLocationChange }: { onLocationChange: (lat: number, lng: number) => void }) {
-  useMapEvents({
-    click(e) {
-      onLocationChange(e.latlng.lat, e.latlng.lng);
-    },
-  });
-  return null;
-}
-
-/** props の lat/lng が変わったとき地図の表示を追従させる */
-function MapSync({ lat, lng }: { lat: number | null; lng: number | null }) {
-  const map = useMap();
-  const prevRef = useRef<string>("");
-
-  useEffect(() => {
-    if (lat == null || lng == null) return;
-    const key = `${lat.toFixed(6)},${lng.toFixed(6)}`;
-    if (key === prevRef.current) return;
-    prevRef.current = key;
-    map.setView([lat, lng], map.getZoom(), { animate: true });
-  }, [lat, lng, map]);
-
-  return null;
-}
 
 export default function LocationMapPicker({
   latitude,
@@ -83,17 +42,10 @@ export default function LocationMapPicker({
   height = 320,
 }: LocationMapPickerProps) {
   const [gettingLocation, setGettingLocation] = useState(false);
-  const markerRef = useRef<L.Marker>(null);
 
-  const center: [number, number] =
-    latitude != null && longitude != null ? [latitude, longitude] : DEFAULT_CENTER;
-
-  const handleMarkerDrag = useCallback(() => {
-    const marker = markerRef.current;
-    if (!marker) return;
-    const pos = marker.getLatLng();
-    onLocationChange(pos.lat, pos.lng);
-  }, [onLocationChange]);
+  const hasPosition = latitude != null && longitude != null;
+  const target: LatLng | null = hasPosition ? { lat: latitude!, lng: longitude! } : null;
+  const center: LatLng = target ?? DEFAULT_CENTER;
 
   const handleGetCurrentLocation = useCallback(() => {
     if (!("geolocation" in navigator)) return;
@@ -121,8 +73,6 @@ export default function LocationMapPicker({
       }
     }
   }, [onRadiusChange]);
-
-  const hasPosition = latitude != null && longitude != null;
 
   // 半径目安テキスト
   const radiusLabel = RADIUS_LABELS[radiusMeters] ?? (
@@ -193,46 +143,18 @@ export default function LocationMapPicker({
         )}
       </div>
 
-      {/* 地図 */}
-      <div style={{ height, borderRadius: 8, overflow: "hidden", border: "1px solid #e5e7eb" }}>
-        <MapContainer
-          center={center}
-          zoom={hasPosition ? 16 : DEFAULT_ZOOM}
-          style={{ height: "100%", width: "100%" }}
-          scrollWheelZoom={true}
-        >
-          <TileLayer
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          />
-          <MapClickHandler onLocationChange={onLocationChange} />
-          <MapSync lat={latitude} lng={longitude} />
-
-          {hasPosition && (
-            <>
-              <Marker
-                position={[latitude!, longitude!]}
-                icon={defaultIcon}
-                draggable={true}
-                ref={markerRef}
-                eventHandlers={{ dragend: handleMarkerDrag }}
-              />
-              {radiusMeters > 0 && (
-                <Circle
-                  center={[latitude!, longitude!]}
-                  radius={radiusMeters}
-                  pathOptions={{
-                    color: "#2563eb",
-                    fillColor: "#2563eb",
-                    fillOpacity: 0.12,
-                    weight: 2,
-                  }}
-                />
-              )}
-            </>
-          )}
-        </MapContainer>
-      </div>
+      {/* 地図（Google Maps / editable）。APIキー未設定時は GoogleMapView 内で fallback 表示。 */}
+      <GoogleMapView
+        center={center}
+        target={target}
+        radiusMeters={radiusMeters > 0 ? radiusMeters : null}
+        zoom={hasPosition ? 16 : 15}
+        height={height}
+        readonly={false}
+        onMapClick={(ll) => onLocationChange(ll.lat, ll.lng)}
+        draggableTarget
+        onTargetChange={(ll) => onLocationChange(ll.lat, ll.lng)}
+      />
 
       {hasPosition && (
         <p style={{ fontSize: 11, color: "#9ca3af" }}>

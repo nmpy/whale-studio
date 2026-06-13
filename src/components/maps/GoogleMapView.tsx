@@ -30,6 +30,10 @@ export type GoogleMapViewProps = {
   height?: number | string;
   readonly?: boolean;
   onMapClick?: (latLng: LatLng) => void;
+  /** target ピンのドラッグで座標更新（draggableTarget=true 時）。 */
+  onTargetChange?: (latLng: LatLng) => void;
+  /** target ピンをドラッグ可能にする（既定 false）。 */
+  draggableTarget?: boolean;
   className?: string;
 };
 
@@ -44,7 +48,7 @@ type Status = "loading" | "ready" | "error" | "no_key";
 
 export function GoogleMapView({
   center, target, currentLocation, radiusMeters,
-  zoom = 16, height = 280, readonly = true, onMapClick, className,
+  zoom = 16, height = 280, readonly = true, onMapClick, onTargetChange, draggableTarget = false, className,
 }: GoogleMapViewProps) {
   const divRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<google.maps.Map | null>(null);
@@ -52,10 +56,15 @@ export function GoogleMapView({
   const currentMarkerRef = useRef<google.maps.marker.AdvancedMarkerElement | null>(null);
   const circleRef = useRef<google.maps.Circle | null>(null);
   const clickListenerRef = useRef<google.maps.MapsEventListener | null>(null);
+  const targetDragListenerRef = useRef<google.maps.MapsEventListener | null>(null);
 
-  // 最新の onMapClick を ref で保持（listener 再登録を避ける）
+  // 最新の callback / フラグを ref で保持（listener 再登録を避ける）
   const onMapClickRef = useRef(onMapClick);
   onMapClickRef.current = onMapClick;
+  const onTargetChangeRef = useRef(onTargetChange);
+  onTargetChangeRef.current = onTargetChange;
+  const draggableTargetRef = useRef(draggableTarget);
+  draggableTargetRef.current = draggableTarget;
 
   const [status, setStatus] = useState<Status>("loading");
 
@@ -120,7 +129,20 @@ export function GoogleMapView({
         if (isValidLatLng(target)) {
           try {
             if (!targetMarkerRef.current) {
-              targetMarkerRef.current = new AdvancedMarkerElement({ map, position: target, title: "目的地" });
+              targetMarkerRef.current = new AdvancedMarkerElement({
+                map, position: target, title: "目的地",
+                gmpDraggable: draggableTargetRef.current,
+              });
+              // ドラッグ終了で座標を親へ通知（marker 生成時に 1 回だけ登録）
+              if (draggableTargetRef.current) {
+                targetDragListenerRef.current = targetMarkerRef.current.addListener("dragend", () => {
+                  const pos = targetMarkerRef.current?.position;
+                  if (!pos) return;
+                  const lat = typeof pos.lat === "function" ? pos.lat() : (pos.lat as number);
+                  const lng = typeof pos.lng === "function" ? pos.lng() : (pos.lng as number);
+                  if (Number.isFinite(lat) && Number.isFinite(lng)) onTargetChangeRef.current?.({ lat, lng });
+                });
+              }
             } else {
               targetMarkerRef.current.position = target;
               targetMarkerRef.current.map = map;
@@ -187,6 +209,12 @@ export function GoogleMapView({
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status, currentLocation?.lat, currentLocation?.lng]);
+
+  // unmount 時にリスナーを掃除
+  useEffect(() => () => {
+    clickListenerRef.current?.remove();
+    targetDragListenerRef.current?.remove();
+  }, []);
 
   const heightStyle = typeof height === "number" ? `${height}px` : height;
 
