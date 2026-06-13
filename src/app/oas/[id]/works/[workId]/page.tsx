@@ -553,10 +553,13 @@ export default function WorkHubPage() {
           // owner の表示確認モード中は previewPlan / previewRole を href に持ち越す
           // (= 遷移先でも同じ preview 状態を維持するため)。
           if (access.allowed) {
-            const cardHref = withPreviewParams(
-              `/oas/${oaId}/works/${workId}/${card.key}`,
-              searchParams,
-            );
+            // ロケーションは OA レベルの統合管理（/oas/[id]/locations）へ寄せる。
+            // workId を引き継いで該当作品で絞り込んだ状態で開く。既存の作品スコープ画面
+            // (/oas/[id]/works/[workId]/locations 等) は当面残置（直リンク・既存導線は不変）。
+            const cardBase = card.key === "locations"
+              ? `/oas/${oaId}/locations?workId=${workId}`
+              : `/oas/${oaId}/works/${workId}/${card.key}`;
+            const cardHref = withPreviewParams(cardBase, searchParams);
             return (
               <Link
                 key={card.key}
