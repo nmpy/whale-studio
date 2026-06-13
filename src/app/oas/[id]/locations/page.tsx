@@ -17,6 +17,7 @@ import { useAccessPreview } from "@/hooks/useAccessPreview";
 import { getPlanAccessState, FEATURE } from "@/lib/constants/plans";
 import { PlanRequiredCard } from "@/components/PlanRequiredCard";
 import { CheckpointList } from "./_checkpoint-list";
+import { SummaryCards } from "./_summary-cards";
 
 export default function OaLocationsPage() {
   const params = useParams();
@@ -54,6 +55,9 @@ export default function OaLocationsPage() {
         <PlanRequiredCard oaId={oaId} featureKey={FEATURE.location} currentPlan={effectivePlan} featureLabel="ロケーション" />
       ) : (
         <>
+          {/* ── 集計カード ── */}
+          <SummaryCards oaId={oaId} workIdFilter={workIdFilter} />
+
           {/* ── セクション1: チェックインポイント ── */}
           <section className="mb-8">
             <div className="mb-2 flex items-end justify-between gap-3">
