@@ -269,25 +269,17 @@ export default function OaListPage() {
         onChange={setPreviewViewRole}
       />
 
-      {/* ── ページヘッダー ── */}
-      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h2 className="font-round text-[clamp(20px,4vw,24px)] font-extrabold leading-[1.2] tracking-[-0.02em] text-ink">
-            アカウント管理
-          </h2>
-          <p className="mt-1 text-[12px] text-ink-3">
-            LINE公式アカウントごとに作品や設定を管理できます
-          </p>
-        </div>
-        {canCreateOa && (
+      {/* ── ページヘッダー（「＋ アカウントを追加」のみ。旧 h2「アカウント管理」見出しは削除） ── */}
+      {canCreateOa && (
+        <div className="mb-4 flex justify-end">
           <Link
             href="/oas/new"
             className={buttonClass({ variant: "primary", size: "md" })}
           >
             ＋ アカウントを追加
           </Link>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* ── お知らせ (= ページ見出し直下 / アカウント一覧見出しの上) ── */}
       <div className="mb-5">
