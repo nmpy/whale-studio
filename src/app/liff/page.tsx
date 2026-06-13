@@ -156,7 +156,7 @@ function CheckinContent() {
           setState({
             step: "error",
             code: "NO_LIFF_ID",
-            message: "LIFF ID が設定されていません。管理画面（アカウント設定 → LIFF設定）で LIFF ID を設定するか、環境変数 NEXT_PUBLIC_LIFF_ID を設定してください。",
+            message: "LIFF ID が設定されていません。管理画面（設定 → LIFF設定）で LIFF ID を設定するか、環境変数 NEXT_PUBLIC_LIFF_ID を設定してください。",
           });
           return;
         }
