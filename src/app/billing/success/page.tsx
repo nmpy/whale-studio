@@ -1,21 +1,42 @@
 // src/app/billing/success/page.tsx
-// Stripe Checkout 成功後の戻り先ページ。
+// Stripe Checkout 成功後の戻り先ページ（Server Component）。
 //
-// 実際のプラン反映は webhook (checkout.session.completed) で行うため、
-// このページは「決済が完了しました」の案内のみを表示する。
-// session_id は表示用に受け取るだけで、ここで DB を更新しない (= webhook を正とする)。
+// プラン反映の正は webhook (checkout.session.completed) → DB の Subscription であり、
+// このページは DB を直接更新しない（= webhook を正とする）。
+//
+// success_url に oaId / plan（内部キー）が載っていれば、反映確認 UX（SuccessClient）を
+// マウントして DB 上の Subscription をポーリングし、反映を検知してから「反映済み」を表示する。
+// query が不足している（旧 URL / 直アクセス等）場合は、従来どおりの静的案内へフォールバックする。
 
 import Link from "next/link";
+import { SuccessClient } from "./_success-client";
+import { PLAN_TIER, type PlanTier } from "@/lib/constants/plans";
 
 export const dynamic = "force-dynamic";
+
+// success_url に載る内部キーのみを受理する（plus = Pro / pro = Pro Max）。
+const VALID_PLANS = new Set<string>([
+  PLAN_TIER.basic,
+  PLAN_TIER.standard,
+  PLAN_TIER.plus,
+  PLAN_TIER.pro,
+]);
 
 export default function BillingSuccessPage({
   searchParams,
 }: {
-  searchParams: { session_id?: string };
+  searchParams: { session_id?: string; oaId?: string; plan?: string };
 }) {
   const sessionId = searchParams.session_id ?? "";
+  const oaId      = searchParams.oaId ?? "";
+  const planRaw   = searchParams.plan ?? "";
 
+  // oaId と有効な plan が揃っていれば反映確認 UX を出す。
+  if (oaId && VALID_PLANS.has(planRaw)) {
+    return <SuccessClient oaId={oaId} plan={planRaw as PlanTier} sessionId={sessionId} />;
+  }
+
+  // ── フォールバック（query 不足 / 旧 URL 直アクセス）: 従来の静的案内 ──
   return (
     <div style={{
       maxWidth: 520,
@@ -23,12 +44,7 @@ export default function BillingSuccessPage({
       padding:  "48px 20px 64px",
       textAlign: "center",
     }}>
-      <div style={{
-        fontSize:     48,
-        marginBottom: 16,
-      }}>
-        🎉
-      </div>
+      <div style={{ fontSize: 48, marginBottom: 16 }}>🎉</div>
       <h1 style={{
         fontSize:      "clamp(20px, 4vw, 26px)",
         fontWeight:    800,
