@@ -116,7 +116,7 @@ export default function LocationCheckinsPage() {
                       return (
                         <tr key={loc.location_id} style={{ borderBottom: "1px solid #f3f4f6", background: health.status === "adjust" ? "#fef2f220" : undefined }}>
                           <td style={tdL}>
-                            <Link href={`/oas/${oaId}/works/${workId}/locations/${loc.location_id}`} style={{ color: "#2563eb", textDecoration: "none", fontWeight: 500 }}>
+                            <Link href={`/oas/${oaId}/locations/${loc.location_id}`} style={{ color: "#2563eb", textDecoration: "none", fontWeight: 500 }}>
                               {loc.location_name}
                             </Link>
                             {health.hint && hasGpsIssue && (
@@ -150,7 +150,7 @@ export default function LocationCheckinsPage() {
                           <td style={{ ...tdL, textAlign: "center" }}>
                             {hasGpsIssue && (
                               <Link
-                                href={`/oas/${oaId}/works/${workId}/locations/${loc.location_id}${loc.radius_suggestion ? `?suggested_radius=${loc.radius_suggestion.suggested_radius}` : ""}`}
+                                href={`/oas/${oaId}/locations/${loc.location_id}${loc.radius_suggestion ? `?suggested_radius=${loc.radius_suggestion.suggested_radius}` : ""}`}
                                 style={{
                                   display: "inline-block", padding: "3px 10px", borderRadius: 6,
                                   fontSize: 11, fontWeight: 600, textDecoration: "none",
