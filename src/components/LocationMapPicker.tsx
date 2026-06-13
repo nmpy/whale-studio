@@ -16,7 +16,6 @@
 
 import { useCallback, useState } from "react";
 import { GoogleMapView, type LatLng } from "@/components/maps/GoogleMapView";
-import { PlaceSearchInput } from "@/components/maps/PlaceSearchInput";
 
 interface LocationMapPickerProps {
   latitude: number | null;
@@ -85,10 +84,7 @@ export default function LocationMapPicker({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-      {/* 場所名・住所検索（地図の上）。選択地点を lat/lng に反映（4経路の更新は onLocationChange に集約）。 */}
-      <PlaceSearchInput onSelect={(ll) => onLocationChange(ll.lat, ll.lng)} />
-
-      {/* ツールバー */}
+      {/* ツールバー（場所名検索はフォームの「マップ検索」セクションに分離済み） */}
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
         <button
           type="button"
