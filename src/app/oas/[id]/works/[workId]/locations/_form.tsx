@@ -232,8 +232,8 @@ export function LocationForm({ onSubmit, saving, workId, defaultValues }: Locati
           <Section id="checkin-mode" label="チェックイン方式">
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {([
-                { value: "qr_only",    label: "QR のみ",  desc: "現地の QR コード読み取りでチェックイン" },
                 { value: "gps_only",   label: "GPS のみ",  desc: "現在地が指定範囲内のときチェックイン" },
+                { value: "qr_only",    label: "QR のみ",  desc: "現地の QR コード読み取りでチェックイン" },
                 { value: "qr_and_gps", label: "QR + GPS", desc: "QR 読み取り＋現在地が範囲内のときのみチェックイン" },
               ] as const).map(({ value, label, desc }) => (
                 <label key={value} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 12px", border: `2px solid ${checkinMode === value ? "#2563eb" : "#e5e7eb"}`, borderRadius: 8, cursor: "pointer", background: checkinMode === value ? "#eff6ff" : "#fff" }}>
