@@ -100,7 +100,10 @@ export default function BeaconLogsPage() {
       />
       <div className="mb-4 flex items-center justify-between">
         <h1 className="font-round text-[clamp(18px,3.5vw,22px)] font-extrabold tracking-[-0.02em] text-ink">ビーコン発火ログ</h1>
-        <Link href={`/oas/${oaId}/locations/beacons`} className="text-[12px] font-semibold text-brand-ink underline">一覧へ戻る</Link>
+        <div className="flex items-center gap-3">
+          <Link href={`/oas/${oaId}/locations/logs?type=beacon`} className="text-[12px] font-semibold text-brand-ink underline">統合ログを見る</Link>
+          <Link href={`/oas/${oaId}/locations/beacons`} className="text-[12px] font-semibold text-brand-ink underline">一覧へ戻る</Link>
+        </div>
       </div>
 
       {/* フィルタ */}
