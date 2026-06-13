@@ -50,7 +50,10 @@ export default function OaSettingsPage() {
       .catch(() => {});
   }, [oaId]);
 
-  // billing=success クエリを検出してバナーを表示し、URL をクリーンアップ
+  // billing=success クエリを検出してバナーを表示し、URL をクリーンアップ。
+  // 注: 現在の Stripe Checkout の success_url は /billing/success（反映確認 UX）へ遷移するため、
+  //     この ?billing=success バナーは通常の checkout フローでは配線されていない（dead path）。
+  //     Customer Portal 等の別導線で復活させる場合に備えて残置（不要なら将来削除候補）。
   useEffect(() => {
     const sp = new URLSearchParams(window.location.search);
     if (sp.get("billing") === "success") {

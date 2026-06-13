@@ -70,8 +70,13 @@ export const POST = withAuth(async (req: NextRequest, _ctx, user) => {
     const fromPlan = currentSub?.plan?.name ?? null;
 
     // success/cancel URL: env > request origin の順
+    // success_url には反映確認 UX に必要な oaId / plan（内部キー）を載せる。
+    // plan は内部キー（basic / standard / plus=Pro / pro=Pro Max）で扱い、
+    // priceId など秘匿値は URL に一切出さない（/billing/success 側で DB を確認するため不要）。
     const origin       = getAppUrl() ?? new URL(req.url).origin;
-    const successUrl   = `${origin}/billing/success?session_id={CHECKOUT_SESSION_ID}`;
+    const successUrl   =
+      `${origin}/billing/success?session_id={CHECKOUT_SESSION_ID}` +
+      `&oaId=${encodeURIComponent(oaId)}&plan=${encodeURIComponent(plan)}`;
     const cancelUrl    = `${origin}/pricing?checkout=cancelled`;
 
     const stripe  = getStripe();
