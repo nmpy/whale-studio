@@ -68,4 +68,37 @@ Whale Studio の LINE Beacon 連動（webhook `beacon` event → HWID に紐づ�
 - 1 つのビーコンは 1 つの OA にしか紐づけられません。
 - 日本では MVP として **enter のみ**対応。
 - 同一ユーザーへの連続通知を避けるため **cooldown を必ず設定**してください。
-- DB スキーマ変更は不要（既存 `BeaconTrigger` / `BeaconEventLog` + `actionPayload` JSON に messageId を格納）。
+- messageId は `actionPayload.message_id`（`action_type="message"`）に格納する既存設計のまま。
+
+## 6. 現地運用強化（OA レベル管理 / 再発火制御 / ログ / テスト発火）
+
+### canonical 管理画面
+- **`/oas/[id]/locations/beacons`**（OA レベル）に集約。OA 共通（`work_id=null`）+ 全作品のトリガーを
+  1 画面で一覧・作成・編集・有効/無効トグル・ログ確認・テスト発火できる。
+- 旧 `/oas/[id]/works/[workId]/beacons` は当面残し、新画面へ誘導するバナーを表示
+  （`?workId=` で作品フィルタ / 新規作成初期値を引き継ぐ）。404 にはしない。
+
+### 追加した再発火制御フィールド（`BeaconTrigger`）
+- `oncePerUser`（同一ユーザーに 1 回だけ）/ `maxTriggersPerUser`（ユーザーごとの最大回数 / null=無制限）
+- `validFrom` / `validTo`（有効期間）/ `note`（運用メモ）
+
+### 追加した outcome（`actionStatus`）
+既存値（unchanged）に加えて: `skipped_invalid_period` / `skipped_once_per_user` / `skipped_max_per_user`。
+
+> 既存値（`sent`/`matched`/`cooldown`/`unknown_beacon`/`service_stopped`/`plan_blocked`/
+> `message_not_configured`/`failed`）は互換維持のため改名していない。ユーザー指定の outcome 語彙
+> （`skipped_no_trigger` 等）との対応は `beacon-utils.ts` の `BEACON_OUTCOME_META` で吸収し、
+> ログ画面は日本語ラベルで表示する。
+
+### 発火ログ画面
+- **`/oas/[id]/locations/beacons/logs`** — 作品 / hwid / outcome / 日付 / userId フィルタ、
+  日時 JST、userId 末尾、outcome バッジ、エラー有無、raw event 展開。
+- `BeaconEventLog` に `messageId`（送信メッセージ）/ `isTest`（テスト発火）を追加。
+
+### 疑似発火テスト（platform admin 専用）
+- **`POST /api/oas/[id]/beacons/test-fire`** — 本番と同じ `handleBeaconEvent` / resolver / sender を通す。
+  `webhookEventId = test_beacon_${triggerId}_${ts}`、`isTest=true` で記録。誤爆防止のため `line_user_id` 必須。
+  `ignore_limits` で cooldown/once/max を無視可能。
+
+### DB migration
+- `20260619000000_beacon_triggers_extend`（ADD COLUMN のみ・非破壊）。

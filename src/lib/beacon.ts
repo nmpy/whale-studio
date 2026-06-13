@@ -7,6 +7,7 @@
 //    Prisma / LINE 送信は依存注入（または引数）として受け取る。
 //  - 必ず BeaconEventLog を作成して結果を残す（重複排除・障害解析に利用）。
 //  - 1 イベントの失敗で webhook 全体を 500 にしないこと。
+//  - 管理画面の「疑似発火テスト」も本処理（同じ resolver / sender）を通す（isTest=true）。
 
 import type { PrismaClient } from "@prisma/client";
 import { normalizeBeaconHwid, InvalidBeaconHwidError } from "@/lib/beacon-hwid";
@@ -146,6 +147,15 @@ async function buildActionMessages(
   }
 }
 
+/** action_type="message" のとき送信対象 messageId を取り出す（ログ記録用）。それ以外は null。 */
+function extractMessageId(actionType: string, actionPayload: unknown): string | null {
+  if (actionType !== "message") return null;
+  const payload = (actionPayload ?? {}) as Record<string, unknown>;
+  return typeof payload.message_id === "string" && payload.message_id.trim()
+    ? payload.message_id.trim()
+    : null;
+}
+
 // ────────────────────────────────────────────────
 // メイン処理
 // ────────────────────────────────────────────────
@@ -163,14 +173,23 @@ export async function handleBeaconEvent(args: {
   line: BeaconLineGateway;
   /** messageId（DB Message）を LineMessage[] に解決する注入関数（action_type="message" 用）。 */
   resolveMessage?: BeaconMessageResolver;
+  /** 疑似発火テスト由来か（ログに isTest=true を残す）。 */
+  isTest?: boolean;
+  /**
+   * テスト発火時に cooldown / oncePerUser / maxTriggersPerUser の各制限を無視するか。
+   * platform admin の「制限を無視して送信」用。default false（= 本番同様に制限を適用）。
+   */
+  ignoreLimits?: boolean;
   /** 現在時刻（テスト用に注入可） */
   now?: () => Date;
 }): Promise<HandleBeaconResult> {
   const { prisma, oa, event, line, resolveMessage } = args;
+  const isTest = args.isTest ?? false;
+  const ignoreLimits = args.ignoreLimits ?? false;
   const now = args.now ?? (() => new Date());
 
   console.log(
-    `[LINE Beacon] received oa=${oa.id} hwid="${event.beacon?.hwid ?? ""}" type=${event.beacon?.type ?? "-"} userId=${(event.source?.userId ?? "-").slice(0, 8)}`,
+    `[LINE Beacon] received oa=${oa.id} hwid="${event.beacon?.hwid ?? ""}" type=${event.beacon?.type ?? "-"} userId=${(event.source?.userId ?? "-").slice(0, 8)}${isTest ? " (test)" : ""}`,
   );
 
   const lineUserId = event.source?.userId ?? null;
@@ -179,6 +198,34 @@ export async function handleBeaconEvent(args: {
   const isRedelivery = !!event.deliveryContext?.isRedelivery;
   const webhookEventId = event.webhookEventId
     ?? `synthetic:${oa.id}:${event.timestamp}:${event.beacon?.hwid ?? "unknown"}:${lineUserId ?? "anon"}`;
+
+  // 全ログ書き込みで共通するフィールドを 1 箇所に集約（isTest / rawEvent / webhookEventId 等の付け忘れ防止）。
+  const writeLog = (extra: {
+    actionStatus:    string;
+    hwid:            string;
+    workId?:         string | null;
+    beaconTriggerId?: string | null;
+    errorMessage?:   string | null;
+    messageId?:      string | null;
+  }) =>
+    prisma.beaconEventLog.create({
+      data: {
+        oaId:            oa.id,
+        workId:          extra.workId ?? null,
+        beaconTriggerId: extra.beaconTriggerId ?? null,
+        lineUserId,
+        hwid:            extra.hwid,
+        beaconType,
+        deviceMessage,
+        webhookEventId,
+        isRedelivery,
+        actionStatus:    extra.actionStatus,
+        errorMessage:    extra.errorMessage ?? null,
+        messageId:       extra.messageId ?? null,
+        isTest,
+        rawEvent:        event as unknown as object,
+      },
+    });
 
   // ── 1. 重複排除（webhookEventId 一意） ──
   const existing = await prisma.beaconEventLog.findUnique({
@@ -199,21 +246,10 @@ export async function handleBeaconEvent(args: {
     hwid = normalizeBeaconHwid(event.beacon?.hwid);
   } catch (e) {
     const msg = e instanceof InvalidBeaconHwidError ? e.message : "invalid hwid";
-    await prisma.beaconEventLog.create({
-      data: {
-        oaId:           oa.id,
-        workId:         null,
-        beaconTriggerId: null,
-        lineUserId,
-        hwid:           String(event.beacon?.hwid ?? ""),
-        beaconType,
-        deviceMessage,
-        webhookEventId,
-        isRedelivery,
-        actionStatus:   "ignored",
-        errorMessage:   msg,
-        rawEvent:       event as unknown as object,
-      },
+    await writeLog({
+      actionStatus: "ignored",
+      hwid: String(event.beacon?.hwid ?? ""),
+      errorMessage: msg,
     });
     return { status: "ignored", reason: msg };
   }
@@ -225,102 +261,85 @@ export async function handleBeaconEvent(args: {
 
   if (!trigger) {
     console.log(`[LINE Beacon] unknown_beacon oa=${oa.id} hwid="${hwid}" userId=${(lineUserId ?? "-").slice(0, 8)}`);
-    await prisma.beaconEventLog.create({
-      data: {
-        oaId:           oa.id,
-        workId:         null,
-        beaconTriggerId: null,
-        lineUserId,
-        hwid,
-        beaconType,
-        deviceMessage,
-        webhookEventId,
-        isRedelivery,
-        actionStatus:   "unknown_beacon",
-        errorMessage:   "no matching trigger",
-        rawEvent:       event as unknown as object,
-      },
-    });
+    await writeLog({ actionStatus: "unknown_beacon", hwid, errorMessage: "no matching trigger" });
     return { status: "ignored", reason: "no matching trigger" };
   }
 
+  const trig = trigger; // 以降は確定（非 null）
+  const baseLog = { hwid, workId: trig.workId, beaconTriggerId: trig.id };
+  const sentMessageId = extractMessageId(trig.actionType, trig.actionPayload);
+
   // ── 4. enabled チェック ──
-  if (!trigger.enabled) {
-    await prisma.beaconEventLog.create({
-      data: {
-        oaId:           oa.id,
-        workId:         trigger.workId,
-        beaconTriggerId: trigger.id,
-        lineUserId,
-        hwid,
-        beaconType,
-        deviceMessage,
-        webhookEventId,
-        isRedelivery,
-        actionStatus:   "ignored",
-        errorMessage:   "trigger disabled",
-        rawEvent:       event as unknown as object,
-      },
-    });
-    return { status: "ignored", reason: "trigger disabled", triggerId: trigger.id };
+  if (!trig.enabled) {
+    await writeLog({ ...baseLog, actionStatus: "ignored", errorMessage: "trigger disabled" });
+    return { status: "ignored", reason: "trigger disabled", triggerId: trig.id };
   }
 
   // ── 4.5. OA サービス停止中 → 送信しない（既存のサービス停止仕様に従う）──
   if (oa.serviceSuspendedAt) {
-    console.log(`[LINE Beacon] service_stopped oa=${oa.id} hwid=${hwid} trigger=${trigger.id}`);
-    await prisma.beaconEventLog.create({
-      data: {
-        oaId: oa.id, workId: trigger.workId, beaconTriggerId: trigger.id, lineUserId,
-        hwid, beaconType, deviceMessage, webhookEventId, isRedelivery,
-        actionStatus: "service_stopped", errorMessage: "OA service suspended",
-        rawEvent: event as unknown as object,
-      },
-    });
-    return { status: "ignored", reason: "service_stopped", triggerId: trigger.id };
+    console.log(`[LINE Beacon] service_stopped oa=${oa.id} hwid=${hwid} trigger=${trig.id}`);
+    await writeLog({ ...baseLog, actionStatus: "service_stopped", errorMessage: "OA service suspended" });
+    return { status: "ignored", reason: "service_stopped", triggerId: trig.id };
   }
 
   // ── 4.6. プラン gate（Beacon 連動は Pro 相当 / FEATURE.location）──
   if (oa.planAllowed === false) {
-    console.log(`[LINE Beacon] plan_blocked oa=${oa.id} hwid=${hwid} trigger=${trigger.id}`);
-    await prisma.beaconEventLog.create({
-      data: {
-        oaId: oa.id, workId: trigger.workId, beaconTriggerId: trigger.id, lineUserId,
-        hwid, beaconType, deviceMessage, webhookEventId, isRedelivery,
-        actionStatus: "plan_blocked", errorMessage: "plan does not allow beacon",
-        rawEvent: event as unknown as object,
-      },
-    });
-    return { status: "ignored", reason: "plan_blocked", triggerId: trigger.id };
+    console.log(`[LINE Beacon] plan_blocked oa=${oa.id} hwid=${hwid} trigger=${trig.id}`);
+    await writeLog({ ...baseLog, actionStatus: "plan_blocked", errorMessage: "plan does not allow beacon" });
+    return { status: "ignored", reason: "plan_blocked", triggerId: trig.id };
   }
 
   // ── 5. eventTypes フィルタ（MVP: enter のみ想定）──
-  const allowed = trigger.eventTypes.split(",").map((s) => s.trim()).filter(Boolean);
+  const allowed = trig.eventTypes.split(",").map((s) => s.trim()).filter(Boolean);
   if (!allowed.includes(beaconType)) {
-    await prisma.beaconEventLog.create({
-      data: {
-        oaId:           oa.id,
-        workId:         trigger.workId,
-        beaconTriggerId: trigger.id,
+    await writeLog({
+      ...baseLog,
+      actionStatus: "ignored",
+      errorMessage: `beaconType "${beaconType}" not in [${allowed.join(",")}]`,
+    });
+    return { status: "ignored", reason: "beacon type not allowed", triggerId: trig.id };
+  }
+
+  // ── 5.5. 有効期間チェック（validFrom / validTo）──
+  const nowDate = now();
+  if ((trig.validFrom && nowDate < trig.validFrom) || (trig.validTo && nowDate > trig.validTo)) {
+    console.log(`[LINE Beacon] skipped_invalid_period oa=${oa.id} hwid=${hwid} trigger=${trig.id}`);
+    await writeLog({
+      ...baseLog,
+      actionStatus: "skipped_invalid_period",
+      errorMessage: `outside valid period [${trig.validFrom?.toISOString() ?? "-"} .. ${trig.validTo?.toISOString() ?? "-"}]`,
+    });
+    return { status: "ignored", reason: "outside valid period", triggerId: trig.id };
+  }
+
+  // ── 5.6. oncePerUser / maxTriggersPerUser（同 lineUserId × triggerId の成功ログ件数）──
+  // ignoreLimits（テスト発火の「制限を無視」）のときはスキップ。
+  if (lineUserId && !ignoreLimits && (trig.oncePerUser || trig.maxTriggersPerUser != null)) {
+    const successCount = await prisma.beaconEventLog.count({
+      where: {
+        beaconTriggerId: trig.id,
         lineUserId,
-        hwid,
-        beaconType,
-        deviceMessage,
-        webhookEventId,
-        isRedelivery,
-        actionStatus:   "ignored",
-        errorMessage:   `beaconType "${beaconType}" not in [${allowed.join(",")}]`,
-        rawEvent:       event as unknown as object,
+        actionStatus: { in: ["sent", "matched"] },
       },
     });
-    return { status: "ignored", reason: "beacon type not allowed", triggerId: trigger.id };
+    if (trig.oncePerUser && successCount >= 1) {
+      console.log(`[LINE Beacon] skipped_once_per_user oa=${oa.id} hwid=${hwid} trigger=${trig.id} userId=${lineUserId.slice(0, 8)}`);
+      await writeLog({ ...baseLog, actionStatus: "skipped_once_per_user", errorMessage: "once per user already fired" });
+      return { status: "ignored", reason: "once per user", triggerId: trig.id };
+    }
+    if (trig.maxTriggersPerUser != null && successCount >= trig.maxTriggersPerUser) {
+      console.log(`[LINE Beacon] skipped_max_per_user oa=${oa.id} hwid=${hwid} trigger=${trig.id} userId=${lineUserId.slice(0, 8)} count=${successCount}`);
+      await writeLog({ ...baseLog, actionStatus: "skipped_max_per_user", errorMessage: `max ${trig.maxTriggersPerUser} reached (count=${successCount})` });
+      return { status: "ignored", reason: "max triggers per user", triggerId: trig.id };
+    }
   }
 
   // ── 6. cooldown チェック（同 lineUserId × triggerId の直近成功ログ）──
-  if (lineUserId && trigger.cooldownSeconds > 0) {
-    const cutoff = new Date(now().getTime() - trigger.cooldownSeconds * 1000);
+  if (lineUserId && !ignoreLimits && trig.cooldownSeconds > 0) {
+    const cutoff = new Date(nowDate.getTime() - trig.cooldownSeconds * 1000);
     const recent = await prisma.beaconEventLog.findFirst({
       where: {
-        beaconTriggerId: trigger.id,
+        beaconTriggerId: trig.id,
         lineUserId,
         actionStatus: { in: ["sent", "matched"] },
         createdAt: { gte: cutoff },
@@ -329,24 +348,9 @@ export async function handleBeaconEvent(args: {
       select: { id: true, createdAt: true },
     });
     if (recent) {
-      console.log(`[LINE Beacon] suppressed_cooldown oa=${oa.id} hwid=${hwid} trigger=${trigger.id} userId=${lineUserId.slice(0, 8)}`);
-      await prisma.beaconEventLog.create({
-        data: {
-          oaId:           oa.id,
-          workId:         trigger.workId,
-          beaconTriggerId: trigger.id,
-          lineUserId,
-          hwid,
-          beaconType,
-          deviceMessage,
-          webhookEventId,
-          isRedelivery,
-          actionStatus:   "cooldown",
-          errorMessage:   `last sent at ${recent.createdAt.toISOString()}`,
-          rawEvent:       event as unknown as object,
-        },
-      });
-      return { status: "cooldown", reason: "within cooldown window", triggerId: trigger.id };
+      console.log(`[LINE Beacon] suppressed_cooldown oa=${oa.id} hwid=${hwid} trigger=${trig.id} userId=${lineUserId.slice(0, 8)}`);
+      await writeLog({ ...baseLog, actionStatus: "cooldown", errorMessage: `last sent at ${recent.createdAt.toISOString()}` });
+      return { status: "cooldown", reason: "within cooldown window", triggerId: trig.id };
     }
   }
 
@@ -354,9 +358,9 @@ export async function handleBeaconEvent(args: {
   let messages: LineMessage[] | null;
   try {
     messages = await buildActionMessages(prisma, {
-      actionType:    trigger.actionType,
-      actionPayload: trigger.actionPayload,
-      workId:        trigger.workId,
+      actionType:    trig.actionType,
+      actionPayload: trig.actionPayload,
+      workId:        trig.workId,
     }, resolveMessage);
   } catch (e) {
     messages = null;
@@ -365,47 +369,18 @@ export async function handleBeaconEvent(args: {
 
   if (messages === null) {
     // action_type="message" で messageId 未設定/解決不能なら message_not_configured として扱う。
-    const isMessageAction = trigger.actionType === "message";
+    const isMessageAction = trig.actionType === "message";
     const status = isMessageAction ? "message_not_configured" : "failed";
-    const reason = isMessageAction ? "message not configured" : `invalid action config (type=${trigger.actionType})`;
-    console.log(`[LINE Beacon] ${status} oa=${oa.id} hwid=${hwid} trigger=${trigger.id}`);
-    await prisma.beaconEventLog.create({
-      data: {
-        oaId:           oa.id,
-        workId:         trigger.workId,
-        beaconTriggerId: trigger.id,
-        lineUserId,
-        hwid,
-        beaconType,
-        deviceMessage,
-        webhookEventId,
-        isRedelivery,
-        actionStatus:   status,
-        errorMessage:   reason,
-        rawEvent:       event as unknown as object,
-      },
-    });
-    return { status: isMessageAction ? "ignored" : "failed", reason, triggerId: trigger.id };
+    const reason = isMessageAction ? "message not configured" : `invalid action config (type=${trig.actionType})`;
+    console.log(`[LINE Beacon] ${status} oa=${oa.id} hwid=${hwid} trigger=${trig.id}`);
+    await writeLog({ ...baseLog, actionStatus: status, errorMessage: reason, messageId: sentMessageId });
+    return { status: isMessageAction ? "ignored" : "failed", reason, triggerId: trig.id };
   }
 
   // noop（ログ専用トリガー）の場合は matched で記録して終わり
   if (messages.length === 0) {
-    await prisma.beaconEventLog.create({
-      data: {
-        oaId:           oa.id,
-        workId:         trigger.workId,
-        beaconTriggerId: trigger.id,
-        lineUserId,
-        hwid,
-        beaconType,
-        deviceMessage,
-        webhookEventId,
-        isRedelivery,
-        actionStatus:   "matched",
-        rawEvent:       event as unknown as object,
-      },
-    });
-    return { status: "matched", triggerId: trigger.id };
+    await writeLog({ ...baseLog, actionStatus: "matched", messageId: sentMessageId });
+    return { status: "matched", triggerId: trig.id };
   }
 
   // ── 8. LINE 送信（reply 優先、無ければ push）──
@@ -422,27 +397,17 @@ export async function handleBeaconEvent(args: {
     sendError = e instanceof Error ? e.message : String(e);
   }
 
-  await prisma.beaconEventLog.create({
-    data: {
-      oaId:           oa.id,
-      workId:         trigger.workId,
-      beaconTriggerId: trigger.id,
-      lineUserId,
-      hwid,
-      beaconType,
-      deviceMessage,
-      webhookEventId,
-      isRedelivery,
-      actionStatus:   sendError ? "failed" : "sent",
-      errorMessage:   sendError,
-      rawEvent:       event as unknown as object,
-    },
+  await writeLog({
+    ...baseLog,
+    actionStatus: sendError ? "failed" : "sent",
+    errorMessage: sendError,
+    messageId: sentMessageId,
   });
 
   if (sendError) {
-    console.log(`[LINE Beacon] failed oa=${oa.id} hwid=${hwid} trigger=${trigger.id} error="${sendError}"`);
-    return { status: "failed", reason: sendError, triggerId: trigger.id };
+    console.log(`[LINE Beacon] failed oa=${oa.id} hwid=${hwid} trigger=${trig.id} error="${sendError}"`);
+    return { status: "failed", reason: sendError, triggerId: trig.id };
   }
-  console.log(`[LINE Beacon] sent oa=${oa.id} hwid=${hwid} trigger=${trigger.id} userId=${(lineUserId ?? "-").slice(0, 8)} via=${event.replyToken ? "reply" : "push"}`);
-  return { status: "sent", triggerId: trigger.id };
+  console.log(`[LINE Beacon] sent oa=${oa.id} hwid=${hwid} trigger=${trig.id} userId=${(lineUserId ?? "-").slice(0, 8)} via=${event.replyToken ? "reply" : "push"}`);
+  return { status: "sent", triggerId: trig.id };
 }

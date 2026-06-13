@@ -1073,9 +1073,20 @@ model BeaconTrigger {
   eventTypes      String   @default("enter") @map("event_types")
   /// 同一ユーザー × 同一トリガーの再発火防止（秒）。デフォルト 300 = 5 分
   cooldownSeconds Int      @default(300) @map("cooldown_seconds")
-  /// アクション種別: "send_message" | "destination" | "noop"
+  /// 同一ユーザーには1回だけ発火する（成功ログが1件でもあれば以降スキップ）
+  oncePerUser     Boolean  @default(false) @map("once_per_user")
+  /// 同一ユーザーへの最大発火回数（null = 無制限）
+  maxTriggersPerUser Int?  @map("max_triggers_per_user")
+  /// 有効期間の開始（null = 制限なし）。これより前は発火しない
+  validFrom       DateTime? @map("valid_from")
+  /// 有効期間の終了（null = 制限なし）。これより後は発火しない
+  validTo         DateTime? @map("valid_to")
+  /// 運用メモ（任意・管理画面表示用）
+  note            String?
+  /// アクション種別: "message" | "send_message" | "destination" | "noop"
   actionType      String   @map("action_type")
   /// アクション固有の payload（JSON）
+  /// - message:       { message_id: string }（登録済みメッセージ/チェーンを送信）
   /// - send_message:  { text: string }
   /// - destination:   { destination_id: string, text?: string }
   actionPayload   Json?    @map("action_payload") @db.JsonB
@@ -1104,9 +1115,15 @@ model BeaconEventLog {
   /// LINE webhook event の webhookEventId（重複排除キー）
   webhookEventId  String   @unique @map("webhook_event_id")
   isRedelivery    Boolean  @default(false) @map("is_redelivery")
-  /// "sent" | "matched" | "ignored" | "cooldown" | "failed"
+  /// 既存値: "sent" | "matched" | "ignored" | "cooldown" | "unknown_beacon"
+  ///         | "service_stopped" | "plan_blocked" | "message_not_configured" | "failed"
+  /// 追加値: "skipped_invalid_period" | "skipped_once_per_user" | "skipped_max_per_user"
   actionStatus    String   @map("action_status")
   errorMessage    String?  @map("error_message")
+  /// 送信した Message の id（action_type="message" のとき）。任意
+  messageId       String?  @map("message_id")
+  /// 疑似発火テスト（管理画面のテスト発火）由来のログか
+  isTest          Boolean  @default(false) @map("is_test")
   rawEvent        Json?    @map("raw_event") @db.JsonB
   createdAt       DateTime @default(now()) @map("created_at")
 
