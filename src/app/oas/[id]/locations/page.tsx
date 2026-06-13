@@ -55,8 +55,8 @@ export default function OaLocationsPage() {
                   GPS / QR の到達判定地点を作品横断で一覧表示します。GPS・QR は同じ地点の判定方式（checkinMode）です。
                 </p>
               </div>
-              {!readOnly && workIdFilter && (
-                <Link href={`/oas/${oaId}/works/${workIdFilter}/locations/new`} className={buttonClass({ variant: "primary", size: "sm" })}>
+              {!readOnly && (
+                <Link href={`/oas/${oaId}/locations/new${workIdFilter ? `?workId=${encodeURIComponent(workIdFilter)}` : ""}`} className={buttonClass({ variant: "primary", size: "sm" })}>
                   ＋ 追加
                 </Link>
               )}

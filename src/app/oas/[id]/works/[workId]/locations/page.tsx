@@ -59,6 +59,34 @@ export default function LocationsHubPage() {
         </p>
       </div>
 
+      {/* ── 移行バナー: ロケーション管理は OA レベルに集約された ── */}
+      <div
+        role="status"
+        style={{
+          display: "flex", alignItems: "flex-start", gap: 12, flexWrap: "wrap",
+          background: "#e9f8ef", border: "1px solid rgba(34,197,94,.3)", borderRadius: 12,
+          padding: "14px 16px", marginBottom: 16,
+        }}
+      >
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <p style={{ fontSize: 13, fontWeight: 700, color: "#0f7a3d", marginBottom: 4 }}>
+            ロケーション管理に移動しました
+          </p>
+          <p style={{ fontSize: 12, color: "#33403a", lineHeight: 1.6 }}>
+            GPS / QR / Beacon は、現地の地点やチェックイン方法に紐づく機能です。ロケーション管理画面でまとめて確認・編集できます。
+          </p>
+        </div>
+        <a
+          href={`/oas/${oaId}/locations?workId=${workId}`}
+          style={{
+            flexShrink: 0, padding: "9px 18px", background: "#22c55e", color: "#fff",
+            borderRadius: 999, fontSize: 13, fontWeight: 700, textDecoration: "none", whiteSpace: "nowrap",
+          }}
+        >
+          ロケーション管理を開く →
+        </a>
+      </div>
+
       <LocationTabs oaId={oaId} workId={workId} activeTab={activeTab} />
 
       {activeTab === "gps"     && <GpsPanel        oaId={oaId} workId={workId} />}
