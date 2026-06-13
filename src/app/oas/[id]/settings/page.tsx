@@ -107,7 +107,7 @@ export default function OaSettingsPage() {
           { label: "設定" },
         ]} />
         <h2 className="font-round mt-1 text-[clamp(20px,4vw,24px)] font-extrabold leading-[1.2] tracking-[-0.02em] text-ink">
-          アカウント設定
+          設定
         </h2>
         <p className="mt-1 text-[12px] text-ink-3">
           {oaTitle ? `${oaTitle} の各機能を管理します` : "このアカウントの機能を選択してください"}
