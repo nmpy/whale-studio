@@ -16,22 +16,6 @@ import type { TransitionWithPhases, Message, MessageWithRelations } from "@/type
 // SSR セーフだが client 専用のため dynamic import（Google Maps は useEffect 内で初期化）
 const LocationMapPicker = dynamic(() => import("@/components/LocationMapPicker"), { ssr: false });
 
-// 左ナビ + セクション見出しの定義（id は安定 kebab-case）。順序＝表示順。
-const LOCATION_FORM_SECTIONS = [
-  { id: "location-name",        label: "ロケーション名" },
-  { id: "description",          label: "説明" },
-  { id: "map-search",           label: "マップ検索" },
-  { id: "google-map",           label: "Google Map" },
-  { id: "coordinates",          label: "座標" },
-  { id: "beacon-settings",      label: "ビーコン設定" },
-  { id: "stamp-rally-settings", label: "スタンプラリー設定" },
-  { id: "checkin-mode",         label: "チェックイン方式" },
-  { id: "success-action",       label: "成功時アクション" },
-  { id: "phase-target",         label: "フェーズ指定" },
-  { id: "message-target",       label: "メッセージ指定" },
-  { id: "history",              label: "履歴" },
-] as const;
-
 interface LocationFormProps {
   onSubmit: (data: Record<string, unknown>) => void;
   saving: boolean;
@@ -201,53 +185,40 @@ export function LocationForm({ onSubmit, saving, workId, defaultValues }: Locati
     onSubmit(data);
   };
 
-  // セクションへスムーズスクロール（同一ページ内）
-  const scrollToSection = useCallback((id: string) => {
-    document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }, []);
-
-  // GPS 方式が未選択のときに地図系セクションに出す案内
+  // GPS 方式が未選択のときに座標セクションに出す案内
   const needGpsNote = (
     <p style={{ fontSize: 12, color: "#9ca3af", lineHeight: 1.7 }}>
       「チェックイン方式」で <strong>GPS のみ</strong> または <strong>QR + GPS</strong> を選ぶと、地図・座標で設定できます。
     </p>
   );
 
+  // 右側固定パネル: マップ検索 + Google Map（GPS 方式時のみ）。検索/クリック/ドラッグはすべて
+  // handleMapLocationChange → フォーム state に集約され、左の座標欄・地図ピン・範囲円が同期する。
+  const mapPanel = needsGps ? (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12, border: "1px solid #e5e7eb", borderRadius: 12, padding: 14, background: "#fff" }}>
+      <PlaceSearchInput onSelect={(ll) => handleMapLocationChange(ll.lat, ll.lng)} />
+      <LocationMapPicker
+        latitude={latitude ? Number(latitude) : null}
+        longitude={longitude ? Number(longitude) : null}
+        radiusMeters={Number(radiusMeters) || 50}
+        onLocationChange={handleMapLocationChange}
+        onRadiusChange={handleRadiusChange}
+        height={460}
+      />
+    </div>
+  ) : null;
+
   return (
     <form onSubmit={handleSubmit}>
       <style>{`
-        @media (max-width: 880px) {
-          .loc-form-nav-side { display: none !important; }
-          .loc-form-nav-top { display: block !important; }
+        @media (max-width: 900px) {
+          .loc-2col { flex-direction: column !important; }
+          .loc-map-aside { position: static !important; flex: 1 1 auto !important; width: 100% !important; top: auto !important; }
         }
       `}</style>
 
-      {/* SP 用: 上部の横スクロール目次 */}
-      <nav className="loc-form-nav-top" style={{ display: "none", marginBottom: 16, overflowX: "auto", WebkitOverflowScrolling: "touch" }} aria-label="セクション">
-        <div style={{ display: "flex", gap: 6, paddingBottom: 4 }}>
-          {LOCATION_FORM_SECTIONS.map((s) => (
-            <button key={s.id} type="button" onClick={() => scrollToSection(s.id)}
-              style={{ flex: "0 0 auto", padding: "5px 12px", fontSize: 12, fontWeight: 600, color: "#374151", background: "#f3f4f6", border: "1px solid #e5e7eb", borderRadius: 999, cursor: "pointer", whiteSpace: "nowrap" }}>
-              {s.label}
-            </button>
-          ))}
-        </div>
-      </nav>
-
-      <div style={{ display: "flex", gap: 24, alignItems: "flex-start" }}>
-        {/* PC 用: 左サイド sticky 目次 */}
-        <aside className="loc-form-nav-side" style={{ flex: "0 0 200px", position: "sticky", top: 80, alignSelf: "flex-start" }}>
-          <nav aria-label="セクション" style={{ display: "flex", flexDirection: "column", gap: 2, border: "1px solid #e5e7eb", borderRadius: 8, padding: 8, background: "#fff" }}>
-            {LOCATION_FORM_SECTIONS.map((s) => (
-              <button key={s.id} type="button" onClick={() => scrollToSection(s.id)}
-                style={{ textAlign: "left", padding: "6px 10px", fontSize: 12.5, fontWeight: 500, color: "#4b5563", background: "transparent", border: "none", borderRadius: 6, cursor: "pointer" }}>
-                {s.label}
-              </button>
-            ))}
-          </nav>
-        </aside>
-
-        {/* フォーム本体（セクション） */}
+      <div className="loc-2col" style={{ display: "flex", gap: 24, alignItems: "flex-start" }}>
+        {/* 左: フォーム本体（セクション。順序: 名前→説明→チェックイン方式→…→座標→履歴） */}
         <div style={{ flex: 1, minWidth: 0 }}>
           <Section id="location-name" label="ロケーション名">
             <input style={inputStyle} value={name} onChange={(e) => setName(e.target.value)} placeholder="例: 受付ロビー" required aria-label="ロケーション名" />
@@ -258,58 +229,22 @@ export function LocationForm({ onSubmit, saving, workId, defaultValues }: Locati
             <textarea style={{ ...inputStyle, minHeight: 60, resize: "vertical" }} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="ロケーションの説明（任意）" />
           </Section>
 
-          <Section id="map-search" label="マップ検索">
-            {needsGps ? (
-              <PlaceSearchInput onSelect={(ll) => handleMapLocationChange(ll.lat, ll.lng)} />
-            ) : needGpsNote}
-          </Section>
-
-          <Section id="google-map" label="Google Map">
-            {needsGps ? (
-              <LocationMapPicker
-                latitude={latitude ? Number(latitude) : null}
-                longitude={longitude ? Number(longitude) : null}
-                radiusMeters={Number(radiusMeters) || 50}
-                onLocationChange={handleMapLocationChange}
-                onRadiusChange={handleRadiusChange}
-                height={480}
-              />
-            ) : needGpsNote}
-          </Section>
-
-          <Section id="coordinates" label="座標">
-            {needsGps ? (
-              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                <div style={{ display: "flex", gap: 12 }}>
-                  <div style={{ flex: 1 }}>
-                    <label style={labelStyle}>緯度 <span style={subLabel}>— 中心座標</span></label>
-                    <input style={{ ...inputStyle, borderColor: latInvalid ? "#fca5a5" : "#d1d5db" }} type="number" step="any" min="-90" max="90" value={latitude} onChange={(e) => setLatitude(e.target.value)} placeholder="35.6812" />
-                    {latInvalid && <p style={{ fontSize: 11, color: "#dc2626", marginTop: 2 }}>-90〜90 の範囲で入力してください</p>}
+          <Section id="checkin-mode" label="チェックイン方式">
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {([
+                { value: "qr_only",    label: "QR のみ",  desc: "現地の QR コード読み取りでチェックイン" },
+                { value: "gps_only",   label: "GPS のみ",  desc: "現在地が指定範囲内のときチェックイン" },
+                { value: "qr_and_gps", label: "QR + GPS", desc: "QR 読み取り＋現在地が範囲内のときのみチェックイン" },
+              ] as const).map(({ value, label, desc }) => (
+                <label key={value} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 12px", border: `2px solid ${checkinMode === value ? "#2563eb" : "#e5e7eb"}`, borderRadius: 8, cursor: "pointer", background: checkinMode === value ? "#eff6ff" : "#fff" }}>
+                  <input type="radio" name="checkin_mode" value={value} checked={checkinMode === value} onChange={() => setCheckinMode(value)} style={{ marginTop: 2 }} />
+                  <div>
+                    <div style={{ fontWeight: 500, fontSize: 14 }}>{label}</div>
+                    <div style={{ fontSize: 12, color: "#6b7280" }}>{desc}</div>
                   </div>
-                  <div style={{ flex: 1 }}>
-                    <label style={labelStyle}>経度 <span style={subLabel}>— 中心座標</span></label>
-                    <input style={{ ...inputStyle, borderColor: lngInvalid ? "#fca5a5" : "#d1d5db" }} type="number" step="any" min="-180" max="180" value={longitude} onChange={(e) => setLongitude(e.target.value)} placeholder="139.7671" />
-                    {lngInvalid && <p style={{ fontSize: 11, color: "#dc2626", marginTop: 2 }}>-180〜180 の範囲で入力してください</p>}
-                  </div>
-                </div>
-                <div>
-                  <label style={labelStyle}>許容半径（m） <span style={subLabel}>— この範囲内ならチェックイン成功</span></label>
-                  <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                    <input
-                      id="radius_meters_input"
-                      style={{ ...inputStyle, width: 100, flex: "none" }}
-                      type="number" min="1" max="10000" value={radiusMeters}
-                      onChange={(e) => setRadiusMeters(e.target.value)}
-                      onInput={(e) => setRadiusMeters((e.target as HTMLInputElement).value)}
-                    />
-                    <input type="range" min={10} max={500} step={5} value={radiusNum || 50} onChange={(e) => setRadiusMeters(e.target.value)} style={{ flex: 1, accentColor: "#2563eb" }} />
-                  </div>
-                  {radiusWarning && <p style={{ fontSize: 12, color: "#d97706", marginTop: 2 }}>{radiusWarning}</p>}
-                  <p style={helpStyle}>推奨: 20m〜100m。地図上の円で範囲を確認できます。手入力・地図クリック・ピンドラッグ・検索のいずれでも更新されます。</p>
-                </div>
-                {gpsIncomplete && <p style={{ fontSize: 12, color: "#dc2626" }}>この方式では緯度・経度・半径がすべて必要です</p>}
-              </div>
-            ) : needGpsNote}
+                </label>
+              ))}
+            </div>
           </Section>
 
           <Section id="beacon-settings" label="ビーコン設定">
@@ -351,24 +286,6 @@ export function LocationForm({ onSubmit, saving, workId, defaultValues }: Locati
                 </div>
               )}
               <p style={helpStyle}>スタンプ対象にすると、LIFF 画面のスタンプラリー進捗に含まれます。</p>
-            </div>
-          </Section>
-
-          <Section id="checkin-mode" label="チェックイン方式">
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {([
-                { value: "qr_only",    label: "QR のみ",  desc: "現地の QR コード読み取りでチェックイン" },
-                { value: "gps_only",   label: "GPS のみ",  desc: "現在地が指定範囲内のときチェックイン" },
-                { value: "qr_and_gps", label: "QR + GPS", desc: "QR 読み取り＋現在地が範囲内のときのみチェックイン" },
-              ] as const).map(({ value, label, desc }) => (
-                <label key={value} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 12px", border: `2px solid ${checkinMode === value ? "#2563eb" : "#e5e7eb"}`, borderRadius: 8, cursor: "pointer", background: checkinMode === value ? "#eff6ff" : "#fff" }}>
-                  <input type="radio" name="checkin_mode" value={value} checked={checkinMode === value} onChange={() => setCheckinMode(value)} style={{ marginTop: 2 }} />
-                  <div>
-                    <div style={{ fontWeight: 500, fontSize: 14 }}>{label}</div>
-                    <div style={{ fontSize: 12, color: "#6b7280" }}>{desc}</div>
-                  </div>
-                </label>
-              ))}
             </div>
           </Section>
 
@@ -422,6 +339,41 @@ export function LocationForm({ onSubmit, saving, workId, defaultValues }: Locati
             </p>
           </Section>
 
+          <Section id="coordinates" label="座標">
+            {needsGps ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                <div style={{ display: "flex", gap: 12 }}>
+                  <div style={{ flex: 1 }}>
+                    <label style={labelStyle}>緯度 <span style={subLabel}>— 中心座標</span></label>
+                    <input style={{ ...inputStyle, borderColor: latInvalid ? "#fca5a5" : "#d1d5db" }} type="number" step="any" min="-90" max="90" value={latitude} onChange={(e) => setLatitude(e.target.value)} placeholder="35.6812" />
+                    {latInvalid && <p style={{ fontSize: 11, color: "#dc2626", marginTop: 2 }}>-90〜90 の範囲で入力してください</p>}
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <label style={labelStyle}>経度 <span style={subLabel}>— 中心座標</span></label>
+                    <input style={{ ...inputStyle, borderColor: lngInvalid ? "#fca5a5" : "#d1d5db" }} type="number" step="any" min="-180" max="180" value={longitude} onChange={(e) => setLongitude(e.target.value)} placeholder="139.7671" />
+                    {lngInvalid && <p style={{ fontSize: 11, color: "#dc2626", marginTop: 2 }}>-180〜180 の範囲で入力してください</p>}
+                  </div>
+                </div>
+                <div>
+                  <label style={labelStyle}>許容半径（m） <span style={subLabel}>— この範囲内ならチェックイン成功</span></label>
+                  <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                    <input
+                      id="radius_meters_input"
+                      style={{ ...inputStyle, width: 100, flex: "none" }}
+                      type="number" min="1" max="10000" value={radiusMeters}
+                      onChange={(e) => setRadiusMeters(e.target.value)}
+                      onInput={(e) => setRadiusMeters((e.target as HTMLInputElement).value)}
+                    />
+                    <input type="range" min={10} max={500} step={5} value={radiusNum || 50} onChange={(e) => setRadiusMeters(e.target.value)} style={{ flex: 1, accentColor: "#2563eb" }} />
+                  </div>
+                  {radiusWarning && <p style={{ fontSize: 12, color: "#d97706", marginTop: 2 }}>{radiusWarning}</p>}
+                  <p style={helpStyle}>右の地図の検索・クリック・ピンドラッグ、またはこの欄の手入力のいずれでも更新されます。範囲は地図上の円で確認できます。</p>
+                </div>
+                {gpsIncomplete && <p style={{ fontSize: 12, color: "#dc2626" }}>この方式では緯度・経度・半径がすべて必要です</p>}
+              </div>
+            ) : needGpsNote}
+          </Section>
+
           <Section id="history" label="履歴">
             <div style={{ padding: "16px", border: "1px dashed #e5e7eb", borderRadius: 8, background: "#f9fafb", textAlign: "center" }}>
               <p style={{ fontSize: 12, color: "#9ca3af", lineHeight: 1.7, margin: 0 }}>
@@ -443,6 +395,13 @@ export function LocationForm({ onSubmit, saving, workId, defaultValues }: Locati
             {saving ? "保存中..." : defaultValues ? "更新" : "作成"}
           </Button>
         </div>
+
+        {/* 右: マップ検索 + Google Map（PC sticky / SP は下に通常表示）。GPS 方式時のみ */}
+        {needsGps && (
+          <aside className="loc-map-aside" style={{ flex: "0 0 420px", position: "sticky", top: 24, alignSelf: "flex-start" }}>
+            {mapPanel}
+          </aside>
+        )}
       </div>
     </form>
   );
