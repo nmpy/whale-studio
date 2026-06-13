@@ -22,7 +22,7 @@ export default function BeaconsPage() {
         items={[
           { label: "OA一覧", href: "/oas" },
           { label: "作品", href: `/oas/${oaId}/works/${workId}` },
-          { label: "ロケーション", href: `/oas/${oaId}/works/${workId}/locations` },
+          { label: "ロケーション管理", href: `/oas/${oaId}/locations?workId=${workId}` },
           { label: "ビーコン" },
         ]}
       />

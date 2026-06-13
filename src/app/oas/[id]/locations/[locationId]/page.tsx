@@ -15,7 +15,6 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { getAuthHeaders } from "@/lib/api-client";
-import { withPreviewParams } from "@/lib/access-preview";
 
 export default function LocationResolverPage() {
   const params = useParams();
@@ -36,8 +35,10 @@ export default function LocationResolverPage() {
         if (!json?.success || !Array.isArray(json.data)) { setError("読み込みに失敗しました"); return; }
         const loc = (json.data as { id: string; work_id: string }[]).find((l) => l.id === locationId);
         if (!loc) { setError("このアカウントに該当するチェックインポイントが見つかりません"); return; }
-        // 実際の workId を優先して既存の編集+分析ページへ。preview params を維持。
-        const dest = withPreviewParams(`/oas/${oaId}/works/${loc.work_id}/locations/${locationId}`, searchParams);
+        // 実際の workId を優先して既存の編集+分析ページへ。
+        // 受け取った query param（previewPlan/previewRole/suggested_radius 等）はすべて転送する。
+        const qs = searchParams.toString();
+        const dest = `/oas/${oaId}/works/${loc.work_id}/locations/${locationId}${qs ? `?${qs}` : ""}`;
         router.replace(dest);
       } catch {
         if (!cancelled) setError("通信エラーが発生しました");
