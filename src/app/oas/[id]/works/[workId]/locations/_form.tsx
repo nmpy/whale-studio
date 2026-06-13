@@ -386,16 +386,16 @@ export function LocationForm({ onSubmit, saving, workId, defaultValues }: Locati
     </>
   );
 
-  // ── 地図カラム（GPS モード時のみ、PC で右側 sticky） ──
+  // ── 地図ブロック（GPS モード時のみ）。地図を主役に、カード幅いっぱいで上段配置。 ──
   const mapColumn = needsGps ? (
-    <div style={{ position: "sticky", top: 20 }}>
+    <div style={{ width: "100%" }}>
       <LocationMapPicker
         latitude={latitude ? Number(latitude) : null}
         longitude={longitude ? Number(longitude) : null}
         radiusMeters={Number(radiusMeters) || 50}
         onLocationChange={handleMapLocationChange}
         onRadiusChange={handleRadiusChange}
-        height={450}
+        height={480}
       />
     </div>
   ) : null;
@@ -403,23 +403,11 @@ export function LocationForm({ onSubmit, saving, workId, defaultValues }: Locati
   return (
     <form onSubmit={handleSubmit}>
       {needsGps ? (
-        /* 2カラムレイアウト: 左フォーム / 右地図 */
-        <div style={{ display: "flex", gap: 24, alignItems: "flex-start" }}>
-          {/* SP では縦積みにする */}
-          <style>{`
-            @media (max-width: 900px) {
-              .loc-form-2col { flex-direction: column !important; }
-              .loc-form-2col > div { width: 100% !important; }
-            }
-          `}</style>
-          <div className="loc-form-2col" style={{ display: "flex", gap: 24, alignItems: "flex-start", width: "100%" }}>
-            <div style={{ flex: "1 1 55%", minWidth: 0 }}>
-              {formColumn}
-            </div>
-            <div style={{ flex: "1 1 45%", minWidth: 300 }}>
-              {mapColumn}
-            </div>
-          </div>
+        /* 縦積み: 地図（カード幅いっぱい）を上段、入力フォームを下段。
+           地図を主役にしつつ、SP でも崩れない単純な 1 カラムスタック。 */
+        <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+          {mapColumn}
+          {formColumn}
         </div>
       ) : (
         /* 1カラム（GPS 不要時は地図なし） */
