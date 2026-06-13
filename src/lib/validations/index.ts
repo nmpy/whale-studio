@@ -1556,6 +1556,16 @@ const beaconEventTypesSchema = z.string()
     { message: "発火イベントは enter / stay / banner のいずれかをカンマ区切りで指定してください" },
   );
 
+// 再発火制御フィールド（create / update 共通）。
+// valid_from / valid_to は ISO 文字列 or null。z.coerce.date で Date に変換する。
+const beaconControlFields = {
+  once_per_user:         z.boolean().optional(),
+  max_triggers_per_user: z.number().int().min(1).max(1_000_000).optional().nullable(),
+  valid_from:            z.coerce.date().optional().nullable(),
+  valid_to:              z.coerce.date().optional().nullable(),
+  note:                  z.string().max(1000).optional().nullable(),
+};
+
 export const createBeaconTriggerSchema = z.object({
   name:             z.string().min(1, "名前は必須です").max(100, "名前は100文字以内にしてください"),
   hwid:             beaconHwidSchema,
@@ -1565,12 +1575,16 @@ export const createBeaconTriggerSchema = z.object({
   cooldown_seconds: z.number().int().min(0).max(86400).optional(),
   action_type:      z.enum(BEACON_ACTION_TYPES),
   action_payload:   z.record(z.string(), z.unknown()).optional().nullable(),
+  ...beaconControlFields,
 }).superRefine((val, ctx) => {
   if (val.action_type === "message") {
     const mid = (val.action_payload as Record<string, unknown> | null | undefined)?.message_id;
     if (typeof mid !== "string" || !mid.trim()) {
       ctx.addIssue({ code: "custom", path: ["action_payload", "message_id"], message: "送信するメッセージを選択してください" });
     }
+  }
+  if (val.valid_from && val.valid_to && val.valid_from > val.valid_to) {
+    ctx.addIssue({ code: "custom", path: ["valid_to"], message: "終了日時は開始日時より後にしてください" });
   }
 });
 
@@ -1583,6 +1597,7 @@ export const updateBeaconTriggerSchema = z.object({
   cooldown_seconds: z.number().int().min(0).max(86400).optional(),
   action_type:      z.enum(BEACON_ACTION_TYPES).optional(),
   action_payload:   z.record(z.string(), z.unknown()).optional().nullable(),
+  ...beaconControlFields,
 }).superRefine((val, ctx) => {
   if (val.action_type === "message") {
     const mid = (val.action_payload as Record<string, unknown> | null | undefined)?.message_id;
@@ -1590,6 +1605,17 @@ export const updateBeaconTriggerSchema = z.object({
       ctx.addIssue({ code: "custom", path: ["action_payload", "message_id"], message: "送信するメッセージを選択してください" });
     }
   }
+  if (val.valid_from && val.valid_to && val.valid_from > val.valid_to) {
+    ctx.addIssue({ code: "custom", path: ["valid_to"], message: "終了日時は開始日時より後にしてください" });
+  }
+});
+
+// 疑似発火テスト（管理画面・platform admin 用）。本番 Webhook と同じ resolver/sender を通す。
+export const testBeaconFireSchema = z.object({
+  line_user_id:  z.string().min(1, "lineUserId は必須です").max(100),
+  beacon_type:   z.enum(BEACON_EVENT_TYPES).optional(), // 未指定なら "enter"
+  dm:            z.string().max(200).optional().nullable(),
+  ignore_limits: z.boolean().optional(), // cooldown/once/max を無視（platform admin のみ）
 });
 
 // ────────────────────────────────────────────────

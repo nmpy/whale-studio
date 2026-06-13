@@ -69,6 +69,34 @@ export default function BeaconListPanel({ oaId, workId, showHeading = true }: Pr
 
   return (
     <div data-panel="beacons">
+      {/* ── 移行バナー: ビーコン管理は OA 配下（ロケーション）に集約された ── */}
+      <div
+        role="status"
+        style={{
+          display: "flex", alignItems: "flex-start", gap: 12, flexWrap: "wrap",
+          background: "#e9f8ef", border: "1px solid rgba(34,197,94,.3)", borderRadius: 12,
+          padding: "14px 16px", marginBottom: 16,
+        }}
+      >
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <p style={{ fontSize: 13, fontWeight: 700, color: "#0f7a3d", marginBottom: 4 }}>
+            ビーコン管理はロケーション配下に移動しました
+          </p>
+          <p style={{ fontSize: 12, color: "#33403a", lineHeight: 1.6 }}>
+            この作品に紐づくビーコントリガーも、新しいビーコン管理画面でまとめて確認・編集できます。
+          </p>
+        </div>
+        <Link
+          href={`/oas/${oaId}/locations/beacons?workId=${workId}`}
+          style={{
+            flexShrink: 0, padding: "9px 18px", background: "#22c55e", color: "#fff",
+            borderRadius: 999, fontSize: 13, fontWeight: 700, textDecoration: "none", whiteSpace: "nowrap",
+          }}
+        >
+          ビーコン管理を開く →
+        </Link>
+      </div>
+
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
         {showHeading && <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0 }}>LINE Beacon トリガー</h2>}
         {!isReadOnly && (
