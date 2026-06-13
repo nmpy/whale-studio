@@ -104,10 +104,11 @@ export function SuccessClient({
     };
   }, [phase, checkOnce]);
 
-  // ── 該当 OA の管理画面へ（遷移前にも保険でキャッシュ破棄） ──
+  // ── 該当 OA のプラン詳細画面へ（遷移前にも保険でキャッシュ破棄） ──
+  // 契約直後に一番確認したい「現在プラン・料金・契約状態」が見える plan ページへ着地させる。
   const openAccount = useCallback(() => {
     clearAllTtlCaches();
-    router.push(`/oas/${oaId}/settings`);
+    router.push(`/oas/${oaId}/settings/plan`);
   }, [router, oaId]);
 
   const retry = useCallback(() => {
