@@ -25,6 +25,11 @@ export async function GET(req: NextRequest) {
       name:         location.name,
       checkin_mode: location.checkinMode,
       is_active:    location.isActive,
+      // ── 地図表示用の座標（additive）。既存フィールドは不変。
+      //    目的地ピン / チェックイン範囲円の描画にのみ使用（判定は従来どおりサーバー側）。
+      latitude:      location.latitude ?? null,
+      longitude:     location.longitude ?? null,
+      radius_meters: location.radiusMeters ?? null,
     });
   } catch (err) {
     return serverError(err);

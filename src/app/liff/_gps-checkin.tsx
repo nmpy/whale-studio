@@ -14,6 +14,7 @@ import {
 } from "@/lib/liff/gps-status";
 import { LiffResultState, LiffLoadingState, type LiffStateVariant } from "@/components/liff/experience";
 import { LiffButton } from "@/components/liff/primitives/LiffButton";
+import { GoogleMapView, type LatLng } from "@/components/maps/GoogleMapView";
 
 // 状態の型は src/lib/liff/gps-status.ts に集約（テスト可能な表示ロジックと共有）。
 export type { GpsStatus };
@@ -29,6 +30,10 @@ interface GpsCheckinProps {
   checkinMethod?: "gps" | "qr_and_gps";
   /** idle 時のチェックインボタン文言（既定: 「📍 現在地でチェックイン」）。 */
   buttonLabel?: string;
+  /** 地図表示用の目的地座標 / 範囲（任意）。判定には使わず、Google Map の目的地ピン・範囲円のみ。 */
+  targetLat?: number | null;
+  targetLng?: number | null;
+  radiusMeters?: number | null;
 }
 
 /** クライアント側失敗をログ送信（fire-and-forget） */
@@ -66,7 +71,7 @@ function formatDistance(meters: number): string {
   return `約${(meters / 1000).toFixed(1)}km`;
 }
 
-export function GpsCheckin({ locationId, workId, lineUserId, locationName, onResult, checkinMethod = "gps", buttonLabel = "📍 現在地でチェックイン" }: GpsCheckinProps) {
+export function GpsCheckin({ locationId, workId, lineUserId, locationName, onResult, checkinMethod = "gps", buttonLabel = "📍 現在地でチェックイン", targetLat, targetLng, radiusMeters }: GpsCheckinProps) {
   const [status, setStatus] = useState<GpsStatus>("idle");
   const [message, setMessage] = useState("");
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
@@ -176,6 +181,13 @@ export function GpsCheckin({ locationId, workId, lineUserId, locationName, onRes
 
   if (!supported) return null;
 
+  // 地図表示用: 目的地（props）/ 現在地（取得済み coords）。どちらか有効なら地図を出す。
+  const target: LatLng | null =
+    typeof targetLat === "number" && typeof targetLng === "number" && Number.isFinite(targetLat) && Number.isFinite(targetLng)
+      ? { lat: targetLat, lng: targetLng } : null;
+  const current: LatLng | null = coords ? { lat: coords.lat, lng: coords.lng } : null;
+  const mapCenter: LatLng | null = target ?? current;
+
   const pres = gpsStatusPresentation(status, {
     locationName,
     distanceMeters: distanceInfo?.distance ?? null,
@@ -192,6 +204,21 @@ export function GpsCheckin({ locationId, workId, lineUserId, locationName, onRes
 
   return (
     <div style={{ marginTop: 16, borderTop: "1px solid var(--liff-border,#EAEAEA)", paddingTop: 16 }}>
+
+      {/* ── 地図（目的地ピン / 現在地ピン / チェックイン可能範囲の円）──
+          目的地 or 現在地のどちらかが分かるときのみ表示。APIキー未設定でも内部で fallback。 */}
+      {mapCenter && (
+        <div style={{ marginBottom: 14 }}>
+          <GoogleMapView
+            center={mapCenter}
+            target={target}
+            currentLocation={current}
+            radiusMeters={radiusMeters ?? null}
+            height={260}
+            readonly
+          />
+        </div>
+      )}
 
       {/* ── idle: 事前説明 + チェックインボタン ── */}
       {status === "idle" && (
