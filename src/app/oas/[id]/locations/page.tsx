@@ -33,11 +33,19 @@ export default function OaLocationsPage() {
     <div style={{ maxWidth: 920, margin: "0 auto", padding: "24px 16px" }}>
       <Breadcrumb items={[{ label: "アカウントリスト", href: "/oas" }, { label: "ロケーション管理" }]} />
 
-      <div className="mb-5">
-        <h1 className="font-round text-[clamp(20px,4vw,24px)] font-extrabold leading-[1.2] tracking-[-0.02em] text-ink">ロケーション管理</h1>
-        <p className="mt-1 text-[12px] leading-[1.7] text-ink-3">
-          GPS / QR / Beacon など、現地の地点やチェックイン方法に紐づく機能をまとめて管理できます。
-        </p>
+      <div className="mb-5 flex items-start justify-between gap-3">
+        <div>
+          <h1 className="font-round text-[clamp(20px,4vw,24px)] font-extrabold leading-[1.2] tracking-[-0.02em] text-ink">ロケーション管理</h1>
+          <p className="mt-1 text-[12px] leading-[1.7] text-ink-3">
+            GPS / QR / Beacon など、現地の地点やチェックイン方法に紐づく機能をまとめて管理できます。
+          </p>
+        </div>
+        <Link
+          href={`/oas/${oaId}/locations/logs${workIdFilter ? `?workId=${encodeURIComponent(workIdFilter)}` : ""}`}
+          className={buttonClass({ variant: "ghost", size: "sm" })}
+        >
+          ログを見る
+        </Link>
       </div>
 
       {planLoading || roleLoading ? (
