@@ -39,7 +39,13 @@ export function PlaceSearchInput({ onSelect }: { onSelect: (latLng: LatLng) => v
         if (cancelled || !containerRef.current) return;
 
         el = new places.PlaceAutocompleteElement({});
+        // 通常のフォーム input と同じ白背景・ライト表示に揃える。
+        // color-scheme: light を明示し、OS のダークモードでも灰/暗い背景に見えないようにする。
         el.style.width = "100%";
+        el.style.colorScheme = "light";
+        el.style.backgroundColor = "#fff";
+        el.style.borderRadius = "8px";
+        el.style.fontSize = "14px";
 
         listener = async (e: Event) => {
           try {

@@ -36,7 +36,7 @@ export default function NewLocationPage() {
   };
 
   return (
-    <div style={{ maxWidth: 700, margin: "0 auto", padding: "24px 16px" }}>
+    <div style={{ maxWidth: 1040, margin: "0 auto", padding: "24px 16px" }}>
       <Breadcrumb
         items={[
           { label: "OA一覧", href: "/oas" },
