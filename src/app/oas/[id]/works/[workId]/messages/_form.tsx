@@ -2350,22 +2350,30 @@ function ChainBubbleRow({
               {selectedChar.name}
             </p>
           )}
-          <div style={{ position: "relative", display: "inline-block", maxWidth: 220 }}>
-            <div style={{
-              position: "absolute", left: -6, top: 10,
-              width: 0, height: 0, borderStyle: "solid",
-              borderWidth: "5px 7px 5px 0",
-              borderColor: "transparent #fff transparent transparent",
-            }} />
-            <div style={{
-              background: "#fff", borderRadius: "4px 16px 16px 16px",
-              padding: "8px 12px", fontSize: 14, color: "#111",
-              lineHeight: 1.55, wordBreak: "break-word",
-              boxShadow: "0 0.5px 1.5px rgba(0,0,0,0.1)",
-            }}>
+          {item.message_type === "flex" ? (
+            // Flex Message は LINE 同様「カードがそのまま会話欄に置かれる」見え方にする。
+            // 通常メッセージ用の白い吹き出し（三角＋白背景）で囲まない（bubble/carousel とも）。
+            <div style={{ maxWidth: "100%" }}>
               {renderBubbleContent(item, selectedRiddle, destinations)}
             </div>
-          </div>
+          ) : (
+            <div style={{ position: "relative", display: "inline-block", maxWidth: 220 }}>
+              <div style={{
+                position: "absolute", left: -6, top: 10,
+                width: 0, height: 0, borderStyle: "solid",
+                borderWidth: "5px 7px 5px 0",
+                borderColor: "transparent #fff transparent transparent",
+              }} />
+              <div style={{
+                background: "#fff", borderRadius: "4px 16px 16px 16px",
+                padding: "8px 12px", fontSize: 14, color: "#111",
+                lineHeight: 1.55, wordBreak: "break-word",
+                boxShadow: "0 0.5px 1.5px rgba(0,0,0,0.1)",
+              }}>
+                {renderBubbleContent(item, selectedRiddle, destinations)}
+              </div>
+            </div>
+          )}
 
           {/* QR は chain 末尾の bubble の下にのみ表示 (= 実送信仕様 moveQuickReplyToTail に揃える)。
               tailQuickReplies が空 / 未指定なら何も表示しない。 */}
