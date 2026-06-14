@@ -12,6 +12,7 @@ import { useToast } from "@/components/Toast";
 import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
 import { getAuthHeaders } from "@/lib/api-client";
 import { ImageUploadField } from "@/components/ImageUploadField";
+import { XPostPreviewCard } from "@/components/x-posts/XPostPreviewCard";
 import { parseImportFile } from "@/lib/x-posts/file-parse";
 import { buildUtmUrl, parseHashtagsInput } from "@/lib/x-posts/format";
 import type { XPost, XPostStatus, CreateXPostBody, XPostAnalytics, XPostSentiment } from "@/types";
@@ -273,7 +274,9 @@ function XPostForm({
   const lbl = "block text-[12px] font-semibold text-ink-2 mb-1";
 
   return (
-    <div className="w-full max-w-[680px] rounded-card border border-line bg-surface p-5 shadow-sm">
+    <div className="flex flex-col gap-5 lg:flex-row lg:items-start">
+      {/* 左カラム: 編集フォーム */}
+      <div className="w-full min-w-0 rounded-card border border-line bg-surface p-5 shadow-sm lg:flex-1">
       <p className="mb-4 text-[14px] font-bold text-ink">{isNew ? "新規X投稿" : "X投稿を編集"}</p>
 
       <div className="flex flex-col gap-4">
@@ -383,17 +386,26 @@ function XPostForm({
         <div><label className={lbl}>メモ（任意）</label>
           <textarea className="form-input w-full" style={{ minHeight: 60 }} value={note} onChange={(e) => setNote(e.target.value)} maxLength={2000} /></div>
 
-        {/* 本文プレビュー（本文 + ハッシュタグ） */}
-        {(body.trim() || hashtags.length > 0) && (
-          <div className="rounded-field border border-line bg-bg-tint p-3">
-            <div className="mb-1 text-[11px] font-semibold text-ink-3">投稿プレビュー</div>
-            <p className="whitespace-pre-wrap text-[13px] text-ink">{body}{hashtags.length > 0 ? `\n\n${hashtags.join(" ")}` : ""}</p>
-          </div>
-        )}
-
         <div className="flex items-center justify-end gap-3 border-t border-line-2 pt-4">
           <button type="button" onClick={onCancel} className="btn btn-ghost">キャンセル</button>
           <button type="button" onClick={handleSave} disabled={saving} className="btn btn-primary">{saving ? "保存中…" : "保存する"}</button>
+        </div>
+      </div>
+      </div>
+
+      {/* 右カラム: X投稿プレビュー（PC は sticky で追従・モバイルはフォーム下部に表示） */}
+      <div className="w-full lg:w-[360px] lg:flex-shrink-0">
+        <div className="lg:sticky lg:top-[72px]">
+          <XPostPreviewCard
+            body={body}
+            hashtags={hashtags}
+            imageUrl={imageUrl}
+            uploadedImageUrl={uploadedImageUrl}
+            linkUrl={linkUrl}
+            generatedUrl={generatedUrl}
+            trackingUrl={post?.tracking_url ?? null}
+            status={status}
+          />
         </div>
       </div>
     </div>
