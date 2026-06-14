@@ -22,6 +22,7 @@ import { LinkPicker, LinkCopyList, useWorkLinkOptions, type LinkOption } from "@
 import { detectTapMode } from "@/lib/message-destination-utils";
 import { RequiredMark } from "@/components/RequiredMark";
 import { MediaUploadButton } from "@/components/MediaUploadButton";
+import { FlexPreview } from "@/components/flex/FlexPreview";
 import { destinationApi } from "@/lib/api-client";
 import type { LineDestination } from "@/types";
 import { normalizeFlexJson, prettyFlexJson, FLEX_SIMULATOR_URL, FLEX_ERRORS } from "@/lib/flex";
@@ -2247,12 +2248,16 @@ function renderBubbleContent(
           </div>
         );
     case "flex":
-      return (
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ fontSize: 22 }}>🧱</span>
-          <div style={{ fontSize: 12, color: "#6b7280" }}>Flex Message</div>
-        </div>
-      );
+      // Flex JSON を簡易プレビュー（保存値・送信ロジックには触れない・表示のみ）。
+      // 未入力時は従来どおりアイコン表示。
+      return item.flex_payload_json.trim()
+        ? <FlexPreview json={item.flex_payload_json} />
+        : (
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 22 }}>🧱</span>
+            <div style={{ fontSize: 12, color: "#6b7280" }}>Flex Message</div>
+          </div>
+        );
   }
   return null;
 }
@@ -2731,6 +2736,7 @@ interface ChainPreviewItem {
   answer:              string;
   tap_destination_id:  string;
   tap_url:             string;
+  flex_payload_json:   string;
 }
 
 function buildPreviewChain(args: {
@@ -2788,6 +2794,7 @@ function buildPreviewChain(args: {
       answer:             "",
       tap_destination_id: "",
       tap_url:            "",
+      flex_payload_json:  "", // 上流 row は API 取得形に含めていないため空（編集中 message/slot のみプレビュー）
     });
     if (m.free_input_enabled) return out;
     if (out.length >= PREVIEW_CHAIN_MAX) return out;
@@ -2810,6 +2817,7 @@ function buildPreviewChain(args: {
     answer:             form.answer,
     tap_destination_id: form.tap_destination_id,
     tap_url:            form.tap_url,
+    flex_payload_json:  form.flex_payload_json,
   });
   if (form.free_input_enabled) return out;
   if (out.length >= PREVIEW_CHAIN_MAX) return out;
@@ -2839,6 +2847,7 @@ function buildPreviewChain(args: {
       answer:             "",
       tap_destination_id: "",
       tap_url:            "",
+      flex_payload_json:  s.flex_payload_json,
     });
     if (s.free_input_enabled) return out;
     if (out.length >= PREVIEW_CHAIN_MAX) return out;
