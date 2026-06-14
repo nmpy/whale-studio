@@ -22,6 +22,7 @@ import type {
   AccordionSettings,
   CodeReaderSettings,
   RiddleListSettings,
+  CheckinHistorySettings,
   NestedLiffBlock,
   LiffSectionVariant,
 } from "@/types";
@@ -711,6 +712,54 @@ export function RiddleListForm({ settings, onChange, readOnly }: FieldProps<Ridd
       </label>
       <p className="text-[11px] text-gray-400 -mt-1">
         そのプレイヤーが到達した問題のみを表示します（未到達・他プレイヤーの問題は出ません）。回答は LINE のトーク画面で行います。
+      </p>
+    </div>
+  );
+}
+
+export function CheckinHistoryForm({ settings, onChange, readOnly }: FieldProps<CheckinHistorySettings>) {
+  return (
+    <div className="space-y-3">
+      <div>
+        <label className={labelClass}>見出し（任意）</label>
+        <input
+          className={inputClass}
+          value={settings.title ?? ""}
+          onChange={(e) => onChange({ ...settings, title: e.target.value })}
+          disabled={readOnly}
+          placeholder="チェックイン履歴"
+        />
+      </div>
+      <div>
+        <label className={labelClass}>説明文（任意）</label>
+        <input
+          className={inputClass}
+          value={settings.description ?? ""}
+          onChange={(e) => onChange({ ...settings, description: e.target.value })}
+          disabled={readOnly}
+          placeholder="これまでのチェックイン履歴を表示します"
+        />
+      </div>
+      <div>
+        <label className={labelClass}>最大表示件数（任意）</label>
+        <input
+          type="number"
+          className={`${inputClass} max-w-[160px]`}
+          value={settings.max_count ?? ""}
+          onChange={(e) => {
+            const raw = e.target.value;
+            if (raw === "") return onChange({ ...settings, max_count: undefined });
+            const n = Number(raw);
+            if (Number.isFinite(n)) onChange({ ...settings, max_count: Math.max(1, Math.min(100, Math.floor(n))) });
+          }}
+          disabled={readOnly}
+          min={1}
+          max={100}
+          placeholder="全件"
+        />
+      </div>
+      <p className="text-[11px] text-gray-400 -mt-1">
+        そのプレイヤー本人のチェックイン履歴のみを表示します。履歴が無いプレイヤーには「まだチェックイン履歴はありません」と表示されます。
       </p>
     </div>
   );

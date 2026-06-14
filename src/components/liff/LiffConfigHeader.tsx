@@ -4,7 +4,7 @@
 // LIFF設定ページのヘッダー — 有効/無効トグル + page_type 切替 + ヒントサイト用ヘッダー設定
 //
 // 入力欄の onChange は API を直接呼ばず、すべて onLocalChange (= draft 更新) に集約する。
-// 実 API 保存は useLiffConfig 側の debounce auto-save に任せる。
+// 実 API 保存は最下部「すべての変更を保存」(useLiffConfig.saveAll = 一括保存) に任せる。
 
 import type { LiffPageConfig, LiffPageConfigSettings, LiffPageType, LiffPublishStatus } from "@/types";
 import { normalizeLiffPageType } from "@/types";
@@ -118,11 +118,21 @@ export function LiffConfigHeader({
             <option value="hint">ヒント</option>
             <option value="faq">FAQ（よくある質問）</option>
             <option value="survey">アンケート</option>
-            <option value="location">チェックイン履歴</option>
             <option value="character">キャラクター</option>
             <option value="werewolf">人狼（配役閲覧）</option>
+            {/* 「チェックイン履歴」はページ種別から廃止し、ブロックとして追加できるようにした。
+                ただし既存データ（pageType="location"）を壊さないため、既にこの種別のページだけは
+                旧種別を選択肢として残し表示する（自動移行はしない＝保存時も書き換えない）。 */}
+            {mode === "location" && (
+              <option value="location">チェックイン履歴（旧・ページ種別）</option>
+            )}
           </select>
           <p className="text-[11px] text-gray-400 mt-1">※モードによって編集 UI とプレイヤー表示が切り替わります</p>
+          {mode === "location" && (
+            <p className="text-[11px] text-amber-600 mt-1">
+              「チェックイン履歴」はページ種別から「チェックイン履歴ブロック」へ移行しました。今後は「既存LIFF」に切り替え、表示ブロックから「チェックイン履歴」を追加してください（このページは現状のまま表示できます）。
+            </p>
+          )}
         </div>
 
         {/* 2. ページタイトル — プレビュー本文・カードに表示されるタイトル（config.title）。
@@ -272,10 +282,10 @@ export function LiffConfigHeader({
 
       {mode === "location" && (
         <div className="bg-white rounded-xl border border-gray-200 p-5 mb-6">
-          <h2 className="text-sm font-semibold text-gray-900 mb-1">チェックイン履歴モード</h2>
+          <h2 className="text-sm font-semibold text-gray-900 mb-1">チェックイン履歴モード（旧ページ種別）</h2>
           <p className="text-[12px] text-gray-500 leading-relaxed">
-            このページではプレイヤーが自分のチェックイン履歴を確認できます。<br />
-            ※ 履歴の取得 API は次回 PR で実装予定です。現状ではプレースホルダーが表示されます。
+            このページではプレイヤー本人のチェックイン履歴を表示します（現状のまま動作します）。<br />
+            「チェックイン履歴」はページ種別から<strong>ブロック</strong>へ移行しました。今後は「既存LIFF」に切り替え、表示ブロックから「チェックイン履歴」を追加する構成を推奨します。
           </p>
         </div>
       )}

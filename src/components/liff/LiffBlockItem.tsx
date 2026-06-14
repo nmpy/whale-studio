@@ -13,10 +13,8 @@ interface Props {
   totalBlocks: number;
   isEditing: boolean;
   readOnly: boolean;
-  saving: boolean;
   onEdit: () => void;
   onCloseEdit: () => void;
-  onSave: (block: LiffPageBlock) => void;
   onToggleEnabled: () => void;
   onDelete: () => void;
   onMove: (direction: "up" | "down") => void;
@@ -27,8 +25,8 @@ interface Props {
 }
 
 export function LiffBlockItem({
-  block, index, totalBlocks, isEditing, readOnly, saving,
-  onEdit, onCloseEdit, onSave, onToggleEnabled, onDelete,
+  block, index, totalBlocks, isEditing, readOnly,
+  onEdit, onCloseEdit, onToggleEnabled, onDelete,
   onMove, onLocalChange, onDragStart, onDragOver, onDragEnd,
 }: Props) {
   const entry = getBlockEntry(block.block_type);
@@ -39,7 +37,7 @@ export function LiffBlockItem({
       onDragStart={onDragStart}
       onDragOver={onDragOver}
       onDragEnd={onDragEnd}
-      className={`bg-white rounded-lg p-3 transition-all ${
+      className={`bg-gray-50 rounded-lg p-3 transition-all ${
         isEditing ? "border-2 border-brand" : "border border-gray-200"
       } ${!block.is_enabled ? "opacity-50" : ""} ${!readOnly ? "cursor-grab" : ""}`}
     >
@@ -106,7 +104,7 @@ export function LiffBlockItem({
 
       {/* 編集フォーム */}
       {isEditing && (
-        <div className="mt-3 p-3 bg-gray-50 rounded-lg">
+        <div className="mt-3 p-3 bg-white border border-gray-200 rounded-lg">
           <div className="mb-3">
             <label className="block text-xs font-medium text-gray-500 mb-1">
               ブロックタイトル
@@ -143,19 +141,14 @@ export function LiffBlockItem({
           />
 
           {!readOnly && (
-            <div className="flex gap-2 mt-4">
-              <button
-                onClick={() => onSave(block)}
-                disabled={saving}
-                className="px-5 py-2 bg-brand text-white rounded-lg text-sm font-semibold cursor-pointer disabled:opacity-60"
-              >
-                {saving ? "保存中..." : "保存"}
-              </button>
+            <div className="mt-4">
+              {/* 一括保存方式: ブロックごとの保存ボタンは廃止。変更は自動的に下書きへ反映され、
+                  画面最下部の「すべての変更を保存」で確定する。 */}
               <button
                 onClick={onCloseEdit}
                 className="px-5 py-2 bg-white text-gray-700 border border-gray-200 rounded-lg text-sm cursor-pointer"
               >
-                キャンセル
+                閉じる
               </button>
             </div>
           )}

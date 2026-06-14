@@ -13,6 +13,10 @@
 
 import "@fontsource/line-seed-jp/400.css";
 import "@fontsource/line-seed-jp/700.css";
+// Noto Sans JP も同梱する（font_preset="noto_sans_jp" を端末非依存で確実に描画するため。
+// 未ロードだと OS にフォントが無い端末でシステムフォントへフォールバックし「効かない」ように見える）。
+import "@fontsource/noto-sans-jp/400.css";
+import "@fontsource/noto-sans-jp/700.css";
 import "./liff-font.css";
 
 export default function LiffLayout({ children }: { children: React.ReactNode }) {

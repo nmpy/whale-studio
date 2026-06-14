@@ -13,6 +13,11 @@
 //   - 個別ページの「戻る」ボタンでメニューホームに戻る
 //
 // 管理画面ルートでは LIFF レイアウトの CSS がロードされていないため、ここで明示的に import する。
+// プレビューでも noto_sans_jp / line_seed_jp プリセットを実フォントで確認できるよう同梱する。
+import "@fontsource/line-seed-jp/400.css";
+import "@fontsource/line-seed-jp/700.css";
+import "@fontsource/noto-sans-jp/400.css";
+import "@fontsource/noto-sans-jp/700.css";
 import "@/app/liff/liff-font.css";
 
 import { useEffect, useState, useMemo } from "react";

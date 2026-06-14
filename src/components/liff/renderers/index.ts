@@ -21,3 +21,5 @@ export { AccordionBlock } from "./AccordionBlock";
 export { CodeReaderBlock } from "./CodeReaderBlock";
 // ── 謎・問題（到達済みの問題一覧） ──
 export { RiddleListBlock } from "./RiddleListBlock";
+// ── チェックイン履歴（プレイヤー本人の訪問履歴） ──
+export { CheckinHistoryBlock } from "./CheckinHistoryBlock";

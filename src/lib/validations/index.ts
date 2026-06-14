@@ -936,6 +936,8 @@ export const LIFF_BLOCK_TYPES = [
   "code_reader",
   // ── 謎・問題（到達済みの問題一覧） ──
   "riddle_list",
+  // ── チェックイン履歴（プレイヤー本人の訪問履歴） ──
+  "checkin_history",
 ] as const;
 
 export const VISIBILITY_CONDITIONS = [
@@ -1085,6 +1087,12 @@ const codeReaderSettingsSchema = z.object({
   after_scan:  z.enum(["location_checkin", "show_result"]).optional(),
 }).passthrough();
 
+const checkinHistorySettingsSchema = z.object({
+  title:       z.string().max(100).optional(),
+  description: z.string().max(500).optional(),
+  max_count:   z.number().int().min(1).max(100).optional(),
+}).passthrough();
+
 const SETTINGS_SCHEMA_MAP: Record<string, z.ZodTypeAny> = {
   free_text:       freeTextSettingsSchema,
   start_button:    startButtonSettingsSchema,
@@ -1104,6 +1112,7 @@ const SETTINGS_SCHEMA_MAP: Record<string, z.ZodTypeAny> = {
   accordion:       accordionSettingsSchema,
   code_reader:     codeReaderSettingsSchema,
   riddle_list:     riddleListSettingsSchema,
+  checkin_history: checkinHistorySettingsSchema,
 };
 
 /**
@@ -1421,6 +1430,31 @@ export const updateLiffBlockSchema = z.object({
 
 export const reorderLiffBlocksSchema = z.object({
   block_ids: z.array(z.string().uuid()).min(1),
+});
+
+// ── 一括保存（ページ設定 + ブロック全件を 1 リクエストで保存） ──
+// blocks は「保存後にこのページに存在すべき全ブロック」を並び順で渡す。
+// id は既存ブロックの UUID（未指定 / temp- 始まりは新規作成扱い）。
+const bulkSaveLiffBlockSchema = z.object({
+  id:                        z.string().optional(),
+  block_type:                liffBlockTypeSchema,
+  title:                     z.string().max(200).optional().nullable(),
+  is_enabled:                z.boolean().optional(),
+  settings_json:             z.record(z.unknown()).optional().default({}),
+  visibility_condition_json: visibilityConditionSchema,
+});
+
+export const bulkSaveLiffPageSchema = z.object({
+  is_enabled:     z.boolean().optional(),
+  title:          z.string().max(LIFF_PAGE_TITLE_MAX).optional().nullable(),
+  description:    z.string().max(1000).optional().nullable(),
+  page_type:      z.enum(LIFF_PAGE_TYPES).optional().transform((v) => {
+    if (v === "hint_site") return "hint" as const;
+    return v;
+  }),
+  publish_status: z.enum(LIFF_PUBLISH_STATUSES).optional(),
+  settings_json:  liffPageConfigSettingsSchema.optional(),
+  blocks:         z.array(bulkSaveLiffBlockSchema).max(200),
 });
 
 // ────────────────────────────────────────────────

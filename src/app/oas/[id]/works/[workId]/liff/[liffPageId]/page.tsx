@@ -21,18 +21,12 @@ import { LiffEditorProvider } from "@/components/liff/LiffEditorContext";
 import { LiffWerewolfEditor } from "@/components/liff/LiffWerewolfEditor";
 import { normalizeLiffPageType } from "@/types";
 
-function SaveStatusIndicator({ status }: { status: LiffSaveStatus }) {
-  if (status === "idle") return null;
-  const label =
-    status === "pending" ? "未保存..." :
-    status === "saving" ? "保存中..." :
-    status === "saved"  ? "✓ 保存しました" :
-    "保存に失敗しました";
-  const cls =
-    status === "error" ? "text-red-500" :
-    status === "saved" ? "text-green-600" :
-    "text-gray-500";
-  return <span className={`text-xs ${cls}`} aria-live="polite">{label}</span>;
+function SaveStatusIndicator({ status, dirty }: { status: LiffSaveStatus; dirty: boolean }) {
+  if (status === "saving") return <span className="text-xs text-gray-500" aria-live="polite">保存中...</span>;
+  if (status === "error")  return <span className="text-xs text-red-500" aria-live="polite">保存に失敗しました</span>;
+  if (status === "saved")  return <span className="text-xs text-green-600" aria-live="polite">✓ 保存しました</span>;
+  if (dirty)               return <span className="text-xs text-amber-600" aria-live="polite">未保存の変更があります</span>;
+  return null;
 }
 
 export default function LiffPageEditor() {
@@ -67,11 +61,11 @@ export default function LiffPageEditor() {
     setDragIdx(idx);
   }, [dragIdx, liff]);
 
-  const handleDragEnd = useCallback(async () => {
+  const handleDragEnd = useCallback(() => {
+    // 並び替えは dragOver 時点でローカル draft に反映済み。
+    // 永続化は最下部「すべての変更を保存」で行う（即時 API 呼び出しはしない）。
     setDragIdx(null);
-    if (!liff.config || isReadOnly) return;
-    await liff.reorderBlocks(liff.config.blocks);
-  }, [liff, isReadOnly]);
+  }, []);
 
   if (liff.loading || roleLoading) {
     return (
@@ -133,7 +127,7 @@ export default function LiffPageEditor() {
           >
             回答結果を見る
           </a>
-          <SaveStatusIndicator status={liff.saveStatus} />
+          <SaveStatusIndicator status={liff.saveStatus} dirty={liff.dirty} />
         </div>
       </div>
 
@@ -168,9 +162,11 @@ export default function LiffPageEditor() {
                 readOnly={isReadOnly}
               />
             ) : (
-              <>
+              // 他のページ種別（FAQ / アンケート / ヒント等）と同じく、編集エリアを
+              // グレー背景の上の白カードに揃える（「既存LIFF」だけ浮いて見えないようにする）。
+              <div className="bg-white rounded-xl border border-gray-200 p-5 mb-6">
                 <div className="flex items-center justify-between mb-3">
-                  <h2 className="text-base font-semibold text-gray-900">表示ブロック</h2>
+                  <h2 className="text-sm font-semibold text-gray-900">表示ブロック</h2>
                   {!isReadOnly && (
                     <button
                       onClick={() => setShowAddModal(true)}
@@ -201,10 +197,8 @@ export default function LiffPageEditor() {
                       totalBlocks={config.blocks.length}
                       isEditing={liff.editingBlockId === block.id}
                       readOnly={isReadOnly}
-                      saving={liff.saving}
                       onEdit={() => liff.setEditingBlockId(block.id)}
                       onCloseEdit={() => liff.cancelBlockEdit()}
-                      onSave={liff.updateBlock}
                       onToggleEnabled={() => liff.toggleBlockEnabled(block)}
                       onDelete={() => liff.deleteBlock(block.id)}
                       onMove={(dir) => liff.moveBlock(idx, dir)}
@@ -215,7 +209,7 @@ export default function LiffPageEditor() {
                     />
                   ))}
                 </div>
-              </>
+              </div>
             )}
 
             {/* 実機で確認する — 最下部のアコーディオン（初期は閉じた状態） */}
@@ -247,6 +241,36 @@ export default function LiffPageEditor() {
           </div>
         </div>
       </LiffEditorProvider>
+
+      {/* 最下部の一括保存バー（ブロックごとの保存・自動保存は廃止し、ここに統一）。
+          ページ設定・デザイン設定・ページ種別・公開状態・ブロックの追加/編集/削除/並び替えは
+          すべてローカル draft に保持され、このボタンでまとめて保存する。 */}
+      {!isReadOnly && (
+        <div className="sticky bottom-0 z-30 -mx-6 mt-6 flex items-center justify-between gap-3 border-t border-gray-200 bg-white/95 px-6 py-3 backdrop-blur">
+          <div className="text-xs">
+            {liff.saveStatus === "error" ? (
+              <span className="text-red-500">保存に失敗しました。変更は保持されています。もう一度お試しください。</span>
+            ) : liff.saving ? (
+              <span className="text-gray-500">保存中...</span>
+            ) : liff.dirty ? (
+              <span className="text-amber-600">未保存の変更があります</span>
+            ) : (
+              <span className="text-gray-400">すべての変更が保存されています</span>
+            )}
+          </div>
+          <button
+            onClick={() => void liff.saveAll()}
+            disabled={liff.saving || !liff.dirty}
+            className={
+              buttonClass({ variant: "primary" }) +
+              " disabled:opacity-50 disabled:cursor-not-allowed" +
+              (liff.dirty && !liff.saving ? " ring-2 ring-brand/40" : "")
+            }
+          >
+            {liff.saving ? "保存中..." : "すべての変更を保存"}
+          </button>
+        </div>
+      )}
 
       {showAddModal && (
         <LiffAddBlockModal
