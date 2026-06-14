@@ -386,7 +386,7 @@ function BranchRows({
             <span style={{
               fontSize: 9, fontWeight: 700,
               background: "#e2e8f0", color: "#64748b",
-              borderRadius: 8, padding: "0 5px",
+              borderRadius: 8, padding: "2px 8px",
             }}>{qrs.length}件</span>
             <span style={{ fontWeight: 400, color: "#cbd5e1" }}>
               ユーザー入力 → 応答 → 結果
@@ -800,7 +800,7 @@ export default function MessagesPage() {
 
   // ── タブ共通スタイル (work detail 配下の他タブと揃える) ──
   const tabStyle = (tab: Tab): React.CSSProperties => ({
-    padding: "8px 18px",
+    padding: "10px 18px",
     fontSize: 13,
     fontWeight: 600,
     color: activeTab === tab ? "#06C755" : "#6b7280",
@@ -851,7 +851,7 @@ export default function MessagesPage() {
             fontSize: 10, fontWeight: 700,
             background: activeTab === "messages" ? "#dcfce7" : "#f3f4f6",
             color: activeTab === "messages" ? "#166534" : "#9ca3af",
-            borderRadius: 8, padding: "0 5px",
+            borderRadius: 8, padding: "2px 8px",
           }}>
             {headMessageCount}
           </span>
@@ -863,13 +863,13 @@ export default function MessagesPage() {
               fontSize: 10, fontWeight: 700,
               background: activeTab === "welcome" ? "#dcfce7" : "#f3f4f6",
               color: activeTab === "welcome" ? "#166534" : "#9ca3af",
-              borderRadius: 8, padding: "0 5px",
+              borderRadius: 8, padding: "2px 8px",
             }}>設定済み</span>
           ) : (
             <span style={{
               fontSize: 10, fontWeight: 700,
               background: "#fef2f2", color: "#dc2626",
-              borderRadius: 8, padding: "0 5px",
+              borderRadius: 8, padding: "2px 8px",
             }}>未設定</span>
           )}
         </button>
@@ -1223,7 +1223,7 @@ export default function MessagesPage() {
                   {ph?.phase_type && (
                     <span style={{
                       fontSize: 10, fontWeight: 600,
-                      padding: "1px 7px", borderRadius: 10,
+                      padding: "3px 10px", borderRadius: 10,
                       background: "rgba(255,255,255,0.7)",
                       color: typeColor.color,
                       border: `1px solid ${typeColor.border}`,
@@ -1537,7 +1537,7 @@ export default function MessagesPage() {
                         {/* 操作 (= 並び替え / 編集 / 削除) */}
                         <td style={{ padding: "12px 14px", textAlign: "right", whiteSpace: "nowrap" }}>
                           {canEdit && (
-                            <div style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                            <div style={{ display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
                               {/* ▲ 上へ */}
                               <button
                                 type="button"
