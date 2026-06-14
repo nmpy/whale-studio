@@ -4,11 +4,13 @@
 
 export function RequiredMark({ when = true }: { when?: boolean }) {
   if (!when) return null;
+  // 一般的なフォームの必須マーク程度に控えめに（小さめ・薄い赤・非太字）。
+  // 警告/エラーに見えないトーン。aria-label は維持。
   return (
     <span
       aria-label="必須"
       title="必須項目"
-      style={{ color: "#dc2626", marginLeft: 4, fontWeight: 600, fontSize: "0.9em" }}
+      style={{ color: "#f87171", marginLeft: 3, fontWeight: 400, fontSize: 10 }}
     >
       ＊
     </span>
