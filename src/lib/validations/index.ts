@@ -1033,7 +1033,10 @@ const warningSettingsSchema = z.object({
 
 const buttonLinkSettingsSchema = z.object({
   label:         z.string().max(100).optional(),
-  url:           z.string().url().optional(),
+  // 空文字（未設定）も許可する。ボタン追加直後の既定は url:"" であり、
+  // z.string().url() だけだと "" が present かつ invalid 扱いで作成/保存が 400 になるため。
+  // 非空のときのみ URL 形式を検証する。
+  url:           z.union([z.literal(""), z.string().url()]).optional(),
   open_external: z.boolean().optional(),
   variant:       sectionVariantSchema,
   // 遷移先タイプ。未指定は external 互換。liff_page/location は選択時に url を実URLへ解決して保存する。
@@ -1371,12 +1374,9 @@ export function validatePublishRequirements(args: {
       if (!imgSettings.image_url || imgSettings.image_url.trim() === "") {
         errors.push(`${label}: 画像 URL を設定してください`);
       }
-    } else if (blockType === "button_link") {
-      const btnSettings = (settings ?? {}) as { url?: string };
-      if (!btnSettings.url || btnSettings.url.trim() === "") {
-        errors.push(`${label}: リンク URL を設定してください`);
-      }
     }
+    // button_link は URL 未設定でもエラーにしない（未設定ボタンは renderer 側で非表示=no-op になる）。
+    // 以前は publish 時に URL 必須としていたが、編集/保存/公開を阻害しない方針に変更。
   }
   args.blocks.forEach((b, i) => {
     walk(b.blockType, b.title, b.settingsJson, 1, `${b.blockType}#${i + 1}`);
