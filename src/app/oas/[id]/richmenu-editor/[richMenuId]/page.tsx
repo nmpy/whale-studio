@@ -622,52 +622,17 @@ export default function RichMenuEditorPage() {
               プレビュー
             </p>
             <p style={{ fontSize: 11, color: "#9ca3af", marginBottom: 12 }}>
-              LINE 表示イメージ。エリアをクリックして選択・編集できます（座標系: 2500 × {lineH} px）
+              リッチメニュー表示イメージ・エリアをクリックして選択できます（{size === "full" ? "2500 × 1686" : "2500 × 843"} px）
             </p>
 
-            {/* LINE トーク画面風フレーム（下部にリッチメニュー） */}
-            <div style={{
-              maxWidth: 320, margin: "0 auto",
-              border: "1px solid #e5e7eb", borderRadius: 18, overflow: "hidden",
-              background: "#8aa6c0",  // LINE トーク背景に近い落ち着いた青グレー
-              boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
-            }}>
-              {/* ヘッダーバー */}
-              <div style={{
-                background: "#fff", borderBottom: "1px solid #eef2f5",
-                padding: "8px 12px", display: "flex", alignItems: "center", gap: 8,
-              }}>
-                <span style={{ color: "#9ca3af", fontSize: 14, lineHeight: 1 }}>‹</span>
-                <span style={{ fontSize: 12, fontWeight: 600, color: "#374151" }}>トーク</span>
-              </div>
-              {/* トーク内容（サイズ感を出すためのダミー吹き出し） */}
-              <div style={{ minHeight: 64, padding: "12px 12px 14px", display: "flex", flexDirection: "column", gap: 8 }}>
-                <div style={{ alignSelf: "flex-start", maxWidth: "72%", background: "#fff", borderRadius: 12, padding: "6px 10px", fontSize: 11, color: "#6b7280" }}>
-                  こんにちは
-                </div>
-                <div style={{ alignSelf: "flex-end", maxWidth: "72%", background: "#a8e6a3", borderRadius: 12, padding: "6px 10px", fontSize: 11, color: "#374151" }}>
-                  メニューを開きます
-                </div>
-              </div>
-              {/* リッチメニューを開くバー（chat_bar_text） */}
-              <div style={{
-                background: "#fff", borderTop: "1px solid #eef2f5",
-                padding: "6px 12px", display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-              }}>
-                <span style={{ width: 22, height: 3, borderRadius: 2, background: "#d1d5db" }} />
-                <span style={{ fontSize: 11, color: "#6b7280", fontWeight: 600 }}>
-                  {chatBarText?.trim() || "メニュー"}
-                </span>
-              </div>
-              {/* リッチメニュー本体 */}
-              <RichMenuPreview
-                areas={areas}
-                size={size}
-                selectedIdx={selectedIdx}
-                onAreaClick={setSelectedIdx}
-                imageUrl={imageUrl}
-              />
-            </div>
+            {/* リッチメニュー本体のみのプレビュー（トークルーム装飾なし） */}
+            <RichMenuPreview
+              areas={areas}
+              size={size}
+              selectedIdx={selectedIdx}
+              onAreaClick={setSelectedIdx}
+              imageUrl={imageUrl}
+            />
           </div>
         </div>
 
@@ -1204,10 +1169,15 @@ function RichMenuPreview({
   return (
     <div style={{
       width:        "100%",
+      maxWidth:     380,
+      margin:       "0 auto",
+      // サイズに応じてアスペクト比を厳密固定（compact 2500/843・full 2500/1686）→ 画像は歪まない
       aspectRatio:  `${W} / ${H}`,
       position:     "relative",
-      // 画像未設定・ローディング中・エラー時に見えるニュートラルなプレースホルダ
-      background:   "#e5e7eb",
+      // contain のレターボックス余白に出る・画像未設定時の枠（ニュートラル）
+      background:   "#f9fafb",
+      border:       "1px solid #e5e7eb",
+      borderRadius: 8,
       overflow:     "hidden",
       userSelect:   "none",
     }}>
@@ -1226,8 +1196,8 @@ function RichMenuPreview({
             inset:      0,
             width:      "100%",
             height:     "100%",
-            objectFit:  "fill",   // 推奨サイズ通りの画像を想定するため fill
-            // ロード完了前は非表示（グレー背景を見せる）
+            objectFit:  "contain",   // 歪み防止: 縦横比を保ったまま枠内に収める（余白は背景の薄グレー）
+            // ロード完了前は非表示（プレースホルダ背景を見せる）
             visibility: imgState === "success" ? "visible" : "hidden",
             zIndex:     1,
           }}
@@ -1325,18 +1295,18 @@ function RichMenuPreview({
         );
       })}
 
-      {/* ── レイヤー 6: 空エリア案内 ── */}
-      {areas.length === 0 && imgState !== "loading" && (
+      {/* ── レイヤー 6: 画像未設定の案内（同じアスペクト比の枠内に表示。エリアがあれば overlay は上に重なる）── */}
+      {!currentUrl && imgState !== "loading" && (
         <div style={{
           position:  "absolute", inset: 0,
-          display:   "flex", alignItems: "center", justifyContent: "center",
-          color:     imgState === "success" ? "rgba(255,255,255,0.9)" : "#9ca3af",
-          fontSize:  13,
-          fontWeight: 600,
-          textShadow: imgState === "success" ? "0 1px 4px rgba(0,0,0,0.7)" : "none",
-          zIndex:    4,
+          display:   "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+          gap:       4, padding: "0 16px", textAlign: "center",
+          color:     "#9ca3af",
+          pointerEvents: "none",
+          zIndex:    3,  // overlay（zIndex 4/5）より下。エリア枠は画像未設定でも見える
         }}>
-          テンプレートを選択するかエリアを追加してください
+          <span style={{ fontSize: 13, fontWeight: 700, color: "#6b7280" }}>画像未設定</span>
+          <span style={{ fontSize: 11 }}>リッチメニュー画像をアップロードするとここに表示されます</span>
         </div>
       )}
 
