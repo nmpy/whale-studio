@@ -6,6 +6,7 @@ import { richMenuEditorApi, oaApi, workApi, destinationApi, getDevToken } from "
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { useToast } from "@/components/Toast";
 import { resolveDestinationUrlFromApi } from "@/lib/destination-url-builder";
+import { ImageUploadField } from "@/components/ImageUploadField";
 import type { RichMenuWithAreas, RichMenuArea, CreateRichMenuAreaBody, RichMenuSize, LineDestination } from "@/types";
 
 // ────────────────────────────────────────────────
@@ -120,12 +121,31 @@ const TEMPLATES: Template[] = [
 ];
 
 // ────────────────────────────────────────────────
-// エリアカラー
+// エリア表示トーン（ニュートラル統一・色味で区別しない）
+// 識別は番号バッジ + ラベルで行う。選択中のみ濃いめの border / 背景で示す。
 // ────────────────────────────────────────────────
-const AREA_COLORS = [
-  "#6366f1","#22c55e","#f59e0b","#ef4444","#3b82f6",
-  "#ec4899","#14b8a6","#f97316","#8b5cf6","#06b6d4",
-];
+const AREA_TONE = {
+  border:         "#cbd5e1", // 薄いグレー枠
+  borderSelected: "#475569", // 選択中の濃いグレー枠
+  fill:           "rgba(15,23,42,0.04)",  // 通常の薄い面
+  fillSelected:   "rgba(15,23,42,0.10)",  // 選択中の少し濃い面
+  badgeBg:        "#f1f5f9",
+  badgeBorder:    "#cbd5e1",
+  badgeText:      "#334155",
+} as const;
+
+/** 番号バッジ（角丸・ニュートラル）。エリアの識別を色ではなく番号で行うための共通スタイル。 */
+function areaBadgeStyle(selected: boolean): React.CSSProperties {
+  return {
+    display: "inline-flex", alignItems: "center", justifyContent: "center",
+    minWidth: 18, height: 18, padding: "0 5px",
+    borderRadius: 9, flexShrink: 0,
+    fontSize: 11, fontWeight: 700, lineHeight: 1,
+    background: selected ? AREA_TONE.borderSelected : AREA_TONE.badgeBg,
+    color:      selected ? "#fff" : AREA_TONE.badgeText,
+    border:     `1px solid ${selected ? AREA_TONE.borderSelected : AREA_TONE.badgeBorder}`,
+  };
+}
 
 // ────────────────────────────────────────────────
 // ヘルパー: RichMenuArea → AreaDraft
@@ -421,9 +441,6 @@ export default function RichMenuEditorPage() {
   // バリデーションエラー（適用ボタン押下時にセット。編集で自動クリア）
   const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
 
-  // 背景画像の読み込み状態（RichMenuPreview からコールバックで受け取る）
-  const [imgLoadState, setImgLoadState] = useState<ImgLoadState>("idle");
-
   // ── データロード ──
   const load = useCallback(async () => {
     setLoading(true);
@@ -596,95 +613,66 @@ export default function RichMenuEditorPage() {
 
       {error && <div className="alert alert-error">{error}</div>}
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 380px", gap: 20, alignItems: "start" }}>
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_minmax(340px,400px)] gap-5 items-start">
 
-        {/* ── 左: ビジュアルプレビュー ── */}
-        <div>
+        {/* ── 右カラム（desktop）: LINE 表示イメージのプレビュー（sticky）。mobile では設定の下に回る ── */}
+        <div className="order-2 lg:sticky lg:top-4">
           <div className="card">
-            <p style={{ fontWeight: 700, fontSize: 13, color: "#374151", marginBottom: 12 }}>
-              レイアウトプレビュー
+            <p style={{ fontWeight: 700, fontSize: 13, color: "#374151", marginBottom: 4 }}>
+              プレビュー
             </p>
             <p style={{ fontSize: 11, color: "#9ca3af", marginBottom: 12 }}>
-              エリアをクリックして選択・編集。座標系: 2500 × {lineH} px
+              LINE 表示イメージ。エリアをクリックして選択・編集できます（座標系: 2500 × {lineH} px）
             </p>
-            <RichMenuPreview
-              areas={areas}
-              size={size}
-              selectedIdx={selectedIdx}
-              onAreaClick={setSelectedIdx}
-              imageUrl={imageUrl}
-              onImgStateChange={setImgLoadState}
-            />
 
-            {/* エリア一覧 */}
-            <div style={{ marginTop: 16 }}>
+            {/* LINE トーク画面風フレーム（下部にリッチメニュー） */}
+            <div style={{
+              maxWidth: 320, margin: "0 auto",
+              border: "1px solid #e5e7eb", borderRadius: 18, overflow: "hidden",
+              background: "#8aa6c0",  // LINE トーク背景に近い落ち着いた青グレー
+              boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
+            }}>
+              {/* ヘッダーバー */}
               <div style={{
-                display: "flex", justifyContent: "space-between", alignItems: "center",
-                marginBottom: 8,
+                background: "#fff", borderBottom: "1px solid #eef2f5",
+                padding: "8px 12px", display: "flex", alignItems: "center", gap: 8,
               }}>
-                <p style={{ fontWeight: 600, fontSize: 13, color: "#374151" }}>
-                  エリア一覧 ({areas.length})
-                </p>
+                <span style={{ color: "#9ca3af", fontSize: 14, lineHeight: 1 }}>‹</span>
+                <span style={{ fontSize: 12, fontWeight: 600, color: "#374151" }}>トーク</span>
               </div>
-              {areas.length === 0 ? (
-                <p style={{ fontSize: 12, color: "#9ca3af", padding: "12px 0" }}>
-                  テンプレートを選択するか右パネルで追加してください
-                </p>
-              ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                  {areas.map((area, i) => (
-                    <div
-                      key={i}
-                      onClick={() => setSelectedIdx(i)}
-                      style={{
-                        display: "flex", alignItems: "center", gap: 10,
-                        padding: "8px 12px",
-                        background: selectedIdx === i ? "#E6F7ED" : "#f9fafb",
-                        border: `1px solid ${selectedIdx === i ? "#93c5fd" : "#e5e7eb"}`,
-                        borderRadius: 8, cursor: "pointer",
-                      }}
-                    >
-                      <div style={{
-                        width: 14, height: 14, borderRadius: 3,
-                        background: AREA_COLORS[i % AREA_COLORS.length],
-                        flexShrink: 0,
-                      }} />
-                      <div style={{ flex: 1, fontSize: 13 }}>
-                        <span style={{ fontWeight: 600, color: "#374151" }}>
-                          {area.action_label || `エリア ${i + 1}`}
-                        </span>
-                        <span style={{ color: "#9ca3af", marginLeft: 8, fontSize: 11 }}>
-                          {area.x},{area.y} — {area.width}×{area.height}
-                        </span>
-                      </div>
-                      <span style={{
-                        fontSize: 10, fontWeight: 600,
-                        background: area.action_type === "message" ? "#E6F7ED" :
-                                    area.action_type === "postback" ? "#faf5ff" : "#fff7ed",
-                        color:      area.action_type === "message" ? "#3b82f6" :
-                                    area.action_type === "postback" ? "#8b5cf6" : "#f97316",
-                        padding: "2px 7px", borderRadius: 20,
-                      }}>
-                        {area.action_type}
-                      </span>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setAreas((prev) => prev.filter((_, j) => j !== i));
-                          if (selectedIdx === i) setSelectedIdx(null);
-                        }}
-                        style={{ background: "none", border: "none", cursor: "pointer", color: "#d1d5db", fontSize: 16, padding: 0, lineHeight: 1 }}
-                      >×</button>
-                    </div>
-                  ))}
+              {/* トーク内容（サイズ感を出すためのダミー吹き出し） */}
+              <div style={{ minHeight: 64, padding: "12px 12px 14px", display: "flex", flexDirection: "column", gap: 8 }}>
+                <div style={{ alignSelf: "flex-start", maxWidth: "72%", background: "#fff", borderRadius: 12, padding: "6px 10px", fontSize: 11, color: "#6b7280" }}>
+                  こんにちは
                 </div>
-              )}
+                <div style={{ alignSelf: "flex-end", maxWidth: "72%", background: "#a8e6a3", borderRadius: 12, padding: "6px 10px", fontSize: 11, color: "#374151" }}>
+                  メニューを開きます
+                </div>
+              </div>
+              {/* リッチメニューを開くバー（chat_bar_text） */}
+              <div style={{
+                background: "#fff", borderTop: "1px solid #eef2f5",
+                padding: "6px 12px", display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+              }}>
+                <span style={{ width: 22, height: 3, borderRadius: 2, background: "#d1d5db" }} />
+                <span style={{ fontSize: 11, color: "#6b7280", fontWeight: 600 }}>
+                  {chatBarText?.trim() || "メニュー"}
+                </span>
+              </div>
+              {/* リッチメニュー本体 */}
+              <RichMenuPreview
+                areas={areas}
+                size={size}
+                selectedIdx={selectedIdx}
+                onAreaClick={setSelectedIdx}
+                imageUrl={imageUrl}
+              />
             </div>
           </div>
         </div>
 
-        {/* ── 右: 設定パネル ── */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        {/* ── 左カラム（desktop）: 設定パネル ── */}
+        <div className="order-1" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
 
           {/* メニュー基本設定 */}
           <div className="card">
@@ -737,43 +725,22 @@ export default function RichMenuEditorPage() {
                 </select>
               </label>
 
-              <label style={{ fontSize: 12 }}>
+              {/* リッチメニュー画像（アップロード主導線・URL 指定は折りたたみに退避） */}
+              <div style={{ fontSize: 12 }}>
                 <span style={{ fontWeight: 600, color: "#374151", display: "block", marginBottom: 4 }}>
-                  背景画像 URL（任意）
+                  リッチメニュー画像
                 </span>
-                <input
-                  type="url"
-                  className="input"
+                <ImageUploadField
                   value={imageUrl}
-                  onChange={(e) => { setImageUrl(e.target.value); setImgLoadState("idle"); }}
+                  onChange={(next) => setImageUrl(next)}
+                  accept="image/jpeg,image/png"
+                  previewMaxHeight={140}
                   placeholder="https://example.com/menu.png"
-                  style={imgLoadState === "error" ? { borderColor: "#fca5a5" } : undefined}
+                  urlInputCollapsibleLabel="URLで指定する"
+                  supportedFormatsText={`PNG / JPEG。推奨サイズ ${size === "full" ? "2500×1686" : "2500×843"}px（最大 5MB）`}
+                  errors={{ uploadFailed: "画像のアップロードに失敗しました。時間をおいて再度お試しください。" }}
                 />
-                {/* 読み込み状態インジケーター */}
-                <div style={{ marginTop: 4, fontSize: 11, minHeight: 16, display: "flex", alignItems: "center", gap: 4 }}>
-                  {imgLoadState === "idle" && (
-                    <span style={{ color: "#9ca3af" }}>
-                      PNG または JPEG。サイズは {size === "full" ? "2500×1686" : "2500×843"}px 推奨
-                    </span>
-                  )}
-                  {imgLoadState === "loading" && (
-                    <span style={{ color: "#6b7280", display: "flex", alignItems: "center", gap: 4 }}>
-                      <span className="spinner" style={{ width: 10, height: 10, borderWidth: 2 }} />
-                      画像を読み込み中…
-                    </span>
-                  )}
-                  {imgLoadState === "success" && (
-                    <span style={{ color: "#15803d" }}>
-                      画像を確認できました（左のプレビューに反映）
-                    </span>
-                  )}
-                  {imgLoadState === "error" && (
-                    <span style={{ color: "#dc2626" }}>
-                      ❌ 画像を読み込めません。URL が画像ファイルを直接指しているか確認してください
-                    </span>
-                  )}
-                </div>
-              </label>
+              </div>
             </div>
           </div>
 
@@ -809,17 +776,66 @@ export default function RichMenuEditorPage() {
             </div>
           </div>
 
+          {/* タップエリア一覧 */}
+          <div className="card">
+            <p style={{ fontWeight: 700, fontSize: 13, color: "#374151", marginBottom: 8 }}>
+              タップエリア（{areas.length}）
+            </p>
+            {areas.length === 0 ? (
+              <p style={{ fontSize: 12, color: "#9ca3af", padding: "8px 0" }}>
+                テンプレートを選択するか「＋ エリアを追加」で追加してください
+              </p>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {areas.map((area, i) => (
+                  <div
+                    key={i}
+                    onClick={() => setSelectedIdx(i)}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 10,
+                      padding: "8px 12px",
+                      background: selectedIdx === i ? "#f1f5f9" : "#fafafa",
+                      border: `1px solid ${selectedIdx === i ? AREA_TONE.borderSelected : "#e5e7eb"}`,
+                      borderRadius: 8, cursor: "pointer",
+                    }}
+                  >
+                    <span style={areaBadgeStyle(selectedIdx === i)}>{i + 1}</span>
+                    <div style={{ flex: 1, fontSize: 13, minWidth: 0 }}>
+                      <span style={{ fontWeight: 600, color: "#374151" }}>
+                        {area.action_label || `エリア ${i + 1}`}
+                      </span>
+                      <span style={{ color: "#9ca3af", marginLeft: 8, fontSize: 11 }}>
+                        {area.x},{area.y} — {area.width}×{area.height}
+                      </span>
+                    </div>
+                    <span style={{
+                      fontSize: 10, fontWeight: 600,
+                      background: "#f1f5f9", color: "#64748b",
+                      padding: "2px 7px", borderRadius: 20, flexShrink: 0,
+                    }}>
+                      {area.action_type}
+                    </span>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setAreas((prev) => prev.filter((_, j) => j !== i));
+                        if (selectedIdx === i) setSelectedIdx(null);
+                      }}
+                      style={{ background: "none", border: "none", cursor: "pointer", color: "#9ca3af", fontSize: 16, padding: 0, lineHeight: 1, flexShrink: 0 }}
+                      aria-label={`エリア ${i + 1} を削除`}
+                    >×</button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           {/* 選択エリアの設定 */}
           {selectedArea !== null && selectedIdx !== null && (
             <div className="card">
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                <p style={{ fontWeight: 700, fontSize: 13, color: "#374151" }}>
-                  <span style={{
-                    display: "inline-block",
-                    width: 12, height: 12, borderRadius: 2,
-                    background: AREA_COLORS[selectedIdx % AREA_COLORS.length],
-                    marginRight: 6, verticalAlign: "middle",
-                  }} />
+                <p style={{ fontWeight: 700, fontSize: 13, color: "#374151", display: "flex", alignItems: "center", gap: 6 }}>
+                  <span style={areaBadgeStyle(true)}>{selectedIdx + 1}</span>
                   エリア {selectedIdx + 1} 設定
                 </p>
                 <button
@@ -1069,8 +1085,9 @@ export default function RichMenuEditorPage() {
                         onClick={() => setSelectedIdx(err.areaIndex!)}
                         style={{
                           flexShrink:   0,
-                          background:   AREA_COLORS[err.areaIndex % AREA_COLORS.length],
-                          color:        "#fff",
+                          background:   "#fff",
+                          color:        "#991b1b",
+                          border:       "1px solid #fca5a5",
                           borderRadius: 20,
                           fontSize:     10,
                           fontWeight:   700,
@@ -1147,11 +1164,8 @@ function RichMenuPreview({
 }) {
   const W = LINE_W;
   const H = size === "full" ? LINE_H_FULL : LINE_H_COMPACT;
-
-  // プレビュー表示サイズ（2500px 原寸に対するスケール比）
-  const previewW = 580;
-  const previewH = Math.round((H / W) * previewW);
-  const scale    = previewW / W;
+  // 原寸座標 → コンテナ幅に対する % 指定（フレーム幅に追従してレスポンシブに描画）。
+  const pct = (n: number, total: number) => `${(n / total) * 100}%`;
 
   // 画像読み込み状態（3 状態: idle / loading / success / error）
   const [imgState,    setImgState]    = useState<ImgLoadState>("idle");
@@ -1189,13 +1203,11 @@ function RichMenuPreview({
 
   return (
     <div style={{
-      width:        previewW,
-      height:       previewH,
+      width:        "100%",
+      aspectRatio:  `${W} / ${H}`,
       position:     "relative",
-      // 背景画像未設定・ローディング中・エラー時はグレーを見せる
-      background:   "#c9d3dd",
-      border:       "2px solid #d1d5db",
-      borderRadius: 10,
+      // 画像未設定・ローディング中・エラー時に見えるニュートラルなプレースホルダ
+      background:   "#e5e7eb",
       overflow:     "hidden",
       userSelect:   "none",
     }}>
@@ -1253,7 +1265,7 @@ function RichMenuPreview({
         <div style={{
           position:      "absolute",
           left: 0, right: 0,
-          top:           previewH / 2,
+          top:           "50%",
           height:        1,
           background:    "rgba(255,255,255,0.5)",
           pointerEvents: "none",
@@ -1261,57 +1273,57 @@ function RichMenuPreview({
         }} />
       )}
 
-      {/* ── レイヤー 5: エリアオーバーレイ ── */}
-      {areas.map((area, i) => (
+      {/* ── レイヤー 5: エリアオーバーレイ（ニュートラル・色分けしない。番号で識別） ── */}
+      {areas.map((area, i) => {
+        const selected = selectedIdx === i;
+        return (
         <div
           key={i}
           onClick={() => onAreaClick(i)}
           style={{
             position:       "absolute",
-            left:           area.x      * scale,
-            top:            area.y      * scale,
-            width:          area.width  * scale,
-            height:         area.height * scale,
-            // 背景画像あり時は透過度を上げてラベルが読めるようにする
-            background:     AREA_COLORS[i % AREA_COLORS.length] +
-                              (selectedIdx === i
-                                ? (imgState === "success" ? "99" : "cc")
-                                : (imgState === "success" ? "44" : "88")),
-            border:         `${selectedIdx === i ? 3 : 1}px solid ${AREA_COLORS[i % AREA_COLORS.length]}`,
+            left:           pct(area.x, W),
+            top:            pct(area.y, H),
+            width:          pct(area.width, W),
+            height:         pct(area.height, H),
+            background:     selected ? AREA_TONE.fillSelected : AREA_TONE.fill,
+            border:         `${selected ? 2 : 1}px solid ${selected ? AREA_TONE.borderSelected : AREA_TONE.border}`,
             boxSizing:      "border-box",
             cursor:         "pointer",
             display:        "flex",
             alignItems:     "center",
             justifyContent: "center",
-            flexDirection:  "column",
-            gap:            3,
-            zIndex:         selectedIdx === i ? 5 : 4,
-            boxShadow:      selectedIdx === i ? "0 0 0 2px #fff inset" : "none",
+            gap:            4,
+            zIndex:         selected ? 5 : 4,
           }}
         >
+          {/* 番号バッジ（左上・色ではなく番号で識別） */}
           <span style={{
-            fontSize:   Math.max(10, Math.min(16, area.width * scale * 0.12)),
-            fontWeight: 700,
-            color:      "#fff",
-            // 背景画像上でも読めるよう影を強める
-            textShadow: "0 1px 4px rgba(0,0,0,0.8), 0 0 8px rgba(0,0,0,0.5)",
-            textAlign:  "center",
-            padding:    "0 4px",
-            overflow:   "hidden",
-            maxWidth:   "100%",
-            wordBreak:  "break-all",
+            position: "absolute", top: 3, left: 3,
+            ...areaBadgeStyle(selected),
+          }}>
+            {i + 1}
+          </span>
+          {/* ラベル（白チップ。画像の上でも読めるニュートラル表示） */}
+          <span style={{
+            maxWidth:     "86%",
+            fontSize:     11,
+            fontWeight:   600,
+            color:        "#334155",
+            background:   "rgba(255,255,255,0.82)",
+            border:       "1px solid #e2e8f0",
+            borderRadius: 6,
+            padding:      "1px 6px",
+            textAlign:    "center",
+            overflow:     "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace:   "nowrap",
           }}>
             {area.action_label || `エリア ${i + 1}`}
           </span>
-          <span style={{
-            fontSize:   9,
-            color:      "rgba(255,255,255,0.95)",
-            textShadow: "0 1px 3px rgba(0,0,0,0.8)",
-          }}>
-            {area.action_type}
-          </span>
         </div>
-      ))}
+        );
+      })}
 
       {/* ── レイヤー 6: 空エリア案内 ── */}
       {areas.length === 0 && imgState !== "loading" && (
@@ -1343,25 +1355,26 @@ function RichMenuPreview({
           gap:           4,
         }}>
           <span style={{
-            background:   "rgba(153, 27, 27, 0.88)",
-            color:        "#fff",
+            background:   "#fff",
+            color:        "#b91c1c",
+            border:       "1px solid #fecaca",
             fontSize:     10,
             fontWeight:   700,
             padding:      "4px 12px",
             borderRadius: 20,
             whiteSpace:   "nowrap",
           }}>
-            🚫 背景画像を表示できません
+            画像を表示できません
           </span>
           <span style={{
-            background:   "rgba(0,0,0,0.55)",
-            color:        "#fecaca",
+            background:   "rgba(255,255,255,0.92)",
+            color:        "#6b7280",
             fontSize:     9,
             padding:      "2px 10px",
             borderRadius: 20,
             whiteSpace:   "nowrap",
           }}>
-            URL が画像ファイルを直接指しているか確認してください
+            画像ファイルを直接指す URL か確認してください
           </span>
         </div>
       )}

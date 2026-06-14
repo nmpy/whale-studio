@@ -297,8 +297,6 @@ function MiniPreview({ areas, size }: {
   const previewH = Math.round((H / W) * previewW);
   const scale = previewW / W;
 
-  const colors = ["#6366f1","#22c55e","#f59e0b","#ef4444","#3b82f6","#ec4899"];
-
   return (
     <div style={{
       width: previewW, height: previewH,
@@ -306,6 +304,7 @@ function MiniPreview({ areas, size }: {
       position: "relative", overflow: "hidden",
       flexShrink: 0, border: "1px solid #d1d5db",
     }}>
+      {/* タップエリアは色分けせずニュートラル表示。識別は番号で行う。 */}
       {areas.map((area, i) => (
         <div key={area.id} style={{
           position:  "absolute",
@@ -313,20 +312,20 @@ function MiniPreview({ areas, size }: {
           top:       area.y * scale,
           width:     area.width * scale,
           height:    area.height * scale,
-          background: colors[i % colors.length] + "99",
-          border:    "1px solid " + colors[i % colors.length],
+          background: "rgba(15,23,42,0.05)",
+          border:    "1px solid #cbd5e1",
           display:   "flex",
           alignItems: "center",
           justifyContent: "center",
           fontSize: 9,
-          color:    "#fff",
+          color:    "#475569",
           fontWeight: 700,
           overflow: "hidden",
           textAlign: "center",
           padding: "0 2px",
           boxSizing: "border-box",
         }}>
-          {area.action_label || "—"}
+          {i + 1}
         </div>
       ))}
     </div>
