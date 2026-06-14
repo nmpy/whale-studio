@@ -104,6 +104,8 @@ export function LocationForm({ onSubmit, saving, workId, defaultValues }: Locati
     const t = (defaultValues?.set_flags ?? "").trim();
     return !!t && t !== "{}";
   });
+  // QRのみ方式のとき、座標は「参考（保存されない）」扱いで既定折りたたみ。
+  const [showCoordsRef, setShowCoordsRef] = useState(false);
   // Stamp
   const [stampEnabled, setStampEnabled] = useState(defaultValues?.stamp_enabled ?? true);
   const [stampLabel, setStampLabel] = useState(defaultValues?.stamp_label ?? "");
@@ -205,6 +207,40 @@ export function LocationForm({ onSubmit, saving, workId, defaultValues }: Locati
         height={460}
       />
     </div>
+  );
+
+  // 座標入力欄（緯度・経度・許容半径）。GPS方式では常時展開、QRのみでは参考用の折りたたみ内に出す。
+  // どちらも同じ state / handler を共有し、保存仕様は不変。
+  const coordFields = (
+    <>
+      <div style={{ display: "flex", gap: 12 }}>
+        <div style={{ flex: 1 }}>
+          <label style={labelStyle}>緯度 <span style={subLabel}>— 中心座標</span></label>
+          <input style={{ ...inputStyle, borderColor: latInvalid ? "#fca5a5" : "#d1d5db" }} type="number" step="any" min="-90" max="90" value={latitude} onChange={(e) => setLatitude(e.target.value)} placeholder="35.6812" />
+          {latInvalid && <p style={{ fontSize: 11, color: "#dc2626", marginTop: 2 }}>-90〜90 の範囲で入力してください</p>}
+        </div>
+        <div style={{ flex: 1 }}>
+          <label style={labelStyle}>経度 <span style={subLabel}>— 中心座標</span></label>
+          <input style={{ ...inputStyle, borderColor: lngInvalid ? "#fca5a5" : "#d1d5db" }} type="number" step="any" min="-180" max="180" value={longitude} onChange={(e) => setLongitude(e.target.value)} placeholder="139.7671" />
+          {lngInvalid && <p style={{ fontSize: 11, color: "#dc2626", marginTop: 2 }}>-180〜180 の範囲で入力してください</p>}
+        </div>
+      </div>
+      <div>
+        <label style={labelStyle}>許容半径（m） <span style={subLabel}>— この範囲内ならチェックイン成功</span></label>
+        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          <input
+            id="radius_meters_input"
+            style={{ ...inputStyle, width: 100, flex: "none" }}
+            type="number" min="1" max="10000" value={radiusMeters}
+            onChange={(e) => setRadiusMeters(e.target.value)}
+            onInput={(e) => setRadiusMeters((e.target as HTMLInputElement).value)}
+          />
+          <input type="range" min={10} max={500} step={5} value={radiusNum || 50} onChange={(e) => setRadiusMeters(e.target.value)} style={{ flex: 1, accentColor: "#2563eb" }} />
+        </div>
+        {radiusWarning && <p style={{ fontSize: 12, color: "#d97706", marginTop: 2 }}>{radiusWarning}</p>}
+        <p style={helpStyle}>右の地図の検索・クリック・ピンドラッグ、またはこの欄の手入力のいずれでも更新されます。範囲は地図上の円で確認できます。</p>
+      </div>
+    </>
   );
 
   // ── 「この設定で起きること」フローカード用の派生値 ──
@@ -412,44 +448,30 @@ export function LocationForm({ onSubmit, saving, workId, defaultValues }: Locati
           </Section>
 
           <Section id="coordinates" label="座標">
-            {/* 座標入力は方式に関係なく常時表示（QRのみでも手入力・地図操作が可能）。
-                ただし必須化はしない（gpsIncomplete は needsGps のときだけ true）。保存仕様は不変。 */}
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                <div style={{ display: "flex", gap: 12 }}>
-                  <div style={{ flex: 1 }}>
-                    <label style={labelStyle}>緯度 <span style={subLabel}>— 中心座標</span></label>
-                    <input style={{ ...inputStyle, borderColor: latInvalid ? "#fca5a5" : "#d1d5db" }} type="number" step="any" min="-90" max="90" value={latitude} onChange={(e) => setLatitude(e.target.value)} placeholder="35.6812" />
-                    {latInvalid && <p style={{ fontSize: 11, color: "#dc2626", marginTop: 2 }}>-90〜90 の範囲で入力してください</p>}
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <label style={labelStyle}>経度 <span style={subLabel}>— 中心座標</span></label>
-                    <input style={{ ...inputStyle, borderColor: lngInvalid ? "#fca5a5" : "#d1d5db" }} type="number" step="any" min="-180" max="180" value={longitude} onChange={(e) => setLongitude(e.target.value)} placeholder="139.7671" />
-                    {lngInvalid && <p style={{ fontSize: 11, color: "#dc2626", marginTop: 2 }}>-180〜180 の範囲で入力してください</p>}
-                  </div>
-                </div>
-                <div>
-                  <label style={labelStyle}>許容半径（m） <span style={subLabel}>— この範囲内ならチェックイン成功</span></label>
-                  <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                    <input
-                      id="radius_meters_input"
-                      style={{ ...inputStyle, width: 100, flex: "none" }}
-                      type="number" min="1" max="10000" value={radiusMeters}
-                      onChange={(e) => setRadiusMeters(e.target.value)}
-                      onInput={(e) => setRadiusMeters((e.target as HTMLInputElement).value)}
-                    />
-                    <input type="range" min={10} max={500} step={5} value={radiusNum || 50} onChange={(e) => setRadiusMeters(e.target.value)} style={{ flex: 1, accentColor: "#2563eb" }} />
-                  </div>
-                  {radiusWarning && <p style={{ fontSize: 12, color: "#d97706", marginTop: 2 }}>{radiusWarning}</p>}
-                  <p style={helpStyle}>右の地図の検索・クリック・ピンドラッグ、またはこの欄の手入力のいずれでも更新されます。範囲は地図上の円で確認できます。</p>
-                </div>
+            {needsGps ? (
+              // GPS を含む方式: 座標は判定に使われるため常時展開＋必須チェック（従来どおり）。
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                {coordFields}
                 {gpsIncomplete && <p style={{ fontSize: 12, color: "#dc2626" }}>この方式では緯度・経度・半径がすべて必要です</p>}
-                {!needsGps && (
-                  <p style={{ fontSize: 12, color: "#9ca3af", lineHeight: 1.7 }}>
-                    「QRのみ」方式では座標はチェックイン判定には使われません（右の地図は位置確認・検索の参考用です）。
-                    GPSを含む方式（GPSのみ / QR + GPS）にすると、座標が範囲内チェックインの判定に使われます。
-                  </p>
-                )}
               </div>
+            ) : (
+              // QRのみ: 座標は保存されない参考情報。既定で折りたたみ、見出しで非保存を明示。
+              // 右の地図は常時表示。開けば手入力も可能だが、必須化はしない（validation 不変）。
+              <>
+                <p style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.7, margin: "0 0 10px" }}>
+                  「QRのみ」方式では座標はチェックイン判定に使われず、<strong>保存もされません</strong>。
+                  右の地図は位置確認・検索の参考用です。GPSを含む方式にすると座標が保存され、範囲内判定に使われます。
+                </p>
+                <CollapsibleSection
+                  title="座標を参考表示する（地図の位置）"
+                  subtitle="参考 — 保存されません"
+                  open={showCoordsRef}
+                  onToggle={() => setShowCoordsRef(!showCoordsRef)}
+                >
+                  {coordFields}
+                </CollapsibleSection>
+              </>
+            )}
           </Section>
 
           <Section id="history" label="履歴">
