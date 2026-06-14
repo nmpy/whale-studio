@@ -211,7 +211,7 @@ function LoginForm() {
             alt="Whale Studio"
             width={192}
             height={40}
-            style={{ display: "block", maxWidth: "100%", height: "auto" }}
+            style={{ display: "block", maxWidth: "100%", height: "auto", margin: "0 auto" }}
           />
         </h1>
           <div style={{ marginTop: 24, background: "#f0fdf4", border: "1px solid #86efac", borderRadius: 8, padding: "14px 16px", fontSize: 13, color: "#166534", lineHeight: 1.7 }}>
@@ -240,10 +240,10 @@ function LoginForm() {
             alt="Whale Studio"
             width={192}
             height={40}
-            style={{ display: "block", maxWidth: "100%", height: "auto" }}
+            style={{ display: "block", maxWidth: "100%", height: "auto", margin: "0 auto" }}
           />
         </h1>
-        <p style={{ fontSize: 13, fontWeight: 400, color: "#6b7280", marginBottom: 24 }}>
+        <p style={{ fontSize: 13, fontWeight: 400, color: "#6b7280", marginBottom: 24, textAlign: "center" }}>
           {mode === "login" ? "管理画面にログイン" : "アカウントを作成"}
         </p>
 
@@ -261,7 +261,7 @@ function LoginForm() {
             <div className="form-group">
               <label className="form-label" htmlFor="username">
                 ユーザー名
-                <span style={{ color: "#dc2626", fontSize: 11, marginLeft: 6, fontWeight: 700 }}>必須</span>
+                <span style={{ color: "#dc2626", fontSize: 14, marginLeft: 4, fontWeight: 700 }} aria-hidden="true">*</span>
               </label>
               <input
                 id="username"
@@ -281,7 +281,7 @@ function LoginForm() {
           <div className="form-group">
             <label className="form-label" htmlFor="email">
               メールアドレス
-              {mode === "register" && <span style={{ color: "#dc2626", fontSize: 11, marginLeft: 6, fontWeight: 700 }}>必須</span>}
+              {mode === "register" && <span style={{ color: "#dc2626", fontSize: 14, marginLeft: 4, fontWeight: 700 }} aria-hidden="true">*</span>}
             </label>
             <input
               id="email"
@@ -298,7 +298,7 @@ function LoginForm() {
           <div className="form-group">
             <label className="form-label" htmlFor="password">
               パスワード
-              {mode === "register" && <span style={{ color: "#dc2626", fontSize: 11, marginLeft: 6, fontWeight: 700 }}>必須</span>}
+              {mode === "register" && <span style={{ color: "#dc2626", fontSize: 14, marginLeft: 4, fontWeight: 700 }} aria-hidden="true">*</span>}
             </label>
             <input
               id="password"
@@ -320,7 +320,7 @@ function LoginForm() {
             <div className="form-group">
               <label className="form-label" htmlFor="confirmPassword">
                 パスワード（確認）
-                <span style={{ color: "#dc2626", fontSize: 11, marginLeft: 6, fontWeight: 700 }}>必須</span>
+                <span style={{ color: "#dc2626", fontSize: 14, marginLeft: 4, fontWeight: 700 }} aria-hidden="true">*</span>
               </label>
               <input
                 id="confirmPassword"
