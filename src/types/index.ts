@@ -387,12 +387,14 @@ export interface CreateWorkBody {
 /** 作品メニューホーム（`/liff/w/{publicId}`）の任意設定。すべて未設定可。
  *  未設定（null）のときは従来表示（見出し「ホーム」・説明/画像なし）にフォールバックする。 */
 export interface LiffHomeSettings {
-  /** ホーム見出し。null/空のとき「ホーム」を表示。 */
+  /** ホーム見出し（本文側）。null/空のとき本文タイトルは非表示（作品名 fallback しない）。 */
   title:       string | null;
   /** ホーム説明文（複数行可）。null/空のとき非表示。 */
   description: string | null;
   /** ホーム画像 URL。null/空のとき非表示。 */
   image_url:   string | null;
+  /** LIFF デフォルトヘッダー用タイトル（document.title に反映）。null/空のとき作品名等にフォールバック。 */
+  header_title: string | null;
 }
 
 export interface UpdateWorkBody {
@@ -402,11 +404,12 @@ export interface UpdateWorkBody {
   sort_order?: number;
   /** LIFF プレイヤー機能の有効/無効。 */
   liff_enabled?: boolean;
-  /** 作品メニューホームの任意設定（title/description/image_url）。指定キーのみ更新、空文字は解除。 */
+  /** 作品メニューホームの任意設定（title/description/image_url/header_title）。指定キーのみ更新、空文字は解除。 */
   liff_home_settings?: {
-    title?:       string | null;
-    description?: string | null;
-    image_url?:   string | null;
+    title?:        string | null;
+    description?:  string | null;
+    image_url?:    string | null;
+    header_title?: string | null;
   };
   /** 途中再開機能の有効/無効（作品単位）。 */
   resume_enabled?: boolean;
@@ -1370,10 +1373,18 @@ export interface WarningSettings {
 
 export interface ButtonLinkSettings {
   label?: string;
+  /** 解決済みの遷移先 URL（renderer はこの値を使う）。
+   *  link_type が liff_page / location のときも、選択時に実URLへ解決してここに格納する。 */
   url?: string;
   /** 外部リンクとして開くか（LIFF外で開く） */
   open_external?: boolean;
   variant?: LiffSectionVariant;
+  /** 遷移先タイプ。未指定（既存データ）は "external" として扱う（後方互換）。 */
+  link_type?: "external" | "liff_page" | "location";
+  /** link_type="liff_page" のとき選択された LIFF ページの ID（参照保持・再表示用）。 */
+  liff_page_id?: string;
+  /** link_type="location" のとき選択されたロケーションの ID（参照保持・再表示用）。 */
+  location_id?: string;
 }
 
 export interface DividerSettings {

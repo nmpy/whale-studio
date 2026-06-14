@@ -45,6 +45,8 @@ interface Props {
   /** 個別 LIFF ページの公開 URL 用短縮 ID。指定があれば URL に publicId を使う (短縮 URL)。 */
   pagePublicId?: string;
   publishStatus: "draft" | "published" | "archived";
+  /** アコーディオン等に埋め込む場合 true。外側カード枠と見出し「実機で確認する」を省く（重複回避）。 */
+  embedded?: boolean;
 }
 
 function buildBaseUrl(): string {
@@ -76,7 +78,7 @@ function buildBrowserPath(args: {
   return `/liff${buildLiffSubPath(args)}`;
 }
 
-export function LiffDevicePreviewLinks({ workId, workPublicId, pageId, pagePublicId, publishStatus }: Props) {
+export function LiffDevicePreviewLinks({ workId, workPublicId, pageId, pagePublicId, publishStatus, embedded = false }: Props) {
   const [baseUrl, setBaseUrl] = useState("");
   const [copied, setCopied] = useState<string | null>(null);
 
@@ -129,10 +131,10 @@ export function LiffDevicePreviewLinks({ workId, workPublicId, pageId, pagePubli
   }
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-5 mb-6 space-y-4">
+    <div className={embedded ? "space-y-4" : "bg-white rounded-xl border border-gray-200 p-5 mb-6 space-y-4"}>
       <div>
-        <h2 className="text-sm font-semibold text-gray-900">実機で確認する</h2>
-        <p className="text-[11px] text-gray-500 mt-1 leading-relaxed">
+        {!embedded && <h2 className="text-sm font-semibold text-gray-900">実機で確認する</h2>}
+        <p className={`text-[11px] text-gray-500 leading-relaxed ${embedded ? "" : "mt-1"}`}>
           下記の URL またはQRコードで、PC ブラウザ・スマホ・LINE アプリ内ブラウザでの表示を確認できます。
           {!isPublished && (
             <>

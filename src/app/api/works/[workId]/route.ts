@@ -17,13 +17,13 @@ import { ZodError } from "zod";
  *  description は内部の改行を保持する（trim は空判定にのみ使用）。 */
 function mergeLiffHomeSettings(
   existing: unknown,
-  patch: { title?: string | null; description?: string | null; image_url?: string | null },
+  patch: { title?: string | null; description?: string | null; image_url?: string | null; header_title?: string | null },
 ): Prisma.InputJsonValue {
   const base =
     existing && typeof existing === "object" && !Array.isArray(existing)
       ? { ...(existing as Record<string, unknown>) }
       : {};
-  for (const key of ["title", "description", "image_url"] as const) {
+  for (const key of ["title", "description", "image_url", "header_title"] as const) {
     if (!(key in patch)) continue;
     const v = patch[key];
     if (typeof v === "string" && v.trim() !== "") base[key] = v;

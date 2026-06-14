@@ -12,6 +12,8 @@ import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useLiffSDK } from "@/hooks/useLiffSDK";
 import { LiffSinglePageRenderer, type LiffSinglePage } from "./LiffSinglePageRenderer";
+import type { LiffRenderContext } from "./LiffRenderer";
+import type { CharacterInfo } from "./renderers";
 import { recordLiffEvent } from "@/lib/liff-events";
 
 interface Props {
@@ -34,6 +36,8 @@ interface PageApiResponse {
     publish_status: string;
     is_enabled?: boolean;
     settings_json: LiffSinglePage["settings_json"];
+    /** character_list ブロック用。未同梱（旧API）でも落ちないよう optional。 */
+    characters?: CharacterInfo[];
     blocks: LiffSinglePage["blocks"];
   };
   error?: { code?: string; message?: string };
@@ -46,6 +50,7 @@ export function LiffSinglePageViewer({ workId, pageId, workPublicId }: Props) {
   const isPreview = searchParams?.get("preview") === "1";
 
   const [page, setPage] = useState<(LiffSinglePage & { work_title: string }) | null>(null);
+  const [characters, setCharacters] = useState<CharacterInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -80,6 +85,7 @@ export function LiffSinglePageViewer({ workId, pageId, workPublicId }: Props) {
           blocks:        d.blocks,
           work_title:    d.work_title,
         });
+        setCharacters(d.characters ?? []);
       } catch {
         if (!cancelled) setError("サーバーに接続できませんでした");
       } finally {
@@ -135,6 +141,16 @@ export function LiffSinglePageViewer({ workId, pageId, workPublicId }: Props) {
     ? `/liff/w/${workPublicId}`
     : `/liff/work/${workId}`;
 
+  // character_list ブロック用に characters を含む最小 ctx を渡す（default ページ種別で使用）。
+  const defaultPageCtx: LiffRenderContext = {
+    userState: "before_start",
+    progress:  { current: 0, total: 1 },
+    evidences: [],
+    hints:     [],
+    characters,
+    canResume: false,
+  };
+
   return (
     <LiffSinglePageRenderer
       workId={workId}
@@ -144,6 +160,7 @@ export function LiffSinglePageViewer({ workId, pageId, workPublicId }: Props) {
       lineUserId={liff.lineUserId}
       onBack={() => router.push(menuHref)}
       onClose={liff.closeWindow}
+      defaultPageCtx={defaultPageCtx}
     />
   );
 }

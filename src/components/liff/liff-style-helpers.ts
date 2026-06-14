@@ -28,9 +28,10 @@ export function parseLiffHomeSettings(json: unknown): LiffHomeSettings {
       : {};
   const str = (v: unknown) => (typeof v === "string" && v.trim() !== "" ? v : null);
   return {
-    title:       str(o.title),
-    description: str(o.description),
-    image_url:   str(o.image_url),
+    title:        str(o.title),
+    description:  str(o.description),
+    image_url:    str(o.image_url),
+    header_title: str(o.header_title),
   };
 }
 
