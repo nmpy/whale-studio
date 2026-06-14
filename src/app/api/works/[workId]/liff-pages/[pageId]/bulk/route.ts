@@ -63,12 +63,16 @@ export const PUT = withAuth<{ workId: string; pageId: string }>(async (req, ctx,
       }
     }
 
-    // publish_status の権限・要件チェック（既存 PUT と同じ方針。公開時は「保存後の」ブロックで判定）。
-    if (data.publish_status && data.publish_status !== "draft") {
+    // publish_status の権限・要件チェック。
+    // 一括保存では draft 値も毎回送られるため、「実際に変更されたか」で判定する
+    // （= 既存が published のページを editor が保存しても 403 にならない / 公開要件を無駄に再検査しない）。
+    // 公開 / アーカイブへ「変更」する場合のみ admin 以上を要求し、published へ変更するときだけ公開要件を検査する。
+    const publishChanged = data.publish_status !== undefined && data.publish_status !== existing.publishStatus;
+    if (publishChanged && data.publish_status !== "draft") {
       const adminCheck = await requireRole(oaId, user.id, "admin");
       if (!adminCheck.ok) return adminCheck.response;
     }
-    if (data.publish_status === "published") {
+    if (publishChanged && data.publish_status === "published") {
       const settings = data.settings_json ?? (existing.settingsJson as Record<string, unknown> | undefined) ?? {};
       const title = data.title ?? existing.title ?? null;
       const pageType = data.page_type ?? existing.pageType ?? "default";
