@@ -2195,3 +2195,33 @@ export interface XPostAnalytics {
   rows: XPostAnalyticsRow[];
   ranking: { rank: number; id: string; title: string | null; cvr: number | null; cv_count: number; click_count: number }[];
 }
+
+// ── X投稿 感情分析（PR3）──────────────────────────────
+export interface XSentimentMetricRow {
+  id: string; post_title: string | null; x_post_url: string | null; posted_at: string | null;
+  impressions: number; csv_url_clicks: number; csv_url_click_rate: number | null;
+  ws_click_count: number; cv_count: number; impression_cvr: number | null;
+  likes: number; reposts: number; replies: number; quotes: number; bookmarks: number;
+  imported_at: string;
+}
+export interface XSentimentMentionRow {
+  id: string; posted_at: string | null; text: string; url: string | null;
+  related_x_post_url: string | null; sentiment: string; repeat_intent: string;
+  source: string | null; imported_at: string;
+}
+export interface XPostSentiment {
+  summary: {
+    mention_count: number; analyzed_count: number;
+    positive_rate: number | null; negative_rate: number | null; repeat_high_rate: number | null;
+    last_imported_at: string | null; last_analyzed_at: string | null;
+    metric_count: number; total_impressions: number; avg_impressions: number;
+    csv_url_click_rate: number | null; impression_cvr: number | null;
+  };
+  metric_rows: XSentimentMetricRow[];
+  mention_rows: XSentimentMentionRow[];
+  frequent_words: { word: string; count: number; mentionCount: number }[];
+  sentiment_counts: { positive: number; neutral: number; negative: number; unknown: number };
+  repeat_counts: { high: number; medium: number; low: number; unknown: number };
+  representative: { positive: string[]; negative: string[]; repeat_high: string[] };
+  repeat_high_ranking: { expr: string; count: number }[];
+}

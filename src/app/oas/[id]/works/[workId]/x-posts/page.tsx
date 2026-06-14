@@ -12,8 +12,9 @@ import { useToast } from "@/components/Toast";
 import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
 import { getAuthHeaders } from "@/lib/api-client";
 import { ImageUploadField } from "@/components/ImageUploadField";
+import Papa from "papaparse";
 import { buildUtmUrl, parseHashtagsInput } from "@/lib/x-posts/format";
-import type { XPost, XPostStatus, CreateXPostBody, XPostAnalytics } from "@/types";
+import type { XPost, XPostStatus, CreateXPostBody, XPostAnalytics, XPostSentiment } from "@/types";
 
 type Tab = "posts" | "inflow" | "sentiment";
 
@@ -94,16 +95,7 @@ export default function XPostsPage() {
 
       {tab === "inflow" && <InflowTab workId={workId} />}
 
-      {tab === "sentiment" && (
-        <div className="flex flex-col gap-3">
-          <div className="rounded-field border border-sky/30 bg-sky-soft px-4 py-3 text-[12px] leading-[1.6] text-sky-ink">
-            CSVで取り込んだ投稿実績や口コミテキストをもとに、インプレッション、頻出単語、ポジネガ、リピート欲求を分析します。
-          </div>
-          <div className="rounded-card border border-line bg-surface px-5 py-10 text-center text-[13px] text-ink-3">
-            （次のアップデートで提供）Xアナリティクス等のCSVや口コミCSVを取り込んで分析できます。
-          </div>
-        </div>
-      )}
+      {tab === "sentiment" && <SentimentTab workId={workId} canEdit={canEdit} />}
     </>
   );
 }
@@ -541,6 +533,314 @@ function InflowTab({ workId }: { workId: string }) {
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
+
+// ── 感情分析タブ（PR3）──────────────────────────────────
+function fmtPct(v: number | null): string {
+  return v === null ? "-" : `${(v * 100).toFixed(1)}%`;
+}
+const SENT_LABEL: Record<string, string> = { positive: "ポジティブ", neutral: "ニュートラル", negative: "ネガティブ", unknown: "不明" };
+const REPEAT_LABEL: Record<string, string> = { high: "高", medium: "中", low: "低", unknown: "不明" };
+
+function SentimentTab({ workId, canEdit }: { workId: string; canEdit: boolean }) {
+  const { showToast } = useToast();
+  const [data, setData] = useState<XPostSentiment | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [importType, setImportType] = useState<"metrics" | "mentions">("mentions");
+  const [rows, setRows] = useState<Record<string, unknown>[]>([]);
+  const [fileName, setFileName] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/works/${workId}/x-posts/sentiment`, { headers: { ...getAuthHeaders() }, cache: "no-store" });
+      const j = await res.json().catch(() => ({}));
+      setData(res.ok ? (j?.data ?? null) : null);
+    } catch { setData(null); } finally { setLoading(false); }
+  }, [workId]);
+
+  useEffect(() => { fetchData(); }, [fetchData]);
+
+  function onFile(file: File | undefined) {
+    if (!file) return;
+    setFileName(file.name);
+    Papa.parse<Record<string, unknown>>(file, {
+      header: true, skipEmptyLines: true,
+      complete: (res) => setRows(res.data.filter((r) => r && typeof r === "object")),
+      error: () => showToast("CSV の解析に失敗しました", "error"),
+    });
+  }
+
+  async function handleImport() {
+    if (rows.length === 0 || busy) return;
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/works/${workId}/x-posts/import`, {
+        method: "POST", headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ type: importType, rows }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) { showToast(j?.error?.message ?? "インポートに失敗しました", "error"); return; }
+      const r = j.data as { imported: number; skipped: number; errors: number };
+      showToast(`インポート完了: 成功 ${r.imported} / スキップ ${r.skipped} / エラー ${r.errors}`, "success");
+      setRows([]); setFileName("");
+      fetchData();
+    } catch { showToast("インポートに失敗しました", "error"); } finally { setBusy(false); }
+  }
+
+  async function handleAnalyze() {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/works/${workId}/x-posts/analyze`, { method: "POST", headers: { ...getAuthHeaders() } });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) { showToast("分析に失敗しました", "error"); return; }
+      showToast(`感情分析を実行しました（${j.data?.analyzed ?? 0}件）`, "success");
+      fetchData();
+    } catch { showToast("分析に失敗しました", "error"); } finally { setBusy(false); }
+  }
+
+  const notice = (
+    <div className="flex flex-col gap-2">
+      <div className="rounded-field border border-sky/30 bg-sky-soft px-4 py-3 text-[12px] leading-[1.6] text-sky-ink">
+        CSVで取り込んだ投稿実績や口コミテキストをもとに、インプレッション、頻出単語、ポジネガ、リピート欲求を分析します。X APIやスクレイピングは使用しません。
+      </div>
+    </div>
+  );
+
+  // CSV インポートカード（editor のみ）
+  const importCard = canEdit && (
+    <div className="rounded-card border border-line bg-surface p-4">
+      <p className="mb-1 text-[13px] font-bold text-ink">CSVでインポート</p>
+      <p className="mb-3 text-[11px] text-ink-3">Xアナリティクス等から取得したCSVや、手元で整理した口コミCSVを取り込んで分析できます（UTF-8 / BOM 両対応）。</p>
+      <div className="flex flex-wrap items-center gap-2">
+        <select value={importType} onChange={(e) => { setImportType(e.target.value as "metrics" | "mentions"); setRows([]); setFileName(""); }} className="form-input" style={{ width: "auto" }}>
+          <option value="mentions">口コミCSV</option>
+          <option value="metrics">投稿実績CSV</option>
+        </select>
+        <label className="btn btn-ghost btn-sm cursor-pointer">
+          CSVファイルを選択
+          <input type="file" accept=".csv,text/csv" className="hidden" onChange={(e) => onFile(e.target.files?.[0])} />
+        </label>
+        {fileName && <span className="text-[11px] text-ink-3">{fileName}（{rows.length}行）</span>}
+      </div>
+      <p className="mt-2 text-[11px] text-ink-3">
+        {importType === "mentions"
+          ? "必須列: text ／ 任意: postedAt, authorName, authorHandle, url, source, note, relatedXPostUrl"
+          : "必須列: (xPostUrl または xPostId) と impressions ／ 任意: postTitle, postedAt, likes, reposts, replies, quotes, bookmarks, urlClicks, note"}
+      </p>
+      {rows.length > 0 && (
+        <div className="mt-3">
+          <div className="mb-1 text-[11px] font-semibold text-ink-2">プレビュー（先頭5行）</div>
+          <div className="overflow-x-auto rounded border border-line">
+            <table className="w-full text-left text-[11px]">
+              <thead><tr className="border-b border-line text-ink-3">{Object.keys(rows[0]).slice(0, 8).map((k) => <th key={k} className="whitespace-nowrap px-2 py-1">{k}</th>)}</tr></thead>
+              <tbody>
+                {rows.slice(0, 5).map((r, i) => (
+                  <tr key={i} className="border-b border-line-2 last:border-0">
+                    {Object.keys(rows[0]).slice(0, 8).map((k) => <td key={k} className="max-w-[160px] truncate px-2 py-1 text-ink-2">{String(r[k] ?? "")}</td>)}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <button type="button" onClick={handleImport} disabled={busy} className="btn btn-primary btn-sm mt-2">{busy ? "インポート中…" : "インポート実行"}</button>
+        </div>
+      )}
+    </div>
+  );
+
+  if (loading) return <div className="flex flex-col gap-3">{notice}{importCard}<div className="card" style={{ padding: 20 }}><div className="skeleton" style={{ height: 16, width: 200 }} /></div></div>;
+  if (!data) return <div className="flex flex-col gap-3">{notice}{importCard}<div className="alert alert-error">感情分析の読み込みに失敗しました。</div></div>;
+
+  const s = data.summary;
+  const hasAny = s.mention_count > 0 || s.metric_count > 0;
+
+  if (!hasAny) {
+    return (
+      <div className="flex flex-col gap-3">
+        {notice}{importCard}
+        <div className="rounded-card border border-line bg-surface px-5 py-10 text-center text-[13px] text-ink-3">
+          まだCSVがインポートされていません。投稿実績や口コミCSVを取り込むと分析できます。
+        </div>
+      </div>
+    );
+  }
+
+  const Bar = ({ label, count, total, tone }: { label: string; count: number; total: number; tone: string }) => (
+    <div className="flex items-center gap-2 text-[12px]">
+      <span className="w-20 flex-shrink-0 text-ink-2">{label}</span>
+      <div className="h-3 flex-1 overflow-hidden rounded bg-bg-tint">
+        <div style={{ width: total > 0 ? `${(count / total) * 100}%` : "0%", background: tone }} className="h-full" />
+      </div>
+      <span className="w-24 flex-shrink-0 text-right text-ink-3">{count}（{total > 0 ? ((count / total) * 100).toFixed(0) : 0}%）</span>
+    </div>
+  );
+
+  return (
+    <div className="flex flex-col gap-4">
+      {notice}
+      {importCard}
+
+      {canEdit && s.mention_count > 0 && (
+        <div><button type="button" onClick={handleAnalyze} disabled={busy} className="btn btn-ghost btn-sm">感情分析を再実行</button></div>
+      )}
+
+      {/* サマリーカード */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+        {[
+          { label: "口コミ数", value: String(s.mention_count) },
+          { label: "分析済み口コミ", value: String(s.analyzed_count) },
+          { label: "ポジティブ率", value: fmtPct(s.positive_rate) },
+          { label: "ネガティブ率", value: fmtPct(s.negative_rate) },
+          { label: "リピート欲求 高 率", value: fmtPct(s.repeat_high_rate) },
+          { label: "投稿実績数", value: String(s.metric_count) },
+          { label: "合計インプレッション", value: s.total_impressions.toLocaleString() },
+          { label: "平均インプレッション", value: s.avg_impressions.toLocaleString() },
+          { label: "CSV URLクリック率", value: fmtPct(s.csv_url_click_rate) },
+          { label: "インプレッションCVR", value: fmtPct(s.impression_cvr) },
+        ].map((c) => (
+          <div key={c.label} className="rounded-card border border-line bg-surface px-4 py-3">
+            <div className="text-[11px] text-ink-3">{c.label}</div>
+            <div className="mt-0.5 text-[18px] font-extrabold text-ink">{c.value}</div>
+          </div>
+        ))}
+      </div>
+      <p className="text-[11px] text-ink-3">
+        ※ インプレッションはCSVで取り込まれた値です。Xから自動取得された値ではありません。CV数は attribution 未実装のため現在 0 です。
+      </p>
+
+      {/* ポジネガ / リピート */}
+      {s.mention_count > 0 ? (
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <div className="rounded-card border border-line bg-surface p-4">
+            <p className="mb-2 text-[13px] font-bold text-ink">ポジネガ分析</p>
+            <div className="flex flex-col gap-1.5">
+              <Bar label="ポジティブ" count={data.sentiment_counts.positive} total={s.mention_count} tone="#86b89a" />
+              <Bar label="ニュートラル" count={data.sentiment_counts.neutral} total={s.mention_count} tone="#cbd5e1" />
+              <Bar label="ネガティブ" count={data.sentiment_counts.negative} total={s.mention_count} tone="#d6a3a3" />
+              <Bar label="不明" count={data.sentiment_counts.unknown} total={s.mention_count} tone="#e5e7eb" />
+            </div>
+            {data.representative.positive.length > 0 && (
+              <div className="mt-3 text-[11px] text-ink-3"><span className="font-semibold">代表（ポジティブ）:</span> {data.representative.positive[0]}</div>
+            )}
+            {data.representative.negative.length > 0 && (
+              <div className="mt-1 text-[11px] text-ink-3"><span className="font-semibold">代表（ネガティブ）:</span> {data.representative.negative[0]}</div>
+            )}
+          </div>
+          <div className="rounded-card border border-line bg-surface p-4">
+            <p className="mb-2 text-[13px] font-bold text-ink">リピート欲求分析</p>
+            <div className="flex flex-col gap-1.5">
+              <Bar label="高" count={data.repeat_counts.high} total={s.mention_count} tone="#86b89a" />
+              <Bar label="中" count={data.repeat_counts.medium} total={s.mention_count} tone="#bcd0c4" />
+              <Bar label="低" count={data.repeat_counts.low} total={s.mention_count} tone="#cbd5e1" />
+              <Bar label="不明" count={data.repeat_counts.unknown} total={s.mention_count} tone="#e5e7eb" />
+            </div>
+            {data.representative.repeat_high.length > 0 && (
+              <div className="mt-3 text-[11px] text-ink-3"><span className="font-semibold">代表（高）:</span> {data.representative.repeat_high[0]}</div>
+            )}
+            {data.repeat_high_ranking.length > 0 && (
+              <div className="mt-2 text-[11px] text-ink-3">
+                <span className="font-semibold">高リピート表現:</span> {data.repeat_high_ranking.map((r) => `${r.expr}(${r.count})`).join(" / ")}
+              </div>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div className="rounded-card border border-line bg-surface px-5 py-8 text-center text-[12px] text-ink-3">
+          口コミCSVをインポートすると、頻出単語・ポジネガ・リピート欲求を分析できます。
+        </div>
+      )}
+
+      {/* 頻出単語 */}
+      {data.frequent_words.length > 0 && (
+        <div className="rounded-card border border-line bg-surface p-4">
+          <p className="mb-2 text-[13px] font-bold text-ink">頻出単語ランキング</p>
+          <div className="flex flex-wrap gap-1.5">
+            {data.frequent_words.map((w) => (
+              <span key={w.word} className="inline-flex items-center gap-1 rounded-full bg-bg-tint px-2 py-0.5 text-[12px] text-ink-2">
+                {w.word}<span className="text-ink-3">{w.count}回 / {w.mentionCount}件</span>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 投稿実績テーブル */}
+      {data.metric_rows.length > 0 && (
+        <div>
+          <p className="mb-1 text-[13px] font-bold text-ink">投稿実績（CSVインポート）</p>
+          <div className="overflow-x-auto rounded-card border border-line bg-surface">
+            <table className="w-full text-left text-[12px]">
+              <thead><tr className="border-b border-line text-[11px] text-ink-3">
+                {["投稿タイトル", "X投稿URL", "投稿日時", "インプレッション", "CSV URLクリック", "CSV URLクリック率", "WSクリック", "CV", "インプCVR", "いいね", "RP", "返信", "引用", "BM", "取込日時"].map((h) => <th key={h} className="whitespace-nowrap px-2 py-2 font-semibold">{h}</th>)}
+              </tr></thead>
+              <tbody>
+                {data.metric_rows.map((m) => (
+                  <tr key={m.id} className="border-b border-line-2 last:border-0">
+                    <td className="px-2 py-2 font-semibold text-ink max-w-[160px] truncate">{m.post_title || "-"}</td>
+                    <td className="px-2 py-2">{m.x_post_url ? <a href={m.x_post_url} target="_blank" rel="noopener noreferrer" className="text-sky-ink underline">開く</a> : "-"}</td>
+                    <td className="px-2 py-2 whitespace-nowrap text-ink-3">{fmtDate(m.posted_at)}</td>
+                    <td className="px-2 py-2 text-right tabular-nums">{m.impressions > 0 ? m.impressions.toLocaleString() : "-"}</td>
+                    <td className="px-2 py-2 text-right tabular-nums">{m.csv_url_clicks.toLocaleString()}</td>
+                    <td className="px-2 py-2 text-right tabular-nums">{fmtPct(m.csv_url_click_rate)}</td>
+                    <td className="px-2 py-2 text-right tabular-nums">{m.ws_click_count.toLocaleString()}</td>
+                    <td className="px-2 py-2 text-right tabular-nums">{m.cv_count}</td>
+                    <td className="px-2 py-2 text-right tabular-nums">{fmtPct(m.impression_cvr)}</td>
+                    <td className="px-2 py-2 text-right tabular-nums">{m.likes}</td>
+                    <td className="px-2 py-2 text-right tabular-nums">{m.reposts}</td>
+                    <td className="px-2 py-2 text-right tabular-nums">{m.replies}</td>
+                    <td className="px-2 py-2 text-right tabular-nums">{m.quotes}</td>
+                    <td className="px-2 py-2 text-right tabular-nums">{m.bookmarks}</td>
+                    <td className="px-2 py-2 whitespace-nowrap text-ink-3">{fmtDate(m.imported_at)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* 口コミテーブル */}
+      {data.mention_rows.length > 0 && (
+        <div>
+          <p className="mb-1 text-[13px] font-bold text-ink">口コミ（CSVインポート）</p>
+          <div className="overflow-x-auto rounded-card border border-line bg-surface">
+            <table className="w-full text-left text-[12px]">
+              <thead><tr className="border-b border-line text-[11px] text-ink-3">
+                {["投稿日時", "本文", "URL", "関連X投稿", "感情", "リピート", "source", "取込日時"].map((h) => <th key={h} className="whitespace-nowrap px-2 py-2 font-semibold">{h}</th>)}
+              </tr></thead>
+              <tbody>
+                {data.mention_rows.map((m) => {
+                  const open = expanded.has(m.id);
+                  const short = m.text.length > 60 && !open ? m.text.slice(0, 60) + "…" : m.text;
+                  return (
+                    <tr key={m.id} className="border-b border-line-2 last:border-0 align-top">
+                      <td className="px-2 py-2 whitespace-nowrap text-ink-3">{fmtDate(m.posted_at)}</td>
+                      <td className="px-2 py-2 text-ink max-w-[280px] whitespace-pre-wrap">
+                        {short}
+                        {m.text.length > 60 && (
+                          <button type="button" onClick={() => setExpanded((cur) => { const n = new Set(cur); n.has(m.id) ? n.delete(m.id) : n.add(m.id); return n; })} className="ml-1 text-sky-ink underline">{open ? "閉じる" : "全文"}</button>
+                        )}
+                      </td>
+                      <td className="px-2 py-2">{m.url ? <a href={m.url} target="_blank" rel="noopener noreferrer" className="text-sky-ink underline">開く</a> : "-"}</td>
+                      <td className="px-2 py-2 max-w-[120px] truncate text-ink-3">{m.related_x_post_url || "-"}</td>
+                      <td className="px-2 py-2 whitespace-nowrap">{SENT_LABEL[m.sentiment] ?? m.sentiment}</td>
+                      <td className="px-2 py-2 whitespace-nowrap">{REPEAT_LABEL[m.repeat_intent] ?? m.repeat_intent}</td>
+                      <td className="px-2 py-2 text-ink-3">{m.source || "-"}</td>
+                      <td className="px-2 py-2 whitespace-nowrap text-ink-3">{fmtDate(m.imported_at)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
