@@ -7,11 +7,11 @@
 
 import { useEffect, useState, useCallback } from "react";
 import dynamic from "next/dynamic";
-import { transitionApi, messageApi, getDevToken } from "@/lib/api-client";
+import { transitionApi, messageApi, phaseApi, getDevToken } from "@/lib/api-client";
 import { Button } from "@/components/shared";
 import { PlaceSearchInput } from "@/components/maps/PlaceSearchInput";
 import { formatMessageOptionLabel } from "@/lib/message-option-label";
-import type { TransitionWithPhases, Message, MessageWithRelations } from "@/types";
+import type { TransitionWithPhases, Message, MessageWithRelations, PhaseWithCounts } from "@/types";
 
 // SSR セーフだが client 専用のため dynamic import（Google Maps は useEffect 内で初期化）
 const LocationMapPicker = dynamic(() => import("@/components/LocationMapPicker"), { ssr: false });
@@ -113,7 +113,22 @@ export function LocationForm({ onSubmit, saving, workId, defaultValues }: Locati
 
   const [transitions, setTransitions] = useState<TransitionWithPhases[]>([]);
   const [messages, setMessages] = useState<(Message | MessageWithRelations)[]>([]);
+  const [phases, setPhases] = useState<PhaseWithCounts[]>([]);
   const jsonCheck = validateJson(setFlags);
+
+  // 遷移の「どこから → どこへ」を出すため、from_phase_id をフェーズ名へ解決する。
+  const phaseName = (id: string | null | undefined): string | null => {
+    if (!id) return null;
+    return phases.find((p) => p.id === id)?.name ?? null;
+  };
+  // 遷移を「第1章 → 第2章：ラベル」のように分かりやすく表記する。from 名は phases から補完。
+  const transitionOptionLabel = (t: TransitionWithPhases): string => {
+    const from = phaseName(t.from_phase_id);
+    const to = t.to_phase?.name ?? phaseName(t.to_phase_id) ?? "?";
+    const arrow = from ? `${from} → ${to}` : `→ ${to}`;
+    const label = t.label?.trim();
+    return label ? `${arrow}：${label}` : arrow;
+  };
 
   const radiusNum = Number(radiusMeters);
   const radiusWarning = radiusNum > 0 && radiusNum < 10 ? "半径が非常に小さいです。GPS誤差を考慮して20m以上を推奨します。"
@@ -141,6 +156,13 @@ export function LocationForm({ onSubmit, saving, workId, defaultValues }: Locati
   useEffect(() => {
     (async () => {
       try { setTransitions(await transitionApi.listByWork(getDevToken(), workId)); } catch { /* ignore */ }
+    })();
+  }, [workId]);
+
+  useEffect(() => {
+    (async () => {
+      // 遷移の from→to 表示用にフェーズ名を取得（既存 API・読み取りのみ）。
+      try { setPhases(await phaseApi.list(getDevToken(), workId)); } catch { /* ignore */ }
     })();
   }, [workId]);
 
@@ -261,12 +283,21 @@ export function LocationForm({ onSubmit, saving, workId, defaultValues }: Locati
     flowSteps.push(<>QRチェックイン時に、LINEトークへ選択中のメッセージを送信します。</>);
   }
   if (selTransition) {
-    flowSteps.push(<>ユーザーが遷移元フェーズにいる場合、「<strong>{selTransition.to_phase?.name ?? "?"}</strong>」へ進みます。</>);
+    const fromName = phaseName(selTransition.from_phase_id);
+    const toName = selTransition.to_phase?.name ?? phaseName(selTransition.to_phase_id) ?? "?";
+    flowSteps.push(
+      fromName
+        ? <>ユーザーが「<strong>{fromName}</strong>」にいる場合、「<strong>{toName}</strong>」へ進みます。</>
+        : <>条件に合う場合、「<strong>{toName}</strong>」へ進みます。</>,
+    );
+  } else if ((qrInvolved && (selMessage || qrSuccessMessageId)) || flagsConfigured) {
+    // 何か別の追従挙動があるときだけ、遷移が無い旨を1行で明示する（全くの未設定は下の注記で説明）。
+    flowSteps.push(<span style={{ color: "#9ca3af" }}>シナリオ遷移は発火しません。</span>);
   }
   if (flagsConfigured) {
     flowSteps.push(<>分岐条件（上級者向け設定）を記録します。</>);
   }
-  const noFollowUp = flowSteps.length === 1;
+  const noFollowUp = !selTransition && !(qrInvolved && (selMessage || qrSuccessMessageId)) && !flagsConfigured;
 
   return (
     <form onSubmit={handleSubmit}>
@@ -287,6 +318,25 @@ export function LocationForm({ onSubmit, saving, workId, defaultValues }: Locati
 
           <Section id="description" label="説明">
             <textarea style={{ ...inputStyle, minHeight: 60, resize: "vertical" }} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="ロケーションの説明（任意）" />
+          </Section>
+
+          {/* 公開状態（有効/無効）。保存先は既存 is_active。旧「成功時アクション」内のチェックボックスから
+              基本情報の近くへ移設し、ラジオで分かりやすくした（保存仕様は不変）。 */}
+          <Section id="active-state" label="公開状態">
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {([
+                { value: true,  label: "有効", desc: "このロケーションのチェックインを利用できます。" },
+                { value: false, label: "無効", desc: "チェックインを利用できません。準備中や一時停止に使います。" },
+              ] as const).map(({ value, label, desc }) => (
+                <label key={String(value)} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 12px", border: `2px solid ${isActive === value ? "#2563eb" : "#e5e7eb"}`, borderRadius: 8, cursor: "pointer", background: isActive === value ? "#eff6ff" : "#fff" }}>
+                  <input type="radio" name="is_active" checked={isActive === value} onChange={() => setIsActive(value)} style={{ marginTop: 2 }} />
+                  <div>
+                    <div style={{ fontWeight: 500, fontSize: 14 }}>{label}</div>
+                    <div style={{ fontSize: 12, color: "#6b7280" }}>{desc}</div>
+                  </div>
+                </label>
+              ))}
+            </div>
           </Section>
 
           <Section id="checkin-mode" label="チェックイン方式">
@@ -381,10 +431,7 @@ export function LocationForm({ onSubmit, saving, workId, defaultValues }: Locati
               <input style={inputStyle} type="number" min="0" max="86400" value={cooldownSeconds} onChange={(e) => setCooldownSeconds(e.target.value)} />
               <p style={helpStyle}>同一ユーザーが連続チェックインできるまでの待機時間（デフォルト: 300秒 = 5分）</p>
             </div>
-            <div style={{ ...groupStyle, display: "flex", alignItems: "center", gap: 8 }}>
-              <input type="checkbox" id="is_active" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} style={{ width: 16, height: 16 }} />
-              <label htmlFor="is_active" style={{ fontSize: 14, fontWeight: 500, color: "#374151" }}>有効</label>
-            </div>
+            {/* 有効/無効は「公開状態」セクション（基本情報付近）へ移設済み。 */}
             <p style={{ fontSize: 11, color: "#9ca3af", lineHeight: 1.6 }}>将来拡張: 報酬付与・ヒント解放などのアクションは今後追加予定です。</p>
           </Section>
 
@@ -392,19 +439,25 @@ export function LocationForm({ onSubmit, saving, workId, defaultValues }: Locati
               選択肢の中身・保存先（transition_id / qr_success_message_id）は不変。文言と見せ方のみ変更。 */}
           <Section id="post-checkin-flow" label="チェックイン後の進行">
             <p style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.7, margin: "0 0 14px" }}>
-              チェックインに成功したあと、ユーザーをどう進めるかを設定します。どちらも任意です（未設定なら何も起きません）。
+              このロケーションにチェックインしたとき、条件に合う場合だけ次の進行が発火します。
+              ユーザーが遷移元フェーズにいる場合のみ、指定した遷移が発火します。どちらも任意です。
             </p>
 
             <div style={groupStyle}>
-              <label style={labelStyle}>チェックイン後に進めるフェーズ <span style={subLabel}>— 任意</span></label>
+              <label style={labelStyle}>チェックイン時に発火する遷移 <span style={subLabel}>— 任意</span></label>
               <select style={inputStyle} value={transitionId} onChange={(e) => setTransitionId(e.target.value)}>
-                <option value="">進めない</option>
+                <option value="">発火する遷移なし</option>
+                {transitionId && !transitions.some((t) => t.id === transitionId) && (
+                  <option value={transitionId}>（選択中の遷移: 表示できません）</option>
+                )}
                 {transitions.map((t) => (
-                  <option key={t.id} value={t.id}>{t.label} → {t.to_phase?.name ?? "?"}</option>
+                  <option key={t.id} value={t.id}>{transitionOptionLabel(t)}</option>
                 ))}
               </select>
               <p style={helpStyle}>
-                ユーザーが現在この遷移の入口（遷移元フェーズ）にいる場合だけ、指定したフェーズへ進みます。
+                ユーザーがこのロケーションにチェックインしたときに進めるシナリオ遷移を選びます。
+                遷移元フェーズが現在のフェーズと一致する場合のみ発火します。
+                {transitions.length === 0 && "（この作品にはまだ遷移が定義されていません。シナリオ編集で遷移を作成すると選べます。）"}
               </p>
             </div>
 
