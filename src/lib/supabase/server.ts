@@ -74,3 +74,30 @@ export async function getServerUser(): Promise<{ id: string; email?: string } | 
 
   return { id: user.id, email: user.email ?? undefined };
 }
+
+/**
+ * getServerUser に user_metadata を加えて返す版。
+ * 初回登録時の同意情報（registration_consent）を onboarding ガードで参照するために使う。
+ * 開発バイパス / 未設定時は metadata なしで返す。
+ */
+export async function getServerUserWithMetadata(): Promise<
+  { id: string; email?: string; metadata?: Record<string, unknown> } | null
+> {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (!supabaseUrl) {
+    if (process.env.NODE_ENV === "production") return null;
+    const bypassOn = process.env.BYPASS_AUTH?.trim().toLowerCase() === "true";
+    if (bypassOn) return { id: "bypass-admin" };
+    if (process.env.NODE_ENV === "development") return { id: "dev-user" };
+    return null;
+  }
+  const supabase = await createSupabaseServerClient();
+  if (!supabase) return null;
+  const { data: { user }, error } = await supabase.auth.getUser();
+  if (error || !user) return null;
+  return {
+    id: user.id,
+    email: user.email ?? undefined,
+    metadata: (user.user_metadata ?? undefined) as Record<string, unknown> | undefined,
+  };
+}

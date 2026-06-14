@@ -7,13 +7,15 @@
 //   - ループ防止のため /onboarding/** や /api/** は呼び出し側で除外する（このファイルでは判定のみを返す）。
 
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 import { prisma } from "@/lib/prisma";
-import { getServerUser } from "@/lib/supabase/server";
+import { getServerUserWithMetadata } from "@/lib/supabase/server";
 import {
   getCurrentTermsDocument,
   getCurrentPrivacyPolicyDocument,
 } from "@/lib/policy-document";
 import { isPlatformOwner } from "@/lib/platform-admin";
+import { recordRegistrationConsent, clientIpFromHeaders } from "@/lib/consent";
 
 export type OnboardingRedirect =
   | { kind: "ok" }
@@ -108,11 +110,39 @@ export async function getOnboardingState(userId: string): Promise<OnboardingRedi
  * 呼び出し側はこの関数の戻り値を確認する必要はない。
  */
 export async function enforceOnboarding(currentPath: string): Promise<void> {
-  const user = await getServerUser();
+  const user = await getServerUserWithMetadata();
   if (!user) {
     redirect(`/login?next=${encodeURIComponent(currentPath)}`);
   }
-  const state = await getOnboardingState(user.id);
+
+  let state = await getOnboardingState(user.id);
+
+  // メール確認 ON で signUp 直後にセッションが無く同意ログを保存できなかったケースの救済。
+  // 初回登録時に同意した情報を user_metadata.registration_consent に載せているので、
+  // 同意ゲート未通過（terms へ redirect）かつ metadata がある場合はここで materialize する
+  // （UserConsentLog + acceptance を 1 transaction で記録）→ 再判定して二重同意を防ぐ。
+  if (state.kind === "redirect" && state.to === "/onboarding/terms") {
+    const consent = user.metadata?.registration_consent as
+      | { terms_version?: string; privacy_version?: string; agreed_at?: string }
+      | undefined;
+    if (consent && (consent.terms_version || consent.privacy_version)) {
+      try {
+        const h = await headers();
+        await recordRegistrationConsent({
+          userId:         user.id,
+          username:       typeof user.metadata?.display_name === "string" ? (user.metadata.display_name as string) : null,
+          termsVersion:   consent.terms_version,
+          privacyVersion: consent.privacy_version,
+          agreedAt:       consent.agreed_at ? new Date(consent.agreed_at) : undefined,
+          meta: { ipAddress: clientIpFromHeaders(h), userAgent: h.get("user-agent") },
+        });
+        state = await getOnboardingState(user.id); // 同意済みになったか再判定
+      } catch {
+        // materialize 失敗時は従来どおり /onboarding/terms へ誘導（同意は失われない）
+      }
+    }
+  }
+
   if (state.kind === "redirect") {
     redirect(state.to);
   }

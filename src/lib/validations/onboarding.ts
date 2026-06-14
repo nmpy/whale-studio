@@ -13,6 +13,15 @@ export const acceptPrivacyPolicySchema = z.object({
   privacy_policy_version: z.string().min(1, "privacyPolicyVersion は必須です"),
 });
 
+// ── 初回登録時の同意（ユーザー名 + 利用規約 + プライバシーポリシー） ──
+// email / password は Supabase Auth 側でサーバー検証されるため、ここでは
+// 追加必須項目（ユーザー名・各同意）のみを受け取り、ルートで必須チェックする。
+export const registerConsentSchema = z.object({
+  username:       z.string().max(20).optional().nullable(),
+  terms_agreed:   z.boolean().optional(),
+  privacy_agreed: z.boolean().optional(),
+});
+
 // ── Step 2: OA 連携情報 ──────────────────────────────────────────
 export const updateOnboardingOaSchema = z.object({
   oa_name:        z.string().max(100).optional().nullable(),

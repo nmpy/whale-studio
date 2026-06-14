@@ -1731,6 +1731,29 @@ model PrivacyPolicyAcceptance {
   @@map("privacy_policy_acceptances")
 }
 
+/// 同意ログ（監査用・追記型）。利用規約 / プライバシーポリシーへの同意を、
+/// 同意日時・IP・User-Agent・ドキュメントバージョン・該当 URL とともに記録する。
+/// - userId は Supabase auth.users.id を文字列で保持（他テーブルと同方針で Prisma relation は張らない）。
+/// - consentType: "terms" | "privacy_policy"（将来の再同意・他種別に拡張しやすいよう文字列で保持）。
+/// - 集計用の TermsAcceptance / PrivacyPolicyAcceptance（同意ゲート判定）とは別に、
+///   いつ・どの版に・どこから同意したかの監査ログとして残す。
+model UserConsentLog {
+  id              String   @id @default(uuid())
+  userId          String   @map("user_id")
+  consentType     String   @map("consent_type")
+  documentVersion String?  @map("document_version")
+  documentUrl     String?  @map("document_url")
+  ipAddress       String?  @map("ip_address")
+  userAgent       String?  @map("user_agent")
+  agreedAt        DateTime @default(now()) @map("agreed_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@index([consentType])
+  @@index([agreedAt])
+  @@map("user_consent_logs")
+}
+
 /// 規約文書 (= 利用規約 / プライバシーポリシー) のバージョン管理。
 ///
 /// 設計方針:

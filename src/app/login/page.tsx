@@ -14,6 +14,8 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { LOGIN_ERROR_BANNERS } from "@/lib/constants/member-text";
 import { getPostAuthRedirect } from "@/lib/post-auth-redirect";
+import { CURRENT_TERMS_VERSION } from "@/lib/constants/terms";
+import { CURRENT_PRIVACY_POLICY_VERSION } from "@/lib/constants/privacy-policy";
 
 const ACCESS_DENIED_MESSAGES = LOGIN_ERROR_BANNERS;
 
@@ -33,6 +35,9 @@ function LoginForm() {
   const [email,           setEmail]            = useState(initialEmail);
   const [password,        setPassword]         = useState("");
   const [confirmPassword, setConfirmPassword]  = useState("");
+  // 利用規約 / プライバシーポリシー同意（登録時必須）
+  const [agreeTerms,      setAgreeTerms]        = useState(false);
+  const [agreePrivacy,    setAgreePrivacy]      = useState(false);
   const [status,          setStatus]           = useState<"idle" | "loading" | "error">("idle");
   const [errorMsg,        setErrorMsg]         = useState("");
   // パスワードリセット
@@ -111,16 +116,32 @@ function LoginForm() {
 
     if (!username.trim()) { setErrorMsg("ユーザー名を入力してください"); setStatus("error"); return; }
     if (username.trim().length > 20) { setErrorMsg("ユーザー名は20文字以内で入力してください"); setStatus("error"); return; }
+    if (!email.trim()) { setErrorMsg("メールアドレスを入力してください"); setStatus("error"); return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) { setErrorMsg("有効なメールアドレスを入力してください"); setStatus("error"); return; }
+    if (!password) { setErrorMsg("パスワードを入力してください"); setStatus("error"); return; }
     if (password.length < 8) { setErrorMsg("パスワードは8文字以上で入力してください"); setStatus("error"); return; }
     if (password !== confirmPassword) { setErrorMsg("パスワードが一致しません"); setStatus("error"); return; }
+    if (!agreeTerms) { setErrorMsg("利用規約への同意が必要です"); setStatus("error"); return; }
+    if (!agreePrivacy) { setErrorMsg("プライバシーポリシーへの同意が必要です"); setStatus("error"); return; }
 
     setStatus("loading");
     const supabase = createSupabaseBrowserClient();
 
+    // 同意情報は user_metadata にも載せる。メール確認 ON でセッションが取れない場合、
+    // 初回認証時に onboarding ガード側で同意ログ / acceptance を materialize するため。
     const { data, error: signUpError } = await supabase.auth.signUp({
       email,
       password,
-      options: { data: { display_name: username.trim() } },
+      options: {
+        data: {
+          display_name: username.trim(),
+          registration_consent: {
+            terms_version:   CURRENT_TERMS_VERSION,
+            privacy_version: CURRENT_PRIVACY_POLICY_VERSION,
+            agreed_at:       new Date().toISOString(),
+          },
+        },
+      },
     });
 
     if (signUpError) {
@@ -143,15 +164,20 @@ function LoginForm() {
       return;
     }
 
-    // セッション取得できた場合 → profiles に保存してリダイレクト
+    // セッション取得できた場合 → 同意ログ + プロフィール + 同意ゲートをサーバー側で記録してリダイレクト。
+    // 失敗してもブロッキングにはしない（万一失敗しても onboarding の同意ゲートで担保される）。
     try {
-      await fetch("/api/profiles/me", {
-        method: "PUT",
+      await fetch("/api/auth/register-consent", {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: username.trim() }),
+        body: JSON.stringify({
+          username: username.trim(),
+          terms_agreed: true,
+          privacy_agreed: true,
+        }),
       });
     } catch {
-      // profiles 保存失敗はブロッキングにしない
+      // 記録失敗はブロッキングにしない
     }
 
     window.location.href = nextPath;
@@ -203,7 +229,10 @@ function LoginForm() {
           {/* ── ユーザー名（登録モードのみ） ── */}
           {mode === "register" && (
             <div className="form-group">
-              <label className="form-label" htmlFor="username">ユーザー名</label>
+              <label className="form-label" htmlFor="username">
+                ユーザー名
+                <span style={{ color: "#dc2626", fontSize: 11, marginLeft: 6, fontWeight: 700 }}>必須</span>
+              </label>
               <input
                 id="username"
                 type="text"
@@ -220,7 +249,10 @@ function LoginForm() {
           )}
 
           <div className="form-group">
-            <label className="form-label" htmlFor="email">メールアドレス</label>
+            <label className="form-label" htmlFor="email">
+              メールアドレス
+              {mode === "register" && <span style={{ color: "#dc2626", fontSize: 11, marginLeft: 6, fontWeight: 700 }}>必須</span>}
+            </label>
             <input
               id="email"
               type="email"
@@ -234,7 +266,10 @@ function LoginForm() {
           </div>
 
           <div className="form-group">
-            <label className="form-label" htmlFor="password">パスワード</label>
+            <label className="form-label" htmlFor="password">
+              パスワード
+              {mode === "register" && <span style={{ color: "#dc2626", fontSize: 11, marginLeft: 6, fontWeight: 700 }}>必須</span>}
+            </label>
             <input
               id="password"
               type="password"
@@ -267,6 +302,38 @@ function LoginForm() {
               {confirmPassword.length > 0 && password !== confirmPassword && (
                 <span style={{ fontSize: 11, color: "#dc2626", marginTop: 2 }}>パスワードが一致しません</span>
               )}
+            </div>
+          )}
+
+          {/* ── 利用規約 / プライバシーポリシー同意（登録モードのみ・必須） ── */}
+          {mode === "register" && (
+            <div style={{ marginBottom: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+              <label style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 13, color: "#374151", lineHeight: 1.6 }}>
+                <input
+                  type="checkbox"
+                  checked={agreeTerms}
+                  onChange={(e) => setAgreeTerms(e.target.checked)}
+                  style={{ marginTop: 3 }}
+                />
+                <span>
+                  <a href="/terms" target="_blank" rel="noopener noreferrer" style={{ color: "#2563eb", textDecoration: "underline" }}>利用規約</a>
+                  に同意します
+                  <span style={{ color: "#dc2626", fontSize: 11, marginLeft: 6, fontWeight: 700 }}>必須</span>
+                </span>
+              </label>
+              <label style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 13, color: "#374151", lineHeight: 1.6 }}>
+                <input
+                  type="checkbox"
+                  checked={agreePrivacy}
+                  onChange={(e) => setAgreePrivacy(e.target.checked)}
+                  style={{ marginTop: 3 }}
+                />
+                <span>
+                  <a href="/privacy" target="_blank" rel="noopener noreferrer" style={{ color: "#2563eb", textDecoration: "underline" }}>プライバシーポリシー</a>
+                  に同意します
+                  <span style={{ color: "#dc2626", fontSize: 11, marginLeft: 6, fontWeight: 700 }}>必須</span>
+                </span>
+              </label>
             </div>
           )}
 
