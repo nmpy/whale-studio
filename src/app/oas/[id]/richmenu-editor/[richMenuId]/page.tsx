@@ -132,19 +132,40 @@ function buildLeftBig2(size: RichMenuSize): Omit<AreaDraft, "id">[] {
     tplArea({ x: hw, y: hh, width: LINE_W - hw, height: H - hh }, 2),
   ];
 }
+// 上1段（フル幅）+ 下3分割（大向け）
+function buildTop1Bot3(size: RichMenuSize): Omit<AreaDraft, "id">[] {
+  const H = hOf(size); const hh = Math.floor(H / 2); const sw = Math.floor(LINE_W / 3);
+  return [
+    tplArea({ x: 0,      y: 0,  width: LINE_W,        height: hh },     0),
+    tplArea({ x: 0,      y: hh, width: sw,            height: H - hh }, 1),
+    tplArea({ x: sw,     y: hh, width: sw,            height: H - hh }, 2),
+    tplArea({ x: sw * 2, y: hh, width: LINE_W - sw*2, height: H - hh }, 3),
+  ];
+}
+// 左右2分割（比率指定）。leftW で左領域幅を指定（左小/左大の作り分けに使う）。
+function build2colRatio(size: RichMenuSize, leftW: number): Omit<AreaDraft, "id">[] {
+  const H = hOf(size);
+  return [
+    tplArea({ x: 0,     y: 0, width: leftW,          height: H }, 0),
+    tplArea({ x: leftW, y: 0, width: LINE_W - leftW, height: H }, 1),
+  ];
+}
 
 const TEMPLATES: Template[] = [
   // ── 大（2500×1686）──
-  { id: "l-full",  label: "全面1ボタン", icon: "□",   size: "full", build: () => buildFullscreen("full") },
-  { id: "l-2row",  label: "上下2分割",   icon: "⊟",   size: "full", build: () => build2row("full") },
-  { id: "l-2col",  label: "左右2分割",   icon: "||",  size: "full", build: () => build2col("full") },
-  { id: "l-1big2", label: "左大+右2",    icon: "◧",   size: "full", build: () => buildLeftBig2("full") },
-  { id: "l-2x2",   label: "2×2",         icon: "⊞",   size: "full", build: () => build2x2("full") },
-  { id: "l-3x2",   label: "3列×2行",     icon: "⋮⋮⋮", size: "full", build: () => build3x2("full") },
+  { id: "l-full",     label: "全面1ボタン",   icon: "□",   size: "full", build: () => buildFullscreen("full") },
+  { id: "l-2row",     label: "上下2分割",     icon: "⊟",   size: "full", build: () => build2row("full") },
+  { id: "l-2col",     label: "左右2分割",     icon: "||",  size: "full", build: () => build2col("full") },
+  { id: "l-1big2",    label: "左大+右2",      icon: "◧",   size: "full", build: () => buildLeftBig2("full") },
+  { id: "l-top1bot3", label: "上1段+下3分割", icon: "⊓",   size: "full", build: () => buildTop1Bot3("full") },
+  { id: "l-2x2",      label: "2×2",           icon: "⊞",   size: "full", build: () => build2x2("full") },
+  { id: "l-3x2",      label: "3列×2行",       icon: "⋮⋮⋮", size: "full", build: () => build3x2("full") },
   // ── 小（2500×843）──
-  { id: "s-full",  label: "全面1ボタン", icon: "□",   size: "compact", build: () => buildFullscreen("compact") },
-  { id: "s-2col",  label: "2分割",       icon: "||",  size: "compact", build: () => build2col("compact") },
-  { id: "s-3col",  label: "3分割",       icon: "|||", size: "compact", build: () => build3col("compact") },
+  { id: "s-full",     label: "全面1ボタン",   icon: "□",   size: "compact", build: () => buildFullscreen("compact") },
+  { id: "s-2col",     label: "2分割",         icon: "||",  size: "compact", build: () => build2col("compact") },
+  { id: "s-3col",     label: "3分割",         icon: "|||", size: "compact", build: () => build3col("compact") },
+  { id: "s-2col-lsm", label: "左小+右大",     icon: "◨",   size: "compact", build: () => build2colRatio("compact", Math.floor(LINE_W / 3)) },
+  { id: "s-2col-llg", label: "左大+右小",     icon: "◧",   size: "compact", build: () => build2colRatio("compact", LINE_W - Math.floor(LINE_W / 3)) },
 ];
 
 // ────────────────────────────────────────────────
