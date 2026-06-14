@@ -6,7 +6,7 @@
  * - publicId が揃わないときは空文字（解決不可）
  */
 import { describe, it, expect, beforeAll } from "vitest";
-import { buildLiffPageUrl, buildLocationCheckinUrl } from "@/lib/liff/public-urls";
+import { buildLiffPageUrl, buildLocationCheckinUrl, buildWorkHomeLiffUrl } from "@/lib/liff/public-urls";
 
 beforeAll(() => {
   // window が無い node 環境では NEXT_PUBLIC_BASE_URL を origin として使う
@@ -26,6 +26,29 @@ describe("buildLiffPageUrl", () => {
 
   it("解決材料が無ければ空文字", () => {
     expect(buildLiffPageUrl({})).toBe("");
+  });
+});
+
+describe("buildWorkHomeLiffUrl", () => {
+  it("実機ホームURL は liffId + /w/{workPublicId}（bare にしない）", () => {
+    expect(buildWorkHomeLiffUrl({ liffId: "2010-abc", workPublicId: "wp123" }))
+      .toBe("https://liff.line.me/2010-abc/w/wp123");
+  });
+
+  it("publicId 無しは旧 /work/{workId} フォールバック", () => {
+    expect(buildWorkHomeLiffUrl({ liffId: "2010-abc", workId: "w-uuid" }))
+      .toBe("https://liff.line.me/2010-abc/work/w-uuid");
+  });
+
+  it("liffId が無ければ空文字（チェックインrouteや bare URL を出さない）", () => {
+    expect(buildWorkHomeLiffUrl({ workPublicId: "wp123" })).toBe("");
+    expect(buildWorkHomeLiffUrl({ liffId: "", workPublicId: "wp123" })).toBe("");
+  });
+
+  it("チェックインURL (/liff/c/) を含まない", () => {
+    const url = buildWorkHomeLiffUrl({ liffId: "2010-abc", workPublicId: "wp123" });
+    expect(url.includes("/liff/c/")).toBe(false);
+    expect(url.includes("/w/")).toBe(true);
   });
 });
 

@@ -24,6 +24,7 @@ import {
   type LiffPageSummary,
 } from "@/lib/api-client";
 import { LiffMenuHomeRenderer, type LiffMenuHomePage } from "@/components/liff/LiffMenuHomeRenderer";
+import { buildWorkHomeLiffUrl } from "@/lib/liff/public-urls";
 import { formatDateTime } from "./_shared";
 
 interface HomeInit {
@@ -133,7 +134,8 @@ export function HomeTab({ oaId, workId, workPublicId, workTitle, pages, homeInit
   const browserHomeUrl = origin
     ? (workPublicId ? `${origin}/liff/w/${workPublicId}` : `${origin}/liff/work/${workId}`)
     : "";
-  const realLiffUrl = liffId ? `https://liff.line.me/${liffId}` : "";
+  // 実機 LIFF URL は bare ではなく作品ホーム sub-path 付き（bare だとチェックイン入口等に落ちる）。
+  const realLiffUrl = buildWorkHomeLiffUrl({ liffId, workPublicId, workId });
 
   const copyUrl = useCallback(async (key: string, url: string) => {
     if (!url) return;

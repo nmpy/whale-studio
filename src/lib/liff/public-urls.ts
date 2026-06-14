@@ -43,3 +43,22 @@ export function buildLocationCheckinUrl(args: {
   if (!base || !args.workPublicId || !args.locationPublicId) return "";
   return `${base}/liff/c/${args.workPublicId}/${args.locationPublicId}`;
 }
+
+/** 作品ホーム（作品メニュー）を **LINE アプリで開く** 実機 LIFF URL。
+ *  形式: `https://liff.line.me/{liffId}{subpath}`。
+ *  LINE Developers の Endpoint URL = `{BASE}/liff` を前提に、liffId の後ろへ sub-path を付けると
+ *  LIFF アプリが `{BASE}/liff{subpath}` を開く（既存「実機で確認」と同方式）。
+ *  ホームの sub-path は `/w/{workPublicId}`（publicId 無しは旧 `/work/{workId}`）。
+ *  ※ bare `https://liff.line.me/{liffId}` は Endpoint 既定（チェックイン入口等）に落ちるため使わない。
+ *  liffId 不在なら空文字。 */
+export function buildWorkHomeLiffUrl(args: {
+  liffId?: string | null;
+  workPublicId?: string | null;
+  workId?: string | null;
+}): string {
+  const id = args.liffId?.trim();
+  if (!id) return "";
+  if (args.workPublicId) return `https://liff.line.me/${id}/w/${args.workPublicId}`;
+  if (args.workId)       return `https://liff.line.me/${id}/work/${args.workId}`;
+  return "";
+}
