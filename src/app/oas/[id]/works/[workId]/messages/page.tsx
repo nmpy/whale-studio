@@ -9,6 +9,7 @@ import { bootstrapApi, messageApi, workApi, getDevToken } from "@/lib/api-client
 import { getCachedBootstrap, setCachedBootstrap, invalidateBootstrap } from "@/lib/admin-bootstrap-cache";
 import { logAdminPerf, resourceSummary, maskId } from "@/lib/perf-client";
 import { HelpAccordion } from "@/components/HelpAccordion";
+import { Switch } from "@/components/Switch";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { useToast } from "@/components/Toast";
 import { ViewerBanner } from "@/components/PermissionGuard";
@@ -857,7 +858,7 @@ export default function MessagesPage() {
           </span>
         </button>
         <button type="button" style={tabStyle("welcome")} onClick={() => setActiveTab("welcome")}>
-          ⚙️ 共通設定
+          共通設定
           {welcomeMsg?.trim() ? (
             <span style={{
               fontSize: 10, fontWeight: 700,
@@ -927,7 +928,7 @@ export default function MessagesPage() {
               ))}
             </div>
             {followAction === "auto_start" && (
-              <p style={{ fontSize: 12, color: "#92400e", margin: "12px 0 0", lineHeight: 1.7 }}>
+              <p style={{ fontSize: 12, color: "#6b7280", margin: "12px 0 0", lineHeight: 1.7 }}>
                 この設定では友だち追加直後に本編が始まるため、あいさつメッセージは送信されません。
               </p>
             )}
@@ -965,19 +966,15 @@ export default function MessagesPage() {
               </div>
             </div>
 
-            {/* OA Manager 側との二重送信に関する注意書き */}
+            {/* OA Manager 側との二重送信に関する注意書き（ニュートラル表示） */}
             <div style={{
-              display: "flex", alignItems: "flex-start", gap: 8,
-              background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 8,
+              background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 8,
               padding: "10px 14px", marginBottom: 16,
-              fontSize: 12, color: "#92400e", lineHeight: 1.7,
+              fontSize: 12, color: "#6b7280", lineHeight: 1.7,
             }}>
-              <span aria-hidden="true">⚠️</span>
-              <span>
-                LINE Official Account Manager 側のあいさつメッセージが ON の場合、メッセージが二重で
-                送信される可能性があります。Whale Studio 側で管理する場合は、OA Manager 側の
-                あいさつメッセージを OFF にしてください。
-              </span>
+              LINE Official Account Manager 側のあいさつメッセージが ON の場合、メッセージが二重で
+              送信される可能性があります。Whale Studio 側で管理する場合は、OA Manager 側の
+              あいさつメッセージを OFF にしてください。
             </div>
 
             {editingWelcome ? (
@@ -1042,14 +1039,13 @@ export default function MessagesPage() {
             ) : (
               /* ── 未設定（このタブで設定開始・画面遷移なし） ── */
               <div style={{
-                background: "#fffbeb", border: "1px solid #fde68a",
+                background: "#ffffff", border: "1px solid #e5e7eb",
                 borderRadius: 10, padding: "24px 20px", textAlign: "center",
               }}>
-                <div style={{ fontSize: 32, marginBottom: 10 }}>📭</div>
-                <p style={{ fontWeight: 700, fontSize: 14, color: "#92400e", margin: "0 0 6px" }}>
+                <p style={{ fontWeight: 700, fontSize: 14, color: "#111827", margin: "0 0 6px" }}>
                   あいさつメッセージが未設定です
                 </p>
-                <p style={{ fontSize: 12, color: "#b45309", margin: "0 0 16px", lineHeight: 1.7 }}>
+                <p style={{ fontSize: 12, color: "#6b7280", margin: "0 0 16px", lineHeight: 1.7 }}>
                   あいさつメッセージが未設定のため、友だち追加時には案内文（既定文）のみが送信されます。<br />
                   ユーザーへの最初の接触なので、独自のあいさつ文を設定することをおすすめします。
                 </p>
@@ -1068,21 +1064,18 @@ export default function MessagesPage() {
             <div style={{ fontSize: 14, fontWeight: 700, color: "#111827", marginBottom: 8 }}>
               デフォルト設定
             </div>
-            <label
-              style={{
-                display: "flex", alignItems: "flex-start", gap: 8,
-                cursor: canEdit && !savingResume ? "pointer" : "default",
-                opacity: canEdit ? 1 : 0.6,
-              }}
-            >
-              <input
-                type="checkbox"
+            {/* checkbox → トグルスイッチ（見た目のみ・保存値/ハンドラ/API は不変）。 */}
+            <div style={{ display: "flex", alignItems: "flex-start", gap: 10, opacity: canEdit ? 1 : 0.6 }}>
+              <Switch
                 checked={resumeEnabled}
+                onChange={(v) => handleToggleResume(v)}
                 disabled={!canEdit || savingResume}
-                onChange={(e) => handleToggleResume(e.target.checked)}
-                style={{ marginTop: 3, flexShrink: 0 }}
+                ariaLabel="途中再開を有効にする"
               />
-              <span>
+              <span
+                style={{ cursor: canEdit && !savingResume ? "pointer" : "default" }}
+                onClick={() => { if (canEdit && !savingResume) handleToggleResume(!resumeEnabled); }}
+              >
                 <span style={{ fontSize: 13, fontWeight: 600, color: "#374151" }}>
                   途中再開を有効にする
                 </span>
@@ -1094,7 +1087,7 @@ export default function MessagesPage() {
                   無効にすると、途中状態があっても選択肢を出さず、最初から開始します。
                 </span>
               </span>
-            </label>
+            </div>
           </div>
         </div>
       )}
