@@ -928,6 +928,8 @@ export const LIFF_BLOCK_TYPES = [
   "heading", "text", "warning", "button_link", "divider", "accordion",
   // ── ロケーションチェックイン用 ──
   "code_reader",
+  // ── 謎・問題（到達済みの問題一覧） ──
+  "riddle_list",
 ] as const;
 
 export const VISIBILITY_CONDITIONS = [
@@ -1050,6 +1052,12 @@ const dividerSettingsSchema = z.object({
   style: z.enum(["solid", "dashed"]).optional(),
 }).passthrough();
 
+const riddleListSettingsSchema = z.object({
+  title:       z.string().max(100).optional(),
+  max_count:   z.number().int().min(1).max(100).optional(),
+  show_status: z.boolean().optional(),
+}).passthrough();
+
 const nestedBlockBaseSchema = z.object({
   id:            z.string().optional(),
   block_type:    liffBlockTypeSchema,
@@ -1089,6 +1097,7 @@ const SETTINGS_SCHEMA_MAP: Record<string, z.ZodTypeAny> = {
   divider:         dividerSettingsSchema,
   accordion:       accordionSettingsSchema,
   code_reader:     codeReaderSettingsSchema,
+  riddle_list:     riddleListSettingsSchema,
 };
 
 /**

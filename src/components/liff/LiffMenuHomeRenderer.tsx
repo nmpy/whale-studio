@@ -161,17 +161,20 @@ function MenuCardItem({
 
   const inner = isCompact ? (
     <>
-      <div className="text-[22px] leading-none shrink-0" aria-hidden="true">{card.icon}</div>
-      <div className="min-w-0 flex-1 text-[14px] font-bold leading-snug text-[color:var(--liff-primary-text)] truncate">
-        {card.label}
-      </div>
+      {/* 絵文字アイコンは廃止（テキストのみ）。ラベルが空なら見出しは出さない。 */}
+      {card.label && (
+        <div className="min-w-0 flex-1 text-[14px] font-bold leading-snug text-[color:var(--liff-primary-text)] truncate">
+          {card.label}
+        </div>
+      )}
     </>
   ) : (
     <>
-      <div className="text-[26px] leading-none mb-2" aria-hidden="true">{card.icon}</div>
-      <div className="text-[14px] font-bold leading-snug text-[color:var(--liff-primary-text)] line-clamp-2 break-words">
-        {card.label}
-      </div>
+      {card.label && (
+        <div className="text-[14px] font-bold leading-snug text-[color:var(--liff-primary-text)] line-clamp-2 break-words">
+          {card.label}
+        </div>
+      )}
       {page.description && (
         <div className="mt-1.5 text-[11px] leading-[1.5] text-[color:var(--liff-tertiary-text,#8C8C8C)] line-clamp-2 break-words">
           {page.description}

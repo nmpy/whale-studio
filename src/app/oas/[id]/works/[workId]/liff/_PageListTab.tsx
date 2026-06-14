@@ -73,7 +73,7 @@ export function PageListTab({
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap mb-1">
                       <span className="text-[15px] font-bold text-gray-900 truncate">
-                        {p.title?.trim() || "（無題）"}
+                        {p.title?.trim() || "タイトル未設定"}
                       </span>
                       <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border border-gray-200 bg-gray-50 text-gray-600">
                         {PAGE_TYPE_LABELS[p.page_type] ?? p.page_type}

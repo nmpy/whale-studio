@@ -21,10 +21,12 @@ import type {
   DividerSettings,
   AccordionSettings,
   CodeReaderSettings,
+  RiddleListSettings,
   NestedLiffBlock,
   LiffSectionVariant,
 } from "@/types";
 import { ImageUploadField } from "./ImageUploadField";
+import { MediaUploadButton } from "@/components/MediaUploadButton";
 import { useLiffEditorData } from "./LiffEditorContext";
 import { buildLiffPageUrl, buildLocationCheckinUrl } from "@/lib/liff/public-urls";
 
@@ -299,6 +301,7 @@ export function ImageBlockForm({ settings, onChange, readOnly }: FieldProps<Imag
 }
 
 export function VideoBlockForm({ settings, onChange, readOnly }: FieldProps<VideoBlockSettings>) {
+  const editor = useLiffEditorData();
   return (
     <div className="space-y-3">
       <div>
@@ -310,6 +313,16 @@ export function VideoBlockForm({ settings, onChange, readOnly }: FieldProps<Vide
           disabled={readOnly}
           placeholder="https://..."
         />
+        {/* 直接アップロード（mp4/mov/webm・最大50MB）。成功時 video_url に反映。手入力URLも併用可。
+            oaId/workId が取れる編集画面でのみ表示（Provider 不在時はURL入力のみ）。 */}
+        {editor && !readOnly && (
+          <MediaUploadButton
+            mediaType="video"
+            oaId={editor.oaId}
+            workId={editor.workId}
+            onUploaded={(url) => onChange({ ...settings, video_url: url })}
+          />
+        )}
       </div>
       <ImageUploadField
         label="ポスター画像（任意）"
@@ -650,6 +663,55 @@ export function ButtonLinkForm({ settings, onChange, readOnly }: FieldProps<Butt
           外部ブラウザで開く
         </label>
       </div>
+    </div>
+  );
+}
+
+export function RiddleListForm({ settings, onChange, readOnly }: FieldProps<RiddleListSettings>) {
+  return (
+    <div className="space-y-3">
+      <div>
+        <label className={labelClass}>表示タイトル</label>
+        <input
+          className={inputClass}
+          value={settings.title ?? ""}
+          onChange={(e) => onChange({ ...settings, title: e.target.value })}
+          disabled={readOnly}
+          placeholder="謎・問題"
+        />
+      </div>
+      <div>
+        <label className={labelClass}>最大表示件数（任意）</label>
+        <input
+          type="number"
+          className={`${inputClass} max-w-[160px]`}
+          value={settings.max_count ?? ""}
+          onChange={(e) => {
+            const raw = e.target.value;
+            if (raw === "") return onChange({ ...settings, max_count: undefined });
+            const n = Number(raw);
+            if (Number.isFinite(n)) onChange({ ...settings, max_count: Math.max(1, Math.min(100, Math.floor(n))) });
+          }}
+          disabled={readOnly}
+          min={1}
+          max={100}
+          placeholder="全件"
+        />
+        <p className="text-[11px] text-gray-400 mt-1">未指定なら到達済みの問題を全件表示します。</p>
+      </div>
+      <label className="flex items-center gap-2 text-sm text-gray-700">
+        <input
+          type="checkbox"
+          checked={settings.show_status !== false}
+          onChange={(e) => onChange({ ...settings, show_status: e.target.checked })}
+          disabled={readOnly}
+          className="rounded border-gray-300"
+        />
+        状態ラベル（出題中）を表示する
+      </label>
+      <p className="text-[11px] text-gray-400 -mt-1">
+        そのプレイヤーが到達した問題のみを表示します（未到達・他プレイヤーの問題は出ません）。回答は LINE のトーク画面で行います。
+      </p>
     </div>
   );
 }

@@ -51,7 +51,6 @@ import {
   AccordionBlock,
 } from "./renderers";
 import { trackHintSiteEvent } from "@/lib/liff-analytics";
-import { LiffShareButton } from "./LiffShareButton";
 import { liffRootClass, liffDescriptionAlignClass } from "./liff-style-helpers";
 
 interface Props {
@@ -110,11 +109,6 @@ export function HintSiteRenderer({ config, preview }: Props) {
             })
           )}
 
-          {settings.share_enabled && (
-            <div className="pt-6">
-              <LiffShareButton settings={settings} pageTitle={config.title || ""} preview={preview} />
-            </div>
-          )}
         </main>
       </div>
     </div>

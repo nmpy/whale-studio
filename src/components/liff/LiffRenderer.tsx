@@ -14,8 +14,8 @@ import type {
   DividerSettings,
   AccordionSettings,
   CodeReaderSettings,
+  RiddleListSettings,
 } from "@/types";
-import { LiffShareButton } from "./LiffShareButton";
 import {
   FreeTextBlock,
   StartButtonBlock,
@@ -33,6 +33,7 @@ import {
   DividerBlock,
   AccordionBlock,
   CodeReaderBlock,
+  RiddleListBlock,
 } from "./renderers";
 import type { Evidence, Hint, CharacterInfo } from "./renderers";
 import { liffRootClass } from "./liff-style-helpers";
@@ -106,6 +107,8 @@ function RenderBlock({ block, ctx, preview }: { block: LiffBlock; ctx: LiffRende
       return <AccordionBlock title={block.title} settings={s as AccordionSettings} depth={1} blockId={block.id} />;
     case "code_reader":
       return <CodeReaderBlock settings={s as CodeReaderSettings} preview={preview} blockId={block.id} />;
+    case "riddle_list":
+      return <RiddleListBlock title={block.title} settings={s as RiddleListSettings} />;
     default:
       return null;
   }
@@ -170,11 +173,7 @@ export function LiffRenderer({
           )}
         </div>
 
-        {settings?.share_enabled && (
-          <div className="pt-6">
-            <LiffShareButton settings={settings} pageTitle={title || ""} preview={preview} />
-          </div>
-        )}
+        {/* シェアボタンは廃止（settings.share_enabled は無視） */}
       </main>
     </div>
   );

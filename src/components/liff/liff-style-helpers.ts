@@ -187,7 +187,9 @@ export function defaultMenuIcon(pageType: LiffPageType): string {
 }
 
 /** メニューカードに出す表示文字列を解決する。
- *  優先順: settings.menu_label → settings.tab_label (旧) → page.title → 既定名 */
+ *  優先順: settings.menu_label → settings.tab_label (旧) → page.title。
+ *  いずれも空なら "" を返す（ページ種別の既定名 fallback は撤去＝タイトル任意化）。
+ *  pageType 引数は後方互換のため残す（既定名 fallback には使わない）。 */
 export function resolveMenuLabel(args: {
   pageType: LiffPageType;
   title?:   string | null;
@@ -199,7 +201,7 @@ export function resolveMenuLabel(args: {
   if (t) return t;
   const p = args.title?.trim();
   if (p) return p;
-  return defaultMenuLabel(args.pageType);
+  return "";
 }
 
 /** メニューカードのアイコン (emoji) を解決する。

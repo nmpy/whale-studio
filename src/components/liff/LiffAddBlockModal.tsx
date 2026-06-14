@@ -4,7 +4,7 @@
 // ブロック追加モーダル — レジストリからブロックタイプ一覧を表示
 
 import type { LiffBlockType } from "@/types";
-import { BLOCK_TYPE_REGISTRY, ALL_BLOCK_TYPES } from "./block-type-registry";
+import { BLOCK_TYPE_REGISTRY, ADDABLE_BLOCK_TYPES } from "./block-type-registry";
 
 interface Props {
   saving: boolean;
@@ -26,20 +26,18 @@ export function LiffAddBlockModal({ saving, onAdd, onClose }: Props) {
           ブロックを追加
         </h3>
         <div className="grid grid-cols-2 gap-2">
-          {ALL_BLOCK_TYPES.map((type) => {
+          {ADDABLE_BLOCK_TYPES.map((type) => {
             const entry = BLOCK_TYPE_REGISTRY[type];
             return (
               <button
                 key={type}
                 onClick={() => onAdd(type)}
                 disabled={saving}
-                className="flex items-center gap-2.5 p-3 bg-gray-50 rounded-lg border border-gray-200 cursor-pointer text-left hover:bg-brand-mist transition-colors disabled:opacity-50"
+                className="flex flex-col items-start gap-0.5 p-3 bg-gray-50 rounded-lg border border-gray-200 cursor-pointer text-left hover:bg-brand-mist transition-colors disabled:opacity-50"
               >
-                <span className="text-xl">{entry.icon}</span>
-                <div>
-                  <div className="text-sm font-semibold text-gray-900">{entry.label}</div>
-                  <div className="text-[11px] text-gray-500">{entry.description}</div>
-                </div>
+                {/* 絵文字アイコンは廃止（テキストのみ）。 */}
+                <div className="text-sm font-semibold text-gray-900">{entry.label}</div>
+                <div className="text-[11px] text-gray-500">{entry.description}</div>
               </button>
             );
           })}
