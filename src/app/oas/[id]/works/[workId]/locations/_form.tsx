@@ -99,6 +99,13 @@ export function LocationForm({ onSubmit, saving, workId, defaultValues }: Locati
   const [qrSuccessMessageId, setQrSuccessMessageId] = useState(defaultValues?.qr_success_message_id ?? "");
   const [setFlags, setSetFlags] = useState(defaultValues?.set_flags ?? "{}");
   const [isActive, setIsActive] = useState(defaultValues?.is_active ?? true);
+  // 分岐条件（set_flags JSON）は上級者向け。既に意味のある値があるときだけ初期展開する。
+  const [showFlags, setShowFlags] = useState(() => {
+    const t = (defaultValues?.set_flags ?? "").trim();
+    return !!t && t !== "{}";
+  });
+  // QRのみ方式のとき、座標は「参考（保存されない）」扱いで既定折りたたみ。
+  const [showCoordsRef, setShowCoordsRef] = useState(false);
   // Stamp
   const [stampEnabled, setStampEnabled] = useState(defaultValues?.stamp_enabled ?? true);
   const [stampLabel, setStampLabel] = useState(defaultValues?.stamp_label ?? "");
@@ -185,16 +192,10 @@ export function LocationForm({ onSubmit, saving, workId, defaultValues }: Locati
     onSubmit(data);
   };
 
-  // GPS 方式が未選択のときに座標セクションに出す案内
-  const needGpsNote = (
-    <p style={{ fontSize: 12, color: "#9ca3af", lineHeight: 1.7 }}>
-      「チェックイン方式」で <strong>GPS のみ</strong> または <strong>QR + GPS</strong> を選ぶと、地図・座標で設定できます。
-    </p>
-  );
-
-  // 右側固定パネル: マップ検索 + Google Map（GPS 方式時のみ）。検索/クリック/ドラッグはすべて
-  // handleMapLocationChange → フォーム state に集約され、左の座標欄・地図ピン・範囲円が同期する。
-  const mapPanel = needsGps ? (
+  // 右側固定パネル: マップ検索 + Google Map。チェックイン方式に関係なく常時表示する
+  // （QRのみでも位置確認・検索・クリック・ドラッグ・座標手入力が可能）。検索/クリック/ドラッグは
+  // すべて handleMapLocationChange → フォーム state に集約され、左の座標欄・地図ピン・範囲円が同期する。
+  const mapPanel = (
     <div style={{ display: "flex", flexDirection: "column", gap: 12, border: "1px solid #e5e7eb", borderRadius: 12, padding: 14, background: "#fff" }}>
       <PlaceSearchInput onSelect={(ll) => handleMapLocationChange(ll.lat, ll.lng)} />
       <LocationMapPicker
@@ -206,7 +207,66 @@ export function LocationForm({ onSubmit, saving, workId, defaultValues }: Locati
         height={460}
       />
     </div>
-  ) : null;
+  );
+
+  // 座標入力欄（緯度・経度・許容半径）。GPS方式では常時展開、QRのみでは参考用の折りたたみ内に出す。
+  // どちらも同じ state / handler を共有し、保存仕様は不変。
+  const coordFields = (
+    <>
+      <div style={{ display: "flex", gap: 12 }}>
+        <div style={{ flex: 1 }}>
+          <label style={labelStyle}>緯度 <span style={subLabel}>— 中心座標</span></label>
+          <input style={{ ...inputStyle, borderColor: latInvalid ? "#fca5a5" : "#d1d5db" }} type="number" step="any" min="-90" max="90" value={latitude} onChange={(e) => setLatitude(e.target.value)} placeholder="35.6812" />
+          {latInvalid && <p style={{ fontSize: 11, color: "#dc2626", marginTop: 2 }}>-90〜90 の範囲で入力してください</p>}
+        </div>
+        <div style={{ flex: 1 }}>
+          <label style={labelStyle}>経度 <span style={subLabel}>— 中心座標</span></label>
+          <input style={{ ...inputStyle, borderColor: lngInvalid ? "#fca5a5" : "#d1d5db" }} type="number" step="any" min="-180" max="180" value={longitude} onChange={(e) => setLongitude(e.target.value)} placeholder="139.7671" />
+          {lngInvalid && <p style={{ fontSize: 11, color: "#dc2626", marginTop: 2 }}>-180〜180 の範囲で入力してください</p>}
+        </div>
+      </div>
+      <div>
+        <label style={labelStyle}>許容半径（m） <span style={subLabel}>— この範囲内ならチェックイン成功</span></label>
+        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          <input
+            id="radius_meters_input"
+            style={{ ...inputStyle, width: 100, flex: "none" }}
+            type="number" min="1" max="10000" value={radiusMeters}
+            onChange={(e) => setRadiusMeters(e.target.value)}
+            onInput={(e) => setRadiusMeters((e.target as HTMLInputElement).value)}
+          />
+          <input type="range" min={10} max={500} step={5} value={radiusNum || 50} onChange={(e) => setRadiusMeters(e.target.value)} style={{ flex: 1, accentColor: "#2563eb" }} />
+        </div>
+        {radiusWarning && <p style={{ fontSize: 12, color: "#d97706", marginTop: 2 }}>{radiusWarning}</p>}
+        <p style={helpStyle}>右の地図の検索・クリック・ピンドラッグ、またはこの欄の手入力のいずれでも更新されます。範囲は地図上の円で確認できます。</p>
+      </div>
+    </>
+  );
+
+  // ── 「この設定で起きること」フローカード用の派生値 ──
+  // 保存仕様には一切影響しない、現在のフォーム入力の読み取り専用サマリー。
+  const selTransition = transitions.find((t) => t.id === transitionId);
+  const selMessage = messages.find((m) => m.id === qrSuccessMessageId);
+  const flagsConfigured = !!setFlags.trim() && setFlags.trim() !== "{}";
+  const qrInvolved = checkinMode === "qr_only" || checkinMode === "qr_and_gps";
+  const checkinTrigger =
+    checkinMode === "gps_only" ? "ユーザーが指定範囲内に入る"
+    : checkinMode === "qr_and_gps" ? "ユーザーがQRを読み取り、かつ指定範囲内にいる"
+    : "ユーザーが現地のQRコードを読み取る";
+  // 進行ステップ（チェックイン成功は常に先頭）。任意設定があるぶんだけ後続が増える。
+  const flowSteps: React.ReactNode[] = [`${checkinTrigger}と、チェックインが成功します。`];
+  if (qrInvolved && selMessage) {
+    flowSteps.push(<>QRチェックイン時に、LINEトークへ「<strong>{formatMessageOptionLabel(selMessage)}</strong>」を送信します。</>);
+  } else if (qrInvolved && qrSuccessMessageId) {
+    flowSteps.push(<>QRチェックイン時に、LINEトークへ選択中のメッセージを送信します。</>);
+  }
+  if (selTransition) {
+    flowSteps.push(<>ユーザーが遷移元フェーズにいる場合、「<strong>{selTransition.to_phase?.name ?? "?"}</strong>」へ進みます。</>);
+  }
+  if (flagsConfigured) {
+    flowSteps.push(<>分岐条件（上級者向け設定）を記録します。</>);
+  }
+  const noFollowUp = flowSteps.length === 1;
 
   return (
     <form onSubmit={handleSubmit}>
@@ -290,15 +350,32 @@ export function LocationForm({ onSubmit, saving, workId, defaultValues }: Locati
           </Section>
 
           <Section id="success-action" label="成功時アクション">
-            <div style={groupStyle}>
-              <label style={labelStyle}>チェックイン時に設定するフラグ（JSON）</label>
-              <textarea
-                style={{ ...inputStyle, fontFamily: "monospace", fontSize: 13, minHeight: 60, borderColor: !jsonCheck.valid ? "#fca5a5" : "#d1d5db" }}
-                value={setFlags} onChange={(e) => setSetFlags(e.target.value)} placeholder='{"visited_lobby": true}'
-              />
-              {!jsonCheck.valid && <p style={{ fontSize: 12, color: "#dc2626", marginTop: 2 }}>{jsonCheck.message}</p>}
-              <p style={helpStyle}>UserProgress.flags にマージされます。</p>
-            </div>
+            {/* 分岐条件（set_flags JSON）は上級者向け。既定では折りたたみ、JSON が不正なときは
+                送信がブロックされるため強制的に開いてエラーを見せる（保存仕様は不変）。 */}
+            <CollapsibleSection
+              title="分岐条件を記録する"
+              subtitle="上級者向け"
+              open={showFlags || !jsonCheck.valid}
+              onToggle={() => setShowFlags(!showFlags)}
+            >
+              <div>
+                <label style={labelStyle}>チェックイン後に記録する分岐条件</label>
+                <textarea
+                  style={{ ...inputStyle, fontFamily: "monospace", fontSize: 13, minHeight: 60, borderColor: !jsonCheck.valid ? "#fca5a5" : "#d1d5db" }}
+                  value={setFlags} onChange={(e) => setSetFlags(e.target.value)} placeholder='{"visited_lobby": true}'
+                />
+                {!jsonCheck.valid && (
+                  <p style={{ fontSize: 12, color: "#dc2626", marginTop: 2 }}>
+                    入力形式が正しくありません（例: <code>{`{"visited_lobby": true}`}</code>）。{jsonCheck.message}
+                  </p>
+                )}
+                <p style={helpStyle}>
+                  チェックインしたユーザーに、あとでストーリー分岐に使える目印（フラグ）を記録できます。
+                  キーと値の組み合わせで指定します（例: <code>{`{"visited_lobby": true}`}</code>）。
+                  通常は空欄のままで問題ありません。
+                </p>
+              </div>
+            </CollapsibleSection>
             <div style={groupStyle}>
               <label style={labelStyle}>クールダウン（秒）</label>
               <input style={inputStyle} type="number" min="0" max="86400" value={cooldownSeconds} onChange={(e) => setCooldownSeconds(e.target.value)} />
@@ -311,67 +388,90 @@ export function LocationForm({ onSubmit, saving, workId, defaultValues }: Locati
             <p style={{ fontSize: 11, color: "#9ca3af", lineHeight: 1.6 }}>将来拡張: 報酬付与・ヒント解放などのアクションは今後追加予定です。</p>
           </Section>
 
-          <Section id="phase-target" label="フェーズ指定">
-            <label style={labelStyle}>チェックイン時に発火する遷移</label>
-            <select style={inputStyle} value={transitionId} onChange={(e) => setTransitionId(e.target.value)}>
-              <option value="">なし</option>
-              {transitions.map((t) => (
-                <option key={t.id} value={t.id}>{t.label} → {t.to_phase?.name ?? "?"}</option>
-              ))}
-            </select>
-            <p style={helpStyle}>遷移元フェーズが現在フェーズと一致する場合のみ発火します。</p>
+          {/* チェックイン後の進行（旧「フェーズ指定」+「メッセージ指定」を統合）。
+              選択肢の中身・保存先（transition_id / qr_success_message_id）は不変。文言と見せ方のみ変更。 */}
+          <Section id="post-checkin-flow" label="チェックイン後の進行">
+            <p style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.7, margin: "0 0 14px" }}>
+              チェックインに成功したあと、ユーザーをどう進めるかを設定します。どちらも任意です（未設定なら何も起きません）。
+            </p>
+
+            <div style={groupStyle}>
+              <label style={labelStyle}>チェックイン後に進めるフェーズ <span style={subLabel}>— 任意</span></label>
+              <select style={inputStyle} value={transitionId} onChange={(e) => setTransitionId(e.target.value)}>
+                <option value="">進めない</option>
+                {transitions.map((t) => (
+                  <option key={t.id} value={t.id}>{t.label} → {t.to_phase?.name ?? "?"}</option>
+                ))}
+              </select>
+              <p style={helpStyle}>
+                ユーザーが現在この遷移の入口（遷移元フェーズ）にいる場合だけ、指定したフェーズへ進みます。
+              </p>
+            </div>
+
+            <div style={groupStyle}>
+              <label style={labelStyle}>QRチェックイン成功時に送るメッセージ <span style={subLabel}>— 任意</span></label>
+              <select style={inputStyle} value={qrSuccessMessageId} onChange={(e) => setQrSuccessMessageId(e.target.value)}>
+                <option value="">送信しない</option>
+                {qrSuccessMessageId && !messages.some((m) => m.id === qrSuccessMessageId) && (
+                  <option value={qrSuccessMessageId}>（選択中のメッセージ: 表示できません）</option>
+                )}
+                {messages.map((m) => (
+                  <option key={m.id} value={m.id}>{formatMessageOptionLabel(m)}</option>
+                ))}
+              </select>
+              <p style={helpStyle}>
+                QRでチェックインしたときにLINEトークへ送るメッセージを選びます。GPSチェックインのみの場合は送信されません。
+                「送信しない」で解除できます。OAのScan QRがOFFのときも送信されません。
+              </p>
+            </div>
           </Section>
 
-          <Section id="message-target" label="メッセージ指定">
-            <label style={labelStyle}>QR成功時に送るメッセージ</label>
-            <select style={inputStyle} value={qrSuccessMessageId} onChange={(e) => setQrSuccessMessageId(e.target.value)}>
-              <option value="">送信しない</option>
-              {qrSuccessMessageId && !messages.some((m) => m.id === qrSuccessMessageId) && (
-                <option value={qrSuccessMessageId}>（選択中のメッセージ: 表示できません）</option>
+          {/* この設定で起きること（読み取り専用プレビュー）。現在のフォーム入力から動的に組み立てる。
+              新しい保存先・API・scenario-flow データは追加しない。 */}
+          <Section id="outcome-preview" label="この設定で起きること">
+            <div style={{ padding: "14px 16px", border: "1px solid #dbeafe", borderRadius: 10, background: "#f8fafc" }}>
+              <p style={{ fontSize: 12, fontWeight: 600, color: "#1e3a8a", margin: "0 0 10px" }}>
+                {name.trim() ? `「${name.trim()}」で起きること` : "この地点で起きること"}
+              </p>
+              <ol style={{ margin: 0, paddingLeft: 20, display: "flex", flexDirection: "column", gap: 6 }}>
+                {flowSteps.map((step, i) => (
+                  <li key={i} style={{ fontSize: 13, color: "#374151", lineHeight: 1.7 }}>{step}</li>
+                ))}
+              </ol>
+              {noFollowUp && (
+                <p style={{ fontSize: 12, color: "#9ca3af", lineHeight: 1.7, margin: "10px 0 0" }}>
+                  チェックイン成功のみ記録され、自動の進行・メッセージ送信はありません。
+                  上の「チェックイン後の進行」で設定を追加できます。
+                </p>
               )}
-              {messages.map((m) => (
-                <option key={m.id} value={m.id}>{formatMessageOptionLabel(m)}</option>
-              ))}
-            </select>
-            <p style={helpStyle}>
-              LIFFでこのロケーションのQRを読み取ったとき、LINEトークに送信するメッセージを選択します。
-              「送信しない」で解除できます。OAのScan QRがOFFの場合、このメッセージは送信されません。
-            </p>
+            </div>
           </Section>
 
           <Section id="coordinates" label="座標">
             {needsGps ? (
+              // GPS を含む方式: 座標は判定に使われるため常時展開＋必須チェック（従来どおり）。
               <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                <div style={{ display: "flex", gap: 12 }}>
-                  <div style={{ flex: 1 }}>
-                    <label style={labelStyle}>緯度 <span style={subLabel}>— 中心座標</span></label>
-                    <input style={{ ...inputStyle, borderColor: latInvalid ? "#fca5a5" : "#d1d5db" }} type="number" step="any" min="-90" max="90" value={latitude} onChange={(e) => setLatitude(e.target.value)} placeholder="35.6812" />
-                    {latInvalid && <p style={{ fontSize: 11, color: "#dc2626", marginTop: 2 }}>-90〜90 の範囲で入力してください</p>}
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <label style={labelStyle}>経度 <span style={subLabel}>— 中心座標</span></label>
-                    <input style={{ ...inputStyle, borderColor: lngInvalid ? "#fca5a5" : "#d1d5db" }} type="number" step="any" min="-180" max="180" value={longitude} onChange={(e) => setLongitude(e.target.value)} placeholder="139.7671" />
-                    {lngInvalid && <p style={{ fontSize: 11, color: "#dc2626", marginTop: 2 }}>-180〜180 の範囲で入力してください</p>}
-                  </div>
-                </div>
-                <div>
-                  <label style={labelStyle}>許容半径（m） <span style={subLabel}>— この範囲内ならチェックイン成功</span></label>
-                  <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                    <input
-                      id="radius_meters_input"
-                      style={{ ...inputStyle, width: 100, flex: "none" }}
-                      type="number" min="1" max="10000" value={radiusMeters}
-                      onChange={(e) => setRadiusMeters(e.target.value)}
-                      onInput={(e) => setRadiusMeters((e.target as HTMLInputElement).value)}
-                    />
-                    <input type="range" min={10} max={500} step={5} value={radiusNum || 50} onChange={(e) => setRadiusMeters(e.target.value)} style={{ flex: 1, accentColor: "#2563eb" }} />
-                  </div>
-                  {radiusWarning && <p style={{ fontSize: 12, color: "#d97706", marginTop: 2 }}>{radiusWarning}</p>}
-                  <p style={helpStyle}>右の地図の検索・クリック・ピンドラッグ、またはこの欄の手入力のいずれでも更新されます。範囲は地図上の円で確認できます。</p>
-                </div>
+                {coordFields}
                 {gpsIncomplete && <p style={{ fontSize: 12, color: "#dc2626" }}>この方式では緯度・経度・半径がすべて必要です</p>}
               </div>
-            ) : needGpsNote}
+            ) : (
+              // QRのみ: 座標は保存されない参考情報。既定で折りたたみ、見出しで非保存を明示。
+              // 右の地図は常時表示。開けば手入力も可能だが、必須化はしない（validation 不変）。
+              <>
+                <p style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.7, margin: "0 0 10px" }}>
+                  「QRのみ」方式では座標はチェックイン判定に使われず、<strong>保存もされません</strong>。
+                  右の地図は位置確認・検索の参考用です。GPSを含む方式にすると座標が保存され、範囲内判定に使われます。
+                </p>
+                <CollapsibleSection
+                  title="座標を参考表示する（地図の位置）"
+                  subtitle="参考 — 保存されません"
+                  open={showCoordsRef}
+                  onToggle={() => setShowCoordsRef(!showCoordsRef)}
+                >
+                  {coordFields}
+                </CollapsibleSection>
+              </>
+            )}
           </Section>
 
           <Section id="history" label="履歴">
@@ -396,12 +496,10 @@ export function LocationForm({ onSubmit, saving, workId, defaultValues }: Locati
           </Button>
         </div>
 
-        {/* 右: マップ検索 + Google Map（PC sticky / SP は下に通常表示）。GPS 方式時のみ */}
-        {needsGps && (
-          <aside className="loc-map-aside" style={{ flex: "0 0 420px", position: "sticky", top: 24, alignSelf: "flex-start" }}>
-            {mapPanel}
-          </aside>
-        )}
+        {/* 右: マップ検索 + Google Map（PC sticky / SP は下に通常表示）。全方式で常時表示 */}
+        <aside className="loc-map-aside" style={{ flex: "0 0 420px", position: "sticky", top: 24, alignSelf: "flex-start" }}>
+          {mapPanel}
+        </aside>
       </div>
     </form>
   );
