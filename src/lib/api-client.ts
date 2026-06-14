@@ -957,24 +957,19 @@ export const uploadApi = {
   },
 
   /**
-   * 動画 / 音声を Supabase Storage（bucket: image / media 配下）へアップロードして public URL を返す。
-   * POST /api/upload/media — multipart/form-data { file, mediaType, oaId, workId }
+   * 動画 / 音声アップロード用の Supabase signed upload URL を発行する（本体は送らない）。
+   * POST /api/upload/media — JSON { mediaType, mimeType, size, fileName, workId, oaId }
+   * クライアントは返却 token で Supabase へ直接アップロードする（src/lib/media-upload.ts）。
    * 既存の画像アップロード（uploadImage / uploadToStorage）には影響しない。
    */
-  async uploadMedia(
+  async requestMediaUploadUrl(
     token: string,
-    file:  File,
-    meta:  { mediaType: "video" | "audio"; oaId: string; workId: string }
-  ): Promise<{ url: string }> {
-    const body = new FormData();
-    body.append("file",      file);
-    body.append("mediaType", meta.mediaType);
-    body.append("oaId",      meta.oaId);
-    body.append("workId",    meta.workId);
+    meta:  { mediaType: "video" | "audio"; mimeType: string; size: number; fileName: string; oaId: string; workId: string }
+  ): Promise<{ bucket: string; path: string; token: string; signedUrl: string; publicUrl: string }> {
     const res = await fetch("/api/upload/media", {
       method:  "POST",
-      headers: { Authorization: `Bearer ${token}` },
-      body,
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body:    JSON.stringify(meta),
     });
     return parseResponse(res);
   },

@@ -6,14 +6,16 @@
 // 既存の画像アップロード（ImageUploader）には影響しない。POST /api/upload/media を使う。
 
 import { useRef, useState } from "react";
-import { uploadApi, getDevToken } from "@/lib/api-client";
+import { uploadMediaFile } from "@/lib/media-upload";
 
 // クライアント側の許可 MIME（サーバ /api/upload/media と整合）。
 const VIDEO_MIME = ["video/mp4", "video/quicktime", "video/webm"];
 const AUDIO_MIME = ["audio/mpeg", "audio/mp3", "audio/mp4", "audio/x-m4a", "audio/aac", "audio/wav", "audio/x-wav"];
 const VIDEO_ACCEPT = "video/mp4,video/quicktime,video/webm";
 const AUDIO_ACCEPT = "audio/mpeg,audio/mp4,audio/x-m4a,audio/wav,audio/aac";
-const MAX_BYTES = 4 * 1024 * 1024; // 4 MB（サーバ上限と整合 / Vercel body 上限内）
+// signed upload URL 方式（クライアント直アップロード）のため Vercel body 上限に縛られない。
+const VIDEO_MAX = 50 * 1024 * 1024; // 50 MB
+const AUDIO_MAX = 20 * 1024 * 1024; // 20 MB
 
 export function MediaUploadButton({
   mediaType, oaId, workId, onUploaded, disabled,
@@ -32,6 +34,7 @@ export function MediaUploadButton({
   const label = isVideo ? "動画をアップロード" : "音声をアップロード";
   const accept = isVideo ? VIDEO_ACCEPT : AUDIO_ACCEPT;
   const allowed = isVideo ? VIDEO_MIME : AUDIO_MIME;
+  const maxBytes = isVideo ? VIDEO_MAX : AUDIO_MAX;
 
   async function handleFile(file: File | undefined | null) {
     setError(null);
@@ -42,18 +45,15 @@ export function MediaUploadButton({
       return;
     }
     if (file.size === 0) { setError("ファイルが空です"); return; }
-    if (file.size > MAX_BYTES) {
-      setError(`ファイルサイズは ${(MAX_BYTES / 1024 / 1024).toFixed(0)} MB 以下にしてください（受信: ${(file.size / 1024 / 1024).toFixed(1)} MB）`);
+    if (file.size > maxBytes) {
+      setError(`ファイルサイズは ${(maxBytes / 1024 / 1024).toFixed(0)} MB 以下にしてください（受信: ${(file.size / 1024 / 1024).toFixed(1)} MB）`);
       return;
     }
     setUploading(true);
     try {
-      const { url } = await uploadApi.uploadMedia(getDevToken(), file, { mediaType, oaId, workId });
-      if (url && /^https?:\/\//i.test(url)) {
-        onUploaded(url);
-      } else {
-        setError("アップロード結果のURLが不正です");
-      }
+      // signed upload URL を取得 → ブラウザから Supabase へ直接アップロード → public URL を反映。
+      const url = await uploadMediaFile(file, { mediaType, oaId, workId });
+      onUploaded(url);
     } catch (e) {
       setError(e instanceof Error ? e.message : "アップロードに失敗しました");
     } finally {
@@ -85,7 +85,7 @@ export function MediaUploadButton({
         {uploading ? "アップロード中…" : `⬆ ${label}`}
       </button>
       <span style={{ fontSize: 10, color: "#9ca3af", marginLeft: 8 }}>
-        最大4MB（{isVideo ? "mp4 / mov / webm" : "mp3 / m4a / wav / aac"}）。手入力も可。
+        {isVideo ? "最大50MB・mp4 推奨" : "最大20MB・mp3 / m4a 推奨"}。手入力も可。
       </span>
       {error && <p style={{ fontSize: 11, color: "#dc2626", marginTop: 4 }}>{error}</p>}
     </div>

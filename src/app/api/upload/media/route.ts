@@ -1,39 +1,34 @@
 // src/app/api/upload/media/route.ts
-// POST /api/upload/media — 動画 / 音声ファイルを Supabase Storage にアップロードして public URL を返す。
+// POST /api/upload/media — 動画 / 音声アップロード用の Supabase signed upload URL を発行する。
 //
-// 既存の画像アップロード（/api/upload = Cloudinary, /api/upload/storage = Supabase image）には触らない。
-// 画像とは保存パスを分離（messages/media/{mediaType}/...）して混在を防ぐ。
+// このルートは「ファイル本体を受け取らない」。メタ情報（mediaType / mimeType / size / fileName / workId）を
+// 受け取り、認証・権限・MIME・サイズを検証したうえで、署名付きアップロードURL（token）と保存先 path、
+// 保存後に使う public URL を返す。クライアントは受け取った token で Supabase Storage に直接アップロードする
+// （= Vercel serverless の request body 上限 ~4.5MB を回避し、大容量の動画/音声を扱える）。
 //
-// 環境変数（/api/upload/storage と同じ）:
-//   NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY（推奨）/ NEXT_PUBLIC_SUPABASE_ANON_KEY
+// 既存の画像アップロード（/api/upload = Cloudinary, /api/upload/storage）には一切触らない。
+// 画像とは保存パス（messages/media/{mediaType}/...）で分離する。
 //
-// Storage バケット: image（既存の public bucket を再利用。動画/音声は media/ 配下に保存）
-//
-// リクエスト: multipart/form-data
-//   file       — 動画 / 音声ファイル
-//   mediaType  — "video" | "audio"
-//   oaId       — OA ID（パス生成用）
-//   workId     — 作品 ID（パス生成用）
-//
-// レスポンス: { success: true, data: { url: "https://..." } }
-//
-// サイズ上限: Vercel serverless function の request body 上限（約 4.5 MB）に収めるため 4 MB。
-//   これより大きい動画/音声は、クライアント直アップロード（signed upload URL）方式が別途必要。
+// 環境変数: NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY（推奨）/ NEXT_PUBLIC_SUPABASE_ANON_KEY
+// Storage バケット: image（既存 public bucket を再利用）
 
 import { NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { withAuth } from "@/lib/auth";
-import { ok, badRequest, serverError } from "@/lib/api-response";
+import { prisma } from "@/lib/prisma";
+import { requireRole } from "@/lib/rbac";
+import { getCachedOaById } from "@/lib/oa-cache";
+import { ok, badRequest, notFound, serverError } from "@/lib/api-response";
 
-const BUCKET = "image"; // 既存の public bucket を再利用（media/ 配下に保存して画像と分離）
+const BUCKET = "image"; // 既存 public bucket を再利用（media/ 配下で画像と分離）
 
-// mediaType ごとの許可 MIME と拡張子。LINE 安定送信を考慮し mp4 / mp3 / m4a を優先しつつ候補を許容。
-const VIDEO_TYPES: Record<string, string> = {
-  "video/mp4":        "mp4",
-  "video/quicktime":  "mov",
-  "video/webm":       "webm",
+// mediaType ごとの許可 MIME → 保存拡張子。LINE 安定送信を考慮し mp4 / mp3 / m4a を優先（UI 側で推奨表示）。
+const VIDEO_EXT: Record<string, string> = {
+  "video/mp4":       "mp4",
+  "video/quicktime": "mov",
+  "video/webm":      "webm",
 };
-const AUDIO_TYPES: Record<string, string> = {
+const AUDIO_EXT: Record<string, string> = {
   "audio/mpeg":  "mp3",
   "audio/mp3":   "mp3",
   "audio/mp4":   "m4a",
@@ -43,86 +38,93 @@ const AUDIO_TYPES: Record<string, string> = {
   "audio/x-wav": "wav",
 };
 
-// Vercel serverless の request body 上限（~4.5MB）内に収める安全側の上限。
-const MAX_BYTES = 4 * 1024 * 1024; // 4 MB（動画・音声共通）
+// クライアント直アップロードのため Vercel body 上限に縛られない。目標上限を設定。
+const VIDEO_MAX = 50 * 1024 * 1024; // 50 MB
+const AUDIO_MAX = 20 * 1024 * 1024; // 20 MB
 
-export const POST = withAuth(async (req: NextRequest) => {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const activeKey   = process.env.SUPABASE_SERVICE_ROLE_KEY
-                   ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-  if (!supabaseUrl || !activeKey) {
-    console.error("[media-upload] Supabase 環境変数が不足",
-      { supabaseUrl: !!supabaseUrl, activeKey: !!activeKey });
-    return serverError(
-      "Supabase 環境変数が設定されていません（NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY）"
-    );
-  }
-
-  let formData: FormData;
+export const POST = withAuth(async (req, _ctx, user) => {
   try {
-    formData = await req.formData();
-  } catch {
-    return badRequest("multipart/form-data の解析に失敗しました");
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const serviceKey  = process.env.SUPABASE_SERVICE_ROLE_KEY
+                     ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    if (!supabaseUrl || !serviceKey) {
+      return serverError("Supabase 環境変数が設定されていません（NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY）");
+    }
+
+    let body: { mediaType?: unknown; mimeType?: unknown; size?: unknown; fileName?: unknown; workId?: unknown };
+    try {
+      body = await req.json();
+    } catch {
+      return badRequest("リクエストボディ（JSON）の解析に失敗しました");
+    }
+
+    const mediaType = body.mediaType;
+    const mimeType  = typeof body.mimeType === "string" ? body.mimeType : "";
+    const size      = typeof body.size === "number" ? body.size : NaN;
+    const workId    = typeof body.workId === "string" ? body.workId : "";
+
+    // ── mediaType 検証（video / audio 以外は拒否） ──
+    if (mediaType !== "video" && mediaType !== "audio") {
+      return badRequest('mediaType は "video" または "audio" を指定してください');
+    }
+    // ── MIME × mediaType 整合性 ──
+    const extMap = mediaType === "video" ? VIDEO_EXT : AUDIO_EXT;
+    const ext = extMap[mimeType];
+    if (!ext) {
+      const label = mediaType === "video" ? "動画（mp4 / mov / webm）" : "音声（mp3 / m4a / wav / aac）";
+      return badRequest(`対応形式は ${label} のみです（受信: "${mimeType}"）`);
+    }
+    // ── サイズ検証 ──
+    const max = mediaType === "video" ? VIDEO_MAX : AUDIO_MAX;
+    if (!Number.isFinite(size) || size <= 0) {
+      return badRequest("ファイルサイズが不正です");
+    }
+    if (size > max) {
+      return badRequest(`ファイルサイズは ${(max / 1024 / 1024).toFixed(0)} MB 以下にしてください（受信: ${(size / 1024 / 1024).toFixed(1)} MB）`);
+    }
+
+    // ── 作品存在確認 + oaId 取得（oaId はクライアント値を信用せず DB から導出） ──
+    if (!workId) return badRequest("workId が必要です");
+    const work = await prisma.work.findUnique({ where: { id: workId }, select: { id: true, oaId: true } });
+    if (!work) return notFound("作品");
+
+    // ── 権限確認（メッセージ作成と同等の role）。未認証/権限なしは requireRole が拒否。 ──
+    const oaId = work.oaId;
+    if (oaId) {
+      const cachedOa = await getCachedOaById(oaId);
+      if (!cachedOa) return notFound("OA");
+      const check = await requireRole(oaId, user.id, "tester", { preloadedOa: { ownerKey: cachedOa.ownerKey } });
+      if (!check.ok) return check.response;
+    }
+
+    // ── 安全な保存パス生成（元ファイル名は使わず uuid + 拡張子。oaId/workId は DB 値で traversal 不可） ──
+    const uuid = (globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    const path = `messages/media/${mediaType}/${oaId ?? "nooa"}/${work.id}/${uuid}.${ext}`;
+
+    // ── signed upload URL 発行（service role）。本体はここを通らない。 ──
+    const supabase = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
+    const { data, error } = await supabase.storage.from(BUCKET).createSignedUploadUrl(path);
+    if (error || !data) {
+      console.error("[media-upload] createSignedUploadUrl エラー:", error);
+      return serverError(`アップロードURLの発行に失敗しました${error ? `: ${error.message}` : ""}`);
+    }
+
+    const { data: pub } = supabase.storage.from(BUCKET).getPublicUrl(path);
+    const publicUrl = pub.publicUrl;
+    if (!/^https:\/\//i.test(publicUrl)) {
+      return serverError("生成された public URL が不正です");
+    }
+
+    // signedUrl 自体は保存値にしない。保存値に使うのは恒久 public URL のみ（クライアントへ明示）。
+    return ok({
+      bucket:    BUCKET,
+      path,
+      token:     data.token,
+      signedUrl: data.signedUrl,
+      publicUrl,
+    });
+  } catch (err) {
+    console.error("[media-upload] 予期しないエラー:", err);
+    return serverError("アップロードURLの発行に失敗しました");
   }
-
-  const file      = formData.get("file");
-  const mediaType = (formData.get("mediaType") as string | null) ?? "";
-  const oaId      = (formData.get("oaId")   as string | null) ?? "unknown";
-  const workId    = (formData.get("workId") as string | null) ?? "unknown";
-
-  // 想定外の mediaType は拒否。
-  if (mediaType !== "video" && mediaType !== "audio") {
-    return badRequest('mediaType は "video" または "audio" を指定してください');
-  }
-
-  if (!(file instanceof File)) {
-    return badRequest("file フィールドが必要です（multipart/form-data、field name='file'）");
-  }
-
-  // mediaType と MIME の整合性チェック（動画欄に音声 / 音声欄に動画 を弾く）。
-  const allowed = mediaType === "video" ? VIDEO_TYPES : AUDIO_TYPES;
-  const ext = allowed[file.type];
-  if (!ext) {
-    const label = mediaType === "video" ? "動画（mp4 / mov / webm）" : "音声（mp3 / m4a / wav / aac）";
-    return badRequest(`対応形式は ${label} のみです（受信: "${file.type}"）`);
-  }
-
-  if (file.size === 0) {
-    return badRequest("ファイルが空です");
-  }
-
-  if (file.size > MAX_BYTES) {
-    return badRequest(
-      `ファイルサイズは ${(MAX_BYTES / 1024 / 1024).toFixed(0)} MB 以下にしてください（受信: ${(file.size / 1024 / 1024).toFixed(2)} MB）`
-    );
-  }
-
-  // ファイル名は信用せず、安全な文字へ正規化 + timestamp + ランダム suffix で衝突回避。
-  const baseName = file.name
-    .replace(/\.[^.]+$/, "")
-    .replace(/[^a-zA-Z0-9._-]/g, "_")
-    .slice(0, 50) || "media";
-  const suffix = Math.random().toString(36).slice(2, 7);
-  // 画像（messages/{oaId}/...）と分離するため media/{mediaType}/ を挟む。
-  const path = `messages/media/${mediaType}/${oaId}/${workId}/${Date.now()}-${suffix}-${baseName}.${ext}`;
-
-  const supabase = createClient(supabaseUrl, activeKey, { auth: { persistSession: false } });
-  const arrayBuffer = await file.arrayBuffer();
-
-  console.log(`[media-upload] アップロード開始 path=${path} size=${file.size} type=${file.type}`);
-
-  const { error: uploadError } = await supabase.storage
-    .from(BUCKET)
-    .upload(path, arrayBuffer, { contentType: file.type, upsert: false });
-
-  if (uploadError) {
-    console.error("[media-upload] Supabase Storage エラー:", uploadError);
-    return serverError(`アップロードに失敗しました: ${uploadError.message}`);
-  }
-
-  const { data: { publicUrl } } = supabase.storage.from(BUCKET).getPublicUrl(path);
-  console.log(`[media-upload] 成功 url=${publicUrl}`);
-
-  return ok({ url: publicUrl });
 });
