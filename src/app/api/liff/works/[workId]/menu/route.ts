@@ -50,6 +50,21 @@ export async function GET(
       );
     }
 
+    // character_list ブロック用に作品の有効キャラクターを同梱（編集プレビュー・実機ホーム共通）。
+    const characterRows = await prisma.character.findMany({
+      where:   { workId: work.id, isActive: true },
+      orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+      select:  { id: true, name: true, iconType: true, iconText: true, iconImageUrl: true, iconColor: true },
+    });
+    const characters = characterRows.map((c) => ({
+      id:             c.id,
+      name:           c.name,
+      icon_type:      c.iconType,
+      icon_text:      c.iconText,
+      icon_image_url: c.iconImageUrl,
+      icon_color:     c.iconColor,
+    }));
+
     const configs = await prisma.liffPageConfig.findMany({
       where: {
         workId: work.id,
@@ -76,6 +91,7 @@ export async function GET(
           home_title:       home.title,
           home_description: home.description,
           home_image_url:   home.image_url,
+          characters,
           pages:      [],
         },
       });
@@ -89,6 +105,7 @@ export async function GET(
         home_title:       home.title,
         home_description: home.description,
         home_image_url:   home.image_url,
+        characters,
         pages: configs.map((config) => ({
           id:             config.id,
           public_id:      config.publicId,

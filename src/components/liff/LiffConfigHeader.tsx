@@ -97,9 +97,15 @@ export function LiffConfigHeader({
         </div>
       </div>
 
-      <div className="bg-white rounded-xl border border-gray-200 p-5 mb-6">
-        <div className="flex items-center gap-3 mb-4">
-          <label className={labelCls + " mb-0"}>ページ種別</label>
+      {/* ページ設定 — ページ種別 / ヘッダータイトル / 説明 / フォント / 説明文の配置 / シェアボタン。
+          ※「LIFFページタイトル(config.title)」入力はヘッダータイトルに一本化したため UI から除外。
+            既存 title 値は保存時に上書きしない（onLocalChange({title}) を呼ばない）。 */}
+      <div className="bg-white rounded-xl border border-gray-200 p-5 mb-6 space-y-4">
+        <h2 className="text-sm font-semibold text-gray-900">ページ設定</h2>
+
+        {/* 1. ページ種別 */}
+        <div>
+          <label className={labelCls}>ページ種別</label>
           <select
             // 表示上は "hint" を選択状態として正規化する（旧 "hint_site" 互換）
             value={mode}
@@ -115,57 +121,10 @@ export function LiffConfigHeader({
             <option value="character">キャラクター</option>
             <option value="werewolf">人狼（配役閲覧）</option>
           </select>
-          <span className="text-[11px] text-gray-400">
-            ※モードによって編集 UI とプレイヤー表示が切り替わります
-          </span>
+          <p className="text-[11px] text-gray-400 mt-1">※モードによって編集 UI とプレイヤー表示が切り替わります</p>
         </div>
 
-        <div className="mb-3">
-          <label className={labelCls}>LIFFページタイトル</label>
-          <input
-            className={inputCls}
-            value={config.title ?? ""}
-            onChange={(e) => onLocalChange({ title: e.target.value || null })}
-            disabled={readOnly}
-            placeholder={
-              isHint   ? "例: ヒント"
-              : isFaq    ? "例: FAQ"
-              : isSurvey ? "例: アンケート"
-              : mode === "location" ? "例: 履歴"
-              : "例: トップ"
-            }
-            maxLength={10}
-          />
-          {(() => {
-            const len = (config.title ?? "").length;
-            const over = len > 10;
-            return (
-              <p className={`text-[11px] mt-1 ${over ? "text-red-600" : "text-gray-400"}`}>
-                最大 10 文字（現在 {len} / 10 文字）
-                {over && "  ※ 10 文字以内に編集してください。このまま保存しようとするとエラーになります。"}
-              </p>
-            );
-          })()}
-        </div>
-        <div>
-          <label className={labelCls}>説明</label>
-          <input
-            className={inputCls}
-            value={config.description ?? ""}
-            onChange={(e) => onLocalChange({ description: e.target.value || null })}
-            disabled={readOnly}
-            placeholder="任意の説明文"
-          />
-        </div>
-      </div>
-
-      {/* ページデザイン設定（全モード共通）—— LINE Design System 準拠の基本トークンを切り替える。
-          ヘッダータイトル / フォント / 説明文配置の 3 種。block-level の見出しレベル・太さは各ブロックで指定。 */}
-      <div className="bg-white rounded-xl border border-gray-200 p-5 mb-6 space-y-3">
-        <h2 className="text-sm font-semibold text-gray-900">ページデザイン</h2>
-
-        {/* ヘッダータイトル: LIFF 画面上部に表示するテキスト。
-            設定がなければ作品名 → LIFF ページ名へフォールバック (renderer 側で処理)。 */}
+        {/* 2. ヘッダータイトル */}
         <div>
           <label className={labelCls}>ヘッダータイトル</label>
           <input
@@ -176,11 +135,22 @@ export function LiffConfigHeader({
             placeholder="例: チェックイン / 設定資料 / ご案内"
             maxLength={30}
           />
-          <p className="text-[11px] text-gray-400 mt-1">
-            LIFF 画面上部に表示されるタイトルです。未設定時は作品名が使われます。
-          </p>
+          <p className="text-[11px] text-gray-400 mt-1">LIFF 画面上部に表示されるタイトルです。未設定時は作品名が使われます。</p>
         </div>
 
+        {/* 3. 説明 */}
+        <div>
+          <label className={labelCls}>説明</label>
+          <input
+            className={inputCls}
+            value={config.description ?? ""}
+            onChange={(e) => onLocalChange({ description: e.target.value || null })}
+            disabled={readOnly}
+            placeholder="任意の説明文"
+          />
+        </div>
+
+        {/* 4-5. フォント / 説明文の配置 */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label className={labelCls}>フォント</label>
@@ -197,9 +167,7 @@ export function LiffConfigHeader({
               <option value="noto_sans_jp">Noto Sans JP</option>
               <option value="serif">Serif（明朝）</option>
             </select>
-            <p className="text-[11px] text-gray-400 mt-1">
-              LIFF 画面全体の本文フォントです。未設定は LINE Seed JP。
-            </p>
+            <p className="text-[11px] text-gray-400 mt-1">LIFF 画面全体の本文フォントです。未設定は LINE Seed JP。</p>
           </div>
           <div>
             <label className={labelCls}>説明文の配置</label>
@@ -213,18 +181,61 @@ export function LiffConfigHeader({
               <option value="center">中央寄せ（既定）</option>
               <option value="right">右寄せ</option>
             </select>
-            <p className="text-[11px] text-gray-400 mt-1">
-              description テキストの揃え。未設定は中央寄せ。
-            </p>
+            <p className="text-[11px] text-gray-400 mt-1">description テキストの揃え。未設定は中央寄せ。</p>
           </div>
+        </div>
+
+        {/* 6. シェアボタン */}
+        <div className="pt-3 border-t border-gray-100 space-y-3">
+          <label className="flex items-center gap-2 text-sm text-gray-700">
+            <input
+              type="checkbox"
+              checked={settings.share_enabled ?? false}
+              onChange={(e) => updateSetting("share_enabled", e.target.checked)}
+              disabled={readOnly}
+              className="rounded border-gray-300"
+            />
+            シェアボタンを表示する
+          </label>
+          <p className="text-[11px] text-gray-400 -mt-1">
+            ON にすると、LIFF プレイヤー画面下部にシェアボタンが表示されます。タップすると LINE の友だち / グループ選択画面が開きます。
+          </p>
+          {settings.share_enabled && (
+            <div className="space-y-3 pt-1">
+              <div>
+                <label className={labelCls}>ボタン文言</label>
+                <input
+                  className={inputCls}
+                  value={settings.share_button_label ?? ""}
+                  onChange={(e) => updateSetting("share_button_label", e.target.value)}
+                  disabled={readOnly}
+                  placeholder="友だちにシェアする"
+                  maxLength={100}
+                />
+                <p className="text-[11px] text-gray-400 mt-1">未設定時は「友だちにシェアする」が使われます。</p>
+              </div>
+              <div>
+                <label className={labelCls}>シェアメッセージ</label>
+                <textarea
+                  className={`${inputCls} resize-y min-h-[80px]`}
+                  value={settings.share_message ?? ""}
+                  onChange={(e) => updateSetting("share_message", e.target.value)}
+                  disabled={readOnly}
+                  placeholder="例: 都市奇譚ヒントサイトをチェックしてみてください！"
+                  rows={3}
+                  maxLength={1000}
+                />
+                <p className="text-[11px] text-gray-400 mt-1">
+                  未設定時は「ページタイトル + 現在の LIFF ページ URL」が送信されます。
+                </p>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* 作品メニューホーム (グリッドカード) でこのページがどう表示されるかを制御。
-          - show_in_menu = false なら カードを並べない
-          - menu_label   = カードに出す文言 (未設定なら LIFF ページ名)
-          - menu_icon    = カード左上に出す絵文字
-          - menu_order   = カードの並び順 (小さい順) */}
+      {/* 作品メニューでの表示 — 表示有無 + カード名のみ。並び順・絵文字は「LIFF設定 → ホーム」タブで管理する。
+          （menu_order / menu_icon の入力は UI から除外。既存 settings_json の値は保存時に保持される） */}
       <div className="bg-white rounded-xl border border-gray-200 p-5 mb-6 space-y-3">
         <h2 className="text-sm font-semibold text-gray-900">作品メニューでの表示</h2>
 
@@ -242,119 +253,25 @@ export function LiffConfigHeader({
           OFF にすると、LIFF トップメニュー (`/liff/w/...`) のカード一覧から除外されます。個別 URL (`.../p/...`) を直接開いた場合の表示は維持されます。
         </p>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
-          <div className="sm:col-span-2">
-            <label className={labelCls}>カード名（メニューに表示）</label>
-            <input
-              className={inputCls}
-              value={settings.menu_label ?? ""}
-              onChange={(e) => updateSetting("menu_label", e.target.value)}
-              disabled={readOnly}
-              placeholder={
-                mode === "hint"      ? "例: ヒント"
-                : mode === "location"  ? "例: ロケーション"
-                : mode === "survey"    ? "例: アンケート"
-                : mode === "character" ? "例: キャラクター"
-                : mode === "faq"       ? "例: FAQ"
-                : "例: メニュー"
-              }
-              maxLength={30}
-            />
-            <p className="text-[11px] text-gray-400 mt-1">未設定時は LIFF ページタイトル → ページ種別の既定名にフォールバック。</p>
-          </div>
-          <div>
-            <label className={labelCls}>アイコン（絵文字）</label>
-            <input
-              className={inputCls}
-              value={settings.menu_icon ?? ""}
-              onChange={(e) => updateSetting("menu_icon", e.target.value)}
-              disabled={readOnly}
-              placeholder={
-                mode === "hint"      ? "💡"
-                : mode === "location"  ? "📍"
-                : mode === "survey"    ? "📝"
-                : mode === "character" ? "🎭"
-                : mode === "faq"       ? "❓"
-                : "📄"
-              }
-              maxLength={8}
-            />
-            <p className="text-[11px] text-gray-400 mt-1">未設定時はページ種別の既定絵文字。</p>
-          </div>
-        </div>
-
         <div>
-          <label className={labelCls}>並び順</label>
+          <label className={labelCls}>カード名（メニューに表示）</label>
           <input
-            type="number"
-            className={`${inputCls} max-w-[160px]`}
-            value={settings.menu_order ?? ""}
-            onChange={(e) => {
-              const raw = e.target.value;
-              if (raw === "") {
-                updateSetting("menu_order", undefined);
-              } else {
-                const n = Number(raw);
-                if (Number.isFinite(n)) updateSetting("menu_order", Math.max(0, Math.min(9999, Math.floor(n))));
-              }
-            }}
+            className={inputCls}
+            value={settings.menu_label ?? ""}
+            onChange={(e) => updateSetting("menu_label", e.target.value)}
             disabled={readOnly}
-            min={0}
-            max={9999}
-            placeholder="例: 1"
+            placeholder={
+              mode === "hint"      ? "例: ヒント"
+              : mode === "location"  ? "例: ロケーション"
+              : mode === "survey"    ? "例: アンケート"
+              : mode === "character" ? "例: キャラクター"
+              : mode === "faq"       ? "例: FAQ"
+              : "例: メニュー"
+            }
+            maxLength={30}
           />
-          <p className="text-[11px] text-gray-400 mt-1">小さい数字ほど前に出ます。未設定は末尾。</p>
+          <p className="text-[11px] text-gray-400 mt-1">未設定時はページ種別の既定名にフォールバック。並び順・表示形式は「LIFF設定 → ホーム」タブで調整できます。</p>
         </div>
-      </div>
-
-      {/* シェアボタン設定（全モード共通） */}
-      <div className="bg-white rounded-xl border border-gray-200 p-5 mb-6 space-y-4">
-        <h2 className="text-sm font-semibold text-gray-900">シェアボタン</h2>
-        <label className="flex items-center gap-2 text-sm text-gray-700">
-          <input
-            type="checkbox"
-            checked={settings.share_enabled ?? false}
-            onChange={(e) => updateSetting("share_enabled", e.target.checked)}
-            disabled={readOnly}
-            className="rounded border-gray-300"
-          />
-          シェアボタンを表示する
-        </label>
-        <p className="text-[11px] text-gray-400 -mt-2">
-          ON にすると、LIFF プレイヤー画面下部にシェアボタンが表示されます。タップすると LINE の友だち / グループ選択画面が開きます。
-        </p>
-
-        {settings.share_enabled && (
-          <div className="space-y-3 pt-1">
-            <div>
-              <label className={labelCls}>ボタン文言</label>
-              <input
-                className={inputCls}
-                value={settings.share_button_label ?? ""}
-                onChange={(e) => updateSetting("share_button_label", e.target.value)}
-                disabled={readOnly}
-                placeholder="友だちにシェアする"
-                maxLength={100}
-              />
-              <p className="text-[11px] text-gray-400 mt-1">未設定時は「友だちにシェアする」が使われます。</p>
-            </div>
-            <div>
-              <label className={labelCls}>シェアメッセージ</label>
-              <textarea
-                className={`${inputCls} resize-y min-h-[80px]`}
-                value={settings.share_message ?? ""}
-                onChange={(e) => updateSetting("share_message", e.target.value)}
-                disabled={readOnly}
-                placeholder="例: 都市奇譚ヒントサイトをチェックしてみてください！"
-                rows={3}
-                maxLength={1000}
-              />
-              <p className="text-[11px] text-gray-400 mt-1">
-                未設定時は「ページタイトル + 現在の LIFF ページ URL」が送信されます。
-              </p>
-            </div>
-          </div>
-        )}
       </div>
 
       {isFaq && (

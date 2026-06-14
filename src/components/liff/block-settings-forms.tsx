@@ -25,6 +25,8 @@ import type {
   LiffSectionVariant,
 } from "@/types";
 import { ImageUploadField } from "./ImageUploadField";
+import { useLiffEditorData } from "./LiffEditorContext";
+import { buildLiffPageUrl, buildLocationCheckinUrl } from "@/lib/liff/public-urls";
 
 type FieldProps<T> = {
   settings: T;
@@ -482,7 +484,51 @@ export function WarningForm({ settings, onChange, readOnly }: FieldProps<Warning
   );
 }
 
+const BUTTON_PAGE_TYPE_LABELS: Record<string, string> = {
+  default: "プレイヤー向け", hint: "ヒント", hint_site: "ヒント", faq: "FAQ",
+  survey: "アンケート", location: "履歴", character: "キャラクター", werewolf: "人狼",
+};
+const BUTTON_CHECKIN_LABELS: Record<string, string> = {
+  qr_only: "QR", gps_only: "GPS", gps_qr: "GPS+QR", beacon: "ビーコン",
+};
+
 export function ButtonLinkForm({ settings, onChange, readOnly }: FieldProps<ButtonLinkSettings>) {
+  // 編集データ（同一作品の LIFFページ/ロケーション）。Provider が無い文脈では null → 外部URLのみ。
+  const editor = useLiffEditorData();
+  // 後方互換: link_type 未指定の既存データは external として扱う。
+  const linkType: "external" | "liff_page" | "location" = settings.link_type ?? "external";
+
+  const setLinkType = (next: "external" | "liff_page" | "location") => {
+    // 既存 url は保持（external へ戻しても編集可能なまま）。タイプ外の id 参照だけクリア。
+    onChange({
+      ...settings,
+      link_type: next,
+      ...(next !== "liff_page" ? { liff_page_id: undefined } : {}),
+      ...(next !== "location"  ? { location_id:  undefined } : {}),
+    });
+  };
+
+  const selectPage = (id: string) => {
+    const p = editor?.pages.find((x) => x.id === id);
+    const url = p
+      ? buildLiffPageUrl({ workId: editor?.workId, workPublicId: editor?.workPublicId, pageId: p.id, pagePublicId: p.public_id })
+      : "";
+    // url が解決できたときのみ url を更新（解決不可なら既存 url を保持）。
+    onChange({ ...settings, link_type: "liff_page", liff_page_id: id || undefined, ...(url ? { url } : {}) });
+  };
+
+  const selectLocation = (id: string) => {
+    const l = editor?.locations.find((x) => x.id === id);
+    const url = l ? buildLocationCheckinUrl({ workPublicId: editor?.workPublicId, locationPublicId: l.public_id }) : "";
+    onChange({ ...settings, link_type: "location", location_id: id || undefined, ...(url ? { url } : {}) });
+  };
+
+  // 選択済み参照が一覧に無い（削除済み等）かの判定。取得完了後のみ「見つからない」と断定する。
+  const pageMissing = linkType === "liff_page" && !!settings.liff_page_id
+    && (editor?.loaded ?? false) && !editor?.pages.some((p) => p.id === settings.liff_page_id);
+  const locMissing = linkType === "location" && !!settings.location_id
+    && (editor?.loaded ?? false) && !editor?.locations.some((l) => l.id === settings.location_id);
+
   return (
     <div className="space-y-3">
       <div>
@@ -495,16 +541,90 @@ export function ButtonLinkForm({ settings, onChange, readOnly }: FieldProps<Butt
           placeholder="チケットを購入する"
         />
       </div>
-      <div>
-        <label className={labelClass}>URL</label>
-        <input
-          className={inputClass}
-          value={settings.url ?? ""}
-          onChange={(e) => onChange({ ...settings, url: e.target.value })}
-          disabled={readOnly}
-          placeholder="https://..."
-        />
-      </div>
+
+      {/* 遷移先タイプ — 編集データがある場合のみ LIFFページ/ロケーションを選べる。 */}
+      {editor && (
+        <div>
+          <label className={labelClass}>遷移先タイプ</label>
+          <select
+            className={selectClass}
+            value={linkType}
+            onChange={(e) => setLinkType(e.target.value as "external" | "liff_page" | "location")}
+            disabled={readOnly}
+          >
+            <option value="external">外部URL</option>
+            <option value="liff_page">LIFFページ</option>
+            <option value="location">ロケーション</option>
+          </select>
+        </div>
+      )}
+
+      {/* external（既存挙動。Provider が無い文脈でも常にこれを表示＝後方互換） */}
+      {linkType === "external" && (
+        <div>
+          <label className={labelClass}>URL</label>
+          <input
+            className={inputClass}
+            value={settings.url ?? ""}
+            onChange={(e) => onChange({ ...settings, url: e.target.value })}
+            disabled={readOnly}
+            placeholder="https://..."
+          />
+        </div>
+      )}
+
+      {/* LIFFページ選択 */}
+      {linkType === "liff_page" && editor && (
+        <div>
+          <label className={labelClass}>遷移先 LIFFページ</label>
+          <select
+            className={selectClass}
+            value={settings.liff_page_id ?? ""}
+            onChange={(e) => selectPage(e.target.value)}
+            disabled={readOnly}
+          >
+            <option value="">選択してください</option>
+            {editor.pages.map((p) => (
+              <option key={p.id} value={p.id}>
+                {(p.title?.trim() || "（無題）")}（{BUTTON_PAGE_TYPE_LABELS[p.page_type] ?? p.page_type}）
+              </option>
+            ))}
+          </select>
+          {pageMissing && (
+            <p className="text-[12px] text-amber-700 mt-1">
+              選択済みのページが見つかりません（削除された可能性があります）。{settings.url ? "現在のリンク先は保持されています。" : ""}
+            </p>
+          )}
+          {settings.url && <p className="text-[11px] text-gray-400 mt-1 break-all">リンク先: {settings.url}</p>}
+        </div>
+      )}
+
+      {/* ロケーション選択 */}
+      {linkType === "location" && editor && (
+        <div>
+          <label className={labelClass}>遷移先ロケーション</label>
+          <select
+            className={selectClass}
+            value={settings.location_id ?? ""}
+            onChange={(e) => selectLocation(e.target.value)}
+            disabled={readOnly}
+          >
+            <option value="">選択してください</option>
+            {editor.locations.map((l) => (
+              <option key={l.id} value={l.id}>
+                {l.name}{l.checkin_mode ? `（${BUTTON_CHECKIN_LABELS[l.checkin_mode] ?? l.checkin_mode}）` : ""}
+              </option>
+            ))}
+          </select>
+          {locMissing && (
+            <p className="text-[12px] text-amber-700 mt-1">
+              選択済みのロケーションが見つかりません（削除された可能性があります）。{settings.url ? "現在のリンク先は保持されています。" : ""}
+            </p>
+          )}
+          {settings.url && <p className="text-[11px] text-gray-400 mt-1 break-all">リンク先: {settings.url}</p>}
+        </div>
+      )}
+
       <div className="grid grid-cols-2 gap-3">
         <div>
           <label className={labelClass}>variant</label>

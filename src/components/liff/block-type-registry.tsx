@@ -147,7 +147,7 @@ export const BLOCK_TYPE_REGISTRY: Record<LiffBlockType, BlockTypeEntry> = {
     label:           "ボタンリンク",
     icon:            "🔘",
     description:     "リンクボタンを表示",
-    defaultSettings: { label: "", url: "", open_external: true, variant: "default" } satisfies ButtonLinkSettings,
+    defaultSettings: { label: "", url: "", open_external: true, variant: "default", link_type: "external" } satisfies ButtonLinkSettings,
     SettingsForm:    ButtonLinkForm as ComponentType<SettingsFormProps<any>>,
   },
   divider: {

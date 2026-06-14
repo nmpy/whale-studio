@@ -1370,10 +1370,18 @@ export interface WarningSettings {
 
 export interface ButtonLinkSettings {
   label?: string;
+  /** 解決済みの遷移先 URL（renderer はこの値を使う）。
+   *  link_type が liff_page / location のときも、選択時に実URLへ解決してここに格納する。 */
   url?: string;
   /** 外部リンクとして開くか（LIFF外で開く） */
   open_external?: boolean;
   variant?: LiffSectionVariant;
+  /** 遷移先タイプ。未指定（既存データ）は "external" として扱う（後方互換）。 */
+  link_type?: "external" | "liff_page" | "location";
+  /** link_type="liff_page" のとき選択された LIFF ページの ID（参照保持・再表示用）。 */
+  liff_page_id?: string;
+  /** link_type="location" のとき選択されたロケーションの ID（参照保持・再表示用）。 */
+  location_id?: string;
 }
 
 export interface DividerSettings {

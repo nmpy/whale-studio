@@ -19,6 +19,8 @@ import { useEffect, useState, useMemo } from "react";
 import type { LiffPageBlock, LiffPageConfig } from "@/types";
 import { LiffMenuHomeRenderer, type LiffMenuHomePage } from "./LiffMenuHomeRenderer";
 import { LiffSinglePageRenderer, type LiffSinglePage } from "./LiffSinglePageRenderer";
+import type { LiffRenderContext } from "./LiffRenderer";
+import type { CharacterInfo } from "./renderers";
 
 interface Props {
   blocks: LiffPageBlock[];
@@ -34,6 +36,7 @@ interface MenuApiResponse {
   data?: {
     work_id:    string;
     work_title: string;
+    characters?: CharacterInfo[];
     pages:      LiffMenuHomePage[];
   };
 }
@@ -73,6 +76,8 @@ export function LiffPreview({
 }: Props) {
   // ── work 配下の他ページを取得 (preview=1 で draft も含める) ────────────────
   const [siblings, setSiblings] = useState<LiffMenuHomePage[]>([]);
+  // character_list ブロックのプレビュー表示用（作品のキャラクター）。
+  const [characters, setCharacters] = useState<CharacterInfo[]>([]);
 
   useEffect(() => {
     if (!workId) return;
@@ -84,9 +89,10 @@ export function LiffPreview({
         if (cancelled) return;
         if (json.success && json.data) {
           setSiblings(json.data.pages);
+          setCharacters(json.data.characters ?? []);
         }
       } catch {
-        if (!cancelled) setSiblings([]);
+        if (!cancelled) { setSiblings([]); setCharacters([]); }
       }
     })();
     return () => { cancelled = true; };
@@ -142,6 +148,14 @@ export function LiffPreview({
   );
 
   if (activePage) {
+    const defaultPageCtx: LiffRenderContext = {
+      userState: "before_start",
+      progress:  { current: 0, total: 1 },
+      evidences: [],
+      hints:     [],
+      characters,
+      canResume: false,
+    };
     return frame(
       <LiffSinglePageRenderer
         workId={workId ?? "preview"}
@@ -149,6 +163,7 @@ export function LiffPreview({
         page={activePage}
         preview
         onBack={() => setViewingPageId(null)}
+        defaultPageCtx={defaultPageCtx}
       />
     );
   }

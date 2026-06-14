@@ -30,28 +30,36 @@ const PURPLE_LEGACY_CLS =
 
 export function ButtonLinkBlock({ settings, blockId }: Props) {
   const playerCtx = useLiffPlayerContext();
-  if (!settings.url || !settings.label) return null;
+  // 防御: settings 不在 / url・label 未設定（link_type に関わらず url が解決済みでなければ非表示）。
+  // link_type が未指定の既存データは external 相当として url をそのまま使う（後方互換）。
+  if (!settings || !settings.url || !settings.label) return null;
 
   const variant = (settings.variant ?? "default") as LiffSectionVariant;
   const target = settings.open_external ? "_blank" : undefined;
   const rel    = settings.open_external ? "noopener noreferrer" : undefined;
 
+  // クリック計測。trackHintSiteEvent / recordLiffEvent は内部で例外を握りつぶすが、
+  // 念のためハンドラ全体も try/catch で包み、クリックが原因で画面が落ちないようにする。
   const handleClick = () => {
-    trackHintSiteEvent("cta_click", { url: settings.url, label: settings.label, source: "block" });
-    if (playerCtx && !playerCtx.preview) {
-      recordLiffEvent({
-        workId:     playerCtx.workId,
-        pageId:     playerCtx.pageId,
-        blockId,
-        lineUserId: playerCtx.lineUserId,
-        eventType:  "button_click",
-        metadata:   {
-          source:        "button_link",
-          label:         settings.label,
-          url:           settings.url,
-          open_external: !!settings.open_external,
-        },
-      });
+    try {
+      trackHintSiteEvent("cta_click", { url: settings.url, label: settings.label, source: "block" });
+      if (playerCtx && !playerCtx.preview) {
+        recordLiffEvent({
+          workId:     playerCtx.workId,
+          pageId:     playerCtx.pageId,
+          blockId,
+          lineUserId: playerCtx.lineUserId,
+          eventType:  "button_click",
+          metadata:   {
+            source:        "button_link",
+            label:         settings.label,
+            url:           settings.url,
+            open_external: !!settings.open_external,
+          },
+        });
+      }
+    } catch {
+      // 計測失敗はユーザー操作（リンク遷移）を阻害しない。
     }
   };
 

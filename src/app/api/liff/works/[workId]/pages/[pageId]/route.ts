@@ -71,6 +71,14 @@ export async function GET(
       );
     }
 
+    // キャラクター一覧ブロック (character_list) 用に、作品の有効キャラクターを同梱する。
+    // CharacterInfo 形状（id/name/icon_*）。renderer の ctx.characters に流す。
+    const characters = await prisma.character.findMany({
+      where:   { workId: work.id, isActive: true },
+      orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+      select:  { id: true, name: true, iconType: true, iconText: true, iconImageUrl: true, iconColor: true },
+    });
+
     return NextResponse.json({
       success: true,
       data: {
@@ -84,6 +92,14 @@ export async function GET(
         publish_status: config.publishStatus,
         is_enabled:     config.isEnabled,
         settings_json:  config.settingsJson,
+        characters: characters.map((c) => ({
+          id:             c.id,
+          name:           c.name,
+          icon_type:      c.iconType,
+          icon_text:      c.iconText,
+          icon_image_url: c.iconImageUrl,
+          icon_color:     c.iconColor,
+        })),
         blocks: config.blocks.map((b) => ({
           id:                        b.id,
           block_type:                b.blockType,

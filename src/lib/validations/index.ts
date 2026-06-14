@@ -1036,6 +1036,10 @@ const buttonLinkSettingsSchema = z.object({
   url:           z.string().url().optional(),
   open_external: z.boolean().optional(),
   variant:       sectionVariantSchema,
+  // 遷移先タイプ。未指定は external 互換。liff_page/location は選択時に url を実URLへ解決して保存する。
+  link_type:     z.enum(["external", "liff_page", "location"]).optional(),
+  liff_page_id:  z.string().optional(),
+  location_id:   z.string().optional(),
 }).passthrough();
 
 const dividerSettingsSchema = z.object({
