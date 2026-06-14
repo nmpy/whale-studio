@@ -329,7 +329,7 @@ export function HomeTab({ oaId, workId, workPublicId, workTitle, pages, homeInit
           <div className="bg-gray-50 rounded-xl p-10 text-center border-2 border-dashed border-gray-200">
             <p className="text-sm text-gray-500 mb-2">ホームに表示する詳細ページがまだありません</p>
             <p className="text-xs text-gray-400">
-              LIFFページ作成時に「このページを作品メニューのカードとして表示する」をオンにすると、ここに表示されます。
+              LIFFページ編集の「ホームに表示する」をオンにすると、ここに表示されます。
             </p>
           </div>
         ) : (
@@ -367,7 +367,7 @@ export function HomeTab({ oaId, workId, workPublicId, workTitle, pages, homeInit
                 <div className="flex-1 min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="min-w-0 truncate text-[14px] font-semibold text-gray-900">
-                      {r.menuLabel?.trim() || r.title?.trim() || "（無題）"}
+                      {r.menuLabel?.trim() || r.title?.trim() || "タイトル未設定"}
                     </span>
                     <span
                       className={`shrink-0 whitespace-nowrap text-[10px] font-bold px-1.5 py-0.5 rounded-full ${

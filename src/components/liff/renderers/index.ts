@@ -19,3 +19,5 @@ export { ButtonLinkBlock } from "./ButtonLinkBlock";
 export { AccordionBlock } from "./AccordionBlock";
 // ── ロケーションチェックイン用 ──
 export { CodeReaderBlock } from "./CodeReaderBlock";
+// ── 謎・問題（到達済みの問題一覧） ──
+export { RiddleListBlock } from "./RiddleListBlock";

@@ -11,6 +11,7 @@ import { normalizeLiffPageType } from "@/types";
 import { LiffFaqEditor } from "./LiffFaqEditor";
 import { LiffSurveyEditor } from "./LiffSurveyEditor";
 import { ImageUploadField } from "./ImageUploadField";
+import { Switch } from "@/components/Switch";
 
 interface Props {
   config: LiffPageConfig;
@@ -97,7 +98,7 @@ export function LiffConfigHeader({
         </div>
       </div>
 
-      {/* ページ設定 — ページ種別 / ページタイトル / ヘッダータイトル / 説明 / フォント / 説明文の配置 / シェアボタン。
+      {/* ページ設定 — ページ種別 / ページタイトル / ヘッダータイトル / 説明 / フォント / 説明文の配置。
           ・ページタイトル(config.title): プレビュー本文・カードに出るタイトル（プレビュー上の「新規ページ」に対応）。
           ・ヘッダータイトル(settings.header_title): LIFF 画面上部ヘッダーのタイトル（別項目）。 */}
       <div className="bg-white rounded-xl border border-gray-200 p-5 mb-6 space-y-4">
@@ -210,72 +211,26 @@ export function LiffConfigHeader({
           </div>
         </div>
 
-        {/* 7. シェアボタン */}
-        <div className="pt-3 border-t border-gray-100 space-y-3">
-          <label className="flex items-center gap-2 text-sm text-gray-700">
-            <input
-              type="checkbox"
-              checked={settings.share_enabled ?? false}
-              onChange={(e) => updateSetting("share_enabled", e.target.checked)}
-              disabled={readOnly}
-              className="rounded border-gray-300"
-            />
-            シェアボタンを表示する
-          </label>
-          <p className="text-[11px] text-gray-400 -mt-1">
-            ON にすると、LIFF プレイヤー画面下部にシェアボタンが表示されます。タップすると LINE の友だち / グループ選択画面が開きます。
-          </p>
-          {settings.share_enabled && (
-            <div className="space-y-3 pt-1">
-              <div>
-                <label className={labelCls}>ボタン文言</label>
-                <input
-                  className={inputCls}
-                  value={settings.share_button_label ?? ""}
-                  onChange={(e) => updateSetting("share_button_label", e.target.value)}
-                  disabled={readOnly}
-                  placeholder="友だちにシェアする"
-                  maxLength={100}
-                />
-                <p className="text-[11px] text-gray-400 mt-1">未設定時は「友だちにシェアする」が使われます。</p>
-              </div>
-              <div>
-                <label className={labelCls}>シェアメッセージ</label>
-                <textarea
-                  className={`${inputCls} resize-y min-h-[80px]`}
-                  value={settings.share_message ?? ""}
-                  onChange={(e) => updateSetting("share_message", e.target.value)}
-                  disabled={readOnly}
-                  placeholder="例: 都市奇譚ヒントサイトをチェックしてみてください！"
-                  rows={3}
-                  maxLength={1000}
-                />
-                <p className="text-[11px] text-gray-400 mt-1">
-                  未設定時は「ページタイトル + 現在の LIFF ページ URL」が送信されます。
-                </p>
-              </div>
-            </div>
-          )}
-        </div>
+        {/* シェアボタン設定は廃止（LIFF プレイヤーのシェアボタンも表示しない）。
+            既存 settings.share_enabled / share_message は無視（後方互換・非破壊）。 */}
       </div>
 
-      {/* 作品メニューでの表示 — 表示有無 + カード名のみ。並び順・絵文字は「LIFF設定 → ホーム」タブで管理する。
+      {/* ホームに表示する — 表示有無(トグル) + カード名のみ。並び順・絵文字は「LIFF設定 → ホーム」タブで管理する。
           （menu_order / menu_icon の入力は UI から除外。既存 settings_json の値は保存時に保持される） */}
       <div className="bg-white rounded-xl border border-gray-200 p-5 mb-6 space-y-3">
-        <h2 className="text-sm font-semibold text-gray-900">作品メニューでの表示</h2>
+        <h2 className="text-sm font-semibold text-gray-900">ホームに表示する</h2>
 
-        <label className="flex items-center gap-2 text-sm text-gray-700">
-          <input
-            type="checkbox"
+        <div className="flex items-center gap-2.5">
+          <Switch
             checked={settings.show_in_menu !== false}
-            onChange={(e) => updateSetting("show_in_menu", e.target.checked)}
+            onChange={(v) => updateSetting("show_in_menu", v)}
             disabled={readOnly}
-            className="rounded border-gray-300"
+            ariaLabel="ホームに表示する"
           />
-          このページを作品メニューのカードとして表示する
-        </label>
+          <span className="text-sm text-gray-700">このページをホームに表示する</span>
+        </div>
         <p className="text-[11px] text-gray-400 -mt-1">
-          OFF にすると、LIFF トップメニュー (`/liff/w/...`) のカード一覧から除外されます。個別 URL (`.../p/...`) を直接開いた場合の表示は維持されます。
+          OFF にすると、作品ホーム (`/liff/w/...`) のカード一覧から除外されます。個別 URL (`.../p/...`) を直接開いた場合の表示は維持されます。
         </p>
 
         <div>

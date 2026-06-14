@@ -18,7 +18,7 @@ export const LIFF_ADMIN_TABS: Array<{
   {
     key: "detail",
     label: "詳細ページ",
-    description: "「作品メニューのカードとして表示する」をオンにした、ホームに並ぶページの一覧です。",
+    description: "「ホームに表示する」をオンにした、ホームに並ぶページの一覧です。",
   },
   {
     key: "standalone",

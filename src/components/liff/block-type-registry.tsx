@@ -23,6 +23,7 @@ import type {
   DividerSettings,
   AccordionSettings,
   CodeReaderSettings,
+  RiddleListSettings,
 } from "@/types";
 
 import {
@@ -42,6 +43,7 @@ import {
   DividerForm,
   AccordionForm,
   CodeReaderForm,
+  RiddleListForm,
 } from "./block-settings-forms";
 
 export type SettingsFormProps<T = Record<string, unknown>> = {
@@ -171,9 +173,27 @@ export const BLOCK_TYPE_REGISTRY: Record<LiffBlockType, BlockTypeEntry> = {
     defaultSettings: { label: "チェックインする", modal_title: "コードリーダー", description: "", after_scan: "location_checkin" } satisfies CodeReaderSettings,
     SettingsForm:    CodeReaderForm as ComponentType<SettingsFormProps<any>>,
   },
+  riddle_list: {
+    label:           "謎・問題",
+    icon:            "",
+    description:     "プレイヤーが到達した謎・問題を一覧表示",
+    defaultSettings: { title: "謎・問題", show_status: true } satisfies RiddleListSettings,
+    SettingsForm:    RiddleListForm as ComponentType<SettingsFormProps<any>>,
+  },
 };
 
 export const ALL_BLOCK_TYPES = Object.keys(BLOCK_TYPE_REGISTRY) as LiffBlockType[];
+
+/** ブロック追加メニューから除外する type（registry/renderer/validation には残置＝既存データ非破壊）。
+ *  開始/再開ボタン・証拠リストは新規追加 UI から外す。 */
+const NON_ADDABLE_BLOCK_TYPES: ReadonlySet<string> = new Set([
+  "start_button", "resume_button", "evidence_list",
+]);
+
+/** 追加メニューに出すブロック type（除外分を除いた登録順）。 */
+export const ADDABLE_BLOCK_TYPES = ALL_BLOCK_TYPES.filter(
+  (t) => !NON_ADDABLE_BLOCK_TYPES.has(t),
+) as LiffBlockType[];
 
 export function getBlockEntry(blockType: string): BlockTypeEntry | undefined {
   return BLOCK_TYPE_REGISTRY[blockType as LiffBlockType];

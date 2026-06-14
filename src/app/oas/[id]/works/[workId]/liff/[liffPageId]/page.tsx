@@ -106,7 +106,8 @@ export default function LiffPageEditor() {
   }
 
   return (
-    <div className="px-6 pb-6">
+    // ページ種別を問わず、コンテンツ/ブロック以外の周辺背景はグレーに統一（各設定カードは白）。
+    <div className="px-6 pb-6 bg-gray-50 min-h-screen">
       <Breadcrumb
         items={[
           { label: "作品一覧", href: `/oas/${oaId}/works` },

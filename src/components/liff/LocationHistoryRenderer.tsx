@@ -12,7 +12,6 @@
 
 import { useEffect, useState } from "react";
 import type { LiffPageConfigSettings } from "@/types";
-import { LiffShareButton } from "./LiffShareButton";
 import { liffRootClass, liffDescriptionAlignClass } from "./liff-style-helpers";
 
 export interface LocationHistoryRendererConfig {
@@ -154,11 +153,6 @@ export function LocationHistoryRenderer({ config, lineUserId, preview }: Props) 
           items={items}
         />
 
-        {config.settings_json.share_enabled && (
-          <div className="pt-2">
-            <LiffShareButton settings={config.settings_json} pageTitle={config.title || ""} preview={preview} />
-          </div>
-        )}
       </main>
     </div>
   );

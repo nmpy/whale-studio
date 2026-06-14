@@ -6,7 +6,6 @@
 
 import { useState } from "react";
 import type { FaqItem, LiffPageConfigSettings } from "@/types";
-import { LiffShareButton } from "./LiffShareButton";
 import { recordLiffEvent } from "@/lib/liff-events";
 import { useLiffPlayerContext } from "./LiffPlayerContext";
 import { liffRootClass, liffDescriptionAlignClass } from "./liff-style-helpers";
@@ -48,11 +47,6 @@ export function FaqRenderer({ config, preview }: { config: FaqRendererConfig; pr
           </ul>
         )}
 
-        {config.settings_json.share_enabled && (
-          <div className="pt-2">
-            <LiffShareButton settings={config.settings_json} pageTitle={config.title || ""} preview={preview} />
-          </div>
-        )}
       </main>
     </div>
   );

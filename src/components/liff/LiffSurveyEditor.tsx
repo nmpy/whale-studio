@@ -5,7 +5,7 @@
 // 入力種別: text / textarea / radio / checkbox。
 // radio / checkbox の場合は options（改行区切り入力）を編集できる。
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import type { LiffPageConfigSettings, SurveyInputType, SurveyItem } from "@/types";
 
 interface Props {
@@ -38,6 +38,11 @@ export function LiffSurveyEditor({ settings, readOnly, onChange }: Props) {
 
   const labelCls = "block text-xs font-medium text-gray-500 mb-1";
   const inputCls = "w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand/30 disabled:bg-gray-50";
+
+  // 選択肢 textarea の生入力（改行保持）。保存用 options は split/trim/空行除外するが、
+  // 入力中は生文字列を表示しないと「Enter→空行が即 filter され改行できない」問題が起きるため、
+  // 表示は生テキスト・永続化は filter 済み配列、に分離する（key は item.id）。
+  const [optionsText, setOptionsText] = useState<Record<string, string>>({});
 
   const update = (next: SurveyItem[]) => onChange({ survey_items: next });
 
@@ -171,16 +176,19 @@ export function LiffSurveyEditor({ settings, readOnly, onChange }: Props) {
                 <label className={labelCls}>選択肢（1 行 1 項目）</label>
                 <textarea
                   className={`${inputCls} min-h-[80px] resize-y`}
-                  value={(item.options ?? []).join("\n")}
-                  onChange={(e) =>
+                  value={optionsText[item.id ?? String(idx)] ?? (item.options ?? []).join("\n")}
+                  onChange={(e) => {
+                    const raw = e.target.value;            // 改行を含む生入力（表示用に保持）
+                    const key = item.id ?? String(idx);
+                    setOptionsText((prev) => ({ ...prev, [key]: raw }));
                     updateItem(idx, {
-                      options: e.target.value
+                      options: raw
                         .split("\n")
                         .map((s) => s.trim())
                         .filter((s) => s.length > 0)
                         .slice(0, 20),
-                    })
-                  }
+                    });
+                  }}
                   disabled={readOnly}
                   placeholder={"例:\nとても満足\n満足\n普通\n不満"}
                   rows={4}

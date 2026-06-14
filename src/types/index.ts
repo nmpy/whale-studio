@@ -1243,7 +1243,9 @@ export type LiffBlockType =
   | "divider"
   | "accordion"
   // ── ロケーションチェックイン用 ──
-  | "code_reader";
+  | "code_reader"
+  // ── 謎・問題（到達済みの問題一覧） ──
+  | "riddle_list";
 
 export type VisibilityCondition = "always" | "before_start" | "in_progress" | "completed";
 
@@ -1390,6 +1392,16 @@ export interface ButtonLinkSettings {
 export interface DividerSettings {
   /** "solid" | "dashed"。省略時は solid */
   style?: "solid" | "dashed";
+}
+
+/** 「謎・問題」ブロック設定。プレイヤーが到達済みの謎・問題を LIFF 上で一覧する。 */
+export interface RiddleListSettings {
+  /** 見出し（未設定は「謎・問題」）。 */
+  title?: string;
+  /** 最大表示件数（未設定は全件）。 */
+  max_count?: number;
+  /** 状態ラベル（出題中 等）を表示するか（既定 true）。 */
+  show_status?: boolean;
 }
 
 /**

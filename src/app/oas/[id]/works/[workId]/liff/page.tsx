@@ -299,7 +299,7 @@ function LiffPagesIndex() {
           onCreate={handleCreate}
           onCopyUrl={handleCopyUrl}
           emptyTitle="ホームに表示する詳細ページがまだありません"
-          emptyDescription="LIFFページ作成時に「このページを作品メニューのカードとして表示する」をオンにすると、ここに表示されます。"
+          emptyDescription="LIFFページ編集の「ホームに表示する」をオンにすると、ここに表示されます。"
         />
       )}
 
