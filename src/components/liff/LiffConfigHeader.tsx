@@ -97,9 +97,9 @@ export function LiffConfigHeader({
         </div>
       </div>
 
-      {/* ページ設定 — ページ種別 / ヘッダータイトル / 説明 / フォント / 説明文の配置 / シェアボタン。
-          ※「LIFFページタイトル(config.title)」入力はヘッダータイトルに一本化したため UI から除外。
-            既存 title 値は保存時に上書きしない（onLocalChange({title}) を呼ばない）。 */}
+      {/* ページ設定 — ページ種別 / ページタイトル / ヘッダータイトル / 説明 / フォント / 説明文の配置 / シェアボタン。
+          ・ページタイトル(config.title): プレビュー本文・カードに出るタイトル（プレビュー上の「新規ページ」に対応）。
+          ・ヘッダータイトル(settings.header_title): LIFF 画面上部ヘッダーのタイトル（別項目）。 */}
       <div className="bg-white rounded-xl border border-gray-200 p-5 mb-6 space-y-4">
         <h2 className="text-sm font-semibold text-gray-900">ページ設定</h2>
 
@@ -124,7 +124,32 @@ export function LiffConfigHeader({
           <p className="text-[11px] text-gray-400 mt-1">※モードによって編集 UI とプレイヤー表示が切り替わります</p>
         </div>
 
-        {/* 2. ヘッダータイトル */}
+        {/* 2. ページタイトル — プレビュー本文・カードに表示されるタイトル（config.title）。
+            ヘッダータイトル（画面上部）とは別項目。任意入力。未入力でも既存のフォールバック挙動を維持し、
+            既存値は勝手に空で上書きしない（onChange はユーザー入力時のみ発火）。 */}
+        <div>
+          <label className={labelCls}>ページタイトル</label>
+          <input
+            className={inputCls}
+            value={config.title ?? ""}
+            onChange={(e) => onLocalChange({ title: e.target.value || null })}
+            disabled={readOnly}
+            placeholder="例: 新規ページ"
+            maxLength={10}
+          />
+          {(() => {
+            const len = (config.title ?? "").length;
+            const over = len > 10;
+            return (
+              <p className={`text-[11px] mt-1 ${over ? "text-red-600" : "text-gray-400"}`}>
+                ページ本文・メニューカードに表示されるタイトルです（最大 10 文字・現在 {len}/10）。
+                {over && " 10 文字以内にしてください。"}
+              </p>
+            );
+          })()}
+        </div>
+
+        {/* 3. ヘッダータイトル */}
         <div>
           <label className={labelCls}>ヘッダータイトル</label>
           <input
@@ -138,7 +163,7 @@ export function LiffConfigHeader({
           <p className="text-[11px] text-gray-400 mt-1">LIFF 画面上部に表示されるタイトルです。未設定時は作品名が使われます。</p>
         </div>
 
-        {/* 3. 説明 */}
+        {/* 4. 説明 */}
         <div>
           <label className={labelCls}>説明</label>
           <input
@@ -150,7 +175,7 @@ export function LiffConfigHeader({
           />
         </div>
 
-        {/* 4-5. フォント / 説明文の配置 */}
+        {/* 5-6. フォント / 説明文の配置 */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label className={labelCls}>フォント</label>
@@ -185,7 +210,7 @@ export function LiffConfigHeader({
           </div>
         </div>
 
-        {/* 6. シェアボタン */}
+        {/* 7. シェアボタン */}
         <div className="pt-3 border-t border-gray-100 space-y-3">
           <label className="flex items-center gap-2 text-sm text-gray-700">
             <input
