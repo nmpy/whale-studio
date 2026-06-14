@@ -9,7 +9,6 @@ import { workApi, messageApi, getDevToken, ValidationError } from "@/lib/api-cli
 import { useToast } from "@/components/Toast";
 import { MessageForm, EMPTY_MESSAGE_FORM, formStateToMsgBody, type MessageFormState } from "../_form";
 import { submitChainSave, verifyFailedBanner } from "../_chain-submit";
-import { sendSlotsForSave } from "../_chain-edit";
 
 export default function NewMessagePage() {
   const params  = useParams<{ id: string; workId: string }>();
@@ -69,8 +68,8 @@ export default function NewMessagePage() {
         headBody:                   mainBody as Record<string, unknown>,
         headFreeInputEnabled:       !!form.free_input_enabled,
         headFreeInputNextMessageId: form.free_input_next_message_id,
-        // まとめ送信廃止: 新規作成は 1通目のみ保存（2通目以降が state に紛れ込んでも丸める保存ガード）。
-        sendSlots:                  sendSlotsForSave(true, form.additionalMessages),
+        // 新規作成でも連続メッセージ（2通目以降・最大5通）を保存する（編集と同じ chain 保存経路）。
+        sendSlots:                  form.additionalMessages,
         slotMain: {
           work_id:      workId,
           phase_id:     mainBody.phase_id ?? null,
