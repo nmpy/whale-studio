@@ -115,7 +115,12 @@ export const POST = withAuth(async (req, _ctx, user) => {
       if (res.error) {
         // Supabase の storage エラーメッセージは秘匿情報を含まない（例: "Bucket not found"）。原因切り分けのため返す。
         console.error("[media-upload] createSignedUploadUrl error:", res.error);
-        return fail(502, "STORAGE_SIGN_FAILED", `アップロードURLの発行に失敗しました（ストレージ: ${res.error.message}）`);
+        // RLS / 権限系のときは、運用者が原因に気づけるよう（秘匿情報を出さずに）ヒントを添える。
+        const permissionIssue = /row-level security|not authorized|permission|forbidden|jwt/i.test(res.error.message);
+        const hint = permissionIssue
+          ? "（サーバーのストレージ権限が不足しています。SUPABASE_SERVICE_ROLE_KEY が対象プロジェクトの service_role キーか、または image バケットの Storage ポリシーをご確認ください）"
+          : "";
+        return fail(502, "STORAGE_SIGN_FAILED", `アップロードURLの発行に失敗しました（ストレージ: ${res.error.message}）${hint}`);
       }
       data = res.data;
     } catch (e) {
