@@ -157,6 +157,7 @@ model Work {
   liffSurveyResponses LiffSurveyResponse[]
   liffEventLogs       LiffEventLog[]
   liffSubmissions     LiffSubmission[]
+  puzzleDeliveries    PuzzleDelivery[]
   werewolfTitles      WerewolfTitle[]
   locations           Location[]
   liveSessions        LiveSession[]
@@ -431,6 +432,7 @@ model Message {
   freeInputNextMessage  Message?   @relation("MessageFreeInputNext", fields: [freeInputNextMessageId], references: [id], onDelete: SetNull)
   freeInputPrevMessages Message[]  @relation("MessageFreeInputNext")
   qrSuccessLocations    Location[] @relation("LocationQrSuccessMessage")
+  puzzleDeliveries      PuzzleDelivery[]
   phase                 Phase?     @relation(fields: [phaseId], references: [id])
   work                  Work       @relation(fields: [workId], references: [id], onDelete: Cascade)
 
@@ -446,6 +448,28 @@ model Message {
   /// perf: フェーズ詳細でのメッセージ取得 `WHERE work_id=? AND phase_id=? ORDER BY sort_order`。
   @@index([workId, phaseId, sortOrder])
   @@map("messages")
+}
+
+/// プレイヤー（lineUserId）に「実際に出題された謎・問題」の履歴。
+/// LIFF「謎・問題」ブロックで、過去に出題された問題を一覧するために使う。
+/// 記録は puzzle メッセージ送信直後（line.ts の送信関数経由）に行う＝未送信は記録しない。
+/// 同一問題の再出題は @@unique で 1 行に集約し、createMany(skipDuplicates) のため
+/// deliveredAt は「初回出題日時」を保持する（再出題で更新しない）。
+/// 正解状態は別途 UserProgress.flags.solvedPuzzles から導出する（本テーブルには持たない＝最小設計）。
+model PuzzleDelivery {
+  id          String   @id @default(uuid())
+  lineUserId  String   @map("line_user_id")
+  workId      String   @map("work_id")
+  /// 出題された puzzle の Message.id（kind="puzzle"）。
+  messageId   String   @map("message_id")
+  deliveredAt DateTime @default(now()) @map("delivered_at")
+  work        Work     @relation(fields: [workId], references: [id], onDelete: Cascade)
+  message     Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@unique([lineUserId, workId, messageId])
+  @@index([lineUserId, workId])
+  @@index([messageId])
+  @@map("puzzle_deliveries")
 }
 
 model FriendAddSettings {

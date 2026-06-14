@@ -13,6 +13,7 @@ import { moveQuickReplyToTail } from "@/lib/quick-reply-tail";
 import { isFreeInputPrompt } from "@/lib/free-input";
 import type { ReadReceiptController } from "@/lib/line-read-receipt";
 import { buildFlexSendParts, type FlexContents } from "@/lib/flex";
+import { recordPuzzleDeliveries } from "@/lib/puzzle-history";
 
 // ────────────────────────────────────────────────
 // 型
@@ -674,6 +675,9 @@ export async function pushToLine(
   // 既存の `await pushToLine(...)` 呼出は戻り値を無視するため後方互換）。
   if (!userId || messages.length === 0) return { ok: false };
 
+  // 謎・問題の出題履歴を記録（push 経路：QR/Beacon/GPS/チェックイン等もここを通る・fire-and-forget）。
+  void recordPuzzleDeliveries({ lineUserId: userId, sourceMessageIds: messages.map((m) => m._sourceMessageId) });
+
   logFinalDeliveryOrder("push", messages);
   const cleanMessages = messages.map(stripInternalFields);
 
@@ -740,6 +744,9 @@ export async function replyWithLagToLine(
   controller?:        ReadReceiptController,
 ): Promise<void> {
   if (!replyToken || messages.length === 0) return;
+
+  // 謎・問題の出題履歴を記録（全 reply 送信経路の共通点・fire-and-forget・例外は内部で握りつぶす）。
+  void recordPuzzleDeliveries({ lineUserId: userId, sourceMessageIds: messages.map((m) => m._sourceMessageId) });
 
   // ── 送信戦略 ──
   //  LINE Reply API は 1 リクエストに最大 5 件の message を含められる（replyToken は 1 回限りだが複数件 OK）。
