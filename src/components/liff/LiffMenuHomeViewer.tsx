@@ -28,9 +28,10 @@ interface MenuApiResponse {
     work_id:    string;
     work_title: string;
     /** 作品メニューホームの任意設定（未設定は null）。 */
-    home_title?:       string | null;
-    home_description?: string | null;
-    home_image_url?:   string | null;
+    home_title?:        string | null;
+    home_description?:  string | null;
+    home_image_url?:    string | null;
+    home_header_title?: string | null;
     pages:      LiffMenuHomePage[];
     /** Work.liffEnabled が false のとき API が返す。 */
     liff_disabled?: boolean;
@@ -75,6 +76,13 @@ export function LiffMenuHomeViewer({ workId, workPublicId }: Props) {
     })();
     return () => { cancelled = true; };
   }, [workId, isPreview, liff.ready]);
+
+  // ホームの document.title を設定（LINE/LIFF デフォルトヘッダーのタイトル表示用）。
+  // 優先: ホーム設定のヘッダータイトル → 作品名。独自 DOM ヘッダーは描画しない。
+  useEffect(() => {
+    if (typeof document === "undefined" || !data) return;
+    document.title = data.home_header_title?.trim() || data.work_title || "LIFF";
+  }, [data]);
 
   if (liff.loading || loading) {
     return (

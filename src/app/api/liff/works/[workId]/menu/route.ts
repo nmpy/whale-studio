@@ -91,6 +91,7 @@ export async function GET(
           home_title:       home.title,
           home_description: home.description,
           home_image_url:   home.image_url,
+          home_header_title: home.header_title,
           characters,
           pages:      [],
         },
@@ -105,6 +106,7 @@ export async function GET(
         home_title:       home.title,
         home_description: home.description,
         home_image_url:   home.image_url,
+          home_header_title: home.header_title,
         characters,
         pages: configs.map((config) => ({
           id:             config.id,

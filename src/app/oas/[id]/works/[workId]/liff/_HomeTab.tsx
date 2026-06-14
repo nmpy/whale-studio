@@ -28,9 +28,10 @@ import { buildWorkHomeLiffUrl } from "@/lib/liff/public-urls";
 import { formatDateTime } from "./_shared";
 
 interface HomeInit {
-  title:       string | null;
-  description: string | null;
-  image_url:   string | null;
+  title:        string | null;
+  description:  string | null;
+  image_url:    string | null;
+  header_title: string | null;
 }
 
 type CardStyle = "card" | "compact";
@@ -148,10 +149,11 @@ export function HomeTab({ oaId, workId, workPublicId, workTitle, pages, homeInit
     }
   }, [showToast]);
 
-  // ホーム設定（タイトル/説明文/画像）。テキストエリアは制御のため空文字を保持する。
+  // ホーム設定（タイトル/説明文/画像/ヘッダータイトル）。入力は制御のため空文字を保持する。
   const [homeTitle, setHomeTitle] = useState(homeInit.title ?? "");
   const [homeDescription, setHomeDescription] = useState(homeInit.description ?? "");
   const [homeImageUrl, setHomeImageUrl] = useState(homeInit.image_url ?? "");
+  const [homeHeaderTitle, setHomeHeaderTitle] = useState(homeInit.header_title ?? "");
 
   // 親が pages を再取得したら Row を作り直す（保存後リセット含む）。
   useEffect(() => { setRows(buildRows(pages)); }, [pages]);
@@ -160,12 +162,14 @@ export function HomeTab({ oaId, workId, workPublicId, workTitle, pages, homeInit
     setHomeTitle(homeInit.title ?? "");
     setHomeDescription(homeInit.description ?? "");
     setHomeImageUrl(homeInit.image_url ?? "");
-  }, [homeInit.title, homeInit.description, homeInit.image_url]);
+    setHomeHeaderTitle(homeInit.header_title ?? "");
+  }, [homeInit.title, homeInit.description, homeInit.image_url, homeInit.header_title]);
 
   const homeDirty =
     norm(homeTitle) !== (homeInit.title ?? "") ||
     norm(homeDescription) !== (homeInit.description ?? "") ||
-    norm(homeImageUrl) !== (homeInit.image_url ?? "");
+    norm(homeImageUrl) !== (homeInit.image_url ?? "") ||
+    norm(homeHeaderTitle) !== (homeInit.header_title ?? "");
 
   const rowsDirty = useMemo(
     () => rows.some((r, i) => r.origMenuOrder !== i || r.cardStyle !== r.origCardStyle),
@@ -201,9 +205,10 @@ export function HomeTab({ oaId, workId, workPublicId, workTitle, pages, homeInit
       if (homeDirty) {
         await workApi.update(token, workId, {
           liff_home_settings: {
-            title:       norm(homeTitle),
-            description: norm(homeDescription),
-            image_url:   norm(homeImageUrl),
+            title:        norm(homeTitle),
+            description:  norm(homeDescription),
+            image_url:    norm(homeImageUrl),
+            header_title: norm(homeHeaderTitle),
           },
         });
       }
@@ -224,7 +229,7 @@ export function HomeTab({ oaId, workId, workPublicId, workTitle, pages, homeInit
     } finally {
       setSaving(false);
     }
-  }, [isReadOnly, saving, dirty, homeDirty, homeTitle, homeDescription, homeImageUrl, rows, workId, showToast, onSaved]);
+  }, [isReadOnly, saving, dirty, homeDirty, homeTitle, homeDescription, homeImageUrl, homeHeaderTitle, rows, workId, showToast, onSaved]);
 
   // ── プレビュー用ページ（ローカルの順序・形式・ラベルを即時反映）──
   const previewPages = useMemo<LiffMenuHomePage[]>(
@@ -254,10 +259,26 @@ export function HomeTab({ oaId, workId, workPublicId, workTitle, pages, homeInit
         {/* 保存ボタンは左側編集エリアの末尾（下部）に配置する。ここでは導入文のみ。 */}
         <p className="text-[12px] text-gray-500 mb-3">ホームの見た目と並びを設定します。変更は右のプレビューに即時反映されます。</p>
 
-        {/* ホーム設定（タイトル / 説明文 / 画像）— すべて任意。未設定時は従来表示。 */}
+        {/* ホーム設定（ヘッダータイトル / ホームタイトル / 説明文 / 画像）— すべて任意。 */}
         <div className="bg-white border border-gray-200 rounded-xl p-4 mb-4 space-y-3">
           <h2 className="text-base font-semibold text-gray-900">ホーム設定</h2>
 
+          {/* ヘッダータイトル: LINE/LIFF デフォルトヘッダー用（document.title に反映）。本文には出さない。 */}
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">ヘッダータイトル</label>
+            <input
+              type="text"
+              value={homeHeaderTitle}
+              onChange={(e) => setHomeHeaderTitle(e.target.value)}
+              disabled={isReadOnly}
+              placeholder="例: くじらと迷子のかけら"
+              maxLength={40}
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand/30 disabled:bg-gray-50"
+            />
+            <p className="text-[11px] text-gray-400 mt-1">LINE/LIFF のヘッダー（上部バー）のタイトルに反映されます。未入力時は作品名が使われます。</p>
+          </div>
+
+          {/* ホームタイトル: ホーム画面の本文に出す見出し。空欄なら本文に何も表示しない（作品名 fallback なし）。 */}
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">ホームタイトル</label>
             <input
@@ -265,11 +286,11 @@ export function HomeTab({ oaId, workId, workPublicId, workTitle, pages, homeInit
               value={homeTitle}
               onChange={(e) => setHomeTitle(e.target.value)}
               disabled={isReadOnly}
-              placeholder="ホーム"
+              placeholder="任意のホームタイトル"
               maxLength={40}
               className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand/30 disabled:bg-gray-50"
             />
-            <p className="text-[11px] text-gray-400 mt-1">未入力の場合は「ホーム」と表示されます。</p>
+            <p className="text-[11px] text-gray-400 mt-1">ホーム本文に表示する見出しです。未入力の場合は本文にタイトルを表示しません（作品名は表示されません）。</p>
           </div>
 
           <div>

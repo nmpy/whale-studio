@@ -89,9 +89,10 @@ export const updateWorkSchema = z.object({
   liff_enabled:        z.boolean().optional(),
   /** 作品メニューホームの任意設定（title/description/image_url）。指定キーのみ更新・空文字は解除。 */
   liff_home_settings:  z.object({
-    title:       z.string().max(40).optional().nullable(),
-    description: z.string().max(2000).optional().nullable(),
-    image_url:   z.string().max(2000).optional().nullable(),
+    title:        z.string().max(40).optional().nullable(),
+    description:  z.string().max(2000).optional().nullable(),
+    image_url:    z.string().max(2000).optional().nullable(),
+    header_title: z.string().max(40).optional().nullable(),
   }).optional(),
   /** 途中再開機能の有効/無効（作品単位）。true=再開選択肢を表示 / false=最初から開始に寄せる。 */
   resume_enabled:      z.boolean().optional(),
