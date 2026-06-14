@@ -1657,3 +1657,33 @@ export function formatZodErrors(error: z.ZodError): Record<string, string[]> {
     return acc;
   }, {});
 }
+
+// ── X投稿管理（X posts）──────────────────────────────
+// 任意 URL 系は空文字許可（未設定）。datetime は文字列で受け、route 側で Date 変換。
+const xUrlSchema = z.union([z.literal(""), z.string().url("有効なURLを入力してください")]).optional().nullable();
+
+export const createXPostSchema = z.object({
+  title:        z.string().max(200).optional().nullable(),
+  body:         z.string().max(5000).optional().nullable(),
+  hashtags:     z.array(z.string().max(100)).max(30).optional().nullable(),
+  image_url:          xUrlSchema,
+  uploaded_image_url: xUrlSchema,
+  link_url:           xUrlSchema,
+  utm_enabled:  z.boolean().optional(),
+  utm_name:     z.string().max(100).optional().nullable(),
+  utm_source:   z.string().max(100).optional().nullable(),
+  utm_medium:   z.string().max(100).optional().nullable(),
+  utm_campaign: z.string().max(200).optional().nullable(),
+  utm_content:  z.string().max(200).optional().nullable(),
+  utm_term:     z.string().max(200).optional().nullable(),
+  generated_url: xUrlSchema,
+  x_post_url:    xUrlSchema,
+  status:       z.enum(["draft", "scheduled", "posted", "archived"]).optional(),
+  note:         z.string().max(2000).optional().nullable(),
+  posted_at:    z.string().optional().nullable(),
+  scheduled_at: z.string().optional().nullable(),
+  sort_order:   z.number().int().min(0).optional(),
+});
+
+// 更新は全フィールド任意（同形）。
+export const updateXPostSchema = createXPostSchema;
