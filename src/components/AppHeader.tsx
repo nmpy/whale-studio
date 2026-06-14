@@ -267,8 +267,17 @@ export default function AppHeader() {
         <div className="container">
           {/* ── サービスタイトル ── */}
           <h1>
-            <a href={homeHref} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-              <span className="header-brand">WHALE STUDIO</span>
+            <a href={homeHref} aria-label="Whale Studio ホームへ" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+              {/* 文字入り完全ロゴのため、テキスト「WHALE STUDIO」は出さず画像のみ（二重表示回避）。
+                  ヘッダー高さ(56px)を崩さないようコンパクトに（SP h-7=28px / PC h-8=32px・幅 auto + max-width）。 */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="/images/whale-studio-logo.png"
+                alt="Whale Studio"
+                width={154}
+                height={32}
+                className="h-7 w-auto max-w-[150px] sm:h-8 sm:max-w-[170px]"
+              />
               {/* セパレータ / サブタイトルは SP では非表示 (= ヘッダー高さ・横幅を圧迫するため)。
                   sm (= 640px+) で表示。 */}
               <span className="header-sep hidden sm:inline">|</span>
