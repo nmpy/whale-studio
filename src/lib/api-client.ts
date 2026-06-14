@@ -955,6 +955,24 @@ export const uploadApi = {
     });
     return parseResponse(res);
   },
+
+  /**
+   * 動画 / 音声アップロード用の Supabase signed upload URL を発行する（本体は送らない）。
+   * POST /api/upload/media — JSON { mediaType, mimeType, size, fileName, workId, oaId }
+   * クライアントは返却 token で Supabase へ直接アップロードする（src/lib/media-upload.ts）。
+   * 既存の画像アップロード（uploadImage / uploadToStorage）には影響しない。
+   */
+  async requestMediaUploadUrl(
+    token: string,
+    meta:  { mediaType: "video" | "audio"; mimeType: string; size: number; fileName: string; oaId: string; workId: string }
+  ): Promise<{ bucket: string; path: string; token: string; signedUrl: string; publicUrl: string }> {
+    const res = await fetch("/api/upload/media", {
+      method:  "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body:    JSON.stringify(meta),
+    });
+    return parseResponse(res);
+  },
 };
 
 // ────────────────────────────────────────────────
