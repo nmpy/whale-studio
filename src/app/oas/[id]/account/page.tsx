@@ -15,6 +15,7 @@ import { oaApi, getDevToken } from "@/lib/api-client";
 import { MaskedField } from "@/components/MaskedField";
 import { useToast } from "@/components/Toast";
 import { Button, buttonClass } from "@/components/shared";
+import { LiffSettingsSection } from "./_LiffSettingsSection";
 import type { PublishStatus } from "@/types";
 
 interface FormState {
@@ -133,7 +134,7 @@ export default function OaAccountPage() {
         アカウント情報
       </h2>
       <p className="mt-1 text-[13px] text-ink-2">
-        アカウント名・LINE接続情報・接続ステータスを管理します。
+        アカウント名・LINE接続情報・接続ステータス・LIFF設定を管理します。
       </p>
     </div>
   );
@@ -381,6 +382,9 @@ export default function OaAccountPage() {
 
         </form>
       </div>
+
+      {/* ── LIFF設定（旧 /settings/liff から統合）── */}
+      <LiffSettingsSection oaId={oaId} />
     </>
   );
 }

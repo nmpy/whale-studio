@@ -48,7 +48,7 @@ export default function LocationsPrintPage() {
       <div style={{ maxWidth: 700, margin: "0 auto", padding: "40px 16px", textAlign: "center" }}>
         <div style={{ padding: 24, background: "#fef3c7", border: "1px solid #fcd34d", borderRadius: 12, color: "#92400e", fontSize: 14 }}>
           このOAの LIFF ID が未設定のため印刷用 QR を生成できません。<br />
-          <Link href={`/oas/${oaId}/settings/liff`} style={{ color: "#2563eb", textDecoration: "underline" }}>設定 → LIFF設定</Link> で LIFF ID を設定してください。
+          <Link href={`/oas/${oaId}/account`} style={{ color: "#2563eb", textDecoration: "underline" }}>設定 → アカウント情報（LIFF設定）</Link> で LIFF ID を設定してください。
         </div>
         <Link href={`/oas/${oaId}/works/${workId}/locations`} style={{ display: "inline-block", marginTop: 16, fontSize: 14, color: "#2563eb" }}>
           ← ロケーション一覧に戻る
