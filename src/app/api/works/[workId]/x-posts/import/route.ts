@@ -16,6 +16,8 @@ const str = (v: unknown): string => (v == null ? "" : String(v)).trim();
 const strOrNull = (v: unknown): string | null => { const s = str(v); return s || null; };
 const intOf = (v: unknown): number => { const n = parseInt(str(v).replace(/[^0-9-]/g, ""), 10); return isNaN(n) ? 0 : n; };
 const dateOrNull = (v: unknown): Date | null => { const s = str(v); if (!s) return null; const d = new Date(s); return isNaN(d.getTime()) ? null : d; };
+// 口コミ本文は text 優先・なければ tweetText（X投稿エクスポート）。空白のみは "" を返す＝スキップ対象。
+const getMentionText = (row: Row): string => str(row.text) || str(row.tweetText);
 
 // X投稿エクスポートで raw 保存する元データのキー。
 const X_EXPORT_RAW_KEYS = [
@@ -93,7 +95,7 @@ export const POST = withAuth<{ workId: string }>(async (req, ctx, user) => {
 
       for (const row of rows) {
         try {
-          const text = str(row.text);
+          const text = getMentionText(row); // text 優先・なければ tweetText
           if (!text) { skipped++; continue; } // 空行スキップ
           const url = strOrNull(row.url);
           const hash = textHash(text);
@@ -141,8 +143,8 @@ export const POST = withAuth<{ workId: string }>(async (req, ctx, user) => {
 
       for (const row of rows) {
         try {
-          const text = str(row.tweetText);
-          if (!text) { skipped++; continue; } // tweetText 必須・空行スキップ
+          const text = getMentionText(row); // tweetText / text どちらでも本文として扱う
+          if (!text) { skipped++; continue; } // 本文なし・空行スキップ
           const tweetUrl = strOrNull(row.tweetURL ?? row.tweet_url);
           const externalId = strOrNull(row.id);
           const postedAt = dateOrNull(row.createdAt ?? row.created_at);

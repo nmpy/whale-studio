@@ -91,10 +91,10 @@ export function validateRows(type: ImportType, rows: ParsedRows): { error: strin
       return { error: "投稿実績ファイルには xPostUrl または xPostId の列が必要です。", warnings };
     if (!has("impressions", "Impressions")) return { error: "投稿実績ファイルには impressions が必要です。", warnings };
   } else if (type === "mentions") {
-    if (!has("text")) return { error: "口コミファイルには text が必要です。", warnings };
+    if (!has("text", "tweetText")) return { error: "口コミファイルには text または tweetText が必要です。", warnings };
   } else {
-    // x_export（X投稿エクスポート形式）
-    if (!has("tweetText")) return { error: "X投稿エクスポートには tweetText が必要です。", warnings };
+    // x_export（X投稿エクスポート形式）。本文は tweetText / text のどちらでも可。
+    if (!has("tweetText", "text")) return { error: "X投稿エクスポートには tweetText または text が必要です。", warnings };
     if (!has("views")) warnings.push("views がないため、インプレッションは空として取り込みます。");
     if (!has("tweetURL") && !has("id")) warnings.push("tweetURL または id がない行は重複判定が弱くなります。");
   }

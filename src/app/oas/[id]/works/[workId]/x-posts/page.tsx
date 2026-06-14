@@ -632,10 +632,10 @@ function SentimentTab({ workId, canEdit }: { workId: string; canEdit: boolean })
       </div>
       <p className="mt-2 text-[11px] text-ink-3">
         {importType === "mentions"
-          ? "必須列: text ／ 任意: postedAt, authorName, authorHandle, url, source, note, relatedXPostUrl"
+          ? "必須列: text または tweetText ／ 任意: postedAt, authorName, authorHandle, url, source, note, relatedXPostUrl"
           : importType === "metrics"
           ? "必須列: (xPostUrl または xPostId) と impressions ／ 任意: postTitle, postedAt, likes, reposts, replies, quotes, bookmarks, urlClicks, note"
-          : "tweetText / tweetURL / views / likeCount などの列を含むファイルを読み込み、投稿実績と口コミ分析の両方に反映します。（必須: tweetText）"}
+          : "tweetText / tweetURL / views / likeCount などの列を含むファイルを読み込み、投稿実績と口コミ分析の両方に反映します。本文は tweetText（または text）を使用します。（必須: tweetText または text）"}
       </p>
       {rows.length > 0 && (
         <div className="mt-3">
