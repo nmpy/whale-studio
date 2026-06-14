@@ -9,7 +9,6 @@ import { workApi, messageApi, getDevToken, ValidationError } from "@/lib/api-cli
 import { useToast } from "@/components/Toast";
 import { MessageForm, EMPTY_MESSAGE_FORM, formStateToMsgBody, type MessageFormState } from "../_form";
 import { submitChainSave, verifyFailedBanner } from "../_chain-submit";
-import { sendSlotsForSave } from "../_chain-edit";
 
 export default function NewMessagePage() {
   const params  = useParams<{ id: string; workId: string }>();
@@ -43,10 +42,15 @@ export default function NewMessagePage() {
     setSaveError(null);
     const token = getDevToken();
     const mainBody = formStateToMsgBody(form);
+    // 保存直前ガード: 新規作成は head + 連続最大4通 = 計5通までに丸める。
+    // UI でも 6通目以降は追加不可だが、状態不整合で additionalMessages が増えても payload を5通に保証する。
+    // （新規作成は既存データを持たないため、丸めても既存メッセージを失うことはない。）
+    const MAX_ADDITIONAL_SLOTS = 4;
+    const cappedSlots = form.additionalMessages.slice(0, MAX_ADDITIONAL_SLOTS);
     console.info("[msg-save] start", JSON.stringify({
       mode:                   createdHeadIdRef.current ? "new-retry" : "new",
       phaseId:                mainBody.phase_id ? String(mainBody.phase_id).slice(0, 8) : null,
-      sendSlotCount:          form.additionalMessages.length,
+      sendSlotCount:          cappedSlots.length,
       quickRepliesCount:      form.quick_replies.length,
       freeInputEnabled:       form.free_input_enabled,
       freeInputNextMessageId: form.free_input_next_message_id ? form.free_input_next_message_id.slice(0, 8) : null,
@@ -69,8 +73,8 @@ export default function NewMessagePage() {
         headBody:                   mainBody as Record<string, unknown>,
         headFreeInputEnabled:       !!form.free_input_enabled,
         headFreeInputNextMessageId: form.free_input_next_message_id,
-        // まとめ送信廃止: 新規作成は 1通目のみ保存（2通目以降が state に紛れ込んでも丸める保存ガード）。
-        sendSlots:                  sendSlotsForSave(true, form.additionalMessages),
+        // 新規作成でも連続メッセージ（2通目以降・最大5通）を保存する（編集と同じ chain 保存経路）。
+        sendSlots:                  cappedSlots,
         slotMain: {
           work_id:      workId,
           phase_id:     mainBody.phase_id ?? null,

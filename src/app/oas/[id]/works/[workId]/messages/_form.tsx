@@ -3467,10 +3467,11 @@ export function MessageForm({
   // ── 既存メッセージ取り込み（PR3b-2）──
   const [importPicker, setImportPicker] = useState<{ insertIndex: number; appendAtEnd: boolean } | null>(null);
 
-  // まとめ送信廃止方針: 連続メッセージ（2通目以降）の新規追加は不可（新規作成・既存編集とも）。
-  // 既存の 2通目以降は表示・編集・削除・並べ替え可能だが、新しいスロットの追加（＋追加 / ＋ここに追加 /
-  // ＋既存を取り込む）は無効化する。
-  const allowAddMessage = false;
+  // 「新規作成は1通のみ」制限は撤回。新規・編集とも 1チェーン最大5通まで連続メッセージを作成できる
+  // （head + 連続最大4通）。Quick Reply / キーワード / QR / GPS を挟まなくても連続送信できる。
+  // 6通目以降は作れないよう、追加系ボタンは canAddMessage で 5通上限を判定する。
+  const MAX_CHAIN_MESSAGES = 5;
+  const canAddMessage = (1 + form.additionalMessages.length) < MAX_CHAIN_MESSAGES;
 
   // ── destination 選択用 ──
   const [destinations, setDestinations] = useState<LineDestination[]>([]);
@@ -4848,9 +4849,7 @@ export function MessageForm({
                 runtime（buildMessageChain/buildPhaseMessages）は freeInput で即時送信を停止するため、
                 以降のスロットは通常の連続送信では届かない。編集UI上でも区切って明示する。 */}
             {(() => {
-              // まとめ送信廃止: 新規作成では 2通目以降のスロットを一切レンダーしない（初期 state は
-              // 空だが、state 紛れ込み時も UI 上に「2通目ブロック」を出さない防御ガード）。
-              if (isNew) return null;
+              // 新規作成でも 2通目以降のスロットをレンダーする（1チェーン最大5通の連続メッセージを許可）。
               const headFree   = !!form.free_input_enabled;
               const fiSlotIdx  = form.additionalMessages.findIndex((s) => s.free_input_enabled);
               const firstAfter = headFree ? 0 : (fiSlotIdx >= 0 ? fiSlotIdx + 1 : -1);
@@ -4906,7 +4905,7 @@ export function MessageForm({
                     />
                     {/* スロット間「＋ここに追加」（#6-3）。freeInput より下には出さない（末尾固定）。
                         head 自体が freeInput プロンプトのときは送信 chain に slot を足せない。 */}
-                    {allowAddMessage && !headFree && canInsertAt(form.additionalMessages, idx + 1) && (
+                    {canAddMessage && !headFree && canInsertAt(form.additionalMessages, idx + 1) && (
                       <div style={{ display: "flex", justifyContent: "center", gap: 6, margin: "6px 0" }}>
                         <button
                           type="button"
@@ -4943,47 +4942,43 @@ export function MessageForm({
               });
             })()}
 
-            {/* まとめ送信廃止方針: 連続メッセージの新規追加は無効化。
-                allowAddMessage=true（将来用）のときのみ末尾追加ボタンを出す。
-                新規作成では「1通のみ」の案内文言、既存編集では追加ボタンを出さない（既存スロットは編集可）。 */}
-            {allowAddMessage ? (
-              form.free_input_enabled ? (
-                <div style={{ marginTop: 14, padding: "8px 12px", background: "#faf5ff", border: "1px dashed #d8b4fe", borderRadius: 8, fontSize: 11, color: "#7c3aed", lineHeight: 1.6 }}>
-                  1通目が自由入力プロンプトのため、連続メッセージは追加できません（自由入力後の応答は別枠で管理します）。
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() =>
-                    setForm((prev) => ({
-                      ...prev,
-                      additionalMessages: appendSlot(prev.additionalMessages, { ...EMPTY_ADDITIONAL_SLOT, carousel_items: [] }),
-                    }))
-                  }
-                  style={{
-                    marginTop: 14, width: "100%", padding: "10px 0",
-                    border: "2px dashed #d1d5db", borderRadius: 8, background: "#f9fafb",
-                    color: "#6b7280", fontSize: 13, fontWeight: 600, cursor: "pointer",
-                    display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-                    transition: "all 0.15s",
-                  }}
-                  onMouseOver={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "#06C755"; (e.currentTarget as HTMLButtonElement).style.color = "#059669"; }}
-                  onMouseOut={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "#d1d5db"; (e.currentTarget as HTMLButtonElement).style.color = "#6b7280"; }}
-                >
-                  {hasFreeInputSlot(form.additionalMessages)
-                    ? "＋ 自由入力の前にメッセージを追加"
-                    : `＋ メッセージを追加（${form.additionalMessages.length + 2}通目）`}
-                </button>
-              )
-            ) : isNew ? (
-              <div style={{ marginTop: 14, padding: "10px 12px", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, fontSize: 12, color: "#1e40af", lineHeight: 1.6 }}>
-                新規作成では、1つのメッセージにつき<strong>1通のみ</strong>作成できます。次のメッセージへ進めたい場合は、作成後に Quick Reply・キーワード・QR・GPS などの<strong>遷移条件</strong>を設定してください。
+            {/* 連続メッセージの追加（新規・編集とも 1チェーン最大5通）。自由入力プロンプト時は追加不可、
+                5通到達時は控えめに上限を表示（目立つ説明ボックスは出さない）。 */}
+            {form.free_input_enabled ? (
+              <div style={{ marginTop: 14, padding: "8px 12px", background: "#faf5ff", border: "1px dashed #d8b4fe", borderRadius: 8, fontSize: 11, color: "#7c3aed", lineHeight: 1.6 }}>
+                1通目が自由入力プロンプトのため、連続メッセージは追加できません（自由入力後の応答は別枠で管理します）。
               </div>
-            ) : null}
+            ) : canAddMessage ? (
+              <button
+                type="button"
+                onClick={() =>
+                  setForm((prev) => ({
+                    ...prev,
+                    additionalMessages: appendSlot(prev.additionalMessages, { ...EMPTY_ADDITIONAL_SLOT, carousel_items: [] }),
+                  }))
+                }
+                style={{
+                  marginTop: 14, width: "100%", padding: "10px 0",
+                  border: "2px dashed #d1d5db", borderRadius: 8, background: "#f9fafb",
+                  color: "#6b7280", fontSize: 13, fontWeight: 600, cursor: "pointer",
+                  display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                  transition: "all 0.15s",
+                }}
+                onMouseOver={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "#06C755"; (e.currentTarget as HTMLButtonElement).style.color = "#059669"; }}
+                onMouseOut={(e) => { (e.currentTarget as HTMLButtonElement).style.borderColor = "#d1d5db"; (e.currentTarget as HTMLButtonElement).style.color = "#6b7280"; }}
+              >
+                {hasFreeInputSlot(form.additionalMessages)
+                  ? "＋ 自由入力の前にメッセージを追加"
+                  : `＋ メッセージを追加（${form.additionalMessages.length + 2}通目）`}
+              </button>
+            ) : (
+              <div style={{ marginTop: 14, fontSize: 11, color: "#9ca3af", textAlign: "center" }}>
+                連続メッセージは最大5通までです。
+              </div>
+            )}
 
-            {/* 既存メッセージ取り込み（#6-4d・PR3b-2）。head が確定している編集時のみ。
-                まとめ送信廃止方針により allowAddMessage=false の間は無効化。 */}
-            {allowAddMessage && !form.free_input_enabled && !isNew && messageId && (
+            {/* 既存メッセージ取り込み（#6-4d・PR3b-2）。head が確定している編集時のみ・5通上限内。 */}
+            {canAddMessage && !form.free_input_enabled && !isNew && messageId && (
               <button
                 type="button"
                 onClick={() => setImportPicker({
@@ -5015,19 +5010,17 @@ export function MessageForm({
               const fiResponseLabel = fiResponseMsg
                 ? ((fiResponseMsg.body ?? "").replace(/\n/g, " ").trim().slice(0, 36) || `(${fiResponseMsg.message_type ?? "メッセージ"})`)
                 : null;
+              // 「📤 実機での送信プレビュー / このメッセージで送信: X通 / (text) 一覧」は通常編集では
+              // 説明過多なため撤去。自由入力フロー情報・実害のある 5通超警告・QR末尾の注意だけを残し、
+              // 表示すべき情報が無いときはボックスごと出さない。
+              const hasSendInfo =
+                pv.freeInputAt !== null ||
+                pv.responseMessages.length > 0 ||
+                pv.overLimit ||
+                form.quick_replies.length > 0;
+              if (!hasSendInfo) return null;
               return (
                 <div style={{ marginTop: 16, padding: "12px 14px", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 12, lineHeight: 1.7 }}>
-                  <div style={{ fontWeight: 700, color: "#334155", marginBottom: 4 }}>
-                    📤 実機での送信プレビュー（このメッセージで一度に届く順）
-                  </div>
-                  <div style={{ color: "#475569" }}>このメッセージで送信: <strong>{pv.total}通</strong></div>
-                  <ol style={{ margin: "4px 0 0", paddingLeft: 20 }}>
-                    {pv.sendMessages.map((m) => (
-                      <li key={m.index} style={{ color: m.freeInput ? "#b45309" : "#334155" }}>
-                        {m.label}{m.freeInput ? "（自由入力プロンプト）" : ""}
-                      </li>
-                    ))}
-                  </ol>
                   {pv.freeInputAt !== null && (
                     <div style={{ marginTop: 6, padding: "6px 8px", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 6, color: "#92400e" }}>
                       ⏸ ここでユーザー入力を待ちます。以降のメッセージは入力後に送信されます。
@@ -5064,13 +5057,6 @@ export function MessageForm({
                   {pv.overLimit && (
                     <div style={{ marginTop: 8, color: "#b91c1c" }}>
                       ⚠️ 一度に送るメッセージが{pv.total}通で、5通を超えています。6通目以降は <strong>Push 送信</strong>となり、LINE 公式アカウントの<strong>月間メッセージ通数を消費</strong>する可能性があります（届かない場合あり）。QR・自由入力・フェーズ遷移で5通以内に区切ってください。
-                    </div>
-                  )}
-                  {/* まとめ送信廃止方針（Phase 1）: 2通以上を自動連続送信している箇所に廃止予定を明示。 */}
-                  {pv.sendMessages.length > 1 && (
-                    <div style={{ marginTop: 8, padding: "8px 10px", background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: 6, color: "#9a3412", fontSize: 11, lineHeight: 1.6 }}>
-                      ⚠️ <strong>複数メッセージの自動まとめ送信は廃止予定です。</strong>次のメッセージへ進めるには、Quick Reply・キーワード・QR・GPS などの遷移条件を設定してください。<br />
-                      （現状、この {pv.total} 通は1回の送信でまとめて届きますが、各メッセージ個別の待機時間・入力中表示は反映されません）
                     </div>
                   )}
                   {form.quick_replies.length > 0 && (
