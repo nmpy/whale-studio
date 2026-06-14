@@ -20,6 +20,7 @@ import { TapDestinationSection } from "@/components/destination/TapDestinationSe
 import type { TapMode } from "@/components/destination/TapDestinationSection";
 import { LinkPicker, LinkCopyList, useWorkLinkOptions, type LinkOption } from "@/components/destination/LinkPicker";
 import { detectTapMode } from "@/lib/message-destination-utils";
+import { RequiredMark } from "@/components/RequiredMark";
 import { destinationApi } from "@/lib/api-client";
 import type { LineDestination } from "@/types";
 import { normalizeFlexJson, prettyFlexJson, FLEX_SIMULATOR_URL, FLEX_ERRORS } from "@/lib/flex";
@@ -1078,7 +1079,7 @@ function QuickReplyEditor({ items, onChange, responseMessages, phases, transitio
                         {/* ボタンテキスト */}
                         <div className="form-group" style={{ marginTop: isHint ? 10 : 0, marginBottom: 10 }}>
                           <label style={{ ...fieldLabel, fontSize: 12 }}>
-                            ボタンテキスト <span style={{ color: "#dc2626" }}>*</span>
+                            ボタンテキスト <RequiredMark />
                             <span style={{ fontWeight: 400, color: "#9ca3af", marginLeft: 4 }}>({item.label.length}/20)</span>
                           </label>
                           <input type="text" className="form-input"
@@ -1392,7 +1393,7 @@ function QuickReplyEditor({ items, onChange, responseMessages, phases, transitio
                             {/* ── ヒント本文 ── */}
                             <div className="form-group" style={{ marginBottom: 8 }}>
                               <label style={{ ...fieldLabel, fontSize: 12 }}>
-                                ヒント本文 <span style={{ color: "#dc2626" }}>*</span>
+                                ヒント本文 <RequiredMark />
                                 <span style={{ fontWeight: 400, color: "#9ca3af", marginLeft: 4 }}>({(item.hint_text ?? "").length}/2000)</span>
                               </label>
                               <textarea className="form-input"
@@ -3160,7 +3161,7 @@ function AdditionalMessageBlock({
 
             {/* B. 代替テキスト */}
             <label style={fieldLabel}>
-              代替テキスト <span style={{ color: "#dc2626" }}>*</span>
+              代替テキスト <RequiredMark />
             </label>
             <input
               type="text"
@@ -3174,7 +3175,7 @@ function AdditionalMessageBlock({
 
             {/* C. Flex Message JSON */}
             <label style={{ ...fieldLabel, marginTop: 14 }}>
-              Flex Message JSON <span style={{ color: "#dc2626" }}>*</span>
+              Flex Message JSON <RequiredMark />
             </label>
             <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
               <button
@@ -4039,7 +4040,7 @@ export function MessageForm({
             {mtype === "text" && (
               <div className="form-group" style={{ marginBottom: 0 }}>
                 <label style={fieldLabel} htmlFor="puzzle_body">
-                  本文 <span style={{ color: "#dc2626" }}>*</span>
+                  本文 <RequiredMark />
                 </label>
                 <textarea
                   id="puzzle_body"
@@ -4061,7 +4062,7 @@ export function MessageForm({
               <>
                 <div className="form-group">
                   <label style={fieldLabel}>
-                    画像 <span style={{ color: "#dc2626" }}>*</span>
+                    画像 <RequiredMark />
                   </label>
                   <ImageUploader
                     value={form.asset_url}
@@ -4083,7 +4084,7 @@ export function MessageForm({
               <>
                 <div className="form-group">
                   <label style={fieldLabel} htmlFor="puzzle_asset_url_video">
-                    動画 URL <span style={{ color: "#dc2626" }}>*</span>
+                    動画 URL <RequiredMark />
                   </label>
                   <input
                     id="puzzle_asset_url_video"
@@ -4108,7 +4109,7 @@ export function MessageForm({
               <>
                 <div className="form-group">
                   <label style={fieldLabel}>
-                    カード <span style={{ color: "#dc2626" }}>*</span>
+                    カード <RequiredMark />
                     <span style={{ fontSize: 11, color: "#9ca3af", fontWeight: 400, marginLeft: 6 }}>
                       ({form.carousel_items.length} / 10枚)
                     </span>
@@ -4262,7 +4263,7 @@ export function MessageForm({
 
                 {/* B. 代替テキスト (altText) */}
                 <label style={fieldLabel} htmlFor="flex_alt_text">
-                  代替テキスト <span style={{ color: "#dc2626" }}>*</span>
+                  代替テキスト <RequiredMark />
                 </label>
                 <input
                   id="flex_alt_text"
@@ -4277,7 +4278,7 @@ export function MessageForm({
 
                 {/* C. Flex Message JSON */}
                 <label style={{ ...fieldLabel, marginTop: 14 }} htmlFor="flex_json">
-                  Flex Message JSON <span style={{ color: "#dc2626" }}>*</span>
+                  Flex Message JSON <RequiredMark />
                 </label>
                 <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
                   <button
@@ -4336,7 +4337,7 @@ export function MessageForm({
             {mtype === "text" && (
               <div className="form-group" style={{ marginBottom: 0 }}>
                 <label style={fieldLabel} htmlFor="body">
-                  {isSystemNotice ? "表示テキスト" : "本文"} <span style={{ color: "#dc2626" }}>*</span>
+                  {isSystemNotice ? "表示テキスト" : "本文"} <RequiredMark />
                 </label>
                 {isSystemNotice && (
                   <div style={{
@@ -4397,7 +4398,7 @@ export function MessageForm({
               <>
                 <div className="form-group">
                   <label style={fieldLabel}>
-                    画像 <span style={{ color: "#dc2626" }}>*</span>
+                    画像 <RequiredMark />
                   </label>
                   <ImageUploader
                     value={form.asset_url}
@@ -4490,7 +4491,7 @@ export function MessageForm({
                 {form.image_action_type === "message" && (
                   <div className="form-group" style={{ marginTop: 12, marginLeft: 24, paddingLeft: 12, borderLeft: "3px solid #e5e7eb" }}>
                     <label style={fieldLabel} htmlFor="image_action_text">
-                      送信されるテキスト <span style={{ color: "#dc2626" }}>*</span>
+                      送信されるテキスト <RequiredMark />
                     </label>
                     <input
                       id="image_action_text"
@@ -4511,7 +4512,7 @@ export function MessageForm({
                 {form.image_action_type === "uri" && (
                   <div className="form-group" style={{ marginTop: 12, marginLeft: 24, paddingLeft: 12, borderLeft: "3px solid #e5e7eb" }}>
                     <label style={fieldLabel} htmlFor="image_action_url">
-                      開く URL <span style={{ color: "#dc2626" }}>*</span>
+                      開く URL <RequiredMark />
                     </label>
                     <LinkPicker
                       options={linkOptions}
@@ -4565,7 +4566,7 @@ export function MessageForm({
               <>
                 <div className="form-group">
                   <label style={fieldLabel} htmlFor="riddle_id">
-                    謎 <span style={{ color: "#dc2626" }}>*</span>
+                    謎 <RequiredMark />
                   </label>
                   <select
                     id="riddle_id"
@@ -4603,7 +4604,7 @@ export function MessageForm({
               <>
                 <div className="form-group">
                   <label style={fieldLabel} htmlFor="asset_url_video">
-                    動画 URL <span style={{ color: "#dc2626" }}>*</span>
+                    動画 URL <RequiredMark />
                   </label>
                   <input
                     id="asset_url_video"
@@ -4614,6 +4615,21 @@ export function MessageForm({
                     placeholder="https://example.com/video.mp4"
                     style={{ fontFamily: "monospace", fontSize: 13 }}
                   />
+                  {/* 再生確認用プレーヤー（http(s) URL のときのみ）。読み込み失敗してもクラッシュしない。 */}
+                  {/^https?:\/\//i.test(form.asset_url.trim()) && (
+                    <div style={{ marginTop: 10 }}>
+                      <div style={hintText}>プレビュー（再生確認）</div>
+                      <video
+                        key={form.asset_url}
+                        src={form.asset_url.trim()}
+                        controls
+                        preload="metadata"
+                        style={{ width: "100%", maxWidth: 320, marginTop: 4, borderRadius: 8, background: "#000" }}
+                      >
+                        お使いのブラウザは動画の再生に対応していません。
+                      </video>
+                    </div>
+                  )}
                 </div>
                 <div className="form-group" style={{ marginBottom: 0 }}>
                   <label style={fieldLabel} htmlFor="notify_text_video">
@@ -4637,7 +4653,7 @@ export function MessageForm({
               <>
                 <div className="form-group">
                   <label style={fieldLabel}>
-                    カード <span style={{ color: "#dc2626" }}>*</span>
+                    カード <RequiredMark />
                     <span style={{ fontSize: 11, color: "#9ca3af", fontWeight: 400, marginLeft: 6 }}>
                       ({form.carousel_items.length} / 10枚)
                     </span>
@@ -4800,7 +4816,7 @@ export function MessageForm({
               <>
                 <div className="form-group">
                   <label style={fieldLabel} htmlFor="asset_url_voice">
-                    音声ファイル URL <span style={{ color: "#dc2626" }}>*</span>
+                    音声ファイル URL <RequiredMark />
                   </label>
                   <input
                     id="asset_url_voice"
@@ -4814,6 +4830,21 @@ export function MessageForm({
                   <div style={hintText}>
                     LINE が対応する音声形式: M4A (AAC)・最大60秒
                   </div>
+                  {/* 再生確認用プレーヤー（http(s) URL のときのみ）。読み込み失敗してもクラッシュしない。 */}
+                  {/^https?:\/\//i.test(form.asset_url.trim()) && (
+                    <div style={{ marginTop: 10 }}>
+                      <div style={hintText}>プレビュー（再生確認）</div>
+                      <audio
+                        key={form.asset_url}
+                        src={form.asset_url.trim()}
+                        controls
+                        preload="metadata"
+                        style={{ width: "100%", maxWidth: 320, marginTop: 4 }}
+                      >
+                        お使いのブラウザは音声の再生に対応していません。
+                      </audio>
+                    </div>
+                  )}
                 </div>
                 <div className="form-group" style={{ marginBottom: 0 }}>
                   <label style={fieldLabel} htmlFor="notify_text_voice">
@@ -5226,7 +5257,7 @@ export function MessageForm({
             {/* answer */}
             <div className="form-group">
               <label style={fieldLabel} htmlFor="puzzle_answer">
-                答え <span style={{ color: "#dc2626" }}>*</span>
+                答え <RequiredMark />
               </label>
               <input
                 id="puzzle_answer"
@@ -5241,7 +5272,7 @@ export function MessageForm({
 
             {/* 照合条件（exact / partial 排他ラジオ） */}
             <div className="form-group">
-              <label style={fieldLabel}>照合条件 <span style={{ color: "#dc2626" }}>*</span></label>
+              <label style={fieldLabel}>照合条件 <RequiredMark /></label>
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {(
                   [
@@ -5295,7 +5326,7 @@ export function MessageForm({
 
             {/* correct_action */}
             <div className="form-group">
-              <label style={fieldLabel}>正解時アクション <span style={{ color: "#dc2626" }}>*</span></label>
+              <label style={fieldLabel}>正解時アクション <RequiredMark /></label>
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {(
                   [
@@ -5326,7 +5357,7 @@ export function MessageForm({
             {(form.correct_action === "text" || form.correct_action === "text_and_transition") && (
             <div className="form-group">
               <label style={fieldLabel} htmlFor="correct_text">
-                正解メッセージ <span style={{ color: "#dc2626" }}>*</span>
+                正解メッセージ <RequiredMark />
               </label>
               <textarea
                 id="correct_text"
@@ -5344,7 +5375,7 @@ export function MessageForm({
             {(form.correct_action === "transition" || form.correct_action === "text_and_transition") && (
             <div className="form-group">
               <label style={fieldLabel} htmlFor="correct_next_phase">
-                遷移先フェーズ <span style={{ color: "#dc2626" }}>*</span>
+                遷移先フェーズ <RequiredMark />
               </label>
               <select
                 id="correct_next_phase"
