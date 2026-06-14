@@ -1094,6 +1094,7 @@ function QuickReplyEditor({ items, onChange, responseMessages, phases, transitio
                               }}
                               onDestinationChange={(id) => updateItem(index, { destination_id: id } as Partial<QuickReplyItem>)}
                               onDirectUrlChange={(url) => updateItem(index, { value: url } as Partial<QuickReplyItem>)}
+                              onPickLink={(url) => updateItem(index, { value: url, destination_id: undefined } as Partial<QuickReplyItem>)}
                             />
                           </div>
                         )}
@@ -4410,6 +4411,7 @@ export function MessageForm({
                     }}
                     onDestinationChange={(id) => set("tap_destination_id", id ?? "")}
                     onDirectUrlChange={(url) => set("tap_url", url)}
+                    onPickLink={(url) => { setTapMode("direct_url"); set("tap_destination_id", ""); set("tap_url", url); }}
                   />
                 </div>
 
@@ -4726,6 +4728,11 @@ export function MessageForm({
                               set("carousel_items", items);
                             }}
                             onDirectUrlChange={(url) => updateCard(index, "button_url", url)}
+                            onPickLink={(url) => {
+                              const items = [...form.carousel_items];
+                              items[index] = { ...items[index], button_url: url, destination_id: null };
+                              set("carousel_items", items);
+                            }}
                           />
                         </div>
                       </div>
