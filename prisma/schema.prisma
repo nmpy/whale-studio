@@ -557,6 +557,8 @@ model XPost {
   oa               Oa       @relation(fields: [oaId], references: [id], onDelete: Cascade)
   work             Work     @relation(fields: [workId], references: [id], onDelete: Cascade)
   clickEvents      XPostClickEvent[]
+  importedMetrics  XPostImportedMetric[]
+  mentions         XImportedMention[]
 
   @@index([oaId])
   @@index([workId])
@@ -584,6 +586,93 @@ model XPostClickEvent {
   @@index([xPostId])
   @@index([trackingCode])
   @@map("x_post_click_events")
+}
+
+/// CSV インポートした投稿実績（インプレッション等）。X API/スクレイピングは使わず CSV 由来の値のみ。
+/// csvUrlClicks は CSV 由来であり、Whale Studio の計測URLクリック（XPostClickEvent）とは別物。
+model XPostImportedMetric {
+  id              String    @id @default(uuid())
+  oaId            String    @map("oa_id")
+  workId          String    @map("work_id")
+  xPostId         String?   @map("x_post_id")
+  xPostUrl        String?   @map("x_post_url")
+  xPostExternalId String?   @map("x_post_external_id")
+  postTitle       String?   @map("post_title")
+  postedAt        DateTime? @map("posted_at")
+  impressions     Int       @default(0)
+  likes           Int       @default(0)
+  reposts         Int       @default(0)
+  replies         Int       @default(0)
+  quotes          Int       @default(0)
+  bookmarks       Int       @default(0)
+  csvUrlClicks    Int       @default(0) @map("csv_url_clicks")
+  note            String?
+  /// 取り込み元の生データ（X投稿エクスポート等）。JSON 文字列。
+  rawJson         String?   @map("raw_json")
+  importedAt      DateTime  @default(now()) @map("imported_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+  xPost           XPost?    @relation(fields: [xPostId], references: [id], onDelete: SetNull)
+
+  @@index([oaId])
+  @@index([workId])
+  @@index([xPostId])
+  @@map("x_post_imported_metrics")
+}
+
+/// CSV インポートした口コミ（自然言語処理の対象）。CSV 由来テキストのみ。
+model XImportedMention {
+  id               String    @id @default(uuid())
+  oaId             String    @map("oa_id")
+  workId           String    @map("work_id")
+  relatedXPostId   String?   @map("related_x_post_id")
+  relatedXPostUrl  String?   @map("related_x_post_url")
+  postedAt         DateTime? @map("posted_at")
+  authorName       String?   @map("author_name")
+  authorHandle     String?   @map("author_handle")
+  text             String
+  /// 重複判定用（url が無い口コミのため text の hash）
+  textHash         String    @map("text_hash")
+  url              String?
+  source           String?
+  note             String?
+  /// 取り込み元の生データ（X投稿エクスポート等）。JSON 文字列。
+  rawJson          String?   @map("raw_json")
+  importedAt       DateTime  @default(now()) @map("imported_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+  relatedXPost     XPost?    @relation(fields: [relatedXPostId], references: [id], onDelete: SetNull)
+  analysis         XImportedMentionAnalysis?
+
+  @@index([oaId])
+  @@index([workId])
+  @@index([textHash])
+  @@index([relatedXPostId])
+  @@map("x_imported_mentions")
+}
+
+/// 口コミの分析結果（1:1）。ルールベース。将来 LLM 分類に差し替え可能。
+model XImportedMentionAnalysis {
+  id                String   @id @default(uuid())
+  oaId              String   @map("oa_id")
+  workId            String   @map("work_id")
+  mentionId         String   @unique @map("mention_id")
+  /// "positive" | "neutral" | "negative" | "unknown"
+  sentiment         String
+  sentimentScore    Int?     @map("sentiment_score")
+  /// "high" | "medium" | "low" | "unknown"
+  repeatIntent      String   @map("repeat_intent")
+  repeatIntentScore Int?     @map("repeat_intent_score")
+  /// マッチしたキーワード（JSON 文字列配列）
+  matchedKeywords   String?  @map("matched_keywords")
+  analyzedAt        DateTime @default(now()) @map("analyzed_at")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+  mention           XImportedMention @relation(fields: [mentionId], references: [id], onDelete: Cascade)
+
+  @@index([oaId])
+  @@index([workId])
+  @@map("x_imported_mention_analyses")
 }
 
 model RichMenu {
