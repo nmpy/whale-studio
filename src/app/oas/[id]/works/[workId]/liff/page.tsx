@@ -75,6 +75,10 @@ function LiffPagesIndex() {
 
   const [pages, setPages] = useState<LiffPageSummary[] | null>(null);
   const [workTitle, setWorkTitle] = useState("");
+  /** 作品メニューホームの任意設定（title/description/image_url）。未設定は null。 */
+  const [homeSettings, setHomeSettings] = useState<{
+    title: string | null; description: string | null; image_url: string | null;
+  }>({ title: null, description: null, image_url: null });
   const [liffEnabled, setLiffEnabled] = useState(true);
   const [savingLiffEnabled, setSavingLiffEnabled] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -92,6 +96,7 @@ function LiffPagesIndex() {
       ]);
       setPages(list.pages);
       setWorkTitle(work.title);
+      setHomeSettings(work.liff_home_settings ?? { title: null, description: null, image_url: null });
       setLiffEnabled(work.liff_enabled !== false);
       // 計測サマリは並行取得し、失敗してもページ一覧自体は表示する
       liffConfigApi
@@ -271,6 +276,7 @@ function LiffPagesIndex() {
           workId={workId}
           workTitle={workTitle}
           pages={pages ?? []}
+          homeInit={homeSettings}
           isReadOnly={isReadOnly}
           onSaved={() => { void reload(); }}
         />

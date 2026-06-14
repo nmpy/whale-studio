@@ -153,6 +153,8 @@ export interface Work {
   resume_enabled?: boolean;
   /** システムメッセージ送信者として使うキャラクター ID（任意） */
   system_character_id: string | null;
+  /** 作品メニューホームの任意設定（title/description/image_url）。詳細 GET でのみ返す。 */
+  liff_home_settings?: LiffHomeSettings;
   /**
    * あいさつメッセージ（任意）。
    * 未開始ユーザーが最初に話しかけたときに送信される導入文。
@@ -382,6 +384,17 @@ export interface CreateWorkBody {
   sort_order?: number;
 }
 
+/** 作品メニューホーム（`/liff/w/{publicId}`）の任意設定。すべて未設定可。
+ *  未設定（null）のときは従来表示（見出し「ホーム」・説明/画像なし）にフォールバックする。 */
+export interface LiffHomeSettings {
+  /** ホーム見出し。null/空のとき「ホーム」を表示。 */
+  title:       string | null;
+  /** ホーム説明文（複数行可）。null/空のとき非表示。 */
+  description: string | null;
+  /** ホーム画像 URL。null/空のとき非表示。 */
+  image_url:   string | null;
+}
+
 export interface UpdateWorkBody {
   title?: string;
   description?: string;
@@ -389,6 +402,12 @@ export interface UpdateWorkBody {
   sort_order?: number;
   /** LIFF プレイヤー機能の有効/無効。 */
   liff_enabled?: boolean;
+  /** 作品メニューホームの任意設定（title/description/image_url）。指定キーのみ更新、空文字は解除。 */
+  liff_home_settings?: {
+    title?:       string | null;
+    description?: string | null;
+    image_url?:   string | null;
+  };
   /** 途中再開機能の有効/無効（作品単位）。 */
   resume_enabled?: boolean;
   /** システムメッセージ送信者キャラクター ID（null で解除） */

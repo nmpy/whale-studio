@@ -3,12 +3,34 @@
 // PATCH  /api/works/:workId — 作品更新
 // DELETE /api/works/:workId — 作品削除（CASCADE: characters/phases/messages も削除）
 
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { ok, noContent, badRequest, notFound, serverError } from "@/lib/api-response";
 import { withAuth } from "@/lib/auth";
 import { requireRole } from "@/lib/rbac";
 import { updateWorkSchema, formatZodErrors } from "@/lib/validations";
+import { parseLiffHomeSettings } from "@/components/liff/liff-style-helpers";
 import { ZodError } from "zod";
+
+/** 既存 liff_home_settings_json に、PATCH で渡されたキーだけをマージする。
+ *  値を渡したキーは更新、空文字/空白のみ・null は「解除」としてキーを削除する。
+ *  description は内部の改行を保持する（trim は空判定にのみ使用）。 */
+function mergeLiffHomeSettings(
+  existing: unknown,
+  patch: { title?: string | null; description?: string | null; image_url?: string | null },
+): Prisma.InputJsonValue {
+  const base =
+    existing && typeof existing === "object" && !Array.isArray(existing)
+      ? { ...(existing as Record<string, unknown>) }
+      : {};
+  for (const key of ["title", "description", "image_url"] as const) {
+    if (!(key in patch)) continue;
+    const v = patch[key];
+    if (typeof v === "string" && v.trim() !== "") base[key] = v;
+    else delete base[key]; // null / 空文字 / 空白のみ → 解除
+  }
+  return base as Prisma.InputJsonValue;
+}
 import { activeCache, CACHE_KEY } from "@/lib/cache";
 import { genRequestId, runWithRequestId, withTiming } from "@/lib/perf";
 
@@ -16,6 +38,7 @@ function toResponse(w: {
   id: string; publicId?: string | null; oaId: string; title: string; description: string | null;
   publishStatus: string; sortOrder: number;
   liffEnabled?: boolean | null;
+  liffHomeSettingsJson?: unknown;
   resumeEnabled?: boolean | null;
   systemCharacterId: string | null;
   welcomeMessage: string | null;
@@ -37,6 +60,8 @@ function toResponse(w: {
     // 既存 DB 行は migration 後 default(true) なので false 単体での null は来ない想定。
     // null/undefined のときは true 扱い (= LIFF 有効)。
     liff_enabled:        w.liffEnabled ?? true,
+    // 作品メニューホームの任意設定。未設定/空 {} は全 null（= 従来表示）に正規化。
+    liff_home_settings:  parseLiffHomeSettings(w.liffHomeSettingsJson),
     resume_enabled:      w.resumeEnabled ?? true,
     system_character_id: w.systemCharacterId,
     welcome_message:     w.welcomeMessage,
@@ -104,6 +129,9 @@ export const PATCH = withAuth<{ workId: string }>(async (req, { params }, user) 
         ...(data.publish_status      !== undefined && { publishStatus:      data.publish_status }),
         ...(data.sort_order          !== undefined && { sortOrder:          data.sort_order }),
         ...(data.liff_enabled        !== undefined && { liffEnabled:        data.liff_enabled }),
+        ...(data.liff_home_settings  !== undefined && {
+          liffHomeSettingsJson: mergeLiffHomeSettings(existing.liffHomeSettingsJson, data.liff_home_settings),
+        }),
         ...(data.resume_enabled      !== undefined && { resumeEnabled:      data.resume_enabled }),
         ...(data.system_character_id !== undefined && { systemCharacterId:  data.system_character_id }),
         ...(data.welcome_message     !== undefined && { welcomeMessage:     data.welcome_message }),

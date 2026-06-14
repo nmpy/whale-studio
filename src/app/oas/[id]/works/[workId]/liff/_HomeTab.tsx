@@ -15,13 +15,21 @@ import "@/app/liff/liff-font.css";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useToast } from "@/components/Toast";
 import { buttonClass } from "@/components/shared";
+import { ImageUploadField } from "@/components/ImageUploadField";
 import {
   liffConfigApi,
+  workApi,
   getDevToken,
   type LiffPageSummary,
 } from "@/lib/api-client";
 import { LiffMenuHomeRenderer, type LiffMenuHomePage } from "@/components/liff/LiffMenuHomeRenderer";
 import { formatDateTime } from "./_shared";
+
+interface HomeInit {
+  title:       string | null;
+  description: string | null;
+  image_url:   string | null;
+}
 
 type CardStyle = "card" | "compact";
 
@@ -48,6 +56,8 @@ interface Props {
   workId:     string;
   workTitle:  string;
   pages:      LiffPageSummary[];
+  /** 作品メニューホームの初期設定（title/description/image_url）。 */
+  homeInit:   HomeInit;
   isReadOnly: boolean;
   /** 保存完了後に親へ再読込を促す。 */
   onSaved:    () => void;
@@ -88,18 +98,38 @@ const PUBLISH_BADGE: Record<string, string> = {
   archived:  "アーカイブ",
 };
 
-export function HomeTab({ workId, workTitle, pages, isReadOnly, onSaved }: Props) {
+// 入力値（空文字含む）を保存用に正規化: trim 後空なら "" を送る（API 側で解除扱い）。
+const norm = (v: string) => (v.trim() === "" ? "" : v);
+
+export function HomeTab({ workId, workTitle, pages, homeInit, isReadOnly, onSaved }: Props) {
   const { showToast } = useToast();
   const [rows, setRows] = useState<Row[]>(() => buildRows(pages));
   const [saving, setSaving] = useState(false);
 
+  // ホーム設定（タイトル/説明文/画像）。テキストエリアは制御のため空文字を保持する。
+  const [homeTitle, setHomeTitle] = useState(homeInit.title ?? "");
+  const [homeDescription, setHomeDescription] = useState(homeInit.description ?? "");
+  const [homeImageUrl, setHomeImageUrl] = useState(homeInit.image_url ?? "");
+
   // 親が pages を再取得したら Row を作り直す（保存後リセット含む）。
   useEffect(() => { setRows(buildRows(pages)); }, [pages]);
+  // 親が work を再取得したらホーム設定も同期（保存後リセット含む）。
+  useEffect(() => {
+    setHomeTitle(homeInit.title ?? "");
+    setHomeDescription(homeInit.description ?? "");
+    setHomeImageUrl(homeInit.image_url ?? "");
+  }, [homeInit.title, homeInit.description, homeInit.image_url]);
 
-  const dirty = useMemo(
+  const homeDirty =
+    norm(homeTitle) !== (homeInit.title ?? "") ||
+    norm(homeDescription) !== (homeInit.description ?? "") ||
+    norm(homeImageUrl) !== (homeInit.image_url ?? "");
+
+  const rowsDirty = useMemo(
     () => rows.some((r, i) => r.origMenuOrder !== i || r.cardStyle !== r.origCardStyle),
     [rows],
   );
+  const dirty = rowsDirty || homeDirty;
 
   const move = useCallback((index: number, dir: -1 | 1) => {
     setRows((prev) => {
@@ -124,8 +154,19 @@ export function HomeTab({ workId, workTitle, pages, isReadOnly, onSaved }: Props
       .map((r, i) => ({ r, i }))
       .filter(({ r, i }) => r.origMenuOrder !== i || r.cardStyle !== r.origCardStyle);
     try {
+      // ① ホーム設定（タイトル/説明文/画像）を work にまとめて保存（変更時のみ）。
+      //    空文字は API 側で解除扱い。works.liff_home_settings_json に merge される。
+      if (homeDirty) {
+        await workApi.update(token, workId, {
+          liff_home_settings: {
+            title:       norm(homeTitle),
+            description: norm(homeDescription),
+            image_url:   norm(homeImageUrl),
+          },
+        });
+      }
+      // ② 各ページの並び順・表示形式。settingsJson を壊さないよう最新を取得して merge。
       for (const { r, i } of targets) {
-        // settingsJson を上書きで壊さないよう、最新 settings を取得して merge する。
         const full = await liffConfigApi.getPage(token, workId, r.id);
         const merged = {
           ...(full.settings_json ?? {}),
@@ -134,14 +175,14 @@ export function HomeTab({ workId, workTitle, pages, isReadOnly, onSaved }: Props
         };
         await liffConfigApi.updatePage(token, workId, r.id, { settings_json: merged });
       }
-      showToast("ホームの表示設定を保存しました", "success");
+      showToast("ホームの設定を保存しました", "success");
       onSaved();
     } catch {
       showToast("保存に失敗しました。時間をおいて再度お試しください", "error");
     } finally {
       setSaving(false);
     }
-  }, [isReadOnly, saving, dirty, rows, workId, showToast, onSaved]);
+  }, [isReadOnly, saving, dirty, homeDirty, homeTitle, homeDescription, homeImageUrl, rows, workId, showToast, onSaved]);
 
   // ── プレビュー用ページ（ローカルの順序・形式・ラベルを即時反映）──
   const previewPages = useMemo<LiffMenuHomePage[]>(
@@ -168,11 +209,9 @@ export function HomeTab({ workId, workTitle, pages, isReadOnly, onSaved }: Props
     <div className="flex flex-col lg:flex-row gap-6 items-start">
       {/* 左: 編集 */}
       <div className="flex-1 min-w-0 w-full">
+        {/* 共通保存ボタン: ホーム設定 + 並び順 + 表示形式 をまとめて保存 */}
         <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-          <div>
-            <h2 className="text-base font-semibold text-gray-900">ホームに表示するページ</h2>
-            <p className="text-[11px] text-gray-500 mt-0.5">並び順と表示形式を編集できます。右のプレビューに即時反映されます。</p>
-          </div>
+          <p className="text-[12px] text-gray-500">ホームの見た目と並びを設定します。変更は右のプレビューに即時反映されます。</p>
           {!isReadOnly && (
             <button
               type="button"
@@ -185,6 +224,56 @@ export function HomeTab({ workId, workTitle, pages, isReadOnly, onSaved }: Props
               {saving ? "保存中..." : dirty ? "保存" : "保存済み"}
             </button>
           )}
+        </div>
+
+        {/* ホーム設定（タイトル / 説明文 / 画像）— すべて任意。未設定時は従来表示。 */}
+        <div className="bg-white border border-gray-200 rounded-xl p-4 mb-4 space-y-3">
+          <h2 className="text-base font-semibold text-gray-900">ホーム設定</h2>
+
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">ホームタイトル</label>
+            <input
+              type="text"
+              value={homeTitle}
+              onChange={(e) => setHomeTitle(e.target.value)}
+              disabled={isReadOnly}
+              placeholder="ホーム"
+              maxLength={40}
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand/30 disabled:bg-gray-50"
+            />
+            <p className="text-[11px] text-gray-400 mt-1">未入力の場合は「ホーム」と表示されます。</p>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">ホーム説明文</label>
+            <textarea
+              value={homeDescription}
+              onChange={(e) => setHomeDescription(e.target.value)}
+              disabled={isReadOnly}
+              placeholder="このホーム画面の説明文を入力できます"
+              rows={3}
+              maxLength={2000}
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm resize-y min-h-[72px] focus:outline-none focus:ring-2 focus:ring-brand/30 disabled:bg-gray-50"
+            />
+            <p className="text-[11px] text-gray-400 mt-1">未入力の場合は表示されません。改行はそのまま反映されます。</p>
+          </div>
+
+          <ImageUploadField
+            label="ホーム画像"
+            value={homeImageUrl}
+            onChange={(next) => setHomeImageUrl(next)}
+            readOnly={isReadOnly}
+            previewAlt="ホーム画像プレビュー"
+            previewMaxHeight={160}
+            urlInputCollapsibleLabel="画像URLを直接入力する"
+          />
+          <p className="text-[11px] text-gray-400 -mt-1">未設定の場合は表示されません。設定するとホーム見出しの上に表示されます。</p>
+        </div>
+
+        {/* ページ一覧 */}
+        <div className="mb-3">
+          <h2 className="text-base font-semibold text-gray-900">ホームに表示するページ</h2>
+          <p className="text-[11px] text-gray-500 mt-0.5">並び順と表示形式を編集できます。右のプレビューに即時反映されます。</p>
         </div>
 
         {rows.length === 0 ? (
@@ -283,7 +372,14 @@ export function HomeTab({ workId, workTitle, pages, isReadOnly, onSaved }: Props
             <span className="w-7 h-1 rounded-full bg-[#e3e8ec]" />
           </div>
           <div className="overflow-auto bg-[#f5f8f6]" style={{ maxHeight: 720 }}>
-            <LiffMenuHomeRenderer workTitle={workTitle} pages={previewPages} preview />
+            <LiffMenuHomeRenderer
+              workTitle={workTitle}
+              pages={previewPages}
+              homeTitle={homeTitle}
+              homeDescription={homeDescription}
+              homeImageUrl={homeImageUrl}
+              preview
+            />
           </div>
         </div>
       </div>

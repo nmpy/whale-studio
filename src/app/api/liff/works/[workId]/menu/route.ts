@@ -17,6 +17,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { findWorkByIdOrPublicId } from "@/lib/public-id-resolver";
+import { parseLiffHomeSettings } from "@/components/liff/liff-style-helpers";
 
 export const dynamic = "force-dynamic";
 
@@ -37,6 +38,9 @@ export async function GET(
 
     const url = new URL(req.url);
     const preview = url.searchParams.get("preview") === "1";
+
+    // 作品メニューホームの任意設定（タイトル/説明文/画像）。未設定は全 null（= 従来表示）。
+    const home = parseLiffHomeSettings((work as { liffHomeSettingsJson?: unknown }).liffHomeSettingsJson);
 
     // work レベルの LIFF 有効/無効を尊重。preview=1 は CMS プレビュー継続のため通す。
     if (!preview && (work as { liffEnabled?: boolean }).liffEnabled === false) {
@@ -69,6 +73,9 @@ export async function GET(
         data: {
           work_id:    work.id,
           work_title: work.title,
+          home_title:       home.title,
+          home_description: home.description,
+          home_image_url:   home.image_url,
           pages:      [],
         },
       });
@@ -79,6 +86,9 @@ export async function GET(
       data: {
         work_id:    work.id,
         work_title: work.title,
+        home_title:       home.title,
+        home_description: home.description,
+        home_image_url:   home.image_url,
         pages: configs.map((config) => ({
           id:             config.id,
           public_id:      config.publicId,
