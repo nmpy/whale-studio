@@ -275,8 +275,10 @@ export interface Message {
   // ── Puzzle（謎）専用フィールド ──
   /** 出題形式（kind="puzzle" のとき使用） */
   puzzle_type: string | null;
-  /** 正解テキスト */
+  /** 正解テキスト（後方互換: 先頭正解を保持） */
   answer: string | null;
+  /** 複数正解（いずれか一致で正解）。null/空 = 単一 answer のみ使用 */
+  answers: string[] | null;
   /** ヒントテキスト */
   puzzle_hint_text: string | null;
   /** ヒント表示モード: always=常時 / on_wrong=不正解時のみ / hidden=非表示 */
@@ -287,8 +289,12 @@ export interface Message {
   correct_action: string | null;
   /** 正解時メッセージ */
   correct_text: string | null;
+  /** 正解メッセージの発話キャラクター ID（null = 問題本文 character → デフォルトにフォールバック） */
+  correct_character_id: string | null;
   /** 不正解時メッセージ */
   incorrect_text: string | null;
+  /** 不正解メッセージの発話キャラクター ID（null = 問題本文 character → デフォルトにフォールバック） */
+  incorrect_character_id: string | null;
   /** 不正解時クイックリプライ（JSON / QuickReplyItem[]）*/
   incorrect_quick_replies: QuickReplyItem[] | null;
   /** 正解後遷移先フェーズ ID */
@@ -527,11 +533,17 @@ export interface CreateMessageBody {
   // Puzzle fields
   puzzle_type?: string | null;
   answer?: string | null;
+  /** 複数正解（いずれか一致で正解）。trim・空除外・重複除外して保存される */
+  answers?: string[] | null;
   puzzle_hint_text?: string | null;
   answer_match_type?: string[];
   correct_action?: string | null;
   correct_text?: string | null;
+  /** 正解メッセージの発話キャラクター ID */
+  correct_character_id?: string | null;
   incorrect_text?: string | null;
+  /** 不正解メッセージの発話キャラクター ID */
+  incorrect_character_id?: string | null;
   incorrect_quick_replies?: QuickReplyItem[] | null;
   correct_next_phase_id?: string | null;
   /** ヒント表示モード */
@@ -585,11 +597,17 @@ export interface UpdateMessageBody {
   // Puzzle fields
   puzzle_type?: string | null;
   answer?: string | null;
+  /** 複数正解（いずれか一致で正解）。trim・空除外・重複除外して保存される */
+  answers?: string[] | null;
   puzzle_hint_text?: string | null;
   answer_match_type?: string[];
   correct_action?: string | null;
   correct_text?: string | null;
+  /** 正解メッセージの発話キャラクター ID */
+  correct_character_id?: string | null;
   incorrect_text?: string | null;
+  /** 不正解メッセージの発話キャラクター ID */
+  incorrect_character_id?: string | null;
   incorrect_quick_replies?: QuickReplyItem[] | null;
   correct_next_phase_id?: string | null;
   /** ヒント表示モード */

@@ -16,9 +16,7 @@ import { ViewerBanner } from "@/components/PermissionGuard";
 import { GuideCard } from "@/components/onboarding/GuideCard";
 import type { MessageWithRelations, MessageType, PhaseWithCounts, TransitionWithPhases, QuickReplyItem } from "@/types";
 import type { Role } from "@/lib/types/permissions";
-import { collectChainContinuationIds, chainSizeFrom, chainLengthFrom, estimatePhaseSendBatch, LINE_REPLY_MAX, getChainContinuations, hasAnyTiming, summarizeTiming } from "./_list-helpers";
-import { computePhaseEntryPlan, type EntryPlanMessage } from "./_phase-entry-plan";
-import type { RefMessage } from "@/lib/message-refs";
+import { collectChainContinuationIds, chainSizeFrom, chainLengthFrom, estimateMaxSendUnit, LINE_REPLY_MAX, getChainContinuations, hasAnyTiming, summarizeTiming } from "./_list-helpers";
 
 const MESSAGE_TYPE_LABEL: Record<MessageType, string> = {
   text:     "テキスト",
@@ -1188,7 +1186,9 @@ export default function MessagesPage() {
                   </span>
                 </div>
 
-                {/* 送信通数の警告: このフェーズに入った際の一括送信が LINE Reply 上限(5件)を超える場合 */}
+                {/* 応答5通以上の警告: フェーズ総数ではなく「1回の応答（連続送信）単位」で判定する。
+                    QR / 入力 / 分岐 / 謎回答 / チェックイン待ちは別 head になり別単位として数えるため、
+                    途中にプレイヤーアクションが挟まる構成では誤検知しない。 */}
                 {ph && (() => {
                   const phaseMsgs = messages
                     .filter((m) => m.phase?.id === ph.id)
@@ -1197,89 +1197,18 @@ export default function MessagesPage() {
                       new Date(a.created_at).getTime() - new Date(b.created_at).getTime() ||
                       a.id.localeCompare(b.id),
                     );
-                  const batch = estimatePhaseSendBatch(phaseMsgs);
-                  if (batch <= LINE_REPLY_MAX) return null;
+                  const maxUnit = estimateMaxSendUnit(phaseMsgs);
+                  if (maxUnit < LINE_REPLY_MAX) return null;
                   return (
                     <div style={{
-                      padding: "8px 18px", background: "#fff7ed",
-                      borderBottom: "1px solid #fed7aa", color: "#9a3412",
+                      padding: "8px 18px", background: "#fffbeb",
+                      borderBottom: "1px solid #fde68a", color: "#92400e",
                       fontSize: 11, lineHeight: 1.6,
                     }}>
-                      ⚠️ このフェーズは1回の送信が<strong>合計{batch}通以上</strong>になります。
-                      LINE Reply API で一度に送れるのは<strong>最大5通</strong>までです。
-                      6通目以降は Push API で送信されるため、月間メッセージ通数を消費します
-                      （Push 上限に達している場合、6通目以降は届きません）。
-                      途中に QR / 入力 / フェーズ遷移を挟むか、フェーズを分けて1回の送信を5通以内にすることを推奨します。
+                      ⚠️ このフェーズに、1回の応答で<strong>{maxUnit}通以上</strong>を連続送信する箇所があります。
+                      プレイヤー体験が重くなる可能性があるため、必要に応じて分割や削減を検討してください。
+                      （途中に QR / 入力 / 分岐 / 謎回答などプレイヤーのアクションを挟むと、そこで送信単位が区切られます。）
                     </div>
-                  );
-                })()}
-
-                {/* 入場送信プレビュー（PR1・read-only）: runtime buildPhaseMessages が入場時に実際に送る順序・通数・停止位置と、
-                    「QR/自由入力で辿る想定なのに entry head（＝入場でも送信される二重送信）」を可視化する。 */}
-                {ph && (() => {
-                  const phaseMsgs = messages
-                    .filter((m) => m.phase?.id === ph.id)
-                    .sort((a, b) =>
-                      a.sort_order - b.sort_order ||
-                      new Date(a.created_at).getTime() - new Date(b.created_at).getTime() ||
-                      a.id.localeCompare(b.id),
-                    );
-                  if (phaseMsgs.length === 0) return null;
-                  const plan = computePhaseEntryPlan(phaseMsgs as unknown as EntryPlanMessage[], messages as unknown as RefMessage[]);
-                  const dblHeads   = plan.heads.filter((h) => h.reachedViaNonNext);
-                  const notSent    = plan.heads.filter((h) => !h.sentOnEntry);
-                  const hasWarning = plan.multipleHeads || plan.sortOrderUnstable || plan.overLimit || dblHeads.length > 0 || !!plan.stoppedAtFreeInputId;
-                  return (
-                    <details style={{ borderBottom: "1px solid var(--border-light)", background: "#f8fafc" }}>
-                      <summary style={{ padding: "8px 18px", cursor: "pointer", fontSize: 12, fontWeight: 600, color: "#334155" }}>
-                        📤 入場送信プレビュー（入場時に届く順・全{plan.total}通{plan.overLimit ? "・5通超" : ""}{hasWarning ? "・⚠要確認" : ""}）
-                      </summary>
-                      <div style={{ padding: "4px 18px 12px", fontSize: 12, lineHeight: 1.7, color: "#475569" }}>
-                        <div style={{ color: "#64748b", marginBottom: 4 }}>このフェーズに入った時、以下の順で送信されます（runtime buildPhaseMessages 準拠）。</div>
-                        <ol style={{ margin: "0 0 6px", paddingLeft: 20 }}>
-                          {plan.sendItems.map((s) => (
-                            <li key={s.index} style={{ color: s.freeInput ? "#b45309" : "#334155" }}>
-                              {s.isHeadStart && (
-                                <span style={{ fontSize: 10, fontWeight: 700, color: "#2563eb", marginRight: 4 }}>
-                                  [entry head #{s.entryHeadIndex}{plan.heads[s.entryHeadIndex - 1]?.reachedViaNonNext ? " / QR・入力参照あり" : ""}]
-                                </span>
-                              )}
-                              {s.label}{s.freeInput ? "（自由入力プロンプト）" : ""}
-                            </li>
-                          ))}
-                        </ol>
-                        {plan.stoppedAtFreeInputId && (
-                          <div style={{ color: "#92400e", marginBottom: 4 }}>
-                            ⏸ ここで入場送信は停止します。以降の entry head は入場では送られず、入力後 / QR タップで届きます。
-                          </div>
-                        )}
-                        {hasWarning && (
-                          <div style={{ marginTop: 6, padding: "8px 10px", background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: 6, color: "#9a3412" }}>
-                            <div style={{ fontWeight: 700, marginBottom: 4 }}>警告</div>
-                            <ul style={{ margin: 0, paddingLeft: 18 }}>
-                              {plan.multipleHeads && (
-                                <li>entry head が <strong>{plan.heads.length}個</strong>あります。フェーズ入場時に複数系列が一斉送信されます。</li>
-                              )}
-                              {plan.sortOrderUnstable && (
-                                <li>entry head の <strong>sortOrder が重複</strong>しているため、送信順が不安定です（並び替えで確定してください）。</li>
-                              )}
-                              {dblHeads.map((h) => (
-                                <li key={h.id}>
-                                  「{h.label}」は <strong>QR / 自由入力応答で辿る先</strong>ですが、next で繋がれていないため、フェーズ入場時にも送信されます。
-                                  QR / 入力後だけで出したい場合は、前のメッセージから next で繋ぐか、構成を見直してください。
-                                </li>
-                              ))}
-                              {plan.stoppedAtFreeInputId && notSent.length > 0 && (
-                                <li>freeInput に到達すると phase 入場送信はそこで停止します。以降の entry head（{notSent.length}件）は入場では送られません。</li>
-                              )}
-                              {plan.overLimit && (
-                                <li>入場送信が <strong>{plan.total}通</strong>で5通を超えています。6通目以降は Push となり未達リスクがあります。</li>
-                              )}
-                            </ul>
-                          </div>
-                        )}
-                      </div>
-                    </details>
                   );
                 })()}
 

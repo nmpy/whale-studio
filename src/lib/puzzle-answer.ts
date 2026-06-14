@@ -82,3 +82,59 @@ export function checkPuzzleAnswer(
   }
   return normInput === normAnswer;
 }
+
+/**
+ * DB に文字列で保存された複数正解 answers を string[] に変換する。
+ * - 配列ならそのまま、JSON 文字列なら parse、null/不正は []。
+ * - 前後空白を trim し、空文字は除外する（保存側でも除外するが念のため二重に）。
+ */
+export function parsePuzzleAnswers(
+  raw: string | string[] | null | undefined,
+): string[] {
+  let arr: unknown;
+  if (Array.isArray(raw)) {
+    arr = raw;
+  } else if (!raw) {
+    return [];
+  } else {
+    try {
+      arr = JSON.parse(raw);
+    } catch {
+      return [];
+    }
+  }
+  if (!Array.isArray(arr)) return [];
+  return arr
+    .filter((x): x is string => typeof x === "string")
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+}
+
+/**
+ * 単一 answer（後方互換）と複数 answers を統合した正解候補配列を返す。
+ * trim 済み・空除外・重複除外。判定・保存の双方から使う共通正規化。
+ */
+export function resolveAnswerCandidates(
+  answer: string | null | undefined,
+  answers: string | string[] | null | undefined,
+): string[] {
+  const list: string[] = [];
+  const single = (answer ?? "").trim();
+  if (single) list.push(single);
+  list.push(...parsePuzzleAnswers(answers));
+  // 重複除外（順序保持）
+  return Array.from(new Set(list));
+}
+
+/**
+ * 入力テキストが複数正解候補のいずれかに一致すれば true。
+ * 候補が空なら false。各候補は checkPuzzleAnswer と同じ規則で照合する。
+ */
+export function checkPuzzleAnswerAny(
+  input: string,
+  candidates: string[],
+  matchTypes: string[],
+): boolean {
+  if (!input || candidates.length === 0) return false;
+  return candidates.some((a) => checkPuzzleAnswer(input, a, matchTypes));
+}

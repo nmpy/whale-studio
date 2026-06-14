@@ -166,13 +166,20 @@ export interface MessageFormState {
   is_active:       boolean;
   // ── 謎（puzzle）専用フィールド ──
   puzzle_type:           string;
+  /** 後方互換の単一正解（保存時 answers[0] を反映）。UI は answers を編集する。 */
   answer:                string;
+  /** 複数正解（いずれか一致で正解）。最低1件入力・空除外・trim・重複除外して保存。 */
+  answers:               string[];
   puzzle_hint_text:      string;
   hint_mode:             "always" | "on_wrong" | "hidden";
   answer_match_type:     AnswerMatchType[];
   correct_action:        CorrectAction;
   correct_text:          string;
+  /** 正解メッセージの発話キャラクター ID（"" = 未設定 → 本文キャラ→デフォルト） */
+  correct_character_id:     string;
   incorrect_text:           string;
+  /** 不正解メッセージの発話キャラクター ID（"" = 未設定 → 本文キャラ→デフォルト） */
+  incorrect_character_id:   string;
   incorrect_quick_replies:  QuickReplyItem[];
   correct_next_phase_id:    string;
   /** 2通目以降のメッセージ（チェーン送信） */
@@ -232,12 +239,15 @@ export const EMPTY_MESSAGE_FORM: MessageFormState = {
   // puzzle defaults
   puzzle_type:           "",
   answer:                "",
+  answers:               [""],
   puzzle_hint_text:      "",
   hint_mode:             "always",
   answer_match_type:     ["exact"],
   correct_action:        "text",
   correct_text:          "",
+  correct_character_id:    "",
   incorrect_text:          "",
+  incorrect_character_id:  "",
   incorrect_quick_replies: [],
   correct_next_phase_id:   "",
   additionalMessages:      [],
@@ -281,12 +291,15 @@ export function msgToFormState(msg: {
   next_message_id?:      string | null;
   puzzle_type?:          string | null;
   answer?:               string | null;
+  answers?:              string[] | null;
   puzzle_hint_text?:     string | null;
   hint_mode?:            string | null;
   answer_match_type?:    string[] | null;
   correct_action?:       string | null;
   correct_text?:            string | null;
+  correct_character_id?:    string | null;
   incorrect_text?:          string | null;
+  incorrect_character_id?:  string | null;
   incorrect_quick_replies?: QuickReplyItem[] | null;
   correct_next_phase_id?:   string | null;
   lag_ms?:                  number | null;
@@ -355,12 +368,21 @@ export function msgToFormState(msg: {
     is_active:             msg.is_active       ?? true,
     puzzle_type:           msg.puzzle_type     ?? "",
     answer:                msg.answer          ?? "",
+    // 複数正解の初期化（後方互換）: answers があればそれ、無ければ単一 answer を1件配列、どちらも無ければ空1件。
+    answers: (() => {
+      const arr = (msg.answers ?? []).map((a) => a ?? "").filter((a) => a.length > 0);
+      if (arr.length > 0) return arr;
+      const single = (msg.answer ?? "").trim();
+      return single ? [single] : [""];
+    })(),
     puzzle_hint_text:      msg.puzzle_hint_text ?? "",
     hint_mode: (msg.hint_mode as "always" | "on_wrong" | "hidden") ?? "always",
     answer_match_type:     (msg.answer_match_type ?? ["exact"]) as AnswerMatchType[],
     correct_action:        (msg.correct_action ?? "text") as CorrectAction,
     correct_text:            msg.correct_text    ?? "",
+    correct_character_id:    msg.correct_character_id   ?? "",
     incorrect_text:          msg.incorrect_text  ?? "",
+    incorrect_character_id:  msg.incorrect_character_id ?? "",
     incorrect_quick_replies: msg.incorrect_quick_replies ?? [],
     correct_next_phase_id:   msg.correct_next_phase_id ?? "",
     additionalMessages:      [],
@@ -404,6 +426,10 @@ export function formStateToMsgBody(form: MessageFormState) {
   const isPuzzle  = form.kind === "puzzle";
   const isGlobal  = form.kind === "global";
   const isSystemNotice = form.kind === "system_notice";
+  // 複数正解: trim・空除外・重複除外。answer（後方互換の単一列）には先頭候補を保持する。
+  const cleanedAnswers = isPuzzle
+    ? Array.from(new Set(form.answers.map((a) => a.trim()).filter((a) => a.length > 0)))
+    : [];
   const payload = {
     // システム通知はキーワード入力待ちにしないため trigger_keyword を強制 null
     trigger_keyword:  isSystemNotice ? null : (form.trigger_keyword || null),
@@ -441,12 +467,15 @@ export function formStateToMsgBody(form: MessageFormState) {
     is_active:         form.is_active,
     // puzzle fields
     puzzle_type:           isPuzzle ? (form.message_type as "text" | "image" | "video" | "carousel") || null : null,
-    answer:                isPuzzle ? form.answer || null : null,
+    answer:                isPuzzle ? (cleanedAnswers[0] ?? null) : null,
+    answers:               isPuzzle && cleanedAnswers.length > 0 ? cleanedAnswers : null,
     puzzle_hint_text:      isPuzzle ? form.puzzle_hint_text || null : null,
     answer_match_type:     isPuzzle ? form.answer_match_type : ["exact"],
     correct_action:        isPuzzle ? form.correct_action || null : null,
     correct_text:          isPuzzle ? form.correct_text || null : null,
+    correct_character_id:    isPuzzle ? form.correct_character_id || null : null,
     incorrect_text:          isPuzzle ? form.incorrect_text || null : null,
+    incorrect_character_id:  isPuzzle ? form.incorrect_character_id || null : null,
     incorrect_quick_replies: isPuzzle && form.incorrect_quick_replies.length > 0 ? form.incorrect_quick_replies : null,
     correct_next_phase_id:   isPuzzle ? form.correct_next_phase_id || null : null,
     hint_mode: form.hint_mode,
@@ -578,8 +607,8 @@ export function validateMessageForm(form: MessageFormState): string | null {
     if (form.message_type === "carousel" && form.carousel_items.length === 0) {
       return "カードを1枚以上追加してください";
     }
-    // 謎の答え・アクション設定
-    if (!form.answer.trim()) return "答えは必須です";
+    // 謎の答え・アクション設定（複数正解: 空でない回答が最低1件必要）
+    if (form.answers.every((a) => !a.trim())) return "答えは必須です（最低1件入力してください）";
     if (form.answer_match_type.length === 0) return "照合方法を1つ以上選択してください";
     if (!form.correct_action) return "正解時アクションを選択してください";
     if (
@@ -836,9 +865,13 @@ interface QuickReplyEditorProps {
   /** 直接URL入力モードの URL候補（LIFF / ロケーションURL）。選択結果だけが value に入る。 */
   linkOptions?: LinkOption[];
   linkOptionsLiffConfigured?: boolean;
+  /** 見出し（既定: "クイックリプライ設定"）。謎/問題モードのヒント設定では "ヒント設定" を渡す。 */
+  heading?: string;
+  /** ヒント設定エリアでは「ヒントボタンにする」トグルを隠し、各項目を既定でヒント扱いにする。 */
+  hideHintToggle?: boolean;
 }
 
-function QuickReplyEditor({ items, onChange, responseMessages, phases, transitionMessages, characters = [], workId, oaId, destinations = [], allMessages = [], linkOptions, linkOptionsLiffConfigured }: QuickReplyEditorProps) {
+function QuickReplyEditor({ items, onChange, responseMessages, phases, transitionMessages, characters = [], workId, oaId, destinations = [], allMessages = [], linkOptions, linkOptionsLiffConfigured, heading = "クイックリプライ設定", hideHintToggle = false }: QuickReplyEditorProps) {
   const [open, setOpen]               = useState(false);
   const [expandedSet, setExpandedSet] = useState<Set<number>>(new Set());
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
@@ -859,7 +892,8 @@ function QuickReplyEditor({ items, onChange, responseMessages, phases, transitio
   function addItem() {
     if (items.length >= 13) return;
     const newIdx = items.length;
-    onChange([...items, { ...EMPTY_QR }]);
+    // ヒント設定エリア（hideHintToggle）では新規項目を既定でヒント扱いにする（トグル非表示のため）。
+    onChange([...items, hideHintToggle ? { ...EMPTY_QR, action: "hint" } : { ...EMPTY_QR }]);
     setExpandedSet((prev) => new Set([...prev, newIdx]));
     setOpen(true);
   }
@@ -942,7 +976,7 @@ function QuickReplyEditor({ items, onChange, responseMessages, phases, transitio
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer", userSelect: "none" }} onClick={() => setOpen((v) => !v)}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <span style={{ ...sectionHeader, marginBottom: 0, paddingBottom: 0, borderBottom: "none" }}>
-            クイックリプライ設定
+            {heading}
           </span>
           <span style={{ fontSize: 11, color: "#9ca3af", fontWeight: 400 }}>（任意）</span>
           {items.length > 0 && (
@@ -1347,7 +1381,8 @@ function QuickReplyEditor({ items, onChange, responseMessages, phases, transitio
                           </div>
                         )}
 
-                        {/* ヒントボタントグル */}
+                        {/* ヒントボタントグル（ヒント設定エリアでは文脈上自明なため非表示） */}
+                        {!hideHintToggle && (
                         <div style={{ marginBottom: isHint ? 10 : 0 }}>
                           <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", userSelect: "none" }}>
                             <div style={{ position: "relative", width: 30, height: 17, background: isHint ? "#f59e0b" : "#d1d5db", borderRadius: 9, transition: "background 0.2s" }}>
@@ -1368,6 +1403,7 @@ function QuickReplyEditor({ items, onChange, responseMessages, phases, transitio
                           </label>
                           {!isHint && <div style={{ ...hintText, marginTop: 4, marginLeft: 38 }}>ONにするとボタンタップ時にヒント本文を返信します</div>}
                         </div>
+                        )}
 
                         {/* ヒントフィールド */}
                         {isHint && (
@@ -2823,7 +2859,7 @@ function buildPreviewChain(args: {
     kind:               form.kind,
     riddle_id:          form.riddle_id,
     puzzle_type:        form.puzzle_type,
-    answer:             form.answer,
+    answer:             form.answers.find((a) => a.trim()) ?? form.answer,
     tap_destination_id: form.tap_destination_id,
     tap_url:            form.tap_url,
     flex_payload_json:  form.flex_payload_json,
@@ -4056,6 +4092,21 @@ export function MessageForm({
               </div>
             </div>
 
+            {/* ── 発話キャラクター（謎・問題の本文。通常メッセージと同じ仕様。未設定はデフォルト発話者） ── */}
+            <div className="form-group">
+              <label style={fieldLabel}>発話キャラクター</label>
+              <select
+                className="form-input"
+                value={form.character_id}
+                onChange={(e) => set("character_id", e.target.value)}
+              >
+                <option value="">— キャラクターを指定しない —</option>
+                {characters.map((ch) => (
+                  <option key={ch.id} value={ch.id}>{ch.name}</option>
+                ))}
+              </select>
+            </div>
+
             {/* ── テキスト ── */}
             {mtype === "text" && (
               <div className="form-group" style={{ marginBottom: 0 }}>
@@ -5060,6 +5111,17 @@ export function MessageForm({
               </button>
             )}
 
+            {/* 応答5通以上の警告（保存はブロックしない・体験への注意喚起）。head + 連続メッセージの合計で判定。 */}
+            {(1 + form.additionalMessages.length) >= 5 && (
+              <div style={{
+                marginTop: 12, padding: "10px 12px", background: "#fffbeb",
+                border: "1px solid #fde68a", borderRadius: 8, color: "#92400e",
+                fontSize: 12, lineHeight: 1.7,
+              }}>
+                ⚠️ この応答は5通以上のメッセージを送信します。プレイヤー体験が重くなる可能性があるため、必要に応じて分割や削減を検討してください。
+              </div>
+            )}
+
             {/* 実機での送信プレビュー（freeInput停止・応答分離・5通超え・QR末尾。runtime準拠） */}
             {(() => {
               const pv = previewChainSend(
@@ -5295,20 +5357,56 @@ export function MessageForm({
             defaultOpen={true}
           >
 
-            {/* answer */}
+            {/* answers（複数正解。いずれか一致で正解。最低1件・空は保存対象外・trim・重複除外） */}
             <div className="form-group">
-              <label style={fieldLabel} htmlFor="puzzle_answer">
+              <label style={fieldLabel}>
                 答え <RequiredMark />
               </label>
-              <input
-                id="puzzle_answer"
-                type="text"
-                className="form-input"
-                value={form.answer}
-                onChange={(e) => set("answer", e.target.value)}
-                placeholder="例: 桜"
-                maxLength={200}
-              />
+              <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 6 }}>
+                複数の正解パターンを登録できます（例: りんご / 林檎 / リンゴ / apple）。いずれかに一致すれば正解です。
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {form.answers.map((ans, i) => (
+                  <div key={i} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <input
+                      type="text"
+                      className="form-input"
+                      value={ans}
+                      onChange={(e) => set("answers", form.answers.map((a, j) => (j === i ? e.target.value : a)))}
+                      placeholder={i === 0 ? "例: 桜" : "別の正解パターン（任意）"}
+                      maxLength={200}
+                      style={{ flex: 1 }}
+                    />
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      onClick={() => {
+                        const next = form.answers.filter((_, j) => j !== i);
+                        set("answers", next.length > 0 ? next : [""]);
+                      }}
+                      disabled={form.answers.length <= 1}
+                      title={form.answers.length <= 1 ? "最低1件は必要です" : "この回答を削除"}
+                      style={{
+                        padding: "6px 10px", fontSize: 12, color: "#ef4444", borderColor: "#fecaca",
+                        opacity: form.answers.length <= 1 ? 0.4 : 1,
+                        cursor: form.answers.length <= 1 ? "not-allowed" : "pointer",
+                      }}
+                    >
+                      削除
+                    </button>
+                  </div>
+                ))}
+              </div>
+              {form.answers.length < 20 && (
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  onClick={() => set("answers", [...form.answers, ""])}
+                  style={{ marginTop: 8, fontSize: 13, padding: "6px 14px" }}
+                >
+                  ＋ 正解パターンを追加
+                </button>
+              )}
             </div>
 
             {/* 照合条件（exact / partial 排他ラジオ） */}
@@ -5409,6 +5507,20 @@ export function MessageForm({
                 placeholder="例: 正解！よく気づきましたね。"
                 maxLength={1000}
               />
+              {/* 正解メッセージの発話キャラクター（未設定 = 問題本文のキャラ → デフォルト発話者） */}
+              <div style={{ marginTop: 10 }}>
+                <label style={fieldLabel}>発話キャラクター</label>
+                <select
+                  className="form-input"
+                  value={form.correct_character_id}
+                  onChange={(e) => set("correct_character_id", e.target.value)}
+                >
+                  <option value="">— 問題本文のキャラクターを引き継ぐ —</option>
+                  {characters.map((ch) => (
+                    <option key={ch.id} value={ch.id}>{ch.name}</option>
+                  ))}
+                </select>
+              </div>
             </div>
             )}
 
@@ -5445,13 +5557,27 @@ export function MessageForm({
                 maxLength={400}
               />
               <div style={hintText}>空欄の場合: 「答えが違います。もう一度考えてみてください。」が使われます</div>
+              {/* 不正解メッセージの発話キャラクター（未設定 = 問題本文のキャラ → デフォルト発話者） */}
+              <div style={{ marginTop: 10 }}>
+                <label style={fieldLabel}>発話キャラクター</label>
+                <select
+                  className="form-input"
+                  value={form.incorrect_character_id}
+                  onChange={(e) => set("incorrect_character_id", e.target.value)}
+                >
+                  <option value="">— 問題本文のキャラクターを引き継ぐ —</option>
+                  {characters.map((ch) => (
+                    <option key={ch.id} value={ch.id}>{ch.name}</option>
+                  ))}
+                </select>
+              </div>
             </div>
 
-            {/* incorrect_quick_replies */}
+            {/* ヒント（任意）= 旧「不正解時クイックリプライ」。謎/問題モードのヒント設定エリア。 */}
             <div className="form-group">
-              <label style={fieldLabel}>不正解時クイックリプライ（任意）</label>
+              <label style={fieldLabel}>ヒント（任意）</label>
               <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 6 }}>
-                不正解メッセージに添付するクイックリプライボタン（最大13件）
+                不正解メッセージに添付するヒント用のクイックリプライボタン（最大13件）
               </div>
               <QuickReplyEditor
                 items={form.incorrect_quick_replies}
@@ -5466,6 +5592,8 @@ export function MessageForm({
                 allMessages={allMessages}
                 linkOptions={linkOptions}
                 linkOptionsLiffConfigured={linkOptionsLiffConfigured}
+                heading="ヒント設定"
+                hideHintToggle
               />
             </div>
 

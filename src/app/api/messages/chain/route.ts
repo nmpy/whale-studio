@@ -65,11 +65,14 @@ const contentSchema = z.object({
   // puzzle
   puzzle_type:      z.enum(["text", "image", "video", "carousel"]).optional().nullable(),
   answer:           z.string().max(500).optional().nullable(),
+  answers:          z.array(z.string().max(500)).max(50).optional().nullable(),
   puzzle_hint_text: z.string().max(1000).optional().nullable(),
   answer_match_type: z.array(z.enum(["exact", "partial", "ignore_punctuation", "normalize_width"])).optional(),
   correct_action:   z.enum(["text", "text_and_transition", "transition"]).optional().nullable(),
   correct_text:     z.string().max(2000).optional().nullable(),
+  correct_character_id:   z.string().uuid().optional().nullable(),
   incorrect_text:   z.string().max(2000).optional().nullable(),
+  incorrect_character_id: z.string().uuid().optional().nullable(),
   incorrect_quick_replies: z.array(quickReplyItemSchema).max(13).optional().nullable(),
   correct_next_phase_id:   z.string().uuid().optional().nullable(),
   hint_mode:        z.enum(["always", "on_wrong", "hidden"]).optional(),
@@ -140,11 +143,14 @@ function contentToData(c: ContentInput | undefined): Record<string, unknown> {
   // puzzle
   set("puzzleType", c.puzzle_type);
   set("answer", c.answer);
+  if (c.answers !== undefined) d.answers = c.answers && c.answers.length > 0 ? JSON.stringify(c.answers) : null;
   set("puzzleHintText", c.puzzle_hint_text);
   if (c.answer_match_type !== undefined) d.answerMatchType = JSON.stringify(c.answer_match_type);
   set("correctAction", c.correct_action);
   set("correctText", c.correct_text);
+  set("correctCharacterId", c.correct_character_id);
   set("incorrectText", c.incorrect_text);
+  set("incorrectCharacterId", c.incorrect_character_id);
   if (c.incorrect_quick_replies !== undefined) d.incorrectQuickReplies = c.incorrect_quick_replies ? JSON.stringify(c.incorrect_quick_replies) : null;
   set("correctNextPhaseId", c.correct_next_phase_id);
   set("hintMode", c.hint_mode);
