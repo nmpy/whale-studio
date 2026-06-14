@@ -607,6 +607,8 @@ model XPostImportedMetric {
   bookmarks       Int       @default(0)
   csvUrlClicks    Int       @default(0) @map("csv_url_clicks")
   note            String?
+  /// 取り込み元の生データ（X投稿エクスポート等）。JSON 文字列。
+  rawJson         String?   @map("raw_json")
   importedAt      DateTime  @default(now()) @map("imported_at")
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")
@@ -634,6 +636,8 @@ model XImportedMention {
   url              String?
   source           String?
   note             String?
+  /// 取り込み元の生データ（X投稿エクスポート等）。JSON 文字列。
+  rawJson          String?   @map("raw_json")
   importedAt       DateTime  @default(now()) @map("imported_at")
   createdAt        DateTime  @default(now()) @map("created_at")
   updatedAt        DateTime  @updatedAt @map("updated_at")

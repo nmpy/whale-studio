@@ -548,7 +548,7 @@ function SentimentTab({ workId, canEdit }: { workId: string; canEdit: boolean })
   const { showToast } = useToast();
   const [data, setData] = useState<XPostSentiment | null>(null);
   const [loading, setLoading] = useState(true);
-  const [importType, setImportType] = useState<"metrics" | "mentions">("mentions");
+  const [importType, setImportType] = useState<"metrics" | "mentions" | "x_export">("mentions");
   const [rows, setRows] = useState<Record<string, unknown>[]>([]);
   const [fileName, setFileName] = useState("");
   const [busy, setBusy] = useState(false);
@@ -569,8 +569,9 @@ function SentimentTab({ workId, canEdit }: { workId: string; canEdit: boolean })
     if (!file) return;
     setFileName(file.name);
     setRows([]);
-    const { rows: parsed, error } = await parseImportFile(file, importType);
+    const { rows: parsed, error, warnings } = await parseImportFile(file, importType);
     if (error) { showToast(error, "error"); setFileName(""); return; }
+    warnings.forEach((w) => showToast(w, "info"));
     setRows(parsed);
   }
 
@@ -615,11 +616,13 @@ function SentimentTab({ workId, canEdit }: { workId: string; canEdit: boolean })
   const importCard = canEdit && (
     <div className="rounded-card border border-line bg-surface p-4">
       <p className="mb-1 text-[13px] font-bold text-ink">CSV / Excelでインポート</p>
-      <p className="mb-3 text-[11px] text-ink-3">Xアナリティクス等から取得したファイルや、手元で整理した口コミファイルを取り込んで分析できます（CSV: UTF-8 / BOM 両対応、Excel: .xlsx の1枚目シート）。</p>
+      <p className="mb-1 text-[11px] text-ink-3">Xアナリティクス等から取得したファイルや、手元で整理した口コミファイルを取り込んで分析できます（CSV: UTF-8 / BOM 両対応、Excel: .xlsx の1枚目シート）。</p>
+      <p className="mb-3 text-[11px] text-ink-3">対応フォーマット: <span className="font-semibold">投稿実績ファイル</span> / <span className="font-semibold">口コミファイル</span> / <span className="font-semibold">X投稿エクスポート</span>（tweetText / tweetURL / views / likeCount などの列を含むファイルを読み込み、投稿実績と口コミ分析の両方に反映します）。</p>
       <div className="flex flex-wrap items-center gap-2">
-        <select value={importType} onChange={(e) => { setImportType(e.target.value as "metrics" | "mentions"); setRows([]); setFileName(""); }} className="form-input" style={{ width: "auto" }}>
+        <select value={importType} onChange={(e) => { setImportType(e.target.value as "metrics" | "mentions" | "x_export"); setRows([]); setFileName(""); }} className="form-input" style={{ width: "auto" }}>
           <option value="mentions">口コミファイル</option>
           <option value="metrics">投稿実績ファイル</option>
+          <option value="x_export">X投稿エクスポート</option>
         </select>
         <label className="btn btn-ghost btn-sm cursor-pointer">
           CSVまたはExcelファイルを選択
@@ -630,7 +633,9 @@ function SentimentTab({ workId, canEdit }: { workId: string; canEdit: boolean })
       <p className="mt-2 text-[11px] text-ink-3">
         {importType === "mentions"
           ? "必須列: text ／ 任意: postedAt, authorName, authorHandle, url, source, note, relatedXPostUrl"
-          : "必須列: (xPostUrl または xPostId) と impressions ／ 任意: postTitle, postedAt, likes, reposts, replies, quotes, bookmarks, urlClicks, note"}
+          : importType === "metrics"
+          ? "必須列: (xPostUrl または xPostId) と impressions ／ 任意: postTitle, postedAt, likes, reposts, replies, quotes, bookmarks, urlClicks, note"
+          : "tweetText / tweetURL / views / likeCount などの列を含むファイルを読み込み、投稿実績と口コミ分析の両方に反映します。（必須: tweetText）"}
       </p>
       {rows.length > 0 && (
         <div className="mt-3">

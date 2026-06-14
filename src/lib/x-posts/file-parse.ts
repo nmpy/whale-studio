@@ -6,12 +6,13 @@
 
 import Papa from "papaparse";
 
-export type ImportType = "metrics" | "mentions";
+export type ImportType = "metrics" | "mentions" | "x_export";
 export type ParsedRows = Record<string, unknown>[];
 
 export interface ParseResult {
   rows: ParsedRows;
   error: string | null;
+  warnings: string[];
 }
 
 const FORMAT_HINT = "対応しているファイル形式は CSV / Excel（.xlsx）です。";
@@ -77,20 +78,27 @@ async function parseXlsx(file: File): Promise<ParsedRows> {
   return rows;
 }
 
-/** 必須列チェック（CSV / Excel 共通）。問題があればユーザー向け文言を返す。 */
-export function validateRows(type: ImportType, rows: ParsedRows): string | null {
-  if (rows.length === 0) return "データ行が見つかりませんでした。1行目にヘッダー行、2行目以降にデータを入れてください。";
+/** 必須列チェック（CSV / Excel 共通）。error はブロッキング、warnings は非ブロッキング。 */
+export function validateRows(type: ImportType, rows: ParsedRows): { error: string | null; warnings: string[] } {
+  const warnings: string[] = [];
+  if (rows.length === 0) return { error: "データ行が見つかりませんでした。1行目にヘッダー行、2行目以降にデータを入れてください。", warnings };
   const keys = Object.keys(rows[0]).map((k) => k.trim());
-  if (keys.length === 0 || keys.every((k) => !k)) return "1行目にヘッダー行が必要です。";
+  if (keys.length === 0 || keys.every((k) => !k)) return { error: "1行目にヘッダー行が必要です。", warnings };
   const has = (...names: string[]) => names.some((n) => keys.includes(n));
+
   if (type === "metrics") {
     if (!has("xPostUrl", "x_post_url", "xPostId", "x_post_id", "xPostExternalId"))
-      return "投稿実績ファイルには xPostUrl または xPostId の列が必要です。";
-    if (!has("impressions", "Impressions")) return "投稿実績ファイルには impressions が必要です。";
+      return { error: "投稿実績ファイルには xPostUrl または xPostId の列が必要です。", warnings };
+    if (!has("impressions", "Impressions")) return { error: "投稿実績ファイルには impressions が必要です。", warnings };
+  } else if (type === "mentions") {
+    if (!has("text")) return { error: "口コミファイルには text が必要です。", warnings };
   } else {
-    if (!has("text")) return "口コミファイルには text が必要です。";
+    // x_export（X投稿エクスポート形式）
+    if (!has("tweetText")) return { error: "X投稿エクスポートには tweetText が必要です。", warnings };
+    if (!has("views")) warnings.push("views がないため、インプレッションは空として取り込みます。");
+    if (!has("tweetURL") && !has("id")) warnings.push("tweetURL または id がない行は重複判定が弱くなります。");
   }
-  return null;
+  return { error: null, warnings };
 }
 
 /** 拡張子で CSV / Excel を判定して解析し、検証まで行う。 */
@@ -98,16 +106,16 @@ export async function parseImportFile(file: File, type: ImportType): Promise<Par
   const name = file.name.toLowerCase();
   const isCsv = name.endsWith(".csv");
   const isXlsx = name.endsWith(".xlsx");
-  if (!isCsv && !isXlsx) return { rows: [], error: FORMAT_HINT };
+  if (!isCsv && !isXlsx) return { rows: [], error: FORMAT_HINT, warnings: [] };
 
   let rows: ParsedRows;
   try {
     rows = isCsv ? await parseCsv(file) : await parseXlsx(file);
   } catch (e) {
-    return { rows: [], error: e instanceof Error ? e.message : "ファイルの解析に失敗しました。" };
+    return { rows: [], error: e instanceof Error ? e.message : "ファイルの解析に失敗しました。", warnings: [] };
   }
 
-  const validationError = validateRows(type, rows);
-  if (validationError) return { rows: [], error: validationError };
-  return { rows, error: null };
+  const { error, warnings } = validateRows(type, rows);
+  if (error) return { rows: [], error, warnings };
+  return { rows, error: null, warnings };
 }
