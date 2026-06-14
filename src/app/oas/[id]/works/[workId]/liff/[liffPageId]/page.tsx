@@ -91,7 +91,7 @@ export default function LiffPageEditor() {
           items={[
             { label: "作品一覧", href: `/oas/${oaId}/works` },
             { label: liff.workTitle || "作品", href: `/oas/${oaId}/works/${workId}` },
-            { label: "LIFF表示設定", href: `/oas/${oaId}/works/${workId}/liff` },
+            { label: "LIFF設定", href: `/oas/${oaId}/works/${workId}/liff` },
             { label: "編集" },
           ]}
         />
@@ -112,7 +112,7 @@ export default function LiffPageEditor() {
         items={[
           { label: "作品一覧", href: `/oas/${oaId}/works` },
           { label: liff.workTitle || "作品", href: `/oas/${oaId}/works/${workId}` },
-          { label: "LIFF表示設定", href: `/oas/${oaId}/works/${workId}/liff` },
+          { label: "LIFF設定", href: `/oas/${oaId}/works/${workId}/liff` },
           { label: config.title?.trim() || "編集" },
         ]}
       />

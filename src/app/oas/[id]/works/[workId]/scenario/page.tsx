@@ -269,9 +269,9 @@ export default function ScenarioPage() {
             { label: "アカウントリスト", href: "/oas" },
             { label: "作品リスト", href: `/oas/${oaId}/works` },
             ...(workTitle ? [{ label: workTitle, href: `/oas/${oaId}/works/${workId}` }] : []),
-            { label: "シナリオフロー" },
+            { label: "フェーズ管理" },
           ]} />
-          <h2>シナリオフロー</h2>
+          <h2>フェーズ管理</h2>
           <p style={{ fontSize: 13, color: "#6b7280", marginTop: 4 }}>
             フェーズの追加・並び替え・軽編集と分岐構造を1画面で管理できます。
           </p>

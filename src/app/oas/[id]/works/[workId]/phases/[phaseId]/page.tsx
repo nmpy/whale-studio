@@ -181,7 +181,7 @@ export default function PhaseDetailPage() {
           <Breadcrumb items={[
             { label: "アカウントリスト", href: "/oas" },
             { label: "作品リスト", href: `/oas/${oaId}/works` },
-            { label: "シナリオフロー" },
+            { label: "フェーズ管理" },
           ]} />
           <h2>フェーズ編集</h2>
         </div>
@@ -204,7 +204,7 @@ export default function PhaseDetailPage() {
           <Breadcrumb items={[
             { label: "アカウントリスト", href: "/oas" },
             { label: "作品リスト", href: `/oas/${oaId}/works` },
-            { label: "シナリオフロー" },
+            { label: "フェーズ管理" },
           ]} />
           <h2>フェーズ編集</h2>
         </div>
@@ -225,7 +225,7 @@ export default function PhaseDetailPage() {
             { label: "アカウントリスト", href: "/oas" },
             { label: "作品リスト", href: `/oas/${oaId}/works` },
             ...(workTitle ? [{ label: workTitle, href: `/oas/${oaId}/works/${workId}` }] : []),
-            { label: "シナリオフロー", href: `/oas/${oaId}/works/${workId}/scenario` },
+            { label: "フェーズ管理", href: `/oas/${oaId}/works/${workId}/scenario` },
             { label: phase!.name || "フェーズ設定" },
           ]} />
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>

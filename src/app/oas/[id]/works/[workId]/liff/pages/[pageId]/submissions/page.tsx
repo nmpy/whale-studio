@@ -106,7 +106,7 @@ export default function LiffSubmissionsPage() {
       <Breadcrumb
         items={[
           { label: "作品一覧", href: `/oas/${oaId}/works` },
-          { label: "LIFF表示設定", href: `/oas/${oaId}/works/${workId}/liff` },
+          { label: "LIFF設定", href: `/oas/${oaId}/works/${workId}/liff` },
           { label: "回答結果" },
         ]}
       />
