@@ -1,14 +1,17 @@
 // src/app/api/liff/works/[workId]/puzzles/route.ts
 // GET /api/liff/works/[workId]/puzzles?line_user_id=... — LIFF「謎・問題」ブロック用公開API（認証不要）
 //
-// そのプレイヤー（lineUserId）が「確実に到達している」謎・問題だけを返す。
-// 到達履歴テーブルが無い（AnswerAttempt 等が無い）ため、別ルート(分岐)の未到達問題を
-// 絶対に混ぜないよう、安全側として **現在フェーズ(currentPhaseId)の puzzle のみ** を返す。
-// （sortOrder で「以前のフェーズ」までさかのぼると分岐先の未到達問題が混ざる恐れがあるため使わない。）
+// そのプレイヤー（lineUserId）に **実際に出題された** 謎・問題のみを返す。
+// 表示対象 = 「送信済みと証明できるもの」のみ:
+//   - PuzzleDelivery に記録済み（実送信時に記録）
+//   - UserProgress.flags.solvedPuzzles に含まれる（正解＝出題済みの証明）
+// ※ currentPhaseId だけでフェーズ内の全 puzzle を出すと「まだ送られていない問題」が混ざるため使わない。
+//   未到達/未送信は絶対に出さない（既存ユーザーの過去未回答が出ないのは許容）。
 //
+// 状態: flags.solvedPuzzles に含まれれば "solved"（正解済み）、それ以外は "delivered"（未回答）。
 // ネタバレ防止: answer / correctText / incorrectText / puzzleHintText 等は一切返さない。
-// 認可: lineUserId + workId スコープで UserProgress を引くため、他プレイヤーの履歴は混ざらない。
-// 未認証 / lineUserId 未取得 / 進捗なし / 例外時は 500 にせず空配列を返す。
+// 認可: lineUserId + workId スコープ。他プレイヤーの履歴は混ざらない。
+// 未ログイン / 進捗なし / 例外時は 500 にせず空配列を返す。
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
@@ -18,6 +21,21 @@ export const dynamic = "force-dynamic";
 
 function emptyOk() {
   return NextResponse.json({ success: true, data: { puzzles: [] } });
+}
+
+/** flags(JSON文字列) から solvedPuzzles を安全に取り出す。parse 失敗 / 非配列は空集合。 */
+function parseSolvedPuzzles(flags: string | null | undefined): Set<string> {
+  try {
+    if (!flags) return new Set();
+    const obj = JSON.parse(flags) as unknown;
+    const arr = (obj && typeof obj === "object" && "solvedPuzzles" in obj)
+      ? (obj as { solvedPuzzles?: unknown }).solvedPuzzles
+      : undefined;
+    if (!Array.isArray(arr)) return new Set();
+    return new Set(arr.filter((x): x is string => typeof x === "string"));
+  } catch {
+    return new Set();
+  }
 }
 
 export async function GET(
@@ -35,40 +53,60 @@ export async function GET(
     }
 
     const lineUserId = new URL(req.url).searchParams.get("line_user_id");
-    if (!lineUserId) return emptyOk(); // 未ログイン等 → 空（500 にしない）
+    if (!lineUserId) return emptyOk();
 
+    // 進捗（正解済み判定用の flags）。
     const up = await prisma.userProgress.findUnique({
-      where: { lineUserId_workId: { lineUserId, workId: work.id } },
-      select: { currentPhaseId: true },
+      where:  { lineUserId_workId: { lineUserId, workId: work.id } },
+      select: { flags: true },
     });
-    if (!up?.currentPhaseId) return emptyOk(); // 未開始 → 空
+    const solvedSet = parseSolvedPuzzles(up?.flags);
 
-    // 現在フェーズの名前（全 puzzle 共通ラベル）。
-    const phase = await prisma.phase.findUnique({
-      where: { id: up.currentPhaseId },
-      select: { name: true },
-    });
+    // 出題履歴（実送信済み）。テーブル未適用でも落ちないよう defensive（degrade して flags のみで動作）。
+    const deliveredAtById = new Map<string, Date>();
+    try {
+      const deliveries = await prisma.puzzleDelivery.findMany({
+        where:   { lineUserId, workId: work.id },
+        select:  { messageId: true, deliveredAt: true },
+        orderBy: { deliveredAt: "asc" },
+      });
+      for (const d of deliveries) deliveredAtById.set(d.messageId, d.deliveredAt);
+    } catch (e) {
+      console.warn("[puzzles API] puzzle_deliveries unavailable (pre-migration?):", e);
+    }
 
-    // 現在フェーズの puzzle のみ（確実に到達中）。answer 等のネタバレは select しない。
+    // 表示対象 = 出題履歴 ∪ 正解済み（どちらも送信済みの証明）。
+    const candidateIds = Array.from(new Set<string>([...deliveredAtById.keys(), ...solvedSet]));
+    if (candidateIds.length === 0) return emptyOk();
+
+    // 有効な puzzle のみ・本文取得。ネタバレ列（answer 等）は select しない。
     const msgs = await prisma.message.findMany({
-      where: { workId: work.id, phaseId: up.currentPhaseId, kind: "puzzle", isActive: true },
-      orderBy: { sortOrder: "asc" },
-      select: { id: true, body: true },
+      where:  { id: { in: candidateIds }, workId: work.id, kind: "puzzle", isActive: true },
+      select: { id: true, body: true, phaseId: true },
     });
+    if (msgs.length === 0) return emptyOk();
 
-    return NextResponse.json({
-      success: true,
-      data: {
-        puzzles: msgs.map((m) => ({
-          id:         m.id,
-          body:       m.body ?? "",
-          phase_name: phase?.name ?? null,
-          status:     "delivered" as const, // 出題中（到達済み）。正解/不正解は履歴が無いため出さない。
-        })),
-      },
-    });
+    // phase 名の解決。
+    const phaseIds = Array.from(new Set(msgs.map((m) => m.phaseId).filter((x): x is string => !!x)));
+    const phases = phaseIds.length
+      ? await prisma.phase.findMany({ where: { id: { in: phaseIds } }, select: { id: true, name: true } })
+      : [];
+    const phaseNameById = new Map(phases.map((p) => [p.id, p.name]));
+
+    const puzzles = msgs
+      .map((m) => ({
+        id:         m.id,
+        body:       m.body ?? "",
+        phase_name: m.phaseId ? (phaseNameById.get(m.phaseId) ?? null) : null,
+        status:     solvedSet.has(m.id) ? ("solved" as const) : ("delivered" as const),
+        _t:         deliveredAtById.get(m.id)?.getTime() ?? Number.MAX_SAFE_INTEGER, // 並び用（履歴なしは末尾）
+      }))
+      .sort((a, b) => a._t - b._t)
+      .map(({ _t, ...rest }) => { void _t; return rest; });
+
+    return NextResponse.json({ success: true, data: { puzzles } });
   } catch (err) {
     console.error("[LIFF puzzles API]", err);
-    return emptyOk(); // 例外でも画面を壊さない
+    return emptyOk();
   }
 }

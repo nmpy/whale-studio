@@ -75,9 +75,15 @@ export function RiddleListBlock({
                   <span className="text-[11px] text-[color:var(--liff-secondary-text)]">{p.phase_name}</span>
                 )}
                 {settings.show_status !== false && (
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#E0F2F1] text-[#0F766E]">
-                    出題中
-                  </span>
+                  p.status === "solved" ? (
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#DCFCE7] text-[#15803D]">
+                      正解済み
+                    </span>
+                  ) : (
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#E0F2F1] text-[#0F766E]">
+                      未回答
+                    </span>
+                  )
                 )}
               </div>
               {p.body && (
