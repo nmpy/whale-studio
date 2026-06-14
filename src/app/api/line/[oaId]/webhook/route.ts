@@ -55,7 +55,7 @@ import { logEvent } from "@/lib/event-logger";
 import { activeCache, TTL, CACHE_KEY } from "@/lib/cache";
 import { linkRichMenuToUser } from "@/lib/line-richmenu";
 import { ReadReceiptController, calcReadDelayByTextLength } from "@/lib/line-read-receipt";
-import { checkPuzzleAnswer, parseAnswerMatchType } from "@/lib/puzzle-answer";
+import { checkPuzzleAnswerAny, resolveAnswerCandidates, parseAnswerMatchType } from "@/lib/puzzle-answer";
 import type { MessageTimingConfig } from "@/types";
 import { genRequestId, runWithRequestId, withTiming } from "@/lib/perf";
 
@@ -386,6 +386,24 @@ function buildSenderFromCharacter(
       ? { iconUrl: character.iconImageUrl }
       : {}),
   };
+}
+
+/**
+ * パズルの正解 / 不正解メッセージの発話キャラクターを解決する。
+ * 優先順: primaryId（正解/不正解メッセージ専用キャラ）→ fallbackId（問題本文キャラ）→ systemSender。
+ * いずれの id も未設定 / キャラ不在なら systemSender（= 既存デフォルト挙動）にフォールバックする。
+ */
+async function resolvePuzzleSender(
+  primaryId:    string | null | undefined,
+  fallbackId:   string | null | undefined,
+  systemSender: import("@/lib/line").LineSender | undefined,
+): Promise<import("@/lib/line").LineSender | undefined> {
+  for (const id of [primaryId, fallbackId]) {
+    if (!id) continue;
+    const ch = await getCachedCharacter(id);
+    if (ch) return buildSenderFromCharacter(ch);
+  }
+  return systemSender;
 }
 
 /** 作品共通キーワードメッセージ（phaseId = null）をキャッシュ付きで取得 */
@@ -962,7 +980,7 @@ function matchPuzzleFromPhase(
   const puzzles = phase.messages.filter(
     (m) =>
       m.kind === "puzzle" &&
-      m.answer !== null &&
+      (m.answer !== null || (typeof m.answers === "string" && m.answers.length > 0)) &&
       !solvedPuzzleIds.includes(m.id) &&
       // targetSegment フィルタ:
       //   未設定（null / ""）→ すべてのセグメントに発火
@@ -973,24 +991,29 @@ function matchPuzzleFromPhase(
   if (puzzles.length === 0) return null;
 
   for (const puzzle of puzzles) {
-    if (!puzzle.answer) continue;
+    const candidates = resolveAnswerCandidates(puzzle.answer, puzzle.answers);
+    if (candidates.length === 0) continue;
     const matchTypes = parsePuzzleMatchType(puzzle.answerMatchType);
-    if (checkPuzzleAnswer(inputText, puzzle.answer, matchTypes)) {
+    if (checkPuzzleAnswerAny(inputText, candidates, matchTypes)) {
       console.log(
         `[cache][puzzle] 正解 puzzleId=${puzzle.id.slice(0, 8)}`,
-        `input="${inputText}" answer="${puzzle.answer}"`,
+        `input="${inputText}" candidates=${candidates.length}件`,
       );
       return {
         type:   "correct",
         puzzle: {
           id:                    puzzle.id,
-          answer:                puzzle.answer,
+          answer:                puzzle.answer ?? "",
+          answers:               puzzle.answers ?? null,
           answerMatchType:       puzzle.answerMatchType,
           correctAction:         puzzle.correctAction,
           correctText:           puzzle.correctText,
+          correctCharacterId:    puzzle.correctCharacterId ?? null,
           incorrectText:         puzzle.incorrectText,
+          incorrectCharacterId:  puzzle.incorrectCharacterId ?? null,
           incorrectQuickReplies: puzzle.incorrectQuickReplies,
           correctNextPhaseId:    puzzle.correctNextPhaseId,
+          characterId:           puzzle.characterId ?? null,
         } as PuzzleRecord,
       };
     }
@@ -999,11 +1022,12 @@ function matchPuzzleFromPhase(
   console.log(
     `[cache][puzzle] 不正解 input="${inputText}"`,
     `puzzles=${puzzles.length}件`,
-    puzzles.map((p) => `answer="${p.answer}"`).join(", "),
   );
   return {
     type:                  "incorrect",
     incorrectText:         puzzles[0]?.incorrectText ?? null,
+    incorrectCharacterId:  puzzles[0]?.incorrectCharacterId ?? null,
+    characterId:           puzzles[0]?.characterId ?? null,
     incorrectQuickReplies: puzzles[0]?.incorrectQuickReplies ?? null,
     hintMode:              (puzzles[0] as { hintMode?: string })?.hintMode ?? "always",
     hintQrItems:           puzzles[0]?.quickReplies ?? null,
@@ -2365,11 +2389,17 @@ async function handleTextEvent({
           console.warn("[Webhook][puzzle] on_wrong hintQrItems parse error");
         }
       }
+      // 不正解メッセージの話者: incorrectCharacterId → 問題本文 characterId → systemSender。
+      const incorrectSender = await resolvePuzzleSender(
+        puzzleResult.incorrectCharacterId,
+        puzzleResult.characterId,
+        systemSender,
+      );
       const tReplyPuzzle = Date.now();
       await replyToLine(replyToken, [{
         type:        "text",
         text:        incorrectMsg,
-        sender:      systemSender,
+        sender:      incorrectSender,
         ...(incorrectQr && { quickReply: incorrectQr }),
       }], token);
       console.log(
@@ -3348,17 +3378,21 @@ async function matchHintQuickReply(
 type PuzzleRecord = {
   id:                    string;
   answer:                string;
+  answers:               string | null;
   answerMatchType:       string | null;
   correctAction:         string | null;
   correctText:           string | null;
+  correctCharacterId:    string | null;
   incorrectText:         string | null;
+  incorrectCharacterId:  string | null;
   incorrectQuickReplies: string | null;
   correctNextPhaseId:    string | null;
+  characterId:           string | null;
 };
 
 type PuzzleMatchResult =
   | null                                                                                                    // このフェーズにパズルなし（遷移照合へ進む）
-  | { type: "incorrect"; incorrectText: string | null; incorrectQuickReplies: string | null; hintMode: string; hintQrItems: string | null }              // パズルあり・不正解
+  | { type: "incorrect"; incorrectText: string | null; incorrectCharacterId: string | null; characterId: string | null; incorrectQuickReplies: string | null; hintMode: string; hintQrItems: string | null }              // パズルあり・不正解
   | { type: "correct";   puzzle: PuzzleRecord };                                                           // 正解
 
 // 回答照合は @/lib/puzzle-answer に共通化済み（checkPuzzleAnswer / parseAnswerMatchType）。
@@ -3386,14 +3420,18 @@ async function matchPuzzleAnswer(
     select: {
       id:                    true,
       answer:                true,
+      answers:               true,
       answerMatchType:       true,
       correctAction:         true,
       correctText:           true,
+      correctCharacterId:    true,
       incorrectText:         true,
+      incorrectCharacterId:  true,
       incorrectQuickReplies: true,
       correctNextPhaseId:    true,
       hintMode:              true,
       quickReplies:          true,
+      characterId:           true,
     },
     orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }, { id: "asc" }],
   });
@@ -3401,13 +3439,14 @@ async function matchPuzzleAnswer(
   if (puzzles.length === 0) return null; // パズルなし → 遷移照合へ
 
   for (const puzzle of puzzles) {
-    if (!puzzle.answer) continue;
+    const candidates = resolveAnswerCandidates(puzzle.answer, puzzle.answers);
+    if (candidates.length === 0) continue;
     const matchTypes = parsePuzzleMatchType(puzzle.answerMatchType);
-    if (checkPuzzleAnswer(inputText, puzzle.answer, matchTypes)) {
+    if (checkPuzzleAnswerAny(inputText, candidates, matchTypes)) {
       console.log(
         `[Webhook][puzzle] 正解 puzzleId=${puzzle.id.slice(0, 8)}`,
         `input="${inputText}"`,
-        `answer="${puzzle.answer}"`,
+        `candidates=${candidates.length}件`,
         `matchTypes=${JSON.stringify(matchTypes)}`,
       );
       return { type: "correct", puzzle: puzzle as PuzzleRecord };
@@ -3417,11 +3456,12 @@ async function matchPuzzleAnswer(
   console.log(
     `[Webhook][puzzle] 不正解 input="${inputText}"`,
     `puzzles=${puzzles.length}件`,
-    puzzles.map((p) => `answer="${p.answer}"`).join(", "),
   );
   return {
     type:                  "incorrect",
     incorrectText:         puzzles[0]?.incorrectText ?? null,
+    incorrectCharacterId:  puzzles[0]?.incorrectCharacterId ?? null,
+    characterId:           puzzles[0]?.characterId ?? null,
     incorrectQuickReplies: puzzles[0]?.incorrectQuickReplies ?? null,
     hintMode:              puzzles[0]?.hintMode ?? "always",
     hintQrItems:           puzzles[0]?.quickReplies ?? null,
@@ -3460,8 +3500,10 @@ async function handlePuzzleCorrect({
   const messagesToSend: import("@/lib/line").LineMessage[] = [];
 
   // ─ correctText を先頭に追加（text / text_and_transition）─
+  // 正解メッセージの話者: correctCharacterId → 問題本文 characterId → systemSender。
   if ((action === "text" || action === "text_and_transition") && puzzle.correctText) {
-    messagesToSend.push({ type: "text", text: puzzle.correctText, sender: systemSender });
+    const correctSender = await resolvePuzzleSender(puzzle.correctCharacterId, puzzle.characterId, systemSender);
+    messagesToSend.push({ type: "text", text: puzzle.correctText, sender: correctSender });
   }
 
   // ─ フェーズ遷移（transition / text_and_transition）─

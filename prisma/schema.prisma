@@ -370,6 +370,14 @@ model Message {
   lagMs                 Int        @default(0) @map("lag_ms")
   /// ヒント表示モード: "always"（常時）| "on_wrong"（不正解時のみ）| "hidden"（非表示）
   hintMode              String     @default("always") @map("hint_mode")
+  /// 複数正解（JSON 配列文字列: ["りんご","林檎","リンゴ"]）。null/未設定 = 単一 answer のみ使用（後方互換）。
+  /// 判定は answer + answers を統合した候補のいずれか一致で正解。answer には先頭候補を保持する。
+  answers               String?    @map("answers")
+  /// 正解メッセージの発話キャラクター ID（未設定 = 問題本文 characterId → systemSender にフォールバック）。
+  /// FK は張らず（hint_character_id と同方針）、送信時に lookup・存在しなければ graceful fallback。
+  correctCharacterId    String?    @map("correct_character_id")
+  /// 不正解メッセージの発話キャラクター ID（未設定 = 問題本文 characterId → systemSender にフォールバック）。
+  incorrectCharacterId  String?    @map("incorrect_character_id")
 
   // ── 演出設定（既読・typing・ローディング）──────────────
   /// 既読制御モード: "inherit" | "immediate" | "delayed" | "before_reply"

@@ -346,11 +346,14 @@ export const createMessageSchema = z.object({
   // Puzzle fields
   puzzle_type:           z.enum(["text", "image", "video", "carousel"]).optional().nullable(),
   answer:                z.string().max(500).optional().nullable(),
+  answers:               z.array(z.string().max(500)).max(50).optional().nullable(),
   puzzle_hint_text:      z.string().max(1000).optional().nullable(),
   answer_match_type:     answerMatchTypeSchema,
   correct_action:        z.enum(["text", "text_and_transition", "transition"]).optional().nullable(),
   correct_text:          z.string().max(2000).optional().nullable(),
+  correct_character_id:    uuidSchema.optional().nullable(),
   incorrect_text:          z.string().max(2000).optional().nullable(),
+  incorrect_character_id:  uuidSchema.optional().nullable(),
   incorrect_quick_replies: z.array(quickReplyItemSchema).max(13).optional().nullable(),
   correct_next_phase_id: uuidSchema.optional().nullable(),
   hint_mode: z.enum(["always", "on_wrong", "hidden"]).default("always").optional(),
@@ -487,6 +490,7 @@ export const updateMessageSchema = z.object({
   // Puzzle fields
   puzzle_type:           z.enum(["text", "image", "video", "carousel"]).optional().nullable(),
   answer:                z.string().max(500).optional().nullable(),
+  answers:               z.array(z.string().max(500)).max(50).optional().nullable(),
   puzzle_hint_text:      z.string().max(1000).optional().nullable(),
   answer_match_type:     z
     .array(z.enum(["exact", "partial", "ignore_punctuation", "normalize_width"]))
@@ -497,7 +501,9 @@ export const updateMessageSchema = z.object({
     .optional(),
   correct_action:        z.enum(["text", "text_and_transition", "transition"]).optional().nullable(),
   correct_text:          z.string().max(2000).optional().nullable(),
+  correct_character_id:    uuidSchema.optional().nullable(),
   incorrect_text:          z.string().max(2000).optional().nullable(),
+  incorrect_character_id:  uuidSchema.optional().nullable(),
   incorrect_quick_replies: z.array(quickReplyItemSchema).max(13).optional().nullable(),
   correct_next_phase_id: uuidSchema.optional().nullable(),
   hint_mode: z.enum(["always", "on_wrong", "hidden"]).optional(),

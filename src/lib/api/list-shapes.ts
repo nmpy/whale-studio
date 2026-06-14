@@ -15,7 +15,7 @@
 //
 // 出力 shape は従来の各 route の `toResponse` と完全に同一（フィールド・型・既定値とも不変）。
 
-import { parseAnswerMatchType } from "@/lib/puzzle-answer";
+import { parseAnswerMatchType, parsePuzzleAnswers } from "@/lib/puzzle-answer";
 
 // ── messages ────────────────────────────────────────────────
 
@@ -41,9 +41,10 @@ export function messageToResponse(m: {
   notifyText: string | null; riddleId: string | null;
   quickReplies: string | null; nextMessageId?: string | null;
   altText?: string | null; flexPayloadJson?: string | null;
-  puzzleType?: string | null; answer?: string | null; puzzleHintText?: string | null;
+  puzzleType?: string | null; answer?: string | null; answers?: string | null; puzzleHintText?: string | null;
   answerMatchType?: string | null; correctAction?: string | null;
-  correctText?: string | null; incorrectText?: string | null;
+  correctText?: string | null; correctCharacterId?: string | null;
+  incorrectText?: string | null; incorrectCharacterId?: string | null;
   incorrectQuickReplies?: string | null;
   correctNextPhaseId?: string | null;
   hintMode?: string;
@@ -94,11 +95,14 @@ export function messageToResponse(m: {
     flex_payload_json:    m.flexPayloadJson ?? null,
     puzzle_type:          m.puzzleType ?? null,
     answer:               m.answer ?? null,
+    answers:              parsePuzzleAnswers(m.answers ?? null),
     puzzle_hint_text:     m.puzzleHintText ?? null,
     answer_match_type:    parseAnswerMatchType(m.answerMatchType ?? null),
     correct_action:       m.correctAction ?? null,
     correct_text:         m.correctText ?? null,
+    correct_character_id:    m.correctCharacterId ?? null,
     incorrect_text:          m.incorrectText ?? null,
+    incorrect_character_id:  m.incorrectCharacterId ?? null,
     incorrect_quick_replies: parseQuickReplies(m.incorrectQuickReplies ?? null, m.id),
     correct_next_phase_id:   m.correctNextPhaseId ?? null,
     hint_mode:            (m.hintMode ?? "always") as import("@/types").HintMode,

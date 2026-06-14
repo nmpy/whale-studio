@@ -129,3 +129,61 @@ describe("checkPuzzleAnswer (既存挙動の互換)", () => {
     expect(checkPuzzleAnswer("ＨＥＬＬＯ", "HELLO", ["normalize_width"])).toBe(true);
   });
 });
+
+// ── 複数正解（answers）対応 ──────────────────────────────
+import {
+  parsePuzzleAnswers,
+  resolveAnswerCandidates,
+  checkPuzzleAnswerAny,
+} from "@/lib/puzzle-answer";
+
+describe("parsePuzzleAnswers", () => {
+  it("null/undefined/空文字は []", () => {
+    expect(parsePuzzleAnswers(null)).toEqual([]);
+    expect(parsePuzzleAnswers(undefined)).toEqual([]);
+    expect(parsePuzzleAnswers("")).toEqual([]);
+  });
+  it("JSON 配列文字列を string[] に変換し trim・空除外する", () => {
+    expect(parsePuzzleAnswers('["りんご"," 林檎 ",""]')).toEqual(["りんご", "林檎"]);
+  });
+  it("配列をそのまま受け取り trim・空除外する", () => {
+    expect(parsePuzzleAnswers(["apple", "  ", "リンゴ"])).toEqual(["apple", "リンゴ"]);
+  });
+  it("不正な JSON は []", () => {
+    expect(parsePuzzleAnswers("not-json")).toEqual([]);
+  });
+});
+
+describe("resolveAnswerCandidates", () => {
+  it("単一 answer と answers を統合し重複除外する", () => {
+    expect(resolveAnswerCandidates("りんご", '["林檎","りんご","リンゴ"]')).toEqual([
+      "りんご", "林檎", "リンゴ",
+    ]);
+  });
+  it("answer のみ（後方互換: 既存単一データ）", () => {
+    expect(resolveAnswerCandidates("桜", null)).toEqual(["桜"]);
+  });
+  it("answers のみ", () => {
+    expect(resolveAnswerCandidates(null, ["a", "b"])).toEqual(["a", "b"]);
+  });
+  it("どちらも空なら []", () => {
+    expect(resolveAnswerCandidates("", null)).toEqual([]);
+  });
+});
+
+describe("checkPuzzleAnswerAny", () => {
+  const candidates = ["りんご", "林檎", "リンゴ", "apple"];
+  it("いずれかに完全一致すれば正解", () => {
+    expect(checkPuzzleAnswerAny("林檎", candidates, ["exact"])).toBe(true);
+    expect(checkPuzzleAnswerAny("ａｐｐｌｅ", candidates, ["exact"])).toBe(true); // NFKC（全角→半角）
+  });
+  it("どれにも一致しなければ不正解", () => {
+    expect(checkPuzzleAnswerAny("みかん", candidates, ["exact"])).toBe(false);
+  });
+  it("候補が空なら常に false", () => {
+    expect(checkPuzzleAnswerAny("りんご", [], ["exact"])).toBe(false);
+  });
+  it("partial 指定でいずれかが部分一致すれば正解", () => {
+    expect(checkPuzzleAnswerAny("私はりんごが好き", candidates, ["partial"])).toBe(true);
+  });
+});

@@ -10,7 +10,7 @@ import { requireRole } from "@/lib/rbac";
 import { updateMessageSchema, formatZodErrors } from "@/lib/validations";
 import { ZodError } from "zod";
 import { activeCache, CACHE_KEY } from "@/lib/cache";
-import { parseAnswerMatchType } from "@/lib/puzzle-answer";
+import { parseAnswerMatchType, parsePuzzleAnswers } from "@/lib/puzzle-answer";
 import { findExternalReferrers, REFERRER_KIND_LABEL, type RefMessage } from "@/lib/message-refs";
 
 // Next.js の自動 static 化を防ぐ。withAuth が headers/cookies を読むため通常は dynamic 扱いだが
@@ -37,9 +37,10 @@ type PrismaMessageWithRelations = {
   notifyText: string | null; riddleId: string | null;
   quickReplies: string | null; nextMessageId: string | null;
   altText: string | null; flexPayloadJson: string | null;
-  puzzleType: string | null; answer: string | null; puzzleHintText: string | null;
+  puzzleType: string | null; answer: string | null; answers: string | null; puzzleHintText: string | null;
   answerMatchType: string | null; correctAction: string | null;
-  correctText: string | null; incorrectText: string | null;
+  correctText: string | null; correctCharacterId: string | null;
+  incorrectText: string | null; incorrectCharacterId: string | null;
   incorrectQuickReplies: string | null;
   correctNextPhaseId: string | null;
   hintMode: string;
@@ -111,11 +112,14 @@ function toResponse(m: PrismaMessageWithRelations) {
     flex_payload_json:     m.flexPayloadJson,
     puzzle_type:           m.puzzleType,
     answer:                m.answer,
+    answers:               parsePuzzleAnswers(m.answers),
     puzzle_hint_text:      m.puzzleHintText,
     answer_match_type:     parseAnswerMatchType(m.answerMatchType),
     correct_action:        m.correctAction,
     correct_text:            m.correctText,
+    correct_character_id:    m.correctCharacterId ?? null,
     incorrect_text:          m.incorrectText,
+    incorrect_character_id:  m.incorrectCharacterId ?? null,
     incorrect_quick_replies: parseQuickReplies(m.incorrectQuickReplies, m.id),
     correct_next_phase_id:   m.correctNextPhaseId,
     hint_mode:             m.hintMode as import("@/types").HintMode,
@@ -271,9 +275,14 @@ export const PATCH = withAuth<{ id: string }>(async (req, { params }, user) => {
         ...(data.answer_match_type !== undefined && {
           answerMatchType: JSON.stringify(data.answer_match_type),
         }),
+        ...(data.answers              !== undefined && {
+          answers: data.answers && data.answers.length > 0 ? JSON.stringify(data.answers) : null,
+        }),
         ...(data.correct_action       !== undefined && { correctAction:      data.correct_action }),
         ...(data.correct_text         !== undefined && { correctText:        data.correct_text }),
+        ...(data.correct_character_id !== undefined && { correctCharacterId:   data.correct_character_id }),
         ...(data.incorrect_text       !== undefined && { incorrectText:         data.incorrect_text }),
+        ...(data.incorrect_character_id !== undefined && { incorrectCharacterId: data.incorrect_character_id }),
         ...(data.incorrect_quick_replies !== undefined && {
           incorrectQuickReplies: data.incorrect_quick_replies ? JSON.stringify(data.incorrect_quick_replies) : null,
         }),
