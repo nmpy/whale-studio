@@ -17,7 +17,6 @@ import { useIsMobile } from "@/hooks/useIsMobile";
 import { trackEvent } from "@/lib/event-tracker";
 import { ViewerBanner } from "@/components/PermissionGuard";
 import { WorkCreatedGuide }   from "@/components/onboarding/WorkCreatedGuide";
-import { NextActionCard }     from "@/components/onboarding/NextActionCard";
 import { OnboardingProgress } from "@/components/onboarding/OnboardingProgress";
 import { WorkLimitCard } from "@/components/upgrade/WorkLimitCard";
 import {
@@ -244,7 +243,6 @@ export default function WorkHubPage() {
   const hasPhases      = phaseCount > 0;
   const hasMessages    = (work?._count.messages   ?? 0) > 0;
   const hasTransitions = transCount > 0;
-  const isSetupIncomplete = !hasCharacters || !hasPhases || !hasMessages || !hasTransitions;
 
 
   const currentStatus    = work?.publish_status ?? "draft";
@@ -352,7 +350,6 @@ export default function WorkHubPage() {
           優先順位:
             1. 作成直後バナー（?created=1）— WorkCreatedGuide
             2. 初回進捗ステッパー          — OnboardingProgress
-            3. 次アクションカード          — NextActionCard（setup 未完了時のみ）
       ══════════════════════════════════════════════════════ */}
       {showCreated && work ? (
         <WorkCreatedGuide
@@ -365,24 +362,14 @@ export default function WorkHubPage() {
           onDismiss={() => setShowCreated(false)}
         />
       ) : (
-        <>
-          <OnboardingProgress
-            oaId={oaId}
-            workId={workId}
-            hasCharacters={hasCharacters}
-            hasPhases={hasPhases}
-            hasMessages={hasMessages}
-            hasTransitions={hasTransitions}
-          />
-          {isSetupIncomplete && (
-            <NextActionCard
-              oaId={oaId}
-              workId={workId}
-              hasCharacters={hasCharacters}
-              hasPhases={hasPhases}
-            />
-          )}
-        </>
+        <OnboardingProgress
+          oaId={oaId}
+          workId={workId}
+          hasCharacters={hasCharacters}
+          hasPhases={hasPhases}
+          hasMessages={hasMessages}
+          hasTransitions={hasTransitions}
+        />
       )}
 
       {/* ── 使い方ガイド ── */}

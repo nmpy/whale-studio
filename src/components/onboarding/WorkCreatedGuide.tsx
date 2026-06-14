@@ -39,7 +39,7 @@ const STEPS = [
   },
   {
     key:  "preview",
-    label: "プレビューで見え方を確認する",
+    label: "実際にスマートフォンで確認する",
     desc: "実際の体験に近い形で確認できます",
     href: null as string | null,
   },
@@ -47,6 +47,8 @@ const STEPS = [
 
 type StepKey = (typeof STEPS)[number]["key"];
 
+// 補助的なセットアップ案内として控えめに見せるため、全体をひとまわりコンパクトにしている
+// （余白・文字/見出し/アイコン/ボタンサイズを抑制。情報は読める範囲を維持）。
 export function WorkCreatedGuide({
   oaId, workId,
   hasCharacters, hasPhases, hasMessages, hasTransitions,
@@ -65,28 +67,28 @@ export function WorkCreatedGuide({
 
   return (
     <div
-      className="rounded-3xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-sky-50 relative"
-      style={{ padding: "20px 22px", marginBottom: 20 }}
+      className="rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-sky-50 relative"
+      style={{ padding: "15px 17px", marginBottom: 16 }}
     >
       {/* 閉じるボタン */}
       <button
         onClick={onDismiss}
         aria-label="閉じる"
         className="absolute text-neutral-300 hover:text-neutral-500 transition-colors"
-        style={{ top: 14, right: 14, background: "none", border: "none", cursor: "pointer", fontSize: 14 }}
+        style={{ top: 12, right: 12, background: "none", border: "none", cursor: "pointer", fontSize: 13 }}
       >
         ✕
       </button>
 
-      <p className="font-bold text-emerald-800" style={{ fontSize: 15, marginBottom: 4 }}>
+      <p className="font-bold text-emerald-800" style={{ fontSize: 13, marginBottom: 3 }}>
         作品を作成しました
       </p>
-      <p className="text-emerald-700" style={{ fontSize: 12, marginBottom: 18 }}>
+      <p className="text-emerald-700" style={{ fontSize: 11, marginBottom: 14 }}>
         次は、作品の体験を形にするための設定を進めましょう。
       </p>
 
       {/* ステップ一覧 */}
-      <div className="flex flex-col" style={{ gap: 8, marginBottom: 18 }}>
+      <div className="flex flex-col" style={{ gap: 6, marginBottom: 14 }}>
         {STEPS.map((step, i) => {
           const done   = completion[step.key];
           const isNext = step.key === firstIncomplete?.key;
@@ -99,7 +101,7 @@ export function WorkCreatedGuide({
                 "flex items-center rounded-xl transition-colors",
                 isNext ? "bg-white border border-emerald-200 shadow-sm" : "",
               ].join(" ")}
-              style={{ gap: 10, padding: isNext ? "10px 12px" : "4px 12px" }}
+              style={{ gap: 9, padding: isNext ? "8px 10px" : "3px 10px" }}
             >
               {/* 番号バッジ */}
               <span
@@ -109,7 +111,7 @@ export function WorkCreatedGuide({
                   isNext ? "bg-emerald-500 text-white"        :
                            "bg-neutral-100 text-neutral-400",
                 ].join(" ")}
-                style={{ width: 22, height: 22, fontSize: 10 }}
+                style={{ width: 19, height: 19, fontSize: 10 }}
               >
                 {done ? "✓" : i + 1}
               </span>
@@ -118,7 +120,7 @@ export function WorkCreatedGuide({
               <div className="flex-1 min-w-0">
                 <span
                   className={done ? "line-through text-neutral-400" : isNext ? "font-semibold text-neutral-800" : "text-neutral-500"}
-                  style={{ fontSize: 13 }}
+                  style={{ fontSize: 12 }}
                 >
                   {step.label}
                 </span>
@@ -134,7 +136,7 @@ export function WorkCreatedGuide({
                 <Link
                   href={href}
                   className="flex-shrink-0 font-semibold text-emerald-600 bg-emerald-100 hover:bg-emerald-200 rounded-lg transition-colors"
-                  style={{ fontSize: 11, padding: "3px 10px" }}
+                  style={{ fontSize: 11, padding: "3px 9px" }}
                 >
                   →
                 </Link>
@@ -150,7 +152,7 @@ export function WorkCreatedGuide({
           <Link
             href={`${basePath}/${firstIncomplete.href}`}
             className="inline-flex items-center rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-semibold transition-colors"
-            style={{ gap: 6, padding: "9px 18px", fontSize: 13 }}
+            style={{ gap: 6, padding: "8px 15px", fontSize: 12, color: "#ffffff" }}
           >
             {firstIncomplete.label} →
           </Link>
@@ -158,7 +160,7 @@ export function WorkCreatedGuide({
         <button
           onClick={onDismiss}
           className="rounded-xl border border-neutral-200 text-neutral-500 hover:bg-neutral-50 transition-colors"
-          style={{ padding: "9px 18px", fontSize: 13, background: "none", cursor: "pointer" }}
+          style={{ padding: "8px 15px", fontSize: 12, background: "none", cursor: "pointer" }}
         >
           あとで設定する
         </button>
