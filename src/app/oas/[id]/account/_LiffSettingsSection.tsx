@@ -109,7 +109,7 @@ export function LiffSettingsSection({ oaId }: { oaId: string }) {
   );
 
   return (
-    <section className="mt-8 w-full max-w-[680px]">
+    <section className="w-full max-w-[680px]">
       {heading}
 
       {!planLoading && !planAccess.allowed ? (

@@ -63,6 +63,8 @@ export default function OaAccountPage() {
   const [loadError, setLoadError]     = useState<string | null>(null);
   const [errors, setErrors]           = useState<Record<string, string[]>>({});
   const [submitting, setSubmitting]   = useState(false);
+  // タブ切り替え（基本情報 / LIFF設定）。初期は基本情報。ページ遷移なし。
+  const [tab, setTab]                 = useState<"basic" | "liff">("basic");
 
   useEffect(() => {
     oaApi.get(getDevToken(), oaId)
@@ -175,8 +177,39 @@ export default function OaAccountPage() {
     <>
       {header}
 
-      {/* ── OA 設定フォーム ── */}
-      <div className="w-full max-w-[560px] rounded-card border border-line bg-surface p-5 shadow-sm sm:p-6">
+      {/* ── タブ（基本情報 / LIFF設定）── */}
+      <div
+        role="tablist"
+        aria-label="アカウント情報セクション"
+        className="mb-5 flex gap-0 border-b border-line"
+      >
+        {([
+          { key: "basic", label: "基本情報" },
+          { key: "liff",  label: "LIFF設定" },
+        ] as const).map(({ key, label }) => {
+          const isActive = tab === key;
+          return (
+            <button
+              key={key}
+              type="button"
+              role="tab"
+              aria-selected={isActive}
+              onClick={() => setTab(key)}
+              className={
+                "-mb-px flex items-center gap-1.5 border-b-2 px-5 py-2.5 text-[13px] transition-colors " +
+                (isActive
+                  ? "border-brand font-bold text-ink"
+                  : "border-transparent font-medium text-ink-3 hover:text-ink-2")
+              }
+            >
+              {label}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* ── 基本情報タブ: OA 設定フォーム ── */}
+      <div hidden={tab !== "basic"} className="w-full max-w-[560px] rounded-card border border-line bg-surface p-5 shadow-sm sm:p-6">
         <form onSubmit={handleSubmit}>
 
           {/* ── アカウント基本情報 ── */}
@@ -383,8 +416,8 @@ export default function OaAccountPage() {
         </form>
       </div>
 
-      {/* ── LIFF設定（旧 /settings/liff から統合）── */}
-      <LiffSettingsSection oaId={oaId} />
+      {/* ── LIFF設定タブ（旧 /settings/liff から統合）── */}
+      {tab === "liff" && <LiffSettingsSection oaId={oaId} />}
     </>
   );
 }
