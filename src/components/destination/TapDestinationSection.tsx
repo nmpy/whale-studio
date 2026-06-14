@@ -6,6 +6,7 @@
 // destination を推奨導線として見せ、直URL入力は控えめにする。
 
 import { DestinationSelect } from "./DestinationSelect";
+import { LinkPicker, type LinkOption } from "./LinkPicker";
 import type { LineDestination } from "@/types";
 
 export type TapMode = "destination" | "direct_url" | "none";
@@ -20,6 +21,10 @@ interface Props {
   disabled?: boolean;
   /** destination 一覧を外部から注入（重複フェッチ防止） */
   destinations?: LineDestination[];
+  /** 直接URL入力モードで出す URL候補（LIFF / ロケーションURL）。選択結果は onDirectUrlChange に渡る。 */
+  linkOptions?: LinkOption[];
+  /** linkOptions が空のとき、LIFF 未設定が理由なら案内を出すための補足。 */
+  linkOptionsLiffConfigured?: boolean;
   onModeChange: (mode: TapMode) => void;
   onDestinationChange: (id: string | null, dest: LineDestination | null) => void;
   onDirectUrlChange: (url: string) => void;
@@ -28,7 +33,7 @@ interface Props {
 export function TapDestinationSection({
   label = "画像タップ時の遷移先",
   workId, oaId, mode, destinationId, directUrl, disabled,
-  destinations, onModeChange, onDestinationChange, onDirectUrlChange,
+  destinations, linkOptions, linkOptionsLiffConfigured, onModeChange, onDestinationChange, onDirectUrlChange,
 }: Props) {
   return (
     <div className="space-y-3">
@@ -79,9 +84,17 @@ export function TapDestinationSection({
         </div>
       )}
 
-      {/* 直接URL入力モード（控えめ） */}
+      {/* 直接URL入力モード（控えめ）。linkOptions があれば URL候補から選んで入力欄に反映できる。 */}
       {mode === "direct_url" && (
         <div>
+          {linkOptions && (
+            <LinkPicker
+              options={linkOptions}
+              liffConfigured={linkOptionsLiffConfigured}
+              onPick={onDirectUrlChange}
+              disabled={disabled}
+            />
+          )}
           <input
             className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-200 disabled:bg-gray-50"
             value={directUrl}
@@ -90,7 +103,7 @@ export function TapDestinationSection({
             placeholder="https://..."
           />
           <p className="text-[10px] text-gray-400 mt-1">
-            一時的にURLを直接指定したい場合に使います
+            候補から選ぶと入力欄に反映されます。手入力で編集もできます。
           </p>
         </div>
       )}
