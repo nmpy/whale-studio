@@ -23,6 +23,7 @@ import { detectTapMode } from "@/lib/message-destination-utils";
 import { RequiredMark } from "@/components/RequiredMark";
 import { MediaUploadButton } from "@/components/MediaUploadButton";
 import { FlexPreview } from "@/components/flex/FlexPreview";
+import { Switch } from "@/components/Switch";
 import { destinationApi } from "@/lib/api-client";
 import type { LineDestination } from "@/types";
 import { normalizeFlexJson, prettyFlexJson, FLEX_SIMULATOR_URL, FLEX_ERRORS } from "@/lib/flex";
@@ -2571,7 +2572,7 @@ function TimingConfigSection<T extends TimingFormFields>({
         </span>
       ) : undefined}
     >
-      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           {/* ── 返信までの待機時間（1通目の lag_ms = 実機反映される唯一の待機項目） ──
               演出設定の最上部に配置。保存挙動は呼び出し側 set("lag_ms") に委譲（表示のみ移動）。 */}
           {onHeadDelayChange && (
@@ -3711,7 +3712,8 @@ export function MessageForm({
           padding: 12px 16px;
           margin: 16px -16px 0;
           background: var(--color-surface, #ffffff);
-          border-top: 1px solid var(--color-line, #e8edea);
+          border: 1px solid var(--color-line, #e8edea);
+          border-radius: 16px;
           box-shadow: 0 -2px 8px rgba(26, 40, 32, 0.04);
         }
         .msg-action-footer .msg-action-group {
@@ -4353,7 +4355,7 @@ export function MessageForm({
 
             {/* ── テキスト ── */}
             {mtype === "text" && (
-              <div className="form-group" style={{ marginBottom: 0 }}>
+              <div className="form-group" style={{ marginBottom: 18 }}>
                 <label style={fieldLabel} htmlFor="body">
                   {isSystemNotice ? "表示テキスト" : "本文"} <RequiredMark />
                 </label>
@@ -5183,14 +5185,21 @@ export function MessageForm({
                 2通目以降の直後に待つ場合は <strong>該当する追加メッセージ側</strong> で ON にしてください。
               </div>
               <div className="form-group">
-                <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
-                  <input
-                    type="checkbox"
+                {/* checkbox → トグルスイッチ（見た目のみ変更・状態/保存仕様は不変）。
+                    スイッチ＝ON/OFF 操作、ラベルクリックでも切替（どちらも set で同じ boolean を更新）。 */}
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <Switch
                     checked={form.free_input_enabled}
-                    onChange={(e) => set("free_input_enabled", e.target.checked)}
+                    onChange={(v) => set("free_input_enabled", v)}
+                    ariaLabel="このメッセージ送信後に自由入力を受け付ける"
                   />
-                  <span style={{ fontSize: 14, fontWeight: 600 }}>このメッセージ送信後に自由入力を受け付ける</span>
-                </label>
+                  <span
+                    style={{ fontSize: 14, fontWeight: 600, cursor: "pointer" }}
+                    onClick={() => set("free_input_enabled", !form.free_input_enabled)}
+                  >
+                    このメッセージ送信後に自由入力を受け付ける
+                  </span>
+                </div>
                 <div style={{ ...hintText, marginTop: 4 }}>
                   このメッセージを送信した直後に、ユーザーの次の入力を変数として保存します。
                   <br />
