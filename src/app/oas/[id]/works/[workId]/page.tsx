@@ -48,14 +48,13 @@ function statusTone(status: string): "active" | "muted" | "warn" {
 // uniform card + hover brand アクセント (= OA settings hub Phase 1.4 と同方針)。
 // key / title / desc / 表示順 / featureKey 連携 (HUB_CARD_TO_FEATURE) は完全維持。
 const HUB_CARDS = [
-  { key: "edit",         title: "作品情報",       desc: "タイトル・説明・公開ステータス・あいさつメッセージを編集します" },
+  { key: "edit",         title: "作品情報",       desc: "作品名や説明などの基本情報を編集します" },
   { key: "characters",   title: "キャラクター",   desc: "メッセージ送信者となるキャラクターを管理します" },
-  { key: "messages",     title: "メッセージ", desc: "フェーズごとに送信するメッセージ・謎チャレンジを管理します" },
-  { key: "scenario",     title: "シナリオフロー", desc: "フェーズの追加・並び替え・編集と遷移フローを1画面で管理します" },
-  { key: "audience",     title: "オーディエンス", desc: "プレイ統計・リアルタイム・フロー・セグメント・トラッキングを確認します" },
-  { key: "liff",         title: "LIFF表示設定",   desc: "LIFFページに表示するブロックの追加・編集・並び替えを行います" },
-  { key: "locations",    title: "ロケーション",   desc: "GPS・ビーコン・QRを使って、現地で発火する体験トリガーを管理します" },
-  { key: "destinations", title: "遷移先URL設定",  desc: "リッチメニューやメッセージから飛ばすURLを一元管理します" },
+  { key: "messages",     title: "メッセージ",     desc: "フェーズごとに送信するメッセージ・謎チャレンジを管理します" },
+  { key: "scenario",     title: "フェーズ管理",   desc: "フェーズの追加・並び替えと遷移フローを管理します" },
+  { key: "audience",     title: "オーディエンス", desc: "プレイ統計・フロー・セグメントなどを確認します" },
+  { key: "liff",         title: "LIFF設定",       desc: "LIFFページのブロックを追加・編集・並び替えます" },
+  { key: "locations",    title: "ロケーション",   desc: "GPS・ビーコン・QRで現地発火するトリガーを管理します" },
 ] as const;
 
 // ── ハブカード / アクションアイコン（SVGで役割を示す） ──────────
@@ -382,7 +381,7 @@ export default function WorkHubPage() {
           "1. キャラクターを作成（送信者の名前・アイコン）",
           "2. フェーズを作成（開始・通常・エンディング）",
           "3. メッセージを追加してフェーズに紐づける",
-          "4. シナリオフローで遷移（分岐）を設定する",
+          "4. フェーズ管理で遷移（分岐）を設定する",
         ]},
         { title: "注意点", points: [
           "公開ステータスが「公開中」のときだけ LINE からのメッセージに反応します",
@@ -489,7 +488,7 @@ export default function WorkHubPage() {
           const cardBody = (
             <div
               className={
-                "group flex items-center gap-3.5 rounded-card border bg-surface px-4 py-4 shadow-sm transition-all " +
+                "group flex h-full items-center gap-3.5 rounded-card border bg-surface px-4 py-4 shadow-sm transition-all " +
                 (access.allowed
                   ? "cursor-pointer border-line hover:-translate-y-px hover:border-brand/30 hover:shadow-card"
                   : "cursor-not-allowed border-line bg-bg-tint opacity-70")
@@ -513,7 +512,7 @@ export default function WorkHubPage() {
                 >
                   {card.title}
                 </div>
-                <div className="text-[12px] leading-[1.55] text-ink-2">
+                <div className="text-[12px] leading-[1.55] text-ink-2 line-clamp-2 min-h-[37px]">
                   {card.desc}
                 </div>
                 {/* プラン制限がかかっている場合、必要プラン表記を <PlanTag> で表示 */}
@@ -551,7 +550,7 @@ export default function WorkHubPage() {
               <Link
                 key={card.key}
                 href={cardHref}
-                className="no-underline"
+                className="block h-full no-underline"
               >
                 {cardBody}
               </Link>
@@ -568,7 +567,7 @@ export default function WorkHubPage() {
               aria-disabled={true}
               aria-label={`${card.title} (${access.reason === "plan_required" ? access.requiredPlanLabel + "プランで利用できます" : "利用できません"})`}
               tabIndex={-1}
-              className="no-underline"
+              className="block h-full no-underline"
             >
               {cardBody}
             </div>

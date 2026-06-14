@@ -42,7 +42,7 @@ export default function WerewolfTitleDetailPage() {
         items={[
           { label: "作品一覧",     href: `/oas/${oaId}/works` },
           { label: "作品",         href: `/oas/${oaId}/works/${workId}` },
-          { label: "LIFF表示設定", href: `/oas/${oaId}/works/${workId}/liff` },
+          { label: "LIFF設定", href: `/oas/${oaId}/works/${workId}/liff` },
           { label: "LIFFページ",   href: `/oas/${oaId}/works/${workId}/liff/${liffPageId}` },
           { label: "人狼タイトル" },
         ]}

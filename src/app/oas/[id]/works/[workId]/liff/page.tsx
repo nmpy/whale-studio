@@ -205,7 +205,7 @@ export default function LiffPagesIndex() {
         workId={workId}
         featureKey={FEATURE.liffDisplay}
         currentPlan={planTier}
-        featureLabel="LIFF表示設定"
+        featureLabel="LIFF設定"
       />
     );
   }
@@ -216,7 +216,7 @@ export default function LiffPagesIndex() {
         items={[
           { label: "作品一覧", href: `/oas/${oaId}/works` },
           { label: workTitle || "作品", href: `/oas/${oaId}/works/${workId}` },
-          { label: "LIFF表示設定" },
+          { label: "LIFF設定" },
         ]}
       />
 

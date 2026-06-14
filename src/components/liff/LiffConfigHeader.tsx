@@ -60,7 +60,7 @@ export function LiffConfigHeader({
   return (
     <>
       <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
-        <h1 className="text-xl font-bold text-gray-900">LIFF表示設定</h1>
+        <h1 className="text-xl font-bold text-gray-900">LIFF設定</h1>
         <div className="flex items-center gap-3 flex-wrap">
           <select
             value={config.publish_status}
