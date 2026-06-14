@@ -441,6 +441,28 @@ export default function RichMenuEditorPage() {
   // バリデーションエラー（適用ボタン押下時にセット。編集で自動クリア）
   const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
 
+  // 画像の実寸（メニューサイズ不一致の警告用）。読めない場合は null。
+  const [imgNatural, setImgNatural] = useState<{ w: number; h: number } | null>(null);
+
+  // imageUrl が変わったら実寸を読み取る（クライアント側のみ・既存保存値は変更しない）。
+  useEffect(() => {
+    const url = imageUrl.trim();
+    if (!url) { setImgNatural(null); return; }
+    let cancelled = false;
+    const img = new window.Image();
+    img.onload = () => { if (!cancelled) setImgNatural({ w: img.naturalWidth, h: img.naturalHeight }); };
+    img.onerror = () => { if (!cancelled) setImgNatural(null); };
+    img.src = url;
+    return () => { cancelled = true; };
+  }, [imageUrl]);
+
+  // 実寸の縦横比から推定サイズを判定（full 2500/1686≈0.67・compact 2500/843≈0.34 の中間 0.5 を閾値に）。
+  const inferredSize: RichMenuSize | null =
+    imgNatural && imgNatural.w > 0
+      ? (imgNatural.h / imgNatural.w > 0.5 ? "full" : "compact")
+      : null;
+  const sizeMismatch = inferredSize !== null && inferredSize !== size;
+
   // ── データロード ──
   const load = useCallback(async () => {
     setLoading(true);
@@ -685,9 +707,12 @@ export default function RichMenuEditorPage() {
                   value={size}
                   onChange={(e) => setSize(e.target.value as RichMenuSize)}
                 >
-                  <option value="compact">コンパクト (2500×843)</option>
-                  <option value="full">フル (2500×1686)</option>
+                  <option value="compact">1行 / コンパクト（2500×843）</option>
+                  <option value="full">2行 / フル（2500×1686）</option>
                 </select>
+                <span style={{ fontSize: 11, color: "#9ca3af", display: "block", marginTop: 4 }}>
+                  2行（縦に高い）画像を使う場合は「2行 / フル」を選んでください。プレビューの高さも切り替わります。
+                </span>
               </label>
 
               {/* リッチメニュー画像（アップロード主導線・URL 指定は折りたたみに退避） */}
@@ -705,6 +730,30 @@ export default function RichMenuEditorPage() {
                   supportedFormatsText={`PNG / JPEG。推奨サイズ ${size === "full" ? "2500×1686" : "2500×843"}px（最大 5MB）`}
                   errors={{ uploadFailed: "画像のアップロードに失敗しました。時間をおいて再度お試しください。" }}
                 />
+
+                {/* 画像の実寸から推定したサイズが選択中サイズと食い違う場合の警告（クリックで切替）。 */}
+                {sizeMismatch && inferredSize && (
+                  <div style={{
+                    marginTop: 8, padding: "8px 10px",
+                    background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 8,
+                    color: "#92400e", fontSize: 11, lineHeight: 1.6,
+                  }}>
+                    この画像は<strong>{inferredSize === "full" ? "2行サイズ（2500×1686）" : "1行サイズ（2500×843）"}</strong>のようです。
+                    メニューサイズを「{inferredSize === "full" ? "2行 / フル" : "1行 / コンパクト"}」に変更すると、プレビューが正しい比率になります。
+                    <button
+                      type="button"
+                      onClick={() => setSize(inferredSize)}
+                      style={{
+                        display: "block", marginTop: 6,
+                        background: "#fff", border: "1px solid #fcd34d", borderRadius: 6,
+                        color: "#92400e", fontSize: 11, fontWeight: 600,
+                        padding: "4px 10px", cursor: "pointer",
+                      }}
+                    >
+                      「{inferredSize === "full" ? "2行 / フル（2500×1686）" : "1行 / コンパクト（2500×843）"}」に変更する
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           </div>
