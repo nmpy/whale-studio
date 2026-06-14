@@ -13,7 +13,7 @@ import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
 import { getAuthHeaders } from "@/lib/api-client";
 import { ImageUploadField } from "@/components/ImageUploadField";
 import { buildUtmUrl, parseHashtagsInput } from "@/lib/x-posts/format";
-import type { XPost, XPostStatus, CreateXPostBody } from "@/types";
+import type { XPost, XPostStatus, CreateXPostBody, XPostAnalytics } from "@/types";
 
 type Tab = "posts" | "inflow" | "sentiment";
 
@@ -92,17 +92,7 @@ export default function XPostsPage() {
         />
       )}
 
-      {tab === "inflow" && (
-        <div className="flex flex-col gap-3">
-          <div className="rounded-field border border-sky/30 bg-sky-soft px-4 py-3 text-[12px] leading-[1.6] text-sky-ink">
-            Whale Studioで発行した計測URLのクリックと作品内行動をもとに分析します。X APIは使用しないため、X上のインプレッションやいいね数は自動取得しません。
-          </div>
-          <div className="rounded-card border border-line bg-surface px-5 py-10 text-center text-[13px] text-ink-3">
-            （次のアップデートで提供）URLクリック数・ユニーククリック数・CVR・投稿別ランキングを表示します。<br />
-            まずは「X投稿」タブで計測URLを発行し、そのURLを投稿に利用してください。
-          </div>
-        </div>
-      )}
+      {tab === "inflow" && <InflowTab workId={workId} />}
 
       {tab === "sentiment" && (
         <div className="flex flex-col gap-3">
@@ -413,6 +403,143 @@ function XPostForm({
           <button type="button" onClick={onCancel} className="btn btn-ghost">キャンセル</button>
           <button type="button" onClick={handleSave} disabled={saving} className="btn btn-primary">{saving ? "保存中…" : "保存する"}</button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ── 流入分析タブ（PR2）──────────────────────────────────
+function fmtCvr(cvr: number | null): string {
+  if (cvr === null) return "-";
+  return `${(cvr * 100).toFixed(1)}%`;
+}
+function fmtDate(iso: string | null): string {
+  if (!iso) return "-";
+  const d = new Date(iso);
+  return isNaN(d.getTime()) ? "-" : d.toLocaleString("ja-JP", { dateStyle: "short", timeStyle: "short" });
+}
+
+function InflowTab({ workId }: { workId: string }) {
+  const [data, setData] = useState<XPostAnalytics | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    fetch(`/api/works/${workId}/x-posts/analytics`, { headers: { ...getAuthHeaders() }, cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
+      .then((j) => { if (!cancelled) setData(j?.data ?? null); })
+      .catch(() => { if (!cancelled) setData(null); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [workId]);
+
+  const notice = (
+    <div className="rounded-field border border-sky/30 bg-sky-soft px-4 py-3 text-[12px] leading-[1.6] text-sky-ink">
+      Whale Studioで発行した計測URLのクリックと作品内行動をもとに分析します。X APIは使用しないため、X上のインプレッションやいいね数は自動取得しません。
+    </div>
+  );
+
+  if (loading) {
+    return <div className="flex flex-col gap-3">{notice}<div className="card" style={{ padding: 20 }}><div className="skeleton" style={{ height: 16, width: 200 }} /></div></div>;
+  }
+  if (!data) {
+    return <div className="flex flex-col gap-3">{notice}<div className="alert alert-error">流入分析の読み込みに失敗しました。</div></div>;
+  }
+
+  const s = data.summary;
+
+  // empty states
+  if (s.tracking_issued_count === 0) {
+    return (
+      <div className="flex flex-col gap-3">
+        {notice}
+        <div className="rounded-card border border-line bg-surface px-5 py-10 text-center text-[13px] text-ink-3">
+          流入分析を始めるには、X投稿ごとに計測URLを発行してください。
+        </div>
+      </div>
+    );
+  }
+  if (s.total_clicks === 0) {
+    return (
+      <div className="flex flex-col gap-3">
+        {notice}
+        <div className="rounded-card border border-line bg-surface px-5 py-10 text-center text-[13px] text-ink-3">
+          まだクリックデータがありません。X投稿で計測URLを発行し、そのURLを投稿に利用してください。
+        </div>
+      </div>
+    );
+  }
+
+  const cards: { label: string; value: string }[] = [
+    { label: "投稿数", value: String(s.post_count) },
+    { label: "計測URL発行済み", value: String(s.tracking_issued_count) },
+    { label: "合計URLクリック数", value: s.total_clicks.toLocaleString() },
+    { label: "ユニーククリック数", value: s.total_unique_clicks.toLocaleString() },
+    { label: "CV数", value: String(s.total_cv) },
+    { label: "平均CVR", value: fmtCvr(s.avg_cvr) },
+    { label: "最終クリック", value: fmtDate(s.last_clicked_at) },
+  ];
+
+  return (
+    <div className="flex flex-col gap-4">
+      {notice}
+
+      <p className="text-[11px] text-ink-3">
+        ※ CV数はクリックと作品開始/CVを紐づける計測（attribution）が未実装のため現在は 0 です（今後の対応で実値化予定）。クリック数は参考値です（Bot等を含む場合があります）。
+      </p>
+
+      {/* サマリーカード */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+        {cards.map((c) => (
+          <div key={c.label} className="rounded-card border border-line bg-surface px-4 py-3">
+            <div className="text-[11px] text-ink-3">{c.label}</div>
+            <div className="mt-0.5 text-[18px] font-extrabold text-ink">{c.value}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* CVRランキング（上位5） */}
+      <div className="rounded-card border border-line bg-surface p-4">
+        <p className="mb-2 text-[13px] font-bold text-ink">CVRランキング（上位5件）</p>
+        <div className="flex flex-col gap-1.5">
+          {data.ranking.map((r) => (
+            <div key={r.id} className="flex items-center gap-3 text-[12px]">
+              <span className="inline-flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-bg-tint font-bold text-ink-2">{r.rank}</span>
+              <span className="min-w-0 flex-1 truncate text-ink">{r.title || "無題のX投稿"}</span>
+              <span className="flex-shrink-0 font-bold text-ink">{fmtCvr(r.cvr)}</span>
+              <span className="flex-shrink-0 text-ink-3">CV {r.cv_count} / クリック {r.click_count}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* 投稿別テーブル */}
+      <div className="overflow-x-auto rounded-card border border-line bg-surface">
+        <table className="w-full text-left text-[12px]">
+          <thead>
+            <tr className="border-b border-line text-[11px] text-ink-3">
+              {["投稿タイトル", "本文冒頭", "X投稿URL", "計測URL", "クリック", "ユニーク", "CV", "CVR", "最終クリック"].map((h) => (
+                <th key={h} className="whitespace-nowrap px-3 py-2 font-semibold">{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {data.rows.map((r) => (
+              <tr key={r.id} className="border-b border-line-2 last:border-0">
+                <td className="px-3 py-2 font-semibold text-ink">{r.title || "無題のX投稿"}</td>
+                <td className="px-3 py-2 text-ink-2 max-w-[200px] truncate">{r.body_excerpt || "-"}</td>
+                <td className="px-3 py-2">{r.x_post_url ? <a href={r.x_post_url} target="_blank" rel="noopener noreferrer" className="text-sky-ink underline">開く</a> : "-"}</td>
+                <td className="px-3 py-2 font-mono text-[11px] text-ink-3 max-w-[200px] truncate">{r.tracking_url || "-"}</td>
+                <td className="px-3 py-2 text-right tabular-nums">{r.click_count.toLocaleString()}</td>
+                <td className="px-3 py-2 text-right tabular-nums">{r.unique_click_count.toLocaleString()}</td>
+                <td className="px-3 py-2 text-right tabular-nums">{r.cv_count}</td>
+                <td className="px-3 py-2 text-right tabular-nums">{fmtCvr(r.cvr)}</td>
+                <td className="px-3 py-2 whitespace-nowrap text-ink-3">{fmtDate(r.last_clicked_at)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   );
