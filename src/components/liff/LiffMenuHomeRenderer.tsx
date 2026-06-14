@@ -47,6 +47,12 @@ export interface LiffMenuHomePage {
 interface Props {
   workTitle: string;
   pages: LiffMenuHomePage[];
+  /** ホーム見出し（作品単位の任意設定）。未設定/空のとき「ホーム」を表示。 */
+  homeTitle?: string | null;
+  /** ホーム説明文（複数行可）。未設定/空のとき非表示。 */
+  homeDescription?: string | null;
+  /** ホーム画像 URL。未設定/空のとき非表示。見出しの上に表示。 */
+  homeImageUrl?: string | null;
   /** プレビュー時はカードクリックで親が画面切替する。実機では未指定。 */
   onSelectCard?: (page: LiffMenuHomePage) => void;
   /** 実機時に <a href> を組み立てるための builder。プレビュー時は未指定。 */
@@ -57,8 +63,13 @@ interface Props {
 }
 
 export function LiffMenuHomeRenderer({
-  workTitle, pages, onSelectCard, buildPageHref, preview = false, onClose,
+  workTitle, pages, homeTitle, homeDescription, homeImageUrl,
+  onSelectCard, buildPageHref, preview = false, onClose,
 }: Props) {
+  // ホーム見出し: 未設定/空のとき従来どおり「ホーム」。
+  const heading = homeTitle?.trim() || "ホーム";
+  const description = homeDescription?.trim() ? homeDescription : null;
+  const imageUrl = homeImageUrl?.trim() || null;
   // ── カード一覧 (並び替え + 非表示除外) ─────────────────────────────────────
   const sources: MenuCardSource[] = pages.map((p) => ({
     id:           p.id,
@@ -80,9 +91,23 @@ export function LiffMenuHomeRenderer({
     <div className={`liff-font ${liffRootClass(firstSettings)} min-h-screen bg-[#f6f8f7] text-[color:var(--liff-primary-text)]`}>
       <MenuHomeHeader workTitle={workTitle} onClose={preview ? undefined : onClose} />
 
-      {/* ホーム見出し */}
+      {/* ホーム画像（任意）→ 見出し → 説明文（任意） の順。
+          画像は横幅いっぱいにしすぎず角丸・縦横比維持で自然に。未設定時は従来表示。 */}
       <div className="liff-player-main pt-5 pb-3">
-        <h2 className="text-[18px] font-bold leading-snug">ホーム</h2>
+        {imageUrl && (
+          <img
+            src={imageUrl}
+            alt=""
+            className="w-full rounded-2xl object-cover mb-3"
+            style={{ maxHeight: 220 }}
+          />
+        )}
+        <h2 className="text-[18px] font-bold leading-snug">{heading}</h2>
+        {description && (
+          <p className="mt-1.5 text-[13px] leading-[1.7] text-[color:var(--liff-secondary-text)] whitespace-pre-wrap break-words">
+            {description}
+          </p>
+        )}
       </div>
 
       {/* カードグリッド */}

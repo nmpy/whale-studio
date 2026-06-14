@@ -27,6 +27,10 @@ interface MenuApiResponse {
   data?: {
     work_id:    string;
     work_title: string;
+    /** 作品メニューホームの任意設定（未設定は null）。 */
+    home_title?:       string | null;
+    home_description?: string | null;
+    home_image_url?:   string | null;
     pages:      LiffMenuHomePage[];
     /** Work.liffEnabled が false のとき API が返す。 */
     liff_disabled?: boolean;
@@ -105,6 +109,9 @@ export function LiffMenuHomeViewer({ workId, workPublicId }: Props) {
     <LiffMenuHomeRenderer
       workTitle={data.work_title}
       pages={data.pages}
+      homeTitle={data.home_title}
+      homeDescription={data.home_description}
+      homeImageUrl={data.home_image_url}
       preview={isPreview}
       onClose={liff.closeWindow}
       buildPageHref={(page) => {

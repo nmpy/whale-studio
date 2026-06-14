@@ -14,7 +14,25 @@ import type {
   HeadingSettings,
   TextSettings,
 } from "@/types";
+import type { LiffHomeSettings } from "@/types";
 import { normalizeLiffPageType } from "@/types";
+
+/** works.liff_home_settings_json（任意 JSON）を安全に正規化する。
+ *  - null / {} / 配列 / 不正値 → 全 null（= 未設定 = 従来表示）
+ *  - 空文字・空白のみの文字列 → null（説明文は内部の改行は保持する）
+ *  サーバー(API)・クライアント(プレビュー)双方から使う純粋関数。 */
+export function parseLiffHomeSettings(json: unknown): LiffHomeSettings {
+  const o =
+    json && typeof json === "object" && !Array.isArray(json)
+      ? (json as Record<string, unknown>)
+      : {};
+  const str = (v: unknown) => (typeof v === "string" && v.trim() !== "" ? v : null);
+  return {
+    title:       str(o.title),
+    description: str(o.description),
+    image_url:   str(o.image_url),
+  };
+}
 
 /** 旧 font_family の値を新 font_preset の値にマップする (data migration なしの読み取り側変換)。 */
 function legacyFontFamilyToPreset(family: LiffFontFamily | undefined): LiffFontPreset | undefined {

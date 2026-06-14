@@ -97,6 +97,11 @@ model Work {
   /// 実機 LIFF アプリからアクセスできなくなる。CMS プレビューは引き続き利用可能。
   /// 既存 work データは default(true) で migrate されるため挙動が変わらない。
   liffEnabled       Boolean        @default(true) @map("liff_enabled")
+  /// 作品メニューホーム (`/liff/w/{publicId}`) の見出し・説明文・画像など、ホーム全体に紐づく
+  /// 任意設定を格納する JSON。キー: { title?, description?, image_url? }。
+  /// 未設定 (= 空 `{}`) のときは従来表示（見出し「ホーム」・説明/画像なし）にフォールバックする。
+  /// per-page の LiffPageConfig.settingsJson とは別物（ホームは作品単位の概念）。
+  liffHomeSettingsJson Json         @default("{}") @map("liff_home_settings_json") @db.JsonB
   /// システムメッセージ（開始/エラー等）送信者として使うキャラクター（任意）
   systemCharacterId String?        @map("system_character_id")
   /// あいさつメッセージ。未開始ユーザーが話しかけたときに送信される導入文（任意）。

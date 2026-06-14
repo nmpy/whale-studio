@@ -87,6 +87,12 @@ export const updateWorkSchema = z.object({
   sort_order:          z.number().int().min(0).optional(),
   /** LIFF プレイヤー機能 (作品メニュー + 個別 LIFF ページ) の有効/無効。 */
   liff_enabled:        z.boolean().optional(),
+  /** 作品メニューホームの任意設定（title/description/image_url）。指定キーのみ更新・空文字は解除。 */
+  liff_home_settings:  z.object({
+    title:       z.string().max(40).optional().nullable(),
+    description: z.string().max(2000).optional().nullable(),
+    image_url:   z.string().max(2000).optional().nullable(),
+  }).optional(),
   /** 途中再開機能の有効/無効（作品単位）。true=再開選択肢を表示 / false=最初から開始に寄せる。 */
   resume_enabled:      z.boolean().optional(),
   system_character_id: z.string().uuid().optional().nullable(),
