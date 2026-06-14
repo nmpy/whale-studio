@@ -183,38 +183,112 @@ export function estimatePhaseSendBatch(messages: SendBatchMessageLike[]): number
   return total;
 }
 
-/** 「1 回のプレイヤーアクションに対して Bot が連続送信するメッセージ数」の最大値を返す。
+/** 送信単位推定で参照するメッセージ形（一覧 API の snake_case shape の部分集合）。 */
+export type SendUnitMessage = {
+  id:                          string;
+  kind?:                       string | null;
+  next_message_id?:            string | null;
+  free_input_enabled?:         boolean | null;
+  free_input_next_message_id?: string | null;
+  trigger_keyword?:            string | null;
+  quick_replies?:              { action?: string | null; target_message_id?: string | null }[] | null;
+};
+
+/** runtime の requiresUserInteraction（src/lib/runtime.ts）と同等。
+ *  このノードを送信した上で連続送信を停止するか（= ユーザー操作待ち）。 */
+function isWaitNode(m: SendUnitMessage): boolean {
+  if (m.kind === "puzzle") return true;                                  // 謎は回答待ちで停止
+  if (m.kind !== "start" && (m.trigger_keyword ?? "").trim()) return true; // キーワード入力待ち
+  if ((m.quick_replies?.length ?? 0) > 0) return !m.next_message_id;       // QR は chain 末尾でのみ停止
+  return false;
+}
+
+/** runtime の isAutoSendableMessageNode と同等。フェーズ入場時に自動送信される head か。 */
+function isAutoSendableHead(m: SendUnitMessage, targetMsgIds: Set<string>): boolean {
+  if (targetMsgIds.has(m.id)) return false;                              // QR 分岐先は入場では送らない
+  if (m.kind === "response" || m.kind === "hint") return false;          // キーワード/ヒントトリガー専用
+  if (m.kind !== "start" && (m.trigger_keyword ?? "").trim()) return false;
+  return true;
+}
+
+/** トリガー（QR タップ / 自由入力後 / キーワード応答）の起点から、1 回の reply で
+ *  連続送信される通数を数える。トリガーは既に発火済みなので起点の kind/keyword では止めず、
+ *  next_message_id を walk して **次の操作待ち**で停止する:
+ *    - free_input プロンプト / puzzle / QR 末尾（quick_replies かつ next_message_id なし）は含めて停止。 */
+function chainUnitFrom(startId: string, byId: Map<string, SendUnitMessage>): number {
+  let cur = byId.get(startId);
+  const visited = new Set<string>();
+  let count = 0;
+  while (cur && !visited.has(cur.id) && count < 100) {
+    visited.add(cur.id);
+    count++;
+    if (cur.free_input_enabled) break;
+    if (cur.kind === "puzzle") break;
+    if ((cur.quick_replies?.length ?? 0) > 0 && !cur.next_message_id) break; // QR 末尾で停止
+    const nid = cur.next_message_id;
+    if (!nid || !byId.has(nid)) break;
+    cur = byId.get(nid);
+  }
+  return count;
+}
+
+/** 「実際に 1 回の送信処理（1 replyToken）で LINE に渡しうるメッセージ数」の最大値を返す。
  *
- *  送信単位の定義:
- *    - chain head（next_message_id で参照されていないメッセージ）ごとに、
- *      next_message_id を walk して連続送信通数を数える。
- *    - free_input_enabled のメッセージに達したら、それを含めて打ち切る
- *      （以降はユーザー入力後の「別の応答」になるため同一単位に含めない）。
- *    - QR / 分岐選択 / 謎回答 / GPS・チェックイン待ちで届く応答メッセージは、
- *      next_message_id で繋がっていない別の head（QR target / freeInputNext target 等）
- *      になるため、自動的に別単位として独立に数えられる。
+ *  runtime の送信仕様（src/lib/runtime.ts drainAutoSendableItems / src/lib/line.ts
+ *  buildPhaseMessages）を踏襲して、送信単位ごとに数える:
+ *    - 入場送信単位: 自動送信対象の head を sortOrder 順に連結し、最初の wait node
+ *      （puzzle / QR末尾 / trigger / free_input）を含めて停止（= 入場で一度にまとめて送る分）。
+ *      QR 分岐先・response/hint・keyword 待ちメッセージは入場送信から除外する。
+ *    - 個別トリガー単位: QR target / free_input 後の応答(freeInputNext) / response メッセージは、
+ *      それぞれ別トリガーの reply 起点なので、起点ごとに連続送信通数を数える。
+ *  これらの最大値を返すことで「1 回の応答が 5 通以上か」を実送信と一致して判定できる。
+ *  フェーズ総数では判定しない（途中に入力/QR/分岐/謎回答が挟まれば送信単位が区切られる）。
  *
- *  estimatePhaseSendBatch は「フェーズ内の全 head を合算」するため、途中に入力/QR/分岐が
- *  挟まる構成でもフェーズ総数で警告が出てしまう。本関数は **単一応答単位の最大値** を返すので、
- *  「1 回の応答が 5 通以上か」を正しく判定できる（循環防止・1 chain の上限なし=実長で評価）。 */
-export function maxResponseSendSize(messages: SendBatchMessageLike[]): number {
+ *  ※ messages は表示順（sortOrder→createdAt）で渡すこと（入場連結順を runtime に合わせるため）。 */
+export function estimateMaxSendUnit(messages: SendUnitMessage[]): number {
   const byId = new Map(messages.map((m) => [m.id, m]));
-  const continuationIds = collectChainContinuationIds(messages);
-  let max = 0;
-  for (const head of messages) {
-    if (continuationIds.has(head.id)) continue;
-    let cur: SendBatchMessageLike | undefined = head;
-    const visited = new Set<string>([head.id]);
-    let count = 0;
-    while (cur && count < 100) {
-      count++;
-      if (cur.free_input_enabled) break; // free_input プロンプトを含めて停止（以降は別の応答単位）
-      const nextId = cur.next_message_id;
-      if (!nextId || visited.has(nextId) || !byId.has(nextId)) break;
-      visited.add(nextId);
-      cur = byId.get(nextId);
+
+  // QR 分岐先（target_message_id）= 入場では送らず、タップ時に送る別トリガー起点。
+  const targetMsgIds = new Set<string>();
+  for (const m of messages) {
+    for (const qr of m.quick_replies ?? []) {
+      if (qr?.target_message_id) targetMsgIds.add(qr.target_message_id);
     }
-    if (count > max) max = count;
+  }
+  const continuationIds = collectChainContinuationIds(messages);
+
+  // ── 入場送信単位: 自動送信 head を順に連結し、最初の wait node / free_input で全体停止 ──
+  let entryCount = 0;
+  const entryVisited = new Set<string>();
+  let stopped = false;
+  for (const head of messages) {
+    if (stopped) break;
+    if (continuationIds.has(head.id)) continue;          // continuation は head 経由で展開
+    if (!isAutoSendableHead(head, targetMsgIds)) continue;
+    let cur: SendUnitMessage | undefined = head;
+    while (cur && !entryVisited.has(cur.id)) {
+      if (cur.kind === "response" || cur.kind === "hint") break;
+      entryVisited.add(cur.id);
+      entryCount++;
+      if (cur.free_input_enabled || isWaitNode(cur)) { stopped = true; break; }
+      const nid = cur.next_message_id;
+      if (!nid || !byId.has(nid)) break;
+      cur = byId.get(nid);
+    }
+  }
+
+  // ── 個別トリガー単位（QR タップ / 自由入力後 / キーワード応答）──
+  const triggerHeadIds = new Set<string>(targetMsgIds);
+  for (const m of messages) {
+    if (m.free_input_next_message_id) triggerHeadIds.add(m.free_input_next_message_id);
+    if (m.kind === "response") triggerHeadIds.add(m.id);
+  }
+
+  let max = entryCount;
+  for (const id of triggerHeadIds) {
+    if (!byId.has(id)) continue;
+    const c = chainUnitFrom(id, byId);
+    if (c > max) max = c;
   }
   return max;
 }

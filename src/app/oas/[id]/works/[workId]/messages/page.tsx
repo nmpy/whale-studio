@@ -16,7 +16,7 @@ import { ViewerBanner } from "@/components/PermissionGuard";
 import { GuideCard } from "@/components/onboarding/GuideCard";
 import type { MessageWithRelations, MessageType, PhaseWithCounts, TransitionWithPhases, QuickReplyItem } from "@/types";
 import type { Role } from "@/lib/types/permissions";
-import { collectChainContinuationIds, chainSizeFrom, chainLengthFrom, maxResponseSendSize, LINE_REPLY_MAX, getChainContinuations, hasAnyTiming, summarizeTiming } from "./_list-helpers";
+import { collectChainContinuationIds, chainSizeFrom, chainLengthFrom, estimateMaxSendUnit, LINE_REPLY_MAX, getChainContinuations, hasAnyTiming, summarizeTiming } from "./_list-helpers";
 
 const MESSAGE_TYPE_LABEL: Record<MessageType, string> = {
   text:     "テキスト",
@@ -1197,7 +1197,7 @@ export default function MessagesPage() {
                       new Date(a.created_at).getTime() - new Date(b.created_at).getTime() ||
                       a.id.localeCompare(b.id),
                     );
-                  const maxUnit = maxResponseSendSize(phaseMsgs);
+                  const maxUnit = estimateMaxSendUnit(phaseMsgs);
                   if (maxUnit < LINE_REPLY_MAX) return null;
                   return (
                     <div style={{
