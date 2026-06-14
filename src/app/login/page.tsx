@@ -209,11 +209,11 @@ function LoginForm() {
   }
 
   return (
-    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#f8fafc" }}>
+    <div className="login-screen" style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#f8fafc" }}>
       <div className="card" style={{ width: 380, padding: 32 }}>
 
         <h1 style={{ fontSize: 20, fontWeight: 800, marginBottom: 4, color: "#111827" }}>WHALE STUDIO</h1>
-        <p style={{ fontSize: 13, color: "#6b7280", marginBottom: 24 }}>
+        <p style={{ fontSize: 13, fontWeight: 400, color: "#6b7280", marginBottom: 24 }}>
           {mode === "login" ? "管理画面にログイン" : "アカウントを作成"}
         </p>
 

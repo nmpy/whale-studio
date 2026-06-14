@@ -479,6 +479,14 @@ tbody tr:hover td { background: var(--brand-subtle); }
 .form-label { font-size: var(--font-size-base); font-weight: 700; color: var(--text-primary); }
 label       { font-size: var(--font-size-base); font-weight: 600; color: var(--text-primary); }
 
+/* ログイン / 新規登録画面（.login-screen スコープ内）だけ、本文寄りの自然な太さに揃える。
+   他のフォーム画面には影響させない（グローバルの .form-label / label は変更しない）。
+   - フォームラベル: 700 → 500（やや軽く・視認性は維持）
+   - 同意文言など素の <label>: 600 → 400（本文相当）
+   見出し（WHALE STUDIO 等）や CTA ボタンはインライン指定のため影響しない。 */
+.login-screen .form-label { font-weight: 500; }
+.login-screen label       { font-weight: 400; }
+
 input[type="text"],
 input[type="url"],
 input[type="number"],
