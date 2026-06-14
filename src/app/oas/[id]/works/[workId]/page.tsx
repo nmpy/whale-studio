@@ -55,6 +55,7 @@ const HUB_CARDS = [
   { key: "audience",     title: "オーディエンス", desc: "プレイ統計・フロー・セグメントなどを確認します" },
   { key: "liff",         title: "LIFF設定",       desc: "LIFFページのブロックを追加・編集・並び替えます" },
   { key: "locations",    title: "ロケーション",   desc: "GPS・ビーコン・QRで現地発火するトリガーを管理します" },
+  { key: "x-posts",      title: "X投稿管理",      desc: "作品の告知ポスト、投稿URL、クリック計測、CSV分析を管理します" },
 ] as const;
 
 // ── ハブカード / アクションアイコン（SVGで役割を示す） ──────────
@@ -115,6 +116,11 @@ function HubCardIcon({ cardKey }: { cardKey: string }) {
   if (cardKey === "preview") return (
     <svg {...p} aria-hidden="true">
       <polygon points="5 3 19 12 5 21 5 3"/>
+    </svg>
+  );
+  if (cardKey === "x-posts") return (
+    <svg {...p} aria-hidden="true">
+      <path d="M4 4l16 16M20 4L4 20"/>
     </svg>
   );
   return null;

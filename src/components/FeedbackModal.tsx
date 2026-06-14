@@ -43,7 +43,7 @@ function getPageName(pathname: string): string {
     [/^\/oas\/[^/]+\/richmenu-editor$/,                        "リッチメニュー管理"],
     [/^\/oas\/[^/]+\/richmenu-sync$/,                          "リッチメニュー同期"],
     [/^\/oas\/[^/]+\/friend-add$/,                             "友だち追加設定"],
-    [/^\/oas\/[^/]+\/sns$/,                                    "SNS投稿管理"],
+    [/^\/oas\/[^/]+\/works\/[^/]+\/x-posts$/,                  "X投稿管理"],
     [/^\/oas\/[^/]+\/trackings$/,                              "トラッキング管理"],
     [/^\/oas\/[^/]+\/settings\/members$/,                      "メンバー管理"],
     [/^\/oas\/[^/]+\/settings$/,                               "設定"],

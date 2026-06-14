@@ -2106,3 +2106,63 @@ export interface CheckinAttemptLogRequest {
   lat?:        number;
   lng?:        number;
 }
+
+// ── X投稿管理（X posts）──────────────────────────────
+export type XPostStatus = "draft" | "scheduled" | "posted" | "archived";
+
+export interface XPost {
+  id: string;
+  oa_id: string;
+  work_id: string;
+  title: string | null;
+  body: string | null;
+  hashtags: string[];
+  image_url: string | null;
+  uploaded_image_url: string | null;
+  link_url: string | null;
+  utm_enabled: boolean;
+  utm_name: string | null;
+  utm_source: string | null;
+  utm_medium: string | null;
+  utm_campaign: string | null;
+  utm_content: string | null;
+  utm_term: string | null;
+  generated_url: string | null;
+  tracking_code: string | null;
+  tracking_url: string | null;
+  x_post_url: string | null;
+  status: XPostStatus;
+  note: string | null;
+  posted_at: string | null;
+  scheduled_at: string | null;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+  /** 流入分析（PR2）。PR1 では計測URLクリック数を集計して返す。 */
+  click_count: number;
+  unique_click_count: number;
+}
+
+export interface CreateXPostBody {
+  title?: string | null;
+  body?: string | null;
+  hashtags?: string[] | null;
+  image_url?: string | null;
+  uploaded_image_url?: string | null;
+  link_url?: string | null;
+  utm_enabled?: boolean;
+  utm_name?: string | null;
+  utm_source?: string | null;
+  utm_medium?: string | null;
+  utm_campaign?: string | null;
+  utm_content?: string | null;
+  utm_term?: string | null;
+  generated_url?: string | null;
+  x_post_url?: string | null;
+  status?: XPostStatus;
+  note?: string | null;
+  posted_at?: string | null;
+  scheduled_at?: string | null;
+  sort_order?: number;
+}
+export type UpdateXPostBody = CreateXPostBody;

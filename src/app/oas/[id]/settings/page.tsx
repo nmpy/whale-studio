@@ -25,7 +25,7 @@ const HUB_ITEM_DEFS = [
   // 「ビーコン管理」はロケーション配下に導線があるため設定ハブからは除外。
   // 「トラッキング管理」はオーディエンス配下で登録・閲覧できるため設定ハブからは除外。
   { key: "friend-add",           title: "友だち追加設定",   desc: "招待 URL・シェア用画像を管理" },
-  { key: "sns",                  title: "SNS 投稿管理",     desc: "投稿文・画像・掲載 URL を管理" },
+  // 「SNS投稿管理」→「X投稿管理」として作品詳細配下（/oas/[id]/works/[workId]/x-posts）へ移設。設定ハブからは除外。
   { key: "settings/members",     title: "メンバー管理",     desc: "ワークスペースメンバーのロール（owner/admin/editor/viewer）を管理" },
   // 「オンボーディング分析」は設定ハブからは除外。
   // 現在のプラン・利用条件の確認導線（owner / admin）。売り込みではなく設定情報の確認として並べる。
@@ -136,7 +136,7 @@ export default function OaSettingsPage() {
             if (key === "settings/business-plan") return (isOwner || isAdmin) && usageType === "business";
             // メンバー管理は管理者（owner / admin）のみ表示。
             if (key === "settings/members") return isOwner || isAdmin;
-            if (key === "account" || key === "richmenu-editor" || key === "friend-add" || key === "sns") return isAdmin;
+            if (key === "account" || key === "richmenu-editor" || key === "friend-add") return isAdmin;
             if (key === "live") return liveAccess; // Live 可ユーザーのみ。それ以外には存在を見せない
             return true; // works — visible to all
           }).map(({ key, title, desc }) => (

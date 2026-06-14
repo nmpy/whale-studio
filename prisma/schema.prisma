@@ -56,6 +56,7 @@ model Oa {
   riddles            Riddle[]           @relation("OaRiddles")
   segments           Segment[]
   snsPosts           SnsPost[]
+  xPosts             XPost[]
   subscription       Subscription?
   trackings          Tracking[]
   userTrackings      UserTracking[]
@@ -163,6 +164,7 @@ model Work {
   liveSessions        LiveSession[]
   liveScripts         LiveScript[]
   liveCues            LiveCue[]
+  xPosts              XPost[]
   oa                  Oa                   @relation(fields: [oaId], references: [id], onDelete: Cascade)
   systemCharacter     Character?           @relation("WorkSystemCharacter", fields: [systemCharacterId], references: [id])
 
@@ -514,6 +516,74 @@ model SnsPost {
   @@index([oaId])
   @@index([order])
   @@map("sns_posts")
+}
+
+/// X（旧Twitter）投稿管理。作品（work）単位で告知ポスト・計測URL・UTM を管理する。
+/// X API / スクレイピングは使わず、計測は Whale Studio 発行の tracking URL クリックで行う。
+model XPost {
+  id               String   @id @default(uuid())
+  oaId             String   @map("oa_id")
+  workId           String   @map("work_id")
+  title            String?
+  body             String?
+  /// ハッシュタグ（JSON 文字列配列。例: ["#WhaleStudio","#LINE謎解き"]）
+  hashtags         String?
+  imageUrl         String?  @map("image_url")
+  uploadedImageUrl String?  @map("uploaded_image_url")
+  linkUrl          String?  @map("link_url")
+  utmEnabled       Boolean  @default(false) @map("utm_enabled")
+  utmName          String?  @map("utm_name")
+  utmSource        String?  @map("utm_source")
+  utmMedium        String?  @map("utm_medium")
+  utmCampaign      String?  @map("utm_campaign")
+  utmContent       String?  @map("utm_content")
+  utmTerm          String?  @map("utm_term")
+  /// UTM 付与後の遷移先 URL（生成結果）
+  generatedUrl     String?  @map("generated_url")
+  /// 計測URLの短縮コード（/r/[trackingCode]）
+  trackingCode     String?  @unique @map("tracking_code")
+  /// 計測URL（https://app.whale-studio.app/r/[trackingCode]）
+  trackingUrl      String?  @map("tracking_url")
+  /// 投稿済みの X 投稿 URL（手入力）
+  xPostUrl         String?  @map("x_post_url")
+  /// "draft" | "scheduled" | "posted" | "archived"
+  status           String   @default("draft")
+  note             String?
+  postedAt         DateTime? @map("posted_at")
+  scheduledAt      DateTime? @map("scheduled_at")
+  sortOrder        Int      @default(0) @map("sort_order")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+  oa               Oa       @relation(fields: [oaId], references: [id], onDelete: Cascade)
+  work             Work     @relation(fields: [workId], references: [id], onDelete: Cascade)
+  clickEvents      XPostClickEvent[]
+
+  @@index([oaId])
+  @@index([workId])
+  @@index([trackingCode])
+  @@map("x_posts")
+}
+
+/// 計測URL（/r/[trackingCode]）のクリックログ。IP は hash 化して保存（生値は保存しない）。
+model XPostClickEvent {
+  id             String   @id @default(uuid())
+  oaId           String   @map("oa_id")
+  workId         String   @map("work_id")
+  xPostId        String   @map("x_post_id")
+  trackingCode   String   @map("tracking_code")
+  destinationUrl String   @map("destination_url")
+  referer        String?
+  userAgent      String?  @map("user_agent")
+  ipHash         String?  @map("ip_hash")
+  clickedAt      DateTime @default(now()) @map("clicked_at")
+  createdAt      DateTime @default(now()) @map("created_at")
+  xPost          XPost    @relation(fields: [xPostId], references: [id], onDelete: Cascade)
+
+  @@index([oaId])
+  @@index([workId])
+  @@index([xPostId])
+  @@index([trackingCode])
+  @@map("x_post_click_events")
 }
 
 model RichMenu {
