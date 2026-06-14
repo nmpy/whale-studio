@@ -14,11 +14,12 @@ import "@/app/liff/liff-font.css";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useToast } from "@/components/Toast";
-import { buttonClass } from "@/components/shared";
+import { buttonClass, Accordion } from "@/components/shared";
 import { ImageUploadField } from "@/components/ImageUploadField";
 import {
   liffConfigApi,
   workApi,
+  fetchOaLiffId,
   getDevToken,
   type LiffPageSummary,
 } from "@/lib/api-client";
@@ -53,14 +54,17 @@ interface Row {
 }
 
 interface Props {
-  workId:     string;
-  workTitle:  string;
-  pages:      LiffPageSummary[];
+  oaId:         string;
+  workId:       string;
+  /** 公開 LIFF URL 生成用の work publicId（未取得時は undefined → UUID ルートにフォールバック）。 */
+  workPublicId?: string;
+  workTitle:    string;
+  pages:        LiffPageSummary[];
   /** 作品メニューホームの初期設定（title/description/image_url）。 */
-  homeInit:   HomeInit;
-  isReadOnly: boolean;
+  homeInit:     HomeInit;
+  isReadOnly:   boolean;
   /** 保存完了後に親へ再読込を促す。 */
-  onSaved:    () => void;
+  onSaved:      () => void;
 }
 
 /** 詳細ページ (show_in_menu) を menu_order → created_at 昇順で Row 化する。 */
@@ -101,10 +105,46 @@ const PUBLISH_BADGE: Record<string, string> = {
 // 入力値（空文字含む）を保存用に正規化: trim 後空なら "" を送る（API 側で解除扱い）。
 const norm = (v: string) => (v.trim() === "" ? "" : v);
 
-export function HomeTab({ workId, workTitle, pages, homeInit, isReadOnly, onSaved }: Props) {
+export function HomeTab({ oaId, workId, workPublicId, workTitle, pages, homeInit, isReadOnly, onSaved }: Props) {
   const { showToast } = useToast();
   const [rows, setRows] = useState<Row[]>(() => buildRows(pages));
   const [saving, setSaving] = useState(false);
+
+  // ── ホームLIFF URL アコーディオン用 ───────────────────────────
+  // origin はクライアントでのみ確定（preview→preview / 本番→本番）。SSR mismatch 回避のため mount 後に設定。
+  const [origin, setOrigin] = useState("");
+  const [liffId, setLiffId] = useState<string | null>(null);
+  const [liffLoaded, setLiffLoaded] = useState(false);
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") setOrigin(window.location.origin);
+  }, []);
+  useEffect(() => {
+    let cancelled = false;
+    fetchOaLiffId(oaId)
+      .then((id) => { if (!cancelled) setLiffId(id); })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setLiffLoaded(true); });
+    return () => { cancelled = true; };
+  }, [oaId]);
+
+  // 公開ホーム URL: publicId があれば短縮ルート、無ければ UUID ルート。origin 未確定時は空。
+  const browserHomeUrl = origin
+    ? (workPublicId ? `${origin}/liff/w/${workPublicId}` : `${origin}/liff/work/${workId}`)
+    : "";
+  const realLiffUrl = liffId ? `https://liff.line.me/${liffId}` : "";
+
+  const copyUrl = useCallback(async (key: string, url: string) => {
+    if (!url) return;
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopiedKey(key);
+      window.setTimeout(() => setCopiedKey((p) => (p === key ? null : p)), 1500);
+    } catch {
+      showToast("URL のコピーに失敗しました", "error");
+    }
+  }, [showToast]);
 
   // ホーム設定（タイトル/説明文/画像）。テキストエリアは制御のため空文字を保持する。
   const [homeTitle, setHomeTitle] = useState(homeInit.title ?? "");
@@ -209,22 +249,8 @@ export function HomeTab({ workId, workTitle, pages, homeInit, isReadOnly, onSave
     <div className="flex flex-col lg:flex-row gap-6 items-start">
       {/* 左: 編集 */}
       <div className="flex-1 min-w-0 w-full">
-        {/* 共通保存ボタン: ホーム設定 + 並び順 + 表示形式 をまとめて保存 */}
-        <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-          <p className="text-[12px] text-gray-500">ホームの見た目と並びを設定します。変更は右のプレビューに即時反映されます。</p>
-          {!isReadOnly && (
-            <button
-              type="button"
-              onClick={handleSave}
-              disabled={saving || !dirty}
-              aria-busy={saving || undefined}
-              className={buttonClass({ variant: "primary", size: "md" })}
-            >
-              {saving && <span className="spinner" aria-hidden="true" />}
-              {saving ? "保存中..." : dirty ? "保存" : "保存済み"}
-            </button>
-          )}
-        </div>
+        {/* 保存ボタンは左側編集エリアの末尾（下部）に配置する。ここでは導入文のみ。 */}
+        <p className="text-[12px] text-gray-500 mb-3">ホームの見た目と並びを設定します。変更は右のプレビューに即時反映されます。</p>
 
         {/* ホーム設定（タイトル / 説明文 / 画像）— すべて任意。未設定時は従来表示。 */}
         <div className="bg-white border border-gray-200 rounded-xl p-4 mb-4 space-y-3">
@@ -360,6 +386,46 @@ export function HomeTab({ workId, workTitle, pages, homeInit, isReadOnly, onSave
             ))}
           </ul>
         )}
+
+        {/* 保存ボタン（左側編集エリアの末尾）。ホーム設定 + 並び順 + 表示形式 をまとめて保存。 */}
+        {!isReadOnly && (
+          <div className="mt-4 flex items-center gap-3">
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={saving || !dirty}
+              aria-busy={saving || undefined}
+              className={buttonClass({ variant: "primary", size: "md" })}
+            >
+              {saving && <span className="spinner" aria-hidden="true" />}
+              {saving ? "保存中..." : dirty ? "保存" : "保存済み"}
+            </button>
+            {!dirty && !saving && <span className="text-xs text-gray-400">変更はありません</span>}
+          </div>
+        )}
+
+        {/* ホームLIFF URL アコーディオン（保存ボタンの下）。初期は閉じた状態。 */}
+        <div className="mt-4">
+          <Accordion title="ホームLIFF URL" defaultOpen={false}>
+            <div className="space-y-4 pt-1">
+              <UrlRow
+                label="ブラウザ確認用 URL"
+                hint="ブラウザで直接ホームを確認するための URL です。"
+                url={browserHomeUrl}
+                copied={copiedKey === "browser"}
+                onCopy={() => copyUrl("browser", browserHomeUrl)}
+              />
+              <UrlRow
+                label="実機 LIFF URL"
+                hint="LINE アプリで実際に開くための URL です。"
+                url={realLiffUrl}
+                emptyText={liffLoaded ? "LIFF ID が未設定です。OAのLIFF設定を確認してください。" : undefined}
+                copied={copiedKey === "liff"}
+                onCopy={() => copyUrl("liff", realLiffUrl)}
+              />
+            </div>
+          </Accordion>
+        </div>
       </div>
 
       {/* 右: プレビュー (sticky) */}
@@ -383,6 +449,57 @@ export function HomeTab({ workId, workTitle, pages, homeInit, isReadOnly, onSave
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+/** ホームLIFF URL アコーディオン内の 1 URL 行（URL 表示 + コピー/開く、未設定時は空状態）。 */
+function UrlRow({
+  label, hint, url, emptyText, copied, onCopy,
+}: {
+  label: string;
+  hint: string;
+  url: string;
+  /** url が空のときに出す未設定メッセージ。未指定なら「読み込み中...」を表示。 */
+  emptyText?: string;
+  copied: boolean;
+  onCopy: () => void;
+}) {
+  return (
+    <div>
+      <div className="text-[12px] font-semibold text-gray-700">{label}</div>
+      <p className="text-[11px] text-gray-400 mb-1.5">{hint}</p>
+      {url ? (
+        <div className="flex items-center gap-2 flex-wrap">
+          <code
+            className="min-w-0 flex-1 truncate text-[12px] text-brand-ink bg-gray-50 border border-gray-200 rounded-md px-2 py-1.5"
+            title={url}
+          >
+            {url}
+          </code>
+          <button
+            type="button"
+            onClick={onCopy}
+            className="shrink-0 px-3 py-1.5 border border-gray-200 text-gray-600 rounded-md text-xs hover:bg-gray-50"
+          >
+            {copied ? "コピーしました" : "コピー"}
+          </button>
+          <a
+            href={url}
+            target="_blank"
+            rel="noreferrer"
+            className="shrink-0 px-3 py-1.5 border border-gray-200 text-gray-600 rounded-md text-xs hover:bg-gray-50"
+          >
+            開く
+          </a>
+        </div>
+      ) : emptyText ? (
+        <p className="text-[12px] text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2 py-1.5">
+          {emptyText}
+        </p>
+      ) : (
+        <p className="text-[12px] text-gray-400">読み込み中...</p>
+      )}
     </div>
   );
 }
