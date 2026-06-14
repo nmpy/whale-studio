@@ -63,9 +63,11 @@ interface Props {
 }
 
 export function LiffMenuHomeRenderer({
-  workTitle, pages, homeTitle, homeDescription, homeImageUrl,
-  onSelectCard, buildPageHref, preview = false, onClose,
+  pages, homeTitle, homeDescription, homeImageUrl,
+  onSelectCard, buildPageHref,
 }: Props) {
+  // ※ 独自ヘッダー（作品名バー + 閉じる）は実機の LINE/LIFF デフォルトヘッダーと二重化するため廃止。
+  //    workTitle / preview / onClose props は後方互換で残すが描画しない。
   // ホーム見出し: 未設定/空のとき従来どおり「ホーム」。
   const heading = homeTitle?.trim() || "ホーム";
   const description = homeDescription?.trim() ? homeDescription : null;
@@ -89,8 +91,6 @@ export function LiffMenuHomeRenderer({
 
   return (
     <div className={`liff-font ${liffRootClass(firstSettings)} min-h-screen bg-[#f6f8f7] text-[color:var(--liff-primary-text)]`}>
-      <MenuHomeHeader workTitle={workTitle} onClose={preview ? undefined : onClose} />
-
       {/* ホーム画像（任意）→ 見出し → 説明文（任意） の順。
           画像は横幅いっぱいにしすぎず角丸・縦横比維持で自然に。未設定時は従来表示。 */}
       <div className="liff-player-main pt-5 pb-3">
@@ -197,35 +197,4 @@ function MenuCardItem({
     );
   }
   return <div className={baseCls} aria-label={card.label}>{inner}</div>;
-}
-
-// ── ヘッダー: 中央に作品名、右上に閉じるボタン (個別ページと共通) ─────────────
-function MenuHomeHeader({
-  workTitle, onClose,
-}: { workTitle: string; onClose?: () => void }) {
-  return (
-    <header className="sticky top-0 z-10 bg-[color:var(--liff-header-bg)] border-b border-[color:var(--liff-header-border)]">
-      <div className="liff-player-main flex items-center min-h-[48px] py-2">
-        <div className="w-8 shrink-0" aria-hidden="true" />
-        <h1 className="flex-1 text-center text-[15px] font-bold text-[color:var(--liff-header-text)] truncate">
-          {workTitle}
-        </h1>
-        <div className="w-8 shrink-0 flex justify-end">
-          {onClose && (
-            <button
-              type="button"
-              aria-label="閉じる"
-              onClick={onClose}
-              className="w-8 h-8 -mr-1 inline-flex items-center justify-center rounded-full text-[color:var(--liff-secondary-text)] active:bg-[color:var(--liff-surface-subtle,#F7F8FA)]"
-            >
-              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <line x1="18" y1="6" x2="6" y2="18" />
-                <line x1="6" y1="6" x2="18" y2="18" />
-              </svg>
-            </button>
-          )}
-        </div>
-      </div>
-    </header>
-  );
 }

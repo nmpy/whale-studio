@@ -70,9 +70,12 @@ const DEFAULT_RENDER_CTX: LiffRenderContext = {
 };
 
 export function LiffSinglePageRenderer({
-  workId, workTitle, page, preview = false, lineUserId = null, onBack, onClose,
+  workId, workTitle, page, preview = false, lineUserId = null,
   defaultPageCtx = DEFAULT_RENDER_CTX,
 }: Props) {
+  // ※ 独自ヘッダー（作品名バー + 閉じる）と「ホームに戻る」ボタンは、実機の LINE/LIFF
+  //    デフォルトヘッダーと二重化する/冗長なため廃止。onBack / onClose props は後方互換で残すが描画しない。
+  //    workTitle は document.title 同期（LINE デフォルトヘッダー表示用）で引き続き使用する。
   const pageType = normalizeLiffPageType(page.page_type);
   const settings = page.settings_json;
   const showCredit = shouldShowWhaleStudioCredit(settings);
@@ -97,21 +100,8 @@ export function LiffSinglePageRenderer({
   return (
     <LiffPlayerProvider value={playerCtxValue}>
       <div className={`liff-font ${liffRootClass(settings)} min-h-screen bg-[#f6f8f7] text-[color:var(--liff-primary-text)]`}>
-        <SinglePageHeader workTitle={workTitle} onClose={preview ? undefined : onClose} />
-
-        {/* 戻るボタン — 管理画面トーンの ghost ボタン（白チップ + 薄い境界線 + 角丸） */}
-        <div className="liff-player-main pt-3 pb-1">
-          <button
-            type="button"
-            onClick={onBack}
-            className="inline-flex items-center gap-1 rounded-full border border-[#e6ebe8] bg-white px-3 py-1.5 text-[13px] font-semibold text-[color:var(--liff-secondary-text)] shadow-[0_1px_2px_rgba(31,64,92,0.04)] active:bg-[color:var(--liff-surface-subtle,#FAFAFA)]"
-          >
-            <svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="15 18 9 12 15 6" />
-            </svg>
-            ホームに戻る
-          </button>
-        </div>
+        {/* 独自ヘッダー・「ホームに戻る」ボタンは廃止（実機 LINE ヘッダーと二重化するため）。
+            本文はページタイトル → 説明 → ブロックから自然に始まる。 */}
 
         {/* ページタイトル — LiffPageConfig.title をそのまま使う (固定文言は出さない) */}
         {page.title && (
@@ -138,35 +128,6 @@ export function LiffSinglePageRenderer({
   );
 }
 
-function SinglePageHeader({
-  workTitle, onClose,
-}: { workTitle: string; onClose?: () => void }) {
-  return (
-    <header className="sticky top-0 z-10 bg-[color:var(--liff-header-bg)] border-b border-[color:var(--liff-header-border)]">
-      <div className="liff-player-main flex items-center min-h-[48px] py-2">
-        <div className="w-8 shrink-0" aria-hidden="true" />
-        <h1 className="flex-1 text-center text-[15px] font-bold text-[color:var(--liff-header-text)] truncate">
-          {workTitle}
-        </h1>
-        <div className="w-8 shrink-0 flex justify-end">
-          {onClose && (
-            <button
-              type="button"
-              aria-label="閉じる"
-              onClick={onClose}
-              className="w-8 h-8 -mr-1 inline-flex items-center justify-center rounded-full text-[color:var(--liff-secondary-text)] active:bg-[color:var(--liff-surface-subtle,#F7F8FA)]"
-            >
-              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <line x1="18" y1="6" x2="6" y2="18" />
-                <line x1="6" y1="6" x2="18" y2="18" />
-              </svg>
-            </button>
-          )}
-        </div>
-      </div>
-    </header>
-  );
-}
 
 function ActivePageContent({
   workId,
