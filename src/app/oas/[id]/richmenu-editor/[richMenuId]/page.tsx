@@ -35,89 +35,116 @@ interface AreaDraft {
 
 // ────────────────────────────────────────────────
 // テンプレート定義
+// LINE 公式の「大（2500×1686）」「小（2500×843）」に連動させる。
+// 各テンプレートは自分の size を持ち、適用時に setSize(template.size) も行う
+// （= テンプレートとメニューサイズ・プレビュー比率・area 座標が必ず一致する）。
 // ────────────────────────────────────────────────
 interface Template {
   id:    string;
   label: string;
   icon:  string;
-  build: (size: "full" | "compact") => Omit<AreaDraft, "id">[];
+  /** このテンプレートのメニューサイズ。"full"=大(2500×1686) / "compact"=小(2500×843)。 */
+  size:  RichMenuSize;
+  /** size に対応した H（大1686 / 小843）で area 座標を生成する。 */
+  build: () => Omit<AreaDraft, "id">[];
+}
+
+/** size → H（W は常に LINE_W=2500）。 */
+function hOf(size: RichMenuSize): number {
+  return size === "full" ? LINE_H_FULL : LINE_H_COMPACT;
+}
+
+/** 座標から AreaDraft（action 既定値込み）を作る。 */
+function tplArea(
+  geom: { x: number; y: number; width: number; height: number },
+  idx:  number,
+): Omit<AreaDraft, "id"> {
+  return {
+    ...geom,
+    action_type:    "message",
+    action_label:   `ボタン${idx + 1}`,
+    action_text:    `ボタン${idx + 1}`,
+    action_data:    "",
+    action_uri:     "",
+    destination_id: "",
+    sort_order:     idx,
+  };
+}
+
+// ── レイアウト別ビルダー（size に応じた H で生成） ──
+function buildFullscreen(size: RichMenuSize): Omit<AreaDraft, "id">[] {
+  return [tplArea({ x: 0, y: 0, width: LINE_W, height: hOf(size) }, 0)];
+}
+function build2col(size: RichMenuSize): Omit<AreaDraft, "id">[] {
+  const H = hOf(size); const hw = Math.floor(LINE_W / 2);
+  return [
+    tplArea({ x: 0,  y: 0, width: hw,          height: H }, 0),
+    tplArea({ x: hw, y: 0, width: LINE_W - hw, height: H }, 1),
+  ];
+}
+function build3col(size: RichMenuSize): Omit<AreaDraft, "id">[] {
+  const H = hOf(size); const sw = Math.floor(LINE_W / 3);
+  return [
+    tplArea({ x: 0,      y: 0, width: sw,            height: H }, 0),
+    tplArea({ x: sw,     y: 0, width: sw,            height: H }, 1),
+    tplArea({ x: sw * 2, y: 0, width: LINE_W - sw*2, height: H }, 2),
+  ];
+}
+function build2x2(size: RichMenuSize): Omit<AreaDraft, "id">[] {
+  const H = hOf(size); const hw = Math.floor(LINE_W / 2); const hh = Math.floor(H / 2);
+  return [
+    tplArea({ x: 0,  y: 0,  width: hw,          height: hh },     0),
+    tplArea({ x: hw, y: 0,  width: LINE_W - hw, height: hh },     1),
+    tplArea({ x: 0,  y: hh, width: hw,          height: H - hh }, 2),
+    tplArea({ x: hw, y: hh, width: LINE_W - hw, height: H - hh }, 3),
+  ];
+}
+function build3x2(size: RichMenuSize): Omit<AreaDraft, "id">[] {
+  const H = hOf(size); const sw = Math.floor(LINE_W / 3); const hh = Math.floor(H / 2);
+  const areas: Omit<AreaDraft, "id">[] = [];
+  for (let row = 0; row < 2; row++) {
+    for (let col = 0; col < 3; col++) {
+      const idx = row * 3 + col;
+      areas.push(tplArea({
+        x:      sw * col,
+        y:      hh * row,
+        width:  col < 2 ? sw : LINE_W - sw * 2,
+        height: row < 1 ? hh : H - hh,
+      }, idx));
+    }
+  }
+  return areas;
+}
+// 上下2分割（主に大向け）
+function build2row(size: RichMenuSize): Omit<AreaDraft, "id">[] {
+  const H = hOf(size); const hh = Math.floor(H / 2);
+  return [
+    tplArea({ x: 0, y: 0,  width: LINE_W, height: hh },     0),
+    tplArea({ x: 0, y: hh, width: LINE_W, height: H - hh }, 1),
+  ];
+}
+// 左大 + 右上下2（大向け）
+function buildLeftBig2(size: RichMenuSize): Omit<AreaDraft, "id">[] {
+  const H = hOf(size); const hw = Math.floor(LINE_W / 2); const hh = Math.floor(H / 2);
+  return [
+    tplArea({ x: 0,  y: 0,  width: hw,          height: H },      0),
+    tplArea({ x: hw, y: 0,  width: LINE_W - hw, height: hh },     1),
+    tplArea({ x: hw, y: hh, width: LINE_W - hw, height: H - hh }, 2),
+  ];
 }
 
 const TEMPLATES: Template[] = [
-  {
-    id: "3col", label: "3列", icon: "|||",
-    build: (size) => {
-      const H = size === "full" ? LINE_H_FULL : LINE_H_COMPACT;
-      const sw = Math.floor(LINE_W / 3);
-      return [
-        { x: 0,      y: 0, width: sw,            height: H, action_type: "message", action_label: "ボタン1", action_text: "ボタン1", action_data: "", action_uri: "", destination_id: "", sort_order: 0 },
-        { x: sw,     y: 0, width: sw,            height: H, action_type: "message", action_label: "ボタン2", action_text: "ボタン2", action_data: "", action_uri: "", destination_id: "", sort_order: 1 },
-        { x: sw * 2, y: 0, width: LINE_W - sw*2, height: H, action_type: "message", action_label: "ボタン3", action_text: "ボタン3", action_data: "", action_uri: "", destination_id: "", sort_order: 2 },
-      ];
-    },
-  },
-  {
-    id: "2col", label: "2列", icon: "||",
-    build: (size) => {
-      const H = size === "full" ? LINE_H_FULL : LINE_H_COMPACT;
-      const hw = Math.floor(LINE_W / 2);
-      return [
-        { x: 0,  y: 0, width: hw,          height: H, action_type: "message", action_label: "ボタン1", action_text: "ボタン1", action_data: "", action_uri: "", destination_id: "", sort_order: 0 },
-        { x: hw, y: 0, width: LINE_W - hw, height: H, action_type: "message", action_label: "ボタン2", action_text: "ボタン2", action_data: "", action_uri: "", destination_id: "", sort_order: 1 },
-      ];
-    },
-  },
-  {
-    id: "4grid", label: "2×2", icon: "⊞",
-    build: (size) => {
-      const H = size === "full" ? LINE_H_FULL : LINE_H_COMPACT;
-      const hw = Math.floor(LINE_W / 2);
-      const hh = Math.floor(H / 2);
-      return [
-        { x: 0,  y: 0,  width: hw,          height: hh,      action_type: "message", action_label: "ボタン1", action_text: "ボタン1", action_data: "", action_uri: "", destination_id: "", sort_order: 0 },
-        { x: hw, y: 0,  width: LINE_W - hw, height: hh,      action_type: "message", action_label: "ボタン2", action_text: "ボタン2", action_data: "", action_uri: "", destination_id: "", sort_order: 1 },
-        { x: 0,  y: hh, width: hw,          height: H - hh,  action_type: "message", action_label: "ボタン3", action_text: "ボタン3", action_data: "", action_uri: "", destination_id: "", sort_order: 2 },
-        { x: hw, y: hh, width: LINE_W - hw, height: H - hh,  action_type: "message", action_label: "ボタン4", action_text: "ボタン4", action_data: "", action_uri: "", destination_id: "", sort_order: 3 },
-      ];
-    },
-  },
-  {
-    id: "3col2row", label: "3列×2行", icon: "⋮⋮⋮",
-    build: (size) => {
-      const H = size === "full" ? LINE_H_FULL : LINE_H_COMPACT;
-      const sw = Math.floor(LINE_W / 3);
-      const hh = Math.floor(H / 2);
-      const areas: Omit<AreaDraft, "id">[] = [];
-      for (let row = 0; row < 2; row++) {
-        for (let col = 0; col < 3; col++) {
-          const idx = row * 3 + col;
-          areas.push({
-            x: sw * col,
-            y: hh * row,
-            width:  col < 2 ? sw : LINE_W - sw * 2,
-            height: row < 1 ? hh : H - hh,
-            action_type:  "message",
-            action_label: `ボタン${idx + 1}`,
-            action_text:  `ボタン${idx + 1}`,
-            action_data:  "",
-            action_uri:      "",
-            destination_id:  "",
-            sort_order:      idx,
-          });
-        }
-      }
-      return areas;
-    },
-  },
-  {
-    id: "fullscreen", label: "全面1ボタン", icon: "□",
-    build: (size) => {
-      const H = size === "full" ? LINE_H_FULL : LINE_H_COMPACT;
-      return [
-        { x: 0, y: 0, width: LINE_W, height: H, action_type: "message", action_label: "タップ", action_text: "タップ", action_data: "", action_uri: "", destination_id: "", sort_order: 0 },
-      ];
-    },
-  },
+  // ── 大（2500×1686）──
+  { id: "l-full",  label: "全面1ボタン", icon: "□",   size: "full", build: () => buildFullscreen("full") },
+  { id: "l-2row",  label: "上下2分割",   icon: "⊟",   size: "full", build: () => build2row("full") },
+  { id: "l-2col",  label: "左右2分割",   icon: "||",  size: "full", build: () => build2col("full") },
+  { id: "l-1big2", label: "左大+右2",    icon: "◧",   size: "full", build: () => buildLeftBig2("full") },
+  { id: "l-2x2",   label: "2×2",         icon: "⊞",   size: "full", build: () => build2x2("full") },
+  { id: "l-3x2",   label: "3列×2行",     icon: "⋮⋮⋮", size: "full", build: () => build3x2("full") },
+  // ── 小（2500×843）──
+  { id: "s-full",  label: "全面1ボタン", icon: "□",   size: "compact", build: () => buildFullscreen("compact") },
+  { id: "s-2col",  label: "2分割",       icon: "||",  size: "compact", build: () => build2col("compact") },
+  { id: "s-3col",  label: "3分割",       icon: "|||", size: "compact", build: () => build3col("compact") },
 ];
 
 // ────────────────────────────────────────────────
@@ -491,10 +518,13 @@ export default function RichMenuEditorPage() {
   useEffect(() => { load(); }, [load]);
 
   // ── テンプレート適用 ──
+  // テンプレートの size に合わせて メニューサイズ・area を同時に上書きする
+  // （= 大テンプレを選べば size=full・プレビュー2500×1686、小なら size=compact・2500×843）。
   function applyTemplate(tpl: Template) {
-    if (!confirm(`テンプレート「${tpl.label}」を適用します。現在のエリア設定は上書きされます。`)) return;
-    const newAreas = tpl.build(size);
-    setAreas(newAreas);
+    const sizeLabel = tpl.size === "full" ? "大（2500×1686）" : "小（2500×843）";
+    if (!confirm(`テンプレート「${sizeLabel} / ${tpl.label}」を適用します。メニューサイズとエリア設定が上書きされます。`)) return;
+    setSize(tpl.size);          // ← テンプレートと連動（これが欠けていたのが不具合の原因）
+    setAreas(tpl.build());      // ← tpl.size の H で生成された座標
     setSelectedIdx(0);
     setValidationErrors([]); // テンプレート変更でエラーをリセット
   }
@@ -707,11 +737,11 @@ export default function RichMenuEditorPage() {
                   value={size}
                   onChange={(e) => setSize(e.target.value as RichMenuSize)}
                 >
-                  <option value="compact">1行 / コンパクト（2500×843）</option>
-                  <option value="full">2行 / フル（2500×1686）</option>
+                  <option value="full">大（2500×1686）</option>
+                  <option value="compact">小（2500×843）</option>
                 </select>
                 <span style={{ fontSize: 11, color: "#9ca3af", display: "block", marginTop: 4 }}>
-                  2行（縦に高い）画像を使う場合は「2行 / フル」を選んでください。プレビューの高さも切り替わります。
+                  縦に高い画像は「大（2500×1686）」、横長の画像は「小（2500×843）」を選んでください。プレビューの高さも切り替わります。
                 </span>
               </label>
 
@@ -738,8 +768,8 @@ export default function RichMenuEditorPage() {
                     background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 8,
                     color: "#92400e", fontSize: 11, lineHeight: 1.6,
                   }}>
-                    この画像は<strong>{inferredSize === "full" ? "2行サイズ（2500×1686）" : "1行サイズ（2500×843）"}</strong>のようです。
-                    メニューサイズを「{inferredSize === "full" ? "2行 / フル" : "1行 / コンパクト"}」に変更すると、プレビューが正しい比率になります。
+                    この画像は<strong>{inferredSize === "full" ? "大サイズ（2500×1686）" : "小サイズ（2500×843）"}</strong>のようです。
+                    メニューサイズを「{inferredSize === "full" ? "大（2500×1686）" : "小（2500×843）"}」に変更すると、プレビューが正しい比率になります。
                     <button
                       type="button"
                       onClick={() => setSize(inferredSize)}
@@ -750,7 +780,7 @@ export default function RichMenuEditorPage() {
                         padding: "4px 10px", cursor: "pointer",
                       }}
                     >
-                      「{inferredSize === "full" ? "2行 / フル（2500×1686）" : "1行 / コンパクト（2500×843）"}」に変更する
+                      「{inferredSize === "full" ? "大（2500×1686）" : "小（2500×843）"}」に変更する
                     </button>
                   </div>
                 )}
@@ -758,36 +788,54 @@ export default function RichMenuEditorPage() {
             </div>
           </div>
 
-          {/* テンプレート */}
+          {/* テンプレート（公式サイズ 大 / 小 でグループ分け。選ぶとメニューサイズも連動） */}
           <div className="card">
             <p style={{ fontWeight: 700, fontSize: 13, color: "#374151", marginBottom: 10 }}>
               テンプレート
             </p>
             <p style={{ fontSize: 11, color: "#9ca3af", marginBottom: 12 }}>
-              選択するとエリアが自動設定されます（現在の設定は上書き）
+              選択するとメニューサイズ・プレビュー比率・エリアがまとめて切り替わります（現在の設定は上書き）。
             </p>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-              {TEMPLATES.map((tpl) => (
-                <button
-                  key={tpl.id}
-                  onClick={() => applyTemplate(tpl)}
-                  style={{
-                    padding: "10px 8px",
-                    background: "#f9fafb",
-                    border: "1px solid #e5e7eb",
-                    borderRadius: 8, cursor: "pointer",
-                    fontSize: 13, fontWeight: 600, color: "#374151",
-                    textAlign: "center",
-                    transition: "background 0.1s",
-                  }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = "#E6F7ED")}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = "#f9fafb")}
-                >
-                  <div style={{ fontSize: 18, marginBottom: 3 }}>{tpl.icon}</div>
-                  {tpl.label}
-                </button>
-              ))}
-            </div>
+            {([
+              { size: "full" as const,    title: "大", sub: "2500×1686 px（1200×810 / 800×540）" },
+              { size: "compact" as const, title: "小", sub: "2500×843 px（1200×405 / 800×270）" },
+            ]).map((grp) => (
+              <div key={grp.size} style={{ marginBottom: grp.size === "full" ? 14 : 0 }}>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginBottom: 6 }}>
+                  <span style={{
+                    fontSize: 12, fontWeight: 700, color: "#374151",
+                    border: size === grp.size ? "1px solid #06C755" : "1px solid #e5e7eb",
+                    background: size === grp.size ? "#E6F7ED" : "#f9fafb",
+                    borderRadius: 6, padding: "1px 8px",
+                  }}>
+                    {grp.title}
+                  </span>
+                  <span style={{ fontSize: 10, color: "#9ca3af" }}>{grp.sub}</span>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                  {TEMPLATES.filter((t) => t.size === grp.size).map((tpl) => (
+                    <button
+                      key={tpl.id}
+                      onClick={() => applyTemplate(tpl)}
+                      style={{
+                        padding: "10px 8px",
+                        background: "#f9fafb",
+                        border: "1px solid #e5e7eb",
+                        borderRadius: 8, cursor: "pointer",
+                        fontSize: 13, fontWeight: 600, color: "#374151",
+                        textAlign: "center",
+                        transition: "background 0.1s",
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.background = "#E6F7ED")}
+                      onMouseLeave={(e) => (e.currentTarget.style.background = "#f9fafb")}
+                    >
+                      <div style={{ fontSize: 18, marginBottom: 3 }}>{tpl.icon}</div>
+                      {tpl.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
           </div>
 
           {/* タップエリア一覧 */}
