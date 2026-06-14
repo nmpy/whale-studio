@@ -190,16 +190,10 @@ export function LocationForm({ onSubmit, saving, workId, defaultValues }: Locati
     onSubmit(data);
   };
 
-  // GPS 方式が未選択のときに座標セクションに出す案内
-  const needGpsNote = (
-    <p style={{ fontSize: 12, color: "#9ca3af", lineHeight: 1.7 }}>
-      「チェックイン方式」で <strong>GPS のみ</strong> または <strong>QR + GPS</strong> を選ぶと、地図・座標で設定できます。
-    </p>
-  );
-
-  // 右側固定パネル: マップ検索 + Google Map（GPS 方式時のみ）。検索/クリック/ドラッグはすべて
-  // handleMapLocationChange → フォーム state に集約され、左の座標欄・地図ピン・範囲円が同期する。
-  const mapPanel = needsGps ? (
+  // 右側固定パネル: マップ検索 + Google Map。チェックイン方式に関係なく常時表示する
+  // （QRのみでも位置確認・検索・クリック・ドラッグ・座標手入力が可能）。検索/クリック/ドラッグは
+  // すべて handleMapLocationChange → フォーム state に集約され、左の座標欄・地図ピン・範囲円が同期する。
+  const mapPanel = (
     <div style={{ display: "flex", flexDirection: "column", gap: 12, border: "1px solid #e5e7eb", borderRadius: 12, padding: 14, background: "#fff" }}>
       <PlaceSearchInput onSelect={(ll) => handleMapLocationChange(ll.lat, ll.lng)} />
       <LocationMapPicker
@@ -211,7 +205,7 @@ export function LocationForm({ onSubmit, saving, workId, defaultValues }: Locati
         height={460}
       />
     </div>
-  ) : null;
+  );
 
   // ── 「この設定で起きること」フローカード用の派生値 ──
   // 保存仕様には一切影響しない、現在のフォーム入力の読み取り専用サマリー。
@@ -226,9 +220,9 @@ export function LocationForm({ onSubmit, saving, workId, defaultValues }: Locati
   // 進行ステップ（チェックイン成功は常に先頭）。任意設定があるぶんだけ後続が増える。
   const flowSteps: React.ReactNode[] = [`${checkinTrigger}と、チェックインが成功します。`];
   if (qrInvolved && selMessage) {
-    flowSteps.push(<>LINEトークに「<strong>{formatMessageOptionLabel(selMessage)}</strong>」を送信します。</>);
+    flowSteps.push(<>QRチェックイン時に、LINEトークへ「<strong>{formatMessageOptionLabel(selMessage)}</strong>」を送信します。</>);
   } else if (qrInvolved && qrSuccessMessageId) {
-    flowSteps.push(<>LINEトークに選択中のメッセージを送信します。</>);
+    flowSteps.push(<>QRチェックイン時に、LINEトークへ選択中のメッセージを送信します。</>);
   }
   if (selTransition) {
     flowSteps.push(<>ユーザーが遷移元フェーズにいる場合、「<strong>{selTransition.to_phase?.name ?? "?"}</strong>」へ進みます。</>);
@@ -379,7 +373,7 @@ export function LocationForm({ onSubmit, saving, workId, defaultValues }: Locati
             </div>
 
             <div style={groupStyle}>
-              <label style={labelStyle}>チェックイン成功時に送るメッセージ <span style={subLabel}>— 任意</span></label>
+              <label style={labelStyle}>QRチェックイン成功時に送るメッセージ <span style={subLabel}>— 任意</span></label>
               <select style={inputStyle} value={qrSuccessMessageId} onChange={(e) => setQrSuccessMessageId(e.target.value)}>
                 <option value="">送信しない</option>
                 {qrSuccessMessageId && !messages.some((m) => m.id === qrSuccessMessageId) && (
@@ -390,8 +384,8 @@ export function LocationForm({ onSubmit, saving, workId, defaultValues }: Locati
                 ))}
               </select>
               <p style={helpStyle}>
-                QRコードでこの地点にチェックインしたとき、LINEトークに送るメッセージを選べます。
-                「送信しない」で解除できます。OAのScan QRがOFFのときは送信されません。
+                QRでチェックインしたときにLINEトークへ送るメッセージを選びます。GPSチェックインのみの場合は送信されません。
+                「送信しない」で解除できます。OAのScan QRがOFFのときも送信されません。
               </p>
             </div>
           </Section>
@@ -418,8 +412,9 @@ export function LocationForm({ onSubmit, saving, workId, defaultValues }: Locati
           </Section>
 
           <Section id="coordinates" label="座標">
-            {needsGps ? (
-              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {/* 座標入力は方式に関係なく常時表示（QRのみでも手入力・地図操作が可能）。
+                ただし必須化はしない（gpsIncomplete は needsGps のときだけ true）。保存仕様は不変。 */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                 <div style={{ display: "flex", gap: 12 }}>
                   <div style={{ flex: 1 }}>
                     <label style={labelStyle}>緯度 <span style={subLabel}>— 中心座標</span></label>
@@ -448,8 +443,13 @@ export function LocationForm({ onSubmit, saving, workId, defaultValues }: Locati
                   <p style={helpStyle}>右の地図の検索・クリック・ピンドラッグ、またはこの欄の手入力のいずれでも更新されます。範囲は地図上の円で確認できます。</p>
                 </div>
                 {gpsIncomplete && <p style={{ fontSize: 12, color: "#dc2626" }}>この方式では緯度・経度・半径がすべて必要です</p>}
+                {!needsGps && (
+                  <p style={{ fontSize: 12, color: "#9ca3af", lineHeight: 1.7 }}>
+                    「QRのみ」方式では座標はチェックイン判定には使われません（右の地図は位置確認・検索の参考用です）。
+                    GPSを含む方式（GPSのみ / QR + GPS）にすると、座標が範囲内チェックインの判定に使われます。
+                  </p>
+                )}
               </div>
-            ) : needGpsNote}
           </Section>
 
           <Section id="history" label="履歴">
@@ -474,12 +474,10 @@ export function LocationForm({ onSubmit, saving, workId, defaultValues }: Locati
           </Button>
         </div>
 
-        {/* 右: マップ検索 + Google Map（PC sticky / SP は下に通常表示）。GPS 方式時のみ */}
-        {needsGps && (
-          <aside className="loc-map-aside" style={{ flex: "0 0 420px", position: "sticky", top: 24, alignSelf: "flex-start" }}>
-            {mapPanel}
-          </aside>
-        )}
+        {/* 右: マップ検索 + Google Map（PC sticky / SP は下に通常表示）。全方式で常時表示 */}
+        <aside className="loc-map-aside" style={{ flex: "0 0 420px", position: "sticky", top: 24, alignSelf: "flex-start" }}>
+          {mapPanel}
+        </aside>
       </div>
     </form>
   );
