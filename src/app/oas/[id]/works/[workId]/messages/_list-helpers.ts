@@ -182,3 +182,39 @@ export function estimatePhaseSendBatch(messages: SendBatchMessageLike[]): number
   }
   return total;
 }
+
+/** 「1 回のプレイヤーアクションに対して Bot が連続送信するメッセージ数」の最大値を返す。
+ *
+ *  送信単位の定義:
+ *    - chain head（next_message_id で参照されていないメッセージ）ごとに、
+ *      next_message_id を walk して連続送信通数を数える。
+ *    - free_input_enabled のメッセージに達したら、それを含めて打ち切る
+ *      （以降はユーザー入力後の「別の応答」になるため同一単位に含めない）。
+ *    - QR / 分岐選択 / 謎回答 / GPS・チェックイン待ちで届く応答メッセージは、
+ *      next_message_id で繋がっていない別の head（QR target / freeInputNext target 等）
+ *      になるため、自動的に別単位として独立に数えられる。
+ *
+ *  estimatePhaseSendBatch は「フェーズ内の全 head を合算」するため、途中に入力/QR/分岐が
+ *  挟まる構成でもフェーズ総数で警告が出てしまう。本関数は **単一応答単位の最大値** を返すので、
+ *  「1 回の応答が 5 通以上か」を正しく判定できる（循環防止・1 chain の上限なし=実長で評価）。 */
+export function maxResponseSendSize(messages: SendBatchMessageLike[]): number {
+  const byId = new Map(messages.map((m) => [m.id, m]));
+  const continuationIds = collectChainContinuationIds(messages);
+  let max = 0;
+  for (const head of messages) {
+    if (continuationIds.has(head.id)) continue;
+    let cur: SendBatchMessageLike | undefined = head;
+    const visited = new Set<string>([head.id]);
+    let count = 0;
+    while (cur && count < 100) {
+      count++;
+      if (cur.free_input_enabled) break; // free_input プロンプトを含めて停止（以降は別の応答単位）
+      const nextId = cur.next_message_id;
+      if (!nextId || visited.has(nextId) || !byId.has(nextId)) break;
+      visited.add(nextId);
+      cur = byId.get(nextId);
+    }
+    if (count > max) max = count;
+  }
+  return max;
+}

@@ -7,7 +7,7 @@
 // 背景: 「通常2」が合計6通でフェーズ一括送信 → 6通目以降が Push → 月間上限で停止。
 
 import { describe, it, expect } from "vitest";
-import { chainLengthFrom, estimatePhaseSendBatch, chainSizeFrom, LINE_REPLY_MAX } from "@/app/oas/[id]/works/[workId]/messages/_list-helpers";
+import { chainLengthFrom, estimatePhaseSendBatch, maxResponseSendSize, chainSizeFrom, LINE_REPLY_MAX } from "@/app/oas/[id]/works/[workId]/messages/_list-helpers";
 
 type M = { id: string; next_message_id?: string | null; free_input_enabled?: boolean | null };
 const link = (ids: string[]): M[] =>
@@ -73,5 +73,56 @@ describe("estimatePhaseSendBatch（フェーズ一括送信通数）", () => {
     // h1→c1→c2 の3連鎖のみ。c1/c2 は continuation。
     const phase = link(["h1", "c1", "c2"]);
     expect(estimatePhaseSendBatch(phase)).toBe(3);
+  });
+});
+
+describe("maxResponseSendSize（1応答=連続送信単位の最大通数）", () => {
+  it("単一 chain 5連鎖 → 5（警告対象）", () => {
+    const phase = link(["a", "b", "c", "d", "e"]);
+    expect(maxResponseSendSize(phase)).toBe(5);
+    expect(maxResponseSendSize(phase) >= LINE_REPLY_MAX).toBe(true);
+  });
+
+  it("複数 head はフェーズ総数で合算しない: 2通+3通の別 head → 最大3（警告なし）", () => {
+    // ★誤検知の核心ケース: フェーズ総数は5だが、各応答単位は2通/3通で5未満。
+    const unitA = link(["a1", "a2"]);          // 入場の連続2通
+    const unitB = link(["b1", "b2", "b3"]);    // QR/入力後の別 head（continuation 参照なし）= 別単位
+    const phase = [...unitA, ...unitB];
+    expect(maxResponseSendSize(phase)).toBe(3);
+    expect(maxResponseSendSize(phase) >= LINE_REPLY_MAX).toBe(false);
+  });
+
+  it("フェーズ総数10でも各応答が5未満なら警告対象にならない（スクショ事例）", () => {
+    const u1 = link(["x1", "x2", "x3"]);       // 3
+    const u2 = link(["y1", "y2", "y3"]);       // 3
+    const u3 = link(["z1", "z2", "z3", "z4"]); // 4
+    const phase = [...u1, ...u2, ...u3];        // 総数10
+    expect(maxResponseSendSize(phase)).toBe(4);
+    expect(maxResponseSendSize(phase) >= LINE_REPLY_MAX).toBe(false);
+  });
+
+  it("free_input プロンプトを含めて打ち切る（以降は別の応答単位）", () => {
+    // a→b(freeInput)→c→d→e→f: 同一 chain でも freeInput で区切られ、a,b の2通が単位。
+    const phase: M[] = [
+      { id: "a", next_message_id: "b" },
+      { id: "b", next_message_id: "c", free_input_enabled: true },
+      { id: "c", next_message_id: "d" },
+      { id: "d", next_message_id: "e" },
+      { id: "e", next_message_id: "f" },
+      { id: "f", next_message_id: null },
+    ];
+    expect(maxResponseSendSize(phase)).toBe(2); // a, b まで（c 以降は continuation で別 head ではないが freeInput で停止）
+  });
+
+  it("6連鎖の単一 head は実長6を返す（>=5 で警告）", () => {
+    const phase = link(["a", "b", "c", "d", "e", "f"]);
+    expect(maxResponseSendSize(phase)).toBe(6);
+    expect(maxResponseSendSize(phase) >= LINE_REPLY_MAX).toBe(true);
+  });
+
+  it("循環があっても無限ループしない", () => {
+    const phase: M[] = [{ id: "a", next_message_id: "b" }, { id: "b", next_message_id: "a" }];
+    // a は b に参照され continuation、b は a に参照され continuation → head なし → 0
+    expect(maxResponseSendSize(phase)).toBe(0);
   });
 });

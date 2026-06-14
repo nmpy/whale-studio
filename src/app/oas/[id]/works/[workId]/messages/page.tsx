@@ -16,7 +16,7 @@ import { ViewerBanner } from "@/components/PermissionGuard";
 import { GuideCard } from "@/components/onboarding/GuideCard";
 import type { MessageWithRelations, MessageType, PhaseWithCounts, TransitionWithPhases, QuickReplyItem } from "@/types";
 import type { Role } from "@/lib/types/permissions";
-import { collectChainContinuationIds, chainSizeFrom, chainLengthFrom, estimatePhaseSendBatch, LINE_REPLY_MAX, getChainContinuations, hasAnyTiming, summarizeTiming } from "./_list-helpers";
+import { collectChainContinuationIds, chainSizeFrom, chainLengthFrom, maxResponseSendSize, LINE_REPLY_MAX, getChainContinuations, hasAnyTiming, summarizeTiming } from "./_list-helpers";
 
 const MESSAGE_TYPE_LABEL: Record<MessageType, string> = {
   text:     "テキスト",
@@ -1186,7 +1186,9 @@ export default function MessagesPage() {
                   </span>
                 </div>
 
-                {/* 送信通数の警告: このフェーズに入った際の一括送信が LINE Reply 上限(5件)を超える場合 */}
+                {/* 応答5通以上の警告: フェーズ総数ではなく「1回の応答（連続送信）単位」で判定する。
+                    QR / 入力 / 分岐 / 謎回答 / チェックイン待ちは別 head になり別単位として数えるため、
+                    途中にプレイヤーアクションが挟まる構成では誤検知しない。 */}
                 {ph && (() => {
                   const phaseMsgs = messages
                     .filter((m) => m.phase?.id === ph.id)
@@ -1195,19 +1197,17 @@ export default function MessagesPage() {
                       new Date(a.created_at).getTime() - new Date(b.created_at).getTime() ||
                       a.id.localeCompare(b.id),
                     );
-                  const batch = estimatePhaseSendBatch(phaseMsgs);
-                  if (batch <= LINE_REPLY_MAX) return null;
+                  const maxUnit = maxResponseSendSize(phaseMsgs);
+                  if (maxUnit < LINE_REPLY_MAX) return null;
                   return (
                     <div style={{
-                      padding: "8px 18px", background: "#fff7ed",
-                      borderBottom: "1px solid #fed7aa", color: "#9a3412",
+                      padding: "8px 18px", background: "#fffbeb",
+                      borderBottom: "1px solid #fde68a", color: "#92400e",
                       fontSize: 11, lineHeight: 1.6,
                     }}>
-                      ⚠️ このフェーズは1回の送信が<strong>合計{batch}通以上</strong>になります。
-                      LINE Reply API で一度に送れるのは<strong>最大5通</strong>までです。
-                      6通目以降は Push API で送信されるため、月間メッセージ通数を消費します
-                      （Push 上限に達している場合、6通目以降は届きません）。
-                      途中に QR / 入力 / フェーズ遷移を挟むか、フェーズを分けて1回の送信を5通以内にすることを推奨します。
+                      ⚠️ このフェーズに、1回の応答で<strong>{maxUnit}通以上</strong>を連続送信する箇所があります。
+                      プレイヤー体験が重くなる可能性があるため、必要に応じて分割や削減を検討してください。
+                      （途中に QR / 入力 / 分岐 / 謎回答などプレイヤーのアクションを挟むと、そこで送信単位が区切られます。）
                     </div>
                   );
                 })()}
