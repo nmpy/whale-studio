@@ -1,20 +1,25 @@
 "use client";
 
 // src/app/oas/[id]/works/[workId]/liff/page.tsx
-// LIFF設定タブ — 作品配下の LIFF ページ一覧
+// LIFF設定 — 作品配下の LIFF 管理画面（4 タブ構成）。
 //
-// 旧 single-config 編集 UI は /oas/[id]/works/[workId]/liff/[liffPageId] に移動した。
-// この画面はリスト + 新規作成のみを行う。
+// タブ: ホーム / 詳細ページ / 独立ページ / 計測 （?tab=home|detail|standalone|analytics で保持）
+//   - ホーム      : 作品メニューホームの並び順・表示形式編集 + プレビュー
+//   - 詳細ページ  : show_in_menu=true（ホームに並ぶ）ページの一覧
+//   - 独立ページ  : show_in_menu=false（URL/QR から直接開く）ページの一覧
+//   - 計測        : 既存 analytics サマリの表 / 未取得時は準備中の空状態
+//
+// 旧 single-config 編集 UI は /oas/[id]/works/[workId]/liff/[liffPageId] に移動済み。
 
-import { useCallback, useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { useParams, useRouter, usePathname, useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { useToast } from "@/components/Toast";
 import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
 import { useAccessPreview } from "@/hooks/useAccessPreview";
 import { ViewerBanner } from "@/components/PermissionGuard";
 import { PlanRequiredCard } from "@/components/PlanRequiredCard";
-import { Button, buttonClass } from "@/components/shared";
 import { FEATURE, getPlanAccessState } from "@/lib/constants/plans";
 import {
   liffConfigApi,
@@ -24,78 +29,46 @@ import {
   type LiffAnalyticsSummary,
   type LiffPageAnalyticsSummaryRow,
 } from "@/lib/api-client";
+import { buildPublicUrl } from "./_shared";
+import {
+  LIFF_ADMIN_TABS,
+  resolveLiffAdminTab,
+  type LiffAdminTab,
+} from "./_tabs-config";
+import { HomeTab } from "./_HomeTab";
+import { PageListTab } from "./_PageListTab";
+import { AnalyticsTab } from "./_AnalyticsTab";
 
-const PUBLISH_LABELS: Record<string, string> = {
-  draft:     "下書き",
-  published: "公開中",
-  archived:  "アーカイブ",
-};
-
-const PAGE_TYPE_LABELS: Record<string, string> = {
-  default:   "プレイヤー向け",
-  hint:      "ヒント",
-  hint_site: "ヒント",
-  faq:       "FAQ",
-  survey:    "アンケート",
-  location:  "履歴",
-  character: "キャラクター",
-  werewolf:  "人狼",
-};
-
-const METRIC_LABELS: Record<string, string> = {
-  checkin_success: "チェックイン成功",
-  survey_submit:   "回答送信",
-  faq_open:        "Q&A開封",
-  hint_open:       "ヒント開封",
-};
-
-function formatPercent(ratio: number): string {
-  if (!Number.isFinite(ratio) || ratio <= 0) return "0%";
-  return `${(ratio * 100).toFixed(1)}%`;
+// useSearchParams() を使うため Suspense 境界でラップする（next build の prerender 要件）。
+export default function LiffPagesIndexPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="p-6">
+          <div className="h-6 w-48 bg-gray-200 rounded-md mb-4 animate-pulse" />
+          <div className="h-48 bg-gray-100 rounded-lg animate-pulse" />
+        </div>
+      }
+    >
+      <LiffPagesIndex />
+    </Suspense>
+  );
 }
 
-function formatCount(n: number | null | undefined): string {
-  if (n == null) return "-";
-  return n.toLocaleString();
-}
-
-function buildPublicUrl(args: {
-  workId: string; workPublicId?: string; pageId: string; pagePublicId?: string;
-}): string {
-  const env = process.env.NEXT_PUBLIC_BASE_URL?.trim();
-  const base = env
-    ? env.replace(/\/$/, "")
-    : (typeof window !== "undefined" ? window.location.origin : "");
-  if (!base) return "";
-  // publicId が両方揃っているときは短縮 URL、無ければ UUID 形式の旧 URL
-  if (args.workPublicId && args.pagePublicId) {
-    return `${base}/liff/w/${args.workPublicId}/p/${args.pagePublicId}`;
-  }
-  return `${base}/liff/work/${args.workId}/pages/${args.pageId}`;
-}
-
-function formatDateTime(iso: string | Date | null | undefined): string {
-  if (!iso) return "-";
-  const d = typeof iso === "string" ? new Date(iso) : iso;
-  if (isNaN(d.getTime())) return "-";
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  const hh = String(d.getHours()).padStart(2, "0");
-  const mm = String(d.getMinutes()).padStart(2, "0");
-  return `${y}/${m}/${day} ${hh}:${mm}`;
-}
-
-export default function LiffPagesIndex() {
+function LiffPagesIndex() {
   const params = useParams();
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const oaId = params.id as string;
   const workId = params.workId as string;
   const { showToast } = useToast();
   const { role, loading: roleLoading } = useWorkspaceRole(oaId);
   const isReadOnly = role === "viewer" || role === "tester";
 
-  // プラン制限: LIFF表示設定は Plus 以上が必要
+  const activeTab = resolveLiffAdminTab(searchParams.get("tab"));
+
+  // プラン制限: LIFF設定は Plus 以上が必要。
   // owner の「表示確認モード」を反映するため effectivePlan を使う。
   const { effectivePlan: planTier, loading: planLoading } = useAccessPreview(oaId);
   const planAccess = getPlanAccessState({ plan: planTier, featureKey: FEATURE.liffDisplay });
@@ -107,7 +80,7 @@ export default function LiffPagesIndex() {
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
-  /** page_id -> 集計値。計測 API 失敗時は null のまま (UI 上は "-" 表示) */
+  /** page_id -> 集計値。計測 API 失敗時は {} （UI 上は "-" / 空状態） */
   const [analytics, setAnalytics] = useState<Record<string, LiffPageAnalyticsSummaryRow> | null>(null);
 
   const reload = useCallback(async () => {
@@ -129,7 +102,7 @@ export default function LiffPagesIndex() {
           setAnalytics(map);
         })
         .catch(() => {
-          // 計測の取得失敗は致命的ではない。指標列は "-" 表示にする。
+          // 計測の取得失敗は致命的ではない。指標列は "-" / 空状態にする。
           setAnalytics({});
         });
     } catch {
@@ -188,6 +161,16 @@ export default function LiffPagesIndex() {
     }
   };
 
+  // ホームに並ぶ詳細ページ / 独立ページの振り分け（show_in_menu）。
+  const detailPages = useMemo(
+    () => (pages ?? []).filter((p) => p.show_in_menu !== false),
+    [pages],
+  );
+  const standalonePages = useMemo(
+    () => (pages ?? []).filter((p) => p.show_in_menu === false),
+    [pages],
+  );
+
   if (loading || roleLoading) {
     return (
       <div className="p-6">
@@ -209,6 +192,8 @@ export default function LiffPagesIndex() {
       />
     );
   }
+
+  const activeMeta = LIFF_ADMIN_TABS.find((t) => t.key === activeTab);
 
   return (
     <div className="px-6 pb-6">
@@ -255,135 +240,76 @@ export default function LiffPagesIndex() {
         )}
       </div>
 
-      <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
-        <h1 className="text-xl font-bold text-gray-900">LIFF ページ一覧</h1>
-        {!isReadOnly && (
-          <Button
-            type="button"
-            variant="primary"
-            size="md"
-            onClick={handleCreate}
-            disabled={creating}
-            aria-busy={creating || undefined}
-          >
-            {creating && <span className="spinner" aria-hidden="true" />}
-            {creating ? "作成中..." : "＋ LIFFページを作成"}
-          </Button>
-        )}
+      {/* タブ ── ?tab= で状態保持。アクティブ下線は work detail 配下の他タブと揃える。 */}
+      <div role="tablist" aria-label="LIFF 管理タブ" className="flex gap-1 border-b border-gray-200 mb-3 flex-wrap">
+        {LIFF_ADMIN_TABS.map((tab) => {
+          const isActive = tab.key === activeTab;
+          return (
+            <Link
+              key={tab.key}
+              href={`${pathname}?tab=${tab.key}`}
+              role="tab"
+              aria-selected={isActive}
+              scroll={false}
+              className={`px-[18px] py-2 text-[13px] font-semibold whitespace-nowrap -mb-px border-b-2 transition-colors ${
+                isActive
+                  ? "border-[#06C755] text-[#06C755]"
+                  : "border-transparent text-gray-500 hover:text-gray-700"
+              }`}
+            >
+              {tab.label}
+            </Link>
+          );
+        })}
       </div>
+      {activeMeta && (
+        <p className="text-[12px] text-gray-500 leading-relaxed mb-4">{activeMeta.description}</p>
+      )}
 
-      {pages && pages.length === 0 ? (
-        <div className="bg-gray-50 rounded-xl p-10 text-center border-2 border-dashed border-gray-200">
-          <p className="text-sm text-gray-500 mb-2">LIFF ページがまだありません</p>
-          <p className="text-xs text-gray-400">「LIFFページを作成」ボタンから最初の 1 ページを作成してください</p>
-        </div>
-      ) : (
-        <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-          {/* スマホ幅は縦並びカード、デスクトップ幅はテーブル形式 */}
-          <ul className="divide-y divide-gray-100">
-            {pages?.map((p) => {
-              const url = buildPublicUrl({
-                workId,
-                workPublicId: p.work_public_id,
-                pageId: p.id,
-                pagePublicId: p.public_id,
-              });
-              return (
-                <li key={p.id} className="px-4 py-3 flex flex-col md:flex-row md:items-center gap-3">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap mb-1">
-                      <span className="text-[15px] font-bold text-gray-900 truncate">
-                        {p.title?.trim() || "（無題）"}
-                      </span>
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border border-gray-200 bg-gray-50 text-gray-600">
-                        {PAGE_TYPE_LABELS[p.page_type] ?? p.page_type}
-                      </span>
-                      <span
-                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                          p.publish_status === "published"
-                            ? "bg-green-50 text-green-700 border border-green-200"
-                            : p.publish_status === "archived"
-                              ? "bg-gray-100 text-gray-500 border border-gray-200"
-                              : "bg-amber-50 text-amber-700 border border-amber-200"
-                        }`}
-                      >
-                        {PUBLISH_LABELS[p.publish_status] ?? p.publish_status}
-                      </span>
-                    </div>
-                    <div className="text-[11px] text-gray-500 flex flex-wrap gap-x-3 gap-y-0.5 items-center">
-                      <span>作成: {formatDateTime(p.created_at)}</span>
-                      <span>更新: {formatDateTime(p.updated_at)}</span>
-                      {(p.submission_count ?? 0) > 0 && (
-                        <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-brand-soft text-brand-ink border border-brand/30">
-                          回答 {p.submission_count}
-                        </span>
-                      )}
-                    </div>
-                    {/* KPI 行 — 計測 API 取得後に表示。失敗時は "-" にフォールバック */}
-                    {analytics && (
-                      <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-gray-600">
-                        <span title="ページ表示回数">
-                          PV: <strong className="text-gray-900">{formatCount(analytics[p.id]?.page_view ?? 0)}</strong>
-                        </span>
-                        <span title="ユニークユーザー数">
-                          UU: <strong className="text-gray-900">{formatCount(analytics[p.id]?.unique_users ?? 0)}</strong>
-                        </span>
-                        <span title="ボタンクリック数 / PV">
-                          CTR: <strong className="text-gray-900">{formatPercent(analytics[p.id]?.ctr ?? 0)}</strong>
-                        </span>
-                        {analytics[p.id]?.page_type_metric_key && (
-                          <span title={METRIC_LABELS[analytics[p.id].page_type_metric_key!] ?? analytics[p.id].page_type_metric_key!}>
-                            {METRIC_LABELS[analytics[p.id].page_type_metric_key!] ?? analytics[p.id].page_type_metric_key}:{" "}
-                            <strong className="text-gray-900">{formatCount(analytics[p.id]?.page_type_metric_count ?? 0)}</strong>
-                          </span>
-                        )}
-                      </div>
-                    )}
-                    {url && (
-                      <div className="mt-1.5 flex items-center gap-2">
-                        <a
-                          href={url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-[11px] text-brand-ink underline truncate max-w-full"
-                          title={url}
-                        >
-                          {url}
-                        </a>
-                      </div>
-                    )}
-                  </div>
+      {activeTab === "home" && (
+        <HomeTab
+          workId={workId}
+          workTitle={workTitle}
+          pages={pages ?? []}
+          isReadOnly={isReadOnly}
+          onSaved={() => { void reload(); }}
+        />
+      )}
 
-                  <div className="flex items-center gap-2 shrink-0">
-                    {url && (
-                      <button
-                        type="button"
-                        onClick={() => handleCopyUrl(p.id)}
-                        className="px-3 py-1.5 border border-gray-200 text-gray-600 rounded-md text-xs hover:bg-gray-50"
-                        title="URL をコピー"
-                      >
-                        {copied === p.id ? "コピーしました!" : "URLコピー"}
-                      </button>
-                    )}
-                    <a
-                      href={`/oas/${oaId}/works/${workId}/liff/pages/${p.id}/submissions`}
-                      className="px-3 py-1.5 border border-gray-200 text-gray-600 rounded-md text-xs hover:bg-gray-50"
-                      title="回答結果を見る"
-                    >
-                      回答を見る
-                    </a>
-                    <a
-                      href={`/oas/${oaId}/works/${workId}/liff/${p.id}`}
-                      className={buttonClass({ variant: "primary", size: "sm" })}
-                    >
-                      編集
-                    </a>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        </div>
+      {activeTab === "detail" && (
+        <PageListTab
+          oaId={oaId}
+          workId={workId}
+          pages={detailPages}
+          isReadOnly={isReadOnly}
+          creating={creating}
+          copied={copied}
+          analytics={analytics}
+          onCreate={handleCreate}
+          onCopyUrl={handleCopyUrl}
+          emptyTitle="ホームに表示する詳細ページがまだありません"
+          emptyDescription="LIFFページ作成時に「このページを作品メニューのカードとして表示する」をオンにすると、ここに表示されます。"
+        />
+      )}
+
+      {activeTab === "standalone" && (
+        <PageListTab
+          oaId={oaId}
+          workId={workId}
+          pages={standalonePages}
+          isReadOnly={isReadOnly}
+          creating={creating}
+          copied={copied}
+          analytics={analytics}
+          onCreate={handleCreate}
+          onCopyUrl={handleCopyUrl}
+          emptyTitle="独立ページがまだありません"
+          emptyDescription="作品メニューには表示せず、QRやURLから直接開きたいページを作成できます。"
+        />
+      )}
+
+      {activeTab === "analytics" && (
+        <AnalyticsTab pages={pages ?? []} analytics={analytics} />
       )}
     </div>
   );

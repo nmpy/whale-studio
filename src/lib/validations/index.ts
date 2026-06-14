@@ -1223,6 +1223,8 @@ const liffPageConfigSettingsSchema = z.object({
   menu_label:     z.string().max(30).optional(),
   menu_icon:      z.string().max(8).optional(),
   menu_order:     z.number().int().min(0).max(9999).optional(),
+  // メニューホームのカード表示形式。未指定は renderer 側で "card" 扱い。
+  menu_card_style: z.enum(["card", "compact"]).optional(),
 
   // LIFF プレイヤー最下部 "Powered by Whale Studio" の表示有無 (ホワイトラベル用)。
   // 未指定 = 表示。

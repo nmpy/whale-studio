@@ -1540,6 +1540,11 @@ export interface LiffPageConfigSettings {
   /** メニューホームでのカード並び順 (小さい順)。同値は createdAt asc。
    *  未指定はもっとも後ろに回す。 */
   menu_order?: number;
+  /** メニューホームでのカード表示形式。
+   *  - "card"    : 2 列グリッドの通常カード (既定)
+   *  - "compact" : 横長 1 行の省スペース表示 (アイコン左・説明省略)
+   *  未指定 = "card" 扱い (= 既存ページの表示は変わらない)。 */
+  menu_card_style?: "card" | "compact";
 
   /** LIFF プレイヤー画面最下部の "Powered by Whale Studio" クレジット表記の表示有無。
    *  未指定 = true (= 表示)。false で非表示 (ホワイトラベル運用想定)。

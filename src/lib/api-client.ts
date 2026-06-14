@@ -1647,6 +1647,17 @@ export interface LiffPageSummary {
   is_enabled:      boolean;
   /** 回答結果（LiffSubmission）件数。回答数バッジ用。 */
   submission_count?: number;
+  // ── 作品メニューホーム用 per-page 設定 (settingsJson から導出) ──
+  /** カードとしてホームに表示するか。未指定ページは true (= 詳細ページ扱い)。 */
+  show_in_menu?:    boolean;
+  /** ホームでの並び順 (小さい順)。未指定は null。 */
+  menu_order?:      number | null;
+  /** ホームカードの表示名。未指定は null (title → 既定名にフォールバック)。 */
+  menu_label?:      string | null;
+  /** ホームカードのアイコン (emoji)。未指定は null。 */
+  menu_icon?:       string | null;
+  /** ホームカードの表示形式。未指定ページは "card"。 */
+  menu_card_style?: "card" | "compact";
   created_at:      string;
   updated_at:      string;
 }

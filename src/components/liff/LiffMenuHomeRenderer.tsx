@@ -80,9 +80,9 @@ export function LiffMenuHomeRenderer({
     <div className={`liff-font ${liffRootClass(firstSettings)} min-h-screen bg-[#f6f8f7] text-[color:var(--liff-primary-text)]`}>
       <MenuHomeHeader workTitle={workTitle} onClose={preview ? undefined : onClose} />
 
-      {/* メニュー見出し */}
+      {/* ホーム見出し */}
       <div className="liff-player-main pt-5 pb-3">
-        <h2 className="text-[18px] font-bold leading-snug">メニュー</h2>
+        <h2 className="text-[18px] font-bold leading-snug">ホーム</h2>
       </div>
 
       {/* カードグリッド */}
@@ -91,7 +91,7 @@ export function LiffMenuHomeRenderer({
           <div className="bg-[color:var(--liff-surface,#fff)] border border-[#eef2f5] rounded-[20px] shadow-[0_6px_20px_rgba(31,64,92,0.06)] px-4 py-10 text-center">
             <p className="text-3xl mb-2">📭</p>
             <p className="text-[15px] leading-[1.6] text-[color:var(--liff-secondary-text)]">
-              メニュー項目がまだ登録されていません
+              ホームに表示する項目がまだ登録されていません
             </p>
           </div>
         ) : (
@@ -127,7 +127,18 @@ function MenuCardItem({
   onSelectCard?: (page: LiffMenuHomePage) => void;
   buildPageHref?: (page: LiffMenuHomePage) => string;
 }) {
-  const inner = (
+  // compact: グリッド 2 列をまたぐ横長 1 行 (アイコン左・説明省略・低い高さ)。
+  // card (既定): 従来どおり縦並びのグリッドセル。未設定ページは必ず card 扱い。
+  const isCompact = card.cardStyle === "compact";
+
+  const inner = isCompact ? (
+    <>
+      <div className="text-[22px] leading-none shrink-0" aria-hidden="true">{card.icon}</div>
+      <div className="min-w-0 flex-1 text-[14px] font-bold leading-snug text-[color:var(--liff-primary-text)] truncate">
+        {card.label}
+      </div>
+    </>
+  ) : (
     <>
       <div className="text-[26px] leading-none mb-2" aria-hidden="true">{card.icon}</div>
       <div className="text-[14px] font-bold leading-snug text-[color:var(--liff-primary-text)] line-clamp-2 break-words">
@@ -142,7 +153,9 @@ function MenuCardItem({
   );
 
   // 管理画面トーン: 白カード + 薄い境界線 + 控えめな影 + 角丸 + 広いタップ領域。
-  const baseCls = "flex flex-col items-start text-left bg-[color:var(--liff-surface,#fff)] border border-[#eef2f5] rounded-[18px] px-4 py-4 min-h-[112px] shadow-[0_2px_10px_rgba(31,64,92,0.05)] transition-all active:bg-[color:var(--liff-surface-subtle,#FAFAFA)] active:shadow-none";
+  const baseCls = isCompact
+    ? "col-span-2 flex flex-row items-center gap-3 text-left bg-[color:var(--liff-surface,#fff)] border border-[#eef2f5] rounded-[14px] px-4 py-3 min-h-[56px] shadow-[0_2px_10px_rgba(31,64,92,0.05)] transition-all active:bg-[color:var(--liff-surface-subtle,#FAFAFA)] active:shadow-none"
+    : "flex flex-col items-start text-left bg-[color:var(--liff-surface,#fff)] border border-[#eef2f5] rounded-[18px] px-4 py-4 min-h-[112px] shadow-[0_2px_10px_rgba(31,64,92,0.05)] transition-all active:bg-[color:var(--liff-surface-subtle,#FAFAFA)] active:shadow-none";
 
   if (buildPageHref) {
     return (
