@@ -79,6 +79,9 @@ export async function appendConsentLogOnce(
 export async function recordRegistrationConsent(args: {
   userId: string;
   username?: string | null;
+  lastName?: string | null;
+  firstName?: string | null;
+  companyName?: string | null;
   termsVersion?: string;
   privacyVersion?: string;
   meta?: ConsentMeta;
@@ -87,14 +90,26 @@ export async function recordRegistrationConsent(args: {
   const termsVersion = args.termsVersion ?? CURRENT_TERMS_VERSION;
   const privacyVersion = args.privacyVersion ?? CURRENT_PRIVACY_POLICY_VERSION;
   const username = args.username?.trim().slice(0, 20) || null;
+  const lastName = args.lastName?.trim().slice(0, 50) || null;
+  const firstName = args.firstName?.trim().slice(0, 50) || null;
+  const companyName = args.companyName?.trim().slice(0, 100) || null;
+  // 指定された項目のみ更新（空は既存値を上書きしない＝非破壊）。
+  const profileFields = {
+    ...(lastName !== null ? { lastName } : {}),
+    ...(firstName !== null ? { firstName } : {}),
+    ...(companyName !== null ? { companyName } : {}),
+  };
 
   await prisma.$transaction(async (tx) => {
-    // 1. profile 確保
+    // 1. profile 確保（username は NOT NULL のため新規作成時は必須）
     const profile = await tx.profile.findUnique({ where: { userId: args.userId }, select: { id: true } });
     if (!profile && username) {
-      await tx.profile.create({ data: { userId: args.userId, username } });
-    } else if (profile && username) {
-      await tx.profile.update({ where: { userId: args.userId }, data: { username } });
+      await tx.profile.create({ data: { userId: args.userId, username, ...profileFields } });
+    } else if (profile && (username || Object.keys(profileFields).length > 0)) {
+      await tx.profile.update({
+        where: { userId: args.userId },
+        data: { ...(username ? { username } : {}), ...profileFields },
+      });
     }
 
     // 2. 同意ログ

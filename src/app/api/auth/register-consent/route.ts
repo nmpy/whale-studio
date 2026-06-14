@@ -36,8 +36,12 @@ export const POST = withAuth(async (req, _ctx, user) => {
     const body = await req.json().catch(() => ({}));
     const data = registerConsentSchema.parse(body);
 
-    // サーバー側でも必須チェック（フロントだけに依存しない）。
+    // サーバー側でも必須チェック（フロントだけに依存しない）。会社名は任意。
+    const lastName = (data.last_name ?? "").trim();
+    const firstName = (data.first_name ?? "").trim();
     const username = (data.username ?? "").trim();
+    if (!lastName) return badRequest("姓を入力してください");
+    if (!firstName) return badRequest("名を入力してください");
     if (!username) return badRequest("ユーザー名を入力してください");
     if (username.length > 20) return badRequest("ユーザー名は20文字以内で入力してください");
     if (data.terms_agreed !== true) return badRequest("利用規約への同意が必要です");
@@ -46,6 +50,9 @@ export const POST = withAuth(async (req, _ctx, user) => {
     await recordRegistrationConsent({
       userId:   user.id,
       username,
+      lastName,
+      firstName,
+      companyName: data.company_name ?? null,
       meta: {
         ipAddress: clientIpFromHeaders(req.headers),
         userAgent: req.headers.get("user-agent"),

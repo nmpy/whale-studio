@@ -31,10 +31,13 @@ function LoginForm() {
   const initialEmail = searchParams.get("email") ?? "";
 
   const [mode,            setMode]            = useState<"login" | "register">(initialMode);
+  // 氏名（姓・名）必須 / 会社名 任意（登録時）
+  const [lastName,        setLastName]         = useState("");
+  const [firstName,       setFirstName]        = useState("");
+  const [companyName,     setCompanyName]      = useState("");
   const [username,        setUsername]         = useState("");
   const [email,           setEmail]            = useState(initialEmail);
   const [password,        setPassword]         = useState("");
-  const [confirmPassword, setConfirmPassword]  = useState("");
   // 利用規約 / プライバシーポリシー同意（登録時必須）
   const [agreeTerms,      setAgreeTerms]        = useState(false);
   const [agreePrivacy,    setAgreePrivacy]      = useState(false);
@@ -114,13 +117,14 @@ function LoginForm() {
     if (!supabaseConfigured) return;
     setErrorMsg("");
 
+    if (!lastName.trim()) { setErrorMsg("姓を入力してください"); setStatus("error"); return; }
+    if (!firstName.trim()) { setErrorMsg("名を入力してください"); setStatus("error"); return; }
     if (!username.trim()) { setErrorMsg("ユーザー名を入力してください"); setStatus("error"); return; }
     if (username.trim().length > 20) { setErrorMsg("ユーザー名は20文字以内で入力してください"); setStatus("error"); return; }
     if (!email.trim()) { setErrorMsg("メールアドレスを入力してください"); setStatus("error"); return; }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) { setErrorMsg("有効なメールアドレスを入力してください"); setStatus("error"); return; }
     if (!password) { setErrorMsg("パスワードを入力してください"); setStatus("error"); return; }
     if (password.length < 8) { setErrorMsg("パスワードは8文字以上で入力してください"); setStatus("error"); return; }
-    if (password !== confirmPassword) { setErrorMsg("パスワードが一致しません"); setStatus("error"); return; }
     if (!agreeTerms) { setErrorMsg("利用規約への同意が必要です"); setStatus("error"); return; }
     if (!agreePrivacy) { setErrorMsg("プライバシーポリシーへの同意が必要です"); setStatus("error"); return; }
 
@@ -135,6 +139,9 @@ function LoginForm() {
       options: {
         data: {
           display_name: username.trim(),
+          last_name:    lastName.trim(),
+          first_name:   firstName.trim(),
+          company_name: companyName.trim() || null,
           registration_consent: {
             terms_version:   CURRENT_TERMS_VERSION,
             privacy_version: CURRENT_PRIVACY_POLICY_VERSION,
@@ -172,6 +179,9 @@ function LoginForm() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           username: username.trim(),
+          last_name: lastName.trim(),
+          first_name: firstName.trim(),
+          company_name: companyName.trim() || null,
           terms_agreed: true,
           privacy_agreed: true,
         }),
@@ -190,11 +200,11 @@ function LoginForm() {
   // 登録ボタンの活性条件（登録モードのみ）: 全必須入力 + メール形式 + パスワード一致 + 両同意。
   const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
   const canRegister =
+    lastName.trim().length > 0 &&
+    firstName.trim().length > 0 &&
     username.trim().length > 0 &&
     email.trim().length > 0 && emailValid &&
     password.length > 0 &&
-    confirmPassword.length > 0 &&
-    password === confirmPassword &&
     agreeTerms && agreePrivacy;
   // ログインモードは従来どおり（送信中のみ disabled）。登録モードは未充足なら disabled。
   const submitDisabled = status === "loading" || (mode === "register" && !canRegister);
@@ -256,6 +266,62 @@ function LoginForm() {
 
         <form onSubmit={mode === "login" ? handleLogin : handleRegister}>
 
+          {/* ── 氏名（姓・名）（登録モードのみ・必須） ── */}
+          {mode === "register" && (
+            <div className="form-group">
+              <label className="form-label">
+                氏名
+                <span style={{ color: "#dc2626", fontSize: 14, marginLeft: 4, fontWeight: 700 }} aria-hidden="true">*</span>
+              </label>
+              <div style={{ display: "flex", gap: 8 }}>
+                <input
+                  id="lastName"
+                  type="text"
+                  className="form-input"
+                  style={{ flex: 1, minWidth: 0 }}
+                  value={lastName}
+                  onChange={(e) => setLastName(e.target.value)}
+                  required
+                  placeholder="姓（例: 山田）"
+                  autoComplete="family-name"
+                  maxLength={50}
+                  aria-label="姓"
+                  autoFocus
+                />
+                <input
+                  id="firstName"
+                  type="text"
+                  className="form-input"
+                  style={{ flex: 1, minWidth: 0 }}
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
+                  required
+                  placeholder="名（例: 太郎）"
+                  autoComplete="given-name"
+                  maxLength={50}
+                  aria-label="名"
+                />
+              </div>
+            </div>
+          )}
+
+          {/* ── 会社名（登録モードのみ・任意） ── */}
+          {mode === "register" && (
+            <div className="form-group">
+              <label className="form-label" htmlFor="companyName">会社名（任意）</label>
+              <input
+                id="companyName"
+                type="text"
+                className="form-input"
+                value={companyName}
+                onChange={(e) => setCompanyName(e.target.value)}
+                placeholder="株式会社 Whale Studio"
+                autoComplete="organization"
+                maxLength={100}
+              />
+            </div>
+          )}
+
           {/* ── ユーザー名（登録モードのみ） ── */}
           {mode === "register" && (
             <div className="form-group">
@@ -272,8 +338,7 @@ function LoginForm() {
                 required
                 placeholder="山田 太郎"
                 maxLength={20}
-                autoComplete="name"
-                autoFocus
+                autoComplete="username"
               />
             </div>
           )}
@@ -314,29 +379,6 @@ function LoginForm() {
               <span style={{ fontSize: 11, color: "#dc2626", marginTop: 2 }}>8文字以上で入力してください</span>
             )}
           </div>
-
-          {/* ── パスワード確認（登録モードのみ） ── */}
-          {mode === "register" && (
-            <div className="form-group">
-              <label className="form-label" htmlFor="confirmPassword">
-                パスワード（確認）
-                <span style={{ color: "#dc2626", fontSize: 14, marginLeft: 4, fontWeight: 700 }} aria-hidden="true">*</span>
-              </label>
-              <input
-                id="confirmPassword"
-                type="password"
-                className="form-input"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                required
-                placeholder="もう一度入力"
-                autoComplete="new-password"
-              />
-              {confirmPassword.length > 0 && password !== confirmPassword && (
-                <span style={{ fontSize: 11, color: "#dc2626", marginTop: 2 }}>パスワードが一致しません</span>
-              )}
-            </div>
-          )}
 
           {/* ── 利用規約 / プライバシーポリシー同意（登録モードのみ・必須） ── */}
           {mode === "register" && (
