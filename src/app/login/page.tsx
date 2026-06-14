@@ -187,12 +187,33 @@ function LoginForm() {
 
   const accessDenied = errorReason ? ACCESS_DENIED_MESSAGES[errorReason] : null;
 
+  // 登録ボタンの活性条件（登録モードのみ）: 全必須入力 + メール形式 + パスワード一致 + 両同意。
+  const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+  const canRegister =
+    username.trim().length > 0 &&
+    email.trim().length > 0 && emailValid &&
+    password.length > 0 &&
+    confirmPassword.length > 0 &&
+    password === confirmPassword &&
+    agreeTerms && agreePrivacy;
+  // ログインモードは従来どおり（送信中のみ disabled）。登録モードは未充足なら disabled。
+  const submitDisabled = status === "loading" || (mode === "register" && !canRegister);
+
   // ── アカウント登録完了（メール確認待ち） ──
   if (registerDone) {
     return (
       <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#f8fafc" }}>
         <div className="card" style={{ width: 380, padding: 32 }}>
-          <h1 style={{ fontSize: 20, fontWeight: 800, marginBottom: 4, color: "#111827" }}>WHALE STUDIO</h1>
+          <h1 style={{ marginBottom: 4 }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/images/whale-studio-logo.png"
+            alt="Whale Studio"
+            width={192}
+            height={40}
+            style={{ display: "block", maxWidth: "100%", height: "auto" }}
+          />
+        </h1>
           <div style={{ marginTop: 24, background: "#f0fdf4", border: "1px solid #86efac", borderRadius: 8, padding: "14px 16px", fontSize: 13, color: "#166534", lineHeight: 1.7 }}>
             確認メールを送信しました。メール内のリンクをクリックして登録を完了してください。
           </div>
@@ -212,7 +233,16 @@ function LoginForm() {
     <div className="login-screen" style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#f8fafc" }}>
       <div className="card" style={{ width: 380, padding: 32 }}>
 
-        <h1 style={{ fontSize: 20, fontWeight: 800, marginBottom: 4, color: "#111827" }}>WHALE STUDIO</h1>
+        <h1 style={{ marginBottom: 4 }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/images/whale-studio-logo.png"
+            alt="Whale Studio"
+            width={192}
+            height={40}
+            style={{ display: "block", maxWidth: "100%", height: "auto" }}
+          />
+        </h1>
         <p style={{ fontSize: 13, fontWeight: 400, color: "#6b7280", marginBottom: 24 }}>
           {mode === "login" ? "管理画面にログイン" : "アカウントを作成"}
         </p>
@@ -288,7 +318,10 @@ function LoginForm() {
           {/* ── パスワード確認（登録モードのみ） ── */}
           {mode === "register" && (
             <div className="form-group">
-              <label className="form-label" htmlFor="confirmPassword">パスワード（確認）</label>
+              <label className="form-label" htmlFor="confirmPassword">
+                パスワード（確認）
+                <span style={{ color: "#dc2626", fontSize: 11, marginLeft: 6, fontWeight: 700 }}>必須</span>
+              </label>
               <input
                 id="confirmPassword"
                 type="password"
@@ -318,7 +351,6 @@ function LoginForm() {
                 <span>
                   <a href="/terms" target="_blank" rel="noopener noreferrer" style={{ color: "#2563eb", textDecoration: "underline" }}>利用規約</a>
                   に同意します
-                  <span style={{ color: "#dc2626", fontSize: 11, marginLeft: 6, fontWeight: 700 }}>必須</span>
                 </span>
               </label>
               <label style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 13, color: "#374151", lineHeight: 1.6 }}>
@@ -331,7 +363,6 @@ function LoginForm() {
                 <span>
                   <a href="/privacy" target="_blank" rel="noopener noreferrer" style={{ color: "#2563eb", textDecoration: "underline" }}>プライバシーポリシー</a>
                   に同意します
-                  <span style={{ color: "#dc2626", fontSize: 11, marginLeft: 6, fontWeight: 700 }}>必須</span>
                 </span>
               </label>
             </div>
@@ -344,8 +375,12 @@ function LoginForm() {
           <button
             type="submit"
             className="btn btn-primary"
-            style={{ width: "100%", marginTop: 8 }}
-            disabled={status === "loading"}
+            style={{
+              width: "100%",
+              marginTop: 8,
+              ...(submitDisabled ? { opacity: 0.5, cursor: "not-allowed" } : {}),
+            }}
+            disabled={submitDisabled}
           >
             {status === "loading"
               ? "処理中..."
