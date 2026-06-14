@@ -180,7 +180,7 @@ export default function GpsPanel({ oaId, workId }: Props) {
       {!liffId && (
         <div style={{ padding: 12, background: "#fef3c7", border: "1px solid #fcd34d", borderRadius: 8, color: "#92400e", fontSize: 13, marginBottom: 16 }}>
           このOAの LIFF ID が未設定のため QR コードを生成できません。
-          <Link href={`/oas/${oaId}/settings/liff`} style={{ color: "#2563eb", textDecoration: "underline" }}>設定 → LIFF設定</Link>
+          <Link href={`/oas/${oaId}/account`} style={{ color: "#2563eb", textDecoration: "underline" }}>設定 → アカウント情報（LIFF設定）</Link>
           で LIFF ID を設定してください。
         </div>
       )}

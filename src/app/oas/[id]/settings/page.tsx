@@ -19,15 +19,15 @@ import { ViewerBanner } from "@/components/PermissionGuard";
  *  カードのアクセントは hover 時の brand 左バー 1 つに集約。 */
 const HUB_ITEM_DEFS = [
   { key: "works",                title: "作品管理",         desc: "作品シナリオの作成・編集・公開管理" },
-  { key: "account",              title: "アカウント情報",   desc: "アカウント名・メモ・接続ステータスを管理" },
+  // アカウント情報に LIFF設定を統合（旧「LIFF設定」カードはここに集約）。
+  { key: "account",              title: "アカウント情報",   desc: "アカウント名・接続ステータス・LIFF設定を管理" },
   { key: "richmenu-editor",      title: "リッチメニュー",   desc: "ユーザー画面下部のメニューをカスタマイズ" },
-  { key: "settings/liff",        title: "LIFF設定",         desc: "LIFF ID・実機確認用 URL/QR・Scan QR 設定（OA 単位）" },
-  { key: "locations/beacons",    title: "ビーコン",         desc: "LINE Beacon の登録・発火メッセージ・ログ・テスト発火（OA 単位 / Pro Max）" },
+  // 「ビーコン管理」はロケーション配下に導線があるため設定ハブからは除外。
+  // 「トラッキング管理」はオーディエンス配下で登録・閲覧できるため設定ハブからは除外。
   { key: "friend-add",           title: "友だち追加設定",   desc: "招待 URL・シェア用画像を管理" },
   { key: "sns",                  title: "SNS 投稿管理",     desc: "投稿文・画像・掲載 URL を管理" },
-  { key: "trackings",            title: "トラッキング管理", desc: "流入元ごとのクリック数・ユーザー数を計測" },
   { key: "settings/members",     title: "メンバー管理",     desc: "ワークスペースメンバーのロール（owner/admin/editor/viewer）を管理" },
-  { key: "onboarding-analytics", title: "オンボーディング分析", desc: "作品作成〜セットアップ完了の各ステップ到達率を確認（owner のみ）" },
+  // 「オンボーディング分析」は設定ハブからは除外。
   // 現在のプラン・利用条件の確認導線（owner / admin）。売り込みではなく設定情報の確認として並べる。
   { key: "settings/plan",        title: "プラン・利用条件",   desc: "現在のご利用プランと利用条件を確認" },
   // 法人契約・利用条件の確認導線（法人利用 OA かつ owner / admin のときのみ表示）。
@@ -129,16 +129,16 @@ export default function OaSettingsPage() {
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-[repeat(auto-fill,minmax(220px,1fr))]">
           {HUB_ITEM_DEFS.filter(({ key }) => {
-            if (key === "onboarding-analytics") return isOwner;
             // 個人プランカードは「個人 OA（= 法人以外）」かつ owner/admin のみ。
             // 法人 OA では「法人契約・利用条件」カードに一本化（二重導線を避ける）。
             if (key === "settings/plan") return (isOwner || isAdmin) && usageType !== "business";
             // 法人契約カードは法人利用 OA かつ owner/admin のときのみ表示。
             if (key === "settings/business-plan") return (isOwner || isAdmin) && usageType === "business";
+            // メンバー管理は管理者（owner / admin）のみ表示。
             if (key === "settings/members") return isOwner || isAdmin;
-            if (key === "account" || key === "richmenu-editor" || key === "friend-add" || key === "sns" || key === "settings/liff" || key === "locations/beacons") return isAdmin;
+            if (key === "account" || key === "richmenu-editor" || key === "friend-add" || key === "sns") return isAdmin;
             if (key === "live") return liveAccess; // Live 可ユーザーのみ。それ以外には存在を見せない
-            return true; // works, trackings — visible to all
+            return true; // works — visible to all
           }).map(({ key, title, desc }) => (
             <Link
               key={key}
