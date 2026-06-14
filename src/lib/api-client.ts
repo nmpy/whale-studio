@@ -60,6 +60,7 @@ import type {
   CreateLiffBlockBody,
   UpdateLiffBlockBody,
   ReorderLiffBlocksBody,
+  BulkSaveLiffPageBody,
   Location,
   LocationWithTransition,
   CreateLocationBody,
@@ -1719,6 +1720,16 @@ export const liffConfigApi = {
       headers: authHeaders(token),
     });
     if (res.status === 204) return;
+    return parseResponse(res);
+  },
+
+  /** 一括保存: ページ設定 + ブロック全件を 1 リクエスト（サーバー側トランザクション）で保存する。 */
+  async bulkSavePage(token: string, workId: string, pageId: string, body: BulkSaveLiffPageBody): Promise<LiffPageConfig> {
+    const res = await fetch(`/api/works/${workId}/liff-pages/${pageId}/bulk`, {
+      method: "PUT",
+      headers: authHeaders(token),
+      body: JSON.stringify(body),
+    });
     return parseResponse(res);
   },
 

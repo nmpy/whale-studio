@@ -90,7 +90,20 @@ function formatDistance(m: number | null): string | null {
   return `約 ${(m / 1000).toFixed(1)} km`;
 }
 
-export function LocationHistoryRenderer({ config, lineUserId, preview }: Props) {
+/** チェックイン履歴の取得 + 状態表示（ページ種別 location とブロック checkin_history で共有）。
+ *  ページ全体の枠（liff-font ラッパー等）は持たず、リスト/空状態/読み込み/エラーだけを返す。
+ *  - preview: サンプルデータを描画（カメラ/通信なし）
+ *  - lineUserId 無し: ログイン案内
+ *  - 履歴 0 件: 「まだチェックイン履歴がありません」
+ *  - max_count: 表示件数の上限（任意） */
+export function LocationHistoryList({
+  workId, lineUserId, preview, maxCount,
+}: {
+  workId: string;
+  lineUserId?: string | null;
+  preview?: boolean;
+  maxCount?: number;
+}) {
   const [items, setItems] = useState<HistoryItem[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -112,7 +125,7 @@ export function LocationHistoryRenderer({ config, lineUserId, preview }: Props) 
     (async () => {
       try {
         const res = await fetch(
-          `/api/liff/works/${config.work_id}/location-history?line_user_id=${encodeURIComponent(lineUserId)}`
+          `/api/liff/works/${workId}/location-history?line_user_id=${encodeURIComponent(lineUserId)}`
         );
         const json = await res.json();
         if (cancelled) return;
@@ -132,8 +145,22 @@ export function LocationHistoryRenderer({ config, lineUserId, preview }: Props) 
     })();
 
     return () => { cancelled = true; };
-  }, [config.work_id, lineUserId, preview]);
+  }, [workId, lineUserId, preview]);
 
+  const shown = maxCount && items ? items.slice(0, maxCount) : items;
+
+  return (
+    <HistorySection
+      lineUserId={lineUserId}
+      preview={preview}
+      loading={loading}
+      error={error}
+      items={shown}
+    />
+  );
+}
+
+export function LocationHistoryRenderer({ config, lineUserId, preview }: Props) {
   return (
     <div className={`liff-font ${liffRootClass(config.settings_json)} min-h-screen bg-[color:var(--liff-background)] text-[color:var(--liff-primary-text)]`}>
       {/* 画面内ヘッダーは廃止。document.title (= LIFF 上部バー) で文脈表現する。 */}
@@ -145,14 +172,7 @@ export function LocationHistoryRenderer({ config, lineUserId, preview }: Props) 
           </p>
         )}
 
-        <HistorySection
-          lineUserId={lineUserId}
-          preview={preview}
-          loading={loading}
-          error={error}
-          items={items}
-        />
-
+        <LocationHistoryList workId={config.work_id} lineUserId={lineUserId} preview={preview} />
       </main>
     </div>
   );

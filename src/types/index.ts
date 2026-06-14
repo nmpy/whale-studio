@@ -1263,7 +1263,9 @@ export type LiffBlockType =
   // ── ロケーションチェックイン用 ──
   | "code_reader"
   // ── 謎・問題（到達済みの問題一覧） ──
-  | "riddle_list";
+  | "riddle_list"
+  // ── チェックイン履歴（プレイヤー本人の訪問履歴） ──
+  | "checkin_history";
 
 export type VisibilityCondition = "always" | "before_start" | "in_progress" | "completed";
 
@@ -1448,6 +1450,19 @@ export interface CodeReaderSettings {
   after_scan?: "location_checkin" | "show_result";
 }
 
+/** チェックイン履歴ブロック設定。
+ *  プレイヤー本人のチェックイン履歴（地点名 / 日時 / 種別）を LIFF 内の任意位置に表示する。
+ *  既存の location ページ種別と同じ API・ロジック（LocationHistoryRenderer）を再利用する。
+ *  X API / スクレイピングは使わない（自前のチェックイン記録のみ）。 */
+export interface CheckinHistorySettings {
+  /** 見出し（未設定なら見出しを表示しない）。 */
+  title?: string;
+  /** 補足説明文（任意）。 */
+  description?: string;
+  /** 最大表示件数（未設定は全件）。 */
+  max_count?: number;
+}
+
 /** accordion の中に直接埋め込めるネスト可能ブロック（DBには載らないインライン構造） */
 export interface NestedLiffBlock {
   /** 子要素の安定 ID（クライアントで生成・保存） */
@@ -1473,7 +1488,8 @@ export type AnyLiffBlockSettings =
   | ButtonLinkSettings
   | DividerSettings
   | AccordionSettings
-  | CodeReaderSettings;
+  | CodeReaderSettings
+  | CheckinHistorySettings;
 
 export type LiffBlockSettings = AnyLiffBlockSettings;
 
@@ -1681,6 +1697,29 @@ export interface UpdateLiffBlockBody {
 
 export interface ReorderLiffBlocksBody {
   block_ids: string[];
+}
+
+/** 一括保存（ページ設定 + ブロック全件）リクエスト内の 1 ブロック。
+ *  id: 既存ブロックは server の UUID。新規ブロックは未指定（または temp- 始まりのローカル ID）。 */
+export interface BulkSaveLiffBlockBody {
+  id?:                        string;
+  block_type:                 LiffBlockType;
+  title?:                     string | null;
+  is_enabled?:                boolean;
+  settings_json?:             LiffBlockSettings;
+  visibility_condition_json?: VisibilityCondition | null;
+}
+
+/** 一括保存リクエスト。blocks は「保存後にこのページに存在すべき全ブロック」を並び順で渡す。
+ *  サーバーは差分で create/update/delete し、配列の index を sort_order に採用する。 */
+export interface BulkSaveLiffPageBody {
+  is_enabled?:     boolean;
+  title?:          string | null;
+  description?:    string | null;
+  page_type?:      LiffPageType;
+  publish_status?: LiffPublishStatus;
+  settings_json?:  LiffPageConfigSettings;
+  blocks:          BulkSaveLiffBlockBody[];
 }
 
 // ────────────────────────────────────────────────

@@ -15,6 +15,7 @@ import type {
   AccordionSettings,
   CodeReaderSettings,
   RiddleListSettings,
+  CheckinHistorySettings,
 } from "@/types";
 import {
   FreeTextBlock,
@@ -34,6 +35,7 @@ import {
   AccordionBlock,
   CodeReaderBlock,
   RiddleListBlock,
+  CheckinHistoryBlock,
 } from "./renderers";
 import type { Evidence, Hint, CharacterInfo } from "./renderers";
 import { liffRootClass } from "./liff-style-helpers";
@@ -109,6 +111,8 @@ function RenderBlock({ block, ctx, preview }: { block: LiffBlock; ctx: LiffRende
       return <CodeReaderBlock settings={s as CodeReaderSettings} preview={preview} blockId={block.id} />;
     case "riddle_list":
       return <RiddleListBlock title={block.title} settings={s as RiddleListSettings} />;
+    case "checkin_history":
+      return <CheckinHistoryBlock title={block.title} settings={s as CheckinHistorySettings} preview={preview} />;
     default:
       return null;
   }

@@ -24,6 +24,7 @@ import type {
   AccordionSettings,
   CodeReaderSettings,
   RiddleListSettings,
+  CheckinHistorySettings,
 } from "@/types";
 
 import {
@@ -44,6 +45,7 @@ import {
   AccordionForm,
   CodeReaderForm,
   RiddleListForm,
+  CheckinHistoryForm,
 } from "./block-settings-forms";
 
 export type SettingsFormProps<T = Record<string, unknown>> = {
@@ -179,6 +181,13 @@ export const BLOCK_TYPE_REGISTRY: Record<LiffBlockType, BlockTypeEntry> = {
     description:     "プレイヤーが到達した謎・問題を一覧表示",
     defaultSettings: { title: "謎・問題", show_status: true } satisfies RiddleListSettings,
     SettingsForm:    RiddleListForm as ComponentType<SettingsFormProps<any>>,
+  },
+  checkin_history: {
+    label:           "チェックイン履歴",
+    icon:            "📍",
+    description:     "プレイヤー本人のチェックイン履歴を一覧表示",
+    defaultSettings: { title: "チェックイン履歴" } satisfies CheckinHistorySettings,
+    SettingsForm:    CheckinHistoryForm as ComponentType<SettingsFormProps<any>>,
   },
 };
 
