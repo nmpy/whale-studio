@@ -6,6 +6,7 @@
 // destination を推奨導線として見せ、直URL入力は控えめにする。
 
 import { DestinationSelect } from "./DestinationSelect";
+import { LinkPicker, type LinkOption } from "./LinkPicker";
 import type { LineDestination } from "@/types";
 
 export type TapMode = "destination" | "direct_url" | "none";
@@ -20,16 +21,30 @@ interface Props {
   disabled?: boolean;
   /** destination 一覧を外部から注入（重複フェッチ防止） */
   destinations?: LineDestination[];
+  /** URL候補（LIFF / ロケーションURL）。常時表示し、選んだら直接URL入力モードへ自動切替＋反映。 */
+  linkOptions?: LinkOption[];
+  /** linkOptions が空のとき、LIFF 未設定が理由なら案内を出すための補足。 */
+  linkOptionsLiffConfigured?: boolean;
   onModeChange: (mode: TapMode) => void;
   onDestinationChange: (id: string | null, dest: LineDestination | null) => void;
   onDirectUrlChange: (url: string) => void;
+  /** 候補選択時に「直接URL入力モードへ切替＋URL反映」を 1 回の更新で行う任意ハンドラ。
+   *  未指定なら onModeChange("direct_url") → onDirectUrlChange(url) の順で呼ぶ。 */
+  onPickLink?: (url: string) => void;
 }
 
 export function TapDestinationSection({
   label = "画像タップ時の遷移先",
   workId, oaId, mode, destinationId, directUrl, disabled,
-  destinations, onModeChange, onDestinationChange, onDirectUrlChange,
+  destinations, linkOptions, linkOptionsLiffConfigured, onModeChange, onDestinationChange, onDirectUrlChange, onPickLink,
 }: Props) {
+  // URL候補を選んだとき: 直接URL入力モードへ切り替え、URLを入力欄へ反映する。
+  // 親が onPickLink を渡していれば 1 回の state 更新で原子的に行う（carousel の配列更新競合を避ける）。
+  const handlePick = (url: string) => {
+    if (onPickLink) { onPickLink(url); return; }
+    onModeChange("direct_url");
+    onDirectUrlChange(url);
+  };
   return (
     <div className="space-y-3">
       <label className="block text-xs font-medium text-gray-500">{label}</label>
@@ -62,6 +77,17 @@ export function TapDestinationSection({
         </button>
       </div>
 
+      {/* URLを選択（常時表示）。候補を選ぶと自動で「URLを直接入力」モードへ切替＋反映する。
+          手入力したい場合は下のモードで「URLを直接入力」を選べばよい。 */}
+      {linkOptions && (
+        <LinkPicker
+          options={linkOptions}
+          liffConfigured={linkOptionsLiffConfigured}
+          onPick={handlePick}
+          disabled={disabled}
+        />
+      )}
+
       {/* destination モード（推奨） */}
       {mode === "destination" && (
         <div>
@@ -79,7 +105,7 @@ export function TapDestinationSection({
         </div>
       )}
 
-      {/* 直接URL入力モード（控えめ） */}
+      {/* 直接URL入力モード。上の「URLを選択」で候補を選ぶとここに反映される。手入力でも編集可。 */}
       {mode === "direct_url" && (
         <div>
           <input
@@ -90,7 +116,7 @@ export function TapDestinationSection({
             placeholder="https://..."
           />
           <p className="text-[10px] text-gray-400 mt-1">
-            一時的にURLを直接指定したい場合に使います
+            上の「URLを選択」から選ぶと反映されます。手入力で編集もできます。
           </p>
         </div>
       )}

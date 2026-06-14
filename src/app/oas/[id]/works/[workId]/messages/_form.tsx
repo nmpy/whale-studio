@@ -18,6 +18,7 @@ import { toImportMessage, insertImportedSlots } from "./_chain-import";
 import { nextTransitionDisabledByPuzzle } from "@/lib/message-flow";
 import { TapDestinationSection } from "@/components/destination/TapDestinationSection";
 import type { TapMode } from "@/components/destination/TapDestinationSection";
+import { LinkPicker, LinkCopyList, useWorkLinkOptions, type LinkOption } from "@/components/destination/LinkPicker";
 import { detectTapMode } from "@/lib/message-destination-utils";
 import { destinationApi } from "@/lib/api-client";
 import type { LineDestination } from "@/types";
@@ -801,9 +802,12 @@ interface QuickReplyEditorProps {
   destinations?: LineDestination[];
   /** 配信単位プレビュー用: work 内の全 message（chain walk / フェーズ入場算出） */
   allMessages?: QrPreviewMessage[];
+  /** 直接URL入力モードの URL候補（LIFF / ロケーションURL）。選択結果だけが value に入る。 */
+  linkOptions?: LinkOption[];
+  linkOptionsLiffConfigured?: boolean;
 }
 
-function QuickReplyEditor({ items, onChange, responseMessages, phases, transitionMessages, characters = [], workId, oaId, destinations = [], allMessages = [] }: QuickReplyEditorProps) {
+function QuickReplyEditor({ items, onChange, responseMessages, phases, transitionMessages, characters = [], workId, oaId, destinations = [], allMessages = [], linkOptions, linkOptionsLiffConfigured }: QuickReplyEditorProps) {
   const [open, setOpen]               = useState(false);
   const [expandedSet, setExpandedSet] = useState<Set<number>>(new Set());
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
@@ -1081,6 +1085,8 @@ function QuickReplyEditor({ items, onChange, responseMessages, phases, transitio
                               destinationId={item.destination_id ?? null}
                               directUrl={item.value ?? ""}
                               destinations={destinations}
+                              linkOptions={linkOptions}
+                              linkOptionsLiffConfigured={linkOptionsLiffConfigured}
                               onModeChange={(m) => {
                                 if (m === "destination") updateItem(index, { value: undefined } as Partial<QuickReplyItem>);
                                 if (m === "direct_url") updateItem(index, { destination_id: undefined } as Partial<QuickReplyItem>);
@@ -1088,6 +1094,7 @@ function QuickReplyEditor({ items, onChange, responseMessages, phases, transitio
                               }}
                               onDestinationChange={(id) => updateItem(index, { destination_id: id } as Partial<QuickReplyItem>)}
                               onDirectUrlChange={(url) => updateItem(index, { value: url } as Partial<QuickReplyItem>)}
+                              onPickLink={(url) => updateItem(index, { value: url, destination_id: undefined } as Partial<QuickReplyItem>)}
                             />
                           </div>
                         )}
@@ -3443,6 +3450,9 @@ export function MessageForm({
     detectTapMode(initialForm.tap_destination_id, initialForm.tap_url)
   );
 
+  // ── URL候補（LIFF / ロケーションURL）。既存 API だけで生成し、各URL入力欄の補助に使う。 ──
+  const { options: linkOptions, liffConfigured: linkOptionsLiffConfigured } = useWorkLinkOptions(oaId, workId);
+
   useEffect(() => {
     const token = getDevToken();
     // destination 一覧も並行取得
@@ -4284,6 +4294,12 @@ export function MessageForm({
                     </div>
                   );
                 })()}
+
+                {/* D. Flex Message 用 URLコピー補助（JSON は自動変更しない） */}
+                <div style={{ marginTop: 16, padding: "12px 14px", border: "1px solid #e5e7eb", borderRadius: 8, background: "#f9fafb" }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "#374151", marginBottom: 8 }}>Flex Message用URLコピー</div>
+                  <LinkCopyList options={linkOptions} liffConfigured={linkOptionsLiffConfigured} />
+                </div>
               </div>
             )}
 
@@ -4385,6 +4401,8 @@ export function MessageForm({
                     destinationId={form.tap_destination_id || null}
                     directUrl={form.tap_url}
                     destinations={destinations}
+                    linkOptions={linkOptions}
+                    linkOptionsLiffConfigured={linkOptionsLiffConfigured}
                     onModeChange={(m) => {
                       setTapMode(m);
                       if (m === "destination") set("tap_url", "");
@@ -4393,6 +4411,7 @@ export function MessageForm({
                     }}
                     onDestinationChange={(id) => set("tap_destination_id", id ?? "")}
                     onDirectUrlChange={(url) => set("tap_url", url)}
+                    onPickLink={(url) => { setTapMode("direct_url"); set("tap_destination_id", ""); set("tap_url", url); }}
                   />
                 </div>
 
@@ -4465,6 +4484,11 @@ export function MessageForm({
                     <label style={fieldLabel} htmlFor="image_action_url">
                       開く URL <span style={{ color: "#dc2626" }}>*</span>
                     </label>
+                    <LinkPicker
+                      options={linkOptions}
+                      liffConfigured={linkOptionsLiffConfigured}
+                      onPick={(url) => set("image_action_url", url)}
+                    />
                     <input
                       id="image_action_url"
                       type="url"
@@ -4689,6 +4713,8 @@ export function MessageForm({
                             destinationId={card.destination_id ?? null}
                             directUrl={card.button_url}
                             destinations={destinations}
+                            linkOptions={linkOptions}
+                            linkOptionsLiffConfigured={linkOptionsLiffConfigured}
                             onModeChange={(m) => {
                               const items = [...form.carousel_items];
                               if (m === "destination") items[index] = { ...items[index], button_url: "" };
@@ -4702,6 +4728,11 @@ export function MessageForm({
                               set("carousel_items", items);
                             }}
                             onDirectUrlChange={(url) => updateCard(index, "button_url", url)}
+                            onPickLink={(url) => {
+                              const items = [...form.carousel_items];
+                              items[index] = { ...items[index], button_url: url, destination_id: null };
+                              set("carousel_items", items);
+                            }}
                           />
                         </div>
                       </div>
@@ -5047,6 +5078,8 @@ export function MessageForm({
             oaId={oaId}
             destinations={destinations}
             allMessages={allMessages}
+            linkOptions={linkOptions}
+            linkOptionsLiffConfigured={linkOptionsLiffConfigured}
           />
 
           {/* ════════════════════════════════════════
@@ -5345,6 +5378,8 @@ export function MessageForm({
                 oaId={oaId}
                 destinations={destinations}
                 allMessages={allMessages}
+                linkOptions={linkOptions}
+                linkOptionsLiffConfigured={linkOptionsLiffConfigured}
               />
             </div>
 
@@ -5399,19 +5434,30 @@ export function MessageForm({
           </SectionAccordion>
           )} {/* /isPuzzle 謎の回答設定 */}
 
-          {/* ── このメッセージの後の遷移 ── */}
-          {/* 謎・問題で正解時アクションがフェーズ遷移の場合は、遷移が競合するため
-              このセクションを編集不可（グレーアウト）にする。正解時アクションを
-              フェーズ遷移以外に戻すと自動的に再び編集可能になる（reactive）。 */}
-          {form.phase_id && form.kind !== "global" && (
-            <PhaseTransitionsSection
-              oaId={oaId}
-              workId={workId}
-              phaseId={form.phase_id}
-              phases={phases}
-              disabled={nextTransitionDisabledByPuzzle({ isPuzzle, correctAction: form.correct_action })}
-            />
-          )}
+          {/* ── メッセージ後の遷移（任意）── */}
+          {/* 見出しは常設化し、「遷移設定が消えた」ように見えるのを防ぐ。
+              編集可能な条件（フェーズ所属 & 非 global）では既存 PhaseTransitionsSection を表示。
+              編集不可の条件では本体を出さず、理由を表示する（保存先・送信ロジックは不変）。
+              謎・問題で正解時アクションがフェーズ遷移の場合は、競合するため
+              PhaseTransitionsSection 側で編集不可（グレーアウト）にする（従来どおり・reactive）。 */}
+          <div className="form-group" style={{ marginTop: 8, marginBottom: 0 }}>
+            <label style={fieldLabel}>メッセージ後の遷移（任意）</label>
+            {form.phase_id && form.kind !== "global" ? (
+              <PhaseTransitionsSection
+                oaId={oaId}
+                workId={workId}
+                phaseId={form.phase_id}
+                phases={phases}
+                disabled={nextTransitionDisabledByPuzzle({ isPuzzle, correctAction: form.correct_action })}
+              />
+            ) : (
+              <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.8, padding: "10px 14px", border: "1px solid #e5e7eb", borderRadius: 8, background: "#f9fafb" }}>
+                {form.kind === "global"
+                  ? "このメッセージは global（キーワード共通）メッセージのため、特定のフェーズに属さず、メッセージ後のフェーズ遷移は設定できません。"
+                  : "このメッセージはまだフェーズに割り当てられていないため、メッセージ後の遷移は設定できません。フェーズに割り当てると、送信後に次のフェーズへ進める設定ができます。"}
+              </div>
+            )}
+          </div>
 
           {/* ── アクションフッター (= sticky で画面下部に固定) ── */}
           {/* スクロール量が多い長いフォームでも、保存ボタンが常に視界に入るようにする。 */}
