@@ -12,7 +12,7 @@ import { useToast } from "@/components/Toast";
 import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
 import { getAuthHeaders } from "@/lib/api-client";
 import { ImageUploadField } from "@/components/ImageUploadField";
-import Papa from "papaparse";
+import { parseImportFile } from "@/lib/x-posts/file-parse";
 import { buildUtmUrl, parseHashtagsInput } from "@/lib/x-posts/format";
 import type { XPost, XPostStatus, CreateXPostBody, XPostAnalytics, XPostSentiment } from "@/types";
 
@@ -565,14 +565,13 @@ function SentimentTab({ workId, canEdit }: { workId: string; canEdit: boolean })
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  function onFile(file: File | undefined) {
+  async function onFile(file: File | undefined) {
     if (!file) return;
     setFileName(file.name);
-    Papa.parse<Record<string, unknown>>(file, {
-      header: true, skipEmptyLines: true,
-      complete: (res) => setRows(res.data.filter((r) => r && typeof r === "object")),
-      error: () => showToast("CSV の解析に失敗しました", "error"),
-    });
+    setRows([]);
+    const { rows: parsed, error } = await parseImportFile(file, importType);
+    if (error) { showToast(error, "error"); setFileName(""); return; }
+    setRows(parsed);
   }
 
   async function handleImport() {
@@ -607,7 +606,7 @@ function SentimentTab({ workId, canEdit }: { workId: string; canEdit: boolean })
   const notice = (
     <div className="flex flex-col gap-2">
       <div className="rounded-field border border-sky/30 bg-sky-soft px-4 py-3 text-[12px] leading-[1.6] text-sky-ink">
-        CSVで取り込んだ投稿実績や口コミテキストをもとに、インプレッション、頻出単語、ポジネガ、リピート欲求を分析します。X APIやスクレイピングは使用しません。
+        CSVまたはExcelで取り込んだ投稿実績や口コミテキストをもとに、インプレッション、頻出単語、ポジネガ、リピート欲求を分析します。
       </div>
     </div>
   );
@@ -615,16 +614,16 @@ function SentimentTab({ workId, canEdit }: { workId: string; canEdit: boolean })
   // CSV インポートカード（editor のみ）
   const importCard = canEdit && (
     <div className="rounded-card border border-line bg-surface p-4">
-      <p className="mb-1 text-[13px] font-bold text-ink">CSVでインポート</p>
-      <p className="mb-3 text-[11px] text-ink-3">Xアナリティクス等から取得したCSVや、手元で整理した口コミCSVを取り込んで分析できます（UTF-8 / BOM 両対応）。</p>
+      <p className="mb-1 text-[13px] font-bold text-ink">CSV / Excelでインポート</p>
+      <p className="mb-3 text-[11px] text-ink-3">Xアナリティクス等から取得したファイルや、手元で整理した口コミファイルを取り込んで分析できます（CSV: UTF-8 / BOM 両対応、Excel: .xlsx の1枚目シート）。</p>
       <div className="flex flex-wrap items-center gap-2">
         <select value={importType} onChange={(e) => { setImportType(e.target.value as "metrics" | "mentions"); setRows([]); setFileName(""); }} className="form-input" style={{ width: "auto" }}>
-          <option value="mentions">口コミCSV</option>
-          <option value="metrics">投稿実績CSV</option>
+          <option value="mentions">口コミファイル</option>
+          <option value="metrics">投稿実績ファイル</option>
         </select>
         <label className="btn btn-ghost btn-sm cursor-pointer">
-          CSVファイルを選択
-          <input type="file" accept=".csv,text/csv" className="hidden" onChange={(e) => onFile(e.target.files?.[0])} />
+          CSVまたはExcelファイルを選択
+          <input type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="hidden" onChange={(e) => onFile(e.target.files?.[0])} />
         </label>
         {fileName && <span className="text-[11px] text-ink-3">{fileName}（{rows.length}行）</span>}
       </div>
@@ -665,7 +664,7 @@ function SentimentTab({ workId, canEdit }: { workId: string; canEdit: boolean })
       <div className="flex flex-col gap-3">
         {notice}{importCard}
         <div className="rounded-card border border-line bg-surface px-5 py-10 text-center text-[13px] text-ink-3">
-          まだCSVがインポートされていません。投稿実績や口コミCSVを取り込むと分析できます。
+          まだファイルがインポートされていません。投稿実績や口コミのCSV / Excelを取り込むと分析できます。
         </div>
       </div>
     );
@@ -711,7 +710,7 @@ function SentimentTab({ workId, canEdit }: { workId: string; canEdit: boolean })
         ))}
       </div>
       <p className="text-[11px] text-ink-3">
-        ※ インプレッションはCSVで取り込まれた値です。Xから自動取得された値ではありません。CV数は attribution 未実装のため現在 0 です。
+        ※ インプレッションはCSVまたはExcelで取り込まれた値です。Xから自動取得された値ではありません。CV数は attribution 未実装のため現在 0 です。
       </p>
 
       {/* ポジネガ / リピート */}
@@ -752,7 +751,7 @@ function SentimentTab({ workId, canEdit }: { workId: string; canEdit: boolean })
         </div>
       ) : (
         <div className="rounded-card border border-line bg-surface px-5 py-8 text-center text-[12px] text-ink-3">
-          口コミCSVをインポートすると、頻出単語・ポジネガ・リピート欲求を分析できます。
+          口コミファイルをインポートすると、頻出単語・ポジネガ・リピート欲求を分析できます。
         </div>
       )}
 
@@ -773,7 +772,7 @@ function SentimentTab({ workId, canEdit }: { workId: string; canEdit: boolean })
       {/* 投稿実績テーブル */}
       {data.metric_rows.length > 0 && (
         <div>
-          <p className="mb-1 text-[13px] font-bold text-ink">投稿実績（CSVインポート）</p>
+          <p className="mb-1 text-[13px] font-bold text-ink">投稿実績（ファイルインポート）</p>
           <div className="overflow-x-auto rounded-card border border-line bg-surface">
             <table className="w-full text-left text-[12px]">
               <thead><tr className="border-b border-line text-[11px] text-ink-3">
@@ -808,7 +807,7 @@ function SentimentTab({ workId, canEdit }: { workId: string; canEdit: boolean })
       {/* 口コミテーブル */}
       {data.mention_rows.length > 0 && (
         <div>
-          <p className="mb-1 text-[13px] font-bold text-ink">口コミ（CSVインポート）</p>
+          <p className="mb-1 text-[13px] font-bold text-ink">口コミ（ファイルインポート）</p>
           <div className="overflow-x-auto rounded-card border border-line bg-surface">
             <table className="w-full text-left text-[12px]">
               <thead><tr className="border-b border-line text-[11px] text-ink-3">
