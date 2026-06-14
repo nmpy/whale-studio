@@ -43,6 +43,7 @@ export const GET = withAuth(async (req, ctx, user) => {
         pageType:      true,
         publishStatus: true,
         isEnabled:     true,
+        settingsJson:  true,
         createdAt:     true,
         updatedAt:     true,
       },
@@ -65,20 +66,39 @@ export const GET = withAuth(async (req, ctx, user) => {
 
     return ok({
       work_id: workId,
-      pages: pages.map((p) => ({
-        id:              p.id,
-        public_id:       p.publicId,
-        work_id:         p.workId,
-        work_public_id:  p.work?.publicId,
-        title:           p.title,
-        description:     p.description,
-        page_type:       p.pageType,
-        publish_status:  p.publishStatus,
-        is_enabled:      p.isEnabled,
-        submission_count: countByPage.get(p.id) ?? 0,
-        created_at:      p.createdAt,
-        updated_at:      p.updatedAt,
-      })),
+      pages: pages.map((p) => {
+        // settingsJson から作品メニューホーム関連の per-page 設定を導出する。
+        // タブ分類 (詳細/独立)・並び順・表示形式の判定に使う。既存フィールドは維持 (API 互換)。
+        const s = (p.settingsJson ?? {}) as {
+          show_in_menu?: boolean;
+          menu_order?: number;
+          menu_label?: string;
+          menu_icon?: string;
+          menu_card_style?: "card" | "compact";
+        };
+        return {
+          id:              p.id,
+          public_id:       p.publicId,
+          work_id:         p.workId,
+          work_public_id:  p.work?.publicId,
+          title:           p.title,
+          description:     p.description,
+          page_type:       p.pageType,
+          publish_status:  p.publishStatus,
+          is_enabled:      p.isEnabled,
+          submission_count: countByPage.get(p.id) ?? 0,
+          // ── 作品メニューホーム用 (追加フィールド) ──
+          // show_in_menu 未指定 = true 扱い (= 詳細ページ)。renderer の isShownInMenu と整合。
+          show_in_menu:    s.show_in_menu !== false,
+          menu_order:      s.menu_order ?? null,
+          menu_label:      s.menu_label ?? null,
+          menu_icon:       s.menu_icon ?? null,
+          // 未指定は "card" 扱い (= 既存ページの表示を変えない)。
+          menu_card_style: s.menu_card_style === "compact" ? "compact" : "card",
+          created_at:      p.createdAt,
+          updated_at:      p.updatedAt,
+        };
+      }),
     });
   } catch (err) {
     return serverError(err);

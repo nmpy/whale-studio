@@ -226,6 +226,8 @@ export interface MenuCard {
   label:     string;
   icon:      string;
   order:     number;
+  /** カード表示形式。settings.menu_card_style 未指定は "card"。 */
+  cardStyle: "card" | "compact";
 }
 
 const ORDER_FALLBACK = 9999;
@@ -266,5 +268,6 @@ export function buildMenuCards(pages: MenuCardSource[]): MenuCard[] {
       label:     resolveMenuLabel({ pageType, title: page.title, settings }),
       icon:      resolveMenuIcon(pageType, settings),
       order,
+      cardStyle: settings?.menu_card_style === "compact" ? "compact" as const : "card" as const,
     }));
 }
