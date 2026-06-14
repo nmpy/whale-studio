@@ -5,13 +5,15 @@ CREATE TABLE "user_consent_logs" (
     "id" TEXT NOT NULL,
     "user_id" TEXT NOT NULL,
     "consent_type" TEXT NOT NULL,
-    "document_version" TEXT,
+    "document_version" TEXT NOT NULL,
     "document_url" TEXT,
     "ip_address" TEXT,
     "user_agent" TEXT,
     "agreed_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT "user_consent_logs_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "user_consent_logs_pkey" PRIMARY KEY ("id"),
+    -- 同意種別はデータ品質のため現状の 2 種に限定（将来追加時はこの CHECK を migration で更新）。
+    CONSTRAINT "user_consent_logs_consent_type_check" CHECK ("consent_type" IN ('terms', 'privacy_policy'))
 );
 
 CREATE INDEX "user_consent_logs_user_id_idx" ON "user_consent_logs"("user_id");

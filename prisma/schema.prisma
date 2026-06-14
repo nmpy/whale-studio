@@ -1740,8 +1740,11 @@ model PrivacyPolicyAcceptance {
 model UserConsentLog {
   id              String   @id @default(uuid())
   userId          String   @map("user_id")
+  /// "terms" | "privacy_policy"。DB 側で CHECK 制約を付与（migration 参照）。
   consentType     String   @map("consent_type")
-  documentVersion String?  @map("document_version")
+  /// 同意した版。監査上「どの版に同意したか」が重要なため non-null（呼び出し側は常に版を渡す）。
+  /// non-null にすることで @@unique が NULL 重複を許す問題も回避する。
+  documentVersion String   @map("document_version")
   documentUrl     String?  @map("document_url")
   ipAddress       String?  @map("ip_address")
   userAgent       String?  @map("user_agent")
@@ -1750,6 +1753,7 @@ model UserConsentLog {
 
   /// 同一ユーザー・同一種別・同一版の同意は 1 行（DB レベルで重複防止＝同時リクエストでも安全）。
   /// 版を上げて再同意した場合は documentVersion が変わるため新規 1 行が積み上がる（監査履歴）。
+  /// documentVersion を non-null にしているため NULL による重複すり抜けは起きない。
   @@unique([userId, consentType, documentVersion])
   @@index([userId])
   @@index([consentType])
