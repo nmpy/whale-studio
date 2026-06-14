@@ -21,6 +21,7 @@ import {
   type LiffPageSummary,
 } from "@/lib/api-client";
 import { LiffMenuHomeRenderer, type LiffMenuHomePage } from "@/components/liff/LiffMenuHomeRenderer";
+import { formatDateTime } from "./_shared";
 
 type CardStyle = "card" | "compact";
 
@@ -33,6 +34,7 @@ interface Row {
   isEnabled:     boolean;
   publishStatus: string;
   createdAt:     string;
+  updatedAt:     string;
   menuLabel:     string | null;
   menuIcon:      string | null;
   cardStyle:     CardStyle;
@@ -71,6 +73,7 @@ function buildRows(pages: LiffPageSummary[]): Row[] {
       isEnabled:     p.is_enabled,
       publishStatus: p.publish_status,
       createdAt:     p.created_at,
+      updatedAt:     p.updated_at,
       menuLabel:     p.menu_label ?? null,
       menuIcon:      p.menu_icon ?? null,
       cardStyle:     p.menu_card_style === "compact" ? "compact" : "card",
@@ -195,7 +198,7 @@ export function HomeTab({ workId, workTitle, pages, isReadOnly, onSaved }: Props
           <ul className="bg-white border border-gray-200 rounded-xl divide-y divide-gray-100 overflow-hidden">
             {rows.map((r, i) => (
               <li key={r.id} className="px-4 py-3 flex items-center gap-3">
-                {/* 並び替え (上下ボタン) */}
+                {/* 並び替え (上下ボタン) — 固定幅 */}
                 <div className="flex flex-col gap-0.5 shrink-0">
                   <button
                     type="button"
@@ -217,16 +220,17 @@ export function HomeTab({ workId, workTitle, pages, isReadOnly, onSaved }: Props
                   </button>
                 </div>
 
+                {/* 順番番号 — 固定幅 */}
                 <span className="shrink-0 w-6 text-center text-[12px] font-bold text-gray-400 tabular-nums">{i + 1}</span>
 
-                {/* タイトル + ステータス */}
+                {/* ページ情報 — 可変幅。タイトルだけを truncate し、バッジは潰さない。 */}
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-[14px] font-semibold text-gray-900 truncate">
+                  <div className="flex items-center gap-2">
+                    <span className="min-w-0 truncate text-[14px] font-semibold text-gray-900">
                       {r.menuLabel?.trim() || r.title?.trim() || "（無題）"}
                     </span>
                     <span
-                      className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                      className={`shrink-0 whitespace-nowrap text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
                         r.publishStatus === "published"
                           ? "bg-green-50 text-green-700 border border-green-200"
                           : r.publishStatus === "archived"
@@ -237,20 +241,23 @@ export function HomeTab({ workId, workTitle, pages, isReadOnly, onSaved }: Props
                       {PUBLISH_BADGE[r.publishStatus] ?? r.publishStatus}
                     </span>
                     {!r.isEnabled && (
-                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500 border border-gray-200">
+                      <span className="shrink-0 whitespace-nowrap text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500 border border-gray-200">
                         無効
                       </span>
                     )}
                   </div>
+                  <div className="mt-0.5 text-[11px] text-gray-400 truncate">
+                    更新: {formatDateTime(r.updatedAt)}
+                  </div>
                 </div>
 
-                {/* 表示形式 */}
+                {/* 表示形式 — 固定幅。ページ情報を潰さない。 */}
                 <select
                   value={r.cardStyle}
                   onChange={(e) => setCardStyle(r.id, e.target.value as CardStyle)}
                   disabled={isReadOnly}
                   aria-label="表示形式"
-                  className="shrink-0 px-2 py-1 border border-gray-200 rounded-md text-xs bg-white disabled:bg-gray-50"
+                  className="shrink-0 w-32 px-2 py-1.5 border border-gray-200 rounded-md text-xs bg-white disabled:bg-gray-50"
                 >
                   <option value="card">カード</option>
                   <option value="compact">コンパクト</option>
