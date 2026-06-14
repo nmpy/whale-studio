@@ -14,6 +14,7 @@ import { withAuth } from "@/lib/auth";
 import { acceptPrivacyPolicySchema } from "@/lib/validations/onboarding";
 import { getCurrentPrivacyPolicyDocument } from "@/lib/policy-document";
 import { formatZodErrors } from "@/lib/validations";
+import { appendConsentLogOnce, CONSENT_TYPE, clientIpFromHeaders } from "@/lib/consent";
 import { ZodError } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -46,6 +47,14 @@ export const POST = withAuth(async (req, _ctx, user) => {
         // 同じ (userId, privacyPolicyVersion) で重複同意した場合は何もしない
         // (= 既存 acceptedAt を維持して履歴として残す)
       },
+    });
+
+    // 監査用の同意ログも残す（冪等）。
+    await appendConsentLogOnce(prisma, {
+      userId:          user.id,
+      consentType:     CONSENT_TYPE.PRIVACY_POLICY,
+      documentVersion: data.privacy_policy_version,
+      meta: { ipAddress: clientIpFromHeaders(req.headers), userAgent: req.headers.get("user-agent") },
     });
 
     return created({

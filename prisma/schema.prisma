@@ -1731,6 +1731,36 @@ model PrivacyPolicyAcceptance {
   @@map("privacy_policy_acceptances")
 }
 
+/// 同意ログ（監査用・追記型）。利用規約 / プライバシーポリシーへの同意を、
+/// 同意日時・IP・User-Agent・ドキュメントバージョン・該当 URL とともに記録する。
+/// - userId は Supabase auth.users.id を文字列で保持（他テーブルと同方針で Prisma relation は張らない）。
+/// - consentType: "terms" | "privacy_policy"（将来の再同意・他種別に拡張しやすいよう文字列で保持）。
+/// - 集計用の TermsAcceptance / PrivacyPolicyAcceptance（同意ゲート判定）とは別に、
+///   いつ・どの版に・どこから同意したかの監査ログとして残す。
+model UserConsentLog {
+  id              String   @id @default(uuid())
+  userId          String   @map("user_id")
+  /// "terms" | "privacy_policy"。DB 側で CHECK 制約を付与（migration 参照）。
+  consentType     String   @map("consent_type")
+  /// 同意した版。監査上「どの版に同意したか」が重要なため non-null（呼び出し側は常に版を渡す）。
+  /// non-null にすることで @@unique が NULL 重複を許す問題も回避する。
+  documentVersion String   @map("document_version")
+  documentUrl     String?  @map("document_url")
+  ipAddress       String?  @map("ip_address")
+  userAgent       String?  @map("user_agent")
+  agreedAt        DateTime @default(now()) @map("agreed_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  /// 同一ユーザー・同一種別・同一版の同意は 1 行（DB レベルで重複防止＝同時リクエストでも安全）。
+  /// 版を上げて再同意した場合は documentVersion が変わるため新規 1 行が積み上がる（監査履歴）。
+  /// documentVersion を non-null にしているため NULL による重複すり抜けは起きない。
+  @@unique([userId, consentType, documentVersion])
+  @@index([userId])
+  @@index([consentType])
+  @@index([agreedAt])
+  @@map("user_consent_logs")
+}
+
 /// 規約文書 (= 利用規約 / プライバシーポリシー) のバージョン管理。
 ///
 /// 設計方針:
