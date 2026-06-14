@@ -9,7 +9,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { getAuthHeaders } from "@/lib/api-client";
+import { getAuthHeaders, fetchOaLiffId } from "@/lib/api-client";
+import { buildLiffCheckinUrl } from "@/lib/liff/config";
 import { buttonClass } from "@/components/shared";
 import { requiresGps, includesQr } from "@/lib/checkin-mode";
 
@@ -47,6 +48,21 @@ export function CheckpointList({
   const [error, setError] = useState<string | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [mode, setMode] = useState<ModeFilter>("all");
+  // チェックインURLコピー用。liffId は URL 生成専用に OA.liffId を取得（未設定なら null＝コピー不可表示）。
+  const [liffId, setLiffId] = useState<string | null | undefined>(undefined);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  useEffect(() => { fetchOaLiffId(oaId).then(setLiffId).catch(() => setLiffId(null)); }, [oaId]);
+
+  async function copyCheckinUrl(c: Checkpoint) {
+    const url = buildLiffCheckinUrl({ liffId, workId: c.work_id, locationId: c.id });
+    if (!url) return;
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopiedId(c.id);
+      window.setTimeout(() => setCopiedId((prev) => (prev === c.id ? null : prev)), 1800);
+    } catch { /* コピー失敗時も画面は壊さない */ }
+  }
 
   const load = useCallback(async () => {
     try {
@@ -143,6 +159,19 @@ export function CheckpointList({
                         className={`rounded-full px-3 py-1 text-[12px] font-semibold transition-colors ${c.is_active ? "bg-brand-soft text-brand-ink hover:bg-brand/15" : "bg-line/60 text-ink-3 hover:bg-line"}`}
                       >
                         {c.is_active ? "有効" : "無効"}
+                      </button>
+                    )}
+                    {liffId === null ? (
+                      <span className="rounded-full bg-line/40 px-3 py-1 text-[11px] font-semibold text-ink-3" title="OA の LIFF ID が未設定のため、チェックインURLを生成できません">LIFF ID未設定</span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => copyCheckinUrl(c)}
+                        disabled={liffId === undefined}
+                        className={buttonClass({ variant: "ghost", size: "sm" })}
+                        title="現地のチェックインURL（QR/GPS共通）をコピーします"
+                      >
+                        {copiedId === c.id ? "コピーしました" : "URLをコピー"}
                       </button>
                     )}
                     {includesQr(c.checkin_mode) && (
