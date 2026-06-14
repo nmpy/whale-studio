@@ -677,6 +677,33 @@ const hintText = {
   marginTop: 3,
 } as const;
 
+// 長めの補足説明を「詳細」トグルに畳む（UI のみ・既定は閉じる）。
+// 警告/エラーに見えないよう、トグル・本文とも薄いグレー・本文より控えめなサイズにする。
+function HelpDetails({ children, label = "詳細" }: { children: React.ReactNode; label?: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div style={{ marginTop: 3 }}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        style={{
+          display: "inline-flex", alignItems: "center", gap: 3, padding: 0,
+          background: "none", border: "none", cursor: "pointer",
+          fontSize: 11, color: "#9ca3af", fontWeight: 500,
+        }}
+      >
+        {label}<span style={{ fontSize: 8 }} aria-hidden="true">{open ? "▲" : "▼"}</span>
+      </button>
+      {open && (
+        <div style={{ marginTop: 3, fontSize: 11, color: "#9ca3af", lineHeight: 1.7 }}>
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ────────────────────────────────────────────────────────
 // クイックリプライ — 定数
 // ────────────────────────────────────────────────────────
@@ -2568,9 +2595,9 @@ function TimingConfigSection<T extends TimingFormFields>({
             </div>
           )}
           {isAdditional && (
-            <div style={{ ...hintText, color: "#92400e", marginTop: -4 }}>
-              ※ 既読遅延は現在、最初のメッセージにのみ実機反映されます。「入力中...」表示は反映されます。
-            </div>
+            <HelpDetails label="詳細（既読遅延の反映について）">
+              既読遅延は現在、最初のメッセージにのみ実機反映されます。「入力中...」表示は反映されます。
+            </HelpDetails>
           )}
 
           {/* ── 旧「送信前の待機時間（画面には表示されません）」(= typing 風の不可視 sleep) は UI から撤去 ──
@@ -2597,9 +2624,9 @@ function TimingConfigSection<T extends TimingFormFields>({
             </select>
           </div>
           {isAdditional && form.loading_enabled === "true" && (
-            <div style={{ ...hintText, color: "#92400e", marginTop: -4 }}>
-              ※ 「入力中...」表示は LINE 側の挙動 (最小 5 秒・1 チャットに 1 つ) により、連続メッセージそれぞれの直前に必ず表示されるとは限りません (= best-effort)。確実に「間」を作りたい場合は「前のメッセージからの待機時間」を設定してください。
-            </div>
+            <HelpDetails label="詳細（「入力中...」表示の挙動）">
+              「入力中...」表示は LINE 側の挙動（最小 5 秒・1 チャットに 1 つ）により、連続メッセージそれぞれの直前に必ず表示されるとは限りません（best-effort）。確実に「間」を作りたい場合は「前のメッセージからの待機時間」を設定してください。
+            </HelpDetails>
           )}
           {form.loading_enabled === "true" && (
             <>
@@ -2655,10 +2682,11 @@ function TimingConfigSection<T extends TimingFormFields>({
             未設定の項目はデフォルト設定（環境変数）を継承します
           </div>
 
-          {/* 演出は「このメッセージ送信前」にのみ反映される旨の誤解防止文言（まとめ送信廃止方針・Phase 1）。 */}
-          <div style={{ marginTop: 8, padding: "8px 10px", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 6, fontSize: 11, color: "#1e40af", lineHeight: 1.6 }}>
+          {/* 演出は「このメッセージ送信前」にのみ反映される旨の誤解防止文言（まとめ送信廃止方針・Phase 1）。
+              常時の青ボックスは目立つため「詳細」トグル（薄いグレー）に格納する（文言は維持）。 */}
+          <HelpDetails label="詳細（演出が反映されるタイミング）">
             待機時間・入力中表示は、<strong>このメッセージを送信する前</strong>に反映されます。次のメッセージにも演出を入れたい場合は、Quick Reply やキーワードなど、<strong>ユーザー操作を挟んで</strong>次のメッセージへ進めてください。
-          </div>
+          </HelpDetails>
       </div>
     </SectionAccordion>
   );
