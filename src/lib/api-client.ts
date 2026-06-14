@@ -955,6 +955,29 @@ export const uploadApi = {
     });
     return parseResponse(res);
   },
+
+  /**
+   * 動画 / 音声を Supabase Storage（bucket: image / media 配下）へアップロードして public URL を返す。
+   * POST /api/upload/media — multipart/form-data { file, mediaType, oaId, workId }
+   * 既存の画像アップロード（uploadImage / uploadToStorage）には影響しない。
+   */
+  async uploadMedia(
+    token: string,
+    file:  File,
+    meta:  { mediaType: "video" | "audio"; oaId: string; workId: string }
+  ): Promise<{ url: string }> {
+    const body = new FormData();
+    body.append("file",      file);
+    body.append("mediaType", meta.mediaType);
+    body.append("oaId",      meta.oaId);
+    body.append("workId",    meta.workId);
+    const res = await fetch("/api/upload/media", {
+      method:  "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body,
+    });
+    return parseResponse(res);
+  },
 };
 
 // ────────────────────────────────────────────────

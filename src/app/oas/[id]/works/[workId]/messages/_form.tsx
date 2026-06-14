@@ -21,6 +21,7 @@ import type { TapMode } from "@/components/destination/TapDestinationSection";
 import { LinkPicker, LinkCopyList, useWorkLinkOptions, type LinkOption } from "@/components/destination/LinkPicker";
 import { detectTapMode } from "@/lib/message-destination-utils";
 import { RequiredMark } from "@/components/RequiredMark";
+import { MediaUploadButton } from "@/components/MediaUploadButton";
 import { destinationApi } from "@/lib/api-client";
 import type { LineDestination } from "@/types";
 import { normalizeFlexJson, prettyFlexJson, FLEX_SIMULATOR_URL, FLEX_ERRORS } from "@/lib/flex";
@@ -4615,6 +4616,13 @@ export function MessageForm({
                     placeholder="https://example.com/video.mp4"
                     style={{ fontFamily: "monospace", fontSize: 13 }}
                   />
+                  {/* 直接アップロード（成功時に上の URL 欄へ反映）。手入力も引き続き可能。 */}
+                  <MediaUploadButton
+                    mediaType="video"
+                    oaId={oaId}
+                    workId={workId}
+                    onUploaded={(url) => set("asset_url", url)}
+                  />
                   {/* 再生確認用プレーヤー（http(s) URL のときのみ）。読み込み失敗してもクラッシュしない。 */}
                   {/^https?:\/\//i.test(form.asset_url.trim()) && (
                     <div style={{ marginTop: 10 }}>
@@ -4826,6 +4834,13 @@ export function MessageForm({
                     onChange={(e) => set("asset_url", e.target.value)}
                     placeholder="https://example.com/audio.m4a"
                     style={{ fontFamily: "monospace", fontSize: 13 }}
+                  />
+                  {/* 直接アップロード（成功時に上の URL 欄へ反映）。手入力も引き続き可能。 */}
+                  <MediaUploadButton
+                    mediaType="audio"
+                    oaId={oaId}
+                    workId={workId}
+                    onUploaded={(url) => set("asset_url", url)}
                   />
                   <div style={hintText}>
                     LINE が対応する音声形式: M4A (AAC)・最大60秒
