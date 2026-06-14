@@ -81,7 +81,7 @@ export function OnboardingProgress({
   return (
     // 共通 Accordion でラップし、デザインガイド §4「Accordion」+ §6「ヘルプを開きっぱなし NG」に揃える。
     // defaultOpen=false で初期は閉じた状態。summary で進捗 (件数 + %) を閉じたまま見せる。
-    <div style={{ marginBottom: 20, position: "relative" }}>
+    <div style={{ marginBottom: 16, position: "relative" }}>
       {/* 非表示ボタン: Accordion ヘッダーの上に absolute 配置。クリック時に Accordion 開閉は発生させない (stopPropagation)。 */}
       <button
         onClick={(e) => { e.stopPropagation(); dismiss(); }}
@@ -92,7 +92,7 @@ export function OnboardingProgress({
         ✕
       </button>
       <Accordion
-        title="セットアップの進捗"
+        title={<span style={{ color: "#9ca3af", fontWeight: 500, fontSize: 12 }}>セットアップの進捗</span>}
         summary={`${doneCount} / ${STEPS.length} 完了（${pct}%）`}
         helpTone
         defaultOpen={false}
@@ -100,7 +100,7 @@ export function OnboardingProgress({
         {/* プログレスバー */}
         <div
           className="rounded-full overflow-hidden bg-neutral-200 mt-1"
-          style={{ height: 5, marginBottom: 12 }}
+          style={{ height: 4, marginBottom: 10 }}
         >
           <div
             className="h-full rounded-full bg-gradient-to-r from-sky-400 to-emerald-400"
@@ -127,12 +127,12 @@ export function OnboardingProgress({
                   "flex items-center rounded-xl transition-colors",
                   isNext ? "bg-white border border-sky-200 shadow-sm" : "",
                 ].join(" ")}
-                style={{ gap: 8, padding: isNext ? "7px 10px" : "3px 10px" }}
+                style={{ gap: 8, padding: isNext ? "6px 9px" : "3px 9px" }}
               >
                 {/* アイコン */}
                 <span style={{
                   display: "inline-flex", alignItems: "center", justifyContent: "center",
-                  width: 20, height: 20, borderRadius: "50%", fontSize: 10, fontWeight: 700,
+                  width: 18, height: 18, borderRadius: "50%", fontSize: 10, fontWeight: 700,
                   background: done ? "#dcfce7" : isNext ? "#dbeafe" : "#f3f4f6",
                   color:      done ? "#16a34a" : isNext ? "#1d4ed8" : "#9ca3af",
                   border:     `1px solid ${done ? "#86efac" : isNext ? "#93c5fd" : "#e5e7eb"}`,
@@ -149,7 +149,7 @@ export function OnboardingProgress({
                     isNext ? "font-semibold text-sky-800"    :
                              "text-neutral-400",
                   ].join(" ")}
-                  style={{ fontSize: 12 }}
+                  style={{ fontSize: 11 }}
                 >
                   {i + 1}. {step.label}
                 </span>
