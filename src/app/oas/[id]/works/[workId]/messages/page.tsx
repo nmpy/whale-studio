@@ -623,7 +623,7 @@ export default function MessagesPage() {
     try {
       await workApi.update(getDevToken(), workId, { follow_action: next });
       invalidateBootstrap(oaId, workId);
-      showToast("友だち追加時の動作を変更しました", "success");
+      showToast("あいさつメッセージの設定を変更しました", "success");
     } catch (err) {
       setFollowAction(prev); // ロールバック
       showToast(err instanceof Error ? err.message : "保存に失敗しました", "error");
@@ -822,10 +822,10 @@ export default function MessagesPage() {
       <div className="page-header">
         <div>
           {breadcrumb}
-          <h2>{activeTab === "welcome" ? "あいさつメッセージ" : "メッセージ"}</h2>
+          <h2>{activeTab === "welcome" ? "共通設定" : "メッセージ"}</h2>
           <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 3 }}>
             {activeTab === "welcome"
-              ? "友だち追加・シナリオ開始前に送る特別なメッセージです"
+              ? "作品全体で共通して使う設定を管理します"
               : "フェーズごとに送信するメッセージを管理します"}
           </p>
         </div>
@@ -857,7 +857,7 @@ export default function MessagesPage() {
           </span>
         </button>
         <button type="button" style={tabStyle("welcome")} onClick={() => setActiveTab("welcome")}>
-          👋 あいさつメッセージ
+          ⚙️ 共通設定
           {welcomeMsg?.trim() ? (
             <span style={{
               fontSize: 10, fontWeight: 700,
@@ -880,43 +880,25 @@ export default function MessagesPage() {
       ══════════════════════════════════════════════ */}
       {activeTab === "welcome" && (
         <div style={{ maxWidth: 680 }}>
-          {/* 役割説明バナー */}
-          <div style={{
-            display: "flex", alignItems: "flex-start", gap: 14,
-            background: "linear-gradient(135deg, #ecfdf5 0%, #f0f9ff 100%)",
-            border: "1px solid #a7f3d0",
-            borderRadius: 12, padding: "18px 20px", marginBottom: 24,
-          }}>
-            <span style={{ fontSize: 32, flexShrink: 0 }}>👋</span>
-            <div>
-              <p style={{ fontWeight: 700, fontSize: 14, color: "#065f46", margin: "0 0 6px" }}>
-                あいさつメッセージとは
-              </p>
-              <p style={{ fontSize: 13, color: "#047857", margin: 0, lineHeight: 1.7 }}>
-                友だち追加直後・シナリオ未開始のユーザーが最初に受け取る特別なメッセージです。
-                通常のシナリオメッセージとは別に管理されており、<strong>「はじめる」と送る前</strong>に自動で届きます。
-              </p>
-              <div style={{ display: "flex", gap: 16, marginTop: 10, flexWrap: "wrap" }}>
-                {[
-                  { text: "友だち追加時に自動送信" },
-                  { text: "シナリオ開始前の一度きり" },
-                  { text: "このタブで作成・編集可能" },
-                ].map(({ text }) => (
-                  <span key={text} style={{
-                    display: "inline-flex", alignItems: "center", gap: 5,
-                    fontSize: 11, color: "#059669", fontWeight: 600,
-                  }}>
-                    {text}
-                  </span>
-                ))}
-              </div>
-            </div>
+          {/* この画面の使い方（共通設定の上部に表示）。あいさつメッセージ＋デフォルト設定の概要。 */}
+          <div style={{ marginBottom: 24 }}>
+            <HelpAccordion items={[
+              { title: "あいさつメッセージ", points: [
+                "友だち追加時に送信するメッセージと、その後の動作を設定できます",
+                "「はじめる」と送る前に自動で届く、シナリオ開始前の一度きりのメッセージです",
+                "未設定のときはシステムの既定文が使われます",
+                "OA Manager 側のあいさつメッセージが ON だと二重送信になる可能性があるため、Whale Studio 側で管理する場合は OA Manager 側を OFF にしてください",
+              ]},
+              { title: "デフォルト設定", points: [
+                "作品全体にあらかじめ適用する初期値・挙動（途中再開など）を設定できます",
+              ]},
+            ]} />
           </div>
 
-          {/* 友だち追加時の動作（作品単位）。welcome_wait のときだけ下のあいさつ設定が有効。 */}
+          {/* あいさつメッセージ（作品単位）。welcome_wait のときだけ下のあいさつ設定が有効。 */}
           <div className="card" style={{ padding: "20px 24px", marginBottom: 24 }}>
             <p style={{ fontWeight: 700, fontSize: 14, color: "#111827", margin: "0 0 4px" }}>
-              友だち追加時の動作
+              あいさつメッセージ
             </p>
             <p style={{ fontSize: 12, color: "#6b7280", margin: "0 0 14px", lineHeight: 1.7 }}>
               友だち追加（フォロー）された直後の挙動を作品単位で選べます。
@@ -1079,29 +1061,41 @@ export default function MessagesPage() {
               </div>
             )}
           </div>
-          ) : (
-            <div className="card" style={{ padding: "16px 24px" }}>
-              <p style={{ fontSize: 13, color: "#6b7280", margin: 0, lineHeight: 1.8 }}>
-                {followAction === "auto_start"
-                  ? "現在は「すぐにシナリオを開始する」設定です。友だち追加直後に本編が始まるため、あいさつメッセージは送信されません。保存済みのあいさつメッセージは削除されず保持されます。あいさつメッセージを使う場合は、上の「友だち追加時の動作」で「あいさつメッセージを送って『はじめる』を待つ」を選択してください。"
-                  : "現在は「何もしない」設定です。友だち追加時には何も送信されません。保存済みのあいさつメッセージは削除されず保持されます。あいさつメッセージを使う場合は、上の「友だち追加時の動作」で「あいさつメッセージを送って『はじめる』を待つ」を選択してください。"}
-              </p>
-            </div>
-          )}
+          ) : null}
 
-          {/* 使い方ガイド */}
-          <HelpAccordion items={[
-            { title: "あいさつメッセージの使い方", points: [
-              "「今日からあなたの相棒になる物語体験へようこそ！」のような導入文を設定します",
-              "シナリオの世界観・始め方をユーザーに伝える場として活用してください",
-              "「はじめる」と送ることでシナリオが開始される旨を明記すると分かりやすいです",
-            ]},
-            { title: "編集場所について", points: [
-              "あいさつメッセージはこのタブ内で作成・編集・解除できます（作品単位の設定です）",
-              "未設定のときはシステムの既定文が使われます",
-              "OA Manager 側のあいさつメッセージが ON だと二重送信になる可能性があるため、Whale Studio 側で管理する場合は OA Manager 側を OFF にしてください",
-            ]},
-          ]} />
+          {/* デフォルト設定（作品単位）。共通設定の一部として あいさつメッセージ の下に表示（messages タブから移設）。 */}
+          <div className="card" style={{ padding: "16px 24px", marginTop: 24 }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: "#111827", marginBottom: 8 }}>
+              デフォルト設定
+            </div>
+            <label
+              style={{
+                display: "flex", alignItems: "flex-start", gap: 8,
+                cursor: canEdit && !savingResume ? "pointer" : "default",
+                opacity: canEdit ? 1 : 0.6,
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={resumeEnabled}
+                disabled={!canEdit || savingResume}
+                onChange={(e) => handleToggleResume(e.target.checked)}
+                style={{ marginTop: 3, flexShrink: 0 }}
+              />
+              <span>
+                <span style={{ fontSize: 13, fontWeight: 600, color: "#374151" }}>
+                  途中再開を有効にする
+                </span>
+                {savingResume && (
+                  <span style={{ fontSize: 11, color: "#9ca3af", marginLeft: 8 }}>保存中…</span>
+                )}
+                <span style={{ display: "block", fontSize: 12, color: "#6b7280", marginTop: 2, lineHeight: 1.6 }}>
+                  ユーザーがフェーズの途中で開始トリガーを再送したときに、「途中から再開する / 最初からやり直す」を表示します。
+                  無効にすると、途中状態があっても選択肢を出さず、最初から開始します。
+                </span>
+              </span>
+            </label>
+          </div>
         </div>
       )}
 
@@ -1109,42 +1103,7 @@ export default function MessagesPage() {
           タブ: メッセージ
       ══════════════════════════════════════════════ */}
       {activeTab === "messages" && (<>
-      {/* ── デフォルト設定（作品単位） ── */}
-      <div
-        className="card"
-        style={{ padding: "12px 16px", marginBottom: 16, borderTop: "3px solid #e0e7ff" }}
-      >
-        <div style={{ fontSize: 13, fontWeight: 700, color: "#374151", marginBottom: 8 }}>
-          デフォルト設定
-        </div>
-        <label
-          style={{
-            display: "flex", alignItems: "flex-start", gap: 8,
-            cursor: canEdit && !savingResume ? "pointer" : "default",
-            opacity: canEdit ? 1 : 0.6,
-          }}
-        >
-          <input
-            type="checkbox"
-            checked={resumeEnabled}
-            disabled={!canEdit || savingResume}
-            onChange={(e) => handleToggleResume(e.target.checked)}
-            style={{ marginTop: 3, flexShrink: 0 }}
-          />
-          <span>
-            <span style={{ fontSize: 13, fontWeight: 600, color: "#374151" }}>
-              途中再開を有効にする
-            </span>
-            {savingResume && (
-              <span style={{ fontSize: 11, color: "#9ca3af", marginLeft: 8 }}>保存中…</span>
-            )}
-            <span style={{ display: "block", fontSize: 12, color: "#6b7280", marginTop: 2, lineHeight: 1.6 }}>
-              ユーザーがフェーズの途中で開始トリガーを再送したときに、「途中から再開する / 最初からやり直す」を表示します。
-              無効にすると、途中状態があっても選択肢を出さず、最初から開始します。
-            </span>
-          </span>
-        </label>
-      </div>
+      {/* デフォルト設定（作品単位）は「共通設定」タブへ移設済み。 */}
 
       {/* ── 初回ガイド（メッセージ未作成時） ── */}
       {!loading && messages.length === 0 && (
