@@ -2166,3 +2166,32 @@ export interface CreateXPostBody {
   sort_order?: number;
 }
 export type UpdateXPostBody = CreateXPostBody;
+
+// ── X投稿 流入分析（PR2）──────────────────────────────
+export interface XPostAnalyticsRow {
+  id: string;
+  title: string | null;
+  body_excerpt: string;
+  x_post_url: string | null;
+  tracking_url: string | null;
+  hashtags: string[];
+  click_count: number;
+  unique_click_count: number;
+  cv_count: number;
+  /** CV / clicks。クリック0は null（UIで「-」） */
+  cvr: number | null;
+  last_clicked_at: string | null;
+}
+export interface XPostAnalytics {
+  summary: {
+    post_count: number;
+    tracking_issued_count: number;
+    total_clicks: number;
+    total_unique_clicks: number;
+    total_cv: number;
+    avg_cvr: number | null;
+    last_clicked_at: string | null;
+  };
+  rows: XPostAnalyticsRow[];
+  ranking: { rank: number; id: string; title: string | null; cvr: number | null; cv_count: number; click_count: number }[];
+}
