@@ -17,3 +17,7 @@ CREATE TABLE "user_consent_logs" (
 CREATE INDEX "user_consent_logs_user_id_idx" ON "user_consent_logs"("user_id");
 CREATE INDEX "user_consent_logs_consent_type_idx" ON "user_consent_logs"("consent_type");
 CREATE INDEX "user_consent_logs_agreed_at_idx" ON "user_consent_logs"("agreed_at");
+
+-- 同一 (user_id, consent_type, document_version) は 1 行に制限（DB レベルで重複防止）。
+-- 新規テーブルのため既存データへの影響なし。
+CREATE UNIQUE INDEX "user_consent_logs_user_id_consent_type_document_version_key" ON "user_consent_logs"("user_id", "consent_type", "document_version");

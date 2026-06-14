@@ -33,7 +33,11 @@ export function consentDocumentUrl(consentType: ConsentType): string {
   return consentType === CONSENT_TYPE.PRIVACY_POLICY ? `${base}/privacy` : `${base}/terms`;
 }
 
-/** 同意ログを 1 件追記する。同一 (userId, consentType, documentVersion) のログが既にあればスキップ（冪等）。 */
+/** 同意ログを 1 件追記する（冪等）。
+ *  重複防止は 2 段構え:
+ *    1. DB の UNIQUE 制約 @@unique([userId, consentType, documentVersion]) が最終保証（同時リクエストでも 1 行）。
+ *    2. 事前 findFirst で通常時の無駄な insert を回避。
+ *  同時実行で UNIQUE 違反 (P2002) になった場合は「既に記録済み」とみなして握りつぶす。 */
 export async function appendConsentLogOnce(
   db: Db,
   args: { userId: string; consentType: ConsentType; documentVersion: string; meta?: ConsentMeta; agreedAt?: Date },
@@ -43,17 +47,23 @@ export async function appendConsentLogOnce(
     select: { id: true },
   });
   if (existing) return;
-  await db.userConsentLog.create({
-    data: {
-      userId:          args.userId,
-      consentType:     args.consentType,
-      documentVersion: args.documentVersion,
-      documentUrl:     consentDocumentUrl(args.consentType),
-      ipAddress:       args.meta?.ipAddress ?? null,
-      userAgent:       args.meta?.userAgent ?? null,
-      ...(args.agreedAt ? { agreedAt: args.agreedAt } : {}),
-    },
-  });
+  try {
+    await db.userConsentLog.create({
+      data: {
+        userId:          args.userId,
+        consentType:     args.consentType,
+        documentVersion: args.documentVersion,
+        documentUrl:     consentDocumentUrl(args.consentType),
+        ipAddress:       args.meta?.ipAddress ?? null,
+        userAgent:       args.meta?.userAgent ?? null,
+        ...(args.agreedAt ? { agreedAt: args.agreedAt } : {}),
+      },
+    });
+  } catch (e) {
+    // 同時実行などで UNIQUE 違反 → 既に同一 (userId, consentType, version) が存在する＝冪等的に成功扱い。
+    if ((e as { code?: string })?.code === "P2002") return;
+    throw e;
+  }
 }
 
 /**

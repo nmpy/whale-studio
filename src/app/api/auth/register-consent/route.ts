@@ -8,6 +8,19 @@
 //   - email / password の検証・ハッシュ化は Supabase Auth が担う（このルートは signUp 成功後に呼ばれる）。
 //   - メール確認 ON でセッションが取れない場合は、signUp の user_metadata に同意情報を載せ、
 //     初回認証時に onboarding ガード側で materialize する（このルートは呼ばれない）。
+//
+// 【同意必須化の保証範囲】(重要)
+//   本 PR が保証するのは「Whale Studio の登録 UI およびアプリ利用開始時に、ユーザー名・利用規約同意・
+//   プライバシーポリシー同意を必須にする」こと。具体的には:
+//     (a) 登録 UI（/login register）で未同意なら登録ボタンを通さない（クライアント検証）。
+//     (b) 本ルートでサーバー側でも同意必須を再チェック（terms_agreed/privacy_agreed === true）。
+//     (c) 仮にクライアントを改変して supabase.auth.signUp() を直接叩き、同意なしで auth.users だけ
+//         作られても、onboarding ガード（enforceOnboarding）が TermsAcceptance/PrivacyPolicyAcceptance
+//         未取得のユーザーを /onboarding/terms へ強制し、利用開始前に必ず同意を求める（最終バックストップ）。
+//   Supabase の auth.users 作成「自体」を同意前に完全ブロックするには、service-role を使った
+//   サーバーサイド登録 API 化（client signUp 廃止 + メール確認メールの自前送信）が必要で、本 PR の
+//   スコープ外（必要なら別 PR）。同意なしの auth user が一時的に存在しても、上記 (c) により
+//   アプリ利用は同意なしには開始できない。
 
 import { created, badRequest, serverError } from "@/lib/api-response";
 import { withAuth } from "@/lib/auth";

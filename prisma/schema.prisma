@@ -1748,6 +1748,9 @@ model UserConsentLog {
   agreedAt        DateTime @default(now()) @map("agreed_at")
   createdAt       DateTime @default(now()) @map("created_at")
 
+  /// 同一ユーザー・同一種別・同一版の同意は 1 行（DB レベルで重複防止＝同時リクエストでも安全）。
+  /// 版を上げて再同意した場合は documentVersion が変わるため新規 1 行が積み上がる（監査履歴）。
+  @@unique([userId, consentType, documentVersion])
   @@index([userId])
   @@index([consentType])
   @@index([agreedAt])
