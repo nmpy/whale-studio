@@ -5,7 +5,8 @@
 // PC: 左フォーム / 右地図 sticky の 2カラムレイアウト
 // SP: 縦積み（フォーム → 地図）
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
+import { useParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import { transitionApi, messageApi, phaseApi, getDevToken } from "@/lib/api-client";
 import { Button } from "@/components/shared";
@@ -166,6 +167,26 @@ export function LocationForm({ onSubmit, saving, workId, defaultValues }: Locati
     })();
   }, [workId]);
 
+  // シナリオフロー導線リンク用に、ルートから oaId を取得（全呼び出し元が /oas/[id]/... 配下）。
+  const routeParams = useParams();
+  const oaIdForLinks = (routeParams?.id as string) ?? "";
+
+  // 「発火元フェーズで絞り込む」フィルタ（保存しない・遷移を探しやすくするためだけのUI）。
+  // 既存 transition_id があれば、その遷移元フェーズを初期選択する（読み込み後に1回だけ）。
+  const [fromPhaseFilter, setFromPhaseFilter] = useState<string>(""); // "" = すべてのフェーズ
+  const didInitFilter = useRef(false);
+  useEffect(() => {
+    if (didInitFilter.current || transitions.length === 0) return;
+    didInitFilter.current = true;
+    if (transitionId) {
+      const t = transitions.find((x) => x.id === transitionId);
+      if (t) setFromPhaseFilter(t.from_phase_id);
+    }
+  }, [transitions, transitionId]);
+  const filteredTransitions = fromPhaseFilter
+    ? transitions.filter((t) => t.from_phase_id === fromPhaseFilter)
+    : transitions;
+
   useEffect(() => {
     (async () => {
       // QR 成功時メッセージ選択用。フェーズ名を出すため with_relations を付ける。
@@ -282,6 +303,8 @@ export function LocationForm({ onSubmit, saving, workId, defaultValues }: Locati
   } else if (qrInvolved && qrSuccessMessageId) {
     flowSteps.push(<>QRチェックイン時に、LINEトークへ選択中のメッセージを送信します。</>);
   }
+  // 遷移ステップは常に1行出す（発火する / 未設定 / 未作成 の3状態を明示）。
+  const noTransitionsExist = transitions.length === 0;
   if (selTransition) {
     const fromName = phaseName(selTransition.from_phase_id);
     const toName = selTransition.to_phase?.name ?? phaseName(selTransition.to_phase_id) ?? "?";
@@ -290,14 +313,14 @@ export function LocationForm({ onSubmit, saving, workId, defaultValues }: Locati
         ? <>ユーザーが「<strong>{fromName}</strong>」にいる場合、「<strong>{toName}</strong>」へ進みます。</>
         : <>条件に合う場合、「<strong>{toName}</strong>」へ進みます。</>,
     );
-  } else if ((qrInvolved && (selMessage || qrSuccessMessageId)) || flagsConfigured) {
-    // 何か別の追従挙動があるときだけ、遷移が無い旨を1行で明示する（全くの未設定は下の注記で説明）。
+  } else if (noTransitionsExist) {
+    flowSteps.push(<span style={{ color: "#9ca3af" }}>シナリオ遷移が未作成のため、チェックイン後にフェーズは進みません。</span>);
+  } else {
     flowSteps.push(<span style={{ color: "#9ca3af" }}>シナリオ遷移は発火しません。</span>);
   }
   if (flagsConfigured) {
     flowSteps.push(<>分岐条件（上級者向け設定）を記録します。</>);
   }
-  const noFollowUp = !selTransition && !(qrInvolved && (selMessage || qrSuccessMessageId)) && !flagsConfigured;
 
   return (
     <form onSubmit={handleSubmit}>
@@ -443,23 +466,56 @@ export function LocationForm({ onSubmit, saving, workId, defaultValues }: Locati
               ユーザーが遷移元フェーズにいる場合のみ、指定した遷移が発火します。どちらも任意です。
             </p>
 
-            <div style={groupStyle}>
-              <label style={labelStyle}>チェックイン時に発火する遷移 <span style={subLabel}>— 任意</span></label>
-              <select style={inputStyle} value={transitionId} onChange={(e) => setTransitionId(e.target.value)}>
-                <option value="">発火する遷移なし</option>
-                {transitionId && !transitions.some((t) => t.id === transitionId) && (
-                  <option value={transitionId}>（選択中の遷移: 表示できません）</option>
-                )}
-                {transitions.map((t) => (
-                  <option key={t.id} value={t.id}>{transitionOptionLabel(t)}</option>
-                ))}
-              </select>
-              <p style={helpStyle}>
-                ユーザーがこのロケーションにチェックインしたときに進めるシナリオ遷移を選びます。
-                遷移元フェーズが現在のフェーズと一致する場合のみ発火します。
-                {transitions.length === 0 && "（この作品にはまだ遷移が定義されていません。シナリオ編集で遷移を作成すると選べます。）"}
-              </p>
-            </div>
+            {transitions.length === 0 ? (
+              // empty state: 作品にシナリオ遷移が未作成。発火元/遷移 select の代わりに案内＋導線を出す。
+              <div style={{ ...groupStyle, padding: "12px 14px", border: "1px solid #e5e7eb", borderRadius: 8, background: "#f9fafb" }}>
+                <p style={{ fontSize: 13, color: "#374151", lineHeight: 1.8, margin: 0 }}>
+                  この作品にはまだシナリオ遷移が作成されていません。<br />
+                  チェックイン後にフェーズを進めたい場合は、先にシナリオフローで遷移を作成してください。
+                </p>
+                <a
+                  href={`/oas/${oaIdForLinks}/works/${workId}/scenario`}
+                  style={{ display: "inline-block", marginTop: 8, fontSize: 12, fontWeight: 600, color: "#2563eb", textDecoration: "none" }}
+                >
+                  シナリオフローで遷移を作成する →
+                </a>
+              </div>
+            ) : (
+              <>
+                {/* 発火元フェーズで絞り込む（保存しない・遷移を探しやすくするためのフィルタ）。 */}
+                <div style={groupStyle}>
+                  <label style={labelStyle}>どのフェーズ中に発火させるか <span style={subLabel}>— 絞り込み（保存されません）</span></label>
+                  <select style={inputStyle} value={fromPhaseFilter} onChange={(e) => setFromPhaseFilter(e.target.value)}>
+                    <option value="">すべてのフェーズ</option>
+                    {phases.map((p) => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                  </select>
+                  <p style={helpStyle}>
+                    ユーザーがこのフェーズにいるときだけ、下で選んだ遷移が発火します。下の遷移候補をこのフェーズ発の遷移に絞り込みます。
+                  </p>
+                </div>
+
+                <div style={groupStyle}>
+                  <label style={labelStyle}>チェックイン時に発火する遷移 <span style={subLabel}>— 任意</span></label>
+                  <select style={inputStyle} value={transitionId} onChange={(e) => setTransitionId(e.target.value)}>
+                    <option value="">発火する遷移なし</option>
+                    {transitionId && !filteredTransitions.some((t) => t.id === transitionId) && (
+                      <option value={transitionId}>
+                        {(() => { const t = transitions.find((x) => x.id === transitionId); return t ? transitionOptionLabel(t) : "（選択中の遷移: 表示できません）"; })()}
+                      </option>
+                    )}
+                    {filteredTransitions.map((t) => (
+                      <option key={t.id} value={t.id}>{transitionOptionLabel(t)}</option>
+                    ))}
+                  </select>
+                  <p style={helpStyle}>
+                    ユーザーが遷移元フェーズにいる場合のみ、この遷移が発火します。
+                    {fromPhaseFilter && filteredTransitions.length === 0 && "（このフェーズ発の遷移はありません。「すべてのフェーズ」に戻すと他の遷移を選べます。）"}
+                  </p>
+                </div>
+              </>
+            )}
 
             <div style={groupStyle}>
               <label style={labelStyle}>QRチェックイン成功時に送るメッセージ <span style={subLabel}>— 任意</span></label>
@@ -491,12 +547,6 @@ export function LocationForm({ onSubmit, saving, workId, defaultValues }: Locati
                   <li key={i} style={{ fontSize: 13, color: "#374151", lineHeight: 1.7 }}>{step}</li>
                 ))}
               </ol>
-              {noFollowUp && (
-                <p style={{ fontSize: 12, color: "#9ca3af", lineHeight: 1.7, margin: "10px 0 0" }}>
-                  チェックイン成功のみ記録され、自動の進行・メッセージ送信はありません。
-                  上の「チェックイン後の進行」で設定を追加できます。
-                </p>
-              )}
             </div>
           </Section>
 
