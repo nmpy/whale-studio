@@ -80,7 +80,7 @@ export function XPostPreviewCard({
                 </div>
               )}
 
-              {/* 画像（角丸・未入力なら非表示） */}
+              {/* 画像（角丸・未入力なら非表示）。見た目上はここで止める。 */}
               {displayImage && (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
@@ -90,26 +90,6 @@ export function XPostPreviewCard({
                   onError={(e) => { e.currentTarget.style.display = "none"; }}
                 />
               )}
-
-              {/* リンクカード風（未入力なら非表示） */}
-              {displayUrl && (
-                <div className="mt-2 overflow-hidden rounded-field border border-line">
-                  <div className="bg-bg-tint px-3 py-2">
-                    <div className="text-[11px] font-semibold text-ink-2">リンク</div>
-                    <div className="truncate font-mono text-[11px] text-ink-3">{displayUrl}</div>
-                  </div>
-                </div>
-              )}
-
-              {/* フッターアイコン風（装飾のみ・数値なし） */}
-              <div className="mt-2.5 flex items-center gap-5 text-ink-3" aria-hidden>
-                {["返信", "リポスト", "いいね", "表示"].map((l) => (
-                  <span key={l} className="flex items-center gap-1 text-[11px]">
-                    <span className="inline-block h-3.5 w-3.5 rounded-full border border-line" />
-                    {l}
-                  </span>
-                ))}
-              </div>
             </div>
           </div>
         </div>
