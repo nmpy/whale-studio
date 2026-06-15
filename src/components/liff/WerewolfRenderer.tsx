@@ -18,6 +18,7 @@ import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import type { LiffPageConfigSettings } from "@/types";
 import { liffRootClass, liffDescriptionAlignClass } from "./liff-style-helpers";
+import { LiffEmptyState } from "./primitives/LiffEmptyState";
 
 export interface WerewolfRendererConfig {
   work_id?:            string;
@@ -101,7 +102,7 @@ export function WerewolfRenderer({ config, preview = false }: Props) {
   }, [config.work_id, config.liff_page_config_id, effectivePreview]);
 
   return (
-    <div className={`liff-font ${liffRootClass(settings)} bg-[color:var(--liff-background)] text-[color:var(--liff-primary-text)]`}>
+    <div className={`liff-font ${liffRootClass(settings)} min-h-screen bg-[color:var(--liff-background)] text-[color:var(--liff-primary-text)]`}>
       <div className="liff-player-main pt-2 pb-8 flex flex-col gap-5">
         {config.description && (
           <p className={`text-[14px] leading-relaxed text-[color:var(--liff-secondary-text)] whitespace-pre-wrap break-words ${liffDescriptionAlignClass(settings)}`}>
@@ -116,14 +117,9 @@ export function WerewolfRenderer({ config, preview = false }: Props) {
           {loading ? (
             <div className="h-16 bg-[color:var(--liff-surface-subtle,#FAFAFA)] rounded-[12px] animate-pulse" />
           ) : !titles || titles.length === 0 ? (
-            <div className="bg-[color:var(--liff-surface)] border border-[color:var(--liff-border)] rounded-[12px] px-4 py-6 text-center">
-              <p className="text-2xl mb-2" aria-hidden="true">🐺</p>
-              <p className="text-[13px] leading-[1.7] text-[color:var(--liff-secondary-text)]">
-                プレイ予定がまだ登録されていません
-              </p>
-            </div>
+            <LiffEmptyState text="プレイ予定がまだ登録されていません" />
           ) : (
-            <ul className="flex flex-col divide-y divide-[color:var(--liff-border)] border border-[color:var(--liff-border)] rounded-[12px] overflow-hidden bg-[color:var(--liff-surface)]">
+            <ul className="flex flex-col divide-y divide-[color:var(--liff-border)] border border-[color:var(--liff-border)] rounded-[18px] shadow-[0_2px_10px_rgba(31,64,92,0.05)] overflow-hidden bg-[color:var(--liff-surface)]">
               {titles.map((t) => (
                 <TitleAccordion key={t.id} title={t} />
               ))}
@@ -134,7 +130,7 @@ export function WerewolfRenderer({ config, preview = false }: Props) {
         {/* マイページ (Phase 3 placeholder) */}
         <section>
           <h2 className="text-[15px] font-bold mb-2 text-[color:var(--liff-primary-text)]">マイページ</h2>
-          <div className="bg-[color:var(--liff-surface-subtle,#FAFAFA)] border border-dashed border-[color:var(--liff-border)] rounded-[12px] px-4 py-5 text-center">
+          <div className="bg-[color:var(--liff-surface)] border border-[color:var(--liff-border)] rounded-[18px] shadow-[0_2px_10px_rgba(31,64,92,0.05)] px-4 py-5 text-center">
             <p className="text-[13px] leading-[1.7] text-[color:var(--liff-secondary-text)]">
               プレイ履歴は今後のアップデートで対応予定です。
             </p>

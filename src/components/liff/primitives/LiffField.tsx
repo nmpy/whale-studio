@@ -50,7 +50,7 @@ const INPUT_ERROR_CLS =
 // 新仕様: radius 16 / padding 18-20 / 薄い境界 (#EEF0F2) で「読み物の中の小さなパネル」感を出す。
 const FIELD_WRAPPER_CLS =
   "bg-[color:var(--liff-surface,#fff)] border border-[color:var(--liff-border,#EEF0F2)] " +
-  "rounded-[16px] px-5 py-4 flex flex-col gap-3";
+  "rounded-[18px] shadow-[0_2px_10px_rgba(31,64,92,0.05)] px-5 py-4 flex flex-col gap-3";
 
 // ── ラベル / ヘルパー ──────────────────────────────────────────────────────
 

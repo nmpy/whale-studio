@@ -90,7 +90,7 @@ export function LiffMenuHomeRenderer({
   const showCredit = shouldShowWhaleStudioCredit(firstSettings);
 
   return (
-    <div className={`liff-font ${liffRootClass(firstSettings)} min-h-screen bg-[#f6f8f7] text-[color:var(--liff-primary-text)]`}>
+    <div className={`liff-font ${liffRootClass(firstSettings)} min-h-screen bg-[color:var(--liff-background)] text-[color:var(--liff-primary-text)]`}>
       {/* ホーム画像（任意）→ 見出し（任意）→ 説明文（任意） の順。
           いずれも未設定なら本ブロックごと描画しない（余白も残さない）。
           画像は横幅いっぱいにしすぎず角丸・縦横比維持で自然に。 */}
@@ -116,7 +116,7 @@ export function LiffMenuHomeRenderer({
       {/* カードグリッド */}
       <div className="liff-player-main pb-6">
         {cards.length === 0 ? (
-          <div className="bg-[color:var(--liff-surface,#fff)] border border-[#eef2f5] rounded-[20px] shadow-[0_6px_20px_rgba(31,64,92,0.06)] px-4 py-10 text-center">
+          <div className="bg-[color:var(--liff-surface,#fff)] border border-[color:var(--liff-border)] rounded-[20px] shadow-[0_6px_20px_rgba(31,64,92,0.06)] px-4 py-10 text-center">
             <p className="text-3xl mb-2">📭</p>
             <p className="text-[15px] leading-[1.6] text-[color:var(--liff-secondary-text)]">
               ホームに表示する項目がまだ登録されていません
@@ -185,8 +185,8 @@ function MenuCardItem({
 
   // 管理画面トーン: 白カード + 薄い境界線 + 控えめな影 + 角丸 + 広いタップ領域。
   const baseCls = isCompact
-    ? "col-span-2 flex flex-row items-center gap-3 text-left bg-[color:var(--liff-surface,#fff)] border border-[#eef2f5] rounded-[14px] px-4 py-3 min-h-[56px] shadow-[0_2px_10px_rgba(31,64,92,0.05)] transition-all active:bg-[color:var(--liff-surface-subtle,#FAFAFA)] active:shadow-none"
-    : "flex flex-col items-start text-left bg-[color:var(--liff-surface,#fff)] border border-[#eef2f5] rounded-[18px] px-4 py-4 min-h-[112px] shadow-[0_2px_10px_rgba(31,64,92,0.05)] transition-all active:bg-[color:var(--liff-surface-subtle,#FAFAFA)] active:shadow-none";
+    ? "col-span-2 flex flex-row items-center gap-3 text-left bg-[color:var(--liff-surface,#fff)] border border-[color:var(--liff-border)] rounded-[14px] px-4 py-3 min-h-[56px] shadow-[0_2px_10px_rgba(31,64,92,0.05)] transition-all active:bg-[color:var(--liff-surface-subtle,#FAFAFA)] active:shadow-none"
+    : "flex flex-col items-start text-left bg-[color:var(--liff-surface,#fff)] border border-[color:var(--liff-border)] rounded-[18px] px-4 py-4 min-h-[112px] shadow-[0_2px_10px_rgba(31,64,92,0.05)] transition-all active:bg-[color:var(--liff-surface-subtle,#FAFAFA)] active:shadow-none";
 
   if (buildPageHref) {
     return (

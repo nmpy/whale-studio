@@ -190,7 +190,7 @@ function HistorySection({
   // 未ログイン案内（preview 中は表示しない）
   if (!preview && !lineUserId) {
     return (
-      <div className="bg-[color:var(--liff-surface)] border border-[color:var(--liff-border)] rounded-[12px] px-4 py-6 text-center">
+      <div className="bg-[color:var(--liff-surface)] border border-[color:var(--liff-border)] rounded-[18px] px-4 py-6 text-center">
         <p className="text-[15px] leading-[1.6] text-[color:var(--liff-secondary-text)]">
           LINE にログインすると、これまでのチェックイン履歴を確認できます。
         </p>
@@ -200,7 +200,7 @@ function HistorySection({
 
   if (loading) {
     return (
-      <div className="bg-[color:var(--liff-surface)] border border-[color:var(--liff-border)] rounded-[12px] px-4 py-6 text-center">
+      <div className="bg-[color:var(--liff-surface)] border border-[color:var(--liff-border)] rounded-[18px] px-4 py-6 text-center">
         <p className="text-[14px] text-[color:var(--liff-secondary-text)]">読み込み中...</p>
       </div>
     );
@@ -208,7 +208,7 @@ function HistorySection({
 
   if (error) {
     return (
-      <div className="bg-[color:var(--liff-surface)] border border-[color:var(--liff-border)] rounded-[12px] px-4 py-6 text-center">
+      <div className="bg-[color:var(--liff-surface)] border border-[color:var(--liff-border)] rounded-[18px] px-4 py-6 text-center">
         <p className="text-[14px] text-[color:var(--liff-danger,#E22B2B)] break-words">{error}</p>
       </div>
     );
@@ -216,7 +216,7 @@ function HistorySection({
 
   if (!items || items.length === 0) {
     return (
-      <div className="bg-[color:var(--liff-surface)] border border-[color:var(--liff-border)] rounded-[12px] px-4 py-6 text-center">
+      <div className="bg-[color:var(--liff-surface)] border border-[color:var(--liff-border)] rounded-[18px] px-4 py-6 text-center">
         <p className="text-3xl mb-2">📍</p>
         <p className="text-[15px] leading-[1.6] text-[color:var(--liff-secondary-text)]">
           まだチェックイン履歴がありません
@@ -237,7 +237,7 @@ function HistorySection({
 function HistoryRow({ item }: { item: HistoryItem }) {
   const distance = formatDistance(item.distance_meters);
   return (
-    <li className="bg-[color:var(--liff-surface)] border border-[color:var(--liff-border)] rounded-[12px] px-4 py-3 flex flex-col gap-1.5">
+    <li className="bg-[color:var(--liff-surface)] border border-[color:var(--liff-border)] rounded-[18px] px-4 py-3 flex flex-col gap-1.5">
       <div className="flex items-start justify-between gap-2">
         <span className="font-bold text-[15px] leading-snug break-words flex-1 min-w-0">
           {item.location_name}

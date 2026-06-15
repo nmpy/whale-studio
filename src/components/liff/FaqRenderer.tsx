@@ -76,7 +76,7 @@ function FaqRow({ item, index }: { item: FaqItem; index: number }) {
     });
   };
   return (
-    <li className="border border-[color:var(--liff-border)] rounded-[16px] overflow-hidden bg-[color:var(--liff-surface)]">
+    <li className="border border-[color:var(--liff-border)] rounded-[18px] shadow-[0_2px_10px_rgba(31,64,92,0.05)] overflow-hidden bg-[color:var(--liff-surface)]">
       <button
         id={headerId}
         type="button"

@@ -99,7 +99,7 @@ export function WerewolfRoleViewer({ data, preview = false, onClose }: Props) {
       {/* ゲーム開始前: 開始待ち案内 */}
       {!data.is_started ? (
         <div className="liff-player-main pb-6">
-          <div className="bg-[color:var(--liff-surface)] border border-[color:var(--liff-border)] rounded-[12px] px-4 py-8 text-center">
+          <div className="bg-[color:var(--liff-surface)] border border-[color:var(--liff-border)] rounded-[18px] px-4 py-8 text-center">
             <p className="text-3xl mb-3" aria-hidden="true">⏳</p>
             <p className="text-[16px] font-bold text-[color:var(--liff-primary-text)] mb-2">
               ゲーム開始までお待ちください
@@ -124,7 +124,7 @@ export function WerewolfRoleViewer({ data, preview = false, onClose }: Props) {
           {/* 配役カード一覧 */}
           <div className="liff-player-main py-4 flex flex-col gap-4">
             {data.cards.length === 0 ? (
-              <div className="bg-[color:var(--liff-surface)] border border-[color:var(--liff-border)] rounded-[12px] px-4 py-8 text-center">
+              <div className="bg-[color:var(--liff-surface)] border border-[color:var(--liff-border)] rounded-[18px] px-4 py-8 text-center">
                 <p className="text-[14px] text-[color:var(--liff-secondary-text)]">
                   配役カードがまだ登録されていません
                 </p>
