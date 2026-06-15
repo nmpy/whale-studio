@@ -1583,6 +1583,76 @@ export const invitationApi = {
 };
 
 // ────────────────────────────────────────────────
+// MemberInvite API — メールアドレス不要の「招待URL」
+// ────────────────────────────────────────────────
+
+export interface MemberInviteRow {
+  id:                  string;
+  oa_id:               string;
+  role:                "admin" | "editor" | "tester" | "viewer";
+  status:              "pending" | "accepted" | "expired" | "revoked";
+  created_by_user_id:  string;
+  accepted_by_user_id: string | null;
+  accepted_at:         string | null;
+  revoked_at:          string | null;
+  expires_at:          string | null;
+  created_at:          string;
+}
+
+export interface MemberInviteCreateResult {
+  id:         string;
+  invite_url: string;
+  role:       string;
+  expires_at: string | null;
+}
+
+export interface MemberInviteValidateResult {
+  valid:   boolean;
+  status:  "pending" | "accepted" | "expired" | "revoked" | "suspended" | "invalid";
+  oa_id?:  string;
+  oa_name?: string;
+  role?:   "admin" | "editor" | "tester" | "viewer";
+}
+
+export const memberInviteApi = {
+  /** 招待URL一覧（admin / owner のみ）。token は返らない。 */
+  async list(token: string, oaId: string): Promise<MemberInviteRow[]> {
+    const res = await fetch(`/api/oas/${oaId}/member-invites`, { headers: authHeaders(token) });
+    return parseResponse(res);
+  },
+  /** 招待URLを発行（admin / owner のみ・email 不要）。発行直後のみ invite_url を返す。 */
+  async create(token: string, oaId: string, body: { role: "admin" | "editor" | "tester" | "viewer"; expires_in?: number }): Promise<MemberInviteCreateResult> {
+    const res = await fetch(`/api/oas/${oaId}/member-invites`, {
+      method:  "POST",
+      headers: authHeaders(token),
+      body:    JSON.stringify(body),
+    });
+    return parseResponse(res);
+  },
+  /** 招待URLを無効化（admin / owner のみ）。 */
+  async revoke(token: string, oaId: string, inviteId: string): Promise<{ id: string; revoked_at: string | null }> {
+    const res = await fetch(`/api/oas/${oaId}/member-invites/${inviteId}`, {
+      method:  "DELETE",
+      headers: authHeaders(token),
+    });
+    return parseResponse(res);
+  },
+  /** 招待URLの検証（公開・認証不要）。 */
+  async validate(inviteToken: string): Promise<MemberInviteValidateResult> {
+    const res = await fetch(`/api/invites/member/${inviteToken}`);
+    return parseResponse(res);
+  },
+  /** 招待URLを承諾してメンバー追加（認証必須）。 */
+  async accept(authToken: string, inviteToken: string): Promise<{ oa_id: string; role: string; already?: boolean }> {
+    const res = await fetch(`/api/invites/member/${inviteToken}/accept`, {
+      method:  "POST",
+      headers: authHeaders(authToken),
+    });
+    return parseResponse(res);
+  },
+};
+
+// ────────────────────────────────────────────────
 // Onboarding API
 // ────────────────────────────────────────────────
 
