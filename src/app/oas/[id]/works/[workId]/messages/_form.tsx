@@ -5481,6 +5481,9 @@ export function MessageForm({
                           </option>
                         ))}
                     </select>
+                    <div style={{ ...hintText, marginTop: 4 }}>
+                      到着時に送信されるメッセージにも待機トリガーを設定すると、次の地点への移動を続けて案内できます。
+                    </div>
                   </div>
 
                   {/* 到着時に進めるフェーズ（任意） */}

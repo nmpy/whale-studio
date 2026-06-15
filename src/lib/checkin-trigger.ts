@@ -81,8 +81,11 @@ export async function armCheckinTriggers(args: {
   lineUserId:     string;
   workId:         string;
   oaId?:          string;
+  /** ログ用の発生源ラベル。"send"=通常送信(applyFreeInputPostEffect) / "arrival-message"=地点到着で送信した次メッセージ（チェーン）。 */
+  source?:        string;
 }): Promise<void> {
   if (args.sentMessageIds.length === 0) return;
+  const source = args.source ?? "send";
   try {
     const msgs = await prisma.message.findMany({
       where: {
@@ -131,7 +134,7 @@ export async function armCheckinTriggers(args: {
       });
       console.info("[checkin-trigger:arm]", JSON.stringify({
         workId: args.workId, userIdPrefix: args.lineUserId.slice(0, 8),
-        locationId, triggerType, sourceMessageId: m.id,
+        locationId, triggerType, sourceMessageId: m.id, source,
       }));
     }
   } catch (err) {
@@ -209,8 +212,23 @@ export async function consumeCheckinTrigger(opts: {
           const vars: PlaceholderVars = { accountName: oa.title };
           const messages = buildKeywordMessages(records, undefined, vars);
           const res = await pushToLine(trig.lineUserId, messages, oa.channelAccessToken);
-          if (res.ok) sentCount = messages.length;
-          else console.error("[checkin-trigger:consume] push 失敗 status=", res.status ?? null);
+          if (res.ok) {
+            sentCount = messages.length;
+            // ── チェーン arm ──
+            // 到着で送信した next メッセージ自身に checkin_trigger があれば、次地点を arm する
+            // （通常送信の post effect と同じ armCheckinTriggers を再利用）。
+            // ここでは pending を1段 作成するだけ＝即時 consume はしない（実到着が必要）ため再帰暴走しない。
+            // 二重 arm は idempotencyKey の upsert で防止。consumed 済みは上の atomic claim で弾かれ本処理に来ない。
+            await armCheckinTriggers({
+              sentMessageIds: records.map((r) => r.id),
+              lineUserId:     trig.lineUserId,
+              workId:         opts.workId,
+              oaId:           trig.oaId,
+              source:         "arrival-message",
+            });
+          } else {
+            console.error("[checkin-trigger:consume] push 失敗 status=", res.status ?? null);
+          }
         }
       }
     }
