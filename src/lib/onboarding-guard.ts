@@ -64,12 +64,15 @@ export async function getOnboardingState(userId: string): Promise<OnboardingRedi
     return { kind: "ok" };
   }
 
-  // 2. 既に OA を所有しているユーザー（= 既存ユーザー or 承認済み）は通過
-  const ownsAnyOa = await prisma.workspaceMember.findFirst({
-    where: { userId, role: "owner", status: "active" },
+  // 2. いずれかの OA に active メンバーとして参加しているユーザーは通過。
+  //    owner はもちろん、招待を受諾した非 owner メンバー（admin/editor/viewer 等）も含む。
+  //    （旧実装は role:"owner" のみ通過のため、招待メンバーが /oas に入れず onboarding に詰まっていた）。
+  //    status が active 以外（pending/inactive/suspended 等）は対象外＝従来どおり onboarding へ誘導。
+  const activeMembership = await prisma.workspaceMember.findFirst({
+    where: { userId, status: "active" },
     select: { workspaceId: true },
   });
-  if (ownsAnyOa) {
+  if (activeMembership) {
     return { kind: "ok" };
   }
 
