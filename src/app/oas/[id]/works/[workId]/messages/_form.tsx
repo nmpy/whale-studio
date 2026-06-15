@@ -5,7 +5,7 @@
 import DurationInput from "@/components/DurationInput";
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { phaseApi, characterApi, riddleApi, messageApi, locationApi, uploadApi, getDevToken } from "@/lib/api-client";
+import { phaseApi, characterApi, riddleApi, messageApi, locationApi, uploadApi, getDevToken, getAuthHeaders } from "@/lib/api-client";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import type { PhaseWithCounts, Character, QuickReplyItem, QuickReplyAction, ReadReceiptMode, LocationWithTransition } from "@/types";
 import { useAccessPreview } from "@/hooks/useAccessPreview";
@@ -740,6 +740,13 @@ const hintText = {
   color: "#9ca3af",
   marginTop: 3,
 } as const;
+
+// 設定ミス防止チェックの通知スタイル（warn=注意 / info=OK / muted=補足）。保存はブロックしない。
+const checkNotice: Record<"warn" | "info" | "muted", React.CSSProperties> = {
+  warn:  { fontSize: 12, lineHeight: 1.6, fontWeight: 600, padding: "8px 10px", borderRadius: 6, background: "#fffbeb", border: "1px solid #fde68a", color: "#92400e" },
+  info:  { fontSize: 12, lineHeight: 1.6, fontWeight: 600, padding: "8px 10px", borderRadius: 6, background: "#f0fdf4", border: "1px solid #bbf7d0", color: "#166534" },
+  muted: { fontSize: 12, lineHeight: 1.6, padding: "8px 10px", borderRadius: 6, background: "#f8fafc", border: "1px solid #e2e8f0", color: "#475569" },
+};
 
 // 長めの補足説明を「詳細」トグルに畳む（UI のみ・既定は閉じる）。
 // 警告/エラーに見えないよう、トグル・本文とも薄いグレー・本文より控えめなサイズにする。
@@ -3556,7 +3563,12 @@ export function MessageForm({
     is_active?: boolean;
     created_at?: string | null;
     free_input_next_message_id?: string | null;
+    // 設定ミス防止: 成功時メッセージにも待機トリガーがあるか（チェーン継続判定）
+    checkin_trigger_type?: string | null;
   }[]>([]);
+
+  // 設定ミス防止チェック用: この work のビーコントリガー（地点紐づけ確認）。
+  const [beaconTriggers, setBeaconTriggers] = useState<{ id: string; name: string; hwid: string; enabled: boolean; location_id: string | null }[]>([]);
 
   // ── 既存メッセージ取り込み（PR3b-2）──
   const [importPicker, setImportPicker] = useState<{ insertIndex: number; appendAtEnd: boolean } | null>(null);
@@ -3611,9 +3623,27 @@ export function MessageForm({
         is_active:                  m.is_active,
         created_at:                 m.created_at,
         free_input_next_message_id: m.free_input_next_message_id,
+        checkin_trigger_type:       m.checkin_trigger_type ?? null,
       })));
     }).catch(() => {});
   }, [workId, oaId]);
+
+  // 設定ミス防止チェック用: ビーコントリガー一覧（地点紐づけ確認）。失敗時は空配列で degrade。
+  useEffect(() => {
+    if (!canUseLocationFeatures) return; // ロケーション機能が無いプランでは不要
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/works/${encodeURIComponent(workId)}/beacons`, { headers: getAuthHeaders() });
+        const json = await res.json();
+        if (cancelled || !json?.success || !Array.isArray(json.data)) return;
+        setBeaconTriggers(json.data.map((b: { id: string; name: string; hwid: string; enabled: boolean; location_id: string | null }) => ({
+          id: b.id, name: b.name, hwid: b.hwid, enabled: b.enabled, location_id: b.location_id ?? null,
+        })));
+      } catch { /* 取得失敗時はビーコン関連の補足を出さない */ }
+    })();
+    return () => { cancelled = true; };
+  }, [workId, canUseLocationFeatures]);
 
   function set<K extends keyof MessageFormState>(k: K, v: MessageFormState[K]) {
     setForm((prev) => ({ ...prev, [k]: v }));
@@ -3622,6 +3652,21 @@ export function MessageForm({
   // プレビュー用 chain (= 上流の親 + 編集中 form + form.additionalMessages を head→tail で並べたもの)。
   // 構築は純関数 buildPreviewChain に切り出し済。空配列なら PreviewPanel は head 1 通のみ描画する。
   const previewChain = buildPreviewChain({ messageId, form, allMessages });
+
+  // ── 設定ミス防止チェック（地点到着トリガー）。警告は保存をブロックしない（補足表示のみ）。──
+  const ctType         = form.checkin_trigger_type;
+  const ctLocationId   = form.checkin_trigger_location_id;
+  const ctNextMsgId    = form.checkin_trigger_next_message_id;
+  const ctNextPhaseId  = form.checkin_trigger_next_phase_id;
+  /** 選択地点に紐づく BeaconTrigger（Beacon 検知で実際に使われるもの）。 */
+  const beaconsForCtLocation = ctLocationId ? beaconTriggers.filter((b) => b.location_id === ctLocationId) : [];
+  /** locationId 未設定の Beacon（地点到着トリガーには使われない）。 */
+  const hasUnlinkedBeacons   = beaconTriggers.some((b) => !b.location_id);
+  /** 成功時メッセージ自身に待機トリガーがあるか（チェーン継続判定）。 */
+  const ctNextMessage        = ctNextMsgId ? allMessages.find((m) => m.id === ctNextMsgId) : null;
+  const ctNextMessageHasChain = !!ctNextMessage?.checkin_trigger_type;
+  /** 次フェーズが現在の自フェーズと同一（不自然な可能性）。 */
+  const ctNextPhaseIsSame    = !!ctNextPhaseId && ctNextPhaseId === form.phase_id;
 
   function insertAtCursor(placeholder: string) {
     const el = bodyTextareaRef.current;
@@ -5507,6 +5552,45 @@ export function MessageForm({
                     <div style={{ ...hintText, marginTop: 4 }}>
                       フェーズを移動すると、その地点チェックインが「次の段階に進む条件」になります。
                     </div>
+                  </div>
+
+                  {/* ── 設定ミス防止チェック（警告・補足。保存はブロックしない）── */}
+                  <div className="form-group" style={{ marginTop: 14, marginBottom: 0, display: "flex", flexDirection: "column", gap: 6 }}>
+                    {/* 対象地点 未選択 */}
+                    {!ctLocationId && (
+                      <div style={checkNotice.warn}>⚠ 対象地点が未設定です。到着判定に使う地点を選択してください。</div>
+                    )}
+                    {/* 成功時メッセージ 未選択 */}
+                    {!ctNextMsgId && (
+                      <div style={checkNotice.warn}>⚠ 成功時メッセージが未設定です。到着後に送信するメッセージを選択してください。</div>
+                    )}
+                    {/* チェーン継続 / 終了 */}
+                    {ctNextMsgId && (
+                      ctNextMessageHasChain
+                        ? <div style={checkNotice.info}>✓ この成功時メッセージにも待機トリガーが設定されています。続けて次の地点待ちにつながります。</div>
+                        : <div style={checkNotice.muted}>このメッセージで地点到着チェーンは終了します。続けて次の地点へ進めたい場合は、成功時メッセージ側にも待機トリガーを設定してください。</div>
+                    )}
+                    {/* Beacon: 地点紐づけ確認 */}
+                    {ctType === "beacon" && ctLocationId && (
+                      beaconsForCtLocation.length === 0
+                        ? <div style={checkNotice.warn}>⚠ この地点に紐づくBeaconがありません。Beacon検知で進行させるには、ビーコン編集画面で同じ地点を紐づけてください。</div>
+                        : (
+                          <div style={checkNotice.info}>
+                            ✓ この地点には {beaconsForCtLocation.length} 件のBeaconが紐づいています。
+                            <div style={{ marginTop: 2, fontWeight: 400 }}>
+                              {beaconsForCtLocation.map((b) => `${b.name}（${b.hwid}${b.enabled ? "" : "・無効"}）`).join(" / ")}
+                            </div>
+                          </div>
+                        )
+                    )}
+                    {/* Beacon: 未紐づけ Beacon の補足 */}
+                    {ctType === "beacon" && hasUnlinkedBeacons && (
+                      <div style={checkNotice.muted}>地点に紐づいていないBeaconは、地点到着トリガーには使用されません。</div>
+                    )}
+                    {/* 次フェーズが自フェーズと同一 */}
+                    {ctNextPhaseIsSame && (
+                      <div style={checkNotice.muted}>進めるフェーズが現在のフェーズと同じです。意図した設定かご確認ください。</div>
+                    )}
                   </div>
                 </>
               )}

@@ -20,6 +20,8 @@ type BeaconTriggerItem = {
   action_type: string;
   last_event_at: string | null;
   last_action_status: string | null;
+  /** 地点到着トリガー用の紐づけ地点。null = 未設定（地点到着トリガーには使われない）。 */
+  location_id?: string | null;
 };
 
 function fmtCooldown(sec: number): string {
@@ -161,6 +163,14 @@ export default function BeaconListPanel({ oaId, workId, showHeading = true }: Pr
                     <span style={{ fontSize: 10, background: "#eef2ff", color: "#4338ca", padding: "2px 8px", borderRadius: 10, fontWeight: 600 }}>
                       {b.action_type}
                     </span>
+                    {!b.location_id && (
+                      <span
+                        title="地点に紐づいていないBeaconは、地点到着トリガー（送信後に地点到着を待つ）には使用されません。"
+                        style={{ fontSize: 10, background: "#fffbeb", color: "#92400e", border: "1px solid #fde68a", padding: "2px 8px", borderRadius: 10, fontWeight: 600 }}
+                      >
+                        地点未設定
+                      </span>
+                    )}
                   </div>
                   <div style={{ fontSize: 12, color: "#6b7280", marginTop: 4 }}>
                     HWID: <code style={{ fontFamily: "ui-monospace, monospace" }}>{b.hwid}</code>

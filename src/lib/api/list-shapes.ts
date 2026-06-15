@@ -72,6 +72,9 @@ export function messageToResponse(m: {
   freeInputEnabled?: boolean;
   freeInputVariableKey?: string | null;
   freeInputNextMessageId?: string | null;
+  // 送信後の待機トリガー（地点到着で自動進行）。一覧ではチェーン継続判定に使う。
+  checkinTriggerType?: string | null;
+  checkinTriggerLocationId?: string | null;
   sortOrder: number; isActive: boolean; createdAt: Date; updatedAt: Date;
   phase?: { id: string; name: string; phaseType: string } | null;
   character?: { id: string; name: string; iconType: string; iconText: string | null; iconImageUrl: string | null; iconColor: string | null } | null;
@@ -130,6 +133,9 @@ export function messageToResponse(m: {
     free_input_enabled:         m.freeInputEnabled         ?? false,
     free_input_variable_key:    m.freeInputVariableKey     ?? null,
     free_input_next_message_id: m.freeInputNextMessageId   ?? null,
+    // 送信後の待機トリガー（地点到着で自動進行）
+    checkin_trigger_type:        m.checkinTriggerType       ?? null,
+    checkin_trigger_location_id: m.checkinTriggerLocationId ?? null,
     sort_order:           m.sortOrder,
     is_active:            m.isActive,
     created_at:           m.createdAt,
