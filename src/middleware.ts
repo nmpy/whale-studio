@@ -34,6 +34,7 @@ const PUBLIC_PREFIXES = [
   "/t/",
   "/tester/",
   "/invite/",
+  "/invites/",
 ];
 
 function isProtected(pathname: string): boolean {

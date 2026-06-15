@@ -50,6 +50,7 @@ model Oa {
   globalCommands     GlobalCommand[]
   hintLogs           HintLog[]
   invitations        Invitation[]
+  memberInvites      MemberInvite[]
   liffSubmissions    LiffSubmission[]
   onboardingEvents   OnboardingEvent[]
   richMenus          RichMenu[]
@@ -905,6 +906,34 @@ model Invitation {
   @@index([token])
   @@index([expiresAt])
   @@map("invitations")
+}
+
+/// メールアドレス不要の「招待URL」(URL を知っている人が参加できる単発招待)。
+/// 既存 Invitation(メール招待)とは別系統。招待された人は初回登録時に自分でメールを登録する。
+/// セキュリティ: 平文 token は DB に保存せず tokenHash(sha256 hex)のみ保存。URL は発行直後のみ表示。
+model MemberInvite {
+  id                String     @id @default(uuid())
+  oaId              String     @map("oa_id")
+  role              MemberRole @default(viewer)
+  /// 平文 token の sha256 hex(64 char)。平文は保存しない。
+  tokenHash         String     @unique @map("token_hash")
+  /// 発行者(Supabase Auth userId / owner|admin)
+  createdByUserId   String     @map("created_by_user_id")
+  /// 受諾したユーザー(Supabase Auth userId)。null = 未受諾。
+  acceptedByUserId  String?    @map("accepted_by_user_id")
+  acceptedAt        DateTime?  @map("accepted_at")
+  /// 無効化日時(null = 有効)
+  revokedAt         DateTime?  @map("revoked_at")
+  /// 有効期限(null = 無期限)。既定は発行から 7 日。
+  expiresAt         DateTime?  @map("expires_at")
+  createdAt         DateTime   @default(now()) @map("created_at")
+  updatedAt         DateTime   @updatedAt @map("updated_at")
+  oa                Oa         @relation(fields: [oaId], references: [id], onDelete: Cascade)
+
+  @@index([oaId])
+  @@index([tokenHash])
+  @@index([expiresAt])
+  @@map("member_invites")
 }
 
 model GlobalCommand {

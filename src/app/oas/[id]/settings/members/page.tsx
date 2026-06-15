@@ -24,6 +24,7 @@ import { useToast } from "@/components/Toast";
 import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
 import { RoleBadge } from "@/components/PermissionGuard";
 import { Breadcrumb } from "@/components/Breadcrumb";
+import { MemberInviteUrlSection } from "./_MemberInviteUrlSection";
 import { StatusBadge, Button, Accordion, buttonClass } from "@/components/shared";
 import type { Role, LiveRole } from "@/lib/types/permissions";
 import { ROLES, ROLE_LABELS, ROLE_DESCRIPTIONS, LIVE_ROLES, LIVE_ROLE_LABELS, LIVE_ROLE_SHORT_LABELS } from "@/lib/types/permissions";
@@ -245,17 +246,21 @@ export default function MembersPage() {
       )}
 
       {section === "invitations" && (
-        <InvitationsSection
-          oaId={oaId}
-          token={token}
-          invitations={invitations}
-          loading={loadingI}
-          isOwner={isOwner}
-          isAdmin={isAdmin}
-          liveEnabled={liveEnabled}
-          onRefresh={fetchInvitations}
-          showToast={showToast}
-        />
+        <>
+          {/* 主導線: メール不要の招待URL発行 */}
+          <MemberInviteUrlSection oaId={oaId} token={token} showToast={showToast} />
+          <InvitationsSection
+            oaId={oaId}
+            token={token}
+            invitations={invitations}
+            loading={loadingI}
+            isOwner={isOwner}
+            isAdmin={isAdmin}
+            liveEnabled={liveEnabled}
+            onRefresh={fetchInvitations}
+            showToast={showToast}
+          />
+        </>
       )}
     </>
   );
