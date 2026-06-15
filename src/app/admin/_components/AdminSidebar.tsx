@@ -23,6 +23,7 @@ const NAV_ITEMS = [
 // platform admin だけに表示する導線 (= isPlatform が true のときのみ描画)。
 // ページ自体の server-side gate / API gate はそのまま維持し、ここは「ナビ表示」のみを制御する。
 const PLATFORM_NAV_ITEMS = [
+  { href: "/admin/users",                     label: "ユーザー一覧" },
   { href: "/admin/personal-plan-permissions", label: "個人プラン権限" },
   { href: "/admin/business-invite-links",     label: "法人プラン権限" },
 ] as const;
