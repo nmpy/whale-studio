@@ -38,6 +38,8 @@ function LoginForm() {
   const [username,        setUsername]         = useState("");
   const [email,           setEmail]            = useState(initialEmail);
   const [password,        setPassword]         = useState("");
+  // パスワード（確認）: 入力ミス防止の client 側のみ。DB / metadata / consent / log には保存しない。
+  const [confirmPassword, setConfirmPassword]  = useState("");
   // 利用規約 / プライバシーポリシー同意（登録時必須）
   const [agreeTerms,      setAgreeTerms]        = useState(false);
   const [agreePrivacy,    setAgreePrivacy]      = useState(false);
@@ -125,6 +127,8 @@ function LoginForm() {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) { setErrorMsg("有効なメールアドレスを入力してください"); setStatus("error"); return; }
     if (!password) { setErrorMsg("パスワードを入力してください"); setStatus("error"); return; }
     if (password.length < 8) { setErrorMsg("パスワードは8文字以上で入力してください"); setStatus("error"); return; }
+    if (!confirmPassword) { setErrorMsg("パスワード（確認）を入力してください"); setStatus("error"); return; }
+    if (password !== confirmPassword) { setErrorMsg("パスワードが一致しません"); setStatus("error"); return; }
     if (!agreeTerms) { setErrorMsg("利用規約への同意が必要です"); setStatus("error"); return; }
     if (!agreePrivacy) { setErrorMsg("プライバシーポリシーへの同意が必要です"); setStatus("error"); return; }
 
@@ -205,6 +209,8 @@ function LoginForm() {
     username.trim().length > 0 &&
     email.trim().length > 0 && emailValid &&
     password.length > 0 &&
+    confirmPassword.length > 0 &&
+    password === confirmPassword &&
     agreeTerms && agreePrivacy;
   // ログインモードは従来どおり（送信中のみ disabled）。登録モードは未充足なら disabled。
   const submitDisabled = status === "loading" || (mode === "register" && !canRegister);
@@ -379,6 +385,29 @@ function LoginForm() {
               <span style={{ fontSize: 11, color: "#dc2626", marginTop: 2 }}>8文字以上で入力してください</span>
             )}
           </div>
+
+          {/* ── パスワード（確認）（登録モードのみ・必須・client 確認のみ） ── */}
+          {mode === "register" && (
+            <div className="form-group">
+              <label className="form-label" htmlFor="confirmPassword">
+                パスワード（確認）
+                <span style={{ color: "#dc2626", fontSize: 14, marginLeft: 4, fontWeight: 700 }} aria-hidden="true">*</span>
+              </label>
+              <input
+                id="confirmPassword"
+                type="password"
+                className="form-input"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                required
+                placeholder="もう一度入力してください"
+                autoComplete="new-password"
+              />
+              {confirmPassword.length > 0 && password !== confirmPassword && (
+                <span style={{ fontSize: 11, color: "#dc2626", marginTop: 2 }}>パスワードが一致しません</span>
+              )}
+            </div>
+          )}
 
           {/* ── 利用規約 / プライバシーポリシー同意（登録モードのみ・必須） ── */}
           {mode === "register" && (
