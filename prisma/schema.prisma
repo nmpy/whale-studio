@@ -161,6 +161,7 @@ model Work {
   puzzleDeliveries    PuzzleDelivery[]
   werewolfTitles      WerewolfTitle[]
   locations           Location[]
+  checkinWaitTriggers CheckinWaitTrigger[]
   liveSessions        LiveSession[]
   liveScripts         LiveScript[]
   liveCues            LiveCue[]
@@ -433,6 +434,21 @@ model Message {
   /// 自由入力を受け取った後に送信する次メッセージ ID。自己参照 FK。
   /// freeInputEnabled=true のとき、入力受付完了後にここで指定されたメッセージを送信する。
   freeInputNextMessageId String?   @map("free_input_next_message_id")
+
+  // ── 送信後の待機トリガー（地点到着で自動進行）────────────────────────
+  // このメッセージ送信後、指定地点(checkin_trigger_location_id)の検知待ち状態に
+  // そのユーザーだけを「武装(arm)」する（CheckinWaitTrigger を pending で作成）。
+  // 地点で QR/GPS チェックインが成功し、かつ pending がある場合のみ next メッセージを送信し
+  // （任意で）next フェーズへ進める。これにより未到達ユーザーへの誤送信・二重送信を防ぐ。
+  // FK は張らず（correct_character_id と同方針）、送信/消化時に lookup・graceful fallback。
+  /// "qr" | "gps" | "beacon"（null = 待機トリガーなし。beacon の検知消化は次PRで実装）
+  checkinTriggerType           String?  @map("checkin_trigger_type")
+  /// 検知対象の地点(Location.id)。checkinTriggerType 設定時に必須。
+  checkinTriggerLocationId     String?  @map("checkin_trigger_location_id")
+  /// 検知成功時に送る次メッセージ(Message.id・任意)。null = メッセージ送信なし（フェーズ遷移のみ等）。
+  checkinTriggerNextMessageId  String?  @map("checkin_trigger_next_message_id")
+  /// 検知成功時に進める次フェーズ(Phase.id・任意)。null = フェーズ遷移なし。
+  checkinTriggerNextPhaseId    String?  @map("checkin_trigger_next_phase_id")
 
   character             Character? @relation(fields: [characterId], references: [id])
   tapDestination        LineDestination? @relation(fields: [tapDestinationId], references: [id], onDelete: SetNull)
@@ -1381,12 +1397,58 @@ model Location {
   transition       Transition?     @relation(fields: [transitionId], references: [id], onDelete: SetNull)
   qrSuccessMessage Message?        @relation("LocationQrSuccessMessage", fields: [qrSuccessMessageId], references: [id], onDelete: SetNull)
   visits           LocationVisit[]
+  checkinWaitTriggers CheckinWaitTrigger[]
 
   @@index([workId])
   @@index([beaconUuid, beaconMajor, beaconMinor])
   @@index([isActive])
   @@index([qrSuccessMessageId])
   @@map("locations")
+}
+
+/// 送信後の待機トリガー（地点到着で自動進行）の per-user pending 状態。
+/// Message.checkinTrigger* を持つメッセージが送信されると、そのユーザー向けに pending で1行作成(arm)。
+/// 対象地点で QR/GPS チェックインが成功し、かつ pending がある場合のみ next メッセージ送信 + 任意フェーズ遷移を行い、
+/// consumed 化して二重送信を防ぐ（atomic claim）。pending が無い検知は何も送信しない（未到達ユーザーへの誤送信防止）。
+/// triggerType に "beacon" を持てる設計だが、beacon の検知側 consume は次PRで実装する。
+model CheckinWaitTrigger {
+  id              String    @id @default(uuid())
+  oaId            String    @map("oa_id")
+  workId          String    @map("work_id")
+  /// 待機対象ユーザー（LINE ユーザー ID / テスト用任意 ID）
+  lineUserId      String    @map("line_user_id")
+  /// 武装のきっかけになった送信メッセージ(Message.id)。FK は張らず graceful lookup。
+  sourceMessageId String?   @map("source_message_id")
+  /// 武装時のフェーズ(Phase.id・参考/将来のゲート用)。FK は張らず graceful lookup。
+  phaseId         String?   @map("phase_id")
+  /// 検知対象の地点B
+  locationId      String    @map("location_id")
+  /// 検知種別: "qr" | "gps" | "beacon"
+  triggerType     String    @map("trigger_type")
+  /// 検知成功時に送る次メッセージ(Message.id・任意)。FK は張らず graceful lookup。
+  nextMessageId   String?   @map("next_message_id")
+  /// 検知成功時に進める次フェーズ(Phase.id・任意)。FK は張らず graceful lookup。
+  nextPhaseId     String?   @map("next_phase_id")
+  /// "pending" | "consumed" | "expired" | "canceled"
+  status          String    @default("pending")
+  /// 二重武装防止の冪等キー（非 null）。`${lineUserId}:${locationId}:${sourceMessageId|_}:${triggerType}`。
+  /// 同一ユーザー×地点×source×種別の再送は1行を upsert で再 arm する（nullable unique の不安定さを避けるため非 null）。
+  idempotencyKey  String    @map("idempotency_key")
+  armedAt         DateTime  @default(now()) @map("armed_at")
+  consumedAt      DateTime? @map("consumed_at")
+  /// 有効期限（任意・将来用）。過ぎた pending は consume 対象外にできる。
+  expiresAt       DateTime? @map("expires_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  work     Work     @relation(fields: [workId], references: [id], onDelete: Cascade)
+  location Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  @@unique([idempotencyKey])
+  @@index([lineUserId, workId, status])
+  @@index([locationId, status])
+  @@index([workId])
+  @@map("checkin_wait_triggers")
 }
 
 model LocationVisit {

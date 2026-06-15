@@ -389,6 +389,12 @@ export const createMessageSchema = z.object({
   free_input_enabled:         z.boolean().default(false),
   free_input_variable_key:    variableKeySchema.optional().nullable(),
   free_input_next_message_id: uuidSchema.optional().nullable(),
+  // ── 送信後の待機トリガー（地点到着で自動進行）──
+  // "beacon" は DB/API 上は受け付ける設計（検知側 consume は次PR）。UI は QR/GPS のみ表示。
+  checkin_trigger_type:            z.enum(["qr", "gps", "beacon"]).optional().nullable(),
+  checkin_trigger_location_id:     uuidSchema.optional().nullable(),
+  checkin_trigger_next_message_id: uuidSchema.optional().nullable(),
+  checkin_trigger_next_phase_id:   uuidSchema.optional().nullable(),
   sort_order:       sortSchema,
   is_active:        z.boolean().default(true),
 }).superRefine((val, ctx) => {
@@ -423,6 +429,10 @@ export const createMessageSchema = z.object({
       ctx.addIssue({ code: "custom", path: ["image_action_postback_data"],
         message: "postback アクションには data が必須です" });
     }
+  }
+  // 送信後の待機トリガー: 種別を指定したら対象地点は必須。
+  if (val.checkin_trigger_type && !val.checkin_trigger_location_id) {
+    ctx.addIssue({ code: "custom", path: ["checkin_trigger_location_id"], message: "待機トリガーを使う場合は対象地点を選択してください" });
   }
   if (val.kind === "puzzle") {
     if (!val.answer?.trim()) {
@@ -534,6 +544,11 @@ export const updateMessageSchema = z.object({
   free_input_enabled:         z.boolean().optional(),
   free_input_variable_key:    variableKeySchema.optional().nullable(),
   free_input_next_message_id: uuidSchema.optional().nullable(),
+  // ── 送信後の待機トリガー（地点到着で自動進行）──
+  checkin_trigger_type:            z.enum(["qr", "gps", "beacon"]).optional().nullable(),
+  checkin_trigger_location_id:     uuidSchema.optional().nullable(),
+  checkin_trigger_next_message_id: uuidSchema.optional().nullable(),
+  checkin_trigger_next_phase_id:   uuidSchema.optional().nullable(),
   sort_order:        z.number().int().min(0).optional(),
   is_active:         z.boolean().optional(),
 }).superRefine((val, ctx) => {
@@ -574,6 +589,10 @@ export const updateMessageSchema = z.object({
     ) {
       ctx.addIssue({ code: "custom", path: ["correct_next_phase_id"], message: "遷移系の correct_action には遷移先フェーズが必須です" });
     }
+  }
+  // 送信後の待機トリガー: 種別を指定したら対象地点は必須（PATCH では地点を明示的に null 化したケースのみ検証）。
+  if (val.checkin_trigger_type && val.checkin_trigger_location_id === null) {
+    ctx.addIssue({ code: "custom", path: ["checkin_trigger_location_id"], message: "待機トリガーを使う場合は対象地点を選択してください" });
   }
   // 画像タップ時アクション: type に応じた必須項目チェック (PATCH 時)
   if (val.image_action_type && val.image_action_type !== "none") {

@@ -17,6 +17,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { activeCache, CACHE_KEY } from "@/lib/cache";
+import { armCheckinTriggers } from "@/lib/checkin-trigger";
 
 export async function applyFreeInputPostEffect(args: {
   sentMessageIds: string[];
@@ -83,4 +84,14 @@ export async function applyFreeInputPostEffect(args: {
   } catch (err) {
     console.error(`[Webhook][post-send] frontier/waiting 更新失敗 userId=${args.userId}`, err);
   }
+
+  // ── 送信後の待機トリガー（地点到着で自動進行）の arm ──
+  // 送信群に checkinTrigger* を持つメッセージがあれば、対象ユーザーを対象地点の検知待ちに武装する。
+  // 失敗は内部で握りつぶす（送信本体を壊さない）。
+  await armCheckinTriggers({
+    sentMessageIds: args.sentMessageIds,
+    lineUserId:     args.userId,
+    workId:         args.workId,
+    oaId:           args.oaId,
+  });
 }

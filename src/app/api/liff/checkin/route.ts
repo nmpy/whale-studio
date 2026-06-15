@@ -16,6 +16,7 @@ import { checkinSchema, formatZodErrors } from "@/lib/validations";
 import { applySetFlags, evaluateCondition } from "@/lib/runtime";
 import { isWithinRadius } from "@/lib/geo";
 import { logAttemptDeduped } from "@/lib/checkin-attempt";
+import { consumeCheckinTrigger } from "@/lib/checkin-trigger";
 import { ZodError } from "zod";
 import type { CheckinSuccess, CheckinCooldown, CheckinOutOfRange, CheckinMethod, StampInfo } from "@/types";
 
@@ -249,6 +250,22 @@ export async function POST(req: NextRequest) {
         data: { currentPhaseId: newPhaseId, reachedEnding, flags: JSON.stringify(newFlags), lastInteractedAt: new Date() },
       }),
     ]);
+
+    // ── 送信後の待機トリガー（地点到着で自動進行）の消化 ──
+    // メッセージA 送信時に「この地点の検知待ち」に武装されているユーザーのみ next メッセージを送信し、
+    // 任意で next フェーズへ進める。pending が無ければ何もしない（未到達ユーザーへ送信しない）。
+    // 上の location.transition による遷移とは独立。両方設定時は本トリガーの next フェーズが後勝ち。
+    // 失敗は内部で握りつぶされる（チェックイン結果は変えない）。
+    const allowedTriggerTypes =
+      recordedMethod === "gps" ? ["gps"]
+      : recordedMethod === "qr_and_gps" ? ["qr", "gps"]
+      : ["qr"]; // "qr"（qr_only / 後方互換）
+    await consumeCheckinTrigger({
+      lineUserId:   data.line_user_id,
+      workId:       data.work_id,
+      locationId:   data.location_id,
+      triggerTypes: allowedTriggerTypes,
+    });
 
     // GPS 成功ログ
     if (recordedMethod === "gps" || recordedMethod === "qr_and_gps") {
