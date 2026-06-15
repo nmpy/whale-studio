@@ -34,15 +34,16 @@ export default function OaBeaconsPage() {
       <Breadcrumb
         items={[
           { label: "アカウントリスト", href: "/oas" },
-          { label: "ビーコン" },
+          { label: "現地トリガー", href: `/oas/${oaId}/locations${workIdFilter ? `?workId=${encodeURIComponent(workIdFilter)}` : ""}` },
+          { label: "Beaconチェックイン" },
         ]}
       />
 
       <div className="mb-4 flex items-start justify-between gap-3">
         <div>
-          <h1 className="font-round text-[clamp(20px,4vw,24px)] font-extrabold leading-[1.2] tracking-[-0.02em] text-ink">ビーコン</h1>
+          <h1 className="font-round text-[clamp(20px,4vw,24px)] font-extrabold leading-[1.2] tracking-[-0.02em] text-ink">Beaconチェックイン</h1>
           <p className="mt-1 text-[12px] leading-[1.7] text-ink-3">
-            LINE Beacon を使うと、ユーザーがビーコンの近くに来たタイミングでメッセージを送信できます。
+            現地トリガーの方式のひとつです。LINE Beacon を使うと、ユーザーがビーコンの近くに来たタイミングでメッセージを送信できます。
             現地周遊・展示・受付・謎解きの地点通過演出に利用できます。
           </p>
         </div>

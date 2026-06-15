@@ -53,7 +53,7 @@ export default function LocationResolverPage() {
         <>
           <div className="rounded-card border border-danger/30 bg-danger-soft px-4 py-3 text-[13px] text-danger">{error}</div>
           <Link href={`/oas/${oaId}/locations`} className="mt-4 inline-block text-[13px] font-semibold text-brand-ink underline">
-            ← ロケーション管理に戻る
+            ← 現地トリガーへ戻る
           </Link>
         </>
       ) : (

@@ -62,7 +62,7 @@ export default function EditBeaconPage() {
       <Breadcrumb
         items={[
           { label: "アカウントリスト", href: "/oas" },
-          { label: "ビーコン", href: `/oas/${oaId}/locations/beacons` },
+          { label: "Beaconチェックイン", href: `/oas/${oaId}/locations/beacons` },
           { label: "編集" },
         ]}
       />

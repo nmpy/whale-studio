@@ -75,7 +75,7 @@ export default function OaLocationsPrintPage() {
           <Link href={`/oas/${oaId}/account`} style={{ color: "#2563eb", textDecoration: "underline" }}>設定 → アカウント情報（LIFF設定）</Link> で LIFF ID を設定してください。
         </div>
         <Link href={`/oas/${oaId}/locations?workId=${workId}`} style={{ display: "inline-block", marginTop: 16, fontSize: 14, color: "#2563eb" }}>
-          ← ロケーション管理に戻る
+          ← 現地トリガーへ戻る
         </Link>
       </div>
     );
@@ -144,7 +144,7 @@ function BreadcrumbLike({ oaId }: { oaId: string }) {
     <div className="mb-4 text-[12px] text-ink-3">
       <Link href="/oas" className="text-ink-3 underline">アカウントリスト</Link>
       <span className="mx-1">›</span>
-      <Link href={`/oas/${oaId}/locations`} className="text-ink-3 underline">ロケーション管理</Link>
+      <Link href={`/oas/${oaId}/locations`} className="text-ink-3 underline">現地トリガー</Link>
       <span className="mx-1">›</span>
       <span className="text-ink">QR 印刷</span>
     </div>

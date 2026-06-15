@@ -48,12 +48,12 @@ export default function LocationsHubPage() {
         items={[
           { label: "OA一覧", href: "/oas" },
           { label: "作品", href: `/oas/${oaId}/works/${workId}` },
-          { label: "ロケーション" },
+          { label: "現地トリガー" },
         ]}
       />
 
       <div style={{ marginBottom: 12 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>ロケーション</h1>
+        <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>現地トリガー</h1>
         <p style={{ fontSize: 13, color: "#6b7280", marginTop: 6, lineHeight: 1.6 }}>
           GPS・ビーコン・QRを使って、現地での到達判定や体験の進行トリガーを管理できます。
         </p>
@@ -70,7 +70,7 @@ export default function LocationsHubPage() {
       >
         <div style={{ minWidth: 0, flex: 1 }}>
           <p style={{ fontSize: 13, fontWeight: 700, color: "#0f7a3d", marginBottom: 4 }}>
-            ロケーション管理に移動しました
+            現地トリガー管理に移動しました
           </p>
           <p style={{ fontSize: 12, color: "#33403a", lineHeight: 1.6 }}>
             GPS / QR / Beacon は、現地の地点やチェックイン方法に紐づく機能です。ロケーション管理画面でまとめて確認・編集できます。

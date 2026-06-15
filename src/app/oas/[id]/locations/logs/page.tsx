@@ -126,16 +126,16 @@ export default function LocationLogsPage() {
     <div style={{ maxWidth: 1040, margin: "0 auto", padding: "24px 16px" }}>
       <Breadcrumb items={[
         { label: "アカウントリスト", href: "/oas" },
-        { label: "ロケーション管理", href: `/oas/${oaId}/locations` },
+        { label: "現地トリガー", href: `/oas/${oaId}/locations` },
         { label: "ログ" },
       ]} />
       <div className="mb-4 flex items-center justify-between gap-3">
-        <h1 className="font-round text-[clamp(18px,3.5vw,22px)] font-extrabold tracking-[-0.02em] text-ink">ロケーション統合ログ</h1>
+        <h1 className="font-round text-[clamp(18px,3.5vw,22px)] font-extrabold tracking-[-0.02em] text-ink">現地トリガーログ</h1>
         <div className="flex items-center gap-3">
           {planAccess.allowed && (
-            <a href={exportHref} className="text-[12px] font-semibold text-brand-ink underline" download>CSVエクスポート</a>
+            <a href={exportHref} className="text-[12px] font-semibold text-brand-ink underline" download>ログをCSVでエクスポート</a>
           )}
-          <Link href={`/oas/${oaId}/locations`} className="text-[12px] font-semibold text-brand-ink underline">ロケーション管理へ</Link>
+          <Link href={`/oas/${oaId}/locations`} className="text-[12px] font-semibold text-brand-ink underline">現地トリガーへ</Link>
         </div>
       </div>
 
