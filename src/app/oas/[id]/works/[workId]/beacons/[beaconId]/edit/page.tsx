@@ -56,7 +56,7 @@ export default function EditBeaconPage() {
         items={[
           { label: "OA一覧", href: "/oas" },
           { label: "作品", href: `/oas/${oaId}/works/${workId}` },
-          { label: "ビーコン", href: `/oas/${oaId}/works/${workId}/beacons` },
+          { label: "Beaconチェックイン", href: `/oas/${oaId}/works/${workId}/beacons` },
           { label: "編集" },
         ]}
       />

@@ -54,7 +54,7 @@ const HUB_CARDS = [
   { key: "scenario",     title: "フェーズ管理",   desc: "フェーズの追加・並び替えと遷移フローを管理します" },
   { key: "audience",     title: "オーディエンス", desc: "プレイ統計・フロー・セグメントなどを確認します" },
   { key: "liff",         title: "LIFF設定",       desc: "LIFFページのブロックを追加・編集・並び替えます" },
-  { key: "locations",    title: "ロケーション",   desc: "GPS・ビーコン・QRで現地発火するトリガーを管理します" },
+  { key: "locations",    title: "現地トリガー",   desc: "QR・GPS・Beaconで現地発火するトリガー（チェックイン）を管理します" },
   { key: "x-posts",      title: "X投稿管理",      desc: "作品の告知ポスト、投稿URL、クリック計測、CSV分析を管理します" },
 ] as const;
 

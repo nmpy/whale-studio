@@ -11,17 +11,17 @@ export const LOCATION_TABS: Array<{
 }> = [
   {
     key: "gps",
-    label: "GPS",
+    label: "GPSチェックイン",
     description: "緯度経度と半径を使って、ユーザーが指定地点にいるかを判定します。",
   },
   {
     key: "beacons",
-    label: "ビーコン",
+    label: "Beaconチェックイン",
     description: "LINE Beacon の検知イベントを使って、近づいたユーザーにメッセージ送信や進行処理を実行します。",
   },
   {
     key: "qr",
-    label: "QR",
+    label: "QRチェックイン",
     description: "現地に設置したQRコードから、特定の遷移・メッセージ・チェックインを発火します。",
   },
 ];

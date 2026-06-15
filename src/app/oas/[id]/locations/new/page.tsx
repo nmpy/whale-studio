@@ -47,7 +47,7 @@ export default function OaNewLocationPage() {
       <Breadcrumb
         items={[
           { label: "アカウントリスト", href: "/oas" },
-          { label: "ロケーション管理", href: `/oas/${oaId}/locations` },
+          { label: "現地トリガー", href: `/oas/${oaId}/locations` },
           { label: "新規作成" },
         ]}
       />
