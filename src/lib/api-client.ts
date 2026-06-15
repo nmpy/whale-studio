@@ -1653,6 +1653,18 @@ export const memberInviteApi = {
 };
 
 // ────────────────────────────────────────────────
+// 公開前チェック API
+// ────────────────────────────────────────────────
+
+export const prePublishCheckApi = {
+  /** 作品の公開前チェック結果を取得（viewer 以上）。 */
+  async get(token: string, workId: string): Promise<import("@/lib/pre-publish-check").PrePublishCheckResult> {
+    const res = await fetch(`/api/works/${workId}/pre-publish-check`, { headers: authHeaders(token) });
+    return parseResponse(res);
+  },
+};
+
+// ────────────────────────────────────────────────
 // Onboarding API
 // ────────────────────────────────────────────────
 
