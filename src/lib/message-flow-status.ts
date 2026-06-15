@@ -8,10 +8,8 @@
 //     一覧 API が返す全メッセージはすでに 1 回の fetch で手元にあるため、ここでの集計は
 //     追加クエリ不要（N+1 を作らない）。
 //   - 入力は一覧 API の snake_case shape の部分集合。
-//   - 公開前チェック（src/lib/pre-publish-check.ts）と「遷移先の壊れ」概念を共有するが、
-//     あちらは prisma camelCase をサーバーで集計する作品横断の品質チェック、こちらは
-//     一覧表示のための per-message 導線可視化。責務が異なるためロジックは重複させず、
-//     本モジュールを「一覧導線判定の純関数」の置き場として将来の共通化点にする。
+//   - 一覧表示のための per-message 導線可視化に特化。導線判定の純関数の置き場として
+//     将来の共通化点にする。
 //   - 既存の分岐ルール純関数は src/lib/message-flow.ts（webhook/編集フォーム用）にある。混同しない。
 //
 // 用語:
@@ -90,7 +88,7 @@ export interface FlowMessage {
   quick_replies?:                   FlowQuickReply[] | null;
 }
 
-/** 画像タップアクションの「宛先値」が未設定か（type ごとに必須フィールドを見る）。pre-publish-check #9 と整合。 */
+/** 画像タップアクションの「宛先値」が未設定か（type ごとに必須フィールドを見る）。 */
 function imageActionTargetMissing(m: FlowMessage): boolean {
   const t = m.image_action_type;
   if (!t || t === "none") return false;
@@ -121,7 +119,7 @@ function walkChain(byId: Map<string, FlowMessage>, headId: string): FlowMessage[
   return out;
 }
 
-/** 応答キーワードが必須な kind か（開始演出 / キーワード応答）。pre-publish-check の #3 と整合。 */
+/** 応答キーワードが必須な kind か（開始演出 / キーワード応答）。 */
 function keywordRequired(kind: string | null | undefined): boolean {
   return kind === "start" || kind === "response";
 }
@@ -204,7 +202,7 @@ export function analyzeMessageList(
             else hasBrokenLink = true;
           }
         } else if ((qr.action === "url" || qr.action === "custom") && !(qr.value ?? "").trim()) {
-          // 分岐しない QR でも url/custom は宛先値が必須（空 = 操作後の遷移先未設定）。pre-publish-check #9 と整合。
+          // 分岐しない QR でも url/custom は宛先値が必須（空 = 操作後の遷移先未設定）。
           hasBrokenLink = true;
         }
       }
