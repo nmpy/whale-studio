@@ -24,6 +24,7 @@ import { verifyLiffAccessToken } from "@/lib/liff/session";
 import { parseQrValue, qrValuePreview } from "@/lib/liff/qr-resolve";
 import { findLocationByIdOrPublicId } from "@/lib/public-id-resolver";
 import { pushToLine, buildKeywordMessages, type KeywordMessageRecord, type PlaceholderVars } from "@/lib/line";
+import { consumeCheckinTrigger } from "@/lib/checkin-trigger";
 import type { LiffEventType } from "@/lib/liff-events";
 
 export const dynamic = "force-dynamic";
@@ -209,8 +210,20 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
     const target = { type: "location" as const, id: location.id, name: location.name };
 
+    // ── 送信後の待機トリガー（地点到着で自動進行）の消化 ──
+    // メッセージA 送信時に「この地点(QR)の検知待ち」に武装されているユーザーのみ next メッセージ送信 + 任意フェーズ遷移。
+    // qrSuccessMessageId の有無に関わらず実行する（待機トリガーは qrSuccessMessage とは独立の仕組み）。
+    // pending が無ければ何もしない。二重送信は consume 内の atomic claim で防止（/checkin と併用しても1回）。
+    const trigger = await consumeCheckinTrigger({
+      lineUserId, workId, locationId: location.id, triggerTypes: ["qr"],
+    });
+
     // ── 送信メッセージの決定（DB 設定のみ。未設定ならハードコードしない）──
     if (!location.qrSuccessMessageId) {
+      // qrSuccessMessage は未設定だが、待機トリガーで next メッセージを送れたなら成功として返す。
+      if (trigger.consumed && trigger.sentCount > 0) {
+        return ok({ ok: true, sent: true, alreadyProcessed: false, code: "checkin_trigger_sent", target, message: { count: trigger.sentCount } });
+      }
       logEvent({ workId, lineUserId, eventType: "qr_message_send_skipped", metadata: { reason: "message_not_configured", targetType: "location", targetId: location.id, isLineUserVerified: true } });
       return ok({ ok: true, sent: false, code: "message_not_configured", message: "QRは読み取りましたが、送信するメッセージが設定されていません。", target });
     }

@@ -68,6 +68,11 @@ type PrismaMessageWithRelations = {
   freeInputEnabled: boolean;
   freeInputVariableKey: string | null;
   freeInputNextMessageId: string | null;
+  // 送信後の待機トリガー（地点到着で自動進行）
+  checkinTriggerType: string | null;
+  checkinTriggerLocationId: string | null;
+  checkinTriggerNextMessageId: string | null;
+  checkinTriggerNextPhaseId: string | null;
   sortOrder: number; isActive: boolean; createdAt: Date; updatedAt: Date;
   phase:     { id: string; name: string; phaseType: string } | null;
   character: {
@@ -147,6 +152,11 @@ function toResponse(m: PrismaMessageWithRelations) {
     free_input_enabled:         m.freeInputEnabled         ?? false,
     free_input_variable_key:    m.freeInputVariableKey     ?? null,
     free_input_next_message_id: m.freeInputNextMessageId   ?? null,
+    // 送信後の待機トリガー（地点到着で自動進行）
+    checkin_trigger_type:             m.checkinTriggerType          ?? null,
+    checkin_trigger_location_id:      m.checkinTriggerLocationId    ?? null,
+    checkin_trigger_next_message_id:  m.checkinTriggerNextMessageId ?? null,
+    checkin_trigger_next_phase_id:    m.checkinTriggerNextPhaseId   ?? null,
     sort_order:            m.sortOrder,
     is_active:             m.isActive,
     created_at:            m.createdAt,
@@ -313,6 +323,13 @@ export const PATCH = withAuth<{ id: string }>(async (req, { params }, user) => {
         ...(data.free_input_enabled         !== undefined && { freeInputEnabled:       data.free_input_enabled }),
         ...(data.free_input_variable_key    !== undefined && { freeInputVariableKey:   data.free_input_variable_key }),
         ...(data.free_input_next_message_id !== undefined && { freeInputNextMessageId: data.free_input_next_message_id }),
+        // 送信後の待機トリガー（地点到着で自動進行）。種別が payload にあれば 4 列を整合的に更新（種別 null で全クリア）。
+        ...(data.checkin_trigger_type !== undefined && {
+          checkinTriggerType:          data.checkin_trigger_type ?? null,
+          checkinTriggerLocationId:    data.checkin_trigger_type ? (data.checkin_trigger_location_id ?? null) : null,
+          checkinTriggerNextMessageId: data.checkin_trigger_type ? (data.checkin_trigger_next_message_id ?? null) : null,
+          checkinTriggerNextPhaseId:   data.checkin_trigger_type ? (data.checkin_trigger_next_phase_id ?? null) : null,
+        }),
         ...(data.sort_order        !== undefined && { sortOrder:       data.sort_order }),
         ...(data.is_active         !== undefined && { isActive:        data.is_active }),
       },

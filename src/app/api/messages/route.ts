@@ -185,6 +185,11 @@ export const POST = withAuth(async (req, _ctx, user) => {
         freeInputEnabled:       data.free_input_enabled ?? false,
         freeInputVariableKey:   data.free_input_variable_key ?? null,
         freeInputNextMessageId: data.free_input_next_message_id ?? null,
+        // 送信後の待機トリガー（地点到着で自動進行）。種別が無ければ全て null。
+        checkinTriggerType:           data.checkin_trigger_type ?? null,
+        checkinTriggerLocationId:     data.checkin_trigger_type ? (data.checkin_trigger_location_id ?? null) : null,
+        checkinTriggerNextMessageId:  data.checkin_trigger_type ? (data.checkin_trigger_next_message_id ?? null) : null,
+        checkinTriggerNextPhaseId:    data.checkin_trigger_type ? (data.checkin_trigger_next_phase_id ?? null) : null,
         sortOrder:          data.sort_order,
         isActive:           data.is_active,
       },

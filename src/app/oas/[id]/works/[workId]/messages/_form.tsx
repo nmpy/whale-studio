@@ -5,9 +5,9 @@
 import DurationInput from "@/components/DurationInput";
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { phaseApi, characterApi, riddleApi, messageApi, uploadApi, getDevToken } from "@/lib/api-client";
+import { phaseApi, characterApi, riddleApi, messageApi, locationApi, uploadApi, getDevToken } from "@/lib/api-client";
 import { Breadcrumb } from "@/components/Breadcrumb";
-import type { PhaseWithCounts, Character, QuickReplyItem, QuickReplyAction, ReadReceiptMode } from "@/types";
+import type { PhaseWithCounts, Character, QuickReplyItem, QuickReplyAction, ReadReceiptMode, LocationWithTransition } from "@/types";
 import type { Riddle } from "@/types";
 import { PhaseTransitionsSection } from "./_phase-transitions";
 import { previewQrSend, type QrPreviewMessage } from "./_qr-preview";
@@ -162,6 +162,15 @@ export interface MessageFormState {
   free_input_variable_key:    string;
   /** 自由入力を受け取った後に進む次メッセージ ID (空文字 = なし)。 */
   free_input_next_message_id: string;
+  // ── 送信後の待機トリガー（地点到着で自動進行）──
+  /** "" = なし / "qr" / "gps"（"beacon" は次PRで対応予定のため UI 非表示）。 */
+  checkin_trigger_type:            string;
+  /** 検知対象の地点 ID（空文字 = 未選択）。type 設定時は必須。 */
+  checkin_trigger_location_id:     string;
+  /** 検知成功時に送る次メッセージ ID（空文字 = なし）。 */
+  checkin_trigger_next_message_id: string;
+  /** 検知成功時に進める次フェーズ ID（空文字 = なし）。 */
+  checkin_trigger_next_phase_id:   string;
   sort_order:      number;
   is_active:       boolean;
   // ── 謎（puzzle）専用フィールド ──
@@ -234,6 +243,11 @@ export const EMPTY_MESSAGE_FORM: MessageFormState = {
   free_input_enabled:         false,
   free_input_variable_key:    "",
   free_input_next_message_id: "",
+  // 送信後の待機トリガー（既定 なし）
+  checkin_trigger_type:            "",
+  checkin_trigger_location_id:     "",
+  checkin_trigger_next_message_id: "",
+  checkin_trigger_next_phase_id:   "",
   sort_order:      0,
   is_active:       true,
   // puzzle defaults
@@ -321,6 +335,11 @@ export function msgToFormState(msg: {
   free_input_enabled?:         boolean | null;
   free_input_variable_key?:    string | null;
   free_input_next_message_id?: string | null;
+  // 送信後の待機トリガー
+  checkin_trigger_type?:            string | null;
+  checkin_trigger_location_id?:     string | null;
+  checkin_trigger_next_message_id?: string | null;
+  checkin_trigger_next_phase_id?:   string | null;
   // 演出設定
   read_receipt_mode?:    string | null;
   read_delay_ms?:        number | null;
@@ -404,6 +423,11 @@ export function msgToFormState(msg: {
     free_input_enabled:         msg.free_input_enabled         ?? false,
     free_input_variable_key:    msg.free_input_variable_key    ?? "",
     free_input_next_message_id: msg.free_input_next_message_id ?? "",
+    // 送信後の待機トリガー（地点到着で自動進行）
+    checkin_trigger_type:            msg.checkin_trigger_type            ?? "",
+    checkin_trigger_location_id:     msg.checkin_trigger_location_id     ?? "",
+    checkin_trigger_next_message_id: msg.checkin_trigger_next_message_id ?? "",
+    checkin_trigger_next_phase_id:   msg.checkin_trigger_next_phase_id   ?? "",
     // 演出設定 (= 継承モード廃止: null / 旧 "inherit" は OFF 相当に正規化)。
     // - read_receipt_mode: null / "inherit" → "immediate" (= OFF)
     // - typing_enabled / loading_enabled: null → "false" (= OFF)
@@ -522,6 +546,11 @@ export function formStateToMsgBody(form: MessageFormState) {
     // ON のときのみ key を保存。OFF のときは null にして整合性を保つ。
     free_input_variable_key:    form.free_input_enabled ? (form.free_input_variable_key.trim() || null) : null,
     free_input_next_message_id: form.free_input_enabled ? (form.free_input_next_message_id || null) : null,
+    // 送信後の待機トリガー（地点到着で自動進行）。種別なしのときは全て null。
+    checkin_trigger_type:            form.checkin_trigger_type || null,
+    checkin_trigger_location_id:     form.checkin_trigger_type ? (form.checkin_trigger_location_id || null) : null,
+    checkin_trigger_next_message_id: form.checkin_trigger_type ? (form.checkin_trigger_next_message_id || null) : null,
+    checkin_trigger_next_phase_id:   form.checkin_trigger_type ? (form.checkin_trigger_next_phase_id || null) : null,
     // 演出設定 (= 継承モード廃止により form は常に明示値 "immediate"/"true"/"false" 等を持つ)。
     // 数値フィールドは空文字なら null (= 未指定、runtime 固定デフォルト適用)。
     read_receipt_mode:    (form.read_receipt_mode || null) as ReadReceiptMode | null,
@@ -3502,6 +3531,7 @@ export function MessageForm({
   const isSystemNotice = form.kind === "system_notice";
 
   const [phases, setPhases]         = useState<PhaseWithCounts[]>([]);
+  const [locations, setLocations]   = useState<LocationWithTransition[]>([]);
   const [characters, setCharacters] = useState<Character[]>([]);
   const [riddles, setRiddles]       = useState<Riddle[]>([]);
   const [allMessages, setAllMessages] = useState<{
@@ -3551,10 +3581,12 @@ export function MessageForm({
       characterApi.list(token, workId),
       riddleApi.list(token, oaId),
       messageApi.list(token, workId),
-    ]).then(([ph, ch, rd, msgs]) => {
+      locationApi.list(token, workId, { is_active: true }).catch(() => [] as LocationWithTransition[]),
+    ]).then(([ph, ch, rd, msgs, locs]) => {
       setPhases(ph);
       setCharacters(ch);
       setRiddles(rd);
+      setLocations(locs);
       setAllMessages(msgs.map((m) => ({
         id:                 m.id,
         body:               m.body,
@@ -5339,6 +5371,124 @@ export function MessageForm({
                       ) : (
                         <>変数名を設定していないため、ここでは入力内容を差し込みません（受け取って次へ進むだけ）。</>
                       )}
+                    </div>
+                  </div>
+                </>
+              )}
+            </SectionAccordion>
+          )}
+
+          {/* ════════════════════════════════════════
+              送信後の待機トリガー（地点到着で自動進行）
+              このメッセージ送信後、指定地点に到着して QR/GPS チェックインしたら
+              次のメッセージを自動送信し、必要ならフェーズを進める。
+              まだこのメッセージに到達していない人には送信されない（誤送信防止）。
+          ════════════════════════════════════════ */}
+          {!isPuzzle && form.kind !== "system_notice" && (
+            <SectionAccordion
+              title="送信後に地点到着を待つ（自動進行）"
+              optional
+              description="このメッセージを送ったあと、指定した地点に到着してチェックインしたら、次のメッセージを自動で送ります。"
+              defaultOpen={!!form.checkin_trigger_type}
+            >
+              <div style={{
+                fontSize: 12, lineHeight: 1.6, padding: "10px 12px", marginBottom: 12,
+                background: "#f0f9ff", border: "1px solid #bae6fd", borderRadius: 6, color: "#075985",
+              }}>
+                例:「次は◯◯へ向かってください」を送ったあと、その場所のQRを読む（または現在地でチェックインする）と、続きのメッセージが自動で届きます。
+                <br />
+                <strong>このメッセージにまだ到達していない人には届きません。</strong>同じ到着での二重送信も自動で防ぎます。
+              </div>
+
+              <div className="form-group">
+                <label style={fieldLabel} htmlFor="checkin_trigger_type">到着の検知方法</label>
+                <select
+                  id="checkin_trigger_type"
+                  className="form-input"
+                  style={{ maxWidth: 360 }}
+                  value={form.checkin_trigger_type}
+                  onChange={(e) => set("checkin_trigger_type", e.target.value)}
+                >
+                  <option value="">使わない</option>
+                  <option value="qr">QRコードの読み取り</option>
+                  <option value="gps">現在地（GPS）でチェックイン</option>
+                  <option value="beacon" disabled>ビーコン（次のアップデートで対応予定）</option>
+                </select>
+                <div style={{ ...hintText, marginTop: 4 }}>
+                  「現在地（GPS）」は、プレイヤーがLIFF画面を開いてチェックインする方式です（バックグラウンドの自動検知ではありません）。
+                </div>
+              </div>
+
+              {form.checkin_trigger_type && (
+                <>
+                  {/* 対象地点（必須） */}
+                  <div className="form-group" style={{ marginTop: 12 }}>
+                    <label style={fieldLabel} htmlFor="checkin_trigger_location_id">
+                      到着を待つ地点 <RequiredMark />
+                    </label>
+                    <select
+                      id="checkin_trigger_location_id"
+                      className="form-input"
+                      style={{ maxWidth: 360 }}
+                      value={form.checkin_trigger_location_id}
+                      onChange={(e) => set("checkin_trigger_location_id", e.target.value)}
+                    >
+                      <option value="">— 地点を選択 —</option>
+                      {locations.map((loc) => (
+                        <option key={loc.id} value={loc.id}>{loc.name}</option>
+                      ))}
+                    </select>
+                    {locations.length === 0 && (
+                      <div style={{ ...hintText, marginTop: 4, color: "#b45309" }}>
+                        この作品にはまだ地点が登録されていません。先に「地点（ロケーション）」を作成してください。
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 到着時に送るメッセージ（任意） */}
+                  <div className="form-group" style={{ marginTop: 12 }}>
+                    <label style={fieldLabel} htmlFor="checkin_trigger_next_message_id">
+                      到着したら送るメッセージ
+                      <span style={{ fontSize: 10, fontWeight: 600, background: "#f1f5f9", color: "#64748b", borderRadius: 4, padding: "1px 6px", marginLeft: 6 }}>任意</span>
+                    </label>
+                    <select
+                      id="checkin_trigger_next_message_id"
+                      className="form-input"
+                      style={{ maxWidth: 360 }}
+                      value={form.checkin_trigger_next_message_id}
+                      onChange={(e) => set("checkin_trigger_next_message_id", e.target.value)}
+                    >
+                      <option value="">— 送信しない（フェーズ移動のみ等）—</option>
+                      {allMessages
+                        .filter((m) => m.id !== messageId)
+                        .map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {(m.body || "(本文なし)").slice(0, 30)}
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+
+                  {/* 到着時に進めるフェーズ（任意） */}
+                  <div className="form-group" style={{ marginTop: 12, marginBottom: 0 }}>
+                    <label style={fieldLabel} htmlFor="checkin_trigger_next_phase_id">
+                      到着したら進めるフェーズ
+                      <span style={{ fontSize: 10, fontWeight: 600, background: "#f1f5f9", color: "#64748b", borderRadius: 4, padding: "1px 6px", marginLeft: 6 }}>任意</span>
+                    </label>
+                    <select
+                      id="checkin_trigger_next_phase_id"
+                      className="form-input"
+                      style={{ maxWidth: 360 }}
+                      value={form.checkin_trigger_next_phase_id}
+                      onChange={(e) => set("checkin_trigger_next_phase_id", e.target.value)}
+                    >
+                      <option value="">— フェーズを移動しない —</option>
+                      {phases.map((ph) => (
+                        <option key={ph.id} value={ph.id}>{ph.name}</option>
+                      ))}
+                    </select>
+                    <div style={{ ...hintText, marginTop: 4 }}>
+                      フェーズを移動すると、その地点チェックインが「次の段階に進む条件」になります。
                     </div>
                   </div>
                 </>
