@@ -7,6 +7,8 @@ import { prisma } from "@/lib/prisma";
 import { ok, noContent, badRequest, notFound, unprocessable, serverError } from "@/lib/api-response";
 import { withAuth } from "@/lib/auth";
 import { requireRole } from "@/lib/rbac";
+import { getCurrentPlanTierForOa } from "@/lib/plan-guard";
+import { FEATURE, getPlanAccessState } from "@/lib/constants/plans";
 import { updateMessageSchema, formatZodErrors } from "@/lib/validations";
 import { ZodError } from "zod";
 import { activeCache, CACHE_KEY } from "@/lib/cache";
@@ -214,6 +216,13 @@ export const PATCH = withAuth<{ id: string }>(async (req, { params }, user) => {
     console.log(`[PATCH /api/messages/${params.id}] raw body:`, JSON.stringify(body, null, 2));
     const data = updateMessageSchema.parse(body);
 
+    // プラン制限: ロケーション関連設定（checkin_trigger_*）は location feature 許可プランのみ更新可。
+    // 非許可プラン or 判定不能では checkin_trigger_* の書き込みを「丸ごとスキップ」する
+    // （= 既存値を維持。非 Pro Max が編集保存しても過去のロケーション設定を null にしない）。
+    const locationAllowed = existing.work.oaId
+      ? getPlanAccessState({ plan: await getCurrentPlanTierForOa(existing.work.oaId), featureKey: FEATURE.location }).allowed
+      : false;
+
     // Phase 存在・所属確認（変更時）
     if (data.phase_id !== undefined && data.phase_id !== null) {
       const phase = await prisma.phase.findUnique({ where: { id: data.phase_id } });
@@ -324,7 +333,8 @@ export const PATCH = withAuth<{ id: string }>(async (req, { params }, user) => {
         ...(data.free_input_variable_key    !== undefined && { freeInputVariableKey:   data.free_input_variable_key }),
         ...(data.free_input_next_message_id !== undefined && { freeInputNextMessageId: data.free_input_next_message_id }),
         // 送信後の待機トリガー（地点到着で自動進行）。種別が payload にあれば 4 列を整合的に更新（種別 null で全クリア）。
-        ...(data.checkin_trigger_type !== undefined && {
+        // location 非許可プランでは丸ごとスキップ＝既存値を維持（誤って null 化しない）。
+        ...(locationAllowed && data.checkin_trigger_type !== undefined && {
           checkinTriggerType:          data.checkin_trigger_type ?? null,
           checkinTriggerLocationId:    data.checkin_trigger_type ? (data.checkin_trigger_location_id ?? null) : null,
           checkinTriggerNextMessageId: data.checkin_trigger_type ? (data.checkin_trigger_next_message_id ?? null) : null,
