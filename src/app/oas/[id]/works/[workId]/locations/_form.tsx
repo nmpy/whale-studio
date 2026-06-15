@@ -247,7 +247,7 @@ export function LocationForm({ onSubmit, saving, workId, defaultValues }: Locati
         radiusMeters={Number(radiusMeters) || 50}
         onLocationChange={handleMapLocationChange}
         onRadiusChange={handleRadiusChange}
-        height={460}
+        height={480}
       />
     </div>
   );
@@ -334,32 +334,13 @@ export function LocationForm({ onSubmit, saving, workId, defaultValues }: Locati
       <div className="loc-2col" style={{ display: "flex", gap: 24, alignItems: "flex-start" }}>
         {/* 左: フォーム本体（セクション。順序: 名前→説明→チェックイン方式→…→座標→履歴） */}
         <div style={{ flex: 1, minWidth: 0 }}>
-          <Section id="location-name" label="ロケーション名">
-            <input style={inputStyle} value={name} onChange={(e) => setName(e.target.value)} placeholder="例: 受付ロビー" required aria-label="ロケーション名" />
+          <Section id="location-name" label="チェックインポイント名">
+            <input style={inputStyle} value={name} onChange={(e) => setName(e.target.value)} placeholder="例: 受付ロビー" required aria-label="チェックインポイント名" />
             <p style={helpStyle}>必須項目です。</p>
           </Section>
 
           <Section id="description" label="説明">
-            <textarea style={{ ...inputStyle, minHeight: 60, resize: "vertical" }} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="ロケーションの説明（任意）" />
-          </Section>
-
-          {/* 公開状態（有効/無効）。保存先は既存 is_active。旧「成功時アクション」内のチェックボックスから
-              基本情報の近くへ移設し、ラジオで分かりやすくした（保存仕様は不変）。 */}
-          <Section id="active-state" label="公開状態">
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {([
-                { value: true,  label: "有効", desc: "このロケーションのチェックインを利用できます。" },
-                { value: false, label: "無効", desc: "チェックインを利用できません。準備中や一時停止に使います。" },
-              ] as const).map(({ value, label, desc }) => (
-                <label key={String(value)} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 12px", border: `2px solid ${isActive === value ? "#2563eb" : "#e5e7eb"}`, borderRadius: 8, cursor: "pointer", background: isActive === value ? "#eff6ff" : "#fff" }}>
-                  <input type="radio" name="is_active" checked={isActive === value} onChange={() => setIsActive(value)} style={{ marginTop: 2 }} />
-                  <div>
-                    <div style={{ fontWeight: 500, fontSize: 14 }}>{label}</div>
-                    <div style={{ fontSize: 12, color: "#6b7280" }}>{desc}</div>
-                  </div>
-                </label>
-              ))}
-            </div>
+            <textarea style={{ ...inputStyle, minHeight: 60, resize: "vertical" }} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="説明（任意）" />
           </Section>
 
           <Section id="checkin-mode" label="チェックイン方式">
@@ -378,6 +359,33 @@ export function LocationForm({ onSubmit, saving, workId, defaultValues }: Locati
                 </label>
               ))}
             </div>
+          </Section>
+
+          <Section id="coordinates" label="位置情報">
+            {needsGps ? (
+              // GPS を含む方式: 座標は判定に使われるため常時展開＋必須チェック（従来どおり）。
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                {coordFields}
+                {gpsIncomplete && <p style={{ fontSize: 12, color: "#dc2626" }}>この方式では緯度・経度・半径がすべて必要です</p>}
+              </div>
+            ) : (
+              // QRのみ: 座標は保存されない参考情報。既定で折りたたみ、見出しで非保存を明示。
+              // 右の地図は常時表示。開けば手入力も可能だが、必須化はしない（validation 不変）。
+              <>
+                <p style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.7, margin: "0 0 10px" }}>
+                  「QRのみ」方式では座標はチェックイン判定に使われず、<strong>保存もされません</strong>。
+                  右の地図は位置確認・検索の参考用です。GPSを含む方式にすると座標が保存され、範囲内判定に使われます。
+                </p>
+                <CollapsibleSection
+                  title="座標を参考表示する（地図の位置）"
+                  subtitle="参考 — 保存されません"
+                  open={showCoordsRef}
+                  onToggle={() => setShowCoordsRef(!showCoordsRef)}
+                >
+                  {coordFields}
+                </CollapsibleSection>
+              </>
+            )}
           </Section>
 
           <Section id="beacon-settings" label="ビーコン設定">
@@ -409,8 +417,8 @@ export function LocationForm({ onSubmit, saving, workId, defaultValues }: Locati
               {stampEnabled && (
                 <div style={{ display: "flex", gap: 12 }}>
                   <div style={{ flex: 2 }}>
-                    <label style={labelStyle}>スタンプ表示名 <span style={subLabel}>— 未入力ならロケーション名</span></label>
-                    <input style={inputStyle} value={stampLabel} onChange={(e) => setStampLabel(e.target.value)} placeholder={name || "ロケーション名を使用"} maxLength={100} />
+                    <label style={labelStyle}>スタンプ表示名 <span style={subLabel}>— 未入力ならチェックインポイント名</span></label>
+                    <input style={inputStyle} value={stampLabel} onChange={(e) => setStampLabel(e.target.value)} placeholder={name || "チェックインポイント名を使用"} maxLength={100} />
                   </div>
                   <div style={{ flex: 1 }}>
                     <label style={labelStyle}>並び順</label>
@@ -422,47 +430,11 @@ export function LocationForm({ onSubmit, saving, workId, defaultValues }: Locati
             </div>
           </Section>
 
-          <Section id="success-action" label="成功時アクション">
-            {/* 分岐条件（set_flags JSON）は上級者向け。既定では折りたたみ、JSON が不正なときは
-                送信がブロックされるため強制的に開いてエラーを見せる（保存仕様は不変）。 */}
-            <CollapsibleSection
-              title="分岐条件を記録する"
-              subtitle="上級者向け"
-              open={showFlags || !jsonCheck.valid}
-              onToggle={() => setShowFlags(!showFlags)}
-            >
-              <div>
-                <label style={labelStyle}>チェックイン後に記録する分岐条件</label>
-                <textarea
-                  style={{ ...inputStyle, fontFamily: "monospace", fontSize: 13, minHeight: 60, borderColor: !jsonCheck.valid ? "#fca5a5" : "#d1d5db" }}
-                  value={setFlags} onChange={(e) => setSetFlags(e.target.value)} placeholder='{"visited_lobby": true}'
-                />
-                {!jsonCheck.valid && (
-                  <p style={{ fontSize: 12, color: "#dc2626", marginTop: 2 }}>
-                    入力形式が正しくありません（例: <code>{`{"visited_lobby": true}`}</code>）。{jsonCheck.message}
-                  </p>
-                )}
-                <p style={helpStyle}>
-                  チェックインしたユーザーに、あとでストーリー分岐に使える目印（フラグ）を記録できます。
-                  キーと値の組み合わせで指定します（例: <code>{`{"visited_lobby": true}`}</code>）。
-                  通常は空欄のままで問題ありません。
-                </p>
-              </div>
-            </CollapsibleSection>
-            <div style={groupStyle}>
-              <label style={labelStyle}>クールダウン（秒）</label>
-              <input style={inputStyle} type="number" min="0" max="86400" value={cooldownSeconds} onChange={(e) => setCooldownSeconds(e.target.value)} />
-              <p style={helpStyle}>同一ユーザーが連続チェックインできるまでの待機時間（デフォルト: 300秒 = 5分）</p>
-            </div>
-            {/* 有効/無効は「公開状態」セクション（基本情報付近）へ移設済み。 */}
-            <p style={{ fontSize: 11, color: "#9ca3af", lineHeight: 1.6 }}>将来拡張: 報酬付与・ヒント解放などのアクションは今後追加予定です。</p>
-          </Section>
-
           {/* チェックイン後の進行（旧「フェーズ指定」+「メッセージ指定」を統合）。
               選択肢の中身・保存先（transition_id / qr_success_message_id）は不変。文言と見せ方のみ変更。 */}
           <Section id="post-checkin-flow" label="チェックイン後の進行">
             <p style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.7, margin: "0 0 14px" }}>
-              このロケーションにチェックインしたとき、条件に合う場合だけ次の進行が発火します。
+              このチェックインポイントにチェックインしたとき、条件に合う場合だけ次の進行が発火します。
               ユーザーが遷移元フェーズにいる場合のみ、指定した遷移が発火します。どちらも任意です。
             </p>
 
@@ -550,37 +522,62 @@ export function LocationForm({ onSubmit, saving, workId, defaultValues }: Locati
             </div>
           </Section>
 
-          <Section id="coordinates" label="座標">
-            {needsGps ? (
-              // GPS を含む方式: 座標は判定に使われるため常時展開＋必須チェック（従来どおり）。
-              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                {coordFields}
-                {gpsIncomplete && <p style={{ fontSize: 12, color: "#dc2626" }}>この方式では緯度・経度・半径がすべて必要です</p>}
-              </div>
-            ) : (
-              // QRのみ: 座標は保存されない参考情報。既定で折りたたみ、見出しで非保存を明示。
-              // 右の地図は常時表示。開けば手入力も可能だが、必須化はしない（validation 不変）。
-              <>
-                <p style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.7, margin: "0 0 10px" }}>
-                  「QRのみ」方式では座標はチェックイン判定に使われず、<strong>保存もされません</strong>。
-                  右の地図は位置確認・検索の参考用です。GPSを含む方式にすると座標が保存され、範囲内判定に使われます。
+          <Section id="success-action" label="制限・条件">
+            <div style={groupStyle}>
+              <label style={labelStyle}>クールダウン（秒）</label>
+              <input style={inputStyle} type="number" min="0" max="86400" value={cooldownSeconds} onChange={(e) => setCooldownSeconds(e.target.value)} />
+              <p style={helpStyle}>同一ユーザーが連続チェックインできるまでの待機時間（デフォルト: 300秒 = 5分）</p>
+            </div>
+            {/* 分岐条件（set_flags JSON）は上級者向け。既定では折りたたみ、JSON が不正なときは
+                送信がブロックされるため強制的に開いてエラーを見せる（保存仕様は不変）。 */}
+            <CollapsibleSection
+              title="分岐条件を記録する"
+              subtitle="上級者向け"
+              open={showFlags || !jsonCheck.valid}
+              onToggle={() => setShowFlags(!showFlags)}
+            >
+              <div>
+                <label style={labelStyle}>チェックイン後に記録する分岐条件</label>
+                <textarea
+                  style={{ ...inputStyle, fontFamily: "monospace", fontSize: 13, minHeight: 60, borderColor: !jsonCheck.valid ? "#fca5a5" : "#d1d5db" }}
+                  value={setFlags} onChange={(e) => setSetFlags(e.target.value)} placeholder='{"visited_lobby": true}'
+                />
+                {!jsonCheck.valid && (
+                  <p style={{ fontSize: 12, color: "#dc2626", marginTop: 2 }}>
+                    入力形式が正しくありません（例: <code>{`{"visited_lobby": true}`}</code>）。{jsonCheck.message}
+                  </p>
+                )}
+                <p style={helpStyle}>
+                  チェックインしたユーザーに、あとでストーリー分岐に使える目印（フラグ）を記録できます。
+                  キーと値の組み合わせで指定します（例: <code>{`{"visited_lobby": true}`}</code>）。
+                  通常は空欄のままで問題ありません。
                 </p>
-                <CollapsibleSection
-                  title="座標を参考表示する（地図の位置）"
-                  subtitle="参考 — 保存されません"
-                  open={showCoordsRef}
-                  onToggle={() => setShowCoordsRef(!showCoordsRef)}
-                >
-                  {coordFields}
-                </CollapsibleSection>
-              </>
-            )}
+              </div>
+            </CollapsibleSection>
+          </Section>
+
+          {/* 公開状態（有効/無効）。保存先は既存 is_active。ラジオで分かりやすく（保存仕様は不変）。 */}
+          <Section id="active-state" label="公開状態">
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {([
+                { value: true,  label: "有効", desc: "このチェックインポイントのチェックインを利用できます。" },
+                { value: false, label: "無効", desc: "チェックインを利用できません。準備中や一時停止に使います。" },
+              ] as const).map(({ value, label, desc }) => (
+                <label key={String(value)} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 12px", border: `2px solid ${isActive === value ? "#2563eb" : "#e5e7eb"}`, borderRadius: 8, cursor: "pointer", background: isActive === value ? "#eff6ff" : "#fff" }}>
+                  <input type="radio" name="is_active" checked={isActive === value} onChange={() => setIsActive(value)} style={{ marginTop: 2 }} />
+                  <div>
+                    <div style={{ fontWeight: 500, fontSize: 14 }}>{label}</div>
+                    <div style={{ fontSize: 12, color: "#6b7280" }}>{desc}</div>
+                  </div>
+                </label>
+              ))}
+            </div>
           </Section>
 
           <Section id="history" label="履歴">
             <div style={{ padding: "16px", border: "1px dashed #e5e7eb", borderRadius: 8, background: "#f9fafb", textAlign: "center" }}>
               <p style={{ fontSize: 12, color: "#9ca3af", lineHeight: 1.7, margin: 0 }}>
-                チェックイン履歴・分析は各ロケーションの詳細画面でご確認いただけます。<br />
+                チェックイン履歴・分析は各チェックインポイントの詳細画面でご確認いただけます。<br />
                 （このフォームでの履歴表示は今後対応予定です）
               </p>
             </div>
