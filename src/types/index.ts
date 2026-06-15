@@ -398,6 +398,10 @@ export interface CreateWorkBody {
   sort_order?: number;
 }
 
+/** ホーム（作品単位）フォント。LIFF ホーム + 配下の各 LIFF ページにカスケード適用する。
+ *  "default"（または未設定/null）は従来フォント（LINE Seed JP 系）を維持。 */
+export type LiffHomeFontFamily = "default" | "meiryo" | "hiragino" | "yu_gothic" | "ud";
+
 /** 作品メニューホーム（`/liff/w/{publicId}`）の任意設定。すべて未設定可。
  *  未設定（null）のときは従来表示（見出し「ホーム」・説明/画像なし）にフォールバックする。 */
 export interface LiffHomeSettings {
@@ -409,6 +413,8 @@ export interface LiffHomeSettings {
   image_url:   string | null;
   /** LIFF デフォルトヘッダー用タイトル（document.title に反映）。null/空のとき作品名等にフォールバック。 */
   header_title: string | null;
+  /** ホーム（作品単位）フォント。null/未設定/"default" は従来フォント。 */
+  font_family: LiffHomeFontFamily | null;
 }
 
 export interface UpdateWorkBody {
@@ -418,12 +424,13 @@ export interface UpdateWorkBody {
   sort_order?: number;
   /** LIFF プレイヤー機能の有効/無効。 */
   liff_enabled?: boolean;
-  /** 作品メニューホームの任意設定（title/description/image_url/header_title）。指定キーのみ更新、空文字は解除。 */
+  /** 作品メニューホームの任意設定（title/description/image_url/header_title/font_family）。指定キーのみ更新、空文字/"default" は解除。 */
   liff_home_settings?: {
     title?:        string | null;
     description?:  string | null;
     image_url?:    string | null;
     header_title?: string | null;
+    font_family?:  LiffHomeFontFamily | null;
   };
   /** 途中再開機能の有効/無効（作品単位）。 */
   resume_enabled?: boolean;

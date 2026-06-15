@@ -24,6 +24,8 @@ import {
   type LiffPageSummary,
 } from "@/lib/api-client";
 import { LiffMenuHomeRenderer, type LiffMenuHomePage } from "@/components/liff/LiffMenuHomeRenderer";
+import { homeFontWrapperClass } from "@/components/liff/liff-style-helpers";
+import type { LiffHomeFontFamily } from "@/types";
 import { buildWorkHomeLiffUrl } from "@/lib/liff/public-urls";
 import { formatDateTime } from "./_shared";
 
@@ -32,7 +34,17 @@ interface HomeInit {
   description:  string | null;
   image_url:    string | null;
   header_title: string | null;
+  font_family:  LiffHomeFontFamily | null;
 }
+
+/** ホームフォントの選択肢（管理UI 表示用）。"default" は従来フォント。 */
+const HOME_FONT_OPTIONS: { value: LiffHomeFontFamily; label: string }[] = [
+  { value: "default",   label: "デフォルト" },
+  { value: "meiryo",    label: "メイリオ" },
+  { value: "hiragino",  label: "ヒラギノ角ゴ" },
+  { value: "yu_gothic", label: "遊ゴシック" },
+  { value: "ud",        label: "UDフォント" },
+];
 
 type CardStyle = "card" | "compact";
 
@@ -154,6 +166,7 @@ export function HomeTab({ oaId, workId, workPublicId, workTitle, pages, homeInit
   const [homeDescription, setHomeDescription] = useState(homeInit.description ?? "");
   const [homeImageUrl, setHomeImageUrl] = useState(homeInit.image_url ?? "");
   const [homeHeaderTitle, setHomeHeaderTitle] = useState(homeInit.header_title ?? "");
+  const [homeFontFamily, setHomeFontFamily] = useState<LiffHomeFontFamily>(homeInit.font_family ?? "default");
 
   // 親が pages を再取得したら Row を作り直す（保存後リセット含む）。
   useEffect(() => { setRows(buildRows(pages)); }, [pages]);
@@ -163,13 +176,15 @@ export function HomeTab({ oaId, workId, workPublicId, workTitle, pages, homeInit
     setHomeDescription(homeInit.description ?? "");
     setHomeImageUrl(homeInit.image_url ?? "");
     setHomeHeaderTitle(homeInit.header_title ?? "");
-  }, [homeInit.title, homeInit.description, homeInit.image_url, homeInit.header_title]);
+    setHomeFontFamily(homeInit.font_family ?? "default");
+  }, [homeInit.title, homeInit.description, homeInit.image_url, homeInit.header_title, homeInit.font_family]);
 
   const homeDirty =
     norm(homeTitle) !== (homeInit.title ?? "") ||
     norm(homeDescription) !== (homeInit.description ?? "") ||
     norm(homeImageUrl) !== (homeInit.image_url ?? "") ||
-    norm(homeHeaderTitle) !== (homeInit.header_title ?? "");
+    norm(homeHeaderTitle) !== (homeInit.header_title ?? "") ||
+    homeFontFamily !== (homeInit.font_family ?? "default");
 
   const rowsDirty = useMemo(
     () => rows.some((r, i) => r.origMenuOrder !== i || r.cardStyle !== r.origCardStyle),
@@ -209,6 +224,8 @@ export function HomeTab({ oaId, workId, workPublicId, workTitle, pages, homeInit
             description:  norm(homeDescription),
             image_url:    norm(homeImageUrl),
             header_title: norm(homeHeaderTitle),
+            // "default" は API 側で解除（= 従来フォント）扱い。
+            font_family:  homeFontFamily,
           },
         });
       }
@@ -229,7 +246,7 @@ export function HomeTab({ oaId, workId, workPublicId, workTitle, pages, homeInit
     } finally {
       setSaving(false);
     }
-  }, [isReadOnly, saving, dirty, homeDirty, homeTitle, homeDescription, homeImageUrl, homeHeaderTitle, rows, workId, showToast, onSaved]);
+  }, [isReadOnly, saving, dirty, homeDirty, homeTitle, homeDescription, homeImageUrl, homeHeaderTitle, homeFontFamily, rows, workId, showToast, onSaved]);
 
   // ── プレビュー用ページ（ローカルの順序・形式・ラベルを即時反映）──
   const previewPages = useMemo<LiffMenuHomePage[]>(
@@ -317,6 +334,22 @@ export function HomeTab({ oaId, workId, workPublicId, workTitle, pages, homeInit
             urlInputCollapsibleLabel="画像URLを直接入力する"
           />
           <p className="text-[11px] text-gray-400 -mt-1">未設定の場合は表示されません。設定するとホーム見出しの上に表示されます。</p>
+
+          {/* フォント: ホーム + 配下の各 LIFF ページに適用される（未設定=デフォルト）。 */}
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">フォント</label>
+            <select
+              value={homeFontFamily}
+              onChange={(e) => setHomeFontFamily(e.target.value as LiffHomeFontFamily)}
+              disabled={isReadOnly}
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 disabled:bg-gray-50"
+            >
+              {HOME_FONT_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+            <p className="text-[11px] text-gray-400 mt-1">ホームやLIFFページで使用するフォントを選択できます。端末にフォントが無い場合は自動的に標準フォントになります。</p>
+          </div>
         </div>
 
         {/* ページ一覧 */}
@@ -460,7 +493,8 @@ export function HomeTab({ oaId, workId, workPublicId, workTitle, pages, homeInit
             <span className="text-[10px] font-semibold tracking-[0.06em] text-[#9aa8a2]">LIFF プレビュー</span>
             <span className="w-7 h-1 rounded-full bg-[#e3e8ec]" />
           </div>
-          <div className="overflow-auto bg-[#f5f8f6]" style={{ maxHeight: 720 }}>
+          {/* フォント選択を即時反映: ラッパー class が配下 .liff-font の --liff-font-stack を上書きする。 */}
+          <div className={`overflow-auto bg-[#f5f8f6] ${homeFontWrapperClass(homeFontFamily)}`} style={{ maxHeight: 720 }}>
             <LiffMenuHomeRenderer
               workTitle={workTitle}
               pages={previewPages}
