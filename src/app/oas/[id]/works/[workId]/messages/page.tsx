@@ -2,7 +2,7 @@
 
 // src/app/oas/[id]/works/[workId]/messages/page.tsx
 
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { TLink as Link } from "@/components/TLink";
 import { bootstrapApi, messageApi, workApi, getDevToken } from "@/lib/api-client";
@@ -17,6 +17,8 @@ import { GuideCard } from "@/components/onboarding/GuideCard";
 import type { MessageWithRelations, MessageType, PhaseWithCounts, TransitionWithPhases, QuickReplyItem } from "@/types";
 import type { Role } from "@/lib/types/permissions";
 import { collectChainContinuationIds, chainSizeFrom, chainLengthFrom, estimateMaxSendUnit, LINE_REPLY_MAX, getChainContinuations, hasAnyTiming, summarizeTiming } from "./_list-helpers";
+import { analyzeMessageList } from "@/lib/message-flow-status";
+import type { MessageFlowInfo, FlowLink } from "@/lib/message-flow-status";
 
 const MESSAGE_TYPE_LABEL: Record<MessageType, string> = {
   text:     "テキスト",
@@ -191,6 +193,89 @@ function msgPreviewWithChar(m: MessageWithRelations | undefined): string {
   const body = msgPreview(m);
   const name = m.character?.name;
   return name ? `${name}「${body}」` : body;
+}
+
+/** 導線バッジの共通ピル。tone で配色を切り替える（warn=見落としにくく、info/neutral=控えめ）。 */
+function FlowPill({ tone, title, children }: { tone: "warn" | "info" | "neutral"; title?: string; children: React.ReactNode }) {
+  const palette = {
+    warn:    { bg: "#fef2f2", color: "#b91c1c", border: "#fecaca" },
+    info:    { bg: "#eff6ff", color: "#1d4ed8", border: "#bfdbfe" },
+    neutral: { bg: "#f8fafc", color: "#475569", border: "#e2e8f0" },
+  }[tone];
+  return (
+    <span
+      title={title}
+      style={{
+        display: "inline-flex", alignItems: "center", gap: 3,
+        fontSize: 10, fontWeight: tone === "warn" ? 700 : 600,
+        background: palette.bg, color: palette.color,
+        border: `1px solid ${palette.border}`,
+        borderRadius: 8, padding: "1px 7px", lineHeight: 1.5, whiteSpace: "nowrap",
+      }}
+    >
+      {children}
+    </span>
+  );
+}
+
+const FLOW_LINK_PREFIX: Record<FlowLink["type"], string> = {
+  free_input:      "入力後",
+  puzzle_phase:    "正解後",
+  checkin_message: "到着後",
+  checkin_phase:   "到着後",
+  qr_message:      "QR",
+  qr_phase:        "QR",
+  chain_external:  "連続",
+};
+
+/** メッセージ一覧の「導線状態」サブ情報（本文セル下部にコンパクト表示）。
+ *  判定は src/lib/message-flow-status.ts（純関数）。ここは表示のみ（UI/ロジック分離）。 */
+function FlowStatusCell({
+  info, msgById, phaseById,
+}: {
+  info:      MessageFlowInfo | undefined;
+  msgById:   Map<string, MessageWithRelations>;
+  phaseById: Map<string, PhaseWithCounts>;
+}) {
+  if (!info) return null;
+
+  const linkLabel = (link: FlowLink): { text: string; broken: boolean } => {
+    const prefix = FLOW_LINK_PREFIX[link.type];
+    if (!link.targetId || !link.exists) return { text: `${prefix} → 遷移先未設定`, broken: true };
+    const name =
+      link.targetType === "message"
+        ? (msgPreview(msgById.get(link.targetId)) || "メッセージ")
+        : (phaseById.get(link.targetId)?.name ?? "フェーズ");
+    return { text: `${prefix} → ${name}`, broken: false };
+  };
+
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 6, alignItems: "center" }}>
+      {/* 警告（見落としにくく） */}
+      {info.missingKeyword && <FlowPill tone="warn" title="応答キーワードが必須なのに未入力です">⚠ キーワード未設定</FlowPill>}
+      {info.hasBrokenLink  && <FlowPill tone="warn" title="設定された遷移先が未指定または存在しません">⚠ 遷移先未設定</FlowPill>}
+      {info.unreferenced   && <FlowPill tone="warn" title="どこからも参照されず、キーワードも無いため配信されません">⚠ 未接続</FlowPill>}
+
+      {/* 種別・分岐バッジ（控えめ） */}
+      {info.isStart       && <FlowPill tone="info">開始</FlowPill>}
+      {info.hasQrBranch   && <FlowPill tone="neutral">QR分岐あり</FlowPill>}
+      {!info.hasQrBranch && info.hasQuickReply && <FlowPill tone="neutral">クイックリプライあり</FlowPill>}
+      {info.hasFreeInput  && <FlowPill tone="neutral">自由入力あり</FlowPill>}
+      {info.hasImageTap   && <FlowPill tone="neutral">画像タップあり</FlowPill>}
+
+      {/* 次の遷移先 */}
+      {info.nextLinks.length > 0
+        ? info.nextLinks.map((link, i) => {
+            const { text, broken } = linkLabel(link);
+            return (
+              <span key={i} style={{ fontSize: 10, color: broken ? "#b91c1c" : "#64748b", whiteSpace: "nowrap" }}>
+                {text}
+              </span>
+            );
+          })
+        : <span style={{ fontSize: 10, color: "#cbd5e1", whiteSpace: "nowrap" }}>次の遷移先 → —</span>}
+    </div>
+  );
 }
 
 const normKw = (s: string) => s.trim().toLowerCase().normalize("NFKC");
@@ -443,6 +528,12 @@ export default function MessagesPage() {
   const [expandedChains, setExpandedChains] = useState<Set<string>>(new Set());
   // 操作中の messageId (= 削除/並び替え 進行中の表示用)
   const [busyMessageId, setBusyMessageId] = useState<string | null>(null);
+
+  // 導線状態の集計（純関数・1 回の fetch 済みデータから算出＝追加クエリなし / N+1 なし）。
+  // 表示用に target 名を引くための id→entity マップもここで作る。
+  const flowMap   = useMemo(() => analyzeMessageList(messages, new Set(phases.map((p) => p.id))), [messages, phases]);
+  const msgById   = useMemo(() => new Map(messages.map((m) => [m.id, m])), [messages]);
+  const phaseById = useMemo(() => new Map(phases.map((p) => [p.id, p])), [phases]);
   const toggleChainExpansion = (headId: string) => {
     setExpandedChains((prev) => {
       const next = new Set(prev);
@@ -1362,6 +1453,8 @@ export default function MessagesPage() {
                               </div>
                             );
                           })()}
+                          {/* 導線状態（次の遷移先 / 分岐・自由入力・画像タップ・QR / 未設定・未接続の警告） */}
+                          <FlowStatusCell info={flowMap.get(msg.id)} msgById={msgById} phaseById={phaseById} />
                         </td>
 
                         {/* キャラクター */}
