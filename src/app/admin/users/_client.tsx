@@ -13,9 +13,8 @@ interface AdminUserRow {
   name: string | null;
   email: string | null;
   image: string | null;
-  meta_name: string | null;
-  meta_avatar: string | null;
-  provider: string | null;
+  full_name: string | null;
+  company_name: string | null;
   created_at: string | null;
   last_sign_in_at: string | null;
   oa_count: number;
@@ -116,7 +115,7 @@ export function AdminUsersClient() {
           type="search"
           value={searchInput}
           onChange={(e) => setSearchInput(e.target.value)}
-          placeholder="名前・メールアドレス・ユーザーIDで検索"
+          placeholder="名前・氏名・会社名・メールアドレス・ユーザーIDで検索"
           style={{ flex: "1 1 280px", minWidth: 220, padding: "8px 12px", border: "1px solid var(--border-light)", borderRadius: 8, fontSize: 13 }}
         />
         <select
@@ -146,7 +145,8 @@ export function AdminUsersClient() {
           <thead>
             <tr>
               <th style={th}>ユーザー</th>
-              <th style={th}>Supabase登録情報</th>
+              <th style={th}>氏名</th>
+              <th style={th}>会社名</th>
               <th style={th}>作成日時</th>
               <th style={th}>最終ログイン</th>
               <th style={{ ...th, textAlign: "right" }}>OA数</th>
@@ -155,7 +155,7 @@ export function AdminUsersClient() {
           </thead>
           <tbody>
             {rows && rows.length === 0 && !loading && (
-              <tr><td style={{ ...td, textAlign: "center", color: "var(--text-muted)", padding: "28px" }} colSpan={6}>該当するユーザーがいません。</td></tr>
+              <tr><td style={{ ...td, textAlign: "center", color: "var(--text-muted)", padding: "28px" }} colSpan={7}>該当するユーザーがいません。</td></tr>
             )}
             {(rows ?? []).map((r) => (
               <tr key={r.id}>
@@ -170,13 +170,10 @@ export function AdminUsersClient() {
                   </div>
                 </td>
                 <td style={td}>
-                  <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 2 }}>
-                    {r.provider
-                      ? <span style={{ fontSize: 10, fontWeight: 700, padding: "1px 6px", borderRadius: 999, background: "var(--color-bg-subtle,#eef2f5)", color: "var(--text-secondary)" }}>{r.provider}</span>
-                      : <span style={{ ...muted, fontSize: 11 }}>未取得</span>}
-                  </div>
-                  <div style={{ ...truncate, fontSize: 11 }}>{r.meta_name ?? <span style={muted}>未取得</span>}</div>
-                  <div style={{ ...truncate, ...muted, fontSize: 10 }}>{r.meta_avatar ? "avatar あり" : "avatar なし"}</div>
+                  {r.full_name ? <div style={truncate}>{r.full_name}</div> : <span style={muted}>未取得</span>}
+                </td>
+                <td style={td}>
+                  {r.company_name ? <div style={truncate}>{r.company_name}</div> : <span style={muted}>未取得</span>}
                 </td>
                 <td style={{ ...td, whiteSpace: "nowrap" }}>{fmtJst(r.created_at)}</td>
                 <td style={{ ...td, whiteSpace: "nowrap" }}>{fmtJst(r.last_sign_in_at)}</td>
