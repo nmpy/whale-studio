@@ -18,7 +18,6 @@ import { trackEvent } from "@/lib/event-tracker";
 import { ViewerBanner } from "@/components/PermissionGuard";
 import { WorkCreatedGuide }   from "@/components/onboarding/WorkCreatedGuide";
 import { OnboardingProgress } from "@/components/onboarding/OnboardingProgress";
-import { PrePublishCheck } from "./_PrePublishCheck";
 import { WorkLimitCard } from "@/components/upgrade/WorkLimitCard";
 import {
   HUB_CARD_TO_FEATURE,
@@ -377,9 +376,6 @@ export default function WorkHubPage() {
           hasTransitions={hasTransitions}
         />
       )}
-
-      {/* ── 公開前チェック（設定漏れ・導線切れ・権限不整合の確認） ── */}
-      {work && <PrePublishCheck oaId={oaId} workId={workId} />}
 
       {/* ── 使い方ガイド ── */}
       <HelpAccordion items={[
