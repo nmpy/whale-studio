@@ -70,9 +70,21 @@ export interface FlowQuickReply {
   response_message_id?: string | null;
 }
 
-/** タップ可能な QR か（有効 かつ ラベルあり）。ラベルがユーザー入力（応答キーワード相当）になる。 */
+/** QR タップ時に bot へ送られ、応答キーワードとして照合される実際の入力テキスト。
+ *  ランタイム（src/lib/line.ts buildQuickReplyFromItems / webhook の照合）に合わせる:
+ *    - action="url" は uri アクション＝URL を開くだけで bot へ入力を送らない → 入力なし（空）。
+ *    - action="hint" は label を送信テキストにする。
+ *    - それ以外（text/next/custom）は value 優先・無ければ label（webhook も value||label で照合）。 */
+function qrInputText(qr: FlowQuickReply): string {
+  if (qr.action === "url") return "";
+  if (qr.action === "hint") return (qr.label ?? "").trim();
+  return (qr.value ?? "").trim() || (qr.label ?? "").trim();
+}
+
+/** タップで bot に応答キーワード相当の入力を送れる QR か（有効 かつ 実入力テキストが非空）。
+ *  url（リンクを開くだけ）/ 無効 / 入力テキスト空 は「キーワード代替」にならない。 */
 function isTappableQr(qr: FlowQuickReply): boolean {
-  return qr.enabled !== false && !!(qr.label ?? "").trim();
+  return qr.enabled !== false && qrInputText(qr) !== "";
 }
 
 export interface FlowMessage {

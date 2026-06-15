@@ -185,14 +185,25 @@ describe("analyzeMessageList", () => {
     expect(info.missingKeyword).toBe(false);
   });
 
-  it("クイックリプライ分岐に必要な入力値(label+value)がある場合、missingKeyword=false", () => {
+  it("クイックリプライ分岐(message系)に入力値(value)がある場合、missingKeyword=false", () => {
+    const map = run([
+      // action=text は message アクション＝送信テキスト value("yes") が bot に届く＝応答キーワード相当。
+      { id: "m1", kind: "response", phase_id: "p1", trigger_keyword: "",
+        quick_replies: [{ label: "はい", action: "text", value: "yes" }] },
+    ]);
+    const info = map.get("m1")!;
+    expect(info.hasQuickReply).toBe(true);
+    expect(info.missingKeyword).toBe(false);
+  });
+
+  it("url QR は bot へ入力を送らない（リンクを開くだけ）ので、それだけでは missingKeyword=true のまま", () => {
     const map = run([
       { id: "m1", kind: "response", phase_id: "p1", trigger_keyword: "",
         quick_replies: [{ label: "公式サイト", action: "url", value: "https://x" }] },
     ]);
     const info = map.get("m1")!;
-    expect(info.hasQuickReply).toBe(true);
-    expect(info.missingKeyword).toBe(false);
+    expect(info.hasQuickReply).toBe(true);   // バッジ上は「クイックリプライあり」
+    expect(info.missingKeyword).toBe(true);  // ただし応答キーワード代替にはならない
   });
 
   it("他メッセージのタップ可能な QR から到達する response は、自前キーワードが空でも missingKeyword=false", () => {
