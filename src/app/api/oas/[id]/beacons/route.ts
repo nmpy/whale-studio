@@ -117,10 +117,22 @@ export const POST = withAuth<{ id: string }>(async (req, ctx, user) => {
       }
     }
 
+    // location_id が指定された場合、地点の存在 +（work 指定時は）その work 配下を検証。
+    if (data.location_id) {
+      const loc = await prisma.location.findUnique({ where: { id: data.location_id }, select: { workId: true, work: { select: { oaId: true } } } });
+      if (!loc || loc.work.oaId !== oaId) {
+        return badRequest("指定された地点がこの OA に属していません", { location_id: ["地点が不正です"] });
+      }
+      if (targetWorkId && loc.workId !== targetWorkId) {
+        return badRequest("指定された地点がこの作品に属していません", { location_id: ["地点が不正です"] });
+      }
+    }
+
     const trigger = await prisma.beaconTrigger.create({
       data: {
         oaId,
         workId:          targetWorkId,
+        locationId:      data.location_id ?? null,
         name:            data.name,
         hwid,
         enabled:         data.enabled ?? true,

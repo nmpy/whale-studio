@@ -5412,11 +5412,16 @@ export function MessageForm({
                   <option value="">使わない</option>
                   <option value="qr">QRコードの読み取り</option>
                   <option value="gps">現在地（GPS）でチェックイン</option>
-                  <option value="beacon" disabled>ビーコン（次のアップデートで対応予定）</option>
+                  <option value="beacon">Beacon検知を待つ</option>
                 </select>
                 <div style={{ ...hintText, marginTop: 4 }}>
                   「現在地（GPS）」は、プレイヤーがLIFF画面を開いてチェックインする方式です（バックグラウンドの自動検知ではありません）。
                 </div>
+                {form.checkin_trigger_type === "beacon" && (
+                  <div style={{ ...hintText, marginTop: 4, color: "#b45309" }}>
+                    Beacon検知を使うには、対象地点に紐づくビーコンが必要です。ビーコン設定画面で「紐づけ地点」に同じ地点を選んでおいてください（未到達のユーザーには送信されません）。
+                  </div>
+                )}
               </div>
 
               {form.checkin_trigger_type && (

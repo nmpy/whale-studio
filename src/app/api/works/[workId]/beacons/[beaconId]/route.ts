@@ -80,12 +80,22 @@ export const PATCH = withAuth<{ workId: string; beaconId: string }>(async (req, 
       }
     }
 
+    // location_id が指定された場合、対象 work 配下の地点のみ許可（null = 紐づけ解除）。
+    if (data.location_id !== undefined && data.location_id !== null) {
+      const effectiveWorkId = data.work_id !== undefined ? data.work_id : existing.workId;
+      const loc = await prisma.location.findUnique({ where: { id: data.location_id }, select: { workId: true } });
+      if (!loc || loc.workId !== effectiveWorkId) {
+        return badRequest("指定された地点がこの作品に属していません", { location_id: ["地点が不正です"] });
+      }
+    }
+
     const updated = await prisma.beaconTrigger.update({
       where: { id: beaconId },
       data: {
         ...(data.name !== undefined && { name: data.name }),
         ...(data.hwid !== undefined && { hwid: nextHwid }),
         ...(data.work_id !== undefined && { workId: data.work_id }),
+        ...(data.location_id !== undefined && { locationId: data.location_id }),
         ...(data.enabled !== undefined && { enabled: data.enabled }),
         ...(data.event_types !== undefined && { eventTypes: data.event_types }),
         ...(data.cooldown_seconds !== undefined && { cooldownSeconds: data.cooldown_seconds }),

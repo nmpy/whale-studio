@@ -108,10 +108,19 @@ export const POST = withAuth<{ workId: string }>(async (req, ctx, user) => {
       }
     }
 
+    // location_id が指定された場合、対象 work 配下の地点のみ許可（クロスwork 紐づけ防止）。
+    if (data.location_id) {
+      const loc = await prisma.location.findUnique({ where: { id: data.location_id }, select: { workId: true } });
+      if (!loc || loc.workId !== targetWorkId) {
+        return badRequest("指定された地点がこの作品に属していません", { location_id: ["地点が不正です"] });
+      }
+    }
+
     const trigger = await prisma.beaconTrigger.create({
       data: {
         oaId,
         workId:          targetWorkId,
+        locationId:      data.location_id ?? null,
         name:            data.name,
         hwid,
         enabled:         data.enabled ?? true,

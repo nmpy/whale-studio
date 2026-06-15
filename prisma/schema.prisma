@@ -1277,6 +1277,10 @@ model BeaconTrigger {
   oaId            String   @map("oa_id")
   /// 任意の所属作品（作品スコープでアクションを実行したい場合）
   workId          String?  @map("work_id")
+  /// 任意の紐づけ地点(Location.id)。設定すると、この beacon 検知時に
+  /// 「送信後の待機トリガー(CheckinWaitTrigger)」をこの地点で照合・消化できる（地点到着で自動進行）。
+  /// 既存 BeaconTrigger アクションとは独立。null = 待機トリガー連携なし（従来どおり）。
+  locationId      String?  @map("location_id")
   name            String
   /// 正規化済み HWID（小文字英数字のみ）
   hwid            String
@@ -1306,10 +1310,12 @@ model BeaconTrigger {
   updatedAt       DateTime @updatedAt @map("updated_at")
 
   events          BeaconEventLog[]
+  location        Location?        @relation(fields: [locationId], references: [id], onDelete: SetNull)
 
   @@unique([oaId, hwid])
   @@index([oaId])
   @@index([workId])
+  @@index([locationId])
   @@map("beacon_triggers")
 }
 
@@ -1398,6 +1404,7 @@ model Location {
   qrSuccessMessage Message?        @relation("LocationQrSuccessMessage", fields: [qrSuccessMessageId], references: [id], onDelete: SetNull)
   visits           LocationVisit[]
   checkinWaitTriggers CheckinWaitTrigger[]
+  beaconTriggers   BeaconTrigger[]
 
   @@index([workId])
   @@index([beaconUuid, beaconMajor, beaconMinor])

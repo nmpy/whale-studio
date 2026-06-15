@@ -17,6 +17,7 @@ type BeaconResponse = {
   cooldown_seconds: number;
   action_type: BeaconFormValue["action_type"];
   action_payload: Record<string, unknown> | null;
+  location_id: string | null;
 };
 
 export default function EditBeaconPage() {
@@ -83,6 +84,7 @@ export default function EditBeaconPage() {
             cooldown_seconds: beacon.cooldown_seconds,
             action_type: beacon.action_type,
             action_payload: beacon.action_payload,
+            location_id: beacon.location_id,
           }}
         />
       )}
