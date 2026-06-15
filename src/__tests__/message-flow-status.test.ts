@@ -156,15 +156,83 @@ describe("analyzeMessageList", () => {
     expect(map.get("m2")!.hasBrokenLink).toBe(false);
   });
 
-  it("chain 子メッセージの キーワード未設定 / 遷移先未設定 が head に集約される", () => {
+  it("chain 子由来の『遷移先未設定』は head に集約するが、子の『キーワード未設定』は親に出さない", () => {
     const map = run([
+      // head は normal（キーワード不要）。子に画像タップ宛先空（broken）+ 形式上 response/空キーワード。
       { id: "h",  kind: "normal", phase_id: "p1", next_message_id: "c1" },
-      // 子: 応答キーワード必須(response)なのに空 + 画像タップ宛先空
       { id: "c1", kind: "response", phase_id: "p1", trigger_keyword: "",
         image_action_type: "uri", image_action_url: "" },
     ]);
     const head = map.get("h")!;
-    expect(head.missingKeyword).toBe(true);
+    // 子は next_message_id で自動送信される＝キーワードでトリガーされないため、親に誤表示しない。
+    expect(head.missingKeyword).toBe(false);
+    // 遷移先（操作後）の壊れは chain 全体で集約するので true。
     expect(head.hasBrokenLink).toBe(true);
+  });
+
+  it("QR分岐があり各分岐にラベル(応答キーワード相当)がある場合、missingKeyword=false", () => {
+    const map = run([
+      { id: "m1", kind: "response", phase_id: "p1", trigger_keyword: "",
+        quick_replies: [
+          { label: "はい", action: "text", target_message_id: "yes" },
+          { label: "いいえ", action: "text", target_message_id: "no" },
+        ] },
+      { id: "yes", kind: "normal", phase_id: "p1" },
+      { id: "no",  kind: "normal", phase_id: "p1" },
+    ]);
+    const info = map.get("m1")!;
+    expect(info.hasQrBranch).toBe(true);
+    expect(info.missingKeyword).toBe(false);
+  });
+
+  it("クイックリプライ分岐(message系)に入力値(value)がある場合、missingKeyword=false", () => {
+    const map = run([
+      // action=text は message アクション＝送信テキスト value("yes") が bot に届く＝応答キーワード相当。
+      { id: "m1", kind: "response", phase_id: "p1", trigger_keyword: "",
+        quick_replies: [{ label: "はい", action: "text", value: "yes" }] },
+    ]);
+    const info = map.get("m1")!;
+    expect(info.hasQuickReply).toBe(true);
+    expect(info.missingKeyword).toBe(false);
+  });
+
+  it("url QR は bot へ入力を送らない（リンクを開くだけ）ので、それだけでは missingKeyword=true のまま", () => {
+    const map = run([
+      { id: "m1", kind: "response", phase_id: "p1", trigger_keyword: "",
+        quick_replies: [{ label: "公式サイト", action: "url", value: "https://x" }] },
+    ]);
+    const info = map.get("m1")!;
+    expect(info.hasQuickReply).toBe(true);   // バッジ上は「クイックリプライあり」
+    expect(info.missingKeyword).toBe(true);  // ただし応答キーワード代替にはならない
+  });
+
+  it("他メッセージのタップ可能な QR から到達する response は、自前キーワードが空でも missingKeyword=false", () => {
+    const map = run([
+      { id: "menu", kind: "normal", phase_id: "p1",
+        quick_replies: [{ label: "ヒントを見る", action: "text", response_message_id: "r1" }] },
+      { id: "r1", kind: "response", phase_id: "p1", trigger_keyword: "" }, // QR ラベルが入力になる
+    ]);
+    expect(map.get("r1")!.missingKeyword).toBe(false);
+  });
+
+  it("本当にキーワードが空で QR/クイックリプライ分岐も無い場合だけ missingKeyword=true", () => {
+    const map = run([
+      { id: "r1", kind: "response", phase_id: "p1", trigger_keyword: "" }, // 入力導線が一切ない
+    ]);
+    expect(map.get("r1")!.missingKeyword).toBe(true);
+  });
+
+  it("ラベルの無い/無効な QR はキーワード代替にならず、missingKeyword=true のまま", () => {
+    const map = run([
+      // ラベル空 → タップ操作の入力にならない
+      { id: "a", kind: "response", phase_id: "p1", trigger_keyword: "",
+        quick_replies: [{ label: "", action: "text", target_message_id: "x" }] },
+      // enabled=false → 非表示でタップできない
+      { id: "b", kind: "response", phase_id: "p1", trigger_keyword: "",
+        quick_replies: [{ label: "押せない", enabled: false, action: "text", target_message_id: "x" }] },
+      { id: "x", kind: "normal", phase_id: "p1" },
+    ]);
+    expect(map.get("a")!.missingKeyword).toBe(true);
+    expect(map.get("b")!.missingKeyword).toBe(true);
   });
 });

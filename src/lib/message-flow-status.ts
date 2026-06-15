@@ -59,11 +59,32 @@ export interface MessageFlowInfo {
 }
 
 export interface FlowQuickReply {
+  /** ボタン表示ラベル。タップ時にこのラベルがユーザー入力（＝応答キーワード相当）として扱われる。 */
+  label?:               string | null;
+  /** false = LINE 非表示 / 照合対象外（省略 = 有効）。 */
+  enabled?:             boolean | null;
   action?:              string | null;
   value?:               string | null;
   target_message_id?:   string | null;
   target_phase_id?:     string | null;
   response_message_id?: string | null;
+}
+
+/** QR タップ時に bot へ送られ、応答キーワードとして照合される実際の入力テキスト。
+ *  ランタイム（src/lib/line.ts buildQuickReplyFromItems / webhook の照合）に合わせる:
+ *    - action="url" は uri アクション＝URL を開くだけで bot へ入力を送らない → 入力なし（空）。
+ *    - action="hint" は label を送信テキストにする。
+ *    - それ以外（text/next/custom）は value 優先・無ければ label（webhook も value||label で照合）。 */
+function qrInputText(qr: FlowQuickReply): string {
+  if (qr.action === "url") return "";
+  if (qr.action === "hint") return (qr.label ?? "").trim();
+  return (qr.value ?? "").trim() || (qr.label ?? "").trim();
+}
+
+/** タップで bot に応答キーワード相当の入力を送れる QR か（有効 かつ 実入力テキストが非空）。
+ *  url（リンクを開くだけ）/ 無効 / 入力テキスト空 は「キーワード代替」にならない。 */
+function isTappableQr(qr: FlowQuickReply): boolean {
+  return qr.enabled !== false && qrInputText(qr) !== "";
 }
 
 export interface FlowMessage {
@@ -147,6 +168,9 @@ export function analyzeMessageList(
   // next_message_id / QR の target・response / 自由入力後 / 到着後 の各ポインタを集約。
   const referencedIds = new Set<string>();
   const addRef = (id: string | null | undefined) => { if (id) referencedIds.add(id); };
+  // タップ可能な QR（有効＋ラベルあり）から飛ばされるメッセージ。これらは QR ラベルが
+  // ユーザー入力（応答キーワード相当）になるため、自前の trigger_keyword が空でも到達できる。
+  const reachableViaTappableQr = new Set<string>();
   for (const m of messages) {
     addRef(m.next_message_id);
     addRef(m.free_input_next_message_id);
@@ -154,6 +178,10 @@ export function analyzeMessageList(
     for (const qr of m.quick_replies ?? []) {
       addRef(qr.target_message_id);
       addRef(qr.response_message_id);
+      if (isTappableQr(qr)) {
+        if (qr.target_message_id)   reachableViaTappableQr.add(qr.target_message_id);
+        if (qr.response_message_id) reachableViaTappableQr.add(qr.response_message_id);
+      }
     }
   }
 
@@ -169,8 +197,8 @@ export function analyzeMessageList(
     let hasFreeInput = false;
     let hasImageTap = false;
     let hasBrokenLink = false;
-    // キーワード未設定は chain 全体で集約する（途中メッセージの不足も head 行で見落とさない）。
-    let missingKeyword = false;
+    // chain 内に「タップ可能な QR（有効＋ラベルあり）」があるか＝ユーザー入力の代替導線。
+    let hasTappableQr = false;
     const nextLinks: FlowLink[] = [];
 
     const pushLink = (type: FlowLinkType, targetType: "message" | "phase", targetId: string | null | undefined) => {
@@ -183,13 +211,11 @@ export function analyzeMessageList(
     };
 
     for (const m of chain) {
-      // 途中メッセージも含めてキーワード必須・未入力を集約（chain 子の見落とし防止）。
-      if (keywordRequired(m.kind) && !(m.trigger_keyword ?? "").trim()) missingKeyword = true;
-
       // QR
       const qrs = m.quick_replies ?? [];
       if (qrs.length > 0) hasQuickReply = true;
       for (const qr of qrs) {
+        if (isTappableQr(qr)) hasTappableQr = true;
         if (qrIsBranch(qr)) {
           hasQrBranch = true;
           if (qr.target_phase_id) pushLink("qr_phase", "phase", qr.target_phase_id);
@@ -236,6 +262,19 @@ export function analyzeMessageList(
     if (tail?.next_message_id && !chainIds.has(tail.next_message_id)) {
       pushLink("chain_external", "message", tail.next_message_id);
     }
+
+    // キーワード未設定の判定（head 限定・QR/クイックリプライの代替導線を考慮）:
+    //   - 判定対象は head のみ。chain の子は next_message_id で自動送信される＝キーワードで
+    //     トリガーされないため、子の trigger_keyword 空を親に集約しない（誤表示を防ぐ）。
+    //   - kind=start/response はユーザー入力で起動するが、その「入力」は次のいずれでも満たされる:
+    //       (1) 自前の trigger_keyword、(2) 自分（chain）が持つタップ可能な QR（ラベル＝入力）、
+    //       (3) 他メッセージのタップ可能な QR から飛ばされる（target/response。QR ラベル＝入力）。
+    //     いずれかがあれば「キーワード未設定」は出さない。すべて無いときだけ警告する。
+    const headKeywordSatisfied =
+      !!(head.trigger_keyword ?? "").trim() ||
+      hasTappableQr ||                       // chain 内にタップ可能な QR（ラベル＝入力）がある
+      reachableViaTappableQr.has(head.id);   // 他メッセージのタップ可能な QR から到達できる
+    const missingKeyword = keywordRequired(head.kind) && !headKeywordSatisfied;
 
     // 未接続の判定（誤検知を避けつつ「確実に届かない」もののみ flag）:
     //   (a) response/hint は「参照される or キーワード待ち」でしか発火しない trigger 専用 kind。
