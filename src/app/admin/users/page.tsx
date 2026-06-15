@@ -3,7 +3,7 @@
 //
 // セキュリティ: /admin/layout.tsx は platform admin OR workspace owner を許可するが、
 //   このページは platform admin 専用（全ユーザーの email 等を扱うため）。非該当は redirect。
-//   ナビ導線も platform admin のみ表示（AdminSidebar の PLATFORM_NAV_ITEMS）。API も platform 限定。
+//   ナビ導線も platform admin のみ表示（adminNavItems.ts の platformOnly=true）。API も platform 限定。
 
 import { redirect } from "next/navigation";
 import { getServerUser } from "@/lib/supabase/server";

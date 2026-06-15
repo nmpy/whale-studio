@@ -6,45 +6,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { getAuthHeaders } from "@/lib/api-client";
-
-const ADMIN_ITEMS = [
-  {
-    href:  "/admin/oa-onboarding",
-    title: "OA連携審査",
-    desc:  "新規ユーザーの LINE 公式アカウント連携申請を承認 / 差し戻し",
-    color: "#06C755",
-  },
-  {
-    href:  "/admin/live",
-    title: "Whale Studio Live 管理",
-    desc:  "OA ごとに Whale Studio Live（上位機能）の有効 / 無効を切り替え",
-    color: "#0ea5e9",
-  },
-  {
-    href:  "/admin/announcements",
-    title: "お知らせ管理",
-    desc:  "ユーザーへのお知らせの作成・公開・非公開を管理",
-    color: "#2563eb",
-  },
-  {
-    href:  "/admin/policies",
-    title: "規約管理",
-    desc:  "利用規約・プライバシーポリシーの編集と同意履歴を管理",
-    color: "#7c3aed",
-  },
-  {
-    href:  "/admin/billing",
-    title: "課金分析",
-    desc:  "課金導線イベントの分析・確認",
-    color: "#d97706",
-  },
-  {
-    href:  "/admin/audit",
-    title: "操作ログ",
-    desc:  "管理操作の履歴を確認",
-    color: "#059669",
-  },
-] as const;
+import { visibleAdminNavItems } from "./_components/adminNavItems";
 
 export default function AdminIndexPage() {
   // Whale Studio Live 管理カードは platform admin のみに表示（運営専用）。
@@ -82,13 +44,9 @@ export default function AdminIndexPage() {
         gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))",
         gap: 12,
       }}>
-        {ADMIN_ITEMS.filter(({ href }) => (
-          // platform admin 専用カード (/admin/live, /admin/policies) は
-          // isPlatform=true のときのみ表示。それ以外のカードは全員に表示。
-          href === "/admin/live" || href === "/admin/policies"
-            ? isPlatform
-            : true
-        )).map(({ href, title, desc, color }) => {
+        {/* 左サイドバー（AdminSidebar）と共通の定義から描画する（adminNavItems.ts が唯一の定義）。
+            platformOnly 項目は isPlatform=true のときのみ表示＝サイドバーと同一の表示条件。 */}
+        {visibleAdminNavItems(isPlatform).map(({ href, label, desc, color }) => {
           const isDisabled = !href;
 
           const cardStyle: React.CSSProperties = {
@@ -126,7 +84,7 @@ export default function AdminIndexPage() {
                   fontSize: 13, fontWeight: 600, color: isDisabled ? "#9ca3af" : "#111827",
                   marginBottom: 2, display: "flex", alignItems: "center", gap: 6,
                 }}>
-                  {title}
+                  {label}
                   {isDisabled && (
                     <span style={{
                       fontSize: 9, fontWeight: 700, color: "#9ca3af",
@@ -153,10 +111,10 @@ export default function AdminIndexPage() {
           );
 
           return isDisabled ? (
-            <div key={title} style={cardStyle}>{inner}</div>
+            <div key={href} style={cardStyle}>{inner}</div>
           ) : (
             <Link
-              key={title}
+              key={href}
               href={href}
               style={cardStyle}
               onMouseEnter={hoverIn}

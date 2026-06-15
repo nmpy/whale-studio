@@ -6,33 +6,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-
-const NAV_ITEMS = [
-  { href: "/admin/announcements", label: "お知らせ管理" },
-  { href: "/admin/audience",      label: "ユーザー概況" },
-  { href: "/admin/onboarding",    label: "オンボーディング分析" },
-  { href: "/admin/billing",       label: "課金導線分析" },
-  { href: "/admin/hub-actions",   label: "ハブ操作分析" },
-  { href: "/admin/resume",        label: "再開分析" },
-  { href: "/admin/audit",         label: "操作ログ" },
-  // 注: /admin/live と /admin/privacy-acceptances は platform admin 専用のため
-  //     sidebar には掲載せず、/admin トップで isPlatform 判定して条件表示する
-  //     (= 既存 /admin/live と同方針)。
-] as const;
-
-// platform admin だけに表示する導線 (= isPlatform が true のときのみ描画)。
-// ページ自体の server-side gate / API gate はそのまま維持し、ここは「ナビ表示」のみを制御する。
-const PLATFORM_NAV_ITEMS = [
-  { href: "/admin/users",                     label: "ユーザー" },
-  { href: "/admin/personal-plan-permissions", label: "個人プラン権限" },
-  { href: "/admin/business-invite-links",     label: "法人プラン権限" },
-] as const;
+import { visibleAdminNavItems } from "./adminNavItems";
 
 export function AdminSidebar({ isPlatform = false }: { isPlatform?: boolean }) {
   const pathname = usePathname();
 
-  // 共通項目 + (platform admin のみ) 専用項目
-  const navItems = isPlatform ? [...NAV_ITEMS, ...PLATFORM_NAV_ITEMS] : NAV_ITEMS;
+  // FV（/admin トップ）と共通の定義から描画する（adminNavItems.ts が唯一の定義）。
+  // platformOnly 項目は isPlatform=true のときのみ表示。ページ自体の server gate はそのまま維持。
+  const navItems = visibleAdminNavItems(isPlatform);
 
   return (
     <aside style={{
