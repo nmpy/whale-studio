@@ -128,7 +128,7 @@ export function LiffSinglePageViewer({ workId, pageId, workPublicId }: Props) {
   if (error || !page) {
     return (
       <div className="min-h-screen bg-[color:var(--liff-background)] flex items-center justify-center p-4">
-        <div className="bg-[color:var(--liff-surface)] rounded-[12px] px-4 py-6 border border-[color:var(--liff-border)] text-center max-w-sm w-full">
+        <div className="bg-[color:var(--liff-surface)] rounded-[18px] px-4 py-6 border border-[color:var(--liff-border)] text-center max-w-sm w-full">
           <p className="text-4xl mb-3">😢</p>
           <h2 className="text-[16px] font-bold text-[color:var(--liff-primary-text)] mb-2">表示できません</h2>
           <p className="text-[14px] text-[color:var(--liff-secondary-text)]">{error ?? "ページを読み込めませんでした"}</p>

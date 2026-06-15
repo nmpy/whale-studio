@@ -99,7 +99,7 @@ export function LiffSinglePageRenderer({
 
   return (
     <LiffPlayerProvider value={playerCtxValue}>
-      <div className={`liff-font ${liffRootClass(settings)} min-h-screen bg-[#f6f8f7] text-[color:var(--liff-primary-text)]`}>
+      <div className={`liff-font ${liffRootClass(settings)} min-h-screen bg-[color:var(--liff-background)] text-[color:var(--liff-primary-text)]`}>
         {/* 独自ヘッダー・「ホームに戻る」ボタンは廃止（実機 LINE ヘッダーと二重化するため）。
             本文はページタイトル → 説明 → ブロックから自然に始まる。 */}
 

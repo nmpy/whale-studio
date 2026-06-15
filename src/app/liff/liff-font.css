@@ -25,12 +25,16 @@
   --liff-secondary-text:    #5B6168;     /* やや補助 */
   --liff-tertiary-text:     #8C8C8C;     /* 補足テキスト */
 
-  --liff-border:            #EAEAEA;     /* セクション区切り線 (border-bottom 中心で使う) */
+  --liff-border:            #eef2f5;     /* カード境界・区切り線。ホーム基準の薄いグレーに統一 (旧 #EAEAEA) */
   --liff-border-strong:     #E0E2E5;     /* 強調が要る場合のみ */
 
-  --liff-surface:           #FFFFFF;
+  --liff-surface:           #FFFFFF;     /* カード・入力欄の面は白を維持（背景との差を出す） */
   --liff-surface-subtle:    #FAFAFA;
-  --liff-background:        #FFFFFF;     /* 白基調に変更 (旧: #F7F8FA グレー) */
+  --liff-background:        #f6f8f7;     /* ページ背景: ホーム基準の温かいグレーに統一 (旧 #FFFFFF) */
+
+  /* カード共通トーン（ホーム基準）。各 renderer の card class から参照する。 */
+  --liff-card-radius:       18px;
+  --liff-card-shadow:       0 2px 10px rgba(31, 64, 92, 0.05);
 
   --liff-danger:            #E22B2B;
   --liff-danger-press:      #C42323;

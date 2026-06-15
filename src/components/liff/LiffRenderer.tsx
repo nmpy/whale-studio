@@ -148,7 +148,7 @@ export function LiffRenderer({
     //   - ブロックは縦に並ぶフラットセクション (角丸カード積み重ねは廃止)
     // 管理画面のカードトーンに合わせ、淡いグレー背景の上に白い「資料集シート」カードを 1 枚置き、
     // その中にブロックを区切り線つきセクションで縦に並べる（LINE Gift 風の閲覧 UI）。
-    <div className={`liff-font ${liffRootClass(settings)} min-h-screen bg-[#f6f8f7] text-[color:var(--liff-primary-text)]`}>
+    <div className={`liff-font ${liffRootClass(settings)} min-h-screen bg-[color:var(--liff-background)] text-[color:var(--liff-primary-text)]`}>
       <main className="liff-player-main pt-3 pb-8">
         <div className="rounded-[20px] border border-[#eef2f5] bg-[color:var(--liff-surface,#fff)] shadow-[0_6px_20px_rgba(31,64,92,0.06)] px-5 py-4">
           {visibleBlocks.length === 0 ? (

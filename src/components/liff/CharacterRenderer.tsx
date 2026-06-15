@@ -9,6 +9,7 @@
 
 import type { LiffPageConfigSettings, LiffBlockType, HeadingSettings, TextSettings, WarningSettings, ButtonLinkSettings, DividerSettings, AccordionSettings } from "@/types";
 import { liffRootClass, liffDescriptionAlignClass } from "./liff-style-helpers";
+import { LiffEmptyState } from "./primitives/LiffEmptyState";
 import {
   HeadingBlock,
   TextBlock,
@@ -44,7 +45,7 @@ export function CharacterRenderer({ config }: Props) {
   const blocks = config.blocks ?? [];
 
   return (
-    <div className={`liff-font ${liffRootClass(settings)} bg-[color:var(--liff-background)] text-[color:var(--liff-primary-text)]`}>
+    <div className={`liff-font ${liffRootClass(settings)} min-h-screen bg-[color:var(--liff-background)] text-[color:var(--liff-primary-text)]`}>
       <div className="liff-player-main pt-2 pb-8 flex flex-col gap-4">
         {config.description && (
           <p className={`text-[14px] leading-relaxed text-[color:var(--liff-secondary-text)] whitespace-pre-wrap break-words ${liffDescriptionAlignClass(settings)}`}>
@@ -53,12 +54,7 @@ export function CharacterRenderer({ config }: Props) {
         )}
 
         {blocks.length === 0 ? (
-          <div className="bg-[color:var(--liff-surface)] border border-[color:var(--liff-border)] rounded-[12px] px-4 py-8 text-center">
-            <p className="text-3xl mb-2">🎭</p>
-            <p className="text-[15px] leading-[1.6] text-[color:var(--liff-secondary-text)]">
-              キャラクター情報はまだ登録されていません
-            </p>
-          </div>
+          <LiffEmptyState emoji="🎭" text="キャラクター情報はまだ登録されていません" />
         ) : (
           blocks.map((b, i) => {
             const isAccordion = b.block_type === "accordion";
