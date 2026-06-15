@@ -8,6 +8,8 @@ import { ok, created, badRequest, notFound, serverError } from "@/lib/api-respon
 import { withAuth } from "@/lib/auth";
 import { requireRole } from "@/lib/rbac";
 import { getCachedOaById } from "@/lib/oa-cache";
+import { getCurrentPlanTierForOa } from "@/lib/plan-guard";
+import { FEATURE, getPlanAccessState } from "@/lib/constants/plans";
 import { createMessageSchema, messageQuerySchema, formatZodErrors } from "@/lib/validations";
 import { ZodError } from "zod";
 import { activeCache, CACHE_KEY } from "@/lib/cache";
@@ -110,6 +112,13 @@ export const POST = withAuth(async (req, _ctx, user) => {
       if (!check.ok) return check.response;
     }
 
+    // プラン制限: ロケーション関連設定（送信後に地点到着を待つ＝checkin_trigger_*）は
+    // location feature 許可プラン（Pro Max / 委託）のみ保存する。非許可プラン or 判定不能は
+    // 新規作成時に無視（null で作成）。UI 側も非表示だが、API 直叩き対策として最小ガード。
+    const locationAllowed = oaId
+      ? getPlanAccessState({ plan: await getCurrentPlanTierForOa(oaId), featureKey: FEATURE.location }).allowed
+      : false;
+
     // Phase 存在確認（指定時）
     if (data.phase_id) {
       const phase = await prisma.phase.findUnique({ where: { id: data.phase_id } });
@@ -186,10 +195,11 @@ export const POST = withAuth(async (req, _ctx, user) => {
         freeInputVariableKey:   data.free_input_variable_key ?? null,
         freeInputNextMessageId: data.free_input_next_message_id ?? null,
         // 送信後の待機トリガー（地点到着で自動進行）。種別が無ければ全て null。
-        checkinTriggerType:           data.checkin_trigger_type ?? null,
-        checkinTriggerLocationId:     data.checkin_trigger_type ? (data.checkin_trigger_location_id ?? null) : null,
-        checkinTriggerNextMessageId:  data.checkin_trigger_type ? (data.checkin_trigger_next_message_id ?? null) : null,
-        checkinTriggerNextPhaseId:    data.checkin_trigger_type ? (data.checkin_trigger_next_phase_id ?? null) : null,
+        // location 非許可プランでは保存しない（全て null）。
+        checkinTriggerType:           locationAllowed ? (data.checkin_trigger_type ?? null) : null,
+        checkinTriggerLocationId:     locationAllowed && data.checkin_trigger_type ? (data.checkin_trigger_location_id ?? null) : null,
+        checkinTriggerNextMessageId:  locationAllowed && data.checkin_trigger_type ? (data.checkin_trigger_next_message_id ?? null) : null,
+        checkinTriggerNextPhaseId:    locationAllowed && data.checkin_trigger_type ? (data.checkin_trigger_next_phase_id ?? null) : null,
         sortOrder:          data.sort_order,
         isActive:           data.is_active,
       },

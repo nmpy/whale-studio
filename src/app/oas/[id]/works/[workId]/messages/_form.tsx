@@ -8,6 +8,8 @@ import Link from "next/link";
 import { phaseApi, characterApi, riddleApi, messageApi, locationApi, uploadApi, getDevToken } from "@/lib/api-client";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import type { PhaseWithCounts, Character, QuickReplyItem, QuickReplyAction, ReadReceiptMode, LocationWithTransition } from "@/types";
+import { useAccessPreview } from "@/hooks/useAccessPreview";
+import { FEATURE, getPlanAccessState } from "@/lib/constants/plans";
 import type { Riddle } from "@/types";
 import { PhaseTransitionsSection } from "./_phase-transitions";
 import { previewQrSend, type QrPreviewMessage } from "./_qr-preview";
@@ -3530,6 +3532,12 @@ export function MessageForm({
   const isPuzzle = form.kind === "puzzle";
   const isSystemNotice = form.kind === "system_notice";
 
+  // プラン制限: ロケーション関連機能（送信後に地点到着を待つ）は location feature 許可プラン
+  // （Pro Max / 委託）でのみ表示する。ロケーション管理画面（/locations）と同じ判定基準。
+  // 取得中はデフォルト basic（= 非許可）になるため安全側で非表示。判定不能も非表示。
+  const { effectivePlan } = useAccessPreview(oaId);
+  const canUseLocationFeatures = getPlanAccessState({ plan: effectivePlan, featureKey: FEATURE.location }).allowed;
+
   const [phases, setPhases]         = useState<PhaseWithCounts[]>([]);
   const [locations, setLocations]   = useState<LocationWithTransition[]>([]);
   const [characters, setCharacters] = useState<Character[]>([]);
@@ -5383,8 +5391,9 @@ export function MessageForm({
               このメッセージ送信後、指定地点に到着して QR/GPS チェックインしたら
               次のメッセージを自動送信し、必要ならフェーズを進める。
               まだこのメッセージに到達していない人には送信されない（誤送信防止）。
+              プラン制限: location feature 許可プラン（Pro Max / 委託）でのみ表示。
           ════════════════════════════════════════ */}
-          {!isPuzzle && form.kind !== "system_notice" && (
+          {canUseLocationFeatures && !isPuzzle && form.kind !== "system_notice" && (
             <SectionAccordion
               title="送信後に地点到着を待つ（自動進行）"
               optional
