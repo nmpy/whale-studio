@@ -182,6 +182,15 @@ export async function handleBeaconEvent(args: {
   ignoreLimits?: boolean;
   /** 現在時刻（テスト用に注入可） */
   now?: () => Date;
+  /**
+   * 「送信後の待機トリガー(地点到着で自動進行)」の消化フック。
+   * 有効な beacon 検知（enabled / 未停止 / プラン可 / eventType 一致 / 有効期間内）で、かつ
+   * BeaconTrigger.locationId が設定されている場合に1回だけ呼ばれる。
+   * 本番 webhook 経路でのみ注入する（test-fire では渡さない＝実ユーザーの pending を消化しない）。
+   * 既存 BeaconTrigger アクションとは独立し、cooldown / oncePerUser の影響を受けない。
+   * 内部で例外を握りつぶすこと（beacon 本処理を壊さない）。
+   */
+  onArrivalDetected?: (ctx: { lineUserId: string; locationId: string }) => Promise<void>;
 }): Promise<HandleBeaconResult> {
   const { prisma, oa, event, line, resolveMessage } = args;
   const isTest = args.isTest ?? false;
@@ -310,6 +319,19 @@ export async function handleBeaconEvent(args: {
       errorMessage: `outside valid period [${trig.validFrom?.toISOString() ?? "-"} .. ${trig.validTo?.toISOString() ?? "-"}]`,
     });
     return { status: "ignored", reason: "outside valid period", triggerId: trig.id };
+  }
+
+  // ── 5.55. 送信後の待機トリガー(地点到着で自動進行)の消化 ──
+  // ここまで到達 = 有効な beacon 検知（enabled / 未停止 / プラン可 / eventType 一致 / 有効期間内）。
+  // BeaconTrigger.locationId が設定されていれば、その地点の pending を消化する（webhook 注入の callback 経由）。
+  // 既存 BeaconTrigger アクションとは独立し、以降の cooldown / oncePerUser 判定の影響を受けない。
+  // pending が無ければ送信されない（callback 内で gating）。二重送信は callback 内の atomic claim で防止。
+  if (args.onArrivalDetected && lineUserId && trig.locationId) {
+    try {
+      await args.onArrivalDetected({ lineUserId, locationId: trig.locationId });
+    } catch (e) {
+      console.error(`[LINE Beacon] arrival trigger consume failed oa=${oa.id} hwid=${hwid} trigger=${trig.id}`, e);
+    }
   }
 
   // ── 5.6. oncePerUser / maxTriggersPerUser（同 lineUserId × triggerId の成功ログ件数）──

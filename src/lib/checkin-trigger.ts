@@ -246,3 +246,39 @@ export async function consumeCheckinTrigger(opts: {
     return none;
   }
 }
+
+/**
+ * Beacon 検知時の「送信後の待機トリガー」消化。
+ * beacon → BeaconTrigger.locationId で解決した locationId をもとに、その地点の workId を Location から解決し、
+ * QR/GPS と同じ consumeCheckinTrigger（triggerType=beacon）に委譲する（共通化）。
+ *
+ * pending が無ければ送信しない（未到達ユーザーへの誤送信防止）。二重送信防止は atomic claim で担保。
+ * 失敗は握りつぶして beacon 処理本体を壊さない。
+ */
+export async function consumeBeaconArrivalTrigger(opts: {
+  lineUserId: string;
+  locationId: string;
+}): Promise<ConsumeResult> {
+  const none: ConsumeResult = { consumed: false, sentCount: 0, transitionedTo: null };
+  try {
+    const loc = await prisma.location.findUnique({
+      where: { id: opts.locationId },
+      select: { workId: true },
+    });
+    if (!loc) {
+      console.info("[checkin-trigger:beacon:no-location]", JSON.stringify({
+        userIdPrefix: opts.lineUserId.slice(0, 8), locationId: opts.locationId,
+      }));
+      return none;
+    }
+    return await consumeCheckinTrigger({
+      lineUserId:   opts.lineUserId,
+      workId:       loc.workId,
+      locationId:   opts.locationId,
+      triggerTypes: ["beacon"],
+    });
+  } catch (err) {
+    console.error("[checkin-trigger:beacon] 失敗", err);
+    return none;
+  }
+}

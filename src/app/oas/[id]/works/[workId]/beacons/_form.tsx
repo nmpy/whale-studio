@@ -17,9 +17,12 @@ export type BeaconFormValue = {
   cooldown_seconds: number;
   action_type: "message" | "send_message" | "destination" | "noop";
   action_payload: Record<string, unknown> | null;
+  /** 紐づけ地点(Location.id)。「地点到着で自動進行」の待機トリガー(beacon)消化に使う。"" = なし。 */
+  location_id?: string | null;
 };
 
 type MessageOption = { id: string; label: string };
+type LocationOption = { id: string; name: string };
 
 interface Props {
   oaId: string;
@@ -47,9 +50,11 @@ export default function BeaconForm({ oaId, workId, initial, mode }: Props) {
   const [actionPayload, setActionPayload] = useState<Record<string, unknown>>(
     (initial.action_payload as Record<string, unknown> | null) ?? DEFAULT_PAYLOADS[initial.action_type] ?? {},
   );
+  const [locationId, setLocationId] = useState(initial.location_id ?? "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [messages, setMessages] = useState<MessageOption[]>([]);
+  const [locations, setLocations] = useState<LocationOption[]>([]);
 
   // action_type="message" 用のメッセージ候補（同一 work）を取得する。
   useEffect(() => {
@@ -65,6 +70,20 @@ export default function BeaconForm({ oaId, workId, initial, mode }: Props) {
         }));
         setMessages(opts);
       } catch { /* 取得失敗時は手入力にフォールバック */ }
+    })();
+    return () => { cancelled = true; };
+  }, [workId]);
+
+  // 「地点到着で自動進行」紐づけ用の地点候補（同一 work）を取得する。
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/locations?work_id=${encodeURIComponent(workId)}`, { headers: getAuthHeaders() });
+        const json = await res.json();
+        if (cancelled || !json?.success || !Array.isArray(json.data)) return;
+        setLocations(json.data.map((l: { id: string; name: string }) => ({ id: l.id, name: l.name })));
+      } catch { /* 取得失敗時はセレクタを空にする */ }
     })();
     return () => { cancelled = true; };
   }, [workId]);
@@ -92,6 +111,7 @@ export default function BeaconForm({ oaId, workId, initial, mode }: Props) {
         cooldown_seconds: cooldown,
         action_type: actionType,
         action_payload: actionType === "noop" ? null : actionPayload,
+        location_id: locationId || null,
       };
       const url = mode === "create"
         ? `/api/works/${workId}/beacons`
@@ -213,6 +233,18 @@ export default function BeaconForm({ oaId, workId, initial, mode }: Props) {
           />
           <span style={{ fontSize: 13 }}>秒</span>
         </div>
+      </Field>
+
+      <Field
+        label="紐づけ地点（地点到着で自動進行）"
+        hint="この地点を選ぶと、メッセージ編集の「送信後に地点到着を待つ（Beacon検知を待つ）」で同じ地点を指定した待機トリガーを、このビーコン検知で消化できます（到着待ちのユーザーにのみ次メッセージ送信）。上の発火時アクションとは独立して動作します。未選択なら連携しません。"
+      >
+        <select value={locationId} onChange={(e) => setLocationId(e.target.value)} style={inputStyle}>
+          <option value="">連携しない</option>
+          {locations.map((l) => (
+            <option key={l.id} value={l.id}>{l.name}</option>
+          ))}
+        </select>
       </Field>
 
       <Field label="発火時アクション" required>

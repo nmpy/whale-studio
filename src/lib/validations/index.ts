@@ -1651,6 +1651,8 @@ export const createBeaconTriggerSchema = z.object({
   name:             z.string().min(1, "名前は必須です").max(100, "名前は100文字以内にしてください"),
   hwid:             beaconHwidSchema,
   work_id:          z.string().uuid().optional().nullable(),
+  /// 紐づけ地点(Location.id)。設定すると「地点到着で自動進行」の待機トリガー(beacon)を消化できる。
+  location_id:      z.string().uuid().optional().nullable(),
   enabled:          z.boolean().optional(),
   event_types:      beaconEventTypesSchema.optional(),
   cooldown_seconds: z.number().int().min(0).max(86400).optional(),
@@ -1673,6 +1675,7 @@ export const updateBeaconTriggerSchema = z.object({
   name:             z.string().min(1).max(100).optional(),
   hwid:             beaconHwidSchema.optional(),
   work_id:          z.string().uuid().optional().nullable(),
+  location_id:      z.string().uuid().optional().nullable(),
   enabled:          z.boolean().optional(),
   event_types:      beaconEventTypesSchema.optional(),
   cooldown_seconds: z.number().int().min(0).max(86400).optional(),

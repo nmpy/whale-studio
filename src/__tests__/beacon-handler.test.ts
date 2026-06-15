@@ -14,6 +14,7 @@ function makePrismaMock(opts: {
     id: string;
     oaId: string;
     workId: string | null;
+    locationId: string | null;
     name: string;
     hwid: string;
     enabled: boolean;
@@ -409,5 +410,96 @@ describe("handleBeaconEvent", () => {
     expect(result.reason).toBe("plan_blocked");
     expect(reply).not.toHaveBeenCalled();
     expect(prisma.created[0]?.actionStatus).toBe("plan_blocked");
+  });
+
+  // ── 送信後の待機トリガー(地点到着で自動進行) consume フック ──
+  describe("onArrivalDetected（地点到着で自動進行の消化フック）", () => {
+    it("locationId 付き有効検知で locationId と共に1回呼ばれる", async () => {
+      const prisma = makePrismaMock({ trigger: { ...baseTrigger, locationId: "loc-1" } });
+      const { gw } = makeLineMock();
+      const onArrivalDetected = vi.fn(async () => {});
+
+      await handleBeaconEvent({
+        prisma: prisma as any,
+        oa: OA,
+        event: makeEvent(),
+        line: gw,
+        onArrivalDetected,
+      });
+
+      expect(onArrivalDetected).toHaveBeenCalledTimes(1);
+      expect(onArrivalDetected).toHaveBeenCalledWith({ lineUserId: "U_user_1", locationId: "loc-1" });
+    });
+
+    it("locationId 未設定なら呼ばれない（誤発火防止）", async () => {
+      const prisma = makePrismaMock({ trigger: { ...baseTrigger, locationId: null } });
+      const { gw } = makeLineMock();
+      const onArrivalDetected = vi.fn(async () => {});
+
+      await handleBeaconEvent({
+        prisma: prisma as any,
+        oa: OA,
+        event: makeEvent(),
+        line: gw,
+        onArrivalDetected,
+      });
+
+      expect(onArrivalDetected).not.toHaveBeenCalled();
+    });
+
+    it("無効(disabled)トリガーでは検知前に弾かれ呼ばれない", async () => {
+      const prisma = makePrismaMock({ trigger: { ...baseTrigger, locationId: "loc-1", enabled: false } });
+      const { gw } = makeLineMock();
+      const onArrivalDetected = vi.fn(async () => {});
+
+      await handleBeaconEvent({
+        prisma: prisma as any,
+        oa: OA,
+        event: makeEvent(),
+        line: gw,
+        onArrivalDetected,
+      });
+
+      expect(onArrivalDetected).not.toHaveBeenCalled();
+    });
+
+    it("consume は cooldown の影響を受けない（cooldown 中でも呼ばれる）", async () => {
+      // cooldown 該当（recentLog あり）でも、arrival 消化は cooldown 判定より前に実行される。
+      const prisma = makePrismaMock({
+        trigger: { ...baseTrigger, locationId: "loc-1" },
+        recentLog: { id: "recent", createdAt: new Date(1700000000000) },
+      });
+      const { gw } = makeLineMock();
+      const onArrivalDetected = vi.fn(async () => {});
+
+      await handleBeaconEvent({
+        prisma: prisma as any,
+        oa: OA,
+        event: makeEvent(),
+        line: gw,
+        now: () => new Date(1700000000000),
+        onArrivalDetected,
+      });
+
+      expect(onArrivalDetected).toHaveBeenCalledTimes(1);
+    });
+
+    it("コールバックが throw しても beacon 本処理は継続する", async () => {
+      const prisma = makePrismaMock({ trigger: { ...baseTrigger, locationId: "loc-1" } });
+      const { gw, reply } = makeLineMock();
+      const onArrivalDetected = vi.fn(async () => { throw new Error("boom"); });
+
+      const result = await handleBeaconEvent({
+        prisma: prisma as any,
+        oa: OA,
+        event: makeEvent(),
+        line: gw,
+        onArrivalDetected,
+      });
+
+      // send_message アクションは通常どおり送信される（reply 優先）。
+      expect(reply).toHaveBeenCalledTimes(1);
+      expect(result.status).toBe("sent");
+    });
   });
 });

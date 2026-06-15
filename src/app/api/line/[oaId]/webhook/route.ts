@@ -48,6 +48,7 @@ import { resolveQrBranchDelivery } from "@/lib/qr-branch";
 import { parseFrontier, selectQrScope } from "@/lib/qr-frontier";
 import { applyFreeInputPostEffect } from "@/lib/frontier-effect";
 import { handleBeaconEvent, type LineBeaconEvent } from "@/lib/beacon";
+import { consumeBeaconArrivalTrigger } from "@/lib/checkin-trigger";
 import { pushToLine as _pushToLine } from "@/lib/line";
 import { getCurrentPlanTierForOa } from "@/lib/plan-guard";
 import { getPlanAccessState, FEATURE } from "@/lib/constants/plans";
@@ -1377,6 +1378,10 @@ async function handleWebhook(req: NextRequest, oaId: string) {
             reply: (token, msgs) => _replyToLine(token, msgs, oa.channelAccessToken),
             push:  async (uid, msgs) => { await _pushToLine(uid, msgs, oa.channelAccessToken); },
           },
+          // 送信後の待機トリガー(地点到着で自動進行)の消化（本番 webhook 経路のみ）。
+          // BeaconTrigger.locationId が設定された有効検知で、pending があれば次メッセージ送信 + 任意フェーズ遷移。
+          onArrivalDetected: ({ lineUserId, locationId }) =>
+            consumeBeaconArrivalTrigger({ lineUserId, locationId }).then(() => undefined),
         });
         console.log(
           `[Webhook][beacon] hwid=${event.beacon.hwid} type=${event.beacon.type}`,

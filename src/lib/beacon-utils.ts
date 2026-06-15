@@ -7,6 +7,7 @@ export type BeaconTriggerResponse = {
   id:               string;
   oa_id:            string;
   work_id:          string | null;
+  location_id:      string | null;
   name:             string;
   hwid:             string;
   enabled:          boolean;
@@ -37,6 +38,7 @@ export function toBeaconTriggerResponse(
     id:               t.id,
     oa_id:            t.oaId,
     work_id:          t.workId,
+    location_id:      t.locationId,
     name:             t.name,
     hwid:             t.hwid,
     enabled:          t.enabled,
