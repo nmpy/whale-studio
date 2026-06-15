@@ -93,6 +93,8 @@ export const updateWorkSchema = z.object({
     description:  z.string().max(2000).optional().nullable(),
     image_url:    z.string().max(2000).optional().nullable(),
     header_title: z.string().max(40).optional().nullable(),
+    // ホーム（作品単位）フォント。"default" は解除（= 従来フォント）扱い。
+    font_family:  z.enum(["default", "meiryo", "hiragino", "yu_gothic", "ud"]).optional().nullable(),
   }).optional(),
   /** 途中再開機能の有効/無効（作品単位）。true=再開選択肢を表示 / false=最初から開始に寄せる。 */
   resume_enabled:      z.boolean().optional(),

@@ -14,7 +14,7 @@ import type {
   HeadingSettings,
   TextSettings,
 } from "@/types";
-import type { LiffHomeSettings } from "@/types";
+import type { LiffHomeSettings, LiffHomeFontFamily } from "@/types";
 import { normalizeLiffPageType } from "@/types";
 
 /** works.liff_home_settings_json（任意 JSON）を安全に正規化する。
@@ -32,7 +32,26 @@ export function parseLiffHomeSettings(json: unknown): LiffHomeSettings {
     description:  str(o.description),
     image_url:    str(o.image_url),
     header_title: str(o.header_title),
+    font_family:  parseHomeFontFamily(o.font_family),
   };
+}
+
+/** liff_home_settings_json.font_family を安全に正規化する。未知値/未設定 → null（= 従来フォント）。 */
+export function parseHomeFontFamily(v: unknown): LiffHomeFontFamily | null {
+  if (v === "meiryo" || v === "hiragino" || v === "yu_gothic" || v === "ud") return v;
+  return null; // "default" / null / 不正値 → 従来フォント
+}
+
+/** ホームフォントを LIFF ホーム + 配下ページにカスケード適用するためのラッパー class。
+ *  null/"default" は空文字（= 従来フォント・class なし）。liff-font.css の .liff-home-font--* に対応。 */
+export function homeFontWrapperClass(font: LiffHomeFontFamily | null | undefined): string {
+  switch (font) {
+    case "meiryo":    return "liff-home-font--meiryo";
+    case "hiragino":  return "liff-home-font--hiragino";
+    case "yu_gothic": return "liff-home-font--yu-gothic";
+    case "ud":        return "liff-home-font--ud";
+    default:          return "";
+  }
 }
 
 /** 旧 font_family の値を新 font_preset の値にマップする (data migration なしの読み取り側変換)。 */

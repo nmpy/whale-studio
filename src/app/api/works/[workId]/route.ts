@@ -17,7 +17,7 @@ import { ZodError } from "zod";
  *  description は内部の改行を保持する（trim は空判定にのみ使用）。 */
 function mergeLiffHomeSettings(
   existing: unknown,
-  patch: { title?: string | null; description?: string | null; image_url?: string | null; header_title?: string | null },
+  patch: { title?: string | null; description?: string | null; image_url?: string | null; header_title?: string | null; font_family?: string | null },
 ): Prisma.InputJsonValue {
   const base =
     existing && typeof existing === "object" && !Array.isArray(existing)
@@ -28,6 +28,12 @@ function mergeLiffHomeSettings(
     const v = patch[key];
     if (typeof v === "string" && v.trim() !== "") base[key] = v;
     else delete base[key]; // null / 空文字 / 空白のみ → 解除
+  }
+  // font_family は enum。"default" / null / 空 は「解除」（= 従来フォント）としてキー削除。
+  if ("font_family" in patch) {
+    const f = patch.font_family;
+    if (typeof f === "string" && ["meiryo", "hiragino", "yu_gothic", "ud"].includes(f)) base.font_family = f;
+    else delete base.font_family;
   }
   return base as Prisma.InputJsonValue;
 }

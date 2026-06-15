@@ -10,6 +10,7 @@
 
 import type { Metadata } from "next";
 import { findWorkByIdOrPublicId } from "@/lib/public-id-resolver";
+import { parseLiffHomeSettings, homeFontWrapperClass } from "@/components/liff/liff-style-helpers";
 
 const FALLBACK_TITLE = "Whale Studio";
 const FALLBACK_DESC = "LINEで物語体験をつくる作品です。";
@@ -46,6 +47,19 @@ export async function generateMetadata(
   };
 }
 
-export default function LiffWorkLayout({ children }: { children: React.ReactNode }) {
-  return <>{children}</>;
+export default async function LiffWorkLayout(
+  { children, params }: { children: React.ReactNode; params: Promise<{ workPublicId: string }> },
+) {
+  // ホーム（作品単位）フォントを LIFF ホーム + 配下の各 LIFF ページにカスケード適用する。
+  // 未設定/"default" は wrapperClass="" となり従来挙動（既存データ非影響）。失敗時も従来挙動。
+  let wrapperClass = "";
+  try {
+    const { workPublicId } = await params;
+    const work = await findWorkByIdOrPublicId(workPublicId);
+    const home = parseLiffHomeSettings((work as { liffHomeSettingsJson?: unknown } | null)?.liffHomeSettingsJson);
+    wrapperClass = homeFontWrapperClass(home.font_family);
+  } catch {
+    // フォント解決失敗はページ表示を妨げない（従来フォントで表示）。
+  }
+  return wrapperClass ? <div className={wrapperClass}>{children}</div> : <>{children}</>;
 }
