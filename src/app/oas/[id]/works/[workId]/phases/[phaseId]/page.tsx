@@ -4,16 +4,18 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { TLink as Link } from "@/components/TLink";
 import {
-  phaseApi, messageApi,
-  workApi, getDevToken,
+  phaseApi, messageApi, locationApi,
+  workApi, getDevToken, getAuthHeaders,
 } from "@/lib/api-client";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { useToast } from "@/components/Toast";
 import type {
   PhaseWithCounts, PhaseType,
-  MessageWithRelations,
+  MessageWithRelations, LocationWithTransition,
 } from "@/types";
 import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
+import { useAccessPreview } from "@/hooks/useAccessPreview";
+import { FEATURE, getPlanAccessState } from "@/lib/constants/plans";
 import { ViewerBanner } from "@/components/PermissionGuard";
 
 // ── 定数 ──────────────────────────────────────────
@@ -26,6 +28,16 @@ const PHASE_TYPE_OPTIONS: { value: PhaseType; label: string; color: string; bg: 
 const MSG_TYPE_LABEL: Record<string, string> = {
   text: "テキスト", image: "画像", riddle: "謎",
   video: "動画", carousel: "カルーセル", voice: "ボイス",
+};
+
+const TRIGGER_METHOD_LABEL: Record<string, string> = {
+  qr: "QRコード", gps: "現在地（GPS）", beacon: "Beacon検知",
+};
+
+// 地点到着トリガーの見える化スタイル（warn=注意 / muted=補足）。保存はブロックしない。
+const arrivalNotice: Record<"warn" | "muted", React.CSSProperties> = {
+  warn:  { fontSize: 11, lineHeight: 1.6, padding: "4px 8px", borderRadius: 5, background: "#fffbeb", border: "1px solid #fde68a", color: "#92400e" },
+  muted: { fontSize: 11, lineHeight: 1.6, padding: "4px 8px", borderRadius: 5, background: "#f8fafc", border: "1px solid #e2e8f0", color: "#475569" },
 };
 
 function phaseTypeMeta(pt: PhaseType) {
@@ -70,6 +82,14 @@ export default function PhaseDetailPage() {
   const [msgLoading, setMsgLoading]           = useState(true);
   const [linking, setLinking]                 = useState(false);
 
+  // ── 地点到着トリガー見える化用（A案・DB追加なし）──
+  // location feature 許可プラン（Pro Max / 委託）でのみ表示（#334 と同条件）。
+  const { effectivePlan } = useAccessPreview(oaId);
+  const canUseLocationFeatures = getPlanAccessState({ plan: effectivePlan, featureKey: FEATURE.location }).allowed;
+  const [locations, setLocations] = useState<LocationWithTransition[]>([]);
+  const [allPhasesLite, setAllPhasesLite] = useState<{ id: string; name: string }[]>([]);
+  const [beaconTriggers, setBeaconTriggers] = useState<{ id: string; name: string; hwid: string; enabled: boolean; location_id: string | null }[]>([]);
+
 
   // ── 派生データ ──
   // このフェーズに属するメッセージ（sort_order 昇順）
@@ -79,6 +99,17 @@ export default function PhaseDetailPage() {
 
   // まだどのフェーズにも割り当てられていないメッセージ＋他フェーズのメッセージ → 選択候補
   const availableMessages = allWorkMessages.filter((m) => m.phase_id !== phaseId);
+
+  // ── 地点到着トリガーの導出（A案・DB追加なし。既存 Message.checkin_trigger_* から導出）──
+  // このフェーズのメッセージで「地点到着待ち」を作るもの（= このフェーズの完了条件＝地点到着）。
+  const phaseArrivalTriggers = messages.filter((m) => !!m.checkin_trigger_type);
+  // 到着検知でこのフェーズへ遷移してくるトリガー（他フェーズ起点・next_phase_id === このフェーズ）。
+  const incomingArrivalTriggers = allWorkMessages.filter(
+    (m) => m.checkin_trigger_next_phase_id === phaseId && m.phase_id !== phaseId,
+  );
+  const locName    = (id?: string | null) => locations.find((l) => l.id === id)?.name ?? null;
+  const phaseName  = (id?: string | null) => allPhasesLite.find((p) => p.id === id)?.name ?? null;
+  const msgById    = (id?: string | null) => allWorkMessages.find((m) => m.id === id) ?? null;
 
   // ── 初期ロード ────────────────────────────────────
   const loadPhase = useCallback(async () => {
@@ -117,6 +148,25 @@ export default function PhaseDetailPage() {
     loadMessages();
     workApi.get(getDevToken(), workId).then((w) => setWorkTitle(w.title)).catch(() => {});
   }, [loadPhase, loadMessages, workId]);
+
+  // 地点到着トリガー見える化用の付帯データ（地点名 / 全フェーズ名 / ビーコン紐づけ）。失敗時は空で degrade。
+  useEffect(() => {
+    if (!canUseLocationFeatures) return;
+    const token = getDevToken();
+    phaseApi.list(token, workId).then((ps) => setAllPhasesLite(ps.map((p) => ({ id: p.id, name: p.name })))).catch(() => {});
+    locationApi.list(token, workId).then(setLocations).catch(() => {});
+    (async () => {
+      try {
+        const res = await fetch(`/api/works/${encodeURIComponent(workId)}/beacons`, { headers: getAuthHeaders() });
+        const json = await res.json();
+        if (json?.success && Array.isArray(json.data)) {
+          setBeaconTriggers(json.data.map((b: { id: string; name: string; hwid: string; enabled: boolean; location_id: string | null }) => ({
+            id: b.id, name: b.name, hwid: b.hwid, enabled: b.enabled, location_id: b.location_id ?? null,
+          })));
+        }
+      } catch { /* degrade */ }
+    })();
+  }, [workId, canUseLocationFeatures]);
 
   // ── フェーズ保存 ─────────────────────────────────
   async function handleSavePhase(e: React.FormEvent) {
@@ -350,6 +400,107 @@ export default function PhaseDetailPage() {
           </form>
         )}
       </div>
+
+      {/* ══ 地点到着トリガー（見える化・A案／DB追加なし） ══ */}
+      {canUseLocationFeatures && (
+        <div style={{ maxWidth: 640, marginBottom: 24 }}>
+          <div style={{ marginBottom: 8 }}>
+            <h3 style={{ fontSize: 15, fontWeight: 700 }}>地点到着トリガー</h3>
+            <p style={{ fontSize: 12, color: "#6b7280", marginTop: 2, lineHeight: 1.6 }}>
+              このフェーズ中に、QR / GPS / Beacon の到着検知で次のメッセージやフェーズへ進む設定です。設定はメッセージ編集画面の「送信後に地点到着を待つ」で行います。
+            </p>
+          </div>
+
+          {phaseArrivalTriggers.length === 0 ? (
+            <div className="card" style={{ marginTop: 8 }}>
+              <p style={{ fontSize: 13, color: "#6b7280", marginBottom: canEdit ? 10 : 0 }}>
+                このフェーズには地点到着トリガーが設定されていません。
+              </p>
+              {canEdit && (
+                messages.length > 0 ? (
+                  <Link href={`/oas/${oaId}/works/${workId}/messages/${messages[0].id}`}
+                    style={{ display: "inline-block", padding: "7px 16px", fontSize: 13, fontWeight: 600, color: "#fff", background: "#2563eb", borderRadius: 8, textDecoration: "none" }}>
+                    地点到着トリガーを設定する
+                  </Link>
+                ) : (
+                  <Link href={`/oas/${oaId}/works/${workId}/messages/new`}
+                    style={{ display: "inline-block", padding: "7px 16px", fontSize: 13, fontWeight: 600, color: "#fff", background: "#2563eb", borderRadius: 8, textDecoration: "none" }}>
+                    メッセージを作成して設定する
+                  </Link>
+                )
+              )}
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {phaseArrivalTriggers.map((m) => {
+                const type      = m.checkin_trigger_type ?? "";
+                const loc       = locName(m.checkin_trigger_location_id);
+                const nextMsg   = msgById(m.checkin_trigger_next_message_id);
+                const nextPhaseLabel = phaseName(m.checkin_trigger_next_phase_id);
+                const chain     = !!nextMsg?.checkin_trigger_type;
+                const beaconsForLoc = m.checkin_trigger_location_id
+                  ? beaconTriggers.filter((b) => b.location_id === m.checkin_trigger_location_id) : [];
+                const rows: [string, React.ReactNode][] = [
+                  ["検知方法",      TRIGGER_METHOD_LABEL[type] ?? type],
+                  ["対象地点",      loc ?? <span style={{ color: "#b45309" }}>未設定</span>],
+                  ["到着時メッセージ", nextMsg ? msgLabel(nextMsg, 40) : <span style={{ color: "#b45309" }}>未設定</span>],
+                  ["到着後フェーズ", nextPhaseLabel ?? <span style={{ color: "#9ca3af" }}>なし</span>],
+                  ["チェーン",      nextMsg ? (chain ? "続きあり（次の地点待ちへ）" : "ここで終了") : "—"],
+                ];
+                return (
+                  <div key={m.id} className="card">
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, marginBottom: 8 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, minWidth: 0 }}>
+                        起点メッセージ：{msgLabel(m, 40)}
+                      </div>
+                      <Link href={`/oas/${oaId}/works/${workId}/messages/${m.id}`}
+                        style={{ flexShrink: 0, fontSize: 12, color: "#2563eb", textDecoration: "none" }}>
+                        編集 →
+                      </Link>
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "3px 12px", fontSize: 12, color: "#374151" }}>
+                      {rows.map(([k, v]) => (
+                        <div key={k} style={{ display: "contents" }}>
+                          <div style={{ color: "#6b7280", whiteSpace: "nowrap" }}>{k}</div>
+                          <div style={{ minWidth: 0 }}>{v}</div>
+                        </div>
+                      ))}
+                    </div>
+                    {/* 設定ミス防止の注意・補足（保存はブロックしない・PR #336 と同思想） */}
+                    <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 8 }}>
+                      {!m.checkin_trigger_location_id && (
+                        <div style={arrivalNotice.warn}>⚠ 対象地点が未設定です。到着判定に使う地点を選択してください。</div>
+                      )}
+                      {!m.checkin_trigger_next_message_id && (
+                        <div style={arrivalNotice.warn}>⚠ 到着時メッセージが未設定です。</div>
+                      )}
+                      {type === "beacon" && m.checkin_trigger_location_id && beaconsForLoc.length === 0 && (
+                        <div style={arrivalNotice.warn}>⚠ この地点に紐づくBeaconがありません。ビーコン編集画面で同じ地点を紐づけてください。</div>
+                      )}
+                      {!m.checkin_trigger_next_phase_id && (
+                        <div style={arrivalNotice.muted}>到着後フェーズは未設定です（メッセージ送信のみ）。</div>
+                      )}
+                      {nextMsg && (
+                        <div style={arrivalNotice.muted}>
+                          {chain
+                            ? "到着時メッセージから次の地点待ちへ続きます。"
+                            : "この到着時メッセージで地点到着チェーンは終了します。"}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {incomingArrivalTriggers.length > 0 && (
+            <div style={{ ...arrivalNotice.muted, marginTop: 10 }}>
+              他フェーズの {incomingArrivalTriggers.length} 件の地点到着トリガーが、到着後にこのフェーズへ遷移します。
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ══ メッセージ管理（選択式） ══ */}
       <div style={{ maxWidth: 640, marginBottom: 32 }}>
