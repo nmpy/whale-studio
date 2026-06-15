@@ -245,6 +245,16 @@ export default function BeaconForm({ oaId, workId, initial, mode }: Props) {
             <option key={l.id} value={l.id}>{l.name}</option>
           ))}
         </select>
+        {!locationId && (
+          <div style={{
+            marginTop: 6, fontSize: 12, lineHeight: 1.6, padding: "8px 10px", borderRadius: 6,
+            background: "#f8fafc", border: "1px solid #e2e8f0", color: "#475569",
+          }}>
+            紐づけ地点が未設定です。このBeaconは通常のBeaconTriggerとしては使えますが、地点到着トリガーには使用されません。
+            <br />
+            メッセージ編集画面で「Beacon検知を待つ」を使う場合は、対象地点と同じ地点をここで選択してください。
+          </div>
+        )}
       </Field>
 
       <Field label="発火時アクション" required>

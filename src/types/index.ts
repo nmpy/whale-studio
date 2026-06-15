@@ -345,6 +345,14 @@ export interface Message {
   free_input_variable_key: string | null;
   /** 自由入力を受け取った後に送信する次メッセージ ID。連続送信用の next_message_id とは別管理。 */
   free_input_next_message_id: string | null;
+  /** 送信後の待機トリガー（地点到着で自動進行）。"qr" | "gps" | "beacon" | null。 */
+  checkin_trigger_type?: string | null;
+  /** 待機トリガーの対象地点(Location.id)。 */
+  checkin_trigger_location_id?: string | null;
+  /** 待機トリガーの検知成功時に送る次メッセージ(Message.id)。 */
+  checkin_trigger_next_message_id?: string | null;
+  /** 待機トリガーの検知成功時に進める次フェーズ(Phase.id)。 */
+  checkin_trigger_next_phase_id?: string | null;
   sort_order: number;
   is_active: boolean;
   created_at: string;
