@@ -18,6 +18,9 @@ export const acceptPrivacyPolicySchema = z.object({
 // 追加必須項目（ユーザー名・各同意）のみを受け取り、ルートで必須チェックする。
 export const registerConsentSchema = z.object({
   username:       z.string().max(20).optional().nullable(),
+  last_name:      z.string().max(50).optional().nullable(),
+  first_name:     z.string().max(50).optional().nullable(),
+  company_name:   z.string().max(100).optional().nullable(),
   terms_agreed:   z.boolean().optional(),
   privacy_agreed: z.boolean().optional(),
 });

@@ -1693,11 +1693,15 @@ enum MemberStatus {
 
 /// ユーザープロフィール（Supabase Auth ユーザーと 1:1）
 model Profile {
-  id        String   @id @default(uuid())
-  userId    String   @unique @map("user_id")
-  username  String
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id          String   @id @default(uuid())
+  userId      String   @unique @map("user_id")
+  username    String
+  /// 氏名（姓・名）/ 会社名。初回登録で取得（既存ユーザー互換のため nullable）。
+  lastName    String?  @map("last_name")
+  firstName   String?  @map("first_name")
+  companyName String?  @map("company_name")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
 
   @@map("profiles")
 }

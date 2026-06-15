@@ -128,9 +128,13 @@ export async function enforceOnboarding(currentPath: string): Promise<void> {
     if (consent && (consent.terms_version || consent.privacy_version)) {
       try {
         const h = await headers();
+        const metaStr = (k: string) => (typeof user.metadata?.[k] === "string" ? (user.metadata[k] as string) : null);
         await recordRegistrationConsent({
           userId:         user.id,
-          username:       typeof user.metadata?.display_name === "string" ? (user.metadata.display_name as string) : null,
+          username:       metaStr("display_name"),
+          lastName:       metaStr("last_name"),
+          firstName:      metaStr("first_name"),
+          companyName:    metaStr("company_name"),
           termsVersion:   consent.terms_version,
           privacyVersion: consent.privacy_version,
           agreedAt:       consent.agreed_at ? new Date(consent.agreed_at) : undefined,
