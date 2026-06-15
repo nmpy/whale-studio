@@ -623,6 +623,10 @@ export function validateMessageForm(form: MessageFormState): string | null {
       return "テキスト本文は必須です";
     }
   }
+  // ── 開始演出バリデーション（応答キーワード必須）──
+  if (form.kind === "start" && !form.trigger_keyword.trim()) {
+    return "開始演出を使用する場合は、応答キーワードを入力してください";
+  }
   // ── 謎（puzzle）バリデーション ──
   if (form.kind === "puzzle") {
     // 謎の問題コンテンツ（配信形式ごと）
@@ -3990,7 +3994,7 @@ export function MessageForm({
                     <option value="system_notice">システム通知（中央表示・例: ミカさんが入室しました）</option>
                   </select>
                   <div style={hintText}>
-                    {form.kind === "start"    && "開始フェーズの startTrigger が一致したとき送信されます。フェーズに kind=start のメッセージがない場合は通常メッセージにフォールバックします。"}
+                    {form.kind === "start"    && "開始フェーズの startTrigger が一致したとき送信されます。応答キーワードの入力が必要です。フェーズに kind=start のメッセージがない場合は通常メッセージにフォールバックします。"}
                     {form.kind === "response" && "trigger_keyword が一致したときのみ返信します。フェーズは進みません。"}
                     {form.kind === "normal"   && "フェーズ遷移時またはフェーズ表示時に送信されます。"}
                     {form.kind === "hint"     && "ヒント用メッセージです（将来拡張）。"}
@@ -4021,23 +4025,19 @@ export function MessageForm({
             <div className="form-group">
               <label style={fieldLabel}>
                 応答キーワード
-                {(form.kind === "response" || form.kind === "global") && (
+                {(form.kind === "response" || form.kind === "global" || form.kind === "start") && (
                   <span style={{ fontSize: 10, fontWeight: 700, background: "#fef2f2", color: "#dc2626", borderRadius: 4, padding: "1px 6px", marginLeft: 6 }}>必須</span>
-                )}
-                {form.kind === "start" && (
-                  <span style={{ fontSize: 11, color: "#9ca3af", marginLeft: 6 }}>（kind=start では使用しません）</span>
                 )}
               </label>
               <KeywordListEditor
                 value={form.trigger_keyword}
                 onChange={(v) => set("trigger_keyword", v)}
-                disabled={form.kind === "start"}
                 phases={phases}
                 currentMessageId={messageId}
                 allMessagesForLink={allMessages}
               />
               <div style={{ ...hintText, marginTop: 6 }}>
-                {form.kind === "start"  && "kind=start では Phase.startTrigger を使います"}
+                {form.kind === "start"  && "開始演出の場合、このキーワードで演出を開始します。"}
                 {form.kind === "global" && "どのフェーズでも反応します。キーワードは必須です。"}
                 {form.kind !== "start" && form.kind !== "global" && "複数設定可。いずれかに一致したとき返信します（kind=response 推奨）"}
               </div>
