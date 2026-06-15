@@ -45,12 +45,6 @@ function metaStr(meta: Record<string, unknown> | null | undefined, ...keys: stri
   return null;
 }
 
-function resolveProvider(u: SupaUser): string | null {
-  const appProvider = metaStr(u.app_metadata ?? null, "provider");
-  if (appProvider) return appProvider;
-  const id = u.identities?.find((x) => x?.provider)?.provider;
-  return id ?? null;
-}
 
 export const GET = withAuth(async (req, _ctx, user) => {
   try {
@@ -122,6 +116,8 @@ export const GET = withAuth(async (req, _ctx, user) => {
       const metaName = metaStr(u.user_metadata ?? null, "display_name", "name", "full_name");
       const metaAvatar = metaStr(u.user_metadata ?? null, "avatar_url", "picture", "avatar");
       const currentName = prof?.username ?? metaName ?? null;
+      // 氏名（姓・名を結合。片方のみはある方、どちらも無ければ null）
+      const fullName = [prof?.lastName, prof?.firstName].map((s) => s?.trim()).filter(Boolean).join(" ") || null;
       const oaIds = ownedOaIdsByUser.get(u.id) ?? [];
       const workCount = oaIds.reduce((s, oaId) => s + (workCountByOa.get(oaId) ?? 0), 0);
       return {
@@ -129,14 +125,8 @@ export const GET = withAuth(async (req, _ctx, user) => {
         name:             currentName,
         email:            u.email ?? null,
         image:            metaAvatar,
-        // Supabase 登録情報（厳密な不変履歴ではなく、現在 Supabase/Profile に残る登録由来情報）
-        meta_name:        metaName,
-        meta_email:       u.email ?? null,
-        meta_avatar:      metaAvatar,
-        provider:         resolveProvider(u),
-        last_name:        prof?.lastName ?? null,
-        first_name:       prof?.firstName ?? null,
-        company_name:     prof?.companyName ?? null,
+        full_name:        fullName,
+        company_name:     prof?.companyName?.trim() || null,
         created_at:       u.created_at ?? null,
         last_sign_in_at:  u.last_sign_in_at ?? null,
         oa_count:         oaCountByUser.get(u.id) ?? 0,
@@ -144,13 +134,14 @@ export const GET = withAuth(async (req, _ctx, user) => {
       };
     });
 
-    // ── 検索（user id / email / name / username / metaName） ──
+    // ── 検索（user id / email / 現在名 / 氏名 / 会社名） ──
     const filtered = q
       ? rows.filter((r) =>
           r.id.toLowerCase().includes(q) ||
           (r.email ?? "").toLowerCase().includes(q) ||
           (r.name ?? "").toLowerCase().includes(q) ||
-          (r.meta_name ?? "").toLowerCase().includes(q))
+          (r.full_name ?? "").toLowerCase().includes(q) ||
+          (r.company_name ?? "").toLowerCase().includes(q))
       : rows;
 
     // ── 並び替え（null は末尾） ──
