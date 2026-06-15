@@ -102,20 +102,69 @@ describe("analyzeMessageList", () => {
     expect(head.nextLinks).toEqual([{ type: "qr_message", targetType: "message", targetId: "t", exists: true }]);
   });
 
-  it("未接続: 参照されずキーワードも無い response は unreferenced=true / normal は false", () => {
+  it("未接続: 参照されずキーワードも無い response は true / 有効フェーズの normal は false", () => {
     const map = run([
       { id: "orphan", kind: "response", trigger_keyword: "" },
-      { id: "auto",   kind: "normal" }, // フェーズ自動送信で届くので未接続にしない
+      { id: "auto",   kind: "normal", phase_id: "p1" }, // 有効フェーズ→入場で自動送信されるので未接続にしない
     ]);
     expect(map.get("orphan")!.unreferenced).toBe(true);
     expect(map.get("auto")!.unreferenced).toBe(false);
   });
 
+  it("未接続: フェーズに属さず参照もキーワードも無い normal は true（孤立）／start/system_notice は除外", () => {
+    const map = run([
+      { id: "lost",   kind: "normal",         phase_id: null },        // 孤立
+      { id: "badph",  kind: "puzzle",         phase_id: "deleted" },   // 不在フェーズ＝孤立
+      { id: "st",     kind: "start",          phase_id: null, trigger_keyword: "" }, // start は除外
+      { id: "sys",    kind: "system_notice",  phase_id: null },        // システム送信＝除外
+    ]);
+    expect(map.get("lost")!.unreferenced).toBe(true);
+    expect(map.get("badph")!.unreferenced).toBe(true);
+    expect(map.get("st")!.unreferenced).toBe(false);
+    expect(map.get("sys")!.unreferenced).toBe(false);
+  });
+
   it("参照されている response は unreferenced=false", () => {
     const map = run([
-      { id: "m1", kind: "normal", quick_replies: [{ action: "text", response_message_id: "r1" }] },
+      { id: "m1", kind: "normal", phase_id: "p1", quick_replies: [{ action: "text", response_message_id: "r1" }] },
       { id: "r1", kind: "response", trigger_keyword: "" },
     ]);
     expect(map.get("r1")!.unreferenced).toBe(false);
+  });
+
+  it("画像タップ: アクション設定ありで宛先値が空なら hasBrokenLink=true（type 別に検証）", () => {
+    const map = run([
+      { id: "u_ok",  kind: "normal", phase_id: "p1", image_action_type: "uri", image_action_url: "https://x" },
+      { id: "u_ng",  kind: "normal", phase_id: "p1", image_action_type: "uri", image_action_url: "" },
+      { id: "m_ng",  kind: "normal", phase_id: "p1", image_action_type: "message", image_action_text: "  " },
+      { id: "l_ng",  kind: "normal", phase_id: "p1", image_action_type: "liff", image_action_liff_page_id: null },
+    ]);
+    expect(map.get("u_ok")!.hasImageTap).toBe(true);
+    expect(map.get("u_ok")!.hasBrokenLink).toBe(false);
+    expect(map.get("u_ng")!.hasBrokenLink).toBe(true);
+    expect(map.get("m_ng")!.hasBrokenLink).toBe(true);
+    expect(map.get("l_ng")!.hasBrokenLink).toBe(true);
+  });
+
+  it("分岐しない QR でも url/custom の宛先値が空なら hasBrokenLink=true", () => {
+    const map = run([
+      { id: "m1", kind: "normal", phase_id: "p1", quick_replies: [{ action: "url", value: "" }] },
+      { id: "m2", kind: "normal", phase_id: "p1", quick_replies: [{ action: "custom", value: "do" }] },
+    ]);
+    expect(map.get("m1")!.hasBrokenLink).toBe(true);
+    expect(map.get("m1")!.hasQrBranch).toBe(false);
+    expect(map.get("m2")!.hasBrokenLink).toBe(false);
+  });
+
+  it("chain 子メッセージの キーワード未設定 / 遷移先未設定 が head に集約される", () => {
+    const map = run([
+      { id: "h",  kind: "normal", phase_id: "p1", next_message_id: "c1" },
+      // 子: 応答キーワード必須(response)なのに空 + 画像タップ宛先空
+      { id: "c1", kind: "response", phase_id: "p1", trigger_keyword: "",
+        image_action_type: "uri", image_action_url: "" },
+    ]);
+    const head = map.get("h")!;
+    expect(head.missingKeyword).toBe(true);
+    expect(head.hasBrokenLink).toBe(true);
   });
 });

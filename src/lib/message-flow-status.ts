@@ -70,6 +70,8 @@ export interface FlowQuickReply {
 
 export interface FlowMessage {
   id:                               string;
+  /** 所属フェーズ ID（null / 不在 = どのフェーズにも属さない＝フェーズ入場で自動送信されない）。 */
+  phase_id?:                        string | null;
   kind?:                            string | null;
   trigger_keyword?:                 string | null;
   next_message_id?:                 string | null;
@@ -81,7 +83,22 @@ export interface FlowMessage {
   checkin_trigger_next_message_id?: string | null;
   checkin_trigger_next_phase_id?:   string | null;
   image_action_type?:               string | null;
+  image_action_text?:               string | null;
+  image_action_url?:                string | null;
+  image_action_liff_page_id?:       string | null;
+  image_action_postback_data?:      string | null;
   quick_replies?:                   FlowQuickReply[] | null;
+}
+
+/** 画像タップアクションの「宛先値」が未設定か（type ごとに必須フィールドを見る）。pre-publish-check #9 と整合。 */
+function imageActionTargetMissing(m: FlowMessage): boolean {
+  const t = m.image_action_type;
+  if (!t || t === "none") return false;
+  if (t === "message")  return !(m.image_action_text ?? "").trim();
+  if (t === "uri")      return !(m.image_action_url ?? "").trim();
+  if (t === "liff")     return !(m.image_action_liff_page_id ?? "").trim();
+  if (t === "postback") return !(m.image_action_postback_data ?? "").trim();
+  return false;
 }
 
 /** QR が「分岐」する（導線を別メッセージ/フェーズ/応答へ動かす）か。url/hint は分岐とみなさない。 */
@@ -154,6 +171,8 @@ export function analyzeMessageList(
     let hasFreeInput = false;
     let hasImageTap = false;
     let hasBrokenLink = false;
+    // キーワード未設定は chain 全体で集約する（途中メッセージの不足も head 行で見落とさない）。
+    let missingKeyword = false;
     const nextLinks: FlowLink[] = [];
 
     const pushLink = (type: FlowLinkType, targetType: "message" | "phase", targetId: string | null | undefined) => {
@@ -166,6 +185,9 @@ export function analyzeMessageList(
     };
 
     for (const m of chain) {
+      // 途中メッセージも含めてキーワード必須・未入力を集約（chain 子の見落とし防止）。
+      if (keywordRequired(m.kind) && !(m.trigger_keyword ?? "").trim()) missingKeyword = true;
+
       // QR
       const qrs = m.quick_replies ?? [];
       if (qrs.length > 0) hasQuickReply = true;
@@ -181,6 +203,9 @@ export function analyzeMessageList(
             if (id) pushLink("qr_message", "message", id);
             else hasBrokenLink = true;
           }
+        } else if ((qr.action === "url" || qr.action === "custom") && !(qr.value ?? "").trim()) {
+          // 分岐しない QR でも url/custom は宛先値が必須（空 = 操作後の遷移先未設定）。pre-publish-check #9 と整合。
+          hasBrokenLink = true;
         }
       }
 
@@ -190,8 +215,11 @@ export function analyzeMessageList(
         if (m.free_input_next_message_id) pushLink("free_input", "message", m.free_input_next_message_id);
       }
 
-      // 画像タップ
-      if (m.image_action_type && m.image_action_type !== "none") hasImageTap = true;
+      // 画像タップ（アクション設定あり→宛先値が空なら未設定警告）
+      if (m.image_action_type && m.image_action_type !== "none") {
+        hasImageTap = true;
+        if (imageActionTargetMissing(m)) hasBrokenLink = true;
+      }
 
       // 謎の正解後フェーズ遷移
       if (m.correct_action === "transition" || m.correct_action === "text_and_transition") {
@@ -211,24 +239,32 @@ export function analyzeMessageList(
       pushLink("chain_external", "message", tail.next_message_id);
     }
 
-    // 未接続: response/hint は「何かに参照される or キーワード待ち」でしか発火しない。
-    // どこからも参照されず、キーワードも無ければユーザーに永遠に届かない（= 確実な孤立）。
-    // normal/start/puzzle はフェーズ入場で自動送信されるため未接続扱いにしない（誤検知回避）。
+    // 未接続の判定（誤検知を避けつつ「確実に届かない」もののみ flag）:
+    //   (a) response/hint は「参照される or キーワード待ち」でしか発火しない trigger 専用 kind。
+    //   (b) フェーズに属さない（phase_id 無効）非 start/system_notice メッセージは
+    //       フェーズ入場の自動送信に乗らないため、参照もキーワードも無ければ確実に孤立する。
+    //   normal/puzzle でも「有効なフェーズに属していれば」入場で自動送信されるので flag しない。
     const isTriggerOnlyKind = head.kind === "response" || head.kind === "hint";
+    const isPhaseless = !head.phase_id || !phaseIds.has(head.phase_id);
+    const canAutoSendFromPhase = !isPhaseless; // 有効フェーズに属せば入場で自動送信される
+    const isStart = head.kind === "start";
+    const isSystemNotice = head.kind === "system_notice"; // システムイベントで送信＝flow 外
+    const noIncoming = !referencedIds.has(head.id) && !(head.trigger_keyword ?? "").trim();
     const unreferenced =
-      isTriggerOnlyKind &&
-      !referencedIds.has(head.id) &&
-      !(head.trigger_keyword ?? "").trim();
+      noIncoming &&
+      !isStart &&
+      !isSystemNotice &&
+      (isTriggerOnlyKind || !canAutoSendFromPhase);
 
     result.set(head.id, {
-      isStart: head.kind === "start",
+      isStart,
       hasQrBranch,
       hasQuickReply,
       hasFreeInput,
       hasImageTap,
       nextLinks,
       hasBrokenLink,
-      missingKeyword: keywordRequired(head.kind) && !(head.trigger_keyword ?? "").trim(),
+      missingKeyword,
       unreferenced,
     });
   }
