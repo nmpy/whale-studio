@@ -71,6 +71,11 @@ export const GET = withAuth(async (req, _ctx, user) => {
     }
 
     // ── Supabase Auth から全ユーザーを取得（server-only） ──
+    // 現状: 全件取得 → DB マージ → メモリで検索/ソート/ページング（= 画面上でページング）。
+    //   検索・ソートを横断的に効かせるための割り切り。ユーザー数が少ない前提では問題なし。
+    // TODO(将来): Supabase Auth のユーザーが増えてきたら、ページ単位取得（admin.listUsers の page/perPage を
+    //   そのままレスポンスのページに対応させ、当該ページ分だけ DB マージする方式）へ変更する。
+    //   ※その場合、検索/ソートは Supabase 側の制約上クライアント横断ではなく per-page になる点に注意。
     const admin = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
     const all: SupaUser[] = [];
     for (let p = 1; p <= MAX_FETCH_PAGES; p++) {
