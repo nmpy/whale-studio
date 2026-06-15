@@ -10,10 +10,43 @@ import Link from "next/link";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { getDevToken } from "@/lib/api-client";
 import { evaluateGpsHealth } from "@/lib/location-health";
+import { useAccessPreview } from "@/hooks/useAccessPreview";
+import { FEATURE, getPlanAccessState } from "@/lib/constants/plans";
 import type { LocationVisitStats, LocationVisit, GpsAttemptStats } from "@/types";
 
 function authHeaders(token: string): HeadersInit {
   return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+// ── 地点到着トリガー状況（ユーザー別・参照のみ）──
+const TRIGGER_STATUS_META: Record<string, { label: string; bg: string; color: string }> = {
+  pending:  { label: "待機中",       bg: "#dbeafe", color: "#1d4ed8" },
+  consumed: { label: "通過済み",     bg: "#dcfce7", color: "#16a34a" },
+  expired:  { label: "期限切れ",     bg: "#f3f4f6", color: "#6b7280" },
+  canceled: { label: "キャンセル済み", bg: "#f3f4f6", color: "#6b7280" },
+};
+const TRIGGER_METHOD_LABEL: Record<string, string> = { qr: "QRコード", gps: "現在地（GPS）", beacon: "Beacon検知" };
+
+type CheckinTriggerRow = {
+  id: string; status: string; trigger_type: string;
+  location_id: string; location_name: string | null;
+  source_message_id: string | null; source_message_label: string | null;
+  next_message_id: string | null; next_message_label: string | null;
+  next_phase_id: string | null; next_phase_name: string | null;
+  armed_at: string; consumed_at: string | null; expires_at: string | null;
+  linked_beacon_count: number;
+};
+type CheckinTriggerStatusResponse = {
+  line_user_id_prefix: string;
+  current_phase: { id: string; name: string | null } | null;
+  triggers: CheckinTriggerRow[];
+};
+
+function fmtDateTime(iso: string | null): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "—";
+  return d.toLocaleString("ja-JP", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
 export default function LocationCheckinsPage() {
@@ -25,6 +58,36 @@ export default function LocationCheckinsPage() {
   const [recentVisits, setRecentVisits] = useState<(LocationVisit & { location_name?: string })[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // ── 地点到着トリガー状況（ユーザー別・参照のみ）。Pro Max / 委託 のみ表示。──
+  const { effectivePlan } = useAccessPreview(oaId);
+  const canUseLocationFeatures = getPlanAccessState({ plan: effectivePlan, featureKey: FEATURE.location }).allowed;
+  const [triggerUserId, setTriggerUserId]   = useState("");
+  const [triggerData, setTriggerData]       = useState<CheckinTriggerStatusResponse | null>(null);
+  const [triggerLoading, setTriggerLoading] = useState(false);
+  const [triggerError, setTriggerError]     = useState<string | null>(null);
+
+  async function lookupTriggerStatus(e: React.FormEvent) {
+    e.preventDefault();
+    const uid = triggerUserId.trim();
+    if (!uid) return;
+    setTriggerLoading(true);
+    setTriggerError(null);
+    setTriggerData(null);
+    try {
+      const res = await fetch(
+        `/api/works/${workId}/checkin-triggers?line_user_id=${encodeURIComponent(uid)}`,
+        { headers: authHeaders(getDevToken()), cache: "no-store" },
+      );
+      const json = await res.json();
+      if (!res.ok || !json.success) { setTriggerError(json?.error?.message ?? "取得に失敗しました"); return; }
+      setTriggerData(json.data as CheckinTriggerStatusResponse);
+    } catch {
+      setTriggerError("通信エラーが発生しました");
+    } finally {
+      setTriggerLoading(false);
+    }
+  }
 
   useEffect(() => {
     const token = getDevToken();
@@ -63,6 +126,33 @@ export default function LocationCheckinsPage() {
         { label: "ロケーション分析" },
       ]} />
       <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 24 }}>ロケーションチェックイン分析</h1>
+
+      {/* ── 地点到着トリガー状況（ユーザー別・参照のみ）── */}
+      {canUseLocationFeatures && (
+        <Section title="地点到着トリガー状況（ユーザー別）">
+          <p style={{ fontSize: 12, color: "#6b7280", marginBottom: 10, lineHeight: 1.6 }}>
+            参加者の LINE ユーザー ID を入力すると、いま待機中の地点・通過済みの地点を確認できます。
+            「到着しても次のメッセージが届かない」原因の切り分けに使えます（参照のみ）。
+          </p>
+          <form onSubmit={lookupTriggerStatus} style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+            <input
+              type="text"
+              value={triggerUserId}
+              onChange={(e) => setTriggerUserId(e.target.value)}
+              placeholder="LINE ユーザー ID（U... ）"
+              style={{ flex: "1 1 280px", minWidth: 220, padding: "8px 12px", border: "1px solid #d1d5db", borderRadius: 8, fontSize: 13, fontFamily: "ui-monospace, monospace" }}
+            />
+            <button type="submit" disabled={triggerLoading || !triggerUserId.trim()}
+              style={{ padding: "8px 18px", background: "#2563eb", color: "#fff", border: "none", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: triggerLoading || !triggerUserId.trim() ? "not-allowed" : "pointer", opacity: triggerLoading || !triggerUserId.trim() ? 0.6 : 1 }}>
+              {triggerLoading ? "取得中…" : "状況を確認"}
+            </button>
+          </form>
+          {triggerError && (
+            <div style={{ padding: "8px 12px", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, color: "#b91c1c", fontSize: 12, marginBottom: 8 }}>{triggerError}</div>
+          )}
+          {triggerData && <TriggerStatusView data={triggerData} />}
+        </Section>
+      )}
 
       {loading && <div style={{ textAlign: "center", padding: 40, color: "#6b7280" }}>読み込み中...</div>}
       {error && <div style={{ padding: 16, background: "#fef2f2", border: "1px solid #fca5a5", borderRadius: 8, color: "#dc2626", marginBottom: 16 }}>{error}</div>}
@@ -343,6 +433,81 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 function EmptyState({ text }: { text: string }) {
   return <div style={{ padding: 16, textAlign: "center", color: "#9ca3af", fontSize: 13 }}>{text}</div>;
+}
+
+// ── 地点到着トリガー状況の表示（参照のみ）──
+function TriggerStatusBadge({ status }: { status: string }) {
+  const m = TRIGGER_STATUS_META[status] ?? { label: status, bg: "#f3f4f6", color: "#6b7280" };
+  return <span style={{ display: "inline-block", padding: "2px 8px", borderRadius: 10, fontSize: 11, fontWeight: 600, background: m.bg, color: m.color }}>{m.label}</span>;
+}
+
+function TriggerCard({ t }: { t: CheckinTriggerRow }) {
+  const rows: [string, React.ReactNode][] = [
+    ["検知方法",       TRIGGER_METHOD_LABEL[t.trigger_type] ?? t.trigger_type],
+    ["対象地点",       t.location_name ?? <span style={{ color: "#b45309" }}>未設定/不明</span>],
+    ["起点メッセージ",   t.source_message_label ?? "—"],
+    ["到着時メッセージ", t.next_message_label ?? <span style={{ color: "#9ca3af" }}>なし</span>],
+    ["到着後フェーズ",   t.next_phase_name ?? <span style={{ color: "#9ca3af" }}>なし</span>],
+    ["作成日時",       fmtDateTime(t.armed_at)],
+    ...(t.consumed_at ? [["消化日時", fmtDateTime(t.consumed_at)] as [string, React.ReactNode]] : []),
+    ...(t.expires_at  ? [["有効期限", fmtDateTime(t.expires_at)]  as [string, React.ReactNode]] : []),
+  ];
+  return (
+    <div style={{ border: "1px solid #e5e7eb", borderRadius: 8, padding: "10px 12px" }}>
+      <div style={{ marginBottom: 6 }}><TriggerStatusBadge status={t.status} /></div>
+      <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "3px 12px", fontSize: 12, color: "#374151" }}>
+        {rows.map(([k, v]) => (
+          <div key={k} style={{ display: "contents" }}>
+            <div style={{ color: "#6b7280", whiteSpace: "nowrap" }}>{k}</div>
+            <div style={{ minWidth: 0 }}>{v}</div>
+          </div>
+        ))}
+      </div>
+      {/* Beacon 切り分け補助: 対象地点に紐づく BeaconTrigger 数 */}
+      {t.trigger_type === "beacon" && (
+        t.linked_beacon_count > 0
+          ? <div style={{ marginTop: 6, fontSize: 11, color: "#6b7280" }}>この地点に紐づくBeacon: {t.linked_beacon_count} 件</div>
+          : <div style={{ marginTop: 6, fontSize: 11, lineHeight: 1.5, padding: "4px 8px", borderRadius: 5, background: "#fffbeb", border: "1px solid #fde68a", color: "#92400e" }}>
+              ⚠ この地点に紐づくBeaconがありません。Beacon検知では進行しません（ビーコン編集で同じ地点を紐づけてください）。
+            </div>
+      )}
+    </div>
+  );
+}
+
+function TriggerStatusView({ data }: { data: CheckinTriggerStatusResponse }) {
+  const pending  = data.triggers.filter((t) => t.status === "pending");
+  const consumed = data.triggers.filter((t) => t.status === "consumed");
+  const others   = data.triggers.filter((t) => t.status === "expired" || t.status === "canceled");
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div style={{ fontSize: 12, color: "#6b7280" }}>
+        対象ユーザー: <code style={{ fontFamily: "ui-monospace, monospace" }}>{data.line_user_id_prefix}…</code>
+        {data.current_phase && <span style={{ marginLeft: 12 }}>現在フェーズ: <strong style={{ color: "#374151" }}>{data.current_phase.name ?? data.current_phase.id}</strong></span>}
+      </div>
+
+      <div>
+        <p style={{ fontSize: 13, fontWeight: 700, color: "#374151", marginBottom: 6 }}>現在待機中の地点</p>
+        {pending.length === 0
+          ? <p style={{ fontSize: 12, color: "#9ca3af" }}>現在待機中の地点到着トリガーはありません。</p>
+          : <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>{pending.map((t) => <TriggerCard key={t.id} t={t} />)}</div>}
+      </div>
+
+      {consumed.length > 0 && (
+        <div>
+          <p style={{ fontSize: 13, fontWeight: 700, color: "#374151", marginBottom: 6 }}>通過済みの地点（{consumed.length}）</p>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>{consumed.map((t) => <TriggerCard key={t.id} t={t} />)}</div>
+        </div>
+      )}
+
+      {others.length > 0 && (
+        <details>
+          <summary style={{ fontSize: 12, color: "#6b7280", cursor: "pointer" }}>期限切れ / キャンセル済み（{others.length}）</summary>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 8 }}>{others.map((t) => <TriggerCard key={t.id} t={t} />)}</div>
+        </details>
+      )}
+    </div>
+  );
 }
 
 const thL: React.CSSProperties = { textAlign: "left", padding: "10px 12px", fontWeight: 600, color: "#6b7280", fontSize: 12 };
