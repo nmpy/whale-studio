@@ -66,14 +66,30 @@ describe("buildFeedbackMessage", () => {
     expect(oaUidSection!.fields![1].text).toContain("*uid*");
   });
 
-  it("作品 と タイトル が同じ fields section に並ぶ", () => {
+  it("作品 と 内容 が同じ fields section に並ぶ（左 作品 / 右 内容）", () => {
     const { blocks } = buildFeedbackMessage(base);
     const sections = fieldSections(blocks);
-    const workTitleSection = sections.find((s) =>
+    const workContentSection = sections.find((s) =>
       s.fields!.some((f) => f.text.includes("*作品*")) &&
+      s.fields!.some((f) => f.text.includes("*内容*")),
+    );
+    expect(workContentSection).toBeTruthy();
+    expect(workContentSection!.fields![0].text).toContain("*作品*");
+    expect(workContentSection!.fields![1].text).toContain("*内容*");
+  });
+
+  it("タイトル は左寄せの単独 section（fields ではない）にある", () => {
+    const { blocks } = buildFeedbackMessage(base);
+    // fields section には タイトル を含めない（左カラム単独へ移動した）。
+    const inFields = fieldSections(blocks).some((s) =>
       s.fields!.some((f) => f.text.includes("*タイトル*")),
     );
-    expect(workTitleSection).toBeTruthy();
+    expect(inFields).toBe(false);
+    // text を持つ単独 section に *タイトル* が存在する。
+    const titleSection = (blocks as { type: string; text?: { text: string } }[]).find(
+      (b) => b?.type === "section" && !!b.text?.text?.includes("*タイトル*"),
+    );
+    expect(titleSection).toBeTruthy();
   });
 
   it("uid 未取得は (なし) にフォールバックする", () => {
