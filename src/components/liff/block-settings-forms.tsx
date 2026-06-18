@@ -552,6 +552,7 @@ export function WarningForm({ settings, onChange, readOnly }: FieldProps<Warning
 const BUTTON_PAGE_TYPE_LABELS: Record<string, string> = {
   default: "デフォルト", hint: "ヒント", hint_site: "ヒント", faq: "FAQ",
   survey: "アンケート", location: "履歴", character: "キャラクター", werewolf: "人狼",
+  contact: "お問い合わせ",
 };
 const BUTTON_CHECKIN_LABELS: Record<string, string> = {
   qr_only: "QR", gps_only: "GPS", gps_qr: "GPS+QR", beacon: "ビーコン",

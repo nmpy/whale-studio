@@ -1307,14 +1307,15 @@ export type VisibilityCondition = "always" | "before_start" | "in_progress" | "c
  *
  *  DB は `pageType String @default("default")` で enum ではないため、新 pageType 追加に
  *  Prisma migration は不要 (werewolf 用の専用テーブル migration は別で持つ)。 */
-export type LiffPageType = "default" | "hint" | "faq" | "survey" | "location" | "character" | "werewolf";
+export type LiffPageType = "default" | "hint" | "faq" | "survey" | "location" | "character" | "werewolf" | "contact";
 
 /** 旧データ互換用。ストレージから読んだ値を正規化する。 */
 export function normalizeLiffPageType(value: string | null | undefined): LiffPageType {
   if (value === "hint_site") return "hint";
   if (
     value === "hint" || value === "faq" || value === "survey" ||
-    value === "location" || value === "character" || value === "werewolf"
+    value === "location" || value === "character" || value === "werewolf" ||
+    value === "contact"
   ) return value;
   return "default";
 }
@@ -1621,6 +1622,27 @@ export interface LiffPageConfigSettings {
   survey_items?: SurveyItem[];
   /** Survey 送信完了時に表示するテキスト */
   survey_thanks_message?: string;
+
+  // ── Contact（お問い合わせ）モード設定 ───────────────────────
+  //   すべて任意。未設定でも安全に動く（resolveContactConfig が既定値を補う）。
+  /** 問い合わせ種別の選択肢。空配列/未設定なら種別欄を表示しない。 */
+  contact_categories?: string[];
+  /** 種別を必須にするか（既定: true）。 */
+  contact_category_required?: boolean;
+  /** お名前欄を表示するか（既定: true）。 */
+  contact_show_name?: boolean;
+  /** お名前を必須にするか（既定: false）。 */
+  contact_name_required?: boolean;
+  /** メール欄を表示するか（既定: true）。 */
+  contact_show_email?: boolean;
+  /** メールを必須にするか（既定: false）。 */
+  contact_email_required?: boolean;
+  /** お問い合わせ内容（本文・最大100文字）を必須にするか（既定: true）。 */
+  contact_body_required?: boolean;
+  /** その他項目（SurveyItem 流用: text/textarea/radio/checkbox）。 */
+  contact_custom_fields?: SurveyItem[];
+  /** 送信完了時に表示するテキスト（未設定は標準文言）。 */
+  contact_success_message?: string;
 
   // ── 作品メニュー shell (タブ UI) 用設定 (deprecated) ────────
   /** @deprecated PR #59 のタブ UI 用。`/liff/w/[workPublicId]` がメニューホーム +

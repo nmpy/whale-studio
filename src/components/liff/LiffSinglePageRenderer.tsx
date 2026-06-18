@@ -20,6 +20,7 @@ import { normalizeLiffPageType } from "@/types";
 import { HintSiteRenderer, type HintSiteBlock } from "./HintSiteRenderer";
 import { FaqRenderer } from "./FaqRenderer";
 import { SurveyRenderer } from "./SurveyRenderer";
+import { ContactRenderer } from "./ContactRenderer";
 import { LocationHistoryRenderer } from "./LocationHistoryRenderer";
 import { CharacterRenderer, type CharacterRendererBlock } from "./CharacterRenderer";
 import { WerewolfRenderer } from "./WerewolfRenderer";
@@ -181,6 +182,21 @@ function ActivePageContent({
     case "survey":
       return (
         <SurveyRenderer
+          preview={preview}
+          lineUserId={lineUserId}
+          config={{
+            work_id:       workId,
+            page_id:       page.id,
+            work_title:    null,
+            title:         page.title,
+            description:   page.description,
+            settings_json: settings,
+          }}
+        />
+      );
+    case "contact":
+      return (
+        <ContactRenderer
           preview={preview}
           lineUserId={lineUserId}
           config={{
