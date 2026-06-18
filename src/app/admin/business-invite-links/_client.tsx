@@ -9,6 +9,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { getAuthHeaders } from "@/lib/api-client";
+import { InlineWhaleLoader } from "@/components/ui/InlineWhaleLoader";
 import { useToast } from "@/components/Toast";
 import { PLAN_TIER, PLAN_LABELS, PLAN_TIER_ORDER, type PlanTier } from "@/lib/constants/plans";
 import { ROLE_LABELS } from "@/lib/types/permissions";
@@ -302,7 +303,7 @@ export function BusinessInviteLinksClient() {
       {/* ── 一覧 ── */}
       <h2 style={{ fontSize: 15, fontWeight: 700, marginBottom: 10 }}>発行済みリンク</h2>
       {loading ? (
-        <p style={{ fontSize: 13, color: "#6b7280" }}>読み込み中...</p>
+        <InlineWhaleLoader />
       ) : links.length === 0 ? (
         <p style={{ fontSize: 13, color: "#6b7280" }}>まだ発行されたリンクはありません。</p>
       ) : (
