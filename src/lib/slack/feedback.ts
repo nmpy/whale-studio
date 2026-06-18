@@ -13,6 +13,7 @@
 //   - content は 1000 字 / それ以外は 200 字 / page_url は 400 字で truncate
 
 import { notifySlack } from "./notify";
+import { formatFeedbackCategory } from "@/lib/feedback/format";
 
 const TRUNC_CONTENT = 1000;
 const TRUNC_DEFAULT = 200;
@@ -85,6 +86,10 @@ export async function notifyFeedbackSubmitted(
   const safeWorkName = trunc(input.workName, TRUNC_DEFAULT);
   const safePageName = trunc(input.pageName, TRUNC_DEFAULT);
   const safePageUrl  = trunc(input.pageUrl, TRUNC_URL);
+  // カテゴリは内部値（bug/ux/feature/other）を表示用に日本語化する。
+  const safeCategory = formatFeedbackCategory(input.category);
+  // uid 未取得（匿名 / 未ログイン）は "(なし)" 表示に統一する。送信処理自体は継続する。
+  const safeUserId = input.userId?.trim() || "(なし)";
 
   // 表示確認モード (= owner 限定 URL クエリ) の検出。
   // pageUrl から抽出するため、表示確認していないユーザーには付かない。
@@ -95,14 +100,15 @@ export async function notifyFeedbackSubmitted(
       : null;
 
   // fallback text (= Slack 通知センター / non-block 表示用)
+  // 読み順: 送信者 → LINE公式アカウント → 作品 → uid → カテゴリ → 内容。
   const text = [
     `Whale Studio: フィードバックが届きました [${env}]`,
     `送信日時: ${sentAt}`,
     `送信者: ${safeName}${input.userEmail ? ` (${safeEmail})` : ""}`,
-    `userId: ${input.userId ?? "(anonymous)"}`,
-    `カテゴリ: ${input.category}`,
-    `OA: ${safeOaName}${input.oaId ? ` (${input.oaId})` : ""}`,
+    `LINE公式アカウント: ${safeOaName}${input.oaId ? ` (${input.oaId})` : ""}`,
     `作品: ${safeWorkName}${input.workId ? ` (${input.workId})` : ""}`,
+    `uid: ${safeUserId}`,
+    `カテゴリ: ${safeCategory}`,
     `画面: ${safePageName}`,
     `確認URL: ${safePageUrl}`,
     ...(previewLine ? [`表示確認モード: ${previewLine}`] : []),
@@ -117,16 +123,19 @@ export async function notifyFeedbackSubmitted(
       type: "header",
       text: { type: "plain_text", text: `フィードバックが届きました [${env}]` },
     },
+    // fields は配列順に 2 列 (左→右→次の行) で並ぶため、
+    // 読み順が「送信者 → LINE公式アカウント → 作品 → uid → カテゴリ」になるよう並べる。
     {
       type: "section",
       fields: [
         { type: "mrkdwn", text: `*送信者*\n${safeName}${input.userEmail ? `\n${safeEmail}` : ""}` },
-        { type: "mrkdwn", text: `*userId*\n${input.userId ?? "(anonymous)"}` },
-        { type: "mrkdwn", text: `*カテゴリ*\n${input.category}` },
-        { type: "mrkdwn", text: `*OA*\n${safeOaName}` },
+        { type: "mrkdwn", text: `*LINE公式アカウント*\n${safeOaName}` },
         { type: "mrkdwn", text: `*作品*\n${safeWorkName}` },
+        { type: "mrkdwn", text: `*uid*\n${safeUserId}` },
+        { type: "mrkdwn", text: `*カテゴリ*\n${safeCategory}` },
       ],
     },
+    // 内容は長くなるため単独ブロックにする。
     {
       type: "section",
       text: { type: "mrkdwn", text: `*内容*\n${safeContent}` },
