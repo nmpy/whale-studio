@@ -701,7 +701,7 @@ export default function MessagesPage() {
   }
   async function clearWelcome() {
     if (savingWelcome) return;
-    if (!confirm("あいさつメッセージを未設定に戻しますか？\n（本文の紐付けを解除します。未設定時はシステムの既定文が使われます）")) return;
+    if (!confirm("あいさつメッセージを未設定に戻しますか？\n（本文の紐付けを解除します。未設定にすると、友だち追加時には何も送信されません）")) return;
     setSavingWelcome(true);
     try {
       await workApi.update(getDevToken(), workId, { welcome_message: null });
@@ -988,7 +988,7 @@ export default function MessagesPage() {
               { title: "あいさつメッセージ", points: [
                 "友だち追加時に送信するメッセージと、その後の動作を設定できます",
                 "「はじめる」と送る前に自動で届く、シナリオ開始前の一度きりのメッセージです",
-                "未設定のときはシステムの既定文が使われます",
+                "未設定（空欄）のときは、友だち追加時に何も送信されません（デフォルト文は送信されません）",
                 "OA Manager 側のあいさつメッセージが ON だと二重送信になる可能性があるため、Whale Studio 側で管理する場合は OA Manager 側を OFF にしてください",
               ]},
               { title: "デフォルト設定", points: [
@@ -1036,6 +1036,11 @@ export default function MessagesPage() {
             {followAction === "none" && (
               <p style={{ fontSize: 12, color: "#6b7280", margin: "12px 0 0", lineHeight: 1.7 }}>
                 友だち追加時には何も送信されません。
+              </p>
+            )}
+            {followAction === "welcome_wait" && !welcomeMsg?.trim() && (
+              <p style={{ fontSize: 12, color: "#b45309", margin: "12px 0 0", lineHeight: 1.7 }}>
+                あいさつメッセージが未設定（空欄）のため、友だち追加時には何も送信されません。送信したい場合は下であいさつメッセージを設定してください。
               </p>
             )}
           </div>
