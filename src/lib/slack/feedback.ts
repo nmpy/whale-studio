@@ -105,7 +105,7 @@ export function buildFeedbackMessage(
       : null;
 
   // fallback text (= Slack 通知センター / non-block 表示用)
-  // 読み順: 送信者 → LINE公式アカウント → uid → 作品 → タイトル → 内容。
+  // 読み順: 送信者 → LINE公式アカウント → uid → 作品 → 内容 → タイトル。
   const text = [
     `Whale Studio: フィードバックが届きました [${env}]`,
     `送信日時: ${sentAt}`,
@@ -113,13 +113,11 @@ export function buildFeedbackMessage(
     `LINE公式アカウント: ${safeOaName}${input.oaId ? ` (${input.oaId})` : ""}`,
     `uid: ${safeUserId}`,
     `作品: ${safeWorkName}${input.workId ? ` (${input.workId})` : ""}`,
+    `内容: ${safeContent}`,
     `タイトル: ${safeTitle}`,
     `画面: ${safePageName}`,
     `確認URL: ${safePageUrl}`,
     ...(previewLine ? [`表示確認モード: ${previewLine}`] : []),
-    ``,
-    `内容:`,
-    safeContent,
   ].join("\n");
 
   // Block Kit (= リッチ表示 / oa-access-request と同トーン)
@@ -141,18 +139,18 @@ export function buildFeedbackMessage(
         { type: "mrkdwn", text: `*uid*\n${safeUserId}` },
       ],
     },
-    // 左: 作品 / 右: タイトル（2列 fields）。
+    // 左: 作品 / 右: 内容（2列 fields）。内容を uid の下（右側）に配置する。
     {
       type: "section",
       fields: [
         { type: "mrkdwn", text: `*作品*\n${safeWorkName}` },
-        { type: "mrkdwn", text: `*タイトル*\n${safeTitle}` },
+        { type: "mrkdwn", text: `*内容*\n${safeContent}` },
       ],
     },
-    // 内容は単独 section（折り返し回避）。
+    // タイトルは左寄せの単独 section。
     {
       type: "section",
-      text: { type: "mrkdwn", text: `*内容*\n${safeContent}` },
+      text: { type: "mrkdwn", text: `*タイトル*\n${safeTitle}` },
     },
     ...(previewLine
       ? [
