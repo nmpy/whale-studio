@@ -10,6 +10,7 @@ import { getAuthHeaders } from "@/lib/api-client";
 import { Button, buttonClass } from "@/components/shared";
 import { beaconOutcomeLabel } from "@/lib/beacon-utils";
 import { TestFireModal } from "./_test-fire-modal";
+import { InlineWhaleLoader } from "@/components/ui/InlineWhaleLoader";
 
 type Trigger = {
   id: string;
@@ -85,7 +86,7 @@ export function OaBeaconList({
     return <div className="rounded-card border border-danger/30 bg-danger-soft px-4 py-3 text-[13px] text-danger">{error}</div>;
   }
   if (triggers === null) {
-    return <div className="rounded-card border border-line bg-surface px-4 py-6 text-center text-[13px] text-ink-3">読み込み中…</div>;
+    return <div className="rounded-card border border-line bg-surface px-4 py-6 text-center text-[13px] text-ink-3"><InlineWhaleLoader padding={0} /></div>;
   }
 
   const visible = workIdFilter

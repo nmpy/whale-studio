@@ -13,6 +13,7 @@ import { getAuthHeaders, fetchOaLiffId } from "@/lib/api-client";
 import { buildLiffCheckinUrl } from "@/lib/liff/config";
 import { buttonClass } from "@/components/shared";
 import { requiresGps, includesQr } from "@/lib/checkin-mode";
+import { InlineWhaleLoader } from "@/components/ui/InlineWhaleLoader";
 
 type Checkpoint = {
   id: string;
@@ -103,7 +104,7 @@ export function CheckpointList({
   }, [rows, workIdFilter, mode]);
 
   if (error) return <div className="rounded-card border border-danger/30 bg-danger-soft px-4 py-3 text-[13px] text-danger">{error}</div>;
-  if (visible === null) return <div className="rounded-card border border-line bg-surface px-4 py-6 text-center text-[13px] text-ink-3">読み込み中…</div>;
+  if (visible === null) return <div className="rounded-card border border-line bg-surface px-4 py-6 text-center text-[13px] text-ink-3"><InlineWhaleLoader padding={0} /></div>;
 
   return (
     <div>

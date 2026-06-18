@@ -10,6 +10,7 @@ import { Breadcrumb } from "@/components/Breadcrumb";
 import { Button } from "@/components/shared";
 import { getAuthHeaders, getDevToken, workApi } from "@/lib/api-client";
 import { beaconOutcomeLabel, BEACON_OUTCOME_META } from "@/lib/beacon-utils";
+import { InlineWhaleLoader } from "@/components/ui/InlineWhaleLoader";
 
 type LogRow = {
   id: string;
@@ -139,7 +140,7 @@ export default function BeaconLogsPage() {
       {error && <div className="rounded-card border border-danger/30 bg-danger-soft px-4 py-3 text-[13px] text-danger">{error}</div>}
 
       {rows === null ? (
-        <div className="rounded-card border border-line bg-surface px-4 py-6 text-center text-[13px] text-ink-3">読み込み中…</div>
+        <div className="rounded-card border border-line bg-surface px-4 py-6 text-center text-[13px] text-ink-3"><InlineWhaleLoader padding={0} /></div>
       ) : rows.length === 0 ? (
         <div className="rounded-card border border-dashed border-line bg-bg px-4 py-10 text-center text-[13px] text-ink-3">該当するログがありません。</div>
       ) : (
