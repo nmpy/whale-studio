@@ -15,9 +15,9 @@ export type WhaleLoaderSize = "sm" | "md" | "lg";
 // 表示サイズ（くじらの一辺 px）。md をページローダーの既定とする。
 // ページローダー用途では小さめが自然なため、控えめなサイズに調整している。
 const SIZE_PX: Record<WhaleLoaderSize, number> = {
-  sm: 20,
-  md: 32,
-  lg: 48,
+  sm: 28,
+  md: 48,
+  lg: 64,
 };
 
 export interface WhaleLoaderProps {

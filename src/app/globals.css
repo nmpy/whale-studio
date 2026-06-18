@@ -479,7 +479,7 @@ tbody tr:hover td { background: var(--brand-subtle); }
    クラスは `whale-loader` / `wl-*` 名前空間で他画面と衝突しない。
    色は --wl-navy（Whale Studio navy）、サイズは --wl-size を component 側で付与。 */
 .whale-loader {
-  --wl-size: 32px;
+  --wl-size: 48px;
   --wl-speed: 1;
   --wl-navy: #222664;
   display: inline-flex;
@@ -511,18 +511,19 @@ tbody tr:hover td { background: var(--brand-subtle); }
 }
 .whale-loader-overlay .whale-loader { pointer-events: auto; }
 
-.wl-spout { transform-origin: 660px 300px; animation: wl-jet      calc(1.5s / var(--wl-speed)) ease-in-out infinite; }
-.wl-bob   { animation: wl-swimbob calc(1.5s / var(--wl-speed)) ease-in-out infinite; }
-.wl-swing { transform-origin: 800px 560px; animation: wl-swing    calc(1.5s / var(--wl-speed)) ease-in-out infinite; }
-.wl-waves { transform-origin: 500px 800px; animation: wl-wavesway calc(1.7s / var(--wl-speed)) ease-in-out infinite; }
-.wl-bubble    { animation: wl-bubble calc(1.5s / var(--wl-speed)) ease-in infinite; }
+/* 縮小後はやや速く見えるため、全体に少しゆったり泳ぐ速度へ調整（表示遅延は入れない）。 */
+.wl-spout { transform-origin: 660px 300px; animation: wl-jet      calc(2.2s / var(--wl-speed)) ease-in-out infinite; }
+.wl-bob   { animation: wl-swimbob calc(2.4s / var(--wl-speed)) ease-in-out infinite; }
+.wl-swing { transform-origin: 800px 560px; animation: wl-swing    calc(2.2s / var(--wl-speed)) ease-in-out infinite; }
+.wl-waves { transform-origin: 500px 800px; animation: wl-wavesway calc(2.8s / var(--wl-speed)) ease-in-out infinite; }
+.wl-bubble    { animation: wl-bubble calc(2.2s / var(--wl-speed)) ease-in infinite; }
 .wl-bubble--2 { animation-delay: 0.5s; }
 .wl-bubble--3 { animation-delay: 1s; }
 
 .whale-loader__dots { display: flex; gap: 5px; }
 .whale-loader__dots span {
   width: 5px; height: 5px; border-radius: 50%; background: var(--wl-navy);
-  animation: wl-dots calc(1.2s / var(--wl-speed)) ease-in-out infinite;
+  animation: wl-dots calc(1.6s / var(--wl-speed)) ease-in-out infinite;
 }
 .whale-loader__dots span:nth-child(2) { animation-delay: 0.18s; }
 .whale-loader__dots span:nth-child(3) { animation-delay: 0.36s; }
