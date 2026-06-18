@@ -9,6 +9,10 @@
 // id | created_at | user_name | user_email | page_name | page_url |
 // oa_id | oa_name | work_id | work_name | category | content |
 // status | memo | user_agent
+//
+// ※ title は payload に追加済みだが、GAS 側の appendRow / 列はまだ未対応。
+//   GAS が title 列を無視しても送信は落ちない（余剰フィールドは JSON に乗るだけ）。
+//   スプレッドシートに title を残したい場合は GAS 側で列・appendRow の追加が別途必要。
 
 export interface FeedbackPayload {
   id:          string;        // API 側で生成する UUID
@@ -21,7 +25,9 @@ export interface FeedbackPayload {
   oa_name:     string | null;
   work_id:     string | null;
   work_name:   string | null;
-  category:    string;        // "bug" | "ux" | "feature" | "other"
+  category:    string;        // 通常フィードバックは "" / 法人相談のみ "enterprise"（旧 bug/ux/... は廃止）
+  /** 通常フィードバックのタイトル（旧カテゴリの置き換え）。GAS 側に列が無くても送信は落ちない。 */
+  title:       string;
   content:     string;
   status:      string;        // 初期値 "未対応"
   memo:        string;        // 初期値 ""

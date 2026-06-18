@@ -60,6 +60,8 @@ const USER_MSG_SEND_FAILED = "送信に失敗しました。しばらく後に�
 // フロントから受け取る入力型（自動付与フィールドは除く）
 interface FeedbackInput {
   content:    string;
+  /** 通常フィードバックのタイトル（必須・最大 50 字）。旧「カテゴリ」を置き換える。 */
+  title:      string;
   category:   string;
   page_name:  string;
   page_url:   string;
@@ -85,12 +87,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, error: "content は必須です" }, { status: 400 });
     }
 
-    // "enterprise" は /pricing の「法人プランに申し込む」CTA からの送信に使う。
-    // 受け取った場合は専用 Slack チャネル (= ENTERPRISE_PLAN_SLACK_WEBHOOK_URL) に通知する。
-    const validCategories = ["bug", "ux", "feature", "other", "enterprise"];
-    const category = validCategories.includes(body.category ?? "")
-      ? body.category!
-      : "other";
+    // カテゴリは廃止（通常フィードバックは title を使う）。
+    // ただし "enterprise" だけは /pricing の「法人プランに申し込む」CTA の振り分けに必要なため残す。
+    // 通常フィードバックは category="" とし、表示・集計は title 側で行う。
+    const category = body.category === "enterprise" ? "enterprise" : "";
 
     // ── 送信者の解決（サーバー側 / client 入力は信用しない）────────────────────
     // 認証済みなら Supabase Auth user を取得し、Profile から username を解決する。
@@ -118,6 +118,8 @@ export async function POST(req: NextRequest) {
       work_name:   body.work_name  ?? null,
       hoped_plan:  body.hoped_plan ?? null,
       category,
+      // タイトル（旧カテゴリの置き換え）。最大 50 字に丸めて保持する。
+      title:       (body.title ?? "").trim().slice(0, 50),
       content:     body.content.trim(),
       status:      "未対応",
       memo:        "",
@@ -210,7 +212,7 @@ export async function POST(req: NextRequest) {
       try {
         await notifyFeedbackSubmitted({
           id:        payload.id,
-          category:  payload.category,
+          title:     payload.title || null,
           content:   payload.content,
           userId,
           userName:  payload.user_name  || null,
