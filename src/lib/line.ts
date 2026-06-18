@@ -822,7 +822,7 @@ export async function replyWithLagToLine(
 
     if (controller && msg._timing) {
       await controller.waitTypingForMessage(msg._timing);
-      await controller.showLoadingForMessage(msg._timing);
+      await controller.showLoadingForMessage(msg._timing, { messageId: msg._sourceMessageId ?? null });
     }
 
     const result = await pushToLine(userId, [msg], channelAccessToken);
