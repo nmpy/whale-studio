@@ -1247,7 +1247,7 @@ const surveyItemSchema = z.object({
 });
 
 // ── LIFF ページ設定スキーマ（ヒントサイト用 + FAQ / Survey フィールドを含む） ──
-const liffPageConfigSettingsSchema = z.object({
+export const liffPageConfigSettingsSchema = z.object({
   // フォントプリセット (新)。未指定 / 不正値は renderer 側で "line_seed_jp" 扱い。
   font_preset:          z.enum(["line_seed_jp", "system_sans", "noto_sans_jp", "serif"]).optional(),
   // 旧フォントファミリ (deprecated)。データ互換のため残置。新規 CMS では出さない。
