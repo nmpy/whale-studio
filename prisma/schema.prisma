@@ -51,6 +51,7 @@ model Oa {
   hintLogs           HintLog[]
   invitations        Invitation[]
   memberInvites      MemberInvite[]
+  studioInvites      StudioInvite[]
   liffSubmissions    LiffSubmission[]
   onboardingEvents   OnboardingEvent[]
   richMenus          RichMenu[]
@@ -934,6 +935,43 @@ model MemberInvite {
   @@index([tokenHash])
   @@index([expiresAt])
   @@map("member_invites")
+}
+
+/// スタジオ管理から発行する「招待URL」(StudioInvite)。
+/// MemberInvite(OA メンバー招待) / BusinessInviteLink(法人申込キュー) とは別系統の独立モデル。
+/// 発行時に「対象 OA・利用区分・プラン権限(課金非連動の付与記録)・ロール・有効期限(発行から7日)」を確定し、
+/// 受諾時に対象 OA へ反映する。平文 token は保存せず token_hash(sha256 hex)のみ保存する。
+model StudioInvite {
+  id                String            @id @default(uuid())
+  oaId              String            @map("oa_id")
+  /// 付与する利用区分(個人 / 法人)。受諾時に対象 Oa.usageType へ反映する。
+  usageType         BusinessUsageType @map("usage_type")
+  /// 付与するプラン権限の snapshot(= 課金非連動の grant 記録)。値は PlanTier("basic"|"standard"|"plus"|"pro"|"delegated")。
+  /// Stripe の subscription / price / checkout / webhook には一切連動しない(= 実課金は既存フローに委譲)。
+  planTier          String            @map("plan_tier")
+  /// 付与するロール。owner は URL 招待で配らない(発行 API 側 zod で除外)。
+  role              MemberRole        @default(viewer)
+  /// 平文 token の sha256 hex(64 char)。平文は保存しない。
+  tokenHash         String            @unique @map("token_hash")
+  /// 任意メモ(発行先の用途など)。
+  note              String?
+  /// 発行者(Supabase Auth userId / 対象 OA の owner|admin もしくは platform owner)。
+  createdByUserId   String            @map("created_by_user_id")
+  /// 受諾したユーザー(Supabase Auth userId)。null = 未受諾。
+  acceptedByUserId  String?           @map("accepted_by_user_id")
+  acceptedAt        DateTime?         @map("accepted_at")
+  /// 無効化日時(null = 有効)。
+  revokedAt         DateTime?         @map("revoked_at")
+  /// 有効期限。発行から 7 日。期限切れは受諾不可。
+  expiresAt         DateTime          @map("expires_at")
+  createdAt         DateTime          @default(now()) @map("created_at")
+  updatedAt         DateTime          @updatedAt @map("updated_at")
+  oa                Oa                @relation(fields: [oaId], references: [id], onDelete: Cascade)
+
+  @@index([oaId])
+  @@index([tokenHash])
+  @@index([expiresAt])
+  @@map("studio_invites")
 }
 
 model GlobalCommand {
