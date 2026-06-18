@@ -219,10 +219,10 @@ export default function FeedbackModal({ pathname, onClose, pricingSource, hopedP
     if (submitted) { onClose(); return; }
 
     // pricing モード: テンプレートから変更があった場合のみ確認
-    // 通常モード  : 入力があれば確認
+    // 通常モード  : content か title のいずれかに入力があれば確認
     const shouldWarn = isPricingMode
       ? content !== PRICING_TEMPLATE && content.trim().length > 0
-      : content.trim().length > 0;
+      : content.trim().length > 0 || title.trim().length > 0;
 
     if (shouldWarn) {
       if (!confirm("入力内容が送信されていません。閉じてよいですか？")) return;

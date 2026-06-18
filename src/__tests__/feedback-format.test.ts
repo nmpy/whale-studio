@@ -4,38 +4,13 @@
  * src/lib/feedback/format.ts の純関数 helper を検証する。
  *
  * 検証観点:
- *   - formatFeedbackCategory: 内部値を日本語化 / 未知値は元値 / 空は "未選択"
  *   - extractOaWorkIds: path のみ / origin 付き URL / works なし / liff サフィックス / query・hash
+ *
+ * ※ formatFeedbackCategory はカテゴリ廃止に伴い削除済み（テストも削除）。
  */
 
 import { describe, it, expect } from "vitest";
-import { formatFeedbackCategory, extractOaWorkIds } from "@/lib/feedback/format";
-
-describe("formatFeedbackCategory", () => {
-  it("内部値を日本語表示に変換する", () => {
-    expect(formatFeedbackCategory("bug")).toBe("バグ報告");
-    expect(formatFeedbackCategory("ux")).toBe("使いにくさ");
-    expect(formatFeedbackCategory("feature")).toBe("欲しい機能");
-    expect(formatFeedbackCategory("other")).toBe("その他");
-    expect(formatFeedbackCategory("enterprise")).toBe("法人プラン相談");
-  });
-
-  it("feature が表示上 そのまま英語で出ない（欲しい機能 になる）", () => {
-    expect(formatFeedbackCategory("feature")).not.toBe("feature");
-    expect(formatFeedbackCategory("feature")).toBe("欲しい機能");
-  });
-
-  it("未知の値は落とさず元の値を返す", () => {
-    expect(formatFeedbackCategory("something")).toBe("something");
-  });
-
-  it("空 / null / undefined は 未選択 にフォールバックする", () => {
-    expect(formatFeedbackCategory("")).toBe("未選択");
-    expect(formatFeedbackCategory("   ")).toBe("未選択");
-    expect(formatFeedbackCategory(null)).toBe("未選択");
-    expect(formatFeedbackCategory(undefined)).toBe("未選択");
-  });
-});
+import { extractOaWorkIds } from "@/lib/feedback/format";
 
 describe("extractOaWorkIds", () => {
   it("path のみ (/oas/:oaId/works/:workId/liff) から両 ID を抽出する", () => {
