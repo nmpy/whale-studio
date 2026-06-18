@@ -22,14 +22,8 @@ import Link from "next/link";
 import { STATUS_META } from "@/constants/workStatus";
 import { workApi, getDevToken, type WorkListItem } from "@/lib/api-client";
 import { useToast } from "@/components/Toast";
+import { formatDateTime } from "@/lib/format-datetime";
 import type { PublishStatus } from "@/types";
-
-// ── ユーティリティ ────────────────────────────────────────────────────────
-
-function formatDate(iso: string) {
-  const d = new Date(iso);
-  return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}`;
-}
 
 // ── ステータス → Tailwind クラス mapping (= Phase 0 トークン、WorkCard 内ローカル) ─────
 // STATUS_META 自体は触らず、WorkCard でのみ Tailwind クラスを使う設計
@@ -457,7 +451,7 @@ export function WorkCard({ work, oaId, basePath, role, onDelete, onStatusChange,
           dateTime={work.updated_at}
           className="font-num ml-auto self-center text-[11px] text-ink-3"
         >
-          更新 {formatDate(work.updated_at)}
+          更新日時 {formatDateTime(work.updated_at)}
         </time>
       </div>
 

@@ -11,6 +11,7 @@ import { Button, StatusBadge, buttonClass } from "@/components/shared";
 import { OasViewPreviewBar } from "@/components/OasViewPreviewBar";
 import { canCreateOaInView, isPreviewingOasView, viewingAsOwnerOrAbove, OAS_VIEW_ROLE_LABELS } from "@/lib/oas-preview";
 import { usageTypeShortLabel } from "@/lib/usage-type";
+import { formatDateTime } from "@/lib/format-datetime";
 import type { Role } from "@/lib/types/permissions";
 
 // ── 定数 ─────────────────────────────────────────────────────────────────
@@ -26,16 +27,6 @@ function statusTone(s: string): "active" | "muted" | "warn" {
   if (s === "active") return "active";
   if (s === "paused") return "warn";
   return "muted"; // draft / unknown
-}
-
-// ── 日付フォーマット ─────────────────────────────────────────────────────
-
-function formatDate(iso: string): string {
-  const d = new Date(iso);
-  const y  = d.getFullYear();
-  const mo = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${y}/${mo}/${dd}`;
 }
 
 // ── 情報グリッドの label / value 部品 ──
@@ -460,11 +451,11 @@ export function OaListClient() {
                         </div>
 
                         <MetaItem label="作成日時">
-                          <span className="font-num text-ink-2">{formatDate(oa.created_at)}</span>
+                          <span className="font-num text-ink-2">{formatDateTime(oa.created_at)}</span>
                         </MetaItem>
 
                         <MetaItem label="更新日時">
-                          <span className="font-num text-ink-2">{formatDate(oa.updated_at ?? oa.created_at)}</span>
+                          <span className="font-num text-ink-2">{formatDateTime(oa.updated_at ?? oa.created_at)}</span>
                         </MetaItem>
                       </div>
                     </div>
