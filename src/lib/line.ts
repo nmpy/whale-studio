@@ -1074,12 +1074,17 @@ export function buildPhaseMessages(
   //   応答メッセージ (free_input_next_message_id 経由) で送るのが正しいため、
   //   この phase response では送らない。
   let stoppedAtFreeInput = false;
+  // QuickReply もユーザー操作待ち（選択肢提示）の送信単位境界。QR を含む chain を送ったら
+  // phase iteration を停止し、後続の独立 head（QR 選択後に送るべきメッセージ）は送らない。
+  // (= freeInput と同じセマンティクス。これがないと開始/フェーズ遷移時に後続 head まで一括送信され、
+  //  LINE は最後のメッセージの quickReply しか表示しないため QR が出ず、順序も崩れる。)
+  let stoppedAtQuickReply = false;
   // placeholder safety guard の例外集合: freeInputEnabled=true の prompt 由来 LineMessage は
   // 未置換 placeholder を含んでいても除外しない (= ユーザー入力前に出すプロンプト本体は
   // 必ず送る必要があるため)。WeakSet で identity 比較する。
   const freeInputPromptLineMsgs = new WeakSet<LineMessage>();
   for (const head of phase.messages) {
-    if (stoppedAtFreeInput) break;
+    if (stoppedAtFreeInput || stoppedAtQuickReply) break;
     // continuation はこのループでは扱わない (= head 経由で chain 内に展開する)。
     if (continuationIds.has(head.id)) continue;
 
@@ -1125,6 +1130,18 @@ export function buildPhaseMessages(
 
     // phase 全体に append (chain 順は維持)。
     for (const lm of chainMessages) messages.push(lm);
+
+    // この chain が QuickReply（ユーザー選択待ち）を含むなら phase iteration を停止する。
+    // QR 提示後の後続 head はユーザー選択後に送るべきで、ここで一括送信してはいけない
+    // (= freeInput と同じ境界。LINE は最後のメッセージの quickReply しか表示しないため、
+    //  後続を送ると QR が隠れて順序も崩れる)。
+    if (chainMessages.some((m) => (m as { quickReply?: LineQuickReply }).quickReply)) {
+      stoppedAtQuickReply = true;
+      console.log(
+        `[buildPhaseMessages] STOP at quick_reply head=${head.id.slice(0, 8)} sort=${head.sort_order} ` +
+        `(QR 提示でユーザー選択待ち。後続の独立 head は選択後に送るのが正しい仕様)`,
+      );
+    }
   }
 
   // ── サマリログ ──
