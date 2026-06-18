@@ -74,6 +74,7 @@ export const GET = withAuth(async (req, ctx, user) => {
           menu_order?: number;
           menu_label?: string;
           menu_icon?: string;
+          menu_icon_image_url?: string;
           menu_card_style?: "card" | "compact";
         };
         return {
@@ -93,6 +94,7 @@ export const GET = withAuth(async (req, ctx, user) => {
           menu_order:      s.menu_order ?? null,
           menu_label:      s.menu_label ?? null,
           menu_icon:       s.menu_icon ?? null,
+          menu_icon_image_url: (s.menu_icon_image_url ?? "").trim() || null,
           // 未指定は "card" 扱い (= 既存ページの表示を変えない)。
           menu_card_style: s.menu_card_style === "compact" ? "compact" : "card",
           created_at:      p.createdAt,

@@ -10,7 +10,7 @@ export const PUBLISH_LABELS: Record<string, string> = {
 };
 
 export const PAGE_TYPE_LABELS: Record<string, string> = {
-  default:   "プレイヤー向け",
+  default:   "デフォルト",
   hint:      "ヒント",
   hint_site: "ヒント",
   faq:       "FAQ",

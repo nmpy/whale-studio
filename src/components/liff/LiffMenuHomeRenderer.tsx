@@ -23,6 +23,7 @@ import {
   type MenuCardSource,
 } from "./liff-style-helpers";
 import { LiffStudioFooter, shouldShowWhaleStudioCredit } from "./LiffStudioFooter";
+import { LiffCard } from "./primitives";
 
 export interface LiffMenuHomePage {
   id:             string;
@@ -53,6 +54,8 @@ interface Props {
   homeDescription?: string | null;
   /** ホーム画像 URL。未設定/空のとき非表示。見出しの上に表示。 */
   homeImageUrl?: string | null;
+  /** ホームメニューの表示モード。"list" = 縦並びリスト / "card"(既定/未指定) = 2列カードグリッド。 */
+  homeMenuLayout?: "card" | "list";
   /** プレビュー時はカードクリックで親が画面切替する。実機では未指定。 */
   onSelectCard?: (page: LiffMenuHomePage) => void;
   /** 実機時に <a href> を組み立てるための builder。プレビュー時は未指定。 */
@@ -63,9 +66,11 @@ interface Props {
 }
 
 export function LiffMenuHomeRenderer({
-  pages, homeTitle, homeDescription, homeImageUrl,
+  pages, homeTitle, homeDescription, homeImageUrl, homeMenuLayout,
   onSelectCard, buildPageHref,
 }: Props) {
+  // 表示モード。未指定/"card" は従来の2列カードグリッド（既存作品の表示を維持）。
+  const isList = homeMenuLayout === "list";
   // ※ 独自ヘッダー（作品名バー + 閉じる）は実機の LINE/LIFF デフォルトヘッダーと二重化するため廃止。
   //    workTitle / preview / onClose props は後方互換で残すが描画しない。
   // ホーム見出し: 入力があるときのみ表示。空欄は何も出さない（作品名や「ホーム」への fallback はしない）。
@@ -113,7 +118,7 @@ export function LiffMenuHomeRenderer({
         </div>
       )}
 
-      {/* カードグリッド */}
+      {/* メニュー（card: 2列グリッド / list: 縦並び） + 下部導線 */}
       <div className="liff-player-main pb-6">
         {cards.length === 0 ? (
           <div className="bg-[color:var(--liff-surface,#fff)] border border-[color:var(--liff-border)] rounded-[20px] shadow-[0_6px_20px_rgba(31,64,92,0.06)] px-4 py-10 text-center">
@@ -121,6 +126,22 @@ export function LiffMenuHomeRenderer({
             <p className="text-[15px] leading-[1.6] text-[color:var(--liff-secondary-text)]">
               ホームに表示する項目がまだ登録されていません
             </p>
+          </div>
+        ) : isList ? (
+          <div className="flex flex-col gap-2.5">
+            {cards.map((card) => {
+              const page = pages.find((p) => p.id === card.id);
+              if (!page) return null;
+              return (
+                <MenuListItem
+                  key={card.id}
+                  card={card}
+                  page={page}
+                  onSelectCard={onSelectCard}
+                  buildPageHref={buildPageHref}
+                />
+              );
+            })}
           </div>
         ) : (
           <div className="grid grid-cols-2 gap-3">
@@ -139,6 +160,9 @@ export function LiffMenuHomeRenderer({
             })}
           </div>
         )}
+
+        {/* 下部導線: アンケート / よくある質問（対応する公開ページがある場合のみ表示） */}
+        <BottomLinks pages={pages} onSelectCard={onSelectCard} buildPageHref={buildPageHref} />
       </div>
 
       {showCredit && <LiffStudioFooter />}
@@ -161,7 +185,10 @@ function MenuCardItem({
 
   const inner = isCompact ? (
     <>
-      {/* 絵文字アイコンは廃止（テキストのみ）。ラベルが空なら見出しは出さない。 */}
+      {/* アイコン画像は任意設定時のみ表示（未設定の既存ページは従来どおりテキストのみ）。 */}
+      {card.iconImageUrl && (
+        <img src={card.iconImageUrl} alt="" className="w-7 h-7 rounded-md object-cover shrink-0" />
+      )}
       {card.label && (
         <div className="min-w-0 flex-1 text-[14px] font-bold leading-snug text-[color:var(--liff-primary-text)] truncate">
           {card.label}
@@ -170,6 +197,10 @@ function MenuCardItem({
     </>
   ) : (
     <>
+      {/* アイコン画像は任意設定時のみ表示（未設定の既存ページは従来どおりテキストのみ）。 */}
+      {card.iconImageUrl && (
+        <img src={card.iconImageUrl} alt="" className="w-9 h-9 rounded-lg object-cover mb-2" />
+      )}
       {card.label && (
         <div className="text-[14px] font-bold leading-snug text-[color:var(--liff-primary-text)] line-clamp-2 break-words">
           {card.label}
@@ -203,4 +234,91 @@ function MenuCardItem({
     );
   }
   return <div className={baseCls} aria-label={card.label}>{inner}</div>;
+}
+
+// ── リスト表示の 1 行（home_menu_layout="list"）─────────────────────────────
+// 共通プリミティブ LiffCard を使い、アイコン（画像 or emoji）+ ラベル + 説明を横並びにする。
+function MenuListItem({
+  card, page, onSelectCard, buildPageHref,
+}: {
+  card: MenuCard;
+  page: LiffMenuHomePage;
+  onSelectCard?: (page: LiffMenuHomePage) => void;
+  buildPageHref?: (page: LiffMenuHomePage) => string;
+}) {
+  const icon = card.iconImageUrl ? (
+    <img src={card.iconImageUrl} alt="" className="w-10 h-10 rounded-xl object-cover shrink-0" />
+  ) : (
+    <span
+      className="w-10 h-10 rounded-xl bg-[color:var(--liff-surface-subtle,#FAFAFA)] inline-flex items-center justify-center text-[20px] shrink-0"
+      aria-hidden="true"
+    >
+      {card.icon}
+    </span>
+  );
+
+  const body = (
+    <div className="flex items-center gap-3">
+      {icon}
+      <div className="min-w-0 flex-1">
+        {card.label && (
+          <div className="text-[15px] font-bold leading-snug text-[color:var(--liff-primary-text)] truncate">
+            {card.label}
+          </div>
+        )}
+        {page.description && (
+          <div className="mt-0.5 text-[12px] leading-[1.5] text-[color:var(--liff-tertiary-text,#8C8C8C)] line-clamp-1 break-words">
+            {page.description}
+          </div>
+        )}
+      </div>
+      <span aria-hidden="true" className="text-[color:var(--liff-tertiary-text,#8C8C8C)] text-[18px] shrink-0">›</span>
+    </div>
+  );
+
+  if (buildPageHref) {
+    return <LiffCard as="a" href={buildPageHref(page)} padding="md" aria-label={card.label}>{body}</LiffCard>;
+  }
+  if (onSelectCard) {
+    return <LiffCard as="button" onClick={() => onSelectCard(page)} padding="md" aria-label={card.label}>{body}</LiffCard>;
+  }
+  return <LiffCard padding="md" aria-label={card.label}>{body}</LiffCard>;
+}
+
+// ── ホーム下部の導線（アンケート / よくある質問）─────────────────────────────
+// 対応する公開ページ（page_type="survey" / "faq"）が menu API の pages に存在する場合のみ表示。
+// 未作成・非公開（= pages に含まれない）の場合は何も描画しない。
+function BottomLinks({
+  pages, onSelectCard, buildPageHref,
+}: {
+  pages: LiffMenuHomePage[];
+  onSelectCard?: (page: LiffMenuHomePage) => void;
+  buildPageHref?: (page: LiffMenuHomePage) => string;
+}) {
+  const survey = pages.find((p) => p.page_type === "survey");
+  const faq    = pages.find((p) => p.page_type === "faq");
+  if (!survey && !faq) return null;
+
+  const Item = ({ page, label }: { page: LiffMenuHomePage; label: string }) => {
+    const body = (
+      <span className="flex items-center justify-between">
+        <span className="text-[14px] font-bold text-[color:var(--liff-primary-text)]">{label}</span>
+        <span aria-hidden="true" className="text-[color:var(--liff-tertiary-text,#8C8C8C)] text-[18px]">›</span>
+      </span>
+    );
+    if (buildPageHref) {
+      return <LiffCard as="a" href={buildPageHref(page)} padding="md" aria-label={label}>{body}</LiffCard>;
+    }
+    if (onSelectCard) {
+      return <LiffCard as="button" onClick={() => onSelectCard(page)} padding="md" aria-label={label}>{body}</LiffCard>;
+    }
+    return <LiffCard padding="md" aria-label={label}>{body}</LiffCard>;
+  };
+
+  return (
+    <div className="mt-5 flex flex-col gap-2.5">
+      {survey && <Item page={survey} label="アンケート" />}
+      {faq && <Item page={faq} label="よくある質問" />}
+    </div>
+  );
 }

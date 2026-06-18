@@ -92,6 +92,7 @@ export async function GET(
           home_description: home.description,
           home_image_url:   home.image_url,
           home_header_title: home.header_title,
+          home_menu_layout:  home.home_menu_layout,
           characters,
           pages:      [],
         },
@@ -107,6 +108,7 @@ export async function GET(
         home_description: home.description,
         home_image_url:   home.image_url,
           home_header_title: home.header_title,
+        home_menu_layout:  home.home_menu_layout,
         characters,
         pages: configs.map((config) => ({
           id:             config.id,

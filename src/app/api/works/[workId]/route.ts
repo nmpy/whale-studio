@@ -17,7 +17,7 @@ import { ZodError } from "zod";
  *  description は内部の改行を保持する（trim は空判定にのみ使用）。 */
 function mergeLiffHomeSettings(
   existing: unknown,
-  patch: { title?: string | null; description?: string | null; image_url?: string | null; header_title?: string | null; font_family?: string | null },
+  patch: { title?: string | null; description?: string | null; image_url?: string | null; header_title?: string | null; font_family?: string | null; home_menu_layout?: string | null },
 ): Prisma.InputJsonValue {
   const base =
     existing && typeof existing === "object" && !Array.isArray(existing)
@@ -34,6 +34,11 @@ function mergeLiffHomeSettings(
     const f = patch.font_family;
     if (typeof f === "string" && ["meiryo", "hiragino", "yu_gothic", "ud"].includes(f)) base.font_family = f;
     else delete base.font_family;
+  }
+  // home_menu_layout は enum。"list" のみ保存。"card" / null / 空 は「解除」（= 既定カード）としてキー削除。
+  if ("home_menu_layout" in patch) {
+    base.home_menu_layout = patch.home_menu_layout === "list" ? "list" : undefined;
+    if (base.home_menu_layout === undefined) delete base.home_menu_layout;
   }
   return base as Prisma.InputJsonValue;
 }

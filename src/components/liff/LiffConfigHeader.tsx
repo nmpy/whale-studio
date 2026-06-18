@@ -114,7 +114,7 @@ export function LiffConfigHeader({
             disabled={readOnly}
             className="px-3 py-1.5 border border-gray-200 rounded-md text-sm bg-white"
           >
-            <option value="default">既存LIFF（プレイヤー向け）</option>
+            <option value="default">デフォルト</option>
             <option value="hint">ヒント</option>
             <option value="faq">FAQ（よくある質問）</option>
             <option value="survey">アンケート</option>
@@ -130,7 +130,7 @@ export function LiffConfigHeader({
           <p className="text-[11px] text-gray-400 mt-1">※モードによって編集 UI とプレイヤー表示が切り替わります</p>
           {mode === "location" && (
             <p className="text-[11px] text-amber-600 mt-1">
-              「チェックイン履歴」はページ種別から「チェックイン履歴ブロック」へ移行しました。今後は「既存LIFF」に切り替え、表示ブロックから「チェックイン履歴」を追加してください（このページは現状のまま表示できます）。
+              「チェックイン履歴」はページ種別から「チェックイン履歴ブロック」へ移行しました。今後は「デフォルト」に切り替え、表示ブロックから「チェックイン履歴」を追加してください（このページは現状のまま表示できます）。
             </p>
           )}
         </div>
@@ -285,7 +285,7 @@ export function LiffConfigHeader({
           <h2 className="text-sm font-semibold text-gray-900 mb-1">チェックイン履歴モード（旧ページ種別）</h2>
           <p className="text-[12px] text-gray-500 leading-relaxed">
             このページではプレイヤー本人のチェックイン履歴を表示します（現状のまま動作します）。<br />
-            「チェックイン履歴」はページ種別から<strong>ブロック</strong>へ移行しました。今後は「既存LIFF」に切り替え、表示ブロックから「チェックイン履歴」を追加する構成を推奨します。
+            「チェックイン履歴」はページ種別から<strong>ブロック</strong>へ移行しました。今後は「デフォルト」に切り替え、表示ブロックから「チェックイン履歴」を追加する構成を推奨します。
           </p>
         </div>
       )}
