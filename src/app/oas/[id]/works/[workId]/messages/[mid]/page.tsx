@@ -5,7 +5,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { useTesterRouter as useRouter } from "@/hooks/useTesterRouter";
-import { workApi, messageApi, getDevToken, UnprocessableError } from "@/lib/api-client";
+import { workApi, oaApi, messageApi, getDevToken, UnprocessableError } from "@/lib/api-client";
 import { useToast } from "@/components/Toast";
 import {
   MessageForm,
@@ -27,6 +27,8 @@ export default function EditMessagePage() {
   const { showToast } = useToast();
 
   const [workTitle, setWorkTitle]       = useState("");
+  // LINEプレビュー上部に出す OAタイトル（取得失敗時は作品名→"LINEプレビュー"にフォールバック）。
+  const [oaTitle, setOaTitle]           = useState("");
   const [initialForm, setInitialForm]   = useState<MessageFormState | null>(null);
   const [loadError, setLoadError]       = useState<string | null>(null);
   const [submitting, setSubmitting]     = useState(false);
@@ -42,6 +44,10 @@ export default function EditMessagePage() {
 
   useEffect(() => {
     const token = getDevToken();
+    // OAタイトルはプレビュー表示専用。取得失敗時はフォールバックに任せる。
+    oaApi.get(token, oaId)
+      .then((oa) => setOaTitle(oa.title))
+      .catch(() => {});
     Promise.all([
       workApi.get(token, workId),
       // GET /api/messages/:id で単件取得（リレーション込み）
@@ -76,7 +82,7 @@ export default function EditMessagePage() {
         });
       })
       .catch((e) => setLoadError(e instanceof Error ? e.message : "読み込みに失敗しました"));
-  }, [workId, messageId]);
+  }, [oaId, workId, messageId]);
 
   async function handleSubmit(form: MessageFormState) {
     setSubmitting(true);
@@ -264,6 +270,7 @@ export default function EditMessagePage() {
         oaId={oaId}
         workId={workId}
         workTitle={workTitle}
+        oaTitle={oaTitle}
         initialForm={initialForm ?? EMPTY_MESSAGE_FORM}
         isNew={false}
         submitting={submitting}

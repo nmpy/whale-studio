@@ -710,6 +710,9 @@ interface MessageFormProps {
   oaId:        string;
   workId:      string;
   workTitle:   string;
+  /** LINEプレビュー上部に表示する OA（LINE公式アカウント）のタイトル。
+   *  未取得時は作品名 → "LINEプレビュー" にフォールバックする。 */
+  oaTitle?:    string;
   initialForm: MessageFormState;
   isNew:       boolean;
   submitting:  boolean;
@@ -2134,6 +2137,11 @@ interface PreviewPanelProps {
   characters:   Character[];
   riddles:      Riddle[];
   destinations: LineDestination[];
+  /** トーク画面上部に表示する OA（LINE公式アカウント）のタイトル。
+   *  未取得時は作品名 → "LINEプレビュー" の順でフォールバックする。 */
+  oaTitle?:     string;
+  /** OAタイトル未取得時のフォールバックに使う作品名。 */
+  workTitle?:   string;
 }
 
 /** 1 件のチェーン item から bubble 内コンテンツ (本文 / 画像 / 動画 / カルーセル等) を生成する。
@@ -2480,11 +2488,11 @@ function ChainBubbleRow({
   );
 }
 
-function PreviewPanel({ chain, characters, riddles, destinations }: PreviewPanelProps) {
-  // ヘッダー (= LINE トーク画面の上部) は chain head の character を表示する。
-  // chain は最低でも 1 件持つ (= 編集中 form) ので head は常に存在する。
-  const head = chain[0];
-  const selectedChar = head ? (characters.find((c) => c.id === head.character_id) ?? null) : null;
+function PreviewPanel({ chain, characters, riddles, destinations, oaTitle, workTitle }: PreviewPanelProps) {
+  // ヘッダー (= LINE トーク画面の上部) は対象 OA（LINE公式アカウント）のタイトルを表示する。
+  // 最初の発話キャラクター名には依存しない（発話者を変えてもタイトルは不変）。
+  // フォールバック順: OAタイトル → 作品名 → "LINEプレビュー"。
+  const headerTitle = oaTitle?.trim() || workTitle?.trim() || "LINEプレビュー";
 
   // chain 内のどこかに QR がある場合、それを chain 末尾の bubble に集約して表示する。
   // 探索順は後ろから前 = 実送信処理の moveQuickReplyToTail と同じ姿勢 (= tail が
@@ -2512,7 +2520,7 @@ function PreviewPanel({ chain, characters, riddles, destinations }: PreviewPanel
         <span style={{ fontSize: 20, color: "#9ca3af", lineHeight: 1, marginTop: -1 }}>‹</span>
         <div style={{ flex: 1, textAlign: "center" }}>
           <div style={{ fontWeight: 600, fontSize: 13, color: "#111827" }}>
-            {selectedChar ? selectedChar.name : "（キャラ未選択）"}
+            {headerTitle}
           </div>
         </div>
         <span style={{ fontSize: 10, fontWeight: 600, color: "#06C755", background: "#E6F7ED",
@@ -3533,7 +3541,7 @@ function SectionAccordion({
 // ── メインコンポーネント ────────────────────────────────────
 
 export function MessageForm({
-  oaId, workId, workTitle, initialForm, isNew,
+  oaId, workId, workTitle, oaTitle, initialForm, isNew,
   submitting, deleting, onSubmit, onDelete, messageId,
 }: MessageFormProps) {
   const [form, setForm]       = useState<MessageFormState>(initialForm);
@@ -5987,6 +5995,8 @@ export function MessageForm({
             characters={characters}
             riddles={riddles}
             destinations={destinations}
+            oaTitle={oaTitle}
+            workTitle={workTitle}
           />
         </div>
       </div>
