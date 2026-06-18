@@ -760,14 +760,18 @@ export async function replyWithLagToLine(
   //  順番・間・演出を反映する。
   const REPLY_MAX = 5;
 
+  // 「実際に効果が出る演出」だけを Push 分割の対象にする（= 一覧バッジ hasAnyTiming と同義）。
+  // 旧実装は read_receipt_mode != null / read_delay_ms>0 を effect 扱いしていたため、
+  // 即時(immediate)=OFF や残存 read_delay でも 2 通目が Push 化され、Push 失敗(月間上限等)で
+  // 2 通目が実機に届かない事故を招いていた。OFF 相当は Reply 一括で送る。
   const hasTimingEffect = (m: LineMessage): boolean => {
     const timing = m._timing;
     return (
       (m._lagMs ?? 0) > 0 ||
       timing?.typing_enabled === true ||
       timing?.loading_enabled === true ||
-      timing?.read_receipt_mode != null ||
-      (timing?.read_delay_ms ?? 0) > 0
+      timing?.read_receipt_mode === "delayed" ||
+      timing?.read_receipt_mode === "before_reply"
     );
   };
 
