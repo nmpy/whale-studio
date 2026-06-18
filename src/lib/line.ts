@@ -750,19 +750,57 @@ export async function replyWithLagToLine(
 
   // ── 送信戦略 ──
   //  LINE Reply API は複数件を一括送信できるが、一括 Reply では message 間の
-  //  lag / typing / loading 演出が付かず、全件ほぼ同時着になる。
-  //  Whale Studio では物語体験の順番・間・演出を優先するため、
-  //  件数に関係なく「1 件目のみ Reply、2 件目以降は Push で 1 件ずつ送信」する。
-  //  注意: 2 件目以降は Push API のため、LINE 公式アカウントの月間メッセージ通数を消費する。
+  //  lag / typing / loading / read 演出が付かず、全件ほぼ同時着になる。
+  //
+  //  ただし Push API は LINE 公式アカウントの月間メッセージ通数を消費する。
+  //  そのため、5 件以内かつ 2 件目以降に演出設定がない場合は従来どおり Reply 一括で送る。
+  //
+  //  2 件目以降に演出設定がある場合のみ、
+  //  「1 件目のみ Reply、2 件目以降は Push で 1 件ずつ送信」し、
+  //  順番・間・演出を反映する。
+  const REPLY_MAX = 5;
 
-  const head = messages[0]!;
-  const pushRest = messages.slice(1);
+  const hasTimingEffect = (m: LineMessage): boolean => {
+    const timing = m._timing;
+    return (
+      (m._lagMs ?? 0) > 0 ||
+      timing?.typing_enabled === true ||
+      timing?.loading_enabled === true ||
+      timing?.read_receipt_mode != null ||
+      (timing?.read_delay_ms ?? 0) > 0
+    );
+  };
 
-  await replyToLine(replyToken, [head], channelAccessToken);
+  const needsSequentialPush = messages.slice(1).some(hasTimingEffect);
+
+  // 5 件以内で、2 件目以降に演出がない場合は Push 消費を避けて Reply 一括。
+  if (messages.length <= REPLY_MAX && !needsSequentialPush) {
+    await replyToLine(replyToken, messages, channelAccessToken);
+    console.info("[line:reply-lag:summary]", JSON.stringify({
+      strategy:   messages.length === 1 ? "reply_one" : "reply_all",
+      reason:     "no_timing_effect",
+      replyTotal: messages.length,
+      pushTotal:  0,
+      pushOk:     0,
+      pushFail:   0,
+      failures:   [],
+    }));
+    console.log(`[replyWithLagToLine] strategy=${messages.length === 1 ? "reply_one" : "reply_all"} reply=${messages.length} push=0 total=${messages.length}`);
+    return;
+  }
+
+  const replyBatch = needsSequentialPush ? [messages[0]!] : messages.slice(0, REPLY_MAX);
+  const pushRest   = needsSequentialPush ? messages.slice(1) : messages.slice(REPLY_MAX);
+
+  console.log(
+    `[diag][timing-sequence] count=${messages.length} needsSequentialPush=${needsSequentialPush} ids=[${messages.map((m) => idOf(m)).join(",")}]`,
+  );
+
+  await replyToLine(replyToken, replyBatch, channelAccessToken);
 
   if (controller && pushRest.length > 0) {
     controller.abortPendingLoading();
-    console.log(`[diag][timing-loading-abort] sequential push 開始のため webhook scheduleLoading を abort`);
+    console.log(`[diag][timing-loading-abort] push 送信開始のため webhook scheduleLoading を abort`);
   }
 
   let pushOk = 0;
@@ -793,23 +831,27 @@ export async function replyWithLagToLine(
       pushOk++;
     } else {
       pushFail++;
-      pushFailures.push({ idx: i + 2, msgId, status: result.status ?? null });
+      pushFailures.push({ idx: replyBatch.length + i + 1, msgId, status: result.status ?? null });
     }
 
     console.log(`[diag][timing-send-after] msg=${idOf(msg)} pushed=${result.ok}`);
   }
 
+  const strategy = needsSequentialPush
+    ? "reply_first_push_rest"
+    : "reply_first_5_push_rest";
+
   console.info("[line:reply-lag:summary]", JSON.stringify({
-    strategy:   pushRest.length > 0 ? "reply_first_push_rest" : "reply_one",
-    reason:     pushRest.length > 0 ? "preserve_message_order_and_timing" : "single_message",
-    replyTotal: 1,
+    strategy,
+    reason:     needsSequentialPush ? "preserve_message_order_and_timing" : "line_reply_limit_5",
+    replyTotal: replyBatch.length,
     pushTotal:  pushRest.length,
     pushOk,
     pushFail,
     failures:   pushFailures,
   }));
 
-  console.log(`[replyWithLagToLine] strategy=${pushRest.length > 0 ? "reply_first_push_rest" : "reply_one"} reply=1 push=${pushRest.length}(ok=${pushOk}/fail=${pushFail}) total=${messages.length}`);
+  console.log(`[replyWithLagToLine] strategy=${strategy} reply=${replyBatch.length} push=${pushRest.length}(ok=${pushOk}/fail=${pushFail}) total=${messages.length}`);
 }
 
 /** [diag] LineMessage の識別用に内部 id を取り出す。
