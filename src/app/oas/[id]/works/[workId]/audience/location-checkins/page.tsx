@@ -13,6 +13,7 @@ import { evaluateGpsHealth } from "@/lib/location-health";
 import { useAccessPreview } from "@/hooks/useAccessPreview";
 import { FEATURE, getPlanAccessState } from "@/lib/constants/plans";
 import type { LocationVisitStats, LocationVisit, GpsAttemptStats } from "@/types";
+import { InlineWhaleLoader } from "@/components/ui/InlineWhaleLoader";
 
 function authHeaders(token: string): HeadersInit {
   return token ? { Authorization: `Bearer ${token}` } : {};
@@ -154,7 +155,7 @@ export default function LocationCheckinsPage() {
         </Section>
       )}
 
-      {loading && <div style={{ textAlign: "center", padding: 40, color: "#6b7280" }}>読み込み中...</div>}
+      {loading && <InlineWhaleLoader padding={40} />}
       {error && <div style={{ padding: 16, background: "#fef2f2", border: "1px solid #fca5a5", borderRadius: 8, color: "#dc2626", marginBottom: 16 }}>{error}</div>}
 
       {!loading && stats && (

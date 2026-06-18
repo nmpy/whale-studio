@@ -9,6 +9,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
 import { getAuthHeaders } from "@/lib/api-client";
+import { InlineWhaleLoader } from "@/components/ui/InlineWhaleLoader";
 
 type BeaconTriggerItem = {
   id: string;
@@ -120,7 +121,7 @@ export default function BeaconListPanel({ oaId, workId, showHeading = true }: Pr
         </ul>
       </div>
 
-      {(loading || roleLoading) && <div style={{ textAlign: "center", padding: 40, color: "#6b7280" }}>読み込み中…</div>}
+      {(loading || roleLoading) && <InlineWhaleLoader padding={40} />}
       {error && (
         <div style={{ padding: 12, background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, color: "#b91c1c", fontSize: 13 }}>
           {error}

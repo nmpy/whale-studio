@@ -10,6 +10,7 @@ import { locationApi, getDevToken, fetchOaLiffId } from "@/lib/api-client";
 import { buildLiffCheckinUrl } from "@/lib/liff/config";
 import { LocationForm } from "../_form";
 import type { LocationWithTransition, LocationVisit } from "@/types";
+import { InlineWhaleLoader } from "@/components/ui/InlineWhaleLoader";
 
 // ── 分析サマリー型（location-stats API の by_location 要素） ──
 interface LocAnalytics {
@@ -111,7 +112,7 @@ export default function EditLocationPage() {
   };
 
   if (loading) {
-    return <div style={{ maxWidth: 1100, margin: "0 auto", padding: "24px 16px" }}><p style={{ color: "#6b7280", textAlign: "center", padding: 40 }}>読み込み中...</p></div>;
+    return <div style={{ maxWidth: 1100, margin: "0 auto", padding: "24px 16px" }}><InlineWhaleLoader padding={40} /></div>;
   }
 
   return (
