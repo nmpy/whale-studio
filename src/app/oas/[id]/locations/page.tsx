@@ -19,6 +19,7 @@ import { getPlanAccessState, FEATURE } from "@/lib/constants/plans";
 import { PlanRequiredCard } from "@/components/PlanRequiredCard";
 import { CheckpointList } from "./_checkpoint-list";
 import { SummaryCards } from "./_summary-cards";
+import { InlineWhaleLoader } from "@/components/ui/InlineWhaleLoader";
 
 export default function OaLocationsPage() {
   const params = useParams();
@@ -51,7 +52,7 @@ export default function OaLocationsPage() {
       </div>
 
       {planLoading || roleLoading ? (
-        <div className="rounded-card border border-line bg-surface px-4 py-6 text-center text-[13px] text-ink-3">読み込み中…</div>
+        <div className="rounded-card border border-line bg-surface px-4 py-6 text-center text-[13px] text-ink-3"><InlineWhaleLoader padding={0} /></div>
       ) : !planAccess.allowed ? (
         <PlanRequiredCard oaId={oaId} featureKey={FEATURE.location} currentPlan={effectivePlan} featureLabel="ロケーション" />
       ) : (

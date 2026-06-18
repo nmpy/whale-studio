@@ -15,6 +15,7 @@ import { usePlatformRole } from "@/hooks/usePlatformRole";
 import { getPlanAccessState, FEATURE } from "@/lib/constants/plans";
 import { PlanRequiredCard } from "@/components/PlanRequiredCard";
 import { OaBeaconList } from "./_oa-beacon-list";
+import { InlineWhaleLoader } from "@/components/ui/InlineWhaleLoader";
 
 export default function OaBeaconsPage() {
   const params = useParams();
@@ -55,7 +56,7 @@ export default function OaBeaconsPage() {
       </div>
 
       {planLoading || roleLoading ? (
-        <div className="rounded-card border border-line bg-surface px-4 py-6 text-center text-[13px] text-ink-3">読み込み中…</div>
+        <div className="rounded-card border border-line bg-surface px-4 py-6 text-center text-[13px] text-ink-3"><InlineWhaleLoader padding={0} /></div>
       ) : !planAccess.allowed ? (
         <PlanRequiredCard oaId={oaId} featureKey={FEATURE.location} currentPlan={effectivePlan} featureLabel="ビーコン" />
       ) : (

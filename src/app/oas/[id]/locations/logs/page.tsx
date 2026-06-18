@@ -15,6 +15,7 @@ import { getPlanAccessState, FEATURE } from "@/lib/constants/plans";
 import { PlanRequiredCard } from "@/components/PlanRequiredCard";
 import { CHECKIN_OUTCOME_META, checkinOutcomeLabel, type UnifiedLogRow, type LocationLogKind } from "@/lib/location-log";
 import { BEACON_OUTCOME_META, beaconOutcomeLabel } from "@/lib/beacon-utils";
+import { InlineWhaleLoader } from "@/components/ui/InlineWhaleLoader";
 
 const inputCls = "rounded-field border border-line bg-surface px-2.5 py-1.5 text-[12px] text-ink outline-none focus:border-brand";
 
@@ -140,7 +141,7 @@ export default function LocationLogsPage() {
       </div>
 
       {planLoading ? (
-        <div className="rounded-card border border-line bg-surface px-4 py-6 text-center text-[13px] text-ink-3">読み込み中…</div>
+        <div className="rounded-card border border-line bg-surface px-4 py-6 text-center text-[13px] text-ink-3"><InlineWhaleLoader padding={0} /></div>
       ) : !planAccess.allowed ? (
         <PlanRequiredCard oaId={oaId} featureKey={FEATURE.location} currentPlan={effectivePlan} featureLabel="ロケーション" />
       ) : (
@@ -192,7 +193,7 @@ export default function LocationLogsPage() {
           {error && <div className="rounded-card border border-danger/30 bg-danger-soft px-4 py-3 text-[13px] text-danger">{error}</div>}
 
           {rows === null ? (
-            <div className="rounded-card border border-line bg-surface px-4 py-6 text-center text-[13px] text-ink-3">読み込み中…</div>
+            <div className="rounded-card border border-line bg-surface px-4 py-6 text-center text-[13px] text-ink-3"><InlineWhaleLoader padding={0} /></div>
           ) : rows.length === 0 ? (
             <div className="rounded-card border border-dashed border-line bg-bg px-4 py-10 text-center text-[13px] text-ink-3">該当するログがありません。</div>
           ) : (

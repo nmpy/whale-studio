@@ -7,6 +7,7 @@ import { useParams } from "next/navigation";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { getAuthHeaders } from "@/lib/api-client";
 import { OaBeaconForm, type OaBeaconFormValue, isoToLocalInput, type BeaconActionType } from "../../_oa-beacon-form";
+import { InlineWhaleLoader } from "@/components/ui/InlineWhaleLoader";
 
 type TriggerResponse = {
   id: string; name: string; hwid: string; work_id: string | null;
@@ -70,7 +71,7 @@ export default function EditBeaconPage() {
       {error ? (
         <div className="rounded-card border border-danger/30 bg-danger-soft px-4 py-3 text-[13px] text-danger">{error}</div>
       ) : !initial ? (
-        <div className="rounded-card border border-line bg-surface px-4 py-6 text-center text-[13px] text-ink-3">読み込み中…</div>
+        <div className="rounded-card border border-line bg-surface px-4 py-6 text-center text-[13px] text-ink-3"><InlineWhaleLoader padding={0} /></div>
       ) : (
         <OaBeaconForm oaId={oaId} mode="edit" initial={initial} />
       )}
