@@ -5,6 +5,7 @@
 
 import { useEffect, useState } from "react";
 import { getAuthHeaders } from "@/lib/api-client";
+import { InlineWhaleLoader } from "@/components/ui/InlineWhaleLoader";
 
 interface OaStats {
   id: string;
@@ -90,7 +91,7 @@ export default function AdminAudiencePage() {
               {loading ? (
                 <tr>
                   <td colSpan={3} style={{ textAlign: "center", color: "var(--text-muted)", padding: "32px" }}>
-                    読み込み中...
+                    <InlineWhaleLoader padding={0} />
                   </td>
                 </tr>
               ) : stats.length === 0 ? (

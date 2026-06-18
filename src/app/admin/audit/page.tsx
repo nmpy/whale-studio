@@ -5,6 +5,7 @@
 
 import { useEffect, useState } from "react";
 import { getAuthHeaders } from "@/lib/api-client";
+import { InlineWhaleLoader } from "@/components/ui/InlineWhaleLoader";
 
 interface AuditLog {
   id:          string;
@@ -77,7 +78,7 @@ export default function AdminAuditPage() {
               {loading ? (
                 <tr>
                   <td colSpan={4} style={{ textAlign: "center", color: "var(--text-muted)", padding: "32px" }}>
-                    読み込み中...
+                    <InlineWhaleLoader padding={0} />
                   </td>
                 </tr>
               ) : logs.length === 0 ? (
