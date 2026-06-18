@@ -1324,3 +1324,44 @@ export function buildKeywordMessages(
   moveQuickReplyToTail(sliced as { quickReply?: LineQuickReply }[]);
   return sliced;
 }
+
+/**
+ * head 群の nextMessageId 連鎖（= 連続送信の継続メッセージ）を辿り、
+ * `[head, ...継続]` の順に並べた KeywordMessageRecord[] を返す。
+ *
+ * 背景: buildKeywordMessages は渡された records を順に変換するだけで chain walk しない。
+ *   一方、開始(kind="start")メッセージの取得は kind="start" のみを fetch するため、
+ *   継続メッセージ(kind="normal" など)が送信対象から漏れていた（= 実機で2通目が届かない）。
+ *   buildPhaseMessages は phase 内 walk で両方含めるため、本関数で挙動を揃える。
+ *
+ * 純関数（DB 非依存）。継続メッセージの取得は呼び出し側が `fetchById` で注入する。
+ * 停止条件: freeInputEnabled（そのメッセージを含めて停止）/ 循環 / fetch=null / cap 到達。
+ */
+export async function expandKeywordChain(
+  heads:     KeywordMessageRecord[],
+  fetchById: (id: string) => Promise<KeywordMessageRecord | null>,
+  cap:       number = LINE_MSG_MAX,
+): Promise<KeywordMessageRecord[]> {
+  const out:  KeywordMessageRecord[] = [];
+  const seen = new Set<string>();
+  for (const head of heads) {
+    if (seen.has(head.id)) continue;
+    out.push(head);
+    seen.add(head.id);
+    let cur: KeywordMessageRecord = head;
+    // freeInput プロンプトは「そのメッセージで停止」セマンティクスのため walk しない。
+    while (
+      out.length < cap &&
+      cur.nextMessageId != null &&
+      !cur.freeInputEnabled &&
+      !seen.has(cur.nextMessageId)
+    ) {
+      const next = await fetchById(cur.nextMessageId);
+      if (!next) break;
+      out.push(next);
+      seen.add(next.id);
+      cur = next;
+    }
+  }
+  return out;
+}

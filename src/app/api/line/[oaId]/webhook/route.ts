@@ -37,6 +37,7 @@ import {
   isStartCommand, isStartIntent, isResetCommand, isContinueCommand,
   replyToLine as _replyToLine, replyWithLagToLine as _replyWithLagToLine,
   buildPhaseMessages as _buildPhaseMessages, buildQuickReply, buildKeywordMessages as _buildKeywordMessages, buildQuickReplyFromItems,
+  expandKeywordChain,
   RICHMENU_ACTIONS,
   sleep, resolveHeadSendDelayMs,
   type LineWebhookBody, type LineEvent, type LineSender, type LineMessage, type KeywordMessageRecord,
@@ -464,7 +465,48 @@ async function getCachedGlobalKeywords(
   return result;
 }
 
-/** startPhase に紐づく kind="start" メッセージ群をキャッシュ付きで取得 */
+/** getCachedStartMsgs / 継続メッセージ取得で共有する select。
+ *  KeywordMessageRecord への変換 + buildKeywordTiming に必要な列を含む。 */
+const START_MSG_SELECT = {
+  id:              true,
+  triggerKeyword:  true,
+  messageType:     true,
+  body:            true,
+  assetUrl:        true,
+  altText:         true,
+  flexPayloadJson: true,
+  quickReplies:    true,
+  nextMessageId:   true,
+  sortOrder:       true,
+  imageActionType: true, imageActionText: true, imageActionUrl: true,
+  imageActionLiffPageId: true, imageActionPostbackData: true,
+  // 自由入力受付フラグ (chain walk 停止判定に必要)
+  freeInputEnabled: true,
+  // 演出設定 (Phase 2c)
+  lagMs: true,
+  readReceiptMode: true, readDelayMs: true,
+  typingEnabled: true, typingMinMs: true, typingMaxMs: true,
+  loadingEnabled: true, loadingThresholdMs: true,
+  loadingMinSeconds: true, loadingMaxSeconds: true,
+  character: {
+    select: { name: true, iconImageUrl: true },
+  },
+} as const;
+
+/** id 指定で 1 メッセージを KeywordMessageRecord 形式で取得（連続送信の継続メッセージ取得用）。 */
+async function fetchStartChainMessage(workId: string, id: string): Promise<KeywordMessageRecord | null> {
+  const m = await prisma.message.findFirst({
+    where:  { id, workId, isActive: true },
+    select: START_MSG_SELECT,
+  });
+  return m ? { ...m, timing: buildKeywordTiming(m) } : null;
+}
+
+/** startPhase に紐づく kind="start" メッセージ + その nextMessageId 連鎖(継続メッセージ)を
+ *  キャッシュ付きで取得する。
+ *  継続メッセージ(kind != "start")も含めることで、開始メッセージが連続送信(2通以上)の場合に
+ *  2通目以降も送信対象になる(= buildKeywordMessages は chain walk しないため、ここで展開しておく。
+ *  buildPhaseMessages を使う handleStart 経路と挙動を揃える)。 */
 async function getCachedStartMsgs(
   workId:  string,
   phaseId: string,
@@ -480,37 +522,15 @@ async function getCachedStartMsgs(
       kind:     "start",
       isActive: true,
     },
-    select: {
-      id:              true,
-      triggerKeyword:  true,
-      messageType:     true,
-      body:            true,
-      assetUrl:        true,
-      altText:         true,
-      flexPayloadJson: true,
-      quickReplies:    true,
-      nextMessageId:   true,
-      sortOrder:       true,
-      imageActionType: true, imageActionText: true, imageActionUrl: true,
-      imageActionLiffPageId: true, imageActionPostbackData: true,
-      // 自由入力受付フラグ (buildMessageChain の chain walk 停止判定に必要)
-      freeInputEnabled: true,
-      // 演出設定 (Phase 2c)
-      lagMs: true,
-      readReceiptMode: true, readDelayMs: true,
-      typingEnabled: true, typingMinMs: true, typingMaxMs: true,
-      loadingEnabled: true, loadingThresholdMs: true,
-      loadingMinSeconds: true, loadingMaxSeconds: true,
-      character: {
-        select: { name: true, iconImageUrl: true },
-      },
-    },
+    select: START_MSG_SELECT,
     orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }, { id: "asc" }],
   });
-  const result = msgs.map((m) => ({
+  const heads: KeywordMessageRecord[] = msgs.map((m) => ({
     ...m,
     timing: buildKeywordTiming(m),
   }));
+  // kind="start" head の nextMessageId 連鎖(継続メッセージ)も送信対象に含める。
+  const result = await expandKeywordChain(heads, (id) => fetchStartChainMessage(workId, id));
   await activeCache.set(key, result, TTL.START_MSGS);
   return result;
 }

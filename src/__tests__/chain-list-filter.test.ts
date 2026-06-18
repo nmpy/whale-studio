@@ -212,17 +212,19 @@ describe("hasAnyTiming (Phase 2c)", () => {
     expect(hasAnyTiming({ read_receipt_mode: "delayed" })).toBe(true);
   });
 
-  it("typing_enabled=false は明示 false なので true (= 演出設定が入っている)", () => {
-    expect(hasAnyTiming({ typing_enabled: false })).toBe(true);
+  // 修正: 明示 false(OFF) は「演出なし」とする（編集画面の OFF 表示と一致させる）。
+  //   旧実装は「非 null なら設定あり」だったため、OFF でもバッジが「設定あり」になり矛盾していた。
+  it("typing_enabled=false は OFF なので false (= 編集画面のOFFと一致)", () => {
+    expect(hasAnyTiming({ typing_enabled: false })).toBe(false);
   });
 
   it("typing_enabled=true は当然 true", () => {
     expect(hasAnyTiming({ typing_enabled: true })).toBe(true);
   });
 
-  it("loading_enabled=false / read_delay_ms=0 でも null との区別で true", () => {
-    expect(hasAnyTiming({ loading_enabled: false })).toBe(true);
-    expect(hasAnyTiming({ read_delay_ms: 0 })).toBe(true);
+  it("loading_enabled=false / read_delay_ms=0 (残存値) は OFF扱いで false", () => {
+    expect(hasAnyTiming({ loading_enabled: false })).toBe(false);
+    expect(hasAnyTiming({ read_delay_ms: 0 })).toBe(false);
   });
 });
 
