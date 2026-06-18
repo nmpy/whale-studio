@@ -5,7 +5,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { useTesterRouter as useRouter } from "@/hooks/useTesterRouter";
-import { workApi, messageApi, getDevToken, ValidationError } from "@/lib/api-client";
+import { workApi, oaApi, messageApi, getDevToken, ValidationError } from "@/lib/api-client";
 import { useToast } from "@/components/Toast";
 import { MessageForm, EMPTY_MESSAGE_FORM, formStateToMsgBody, type MessageFormState } from "../_form";
 import { submitChainSave, verifyFailedBanner } from "../_chain-submit";
@@ -18,6 +18,8 @@ export default function NewMessagePage() {
   const { showToast } = useToast();
 
   const [workTitle, setWorkTitle]   = useState("");
+  // LINEプレビュー上部に出す OAタイトル（取得失敗時は作品名→"LINEプレビュー"にフォールバック）。
+  const [oaTitle, setOaTitle]       = useState("");
   const [submitting, setSubmitting] = useState(false);
   /** 保存後検証で不一致 / 保存失敗時にフォーム上部へ目立つエラーを出す（edit page と同様）。 */
   const [saveError, setSaveError]   = useState<string | null>(null);
@@ -32,10 +34,15 @@ export default function NewMessagePage() {
   const initialSendSlotIdsRef = useRef<string[]>([]);
 
   useEffect(() => {
-    workApi.get(getDevToken(), workId)
+    const token = getDevToken();
+    workApi.get(token, workId)
       .then((w) => setWorkTitle(w.title))
       .catch(() => {});
-  }, [workId]);
+    // OAタイトルはプレビュー表示専用。取得失敗時はフォールバックに任せる。
+    oaApi.get(token, oaId)
+      .then((oa) => setOaTitle(oa.title))
+      .catch(() => {});
+  }, [oaId, workId]);
 
   async function handleSubmit(form: MessageFormState) {
     setSubmitting(true);
@@ -140,6 +147,7 @@ export default function NewMessagePage() {
         oaId={oaId}
         workId={workId}
         workTitle={workTitle}
+        oaTitle={oaTitle}
         initialForm={EMPTY_MESSAGE_FORM}
         isNew={true}
         submitting={submitting}

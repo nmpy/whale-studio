@@ -526,6 +526,9 @@ export default function MessagesPage() {
   const [loadError, setLoadError]       = useState<string | null>(null);
   // chain head ID の Set。展開状態の head はここに含まれる (= 連続メッセージ展開トグル用)
   const [expandedChains, setExpandedChains] = useState<Set<string>>(new Set());
+  // 閉じているフェーズの key (= phase.id または "__unassigned")。
+  // 空 Set = 全フェーズ開（初期表示は全 open / localStorage 永続化なし）。
+  const [collapsedPhases, setCollapsedPhases] = useState<Set<string>>(new Set());
   // 操作中の messageId (= 削除/並び替え 進行中の表示用)
   const [busyMessageId, setBusyMessageId] = useState<string | null>(null);
 
@@ -539,6 +542,15 @@ export default function MessagesPage() {
       const next = new Set(prev);
       if (next.has(headId)) next.delete(headId);
       else next.add(headId);
+      return next;
+    });
+  };
+  // フェーズ見出しの開閉。閉じている key だけを Set で保持する（= デフォルト全開）。
+  const togglePhaseCollapse = (key: string) => {
+    setCollapsedPhases((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
       return next;
     });
   };
@@ -1243,18 +1255,30 @@ export default function MessagesPage() {
             const ph = group.phase;
             const typeKey = ph?.phase_type ?? "";
             const typeColor = PHASE_TYPE_COLOR[typeKey] ?? { bg: "#f9fafb", color: "#374151", border: "#e5e7eb" };
+            // フェーズ見出しの開閉。collapsedPhases に key が無ければ開（= デフォルト全開）。
+            const phaseKey = ph?.id ?? "__unassigned";
+            const isPhaseOpen = !collapsedPhases.has(phaseKey);
 
             return (
               <div key={ph?.id ?? "__unassigned"} className="card" style={{ padding: 0, overflow: "hidden" }}>
-                {/* フェーズヘッダー */}
-                <div style={{
-                  padding: "10px 18px",
-                  background: ph ? typeColor.bg : "#fafafa",
-                  borderBottom: `1px solid ${ph ? typeColor.border : "#e5e7eb"}`,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 10,
-                }}>
+                {/* フェーズヘッダー（クリック / キーボードで配下メッセージを開閉） */}
+                <button
+                  type="button"
+                  onClick={() => togglePhaseCollapse(phaseKey)}
+                  aria-expanded={isPhaseOpen}
+                  style={{
+                    width: "100%",
+                    textAlign: "left",
+                    cursor: "pointer",
+                    font: "inherit",
+                    padding: "10px 18px",
+                    background: ph ? typeColor.bg : "#fafafa",
+                    borderBottom: `1px solid ${ph ? typeColor.border : "#e5e7eb"}`,
+                    borderTop: "none", borderLeft: "none", borderRight: "none",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                  }}>
                   <span style={{
                     fontWeight: 700, fontSize: 14,
                     color: ph ? typeColor.color : "#9ca3af",
@@ -1275,8 +1299,15 @@ export default function MessagesPage() {
                   <span style={{ marginLeft: "auto", fontSize: 11, color: "#9ca3af" }}>
                     {group.messages.length} 件
                   </span>
-                </div>
+                  <span aria-hidden="true" style={{
+                    fontSize: 11, lineHeight: 1,
+                    color: ph ? typeColor.color : "#9ca3af",
+                  }}>
+                    {isPhaseOpen ? "▴" : "▾"}
+                  </span>
+                </button>
 
+                {isPhaseOpen && (<>
                 {/* 応答5通以上の警告: フェーズ総数ではなく「1回の応答（連続送信）単位」で判定する。
                     QR / 入力 / 分岐 / 謎回答 / チェックイン待ちは別 head になり別単位として数えるため、
                     途中にプレイヤーアクションが挟まる構成では誤検知しない。 */}
@@ -1674,6 +1705,7 @@ export default function MessagesPage() {
                     ))}
                   </tbody>
                 </table>
+                </>)}
               </div>
             );
           })}
