@@ -3,8 +3,18 @@
 // LINE Design System に整合する見た目を 1 か所に集約することで、
 // renderer / ブロック / アンケート / シェアボタン等の見た目差分を減らす。
 
-export { LiffButton } from "./LiffButton";
+export {
+  LiffButton,
+  LIFF_BUTTON_VARIANTS,
+  DEFAULT_LIFF_BUTTON_VARIANT,
+  normalizeLiffButtonVariant,
+} from "./LiffButton";
 export type { LiffButtonVariant, LiffButtonSize } from "./LiffButton";
+
+export { LiffCard } from "./LiffCard";
+export type { LiffCardPadding } from "./LiffCard";
+
+export { LiffBottomSheet } from "./LiffBottomSheet";
 
 export {
   LiffFieldLabel,
