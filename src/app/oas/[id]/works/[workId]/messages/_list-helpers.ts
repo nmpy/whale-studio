@@ -292,3 +292,16 @@ export function estimateMaxSendUnit(messages: SendUnitMessage[]): number {
   }
   return max;
 }
+
+/** 送信単位の通数 `maxUnit` に対して「連続送信が多すぎ」警告を出すべきか。
+ *
+ *  仕様: 1回のプレイヤー操作（QR / 入力 / クイックリプライ / 分岐 / 謎回答など）を起点に、
+ *  次の操作待ちまでに送れるのは LINE Reply API の上限 = 最大 5 通まで。
+ *  よって **5 通までは許容（警告なし）・6 通以上で警告** とする。
+ *  per-chain の「合計N通」バッジ（chainTotal > LINE_REPLY_MAX）と同じ「>5」基準で揃える。
+ *
+ *  ※ 画像タップは送信単位の区切りに含めない（runtime の requiresUserInteraction が
+ *    画像タップを待機点として扱わないため、estimate 側だけ区切ると実送信と乖離する）。 */
+export function shouldShowSendUnitWarning(maxUnit: number, replyMax: number = LINE_REPLY_MAX): boolean {
+  return maxUnit > replyMax;
+}
