@@ -253,7 +253,8 @@ export default function FeedbackModal({ pathname, onClose, pricingSource, hopedP
         category:   isPricingMode ? "enterprise" : category,
         page_name:  getPageName(pathname),
         page_url:   pageUrl,
-        // 将来: Supabase Auth から取得。現時点は空文字
+        // 送信者表示は API 側で Supabase Auth user → Profile.username から解決する。
+        // ここで送る値はサーバーで無視されるため空文字のままで良い（client 値は信用しない）。
         user_name:  "",
         user_email: "",
         oa_id:      oaMatch?.[1]  ?? null,
@@ -576,7 +577,7 @@ export default function FeedbackModal({ pathname, onClose, pricingSource, hopedP
           >
             {isPricingMode
               ? "ご相談内容"
-              : "この画面で気づいたこと / 改善してほしいこと"}
+              : "フィードバック内容"}
             <span style={{ color: "#ef4444", marginLeft: 4 }}>*</span>
           </label>
           <textarea
@@ -584,7 +585,7 @@ export default function FeedbackModal({ pathname, onClose, pricingSource, hopedP
             ref={textareaRef}
             value={content}
             onChange={(e) => setContent(e.target.value)}
-            placeholder={isPricingMode ? "" : "例：〇〇ボタンが見つけにくかった、〇〇の機能が欲しい、など"}
+            placeholder={isPricingMode ? "" : "改善してほしい点、使いにくかった箇所、欲しい機能などを入力してください"}
             maxLength={2000}
             rows={isPricingMode ? (sp ? 7 : 10) : 5}
             style={{

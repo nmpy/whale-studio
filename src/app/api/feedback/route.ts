@@ -20,6 +20,37 @@ import { submitFeedback } from "@/lib/services/feedback";
 import { notifyFeedbackSubmitted } from "@/lib/slack/feedback";
 import { notifyEnterpriseInquirySubmitted } from "@/lib/slack/enterprise-inquiry";
 import { getAuthUser } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
+
+// 送信者表示名をサーバー側で解決する (= client から渡された値は信用しない)。
+// 認証済みユーザーの Profile を引き、優先順位で 1 つを返す:
+//   1. username (= Whale Studio 上のユーザー名。存在すれば必ずこれ)
+//   2. 氏名 (lastName + firstName)  ※ username 未設定時のみ
+//   3. email                        ※ 上記いずれも無いとき
+//   4. "未設定ユーザー"             ※ 匿名 / 取得不能時
+async function resolveSenderName(
+  userId: string | null,
+  email:  string | null,
+): Promise<string> {
+  if (userId) {
+    const profile = await prisma.profile
+      .findUnique({
+        where:  { userId },
+        select: { username: true, lastName: true, firstName: true },
+      })
+      .catch(() => null);
+
+    if (profile?.username?.trim()) return profile.username.trim();
+
+    const fullName = [profile?.lastName, profile?.firstName]
+      .filter((s) => s && s.trim())
+      .join(" ")
+      .trim();
+    if (fullName) return fullName;
+  }
+  if (email?.trim()) return email.trim();
+  return "未設定ユーザー";
+}
 
 // ユーザー向けの柔らかいエラー文言 (= webhook URL や env 名は出さない)
 const USER_MSG_DEST_UNSET = "送信先の設定がまだ完了していません。管理者に連絡してください。";
@@ -60,6 +91,14 @@ export async function POST(req: NextRequest) {
       ? body.category!
       : "other";
 
+    // ── 送信者の解決（サーバー側 / client 入力は信用しない）────────────────────
+    // 認証済みなら Supabase Auth user を取得し、Profile から username を解決する。
+    // anonymous は userId=null → senderName="未設定ユーザー"（送信処理は継続）。
+    const authUser    = await getAuthUser(req).catch(() => null);
+    const userId      = authUser?.id ?? null;
+    const senderEmail = authUser?.email ?? null;
+    const senderName  = await resolveSenderName(userId, senderEmail);
+
     // ── ペイロード構築 ────────────────────────────────────────────────────────
     const userAgent = req.headers.get("user-agent") ?? "";
     const id        = randomUUID();
@@ -67,8 +106,9 @@ export async function POST(req: NextRequest) {
     const payload = {
       id,
       created_at:  new Date().toISOString(),
-      user_name:   body.user_name  ?? "",
-      user_email:  body.user_email ?? "",
+      // 送信者表示はサーバーで解決した値を使う（client の user_name/user_email は無視）。
+      user_name:   senderName,
+      user_email:  senderEmail ?? "",
       page_name:   body.page_name  ?? "",
       page_url:    body.page_url   ?? "",
       oa_id:       body.oa_id      ?? null,
@@ -102,15 +142,13 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      // 認証済みなら userId を取得 (= 任意。anonymous なら null)。
-      const inquiryUserId = await getAuthUser(req).then((u) => u?.id ?? null).catch(() => null);
       try {
         await notifyEnterpriseInquirySubmitted({
           id:        payload.id,
           content:   payload.content,
           userName:  payload.user_name  || null,
           userEmail: payload.user_email || null,
-          userId:    inquiryUserId,
+          userId,
           pageName:  payload.page_name  || null,
           pageUrl:   payload.page_url   || null,
           oaId:      payload.oa_id,
@@ -146,14 +184,12 @@ export async function POST(req: NextRequest) {
     const devSkip   = process.env.FEEDBACK_DEV_SKIP === "true";
 
     if (hasSlack) {
-      // 認証済みなら userId を取得 (= 任意。anonymous なら null)。
-      const feedbackUserId = await getAuthUser(req).then((u) => u?.id ?? null).catch(() => null);
       try {
         await notifyFeedbackSubmitted({
           id:        payload.id,
           category:  payload.category,
           content:   payload.content,
-          userId:    feedbackUserId,
+          userId,
           userName:  payload.user_name  || null,
           userEmail: payload.user_email || null,
           pageName:  payload.page_name  || null,

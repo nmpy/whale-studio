@@ -7,7 +7,7 @@
 // 権限表示方針:
 //   - ヘッダーには「現在選択中のOAの workspace role」を表示する
 //   - owner 判定は workspace role === "owner" に統一
-//   - owner → 「スタジオ管理」 / 非 owner → 「気づいた点を送る」
+//   - owner → 「スタジオ管理」 / 非 owner → 「フィードバックを送る」
 
 import { Suspense, useState, useEffect } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
@@ -100,7 +100,7 @@ export default function AppHeader() {
   const { role: workspaceRole, loading: roleLoading, isOwner } = useWorkspaceRole(currentOaId);
 
   // 表示確認モード (= AccessPreviewBar) で「表示確認権限」を非 owner にした場合、
-  // 右上 CTA も連動して「気づいたことを伝える」に切り替える (= UI 確認用)。
+  // 右上 CTA も連動して「フィードバックを送る」に切り替える (= UI 確認用)。
   // 実権限は引き続き bypass されるため、操作は壊れない。
   //
   // 実装メモ: AppHeader は root layout 配下にあり、/404 / /access-denied が
@@ -359,7 +359,7 @@ export default function AppHeader() {
             </button>
           )}
 
-          {/* ── owner → スタジオ管理 / 非 owner → 気づいた点を送る ── */}
+          {/* ── owner → スタジオ管理 / 非 owner → フィードバックを送る ── */}
           {isEffectiveOwner ? (
             <a
               href={studioHref}
@@ -417,12 +417,12 @@ export default function AppHeader() {
                 e.currentTarget.style.background   = "#f3f4f6";
                 e.currentTarget.style.borderColor  = "#e5e7eb";
               }}
-              aria-label="気づいたことを伝える"
+              aria-label="フィードバックを送る"
             >
-              {/* SP では「気づき」に短縮、PC では従来の「気づいたことを伝える」を維持。
+              {/* SP では「フィードバック」に短縮、PC では「フィードバックを送る」を表示。
                   onClick / 遷移先は不変。 */}
-              <span className="hidden sm:inline">気づいたことを伝える</span>
-              <span className="sm:hidden">気づき</span>
+              <span className="hidden sm:inline">フィードバックを送る</span>
+              <span className="sm:hidden">フィードバック</span>
             </button>
           )}
         </div>
