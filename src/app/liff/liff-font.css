@@ -32,7 +32,11 @@
   --liff-surface-subtle:    #FAFAFA;
   --liff-background:        #f6f8f7;     /* ページ背景: ホーム基準の温かいグレーに統一 (旧 #FFFFFF) */
 
-  /* カード共通トーン（ホーム基準）。各 renderer の card class から参照する。 */
+  /* カード共通トーン（ホーム基準）。各 renderer の card class から参照する。
+   * --liff-card-radius はカードの正準値（= 18px）。以前は下の Layout tokens 節でも
+   * 12px で再定義され、後勝ちで実質 12px になっていたが、この変数は CSS / 各 renderer から
+   * 直接参照されておらず（renderer は rounded-[18px] を直書き）、実害のない死に重複だった。
+   * 意図を 18px に一本化し、Layout tokens 側の重複定義は削除した（見た目への影響なし）。 */
   --liff-card-radius:       18px;
   --liff-card-shadow:       0 2px 10px rgba(31, 64, 92, 0.05);
 
@@ -41,9 +45,9 @@
 
   /* === Layout tokens ===
    * カード前提の値は残置するが、新デザインではほぼ使わない。
-   * 必要なときだけ Survey フィールド等で参照。 */
+   * 必要なときだけ Survey フィールド等で参照。
+   * （--liff-card-radius は上の「カード共通トーン」節に一本化済み＝ここでは再定義しない） */
   --liff-gutter:            16px;
-  --liff-card-radius:       12px;
   --liff-button-radius:     10px;
   --liff-button-height:     48px;
   --liff-card-padding:      16px;
