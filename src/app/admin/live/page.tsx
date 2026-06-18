@@ -79,11 +79,7 @@ export default function AdminLivePage() {
       )
     : rows;
 
-  if (loading) return (
-    <div style={{ display: "grid", placeItems: "center", padding: "64px 24px" }}>
-      <WhaleLoader />
-    </div>
-  );
+  if (loading) return <WhaleLoader fullScreen />;
 
   return (
     <>

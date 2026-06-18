@@ -479,13 +479,13 @@ tbody tr:hover td { background: var(--brand-subtle); }
    クラスは `whale-loader` / `wl-*` 名前空間で他画面と衝突しない。
    色は --wl-navy（Whale Studio navy）、サイズは --wl-size を component 側で付与。 */
 .whale-loader {
-  --wl-size: 160px;
+  --wl-size: 32px;
   --wl-speed: 1;
   --wl-navy: #222664;
   display: inline-flex;
   flex-direction: column;
   align-items: center;
-  gap: 20px;
+  gap: 8px;
 }
 .whale-loader__svg { width: var(--wl-size); height: var(--wl-size); display: block; overflow: visible; }
 .whale-loader__svg g { transform-box: view-box; }
@@ -498,15 +498,18 @@ tbody tr:hover td { background: var(--brand-subtle); }
   letter-spacing: 0.02em;
 }
 
-/* fullScreen: 画面中央のオーバーレイ（薄い白背景）。 */
+/* fullScreen: viewport 中央に固定表示。強いモーダル感は出さない（背景は透明・
+   下の要素を塞がない pointer-events:none）。ローダー本体だけがクリックを受ける。 */
 .whale-loader-overlay {
   position: fixed;
   inset: 0;
   display: grid;
   place-items: center;
-  background: rgba(255, 255, 255, 0.92);
+  background: transparent;
+  pointer-events: none;
   z-index: 1000;
 }
+.whale-loader-overlay .whale-loader { pointer-events: auto; }
 
 .wl-spout { transform-origin: 660px 300px; animation: wl-jet      calc(1.5s / var(--wl-speed)) ease-in-out infinite; }
 .wl-bob   { animation: wl-swimbob calc(1.5s / var(--wl-speed)) ease-in-out infinite; }
@@ -516,9 +519,9 @@ tbody tr:hover td { background: var(--brand-subtle); }
 .wl-bubble--2 { animation-delay: 0.5s; }
 .wl-bubble--3 { animation-delay: 1s; }
 
-.whale-loader__dots { display: flex; gap: 7px; }
+.whale-loader__dots { display: flex; gap: 5px; }
 .whale-loader__dots span {
-  width: 7px; height: 7px; border-radius: 50%; background: var(--wl-navy);
+  width: 5px; height: 5px; border-radius: 50%; background: var(--wl-navy);
   animation: wl-dots calc(1.2s / var(--wl-speed)) ease-in-out infinite;
 }
 .whale-loader__dots span:nth-child(2) { animation-delay: 0.18s; }

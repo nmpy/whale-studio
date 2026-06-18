@@ -13,10 +13,11 @@ import type { CSSProperties } from "react";
 export type WhaleLoaderSize = "sm" | "md" | "lg";
 
 // 表示サイズ（くじらの一辺 px）。md をページローダーの既定とする。
+// ページローダー用途では小さめが自然なため、控えめなサイズに調整している。
 const SIZE_PX: Record<WhaleLoaderSize, number> = {
-  sm: 96,
-  md: 160,
-  lg: 240,
+  sm: 20,
+  md: 32,
+  lg: 48,
 };
 
 export interface WhaleLoaderProps {

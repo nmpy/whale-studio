@@ -159,9 +159,7 @@ export function PersonalPlanPermissionsClient() {
       </div>
 
       {loading ? (
-        <div style={{ display: "grid", placeItems: "center", padding: 48 }}>
-          <WhaleLoader />
-        </div>
+        <WhaleLoader fullScreen />
       ) : rows.length === 0 ? (
         <p style={{ fontSize: 13, color: "#6b7280" }}>個人利用アカウントがまだありません。</p>
       ) : filtered.length === 0 ? (

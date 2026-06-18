@@ -64,11 +64,7 @@ export default function ProfileSettingsPage() {
         ヘッダーやワークスペースで表示されるユーザー名を設定します。
       </p>
 
-      {loading && (
-        <div style={{ display: "grid", placeItems: "center", padding: 48 }}>
-          <WhaleLoader />
-        </div>
-      )}
+      {loading && <WhaleLoader fullScreen />}
 
       {!loading && (
         <div className="card" style={{ padding: 28 }}>
