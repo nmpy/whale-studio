@@ -993,14 +993,22 @@ const freeTextSettingsSchema = z.object({
   emphasis: z.enum(["normal", "strong"]).optional(),
 }).passthrough();
 
+// ブロック用ボタンデザイン。空文字 = 未設定（既定 variant 維持）。既知 variant のみ許可。
+// 値集合は primitives/LiffButton の LIFF_BUTTON_VARIANTS と揃える（真実源）。
+const buttonVariantSchema = z
+  .union([z.literal(""), z.enum(["primary", "outline", "ghost", "dark", "danger"])])
+  .optional();
+
 const startButtonSettingsSchema = z.object({
   label:           z.string().max(100).optional(),
   confirm_message: z.string().max(500).optional(),
   api_action:      z.string().max(200).optional(),
+  button_variant:  buttonVariantSchema,
 }).passthrough();
 
 const resumeButtonSettingsSchema = z.object({
   label: z.string().max(100).optional(),
+  button_variant: buttonVariantSchema,
 }).passthrough();
 
 const progressSettingsSchema = z.object({
@@ -1073,6 +1081,7 @@ const buttonLinkSettingsSchema = z.object({
   url:           z.union([z.literal(""), z.string().url()]).optional(),
   open_external: z.boolean().optional(),
   variant:       sectionVariantSchema,
+  button_variant: buttonVariantSchema,
   // 遷移先タイプ。未指定は external 互換。liff_page/location は選択時に url を実URLへ解決して保存する。
   link_type:     z.enum(["external", "liff_page", "location"]).optional(),
   liff_page_id:  z.string().optional(),

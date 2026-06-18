@@ -27,30 +27,18 @@ import { forwardRef } from "react";
 import type { ButtonHTMLAttributes, AnchorHTMLAttributes, ReactNode } from "react";
 
 // ── variant の単一源 ──────────────────────────────────────────────
-// 既存 variant の見た目は不変。後続 PR3 で settingsJson の button_variant を
-// 受け取る際、この配列を「許可値の唯一の真実源」として使い、未知値は
-// normalizeLiffButtonVariant() で安全に既定へフォールバックさせる。
-// 新 preset を足すときは、この配列と VARIANT_CLASSES に1行ずつ追加するだけでよい。
-export const LIFF_BUTTON_VARIANTS = ["primary", "outline", "ghost", "dark", "danger"] as const;
-export type LiffButtonVariant = (typeof LIFF_BUTTON_VARIANTS)[number];
-export type LiffButtonSize    = "md" | "sm";
+// 値集合 / 正規化ロジックは JSX を含まない button-variants.ts に切り出し、ここから再 export する
+// （renderer / 設定フォーム / Zod / テストが client component を引き込まずに import できるようにするため）。
+// 新 preset を足すときは button-variants.ts の配列と下記 VARIANT_CLASSES に1行ずつ追加する。
+export {
+  LIFF_BUTTON_VARIANTS,
+  DEFAULT_LIFF_BUTTON_VARIANT,
+  normalizeLiffButtonVariant,
+} from "./button-variants";
+import { normalizeLiffButtonVariant, type LiffButtonVariant } from "./button-variants";
+export type { LiffButtonVariant } from "./button-variants";
 
-/** variant 未指定 / 未知値のときに使う既定。 */
-export const DEFAULT_LIFF_BUTTON_VARIANT: LiffButtonVariant = "primary";
-
-/**
- * 任意の入力値を既知の LiffButtonVariant に正規化する。
- * 既知の variant ならそのまま、未知・未指定・型外の値なら fallback (既定 primary) を返す。
- * settingsJson 等の外部由来値を描画前に通すことで、見た目が壊れず安全側に倒れる。
- */
-export function normalizeLiffButtonVariant(
-  value: unknown,
-  fallback: LiffButtonVariant = DEFAULT_LIFF_BUTTON_VARIANT,
-): LiffButtonVariant {
-  return (LIFF_BUTTON_VARIANTS as readonly string[]).includes(value as string)
-    ? (value as LiffButtonVariant)
-    : fallback;
-}
+export type LiffButtonSize = "md" | "sm";
 
 const VARIANT_CLASSES: Record<LiffButtonVariant, string> = {
   primary:
