@@ -88,6 +88,8 @@ export async function notifyFeedbackSubmitted(
   const safePageUrl  = trunc(input.pageUrl, TRUNC_URL);
   // カテゴリは内部値（bug/ux/feature/other）を表示用に日本語化する。
   const safeCategory = formatFeedbackCategory(input.category);
+  // uid 未取得（匿名 / 未ログイン）は "(なし)" 表示に統一する。送信処理自体は継続する。
+  const safeUserId = input.userId?.trim() || "(なし)";
 
   // 表示確認モード (= owner 限定 URL クエリ) の検出。
   // pageUrl から抽出するため、表示確認していないユーザーには付かない。
@@ -105,7 +107,7 @@ export async function notifyFeedbackSubmitted(
     `送信者: ${safeName}${input.userEmail ? ` (${safeEmail})` : ""}`,
     `LINE公式アカウント: ${safeOaName}${input.oaId ? ` (${input.oaId})` : ""}`,
     `作品: ${safeWorkName}${input.workId ? ` (${input.workId})` : ""}`,
-    `uid: ${input.userId ?? "(anonymous)"}`,
+    `uid: ${safeUserId}`,
     `カテゴリ: ${safeCategory}`,
     `画面: ${safePageName}`,
     `確認URL: ${safePageUrl}`,
@@ -129,7 +131,7 @@ export async function notifyFeedbackSubmitted(
         { type: "mrkdwn", text: `*送信者*\n${safeName}${input.userEmail ? `\n${safeEmail}` : ""}` },
         { type: "mrkdwn", text: `*LINE公式アカウント*\n${safeOaName}` },
         { type: "mrkdwn", text: `*作品*\n${safeWorkName}` },
-        { type: "mrkdwn", text: `*uid*\n${input.userId ?? "(anonymous)"}` },
+        { type: "mrkdwn", text: `*uid*\n${safeUserId}` },
         { type: "mrkdwn", text: `*カテゴリ*\n${safeCategory}` },
       ],
     },
