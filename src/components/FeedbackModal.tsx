@@ -577,7 +577,7 @@ export default function FeedbackModal({ pathname, onClose, pricingSource, hopedP
           >
             {isPricingMode
               ? "ご相談内容"
-              : "フィードバック内容を入力してください。改善してほしい点、使いにくかった箇所、欲しい機能など"}
+              : "フィードバック内容"}
             <span style={{ color: "#ef4444", marginLeft: 4 }}>*</span>
           </label>
           <textarea
@@ -585,7 +585,7 @@ export default function FeedbackModal({ pathname, onClose, pricingSource, hopedP
             ref={textareaRef}
             value={content}
             onChange={(e) => setContent(e.target.value)}
-            placeholder={isPricingMode ? "" : "例：〇〇ボタンが見つけにくかった、〇〇の機能が欲しい、など"}
+            placeholder={isPricingMode ? "" : "改善してほしい点、使いにくかった箇所、欲しい機能などを入力してください"}
             maxLength={2000}
             rows={isPricingMode ? (sp ? 7 : 10) : 5}
             style={{
