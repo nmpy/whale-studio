@@ -10,6 +10,7 @@ import { locationApi, getDevToken, fetchOaLiffId } from "@/lib/api-client";
 import { buildLiffCheckinUrl } from "@/lib/liff/config";
 import { buttonClass } from "@/components/shared";
 import type { LocationWithTransition } from "@/types";
+import { InlineWhaleLoader } from "@/components/ui/InlineWhaleLoader";
 
 const MODE_BADGE: Record<string, { label: string; color: string; bg: string }> = {
   qr_only:    { label: "QR",      color: "#7c3aed", bg: "#f5f3ff" },
@@ -185,7 +186,7 @@ export default function GpsPanel({ oaId, workId }: Props) {
         </div>
       )}
 
-      {loading && <div style={{ textAlign: "center", padding: 40, color: "#6b7280" }}>読み込み中...</div>}
+      {loading && <InlineWhaleLoader padding={40} />}
       {error && <div style={{ padding: 16, background: "#fef2f2", border: "1px solid #fca5a5", borderRadius: 8, color: "#dc2626" }}>{error}</div>}
 
       {!loading && !error && locations.length === 0 && (
