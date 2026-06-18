@@ -1,6 +1,6 @@
 // src/lib/slack/feedback.ts
 //
-// 「気づいたこと」フォーム (= AppHeader の FeedbackModal) が
+// 「フィードバックを送る」フォーム (= AppHeader の FeedbackModal) が
 // 送信されたタイミングでの Slack 通知。
 //
 // 呼び出し方:
@@ -78,7 +78,9 @@ export async function notifyFeedbackSubmitted(
 
   const safeContent  = trunc(input.content, TRUNC_CONTENT, "(空)");
   const safeEmail    = trunc(input.userEmail, TRUNC_DEFAULT, "(unknown)");
-  const safeName     = input.userName ? trunc(input.userName, TRUNC_DEFAULT) : null;
+  // 送信者表示はユーザー名を主とする (= route 側で username → 氏名 → email → "未設定ユーザー" の
+  // 優先順で解決済みの値が userName に入る)。email は traceability 用に副表示で残す。
+  const safeName     = input.userName ? trunc(input.userName, TRUNC_DEFAULT) : "未設定ユーザー";
   const safeOaName   = trunc(input.oaName, TRUNC_DEFAULT);
   const safeWorkName = trunc(input.workName, TRUNC_DEFAULT);
   const safePageName = trunc(input.pageName, TRUNC_DEFAULT);
@@ -94,9 +96,9 @@ export async function notifyFeedbackSubmitted(
 
   // fallback text (= Slack 通知センター / non-block 表示用)
   const text = [
-    `Whale Studio: 気づいたことが届きました [${env}]`,
+    `Whale Studio: フィードバックが届きました [${env}]`,
     `送信日時: ${sentAt}`,
-    `送信者: ${safeEmail}${safeName ? ` (${safeName})` : ""}`,
+    `送信者: ${safeName}${input.userEmail ? ` (${safeEmail})` : ""}`,
     `userId: ${input.userId ?? "(anonymous)"}`,
     `カテゴリ: ${input.category}`,
     `OA: ${safeOaName}${input.oaId ? ` (${input.oaId})` : ""}`,
@@ -113,12 +115,12 @@ export async function notifyFeedbackSubmitted(
   const blocks: unknown[] = [
     {
       type: "header",
-      text: { type: "plain_text", text: `気づいたことが届きました [${env}]` },
+      text: { type: "plain_text", text: `フィードバックが届きました [${env}]` },
     },
     {
       type: "section",
       fields: [
-        { type: "mrkdwn", text: `*送信者*\n${safeEmail}${safeName ? `\n${safeName}` : ""}` },
+        { type: "mrkdwn", text: `*送信者*\n${safeName}${input.userEmail ? `\n${safeEmail}` : ""}` },
         { type: "mrkdwn", text: `*userId*\n${input.userId ?? "(anonymous)"}` },
         { type: "mrkdwn", text: `*カテゴリ*\n${input.category}` },
         { type: "mrkdwn", text: `*OA*\n${safeOaName}` },
