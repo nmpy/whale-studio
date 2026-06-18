@@ -306,7 +306,10 @@ export default function AppHeader() {
           {loggedIn && (
             <a
               href="/settings/profile"
-              className="hidden sm:inline-flex"
+              /* 表示自体は従来どおり sm 以上（hidden sm:inline-flex）。
+                 幅の固定予約（min=max=120 / 表示名の文字数差でログアウトが揺れない）は、
+                 狭め画面(640〜767px)の詰まりを避けるため md 以上でのみ効かせる。 */
+              className="hidden sm:inline-flex md:min-w-[120px]"
               style={{
                 fontSize:       12,
                 fontWeight:     600,
@@ -363,6 +366,10 @@ export default function AppHeader() {
           {isEffectiveOwner ? (
             <a
               href={studioHref}
+              /* owner↔非owner で CTA 文言が切り替わっても幅が大きく変わらないよう、
+                 両ブランチ共通の min-width を確保しラベルを中央寄せする（横ジッター抑制）。
+                 狭め画面の詰まりを避けるため md 以上でのみ予約する。 */
+              className="md:min-w-[144px] md:justify-center"
               style={{
                 marginLeft:     "auto",
                 display:        "inline-flex",
@@ -392,6 +399,8 @@ export default function AppHeader() {
             <button
               type="button"
               onClick={() => setFeedbackOpen(true)}
+              /* owner CTA と同じ min-width / 中央寄せ（md 以上）で、文言切替時の幅変動を抑える。 */
+              className="md:min-w-[144px] md:justify-center"
               style={{
                 marginLeft:   "auto",
                 display:      "flex",
