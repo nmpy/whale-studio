@@ -10,9 +10,11 @@
 // oa_id | oa_name | work_id | work_name | category | content |
 // status | memo | user_agent
 //
-// ※ title は payload に追加済みだが、GAS 側の appendRow / 列はまだ未対応。
+// ※ title は payload に追加済みだが、現行のスプレッドシート列／GAS appendRow はまだ未対応。
 //   GAS が title 列を無視しても送信は落ちない（余剰フィールドは JSON に乗るだけ）。
-//   スプレッドシートに title を残したい場合は GAS 側で列・appendRow の追加が別途必要。
+//   スプレッドシートに title を残したい場合は GAS 側で title 列の追加と appendRow への
+//   d.title 追加が別途必要（下記 doPost サンプルは d.title を含めた更新例）。
+//   なお通常フィードバックの category 列は今後 ""（空文字）になる。
 
 export interface FeedbackPayload {
   id:          string;        // API 側で生成する UUID
@@ -52,6 +54,10 @@ export interface FeedbackResult {
  *   GAS_FEEDBACK_WEBHOOK_URL  — Google Apps Script Web App の実行 URL（fallback 用 / 任意）
  *   FEEDBACK_DEV_SKIP=true    — 開発中に URL なしでモーダルをテストしたい場合のみ設定
  *
+ * title をスプレッドシートに保存したい場合は、GAS 側で title 列を追加し、
+ * appendRow に d.title を含めてください（下記サンプルは d.title 列を含む例）。
+ * 通常フィードバックの category は空文字（""）、法人相談は "enterprise" になります。
+ *
  * GAS スクリプト例（doPost）:
  * ```javascript
  * function doPost(e) {
@@ -63,7 +69,9 @@ export interface FeedbackResult {
  *         d.id, d.created_at, d.user_name, d.user_email,
  *         d.page_name, d.page_url,
  *         d.oa_id ?? "", d.oa_name ?? "", d.work_id ?? "", d.work_name ?? "",
- *         d.category, d.content,
+ *         // category は通常フィードバックでは ""（廃止）/ 法人相談のみ "enterprise"。
+ *         // title は旧カテゴリの置き換え（通常フィードバックの入力タイトル）。
+ *         d.category, d.title ?? "", d.content,
  *         d.status, d.memo, d.user_agent,
  *       ]);
  *     return ContentService
