@@ -486,6 +486,8 @@ tbody tr:hover td { background: var(--brand-subtle); }
   flex-direction: column;
   align-items: center;
   gap: 8px;
+  /* 主張を少し弱め、一瞬で消えたときの唐突さを軽くする（表示遅延処理は入れない）。 */
+  opacity: 0.8;
 }
 .whale-loader__svg { width: var(--wl-size); height: var(--wl-size); display: block; overflow: visible; }
 .whale-loader__svg g { transform-box: view-box; }
