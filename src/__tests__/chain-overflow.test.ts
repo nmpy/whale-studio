@@ -7,7 +7,7 @@
 // 背景: 「通常2」が合計6通でフェーズ一括送信 → 6通目以降が Push → 月間上限で停止。
 
 import { describe, it, expect } from "vitest";
-import { chainLengthFrom, estimatePhaseSendBatch, estimateMaxSendUnit, chainSizeFrom, LINE_REPLY_MAX } from "@/app/oas/[id]/works/[workId]/messages/_list-helpers";
+import { chainLengthFrom, estimatePhaseSendBatch, estimateMaxSendUnit, shouldShowSendUnitWarning, chainSizeFrom, LINE_REPLY_MAX } from "@/app/oas/[id]/works/[workId]/messages/_list-helpers";
 import type { SendUnitMessage } from "@/app/oas/[id]/works/[workId]/messages/_list-helpers";
 
 type M = { id: string; next_message_id?: string | null; free_input_enabled?: boolean | null };
@@ -81,10 +81,16 @@ describe("estimateMaxSendUnit（実送信=1 replyToken 単位の最大通数）"
   // kind 未指定は normal 扱い。link() は kind を持たないため normal の連鎖になる。
   const u = (m: Partial<SendUnitMessage> & { id: string }): SendUnitMessage => ({ kind: "normal", ...m });
 
-  it("入場の単一 chain 5連鎖 → 5（警告対象）", () => {
+  it("入場の単一 chain 5連鎖 → 5（5通までは許容・警告なし）", () => {
     const phase = link(["a", "b", "c", "d", "e"]) as SendUnitMessage[];
     expect(estimateMaxSendUnit(phase)).toBe(5);
-    expect(estimateMaxSendUnit(phase) >= LINE_REPLY_MAX).toBe(true);
+    expect(shouldShowSendUnitWarning(estimateMaxSendUnit(phase))).toBe(false);
+  });
+
+  it("入場の単一 chain 6連鎖 → 6（操作待ちなしで6通連続 → 警告あり）", () => {
+    const phase = link(["a", "b", "c", "d", "e", "f"]) as SendUnitMessage[];
+    expect(estimateMaxSendUnit(phase)).toBe(6);
+    expect(shouldShowSendUnitWarning(estimateMaxSendUnit(phase))).toBe(true);
   });
 
   it("入場は複数 head を連結して送る（2通+3通の独立 head → 入場で5通＝警告）", () => {
@@ -118,9 +124,9 @@ describe("estimateMaxSendUnit（実送信=1 replyToken 単位の最大通数）"
       u({ id: "t4", next_message_id: "t5" }),
       u({ id: "t5", next_message_id: null }),
     ];
-    // QR応答（t1..t5）が5通 → 警告対象。
+    // QR応答（t1..t5）が5通 → 5通までは許容（警告なし）。
     expect(estimateMaxSendUnit(phase)).toBe(5);
-    expect(estimateMaxSendUnit(phase) >= LINE_REPLY_MAX).toBe(true);
+    expect(shouldShowSendUnitWarning(estimateMaxSendUnit(phase))).toBe(false);
   });
 
   it("free_input 後の応答(freeInputNext)は別単位として数える", () => {
@@ -152,5 +158,66 @@ describe("estimateMaxSendUnit（実送信=1 replyToken 単位の最大通数）"
       u({ id: "b", next_message_id: "a" }),
     ];
     expect(estimateMaxSendUnit(phase)).toBe(0); // 両者 continuation → 入場 head なし
+  });
+});
+
+describe("shouldShowSendUnitWarning（5通までは許容・6通以上で警告）", () => {
+  it("4通: 警告なし", () => {
+    expect(shouldShowSendUnitWarning(4)).toBe(false);
+  });
+
+  it("5通ちょうど: 警告なし（LINE Reply API 上限ちょうど＝許容）", () => {
+    expect(shouldShowSendUnitWarning(5)).toBe(false);
+  });
+
+  it("6通: 警告あり", () => {
+    expect(shouldShowSendUnitWarning(6)).toBe(true);
+  });
+
+  it("0通: 警告なし", () => {
+    expect(shouldShowSendUnitWarning(0)).toBe(false);
+  });
+
+  it("replyMax は引数で差し替え可能（既定は LINE_REPLY_MAX=5）", () => {
+    expect(shouldShowSendUnitWarning(5)).toBe(false);
+    expect(shouldShowSendUnitWarning(LINE_REPLY_MAX)).toBe(false);
+    expect(shouldShowSendUnitWarning(LINE_REPLY_MAX + 1)).toBe(true);
+    expect(shouldShowSendUnitWarning(3, 2)).toBe(true); // replyMax=2 のとき 3 で警告
+  });
+
+  it("per-chain バッジ（chainTotal > LINE_REPLY_MAX）と同じ 6通以上基準", () => {
+    // バッジ: chainLengthFrom > LINE_REPLY_MAX で overLimit。
+    // 警告: shouldShowSendUnitWarning(maxUnit) = maxUnit > LINE_REPLY_MAX。
+    // 両者とも 5 は false / 6 は true で一致する。
+    for (const n of [4, 5, 6, 7]) {
+      const badgeOverLimit = n > LINE_REPLY_MAX;
+      expect(shouldShowSendUnitWarning(n)).toBe(badgeOverLimit);
+    }
+  });
+
+  it("統合: 送信単位5通のフェーズは警告なし", () => {
+    const phase = link(["a", "b", "c", "d", "e"]) as SendUnitMessage[];
+    expect(shouldShowSendUnitWarning(estimateMaxSendUnit(phase))).toBe(false);
+  });
+
+  it("統合: 送信単位6通のフェーズは警告あり", () => {
+    const phase = link(["a", "b", "c", "d", "e", "f"]) as SendUnitMessage[];
+    expect(shouldShowSendUnitWarning(estimateMaxSendUnit(phase))).toBe(true);
+  });
+
+  it("統合: 合計9通でも途中に操作待ちがあり各単位5通以下なら警告なし", () => {
+    const u2 = (m: Partial<SendUnitMessage> & { id: string }): SendUnitMessage => ({ kind: "normal", ...m });
+    // 入場: n1→n2→n3→n4→puzzle(停止) = 5通（許容）。
+    // 謎正解後の応答: r1→r2→r3→r4 = 4通（許容）。フェーズ総数=9 だが各単位 ≤5。
+    const phase: SendUnitMessage[] = [
+      u2({ id: "n1", next_message_id: "n2" }),
+      u2({ id: "n2", next_message_id: "n3" }),
+      u2({ id: "n3", next_message_id: "n4" }),
+      u2({ id: "n4", next_message_id: "pz" }),
+      u2({ id: "pz", kind: "puzzle", next_message_id: null }),
+      ...(link(["r1", "r2", "r3", "r4"]) as SendUnitMessage[]).map((m) => u2(m)),
+    ];
+    expect(estimateMaxSendUnit(phase)).toBe(5);          // 最大単位は入場の5通
+    expect(shouldShowSendUnitWarning(estimateMaxSendUnit(phase))).toBe(false);
   });
 });

@@ -16,7 +16,7 @@ import { ViewerBanner } from "@/components/PermissionGuard";
 import { GuideCard } from "@/components/onboarding/GuideCard";
 import type { MessageWithRelations, MessageType, PhaseWithCounts, TransitionWithPhases, QuickReplyItem } from "@/types";
 import type { Role } from "@/lib/types/permissions";
-import { collectChainContinuationIds, chainSizeFrom, chainLengthFrom, estimateMaxSendUnit, LINE_REPLY_MAX, getChainContinuations, hasAnyTiming, summarizeTiming } from "./_list-helpers";
+import { collectChainContinuationIds, chainSizeFrom, chainLengthFrom, estimateMaxSendUnit, shouldShowSendUnitWarning, LINE_REPLY_MAX, getChainContinuations, hasAnyTiming, summarizeTiming } from "./_list-helpers";
 import { analyzeMessageList } from "@/lib/message-flow-status";
 import type { MessageFlowInfo, FlowLink } from "@/lib/message-flow-status";
 
@@ -1308,9 +1308,12 @@ export default function MessagesPage() {
                 </button>
 
                 {isPhaseOpen && (<>
-                {/* 応答5通以上の警告: フェーズ総数ではなく「1回の応答（連続送信）単位」で判定する。
+                {/* 連続送信が多すぎる警告: フェーズ総数ではなく「1回の応答（連続送信）単位」で判定する。
                     QR / 入力 / 分岐 / 謎回答 / チェックイン待ちは別 head になり別単位として数えるため、
-                    途中にプレイヤーアクションが挟まる構成では誤検知しない。 */}
+                    途中にプレイヤーアクションが挟まる構成では誤検知しない。
+                    5通までは LINE Reply API で送れるため許容し、6通以上のときだけ警告する
+                    （per-chain バッジの chainTotal > LINE_REPLY_MAX と同基準）。
+                    ※ 画像タップは送信単位の区切りに含めない（runtime の実送信挙動と一致させるため）。 */}
                 {ph && (() => {
                   const phaseMsgs = messages
                     .filter((m) => m.phase?.id === ph.id)
@@ -1320,16 +1323,16 @@ export default function MessagesPage() {
                       a.id.localeCompare(b.id),
                     );
                   const maxUnit = estimateMaxSendUnit(phaseMsgs);
-                  if (maxUnit < LINE_REPLY_MAX) return null;
+                  if (!shouldShowSendUnitWarning(maxUnit, LINE_REPLY_MAX)) return null;
                   return (
                     <div style={{
                       padding: "8px 18px", background: "#fffbeb",
                       borderBottom: "1px solid #fde68a", color: "#92400e",
                       fontSize: 11, lineHeight: 1.6,
                     }}>
-                      ⚠️ このフェーズに、1回の応答で<strong>{maxUnit}通以上</strong>を連続送信する箇所があります。
+                      ⚠️ このフェーズには、1回のプレイヤー操作から<strong>6通以上</strong>連続で送信される可能性があるメッセージがあります（最大{maxUnit}通）。
                       プレイヤー体験が重くなる可能性があるため、必要に応じて分割や削減を検討してください。
-                      （途中に QR / 入力 / 分岐 / 謎回答などプレイヤーのアクションを挟むと、そこで送信単位が区切られます。）
+                      LINEのReply APIで一度に返信できるのは最大5通までです。QR読み取り、クイックリプライ、テキスト入力、分岐、謎回答などプレイヤーのアクションを挟むと、そこで送信単位が区切られます。
                     </div>
                   );
                 })()}
