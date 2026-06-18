@@ -55,10 +55,17 @@ export function getChainContinuations<T extends MessageLike>(
   return out;
 }
 
-/** Phase 2c: メッセージに何らかの演出設定が入っているかを判定する。
+/** Phase 2c: メッセージに「実際に効果が出る」演出設定が入っているかを判定する。
  *
- *  - lag_ms は「次の発話までの待機時間」。0 / null / undefined はデフォルト扱いなので「無し」とする。
- *  - 他の timing 列は null = inherit、非 null = 明示設定。よって 1 つでも非 null なら「あり」。
+ *  編集画面の ON/OFF 表示と一致させる:
+ *   - lag_ms: 0 / null / undefined はデフォルト(無し)。> 0 のみ「あり」。
+ *   - read_receipt_mode: "immediate"(= 即時 / OFF) と "inherit" は効果なし。
+ *     実際に既読挙動が変わる "delayed" / "before_reply" のみ「あり」。
+ *   - typing_enabled / loading_enabled: 明示 true のみ「あり」(= false は OFF を意味するため除外)。
+ *     min/max/threshold 等の付随値は enabled=false でも残存しうるため、それ単独では「あり」としない。
+ *
+ *  ※ 旧実装は「非 null なら設定あり」としていたため、即時(immediate)や明示 false(OFF)でも
+ *    バッジが「演出: 設定あり」になり、編集画面の OFF 表示と矛盾していた。
  *
  *  呼び出し側は MessageWithRelations の部分集合を渡す。snake_case 固定。 */
 export function hasAnyTiming(m: {
@@ -74,15 +81,9 @@ export function hasAnyTiming(m: {
   loading_max_seconds?:  number | null;
 }): boolean {
   if (m.lag_ms != null && m.lag_ms > 0) return true;
-  if (m.read_receipt_mode != null && m.read_receipt_mode !== "inherit") return true;
-  if (m.read_delay_ms != null) return true;
-  if (m.typing_enabled != null) return true;
-  if (m.typing_min_ms != null) return true;
-  if (m.typing_max_ms != null) return true;
-  if (m.loading_enabled != null) return true;
-  if (m.loading_threshold_ms != null) return true;
-  if (m.loading_min_seconds != null) return true;
-  if (m.loading_max_seconds != null) return true;
+  if (m.read_receipt_mode === "delayed" || m.read_receipt_mode === "before_reply") return true;
+  if (m.typing_enabled === true) return true;
+  if (m.loading_enabled === true) return true;
   return false;
 }
 
@@ -106,9 +107,8 @@ export function summarizeTiming(m: {
     parts.push(`既読遅延${sec ? ` ${sec}` : ""}`);
   } else if (m.read_receipt_mode === "before_reply") {
     parts.push("既読(返信直前)");
-  } else if (m.read_receipt_mode === "immediate") {
-    parts.push("既読(即時)");
   }
+  // "immediate"(即時 / OFF) と "inherit" は効果なしのため列挙しない（hasAnyTiming と整合）。
   if (m.loading_enabled === true) parts.push("「入力中...」");
   return parts.length > 0 ? `演出: 設定あり (${parts.join(" / ")})` : "演出: 設定あり";
 }
