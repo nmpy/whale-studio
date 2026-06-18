@@ -266,3 +266,26 @@ export function additionalSlotToMsgBody(
     free_input_next_message_id: slot.free_input_enabled ? (slot.free_input_next_message_id || null) : null,
   };
 }
+
+/** 「演出設定」セクションヘッダーの「設定あり」バッジ判定（編集 form の string 値ベース）。
+ *
+ *  一覧バッジ hasAnyTiming (_list-helpers.ts) と同じ「実際に効果がある設定のみ true」の意味に揃える。
+ *  継承モード廃止後、form の各値は常に明示文字列を持つため（"immediate"/"false" 等）、
+ *  単純な truthy 判定だと OFF でも「設定あり」になってしまう（"false" は truthy）。
+ *
+ *  - read_receipt_mode: "delayed" / "before_reply" のみ効果あり（"immediate"=即時/OFF・""=inherit は false）
+ *  - typing_enabled / loading_enabled: 文字列 "true" のみ（"false"=OFF は false）
+ *  ※ 待機時間(lag_ms)は別バッジ(hasHeadDelay)で扱うため本関数には含めない。
+ */
+export function timingFormHasEffect(form: {
+  read_receipt_mode?: string;
+  typing_enabled?:    string;
+  loading_enabled?:   string;
+}): boolean {
+  return (
+    form.read_receipt_mode === "delayed" ||
+    form.read_receipt_mode === "before_reply" ||
+    form.typing_enabled === "true" ||
+    form.loading_enabled === "true"
+  );
+}

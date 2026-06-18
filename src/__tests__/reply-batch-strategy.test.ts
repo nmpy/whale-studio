@@ -38,6 +38,10 @@ function textsWithSecondLoading(n: number): LineMessage[] {
   )) as LineMessage[];
 }
 
+function textsWithSecondTiming(n: number, timing: Record<string, unknown>): LineMessage[] {
+  return texts(n).map((m, i) => (i >= 1 ? { ...m, _timing: timing } : m)) as LineMessage[];
+}
+
 type FetchCall = { url: string; count: number };
 let fetchCalls: FetchCall[] = [];
 let origFetch: typeof global.fetch;
@@ -200,6 +204,56 @@ describe("replyWithLagToLine 送信戦略", () => {
       pushOk: 5,
       pushFail: 0,
     });
+  });
+
+  // 回帰: 演出OFF（既読=即時 immediate / 入力中=false / 待機0）の 2 通目は「演出なし」とみなし、
+  // Push 化せず Reply 一括で送る。旧実装は read_receipt_mode != null を effect 扱いしたため、
+  // 即時(OFF)でも 2 通目が Push 化され、Push 失敗(月間上限等)で実機に届かなかった。
+  it("2通目が read_receipt_mode=immediate(=OFF)のみ: Pushせず Reply一括で2通とも送る", async () => {
+    setupFetch();
+    await replyWithLagToLine("rt", textsWithSecondTiming(2, { read_receipt_mode: "immediate" }), "U1", "tok");
+
+    expect(replies()).toHaveLength(1);
+    expect(replies()[0].count).toBe(2);
+    expect(pushes()).toHaveLength(0);
+    expect(summary()).toMatchObject({
+      strategy: "reply_all",
+      reason: "no_timing_effect",
+      replyTotal: 2,
+      pushTotal: 0,
+      pushFail: 0,
+    });
+  });
+
+  it("2通目が即時+typing/loading=false の完全OFF: Reply一括（Push 0）", async () => {
+    setupFetch();
+    await replyWithLagToLine(
+      "rt",
+      textsWithSecondTiming(2, { read_receipt_mode: "immediate", typing_enabled: false, loading_enabled: false, read_delay_ms: 3000 }),
+      "U1", "tok",
+    );
+
+    expect(pushes()).toHaveLength(0);
+    expect(replies()).toHaveLength(1);
+    expect(replies()[0].count).toBe(2);
+    expect(summary()).toMatchObject({ strategy: "reply_all", pushTotal: 0 });
+  });
+
+  it("2通目が read_receipt_mode=delayed(実効果): 従来どおり 1通Reply+1通Push", async () => {
+    setupFetch();
+    await replyWithLagToLine("rt", textsWithSecondTiming(2, { read_receipt_mode: "delayed" }), "U1", "tok");
+
+    expect(replies()[0].count).toBe(1);
+    expect(pushes()).toHaveLength(1);
+    expect(summary()).toMatchObject({ strategy: "reply_first_push_rest", pushTotal: 1 });
+  });
+
+  it("2通目が before_reply(実効果): Push化を維持", async () => {
+    setupFetch();
+    await replyWithLagToLine("rt", textsWithSecondTiming(2, { read_receipt_mode: "before_reply" }), "U1", "tok");
+
+    expect(pushes()).toHaveLength(1);
+    expect(summary()).toMatchObject({ strategy: "reply_first_push_rest" });
   });
 
   it("Push月間上限超過(429)時、2通目以降の失敗をsummaryに記録する", async () => {

@@ -126,6 +126,7 @@ export type { AdditionalMessageSlot } from "./_form-helpers";
 
 import {
   EMPTY_ADDITIONAL_SLOT as _EMPTY_ADDITIONAL_SLOT,
+  timingFormHasEffect,
   type AdditionalMessageSlot as _AdditionalMessageSlot,
 } from "./_form-helpers";
 // 内部参照用エイリアス (= 既存コードの local シンボル名と互換)
@@ -2609,7 +2610,9 @@ function TimingConfigSection<T extends TimingFormFields>({
 }) {
   // UI 統一: 自由入力受付セクションと同じ SectionAccordion をベースに使う。
   // 値が既に設定されていれば初期展開する。
-  const hasValues = !!(form.read_receipt_mode || form.typing_enabled || form.loading_enabled);
+  // 「設定あり」バッジは実際に効果がある演出のみで判定する（一覧バッジ hasAnyTiming と同義）。
+  // 単純な truthy 判定は OFF（"immediate" / "false"）でも true になり誤表示するため timingFormHasEffect を使う。
+  const hasValues = timingFormHasEffect(form);
   // 「返信までの待機時間」が設定されているか（折りたたみ時のバッジ表示用）。
   const hasHeadDelay = typeof headDelayMs === "number" && headDelayMs > 0;
   const headDelayLabel = hasHeadDelay ? `待機${Math.round((headDelayMs as number) / 100) / 10}秒` : null;
