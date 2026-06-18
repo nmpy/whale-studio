@@ -8,6 +8,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { getDevToken } from "@/lib/api-client";
+import { WhaleLoader } from "@/components/ui/WhaleLoader";
 
 interface OaLiveRow {
   oa_id:        string;
@@ -78,7 +79,11 @@ export default function AdminLivePage() {
       )
     : rows;
 
-  if (loading) return <div style={{ padding: 24 }}>読み込み中…</div>;
+  if (loading) return (
+    <div style={{ display: "grid", placeItems: "center", padding: "64px 24px" }}>
+      <WhaleLoader />
+    </div>
+  );
 
   return (
     <>

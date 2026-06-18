@@ -6,6 +6,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useProfile } from "@/hooks/useProfile";
+import { WhaleLoader } from "@/components/ui/WhaleLoader";
 
 export default function ProfileSettingsPage() {
   const router = useRouter();
@@ -64,7 +65,9 @@ export default function ProfileSettingsPage() {
       </p>
 
       {loading && (
-        <div style={{ textAlign: "center", padding: 40, color: "#6b7280" }}>読み込み中...</div>
+        <div style={{ display: "grid", placeItems: "center", padding: 48 }}>
+          <WhaleLoader />
+        </div>
       )}
 
       {!loading && (

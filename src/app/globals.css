@@ -474,6 +474,73 @@ tbody tr:hover td { background: var(--brand-subtle); }
   height: 14px;
 }
 
+/* ── WhaleLoader（共通ローディング: くじら / 波 / 泡 / 潮吹き）────────────────
+   SVG + CSS animation。コンポーネントは src/components/ui/WhaleLoader.tsx。
+   クラスは `whale-loader` / `wl-*` 名前空間で他画面と衝突しない。
+   色は --wl-navy（Whale Studio navy）、サイズは --wl-size を component 側で付与。 */
+.whale-loader {
+  --wl-size: 160px;
+  --wl-speed: 1;
+  --wl-navy: #222664;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+}
+.whale-loader__svg { width: var(--wl-size); height: var(--wl-size); display: block; overflow: visible; }
+.whale-loader__svg g { transform-box: view-box; }
+.whale-loader__svg path, .whale-loader__svg circle { fill: var(--wl-navy); }
+
+.whale-loader__label {
+  margin: 0;
+  font-size: var(--font-size-sm, 13px);
+  color: var(--text-muted, #9aa8a2);
+  letter-spacing: 0.02em;
+}
+
+/* fullScreen: 画面中央のオーバーレイ（薄い白背景）。 */
+.whale-loader-overlay {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(255, 255, 255, 0.92);
+  z-index: 1000;
+}
+
+.wl-spout { transform-origin: 660px 300px; animation: wl-jet      calc(1.5s / var(--wl-speed)) ease-in-out infinite; }
+.wl-bob   { animation: wl-swimbob calc(1.5s / var(--wl-speed)) ease-in-out infinite; }
+.wl-swing { transform-origin: 800px 560px; animation: wl-swing    calc(1.5s / var(--wl-speed)) ease-in-out infinite; }
+.wl-waves { transform-origin: 500px 800px; animation: wl-wavesway calc(1.7s / var(--wl-speed)) ease-in-out infinite; }
+.wl-bubble    { animation: wl-bubble calc(1.5s / var(--wl-speed)) ease-in infinite; }
+.wl-bubble--2 { animation-delay: 0.5s; }
+.wl-bubble--3 { animation-delay: 1s; }
+
+.whale-loader__dots { display: flex; gap: 7px; }
+.whale-loader__dots span {
+  width: 7px; height: 7px; border-radius: 50%; background: var(--wl-navy);
+  animation: wl-dots calc(1.2s / var(--wl-speed)) ease-in-out infinite;
+}
+.whale-loader__dots span:nth-child(2) { animation-delay: 0.18s; }
+.whale-loader__dots span:nth-child(3) { animation-delay: 0.36s; }
+
+@keyframes wl-jet {
+  0%   { transform: translateY(14%) scale(0.55); opacity: 0; }
+  18%  { opacity: 1; }
+  42%  { transform: translateY(0) scale(1); opacity: 1; }
+  78%  { transform: translateY(-10%) scale(1.06); opacity: 0.35; }
+  100% { transform: translateY(-16%) scale(1.1); opacity: 0; }
+}
+@keyframes wl-swimbob { 0%, 100% { transform: translate(-1.5%, 2%); } 50% { transform: translate(1.5%, -3%); } }
+@keyframes wl-swing   { 0%, 100% { transform: rotate(-4.5deg); } 50% { transform: rotate(4.5deg); } }
+@keyframes wl-wavesway{ 0%, 100% { transform: translate(-2.5%, 1.5%); } 50% { transform: translate(2.5%, -1%); } }
+@keyframes wl-bubble  { 0% { transform: translateY(0); opacity: 0; } 22% { opacity: 0.85; } 100% { transform: translateY(-15%); opacity: 0; } }
+@keyframes wl-dots    { 0% { opacity: 0.25; } 50% { opacity: 1; } 100% { opacity: 0.25; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .whale-loader * { animation: none !important; }
+}
+
 /* ── フォーム ────────────────────────────────────────────────────────── */
 .form-group { display: flex; flex-direction: column; gap: 6px; margin-bottom: 20px; }
 .form-label { font-size: var(--font-size-base); font-weight: 700; color: var(--text-primary); }

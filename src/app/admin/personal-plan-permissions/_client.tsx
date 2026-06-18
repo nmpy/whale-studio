@@ -10,6 +10,7 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { getAuthHeaders } from "@/lib/api-client";
 import { useToast } from "@/components/Toast";
+import { WhaleLoader } from "@/components/ui/WhaleLoader";
 import { PLAN_LABELS } from "@/lib/constants/plans";
 
 type PlanChangeKey = "beta" | "basic" | "standard" | "plus" | "pro";
@@ -158,7 +159,9 @@ export function PersonalPlanPermissionsClient() {
       </div>
 
       {loading ? (
-        <p style={{ fontSize: 13, color: "#6b7280" }}>読み込み中...</p>
+        <div style={{ display: "grid", placeItems: "center", padding: 48 }}>
+          <WhaleLoader />
+        </div>
       ) : rows.length === 0 ? (
         <p style={{ fontSize: 13, color: "#6b7280" }}>個人利用アカウントがまだありません。</p>
       ) : filtered.length === 0 ? (
