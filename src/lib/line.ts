@@ -749,87 +749,67 @@ export async function replyWithLagToLine(
   void recordPuzzleDeliveries({ lineUserId: userId, sourceMessageIds: messages.map((m) => m._sourceMessageId) });
 
   // ── 送信戦略 ──
-  //  LINE Reply API は 1 リクエストに最大 5 件の message を含められる（replyToken は 1 回限りだが複数件 OK）。
-  //  Reply は月間メッセージ通数にカウントされないが、Push はカウントされる。
-  //  → 5 件以内なら「全件を 1 回の Reply」で送ることで Push 通数を消費せず確実に届ける。
-  //  トレードオフ: Reply 一括では message 間の lag/typing/loading 演出は付かない（全件ほぼ同時着）。
-  //  物語体験では「届かない / Push 月間上限で 1 通目だけ届いて止まる」方が致命的なため、配信確実性を優先する。
-  //  6 件以上のときだけ、やむを得ず先頭 5 件を Reply・残りを Push（lag/typing 演出付き）で送る。
-  const REPLY_MAX = 5;
+  //  LINE Reply API は複数件を一括送信できるが、一括 Reply では message 間の
+  //  lag / typing / loading 演出が付かず、全件ほぼ同時着になる。
+  //  Whale Studio では物語体験の順番・間・演出を優先するため、
+  //  件数に関係なく「1 件目のみ Reply、2 件目以降は Push で 1 件ずつ送信」する。
+  //  注意: 2 件目以降は Push API のため、LINE 公式アカウントの月間メッセージ通数を消費する。
 
-  // ≤5 件: 全件 Reply 1 リクエスト（Push 通数を消費しない・確実に届く）
-  if (messages.length <= REPLY_MAX) {
-    await replyToLine(replyToken, messages, channelAccessToken);
-    console.info("[line:reply-lag:summary]", JSON.stringify({
-      strategy:   "reply_all",
-      replyTotal: messages.length,
-      pushTotal:  0,
-      pushOk:     0,
-      pushFail:   0,
-      failures:   [],
-    }));
-    console.log(`[replyWithLagToLine] strategy=reply_all reply=${messages.length} push=0 total=${messages.length}`);
-    return;
-  }
+  const head = messages[0]!;
+  const pushRest = messages.slice(1);
 
-  // ── >5 件: 先頭 5 件を Reply・6 件目以降を Push（fallback・lag/typing 演出付き） ──
-  const replyBatch = messages.slice(0, REPLY_MAX);
-  const pushRest   = messages.slice(REPLY_MAX);
+  await replyToLine(replyToken, [head], channelAccessToken);
 
-  // [diag] sequence 全体: 各 message の id + lag + timing 概要を出す
-  console.log(
-    `[diag][timing-sequence] count=${messages.length} ids=[${messages.map((m) => idOf(m)).join(",")}]`,
-  );
-
-  // 先頭 5 件を Reply API で即送信（replyToken の有効期限内に必ず呼ぶ）
-  await replyToLine(replyToken, replyBatch, channelAccessToken);
-
-  // chain 送信に入る前に webhook-level scheduleLoading を抑止（push ループで per-message に処理する）
-  if (controller) {
+  if (controller && pushRest.length > 0) {
     controller.abortPendingLoading();
-    console.log(`[diag][timing-loading-abort] push fallback 開始のため webhook scheduleLoading を abort`);
+    console.log(`[diag][timing-loading-abort] sequential push 開始のため webhook scheduleLoading を abort`);
   }
 
-  console.log(`[replyWithLagToLine] strategy=reply_first_5_push_rest reply=${replyBatch.length}件 push=${pushRest.length}件 total=${messages.length}件`);
   let pushOk = 0;
   let pushFail = 0;
   const pushFailures: { idx: number; msgId: string | null; status: number | null }[] = [];
+
   for (let i = 0; i < pushRest.length; i++) {
     const msg = pushRest[i];
-    const msgId = msg._sourceMessageId ?? null; // strip 前に控える（PII の本文ではなく由来 messageId）
+    const msgId = msg._sourceMessageId ?? null;
     const rawLag = msg._lagMs ?? 0;
-    const delay  = rawLag > 0 ? Math.min(rawLag, MAX_MSG_LAG_MS) : DEFAULT_MSG_LAG_MS;
+    const delay = rawLag > 0 ? Math.min(rawLag, MAX_MSG_LAG_MS) : DEFAULT_MSG_LAG_MS;
+
     console.log(
       `[diag][timing-send-before] msg=${idOf(msg)} waitLag=${delay}ms`,
       `lagSource=${msg._lagMs != null ? "_lagMs" : "default"}`,
     );
+
     await sleep(delay);
-    // per-message 演出を反映（typing → loading）。_timing / controller が無ければ lag のみ。
+
     if (controller && msg._timing) {
       await controller.waitTypingForMessage(msg._timing);
       await controller.showLoadingForMessage(msg._timing);
     }
+
     const result = await pushToLine(userId, [msg], channelAccessToken);
+
     if (result.ok) {
       pushOk++;
     } else {
       pushFail++;
-      pushFailures.push({ idx: i + 1, msgId, status: result.status ?? null });
+      pushFailures.push({ idx: i + 2, msgId, status: result.status ?? null });
     }
+
     console.log(`[diag][timing-send-after] msg=${idOf(msg)} pushed=${result.ok}`);
   }
-  // 送信結果サマリ（PII・本文なし）。push が失敗しても webhook は 200 で返るため可視化する。
+
   console.info("[line:reply-lag:summary]", JSON.stringify({
-    strategy:   "reply_first_5_push_rest",
-    // Push fallback が起きた理由を明示（LINE Reply API は 1 回最大 5 件のため）。
-    reason:     "line_reply_limit_5",
-    replyTotal: replyBatch.length,
+    strategy:   pushRest.length > 0 ? "reply_first_push_rest" : "reply_one",
+    reason:     pushRest.length > 0 ? "preserve_message_order_and_timing" : "single_message",
+    replyTotal: 1,
     pushTotal:  pushRest.length,
     pushOk,
     pushFail,
     failures:   pushFailures,
   }));
-  console.log(`[replyWithLagToLine] 完了 strategy=reply_first_5_push_rest reply=${replyBatch.length} push=${pushRest.length}(ok=${pushOk}/fail=${pushFail}) total=${messages.length}`);
+
+  console.log(`[replyWithLagToLine] strategy=${pushRest.length > 0 ? "reply_first_push_rest" : "reply_one"} reply=1 push=${pushRest.length}(ok=${pushOk}/fail=${pushFail}) total=${messages.length}`);
 }
 
 /** [diag] LineMessage の識別用に内部 id を取り出す。
