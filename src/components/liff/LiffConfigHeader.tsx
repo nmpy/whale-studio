@@ -10,6 +10,7 @@ import type { LiffPageConfig, LiffPageConfigSettings, LiffPageType, LiffPublishS
 import { normalizeLiffPageType } from "@/types";
 import { LiffFaqEditor } from "./LiffFaqEditor";
 import { LiffSurveyEditor } from "./LiffSurveyEditor";
+import { LiffContactEditor } from "./LiffContactEditor";
 import { ImageUploadField } from "./ImageUploadField";
 import { Switch } from "@/components/Switch";
 
@@ -35,6 +36,7 @@ export function LiffConfigHeader({
   const isHint = mode === "hint";
   const isFaq = mode === "faq";
   const isSurvey = mode === "survey";
+  const isContact = mode === "contact";
 
   const inputCls = "w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand/30 disabled:bg-gray-50";
   const labelCls = "block text-xs font-medium text-gray-500 mb-1";
@@ -118,6 +120,7 @@ export function LiffConfigHeader({
             <option value="hint">ヒント</option>
             <option value="faq">FAQ（よくある質問）</option>
             <option value="survey">アンケート</option>
+            <option value="contact">お問い合わせ</option>
             <option value="character">キャラクター</option>
             <option value="werewolf">人狼（配役閲覧）</option>
             {/* 「チェックイン履歴」はページ種別から廃止し、ブロックとして追加できるようにした。
@@ -274,6 +277,14 @@ export function LiffConfigHeader({
 
       {isSurvey && (
         <LiffSurveyEditor
+          settings={settings}
+          readOnly={readOnly}
+          onChange={(patch) => onLocalChange({ settings_json: { ...settings, ...patch } })}
+        />
+      )}
+
+      {isContact && (
+        <LiffContactEditor
           settings={settings}
           readOnly={readOnly}
           onChange={(patch) => onLocalChange({ settings_json: { ...settings, ...patch } })}

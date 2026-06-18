@@ -18,6 +18,7 @@ export const PAGE_TYPE_LABELS: Record<string, string> = {
   location:  "履歴",
   character: "キャラクター",
   werewolf:  "人狼",
+  contact:   "お問い合わせ",
 };
 
 export const METRIC_LABELS: Record<string, string> = {

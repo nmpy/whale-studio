@@ -970,7 +970,7 @@ export const VISIBILITY_CONDITIONS = [
 // LIFF ページ種別。
 // 新しいモード: default / hint / faq / survey / location / character / werewolf
 // 旧データ互換: "hint_site" も受理（保存時に "hint" に正規化される）
-export const LIFF_PAGE_TYPES = ["default", "hint", "faq", "survey", "location", "character", "werewolf", "hint_site"] as const;
+export const LIFF_PAGE_TYPES = ["default", "hint", "faq", "survey", "location", "character", "werewolf", "contact", "hint_site"] as const;
 /** 受け取った page_type を正規化（"hint_site" → "hint"） */
 export function normalizeLiffPageTypeValue(value: string | null | undefined): string {
   if (value === "hint_site") return "hint";
@@ -1282,6 +1282,17 @@ export const liffPageConfigSettingsSchema = z.object({
   // Survey モード
   survey_items:          z.array(surveyItemSchema).max(50).optional(),
   survey_thanks_message: z.string().max(500).optional(),
+
+  // ── Contact（お問い合わせ）モード設定。すべて任意。 ──
+  contact_categories:        z.array(z.string().max(50)).max(20).optional(),
+  contact_category_required: z.boolean().optional(),
+  contact_show_name:         z.boolean().optional(),
+  contact_name_required:     z.boolean().optional(),
+  contact_show_email:        z.boolean().optional(),
+  contact_email_required:    z.boolean().optional(),
+  contact_body_required:     z.boolean().optional(),
+  contact_custom_fields:     z.array(surveyItemSchema).max(50).optional(),
+  contact_success_message:   z.string().max(500).optional(),
 
   // PR #59 のタブ UI 用 (deprecated)。後方互換のため schema には残置、renderer は参照しない。
   tab_enabled:    z.boolean().optional(),
