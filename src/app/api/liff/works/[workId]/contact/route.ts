@@ -20,6 +20,8 @@ import {
   validateContactSubmission,
   buildContactSubmissionBlocks,
 } from "@/components/liff/contact-helpers";
+import { answerValueToText } from "@/lib/liff/submission";
+import { notifyContactSubmitted } from "@/lib/slack/contact";
 
 export const dynamic = "force-dynamic";
 
@@ -97,7 +99,7 @@ export async function POST(
         displayName: data.display_name ?? null,
         answersJson: { blocks } as unknown as Prisma.InputJsonValue,
       },
-      select: { id: true },
+      select: { id: true, createdAt: true },
     });
 
     // 計測: contact_submit（失敗しても送信自体は成功扱い）。
@@ -112,6 +114,39 @@ export async function POST(
         },
       })
       .catch((e) => console.error("[LIFF Contact] event log failed:", e));
+
+    // Slack 通知（best-effort）。失敗しても保存・レスポンスは成功扱い。
+    // honeypot / validation 失敗 / 保存失敗の経路には到達しないため、ここでのみ通知する。
+    // 失敗ログには PII（名前/メール/本文/custom）も webhook URL も出さない（id のみ）。
+    try {
+      const oa = await prisma.oa.findUnique({ where: { id: work.oaId }, select: { title: true } });
+      const fixedIds = new Set(["contact_category", "contact_name", "contact_email", "contact_body"]);
+      const customAnswers = blocks
+        .filter((b) => !fixedIds.has(b.blockId))
+        .map((b) => ({ label: b.label, value: answerValueToText(b.value) }));
+      await notifyContactSubmitted({
+        submissionId: saved.id,
+        workId:       work.id,
+        workTitle:    work.title,
+        oaId:         work.oaId,
+        oaName:       oa?.title ?? null,
+        pageId:       page.id,
+        pageTitle:    page.title,
+        lineUserId:   data.line_user_id ?? null,
+        displayName:  data.display_name ?? null,
+        category:     data.category ?? null,
+        name:         data.name ?? null,
+        email:        data.email ?? null,
+        body:         data.body ?? null,
+        customAnswers,
+        createdAt:    saved.createdAt,
+      });
+    } catch {
+      // PII を出さない（id スコープのみ）。
+      console.warn("[LIFF Contact] Slack notification failed", {
+        submissionId: saved.id, workId: work.id, pageId: page.id,
+      });
+    }
 
     return ok();
   } catch (err) {
