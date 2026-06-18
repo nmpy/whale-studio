@@ -224,4 +224,45 @@ describe("replyWithLagToLine 送信戦略", () => {
       status: 429,
     });
   });
+
+  // 回帰: QuickReply / QR分岐 → フェーズ遷移パス (webhook の qr_target_phase) は
+  // 「応答メッセージchain + 遷移先フェーズの全メッセージ」を合成して replyWithLagToLine に渡す。
+  // 旧実装は呼び出し側で qrMsgs.slice(0, 5) しており 6通目以降が破棄されていた。
+  // 本テストは「6通(応答3 + 遷移先3)を切らずに渡せば、5通reply + 6通目push で
+  // 全6通が破棄されず・順序を保って送信される」ことを保証する（通常フェーズ遷移と同じ挙動）。
+  it("QR→フェーズ遷移で6通(応答3+遷移先3)になっても5通で切られず全6通が届く", async () => {
+    setupFetch();
+    // 応答chain r1..r3 + 遷移先フェーズ p1..p3 を合成した 6 通（演出なし）。
+    const qrMsgs: LineMessage[] = [
+      ...["r1", "r2", "r3"].map((t, i) => ({ type: "text", text: t, _sourceMessageId: `resp${i + 1}` }) as LineMessage),
+      ...["p1", "p2", "p3"].map((t, i) => ({ type: "text", text: t, _sourceMessageId: `phase${i + 1}` }) as LineMessage),
+    ];
+
+    // 修正後の webhook と同じく slice せずそのまま渡す。
+    await replyWithLagToLine("rt", qrMsgs, "U1", "tok");
+
+    // 先頭5件Reply + 6件目以降Push（= 6通目 p3 も破棄されない）。
+    expect(replies()).toHaveLength(1);
+    expect(replies()[0].count).toBe(5);
+    expect(pushes()).toHaveLength(1);
+    expect(pushes()[0].count).toBe(1);
+
+    // reply + push の全 payload から本文を取り出し、6通すべてが順序どおり送信対象に含まれることを確認。
+    const sentTexts = vi.mocked(global.fetch).mock.calls
+      .flatMap(([, init]) => {
+        const body = JSON.parse((init as { body: string }).body) as { messages: { text?: string }[] };
+        return body.messages.map((m) => m.text);
+      });
+    expect(sentTexts).toEqual(["r1", "r2", "r3", "p1", "p2", "p3"]);
+    // 6通目(p3)が含まれている = 旧 slice(0,5) なら欠落していたメッセージ。
+    expect(sentTexts).toContain("p3");
+
+    expect(summary()).toMatchObject({
+      strategy: "reply_first_5_push_rest",
+      replyTotal: 5,
+      pushTotal: 1,
+      pushOk: 1,
+      pushFail: 0,
+    });
+  });
 });

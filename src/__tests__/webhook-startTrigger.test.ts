@@ -35,6 +35,7 @@ const mockReplyToLine = vi.fn().mockResolvedValue(undefined);
 vi.mock("@/lib/line", () => ({
   verifyLineSignature:  vi.fn().mockReturnValue(true),
   isStartCommand:       vi.fn().mockReturnValue(false),
+  isStartIntent:        vi.fn().mockReturnValue(false),
   isResetCommand:       vi.fn().mockReturnValue(false),
   isContinueCommand:    vi.fn().mockReturnValue(false),
   replyToLine:          mockReplyToLine,

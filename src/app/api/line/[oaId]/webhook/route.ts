@@ -2146,7 +2146,7 @@ async function handleTextEvent({
         // Phase 2c hotfix: chain (= length > 1) でも per-message timing が効くよう、
         // replyWithLagToLine 経路に統一する。1 通でも replyWithLagToLine は内部で
         // replyToLine に委譲するため、挙動差は per-message timing の有無のみ。
-        await replyWithLagToLine(replyToken, qrMsgs.slice(0, 5), userId, token);
+        await replyWithLagToLine(replyToken, qrMsgs, userId, token);
         // qrItem_message パス: 応答 + 遷移先チェーンの末尾を自由入力候補とする
         await applyFreeInputPostEffect({
           sentMessageIds: qrSentIds,
@@ -2184,7 +2184,10 @@ async function handleTextEvent({
           // 遷移後フェーズのメッセージも自由入力候補に含める
           const phaseMessageIds = state.phase?.messages.map((m) => m.id) ?? [];
           const tReplyQrPh = Date.now();
-          await replyWithLagToLine(replyToken, qrMsgs.slice(0, 5), userId, token);
+          // 応答chain + 遷移先フェーズの全メッセージを切らずに渡す。
+          // replyWithLagToLine が 5通以下=Reply / 6通以上=Reply+Push に分割するため、
+          // 呼び出し側で slice(0,5) すると 6通目以降が破棄される（通常フェーズ遷移パスと挙動を揃える）。
+          await replyWithLagToLine(replyToken, qrMsgs, userId, token);
           await applyFreeInputPostEffect({
             sentMessageIds: [...qrSentIds, ...phaseMessageIds],
             oaId: oa.id,
@@ -2207,7 +2210,7 @@ async function handleTextEvent({
     if (qrMsgs.length > 0) {
       const tReplyQrResp = Date.now();
       // Phase 2c hotfix: chain 内 per-message timing を効かせるため replyWithLagToLine に変更
-      await replyWithLagToLine(replyToken, qrMsgs.slice(0, 5), userId, token);
+      await replyWithLagToLine(replyToken, qrMsgs, userId, token);
       await applyFreeInputPostEffect({
         sentMessageIds: qrSentIds,
         oaId: oa.id,
