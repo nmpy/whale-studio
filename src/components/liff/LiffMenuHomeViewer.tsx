@@ -32,6 +32,8 @@ interface MenuApiResponse {
     home_description?:  string | null;
     home_image_url?:    string | null;
     home_header_title?: string | null;
+    /** ホームメニュー表示モード。未指定は "card"。 */
+    home_menu_layout?:  "card" | "list";
     pages:      LiffMenuHomePage[];
     /** Work.liffEnabled が false のとき API が返す。 */
     liff_disabled?: boolean;
@@ -120,6 +122,7 @@ export function LiffMenuHomeViewer({ workId, workPublicId }: Props) {
       homeTitle={data.home_title}
       homeDescription={data.home_description}
       homeImageUrl={data.home_image_url}
+      homeMenuLayout={data.home_menu_layout}
       preview={isPreview}
       onClose={liff.closeWindow}
       buildPageHref={(page) => {

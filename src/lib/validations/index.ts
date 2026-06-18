@@ -95,6 +95,8 @@ export const updateWorkSchema = z.object({
     header_title: z.string().max(40).optional().nullable(),
     // ホーム（作品単位）フォント。"default" は解除（= 従来フォント）扱い。
     font_family:  z.enum(["default", "meiryo", "hiragino", "yu_gothic", "ud"]).optional().nullable(),
+    // ホームメニュー表示モード。"card"/null/未指定 は既定(カード)に解除。
+    home_menu_layout: z.enum(["card", "list"]).optional().nullable(),
   }).optional(),
   /** 途中再開機能の有効/無効（作品単位）。true=再開選択肢を表示 / false=最初から開始に寄せる。 */
   resume_enabled:      z.boolean().optional(),
@@ -1281,6 +1283,8 @@ const liffPageConfigSettingsSchema = z.object({
   show_in_menu:   z.boolean().optional(),
   menu_label:     z.string().max(30).optional(),
   menu_icon:      z.string().max(8).optional(),
+  // メニューアイコン画像 URL。空文字 = 解除（未設定扱い）。非空のときのみ URL 形式を検証する。
+  menu_icon_image_url: z.union([z.string().url().max(2000), z.literal("")]).optional(),
   menu_order:     z.number().int().min(0).max(9999).optional(),
   // メニューホームのカード表示形式。未指定は renderer 側で "card" 扱い。
   menu_card_style: z.enum(["card", "compact"]).optional(),

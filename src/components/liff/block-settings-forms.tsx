@@ -499,7 +499,7 @@ export function WarningForm({ settings, onChange, readOnly }: FieldProps<Warning
 }
 
 const BUTTON_PAGE_TYPE_LABELS: Record<string, string> = {
-  default: "プレイヤー向け", hint: "ヒント", hint_site: "ヒント", faq: "FAQ",
+  default: "デフォルト", hint: "ヒント", hint_site: "ヒント", faq: "FAQ",
   survey: "アンケート", location: "履歴", character: "キャラクター", werewolf: "人狼",
 };
 const BUTTON_CHECKIN_LABELS: Record<string, string> = {

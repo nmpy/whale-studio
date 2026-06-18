@@ -415,6 +415,9 @@ export interface LiffHomeSettings {
   header_title: string | null;
   /** ホーム（作品単位）フォント。null/未設定/"default" は従来フォント。 */
   font_family: LiffHomeFontFamily | null;
+  /** ホームメニューの表示モード。"list" = 縦並びリスト / "card"(既定/未設定) = 2列カードグリッド。
+   *  未設定の既存作品は "card" 扱いで従来表示を維持する。 */
+  home_menu_layout: "card" | "list";
 }
 
 export interface UpdateWorkBody {
@@ -431,6 +434,8 @@ export interface UpdateWorkBody {
     image_url?:    string | null;
     header_title?: string | null;
     font_family?:  LiffHomeFontFamily | null;
+    /** ホームメニュー表示モード。"card"/null/未指定 は既定(カード)に解除。 */
+    home_menu_layout?: "card" | "list" | null;
   };
   /** 途中再開機能の有効/無効（作品単位）。 */
   resume_enabled?: boolean;
@@ -1628,6 +1633,9 @@ export interface LiffPageConfigSettings {
   /** メニューホームのカードに出すアイコン (emoji を想定。1〜3 文字程度)。
    *  未指定なら pageType 別の既定 emoji にフォールバック。 */
   menu_icon?: string;
+  /** メニューホームのアイコン画像 URL（任意）。設定時は emoji より優先して画像を表示する。
+   *  未設定（空文字/未指定）なら従来表示（emoji / 既定アイコン）にフォールバック。 */
+  menu_icon_image_url?: string;
   /** メニューホームでのカード並び順 (小さい順)。同値は createdAt asc。
    *  未指定はもっとも後ろに回す。 */
   menu_order?: number;

@@ -33,6 +33,7 @@ export function parseLiffHomeSettings(json: unknown): LiffHomeSettings {
     image_url:    str(o.image_url),
     header_title: str(o.header_title),
     font_family:  parseHomeFontFamily(o.font_family),
+    home_menu_layout: o.home_menu_layout === "list" ? "list" : "card",
   };
 }
 
@@ -234,6 +235,15 @@ export function resolveMenuIcon(
   return defaultMenuIcon(pageType);
 }
 
+/** メニューカードのアイコン画像 URL を解決する。
+ *  設定があれば trim 済み URL、空文字/未設定なら null（= emoji 表示にフォールバック）。 */
+export function resolveMenuIconImageUrl(
+  settings: LiffPageConfigSettings | null | undefined
+): string | null {
+  const u = settings?.menu_icon_image_url?.trim();
+  return u ? u : null;
+}
+
 /** 「このページをメニューホームのカードに出すか」を判定する。
  *  - `is_enabled === false` なら非表示 (= 公開対象外)
  *  - `settings.show_in_menu === false` 明示で非表示
@@ -265,6 +275,8 @@ export interface MenuCard {
   pageType:  LiffPageType;
   label:     string;
   icon:      string;
+  /** アイコン画像 URL。設定時は icon(emoji) より優先して画像表示。未設定は null。 */
+  iconImageUrl: string | null;
   order:     number;
   /** カード表示形式。settings.menu_card_style 未指定は "card"。 */
   cardStyle: "card" | "compact";
@@ -307,6 +319,7 @@ export function buildMenuCards(pages: MenuCardSource[]): MenuCard[] {
       pageType,
       label:     resolveMenuLabel({ pageType, title: page.title, settings }),
       icon:      resolveMenuIcon(pageType, settings),
+      iconImageUrl: resolveMenuIconImageUrl(settings),
       order,
       cardStyle: settings?.menu_card_style === "compact" ? "compact" as const : "card" as const,
     }));

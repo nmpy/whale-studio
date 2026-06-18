@@ -1727,6 +1727,8 @@ export interface LiffPageSummary {
   menu_label?:      string | null;
   /** ホームカードのアイコン (emoji)。未指定は null。 */
   menu_icon?:       string | null;
+  /** ホームカードのアイコン画像 URL（任意）。設定時は emoji より優先。未指定は null。 */
+  menu_icon_image_url?: string | null;
   /** ホームカードの表示形式。未指定ページは "card"。 */
   menu_card_style?: "card" | "compact";
   created_at:      string;

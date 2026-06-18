@@ -35,7 +35,16 @@ interface HomeInit {
   image_url:    string | null;
   header_title: string | null;
   font_family:  LiffHomeFontFamily | null;
+  home_menu_layout: "card" | "list";
 }
+
+type HomeMenuLayout = "card" | "list";
+
+/** ホームメニュー表示モードの選択肢（管理UI 表示用）。未設定は "card"。 */
+const HOME_MENU_LAYOUT_OPTIONS: { value: HomeMenuLayout; label: string }[] = [
+  { value: "card", label: "カード" },
+  { value: "list", label: "リスト" },
+];
 
 /** ホームフォントの選択肢（管理UI 表示用）。"default" は従来フォント。 */
 const HOME_FONT_OPTIONS: { value: LiffHomeFontFamily; label: string }[] = [
@@ -60,11 +69,15 @@ interface Row {
   updatedAt:     string;
   menuLabel:     string | null;
   menuIcon:      string | null;
+  /** メニューアイコン画像 URL（空文字 = 未設定）。 */
+  menuIconImageUrl: string;
   cardStyle:     CardStyle;
   /** 永続化されている menu_order（差分判定用。null は未設定）。 */
   origMenuOrder: number | null;
   /** 永続化されている表示形式（差分判定用）。 */
   origCardStyle: CardStyle;
+  /** 永続化されているアイコン画像 URL（差分判定用）。 */
+  origMenuIconImageUrl: string;
 }
 
 interface Props {
@@ -104,9 +117,11 @@ function buildRows(pages: LiffPageSummary[]): Row[] {
       updatedAt:     p.updated_at,
       menuLabel:     p.menu_label ?? null,
       menuIcon:      p.menu_icon ?? null,
+      menuIconImageUrl:     p.menu_icon_image_url ?? "",
       cardStyle:     p.menu_card_style === "compact" ? "compact" : "card",
       origMenuOrder: p.menu_order ?? null,
       origCardStyle: p.menu_card_style === "compact" ? "compact" : "card",
+      origMenuIconImageUrl: p.menu_icon_image_url ?? "",
     }));
 }
 
@@ -167,6 +182,7 @@ export function HomeTab({ oaId, workId, workPublicId, workTitle, pages, homeInit
   const [homeImageUrl, setHomeImageUrl] = useState(homeInit.image_url ?? "");
   const [homeHeaderTitle, setHomeHeaderTitle] = useState(homeInit.header_title ?? "");
   const [homeFontFamily, setHomeFontFamily] = useState<LiffHomeFontFamily>(homeInit.font_family ?? "default");
+  const [homeMenuLayout, setHomeMenuLayout] = useState<HomeMenuLayout>(homeInit.home_menu_layout ?? "card");
 
   // 親が pages を再取得したら Row を作り直す（保存後リセット含む）。
   useEffect(() => { setRows(buildRows(pages)); }, [pages]);
@@ -177,17 +193,19 @@ export function HomeTab({ oaId, workId, workPublicId, workTitle, pages, homeInit
     setHomeImageUrl(homeInit.image_url ?? "");
     setHomeHeaderTitle(homeInit.header_title ?? "");
     setHomeFontFamily(homeInit.font_family ?? "default");
-  }, [homeInit.title, homeInit.description, homeInit.image_url, homeInit.header_title, homeInit.font_family]);
+    setHomeMenuLayout(homeInit.home_menu_layout ?? "card");
+  }, [homeInit.title, homeInit.description, homeInit.image_url, homeInit.header_title, homeInit.font_family, homeInit.home_menu_layout]);
 
   const homeDirty =
     norm(homeTitle) !== (homeInit.title ?? "") ||
     norm(homeDescription) !== (homeInit.description ?? "") ||
     norm(homeImageUrl) !== (homeInit.image_url ?? "") ||
     norm(homeHeaderTitle) !== (homeInit.header_title ?? "") ||
-    homeFontFamily !== (homeInit.font_family ?? "default");
+    homeFontFamily !== (homeInit.font_family ?? "default") ||
+    homeMenuLayout !== (homeInit.home_menu_layout ?? "card");
 
   const rowsDirty = useMemo(
-    () => rows.some((r, i) => r.origMenuOrder !== i || r.cardStyle !== r.origCardStyle),
+    () => rows.some((r, i) => r.origMenuOrder !== i || r.cardStyle !== r.origCardStyle || r.menuIconImageUrl !== r.origMenuIconImageUrl),
     [rows],
   );
   const dirty = rowsDirty || homeDirty;
@@ -206,6 +224,10 @@ export function HomeTab({ oaId, workId, workPublicId, workTitle, pages, homeInit
     setRows((prev) => prev.map((r) => (r.id === id ? { ...r, cardStyle: style } : r)));
   }, []);
 
+  const setMenuIconImageUrl = useCallback((id: string, url: string) => {
+    setRows((prev) => prev.map((r) => (r.id === id ? { ...r, menuIconImageUrl: url } : r)));
+  }, []);
+
   const handleSave = useCallback(async () => {
     if (isReadOnly || saving || !dirty) return;
     setSaving(true);
@@ -213,7 +235,7 @@ export function HomeTab({ oaId, workId, workPublicId, workTitle, pages, homeInit
     // index = 望ましい menu_order。永続値と異なる or 表示形式が変わった行だけ保存する。
     const targets = rows
       .map((r, i) => ({ r, i }))
-      .filter(({ r, i }) => r.origMenuOrder !== i || r.cardStyle !== r.origCardStyle);
+      .filter(({ r, i }) => r.origMenuOrder !== i || r.cardStyle !== r.origCardStyle || r.menuIconImageUrl !== r.origMenuIconImageUrl);
     try {
       // ① ホーム設定（タイトル/説明文/画像）を work にまとめて保存（変更時のみ）。
       //    空文字は API 側で解除扱い。works.liff_home_settings_json に merge される。
@@ -226,16 +248,20 @@ export function HomeTab({ oaId, workId, workPublicId, workTitle, pages, homeInit
             header_title: norm(homeHeaderTitle),
             // "default" は API 側で解除（= 従来フォント）扱い。
             font_family:  homeFontFamily,
+            // "card"/未設定 は API 側で解除（= 既定カード）扱い。
+            home_menu_layout: homeMenuLayout,
           },
         });
       }
-      // ② 各ページの並び順・表示形式。settingsJson を壊さないよう最新を取得して merge。
+      // ② 各ページの並び順・表示形式・アイコン画像。settingsJson を壊さないよう最新を取得して merge。
       for (const { r, i } of targets) {
         const full = await liffConfigApi.getPage(token, workId, r.id);
         const merged = {
           ...(full.settings_json ?? {}),
           menu_order:      i,
           menu_card_style: r.cardStyle,
+          // 空文字 = 解除（renderer 側で従来アイコンにフォールバック）。Zod は "" を許可。
+          menu_icon_image_url: norm(r.menuIconImageUrl),
         };
         await liffConfigApi.updatePage(token, workId, r.id, { settings_json: merged });
       }
@@ -246,7 +272,7 @@ export function HomeTab({ oaId, workId, workPublicId, workTitle, pages, homeInit
     } finally {
       setSaving(false);
     }
-  }, [isReadOnly, saving, dirty, homeDirty, homeTitle, homeDescription, homeImageUrl, homeHeaderTitle, homeFontFamily, rows, workId, showToast, onSaved]);
+  }, [isReadOnly, saving, dirty, homeDirty, homeTitle, homeDescription, homeImageUrl, homeHeaderTitle, homeFontFamily, homeMenuLayout, rows, workId, showToast, onSaved]);
 
   // ── プレビュー用ページ（ローカルの順序・形式・ラベルを即時反映）──
   const previewPages = useMemo<LiffMenuHomePage[]>(
@@ -263,6 +289,7 @@ export function HomeTab({ oaId, workId, workPublicId, workTitle, pages, homeInit
         menu_card_style: r.cardStyle,
         ...(r.menuLabel ? { menu_label: r.menuLabel } : {}),
         ...(r.menuIcon ? { menu_icon: r.menuIcon } : {}),
+        ...(r.menuIconImageUrl.trim() ? { menu_icon_image_url: r.menuIconImageUrl.trim() } : {}),
       },
       created_at: r.createdAt,
     })),
@@ -350,6 +377,22 @@ export function HomeTab({ oaId, workId, workPublicId, workTitle, pages, homeInit
             </select>
             <p className="text-[11px] text-gray-400 mt-1">ホームやLIFFページで使用するフォントを選択できます。端末にフォントが無い場合は自動的に標準フォントになります。</p>
           </div>
+
+          {/* メニュー表示モード: カード（2列グリッド）/ リスト（縦並び）。未設定=カード（従来表示）。 */}
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">メニュー表示</label>
+            <select
+              value={homeMenuLayout}
+              onChange={(e) => setHomeMenuLayout(e.target.value as HomeMenuLayout)}
+              disabled={isReadOnly}
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 disabled:bg-gray-50"
+            >
+              {HOME_MENU_LAYOUT_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+            <p className="text-[11px] text-gray-400 mt-1">ホームのメニューを「カード」（2列グリッド）か「リスト」（縦並び）で表示します。未設定はカードです。</p>
+          </div>
         </div>
 
         {/* ページ一覧 */}
@@ -434,6 +477,20 @@ export function HomeTab({ oaId, workId, workPublicId, workTitle, pages, homeInit
                     </select>
                   </div>
 
+                  {/* メニューアイコン画像（任意）。未設定は従来表示（emoji/既定アイコン）。 */}
+                  <div className="mt-2">
+                    <ImageUploadField
+                      label="アイコン画像（任意）"
+                      value={r.menuIconImageUrl}
+                      onChange={(next) => setMenuIconImageUrl(r.id, next)}
+                      readOnly={isReadOnly}
+                      previewAlt="メニューアイコンプレビュー"
+                      previewMaxHeight={64}
+                      urlInputCollapsibleLabel="画像URLを直接入力する"
+                    />
+                    <p className="text-[11px] text-gray-400 mt-1">未設定の場合は従来のアイコン表示になります。</p>
+                  </div>
+
                   <div className="mt-1 text-[11px] text-gray-400 truncate">
                     更新: {formatDateTime(r.updatedAt)}
                   </div>
@@ -501,6 +558,7 @@ export function HomeTab({ oaId, workId, workPublicId, workTitle, pages, homeInit
               homeTitle={homeTitle}
               homeDescription={homeDescription}
               homeImageUrl={homeImageUrl}
+              homeMenuLayout={homeMenuLayout}
               preview
             />
           </div>
