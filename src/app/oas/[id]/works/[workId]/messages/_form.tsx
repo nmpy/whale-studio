@@ -2659,6 +2659,21 @@ function TimingConfigSection<T extends TimingFormFields>({
       ) : undefined}
     >
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <div
+          style={{
+            margin: "0 0 -4px",
+            padding: "10px 12px",
+            borderRadius: 10,
+            background: "#fff7ed",
+            border: "1px solid #fed7aa",
+            color: "#9a3412",
+            fontSize: 12,
+            lineHeight: 1.6,
+          }}
+        >
+          注意：連続メッセージで待機時間・既読タイミング・「入力中…」表示などの演出を使うと、
+          2通目以降はPush配信になり、LINE公式アカウントの月間メッセージ通数を消費します。
+        </div>
           {/* ── 返信までの待機時間（1通目の lag_ms = 実機反映される唯一の待機項目） ──
               演出設定の最上部に配置。保存挙動は呼び出し側 set("lag_ms") に委譲（表示のみ移動）。 */}
           {onHeadDelayChange && (

@@ -123,7 +123,7 @@ async function replyToLine(
     // 「処理遅延ベースで loading が出るか出ないか分からない」状態を解消し、
     // 必ず loading 表示してから reply する。
     if (first?._timing) {
-      await ctrl.showLoadingForMessage(first._timing);
+      await ctrl.showLoadingForMessage(first._timing, { messageId: first._sourceMessageId ?? null });
     }
     await ctrl.ensureReadBeforeReply();
   }
@@ -179,7 +179,7 @@ async function replyWithLagToLine(
     // 処理時間に依存せず必ず loading 表示してから reply する。
     // chain 2 通目以降の loading は _replyWithLagToLine の push loop で個別適用される。
     if (first?._timing) {
-      await ctrl.showLoadingForMessage(first._timing);
+      await ctrl.showLoadingForMessage(first._timing, { messageId: first._sourceMessageId ?? null });
     }
     await ctrl.ensureReadBeforeReply();
   }
@@ -1524,6 +1524,8 @@ async function handleWebhook(req: NextRequest, oaId: string) {
         channelAccessToken: oa.channelAccessToken,
         isOneOnOne:       event.source.type === "user",
         config:           { readDelayMs: dynamicDelay },
+        oaId:             oa.id,
+        workId:           work?.id ?? null,
       });
       ctrl.setWorkTiming(workTiming);
       ctrl.scheduleDelayedRead();
@@ -1563,6 +1565,8 @@ async function handleWebhook(req: NextRequest, oaId: string) {
         userId:           event.source.userId,
         channelAccessToken: oa.channelAccessToken,
         isOneOnOne:       event.source.type === "user",
+        oaId:             oa.id,
+        workId:           work?.id ?? null,
       });
       ctrl.setWorkTiming(workTiming);
       ctrl.scheduleDelayedRead();

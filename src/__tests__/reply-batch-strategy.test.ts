@@ -1,9 +1,15 @@
 // src/__tests__/reply-batch-strategy.test.ts
 //
 // replyWithLagToLine の送信戦略を検証する。
-//   - 5件以内: Reply API 1回で全件（Push API を呼ばない＝月間通数を消費しない）
-//   - 6件以上: 先頭5件を Reply、6件目以降を Push（fallback）
-// 背景: 2通目以降を Push にしていたため、Push 月間上限超過時に「1通目だけ届く」事故が起きた。
+//   - 5件以内かつ2件目以降に演出なし: Reply API 1回で全件送信（Push消費なし）
+//   - 2件目以降に演出あり: 1件目Reply + 2件目以降Pushで順番送信
+//   - 6件以上かつ演出なし: 先頭5件Reply + 6件目以降Push
+//
+// 背景:
+//   Reply API は複数件まとめて送れるが、まとめ送信では message 間の
+//   lag / typing / loading 演出が付かない。
+//   ただしPush APIはLINE公式アカウントの月間メッセージ通数を消費するため、
+//   演出が必要な場合のみPush化する。
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { replyWithLagToLine, type LineMessage } from "@/lib/line";
@@ -20,6 +26,18 @@ function texts(n: number, lagMs?: number): LineMessage[] {
   }) as LineMessage);
 }
 
+function textsWithSecondLag(n: number): LineMessage[] {
+  return texts(n).map((m, i) => (i >= 1 ? { ...m, _lagMs: 1 } : m)) as LineMessage[];
+}
+
+function textsWithSecondLoading(n: number): LineMessage[] {
+  return texts(n).map((m, i) => (
+    i >= 1
+      ? { ...m, _timing: { loading_enabled: true, loading_min_seconds: 5, loading_max_seconds: 5 } }
+      : m
+  )) as LineMessage[];
+}
+
 type FetchCall = { url: string; count: number };
 let fetchCalls: FetchCall[] = [];
 let origFetch: typeof global.fetch;
@@ -30,8 +48,10 @@ function setupFetch(pushStatus = 200) {
     const u = String(url);
     const body = JSON.parse((init as { body: string }).body);
     fetchCalls.push({ url: u, count: Array.isArray(body.messages) ? body.messages.length : 0 });
+
     const isPush = u === PUSH_URL;
     const ok = isPush ? pushStatus < 400 : true;
+
     return {
       ok,
       status: isPush ? pushStatus : 200,
@@ -56,91 +76,152 @@ beforeEach(() => {
   vi.spyOn(console, "log").mockImplementation(() => {});
   vi.spyOn(console, "error").mockImplementation(() => {});
 });
+
 afterEach(() => {
   global.fetch = origFetch;
   vi.restoreAllMocks();
 });
 
 describe("replyWithLagToLine 送信戦略", () => {
-  it("3通: Reply API 1回で3件送る / Push を呼ばない", async () => {
+  it("1通: Reply API 1回で送る / Push を呼ばない", async () => {
+    setupFetch();
+    await replyWithLagToLine("rt", texts(1), "U1", "tok");
+
+    expect(replies()).toHaveLength(1);
+    expect(replies()[0].count).toBe(1);
+    expect(pushes()).toHaveLength(0);
+    expect(summary()).toMatchObject({
+      strategy: "reply_one",
+      reason: "no_timing_effect",
+      replyTotal: 1,
+      pushTotal: 0,
+      pushOk: 0,
+      pushFail: 0,
+    });
+  });
+
+  it("3通・演出なし: Reply API 1回で3件送る / Push を呼ばない", async () => {
     setupFetch();
     await replyWithLagToLine("rt", texts(3), "U1", "tok");
+
     expect(replies()).toHaveLength(1);
     expect(replies()[0].count).toBe(3);
     expect(pushes()).toHaveLength(0);
-    expect(summary()).toMatchObject({ strategy: "reply_all", replyTotal: 3, pushTotal: 0, pushFail: 0 });
+    expect(summary()).toMatchObject({
+      strategy: "reply_all",
+      reason: "no_timing_effect",
+      replyTotal: 3,
+      pushTotal: 0,
+      pushFail: 0,
+    });
   });
 
-  it("4通: Reply API 1回で4件送る（見せてほしい分岐相当）", async () => {
-    setupFetch();
-    await replyWithLagToLine("rt", texts(4), "U1", "tok");
-    expect(replies()).toHaveLength(1);
-    expect(replies()[0].count).toBe(4);
-    expect(pushes()).toHaveLength(0);
-    expect(summary()).toMatchObject({ strategy: "reply_all", replyTotal: 4, pushTotal: 0 });
-  });
-
-  it("5通: Reply API 1回で5件送る（境界）", async () => {
+  it("5通・演出なし: 境界でもReply一括 / Push を呼ばない", async () => {
     setupFetch();
     await replyWithLagToLine("rt", texts(5), "U1", "tok");
+
     expect(replies()).toHaveLength(1);
     expect(replies()[0].count).toBe(5);
     expect(pushes()).toHaveLength(0);
-    expect(summary()).toMatchObject({ strategy: "reply_all", replyTotal: 5, pushTotal: 0 });
+    expect(summary()).toMatchObject({
+      strategy: "reply_all",
+      reason: "no_timing_effect",
+      replyTotal: 5,
+      pushTotal: 0,
+    });
   });
 
-  it("6通: Reply API で先頭5件 + Push API で1件（fallback）", async () => {
+  it("3通・2通目以降にlag演出あり: 1通目Reply + 2通目以降Push", async () => {
     setupFetch();
-    await replyWithLagToLine("rt", texts(6, 1), "U1", "tok");
+    await replyWithLagToLine("rt", textsWithSecondLag(3), "U1", "tok");
+
+    expect(replies()).toHaveLength(1);
+    expect(replies()[0].count).toBe(1);
+    expect(pushes()).toHaveLength(2);
+    expect(pushes().map((p) => p.count)).toEqual([1, 1]);
+    expect(summary()).toMatchObject({
+      strategy: "reply_first_push_rest",
+      reason: "preserve_message_order_and_timing",
+      replyTotal: 1,
+      pushTotal: 2,
+      pushOk: 2,
+      pushFail: 0,
+    });
+  });
+
+  it("5通・2通目以降にloading演出あり: 1通目Reply + 4件Push", async () => {
+    setupFetch();
+    await replyWithLagToLine("rt", textsWithSecondLoading(5), "U1", "tok");
+
+    expect(replies()).toHaveLength(1);
+    expect(replies()[0].count).toBe(1);
+    expect(pushes()).toHaveLength(4);
+    expect(summary()).toMatchObject({
+      strategy: "reply_first_push_rest",
+      reason: "preserve_message_order_and_timing",
+      replyTotal: 1,
+      pushTotal: 4,
+      pushOk: 4,
+      pushFail: 0,
+    });
+  });
+
+  it("6通・演出なし: 先頭5件Reply + 6件目以降Push", async () => {
+    setupFetch();
+    await replyWithLagToLine("rt", texts(6), "U1", "tok");
+
     expect(replies()).toHaveLength(1);
     expect(replies()[0].count).toBe(5);
     expect(pushes()).toHaveLength(1);
     expect(pushes()[0].count).toBe(1);
     expect(summary()).toMatchObject({
-      strategy: "reply_first_5_push_rest", replyTotal: 5, pushTotal: 1, pushOk: 1, pushFail: 0,
+      strategy: "reply_first_5_push_rest",
+      reason: "line_reply_limit_5",
+      replyTotal: 5,
+      pushTotal: 1,
+      pushOk: 1,
+      pushFail: 0,
     });
   });
 
-  it("Push月間上限超過(429)でも、5件以内は Push を呼ばず Reply のみで届く", async () => {
-    setupFetch(429); // push は失敗する設定だが…
-    await replyWithLagToLine("rt", texts(3), "U1", "tok");
+  it("6通・2通目以降に演出あり: 1通目Reply + 残りPushに切り替える", async () => {
+    setupFetch();
+    await replyWithLagToLine("rt", textsWithSecondLag(6), "U1", "tok");
+
     expect(replies()).toHaveLength(1);
-    expect(replies()[0].count).toBe(3);
-    expect(pushes()).toHaveLength(0); // reply_all なので push は一切呼ばれない
-    expect(summary()).toMatchObject({ strategy: "reply_all", pushTotal: 0, pushFail: 0 });
+    expect(replies()[0].count).toBe(1);
+    expect(pushes()).toHaveLength(5);
+    expect(pushes().every((p) => p.count === 1)).toBe(true);
+    expect(summary()).toMatchObject({
+      strategy: "reply_first_push_rest",
+      reason: "preserve_message_order_and_timing",
+      replyTotal: 1,
+      pushTotal: 5,
+      pushOk: 5,
+      pushFail: 0,
+    });
   });
 
-  it("6通で Push 失敗(429)時、summary に pushFail と failures が記録される", async () => {
+  it("Push月間上限超過(429)時、2通目以降の失敗をsummaryに記録する", async () => {
     setupFetch(429);
-    await replyWithLagToLine("rt", texts(6, 1), "U1", "tok");
-    expect(replies()[0].count).toBe(5);
-    expect(pushes()).toHaveLength(1);
-    const s = summary();
-    expect(s).toMatchObject({ strategy: "reply_first_5_push_rest", pushTotal: 1, pushOk: 0, pushFail: 1 });
-    expect((s?.failures as unknown[])).toHaveLength(1);
-    expect((s?.failures as { status: number }[])[0].status).toBe(429);
-  });
+    await replyWithLagToLine("rt", textsWithSecondLag(3), "U1", "tok");
 
-  // ── まとめ送信廃止方針 Phase 1: 意図しない Push 化を防ぐ回帰テスト ──
-  // 演出（_lagMs / _timing）ありのチェーンでも、5件以内なら自動で Push 化せず Reply 一括のまま。
-  // （per-message 自動 Push 戦略には切り替えない＝LINE 月間通数を勝手に消費しない）
-  it("演出(_lagMs)ありでも5件以内は自動 Push されず Reply 一括のまま（Push API を呼ばない）", async () => {
-    setupFetch();
-    await replyWithLagToLine("rt", texts(3, 5000), "U1", "tok"); // 全件 _lagMs=5000（2通目以降に演出あり）
     expect(replies()).toHaveLength(1);
-    expect(replies()[0].count).toBe(3);   // 3件まとめて Reply
-    expect(pushes()).toHaveLength(0);     // Push API は一切呼ばれない
-    const s = summary();
-    expect(s).toMatchObject({ strategy: "reply_all", replyTotal: 3, pushTotal: 0, pushFail: 0 });
-    expect(s?.strategy).not.toBe("reply_head_push_rest_timed"); // per-message 自動 Push 戦略に切り替わらない
-  });
+    expect(replies()[0].count).toBe(1);
+    expect(pushes()).toHaveLength(2);
 
-  it("演出ありちょうど5件でも自動 Push されない（境界・意図しない Push 化防止）", async () => {
-    setupFetch();
-    await replyWithLagToLine("rt", texts(5, 5000), "U1", "tok");
-    expect(replies()).toHaveLength(1);
-    expect(replies()[0].count).toBe(5);
-    expect(pushes()).toHaveLength(0);
-    expect(summary()).toMatchObject({ strategy: "reply_all", pushTotal: 0 });
+    const s = summary();
+    expect(s).toMatchObject({
+      strategy: "reply_first_push_rest",
+      replyTotal: 1,
+      pushTotal: 2,
+      pushOk: 0,
+      pushFail: 2,
+    });
+    expect((s?.failures as unknown[])).toHaveLength(2);
+    expect((s?.failures as { idx: number; status: number }[])[0]).toMatchObject({
+      idx: 2,
+      status: 429,
+    });
   });
 });

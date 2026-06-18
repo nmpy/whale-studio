@@ -211,12 +211,30 @@ export function resolveMessageTimingConfig(
 // ────────────────────────────────────────────────
 
 /**
+ * LINE Loading Animation API が受け付ける loadingSeconds に丸める。
+ *
+ * LINE 仕様:
+ *   - 値は 5 の倍数（5, 10, 15, …, 60）のみ有効
+ *   - 最小 5 / 最大 60
+ *
+ * 丸めルール:
+ *   - 5 の倍数へ「切り上げ」（1〜4 → 5 / 6〜10 → 10 / 11〜15 → 15 …）
+ *   - 5〜60 にクランプ（60 超 → 60）
+ *   - 未設定 / NaN / Infinity / 非数値 → 5（安全側）
+ */
+export function normalizeLoadingSeconds(seconds: number | null | undefined): number {
+  if (seconds == null || !Number.isFinite(seconds)) return 5;
+  const stepped = Math.ceil(seconds / 5) * 5;
+  return Math.max(5, Math.min(60, stepped));
+}
+
+/**
  * 経過時間を元にローディングアニメーションの秒数を算出する。
  *
  * 考え方:
  *   - 既に elapsed ms 経過しているため、残り待ち時間の見込みから自然な秒数を決める
  *   - min / max の範囲にクランプ
- *   - LINE API は 5〜60 秒のみ受け付ける
+ *   - LINE API は 5〜60 秒・5 刻みのみ受け付ける（normalizeLoadingSeconds で丸める）
  */
 export function computeLoadingSeconds(
   elapsedMs: number,
@@ -226,8 +244,8 @@ export function computeLoadingSeconds(
   // 基本: 経過時間の 1.5 倍の残りを見込む（ヒューリスティック）
   const estimatedRemainingSec = Math.ceil((elapsedMs * 1.5) / 1000);
   const clamped = Math.max(minSeconds, Math.min(maxSeconds, estimatedRemainingSec));
-  // LINE API 制約: 5〜60
-  return Math.max(5, Math.min(60, clamped));
+  // LINE API 制約: 5〜60 / 5 刻みへ丸める
+  return normalizeLoadingSeconds(clamped);
 }
 
 // ────────────────────────────────────────────────
@@ -259,11 +277,42 @@ export async function markAsRead(
   }
 }
 
+/** userId を安全にマスクする（全文・PII を出さない。先頭 8 文字 + 長さのみ）。 */
+function maskUserId(userId: string | null | undefined): string {
+  if (!userId) return "(none)";
+  return `${userId.slice(0, 8)}…(${userId.length})`;
+}
+
+/** ローディング失敗ログに付与する任意のコンテキスト（PII・トークンは含めない）。 */
+export type LoadingLogContext = {
+  oaId?:      string | null;
+  workId?:    string | null;
+  messageId?: string | null;
+};
+
+/**
+ * LINE Loading Animation を表示する。
+ *
+ * - loadingSeconds は normalizeLoadingSeconds で LINE 有効値（5〜60・5刻み）へ丸める。
+ * - 失敗してもメッセージ送信は止めない（呼び出し側は戻り値 false を無視してよい）。
+ *   ただし切り分け用に **warning** で構造化ログを残す（PII・本文・トークンは出さない）。
+ */
 export async function showLoadingAnimation(
   chatId: string,
   loadingSeconds: number,
   channelAccessToken: string,
+  logContext?: LoadingLogContext,
 ): Promise<boolean> {
+  const requestedSeconds  = loadingSeconds;
+  const normalizedSeconds = normalizeLoadingSeconds(loadingSeconds);
+  const baseLog = {
+    oaId:              logContext?.oaId ?? null,
+    workId:            logContext?.workId ?? null,
+    messageId:         logContext?.messageId ?? null,
+    userIdMasked:      maskUserId(chatId),
+    requestedSeconds,
+    normalizedSeconds,
+  };
   try {
     const res = await fetch(LINE_LOADING_START_URL, {
       method: "POST",
@@ -273,17 +322,27 @@ export async function showLoadingAnimation(
       },
       body: JSON.stringify({
         chatId,
-        loadingSeconds: Math.max(5, Math.min(60, loadingSeconds)),
+        loadingSeconds: normalizedSeconds,
       }),
     });
     if (!res.ok) {
       const body = await res.text().catch(() => "(読み取り不能)");
-      console.error(`[showLoadingAnimation] HTTP ${res.status}: ${body}`);
+      // 送信は止めない。warning で可視化（body は安全な範囲に切り詰める）。
+      console.warn("[line:loading:failed]", JSON.stringify({
+        ...baseLog,
+        status: res.status,
+        body:   body.slice(0, 300),
+      }));
       return false;
     }
     return true;
   } catch (err) {
-    console.error("[showLoadingAnimation] ネットワークエラー:", err);
+    console.warn("[line:loading:failed]", JSON.stringify({
+      ...baseLog,
+      status:       null,
+      errorName:    err instanceof Error ? err.name : "Unknown",
+      errorMessage: err instanceof Error ? err.message : String(err),
+    }));
     return false;
   }
 }
@@ -312,6 +371,9 @@ export class ReadReceiptController {
   private readonly userId: string;
   private readonly channelAccessToken: string;
   private readonly isOneOnOne: boolean;
+  // ローディング失敗ログ用の任意コンテキスト（PII・トークンは含めない）。
+  private readonly oaId: string | null;
+  private readonly workId: string | null;
 
   // 演出設定（メッセージ単位のみ。作品単位の参照は廃止 = 継承モード撤廃）
   private resolvedTiming: ResolvedTimingConfig | null = null;
@@ -341,6 +403,9 @@ export class ReadReceiptController {
     isOneOnOne: boolean;
     config?: Partial<ReadReceiptConfig>;
     receivedAt?: number;
+    /** ローディング失敗ログ用（任意）。 */
+    oaId?: string | null;
+    workId?: string | null;
   }) {
     this.config = getConfig(opts.config);
     this.markAsReadToken = opts.markAsReadToken;
@@ -348,6 +413,8 @@ export class ReadReceiptController {
     this.channelAccessToken = opts.channelAccessToken;
     this.isOneOnOne = opts.isOneOnOne;
     this.receivedAt = opts.receivedAt ?? Date.now();
+    this.oaId = opts.oaId ?? null;
+    this.workId = opts.workId ?? null;
   }
 
   /**
@@ -529,9 +596,24 @@ export class ReadReceiptController {
    * 後発の呼び出しが loading の duration を更新する (= 再表示開始扱い)。
    * よって msg1 の loading が表示中でも msg2 で呼ぶことで refresh を試みる。
    */
-  async showLoadingForMessage(msgConfig: MessageTimingConfig | null | undefined): Promise<void> {
+  async showLoadingForMessage(
+    msgConfig: MessageTimingConfig | null | undefined,
+    logMeta?: { messageId?: string | null },
+  ): Promise<void> {
     if (!msgConfig?.loading_enabled) return;
     if (!this.isOneOnOne) return;
+
+    // 入力中設定があるのに userId が取れない場合は表示できない。warning で可視化する
+    // (= 全文 userId・トークンは出さない)。送信自体は呼び出し側で継続される。
+    if (!this.userId) {
+      console.warn("[line:loading:skipped]", JSON.stringify({
+        reason:    "missing_user_id",
+        oaId:      this.oaId,
+        workId:    this.workId,
+        messageId: logMeta?.messageId ?? null,
+      }));
+      return;
+    }
 
     // loadingShown guard を意図的にスキップ。LINE API への重複呼び出しは
     // best-effort で許容する (= 「入力中...」表示の per-message refresh を試みる)。
@@ -541,7 +623,11 @@ export class ReadReceiptController {
     this.loadingShown = true;  // 統計用 (= legacy scheduleLoading の二重発火は防止)
     this.loadingStartedAt = Date.now();
     this.loadingSecondsComputed = seconds;
-    await showLoadingAnimation(this.userId, seconds, this.channelAccessToken);
+    await showLoadingAnimation(this.userId, seconds, this.channelAccessToken, {
+      oaId:      this.oaId,
+      workId:    this.workId,
+      messageId: logMeta?.messageId ?? null,
+    });
   }
 
   /** @deprecated checkAndShowLoading を使う代わりに scheduleLoading を推奨 */
@@ -565,7 +651,10 @@ export class ReadReceiptController {
     const seconds = computeLoadingSeconds(elapsed, resolved.loadingMinSeconds, resolved.loadingMaxSeconds);
     this.loadingSecondsComputed = seconds;
 
-    await showLoadingAnimation(this.userId, seconds, this.channelAccessToken);
+    await showLoadingAnimation(this.userId, seconds, this.channelAccessToken, {
+      oaId:   this.oaId,
+      workId: this.workId,
+    });
   }
 
   // ── タイミングログ ──
