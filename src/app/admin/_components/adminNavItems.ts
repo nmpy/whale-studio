@@ -31,7 +31,8 @@ export type AdminNavItem = {
 
 export const ADMIN_NAV_ITEMS: readonly AdminNavItem[] = [
   // ── 全管理ユーザー（platform admin / workspace owner）に表示 ──
-  { href: "/admin/oa-onboarding", label: "OA連携審査",        desc: "新規ユーザーの LINE 公式アカウント連携申請を承認 / 差し戻し", color: "#06C755", platformOnly: false },
+  { href: "/admin/oa-onboarding",  label: "OA連携審査",        desc: "新規ユーザーの LINE 公式アカウント連携申請を承認 / 差し戻し", color: "#06C755", platformOnly: false },
+  { href: "/admin/studio-invites", label: "招待URL発行",       desc: "利用区分・プラン権限・ロールを指定して招待URLを発行（有効期限7日）",   color: "#0d9488", platformOnly: false },
   { href: "/admin/announcements", label: "お知らせ管理",      desc: "ユーザーへのお知らせの作成・公開・非公開を管理",            color: "#2563eb", platformOnly: false },
   { href: "/admin/audience",      label: "ユーザー概況",      desc: "登録ユーザーの概況・推移を確認",                          color: "#0ea5e9", platformOnly: false },
   { href: "/admin/onboarding",    label: "オンボーディング分析", desc: "オンボーディングの進捗・離脱を分析",                     color: "#14b8a6", platformOnly: false },
