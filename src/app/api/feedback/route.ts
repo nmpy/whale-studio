@@ -57,9 +57,16 @@ async function resolveSenderName(
 const USER_MSG_DEST_UNSET = "送信先の設定がまだ完了していません。管理者に連絡してください。";
 const USER_MSG_SEND_FAILED = "送信に失敗しました。しばらく後にもう一度お試しください。";
 
+// 通常フィードバックの入力上限（FeedbackModal の制限と一致）。
+// 法人相談（enterprise）は長文可のため content 制限の対象外。
+const TITLE_MAX_LEN   = 50;
+const CONTENT_MAX_LEN = 100;
+
 // フロントから受け取る入力型（自動付与フィールドは除く）
 interface FeedbackInput {
   content:    string;
+  /** 通常フィードバックのタイトル（必須・最大 50 字）。旧「カテゴリ」を置き換える。 */
+  title:      string;
   category:   string;
   page_name:  string;
   page_url:   string;
@@ -85,12 +92,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, error: "content は必須です" }, { status: 400 });
     }
 
-    // "enterprise" は /pricing の「法人プランに申し込む」CTA からの送信に使う。
-    // 受け取った場合は専用 Slack チャネル (= ENTERPRISE_PLAN_SLACK_WEBHOOK_URL) に通知する。
-    const validCategories = ["bug", "ux", "feature", "other", "enterprise"];
-    const category = validCategories.includes(body.category ?? "")
-      ? body.category!
-      : "other";
+    // カテゴリは廃止（通常フィードバックは title を使う）。
+    // ただし "enterprise" だけは /pricing の「法人プランに申し込む」CTA の振り分けに必要なため残す。
+    // 通常フィードバックは category="" とし、表示・集計は title 側で行う。
+    const category = body.category === "enterprise" ? "enterprise" : "";
+
+    // 通常フィードバックの content は server 側でも 100 字制限を担保する（API 直叩き対策）。
+    // UI では 100 字以上入力できないため通常操作では発生しない。法人相談（enterprise）は対象外。
+    if (category !== "enterprise" && body.content.trim().length > CONTENT_MAX_LEN) {
+      console.warn(`[POST /api/feedback] [${requestId}] ❌ バリデーション失敗: content 100字超過`);
+      return NextResponse.json(
+        { ok: false, error: "フィードバック内容は100文字以内で入力してください。" },
+        { status: 400 }
+      );
+    }
 
     // ── 送信者の解決（サーバー側 / client 入力は信用しない）────────────────────
     // 認証済みなら Supabase Auth user を取得し、Profile から username を解決する。
@@ -118,6 +133,8 @@ export async function POST(req: NextRequest) {
       work_name:   body.work_name  ?? null,
       hoped_plan:  body.hoped_plan ?? null,
       category,
+      // タイトル（旧カテゴリの置き換え）。最大 50 字に丸めて保持する。
+      title:       (body.title ?? "").trim().slice(0, TITLE_MAX_LEN),
       content:     body.content.trim(),
       status:      "未対応",
       memo:        "",
@@ -210,7 +227,7 @@ export async function POST(req: NextRequest) {
       try {
         await notifyFeedbackSubmitted({
           id:        payload.id,
-          category:  payload.category,
+          title:     payload.title || null,
           content:   payload.content,
           userId,
           userName:  payload.user_name  || null,

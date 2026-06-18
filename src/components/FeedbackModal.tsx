@@ -64,15 +64,10 @@ function getPageName(pathname: string): string {
   return pathname;
 }
 
-// ── カテゴリ定義（通常モードのみ使用） ─────────────────────────────────────
-const CATEGORIES = [
-  { value: "bug",     label: "🐛 バグ報告" },
-  { value: "ux",      label: "😓 使いにくさ" },
-  { value: "feature", label: "欲しい機能" },
-  { value: "other",   label: "その他" },
-] as const;
-
-type CategoryValue = typeof CATEGORIES[number]["value"];
+// 通常フィードバックの「タイトル」最大文字数 / 「内容」最大文字数。
+// 法人相談（pricing mode）は別仕様（content は長文可）なので分けて扱う。
+const TITLE_MAX_LEN   = 50;
+const CONTENT_MAX_LEN = 100;
 
 // ── モーダル共通ラッパー (= 必ず top-level で宣言する) ──────────────────
 // **注意**: 以前 FeedbackModal の内部関数として定義していたが、レンダリングごとに
@@ -158,7 +153,8 @@ export default function FeedbackModal({ pathname, onClose, pricingSource, hopedP
   const isPricingMode = pathname === "/pricing" || pricingSource != null;
 
   const [content,    setContent]    = useState(isPricingMode ? PRICING_TEMPLATE : "");
-  const [category,   setCategory]   = useState<CategoryValue>("other");
+  // 通常フィードバックのタイトル（必須・最大 50 字）。旧「カテゴリ」を置き換える。
+  const [title,      setTitle]      = useState("");
   // 希望プラン: 法人カード起点なら押されたプランを初期選択、それ以外は「未定」。
   const [selectedHopedPlan, setSelectedHopedPlan] = useState<string>(
     hopedPlan && (HOPED_PLAN_OPTIONS as readonly string[]).includes(hopedPlan)
@@ -223,10 +219,10 @@ export default function FeedbackModal({ pathname, onClose, pricingSource, hopedP
     if (submitted) { onClose(); return; }
 
     // pricing モード: テンプレートから変更があった場合のみ確認
-    // 通常モード  : 入力があれば確認
+    // 通常モード  : content か title のいずれかに入力があれば確認
     const shouldWarn = isPricingMode
       ? content !== PRICING_TEMPLATE && content.trim().length > 0
-      : content.trim().length > 0;
+      : content.trim().length > 0 || title.trim().length > 0;
 
     if (shouldWarn) {
       if (!confirm("入力内容が送信されていません。閉じてよいですか？")) return;
@@ -239,6 +235,10 @@ export default function FeedbackModal({ pathname, onClose, pricingSource, hopedP
       textareaRef.current?.focus();
       return;
     }
+    // 通常フィードバックはタイトル必須。
+    if (!isPricingMode && !title.trim()) {
+      return;
+    }
 
     setSubmitting(true);
     try {
@@ -248,9 +248,11 @@ export default function FeedbackModal({ pathname, onClose, pricingSource, hopedP
 
       const body = {
         content:    content.trim(),
+        // 通常フィードバックはタイトル必須（旧カテゴリの置き換え）。pricing は使わない。
+        title:      isPricingMode ? "" : title.trim(),
         // pricing mode (= 「法人プランに申し込む」CTA 経由) は専用カテゴリ "enterprise"
-        // に振り分け、API 側で専用 Slack チャネルに通知する。それ以外は従来通り。
-        category:   isPricingMode ? "enterprise" : category,
+        // に振り分け、API 側で専用 Slack チャネルに通知する。通常フィードバックはカテゴリ廃止 → "".
+        category:   isPricingMode ? "enterprise" : "",
         page_name:  getPageName(pathname),
         page_url:   pageUrl,
         // 送信者表示は API 側で Supabase Auth user → Profile.username から解決する。
@@ -322,7 +324,11 @@ export default function FeedbackModal({ pathname, onClose, pricingSource, hopedP
   }
 
   const pageName  = getPageName(pathname);
-  const canSubmit = content.trim().length > 0 && !submitting;
+  // 通常フィードバックは「タイトル」も必須。法人相談（pricing）は従来どおり content のみ。
+  const canSubmit =
+    !submitting &&
+    content.trim().length > 0 &&
+    (isPricingMode || title.trim().length > 0);
 
   // ── 送信完了画面（全モード共通） ─────────────────────────────────────────
   if (submitted) {
@@ -529,40 +535,51 @@ export default function FeedbackModal({ pathname, onClose, pricingSource, hopedP
           </div>
         )}
 
-        {/* 通常モード: カテゴリ選択 */}
+        {/* 通常モード: タイトル（必須・最大50字 / 旧カテゴリの置き換え） */}
         {!isPricingMode && (
           <div style={{ marginBottom: 16 }}>
-            <p style={{
-              fontSize: 12, fontWeight: 600, color: "#374151",
-              marginBottom: 8,
-            }}>
-              カテゴリ（任意）
+            <label
+              htmlFor="feedback-title"
+              style={{
+                display: "block", fontSize: 12, fontWeight: 600,
+                color: "#374151", marginBottom: 6,
+              }}
+            >
+              タイトル
+              <span style={{ color: "#ef4444", marginLeft: 4 }}>*</span>
+            </label>
+            <input
+              id="feedback-title"
+              type="text"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="例：作品名がSlack通知に表示されない"
+              maxLength={TITLE_MAX_LEN}
+              style={{
+                width: "100%",
+                padding: "9px 12px",
+                fontSize: 13,
+                border: "1.5px solid #e5e7eb",
+                borderRadius: 8,
+                outline: "none",
+                fontFamily: "inherit",
+                color: "#111827",
+                background: "#fafafa",
+                transition: "border-color 0.15s, background 0.15s",
+                boxSizing: "border-box",
+              }}
+              onFocus={(e) => {
+                e.target.style.borderColor = "#06C755";
+                e.target.style.background  = "#fff";
+              }}
+              onBlur={(e) => {
+                e.target.style.borderColor = "#e5e7eb";
+                e.target.style.background  = "#fafafa";
+              }}
+            />
+            <p style={{ fontSize: 11, color: "#9ca3af", marginTop: 4, textAlign: "right" }}>
+              {title.length} / {TITLE_MAX_LEN}
             </p>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              {CATEGORIES.map(({ value, label }) => {
-                const selected = category === value;
-                return (
-                  <button
-                    key={value}
-                    type="button"
-                    onClick={() => setCategory(value)}
-                    style={{
-                      padding: "5px 12px",
-                      borderRadius: 20,
-                      fontSize: 12,
-                      fontWeight: selected ? 700 : 400,
-                      cursor: "pointer",
-                      border: `1.5px solid ${selected ? "#06C755" : "#e5e7eb"}`,
-                      background: selected ? "#E6F7ED" : "#f9fafb",
-                      color: selected ? "#166534" : "#6b7280",
-                      transition: "all 0.15s",
-                    }}
-                  >
-                    {label}
-                  </button>
-                );
-              })}
-            </div>
           </div>
         )}
 
@@ -586,7 +603,7 @@ export default function FeedbackModal({ pathname, onClose, pricingSource, hopedP
             value={content}
             onChange={(e) => setContent(e.target.value)}
             placeholder={isPricingMode ? "" : "改善してほしい点、使いにくかった箇所、欲しい機能などを入力してください"}
-            maxLength={2000}
+            maxLength={isPricingMode ? 2000 : CONTENT_MAX_LEN}
             rows={isPricingMode ? (sp ? 7 : 10) : 5}
             style={{
               width: "100%",
@@ -613,7 +630,7 @@ export default function FeedbackModal({ pathname, onClose, pricingSource, hopedP
             }}
           />
           <p style={{ fontSize: 11, color: "#9ca3af", marginTop: 4, textAlign: "right" }}>
-            {content.length} / 2000
+            {content.length} / {isPricingMode ? 2000 : CONTENT_MAX_LEN}
           </p>
         </div>
 
