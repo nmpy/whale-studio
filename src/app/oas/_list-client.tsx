@@ -41,33 +41,23 @@ function MetaItem({ label, children }: { label: string; children: React.ReactNod
   );
 }
 
-/* ── 統計サマリー ────────────────────────────────────────────────────────── */
-function SummaryBar({ items, worksMap }: { items: OaListItem[]; worksMap: Record<string, WorkListItem[]> }) {
-  const activeCount  = items.filter((o) => o.publish_status === "active").length;
-  const totalWorks   = Object.values(worksMap).reduce((s, ws) => s + ws.length, 0);
-  const totalPlayers = Object.values(worksMap).reduce(
-    (s, ws) => s + ws.reduce((ss, w) => ss + (w.progress_stats?.total ?? 0), 0), 0,
-  );
-  const stats = [
-    { label: "アカウント数",   value: items.length.toString() },
-    { label: "公開中",         value: activeCount.toString() },
-    { label: "総作品数",       value: totalWorks.toString() },
-    { label: "総プレイヤー数", value: totalPlayers.toLocaleString() },
-  ];
-  return (
-    <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
-      {stats.map((s) => (
-        <div
-          key={s.label}
-          className="rounded-card border border-line bg-surface px-4 py-3.5 shadow-sm"
-        >
-          <div className="font-num text-[20px] font-extrabold leading-none text-ink">{s.value}</div>
-          <div className="mt-1 text-[11px] text-ink-3">{s.label}</div>
-        </div>
-      ))}
-    </div>
-  );
-}
+/* ── アカウント一覧の並び替え ──────────────────────────────────────────────
+ *  作品リスト（works/page.tsx）のソートUIに合わせる。アカウントが2件以上のときのみ表示。
+ *  ※ Oa には sort_order が無いため「表示順」は作成日時昇順（登録順）を採用する。 */
+type OaSortKey =
+  | "updated_at_desc"
+  | "title_asc"
+  | "works_desc"
+  | "players_desc"
+  | "display_order";
+
+const OA_SORT_OPTIONS: { value: OaSortKey; label: string }[] = [
+  { value: "updated_at_desc", label: "最終更新が新しい順"    },
+  { value: "title_asc",       label: "タイトル順"            },
+  { value: "works_desc",      label: "作品数が多い順"        },
+  { value: "players_desc",    label: "プレイヤー数が多い順"  },
+  { value: "display_order",   label: "表示順"                },
+];
 
 /* ── 作品名セル ──────────────────────────────────────────────────────────── */
 function WorksCell({
@@ -168,6 +158,7 @@ export function OaListClient() {
   const [error,        setError]        = useState<string | null>(null);
   const [page,         setPage]         = useState(1);
   const [worksMap,     setWorksMap]     = useState<Record<string, WorkListItem[]>>({});
+  const [sortKey,      setSortKey]      = useState<OaSortKey>("updated_at_desc");
   const { showToast }           = useToast();
   const { isPlatformOwner, previewViewRole, setPreviewViewRole } = usePlatformRole();
 
@@ -253,6 +244,35 @@ export function OaListClient() {
     return (worksMap[oaId] ?? []).reduce((sum, w) => sum + (w.progress_stats?.total ?? 0), 0);
   }
 
+  // アカウント一覧の並び替え（既定: 最終更新が新しい順）。同値時は updated_at desc で安定化。
+  function oaSortFn(a: OaListItem, b: OaListItem): number {
+    const byUpdated = new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
+    switch (sortKey) {
+      case "updated_at_desc":
+        return byUpdated;
+      case "title_asc": {
+        const cmp = a.title.localeCompare(b.title, "ja");
+        return cmp !== 0 ? cmp : byUpdated;
+      }
+      case "works_desc": {
+        const cmp = (b._count?.works ?? 0) - (a._count?.works ?? 0);
+        return cmp !== 0 ? cmp : byUpdated;
+      }
+      case "players_desc": {
+        const cmp = totalPlayers(b.id) - totalPlayers(a.id);
+        return cmp !== 0 ? cmp : byUpdated;
+      }
+      case "display_order": {
+        // Oa に sort_order が無いため、登録順（作成日時 昇順）を「表示順」とする。
+        const cmp = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+        return cmp !== 0 ? cmp : byUpdated;
+      }
+      default:
+        return byUpdated;
+    }
+  }
+  const sortedItems = [...items].sort(oaSortFn);
+
   return (
     <>
       {/* ── 表示確認モード (= platform owner 限定 / UI 表示専用) ── */}
@@ -279,13 +299,33 @@ export function OaListClient() {
         <AnnouncementBanner canPost={actAsOwner} />
       </div>
 
-      {/* ── アカウント一覧セクション見出し (= お知らせと同階層スタイル) ── */}
-      <h3
-        className="mb-3 text-[13px] font-bold tracking-[0.02em] text-ink"
-        style={{ margin: "0 0 12px" }}
-      >
-        アカウント一覧
-      </h3>
+      {/* ── アカウント一覧セクション見出し + 並び替え (= お知らせと同階層スタイル) ── */}
+      <div className="mb-3 flex items-center justify-between gap-3" style={{ margin: "0 0 12px" }}>
+        <h3 className="text-[13px] font-bold tracking-[0.02em] text-ink">
+          アカウント一覧
+        </h3>
+        {/* 並び替えセレクト — アカウントが2件以上のときのみ（作品リストと同様） */}
+        {!loading && items.length > 1 && (
+          <div className="flex flex-shrink-0 items-center gap-1.5">
+            <label
+              htmlFor="oas-sort-select"
+              className="select-none whitespace-nowrap text-[11px] text-ink-3"
+            >
+              並び替え:
+            </label>
+            <select
+              id="oas-sort-select"
+              value={sortKey}
+              onChange={(e) => setSortKey(e.target.value as OaSortKey)}
+              className="cursor-pointer rounded-field border border-line bg-surface px-2.5 py-1 text-[12px] text-ink sm:max-w-[200px]"
+            >
+              {OA_SORT_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </div>
+        )}
+      </div>
 
       {/* ── エラー ── */}
       {error && (
@@ -302,11 +342,6 @@ export function OaListClient() {
             再読み込み
           </button>
         </div>
-      )}
-
-      {/* ── 統計サマリー ── */}
-      {!loading && !worksLoading && items.length > 0 && (
-        <SummaryBar items={items} worksMap={worksMap} />
       )}
 
       {/* ── 一覧 / スケルトン / 空 ── */}
@@ -351,7 +386,7 @@ export function OaListClient() {
       ) : (
         <>
           <div className="flex flex-col gap-3">
-            {items.map((oa) => {
+            {sortedItems.map((oa) => {
               const players  = totalPlayers(oa.id);
               const hasRole  = oa.my_role && oa.my_role !== "none";
               const isOwner  = oa.my_role === "owner" && actAsOwner;
