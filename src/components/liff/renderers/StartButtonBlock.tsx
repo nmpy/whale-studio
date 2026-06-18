@@ -4,9 +4,10 @@ import { useState } from "react";
 import type { StartButtonSettings } from "@/types";
 import { recordLiffEvent } from "@/lib/liff-events";
 import { useLiffPlayerContext } from "@/components/liff/LiffPlayerContext";
-import { LiffButton } from "@/components/liff/primitives";
+import { LiffButton, normalizeLiffButtonVariant } from "@/components/liff/primitives";
 
-// 謎解き開始ボタン。LiffButton (variant=primary) を使う。
+// 謎解き開始ボタン。LiffButton (既定 variant=primary) を使う。
+// settings.button_variant があればそれを優先し、未設定/不正値は primary にフォールバック。
 // Primary CTA としての見た目 (LINE Primary Green / 48px / 角丸 10px) は LiffButton に集約済み。
 export function StartButtonBlock({
   settings,
@@ -45,7 +46,7 @@ export function StartButtonBlock({
 
   return (
     <LiffButton
-      variant="primary"
+      variant={normalizeLiffButtonVariant(settings.button_variant, "primary")}
       onClick={handleClick}
       loading={loading}
       loadingLabel="処理中..."

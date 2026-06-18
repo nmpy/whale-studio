@@ -4,9 +4,10 @@ import { useState } from "react";
 import type { ResumeButtonSettings } from "@/types";
 import { recordLiffEvent } from "@/lib/liff-events";
 import { useLiffPlayerContext } from "@/components/liff/LiffPlayerContext";
-import { LiffButton } from "@/components/liff/primitives";
+import { LiffButton, normalizeLiffButtonVariant } from "@/components/liff/primitives";
 
-// 再開ボタン。LiffButton (variant=outline) を使う。
+// 再開ボタン。LiffButton (既定 variant=outline) を使う。
+// settings.button_variant があればそれを優先し、未設定/不正値は outline にフォールバック。
 // 再開は破壊的でも主要 CTA でもないため Primary Green とは視覚優先度を変える。
 export function ResumeButtonBlock({
   settings,
@@ -43,7 +44,7 @@ export function ResumeButtonBlock({
 
   return (
     <LiffButton
-      variant="outline"
+      variant={normalizeLiffButtonVariant(settings.button_variant, "outline")}
       onClick={handleClick}
       loading={loading}
       loadingLabel="処理中..."

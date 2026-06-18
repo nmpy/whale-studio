@@ -1334,14 +1334,22 @@ export interface FreeTextSettings {
   emphasis?: "normal" | "strong";
 }
 
+/** ブロック用ボタンデザイン。`LIFF_BUTTON_VARIANTS`（primitives/LiffButton）と揃える。
+ *  未設定は各ブロックの既定 variant を維持する。 */
+export type LiffBlockButtonVariant = "primary" | "outline" | "ghost" | "dark" | "danger";
+
 export interface StartButtonSettings {
   label?: string;
   confirm_message?: string;
   api_action?: string;
+  /** ボタンデザイン。未設定は既定 "primary"。 */
+  button_variant?: LiffBlockButtonVariant;
 }
 
 export interface ResumeButtonSettings {
   label?: string;
+  /** ボタンデザイン。未設定は既定 "outline"。 */
+  button_variant?: LiffBlockButtonVariant;
 }
 
 export interface ProgressSettings {
@@ -1421,6 +1429,9 @@ export interface ButtonLinkSettings {
   /** 外部リンクとして開くか（LIFF外で開く） */
   open_external?: boolean;
   variant?: LiffSectionVariant;
+  /** ボタンデザイン。設定時は legacy `variant` より優先して LiffButton variant を適用。
+   *  未設定は従来の `variant`(default/dark/purple) に従う。 */
+  button_variant?: LiffBlockButtonVariant;
   /** 遷移先タイプ。未指定（既存データ）は "external" として扱う（後方互換）。 */
   link_type?: "external" | "liff_page" | "location";
   /** link_type="liff_page" のとき選択された LIFF ページの ID（参照保持・再表示用）。 */

@@ -30,6 +30,7 @@ import { ImageUploadField } from "./ImageUploadField";
 import { MediaUploadButton } from "@/components/MediaUploadButton";
 import { useLiffEditorData } from "./LiffEditorContext";
 import { buildLiffPageUrl, buildLocationCheckinUrl } from "@/lib/liff/public-urls";
+import { LIFF_BUTTON_VARIANTS, type LiffButtonVariant } from "@/components/liff/primitives";
 
 type FieldProps<T> = {
   settings: T;
@@ -42,6 +43,44 @@ const inputClass =
 const labelClass = "block text-xs font-medium text-gray-600 mb-1";
 const selectClass =
   "w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 disabled:bg-gray-50";
+
+// ボタンデザイン（LiffButton variant）の日本語ラベル。選択肢は LIFF_BUTTON_VARIANTS を真実源に生成する。
+const BUTTON_VARIANT_LABELS: Record<LiffButtonVariant, string> = {
+  primary: "標準",
+  outline: "アウトライン",
+  ghost:   "控えめ",
+  dark:    "ダーク",
+  danger:  "注意",
+};
+
+/** ブロック用ボタンデザイン選択フィールド（3ボタンブロック共通）。
+ *  値は LIFF_BUTTON_VARIANTS、空文字 = 未設定（既定 variant 維持）。 */
+function ButtonVariantField({
+  value, onChange, readOnly, hint,
+}: {
+  value: string | undefined;
+  onChange: (v: LiffButtonVariant | undefined) => void;
+  readOnly?: boolean;
+  hint?: string;
+}) {
+  return (
+    <div>
+      <label className={labelClass}>ボタンデザイン</label>
+      <select
+        className={selectClass}
+        value={value ?? ""}
+        onChange={(e) => onChange((e.target.value || undefined) as LiffButtonVariant | undefined)}
+        disabled={readOnly}
+      >
+        <option value="">デフォルト（未設定）</option>
+        {LIFF_BUTTON_VARIANTS.map((v) => (
+          <option key={v} value={v}>{BUTTON_VARIANT_LABELS[v]}</option>
+        ))}
+      </select>
+      {hint && <p className="text-[11px] text-gray-400 mt-1">{hint}</p>}
+    </div>
+  );
+}
 
 export function FreeTextForm({ settings, onChange, readOnly }: FieldProps<FreeTextSettings>) {
   return (
@@ -110,6 +149,12 @@ export function StartButtonForm({ settings, onChange, readOnly }: FieldProps<Sta
           placeholder="本当に開始しますか？"
         />
       </div>
+      <ButtonVariantField
+        value={settings.button_variant}
+        onChange={(v) => onChange({ ...settings, button_variant: v })}
+        readOnly={readOnly}
+        hint="未設定は標準デザイン（緑の塗り）です。"
+      />
     </div>
   );
 }
@@ -127,6 +172,12 @@ export function ResumeButtonForm({ settings, onChange, readOnly }: FieldProps<Re
           placeholder="途中から再開する"
         />
       </div>
+      <ButtonVariantField
+        value={settings.button_variant}
+        onChange={(v) => onChange({ ...settings, button_variant: v })}
+        readOnly={readOnly}
+        hint="未設定はアウトライン（緑の枠線）です。"
+      />
     </div>
   );
 }
@@ -664,6 +715,13 @@ export function ButtonLinkForm({ settings, onChange, readOnly }: FieldProps<Butt
           外部ブラウザで開く
         </label>
       </div>
+
+      <ButtonVariantField
+        value={settings.button_variant}
+        onChange={(v) => onChange({ ...settings, button_variant: v })}
+        readOnly={readOnly}
+        hint="設定すると上の variant より優先されます。未設定は従来の variant 設定に従います。"
+      />
     </div>
   );
 }

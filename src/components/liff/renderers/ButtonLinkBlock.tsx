@@ -4,7 +4,7 @@ import type { ButtonLinkSettings, LiffSectionVariant } from "@/types";
 import { trackHintSiteEvent } from "@/lib/liff-analytics";
 import { recordLiffEvent } from "@/lib/liff-events";
 import { useLiffPlayerContext } from "@/components/liff/LiffPlayerContext";
-import { LiffButton, type LiffButtonVariant } from "@/components/liff/primitives";
+import { LiffButton, normalizeLiffButtonVariant, type LiffButtonVariant } from "@/components/liff/primitives";
 
 interface Props {
   settings: ButtonLinkSettings;
@@ -63,8 +63,8 @@ export function ButtonLinkBlock({ settings, blockId }: Props) {
     }
   };
 
-  // 旧 purple 互換パス
-  if (variant === "purple") {
+  // 旧 purple 互換パス。ただし button_variant が明示設定されている場合は新デザインを優先する。
+  if (variant === "purple" && !settings.button_variant) {
     return (
       <a
         href={settings.url}
@@ -78,7 +78,11 @@ export function ButtonLinkBlock({ settings, blockId }: Props) {
     );
   }
 
-  const liffVariant = VARIANT_MAP[variant] ?? "outline";
+  // button_variant が設定されていれば legacy variant(default/dark/purple) より優先する。
+  // 未設定は従来の VARIANT_MAP（default→outline / dark→dark）に従い、見た目を維持する。
+  const liffVariant = settings.button_variant
+    ? normalizeLiffButtonVariant(settings.button_variant, "outline")
+    : (VARIANT_MAP[variant] ?? "outline");
   return (
     <LiffButton
       as="a"
