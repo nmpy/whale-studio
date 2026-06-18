@@ -4,10 +4,11 @@
 // シナリオフロー — フェーズカード＋ツリー分岐表示
 // フェーズ追加・D&D並び替え・インライン軽編集を統合
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { TLink as Link } from "@/components/TLink";
 import { workApi, phaseApi, transitionApi, messageApi, getDevToken } from "@/lib/api-client";
+import { analyzePhaseTransitions } from "@/lib/phase-transitions";
 import type { QuickReplyItem, Message, UpdatePhaseBody } from "@/types";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { HelpAccordion } from "@/components/HelpAccordion";
@@ -516,30 +517,12 @@ function FlowTree({
   canEdit, isOwner, isAdmin,
 }: FlowTreeProps) {
   const phaseMap = Object.fromEntries(phases.map((p) => [p.id, p]));
+  // 各フェーズの「分岐ツリー」表示用に、明示 transition を from 別にまとめる（表示専用）。
+  // 「遷移なし」警告の到達性判定は analyzePhaseTransitions 側で横断的に行う。
   const fromMap: Record<string, TransitionWithPhases[]> = {};
   for (const t of transitions) {
     if (!fromMap[t.from_phase_id]) fromMap[t.from_phase_id] = [];
     fromMap[t.from_phase_id].push(t);
-  }
-  const toMap: Record<string, TransitionWithPhases[]> = {};
-  for (const t of transitions) {
-    if (!toMap[t.to_phase_id]) toMap[t.to_phase_id] = [];
-    toMap[t.to_phase_id].push(t);
-  }
-
-  // QR アイテムの target_phase_id による接続も「遷移あり」として考慮する
-  // kind="phase" の branch = QR タップで別フェーズへジャンプするケース
-  const qrFromSet = new Set<string>(); // QR 経由で他フェーズへ出ていく phaseId
-  const qrToSet   = new Set<string>(); // QR 経由で来られる phaseId
-  for (const [phaseId, entries] of Object.entries(msgQrData)) {
-    for (const entry of entries) {
-      for (const branch of entry.branches) {
-        if (branch.kind === "phase") {
-          qrFromSet.add(phaseId);
-          qrToSet.add(branch.phaseId);
-        }
-      }
-    }
   }
 
   const sorted = [...phases].sort((a, b) => a.sort_order - b.sort_order);
@@ -660,18 +643,21 @@ function FlowTree({
   }
 
   // ── 整合性チェック ──
+  // 遷移の到達性は、明示 transition だけでなく QR / 分岐 / 謎正解後 / 自由入力後 /
+  // 到着トリガーなど「フェーズに属する有効メッセージの導線」を横断して判定する。
+  // （旧実装は transition と QR の target_phase_id しか見ず、別フェーズのメッセージへ
+  //   ジャンプする QR/分岐や謎正解後フェーズを「遷移なし」と誤判定していた。）
+  const transitionAnalysis = useMemo(
+    () => analyzePhaseTransitions({ phases, transitions, messages: allMessages }),
+    [phases, transitions, allMessages],
+  );
   const startCount    = phases.filter((p) => p.phase_type === "start").length;
-  const deadEndPhases = phases.filter(
-    (p) => p.phase_type !== "ending"
-      && (fromMap[p.id] ?? []).length === 0
-      && !qrFromSet.has(p.id)   // QR 経由の遷移も考慮
-  );
-  const orphanPhases  = phases.filter(
-    (p) => p.phase_type !== "start"
-      && (toMap[p.id] ?? []).length === 0
-      && !qrToSet.has(p.id)     // QR 経由の遷移も考慮
-  );
-  const hasWarnings = startCount === 0 || deadEndPhases.length > 0 || orphanPhases.length > 0;
+  const deadEndPhases = phases.filter((p) => transitionAnalysis.deadEndPhaseIds.has(p.id));
+  const orphanPhases  = phases.filter((p) => transitionAnalysis.orphanPhaseIds.has(p.id));
+  // 存在しないフェーズを遷移先に参照しているフェーズ（壊れた遷移先）。
+  const invalidTargetPhases = phases.filter((p) => transitionAnalysis.invalidTargets.has(p.id));
+  const hasWarnings = startCount === 0 || deadEndPhases.length > 0
+    || orphanPhases.length > 0 || invalidTargetPhases.length > 0;
 
   // ── スタイル定数 ──
   const iconBtn: React.CSSProperties = {
@@ -699,17 +685,23 @@ function FlowTree({
             {deadEndPhases.map((p) => (
               <li key={p.id}>
                 <span style={{ fontWeight: 600 }}>「{p.name}」</span>
-                （{PHASE_TYPE_META[p.phase_type].label}）に遷移が設定されていません。
+                （{PHASE_TYPE_META[p.phase_type].label}）から次のフェーズへ進む導線がありません。
                 <Link href={`/oas/${oaId}/works/${workId}/phases/${p.id}`}
                   style={{ color: "#b45309", textDecoration: "underline", marginLeft: 6 }}>
-                  遷移を追加 →
+                  導線を追加 →
                 </Link>
               </li>
             ))}
             {orphanPhases.map((p) => (
               <li key={p.id}>
                 <span style={{ fontWeight: 600 }}>「{p.name}」</span>
-                （{PHASE_TYPE_META[p.phase_type].label}）へ向かう遷移がありません（孤立）。
+                （{PHASE_TYPE_META[p.phase_type].label}）へ向かう導線がありません（どのフェーズからも進めません）。
+              </li>
+            ))}
+            {invalidTargetPhases.map((p) => (
+              <li key={p.id}>
+                <span style={{ fontWeight: 600 }}>「{p.name}」</span>
+                （{PHASE_TYPE_META[p.phase_type].label}）の導線に、すでに削除された存在しないフェーズへの遷移先が含まれています。設定を見直してください。
               </li>
             ))}
           </ul>
@@ -722,7 +714,8 @@ function FlowTree({
           const meta       = PHASE_TYPE_META[phase.phase_type];
           const outgoing   = fromMap[phase.id] ?? [];
           const isLast     = phaseIdx === sorted.length - 1;
-          const hasNoOut   = phase.phase_type !== "ending" && outgoing.length === 0 && !qrFromSet.has(phase.id) && phases.length > 1;
+          // 「次フェーズへ進む導線なし」は到達性解析（QR/分岐/謎正解/自由入力/到着等を横断）で判定する。
+          const hasNoOut   = transitionAnalysis.deadEndPhaseIds.has(phase.id);
           const isDragOver = dragOverIdx === phaseIdx;
           const isSrc      = dragSrcRef.current === phaseIdx;
           const isExpanded = !!expandedIds[phase.id];
@@ -870,8 +863,8 @@ function FlowTree({
                       >
                         {phase.name}
                         {hasNoOut && (
-                          <span title="遷移が未設定" style={{ color: "#f59e0b", marginLeft: 6, fontSize: 11, fontWeight: 400 }}>
-                            ⚠ 遷移なし
+                          <span title="このフェーズから次のフェーズへ進む導線がありません" style={{ color: "#f59e0b", marginLeft: 6, fontSize: 11, fontWeight: 400 }}>
+                            ⚠ 次のフェーズへの導線なし
                           </span>
                         )}
                       </span>
