@@ -19,6 +19,21 @@ export default function AdminIndexPage() {
       .catch(() => {});
   }, []);
 
+  // プラットフォーム全体の集計値（旧 /oas のサマリーから移設）。platform owner のみ取得・表示。
+  // API 側は withAuth + isPlatformOwner の strict 構成で保護しているため、
+  // platform owner 以外（workspace owner 含む）は取得できない（403）。
+  // ここでも is_platform_owner === true のときだけ fetch / 表示する。
+  const [stats, setStats] = useState<{
+    account_count: number; active_count: number; total_works: number; total_players: number;
+  } | null>(null);
+  useEffect(() => {
+    if (!isPlatform) return;
+    fetch("/api/admin/platform-stats", { headers: { ...getAuthHeaders() }, cache: "no-store" })
+      .then((r) => r.json())
+      .then((j) => { if (j.success) setStats(j.data); })
+      .catch(() => {});
+  }, [isPlatform]);
+
   return (
     <>
       <div className="page-header">
@@ -38,6 +53,35 @@ export default function AdminIndexPage() {
           ← アカウントリストへ
         </Link>
       </div>
+
+      {/* プラットフォーム全体の集計（platform owner のみ）。旧 /oas のサマリーバーを移設。 */}
+      {isPlatform && stats && (
+        <div style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))",
+          gap: 12,
+          marginBottom: 20,
+        }}>
+          {[
+            { label: "アカウント数",   value: stats.account_count },
+            { label: "公開中",         value: stats.active_count },
+            { label: "総作品数",       value: stats.total_works },
+            { label: "総プレイヤー数", value: stats.total_players },
+          ].map((s) => (
+            <div key={s.label} style={{
+              background: "#fff",
+              border: "1px solid var(--border-light, #e5e5e5)",
+              borderRadius: 10,
+              padding: "16px 18px",
+            }}>
+              <div style={{ fontSize: 22, fontWeight: 800, lineHeight: 1, color: "var(--text-primary, #111827)" }}>
+                {s.value.toLocaleString()}
+              </div>
+              <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 6 }}>{s.label}</div>
+            </div>
+          ))}
+        </div>
+      )}
 
       <div style={{
         display: "grid",
