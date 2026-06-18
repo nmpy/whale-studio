@@ -115,14 +115,18 @@ export function SurveyRenderer({ config, preview, lineUserId }: Props) {
 
   return (
     <div className={`liff-font ${liffRootClass(config.settings_json)} min-h-screen bg-[color:var(--liff-background)] text-[color:var(--liff-primary-text)]`}>
-      {/* 画面内ヘッダーは廃止。document.title (= LIFF 上部バー) で文脈表現する。 */}
-      <main className="liff-player-main pt-5 pb-24 flex flex-col gap-4">
-        {/* ページタイトル h2 は廃止。description だけ表示。 */}
-        {config.description && (
-          <p className={`text-[14px] leading-relaxed text-[color:var(--liff-secondary-text)] whitespace-pre-wrap break-words ${liffDescriptionAlignClass(config.settings_json)}`}>
-            {config.description}
-          </p>
-        )}
+      <main className="liff-player-main pt-5 pb-28 flex flex-col gap-4">
+        {/* ページ見出し: 大きめタイトル + 薄いサブテキスト（参考デザインに合わせる）。 */}
+        <header className="flex flex-col gap-1.5">
+          <h1 className="text-[22px] font-bold leading-tight text-[color:var(--liff-primary-text)] break-words">
+            {config.title?.trim() || "アンケート"}
+          </h1>
+          {config.description && (
+            <p className={`text-[14px] leading-relaxed text-[color:var(--liff-secondary-text)] whitespace-pre-wrap break-words ${liffDescriptionAlignClass(config.settings_json)}`}>
+              {config.description}
+            </p>
+          )}
+        </header>
 
         {completed ? (
           <div className="bg-[color:var(--liff-surface)] border border-[color:var(--liff-border)] rounded-[16px] px-5 py-7 text-center">
@@ -134,7 +138,7 @@ export function SurveyRenderer({ config, preview, lineUserId }: Props) {
             （アンケート項目が登録されていません）
           </p>
         ) : (
-          <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
             {items.map((it, idx) => (
               <SurveyField
                 key={itemKey(it, idx)}
@@ -169,8 +173,50 @@ export function SurveyRenderer({ config, preview, lineUserId }: Props) {
   );
 }
 
+// ── 設問ラベル: Q バッジ + 設問文 + 右側ヒント（* / 複数選択可 / 任意） ─
+// primitive の label は ReactNode を受けるため、見た目の刷新は SurveyRenderer 側だけで完結する
+// （LiffField 等の共有 primitive・他ページ（お問い合わせ等）は変更しない）。
+function buildHint(inputType: SurveyItem["input_type"], required: boolean): React.ReactNode {
+  const parts: React.ReactNode[] = [];
+  if (inputType === "checkbox") parts.push(<span key="multi">複数選択可</span>);
+  if (required) {
+    parts.push(
+      <span key="req" aria-label="必須" className="text-[color:var(--liff-danger,#E22B2B)] font-bold">*</span>,
+    );
+  } else if (inputType === "text" || inputType === "textarea") {
+    parts.push(<span key="opt">任意</span>);
+  }
+  if (parts.length === 0) return null;
+  return (
+    <span className="shrink-0 flex items-center gap-2 text-[12px] font-medium text-[color:var(--liff-tertiary-text,#999)]">
+      {parts}
+    </span>
+  );
+}
+
+function QuestionLabel({
+  question, hint,
+}: { question: string; hint: React.ReactNode }) {
+  return (
+    <span className="flex items-center gap-2.5 w-full">
+      <span
+        aria-hidden="true"
+        className="inline-flex items-center justify-center w-6 h-6 rounded-full shrink-0 text-[12px] font-bold bg-[color:rgba(6,199,85,0.12)] text-[color:var(--liff-line-green,#06C755)]"
+      >
+        Q
+      </span>
+      <span className="flex-1 min-w-0 text-[16px] font-bold leading-snug break-words text-[color:var(--liff-primary-text)]">
+        {question}
+      </span>
+      {hint}
+    </span>
+  );
+}
+
 // ── 設問: LiffInput / LiffTextarea / LiffRadioGroup / LiffCheckboxGroup を使う ─
-// 共通の Question Card 構造 (label / required / control / helper) は primitives 側で持つ。
+// 白い角丸カード / focus / error / disabled は primitive 側が持つ。
+// required の検証は親 SurveyRenderer の validate()（survey_items を見る）に集約しているため、
+// 見た目用に primitive へは required を渡さず（= 二重の * を出さない）、ヒントは自前で描画する。
 function SurveyField({
   item, index, value, onChange,
 }: {
@@ -181,12 +227,14 @@ function SurveyField({
 }) {
   const labelText = item.question?.trim() || `Q${index + 1}`;
   const required = !!item.required;
+  const label = (
+    <QuestionLabel question={labelText} hint={buildHint(item.input_type, required)} />
+  );
 
   if (item.input_type === "textarea") {
     return (
       <LiffTextarea
-        label={labelText}
-        required={required}
+        label={label}
         value={typeof value === "string" ? value : ""}
         onChange={(e) => onChange(e.target.value)}
       />
@@ -197,8 +245,7 @@ function SurveyField({
     const selected = typeof value === "string" ? value : "";
     return (
       <LiffRadioGroup
-        label={labelText}
-        required={required}
+        label={label}
         options={item.options}
         name={`q${index}`}
         value={selected}
@@ -211,8 +258,7 @@ function SurveyField({
     const selected = Array.isArray(value) ? value : [];
     return (
       <LiffCheckboxGroup
-        label={labelText}
-        required={required}
+        label={label}
         options={item.options}
         value={selected}
         onChange={(next) => onChange(next)}
@@ -223,8 +269,7 @@ function SurveyField({
   // 既定: text
   return (
     <LiffInput
-      label={labelText}
-      required={required}
+      label={label}
       value={typeof value === "string" ? value : ""}
       onChange={(e) => onChange(e.target.value)}
     />
