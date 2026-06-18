@@ -170,7 +170,7 @@ export default function FeedbackModal({ pathname, onClose, pricingSource, hopedP
   const [copied,     setCopied]     = useState(false);  // メールコピー完了フィードバック
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const CONTACT_EMAIL = "namipoyoo@gmail.com";
+  const CONTACT_EMAIL = "whale.studio.app@gmail.com";
 
   function handleCopyEmail() {
     navigator.clipboard.writeText(CONTACT_EMAIL)

@@ -21,6 +21,7 @@ import { notifyFeedbackSubmitted } from "@/lib/slack/feedback";
 import { notifyEnterpriseInquirySubmitted } from "@/lib/slack/enterprise-inquiry";
 import { getAuthUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { extractOaWorkIds } from "@/lib/feedback/format";
 
 // 送信者表示名をサーバー側で解決する (= client から渡された値は信用しない)。
 // 認証済みユーザーの Profile を引き、優先順位で 1 つを返す:
@@ -122,6 +123,28 @@ export async function POST(req: NextRequest) {
       memo:        "",
       user_agent:  userAgent,
     };
+
+    // ── OA / 作品の補完（サーバー側 / DB から名前を取得）──────────────────────
+    // client は oa_id/work_id のみ送り、名前は null のことが多い（Slack で「(なし)」になる）。
+    // body の id を優先し、無ければ page_url から /oas/:oaId と /works/:workId を抽出して補う。
+    // id があれば DB（Oa.title / Work.title）から名前を取得し、取得できれば DB 値を優先する。
+    // ベストエフォート（.catch）なので DB 取得に失敗してもフィードバック送信は継続する。
+    const extractedIds = extractOaWorkIds(payload.page_url);
+    payload.oa_id   = payload.oa_id   ?? extractedIds.oaId;
+    payload.work_id = payload.work_id ?? extractedIds.workId;
+
+    if (payload.oa_id) {
+      const oa = await prisma.oa
+        .findUnique({ where: { id: payload.oa_id }, select: { title: true } })
+        .catch(() => null);
+      if (oa?.title) payload.oa_name = oa.title;
+    }
+    if (payload.work_id) {
+      const work = await prisma.work
+        .findUnique({ where: { id: payload.work_id }, select: { title: true } })
+        .catch(() => null);
+      if (work?.title) payload.work_name = work.title;
+    }
 
     console.info(
       `[POST /api/feedback] [${requestId}] 受信 id=${id} category=${category}` +
