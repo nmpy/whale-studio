@@ -7,6 +7,12 @@
  */
 import { describe, it, expect } from "vitest";
 import { visibleFaqItems } from "@/components/liff/faq-helpers";
+import {
+  findPublishedContactPage,
+  buildContactPageHref,
+  resolveFaqContactHref,
+  type ContactCtaPage,
+} from "@/components/liff/faq-contact-cta";
 import { liffPageConfigSettingsSchema } from "@/lib/validations";
 
 describe("visibleFaqItems — 未設定セーフ + 空項目除外", () => {
@@ -62,5 +68,66 @@ describe("liffPageConfigSettingsSchema — faq_items validation", () => {
     expect(liffPageConfigSettingsSchema.safeParse({
       faq_items: [{ question: "ok", answer: "あ".repeat(3001) }],
     }).success).toBe(false);
+  });
+});
+
+// ── PR5c: FAQ 下部 CTA の contact ページリンク化（純ロジック） ──
+
+const contactPub: ContactCtaPage = { id: "c1", public_id: "pub_contact", page_type: "contact", is_enabled: true, publish_status: "published" };
+
+describe("findPublishedContactPage", () => {
+  it("未設定 / null / 非配列は null（落ちない）", () => {
+    expect(findPublishedContactPage(undefined)).toBeNull();
+    expect(findPublishedContactPage(null)).toBeNull();
+    expect(findPublishedContactPage({} as never)).toBeNull();
+    expect(findPublishedContactPage([])).toBeNull();
+  });
+  it("公開中 & 有効な contact を返す", () => {
+    expect(findPublishedContactPage([contactPub])?.id).toBe("c1");
+  });
+  it("draft の contact にはリンクしない（null）", () => {
+    expect(findPublishedContactPage([{ ...contactPub, publish_status: "draft" }])).toBeNull();
+  });
+  it("disabled の contact にはリンクしない（null）", () => {
+    expect(findPublishedContactPage([{ ...contactPub, is_enabled: false }])).toBeNull();
+  });
+  it("contact 以外の page_type は無視", () => {
+    expect(findPublishedContactPage([{ id: "f", public_id: "p", page_type: "faq", is_enabled: true, publish_status: "published" }])).toBeNull();
+  });
+  it("複数 contact がある場合は一覧順の最初を返す", () => {
+    const first = { ...contactPub, id: "c1", public_id: "pub1" };
+    const second = { ...contactPub, id: "c2", public_id: "pub2" };
+    expect(findPublishedContactPage([first, second])?.id).toBe("c1");
+  });
+  it("draft が先・published が後でも published を選ぶ", () => {
+    const draft = { ...contactPub, id: "d", publish_status: "draft" };
+    expect(findPublishedContactPage([draft, contactPub])?.id).toBe("c1");
+  });
+});
+
+describe("buildContactPageHref", () => {
+  it("public_id があれば短縮 URL", () => {
+    expect(buildContactPageHref("workpub", contactPub)).toBe("/liff/w/workpub/p/pub_contact");
+  });
+  it("workPublicId / page が無ければ null", () => {
+    expect(buildContactPageHref(null, contactPub)).toBeNull();
+    expect(buildContactPageHref("workpub", null)).toBeNull();
+  });
+  it("public_id が無ければ null（壊れた href を作らない）", () => {
+    expect(buildContactPageHref("workpub", { ...contactPub, public_id: null })).toBeNull();
+  });
+});
+
+describe("resolveFaqContactHref", () => {
+  it("公開 contact あり → href", () => {
+    expect(resolveFaqContactHref([contactPub], "workpub")).toBe("/liff/w/workpub/p/pub_contact");
+  });
+  it("contact 無し → null（静的 CTA のまま）", () => {
+    expect(resolveFaqContactHref([], "workpub")).toBeNull();
+    expect(resolveFaqContactHref(undefined, "workpub")).toBeNull();
+  });
+  it("draft/disabled のみ → null", () => {
+    expect(resolveFaqContactHref([{ ...contactPub, publish_status: "draft" }], "workpub")).toBeNull();
+    expect(resolveFaqContactHref([{ ...contactPub, is_enabled: false }], "workpub")).toBeNull();
   });
 });

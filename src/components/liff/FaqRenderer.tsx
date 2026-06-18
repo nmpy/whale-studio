@@ -4,12 +4,13 @@
 // LIFF FAQ モード — Q&A をアコーディオン形式で並べる。
 // 空項目（question / answer どちらも空）はスキップする。
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { FaqItem, LiffPageConfigSettings } from "@/types";
 import { recordLiffEvent } from "@/lib/liff-events";
 import { useLiffPlayerContext } from "./LiffPlayerContext";
 import { liffRootClass, liffDescriptionAlignClass } from "./liff-style-helpers";
 import { visibleFaqItems } from "./faq-helpers";
+import { resolveFaqContactHref } from "./faq-contact-cta";
 import { LiffCard } from "./primitives";
 
 export interface FaqRendererConfig {
@@ -24,6 +25,29 @@ export interface FaqRendererConfig {
 export function FaqRenderer({ config, preview }: { config: FaqRendererConfig; preview?: boolean }) {
   // 表示対象の FAQ 項目（空項目除外・未設定セーフ）は純ヘルパーに集約。
   const items = visibleFaqItems(config.settings_json.faq_items);
+
+  // お問い合わせ CTA のリンク先（同 work に公開中 & 有効な contact ページがある場合のみ）。
+  // 実機（player context に workId あり・preview でない）でのみメニュー API を引き、
+  // 公開済み contact ページを探す。見つからなければ静的案内のまま（404/500 を誘発しない）。
+  const playerCtx = useLiffPlayerContext();
+  const [contactHref, setContactHref] = useState<string | null>(null);
+  const ctxWorkId = playerCtx?.workId;
+  useEffect(() => {
+    if (preview || !ctxWorkId) return; // preview / workId 無しは静的 CTA
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/liff/works/${ctxWorkId}/menu`);
+        const json = await res.json();
+        if (cancelled || !json?.success || !Array.isArray(json?.data?.pages)) return;
+        setContactHref(resolveFaqContactHref(json.data.pages, ctxWorkId));
+      } catch {
+        // 失敗時は静的 CTA のまま
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [preview, ctxWorkId]);
+
   return (
     <div className={`liff-font ${liffRootClass(config.settings_json)} min-h-screen bg-[color:var(--liff-background)] text-[color:var(--liff-primary-text)]`}>
       {/* 画面内ヘッダーは廃止。document.title (= LIFF 上部バー) で文脈表現する。 */}
@@ -48,15 +72,25 @@ export function FaqRenderer({ config, preview }: { config: FaqRendererConfig; pr
           </ul>
         )}
 
-        {/* お問い合わせ導線（案内のみ）。お問い合わせフォーム本体は未実装のため、
-            リンク化せず静的な案内に留める（404 / 500 を誘発しない）。 */}
-        <LiffCard padding="md" className="mt-2">
-          <p className="text-[12px] font-bold text-[color:var(--liff-secondary-text)]">解決しない場合</p>
-          <p className="mt-1 text-[15px] font-bold text-[color:var(--liff-primary-text)]">お問い合わせ</p>
-          <p className="mt-1 text-[13px] leading-[1.6] text-[color:var(--liff-tertiary-text)]">
-            お問い合わせフォームは今後追加予定です。
-          </p>
-        </LiffCard>
+        {/* お問い合わせ導線。同 work に公開中 & 有効な contact ページがあればリンク化、
+            無ければ静的案内のまま（404 / 500 を誘発しない）。 */}
+        {contactHref ? (
+          <LiffCard as="a" href={contactHref} padding="md" className="mt-2" aria-label="お問い合わせ">
+            <p className="text-[12px] font-bold text-[color:var(--liff-secondary-text)]">解決しない場合</p>
+            <p className="mt-1 text-[15px] font-bold text-[color:var(--liff-primary-text)]">お問い合わせ</p>
+            <p className="mt-1 text-[13px] leading-[1.6] text-[color:var(--liff-tertiary-text)]">
+              お問い合わせフォームへ進む
+            </p>
+          </LiffCard>
+        ) : (
+          <LiffCard padding="md" className="mt-2">
+            <p className="text-[12px] font-bold text-[color:var(--liff-secondary-text)]">解決しない場合</p>
+            <p className="mt-1 text-[15px] font-bold text-[color:var(--liff-primary-text)]">お問い合わせ</p>
+            <p className="mt-1 text-[13px] leading-[1.6] text-[color:var(--liff-tertiary-text)]">
+              お問い合わせフォームは今後追加予定です。
+            </p>
+          </LiffCard>
+        )}
       </main>
     </div>
   );
