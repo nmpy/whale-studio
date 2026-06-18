@@ -7,6 +7,7 @@
 
 import { useEffect, useState } from "react";
 import { getAuthHeaders } from "@/lib/api-client";
+import { WhaleLoader } from "@/components/ui/WhaleLoader";
 
 interface PolicySnapshot {
   version:     string;
@@ -315,7 +316,7 @@ function AcceptancesTab() {
       .finally(() => setLoading(false));
   }, []);
 
-  if (loading) return <p style={{ fontSize: 13, color: "#6b7280" }}>読み込み中…</p>;
+  if (loading) return <WhaleLoader fullScreen />;
   if (error)   return <div style={{ padding: 14, background: "#fef2f2", color: "#dc2626", borderRadius: 6, fontSize: 13 }}>{error}</div>;
 
   return (

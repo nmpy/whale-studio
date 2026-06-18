@@ -9,6 +9,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getDevToken } from "@/lib/api-client";
+import { WhaleLoader } from "@/components/ui/WhaleLoader";
 
 interface OnboardingState {
   id:             string;
@@ -72,7 +73,7 @@ export default function ReviewPage() {
     })();
   }, [router]);
 
-  if (loading) return <div style={{ padding: 24 }}>読み込み中…</div>;
+  if (loading) return <WhaleLoader fullScreen />;
   if (error) {
     return <div style={{ padding: 24, color: "#dc2626" }}>{error}</div>;
   }

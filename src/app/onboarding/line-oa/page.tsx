@@ -12,6 +12,7 @@ import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { MaskedField } from "@/components/MaskedField";
 import { getDevToken } from "@/lib/api-client";
+import { WhaleLoader } from "@/components/ui/WhaleLoader";
 
 interface OnboardingOaState {
   id:                 string;
@@ -167,7 +168,7 @@ export default function LineOaOnboardingPage() {
     }
   }
 
-  if (loading) return <div style={{ padding: 24 }}>読み込み中…</div>;
+  if (loading) return <WhaleLoader fullScreen />;
 
   return (
     <div>

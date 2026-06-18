@@ -7,6 +7,7 @@
 
 import { useEffect, useState } from "react";
 import { getDevToken } from "@/lib/api-client";
+import { WhaleLoader } from "@/components/ui/WhaleLoader";
 
 interface AdminOaOnboarding {
   id:                 string;
@@ -134,7 +135,7 @@ export default function AdminOaOnboardingPage() {
     setRejectNote("");
   }
 
-  if (loading) return <div style={{ padding: 24 }}>読み込み中…</div>;
+  if (loading) return <WhaleLoader fullScreen />;
 
   return (
     <>
