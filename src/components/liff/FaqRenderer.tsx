@@ -9,6 +9,8 @@ import type { FaqItem, LiffPageConfigSettings } from "@/types";
 import { recordLiffEvent } from "@/lib/liff-events";
 import { useLiffPlayerContext } from "./LiffPlayerContext";
 import { liffRootClass, liffDescriptionAlignClass } from "./liff-style-helpers";
+import { visibleFaqItems } from "./faq-helpers";
+import { LiffCard } from "./primitives";
 
 export interface FaqRendererConfig {
   /** 作品名。ヘッダーに表示する (新仕様)。未指定なら title にフォールバック */
@@ -20,9 +22,8 @@ export interface FaqRendererConfig {
 }
 
 export function FaqRenderer({ config, preview }: { config: FaqRendererConfig; preview?: boolean }) {
-  const items = (config.settings_json.faq_items ?? []).filter(
-    (it) => (it.question?.trim() ?? "") !== "" || (it.answer?.trim() ?? "") !== ""
-  );
+  // 表示対象の FAQ 項目（空項目除外・未設定セーフ）は純ヘルパーに集約。
+  const items = visibleFaqItems(config.settings_json.faq_items);
   return (
     <div className={`liff-font ${liffRootClass(config.settings_json)} min-h-screen bg-[color:var(--liff-background)] text-[color:var(--liff-primary-text)]`}>
       {/* 画面内ヘッダーは廃止。document.title (= LIFF 上部バー) で文脈表現する。 */}
@@ -47,6 +48,15 @@ export function FaqRenderer({ config, preview }: { config: FaqRendererConfig; pr
           </ul>
         )}
 
+        {/* お問い合わせ導線（案内のみ）。お問い合わせフォーム本体は未実装のため、
+            リンク化せず静的な案内に留める（404 / 500 を誘発しない）。 */}
+        <LiffCard padding="md" className="mt-2">
+          <p className="text-[12px] font-bold text-[color:var(--liff-secondary-text)]">解決しない場合</p>
+          <p className="mt-1 text-[15px] font-bold text-[color:var(--liff-primary-text)]">お問い合わせ</p>
+          <p className="mt-1 text-[13px] leading-[1.6] text-[color:var(--liff-tertiary-text)]">
+            お問い合わせフォームは今後追加予定です。
+          </p>
+        </LiffCard>
       </main>
     </div>
   );
