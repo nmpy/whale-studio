@@ -44,6 +44,7 @@ import {
 import { buildRuntimeState, matchTransition, applySetFlags, safeParseFlags, safeParseVariables, safeParseWaitingForInput, fetchPhaseWithIncludes, drainAutoSendableItems, type PhaseRow } from "@/lib/runtime";
 import { shouldOfferResumeChoice } from "@/lib/message-flow";
 import { isFreeInputPrompt } from "@/lib/free-input";
+import { decideFollowBehavior } from "@/lib/follow-action";
 import { resolveQrBranchDelivery } from "@/lib/qr-branch";
 import { parseFrontier, selectQrScope } from "@/lib/qr-frontier";
 import { applyFreeInputPostEffect } from "@/lib/frontier-effect";
@@ -1491,20 +1492,33 @@ async function handleWebhook(req: NextRequest, oaId: string) {
   // ※ OA 停止中は上部（serviceSuspendedAt）で early return 済みのためここには来ない。
   if (followEvents.length > 0 && work) {
     const followAction = work.followAction ?? "auto_start";
+    // 送信判断は純関数 decideFollowBehavior に一本化する。
+    // 未設定・空文字・空白のみ・開始対象なしのときは「何も送らない」(デフォルト文面は送らない)。
     await Promise.allSettled(
-      followEvents.map((e) => {
-        if (followAction === "none") {
-          console.log(`[Webhook] follow → none（送信なし） userId=${e.source.userId}`);
-          return Promise.resolve();
+      followEvents.map(async (e) => {
+        const uid = e.source.userId;
+        // auto_start のときだけ開始対象（開始フェーズ）の有無を確認する。
+        const hasStartTarget =
+          followAction === "auto_start" ? !!(await getCachedStartPhase(work.id)) : false;
+        const decision = decideFollowBehavior({
+          followAction,
+          welcomeMessage: work.welcomeMessage,
+          hasStartTarget,
+        });
+
+        if (decision.action === "skip") {
+          console.info(`[line-follow] skipped: ${decision.reason} userId=${uid.slice(0, 8)}`);
+          return;
         }
-        if (followAction === "welcome_wait") {
-          // あいさつメッセージのみ送信。progress は作らず、ユーザーの「はじめる」を待つ。
-          console.log(`[Webhook] follow → welcome_wait（あいさつ送信） userId=${e.source.userId}`);
-          return replyToLine(e.replyToken, buildWelcomeMessages(work, systemSender), oa.channelAccessToken);
+        if (decision.action === "send_welcome") {
+          // welcomeMessage が明示設定されている場合のみ。progress は作らず「はじめる」を待つ。
+          console.info(`[line-follow] sent welcome_wait message userId=${uid.slice(0, 8)}`);
+          await replyToLine(e.replyToken, buildWelcomeMessages(work, systemSender), oa.channelAccessToken);
+          return;
         }
-        // auto_start（既定）
-        console.log(`[Webhook] follow → 自動開始 userId=${e.source.userId}`);
-        return handleStart({ oa, work, systemSender, userId: e.source.userId, replyToken: e.replyToken, vars: buildVars(e.source.userId) });
+        // auto_start（開始対象あり）: 既存仕様どおりシナリオ自動開始。
+        console.info(`[line-follow] sent auto_start first message userId=${uid.slice(0, 8)}`);
+        await handleStart({ oa, work, systemSender, userId: uid, replyToken: e.replyToken, vars: buildVars(uid) });
       })
     );
   }
