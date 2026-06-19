@@ -90,7 +90,7 @@ export function LiffConfigHeader({
             onClick={onToggleEnabled}
             disabled={saving || readOnly}
             className="relative w-12 h-[26px] rounded-full border-none cursor-pointer transition-colors"
-            style={{ background: config.is_enabled ? "#06C755" : "#d1d5db" }}
+            style={{ background: config.is_enabled ? "var(--color-brand)" : "#d1d5db" }}
           >
             <div
               className="absolute top-[2px] w-[22px] h-[22px] rounded-full bg-white shadow transition-[left]"
@@ -103,7 +103,7 @@ export function LiffConfigHeader({
       {/* ページ設定 — ページ種別 / ページタイトル / ヘッダータイトル / 説明 / フォント / 説明文の配置。
           ・ページタイトル(config.title): プレビュー本文・カードに出るタイトル（プレビュー上の「新規ページ」に対応）。
           ・ヘッダータイトル(settings.header_title): LIFF 画面上部ヘッダーのタイトル（別項目）。 */}
-      <div className="bg-white rounded-xl border border-gray-200 p-5 mb-6 space-y-4">
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 mb-6 space-y-4">
         <h2 className="text-sm font-semibold text-gray-900">ページ設定</h2>
 
         {/* 1. ページ種別 */}
@@ -230,7 +230,7 @@ export function LiffConfigHeader({
 
       {/* ホームに表示する — 表示有無(トグル) + カード名のみ。並び順・絵文字は「LIFF設定 → ホーム」タブで管理する。
           （menu_order / menu_icon の入力は UI から除外。既存 settings_json の値は保存時に保持される） */}
-      <div className="bg-white rounded-xl border border-gray-200 p-5 mb-6 space-y-3">
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 mb-6 space-y-3">
         <h2 className="text-sm font-semibold text-gray-900">ホームに表示する</h2>
 
         <div className="flex items-center gap-2.5">
@@ -292,7 +292,7 @@ export function LiffConfigHeader({
       )}
 
       {mode === "location" && (
-        <div className="bg-white rounded-xl border border-gray-200 p-5 mb-6">
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 mb-6">
           <h2 className="text-sm font-semibold text-gray-900 mb-1">チェックイン履歴モード（旧ページ種別）</h2>
           <p className="text-[12px] text-gray-500 leading-relaxed">
             このページではプレイヤー本人のチェックイン履歴を表示します（現状のまま動作します）。<br />
@@ -302,7 +302,7 @@ export function LiffConfigHeader({
       )}
 
       {isHint && (
-        <div className="bg-white rounded-xl border border-gray-200 p-5 mb-6 space-y-4">
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 mb-6 space-y-4">
           <h2 className="text-sm font-semibold text-gray-900">ヒントサイト ヘッダー設定</h2>
 
           <label className="flex items-center gap-2 text-sm text-gray-700">
