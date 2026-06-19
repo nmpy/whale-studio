@@ -131,7 +131,7 @@ export function LiffDevicePreviewLinks({ workId, workPublicId, pageId, pagePubli
   }
 
   return (
-    <div className={embedded ? "space-y-4" : "bg-white rounded-xl border border-gray-200 p-5 mb-6 space-y-4"}>
+    <div className={embedded ? "space-y-4" : "bg-white rounded-xl border border-gray-200 shadow-sm p-5 mb-6 space-y-4"}>
       <div>
         {!embedded && <h2 className="text-sm font-semibold text-gray-900">実機で確認する</h2>}
         <p className={`text-[11px] text-gray-500 leading-relaxed ${embedded ? "" : "mt-1"}`}>
@@ -244,7 +244,7 @@ function UrlRow({
             href={disabled ? undefined : url}
             target="_blank"
             rel="noopener noreferrer"
-            className={`px-3 py-1 border border-gray-200 text-gray-700 rounded text-xs hover:bg-gray-50 ${
+            className={`inline-flex items-center px-3 py-1 border border-gray-200 text-gray-700 rounded-lg text-xs transition-colors hover:bg-gray-50 ${
               disabled ? "pointer-events-none opacity-40" : ""
             }`}
           >

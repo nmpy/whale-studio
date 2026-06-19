@@ -19,7 +19,7 @@ export function LiffAddBlockModal({ saving, onAdd, onClose }: Props) {
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-2xl p-6 w-[480px] max-h-[80vh] overflow-auto"
+        className="bg-white rounded-2xl shadow-xl p-6 w-[480px] max-h-[80vh] overflow-auto"
         onClick={(e) => e.stopPropagation()}
       >
         <h3 className="text-base font-bold text-gray-900 mb-4">
@@ -44,7 +44,7 @@ export function LiffAddBlockModal({ saving, onAdd, onClose }: Props) {
         </div>
         <button
           onClick={onClose}
-          className="w-full mt-4 py-2.5 border border-gray-200 rounded-lg bg-white text-sm text-gray-500 cursor-pointer hover:bg-gray-50"
+          className="w-full mt-4 py-2.5 border border-gray-200 rounded-lg bg-white text-sm text-gray-500 cursor-pointer transition-colors hover:bg-gray-50"
         >
           キャンセル
         </button>
