@@ -5,15 +5,18 @@
 // 作品メニューホーム — `/liff/w/[workPublicId]` の表示。
 //
 // 構成 (上から):
-//   - ヘッダー (作品名 + 閉じるボタン)
-//   - 「メニュー」見出し (左寄せ、太字)
-//   - 2 列グリッドのカード一覧 (各 LiffPageConfig に対応)
+//   - ホーム画像 / 見出し / 説明文 (いずれも任意)
+//   - メニュー (list: 1枚カードの縦リスト / card: 2列カードグリッド)
+//   - 下部導線 (アンケート / よくある質問の枠ボタン)
 //   - Powered by Whale Studio footer
 //
 // カードのクリック挙動:
 //   - 実機: `<a href="/liff/w/[workPublicId]/p/[pagePublicId]">` で個別ページに遷移
 //   - プレビュー: 親が onSelectCard を渡し、内部で個別ページ表示に切り替える
 // どちらを使うかは props で渡された値で決まる。両方を渡してはいけない (a or button の片方のみ)。
+//
+// ※ PR-H3 visual polish: home-layout-handoff.md を参照に list/card/footer の見た目だけを調整。
+//    menu データ / onSelect / href / 表示条件 / Survey・FAQ 導線条件は不変。
 
 import type { LiffPageConfigSettings, LiffBlockType } from "@/types";
 import {
@@ -23,7 +26,6 @@ import {
   type MenuCardSource,
 } from "./liff-style-helpers";
 import { LiffPoweredBy, shouldShowWhaleStudioCredit, LiffEmptyState } from "./ui";
-import { LiffCard } from "./primitives";
 
 export interface LiffMenuHomePage {
   id:             string;
@@ -105,11 +107,11 @@ export function LiffMenuHomeRenderer({
             <img
               src={imageUrl}
               alt=""
-              className="w-full rounded-2xl object-cover mb-3"
+              className="w-full rounded-[10px] object-cover mb-3"
               style={{ maxHeight: 220 }}
             />
           )}
-          {heading && <h2 className="text-[18px] font-bold leading-snug">{heading}</h2>}
+          {heading && <h2 className="text-[20px] font-medium leading-snug">{heading}</h2>}
           {description && (
             <p className="mt-1.5 text-[13px] leading-[1.7] text-[color:var(--liff-secondary-text)] whitespace-pre-wrap break-words">
               {description}
@@ -123,8 +125,9 @@ export function LiffMenuHomeRenderer({
         {cards.length === 0 ? (
           <LiffEmptyState emoji="📭" text="ホームに表示する項目がまだ登録されていません" />
         ) : isList ? (
-          <div className="flex flex-col gap-2.5">
-            {cards.map((card) => {
+          // A案: 1 枚の白カード。各項目は薄い区切り線で分ける（個別カードにしない）。
+          <div className="bg-[color:var(--liff-surface,#fff)] rounded-[10px] overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.05)]">
+            {cards.map((card, idx) => {
               const page = pages.find((p) => p.id === card.id);
               if (!page) return null;
               return (
@@ -132,6 +135,7 @@ export function LiffMenuHomeRenderer({
                   key={card.id}
                   card={card}
                   page={page}
+                  isLast={idx === cards.length - 1}
                   onSelectCard={onSelectCard}
                   buildPageHref={buildPageHref}
                 />
@@ -165,7 +169,24 @@ export function LiffMenuHomeRenderer({
   );
 }
 
-// ── 個別カード ────────────────────────────────────────────────────────────
+// 丸いアイコンバッジ（画像 or emoji）。既存データ（card.iconImageUrl / card.icon）のみ使う。
+function MenuIconBadge({ card, size }: { card: MenuCard; size: "list" | "card" }) {
+  const box = size === "list" ? "w-10 h-10" : "w-9 h-9";
+  if (card.iconImageUrl) {
+    return <img src={card.iconImageUrl} alt="" className={`${box} rounded-full object-cover shrink-0`} />;
+  }
+  if (!card.icon) return null;
+  return (
+    <span
+      className={`${box} rounded-full bg-[color:var(--liff-surface-subtle,#EFEFEF)] inline-flex items-center justify-center text-[18px] shrink-0`}
+      aria-hidden="true"
+    >
+      {card.icon}
+    </span>
+  );
+}
+
+// ── 個別カード（card: 2列グリッド）────────────────────────────────────────────
 function MenuCardItem({
   card, page, onSelectCard, buildPageHref,
 }: {
@@ -175,7 +196,7 @@ function MenuCardItem({
   buildPageHref?: (page: LiffMenuHomePage) => string;
 }) {
   // compact: グリッド 2 列をまたぐ横長 1 行 (アイコン左・説明省略・低い高さ)。
-  // card (既定): 従来どおり縦並びのグリッドセル。未設定ページは必ず card 扱い。
+  // card (既定): アイコン上 / ラベル・説明下寄せ (B案 · 高さ 122px)。未設定ページは card 扱い。
   const isCompact = card.cardStyle === "compact";
 
   const inner = isCompact ? (
@@ -185,34 +206,31 @@ function MenuCardItem({
         <img src={card.iconImageUrl} alt="" className="w-7 h-7 rounded-md object-cover shrink-0" />
       )}
       {card.label && (
-        <div className="min-w-0 flex-1 text-[14px] font-bold leading-snug text-[color:var(--liff-primary-text)] truncate">
+        <div className="min-w-0 flex-1 text-[14px] font-medium leading-snug text-[color:var(--liff-primary-text)] truncate">
           {card.label}
         </div>
       )}
     </>
   ) : (
     <>
-      {/* アイコン画像は任意設定時のみ表示（未設定の既存ページは従来どおりテキストのみ）。 */}
-      {card.iconImageUrl && (
-        <img src={card.iconImageUrl} alt="" className="w-9 h-9 rounded-lg object-cover mb-2" />
-      )}
+      <MenuIconBadge card={card} size="card" />
       {card.label && (
-        <div className="text-[14px] font-bold leading-snug text-[color:var(--liff-primary-text)] line-clamp-2 break-words">
+        <div className="mt-auto pt-2 text-[15px] font-medium leading-snug text-[color:var(--liff-primary-text)] line-clamp-2 break-words">
           {card.label}
         </div>
       )}
       {page.description && (
-        <div className="mt-1.5 text-[11px] leading-[1.5] text-[color:var(--liff-tertiary-text,#8C8C8C)] line-clamp-2 break-words">
+        <div className="mt-1 text-[11.5px] leading-[1.4] text-[color:var(--liff-tertiary-text,#8C8C8C)] line-clamp-2 break-words">
           {page.description}
         </div>
       )}
     </>
   );
 
-  // 管理画面トーン: 白カード + 薄い境界線 + 控えめな影 + 角丸 + 広いタップ領域。
+  // B案トーン: 白カード + 角丸10 + 控えめな影（0 1px 3px）+ 高さ122 + 広いタップ領域。
   const baseCls = isCompact
-    ? "col-span-2 flex flex-row items-center gap-3 text-left bg-[color:var(--liff-surface,#fff)] border border-[color:var(--liff-border)] rounded-[14px] px-4 py-3 min-h-[56px] shadow-[0_2px_10px_rgba(31,64,92,0.05)] transition-all active:bg-[color:var(--liff-surface-subtle,#FAFAFA)] active:shadow-none"
-    : "flex flex-col items-start text-left bg-[color:var(--liff-surface,#fff)] border border-[color:var(--liff-border)] rounded-[18px] px-4 py-4 min-h-[112px] shadow-[0_2px_10px_rgba(31,64,92,0.05)] transition-all active:bg-[color:var(--liff-surface-subtle,#FAFAFA)] active:shadow-none";
+    ? "col-span-2 flex flex-row items-center gap-3 text-left bg-[color:var(--liff-surface,#fff)] rounded-[10px] px-4 py-3 min-h-[56px] shadow-[0_1px_3px_rgba(0,0,0,0.05)] transition-colors active:bg-[color:var(--liff-surface-subtle,#F5F5F5)]"
+    : "flex flex-col items-start text-left bg-[color:var(--liff-surface,#fff)] rounded-[10px] px-4 py-4 min-h-[122px] shadow-[0_1px_3px_rgba(0,0,0,0.05)] transition-colors active:bg-[color:var(--liff-surface-subtle,#F5F5F5)]";
 
   if (buildPageHref) {
     return (
@@ -232,32 +250,26 @@ function MenuCardItem({
 }
 
 // ── リスト表示の 1 行（home_menu_layout="list"）─────────────────────────────
-// 共通プリミティブ LiffCard を使い、アイコン（画像 or emoji）+ ラベル + 説明を横並びにする。
+// 1 枚の白カード内に、丸アイコンバッジ + ラベル + 説明 + chevron を薄い区切り線で並べる。
 function MenuListItem({
-  card, page, onSelectCard, buildPageHref,
+  card, page, isLast, onSelectCard, buildPageHref,
 }: {
   card: MenuCard;
   page: LiffMenuHomePage;
+  isLast: boolean;
   onSelectCard?: (page: LiffMenuHomePage) => void;
   buildPageHref?: (page: LiffMenuHomePage) => string;
 }) {
-  const icon = card.iconImageUrl ? (
-    <img src={card.iconImageUrl} alt="" className="w-10 h-10 rounded-xl object-cover shrink-0" />
-  ) : (
-    <span
-      className="w-10 h-10 rounded-xl bg-[color:var(--liff-surface-subtle,#FAFAFA)] inline-flex items-center justify-center text-[20px] shrink-0"
-      aria-hidden="true"
-    >
-      {card.icon}
-    </span>
-  );
+  const rowCls = `w-full flex items-center gap-3.5 text-left px-4 py-4 transition-colors active:bg-[color:var(--liff-surface-subtle,#F5F5F5)] ${
+    isLast ? "" : "border-b border-[color:var(--liff-border)]"
+  }`;
 
   const body = (
-    <div className="flex items-center gap-3">
-      {icon}
+    <>
+      <MenuIconBadge card={card} size="list" />
       <div className="min-w-0 flex-1">
         {card.label && (
-          <div className="text-[15px] font-bold leading-snug text-[color:var(--liff-primary-text)] truncate">
+          <div className="text-[15.5px] font-medium leading-snug text-[color:var(--liff-primary-text)] truncate">
             {card.label}
           </div>
         )}
@@ -267,22 +279,41 @@ function MenuListItem({
           </div>
         )}
       </div>
-      <span aria-hidden="true" className="text-[color:var(--liff-tertiary-text,#8C8C8C)] text-[18px] shrink-0">›</span>
-    </div>
+      <span aria-hidden="true" className="shrink-0 text-[color:var(--liff-tertiary-text,#8C8C8C)] text-[18px]">›</span>
+    </>
   );
 
   if (buildPageHref) {
-    return <LiffCard as="a" href={buildPageHref(page)} padding="md" aria-label={card.label}>{body}</LiffCard>;
+    return <a href={buildPageHref(page)} className={rowCls} aria-label={card.label}>{body}</a>;
   }
   if (onSelectCard) {
-    return <LiffCard as="button" onClick={() => onSelectCard(page)} padding="md" aria-label={card.label}>{body}</LiffCard>;
+    return <button type="button" onClick={() => onSelectCard(page)} className={rowCls} aria-label={card.label}>{body}</button>;
   }
-  return <LiffCard padding="md" aria-label={card.label}>{body}</LiffCard>;
+  return <div className={rowCls} aria-label={card.label}>{body}</div>;
+}
+
+// ── 下部導線アイコン（汎用 SVG・ブランド資産ではない）────────────────────────
+function SurveyGlyph() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="shrink-0">
+      <path d="M9 11l3 3L22 4" />
+      <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+    </svg>
+  );
+}
+function FaqGlyph() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="shrink-0">
+      <circle cx="12" cy="12" r="10" />
+      <path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3" />
+      <line x1="12" y1="17" x2="12.01" y2="17" />
+    </svg>
+  );
 }
 
 // ── ホーム下部の導線（アンケート / よくある質問）─────────────────────────────
 // 対応する公開ページ（page_type="survey" / "faq"）が menu API の pages に存在する場合のみ表示。
-// 未作成・非公開（= pages に含まれない）の場合は何も描画しない。
+// 未作成・非公開（= pages に含まれない）の場合は何も描画しない。見た目は枠ボタン（outline）。
 function BottomLinks({
   pages, onSelectCard, buildPageHref,
 }: {
@@ -294,26 +325,23 @@ function BottomLinks({
   const faq    = pages.find((p) => p.page_type === "faq");
   if (!survey && !faq) return null;
 
-  const Item = ({ page, label }: { page: LiffMenuHomePage; label: string }) => {
-    const body = (
-      <span className="flex items-center justify-between">
-        <span className="text-[14px] font-bold text-[color:var(--liff-primary-text)]">{label}</span>
-        <span aria-hidden="true" className="text-[color:var(--liff-tertiary-text,#8C8C8C)] text-[18px]">›</span>
-      </span>
-    );
+  const Item = ({ page, label, glyph }: { page: LiffMenuHomePage; label: string; glyph: React.ReactNode }) => {
+    const cls =
+      "flex-1 inline-flex items-center justify-center gap-2 rounded-[10px] border border-[color:var(--liff-border-strong,#E8EAED)] px-3 py-2.5 text-[13px] font-normal text-[color:var(--liff-tertiary-text,#777)] transition-colors active:bg-[color:var(--liff-surface-subtle,#F5F5F5)]";
+    const inner = (<>{glyph}<span>{label}</span></>);
     if (buildPageHref) {
-      return <LiffCard as="a" href={buildPageHref(page)} padding="md" aria-label={label}>{body}</LiffCard>;
+      return <a href={buildPageHref(page)} className={cls} aria-label={label}>{inner}</a>;
     }
     if (onSelectCard) {
-      return <LiffCard as="button" onClick={() => onSelectCard(page)} padding="md" aria-label={label}>{body}</LiffCard>;
+      return <button type="button" onClick={() => onSelectCard(page)} className={cls} aria-label={label}>{inner}</button>;
     }
-    return <LiffCard padding="md" aria-label={label}>{body}</LiffCard>;
+    return <div className={cls} aria-label={label}>{inner}</div>;
   };
 
   return (
-    <div className="mt-5 flex flex-col gap-2.5">
-      {survey && <Item page={survey} label="アンケート" />}
-      {faq && <Item page={faq} label="よくある質問" />}
+    <div className="mt-6 flex gap-2.5">
+      {survey && <Item page={survey} label="アンケート" glyph={<SurveyGlyph />} />}
+      {faq && <Item page={faq} label="よくある質問" glyph={<FaqGlyph />} />}
     </div>
   );
 }
