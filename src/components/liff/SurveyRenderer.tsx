@@ -10,7 +10,7 @@
 
 import { useState, type ReactNode } from "react";
 import type { LiffPageConfigSettings, SurveyItem } from "@/types";
-import { liffRootClass, liffDescriptionAlignClass } from "./liff-style-helpers";
+import { liffRootClass } from "./liff-style-helpers";
 import {
   LiffActionButton,
   LiffEmptyState,
@@ -119,13 +119,8 @@ export function SurveyRenderer({ config, preview, lineUserId }: Props) {
     <div className={`liff-font ${liffRootClass(config.settings_json)} min-h-screen bg-[color:var(--liff-background)] text-[color:var(--liff-primary-text)]`}>
       {/* 画面内ヘッダーは廃止。document.title (= LIFF 上部バー) で文脈表現する。 */}
       <main className="liff-player-main pt-5 pb-24 flex flex-col gap-4">
-        {/* ページタイトル h2 は廃止。description だけ表示。 */}
-        {config.description && (
-          <p className={`text-[14px] leading-relaxed text-[color:var(--liff-secondary-text)] whitespace-pre-wrap break-words ${liffDescriptionAlignClass(config.settings_json)}`}>
-            {config.description}
-          </p>
-        )}
-
+        {/* 説明文（config.description）は LiffSinglePageRenderer のページ見出し側で 1 度だけ表示する。
+            ここで再表示すると二重になるため出さない（document.title は LINE 上部バー）。 */}
         {completed ? (
           <div className="bg-[color:var(--liff-surface)] border border-[color:var(--liff-border)] rounded-[16px] px-5 py-7 text-center">
             <p className="text-3xl mb-3 text-[color:var(--liff-line-green)]">✓</p>
@@ -174,6 +169,10 @@ export function SurveyRenderer({ config, preview, lineUserId }: Props) {
 // ※ #379 の反省: primitive の label に複合 ReactNode を注入しない。カード（badge/設問/hint）は
 //    LiffQuestionCard が所有し、ここは hint プロップ用の小片だけを返す（QuestionCard 標準API）。
 //    required の検証は親 SurveyRenderer の validate() に集約（HTML required は付けない＝挙動を増やさない）。
+// デザイン仕様: 設問文は 15px・normal weight（LiffQuestionCard 既定の太字を上書き）。
+const SURVEY_QUESTION_CLASS =
+  "text-[15px] font-normal leading-snug text-[color:var(--liff-primary-text)] break-words";
+
 function buildSurveyHint(item: SurveyItem): ReactNode {
   const parts: ReactNode[] = [];
   if (item.input_type === "checkbox") parts.push(<span key="multi">複数選択可</span>);
@@ -204,7 +203,7 @@ function SurveyField({
 
   if (item.input_type === "textarea") {
     return (
-      <LiffQuestionCard question={labelText} hint={hint} labelId={labelId}>
+      <LiffQuestionCard question={labelText} hint={hint} labelId={labelId} questionClassName={SURVEY_QUESTION_CLASS}>
         <LiffUiTextarea
           aria-labelledby={labelId}
           value={typeof value === "string" ? value : ""}
@@ -217,7 +216,7 @@ function SurveyField({
   if (item.input_type === "radio" && Array.isArray(item.options) && item.options.length > 0) {
     const selected = typeof value === "string" ? value : "";
     return (
-      <LiffQuestionCard question={labelText} hint={hint} labelId={labelId}>
+      <LiffQuestionCard question={labelText} hint={hint} labelId={labelId} questionClassName={SURVEY_QUESTION_CLASS}>
         <div role="radiogroup" aria-labelledby={labelId} className="flex flex-col">
           {item.options.map((opt) => (
             <LiffChoiceRow
@@ -238,7 +237,7 @@ function SurveyField({
   if (item.input_type === "checkbox" && Array.isArray(item.options) && item.options.length > 0) {
     const selected = Array.isArray(value) ? value : [];
     return (
-      <LiffQuestionCard question={labelText} hint={hint} labelId={labelId}>
+      <LiffQuestionCard question={labelText} hint={hint} labelId={labelId} questionClassName={SURVEY_QUESTION_CLASS}>
         <div role="group" aria-labelledby={labelId} className="flex flex-col">
           {item.options.map((opt) => (
             <LiffChoiceRow
@@ -259,7 +258,7 @@ function SurveyField({
 
   // 既定: text（radio/checkbox で options 未設定もここに落ちる＝従来どおり）
   return (
-    <LiffQuestionCard question={labelText} hint={hint} labelId={labelId}>
+    <LiffQuestionCard question={labelText} hint={hint} labelId={labelId} questionClassName={SURVEY_QUESTION_CLASS}>
       <LiffTextInput
         aria-labelledby={labelId}
         value={typeof value === "string" ? value : ""}
