@@ -22,7 +22,7 @@ import {
   type MenuCard,
   type MenuCardSource,
 } from "./liff-style-helpers";
-import { LiffPoweredBy, shouldShowWhaleStudioCredit } from "./ui";
+import { LiffPoweredBy, shouldShowWhaleStudioCredit, LiffEmptyState } from "./ui";
 import { LiffCard } from "./primitives";
 
 export interface LiffMenuHomePage {
@@ -121,12 +121,7 @@ export function LiffMenuHomeRenderer({
       {/* メニュー（card: 2列グリッド / list: 縦並び） + 下部導線 */}
       <div className="liff-player-main pb-6">
         {cards.length === 0 ? (
-          <div className="bg-[color:var(--liff-surface,#fff)] border border-[color:var(--liff-border)] rounded-[20px] shadow-[0_6px_20px_rgba(31,64,92,0.06)] px-4 py-10 text-center">
-            <p className="text-3xl mb-2">📭</p>
-            <p className="text-[15px] leading-[1.6] text-[color:var(--liff-secondary-text)]">
-              ホームに表示する項目がまだ登録されていません
-            </p>
-          </div>
+          <LiffEmptyState emoji="📭" text="ホームに表示する項目がまだ登録されていません" />
         ) : isList ? (
           <div className="flex flex-col gap-2.5">
             {cards.map((card) => {
