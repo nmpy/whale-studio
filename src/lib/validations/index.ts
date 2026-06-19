@@ -144,6 +144,8 @@ export const workQuerySchema = z.object({
 export const createCharacterSchema = z.object({
   work_id:        uuidSchema,
   name:           z.string().min(1, "キャラクター名は必須です").max(50),
+  /** キャラクター紹介文（任意・最大 500 字）。trim 後、空 / 省略は API 層で null 化。 */
+  description:    z.string().trim().max(500, "説明文は500文字以内で入力してください").nullish(),
   /** 新規作成は "image" 固定。省略しても "image" になる */
   icon_type:      z.literal("image").default("image"),
   icon_image_url: urlSchema,
@@ -162,6 +164,8 @@ export const createCharacterSchema = z.object({
  */
 export const updateCharacterSchema = z.object({
   name:           z.string().min(1).max(50).optional(),
+  /** キャラクター紹介文（任意・最大 500 字）。省略＝変更なし / null・空＝API 層で null 化。 */
+  description:    z.string().trim().max(500, "説明文は500文字以内で入力してください").nullish(),
   /** 更新時も "image" のみ。"text" への変更は拒否 */
   icon_type:      z.literal("image").optional(),
   /** テキストアイコン廃止。null（クリア）のみ受け付ける */

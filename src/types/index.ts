@@ -187,6 +187,8 @@ export interface Character {
   id: string;
   work_id: string;
   name: string;
+  /** キャラクター紹介文（任意・null 可）。LIFF 表示は別 PR(CR2)。 */
+  description: string | null;
   icon_type: IconType;
   icon_text: string | null;
   icon_image_url: string | null;
@@ -463,6 +465,8 @@ export interface UpdateWorkBody {
 export interface CreateCharacterBody {
   work_id: string;
   name: string;
+  /** キャラクター紹介文（任意）。空文字 / 省略は null として保存される。 */
+  description?: string | null;
   /** 新規作成は "image" 固定。テキストアイコン型は新規作成不可（既存データ読み取りのみ互換） */
   icon_type?: "image";
   icon_image_url?: string;
@@ -472,6 +476,8 @@ export interface CreateCharacterBody {
 
 export interface UpdateCharacterBody {
   name?: string;
+  /** キャラクター紹介文（任意）。省略＝変更なし / null・空文字＝クリア。 */
+  description?: string | null;
   /** 更新時は "image" のみ許可 */
   icon_type?: "image";
   /** @deprecated テキストアイコン型は廃止。既存データ互換のため null のみ受け付ける */

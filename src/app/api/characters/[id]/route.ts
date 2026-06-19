@@ -11,7 +11,7 @@ import { updateCharacterSchema, formatZodErrors } from "@/lib/validations";
 import { ZodError } from "zod";
 
 function toResponse(c: {
-  id: string; workId: string; name: string; iconType: string; iconText: string | null;
+  id: string; workId: string; name: string; description: string | null; iconType: string; iconText: string | null;
   iconImageUrl: string | null; iconColor: string | null; sortOrder: number;
   isActive: boolean; createdAt: Date; updatedAt: Date;
 }) {
@@ -19,6 +19,7 @@ function toResponse(c: {
     id:             c.id,
     work_id:        c.workId,
     name:           c.name,
+    description:    c.description,
     icon_type:      c.iconType,
     icon_text:      c.iconText,
     icon_image_url: c.iconImageUrl,
@@ -83,6 +84,7 @@ export const PATCH = withAuth<{ id: string }>(async (req, { params }, user) => {
       where: { id: params.id },
       data: {
         ...(data.name           !== undefined && { name:         data.name }),
+        ...(data.description    !== undefined && { description:  data.description || null }),  // 空 → null
         ...(data.icon_type      !== undefined && { iconType:     data.icon_type }),
         ...(data.icon_text      !== undefined && { iconText:     data.icon_text }),
         ...(data.icon_image_url !== undefined && { iconImageUrl: data.icon_image_url }),

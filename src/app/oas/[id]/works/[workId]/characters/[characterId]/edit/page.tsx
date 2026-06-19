@@ -42,6 +42,7 @@ const compactInputClass =
 
 interface FormState {
   name:           string;
+  description:    string;
   icon_image_url: string;
   sort_order:     number;
   is_active:      boolean;
@@ -65,6 +66,7 @@ export default function WorkCharacterEditPage() {
     characterApi.get(getDevToken(), charId)
       .then((c) => setForm({
         name:           c.name,
+        description:     c.description ?? "",
         icon_image_url: c.icon_image_url ?? "",
         sort_order:     c.sort_order,
         is_active:      c.is_active,
@@ -91,6 +93,7 @@ export default function WorkCharacterEditPage() {
     try {
       await characterApi.update(getDevToken(), charId, {
         name:           form.name.trim(),
+        description:    form.description.trim() || null,
         icon_type:      "image",
         icon_image_url: form.icon_image_url.trim(),
         icon_text:      null,
@@ -208,6 +211,26 @@ export default function WorkCharacterEditPage() {
             {errors.name?.map((m) => (
               <p key={m} id="name-error" role="alert" className="mt-1 text-[12px] text-danger">{m}</p>
             ))}
+          </div>
+
+          {/* description (任意) */}
+          <div className="mb-5">
+            <label htmlFor="description" className="mb-1.5 block text-[13px] font-bold text-ink">
+              説明文<span className="ml-1 text-[11px] font-normal text-ink-3">（任意）</span>
+            </label>
+            <textarea
+              id="description"
+              value={form!.description}
+              onChange={(e) => setField("description", e.target.value)}
+              placeholder="例: 主人公を導くナビゲーター。物語の鍵を握る。"
+              maxLength={500}
+              rows={3}
+              readOnly={!canEdit}
+              className={compactInputClass + " w-full resize-y leading-[1.7]"}
+            />
+            <p className="mt-1 text-[11px] text-ink-3">
+              キャラクター紹介に使う任意の説明文（最大 500 文字）。
+            </p>
           </div>
 
           {/* icon_image_url */}

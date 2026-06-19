@@ -183,6 +183,8 @@ model Character {
   id            String    @id @default(uuid())
   workId        String    @map("work_id")
   name          String
+  /// キャラクター紹介文（任意・nullable）。LIFF 表示は別 PR(CR2)。
+  description   String?
   /// "text" | "image"
   iconType      String    @default("text") @map("icon_type")
   iconText      String?   @map("icon_text")
