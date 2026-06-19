@@ -32,6 +32,12 @@ interface Props {
   emptyDescription: string;
 }
 
+// 二次操作ボタン（URLコピー / 回答を見る）の共通スタイル。
+// Button.tsx（CMS buttonClass）は変更せず、局所 class で見た目を統一する。CMS グレートーン。
+const secondaryBtnCls =
+  "inline-flex items-center justify-center px-3 py-1.5 rounded-lg border border-gray-200 " +
+  "text-gray-600 text-xs font-medium transition-colors hover:bg-gray-50";
+
 export function PageListTab({
   oaId, workId, pages, isReadOnly, creating, copied, analytics,
   onCreate, onCopyUrl, emptyTitle, emptyDescription,
@@ -59,7 +65,7 @@ export function PageListTab({
           <p className="text-xs text-gray-400">{emptyDescription}</p>
         </div>
       ) : (
-        <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+        <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
           <ul className="divide-y divide-gray-100">
             {pages.map((p) => {
               const url = buildPublicUrl({
@@ -139,7 +145,7 @@ export function PageListTab({
                       <button
                         type="button"
                         onClick={() => onCopyUrl(p.id)}
-                        className="px-3 py-1.5 border border-gray-200 text-gray-600 rounded-md text-xs hover:bg-gray-50"
+                        className={secondaryBtnCls}
                         title="URL をコピー"
                       >
                         {copied === p.id ? "コピーしました!" : "URLコピー"}
@@ -147,7 +153,7 @@ export function PageListTab({
                     )}
                     <a
                       href={`/oas/${oaId}/works/${workId}/liff/pages/${p.id}/submissions`}
-                      className="px-3 py-1.5 border border-gray-200 text-gray-600 rounded-md text-xs hover:bg-gray-50"
+                      className={secondaryBtnCls}
                       title="回答結果を見る"
                     >
                       回答を見る
