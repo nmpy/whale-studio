@@ -8,7 +8,7 @@
 // 同じく出すので、運用側はテキスト/画像ブロックでキャラクター情報を組むことができる。
 
 import type { LiffPageConfigSettings, LiffBlockType, HeadingSettings, TextSettings, WarningSettings, ButtonLinkSettings, DividerSettings, AccordionSettings } from "@/types";
-import { liffRootClass, liffDescriptionAlignClass } from "./liff-style-helpers";
+import { liffRootClass } from "./liff-style-helpers";
 import { LiffEmptyState } from "./primitives/LiffEmptyState";
 import {
   HeadingBlock,
@@ -47,12 +47,8 @@ export function CharacterRenderer({ config }: Props) {
   return (
     <div className={`liff-font ${liffRootClass(settings)} min-h-screen bg-[color:var(--liff-background)] text-[color:var(--liff-primary-text)]`}>
       <div className="liff-player-main pt-2 pb-8 flex flex-col gap-4">
-        {config.description && (
-          <p className={`text-[14px] leading-relaxed text-[color:var(--liff-secondary-text)] whitespace-pre-wrap break-words ${liffDescriptionAlignClass(settings)}`}>
-            {config.description}
-          </p>
-        )}
-
+        {/* 説明文（config.description）は LiffSinglePageRenderer のページ見出し側で 1 度だけ表示する。
+            ここで再表示すると二重になるため出さない（document.title は LINE 上部バー）。 */}
         {blocks.length === 0 ? (
           <LiffEmptyState emoji="🎭" text="キャラクター情報はまだ登録されていません" />
         ) : (
