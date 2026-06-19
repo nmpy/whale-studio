@@ -8,10 +8,9 @@ import { useEffect, useState } from "react";
 import type { FaqItem, LiffPageConfigSettings } from "@/types";
 import { recordLiffEvent } from "@/lib/liff-events";
 import { useLiffPlayerContext } from "./LiffPlayerContext";
-import { liffRootClass, liffDescriptionAlignClass } from "./liff-style-helpers";
+import { liffRootClass } from "./liff-style-helpers";
 import { visibleFaqItems } from "./faq-helpers";
 import { resolveFaqContactHref } from "./faq-contact-cta";
-import { LiffCard } from "./primitives";
 
 export interface FaqRendererConfig {
   /** 作品名。ヘッダーに表示する (新仕様)。未指定なら title にフォールバック */
@@ -52,51 +51,43 @@ export function FaqRenderer({ config, preview }: { config: FaqRendererConfig; pr
     <div className={`liff-font ${liffRootClass(config.settings_json)} min-h-screen bg-[color:var(--liff-background)] text-[color:var(--liff-primary-text)]`}>
       {/* 画面内ヘッダーは廃止。document.title (= LIFF 上部バー) で文脈表現する。 */}
       <main className="liff-player-main pt-5 pb-24 flex flex-col gap-4">
-        {/* ページタイトル h2 は廃止。ヘッダーの header_title (またはフォールバック) で文脈表現。
-            description だけは本文先頭に残す (CMS で設定がある場合のみ表示)。 */}
-        {config.description && (
-          <p className={`text-[14px] leading-relaxed text-[color:var(--liff-secondary-text)] whitespace-pre-wrap break-words ${liffDescriptionAlignClass(config.settings_json)}`}>
-            {config.description}
-          </p>
-        )}
-
+        {/* 説明文（config.description）は LiffSinglePageRenderer のページ見出し側で 1 度だけ表示する。
+            ここで再表示すると二重になるため出さない（document.title は LINE 上部バー）。 */}
         {items.length === 0 ? (
           <p className="text-sm text-[color:var(--liff-tertiary-text)] text-center py-8">
             （Q&amp;A が登録されていません）
           </p>
         ) : (
-          <ul className="flex flex-col gap-2">
+          // FAQ リスト = 1 枚の白カード（radius 10 / 薄影 / overflow hidden）。
+          // 各 Q&A は個別カードにせず、薄い区切り線で 1 枚のカード内に並べる。
+          <ul className="bg-[color:var(--liff-surface,#fff)] rounded-[10px] overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.05)]">
             {items.map((item, idx) => (
-              <FaqRow key={item.id ?? idx} item={item} index={idx} />
+              <FaqRow key={item.id ?? idx} item={item} index={idx} isLast={idx === items.length - 1} />
             ))}
           </ul>
         )}
 
-        {/* お問い合わせ導線。同 work に公開中 & 有効な contact ページがあればリンク化、
-            無ければ静的案内のまま（404 / 500 を誘発しない）。 */}
+        {/* お問い合わせ導線（見た目だけ中央寄せテキストリンクに変更）。リンク先 contactHref の解決・
+            表示条件は従来どおり（公開中 & 有効な contact ページがある場合のみリンク化）。導線ロジック不変。 */}
         {contactHref ? (
-          <LiffCard as="a" href={contactHref} padding="md" className="mt-2" aria-label="お問い合わせ">
-            <p className="text-[12px] font-bold text-[color:var(--liff-secondary-text)]">解決しない場合</p>
-            <p className="mt-1 text-[15px] font-bold text-[color:var(--liff-primary-text)]">お問い合わせ</p>
-            <p className="mt-1 text-[13px] leading-[1.6] text-[color:var(--liff-tertiary-text)]">
-              お問い合わせフォームへ進む
-            </p>
-          </LiffCard>
+          <a
+            href={contactHref}
+            aria-label="お問い合わせ"
+            className="mt-3 block text-center text-[12.5px] text-[color:var(--liff-tertiary-text,#777)] active:opacity-70"
+          >
+            お問い合わせ ›
+          </a>
         ) : (
-          <LiffCard padding="md" className="mt-2">
-            <p className="text-[12px] font-bold text-[color:var(--liff-secondary-text)]">解決しない場合</p>
-            <p className="mt-1 text-[15px] font-bold text-[color:var(--liff-primary-text)]">お問い合わせ</p>
-            <p className="mt-1 text-[13px] leading-[1.6] text-[color:var(--liff-tertiary-text)]">
-              お問い合わせフォームは今後追加予定です。
-            </p>
-          </LiffCard>
+          <p className="mt-3 text-center text-[12.5px] text-[color:var(--liff-tertiary-text,#777)]">
+            お問い合わせフォームは今後追加予定です。
+          </p>
         )}
       </main>
     </div>
   );
 }
 
-function FaqRow({ item, index }: { item: FaqItem; index: number }) {
+function FaqRow({ item, index, isLast }: { item: FaqItem; index: number; isLast: boolean }) {
   const [open, setOpen] = useState(false);
   const playerCtx = useLiffPlayerContext();
   const panelId = `faq-panel-${index}`;
@@ -120,30 +111,37 @@ function FaqRow({ item, index }: { item: FaqItem; index: number }) {
     });
   };
   return (
-    <li className="border border-[color:var(--liff-border)] rounded-[18px] shadow-[0_2px_10px_rgba(31,64,92,0.05)] overflow-hidden bg-[color:var(--liff-surface)]">
+    <li className={isLast ? "" : "border-b border-[color:var(--liff-border)]"}>
       <button
         id={headerId}
         type="button"
         aria-expanded={open}
         aria-controls={panelId}
         onClick={toggle}
-        className="w-full flex items-center justify-between gap-3 text-left px-5 min-h-[60px] py-3 transition-colors active:bg-[color:var(--liff-surface-subtle,#F7F8FA)]"
+        className="w-full flex items-center gap-3 text-left px-4 py-4 transition-colors active:bg-[color:var(--liff-surface-subtle,#F5F5F5)]"
       >
-        <span className="font-bold text-[16px] leading-snug break-words flex-1 min-w-0 text-[color:var(--liff-primary-text)]">
+        {/* Q バッジ: 淡い LINE グリーン背景 + 濃いグリーン文字（--liff-ui-* token）。 */}
+        <span
+          aria-hidden="true"
+          className="shrink-0 inline-flex items-center justify-center w-6 h-6 rounded-full text-[13px] font-bold bg-[color:var(--liff-ui-green-soft,#E8F9EE)] text-[color:var(--liff-ui-green-pressed,#06A047)]"
+        >
+          Q
+        </span>
+        <span className="flex-1 min-w-0 font-normal text-[14px] leading-snug break-words text-[color:var(--liff-primary-text)]">
           {item.question?.trim() || "（質問未設定）"}
         </span>
         {/* AccordionBlock と同じ chevron。緑ボタン / 丸枠は使わない */}
         <svg
           aria-hidden="true"
           viewBox="0 0 24 24"
-          width="20"
-          height="20"
+          width="18"
+          height="18"
           fill="none"
           stroke="currentColor"
           strokeWidth="2"
           strokeLinecap="round"
           strokeLinejoin="round"
-          className={`shrink-0 text-[color:var(--liff-secondary-text)] transition-transform ${
+          className={`shrink-0 text-[color:var(--liff-tertiary-text)] transition-transform ${
             open ? "rotate-180" : ""
           }`}
         >
@@ -155,12 +153,9 @@ function FaqRow({ item, index }: { item: FaqItem; index: number }) {
           id={panelId}
           role="region"
           aria-labelledby={headerId}
-          className="px-5 pt-4 pb-5 border-t border-[color:var(--liff-border)]"
+          className="pl-[52px] pr-4 pb-[17px]"
         >
-          <p
-            className="text-[15px] leading-[1.8] whitespace-pre-wrap break-words text-[color:var(--liff-primary-text)]"
-            style={{ letterSpacing: "0.02em" }}
-          >
+          <p className="text-[13px] leading-[1.85] whitespace-pre-wrap break-words text-[color:var(--liff-secondary-text)]">
             {item.answer?.trim() || "（回答未設定）"}
           </p>
         </div>
