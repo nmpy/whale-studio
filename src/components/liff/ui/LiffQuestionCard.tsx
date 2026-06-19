@@ -25,17 +25,20 @@ interface Props {
   children?: ReactNode;
   /** ラベルと control を関連付けるための id（aria）。 */
   labelId?: string;
+  /** 設問文 span の typography を上書きする（既定は太字の headerTitle）。
+   *  デザイン上 normal weight にしたい画面（Survey 等）が個別に渡す。未指定なら従来どおり。 */
+  questionClassName?: string;
   className?: string;
 }
 
 export function LiffQuestionCard({
-  question, hint, badgeLabel, showBadge = true, description, children, labelId, className,
+  question, hint, badgeLabel, showBadge = true, description, children, labelId, questionClassName, className,
 }: Props) {
   return (
     <div className={cx(LIFF_CARD_CLASS, "px-5 py-4 flex flex-col gap-3", className)}>
       <div className="flex items-start gap-2.5">
         {showBadge && <LiffQuestionBadge label={badgeLabel} className="mt-0.5" />}
-        <span id={labelId} className={cx("flex-1 min-w-0", LIFF_TEXT.headerTitle)}>
+        <span id={labelId} className={cx("flex-1 min-w-0", questionClassName ?? LIFF_TEXT.headerTitle)}>
           {question}
         </span>
         {hint && (
