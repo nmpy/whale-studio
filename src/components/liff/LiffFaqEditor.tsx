@@ -55,7 +55,7 @@ export function LiffFaqEditor({ settings, readOnly, onChange }: Props) {
   };
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-5 mb-6 space-y-4">
+    <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 mb-6 space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <h2 className="text-sm font-semibold text-gray-900">FAQ 項目</h2>
         {!readOnly && (
@@ -80,7 +80,7 @@ export function LiffFaqEditor({ settings, readOnly, onChange }: Props) {
                     type="button"
                     onClick={() => move(idx, -1)}
                     disabled={idx === 0}
-                    className="px-2 py-1 text-xs border border-gray-200 rounded disabled:opacity-30"
+                    className="px-2 py-1 text-xs border border-gray-200 rounded transition-colors hover:bg-gray-50 disabled:opacity-30"
                     aria-label="上へ移動"
                   >
                     ↑
@@ -89,7 +89,7 @@ export function LiffFaqEditor({ settings, readOnly, onChange }: Props) {
                     type="button"
                     onClick={() => move(idx, 1)}
                     disabled={idx === items.length - 1}
-                    className="px-2 py-1 text-xs border border-gray-200 rounded disabled:opacity-30"
+                    className="px-2 py-1 text-xs border border-gray-200 rounded transition-colors hover:bg-gray-50 disabled:opacity-30"
                     aria-label="下へ移動"
                   >
                     ↓
@@ -97,7 +97,7 @@ export function LiffFaqEditor({ settings, readOnly, onChange }: Props) {
                   <button
                     type="button"
                     onClick={() => removeItem(idx)}
-                    className="px-2 py-1 text-xs border border-red-300 text-red-600 rounded hover:bg-red-50"
+                    className="px-2 py-1 text-xs border border-red-200 text-red-600 rounded transition-colors hover:bg-red-50"
                     aria-label="削除"
                   >
                     削除

@@ -87,14 +87,14 @@ export function LiffWerewolfEditor({ workId, liffPageConfigId, readOnly }: Props
   };
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-5 mb-6">
+    <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 mb-6">
       <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
         <h2 className="text-sm font-semibold text-gray-900">人狼 / 配役閲覧 — タイトル一覧</h2>
         {!readOnly && (
           <button
             type="button"
             onClick={() => setShowAddModal(true)}
-            className="px-3 py-1.5 bg-brand text-white rounded-md text-xs font-semibold hover:bg-brand-deep"
+            className="px-3 py-1.5 bg-brand text-white rounded-md text-xs font-semibold transition-colors hover:bg-brand-deep"
           >
             ＋ タイトル追加
           </button>
@@ -138,7 +138,7 @@ export function LiffWerewolfEditor({ workId, liffPageConfigId, readOnly }: Props
               <div className="flex items-center gap-2 shrink-0">
                 <Link
                   href={`/oas/${oaId}/works/${workId}/liff/${liffPageConfigId}/werewolf/${t.id}`}
-                  className="px-2.5 py-1 text-xs bg-brand text-white rounded font-semibold hover:bg-brand-deep"
+                  className="px-2.5 py-1 text-xs bg-brand text-white rounded font-semibold transition-colors hover:bg-brand-deep"
                 >
                   編集
                 </Link>
@@ -146,7 +146,7 @@ export function LiffWerewolfEditor({ workId, liffPageConfigId, readOnly }: Props
                   <button
                     type="button"
                     onClick={() => handleDelete(t)}
-                    className="px-2.5 py-1 text-xs text-red-600 hover:bg-red-50 rounded border border-red-200"
+                    className="px-2.5 py-1 text-xs text-red-600 rounded border border-red-200 transition-colors hover:bg-red-50"
                   >
                     削除
                   </button>
@@ -272,14 +272,14 @@ function AddTitleModal({
               type="button"
               onClick={onCancel}
               disabled={saving}
-              className="px-4 py-2 border border-gray-200 text-gray-600 rounded-md text-sm hover:bg-gray-50"
+              className="px-4 py-2 border border-gray-200 text-gray-600 rounded-md text-sm transition-colors hover:bg-gray-50"
             >
               キャンセル
             </button>
             <button
               type="submit"
               disabled={saving}
-              className="px-4 py-2 bg-brand text-white rounded-md text-sm font-semibold hover:bg-brand-deep disabled:opacity-50"
+              className="px-4 py-2 bg-brand text-white rounded-md text-sm font-semibold transition-colors hover:bg-brand-deep disabled:opacity-50"
             >
               {saving ? "作成中..." : "作成"}
             </button>

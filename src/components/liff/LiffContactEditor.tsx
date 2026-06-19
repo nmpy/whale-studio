@@ -27,6 +27,8 @@ const INPUT_TYPE_LABEL: Record<SurveyInputType, string> = {
 
 const labelCls = "block text-xs font-medium text-gray-500 mb-1";
 const inputCls = "w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand/30 disabled:bg-gray-50";
+// raw checkbox の accent を CMS brand green に揃える（accent-brand = theme brand）。
+const checkboxCls = "rounded border-gray-300 accent-brand";
 
 function newCustomItem(): SurveyItem {
   return {
@@ -55,12 +57,12 @@ function ToggleRow({
       <div className="flex items-center gap-4">
         {!alwaysShown && onShowChange && (
           <label className="flex items-center gap-1.5 text-xs text-gray-700">
-            <input type="checkbox" checked={showValue} onChange={(e) => onShowChange(e.target.checked)} disabled={readOnly} className="rounded border-gray-300" />
+            <input type="checkbox" checked={showValue} onChange={(e) => onShowChange(e.target.checked)} disabled={readOnly} className={checkboxCls} />
             表示する
           </label>
         )}
         <label className="flex items-center gap-1.5 text-xs text-gray-700">
-          <input type="checkbox" checked={requiredValue} onChange={(e) => onRequiredChange(e.target.checked)} disabled={readOnly || (!alwaysShown && !showValue)} className="rounded border-gray-300" />
+          <input type="checkbox" checked={requiredValue} onChange={(e) => onRequiredChange(e.target.checked)} disabled={readOnly || (!alwaysShown && !showValue)} className={checkboxCls} />
           必須にする
         </label>
       </div>
@@ -116,7 +118,7 @@ export function LiffContactEditor({ settings, readOnly, onChange }: Props) {
   const needsOptions = (t: SurveyInputType) => t === "radio" || t === "checkbox";
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-5 mb-6 space-y-5">
+    <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 mb-6 space-y-5">
       <h2 className="text-sm font-semibold text-gray-900">お問い合わせ設定</h2>
 
       {/* 問い合わせ種別 */}
@@ -137,9 +139,9 @@ export function LiffContactEditor({ settings, readOnly, onChange }: Props) {
                 <input className={inputCls} value={c} onChange={(e) => updateCategory(idx, e.target.value)} disabled={readOnly} placeholder="例: 不具合の報告" maxLength={50} />
                 {!readOnly && (
                   <div className="flex items-center gap-1 shrink-0">
-                    <button type="button" onClick={() => moveCategory(idx, -1)} disabled={idx === 0} className="px-2 py-1 text-xs border border-gray-200 rounded disabled:opacity-30" aria-label="上へ移動">↑</button>
-                    <button type="button" onClick={() => moveCategory(idx, 1)} disabled={idx === categories.length - 1} className="px-2 py-1 text-xs border border-gray-200 rounded disabled:opacity-30" aria-label="下へ移動">↓</button>
-                    <button type="button" onClick={() => removeCategory(idx)} className="px-2 py-1 text-xs border border-red-300 text-red-600 rounded hover:bg-red-50" aria-label="削除">削除</button>
+                    <button type="button" onClick={() => moveCategory(idx, -1)} disabled={idx === 0} className="px-2 py-1 text-xs border border-gray-200 rounded transition-colors hover:bg-gray-50 disabled:opacity-30" aria-label="上へ移動">↑</button>
+                    <button type="button" onClick={() => moveCategory(idx, 1)} disabled={idx === categories.length - 1} className="px-2 py-1 text-xs border border-gray-200 rounded transition-colors hover:bg-gray-50 disabled:opacity-30" aria-label="下へ移動">↓</button>
+                    <button type="button" onClick={() => removeCategory(idx)} className="px-2 py-1 text-xs border border-red-200 text-red-600 rounded transition-colors hover:bg-red-50" aria-label="削除">削除</button>
                   </div>
                 )}
               </li>
@@ -147,7 +149,7 @@ export function LiffContactEditor({ settings, readOnly, onChange }: Props) {
           </ul>
         )}
         <label className="flex items-center gap-1.5 text-xs text-gray-700">
-          <input type="checkbox" checked={categoryRequired} onChange={(e) => onChange({ contact_category_required: e.target.checked })} disabled={readOnly || categories.length === 0} className="rounded border-gray-300" />
+          <input type="checkbox" checked={categoryRequired} onChange={(e) => onChange({ contact_category_required: e.target.checked })} disabled={readOnly || categories.length === 0} className={checkboxCls} />
           種別を必須にする
         </label>
       </section>
@@ -178,9 +180,9 @@ export function LiffContactEditor({ settings, readOnly, onChange }: Props) {
                   <span className="text-[11px] text-gray-400">項目 {idx + 1}</span>
                   {!readOnly && (
                     <div className="flex items-center gap-1">
-                      <button type="button" onClick={() => moveCustom(idx, -1)} disabled={idx === 0} className="px-2 py-1 text-xs border border-gray-200 rounded disabled:opacity-30" aria-label="上へ移動">↑</button>
-                      <button type="button" onClick={() => moveCustom(idx, 1)} disabled={idx === customFields.length - 1} className="px-2 py-1 text-xs border border-gray-200 rounded disabled:opacity-30" aria-label="下へ移動">↓</button>
-                      <button type="button" onClick={() => removeCustom(idx)} className="px-2 py-1 text-xs border border-red-300 text-red-600 rounded hover:bg-red-50" aria-label="削除">削除</button>
+                      <button type="button" onClick={() => moveCustom(idx, -1)} disabled={idx === 0} className="px-2 py-1 text-xs border border-gray-200 rounded transition-colors hover:bg-gray-50 disabled:opacity-30" aria-label="上へ移動">↑</button>
+                      <button type="button" onClick={() => moveCustom(idx, 1)} disabled={idx === customFields.length - 1} className="px-2 py-1 text-xs border border-gray-200 rounded transition-colors hover:bg-gray-50 disabled:opacity-30" aria-label="下へ移動">↓</button>
+                      <button type="button" onClick={() => removeCustom(idx)} className="px-2 py-1 text-xs border border-red-200 text-red-600 rounded transition-colors hover:bg-red-50" aria-label="削除">削除</button>
                     </div>
                   )}
                 </div>
@@ -199,7 +201,7 @@ export function LiffContactEditor({ settings, readOnly, onChange }: Props) {
                   </div>
                   <div className="flex items-end">
                     <label className="flex items-center gap-2 text-sm text-gray-700">
-                      <input type="checkbox" checked={item.required ?? false} onChange={(e) => updateCustom(idx, { required: e.target.checked })} disabled={readOnly} className="rounded border-gray-300" />
+                      <input type="checkbox" checked={item.required ?? false} onChange={(e) => updateCustom(idx, { required: e.target.checked })} disabled={readOnly} className={checkboxCls} />
                       必須にする
                     </label>
                   </div>

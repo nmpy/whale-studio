@@ -155,8 +155,8 @@ function ChildItem({
           <div className="flex gap-0.5">
             <button type="button" onClick={() => onMove("up")} disabled={index === 0} className="text-[10px] px-1 py-0.5 text-gray-500 disabled:opacity-30" aria-label="上へ">▲</button>
             <button type="button" onClick={() => onMove("down")} disabled={index === total - 1} className="text-[10px] px-1 py-0.5 text-gray-500 disabled:opacity-30" aria-label="下へ">▼</button>
-            <button type="button" onClick={onDuplicate} className="text-[10px] px-1.5 py-0.5 text-gray-600 border border-gray-200 rounded bg-white hover:bg-gray-50">複製</button>
-            <button type="button" onClick={onRemove} className="text-[10px] px-1.5 py-0.5 text-red-500 border border-red-100 rounded bg-white hover:bg-red-50">削除</button>
+            <button type="button" onClick={onDuplicate} className="text-[10px] px-1.5 py-0.5 text-gray-600 border border-gray-200 rounded bg-white transition-colors hover:bg-gray-50">複製</button>
+            <button type="button" onClick={onRemove} className="text-[10px] px-1.5 py-0.5 text-red-600 border border-red-200 rounded bg-white transition-colors hover:bg-red-50">削除</button>
           </div>
         )}
       </div>
