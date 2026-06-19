@@ -14,7 +14,7 @@ import { trackOnboardingProgress } from "@/lib/onboarding";
 
 export const dynamic = "force-dynamic";
 function toResponse(c: {
-  id: string; workId: string; name: string; iconType: string; iconText: string | null;
+  id: string; workId: string; name: string; description: string | null; iconType: string; iconText: string | null;
   iconImageUrl: string | null; iconColor: string | null; sortOrder: number;
   isActive: boolean; createdAt: Date; updatedAt: Date;
 }) {
@@ -22,6 +22,7 @@ function toResponse(c: {
     id:             c.id,
     work_id:        c.workId,
     name:           c.name,
+    description:    c.description,
     icon_type:      c.iconType,
     icon_text:      c.iconText,
     icon_image_url: c.iconImageUrl,
@@ -87,6 +88,7 @@ export const POST = withAuth(async (req, _ctx, user) => {
       data: {
         workId:       data.work_id,
         name:         data.name,
+        description:  data.description || null,  // trim 済み / 空・未指定は null
         iconType:     data.icon_type,   // 常に "image"
         iconImageUrl: data.icon_image_url,
         sortOrder:    data.sort_order,
