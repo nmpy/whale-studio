@@ -4,17 +4,20 @@
 // LIFF お問い合わせ（page_type="contact"）— フォームを表示し /api/liff/works/[workId]/contact に送信する。
 // 送信成功後は完了表示。プレビュー時は API を呼ばず完了表示まで遷移する。
 // バリデーション（必須/メール形式/本文100文字）は contact-helpers をクライアント/サーバで共有する。
+//
+// UI は LIFF 新UI foundation（ui/: 下線 LiffTextInput / LiffUiTextarea / LiffChoiceRow / LiffActionButton）
+// に寄せる。フォーム全体を 1 枚の白カードにし、各項目はラベル + 下線 control で並べる。
+// ※ payload / validate / submit / Slack 通知 / LiffSubmission 保存 / custom fields は不変（見た目のみ）。
 
 import { useState } from "react";
 import type { LiffPageConfigSettings, SurveyItem } from "@/types";
-import { liffRootClass, liffDescriptionAlignClass } from "./liff-style-helpers";
+import { liffRootClass } from "./liff-style-helpers";
 import {
-  LiffButton,
-  LiffInput,
-  LiffTextarea,
-  LiffRadioGroup,
-  LiffCheckboxGroup,
-} from "./primitives";
+  LiffActionButton,
+  LiffTextInput,
+  LiffTextarea as LiffUiTextarea,
+  LiffChoiceRow,
+} from "./ui";
 import {
   resolveContactConfig,
   validateContactSubmission,
@@ -41,6 +44,26 @@ interface Props {
 type CustomAnswers = Record<string, string | string[]>;
 function customItemKey(item: SurveyItem, idx: number): string {
   return item.id || `q${idx}`;
+}
+
+// フォームラベル（15px / normal）+ 必須マーク *（赤）。primitive の label slot には注入しない。
+function ContactLabel({
+  text, required, htmlFor, id, className,
+}: {
+  text: string;
+  required?: boolean;
+  /** input と関連付ける（input 系で使用）。 */
+  htmlFor?: string;
+  /** group の aria-labelledby 参照先（radio/checkbox group で使用）。 */
+  id?: string;
+  className?: string;
+}) {
+  return (
+    <label htmlFor={htmlFor} id={id} className={`block text-[15px] font-normal text-[color:var(--liff-primary-text)] ${className ?? ""}`}>
+      {text}
+      {required && <span className="ml-1 text-[color:var(--liff-danger,#E0405A)]">*</span>}
+    </label>
+  );
 }
 
 export function ContactRenderer({ config, preview, lineUserId }: Props) {
@@ -103,84 +126,102 @@ export function ContactRenderer({ config, preview, lineUserId }: Props) {
   return (
     <div className={`liff-font ${liffRootClass(config.settings_json)} min-h-screen bg-[color:var(--liff-background)] text-[color:var(--liff-primary-text)]`}>
       <main className="liff-player-main pt-5 pb-24 flex flex-col gap-4">
-        {config.description && (
-          <p className={`text-[14px] leading-relaxed text-[color:var(--liff-secondary-text)] whitespace-pre-wrap break-words ${liffDescriptionAlignClass(config.settings_json)}`}>
-            {config.description}
-          </p>
-        )}
-
+        {/* 説明文（config.description）は LiffSinglePageRenderer のページ見出し側で 1 度だけ表示する。
+            ここで再表示すると二重になるため出さない（document.title は LINE 上部バー）。 */}
         {completed ? (
-          <div className="bg-[color:var(--liff-surface)] border border-[color:var(--liff-border)] rounded-[16px] px-5 py-7 text-center">
-            <p className="text-3xl mb-3 text-[color:var(--liff-line-green)]">✓</p>
-            <p className="text-[15px] leading-[1.8] whitespace-pre-wrap" style={{ letterSpacing: "0.02em" }}>{cfg.successMessage}</p>
+          // サンクスカード: 白カード + 緑ソフトの丸 + チェック + 既存 successMessage。
+          <div className="bg-[color:var(--liff-surface,#fff)] rounded-[10px] shadow-[0_1px_3px_rgba(0,0,0,0.05)] px-6 py-11 text-center">
+            <div className="mx-auto mb-4 flex w-[58px] h-[58px] items-center justify-center rounded-full bg-[color:var(--liff-ui-green-soft,#E8F9EE)] text-[28px] text-[color:var(--liff-line-green,#06C755)]">
+              ✓
+            </div>
+            <p className="text-[15px] leading-[1.85] whitespace-pre-wrap text-[color:var(--liff-primary-text)]">{cfg.successMessage}</p>
           </div>
         ) : (
-          <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-            {/* 問い合わせ種別 */}
-            {cfg.categories.length > 0 && (
-              <LiffRadioGroup
-                label={CONTACT_LABELS.category}
-                required={cfg.categoryRequired}
-                options={cfg.categories}
-                name="contact_category"
-                value={category}
-                onChange={setCategory}
+          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+            {/* フォーム全体 = 1 枚の白カード（radius 10 / 薄影）。section 間隔 22px。 */}
+            <div className="bg-[color:var(--liff-surface,#fff)] rounded-[10px] shadow-[0_1px_3px_rgba(0,0,0,0.05)] px-4 pt-[18px] pb-3 flex flex-col gap-[22px]">
+              {/* 問い合わせ種別 */}
+              {cfg.categories.length > 0 && (
+                <div>
+                  <ContactLabel id="contact-category-label" text={CONTACT_LABELS.category} required={cfg.categoryRequired} className="mb-1.5" />
+                  <div role="radiogroup" aria-labelledby="contact-category-label" className="flex flex-col">
+                    {cfg.categories.map((opt) => (
+                      <LiffChoiceRow
+                        key={opt}
+                        type="radio"
+                        name="contact_category"
+                        value={opt}
+                        checked={category === opt}
+                        onChange={(val) => setCategory(val)}
+                        label={opt}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* お名前 */}
+              {cfg.showName && (
+                <div>
+                  <ContactLabel htmlFor="contact-name" text={CONTACT_LABELS.name} required={cfg.nameRequired} className="mb-1.5" />
+                  <LiffTextInput id="contact-name" value={name} onChange={(e) => setName(e.target.value)} />
+                </div>
+              )}
+
+              {/* メールアドレス */}
+              {cfg.showEmail && (
+                <div>
+                  <ContactLabel htmlFor="contact-email" text={CONTACT_LABELS.email} required={cfg.emailRequired} className="mb-1.5" />
+                  <LiffTextInput id="contact-email" type="email" inputMode="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+                </div>
+              )}
+
+              {/* お問い合わせ内容（既存仕様: 最大 CONTACT_BODY_MAX 文字・カウンター付き） */}
+              <div>
+                <div className="mb-1.5 flex items-baseline justify-between gap-2">
+                  <ContactLabel htmlFor="contact-body" text={CONTACT_LABELS.body} required={cfg.bodyRequired} />
+                  <span className="shrink-0 whitespace-nowrap text-[12px] text-[color:var(--liff-tertiary-text)] tabular-nums">{body.length}/{CONTACT_BODY_MAX}</span>
+                </div>
+                <LiffUiTextarea
+                  id="contact-body"
+                  value={body}
+                  maxLength={CONTACT_BODY_MAX}
+                  onChange={(e) => setBody(e.target.value.slice(0, CONTACT_BODY_MAX))}
+                />
+              </div>
+
+              {/* その他項目 */}
+              {cfg.customFields.map((it, idx) => (
+                <ContactCustomField
+                  key={customItemKey(it, idx)}
+                  item={it}
+                  index={idx}
+                  value={custom[customItemKey(it, idx)]}
+                  onChange={(val) => setCustom((p) => ({ ...p, [customItemKey(it, idx)]: val }))}
+                />
+              ))}
+
+              {/* honeypot（bot 検出用・人間には見えない） */}
+              <input
+                type="text"
+                name="company_website"
+                tabIndex={-1}
+                autoComplete="off"
+                aria-hidden="true"
+                value={honeypot}
+                onChange={(e) => setHoneypot(e.target.value)}
+                style={{ position: "absolute", left: "-9999px", width: 1, height: 1, opacity: 0 }}
               />
-            )}
-
-            {/* お名前 */}
-            {cfg.showName && (
-              <LiffInput label={CONTACT_LABELS.name} required={cfg.nameRequired} value={name} onChange={(e) => setName(e.target.value)} />
-            )}
-
-            {/* メールアドレス */}
-            {cfg.showEmail && (
-              <LiffInput label={CONTACT_LABELS.email} required={cfg.emailRequired} type="email" inputMode="email" value={email} onChange={(e) => setEmail(e.target.value)} />
-            )}
-
-            {/* お問い合わせ内容（最大100文字・カウンター付き） */}
-            <div>
-              <LiffTextarea
-                label={CONTACT_LABELS.body}
-                required={cfg.bodyRequired}
-                value={body}
-                maxLength={CONTACT_BODY_MAX}
-                onChange={(e) => setBody(e.target.value.slice(0, CONTACT_BODY_MAX))}
-              />
-              <p className="mt-1 text-[11px] text-[color:var(--liff-tertiary-text)] text-right">{body.length}/{CONTACT_BODY_MAX}</p>
             </div>
 
-            {/* その他項目 */}
-            {cfg.customFields.map((it, idx) => (
-              <ContactCustomField
-                key={customItemKey(it, idx)}
-                item={it}
-                index={idx}
-                value={custom[customItemKey(it, idx)]}
-                onChange={(val) => setCustom((p) => ({ ...p, [customItemKey(it, idx)]: val }))}
-              />
-            ))}
-
-            {/* honeypot（bot 検出用・人間には見えない） */}
-            <input
-              type="text"
-              name="company_website"
-              tabIndex={-1}
-              autoComplete="off"
-              aria-hidden="true"
-              value={honeypot}
-              onChange={(e) => setHoneypot(e.target.value)}
-              style={{ position: "absolute", left: "-9999px", width: 1, height: 1, opacity: 0 }}
-            />
-
             {error && (
-              <p className="text-[14px] text-[color:var(--liff-danger)] leading-[1.6]" role="alert">{error}</p>
+              <p className="text-[12px] text-[color:var(--liff-danger,#E0405A)] leading-[1.6]" role="alert">{error}</p>
             )}
 
-            <div className="mt-2">
-              <LiffButton type="submit" variant="primary" loading={submitting} loadingLabel="送信中...">
+            <div className="mt-1">
+              <LiffActionButton type="submit" variant="filled" loading={submitting} loadingLabel="送信中...">
                 送信する
-              </LiffButton>
+              </LiffActionButton>
             </div>
           </form>
         )}
@@ -189,7 +230,7 @@ export function ContactRenderer({ config, preview, lineUserId }: Props) {
   );
 }
 
-// その他項目（SurveyField と同じロジック）。
+// その他項目（SurveyField と同じロジック）。ラベル + 下線 control（box primitive は使わない）。
 function ContactCustomField({
   item, index, value, onChange,
 }: {
@@ -200,15 +241,57 @@ function ContactCustomField({
 }) {
   const labelText = item.question?.trim() || `項目${index + 1}`;
   const required = !!item.required;
+  const fieldId = `contact-custom-${item.id || index}`;
+  const labelId = `${fieldId}-label`;
 
   if (item.input_type === "textarea") {
-    return <LiffTextarea label={labelText} required={required} value={typeof value === "string" ? value : ""} onChange={(e) => onChange(e.target.value)} />;
+    return (
+      <div>
+        <ContactLabel htmlFor={fieldId} text={labelText} required={required} className="mb-1.5" />
+        <LiffUiTextarea id={fieldId} value={typeof value === "string" ? value : ""} onChange={(e) => onChange(e.target.value)} />
+      </div>
+    );
   }
+
   if (item.input_type === "radio" && Array.isArray(item.options) && item.options.length > 0) {
-    return <LiffRadioGroup label={labelText} required={required} options={item.options} name={`c${index}`} value={typeof value === "string" ? value : ""} onChange={(next) => onChange(next)} />;
+    const selected = typeof value === "string" ? value : "";
+    return (
+      <div>
+        <ContactLabel id={labelId} text={labelText} required={required} className="mb-1.5" />
+        <div role="radiogroup" aria-labelledby={labelId} className="flex flex-col">
+          {item.options.map((opt) => (
+            <LiffChoiceRow key={opt} type="radio" name={`c${index}`} value={opt} checked={selected === opt} onChange={(val) => onChange(val)} label={opt} />
+          ))}
+        </div>
+      </div>
+    );
   }
+
   if (item.input_type === "checkbox" && Array.isArray(item.options) && item.options.length > 0) {
-    return <LiffCheckboxGroup label={labelText} required={required} options={item.options} value={Array.isArray(value) ? value : []} onChange={(next) => onChange(next)} />;
+    const selected = Array.isArray(value) ? value : [];
+    return (
+      <div>
+        <ContactLabel id={labelId} text={labelText} required={required} className="mb-1.5" />
+        <div role="group" aria-labelledby={labelId} className="flex flex-col">
+          {item.options.map((opt) => (
+            <LiffChoiceRow
+              key={opt}
+              type="checkbox"
+              value={opt}
+              checked={selected.includes(opt)}
+              onChange={(val, checked) => onChange(checked ? [...selected, val] : selected.filter((x) => x !== val))}
+              label={opt}
+            />
+          ))}
+        </div>
+      </div>
+    );
   }
-  return <LiffInput label={labelText} required={required} value={typeof value === "string" ? value : ""} onChange={(e) => onChange(e.target.value)} />;
+
+  return (
+    <div>
+      <ContactLabel htmlFor={fieldId} text={labelText} required={required} className="mb-1.5" />
+      <LiffTextInput id={fieldId} value={typeof value === "string" ? value : ""} onChange={(e) => onChange(e.target.value)} />
+    </div>
+  );
 }
