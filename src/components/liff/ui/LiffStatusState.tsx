@@ -51,7 +51,7 @@ export function LiffErrorState({ message, title = "表示できません", fullS
   const card = (
     <div className={cx(LIFF_CARD_CLASS, "px-4 py-6 text-center", fullScreen && "max-w-sm w-full", className)}>
       <p className="text-4xl mb-3" aria-hidden="true">{emoji}</p>
-      <h2 className={cx(LIFF_TEXT.sectionTitle, "mb-2")}>{title}</h2>
+      <h2 className={cx(LIFF_TEXT.headerTitle, "mb-2")}>{title}</h2>
       {message && <p className={LIFF_TEXT.secondary}>{message}</p>}
     </div>
   );
