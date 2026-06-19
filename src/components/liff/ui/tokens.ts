@@ -19,25 +19,30 @@ export function cx(...parts: Array<string | false | null | undefined>): string {
 }
 
 // ── ブランド色（新仕様） ─────────────────────────────────────────
+//   token bridge: 実 class では値を `var(--liff-ui-*, fallback)` 経由で参照し、正準値は
+//   liff-font.css の `--liff-ui-*` に置く（fallback は現行値と一致＝未定義でも見た目不変）。
+//   下記の JS 定数（LIFF_BRAND 等）は inline style / テスト参照用にリテラル値を維持する。
 export const LIFF_BRAND = "#06C755";          // Primary（= --liff-line-green）
-export const LIFF_GREEN_PRESSED = "#06A047";  // Pressed
-export const LIFF_TINT = "#E8F9EE";           // Brand Tint（淡い緑面・バッジ背景等）
+export const LIFF_GREEN_PRESSED = "#06A047";  // Pressed（= --liff-ui-green-pressed）
+export const LIFF_TINT = "#E8F9EE";           // Brand Tint（= --liff-ui-green-soft）
 
 // ── radius（新仕様） ───────────────────────────────────────────
 export const LIFF_RADIUS = {
   badge:   "2px",   // 矩形タグバッジ（謎/カテゴリ等）。Q バッジ（円）は別意匠。
-  card:    "10px",
+  card:    "10px",  // = --liff-ui-card-radius
   capsule: "16px",  // カプセルトグル（〜42px 高でカプセル見え）。トグル専用。
   button:  "12px",  // 通常アクションボタン（箱型）。
 } as const;
 
 // ── card / surface（新仕様: radius10 + 影 0 1px 3px rgba(0,0,0,.05)） ──
+//   radius/shadow は Tailwind arbitrary value の堅牢性のためリテラル維持（正準値は
+//   --liff-ui-card-radius / --liff-ui-card-shadow に併記）。border のみ ui token を参照。
 export const LIFF_CARD_CLASS =
-  "bg-[color:var(--liff-surface,#fff)] border border-[color:var(--liff-border,#eef2f5)] " +
+  "bg-[color:var(--liff-surface,#fff)] border border-[color:var(--liff-ui-card-border,#eef2f5)] " +
   "rounded-[10px] shadow-[0_1px_3px_rgba(0,0,0,0.05)]";
 
-/** 緑の淡い tint 背景（Q バッジ等）。新仕様 Brand Tint #E8F9EE。 */
-export const LIFF_TINT_BG = "bg-[color:#E8F9EE]";
+/** 緑の淡い tint 背景（Q バッジ等）。新仕様 Brand Tint = --liff-ui-green-soft(#E8F9EE)。 */
+export const LIFF_TINT_BG = "bg-[color:var(--liff-ui-green-soft,#E8F9EE)]";
 
 // ── typography（新仕様） ───────────────────────────────────────
 //   page title 20/500・header 15/700・body 14/400/1.85・caption 12.5/400。
@@ -68,14 +73,14 @@ const ACTION_BASE =
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--liff-line-green,#06C755)] focus-visible:ring-offset-1";
 
 const ACTION_VARIANT: Record<LiffActionVariant, string> = {
-  // Filled = primary。塗り #06C755 / 押下 #06A047。
+  // Filled = primary。塗り #06C755 / 押下 = --liff-ui-green-pressed(#06A047)。
   filled:
     "text-white bg-[color:var(--liff-line-green,#06C755)] border border-[color:var(--liff-line-green,#06C755)] " +
-    "active:bg-[color:#06A047] active:border-[color:#06A047]",
-  // Outline = secondary。緑枠 + 白背景。
+    "active:bg-[color:var(--liff-ui-green-pressed,#06A047)] active:border-[color:var(--liff-ui-green-pressed,#06A047)]",
+  // Outline = secondary。緑枠 + 白背景。押下面 = --liff-ui-green-soft(#E8F9EE)。
   outline:
     "text-[color:var(--liff-line-green,#06C755)] bg-[color:var(--liff-surface,#fff)] border border-[color:var(--liff-line-green,#06C755)] " +
-    "active:bg-[color:#E8F9EE]",
+    "active:bg-[color:var(--liff-ui-green-soft,#E8F9EE)]",
 };
 
 /** 通常アクションボタン（箱型）の class を組み立てる（純関数・テスト可）。 */
