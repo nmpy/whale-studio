@@ -164,7 +164,7 @@ export default function LiffPageEditor() {
             ) : (
               // 他のページ種別（FAQ / アンケート / ヒント等）と同じく、編集エリアを
               // グレー背景の上の白カードに揃える（「既存LIFF」だけ浮いて見えないようにする）。
-              <div className="bg-white rounded-xl border border-gray-200 p-5 mb-6">
+              <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 mb-6">
                 <div className="flex items-center justify-between mb-3">
                   <h2 className="text-sm font-semibold text-gray-900">表示ブロック</h2>
                   {!isReadOnly && (
