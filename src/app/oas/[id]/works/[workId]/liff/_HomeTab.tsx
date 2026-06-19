@@ -304,7 +304,7 @@ export function HomeTab({ oaId, workId, workPublicId, workTitle, pages, homeInit
         <p className="text-[12px] text-gray-500 mb-3">ホームの見た目と並びを設定します。変更は右のプレビューに即時反映されます。</p>
 
         {/* ホーム設定（ヘッダータイトル / ホームタイトル / 説明文 / 画像）— すべて任意。 */}
-        <div className="bg-white border border-gray-200 rounded-xl p-4 mb-4 space-y-3">
+        <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-4 mb-4 space-y-3">
           <h2 className="text-base font-semibold text-gray-900">ホーム設定</h2>
 
           {/* ヘッダータイトル: LINE/LIFF デフォルトヘッダー用（document.title に反映）。本文には出さない。 */}
@@ -409,7 +409,7 @@ export function HomeTab({ oaId, workId, workPublicId, workTitle, pages, homeInit
             </p>
           </div>
         ) : (
-          <ul className="bg-white border border-gray-200 rounded-xl divide-y divide-gray-100 overflow-hidden">
+          <ul className="bg-white border border-gray-200 rounded-xl shadow-sm divide-y divide-gray-100 overflow-hidden">
             {rows.map((r, i) => (
               <li key={r.id} className="px-4 py-3 flex items-start gap-3">
                 {/* 並び替え (上下ボタン) — 固定幅 */}
