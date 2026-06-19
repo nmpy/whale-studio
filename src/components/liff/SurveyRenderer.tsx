@@ -4,19 +4,21 @@
 // LIFF Survey モード — フォームを表示し、送信ボタンで /api/liff/works/[workId]/survey-responses に送信する。
 // 送信成功後は完了表示に切り替える。プレビュー時は API を呼ばずに完了表示まで遷移する。
 //
-// 設問 UI は LIFF primitives (LiffInput / LiffTextarea / LiffRadioGroup / LiffCheckboxGroup) に
-// 集約しており、見た目・状態 (focus / error / disabled) と余白を共通化している。
+// 設問 UI は LIFF 新UI foundation (ui/: LiffQuestionCard + LiffTextInput / LiffUiTextarea /
+// LiffChoiceRow) に集約。1 設問 = カード（Q バッジ + 設問文 + 右ヒント）+ children に control。
+// ※ payload / validate() / submit / preview / completed は不変（UI 構造のみの差し替え）。
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import type { LiffPageConfigSettings, SurveyItem } from "@/types";
 import { liffRootClass, liffDescriptionAlignClass } from "./liff-style-helpers";
 import {
-  LiffInput,
-  LiffTextarea,
-  LiffRadioGroup,
-  LiffCheckboxGroup,
-} from "./primitives";
-import { LiffActionButton, LiffEmptyState } from "./ui";
+  LiffActionButton,
+  LiffEmptyState,
+  LiffQuestionCard,
+  LiffTextInput,
+  LiffTextarea as LiffUiTextarea,
+  LiffChoiceRow,
+} from "./ui";
 
 export interface SurveyRendererConfig {
   work_id:       string;
@@ -167,8 +169,26 @@ export function SurveyRenderer({ config, preview, lineUserId }: Props) {
   );
 }
 
-// ── 設問: LiffInput / LiffTextarea / LiffRadioGroup / LiffCheckboxGroup を使う ─
-// 共通の Question Card 構造 (label / required / control / helper) は primitives 側で持つ。
+// ── 設問: LiffQuestionCard + 下線 control（LiffTextInput / LiffUiTextarea / LiffChoiceRow）─
+// 右寄せヒント（必須 * / 複数選択可 / 任意）を組み立てて LiffQuestionCard の hint に渡す。
+// ※ #379 の反省: primitive の label に複合 ReactNode を注入しない。カード（badge/設問/hint）は
+//    LiffQuestionCard が所有し、ここは hint プロップ用の小片だけを返す（QuestionCard 標準API）。
+//    required の検証は親 SurveyRenderer の validate() に集約（HTML required は付けない＝挙動を増やさない）。
+function buildSurveyHint(item: SurveyItem): ReactNode {
+  const parts: ReactNode[] = [];
+  if (item.input_type === "checkbox") parts.push(<span key="multi">複数選択可</span>);
+  if (item.required) {
+    parts.push(
+      <span key="req" aria-label="必須" className="text-[color:var(--liff-danger,#E22B2B)] font-bold">*</span>,
+    );
+  } else if (item.input_type === "text" || item.input_type === "textarea") {
+    parts.push(<span key="opt">任意</span>);
+  }
+  return parts.length > 0 ? <>{parts}</> : undefined;
+}
+
+// 1 設問 = LiffQuestionCard（Q バッジ + 設問文 + 右ヒント）+ children に control。
+// 入力欄は ui/ の下線 control（LiffTextInput / LiffUiTextarea / LiffChoiceRow）に統一（box 混在しない）。
 function SurveyField({
   item, index, value, onChange,
 }: {
@@ -178,53 +198,73 @@ function SurveyField({
   onChange: (v: string | string[]) => void;
 }) {
   const labelText = item.question?.trim() || `Q${index + 1}`;
-  const required = !!item.required;
+  const name = `q${index}`;
+  const labelId = `${name}-label`;
+  const hint = buildSurveyHint(item);
 
   if (item.input_type === "textarea") {
     return (
-      <LiffTextarea
-        label={labelText}
-        required={required}
-        value={typeof value === "string" ? value : ""}
-        onChange={(e) => onChange(e.target.value)}
-      />
+      <LiffQuestionCard question={labelText} hint={hint} labelId={labelId}>
+        <LiffUiTextarea
+          aria-labelledby={labelId}
+          value={typeof value === "string" ? value : ""}
+          onChange={(e) => onChange(e.target.value)}
+        />
+      </LiffQuestionCard>
     );
   }
 
   if (item.input_type === "radio" && Array.isArray(item.options) && item.options.length > 0) {
     const selected = typeof value === "string" ? value : "";
     return (
-      <LiffRadioGroup
-        label={labelText}
-        required={required}
-        options={item.options}
-        name={`q${index}`}
-        value={selected}
-        onChange={(next) => onChange(next)}
-      />
+      <LiffQuestionCard question={labelText} hint={hint} labelId={labelId}>
+        <div role="radiogroup" aria-labelledby={labelId} className="flex flex-col">
+          {item.options.map((opt) => (
+            <LiffChoiceRow
+              key={opt}
+              type="radio"
+              name={name}
+              value={opt}
+              checked={selected === opt}
+              onChange={(val) => onChange(val)}
+              label={opt}
+            />
+          ))}
+        </div>
+      </LiffQuestionCard>
     );
   }
 
   if (item.input_type === "checkbox" && Array.isArray(item.options) && item.options.length > 0) {
     const selected = Array.isArray(value) ? value : [];
     return (
-      <LiffCheckboxGroup
-        label={labelText}
-        required={required}
-        options={item.options}
-        value={selected}
-        onChange={(next) => onChange(next)}
-      />
+      <LiffQuestionCard question={labelText} hint={hint} labelId={labelId}>
+        <div role="group" aria-labelledby={labelId} className="flex flex-col">
+          {item.options.map((opt) => (
+            <LiffChoiceRow
+              key={opt}
+              type="checkbox"
+              value={opt}
+              checked={selected.includes(opt)}
+              onChange={(val, checked) =>
+                onChange(checked ? [...selected, val] : selected.filter((x) => x !== val))
+              }
+              label={opt}
+            />
+          ))}
+        </div>
+      </LiffQuestionCard>
     );
   }
 
-  // 既定: text
+  // 既定: text（radio/checkbox で options 未設定もここに落ちる＝従来どおり）
   return (
-    <LiffInput
-      label={labelText}
-      required={required}
-      value={typeof value === "string" ? value : ""}
-      onChange={(e) => onChange(e.target.value)}
-    />
+    <LiffQuestionCard question={labelText} hint={hint} labelId={labelId}>
+      <LiffTextInput
+        aria-labelledby={labelId}
+        value={typeof value === "string" ? value : ""}
+        onChange={(e) => onChange(e.target.value)}
+      />
+    </LiffQuestionCard>
   );
 }
