@@ -52,6 +52,27 @@
   --liff-button-height:     48px;
   --liff-card-padding:      16px;
 
+  /* === 新UI (ui/) 専用トークン: --liff-ui-* ===
+   *
+   * 役割: src/components/liff/ui/ の新デザインシステム部品が参照する正準トークン。
+   * 互換維持の方針:
+   *   - 既存 `--liff-*`（--liff-card-radius / --liff-line-green / --liff-border 等）は
+   *     現行の Home / FAQ / Contact / Survey / block renderers が広く参照しているため**変更しない**。
+   *   - 新値は `--liff-ui-*` として**追加**するだけにする。
+   *   - 既存画面はまだ `--liff-ui-*` も ui/ 部品も使っていないため、本追加で見た目は変わらない。
+   *   - 画面ごとに小さな PR で ui/ 部品へ移行する際、この層を参照していく（段階適用）。
+   *   - これは player 専用層。CMS 側のブランドトークンとは混ぜない（LINE green は player 側で完結）。 */
+  --liff-ui-card-radius:    10px;                          /* 新カード半径（旧 --liff-card-radius=18px とは別） */
+  --liff-ui-card-shadow:    0 1px 3px rgba(0, 0, 0, 0.05); /* 新カード影（旧 --liff-card-shadow より軽い） */
+  --liff-ui-card-border:    var(--liff-border);            /* = #eef2f5。境界は既存トーンを流用 */
+  --liff-ui-card-padding:   16px;
+  --liff-ui-page-gap:       12px;                          /* セクション間ギャップ（新UIの shell/header 用） */
+  --liff-ui-input-border:   var(--liff-border);            /* 下線入力のボーダー */
+  --liff-ui-green-soft:     #E8F9EE;                       /* Brand Tint（淡い緑面・バッジ/押下面） */
+  --liff-ui-green-pressed:  #06A047;                       /* Pressed（filled ボタン押下。旧 --liff-line-green-press=#05B14C とは別系統） */
+  --liff-ui-disabled-bg:    #F2F4F6;
+  --liff-ui-disabled-text:  #B0B4BA;
+
   /* === Typography tokens ===
    * --liff-font-stack を 1 か所で切り替えることで、フォントを変更できる。
    * 各 font preset class (.liff-font--system-sans 等) が当たれば上書きされる。
