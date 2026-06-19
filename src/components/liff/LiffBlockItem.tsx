@@ -78,15 +78,15 @@ export function LiffBlockItem({
           <div className="flex gap-1">
             <button
               onClick={isEditing ? onCloseEdit : onEdit}
-              className={`px-2.5 py-1 text-[11px] border rounded-md cursor-pointer ${
-                isEditing ? "bg-gray-100 border-gray-200 text-gray-700" : "bg-white border-gray-200 text-gray-700"
+              className={`px-2.5 py-1 text-[11px] border rounded-md cursor-pointer transition-colors ${
+                isEditing ? "bg-gray-100 border-gray-200 text-gray-700" : "bg-white border-gray-200 text-gray-700 hover:bg-gray-50"
               }`}
             >
               {isEditing ? "閉じる" : "編集"}
             </button>
             <button
               onClick={onToggleEnabled}
-              className={`px-2 py-1 text-[11px] border border-gray-200 rounded-md bg-white cursor-pointer ${
+              className={`px-2 py-1 text-[11px] border border-gray-200 rounded-md bg-white cursor-pointer transition-colors hover:bg-gray-50 ${
                 block.is_enabled ? "text-green-600" : "text-gray-400"
               }`}
             >
@@ -94,7 +94,7 @@ export function LiffBlockItem({
             </button>
             <button
               onClick={onDelete}
-              className="px-2 py-1 text-[11px] border border-red-100 rounded-md bg-white text-red-500 cursor-pointer"
+              className="px-2 py-1 text-[11px] border border-red-200 rounded-md bg-white text-red-600 cursor-pointer transition-colors hover:bg-red-50"
             >
               削除
             </button>
@@ -104,7 +104,7 @@ export function LiffBlockItem({
 
       {/* 編集フォーム */}
       {isEditing && (
-        <div className="mt-3 p-3 bg-white border border-gray-200 rounded-lg">
+        <div className="mt-3 p-3 bg-white border border-gray-200 rounded-lg shadow-sm">
           <div className="mb-3">
             <label className="block text-xs font-medium text-gray-500 mb-1">
               ブロックタイトル
@@ -146,7 +146,7 @@ export function LiffBlockItem({
                   画面最下部の「すべての変更を保存」で確定する。 */}
               <button
                 onClick={onCloseEdit}
-                className="px-5 py-2 bg-white text-gray-700 border border-gray-200 rounded-lg text-sm cursor-pointer"
+                className="px-5 py-2 bg-white text-gray-700 border border-gray-200 rounded-lg text-sm cursor-pointer transition-colors hover:bg-gray-50"
               >
                 閉じる
               </button>
