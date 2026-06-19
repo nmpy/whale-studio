@@ -11,12 +11,12 @@ import { useState } from "react";
 import type { LiffPageConfigSettings, SurveyItem } from "@/types";
 import { liffRootClass, liffDescriptionAlignClass } from "./liff-style-helpers";
 import {
-  LiffButton,
   LiffInput,
   LiffTextarea,
   LiffRadioGroup,
   LiffCheckboxGroup,
 } from "./primitives";
+import { LiffActionButton, LiffEmptyState } from "./ui";
 
 export interface SurveyRendererConfig {
   work_id:       string;
@@ -130,9 +130,7 @@ export function SurveyRenderer({ config, preview, lineUserId }: Props) {
             <p className="text-[15px] leading-[1.8] whitespace-pre-wrap" style={{ letterSpacing: "0.02em" }}>{thanksMessage}</p>
           </div>
         ) : items.length === 0 ? (
-          <p className="text-sm text-[color:var(--liff-tertiary-text)] text-center py-8">
-            （アンケート項目が登録されていません）
-          </p>
+          <LiffEmptyState text="（アンケート項目が登録されていません）" />
         ) : (
           <form onSubmit={handleSubmit} className="flex flex-col gap-3">
             {items.map((it, idx) => (
@@ -152,14 +150,14 @@ export function SurveyRenderer({ config, preview, lineUserId }: Props) {
             )}
 
             <div className="mt-2">
-              <LiffButton
+              <LiffActionButton
                 type="submit"
-                variant="primary"
+                variant="filled"
                 loading={submitting}
                 loadingLabel="送信中..."
               >
                 回答を送信する
-              </LiffButton>
+              </LiffActionButton>
             </div>
           </form>
         )}
