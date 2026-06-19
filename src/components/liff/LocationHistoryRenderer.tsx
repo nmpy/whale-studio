@@ -12,7 +12,8 @@
 
 import { useEffect, useState } from "react";
 import type { LiffPageConfigSettings } from "@/types";
-import { liffRootClass, liffDescriptionAlignClass } from "./liff-style-helpers";
+import { liffRootClass } from "./liff-style-helpers";
+import { LiffEmptyState } from "./ui";
 
 export interface LocationHistoryRendererConfig {
   work_id:       string;
@@ -165,13 +166,8 @@ export function LocationHistoryRenderer({ config, lineUserId, preview }: Props) 
     <div className={`liff-font ${liffRootClass(config.settings_json)} min-h-screen bg-[color:var(--liff-background)] text-[color:var(--liff-primary-text)]`}>
       {/* 画面内ヘッダーは廃止。document.title (= LIFF 上部バー) で文脈表現する。 */}
       <main className="liff-player-main pt-5 pb-24 flex flex-col gap-4">
-        {/* ページタイトル h2 は廃止。description だけ表示。 */}
-        {config.description && (
-          <p className={`text-[14px] leading-relaxed text-[color:var(--liff-secondary-text)] whitespace-pre-wrap break-words ${liffDescriptionAlignClass(config.settings_json)}`}>
-            {config.description}
-          </p>
-        )}
-
+        {/* 説明文（config.description）は LiffSinglePageRenderer のページ見出し側で 1 度だけ表示する。
+            ここで再表示すると二重になるため出さない（document.title は LINE 上部バー）。 */}
         <LocationHistoryList workId={config.work_id} lineUserId={lineUserId} preview={preview} />
       </main>
     </div>
@@ -215,18 +211,12 @@ function HistorySection({
   }
 
   if (!items || items.length === 0) {
-    return (
-      <div className="bg-[color:var(--liff-surface)] border border-[color:var(--liff-border)] rounded-[18px] px-4 py-6 text-center">
-        <p className="text-3xl mb-2">📍</p>
-        <p className="text-[15px] leading-[1.6] text-[color:var(--liff-secondary-text)]">
-          まだチェックイン履歴がありません
-        </p>
-      </div>
-    );
+    // 空状態は共通 LiffEmptyState（QR/GPS/Beacon いずれにも当てはまる中立文言を維持）。
+    return <LiffEmptyState emoji="🗺️" text="まだチェックイン履歴がありません" />;
   }
 
   return (
-    <ul className="flex flex-col gap-2">
+    <ul className="flex flex-col gap-3.5">
       {items.map((it) => (
         <HistoryRow key={it.id} item={it} />
       ))}
@@ -234,28 +224,83 @@ function HistorySection({
   );
 }
 
+// 場所ピン（LINE green・小）。装飾用ローカル SVG。
+function PinIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="shrink-0 text-[color:var(--liff-line-green,#06C755)]">
+      <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" />
+      <circle cx="12" cy="10" r="3" />
+    </svg>
+  );
+}
+// 時計（muted・小）。装飾用ローカル SVG。
+function ClockIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="shrink-0">
+      <circle cx="12" cy="12" r="9" />
+      <polyline points="12 7 12 12 15 14" />
+    </svg>
+  );
+}
+
+// マップサムネイル「風」の装飾領域。実際の地図 / 外部 SDK / Google Maps iframe は使わない
+// （履歴データに緯度経度がないため）。薄いグラデ + 道路風ライン + 緑ピンのみの純装飾。
+function MapThumbnailDecoration() {
+  return (
+    <div
+      className="relative h-[100px] overflow-hidden"
+      aria-hidden="true"
+      style={{ background: "linear-gradient(180deg,#EAF0EA 0%,#E1E9E0 100%)" }}
+    >
+      <div
+        className="absolute inset-0 opacity-70"
+        style={{
+          background: [
+            "linear-gradient(90deg, transparent 41%, rgba(255,255,255,0.85) 41%, rgba(255,255,255,0.85) 44%, transparent 44%)",
+            "linear-gradient(0deg, transparent 64%, rgba(255,255,255,0.85) 64%, rgba(255,255,255,0.85) 67%, transparent 67%)",
+            "linear-gradient(56deg, transparent 22%, rgba(241,237,216,0.8) 22%, rgba(241,237,216,0.8) 27%, transparent 27%)",
+          ].join(","),
+        }}
+      />
+      <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-full">
+        <span
+          className="flex w-5 h-5 items-center justify-center bg-[color:var(--liff-line-green,#06C755)] shadow-[0_3px_5px_rgba(0,0,0,0.25)]"
+          style={{ borderRadius: "50% 50% 50% 0", transform: "rotate(-45deg)" }}
+        >
+          <span className="block w-[7px] h-[7px] rounded-full bg-white" style={{ transform: "rotate(45deg)" }} />
+        </span>
+      </span>
+    </div>
+  );
+}
+
 function HistoryRow({ item }: { item: HistoryItem }) {
   const distance = formatDistance(item.distance_meters);
   return (
-    <li className="bg-[color:var(--liff-surface)] border border-[color:var(--liff-border)] rounded-[18px] px-4 py-3 flex flex-col gap-1.5">
-      <div className="flex items-start justify-between gap-2">
-        <span className="font-bold text-[15px] leading-snug break-words flex-1 min-w-0">
-          {item.location_name}
-        </span>
-        <span className="shrink-0 text-[11px] font-bold px-2 py-0.5 rounded-full border border-[color:var(--liff-border)] text-[color:var(--liff-secondary-text)] bg-[color:var(--liff-background)]">
-          {METHOD_LABEL[item.checkin_method] ?? item.checkin_method}
-        </span>
-      </div>
-      <div className="flex items-center gap-2 text-[12px] text-[color:var(--liff-secondary-text)] flex-wrap">
-        <span>{formatDateTime(item.visited_at)}</span>
-        {distance && (
-          <>
-            <span aria-hidden="true">·</span>
-            <span>{distance}</span>
-          </>
-        )}
-        <span aria-hidden="true">·</span>
-        <span className="text-[color:var(--liff-line-green,#06C755)] font-bold">チェックイン成功</span>
+    <li className="bg-[color:var(--liff-surface,#fff)] border border-[color:var(--liff-border)] rounded-[10px] overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.05)]">
+      <MapThumbnailDecoration />
+      <div className="px-4 py-3.5 flex flex-col gap-2">
+        <div className="flex items-start gap-2">
+          <span className="mt-[3px]"><PinIcon /></span>
+          <span className="flex-1 min-w-0 text-[15.5px] leading-snug break-words text-[color:var(--liff-primary-text)]">
+            {item.location_name}
+          </span>
+          <span className="shrink-0 text-[11px] font-bold px-2 py-0.5 rounded-full border border-[color:var(--liff-border)] text-[color:var(--liff-secondary-text)] bg-[color:var(--liff-background)]">
+            {METHOD_LABEL[item.checkin_method] ?? item.checkin_method}
+          </span>
+        </div>
+        <div className="flex items-center gap-1.5 text-[12.5px] text-[color:var(--liff-tertiary-text,#949494)] flex-wrap">
+          <ClockIcon />
+          <span>{formatDateTime(item.visited_at)}</span>
+          {distance && (
+            <>
+              <span aria-hidden="true">·</span>
+              <span>{distance}</span>
+            </>
+          )}
+          <span aria-hidden="true">·</span>
+          <span className="text-[color:var(--liff-line-green,#06C755)] font-medium">チェックイン成功</span>
+        </div>
       </div>
     </li>
   );
