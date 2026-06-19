@@ -43,6 +43,9 @@ const inputClass =
 const labelClass = "block text-xs font-medium text-gray-600 mb-1";
 const selectClass =
   "w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 disabled:bg-gray-50";
+// raw checkbox 共通スタイル。チェック時のアクセントを CMS brand green に揃える
+// （accent-brand = Tailwind theme の brand color。player 用トークンは使わない）。
+const checkboxClass = "rounded border-gray-300 accent-brand";
 
 // ボタンデザイン（LiffButton variant）の日本語ラベル。選択肢は LIFF_BUTTON_VARIANTS を真実源に生成する。
 const BUTTON_VARIANT_LABELS: Record<LiffButtonVariant, string> = {
@@ -203,7 +206,7 @@ export function ProgressForm({ settings, onChange, readOnly }: FieldProps<Progre
           checked={settings.show_denominator ?? true}
           onChange={(e) => onChange({ ...settings, show_denominator: e.target.checked })}
           disabled={readOnly}
-          className="rounded border-gray-300"
+          className={checkboxClass}
         />
         分母を表示する
       </label>
@@ -232,7 +235,7 @@ export function EvidenceListForm({ settings, onChange, readOnly }: FieldProps<Ev
           checked={settings.hide_undiscovered ?? false}
           onChange={(e) => onChange({ ...settings, hide_undiscovered: e.target.checked })}
           disabled={readOnly}
-          className="rounded border-gray-300"
+          className={checkboxClass}
         />
         未取得の証拠を非表示にする
       </label>
@@ -288,7 +291,7 @@ export function CharacterListForm({ settings, onChange, readOnly }: FieldProps<C
           checked={settings.show_icon ?? true}
           onChange={(e) => onChange({ ...settings, show_icon: e.target.checked })}
           disabled={readOnly}
-          className="rounded border-gray-300"
+          className={checkboxClass}
         />
         アイコンを表示する
       </label>
@@ -298,7 +301,7 @@ export function CharacterListForm({ settings, onChange, readOnly }: FieldProps<C
           checked={settings.show_description ?? true}
           onChange={(e) => onChange({ ...settings, show_description: e.target.checked })}
           disabled={readOnly}
-          className="rounded border-gray-300"
+          className={checkboxClass}
         />
         説明を表示する
       </label>
@@ -711,7 +714,7 @@ export function ButtonLinkForm({ settings, onChange, readOnly }: FieldProps<Butt
             checked={settings.open_external ?? true}
             onChange={(e) => onChange({ ...settings, open_external: e.target.checked })}
             disabled={readOnly}
-            className="rounded border-gray-300"
+            className={checkboxClass}
           />
           外部ブラウザで開く
         </label>
@@ -765,7 +768,7 @@ export function RiddleListForm({ settings, onChange, readOnly }: FieldProps<Ridd
           checked={settings.show_status !== false}
           onChange={(e) => onChange({ ...settings, show_status: e.target.checked })}
           disabled={readOnly}
-          className="rounded border-gray-300"
+          className={checkboxClass}
         />
         状態ラベル（出題中）を表示する
       </label>
@@ -930,7 +933,7 @@ export function AccordionForm({ settings, onChange, readOnly }: FieldProps<Accor
             checked={settings.default_open ?? false}
             onChange={(e) => onChange({ ...settings, default_open: e.target.checked })}
             disabled={readOnly}
-            className="rounded border-gray-300"
+            className={checkboxClass}
           />
           初期状態で開く
         </label>
