@@ -14,6 +14,7 @@ import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useLiffSDK } from "@/hooks/useLiffSDK";
 import { LiffMenuHomeRenderer, type LiffMenuHomePage } from "./LiffMenuHomeRenderer";
+import { LiffLoadingState, LiffErrorState } from "./ui";
 
 interface Props {
   /** UUID または publicId。API 側で両方を受け付ける。 */
@@ -87,32 +88,11 @@ export function LiffMenuHomeViewer({ workId, workPublicId }: Props) {
   }, [data]);
 
   if (liff.loading || loading) {
-    return (
-      <div className="min-h-screen bg-[color:var(--liff-background)] flex items-center justify-center px-4">
-        <div className="text-center">
-          <div
-            className="w-8 h-8 border-2 rounded-full animate-spin mx-auto mb-3"
-            style={{
-              borderColor: "var(--liff-border)",
-              borderTopColor: "var(--liff-line-green, #06C755)",
-            }}
-          />
-          <p className="text-[14px] text-[color:var(--liff-secondary-text)]">読み込み中...</p>
-        </div>
-      </div>
-    );
+    return <LiffLoadingState fullScreen />;
   }
 
   if (error || !data) {
-    return (
-      <div className="min-h-screen bg-[color:var(--liff-background)] flex items-center justify-center p-4">
-        <div className="bg-[color:var(--liff-surface)] rounded-[18px] px-4 py-6 border border-[color:var(--liff-border)] text-center max-w-sm w-full">
-          <p className="text-4xl mb-3">😢</p>
-          <h2 className="text-[16px] font-bold text-[color:var(--liff-primary-text)] mb-2">表示できません</h2>
-          <p className="text-[14px] text-[color:var(--liff-secondary-text)]">{error ?? "メニューを読み込めませんでした"}</p>
-        </div>
-      </div>
-    );
+    return <LiffErrorState fullScreen message={error ?? "メニューを読み込めませんでした"} />;
   }
 
   return (

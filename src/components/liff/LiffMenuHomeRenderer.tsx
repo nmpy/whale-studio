@@ -22,7 +22,7 @@ import {
   type MenuCard,
   type MenuCardSource,
 } from "./liff-style-helpers";
-import { LiffStudioFooter, shouldShowWhaleStudioCredit } from "./LiffStudioFooter";
+import { LiffPoweredBy, shouldShowWhaleStudioCredit } from "./ui";
 import { LiffCard } from "./primitives";
 
 export interface LiffMenuHomePage {
@@ -165,7 +165,7 @@ export function LiffMenuHomeRenderer({
         <BottomLinks pages={pages} onSelectCard={onSelectCard} buildPageHref={buildPageHref} />
       </div>
 
-      {showCredit && <LiffStudioFooter />}
+      {showCredit && <LiffPoweredBy />}
     </div>
   );
 }
