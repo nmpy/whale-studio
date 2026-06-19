@@ -35,7 +35,7 @@ export function LiffQuestionCard({
     <div className={cx(LIFF_CARD_CLASS, "px-5 py-4 flex flex-col gap-3", className)}>
       <div className="flex items-start gap-2.5">
         {showBadge && <LiffQuestionBadge label={badgeLabel} className="mt-0.5" />}
-        <span id={labelId} className={cx("flex-1 min-w-0", LIFF_TEXT.sectionTitle)}>
+        <span id={labelId} className={cx("flex-1 min-w-0", LIFF_TEXT.headerTitle)}>
           {question}
         </span>
         {hint && (

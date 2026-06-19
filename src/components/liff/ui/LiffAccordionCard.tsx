@@ -33,7 +33,7 @@ export function LiffAccordionCard({ open, onToggle, title, leading, children, pa
       >
         <span className="flex items-center gap-2.5 min-w-0 flex-1">
           {leading}
-          <span className={cx("min-w-0 flex-1", LIFF_TEXT.sectionTitle)}>{title}</span>
+          <span className={cx("min-w-0 flex-1", LIFF_TEXT.headerTitle)}>{title}</span>
         </span>
         <svg
           aria-hidden="true" viewBox="0 0 24 24" width="20" height="20" fill="none"

@@ -2,9 +2,10 @@
 
 // src/components/liff/ui/LiffActionButton.tsx
 //
-// LIFF 新UI: ピル型アクションボタン。既存 primitives/LiffButton（radius10・箱型）は壊さず、
-//   新UI用に「ピル型 + 高さ52px」を別部品として提供する。色トークンは LiffButton と同じ --liff-* 系。
-//   variant: primary（緑塗り）/ dark / outline / ghost。as="a" でリンクにもできる。
+// LIFF 新UI: 通常アクションボタン（箱型・radius12）。既存 primitives/LiffButton は壊さず別部品として提供。
+//   variant: filled（primary・緑塗り #06C755 / 押下 #06A047）/ outline（secondary・緑枠）。
+//   disabled / loading 状態あり。as="a" でリンクにもできる（既存仕様）。
+//   ※ ピル / capsule は通常アクションには使わない。トグル等は LiffCapsuleToggle を使う。
 
 import { forwardRef } from "react";
 import type { ButtonHTMLAttributes, AnchorHTMLAttributes, ReactNode } from "react";
@@ -28,7 +29,7 @@ type Props = ButtonProps | AnchorProps;
 
 export const LiffActionButton = forwardRef<HTMLButtonElement | HTMLAnchorElement, Props>(
   function LiffActionButton(props, ref) {
-    const className = actionButtonClass(props.variant ?? "primary", {
+    const className = actionButtonClass(props.variant ?? "filled", {
       fullWidth: props.fullWidth,
       className: props.className,
     });
