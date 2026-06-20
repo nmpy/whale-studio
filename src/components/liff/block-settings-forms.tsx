@@ -3,6 +3,7 @@
 // src/components/liff/block-settings-forms.tsx
 // ブロックタイプごとの設定フォーム
 
+import type { ReactNode } from "react";
 import type {
   LiffBlockType,
   FreeTextSettings,
@@ -47,6 +48,11 @@ const selectClass =
 // （accent-brand = Tailwind theme の brand color。player 用トークンは使わない）。
 const checkboxClass = "rounded border-gray-300 accent-brand";
 
+// PR-BLK2: フォームの補足説明（控えめ・小さめ）。フォーム冒頭の概要 / 各項目のヒント共通。
+function Help({ children }: { children: ReactNode }) {
+  return <p className="text-[11px] text-gray-400 leading-relaxed">{children}</p>;
+}
+
 // ボタンデザイン（LiffButton variant）の日本語ラベル。選択肢は LIFF_BUTTON_VARIANTS を真実源に生成する。
 const BUTTON_VARIANT_LABELS: Record<LiffButtonVariant, string> = {
   primary: "標準",
@@ -88,16 +94,18 @@ function ButtonVariantField({
 export function FreeTextForm({ settings, onChange, readOnly }: FieldProps<FreeTextSettings>) {
   return (
     <div className="space-y-3">
+      <Help>本文・説明文を表示します（14px）。改行はそのまま反映されます。</Help>
       <div>
         <label className={labelClass}>本文</label>
         <textarea
           className={inputClass}
-          rows={4}
+          rows={5}
           value={settings.body ?? ""}
           onChange={(e) => onChange({ ...settings, body: e.target.value })}
           disabled={readOnly}
-          placeholder="自由テキストを入力..."
+          placeholder="本文を入力"
         />
+        {!(settings.body ?? "").trim() && <Help>※ 未入力です。表示する本文を入力してください。</Help>}
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div>
@@ -188,6 +196,7 @@ export function ResumeButtonForm({ settings, onChange, readOnly }: FieldProps<Re
 export function ProgressForm({ settings, onChange, readOnly }: FieldProps<ProgressSettings>) {
   return (
     <div className="space-y-3">
+      <Help>プレイヤーのクリア進捗を表示します。進捗の値はプレイ状況から自動算出されます。</Help>
       <div>
         <label className={labelClass}>表示形式</label>
         <select
@@ -285,6 +294,7 @@ export function HintListForm({ settings, onChange, readOnly }: FieldProps<HintLi
 export function CharacterListForm({ settings, onChange, readOnly }: FieldProps<CharacterListSettings>) {
   return (
     <div className="space-y-3">
+      <Help>作品に登録されたキャラクターを3列グリッドで表示します（タップで詳細モーダル）。キャラクターの追加・編集は「キャラクター管理」から行います。</Help>
       <label className="flex items-center gap-2 text-sm text-gray-700">
         <input
           type="checkbox"
@@ -312,6 +322,7 @@ export function CharacterListForm({ settings, onChange, readOnly }: FieldProps<C
 export function ImageBlockForm({ settings, onChange, readOnly }: FieldProps<ImageBlockSettings>) {
   return (
     <div className="space-y-3">
+      <Help>画像を表示します。アップロード、または画像URLを指定できます。</Help>
       <ImageUploadField
         label="画像"
         value={settings.image_url}
@@ -320,22 +331,25 @@ export function ImageBlockForm({ settings, onChange, readOnly }: FieldProps<Imag
         previewAlt={settings.alt || "画像プレビュー"}
         previewMaxHeight={160}
       />
+      {!(settings.image_url ?? "").trim() && <Help>※ 画像が未設定です。アップロードまたはURLを指定してください。</Help>}
       <div>
-        <label className={labelClass}>alt テキスト</label>
+        <label className={labelClass}>alt テキスト（任意）</label>
         <input
           className={inputClass}
           value={settings.alt ?? ""}
           onChange={(e) => onChange({ ...settings, alt: e.target.value })}
           disabled={readOnly}
+          placeholder="画像が表示できない時の代替テキスト"
         />
       </div>
       <div>
-        <label className={labelClass}>キャプション</label>
+        <label className={labelClass}>キャプション（任意）</label>
         <input
           className={inputClass}
           value={settings.caption ?? ""}
           onChange={(e) => onChange({ ...settings, caption: e.target.value })}
           disabled={readOnly}
+          placeholder="画像の下に表示する説明"
         />
       </div>
       <div>
@@ -359,6 +373,7 @@ export function VideoBlockForm({ settings, onChange, readOnly }: FieldProps<Vide
   const editor = useLiffEditorData();
   return (
     <div className="space-y-3">
+      <Help>動画を表示します。動画ファイルをアップロード、または動画URLを指定できます。</Help>
       <div>
         <label className={labelClass}>動画URL</label>
         <input
@@ -366,8 +381,9 @@ export function VideoBlockForm({ settings, onChange, readOnly }: FieldProps<Vide
           value={settings.video_url ?? ""}
           onChange={(e) => onChange({ ...settings, video_url: e.target.value })}
           disabled={readOnly}
-          placeholder="https://..."
+          placeholder="https://… または下のボタンからアップロード"
         />
+        {!(settings.video_url ?? "").trim() && <Help>※ 動画が未設定です。URL入力またはアップロードしてください。</Help>}
         {/* 直接アップロード（mp4/mov/webm・最大50MB）。成功時 video_url に反映。手入力URLも併用可。
             oaId/workId が取れる編集画面でのみ表示（Provider 不在時はURL入力のみ）。 */}
         {editor && !readOnly && (
@@ -402,6 +418,7 @@ export function VideoBlockForm({ settings, onChange, readOnly }: FieldProps<Vide
 export function HeadingForm({ settings, onChange, readOnly }: FieldProps<HeadingSettings>) {
   return (
     <div className="space-y-3">
+      <Help>セクションの見出しを表示します。大きさは H1〜H3 が基本です（H4/H5 は互換用）。</Help>
       <div>
         <label className={labelClass}>見出しテキスト</label>
         <input
@@ -409,8 +426,9 @@ export function HeadingForm({ settings, onChange, readOnly }: FieldProps<Heading
           value={settings.text ?? ""}
           onChange={(e) => onChange({ ...settings, text: e.target.value })}
           disabled={readOnly}
-          placeholder="HINTを見る前に"
+          placeholder="例: HINTを見る前に"
         />
+        {!(settings.text ?? "").trim() && <Help>※ 未入力です。見出しの文言を入力してください。</Help>}
       </div>
       <div className="grid grid-cols-3 gap-3">
         <div>
@@ -465,6 +483,7 @@ export function HeadingForm({ settings, onChange, readOnly }: FieldProps<Heading
 export function TextForm({ settings, onChange, readOnly }: FieldProps<TextSettings>) {
   return (
     <div className="space-y-3">
+      <Help>※ 旧「テキスト」ブロックです。新規は「フリーテキスト」をご利用ください（既存データはそのまま編集できます）。</Help>
       <div>
         <label className={labelClass}>本文</label>
         <textarea
@@ -473,7 +492,7 @@ export function TextForm({ settings, onChange, readOnly }: FieldProps<TextSettin
           value={settings.body ?? ""}
           onChange={(e) => onChange({ ...settings, body: e.target.value })}
           disabled={readOnly}
-          placeholder="本文を入力..."
+          placeholder="本文を入力"
         />
       </div>
       <div className="grid grid-cols-3 gap-3">
@@ -524,19 +543,21 @@ export function TextForm({ settings, onChange, readOnly }: FieldProps<TextSettin
 export function WarningForm({ settings, onChange, readOnly }: FieldProps<WarningSettings>) {
   return (
     <div className="space-y-3">
+      <Help>画面内に表示する注意・情報のバナーです。トーンで色味が変わります。</Help>
       <div>
-        <label className={labelClass}>注意文</label>
+        <label className={labelClass}>本文</label>
         <textarea
           className={inputClass}
           rows={3}
           value={settings.body ?? ""}
           onChange={(e) => onChange({ ...settings, body: e.target.value })}
           disabled={readOnly}
-          placeholder="ネタバレ注意：このサイトではヒントが見られます。"
+          placeholder="例: ネタバレ注意：このサイトではヒントが見られます。"
         />
+        {!(settings.body ?? "").trim() && <Help>※ 未入力です。バナーに表示する本文を入力してください。</Help>}
       </div>
       <div>
-        <label className={labelClass}>トーン</label>
+        <label className={labelClass}>トーン（色味）</label>
         <select
           className={selectClass}
           value={settings.tone ?? "spoiler"}
@@ -545,7 +566,7 @@ export function WarningForm({ settings, onChange, readOnly }: FieldProps<Warning
         >
           <option value="spoiler">スポイラー（黄）</option>
           <option value="info">情報（青）</option>
-          <option value="danger">危険（赤）</option>
+          <option value="danger">注意（赤）</option>
         </select>
       </div>
     </div>
@@ -600,15 +621,17 @@ export function ButtonLinkForm({ settings, onChange, readOnly }: FieldProps<Butt
 
   return (
     <div className="space-y-3">
+      <Help>タップで遷移するボタンです。ラベル（表示文字）と遷移先を設定してください。</Help>
       <div>
-        <label className={labelClass}>ラベル</label>
+        <label className={labelClass}>ラベル（ボタンの文字）</label>
         <input
           className={inputClass}
           value={settings.label ?? ""}
           onChange={(e) => onChange({ ...settings, label: e.target.value })}
           disabled={readOnly}
-          placeholder="チケットを購入する"
+          placeholder="例: チケットを購入する"
         />
+        {!(settings.label ?? "").trim() && <Help>※ ラベルが未入力です。ボタンに表示する文字を入力してください。</Help>}
       </div>
 
       {/* 遷移先タイプ — 編集データがある場合のみ LIFFページ/ロケーションを選べる。 */}
@@ -733,6 +756,7 @@ export function ButtonLinkForm({ settings, onChange, readOnly }: FieldProps<Butt
 export function RiddleListForm({ settings, onChange, readOnly }: FieldProps<RiddleListSettings>) {
   return (
     <div className="space-y-3">
+      <Help>そのプレイヤーが到達した謎・問題を一覧表示します。</Help>
       <div>
         <label className={labelClass}>表示タイトル</label>
         <input
@@ -782,6 +806,7 @@ export function RiddleListForm({ settings, onChange, readOnly }: FieldProps<Ridd
 export function CheckinHistoryForm({ settings, onChange, readOnly }: FieldProps<CheckinHistorySettings>) {
   return (
     <div className="space-y-3">
+      <Help>そのプレイヤー本人のチェックイン履歴を一覧表示します。</Help>
       <div>
         <label className={labelClass}>見出し（任意）</label>
         <input
@@ -830,8 +855,9 @@ export function CheckinHistoryForm({ settings, onChange, readOnly }: FieldProps<
 export function DividerForm({ settings, onChange, readOnly }: FieldProps<DividerSettings>) {
   return (
     <div className="space-y-3">
+      <Help>セクションを区切る線を表示します。</Help>
       <div>
-        <label className={labelClass}>スタイル</label>
+        <label className={labelClass}>線のスタイル</label>
         <select
           className={selectClass}
           value={settings.style ?? "solid"}
@@ -839,7 +865,7 @@ export function DividerForm({ settings, onChange, readOnly }: FieldProps<Divider
           disabled={readOnly}
         >
           <option value="solid">実線</option>
-          <option value="dashed">点線</option>
+          <option value="dashed">破線</option>
         </select>
       </div>
     </div>
@@ -849,15 +875,17 @@ export function DividerForm({ settings, onChange, readOnly }: FieldProps<Divider
 export function CodeReaderForm({ settings, onChange, readOnly }: FieldProps<CodeReaderSettings>) {
   return (
     <div className="space-y-3">
+      <Help>ボタンをタップするとボトムシートでQRコードリーダーが開きます。非対応の環境では利用不可メッセージが表示されます。</Help>
       <div>
-        <label className={labelClass}>表示ラベル</label>
+        <label className={labelClass}>ボタンの表示ラベル</label>
         <input
           className={inputClass}
           value={settings.label ?? ""}
           onChange={(e) => onChange({ ...settings, label: e.target.value })}
           disabled={readOnly}
-          placeholder="チェックインする"
+          placeholder="例: チェックインする"
         />
+        {!(settings.label ?? "").trim() && <Help>※ ラベルが未入力です。ボタンに表示する文字を入力してください。</Help>}
       </div>
       <div>
         <label className={labelClass}>モーダルタイトル</label>
@@ -903,6 +931,7 @@ import { AccordionChildrenEditor } from "./AccordionChildrenEditor";
 export function AccordionForm({ settings, onChange, readOnly }: FieldProps<AccordionSettings>) {
   return (
     <div className="space-y-3">
+      <Help>タップで開閉する折りたたみセクションです。中身（本文や他ブロック）は「子要素」に追加します。</Help>
       <div>
         <label className={labelClass}>タイトル（必須）</label>
         <input
@@ -910,8 +939,9 @@ export function AccordionForm({ settings, onChange, readOnly }: FieldProps<Accor
           value={settings.title ?? ""}
           onChange={(e) => onChange({ ...settings, title: e.target.value })}
           disabled={readOnly}
-          placeholder="1st STAGE.（無料エリア）"
+          placeholder="例: 1st STAGE.（無料エリア）"
         />
+        {!(settings.title ?? "").trim() && <Help>※ 未入力です。見出しになるタイトルを入力してください。</Help>}
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div>
