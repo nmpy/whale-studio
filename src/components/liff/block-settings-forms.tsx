@@ -886,19 +886,35 @@ export function CheckinHistoryForm({ settings, onChange, readOnly }: FieldProps<
 export function DividerForm({ settings, onChange, readOnly }: FieldProps<DividerSettings>) {
   return (
     <div className="space-y-3">
-      <Help>セクションを区切る線を表示します。</Help>
+      <Help>セクションを区切る線を表示します。「ラベル付き」を選ぶと、中央に短いテキストを表示できます。</Help>
       <div>
         <label className={labelClass}>線のスタイル</label>
         <select
           className={selectClass}
           value={settings.style ?? "solid"}
-          onChange={(e) => onChange({ ...settings, style: e.target.value as "solid" | "dashed" })}
+          onChange={(e) => onChange({ ...settings, style: e.target.value as DividerSettings["style"] })}
           disabled={readOnly}
         >
           <option value="solid">実線</option>
           <option value="dashed">破線</option>
+          <option value="dotted">点線</option>
+          <option value="thick">太め</option>
+          <option value="label">ラベル付き</option>
         </select>
       </div>
+      {settings.style === "label" && (
+        <div>
+          <label className={labelClass}>ラベル</label>
+          <input
+            className={inputClass}
+            value={settings.label ?? ""}
+            onChange={(e) => onChange({ ...settings, label: e.target.value })}
+            disabled={readOnly}
+            placeholder="例: Chapter 1"
+          />
+          <Help>未入力の場合は通常の実線として表示されます。</Help>
+        </div>
+      )}
     </div>
   );
 }
