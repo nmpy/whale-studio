@@ -1125,6 +1125,11 @@ const accordionSettingsSchema: z.ZodTypeAny = z.object({
   default_open: z.boolean().optional(),
   variant:      sectionVariantSchema,
   children:     z.array(nestedBlockBaseSchema).optional(),
+  // PR-BLK4d: 複数項目（multi）。additive・任意。各 item は title/body のみ。.passthrough() 維持。
+  items:        z.array(z.object({
+    title: z.string().max(120).optional(),
+    body:  z.string().max(1000).optional(),
+  }).passthrough()).max(20).optional(),
 }).passthrough();
 
 const codeReaderSettingsSchema = z.object({

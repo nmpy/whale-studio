@@ -1492,6 +1492,10 @@ export interface AccordionSettings {
   default_open?: boolean;
   variant?: LiffSectionVariant;
   children?: NestedLiffBlock[];
+  /** PR-BLK4d: 複数項目（multi）。有効 item（title か body が非空）が1件以上あると
+   *  multi 表示になり、その場合 title / children は表示しない。未設定/空なら既存 single 表示。
+   *  v1 は各 item が plain text の body のみ（nested blocks / 画像 / ボタン / markdown は非対応）。 */
+  items?: Array<{ title?: string; body?: string }>;
 }
 
 /** コードリーダー（QR読み取り）ブロック設定。
