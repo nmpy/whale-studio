@@ -157,7 +157,7 @@ export const BLOCK_TYPE_REGISTRY: Record<LiffBlockType, BlockTypeEntry> = {
   divider: {
     label:           "区切り線",
     icon:            "—",
-    description:     "3パターン",
+    description:     "5パターン",
     defaultSettings: { style: "solid" } satisfies DividerSettings,
     SettingsForm:    DividerForm as ComponentType<SettingsFormProps<any>>,
   },

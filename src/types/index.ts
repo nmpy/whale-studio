@@ -1454,8 +1454,11 @@ export interface ButtonLinkSettings {
 }
 
 export interface DividerSettings {
-  /** "solid" | "dashed"。省略時は solid */
-  style?: "solid" | "dashed";
+  /** PR-BLK4c: 区切り線スタイル。省略/不明は solid 扱い。
+   *  solid=実線 / dashed=破線 / dotted=点線 / thick=太め / label=ラベル付き（中央テキスト）。 */
+  style?: "solid" | "dashed" | "dotted" | "thick" | "label";
+  /** style="label" のとき中央に表示する短いテキスト（空なら solid にフォールバック）。 */
+  label?: string;
 }
 
 /** 「謎・問題」ブロック設定。プレイヤーが到達済みの謎・問題を LIFF 上で一覧する。 */

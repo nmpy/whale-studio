@@ -1097,7 +1097,9 @@ const buttonLinkSettingsSchema = z.object({
 }).passthrough();
 
 const dividerSettingsSchema = z.object({
-  style: z.enum(["solid", "dashed"]).optional(),
+  // PR-BLK4c: style enum を additive 拡張・label（任意）を追加。.passthrough() 維持。
+  style: z.enum(["solid", "dashed", "dotted", "thick", "label"]).optional(),
+  label: z.string().max(40).optional(),
 }).passthrough();
 
 const riddleListSettingsSchema = z.object({
