@@ -144,7 +144,7 @@ export const BLOCK_TYPE_REGISTRY: Record<LiffBlockType, BlockTypeEntry> = {
     label:           "バナー",
     icon:            "⚠️",
     description:     "警告・情報・注意",
-    defaultSettings: { body: "ネタバレ注意：このサイトではヒントが見られます。", tone: "spoiler" } satisfies WarningSettings,
+    defaultSettings: { body: "ネタバレ注意：このサイトではヒントが見られます。", tone: "spoiler", icon: "auto" } satisfies WarningSettings,
     SettingsForm:    WarningForm as ComponentType<SettingsFormProps<any>>,
   },
   button_link: {

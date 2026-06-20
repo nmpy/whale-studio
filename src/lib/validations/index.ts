@@ -1075,6 +1075,8 @@ const textSettingsSchema = z.object({
 const warningSettingsSchema = z.object({
   body: z.string().max(500).optional(),
   tone: z.enum(["spoiler", "info", "danger"]).optional(),
+  // PR-BLK4a: 左アイコン（additive・任意）。未設定は "auto" 扱い（renderer 側）。
+  icon: z.enum(["auto", "none", "warning", "info", "alert"]).optional(),
 }).passthrough();
 
 const buttonLinkSettingsSchema = z.object({

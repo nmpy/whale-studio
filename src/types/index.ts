@@ -1426,6 +1426,9 @@ export interface WarningSettings {
   body?: string;
   /** "spoiler" | "info" | "danger" — UIスタイルのヒント */
   tone?: "spoiler" | "info" | "danger";
+  /** PR-BLK4a: 左側に表示するアイコン。
+   *  "auto"(既定/未設定)→ tone から自動 / "none"→非表示 / "warning"|"info"|"alert"→明示指定。 */
+  icon?: "auto" | "none" | "warning" | "info" | "alert";
 }
 
 export interface ButtonLinkSettings {
