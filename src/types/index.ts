@@ -1386,6 +1386,9 @@ export interface ImageBlockSettings {
   caption?: string;
   /** 表示サイズ（normal=通常 / wide=コンテナ余白なし / full=画面端まで） */
   size?: LiffImageSize;
+  /** PR-BLK4b: 表示枠の比率（size とは別軸）。
+   *  "original"(既定/未設定)→ 元画像の比率 / "1:1"|"4:3"|"16:9"→ その比率で枠表示。 */
+  aspect_ratio?: "original" | "1:1" | "4:3" | "16:9";
 }
 
 export interface VideoBlockSettings {

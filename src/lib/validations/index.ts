@@ -1045,6 +1045,8 @@ const imageSettingsSchema = z.object({
   alt:       z.string().max(200).optional(),
   caption:   z.string().max(500).optional(),
   size:      z.enum(LIFF_IMAGE_SIZES).optional(),
+  // PR-BLK4b: 表示枠の比率（additive・任意・size とは別軸）。未設定は "original" 扱い（renderer 側）。
+  aspect_ratio: z.enum(["original", "1:1", "4:3", "16:9"]).optional(),
 }).passthrough();
 
 const videoSettingsSchema = z.object({

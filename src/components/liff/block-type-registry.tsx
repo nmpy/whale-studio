@@ -116,7 +116,7 @@ export const BLOCK_TYPE_REGISTRY: Record<LiffBlockType, BlockTypeEntry> = {
     label:           "画像",
     icon:            "🖼️",
     description:     "比率選択可",
-    defaultSettings: { image_url: "", alt: "", caption: "", size: "normal" } satisfies ImageBlockSettings,
+    defaultSettings: { image_url: "", alt: "", caption: "", size: "normal", aspect_ratio: "original" } satisfies ImageBlockSettings,
     SettingsForm:    ImageBlockForm as ComponentType<SettingsFormProps<any>>,
   },
   video: {

@@ -365,6 +365,21 @@ export function ImageBlockForm({ settings, onChange, readOnly }: FieldProps<Imag
           <option value="full">画面いっぱい</option>
         </select>
       </div>
+      <div>
+        <label className={labelClass}>表示比率</label>
+        <select
+          className={selectClass}
+          value={settings.aspect_ratio ?? "original"}
+          onChange={(e) => onChange({ ...settings, aspect_ratio: e.target.value as ImageBlockSettings["aspect_ratio"] })}
+          disabled={readOnly}
+        >
+          <option value="original">元画像の比率</option>
+          <option value="1:1">正方形（1:1）</option>
+          <option value="4:3">4:3</option>
+          <option value="16:9">16:9</option>
+        </select>
+        <Help>画像の表示枠の比率です。「元画像の比率」を選ぶと、アップロード画像の自然な比率で表示されます。</Help>
+      </div>
     </div>
   );
 }
