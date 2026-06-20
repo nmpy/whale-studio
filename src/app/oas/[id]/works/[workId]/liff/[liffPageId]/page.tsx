@@ -177,6 +177,13 @@ export default function LiffPageEditor() {
                   )}
                 </div>
 
+                {/* PR-LB1: default 以外のページ種別では、ブロックは専用コンテンツの「下」に補足表示される。 */}
+                {normalizeLiffPageType(config.page_type) !== "default" && (
+                  <p className="text-[11px] text-gray-400 mb-3">
+                    ページ種別ごとのメイン内容の下に、補足コンテンツとして表示されます。
+                  </p>
+                )}
+
                 {config.blocks.length === 0 && (
                   <div className="bg-gray-50 rounded-xl p-10 text-center border-2 border-dashed border-gray-200">
                     <p className="text-sm text-gray-500 mb-2">
