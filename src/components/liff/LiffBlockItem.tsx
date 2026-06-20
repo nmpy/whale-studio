@@ -6,6 +6,7 @@
 import type { LiffPageBlock, LiffBlockType, VisibilityCondition } from "@/types";
 import { getBlockEntry, VISIBILITY_CONDITION_LABELS } from "./block-type-registry";
 import { BlockSettingsForm } from "./block-settings-forms";
+import { isBlockUnconfigured } from "./block-config-status";
 
 interface Props {
   block: LiffPageBlock;
@@ -30,6 +31,11 @@ export function LiffBlockItem({
   onMove, onLocalChange, onDragStart, onDragOver, onDragEnd,
 }: Props) {
   const entry = getBlockEntry(block.block_type);
+  // PR-BLK2: 編集者向けの「未設定」視覚補助（保存・表示はブロックしない）。
+  const unconfigured = isBlockUnconfigured(
+    block.block_type,
+    block.settings_json as Record<string, unknown> | null | undefined,
+  );
 
   return (
     <div
@@ -69,6 +75,12 @@ export function LiffBlockItem({
             <span className="text-sm font-semibold text-gray-900 truncate">
               {block.title || entry?.label || block.block_type}
             </span>
+            {/* PR-BLK2: 必須項目が空のブロックに控えめな「未設定」チップ（admin 配色）。 */}
+            {unconfigured && (
+              <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-600 border border-amber-100">
+                未設定
+              </span>
+            )}
             <span className="shrink-0 text-[11px] text-gray-400">
               {VISIBILITY_CONDITION_LABELS[(block.visibility_condition_json ?? "always") as VisibilityCondition]}
             </span>
