@@ -27,6 +27,13 @@ describe("page_type=contact 登録", () => {
   it("LIFF_PAGE_TYPES に contact を含む", () => {
     expect((LIFF_PAGE_TYPES as readonly string[]).includes("contact")).toBe(true);
   });
+  // PR-PZ2: page_type="puzzle"（謎・問題ページ）登録
+  it("normalizeLiffPageType('puzzle') === 'puzzle'", () => {
+    expect(normalizeLiffPageType("puzzle")).toBe("puzzle");
+  });
+  it("LIFF_PAGE_TYPES に puzzle を含む（保存可）", () => {
+    expect((LIFF_PAGE_TYPES as readonly string[]).includes("puzzle")).toBe(true);
+  });
 });
 
 describe("resolveContactConfig — 既定値（未設定セーフ）", () => {

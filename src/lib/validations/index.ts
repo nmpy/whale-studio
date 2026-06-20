@@ -974,7 +974,7 @@ export const VISIBILITY_CONDITIONS = [
 // LIFF ページ種別。
 // 新しいモード: default / hint / faq / survey / location / character / werewolf
 // 旧データ互換: "hint_site" も受理（保存時に "hint" に正規化される）
-export const LIFF_PAGE_TYPES = ["default", "hint", "faq", "survey", "location", "character", "werewolf", "contact", "hint_site"] as const;
+export const LIFF_PAGE_TYPES = ["default", "hint", "faq", "survey", "location", "character", "werewolf", "contact", "puzzle", "hint_site"] as const;
 /** 受け取った page_type を正規化（"hint_site" → "hint"） */
 export function normalizeLiffPageTypeValue(value: string | null | undefined): string {
   if (value === "hint_site") return "hint";
