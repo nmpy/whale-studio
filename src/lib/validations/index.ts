@@ -1097,9 +1097,14 @@ const dividerSettingsSchema = z.object({
 }).passthrough();
 
 const riddleListSettingsSchema = z.object({
-  title:       z.string().max(100).optional(),
-  max_count:   z.number().int().min(1).max(100).optional(),
-  show_status: z.boolean().optional(),
+  title:          z.string().max(100).optional(),
+  max_count:      z.number().int().min(1).max(100).optional(),
+  show_status:    z.boolean().optional(),
+  // PR-PZ2.1: 謎・問題ページ/ブロックの表示設定（spoiler-safe な見た目/範囲のみ）。
+  heading_mode:   z.enum(["riddle", "question", "custom"]).optional(),
+  heading_custom: z.string().max(20).optional(),
+  show_heading:   z.boolean().optional(),
+  display_mode:   z.enum(["all", "delivered", "solved"]).optional(),
 }).passthrough();
 
 const nestedBlockBaseSchema = z.object({

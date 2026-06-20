@@ -29,26 +29,36 @@ export function RiddleListBlock({
   const ctx = useLiffPlayerContext();
   const [puzzles, setPuzzles] = useState<PuzzleItem[] | null>(null);
 
-  const heading = settings.title?.trim() || title?.trim() || "謎・問題";
+  // PR-PZ2.1: 見出し名は heading_mode（謎 / 問題 / 自由入力）を優先。
+  // 未設定は従来 fallback（settings.title || title || "謎・問題"）＝後方互換。
+  const heading =
+    settings.heading_mode === "riddle"   ? "謎" :
+    settings.heading_mode === "question" ? "問題" :
+    settings.heading_mode === "custom"   ? (settings.heading_custom?.trim() || "謎・問題") :
+    (settings.title?.trim() || title?.trim() || "謎・問題");
+  // 見出し自体の表示可否（既定 true）。puzzle ページで page title と重複させたくない時 false。
+  const showHeading = settings.show_heading !== false;
+  // PR-PZ2.1: 表示範囲（all / delivered / solved）。未設定は従来の delivered。
+  const mode = settings.display_mode ?? "delivered";
   // プレビュー / 未ログインは fetch せず案内表示（実機ログイン時のみ取得）。
   const isPreview = !ctx || ctx.preview === true || !ctx.lineUserId || !ctx.workId;
 
   useEffect(() => {
     if (isPreview || !ctx?.workId || !ctx?.lineUserId) return;
     let cancelled = false;
-    fetch(`/api/liff/works/${ctx.workId}/puzzles?line_user_id=${encodeURIComponent(ctx.lineUserId)}`)
+    fetch(`/api/liff/works/${ctx.workId}/puzzles?line_user_id=${encodeURIComponent(ctx.lineUserId)}&mode=${mode}`)
       .then((r) => r.json())
       .then((j) => { if (!cancelled) setPuzzles(Array.isArray(j?.data?.puzzles) ? j.data.puzzles : []); })
       .catch(() => { if (!cancelled) setPuzzles([]); });
     return () => { cancelled = true; };
-  }, [isPreview, ctx?.workId, ctx?.lineUserId]);
+  }, [isPreview, ctx?.workId, ctx?.lineUserId, mode]);
 
   const limit = settings.max_count && settings.max_count > 0 ? settings.max_count : undefined;
   const shown = (puzzles ?? []).slice(0, limit);
 
   return (
     <div>
-      {heading && (
+      {showHeading && heading && (
         <h3 className="text-[16px] font-bold text-[color:var(--liff-primary-text)] mb-2 break-words">
           {heading}
         </h3>

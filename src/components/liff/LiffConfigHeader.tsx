@@ -11,6 +11,7 @@ import { normalizeLiffPageType } from "@/types";
 import { LiffFaqEditor } from "./LiffFaqEditor";
 import { LiffSurveyEditor } from "./LiffSurveyEditor";
 import { LiffContactEditor } from "./LiffContactEditor";
+import { LiffPuzzleEditor } from "./LiffPuzzleEditor";
 import { ImageUploadField } from "./ImageUploadField";
 import { Switch } from "@/components/Switch";
 
@@ -37,6 +38,7 @@ export function LiffConfigHeader({
   const isFaq = mode === "faq";
   const isSurvey = mode === "survey";
   const isContact = mode === "contact";
+  const isPuzzle = mode === "puzzle";
 
   const inputCls = "w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand/30 disabled:bg-gray-50";
   const labelCls = "block text-xs font-medium text-gray-500 mb-1";
@@ -286,6 +288,14 @@ export function LiffConfigHeader({
 
       {isContact && (
         <LiffContactEditor
+          settings={settings}
+          readOnly={readOnly}
+          onChange={(patch) => onLocalChange({ settings_json: { ...settings, ...patch } })}
+        />
+      )}
+
+      {isPuzzle && (
+        <LiffPuzzleEditor
           settings={settings}
           readOnly={readOnly}
           onChange={(patch) => onLocalChange({ settings_json: { ...settings, ...patch } })}
