@@ -76,7 +76,7 @@ export async function GET(
     const characters = await prisma.character.findMany({
       where:   { workId: work.id, isActive: true },
       orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
-      select:  { id: true, name: true, iconType: true, iconText: true, iconImageUrl: true, iconColor: true },
+      select:  { id: true, name: true, description: true, iconType: true, iconText: true, iconImageUrl: true, iconColor: true },
     });
 
     return NextResponse.json({
@@ -95,6 +95,7 @@ export async function GET(
         characters: characters.map((c) => ({
           id:             c.id,
           name:           c.name,
+          description:    c.description,   // PR #399 で追加済み。LIFF 表示(CR2)用に pass-through。
           icon_type:      c.iconType,
           icon_text:      c.iconText,
           icon_image_url: c.iconImageUrl,
