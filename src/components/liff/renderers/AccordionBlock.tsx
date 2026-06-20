@@ -15,6 +15,7 @@ import type {
 import { trackHintSiteEvent } from "@/lib/liff-analytics";
 import { recordLiffEvent } from "@/lib/liff-events";
 import { useLiffPlayerContext } from "@/components/liff/LiffPlayerContext";
+import { resolveAccordionItems, type AccordionItem } from "../accordion-items";
 import { HeadingBlock } from "./HeadingBlock";
 import { TextBlock } from "./TextBlock";
 import { WarningBlock } from "./WarningBlock";
@@ -43,7 +44,17 @@ interface Props {
   blockId?: string;
 }
 
-export function AccordionBlock({ title, settings, depth = 1, blockId }: Props) {
+// エントリ。multi（有効 item ≥1）なら複数項目表示、それ以外は既存 single 表示。
+// ※ フック規則を守るため、分岐は両 inner コンポーネントの呼び出しで行う（ここでフックは呼ばない）。
+export function AccordionBlock(props: Props) {
+  const items = resolveAccordionItems(props.settings.items);
+  if (items.length > 0) {
+    return <AccordionMulti items={items} blockId={props.blockId} />;
+  }
+  return <AccordionSingle {...props} />;
+}
+
+function AccordionSingle({ title, settings, depth = 1, blockId }: Props) {
   const reactId = useId();
   const id = blockId || reactId;
   const playerCtx = useLiffPlayerContext();
@@ -112,6 +123,54 @@ export function AccordionBlock({ title, settings, depth = 1, blockId }: Props) {
           {(!settings.children || settings.children.length === 0) && (
             <p className="text-[13px] text-[color:var(--liff-tertiary-text)]">（中身は未設定です）</p>
           )}
+        </div>
+      )}
+    </section>
+  );
+}
+
+// ── multi（複数項目）─────────────────────────────────────────────────────
+// 有効 item を縦に並べる。各 item は single と同じ見た目（border-bottom + 60px ヘッダ +
+// chevron）で、それぞれ独立に開閉（1つ開いても他は閉じない）。v1 は body=plain text のみ。
+// title / children は表示しない。分析イベント・排他 open・並び替えは後続。
+function AccordionMulti({ items, blockId }: { items: AccordionItem[]; blockId?: string }) {
+  const reactId = useId();
+  const baseId = blockId || reactId;
+  return (
+    <>
+      {items.map((item, idx) => (
+        <AccordionItemRow key={idx} item={item} baseId={`${baseId}-${idx}`} />
+      ))}
+    </>
+  );
+}
+
+function AccordionItemRow({ item, baseId }: { item: AccordionItem; baseId: string }) {
+  const [open, setOpen] = useState(false);
+  const panelId  = `acc-panel-${baseId}`;
+  const headerId = `acc-header-${baseId}`;
+  return (
+    <section className="border-b border-[color:var(--liff-border)]">
+      <h3 className="m-0">
+        <button
+          id={headerId}
+          type="button"
+          aria-expanded={open}
+          aria-controls={panelId}
+          onClick={() => setOpen((o) => !o)}
+          className="w-full flex items-center justify-between gap-3 text-left min-h-[60px] py-3 transition-colors active:bg-[color:var(--liff-surface-subtle)]"
+        >
+          <span className="text-[16px] font-bold leading-snug break-words flex-1 min-w-0 text-[color:var(--liff-primary-text)]">
+            {item.title.trim() || "（タイトル未設定）"}
+          </span>
+          <Chevron open={open} />
+        </button>
+      </h3>
+      {open && (
+        <div id={panelId} role="region" aria-labelledby={headerId} className="pt-1 pb-5">
+          <p className="text-[14px] leading-[1.7] whitespace-pre-wrap break-words text-[color:var(--liff-primary-text)]">
+            {item.body}
+          </p>
         </div>
       )}
     </section>

@@ -976,6 +976,14 @@ export function CodeReaderForm({ settings, onChange, readOnly }: FieldProps<Code
 import { AccordionChildrenEditor } from "./AccordionChildrenEditor";
 
 export function AccordionForm({ settings, onChange, readOnly }: FieldProps<AccordionSettings>) {
+  // PR-BLK4d: 複数項目（multi）。最大5件。1件以上入れると multi 表示になり、title/子要素は表示されない。
+  const items = settings.items ?? [];
+  const setItems = (next: NonNullable<AccordionSettings["items"]>) => onChange({ ...settings, items: next });
+  const addItem = () => setItems([...items, { title: "", body: "" }]);
+  const removeItem = (i: number) => setItems(items.filter((_, idx) => idx !== i));
+  const updateItem = (i: number, patch: { title?: string; body?: string }) =>
+    setItems(items.map((it, idx) => (idx === i ? { ...it, ...patch } : it)));
+
   return (
     <div className="space-y-3">
       <Help>タップで開閉する折りたたみセクションです。中身（本文や他ブロック）は「子要素」に追加します。</Help>
@@ -1024,6 +1032,54 @@ export function AccordionForm({ settings, onChange, readOnly }: FieldProps<Accor
           readOnly={readOnly}
           onChange={(next) => onChange({ ...settings, children: next })}
         />
+      </div>
+
+      {/* PR-BLK4d: 複数項目（任意・最大5件）。1件以上入れると multi 表示になる。 */}
+      <div>
+        <label className={labelClass}>複数項目（任意・最大5件）</label>
+        <Help>項目を1件以上入れると、その項目リスト（各項目が個別に開閉）として表示されます。この場合、上の「タイトル」と「子要素」は表示されません。各項目は見出しと本文（テキスト）のみです。</Help>
+        <div className="space-y-2">
+          {items.map((item, idx) => (
+            <div key={idx} className="border border-gray-200 rounded-lg p-2 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-gray-500">項目 {idx + 1}</span>
+                <button
+                  type="button"
+                  onClick={() => removeItem(idx)}
+                  disabled={readOnly}
+                  className="text-xs text-red-600 hover:underline disabled:text-gray-400"
+                >
+                  削除
+                </button>
+              </div>
+              <input
+                className={inputClass}
+                value={item.title ?? ""}
+                onChange={(e) => updateItem(idx, { title: e.target.value })}
+                disabled={readOnly}
+                placeholder="見出し（例: Q. ヒントはどこ？）"
+              />
+              <textarea
+                className={inputClass}
+                rows={3}
+                value={item.body ?? ""}
+                onChange={(e) => updateItem(idx, { body: e.target.value })}
+                disabled={readOnly}
+                placeholder="本文"
+              />
+            </div>
+          ))}
+        </div>
+        {items.length < 5 && (
+          <button
+            type="button"
+            onClick={addItem}
+            disabled={readOnly}
+            className="mt-2 text-sm text-brand hover:underline disabled:text-gray-400"
+          >
+            ＋ 項目を追加
+          </button>
+        )}
       </div>
     </div>
   );
