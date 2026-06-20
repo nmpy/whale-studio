@@ -10,6 +10,7 @@
 import { useEffect, useState } from "react";
 import type { RiddleListSettings } from "@/types";
 import { useLiffPlayerContext } from "../LiffPlayerContext";
+import { LiffEmptyState } from "../ui";
 
 interface PuzzleItem {
   id:         string;
@@ -60,27 +61,27 @@ export function RiddleListBlock({
       ) : puzzles === null ? (
         <p className="text-[13px] text-[color:var(--liff-tertiary-text,#8C8C8C)] py-2">読み込み中...</p>
       ) : shown.length === 0 ? (
-        <p className="text-[14px] text-[color:var(--liff-tertiary-text,#8C8C8C)] text-center py-4">
-          表示できる謎・問題はまだありません。
-        </p>
+        // 空状態は共通 LiffEmptyState（既存文言の意味を維持）。
+        <LiffEmptyState emoji="🧩" text="表示できる謎・問題はまだありません。" />
       ) : (
-        <ul className="flex flex-col gap-2">
+        <ul className="flex flex-col gap-2.5">
           {shown.map((p) => (
             <li
               key={p.id}
-              className="rounded-[12px] border border-[#eef2f5] bg-[color:var(--liff-surface,#fff)] px-4 py-3"
+              className="rounded-[10px] border border-[color:var(--liff-border)] bg-[color:var(--liff-surface,#fff)] shadow-[0_1px_3px_rgba(0,0,0,0.05)] px-4 py-3"
             >
               <div className="flex items-center gap-2 flex-wrap mb-1">
                 {p.phase_name && (
-                  <span className="text-[11px] text-[color:var(--liff-secondary-text)]">{p.phase_name}</span>
+                  <span className="text-[11.5px] text-[color:var(--liff-secondary-text)] break-words">{p.phase_name}</span>
                 )}
+                {/* 状態ラベル: 文言・判定（p.status === "solved"）は不変。色だけ player token の控えめな accent に。 */}
                 {settings.show_status !== false && (
                   p.status === "solved" ? (
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#DCFCE7] text-[#15803D]">
+                    <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-[color:var(--liff-ui-green-soft,#E8F9EE)] text-[color:var(--liff-ui-green-pressed,#06A047)]">
                       正解済み
                     </span>
                   ) : (
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#E0F2F1] text-[#0F766E]">
+                    <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-[color:var(--liff-surface-subtle,#F5F5F5)] text-[color:var(--liff-secondary-text)]">
                       未回答
                     </span>
                   )
