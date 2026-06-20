@@ -133,6 +133,19 @@ export function FreeTextForm({ settings, onChange, readOnly }: FieldProps<FreeTe
           </select>
         </div>
       </div>
+      <div>
+        <label className={labelClass}>表示スタイル</label>
+        <select
+          className={selectClass}
+          value={settings.variant ?? "body"}
+          onChange={(e) => onChange({ ...settings, variant: e.target.value as FreeTextSettings["variant"] })}
+          disabled={readOnly}
+        >
+          <option value="body">本文</option>
+          <option value="sub">補足</option>
+        </select>
+        <Help>「補足」を選ぶと、小さめで控えめなテキストとして表示されます。</Help>
+      </div>
     </div>
   );
 }

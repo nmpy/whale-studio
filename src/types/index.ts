@@ -1339,6 +1339,9 @@ export interface FreeTextSettings {
   body?: string;
   align?: "left" | "center";
   emphasis?: "normal" | "strong";
+  /** PR-BLK4e: 表示スタイル。"sub"(補足) は小さめ・控えめなテキスト。
+   *  未設定/不明は "body"（既存の本文表示）。LiffRenderer の FreeTextBlock でのみ反映。 */
+  variant?: "body" | "sub";
 }
 
 /** ブロック用ボタンデザイン。`LIFF_BUTTON_VARIANTS`（primitives/LiffButton）と揃える。
