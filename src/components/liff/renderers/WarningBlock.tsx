@@ -2,29 +2,33 @@
 
 import type { WarningSettings } from "@/types";
 
-// ブロック単位のネタバレ / 注意 / 危険警告。
+// ブロック単位のネタバレ / 注意 / 危険警告（CMS 表示名: バナー）。
 // 親ブロック (LiffRenderer / HintSiteRenderer / AccordionBlock) からのみ表示される。
 //
-// 新仕様: 長方形のベタ塗りカラー背景 + 黒テキスト。左ボーダー / 左の影 / box-shadow /
-//        アクセント装飾は付けない。角丸は軽め (rounded-lg)。
-const TONE_BG: Record<NonNullable<WarningSettings["tone"]>, string> = {
-  spoiler: "bg-[#FDE68A]", // amber-200（ネタバレ注意）
-  info:    "bg-[#BAE6FD]", // sky-200（補足情報）
-  danger:  "bg-[#FECACA]", // red-200（強い注意）
+// PR-BLK3b: 強い amber/sky/red のベタ塗りをやめ、player に馴染む「淡いカード」に統一。
+//   - 背景 = --liff-surface-subtle（かなり薄い面）/ 枠 = --liff-border / 本文 = --liff-primary-text。
+//   - tone 差は強い背景色ではなく「左端の細いアクセント線」で控えめに表現。
+//   - 既存トークンのみ使用（新トークン・hardcoded hex 追加なし）。tone 値/意味は不変。
+//   ※ 添付画像のような tone 別の淡い色背景＋アイコンは additive な icon フィールド & banner token が
+//     必要なため PR-BLK4a で対応（本 PR は色味を弱めることに限定）。
+const TONE_ACCENT: Record<NonNullable<WarningSettings["tone"]>, string> = {
+  spoiler: "var(--liff-border-strong)", // 中立（淡いグレー）
+  info:    "var(--liff-border-strong)", // 中立（淡いグレー）
+  danger:  "var(--liff-danger)",        // 注意系のみ控えめな赤アクセント
 };
 
 export function WarningBlock({ settings }: { settings: WarningSettings }) {
   if (!settings.body) return null;
   const tone = settings.tone ?? "spoiler";
-  const bg = TONE_BG[tone] ?? TONE_BG.spoiler;
+  const accent = TONE_ACCENT[tone] ?? TONE_ACCENT.spoiler;
   return (
     <div
-      // PR-BLK3: 本文色をハードコード(#111827)から player トークンへ・本文太さを控えめに。
-      // tone 背景は既存値を維持（柔らかい配色/アイコンへの刷新は PR-BLK3b・要トークン）。
-      className={`${bg} text-[color:var(--liff-primary-text)] rounded-[10px] px-4 py-3 text-[14px] leading-[1.7] break-words`}
+      className="bg-[color:var(--liff-surface-subtle)] border border-[color:var(--liff-border)] rounded-[10px] px-4 py-3 text-[14px] leading-[1.7] break-words text-[color:var(--liff-primary-text)]"
+      // 左端 3px のアクセント線で tone を控えめに示す（色は既存トークン経由・hardcoded hex なし）。
+      style={{ borderLeft: `3px solid ${accent}` }}
       role="note"
     >
-      <p className="whitespace-pre-wrap font-medium">{settings.body}</p>
+      <p className="whitespace-pre-wrap">{settings.body}</p>
     </div>
   );
 }
