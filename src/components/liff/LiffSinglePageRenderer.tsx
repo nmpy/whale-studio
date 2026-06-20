@@ -25,7 +25,7 @@ import { LocationHistoryRenderer } from "./LocationHistoryRenderer";
 import { CharacterRenderer, type CharacterRendererBlock } from "./CharacterRenderer";
 import { PuzzleRenderer } from "./PuzzleRenderer";
 import { WerewolfRenderer } from "./WerewolfRenderer";
-import { LiffRenderer, type LiffBlock, type LiffRenderContext } from "./LiffRenderer";
+import { LiffRenderer, LiffBlockSections, type LiffBlock, type LiffRenderContext } from "./LiffRenderer";
 import { LiffPlayerProvider } from "./LiffPlayerContext";
 import { liffRootClass, resolveHeaderTitle } from "./liff-style-helpers";
 import { LiffStudioFooter, shouldShowWhaleStudioCredit } from "./LiffStudioFooter";
@@ -70,6 +70,13 @@ const DEFAULT_RENDER_CTX: LiffRenderContext = {
   characters: [],
   canResume: false,
 };
+
+// PR-LB1: 「自前でブロックを描画するページ種別」。これら以外（faq/survey/contact/location/puzzle 等）は
+// 専用コンテンツの下に「追加ブロック」を補足表示する。
+//   - default : ブロックがメインコンテンツ（ActivePageContent の default 分岐で描画）
+//   - hint / character : 専用 renderer 内部でブロックを描画する
+//   - werewolf : 専用テーブル運用でブロック非対応
+const PAGE_TYPES_RENDERING_OWN_BLOCKS = new Set(["default", "hint", "character", "werewolf"]);
 
 export function LiffSinglePageRenderer({
   workId, workTitle, page, preview = false, lineUserId = null,
@@ -123,6 +130,25 @@ export function LiffSinglePageRenderer({
           lineUserId={lineUserId}
           defaultPageCtx={defaultPageCtx}
         />
+
+        {/* PR-LB1: 専用ページ種別（faq/survey/contact/location/puzzle 等）でも、保存された追加ブロックを
+            メインコンテンツの下に補足表示する。default/hint/character/werewolf は本体側で扱うため除外。
+            blocks が空なら LiffBlockSections が null を返す＝従来表示と差分なし。 */}
+        {!PAGE_TYPES_RENDERING_OWN_BLOCKS.has(pageType) && (
+          <LiffBlockSections
+            preview={preview}
+            ctx={defaultPageCtx}
+            showEmptyHint={false}
+            blocks={page.blocks.map((b) => ({
+              id:                        b.id,
+              block_type:                b.block_type,
+              sort_order:                b.sort_order ?? 0,
+              title:                     b.title,
+              settings_json:             (b.settings_json ?? {}) as Record<string, unknown>,
+              visibility_condition_json: (b.visibility_condition_json ?? null) as LiffBlock["visibility_condition_json"],
+            }))}
+          />
+        )}
 
         {showCredit && <LiffStudioFooter />}
       </div>

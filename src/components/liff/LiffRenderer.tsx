@@ -137,10 +137,6 @@ export function LiffRenderer({
   /** プレビュー時は shareTargetPicker を呼ばない */
   preview?: boolean;
 }) {
-  const visibleBlocks = blocks.filter((b) =>
-    shouldShow(b.visibility_condition_json, ctx.userState)
-  );
-
   return (
     // LINE Gift like モバイル閲覧 UI。
     //   - 背景白、画面内ヘッダーは廃止 (上部バー = document.title で表現)
@@ -149,37 +145,64 @@ export function LiffRenderer({
     // 管理画面のカードトーンに合わせ、淡いグレー背景の上に白い「資料集シート」カードを 1 枚置き、
     // その中にブロックを区切り線つきセクションで縦に並べる（LINE Gift 風の閲覧 UI）。
     <div className={`liff-font ${liffRootClass(settings)} min-h-screen bg-[color:var(--liff-background)] text-[color:var(--liff-primary-text)]`}>
-      <main className="liff-player-main pt-3 pb-8">
-        <div className="rounded-[20px] border border-[#eef2f5] bg-[color:var(--liff-surface,#fff)] shadow-[0_6px_20px_rgba(31,64,92,0.06)] px-5 py-4">
-          {visibleBlocks.length === 0 ? (
-            <p className="text-center text-[color:var(--liff-tertiary-text)] py-12 text-sm">
-              表示する項目がありません
-            </p>
-          ) : (
-            /* セクションリスト:
-               各ブロックの下に細い区切り線 + 上下に padding でメリハリを付ける。
-               ただし accordion 自体が border-bottom を持つので二重罫線にならないよう、
-               accordion ブロックは独自セパレータに任せる (親の border は出さない)。 */
-            visibleBlocks.map((block, i) => {
-              const isAccordion = block.block_type === "accordion";
-              const isLast = i === visibleBlocks.length - 1;
-              const sectionCls = isAccordion
-                ? ""
-                : isLast
-                  ? "pb-1"
-                  : "pb-5 mb-5 border-b border-[color:var(--liff-border)]";
-              return (
-                <div key={block.id} className={sectionCls}>
-                  <RenderBlock block={block} ctx={ctx} preview={preview} />
-                </div>
-              );
-            })
-          )}
-        </div>
-
-        {/* シェアボタンは廃止（settings.share_enabled は無視） */}
-      </main>
+      <LiffBlockSections blocks={blocks} ctx={ctx} preview={preview} />
+      {/* シェアボタンは廃止（settings.share_enabled は無視） */}
     </div>
+  );
+}
+
+/**
+ * ブロックを縦に並べる「資料集シート」カード（`<main>` + 白カード + 区切りセクション）。
+ * LiffRenderer 本体（default ページ）と、専用ページ種別の「追加ブロック」表示の双方から再利用する [PR-LB1]。
+ * - showEmptyHint=true（既定・default ページ）: 0 件なら「表示する項目がありません」を出す（従来挙動）。
+ * - showEmptyHint=false（専用ページの追加ブロック）: 0 件なら何も描画しない（blocks 空＝従来表示を保つ）。
+ */
+export function LiffBlockSections({
+  blocks,
+  ctx,
+  preview,
+  showEmptyHint = true,
+}: {
+  blocks: LiffBlock[];
+  ctx: LiffRenderContext;
+  preview?: boolean;
+  showEmptyHint?: boolean;
+}) {
+  const visibleBlocks = blocks.filter((b) =>
+    shouldShow(b.visibility_condition_json, ctx.userState)
+  );
+  // 専用ページで追加ブロックが無い場合は何も出さない（カード枠も空文言も出さない）。
+  if (visibleBlocks.length === 0 && !showEmptyHint) return null;
+
+  return (
+    <main className="liff-player-main pt-3 pb-8">
+      <div className="rounded-[20px] border border-[#eef2f5] bg-[color:var(--liff-surface,#fff)] shadow-[0_6px_20px_rgba(31,64,92,0.06)] px-5 py-4">
+        {visibleBlocks.length === 0 ? (
+          <p className="text-center text-[color:var(--liff-tertiary-text)] py-12 text-sm">
+            表示する項目がありません
+          </p>
+        ) : (
+          /* セクションリスト:
+             各ブロックの下に細い区切り線 + 上下に padding でメリハリを付ける。
+             ただし accordion 自体が border-bottom を持つので二重罫線にならないよう、
+             accordion ブロックは独自セパレータに任せる (親の border は出さない)。 */
+          visibleBlocks.map((block, i) => {
+            const isAccordion = block.block_type === "accordion";
+            const isLast = i === visibleBlocks.length - 1;
+            const sectionCls = isAccordion
+              ? ""
+              : isLast
+                ? "pb-1"
+                : "pb-5 mb-5 border-b border-[color:var(--liff-border)]";
+            return (
+              <div key={block.id} className={sectionCls}>
+                <RenderBlock block={block} ctx={ctx} preview={preview} />
+              </div>
+            );
+          })
+        )}
+      </div>
+    </main>
   );
 }
 
