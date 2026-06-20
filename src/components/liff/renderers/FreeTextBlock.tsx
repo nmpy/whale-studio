@@ -11,7 +11,7 @@ export function FreeTextBlock({ title, settings }: { title?: string | null; sett
         </h3>
       )}
       <p
-        className={`text-[15px] leading-[1.6] whitespace-pre-wrap text-[color:var(--liff-primary-text)] break-words ${
+        className={`text-[14px] leading-[1.85] whitespace-pre-wrap text-[color:var(--liff-primary-text)] break-words ${
           settings.emphasis === "strong" ? "font-bold" : ""
         }`}
       >

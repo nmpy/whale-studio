@@ -19,10 +19,12 @@ export function WarningBlock({ settings }: { settings: WarningSettings }) {
   const bg = TONE_BG[tone] ?? TONE_BG.spoiler;
   return (
     <div
-      className={`${bg} text-[#111827] rounded-lg px-4 py-3 text-[14px] leading-[1.7] break-words`}
+      // PR-BLK3: 本文色をハードコード(#111827)から player トークンへ・本文太さを控えめに。
+      // tone 背景は既存値を維持（柔らかい配色/アイコンへの刷新は PR-BLK3b・要トークン）。
+      className={`${bg} text-[color:var(--liff-primary-text)] rounded-[10px] px-4 py-3 text-[14px] leading-[1.7] break-words`}
       role="note"
     >
-      <p className="whitespace-pre-wrap font-bold">{settings.body}</p>
+      <p className="whitespace-pre-wrap font-medium">{settings.body}</p>
     </div>
   );
 }

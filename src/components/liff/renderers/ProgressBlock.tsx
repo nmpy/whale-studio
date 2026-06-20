@@ -14,6 +14,8 @@ export function ProgressBlock({
   total: number;
 }) {
   const pct = total > 0 ? Math.round((current / total) * 100) : 0;
+  // PR-BLK3: バー幅は 0〜100% に丸める（current>total / 異常値でもバーが溢れない・視覚安全）。
+  const barPct = Math.min(100, Math.max(0, pct));
 
   return (
     <div>
@@ -31,7 +33,7 @@ export function ProgressBlock({
           <div className="bg-[color:var(--liff-border)] rounded-full h-2 overflow-hidden">
             <div
               className="h-full rounded-full transition-all duration-500"
-              style={{ width: `${pct}%`, background: "var(--liff-line-green, #06C755)" }}
+              style={{ width: `${barPct}%`, background: "var(--liff-line-green, #06C755)" }}
             />
           </div>
           <p className="text-[12px] text-[color:var(--liff-secondary-text)] mt-1 text-right">

@@ -20,7 +20,7 @@ export function ImageBlock({ settings }: { settings: ImageBlockSettings }) {
       {failed ? (
         // 読み込み失敗時のフォールバック（白画面/壊れアイコンを避け、角丸プレースホルダを出す）。
         <div
-          className="w-full rounded-[14px] border border-[#eef2f5] bg-[color:var(--liff-surface-subtle,#FAFAFA)] flex flex-col items-center justify-center gap-1 text-[color:var(--liff-tertiary-text,#8C8C8C)]"
+          className="w-full rounded-[10px] border border-[color:var(--liff-border)] bg-[color:var(--liff-surface-subtle,#FAFAFA)] flex flex-col items-center justify-center gap-1 text-[color:var(--liff-tertiary-text,#8C8C8C)]"
           style={{ height: Math.min(180, maxHeight) }}
         >
           <span style={{ fontSize: 24 }} aria-hidden>🖼</span>
@@ -30,7 +30,7 @@ export function ImageBlock({ settings }: { settings: ImageBlockSettings }) {
         <img
           src={settings.image_url}
           alt={settings.alt || ""}
-          className="w-full max-w-full rounded-[14px] border border-[#eef2f5] object-cover bg-[color:var(--liff-surface-subtle,#FAFAFA)]"
+          className="w-full max-w-full rounded-[10px] border border-[color:var(--liff-border)] shadow-[var(--liff-ui-card-shadow)] object-cover bg-[color:var(--liff-surface-subtle,#FAFAFA)]"
           style={{ maxHeight }}
           loading="lazy"
           decoding="async"

@@ -6,7 +6,7 @@ export function DividerBlock({ settings }: { settings: DividerSettings }) {
   const style = settings.style === "dashed" ? "border-dashed" : "border-solid";
   return (
     <hr
-      className={`my-2 border-t ${style} border-[color:var(--liff-border)]`}
+      className={`my-3 border-t ${style} border-[color:var(--liff-border)]`}
       aria-hidden="true"
     />
   );
