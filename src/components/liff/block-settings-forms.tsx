@@ -569,6 +569,22 @@ export function WarningForm({ settings, onChange, readOnly }: FieldProps<Warning
           <option value="danger">注意（赤）</option>
         </select>
       </div>
+      <div>
+        <label className={labelClass}>アイコン</label>
+        <select
+          className={selectClass}
+          value={settings.icon ?? "auto"}
+          onChange={(e) => onChange({ ...settings, icon: e.target.value as WarningSettings["icon"] })}
+          disabled={readOnly}
+        >
+          <option value="auto">種別に合わせる</option>
+          <option value="none">表示しない</option>
+          <option value="warning">注意（三角）</option>
+          <option value="info">情報（i）</option>
+          <option value="alert">警告（！）</option>
+        </select>
+        <Help>バナー左側に表示するアイコンです。「種別に合わせる」を選ぶと、バナー種別に応じて自動で選ばれます。</Help>
+      </div>
     </div>
   );
 }

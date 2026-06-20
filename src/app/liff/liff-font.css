@@ -43,6 +43,15 @@
   --liff-danger:            #E22B2B;
   --liff-danger-press:      #C42323;
 
+  /* === バナー(warning ブロック)用の淡い tone 配色 [PR-BLK4a] ===
+   * player 専用。背景はかなり淡く、accent はアイコン用の控えめな色。admin/CMS では使わない。 */
+  --liff-banner-warning-bg:     #FEF9EC;   /* 注意: 薄いクリーム */
+  --liff-banner-warning-accent: #E8A020;   /* 注意: オレンジ（アイコン） */
+  --liff-banner-info-bg:        #EDF4FE;   /* 情報: 薄いブルー */
+  --liff-banner-info-accent:    #5B89CC;   /* 情報: ブルー（アイコン） */
+  --liff-banner-danger-bg:      #FEECEC;   /* 警告: 薄いピンク */
+  --liff-banner-danger-accent:  #D87A7A;   /* 警告: 柔らかい赤（アイコン） */
+
   /* === Layout tokens ===
    * カード前提の値は残置するが、新デザインではほぼ使わない。
    * 必要なときだけ Survey フィールド等で参照。
