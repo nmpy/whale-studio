@@ -31,7 +31,8 @@ export function HeadingBlock({
   const baseCls = `${sizeCls} ${weightCls} ${align} ${colorCls} break-words`;
 
   // 見出しは letter-spacing をやや詰め、本文 (0.02em) とコントラストを付ける。
-  const headingStyle: React.CSSProperties = { letterSpacing: "-0.005em" };
+  // PR-BLK3: 見出しの行間を読みやすく（既存サイズ/太さ/配置は不変）。
+  const headingStyle: React.CSSProperties = { letterSpacing: "-0.005em", lineHeight: 1.35 };
 
   switch (level) {
     case 1: return <h1 className={baseCls} style={headingStyle}>{text}</h1>;
