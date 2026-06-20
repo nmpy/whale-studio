@@ -15,6 +15,7 @@ import { useEffect } from "react";
 import type {
   LiffPageConfigSettings,
   LiffBlockType,
+  LiffPageType,
 } from "@/types";
 import { normalizeLiffPageType } from "@/types";
 import { HintSiteRenderer, type HintSiteBlock } from "./HintSiteRenderer";
@@ -71,12 +72,21 @@ const DEFAULT_RENDER_CTX: LiffRenderContext = {
   canResume: false,
 };
 
-// PR-LB1: 「自前でブロックを描画するページ種別」。これら以外（faq/survey/contact/location/puzzle 等）は
-// 専用コンテンツの下に「追加ブロック」を補足表示する。
+// PR-LB2: 「専用コンテンツの下に追加ブロックを補足表示するページ種別」の allow-list。
+// PR-LB1 は denylist（default/hint/character/werewolf を除外）だったが、将来 page_type が増えた際に
+// ActivePageContent の switch の default フォールバックと管理がズレて二重描画になるリスクを避けるため、
+// 明示的な allow-list に変更（挙動は LB1 と同一。新規 page_type は既定で追加ブロック非表示＝安全側）。
+//   含めない page_type の扱い:
 //   - default : ブロックがメインコンテンツ（ActivePageContent の default 分岐で描画）
-//   - hint / character : 専用 renderer 内部でブロックを描画する
+//   - hint / character : 専用 renderer 内部でブロックを描画する（二重化させない）
 //   - werewolf : 専用テーブル運用でブロック非対応
-const PAGE_TYPES_RENDERING_OWN_BLOCKS = new Set(["default", "hint", "character", "werewolf"]);
+const PAGE_TYPES_WITH_EXTRA_BLOCKS = new Set<LiffPageType>([
+  "faq",
+  "survey",
+  "contact",
+  "location",
+  "puzzle",
+]);
 
 export function LiffSinglePageRenderer({
   workId, workTitle, page, preview = false, lineUserId = null,
@@ -131,10 +141,10 @@ export function LiffSinglePageRenderer({
           defaultPageCtx={defaultPageCtx}
         />
 
-        {/* PR-LB1: 専用ページ種別（faq/survey/contact/location/puzzle 等）でも、保存された追加ブロックを
-            メインコンテンツの下に補足表示する。default/hint/character/werewolf は本体側で扱うため除外。
+        {/* PR-LB2: allow-list の page_type（faq/survey/contact/location/puzzle）でのみ、保存された追加ブロックを
+            メインコンテンツの下に補足表示する。default/hint/character/werewolf は本体側で扱うため対象外。
             blocks が空なら LiffBlockSections が null を返す＝従来表示と差分なし。 */}
-        {!PAGE_TYPES_RENDERING_OWN_BLOCKS.has(pageType) && (
+        {PAGE_TYPES_WITH_EXTRA_BLOCKS.has(pageType) && (
           <LiffBlockSections
             preview={preview}
             ctx={defaultPageCtx}
