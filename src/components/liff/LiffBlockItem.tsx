@@ -65,12 +65,20 @@ export function LiffBlockItem({
 
         <span className="text-base">{entry?.icon ?? "?"}</span>
         <div className="flex-1 min-w-0">
-          <span className="text-sm font-semibold text-gray-900">
-            {block.title || entry?.label || block.block_type}
-          </span>
-          <span className="text-[11px] text-gray-400 ml-2">
-            {VISIBILITY_CONDITION_LABELS[(block.visibility_condition_json ?? "always") as VisibilityCondition]}
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-semibold text-gray-900 truncate">
+              {block.title || entry?.label || block.block_type}
+            </span>
+            <span className="shrink-0 text-[11px] text-gray-400">
+              {VISIBILITY_CONDITION_LABELS[(block.visibility_condition_json ?? "always") as VisibilityCondition]}
+            </span>
+          </div>
+          {/* PR-BLK1: ブロック種別の補足を小さく表示。カスタムタイトル設定時は種別ラベルも併記。 */}
+          {entry && (
+            <span className="block text-[11px] text-gray-400 truncate">
+              {block.title ? `${entry.label}・${entry.description}` : entry.description}
+            </span>
+          )}
         </div>
 
         {/* アクションボタン */}
