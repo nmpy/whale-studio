@@ -3,6 +3,28 @@
 > PR-CR0 — 調査専用。コード挙動 / DB / API / CMS / migration の変更は一切なし（本 markdown の追加のみ）。
 > base: `main` @ `e126e06`（PR #397 反映済み）。
 
+## Status Update（2026-06-20 時点）
+
+> 本書は **CR1/CR2 実装前**の調査スナップショットです。
+> 以下は**その後の実績**であり、一部の「現状」記述、特に Description Field Status / Recommended Plan / Proposed PR Split は既に古くなっています。
+> このドキュメントは、当時の調査履歴と今後の met 定義検討の前提資料として読んでください。
+
+- ✅ **CR1 = PR #399（本番反映済・migration 適用済）**
+  `Character.description String?` を DB / admin API（`/api/characters`）/ CMS（work-scoped 新規・編集フォーム）まで追加しました。
+
+- ✅ **CR2 = PR #400（本番反映済）**
+  `CharacterListBlock` を 3列グリッド + 中央モーダル化し、モーダルで `description` を表示するようにしました。
+  LIFF menu/pages API に `description` を pass-through し、`show_description` を modal 表示の出し分けに活用開始しました。
+  `CharacterRenderer` の `config.description` 二重表示も削除済みです。
+
+- 🔁 **現在は「無し」→「有り」に変化済みの項目**
+  Description Field Status の DB / CMS / API / 描画、`show_description` の dead 状態、`CharacterRenderer` の二重 description。
+
+- ⏭ **未着手・今も有効な検討項目**
+  **CR3/CR4 = met 定義のプロダクト合意 + met UI**
+  `"Met" Status` / `"Met" Definition Options` / `Open Questions` を参照してください。
+  そのほか、**CR1.1 = OA-level character form への description 入力欄追加**、**CR5 = tests / fixtures 整備** は未着手です。
+
 ## Summary
 
 Character まわりには **2 つの別々の表示面**があり、現状どちらも「プレイヤーが出会ったキャラ」という概念は持っていない。
