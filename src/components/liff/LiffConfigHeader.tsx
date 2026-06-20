@@ -122,6 +122,7 @@ export function LiffConfigHeader({
             <option value="survey">アンケート</option>
             <option value="contact">お問い合わせ</option>
             <option value="character">キャラクター</option>
+            <option value="puzzle">謎・問題</option>
             <option value="werewolf">人狼（配役閲覧）</option>
             {/* 「チェックイン履歴」はページ種別から廃止し、ブロックとして追加できるようにした。
                 ただし既存データ（pageType="location"）を壊さないため、既にこの種別のページだけは

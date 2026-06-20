@@ -23,6 +23,7 @@ import { SurveyRenderer } from "./SurveyRenderer";
 import { ContactRenderer } from "./ContactRenderer";
 import { LocationHistoryRenderer } from "./LocationHistoryRenderer";
 import { CharacterRenderer, type CharacterRendererBlock } from "./CharacterRenderer";
+import { PuzzleRenderer } from "./PuzzleRenderer";
 import { WerewolfRenderer } from "./WerewolfRenderer";
 import { LiffRenderer, type LiffBlock, type LiffRenderContext } from "./LiffRenderer";
 import { LiffPlayerProvider } from "./LiffPlayerContext";
@@ -238,6 +239,20 @@ function ActivePageContent({
               title:         b.title,
               settings_json: (b.settings_json ?? {}) as Record<string, unknown>,
             })) as CharacterRendererBlock[],
+          }}
+        />
+      );
+    case "puzzle":
+      // 謎・問題ページ。既存 riddle_list ブロック（RiddleListBlock）を薄い PuzzleRenderer で再利用。
+      // データ取得 / status / spoiler-safe は RiddleListBlock + /puzzles API 側に一任（本 case は不変）。
+      return (
+        <PuzzleRenderer
+          preview={preview}
+          config={{
+            work_title:    null,
+            title:         page.title,
+            description:   page.description,
+            settings_json: settings,
           }}
         />
       );

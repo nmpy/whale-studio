@@ -190,6 +190,7 @@ export function defaultMenuLabel(pageType: LiffPageType): string {
     case "faq":       return "FAQ";
     case "werewolf":  return "人狼";
     case "contact":   return "お問い合わせ";
+    case "puzzle":    return "謎・問題";
     case "default":   return "メニュー";
   }
 }
@@ -204,6 +205,7 @@ export function defaultMenuIcon(pageType: LiffPageType): string {
     case "faq":       return "❓";
     case "werewolf":  return "🐺";
     case "contact":   return "✉️";
+    case "puzzle":    return "🧩";
     case "default":   return "📄";
   }
 }

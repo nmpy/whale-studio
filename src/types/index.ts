@@ -1313,7 +1313,7 @@ export type VisibilityCondition = "always" | "before_start" | "in_progress" | "c
  *
  *  DB は `pageType String @default("default")` で enum ではないため、新 pageType 追加に
  *  Prisma migration は不要 (werewolf 用の専用テーブル migration は別で持つ)。 */
-export type LiffPageType = "default" | "hint" | "faq" | "survey" | "location" | "character" | "werewolf" | "contact";
+export type LiffPageType = "default" | "hint" | "faq" | "survey" | "location" | "character" | "werewolf" | "contact" | "puzzle";
 
 /** 旧データ互換用。ストレージから読んだ値を正規化する。 */
 export function normalizeLiffPageType(value: string | null | undefined): LiffPageType {
@@ -1321,7 +1321,7 @@ export function normalizeLiffPageType(value: string | null | undefined): LiffPag
   if (
     value === "hint" || value === "faq" || value === "survey" ||
     value === "location" || value === "character" || value === "werewolf" ||
-    value === "contact"
+    value === "contact" || value === "puzzle"
   ) return value;
   return "default";
 }
