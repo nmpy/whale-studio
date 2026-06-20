@@ -52,37 +52,64 @@ export async function GET(
       );
     }
 
-    const lineUserId = new URL(req.url).searchParams.get("line_user_id");
-    if (!lineUserId) return emptyOk();
+    const url = new URL(req.url);
+    const lineUserId = url.searchParams.get("line_user_id");
+    // PR-PZ2.1: 表示範囲モード。未指定/不正は "delivered"（従来挙動・後方互換）。
+    //   all       … 作品内の有効な謎・問題をすべて表示（line_user_id 無しでも可）
+    //   delivered … プレイヤーが到達した問題のみ（従来）
+    //   solved    … プレイヤーが正解済みの問題のみ
+    const modeParam = url.searchParams.get("mode");
+    const mode: "all" | "delivered" | "solved" =
+      modeParam === "all" || modeParam === "solved" ? modeParam : "delivered";
 
-    // 進捗（正解済み判定用の flags）。
-    const up = await prisma.userProgress.findUnique({
-      where:  { lineUserId_workId: { lineUserId, workId: work.id } },
-      select: { flags: true },
-    });
-    const solvedSet = parseSolvedPuzzles(up?.flags);
+    // delivered / solved は per-user。line_user_id 無しは従来どおり空（500 にしない）。
+    // all は line_user_id 無しでも一覧表示可能（その場合 solved 判定だけ無効＝全て未回答扱い）。
+    if (!lineUserId && mode !== "all") return emptyOk();
 
-    // 出題履歴（実送信済み）。テーブル未適用でも落ちないよう defensive（degrade して flags のみで動作）。
+    // 進捗（正解済み判定用の flags）。line_user_id が無ければ solved は空集合。
+    const solvedSet = lineUserId
+      ? parseSolvedPuzzles(
+          (await prisma.userProgress.findUnique({
+            where:  { lineUserId_workId: { lineUserId, workId: work.id } },
+            select: { flags: true },
+          }))?.flags,
+        )
+      : new Set<string>();
+
+    // 出題履歴（実送信済み）。delivered モードでのみ必要（all/solved は参照しない）。
+    // テーブル未適用でも落ちないよう defensive（degrade して flags のみで動作）。
     const deliveredAtById = new Map<string, Date>();
-    try {
-      const deliveries = await prisma.puzzleDelivery.findMany({
-        where:   { lineUserId, workId: work.id },
-        select:  { messageId: true, deliveredAt: true },
-        orderBy: { deliveredAt: "asc" },
-      });
-      for (const d of deliveries) deliveredAtById.set(d.messageId, d.deliveredAt);
-    } catch (e) {
-      console.warn("[puzzles API] puzzle_deliveries unavailable (pre-migration?):", e);
+    if (lineUserId && mode === "delivered") {
+      try {
+        const deliveries = await prisma.puzzleDelivery.findMany({
+          where:   { lineUserId, workId: work.id },
+          select:  { messageId: true, deliveredAt: true },
+          orderBy: { deliveredAt: "asc" },
+        });
+        for (const d of deliveries) deliveredAtById.set(d.messageId, d.deliveredAt);
+      } catch (e) {
+        console.warn("[puzzles API] puzzle_deliveries unavailable (pre-migration?):", e);
+      }
     }
 
-    // 表示対象 = 出題履歴 ∪ 正解済み（どちらも送信済みの証明）。
-    const candidateIds = Array.from(new Set<string>([...deliveredAtById.keys(), ...solvedSet]));
-    if (candidateIds.length === 0) return emptyOk();
+    // 表示対象（モード別）。ネタバレ列（answer 等）は一切 select しない（spoiler-safe）。
+    //   all       … 有効な puzzle 全件（where で直接）
+    //   delivered … 出題履歴 ∪ 正解済み（どちらも送信済みの証明・従来）
+    //   solved    … 正解済みのみ
+    const baseWhere = { workId: work.id, kind: "puzzle", isActive: true };
+    let where: Record<string, unknown> = baseWhere;
+    if (mode !== "all") {
+      const candidateIds =
+        mode === "solved"
+          ? Array.from(solvedSet)
+          : Array.from(new Set<string>([...deliveredAtById.keys(), ...solvedSet]));
+      if (candidateIds.length === 0) return emptyOk();
+      where = { ...baseWhere, id: { in: candidateIds } };
+    }
 
-    // 有効な puzzle のみ・本文取得。ネタバレ列（answer 等）は select しない。
     const msgs = await prisma.message.findMany({
-      where:  { id: { in: candidateIds }, workId: work.id, kind: "puzzle", isActive: true },
-      select: { id: true, body: true, phaseId: true },
+      where,
+      select: { id: true, body: true, phaseId: true, sortOrder: true },
     });
     if (msgs.length === 0) return emptyOk();
 
@@ -100,9 +127,10 @@ export async function GET(
         phase_name: m.phaseId ? (phaseNameById.get(m.phaseId) ?? null) : null,
         status:     solvedSet.has(m.id) ? ("solved" as const) : ("delivered" as const),
         _t:         deliveredAtById.get(m.id)?.getTime() ?? Number.MAX_SAFE_INTEGER, // 並び用（履歴なしは末尾）
+        _o:         m.sortOrder, // all モードは _t 同値のため sortOrder で安定整列
       }))
-      .sort((a, b) => a._t - b._t)
-      .map(({ _t, ...rest }) => { void _t; return rest; });
+      .sort((a, b) => (a._t - b._t) || (a._o - b._o))
+      .map(({ _t, _o, ...rest }) => { void _t; void _o; return rest; });
 
     return NextResponse.json({ success: true, data: { puzzles } });
   } catch (err) {

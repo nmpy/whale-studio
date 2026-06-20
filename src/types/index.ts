@@ -1460,6 +1460,17 @@ export interface RiddleListSettings {
   max_count?: number;
   /** 状態ラベル（出題中 等）を表示するか（既定 true）。 */
   show_status?: boolean;
+  /** PR-PZ2.1: 一覧見出しの表示名モード。
+   *  "riddle"→「謎」/ "question"→「問題」/ "custom"→ heading_custom（空なら fallback）。
+   *  未設定は既存互換（title?.trim() || "謎・問題"）。 */
+  heading_mode?: "riddle" | "question" | "custom";
+  /** heading_mode="custom" のときの自由入力見出し（空・未設定は fallback）。 */
+  heading_custom?: string;
+  /** 一覧見出し（h3）自体を表示するか（既定 true）。false で見出し非表示。 */
+  show_heading?: boolean;
+  /** PR-PZ2.1: 表示する問題の範囲。
+   *  "all"→全問題 / "delivered"→到達済み（既定・従来挙動）/ "solved"→正解済みのみ。 */
+  display_mode?: "all" | "delivered" | "solved";
 }
 
 /**
@@ -1618,6 +1629,21 @@ export interface LiffPageConfigSettings {
   share_button_label?: string;
   /** シェアメッセージ（未設定時はページタイトル + 現在 URL を使う） */
   share_message?: string;
+
+  // ── 謎・問題 (puzzle) モード設定 [PR-PZ2.1] ──
+  // RiddleListSettings と同じキー。puzzle ページの settings_json に保存し PuzzleRenderer → RiddleListBlock へ渡す。
+  /** 一覧見出しの表示名モード（"riddle"→謎 / "question"→問題 / "custom"→自由入力）。 */
+  heading_mode?: "riddle" | "question" | "custom";
+  /** heading_mode="custom" のときの自由入力見出し。 */
+  heading_custom?: string;
+  /** 一覧見出し（h3）を表示するか（既定 true）。 */
+  show_heading?: boolean;
+  /** 表示する問題の範囲（"all" / "delivered"(既定) / "solved"）。 */
+  display_mode?: "all" | "delivered" | "solved";
+  /** 状態ラベル（正解済み / 未回答）を表示するか（既定 true）。 */
+  show_status?: boolean;
+  /** 最大表示件数（未設定は全件）。 */
+  max_count?: number;
 
   // ── FAQ モード設定 ──────────────────────────
   /** FAQ モードの Q&A 項目。順序は配列順。空項目はプレイヤー側で非表示。 */
