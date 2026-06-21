@@ -1259,8 +1259,9 @@ function QuickReplyEditor({ items, onChange, responseMessages, phases, transitio
                                 })}
                             </select>
                             <div style={{ ...hintText, marginTop: 4 }}>
-                              QRタップ直後に返す応答メッセージです。kind=response のメッセージを指定してください。
-                              <strong>ここでメッセージを返しても、プレイヤーのフェーズはまだ変わりません</strong>（次フェーズへ進めたいときは Step 3 で「フェーズへ進む」）。
+                              QRタップ直後に返す応答メッセージです。<strong>応答メッセージ（種別=応答）のみ選択できます</strong>。
+                              ここでメッセージを返しても、プレイヤーのフェーズはまだ変わりません。
+                              フェーズの通常メッセージ・入場メッセージへ進めたい場合は、Step 3 で「フェーズ遷移」を選択してください。
                             </div>
                           </div>
                         )}
@@ -1278,7 +1279,7 @@ function QuickReplyEditor({ items, onChange, responseMessages, phases, transitio
                               {(["none", "message", "phase"] as const).map((t) => {
                                 const current  = getQrTransitionType(item);
                                 const isActive = current === t;
-                                const lblMap   = { none: "なし", message: "メッセージのみ（フェーズは進まない）", phase: "フェーズへ進む" } as const;
+                                const lblMap   = { none: "なし", message: "メッセージのみ", phase: "フェーズ遷移" } as const;
                                 return (
                                   <button
                                     key={t}
@@ -1396,8 +1397,8 @@ function QuickReplyEditor({ items, onChange, responseMessages, phases, transitio
                                       ⚠ 選択したメッセージは別フェーズ「{tphName}」にあります。
                                       メッセージ遷移ではプレイヤーの現在のフェーズは変わらないため、そのフェーズの応答キーワードは反応しません。
                                       {curName
-                                        ? `フェーズ「${tphName}」へ進めたい場合は、遷移先を「フェーズへ進む」にして「${tphName}」を選択してください。`
-                                        : "次フェーズへ進めたい場合は、遷移先を「フェーズへ進む」に変更してください。"}
+                                        ? `フェーズ「${tphName}」へ進めたい場合は、遷移先を「フェーズ遷移」にして「${tphName}」を選択してください。`
+                                        : "次フェーズへ進めたい場合は、遷移先を「フェーズ遷移」に変更してください。"}
                                     </div>
                                   );
                                 })()}
@@ -1413,7 +1414,7 @@ function QuickReplyEditor({ items, onChange, responseMessages, phases, transitio
                             {getQrTransitionType(item) === "message" && (
                               <div style={{ ...hintText, marginTop: 4 }}>
                                 メッセージ遷移は、選んだメッセージだけを送信します。<strong>別フェーズのメッセージを選んでも、プレイヤーの現在のフェーズは変わりません</strong>。
-                                次のフェーズへ進めたい場合は「フェーズへ進む」を選択してください。
+                                次のフェーズへ進めたい場合は「フェーズ遷移」を選択してください。
                               </div>
                             )}
                             {getQrTransitionType(item) === "phase" && (
@@ -1435,8 +1436,18 @@ function QuickReplyEditor({ items, onChange, responseMessages, phases, transitio
                                     </div>
                                   )}
                                   <div style={{ fontWeight: 700, color: "#475569" }}>
-                                    このQRで送信されるメッセージ: {pv.total}通{pv.mode === "phase_entry" ? "（フェーズ入場）" : ""}
+                                    {pv.mode === "phase_entry"
+                                      ? <>入場時に送信されるメッセージ: {pv.total}通<span style={{ fontWeight: 400, color: "#94a3b8" }}>（最初のQR / 入力待ちまで）</span></>
+                                      : <>このQRで送信されるメッセージ: {pv.total}通</>}
                                   </div>
+                                  {pv.mode === "phase_entry" && (() => {
+                                    const totalInPhase = allMessages.filter((m) => m.phase_id === item.target_phase_id).length;
+                                    return totalInPhase > pv.total ? (
+                                      <div style={{ fontWeight: 400, color: "#94a3b8", fontSize: 10, marginTop: 2 }}>
+                                        フェーズ内の総メッセージ: {totalInPhase}通（残りは入場後のQR選択・進行で順次送信されます）
+                                      </div>
+                                    ) : null;
+                                  })()}
                                   <ol style={{ margin: "4px 0 0", paddingLeft: 18, color: "#475569" }}>
                                     {pv.messages.map((mm) => (
                                       <li key={mm.id}>{(mm.body ?? `(${mm.message_type ?? "?"})`).replace(/\n/g, " ").slice(0, 24)}</li>
@@ -3626,6 +3637,8 @@ export function MessageForm({
     free_input_next_message_id?: string | null;
     // 設定ミス防止: 成功時メッセージにも待機トリガーがあるか（チェーン継続判定）
     checkin_trigger_type?: string | null;
+    // フェーズ入場プレビューを実送信に合わせるための QR 有無フラグ。
+    has_quick_reply?: boolean;
   }[]>([]);
 
   // 設定ミス防止チェック用: この work のビーコントリガー（地点紐づけ確認）。
@@ -3685,6 +3698,7 @@ export function MessageForm({
         created_at:                 m.created_at,
         free_input_next_message_id: m.free_input_next_message_id,
         checkin_trigger_type:       m.checkin_trigger_type ?? null,
+        has_quick_reply:            (m.quick_replies?.length ?? 0) > 0,
       })));
     }).catch(() => {});
   }, [workId, oaId]);
