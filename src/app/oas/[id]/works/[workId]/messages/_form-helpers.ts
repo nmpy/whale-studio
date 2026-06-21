@@ -11,6 +11,10 @@
 
 import type { ReadReceiptMode } from "@/types";
 import { normalizeFlexJson, prettyFlexJson } from "@/lib/flex";
+import {
+  normalizeCarouselContent, serializeCarouselContent,
+  type CarouselCardType, type CarouselCard,
+} from "@/lib/carousel";
 
 // ── 型定義 (= _form.tsx と共有) ─────────────────────────────
 
@@ -43,7 +47,12 @@ export interface AdditionalMessageSlot {
   body:           string;
   asset_url:      string;
   notify_text:    string;
+  /** 旧形式カード（後方互換のため保持。新規は carousel_cards を使う）。 */
   carousel_items: MessageCarouselCard[];
+  /** 通常メッセージ carousel のカードタイプ（連続メッセージは常に通常扱い）。 */
+  carousel_card_type: CarouselCardType;
+  /** 通常メッセージ carousel のカード（src/lib/carousel の新形式）。 */
+  carousel_cards: CarouselCard[];
   // ── Flex Message (message_type="flex" 用) ──
   /** 代替テキスト（altText）。flex のとき必須。 */
   alt_text:       string;
@@ -79,6 +88,8 @@ export const EMPTY_ADDITIONAL_SLOT: AdditionalMessageSlot = {
   asset_url:      "",
   notify_text:    "",
   carousel_items: [],
+  carousel_card_type: "product",
+  carousel_cards: [],
   alt_text:           "",
   flex_payload_json:  "",
   lag_ms:         0,
@@ -133,7 +144,10 @@ export function msgToAdditionalSlot(msg: {
   free_input_variable_key?:    string  | null;
   free_input_next_message_id?: string  | null;
 }): AdditionalMessageSlot {
+  // 連続メッセージ（slot）は常に通常 carousel 扱い → 新形式 carousel_cards に正規化（旧形式も安全に復元）。
   let carousel_items: MessageCarouselCard[] = [];
+  let carousel_card_type: CarouselCardType = "product";
+  let carousel_cards: CarouselCard[] = [];
   if (msg.message_type === "carousel" && msg.body) {
     try {
       const parsed = JSON.parse(msg.body);
@@ -141,6 +155,9 @@ export function msgToAdditionalSlot(msg: {
     } catch {
       carousel_items = [];
     }
+    const c = normalizeCarouselContent(msg.body);
+    carousel_card_type = c.cardType;
+    carousel_cards = c.cards;
   }
   return {
     existingId:     msg.id ?? undefined,
@@ -150,6 +167,8 @@ export function msgToAdditionalSlot(msg: {
     asset_url:      msg.asset_url   ?? "",
     notify_text:    msg.notify_text ?? "",
     carousel_items,
+    carousel_card_type,
+    carousel_cards,
     alt_text:           msg.alt_text ?? "",
     flex_payload_json:  prettyFlexJson(msg.flex_payload_json),
     lag_ms:         msg.lag_ms ?? 0,
@@ -228,7 +247,8 @@ export function additionalSlotToMsgBody(
     message_type: slot.message_type,
     body:
       slot.message_type === "carousel"
-        ? JSON.stringify(slot.carousel_items)
+        // 連続メッセージは通常 carousel → 新形式 {type,cardType,cards} で保存。
+        ? serializeCarouselContent({ type: "carousel", cardType: slot.carousel_card_type, cards: slot.carousel_cards })
         : slot.message_type === "text"
         ? (slot.body || undefined)
         : undefined,

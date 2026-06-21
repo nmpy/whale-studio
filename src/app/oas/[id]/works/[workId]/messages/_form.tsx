@@ -14,6 +14,11 @@ import { isQrCrossPhaseMessageTarget, resolveQrTargetMessagePhaseId } from "./_q
 import type { Riddle } from "@/types";
 import { PhaseTransitionsSection } from "./_phase-transitions";
 import { previewQrSend, type QrPreviewMessage } from "./_qr-preview";
+import {
+  normalizeCarouselContent, serializeCarouselContent, validateCarousel,
+  emptyCarouselCard, CAROUSEL_MAX_CARDS, CAROUSEL_CARD_TYPES,
+  type CarouselCardType, type CarouselCard, type CarouselAction, type CarouselActionType,
+} from "@/lib/carousel";
 import { previewChainSend } from "./_chain-send-preview";
 import { moveSlot, insertSlotAt, appendSlot, canMove, canInsertAt, hasFreeInputSlot, appendIndex } from "./_chain-reorder";
 import { ImportPicker } from "./_import-picker";
@@ -153,7 +158,12 @@ export interface MessageFormState {
   asset_url:       string;
   notify_text:     string;
   riddle_id:       string;
+  /** 謎(puzzle)カルーセル質問用の旧形式カード（kind="puzzle" のときのみ使用・挙動不変）。 */
   carousel_items:  MessageCarouselCard[];
+  /** 通常メッセージ carousel のカードタイプ（kind!="puzzle"）。 */
+  carousel_card_type: CarouselCardType;
+  /** 通常メッセージ carousel のカード（kind!="puzzle"・src/lib/carousel の新形式）。 */
+  carousel_cards:  CarouselCard[];
   quick_replies:   QuickReplyItem[];
   /** 連続送信チェーン先メッセージ ID（空文字 = チェーンなし） */
   next_message_id: string;
@@ -240,6 +250,8 @@ export const EMPTY_MESSAGE_FORM: MessageFormState = {
   notify_text:     "",
   riddle_id:       "",
   carousel_items:  [],
+  carousel_card_type: "product",
+  carousel_cards:  [],
   quick_replies:   [],
   next_message_id: "",
   lag_ms:          0,
@@ -355,14 +367,23 @@ export function msgToFormState(msg: {
   loading_min_seconds?:  number | null;
   loading_max_seconds?:  number | null;
 }): MessageFormState {
-  // Parse carousel items from body JSON if message_type is carousel
+  // carousel の復元: 謎(puzzle)は旧形式 carousel_items（挙動不変）、通常メッセージは新形式 carousel_cards。
   let carousel_items: MessageCarouselCard[] = [];
+  let carousel_card_type: CarouselCardType = "product";
+  let carousel_cards: CarouselCard[] = [];
   if (msg.message_type === "carousel" && msg.body) {
-    try {
-      const parsed = JSON.parse(msg.body);
-      if (Array.isArray(parsed)) carousel_items = parsed as MessageCarouselCard[];
-    } catch {
-      carousel_items = [];
+    if (msg.kind === "puzzle") {
+      try {
+        const parsed = JSON.parse(msg.body);
+        if (Array.isArray(parsed)) carousel_items = parsed as MessageCarouselCard[];
+      } catch {
+        carousel_items = [];
+      }
+    } else {
+      // 旧形式(ベア配列)/新形式どちらも normalizeCarouselContent で安全に復元（クラッシュしない）。
+      const c = normalizeCarouselContent(msg.body);
+      carousel_card_type = c.cardType;
+      carousel_cards = c.cards;
     }
   }
 
@@ -384,6 +405,8 @@ export function msgToFormState(msg: {
     notify_text:           msg.notify_text     ?? "",
     riddle_id:             msg.riddle_id       ?? "",
     carousel_items,
+    carousel_card_type,
+    carousel_cards,
     quick_replies:         msg.quick_replies   ?? [],
     next_message_id:       msg.next_message_id ?? "",
     lag_ms:                msg.lag_ms          ?? 0,
@@ -474,7 +497,10 @@ export function formStateToMsgBody(form: MessageFormState) {
       isSystemNotice
         ? form.body || undefined
         : form.message_type === "carousel"
-        ? JSON.stringify(form.carousel_items)
+        // 謎(puzzle)は旧形式のまま保存（挙動不変）。通常メッセージは新形式 {type,cardType,cards} を保存。
+        ? (isPuzzle
+            ? JSON.stringify(form.carousel_items)
+            : serializeCarouselContent({ type: "carousel", cardType: form.carousel_card_type, cards: form.carousel_cards }))
         : form.message_type === "text"
         ? form.body || undefined
         // puzzle の image/video でも body を保持（LINE 送信時のフォールバックテキストとして使用）
@@ -598,6 +624,11 @@ export function validateMessageForm(form: MessageFormState): string | null {
       const norm = normalizeFlexJson(slot.flex_payload_json);
       if (!norm.ok) return `${i + 2}通目: ${norm.error}`;
     }
+    // 連続メッセージ carousel もバックエンドと同じ validateCarousel で検証（最大5枚・必須項目）。
+    if (slot.message_type === "carousel") {
+      const err = validateCarousel({ type: "carousel", cardType: slot.carousel_card_type, cards: slot.carousel_cards });
+      if (err) return `${i + 2}通目: ${err}`;
+    }
   }
   // ── 画像タップ時アクションバリデーション ──
   if (form.message_type === "image" && form.image_action_type) {
@@ -694,8 +725,11 @@ export function validateMessageForm(form: MessageFormState): string | null {
   if (form.message_type === "riddle" && !form.riddle_id) {
     return "謎を選択してください";
   }
-  if (form.message_type === "carousel" && form.carousel_items.length === 0) {
-    return "カードを1枚以上追加してください";
+  // ここに到達する carousel は通常メッセージ（puzzle は上の puzzle ブロックで検証済み）。
+  // 新形式をバックエンドと同じ validateCarousel で検証する。
+  if (form.message_type === "carousel") {
+    const err = validateCarousel({ type: "carousel", cardType: form.carousel_card_type, cards: form.carousel_cards });
+    if (err) return err;
   }
   if (form.message_type === "flex") {
     // チェーンの「N通目: …」表記に合わせて 1通目も同じ文言設計にする。
@@ -2171,6 +2205,212 @@ function ImageUploader({ value, onChange, disabled }: ImageUploaderProps) {
   );
 }
 
+// ── カルーセル（カードタイプ式）エディタ / プレビュー ─────────────
+//   通常メッセージの message_type="carousel" 用（謎/puzzle カルーセルは別実装・旧 carousel_items）。
+const CAROUSEL_CARD_TYPE_LABEL: Record<CarouselCardType, string> = {
+  product: "プロダクト", location: "ロケーション", person: "パーソン", image: "イメージ",
+};
+
+function carouselCardHasContent(c: CarouselCard): boolean {
+  return !!((c.imageUrl || c.title || c.name || c.description || c.price || c.address || c.extraInfo
+    || c.action?.label || c.action?.url || c.action?.text || "").trim?.());
+}
+
+/** カード内の 1 行テキスト入力（任意/必須・textarea 切替）。 */
+function CardField({ label, value, onChange, required, textarea }: {
+  label: string; value: string; onChange: (v: string) => void; required?: boolean; textarea?: boolean;
+}) {
+  return (
+    <div className="form-group" style={{ marginBottom: 8 }}>
+      <label style={{ ...fieldLabel, fontSize: 11 }}>{label}{required && <RequiredMark />}</label>
+      {textarea
+        ? <textarea className="form-input" rows={2} style={{ fontSize: 12, resize: "vertical" }} value={value} onChange={(e) => onChange(e.target.value)} />
+        : <input type="text" className="form-input" style={{ fontSize: 12 }} value={value} onChange={(e) => onChange(e.target.value)} />}
+    </div>
+  );
+}
+
+/** カードのアクション編集（ラベル必須・URL/テキスト切替）。 */
+function CarouselActionEditor({ action, onChange }: { action: CarouselAction; onChange: (patch: Partial<CarouselAction>) => void; }) {
+  return (
+    <div style={{ marginTop: 4, paddingTop: 8, borderTop: "1px dashed #e5e7eb" }}>
+      <CardField label="アクションラベル" required value={action.label ?? ""} onChange={(v) => onChange({ label: v })} />
+      <div className="form-group" style={{ marginBottom: 8 }}>
+        <label style={{ ...fieldLabel, fontSize: 11 }}>アクションタイプ</label>
+        <div style={{ display: "flex", gap: 3, background: "#f3f4f6", borderRadius: 6, padding: 2 }}>
+          {(["url", "text"] as CarouselActionType[]).map((t) => {
+            const active = action.type === t;
+            return (
+              <button key={t} type="button" onClick={() => onChange({ type: t })}
+                style={{ flex: 1, padding: "4px 0", fontSize: 11, fontWeight: active ? 700 : 400, border: "none", borderRadius: 5,
+                  background: active ? "#fff" : "transparent", color: active ? "#111827" : "#9ca3af", cursor: "pointer" }}>
+                {t === "url" ? "URL" : "テキスト"}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      {action.type === "url"
+        ? <CardField label="URL" required value={action.url ?? ""} onChange={(v) => onChange({ url: v })} />
+        : <CardField label="送信テキスト" required textarea value={action.text ?? ""} onChange={(v) => onChange({ text: v })} />}
+    </div>
+  );
+}
+
+/** 通常メッセージ carousel のカード編集（タイプ選択 + タイプ別項目 + アクション + 最大5枚）。 */
+function CarouselCardsEditor({ cardType, cards, onChange, disabled = false }: {
+  cardType: CarouselCardType; cards: CarouselCard[];
+  onChange: (cardType: CarouselCardType, cards: CarouselCard[]) => void; disabled?: boolean;
+}) {
+  const setCards = (next: CarouselCard[]) => onChange(cardType, next);
+  const updateCard = (i: number, patch: Partial<CarouselCard>) => setCards(cards.map((c, ii) => (ii === i ? { ...c, ...patch } : c)));
+  const updateAction = (i: number, patch: Partial<CarouselAction>) => updateCard(i, { action: { ...cards[i].action, ...patch } });
+
+  const changeCardType = (next: CarouselCardType) => {
+    if (next === cardType || disabled) return;
+    if (cards.some(carouselCardHasContent) &&
+        !window.confirm("カードタイプを変更すると、現在入力中のカード内容がリセットされます。変更しますか？")) return;
+    onChange(next, [emptyCarouselCard(next)]); // OK のときのみそのタイプの初期カードへリセット
+  };
+  const addCard = () => { if (!disabled && cards.length < CAROUSEL_MAX_CARDS) setCards([...cards, emptyCarouselCard(cardType)]); };
+  const removeCard = (i: number) => {
+    const next = cards.filter((_, ii) => ii !== i);
+    setCards(next.length === 0 ? [emptyCarouselCard(cardType)] : next); // 最後の1枚を消したら空カードを自動追加（最低1枚）
+  };
+  const overLimit = cards.length > CAROUSEL_MAX_CARDS; // 旧データで5枚超のケース（壊さず表示・新規追加のみ不可）
+
+  return (
+    <div className="form-group" style={{ marginBottom: 0 }}>
+      <label style={fieldLabel}>カードタイプ <RequiredMark /></label>
+      <div style={{ display: "flex", gap: 3, background: "#f3f4f6", borderRadius: 8, padding: 3, marginBottom: 8 }}>
+        {CAROUSEL_CARD_TYPES.map((t) => {
+          const active = t === cardType;
+          return (
+            <button key={t} type="button" disabled={disabled} onClick={() => changeCardType(t)}
+              style={{ flex: 1, padding: "6px 0", fontSize: 12, fontWeight: active ? 700 : 400, border: "none", borderRadius: 6,
+                background: active ? "#fff" : "transparent", color: active ? "#111827" : "#9ca3af",
+                cursor: disabled ? "default" : "pointer", boxShadow: active ? "0 1px 3px rgba(0,0,0,0.12)" : "none" }}>
+              {CAROUSEL_CARD_TYPE_LABEL[t]}
+            </button>
+          );
+        })}
+      </div>
+      <div style={{ ...hintText, marginBottom: 10 }}>
+        1つのカルーセル内ではカードタイプは1種類です。カルーセルカードは最大{CAROUSEL_MAX_CARDS}枚まで追加できます。
+      </div>
+
+      <label style={fieldLabel}>
+        カード <RequiredMark />
+        <span style={{ fontSize: 11, color: "#9ca3af", fontWeight: 400, marginLeft: 6 }}>({cards.length} / {CAROUSEL_MAX_CARDS}枚)</span>
+      </label>
+      {overLimit && (
+        <div style={{ ...hintText, color: "#b45309", marginBottom: 6 }}>
+          ⚠ 5枚を超えています。送信時は先頭5枚のみ送られます（新規追加は不可）。
+        </div>
+      )}
+      <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 8 }}>
+        {cards.map((card, i) => (
+          <div key={i} style={{ padding: 12, border: "1px solid #e5e5e5", borderRadius: 8, background: "#fff" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+              <span style={{ fontSize: 12, fontWeight: 700 }}>カード {i + 1}</span>
+              <button type="button" className="btn btn-ghost" style={{ padding: "1px 8px", fontSize: 11, color: "#ef4444", borderColor: "#fecaca" }}
+                onClick={() => removeCard(i)}>削除</button>
+            </div>
+            <div className="form-group" style={{ marginBottom: 8 }}>
+              <label style={{ ...fieldLabel, fontSize: 11 }}>画像</label>
+              <ImageUploader value={card.imageUrl ?? ""} onChange={(url) => updateCard(i, { imageUrl: url })} disabled={disabled} />
+            </div>
+
+            {cardType === "product" && (<>
+              <CardField label="名前（任意）" value={card.name ?? ""} onChange={(v) => updateCard(i, { name: v })} />
+              <CardField label="タイトル" required value={card.title ?? ""} onChange={(v) => updateCard(i, { title: v })} />
+              <CardField label="説明文（任意）" textarea value={card.description ?? ""} onChange={(v) => updateCard(i, { description: v })} />
+              <div className="form-group" style={{ marginBottom: 8 }}>
+                <label style={{ ...fieldLabel, fontSize: 11 }}>価格（任意）</label>
+                <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                  <select className="form-input" style={{ width: 64, fontSize: 12 }} value={card.priceCurrency || "¥"} onChange={(e) => updateCard(i, { priceCurrency: e.target.value })}>
+                    <option value="¥">¥</option>
+                  </select>
+                  <input type="text" className="form-input" style={{ fontSize: 12 }} placeholder="00,000" value={card.price ?? ""} onChange={(e) => updateCard(i, { price: e.target.value })} />
+                </div>
+                <div style={{ ...hintText, marginTop: 2 }}>表示例: ¥00,000</div>
+              </div>
+            </>)}
+            {cardType === "location" && (<>
+              <CardField label="タイトル" required value={card.title ?? ""} onChange={(v) => updateCard(i, { title: v })} />
+              <CardField label="住所（任意）" value={card.address ?? ""} onChange={(v) => updateCard(i, { address: v })} />
+              <CardField label="追加情報（任意）" value={card.extraInfo ?? ""} onChange={(v) => updateCard(i, { extraInfo: v })} />
+            </>)}
+            {cardType === "person" && (<>
+              <CardField label="名前" required value={card.name ?? ""} onChange={(v) => updateCard(i, { name: v })} />
+              <CardField label="説明（任意）" textarea value={card.description ?? ""} onChange={(v) => updateCard(i, { description: v })} />
+            </>)}
+            {/* image: 追加フィールドなし（画像 + アクションのみ） */}
+
+            <CarouselActionEditor action={card.action} onChange={(patch) => updateAction(i, patch)} />
+          </div>
+        ))}
+      </div>
+      <button type="button" className="btn btn-ghost" style={{ fontSize: 12, padding: "5px 12px", opacity: cards.length >= CAROUSEL_MAX_CARDS ? 0.5 : 1 }}
+        disabled={disabled || cards.length >= CAROUSEL_MAX_CARDS} onClick={addCard}>
+        ＋ カードを追加
+      </button>
+    </div>
+  );
+}
+
+const PREVIEW_ELLIPSIS = { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } as const;
+
+/** 管理画面プレビュー: 4 カードタイプを見分けられる横スクロールカード列。 */
+function CarouselCardsPreview({ cardType, cards }: { cardType: CarouselCardType; cards: CarouselCard[] }) {
+  if (!cards || cards.length === 0) return <span style={{ color: "#aaa", fontStyle: "italic", fontSize: 12 }}>カードを追加してください</span>;
+  const hideOnError = (e: React.SyntheticEvent<HTMLImageElement>) => { (e.target as HTMLImageElement).style.display = "none"; };
+  return (
+    <div style={{ overflowX: "auto", display: "flex", gap: 8, paddingBottom: 4 }}>
+      {cards.slice(0, CAROUSEL_MAX_CARDS).map((card, idx) => {
+        const img = (card.imageUrl ?? "").trim();
+        const label = (card.action?.label ?? "").trim();
+        return (
+          <div key={idx} style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 8, width: 144, flexShrink: 0, overflow: "hidden" }}>
+            {cardType === "person" ? (
+              <div style={{ display: "flex", justifyContent: "center", padding: "12px 0 4px" }}>
+                {img
+                  // eslint-disable-next-line @next/next/no-img-element
+                  ? <img src={img} alt="" style={{ width: 64, height: 64, borderRadius: "50%", objectFit: "cover" }} onError={hideOnError} />
+                  : <div style={{ width: 64, height: 64, borderRadius: "50%", background: "#e5e7eb", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, color: "#9ca3af" }}>👤</div>}
+              </div>
+            ) : (
+              img
+                // eslint-disable-next-line @next/next/no-img-element
+                ? <img src={img} alt="" style={{ width: "100%", height: cardType === "image" ? 104 : 78, objectFit: "cover", display: "block" }} onError={hideOnError} />
+                : <div style={{ width: "100%", height: cardType === "image" ? 104 : 60, background: "#e5e7eb", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, color: "#9ca3af" }}>🖼</div>
+            )}
+            <div style={{ padding: "6px 8px" }}>
+              {cardType === "product" && (<>
+                {card.name?.trim() && <div style={{ fontSize: 8, color: "#8c8c8c", ...PREVIEW_ELLIPSIS }}>{card.name}</div>}
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#111", ...PREVIEW_ELLIPSIS }}>{card.title?.trim() || `カード ${idx + 1}`}</div>
+                {card.description?.trim() && <div style={{ fontSize: 9, color: "#555", ...PREVIEW_ELLIPSIS }}>{card.description}</div>}
+                {card.price?.trim() && <div style={{ fontSize: 10, fontWeight: 700, color: "#111", marginTop: 2 }}>{(card.priceCurrency || "¥")}{card.price}</div>}
+              </>)}
+              {cardType === "location" && (<>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#111", ...PREVIEW_ELLIPSIS }}>{card.title?.trim() || `カード ${idx + 1}`}</div>
+                {card.address?.trim() && <div style={{ fontSize: 9, color: "#555", ...PREVIEW_ELLIPSIS }}>📍 {card.address}</div>}
+                {card.extraInfo?.trim() && <div style={{ fontSize: 9, color: "#8c8c8c", ...PREVIEW_ELLIPSIS }}>ℹ️ {card.extraInfo}</div>}
+              </>)}
+              {cardType === "person" && (<>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#111", textAlign: "center", ...PREVIEW_ELLIPSIS }}>{card.name?.trim() || `カード ${idx + 1}`}</div>
+                {card.description?.trim() && <div style={{ fontSize: 9, color: "#555", textAlign: "center", ...PREVIEW_ELLIPSIS }}>{card.description}</div>}
+              </>)}
+              {/* image: テキストなし */}
+              {label && <div style={{ marginTop: 6, padding: "4px 6px", background: "#06C755", color: "#fff", borderRadius: 4, fontSize: 9, textAlign: "center", ...PREVIEW_ELLIPSIS }}>{label}</div>}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ── LINEプレビューパネル ──────────────────────────────────
 
 interface PreviewPanelProps {
@@ -2355,28 +2595,8 @@ function renderBubbleContent(
         </div>
       );
     case "carousel":
-      return item.carousel_items.length === 0
-        ? <span style={{ color: "#aaa", fontStyle: "italic", fontSize: 12 }}>カードを追加してください</span>
-        : (
-          <div style={{ overflowX: "auto", display: "flex", gap: 8, paddingBottom: 4 }}>
-            {item.carousel_items.map((card, idx) => (
-              <div key={idx} style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 8, width: 130, flexShrink: 0, overflow: "hidden" }}>
-                {card.image_url
-                  ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={card.image_url} alt="" style={{ width: "100%", height: 70, objectFit: "cover", display: "block" }}
-                      onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
-                  )
-                  : <div style={{ width: "100%", height: 50, background: "#e5e7eb", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, color: "#9ca3af" }}>🖼</div>
-                }
-                <div style={{ padding: "5px 7px" }}>
-                  <div style={{ fontSize: 10, fontWeight: 600, color: "#111", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{card.title || `カード ${idx + 1}`}</div>
-                  {card.button_label && <div style={{ marginTop: 4, padding: "2px 6px", background: "#06C755", color: "#fff", borderRadius: 4, fontSize: 9, textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{card.button_label}</div>}
-                </div>
-              </div>
-            ))}
-          </div>
-        );
+      // 通常メッセージ carousel は新カードタイプ式プレビュー。
+      return <CarouselCardsPreview cardType={item.carousel_card_type} cards={item.carousel_cards} />;
     case "flex":
       // Flex JSON を簡易プレビュー（保存値・送信ロジックには触れない・表示のみ）。
       // 未入力時は従来どおりアイコン表示。
@@ -2883,6 +3103,8 @@ interface ChainPreviewItem {
   asset_url:           string;
   notify_text:         string;
   carousel_items:      MessageCarouselCard[];
+  carousel_card_type:  CarouselCardType;
+  carousel_cards:      CarouselCard[];
   character_id:        string;
   quick_replies:       QuickReplyItem[];
   kind:                MessageKind;
@@ -2941,6 +3163,8 @@ function buildPreviewChain(args: {
       asset_url:          m.asset_url ?? "",
       notify_text:        "",
       carousel_items:     [],
+      carousel_card_type: "product",
+      carousel_cards:     [],
       character_id:       "",
       quick_replies:      m.quick_replies ?? [],
       kind:               (m.kind as MessageKind) ?? "normal",
@@ -2964,6 +3188,8 @@ function buildPreviewChain(args: {
     asset_url:          form.asset_url,
     notify_text:        form.notify_text,
     carousel_items:     form.carousel_items,
+    carousel_card_type: form.carousel_card_type,
+    carousel_cards:     form.carousel_cards,
     character_id:       form.character_id,
     quick_replies:      form.quick_replies,
     kind:               form.kind,
@@ -2992,6 +3218,8 @@ function buildPreviewChain(args: {
       asset_url:          s.asset_url,
       notify_text:        s.notify_text,
       carousel_items:     s.carousel_items,
+      carousel_card_type: s.carousel_card_type,
+      carousel_cards:     s.carousel_cards,
       // 空文字なら親 form の character を引き継ぐ (= AdditionalMessageBlock の UI 仕様と一致)。
       character_id:       s.character_id || form.character_id,
       quick_replies:      dbRow?.quick_replies ?? [],
@@ -3150,7 +3378,7 @@ function AdditionalMessageBlock({
               <button
                 key={opt.value}
                 type="button"
-                onClick={() => onChange({ ...slot, message_type: opt.value, body: "", asset_url: "", carousel_items: [] })}
+                onClick={() => onChange({ ...slot, message_type: opt.value, body: "", asset_url: "", carousel_items: [], carousel_cards: opt.value === "carousel" ? [emptyCarouselCard(slot.carousel_card_type)] : [] })}
                 style={{
                   display: "flex", flexDirection: "column", alignItems: "center",
                   gap: 3, padding: "8px 12px", borderRadius: 8, cursor: "pointer",
@@ -3249,57 +3477,11 @@ function AdditionalMessageBlock({
 
         {/* カルーセル */}
         {mtype === "carousel" && (
-          <div className="form-group" style={{ marginBottom: 0 }}>
-            <label style={fieldLabel}>
-              カード
-              <span style={{ fontSize: 11, color: "#9ca3af", fontWeight: 400, marginLeft: 6 }}>
-                ({slot.carousel_items.length} / 10枚)
-              </span>
-            </label>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 8 }}>
-              {slot.carousel_items.map((card, ci) => (
-                <div key={ci} style={{ padding: "10px 12px", border: "1px solid #e5e5e5", borderRadius: 8, background: "#fff" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
-                    <span style={{ fontSize: 12, fontWeight: 600 }}>カード {ci + 1}</span>
-                    <button type="button" className="btn btn-ghost"
-                      style={{ padding: "1px 6px", fontSize: 11, color: "#ef4444", borderColor: "#fecaca" }}
-                      onClick={() => onChange({ ...slot, carousel_items: slot.carousel_items.filter((_, ii) => ii !== ci) })}>
-                      削除
-                    </button>
-                  </div>
-                  {(["title", "body", "button_label"] as const).map((field) => (
-                    <div key={field} className="form-group" style={{ marginBottom: 6 }}>
-                      <label style={{ ...fieldLabel, fontSize: 11 }}>
-                        {field === "title" ? "タイトル" : field === "body" ? "本文（任意）" : "ボタンラベル（任意）"}
-                      </label>
-                      {field === "body" ? (
-                        <textarea className="form-input" rows={2}
-                          style={{ fontSize: 12, resize: "vertical" }}
-                          value={card[field]}
-                          onChange={(e) => {
-                            const updated = slot.carousel_items.map((c, ii) => ii === ci ? { ...c, [field]: e.target.value } : c);
-                            onChange({ ...slot, carousel_items: updated });
-                          }} />
-                      ) : (
-                        <input type="text" className="form-input" style={{ fontSize: 12 }}
-                          value={card[field]}
-                          onChange={(e) => {
-                            const updated = slot.carousel_items.map((c, ii) => ii === ci ? { ...c, [field]: e.target.value } : c);
-                            onChange({ ...slot, carousel_items: updated });
-                          }} />
-                      )}
-                    </div>
-                  ))}
-                </div>
-              ))}
-            </div>
-            {slot.carousel_items.length < 10 && (
-              <button type="button" className="btn btn-ghost" style={{ fontSize: 12, padding: "5px 12px" }}
-                onClick={() => onChange({ ...slot, carousel_items: [...slot.carousel_items, { ...EMPTY_CAROUSEL_CARD }] })}>
-                ＋ カードを追加
-              </button>
-            )}
-          </div>
+          <CarouselCardsEditor
+            cardType={slot.carousel_card_type}
+            cards={slot.carousel_cards}
+            onChange={(cardType, cards) => onChange({ ...slot, carousel_card_type: cardType, carousel_cards: cards })}
+          />
         )}
 
         {/* Flex Message（1通目と同じ入力 UI） */}
@@ -4442,7 +4624,13 @@ export function MessageForm({
                   <button
                     key={opt.value}
                     type="button"
-                    onClick={() => set("message_type", opt.value)}
+                    onClick={() => {
+                      set("message_type", opt.value);
+                      // カルーセル選択時、カード未作成なら初期カードを1枚入れて各タイプのフォームを表示する。
+                      if (opt.value === "carousel" && form.carousel_cards.length === 0) {
+                        set("carousel_cards", [emptyCarouselCard(form.carousel_card_type)]);
+                      }
+                    }}
                     style={{
                       display: "flex",
                       flexDirection: "column",
@@ -4892,150 +5080,12 @@ export function MessageForm({
             {/* ── カルーセル ── */}
             {mtype === "carousel" && (
               <>
-                <div className="form-group">
-                  <label style={fieldLabel}>
-                    カード <RequiredMark />
-                    <span style={{ fontSize: 11, color: "#9ca3af", fontWeight: 400, marginLeft: 6 }}>
-                      ({form.carousel_items.length} / 10枚)
-                    </span>
-                  </label>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 10 }}>
-                    {form.carousel_items.map((card, index) => (
-                      <div
-                        key={index}
-                        style={{
-                          padding: "14px 16px",
-                          border: "1px solid #e5e5e5",
-                          borderRadius: 8,
-                          background: "#fafafa",
-                        }}
-                      >
-                        <div
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "space-between",
-                            marginBottom: 10,
-                          }}
-                        >
-                          <span style={{ fontSize: 12, fontWeight: 600, color: "#374151" }}>
-                            カード {index + 1}
-                          </span>
-                          <button
-                            type="button"
-                            className="btn btn-ghost"
-                            style={{
-                              padding: "2px 8px",
-                              fontSize: 11,
-                              color: "#ef4444",
-                              borderColor: "#fecaca",
-                            }}
-                            onClick={() => removeCard(index)}
-                          >
-                            削除
-                          </button>
-                        </div>
-                        <div className="form-group" style={{ marginBottom: 8 }}>
-                          <label style={{ ...fieldLabel, fontSize: 12 }}>
-                            タイトル
-                          </label>
-                          <input
-                            type="text"
-                            className="form-input"
-                            value={card.title}
-                            onChange={(e) => updateCard(index, "title", e.target.value)}
-                            placeholder="カードのタイトル"
-                            maxLength={100}
-                            style={{ fontSize: 13 }}
-                          />
-                        </div>
-                        <div className="form-group" style={{ marginBottom: 8 }}>
-                          <label style={{ ...fieldLabel, fontSize: 12 }}>
-                            本文（任意）
-                          </label>
-                          <textarea
-                            className="form-input"
-                            value={card.body}
-                            onChange={(e) => updateCard(index, "body", e.target.value)}
-                            placeholder="カードの説明文"
-                            maxLength={500}
-                            rows={2}
-                            style={{ fontSize: 13, resize: "vertical" }}
-                          />
-                        </div>
-                        <div className="form-group" style={{ marginBottom: 8 }}>
-                          <label style={{ ...fieldLabel, fontSize: 12 }}>
-                            画像 URL（任意）
-                          </label>
-                          <input
-                            type="url"
-                            className="form-input"
-                            value={card.image_url}
-                            onChange={(e) => updateCard(index, "image_url", e.target.value)}
-                            placeholder="https://example.com/image.png"
-                            style={{ fontFamily: "monospace", fontSize: 12 }}
-                          />
-                        </div>
-                        <div className="form-group" style={{ marginBottom: 8 }}>
-                          <label style={{ ...fieldLabel, fontSize: 12 }}>
-                            ボタンラベル（任意）
-                          </label>
-                          <input
-                            type="text"
-                            className="form-input"
-                            value={card.button_label}
-                            onChange={(e) => updateCard(index, "button_label", e.target.value)}
-                            placeholder="例: 詳しく見る"
-                            maxLength={50}
-                            style={{ fontSize: 13 }}
-                          />
-                        </div>
-                        <div className="form-group" style={{ marginBottom: 0 }}>
-                          <TapDestinationSection
-                            label="ボタンの遷移先（任意）"
-                            workId={workId}
-                            oaId={oaId}
-                            mode={card.destination_id ? "destination" : card.button_url ? "direct_url" : "none"}
-                            destinationId={card.destination_id ?? null}
-                            directUrl={card.button_url}
-                            destinations={destinations}
-                            linkOptions={linkOptions}
-                            linkOptionsLiffConfigured={linkOptionsLiffConfigured}
-                            onModeChange={(m) => {
-                              const items = [...form.carousel_items];
-                              if (m === "destination") items[index] = { ...items[index], button_url: "" };
-                              if (m === "direct_url") items[index] = { ...items[index], destination_id: null };
-                              if (m === "none") items[index] = { ...items[index], button_url: "", destination_id: null };
-                              set("carousel_items", items);
-                            }}
-                            onDestinationChange={(id) => {
-                              const items = [...form.carousel_items];
-                              items[index] = { ...items[index], destination_id: id };
-                              set("carousel_items", items);
-                            }}
-                            onDirectUrlChange={(url) => updateCard(index, "button_url", url)}
-                            onPickLink={(url) => {
-                              const items = [...form.carousel_items];
-                              items[index] = { ...items[index], button_url: url, destination_id: null };
-                              set("carousel_items", items);
-                            }}
-                          />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  {form.carousel_items.length < 10 && (
-                    <button
-                      type="button"
-                      className="btn btn-ghost"
-                      style={{ fontSize: 13, padding: "6px 14px" }}
-                      onClick={addCard}
-                    >
-                      ＋ カードを追加
-                    </button>
-                  )}
-                </div>
-                <div className="form-group" style={{ marginBottom: 0 }}>
+                <CarouselCardsEditor
+                  cardType={form.carousel_card_type}
+                  cards={form.carousel_cards}
+                  onChange={(cardType, cards) => { set("carousel_card_type", cardType); set("carousel_cards", cards); }}
+                />
+                <div className="form-group" style={{ marginBottom: 0, marginTop: 12 }}>
                   <label style={fieldLabel} htmlFor="notify_text_carousel">
                     通知メッセージ（任意）
                   </label>
@@ -5048,6 +5098,7 @@ export function MessageForm({
                     placeholder="例: カルーセルが届きました"
                     maxLength={200}
                   />
+                  <div style={{ ...hintText, marginTop: 4 }}>通知や未対応端末で表示される代替テキストです。</div>
                 </div>
               </>
             )}

@@ -99,7 +99,7 @@ describe("A. 正式対応 type の正常変換", () => {
 
 describe("B. フォールバック type の安全な変換", () => {
 
-  it("carousel + alt_text → alt_text がテキスト送信される", () => {
+  it("carousel（有効カード）→ Flex carousel が送信される（旧形式も product として Flex 化）", () => {
     const result = buildPhaseMessages(makePhase([
       makeMsg({
         id: "c1",
@@ -109,8 +109,8 @@ describe("B. フォールバック type の安全な変換", () => {
       }),
     ]));
     expect(result).toHaveLength(1);
-    expect(result[0].type).toBe("text");
-    expect((result[0] as { text: string }).text).toBe("カルーセルの概要");
+    expect(result[0].type).toBe("flex");
+    expect((result[0] as { altText: string }).altText).toBe("カルーセルの概要");
   });
 
   it("carousel + body のみ（alt_text なし）→ body がテキスト送信される", () => {
@@ -225,11 +225,8 @@ describe("C. 必須フィールド欠損時の安全なスキップ", () => {
       }),
     ]));
     expect(result).toHaveLength(0);
-    expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining("変換不能メッセージ"),
-      expect.any(String),
-      expect.any(String),
-    );
+    // carousel（カード0/本文なし）は Flex 化できず、alt_text/body も無いため送信なし（黙って消えない＝ログは出る）。
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("carousel が空"));
   });
 
   it("入力2件 → 変換0件の場合に error ログが出る", () => {
@@ -276,7 +273,7 @@ describe("D. puzzle メッセージの変換パイプライン", () => {
     expect(result.some((m) => m.type === "image")).toBe(true);
   });
 
-  it("carousel puzzle → フォールバック text（黙って消えない）", () => {
+  it("carousel（有効カード・通常 kind）→ Flex carousel になる（黙って消えない）", () => {
     const result = buildPhaseMessages(makePhase([
       makeMsg({
         id: "p3",
@@ -286,7 +283,7 @@ describe("D. puzzle メッセージの変換パイプライン", () => {
       }),
     ]));
     expect(result).toHaveLength(1);
-    expect(result[0].type).toBe("text");
+    expect(result[0].type).toBe("flex");
   });
 
   it("normal text + puzzle text → 2件とも LINE メッセージになる", () => {
