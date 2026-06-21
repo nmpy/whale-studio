@@ -78,16 +78,48 @@ describe("LIFF_ADMIN_TABS", () => {
 });
 
 describe("findDesignatedLiffPage", () => {
-  const pages = [
-    { id: "a", page_type: "default" },
-    { id: "b", page_type: "survey" },
-    { id: "c", page_type: "faq" },
-    { id: "d", page_type: "survey" },
-  ];
-
-  it("該当 page_type の先頭を返す", () => {
+  it("該当 page_type を返す（publish_status 未設定の既存データは選択対象）", () => {
+    const pages = [
+      { id: "a", page_type: "default" },
+      { id: "b", page_type: "survey" },
+      { id: "c", page_type: "faq" },
+      { id: "d", page_type: "survey" },
+    ];
     expect(findDesignatedLiffPage(pages, "survey")?.id).toBe("b");
     expect(findDesignatedLiffPage(pages, "faq")?.id).toBe("c");
+  });
+
+  it("published と draft が両方あれば published（の最古）を選ぶ", () => {
+    const pages = [
+      { id: "d1", page_type: "survey", publish_status: "draft" },
+      { id: "p1", page_type: "survey", publish_status: "published" },
+      { id: "p2", page_type: "survey", publish_status: "published" },
+    ];
+    expect(findDesignatedLiffPage(pages, "survey")?.id).toBe("p1");
+  });
+
+  it("draft のみなら draft（の最古）を選ぶ", () => {
+    const pages = [
+      { id: "d1", page_type: "faq", publish_status: "draft" },
+      { id: "d2", page_type: "faq", publish_status: "draft" },
+    ];
+    expect(findDesignatedLiffPage(pages, "faq")?.id).toBe("d1");
+  });
+
+  it("archived は選ばない（published/draft を優先）", () => {
+    const pages = [
+      { id: "ar", page_type: "survey", publish_status: "archived" },
+      { id: "dr", page_type: "survey", publish_status: "draft" },
+    ];
+    expect(findDesignatedLiffPage(pages, "survey")?.id).toBe("dr");
+  });
+
+  it("archived しか無ければ null（作成導線へ）", () => {
+    const pages = [
+      { id: "ar1", page_type: "survey", publish_status: "archived" },
+      { id: "ar2", page_type: "survey", publish_status: "archived" },
+    ];
+    expect(findDesignatedLiffPage(pages, "survey")).toBeNull();
   });
 
   it("該当なし / 空配列 / 非配列 / null / undefined は null（安全 fallback）", () => {

@@ -61,14 +61,21 @@ export function resolveLiffAdminTab(value: string | null | undefined): LiffAdmin
 
 /**
  * PR-A: アンケート / よくある質問 タブが編集対象とする「指定ページ」を探す純関数。
- * 既存の survey / faq page type のページ一覧から、該当 page_type の先頭を返す。
- * - pages が未配列 / 空 / 該当なし → null（タブ側は「作成」導線を出す）。
- * - settings_json 等に依存しない（page_type のみで判定）ため、未設定データでも安全。
+ * 既存の survey / faq page type のページ一覧（listPages = createdAt asc）から選ぶ。
+ *   - archived は除外（編集対象にしない＝保存操作で暗黙に draft/published へ戻さないため）。
+ *   - 優先順位: published（の最古）→ draft（の最古）→ 該当なし / archived のみ → null。
+ *   - pages が未配列 / 空 / 該当なし → null（タブ側は「作成」導線を出す）。
+ *   - publish_status 未設定の既存データは archived 以外として扱う（draft 相当・安全）。
  */
-export function findDesignatedLiffPage<T extends { page_type: string }>(
+export function findDesignatedLiffPage<T extends { page_type: string; publish_status?: string }>(
   pages: readonly T[] | null | undefined,
   pageType: "survey" | "faq",
 ): T | null {
   if (!Array.isArray(pages)) return null;
-  return pages.find((p) => p != null && p.page_type === pageType) ?? null;
+  // archived を除外した該当 page_type（配列順 = createdAt asc を維持）。
+  const candidates = pages.filter(
+    (p) => p != null && p.page_type === pageType && p.publish_status !== "archived",
+  );
+  // published を優先（最古）、無ければ最古の非 archived（= draft 等）、それも無ければ null。
+  return candidates.find((p) => p.publish_status === "published") ?? candidates[0] ?? null;
 }
