@@ -995,6 +995,8 @@ const freeTextSettingsSchema = z.object({
   body:     z.string().max(5000).optional(),
   align:    z.enum(["left", "center"]).optional(),
   emphasis: z.enum(["normal", "strong"]).optional(),
+  // PR-BLK4e: 表示スタイル（additive・任意）。未設定は "body" 扱い（renderer 側）。
+  variant:  z.enum(["body", "sub"]).optional(),
 }).passthrough();
 
 // ブロック用ボタンデザイン。空文字 = 未設定（既定 variant 維持）。既知 variant のみ許可。
