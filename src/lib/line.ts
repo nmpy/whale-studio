@@ -12,6 +12,8 @@ import { interpolate } from "@/lib/template";
 import { moveQuickReplyToTail } from "@/lib/quick-reply-tail";
 import { isFreeInputPrompt } from "@/lib/free-input";
 import type { ReadReceiptController } from "@/lib/line-read-receipt";
+import { showLoadingAnimation } from "@/lib/line-read-receipt";
+import { applyReplyPacing } from "@/lib/reply-pacing";
 import { buildFlexSendParts, type FlexContents } from "@/lib/flex";
 import { normalizeCarouselContent, buildCarouselFlex } from "@/lib/carousel";
 import { recordPuzzleDeliveries } from "@/lib/puzzle-history";
@@ -775,6 +777,8 @@ export async function replyWithLagToLine(
   userId:             string,
   channelAccessToken: string,
   controller?:        ReadReceiptController,
+  /** sleep 関数（test 用に注入可能。既定は実 sleep）。reply pacing / push lag 待機に使う。 */
+  sleepFn:            (ms: number) => Promise<void> = sleep,
 ): Promise<void> {
   if (!replyToken || messages.length === 0) return;
 
@@ -812,6 +816,22 @@ export async function replyWithLagToLine(
 
   // 5 件以内で、2 件目以降に演出がない場合は Push 消費を避けて Reply 一括。
   if (messages.length <= REPLY_MAX && !needsSequentialPush) {
+    // reply pacing / reply pre-delay:
+    //   単一 reply（最大5件まとめ・push なし・replyToken 1回）を送る「直前」に、件数に応じた
+    //   pre-delay を 1 回だけ入れて「5件が即時に届く体感」を和らげる。個別着弾の間隔ではない。
+    //   loading indicator は 1 対 1（userId あり）かつ CMS の loading 設定が無い場合だけ併用する
+    //   （CMS loading は既存処理が担うため二重表示を避ける）。loading 失敗は reply を止めない。
+    const hasCmsLoading = messages.some((m) => m._timing?.loading_enabled === true);
+    await applyReplyPacing({
+      messageCount: messages.length,
+      userId,
+      sleepFn,
+      showLoading: hasCmsLoading
+        ? undefined
+        : (uid, secs) => showLoadingAnimation(uid, secs, channelAccessToken, { messageId: messages[0]?._sourceMessageId ?? null }),
+      log: (info) => console.info("[line:reply-pacing]", JSON.stringify(info)),
+    });
+
     await replyToLine(replyToken, messages, channelAccessToken);
     console.info("[line:reply-lag:summary]", JSON.stringify({
       strategy:   messages.length === 1 ? "reply_one" : "reply_all",
@@ -855,7 +875,7 @@ export async function replyWithLagToLine(
       `lagSource=${msg._lagMs != null ? "_lagMs" : "default"}`,
     );
 
-    await sleep(delay);
+    await sleepFn(delay);
 
     if (controller && msg._timing) {
       await controller.waitTypingForMessage(msg._timing);
