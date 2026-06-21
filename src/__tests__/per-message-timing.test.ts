@@ -142,6 +142,8 @@ describe("additionalSlotToMsgBody — slot → API body", () => {
       asset_url:      "",
       notify_text:    "",
       carousel_items: [],
+      carousel_card_type: "product" as const,
+      carousel_cards: [],
       alt_text:           "",
       flex_payload_json:  "",
       lag_ms:         0,
@@ -248,10 +250,12 @@ describe("additionalSlotToMsgBody — slot → API body", () => {
     const slot: AdditionalMessageSlot = {
       ...baseSlot(),
       message_type: "carousel",
-      carousel_items: [{ image_url: "", title: "t", body: "b", button_label: "", button_url: "" }],
+      carousel_card_type: "product",
+      carousel_cards: [{ title: "t", action: { type: "url", label: "見る", url: "https://e.com" } }],
     };
     const body = additionalSlotToMsgBody(slot, MAIN);
-    expect(body.body).toBe(JSON.stringify(slot.carousel_items));
+    // 連続メッセージ carousel は新形式 {type,cardType,cards} で保存される。
+    expect(body.body).toBe(JSON.stringify({ type: "carousel", cardType: "product", cards: slot.carousel_cards }));
   });
 
   it("message_type=text の本文が空なら body=undefined (= API バリデーション側で 弾く想定)", () => {

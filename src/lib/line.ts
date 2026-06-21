@@ -462,19 +462,22 @@ function convertMessageToLine(
   }
 
   // ── カルーセル（カードタイプ式 → LINE Flex carousel。生成不能時はテキストフォールバック）──
+  //   対象は「通常メッセージの carousel」のみ（kind!="puzzle"）。謎(puzzle)カルーセルは
+  //   既存挙動（下の汎用テキストフォールバック）を維持し、送信形式を一切変えない。
   //   挙動安全性: 旧形式(ベア配列)/新形式(オブジェクト) どちらも normalizeCarouselContent で正規化し、
   //   buildCarouselFlex で Flex 化する。画像未設定は hero 省略・不正カードは除外・カード0/全不正なら null。
   //   例外や Flex 化不能のときは既存と同等の代替テキスト送信へフォールバックし、webhook/reply を落とさない。
-  if (mtype === "carousel") {
+  if (mtype === "carousel" && !isPuzzle) {
     try {
       const content = normalizeCarouselContent(body);
       const flex = buildCarouselFlex(content, { altText: alt_text });
       if (flex) {
         return attach({ type: "flex", altText: replacePlaceholders(flex.altText, vars), contents: flex.contents } as LineFlexMessage);
       }
-      // Flex 化できない（カード0 / 全カード不正）→ 安全なテキストフォールバック（生 JSON は避ける）
+      // Flex 化できない（カード0 / 全カード不正）→ 既存と同等の安全なテキストフォールバック。
+      // alt_text → カード由来テキスト（生 JSON 回避）→ body（旧挙動: 非カード本文はそのまま送る）。
       const derived = content.cards.map((c) => c.title || c.name || c.description || "").find((s) => s && s.trim()) ?? "";
-      const fb = alt_text || derived;
+      const fb = alt_text || derived || body;
       if (fb) {
         console.warn(`[${caller}] carousel を Flex 化できずテキストフォールバック id=${id.slice(0, 8)}`);
         return attach({ type: "text", text: replacePlaceholders(truncateText(fb), vars) } as LineTextMessage);

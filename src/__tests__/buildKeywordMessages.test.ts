@@ -127,7 +127,8 @@ describe("buildKeywordMessages — 欠損時の安全なスキップ", () => {
   it("全 null → 変換不能 warn + skip", () => {
     const result = buildKeywordMessages([makeKwMsg({ messageType: "carousel", body: null, assetUrl: null, altText: null })]);
     expect(result).toHaveLength(0);
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("変換不能メッセージ"), expect.any(String), expect.any(String));
+    // carousel（カード0/本文なし）→ Flex 化不能・alt_text/body も無いため送信なし（ログは出る）。
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("carousel が空"));
   });
 
   it("入力2件 → 出力0件 → error ログ", () => {
