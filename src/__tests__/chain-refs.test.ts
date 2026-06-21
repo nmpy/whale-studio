@@ -83,7 +83,7 @@ describe("findReferrers", () => {
   it("REFERRER_KIND_LABEL は4種の日本語ラベルを持つ", () => {
     expect(REFERRER_KIND_LABEL.next).toContain("連続");
     expect(REFERRER_KIND_LABEL.freeInputNext).toContain("自由入力");
-    expect(REFERRER_KIND_LABEL.qr_target).toContain("QR分岐");
-    expect(REFERRER_KIND_LABEL.qr_response).toContain("QR応答");
+    expect(REFERRER_KIND_LABEL.qr_target).toContain("クイックリプライ分岐");
+    expect(REFERRER_KIND_LABEL.qr_response).toContain("クイックリプライ応答");
   });
 });

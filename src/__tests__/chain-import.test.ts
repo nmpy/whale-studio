@@ -108,7 +108,7 @@ describe("validateImport", () => {
     const all = [...base, m({ id: "Q", next_message_id: null, quick_replies: [{ target_type: "message", target_message_id: "qonly" }] }), m({ id: "qonly", next_message_id: null })];
     const r = validateImport({ ...opts, allMessages: all, headId: "qonly" });
     expect(r.ok).toBe(true);
-    if (r.ok) expect(r.warnings.some((w) => w.includes("QR"))).toBe(true);
+    if (r.ok) expect(r.warnings.some((w) => w.includes("クイックリプライ"))).toBe(true);
   });
 
   it("10. 取り込みブロックが target と重複（循環）するケースは拒否", () => {

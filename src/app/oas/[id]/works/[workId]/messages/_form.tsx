@@ -1144,7 +1144,7 @@ function QuickReplyEditor({ items, onChange, responseMessages, phases, transitio
                             color: "#475569",
                             lineHeight: 1.8,
                           }}>
-                            <div style={{ fontWeight: 600, color: "#334155", marginBottom: 2 }}>QRタップ時の処理フロー</div>
+                            <div style={{ fontWeight: 600, color: "#334155", marginBottom: 2 }}>クイックリプライタップ時の処理フロー</div>
                             <div>
                               <span style={{ fontWeight: 700, color: "#06C755" }}>Step 1</span>
                               {" — ユーザー入力として「"}
@@ -1259,7 +1259,7 @@ function QuickReplyEditor({ items, onChange, responseMessages, phases, transitio
                                 })}
                             </select>
                             <div style={{ ...hintText, marginTop: 4 }}>
-                              QRタップ直後に返す応答メッセージです。<strong>応答メッセージ（種別=応答）のみ選択できます</strong>。
+                              クイックリプライタップ直後に返す応答メッセージです。<strong>応答メッセージ（種別=応答）のみ選択できます</strong>。
                               ここでメッセージを返しても、プレイヤーのフェーズはまだ変わりません。
                               フェーズの通常メッセージ・入場メッセージへ進めたい場合は、Step 3 で「フェーズ遷移」を選択してください。
                             </div>
@@ -1432,19 +1432,19 @@ function QuickReplyEditor({ items, onChange, responseMessages, phases, transitio
                                 <div style={{ marginTop: 8, padding: "8px 10px", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 6, fontSize: 11, lineHeight: 1.6 }}>
                                   {pv.mode === "message_chain" && (
                                     <div style={{ color: "#7c3aed", marginBottom: 6 }}>
-                                      ℹ️ このQRは<strong>指定メッセージの連続メッセージのみ</strong>送信します。同じフェーズ内の後続メッセージは自動では送信されません（続けたい場合は QR / 自由入力 / フェーズ遷移で明示的に接続してください）。
+                                      ℹ️ このクイックリプライは<strong>指定メッセージの連続メッセージのみ</strong>送信します。同じフェーズ内の後続メッセージは自動では送信されません（続けたい場合は クイックリプライ / 自由入力 / フェーズ遷移で明示的に接続してください）。
                                     </div>
                                   )}
                                   <div style={{ fontWeight: 700, color: "#475569" }}>
                                     {pv.mode === "phase_entry"
-                                      ? <>入場時に送信されるメッセージ: {pv.total}通<span style={{ fontWeight: 400, color: "#94a3b8" }}>（最初のQR / 入力待ちまで）</span></>
-                                      : <>このQRで送信されるメッセージ: {pv.total}通</>}
+                                      ? <>入場時に送信されるメッセージ: {pv.total}通<span style={{ fontWeight: 400, color: "#94a3b8" }}>（最初のクイックリプライ / 入力待ちまで）</span></>
+                                      : <>このクイックリプライで送信されるメッセージ: {pv.total}通</>}
                                   </div>
                                   {pv.mode === "phase_entry" && (() => {
                                     const totalInPhase = allMessages.filter((m) => m.phase_id === item.target_phase_id).length;
                                     return totalInPhase > pv.total ? (
                                       <div style={{ fontWeight: 400, color: "#94a3b8", fontSize: 10, marginTop: 2 }}>
-                                        フェーズ内の総メッセージ: {totalInPhase}通（残りは入場後のQR選択・進行で順次送信されます）
+                                        フェーズ内の総メッセージ: {totalInPhase}通（残りは入場後のクイックリプライ選択・進行で順次送信されます）
                                       </div>
                                     ) : null;
                                   })()}
@@ -1455,12 +1455,12 @@ function QuickReplyEditor({ items, onChange, responseMessages, phases, transitio
                                   </ol>
                                   {pv.overLimit && pv.overflowKind === "dropped" && (
                                     <div style={{ marginTop: 6, color: "#b91c1c" }}>
-                                      ⚠️ この連続メッセージは{pv.fullTotal}通あり、5通を超えています。<strong>6通目以降は送信されません</strong>（1チェーン最大5通）。5通以内に分割するか、QR / 自由入力 / フェーズ遷移で区切ってください。
+                                      ⚠️ この連続メッセージは{pv.fullTotal}通あり、5通を超えています。<strong>6通目以降は送信されません</strong>（1チェーン最大5通）。5通以内に分割するか、クイックリプライ / 自由入力 / フェーズ遷移で区切ってください。
                                     </div>
                                   )}
                                   {pv.overLimit && pv.overflowKind === "push" && (
                                     <div style={{ marginTop: 6, color: "#b91c1c" }}>
-                                      ⚠️ この送信は合計{pv.total}通で、5通を超えています。<strong>6通目以降は Push 送信</strong>となり、月間上限などにより届かない可能性があります。QR / 自由入力 / フェーズ遷移で5通以内に区切ることをおすすめします。
+                                      ⚠️ この送信は合計{pv.total}通で、5通を超えています。<strong>6通目以降は Push 送信</strong>となり、月間上限などにより届かない可能性があります。クイックリプライ / 自由入力 / フェーズ遷移で5通以内に区切ることをおすすめします。
                                     </div>
                                   )}
                                 </div>
@@ -1771,7 +1771,7 @@ function KeywordListEditor({ value, onChange, disabled, phases, currentMessageId
           borderRadius: 8,
         }}>
           <div style={{ fontSize: 11, fontWeight: 600, color: "#1d4ed8", marginBottom: 5 }}>
-            🔗 QRから自動連携（保存時にキーワードへ追加されます）
+            🔗 クイックリプライから自動連携（保存時にキーワードへ追加されます）
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
             {linkedQrLabels.map((label) => {
@@ -1788,7 +1788,7 @@ function KeywordListEditor({ value, onChange, disabled, phases, currentMessageId
                     color: alreadyManual ? "#15803d" : "#1e40af",
                     fontWeight: 500,
                   }}
-                  title={alreadyManual ? "手動キーワードにも設定済み" : "QR連携ラベル"}
+                  title={alreadyManual ? "手動キーワードにも設定済み" : "クイックリプライ連携ラベル"}
                 >
                   {label}
                 </span>
@@ -2847,7 +2847,7 @@ function TimingConfigSection<T extends TimingFormFields>({
           {/* 演出は「このメッセージ送信前」にのみ反映される旨の誤解防止文言（まとめ送信廃止方針・Phase 1）。
               常時の青ボックスは目立つため「詳細」トグル（薄いグレー）に格納する（文言は維持）。 */}
           <HelpDetails label="詳細（演出が反映されるタイミング）">
-            待機時間・入力中表示は、<strong>このメッセージを送信する前</strong>に反映されます。次のメッセージにも演出を入れたい場合は、Quick Reply やキーワードなど、<strong>ユーザー操作を挟んで</strong>次のメッセージへ進めてください。
+            待機時間・入力中表示は、<strong>このメッセージを送信する前</strong>に反映されます。次のメッセージにも演出を入れたい場合は、クイックリプライやキーワードなど、<strong>ユーザー操作を挟んで</strong>次のメッセージへ進めてください。
           </HelpDetails>
       </div>
     </SectionAccordion>
@@ -5351,7 +5351,7 @@ export function MessageForm({
                   )}
                   {form.quick_replies.length > 0 && (
                     <div style={{ marginTop: 8, color: "#0369a1", fontSize: 11 }}>
-                      ℹ️ Quick Reply は編集上は先頭メッセージに設定しますが、実機ではこの連続メッセージの<strong>末尾</strong>に表示されます。
+                      ℹ️ クイックリプライは編集上は先頭メッセージに設定しますが、実機ではこの連続メッセージの<strong>末尾</strong>に表示されます。
                     </div>
                   )}
                 </div>
