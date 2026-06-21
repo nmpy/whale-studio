@@ -4040,6 +4040,8 @@ export function MessageForm({
                     }}>
                       💡 <strong>共通メッセージ</strong>：フェーズに依存しない返信です。
                       「応答キーワード」を必ず設定してください。フェーズ設定は自動的に無視されます。
+                      <br />
+                      ⚠️ 共通にすると、どのフェーズでもこのキーワードに反応します。物語進行に依存する選択肢（特定の場面だけ出すボタン等）では通常おすすめしません。その場合は種別を「応答」にして有効フェーズを指定してください。
                     </div>
                   )}
                 </>
@@ -4065,7 +4067,7 @@ export function MessageForm({
               <div style={{ ...hintText, marginTop: 6 }}>
                 {form.kind === "start"  && "開始演出の場合、このキーワードで演出を開始します。"}
                 {form.kind === "global" && "どのフェーズでも反応します。キーワードは必須です。"}
-                {form.kind !== "start" && form.kind !== "global" && "複数設定可。いずれかに一致したとき返信します（kind=response 推奨）"}
+                {form.kind !== "start" && form.kind !== "global" && "複数設定可。いずれかに一致したとき返信します。この応答キーワードは、下で指定した「フェーズ」にいるときだけ反応します（どのフェーズでも反応させたい場合は種別を「共通」に）。"}
               </div>
             </div>
             )}
@@ -4496,6 +4498,11 @@ export function MessageForm({
                 />
                 <div style={hintText}>
                   Flex Message SimulatorからコピーしたJSONを貼り付けてください。contentsだけ・flex全体のどちらでも保存できます。
+                </div>
+                <div style={{ ...hintText, marginTop: 4 }}>
+                  💡 ボタンの <code>action.type=&quot;message&quot;</code> は、押すと <code>action.text</code> がプレイヤーの発話として届きます。
+                  反応させるには、<strong>同じフェーズ</strong>に同じテキストの「応答キーワード」（種別=応答）を作成してください。
+                  共通の場合のみ、どのフェーズでも反応します。
                 </div>
                 {/* インライン検証エラー (入力がある場合のみ) */}
                 {form.flex_payload_json.trim() && (() => {

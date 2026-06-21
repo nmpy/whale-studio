@@ -1494,6 +1494,16 @@ export default function MessagesPage() {
                           })()}
                           {/* 導線状態（次の遷移先 / 分岐・自由入力・画像タップ・QR / 未設定・未接続の警告） */}
                           <FlowStatusCell info={flowMap.get(msg.id)} msgById={msgById} phaseById={phaseById} />
+                          {/* 応答キーワード + 有効フェーズの可視化（Flexボタン文言と応答キーワードの対応を確認しやすく）。 */}
+                          {(msg.kind === "response" || msg.kind === "start") && (msg.trigger_keyword ?? "").trim() && (
+                            <div style={{ marginTop: 4, fontSize: 11, color: "#374151", lineHeight: 1.6 }}>
+                              🔑 応答キーワード：
+                              {(msg.trigger_keyword ?? "").split("\n").map((k) => k.trim()).filter(Boolean).map((k) => `「${k}」`).join(" / ")}
+                              <span style={{ color: msg.phase?.id ? "#6b7280" : "#b45309" }}>
+                                {" "}・有効フェーズ：{msg.phase?.id ? (phaseById.get(msg.phase.id)?.name ?? "フェーズ") : "共通（全フェーズ）"}
+                              </span>
+                            </div>
+                          )}
                         </td>
 
                         {/* キャラクター */}
