@@ -10,6 +10,7 @@ import { Breadcrumb } from "@/components/Breadcrumb";
 import type { PhaseWithCounts, Character, QuickReplyItem, QuickReplyAction, ReadReceiptMode, LocationWithTransition } from "@/types";
 import { useAccessPreview } from "@/hooks/useAccessPreview";
 import { FEATURE, getPlanAccessState } from "@/lib/constants/plans";
+import { isQrCrossPhaseMessageTarget, resolveQrTargetMessagePhaseId } from "./_qr-transition-check";
 import type { Riddle } from "@/types";
 import { PhaseTransitionsSection } from "./_phase-transitions";
 import { previewQrSend, type QrPreviewMessage } from "./_qr-preview";
@@ -915,9 +916,11 @@ interface QuickReplyEditorProps {
   heading?: string;
   /** ヒント設定エリアでは「ヒントボタンにする」トグルを隠し、各項目を既定でヒント扱いにする。 */
   hideHintToggle?: boolean;
+  /** 編集中メッセージのフェーズ ID。Step3=メッセージで別フェーズ遷移先を選んだ警告判定に使う。 */
+  currentPhaseId?: string | null;
 }
 
-function QuickReplyEditor({ items, onChange, responseMessages, phases, transitionMessages, characters = [], workId, oaId, destinations = [], allMessages = [], linkOptions, linkOptionsLiffConfigured, heading = "クイックリプライ設定", hideHintToggle = false }: QuickReplyEditorProps) {
+function QuickReplyEditor({ items, onChange, responseMessages, phases, transitionMessages, characters = [], workId, oaId, destinations = [], allMessages = [], linkOptions, linkOptionsLiffConfigured, heading = "クイックリプライ設定", hideHintToggle = false, currentPhaseId = null }: QuickReplyEditorProps) {
   const [open, setOpen]               = useState(false);
   const [expandedSet, setExpandedSet] = useState<Set<number>>(new Set());
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
@@ -1256,8 +1259,8 @@ function QuickReplyEditor({ items, onChange, responseMessages, phases, transitio
                                 })}
                             </select>
                             <div style={{ ...hintText, marginTop: 4 }}>
-                              QRタップ直後に bot が返す返答メッセージです。kind=response のメッセージを指定してください。
-                              どのフェーズのメッセージも選択できます。
+                              QRタップ直後に返す応答メッセージです。kind=response のメッセージを指定してください。
+                              <strong>ここでメッセージを返しても、プレイヤーのフェーズはまだ変わりません</strong>（次フェーズへ進めたいときは Step 3 で「フェーズへ進む」）。
                             </div>
                           </div>
                         )}
@@ -1275,7 +1278,7 @@ function QuickReplyEditor({ items, onChange, responseMessages, phases, transitio
                               {(["none", "message", "phase"] as const).map((t) => {
                                 const current  = getQrTransitionType(item);
                                 const isActive = current === t;
-                                const lblMap   = { none: "なし", message: "メッセージ", phase: "フェーズ" } as const;
+                                const lblMap   = { none: "なし", message: "メッセージのみ（フェーズは進まない）", phase: "フェーズへ進む" } as const;
                                 return (
                                   <button
                                     key={t}
@@ -1378,17 +1381,45 @@ function QuickReplyEditor({ items, onChange, responseMessages, phases, transitio
                                     メッセージが読み込まれていません。保存してから再度開いてください。
                                   </div>
                                 )}
+                                {/* C/D: 別フェーズのメッセージを指定した場合の警告（メッセージ遷移では currentPhase が進まない）。 */}
+                                {isQrCrossPhaseMessageTarget({
+                                  targetType: "message",
+                                  targetMessageId: item.target_message_id,
+                                  transitionMessages,
+                                  currentPhaseId,
+                                }) && (() => {
+                                  const tphId = resolveQrTargetMessagePhaseId(item.target_message_id, transitionMessages);
+                                  const tphName = (phases ?? []).find((p) => p.id === tphId)?.name ?? "別フェーズ";
+                                  const curName = (phases ?? []).find((p) => p.id === currentPhaseId)?.name;
+                                  return (
+                                    <div style={{ marginTop: 6, padding: "8px 10px", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 6, fontSize: 11, lineHeight: 1.6, color: "#92400e" }}>
+                                      ⚠ 選択したメッセージは別フェーズ「{tphName}」にあります。
+                                      メッセージ遷移ではプレイヤーの現在のフェーズは変わらないため、そのフェーズの応答キーワードは反応しません。
+                                      {curName
+                                        ? `フェーズ「${tphName}」へ進めたい場合は、遷移先を「フェーズへ進む」にして「${tphName}」を選択してください。`
+                                        : "次フェーズへ進めたい場合は、遷移先を「フェーズへ進む」に変更してください。"}
+                                    </div>
+                                  );
+                                })()}
                               </>
                             )}
 
+                            {/* モード別の説明（正解時アクションの語彙に合わせる）。 */}
                             {getQrTransitionType(item) === "none" && (
                               <div style={{ ...hintText }}>
-                                遷移先なし — Step 2 の応答メッセージだけを返して終了します
+                                遷移先なし — Step 2 の応答メッセージだけを返して終了します（フェーズはそのまま）。
                               </div>
                             )}
-                            {getQrTransitionType(item) !== "none" && (
+                            {getQrTransitionType(item) === "message" && (
                               <div style={{ ...hintText, marginTop: 4 }}>
-                                Step 2 の応答メッセージを返した後、ここへ進みます。どのフェーズも選択可能です。
+                                メッセージ遷移は、選んだメッセージだけを送信します。<strong>別フェーズのメッセージを選んでも、プレイヤーの現在のフェーズは変わりません</strong>。
+                                次のフェーズへ進めたい場合は「フェーズへ進む」を選択してください。
+                              </div>
+                            )}
+                            {getQrTransitionType(item) === "phase" && (
+                              <div style={{ ...hintText, marginTop: 4 }}>
+                                フェーズ遷移を選ぶと、<strong>プレイヤーの現在のフェーズが選択したフェーズに更新され</strong>、そのフェーズのメッセージが送信されます。
+                                このフェーズ内の応答キーワードが有効になります。
                               </div>
                             )}
 
@@ -5331,6 +5362,7 @@ export function MessageForm({
             onChange={(items) => set("quick_replies", items)}
             responseMessages={allMessages.filter((m) => m.kind === "response" && m.id !== messageId)}
             phases={phases}
+            currentPhaseId={form.phase_id || null}
             transitionMessages={allMessages.filter((m) => m.id !== messageId)}
             characters={characters}
             workId={workId}
@@ -5868,6 +5900,7 @@ export function MessageForm({
                 onChange={(items) => set("incorrect_quick_replies", items)}
                 responseMessages={allMessages.filter((m) => m.kind === "response" && m.id !== messageId)}
                 phases={phases}
+                currentPhaseId={form.phase_id || null}
                 transitionMessages={allMessages.filter((m) => m.id !== messageId)}
                 characters={characters}
                 workId={workId}
