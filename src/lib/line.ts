@@ -14,6 +14,7 @@ import { isFreeInputPrompt } from "@/lib/free-input";
 import type { ReadReceiptController } from "@/lib/line-read-receipt";
 import { showLoadingAnimation } from "@/lib/line-read-receipt";
 import { applyReplyPacing } from "@/lib/reply-pacing";
+import { resolveDisplayQrItems } from "@/lib/hint-qr";
 import { buildFlexSendParts, type FlexContents } from "@/lib/flex";
 import { normalizeCarouselContent, buildCarouselFlex } from "@/lib/carousel";
 import { recordPuzzleDeliveries } from "@/lib/puzzle-history";
@@ -1092,10 +1093,15 @@ export function buildPhaseMessages(
 
   // 1 件の Phase message を LineMessage に変換するヘルパー (per-chain ループで再利用)。
   const convert = (msg: typeof phase.messages[number]): LineMessage | null => {
-    const visibleQrItems = (msg.hint_mode === "always" || !msg.hint_mode)
-      ? msg.quick_replies
-      : (msg.quick_replies ?? []).filter((i) => i.action !== "hint");
-    const msgQr = visibleQrItems?.length
+    // 通常 QR ＋ 問題（puzzle）のヒント QR（incorrect_quick_replies）を解決する。
+    // hint_mode="always" のとき、問題メッセージ自体にヒント QR を付与する（タップで matchHintFromPhase が応答）。
+    const visibleQrItems = resolveDisplayQrItems({
+      kind:                  msg.kind,
+      hintMode:              msg.hint_mode,
+      quickReplies:          msg.quick_replies,
+      incorrectQuickReplies: msg.incorrect_quick_replies,
+    });
+    const msgQr = visibleQrItems.length
       ? buildQuickReplyFromItems(visibleQrItems)
       : undefined;
     return convertMessageToLine({

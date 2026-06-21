@@ -52,6 +52,7 @@ import { applyFreeInputPostEffect } from "@/lib/frontier-effect";
 import { handleBeaconEvent, type LineBeaconEvent } from "@/lib/beacon";
 import { consumeBeaconArrivalTrigger } from "@/lib/checkin-trigger";
 import { pushToLine as _pushToLine } from "@/lib/line";
+import { normalizeHintQrItems } from "@/lib/hint-qr";
 import { getCurrentPlanTierForOa } from "@/lib/plan-guard";
 import { getPlanAccessState, FEATURE } from "@/lib/constants/plans";
 import { logEvent } from "@/lib/event-logger";
@@ -636,15 +637,26 @@ function matchHintFromPhase(
   for (const msg of phase.messages) {
     // hint_mode=hidden のメッセージはヒント照合をスキップ
     if ((msg as { hintMode?: string }).hintMode === "hidden") continue;
-    if (!msg.quickReplies) continue;
-    let items: import("@/types").QuickReplyItem[];
-    try {
-      const parsed = JSON.parse(msg.quickReplies);
-      if (!Array.isArray(parsed)) continue;
-      items = parsed as import("@/types").QuickReplyItem[];
-    } catch {
-      continue;
+    // 候補 = quick_replies の hint アイテム ＋（問題なら）incorrect_quick_replies のヒント。
+    // incorrect 側は display（resolveDisplayQrItems）と同じ normalizeHintQrItems でラベルを揃え、
+    // タップ送信テキスト（label）と確実に一致させる。
+    const items: import("@/types").QuickReplyItem[] = [];
+    if (msg.quickReplies) {
+      try {
+        const parsed = JSON.parse(msg.quickReplies);
+        if (Array.isArray(parsed)) items.push(...(parsed as import("@/types").QuickReplyItem[]));
+      } catch { /* skip */ }
     }
+    if (msg.kind === "puzzle") {
+      const rawIncorrect = (msg as { incorrectQuickReplies?: string | null }).incorrectQuickReplies;
+      if (rawIncorrect) {
+        try {
+          const parsed = JSON.parse(rawIncorrect);
+          if (Array.isArray(parsed)) items.push(...normalizeHintQrItems(parsed as import("@/types").QuickReplyItem[]));
+        } catch { /* skip */ }
+      }
+    }
+    if (items.length === 0) continue;
     for (const item of items) {
       if (item.action !== "hint") continue;
       if (item.enabled === false) continue;
