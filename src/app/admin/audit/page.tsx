@@ -6,13 +6,16 @@
 import { useEffect, useState } from "react";
 import { getAuthHeaders } from "@/lib/api-client";
 import { InlineWhaleLoader } from "@/components/ui/InlineWhaleLoader";
+import { auditResourceLabel } from "@/lib/audit-display";
 
 interface AuditLog {
   id:          string;
   actor_id:    string;
+  /** 操作者の表示名（API で Profile から解決。未紐づけは「不明」）。 */
+  user_name?:  string | null;
   action:      string;
   resource:    string;
-  resource_id: string | null;
+  resource_id?: string | null;
   detail:      string | null;
   created_at:  string;
 }
@@ -70,8 +73,8 @@ export default function AdminAuditPage() {
               <tr>
                 <th>日時</th>
                 <th>操作</th>
-                <th>対象</th>
-                <th>リソースID</th>
+                <th>対象（機能）</th>
+                <th>ユーザー名</th>
               </tr>
             </thead>
             <tbody>
@@ -105,9 +108,10 @@ export default function AdminAuditPage() {
                         {actionMeta.label}
                       </span>
                     </td>
-                    <td style={{ fontSize: 12 }}>{log.resource}</td>
-                    <td style={{ fontSize: 11, fontFamily: "monospace", color: "var(--text-muted)", maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis" }}>
-                      {log.resource_id ?? "—"}
+                    <td style={{ fontSize: 12 }}>{auditResourceLabel(log.resource)}</td>
+                    <td style={{ fontSize: 12, color: "var(--text-secondary)", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                      title={log.user_name ?? "不明"}>
+                      {log.user_name?.trim() || "不明"}
                     </td>
                   </tr>
                 );
