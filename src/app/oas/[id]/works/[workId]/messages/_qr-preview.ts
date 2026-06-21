@@ -22,6 +22,9 @@ export type QrPreviewMessage = {
   free_input_enabled?: boolean | null;
   phase_id?:           string | null;
   sort_order?:         number;
+  /** QuickReply を持つか。フェーズ入場プレビューを実送信（buildPhaseMessages）に合わせ、
+   *  QR 提示メッセージで phase 走査を停止するために使う（QR後の head はユーザー選択後に送られる）。 */
+  has_quick_reply?:    boolean;
 };
 
 export type QrPreviewInput = {
@@ -64,7 +67,11 @@ function walkChain(byId: Map<string, QrPreviewMessage>, headId: string, cap: num
   return out;
 }
 
-/** buildPhaseMessages 相当: フェーズ入場時に送られるメッセージ列（全 head・各 chain 最大5・freeInput全停止）。 */
+/** buildPhaseMessages 相当: フェーズ入場時に「最初のQR/入力待ちまで」に送られるメッセージ列。
+ *  実送信（src/lib/line.ts buildPhaseMessages）と停止条件を揃える:
+ *    - 各 chain は free_input で停止（その message は含む）・最大 LINE_REPLY_MAX 件。
+ *    - chain に free_input か QuickReply があれば、その chain まで含めて phase 走査を停止する
+ *      （QR 提示後の後続 head はユーザー選択後に送られるため、入場時には送らない）。 */
 export function phaseEntryMessages(phaseMessages: QrPreviewMessage[]): QrPreviewMessage[] {
   const sorted = [...phaseMessages].sort(
     (a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || String(a.id).localeCompare(String(b.id)),
@@ -77,17 +84,20 @@ export function phaseEntryMessages(phaseMessages: QrPreviewMessage[]): QrPreview
     let cur: QrPreviewMessage | undefined = head;
     const seen = new Set<string>([head.id]);
     let n = 0;
-    let stop = false;
+    let stopFreeInput = false;
+    let chainHasQr = false;
     while (cur && n < LINE_REPLY_MAX) {
       n++;
       out.push(cur);
-      if (cur.free_input_enabled) { stop = true; break; }
+      if (cur.has_quick_reply) chainHasQr = true; // QR は chain 内では止めず、chain 完了後に phase 走査を停止
+      if (cur.free_input_enabled) { stopFreeInput = true; break; }
       const nx = cur.next_message_id;
       if (!nx || seen.has(nx) || !byId.has(nx)) break;
       seen.add(nx);
       cur = byId.get(nx);
     }
-    if (stop) break; // free_input でフェーズ全体の走査を停止
+    // free_input または QR を含む chain まででフェーズ全体の走査を停止（実送信と同じ境界）。
+    if (stopFreeInput || chainHasQr) break;
   }
   return out;
 }
