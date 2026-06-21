@@ -86,10 +86,13 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+// reply pacing / push lag の実時間待機を回避する注入用 sleep（test で実際に待たない）。
+const NOWAIT = async () => {};
+
 describe("replyWithLagToLine 送信戦略", () => {
   it("1通: Reply API 1回で送る / Push を呼ばない", async () => {
     setupFetch();
-    await replyWithLagToLine("rt", texts(1), "U1", "tok");
+    await replyWithLagToLine("rt", texts(1), "U1", "tok", undefined, NOWAIT);
 
     expect(replies()).toHaveLength(1);
     expect(replies()[0].count).toBe(1);
@@ -106,7 +109,7 @@ describe("replyWithLagToLine 送信戦略", () => {
 
   it("3通・演出なし: Reply API 1回で3件送る / Push を呼ばない", async () => {
     setupFetch();
-    await replyWithLagToLine("rt", texts(3), "U1", "tok");
+    await replyWithLagToLine("rt", texts(3), "U1", "tok", undefined, NOWAIT);
 
     expect(replies()).toHaveLength(1);
     expect(replies()[0].count).toBe(3);
@@ -122,7 +125,7 @@ describe("replyWithLagToLine 送信戦略", () => {
 
   it("5通・演出なし: 境界でもReply一括 / Push を呼ばない", async () => {
     setupFetch();
-    await replyWithLagToLine("rt", texts(5), "U1", "tok");
+    await replyWithLagToLine("rt", texts(5), "U1", "tok", undefined, NOWAIT);
 
     expect(replies()).toHaveLength(1);
     expect(replies()[0].count).toBe(5);
@@ -137,7 +140,7 @@ describe("replyWithLagToLine 送信戦略", () => {
 
   it("3通・2通目以降にlag演出あり: 1通目Reply + 2通目以降Push", async () => {
     setupFetch();
-    await replyWithLagToLine("rt", textsWithSecondLag(3), "U1", "tok");
+    await replyWithLagToLine("rt", textsWithSecondLag(3), "U1", "tok", undefined, NOWAIT);
 
     expect(replies()).toHaveLength(1);
     expect(replies()[0].count).toBe(1);
@@ -155,7 +158,7 @@ describe("replyWithLagToLine 送信戦略", () => {
 
   it("5通・2通目以降にloading演出あり: 1通目Reply + 4件Push", async () => {
     setupFetch();
-    await replyWithLagToLine("rt", textsWithSecondLoading(5), "U1", "tok");
+    await replyWithLagToLine("rt", textsWithSecondLoading(5), "U1", "tok", undefined, NOWAIT);
 
     expect(replies()).toHaveLength(1);
     expect(replies()[0].count).toBe(1);
@@ -172,7 +175,7 @@ describe("replyWithLagToLine 送信戦略", () => {
 
   it("6通・演出なし: 先頭5件Reply + 6件目以降Push", async () => {
     setupFetch();
-    await replyWithLagToLine("rt", texts(6), "U1", "tok");
+    await replyWithLagToLine("rt", texts(6), "U1", "tok", undefined, NOWAIT);
 
     expect(replies()).toHaveLength(1);
     expect(replies()[0].count).toBe(5);
@@ -190,7 +193,7 @@ describe("replyWithLagToLine 送信戦略", () => {
 
   it("6通・2通目以降に演出あり: 1通目Reply + 残りPushに切り替える", async () => {
     setupFetch();
-    await replyWithLagToLine("rt", textsWithSecondLag(6), "U1", "tok");
+    await replyWithLagToLine("rt", textsWithSecondLag(6), "U1", "tok", undefined, NOWAIT);
 
     expect(replies()).toHaveLength(1);
     expect(replies()[0].count).toBe(1);
@@ -211,7 +214,7 @@ describe("replyWithLagToLine 送信戦略", () => {
   // 即時(OFF)でも 2 通目が Push 化され、Push 失敗(月間上限等)で実機に届かなかった。
   it("2通目が read_receipt_mode=immediate(=OFF)のみ: Pushせず Reply一括で2通とも送る", async () => {
     setupFetch();
-    await replyWithLagToLine("rt", textsWithSecondTiming(2, { read_receipt_mode: "immediate" }), "U1", "tok");
+    await replyWithLagToLine("rt", textsWithSecondTiming(2, { read_receipt_mode: "immediate" }), "U1", "tok", undefined, NOWAIT);
 
     expect(replies()).toHaveLength(1);
     expect(replies()[0].count).toBe(2);
@@ -230,7 +233,7 @@ describe("replyWithLagToLine 送信戦略", () => {
     await replyWithLagToLine(
       "rt",
       textsWithSecondTiming(2, { read_receipt_mode: "immediate", typing_enabled: false, loading_enabled: false, read_delay_ms: 3000 }),
-      "U1", "tok",
+      "U1", "tok", undefined, NOWAIT,
     );
 
     expect(pushes()).toHaveLength(0);
@@ -241,7 +244,7 @@ describe("replyWithLagToLine 送信戦略", () => {
 
   it("2通目が read_receipt_mode=delayed(実効果): 従来どおり 1通Reply+1通Push", async () => {
     setupFetch();
-    await replyWithLagToLine("rt", textsWithSecondTiming(2, { read_receipt_mode: "delayed" }), "U1", "tok");
+    await replyWithLagToLine("rt", textsWithSecondTiming(2, { read_receipt_mode: "delayed" }), "U1", "tok", undefined, NOWAIT);
 
     expect(replies()[0].count).toBe(1);
     expect(pushes()).toHaveLength(1);
@@ -250,7 +253,7 @@ describe("replyWithLagToLine 送信戦略", () => {
 
   it("2通目が before_reply(実効果): Push化を維持", async () => {
     setupFetch();
-    await replyWithLagToLine("rt", textsWithSecondTiming(2, { read_receipt_mode: "before_reply" }), "U1", "tok");
+    await replyWithLagToLine("rt", textsWithSecondTiming(2, { read_receipt_mode: "before_reply" }), "U1", "tok", undefined, NOWAIT);
 
     expect(pushes()).toHaveLength(1);
     expect(summary()).toMatchObject({ strategy: "reply_first_push_rest" });
@@ -258,7 +261,7 @@ describe("replyWithLagToLine 送信戦略", () => {
 
   it("Push月間上限超過(429)時、2通目以降の失敗をsummaryに記録する", async () => {
     setupFetch(429);
-    await replyWithLagToLine("rt", textsWithSecondLag(3), "U1", "tok");
+    await replyWithLagToLine("rt", textsWithSecondLag(3), "U1", "tok", undefined, NOWAIT);
 
     expect(replies()).toHaveLength(1);
     expect(replies()[0].count).toBe(1);
@@ -293,7 +296,7 @@ describe("replyWithLagToLine 送信戦略", () => {
     ];
 
     // 修正後の webhook と同じく slice せずそのまま渡す。
-    await replyWithLagToLine("rt", qrMsgs, "U1", "tok");
+    await replyWithLagToLine("rt", qrMsgs, "U1", "tok", undefined, NOWAIT);
 
     // 先頭5件Reply + 6件目以降Push（= 6通目 p3 も破棄されない）。
     expect(replies()).toHaveLength(1);
