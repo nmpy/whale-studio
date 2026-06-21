@@ -923,6 +923,133 @@ function QrHintPreview({ hintText, hintFollowup }: { hintText?: string; hintFoll
 }
 
 // ────────────────────────────────────────────────────────
+// HintListEditor — 問題メッセージのヒント設定（フラット表示）
+//   incorrect_quick_replies（action="hint"）を、囲いの少ない縦並びで編集する。
+//   保存形式は QuickReplyItem のまま（hint_text / hint_followup / hint_character_id /
+//   hint_next_label / hint_cancel_label）。runtime / 送信 payload には触れない。
+// ────────────────────────────────────────────────────────
+
+/** ヒント1項目内の「ラベル＋入力」行。 */
+function HintField({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="form-group" style={{ marginBottom: 8 }}>
+      <label style={{ ...fieldLabel, fontSize: 12 }}>{label}</label>
+      {children}
+    </div>
+  );
+}
+
+function HintListEditor({ items, onChange, characters }: {
+  items:      QuickReplyItem[];
+  onChange:   (items: QuickReplyItem[]) => void;
+  characters: Character[];
+}) {
+  const update = (i: number, patch: Partial<QuickReplyItem>) =>
+    onChange(items.map((it, ii) => (ii === i ? { ...it, ...patch } : it)));
+  const remove = (i: number) => onChange(items.filter((_, ii) => ii !== i));
+  const add = () => onChange([...items, { label: "", action: "hint", hint_text: "", hint_followup: "", hint_character_id: null } as QuickReplyItem]);
+
+  const inputStyle: React.CSSProperties = { fontSize: 13 };
+
+  return (
+    <div className="form-group">
+      <label style={fieldLabel}>
+        ヒント（クイックリプライ）
+        <span style={{ marginLeft: 8, fontSize: 10, fontWeight: 700, color: "#6b7280", background: "#f1f5f9", borderRadius: 4, padding: "1px 6px" }}>任意</span>
+      </label>
+      <div style={{ ...hintText, marginBottom: 12 }}>
+        問題にヒントを付けると、LINE上でクイックリプライとして表示されます。
+      </div>
+
+      {items.map((item, i) => {
+        const hasNext   = !!(item.hint_next_label && item.hint_next_label.length > 0);
+        const hasCancel = !!(item.hint_cancel_label && item.hint_cancel_label.length > 0);
+        return (
+          <div key={i} style={{ paddingTop: i === 0 ? 0 : 14, marginTop: i === 0 ? 0 : 14, borderTop: i === 0 ? "none" : "1px solid #eef0f2" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: "#334155" }}>ヒント{items.length > 1 ? i + 1 : ""}</span>
+              <button type="button" className="btn btn-ghost"
+                style={{ padding: "1px 8px", fontSize: 11, color: "#ef4444", borderColor: "#fecaca" }}
+                onClick={() => remove(i)}>削除</button>
+            </div>
+
+            <HintField label="ボタンテキスト">
+              <input type="text" className="form-input" style={inputStyle} maxLength={20}
+                value={item.label ?? ""} placeholder={items.length === 1 ? "ヒント" : `ヒント${i + 1}`}
+                onChange={(e) => update(i, { label: e.target.value })} />
+            </HintField>
+
+            <HintField label="応答キャラクター">
+              <select className="form-input" style={inputStyle}
+                value={item.hint_character_id ?? ""}
+                onChange={(e) => update(i, { hint_character_id: e.target.value || null })}>
+                <option value="">（本文と同じ / デフォルト）</option>
+                {characters.map((ch) => (<option key={ch.id} value={ch.id}>{ch.name}</option>))}
+              </select>
+            </HintField>
+
+            <HintField label="ヒント本文">
+              <textarea className="form-input" rows={2} maxLength={2000} style={{ ...inputStyle, resize: "vertical" }}
+                value={item.hint_text ?? ""}
+                onChange={(e) => update(i, { hint_text: e.target.value || undefined })} />
+            </HintField>
+
+            <HintField label="回答誘導メッセージ">
+              <textarea className="form-input" rows={2} maxLength={500} style={{ ...inputStyle, resize: "vertical" }}
+                value={item.hint_followup ?? ""}
+                onChange={(e) => update(i, { hint_followup: e.target.value || undefined })} />
+            </HintField>
+
+            <QrHintPreview hintText={item.hint_text} hintFollowup={item.hint_followup} />
+
+            {/* さらにヒント（ON で追加のボタンテキスト入力欄を表示） */}
+            <div style={{ marginTop: 10 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <Switch checked={hasNext} ariaLabel="さらにヒント"
+                  onChange={(on) => update(i, { hint_next_label: on ? (item.hint_next_label || "さらにヒント") : undefined })} />
+                <span style={{ fontSize: 12, color: "#374151" }}>さらにヒント</span>
+              </div>
+              {hasNext && (
+                <div style={{ marginTop: 6 }}>
+                  <HintField label="ボタンテキスト">
+                    <input type="text" className="form-input" style={inputStyle} maxLength={20}
+                      value={item.hint_next_label ?? ""} placeholder="さらにヒント"
+                      onChange={(e) => update(i, { hint_next_label: e.target.value || undefined })} />
+                  </HintField>
+                </div>
+              )}
+            </div>
+
+            {/* 問題にもどる（ON で追加のボタンテキスト入力欄を表示） */}
+            <div style={{ marginTop: 8 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <Switch checked={hasCancel} ariaLabel="問題にもどる"
+                  onChange={(on) => update(i, { hint_cancel_label: on ? (item.hint_cancel_label || "問題にもどる") : undefined })} />
+                <span style={{ fontSize: 12, color: "#374151" }}>問題にもどる</span>
+              </div>
+              {hasCancel && (
+                <div style={{ marginTop: 6 }}>
+                  <HintField label="ボタンテキスト">
+                    <input type="text" className="form-input" style={inputStyle} maxLength={20}
+                      value={item.hint_cancel_label ?? ""} placeholder="問題にもどる"
+                      onChange={(e) => update(i, { hint_cancel_label: e.target.value || undefined })} />
+                  </HintField>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })}
+
+      <button type="button" className="btn btn-ghost" style={{ fontSize: 12, padding: "6px 14px", marginTop: 12 }}
+        onClick={add}>
+        ＋ヒント（クイックリプライ）追加
+      </button>
+    </div>
+  );
+}
+
+// ────────────────────────────────────────────────────────
 // QuickReplyEditor コンポーネント
 // ────────────────────────────────────────────────────────
 
@@ -5954,30 +6081,13 @@ export function MessageForm({
               </div>
             </div>
 
-            {/* ヒント（任意）= 旧「不正解時クイックリプライ」。謎/問題モードのヒント設定エリア。 */}
-            <div className="form-group">
-              <label style={fieldLabel}>ヒント（任意）</label>
-              <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 6 }}>
-                不正解メッセージに添付するヒント用のクイックリプライボタン（最大13件）
-              </div>
-              <QuickReplyEditor
-                items={form.incorrect_quick_replies}
-                onChange={(items) => set("incorrect_quick_replies", items)}
-                responseMessages={allMessages.filter((m) => m.kind === "response" && m.id !== messageId)}
-                phases={phases}
-                currentPhaseId={form.phase_id || null}
-                transitionMessages={allMessages.filter((m) => m.id !== messageId)}
-                characters={characters}
-                workId={workId}
-                oaId={oaId}
-                destinations={destinations}
-                allMessages={allMessages}
-                linkOptions={linkOptions}
-                linkOptionsLiffConfigured={linkOptionsLiffConfigured}
-                heading="ヒント設定"
-                hideHintToggle
-              />
-            </div>
+            {/* ヒント（クイックリプライ）= incorrect_quick_replies（action="hint"）。フラット表示。
+                保存形式は従来どおり QuickReplyItem 配列（runtime / 送信 payload には触れない）。 */}
+            <HintListEditor
+              items={form.incorrect_quick_replies}
+              onChange={(items) => set("incorrect_quick_replies", items)}
+              characters={characters}
+            />
 
             {/* ヒント表示モード */}
             <div className="form-group" style={{ marginBottom: 16 }}>
