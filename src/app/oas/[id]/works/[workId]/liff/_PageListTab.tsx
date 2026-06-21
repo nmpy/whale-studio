@@ -28,6 +28,10 @@ interface Props {
   analytics: Record<string, LiffPageAnalyticsSummaryRow> | null;
   onCreate: () => void;
   onCopyUrl: (pageId: string) => void;
+  /** PR-B: 完全削除（アーカイブとは別）。確認ダイアログ等は呼び出し側で行う。 */
+  onDelete: (page: LiffPageSummary) => void;
+  /** 削除処理中のページ ID（二重送信防止・ボタン表示用）。 */
+  deletingId: string | null;
   emptyTitle: string;
   emptyDescription: string;
 }
@@ -38,9 +42,15 @@ const secondaryBtnCls =
   "inline-flex items-center justify-center px-3 py-1.5 rounded-lg border border-gray-200 " +
   "text-gray-600 text-xs font-medium transition-colors hover:bg-gray-50";
 
+// PR-B: 完全削除ボタン（danger / 赤系）。アーカイブ（戻せる）と視覚的に区別する。
+const dangerBtnCls =
+  "inline-flex items-center justify-center px-3 py-1.5 rounded-lg border border-red-200 " +
+  "text-red-600 text-xs font-medium transition-colors hover:bg-red-50 " +
+  "disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent";
+
 export function PageListTab({
   oaId, workId, pages, isReadOnly, creating, copied, analytics,
-  onCreate, onCopyUrl, emptyTitle, emptyDescription,
+  onCreate, onCopyUrl, onDelete, deletingId, emptyTitle, emptyDescription,
 }: Props) {
   return (
     <div>
@@ -164,6 +174,22 @@ export function PageListTab({
                     >
                       編集
                     </a>
+                    {!isReadOnly && (
+                      <button
+                        type="button"
+                        onClick={() => onDelete(p)}
+                        disabled={p.publish_status === "published" || deletingId === p.id}
+                        aria-busy={deletingId === p.id || undefined}
+                        className={dangerBtnCls}
+                        title={
+                          p.publish_status === "published"
+                            ? "公開中は削除できません（先に非公開 / アーカイブ）"
+                            : "完全削除（復元できません）"
+                        }
+                      >
+                        {deletingId === p.id ? "削除中..." : "削除"}
+                      </button>
+                    )}
                   </div>
                 </li>
               );

@@ -89,6 +89,7 @@ function LiffPagesIndex() {
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   /** page_id -> 集計値。計測 API 失敗時は {} （UI 上は "-" / 空状態） */
   const [analytics, setAnalytics] = useState<Record<string, LiffPageAnalyticsSummaryRow> | null>(null);
 
@@ -169,6 +170,35 @@ function LiffPagesIndex() {
       window.setTimeout(() => setCopied((prev) => (prev === pageId ? null : prev)), 1500);
     } catch {
       showToast("URL のコピーに失敗しました", "error");
+    }
+  };
+
+  // PR-B: LIFFページの完全削除（アーカイブとは別の危険操作）。
+  //   - 公開中は UI でも拒否（API でも 409）。確認ダイアログ必須・二重送信防止。
+  //   - 失敗時は API のエラー文言（公開中 / 参照中など）を toast に表示する。
+  const handleDelete = async (page: LiffPageSummary) => {
+    if (isReadOnly || deletingId) return;
+    if (page.publish_status === "published") {
+      showToast("公開中のページは削除できません。先に非公開またはアーカイブしてください。", "error");
+      return;
+    }
+    const label = page.title?.trim() || "タイトル未設定";
+    const confirmed =
+      typeof window === "undefined" ||
+      window.confirm(`このLIFFページ「${label}」を完全に削除します。\n削除後は復元できません。よろしいですか？`);
+    if (!confirmed) return;
+
+    setDeletingId(page.id);
+    try {
+      await liffConfigApi.deletePage(getDevToken(), workId, page.id);
+      showToast("LIFFページを削除しました。", "success");
+      await reload();
+    } catch (err) {
+      // ConflictError(409) / UnprocessableError(422) は API のメッセージを保持している。
+      const msg = err instanceof Error && err.message ? err.message : "LIFFページの削除に失敗しました。";
+      showToast(msg, "error");
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -301,6 +331,8 @@ function LiffPagesIndex() {
           analytics={analytics}
           onCreate={handleCreate}
           onCopyUrl={handleCopyUrl}
+          onDelete={handleDelete}
+          deletingId={deletingId}
           emptyTitle="ホームに表示する詳細ページがまだありません"
           emptyDescription="LIFFページ編集の「ホームに表示する」をオンにすると、ここに表示されます。"
         />
@@ -317,6 +349,8 @@ function LiffPagesIndex() {
           analytics={analytics}
           onCreate={handleCreate}
           onCopyUrl={handleCopyUrl}
+          onDelete={handleDelete}
+          deletingId={deletingId}
           emptyTitle="独立ページがまだありません"
           emptyDescription="作品メニューには表示せず、QRやURLから直接開きたいページを作成できます。"
         />
