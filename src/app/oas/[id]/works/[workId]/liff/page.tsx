@@ -38,6 +38,7 @@ import {
 import { HomeTab } from "./_HomeTab";
 import { PageListTab } from "./_PageListTab";
 import { AnalyticsTab } from "./_AnalyticsTab";
+import { SurveyFaqTab } from "./_SurveyFaqTab";
 
 // useSearchParams() を使うため Suspense 境界でラップする（next build の prerender 要件）。
 export default function LiffPagesIndexPage() {
@@ -318,6 +319,28 @@ function LiffPagesIndex() {
           onCopyUrl={handleCopyUrl}
           emptyTitle="独立ページがまだありません"
           emptyDescription="作品メニューには表示せず、QRやURLから直接開きたいページを作成できます。"
+        />
+      )}
+
+      {activeTab === "survey" && (
+        <SurveyFaqTab
+          oaId={oaId}
+          workId={workId}
+          kind="survey"
+          pages={pages ?? []}
+          isReadOnly={isReadOnly}
+          onSaved={() => { void reload(); }}
+        />
+      )}
+
+      {activeTab === "faq" && (
+        <SurveyFaqTab
+          oaId={oaId}
+          workId={workId}
+          kind="faq"
+          pages={pages ?? []}
+          isReadOnly={isReadOnly}
+          onSaved={() => { void reload(); }}
         />
       )}
 
