@@ -77,7 +77,7 @@ export function ImportPicker(props: ImportPickerProps) {
                       <div style={{ fontWeight: 700, color: "#334155", marginBottom: 4 }}>{k === "before" ? "取り込み前" : "取り込み後"}</div>
                       <div>entry head: {s.entryHeadCount}件</div>
                       <div>入場送信: {s.total}通{s.overLimit ? "（5通超）" : ""}</div>
-                      <div>QR参照 entry head: {s.qrHeadCount}件</div>
+                      <div>クイックリプライ参照 entry head: {s.qrHeadCount}件</div>
                       <div>freeInput 停止: {s.stoppedAtFreeInputId ? "あり" : "なし"}</div>
                     </div>
                   ))}
@@ -141,7 +141,7 @@ export function ImportPicker(props: ImportPickerProps) {
                   <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>
                     {c.id.slice(0, 8)} ・ {c.chainLength}通
                     {c.containsFreeInput && <span style={{ marginLeft: 6, color: "#b45309" }}>⏸自由入力含む</span>}
-                    {c.qrReferenced && <span style={{ marginLeft: 6, color: "#9a3412" }}>⚠QR参照あり</span>}
+                    {c.qrReferenced && <span style={{ marginLeft: 6, color: "#9a3412" }}>⚠クイックリプライ参照あり</span>}
                   </div>
                   {disabled && <div style={{ fontSize: 11, color: "#b91c1c", marginTop: 2 }}>取り込み不可: {!v.ok ? v.message : ""}</div>}
                 </button>

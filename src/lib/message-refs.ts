@@ -16,8 +16,8 @@ export type ReferrerKind = "next" | "freeInputNext" | "qr_target" | "qr_response
 export const REFERRER_KIND_LABEL: Record<ReferrerKind, string> = {
   next:          "連続メッセージから参照",
   freeInputNext: "自由入力後の応答として参照",
-  qr_target:     "QR分岐先として参照",
-  qr_response:   "QR応答メッセージとして参照",
+  qr_target:     "クイックリプライ分岐先として参照",
+  qr_response:   "クイックリプライ応答メッセージとして参照",
 };
 
 export type Referrer = {

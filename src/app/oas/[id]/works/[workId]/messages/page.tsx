@@ -224,8 +224,8 @@ const FLOW_LINK_PREFIX: Record<FlowLink["type"], string> = {
   puzzle_phase:    "正解後",
   checkin_message: "到着後",
   checkin_phase:   "到着後",
-  qr_message:      "QR",
-  qr_phase:        "QR",
+  qr_message:      "クイックリプライ",
+  qr_phase:        "クイックリプライ",
   chain_external:  "連続",
 };
 
@@ -259,7 +259,7 @@ function FlowStatusCell({
 
       {/* 種別・分岐バッジ（控えめ） */}
       {info.isStart       && <FlowPill tone="info">開始</FlowPill>}
-      {info.hasQrBranch   && <FlowPill tone="neutral">QR分岐あり</FlowPill>}
+      {info.hasQrBranch   && <FlowPill tone="neutral">クイックリプライ分岐あり</FlowPill>}
       {!info.hasQrBranch && info.hasQuickReply && <FlowPill tone="neutral">クイックリプライあり</FlowPill>}
       {info.hasFreeInput  && <FlowPill tone="neutral">自由入力あり</FlowPill>}
       {info.hasImageTap   && <FlowPill tone="neutral">画像タップあり</FlowPill>}
@@ -1489,7 +1489,7 @@ export default function MessagesPage() {
                                 {overLimit && (
                                   <span style={{ fontSize: 10, color: "#b91c1c", lineHeight: 1.5 }}>
                                     ⚠️ この連続メッセージは5通を超えています。LINE Reply API の上限を超えるため、
-                                    6通目以降は通常応答では送れません。5通以内に分割するか、途中に入力 / QR / フェーズ遷移を挟んでください。
+                                    6通目以降は通常応答では送れません。5通以内に分割するか、途中に入力 / クイックリプライ / フェーズ遷移を挟んでください。
                                   </span>
                                 )}
                               </div>
@@ -1708,7 +1708,7 @@ export default function MessagesPage() {
                                 background: "#fff", border: "1px solid #e2e8f0",
                                 borderRadius: 6, padding: "0 5px", verticalAlign: "middle",
                               }}>
-                                QR {cont.quick_replies.length}
+                                クイックリプライ {cont.quick_replies.length}
                               </span>
                             )}
                             {/* Phase 2c: 演出設定有無を小さく注記 */}

@@ -170,7 +170,7 @@ export function validateImport(args: {
   const warnings: string[] = [];
   const kinds = Array.from(new Set(findReferrers(args.headId, args.allMessages as unknown as RefMessage[]).map((r) => r.kind)));
   if (kinds.some((k) => k === "qr_target" || k === "qr_response" || k === "freeInputNext")) {
-    warnings.push("このメッセージは QR / 自由入力応答からも参照されています。取り込むと入場 chain と QR の両方から到達される可能性があります（共有）。");
+    warnings.push("このメッセージは クイックリプライ / 自由入力応答からも参照されています。取り込むと入場 chain と クイックリプライ の両方から到達される可能性があります（共有）。");
   }
   // 別フェーズの entry head を取り込む場合の注意。
   if (args.targetPhaseId && m.phaseId && m.phaseId !== args.targetPhaseId) {
