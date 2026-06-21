@@ -17,6 +17,7 @@ import { GuideCard } from "@/components/onboarding/GuideCard";
 import type { MessageWithRelations, MessageType, PhaseWithCounts, TransitionWithPhases, QuickReplyItem } from "@/types";
 import type { Role } from "@/lib/types/permissions";
 import { collectChainContinuationIds, chainSizeFrom, chainLengthFrom, estimateMaxSendUnit, shouldShowSendUnitWarning, LINE_REPLY_MAX, getChainContinuations, hasAnyTiming, summarizeTiming } from "./_list-helpers";
+import { buildResponseKeywordPhaseIndex, findFlexKeywordPhaseIssues } from "./_flex-keyword-check";
 import { analyzeMessageList } from "@/lib/message-flow-status";
 import type { MessageFlowInfo, FlowLink } from "@/lib/message-flow-status";
 
@@ -537,6 +538,8 @@ export default function MessagesPage() {
   const flowMap   = useMemo(() => analyzeMessageList(messages, new Set(phases.map((p) => p.id))), [messages, phases]);
   const msgById   = useMemo(() => new Map(messages.map((m) => [m.id, m])), [messages]);
   const phaseById = useMemo(() => new Map(phases.map((p) => [p.id, p])), [phases]);
+  // Flex の message-action.text ↔ 応答キーワードの「フェーズズレ / 不在」警告用インデックス（全メッセージから構築）。
+  const kwPhaseIndex = useMemo(() => buildResponseKeywordPhaseIndex(messages), [messages]);
   const toggleChainExpansion = (headId: string) => {
     setExpandedChains((prev) => {
       const next = new Set(prev);
@@ -1504,6 +1507,27 @@ export default function MessagesPage() {
                               </span>
                             </div>
                           )}
+                          {/* Flex の message-action.text に対応する応答キーワードが、このフェーズに無い場合の警告。 */}
+                          {msg.message_type === "flex" && (() => {
+                            const issues = findFlexKeywordPhaseIssues({
+                              flexJson: msg.flex_payload_json,
+                              flexMessagePhaseId: msg.phase?.id ?? null,
+                              index: kwPhaseIndex,
+                            });
+                            if (issues.length === 0) return null;
+                            return (
+                              <div style={{ marginTop: 4, fontSize: 11, lineHeight: 1.6, color: "#b45309" }}>
+                                {issues.map((iss) => (
+                                  <div key={iss.text}>
+                                    ⚠ ボタン「{iss.text}」：
+                                    {iss.status === "missing"
+                                      ? "対応する応答キーワード（種別=応答）がありません。同じフェーズに作成してください。"
+                                      : `応答キーワードは別フェーズ「${iss.otherPhaseIds.map((p) => phaseById.get(p)?.name ?? "別フェーズ").join("・")}」にあります。${msg.phase?.id ? `このメッセージのフェーズ「${phaseById.get(msg.phase.id)?.name ?? "—"}」には無いため反応しません（同フェーズに移すか、表示時にそのフェーズへ遷移を）。` : "このメッセージのフェーズには無いため反応しません。"}`}
+                                  </div>
+                                ))}
+                              </div>
+                            );
+                          })()}
                         </td>
 
                         {/* キャラクター */}
