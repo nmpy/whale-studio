@@ -6,14 +6,35 @@
 import { NextRequest } from "next/server";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { ok, badRequest, notFound, noContent, serverError } from "@/lib/api-response";
+import { ok, badRequest, notFound, noContent, conflict, unprocessable, serverError } from "@/lib/api-response";
 import { withAuth } from "@/lib/auth";
 import { requireRole, getOaIdFromWorkId } from "@/lib/rbac";
 import { requirePlanFeature } from "@/lib/plan-guard";
 import { FEATURE } from "@/lib/constants/plans";
 import { updateLiffConfigSchema, formatZodErrors, validatePublishRequirements } from "@/lib/validations";
+import { getLiffPageDeleteBlockReason, LIFF_PAGE_DELETE_MESSAGES } from "@/lib/liff-page-delete";
 import { toConfigResponse } from "@/lib/liff-utils";
 import { ZodError } from "zod";
+
+/**
+ * PR-B: 削除対象ページを他の設定が参照していないか集計する。
+ *   - button_link ブロック（他ページ）の settings_json.liff_page_id がこのページを指す
+ *   - Message の image_action_liff_page_id がこのページを指す（画像タップで開く LIFF ページ）
+ * いずれも FK 無し（= cascade されず孤児化する）ため、参照があれば削除を拒否する。
+ */
+async function countLiffPageReferences(pageId: string): Promise<number> {
+  const [blockRefs, messageRefs] = await Promise.all([
+    prisma.liffPageBlock.count({
+      where: {
+        blockType:    "button_link",
+        pageConfigId: { not: pageId }, // 自ページのブロックは cascade されるので除外
+        settingsJson: { path: ["liff_page_id"], equals: pageId },
+      },
+    }),
+    prisma.message.count({ where: { imageActionLiffPageId: pageId } }),
+  ]);
+  return blockRefs + messageRefs;
+}
 
 export const dynamic = "force-dynamic";
 
@@ -115,9 +136,12 @@ export const PUT = withAuth(async (req, ctx, user) => {
 });
 
 // ── DELETE ──────────────────────────────────────
-// admin 以上のみ。
-// UI 上では現在この DELETE を呼ぶ導線を出していない (初期スコープ外)。
-// 将来追加するときは UI 側に必ず確認ダイアログ (window.confirm 等) を入れること。
+// admin 以上のみの「完全削除」（復元不可）。アーカイブ（PUT publish_status="archived"）とは別操作。
+// 安全ガード（PR-B）:
+//   - 公開中（published）は削除不可（409）。先に非公開 / アーカイブする。
+//   - 他設定から参照中（button_link.liff_page_id / Message.image_action_liff_page_id）は削除不可（422）。
+//   - 自ページの blocks / submissions 等は schema 上 cascade されるので一緒に削除される。
+//   - UI 側でも確認ダイアログ + 公開中ボタン無効化を行う（多層防御）。
 export const DELETE = withAuth(async (req, ctx, user) => {
   try {
     const { workId, pageId } = await ctx.params;
@@ -133,6 +157,21 @@ export const DELETE = withAuth(async (req, ctx, user) => {
 
     const existing = await loadPage(workId, pageId);
     if (!existing) return notFound("LiffPage");
+
+    // 公開中は参照チェック前に拒否（先に非公開 / アーカイブを促す）。
+    if (existing.publishStatus === "published") {
+      return conflict(LIFF_PAGE_DELETE_MESSAGES.published);
+    }
+
+    // 他設定からの参照があれば削除不可。
+    const referenceCount = await countLiffPageReferences(pageId);
+    const reason = getLiffPageDeleteBlockReason({
+      publishStatus: existing.publishStatus,
+      referenceCount,
+    });
+    if (reason === "referenced") {
+      return unprocessable(LIFF_PAGE_DELETE_MESSAGES.referenced, "LIFF_PAGE_REFERENCED");
+    }
 
     await prisma.liffPageConfig.delete({ where: { id: pageId } });
     return noContent();
