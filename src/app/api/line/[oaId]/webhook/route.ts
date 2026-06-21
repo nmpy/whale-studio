@@ -950,8 +950,9 @@ function matchKeywordsInMemory(
   const inputLoose = normKwLoose(inputText);
 
   // フェーズ内のキーワードメッセージ（triggerKeyword あり / kind ≠ start・puzzle・system_notice）
-  const phaseKwMsgs = phaseMessages
-    .filter((m) => m.triggerKeyword !== null && m.kind !== "start" && m.kind !== "puzzle" && m.kind !== "system_notice")
+  const phaseCandidates = phaseMessages
+    .filter((m) => m.triggerKeyword !== null && m.kind !== "start" && m.kind !== "puzzle" && m.kind !== "system_notice");
+  const phaseKwMsgs = phaseCandidates
     .map((m) => ({
       id:              m.id,
       triggerKeyword:  m.triggerKeyword as string,
@@ -985,11 +986,41 @@ function matchKeywordsInMemory(
     `phaseMsgs=${phaseKwMsgs.length}件 globalKwMsgs=${globalKwMsgs.length}件`,
   );
 
-  return allCandidates.filter((msg) => {
+  const matched = allCandidates.filter((msg) => {
     // 複数キーワード（\n 区切り）のいずれかと一致すれば OK
     const keywords = msg.triggerKeyword.split("\n").map((k) => k.trim()).filter(Boolean);
     return keywords.some((kw) => inputNorm === normKw(kw) || inputLoose === normKwLoose(kw));
   }) as (KeywordMessageRecord & { triggerKeyword: string })[];
+
+  // ── 診断ログ（挙動変更なし。応答トリガー不発の A=keyword不一致 / B=候補外 切り分け用）──
+  //   候補が多い場合に備えて上限 (CAND_CAP) を設ける。triggerKeyword は正規化後を出す。
+  const CAND_CAP = 20;
+  const candidateDebug = [
+    ...phaseCandidates.map((m) => ({
+      src:  "phase",
+      id:   m.id.slice(0, 8),
+      kind: m.kind,
+      kw:   (m.triggerKeyword as string).split("\n").map((k) => normKw(k.trim())).filter(Boolean),
+    })),
+    ...globalKwMsgs.map((m) => ({
+      src:  "global",
+      id:   m.id.slice(0, 8),
+      kind: null,
+      kw:   m.triggerKeyword.split("\n").map((k) => normKw(k.trim())).filter(Boolean),
+    })),
+  ].slice(0, CAND_CAP);
+  console.log(
+    `[line-webhook:trigger-debug] reason=${matched.length > 0 ? "keyword_matched" : "keyword_no_match"}`,
+    `normInput="${inputNorm}" phaseMsgs=${phaseKwMsgs.length} globalKwMsgs=${globalKwMsgs.length}`,
+    `matched=${matched.length}` +
+      (matched.length > 0
+        ? ` matchedIds=[${matched.map((m) => m.id.slice(0, 8)).join(",")}]` +
+          ` matchedKw=[${matched.map((m) => `"${m.triggerKeyword.replace(/\n/g, "\\n")}"`).join(",")}]`
+        : ""),
+    `candidates(max${CAND_CAP})=${JSON.stringify(candidateDebug)}`,
+  );
+
+  return matched;
 }
 
 /** キャッシュ済みフェーズデータからパズル照合をインメモリで行う */
@@ -1418,6 +1449,13 @@ async function handleWebhook(req: NextRequest, oaId: string) {
 
   // ── 6. Sheets モード: oa.spreadsheetId が設定されている場合は Sheets から読み込む ──
   if (oa.spreadsheetId) {
+    // 診断ログ（挙動変更なし）: ここに入ると DB の triggerKeyword(応答トリガー)経路はバイパスされる。
+    console.log(
+      `[line-webhook:trigger-debug] reason=sheets_mode_bypass_db_trigger_keywords`,
+      `oaId=${oa.id.slice(0, 8)} hasSpreadsheetId=${!!oa.spreadsheetId}`,
+      `textEvents=${textEvents.length}`,
+      `texts=[${textEvents.map((e) => `"${(e.message.text ?? "").slice(0, 40)}"`).join(",")}]`,
+    );
     let sheetsData;
     try {
       sheetsData = await loadSheetsData(oa.spreadsheetId);
@@ -1713,6 +1751,15 @@ async function handleTextEvent({
   let phaseHit         = false; // currentPhase キャッシュ HIT フラグ
   let progressUpdateMs = -1;   // userProgress.update の所要時間（transition パスのみ）
 
+  // ── 診断ログ（挙動変更なし）: text イベント受信。Flex message action / QR / 手入力は
+  //    すべてここを通る（= 通常 text event）。currentPhaseId 等は後段の context ログで出す。
+  console.log(
+    `[line-webhook:trigger-debug] reason=text_received`,
+    `eventType=message messageType=text`,
+    `oaId=${oa.id.slice(0, 8)} hasUserId=${!!userId} userId=${userId?.slice(0, 8) ?? "-"}`,
+    `text="${text.slice(0, 60)}" normText="${normKw(text)}"`,
+  );
+
   // ─ 公開中の作品がない ─
   if (!work) {
     await replyToLine(replyToken, [{
@@ -1845,6 +1892,17 @@ async function handleTextEvent({
       if (!progress.waitingForInput) {
         // QR fallthrough 済み → 後段へ
       } else {
+      // 診断ログ（挙動変更なし）: ここで text は「自由入力の回答」として消費され、
+      //   triggerKeyword 照合より前に return する（QR 一致ではなく自由入力扱い）。
+      console.log(
+        `[line-webhook:trigger-debug] reason=waiting_for_input_consumed`,
+        `userId=${userId?.slice(0, 8) ?? "-"}`,
+        `currentPhaseId=${progress.currentPhaseId?.slice(0, 8) ?? "-"}`,
+        `promptMessageId=${waiting.messageId?.slice(0, 8) ?? "-"}`,
+        `variableKey=${waiting.variableKey ?? "(none)"}`,
+        `nextMessageId=${waiting.nextMessageId?.slice(0, 8) ?? "(none)"}`,
+        `text="${text.slice(0, 60)}"`,
+      );
       const currentVars = safeParseVariables(progress.variables);
       // variableKey が null/空 のときは variables に保存しない (= ログ用途・差し込み不要)。
       // ただし waitingForInput はクリアし、nextMessage は送信する。
@@ -2053,6 +2111,18 @@ async function handleTextEvent({
     getCachedGlobalKeywords(work.id),
   ]);
 
+  // 診断ログ（挙動変更なし）: 照合実行前の context。原因 B(候補外)/C(ending)/D(waiting)/E(sheets) の切り分け基点。
+  console.log(
+    `[line-webhook:trigger-debug] reason=context_resolved`,
+    `userId=${userId?.slice(0, 8) ?? "-"}`,
+    `currentPhaseId=${progress.currentPhaseId?.slice(0, 8) ?? "-"}`,
+    `currentPhaseLoaded=${!!currentPhase}`,
+    `reachedEnding=${!!progress.reachedEnding}`,
+    `waitingForInput=${!!progress.waitingForInput}`,
+    `globalKwMsgs=${globalKwMsgs.length}`,
+    `text="${text.slice(0, 60)}"`,
+  );
+
   // フラグを早期に解析（解決済みパズル判定に使用）
   const currentFlags    = safeParseFlags(progress.flags);
   const solvedPuzzleIds = Array.isArray(currentFlags.solvedPuzzles)
@@ -2257,6 +2327,15 @@ async function handleTextEvent({
       return;
     }
     console.log(`[Webhook][STEP] エンディング到達済み → 無視 userId=${userId} text="${text.slice(0, 40)}"`);
+    // 診断ログ（挙動変更なし）: reachedEnding により frontier QR ナビ以外のテキストを無視（triggerKeyword 照合に進まない）。
+    console.log(
+      `[line-webhook:trigger-debug] reason=reached_ending_ignore_text`,
+      `userId=${userId?.slice(0, 8) ?? "-"}`,
+      `currentPhaseId=${progress.currentPhaseId?.slice(0, 8) ?? "-"}`,
+      `reachedEnding=true`,
+      `hasFrontier=${!!endingFrontier} matchedQrItem=${!!matchedQrItem}`,
+      `text="${text.slice(0, 60)}"`,
+    );
     return;
   }
 
@@ -2366,6 +2445,15 @@ async function handleTextEvent({
     const msgs = chainedMsgs.length > 0 ? chainedMsgs : buildKeywordMessages(keywordMatched, systemSender, vars);
     // 送信 ID: チェーンが成立していればチェーン全体、そうでなければ直接マッチ ID
     const sentIdsForFreeInput = chainedMsgs.length > 0 ? chainedIds : keywordMatched.map((m) => m.id);
+    // 診断ログ（挙動変更なし）: triggerKeyword 一致 → 送信へ。送信予定数と transport(reply) を出す。
+    console.log(
+      `[line-webhook:trigger-debug] reason=keyword_matched`,
+      `userId=${userId?.slice(0, 8) ?? "-"}`,
+      `currentPhaseId=${progress.currentPhaseId?.slice(0, 8) ?? "-"}`,
+      `matchedIds=[${keywordMatched.map((m) => m.id.slice(0, 8)).join(",")}]`,
+      `matchedKw=[${keywordMatched.map((m) => `"${m.triggerKeyword.replace(/\n/g, "\\n")}"`).join(",")}]`,
+      `plannedMsgs=${msgs.length} transport=reply(replyWithLagToLine)`,
+    );
     if (msgs.length > 0) {
       const tReplyKw = Date.now();
       // Phase 2c hotfix: chain (= length > 1) で per-message timing が効くよう replyWithLagToLine に統一
