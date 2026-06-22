@@ -154,6 +154,42 @@ describe("runScheduledMessageWorker — キャンセル判定", () => {
   });
 });
 
+describe("runScheduledMessageWorker — dryRun（本番 cron route 用・DB を変更しない）", () => {
+  it("dryRun は claim/markCanceled/markSent を呼ばず DB を変更しない（status は pending のまま）", async () => {
+    const rows = [makeRow()];
+    const db = fakeDb(rows);
+    const claimSpy = vi.spyOn(db, "claimToSending");
+    const cancelSpy = vi.spyOn(db, "markCanceled");
+    const sentSpy = vi.spyOn(db, "markSent");
+    const res = await runScheduledMessageWorker({ db, getUserProgress: progressOK, now: NOW, dryRun: true });
+    expect(claimSpy).not.toHaveBeenCalled();
+    expect(cancelSpy).not.toHaveBeenCalled();
+    expect(sentSpy).not.toHaveBeenCalled();
+    expect(rows[0].status).toBe("pending"); // 変更されない
+    expect(res).toMatchObject({ claimed: 1, canceled: 0, skipped: 0, sent: 0, dryRun: true });
+  });
+
+  it("dryRun でも would-cancel は数える（DB は変更しない）", async () => {
+    const rows = [makeRow({ cancelPolicyJson: JSON.stringify(buildCancelPolicy({ phaseId: "p1", cancelOnPhaseChange: true })) })];
+    const db = fakeDb(rows);
+    const res = await runScheduledMessageWorker({
+      db, now: NOW, dryRun: true,
+      getUserProgress: async () => ({ currentPhaseId: "p2", reachedEnding: false }),
+    });
+    expect(res).toMatchObject({ canceled: 1, claimed: 0, dryRun: true });
+    expect(rows[0].status).toBe("pending"); // canceled に変更しない
+  });
+
+  it("dryRun では sender を呼ばない", async () => {
+    const rows = [makeRow()];
+    const db = fakeDb(rows);
+    const sender = vi.fn(async () => ({ sent: true, requestId: "x" }));
+    const res = await runScheduledMessageWorker({ db, getUserProgress: progressOK, now: NOW, dryRun: true, sender });
+    expect(sender).not.toHaveBeenCalled();
+    expect(res.sent).toBe(0);
+  });
+});
+
 describe("runScheduledMessageWorker — sender", () => {
   it("no-op sender では push API（sender 内）が送信扱いにならず sent=0・sending のまま", async () => {
     const rows = [makeRow()];

@@ -54,11 +54,17 @@ describe("POST /api/cron/scheduled-messages — 認証", () => {
     expect(res.status).toBe(200);
     expect((prisma.scheduledLineMessage.findMany as ReturnType<typeof vi.fn>)).toHaveBeenCalledOnce();
     const json = await res.json();
-    expect(json).toEqual({ success: true, data: { claimed: 0, canceled: 0, skipped: 0, sent: 0, errors: 0 } });
+    expect(json).toEqual({ success: true, data: { claimed: 0, canceled: 0, skipped: 0, sent: 0, errors: 0, dryRun: true } });
     // レスポンスに PII/token を示すキーが無いこと。
     const keys = Object.keys(json.data);
     expect(keys).not.toContain("lineUserId");
     expect(keys).not.toContain("payload");
     expect(JSON.stringify(json)).not.toContain(SECRET);
+  });
+
+  it("本番 route は dryRun: DB を変更しない（updateMany/update を呼ばない）", async () => {
+    await POST(reqWith(`Bearer ${SECRET}`));
+    expect((prisma.scheduledLineMessage.updateMany as ReturnType<typeof vi.fn>)).not.toHaveBeenCalled();
+    expect((prisma.scheduledLineMessage.update as ReturnType<typeof vi.fn>)).not.toHaveBeenCalled();
   });
 });

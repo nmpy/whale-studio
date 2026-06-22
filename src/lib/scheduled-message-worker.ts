@@ -53,16 +53,18 @@ export interface ScheduledWorkerDb {
 }
 
 export interface WorkerResult {
-  /** claim に成功し、キャンセルされず、送信待ち（sending）として残った件数（PR-4a no-op の主結果）。 */
+  /** live: claim 成功で sending として残った件数 / dryRun: 送信されるはずだった件数（would-send）。 */
   claimed:  number;
-  /** キャンセル条件に該当して canceled にした件数。 */
+  /** live: canceled にした件数 / dryRun: キャンセルされるはずだった件数（would-cancel）。 */
   canceled: number;
-  /** claim できなかった（他 worker が先取り / 既に pending でない）件数。 */
+  /** claim できなかった（他 worker が先取り / 既に pending でない）件数。dryRun では常に 0。 */
   skipped:  number;
-  /** real sender が送信成功して sent にした件数（PR-4a no-op では 0）。 */
+  /** real sender が送信成功して sent にした件数（PR-4a no-op / dryRun では 0）。 */
   sent:     number;
   /** 行単位の処理で例外が出た件数（worker 全体は落とさない）。 */
   errors:   number;
+  /** dryRun（DB を変更しない読み取り評価）だったか。 */
+  dryRun:   boolean;
 }
 
 export interface WorkerDeps {
@@ -74,6 +76,14 @@ export interface WorkerDeps {
   batchSize?:      number;
   /** 送信実装（既定 no-op = 送信しない）。PR-4b で real LINE push を注入。 */
   sender?:         ScheduledSender;
+  /**
+   * dryRun=true: **DB を一切変更しない**読み取り評価のみ（findDuePending + getUserProgress を読むだけ）。
+   *   「いま実行したら何件 send / cancel されるか」を返す。claim も markCanceled/markSent もしない。
+   *   PR-4a で本番公開する cron route はこちらを使う（no-op sender のまま pending→sending に滞留させない）。
+   * dryRun=false（既定）: live mode。claim→sending・canceled・(real sender 時)sent まで実際に遷移させる。
+   *   PR-4b で real sender とともに有効化する。
+   */
+  dryRun?:         boolean;
 }
 
 export const DEFAULT_BATCH_SIZE = 20;
@@ -96,31 +106,42 @@ function parseCancelPolicy(json: string | null): ScheduledCancelPolicy | null {
 export async function runScheduledMessageWorker(deps: WorkerDeps): Promise<WorkerResult> {
   const batchSize = deps.batchSize ?? DEFAULT_BATCH_SIZE;
   const sender = deps.sender ?? noopSender;
-  const result: WorkerResult = { claimed: 0, canceled: 0, skipped: 0, sent: 0, errors: 0 };
+  const dryRun = deps.dryRun ?? false;
+  const result: WorkerResult = { claimed: 0, canceled: 0, skipped: 0, sent: 0, errors: 0, dryRun };
+
+  /** キャンセル判定（読み取りのみ）。progress 取得不能は安全側＝cancel しない。 */
+  async function shouldCancel(row: PendingScheduledRow): Promise<{ cancel: boolean; reason: string | null }> {
+    const policy = parseCancelPolicy(row.cancelPolicyJson);
+    if (!policy || !(policy.phaseChanged || policy.workCompleted)) return { cancel: false, reason: null };
+    const progress = await deps.getUserProgress(row);
+    if (!progress) return { cancel: false, reason: null }; // 判定不能 → 誤 cancel しない
+    return evaluateCancelPolicy(policy, progress);
+  }
 
   const due = await deps.db.findDuePending({ now: deps.now, limit: batchSize });
 
   for (const row of due) {
     try {
-      // ── atomic claim（pending→sending）。0 件なら他 worker が先取り済み = skip。 ──
+      if (dryRun) {
+        // ── dryRun: DB を一切変更しない。何件 send/cancel されるかだけ数える（claim も sender もしない）。 ──
+        const { cancel } = await shouldCancel(row);
+        if (cancel) result.canceled++; else result.claimed++;
+        continue;
+      }
+
+      // ── live mode ── atomic claim（pending→sending）。0 件なら他 worker が先取り済み = skip。 ──
       const claimedCount = await deps.db.claimToSending(row.id, deps.now);
       if (claimedCount === 0) { result.skipped++; continue; }
 
       // ── 送信直前のキャンセル判定 ──
-      const policy = parseCancelPolicy(row.cancelPolicyJson);
-      if (policy && (policy.phaseChanged || policy.workCompleted)) {
-        const progress = await deps.getUserProgress(row);
-        if (progress) {
-          const { cancel, reason } = evaluateCancelPolicy(policy, progress);
-          if (cancel && reason) {
-            await deps.db.markCanceled(row.id, reason, deps.now);
-            result.canceled++;
-            continue;
-          }
-        }
-        // progress 取得不能時は安全側: ここでは canceled にも sent にもせず sending のまま残す。
-        // TODO(PR-4b): sending のまま滞留した予約の timeout/recover（再評価・再送 or failed）を実装する。
+      const { cancel, reason } = await shouldCancel(row);
+      if (cancel && reason) {
+        await deps.db.markCanceled(row.id, reason, deps.now);
+        result.canceled++;
+        continue;
       }
+      // progress 取得不能等で判定できない場合は安全側: canceled にも sent にもせず sending のまま残す。
+      // TODO(PR-4b): sending のまま滞留した予約の timeout/recover（再評価・再送 or failed）を実装する。
 
       // ── 送信（PR-4a は no-op = sent:false → sending のまま claimed として計上）。 ──
       const sendResult = await sender(row);
@@ -128,12 +149,10 @@ export async function runScheduledMessageWorker(deps: WorkerDeps): Promise<Worke
         await deps.db.markSent(row.id, sendResult.requestId ?? null, deps.now);
         result.sent++;
       } else {
-        // PR-4a: 実送信せず sending のまま。PR-4b の real sender が sent へ進める。
         result.claimed++;
       }
     } catch {
-      // 行単位のエラーは worker 全体を落とさない。該当行は sending のまま（PR-4b で recover）。
-      // 例外内容は PII を含み得るためログに出さない（件数のみ計上）。
+      // 行単位のエラーは worker 全体を落とさない。例外内容は PII を含み得るためログに出さない。
       result.errors++;
     }
   }
