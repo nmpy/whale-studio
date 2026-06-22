@@ -82,3 +82,30 @@ describe("実機送信payload: resolveDisplayQrItems → buildQuickReplyFromItem
     expect(qr.items[0].action).toMatchObject({ label: "選択肢A" }); // 既存QRが消えない
   });
 });
+
+// ── 回帰: 通常 quick_replies の有無（空配列/null）がヒント合成を阻害しないこと ──
+// （本番で「ヒント①」を ヒント（クイックリプライ）に設定しても問題下に出なかった事象の再発防止）
+describe("回帰: quick_replies の有無に関わらずヒントを合成する", () => {
+  const hint1 = (): QuickReplyItem =>
+    ({ action: "hint", label: "ヒント①", value: "ヒント①", hint_text: "ヒントじゃ。" }) as QuickReplyItem;
+
+  it("1. quick_replies=[] + ヒントあり → ヒント① が合成される", () => {
+    const items = resolveDisplayQrItems({ kind: "puzzle", hintMode: "always", quickReplies: [], incorrectQuickReplies: [hint1()] });
+    expect(items.map((i) => i.label)).toEqual(["ヒント①"]);
+    const qr = buildQuickReplyFromItems(items)!;
+    expect(qr.items).toHaveLength(1);
+    expect(qr.items[0].action).toMatchObject({ type: "message", label: "ヒント①", text: "ヒント①" });
+  });
+  it("2. quick_replies=null + ヒントあり → ヒント① が合成される", () => {
+    const items = resolveDisplayQrItems({ kind: "puzzle", hintMode: "always", quickReplies: null, incorrectQuickReplies: [hint1()] });
+    expect(items.map((i) => i.label)).toEqual(["ヒント①"]);
+  });
+  it("3. 通常QRあり + ヒントあり → 通常QRが先頭・ヒントが後ろ（既存QRが消えない）", () => {
+    const items = resolveDisplayQrItems({ kind: "puzzle", hintMode: "always", quickReplies: [normalQr("選択肢A"), normalQr("選択肢B")], incorrectQuickReplies: [hint1()] });
+    expect(items.map((i) => i.label)).toEqual(["選択肢A", "選択肢B", "ヒント①"]);
+  });
+  it("hint_mode 未指定(null)でも quick_replies=[] でヒント合成される（既定 always 相当）", () => {
+    const items = resolveDisplayQrItems({ kind: "puzzle", hintMode: null, quickReplies: [], incorrectQuickReplies: [hint1()] });
+    expect(items.map((i) => i.label)).toEqual(["ヒント①"]);
+  });
+});
