@@ -3285,8 +3285,12 @@ function TimingConfigSection<T extends TimingFormFields>({
             lineHeight: 1.6,
           }}
         >
-          注意：連続メッセージで待機時間・既読タイミング・「入力中…」表示などの演出を使うと、
-          2通目以降はPush配信になり、LINE公式アカウントの月間メッセージ通数を消費します。
+          ここでの待機時間・既読タイミング・「入力中…」表示は、<strong>返信（reply）時の短い演出</strong>です。
+          1通目は reply で送られ通数を消費しません（連続メッセージの2通目以降は Push 配信になり、
+          LINE公式アカウントの月間メッセージ通数を消費します）。
+          <br />
+          <strong>10分後・30分後など長時間あとに送る</strong>用途は reply では実現できません。
+          下の「時間差メッセージ（予約送信）」をご利用ください（Push 配信・通数を消費します）。
         </div>
           {/* ── 返信までの待機時間（1通目の lag_ms = 実機反映される唯一の待機項目） ──
               演出設定の最上部に配置。保存挙動は呼び出し側 set("lag_ms") に委譲（表示のみ移動）。 */}
@@ -3418,6 +3422,54 @@ function TimingConfigSection<T extends TimingFormFields>({
           <HelpDetails label="詳細（演出が反映されるタイミング）">
             待機時間・入力中表示は、<strong>このメッセージを送信する前</strong>に反映されます。次のメッセージにも演出を入れたい場合は、クイックリプライやキーワードなど、<strong>ユーザー操作を挟んで</strong>次のメッセージへ進めてください。
           </HelpDetails>
+      </div>
+    </SectionAccordion>
+  );
+}
+
+// ────────────────────────────────────────────────────────
+// ScheduledMessageInfo — 「時間差メッセージ（予約送信）」の概念説明（PR-1: 文言のみ・実送信なし）
+//   reply 演出（短い待機・通数消費なし）と、長時間あとの push 配信（通数消費あり）を明確に分離する。
+//   実際の予約作成・送信は後続 PR（ScheduledLineMessage テーブル + cron）で対応予定。
+// ────────────────────────────────────────────────────────
+function ScheduledMessageInfo() {
+  return (
+    <SectionAccordion
+      title="時間差メッセージ（予約送信）"
+      optional
+      description="ユーザーの操作から指定時間後に push 配信でメッセージを送る機能（通数を消費します）"
+      defaultOpen={false}
+      badge={
+        <span style={{ fontSize: 10, fontWeight: 700, background: "#ede9fe", color: "#6d28d9", borderRadius: 4, padding: "1px 6px" }}>
+          準備中
+        </span>
+      }
+    >
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        <div style={checkNotice.muted}>
+          <strong>時間差メッセージ（予約送信）とは</strong>
+          <br />
+          ユーザーの操作（タップや回答など）から <strong>10分後・30分後・1時間後・翌日</strong> など、
+          指定した時間が経過したあとに、<strong>push 配信</strong>でメッセージを送る機能です。
+          ARG・物語演出向けの「時間差」を作れます。
+        </div>
+
+        <div style={checkNotice.warn}>
+          この機能は LINE公式アカウントの<strong>月間メッセージ通数を消費</strong>します（push 配信のため）。
+          <br />
+          無料枠や追加メッセージ上限を超えると、LINE 側で送信できない場合があります。
+        </div>
+
+        <div style={checkNotice.muted}>
+          <strong>reply（返信）との違い</strong>
+          <br />
+          返信（reply）は受信から約1分以内・1回だけ使える仕組みのため、<strong>10分後など長時間あとの送信は reply では実現できません</strong>。
+          上の「演出設定」（待機時間・既読・「入力中…」）は reply 用の短い演出です。長時間あとの送信はこの「時間差メッセージ」（push）で行います。
+        </div>
+
+        <div style={hintText}>
+          ※ この機能は順次提供予定です。現在は設定項目（送信タイミング・送信内容・キャンセル条件など）の追加を準備しています。
+        </div>
       </div>
     </SectionAccordion>
   );
@@ -5481,6 +5533,11 @@ export function MessageForm({
                   headDelayMs={form.lag_ms}
                   onHeadDelayChange={(ms) => set("lag_ms", ms)}
                 />
+
+                {/* 時間差メッセージ（予約送信）— 概念説明のみ（PR-1）。実送信は後続 PR で対応。 */}
+                <div style={{ marginTop: 12 }}>
+                  <ScheduledMessageInfo />
+                </div>
 
               </div>{/* /padding */}
             </div>{/* /1通目ラッパー */}
