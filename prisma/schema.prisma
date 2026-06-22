@@ -164,6 +164,7 @@ model Work {
   werewolfTitles      WerewolfTitle[]
   locations           Location[]
   checkinWaitTriggers CheckinWaitTrigger[]
+  scheduledLineMessages ScheduledLineMessage[]
   liveSessions        LiveSession[]
   liveScripts         LiveScript[]
   liveCues            LiveCue[]
@@ -1528,6 +1529,55 @@ model CheckinWaitTrigger {
   @@index([locationId, status])
   @@index([workId])
   @@map("checkin_wait_triggers")
+}
+
+/// 時間差メッセージ（予約送信）の予約レコード。
+/// ユーザー操作の N 分後に push 配信する予約を「作るだけ」のテーブル（PR-3）。
+/// 実 push 送信・cron 実行は PR-4。reply ではなく push 配信（通数消費）として扱う。
+model ScheduledLineMessage {
+  id               String    @id @default(uuid())
+  oaId             String    @map("oa_id")
+  workId           String    @map("work_id")
+  /// 予約対象ユーザー（LINE ユーザー ID / テスト用任意 ID）
+  lineUserId       String    @map("line_user_id")
+  /// 予約作成時の進行(UserProgress.id・任意)。FK は張らず graceful lookup。
+  userProgressId   String?   @map("user_progress_id")
+  /// 予約作成時のフェーズ(Phase.id・任意)。送信前キャンセル判定（phase_changed）の基準。
+  phaseId          String?   @map("phase_id")
+  /// 予約のきっかけメッセージ(Message.id・任意)。FK は張らず graceful lookup。
+  sourceMessageId  String?   @map("source_message_id")
+  /// 予約のトリガー種別: "message_action" | "keyword" など（将来拡張）。
+  triggerType      String    @map("trigger_type")
+  /// トリガーイベント識別子（任意・冪等キーの一部に使う）。
+  triggerEventId   String?   @map("trigger_event_id")
+  /// 送信予定時刻（UTC）。これ以降に PR-4 の cron が push 送信する。
+  dueAt            DateTime  @map("due_at")
+  /// "pending" | "sending" | "sent" | "canceled" | "failed"。PR-3 では pending/canceled を使用。
+  /// sending/sent/failed は PR-4（実送信）用に enum 値だけ先に用意。
+  status           String    @default("pending")
+  /// 送信予定メッセージ内容の JSON 文字列（message_type / body / character 等。将来の push で使う形）。
+  payloadJson      String    @map("payload_json")
+  /// キャンセル条件の JSON 文字列（phase_changed / work_completed / same_trigger 評価情報）。
+  cancelPolicyJson String?   @map("cancel_policy_json")
+  /// 二重予約防止の冪等キー（非 null・@@unique）。
+  /// `${lineUserId}:${workId}:${sourceMessageId|_}:${triggerEventId|_}:${dueAtBucket}`。
+  idempotencyKey   String    @map("idempotency_key")
+  /// PR-4 用: LINE 送信リクエスト識別子（任意）。
+  lineRequestId    String?   @map("line_request_id")
+  retryCount       Int       @default(0) @map("retry_count")
+  lastError        String?   @map("last_error")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+  sentAt           DateTime? @map("sent_at")
+  canceledAt       DateTime? @map("canceled_at")
+
+  work Work @relation(fields: [workId], references: [id], onDelete: Cascade)
+
+  @@unique([idempotencyKey])
+  @@index([status, dueAt])
+  @@index([lineUserId, workId, status])
+  @@index([workId])
+  @@map("scheduled_line_messages")
 }
 
 model LocationVisit {
