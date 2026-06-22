@@ -944,10 +944,43 @@ function HintListEditor({ items, onChange, characters }: {
   onChange:   (items: QuickReplyItem[]) => void;
   characters: Character[];
 }) {
+  // スイッチ OFF 時にラベルを「一時退避」しておき、再 ON で復元する（保存形式は変えない＝OFF のまま保存なら空）。
+  // index 揃えで管理（add/remove で同期。このエディタには並べ替え UI が無いため index は安定）。
+  const [stashNext,   setStashNext]   = useState<string[]>([]);
+  const [stashCancel, setStashCancel] = useState<string[]>([]);
+
   const update = (i: number, patch: Partial<QuickReplyItem>) =>
     onChange(items.map((it, ii) => (ii === i ? { ...it, ...patch } : it)));
-  const remove = (i: number) => onChange(items.filter((_, ii) => ii !== i));
-  const add = () => onChange([...items, { label: "", action: "hint", hint_text: "", hint_followup: "", hint_character_id: null } as QuickReplyItem]);
+  const remove = (i: number) => {
+    onChange(items.filter((_, ii) => ii !== i));
+    setStashNext((s)   => s.filter((_, ii) => ii !== i));
+    setStashCancel((s) => s.filter((_, ii) => ii !== i));
+  };
+  const add = () => {
+    onChange([...items, { label: "", action: "hint", hint_text: "", hint_followup: "", hint_character_id: null } as QuickReplyItem]);
+    setStashNext((s)   => [...s, ""]);
+    setStashCancel((s) => [...s, ""]);
+  };
+
+  // OFF: 現在のラベルを退避してフォーム値を空に（入力欄は非表示）。ON: 退避値があれば復元、無ければ既定文言。
+  const toggleNext = (i: number, on: boolean) => {
+    if (on) {
+      const restored = (stashNext[i] ?? "").trim() || (items[i]?.hint_next_label ?? "") || "さらにヒント";
+      update(i, { hint_next_label: restored });
+    } else {
+      setStashNext((s) => { const n = [...s]; n[i] = items[i]?.hint_next_label ?? ""; return n; });
+      update(i, { hint_next_label: undefined });
+    }
+  };
+  const toggleCancel = (i: number, on: boolean) => {
+    if (on) {
+      const restored = (stashCancel[i] ?? "").trim() || (items[i]?.hint_cancel_label ?? "") || "問題にもどる";
+      update(i, { hint_cancel_label: restored });
+    } else {
+      setStashCancel((s) => { const n = [...s]; n[i] = items[i]?.hint_cancel_label ?? ""; return n; });
+      update(i, { hint_cancel_label: undefined });
+    }
+  };
 
   const inputStyle: React.CSSProperties = { fontSize: 13 };
 
@@ -1006,7 +1039,7 @@ function HintListEditor({ items, onChange, characters }: {
             <div style={{ marginTop: 10 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <Switch checked={hasNext} ariaLabel="さらにヒント"
-                  onChange={(on) => update(i, { hint_next_label: on ? (item.hint_next_label || "さらにヒント") : undefined })} />
+                  onChange={(on) => toggleNext(i, on)} />
                 <span style={{ fontSize: 12, color: "#374151" }}>さらにヒント</span>
               </div>
               {hasNext && (
@@ -1024,7 +1057,7 @@ function HintListEditor({ items, onChange, characters }: {
             <div style={{ marginTop: 8 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <Switch checked={hasCancel} ariaLabel="問題にもどる"
-                  onChange={(on) => update(i, { hint_cancel_label: on ? (item.hint_cancel_label || "問題にもどる") : undefined })} />
+                  onChange={(on) => toggleCancel(i, on)} />
                 <span style={{ fontSize: 12, color: "#374151" }}>問題にもどる</span>
               </div>
               {hasCancel && (
