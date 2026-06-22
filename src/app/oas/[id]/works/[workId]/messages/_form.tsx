@@ -6114,6 +6114,33 @@ export function MessageForm({
               </div>
             </div>
 
+            {/* 旧「ヒントテキスト」(puzzle_hint_text) の移行案内。
+                値があるのにヒント（クイックリプライ）が未設定のときだけ表示し、ワンクリックで移行する。 */}
+            {form.puzzle_hint_text.trim() &&
+             !form.incorrect_quick_replies.some((i) => i.action === "hint" && i.enabled !== false) && (
+              <div style={{ marginBottom: 12, padding: "10px 12px", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 8 }}>
+                <div style={{ fontSize: 12, color: "#92400e", lineHeight: 1.6 }}>
+                  旧ヒントテキストに内容があります。問題メッセージの下に<strong>ヒントボタン（クイックリプライ）</strong>を表示するには、「ヒント（クイックリプライ）」へ移してください。
+                  <span style={{ display: "block", color: "#b45309", marginTop: 2 }}>※「ヒントテキスト」は問題の下には表示されません（プレイヤーが「ヒント」と送ったときの応答用）。</span>
+                </div>
+                <button type="button" className="btn btn-ghost"
+                  style={{ marginTop: 8, fontSize: 12, padding: "5px 12px", color: "#92400e", borderColor: "#fcd34d", background: "#fff" }}
+                  onClick={() => {
+                    const text = form.puzzle_hint_text.trim();
+                    // incorrect_quick_replies に action="hint" を1件追加（保存形式は不変）。
+                    set("incorrect_quick_replies", [
+                      ...form.incorrect_quick_replies,
+                      { action: "hint", label: "ヒント", value: "ヒント", hint_text: text, hint_character_id: null } as QuickReplyItem,
+                    ]);
+                    // 問題下に常時表示させる + 旧テキストは移行済みとして空にする（UI上）。
+                    set("hint_mode", "always");
+                    set("puzzle_hint_text", "");
+                  }}>
+                  ヒント（クイックリプライ）へ移す
+                </button>
+              </div>
+            )}
+
             {/* ヒント（クイックリプライ）= incorrect_quick_replies（action="hint"）。フラット表示。
                 保存形式は従来どおり QuickReplyItem 配列（runtime / 送信 payload には触れない）。 */}
             <HintListEditor
@@ -6157,19 +6184,9 @@ export function MessageForm({
               </div>
             </div>
 
-            {/* puzzle_hint_text */}
-            <div className="form-group" style={{ marginBottom: 0 }}>
-              <label style={fieldLabel} htmlFor="puzzle_hint_text">ヒントテキスト（任意）</label>
-              <textarea
-                id="puzzle_hint_text"
-                className="form-input"
-                style={{ minHeight: 70, resize: "vertical" }}
-                value={form.puzzle_hint_text}
-                onChange={(e) => set("puzzle_hint_text", e.target.value)}
-                placeholder="ユーザーがヒントを求めたときに送信するテキスト"
-                maxLength={1000}
-              />
-            </div>
+            {/* 旧「ヒントテキスト（任意）」(puzzle_hint_text) の入力 UI は廃止（クイックリプライ方式へ統一）。
+                ヒントは上の「ヒント（クイックリプライ）」に集約。既存値は保存形式維持のため form 状態に保持し
+                （load/save は不変）、移行は上部の案内バナーから行う。runtime/webhook の旧 fallback は不変。 */}
           </SectionAccordion>
           )} {/* /isPuzzle 謎の回答設定 */}
 
