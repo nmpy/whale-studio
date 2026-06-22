@@ -779,10 +779,33 @@ export async function pushToLine(
  * - loading animation は 1:1 トークのみ対象（group/room では呼ばない）。
  * - loading API 失敗は送信を止めない（ログのみ・握りつぶして続行）。
  */
-/** reply 送信「前」に待てる上限（ms）。replyToken は受信から約1分で失効するため、
- *  CMS 設定秒が極端に大きい場合でも、ここで頭打ちにして reply 失効を防ぐ（loadingSeconds 自体は CMS 値のまま）。 */
-const MAX_REPLY_HEAD_LOADING_DELAY_MS = 30000;
+/**
+ * reply API の「送信前待機」の安全上限（ms）。
+ *
+ * 設計意図（秒数変換 と 安全上限 を混同しないこと）:
+ *   - CMS の「入力中…」秒数を基本にして送信前に待つ（= 実表示時間を CMS 設定秒へ近づける）。
+ *   - LINE に渡す `loadingSeconds` は別途 5 刻み切り上げ（resolveCmsLoadingPlan で算出）。
+ *   - ただし replyToken は受信から約 1 分で失効するため、reply 送信前に待てるのはここまで（= 30 秒）。
+ *     これを超える CMS 設定は **安全側に 30 秒へ丸める**（loadingSeconds 自体は CMS 値のまま LINE へ渡す）。
+ *   - 30 秒を超える厳密な演出が必要な場合は、reply では保証できないため push 経路など別設計が必要。
+ */
+export const MAX_REPLY_CMS_LOADING_DELAY_MS = 30_000;
 
+/**
+ * reply 送信前の CMS loading 待機を安全上限（MAX_REPLY_CMS_LOADING_DELAY_MS）で丸める純関数。
+ * 秒数変換（resolveCmsLoadingPlan）とは独立した「replyToken 保護」専用の上限処理。テスト可能。
+ */
+export function clampReplyCmsLoadingDelayMs(cmsDelayMs: number): { appliedDelayMs: number; clamped: boolean } {
+  const safe = Math.max(0, Number.isFinite(cmsDelayMs) ? cmsDelayMs : 0);
+  const appliedDelayMs = Math.min(safe, MAX_REPLY_CMS_LOADING_DELAY_MS);
+  return { appliedDelayMs, clamped: appliedDelayMs < safe };
+}
+
+/**
+ * 先頭（reply で着弾する）メッセージに CMS「入力中…」設定があれば、送信直前に loading を出し、
+ * CMS 設定秒だけ待ってから返す。未設定なら loading も待機も行わない（= 即送信）。
+ * reply 前待機は replyToken 失効回避のため MAX_REPLY_CMS_LOADING_DELAY_MS(30s) で頭打ちにする。
+ */
 async function applyHeadCmsLoading(
   head:               LineMessage | undefined,
   userId:             string,
@@ -800,15 +823,19 @@ async function applyHeadCmsLoading(
   } catch {
     // loading 失敗は reply を止めない。
   }
-  // replyToken 失効回避のため、reply 前待機は上限で頭打ちにする（切り詰めたら可視ログを残す）。
-  const delayMs = Math.min(plan.delayMs, MAX_REPLY_HEAD_LOADING_DELAY_MS);
-  if (delayMs < plan.delayMs) {
+  // replyToken 失効回避のため、reply 前待機は安全上限で頭打ちにする（切り詰めたら可視ログを残す）。
+  const { appliedDelayMs, clamped } = clampReplyCmsLoadingDelayMs(plan.delayMs);
+  if (clamped) {
     console.info("[line:reply-loading:clamped]", JSON.stringify({
-      requestedDelayMs: plan.delayMs, appliedDelayMs: delayMs, reason: "reply_token_expiry_guard",
+      cmsDelayMs:     plan.delayMs,
+      actualDelayMs:  appliedDelayMs,
+      loadingSeconds: plan.loadingSeconds,
+      clamped:        true,
+      reason:         "reply_token_safety",
     }));
   }
-  await sleepFn(delayMs);
-  return { shown, delayMs, loadingSeconds: plan.loadingSeconds };
+  await sleepFn(appliedDelayMs);
+  return { shown, delayMs: appliedDelayMs, loadingSeconds: plan.loadingSeconds };
 }
 
 export async function replyWithLagToLine(
