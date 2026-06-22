@@ -740,6 +740,9 @@ export interface RuntimePhaseMessage {
   flex_payload_json: string | null;
   /** メッセージ個別のクイックリプライ（設定時は遷移 quickReply より優先） */
   quick_replies:     QuickReplyItem[] | null;
+  /** 問題（puzzle）のヒント用クイックリプライ（action="hint"）。hint_mode="always" のとき問題メッセージに表示。
+   *  任意（未指定の構築箇所もあるため optional・送信時は null/undefined を安全に無視）。 */
+  incorrect_quick_replies?: QuickReplyItem[] | null;
   /** 前のメッセージ送信後この発話まで待機するミリ秒数。0 = プレビューが自動計算 */
   lag_ms:            number;
   /** ヒント表示モード */

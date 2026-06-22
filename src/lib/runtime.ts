@@ -259,6 +259,17 @@ function messageRowToRuntime(
       console.warn(`[buildRuntimeState] quickReplies parse error msgId=${m.id}`);
     }
   }
+  // 問題のヒント QR（incorrect_quick_replies, action="hint"）。送信payload で問題メッセージに付与する。
+  let incorrectQuickReplies: QuickReplyItem[] | null = null;
+  const rawIncorrect = (m as { incorrectQuickReplies?: string | null }).incorrectQuickReplies;
+  if (rawIncorrect) {
+    try {
+      const parsed = JSON.parse(rawIncorrect);
+      if (Array.isArray(parsed)) incorrectQuickReplies = parsed as QuickReplyItem[];
+    } catch {
+      console.warn(`[buildRuntimeState] incorrectQuickReplies parse error msgId=${m.id}`);
+    }
+  }
   // 演出設定: すべて null なら timing=null（inherit 扱い）
   const hasAnyTiming =
     m.readReceiptMode != null || m.readDelayMs != null ||
@@ -288,6 +299,7 @@ function messageRowToRuntime(
     alt_text:          m.altText         ?? null,
     flex_payload_json: m.flexPayloadJson ?? null,
     quick_replies:     quickReplies,
+    incorrect_quick_replies: incorrectQuickReplies,
     lag_ms:            m.lagMs           ?? 0,
     hint_mode:         (m.hintMode ?? "always") as import("@/types").HintMode,
     sort_order:        m.sortOrder,
