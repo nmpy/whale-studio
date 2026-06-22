@@ -71,6 +71,27 @@ describe("POST /api/cron/scheduled-messages — 認証", () => {
     expect((prisma.scheduledLineMessage.update as ReturnType<typeof vi.fn>)).not.toHaveBeenCalled();
   });
 
+  it("flag 未設定で due 行があっても: push(fetch) を呼ばず DB を一切変更しない（完全 dryRun）", async () => {
+    // due な pending 行を1件返すよう findMany を where 依存で上書き（stuck 検索には [] を返す）。
+    (prisma.scheduledLineMessage.findMany as ReturnType<typeof vi.fn>).mockImplementation(
+      async ({ where }: { where: { status: string } }) =>
+        where.status === "pending"
+          ? [{ id: "r1", workId: "w1", lineUserId: "U1", userProgressId: null, phaseId: null, cancelPolicyJson: null, oaId: "oa1", payloadJson: JSON.stringify({ message_type: "text", body: "x" }), retryCount: 0 }]
+          : [],
+    );
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+
+    const res = await POST(reqWith(`Bearer ${SECRET}`));
+    const json = await res.json();
+    expect(json.data.dryRun).toBe(true);
+    expect(json.data.claimed).toBe(1); // would-send（評価のみ）
+    expect(fetchSpy).not.toHaveBeenCalled(); // 実 push なし
+    expect((prisma.scheduledLineMessage.updateMany as ReturnType<typeof vi.fn>)).not.toHaveBeenCalled(); // claim なし
+    expect((prisma.scheduledLineMessage.update as ReturnType<typeof vi.fn>)).not.toHaveBeenCalled();     // sent/failed/cancel なし
+    vi.unstubAllGlobals();
+  });
+
   it("ENABLE_SCHEDULED_MESSAGE_WORKER=true → live mode（dryRun:false）で worker が走る", async () => {
     process.env.ENABLE_SCHEDULED_MESSAGE_WORKER = "true";
     const res = await POST(reqWith(`Bearer ${SECRET}`));
