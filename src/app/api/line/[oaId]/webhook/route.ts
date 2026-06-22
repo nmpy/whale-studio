@@ -477,6 +477,8 @@ const START_MSG_SELECT = {
   altText:         true,
   flexPayloadJson: true,
   quickReplies:    true,
+  // 問題のヒント QR 合成用（start chain 内に puzzle が来てもヒントを付ける）
+  kind: true, hintMode: true, incorrectQuickReplies: true,
   nextMessageId:   true,
   sortOrder:       true,
   imageActionType: true, imageActionText: true, imageActionUrl: true,
@@ -544,6 +546,8 @@ async function getCachedStartMsgs(
 const BEACON_MSG_SELECT = {
   id: true, messageType: true, body: true, assetUrl: true, altText: true, flexPayloadJson: true,
   quickReplies: true, nextMessageId: true, sortOrder: true,
+  // 問題のヒント QR 合成用（beacon target chain 内の puzzle 対応）
+  kind: true, hintMode: true, incorrectQuickReplies: true,
   imageActionType: true, imageActionText: true, imageActionUrl: true,
   imageActionLiffPageId: true, imageActionPostbackData: true,
   freeInputEnabled: true,
@@ -767,6 +771,10 @@ async function buildMessageChain(
     id: string; messageType: string; body: string | null; assetUrl: string | null;
     altText: string | null; flexPayloadJson: string | null;
     quickReplies: string | null; nextMessageId: string | null; sortOrder: number;
+    // 問題（puzzle）のヒント QR 合成用（buildKeywordMessages → resolveDisplayQrItems で使用）。
+    kind?:                    string | null;
+    hintMode?:                string | null;
+    incorrectQuickReplies?:   string | null;
     imageActionType?:         string | null;
     imageActionText?:         string | null;
     imageActionUrl?:          string | null;
@@ -839,6 +847,8 @@ async function buildMessageChain(
           id: true, messageType: true, body: true, assetUrl: true,
           altText: true, flexPayloadJson: true, quickReplies: true,
           nextMessageId: true, sortOrder: true,
+          // 問題のヒント QR 合成用（chain 内に puzzle が来てもヒントを付ける）
+          kind: true, hintMode: true, incorrectQuickReplies: true,
           imageActionType: true, imageActionText: true, imageActionUrl: true,
           imageActionLiffPageId: true, imageActionPostbackData: true,
           // 演出設定 (Phase 2c)
@@ -888,6 +898,10 @@ async function buildMessageChain(
     altText:         r.altText,
     flexPayloadJson: r.flexPayloadJson,
     quickReplies:    r.quickReplies,
+    // 問題のヒント QR 合成用（buildKeywordMessages → resolveDisplayQrItems）。
+    kind:                  (r as { kind?: string | null }).kind ?? null,
+    hintMode:              (r as { hintMode?: string | null }).hintMode ?? null,
+    incorrectQuickReplies: (r as { incorrectQuickReplies?: string | null }).incorrectQuickReplies ?? null,
     nextMessageId:   r.nextMessageId,
     sortOrder:       r.sortOrder,
     imageActionType:         r.imageActionType         ?? null,
@@ -1955,6 +1969,8 @@ async function handleTextEvent({
             id: true, messageType: true, body: true, assetUrl: true,
             altText: true, flexPayloadJson: true, quickReplies: true,
             nextMessageId: true, sortOrder: true,
+            // 問題のヒント QR 合成用（自由入力の次メッセージが puzzle のとき対応）
+            kind: true, hintMode: true, incorrectQuickReplies: true,
             imageActionType: true, imageActionText: true, imageActionUrl: true,
             imageActionLiffPageId: true, imageActionPostbackData: true,
             // 自由入力受付フラグ (buildMessageChain で chain walk 停止判定に使う)
@@ -2171,6 +2187,8 @@ async function handleTextEvent({
       id: true, messageType: true, body: true, assetUrl: true,
       altText: true, flexPayloadJson: true, quickReplies: true,
       nextMessageId: true, sortOrder: true,
+      // 問題（puzzle）のヒント QR 合成用（target_message_id → puzzle で必須）
+      kind: true, hintMode: true, incorrectQuickReplies: true,
       imageActionType: true, imageActionText: true, imageActionUrl: true,
       imageActionLiffPageId: true, imageActionPostbackData: true,
       // 自由入力受付フラグ (buildMessageChain で chain walk 停止判定に使う)
