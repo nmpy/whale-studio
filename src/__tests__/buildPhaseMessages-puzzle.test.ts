@@ -451,3 +451,65 @@ describe("E. 統合パイプライン（drain → build）", () => {
     expect((lineMessages[1] as { text: string }).text).toContain("カルーセル謎");
   });
 });
+
+// ────────────────────────────────────────────
+// F. 本番相当データ: 問題メッセージにヒント QR が付く（実機不表示の再発防止）
+//   data: kind=puzzle / message_type=text / hint_mode=always / quick_replies=null /
+//         incorrect_quick_replies に action="hint" 3件（3件目は value 無し）
+// ────────────────────────────────────────────
+
+describe("F. 本番相当データ: 問題メッセージにヒント QR が付く", () => {
+  /** SQL で確認した本番データと同形の incorrect_quick_replies（JSON文字列で DB 保存形式を再現）。 */
+  const PROD_HINTS = [
+    { label: "ヒント①", action: "hint", value: "ヒント１", hint_text: "ヒントじゃ。\n夜空で、小さくきらきら光っているものじゃよ。", hint_followup: "もう少し答えに近づきたければ、さらに教えてやってもいいぞ。" },
+    { label: "ヒント②", action: "hint", value: "ヒント２", hint_text: "もうひとつ。\n「ほ」から始まる二文字じゃ。", hint_followup: "もう答えはすぐそこじゃ。" },
+    { label: "ヒント③（こたえ）", action: "hint", hint_text: "星じゃよ。", hint_followup: "" }, // value 無し
+  ];
+
+  function makeDbMsg(overrides: Record<string, unknown> = {}) {
+    const now = new Date("2024-01-01");
+    return {
+      id: "db-msg", workId: "w1", phaseId: "p1", characterId: null,
+      messageType: "text", body: "この子の帰り道を示すもの。", assetUrl: null,
+      altText: null, flexPayloadJson: null, quickReplies: null,
+      sortOrder: 0, isActive: true, createdAt: now, updatedAt: now,
+      kind: "normal", triggerKeyword: null, targetSegment: null, notifyText: null, riddleId: null,
+      answer: null, answerMatchType: '["exact"]', correctAction: null, correctNextPhaseId: null,
+      correctText: null, incorrectText: null, incorrectQuickReplies: null, puzzleHintText: null,
+      puzzleType: null, nextMessageId: null, lagMs: 0, hintMode: "always",
+      readReceiptMode: null, readDelayMs: null, typingEnabled: null, typingMinMs: null, typingMaxMs: null,
+      loadingEnabled: null, loadingThresholdMs: null, loadingMinSeconds: null, loadingMaxSeconds: null,
+      tapDestinationId: null, tapUrl: null, character: null,
+      ...overrides,
+    };
+  }
+
+  it("buildPhaseMessages attaches hint quick replies from production-like incorrect_quick_replies", async () => {
+    const { drainAutoSendableItems } = await import("@/lib/runtime");
+    const drained = drainAutoSendableItems([
+      makeDbMsg({ id: "pz", kind: "puzzle", body: "この子の帰り道を示すもの。", hintMode: "always", quickReplies: null, incorrectQuickReplies: JSON.stringify(PROD_HINTS) }),
+    ] as never, "in_progress");
+
+    const out = buildPhaseMessages(makePhase(drained));
+    const qr = (out[0] as { quickReply?: { items: { action: { type: string; label: string; text: string } }[] } }).quickReply;
+    expect(qr).toBeDefined();
+    expect(qr!.items).toHaveLength(3);
+    expect(qr!.items.map((i) => i.action.type)).toEqual(["message", "message", "message"]);
+    expect(qr!.items.map((i) => i.action.label)).toEqual(["ヒント①", "ヒント②", "ヒント③（こたえ）"]);
+    // action.type に "hint" は決して残さない（LINE は未知 action を拒否する）。
+    expect(qr!.items.every((i) => i.action.type === "message")).toBe(true);
+  });
+
+  it("通常メッセージ + puzzle(ヒント) + 遷移あり → 末尾(puzzle)に3件のヒントQRが残る（遷移QRに上書きされない）", async () => {
+    const { drainAutoSendableItems } = await import("@/lib/runtime");
+    const drained = drainAutoSendableItems([
+      makeDbMsg({ id: "intro", sortOrder: 0, body: "導入テキスト" }),
+      makeDbMsg({ id: "pz", sortOrder: 1, kind: "puzzle", body: "謎本文", hintMode: "always", incorrectQuickReplies: JSON.stringify(PROD_HINTS) }),
+    ] as never, "in_progress");
+
+    const out = buildPhaseMessages(makePhase(drained, { transitions: [{ label: "次へ", toPhaseId: "p2" }] as never }));
+    const last = out[out.length - 1] as { quickReply?: { items: { action: { text: string } }[] } };
+    expect(last.quickReply?.items).toHaveLength(3);
+    expect(last.quickReply!.items.map((i) => i.action.text)).toEqual(["ヒント①", "ヒント②", "ヒント③（こたえ）"]);
+  });
+});

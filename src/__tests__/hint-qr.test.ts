@@ -109,3 +109,34 @@ describe("回帰: quick_replies の有無に関わらずヒントを合成する
     expect(items.map((i) => i.label)).toEqual(["ヒント①"]);
   });
 });
+
+// ── 回帰: buildQuickReplyFromItems は action:"hint" を LINE message action に変換する ──
+describe("回帰: buildQuickReplyFromItems converts action hint to LINE message action", () => {
+  it("action:'hint' → type:'message'（除外されない）/ label・text が入る", () => {
+    const qr = buildQuickReplyFromItems(normalizeHintQrItems([
+      { action: "hint", label: "ヒント①", value: "ヒント１", hint_text: "..." } as QuickReplyItem,
+      { action: "hint", label: "ヒント②", value: "ヒント２", hint_text: "..." } as QuickReplyItem,
+    ]))!;
+    expect(qr.items).toHaveLength(2);
+    expect(qr.items.every((i) => i.action.type === "message")).toBe(true);
+    expect((qr.items[0].action as { label: string }).label).toBe("ヒント①");
+  });
+  it("hint quick reply falls back to label when value is missing", () => {
+    const qr = buildQuickReplyFromItems(normalizeHintQrItems([
+      { action: "hint", label: "ヒント③（こたえ）", hint_text: "星じゃよ。" } as QuickReplyItem, // value 無し
+    ]))!;
+    expect(qr.items).toHaveLength(1);
+    const action = qr.items[0].action as { type: string; label: string; text: string };
+    expect(action.type).toBe("message");
+    expect(action.label).toBe("ヒント③（こたえ）");
+    expect(action.text).toBe("ヒント③（こたえ）"); // value 無し → label を text に
+  });
+  it("1件でも value 欠けたヒントがあっても quickReply 全体は落ちない（3件とも残る）", () => {
+    const qr = buildQuickReplyFromItems(normalizeHintQrItems([
+      { action: "hint", label: "ヒント①", value: "ヒント１", hint_text: "a" } as QuickReplyItem,
+      { action: "hint", label: "ヒント②", value: "ヒント２", hint_text: "b" } as QuickReplyItem,
+      { action: "hint", label: "ヒント③（こたえ）", hint_text: "c" } as QuickReplyItem,
+    ]))!;
+    expect(qr.items).toHaveLength(3);
+  });
+});
