@@ -19,6 +19,7 @@ import {
   emptyCarouselCard, CAROUSEL_MAX_CARDS, CAROUSEL_CARD_TYPES,
   type CarouselCardType, type CarouselCard, type CarouselAction, type CarouselActionType,
 } from "@/lib/carousel";
+import { resolveDisplayQrItems } from "@/lib/hint-qr";
 import { previewChainSend } from "./_chain-send-preview";
 import { moveSlot, insertSlotAt, appendSlot, canMove, canInsertAt, hasFreeInputSlot, appendIndex } from "./_chain-reorder";
 import { ImportPicker } from "./_import-picker";
@@ -2920,10 +2921,18 @@ function PreviewPanel({ chain, characters, riddles, destinations, oaTitle, workT
   // chain 内のどこかに QR がある場合、それを chain 末尾の bubble に集約して表示する。
   // 探索順は後ろから前 = 実送信処理の moveQuickReplyToTail と同じ姿勢 (= tail が
   // 既に QR を持っていればそれを使い、無ければ後方から遡って見つけた最初のものを使う)。
+  // 通常 QR ＋ 問題のヒント QR（incorrect_quick_replies）を実送信と同じ resolveDisplayQrItems で合成し、
+  // chain 末尾側から最初に QR を持つ bubble のものを表示する（実機プレビュー一致）。
   let tailQR: QuickReplyItem[] = [];
   for (let i = chain.length - 1; i >= 0; i--) {
-    if (chain[i].quick_replies.length > 0) {
-      tailQR = chain[i].quick_replies;
+    const items = resolveDisplayQrItems({
+      kind:                  chain[i].kind,
+      hintMode:              chain[i].hint_mode,
+      quickReplies:          chain[i].quick_replies,
+      incorrectQuickReplies: chain[i].incorrect_quick_replies,
+    });
+    if (items.length > 0) {
+      tailQR = items;
       break;
     }
   }
@@ -3267,6 +3276,9 @@ interface ChainPreviewItem {
   carousel_cards:      CarouselCard[];
   character_id:        string;
   quick_replies:       QuickReplyItem[];
+  /** 問題のヒント QR（プレビューで quick_replies と合成表示するため）。 */
+  incorrect_quick_replies?: QuickReplyItem[];
+  hint_mode?:          string;
   kind:                MessageKind;
   riddle_id:           string;
   puzzle_type:         string;
@@ -3352,6 +3364,8 @@ function buildPreviewChain(args: {
     carousel_cards:     form.carousel_cards,
     character_id:       form.character_id,
     quick_replies:      form.quick_replies,
+    incorrect_quick_replies: form.incorrect_quick_replies,
+    hint_mode:          form.hint_mode,
     kind:               form.kind,
     riddle_id:          form.riddle_id,
     puzzle_type:        form.puzzle_type,
