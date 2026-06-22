@@ -21,6 +21,12 @@ export interface PendingScheduledRow {
   userProgressId:   string | null;
   phaseId:          string | null;
   cancelPolicyJson: string | null;
+  /** 送信元 OA（channelAccessToken 解決に使う）。 */
+  oaId:             string;
+  /** 送信予定メッセージ内容（JSON 文字列。real sender が LINE message へ復元）。 */
+  payloadJson:      string;
+  /** 現在のリトライ回数（retry 判定に使う）。 */
+  retryCount:       number;
 }
 
 /** 送信直前のユーザー進行状態（キャンセル判定に使う）。 */
@@ -29,16 +35,36 @@ export interface UserProgressState {
   reachedEnding:  boolean;
 }
 
-/** sender 結果。PR-4a の no-op は sent:false を返す（= 送信しない）。PR-4b の real sender が sent:true を返す。 */
+/**
+ * sender 結果。PR-4a の no-op は {sent:false}（error なし）= 送信せず claimed 扱い。
+ * PR-4b の real sender は成功で sent:true、失敗で error（安全な分類名）+ retryable を返す。
+ * status/error に token・本文・userId は含めない。
+ */
 export interface SenderResult {
   sent:       boolean;
   requestId?: string | null;
+  /** 失敗時の安全な分類名（PII/token を含めない）。 */
   error?:     string;
+  /** LINE の HTTP status（分類の参考。任意）。 */
+  status?:    number;
+  /** 失敗が再試行可能か（network/5xx=true、quota/blocked/invalid=false）。 */
+  retryable?: boolean;
 }
 export type ScheduledSender = (row: PendingScheduledRow) => Promise<SenderResult>;
 
 /** 何も送信しない sender（PR-4a 本番既定）。実 push API は呼ばない。 */
 export const noopSender: ScheduledSender = async () => ({ sent: false });
+
+/** リトライ上限。これを超えたら failed にする。 */
+export const MAX_RETRY_COUNT = 3;
+/** sending のまま滞留とみなす経過時間（ms）。これより古い sending は recover 対象。 */
+export const STUCK_SENDING_MS = 10 * 60_000;
+
+/** リトライ時の次回送信予定（単純 backoff: 1分 / 5分 / 15分）。 */
+export function nextRetryDueAt(now: Date, retryCount: number): Date {
+  const mins = [1, 5, 15];
+  return new Date(now.getTime() + mins[Math.min(retryCount - 1, mins.length - 1)] * 60_000);
+}
 
 /** worker が必要とする DB 操作（prisma を直接持たず注入。テストは in-memory を渡す）。 */
 export interface ScheduledWorkerDb {
@@ -48,8 +74,14 @@ export interface ScheduledWorkerDb {
   claimToSending(id: string, now: Date): Promise<number>;
   /** sending→canceled（理由を lastError、canceledAt を記録）。 */
   markCanceled(id: string, reason: string, now: Date): Promise<void>;
-  /** sending→sent（PR-4b の real sender 成功時のみ。requestId を記録）。 */
+  /** sending→sent（real sender 成功時。requestId を記録）。 */
   markSent(id: string, requestId: string | null, now: Date): Promise<void>;
+  /** sending→failed（非retry / retry 上限超過 / recover）。理由を lastError、retryCount を記録。 */
+  markFailed(id: string, reason: string, retryCount: number, now: Date): Promise<void>;
+  /** sending→pending に戻す（retry）。retryCount/lastError/次回 dueAt を記録。 */
+  markRetry(id: string, retryCount: number, lastError: string, nextDueAt: Date): Promise<void>;
+  /** updatedAt が now-threshold より前の status=sending（滞留）を最大 limit 件。 */
+  findStuckSending(args: { now: Date; thresholdMs: number; limit: number }): Promise<{ id: string; retryCount: number }[]>;
 }
 
 export interface WorkerResult {
@@ -61,6 +93,12 @@ export interface WorkerResult {
   skipped:  number;
   /** real sender が送信成功して sent にした件数（PR-4a no-op / dryRun では 0）。 */
   sent:     number;
+  /** 送信失敗で failed にした件数（非retry / retry 上限超過）。dryRun では 0。 */
+  failed:   number;
+  /** 送信失敗で retry（pending へ戻した）件数。dryRun では 0。 */
+  retried:  number;
+  /** sending 滞留を recover（failed 化）した件数。dryRun では「候補数」を数える（変更はしない）。 */
+  recovered: number;
   /** 行単位の処理で例外が出た件数（worker 全体は落とさない）。 */
   errors:   number;
   /** dryRun（DB を変更しない読み取り評価）だったか。 */
@@ -100,14 +138,16 @@ function parseCancelPolicy(json: string | null): ScheduledCancelPolicy | null {
 }
 
 /**
- * worker 本体。dueAt<=now の pending を拾い、claim → キャンセル判定 → (PR-4a は) sending のまま残す。
+ * worker 本体。
+ *   1) recover: sending のまま滞留した行を安全側で failed 化（dryRun は候補数のみ）。
+ *   2) dueAt<=now の pending を拾い、atomic claim → キャンセル判定 → real sender で push → sent/failed/retry。
  * 返すのは件数のみ（PII は含めない）。実 push は sender 注入に委ねる（既定 no-op）。
  */
 export async function runScheduledMessageWorker(deps: WorkerDeps): Promise<WorkerResult> {
   const batchSize = deps.batchSize ?? DEFAULT_BATCH_SIZE;
   const sender = deps.sender ?? noopSender;
   const dryRun = deps.dryRun ?? false;
-  const result: WorkerResult = { claimed: 0, canceled: 0, skipped: 0, sent: 0, errors: 0, dryRun };
+  const result: WorkerResult = { claimed: 0, canceled: 0, skipped: 0, sent: 0, failed: 0, retried: 0, recovered: 0, errors: 0, dryRun };
 
   /** キャンセル判定（読み取りのみ）。progress 取得不能は安全側＝cancel しない。 */
   async function shouldCancel(row: PendingScheduledRow): Promise<{ cancel: boolean; reason: string | null }> {
@@ -116,6 +156,20 @@ export async function runScheduledMessageWorker(deps: WorkerDeps): Promise<Worke
     const progress = await deps.getUserProgress(row);
     if (!progress) return { cancel: false, reason: null }; // 判定不能 → 誤 cancel しない
     return evaluateCancelPolicy(policy, progress);
+  }
+
+  // ── recover phase: sending のまま滞留した行を安全側で処理 ──
+  //   送信成功後に status 更新だけ失敗したケースだと、pending へ戻すと**二重送信**の恐れがある。
+  //   そのため最初は安全側＝**failed 化**（自動再送はしない）。X-Line-Retry-Key/lineRequestId による
+  //   厳密な再送可否判定は将来（PR-4c）。dryRun では DB を変えず候補数だけ数える。
+  try {
+    const stuck = await deps.db.findStuckSending({ now: deps.now, thresholdMs: STUCK_SENDING_MS, limit: batchSize });
+    for (const s of stuck) {
+      if (!dryRun) await deps.db.markFailed(s.id, "stuck_sending_recovered", s.retryCount, deps.now);
+      result.recovered++;
+    }
+  } catch {
+    result.errors++;
   }
 
   const due = await deps.db.findDuePending({ now: deps.now, limit: batchSize });
@@ -133,22 +187,32 @@ export async function runScheduledMessageWorker(deps: WorkerDeps): Promise<Worke
       const claimedCount = await deps.db.claimToSending(row.id, deps.now);
       if (claimedCount === 0) { result.skipped++; continue; }
 
-      // ── 送信直前のキャンセル判定 ──
+      // ── 送信直前のキャンセル判定（push を呼ばずに canceled にする）──
       const { cancel, reason } = await shouldCancel(row);
       if (cancel && reason) {
         await deps.db.markCanceled(row.id, reason, deps.now);
         result.canceled++;
         continue;
       }
-      // progress 取得不能等で判定できない場合は安全側: canceled にも sent にもせず sending のまま残す。
-      // TODO(PR-4b): sending のまま滞留した予約の timeout/recover（再評価・再送 or failed）を実装する。
+      // progress 取得不能等で判定できない場合は安全側: 誤 cancel せず送信を試みる。
 
-      // ── 送信（PR-4a は no-op = sent:false → sending のまま claimed として計上）。 ──
+      // ── 送信（real sender = LINE push。no-op の場合は sent:false/error なし → sending のまま claimed）──
       const sendResult = await sender(row);
       if (sendResult.sent) {
         await deps.db.markSent(row.id, sendResult.requestId ?? null, deps.now);
         result.sent++;
+      } else if (sendResult.error) {
+        // 実送信の失敗。分類に応じて retry（pending へ戻す）or failed。
+        const newRetry = row.retryCount + 1;
+        if (sendResult.retryable && newRetry <= MAX_RETRY_COUNT) {
+          await deps.db.markRetry(row.id, newRetry, sendResult.error, nextRetryDueAt(deps.now, newRetry));
+          result.retried++;
+        } else {
+          await deps.db.markFailed(row.id, sendResult.error, newRetry, deps.now);
+          result.failed++;
+        }
       } else {
+        // no-op sender（error なし）: PR-4a 互換。送信せず sending のまま claimed として計上。
         result.claimed++;
       }
     } catch {

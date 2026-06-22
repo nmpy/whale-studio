@@ -5,20 +5,24 @@
  */
 import { describe, it, expect, vi } from "vitest";
 import {
-  runScheduledMessageWorker, noopSender, DEFAULT_BATCH_SIZE,
+  runScheduledMessageWorker, noopSender, DEFAULT_BATCH_SIZE, MAX_RETRY_COUNT, STUCK_SENDING_MS,
   type PendingScheduledRow, type ScheduledWorkerDb, type UserProgressState, type ScheduledSender,
 } from "@/lib/scheduled-message-worker";
 import { buildCancelPolicy } from "@/lib/scheduled-message";
 
 const NOW = new Date("2026-06-23T12:00:00.000Z");
 
-interface Row extends PendingScheduledRow { status: string; dueAt: Date; canceledReason?: string; sentRequestId?: string | null; }
+interface Row extends PendingScheduledRow {
+  status: string; dueAt: Date; updatedAt?: Date;
+  canceledReason?: string; sentRequestId?: string | null; failedReason?: string; lastError?: string;
+}
 
 function makeRow(over: Partial<Row> = {}): Row {
   return {
     id: over.id ?? "r1", workId: "w1", lineUserId: "U1",
     userProgressId: "up1", phaseId: "p1",
     cancelPolicyJson: null, status: "pending",
+    oaId: "oa1", payloadJson: JSON.stringify({ message_type: "text", body: "hi" }), retryCount: 0,
     dueAt: new Date(NOW.getTime() - 60_000), // 既定: 期限到来済み
     ...over,
   };
@@ -33,8 +37,8 @@ function fakeDb(rows: Row[]): ScheduledWorkerDb & { rows: Row[] } {
         .filter((r) => r.status === "pending" && r.dueAt.getTime() <= now.getTime())
         .sort((a, b) => a.dueAt.getTime() - b.dueAt.getTime())
         .slice(0, limit)
-        .map(({ id, workId, lineUserId, userProgressId, phaseId, cancelPolicyJson }) =>
-          ({ id, workId, lineUserId, userProgressId, phaseId, cancelPolicyJson }));
+        .map(({ id, workId, lineUserId, userProgressId, phaseId, cancelPolicyJson, oaId, payloadJson, retryCount }) =>
+          ({ id, workId, lineUserId, userProgressId, phaseId, cancelPolicyJson, oaId, payloadJson, retryCount }));
     },
     async claimToSending(id) {
       const r = rows.find((x) => x.id === id);
@@ -47,6 +51,19 @@ function fakeDb(rows: Row[]): ScheduledWorkerDb & { rows: Row[] } {
     },
     async markSent(id, requestId) {
       const r = rows.find((x) => x.id === id)!; r.status = "sent"; r.sentRequestId = requestId;
+    },
+    async markFailed(id, reason, retryCount) {
+      const r = rows.find((x) => x.id === id)!; r.status = "failed"; r.failedReason = reason; r.lastError = reason; r.retryCount = retryCount;
+    },
+    async markRetry(id, retryCount, lastError, nextDueAt) {
+      const r = rows.find((x) => x.id === id)!; r.status = "pending"; r.retryCount = retryCount; r.lastError = lastError; r.dueAt = nextDueAt;
+    },
+    async findStuckSending({ now, thresholdMs, limit }) {
+      const cutoff = now.getTime() - thresholdMs;
+      return rows
+        .filter((r) => r.status === "sending" && r.updatedAt !== undefined && r.updatedAt.getTime() < cutoff)
+        .slice(0, limit)
+        .map(({ id, retryCount }) => ({ id, retryCount }));
     },
   };
 }
@@ -215,5 +232,85 @@ describe("runScheduledMessageWorker — sender", () => {
     const res = await runScheduledMessageWorker({ db, getUserProgress: progressOK, now: NOW, sender });
     expect(sender).not.toHaveBeenCalled();
     expect(res.skipped).toBe(1);
+  });
+
+  it("push 成功で sent・lineRequestId 保存", async () => {
+    const rows = [makeRow()];
+    const db = fakeDb(rows);
+    const sender: ScheduledSender = async () => ({ sent: true, requestId: "line-req-9" });
+    const res = await runScheduledMessageWorker({ db, getUserProgress: progressOK, now: NOW, sender });
+    expect(res.sent).toBe(1);
+    expect(rows[0]).toMatchObject({ status: "sent", sentRequestId: "line-req-9" });
+  });
+});
+
+describe("runScheduledMessageWorker — 失敗分類 / retry / failed", () => {
+  it("非retry（quota/blocked/invalid 相当）で failed・retry しない", async () => {
+    for (const error of ["quota_or_rate_limited", "blocked_or_forbidden", "invalid_user", "invalid_request", "token_not_found"]) {
+      const rows = [makeRow()];
+      const db = fakeDb(rows);
+      const sender: ScheduledSender = async () => ({ sent: false, error, retryable: false });
+      const res = await runScheduledMessageWorker({ db, getUserProgress: progressOK, now: NOW, sender });
+      expect(res).toMatchObject({ failed: 1, retried: 0, sent: 0 });
+      expect(rows[0]).toMatchObject({ status: "failed", lastError: error });
+    }
+  });
+
+  it("retry 可能（network/5xx）で retryCount 増加・pending へ戻り dueAt が先送り", async () => {
+    const rows = [makeRow({ retryCount: 0 })];
+    const db = fakeDb(rows);
+    const sender: ScheduledSender = async () => ({ sent: false, error: "line_5xx", retryable: true });
+    const res = await runScheduledMessageWorker({ db, getUserProgress: progressOK, now: NOW, sender });
+    expect(res).toMatchObject({ retried: 1, failed: 0 });
+    expect(rows[0].status).toBe("pending");
+    expect(rows[0].retryCount).toBe(1);
+    expect(rows[0].dueAt.getTime()).toBeGreaterThan(NOW.getTime()); // backoff で先送り
+  });
+
+  it("retry 上限超過（retryCount=MAX）で failed になる", async () => {
+    const rows = [makeRow({ retryCount: MAX_RETRY_COUNT })]; // 次で MAX+1 → 上限超過
+    const db = fakeDb(rows);
+    const sender: ScheduledSender = async () => ({ sent: false, error: "line_5xx", retryable: true });
+    const res = await runScheduledMessageWorker({ db, getUserProgress: progressOK, now: NOW, sender });
+    expect(res).toMatchObject({ failed: 1, retried: 0 });
+    expect(rows[0].status).toBe("failed");
+  });
+
+  it("cancel 該当時は push を呼ばず canceled（sender 不実行）", async () => {
+    const rows = [makeRow({ cancelPolicyJson: JSON.stringify(buildCancelPolicy({ phaseId: "p1", cancelOnPhaseChange: true })) })];
+    const db = fakeDb(rows);
+    const sender = vi.fn(async () => ({ sent: true }));
+    const res = await runScheduledMessageWorker({
+      db, now: NOW, sender,
+      getUserProgress: async () => ({ currentPhaseId: "p2", reachedEnding: false }),
+    });
+    expect(sender).not.toHaveBeenCalled();
+    expect(res.canceled).toBe(1);
+  });
+});
+
+describe("runScheduledMessageWorker — sending 滞留 recover", () => {
+  it("閾値を超えた sending を安全側で failed 化（pending へは戻さない＝二重送信回避）", async () => {
+    const rows = [makeRow({ id: "stuck", status: "sending", updatedAt: new Date(NOW.getTime() - STUCK_SENDING_MS - 1000) })];
+    const db = fakeDb(rows);
+    const res = await runScheduledMessageWorker({ db, getUserProgress: progressOK, now: NOW });
+    expect(res.recovered).toBe(1);
+    expect(rows[0]).toMatchObject({ status: "failed", lastError: "stuck_sending_recovered" });
+  });
+
+  it("閾値内の sending は recover しない", async () => {
+    const rows = [makeRow({ id: "fresh", status: "sending", updatedAt: new Date(NOW.getTime() - 1000) })];
+    const db = fakeDb(rows);
+    const res = await runScheduledMessageWorker({ db, getUserProgress: progressOK, now: NOW });
+    expect(res.recovered).toBe(0);
+    expect(rows[0].status).toBe("sending");
+  });
+
+  it("dryRun では recover 候補を数えるだけで DB を変更しない", async () => {
+    const rows = [makeRow({ id: "stuck", status: "sending", updatedAt: new Date(NOW.getTime() - STUCK_SENDING_MS - 1000) })];
+    const db = fakeDb(rows);
+    const res = await runScheduledMessageWorker({ db, getUserProgress: progressOK, now: NOW, dryRun: true });
+    expect(res.recovered).toBe(1);
+    expect(rows[0].status).toBe("sending"); // 変更しない
   });
 });
