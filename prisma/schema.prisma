@@ -427,6 +427,9 @@ model Message {
   imageActionLiffPageId   String?    @map("image_action_liff_page_id")
   /// type="postback" 用: 画像タップ時の postback data
   imageActionPostbackData String?    @map("image_action_postback_data")
+  /// type="message_with_phase" 用: 画像タップ送信テキスト受信時に遷移する先フェーズ ID。
+  /// LINE payload には載せず（action は message のみ）、webhook 側の遷移解決で参照する。
+  imageActionPhaseId      String?    @map("image_action_phase_id")
 
   // ── 自由入力受付（このメッセージ送信後にユーザーの次入力を保存する）──────
   /// true: このメッセージ送信後にユーザーの次のテキスト入力を変数として保存する。

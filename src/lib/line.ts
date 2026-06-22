@@ -281,8 +281,8 @@ export function resolveHeadSendDelayMs(message: { _lagMs?: number } | null | und
 
 /** 画像メッセージのタップ時アクション設定 (DB 列群を要約した形)。 */
 export type ImageActionSpec = {
-  type:          string | null;  // "message" | "uri" | "liff" | "postback" | "none" | null
-  text:          string | null;  // type="message"
+  type:          string | null;  // "message" | "message_with_phase" | "uri" | "liff" | "postback" | "none" | null
+  text:          string | null;  // type="message" / "message_with_phase"（phase_id は payload に載せない）
   url:           string | null;  // type="uri"
   liffPageId:    string | null;  // type="liff"
   postbackData:  string | null;  // type="postback"
@@ -331,6 +331,9 @@ export function buildImageActionFlex(args: {
   let action: LineFlexAction | undefined;
   switch (imageAction.type) {
     case "message":
+    case "message_with_phase":
+      // どちらも LINE 上は message action（テキスト送信）。phase_id は payload に載せず、
+      // webhook 側で image_action_text 受信時に遷移解決する（CMS 側保持）。
       if (!imageAction.text) return null;
       action = {
         type:  "message",

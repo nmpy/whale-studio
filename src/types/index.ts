@@ -238,7 +238,7 @@ export interface Transition {
 }
 
 /** 画像メッセージのタップ時アクション種別。 */
-export type ImageActionType = "none" | "message" | "uri" | "liff" | "postback";
+export type ImageActionType = "none" | "message" | "uri" | "liff" | "postback" | "message_with_phase";
 
 /** 画像メッセージのタップ時アクション (discriminated union, 主に webhook / preview で使用)。 */
 export type MessageImageAction =
@@ -339,6 +339,7 @@ export interface Message {
   image_action_liff_page_id: string | null;
   /** type="postback": postback data */
   image_action_postback_data: string | null;
+  image_action_phase_id: string | null;
   // ── 自由入力受付（このメッセージ送信後にユーザーの次入力を保存する） ──
   /** このメッセージ送信後、次のテキスト入力を変数として保存するか。 */
   free_input_enabled: boolean;
@@ -595,6 +596,7 @@ export interface CreateMessageBody {
   image_action_url?: string | null;
   image_action_liff_page_id?: string | null;
   image_action_postback_data?: string | null;
+  image_action_phase_id?: string | null;
   // 自由入力受付
   free_input_enabled?: boolean;
   free_input_variable_key?: string | null;
@@ -659,6 +661,7 @@ export interface UpdateMessageBody {
   image_action_url?: string | null;
   image_action_liff_page_id?: string | null;
   image_action_postback_data?: string | null;
+  image_action_phase_id?: string | null;
   // 自由入力受付
   free_input_enabled?: boolean;
   free_input_variable_key?: string | null;
@@ -760,6 +763,7 @@ export interface RuntimePhaseMessage {
   image_action_url:           string | null;
   image_action_liff_page_id:  string | null;
   image_action_postback_data: string | null;
+  // image_action_phase_id は webhook 側で raw phase row から読むため RuntimePhaseMessage には載せない。
   /** 連続送信チェーン先メッセージ ID（null = チェーンなし）。
    *  buildPhaseMessages で chain head / continuation を識別し、
    *  per-chain で QR tail / 順序を制御するために使う。

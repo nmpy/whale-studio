@@ -43,6 +43,7 @@ import {
   type LineWebhookBody, type LineEvent, type LineSender, type LineMessage, type KeywordMessageRecord,
 } from "@/lib/line";
 import { buildRuntimeState, matchTransition, applySetFlags, safeParseFlags, safeParseVariables, safeParseWaitingForInput, fetchPhaseWithIncludes, drainAutoSendableItems, type PhaseRow } from "@/lib/runtime";
+import { matchImageActionPhaseTransition } from "@/lib/image-action-phase";
 import { shouldOfferResumeChoice } from "@/lib/message-flow";
 import { isFreeInputPrompt } from "@/lib/free-input";
 import { decideFollowBehavior } from "@/lib/follow-action";
@@ -695,6 +696,28 @@ function matchHintFromPhase(
     );
   }
   return null;
+}
+
+/**
+ * 画像タップ「メッセージを送信する＋フェーズ遷移」(image_action_type="message_with_phase") を
+ * 現在フェーズ内の画像メッセージから image_action_text 一致でインメモリ照合する。
+ *
+ * - 対象は現在フェーズ文脈の messageType="image" のみ（作品外/他フェーズの画像には反応しない）。
+ * - image_action_text 一致 かつ image_action_phase_id 設定済み のときだけ遷移先を返す。
+ * - 手入力で同一テキストを送った場合も一致しうる（仕様: 制作者向け UI 補足で注意喚起）。
+ * - 照合は hint/QR の後・通常キーワード/謎/transition の前に呼ぶ（画像タップは明示 UI アクション扱い）。
+ */
+function matchImageMessagePhaseTransition(
+  phase:     PhaseRow,
+  inputText: string,
+): { targetPhaseId: string; messageId: string; actionText: string } | null {
+  const r = matchImageActionPhaseTransition(
+    phase.messages as unknown as import("@/lib/image-action-phase").ImagePhaseCandidate[],
+    inputText,
+    { strict: normKw, loose: normKwLoose },
+  );
+  if (r) console.log(`[cache][imgPhase] マッチ msgId=${r.messageId.slice(0, 8)} text="${r.actionText.slice(0, 30)}" → phase=${r.targetPhaseId.slice(0, 8)}`);
+  return r;
 }
 
 /**
@@ -2453,6 +2476,43 @@ async function handleTextEvent({
   // 送信できれば終了、フォールスルー（qrMsgs 空）時のみ keyword/transition へ進む。
   if (matchedQrItem !== null) {
     if (await deliverMatchedQr(matchedQrItem)) return;
+  }
+
+  // ─ 画像タップ「メッセージを送信する＋フェーズ遷移」照合 ─
+  //   画像タップは制作者が配置した明示 UI アクション。hint/QR の後・通常キーワード/謎/transition の前に評価し、
+  //   現在フェーズ内の画像 message_with_phase の image_action_text と一致したら image_action_phase_id へ遷移する。
+  //   ※ 同一テキストを手入力した場合も一致しうる（仕様）。作品外/他フェーズの画像には反応しない。
+  if (currentPhase) {
+    const imgPhaseMatch = matchImageMessagePhaseTransition(currentPhase, text);
+    if (imgPhaseMatch) {
+      try {
+        const toPhaseRow = await getCachedPhase(imgPhaseMatch.targetPhaseId);
+        if (toPhaseRow) {
+          const isEnding = toPhaseRow.phaseType === "ending";
+          const updated  = await prisma.userProgress.update({
+            where: { id: progress.id },
+            data: { currentPhaseId: imgPhaseMatch.targetPhaseId, reachedEnding: isEnding, lastInteractedAt: new Date() },
+          });
+          await setCachedProgress(updated);
+          fireResumeCompletedIfApplicable(updated, oa.id);
+          const state     = await buildRuntimeState(updated, toPhaseRow);
+          const phaseMsgs = buildPhaseMessages(state.phase, { systemSender, vars });
+          const phaseMessageIds = state.phase?.messages.map((m) => m.id) ?? [];
+          console.log(`[Webhook][STEP] 画像 message_with_phase マッチ → phase 遷移 userId=${userId} msgId=${imgPhaseMatch.messageId.slice(0, 8)} → phase=${imgPhaseMatch.targetPhaseId.slice(0, 8)}`);
+          await replyWithLagToLine(replyToken, phaseMsgs, userId, token);
+          await applyFreeInputPostEffect({
+            sentMessageIds: phaseMessageIds,
+            oaId: oa.id, route: "image_message_with_phase", userId, workId: work.id, progressId: updated.id,
+          });
+          void switchRichMenuForUser(oa, userId, toPhaseRow.phaseType);
+          return;
+        }
+        console.warn(`[Webhook] 画像 message_with_phase: 遷移先フェーズ未取得 phase=${imgPhaseMatch.targetPhaseId.slice(0, 8)} → フォールスルー`);
+      } catch (e) {
+        console.warn("[Webhook] 画像 message_with_phase 遷移エラー:", e);
+        // フォールバック: 通常フローへ
+      }
+    }
   }
 
   // ─ triggerKeyword 照合 ─

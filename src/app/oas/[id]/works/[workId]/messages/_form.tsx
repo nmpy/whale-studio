@@ -214,10 +214,12 @@ export interface MessageFormState {
   tap_destination_id:  string; // "" = 未設定
   tap_url:             string; // "" = 未設定
   // ── 画像タップ時アクション (message_type="image" 用) ──
-  /** "" = なし。"message" | "uri" | "liff" | "postback" */
-  image_action_type:          "" | "message" | "uri" | "liff" | "postback";
+  /** "" = なし。"message" | "uri" | "liff" | "postback" | "message_with_phase" */
+  image_action_type:          "" | "message" | "uri" | "liff" | "postback" | "message_with_phase";
   image_action_text:          string;
   image_action_url:           string;
+  /** type="message_with_phase" 用: 遷移先フェーズ ID。 */
+  image_action_phase_id:      string;
   image_action_liff_page_id:  string;
   image_action_postback_data: string;
   alt_text:                   string;
@@ -289,6 +291,7 @@ export const EMPTY_MESSAGE_FORM: MessageFormState = {
   image_action_type:          "",
   image_action_text:          "",
   image_action_url:           "",
+  image_action_phase_id:      "",
   image_action_liff_page_id:  "",
   image_action_postback_data: "",
   alt_text:                   "",
@@ -344,6 +347,7 @@ export function msgToFormState(msg: {
   image_action_type?:         string | null;
   image_action_text?:         string | null;
   image_action_url?:          string | null;
+  image_action_phase_id?:     string | null;
   image_action_liff_page_id?: string | null;
   image_action_postback_data?: string | null;
   alt_text?:                  string | null;
@@ -439,12 +443,14 @@ export function msgToFormState(msg: {
     // 画像タップ時アクション。image_action があればそれを採用。無ければ旧 tap_url（直接URL）を
     // 「URLを開く(uri)」として後方互換で読み込む（tap_destination_id の解決は form 側 effect で実施）。
     image_action_type:          ((msg.image_action_type === "message" || msg.image_action_type === "uri"
-                                  || msg.image_action_type === "liff" || msg.image_action_type === "postback")
+                                  || msg.image_action_type === "liff" || msg.image_action_type === "postback"
+                                  || msg.image_action_type === "message_with_phase")
                                   ? msg.image_action_type
-                                  : (msg.message_type === "image" && (msg.tap_url ?? "").trim() ? "uri" : "")) as "" | "message" | "uri" | "liff" | "postback",
+                                  : (msg.message_type === "image" && (msg.tap_url ?? "").trim() ? "uri" : "")) as "" | "message" | "uri" | "liff" | "postback" | "message_with_phase",
     image_action_text:          msg.image_action_text         ?? "",
     image_action_url:           (msg.image_action_url ?? "")
                                   || (msg.message_type === "image" && !msg.image_action_type ? (msg.tap_url ?? "") : ""),
+    image_action_phase_id:      msg.image_action_type === "message_with_phase" ? (msg.image_action_phase_id ?? "") : "",
     image_action_liff_page_id:  msg.image_action_liff_page_id ?? "",
     image_action_postback_data: msg.image_action_postback_data ?? "",
     alt_text:                   msg.alt_text                  ?? "",
@@ -545,15 +551,19 @@ export function formStateToMsgBody(form: MessageFormState) {
     // 画像タップ時アクション (画像メッセージのみ。type 空文字 = 無効)
     image_action_type:
       form.message_type === "image" && form.image_action_type
-        ? (form.image_action_type as "message" | "uri" | "liff" | "postback")
+        ? (form.image_action_type as "message" | "uri" | "liff" | "postback" | "message_with_phase")
         : null,
     image_action_text:
-      form.message_type === "image" && form.image_action_type === "message"
+      form.message_type === "image" && (form.image_action_type === "message" || form.image_action_type === "message_with_phase")
         ? (form.image_action_text.trim() || null)
         : null,
     image_action_url:
       form.message_type === "image" && form.image_action_type === "uri"
         ? (form.image_action_url.trim() || null)
+        : null,
+    image_action_phase_id:
+      form.message_type === "image" && form.image_action_type === "message_with_phase"
+        ? (form.image_action_phase_id.trim() || null)
         : null,
     image_action_liff_page_id:
       form.message_type === "image" && form.image_action_type === "liff"
@@ -605,7 +615,7 @@ export function formStateToMsgBody(form: MessageFormState) {
 
 // ── バリデーション ────────────────────────────────────────
 
-export function validateMessageForm(form: MessageFormState): string | null {
+export function validateMessageForm(form: MessageFormState, phases: { id: string }[] = []): string | null {
   // ── 自由入力受付バリデーション (kind を問わず先に判定) ──
   // variable_key は任意 (空欄＝入力をどこにも保存しない / ログ用途)。
   // 値があるときだけ regex チェックする。
@@ -642,6 +652,12 @@ export function validateMessageForm(form: MessageFormState): string | null {
         if (!slotIsTail) return `${i + 2}通目: 「メッセージを送信する」は連続メッセージの最後の画像でのみ設定できます。「なし」か「URLを開く」にしてください`;
         if (!slot.image_action_text.trim()) return `${i + 2}通目: 「メッセージを送信する」には送信されるテキストが必須です`;
       }
+      if (slot.image_action_type === "message_with_phase") {
+        if (!slotIsTail) return `${i + 2}通目: 「メッセージを送信する＋フェーズ遷移」は連続メッセージの最後の画像でのみ設定できます`;
+        if (!slot.image_action_text.trim()) return `${i + 2}通目: 「メッセージを送信する＋フェーズ遷移」には送信されるテキストが必須です`;
+        if (!slot.image_action_phase_id) return `${i + 2}通目: 「メッセージを送信する＋フェーズ遷移」には遷移先フェーズが必須です`;
+        if (phases.length > 0 && !phases.some((p) => p.id === slot.image_action_phase_id)) return `${i + 2}通目: 遷移先フェーズが作品内に存在しません`;
+      }
       if (slot.image_action_type === "uri") {
         const url = slot.image_action_url.trim();
         if (!url) return `${i + 2}通目: 「URLを開く」には URL が必須です`;
@@ -656,6 +672,12 @@ export function validateMessageForm(form: MessageFormState): string | null {
     if (form.image_action_type === "message") {
       if (!headIsTail) return "「メッセージを送信する」は連続メッセージの最後の画像でのみ設定できます。1通目では「なし」か「URLを開く」にしてください";
       if (!form.image_action_text.trim()) return "画像タップ時アクション「メッセージを送信する」には、送信されるテキストが必須です";
+    }
+    if (form.image_action_type === "message_with_phase") {
+      if (!headIsTail) return "「メッセージを送信する＋フェーズ遷移」は連続メッセージの最後の画像でのみ設定できます。1通目では連続メッセージが無い場合のみ設定できます";
+      if (!form.image_action_text.trim()) return "「メッセージを送信する＋フェーズ遷移」には、送信されるテキストが必須です";
+      if (!form.image_action_phase_id) return "「メッセージを送信する＋フェーズ遷移」には、遷移先フェーズが必須です";
+      if (phases.length > 0 && !phases.some((p) => p.id === form.image_action_phase_id)) return "遷移先フェーズが作品内に存在しません";
     }
     if (form.image_action_type === "uri") {
       const url = form.image_action_url.trim();
@@ -2723,9 +2745,11 @@ function renderBubbleContent(
     case "image": {
       // タップ時の動作（image_action）をプレビュー表示。旧 tap_* 由来の表示は出さない。
       const at = item.image_action_type;
+      const tapText = (item.image_action_text ?? "").trim() || "未入力";
       const tapHint =
         at === "uri"     ? `タップ時: URLを開く（${(item.image_action_url ?? "").trim() || "未入力"}）`
-        : at === "message" ? `タップ時: メッセージを送信（${(item.image_action_text ?? "").trim() || "未入力"}）`
+        : at === "message" ? `タップ時: メッセージを送信（${tapText}）`
+        : at === "message_with_phase" ? `タップ時: メッセージを送信＋フェーズ遷移（${tapText}${item.image_action_phase_id ? "" : "・フェーズ未選択"}）`
         : null;
       return (
         <div>
@@ -3012,22 +3036,27 @@ function PreviewPanel({ chain, characters, riddles, destinations, oaTitle, workT
 //   - なし / URLを開く（uri）/ メッセージを送信する（message・末尾メッセージのみ）
 //   - 保存形式は image_action_type / image_action_text / image_action_url（既存カラム）。
 // ────────────────────────────────────────────────────────
-type ImageActionType = "" | "message" | "uri" | "liff" | "postback";
+type ImageActionType = "" | "message" | "uri" | "liff" | "postback" | "message_with_phase";
 function ImageTapActionEditor({
-  actionType, text, url, isTail, onChange, linkOptions, linkOptionsLiffConfigured, idPrefix = "image_action",
+  actionType, text, url, phaseId, isTail, onChange, linkOptions, linkOptionsLiffConfigured, phases, idPrefix = "image_action",
 }: {
   actionType: ImageActionType;
   text:       string;
   url:        string;
-  /** このメッセージが連続メッセージの末尾か（message アクションは末尾のみ許可）。 */
+  /** type="message_with_phase" 用: 遷移先フェーズ ID。 */
+  phaseId:    string;
+  /** このメッセージが連続メッセージの末尾か（message / message_with_phase は末尾のみ許可）。 */
   isTail:     boolean;
-  onChange:   (patch: Partial<{ actionType: ImageActionType; text: string; url: string }>) => void;
+  onChange:   (patch: Partial<{ actionType: ImageActionType; text: string; url: string; phaseId: string }>) => void;
   linkOptions: React.ComponentProps<typeof LinkPicker>["options"];
   linkOptionsLiffConfigured: boolean;
+  /** message_with_phase の遷移先フェーズ選択肢。 */
+  phases: { id: string; name: string }[];
   idPrefix?:  string;
 }) {
-  // 末尾以外なのに message が入っている既存データ → 警告（保存は validation で弾く＝安全側）。
-  const messageOnNonTail = actionType === "message" && !isTail;
+  // 末尾以外なのに message / message_with_phase が入っている既存データ → 警告（保存は validation で弾く＝安全側）。
+  const messageOnNonTail = (actionType === "message" || actionType === "message_with_phase") && !isTail;
+  const isMessageLike = actionType === "message" || actionType === "message_with_phase";
   return (
     <div className="form-group" style={{ marginTop: 12 }}>
       <label style={fieldLabel} htmlFor={`${idPrefix}_type`}>
@@ -3044,17 +3073,18 @@ function ImageTapActionEditor({
         <option value="">なし（通常の画像メッセージとして送信）</option>
         <option value="uri">URL を開く</option>
         <option value="message" disabled={!isTail}>メッセージを送信する{!isTail ? "（末尾メッセージのみ）" : ""}</option>
+        <option value="message_with_phase" disabled={!isTail}>メッセージを送信する＋フェーズ遷移{!isTail ? "（末尾メッセージのみ）" : ""}</option>
         <option value="liff" disabled>LIFF ページを開く（実装予定）</option>
         <option value="postback" disabled>内部イベントを発火する（実装予定）</option>
       </select>
       <div style={hintText}>
         アクションを設定すると、画像が LINE 上で Flex Message として送信され、タップ可能になります。
-        {!isTail && <><br />メッセージ送信アクションは、連続メッセージの最後の画像でのみ設定できます。</>}
+        {!isTail && <><br />メッセージ送信／メッセージ送信＋フェーズ遷移は、連続メッセージの最後の画像でのみ設定できます。</>}
       </div>
 
       {messageOnNonTail && (
         <div style={{ marginTop: 8, padding: "8px 12px", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 8, fontSize: 12, color: "#92400e" }}>
-          このメッセージは連続メッセージの末尾ではないため「メッセージを送信する」は保存できません。「なし」または「URL を開く」に変更してください。
+          このメッセージは連続メッセージの末尾ではないため「メッセージを送信する／＋フェーズ遷移」は保存できません。「なし」または「URL を開く」に変更してください。
         </div>
       )}
 
@@ -3076,7 +3106,7 @@ function ImageTapActionEditor({
         </div>
       )}
 
-      {actionType === "message" && isTail && (
+      {isMessageLike && isTail && (
         <div className="form-group" style={{ marginTop: 12, marginLeft: 24, paddingLeft: 12, borderLeft: "3px solid #e5e7eb" }}>
           <label style={fieldLabel} htmlFor={`${idPrefix}_text`}>送信されるテキスト <RequiredMark /></label>
           <input
@@ -3090,20 +3120,43 @@ function ImageTapActionEditor({
           />
           <div style={hintText}>
             プレイヤーが画像をタップすると、このテキストがプレイヤーから送信されたものとして扱われます。
-            <br />既存の応答キーワード／正解に設定すると、次のメッセージやフェーズ遷移につながります。
+            {actionType === "message_with_phase"
+              ? <><br />このテキストを受信すると、設定したフェーズへ遷移します。<br /><strong>注意:</strong> 同じテキストを手入力した場合にも反応する可能性があります。</>
+              : <><br />既存の応答キーワード／正解に設定すると、次のメッセージやフェーズ遷移につながります。</>}
           </div>
         </div>
       )}
 
+      {actionType === "message_with_phase" && isTail && (
+        <div className="form-group" style={{ marginTop: 12, marginLeft: 24, paddingLeft: 12, borderLeft: "3px solid #e5e7eb" }}>
+          <label style={fieldLabel} htmlFor={`${idPrefix}_phase`}>遷移先フェーズ <RequiredMark /></label>
+          <select
+            id={`${idPrefix}_phase`}
+            className="form-input"
+            value={phaseId}
+            onChange={(e) => onChange({ phaseId: e.target.value })}
+            style={{ maxWidth: 320 }}
+          >
+            <option value="">（選択してください）</option>
+            {phases.map((p) => (<option key={p.id} value={p.id}>{p.name}</option>))}
+          </select>
+          <div style={hintText}>画像タップで上記テキストが送信され、その後このフェーズへ遷移します。</div>
+        </div>
+      )}
+
       {/* タップ時の挙動サマリ */}
-      {(actionType === "uri" || (actionType === "message" && isTail)) && (
-        <div style={{ marginTop: 12, padding: "10px 12px", background: "#f0f9ff", border: "1px solid #bae6fd", borderRadius: 8, fontSize: 12, color: "#0c4a6e", display: "flex", alignItems: "center", gap: 8 }}>
+      {(actionType === "uri" || (isMessageLike && isTail)) && (
+        <div style={{ marginTop: 12, padding: "10px 12px", background: "#f0f9ff", border: "1px solid #bae6fd", borderRadius: 8, fontSize: 12, color: "#0c4a6e", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <span style={{ fontWeight: 700 }}>🎯 タップ時:</span>
           {actionType === "uri" && (
             <span>URL を開く <code style={{ background: "#fff", padding: "1px 6px", borderRadius: 4, wordBreak: "break-all" }}>{url || "（未入力）"}</code></span>
           )}
           {actionType === "message" && (
             <span>メッセージ送信 <code style={{ background: "#fff", padding: "1px 6px", borderRadius: 4 }}>{text || "（未入力）"}</code></span>
+          )}
+          {actionType === "message_with_phase" && (
+            <span>メッセージ送信＋フェーズ遷移 <code style={{ background: "#fff", padding: "1px 6px", borderRadius: 4 }}>{text || "（未入力）"}</code>
+              {" → "}<code style={{ background: "#fff", padding: "1px 6px", borderRadius: 4 }}>{phases.find((p) => p.id === phaseId)?.name || "（フェーズ未選択）"}</code></span>
           )}
         </div>
       )}
@@ -3416,6 +3469,7 @@ interface ChainPreviewItem {
   image_action_type?:  string;
   image_action_text?:  string;
   image_action_url?:   string;
+  image_action_phase_id?: string;
   flex_payload_json:   string;
 }
 
@@ -3506,6 +3560,7 @@ function buildPreviewChain(args: {
     image_action_type:  form.image_action_type,
     image_action_text:  form.image_action_text,
     image_action_url:   form.image_action_url,
+    image_action_phase_id: form.image_action_phase_id,
     flex_payload_json:  form.flex_payload_json,
   });
   if (form.free_input_enabled) return out;
@@ -3541,6 +3596,7 @@ function buildPreviewChain(args: {
       image_action_type:  s.image_action_type,
       image_action_text:  s.image_action_text,
       image_action_url:   s.image_action_url,
+      image_action_phase_id: s.image_action_phase_id,
       flex_payload_json:  s.flex_payload_json,
     });
     if (s.free_input_enabled) return out;
@@ -3554,7 +3610,7 @@ function buildPreviewChain(args: {
 
 function AdditionalMessageBlock({
   index, slot, onChange, onRemove, onDetach, canDetach, onMoveUp, onMoveDown, canMoveUp, canMoveDown, oaId, workId, characters, allMessages,
-  isTail, linkOptions, linkOptionsLiffConfigured,
+  isTail, linkOptions, linkOptionsLiffConfigured, phases,
 }: {
   index:      number;
   slot:       AdditionalMessageSlot;
@@ -3564,6 +3620,8 @@ function AdditionalMessageBlock({
   isTail:     boolean;
   linkOptions: React.ComponentProps<typeof LinkPicker>["options"];
   linkOptionsLiffConfigured: boolean;
+  /** 画像 message_with_phase の遷移先フェーズ選択肢。 */
+  phases: { id: string; name: string }[];
   /** chain から外す（#6-4c・非破壊）。保存済みスロット（existingId あり）でのみ有効。 */
   onDetach?:    () => void;
   canDetach?:   boolean;
@@ -3765,15 +3823,18 @@ function AdditionalMessageBlock({
               actionType={slot.image_action_type}
               text={slot.image_action_text}
               url={slot.image_action_url}
+              phaseId={slot.image_action_phase_id}
               isTail={isTail}
               onChange={(patch) => onChange({
                 ...slot,
                 ...(patch.actionType !== undefined ? { image_action_type: patch.actionType } : {}),
                 ...(patch.text !== undefined ? { image_action_text: patch.text } : {}),
                 ...(patch.url !== undefined ? { image_action_url: patch.url } : {}),
+                ...(patch.phaseId !== undefined ? { image_action_phase_id: patch.phaseId } : {}),
               })}
               linkOptions={linkOptions}
               linkOptionsLiffConfigured={linkOptionsLiffConfigured}
+              phases={phases}
               idPrefix={`slot_${index}_image_action`}
             />
           </>
@@ -4309,7 +4370,7 @@ export function MessageForm({
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const err = validateMessageForm(form);
+    const err = validateMessageForm(form, phases.map((p) => ({ id: p.id })));
     if (err) { setError(err); return; }
     setError(null);
 
@@ -5217,14 +5278,17 @@ export function MessageForm({
                   actionType={form.image_action_type}
                   text={form.image_action_text}
                   url={form.image_action_url}
+                  phaseId={form.image_action_phase_id}
                   isTail={form.additionalMessages.length === 0}
                   onChange={(patch) => {
                     if (patch.actionType !== undefined) set("image_action_type", patch.actionType);
                     if (patch.text !== undefined) set("image_action_text", patch.text);
                     if (patch.url !== undefined) set("image_action_url", patch.url);
+                    if (patch.phaseId !== undefined) set("image_action_phase_id", patch.phaseId);
                   }}
                   linkOptions={linkOptions}
                   linkOptionsLiffConfigured={linkOptionsLiffConfigured}
+                  phases={phases.map((p) => ({ id: p.id, name: p.name }))}
                   idPrefix="image_action"
                 />
               </>
@@ -5449,6 +5513,7 @@ export function MessageForm({
                       isTail={idx === form.additionalMessages.length - 1 || slot.free_input_enabled}
                       linkOptions={linkOptions}
                       linkOptionsLiffConfigured={linkOptionsLiffConfigured}
+                      phases={phases.map((p) => ({ id: p.id, name: p.name }))}
                       canMoveUp={canMove(form.additionalMessages, idx, "up")}
                       canMoveDown={canMove(form.additionalMessages, idx, "down")}
                       onMoveUp={() => setForm((prev) => ({ ...prev, additionalMessages: moveSlot(prev.additionalMessages, idx, "up") }))}

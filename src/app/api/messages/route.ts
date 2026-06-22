@@ -190,6 +190,7 @@ export const POST = withAuth(async (req, _ctx, user) => {
         imageActionUrl:          data.image_action_url          ?? null,
         imageActionLiffPageId:   data.image_action_liff_page_id ?? null,
         imageActionPostbackData: data.image_action_postback_data ?? null,
+        imageActionPhaseId:      data.image_action_type === "message_with_phase" ? (data.image_action_phase_id ?? null) : null,
         // 自由入力受付（schema・Zod・form は揃っていたが POST data に欠落していた pre-existing bug を修正）
         freeInputEnabled:       data.free_input_enabled ?? false,
         freeInputVariableKey:   data.free_input_variable_key ?? null,

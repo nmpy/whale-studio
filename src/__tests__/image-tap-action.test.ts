@@ -105,5 +105,45 @@ describe("additionalSlotToMsgBody — image_action 保存（image のみ・uri�
     expect(EMPTY_ADDITIONAL_SLOT.image_action_type).toBe("");
     expect(EMPTY_ADDITIONAL_SLOT.image_action_text).toBe("");
     expect(EMPTY_ADDITIONAL_SLOT.image_action_url).toBe("");
+    expect(EMPTY_ADDITIONAL_SLOT.image_action_phase_id).toBe("");
+  });
+});
+
+describe("message_with_phase（メッセージ送信＋フェーズ遷移）の slot load/save", () => {
+  it("load: message_with_phase の type/text/phase_id を復元", () => {
+    const slot = msgToAdditionalSlot({ message_type: "image", image_action_type: "message_with_phase", image_action_text: "次へ", image_action_phase_id: "phase-2" });
+    expect(slot.image_action_type).toBe("message_with_phase");
+    expect(slot.image_action_text).toBe("次へ");
+    expect(slot.image_action_phase_id).toBe("phase-2");
+  });
+
+  it("save: image + message_with_phase → type/text/phase_id を保存（url は null）", () => {
+    const body = additionalSlotToMsgBody(imageSlot({ image_action_type: "message_with_phase", image_action_text: "次へ", image_action_phase_id: "phase-2" }), main);
+    expect(body.image_action_type).toBe("message_with_phase");
+    expect(body.image_action_text).toBe("次へ");
+    expect(body.image_action_phase_id).toBe("phase-2");
+    expect(body.image_action_url).toBeNull();
+  });
+
+  it("save: message_with_phase 以外は phase_id を保存しない（null）", () => {
+    const body = additionalSlotToMsgBody(imageSlot({ image_action_type: "uri", image_action_url: "https://x/", image_action_phase_id: "phase-2" }), main);
+    expect(body.image_action_phase_id).toBeNull();
+  });
+
+  it("save: 非画像メッセージは message_with_phase を保存しない（全て null）", () => {
+    const body = additionalSlotToMsgBody({ ...EMPTY_ADDITIONAL_SLOT, message_type: "text", body: "hi", image_action_type: "message_with_phase", image_action_text: "x", image_action_phase_id: "p" }, main);
+    expect(body.image_action_type).toBeNull();
+    expect(body.image_action_phase_id).toBeNull();
+  });
+
+  it("既存 message は message_with_phase に勝手に変換されない", () => {
+    const slot = msgToAdditionalSlot({ message_type: "image", image_action_type: "message", image_action_text: "見る" });
+    expect(slot.image_action_type).toBe("message");
+    expect(slot.image_action_phase_id).toBe("");
+  });
+
+  it("既存 uri / 旧 tap_url は message_with_phase に変換されない（PR #434 互換維持）", () => {
+    expect(msgToAdditionalSlot({ message_type: "image", image_action_type: "uri", image_action_url: "https://x/" }).image_action_type).toBe("uri");
+    expect(msgToAdditionalSlot({ message_type: "image", tap_url: "https://legacy/" }).image_action_type).toBe("uri");
   });
 });

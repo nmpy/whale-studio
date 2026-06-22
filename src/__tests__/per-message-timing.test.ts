@@ -160,6 +160,7 @@ describe("additionalSlotToMsgBody — slot → API body", () => {
       image_action_type: "",
       image_action_text: "",
       image_action_url:  "",
+      image_action_phase_id: "",
       free_input_enabled:         false,
       free_input_variable_key:    "",
       free_input_next_message_id: "",
