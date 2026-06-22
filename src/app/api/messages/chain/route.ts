@@ -80,11 +80,12 @@ const contentSchema = z.object({
   tap_destination_id: z.string().uuid().optional().nullable(),
   tap_url:            z.string().max(2000).optional().nullable(),
   // 画像タップ時アクション
-  image_action_type: z.enum(["none", "message", "uri", "liff", "postback"]).optional().nullable(),
+  image_action_type: z.enum(["none", "message", "uri", "liff", "postback", "message_with_phase"]).optional().nullable(),
   image_action_text: z.string().max(300).optional().nullable(),
   image_action_url:  z.string().max(2000).optional().nullable(),
   image_action_liff_page_id:  z.string().uuid().optional().nullable(),
   image_action_postback_data: z.string().max(300).optional().nullable(),
+  image_action_phase_id:      z.string().uuid().optional().nullable(),
   // 自由入力受付
   free_input_enabled:      z.boolean().optional(),
   free_input_variable_key: z.string().max(100).optional().nullable(),
@@ -163,6 +164,7 @@ function contentToData(c: ContentInput | undefined): Record<string, unknown> {
   set("imageActionUrl", c.image_action_url);
   set("imageActionLiffPageId", c.image_action_liff_page_id);
   set("imageActionPostbackData", c.image_action_postback_data);
+  set("imageActionPhaseId", c.image_action_type === "message_with_phase" ? c.image_action_phase_id : null);
   // 自由入力（key のみ。enabled / next は link/正規化が設定）
   set("freeInputVariableKey", c.free_input_variable_key);
   // 演出設定

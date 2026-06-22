@@ -73,10 +73,13 @@ export interface AdditionalMessageSlot {
   loading_min_seconds:  string;
   loading_max_seconds:  string;
   // ── 画像タップ時アクション (image_action) — message_type="image" 用。1通目と同形。 ──
-  // "" = なし / "uri" = URLを開く / "message" = メッセージを送信する（末尾メッセージのみ）。
-  image_action_type: "" | "message" | "uri" | "liff" | "postback";
+  // "" = なし / "uri" = URLを開く / "message" = メッセージを送信する / "message_with_phase" = 送信＋フェーズ遷移
+  // （message / message_with_phase は末尾メッセージのみ）。
+  image_action_type: "" | "message" | "uri" | "liff" | "postback" | "message_with_phase";
   image_action_text: string;
   image_action_url:  string;
+  /** type="message_with_phase" 用: 遷移先フェーズ ID。 */
+  image_action_phase_id: string;
   // ── 自由入力受付 (= chain continuation でも freeInput プロンプトに設定可能にする) ──
   // 例: 「{{user_name}}さんにより画像がタップされました」(chain head, freeInput=false)
   //   → 「xxについてどう思う？」(chain continuation, freeInput=true) のような構成。
@@ -112,6 +115,7 @@ export const EMPTY_ADDITIONAL_SLOT: AdditionalMessageSlot = {
   image_action_type: "",
   image_action_text: "",
   image_action_url:  "",
+  image_action_phase_id: "",
   // 自由入力受付 (デフォルト OFF)
   free_input_enabled:         false,
   free_input_variable_key:    "",
@@ -152,6 +156,7 @@ export function msgToAdditionalSlot(msg: {
   image_action_type?:        string | null;
   image_action_text?:        string | null;
   image_action_url?:         string | null;
+  image_action_phase_id?:    string | null;
   tap_url?:                  string | null;
   tap_destination_id?:       string | null;
   // 自由入力受付 (chain continuation でも main message と同様に設定可能)
@@ -203,13 +208,18 @@ export function msgToAdditionalSlot(msg: {
     // 「URLを開く(uri)」として後方互換で読み込む（保存時に統一形式へ寄せる）。
     ...(() => {
       const at = msg.image_action_type;
-      if (at === "message" || at === "uri" || at === "liff" || at === "postback") {
-        return { image_action_type: at, image_action_text: msg.image_action_text ?? "", image_action_url: msg.image_action_url ?? "" };
+      if (at === "message" || at === "uri" || at === "liff" || at === "postback" || at === "message_with_phase") {
+        return {
+          image_action_type: at,
+          image_action_text: msg.image_action_text ?? "",
+          image_action_url:  msg.image_action_url ?? "",
+          image_action_phase_id: at === "message_with_phase" ? (msg.image_action_phase_id ?? "") : "",
+        };
       }
       const legacyUrl = (msg.tap_url?.trim())
         || (msg.tap_destination_id ? (resolveDestinationUrl?.(msg.tap_destination_id) ?? "") : "");
-      if (legacyUrl) return { image_action_type: "uri" as const, image_action_text: "", image_action_url: legacyUrl };
-      return { image_action_type: "" as const, image_action_text: "", image_action_url: "" };
+      if (legacyUrl) return { image_action_type: "uri" as const, image_action_text: "", image_action_url: legacyUrl, image_action_phase_id: "" };
+      return { image_action_type: "" as const, image_action_text: "", image_action_url: "", image_action_phase_id: "" };
     })(),
     // 自由入力受付 (null → false / 空文字。DB 値があれば form state に復元する)
     free_input_enabled:         msg.free_input_enabled         ?? false,
@@ -261,9 +271,10 @@ export function additionalSlotToMsgBody(
   loading_min_seconds:  number | null;
   loading_max_seconds:  number | null;
   // 画像タップ時アクション（image のみ。type 空 = なし → null）
-  image_action_type: "message" | "uri" | "liff" | "postback" | null;
+  image_action_type: "message" | "uri" | "liff" | "postback" | "message_with_phase" | null;
   image_action_text: string | null;
   image_action_url:  string | null;
+  image_action_phase_id: string | null;
   // 自由入力受付 (main message と同形)
   free_input_enabled:         boolean;
   free_input_variable_key:    string | null;
@@ -311,18 +322,23 @@ export function additionalSlotToMsgBody(
     loading_threshold_ms: slot.loading_threshold_ms ? Number(slot.loading_threshold_ms) : null,
     loading_min_seconds:  slot.loading_min_seconds ? Number(slot.loading_min_seconds) : null,
     loading_max_seconds:  slot.loading_max_seconds ? Number(slot.loading_max_seconds) : null,
-    // 画像タップ時アクション（image かつ type 設定時のみ保存。uri→url / message→text。それ以外 null）
+    // 画像タップ時アクション（image かつ type 設定時のみ保存。uri→url / message・message_with_phase→text /
+    // message_with_phase→phase_id。それ以外 null）
     image_action_type:
-      slot.message_type === "image" && (slot.image_action_type === "message" || slot.image_action_type === "uri")
+      slot.message_type === "image" && (slot.image_action_type === "message" || slot.image_action_type === "uri" || slot.image_action_type === "message_with_phase")
         ? slot.image_action_type
         : null,
     image_action_text:
-      slot.message_type === "image" && slot.image_action_type === "message"
+      slot.message_type === "image" && (slot.image_action_type === "message" || slot.image_action_type === "message_with_phase")
         ? (slot.image_action_text.trim() || null)
         : null,
     image_action_url:
       slot.message_type === "image" && slot.image_action_type === "uri"
         ? (slot.image_action_url.trim() || null)
+        : null,
+    image_action_phase_id:
+      slot.message_type === "image" && slot.image_action_type === "message_with_phase"
+        ? (slot.image_action_phase_id.trim() || null)
         : null,
     // 自由入力受付 (main message と同じ仕様: ON のときのみ key / next を保存)
     free_input_enabled:         !!slot.free_input_enabled,

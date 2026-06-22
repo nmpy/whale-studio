@@ -68,6 +68,7 @@ export function messageToResponse(m: {
   imageActionUrl?: string | null;
   imageActionLiffPageId?: string | null;
   imageActionPostbackData?: string | null;
+  imageActionPhaseId?: string | null;
   // 自由入力受付（このメッセージ送信後にユーザーの次入力を保存する）
   freeInputEnabled?: boolean;
   freeInputVariableKey?: string | null;
@@ -131,6 +132,7 @@ export function messageToResponse(m: {
     image_action_url:           m.imageActionUrl          ?? null,
     image_action_liff_page_id:  m.imageActionLiffPageId   ?? null,
     image_action_postback_data: m.imageActionPostbackData ?? null,
+    image_action_phase_id:      m.imageActionPhaseId      ?? null,
     // 自由入力受付
     free_input_enabled:         m.freeInputEnabled         ?? false,
     free_input_variable_key:    m.freeInputVariableKey     ?? null,

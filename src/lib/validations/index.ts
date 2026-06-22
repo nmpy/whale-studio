@@ -386,13 +386,15 @@ export const createMessageSchema = z.object({
   // type="uri"       = タップで外部 URL を開く (HTTPS のみ)
   // type="liff"      = タップで LIFF ページを開く
   // type="postback"  = タップで postback (将来拡張)
-  image_action_type: z.enum(["none", "message", "uri", "liff", "postback"]).optional().nullable(),
+  image_action_type: z.enum(["none", "message", "uri", "liff", "postback", "message_with_phase"]).optional().nullable(),
   image_action_text: z.string().max(300).optional().nullable(),
   image_action_url: z.string().url("HTTPS の URL を入力してください").max(2000)
     .refine((v) => v.startsWith("https://"), "HTTPS のみ対応 (http:// は使用不可)")
     .optional().nullable(),
   image_action_liff_page_id:   uuidSchema.optional().nullable(),
   image_action_postback_data:  z.string().max(300).optional().nullable(),
+  // type="message_with_phase" 用: 送信テキスト受信時に遷移する先フェーズ ID。
+  image_action_phase_id:       uuidSchema.optional().nullable(),
   // ── 自由入力受付 ──
   free_input_enabled:         z.boolean().default(false),
   free_input_variable_key:    variableKeySchema.optional().nullable(),
@@ -424,6 +426,16 @@ export const createMessageSchema = z.object({
     if (val.image_action_type === "message" && !val.image_action_text?.trim()) {
       ctx.addIssue({ code: "custom", path: ["image_action_text"],
         message: "メッセージ送信アクションには送信テキストが必須です" });
+    }
+    if (val.image_action_type === "message_with_phase") {
+      if (!val.image_action_text?.trim()) {
+        ctx.addIssue({ code: "custom", path: ["image_action_text"],
+          message: "メッセージ送信＋フェーズ遷移には送信テキストが必須です" });
+      }
+      if (!val.image_action_phase_id) {
+        ctx.addIssue({ code: "custom", path: ["image_action_phase_id"],
+          message: "メッセージ送信＋フェーズ遷移には遷移先フェーズが必須です" });
+      }
     }
     if (val.image_action_type === "uri" && !val.image_action_url) {
       ctx.addIssue({ code: "custom", path: ["image_action_url"],
@@ -541,13 +553,14 @@ export const updateMessageSchema = z.object({
   tap_destination_id: z.string().uuid().optional().nullable(),
   tap_url:            z.string().url("有効なURLを入力してください").max(2000).optional().nullable(),
   // ── 画像タップ時アクション ──
-  image_action_type: z.enum(["none", "message", "uri", "liff", "postback"]).optional().nullable(),
+  image_action_type: z.enum(["none", "message", "uri", "liff", "postback", "message_with_phase"]).optional().nullable(),
   image_action_text: z.string().max(300).optional().nullable(),
   image_action_url:  z.string().url("HTTPS の URL を入力してください").max(2000)
     .refine((v) => v.startsWith("https://"), "HTTPS のみ対応 (http:// は使用不可)")
     .optional().nullable(),
   image_action_liff_page_id:   uuidSchema.optional().nullable(),
   image_action_postback_data:  z.string().max(300).optional().nullable(),
+  image_action_phase_id:       uuidSchema.optional().nullable(),
   // ── 自由入力受付 ──
   free_input_enabled:         z.boolean().optional(),
   free_input_variable_key:    variableKeySchema.optional().nullable(),
@@ -608,6 +621,16 @@ export const updateMessageSchema = z.object({
         (!val.image_action_text || !val.image_action_text.trim())) {
       ctx.addIssue({ code: "custom", path: ["image_action_text"],
         message: "メッセージ送信アクションには送信テキストが必須です" });
+    }
+    if (val.image_action_type === "message_with_phase") {
+      if (val.image_action_text !== undefined && (!val.image_action_text || !val.image_action_text.trim())) {
+        ctx.addIssue({ code: "custom", path: ["image_action_text"],
+          message: "メッセージ送信＋フェーズ遷移には送信テキストが必須です" });
+      }
+      if (val.image_action_phase_id === null) {
+        ctx.addIssue({ code: "custom", path: ["image_action_phase_id"],
+          message: "メッセージ送信＋フェーズ遷移には遷移先フェーズが必須です" });
+      }
     }
     if (val.image_action_type === "uri" && val.image_action_url === null) {
       ctx.addIssue({ code: "custom", path: ["image_action_url"],
