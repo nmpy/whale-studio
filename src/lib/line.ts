@@ -12,8 +12,7 @@ import { interpolate } from "@/lib/template";
 import { moveQuickReplyToTail } from "@/lib/quick-reply-tail";
 import { isFreeInputPrompt } from "@/lib/free-input";
 import type { ReadReceiptController } from "@/lib/line-read-receipt";
-import { showLoadingAnimation } from "@/lib/line-read-receipt";
-import { applyReplyPacing } from "@/lib/reply-pacing";
+import { showLoadingAnimation, resolveCmsLoadingPlan } from "@/lib/line-read-receipt";
 import { resolveDisplayQrItems } from "@/lib/hint-qr";
 import { buildFlexSendParts, type FlexContents } from "@/lib/flex";
 import { normalizeCarouselContent, buildCarouselFlex } from "@/lib/carousel";
@@ -772,6 +771,73 @@ export async function pushToLine(
  *
  * 1 件のみの場合は通常の replyToLine と同じ動作（Push API は使用しない）。
  */
+/**
+ * 先頭（reply で着弾する）メッセージに CMS「入力中…」設定があれば、送信「直前」に
+ * loading animation を出し、CMS 設定秒だけ待ってから返す。未設定なら loading も待機も
+ * 行わない（＝即送信）。reply pacing 由来の一律 pre-delay は廃止済み。
+ *
+ * - loading animation は 1:1 トークのみ対象（group/room では呼ばない）。
+ * - loading API 失敗は送信を止めない（ログのみ・握りつぶして続行）。
+ */
+/**
+ * reply API の「送信前待機」の安全上限（ms）。
+ *
+ * 設計意図（秒数変換 と 安全上限 を混同しないこと）:
+ *   - CMS の「入力中…」秒数を基本にして送信前に待つ（= 実表示時間を CMS 設定秒へ近づける）。
+ *   - LINE に渡す `loadingSeconds` は別途 5 刻み切り上げ（resolveCmsLoadingPlan で算出）。
+ *   - ただし replyToken は受信から約 1 分で失効するため、reply 送信前に待てるのはここまで（= 30 秒）。
+ *     これを超える CMS 設定は **安全側に 30 秒へ丸める**（loadingSeconds 自体は CMS 値のまま LINE へ渡す）。
+ *   - 30 秒を超える厳密な演出が必要な場合は、reply では保証できないため push 経路など別設計が必要。
+ */
+export const MAX_REPLY_CMS_LOADING_DELAY_MS = 30_000;
+
+/**
+ * reply 送信前の CMS loading 待機を安全上限（MAX_REPLY_CMS_LOADING_DELAY_MS）で丸める純関数。
+ * 秒数変換（resolveCmsLoadingPlan）とは独立した「replyToken 保護」専用の上限処理。テスト可能。
+ */
+export function clampReplyCmsLoadingDelayMs(cmsDelayMs: number): { appliedDelayMs: number; clamped: boolean } {
+  const safe = Math.max(0, Number.isFinite(cmsDelayMs) ? cmsDelayMs : 0);
+  const appliedDelayMs = Math.min(safe, MAX_REPLY_CMS_LOADING_DELAY_MS);
+  return { appliedDelayMs, clamped: appliedDelayMs < safe };
+}
+
+/**
+ * 先頭（reply で着弾する）メッセージに CMS「入力中…」設定があれば、送信直前に loading を出し、
+ * CMS 設定秒だけ待ってから返す。未設定なら loading も待機も行わない（= 即送信）。
+ * reply 前待機は replyToken 失効回避のため MAX_REPLY_CMS_LOADING_DELAY_MS(30s) で頭打ちにする。
+ */
+async function applyHeadCmsLoading(
+  head:               LineMessage | undefined,
+  userId:             string,
+  channelAccessToken: string,
+  is1to1:             boolean,
+  sleepFn:            (ms: number) => Promise<void>,
+): Promise<{ shown: boolean; delayMs: number; loadingSeconds: number | null }> {
+  if (!head || !is1to1) return { shown: false, delayMs: 0, loadingSeconds: null };
+  const plan = resolveCmsLoadingPlan(head._timing);
+  if (!plan) return { shown: false, delayMs: 0, loadingSeconds: null };
+  let shown = false;
+  try {
+    await showLoadingAnimation(userId, plan.loadingSeconds, channelAccessToken, { messageId: head._sourceMessageId ?? null });
+    shown = true;
+  } catch {
+    // loading 失敗は reply を止めない。
+  }
+  // replyToken 失効回避のため、reply 前待機は安全上限で頭打ちにする（切り詰めたら可視ログを残す）。
+  const { appliedDelayMs, clamped } = clampReplyCmsLoadingDelayMs(plan.delayMs);
+  if (clamped) {
+    console.info("[line:reply-loading:clamped]", JSON.stringify({
+      cmsDelayMs:     plan.delayMs,
+      actualDelayMs:  appliedDelayMs,
+      loadingSeconds: plan.loadingSeconds,
+      clamped:        true,
+      reason:         "reply_token_safety",
+    }));
+  }
+  await sleepFn(appliedDelayMs);
+  return { shown, delayMs: appliedDelayMs, loadingSeconds: plan.loadingSeconds };
+}
+
 export async function replyWithLagToLine(
   replyToken:         string,
   messages:           LineMessage[],
@@ -817,26 +883,22 @@ export async function replyWithLagToLine(
 
   // 5 件以内で、2 件目以降に演出がない場合は Push 消費を避けて Reply 一括。
   if (messages.length <= REPLY_MAX && !needsSequentialPush) {
-    // reply pacing / reply pre-delay:
-    //   単一 reply（最大5件まとめ・push なし・replyToken 1回）を送る「直前」に、件数に応じた
-    //   pre-delay を 1 回だけ入れて「5件が即時に届く体感」を和らげる。個別着弾の間隔ではない。
-    //   loading indicator は 1 対 1（userId あり）かつ CMS の loading 設定が無い場合だけ併用する
-    //   （CMS loading は既存処理が担うため二重表示を避ける）。loading 失敗は reply を止めない。
-    const hasCmsLoading = messages.some((m) => m._timing?.loading_enabled === true);
-    await applyReplyPacing({
+    // CMS「入力中…」設定に従う:
+    //   先頭メッセージに loading 設定があれば、送信直前に loading を出して CMS 設定秒だけ待つ。
+    //   未設定なら loading も待機も入れず即送信する（reply pacing 由来の一律 pre-delay は廃止）。
+    const is1to1 = controller ? controller.isOneToOne : !!userId;
+    const loadingInfo = await applyHeadCmsLoading(messages[0], userId, channelAccessToken, is1to1, sleepFn);
+    console.info("[line:reply-loading]", JSON.stringify({
+      cmsLoading: loadingInfo.shown,
+      delayMs:    loadingInfo.delayMs,
+      loadingSeconds: loadingInfo.loadingSeconds,
       messageCount: messages.length,
-      userId,
-      sleepFn,
-      showLoading: hasCmsLoading
-        ? undefined
-        : (uid, secs) => showLoadingAnimation(uid, secs, channelAccessToken, { messageId: messages[0]?._sourceMessageId ?? null }),
-      log: (info) => console.info("[line:reply-pacing]", JSON.stringify(info)),
-    });
+    }));
 
     await replyToLine(replyToken, messages, channelAccessToken);
     console.info("[line:reply-lag:summary]", JSON.stringify({
       strategy:   messages.length === 1 ? "reply_one" : "reply_all",
-      reason:     "no_timing_effect",
+      reason:     loadingInfo.shown ? "cms_loading_head" : "no_timing_effect",
       replyTotal: messages.length,
       pushTotal:  0,
       pushOk:     0,
@@ -853,6 +915,13 @@ export async function replyWithLagToLine(
   console.log(
     `[diag][timing-sequence] count=${messages.length} needsSequentialPush=${needsSequentialPush} ids=[${messages.map((m) => idOf(m)).join(",")}]`,
   );
+
+  // 先頭（reply）メッセージに CMS「入力中…」設定があれば、reply 送信直前に loading+CMS秒待機する。
+  // 未設定なら何もしない（push 経路の 2 通目以降は従来どおり showLoadingForMessage が個別に担う）。
+  {
+    const is1to1 = controller ? controller.isOneToOne : !!userId;
+    await applyHeadCmsLoading(replyBatch[0], userId, channelAccessToken, is1to1, sleepFn);
+  }
 
   await replyToLine(replyToken, replyBatch, channelAccessToken);
 
