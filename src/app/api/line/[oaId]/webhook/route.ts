@@ -44,6 +44,7 @@ import {
 } from "@/lib/line";
 import { buildRuntimeState, matchTransition, applySetFlags, safeParseFlags, safeParseVariables, safeParseWaitingForInput, fetchPhaseWithIncludes, drainAutoSendableItems, type PhaseRow } from "@/lib/runtime";
 import { matchImageActionPhaseTransition } from "@/lib/image-action-phase";
+import { matchBackToPuzzle } from "@/lib/hint-back-to-puzzle";
 import { shouldOfferResumeChoice } from "@/lib/message-flow";
 import { isFreeInputPrompt } from "@/lib/free-input";
 import { decideFollowBehavior } from "@/lib/follow-action";
@@ -2511,6 +2512,53 @@ async function handleTextEvent({
       } catch (e) {
         console.warn("[Webhook] 画像 message_with_phase 遷移エラー:", e);
         // フォールバック: 通常フローへ
+      }
+    }
+  }
+
+  // ─ ヒント導線 QR「問題に戻る」照合（回答判定より前）─
+  //   ヒント表示中の QR「問題に戻る」(hint_cancel_label / 既定 "問題に戻る") は LINE 上では message action。
+  //   そのテキストが問題の回答として扱われ不正解になる不具合を防ぐため、keyword/puzzle 判定の前にここで処理する。
+  //   一致したら、出題中の問題メッセージを「通常出題と同じ buildMessageChain 経路」で再表示する
+  //   （→ ヒント QR / 発話キャラ / 画像 / Flex も再付与）。不正解・回数加算・遷移・push は一切行わない。
+  if (currentPhase) {
+    const backMatch = matchBackToPuzzle(
+      currentPhase.messages as unknown as import("@/lib/hint-back-to-puzzle").BackToPuzzleCandidate[],
+      text,
+      { strict: normKw, loose: normKwLoose },
+    );
+    if (backMatch) {
+      try {
+        const BACK_MSG_SELECT = {
+          id: true, messageType: true, body: true, assetUrl: true,
+          altText: true, flexPayloadJson: true, quickReplies: true,
+          nextMessageId: true, sortOrder: true,
+          kind: true, hintMode: true, incorrectQuickReplies: true,
+          imageActionType: true, imageActionText: true, imageActionUrl: true,
+          imageActionLiffPageId: true, imageActionPostbackData: true,
+          lagMs: true,
+          readReceiptMode: true, readDelayMs: true,
+          typingEnabled: true, typingMinMs: true, typingMaxMs: true,
+          loadingEnabled: true, loadingThresholdMs: true,
+          loadingMinSeconds: true, loadingMaxSeconds: true,
+          freeInputEnabled: true,
+          character: { select: { name: true, iconImageUrl: true } },
+        } as const;
+        const puzzleRow = await prisma.message.findUnique({
+          where: { id: backMatch.messageId, isActive: true }, select: BACK_MSG_SELECT,
+        });
+        if (puzzleRow) {
+          const { messages: chain } = await buildMessageChain(puzzleRow, vars);
+          if (chain.length > 0) {
+            console.log(`[Webhook][STEP] ヒント「問題に戻る」→ 問題再表示 userId=${userId} msgId=${backMatch.messageId.slice(0, 8)} label="${backMatch.cancelLabel}"`);
+            await replyWithLagToLine(replyToken, chain, userId, token);
+            return;
+          }
+        }
+        console.warn(`[Webhook] 「問題に戻る」: 問題メッセージ再構築不可 msgId=${backMatch.messageId.slice(0, 8)} → フォールスルー`);
+      } catch (e) {
+        console.warn("[Webhook] 「問題に戻る」処理エラー:", e);
+        // フォールバック: 通常フローへ（ただし不正解化は避けたいので極力ここで return している）
       }
     }
   }
