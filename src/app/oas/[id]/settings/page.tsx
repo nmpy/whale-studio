@@ -12,6 +12,7 @@ import { oaApi, getDevToken } from "@/lib/api-client";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
 import { ViewerBanner } from "@/components/PermissionGuard";
+import { QuotaUsageCard } from "./_quota-usage-card";
 
 /** ハブに並べる機能カード定義。
  *  Phase 1.4 で per-feature の vivid color を削除し、見た目を uniform に揃える
@@ -120,6 +121,9 @@ export default function OaSettingsPage() {
 
       {/* 上段の大きな現在プランカードは廃止。現在プラン情報は下部「プラン・利用条件」
           アコーディオン内（デフォルト閉じ）へ移設し、売り込み感を抑える。 */}
+
+      {/* 月間メッセージ使用状況（push 通数）。時間差メッセージ = push の通数消費を可視化。 */}
+      <QuotaUsageCard oaId={oaId} />
 
       {/* ── 機能カード グリッド ── */}
       <section>
