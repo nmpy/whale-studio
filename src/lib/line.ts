@@ -1312,6 +1312,12 @@ export type KeywordMessageRecord = {
   flexPayloadJson: string | null;
   /** DB の quickReplies カラム（JSON 文字列）。parse して LineQuickReply に変換する */
   quickReplies:    string | null;
+  /** メッセージ種別。kind="puzzle" のとき incorrectQuickReplies からヒント QR を合成する */
+  kind?:           string | null;
+  /** ヒント表示モード（"always" | "on_wrong" | "hidden"）。buildPhaseMessages と同じ判定に使う */
+  hintMode?:       string | null;
+  /** DB の incorrect_quick_replies カラム（JSON 文字列・action="hint"）。問題メッセージのヒント QR */
+  incorrectQuickReplies?: string | null;
   /** 連続送信チェーン先メッセージ ID（null = チェーンなし） */
   nextMessageId:   string | null;
   sortOrder:       number;
@@ -1352,16 +1358,27 @@ export function buildKeywordMessages(
       ? buildSender({ name: msg.character.name, icon_image_url: msg.character.iconImageUrl })
       : systemSender;
 
-    // DB の quickReplies (JSON 文字列) を parse
-    let msgQr: LineQuickReply | undefined;
-    if (msg.quickReplies) {
+    // 表示用クイックリプライを buildPhaseMessages と同じヘルパーで解決する。
+    // 通常 QR (quickReplies) ＋ 問題（kind="puzzle" / hint_mode）のヒント QR (incorrectQuickReplies)
+    // を合成する。これにより target_message_id 経由で puzzle を送る場合もヒント QR が付く。
+    const parseQrJson = (raw: string | null | undefined, field: string): QuickReplyItem[] | null => {
+      if (!raw) return null;
       try {
-        const items = JSON.parse(msg.quickReplies) as QuickReplyItem[];
-        msgQr = buildQuickReplyFromItems(items);
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? (parsed as QuickReplyItem[]) : null;
       } catch {
-        console.warn(`[buildKeywordMessages] quickReplies JSON parse error msgId=${msg.id}`);
+        console.warn(`[buildKeywordMessages] ${field} JSON parse error msgId=${msg.id}`);
+        return null;
       }
-    }
+    };
+    const displayQrItems = resolveDisplayQrItems({
+      kind:                  msg.kind ?? "normal",
+      hintMode:              msg.hintMode,
+      quickReplies:          parseQrJson(msg.quickReplies, "quickReplies"),
+      incorrectQuickReplies: parseQrJson(msg.incorrectQuickReplies, "incorrectQuickReplies"),
+    });
+    const msgQr: LineQuickReply | undefined =
+      displayQrItems.length ? buildQuickReplyFromItems(displayQrItems) : undefined;
 
     // 共通変換ヘルパー（buildPhaseMessages と同一ロジック）
     const lineMsg = convertMessageToLine({
