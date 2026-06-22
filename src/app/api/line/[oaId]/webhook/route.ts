@@ -44,7 +44,7 @@ import {
 } from "@/lib/line";
 import { buildRuntimeState, matchTransition, applySetFlags, safeParseFlags, safeParseVariables, safeParseWaitingForInput, fetchPhaseWithIncludes, drainAutoSendableItems, type PhaseRow } from "@/lib/runtime";
 import { matchImageActionPhaseTransition } from "@/lib/image-action-phase";
-import { matchBackToPuzzle } from "@/lib/hint-back-to-puzzle";
+import { matchBackToPuzzle, buildBackToPuzzlePostbackData, parseBackToPuzzlePostback } from "@/lib/hint-back-to-puzzle";
 import { shouldOfferResumeChoice } from "@/lib/message-flow";
 import { isFreeInputPrompt } from "@/lib/free-input";
 import { decideFollowBehavior } from "@/lib/follow-action";
@@ -988,6 +988,12 @@ async function reshowPuzzleById(args: {
     select: BACK_TO_PUZZLE_MSG_SELECT,
   });
   if (!puzzleRow) return false;
+  // 対象が問題メッセージ (kind="puzzle") でなければ再表示しない（細工された messageId 等で
+  // 別種メッセージを再表示させない安全ガード。スコープは workId + isActive で既に限定済み）。
+  if (puzzleRow.kind !== "puzzle") {
+    console.warn(`[Webhook] reshowPuzzleById: 対象が問題メッセージでない (kind=${puzzleRow.kind}) msgId=${args.messageId.slice(0, 8)} → スキップ`);
+    return false;
+  }
   const { messages: chain } = await buildMessageChain(puzzleRow, args.vars);
   if (chain.length === 0) return false;
   await replyWithLagToLine(args.replyToken, chain, args.userId, args.channelAccessToken);
@@ -2500,7 +2506,7 @@ async function handleTextEvent({
       action: {
         type:        "postback",
         label:       cancelLabel.slice(0, 20),
-        data:        `action=hint_back_to_puzzle&messageId=${encodeURIComponent(hintResult.messageId)}`,
+        data:        buildBackToPuzzlePostbackData(hintResult.messageId),
         displayText: cancelLabel,
       },
     };
@@ -2836,21 +2842,21 @@ async function handlePostbackEvent({
 
   // ヒント「問題に戻る」postback: 出題中の問題を再表示する（回答判定に流さない＝不正解にしない）。
   //   data="action=hint_back_to_puzzle&messageId=<出題中の問題 messageId>"。
-  //   不正解・回数加算・履歴・遷移・push は一切行わない（reshowPuzzleById = reply のみ）。
-  if (params.get("action") === "hint_back_to_puzzle") {
-    const mid = params.get("messageId");
-    if (mid && work) {
+  //   不正解・回数加算・履歴・遷移・push は一切行わない（reshowPuzzleById = reply のみ・kind=puzzle のみ）。
+  const backToPuzzle = parseBackToPuzzlePostback(data);
+  if (backToPuzzle) {
+    if (work) {
       try {
-        if (await reshowPuzzleById({ messageId: mid, workId: work.id, replyToken, userId, channelAccessToken: oa.channelAccessToken, vars })) {
-          console.log(`[Webhook][STEP] postback hint_back_to_puzzle → 問題再表示 userId=${userId} msgId=${mid.slice(0, 8)}`);
+        if (await reshowPuzzleById({ messageId: backToPuzzle.messageId, workId: work.id, replyToken, userId, channelAccessToken: oa.channelAccessToken, vars })) {
+          console.log(`[Webhook][STEP] postback hint_back_to_puzzle → 問題再表示 userId=${userId} msgId=${backToPuzzle.messageId.slice(0, 8)}`);
           return;
         }
-        console.warn(`[Webhook] hint_back_to_puzzle: 問題メッセージ再構築不可 msgId=${mid.slice(0, 8)}`);
+        console.warn(`[Webhook] hint_back_to_puzzle: 問題メッセージ再構築不可/非問題 msgId=${backToPuzzle.messageId.slice(0, 8)}`);
       } catch (e) {
         console.warn("[Webhook] hint_back_to_puzzle postback エラー:", e);
       }
     } else {
-      console.warn(`[Webhook] hint_back_to_puzzle: messageId/work 不正 data="${data}"`);
+      console.warn(`[Webhook] hint_back_to_puzzle: work 未解決 data="${data}"`);
     }
     return;
   }

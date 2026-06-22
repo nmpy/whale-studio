@@ -5,7 +5,7 @@
  * バグ: 「問題に戻る」が message action のテキストとして問題の回答扱いになり不正解が送られていた。
  */
 import { describe, it, expect } from "vitest";
-import { matchBackToPuzzle, DEFAULT_BACK_TO_PUZZLE_LABEL, type BackToPuzzleCandidate } from "@/lib/hint-back-to-puzzle";
+import { matchBackToPuzzle, DEFAULT_BACK_TO_PUZZLE_LABEL, buildBackToPuzzlePostbackData, parseBackToPuzzlePostback, BACK_TO_PUZZLE_POSTBACK_ACTION, type BackToPuzzleCandidate } from "@/lib/hint-back-to-puzzle";
 import { buildQuickReplyFromItems } from "@/lib/line";
 import { resolveDisplayQrItems } from "@/lib/hint-qr";
 
@@ -72,6 +72,33 @@ describe("matchBackToPuzzle — 「問題に戻る」タップ照合", () => {
 
   it("正規化（前後空白）で一致する", () => {
     expect(matchBackToPuzzle([puzzle()], "  問題に戻る  ", norm)?.messageId).toBe("pz-1");
+  });
+});
+
+describe("ケースB: postback「問題に戻る」の data 組み立て/解析（回答判定に流さない・messageId 指定）", () => {
+  const UUID = "0123abcd-4567-89ef-0123-456789abcdef";
+
+  it("build → parse の往復で messageId が一致する", () => {
+    const data = buildBackToPuzzlePostbackData(UUID);
+    expect(parseBackToPuzzlePostback(data)).toEqual({ messageId: UUID });
+  });
+
+  it("data は action=hint_back_to_puzzle を含み、LINE postback data 上限300文字に十分収まる", () => {
+    const data = buildBackToPuzzlePostbackData(UUID);
+    expect(data).toContain(`action=${BACK_TO_PUZZLE_POSTBACK_ACTION}`);
+    expect(data.length).toBeLessThan(300);
+  });
+
+  it("別 action の postback は null（既存 postback 処理を壊さない）", () => {
+    expect(parseBackToPuzzlePostback("action=resume_work&workId=x&mode=resume")).toBeNull();
+    expect(parseBackToPuzzlePostback("START")).toBeNull();
+    expect(parseBackToPuzzlePostback("")).toBeNull();
+  });
+
+  it("action は一致するが messageId 空/欠落 → null（no-op で通常処理へ戻れる）", () => {
+    expect(parseBackToPuzzlePostback(`action=${BACK_TO_PUZZLE_POSTBACK_ACTION}`)).toBeNull();
+    expect(parseBackToPuzzlePostback(`action=${BACK_TO_PUZZLE_POSTBACK_ACTION}&messageId=`)).toBeNull();
+    expect(parseBackToPuzzlePostback(`action=${BACK_TO_PUZZLE_POSTBACK_ACTION}&messageId=%20%20`)).toBeNull();
   });
 });
 

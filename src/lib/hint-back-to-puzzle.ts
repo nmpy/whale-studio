@@ -16,6 +16,34 @@
 /** webhook がヒント返答時に「問題に戻る」ラベルを解決する既定値（route.ts と一致させる）。 */
 export const DEFAULT_BACK_TO_PUZZLE_LABEL = "問題に戻る";
 
+/** 「問題に戻る」postback の action 識別子。 */
+export const BACK_TO_PUZZLE_POSTBACK_ACTION = "hint_back_to_puzzle";
+
+/**
+ * 「問題に戻る」postback の data 文字列を組み立てる（URLSearchParams 形式）。
+ * 例: "action=hint_back_to_puzzle&messageId=<uuid>"。LINE の postback data 上限 300 文字に十分収まる
+ * （固定 prefix + UUID で ~73 文字）。messageId は URL エンコードする。
+ */
+export function buildBackToPuzzlePostbackData(messageId: string): string {
+  const p = new URLSearchParams();
+  p.set("action", BACK_TO_PUZZLE_POSTBACK_ACTION);
+  p.set("messageId", messageId);
+  return p.toString();
+}
+
+/**
+ * postback data から「問題に戻る」かどうかと対象 messageId を安全に取り出す。
+ * action が一致しない / messageId が空・不正なら null（呼び出し側は通常処理へ）。
+ */
+export function parseBackToPuzzlePostback(data: string): { messageId: string } | null {
+  let params: URLSearchParams;
+  try { params = new URLSearchParams(data); } catch { return null; }
+  if (params.get("action") !== BACK_TO_PUZZLE_POSTBACK_ACTION) return null;
+  const messageId = (params.get("messageId") ?? "").trim();
+  if (!messageId) return null;
+  return { messageId };
+}
+
 export interface BackToPuzzleCandidate {
   id: string;
   kind?:                  string | null;
@@ -36,7 +64,9 @@ interface HintItemLike {
  *   - 候補が 1 つだけ → その問題を返す。
  *   - 候補が複数 → `preferIds`（直近送信 = frontier の message ID）で 1 つに絞れれば、その問題を返す
  *     （= 直前に出題されていた問題を優先）。
- *   - それでも特定できない → null（= 誤表示せず通常フローへフォールバック）。
+ *   - それでも特定できない → null（= 先頭固定にせず通常フローへフォールバック）。
+ *     ※ null のときは通常フローへ流れるため、状況によっては通常誤答として不正解になり得るが、
+ *       これは「誤った問題を再表示しない」ことを優先した互換上の安全フォールバックとして意図通り。
  *
  * 新規生成の「問題に戻る」QR は postback（messageId 付き）で正確に戻すため、この曖昧ケースは
  * 主に「デプロイ前にチャット履歴へ送られた旧テキスト QR」を後からタップした場合のみ。
