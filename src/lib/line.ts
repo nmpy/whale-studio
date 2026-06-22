@@ -12,8 +12,7 @@ import { interpolate } from "@/lib/template";
 import { moveQuickReplyToTail } from "@/lib/quick-reply-tail";
 import { isFreeInputPrompt } from "@/lib/free-input";
 import type { ReadReceiptController } from "@/lib/line-read-receipt";
-import { showLoadingAnimation } from "@/lib/line-read-receipt";
-import { applyReplyPacing } from "@/lib/reply-pacing";
+import { showLoadingAnimation, resolveCmsLoadingPlan } from "@/lib/line-read-receipt";
 import { resolveDisplayQrItems } from "@/lib/hint-qr";
 import { buildFlexSendParts, type FlexContents } from "@/lib/flex";
 import { normalizeCarouselContent, buildCarouselFlex } from "@/lib/carousel";
@@ -772,6 +771,46 @@ export async function pushToLine(
  *
  * 1 件のみの場合は通常の replyToLine と同じ動作（Push API は使用しない）。
  */
+/**
+ * 先頭（reply で着弾する）メッセージに CMS「入力中…」設定があれば、送信「直前」に
+ * loading animation を出し、CMS 設定秒だけ待ってから返す。未設定なら loading も待機も
+ * 行わない（＝即送信）。reply pacing 由来の一律 pre-delay は廃止済み。
+ *
+ * - loading animation は 1:1 トークのみ対象（group/room では呼ばない）。
+ * - loading API 失敗は送信を止めない（ログのみ・握りつぶして続行）。
+ */
+/** reply 送信「前」に待てる上限（ms）。replyToken は受信から約1分で失効するため、
+ *  CMS 設定秒が極端に大きい場合でも、ここで頭打ちにして reply 失効を防ぐ（loadingSeconds 自体は CMS 値のまま）。 */
+const MAX_REPLY_HEAD_LOADING_DELAY_MS = 30000;
+
+async function applyHeadCmsLoading(
+  head:               LineMessage | undefined,
+  userId:             string,
+  channelAccessToken: string,
+  is1to1:             boolean,
+  sleepFn:            (ms: number) => Promise<void>,
+): Promise<{ shown: boolean; delayMs: number; loadingSeconds: number | null }> {
+  if (!head || !is1to1) return { shown: false, delayMs: 0, loadingSeconds: null };
+  const plan = resolveCmsLoadingPlan(head._timing);
+  if (!plan) return { shown: false, delayMs: 0, loadingSeconds: null };
+  let shown = false;
+  try {
+    await showLoadingAnimation(userId, plan.loadingSeconds, channelAccessToken, { messageId: head._sourceMessageId ?? null });
+    shown = true;
+  } catch {
+    // loading 失敗は reply を止めない。
+  }
+  // replyToken 失効回避のため、reply 前待機は上限で頭打ちにする（切り詰めたら可視ログを残す）。
+  const delayMs = Math.min(plan.delayMs, MAX_REPLY_HEAD_LOADING_DELAY_MS);
+  if (delayMs < plan.delayMs) {
+    console.info("[line:reply-loading:clamped]", JSON.stringify({
+      requestedDelayMs: plan.delayMs, appliedDelayMs: delayMs, reason: "reply_token_expiry_guard",
+    }));
+  }
+  await sleepFn(delayMs);
+  return { shown, delayMs, loadingSeconds: plan.loadingSeconds };
+}
+
 export async function replyWithLagToLine(
   replyToken:         string,
   messages:           LineMessage[],
@@ -817,26 +856,22 @@ export async function replyWithLagToLine(
 
   // 5 件以内で、2 件目以降に演出がない場合は Push 消費を避けて Reply 一括。
   if (messages.length <= REPLY_MAX && !needsSequentialPush) {
-    // reply pacing / reply pre-delay:
-    //   単一 reply（最大5件まとめ・push なし・replyToken 1回）を送る「直前」に、件数に応じた
-    //   pre-delay を 1 回だけ入れて「5件が即時に届く体感」を和らげる。個別着弾の間隔ではない。
-    //   loading indicator は 1 対 1（userId あり）かつ CMS の loading 設定が無い場合だけ併用する
-    //   （CMS loading は既存処理が担うため二重表示を避ける）。loading 失敗は reply を止めない。
-    const hasCmsLoading = messages.some((m) => m._timing?.loading_enabled === true);
-    await applyReplyPacing({
+    // CMS「入力中…」設定に従う:
+    //   先頭メッセージに loading 設定があれば、送信直前に loading を出して CMS 設定秒だけ待つ。
+    //   未設定なら loading も待機も入れず即送信する（reply pacing 由来の一律 pre-delay は廃止）。
+    const is1to1 = controller ? controller.isOneToOne : !!userId;
+    const loadingInfo = await applyHeadCmsLoading(messages[0], userId, channelAccessToken, is1to1, sleepFn);
+    console.info("[line:reply-loading]", JSON.stringify({
+      cmsLoading: loadingInfo.shown,
+      delayMs:    loadingInfo.delayMs,
+      loadingSeconds: loadingInfo.loadingSeconds,
       messageCount: messages.length,
-      userId,
-      sleepFn,
-      showLoading: hasCmsLoading
-        ? undefined
-        : (uid, secs) => showLoadingAnimation(uid, secs, channelAccessToken, { messageId: messages[0]?._sourceMessageId ?? null }),
-      log: (info) => console.info("[line:reply-pacing]", JSON.stringify(info)),
-    });
+    }));
 
     await replyToLine(replyToken, messages, channelAccessToken);
     console.info("[line:reply-lag:summary]", JSON.stringify({
       strategy:   messages.length === 1 ? "reply_one" : "reply_all",
-      reason:     "no_timing_effect",
+      reason:     loadingInfo.shown ? "cms_loading_head" : "no_timing_effect",
       replyTotal: messages.length,
       pushTotal:  0,
       pushOk:     0,
@@ -853,6 +888,13 @@ export async function replyWithLagToLine(
   console.log(
     `[diag][timing-sequence] count=${messages.length} needsSequentialPush=${needsSequentialPush} ids=[${messages.map((m) => idOf(m)).join(",")}]`,
   );
+
+  // 先頭（reply）メッセージに CMS「入力中…」設定があれば、reply 送信直前に loading+CMS秒待機する。
+  // 未設定なら何もしない（push 経路の 2 通目以降は従来どおり showLoadingForMessage が個別に担う）。
+  {
+    const is1to1 = controller ? controller.isOneToOne : !!userId;
+    await applyHeadCmsLoading(replyBatch[0], userId, channelAccessToken, is1to1, sleepFn);
+  }
 
   await replyToLine(replyToken, replyBatch, channelAccessToken);
 

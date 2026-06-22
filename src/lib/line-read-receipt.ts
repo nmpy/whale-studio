@@ -229,23 +229,41 @@ export function normalizeLoadingSeconds(seconds: number | null | undefined): num
 }
 
 /**
- * 経過時間を元にローディングアニメーションの秒数を算出する。
+ * ローディングアニメーションに渡す loadingSeconds を「CMS設定秒」から算出する。
  *
- * 考え方:
- *   - 既に elapsed ms 経過しているため、残り待ち時間の見込みから自然な秒数を決める
- *   - min / max の範囲にクランプ
- *   - LINE API は 5〜60 秒・5 刻みのみ受け付ける（normalizeLoadingSeconds で丸める）
+ * 方針（経過×1.5 ヒューリスティックは廃止）:
+ *   - 実際の表示時間は「CMS設定秒だけ待ってからメッセージを送る」ことで制御する。
+ *     loadingSeconds 自体は LINE 仕様（メッセージ到着で自動消滅）上、表示長を直接決めない。
+ *   - よって loadingSeconds は CMS 設定秒（max 優先・min 下限）を 5 刻みへ切り上げた値にする。
+ *     例: CMS 3 → 5 / CMS 8 → 10 / CMS 11 → 15。
+ *   - 第1引数 elapsedMs は後方互換のため受けるが使用しない。
  */
 export function computeLoadingSeconds(
-  elapsedMs: number,
+  _elapsedMs: number,
   minSeconds: number,
   maxSeconds: number,
 ): number {
-  // 基本: 経過時間の 1.5 倍の残りを見込む（ヒューリスティック）
-  const estimatedRemainingSec = Math.ceil((elapsedMs * 1.5) / 1000);
-  const clamped = Math.max(minSeconds, Math.min(maxSeconds, estimatedRemainingSec));
-  // LINE API 制約: 5〜60 / 5 刻みへ丸める
-  return normalizeLoadingSeconds(clamped);
+  const cmsSeconds = Math.max(minSeconds, maxSeconds);
+  // LINE API 制約: 5〜60 / 5 刻みへ切り上げ。
+  return normalizeLoadingSeconds(cmsSeconds);
+}
+
+/**
+ * CMS の「入力中…」設定から、送信直前に適用する loading の実行プランを解決する。
+ *
+ *   - `loading_enabled !== true` → null（loading も待機も出さない＝即送信）。
+ *   - 有効時: 実待機 ms（= CMS 設定秒）と LINE loadingSeconds（5 刻み切り上げ）を返す。
+ *     表示時間は delayMs 後にメッセージを送る（到着で loading 消滅）ことで CMS 設定秒に近づく。
+ *
+ * CMS 設定秒は「最大秒数」を優先（無ければ最小秒数、どちらも無ければ既定 5 秒）。
+ */
+export function resolveCmsLoadingPlan(
+  timing: MessageTimingConfig | null | undefined,
+): { delayMs: number; loadingSeconds: number; cmsSeconds: number } | null {
+  if (timing?.loading_enabled !== true) return null;
+  const raw = timing.loading_max_seconds ?? timing.loading_min_seconds ?? DEFAULT_LOADING_MIN_SECONDS;
+  const cmsSeconds = Math.max(1, Math.min(60, Number.isFinite(raw) ? (raw as number) : DEFAULT_LOADING_MIN_SECONDS));
+  return { delayMs: cmsSeconds * 1000, loadingSeconds: normalizeLoadingSeconds(cmsSeconds), cmsSeconds };
 }
 
 // ────────────────────────────────────────────────
@@ -415,6 +433,11 @@ export class ReadReceiptController {
     this.receivedAt = opts.receivedAt ?? Date.now();
     this.oaId = opts.oaId ?? null;
     this.workId = opts.workId ?? null;
+  }
+
+  /** 1:1 トークか（loading animation は 1:1 のみ対象。group/room では呼ばない判定に使う）。 */
+  get isOneToOne(): boolean {
+    return this.isOneOnOne;
   }
 
   /**
