@@ -436,12 +436,15 @@ export function msgToFormState(msg: {
     // タップ遷移先
     tap_destination_id:  msg.tap_destination_id ?? "",
     tap_url:             msg.tap_url ?? "",
-    // 画像タップ時アクション
+    // 画像タップ時アクション。image_action があればそれを採用。無ければ旧 tap_url（直接URL）を
+    // 「URLを開く(uri)」として後方互換で読み込む（tap_destination_id の解決は form 側 effect で実施）。
     image_action_type:          ((msg.image_action_type === "message" || msg.image_action_type === "uri"
                                   || msg.image_action_type === "liff" || msg.image_action_type === "postback")
-                                  ? msg.image_action_type : "") as "" | "message" | "uri" | "liff" | "postback",
+                                  ? msg.image_action_type
+                                  : (msg.message_type === "image" && (msg.tap_url ?? "").trim() ? "uri" : "")) as "" | "message" | "uri" | "liff" | "postback",
     image_action_text:          msg.image_action_text         ?? "",
-    image_action_url:           msg.image_action_url          ?? "",
+    image_action_url:           (msg.image_action_url ?? "")
+                                  || (msg.message_type === "image" && !msg.image_action_type ? (msg.tap_url ?? "") : ""),
     image_action_liff_page_id:  msg.image_action_liff_page_id ?? "",
     image_action_postback_data: msg.image_action_postback_data ?? "",
     alt_text:                   msg.alt_text                  ?? "",
@@ -535,8 +538,10 @@ export function formStateToMsgBody(form: MessageFormState) {
     correct_next_phase_id:   isPuzzle ? form.correct_next_phase_id || null : null,
     hint_mode: form.hint_mode,
     // タップ遷移先
-    tap_destination_id: form.tap_destination_id || null,
-    tap_url:            form.tap_url || null,
+    // 画像メッセージのタップは image_action に一本化。保存時に旧 tap_* は null へ寄せる
+    // （非画像メッセージの tap_* は従来どおり保持）。
+    tap_destination_id: form.message_type === "image" ? null : (form.tap_destination_id || null),
+    tap_url:            form.message_type === "image" ? null : (form.tap_url || null),
     // 画像タップ時アクション (画像メッセージのみ。type 空文字 = 無効)
     image_action_type:
       form.message_type === "image" && form.image_action_type
@@ -630,16 +635,32 @@ export function validateMessageForm(form: MessageFormState): string | null {
       const err = validateCarousel({ type: "carousel", cardType: slot.carousel_card_type, cards: slot.carousel_cards });
       if (err) return `${i + 2}通目: ${err}`;
     }
+    // 連続メッセージの画像タップ時アクション（message は末尾スロットのみ許可）。
+    if (slot.message_type === "image" && slot.image_action_type) {
+      const slotIsTail = i === form.additionalMessages.length - 1 || slot.free_input_enabled;
+      if (slot.image_action_type === "message") {
+        if (!slotIsTail) return `${i + 2}通目: 「メッセージを送信する」は連続メッセージの最後の画像でのみ設定できます。「なし」か「URLを開く」にしてください`;
+        if (!slot.image_action_text.trim()) return `${i + 2}通目: 「メッセージを送信する」には送信されるテキストが必須です`;
+      }
+      if (slot.image_action_type === "uri") {
+        const url = slot.image_action_url.trim();
+        if (!url) return `${i + 2}通目: 「URLを開く」には URL が必須です`;
+        if (!/^https?:\/\//i.test(url)) return `${i + 2}通目: URL は http:// または https:// から始まるものを指定してください`;
+      }
+    }
   }
-  // ── 画像タップ時アクションバリデーション ──
+  // ── 画像タップ時アクションバリデーション（1通目）──
   if (form.message_type === "image" && form.image_action_type) {
-    if (form.image_action_type === "message" && !form.image_action_text.trim()) {
-      return "画像タップ時アクション「メッセージを送信する」には、送信されるテキストが必須です";
+    // 1通目が末尾になるのは連続メッセージが無いときのみ。message アクションは末尾でのみ許可。
+    const headIsTail = form.additionalMessages.length === 0;
+    if (form.image_action_type === "message") {
+      if (!headIsTail) return "「メッセージを送信する」は連続メッセージの最後の画像でのみ設定できます。1通目では「なし」か「URLを開く」にしてください";
+      if (!form.image_action_text.trim()) return "画像タップ時アクション「メッセージを送信する」には、送信されるテキストが必須です";
     }
     if (form.image_action_type === "uri") {
       const url = form.image_action_url.trim();
-      if (!url) return "URL アクションには URL が必須です";
-      if (!url.startsWith("https://")) return "URL は https:// から始まるものを指定してください";
+      if (!url) return "「URLを開く」には URL が必須です";
+      if (!/^https?:\/\//i.test(url)) return "URL は http:// または https:// から始まるものを指定してください";
     }
     if (form.image_action_type === "liff" && !form.image_action_liff_page_id.trim()) {
       return "LIFF アクションには LIFF ページの選択が必須です";
@@ -2700,10 +2721,11 @@ function renderBubbleContent(
       );
     }
     case "image": {
-      const tapInfo = item.tap_destination_id
-        ? destinations.find((d) => d.id === item.tap_destination_id)?.name
-        : item.tap_url
-        ? "直接URL"
+      // タップ時の動作（image_action）をプレビュー表示。旧 tap_* 由来の表示は出さない。
+      const at = item.image_action_type;
+      const tapHint =
+        at === "uri"     ? `タップ時: URLを開く（${(item.image_action_url ?? "").trim() || "未入力"}）`
+        : at === "message" ? `タップ時: メッセージを送信（${(item.image_action_text ?? "").trim() || "未入力"}）`
         : null;
       return (
         <div>
@@ -2716,8 +2738,8 @@ function renderBubbleContent(
             <div style={{ width: 160, height: 100, background: "#e5e7eb", borderRadius: 8,
               display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, color: "#9ca3af" }}>🖼</div>
           )}
-          {tapInfo && (
-            <div style={{ fontSize: 10, color: "#0d9488", marginTop: 4 }}>🔗 {tapInfo}</div>
+          {tapHint && (
+            <div style={{ fontSize: 10, color: "#0d9488", marginTop: 4 }}>🔗 {tapHint}</div>
           )}
         </div>
       );
@@ -2983,6 +3005,111 @@ function PreviewPanel({ chain, characters, riddles, destinations, oaTitle, workT
   );
 }
 
+
+// ────────────────────────────────────────────────────────
+// ImageTapActionEditor — 画像メッセージの「タップ時の動作」統一エディタ
+//   1通目・2通目以降の両方で共通利用する。旧「画像タップ時の遷移先」は廃止し、これに一本化。
+//   - なし / URLを開く（uri）/ メッセージを送信する（message・末尾メッセージのみ）
+//   - 保存形式は image_action_type / image_action_text / image_action_url（既存カラム）。
+// ────────────────────────────────────────────────────────
+type ImageActionType = "" | "message" | "uri" | "liff" | "postback";
+function ImageTapActionEditor({
+  actionType, text, url, isTail, onChange, linkOptions, linkOptionsLiffConfigured, idPrefix = "image_action",
+}: {
+  actionType: ImageActionType;
+  text:       string;
+  url:        string;
+  /** このメッセージが連続メッセージの末尾か（message アクションは末尾のみ許可）。 */
+  isTail:     boolean;
+  onChange:   (patch: Partial<{ actionType: ImageActionType; text: string; url: string }>) => void;
+  linkOptions: React.ComponentProps<typeof LinkPicker>["options"];
+  linkOptionsLiffConfigured: boolean;
+  idPrefix?:  string;
+}) {
+  // 末尾以外なのに message が入っている既存データ → 警告（保存は validation で弾く＝安全側）。
+  const messageOnNonTail = actionType === "message" && !isTail;
+  return (
+    <div className="form-group" style={{ marginTop: 12 }}>
+      <label style={fieldLabel} htmlFor={`${idPrefix}_type`}>
+        タップ時の動作
+        <span style={{ fontSize: 10, fontWeight: 600, background: "#f1f5f9", color: "#64748b", borderRadius: 4, padding: "1px 6px", marginLeft: 6 }}>任意</span>
+      </label>
+      <select
+        id={`${idPrefix}_type`}
+        className="form-input"
+        value={actionType}
+        onChange={(e) => onChange({ actionType: e.target.value as ImageActionType })}
+        style={{ maxWidth: 320 }}
+      >
+        <option value="">なし（通常の画像メッセージとして送信）</option>
+        <option value="uri">URL を開く</option>
+        <option value="message" disabled={!isTail}>メッセージを送信する{!isTail ? "（末尾メッセージのみ）" : ""}</option>
+        <option value="liff" disabled>LIFF ページを開く（実装予定）</option>
+        <option value="postback" disabled>内部イベントを発火する（実装予定）</option>
+      </select>
+      <div style={hintText}>
+        アクションを設定すると、画像が LINE 上で Flex Message として送信され、タップ可能になります。
+        {!isTail && <><br />メッセージ送信アクションは、連続メッセージの最後の画像でのみ設定できます。</>}
+      </div>
+
+      {messageOnNonTail && (
+        <div style={{ marginTop: 8, padding: "8px 12px", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 8, fontSize: 12, color: "#92400e" }}>
+          このメッセージは連続メッセージの末尾ではないため「メッセージを送信する」は保存できません。「なし」または「URL を開く」に変更してください。
+        </div>
+      )}
+
+      {actionType === "uri" && (
+        <div className="form-group" style={{ marginTop: 12, marginLeft: 24, paddingLeft: 12, borderLeft: "3px solid #e5e7eb" }}>
+          <label style={fieldLabel} htmlFor={`${idPrefix}_url`}>開く URL <RequiredMark /></label>
+          <LinkPicker options={linkOptions} liffConfigured={linkOptionsLiffConfigured} onPick={(u) => onChange({ url: u })} />
+          <input
+            id={`${idPrefix}_url`}
+            type="url"
+            className="form-input"
+            value={url}
+            onChange={(e) => onChange({ url: e.target.value })}
+            placeholder="https://example.com/"
+            style={{ fontFamily: "monospace", fontSize: 13 }}
+            maxLength={2000}
+          />
+          <div style={hintText}>https:// のみ対応。タップで外部ブラウザが開きます。</div>
+        </div>
+      )}
+
+      {actionType === "message" && isTail && (
+        <div className="form-group" style={{ marginTop: 12, marginLeft: 24, paddingLeft: 12, borderLeft: "3px solid #e5e7eb" }}>
+          <label style={fieldLabel} htmlFor={`${idPrefix}_text`}>送信されるテキスト <RequiredMark /></label>
+          <input
+            id={`${idPrefix}_text`}
+            type="text"
+            className="form-input"
+            value={text}
+            onChange={(e) => onChange({ text: e.target.value })}
+            placeholder="例: 古い写真を見る"
+            maxLength={300}
+          />
+          <div style={hintText}>
+            プレイヤーが画像をタップすると、このテキストがプレイヤーから送信されたものとして扱われます。
+            <br />既存の応答キーワード／正解に設定すると、次のメッセージやフェーズ遷移につながります。
+          </div>
+        </div>
+      )}
+
+      {/* タップ時の挙動サマリ */}
+      {(actionType === "uri" || (actionType === "message" && isTail)) && (
+        <div style={{ marginTop: 12, padding: "10px 12px", background: "#f0f9ff", border: "1px solid #bae6fd", borderRadius: 8, fontSize: 12, color: "#0c4a6e", display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontWeight: 700 }}>🎯 タップ時:</span>
+          {actionType === "uri" && (
+            <span>URL を開く <code style={{ background: "#fff", padding: "1px 6px", borderRadius: 4, wordBreak: "break-all" }}>{url || "（未入力）"}</code></span>
+          )}
+          {actionType === "message" && (
+            <span>メッセージ送信 <code style={{ background: "#fff", padding: "1px 6px", borderRadius: 4 }}>{text || "（未入力）"}</code></span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ────────────────────────────────────────────────────────
 // AdditionalMessageBlock — 2通目以降のメッセージブロック
@@ -3285,6 +3412,10 @@ interface ChainPreviewItem {
   answer:              string;
   tap_destination_id:  string;
   tap_url:             string;
+  /** 画像タップ時アクション（プレビューの「タップ時:」表示用）。 */
+  image_action_type?:  string;
+  image_action_text?:  string;
+  image_action_url?:   string;
   flex_payload_json:   string;
 }
 
@@ -3372,6 +3503,9 @@ function buildPreviewChain(args: {
     answer:             form.answers.find((a) => a.trim()) ?? form.answer,
     tap_destination_id: form.tap_destination_id,
     tap_url:            form.tap_url,
+    image_action_type:  form.image_action_type,
+    image_action_text:  form.image_action_text,
+    image_action_url:   form.image_action_url,
     flex_payload_json:  form.flex_payload_json,
   });
   if (form.free_input_enabled) return out;
@@ -3404,6 +3538,9 @@ function buildPreviewChain(args: {
       answer:             "",
       tap_destination_id: "",
       tap_url:            "",
+      image_action_type:  s.image_action_type,
+      image_action_text:  s.image_action_text,
+      image_action_url:   s.image_action_url,
       flex_payload_json:  s.flex_payload_json,
     });
     if (s.free_input_enabled) return out;
@@ -3417,11 +3554,16 @@ function buildPreviewChain(args: {
 
 function AdditionalMessageBlock({
   index, slot, onChange, onRemove, onDetach, canDetach, onMoveUp, onMoveDown, canMoveUp, canMoveDown, oaId, workId, characters, allMessages,
+  isTail, linkOptions, linkOptionsLiffConfigured,
 }: {
   index:      number;
   slot:       AdditionalMessageSlot;
   onChange:   (slot: AdditionalMessageSlot) => void;
   onRemove:   () => void;
+  /** このスロットが連続メッセージの末尾か（画像 message アクションは末尾のみ許可）。 */
+  isTail:     boolean;
+  linkOptions: React.ComponentProps<typeof LinkPicker>["options"];
+  linkOptionsLiffConfigured: boolean;
   /** chain から外す（#6-4c・非破壊）。保存済みスロット（existingId あり）でのみ有効。 */
   onDetach?:    () => void;
   canDetach?:   boolean;
@@ -3608,15 +3750,33 @@ function AdditionalMessageBlock({
 
         {/* 画像 */}
         {mtype === "image" && (
-          <div className="form-group" style={{ marginBottom: 0 }}>
-            <label style={fieldLabel}>画像</label>
-            <ImageUploader
-              value={slot.asset_url}
-              onChange={(url) => onChange({ ...slot, asset_url: url })}
-              oaId={oaId}
-              workId={workId}
+          <>
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label style={fieldLabel}>画像</label>
+              <ImageUploader
+                value={slot.asset_url}
+                onChange={(url) => onChange({ ...slot, asset_url: url })}
+                oaId={oaId}
+                workId={workId}
+              />
+            </div>
+            {/* タップ時の動作（1通目と同じ統一UI）。message アクションは末尾のみ。 */}
+            <ImageTapActionEditor
+              actionType={slot.image_action_type}
+              text={slot.image_action_text}
+              url={slot.image_action_url}
+              isTail={isTail}
+              onChange={(patch) => onChange({
+                ...slot,
+                ...(patch.actionType !== undefined ? { image_action_type: patch.actionType } : {}),
+                ...(patch.text !== undefined ? { image_action_text: patch.text } : {}),
+                ...(patch.url !== undefined ? { image_action_url: patch.url } : {}),
+              })}
+              linkOptions={linkOptions}
+              linkOptionsLiffConfigured={linkOptionsLiffConfigured}
+              idPrefix={`slot_${index}_image_action`}
             />
-          </div>
+          </>
         )}
 
         {/* 動画 */}
@@ -4011,9 +4171,6 @@ export function MessageForm({
 
   // ── destination 選択用 ──
   const [destinations, setDestinations] = useState<LineDestination[]>([]);
-  const [tapMode, setTapMode] = useState<TapMode>(() =>
-    detectTapMode(initialForm.tap_destination_id, initialForm.tap_url)
-  );
 
   // ── URL候補（LIFF / ロケーションURL）。既存 API だけで生成し、各URL入力欄の補助に使う。 ──
   const { options: linkOptions, liffConfigured: linkOptionsLiffConfigured } = useWorkLinkOptions(oaId, workId);
@@ -4023,6 +4180,20 @@ export function MessageForm({
     // destination 一覧も並行取得
     destinationApi.list(token, workId).then(setDestinations).catch(() => {});
   }, [workId]);
+
+  // 旧「画像タップ時の遷移先」の保存済み遷移先 (tap_destination_id) を、新「タップ時の動作: URLを開く」へ
+  // 一度だけ移行する（destinations 解決後に id→url を解決）。tap_url(直接URL)は msgToFormState で移行済み。
+  // http/https に解決できる遷移先のみ移行し、それ以外は安全側で据え置く（保存時に統一形式へ寄せる）。
+  const tapDestMigratedRef = useRef(false);
+  useEffect(() => {
+    if (tapDestMigratedRef.current) return;
+    if (form.message_type !== "image" || form.image_action_type || !form.tap_destination_id) return;
+    if (destinations.length === 0) return;
+    const url = (destinations.find((d) => d.id === form.tap_destination_id)?.url_or_path ?? "").trim();
+    if (!/^https?:\/\//i.test(url)) return;
+    tapDestMigratedRef.current = true;
+    setForm((prev) => ({ ...prev, image_action_type: "uri", image_action_url: url, tap_destination_id: "" }));
+  }, [destinations, form.message_type, form.image_action_type, form.tap_destination_id]);
 
   useEffect(() => {
     const token = getDevToken();
@@ -5017,29 +5188,9 @@ export function MessageForm({
                     maxLength={200}
                   />
                 </div>
-                {/* ── 画像タップ時の遷移先 (旧 Destination 経路 — 既存機能、互換のため残置) ── */}
-                <div className="form-group" style={{ marginTop: 12 }}>
-                  <TapDestinationSection
-                    label="画像タップ時の遷移先"
-                    workId={workId}
-                    oaId={oaId}
-                    mode={tapMode}
-                    destinationId={form.tap_destination_id || null}
-                    directUrl={form.tap_url}
-                    destinations={destinations}
-                    linkOptions={linkOptions}
-                    linkOptionsLiffConfigured={linkOptionsLiffConfigured}
-                    onModeChange={(m) => {
-                      setTapMode(m);
-                      if (m === "destination") set("tap_url", "");
-                      if (m === "direct_url") set("tap_destination_id", "");
-                      if (m === "none") { set("tap_destination_id", ""); set("tap_url", ""); }
-                    }}
-                    onDestinationChange={(id) => set("tap_destination_id", id ?? "")}
-                    onDirectUrlChange={(url) => set("tap_url", url)}
-                    onPickLink={(url) => { setTapMode("direct_url"); set("tap_destination_id", ""); set("tap_url", url); }}
-                  />
-                </div>
+                {/* 旧「画像タップ時の遷移先」(TapDestinationSection / tap_destination_id・tap_url) は廃止。
+                    タップ設定は下の「タップ時の動作」(image_action) に一本化。既存の tap_* 値は
+                    読込時に「URLを開く」へ移行し、保存時に統一形式へ寄せる（msgToFormState / formStateToMsgBody）。 */}
 
                 {/* ── 画像メッセージ用: altText + タップ時アクション (Flex 変換用) ── */}
                 <div className="form-group" style={{ marginTop: 16, borderTop: "1px dashed #e5e7eb", paddingTop: 12 }}>
@@ -5061,99 +5212,21 @@ export function MessageForm({
                   </div>
                 </div>
 
-                <div className="form-group" style={{ marginTop: 12 }}>
-                  <label style={fieldLabel} htmlFor="image_action_type">
-                    タップ時の動作
-                    <span style={{ fontSize: 10, fontWeight: 600, background: "#f1f5f9", color: "#64748b", borderRadius: 4, padding: "1px 6px", marginLeft: 6 }}>任意</span>
-                  </label>
-                  <select
-                    id="image_action_type"
-                    className="form-input"
-                    value={form.image_action_type}
-                    onChange={(e) => set("image_action_type", e.target.value as MessageFormState["image_action_type"])}
-                    style={{ maxWidth: 320 }}
-                  >
-                    <option value="">なし（通常の画像メッセージとして送信）</option>
-                    <option value="message">メッセージを送信する</option>
-                    <option value="uri">URL を開く</option>
-                    <option value="liff" disabled>LIFF ページを開く（実装予定）</option>
-                    <option value="postback" disabled>内部イベントを発火する（実装予定）</option>
-                  </select>
-                  <div style={hintText}>
-                    アクションを設定すると、画像が LINE 上で Flex Message として送信され、タップ可能になります。
-                  </div>
-                </div>
-
-                {form.image_action_type === "message" && (
-                  <div className="form-group" style={{ marginTop: 12, marginLeft: 24, paddingLeft: 12, borderLeft: "3px solid #e5e7eb" }}>
-                    <label style={fieldLabel} htmlFor="image_action_text">
-                      送信されるテキスト <RequiredMark />
-                    </label>
-                    <input
-                      id="image_action_text"
-                      type="text"
-                      className="form-input"
-                      value={form.image_action_text}
-                      onChange={(e) => set("image_action_text", e.target.value)}
-                      placeholder="例: 古い写真を見る"
-                      maxLength={300}
-                    />
-                    <div style={hintText}>
-                      プレイヤーが画像をタップすると、このテキストがプレイヤーから送信されたものとして扱われます。
-                      <br />既存の応答キーワードに設定すると、次のメッセージを送信できます。
-                    </div>
-                  </div>
-                )}
-
-                {form.image_action_type === "uri" && (
-                  <div className="form-group" style={{ marginTop: 12, marginLeft: 24, paddingLeft: 12, borderLeft: "3px solid #e5e7eb" }}>
-                    <label style={fieldLabel} htmlFor="image_action_url">
-                      開く URL <RequiredMark />
-                    </label>
-                    <LinkPicker
-                      options={linkOptions}
-                      liffConfigured={linkOptionsLiffConfigured}
-                      onPick={(url) => set("image_action_url", url)}
-                    />
-                    <input
-                      id="image_action_url"
-                      type="url"
-                      className="form-input"
-                      value={form.image_action_url}
-                      onChange={(e) => set("image_action_url", e.target.value)}
-                      placeholder="https://example.com/"
-                      style={{ fontFamily: "monospace", fontSize: 13 }}
-                      maxLength={2000}
-                    />
-                    <div style={hintText}>https:// のみ対応。タップで外部ブラウザが開きます。</div>
-                  </div>
-                )}
-
-                {/* ── プレビュー (タップ時の挙動サマリ) ── */}
-                {form.image_action_type && (
-                  <div style={{
-                    marginTop: 12, padding: "10px 12px",
-                    background: "#f0f9ff", border: "1px solid #bae6fd",
-                    borderRadius: 8, fontSize: 12, color: "#0c4a6e",
-                    display: "flex", alignItems: "center", gap: 8,
-                  }}>
-                    <span style={{ fontWeight: 700 }}>🎯 タップ時:</span>
-                    {form.image_action_type === "message" && (
-                      <span>
-                        メッセージ送信 <code style={{ background: "#fff", padding: "1px 6px", borderRadius: 4 }}>
-                          {form.image_action_text || "（未入力）"}
-                        </code>
-                      </span>
-                    )}
-                    {form.image_action_type === "uri" && (
-                      <span>URL を開く <code style={{ background: "#fff", padding: "1px 6px", borderRadius: 4, wordBreak: "break-all" }}>
-                        {form.image_action_url || "（未入力）"}
-                      </code></span>
-                    )}
-                    {form.image_action_type === "liff" && <span>LIFF ページを開く（実装予定）</span>}
-                    {form.image_action_type === "postback" && <span>内部イベント発火（実装予定）</span>}
-                  </div>
-                )}
+                {/* タップ時の動作（統一UI）。1通目が末尾になるのは連続メッセージが無いときのみ。 */}
+                <ImageTapActionEditor
+                  actionType={form.image_action_type}
+                  text={form.image_action_text}
+                  url={form.image_action_url}
+                  isTail={form.additionalMessages.length === 0}
+                  onChange={(patch) => {
+                    if (patch.actionType !== undefined) set("image_action_type", patch.actionType);
+                    if (patch.text !== undefined) set("image_action_text", patch.text);
+                    if (patch.url !== undefined) set("image_action_url", patch.url);
+                  }}
+                  linkOptions={linkOptions}
+                  linkOptionsLiffConfigured={linkOptionsLiffConfigured}
+                  idPrefix="image_action"
+                />
               </>
             )}
 
@@ -5373,6 +5446,9 @@ export function MessageForm({
                       workId={workId}
                       characters={characters}
                       allMessages={allMessages}
+                      isTail={idx === form.additionalMessages.length - 1 || slot.free_input_enabled}
+                      linkOptions={linkOptions}
+                      linkOptionsLiffConfigured={linkOptionsLiffConfigured}
                       canMoveUp={canMove(form.additionalMessages, idx, "up")}
                       canMoveDown={canMove(form.additionalMessages, idx, "down")}
                       onMoveUp={() => setForm((prev) => ({ ...prev, additionalMessages: moveSlot(prev.additionalMessages, idx, "up") }))}
