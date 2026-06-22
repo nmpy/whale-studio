@@ -30,16 +30,26 @@ interface HintItemLike {
 }
 
 /**
- * 「問題に戻る」タップを現在フェーズの問題メッセージから照合する。
- * 一致したら戻る対象の messageId を返す（複数該当時は最初の問題メッセージ）。
+ * 「問題に戻る」message action（既存データ互換 fallback）を現在フェーズの問題から照合する。
+ *
+ * 複数問題が同じ cancel ラベルを持つ場合に**先頭固定で誤った問題に戻さない**:
+ *   - 候補が 1 つだけ → その問題を返す。
+ *   - 候補が複数 → `preferIds`（直近送信 = frontier の message ID）で 1 つに絞れれば、その問題を返す
+ *     （= 直前に出題されていた問題を優先）。
+ *   - それでも特定できない → null（= 誤表示せず通常フローへフォールバック）。
+ *
+ * 新規生成の「問題に戻る」QR は postback（messageId 付き）で正確に戻すため、この曖昧ケースは
+ * 主に「デプロイ前にチャット履歴へ送られた旧テキスト QR」を後からタップした場合のみ。
  */
 export function matchBackToPuzzle(
   messages:  BackToPuzzleCandidate[],
   inputText: string,
   norm:      { strict: (s: string) => string; loose: (s: string) => string },
+  preferIds?: Iterable<string>,
 ): { messageId: string; cancelLabel: string } | null {
   const inStrict = norm.strict(inputText);
   const inLoose  = norm.loose(inputText);
+  const matches: { messageId: string; cancelLabel: string }[] = [];
 
   for (const m of messages) {
     if (m.kind !== "puzzle" || !m.incorrectQuickReplies) continue;
@@ -58,11 +68,21 @@ export function matchBackToPuzzle(
       const cl = (it.hint_cancel_label ?? "").trim();
       if (cl) cancelLabels.add(cl);
     }
-    for (const label of cancelLabels) {
-      if (norm.strict(label) === inStrict || norm.loose(label) === inLoose) {
-        return { messageId: m.id, cancelLabel: label };
-      }
-    }
+    const hit = [...cancelLabels].find(
+      (label) => norm.strict(label) === inStrict || norm.loose(label) === inLoose,
+    );
+    if (hit) matches.push({ messageId: m.id, cancelLabel: hit });
   }
+
+  if (matches.length === 0) return null;
+  if (matches.length === 1) return matches[0];
+
+  // 複数候補: frontier（直近送信）で 1 つに絞れれば、それ（= 直前に出題された問題）を優先。
+  if (preferIds) {
+    const prefer = new Set(preferIds);
+    const inFrontier = matches.filter((m) => prefer.has(m.messageId));
+    if (inFrontier.length === 1) return inFrontier[0];
+  }
+  // 特定できない → 先頭固定にせず null（誤った問題を再表示しない）。
   return null;
 }

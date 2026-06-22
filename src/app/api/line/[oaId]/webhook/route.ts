@@ -634,7 +634,7 @@ function matchGlobalCmdInMemory(
 function matchHintFromPhase(
   phase:     PhaseRow,
   inputText: string,
-): { hintText: string; hintFollowup?: string; qrItems: import("@/types").QuickReplyItem[]; matchedItem: import("@/types").QuickReplyItem } | null {
+): { hintText: string; hintFollowup?: string; qrItems: import("@/types").QuickReplyItem[]; matchedItem: import("@/types").QuickReplyItem; messageId: string } | null {
   const inputNorm  = normKw(inputText);
   const inputLoose = normKwLoose(inputText);
 
@@ -679,7 +679,7 @@ function matchHintFromPhase(
           `[cache][hint] マッチ msgId=${msg.id.slice(0, 8)}`,
           `key="${item.value ?? item.label}" hint_text="${hintText.slice(0, 30)}..."`,
         );
-        return { hintText, hintFollowup, qrItems: items, matchedItem: item };
+        return { hintText, hintFollowup, qrItems: items, matchedItem: item, messageId: msg.id };
       } else {
         console.log(
           `[cache][hint] 不一致 msgId=${msg.id.slice(0, 8)} kind=${msg.kind}`,
@@ -951,6 +951,47 @@ async function buildMessageChain(
     messages: buildKeywordMessages(asKeywordRecords, undefined, vars),
     chainIds: records.map((r) => r.id),
   };
+}
+
+/** ヒント「問題に戻る」で問題を再表示する際の message select（buildMessageChain 互換）。 */
+const BACK_TO_PUZZLE_MSG_SELECT = {
+  id: true, messageType: true, body: true, assetUrl: true,
+  altText: true, flexPayloadJson: true, quickReplies: true,
+  nextMessageId: true, sortOrder: true,
+  kind: true, hintMode: true, incorrectQuickReplies: true,
+  imageActionType: true, imageActionText: true, imageActionUrl: true,
+  imageActionLiffPageId: true, imageActionPostbackData: true,
+  lagMs: true,
+  readReceiptMode: true, readDelayMs: true,
+  typingEnabled: true, typingMinMs: true, typingMaxMs: true,
+  loadingEnabled: true, loadingThresholdMs: true,
+  loadingMinSeconds: true, loadingMaxSeconds: true,
+  freeInputEnabled: true,
+  character: { select: { name: true, iconImageUrl: true } },
+} as const;
+
+/**
+ * 指定 messageId の問題を「通常出題と同じ buildMessageChain 経路」で再表示する（reply のみ）。
+ * postback「問題に戻る」と message action フォールバックの共通処理。workId スコープで安全に取得。
+ * 不正解・回数加算・履歴・遷移・push は一切行わない。再構築できなければ false。
+ */
+async function reshowPuzzleById(args: {
+  messageId:          string;
+  workId:             string;
+  replyToken:         string;
+  userId:             string;
+  channelAccessToken: string;
+  vars:               import("@/lib/line").PlaceholderVars;
+}): Promise<boolean> {
+  const puzzleRow = await prisma.message.findFirst({
+    where:  { id: args.messageId, workId: args.workId, isActive: true },
+    select: BACK_TO_PUZZLE_MSG_SELECT,
+  });
+  if (!puzzleRow) return false;
+  const { messages: chain } = await buildMessageChain(puzzleRow, args.vars);
+  if (chain.length === 0) return false;
+  await replyWithLagToLine(args.replyToken, chain, args.userId, args.channelAccessToken);
+  return true;
 }
 
 /**
@@ -2450,11 +2491,25 @@ async function handleTextEvent({
         value:  (nextHintItem.value?.trim() || nextHintItem.label).slice(0, 20),
       });
     }
+    // 「問題に戻る」は postback（出題中の問題 messageId 付き）で生成する。
+    //   → タップ時はテキストではなく postback data が届くため、回答誤判定に流れず、
+    //     複数問題があっても「ヒント元の問題」へ正確に戻れる。displayText はラベルと同じ。
     const cancelLabel = (hintResult.matchedItem as { hint_cancel_label?: string }).hint_cancel_label?.trim() || "問題に戻る";
-    navQrItems.push({ label: cancelLabel, action: "text", value: cancelLabel });
+    const backToPuzzleItem: import("@/lib/line").LineQuickReplyItem = {
+      type: "action",
+      action: {
+        type:        "postback",
+        label:       cancelLabel.slice(0, 20),
+        data:        `action=hint_back_to_puzzle&messageId=${encodeURIComponent(hintResult.messageId)}`,
+        displayText: cancelLabel,
+      },
+    };
 
-    const hintNavQr = buildQuickReplyFromItems(navQrItems);
-    if (hintNavQr) (hintMsgs[hintMsgs.length - 1] as import("@/lib/line").LineTextMessage).quickReply = hintNavQr;
+    const baseNavQr = buildQuickReplyFromItems(navQrItems); // 「さらにヒント」（あれば）
+    const navItems = [...(baseNavQr?.items ?? []), backToPuzzleItem];
+    if (navItems.length > 0) {
+      (hintMsgs[hintMsgs.length - 1] as import("@/lib/line").LineTextMessage).quickReply = { items: navItems };
+    }
     const tReplyHint = Date.now();
     await replyToLine(replyToken, hintMsgs, token);
     console.log(
@@ -2516,49 +2571,29 @@ async function handleTextEvent({
     }
   }
 
-  // ─ ヒント導線 QR「問題に戻る」照合（回答判定より前）─
-  //   ヒント表示中の QR「問題に戻る」(hint_cancel_label / 既定 "問題に戻る") は LINE 上では message action。
-  //   そのテキストが問題の回答として扱われ不正解になる不具合を防ぐため、keyword/puzzle 判定の前にここで処理する。
-  //   一致したら、出題中の問題メッセージを「通常出題と同じ buildMessageChain 経路」で再表示する
-  //   （→ ヒント QR / 発話キャラ / 画像 / Flex も再付与）。不正解・回数加算・遷移・push は一切行わない。
+  // ─ ヒント導線「問題に戻る」message action フォールバック（回答判定より前）─
+  //   新規 QR は postback（messageId 付き）で正確に戻すが、デプロイ前にチャット履歴へ送られた
+  //   旧テキスト QR「問題に戻る」をタップしたケースの互換として、ここでも処理する。
+  //   複数問題が同じラベルのときは frontier（直近送信）で「直前に出題された問題」に絞り、
+  //   特定できなければ先頭固定にせず通常フローへ流す（誤った問題を再表示しない）。
+  //   不正解・回数加算・遷移・push は一切行わない。
   if (currentPhase) {
     const backMatch = matchBackToPuzzle(
       currentPhase.messages as unknown as import("@/lib/hint-back-to-puzzle").BackToPuzzleCandidate[],
       text,
       { strict: normKw, loose: normKwLoose },
+      parseFrontier(progress.lastSentMessageIds) ?? undefined,
     );
     if (backMatch) {
       try {
-        const BACK_MSG_SELECT = {
-          id: true, messageType: true, body: true, assetUrl: true,
-          altText: true, flexPayloadJson: true, quickReplies: true,
-          nextMessageId: true, sortOrder: true,
-          kind: true, hintMode: true, incorrectQuickReplies: true,
-          imageActionType: true, imageActionText: true, imageActionUrl: true,
-          imageActionLiffPageId: true, imageActionPostbackData: true,
-          lagMs: true,
-          readReceiptMode: true, readDelayMs: true,
-          typingEnabled: true, typingMinMs: true, typingMaxMs: true,
-          loadingEnabled: true, loadingThresholdMs: true,
-          loadingMinSeconds: true, loadingMaxSeconds: true,
-          freeInputEnabled: true,
-          character: { select: { name: true, iconImageUrl: true } },
-        } as const;
-        const puzzleRow = await prisma.message.findUnique({
-          where: { id: backMatch.messageId, isActive: true }, select: BACK_MSG_SELECT,
-        });
-        if (puzzleRow) {
-          const { messages: chain } = await buildMessageChain(puzzleRow, vars);
-          if (chain.length > 0) {
-            console.log(`[Webhook][STEP] ヒント「問題に戻る」→ 問題再表示 userId=${userId} msgId=${backMatch.messageId.slice(0, 8)} label="${backMatch.cancelLabel}"`);
-            await replyWithLagToLine(replyToken, chain, userId, token);
-            return;
-          }
+        if (await reshowPuzzleById({ messageId: backMatch.messageId, workId: work.id, replyToken, userId, channelAccessToken: token, vars })) {
+          console.log(`[Webhook][STEP] ヒント「問題に戻る」(text fallback) → 問題再表示 userId=${userId} msgId=${backMatch.messageId.slice(0, 8)} label="${backMatch.cancelLabel}"`);
+          return;
         }
         console.warn(`[Webhook] 「問題に戻る」: 問題メッセージ再構築不可 msgId=${backMatch.messageId.slice(0, 8)} → フォールスルー`);
       } catch (e) {
         console.warn("[Webhook] 「問題に戻る」処理エラー:", e);
-        // フォールバック: 通常フローへ（ただし不正解化は避けたいので極力ここで return している）
+        // フォールバック: 通常フローへ
       }
     }
   }
@@ -2798,6 +2833,28 @@ async function handlePostbackEvent({
 }: HandlerCommon & { data: string }) {
   // ── URLSearchParams 形式の postback（例: action=resume_work&workId=...&mode=resume）──
   const params = new URLSearchParams(data);
+
+  // ヒント「問題に戻る」postback: 出題中の問題を再表示する（回答判定に流さない＝不正解にしない）。
+  //   data="action=hint_back_to_puzzle&messageId=<出題中の問題 messageId>"。
+  //   不正解・回数加算・履歴・遷移・push は一切行わない（reshowPuzzleById = reply のみ）。
+  if (params.get("action") === "hint_back_to_puzzle") {
+    const mid = params.get("messageId");
+    if (mid && work) {
+      try {
+        if (await reshowPuzzleById({ messageId: mid, workId: work.id, replyToken, userId, channelAccessToken: oa.channelAccessToken, vars })) {
+          console.log(`[Webhook][STEP] postback hint_back_to_puzzle → 問題再表示 userId=${userId} msgId=${mid.slice(0, 8)}`);
+          return;
+        }
+        console.warn(`[Webhook] hint_back_to_puzzle: 問題メッセージ再構築不可 msgId=${mid.slice(0, 8)}`);
+      } catch (e) {
+        console.warn("[Webhook] hint_back_to_puzzle postback エラー:", e);
+      }
+    } else {
+      console.warn(`[Webhook] hint_back_to_puzzle: messageId/work 不正 data="${data}"`);
+    }
+    return;
+  }
+
   if (params.get("action") === "resume_work") {
     const mode   = params.get("mode");
     const wid    = params.get("workId");

@@ -49,9 +49,25 @@ describe("matchBackToPuzzle — 「問題に戻る」タップ照合", () => {
     expect(matchBackToPuzzle([puzzle({ incorrectQuickReplies: null })], "問題に戻る", norm)).toBeNull();
   });
 
-  it("複数問題があるフェーズでは最初に一致した問題を返す", () => {
+  it("ケースC: 候補が1つだけなら既存互換で再表示（messageId 返却）", () => {
+    expect(matchBackToPuzzle([puzzle({ id: "only" })], "問題に戻る", norm)?.messageId).toBe("only");
+  });
+
+  it("ケースD: 同一ラベルの問題が複数・frontier 無し → 先頭固定にせず null（誤った問題を再表示しない）", () => {
     const msgs = [puzzle({ id: "a" }), puzzle({ id: "b" })];
-    expect(matchBackToPuzzle(msgs, "問題に戻る", norm)?.messageId).toBe("a");
+    expect(matchBackToPuzzle(msgs, "問題に戻る", norm)).toBeNull();
+  });
+
+  it("ケースA(fallback): 複数候補でも frontier（直近送信）で1つに絞れれば、その問題＝直前に出題された問題を返す", () => {
+    const msgs = [puzzle({ id: "p1" }), puzzle({ id: "p2" })];
+    // ユーザーは p2 のヒントを見ている → frontier に p2 がある
+    expect(matchBackToPuzzle(msgs, "問題に戻る", norm, ["p2"])?.messageId).toBe("p2");
+    expect(matchBackToPuzzle(msgs, "問題に戻る", norm, ["p1"])?.messageId).toBe("p1");
+  });
+
+  it("複数候補が両方 frontier にある等で絞れない → null（誤表示しない）", () => {
+    const msgs = [puzzle({ id: "p1" }), puzzle({ id: "p2" })];
+    expect(matchBackToPuzzle(msgs, "問題に戻る", norm, ["p1", "p2"])).toBeNull();
   });
 
   it("正規化（前後空白）で一致する", () => {
