@@ -11,8 +11,15 @@
 //   - **サーバ feature flag ENABLE_SCHEDULED_MESSAGE_RESERVATION=true のときだけ**作成する。
 //     未設定なら scheduledMessageSettings があっても予約を作らない（本番は未設定のまま安全投入）。
 //   - 冪等キーは createScheduledLineMessage 内で lineUserId:workId:sourceMessageId:_:dueAt(分) として
-//     生成される。同一 webhook 処理内の重複（同 source を同分内に複数回送信）は 1 件に束ねる。
-//     別ユーザー / 別 source / 別分 は別予約。replyToken は保存しない。
+//     生成される（oaId は含めない＝workId が uuid PK でグローバル一意なため OA も一意に定まる・冗長）。
+//     triggerEventId は null（LINE webhook に安定 event id が無く、replyToken は保存しない方針のため）。
+//     => 冪等の境界は「同一ユーザー × 同一 source message × dueAt の同一分」。
+//        ・同一 webhook 処理内の重複（同 source を同 chain で複数回送る等）は確実に 1 件に束ねる。
+//        ・**加えて**、同じユーザーが同じ source を「同じ分内」に 2 回トリガーした場合も 1 件に束ねる
+//          （= 短時間の二度押し/連打で同じ予約を二重に作らない・製品的に望ましい dedup ウィンドウ）。
+//          別の分にまたがるトリガーは別予約（=別操作として扱う）。別ユーザー / 別 source も別予約。
+//     => この「同分束ね」は意図的な仕様。triggerEventId を入れて厳密に webhook 単位へ狭めることも可能だが、
+//        replyToken 非保存方針と侵襲を避け、現行の分バケット束ねを採用（scheduled-message-arm.test.ts で固定）。
 //   - PII（lineUserId 全体・本文・token）はログに出さない。
 
 import { prisma } from "@/lib/prisma";
@@ -60,8 +67,9 @@ export async function armScheduledMessages(args: ArmScheduledMessagesArgs): Prom
 
   try {
     // MSG_SELECT は触らず、別クエリで scheduledMessageSettings を持つ送信メッセージだけ拾う（armCheckinTriggers 同様）。
+    // workId も where に明示し、別 work/OA の messageId を渡されても拾わない（cross-work 防御）。
     const rows = await prisma.message.findMany({
-      where:  { id: { in: args.sentMessageIds }, isActive: true, scheduledMessageSettings: { not: null } },
+      where:  { id: { in: args.sentMessageIds }, workId: args.workId, isActive: true, scheduledMessageSettings: { not: null } },
       select: { id: true, phaseId: true, scheduledMessageSettings: true },
     });
     if (rows.length === 0) return result;

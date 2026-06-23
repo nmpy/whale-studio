@@ -120,6 +120,40 @@ describe("armScheduledMessages", () => {
     expect(store.size).toBe(2);
   });
 
+  it("dedup ウィンドウ: 同ユーザー×同source を『同じ分』に2回 → 1件に束ねる（意図的）", async () => {
+    findManyMock.mockResolvedValue([msgRow()]);
+    await armScheduledMessages(baseArgs({ now: new Date("2026-06-23T09:00:05.000Z") }));
+    findManyMock.mockResolvedValue([msgRow()]);
+    await armScheduledMessages(baseArgs({ now: new Date("2026-06-23T09:00:55.000Z") })); // 同分内
+    expect(store.size).toBe(1);
+  });
+
+  it("dedup ウィンドウ: 同ユーザー×同source でも『別の分』なら別予約", async () => {
+    findManyMock.mockResolvedValue([msgRow()]);
+    await armScheduledMessages(baseArgs({ now: new Date("2026-06-23T09:00:30.000Z") }));
+    findManyMock.mockResolvedValue([msgRow()]);
+    await armScheduledMessages(baseArgs({ now: new Date("2026-06-23T09:02:30.000Z") })); // 2分後 → dueAt も別分
+    expect(store.size).toBe(2);
+  });
+
+  it("複数 messageId をまとめて findMany し、enabled な複数 source を別々に予約", async () => {
+    findManyMock.mockResolvedValue([
+      msgRow({ id: "m1" }),
+      msgRow({ id: "m2" }),
+    ]);
+    const r = await armScheduledMessages(baseArgs({ sentMessageIds: ["m1", "m2"] }));
+    expect(findManyMock).toHaveBeenCalledOnce(); // N+1 でなく一括取得
+    expect((findManyMock.mock.calls[0] as unknown as [{ where: { id: unknown } }])[0].where.id).toEqual({ in: ["m1", "m2"] });
+    expect(r.created).toBe(2);
+    expect(store.size).toBe(2);
+  });
+
+  it("findMany は workId スコープ付き（cross-work 防御）", async () => {
+    findManyMock.mockResolvedValue([msgRow()]);
+    await armScheduledMessages(baseArgs({ workId: "w-scope" }));
+    expect((findManyMock.mock.calls[0] as unknown as [{ where: { workId: string } }])[0].where.workId).toBe("w-scope");
+  });
+
   it("予約作成で例外が出ても全体は落ちない（failed 計上・他は継続）", async () => {
     findManyMock.mockResolvedValue([msgRow({ id: "x" }), msgRow({ id: "y" })]);
     createMock.mockRejectedValueOnce(new Error("db down")); // 1件目だけ失敗
