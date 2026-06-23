@@ -19,7 +19,7 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 
-import { POST } from "@/app/api/cron/scheduled-messages/route";
+import { GET, POST } from "@/app/api/cron/scheduled-messages/route";
 import { prisma } from "@/lib/prisma";
 
 const SECRET = "test-cron-secret";
@@ -99,6 +99,21 @@ describe("POST /api/cron/scheduled-messages — 認証", () => {
     const json = await res.json();
     expect(json.data.dryRun).toBe(false);
     // 対象行が無い（findMany→[]）ため実 push もDB変更も発生しないが、live で実行されたこと自体は dryRun:false で確認。
+    expect(JSON.stringify(json)).not.toContain(SECRET);
+  });
+
+  // Vercel Cron は GET で叩く。GET も POST と同じ認証・処理（flag 未設定なら dryRun）であること。
+  it("GET（Vercel Cron 経路）: 未認証 → 401", async () => {
+    expect((await GET(reqWith(undefined))).status).toBe(401);
+    expect((await GET(reqWith("Bearer wrong"))).status).toBe(401);
+  });
+
+  it("GET（Vercel Cron 経路）: 正 Bearer + flag 未設定 → 200・dryRun・件数のみ（DB変更なし）", async () => {
+    const res = await GET(reqWith(`Bearer ${SECRET}`));
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.data.dryRun).toBe(true);
+    expect((prisma.scheduledLineMessage.updateMany as ReturnType<typeof vi.fn>)).not.toHaveBeenCalled();
     expect(JSON.stringify(json)).not.toContain(SECRET);
   });
 });
