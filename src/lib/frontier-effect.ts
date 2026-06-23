@@ -18,6 +18,7 @@
 import { prisma } from "@/lib/prisma";
 import { activeCache, CACHE_KEY } from "@/lib/cache";
 import { armCheckinTriggers } from "@/lib/checkin-trigger";
+import { armScheduledMessages } from "@/lib/scheduled-message-arm";
 
 export async function applyFreeInputPostEffect(args: {
   sentMessageIds: string[];
@@ -94,4 +95,18 @@ export async function applyFreeInputPostEffect(args: {
     workId:         args.workId,
     oaId:           args.oaId,
   });
+
+  // ── 時間差メッセージ（予約送信）の予約作成（PR-4c-2）──
+  // 送信群に scheduledMessageSettings.enabled のメッセージがあれば ScheduledLineMessage(pending) を作成。
+  // ENABLE_SCHEDULED_MESSAGE_RESERVATION=true のときだけ（未設定なら no-op）。push は呼ばない。
+  // 失敗は内部で握りつぶす（reply 本体を壊さない）。oaId 不明時は work から解決を armChecking と揃える。
+  if (args.oaId) {
+    await armScheduledMessages({
+      sentMessageIds: args.sentMessageIds,
+      oaId:           args.oaId,
+      workId:         args.workId,
+      lineUserId:     args.userId,
+      userProgressId: args.progressId ?? null,
+    });
+  }
 }
