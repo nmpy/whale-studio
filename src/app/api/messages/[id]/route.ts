@@ -76,6 +76,7 @@ type PrismaMessageWithRelations = {
   checkinTriggerLocationId: string | null;
   checkinTriggerNextMessageId: string | null;
   checkinTriggerNextPhaseId: string | null;
+  scheduledMessageSettings: string | null;
   sortOrder: number; isActive: boolean; createdAt: Date; updatedAt: Date;
   phase:     { id: string; name: string; phaseType: string } | null;
   character: {
@@ -101,6 +102,11 @@ function parseQuickReplies(raw: string | null, msgId?: string) {
 
 // ── snake_case 変換（GET / PATCH 共通） ─────────────────────
 function toResponse(m: PrismaMessageWithRelations) {
+  // 時間差メッセージ設定（保存のみ）。再編集画面で値を復元できるよう JSON を安全に parse して返す。
+  let scheduledMessageSettings: unknown = null;
+  if (m.scheduledMessageSettings) {
+    try { scheduledMessageSettings = JSON.parse(m.scheduledMessageSettings); } catch { scheduledMessageSettings = null; }
+  }
   return {
     id:                    m.id,
     work_id:               m.workId,
@@ -161,6 +167,7 @@ function toResponse(m: PrismaMessageWithRelations) {
     checkin_trigger_location_id:      m.checkinTriggerLocationId    ?? null,
     checkin_trigger_next_message_id:  m.checkinTriggerNextMessageId ?? null,
     checkin_trigger_next_phase_id:    m.checkinTriggerNextPhaseId   ?? null,
+    scheduled_message_settings:       scheduledMessageSettings,
     sort_order:            m.sortOrder,
     is_active:             m.isActive,
     created_at:            m.createdAt,
@@ -237,6 +244,22 @@ export const PATCH = withAuth<{ id: string }>(async (req, { params }, user) => {
       const character = await prisma.character.findUnique({ where: { id: data.character_id } });
       if (!character) return notFound("キャラクター");
       if (character.workId !== existing.workId) return badRequest("指定したキャラクターはこの作品に属していません");
+    }
+
+    // 時間差メッセージ設定（PR-4c-1: 保存のみ）。発話キャラは同一 work のみ許可。
+    let scheduledMessageSettingsJson: string | null | undefined = undefined;
+    if (data.scheduled_message_settings !== undefined) {
+      if (data.scheduled_message_settings === null) {
+        scheduledMessageSettingsJson = null;
+      } else {
+        const s = data.scheduled_message_settings;
+        if (s.character_id) {
+          const ch = await prisma.character.findUnique({ where: { id: s.character_id } });
+          if (!ch) return notFound("キャラクター");
+          if (ch.workId !== existing.workId) return badRequest("時間差メッセージの発話キャラクターはこの作品に属していません");
+        }
+        scheduledMessageSettingsJson = JSON.stringify(s);
+      }
     }
 
     // 既存レコードと変更後の値を合わせた整合性チェック（create と同等）
@@ -344,6 +367,8 @@ export const PATCH = withAuth<{ id: string }>(async (req, { params }, user) => {
           checkinTriggerNextMessageId: data.checkin_trigger_type ? (data.checkin_trigger_next_message_id ?? null) : null,
           checkinTriggerNextPhaseId:   data.checkin_trigger_type ? (data.checkin_trigger_next_phase_id ?? null) : null,
         }),
+        // 時間差メッセージ設定（保存のみ・runtime 未使用）。payload に含まれるときのみ更新。
+        ...(scheduledMessageSettingsJson !== undefined && { scheduledMessageSettings: scheduledMessageSettingsJson }),
         ...(data.sort_order        !== undefined && { sortOrder:       data.sort_order }),
         ...(data.is_active         !== undefined && { isActive:        data.is_active }),
       },

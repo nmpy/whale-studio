@@ -458,6 +458,12 @@ model Message {
   /// 検知成功時に進める次フェーズ(Phase.id・任意)。null = フェーズ遷移なし。
   checkinTriggerNextPhaseId    String?  @map("checkin_trigger_next_phase_id")
 
+  // ── 時間差メッセージ（予約送信）の設定（PR-4c-1: 保存のみ。runtime/webhook では未使用）────
+  /// 時間差メッセージ設定の JSON 文字列（null = 未設定）。
+  /// shape: { enabled, delayMinutes, body, characterId, cancelOnPhaseChange, cancelOnWorkCompleted }。
+  /// push 配信（通数消費）として「ユーザー操作の N 分後」に送る予約の設定。実際の予約作成は次 PR で接続。
+  scheduledMessageSettings     String?  @map("scheduled_message_settings")
+
   character             Character? @relation(fields: [characterId], references: [id])
   tapDestination        LineDestination? @relation(fields: [tapDestinationId], references: [id], onDelete: SetNull)
   correctNextPhase      Phase?     @relation("MessageCorrectNextPhase", fields: [correctNextPhaseId], references: [id])

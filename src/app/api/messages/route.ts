@@ -133,6 +133,18 @@ export const POST = withAuth(async (req, _ctx, user) => {
       if (character.workId !== data.work_id) return badRequest("指定したキャラクターはこの作品に属していません");
     }
 
+    // 時間差メッセージ設定（PR-4c-1: 保存のみ・runtime 未使用）。発話キャラは同一 work のみ許可。
+    let scheduledMessageSettingsJson: string | null = null;
+    if (data.scheduled_message_settings) {
+      const s = data.scheduled_message_settings;
+      if (s.character_id) {
+        const ch = await prisma.character.findUnique({ where: { id: s.character_id } });
+        if (!ch) return notFound("キャラクター");
+        if (ch.workId !== data.work_id) return badRequest("時間差メッセージの発話キャラクターはこの作品に属していません");
+      }
+      scheduledMessageSettingsJson = JSON.stringify(s);
+    }
+
     // DB 保存前ログ（quick_replies の内容と JSON 化後の文字列を確認）
     const quickRepliesJson = data.quick_replies ? JSON.stringify(data.quick_replies) : null;
     console.log(
@@ -201,6 +213,8 @@ export const POST = withAuth(async (req, _ctx, user) => {
         checkinTriggerLocationId:     locationAllowed && data.checkin_trigger_type ? (data.checkin_trigger_location_id ?? null) : null,
         checkinTriggerNextMessageId:  locationAllowed && data.checkin_trigger_type ? (data.checkin_trigger_next_message_id ?? null) : null,
         checkinTriggerNextPhaseId:    locationAllowed && data.checkin_trigger_type ? (data.checkin_trigger_next_phase_id ?? null) : null,
+        // 時間差メッセージ（予約送信）設定。保存のみ・runtime/webhook では未使用（PR-4c-1）。
+        scheduledMessageSettings:     scheduledMessageSettingsJson,
         sortOrder:          data.sort_order,
         isActive:           data.is_active,
       },

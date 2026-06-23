@@ -134,8 +134,14 @@ export type { AdditionalMessageSlot } from "./_form-helpers";
 import {
   EMPTY_ADDITIONAL_SLOT as _EMPTY_ADDITIONAL_SLOT,
   timingFormHasEffect,
+  EMPTY_SCHEDULED_MESSAGE,
+  scheduledSettingsToFormState,
+  formStateToScheduledSettings,
   type AdditionalMessageSlot as _AdditionalMessageSlot,
+  type ScheduledMessageFormState,
 } from "./_form-helpers";
+export type { ScheduledMessageFormState } from "./_form-helpers";
+export { EMPTY_SCHEDULED_MESSAGE } from "./_form-helpers";
 // 内部参照用エイリアス (= 既存コードの local シンボル名と互換)
 const EMPTY_ADDITIONAL_SLOT = _EMPTY_ADDITIONAL_SLOT;
 type AdditionalMessageSlot = _AdditionalMessageSlot;
@@ -239,6 +245,8 @@ export interface MessageFormState {
   loading_threshold_ms: string;
   loading_min_seconds:  string;
   loading_max_seconds:  string;
+  // ── 時間差メッセージ（予約送信）設定（PR-4c-1: 保存のみ・runtime 未使用）──
+  scheduled_message: ScheduledMessageFormState;
 }
 
 export const EMPTY_MESSAGE_FORM: MessageFormState = {
@@ -306,6 +314,7 @@ export const EMPTY_MESSAGE_FORM: MessageFormState = {
   loading_threshold_ms: "",
   loading_min_seconds:  "",
   loading_max_seconds:  "",
+  scheduled_message:    { ...EMPTY_SCHEDULED_MESSAGE },
 };
 
 // ── コンバーター ──────────────────────────────────────────
@@ -361,6 +370,8 @@ export function msgToFormState(msg: {
   checkin_trigger_location_id?:     string | null;
   checkin_trigger_next_message_id?: string | null;
   checkin_trigger_next_phase_id?:   string | null;
+  // 時間差メッセージ設定（保存のみ）。API からは parse 済み object | null で届く。
+  scheduled_message_settings?:      unknown;
   // 演出設定
   read_receipt_mode?:    string | null;
   read_delay_ms?:        number | null;
@@ -465,6 +476,8 @@ export function msgToFormState(msg: {
     checkin_trigger_location_id:     msg.checkin_trigger_location_id     ?? "",
     checkin_trigger_next_message_id: msg.checkin_trigger_next_message_id ?? "",
     checkin_trigger_next_phase_id:   msg.checkin_trigger_next_phase_id   ?? "",
+    // 時間差メッセージ設定（保存のみ）。再編集で値を復元。
+    scheduled_message:               scheduledSettingsToFormState(msg.scheduled_message_settings),
     // 演出設定 (= 継承モード廃止: null / 旧 "inherit" は OFF 相当に正規化)。
     // - read_receipt_mode: null / "inherit" → "immediate" (= OFF)
     // - typing_enabled / loading_enabled: null → "false" (= OFF)
@@ -608,6 +621,8 @@ export function formStateToMsgBody(form: MessageFormState) {
     loading_threshold_ms: form.loading_threshold_ms ? Number(form.loading_threshold_ms) : null,
     loading_min_seconds:  form.loading_min_seconds ? Number(form.loading_min_seconds) : null,
     loading_max_seconds:  form.loading_max_seconds ? Number(form.loading_max_seconds) : null,
+    // 時間差メッセージ設定（保存のみ・runtime 未使用）。未操作なら null。
+    scheduled_message_settings: formStateToScheduledSettings(form.scheduled_message),
   };
   console.log("[formStateToMsgBody] payload:", JSON.stringify(payload, null, 2));
   return payload;
@@ -3475,6 +3490,130 @@ function ScheduledMessageInfo() {
   );
 }
 
+/** UI feature flag: 設定 UI を出すのは NEXT_PUBLIC_ENABLE_SCHEDULED_MESSAGE_UI=true のときだけ。
+ *  未設定なら従来通り「準備中」表示のまま（本番ユーザーが「保存したら送られる」と誤解しないため）。 */
+const SCHEDULED_MESSAGE_UI_ENABLED = process.env.NEXT_PUBLIC_ENABLE_SCHEDULED_MESSAGE_UI === "true";
+
+const SCHED_DELAY_PRESETS: { label: string; minutes: number }[] = [
+  { label: "10分後", minutes: 10 }, { label: "30分後", minutes: 30 },
+  { label: "1時間後", minutes: 60 }, { label: "翌日(24h)", minutes: 1440 },
+];
+
+// ────────────────────────────────────────────────────────
+// ScheduledMessageSettings — 「時間差メッセージ（予約送信）」の設定 UI（PR-4c-1）。
+//   設定を保存するだけ。実際の予約作成・push 送信は runtime/webhook 未接続（次 PR）。
+//   flag 無効時は ScheduledMessageInfo（準備中）を表示する。
+// ────────────────────────────────────────────────────────
+function ScheduledMessageSettings({ form, set, characters, oaId }: {
+  form: MessageFormState;
+  set:  <K extends keyof MessageFormState>(k: K, v: MessageFormState[K]) => void;
+  characters: Character[];
+  oaId: string;
+}) {
+  const s = form.scheduled_message;
+  const upd = (patch: Partial<ScheduledMessageFormState>) => set("scheduled_message", { ...s, ...patch });
+  const bodyMissing = s.enabled && !s.body.trim();
+  const delayInvalid = s.enabled && (!Number.isFinite(s.delay_minutes) || s.delay_minutes < 1 || s.delay_minutes > 10080);
+
+  return (
+    <SectionAccordion
+      title="時間差メッセージ（予約送信）"
+      optional
+      description="ユーザーの操作から指定時間後に push 配信でメッセージを送る設定（通数を消費します）"
+      defaultOpen={s.enabled}
+      badge={s.enabled
+        ? <span style={{ fontSize: 10, fontWeight: 700, background: "#dbeafe", color: "#1d4ed8", borderRadius: 4, padding: "1px 6px" }}>有効</span>
+        : undefined}
+    >
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <div style={checkNotice.warn}>
+          このメッセージは <strong>push 配信</strong>として送信され、<strong>LINE公式アカウントの月間メッセージ通数を消費</strong>します。
+          reply では10分後送信はできません。無料枠や追加メッセージ上限を超えると、LINE 側で送信できない場合があります。
+          {" "}
+          <a href={`/oas/${oaId}/settings`} target="_blank" rel="noreferrer" style={{ color: "#92400e", textDecoration: "underline" }}>月間メッセージ使用状況を確認</a>
+        </div>
+
+        <div style={checkNotice.muted}>
+          <strong>現在は設定の保存のみ</strong>です。実際の予約作成・送信は次のアップデートで接続します（保存しても、いまはまだ送信されません）。
+        </div>
+
+        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 600 }}>
+          <input type="checkbox" checked={s.enabled} onChange={(e) => upd({ enabled: e.target.checked })} />
+          時間差メッセージを有効にする
+        </label>
+
+        {s.enabled && (
+          <>
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 600, color: "#374151" }}>送信タイミング（ユーザー操作の何分後に push するか）</label>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, margin: "6px 0" }}>
+                {SCHED_DELAY_PRESETS.map((p) => (
+                  <button
+                    key={p.minutes} type="button"
+                    onClick={() => upd({ delay_minutes: p.minutes })}
+                    style={{
+                      fontSize: 12, padding: "4px 10px", borderRadius: 6, cursor: "pointer",
+                      border: s.delay_minutes === p.minutes ? "1px solid #2563eb" : "1px solid #d1d5db",
+                      background: s.delay_minutes === p.minutes ? "#eff6ff" : "#fff",
+                      color: s.delay_minutes === p.minutes ? "#1d4ed8" : "#374151", fontWeight: 600,
+                    }}
+                  >{p.label}</button>
+                ))}
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <span style={{ fontSize: 12, color: "#6b7280" }}>カスタム</span>
+                <input
+                  type="number" min={1} max={10080} className="form-input" style={{ fontSize: 13, width: 110 }}
+                  value={s.delay_minutes}
+                  onChange={(e) => upd({ delay_minutes: Math.max(1, Math.min(10080, Math.floor(Number(e.target.value) || 1))) })}
+                />
+                <span style={{ fontSize: 12, color: "#6b7280" }}>分後（1〜10080分 / 最大7日）</span>
+              </div>
+              {delayInvalid && <div style={{ fontSize: 11, color: "#dc2626", marginTop: 3 }}>送信タイミングは 1〜10080 分で指定してください。</div>}
+            </div>
+
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 600, color: "#374151" }}>送信内容（本文）<span style={{ color: "#dc2626" }}> *</span></label>
+              <textarea
+                className="form-input" rows={3} maxLength={5000} style={{ fontSize: 13, resize: "vertical", width: "100%" }}
+                value={s.body}
+                onChange={(e) => upd({ body: e.target.value })}
+                placeholder="時間差で送るメッセージ本文"
+              />
+              {bodyMissing && <div style={{ fontSize: 11, color: "#dc2626", marginTop: 3 }}>有効にする場合は本文が必須です。</div>}
+            </div>
+
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 600, color: "#374151" }}>発話キャラクター（任意）</label>
+              <select
+                className="form-input" style={{ fontSize: 13 }}
+                value={s.character_id}
+                onChange={(e) => upd({ character_id: e.target.value })}
+              >
+                <option value="">（本文と同じ / デフォルト）</option>
+                {characters.map((ch) => (<option key={ch.id} value={ch.id}>{ch.name}</option>))}
+              </select>
+            </div>
+
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 600, color: "#374151" }}>キャンセル条件</label>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, margin: "4px 0" }}>
+                <input type="checkbox" checked={s.cancel_on_phase_change} onChange={(e) => upd({ cancel_on_phase_change: e.target.checked })} />
+                ユーザーが別フェーズに進んでいたら送信をキャンセルする
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}>
+                <input type="checkbox" checked={s.cancel_on_work_completed} onChange={(e) => upd({ cancel_on_work_completed: e.target.checked })} />
+                作品を終了済みのユーザーには送信をキャンセルする
+              </label>
+              <div style={hintText}>※ キャンセル判定は送信直前に行われます（次 PR で接続）。</div>
+            </div>
+          </>
+        )}
+      </div>
+    </SectionAccordion>
+  );
+}
+
 // ── プレビュー用 chain build helper ───────────────────────
 //
 // 1 登録 (= chain head + 連続メッセージ群) を form の live state + API データから
@@ -5534,9 +5673,12 @@ export function MessageForm({
                   onHeadDelayChange={(ms) => set("lag_ms", ms)}
                 />
 
-                {/* 時間差メッセージ（予約送信）— 概念説明のみ（PR-1）。実送信は後続 PR で対応。 */}
+                {/* 時間差メッセージ（予約送信）。flag 有効時は設定 UI（保存のみ・runtime 未接続）、
+                    未設定なら従来通り「準備中」表示（PR-4c-1）。 */}
                 <div style={{ marginTop: 12 }}>
-                  <ScheduledMessageInfo />
+                  {SCHEDULED_MESSAGE_UI_ENABLED
+                    ? <ScheduledMessageSettings form={form} set={set} characters={characters} oaId={oaId} />
+                    : <ScheduledMessageInfo />}
                 </div>
 
               </div>{/* /padding */}
