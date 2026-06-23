@@ -1,8 +1,10 @@
 // src/app/api/cron/scheduled-messages/route.ts
-// POST /api/cron/scheduled-messages — 時間差メッセージ worker（PR-4b: real push + live mode）。
+// GET/POST /api/cron/scheduled-messages — 時間差メッセージ worker（PR-4b: real push + live mode）。
 //
 // ■ 認証: CRON_SECRET（既存 /api/internal/cleanup と同方式）。
 //     Authorization: Bearer <CRON_SECRET>。未設定/不一致は 401（未認証で外部実行不可）。
+//     Vercel Cron は GET で叩き、CRON_SECRET env がある場合 Authorization: Bearer <CRON_SECRET> を
+//     自動付与する。よって GET（Vercel Cron 用）と POST（手動/既存）両方で同じ認証・処理を行う。
 // ■ live mode は **ENABLE_SCHEDULED_MESSAGE_WORKER=true** のときだけ。未設定/それ以外は dryRun
 //     （DB を一切変更しない・実 push しない）。本番デプロイ直後に env 未設定なら勝手に push が走らない安全側。
 //     - live:   claim(pending→sending) → cancel 判定 → **real LINE push** → sent / failed / retry、
@@ -32,7 +34,7 @@ function isLiveModeEnabled(): boolean {
   return process.env.ENABLE_SCHEDULED_MESSAGE_WORKER === "true";
 }
 
-export async function POST(req: NextRequest) {
+async function handle(req: NextRequest) {
   // ── secret 認証 ──
   const cronSecret = process.env.CRON_SECRET;
   if (!cronSecret) {
@@ -143,3 +145,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, error: "Worker failed" }, { status: 500 });
   }
 }
+
+// Vercel Cron は GET で叩く。手動/既存呼び出し用に POST も同じ処理で受ける。
+export const GET = handle;
+export const POST = handle;
