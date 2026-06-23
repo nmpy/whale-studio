@@ -3,6 +3,7 @@
 
 import { z } from "zod";
 import { normalizeFlexJson, FLEX_ERRORS } from "@/lib/flex";
+import { MIN_DELAY_MINUTES as SCHED_MIN_DELAY_MINUTES, MAX_DELAY_MINUTES as SCHED_MAX_DELAY_MINUTES } from "@/lib/scheduled-message";
 
 // ────────────────────────────────────────────────
 // 共通プリミティブ
@@ -333,6 +334,23 @@ const answerMatchTypeSchema = z
   )
   .default(["exact"]);
 
+/**
+ * 時間差メッセージ（予約送信）の設定（PR-4c-1: 保存のみ・runtime 未使用）。
+ * enabled=true のときは delayMinutes と body を必須にする。delay は 1〜10080 分（最大7日）。
+ * push 配信＝通数消費。character_id の所属検証は API 側（同一 work のキャラのみ）。
+ */
+export const scheduledMessageSettingsSchema = z.object({
+  enabled:               z.boolean(),
+  delay_minutes:         z.number().int().min(SCHED_MIN_DELAY_MINUTES).max(SCHED_MAX_DELAY_MINUTES).nullable().optional(),
+  body:                  z.string().max(5000).nullable().optional(),
+  character_id:          uuidSchema.nullable().optional(),
+  cancel_on_phase_change:  z.boolean().optional().default(false),
+  cancel_on_work_completed: z.boolean().optional().default(false),
+}).refine(
+  (s) => !s.enabled || (s.delay_minutes != null && s.delay_minutes >= SCHED_MIN_DELAY_MINUTES && !!(s.body && s.body.trim())),
+  { message: "時間差メッセージを有効にする場合は送信タイミング（分）と本文が必須です" },
+);
+
 export const createMessageSchema = z.object({
   work_id:          uuidSchema,
   phase_id:         uuidSchema.optional().nullable(),
@@ -405,6 +423,7 @@ export const createMessageSchema = z.object({
   checkin_trigger_location_id:     uuidSchema.optional().nullable(),
   checkin_trigger_next_message_id: uuidSchema.optional().nullable(),
   checkin_trigger_next_phase_id:   uuidSchema.optional().nullable(),
+  scheduled_message_settings:      scheduledMessageSettingsSchema.nullable().optional(),
   sort_order:       sortSchema,
   is_active:        z.boolean().default(true),
 }).superRefine((val, ctx) => {
@@ -570,6 +589,7 @@ export const updateMessageSchema = z.object({
   checkin_trigger_location_id:     uuidSchema.optional().nullable(),
   checkin_trigger_next_message_id: uuidSchema.optional().nullable(),
   checkin_trigger_next_phase_id:   uuidSchema.optional().nullable(),
+  scheduled_message_settings:      scheduledMessageSettingsSchema.nullable().optional(),
   sort_order:        z.number().int().min(0).optional(),
   is_active:         z.boolean().optional(),
 }).superRefine((val, ctx) => {

@@ -34,7 +34,7 @@ import { ok, badRequest, notFound, conflict, unprocessable, serverError } from "
 import { withAuth } from "@/lib/auth";
 import { requireRole, getOaIdFromWorkId } from "@/lib/rbac";
 import { activeCache, CACHE_KEY } from "@/lib/cache";
-import { quickReplyItemSchema } from "@/lib/validations";
+import { quickReplyItemSchema, scheduledMessageSettingsSchema } from "@/lib/validations";
 import { planChainSave, type ChainSaveSpec, type WorkMessageRef } from "@/lib/chain-plan";
 
 export const dynamic = "force-dynamic";
@@ -99,6 +99,8 @@ const contentSchema = z.object({
   loading_threshold_ms: z.number().int().min(0).max(30000).optional().nullable(),
   loading_min_seconds:  z.number().int().min(3).max(60).optional().nullable(),
   loading_max_seconds:  z.number().int().min(3).max(60).optional().nullable(),
+  // 時間差メッセージ（予約送信）設定（PR-4c-1: 保存のみ・runtime 未使用）。
+  scheduled_message_settings: scheduledMessageSettingsSchema.nullable().optional(),
 });
 
 const slotSchema = contentSchema.extend({
@@ -177,6 +179,10 @@ function contentToData(c: ContentInput | undefined): Record<string, unknown> {
   set("loadingThresholdMs", c.loading_threshold_ms);
   set("loadingMinSeconds", c.loading_min_seconds);
   set("loadingMaxSeconds", c.loading_max_seconds);
+  // 時間差メッセージ設定（保存のみ・runtime 未使用）。JSON 文字列で保持。
+  if (c.scheduled_message_settings !== undefined) {
+    d.scheduledMessageSettings = c.scheduled_message_settings ? JSON.stringify(c.scheduled_message_settings) : null;
+  }
   return d;
 }
 
@@ -226,6 +232,21 @@ export const PUT = withAuth(async (req: NextRequest, _ctx, user) => {
     const mustBelong = [...slotIds, ...removedIds, ...detachedIds, ...(input.free_input_response_id ? [input.free_input_response_id] : [])];
     for (const id of mustBelong) {
       if (!byId.has(id)) return badRequest(`message ${id.slice(0, 8)} は work=${input.work_id.slice(0, 8)} に属していません`);
+    }
+
+    // 時間差メッセージの発話キャラ（指定時）は同一 work のキャラのみ許可（cross-work/OA 防御）。
+    const schedCharIds = [input.head, ...input.slots]
+      .map((c) => c?.scheduled_message_settings?.character_id)
+      .filter((id): id is string => !!id);
+    if (schedCharIds.length > 0) {
+      const chars = await prisma.character.findMany({
+        where:  { id: { in: Array.from(new Set(schedCharIds)) } },
+        select: { id: true, workId: true },
+      });
+      const okIds = new Set(chars.filter((ch) => ch.workId === input.work_id).map((ch) => ch.id));
+      for (const cid of schedCharIds) {
+        if (!okIds.has(cid)) return badRequest("時間差メッセージの発話キャラクターはこの作品に属していません");
+      }
     }
 
     // 楽観ロック: head.updatedAt 不一致 → 409（#246 バナーで表示）
