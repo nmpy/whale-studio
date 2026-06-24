@@ -9,6 +9,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { buildKeywordMessages, type KeywordMessageRecord } from "@/lib/line";
+import { parsePuzzleHintPostback } from "@/lib/puzzle-hint";
 
 beforeEach(() => {
   vi.spyOn(console, "log").mockImplementation(() => {});
@@ -37,21 +38,26 @@ function rec(over: Partial<KeywordMessageRecord> = {}): KeywordMessageRecord {
   } as KeywordMessageRecord;
 }
 
-type QrAction = { type: string; label: string; text: string };
+type QrAction = { type: string; label: string; text?: string; displayText?: string; data?: string };
 const qrOf = (m: unknown) => (m as { quickReply?: { items: { action: QrAction }[] } }).quickReply;
 
 describe("buildKeywordMessages: 問題メッセージにヒント QR を合成する", () => {
-  it("1. target_message_id → puzzle: incorrect_quick_replies 3件が LINE message action として付く", () => {
+  it("1. puzzle: incorrect_quick_replies 3件が postback（messageId + hintIndex）として付く（同名ヒント混線防止）", () => {
     const out = buildKeywordMessages([rec({ incorrectQuickReplies: PROD_HINTS })]);
     const qr = qrOf(out[0]);
     expect(qr).toBeDefined();
     expect(qr!.items).toHaveLength(3);
-    expect(qr!.items.map((i) => i.action.type)).toEqual(["message", "message", "message"]);
+    // 問題ヒントは postback 化（ラベルではなく messageId + hintIndex で解決）。
+    expect(qr!.items.map((i) => i.action.type)).toEqual(["postback", "postback", "postback"]);
+    // 表示ラベル（ユーザー向け表示名）は不変
     expect(qr!.items.map((i) => i.action.label)).toEqual(["ヒント①", "ヒント②", "ヒント③（こたえ）"]);
-    // value 欠落の3件目は text が label fallback
-    expect(qr!.items[2].action.text).toBe("ヒント③（こたえ）");
+    expect(qr!.items[2].action.displayText).toBe("ヒント③（こたえ）");
+    // data は messageId（= rec の id）+ 連番 hintIndex を持つ
+    expect(parsePuzzleHintPostback(qr!.items[0].action.data!)).toEqual({ messageId: "8c001c89-b5ca-4c77-9681-f919c6b4e701", hintIndex: 0 });
+    expect(parsePuzzleHintPostback(qr!.items[1].action.data!)).toEqual({ messageId: "8c001c89-b5ca-4c77-9681-f919c6b4e701", hintIndex: 1 });
+    expect(parsePuzzleHintPostback(qr!.items[2].action.data!)).toEqual({ messageId: "8c001c89-b5ca-4c77-9681-f919c6b4e701", hintIndex: 2 });
     // action.type に "hint" は決して残さない（LINE は未知 action を拒否する）
-    expect(qr!.items.every((i) => i.action.type === "message")).toBe(true);
+    expect(qr!.items.every((i) => i.action.type === "postback")).toBe(true);
   });
 
   it("2. quick_replies=null + ヒントあり → ヒント QR が付く", () => {
