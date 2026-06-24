@@ -14,6 +14,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { getAuthHeaders } from "@/lib/api-client";
+import { platformOwnerFromResponseBody } from "@/hooks/platform-owner";
 import type { Role } from "@/lib/types/permissions";
 import { parseOasViewRole, type OasViewRole } from "@/lib/oas-preview";
 
@@ -75,19 +76,21 @@ export function usePlatformRole() {
       if (savedView) setPreviewViewRoleState(savedView);
     } catch {}
 
-    // /api/admin/me からプラットフォームオーナー判定を取得
-    fetch("/api/admin/me", { headers: { ...getAuthHeaders() } })
+    // /api/admin/me からプラットフォームオーナー判定を取得。
+    // PR-AUTH2: true だけでなく false も明示反映し、!ok / catch でも false に確定させる
+    // （stale true / stale false を残さない）。cache:"no-store" でブラウザ側の再利用も防ぐ。
+    fetch("/api/admin/me", { headers: { ...getAuthHeaders() }, cache: "no-store" })
       .then((r) => {
         if (!r.ok) return null;
         return r.json() as Promise<{ data?: { is_platform_owner?: boolean } }>;
       })
       .then((body) => {
-        if (body?.data?.is_platform_owner) {
-          setIsPlatformOwner(true);
-        }
+        // body=null（!ok）や undefined のときも false に確定（platformOwnerFromResponseBody）。
+        setIsPlatformOwner(platformOwnerFromResponseBody(body));
       })
       .catch(() => {
-        // ネットワークエラー時は一般ユーザー扱い
+        // ネットワークエラー時は一般ユーザー扱い（false に確定）。
+        setIsPlatformOwner(false);
       })
       .finally(() => {
         setLoading(false);
