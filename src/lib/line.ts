@@ -14,6 +14,7 @@ import { isFreeInputPrompt } from "@/lib/free-input";
 import type { ReadReceiptController } from "@/lib/line-read-receipt";
 import { showLoadingAnimation, resolveCmsLoadingPlan } from "@/lib/line-read-receipt";
 import { resolveDisplayQrItems } from "@/lib/hint-qr";
+import { buildPuzzleHintPostbackData } from "@/lib/puzzle-hint";
 import { buildFlexSendParts, type FlexContents } from "@/lib/flex";
 import { normalizeCarouselContent, buildCarouselFlex } from "@/lib/carousel";
 import { recordPuzzleDeliveries } from "@/lib/puzzle-history";
@@ -1065,10 +1066,21 @@ export function buildQuickReply(labels: string[]): LineQuickReply {
  */
 export function buildQuickReplyFromItems(
   items: QuickReplyItem[],
-  opts?: { resolveDestinationUrl?: (destinationId: string) => string | null },
+  opts?: {
+    resolveDestinationUrl?: (destinationId: string) => string | null;
+    /**
+     * 指定時、hint アイテムを **postback**（action=puzzle_hint&messageId=<this>&hintIndex=<n>）として
+     * 出力する。これによりタップ時はラベルテキストでなく「紐づく問題 messageId + ヒント index」が届き、
+     * 同フェーズに同名ヒントの問題が複数あってもタップ元の問題のヒントへ解決できる。
+     * 未指定（旧来）の場合は hint も message action（label 送信）のまま＝既存互換。
+     * hintIndex は resolveDisplayQrItems の hint 並び順（= resolveHintItems）と一致する。
+     */
+    sourceMessageId?: string;
+  },
 ): LineQuickReply | undefined {
   if (!items || items.length === 0) return undefined;
 
+  let hintIdx = 0; // hint アイテムの出現順 index（postback hintIndex 用）。非 hint では増えない。
   const lineItems: LineQuickReplyItem[] = items
     .filter((item) => item.enabled !== false)   // enabled=false のアイテムを除外
     .slice(0, QUICK_REPLY_MAX)
@@ -1084,9 +1096,25 @@ export function buildQuickReplyFromItems(
         if (!uri) return [];
         return [{ type: "action", action: { type: "uri", label, uri } }];
       }
-      // hint → ユーザーに見える文言（label）をそのまま送信テキストにする
+      if (item.action === "hint") {
+        const thisHintIdx = hintIdx++;
+        // sourceMessageId があれば postback 化（解決キー = messageId + hintIndex・ラベル非依存）。
+        if (opts?.sourceMessageId) {
+          return [{
+            type: "action",
+            action: {
+              type:        "postback",
+              label,
+              data:        buildPuzzleHintPostbackData(opts.sourceMessageId, thisHintIdx),
+              displayText: item.label,
+            },
+          }];
+        }
+        // legacy: ラベルを送信テキストにする message action（旧データ互換・matchHintFromPhase が処理）。
+        return [{ type: "action", action: { type: "message", label, text: item.label } }];
+      }
       // text / next / custom → value 優先、なければ label
-      const text = item.action === "hint" ? item.label : (item.value?.trim() || item.label);
+      const text = item.value?.trim() || item.label;
       return [{ type: "action", action: { type: "message", label, text } }];
     });
 
@@ -1174,7 +1202,8 @@ export function buildPhaseMessages(
       incorrectQuickReplies: msg.incorrect_quick_replies,
     });
     const msgQr = visibleQrItems.length
-      ? buildQuickReplyFromItems(visibleQrItems)
+      // 問題（puzzle）のヒント QR は postback 化（messageId + hintIndex で解決）。非 puzzle は従来通り。
+      ? buildQuickReplyFromItems(visibleQrItems, msg.kind === "puzzle" ? { sourceMessageId: msg.id } : undefined)
       : undefined;
     return convertMessageToLine({
       id:        msg.id,
@@ -1450,7 +1479,10 @@ export function buildKeywordMessages(
       incorrectQuickReplies: parseQrJson(msg.incorrectQuickReplies, "incorrectQuickReplies"),
     });
     const msgQr: LineQuickReply | undefined =
-      displayQrItems.length ? buildQuickReplyFromItems(displayQrItems) : undefined;
+      displayQrItems.length
+        // 問題（puzzle）のヒント QR は postback 化（messageId + hintIndex）。再表示（問題に戻る）経路でも同様。
+        ? buildQuickReplyFromItems(displayQrItems, msg.kind === "puzzle" ? { sourceMessageId: msg.id } : undefined)
+        : undefined;
 
     // 共通変換ヘルパー（buildPhaseMessages と同一ロジック）
     const lineMsg = convertMessageToLine({

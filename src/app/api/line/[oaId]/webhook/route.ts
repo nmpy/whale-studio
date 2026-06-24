@@ -45,6 +45,7 @@ import {
 import { buildRuntimeState, matchTransition, applySetFlags, safeParseFlags, safeParseVariables, safeParseWaitingForInput, fetchPhaseWithIncludes, drainAutoSendableItems, type PhaseRow } from "@/lib/runtime";
 import { matchImageActionPhaseTransition } from "@/lib/image-action-phase";
 import { matchBackToPuzzle, buildBackToPuzzlePostbackData, parseBackToPuzzlePostback } from "@/lib/hint-back-to-puzzle";
+import { buildPuzzleHintPostbackData, parsePuzzleHintPostback, resolveHintItems } from "@/lib/puzzle-hint";
 import { shouldOfferResumeChoice } from "@/lib/message-flow";
 import { isFreeInputPrompt } from "@/lib/free-input";
 import { decideFollowBehavior } from "@/lib/follow-action";
@@ -997,6 +998,88 @@ async function reshowPuzzleById(args: {
   const { messages: chain } = await buildMessageChain(puzzleRow, args.vars);
   if (chain.length === 0) return false;
   await replyWithLagToLine(args.replyToken, chain, args.userId, args.channelAccessToken);
+  return true;
+}
+
+// ── ヒント返答メッセージの組み立て（legacy text 経路と postback 経路で共用）──
+//   解決済みのヒント並び（displayHints = resolveHintItems 順）と matchedIndex から、
+//   ヒント本文 + フォローアップ + 導線 QR（「さらにヒント」=次ヒントへの postback / 「問題に戻る」postback）を作る。
+//   「さらにヒント」も postback 化（messageId + 次ヒント index）＝ラベル非依存で正しく次ヒントへ解決する。
+//   進行順は既存どおり hint_level でソートして決め、postback の index は表示順（displayHints）へ写像する。
+function composeHintMessages(args: {
+  sourceMessageId: string;
+  displayHints:    import("@/types").QuickReplyItem[];
+  matchedIndex:    number;
+  sender:          import("@/lib/line").LineSender | undefined;
+}): import("@/lib/line").LineMessage[] {
+  const matched = args.displayHints[args.matchedIndex];
+  const hintText     = (matched as { hint_text?: string }).hint_text?.trim() || "ヒントはまだ設定されていません。";
+  const hintFollowup = (matched as { hint_followup?: string }).hint_followup?.trim() || undefined;
+  const msgs: import("@/lib/line").LineMessage[] = [
+    { type: "text", text: hintText, sender: args.sender },
+    ...(hintFollowup
+      ? [{ type: "text", text: hintFollowup, sender: args.sender } as import("@/lib/line").LineMessage]
+      : []),
+  ];
+
+  // 「さらにヒント」= hint_level 進行順の次ヒント（既存挙動）→ その表示 index へ postback。
+  const levelSorted = [...args.displayHints].sort(
+    (a, b) => ((a as { hint_level?: number }).hint_level ?? 999) - ((b as { hint_level?: number }).hint_level ?? 999),
+  );
+  const curLvlIdx = levelSorted.indexOf(matched);
+  const nextItem  = curLvlIdx >= 0 && curLvlIdx + 1 < levelSorted.length ? levelSorted[curLvlIdx + 1] : null;
+
+  const nav: import("@/lib/line").LineQuickReplyItem[] = [];
+  if (nextItem) {
+    const nextDisplayIdx = args.displayHints.indexOf(nextItem);
+    if (nextDisplayIdx >= 0) {
+      const nextLabel = (matched as { hint_next_label?: string }).hint_next_label?.trim() || "さらにヒント";
+      nav.push({
+        type: "action",
+        action: { type: "postback", label: nextLabel.slice(0, 20), data: buildPuzzleHintPostbackData(args.sourceMessageId, nextDisplayIdx), displayText: nextLabel },
+      });
+    }
+  }
+  const cancelLabel = (matched as { hint_cancel_label?: string }).hint_cancel_label?.trim() || "問題に戻る";
+  nav.push({
+    type: "action",
+    action: { type: "postback", label: cancelLabel.slice(0, 20), data: buildBackToPuzzlePostbackData(args.sourceMessageId), displayText: cancelLabel },
+  });
+  if (nav.length > 0) {
+    (msgs[msgs.length - 1] as import("@/lib/line").LineTextMessage).quickReply = { items: nav };
+  }
+  return msgs;
+}
+
+/** 問題ヒント postback（puzzle_hint）: messageId + hintIndex から該当問題のヒントを reply のみで返す。
+ *  ラベル非依存・work スコープ・kind="puzzle" のみ。範囲外/非問題/再構築不可は false（呼び出し側は無視）。 */
+async function sendPuzzleHintById(args: {
+  messageId:          string;
+  hintIndex:          number;
+  workId:             string;
+  replyToken:         string;
+  userId:             string;
+  channelAccessToken: string;
+  systemSender:       import("@/lib/line").LineSender | undefined;
+}): Promise<boolean> {
+  const row = await prisma.message.findFirst({
+    where:  { id: args.messageId, workId: args.workId, isActive: true },
+    select: { id: true, kind: true, hintMode: true, quickReplies: true, incorrectQuickReplies: true },
+  });
+  if (!row || row.kind !== "puzzle") return false;
+  const displayHints = resolveHintItems(row);
+  const matched = displayHints[args.hintIndex];
+  if (!matched) return false; // 範囲外 hintIndex は安全に無視
+
+  // ヒント話者: hint_character_id があればそのキャラ、なければ systemSender。
+  let sender = args.systemSender;
+  const hintCharId = (matched as { hint_character_id?: string | null }).hint_character_id;
+  if (hintCharId) {
+    const ch = await getCachedCharacter(hintCharId);
+    if (ch) sender = buildSenderFromCharacter(ch);
+  }
+  const msgs = composeHintMessages({ sourceMessageId: row.id, displayHints, matchedIndex: args.hintIndex, sender });
+  await replyToLine(args.replyToken, msgs, args.channelAccessToken);
   return true;
 }
 
@@ -2473,49 +2556,18 @@ async function handleTextEvent({
       if (hintChar) hintSender = buildSenderFromCharacter(hintChar);
     }
 
-    const hintMsgs: import("@/lib/line").LineMessage[] = [
-      { type: "text" as const, text: hintResult.hintText, sender: hintSender },
-      ...(hintResult.hintFollowup
-        ? [{ type: "text" as const, text: hintResult.hintFollowup, sender: hintSender } as import("@/lib/line").LineMessage]
-        : []),
-    ];
-    // ヒント返答後の導線 QR（同じ QR を再表示せず、「さらにヒント」「問題に戻る」を構築）
-    const hintItems = hintResult.qrItems
-      .filter((i) => i.action === "hint" && i.enabled !== false)
-      .sort((a, b) => ((a as { hint_level?: number }).hint_level ?? 999) - ((b as { hint_level?: number }).hint_level ?? 999));
-    const currentHintIdx = hintItems.indexOf(hintResult.matchedItem);
-    const nextHintItem   = currentHintIdx >= 0 && currentHintIdx + 1 < hintItems.length
-      ? hintItems[currentHintIdx + 1]
-      : null;
+    // 表示順（resolveHintItems と同順）のヒント並び + matchedIndex を求め、共通ヘルパで組み立てる。
+    // legacy（旧テキスト QR タップ）経路だが、返答後の「さらにヒント」「問題に戻る」はいずれも postback 化され、
+    // 以降の解決はラベル非依存になる（同名ヒントを持つ別問題への混線を防ぐ）。
+    const displayHints = hintResult.qrItems.filter((i) => i.action === "hint" && i.enabled !== false);
+    const matchedIndex = displayHints.indexOf(hintResult.matchedItem);
+    const hintMsgs = composeHintMessages({
+      sourceMessageId: hintResult.messageId,
+      displayHints,
+      matchedIndex:    matchedIndex >= 0 ? matchedIndex : 0,
+      sender:          hintSender,
+    });
 
-    const navQrItems: import("@/types").QuickReplyItem[] = [];
-    if (nextHintItem) {
-      const nextLabel = (hintResult.matchedItem as { hint_next_label?: string }).hint_next_label?.trim() || "さらにヒント";
-      navQrItems.push({
-        label:  nextLabel,
-        action: "text",
-        value:  (nextHintItem.value?.trim() || nextHintItem.label).slice(0, 20),
-      });
-    }
-    // 「問題に戻る」は postback（出題中の問題 messageId 付き）で生成する。
-    //   → タップ時はテキストではなく postback data が届くため、回答誤判定に流れず、
-    //     複数問題があっても「ヒント元の問題」へ正確に戻れる。displayText はラベルと同じ。
-    const cancelLabel = (hintResult.matchedItem as { hint_cancel_label?: string }).hint_cancel_label?.trim() || "問題に戻る";
-    const backToPuzzleItem: import("@/lib/line").LineQuickReplyItem = {
-      type: "action",
-      action: {
-        type:        "postback",
-        label:       cancelLabel.slice(0, 20),
-        data:        buildBackToPuzzlePostbackData(hintResult.messageId),
-        displayText: cancelLabel,
-      },
-    };
-
-    const baseNavQr = buildQuickReplyFromItems(navQrItems); // 「さらにヒント」（あれば）
-    const navItems = [...(baseNavQr?.items ?? []), backToPuzzleItem];
-    if (navItems.length > 0) {
-      (hintMsgs[hintMsgs.length - 1] as import("@/lib/line").LineTextMessage).quickReply = { items: navItems };
-    }
     const tReplyHint = Date.now();
     await replyToLine(replyToken, hintMsgs, token);
     console.log(
@@ -2857,6 +2909,30 @@ async function handlePostbackEvent({
       }
     } else {
       console.warn(`[Webhook] hint_back_to_puzzle: work 未解決 data="${data}"`);
+    }
+    return;
+  }
+
+  // ── 問題ヒント postback（puzzle_hint）: data="action=puzzle_hint&messageId=<問題>&hintIndex=<n>"。
+  //   同一フェーズに同名ヒントの問題が複数あっても、messageId + hintIndex で「タップ元の問題のヒント」を返す。
+  //   ラベル一致に依存しない。reply のみ・誤答カウント/履歴/遷移/push なし。範囲外/非問題は安全に無視。
+  const puzzleHint = parsePuzzleHintPostback(data);
+  if (puzzleHint) {
+    if (work) {
+      try {
+        if (await sendPuzzleHintById({
+          messageId: puzzleHint.messageId, hintIndex: puzzleHint.hintIndex,
+          workId: work.id, replyToken, userId, channelAccessToken: oa.channelAccessToken, systemSender,
+        })) {
+          console.log(`[Webhook][STEP] postback puzzle_hint → ヒント返答 userId=${userId} msgId=${puzzleHint.messageId.slice(0, 8)} idx=${puzzleHint.hintIndex}`);
+          return;
+        }
+        console.warn(`[Webhook] puzzle_hint: ヒント解決不可（非問題/範囲外/不存在）msgId=${puzzleHint.messageId.slice(0, 8)} idx=${puzzleHint.hintIndex}`);
+      } catch (e) {
+        console.warn("[Webhook] puzzle_hint postback エラー:", e);
+      }
+    } else {
+      console.warn(`[Webhook] puzzle_hint: work 未解決 data="${data}"`);
     }
     return;
   }

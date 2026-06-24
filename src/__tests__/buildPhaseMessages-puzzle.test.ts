@@ -13,6 +13,7 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { buildPhaseMessages } from "@/lib/line";
+import { parsePuzzleHintPostback } from "@/lib/puzzle-hint";
 import type { RuntimePhase, RuntimePhaseMessage } from "@/types";
 
 // console.warn / console.error をスパイしてログ出力を検証する
@@ -491,16 +492,18 @@ describe("F. 本番相当データ: 問題メッセージにヒント QR が付�
     ] as never, "in_progress");
 
     const out = buildPhaseMessages(makePhase(drained));
-    const qr = (out[0] as { quickReply?: { items: { action: { type: string; label: string; text: string } }[] } }).quickReply;
+    const qr = (out[0] as { quickReply?: { items: { action: { type: string; label: string; displayText?: string; data?: string } }[] } }).quickReply;
     expect(qr).toBeDefined();
     expect(qr!.items).toHaveLength(3);
-    expect(qr!.items.map((i) => i.action.type)).toEqual(["message", "message", "message"]);
+    // 問題ヒントは postback 化（messageId + hintIndex で解決・ラベル非依存）。
+    expect(qr!.items.map((i) => i.action.type)).toEqual(["postback", "postback", "postback"]);
     expect(qr!.items.map((i) => i.action.label)).toEqual(["ヒント①", "ヒント②", "ヒント③（こたえ）"]);
+    expect(parsePuzzleHintPostback(qr!.items[0].action.data!)).toEqual({ messageId: "pz", hintIndex: 0 });
     // action.type に "hint" は決して残さない（LINE は未知 action を拒否する）。
-    expect(qr!.items.every((i) => i.action.type === "message")).toBe(true);
+    expect(qr!.items.every((i) => i.action.type === "postback")).toBe(true);
   });
 
-  it("通常メッセージ + puzzle(ヒント) + 遷移あり → 末尾(puzzle)に3件のヒントQRが残る（遷移QRに上書きされない）", async () => {
+  it("通常メッセージ + puzzle(ヒント) + 遷移あり → 末尾(puzzle)に3件のヒントQR(postback)が残る（遷移QRに上書きされない）", async () => {
     const { drainAutoSendableItems } = await import("@/lib/runtime");
     const drained = drainAutoSendableItems([
       makeDbMsg({ id: "intro", sortOrder: 0, body: "導入テキスト" }),
@@ -508,8 +511,10 @@ describe("F. 本番相当データ: 問題メッセージにヒント QR が付�
     ] as never, "in_progress");
 
     const out = buildPhaseMessages(makePhase(drained, { transitions: [{ label: "次へ", toPhaseId: "p2" }] as never }));
-    const last = out[out.length - 1] as { quickReply?: { items: { action: { text: string } }[] } };
+    const last = out[out.length - 1] as { quickReply?: { items: { action: { displayText?: string; data?: string } }[] } };
     expect(last.quickReply?.items).toHaveLength(3);
-    expect(last.quickReply!.items.map((i) => i.action.text)).toEqual(["ヒント①", "ヒント②", "ヒント③（こたえ）"]);
+    // 表示ラベル（displayText）は不変・data は puzzle "pz" + 連番 index
+    expect(last.quickReply!.items.map((i) => i.action.displayText)).toEqual(["ヒント①", "ヒント②", "ヒント③（こたえ）"]);
+    expect(last.quickReply!.items.map((i) => parsePuzzleHintPostback(i.action.data!)?.hintIndex)).toEqual([0, 1, 2]);
   });
 });
