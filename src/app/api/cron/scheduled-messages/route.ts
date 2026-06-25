@@ -15,6 +15,7 @@
 // ■ vercel.json への cron schedule は **本 PR では追加しない**（自動実行されない）。
 //     env flag が false なら dryRun になることを確認後、PR-4c 以降で schedule 登録を検討する。
 
+import { randomUUID } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import {
@@ -161,12 +162,14 @@ async function handle(req: NextRequest) {
             ));
           }
           if (lineMsgs.length === 0) return { ok: false, reason: "empty_after_convert" };
-          // LINE push は1回最大5通。retryKey は予約 id 由来で安定（同一 resume の二重送信を LINE 側でも抑止）。
+          // LINE push は1回最大5通。X-Line-Retry-Key は **UUID 形式必須**（`${id}:resume:0` 等は 400 になる）。
+          //   resume は status=sent を anchor に1回しか走らない（再 pick されない）ため、ここは push ごとに
+          //   fresh な UUID で十分（二重送信防止は予約レコードの status=sent 側が担保）。
           for (let i = 0; i < lineMsgs.length; i += 5) {
             const chunk = lineMsgs.slice(i, i + 5);
             const res = await pushScheduledMessage({
               lineUserId: row.lineUserId, messages: chunk, channelAccessToken: token,
-              retryKey: `${row.id}:resume:${i / 5}`,
+              retryKey: randomUUID(),
             });
             if (!res.ok) return { ok: false, reason: "push_failed" };
           }
