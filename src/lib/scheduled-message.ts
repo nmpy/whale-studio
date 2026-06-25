@@ -101,6 +101,10 @@ export interface ScheduledMessagePayload {
   body?:        string | null;
   asset_url?:   string | null;
   character_id?: string | null;  // 発話キャラクター
+  /** PR-SER2: 直列進行（hold_chain_until_sent）の再開カーソル。
+   *  この予約 push 完了後、PR-SER3 の worker が next_message_id から後続チェーンを再開する。
+   *  hold OFF / 後続なしのときは未設定（= 後続再開なし）。 */
+  resume?: { next_message_id: string };
 }
 
 export interface BuildScheduledInputArgs {

@@ -75,6 +75,26 @@ describe("armScheduledMessages", () => {
     expect(JSON.stringify(payload)).not.toContain("U1"); // lineUserId なし
   });
 
+  // PR-SER2 直列進行: hold ON + 後続(nextMessageId)あり → payload.resume に next_message_id
+  it("hold ON + 後続あり → payload.resume.next_message_id に後続 id", async () => {
+    findManyMock.mockResolvedValue([msgRow({ scheduledMessageSettings: JSON.stringify({ ...ENABLED_SETTINGS, hold_chain_until_sent: true }), nextMessageId: "m2" })]);
+    await armScheduledMessages(baseArgs());
+    const payload = JSON.parse((createMock.mock.calls[0][0] as unknown as CreateArg).data.payloadJson);
+    expect(payload.resume).toEqual({ next_message_id: "m2" });
+  });
+  it("hold ON + 後続なし(nextMessageId=null) → resume を入れない", async () => {
+    findManyMock.mockResolvedValue([msgRow({ scheduledMessageSettings: JSON.stringify({ ...ENABLED_SETTINGS, hold_chain_until_sent: true }), nextMessageId: null })]);
+    await armScheduledMessages(baseArgs());
+    const payload = JSON.parse((createMock.mock.calls[0][0] as unknown as CreateArg).data.payloadJson);
+    expect(payload.resume).toBeUndefined();
+  });
+  it("hold OFF → 後続があっても resume を入れない（予約だけ）", async () => {
+    findManyMock.mockResolvedValue([msgRow({ scheduledMessageSettings: JSON.stringify({ ...ENABLED_SETTINGS, hold_chain_until_sent: false }), nextMessageId: "m2" })]);
+    await armScheduledMessages(baseArgs());
+    const payload = JSON.parse((createMock.mock.calls[0][0] as unknown as CreateArg).data.payloadJson);
+    expect(payload.resume).toBeUndefined();
+  });
+
   it("cancelPolicyJson に phase_changed / work_completed が反映される", async () => {
     findManyMock.mockResolvedValue([msgRow({ scheduledMessageSettings: JSON.stringify({ ...ENABLED_SETTINGS, cancel_on_phase_change: true, cancel_on_work_completed: true }) })]);
     await armScheduledMessages(baseArgs());

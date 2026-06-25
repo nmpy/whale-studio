@@ -70,7 +70,8 @@ export async function armScheduledMessages(args: ArmScheduledMessagesArgs): Prom
     // workId も where に明示し、別 work/OA の messageId を渡されても拾わない（cross-work 防御）。
     const rows = await prisma.message.findMany({
       where:  { id: { in: args.sentMessageIds }, workId: args.workId, isActive: true, scheduledMessageSettings: { not: null } },
-      select: { id: true, phaseId: true, scheduledMessageSettings: true },
+      // nextMessageId は PR-SER2 の直列進行（hold_chain_until_sent）の resume cursor 導出に使う。
+      select: { id: true, phaseId: true, scheduledMessageSettings: true, nextMessageId: true },
     });
     if (rows.length === 0) return result;
 
@@ -93,6 +94,12 @@ export async function armScheduledMessages(args: ArmScheduledMessagesArgs): Prom
           body:         s.body,
           character_id: s.character_id ?? null,
         };
+        // PR-SER2 直列進行: hold ON かつ後続(nextMessageId)があれば resume cursor を payload に保存。
+        //   → 送信側 drain はこの message までで打ち切り（後続を止める）。worker resume は PR-SER3。
+        //   hold OFF / 後続なしのときは resume を入れない（= 後続再開なし・予約だけ）。
+        if (s.hold_chain_until_sent && row.nextMessageId) {
+          payload.resume = { next_message_id: row.nextMessageId };
+        }
         // cancel 条件: source message の phase を expectedPhase として保存（その後別 phase へ進めば cancel）。
         const cancelPolicy = buildCancelPolicy({
           phaseId:              row.phaseId,
