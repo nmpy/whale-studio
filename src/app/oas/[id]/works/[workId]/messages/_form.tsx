@@ -137,6 +137,7 @@ import {
   EMPTY_SCHEDULED_MESSAGE,
   scheduledSettingsToFormState,
   formStateToScheduledSettings,
+  SLOT_LAG_MS_MAX,
   type AdditionalMessageSlot as _AdditionalMessageSlot,
   type ScheduledMessageFormState,
 } from "./_form-helpers";
@@ -3504,14 +3505,15 @@ const SCHED_DELAY_PRESETS: { label: string; minutes: number }[] = [
 //   設定を保存するだけ。実際の予約作成・push 送信は runtime/webhook 未接続（次 PR）。
 //   flag 無効時は ScheduledMessageInfo（準備中）を表示する。
 // ────────────────────────────────────────────────────────
-function ScheduledMessageSettings({ form, set, characters, oaId }: {
-  form: MessageFormState;
-  set:  <K extends keyof MessageFormState>(k: K, v: MessageFormState[K]) => void;
+function ScheduledMessageSettings({ value, onChange, characters, oaId }: {
+  /** 編集対象の予約送信フォーム状態（head の form.scheduled_message / slot の slot.scheduled_message）。 */
+  value: ScheduledMessageFormState;
+  onChange: (next: ScheduledMessageFormState) => void;
   characters: Character[];
   oaId: string;
 }) {
-  const s = form.scheduled_message;
-  const upd = (patch: Partial<ScheduledMessageFormState>) => set("scheduled_message", { ...s, ...patch });
+  const s = value;
+  const upd = (patch: Partial<ScheduledMessageFormState>) => onChange({ ...s, ...patch });
   const bodyMissing = s.enabled && !s.body.trim();
   const delayInvalid = s.enabled && (!Number.isFinite(s.delay_minutes) || s.delay_minutes < 1 || s.delay_minutes > 10080);
 
@@ -3519,15 +3521,20 @@ function ScheduledMessageSettings({ form, set, characters, oaId }: {
     <SectionAccordion
       title="時間差メッセージ（予約送信）"
       optional
-      description="ユーザーの操作から指定時間後に push 配信でメッセージを送る設定（通数を消費します）"
+      description="このメッセージが送信された後、指定時間後に別メッセージを push 配信する設定（通数を消費します）"
       defaultOpen={s.enabled}
       badge={s.enabled
         ? <span style={{ fontSize: 10, fontWeight: 700, background: "#dbeafe", color: "#1d4ed8", borderRadius: 4, padding: "1px 6px" }}>有効</span>
         : undefined}
     >
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <div style={checkNotice.muted}>
+          このメッセージが送信された後、指定時間後に<strong>別メッセージを push 配信</strong>します。
+          <strong>このメッセージ自体の送信を遅らせる設定ではありません。</strong>
+          短い「間」（数秒）は上の「演出設定」（待機時間・入力中…）をご利用ください。
+        </div>
         <div style={checkNotice.warn}>
-          このメッセージは <strong>push 配信</strong>として送信され、<strong>LINE公式アカウントの月間メッセージ通数を消費</strong>します。
+          予約された別メッセージは <strong>push 配信</strong>として送信され、<strong>LINE公式アカウントの月間メッセージ通数を消費</strong>します。
           reply では10分後送信はできません。無料枠や追加メッセージ上限を超えると、LINE 側で送信できない場合があります。
           {" "}
           <a href={`/oas/${oaId}/settings`} target="_blank" rel="noreferrer" style={{ color: "#92400e", textDecoration: "underline" }}>月間メッセージ使用状況を確認</a>
@@ -4170,14 +4177,36 @@ function AdditionalMessageBlock({
           </div>
         )}
 
-        {/* 前のメッセージからの待機時間（2通目以降の lag_ms） */}
+        {/* 前のメッセージからの待機時間（2通目以降の lag_ms）。
+            短い「間」(演出)用に最大 SLOT_LAG_MS_MAX(8秒) まで。長時間待機は webhook を保持し 504 を招くため、
+            下の「時間差メッセージ（予約送信）」へ誘導する。既存の超過値は自動クリアせず読み取り専用で残す。 */}
         <div className="form-group" style={{ marginTop: 10, marginBottom: 0 }}>
           <label style={fieldLabel}>前のメッセージからの待機時間</label>
-          <DurationInput
-            valueMs={slot.lag_ms ?? 0}
-            onChange={(ms) => onChange({ ...slot, lag_ms: ms })}
-            />
-          <div style={hintText}>前の吹き出しを送ったあと、このメッセージを送る前に待つ時間です</div>
+          {(slot.lag_ms ?? 0) > SLOT_LAG_MS_MAX ? (
+            // 既存の長時間待機（>8秒）: 非破壊で保持し、読み取り専用＋短縮導線のみ提示。
+            <div style={{ ...checkNotice.warn, fontSize: 12 }}>
+              旧設定の待機時間 <strong>{Math.round((slot.lag_ms ?? 0) / 1000)}秒</strong> が残っています（自動削除はしません）。
+              長時間の待機は webhook を長く保持し配信失敗（504）の原因になります。
+              <strong>長時間あとの送信は下の「時間差メッセージ（予約送信）」へ移行</strong>してください。
+              <div style={{ marginTop: 6 }}>
+                <button type="button" className="btn-secondary" style={{ fontSize: 12, padding: "2px 10px" }}
+                  onClick={() => onChange({ ...slot, lag_ms: SLOT_LAG_MS_MAX })}>
+                  待機時間を8秒に短縮する
+                </button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <DurationInput
+                valueMs={slot.lag_ms ?? 0}
+                onChange={(ms) => onChange({ ...slot, lag_ms: Math.min(ms, SLOT_LAG_MS_MAX) })}
+              />
+              <div style={hintText}>
+                前の吹き出しを送ったあと、このメッセージを送る前に待つ短い「間」です（最大8秒）。
+                10分後など長時間あとの送信は下の「時間差メッセージ（予約送信）」をご利用ください。
+              </div>
+            </>
+          )}
         </div>
 
         {/* 演出設定 (既読 / typing / loading) — 折りたたみ。
@@ -4187,6 +4216,19 @@ function AdditionalMessageBlock({
           set={(k, v) => onChange({ ...slot, [k]: v })}
           isAdditional
         />
+
+        {/* 時間差メッセージ（予約送信）。1通目と同じコンポーネント。slot にも「N分後フォローアップ」を付けられる。
+            flag 有効時のみ表示（NEXT_PUBLIC_ENABLE_SCHEDULED_MESSAGE_UI）。未設定なら何も出さない（slot は準備中表示を出さない）。 */}
+        {SCHEDULED_MESSAGE_UI_ENABLED && (
+          <div style={{ marginTop: 12 }}>
+            <ScheduledMessageSettings
+              value={slot.scheduled_message}
+              onChange={(v) => onChange({ ...slot, scheduled_message: v })}
+              characters={characters}
+              oaId={oaId}
+            />
+          </div>
+        )}
 
         {/* 自由入力受付 (= chain continuation でも freeInput プロンプトに設定可能)。
             1 通目と同形。example: 「{{user_name}}さんにより画像がタップされました」
@@ -5677,7 +5719,7 @@ export function MessageForm({
                     未設定なら従来通り「準備中」表示（PR-4c-1）。 */}
                 <div style={{ marginTop: 12 }}>
                   {SCHEDULED_MESSAGE_UI_ENABLED
-                    ? <ScheduledMessageSettings form={form} set={set} characters={characters} oaId={oaId} />
+                    ? <ScheduledMessageSettings value={form.scheduled_message} onChange={(v) => set("scheduled_message", v)} characters={characters} oaId={oaId} />
                     : <ScheduledMessageInfo />}
                 </div>
 

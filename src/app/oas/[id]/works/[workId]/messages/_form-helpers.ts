@@ -87,7 +87,15 @@ export interface AdditionalMessageSlot {
   free_input_enabled:         boolean;
   free_input_variable_key:    string;
   free_input_next_message_id: string;
+  /** 時間差メッセージ（予約送信）設定。1通目と同形。slot にも「N分後フォローアップ」を付けられる。
+   *  ※「このメッセージ自体を遅延配信」ではなく「送信後に別メッセージを push 予約」する設定。 */
+  scheduled_message:          ScheduledMessageFormState;
 }
+
+/** 2通目以降の「前のメッセージからの待機時間」(lag_ms) で新規設定できる最大値（ms）。
+ *  これを超える長時間待機は webhook を長時間保持し 504 を招くため、予約送信（ScheduledLineMessage）へ誘導する。
+ *  既存データが超過していても自動クリアはしない（読み取り専用表示）。 */
+export const SLOT_LAG_MS_MAX = 8000;
 
 export const EMPTY_ADDITIONAL_SLOT: AdditionalMessageSlot = {
   character_id:   "",
@@ -120,6 +128,8 @@ export const EMPTY_ADDITIONAL_SLOT: AdditionalMessageSlot = {
   free_input_enabled:         false,
   free_input_variable_key:    "",
   free_input_next_message_id: "",
+  // 時間差メッセージ（予約送信）。= EMPTY_SCHEDULED_MESSAGE を inline（TDZ 回避・後方に const 定義あり）。
+  scheduled_message:          { enabled: false, delay_minutes: 30, body: "", character_id: "", cancel_on_phase_change: false, cancel_on_work_completed: false },
 };
 
 // ── 純関数 helper ────────────────────────────────────────
@@ -163,6 +173,8 @@ export function msgToAdditionalSlot(msg: {
   free_input_enabled?:         boolean | null;
   free_input_variable_key?:    string  | null;
   free_input_next_message_id?: string  | null;
+  // 時間差メッセージ（予約送信）。API レスポンスは parse 済み object | null。
+  scheduled_message_settings?: unknown;
 }, resolveDestinationUrl?: (id: string) => string | null): AdditionalMessageSlot {
   // 連続メッセージ（slot）は常に通常 carousel 扱い → 新形式 carousel_cards に正規化（旧形式も安全に復元）。
   let carousel_items: MessageCarouselCard[] = [];
@@ -225,6 +237,8 @@ export function msgToAdditionalSlot(msg: {
     free_input_enabled:         msg.free_input_enabled         ?? false,
     free_input_variable_key:    msg.free_input_variable_key    ?? "",
     free_input_next_message_id: msg.free_input_next_message_id ?? "",
+    // 時間差メッセージ（予約送信）。1通目と同じ converter で復元（再編集で値が戻る）。
+    scheduled_message:          scheduledSettingsToFormState(msg.scheduled_message_settings),
   };
 }
 
@@ -279,6 +293,8 @@ export function additionalSlotToMsgBody(
   free_input_enabled:         boolean;
   free_input_variable_key:    string | null;
   free_input_next_message_id: string | null;
+  // 時間差メッセージ（予約送信）。1通目と同じ converter で保存（未操作なら null で DB を汚さない）。
+  scheduled_message_settings: ReturnType<typeof formStateToScheduledSettings>;
 } {
   return {
     work_id:      main.work_id,
@@ -344,6 +360,8 @@ export function additionalSlotToMsgBody(
     free_input_enabled:         !!slot.free_input_enabled,
     free_input_variable_key:    slot.free_input_enabled ? (slot.free_input_variable_key.trim() || null) : null,
     free_input_next_message_id: slot.free_input_enabled ? (slot.free_input_next_message_id || null) : null,
+    // 時間差メッセージ（予約送信）。chain API（PUT /api/messages/chain）が per-item で永続化する。
+    scheduled_message_settings: formStateToScheduledSettings(slot.scheduled_message),
   };
 }
 
