@@ -138,7 +138,7 @@ export const EMPTY_ADDITIONAL_SLOT: AdditionalMessageSlot = {
   free_input_variable_key:    "",
   free_input_next_message_id: "",
   // 時間差メッセージ（予約送信）。= EMPTY_SCHEDULED_MESSAGE を inline（TDZ 回避・後方に const 定義あり）。
-  scheduled_message:          { enabled: false, delay_minutes: 30, body: "", character_id: "", cancel_on_phase_change: false, cancel_on_work_completed: false },
+  scheduled_message:          { enabled: false, delay_minutes: 30, body: "", character_id: "", cancel_on_phase_change: false, cancel_on_work_completed: false, hold_chain_until_sent: false },
 };
 
 // ── 純関数 helper ────────────────────────────────────────
@@ -410,11 +410,14 @@ export interface ScheduledMessageFormState {
   character_id:             string;
   cancel_on_phase_change:   boolean;
   cancel_on_work_completed: boolean;
+  /** PR-SER1（保存のみ・runtime 未接続）: ON で「この予約が届くまで後続を止める」直列進行。 */
+  hold_chain_until_sent:    boolean;
 }
 
 export const EMPTY_SCHEDULED_MESSAGE: ScheduledMessageFormState = {
   enabled: false, delay_minutes: 30, body: "", character_id: "",
   cancel_on_phase_change: false, cancel_on_work_completed: false,
+  hold_chain_until_sent: false,
 };
 
 /** API レスポンスの scheduled_message_settings（object | null）→ フォーム状態へ正規化。 */
@@ -429,15 +432,16 @@ export function scheduledSettingsToFormState(raw: unknown): ScheduledMessageForm
     character_id:             typeof s.character_id === "string" ? s.character_id : "",
     cancel_on_phase_change:   s.cancel_on_phase_change === true,
     cancel_on_work_completed: s.cancel_on_work_completed === true,
+    hold_chain_until_sent:    s.hold_chain_until_sent === true,
   };
 }
 
 /** フォーム状態 → API 送信用 scheduled_message_settings（未操作なら null で送ってDBを汚さない）。 */
 export function formStateToScheduledSettings(s: ScheduledMessageFormState): {
   enabled: boolean; delay_minutes: number; body: string | null; character_id: string | null;
-  cancel_on_phase_change: boolean; cancel_on_work_completed: boolean;
+  cancel_on_phase_change: boolean; cancel_on_work_completed: boolean; hold_chain_until_sent: boolean;
 } | null {
-  const touched = s.enabled || !!s.body.trim() || !!s.character_id || s.cancel_on_phase_change || s.cancel_on_work_completed;
+  const touched = s.enabled || !!s.body.trim() || !!s.character_id || s.cancel_on_phase_change || s.cancel_on_work_completed || s.hold_chain_until_sent;
   if (!touched) return null;
   return {
     enabled:                  s.enabled,
@@ -446,5 +450,6 @@ export function formStateToScheduledSettings(s: ScheduledMessageFormState): {
     character_id:             s.character_id || null,
     cancel_on_phase_change:   s.cancel_on_phase_change,
     cancel_on_work_completed: s.cancel_on_work_completed,
+    hold_chain_until_sent:    s.hold_chain_until_sent,
   };
 }

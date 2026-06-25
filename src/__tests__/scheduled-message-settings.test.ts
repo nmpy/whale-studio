@@ -58,10 +58,10 @@ describe("フォーム変換 — 保存→再編集の復元", () => {
 
   it("enabled + 値ありは object で送る（body trim / character '' → null）", () => {
     const s: ScheduledMessageFormState = {
-      enabled: true, delay_minutes: 30, body: "本文", character_id: "", cancel_on_phase_change: true, cancel_on_work_completed: false,
+      enabled: true, delay_minutes: 30, body: "本文", character_id: "", cancel_on_phase_change: true, cancel_on_work_completed: false, hold_chain_until_sent: false,
     };
     expect(formStateToScheduledSettings(s)).toEqual({
-      enabled: true, delay_minutes: 30, body: "本文", character_id: null, cancel_on_phase_change: true, cancel_on_work_completed: false,
+      enabled: true, delay_minutes: 30, body: "本文", character_id: null, cancel_on_phase_change: true, cancel_on_work_completed: false, hold_chain_until_sent: false,
     });
   });
 
@@ -72,11 +72,11 @@ describe("フォーム変換 — 保存→再編集の復元", () => {
 
   it("API レスポンス object → フォーム状態へ復元（round-trip）", () => {
     const saved = formStateToScheduledSettings({
-      enabled: true, delay_minutes: 60, body: "あとで", character_id: UUID, cancel_on_phase_change: false, cancel_on_work_completed: true,
+      enabled: true, delay_minutes: 60, body: "あとで", character_id: UUID, cancel_on_phase_change: false, cancel_on_work_completed: true, hold_chain_until_sent: true,
     });
     const restored = scheduledSettingsToFormState(saved);
     expect(restored).toEqual({
-      enabled: true, delay_minutes: 60, body: "あとで", character_id: UUID, cancel_on_phase_change: false, cancel_on_work_completed: true,
+      enabled: true, delay_minutes: 60, body: "あとで", character_id: UUID, cancel_on_phase_change: false, cancel_on_work_completed: true, hold_chain_until_sent: true,
     });
   });
 

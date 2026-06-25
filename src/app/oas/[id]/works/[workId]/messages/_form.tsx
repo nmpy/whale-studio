@@ -3616,6 +3616,21 @@ function ScheduledMessageSettings({ value, onChange, characters, oaId }: {
               </label>
               <div style={hintText}>※ キャンセル判定は送信直前に行われます（次 PR で接続）。</div>
             </div>
+
+            {/* 直列進行（PR-SER1: 保存のみ・runtime 未接続）。ON でこの予約が届くまで後続を止める。 */}
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 600, color: "#374151" }}>進行のしかた</label>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, margin: "4px 0" }}>
+                <input type="checkbox" checked={s.hold_chain_until_sent} onChange={(e) => upd({ hold_chain_until_sent: e.target.checked })} />
+                この予約送信が届くまで、次のメッセージを送らない
+              </label>
+              <div style={hintText}>
+                ON にすると、このメッセージの予約送信が完了したあとに、次のメッセージへ進みます。
+                物語を「1通目 → 10分後の返信 → 2通目」のように順番に進めたい場合に使います。
+                <br />
+                ※ この設定は<strong>現在は保存のみ</strong>です（直列進行の動作は次のアップデートで接続します）。
+              </div>
+            </div>
           </>
         )}
       </div>

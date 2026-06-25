@@ -19,12 +19,12 @@ const slot = (o: Partial<AdditionalMessageSlot> = {}): AdditionalMessageSlot => 
 describe("slot 予約送信 save (additionalSlotToMsgBody)", () => {
   it("enabled な予約送信は scheduled_message_settings に反映される", () => {
     const body = additionalSlotToMsgBody(
-      slot({ scheduled_message: { enabled: true, delay_minutes: 10, body: "10分後テスト", character_id: "", cancel_on_phase_change: true, cancel_on_work_completed: true } }),
+      slot({ scheduled_message: { enabled: true, delay_minutes: 10, body: "10分後テスト", character_id: "", cancel_on_phase_change: true, cancel_on_work_completed: true, hold_chain_until_sent: true } }),
       MAIN,
     );
     expect(body.scheduled_message_settings).toEqual({
       enabled: true, delay_minutes: 10, body: "10分後テスト", character_id: null,
-      cancel_on_phase_change: true, cancel_on_work_completed: true,
+      cancel_on_phase_change: true, cancel_on_work_completed: true, hold_chain_until_sent: true,
     });
   });
   it("未操作の予約送信は null（DB を汚さない）", () => {
@@ -40,17 +40,31 @@ describe("slot 予約送信 restore (msgToAdditionalSlot)", () => {
     });
     expect(s.scheduled_message).toEqual({
       enabled: true, delay_minutes: 30, body: "後で", character_id: "c1",
-      cancel_on_phase_change: false, cancel_on_work_completed: true,
+      cancel_on_phase_change: false, cancel_on_work_completed: true, hold_chain_until_sent: false,
     });
   });
   it("設定なし → enabled:false の空状態", () => {
     expect(msgToAdditionalSlot({ id: "m2", body: "x" }).scheduled_message.enabled).toBe(false);
   });
   it("save → restore 往復で保持される", () => {
-    const original = slot({ scheduled_message: { enabled: true, delay_minutes: 60, body: "1時間後", character_id: "", cancel_on_phase_change: true, cancel_on_work_completed: false } });
+    const original = slot({ scheduled_message: { enabled: true, delay_minutes: 60, body: "1時間後", character_id: "", cancel_on_phase_change: true, cancel_on_work_completed: false, hold_chain_until_sent: false } });
     const body = additionalSlotToMsgBody(original, MAIN);
     const restored = msgToAdditionalSlot({ id: "m2", scheduled_message_settings: body.scheduled_message_settings });
     expect(restored.scheduled_message).toMatchObject({ enabled: true, delay_minutes: 60, body: "1時間後", cancel_on_phase_change: true });
+  });
+});
+
+describe("hold_chain_until_sent（直列進行フラグ・PR-SER1 保存のみ）", () => {
+  it("ON は save/restore で保持される（slot）", () => {
+    const original = slot({ scheduled_message: { enabled: true, delay_minutes: 10, body: "x", character_id: "", cancel_on_phase_change: false, cancel_on_work_completed: false, hold_chain_until_sent: true } });
+    const body = additionalSlotToMsgBody(original, MAIN);
+    expect((body.scheduled_message_settings as { hold_chain_until_sent?: boolean })?.hold_chain_until_sent).toBe(true);
+    const restored = msgToAdditionalSlot({ id: "m2", scheduled_message_settings: body.scheduled_message_settings });
+    expect(restored.scheduled_message.hold_chain_until_sent).toBe(true);
+  });
+  it("未設定 → false（既存データ・後方互換）", () => {
+    const restored = msgToAdditionalSlot({ id: "m2", scheduled_message_settings: { enabled: true, delay_minutes: 10, body: "x" } });
+    expect(restored.scheduled_message.hold_chain_until_sent).toBe(false);
   });
 });
 
