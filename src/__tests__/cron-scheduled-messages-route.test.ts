@@ -57,7 +57,7 @@ describe("POST /api/cron/scheduled-messages — 認証", () => {
     expect(res.status).toBe(200);
     expect((prisma.scheduledLineMessage.findMany as ReturnType<typeof vi.fn>)).toHaveBeenCalled();
     const json = await res.json();
-    expect(json).toEqual({ success: true, data: { claimed: 0, canceled: 0, skipped: 0, sent: 0, failed: 0, retried: 0, recovered: 0, errors: 0, dryRun: true } });
+    expect(json).toEqual({ success: true, data: { claimed: 0, canceled: 0, skipped: 0, sent: 0, failed: 0, retried: 0, recovered: 0, errors: 0, resumed: 0, resumeFailed: 0, resumeSkipped: 0, dryRun: true } });
     // レスポンスに PII/token を示すキーが無いこと。
     const keys = Object.keys(json.data);
     expect(keys).not.toContain("lineUserId");

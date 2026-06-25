@@ -12,7 +12,7 @@ const TOKEN = "super-secret-channel-token";
 
 const row = (over: Partial<PendingScheduledRow> = {}): PendingScheduledRow => ({
   id: "res-uuid-1", workId: "w1", lineUserId: "U1", userProgressId: null, phaseId: null,
-  cancelPolicyJson: null, oaId: "oa1", retryCount: 0,
+  cancelPolicyJson: null, oaId: "oa1", retryCount: 0, sourceMessageId: null,
   payloadJson: JSON.stringify({ message_type: "text", body: "本文だよ" }),
   ...over,
 });
