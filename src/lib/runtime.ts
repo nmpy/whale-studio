@@ -3,6 +3,7 @@
 // API ルート間で共有する状態構築ロジックを集約する。
 
 import { prisma } from "@/lib/prisma";
+import { isHoldChainTruncationEnabled } from "@/lib/scheduled-message";
 import type { RuntimeState, PhaseType, MessageType, IconType, QuickReplyItem } from "@/types";
 
 // ── 型（Prisma 返り値の最小セット）───────────────
@@ -483,8 +484,10 @@ const isWaitPoint = requiresUserInteraction;
  */
 /** PR-SER2 直列進行: このメッセージが「予約送信が届くまで後続を止める」(scheduledMessageSettings の
  *  enabled && hold_chain_until_sent) を持つか。未設定 / enabled=false / hold OFF / 不正 JSON は false
- *  （= 従来挙動・止めない）。drainAutoSendableItems が「このノードまで送って停止」を判定するのに使う。 */
+ *  （= 従来挙動・止めない）。drainAutoSendableItems が「このノードまで送って停止」を判定するのに使う。
+ *  サーバ flag ENABLE_SCHEDULED_HOLD_CHAIN_TRUNCATION が OFF/未設定なら常に false（= 完全に現状維持）。 */
 function messageHoldsChain(m: { scheduledMessageSettings?: string | null }): boolean {
+  if (!isHoldChainTruncationEnabled()) return false; // flag OFF = truncation 無効（現状維持）
   const raw = m.scheduledMessageSettings;
   if (!raw) return false;
   try {

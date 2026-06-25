@@ -5,7 +5,7 @@
  * 「自身まで送って後続を止める」こと＋ holdOut(参照引数)に resume cursor(nextMessageId) を記録すること。
  * hold OFF / enabled=false / 未設定 は従来挙動（止めない）。
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { drainAutoSendableItems } from "@/lib/runtime";
 type PM = Parameters<typeof drainAutoSendableItems>[0][number];
 let c = 0;
@@ -28,7 +28,25 @@ const mk = (o: Partial<PM> & { sched?: { enabled?: boolean; hold?: boolean } | n
 };
 const ids = (r: { id: string }[]) => r.map((m) => m.id);
 
-describe("drain hold truncation (PR-SER2)", () => {
+describe("drain hold truncation — flag OFF/未設定 は完全に現状維持", () => {
+  afterEach(() => { delete process.env.ENABLE_SCHEDULED_HOLD_CHAIN_TRUNCATION; });
+  it("flag 未設定: hold ON でも truncation は発火せず後続まで送る", () => {
+    delete process.env.ENABLE_SCHEDULED_HOLD_CHAIN_TRUNCATION;
+    const msgs = [mk({ id: "m1", sortOrder: 0, nextMessageId: "m2", sched: { hold: true } }), mk({ id: "m2", sortOrder: 0 })];
+    const holdOut: { held?: { messageId: string; resumeFromMessageId: string | null } } = {};
+    expect(ids(drainAutoSendableItems(msgs, "in_progress", undefined, holdOut))).toEqual(["m1", "m2"]);
+    expect(holdOut.held).toBeUndefined();
+  });
+  it("flag=false（明示OFF）: hold ON でも止まらない", () => {
+    process.env.ENABLE_SCHEDULED_HOLD_CHAIN_TRUNCATION = "false";
+    const msgs = [mk({ id: "m1", sortOrder: 0, nextMessageId: "m2", sched: { hold: true } }), mk({ id: "m2", sortOrder: 0 })];
+    expect(ids(drainAutoSendableItems(msgs, "in_progress"))).toEqual(["m1", "m2"]);
+  });
+});
+
+describe("drain hold truncation (PR-SER2・flag ON)", () => {
+  beforeEach(() => { process.env.ENABLE_SCHEDULED_HOLD_CHAIN_TRUNCATION = "true"; });
+  afterEach(() => { delete process.env.ENABLE_SCHEDULED_HOLD_CHAIN_TRUNCATION; });
   it("hold OFF: 後続まで通常どおり送られる", () => {
     const msgs = [mk({ id: "m1", sortOrder: 0, nextMessageId: "m2" }), mk({ id: "m2", sortOrder: 0 })];
     expect(ids(drainAutoSendableItems(msgs, "in_progress"))).toEqual(["m1", "m2"]);

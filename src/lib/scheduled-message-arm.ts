@@ -25,7 +25,7 @@
 import { prisma } from "@/lib/prisma";
 import { scheduledMessageSettingsSchema } from "@/lib/validations";
 import {
-  computeScheduledDueAt, buildCancelPolicy, createScheduledLineMessage,
+  computeScheduledDueAt, buildCancelPolicy, createScheduledLineMessage, isHoldChainTruncationEnabled,
   type ScheduledMessageDb, type ScheduledMessagePayload,
 } from "@/lib/scheduled-message";
 
@@ -96,8 +96,8 @@ export async function armScheduledMessages(args: ArmScheduledMessagesArgs): Prom
         };
         // PR-SER2 直列進行: hold ON かつ後続(nextMessageId)があれば resume cursor を payload に保存。
         //   → 送信側 drain はこの message までで打ち切り（後続を止める）。worker resume は PR-SER3。
-        //   hold OFF / 後続なしのときは resume を入れない（= 後続再開なし・予約だけ）。
-        if (s.hold_chain_until_sent && row.nextMessageId) {
+        //   server flag ENABLE_SCHEDULED_HOLD_CHAIN_TRUNCATION が OFF/未設定なら resume を入れない（現状維持）。
+        if (isHoldChainTruncationEnabled() && s.hold_chain_until_sent && row.nextMessageId) {
           payload.resume = { next_message_id: row.nextMessageId };
         }
         // cancel 条件: source message の phase を expectedPhase として保存（その後別 phase へ進めば cancel）。

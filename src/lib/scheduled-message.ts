@@ -96,6 +96,14 @@ export function evaluateCancelPolicy(
 
 // ── 予約レコード入力の構築 ─────────────────────────────
 /** 予約メッセージの送信内容（将来の push で使う形）。 */
+/** PR-SER2 サーバ feature flag: 直列進行の「送信側 hold truncation ＋ resume cursor 保存」を有効化する。
+ *  OFF / 未設定 = 完全に現状維持（hold_chain_until_sent=true でも truncation は発火せず resume も保存しない）。
+ *  worker resume（PR-SER3）が未実装の間、本番では**未設定**にして「後続が止まって再開されない」未完成挙動を防ぐ。
+ *  検証は staging env にのみ ENABLE_SCHEDULED_HOLD_CHAIN_TRUNCATION=true を設定して行う。 */
+export function isHoldChainTruncationEnabled(): boolean {
+  return process.env.ENABLE_SCHEDULED_HOLD_CHAIN_TRUNCATION === "true";
+}
+
 export interface ScheduledMessagePayload {
   message_type: string;          // "text" | "image" 等
   body?:        string | null;
