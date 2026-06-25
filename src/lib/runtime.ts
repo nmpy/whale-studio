@@ -3,6 +3,7 @@
 // API ルート間で共有する状態構築ロジックを集約する。
 
 import { prisma } from "@/lib/prisma";
+import { isHoldChainTruncationEnabled } from "@/lib/scheduled-message";
 import type { RuntimeState, PhaseType, MessageType, IconType, QuickReplyItem } from "@/types";
 
 // ── 型（Prisma 返り値の最小セット）───────────────
@@ -481,10 +482,29 @@ const isWaitPoint = requiresUserInteraction;
  * @param startAfterSortOrder  指定すると、この sortOrder より後のメッセージからドレインする。
  *                              パズル正解後の継続送信で使用する。
  */
+/** PR-SER2 直列進行: このメッセージが「予約送信が届くまで後続を止める」(scheduledMessageSettings の
+ *  enabled && hold_chain_until_sent) を持つか。未設定 / enabled=false / hold OFF / 不正 JSON は false
+ *  （= 従来挙動・止めない）。drainAutoSendableItems が「このノードまで送って停止」を判定するのに使う。
+ *  サーバ flag ENABLE_SCHEDULED_HOLD_CHAIN_TRUNCATION が OFF/未設定なら常に false（= 完全に現状維持）。 */
+function messageHoldsChain(m: { scheduledMessageSettings?: string | null }): boolean {
+  if (!isHoldChainTruncationEnabled()) return false; // flag OFF = truncation 無効（現状維持）
+  const raw = m.scheduledMessageSettings;
+  if (!raw) return false;
+  try {
+    const s = JSON.parse(raw) as { enabled?: unknown; hold_chain_until_sent?: unknown };
+    return s.enabled === true && s.hold_chain_until_sent === true;
+  } catch {
+    return false;
+  }
+}
+
 export function drainAutoSendableItems(
   messages: PhaseRow["messages"],
   userSegment?: UserSegment,
   startAfterSortOrder?: number,
+  /** PR-SER2（案A）: hold 停止が起きたら held を書き込む参照引数。戻り値の型は変えない。
+   *  resumeFromMessageId = hold ノードの nextMessageId（後続チェーン・PR-SER3 worker が再開）。 */
+  holdOut?: { held?: { messageId: string; resumeFromMessageId: string | null } },
 ): import("@/types").RuntimePhaseMessage[] {
   // 1. QR の target_message_id を収集
   const targetMsgIds = new Set<string>();
@@ -560,7 +580,17 @@ export function drainAutoSendableItems(
 
       // 現在ノードがユーザー操作待ちなら、送信済みの上で全体を停止
       // （判定は現在ノードの属性のみ。次ノードが puzzle 等であっても直前の Message は送信済み）
+      // ※ requiresUserInteraction（puzzle / trigger / QR 末尾）が hold より優先。
       if (requiresUserInteraction(cur)) {
+        logResult();
+        return result;
+      }
+
+      // PR-SER2 直列進行: hold_chain_until_sent のノードは「自身まで送って後続を止める」。
+      //   resume cursor = nextMessageId（PR-SER3 の worker が予約 push 完了後に再開）。
+      if (messageHoldsChain(cur)) {
+        if (holdOut && !holdOut.held) holdOut.held = { messageId: cur.id, resumeFromMessageId: cur.nextMessageId ?? null };
+        console.log(`[drainAutoSendableItems] hold停止 id=${cur.id.slice(0, 8)} resume=${cur.nextMessageId?.slice(0, 8) ?? "なし"}`);
         logResult();
         return result;
       }
@@ -587,6 +617,12 @@ export function drainAutoSendableItems(
     resultKinds.push(m.kind);
     console.log(`[drainAutoSendableItems] midChain補償追加 id=${m.id.slice(0, 8)} kind=${m.kind} sort=${m.sortOrder}`);
     if (requiresUserInteraction(m)) break;
+    // PR-SER2: orphan 経路でも hold ノードで停止（自身まで送って後続を止める）。
+    if (messageHoldsChain(m)) {
+      if (holdOut && !holdOut.held) holdOut.held = { messageId: m.id, resumeFromMessageId: m.nextMessageId ?? null };
+      console.log(`[drainAutoSendableItems] hold停止(orphan) id=${m.id.slice(0, 8)} resume=${m.nextMessageId?.slice(0, 8) ?? "なし"}`);
+      break;
+    }
   }
 
   logResult();

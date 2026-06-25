@@ -3628,7 +3628,7 @@ function ScheduledMessageSettings({ value, onChange, characters, oaId }: {
                 ON にすると、このメッセージの予約送信が完了したあとに、次のメッセージへ進みます。
                 物語を「1通目 → 10分後の返信 → 2通目」のように順番に進めたい場合に使います。
                 <br />
-                ※ この設定は<strong>現在は保存のみ</strong>です（直列進行の動作は次のアップデートで接続します）。
+                ※ 現在は<strong>検証中の機能</strong>です。後続停止の実行は staging でのみ有効です。本番では次の PR で「直列再開」まで対応後に有効化します。
               </div>
             </div>
           </>
