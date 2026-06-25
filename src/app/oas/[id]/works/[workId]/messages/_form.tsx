@@ -138,6 +138,8 @@ import {
   scheduledSettingsToFormState,
   formStateToScheduledSettings,
   SLOT_LAG_MS_MAX,
+  SLOT_LAG_SECONDS_MAX,
+  clampNewSlotLagMs,
   type AdditionalMessageSlot as _AdditionalMessageSlot,
   type ScheduledMessageFormState,
 } from "./_form-helpers";
@@ -4181,7 +4183,7 @@ function AdditionalMessageBlock({
             短い「間」(演出)用に最大 SLOT_LAG_MS_MAX(8秒) まで。長時間待機は webhook を保持し 504 を招くため、
             下の「時間差メッセージ（予約送信）」へ誘導する。既存の超過値は自動クリアせず読み取り専用で残す。 */}
         <div className="form-group" style={{ marginTop: 10, marginBottom: 0 }}>
-          <label style={fieldLabel}>前のメッセージからの待機時間</label>
+          <label style={fieldLabel}>前のメッセージからの短い待機演出</label>
           {(slot.lag_ms ?? 0) > SLOT_LAG_MS_MAX ? (
             // 既存の長時間待機（>8秒）: 非破壊で保持し、読み取り専用＋短縮導線のみ提示。
             <div style={{ ...checkNotice.warn, fontSize: 12 }}>
@@ -4197,13 +4199,24 @@ function AdditionalMessageBlock({
             </div>
           ) : (
             <>
-              <DurationInput
-                valueMs={slot.lag_ms ?? 0}
-                onChange={(ms) => onChange({ ...slot, lag_ms: Math.min(ms, SLOT_LAG_MS_MAX) })}
-              />
+              {/* 秒のみ（0〜8秒）。分入力は出さない＝合計が8秒を超える値を新規設定できない。
+                  reply は1回の API で複数通をまとめて返すため、2通目だけを長時間あとに送ることはできない。
+                  長時間あとの送信は push 配信の「時間差メッセージ（予約送信）」を使う。 */}
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <input
+                  type="number" min={0} max={SLOT_LAG_SECONDS_MAX} step={1}
+                  className="form-input" style={{ width: 80, fontSize: 13 }}
+                  value={Math.min(SLOT_LAG_SECONDS_MAX, Math.floor((slot.lag_ms ?? 0) / 1000))}
+                  onChange={(e) => onChange({ ...slot, lag_ms: clampNewSlotLagMs(Math.floor(Number(e.target.value) || 0) * 1000) })}
+                />
+                <span style={{ fontSize: 12, color: "#6b7280" }}>秒（0〜8秒）</span>
+              </div>
               <div style={hintText}>
-                前の吹き出しを送ったあと、このメッセージを送る前に待つ短い「間」です（最大8秒）。
-                10分後など長時間あとの送信は下の「時間差メッセージ（予約送信）」をご利用ください。
+                前の吹き出しを送ったあと、このメッセージを送る前に待つ<strong>短い演出</strong>です（<strong>最大8秒</strong>・分指定はできません）。
+                <br />
+                ※ これは <strong>LINE reply API のメッセージ間隔指定ではありません</strong>。長時間の待機には使わず、8秒以内の短い演出に限ってご利用ください。
+                <br />
+                10分後など長時間あとに送る場合は、下の<strong>「時間差メッセージ（予約送信）」</strong>をご利用ください。
               </div>
             </>
           )}

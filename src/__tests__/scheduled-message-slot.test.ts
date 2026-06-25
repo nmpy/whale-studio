@@ -7,7 +7,7 @@
  */
 import { describe, it, expect } from "vitest";
 import {
-  EMPTY_ADDITIONAL_SLOT, SLOT_LAG_MS_MAX,
+  EMPTY_ADDITIONAL_SLOT, SLOT_LAG_MS_MAX, SLOT_LAG_SECONDS_MAX, clampNewSlotLagMs,
   additionalSlotToMsgBody, msgToAdditionalSlot,
   type AdditionalMessageSlot,
 } from "@/app/oas/[id]/works/[workId]/messages/_form-helpers";
@@ -51,6 +51,31 @@ describe("slot 予約送信 restore (msgToAdditionalSlot)", () => {
     const body = additionalSlotToMsgBody(original, MAIN);
     const restored = msgToAdditionalSlot({ id: "m2", scheduled_message_settings: body.scheduled_message_settings });
     expect(restored.scheduled_message).toMatchObject({ enabled: true, delay_minutes: 60, body: "1時間後", cancel_on_phase_change: true });
+  });
+});
+
+describe("clampNewSlotLagMs — 新規入力は 0〜8秒 に丸める（分入力なし・合計 ms で cap）", () => {
+  it("SLOT_LAG_SECONDS_MAX は 8（秒）", () => {
+    expect(SLOT_LAG_SECONDS_MAX).toBe(8);
+  });
+  it("0分8秒(8000ms) はそのまま保存できる", () => {
+    expect(clampNewSlotLagMs(8000)).toBe(8000);
+  });
+  it("0分9秒(9000ms) は 8秒(8000ms) に丸まる", () => {
+    expect(clampNewSlotLagMs(9000)).toBe(8000);
+  });
+  it("1分0秒(60000ms) は 8秒(8000ms) に丸まる（= 分指定相当の値は不可）", () => {
+    expect(clampNewSlotLagMs(60000)).toBe(8000);
+    expect(clampNewSlotLagMs(600000)).toBe(8000);
+  });
+  it("0〜8秒の範囲はそのまま", () => {
+    expect(clampNewSlotLagMs(0)).toBe(0);
+    expect(clampNewSlotLagMs(3000)).toBe(3000);
+  });
+  it("負 / 非有限(NaN/Infinity) は 0（安全側）", () => {
+    expect(clampNewSlotLagMs(-1000)).toBe(0);
+    expect(clampNewSlotLagMs(Number.NaN)).toBe(0);
+    expect(clampNewSlotLagMs(Number.POSITIVE_INFINITY)).toBe(0);
   });
 });
 
