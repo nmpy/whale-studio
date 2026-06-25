@@ -11,7 +11,10 @@
 //
 // DB 操作・userProgress 取得・sender・now はすべて注入可能（テスト容易・本番は prisma アダプタを渡す）。
 
-import { evaluateCancelPolicy, type ScheduledCancelPolicy } from "@/lib/scheduled-message";
+import {
+  evaluateCancelPolicy, isHoldChainTruncationEnabled, parseResumeCursor,
+  type ScheduledCancelPolicy,
+} from "@/lib/scheduled-message";
 
 /** worker が処理する pending 予約の最小形。PII（payload 本文・lineUserId）はログ/レスポンスに出さない。 */
 export interface PendingScheduledRow {
@@ -23,11 +26,32 @@ export interface PendingScheduledRow {
   cancelPolicyJson: string | null;
   /** 送信元 OA（channelAccessToken 解決に使う）。 */
   oaId:             string;
+  /** この予約の発生元 message id（PR-SER3: resume ログの追跡に使う。本文ではなく id のみ）。 */
+  sourceMessageId:  string | null;
   /** 送信予定メッセージ内容（JSON 文字列。real sender が LINE message へ復元）。 */
   payloadJson:      string;
   /** 現在のリトライ回数（retry 判定に使う）。 */
   retryCount:       number;
 }
+
+/**
+ * PR-SER3 直列進行 resume: 予約 push 成功＆ markSent 後に **1回だけ**呼ばれる後続チェーン再開アダプタ。
+ * 実体（フェーズ取得 / drain / push / 再arm）は scheduled-message-resume.ts に置き、worker は orchestration のみ。
+ * ok=false は「resume 失敗（後続未送信）」だが、予約本文 push は成功済みなので **二重 push はしない**（安全側）。
+ */
+export interface ResumeChainArgs { row: PendingScheduledRow; nextMessageId: string; now: Date; }
+export interface ResumeChainOutcome {
+  ok:                   boolean;
+  /** 失敗/スキップの安全な分類名（PII なし）: invalid_next_message / no_sendable / push_failed / fetch_failed 等。 */
+  reason?:              string;
+  /** 送信した後続メッセージ数（参考）。 */
+  sentCount?:           number;
+  /** 再arm で作成した次予約数（参考）。 */
+  rearmed?:             number;
+  /** 後続も hold だった場合の次段 resume cursor（参考・ログ用）。 */
+  nextResumeMessageId?: string | null;
+}
+export type ResumeChain = (args: ResumeChainArgs) => Promise<ResumeChainOutcome>;
 
 /** 送信直前のユーザー進行状態（キャンセル判定に使う）。 */
 export interface UserProgressState {
@@ -101,6 +125,12 @@ export interface WorkerResult {
   recovered: number;
   /** 行単位の処理で例外が出た件数（worker 全体は落とさない）。 */
   errors:   number;
+  /** PR-SER3: 予約 push 成功後に後続チェーンを再開（resumeChain ok）した件数。 */
+  resumed:      number;
+  /** PR-SER3: resume を試みたが失敗（invalid/fetch/push 失敗・例外）した件数。予約は sent のまま（二重 push しない）。 */
+  resumeFailed: number;
+  /** PR-SER3: resume cursor はあるが実行しなかった件数（flag OFF / アダプタ未注入）。 */
+  resumeSkipped: number;
   /** dryRun（DB を変更しない読み取り評価）だったか。 */
   dryRun:   boolean;
 }
@@ -114,6 +144,11 @@ export interface WorkerDeps {
   batchSize?:      number;
   /** 送信実装（既定 no-op = 送信しない）。PR-4b で real LINE push を注入。 */
   sender?:         ScheduledSender;
+  /**
+   * PR-SER3 直列進行: 予約 push 成功＆ markSent 後に後続チェーンを再開するアダプタ（任意）。
+   * 未注入なら resume しない（resumeSkipped で計上）。flag OFF / dryRun でも resume しない。
+   */
+  resumeChain?:    ResumeChain;
   /**
    * dryRun=true: **DB を一切変更しない**読み取り評価のみ（findDuePending + getUserProgress を読むだけ）。
    *   「いま実行したら何件 send / cancel されるか」を返す。claim も markCanceled/markSent もしない。
@@ -147,7 +182,7 @@ export async function runScheduledMessageWorker(deps: WorkerDeps): Promise<Worke
   const batchSize = deps.batchSize ?? DEFAULT_BATCH_SIZE;
   const sender = deps.sender ?? noopSender;
   const dryRun = deps.dryRun ?? false;
-  const result: WorkerResult = { claimed: 0, canceled: 0, skipped: 0, sent: 0, failed: 0, retried: 0, recovered: 0, errors: 0, dryRun };
+  const result: WorkerResult = { claimed: 0, canceled: 0, skipped: 0, sent: 0, failed: 0, retried: 0, recovered: 0, errors: 0, resumed: 0, resumeFailed: 0, resumeSkipped: 0, dryRun };
 
   /** キャンセル判定（読み取りのみ）。progress 取得不能は安全側＝cancel しない。 */
   async function shouldCancel(row: PendingScheduledRow): Promise<{ cancel: boolean; reason: string | null }> {
@@ -156,6 +191,41 @@ export async function runScheduledMessageWorker(deps: WorkerDeps): Promise<Worke
     const progress = await deps.getUserProgress(row);
     if (!progress) return { cancel: false, reason: null }; // 判定不能 → 誤 cancel しない
     return evaluateCancelPolicy(policy, progress);
+  }
+
+  /**
+   * PR-SER3 直列進行 resume: 予約 push 成功＆ markSent 後に **1回だけ**呼ぶ。
+   *   - resume cursor（payload.resume.next_message_id）が無ければ何もしない。
+   *   - flag OFF / resumeChain 未注入なら resumeSkipped（後続再開せず・予約は sent のまま）。
+   *   - resumeChain ok → resumed / 失敗・例外 → resumeFailed（warning ログ・PII なし）。
+   *   失敗しても予約は sent のまま（= 予約本文 push の二重実行はしない。後続未送信は許容＝二重送信回避優先）。
+   *   将来: resumeFailed の自動 retry / repair は別 PR 候補（ここでは再送しない）。 // TODO(PR-SER4?): resume retry/repair
+   */
+  async function maybeResume(row: PendingScheduledRow): Promise<void> {
+    const nextMessageId = parseResumeCursor(row.payloadJson);
+    if (!nextMessageId) return;                                  // resume cursor なし＝従来どおり単発で終了
+    if (!isHoldChainTruncationEnabled() || !deps.resumeChain) {  // flag OFF / アダプタ無し → resume しない
+      result.resumeSkipped++;
+      return;
+    }
+    try {
+      const outcome = await deps.resumeChain({ row, nextMessageId, now: deps.now });
+      if (outcome?.ok) {
+        result.resumed++;
+      } else {
+        result.resumeFailed++;
+        console.warn("[scheduled-resume:failed]", JSON.stringify({
+          scheduledLineMessageId: row.id, sourceMessageId: row.sourceMessageId, nextMessageId,
+          reason: outcome?.reason ?? "unknown",
+        }));
+      }
+    } catch {
+      // resume の例外は worker を落とさない。予約は sent のまま（二重 push なし）。
+      result.resumeFailed++;
+      console.warn("[scheduled-resume:failed]", JSON.stringify({
+        scheduledLineMessageId: row.id, sourceMessageId: row.sourceMessageId, nextMessageId, reason: "exception",
+      }));
+    }
   }
 
   // ── recover phase: sending のまま滞留した行を安全側で処理 ──
@@ -199,8 +269,11 @@ export async function runScheduledMessageWorker(deps: WorkerDeps): Promise<Worke
       // ── 送信（real sender = LINE push。no-op の場合は sent:false/error なし → sending のまま claimed）──
       const sendResult = await sender(row);
       if (sendResult.sent) {
+        // 順序が idempotency の要: 必ず markSent（DB commit）→ その後 resume。
+        //   sent になった予約は findDuePending に再 pick されない＝予約本文 push/resume は1回のみ。
         await deps.db.markSent(row.id, sendResult.requestId ?? null, deps.now);
         result.sent++;
+        await maybeResume(row);   // PR-SER3: markSent 後にだけ後続チェーンを再開（flag/アダプタ gated・例外は内部処理）
       } else if (sendResult.error) {
         // 実送信の失敗。分類に応じて retry（pending へ戻す）or failed。
         const newRetry = row.retryCount + 1;

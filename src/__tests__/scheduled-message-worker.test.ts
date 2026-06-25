@@ -21,7 +21,7 @@ function makeRow(over: Partial<Row> = {}): Row {
   return {
     id: over.id ?? "r1", workId: "w1", lineUserId: "U1",
     userProgressId: "up1", phaseId: "p1",
-    cancelPolicyJson: null, status: "pending",
+    cancelPolicyJson: null, status: "pending", sourceMessageId: null,
     oaId: "oa1", payloadJson: JSON.stringify({ message_type: "text", body: "hi" }), retryCount: 0,
     dueAt: new Date(NOW.getTime() - 60_000), // 既定: 期限到来済み
     ...over,
@@ -37,8 +37,8 @@ function fakeDb(rows: Row[]): ScheduledWorkerDb & { rows: Row[] } {
         .filter((r) => r.status === "pending" && r.dueAt.getTime() <= now.getTime())
         .sort((a, b) => a.dueAt.getTime() - b.dueAt.getTime())
         .slice(0, limit)
-        .map(({ id, workId, lineUserId, userProgressId, phaseId, cancelPolicyJson, oaId, payloadJson, retryCount }) =>
-          ({ id, workId, lineUserId, userProgressId, phaseId, cancelPolicyJson, oaId, payloadJson, retryCount }));
+        .map(({ id, workId, lineUserId, userProgressId, phaseId, cancelPolicyJson, oaId, sourceMessageId, payloadJson, retryCount }) =>
+          ({ id, workId, lineUserId, userProgressId, phaseId, cancelPolicyJson, oaId, sourceMessageId, payloadJson, retryCount }));
     },
     async claimToSending(id) {
       const r = rows.find((x) => x.id === id);

@@ -630,6 +630,41 @@ export function drainAutoSendableItems(
 }
 
 /**
+ * PR-SER3 直列進行 resume: `startMessageId` から nextMessageId チェーンを辿り、送信対象を返す。
+ * これは drainAutoSendableItems の **inner-loop と同一規則**（response/hint で break・push・
+ * requiresUserInteraction で停止・hold で停止＋holdOut 記録・nextMessageId で継続）であり、
+ * 「hold で打ち切られた後続を、本来送られるはずだった形で再開」するために使う。
+ *   - startMessageId が見つからない / response・hint なら空配列（呼び出し側で invalid 扱い）。
+ *   - holdOut: 次段の hold で停止したら resume cursor（その hold の nextMessageId）を記録する。
+ *   - flag 連動: messageHoldsChain が ENABLE_SCHEDULED_HOLD_CHAIN_TRUNCATION を見るため、
+ *     flag OFF では hold 停止せず末尾まで辿る（ただし resume 自体が flag gated なので通常 ON 文脈で呼ばれる）。
+ */
+export function drainAutoSendableItemsFrom(
+  messages: PhaseRow["messages"],
+  startMessageId: string,
+  holdOut?: { held?: { messageId: string; resumeFromMessageId: string | null } },
+): import("@/types").RuntimePhaseMessage[] {
+  const msgMap = new Map(messages.map((m) => [m.id, m]));
+  const result: import("@/types").RuntimePhaseMessage[] = [];
+  const visited = new Set<string>();
+  let cur: PhaseMessage | undefined = msgMap.get(startMessageId);
+  while (cur && !visited.has(cur.id)) {
+    if (cur.kind === "response" || cur.kind === "hint") break; // 送信対象外
+    visited.add(cur.id);
+    result.push(messageRowToRuntime(cur));
+    if (requiresUserInteraction(cur)) break;                   // puzzle/trigger/QR 末尾 → 送って停止
+    if (messageHoldsChain(cur)) {                              // 次段 hold → 送って停止＋resume cursor
+      if (holdOut && !holdOut.held) holdOut.held = { messageId: cur.id, resumeFromMessageId: cur.nextMessageId ?? null };
+      break;
+    }
+    const nextId = cur.nextMessageId;
+    if (!nextId) break;
+    cur = msgMap.get(nextId);
+  }
+  return result;
+}
+
+/**
  * フェーズのメッセージ一覧から「フェーズ開始時に自動表示すべきメッセージ列」を構築する。
  *
  * 判定基準は **現在ノードの属性** のみ。次ノードの種類（puzzle 等）は参照しない。

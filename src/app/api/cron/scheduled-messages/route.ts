@@ -21,8 +21,12 @@ import {
   runScheduledMessageWorker, noopSender, DEFAULT_BATCH_SIZE, STUCK_SENDING_MS,
   type ScheduledWorkerDb, type PendingScheduledRow, type UserProgressState, type ScheduledSender,
 } from "@/lib/scheduled-message-worker";
-import { createScheduledPushSender } from "@/lib/scheduled-message-sender";
-import type { LineSender } from "@/lib/line";
+import { createScheduledPushSender, pushScheduledMessage, buildLineMessagesFromPayload } from "@/lib/scheduled-message-sender";
+import { makeResumeChain } from "@/lib/scheduled-message-resume";
+import { armScheduledMessages } from "@/lib/scheduled-message-arm";
+import { fetchPhaseWithIncludes } from "@/lib/runtime";
+import { isHoldChainTruncationEnabled } from "@/lib/scheduled-message";
+import type { LineSender, LineMessage } from "@/lib/line";
 
 export const dynamic = "force-dynamic";
 
@@ -54,6 +58,7 @@ async function handle(req: NextRequest) {
         select:  {
           id: true, workId: true, lineUserId: true, userProgressId: true, phaseId: true,
           cancelPolicyJson: true, oaId: true, payloadJson: true, retryCount: true,
+          sourceMessageId: true, // PR-SER3: resume ログ追跡用（id のみ）
         },
       });
     },
@@ -130,10 +135,58 @@ async function handle(req: NextRequest) {
     },
   });
 
+  // ── PR-SER3 resume アダプタ（live かつ ENABLE_SCHEDULED_HOLD_CHAIN_TRUNCATION のときだけ注入）──
+  //   予約 push 成功後に payload.resume.next_message_id から後続チェーンを送信し、後続に予約があれば再arm。
+  //   flag OFF / dryRun では undefined（worker 側でも resume しない＝二重ガード）。token はここでのみ解決し出力しない。
+  const resumeChain = (live && isHoldChainTruncationEnabled())
+    ? makeResumeChain({
+        fetchPhaseMessages: async ({ phaseId }) => {
+          if (!phaseId) return null;
+          const phase = await fetchPhaseWithIncludes(phaseId); // isActive のみ・character 込み
+          return phase?.messages ?? null;
+        },
+        pushChain: async ({ row, messages }) => {
+          const token = await prisma.oa.findUnique({ where: { id: row.oaId }, select: { channelAccessToken: true } })
+            .then((o) => o?.channelAccessToken ?? null);
+          if (!token) return { ok: false, reason: "token_not_found" };
+          // RuntimePhaseMessage → LINE message（text/image のみ。character は drain 出力から sender 復元）。
+          const lineMsgs: LineMessage[] = [];
+          for (const m of messages) {
+            const iconUrl = m.character?.icon_image_url && m.character.icon_image_url.startsWith("https://")
+              ? m.character.icon_image_url : undefined;
+            const sender: LineSender | undefined = m.character ? { name: m.character.name, ...(iconUrl ? { iconUrl } : {}) } : undefined;
+            lineMsgs.push(...buildLineMessagesFromPayload(
+              { message_type: m.message_type, body: m.body, asset_url: m.asset_url, character_id: m.character?.id ?? null },
+              sender,
+            ));
+          }
+          if (lineMsgs.length === 0) return { ok: false, reason: "empty_after_convert" };
+          // LINE push は1回最大5通。retryKey は予約 id 由来で安定（同一 resume の二重送信を LINE 側でも抑止）。
+          for (let i = 0; i < lineMsgs.length; i += 5) {
+            const chunk = lineMsgs.slice(i, i + 5);
+            const res = await pushScheduledMessage({
+              lineUserId: row.lineUserId, messages: chunk, channelAccessToken: token,
+              retryKey: `${row.id}:resume:${i / 5}`,
+            });
+            if (!res.ok) return { ok: false, reason: "push_failed" };
+          }
+          return { ok: true };
+        },
+        rearm: async ({ row, sentMessageIds, now }) => {
+          const r = await armScheduledMessages({
+            sentMessageIds, oaId: row.oaId, workId: row.workId,
+            lineUserId: row.lineUserId, userProgressId: row.userProgressId, now,
+          });
+          return { created: r.created };
+        },
+      })
+    : undefined;
+
   try {
     const result = await runScheduledMessageWorker({
       db, getUserProgress, now: new Date(), batchSize: DEFAULT_BATCH_SIZE,
       sender: live ? realSender : noopSender,
+      resumeChain,
       dryRun: !live,
     });
     // 件数のみ返す（PII/token なし）。STUCK_SENDING_MS は recover 閾値（参考にコメント）。

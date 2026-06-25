@@ -104,6 +104,19 @@ export function isHoldChainTruncationEnabled(): boolean {
   return process.env.ENABLE_SCHEDULED_HOLD_CHAIN_TRUNCATION === "true";
 }
 
+/** PR-SER3: 予約 payloadJson から resume cursor（後続再開先 message id）を安全に取り出す。
+ *  resume が無い / 不正 JSON / next_message_id が空 → null（= 後続再開なし）。PII は読まない（id のみ）。 */
+export function parseResumeCursor(payloadJson: string | null | undefined): string | null {
+  if (!payloadJson) return null;
+  try {
+    const p = JSON.parse(payloadJson) as { resume?: { next_message_id?: unknown } };
+    const id = p?.resume?.next_message_id;
+    return typeof id === "string" && id.length > 0 ? id : null;
+  } catch {
+    return null;
+  }
+}
+
 export interface ScheduledMessagePayload {
   message_type: string;          // "text" | "image" 等
   body?:        string | null;
