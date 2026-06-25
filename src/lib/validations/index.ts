@@ -346,6 +346,9 @@ export const scheduledMessageSettingsSchema = z.object({
   character_id:          uuidSchema.nullable().optional(),
   cancel_on_phase_change:  z.boolean().optional().default(false),
   cancel_on_work_completed: z.boolean().optional().default(false),
+  /** PR-SER1（保存のみ・runtime 未接続）: ON のとき、この予約送信が届くまで後続メッセージを送らない
+   *  「直列進行」用フラグ。runtime/worker への接続は PR-SER2/3。未設定=false=従来挙動。 */
+  hold_chain_until_sent:    z.boolean().optional().default(false),
 }).refine(
   (s) => !s.enabled || (s.delay_minutes != null && s.delay_minutes >= SCHED_MIN_DELAY_MINUTES && !!(s.body && s.body.trim())),
   { message: "時間差メッセージを有効にする場合は送信タイミング（分）と本文が必須です" },

@@ -164,7 +164,7 @@ describe("additionalSlotToMsgBody — slot → API body", () => {
       free_input_enabled:         false,
       free_input_variable_key:    "",
       free_input_next_message_id: "",
-      scheduled_message:          { enabled: false, delay_minutes: 30, body: "", character_id: "", cancel_on_phase_change: false, cancel_on_work_completed: false },
+      scheduled_message:          { enabled: false, delay_minutes: 30, body: "", character_id: "", cancel_on_phase_change: false, cancel_on_work_completed: false, hold_chain_until_sent: false },
     };
   }
 
