@@ -73,14 +73,17 @@ describe("list-shape は continuation 復元用に scheduled_message_settings �
     body: "b", assetUrl: null, triggerKeyword: null, targetSegment: null, notifyText: null,
     riddleId: null, quickReplies: null,
   };
+  // messageToResponse の引数型は多数フィールドを要求するため、テスト fixture は最小 + cast で渡す。
+  const resp = (extra: Record<string, unknown> = {}) =>
+    messageToResponse({ ...base, ...extra } as Parameters<typeof messageToResponse>[0]) as { scheduled_message_settings: unknown };
   it("scheduledMessageSettings(JSON) → parse 済み object", () => {
-    const r = messageToResponse({ ...base, scheduledMessageSettings: JSON.stringify({ enabled: true, delay_minutes: 10, body: "x" }) });
-    expect((r as { scheduled_message_settings: unknown }).scheduled_message_settings).toEqual({ enabled: true, delay_minutes: 10, body: "x" });
+    expect(resp({ scheduledMessageSettings: JSON.stringify({ enabled: true, delay_minutes: 10, body: "x" }) }).scheduled_message_settings)
+      .toEqual({ enabled: true, delay_minutes: 10, body: "x" });
   });
   it("未設定 → null", () => {
-    expect((messageToResponse(base) as { scheduled_message_settings: unknown }).scheduled_message_settings).toBeNull();
+    expect(resp().scheduled_message_settings).toBeNull();
   });
   it("壊れた JSON → null（throw しない）", () => {
-    expect((messageToResponse({ ...base, scheduledMessageSettings: "{壊れ" }) as { scheduled_message_settings: unknown }).scheduled_message_settings).toBeNull();
+    expect(resp({ scheduledMessageSettings: "{壊れ" }).scheduled_message_settings).toBeNull();
   });
 });
