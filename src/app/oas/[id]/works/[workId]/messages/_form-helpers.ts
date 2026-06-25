@@ -96,6 +96,15 @@ export interface AdditionalMessageSlot {
  *  これを超える長時間待機は webhook を長時間保持し 504 を招くため、予約送信（ScheduledLineMessage）へ誘導する。
  *  既存データが超過していても自動クリアはしない（読み取り専用表示）。 */
 export const SLOT_LAG_MS_MAX = 8000;
+/** slot lag の秒入力で指定できる最大秒数（= SLOT_LAG_MS_MAX）。 */
+export const SLOT_LAG_SECONDS_MAX = SLOT_LAG_MS_MAX / 1000;
+
+/** slot lag の「新規入力」を 0〜SLOT_LAG_MS_MAX(8秒) に丸める（分入力を排した秒のみ UI と保存の両方で使用）。
+ *  非有限/負は 0、超過は 8000ms に clamp。既存 >8秒 の読み取り専用値には適用しない（呼び出し側で分岐）。 */
+export function clampNewSlotLagMs(ms: number): number {
+  if (!Number.isFinite(ms) || ms < 0) return 0;
+  return Math.min(Math.floor(ms), SLOT_LAG_MS_MAX);
+}
 
 export const EMPTY_ADDITIONAL_SLOT: AdditionalMessageSlot = {
   character_id:   "",

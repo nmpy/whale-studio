@@ -138,6 +138,8 @@ import {
   scheduledSettingsToFormState,
   formStateToScheduledSettings,
   SLOT_LAG_MS_MAX,
+  SLOT_LAG_SECONDS_MAX,
+  clampNewSlotLagMs,
   type AdditionalMessageSlot as _AdditionalMessageSlot,
   type ScheduledMessageFormState,
 } from "./_form-helpers";
@@ -4197,12 +4199,20 @@ function AdditionalMessageBlock({
             </div>
           ) : (
             <>
-              <DurationInput
-                valueMs={slot.lag_ms ?? 0}
-                onChange={(ms) => onChange({ ...slot, lag_ms: Math.min(ms, SLOT_LAG_MS_MAX) })}
-              />
+              {/* 秒のみ（0〜8秒）。分入力は出さない＝合計が8秒を超える値を新規設定できない。
+                  reply は1回の API で複数通をまとめて返すため、2通目だけを長時間あとに送ることはできない。
+                  長時間あとの送信は push 配信の「時間差メッセージ（予約送信）」を使う。 */}
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <input
+                  type="number" min={0} max={SLOT_LAG_SECONDS_MAX} step={1}
+                  className="form-input" style={{ width: 80, fontSize: 13 }}
+                  value={Math.min(SLOT_LAG_SECONDS_MAX, Math.floor((slot.lag_ms ?? 0) / 1000))}
+                  onChange={(e) => onChange({ ...slot, lag_ms: clampNewSlotLagMs(Math.floor(Number(e.target.value) || 0) * 1000) })}
+                />
+                <span style={{ fontSize: 12, color: "#6b7280" }}>秒（0〜8秒）</span>
+              </div>
               <div style={hintText}>
-                前の吹き出しを送ったあと、このメッセージを送る前に待つ短い「間」です（最大8秒）。
+                前の吹き出しを送ったあと、このメッセージを送る前に待つ短い「間」です（<strong>最大8秒</strong>・分指定はできません）。
                 10分後など長時間あとの送信は下の「時間差メッセージ（予約送信）」をご利用ください。
               </div>
             </>
