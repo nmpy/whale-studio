@@ -39,6 +39,7 @@ export function messageToResponse(m: {
   messageType: string; kind: string; body: string | null; assetUrl: string | null;
   triggerKeyword: string | null; targetSegment: string | null;
   notifyText: string | null; riddleId: string | null;
+  scheduledMessageSettings?: string | null;
   quickReplies: string | null; nextMessageId?: string | null;
   altText?: string | null; flexPayloadJson?: string | null;
   puzzleType?: string | null; answer?: string | null; answers?: string | null; puzzleHintText?: string | null;
@@ -137,6 +138,12 @@ export function messageToResponse(m: {
     free_input_enabled:         m.freeInputEnabled         ?? false,
     free_input_variable_key:    m.freeInputVariableKey     ?? null,
     free_input_next_message_id: m.freeInputNextMessageId   ?? null,
+    // 時間差メッセージ（予約送信）設定。chain continuation（2通目以降）の slot 復元にも必要なため
+    // list 形にも含める（head は /api/messages/[id] で取得・slot は LIST 経由で chain 復元するため）。
+    scheduled_message_settings: (() => {
+      if (!m.scheduledMessageSettings) return null;
+      try { return JSON.parse(m.scheduledMessageSettings); } catch { return null; }
+    })(),
     // 送信後の待機トリガー（地点到着で自動進行）
     checkin_trigger_type:            m.checkinTriggerType          ?? null,
     checkin_trigger_location_id:     m.checkinTriggerLocationId    ?? null,
