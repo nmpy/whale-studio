@@ -20,10 +20,10 @@ import { collectChainContinuationIds, chainLengthFrom, estimateMaxSendUnit, shou
 import { buildResponseKeywordPhaseIndex, findFlexKeywordPhaseIssues } from "./_flex-keyword-check";
 import { analyzeMessageList } from "@/lib/message-flow-status";
 import MessageCard from "./_MessageCard";
-import { PhaseTabs, WarningSummaryBar, PhaseFilterBar, EmptyState, type PhaseTabItem } from "./_message-list-chrome";
+import { PhaseTabs, WarningSummaryBar, PhaseFilterBar, EmptyState, PhaseSectionHeading, type PhaseTabItem } from "./_message-list-chrome";
 import {
   buildTriggerIndexes, classifyTrigger, getMessageWarnings,
-  TRIGGER_GROUP_ORDER, TRIGGER_GROUP_META, type MessageWarningLabel,
+  TRIGGER_GROUP_META, type MessageWarningLabel,
 } from "./_message-list-model";
 
 
@@ -95,7 +95,7 @@ export default function MessagesPage() {
   }, [messages, flowMap, kwPhaseIndex]);
 
   // head 一覧をフェーズ単位に整理（並び替えは既存どおり sort_order + created_at、フェーズ内スコープ）。
-  // orderIndex はフェーズ順→sort_order の通し番号（「すべて」表示でも順序が壊れないようにする）。
+  // 一覧は送信順表示: 「すべて」はフェーズ順セクション、各フェーズ内は headsByPhase の sort_order を尊重。
   const listView = useMemo(() => {
     const contIds = collectChainContinuationIds(messages);
     const phaseIds = new Set(phases.map((p) => p.id));
@@ -112,12 +112,8 @@ export default function MessagesPage() {
       headsByPhase.get(k)!.push(m);
     }
     for (const arr of headsByPhase.values()) arr.sort(byOrder);
-    const orderIndex = new Map<string, number>();
-    let oi = 0;
-    for (const p of phases) for (const m of (headsByPhase.get(p.id) ?? [])) orderIndex.set(m.id, oi++);
-    for (const m of (headsByPhase.get("__unassigned") ?? [])) orderIndex.set(m.id, oi++);
     const hasUnassigned = (headsByPhase.get("__unassigned")?.length ?? 0) > 0;
-    return { heads, headsByPhase, orderIndex, hasUnassigned, phaseKeyOf };
+    return { heads, headsByPhase, hasUnassigned, phaseKeyOf };
   }, [messages, phases]);
 
   /** 一覧からメッセージを削除する (chain head 専用)。
@@ -793,13 +789,61 @@ export default function MessagesPage() {
           })
           .map((p) => p.name);
 
-        // トリガー種別グルーピング（表示専用・フェーズ順→sort_order を尊重）。
-        const grouped = TRIGGER_GROUP_ORDER.map((key) => ({
-          key,
-          msgs: filtered
-            .filter((m) => classifyTrigger(m, triggerIdx) === key)
-            .sort((a, b) => (listView.orderIndex.get(a.id) ?? 0) - (listView.orderIndex.get(b.id) ?? 0)),
-        })).filter((g) => g.msgs.length > 0);
+        // 送信順セクション（表示専用・トリガー分類は順序に一切影響させない）。
+        //   すべて  : フェーズ順にセクション化。各フェーズ内は既存 sort_order の送信順。未割当は末尾。
+        //   特定タブ: そのフェーズ内のみを送信順で（セクション見出しなし。上部 PhaseFilterBar が示す）。
+        type Section = { key: string; heading: { name: string; typeKey: string } | null; msgs: MessageWithRelations[] };
+        const sections: Section[] = effectiveId === ALL
+          ? [
+              ...phases
+                .map((p): Section => ({ key: p.id, heading: { name: p.name, typeKey: p.phase_type ?? "" }, msgs: listView.headsByPhase.get(p.id) ?? [] }))
+                .filter((s) => s.msgs.length > 0),
+              ...(((listView.headsByPhase.get(UNASSIGNED) ?? []).length > 0)
+                ? [{ key: UNASSIGNED, heading: { name: "未割当", typeKey: "" }, msgs: listView.headsByPhase.get(UNASSIGNED) ?? [] } as Section]
+                : []),
+            ]
+          : [{ key: effectiveId, heading: null, msgs: listView.headsByPhase.get(effectiveId) ?? [] }];
+
+        // 種別バッジ（クイックリプライ/応答メッセージ/チェックインのみ。条件なし/順送り・その他は非表示）。
+        // classifyTrigger はこのバッジ表示専用。表示順・送信・遷移・応答判定には影響させない。
+        const triggerBadgeOf = (m: MessageWithRelations) => {
+          const key = classifyTrigger(m, triggerIdx);
+          if (key === "sequential" || key === "other") return null;
+          const meta = TRIGGER_GROUP_META[key];
+          return { label: meta.label, icon: meta.icon, bg: meta.bg, color: meta.color };
+        };
+
+        const renderCard = (m: MessageWithRelations) => {
+          const phaseKey = listView.phaseKeyOf(m);
+          const groupHeads = listView.headsByPhase.get(phaseKey) ?? [];
+          const idx = groupHeads.findIndex((g) => g.id === m.id);
+          const pname = m.phase?.id ? (phaseById.get(m.phase.id)?.name ?? m.phase.name ?? null) : null;
+          return (
+            <MessageCard
+              key={m.id}
+              msg={m}
+              triggerBadge={triggerBadgeOf(m)}
+              warnings={warningsByMsgId.get(m.id) ?? []}
+              flowInfo={flowMap.get(m.id)}
+              phaseName={pname ?? (phaseKey === UNASSIGNED ? "未割当" : null)}
+              isExpanded={expandedId === m.id}
+              onToggleExpand={() => toggleExpand(m.id)}
+              canEdit={canEdit}
+              busy={busyMessageId === m.id}
+              editHref={`/oas/${oaId}/works/${workId}/messages/${m.id}`}
+              onDelete={() => handleDeleteMessage(m)}
+              onToggleActive={() => handleToggleActive(m)}
+              onReorder={(dir) => handleReorderMessage(m, dir, groupHeads)}
+              canMoveUp={idx > 0}
+              canMoveDown={idx >= 0 && idx < groupHeads.length - 1}
+              allMessages={messages}
+              transitions={transitions}
+              phases={phases}
+              msgById={msgById}
+              phaseById={phaseById}
+            />
+          );
+        };
 
         return (
           <>
@@ -825,49 +869,14 @@ export default function MessagesPage() {
                 addHref={`/oas/${oaId}/works/${workId}/messages/new`}
               />
             ) : (
-              grouped.map(({ key, msgs }) => {
-                const meta = TRIGGER_GROUP_META[key];
-                return (
-                  <div key={key} style={{ marginBottom: 14 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-                      <span style={{ fontSize: 11.5, fontWeight: 500, padding: "3px 11px", borderRadius: 6, color: meta.color, background: meta.bg }}>
-                        {meta.icon} {meta.label}
-                      </span>
-                      <span style={{ fontSize: 11.5, color: "#B4B8BC" }}>{msgs.length}件</span>
-                    </div>
-                    {msgs.map((m) => {
-                      const phaseKey = listView.phaseKeyOf(m);
-                      const groupHeads = listView.headsByPhase.get(phaseKey) ?? [];
-                      const idx = groupHeads.findIndex((g) => g.id === m.id);
-                      const pname = m.phase?.id ? (phaseById.get(m.phase.id)?.name ?? m.phase.name ?? null) : null;
-                      return (
-                        <MessageCard
-                          key={m.id}
-                          msg={m}
-                          warnings={warningsByMsgId.get(m.id) ?? []}
-                          flowInfo={flowMap.get(m.id)}
-                          phaseName={pname ?? (phaseKey === UNASSIGNED ? "未割当" : null)}
-                          isExpanded={expandedId === m.id}
-                          onToggleExpand={() => toggleExpand(m.id)}
-                          canEdit={canEdit}
-                          busy={busyMessageId === m.id}
-                          editHref={`/oas/${oaId}/works/${workId}/messages/${m.id}`}
-                          onDelete={() => handleDeleteMessage(m)}
-                          onToggleActive={() => handleToggleActive(m)}
-                          onReorder={(dir) => handleReorderMessage(m, dir, groupHeads)}
-                          canMoveUp={idx > 0}
-                          canMoveDown={idx >= 0 && idx < groupHeads.length - 1}
-                          allMessages={messages}
-                          transitions={transitions}
-                          phases={phases}
-                          msgById={msgById}
-                          phaseById={phaseById}
-                        />
-                      );
-                    })}
-                  </div>
-                );
-              })
+              sections.map((sec) => (
+                <div key={sec.key} style={{ marginBottom: 18 }}>
+                  {sec.heading && (
+                    <PhaseSectionHeading name={sec.heading.name} typeKey={sec.heading.typeKey} count={sec.msgs.length} />
+                  )}
+                  {sec.msgs.map(renderCard)}
+                </div>
+              ))
             )}
 
             <div style={{ fontSize: 11, color: "var(--text-muted)", textAlign: "right", padding: "4px 4px 0" }}>

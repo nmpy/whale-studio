@@ -10,8 +10,36 @@
 // 描画のみ・state を持たない。送信/保存/遷移などのロジックは無関係。
 
 import { TLink as Link } from "@/components/TLink";
+import { PHASE_TYPE_LABEL, PHASE_TYPE_COLOR } from "./_list-ui";
 
 export type PhaseTabItem = { id: string; name: string };
+
+/** 「すべて」タブで各フェーズを区切るセクション見出し（フェーズ名 + 種別 + 件数）。 */
+export function PhaseSectionHeading({
+  name, typeKey, count,
+}: {
+  name: string;
+  typeKey: string;
+  count: number;
+}) {
+  const c = PHASE_TYPE_COLOR[typeKey] ?? { bg: "#f3f4f6", color: "#374151", border: "#e5e7eb" };
+  const typeLabel = typeKey ? PHASE_TYPE_LABEL[typeKey] : undefined;
+  return (
+    <div style={{
+      display: "flex", alignItems: "center", gap: 8,
+      margin: "2px 0 9px", paddingBottom: 6, borderBottom: "1px solid #EEF0F2",
+    }}>
+      <span style={{ fontSize: 13, fontWeight: 700, color: "#333" }}>{name}</span>
+      {typeLabel && (
+        <span style={{
+          fontSize: 10, fontWeight: 600, padding: "2px 8px", borderRadius: 10,
+          background: c.bg, color: c.color, border: `1px solid ${c.border}`,
+        }}>{typeLabel}</span>
+      )}
+      <span style={{ fontSize: 11.5, color: "#B4B8BC" }}>{count}件</span>
+    </div>
+  );
+}
 
 export function PhaseTabs({
   tabs, activeId, onChange,
