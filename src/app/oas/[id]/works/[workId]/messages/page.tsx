@@ -2,7 +2,7 @@
 
 // src/app/oas/[id]/works/[workId]/messages/page.tsx
 
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { TLink as Link } from "@/components/TLink";
 import { bootstrapApi, messageApi, workApi, getDevToken } from "@/lib/api-client";
@@ -14,486 +14,18 @@ import { Breadcrumb } from "@/components/Breadcrumb";
 import { useToast } from "@/components/Toast";
 import { ViewerBanner } from "@/components/PermissionGuard";
 import { GuideCard } from "@/components/onboarding/GuideCard";
-import type { MessageWithRelations, MessageType, PhaseWithCounts, TransitionWithPhases, QuickReplyItem } from "@/types";
+import type { MessageWithRelations, PhaseWithCounts, TransitionWithPhases } from "@/types";
 import type { Role } from "@/lib/types/permissions";
-import { collectChainContinuationIds, chainSizeFrom, chainLengthFrom, estimateMaxSendUnit, shouldShowSendUnitWarning, LINE_REPLY_MAX, getChainContinuations, hasAnyTiming, summarizeTiming } from "./_list-helpers";
+import { collectChainContinuationIds, chainLengthFrom, estimateMaxSendUnit, shouldShowSendUnitWarning, LINE_REPLY_MAX, getChainContinuations } from "./_list-helpers";
 import { buildResponseKeywordPhaseIndex, findFlexKeywordPhaseIssues } from "./_flex-keyword-check";
 import { analyzeMessageList } from "@/lib/message-flow-status";
-import type { MessageFlowInfo, FlowLink } from "@/lib/message-flow-status";
+import MessageCard from "./_MessageCard";
+import { PhaseTabs, WarningSummaryBar, PhaseFilterBar, EmptyState, type PhaseTabItem } from "./_message-list-chrome";
+import {
+  buildTriggerIndexes, classifyTrigger, getMessageWarnings,
+  TRIGGER_GROUP_ORDER, TRIGGER_GROUP_META, type MessageWarningLabel,
+} from "./_message-list-model";
 
-const MESSAGE_TYPE_LABEL: Record<MessageType, string> = {
-  text:     "テキスト",
-  image:    "画像",
-  riddle:   "—",       // タイプ列で "謎" として表示するため種別列では非表示
-  video:    "動画",
-  carousel: "カルーセル",
-  voice:    "ボイス",
-  flex:     "Flex Message",
-};
-
-const MESSAGE_TYPE_ICON: Record<MessageType, string> = {
-  text:     "",
-  image:    "🖼",
-  riddle:   "",         // 同上
-  video:    "🎬",
-  carousel: "🎠",
-  voice:    "🎙",
-  flex:     "🧱",
-};
-
-const PHASE_TYPE_LABEL: Record<string, string> = {
-  start:   "開始",
-  normal:  "通常",
-  ending:  "エンディング",
-  global:  "全フェーズ共通",
-};
-
-function CharIcon({ character }: { character: MessageWithRelations["character"]; size?: number }) {
-  const size = 28;
-  if (!character) {
-    // キャラクター未設定 — グレーの人物アイコン
-    return (
-      <span style={{
-        display: "inline-flex", alignItems: "center", justifyContent: "center",
-        width: size, height: size, borderRadius: "50%",
-        background: "#e5e7eb", fontSize: 13, color: "#9ca3af",
-        flexShrink: 0, border: "1px solid #d1d5db",
-      }} />
-    );
-  }
-
-  if (character.icon_image_url) {
-    // 画像アイコン
-    return (
-      // eslint-disable-next-line @next/next/no-img-element
-      <img
-        src={character.icon_image_url}
-        alt={character.name}
-        loading="lazy"
-        decoding="async"
-        style={{
-          width: size, height: size, borderRadius: "50%",
-          objectFit: "cover", flexShrink: 0,
-          border: "1px solid #e5e7eb",
-        }}
-        onError={(e) => {
-          // 画像読み込み失敗 → テキストフォールバック
-          const el = e.currentTarget as HTMLImageElement;
-          el.style.display = "none";
-          const span = document.createElement("span");
-          span.textContent = character.icon_text ?? character.name.charAt(0);
-          Object.assign(span.style, {
-            display: "inline-flex", alignItems: "center", justifyContent: "center",
-            width: `${size}px`, height: `${size}px`, borderRadius: "50%",
-            background: character.icon_color ?? "#6366f1",
-            fontSize: "11px", color: "#fff", fontWeight: "700", flexShrink: "0",
-          });
-          el.parentNode?.insertBefore(span, el.nextSibling);
-        }}
-      />
-    );
-  }
-
-  // テキスト／絵文字アイコン（旧形式）
-  return (
-    <span style={{
-      display: "inline-flex", alignItems: "center", justifyContent: "center",
-      width: size, height: size, borderRadius: "50%",
-      background: character.icon_color ?? "#6366f1",
-      fontSize: 11, color: "#fff", fontWeight: 700,
-      flexShrink: 0, border: "1px solid rgba(0,0,0,0.08)",
-    }}>
-      {character.icon_text ?? character.name.charAt(0)}
-    </span>
-  );
-}
-
-function CharTag({ character }: { character: MessageWithRelations["character"] }) {
-  if (!character) return <span style={{ color: "var(--text-muted)", fontSize: 11 }}>—</span>;
-  return (
-    <span style={{
-      display: "inline-flex", alignItems: "center", gap: 6,
-      fontSize: 11, color: "var(--text-secondary)",
-    }}>
-      <CharIcon character={character} />
-      <span style={{ fontWeight: 500 }}>{character.name}</span>
-    </span>
-  );
-}
-
-interface PhaseGroup {
-  phase: PhaseWithCounts | null;
-  messages: MessageWithRelations[];
-}
-
-const PHASE_TYPE_COLOR: Record<string, { bg: string; color: string; border: string }> = {
-  start:   { bg: "#eff6ff", color: "#1d4ed8", border: "#bfdbfe" },
-  normal:  { bg: "#f0fdf4", color: "#166534", border: "#bbf7d0" },
-  ending:  { bg: "#fdf4ff", color: "#7e22ce", border: "#e9d5ff" },
-  global:  { bg: "#fffbeb", color: "#b45309", border: "#fcd34d" },
-};
-
-/** タイプバッジ: 謎（puzzle / riddle）か メッセージ かの二択 */
-const MSG_TYPE_META = {
-  riddle:  { label: "謎",       icon: "🧩", bg: "#fff7ed", color: "#c2410c", border: "#fed7aa" },
-  message: { label: "メッセージ", icon: "",   bg: "#f0f9ff", color: "#0369a1", border: "#bae6fd" },
-} as const;
-
-// ── ブランチフロー ────────────────────────────────────────
-
-const BRANCH_CHIP_PALETTE = {
-  blue:   { bg: "#dbeafe", color: "#1e40af", border: "#bfdbfe" },
-  orange: { bg: "#fff7ed", color: "#c2410c", border: "#fed7aa" },
-  purple: { bg: "#f5f3ff", color: "#6d28d9", border: "#ddd6fe" },
-  gray:   { bg: "#f1f5f9", color: "#475569", border: "#e2e8f0" },
-  dim:    { bg: "#f9fafb", color: "#9ca3af", border: "#e5e7eb" },
-} as const;
-
-function BranchChip({
-  color, children, maxWidth = 200,
-}: {
-  color: keyof typeof BRANCH_CHIP_PALETTE;
-  children: React.ReactNode;
-  maxWidth?: number;
-}) {
-  const p = BRANCH_CHIP_PALETTE[color];
-  return (
-    <span style={{
-      display: "inline-flex", alignItems: "center", gap: 3,
-      fontSize: 11, fontWeight: 600,
-      padding: "2px 9px", borderRadius: 12,
-      background: p.bg, color: p.color, border: `1px solid ${p.border}`,
-      whiteSpace: "nowrap", maxWidth, overflow: "hidden", textOverflow: "ellipsis",
-      flexShrink: 0,
-    }}>
-      {children}
-    </span>
-  );
-}
-
-function BranchArrow() {
-  return <span style={{ fontSize: 10, color: "#94a3b8", flexShrink: 0 }}>→</span>;
-}
-
-/** メッセージ本文の短いプレビュー文字列 */
-function msgPreview(m: MessageWithRelations | undefined): string {
-  if (!m) return "";
-  if (m.body) return m.body.length > 28 ? m.body.slice(0, 28) + "…" : m.body;
-  if (m.message_type === "image")    return "🖼 画像";
-  if (m.message_type === "video")    return "🎬 動画";
-  if (m.message_type === "voice")    return "🎙 ボイス";
-  if (m.message_type === "carousel") return "🎠 カルーセル";
-  if (m.message_type === "flex")     return m.alt_text ? `🧱 ${m.alt_text.length > 24 ? m.alt_text.slice(0, 24) + "…" : m.alt_text}` : "🧱 Flex Message";
-  return "(メッセージ)";
-}
-
-/** 分岐フローの「結果」表示用: キャラクター名 + 本文冒頭。例: くらげさん「あっ」
- *  キャラクター未設定なら本文プレビューのみ。 */
-function msgPreviewWithChar(m: MessageWithRelations | undefined): string {
-  if (!m) return "";
-  const body = msgPreview(m);
-  const name = m.character?.name;
-  return name ? `${name}「${body}」` : body;
-}
-
-/** 導線バッジの共通ピル。tone で配色を切り替える（warn=見落としにくく、info/neutral=控えめ）。 */
-function FlowPill({ tone, title, children }: { tone: "warn" | "info" | "neutral"; title?: string; children: React.ReactNode }) {
-  const palette = {
-    warn:    { bg: "#fef2f2", color: "#b91c1c", border: "#fecaca" },
-    info:    { bg: "#eff6ff", color: "#1d4ed8", border: "#bfdbfe" },
-    neutral: { bg: "#f8fafc", color: "#475569", border: "#e2e8f0" },
-  }[tone];
-  return (
-    <span
-      title={title}
-      style={{
-        display: "inline-flex", alignItems: "center", gap: 3,
-        fontSize: 10, fontWeight: tone === "warn" ? 700 : 600,
-        background: palette.bg, color: palette.color,
-        border: `1px solid ${palette.border}`,
-        borderRadius: 8, padding: "1px 7px", lineHeight: 1.5, whiteSpace: "nowrap",
-      }}
-    >
-      {children}
-    </span>
-  );
-}
-
-const FLOW_LINK_PREFIX: Record<FlowLink["type"], string> = {
-  free_input:      "入力後",
-  puzzle_phase:    "正解後",
-  checkin_message: "到着後",
-  checkin_phase:   "到着後",
-  qr_message:      "クイックリプライ",
-  qr_phase:        "クイックリプライ",
-  chain_external:  "連続",
-};
-
-/** メッセージ一覧の「導線状態」サブ情報（本文セル下部にコンパクト表示）。
- *  判定は src/lib/message-flow-status.ts（純関数）。ここは表示のみ（UI/ロジック分離）。 */
-function FlowStatusCell({
-  info, msgById, phaseById,
-}: {
-  info:      MessageFlowInfo | undefined;
-  msgById:   Map<string, MessageWithRelations>;
-  phaseById: Map<string, PhaseWithCounts>;
-}) {
-  if (!info) return null;
-
-  const linkLabel = (link: FlowLink): { text: string; broken: boolean } => {
-    const prefix = FLOW_LINK_PREFIX[link.type];
-    if (!link.targetId || !link.exists) return { text: `${prefix} → 遷移先未設定`, broken: true };
-    const name =
-      link.targetType === "message"
-        ? (msgPreview(msgById.get(link.targetId)) || "メッセージ")
-        : (phaseById.get(link.targetId)?.name ?? "フェーズ");
-    return { text: `${prefix} → ${name}`, broken: false };
-  };
-
-  return (
-    <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginTop: 6, alignItems: "center" }}>
-      {/* 警告（見落としにくく） */}
-      {info.missingKeyword && <FlowPill tone="warn" title="応答キーワードが必須なのに未入力です">⚠ キーワード未設定</FlowPill>}
-      {info.hasBrokenLink  && <FlowPill tone="warn" title="設定された遷移先が未指定または存在しません">⚠ 遷移先未設定</FlowPill>}
-      {info.unreferenced   && <FlowPill tone="warn" title="どこからも参照されず、キーワードも無いため配信されません">⚠ 未接続</FlowPill>}
-
-      {/* 種別・分岐バッジ（控えめ） */}
-      {info.isStart       && <FlowPill tone="info">開始</FlowPill>}
-      {info.hasQrBranch   && <FlowPill tone="neutral">クイックリプライ分岐あり</FlowPill>}
-      {!info.hasQrBranch && info.hasQuickReply && <FlowPill tone="neutral">クイックリプライあり</FlowPill>}
-      {info.hasFreeInput  && <FlowPill tone="neutral">自由入力あり</FlowPill>}
-      {info.hasImageTap   && <FlowPill tone="neutral">画像タップあり</FlowPill>}
-
-      {/* 次の遷移先 */}
-      {info.nextLinks.length > 0
-        ? info.nextLinks.map((link, i) => {
-            const { text, broken } = linkLabel(link);
-            return (
-              <span key={i} style={{ fontSize: 10, color: broken ? "#b91c1c" : "#64748b", whiteSpace: "nowrap" }}>
-                {text}
-              </span>
-            );
-          })
-        : <span style={{ fontSize: 10, color: "#cbd5e1", whiteSpace: "nowrap" }}>次の遷移先 → —</span>}
-    </div>
-  );
-}
-
-const normKw = (s: string) => s.trim().toLowerCase().normalize("NFKC");
-
-/** QR ボタン 1 件分の「入力 → 応答 → 結果」行 */
-function BranchItemRow({
-  qr, phaseId, allMessages, transitions, phases,
-}: {
-  qr:          QuickReplyItem;
-  phaseId:     string | null;
-  allMessages: MessageWithRelations[];
-  transitions: TransitionWithPhases[];
-  phases:      PhaseWithCounts[];
-}) {
-  const label   = qr.label || "（ラベル未設定）";
-  const keyword = normKw(qr.value || qr.label);
-
-  // ── ヒントボタン ──
-  if (qr.action === "hint") {
-    const hintBody = qr.hint_text
-      ? (qr.hint_text.length > 28 ? qr.hint_text.slice(0, 28) + "…" : qr.hint_text)
-      : "ヒント本文未設定";
-    return (
-      <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
-        <BranchChip color="blue">{label}</BranchChip>
-        <BranchArrow />
-        <BranchChip color="orange">💡 {hintBody}</BranchChip>
-        <BranchArrow />
-        <BranchChip color="gray">入力待ち継続</BranchChip>
-      </div>
-    );
-  }
-
-  // ────────────────────────────────────────────────
-  // Step 2: 応答メッセージの解決
-  // 優先順位:
-  //   1. qr.response_message_id（直接設定・新システム）
-  //   2. trigger_keyword 照合（全フェーズ対象・旧システム互換）
-  // ────────────────────────────────────────────────
-
-  // 1. 直接設定（response_message_id）
-  const directRespMsg: MessageWithRelations | null = qr.response_message_id
-    ? (allMessages.find((m) => m.id === qr.response_message_id) ?? null)
-    : null;
-
-  // 2. キーワード照合（全フェーズ対象 — 同フェーズ限定を廃止）
-  const kwResponseMessages = allMessages.filter((m) =>
-    m.kind === "response" &&
-    m.is_active &&
-    m.trigger_keyword &&
-    m.trigger_keyword.split("\n").map(normKw).some((k) => k === keyword)
-  );
-
-  // 表示に使う応答メッセージ（直接設定を優先）
-  const firstResp: MessageWithRelations | null =
-    directRespMsg ?? kwResponseMessages[0] ?? null;
-
-  // 応答メッセージの総件数（+N件 表示用）
-  const respCount = directRespMsg
-    ? 1 + kwResponseMessages.length   // direct + keyword 両方
-    : kwResponseMessages.length;
-
-  // ────────────────────────────────────────────────
-  // Step 3: 遷移先の解決
-  // 優先順位:
-  //   1. qr.target_phase_id（直接設定・フェーズ遷移）
-  //   2. qr.target_message_id（直接設定・メッセージ遷移）
-  //   3. transitions 照合（フェーズ遷移定義）
-  //   4. firstResp の next_message_id（チェーン）
-  // ────────────────────────────────────────────────
-
-  // 1. 直接設定: target_phase_id
-  const directTargetPhase: PhaseWithCounts | null = qr.target_phase_id
-    ? (phases.find((p) => p.id === qr.target_phase_id) ?? null)
-    : null;
-
-  // 2. 直接設定: target_message_id
-  const directTargetMsg: MessageWithRelations | null = qr.target_message_id
-    ? (allMessages.find((m) => m.id === qr.target_message_id) ?? null)
-    : null;
-
-  // 3. 遷移定義照合（現フェーズのみ）
-  const matchedTransitions = phaseId
-    ? transitions.filter(
-        (t) => t.from_phase_id === phaseId && t.is_active && normKw(t.label) === keyword
-      )
-    : [];
-  const firstTrans = matchedTransitions[0] ?? null;
-
-  // 4. チェーン（応答メッセージの next_message_id）
-  const chainMsg: MessageWithRelations | null = firstResp?.next_message_id
-    ? (allMessages.find((m) => m.id === firstResp!.next_message_id) ?? null)
-    : null;
-
-  const hasAnyResult =
-    firstResp !== null ||
-    directTargetPhase !== null ||
-    directTargetMsg !== null ||
-    firstTrans !== null;
-
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
-      {/* 1. ユーザー入力（QR） */}
-      <BranchChip color="blue">{label}</BranchChip>
-
-      {/* 2. 応答メッセージ（Step 2） */}
-      {firstResp && (
-        <>
-          <BranchArrow />
-          <BranchChip color="orange">{msgPreviewWithChar(firstResp)}</BranchChip>
-          {respCount > 1 && (
-            <span style={{ fontSize: 10, color: "#9ca3af" }}>+{respCount - 1}件</span>
-          )}
-        </>
-      )}
-
-      {/* 3. 遷移先（Step 3）— 優先順位通りに1つだけ表示 */}
-      {directTargetPhase ? (
-        <>
-          <BranchArrow />
-          <BranchChip color="purple">
-            → {directTargetPhase.name}
-          </BranchChip>
-        </>
-      ) : directTargetMsg ? (
-        <>
-          <BranchArrow />
-          <BranchChip color="purple">
-            → {msgPreviewWithChar(directTargetMsg)}
-          </BranchChip>
-          {chainSizeFrom(allMessages, directTargetMsg.id) > 1 && (
-            <span style={{ fontSize: 10, color: "#9ca3af" }}>
-              +{chainSizeFrom(allMessages, directTargetMsg.id) - 1}通の連続
-            </span>
-          )}
-        </>
-      ) : firstTrans ? (
-        <>
-          <BranchArrow />
-          <BranchChip color="purple">→ {firstTrans.to_phase.name}</BranchChip>
-        </>
-      ) : chainMsg ? (
-        <>
-          <BranchArrow />
-          <BranchChip color="gray">→ {msgPreviewWithChar(chainMsg)}</BranchChip>
-        </>
-      ) : firstResp ? (
-        <>
-          <BranchArrow />
-          <BranchChip color="gray">入力待ち継続</BranchChip>
-        </>
-      ) : !hasAnyResult ? (
-        <>
-          <BranchArrow />
-          <BranchChip color="dim">応答なし</BranchChip>
-        </>
-      ) : null}
-    </div>
-  );
-}
-
-/** メッセージ行の直下に挿入するブランチパネル（QR がある場合のみ描画） */
-function BranchRows({
-  msg, allMessages, transitions, phases, colSpan,
-}: {
-  msg:         MessageWithRelations;
-  allMessages: MessageWithRelations[];
-  transitions: TransitionWithPhases[];
-  phases:      PhaseWithCounts[];
-  colSpan:     number;
-}) {
-  const qrs = (msg.quick_replies ?? []).filter(
-    (q) => q.enabled !== false
-  ) as QuickReplyItem[];
-  if (qrs.length === 0) return null;
-
-  return (
-    <tr style={{ borderBottom: "1px solid var(--border-light)" }}>
-      <td colSpan={colSpan} style={{ padding: 0 }}>
-        <div style={{
-          padding: "10px 18px 12px",
-          background: "#f8fafc",
-          borderTop: "1px dashed #e2e8f0",
-        }}>
-          <div style={{
-            fontSize: 10, fontWeight: 700, color: "#94a3b8",
-            letterSpacing: 0.5, marginBottom: 8,
-            display: "flex", alignItems: "center", gap: 5,
-          }}>
-            <span>↕</span>
-            <span>分岐フロー</span>
-            <span style={{
-              fontSize: 9, fontWeight: 700,
-              background: "#e2e8f0", color: "#64748b",
-              borderRadius: 8, padding: "2px 8px",
-            }}>{qrs.length}件</span>
-            <span style={{ fontWeight: 400, color: "#cbd5e1" }}>
-              ユーザー入力 → 応答 → 結果
-            </span>
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-            {qrs.map((qr, i) => (
-              <BranchItemRow
-                key={i}
-                qr={qr}
-                phaseId={msg.phase?.id ?? null}
-                allMessages={allMessages}
-                transitions={transitions}
-                phases={phases}
-              />
-            ))}
-          </div>
-        </div>
-      </td>
-    </tr>
-  );
-}
 
 type Tab = "messages" | "welcome";
 
@@ -525,11 +57,10 @@ export default function MessagesPage() {
   const [transitions, setTransitions]   = useState<TransitionWithPhases[]>([]);
   const [loading, setLoading]           = useState(true);
   const [loadError, setLoadError]       = useState<string | null>(null);
-  // chain head ID の Set。展開状態の head はここに含まれる (= 連続メッセージ展開トグル用)
-  const [expandedChains, setExpandedChains] = useState<Set<string>>(new Set());
-  // 閉じているフェーズの key (= phase.id または "__unassigned")。
-  // 空 Set = 全フェーズ開（初期表示は全 open / localStorage 永続化なし）。
-  const [collapsedPhases, setCollapsedPhases] = useState<Set<string>>(new Set());
+  // 再設計版: フェーズタブの選択（"all" = すべて / phase.id / "__unassigned"）と、
+  // 詳細展開中のカード id（単一展開）。旧テーブルの chain 展開 / phase 折りたたみは廃止。
+  const [activePhaseId, setActivePhaseId] = useState<string>("all");
+  const [expandedId, setExpandedId]       = useState<string | null>(null);
   // 操作中の messageId (= 削除/並び替え 進行中の表示用)
   const [busyMessageId, setBusyMessageId] = useState<string | null>(null);
 
@@ -540,23 +71,54 @@ export default function MessagesPage() {
   const phaseById = useMemo(() => new Map(phases.map((p) => [p.id, p])), [phases]);
   // Flex の message-action.text ↔ 応答キーワードの「フェーズズレ / 不在」警告用インデックス（全メッセージから構築）。
   const kwPhaseIndex = useMemo(() => buildResponseKeywordPhaseIndex(messages), [messages]);
-  const toggleChainExpansion = (headId: string) => {
-    setExpandedChains((prev) => {
-      const next = new Set(prev);
-      if (next.has(headId)) next.delete(headId);
-      else next.add(headId);
-      return next;
-    });
-  };
-  // フェーズ見出しの開閉。閉じている key だけを Set で保持する（= デフォルト全開）。
-  const togglePhaseCollapse = (key: string) => {
-    setCollapsedPhases((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  };
+  // トリガー種別グルーピング用の逆引きインデックス（表示専用・ロジック不変）。
+  const triggerIdx = useMemo(() => buildTriggerIndexes(messages), [messages]);
+  const toggleExpand = (id: string) => setExpandedId((prev) => (prev === id ? null : id));
+
+  // ── 再設計版 一覧の表示モデル（表示専用・bootstrap 済みデータから導出。送信/保存/遷移ロジックには非影響） ──
+  // 各 head の警告ラベル（既存5警告を1つも落とさず集約）。
+  const warningsByMsgId = useMemo(() => {
+    const contIds = collectChainContinuationIds(messages);
+    const map = new Map<string, MessageWarningLabel[]>();
+    for (const m of messages) {
+      if (contIds.has(m.id)) continue; // head のみ
+      const info = flowMap.get(m.id);
+      const flexIssues = m.message_type === "flex"
+        ? findFlexKeywordPhaseIssues({ flexJson: m.flex_payload_json, flexMessagePhaseId: m.phase?.id ?? null, index: kwPhaseIndex })
+        : [];
+      map.set(m.id, getMessageWarnings({
+        missingKeyword: info?.missingKeyword, hasBrokenLink: info?.hasBrokenLink, unreferenced: info?.unreferenced,
+        chainLen: chainLengthFrom(messages, m.id), chainLimit: LINE_REPLY_MAX, hasFlexIssue: flexIssues.length > 0,
+      }));
+    }
+    return map;
+  }, [messages, flowMap, kwPhaseIndex]);
+
+  // head 一覧をフェーズ単位に整理（並び替えは既存どおり sort_order + created_at、フェーズ内スコープ）。
+  // orderIndex はフェーズ順→sort_order の通し番号（「すべて」表示でも順序が壊れないようにする）。
+  const listView = useMemo(() => {
+    const contIds = collectChainContinuationIds(messages);
+    const phaseIds = new Set(phases.map((p) => p.id));
+    const heads = messages.filter((m) => !contIds.has(m.id));
+    const phaseKeyOf = (m: MessageWithRelations) => (m.phase && phaseIds.has(m.phase.id) ? m.phase.id : "__unassigned");
+    const byOrder = (a: MessageWithRelations, b: MessageWithRelations) =>
+      (a.sort_order - b.sort_order) ||
+      (new Date(a.created_at).getTime() - new Date(b.created_at).getTime()) ||
+      a.id.localeCompare(b.id);
+    const headsByPhase = new Map<string, MessageWithRelations[]>();
+    for (const m of heads) {
+      const k = phaseKeyOf(m);
+      if (!headsByPhase.has(k)) headsByPhase.set(k, []);
+      headsByPhase.get(k)!.push(m);
+    }
+    for (const arr of headsByPhase.values()) arr.sort(byOrder);
+    const orderIndex = new Map<string, number>();
+    let oi = 0;
+    for (const p of phases) for (const m of (headsByPhase.get(p.id) ?? [])) orderIndex.set(m.id, oi++);
+    for (const m of (headsByPhase.get("__unassigned") ?? [])) orderIndex.set(m.id, oi++);
+    const hasUnassigned = (headsByPhase.get("__unassigned")?.length ?? 0) > 0;
+    return { heads, headsByPhase, orderIndex, hasUnassigned, phaseKeyOf };
+  }, [messages, phases]);
 
   /** 一覧からメッセージを削除する (chain head 専用)。
    *  確認ダイアログを出し、API 呼び出し成功で local state からも除去する。 */
@@ -573,13 +135,8 @@ export default function MessagesPage() {
       // local state からも該当メッセージ + chain continuation を除去
       const contIds = new Set(getChainContinuations(messages, headMsg.id).map((c) => c.id));
       setMessages((prev) => prev.filter((m) => m.id !== headMsg.id && !contIds.has(m.id)));
-      // 展開状態も clear
-      setExpandedChains((prev) => {
-        if (!prev.has(headMsg.id)) return prev;
-        const next = new Set(prev);
-        next.delete(headMsg.id);
-        return next;
-      });
+      // 詳細展開状態も clear
+      setExpandedId((prev) => (prev === headMsg.id ? null : prev));
       showToast("メッセージを削除しました", "success");
     } catch (err) {
       console.error("[messages] delete error:", err);
@@ -824,42 +381,7 @@ export default function MessagesPage() {
   // ────────────────────────────────────────────────
   const chainContinuationIds = collectChainContinuationIds(messages);
   // 一覧の件数 (タブ / フッター) はチェーン継続を除いた「先頭メッセージ」基準で数える。
-  // phase 見出しの 件数 は buildPhaseGroups 内で既に filter 済みなので別途集計不要。
   const headMessageCount = messages.length - chainContinuationIds.size;
-
-  // フェーズごとにメッセージをグルーピング (= chain head のみを対象にする)
-  function buildPhaseGroups(): PhaseGroup[] {
-    const phaseIds = new Set(phases.map((p) => p.id));
-    // chain continuation を除外した「先頭メッセージ」のみ
-    const heads = messages.filter((m) => !chainContinuationIds.has(m.id));
-
-    // sort_order が同値の場合は created_at で tie-break して order を安定させる。
-    // 特に chain 継続メッセージは親と同じ sort_order を持つため、何らかの理由で chain link が
-    // 切れて head として扱われた場合に表示順が不定になるのを防ぐ。
-    const byOrderAndCreated = (a: MessageWithRelations, b: MessageWithRelations) => {
-      const so = a.sort_order - b.sort_order;
-      if (so !== 0) return so;
-      return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
-    };
-
-    const groups: PhaseGroup[] = phases
-      .map((ph) => ({
-        phase: ph,
-        messages: heads
-          .filter((m) => m.phase?.id === ph.id)
-          .sort(byOrderAndCreated),
-      }))
-      .filter((g) => g.messages.length > 0);
-
-    const unassigned = heads
-      .filter((m) => !m.phase || !phaseIds.has(m.phase.id))
-      .sort(byOrderAndCreated);
-
-    if (unassigned.length > 0) {
-      groups.push({ phase: null, messages: unassigned });
-    }
-    return groups;
-  }
 
   const breadcrumb = (
     <Breadcrumb items={[
@@ -900,8 +422,6 @@ export default function MessagesPage() {
       </>
     );
   }
-
-  const phaseGroups = buildPhaseGroups();
 
   // ── タブ共通スタイル (work detail 配下の他タブと揃える) ──
   const tabStyle = (tab: Tab): React.CSSProperties => ({
@@ -1238,525 +758,125 @@ export default function MessagesPage() {
         ]},
       ]} />
 
-      {/* ── メッセージ一覧 ── */}
+      {/* ── メッセージ一覧（再設計: フェーズタブ → 警告サマリー → トリガー種別グループ → カード） ── */}
       {messages.length === 0 ? (
-        <div className="card">
-          <div className="empty-state">
-              <p className="empty-state-title">メッセージがまだありません</p>
-            <p className="empty-state-desc">
-              「＋ メッセージを追加」からメッセージを作成してください。
-            </p>
-            {canEdit && (
-              <Link
-                href={`/oas/${oaId}/works/${workId}/messages/new`}
-                className="btn btn-primary"
-                style={{ marginTop: 8, display: "inline-block" }}
-              >
-                ＋ 最初のメッセージを追加
-              </Link>
+        <EmptyState phaseName="" canEdit={canEdit} addHref={`/oas/${oaId}/works/${workId}/messages/new`} />
+      ) : (() => {
+        const ALL = "all";
+        const UNASSIGNED = "__unassigned";
+        const tabs: PhaseTabItem[] = [
+          { id: ALL, name: "すべて" },
+          ...phases.map((p) => ({ id: p.id, name: p.name })),
+          ...(listView.hasUnassigned ? [{ id: UNASSIGNED, name: "未割当" }] : []),
+        ];
+        // 選択タブが消えた場合（フェーズ削除等）は「すべて」にフォールバック
+        const effectiveId = tabs.some((t) => t.id === activePhaseId) ? activePhaseId : ALL;
+        const activePhase = phases.find((p) => p.id === effectiveId) ?? null;
+
+        const filtered = listView.heads.filter((m) =>
+          effectiveId === ALL ? true : listView.phaseKeyOf(m) === effectiveId,
+        );
+        const warningCount = filtered.filter((m) => (warningsByMsgId.get(m.id)?.length ?? 0) > 0).length;
+
+        // 集計警告（1操作から6通以上連続の可能性）: フィルタ対象フェーズのうち該当するもの（既存挙動を維持）。
+        const scopePhases = effectiveId === ALL ? phases : (activePhase ? [activePhase] : []);
+        const aggWarnPhaseNames = scopePhases
+          .filter((p) => {
+            const phaseMsgs = messages
+              .filter((m) => m.phase?.id === p.id)
+              .sort((a, b) =>
+                a.sort_order - b.sort_order ||
+                new Date(a.created_at).getTime() - new Date(b.created_at).getTime() ||
+                a.id.localeCompare(b.id),
+              );
+            return shouldShowSendUnitWarning(estimateMaxSendUnit(phaseMsgs), LINE_REPLY_MAX);
+          })
+          .map((p) => p.name);
+
+        // トリガー種別グルーピング（表示専用・フェーズ順→sort_order を尊重）。
+        const grouped = TRIGGER_GROUP_ORDER.map((key) => ({
+          key,
+          msgs: filtered
+            .filter((m) => classifyTrigger(m, triggerIdx) === key)
+            .sort((a, b) => (listView.orderIndex.get(a.id) ?? 0) - (listView.orderIndex.get(b.id) ?? 0)),
+        })).filter((g) => g.msgs.length > 0);
+
+        return (
+          <>
+            <PhaseTabs tabs={tabs} activeId={effectiveId} onChange={setActivePhaseId} />
+            {warningCount > 0 && <WarningSummaryBar count={warningCount} />}
+            {effectiveId !== ALL && (
+              <PhaseFilterBar
+                phaseName={activePhase ? `${activePhase.name} フェーズ` : "未割当"}
+                count={filtered.length}
+                onClear={() => setActivePhaseId(ALL)}
+              />
             )}
-          </div>
-        </div>
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          {phaseGroups.map((group, gi) => {
-            const ph = group.phase;
-            const typeKey = ph?.phase_type ?? "";
-            const typeColor = PHASE_TYPE_COLOR[typeKey] ?? { bg: "#f9fafb", color: "#374151", border: "#e5e7eb" };
-            // フェーズ見出しの開閉。collapsedPhases に key が無ければ開（= デフォルト全開）。
-            const phaseKey = ph?.id ?? "__unassigned";
-            const isPhaseOpen = !collapsedPhases.has(phaseKey);
-
-            return (
-              <div key={ph?.id ?? "__unassigned"} className="card" style={{ padding: 0, overflow: "hidden" }}>
-                {/* フェーズヘッダー（クリック / キーボードで配下メッセージを開閉） */}
-                <button
-                  type="button"
-                  onClick={() => togglePhaseCollapse(phaseKey)}
-                  aria-expanded={isPhaseOpen}
-                  style={{
-                    width: "100%",
-                    textAlign: "left",
-                    cursor: "pointer",
-                    font: "inherit",
-                    padding: "10px 18px",
-                    background: ph ? typeColor.bg : "#fafafa",
-                    borderBottom: `1px solid ${ph ? typeColor.border : "#e5e7eb"}`,
-                    borderTop: "none", borderLeft: "none", borderRight: "none",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 10,
-                  }}>
-                  <span style={{
-                    fontWeight: 700, fontSize: 14,
-                    color: ph ? typeColor.color : "#9ca3af",
-                  }}>
-                    {ph ? ph.name : "フェーズ未設定"}
-                  </span>
-                  {ph?.phase_type && (
-                    <span style={{
-                      fontSize: 10, fontWeight: 600,
-                      padding: "3px 10px", borderRadius: 10,
-                      background: "rgba(255,255,255,0.7)",
-                      color: typeColor.color,
-                      border: `1px solid ${typeColor.border}`,
-                    }}>
-                      {PHASE_TYPE_LABEL[ph.phase_type] ?? ph.phase_type}
-                    </span>
-                  )}
-                  <span style={{ marginLeft: "auto", fontSize: 11, color: "#9ca3af" }}>
-                    {group.messages.length} 件
-                  </span>
-                  <span aria-hidden="true" style={{
-                    fontSize: 11, lineHeight: 1,
-                    color: ph ? typeColor.color : "#9ca3af",
-                  }}>
-                    {isPhaseOpen ? "▴" : "▾"}
-                  </span>
-                </button>
-
-                {isPhaseOpen && (<>
-                {/* 連続送信が多すぎる警告: フェーズ総数ではなく「1回の応答（連続送信）単位」で判定する。
-                    QR / 入力 / 分岐 / 謎回答 / チェックイン待ちは別 head になり別単位として数えるため、
-                    途中にプレイヤーアクションが挟まる構成では誤検知しない。
-                    5通までは LINE Reply API で送れるため許容し、6通以上のときだけ警告する
-                    （per-chain バッジの chainTotal > LINE_REPLY_MAX と同基準）。
-                    ※ 画像タップは送信単位の区切りに含めない（runtime の実送信挙動と一致させるため）。 */}
-                {ph && (() => {
-                  const phaseMsgs = messages
-                    .filter((m) => m.phase?.id === ph.id)
-                    .sort((a, b) =>
-                      a.sort_order - b.sort_order ||
-                      new Date(a.created_at).getTime() - new Date(b.created_at).getTime() ||
-                      a.id.localeCompare(b.id),
-                    );
-                  const maxUnit = estimateMaxSendUnit(phaseMsgs);
-                  if (!shouldShowSendUnitWarning(maxUnit, LINE_REPLY_MAX)) return null;
-                  return (
-                    <div style={{
-                      padding: "8px 18px", background: "#fffbeb",
-                      borderBottom: "1px solid #fde68a", color: "#92400e",
-                      fontSize: 11, lineHeight: 1.6,
-                    }}>
-                      ⚠️ このフェーズには、1回のプレイヤー操作から<strong>6通以上</strong>連続で送信される可能性があるメッセージがあります（最大{maxUnit}通）。
-                      プレイヤー体験が重くなる可能性があるため、必要に応じて分割や削減を検討してください。
-                      LINEのReply APIで一度に返信できるのは最大5通までです。QR読み取り、クイックリプライ、テキスト入力、分岐、謎回答などプレイヤーのアクションを挟むと、そこで送信単位が区切られます。
-                    </div>
-                  );
-                })()}
-
-                {/* テーブル */}
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-                  <thead>
-                    <tr style={{ borderBottom: "1px solid var(--border-light)", background: "var(--gray-50)" }}>
-                      {["タイプ", "種別", "本文", "キャラクター", "状態", "順序", "操作"].map((h, i) => (
-                        <th
-                          key={i}
-                          style={{
-                            padding: "8px 14px", textAlign: "left",
-                            fontWeight: 600, color: "var(--text-muted)", fontSize: 11,
-                            whiteSpace: "nowrap", letterSpacing: ".04em",
-                          }}
-                        >
-                          {h}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {group.messages.map((msg) => (
-                      <Fragment key={msg.id}>
-                      <tr
-                        style={{ borderBottom: msg.quick_replies?.length ? "none" : "1px solid var(--border-light)" }}
-                        onMouseEnter={(e) => (e.currentTarget.style.background = "var(--gray-50)")}
-                        onMouseLeave={(e) => (e.currentTarget.style.background = "")}
-                      >
-                        {/* タイプ（謎 or メッセージ） */}
-                        <td style={{ padding: "12px 14px", whiteSpace: "nowrap" }}>
-                          {(() => {
-                            const isRiddle = msg.kind === "puzzle" || msg.message_type === "riddle";
-                            const meta = isRiddle ? MSG_TYPE_META.riddle : MSG_TYPE_META.message;
-                            return (
-                              <span style={{
-                                display: "inline-flex", alignItems: "center", gap: 3,
-                                fontSize: 10, fontWeight: 600,
-                                background: meta.bg, color: meta.color,
-                                border: `1px solid ${meta.border}`,
-                                borderRadius: 8, padding: "2px 8px",
-                              }}>
-                                {meta.icon} {meta.label}
-                              </span>
-                            );
-                          })()}
-                        </td>
-
-                        {/* 種別（message_type — riddle は タイプ列で表現済みのため非表示） */}
-                        <td style={{ padding: "12px 14px", whiteSpace: "nowrap" }}>
-                          {msg.message_type === "riddle" ? (
-                            <span style={{ fontSize: 11, color: "var(--text-muted)" }}>—</span>
-                          ) : (
-                            <span style={{
-                              display: "inline-flex", alignItems: "center", gap: 4,
-                              fontSize: 11, color: "var(--text-secondary)",
-                            }}>
-                              {MESSAGE_TYPE_ICON[msg.message_type]}
-                              {MESSAGE_TYPE_LABEL[msg.message_type]}
-                            </span>
-                          )}
-                        </td>
-
-                        {/* 本文 */}
-                        <td style={{ padding: "12px 14px", maxWidth: 280 }}>
-                          {msg.kind === "puzzle" ? (
-                            // インライン謎: 答えと謎タイプを表示
-                            <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                              {"answer" in msg && (msg as { answer?: string | null }).answer ? (
-                                <span style={{ fontSize: 12, color: "#374151" }}>
-                                  答え: <span style={{ fontWeight: 600 }}>{(msg as { answer?: string | null }).answer}</span>
-                                </span>
-                              ) : (
-                                <span style={{ fontSize: 11, color: "#f97316" }}>答え未設定</span>
-                              )}
-                              {"puzzle_type" in msg && (msg as { puzzle_type?: string | null }).puzzle_type && (
-                                <span style={{ fontSize: 10, color: "#9ca3af" }}>
-                                  {(msg as { puzzle_type?: string | null }).puzzle_type}
-                                </span>
-                              )}
-                            </div>
-                          ) : msg.message_type === "riddle" ? (
-                            // 外部謎参照: riddle_id ベースのコンテンツ
-                            <span style={{ fontSize: 12, color: "#9ca3af", fontStyle: "italic" }}>
-                              {msg.body
-                                ? (msg.body.length > 28 ? msg.body.slice(0, 28) + "…" : msg.body)
-                                : "📎 謎コンテンツを参照"}
-                            </span>
-                          ) : msg.message_type === "image" ? (
-                            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                              {msg.asset_url ? (
-                                // eslint-disable-next-line @next/next/no-img-element
-                                <img
-                                  src={msg.asset_url}
-                                  alt="画像"
-                                  loading="lazy"
-                                  decoding="async"
-                                  style={{ width: 48, height: 36, objectFit: "cover", borderRadius: 4, border: "1px solid #e5e5e5" }}
-                                  onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
-                                />
-                              ) : null}
-                              <span style={{ fontSize: 11, color: "#9ca3af" }}>画像メッセージ</span>
-                            </div>
-                          ) : msg.message_type === "flex" ? (
-                            <span style={{ fontSize: 12, color: "#6b7280" }}>
-                              🧱 {msg.alt_text
-                                ? (msg.alt_text.length > 28 ? msg.alt_text.slice(0, 28) + "…" : msg.alt_text)
-                                : <span style={{ fontStyle: "italic", color: "#9ca3af" }}>Flex Message</span>}
-                            </span>
-                          ) : (
-                            <span style={{
-                              display: "-webkit-box", WebkitLineClamp: 2,
-                              WebkitBoxOrient: "vertical", overflow: "hidden",
-                              fontSize: 13, color: "#374151", wordBreak: "break-all",
-                            }}>
-                              {msg.body || <span style={{ color: "#9ca3af" }}>—</span>}
-                            </span>
-                          )}
-                          {/* chain head のとき、連続送信通数を青バッジで表示 (= クリックで展開トグル)。
-                              件数は実 chain 長（上限なし）で出す。LINE_REPLY_MAX(5) 超は
-                              6通目以降が通常応答で送れないため強い警告を併記する。 */}
-                          {msg.next_message_id && chainLengthFrom(messages, msg.id) > 1 && (() => {
-                            const isExpanded = expandedChains.has(msg.id);
-                            const chainTotal = chainLengthFrom(messages, msg.id);
-                            const overLimit = chainTotal > LINE_REPLY_MAX;
-                            return (
-                              <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 4, alignItems: "flex-start" }}>
-                                <button
-                                  type="button"
-                                  onClick={() => toggleChainExpansion(msg.id)}
-                                  aria-expanded={isExpanded}
-                                  style={{
-                                    display: "inline-flex", alignItems: "center", gap: 4,
-                                    fontSize: 10, fontWeight: 600,
-                                    background: overLimit ? "#fef2f2" : "#eff6ff",
-                                    color: overLimit ? "#b91c1c" : "#1d4ed8",
-                                    border: `1px solid ${overLimit ? "#fecaca" : "#bfdbfe"}`,
-                                    borderRadius: 10, padding: "1px 7px",
-                                    cursor: "pointer",
-                                  }}
-                                  title={isExpanded ? "連続メッセージを閉じる" : "連続メッセージを展開して内容を確認"}
-                                >
-                                  {isExpanded ? "▴" : "▾"} 合計{chainTotal}通（このメッセージを含む）
-                                </button>
-                                {overLimit && (
-                                  <span style={{ fontSize: 10, color: "#b91c1c", lineHeight: 1.5 }}>
-                                    ⚠️ この連続メッセージは5通を超えています。LINE Reply API の上限を超えるため、
-                                    6通目以降は通常応答では送れません。5通以内に分割するか、途中に入力 / クイックリプライ / フェーズ遷移を挟んでください。
-                                  </span>
-                                )}
-                              </div>
-                            );
-                          })()}
-                          {/* 導線状態（次の遷移先 / 分岐・自由入力・画像タップ・QR / 未設定・未接続の警告） */}
-                          <FlowStatusCell info={flowMap.get(msg.id)} msgById={msgById} phaseById={phaseById} />
-                          {/* 応答キーワード + 有効フェーズの可視化（Flexボタン文言と応答キーワードの対応を確認しやすく）。 */}
-                          {(msg.kind === "response" || msg.kind === "start") && (msg.trigger_keyword ?? "").trim() && (
-                            <div style={{ marginTop: 4, fontSize: 11, color: "#374151", lineHeight: 1.6 }}>
-                              🔑 応答キーワード：
-                              {(msg.trigger_keyword ?? "").split("\n").map((k) => k.trim()).filter(Boolean).map((k) => `「${k}」`).join(" / ")}
-                              <span style={{ color: msg.phase?.id ? "#6b7280" : "#b45309" }}>
-                                {" "}・有効フェーズ：{msg.phase?.id ? (phaseById.get(msg.phase.id)?.name ?? "フェーズ") : "共通（全フェーズ）"}
-                              </span>
-                            </div>
-                          )}
-                          {/* Flex の message-action.text に対応する応答キーワードが、このフェーズに無い場合の警告。 */}
-                          {msg.message_type === "flex" && (() => {
-                            const issues = findFlexKeywordPhaseIssues({
-                              flexJson: msg.flex_payload_json,
-                              flexMessagePhaseId: msg.phase?.id ?? null,
-                              index: kwPhaseIndex,
-                            });
-                            if (issues.length === 0) return null;
-                            return (
-                              <div style={{ marginTop: 4, fontSize: 11, lineHeight: 1.6, color: "#b45309" }}>
-                                {issues.map((iss) => (
-                                  <div key={iss.text}>
-                                    ⚠ ボタン「{iss.text}」：
-                                    {iss.status === "missing"
-                                      ? "対応する応答キーワード（種別=応答）がありません。同じフェーズに作成してください。"
-                                      : `応答キーワードは別フェーズ「${iss.otherPhaseIds.map((p) => phaseById.get(p)?.name ?? "別フェーズ").join("・")}」にあります。${msg.phase?.id ? `このメッセージのフェーズ「${phaseById.get(msg.phase.id)?.name ?? "—"}」には無いため反応しません（同フェーズに移すか、表示時にそのフェーズへ遷移を）。` : "このメッセージのフェーズには無いため反応しません。"}`}
-                                  </div>
-                                ))}
-                              </div>
-                            );
-                          })()}
-                        </td>
-
-                        {/* キャラクター */}
-                        <td style={{ padding: "12px 14px", whiteSpace: "nowrap" }}>
-                          <CharTag character={msg.character} />
-                        </td>
-
-                        {/* 状態 (= canEdit のときはクリックで有効/無効トグル) */}
-                        <td style={{ padding: "12px 14px", whiteSpace: "nowrap" }}>
-                          {canEdit ? (
-                            <button
-                              type="button"
-                              onClick={() => handleToggleActive(msg)}
-                              disabled={busyMessageId !== null}
-                              aria-pressed={msg.is_active}
-                              title={msg.is_active ? "クリックで無効化" : "クリックで有効化"}
-                              style={{
-                                display: "inline-flex", alignItems: "center", gap: 4,
-                                padding: "2px 9px", borderRadius: "var(--radius-full)",
-                                fontSize: 11, fontWeight: 700,
-                                background: msg.is_active ? "#dcfce7" : "var(--gray-100)",
-                                color:      msg.is_active ? "#166534" : "var(--text-muted)",
-                                border: "1px solid transparent",
-                                cursor: busyMessageId !== null ? "not-allowed" : "pointer",
-                                opacity: busyMessageId !== null && busyMessageId !== msg.id ? 0.5 : 1,
-                              }}
-                            >
-                              {msg.is_active
-                                ? <><span style={{ width: 5, height: 5, borderRadius: "50%", background: "#22c55e", display: "inline-block" }} />有効</>
-                                : "無効"
-                              }
-                            </button>
-                          ) : (
-                            <span style={{
-                              display: "inline-flex", alignItems: "center", gap: 4,
-                              padding: "2px 9px", borderRadius: "var(--radius-full)",
-                              fontSize: 11, fontWeight: 700,
-                              background: msg.is_active ? "#dcfce7" : "var(--gray-100)",
-                              color:      msg.is_active ? "#166534" : "var(--text-muted)",
-                            }}>
-                              {msg.is_active
-                                ? <><span style={{ width: 5, height: 5, borderRadius: "50%", background: "#22c55e", display: "inline-block" }} />有効</>
-                                : "無効"
-                              }
-                            </span>
-                          )}
-                        </td>
-
-                        {/* 順序 */}
-                        <td style={{ padding: "12px 14px", color: "var(--text-muted)", fontSize: 12, textAlign: "center" }}>
-                          {msg.sort_order}
-                        </td>
-
-                        {/* 操作 (= 並び替え / 編集 / 削除) */}
-                        <td style={{ padding: "12px 14px", textAlign: "right", whiteSpace: "nowrap" }}>
-                          {canEdit && (
-                            <div style={{ display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
-                              {/* ▲ 上へ */}
-                              <button
-                                type="button"
-                                title="上へ"
-                                aria-label="上へ"
-                                disabled={
-                                  busyMessageId !== null ||
-                                  group.messages.findIndex((m) => m.id === msg.id) === 0
-                                }
-                                onClick={() => handleReorderMessage(msg, "up", group.messages)}
-                                className="btn btn-ghost"
-                                style={{
-                                  padding: "4px 8px", fontSize: 13, lineHeight: 1,
-                                  ...(busyMessageId !== null ||
-                                  group.messages.findIndex((m) => m.id === msg.id) === 0
-                                    ? { opacity: 0.3, cursor: "not-allowed" }
-                                    : {}),
-                                }}
-                              >▲</button>
-                              {/* ▼ 下へ */}
-                              <button
-                                type="button"
-                                title="下へ"
-                                aria-label="下へ"
-                                disabled={
-                                  busyMessageId !== null ||
-                                  group.messages.findIndex((m) => m.id === msg.id) === group.messages.length - 1
-                                }
-                                onClick={() => handleReorderMessage(msg, "down", group.messages)}
-                                className="btn btn-ghost"
-                                style={{
-                                  padding: "4px 8px", fontSize: 13, lineHeight: 1,
-                                  ...(busyMessageId !== null ||
-                                  group.messages.findIndex((m) => m.id === msg.id) === group.messages.length - 1
-                                    ? { opacity: 0.3, cursor: "not-allowed" }
-                                    : {}),
-                                }}
-                              >▼</button>
-                              {/* 編集 */}
-                              <Link
-                                href={`/oas/${oaId}/works/${workId}/messages/${msg.id}`}
-                                className="btn btn-ghost"
-                                style={{ padding: "5px 14px", fontSize: 12 }}
-                              >
-                                編集
-                              </Link>
-                              {/* 削除 */}
-                              <button
-                                type="button"
-                                title="削除"
-                                aria-label="削除"
-                                disabled={busyMessageId !== null}
-                                onClick={() => handleDeleteMessage(msg)}
-                                style={{
-                                  padding: "5px 11px", fontSize: 12, borderRadius: 6,
-                                  border: "1px solid #fecaca", background: "#fff5f5",
-                                  color: "#ef4444", cursor: "pointer",
-                                  ...(busyMessageId !== null ? { opacity: 0.5, cursor: "not-allowed" } : {}),
-                                }}
-                              >削除</button>
-                            </div>
-                          )}
-                        </td>
-                      </tr>
-                      {/* chain 展開中: 2 通目以降を「中身プレビュー」として小さく並べる */}
-                      {expandedChains.has(msg.id) && getChainContinuations(messages, msg.id).map((cont, ci) => (
-                        <tr
-                          key={`chain-${msg.id}-${cont.id}`}
-                          style={{
-                            background: "#f9fafb",
-                            borderBottom: ci === getChainContinuations(messages, msg.id).length - 1 ? "1px solid var(--border-light)" : "1px dashed #e5e7eb",
-                            fontSize: 11,
-                          }}
-                        >
-                          {/* タイプ列: chain インデント表示 */}
-                          <td style={{ padding: "8px 14px", paddingLeft: 36, color: "#94a3b8", fontSize: 10, whiteSpace: "nowrap" }}>
-                            └─ {ci + 2}通目
-                          </td>
-                          {/* 種別 */}
-                          <td style={{ padding: "8px 14px", whiteSpace: "nowrap" }}>
-                            {cont.message_type === "riddle" ? (
-                              <span style={{ fontSize: 10, color: "#9ca3af" }}>—</span>
-                            ) : (
-                              <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10, color: "#64748b" }}>
-                                {MESSAGE_TYPE_ICON[cont.message_type]}
-                                {MESSAGE_TYPE_LABEL[cont.message_type]}
-                              </span>
-                            )}
-                          </td>
-                          {/* 本文プレビュー */}
-                          <td style={{ padding: "8px 14px", maxWidth: 280 }}>
-                            {cont.message_type === "image" ? (
-                              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                                {cont.asset_url ? (
-                                  // eslint-disable-next-line @next/next/no-img-element
-                                  <img
-                                    src={cont.asset_url}
-                                    alt="画像"
-                                    loading="lazy"
-                                    decoding="async"
-                                    style={{ width: 36, height: 27, objectFit: "cover", borderRadius: 3, border: "1px solid #e5e7eb" }}
-                                    onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
-                                  />
-                                ) : null}
-                                <span style={{ fontSize: 10, color: "#9ca3af" }}>画像メッセージ</span>
-                              </div>
-                            ) : (
-                              <span style={{
-                                display: "-webkit-box", WebkitLineClamp: 2,
-                                WebkitBoxOrient: "vertical", overflow: "hidden",
-                                fontSize: 11, color: "#475569", wordBreak: "break-all",
-                              }}>
-                                {cont.body || <span style={{ color: "#cbd5e1" }}>—</span>}
-                              </span>
-                            )}
-                            {/* QR / quickReply が設定済みなら小さく注記 */}
-                            {cont.quick_replies && cont.quick_replies.length > 0 && (
-                              <span style={{
-                                marginLeft: 6, display: "inline-block",
-                                fontSize: 9, color: "#64748b",
-                                background: "#fff", border: "1px solid #e2e8f0",
-                                borderRadius: 6, padding: "0 5px", verticalAlign: "middle",
-                              }}>
-                                クイックリプライ {cont.quick_replies.length}
-                              </span>
-                            )}
-                            {/* Phase 2c: 演出設定有無を小さく注記 */}
-                            {hasAnyTiming(cont) && (
-                              <span
-                                title={summarizeTiming(cont)}
-                                style={{
-                                  marginLeft: 6, display: "inline-block",
-                                  fontSize: 9, color: "#7c3aed",
-                                  background: "#f5f3ff", border: "1px solid #ddd6fe",
-                                  borderRadius: 6, padding: "0 5px", verticalAlign: "middle",
-                                }}
-                              >
-                                演出: 設定あり
-                              </span>
-                            )}
-                          </td>
-                          {/* キャラクター */}
-                          <td style={{ padding: "8px 14px", whiteSpace: "nowrap" }}>
-                            <CharTag character={cont.character} />
-                          </td>
-                          {/* 状態 / 順序 / 編集 列は continuation では空 (= 親の塊に内包されているため独立操作対象にしない) */}
-                          <td style={{ padding: "8px 14px", whiteSpace: "nowrap", color: "#cbd5e1", fontSize: 10 }}>—</td>
-                          <td style={{ padding: "8px 14px", textAlign: "center", color: "#cbd5e1", fontSize: 10 }}>—</td>
-                          <td style={{ padding: "8px 14px" }} />
-                        </tr>
-                      ))}
-                      <BranchRows
-                        msg={msg}
-                        allMessages={messages}
-                        transitions={transitions}
-                        phases={phases}
-                        colSpan={7}
-                      />
-                      </Fragment>
-                    ))}
-                  </tbody>
-                </table>
-                </>)}
+            {aggWarnPhaseNames.length > 0 && (
+              <div style={{ padding: "8px 14px", background: "#fffbeb", border: "1px solid #fde68a", color: "#92400e", borderRadius: 9, fontSize: 11.5, lineHeight: 1.6, marginBottom: 14 }}>
+                ⚠️ {aggWarnPhaseNames.join("・")} に、1回のプレイヤー操作から<strong>6通以上</strong>連続で送信される可能性があるメッセージがあります。LINE の Reply API で一度に返信できるのは最大5通までです。QR読み取り・クイックリプライ・テキスト入力・分岐・謎回答などプレイヤーのアクションを挟むと送信単位が区切られます。
               </div>
-            );
-          })}
+            )}
 
-          <div style={{ fontSize: 11, color: "var(--text-muted)", textAlign: "right", padding: "0 4px 4px" }}>
-            合計 {headMessageCount} 件
-          </div>
-        </div>
-      )}
+            {filtered.length === 0 ? (
+              <EmptyState
+                phaseName={activePhase ? `${activePhase.name} フェーズ` : (effectiveId === UNASSIGNED ? "未割当" : "")}
+                canEdit={canEdit}
+                addHref={`/oas/${oaId}/works/${workId}/messages/new`}
+              />
+            ) : (
+              grouped.map(({ key, msgs }) => {
+                const meta = TRIGGER_GROUP_META[key];
+                return (
+                  <div key={key} style={{ marginBottom: 14 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                      <span style={{ fontSize: 11.5, fontWeight: 500, padding: "3px 11px", borderRadius: 6, color: meta.color, background: meta.bg }}>
+                        {meta.icon} {meta.label}
+                      </span>
+                      <span style={{ fontSize: 11.5, color: "#B4B8BC" }}>{msgs.length}件</span>
+                    </div>
+                    {msgs.map((m) => {
+                      const phaseKey = listView.phaseKeyOf(m);
+                      const groupHeads = listView.headsByPhase.get(phaseKey) ?? [];
+                      const idx = groupHeads.findIndex((g) => g.id === m.id);
+                      const pname = m.phase?.id ? (phaseById.get(m.phase.id)?.name ?? m.phase.name ?? null) : null;
+                      return (
+                        <MessageCard
+                          key={m.id}
+                          msg={m}
+                          warnings={warningsByMsgId.get(m.id) ?? []}
+                          flowInfo={flowMap.get(m.id)}
+                          phaseName={pname ?? (phaseKey === UNASSIGNED ? "未割当" : null)}
+                          isExpanded={expandedId === m.id}
+                          onToggleExpand={() => toggleExpand(m.id)}
+                          canEdit={canEdit}
+                          busy={busyMessageId === m.id}
+                          editHref={`/oas/${oaId}/works/${workId}/messages/${m.id}`}
+                          onDelete={() => handleDeleteMessage(m)}
+                          onToggleActive={() => handleToggleActive(m)}
+                          onReorder={(dir) => handleReorderMessage(m, dir, groupHeads)}
+                          canMoveUp={idx > 0}
+                          canMoveDown={idx >= 0 && idx < groupHeads.length - 1}
+                          allMessages={messages}
+                          transitions={transitions}
+                          phases={phases}
+                          msgById={msgById}
+                          phaseById={phaseById}
+                        />
+                      );
+                    })}
+                  </div>
+                );
+              })
+            )}
+
+            <div style={{ fontSize: 11, color: "var(--text-muted)", textAlign: "right", padding: "4px 4px 0" }}>
+              合計 {headMessageCount} 件
+            </div>
+          </>
+        );
+      })()}
+
       </>)}
     </>
   );
