@@ -1258,6 +1258,9 @@ function matchPuzzleFromPhase(
   );
   return {
     type:                  "incorrect",
+    // 表示する不正解ヒントは puzzles[0]（先頭問題）のもの。そのヒント QR を postback 化する際の
+    // 解決キー（sourceMessageId）に使い、ラベル一致 fallback を避ける（同名ヒントの取り違え防止）。
+    messageId:             puzzles[0]?.id ?? null,
     incorrectText:         puzzles[0]?.incorrectText ?? null,
     incorrectCharacterId:  puzzles[0]?.incorrectCharacterId ?? null,
     characterId:           puzzles[0]?.characterId ?? null,
@@ -2730,7 +2733,16 @@ async function handleTextEvent({
         try {
           const qrItems = JSON.parse(puzzleResult.incorrectQuickReplies);
           if (Array.isArray(qrItems) && qrItems.length > 0) {
-            incorrectQr = buildQuickReplyFromItems(qrItems);
+            // always モードの不正解ヒント QR は postback 化（messageId + hintIndex で解決・ラベル非依存）。
+            //   → 同名ヒントの問題が複数あっても、表示中ヒント（puzzles[0]）のヒントへ正しく解決する。
+            //   on_wrong モードは resolveHintItems が hint を表示しない（quickReplies 由来）ため postback 不可。
+            //   その場合は legacy（message action）のまま matchHintFromPhase に委ねる。
+            incorrectQr = buildQuickReplyFromItems(
+              qrItems,
+              (puzzleResult.messageId && puzzleResult.hintMode !== "on_wrong")
+                ? { sourceMessageId: puzzleResult.messageId }
+                : undefined,
+            );
           }
         } catch {
           console.warn("[Webhook][puzzle] incorrectQuickReplies JSON parse error");
@@ -3803,7 +3815,7 @@ type PuzzleRecord = {
 
 type PuzzleMatchResult =
   | null                                                                                                    // このフェーズにパズルなし（遷移照合へ進む）
-  | { type: "incorrect"; incorrectText: string | null; incorrectCharacterId: string | null; characterId: string | null; incorrectQuickReplies: string | null; hintMode: string; hintQrItems: string | null }              // パズルあり・不正解
+  | { type: "incorrect"; messageId: string | null; incorrectText: string | null; incorrectCharacterId: string | null; characterId: string | null; incorrectQuickReplies: string | null; hintMode: string; hintQrItems: string | null }              // パズルあり・不正解（messageId = 表示中ヒントの紐づく問題 = puzzles[0]）
   | { type: "correct";   puzzle: PuzzleRecord };                                                           // 正解
 
 // 回答照合は @/lib/puzzle-answer に共通化済み（checkPuzzleAnswer / parseAnswerMatchType）。
@@ -3870,6 +3882,7 @@ async function matchPuzzleAnswer(
   );
   return {
     type:                  "incorrect",
+    messageId:             puzzles[0]?.id ?? null,
     incorrectText:         puzzles[0]?.incorrectText ?? null,
     incorrectCharacterId:  puzzles[0]?.incorrectCharacterId ?? null,
     characterId:           puzzles[0]?.characterId ?? null,

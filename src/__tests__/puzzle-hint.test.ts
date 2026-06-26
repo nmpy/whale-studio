@@ -121,3 +121,46 @@ describe("buildQuickReplyFromItems: 問題のヒント QR が postback（message
     expect((qr.items[0].action as { text?: string }).text).toBe("ヒント①");
   });
 });
+
+// ── 不正解（wrong-answer）パスのヒント QR も messageId で解決する（webhook route.ts の修正） ──
+//   不正解時は puzzles[0] の incorrect_quick_replies をそのまま buildQuickReplyFromItems へ渡す。
+//   always モードでは sourceMessageId（=puzzles[0].id）を付与して postback 化し、ラベル一致 fallback
+//   （matchHintFromPhase の先頭一致）を踏まない。index は raw incorrect_quick_replies の hint 出現順 =
+//   resolveHintItems（resolveDisplayQrItems→hint filter・順序保存）と一致する。
+describe("★ regression: 不正解時のヒント QR も messageId で解決（ラベル非依存・index 整合）", () => {
+  it("always モード: 不正解ヒント QR は postback（messageId + hintIndex）になる", () => {
+    const items = JSON.parse(puzzleRow([{ label: "ヒント①", hint_text: "H1" }]).incorrectQuickReplies!) as QuickReplyItem[];
+    const qr = buildQuickReplyFromItems(items, { sourceMessageId: "puzzle-1" })!;
+    expect(qr.items[0].action.type).toBe("postback");
+    expect(parsePuzzleHintPostback((qr.items[0].action as { data: string }).data)).toEqual({ messageId: "puzzle-1", hintIndex: 0 });
+  });
+
+  it("同名『ヒント①』でも、不正解パスが付与する messageId で別問題のヒントに解決される", () => {
+    const p1 = puzzleRow([{ label: "ヒント①", hint_text: "問題1のヒント①" }]);
+    const p2 = puzzleRow([{ label: "ヒント①", hint_text: "問題2のヒント①" }]);
+    // webhook 不正解パス相当: 各問題の incorrect_quick_replies + 自分の messageId で postback 生成。
+    const pb1 = parsePuzzleHintPostback((buildQuickReplyFromItems(JSON.parse(p1.incorrectQuickReplies!), { sourceMessageId: "p1" })!.items[0].action as { data: string }).data)!;
+    const pb2 = parsePuzzleHintPostback((buildQuickReplyFromItems(JSON.parse(p2.incorrectQuickReplies!), { sourceMessageId: "p2" })!.items[0].action as { data: string }).data)!;
+    expect(pb1.messageId).toBe("p1");
+    expect(pb2.messageId).toBe("p2");
+    // hintIndex は resolveHintItems と一致 → それぞれの問題本文へ解決（ラベルが同じでも取り違えない）。
+    expect((resolvePuzzleHint(p1, pb1.hintIndex) as { hint_text?: string })?.hint_text).toBe("問題1のヒント①");
+    expect((resolvePuzzleHint(p2, pb2.hintIndex) as { hint_text?: string })?.hint_text).toBe("問題2のヒント①");
+  });
+
+  it("複数ヒント: 不正解パスの index が resolveHintItems と一致する（ヒント①=0 / ヒント②=1）", () => {
+    const p = puzzleRow([{ label: "ヒント①", hint_text: "H1" }, { label: "ヒント②", hint_text: "H2" }]);
+    const qr = buildQuickReplyFromItems(JSON.parse(p.incorrectQuickReplies!), { sourceMessageId: "p" })!;
+    const idx0 = parsePuzzleHintPostback((qr.items[0].action as { data: string }).data)!.hintIndex;
+    const idx1 = parsePuzzleHintPostback((qr.items[1].action as { data: string }).data)!.hintIndex;
+    expect((resolvePuzzleHint(p, idx0) as { hint_text?: string })?.hint_text).toBe("H1");
+    expect((resolvePuzzleHint(p, idx1) as { hint_text?: string })?.hint_text).toBe("H2");
+  });
+
+  it("on_wrong モード: sourceMessageId を渡さない（legacy message action 維持）＝既存挙動を壊さない", () => {
+    // webhook は hintMode==="on_wrong" のとき sourceMessageId を渡さない（resolveHintItems が hint を表示しないため）。
+    const items = JSON.parse(puzzleRow([{ label: "ヒント①", hint_text: "x" }]).incorrectQuickReplies!) as QuickReplyItem[];
+    const qr = buildQuickReplyFromItems(items)!; // sourceMessageId なし
+    expect(qr.items[0].action.type).toBe("message");
+  });
+});
