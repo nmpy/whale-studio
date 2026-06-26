@@ -218,13 +218,16 @@ export type PlaceholderVars = {
  * 未保存変数は空文字に置換する (テンプレ文字列を表示しないため)。
  */
 export function replacePlaceholders(text: string, vars: PlaceholderVars): string {
-  let out = text
+  const out = text
     .replace(/\{\{user_name\}\}/g,    vars.userName    ?? "")
     .replace(/\{\{account_name\}\}/g, vars.accountName ?? "");
-  if (vars.userVariables !== undefined) {
-    out = interpolate(out, vars.userVariables);
-  }
-  return out;
+  // `{key}` 形式 (一重括弧) は userVariables の有無に関わらず **必ず** interpolate を通す。
+  //   未定義変数 (例: `{anyName}`) や未保存の自由入力変数は空文字へ統一される。
+  //   これをしないと userVariables 未設定時に literal `{key}` が残り、buildPhaseMessages の
+  //   未置換 placeholder safety guard が **メッセージごと送信対象から除外**してしまう
+  //   （text→text→flex の中間 text 落ち = 本不具合の原因）。interpolate(text, undefined) は
+  //   全 `{key}` を空文字化する（template.ts）。二重括弧 `{{...}}` は interpolate 対象外で不変。
+  return interpolate(out, vars.userVariables);
 }
 
 // ────────────────────────────────────────────────

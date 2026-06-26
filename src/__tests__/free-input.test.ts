@@ -175,10 +175,12 @@ describe("replacePlaceholders with userVariables", () => {
     });
     expect(out).toBe("hi ぽよ, your color is ");
   });
-  it("userVariables が undefined なら interpolate は no-op", () => {
+  it("userVariables が undefined でも {key} は空文字へ統一される（literal を残さない）", () => {
     const out = replacePlaceholders("hi {userName}", { userName: "ぽよ" });
-    // userVariables 未指定 → {userName} はそのまま残る
-    expect(out).toBe("hi {userName}");
+    // 修正: userVariables 未指定でも interpolate を必ず通し、未定義 {key} は空文字化する。
+    //   literal `{key}` を残すと buildPhaseMessages の safety guard がメッセージごと
+    //   送信対象から除外してしまう（text→text→flex の中間 text 落ち）ため。
+    expect(out).toBe("hi ");
   });
   it("二重括弧 {{userName}} は interpolate されない (lookbehind 効いている)", () => {
     const out = replacePlaceholders("test {{userName}}", { userVariables: { userName: "ぽよ" } });
