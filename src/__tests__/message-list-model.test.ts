@@ -7,6 +7,7 @@
 import { describe, it, expect } from "vitest";
 import {
   buildTriggerIndexes, classifyTrigger, getMessageWarnings, isHardWarning,
+  freeInputChainPositions, freeInputSummaryLabel,
   TRIGGER_GROUP_ORDER, ALL_TAB_GROUP_ORDER, type TriggerGroupKey,
 } from "@/app/oas/[id]/works/[workId]/messages/_message-list-model";
 import type { MessageWithRelations } from "@/types";
@@ -86,6 +87,39 @@ describe("getMessageWarnings — 既存5警告を1つも落とさない", () => 
     expect(isHardWarning("未接続")).toBe(true);
     expect(isHardWarning("連続5通超")).toBe(true);
     expect(isHardWarning("キーワード未設定")).toBe(false);
+  });
+});
+
+describe("freeInputChainPositions — 自由入力の位置を表示用に分解（表示専用）", () => {
+  const cont = (...flags: boolean[]) => flags.map((f) => ({ free_input_enabled: f }));
+
+  it("head のみ ON → [本体]（文言: 自由入力あり）", () => {
+    const pos = freeInputChainPositions(true, cont(false, false));
+    expect(pos).toEqual(["本体"]);
+    expect(freeInputSummaryLabel(pos)).toBe("自由入力あり");
+  });
+  it("子のみ ON（単一）→ [2通目]（continuations[0]=2通目）", () => {
+    const pos = freeInputChainPositions(false, cont(true, false));
+    expect(pos).toEqual(["2通目"]);
+    expect(freeInputSummaryLabel(pos)).toBe("自由入力あり：2通目");
+  });
+  it("子複数 ON → [2通目, 4通目]（採番は i+2 通目）", () => {
+    const pos = freeInputChainPositions(false, cont(true, false, true)); // 2通目, (3通目off), 4通目
+    expect(pos).toEqual(["2通目", "4通目"]);
+    expect(freeInputSummaryLabel(pos)).toBe("自由入力あり：2通目、4通目");
+  });
+  it("head + 子 両方 ON → [本体, 2通目]", () => {
+    const pos = freeInputChainPositions(true, cont(true));
+    expect(pos).toEqual(["本体", "2通目"]);
+    expect(freeInputSummaryLabel(pos)).toBe("自由入力あり：本体、2通目");
+  });
+  it("全 OFF → []（非表示）", () => {
+    const pos = freeInputChainPositions(false, cont(false, false));
+    expect(pos).toEqual([]);
+    expect(freeInputSummaryLabel(pos)).toBeNull();
+  });
+  it("継続なし・head OFF → []", () => {
+    expect(freeInputChainPositions(false, [])).toEqual([]);
   });
 });
 
