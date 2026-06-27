@@ -8,74 +8,80 @@ datasource db {
 }
 
 model Oa {
-  id                 String             @id @default(uuid())
-  title              String
-  description        String?
-  channelId          String             @map("channel_id")
-  channelSecret      String             @map("channel_secret")
-  channelAccessToken String             @map("channel_access_token")
+  id                    String                 @id @default(uuid())
+  title                 String
+  description           String?
+  channelId             String                 @map("channel_id")
+  channelSecret         String                 @map("channel_secret")
+  channelAccessToken    String                 @map("channel_access_token")
   /// "draft" | "active" | "paused"
-  publishStatus      String             @default("draft") @map("publish_status")
+  publishStatus         String                 @default("draft") @map("publish_status")
   /// LINE リッチメニュー ID（LINE API で作成・適用したとき保存する）
-  richMenuId         String?            @map("rich_menu_id")
+  richMenuId            String?                @map("rich_menu_id")
   /// Google Sheets スプレッドシート ID（設定時は Sheets からシナリオを読み込む）
-  spreadsheetId      String?            @map("spreadsheet_id")
-  createdAt          DateTime           @default(now()) @map("created_at")
-  updatedAt          DateTime           @updatedAt @map("updated_at")
+  spreadsheetId         String?                @map("spreadsheet_id")
+  createdAt             DateTime               @default(now()) @map("created_at")
+  updatedAt             DateTime               @updatedAt @map("updated_at")
   /// LINE公式アカウントの Basic ID（例: 613zlngs）。Webhook URL の識別子として使う。
   /// channelId（数値の API 認証用）とは別物。LINE Developers「Basic information」で確認できる。
-  lineOaId           String?            @unique @map("line_oa_id")
+  lineOaId              String?                @unique @map("line_oa_id")
   /// OA オーナーの識別子（Supabase Auth userId）。RBAC で owner 判定に使う。
-  ownerKey           String?            @map("owner_key")
+  ownerKey              String?                @map("owner_key")
   /// サービス停止日時。null = 稼働中 / 非 null = 停止中（停止された日時を保持）。
   /// 契約終了等で LINE webhook を通常応答させず、署名検証後に
   /// 一律「このアカウントのサービスは終了しました。ご利用ありがとうございました。」
   /// を message event の replyToken に対してのみ返す。
-  serviceSuspendedAt DateTime?          @map("service_suspended_at")
+  serviceSuspendedAt    DateTime?              @map("service_suspended_at")
   /// LIFF (LINE Front-end Framework) 設定（OA 単位）。
   /// liffId: この OA 専用の LIFF アプリ ID。未設定時は NEXT_PUBLIC_LIFF_ID にフォールバックする。
   ///   解決順: Oa.liffId → process.env.NEXT_PUBLIC_LIFF_ID → 未設定（管理画面/Runtime でエラー表示）。
-  liffId             String?            @map("liff_id")
+  liffId                String?                @map("liff_id")
   /// LINE Developers Console で設定した Endpoint URL のメモ（任意・表示確認用）。
   /// 実際の Runtime 挙動には影響しない（推奨値は app の /liff）。
-  liffEndpointUrl    String?            @map("liff_endpoint_url")
+  liffEndpointUrl       String?                @map("liff_endpoint_url")
   /// QR 読み取り（liff.scanCodeV2）導線を使う想定か（UI 表示フラグ）。
   /// ※ 実際に動かすには LINE Developers Console の LIFF 設定で Scan QR を ON にする必要がある。
-  liffScanQrEnabled  Boolean            @default(false) @map("liff_scan_qr_enabled")
+  liffScanQrEnabled     Boolean                @default(false) @map("liff_scan_qr_enabled")
   /// 利用区分（個人利用 / 法人利用）。オーナー / platform admin 表示モードでの区別用。
   /// Phase2 で追加済みの enum BusinessUsageType を再利用する。既存 OA は default = personal。
   /// 法人招待リンク (business_invite_links.usage_type) とは別物（自動連携はしない）。
-  usageType          BusinessUsageType  @default(personal) @map("usage_type")
-  friendAddSettings  FriendAddSettings?
-  globalCommands     GlobalCommand[]
-  hintLogs           HintLog[]
-  invitations        Invitation[]
-  memberInvites      MemberInvite[]
-  studioInvites      StudioInvite[]
-  liffSubmissions    LiffSubmission[]
-  onboardingEvents   OnboardingEvent[]
-  richMenus          RichMenu[]
-  riddles            Riddle[]           @relation("OaRiddles")
-  segments           Segment[]
-  snsPosts           SnsPost[]
-  xPosts             XPost[]
-  subscription       Subscription?
-  trackings          Tracking[]
-  userTrackings      UserTracking[]
-  works              Work[]
-  workspaceMembers   WorkspaceMember[]
-  entitlements       OaEntitlement[]
-  liveSessions       LiveSession[]
-  liveParticipants   LiveParticipant[]
-  liveEventLogs      LiveEventLog[]
-  liveActors         LiveActor[]
-  liveActorInvites   LiveActorInvite[]
-  liveAssignments    LiveAssignment[]
+  usageType             BusinessUsageType      @default(personal) @map("usage_type")
+  /// あいさつメッセージ（OA単位）。友だち追加時に送る文面。null = OA未設定 →
+  /// 実行時は active Work の welcome_message にフォールバック（移行期互換・PR-1）。
+  welcomeMessage        String?                @map("welcome_message")
+  /// 友だち追加時の動作（OA単位）。"auto_start" | "welcome_wait" | "none"。
+  /// null = OA未設定 → 実行時は active Work の follow_action にフォールバック。
+  followAction          String?                @map("follow_action")
+  friendAddSettings     FriendAddSettings?
+  globalCommands        GlobalCommand[]
+  hintLogs              HintLog[]
+  invitations           Invitation[]
+  memberInvites         MemberInvite[]
+  studioInvites         StudioInvite[]
+  liffSubmissions       LiffSubmission[]
+  onboardingEvents      OnboardingEvent[]
+  richMenus             RichMenu[]
+  riddles               Riddle[]               @relation("OaRiddles")
+  segments              Segment[]
+  snsPosts              SnsPost[]
+  xPosts                XPost[]
+  subscription          Subscription?
+  trackings             Tracking[]
+  userTrackings         UserTracking[]
+  works                 Work[]
+  workspaceMembers      WorkspaceMember[]
+  entitlements          OaEntitlement[]
+  liveSessions          LiveSession[]
+  liveParticipants      LiveParticipant[]
+  liveEventLogs         LiveEventLog[]
+  liveActors            LiveActor[]
+  liveActorInvites      LiveActorInvite[]
+  liveAssignments       LiveAssignment[]
   liveActorInstructions LiveActorInstruction[]
-  liveTeams          LiveTeam[]
-  liveImportPresets  LiveImportPreset[]
-  liveScripts        LiveScript[]
-  liveCues           LiveCue[]
+  liveTeams             LiveTeam[]
+  liveImportPresets     LiveImportPreset[]
+  liveScripts           LiveScript[]
+  liveCues              LiveCue[]
 
   @@index([title])
   @@index([publishStatus])
@@ -85,92 +91,92 @@ model Oa {
 }
 
 model Work {
-  id                String         @id @default(uuid())
+  id                   String  @id @default(uuid())
   /// 公開 URL 用の短縮 ID (10 文字、a-z + 0-9)。DB 主キーは引き続き UUID `id` を使用。
   /// URL に出すときだけこの値を使う。生成は PG 関数 gen_unique_public_id() で自動 (migration 参照)。
-  publicId          String         @unique @default(dbgenerated("gen_unique_public_id('works'::text)")) @map("public_id")
-  oaId              String         @map("oa_id")
-  title             String
-  description       String?
+  publicId             String  @unique @default(dbgenerated("gen_unique_public_id('works'::text)")) @map("public_id")
+  oaId                 String  @map("oa_id")
+  title                String
+  description          String?
   /// "draft" | "active" | "paused"
-  publishStatus     String         @default("draft") @map("publish_status")
-  sortOrder         Int            @default(0) @map("sort_order")
+  publishStatus        String  @default("draft") @map("publish_status")
+  sortOrder            Int     @default(0) @map("sort_order")
   /// LIFF プレイヤー機能 (work メニュー + 個別 LIFF ページ) の有効/無効。
   /// false にすると `/liff/w/{publicId}` 系の URL は全て LIFF_DISABLED 応答を返し、
   /// 実機 LIFF アプリからアクセスできなくなる。CMS プレビューは引き続き利用可能。
   /// 既存 work データは default(true) で migrate されるため挙動が変わらない。
-  liffEnabled       Boolean        @default(true) @map("liff_enabled")
+  liffEnabled          Boolean @default(true) @map("liff_enabled")
   /// 作品メニューホーム (`/liff/w/{publicId}`) の見出し・説明文・画像など、ホーム全体に紐づく
   /// 任意設定を格納する JSON。キー: { title?, description?, image_url? }。
   /// 未設定 (= 空 `{}`) のときは従来表示（見出し「ホーム」・説明/画像なし）にフォールバックする。
   /// per-page の LiffPageConfig.settingsJson とは別物（ホームは作品単位の概念）。
-  liffHomeSettingsJson Json         @default("{}") @map("liff_home_settings_json") @db.JsonB
+  liffHomeSettingsJson Json    @default("{}") @map("liff_home_settings_json") @db.JsonB
   /// システムメッセージ（開始/エラー等）送信者として使うキャラクター（任意）
-  systemCharacterId String?        @map("system_character_id")
+  systemCharacterId    String? @map("system_character_id")
   /// あいさつメッセージ。未開始ユーザーが話しかけたときに送信される導入文（任意）。
   /// 未設定の場合はシステムデフォルト文にフォールバックする。
-  welcomeMessage    String?        @map("welcome_message")
+  welcomeMessage       String? @map("welcome_message")
 
   /// 友だち追加（follow）時の動作（作品単位）:
   ///   "auto_start"    = 友だち追加直後にシナリオを自動開始（既存挙動・既定）。
   ///   "welcome_wait"  = あいさつメッセージを送り、ユーザーの「はじめる」を待つ（progress は作らない）。
   ///   "none"          = 友だち追加時には何も送らない。
   /// 既存作品の挙動を壊さないため default("auto_start")。
-  followAction      String         @default("auto_start") @map("follow_action")
+  followAction String @default("auto_start") @map("follow_action")
 
   /// 途中再開機能の有効/無効（作品単位のデフォルト挙動）。
   /// true:  フェーズ途中で離脱したユーザーが開始トリガーを再送したとき、
   ///        「途中から再開する / 最初からやり直す」の選択肢を表示する（従来挙動）。
   /// false: 途中状態があっても選択肢を出さず、通常の開始（最初から）に寄せる。
   /// 既存挙動（常に再開選択肢を表示）を壊さないため default(true)。
-  resumeEnabled     Boolean        @default(true) @map("resume_enabled")
+  resumeEnabled Boolean @default(true) @map("resume_enabled")
 
   // ── 演出デフォルト設定（既読・typing・ローディング）──────
   /// 既読制御モード: "inherit" | "immediate" | "delayed" | "before_reply"
-  readReceiptMode       String?    @map("read_receipt_mode")
+  readReceiptMode    String?  @map("read_receipt_mode")
   /// 既読遅延（ms）
-  readDelayMs           Int?       @map("read_delay_ms")
+  readDelayMs        Int?     @map("read_delay_ms")
   /// typing 風の間を有効にするか
-  typingEnabled         Boolean?   @map("typing_enabled")
+  typingEnabled      Boolean? @map("typing_enabled")
   /// typing 最小待機（ms）
-  typingMinMs           Int?       @map("typing_min_ms")
+  typingMinMs        Int?     @map("typing_min_ms")
   /// typing 最大待機（ms）
-  typingMaxMs           Int?       @map("typing_max_ms")
+  typingMaxMs        Int?     @map("typing_max_ms")
   /// ローディングアニメーション制御
-  loadingEnabled        Boolean?   @map("loading_enabled")
+  loadingEnabled     Boolean? @map("loading_enabled")
   /// ローディング表示閾値（ms）
-  loadingThresholdMs    Int?       @map("loading_threshold_ms")
+  loadingThresholdMs Int?     @map("loading_threshold_ms")
   /// ローディング最小秒数
-  loadingMinSeconds     Int?       @map("loading_min_seconds")
+  loadingMinSeconds  Int?     @map("loading_min_seconds")
   /// ローディング最大秒数
-  loadingMaxSeconds     Int?       @map("loading_max_seconds")
+  loadingMaxSeconds  Int?     @map("loading_max_seconds")
 
-  createdAt         DateTime       @default(now()) @map("created_at")
-  updatedAt         DateTime       @updatedAt @map("updated_at")
-  characters          Character[]          @relation("WorkCharacters")
-  messages            Message[]
-  onboardingEvents    OnboardingEvent[]
-  onboardingProgress  OnboardingProgress[]
-  phases              Phase[]
-  riddles             Riddle[]             @relation("WorkRiddles")
-  transitions         Transition[]
-  userProgress        UserProgress[]
-  lineDestinations    LineDestination[]
-  liffPageConfigs     LiffPageConfig[]
-  liffSurveyResponses LiffSurveyResponse[]
-  liffEventLogs       LiffEventLog[]
-  liffSubmissions     LiffSubmission[]
-  puzzleDeliveries    PuzzleDelivery[]
-  werewolfTitles      WerewolfTitle[]
-  locations           Location[]
-  checkinWaitTriggers CheckinWaitTrigger[]
+  createdAt             DateTime               @default(now()) @map("created_at")
+  updatedAt             DateTime               @updatedAt @map("updated_at")
+  characters            Character[]            @relation("WorkCharacters")
+  messages              Message[]
+  onboardingEvents      OnboardingEvent[]
+  onboardingProgress    OnboardingProgress[]
+  phases                Phase[]
+  riddles               Riddle[]               @relation("WorkRiddles")
+  transitions           Transition[]
+  userProgress          UserProgress[]
+  lineDestinations      LineDestination[]
+  liffPageConfigs       LiffPageConfig[]
+  liffSurveyResponses   LiffSurveyResponse[]
+  liffEventLogs         LiffEventLog[]
+  liffSubmissions       LiffSubmission[]
+  puzzleDeliveries      PuzzleDelivery[]
+  werewolfTitles        WerewolfTitle[]
+  locations             Location[]
+  checkinWaitTriggers   CheckinWaitTrigger[]
   scheduledLineMessages ScheduledLineMessage[]
-  liveSessions        LiveSession[]
-  liveScripts         LiveScript[]
-  liveCues            LiveCue[]
-  xPosts              XPost[]
-  oa                  Oa                   @relation(fields: [oaId], references: [id], onDelete: Cascade)
-  systemCharacter     Character?           @relation("WorkSystemCharacter", fields: [systemCharacterId], references: [id])
+  liveSessions          LiveSession[]
+  liveScripts           LiveScript[]
+  liveCues              LiveCue[]
+  xPosts                XPost[]
+  oa                    Oa                     @relation(fields: [oaId], references: [id], onDelete: Cascade)
+  systemCharacter       Character?             @relation("WorkSystemCharacter", fields: [systemCharacterId], references: [id])
 
   @@index([oaId])
   @@index([publishStatus])
@@ -207,28 +213,28 @@ model Character {
 }
 
 model Phase {
-  id              String         @id @default(uuid())
-  workId          String         @map("work_id")
+  id                      String            @id @default(uuid())
+  workId                  String            @map("work_id")
   /// "start" | "normal" | "ending"
-  phaseType       String         @default("normal") @map("phase_type")
-  name            String
-  description     String?
-  sortOrder       Int            @default(0) @map("sort_order")
-  isActive        Boolean        @default(true) @map("is_active")
-  createdAt       DateTime       @default(now()) @map("created_at")
-  updatedAt       DateTime       @updatedAt @map("updated_at")
+  phaseType               String            @default("normal") @map("phase_type")
+  name                    String
+  description             String?
+  sortOrder               Int               @default(0) @map("sort_order")
+  isActive                Boolean           @default(true) @map("is_active")
+  createdAt               DateTime          @default(now()) @map("created_at")
+  updatedAt               DateTime          @updatedAt @map("updated_at")
   /// 開始トリガーキーワード（未開始ユーザーがこのキーワードを送信するとシナリオ開始）
   /// phaseType="start" のフェーズのみ有効。
-  startTrigger    String?        @map("start_trigger")
+  startTrigger            String?           @map("start_trigger")
   /// 再開時に送るあらすじテキスト（nullable）。
   /// 途中離脱ユーザーが「途中から再開する」を選んだとき、フェーズ先頭メッセージの前に送信される。
-  resumeSummary   String?        @map("resume_summary")
-  puzzleNextFor   Message[]      @relation("MessageCorrectNextPhase")
-  messages        Message[]
-  work            Work           @relation(fields: [workId], references: [id], onDelete: Cascade)
-  transitionsFrom Transition[]   @relation("TransitionFrom")
-  transitionsTo   Transition[]   @relation("TransitionTo")
-  userProgress    UserProgress[]
+  resumeSummary           String?           @map("resume_summary")
+  puzzleNextFor           Message[]         @relation("MessageCorrectNextPhase")
+  messages                Message[]
+  work                    Work              @relation(fields: [workId], references: [id], onDelete: Cascade)
+  transitionsFrom         Transition[]      @relation("TransitionFrom")
+  transitionsTo           Transition[]      @relation("TransitionTo")
+  userProgress            UserProgress[]
   liveParticipantsCurrent LiveParticipant[] @relation("LiveParticipantCurrentPhase")
   liveCues                LiveCue[]
 
@@ -243,27 +249,27 @@ model Phase {
 }
 
 model Transition {
-  id            String   @id @default(uuid())
-  workId        String   @map("work_id")
-  fromPhaseId   String   @map("from_phase_id")
-  toPhaseId     String   @map("to_phase_id")
+  id            String     @id @default(uuid())
+  workId        String     @map("work_id")
+  fromPhaseId   String     @map("from_phase_id")
+  toPhaseId     String     @map("to_phase_id")
   /// ユーザーに表示される選択肢ラベル（例: 「右の扉を開ける」）
   label         String
   /// オプション: 一致キーワードなど Bot が判定に使う条件（テキスト部分一致）
   condition     String?
   /// フラグ条件式（例: "flags.has_key == true" / "flags.score >= 10" / "!flags.used"）
   /// 空の場合は常に有効。現在のユーザーフラグがこの条件を満たす場合のみ遷移を表示・実行できる。
-  flagCondition String?  @map("flag_condition")
+  flagCondition String?    @map("flag_condition")
   /// 遷移実行時に UserProgress.flags へマージする JSON オブジェクト
   /// 例: {"score": 10, "has_key": true} → 既存フラグに上書きマージされる
-  setFlags      String   @default("{}") @map("set_flags")
-  sortOrder     Int      @default(0) @map("sort_order")
-  isActive      Boolean  @default(true) @map("is_active")
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
-  fromPhase     Phase    @relation("TransitionFrom", fields: [fromPhaseId], references: [id], onDelete: Cascade)
-  toPhase       Phase    @relation("TransitionTo", fields: [toPhaseId], references: [id], onDelete: Cascade)
-  work          Work     @relation(fields: [workId], references: [id], onDelete: Cascade)
+  setFlags      String     @default("{}") @map("set_flags")
+  sortOrder     Int        @default(0) @map("sort_order")
+  isActive      Boolean    @default(true) @map("is_active")
+  createdAt     DateTime   @default(now()) @map("created_at")
+  updatedAt     DateTime   @updatedAt @map("updated_at")
+  fromPhase     Phase      @relation("TransitionFrom", fields: [fromPhaseId], references: [id], onDelete: Cascade)
+  toPhase       Phase      @relation("TransitionTo", fields: [toPhaseId], references: [id], onDelete: Cascade)
+  work          Work       @relation(fields: [workId], references: [id], onDelete: Cascade)
   locations     Location[]
 
   @@index([workId])
@@ -273,37 +279,37 @@ model Transition {
 }
 
 model UserProgress {
-  id               String   @id @default(uuid())
+  id                 String   @id @default(uuid())
   /// LINE ユーザー ID（本番）またはテスト用任意 ID
-  lineUserId       String   @map("line_user_id")
-  workId           String   @map("work_id")
-  currentPhaseId   String?  @map("current_phase_id")
-  reachedEnding    Boolean  @default(false) @map("reached_ending")
+  lineUserId         String   @map("line_user_id")
+  workId             String   @map("work_id")
+  currentPhaseId     String?  @map("current_phase_id")
+  reachedEnding      Boolean  @default(false) @map("reached_ending")
   /// JSON 文字列。任意フラグを保存できる（例: {"hint_used": true, "score": 10}）
   /// SQLite は JSON 型非対応のため String で保持し、アプリ層で parse/stringify する
-  flags            String   @default("{}") @map("flags")
+  flags              String   @default("{}") @map("flags")
   /// ユーザー入力で保存された変数（自由入力 / アンケート任意回答などに使用）。
   /// 例: {"userName": "なみぽよ", "favoriteColor": "blue"}
   /// flags とは意味論を分離: flags は条件分岐 / set_flags 用、こちらはユーザー固有データ。
   /// SQLite/PG 共用方針に従い String 保持、アプリ層で parse/stringify する。
-  variables        String   @default("{}") @map("variables")
+  variables          String   @default("{}") @map("variables")
   /// 自由入力待ち状態のメタ情報（null = 通常状態）。
   /// 例: {"messageId":"...", "variableKey":"userName", "nextMessageId":"..."}
   /// Message.freeInputEnabled=true のメッセージ送信時に立ち、次のテキスト入力で消化される。
-  waitingForInput  String?  @map("waiting_for_input")
+  waitingForInput    String?  @map("waiting_for_input")
   /// 直近送信した chain の messageId 群（JSON 文字列の string[]）。
   /// QR/Quick Reply の有効範囲（frontier）を「現在地に紐づくものだけ」に限定するために使う。
   /// null = レガシー progress（従来どおりフェーズ全体の QR を走査する後方互換挙動）。
-  lastSentMessageIds String? @map("last_sent_message_ids")
-  lastInteractedAt DateTime @default(now()) @map("last_interacted_at")
+  lastSentMessageIds String?  @map("last_sent_message_ids")
+  lastInteractedAt   DateTime @default(now()) @map("last_interacted_at")
   /// プレビューモード（管理者・テスターが疑似プレイする場合 true）
-  isPreview        Boolean  @default(false) @map("is_preview")
+  isPreview          Boolean  @default(false) @map("is_preview")
   /// プレビュー実行者の Supabase userId（isPreview=true のとき格納）
-  previewBy        String?  @map("preview_by")
-  createdAt        DateTime @default(now()) @map("created_at")
-  updatedAt        DateTime @updatedAt @map("updated_at")
-  currentPhase     Phase?   @relation(fields: [currentPhaseId], references: [id])
-  work             Work     @relation(fields: [workId], references: [id], onDelete: Cascade)
+  previewBy          String?  @map("preview_by")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+  currentPhase       Phase?   @relation(fields: [currentPhaseId], references: [id])
+  work               Work     @relation(fields: [workId], references: [id], onDelete: Cascade)
 
   @@unique([lineUserId, workId])
   @@index([lineUserId])
@@ -318,34 +324,34 @@ model UserProgress {
 }
 
 model Message {
-  id                    String     @id @default(uuid())
-  workId                String     @map("work_id")
-  phaseId               String?    @map("phase_id")
-  characterId           String?    @map("character_id")
+  id                    String   @id @default(uuid())
+  workId                String   @map("work_id")
+  phaseId               String?  @map("phase_id")
+  characterId           String?  @map("character_id")
   /// "text" | "image" | "riddle" | "video" | "carousel" | "voice"
-  messageType           String     @default("text") @map("message_type")
+  messageType           String   @default("text") @map("message_type")
   body                  String?
-  assetUrl              String?    @map("asset_url")
+  assetUrl              String?  @map("asset_url")
   /// 応答キーワード（Bot がこのキーワードを受信したときに送信する）
-  triggerKeyword        String?    @map("trigger_keyword")
+  triggerKeyword        String?  @map("trigger_keyword")
   /// 送信対象セグメント（"all" | "not_started" | "in_progress" | "completed"）
-  targetSegment         String?    @map("target_segment")
+  targetSegment         String?  @map("target_segment")
   /// 通知メッセージ（テキスト以外の種別で使用。LINE の通知欄に表示される）
-  notifyText            String?    @map("notify_text")
+  notifyText            String?  @map("notify_text")
   /// 謎 ID（messageType = "riddle" のとき参照する謎）
-  riddleId              String?    @map("riddle_id")
+  riddleId              String?  @map("riddle_id")
   /// クイックリプライ設定（JSON 配列 / null = 未設定）
   /// 構造: [{ label, action, value? }]
   /// action: "text" | "url" | "next" | "hint" | "custom"
-  quickReplies          String?    @map("quick_replies")
+  quickReplies          String?  @map("quick_replies")
   /// Flex Message の代替テキスト（messageType = "flex" のとき使用）
-  altText               String?    @map("alt_text")
+  altText               String?  @map("alt_text")
   /// Flex Message の JSON ペイロード（messageType = "flex" のとき使用）
-  flexPayloadJson       String?    @map("flex_payload_json")
-  sortOrder             Int        @default(0) @map("sort_order")
-  isActive              Boolean    @default(true) @map("is_active")
-  createdAt             DateTime   @default(now()) @map("created_at")
-  updatedAt             DateTime   @updatedAt @map("updated_at")
+  flexPayloadJson       String?  @map("flex_payload_json")
+  sortOrder             Int      @default(0) @map("sort_order")
+  isActive              Boolean  @default(true) @map("is_active")
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
   /// メッセージ種別: "start" | "normal" | "response" | "hint" | "puzzle" | "system_notice"
   /// start         = 開始トリガー一致時に送信（kind="start" のメッセージのみ送信）
   /// normal        = フェーズ遷移時に通常送信
@@ -353,65 +359,65 @@ model Message {
   /// hint          = ヒント用（将来拡張）
   /// puzzle        = 謎（出題形式）
   /// system_notice = システム通知（入室/退室/通話など、トーク中央に表示する）
-  kind                  String     @default("normal") @map("kind")
+  kind                  String   @default("normal") @map("kind")
   /// 正解テキスト（kind="puzzle" のとき必須）
-  answer                String?    @map("answer")
+  answer                String?  @map("answer")
   /// 表記ゆれ許容設定（JSON配列文字列: ["exact","ignore_punctuation","normalize_width"]）
-  answerMatchType       String     @default("[\"exact\"]") @map("answer_match_type")
+  answerMatchType       String   @default("[\"exact\"]") @map("answer_match_type")
   /// 正解時の挙動: "text" | "text_and_transition" | "transition"
-  correctAction         String?    @map("correct_action")
+  correctAction         String?  @map("correct_action")
   /// 正解後の遷移先フェーズ（correct_action が transition 系のとき必須）
-  correctNextPhaseId    String?    @map("correct_next_phase_id")
+  correctNextPhaseId    String?  @map("correct_next_phase_id")
   /// 正解時メッセージ（任意）
-  correctText           String?    @map("correct_text")
+  correctText           String?  @map("correct_text")
   /// 不正解時メッセージ（任意）
-  incorrectText         String?    @map("incorrect_text")
+  incorrectText         String?  @map("incorrect_text")
   /// ヒントテキスト（任意）
-  puzzleHintText        String?    @map("puzzle_hint_text")
+  puzzleHintText        String?  @map("puzzle_hint_text")
   /// 出題形式: "text" | "image" | "video" | "carousel"（kind="puzzle" のとき使用）
-  puzzleType            String?    @map("puzzle_type")
+  puzzleType            String?  @map("puzzle_type")
   /// 連続送信: このメッセージの後に続けて送信するメッセージ ID（自己参照 FK / null = チェーンなし）
-  nextMessageId         String?    @map("next_message_id")
+  nextMessageId         String?  @map("next_message_id")
   /// 不正解時クイックリプライ（JSON / QuickReplyItem[]）
-  incorrectQuickReplies String?    @map("incorrect_quick_replies")
+  incorrectQuickReplies String?  @map("incorrect_quick_replies")
   /// 前のメッセージ送信後、この発話（メッセージ）を送るまで待機するミリ秒数。0 = 即時送信
-  lagMs                 Int        @default(0) @map("lag_ms")
+  lagMs                 Int      @default(0) @map("lag_ms")
   /// ヒント表示モード: "always"（常時）| "on_wrong"（不正解時のみ）| "hidden"（非表示）
-  hintMode              String     @default("always") @map("hint_mode")
+  hintMode              String   @default("always") @map("hint_mode")
   /// 複数正解（JSON 配列文字列: ["りんご","林檎","リンゴ"]）。null/未設定 = 単一 answer のみ使用（後方互換）。
   /// 判定は answer + answers を統合した候補のいずれか一致で正解。answer には先頭候補を保持する。
-  answers               String?    @map("answers")
+  answers               String?  @map("answers")
   /// 正解メッセージの発話キャラクター ID（未設定 = 問題本文 characterId → systemSender にフォールバック）。
   /// FK は張らず（hint_character_id と同方針）、送信時に lookup・存在しなければ graceful fallback。
-  correctCharacterId    String?    @map("correct_character_id")
+  correctCharacterId    String?  @map("correct_character_id")
   /// 不正解メッセージの発話キャラクター ID（未設定 = 問題本文 characterId → systemSender にフォールバック）。
-  incorrectCharacterId  String?    @map("incorrect_character_id")
+  incorrectCharacterId  String?  @map("incorrect_character_id")
 
   // ── 演出設定（既読・typing・ローディング）──────────────
   /// 既読制御モード: "inherit" | "immediate" | "delayed" | "before_reply"
-  readReceiptMode       String?    @map("read_receipt_mode")
+  readReceiptMode    String?  @map("read_receipt_mode")
   /// 既読遅延（ms）。readReceiptMode="delayed" のとき使用
-  readDelayMs           Int?       @map("read_delay_ms")
+  readDelayMs        Int?     @map("read_delay_ms")
   /// typing 風の間を有効にするか
-  typingEnabled         Boolean?   @map("typing_enabled")
+  typingEnabled      Boolean? @map("typing_enabled")
   /// typing 最小待機（ms）
-  typingMinMs           Int?       @map("typing_min_ms")
+  typingMinMs        Int?     @map("typing_min_ms")
   /// typing 最大待機（ms）
-  typingMaxMs           Int?       @map("typing_max_ms")
+  typingMaxMs        Int?     @map("typing_max_ms")
   /// ローディングアニメーション制御: true=有効 / false=無効 / null=inherit
-  loadingEnabled        Boolean?   @map("loading_enabled")
+  loadingEnabled     Boolean? @map("loading_enabled")
   /// ローディング表示閾値（ms）
-  loadingThresholdMs    Int?       @map("loading_threshold_ms")
+  loadingThresholdMs Int?     @map("loading_threshold_ms")
   /// ローディング最小秒数
-  loadingMinSeconds     Int?       @map("loading_min_seconds")
+  loadingMinSeconds  Int?     @map("loading_min_seconds")
   /// ローディング最大秒数
-  loadingMaxSeconds     Int?       @map("loading_max_seconds")
+  loadingMaxSeconds  Int?     @map("loading_max_seconds")
 
   // ── タップ遷移先（画像メッセージ等）──────────────
   /// タップ時の遷移先 destination ID（nullable — null = destination 未使用）
-  tapDestinationId      String?    @map("tap_destination_id")
+  tapDestinationId String? @map("tap_destination_id")
   /// タップ時の直接URL（destination 未使用時のフォールバック）
-  tapUrl                String?    @map("tap_url")
+  tapUrl           String? @map("tap_url")
 
   // ── 画像タップ時アクション（messageType="image" 用）─────────────────
   // 画像メッセージをタップしたときに発火するアクション。設定時は LINE 送信側で
@@ -419,29 +425,29 @@ model Message {
   // null/未設定 = アクションなし (= 既存の Image Message として送信)。
   // 既存の tap_destination_id / tap_url は別概念（タップ→Destination 遷移）。
   /// "none" | "message" | "uri" | "liff" | "postback"。null = アクションなし
-  imageActionType         String?    @map("image_action_type")
+  imageActionType         String? @map("image_action_type")
   /// type="message" 用: 画像タップ時にプレイヤーから送信されるテキスト
-  imageActionText         String?    @map("image_action_text")
+  imageActionText         String? @map("image_action_text")
   /// type="uri" 用: 画像タップ時に開く外部 URL (HTTPS のみ)
-  imageActionUrl          String?    @map("image_action_url")
+  imageActionUrl          String? @map("image_action_url")
   /// type="liff" 用: 画像タップ時に開く LIFF ページ ID
-  imageActionLiffPageId   String?    @map("image_action_liff_page_id")
+  imageActionLiffPageId   String? @map("image_action_liff_page_id")
   /// type="postback" 用: 画像タップ時の postback data
-  imageActionPostbackData String?    @map("image_action_postback_data")
+  imageActionPostbackData String? @map("image_action_postback_data")
   /// type="message_with_phase" 用: 画像タップ送信テキスト受信時に遷移する先フェーズ ID。
   /// LINE payload には載せず（action は message のみ）、webhook 側の遷移解決で参照する。
-  imageActionPhaseId      String?    @map("image_action_phase_id")
+  imageActionPhaseId      String? @map("image_action_phase_id")
 
   // ── 自由入力受付（このメッセージ送信後にユーザーの次入力を保存する）──────
   /// true: このメッセージ送信後にユーザーの次のテキスト入力を変数として保存する。
   /// 名前入力 / アンケート自由回答 / 任意テキストの記録 等に使う。
   /// nextMessageId (連続送信) とは意味が違うため別管理。
-  freeInputEnabled      Boolean    @default(false) @map("free_input_enabled")
+  freeInputEnabled       Boolean @default(false) @map("free_input_enabled")
   /// 保存先の変数名 (^[a-zA-Z_][a-zA-Z0-9_]*$ で validation)。freeInputEnabled=true のとき必須。
-  freeInputVariableKey  String?    @map("free_input_variable_key")
+  freeInputVariableKey   String? @map("free_input_variable_key")
   /// 自由入力を受け取った後に送信する次メッセージ ID。自己参照 FK。
   /// freeInputEnabled=true のとき、入力受付完了後にここで指定されたメッセージを送信する。
-  freeInputNextMessageId String?   @map("free_input_next_message_id")
+  freeInputNextMessageId String? @map("free_input_next_message_id")
 
   // ── 送信後の待機トリガー（地点到着で自動進行）────────────────────────
   // このメッセージ送信後、指定地点(checkin_trigger_location_id)の検知待ち状態に
@@ -450,31 +456,31 @@ model Message {
   // （任意で）next フェーズへ進める。これにより未到達ユーザーへの誤送信・二重送信を防ぐ。
   // FK は張らず（correct_character_id と同方針）、送信/消化時に lookup・graceful fallback。
   /// "qr" | "gps" | "beacon"（null = 待機トリガーなし。beacon の検知消化は次PRで実装）
-  checkinTriggerType           String?  @map("checkin_trigger_type")
+  checkinTriggerType          String? @map("checkin_trigger_type")
   /// 検知対象の地点(Location.id)。checkinTriggerType 設定時に必須。
-  checkinTriggerLocationId     String?  @map("checkin_trigger_location_id")
+  checkinTriggerLocationId    String? @map("checkin_trigger_location_id")
   /// 検知成功時に送る次メッセージ(Message.id・任意)。null = メッセージ送信なし（フェーズ遷移のみ等）。
-  checkinTriggerNextMessageId  String?  @map("checkin_trigger_next_message_id")
+  checkinTriggerNextMessageId String? @map("checkin_trigger_next_message_id")
   /// 検知成功時に進める次フェーズ(Phase.id・任意)。null = フェーズ遷移なし。
-  checkinTriggerNextPhaseId    String?  @map("checkin_trigger_next_phase_id")
+  checkinTriggerNextPhaseId   String? @map("checkin_trigger_next_phase_id")
 
   // ── 時間差メッセージ（予約送信）の設定（PR-4c-1: 保存のみ。runtime/webhook では未使用）────
   /// 時間差メッセージ設定の JSON 文字列（null = 未設定）。
   /// shape: { enabled, delayMinutes, body, characterId, cancelOnPhaseChange, cancelOnWorkCompleted }。
   /// push 配信（通数消費）として「ユーザー操作の N 分後」に送る予約の設定。実際の予約作成は次 PR で接続。
-  scheduledMessageSettings     String?  @map("scheduled_message_settings")
+  scheduledMessageSettings String? @map("scheduled_message_settings")
 
-  character             Character? @relation(fields: [characterId], references: [id])
+  character             Character?       @relation(fields: [characterId], references: [id])
   tapDestination        LineDestination? @relation(fields: [tapDestinationId], references: [id], onDelete: SetNull)
-  correctNextPhase      Phase?     @relation("MessageCorrectNextPhase", fields: [correctNextPhaseId], references: [id])
-  nextMessage           Message?   @relation("MessageChain", fields: [nextMessageId], references: [id])
-  prevMessages          Message[]  @relation("MessageChain")
-  freeInputNextMessage  Message?   @relation("MessageFreeInputNext", fields: [freeInputNextMessageId], references: [id], onDelete: SetNull)
-  freeInputPrevMessages Message[]  @relation("MessageFreeInputNext")
-  qrSuccessLocations    Location[] @relation("LocationQrSuccessMessage")
+  correctNextPhase      Phase?           @relation("MessageCorrectNextPhase", fields: [correctNextPhaseId], references: [id])
+  nextMessage           Message?         @relation("MessageChain", fields: [nextMessageId], references: [id])
+  prevMessages          Message[]        @relation("MessageChain")
+  freeInputNextMessage  Message?         @relation("MessageFreeInputNext", fields: [freeInputNextMessageId], references: [id], onDelete: SetNull)
+  freeInputPrevMessages Message[]        @relation("MessageFreeInputNext")
+  qrSuccessLocations    Location[]       @relation("LocationQrSuccessMessage")
   puzzleDeliveries      PuzzleDelivery[]
-  phase                 Phase?     @relation(fields: [phaseId], references: [id])
-  work                  Work       @relation(fields: [workId], references: [id], onDelete: Cascade)
+  phase                 Phase?           @relation(fields: [phaseId], references: [id])
+  work                  Work             @relation(fields: [workId], references: [id], onDelete: Cascade)
 
   @@index([workId])
   @@index([phaseId])
@@ -551,41 +557,41 @@ model SnsPost {
 /// X（旧Twitter）投稿管理。作品（work）単位で告知ポスト・計測URL・UTM を管理する。
 /// X API / スクレイピングは使わず、計測は Whale Studio 発行の tracking URL クリックで行う。
 model XPost {
-  id               String   @id @default(uuid())
-  oaId             String   @map("oa_id")
-  workId           String   @map("work_id")
+  id               String                @id @default(uuid())
+  oaId             String                @map("oa_id")
+  workId           String                @map("work_id")
   title            String?
   body             String?
   /// ハッシュタグ（JSON 文字列配列。例: ["#WhaleStudio","#LINE謎解き"]）
   hashtags         String?
-  imageUrl         String?  @map("image_url")
-  uploadedImageUrl String?  @map("uploaded_image_url")
-  linkUrl          String?  @map("link_url")
-  utmEnabled       Boolean  @default(false) @map("utm_enabled")
-  utmName          String?  @map("utm_name")
-  utmSource        String?  @map("utm_source")
-  utmMedium        String?  @map("utm_medium")
-  utmCampaign      String?  @map("utm_campaign")
-  utmContent       String?  @map("utm_content")
-  utmTerm          String?  @map("utm_term")
+  imageUrl         String?               @map("image_url")
+  uploadedImageUrl String?               @map("uploaded_image_url")
+  linkUrl          String?               @map("link_url")
+  utmEnabled       Boolean               @default(false) @map("utm_enabled")
+  utmName          String?               @map("utm_name")
+  utmSource        String?               @map("utm_source")
+  utmMedium        String?               @map("utm_medium")
+  utmCampaign      String?               @map("utm_campaign")
+  utmContent       String?               @map("utm_content")
+  utmTerm          String?               @map("utm_term")
   /// UTM 付与後の遷移先 URL（生成結果）
-  generatedUrl     String?  @map("generated_url")
+  generatedUrl     String?               @map("generated_url")
   /// 計測URLの短縮コード（/r/[trackingCode]）
-  trackingCode     String?  @unique @map("tracking_code")
+  trackingCode     String?               @unique @map("tracking_code")
   /// 計測URL（https://app.whale-studio.app/r/[trackingCode]）
-  trackingUrl      String?  @map("tracking_url")
+  trackingUrl      String?               @map("tracking_url")
   /// 投稿済みの X 投稿 URL（手入力）
-  xPostUrl         String?  @map("x_post_url")
+  xPostUrl         String?               @map("x_post_url")
   /// "draft" | "scheduled" | "posted" | "archived"
-  status           String   @default("draft")
+  status           String                @default("draft")
   note             String?
-  postedAt         DateTime? @map("posted_at")
-  scheduledAt      DateTime? @map("scheduled_at")
-  sortOrder        Int      @default(0) @map("sort_order")
-  createdAt        DateTime @default(now()) @map("created_at")
-  updatedAt        DateTime @updatedAt @map("updated_at")
-  oa               Oa       @relation(fields: [oaId], references: [id], onDelete: Cascade)
-  work             Work     @relation(fields: [workId], references: [id], onDelete: Cascade)
+  postedAt         DateTime?             @map("posted_at")
+  scheduledAt      DateTime?             @map("scheduled_at")
+  sortOrder        Int                   @default(0) @map("sort_order")
+  createdAt        DateTime              @default(now()) @map("created_at")
+  updatedAt        DateTime              @updatedAt @map("updated_at")
+  oa               Oa                    @relation(fields: [oaId], references: [id], onDelete: Cascade)
+  work             Work                  @relation(fields: [workId], references: [id], onDelete: Cascade)
   clickEvents      XPostClickEvent[]
   importedMetrics  XPostImportedMetric[]
   mentions         XImportedMention[]
@@ -652,27 +658,27 @@ model XPostImportedMetric {
 
 /// CSV インポートした口コミ（自然言語処理の対象）。CSV 由来テキストのみ。
 model XImportedMention {
-  id               String    @id @default(uuid())
-  oaId             String    @map("oa_id")
-  workId           String    @map("work_id")
-  relatedXPostId   String?   @map("related_x_post_id")
-  relatedXPostUrl  String?   @map("related_x_post_url")
-  postedAt         DateTime? @map("posted_at")
-  authorName       String?   @map("author_name")
-  authorHandle     String?   @map("author_handle")
-  text             String
+  id              String                    @id @default(uuid())
+  oaId            String                    @map("oa_id")
+  workId          String                    @map("work_id")
+  relatedXPostId  String?                   @map("related_x_post_id")
+  relatedXPostUrl String?                   @map("related_x_post_url")
+  postedAt        DateTime?                 @map("posted_at")
+  authorName      String?                   @map("author_name")
+  authorHandle    String?                   @map("author_handle")
+  text            String
   /// 重複判定用（url が無い口コミのため text の hash）
-  textHash         String    @map("text_hash")
-  url              String?
-  source           String?
-  note             String?
+  textHash        String                    @map("text_hash")
+  url             String?
+  source          String?
+  note            String?
   /// 取り込み元の生データ（X投稿エクスポート等）。JSON 文字列。
-  rawJson          String?   @map("raw_json")
-  importedAt       DateTime  @default(now()) @map("imported_at")
-  createdAt        DateTime  @default(now()) @map("created_at")
-  updatedAt        DateTime  @updatedAt @map("updated_at")
-  relatedXPost     XPost?    @relation(fields: [relatedXPostId], references: [id], onDelete: SetNull)
-  analysis         XImportedMentionAnalysis?
+  rawJson         String?                   @map("raw_json")
+  importedAt      DateTime                  @default(now()) @map("imported_at")
+  createdAt       DateTime                  @default(now()) @map("created_at")
+  updatedAt       DateTime                  @updatedAt @map("updated_at")
+  relatedXPost    XPost?                    @relation(fields: [relatedXPostId], references: [id], onDelete: SetNull)
+  analysis        XImportedMentionAnalysis?
 
   @@index([oaId])
   @@index([workId])
@@ -683,21 +689,21 @@ model XImportedMention {
 
 /// 口コミの分析結果（1:1）。ルールベース。将来 LLM 分類に差し替え可能。
 model XImportedMentionAnalysis {
-  id                String   @id @default(uuid())
-  oaId              String   @map("oa_id")
-  workId            String   @map("work_id")
-  mentionId         String   @unique @map("mention_id")
+  id                String           @id @default(uuid())
+  oaId              String           @map("oa_id")
+  workId            String           @map("work_id")
+  mentionId         String           @unique @map("mention_id")
   /// "positive" | "neutral" | "negative" | "unknown"
   sentiment         String
-  sentimentScore    Int?     @map("sentiment_score")
+  sentimentScore    Int?             @map("sentiment_score")
   /// "high" | "medium" | "low" | "unknown"
-  repeatIntent      String   @map("repeat_intent")
-  repeatIntentScore Int?     @map("repeat_intent_score")
+  repeatIntent      String           @map("repeat_intent")
+  repeatIntentScore Int?             @map("repeat_intent_score")
   /// マッチしたキーワード（JSON 文字列配列）
-  matchedKeywords   String?  @map("matched_keywords")
-  analyzedAt        DateTime @default(now()) @map("analyzed_at")
-  createdAt         DateTime @default(now()) @map("created_at")
-  updatedAt         DateTime @updatedAt @map("updated_at")
+  matchedKeywords   String?          @map("matched_keywords")
+  analyzedAt        DateTime         @default(now()) @map("analyzed_at")
+  createdAt         DateTime         @default(now()) @map("created_at")
+  updatedAt         DateTime         @updatedAt @map("updated_at")
   mention           XImportedMention @relation(fields: [mentionId], references: [id], onDelete: Cascade)
 
   @@index([oaId])
@@ -732,28 +738,28 @@ model RichMenu {
 }
 
 model RichMenuArea {
-  id          String   @id @default(uuid())
-  richMenuId  String   @map("rich_menu_id")
-  x           Int      @default(0)
-  y           Int      @default(0)
-  width       Int      @default(833)
-  height      Int      @default(843)
+  id            String           @id @default(uuid())
+  richMenuId    String           @map("rich_menu_id")
+  x             Int              @default(0)
+  y             Int              @default(0)
+  width         Int              @default(833)
+  height        Int              @default(843)
   /// "message" | "postback" | "uri"
-  actionType  String   @default("message") @map("action_type")
-  actionLabel String   @default("") @map("action_label")
+  actionType    String           @default("message") @map("action_type")
+  actionLabel   String           @default("") @map("action_label")
   /// message type: text to send; postback displayText
-  actionText  String?  @map("action_text")
+  actionText    String?          @map("action_text")
   /// postback type: postback data string
-  actionData  String?  @map("action_data")
+  actionData    String?          @map("action_data")
   /// uri type: URL to open
-  actionUri       String?          @map("action_uri")
+  actionUri     String?          @map("action_uri")
   /// destination 参照（action_type=uri のとき、直URLの代わりに使用。null = 直URL）
-  destinationId   String?          @map("destination_id")
-  sortOrder       Int              @default(0) @map("sort_order")
-  createdAt       DateTime         @default(now()) @map("created_at")
-  updatedAt       DateTime         @updatedAt @map("updated_at")
-  richMenu        RichMenu         @relation(fields: [richMenuId], references: [id], onDelete: Cascade)
-  destination     LineDestination? @relation(fields: [destinationId], references: [id], onDelete: SetNull)
+  destinationId String?          @map("destination_id")
+  sortOrder     Int              @default(0) @map("sort_order")
+  createdAt     DateTime         @default(now()) @map("created_at")
+  updatedAt     DateTime         @updatedAt @map("updated_at")
+  richMenu      RichMenu         @relation(fields: [richMenuId], references: [id], onDelete: Cascade)
+  destination   LineDestination? @relation(fields: [destinationId], references: [id], onDelete: SetNull)
 
   @@index([richMenuId])
   @@index([sortOrder])
@@ -925,23 +931,23 @@ model Invitation {
 /// 既存 Invitation(メール招待)とは別系統。招待された人は初回登録時に自分でメールを登録する。
 /// セキュリティ: 平文 token は DB に保存せず tokenHash(sha256 hex)のみ保存。URL は発行直後のみ表示。
 model MemberInvite {
-  id                String     @id @default(uuid())
-  oaId              String     @map("oa_id")
-  role              MemberRole @default(viewer)
+  id               String     @id @default(uuid())
+  oaId             String     @map("oa_id")
+  role             MemberRole @default(viewer)
   /// 平文 token の sha256 hex(64 char)。平文は保存しない。
-  tokenHash         String     @unique @map("token_hash")
+  tokenHash        String     @unique @map("token_hash")
   /// 発行者(Supabase Auth userId / owner|admin)
-  createdByUserId   String     @map("created_by_user_id")
+  createdByUserId  String     @map("created_by_user_id")
   /// 受諾したユーザー(Supabase Auth userId)。null = 未受諾。
-  acceptedByUserId  String?    @map("accepted_by_user_id")
-  acceptedAt        DateTime?  @map("accepted_at")
+  acceptedByUserId String?    @map("accepted_by_user_id")
+  acceptedAt       DateTime?  @map("accepted_at")
   /// 無効化日時(null = 有効)
-  revokedAt         DateTime?  @map("revoked_at")
+  revokedAt        DateTime?  @map("revoked_at")
   /// 有効期限(null = 無期限)。既定は発行から 7 日。
-  expiresAt         DateTime?  @map("expires_at")
-  createdAt         DateTime   @default(now()) @map("created_at")
-  updatedAt         DateTime   @updatedAt @map("updated_at")
-  oa                Oa         @relation(fields: [oaId], references: [id], onDelete: Cascade)
+  expiresAt        DateTime?  @map("expires_at")
+  createdAt        DateTime   @default(now()) @map("created_at")
+  updatedAt        DateTime   @updatedAt @map("updated_at")
+  oa               Oa         @relation(fields: [oaId], references: [id], onDelete: Cascade)
 
   @@index([oaId])
   @@index([tokenHash])
@@ -954,31 +960,31 @@ model MemberInvite {
 /// 発行時に「対象 OA・利用区分・プラン権限(課金非連動の付与記録)・ロール・有効期限(発行から7日)」を確定し、
 /// 受諾時に対象 OA へ反映する。平文 token は保存せず token_hash(sha256 hex)のみ保存する。
 model StudioInvite {
-  id                String            @id @default(uuid())
-  oaId              String            @map("oa_id")
+  id               String            @id @default(uuid())
+  oaId             String            @map("oa_id")
   /// 付与する利用区分(個人 / 法人)。受諾時に対象 Oa.usageType へ反映する。
-  usageType         BusinessUsageType @map("usage_type")
+  usageType        BusinessUsageType @map("usage_type")
   /// 付与するプラン権限の snapshot(= 課金非連動の grant 記録)。値は PlanTier("basic"|"standard"|"plus"|"pro"|"delegated")。
   /// Stripe の subscription / price / checkout / webhook には一切連動しない(= 実課金は既存フローに委譲)。
-  planTier          String            @map("plan_tier")
+  planTier         String            @map("plan_tier")
   /// 付与するロール。owner は URL 招待で配らない(発行 API 側 zod で除外)。
-  role              MemberRole        @default(viewer)
+  role             MemberRole        @default(viewer)
   /// 平文 token の sha256 hex(64 char)。平文は保存しない。
-  tokenHash         String            @unique @map("token_hash")
+  tokenHash        String            @unique @map("token_hash")
   /// 任意メモ(発行先の用途など)。
-  note              String?
+  note             String?
   /// 発行者(Supabase Auth userId / 対象 OA の owner|admin もしくは platform owner)。
-  createdByUserId   String            @map("created_by_user_id")
+  createdByUserId  String            @map("created_by_user_id")
   /// 受諾したユーザー(Supabase Auth userId)。null = 未受諾。
-  acceptedByUserId  String?           @map("accepted_by_user_id")
-  acceptedAt        DateTime?         @map("accepted_at")
+  acceptedByUserId String?           @map("accepted_by_user_id")
+  acceptedAt       DateTime?         @map("accepted_at")
   /// 無効化日時(null = 有効)。
-  revokedAt         DateTime?         @map("revoked_at")
+  revokedAt        DateTime?         @map("revoked_at")
   /// 有効期限。発行から 7 日。期限切れは受諾不可。
-  expiresAt         DateTime          @map("expires_at")
-  createdAt         DateTime          @default(now()) @map("created_at")
-  updatedAt         DateTime          @updatedAt @map("updated_at")
-  oa                Oa                @relation(fields: [oaId], references: [id], onDelete: Cascade)
+  expiresAt        DateTime          @map("expires_at")
+  createdAt        DateTime          @default(now()) @map("created_at")
+  updatedAt        DateTime          @updatedAt @map("updated_at")
+  oa               Oa                @relation(fields: [oaId], references: [id], onDelete: Cascade)
 
   @@index([oaId])
   @@index([tokenHash])
@@ -1253,22 +1259,22 @@ model Plan {
 ///   4. 処理失敗時に status="failed" + errorMessage セット (= Stripe には 200 を返して
 ///      再送ループを防ぎ、失敗内容は本テーブル + サーバログから後追い確認できる)
 model StripeWebhookEvent {
-  id             String    @id @default(uuid())
+  id            String    @id @default(uuid())
   /// Stripe の event.id (evt_xxx)。再送検知のキー。
-  stripeEventId  String    @unique @map("stripe_event_id")
+  stripeEventId String    @unique @map("stripe_event_id")
   /// Stripe の event.type (例: "checkout.session.completed")。
-  eventType      String    @map("event_type")
+  eventType     String    @map("event_type")
   /// 処理ステータス。
   ///   "received"  — 受信直後 (= reserve、処理中 or 処理失敗で update されないと残る)
   ///   "processed" — 処理成功
   ///   "failed"    — 処理失敗 (= errorMessage に詳細を残す)
-  status         String    @default("received")
+  status        String    @default("received")
   /// 処理失敗時のエラーメッセージ (= 管理者が後から確認するため)。
-  errorMessage   String?   @map("error_message")
+  errorMessage  String?   @map("error_message")
   /// 受信時刻 (= reserve 時に自動セット)。
-  receivedAt     DateTime  @default(now()) @map("received_at")
+  receivedAt    DateTime  @default(now()) @map("received_at")
   /// 処理完了時刻 (= 成功 / 失敗どちらでもセット)。received のままなら null。
-  processedAt    DateTime? @map("processed_at")
+  processedAt   DateTime? @map("processed_at")
 
   @@index([eventType])
   @@index([status])
@@ -1311,29 +1317,29 @@ model Subscription {
 // ────────────────────────────────────────────────
 
 model LineDestination {
-  id                String   @id @default(uuid())
-  workId            String   @map("work_id")
+  id              String         @id @default(uuid())
+  workId          String         @map("work_id")
   /// プログラム参照用キー（英数字・ハイフン・アンダースコア）。work 内で unique
-  key               String
+  key             String
   /// 管理画面上の表示名
-  name              String
-  description       String?
+  name            String
+  description     String?
   /// "liff" | "internal_url" | "external_url"
-  destinationType   String   @map("destination_type")
+  destinationType String         @map("destination_type")
   /// destination_type=liff のとき有効: "work_main" | "custom"
-  liffTargetType    String?  @map("liff_target_type")
+  liffTargetType  String?        @map("liff_target_type")
   /// 遷移先URLまたはパス
-  urlOrPath         String?  @map("url_or_path")
+  urlOrPath       String?        @map("url_or_path")
   /// 追加クエリパラメータ（JSONB）
-  queryParamsJson   Json     @default("{}") @map("query_params_json") @db.JsonB
-  isEnabled         Boolean  @default(true) @map("is_enabled")
-  createdAt         DateTime @default(now()) @map("created_at")
-  updatedAt         DateTime @updatedAt @map("updated_at")
-  work              Work     @relation(fields: [workId], references: [id], onDelete: Cascade)
+  queryParamsJson Json           @default("{}") @map("query_params_json") @db.JsonB
+  isEnabled       Boolean        @default(true) @map("is_enabled")
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+  work            Work           @relation(fields: [workId], references: [id], onDelete: Cascade)
   /// この destination を参照しているメッセージ（逆参照）
-  messages          Message[]
+  messages        Message[]
   /// この destination を参照しているリッチメニューエリア（逆参照）
-  richMenuAreas     RichMenuArea[]
+  richMenuAreas   RichMenuArea[]
 
   @@unique([workId, key])
   @@index([workId])
@@ -1352,44 +1358,44 @@ model LineDestination {
 // 重要導線では QR / GPS の代替導線を併用する想定。
 
 model BeaconTrigger {
-  id              String   @id @default(uuid())
-  oaId            String   @map("oa_id")
+  id                 String    @id @default(uuid())
+  oaId               String    @map("oa_id")
   /// 任意の所属作品（作品スコープでアクションを実行したい場合）
-  workId          String?  @map("work_id")
+  workId             String?   @map("work_id")
   /// 任意の紐づけ地点(Location.id)。設定すると、この beacon 検知時に
   /// 「送信後の待機トリガー(CheckinWaitTrigger)」をこの地点で照合・消化できる（地点到着で自動進行）。
   /// 既存 BeaconTrigger アクションとは独立。null = 待機トリガー連携なし（従来どおり）。
-  locationId      String?  @map("location_id")
-  name            String
+  locationId         String?   @map("location_id")
+  name               String
   /// 正規化済み HWID（小文字英数字のみ）
-  hwid            String
-  enabled         Boolean  @default(true)
+  hwid               String
+  enabled            Boolean   @default(true)
   /// 発火対象イベント種別（CSV）。MVP では "enter" のみサポート
-  eventTypes      String   @default("enter") @map("event_types")
+  eventTypes         String    @default("enter") @map("event_types")
   /// 同一ユーザー × 同一トリガーの再発火防止（秒）。デフォルト 300 = 5 分
-  cooldownSeconds Int      @default(300) @map("cooldown_seconds")
+  cooldownSeconds    Int       @default(300) @map("cooldown_seconds")
   /// 同一ユーザーには1回だけ発火する（成功ログが1件でもあれば以降スキップ）
-  oncePerUser     Boolean  @default(false) @map("once_per_user")
+  oncePerUser        Boolean   @default(false) @map("once_per_user")
   /// 同一ユーザーへの最大発火回数（null = 無制限）
-  maxTriggersPerUser Int?  @map("max_triggers_per_user")
+  maxTriggersPerUser Int?      @map("max_triggers_per_user")
   /// 有効期間の開始（null = 制限なし）。これより前は発火しない
-  validFrom       DateTime? @map("valid_from")
+  validFrom          DateTime? @map("valid_from")
   /// 有効期間の終了（null = 制限なし）。これより後は発火しない
-  validTo         DateTime? @map("valid_to")
+  validTo            DateTime? @map("valid_to")
   /// 運用メモ（任意・管理画面表示用）
-  note            String?
+  note               String?
   /// アクション種別: "message" | "send_message" | "destination" | "noop"
-  actionType      String   @map("action_type")
+  actionType         String    @map("action_type")
   /// アクション固有の payload（JSON）
   /// - message:       { message_id: string }（登録済みメッセージ/チェーンを送信）
   /// - send_message:  { text: string }
   /// - destination:   { destination_id: string, text?: string }
-  actionPayload   Json?    @map("action_payload") @db.JsonB
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
+  actionPayload      Json?     @map("action_payload") @db.JsonB
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
 
-  events          BeaconEventLog[]
-  location        Location?        @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  events   BeaconEventLog[]
+  location Location?        @relation(fields: [locationId], references: [id], onDelete: SetNull)
 
   @@unique([oaId, hwid])
   @@index([oaId])
@@ -1424,7 +1430,7 @@ model BeaconEventLog {
   rawEvent        Json?    @map("raw_event") @db.JsonB
   createdAt       DateTime @default(now()) @map("created_at")
 
-  beaconTrigger   BeaconTrigger? @relation(fields: [beaconTriggerId], references: [id], onDelete: SetNull)
+  beaconTrigger BeaconTrigger? @relation(fields: [beaconTriggerId], references: [id], onDelete: SetNull)
 
   @@index([oaId, hwid])
   @@index([lineUserId])
@@ -1437,53 +1443,53 @@ model BeaconEventLog {
 // ────────────────────────────────────────────────
 
 model Location {
-  id              String          @id @default(uuid())
+  id                  String               @id @default(uuid())
   /// 公開 URL 用の短縮 ID (10 文字、a-z + 0-9)。チェックイン URL で使う。
-  publicId        String          @unique @default(dbgenerated("gen_unique_public_id('locations'::text)")) @map("public_id")
-  workId          String          @map("work_id")
-  name            String
-  description     String?
+  publicId            String               @unique @default(dbgenerated("gen_unique_public_id('locations'::text)")) @map("public_id")
+  workId              String               @map("work_id")
+  name                String
+  description         String?
   /// Bluetooth ビーコン UUID（任意 — 未設定時は QR コードのみ）
-  beaconUuid      String?         @map("beacon_uuid")
-  beaconMajor     Int?            @map("beacon_major")
-  beaconMinor     Int?            @map("beacon_minor")
+  beaconUuid          String?              @map("beacon_uuid")
+  beaconMajor         Int?                 @map("beacon_major")
+  beaconMinor         Int?                 @map("beacon_minor")
   /// GPS チェックイン: 緯度
-  latitude        Float?
+  latitude            Float?
   /// GPS チェックイン: 経度
-  longitude       Float?
+  longitude           Float?
   /// GPS チェックイン: 許容半径（メートル）
-  radiusMeters    Int?            @map("radius_meters")
+  radiusMeters        Int?                 @map("radius_meters")
   /// @deprecated checkinMode から導出される。将来削除予定。
   /// 削除条件: (1) API レスポンスから gps_enabled を除外 (2) 旧クライアント互換が不要
   /// 現在は checkinMode 保存時に deriveGpsEnabled() で自動同期される。
-  gpsEnabled      Boolean         @default(false) @map("gps_enabled")
+  gpsEnabled          Boolean              @default(false) @map("gps_enabled")
   /// チェックイン方式: "qr_only" | "gps_only" | "qr_and_gps"
-  checkinMode     String          @default("qr_only") @map("checkin_mode")
+  checkinMode         String               @default("qr_only") @map("checkin_mode")
   /// チェックインのクールダウン秒数（同一ユーザー×同一ロケーション）。デフォルト 300 = 5分
-  cooldownSeconds Int             @default(300) @map("cooldown_seconds")
+  cooldownSeconds     Int                  @default(300) @map("cooldown_seconds")
   /// チェックイン時に自動発火する遷移（任意）
-  transitionId    String?         @map("transition_id")
+  transitionId        String?              @map("transition_id")
   /// QR 読み取り成功時に LINE push 送信するメッセージ（任意 / null = 未設定）。
   /// 設定されていない場合、QR 成功 API は message_not_configured を返し送信しない。
-  qrSuccessMessageId String?      @map("qr_success_message_id")
+  qrSuccessMessageId  String?              @map("qr_success_message_id")
   /// チェックイン時に UserProgress.flags へマージする JSON オブジェクト
-  setFlags        String          @default("{}") @map("set_flags")
-  sortOrder       Int             @default(0) @map("sort_order")
-  isActive        Boolean         @default(true) @map("is_active")
+  setFlags            String               @default("{}") @map("set_flags")
+  sortOrder           Int                  @default(0) @map("sort_order")
+  isActive            Boolean              @default(true) @map("is_active")
   /// スタンプラリー: この地点をスタンプ対象にするか
-  stampEnabled    Boolean         @default(true) @map("stamp_enabled")
+  stampEnabled        Boolean              @default(true) @map("stamp_enabled")
   /// スタンプ表示名（未設定なら name を使用）
-  stampLabel      String?         @map("stamp_label")
+  stampLabel          String?              @map("stamp_label")
   /// スタンプ並び順
-  stampOrder      Int?            @map("stamp_order")
-  createdAt       DateTime        @default(now()) @map("created_at")
-  updatedAt       DateTime        @updatedAt @map("updated_at")
-  work             Work            @relation(fields: [workId], references: [id], onDelete: Cascade)
-  transition       Transition?     @relation(fields: [transitionId], references: [id], onDelete: SetNull)
-  qrSuccessMessage Message?        @relation("LocationQrSuccessMessage", fields: [qrSuccessMessageId], references: [id], onDelete: SetNull)
-  visits           LocationVisit[]
+  stampOrder          Int?                 @map("stamp_order")
+  createdAt           DateTime             @default(now()) @map("created_at")
+  updatedAt           DateTime             @updatedAt @map("updated_at")
+  work                Work                 @relation(fields: [workId], references: [id], onDelete: Cascade)
+  transition          Transition?          @relation(fields: [transitionId], references: [id], onDelete: SetNull)
+  qrSuccessMessage    Message?             @relation("LocationQrSuccessMessage", fields: [qrSuccessMessageId], references: [id], onDelete: SetNull)
+  visits              LocationVisit[]
   checkinWaitTriggers CheckinWaitTrigger[]
-  beaconTriggers   BeaconTrigger[]
+  beaconTriggers      BeaconTrigger[]
 
   @@index([workId])
   @@index([beaconUuid, beaconMajor, beaconMinor])
@@ -1587,16 +1593,16 @@ model ScheduledLineMessage {
 }
 
 model LocationVisit {
-  id              String   @id @default(uuid())
-  lineUserId      String   @map("line_user_id")
-  locationId      String   @map("location_id")
-  workId          String   @map("work_id")
+  id             String   @id @default(uuid())
+  lineUserId     String   @map("line_user_id")
+  locationId     String   @map("location_id")
+  workId         String   @map("work_id")
   /// チェックイン方式: "qr" | "gps" | "beacon"
-  checkinMethod   String   @default("qr") @map("checkin_method")
+  checkinMethod  String   @default("qr") @map("checkin_method")
   /// GPS チェックイン時の実測距離（メートル）
-  distanceMeters  Float?   @map("distance_meters")
-  visitedAt       DateTime @default(now()) @map("visited_at")
-  location        Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  distanceMeters Float?   @map("distance_meters")
+  visitedAt      DateTime @default(now()) @map("visited_at")
+  location       Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
 
   @@index([lineUserId, locationId])
   @@index([workId])
@@ -1640,26 +1646,26 @@ model CheckinAttempt {
 // ────────────────────────────────────────────────
 
 model LiffPageConfig {
-  id          String          @id @default(uuid())
+  id             String           @id @default(uuid())
   /// 公開 URL 用の短縮 ID (10 文字、a-z + 0-9)。LIFF プレイヤー URL で使う。
-  publicId    String          @unique @default(dbgenerated("gen_unique_public_id('liff_page_configs'::text)")) @map("public_id")
-  workId      String          @map("work_id")
-  isEnabled   Boolean         @default(false) @map("is_enabled")
+  publicId       String           @unique @default(dbgenerated("gen_unique_public_id('liff_page_configs'::text)")) @map("public_id")
+  workId         String           @map("work_id")
+  isEnabled      Boolean          @default(false) @map("is_enabled")
   /// 一覧表示や公開ページのタイトル。最大 10 文字（バリデーション側で制御）。
-  title       String?
-  description String?
+  title          String?
+  description    String?
   /// "default" | "hint" | "faq" | "survey" | "location"。旧 "hint_site" は "hint" として正規化。
-  pageType    String          @default("default") @map("page_type")
+  pageType       String           @default("default") @map("page_type")
   /// "draft" | "published" | "archived"
-  publishStatus String        @default("draft") @map("publish_status")
+  publishStatus  String           @default("draft") @map("publish_status")
   /// ページ全体の設定（ヘッダー / テーマ / シェアボタン / 各モード固有設定など）。詳細は LiffPageConfigSettings 型を参照。
-  settingsJson Json           @default("{}") @map("settings_json") @db.JsonB
-  createdAt   DateTime        @default(now()) @map("created_at")
-  updatedAt   DateTime        @updatedAt @map("updated_at")
-  blocks      LiffPageBlock[]
+  settingsJson   Json             @default("{}") @map("settings_json") @db.JsonB
+  createdAt      DateTime         @default(now()) @map("created_at")
+  updatedAt      DateTime         @updatedAt @map("updated_at")
+  blocks         LiffPageBlock[]
   werewolfTitles WerewolfTitle[]
-  submissions LiffSubmission[]
-  work        Work            @relation(fields: [workId], references: [id], onDelete: Cascade)
+  submissions    LiffSubmission[]
+  work           Work             @relation(fields: [workId], references: [id], onDelete: Cascade)
 
   @@index([workId])
   @@index([pageType])
@@ -1675,23 +1681,23 @@ model LiffPageConfig {
 ///   - 詳細メタデータ (button label / location id / hint index 等) は metadataJson に格納
 ///   - 不正な ID は API 層で弾く想定なので、本テーブルへの FK 違反は基本起きない構造
 model LiffEventLog {
-  id                String   @id @default(uuid())
-  workId            String   @map("work_id")
+  id               String   @id @default(uuid())
+  workId           String   @map("work_id")
   /// 対象 LIFF ページ ID。page_view / block_view / button_click / hint_open / faq_open / survey_submit で必須に近い。
   /// checkin_success / checkin_failed は location 起点のため null になることがある。
-  liffPageConfigId  String?  @map("liff_page_config_id")
+  liffPageConfigId String?  @map("liff_page_config_id")
   /// 対象ブロック ID。block 起点のイベント (button_click, hint_open, faq_open) で入る。
-  liffPageBlockId   String?  @map("liff_page_block_id")
+  liffPageBlockId  String?  @map("liff_page_block_id")
   /// LINE ユーザー ID。LIFF SDK で取得できた場合のみ入る。
-  lineUserId        String?  @map("line_user_id")
+  lineUserId       String?  @map("line_user_id")
   /// イベント種別。"page_view" | "block_view" | "button_click" | "hint_open" | "faq_open"
   ///                | "survey_submit" | "checkin_success" | "checkin_failed"
-  eventType         String   @map("event_type")
+  eventType        String   @map("event_type")
   /// 追加メタデータ (button label, click url, locationId, questionId, hintIndex, distance 等)
-  metadataJson      Json?    @map("metadata_json") @db.JsonB
-  createdAt         DateTime @default(now()) @map("created_at")
+  metadataJson     Json?    @map("metadata_json") @db.JsonB
+  createdAt        DateTime @default(now()) @map("created_at")
 
-  work              Work     @relation(fields: [workId], references: [id], onDelete: Cascade)
+  work Work @relation(fields: [workId], references: [id], onDelete: Cascade)
 
   @@index([workId])
   @@index([liffPageConfigId])
@@ -1706,12 +1712,12 @@ model LiffEventLog {
 /// LIFF Survey モードの回答を 1 回 1 行で保存する。
 /// answersJson は質問 id をキー、回答値（string | string[]）を value にもつオブジェクト。
 model LiffSurveyResponse {
-  id           String   @id @default(uuid())
-  workId       String   @map("work_id")
-  lineUserId   String?  @map("line_user_id")
-  answersJson  Json     @map("answers_json") @db.JsonB
-  submittedAt  DateTime @default(now()) @map("submitted_at")
-  work         Work     @relation(fields: [workId], references: [id], onDelete: Cascade)
+  id          String   @id @default(uuid())
+  workId      String   @map("work_id")
+  lineUserId  String?  @map("line_user_id")
+  answersJson Json     @map("answers_json") @db.JsonB
+  submittedAt DateTime @default(now()) @map("submitted_at")
+  work        Work     @relation(fields: [workId], references: [id], onDelete: Cascade)
 
   @@index([workId])
   @@index([lineUserId])
@@ -1737,9 +1743,9 @@ model LiffSubmission {
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
-  oa          Oa             @relation(fields: [oaId], references: [id], onDelete: Cascade)
-  work        Work           @relation(fields: [workId], references: [id], onDelete: Cascade)
-  liffPage    LiffPageConfig @relation(fields: [liffPageId], references: [id], onDelete: Cascade)
+  oa       Oa             @relation(fields: [oaId], references: [id], onDelete: Cascade)
+  work     Work           @relation(fields: [workId], references: [id], onDelete: Cascade)
+  liffPage LiffPageConfig @relation(fields: [liffPageId], references: [id], onDelete: Cascade)
 
   @@index([oaId])
   @@index([workId])
@@ -1787,33 +1793,33 @@ model LiffPageBlock {
 /// 人狼モードの 1 ゲーム単位 (例: "テストプレイA卓" "第1ゲーム")。
 /// 1 LiffPageConfig(pageType="werewolf") 配下に複数並ぶ想定。
 model WerewolfTitle {
-  id               String   @id @default(uuid())
+  id               String @id @default(uuid())
   /// GM 操作用の短縮 ID (10 文字)。CMS 内 URL や CSV 出力で使う。
   /// プレイヤーが直接見る URL は使わない (= slot.token を使う)。
-  publicId         String   @unique @default(dbgenerated("gen_unique_public_id('werewolf_titles'::text)")) @map("public_id")
-  liffPageConfigId String   @map("liff_page_config_id")
+  publicId         String @unique @default(dbgenerated("gen_unique_public_id('werewolf_titles'::text)")) @map("public_id")
+  liffPageConfigId String @map("liff_page_config_id")
   /// LiffPageConfig 経由でも引けるが、work 横断クエリ (e.g. 作品の全ゲーム一覧) を高速化するため冗長保存。
-  workId           String   @map("work_id")
+  workId           String @map("work_id")
 
-  title            String
-  description      String?
+  title       String
+  description String?
   /// プレイ予定日時 (null 可、後から記入できる)
-  scheduledAt      DateTime? @map("scheduled_at")
+  scheduledAt DateTime? @map("scheduled_at")
   /// プレイヤー人数。スロット数と一致する (POST 時に slots を auto-generate するロジックで担保)
-  playerCount      Int      @default(0) @map("player_count")
+  playerCount Int       @default(0) @map("player_count")
   /// false = 開始前 (プレイヤーは閲覧不可)、true = 開始済み
-  isStarted        Boolean  @default(false) @map("is_started")
+  isStarted   Boolean   @default(false) @map("is_started")
   /// 開始した日時 (監査用、null = 未開始)
-  startedAt        DateTime? @map("started_at")
+  startedAt   DateTime? @map("started_at")
   /// CMS 上での並び順 (一覧で上から順に並ぶ)
-  sortOrder        Int      @default(0) @map("sort_order")
+  sortOrder   Int       @default(0) @map("sort_order")
 
-  createdAt        DateTime @default(now()) @map("created_at")
-  updatedAt        DateTime @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
-  pageConfig       LiffPageConfig     @relation(fields: [liffPageConfigId], references: [id], onDelete: Cascade)
-  work             Work               @relation(fields: [workId], references: [id], onDelete: Cascade)
-  slots            WerewolfRoleSlot[]
+  pageConfig LiffPageConfig     @relation(fields: [liffPageConfigId], references: [id], onDelete: Cascade)
+  work       Work               @relation(fields: [workId], references: [id], onDelete: Cascade)
+  slots      WerewolfRoleSlot[]
 
   @@index([liffPageConfigId])
   @@index([workId])
@@ -1824,21 +1830,21 @@ model WerewolfTitle {
 /// 1 タイトルに対する 1 プレイヤー分の "配役スロット"。
 /// QR の 1 単位。token は不可逆な短縮 ID (URL 直叩きで他 slot を推測できないように publicId とは別の opaque な値を発行する)。
 model WerewolfRoleSlot {
-  id          String   @id @default(uuid())
-  titleId     String   @map("title_id")
+  id         String  @id @default(uuid())
+  titleId    String  @map("title_id")
   /// プレイヤー番号 (1-N、表示順)
-  slotNumber  Int      @map("slot_number")
+  slotNumber Int     @map("slot_number")
   /// GM が付ける管理用ラベル (例: "プレイヤー1" / "Aさん"). プレイヤーには表示しない。
-  label       String?
+  label      String?
   /// QR / URL に使う opaque token (10 文字、a-z+0-9)。slotNumber と分離することで
   /// URL を見ても他の slot を推測できないようにする。
-  token       String   @unique @default(dbgenerated("gen_unique_public_id('werewolf_role_slots'::text)")) @map("token")
+  token      String  @unique @default(dbgenerated("gen_unique_public_id('werewolf_role_slots'::text)")) @map("token")
 
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
-  title       WerewolfTitle      @relation(fields: [titleId], references: [id], onDelete: Cascade)
-  cards       WerewolfRoleCard[]
+  title WerewolfTitle      @relation(fields: [titleId], references: [id], onDelete: Cascade)
+  cards WerewolfRoleCard[]
 
   /// (title_id, slot_number) でユニーク。1 タイトル内で番号重複を許さない。
   @@unique([titleId, slotNumber])
@@ -1849,23 +1855,23 @@ model WerewolfRoleSlot {
 /// 1 slot に並ぶ配役カード。1 slot に複数枚並べられる
 /// (例: "守護騎士" カード + "賢者の水晶" カード のように役職 + 所持アイテム)。
 model WerewolfRoleCard {
-  id          String   @id @default(uuid())
-  slotId      String   @map("slot_id")
+  id         String  @id @default(uuid())
+  slotId     String  @map("slot_id")
   /// カード上の見出し (例: "守護騎士" / "賢者の水晶")
-  title       String
+  title      String
   /// カード上のサブテキスト (例: "あなたは……") — null 可
-  subtitle    String?
+  subtitle   String?
   /// 小さなバッジ表示 (例: "役職" / "アイテム") — null 可
-  badgeLabel  String?  @map("badge_label")
+  badgeLabel String? @map("badge_label")
   /// 本文 (改行 OK)。役職の能力説明などを書く。
-  body        String
+  body       String
   /// slot 内での並び順 (小さい順、同値は createdAt 昇順)
-  sortOrder   Int      @default(0) @map("sort_order")
+  sortOrder  Int     @default(0) @map("sort_order")
 
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
-  slot        WerewolfRoleSlot @relation(fields: [slotId], references: [id], onDelete: Cascade)
+  slot WerewolfRoleSlot @relation(fields: [slotId], references: [id], onDelete: Cascade)
 
   @@index([slotId])
   @@map("werewolf_role_cards")
@@ -1978,21 +1984,21 @@ enum PolicyDocumentType {
 }
 
 model PolicyDocumentVersion {
-  id           String             @id @default(uuid())
-  type         PolicyDocumentType
-  version      String
-  title        String
-  body         String
+  id          String             @id @default(uuid())
+  type        PolicyDocumentType
+  version     String
+  title       String
+  body        String
   /// 表示用「最終更新日」(= "2026年5月26日" 等の自由文字列)
-  lastUpdated  String?            @map("last_updated")
+  lastUpdated String?            @map("last_updated")
   /// 表示用「施行日」(= "2026年5月26日" 等の自由文字列)
-  effectiveAt  String?            @map("effective_at")
+  effectiveAt String?            @map("effective_at")
   /// 現在公開中かどうか。同 type 内で true は 1 行のみが運用上の不変条件。
-  isPublished  Boolean            @default(false) @map("is_published")
-  publishedAt  DateTime?          @map("published_at")
-  createdBy    String?            @map("created_by")
-  createdAt    DateTime           @default(now()) @map("created_at")
-  updatedAt    DateTime           @updatedAt        @map("updated_at")
+  isPublished Boolean            @default(false) @map("is_published")
+  publishedAt DateTime?          @map("published_at")
+  createdBy   String?            @map("created_by")
+  createdAt   DateTime           @default(now()) @map("created_at")
+  updatedAt   DateTime           @updatedAt @map("updated_at")
 
   @@unique([type, version])
   @@index([type, isPublished])
@@ -2022,31 +2028,31 @@ enum OaOnboardingStatus {
 ///   channel_secret / channel_access_token は現状平文で保存している（既存 Oa と同水準）。
 ///   将来的に暗号化する場合は専用の secret-store にこのテーブル分も合わせて移行する。
 model OaOnboardingRequest {
-  id              String             @id @default(uuid())
-  userId          String             @map("user_id")
+  id     String             @id @default(uuid())
+  userId String             @map("user_id")
   /// 承認時に作成された Oa.id。それ以前は null。
-  oaId            String?            @map("oa_id")
-  status          OaOnboardingStatus @default(DRAFT)
+  oaId   String?            @map("oa_id")
+  status OaOnboardingStatus @default(DRAFT)
 
   /// Step 2 の入力（OA 連携情報）。
-  oaName          String?            @map("oa_name")
-  channelId       String?            @map("channel_id")
-  channelSecret   String?            @map("channel_secret")
-  channelToken    String?            @map("channel_access_token")
-  basicId         String?            @map("basic_id")
-  liffId          String?            @map("liff_id")
+  oaName        String? @map("oa_name")
+  channelId     String? @map("channel_id")
+  channelSecret String? @map("channel_secret")
+  channelToken  String? @map("channel_access_token")
+  basicId       String? @map("basic_id")
+  liffId        String? @map("liff_id")
 
   /// Step 3 で提出された権限URL（運営が確認に使う）。
-  permissionUrl   String?            @map("permission_url")
-  submittedAt     DateTime?          @map("submitted_at")
+  permissionUrl String?   @map("permission_url")
+  submittedAt   DateTime? @map("submitted_at")
 
   /// 承認 / 差し戻しの記録。
-  reviewedAt      DateTime?          @map("reviewed_at")
-  reviewedBy      String?            @map("reviewed_by")
-  reviewNote      String?            @map("review_note")
+  reviewedAt DateTime? @map("reviewed_at")
+  reviewedBy String?   @map("reviewed_by")
+  reviewNote String?   @map("review_note")
 
-  createdAt       DateTime           @default(now()) @map("created_at")
-  updatedAt       DateTime           @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   @@index([userId])
   @@index([status])
@@ -2148,33 +2154,33 @@ model LiveSession {
 /// lineUserId は LINE 連携した場合のみ。displayName で匿名管理も可能。
 /// memo は Admin が自由に追記する管理メモ（= 連絡先・特記事項・接触メモ等）。
 model LiveParticipant {
-  id             String                @id @default(uuid())
-  oaId           String                @map("oa_id")
-  liveSessionId  String                @map("live_session_id")
+  id                String                @id @default(uuid())
+  oaId              String                @map("oa_id")
+  liveSessionId     String                @map("live_session_id")
   /// Phase 2-G: 同じ回の中で参加者をグループ化する単位 (= LiveTeam 参照)。
   /// onDelete: SetNull で「チームを消しても participant は残す」運用に。
-  teamId         String?               @map("team_id")
-  displayName    String?               @map("display_name")
-  lineUserId     String?               @map("line_user_id")
-  status         LiveParticipantStatus @default(waiting)
+  teamId            String?               @map("team_id")
+  displayName       String?               @map("display_name")
+  lineUserId        String?               @map("line_user_id")
+  status            LiveParticipantStatus @default(waiting)
   /// Phase 2-G: 現在ステップを Work の Phase に紐付ける場合に設定。
   /// 既存 free-text currentStep は legacy fallback として残す (= 旧データ温存)。
-  currentPhaseId String?               @map("current_phase_id")
-  currentStep    String?               @map("current_step")
+  currentPhaseId    String?               @map("current_phase_id")
+  currentStep       String?               @map("current_step")
   /// Phase 2-G: チケットサイト由来の予約番号 / 注文番号。CSV import の dedup key。
-  reservationNumber String?            @map("reservation_number")
-  memo           String?
-  lastSeenAt     DateTime?             @map("last_seen_at")
-  createdAt      DateTime              @default(now()) @map("created_at")
-  updatedAt      DateTime              @updatedAt @map("updated_at")
+  reservationNumber String?               @map("reservation_number")
+  memo              String?
+  lastSeenAt        DateTime?             @map("last_seen_at")
+  createdAt         DateTime              @default(now()) @map("created_at")
+  updatedAt         DateTime              @updatedAt @map("updated_at")
 
-  oa             Oa                    @relation(fields: [oaId], references: [id], onDelete: Cascade)
-  liveSession    LiveSession           @relation(fields: [liveSessionId], references: [id], onDelete: Cascade)
-  team           LiveTeam?             @relation(fields: [teamId], references: [id], onDelete: SetNull)
-  currentPhase   Phase?                @relation("LiveParticipantCurrentPhase", fields: [currentPhaseId], references: [id], onDelete: SetNull)
-  eventLogs      LiveEventLog[]
-  assignments    LiveAssignment[]
-  instructions   LiveActorInstruction[]
+  oa           Oa                     @relation(fields: [oaId], references: [id], onDelete: Cascade)
+  liveSession  LiveSession            @relation(fields: [liveSessionId], references: [id], onDelete: Cascade)
+  team         LiveTeam?              @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  currentPhase Phase?                 @relation("LiveParticipantCurrentPhase", fields: [currentPhaseId], references: [id], onDelete: SetNull)
+  eventLogs    LiveEventLog[]
+  assignments  LiveAssignment[]
+  instructions LiveActorInstruction[]
 
   @@index([liveSessionId, createdAt])
   @@index([liveSessionId, status])
@@ -2197,9 +2203,9 @@ model LiveTeam {
   createdAt         DateTime @default(now()) @map("created_at")
   updatedAt         DateTime @updatedAt @map("updated_at")
 
-  oa                Oa                @relation(fields: [oaId], references: [id], onDelete: Cascade)
-  liveSession       LiveSession       @relation(fields: [liveSessionId], references: [id], onDelete: Cascade)
-  participants      LiveParticipant[]
+  oa           Oa                @relation(fields: [oaId], references: [id], onDelete: Cascade)
+  liveSession  LiveSession       @relation(fields: [liveSessionId], references: [id], onDelete: Cascade)
+  participants LiveParticipant[]
 
   @@index([liveSessionId, createdAt])
   @@index([liveSessionId, reservationNumber])
@@ -2210,19 +2216,19 @@ model LiveTeam {
 /// Live セッション中のイベントログ（QR スキャン / チェックイン / 詰まり / アラート 等）。
 /// liveSessionId / participantId はどちらも nullable（= OA 単位のイベントも記録可能）。
 model LiveEventLog {
-  id             String           @id @default(uuid())
-  oaId           String           @map("oa_id")
-  liveSessionId  String?          @map("live_session_id")
-  participantId  String?          @map("participant_id")
-  type           LiveEventType
-  title          String
-  detail         String?
-  payload        Json?
-  createdAt      DateTime         @default(now()) @map("created_at")
+  id            String        @id @default(uuid())
+  oaId          String        @map("oa_id")
+  liveSessionId String?       @map("live_session_id")
+  participantId String?       @map("participant_id")
+  type          LiveEventType
+  title         String
+  detail        String?
+  payload       Json?
+  createdAt     DateTime      @default(now()) @map("created_at")
 
-  oa             Oa               @relation(fields: [oaId], references: [id], onDelete: Cascade)
-  liveSession    LiveSession?     @relation(fields: [liveSessionId], references: [id], onDelete: SetNull)
-  participant    LiveParticipant? @relation(fields: [participantId], references: [id], onDelete: SetNull)
+  oa          Oa               @relation(fields: [oaId], references: [id], onDelete: Cascade)
+  liveSession LiveSession?     @relation(fields: [liveSessionId], references: [id], onDelete: SetNull)
+  participant LiveParticipant? @relation(fields: [participantId], references: [id], onDelete: SetNull)
 
   @@index([liveSessionId, createdAt])
   @@index([participantId, createdAt])
@@ -2261,7 +2267,7 @@ model LiveActor {
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
 
-  oa            Oa       @relation(fields: [oaId], references: [id], onDelete: Cascade)
+  oa           Oa                     @relation(fields: [oaId], references: [id], onDelete: Cascade)
   assignments  LiveAssignment[]
   instructions LiveActorInstruction[]
   cues         LiveCue[]
@@ -2277,17 +2283,17 @@ model LiveActor {
 /// 平文 token を受諾時に同じ方式で hash → 一致する row を検索する。
 /// 有効性は (expiresAt > now()) AND (usedAt IS NULL) AND (revokedAt IS NULL)。
 model LiveActorInvite {
-  id                String    @id @default(uuid())
-  oaId              String    @map("oa_id")
-  actorId           String    @map("actor_id")
+  id              String    @id @default(uuid())
+  oaId            String    @map("oa_id")
+  actorId         String    @map("actor_id")
   /// sha256 hex 表現の token hash (= 64 char hex)。平文 token は保存しない。
-  tokenHash         String    @unique @map("token_hash")
-  expiresAt         DateTime? @map("expires_at")
-  usedAt            DateTime? @map("used_at")
-  revokedAt         DateTime? @map("revoked_at")
-  createdByUserId   String?   @map("created_by_user_id")
-  createdAt         DateTime  @default(now()) @map("created_at")
-  updatedAt         DateTime  @updatedAt @map("updated_at")
+  tokenHash       String    @unique @map("token_hash")
+  expiresAt       DateTime? @map("expires_at")
+  usedAt          DateTime? @map("used_at")
+  revokedAt       DateTime? @map("revoked_at")
+  createdByUserId String?   @map("created_by_user_id")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
 
   oa    Oa        @relation(fields: [oaId], references: [id], onDelete: Cascade)
   actor LiveActor @relation(fields: [actorId], references: [id], onDelete: Cascade)
@@ -2300,19 +2306,19 @@ model LiveActorInvite {
 /// participant ↔ actor の担当割当。
 /// 同セッション内で同じ (participant, actor) の組合せは 1 件のみ (= 重複防止)。
 model LiveAssignment {
-  id             String   @id @default(uuid())
-  oaId           String   @map("oa_id")
-  liveSessionId  String   @map("live_session_id")
-  participantId  String   @map("participant_id")
-  actorId        String   @map("actor_id")
-  note           String?
-  createdAt      DateTime @default(now()) @map("created_at")
-  updatedAt      DateTime @updatedAt @map("updated_at")
+  id            String   @id @default(uuid())
+  oaId          String   @map("oa_id")
+  liveSessionId String   @map("live_session_id")
+  participantId String   @map("participant_id")
+  actorId       String   @map("actor_id")
+  note          String?
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
 
-  oa             Oa              @relation(fields: [oaId], references: [id], onDelete: Cascade)
-  liveSession    LiveSession     @relation(fields: [liveSessionId], references: [id], onDelete: Cascade)
-  participant    LiveParticipant @relation(fields: [participantId], references: [id], onDelete: Cascade)
-  actor          LiveActor       @relation(fields: [actorId], references: [id], onDelete: Cascade)
+  oa          Oa              @relation(fields: [oaId], references: [id], onDelete: Cascade)
+  liveSession LiveSession     @relation(fields: [liveSessionId], references: [id], onDelete: Cascade)
+  participant LiveParticipant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  actor       LiveActor       @relation(fields: [actorId], references: [id], onDelete: Cascade)
 
   @@unique([liveSessionId, participantId, actorId])
   @@index([liveSessionId, actorId])
@@ -2325,22 +2331,22 @@ model LiveAssignment {
 /// participantId は「特定参加者についての指示」を示し、null なら「セッション全体への指示」。
 /// actorId は「特定 actor 宛て」を示し、null なら「actor 全員向け」。
 model LiveActorInstruction {
-  id             String                  @id @default(uuid())
-  oaId           String                  @map("oa_id")
-  liveSessionId  String                  @map("live_session_id")
-  participantId  String?                 @map("participant_id")
-  actorId        String?                 @map("actor_id")
-  title          String
-  body           String
-  priority       LiveInstructionPriority @default(normal)
-  status         LiveInstructionStatus   @default(active)
-  createdAt      DateTime                @default(now()) @map("created_at")
-  updatedAt      DateTime                @updatedAt @map("updated_at")
+  id            String                  @id @default(uuid())
+  oaId          String                  @map("oa_id")
+  liveSessionId String                  @map("live_session_id")
+  participantId String?                 @map("participant_id")
+  actorId       String?                 @map("actor_id")
+  title         String
+  body          String
+  priority      LiveInstructionPriority @default(normal)
+  status        LiveInstructionStatus   @default(active)
+  createdAt     DateTime                @default(now()) @map("created_at")
+  updatedAt     DateTime                @updatedAt @map("updated_at")
 
-  oa             Oa               @relation(fields: [oaId], references: [id], onDelete: Cascade)
-  liveSession    LiveSession      @relation(fields: [liveSessionId], references: [id], onDelete: Cascade)
-  participant    LiveParticipant? @relation(fields: [participantId], references: [id], onDelete: SetNull)
-  actor          LiveActor?       @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  oa          Oa               @relation(fields: [oaId], references: [id], onDelete: Cascade)
+  liveSession LiveSession      @relation(fields: [liveSessionId], references: [id], onDelete: Cascade)
+  participant LiveParticipant? @relation(fields: [participantId], references: [id], onDelete: SetNull)
+  actor       LiveActor?       @relation(fields: [actorId], references: [id], onDelete: SetNull)
 
   @@index([liveSessionId, status, createdAt])
   @@index([liveSessionId, actorId])
@@ -2417,22 +2423,22 @@ model LiveScript {
 /// Actor Console で、participant の currentPhase に合致する cue を上位表示する。
 /// priority high を上に / sortOrder で同 priority 内の並び順を制御。
 model LiveCue {
-  id         String          @id @default(uuid())
-  oaId       String          @map("oa_id")
-  workId     String?         @map("work_id")
-  phaseId    String?         @map("phase_id")
-  actorId    String?         @map("actor_id")
-  title      String
-  body       String
-  priority   LiveCuePriority @default(normal)
-  sortOrder  Int             @default(0) @map("sort_order")
-  isActive   Boolean         @default(true) @map("is_active")
-  createdAt  DateTime        @default(now()) @map("created_at")
-  updatedAt  DateTime        @updatedAt @map("updated_at")
-  oa         Oa              @relation(fields: [oaId], references: [id], onDelete: Cascade)
-  work       Work?           @relation(fields: [workId], references: [id], onDelete: SetNull)
-  phase      Phase?          @relation(fields: [phaseId], references: [id], onDelete: SetNull)
-  actor      LiveActor?      @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  id        String          @id @default(uuid())
+  oaId      String          @map("oa_id")
+  workId    String?         @map("work_id")
+  phaseId   String?         @map("phase_id")
+  actorId   String?         @map("actor_id")
+  title     String
+  body      String
+  priority  LiveCuePriority @default(normal)
+  sortOrder Int             @default(0) @map("sort_order")
+  isActive  Boolean         @default(true) @map("is_active")
+  createdAt DateTime        @default(now()) @map("created_at")
+  updatedAt DateTime        @updatedAt @map("updated_at")
+  oa        Oa              @relation(fields: [oaId], references: [id], onDelete: Cascade)
+  work      Work?           @relation(fields: [workId], references: [id], onDelete: SetNull)
+  phase     Phase?          @relation(fields: [phaseId], references: [id], onDelete: SetNull)
+  actor     LiveActor?      @relation(fields: [actorId], references: [id], onDelete: SetNull)
 
   @@index([oaId, workId, isActive])
   @@index([workId, phaseId, isActive])
@@ -2481,7 +2487,7 @@ model BusinessInviteLink {
   updatedAt       DateTime          @updatedAt @map("updated_at")
 
   /// 1 link = 1 application (= 再申請不可を DB 制約でも担保)。
-  application     BusinessInviteApplication?
+  application BusinessInviteApplication?
 
   @@index([createdByUserId, createdAt])
   @@index([usedAt, revokedAt])
@@ -2489,33 +2495,33 @@ model BusinessInviteLink {
 }
 
 model BusinessInviteApplication {
-  id                String            @id @default(uuid())
+  id                      String                          @id @default(uuid())
   /// 紐づく link。@unique で 1 link = 1 application を担保。
-  linkId            String            @unique @map("link_id")
-  companyName       String            @map("company_name")
-  contactName       String            @map("contact_name")
-  contactEmail      String            @map("contact_email")
+  linkId                  String                          @unique @map("link_id")
+  companyName             String                          @map("company_name")
+  contactName             String                          @map("contact_name")
+  contactEmail            String                          @map("contact_email")
   /// 申込者の LINE 公式アカウント名 (任意)。
-  lineOfficialAccountName String?     @map("line_official_account_name")
-  message           String?
+  lineOfficialAccountName String?                         @map("line_official_account_name")
+  message                 String?
   /// 申込時点の link スナップショット (= 後から link が変更/revoke されても申請内容を保全)。
-  snapshotPlanTier  String            @map("snapshot_plan_tier")
-  snapshotRole      MemberRole        @map("snapshot_role")
-  snapshotUsageType BusinessUsageType @map("snapshot_usage_type")
+  snapshotPlanTier        String                          @map("snapshot_plan_tier")
+  snapshotRole            MemberRole                      @map("snapshot_role")
+  snapshotUsageType       BusinessUsageType               @map("snapshot_usage_type")
   /// 認証済みなら申込者の Supabase userId (任意)。
-  submittedByUserId String?           @map("submitted_by_user_id")
+  submittedByUserId       String?                         @map("submitted_by_user_id")
   /// 運営の対応ステータス (= pending/approved/rejected)。既存申込は pending。
   /// 承認はあくまで運営管理用のステータス変更。自動 OA 作成 / 権限付与 / 課金はしない。
-  status            BusinessInviteApplicationStatus @default(pending)
+  status                  BusinessInviteApplicationStatus @default(pending)
   /// 承認 / 却下した日時。
-  reviewedAt        DateTime?         @map("reviewed_at")
+  reviewedAt              DateTime?                       @map("reviewed_at")
   /// 承認 / 却下した platform admin の Supabase userId。
-  reviewedByUserId  String?           @map("reviewed_by_user_id")
+  reviewedByUserId        String?                         @map("reviewed_by_user_id")
   /// 運営メモ (= 承認 / 却下時の任意コメント)。
-  reviewNote        String?           @map("review_note")
-  createdAt         DateTime          @default(now()) @map("created_at")
+  reviewNote              String?                         @map("review_note")
+  createdAt               DateTime                        @default(now()) @map("created_at")
 
-  link              BusinessInviteLink @relation(fields: [linkId], references: [id], onDelete: Cascade)
+  link BusinessInviteLink @relation(fields: [linkId], references: [id], onDelete: Cascade)
 
   @@map("business_invite_applications")
 }

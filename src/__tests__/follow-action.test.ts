@@ -4,7 +4,38 @@
 // 未設定・空文字・空白のみ・開始対象なしのときは「何も送らない」(デフォルト文面を送らない)。
 
 import { describe, it, expect } from "vitest";
-import { decideFollowBehavior } from "@/lib/follow-action";
+import { decideFollowBehavior, resolveFollowSettings } from "@/lib/follow-action";
+
+describe("resolveFollowSettings — OA優先 + active Work フォールバック（PR-1）", () => {
+  it("OA に値あり → OA を採用", () => {
+    const r = resolveFollowSettings(
+      { welcomeMessage: "OAあいさつ", followAction: "welcome_wait" },
+      { welcomeMessage: "Workあいさつ", followAction: "auto_start" },
+    );
+    expect(r).toEqual({ welcomeMessage: "OAあいさつ", followAction: "welcome_wait" });
+  });
+  it("OA が null → Work にフォールバック", () => {
+    const r = resolveFollowSettings(
+      { welcomeMessage: null, followAction: null },
+      { welcomeMessage: "Workあいさつ", followAction: "none" },
+    );
+    expect(r).toEqual({ welcomeMessage: "Workあいさつ", followAction: "none" });
+  });
+  it("OA も Work も null → welcome=null / follow=auto_start（既定）", () => {
+    const r = resolveFollowSettings({ welcomeMessage: null, followAction: null }, { welcomeMessage: null, followAction: null });
+    expect(r).toEqual({ welcomeMessage: null, followAction: "auto_start" });
+  });
+  it("welcome と follow は独立にフォールバック（OA welcome のみ設定）", () => {
+    const r = resolveFollowSettings(
+      { welcomeMessage: "OAあいさつ", followAction: null },
+      { welcomeMessage: "Workあいさつ", followAction: "welcome_wait" },
+    );
+    expect(r).toEqual({ welcomeMessage: "OAあいさつ", followAction: "welcome_wait" });
+  });
+  it("oa / work が undefined でも安全（welcome=null / follow=auto_start）", () => {
+    expect(resolveFollowSettings(undefined, undefined)).toEqual({ welcomeMessage: null, followAction: "auto_start" });
+  });
+});
 
 describe("decideFollowBehavior", () => {
   // followAction = none
