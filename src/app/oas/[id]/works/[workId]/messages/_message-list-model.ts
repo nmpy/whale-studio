@@ -104,3 +104,28 @@ export function getMessageWarnings(args: {
 export function isHardWarning(w: MessageWarningLabel): boolean {
   return w === "未接続" || w === "連続5通超";
 }
+
+/**
+ * chain 内で自由入力(free_input_enabled)が ON の位置を、表示用ラベル配列で返す（**表示専用**）。
+ * - head = 「本体」、continuations[i] = (i+2)通目（既存の連続メッセージ表示の採番と一致）。
+ * - 判定・送信・保存・自由入力実行ロジックには一切影響しない（既存の free_input_enabled を読むだけ）。
+ * 例: head OFF + 2通目/4通目 ON → ["2通目","4通目"] / head+2通目 ON → ["本体","2通目"]。
+ */
+export function freeInputChainPositions(
+  headEnabled: boolean,
+  continuations: { free_input_enabled?: boolean | null }[],
+): string[] {
+  const out: string[] = [];
+  if (headEnabled) out.push("本体");
+  continuations.forEach((c, i) => {
+    if (c?.free_input_enabled) out.push(`${i + 2}通目`);
+  });
+  return out;
+}
+
+/** 自由入力ラベル配列を1行の表示文言にする。本体のみ→「自由入力あり」、それ以外→「自由入力あり：…」。 */
+export function freeInputSummaryLabel(positions: string[]): string | null {
+  if (positions.length === 0) return null;
+  if (positions.length === 1 && positions[0] === "本体") return "自由入力あり";
+  return `自由入力あり：${positions.join("、")}`;
+}

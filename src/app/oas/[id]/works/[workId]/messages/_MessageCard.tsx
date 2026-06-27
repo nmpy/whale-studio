@@ -15,10 +15,12 @@ import type { MessageWithRelations, PhaseWithCounts, TransitionWithPhases } from
 import type { MessageFlowInfo } from "@/lib/message-flow-status";
 import { getChainContinuations, hasAnyTiming, summarizeTiming } from "./_list-helpers";
 import {
-  CharIcon, FlowStatusCell, BranchItemRow,
+  CharIcon, FlowStatusCell, FlowPill, BranchItemRow,
   MESSAGE_TYPE_LABEL, MESSAGE_TYPE_ICON, cardPreview, msgPreview,
 } from "./_list-ui";
-import { isHardWarning, type MessageWarningLabel } from "./_message-list-model";
+import {
+  isHardWarning, freeInputChainPositions, freeInputSummaryLabel, type MessageWarningLabel,
+} from "./_message-list-model";
 
 /** カードの種別バッジ表示（謎 or テキスト/画像/…）。タイプ列+種別列を1バッジに集約。 */
 function typeBadge(msg: MessageWithRelations): { icon: string; label: string } {
@@ -68,6 +70,9 @@ export default function MessageCard(props: MessageCardProps) {
   // 混在時は「クイックリプライ」優先。通常 QR(text/url/next/custom) は従来どおり。
   const allHint = enabledQrs.length > 0 && enabledQrs.every((q) => q.action === "hint");
   const keywords = (msg.trigger_keyword ?? "").split("\n").map((s) => s.trim()).filter(Boolean);
+  // 自由入力(free_input_enabled)が head 本体か連続メッセージ側かを区別表示するための位置（表示専用）。
+  const freeInputPositions = freeInputChainPositions(!!msg.free_input_enabled, continuations);
+  const freeInputLabel = freeInputSummaryLabel(freeInputPositions);
 
   return (
     <div
@@ -239,10 +244,24 @@ export default function MessageCard(props: MessageCardProps) {
             </DetailBlock>
           )}
 
-          {/* ② 遷移先 / 導線状態（警告は上で常時表示済みのため mode="info"。hint のみのとき「ヒントあり」表示） */}
+          {/* ② 遷移先 / 導線状態（警告は上で常時表示済みのため mode="info"。hint のみ→「ヒントあり」）
+              自由入力は head 本体／連続メッセージ側を区別表示するため、FlowStatusCell 側の汎用ピルは
+              hasFreeInput=false のコピーで抑制し（他の flowInfo 情報・「入力後 → 〇〇」は維持）、
+              ここで「自由入力あり：本体/N通目」を出す。判定/集計ロジックは不変。 */}
           {flowInfo && (
             <DetailBlock title="遷移先 / 導線状態">
-              <FlowStatusCell info={flowInfo} msgById={msgById} phaseById={phaseById} mode="info" allHint={allHint} />
+              {freeInputLabel && (
+                <div style={{ marginBottom: 4 }}>
+                  <FlowPill tone="neutral">{freeInputLabel}</FlowPill>
+                </div>
+              )}
+              <FlowStatusCell
+                info={{ ...flowInfo, hasFreeInput: false }}
+                msgById={msgById}
+                phaseById={phaseById}
+                mode="info"
+                allHint={allHint}
+              />
             </DetailBlock>
           )}
 
@@ -281,6 +300,9 @@ export default function MessageCard(props: MessageCardProps) {
                     <span style={{ fontSize: 12.5, color: "#555", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {msgPreview(c)}
                     </span>
+                    {c.free_input_enabled && (
+                      <span style={{ fontSize: 11, color: "#2563eb", whiteSpace: "nowrap" }} title="この連続メッセージで自由入力を受け付けます">自由入力あり</span>
+                    )}
                     {hasAnyTiming(c) && (
                       <span style={{ fontSize: 11, color: "#7c6f9e", whiteSpace: "nowrap" }} title={summarizeTiming(c)}>演出: 設定あり</span>
                     )}
