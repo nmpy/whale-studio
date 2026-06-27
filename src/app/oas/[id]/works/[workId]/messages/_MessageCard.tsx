@@ -64,6 +64,9 @@ export default function MessageCard(props: MessageCardProps) {
   const tb = typeBadge(msg);
   const continuations = getChainContinuations(allMessages, msg.id);
   const enabledQrs = (msg.quick_replies ?? []).filter((q) => q.enabled !== false);
+  // 対象 QR がすべて action="hint"（謎のヒント）なら、見出し/バッジを「ヒント」表示にする（表示のみ）。
+  // 混在時は「クイックリプライ」優先。通常 QR(text/url/next/custom) は従来どおり。
+  const allHint = enabledQrs.length > 0 && enabledQrs.every((q) => q.action === "hint");
   const keywords = (msg.trigger_keyword ?? "").split("\n").map((s) => s.trim()).filter(Boolean);
 
   return (
@@ -236,16 +239,16 @@ export default function MessageCard(props: MessageCardProps) {
             </DetailBlock>
           )}
 
-          {/* ② 遷移先 / 導線状態（警告は上で常時表示済みのため mode="info"） */}
+          {/* ② 遷移先 / 導線状態（警告は上で常時表示済みのため mode="info"。hint のみのとき「ヒントあり」表示） */}
           {flowInfo && (
             <DetailBlock title="遷移先 / 導線状態">
-              <FlowStatusCell info={flowInfo} msgById={msgById} phaseById={phaseById} mode="info" />
+              <FlowStatusCell info={flowInfo} msgById={msgById} phaseById={phaseById} mode="info" allHint={allHint} />
             </DetailBlock>
           )}
 
-          {/* ③ クイックリプライ分岐 */}
+          {/* ③ クイックリプライ分岐（謎のヒントのみのときは「ヒント」表示） */}
           {enabledQrs.length > 0 && (
-            <DetailBlock title={`クイックリプライ分岐（${enabledQrs.length}件）— 入力 → 応答 → 結果`}>
+            <DetailBlock title={allHint ? `ヒント（${enabledQrs.length}件）` : `クイックリプライ分岐（${enabledQrs.length}件）— 入力 → 応答 → 結果`}>
               <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
                 {enabledQrs.map((qr, i) => (
                   <BranchItemRow

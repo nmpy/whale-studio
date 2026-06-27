@@ -227,12 +227,14 @@ export const FLOW_LINK_PREFIX: Record<FlowLink["type"], string> = {
  *    - "all"  (既定): 警告 + 補足バッジ + 遷移先（旧テーブル互換）
  *    - "info"        : 警告を出さず、補足バッジ + 遷移先のみ（カード詳細用。警告はカード本体で常時表示するため重複回避） */
 export function FlowStatusCell({
-  info, msgById, phaseById, mode = "all",
+  info, msgById, phaseById, mode = "all", allHint = false,
 }: {
   info:      MessageFlowInfo | undefined;
   msgById:   Map<string, MessageWithRelations>;
   phaseById: Map<string, PhaseWithCounts>;
   mode?:     "all" | "info";
+  /** 対象 QR がすべて action="hint"（謎のヒント）のとき、QRバッジを「ヒントあり」と表示する。表示のみ。 */
+  allHint?:  boolean;
 }) {
   if (!info) return null;
   const showWarn = mode === "all";
@@ -256,8 +258,8 @@ export function FlowStatusCell({
 
       {/* 種別・分岐バッジ（控えめ） */}
       {info.isStart       && <FlowPill tone="info">開始</FlowPill>}
-      {info.hasQrBranch   && <FlowPill tone="neutral">クイックリプライ分岐あり</FlowPill>}
-      {!info.hasQrBranch && info.hasQuickReply && <FlowPill tone="neutral">クイックリプライあり</FlowPill>}
+      {info.hasQrBranch   && <FlowPill tone="neutral">{allHint ? "ヒントあり" : "クイックリプライ分岐あり"}</FlowPill>}
+      {!info.hasQrBranch && info.hasQuickReply && <FlowPill tone="neutral">{allHint ? "ヒントあり" : "クイックリプライあり"}</FlowPill>}
       {info.hasFreeInput  && <FlowPill tone="neutral">自由入力あり</FlowPill>}
       {info.hasImageTap   && <FlowPill tone="neutral">画像タップあり</FlowPill>}
 
