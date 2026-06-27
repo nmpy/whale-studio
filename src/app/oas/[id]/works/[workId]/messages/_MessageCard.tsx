@@ -29,6 +29,8 @@ function typeBadge(msg: MessageWithRelations): { icon: string; label: string } {
 
 export interface MessageCardProps {
   msg: MessageWithRelations;
+  /** トリガー種別バッジ（表示専用。QR/応答/チェックインのみ。条件なし/その他は null）。 */
+  triggerBadge?: { label: string; icon: string; bg: string; color: string } | null;
   warnings: MessageWarningLabel[];
   flowInfo: MessageFlowInfo | undefined;
   phaseName: string | null;
@@ -52,7 +54,7 @@ export interface MessageCardProps {
 
 export default function MessageCard(props: MessageCardProps) {
   const {
-    msg, warnings, flowInfo, phaseName, isExpanded, onToggleExpand,
+    msg, triggerBadge, warnings, flowInfo, phaseName, isExpanded, onToggleExpand,
     canEdit, busy, editHref, onDelete, onToggleActive, onReorder, canMoveUp, canMoveDown,
     allMessages, transitions, phases, msgById, phaseById,
   } = props;
@@ -62,6 +64,9 @@ export default function MessageCard(props: MessageCardProps) {
   const tb = typeBadge(msg);
   const continuations = getChainContinuations(allMessages, msg.id);
   const enabledQrs = (msg.quick_replies ?? []).filter((q) => q.enabled !== false);
+  // 対象 QR がすべて action="hint"（謎のヒント）なら、見出し/バッジを「ヒント」表示にする（表示のみ）。
+  // 混在時は「クイックリプライ」優先。通常 QR(text/url/next/custom) は従来どおり。
+  const allHint = enabledQrs.length > 0 && enabledQrs.every((q) => q.action === "hint");
   const keywords = (msg.trigger_keyword ?? "").split("\n").map((s) => s.trim()).filter(Boolean);
 
   return (
@@ -88,6 +93,16 @@ export default function MessageCard(props: MessageCardProps) {
         }}>
           {tb.icon ? `${tb.icon} ` : ""}{tb.label}
         </span>
+
+        {/* トリガー種別バッジ（グループ見出しを廃止し、ここに種別を出す。表示専用） */}
+        {triggerBadge && (
+          <span style={{
+            fontSize: 11, fontWeight: 500, padding: "2px 8px", borderRadius: 5,
+            color: triggerBadge.color, background: triggerBadge.bg,
+          }}>
+            {triggerBadge.icon} {triggerBadge.label}
+          </span>
+        )}
 
         <span style={{ flex: 1, minWidth: 12 }} />
 
@@ -212,7 +227,44 @@ export default function MessageCard(props: MessageCardProps) {
       {isExpanded && (
         <div style={{ margin: "10px 0 2px", marginLeft: 37, borderTop: "1px dashed #E0E4EA", paddingTop: 12 }}>
 
-          {/* 連続メッセージ */}
+          {/* ① 応答キーワード / 有効フェーズ（無ければ非表示） */}
+          {keywords.length > 0 && (
+            <DetailBlock title="応答キーワード">
+              <div style={{ fontSize: 12.5, color: "#555" }}>
+                🔑 {keywords.map((k) => `「${k}」`).join("・")}
+                <span style={{ color: msg.phase?.id ? "#555" : "#b45309", marginLeft: 6 }}>
+                  ・有効フェーズ：{msg.phase?.id ? (phaseName ?? "—") : "共通（全フェーズ）"}
+                </span>
+              </div>
+            </DetailBlock>
+          )}
+
+          {/* ② 遷移先 / 導線状態（警告は上で常時表示済みのため mode="info"。hint のみのとき「ヒントあり」表示） */}
+          {flowInfo && (
+            <DetailBlock title="遷移先 / 導線状態">
+              <FlowStatusCell info={flowInfo} msgById={msgById} phaseById={phaseById} mode="info" allHint={allHint} />
+            </DetailBlock>
+          )}
+
+          {/* ③ クイックリプライ分岐（謎のヒントのみのときは「ヒント」表示） */}
+          {enabledQrs.length > 0 && (
+            <DetailBlock title={allHint ? `ヒント（${enabledQrs.length}件）` : `クイックリプライ分岐（${enabledQrs.length}件）— 入力 → 応答 → 結果`}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                {enabledQrs.map((qr, i) => (
+                  <BranchItemRow
+                    key={i}
+                    qr={qr}
+                    phaseId={msg.phase?.id ?? null}
+                    allMessages={allMessages}
+                    transitions={transitions}
+                    phases={phases}
+                  />
+                ))}
+              </div>
+            </DetailBlock>
+          )}
+
+          {/* ④ 連続メッセージ（⑤ 演出/Flex 補足は各行の「演出: 設定あり」で内包） */}
           {continuations.length > 0 && (
             <DetailBlock title={`連続メッセージ（合計${continuations.length + 1}通）`}>
               {continuations.map((c, i) => {
@@ -240,41 +292,6 @@ export default function MessageCard(props: MessageCardProps) {
               })}
             </DetailBlock>
           )}
-
-          {/* クイックリプライ分岐 */}
-          {enabledQrs.length > 0 && (
-            <DetailBlock title={`クイックリプライ分岐（${enabledQrs.length}件）— 入力 → 応答 → 結果`}>
-              <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-                {enabledQrs.map((qr, i) => (
-                  <BranchItemRow
-                    key={i}
-                    qr={qr}
-                    phaseId={msg.phase?.id ?? null}
-                    allMessages={allMessages}
-                    transitions={transitions}
-                    phases={phases}
-                  />
-                ))}
-              </div>
-            </DetailBlock>
-          )}
-
-          {/* 応答キーワード */}
-          {keywords.length > 0 && (
-            <DetailBlock title="応答キーワード">
-              <div style={{ fontSize: 12.5, color: "#555" }}>
-                🔑 {keywords.map((k) => `「${k}」`).join("・")}
-                <span style={{ color: msg.phase?.id ? "#555" : "#b45309", marginLeft: 6 }}>
-                  ・有効フェーズ：{msg.phase?.id ? (phaseName ?? "—") : "共通（全フェーズ）"}
-                </span>
-              </div>
-            </DetailBlock>
-          )}
-
-          {/* 導線の補足 + 遷移先（警告は上で常時表示済みのため mode="info"） */}
-          <div style={{ marginTop: 2 }}>
-            <FlowStatusCell info={flowInfo} msgById={msgById} phaseById={phaseById} mode="info" />
-          </div>
         </div>
       )}
     </div>

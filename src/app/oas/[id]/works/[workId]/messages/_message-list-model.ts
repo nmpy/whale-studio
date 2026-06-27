@@ -17,6 +17,9 @@ export type TriggerGroupKey = "sequential" | "quick_reply" | "response" | "check
 /** グループの表示順（上から）。 */
 export const TRIGGER_GROUP_ORDER: TriggerGroupKey[] = ["sequential", "quick_reply", "response", "checkin", "other"];
 
+/** 「すべて」タブの表示順: 応答 → クイックリプライ → チェックイン → その他 → 条件なし(最後)。 */
+export const ALL_TAB_GROUP_ORDER: TriggerGroupKey[] = ["response", "quick_reply", "checkin", "other", "sequential"];
+
 /** グループ見出しの配色/ラベル（handoff デザイントークン準拠）。 */
 export const TRIGGER_GROUP_META: Record<TriggerGroupKey, { icon: string; label: string; bg: string; color: string }> = {
   sequential:  { icon: "→",  label: "条件なし（順番に送信）", bg: "#F0F2F0", color: "#555555" },

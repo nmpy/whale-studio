@@ -23,7 +23,7 @@ import MessageCard from "./_MessageCard";
 import { PhaseTabs, WarningSummaryBar, PhaseFilterBar, EmptyState, type PhaseTabItem } from "./_message-list-chrome";
 import {
   buildTriggerIndexes, classifyTrigger, getMessageWarnings,
-  TRIGGER_GROUP_ORDER, TRIGGER_GROUP_META, type MessageWarningLabel,
+  TRIGGER_GROUP_META, ALL_TAB_GROUP_ORDER, type MessageWarningLabel,
 } from "./_message-list-model";
 
 
@@ -95,7 +95,7 @@ export default function MessagesPage() {
   }, [messages, flowMap, kwPhaseIndex]);
 
   // head 一覧をフェーズ単位に整理（並び替えは既存どおり sort_order + created_at、フェーズ内スコープ）。
-  // orderIndex はフェーズ順→sort_order の通し番号（「すべて」表示でも順序が壊れないようにする）。
+  // 一覧は送信順表示: 「すべて」はフェーズ順セクション、各フェーズ内は headsByPhase の sort_order を尊重。
   const listView = useMemo(() => {
     const contIds = collectChainContinuationIds(messages);
     const phaseIds = new Set(phases.map((p) => p.id));
@@ -112,6 +112,7 @@ export default function MessagesPage() {
       headsByPhase.get(k)!.push(m);
     }
     for (const arr of headsByPhase.values()) arr.sort(byOrder);
+    // 送信順の通し番号（フェーズ順→sort_order）。「すべて」タブのトリガーグループ内ソートに使う。
     const orderIndex = new Map<string, number>();
     let oi = 0;
     for (const p of phases) for (const m of (headsByPhase.get(p.id) ?? [])) orderIndex.set(m.id, oi++);
@@ -764,14 +765,18 @@ export default function MessagesPage() {
       ) : (() => {
         const ALL = "all";
         const UNASSIGNED = "__unassigned";
+        // フェーズタブ: すべて → 通常フェーズ(sort_order) → フェーズ未定 → 共通(全フェーズ共通=最後)
+        const normalPhases = phases.filter((p) => p.phase_type !== "global");
+        const globalPhase = phases.find((p) => p.phase_type === "global") ?? null;
         const tabs: PhaseTabItem[] = [
           { id: ALL, name: "すべて" },
-          ...phases.map((p) => ({ id: p.id, name: p.name })),
-          ...(listView.hasUnassigned ? [{ id: UNASSIGNED, name: "未割当" }] : []),
+          ...normalPhases.map((p) => ({ id: p.id, name: p.name })),
+          ...(listView.hasUnassigned ? [{ id: UNASSIGNED, name: "フェーズ未定" }] : []),
+          ...(globalPhase ? [{ id: globalPhase.id, name: "共通" }] : []),
         ];
         // 選択タブが消えた場合（フェーズ削除等）は「すべて」にフォールバック
         const effectiveId = tabs.some((t) => t.id === activePhaseId) ? activePhaseId : ALL;
-        const activePhase = phases.find((p) => p.id === effectiveId) ?? null;
+        const activeTabName = tabs.find((t) => t.id === effectiveId)?.name ?? "";
 
         const filtered = listView.heads.filter((m) =>
           effectiveId === ALL ? true : listView.phaseKeyOf(m) === effectiveId,
@@ -779,7 +784,7 @@ export default function MessagesPage() {
         const warningCount = filtered.filter((m) => (warningsByMsgId.get(m.id)?.length ?? 0) > 0).length;
 
         // 集計警告（1操作から6通以上連続の可能性）: フィルタ対象フェーズのうち該当するもの（既存挙動を維持）。
-        const scopePhases = effectiveId === ALL ? phases : (activePhase ? [activePhase] : []);
+        const scopePhases = effectiveId === ALL ? phases : phases.filter((p) => p.id === effectiveId);
         const aggWarnPhaseNames = scopePhases
           .filter((p) => {
             const phaseMsgs = messages
@@ -791,15 +796,56 @@ export default function MessagesPage() {
               );
             return shouldShowSendUnitWarning(estimateMaxSendUnit(phaseMsgs), LINE_REPLY_MAX);
           })
-          .map((p) => p.name);
+          .map((p) => (p.phase_type === "global" ? "共通" : p.name));
 
-        // トリガー種別グルーピング（表示専用・フェーズ順→sort_order を尊重）。
-        const grouped = TRIGGER_GROUP_ORDER.map((key) => ({
-          key,
-          msgs: filtered
-            .filter((m) => classifyTrigger(m, triggerIdx) === key)
-            .sort((a, b) => (listView.orderIndex.get(a.id) ?? 0) - (listView.orderIndex.get(b.id) ?? 0)),
-        })).filter((g) => g.msgs.length > 0);
+        // 種別バッジ（クイックリプライ/応答メッセージ/チェックインのみ。条件なし/順送り・その他は非表示）。
+        // classifyTrigger はこのバッジ表示専用。表示順・送信・遷移・応答判定には影響させない。
+        const triggerBadgeOf = (m: MessageWithRelations) => {
+          const key = classifyTrigger(m, triggerIdx);
+          if (key === "sequential" || key === "other") return null;
+          const meta = TRIGGER_GROUP_META[key];
+          return { label: meta.label, icon: meta.icon, bg: meta.bg, color: meta.color };
+        };
+
+        // カードのフェーズピル表示名（共通/フェーズ未定 はタブ名に合わせる）。
+        const phaseLabelOf = (m: MessageWithRelations): string | null => {
+          const phaseKey = listView.phaseKeyOf(m);
+          if (phaseKey === UNASSIGNED) return "フェーズ未定";
+          const ph = phaseById.get(phaseKey);
+          if (!ph) return null;
+          return ph.phase_type === "global" ? "共通" : ph.name;
+        };
+
+        const renderCard = (m: MessageWithRelations) => {
+          const phaseKey = listView.phaseKeyOf(m);
+          const groupHeads = listView.headsByPhase.get(phaseKey) ?? [];
+          const idx = groupHeads.findIndex((g) => g.id === m.id);
+          return (
+            <MessageCard
+              key={m.id}
+              msg={m}
+              triggerBadge={triggerBadgeOf(m)}
+              warnings={warningsByMsgId.get(m.id) ?? []}
+              flowInfo={flowMap.get(m.id)}
+              phaseName={phaseLabelOf(m)}
+              isExpanded={expandedId === m.id}
+              onToggleExpand={() => toggleExpand(m.id)}
+              canEdit={canEdit}
+              busy={busyMessageId === m.id}
+              editHref={`/oas/${oaId}/works/${workId}/messages/${m.id}`}
+              onDelete={() => handleDeleteMessage(m)}
+              onToggleActive={() => handleToggleActive(m)}
+              onReorder={(dir) => handleReorderMessage(m, dir, groupHeads)}
+              canMoveUp={idx > 0}
+              canMoveDown={idx >= 0 && idx < groupHeads.length - 1}
+              allMessages={messages}
+              transitions={transitions}
+              phases={phases}
+              msgById={msgById}
+              phaseById={phaseById}
+            />
+          );
+        };
 
         return (
           <>
@@ -807,7 +853,7 @@ export default function MessagesPage() {
             {warningCount > 0 && <WarningSummaryBar count={warningCount} />}
             {effectiveId !== ALL && (
               <PhaseFilterBar
-                phaseName={activePhase ? `${activePhase.name} フェーズ` : "未割当"}
+                phaseName={activeTabName}
                 count={filtered.length}
                 onClear={() => setActivePhaseId(ALL)}
               />
@@ -820,54 +866,33 @@ export default function MessagesPage() {
 
             {filtered.length === 0 ? (
               <EmptyState
-                phaseName={activePhase ? `${activePhase.name} フェーズ` : (effectiveId === UNASSIGNED ? "未割当" : "")}
+                phaseName={effectiveId === ALL ? "" : activeTabName}
                 canEdit={canEdit}
                 addHref={`/oas/${oaId}/works/${workId}/messages/new`}
               />
-            ) : (
-              grouped.map(({ key, msgs }) => {
+            ) : effectiveId === ALL ? (
+              // 「すべて」: トリガー種別グループ（応答→QR→チェックイン→その他→条件なし）。各群内は送信順。
+              ALL_TAB_GROUP_ORDER.map((key) => {
                 const meta = TRIGGER_GROUP_META[key];
+                const msgs = filtered
+                  .filter((m) => classifyTrigger(m, triggerIdx) === key)
+                  .sort((a, b) => (listView.orderIndex.get(a.id) ?? 0) - (listView.orderIndex.get(b.id) ?? 0));
+                if (msgs.length === 0) return null;
                 return (
-                  <div key={key} style={{ marginBottom: 14 }}>
+                  <div key={key} style={{ marginBottom: 16 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
                       <span style={{ fontSize: 11.5, fontWeight: 500, padding: "3px 11px", borderRadius: 6, color: meta.color, background: meta.bg }}>
                         {meta.icon} {meta.label}
                       </span>
                       <span style={{ fontSize: 11.5, color: "#B4B8BC" }}>{msgs.length}件</span>
                     </div>
-                    {msgs.map((m) => {
-                      const phaseKey = listView.phaseKeyOf(m);
-                      const groupHeads = listView.headsByPhase.get(phaseKey) ?? [];
-                      const idx = groupHeads.findIndex((g) => g.id === m.id);
-                      const pname = m.phase?.id ? (phaseById.get(m.phase.id)?.name ?? m.phase.name ?? null) : null;
-                      return (
-                        <MessageCard
-                          key={m.id}
-                          msg={m}
-                          warnings={warningsByMsgId.get(m.id) ?? []}
-                          flowInfo={flowMap.get(m.id)}
-                          phaseName={pname ?? (phaseKey === UNASSIGNED ? "未割当" : null)}
-                          isExpanded={expandedId === m.id}
-                          onToggleExpand={() => toggleExpand(m.id)}
-                          canEdit={canEdit}
-                          busy={busyMessageId === m.id}
-                          editHref={`/oas/${oaId}/works/${workId}/messages/${m.id}`}
-                          onDelete={() => handleDeleteMessage(m)}
-                          onToggleActive={() => handleToggleActive(m)}
-                          onReorder={(dir) => handleReorderMessage(m, dir, groupHeads)}
-                          canMoveUp={idx > 0}
-                          canMoveDown={idx >= 0 && idx < groupHeads.length - 1}
-                          allMessages={messages}
-                          transitions={transitions}
-                          phases={phases}
-                          msgById={msgById}
-                          phaseById={phaseById}
-                        />
-                      );
-                    })}
+                    {msgs.map(renderCard)}
                   </div>
                 );
               })
+            ) : (
+              // 特定フェーズ / フェーズ未定 / 共通 タブ: そのスコープを送信順でフラット表示。
+              (listView.headsByPhase.get(effectiveId) ?? []).map(renderCard)
             )}
 
             <div style={{ fontSize: 11, color: "var(--text-muted)", textAlign: "right", padding: "4px 4px 0" }}>

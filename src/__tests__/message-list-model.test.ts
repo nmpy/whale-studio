@@ -7,7 +7,7 @@
 import { describe, it, expect } from "vitest";
 import {
   buildTriggerIndexes, classifyTrigger, getMessageWarnings, isHardWarning,
-  TRIGGER_GROUP_ORDER, type TriggerGroupKey,
+  TRIGGER_GROUP_ORDER, ALL_TAB_GROUP_ORDER, type TriggerGroupKey,
 } from "@/app/oas/[id]/works/[workId]/messages/_message-list-model";
 import type { MessageWithRelations } from "@/types";
 
@@ -92,5 +92,10 @@ describe("getMessageWarnings — 既存5警告を1つも落とさない", () => 
 describe("グループ順", () => {
   it("条件なし→QR→応答→チェックイン→その他", () => {
     expect(TRIGGER_GROUP_ORDER).toEqual<TriggerGroupKey[]>(["sequential", "quick_reply", "response", "checkin", "other"]);
+  });
+  it("「すべて」タブ順: 応答→QR→チェックイン→その他→条件なし(最後)", () => {
+    expect(ALL_TAB_GROUP_ORDER).toEqual<TriggerGroupKey[]>(["response", "quick_reply", "checkin", "other", "sequential"]);
+    expect(ALL_TAB_GROUP_ORDER[0]).toBe("response");
+    expect(ALL_TAB_GROUP_ORDER[ALL_TAB_GROUP_ORDER.length - 1]).toBe("sequential"); // 条件なしは最後
   });
 });
