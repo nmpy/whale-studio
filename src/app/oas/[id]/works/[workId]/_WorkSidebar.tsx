@@ -38,6 +38,7 @@ export default function WorkSidebar() {
       items: [
         { label: "作品トップ", href: base, exact: true },
         { label: "作品情報", href: `${base}/edit`, activeSegments: ["/edit"] },
+        { label: "設定", href: `${base}/settings`, activeSegments: ["/settings"] },
       ],
     },
     {
