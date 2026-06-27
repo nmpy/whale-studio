@@ -48,7 +48,7 @@ import { matchBackToPuzzle, buildBackToPuzzlePostbackData, parseBackToPuzzlePost
 import { buildPuzzleHintPostbackData, parsePuzzleHintPostback, resolveHintItems } from "@/lib/puzzle-hint";
 import { shouldOfferResumeChoice } from "@/lib/message-flow";
 import { isFreeInputPrompt } from "@/lib/free-input";
-import { decideFollowBehavior } from "@/lib/follow-action";
+import { decideFollowBehavior, resolveFollowSettings } from "@/lib/follow-action";
 import { resolveQrBranchDelivery } from "@/lib/qr-branch";
 import { parseFrontier, selectQrScope } from "@/lib/qr-frontier";
 import { applyFreeInputPostEffect } from "@/lib/frontier-effect";
@@ -1732,7 +1732,11 @@ async function handleWebhook(req: NextRequest, oaId: string) {
   //   none         : 何もしない
   // ※ OA 停止中は上部（serviceSuspendedAt）で early return 済みのためここには来ない。
   if (followEvents.length > 0 && work) {
-    const followAction = work.followAction ?? "auto_start";
+    // PR-1: あいさつ設定は OA 単位優先 + active Work フォールバック（resolveFollowSettings）。
+    //   - oa.welcomeMessage/followAction が未設定(null)なら従来どおり work の値を使う（移行期互換）。
+    //   - resume_enabled には触れない。実行（送信/開始）ロジックは不変。
+    const effective = resolveFollowSettings(oa, work);
+    const followAction = effective.followAction;
     // 送信判断は純関数 decideFollowBehavior に一本化する。
     // 未設定・空文字・空白のみ・開始対象なしのときは「何も送らない」(デフォルト文面は送らない)。
     await Promise.allSettled(
@@ -1743,7 +1747,7 @@ async function handleWebhook(req: NextRequest, oaId: string) {
           followAction === "auto_start" ? !!(await getCachedStartPhase(work.id)) : false;
         const decision = decideFollowBehavior({
           followAction,
-          welcomeMessage: work.welcomeMessage,
+          welcomeMessage: effective.welcomeMessage,
           hasStartTarget,
         });
 
@@ -1754,7 +1758,7 @@ async function handleWebhook(req: NextRequest, oaId: string) {
         if (decision.action === "send_welcome") {
           // welcomeMessage が明示設定されている場合のみ。progress は作らず「はじめる」を待つ。
           console.info(`[line-follow] sent welcome_wait message userId=${uid.slice(0, 8)}`);
-          await replyToLine(e.replyToken, buildWelcomeMessages(work, systemSender), oa.channelAccessToken);
+          await replyToLine(e.replyToken, buildWelcomeMessages({ ...work, welcomeMessage: effective.welcomeMessage }, systemSender), oa.channelAccessToken);
           return;
         }
         // auto_start（開始対象あり）: 既存仕様どおりシナリオ自動開始。
@@ -1867,6 +1871,9 @@ type OaRecord = {
   title: string;
   channelSecret: string;
   channelAccessToken: string;
+  // PR-1: OA単位のあいさつ設定（あれば OA優先・無ければ work フォールバック）。
+  welcomeMessage?: string | null;
+  followAction?: string | null;
 };
 
 type WorkRecord = {
@@ -3280,8 +3287,10 @@ async function handleContinue({
   const progress = await getCachedProgress(userId, work.id);
 
   // 未開始 — あいさつメッセージ（設定があれば）＋開始案内
+  // PR-1: あいさつ文は OA 単位優先 + active Work フォールバック（follow 時と一貫）。
   if (!progress) {
-    await replyToLine(replyToken, buildWelcomeMessages(work, systemSender), token);
+    const effWelcome = resolveFollowSettings(oa, work).welcomeMessage;
+    await replyToLine(replyToken, buildWelcomeMessages({ ...work, welcomeMessage: effWelcome }, systemSender), token);
     return;
   }
 

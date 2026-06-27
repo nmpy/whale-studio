@@ -61,3 +61,24 @@ export function decideFollowBehavior(input: FollowDecisionInput): FollowDecision
   }
   return { action: "auto_start", reason: "auto_start first message" };
 }
+
+/**
+ * あいさつメッセージ設定の解決（OA優先 + active Work フォールバック）。PR-1。
+ *
+ * OA単位（Oa.welcomeMessage / Oa.followAction）を優先し、未設定（null/undefined）なら
+ * 既存どおり active Work の値にフォールバックする（移行期の互換）。
+ *   - welcomeMessage: oa.welcomeMessage ?? work.welcomeMessage ?? null
+ *   - followAction:   oa.followAction   ?? work.followAction   ?? "auto_start"
+ *
+ * 実行ロジック（送信・開始）は不変。判定に渡す「実効値」をここで一本化するだけ。
+ * resume_enabled には一切触れない。
+ */
+export function resolveFollowSettings(
+  oa:   { welcomeMessage?: string | null; followAction?: string | null } | null | undefined,
+  work: { welcomeMessage?: string | null; followAction?: string | null } | null | undefined,
+): { welcomeMessage: string | null; followAction: FollowAction | string } {
+  return {
+    welcomeMessage: oa?.welcomeMessage ?? work?.welcomeMessage ?? null,
+    followAction:   oa?.followAction   ?? work?.followAction   ?? "auto_start",
+  };
+}
