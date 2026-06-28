@@ -81,6 +81,24 @@ export const createWorkSchema = z.object({
   sort_order:     sortSchema,
 });
 
+/**
+ * あいさつメッセージ（複数件・text/image）の 1 要素。保存時はここで厳格に検証する
+ * （runtime の parseWelcomeMessages は lenient に drop するが、保存はユーザーにエラーを返す）。
+ * 推論型は @/lib/welcome-messages の WelcomeMessageItem と構造一致する。
+ */
+export const welcomeMessageItemSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("text"),
+    text: z.string().trim().min(1).max(2000),
+  }),
+  z.object({
+    type:            z.literal("image"),
+    imageUrl:        z.string().url().startsWith("https://"),
+    previewImageUrl: z.string().url().startsWith("https://").optional(),
+    altText:         z.string().max(400).optional(),
+  }),
+]);
+
 export const updateWorkSchema = z.object({
   title:               z.string().min(1).max(100).optional(),
   description:         z.string().max(500).optional().nullable(),
@@ -107,6 +125,12 @@ export const updateWorkSchema = z.object({
    * null を送ると削除、undefined（省略）は変更なし。
    */
   welcome_message:     z.string().max(1000).optional().nullable(),
+  /**
+   * あいさつメッセージ（複数件・text/image、最大5件）。空配列で全削除。
+   * 保存時は welcomeMessagesJson に格納し、welcomeMessage を先頭 text に同期する（無ければ null）。
+   * undefined（省略）は変更なし。
+   */
+  welcome_messages:    z.array(welcomeMessageItemSchema).max(5).optional(),
   /** 友だち追加時の動作。"auto_start" | "welcome_wait" | "none"。 */
   follow_action:       z.enum(["auto_start", "welcome_wait", "none"]).optional(),
   // ── 演出デフォルト設定 ──

@@ -10,6 +10,7 @@ import { withAuth } from "@/lib/auth";
 import { requireRole } from "@/lib/rbac";
 import { updateWorkSchema, formatZodErrors } from "@/lib/validations";
 import { parseLiffHomeSettings } from "@/components/liff/liff-style-helpers";
+import { parseWelcomeMessages } from "@/lib/welcome-messages";
 import { ZodError } from "zod";
 
 /** 既存 liff_home_settings_json に、PATCH で渡されたキーだけをマージする。
@@ -53,6 +54,7 @@ function toResponse(w: {
   resumeEnabled?: boolean | null;
   systemCharacterId: string | null;
   welcomeMessage: string | null;
+  welcomeMessagesJson?: unknown;
   followAction?: string | null;
   readReceiptMode: string | null; readDelayMs: number | null;
   typingEnabled: boolean | null; typingMinMs: number | null; typingMaxMs: number | null;
@@ -76,6 +78,7 @@ function toResponse(w: {
     resume_enabled:      w.resumeEnabled ?? true,
     system_character_id: w.systemCharacterId,
     welcome_message:     w.welcomeMessage,
+    welcome_messages:    parseWelcomeMessages(w.welcomeMessagesJson),
     follow_action:       (w.followAction as "auto_start" | "welcome_wait" | "none" | undefined) ?? "auto_start",
     // 演出設定
     read_receipt_mode:    (w.readReceiptMode as import("@/types").ReadReceiptMode) ?? null,
@@ -146,6 +149,12 @@ export const PATCH = withAuth<{ workId: string }>(async (req, { params }, user) 
         ...(data.resume_enabled      !== undefined && { resumeEnabled:      data.resume_enabled }),
         ...(data.system_character_id !== undefined && { systemCharacterId:  data.system_character_id }),
         ...(data.welcome_message     !== undefined && { welcomeMessage:     data.welcome_message }),
+        // あいさつ複数件（text/image）。welcomeMessagesJson を保存し、welcomeMessage を先頭 text に同期（案B）。
+        // 全削除([])時は welcomeMessage=null。welcome_messages 省略時は何も変えない。
+        ...(data.welcome_messages    !== undefined && {
+          welcomeMessagesJson: data.welcome_messages,
+          welcomeMessage:      data.welcome_messages.find((m) => m.type === "text")?.text ?? null,
+        }),
         ...(data.follow_action       !== undefined && { followAction:       data.follow_action }),
         // 演出設定
         ...(data.read_receipt_mode    !== undefined && { readReceiptMode:    data.read_receipt_mode }),
