@@ -1709,6 +1709,24 @@ function QuickReplyEditor({ items, onChange, responseMessages, phases, transitio
                                       <li key={mm.id}>{(mm.body ?? `(${mm.message_type ?? "?"})`).replace(/\n/g, " ").slice(0, 24)}</li>
                                     ))}
                                   </ol>
+                                  {/* 送信先メッセージに付く「次のクイックリプライ」（= タップ後に LINE 実機で表示される QR）。
+                                      実機では「現在のQR」をタップ → 上記メッセージが送信され、その末尾にこの QR が出る。
+                                      CMS上は現在メッセージ直下に QR が見えるが、実機ではこの位置に出ることを明示する。 */}
+                                  {pv.destinationTailQr.length > 0 && (
+                                    <>
+                                      <div style={{ marginTop: 6, display: "flex", alignItems: "center", flexWrap: "wrap", gap: 5 }}>
+                                        <span style={{ color: "#475569", fontWeight: 700 }}>送信先メッセージに付くクイックリプライ:</span>
+                                        {pv.destinationTailQr.map((qr, qi) => (
+                                          <span key={qi} style={QR_TAIL_CHIP_STYLE}>
+                                            {qr.label || <span style={{ fontStyle: "italic", opacity: 0.6 }}>ラベル未入力</span>}
+                                          </span>
+                                        ))}
+                                      </div>
+                                      <div style={{ marginTop: 4, color: "#94a3b8", fontSize: 10, lineHeight: 1.6 }}>
+                                        実機ではこのクイックリプライをタップすると上記メッセージが送信され、その<strong>最後にこの次のクイックリプライ</strong>が表示されます（現在のメッセージ直下に出続けるわけではありません）。
+                                      </div>
+                                    </>
+                                  )}
                                   {pv.overLimit && pv.overflowKind === "dropped" && (
                                     <div style={{ marginTop: 6, color: "#b91c1c" }}>
                                       ⚠️ この連続メッセージは{pv.fullTotal}通あり、5通を超えています。<strong>6通目以降は送信されません</strong>（1チェーン最大5通）。5通以内に分割するか、クイックリプライ / 自由入力 / フェーズ遷移で区切ってください。
