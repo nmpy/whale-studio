@@ -46,6 +46,7 @@ import {
   phaseToResponse,
   transitionToResponse,
 } from "@/lib/api/list-shapes";
+import { parseWelcomeMessages } from "@/lib/welcome-messages";
 
 export const dynamic = "force-dynamic";
 
@@ -63,6 +64,7 @@ export const GET = withAuth<{ id: string; workId: string }>(async (_req, { param
             oaId:              true,
             title:             true,
             welcomeMessage:    true,
+            welcomeMessagesJson: true,
             followAction:      true,
             publishStatus:     true,
             liffEnabled:       true,
@@ -124,6 +126,7 @@ export const GET = withAuth<{ id: string; workId: string }>(async (_req, { param
           oa_id:               work.oaId,
           title:               work.title,
           welcome_message:     work.welcomeMessage,
+          welcome_messages:    parseWelcomeMessages(work.welcomeMessagesJson),
           follow_action:       (work.followAction as "auto_start" | "welcome_wait" | "none" | undefined) ?? "auto_start",
           publish_status:      work.publishStatus,
           liff_enabled:        work.liffEnabled ?? true,

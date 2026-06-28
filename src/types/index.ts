@@ -161,6 +161,8 @@ export interface Work {
    * 未設定（null）のときはシステムデフォルト文にフォールバックする。
    */
   welcome_message: string | null;
+  /** あいさつメッセージ（複数件・text/image、最大5件）。GET/PATCH 応答（toResponse）で返る。 */
+  welcome_messages?: import("@/lib/welcome-messages").WelcomeMessageItem[];
   /**
    * 友だち追加（follow）時の動作（作品単位）。
    * "auto_start"（既定・友だち追加直後に自動開始）/ "welcome_wait"（あいさつを送り「はじめる」を待つ）/ "none"（何もしない）。
