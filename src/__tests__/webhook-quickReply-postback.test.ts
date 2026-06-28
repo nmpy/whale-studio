@@ -4,12 +4,15 @@
  * 通常 QR postback（action=quick_reply&sourceMessageId=...&qrIndex=...）の webhook 統合検証。
  *
  * ★ 必須 regression（スクリーンショットの不具合）:
- *   - 同一フェーズに同名「次へ」が 2 つ（A:次へ→B / B:次へ→C）。
+ *   - 同一フェーズ・同一frontierに同名「次へ」が 2 つ（A:次へ→B / B:次へ→C）。
  *   - メッセージ B 下の「次へ」をタップした postback を受けたとき、送信先 C が送られる。
  *   - メッセージ B が再送されない（ラベル一致 matchQrItem の取り違えが解消される）。
  *
- * + fallback: postback でない text event（「次へ」手入力 / 旧 message action QR）は従来どおり
- *   matchQrItem のラベル一致経路が動く。
+ * + フォローアップ修正:
+ *   - waitingForInput クリア: 自由入力受付中に送信先付き QR を postback タップ → 送信先へ進み waitingForInput=null。
+ *   - frontier ガード: 現在地(frontier)外の古い QR postback は無視（過去ボタン再タップ無効化）。
+ *   - workId スコープ: 別 work の sourceMessageId は解決されない。
+ *   - text fallback: postback でない手入力テキストは従来 matchQrItem 経路が動く。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
@@ -24,11 +27,12 @@ const mockPrisma = {
 };
 vi.mock("@/lib/prisma", () => ({ prisma: mockPrisma }));
 
+const mockCacheDelete = vi.fn().mockResolvedValue(undefined);
 vi.mock("@/lib/cache", () => ({
   activeCache: {
     get:    vi.fn().mockResolvedValue(null),
     set:    vi.fn().mockResolvedValue(undefined),
-    delete: vi.fn().mockResolvedValue(undefined),
+    delete: mockCacheDelete,
   },
   TTL: { OA: 0, WORK: 0, PHASE: 0, PROGRESS: 0, GLOBAL_CMD: 0, GLOBAL_KW: 0, START_PHASE: 0, START_MSGS: 0 },
   CACHE_KEY: {
@@ -41,7 +45,6 @@ vi.mock("@/lib/event-logger", () => ({ logEvent: vi.fn().mockResolvedValue(undef
 
 const mockReplyToLine = vi.fn().mockResolvedValue(undefined);
 const mockReplyWithLagToLine = vi.fn().mockResolvedValue(undefined);
-// 実際の buildQuickReplyFromItems / buildMessageChain / 解決ロジックを使う。送信系だけスタブ。
 vi.mock("@/lib/line", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/line")>();
   return {
@@ -65,9 +68,12 @@ vi.mock("@/lib/sheets-scenario", () => ({
   handleTextEventSheets: vi.fn(), handlePostbackEventSheets: vi.fn(), buildSystemSenderFromSheets: vi.fn(),
 }));
 vi.mock("@/lib/rbac", () => ({ requireRole: vi.fn(), getOaIdFromWorkId: vi.fn() }));
+// checkin / scheduled の arm は送信本体と無関係。DB モデル未定義なので no-op スタブ化。
+vi.mock("@/lib/checkin-trigger", () => ({ armCheckinTriggers: vi.fn().mockResolvedValue(undefined) }));
+vi.mock("@/lib/scheduled-message-arm", () => ({ armScheduledMessages: vi.fn().mockResolvedValue(undefined) }));
 
 const OA_ID = "oa-uuid-qr", WORK_ID = "work-uuid-qr", PHASE_ID = "phase-uuid-qr";
-const PROGRESS_ID = "progress-uuid-qr", USER_ID = "U_qr_user";
+const PROGRESS_ID = "progress-uuid-qr", USER_ID = "U_qr_user", OTHER_WORK_ID = "work-uuid-other";
 
 const mockOa = {
   id: OA_ID, title: "QR OA", lineOaId: "qroa",
@@ -77,29 +83,35 @@ const mockWork = {
   id: WORK_ID, title: "QRテスト作品", publishStatus: "active", sortOrder: 0,
   welcomeMessage: null, systemCharacter: null,
 };
-const mockProgress = {
-  id: PROGRESS_ID, lineUserId: USER_ID, workId: WORK_ID,
-  currentPhaseId: PHASE_ID, reachedEnding: false, flags: "{}",
-  lastSentMessageIds: null, waitingForInput: null, variables: null, lastInteractedAt: new Date(),
-};
 
-// A:「次へ」→ B / B:「次へ」→ C（同名「次へ」）。phase に両方を載せる。
+function makeProgress(overrides: Record<string, unknown> = {}) {
+  return {
+    id: PROGRESS_ID, lineUserId: USER_ID, workId: WORK_ID,
+    currentPhaseId: PHASE_ID, reachedEnding: false, flags: "{}",
+    lastSentMessageIds: null, waitingForInput: null, variables: null, lastInteractedAt: new Date(),
+    ...overrides,
+  };
+}
+
+// A:「次へ」→ B / B:「次へ」→ C（同名「次へ」）。
 const QR_NEXT = (targetId: string) =>
   JSON.stringify([{ action: "text", label: "次へ", target_type: "message", target_message_id: targetId }]);
 
-const msgA = { id: "msg-A", kind: "normal", hintMode: "always", quickReplies: QR_NEXT("msg-B"), incorrectQuickReplies: null, triggerKeyword: null };
-const msgB = { id: "msg-B", kind: "normal", hintMode: "always", quickReplies: QR_NEXT("msg-C"), incorrectQuickReplies: null, triggerKeyword: null };
-
-const mockPhase = {
-  id: PHASE_ID, phaseType: "normal",
-  messages: [msgA, msgB],
-  transitionsFrom: [],
+// 元メッセージ（src 解決用・findFirst が返す形。workId を持つ＝防御スコープ検証用）。
+// triggerKeyword: null は text 経路 matchKeywordsInMemory（phase 走査）で必要。
+const srcMsgA = { id: "msg-A", workId: WORK_ID, kind: "normal", hintMode: "always", quickReplies: QR_NEXT("msg-B"), incorrectQuickReplies: null, triggerKeyword: null };
+const srcMsgB = { id: "msg-B", workId: WORK_ID, kind: "normal", hintMode: "always", quickReplies: QR_NEXT("msg-C"), incorrectQuickReplies: null, triggerKeyword: null };
+const srcMsgPrompt = {
+  id: "msg-prompt", workId: WORK_ID, kind: "normal", hintMode: "always",
+  quickReplies: JSON.stringify([{ action: "text", label: "スキップ", target_type: "message", target_message_id: "msg-skip" }]),
+  incorrectQuickReplies: null, triggerKeyword: null,
 };
+const srcMsgOtherWork = { id: "msg-otherwork", workId: OTHER_WORK_ID, kind: "normal", hintMode: "always", quickReplies: QR_NEXT("msg-C"), incorrectQuickReplies: null, triggerKeyword: null };
 
-// target 送信先メッセージ C（buildMessageChain が findUnique で取得する形）。
-const targetMsgC = {
-  id: "msg-C", messageType: "text", body: "メッセージCの本文（先に進んだ証拠）", assetUrl: null,
-  altText: null, flexPayloadJson: null, quickReplies: null, nextMessageId: null, sortOrder: 0,
+// 送信先メッセージ（buildMessageChain が findUnique で取得する形）。
+const targetTemplate = {
+  messageType: "text", assetUrl: null, altText: null, flexPayloadJson: null,
+  quickReplies: null, nextMessageId: null, sortOrder: 0,
   kind: "normal", hintMode: "always", incorrectQuickReplies: null,
   imageActionType: null, imageActionText: null, imageActionUrl: null, imageActionLiffPageId: null, imageActionPostbackData: null,
   freeInputEnabled: false, lagMs: 0,
@@ -107,26 +119,40 @@ const targetMsgC = {
   loadingEnabled: false, loadingThresholdMs: null, loadingMinSeconds: null, loadingMaxSeconds: null,
   character: null,
 };
-const targetMsgB = { ...targetMsgC, id: "msg-B", body: "メッセージBの本文（再送されたら不具合）" };
+const targetMsgC = { ...targetTemplate, id: "msg-C", body: "メッセージCの本文（先に進んだ証拠）" };
+const targetMsgB = { ...targetTemplate, id: "msg-B", body: "メッセージBの本文（再送されたら不具合）" };
+const targetMsgSkip = { ...targetTemplate, id: "msg-skip", body: "スキップ先メッセージの本文" };
+
+const mockPhase = { id: PHASE_ID, phaseType: "normal", messages: [srcMsgA, srcMsgB], transitionsFrom: [] };
+
+/**
+ * message.findFirst（src 解決・workId スコープ）と message.findUnique（target 取得）をまとめて mock。
+ *  - findFirst: where.id 一致 + where.workId 一致のときだけ返す（防御スコープ再現）。
+ *    applyFreeInputPostEffect の `where.id={in:[...]}` 呼び出しは string キーにならず null（free-input 無し扱い）。
+ *  - findUnique: where.id 一致で返す（target 取得）。
+ */
+function mockMessages(srcRows: { id: string; workId: string }[], targetRows: { id: string }[]) {
+  mockPrisma.message.findFirst.mockImplementation(async ({ where }: { where: { id: unknown; workId?: string } }) => {
+    if (typeof where.id !== "string") return null; // applyFreeInputPostEffect の {in:[...]} は free-input 無し
+    const row = srcRows.find((r) => r.id === where.id);
+    if (!row) return null;
+    if (where.workId !== undefined && row.workId !== where.workId) return null; // workId スコープ
+    return row;
+  });
+  mockPrisma.message.findUnique.mockImplementation(async ({ where }: { where: { id: string } }) =>
+    targetRows.find((r) => r.id === where.id) ?? null);
+}
 
 function makePostbackBody(data: string) {
   return JSON.stringify({
     destination: "Utest",
-    events: [{
-      type: "postback", replyToken: "rtoken",
-      source: { userId: USER_ID, type: "user" },
-      postback: { data },
-    }],
+    events: [{ type: "postback", replyToken: "rtoken", source: { userId: USER_ID, type: "user" }, postback: { data } }],
   });
 }
 function makeTextBody(text: string) {
   return JSON.stringify({
     destination: "Utest",
-    events: [{
-      type: "message", replyToken: "rtoken",
-      source: { userId: USER_ID, type: "user" },
-      message: { type: "text", text },
-    }],
+    events: [{ type: "message", replyToken: "rtoken", source: { userId: USER_ID, type: "user" }, message: { type: "text", text } }],
   });
 }
 async function callWebhook(body: string) {
@@ -138,6 +164,8 @@ async function callWebhook(body: string) {
   });
   return POST(req as unknown as import("next/server").NextRequest, { params: { oaId: mockOa.lineOaId } });
 }
+const sentBodies = () =>
+  (mockReplyWithLagToLine.mock.calls[0]?.[1] as { text?: string }[] | undefined)?.map((m) => m.text) ?? [];
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -147,59 +175,114 @@ beforeEach(() => {
   mockPrisma.richMenu.findFirst.mockResolvedValue(null);
   mockPrisma.phase.findFirst.mockResolvedValue(null);
   mockPrisma.phase.findUnique.mockResolvedValue(mockPhase);
-  mockPrisma.userProgress.findUnique.mockResolvedValue(mockProgress);
-  mockPrisma.userProgress.update.mockResolvedValue(mockProgress);
+  // frontier に A・B 両方を含む（= バグ再現の本筋: 同一frontier内に同名QRが2つ）。各テストで上書き可。
+  mockPrisma.userProgress.findUnique.mockResolvedValue(makeProgress({ lastSentMessageIds: JSON.stringify(["msg-A", "msg-B"]) }));
+  mockPrisma.userProgress.update.mockResolvedValue(makeProgress());
   mockPrisma.message.findMany.mockResolvedValue([]);
   mockPrisma.globalCommand.findMany.mockResolvedValue([]);
 });
 
-describe("★ regression: メッセージ B 下の『次へ』postback → 送信先 C が送られ、B は再送されない", () => {
-  it("quick_reply postback(sourceMessageId=msg-B, qrIndex=0) → msg-C を送信", async () => {
-    // findUnique は (1) sourceMessage(msg-B) 取得 → (2) target(msg-C) 取得 の順で呼ばれる。
-    mockPrisma.message.findUnique.mockImplementation(async ({ where }: { where: { id: string } }) => {
-      if (where.id === "msg-B") return msgB;       // sourceMessage 解決
-      if (where.id === "msg-C") return targetMsgC; // target_message 取得
-      if (where.id === "msg-A") return msgA;
-      return null;
-    });
-
+describe("★ regression: 同一frontier内の同名『次へ』→ タップ元 QR の送信先へ解決", () => {
+  it("B下の『次へ』postback(sourceMessageId=msg-B) → msg-C 送信・msg-B 再送なし", async () => {
+    mockMessages([srcMsgA, srcMsgB], [targetMsgC, targetMsgB]);
     await callWebhook(makePostbackBody("action=quick_reply&sourceMessageId=msg-B&qrIndex=0"));
 
-    // target_message パスは replyWithLagToLine で送信される。
     expect(mockReplyWithLagToLine).toHaveBeenCalledOnce();
-    const sent = mockReplyWithLagToLine.mock.calls[0][1] as { type: string; text?: string }[];
-    const bodies = sent.map((m) => m.text);
-    expect(bodies).toContain("メッセージCの本文（先に進んだ証拠）");
-    // ★ B（タップ元メッセージ）が再送されていないこと
-    expect(bodies).not.toContain("メッセージBの本文（再送されたら不具合）");
+    expect(sentBodies()).toContain("メッセージCの本文（先に進んだ証拠）");
+    expect(sentBodies()).not.toContain("メッセージBの本文（再送されたら不具合）");
   });
 
-  it("メッセージ A 下の『次へ』postback(sourceMessageId=msg-A) → 送信先 B が送られる", async () => {
-    mockPrisma.message.findUnique.mockImplementation(async ({ where }: { where: { id: string } }) => {
-      if (where.id === "msg-A") return msgA;
-      if (where.id === "msg-B") return targetMsgB; // A の送信先は B
-      return null;
-    });
-
+  it("A下の『次へ』postback(sourceMessageId=msg-A) → 送信先 B（A も frontier 内なら有効）", async () => {
+    mockMessages([srcMsgA, srcMsgB], [targetMsgB]);
     await callWebhook(makePostbackBody("action=quick_reply&sourceMessageId=msg-A&qrIndex=0"));
 
     expect(mockReplyWithLagToLine).toHaveBeenCalledOnce();
-    const sent = mockReplyWithLagToLine.mock.calls[0][1] as { text?: string }[];
-    expect(sent.map((m) => m.text)).toContain("メッセージBの本文（再送されたら不具合）");
+    expect(sentBodies()).toContain("メッセージBの本文（再送されたら不具合）");
+  });
+});
+
+describe("frontier ガード: 現在地外の古い QR postback は無視（過去ボタン再タップ無効化）", () => {
+  it("frontier=[msg-B] のとき B postback → C に進む", async () => {
+    mockPrisma.userProgress.findUnique.mockResolvedValue(makeProgress({ lastSentMessageIds: JSON.stringify(["msg-B"]) }));
+    mockMessages([srcMsgA, srcMsgB], [targetMsgC]);
+
+    await callWebhook(makePostbackBody("action=quick_reply&sourceMessageId=msg-B&qrIndex=0"));
+
+    expect(mockReplyWithLagToLine).toHaveBeenCalledOnce();
+    expect(sentBodies()).toContain("メッセージCの本文（先に進んだ証拠）");
+  });
+
+  it("frontier=[msg-B] のとき 古い A postback → 何も送らない（B 再送なし）", async () => {
+    mockPrisma.userProgress.findUnique.mockResolvedValue(makeProgress({ lastSentMessageIds: JSON.stringify(["msg-B"]) }));
+    mockMessages([srcMsgA, srcMsgB], [targetMsgB]);
+
+    await callWebhook(makePostbackBody("action=quick_reply&sourceMessageId=msg-A&qrIndex=0"));
+
+    expect(mockReplyWithLagToLine).not.toHaveBeenCalled();
+    expect(mockReplyToLine).not.toHaveBeenCalled();
+    // frontier 外で弾くので src message 取得すらしない
+    expect(mockPrisma.message.findFirst).not.toHaveBeenCalled();
+  });
+
+  it("frontier=null（レガシー progress）なら従来どおり許可（後方互換）", async () => {
+    mockPrisma.userProgress.findUnique.mockResolvedValue(makeProgress({ lastSentMessageIds: null }));
+    mockMessages([srcMsgA, srcMsgB], [targetMsgC]);
+
+    await callWebhook(makePostbackBody("action=quick_reply&sourceMessageId=msg-B&qrIndex=0"));
+
+    expect(mockReplyWithLagToLine).toHaveBeenCalledOnce();
+    expect(sentBodies()).toContain("メッセージCの本文（先に進んだ証拠）");
+  });
+});
+
+describe("waitingForInput クリア: 自由入力受付中の送信先付き QR タップ", () => {
+  it("『スキップ』postback → 送信先へ進み、waitingForInput=null に更新される", async () => {
+    mockPrisma.userProgress.findUnique.mockResolvedValue(makeProgress({
+      lastSentMessageIds: JSON.stringify(["msg-prompt"]),
+      waitingForInput: JSON.stringify({ messageId: "msg-prompt", variableKey: "name", nextMessageId: null, setAt: "2026-06-29T00:00:00.000Z" }),
+    }));
+    mockMessages([srcMsgPrompt], [targetMsgSkip]);
+
+    await callWebhook(makePostbackBody("action=quick_reply&sourceMessageId=msg-prompt&qrIndex=0"));
+
+    // 送信先へ進む
+    expect(mockReplyWithLagToLine).toHaveBeenCalledOnce();
+    expect(sentBodies()).toContain("スキップ先メッセージの本文");
+    // ★ waitingForInput を null にクリアする update が呼ばれている
+    const clearedCall = mockPrisma.userProgress.update.mock.calls.find(
+      (c) => (c[0] as { data: { waitingForInput?: unknown } }).data.waitingForInput === null,
+    );
+    expect(clearedCall).toBeDefined();
+    // 関連キャッシュも invalidate
+    expect(mockCacheDelete).toHaveBeenCalledWith(`progress:${USER_ID}:${WORK_ID}`);
+  });
+});
+
+describe("workId スコープ: 別 work の sourceMessageId は解決されない", () => {
+  it("別 work の message を指す postback → 何も送らない", async () => {
+    // frontier=null にして frontier ガードを素通りさせ、workId スコープのみを検証する。
+    mockPrisma.userProgress.findUnique.mockResolvedValue(makeProgress({ lastSentMessageIds: null }));
+    mockMessages([srcMsgOtherWork], [targetMsgC]); // findFirst は workId=WORK_ID 条件で null を返す
+
+    await callWebhook(makePostbackBody("action=quick_reply&sourceMessageId=msg-otherwork&qrIndex=0"));
+
+    expect(mockReplyWithLagToLine).not.toHaveBeenCalled();
+    expect(mockReplyToLine).not.toHaveBeenCalled();
   });
 });
 
 describe("不正な postback は安全に無視（例外なし・何も送らない）", () => {
   it("sourceMessage が存在しない → 何も送らない", async () => {
-    mockPrisma.message.findUnique.mockResolvedValue(null);
+    mockPrisma.userProgress.findUnique.mockResolvedValue(makeProgress({ lastSentMessageIds: null }));
+    mockMessages([], []);
     await callWebhook(makePostbackBody("action=quick_reply&sourceMessageId=does-not-exist&qrIndex=0"));
     expect(mockReplyWithLagToLine).not.toHaveBeenCalled();
     expect(mockReplyToLine).not.toHaveBeenCalled();
   });
 
   it("qrIndex が範囲外 → 何も送らない", async () => {
-    mockPrisma.message.findUnique.mockImplementation(async ({ where }: { where: { id: string } }) =>
-      where.id === "msg-B" ? msgB : null);
+    mockPrisma.userProgress.findUnique.mockResolvedValue(makeProgress({ lastSentMessageIds: JSON.stringify(["msg-B"]) }));
+    mockMessages([srcMsgB], []);
     await callWebhook(makePostbackBody("action=quick_reply&sourceMessageId=msg-B&qrIndex=99"));
     expect(mockReplyWithLagToLine).not.toHaveBeenCalled();
   });
@@ -207,16 +290,12 @@ describe("不正な postback は安全に無視（例外なし・何も送らな
 
 describe("fallback: postback でない text event は従来の matchQrItem ラベル一致が動く", () => {
   it("「次へ」を手入力 → matchQrItem 経由で target が送られる（postback 不要の旧経路維持）", async () => {
-    // frontier=null（progress.lastSentMessageIds=null）→ matchQrItem は phase 全体を走査。
-    // 先頭一致で msg-A の「次へ」→ 送信先 msg-B が解決される（従来挙動）。
-    mockPrisma.message.findUnique.mockImplementation(async ({ where }: { where: { id: string } }) =>
-      where.id === "msg-B" ? targetMsgB : null);
+    // frontier に A・B 両方 → matchQrItem は先頭一致で msg-A の「次へ」→ 送信先 msg-B（従来挙動）。
+    mockMessages([srcMsgA, srcMsgB], [targetMsgB]);
 
     await callWebhook(makeTextBody("次へ"));
 
-    // text fallback でも target_message パス（replyWithLagToLine）で送信される。
     expect(mockReplyWithLagToLine).toHaveBeenCalledOnce();
-    const sent = mockReplyWithLagToLine.mock.calls[0][1] as { text?: string }[];
-    expect(sent.map((m) => m.text)).toContain("メッセージBの本文（再送されたら不具合）");
+    expect(sentBodies()).toContain("メッセージBの本文（再送されたら不具合）");
   });
 });

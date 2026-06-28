@@ -3090,12 +3090,28 @@ async function handlePostbackEvent({
       return;
     }
     try {
-      const srcMsg = await prisma.message.findUnique({
-        where: { id: qrPostback.sourceMessageId, isActive: true },
+      const progress = await getCachedProgress(userId, work.id);
+
+      // ── frontier ガード（text 経路 matchQrItem と同じく「現在地の QR のみ有効」）──
+      //   過去 LINE 履歴上の古いボタン（B 表示後の A の「次へ」等）の再タップは無視する。
+      //   frontier=null（レガシー progress）なら従来どおり全体許可（後方互換）。
+      //   現在表示中の QR（例 B）は frontier に含まれるため B→C は通る。
+      const frontier = parseFrontier(progress?.lastSentMessageIds);
+      if (frontier && !frontier.has(qrPostback.sourceMessageId)) {
+        console.log(
+          `[Webhook] quick_reply: frontier 外の古い QR を無視`,
+          `userId=${userId.slice(0, 8)} srcMsgId=${qrPostback.sourceMessageId.slice(0, 8)} idx=${qrPostback.qrIndex}`,
+        );
+        return;
+      }
+
+      // 防御的に workId スコープで元 message を取得（他 work の message を解決しない・puzzle_hint 系と同思想）。
+      const srcMsg = await prisma.message.findFirst({
+        where: { id: qrPostback.sourceMessageId, workId: work.id, isActive: true },
         select: { id: true, kind: true, hintMode: true, quickReplies: true, incorrectQuickReplies: true },
       });
       if (!srcMsg) {
-        console.warn(`[Webhook] quick_reply: 元 message 不存在/非active srcMsgId=${qrPostback.sourceMessageId.slice(0, 8)}`);
+        console.warn(`[Webhook] quick_reply: 元 message 不存在/非active/別work srcMsgId=${qrPostback.sourceMessageId.slice(0, 8)}`);
         return;
       }
       const item = resolveQuickReplyItem(srcMsg, qrPostback.qrIndex);
@@ -3103,7 +3119,27 @@ async function handlePostbackEvent({
         console.warn(`[Webhook] quick_reply: QR 解決不可（範囲外/disabled/送信先なし）srcMsgId=${qrPostback.sourceMessageId.slice(0, 8)} idx=${qrPostback.qrIndex}`);
         return;
       }
-      const progress = await getCachedProgress(userId, work.id);
+
+      // ── 自由入力受付中の QR タップ（free_input 横取り防止・text 経路と同型）──
+      //   freeInputEnabled プロンプトに付いた送信先付き QR をタップした場合、QR の送信先へ進む前に
+      //   waitingForInput をクリアする。残すと次のユーザー通常テキストが旧プロンプトの自由入力回答として
+      //   誤消費される（リグレッション防止）。新しい送信先 chain に free-input があれば
+      //   deliverQrBranch 内の applyFreeInputPostEffect が改めて waitingForInput を立て直す。
+      if (progress?.waitingForInput) {
+        try {
+          await prisma.userProgress.update({
+            where: { id: progress.id },
+            data:  { waitingForInput: null, lastInteractedAt: new Date() },
+          });
+          await activeCache.delete(CACHE_KEY.progress(userId, work.id));
+          // フォールスルー後の参照整合（deliverQrBranch に渡す progress も同期）。
+          (progress as { waitingForInput: string | null }).waitingForInput = null;
+          console.log(`[diag][qr] free_input skip — quick_reply postback tap userId=${userId.slice(0, 8)} srcMsgId=${qrPostback.sourceMessageId.slice(0, 8)}`);
+        } catch (err) {
+          console.error(`[Webhook][free-input] waitingForInput クリア失敗 (quick_reply postback)`, err);
+        }
+      }
+
       const delivered = await deliverQrBranch({
         matchedQrItem: item, oa, work, progress,
         systemSender, userId, replyToken, token: oa.channelAccessToken, vars,
