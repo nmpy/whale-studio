@@ -44,32 +44,19 @@ export interface WelcomeValidationResult {
 /**
  * 保存前のクライアント側 validation（保存 API の zod と同条件）。
  */
-/** 待機時間（秒）の上限。0〜WELCOME_DELAY_MAX_SECONDS の整数。 */
-export const WELCOME_DELAY_MAX_SECONDS = 8;
-
-/** delaySeconds が不正（非整数 / 範囲外）なら理由文言、正常 or 未設定なら null。 */
-function delayError(v: number | undefined): string | null {
-  if (v === undefined) return null;
-  if (!Number.isInteger(v) || v < 0 || v > WELCOME_DELAY_MAX_SECONDS) {
-    return `待機時間は0〜${WELCOME_DELAY_MAX_SECONDS}秒の整数で入力してください`;
-  }
-  return null;
-}
-
 export function validateWelcomeItems(items: WelcomeMessageItem[]): WelcomeValidationResult {
   const itemErrors: (string | null)[] = items.map((it) => {
-    const dErr = delayError(it.delaySeconds);
     if (it.type === "text") {
       if (it.text.trim().length < 1) return "テキストを入力してください";
       if (it.text.length > WELCOME_TEXT_MAX) return `${WELCOME_TEXT_MAX}文字以内で入力してください`;
-      return dErr;
+      return null;
     }
     // image
     if (!isHttps(it.imageUrl)) return "https の画像URLを設定してください";
     if (it.previewImageUrl !== undefined && !isHttps(it.previewImageUrl)) {
       return "プレビュー画像URLは https が必要です";
     }
-    return dErr;
+    return null;
   });
 
   let overall: string | null = null;
@@ -99,39 +86,19 @@ export function moveWelcomeItem(
 }
 
 /**
- * 先頭 item（1通目）の delaySeconds を外す。1通目は reply で即時送信されるため待機を持たない（案B）。
- *  - 2件目以降の delaySeconds は保持
- *  - 元配列は破壊しない / 空配列はそのまま
- * 並び替え・削除で先頭に来た item の待機時間を正規化するために使う（保存時にも最終防御として適用）。
- */
-export function dropFirstItemDelay(items: WelcomeMessageItem[]): WelcomeMessageItem[] {
-  return items.map((it, i) => {
-    if (i !== 0 || it.delaySeconds === undefined) return it;
-    const { delaySeconds: _omit, ...rest } = it;
-    return rest as WelcomeMessageItem;
-  });
-}
-
-/**
  * 保存 payload を組み立てる。text は trim、image は imageUrl（＋設定済みの preview/alt のみ）。
- * 先頭 item の delaySeconds は必ず省略する（1通目は即時送信）。
  */
 export function buildWelcomeMessagesPayload(
   items: WelcomeMessageItem[],
 ): { welcome_messages: WelcomeMessageItem[] } {
-  const welcome_messages: WelcomeMessageItem[] = dropFirstItemDelay(items).map((it) =>
+  const welcome_messages: WelcomeMessageItem[] = items.map((it) =>
     it.type === "text"
-      ? {
-          type: "text",
-          text: it.text.trim(),
-          ...(it.delaySeconds ? { delaySeconds: it.delaySeconds } : {}),
-        }
+      ? { type: "text", text: it.text.trim() }
       : {
           type: "image",
           imageUrl: it.imageUrl,
           ...(it.previewImageUrl ? { previewImageUrl: it.previewImageUrl } : {}),
           ...(it.altText ? { altText: it.altText } : {}),
-          ...(it.delaySeconds ? { delaySeconds: it.delaySeconds } : {}),
         },
   );
   return { welcome_messages };

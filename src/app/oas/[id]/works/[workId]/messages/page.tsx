@@ -28,9 +28,9 @@ import {
 import { ImageUploadField } from "@/components/ImageUploadField";
 import type { WelcomeMessageItem } from "@/lib/welcome-messages";
 import {
-  initWelcomeItems, validateWelcomeItems, moveWelcomeItem, dropFirstItemDelay,
+  initWelcomeItems, validateWelcomeItems, moveWelcomeItem,
   buildWelcomeMessagesPayload, getStartTriggerFromPhases,
-  WELCOME_MESSAGES_MAX, WELCOME_TEXT_MAX, WELCOME_DELAY_MAX_SECONDS,
+  WELCOME_MESSAGES_MAX, WELCOME_TEXT_MAX,
 } from "@/lib/welcome-messages-ui";
 
 
@@ -268,22 +268,11 @@ export default function MessagesPage() {
     setWelcomeError(null);
   }
   function removeItem(index: number) {
-    // 削除で先頭に繰り上がった item の待機時間は 0 に正規化（案B / 1通目は即時送信）。
-    setWelcomeItems(dropFirstItemDelay(welcomeItems.filter((_, i) => i !== index)));
+    setWelcomeItems(welcomeItems.filter((_, i) => i !== index));
     setWelcomeError(null);
   }
   function moveItem(index: number, dir: "up" | "down") {
-    // 並び替えで 1通目に来た item の待機時間は 0 に正規化（案B）。2通目以降同士は保持。
-    setWelcomeItems(dropFirstItemDelay(moveWelcomeItem(welcomeItems, index, dir)));
-  }
-  /** 2通目以降カードの待機時間（秒）変更。0 は delaySeconds を外す（dirty 誤判定回避）。 */
-  function updateItemDelay(index: number, seconds: number) {
-    const item = welcomeItems[index];
-    if (!item) return;
-    const next: WelcomeMessageItem = seconds > 0
-      ? { ...item, delaySeconds: seconds }
-      : (() => { const { delaySeconds: _omit, ...rest } = item; return rest as WelcomeMessageItem; })();
-    updateItem(index, next);
+    setWelcomeItems(moveWelcomeItem(welcomeItems, index, dir));
   }
   async function saveWelcomeMessages() {
     if (welcomeSaving) return;
@@ -679,7 +668,7 @@ export default function MessagesPage() {
                             <>
                               <textarea
                                 value={item.text}
-                                onChange={(e) => updateItem(i, { ...item, text: e.target.value })}
+                                onChange={(e) => updateItem(i, { type: "text", text: e.target.value })}
                                 readOnly={!canEdit}
                                 maxLength={WELCOME_TEXT_MAX}
                                 rows={4}
@@ -691,33 +680,12 @@ export default function MessagesPage() {
                           ) : (
                             <ImageUploadField
                               value={item.imageUrl}
-                              onChange={(url) => updateItem(i, { ...item, imageUrl: url })}
+                              onChange={(url) => updateItem(i, { type: "image", imageUrl: url })}
                               readOnly={!canEdit}
                               previewShape="rect"
                               previewAlt="あいさつ画像プレビュー"
                             />
                           )}
-
-                          {/* 送信前の待機時間。1通目は reply 即時送信のため disabled・0 固定。 */}
-                          <div style={{ marginTop: 10 }}>
-                            <label style={{ display: "block", fontSize: 11, fontWeight: 600, color: "#6b7280", marginBottom: 4 }}>
-                              送信前の待機時間
-                            </label>
-                            <select
-                              value={i === 0 ? 0 : (item.delaySeconds ?? 0)}
-                              onChange={(e) => updateItemDelay(i, Number(e.target.value))}
-                              disabled={!canEdit || i === 0}
-                              style={{ padding: "6px 10px", fontSize: 13, border: "1px solid #e5e7eb", borderRadius: 8, color: "#111827", background: i === 0 ? "#f3f4f6" : "#fff" }}
-                            >
-                              {Array.from({ length: WELCOME_DELAY_MAX_SECONDS + 1 }, (_, s) => (
-                                <option key={s} value={s}>{s} 秒</option>
-                              ))}
-                            </select>
-                            <p style={{ fontSize: 11, color: "#9ca3af", margin: "4px 0 0", lineHeight: 1.6 }}>
-                              {i === 0 ? "1通目は即時送信されます。" : "前のメッセージ送信後に待つ秒数です。"}
-                            </p>
-                          </div>
-
                           {validation.itemErrors[i] && (
                             <p style={{ fontSize: 12, color: "#dc2626", margin: "6px 0 0" }}>{validation.itemErrors[i]}</p>
                           )}
@@ -745,16 +713,7 @@ export default function MessagesPage() {
                     ) : (
                       <span style={{ color: "#b45309" }}>開始キーワードが未設定のため、開始クイックリプライは表示されません。</span>
                     )}
-                    <br />
-                    <span style={{ color: "#6b7280" }}>2通目以降は設定した待機時間後に送信されます。</span>
                   </div>
-
-                  {/* push 送信になる旨の補足（待機時間を設定したときだけ控えめに表示）。 */}
-                  {welcomeItems.some((it, idx) => idx > 0 && (it.delaySeconds ?? 0) > 0) && (
-                    <p style={{ fontSize: 11, color: "#9ca3af", margin: "0 0 12px", lineHeight: 1.6 }}>
-                      待機時間を設定したメッセージは、LINEの追加送信として送られます。
-                    </p>
-                  )}
 
                   {welcomeError && (
                     <p style={{ fontSize: 12, color: "#dc2626", margin: "0 0 12px" }}>{welcomeError}</p>

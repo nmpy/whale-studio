@@ -103,34 +103,3 @@ describe("parseWelcomeMessages", () => {
     expect(parseWelcomeMessages([{ type: "text", text: "" }, { foo: 1 }])).toEqual([]);
   });
 });
-
-describe("parseWelcomeMessages — delaySeconds", () => {
-  it("未設定 → 省略（delaySeconds を付けない）", () => {
-    expect(parseWelcomeMessages([{ type: "text", text: "a" }])).toEqual([{ type: "text", text: "a" }]);
-  });
-  it("0 → 省略", () => {
-    expect(parseWelcomeMessages([{ type: "text", text: "a", delaySeconds: 0 }])).toEqual([{ type: "text", text: "a" }]);
-  });
-  it("1〜8 → 保持", () => {
-    expect(parseWelcomeMessages([{ type: "text", text: "a", delaySeconds: 8 }])).toEqual([{ type: "text", text: "a", delaySeconds: 8 }]);
-  });
-  it("9以上 → 8 に clamp", () => {
-    expect(parseWelcomeMessages([{ type: "text", text: "a", delaySeconds: 9 }])).toEqual([{ type: "text", text: "a", delaySeconds: 8 }]);
-    expect(parseWelcomeMessages([{ type: "text", text: "a", delaySeconds: 100 }])).toEqual([{ type: "text", text: "a", delaySeconds: 8 }]);
-  });
-  it("負数 → 0（省略）", () => {
-    expect(parseWelcomeMessages([{ type: "text", text: "a", delaySeconds: -3 }])).toEqual([{ type: "text", text: "a" }]);
-  });
-  it("小数 → floor", () => {
-    expect(parseWelcomeMessages([{ type: "text", text: "a", delaySeconds: 2.7 }])).toEqual([{ type: "text", text: "a", delaySeconds: 2 }]);
-    expect(parseWelcomeMessages([{ type: "text", text: "a", delaySeconds: 0.9 }])).toEqual([{ type: "text", text: "a" }]); // floor→0→省略
-  });
-  it("非数 → 0（省略）", () => {
-    expect(parseWelcomeMessages([{ type: "text", text: "a", delaySeconds: "3" }])).toEqual([{ type: "text", text: "a" }]);
-    expect(parseWelcomeMessages([{ type: "text", text: "a", delaySeconds: NaN }])).toEqual([{ type: "text", text: "a" }]);
-  });
-  it("image にも適用される", () => {
-    expect(parseWelcomeMessages([{ type: "image", imageUrl: "https://ex.com/a.png", delaySeconds: 5 }]))
-      .toEqual([{ type: "image", imageUrl: "https://ex.com/a.png", delaySeconds: 5 }]);
-  });
-});

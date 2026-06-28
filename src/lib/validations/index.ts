@@ -90,15 +90,12 @@ export const welcomeMessageItemSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("text"),
     text: z.string().trim().min(1).max(2000),
-    // 送信前待機（秒）。0〜8 の整数。1通目は reply 即時送信のため無視される。
-    delaySeconds: z.number().int().min(0).max(8).optional(),
   }),
   z.object({
     type:            z.literal("image"),
     imageUrl:        z.string().url().startsWith("https://"),
     previewImageUrl: z.string().url().startsWith("https://").optional(),
     altText:         z.string().max(400).optional(),
-    delaySeconds:    z.number().int().min(0).max(8).optional(),
   }),
 ]);
 

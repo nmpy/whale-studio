@@ -10,40 +10,23 @@
 /** LINE は 1 リクエスト最大 5 メッセージのため、あいさつも最大 5 件。 */
 export const WELCOME_MESSAGES_MAX = 5;
 
-/** あいさつメッセージ1件あたりの送信前待機の上限（秒）。1通目は reply で即時送信のため無視される。 */
-export const WELCOME_DELAY_MAX_SECONDS = 8;
-
 export type WelcomeMessageItem =
-  | { type: "text"; text: string; delaySeconds?: number }
-  | { type: "image"; imageUrl: string; previewImageUrl?: string; altText?: string; delaySeconds?: number };
+  | { type: "text"; text: string }
+  | { type: "image"; imageUrl: string; previewImageUrl?: string; altText?: string };
 
 function isHttpsUrl(v: unknown): v is string {
   return typeof v === "string" && v.startsWith("https://");
-}
-
-/**
- * delaySeconds を [0, WELCOME_DELAY_MAX_SECONDS] の整数に正規化する（runtime は throw しない）。
- *  未設定/非数/負 → 0、小数 → floor、上限超 → clamp。0 は呼び出し側で item に付けない。
- */
-function normalizeDelaySeconds(v: unknown): number {
-  if (typeof v !== "number" || !Number.isFinite(v)) return 0;
-  return Math.min(WELCOME_DELAY_MAX_SECONDS, Math.max(0, Math.floor(v)));
 }
 
 function normalizeItem(raw: unknown): WelcomeMessageItem | null {
   if (!raw || typeof raw !== "object") return null;
   const o = raw as Record<string, unknown>;
 
-  // 待機時間（0 は付けない＝全 0 のときは reply 一括の従来挙動を保つ）。
-  const delay = normalizeDelaySeconds(o.delaySeconds);
-
   if (o.type === "text") {
     if (typeof o.text !== "string") return null;
     const text = o.text.trim();
     if (text.length < 1) return null; // 空テキストは除外
-    const item: WelcomeMessageItem = { type: "text", text };
-    if (delay > 0) item.delaySeconds = delay;
-    return item;
+    return { type: "text", text };
   }
 
   if (o.type === "image") {
@@ -51,7 +34,6 @@ function normalizeItem(raw: unknown): WelcomeMessageItem | null {
     const item: WelcomeMessageItem = { type: "image", imageUrl: o.imageUrl };
     if (isHttpsUrl(o.previewImageUrl)) item.previewImageUrl = o.previewImageUrl; // https のみ採用
     if (typeof o.altText === "string" && o.altText.trim().length > 0) item.altText = o.altText;
-    if (delay > 0) item.delaySeconds = delay;
     return item;
   }
 
