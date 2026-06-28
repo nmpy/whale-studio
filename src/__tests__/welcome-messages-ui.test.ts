@@ -73,6 +73,18 @@ describe("validateWelcomeItems", () => {
     expect(r.ok).toBe(true);
     expect(r.itemErrors).toEqual([null, null]);
   });
+
+  it("delaySeconds 0 / 8 は OK", () => {
+    expect(validateWelcomeItems([{ type: "text", text: "a", delaySeconds: 0 }]).ok).toBe(true);
+    expect(validateWelcomeItems([{ type: "text", text: "a", delaySeconds: 8 }]).ok).toBe(true);
+  });
+  it("delaySeconds 9 / 負数 / 小数 は NG（item エラー）", () => {
+    for (const d of [9, -1, 2.5]) {
+      const r = validateWelcomeItems([{ type: "text", text: "a", delaySeconds: d }]);
+      expect(r.ok).toBe(false);
+      expect(r.itemErrors[0]).toContain("待機時間");
+    }
+  });
 });
 
 describe("moveWelcomeItem", () => {
@@ -108,6 +120,17 @@ describe("buildWelcomeMessagesPayload", () => {
   });
   it("空配列 → { welcome_messages: [] }", () => {
     expect(buildWelcomeMessagesPayload([])).toEqual({ welcome_messages: [] });
+  });
+  it("delaySeconds(>0) は保持、0/未設定は省略", () => {
+    expect(buildWelcomeMessagesPayload([
+      { type: "text", text: " a ", delaySeconds: 3 },
+      { type: "text", text: "b", delaySeconds: 0 },
+      { type: "image", imageUrl: "https://ex.com/a.png", delaySeconds: 8 },
+    ])).toEqual({ welcome_messages: [
+      { type: "text", text: "a", delaySeconds: 3 },
+      { type: "text", text: "b" },
+      { type: "image", imageUrl: "https://ex.com/a.png", delaySeconds: 8 },
+    ] });
   });
 });
 

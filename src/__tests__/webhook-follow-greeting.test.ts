@@ -116,9 +116,10 @@ async function callWebhook(lineOaId: string, body: string) {
   return POST(req as Parameters<typeof POST>[0], { params: { oaId: lineOaId } });
 }
 
-/** あいさつ reply（REPLY_TOKEN への replyToLine 呼び出し）の messages を返す */
+/** あいさつ送信（REPLY_TOKEN への replyWithLagToLine 呼び出し）の messages を返す。
+ *  PR-delay-1 で welcome 送信は replyWithLagToLine（待機時間対応）へ切替済み。 */
 function welcomeReplyMessages(): any[] | null {
-  const call = mockReplyToLine.mock.calls.find((c) => c[0] === REPLY_TOKEN);
+  const call = mockReplyWithLagToLine.mock.calls.find((c) => c[0] === REPLY_TOKEN);
   return call ? (call[1] as any[]) : null;
 }
 
@@ -327,5 +328,30 @@ describe("PR-G2-A: welcomeMessagesJson による複数あいさつ + 画像", ()
     const msgs = welcomeReplyMessages();
     expect(msgs!).toHaveLength(1);
     expect(msgs![0].text).toBe("互換本文");
+  });
+
+  // ── PR-delay-1: delaySeconds → _lagMs（replyWithLagToLine が後続 push の待機に使う）──
+  it("delaySeconds>0 は _lagMs(=秒×1000) として messages に載る、0/未設定は _lagMs なし", async () => {
+    const oa = setupWelcomeWait({ welcomeMessagesJson: [
+      { type: "text", text: "1通目" },                                   // delay なし
+      { type: "image", imageUrl: "https://ex.com/a.png", delaySeconds: 2 },
+      { type: "text", text: "3通目", delaySeconds: 8 },
+    ] });
+    await callWebhook(oa.lineOaId, makeFollowBody());
+    const msgs = welcomeReplyMessages();
+    expect(msgs![0]._lagMs).toBeUndefined();      // 1通目（reply・即時）
+    expect(msgs![1]._lagMs).toBe(2000);
+    expect(msgs![2]._lagMs).toBe(8000);
+    // 送信は replyWithLagToLine 経由（待機時間対応）
+    expect(mockReplyWithLagToLine).toHaveBeenCalled();
+  });
+
+  it("全 delay 0（未設定）→ どの message にも _lagMs が無い（replyWithLagToLine 内部で reply 一括）", async () => {
+    const oa = setupWelcomeWait({ welcomeMessagesJson: [
+      { type: "text", text: "A" }, { type: "text", text: "B" },
+    ] });
+    await callWebhook(oa.lineOaId, makeFollowBody());
+    const msgs = welcomeReplyMessages();
+    expect(msgs!.every((m) => m._lagMs === undefined)).toBe(true);
   });
 });
