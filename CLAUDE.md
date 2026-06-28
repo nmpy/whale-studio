@@ -34,8 +34,10 @@
 **Transaction Pooler (port 6543) + 3 つの query string を必須付与:**
 
 ```
-postgresql://postgres.<PROJECT-REF>:<PASSWORD>@aws-0-<REGION>.pooler.supabase.com:6543/postgres?pgbouncer=true&connection_limit=1&pool_timeout=30
+postgresql://postgres.<PROJECT-REF>:<PASSWORD>@aws-1-ap-northeast-1.pooler.supabase.com:6543/postgres?pgbouncer=true&connection_limit=1&pool_timeout=30
 ```
+
+> ⚠️ **host の fleet 接頭辞に注意**: 本番 Tokyo project の正しい host は `aws-1-ap-northeast-1.pooler.supabase.com`（`aws-0` ではない）。fleet 接頭辞(`aws-0`/`aws-1`)と region は **Supabase Dashboard → Connect → Transaction pooler に表示される値をそのままコピー**すること。誤った fleet/region を指定すると `FATAL: (ENOTFOUND) tenant/user postgres.<REF> not found` で全 DB クエリが失敗する（= host/fleet 不一致のサイン。tenant 自体は存在する）。
 
 | パラメータ | 必須理由 |
 |---|---|
@@ -48,9 +50,10 @@ postgresql://postgres.<PROJECT-REF>:<PASSWORD>@aws-0-<REGION>.pooler.supabase.co
 **Session Pooler (port 5432) を一時的に使う:**
 
 ```
-postgresql://postgres.<PROJECT-REF>:<PASSWORD>@aws-0-<REGION>.pooler.supabase.com:5432/postgres
+postgresql://postgres.<PROJECT-REF>:<PASSWORD>@aws-1-ap-northeast-1.pooler.supabase.com:5432/postgres
 ```
 
+- **migrate 用途**: port は `5432`(Session Pooler)。host は runtime と同じ `aws-1-ap-northeast-1.pooler.supabase.com`(fleet/region は Connect 画面の値)。**この 5432 URL を Vercel runtime の `DATABASE_URL` に絶対に使わない**(= EMAXCONNSESSION で本番が落ちる)。migrate 用途と runtime 用途を混同しないこと。
 - `pgbouncer=true` は付けない (= session mode は prepared statement OK)
 - `connection_limit` も不要 (= 単発実行で並列性なし)
 - 実行時のみ `DATABASE_URL` を export して `npx prisma migrate deploy`、終わったら `unset`
@@ -71,8 +74,9 @@ postgresql://postgres.<PROJECT-REF>:<PASSWORD>@aws-0-<REGION>.pooler.supabase.co
    - **Transaction pooler** タブ + **「Display password」を ON** にして URL コピー (= `[YOUR-PASSWORD]` placeholder 混入防止)
 3. コピーした URL に `?pgbouncer=true&connection_limit=1&pool_timeout=30` を付与
 4. Vercel → Settings → Environment Variables → `DATABASE_URL` を **Production / Preview / Development 全環境**で上書き
-5. Vercel → Deployments → 最新 production deploy → Redeploy
-6. READY 後、`https://app.whale-studio.app/oas` 等で 200 確認 + runtime logs で `EMAXCONNSESSION` / `PrismaClientInitializationError` / `prepared statement does not exist` が出ていないこと
+5. **fresh deploy で反映する**(= 空コミットを push: `git commit --allow-empty -m "chore: fresh deploy to apply DATABASE_URL" && git push`)。
+   - ⚠️ Vercel Dashboard の **Redeploy は使わない**: Redeploy は**直前のデプロイの env snapshot を再利用**するため、更新した `DATABASE_URL` が反映されないことがある(実際に発生済み)。env 変更を確実に取り込むには新しいコミットによる fresh deploy が必要。
+6. READY 後、`https://app.whale-studio.app/oas` 等で 200 確認 + runtime logs で `EMAXCONNSESSION` / `PrismaClientInitializationError` / `prepared statement does not exist` / `tenant/user ... not found` が出ていないこと
 
 #### 秘匿情報の扱い
 - DB password / DATABASE_URL の **値そのもの**はチャット / commit / log には絶対に貼らない
