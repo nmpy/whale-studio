@@ -13,6 +13,8 @@
 //   - response_message_id のみ → buildMessageChain(response) と同じ（message_chain 扱い）。
 
 import { collectChainContinuationIds, LINE_REPLY_MAX } from "./_list-helpers";
+import { resolveDisplayQrItems } from "@/lib/hint-qr";
+import type { QuickReplyItem } from "@/types";
 
 export type QrPreviewMessage = {
   id:                  string;
@@ -25,6 +27,13 @@ export type QrPreviewMessage = {
   /** QuickReply を持つか。フェーズ入場プレビューを実送信（buildPhaseMessages）に合わせ、
    *  QR 提示メッセージで phase 走査を停止するために使う（QR後の head はユーザー選択後に送られる）。 */
   has_quick_reply?:    boolean;
+  /** 送信先メッセージに付く「次のクイックリプライ」をプレビューするための QR データ。
+   *  実送信（moveQuickReplyToTail / buildQuickReplyFromItems）と同じく resolveDisplayQrItems で解決する。
+   *  hint_mode / incorrect_quick_replies は CMS の allMessages に無い場合 undefined（通常 QR は quick_replies のみで解決可）。 */
+  quick_replies?:           QuickReplyItem[] | null;
+  kind?:                    string | null;
+  hint_mode?:               string | null;
+  incorrect_quick_replies?: QuickReplyItem[] | null;
 };
 
 export type QrPreviewInput = {
@@ -49,7 +58,26 @@ export type QrSendPreview = {
   overLimit:    boolean;
   /** 超過時の扱い: message/response chain は "dropped"(6通目以降 無送信) / phase は "push"(Push送信) */
   overflowKind: "dropped" | "push" | null;
+  /** 送信先メッセージ列の末尾に表示される「次のクイックリプライ」（= タップ後に出る QR）。
+   *  実送信の moveQuickReplyToTail に倣い、届くメッセージ列を後方から走査して最初に QR を持つものを採用する。
+   *  enabled=false は除外。QR が無ければ空配列。 */
+  destinationTailQr: QuickReplyItem[];
 };
+
+/** 届くメッセージ列の末尾側から最初に見つかった QuickReply 群を返す（moveQuickReplyToTail 相当）。 */
+function computeDestinationTailQr(messages: QrPreviewMessage[]): QuickReplyItem[] {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const mm = messages[i];
+    const items = resolveDisplayQrItems({
+      kind:                  mm.kind ?? "",
+      hintMode:              mm.hint_mode ?? null,
+      quickReplies:          mm.quick_replies ?? null,
+      incorrectQuickReplies: mm.incorrect_quick_replies ?? null,
+    }).filter((it) => it.enabled !== false);
+    if (items.length > 0) return items;
+  }
+  return [];
+}
 
 /** head から next_message_id を walk（free_input で停止・含む）。cap で打ち切り。 */
 function walkChain(byId: Map<string, QrPreviewMessage>, headId: string, cap: number): QrPreviewMessage[] {
@@ -110,7 +138,7 @@ export function previewQrSend(qr: QrPreviewInput, allMessages: QrPreviewMessage[
     const full = walkChain(byId, headId, Number.MAX_SAFE_INTEGER); // 実長（freeInput停止）
     const delivered = full.slice(0, LINE_REPLY_MAX);               // 実際に届く（最大5）
     const over = full.length > LINE_REPLY_MAX;
-    return { mode, messages: delivered, total: delivered.length, fullTotal: full.length, overLimit: over, overflowKind: over ? "dropped" : null };
+    return { mode, messages: delivered, total: delivered.length, fullTotal: full.length, overLimit: over, overflowKind: over ? "dropped" : null, destinationTailQr: computeDestinationTailQr(delivered) };
   };
 
   if (qr.target_type === "message" && qr.target_message_id) {
@@ -120,10 +148,10 @@ export function previewQrSend(qr: QrPreviewInput, allMessages: QrPreviewMessage[
     const phaseMsgs = allMessages.filter((m) => m.phase_id === qr.target_phase_id);
     const sent = phaseEntryMessages(phaseMsgs);
     const over = sent.length > LINE_REPLY_MAX;
-    return { mode: "phase_entry", messages: sent, total: sent.length, fullTotal: sent.length, overLimit: over, overflowKind: over ? "push" : null };
+    return { mode: "phase_entry", messages: sent, total: sent.length, fullTotal: sent.length, overLimit: over, overflowKind: over ? "push" : null, destinationTailQr: computeDestinationTailQr(sent) };
   }
   if (qr.response_message_id) {
     return chainResult(qr.response_message_id, "response_chain");
   }
-  return { mode: "none", messages: [], total: 0, fullTotal: 0, overLimit: false, overflowKind: null };
+  return { mode: "none", messages: [], total: 0, fullTotal: 0, overLimit: false, overflowKind: null, destinationTailQr: [] };
 }
