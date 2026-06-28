@@ -2,7 +2,7 @@
 
 // src/app/oas/[id]/works/[workId]/messages/page.tsx
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { useParams } from "next/navigation";
 import { TLink as Link } from "@/components/TLink";
 import { bootstrapApi, messageApi, workApi, getDevToken } from "@/lib/api-client";
@@ -25,9 +25,25 @@ import {
   buildTriggerIndexes, classifyTrigger, getMessageWarnings,
   TRIGGER_GROUP_META, ALL_TAB_GROUP_ORDER, type MessageWarningLabel,
 } from "./_message-list-model";
+import { ImageUploadField } from "@/components/ImageUploadField";
+import type { WelcomeMessageItem } from "@/lib/welcome-messages";
+import {
+  initWelcomeItems, validateWelcomeItems, moveWelcomeItem,
+  buildWelcomeMessagesPayload, getStartTriggerFromPhases,
+  WELCOME_MESSAGES_MAX, WELCOME_TEXT_MAX,
+} from "@/lib/welcome-messages-ui";
 
 
 type Tab = "messages" | "welcome";
+
+// あいさつ item の ▲▼/削除 ボタンの簡易スタイル（_MessageCard と同系統）。
+function reorderBtn(disabled: boolean): CSSProperties {
+  return {
+    width: 28, height: 28, borderRadius: 6, border: "1px solid #e5e7eb",
+    background: "#fff", color: disabled ? "#d1d5db" : "#6b7280",
+    cursor: disabled ? "default" : "pointer", fontSize: 12, lineHeight: 1,
+  };
+}
 
 export default function MessagesPage() {
   const params  = useParams<{ id: string; workId: string }>();
@@ -41,11 +57,12 @@ export default function MessagesPage() {
   const [canEdit, setCanEdit]           = useState(false);
   const [activeTab, setActiveTab]       = useState<Tab>("messages");
   const [workTitle, setWorkTitle]       = useState("");
-  const [welcomeMsg, setWelcomeMsg]     = useState<string | null>(null);
-  // あいさつメッセージのタブ内インライン編集。画面遷移せずこのタブで設定/編集/解除する。
-  const [editingWelcome, setEditingWelcome] = useState(false);
-  const [welcomeDraft,   setWelcomeDraft]   = useState("");
-  const [savingWelcome,  setSavingWelcome]  = useState(false);
+  // あいさつメッセージ（複数件・text/image、最大5件）のタブ内インライン編集。
+  //  welcomeItems = 編集中 / savedItems = 直近保存スナップショット（dirty 判定・設定済みバッジに使用）。
+  const [welcomeItems, setWelcomeItems] = useState<WelcomeMessageItem[]>([]);
+  const [savedItems,   setSavedItems]   = useState<WelcomeMessageItem[]>([]);
+  const [welcomeSaving, setWelcomeSaving] = useState(false);
+  const [welcomeError,  setWelcomeError]  = useState<string | null>(null);
   // 友だち追加（follow）時の動作（作品単位）。Bootstrap の work.follow_action 由来。
   const [followAction,   setFollowAction]   = useState<"auto_start" | "welcome_wait" | "none">("auto_start");
   const [savingFollow,   setSavingFollow]   = useState(false);
@@ -233,47 +250,51 @@ export default function MessagesPage() {
     }
   }
 
-  // ── あいさつメッセージ（Work.welcomeMessage）のタブ内インライン編集 ──
-  // 画面遷移せず、このタブで作成・編集・解除まで完結する。保存は PATCH /api/works/[workId]。
-  function startEditWelcome() {
-    setWelcomeDraft(welcomeMsg ?? "");
-    setEditingWelcome(true);
+  // ── あいさつメッセージ（複数件・text/image）のタブ内インライン編集 ──
+  // 画面遷移せず、このタブで追加・編集・並び替え・削除・保存まで完結する。
+  // 保存は PATCH /api/works/[workId] の welcome_messages のみ（welcomeMessage 同期は API 側）。
+  function addTextItem() {
+    if (welcomeItems.length >= WELCOME_MESSAGES_MAX) return;
+    setWelcomeItems([...welcomeItems, { type: "text", text: "" }]);
+    setWelcomeError(null);
   }
-  function cancelEditWelcome() {
-    setEditingWelcome(false);
-    setWelcomeDraft("");
+  function addImageItem() {
+    if (welcomeItems.length >= WELCOME_MESSAGES_MAX) return;
+    setWelcomeItems([...welcomeItems, { type: "image", imageUrl: "" }]);
+    setWelcomeError(null);
   }
-  async function saveWelcome() {
-    const text = welcomeDraft.trim();
-    if (!text || savingWelcome) return; // 空のときは保存しない（解除は専用ボタン）
-    setSavingWelcome(true);
+  function updateItem(index: number, next: WelcomeMessageItem) {
+    setWelcomeItems(welcomeItems.map((it, i) => (i === index ? next : it)));
+    setWelcomeError(null);
+  }
+  function removeItem(index: number) {
+    setWelcomeItems(welcomeItems.filter((_, i) => i !== index));
+    setWelcomeError(null);
+  }
+  function moveItem(index: number, dir: "up" | "down") {
+    setWelcomeItems(moveWelcomeItem(welcomeItems, index, dir));
+  }
+  async function saveWelcomeMessages() {
+    if (welcomeSaving) return;
+    const v = validateWelcomeItems(welcomeItems);
+    if (!v.ok) { setWelcomeError(v.overall); return; }
+    // 既存の保存済みあいさつを全削除する場合のみ確認する。
+    if (welcomeItems.length === 0 && savedItems.length > 0) {
+      if (!confirm("あいさつメッセージをすべて削除します。友だち追加時のあいさつは送信されません。よろしいですか？")) return;
+    }
+    setWelcomeSaving(true);
+    setWelcomeError(null);
     try {
-      const updated = await workApi.update(getDevToken(), workId, { welcome_message: text });
-      setWelcomeMsg(updated.welcome_message ?? text);
+      const updated = await workApi.update(getDevToken(), workId, buildWelcomeMessagesPayload(welcomeItems));
+      const next = updated.welcome_messages ?? [];
+      setWelcomeItems(next);
+      setSavedItems(next);
       invalidateBootstrap(oaId, workId); // 次回再訪で最新取得（stale 防止）
-      setEditingWelcome(false);
       showToast("あいさつメッセージを保存しました", "success");
     } catch (err) {
-      // 画面遷移せず toast でエラー表示
       showToast(err instanceof Error ? err.message : "保存に失敗しました", "error");
     } finally {
-      setSavingWelcome(false);
-    }
-  }
-  async function clearWelcome() {
-    if (savingWelcome) return;
-    if (!confirm("あいさつメッセージを未設定に戻しますか？\n（本文の紐付けを解除します。未設定にすると、友だち追加時には何も送信されません）")) return;
-    setSavingWelcome(true);
-    try {
-      await workApi.update(getDevToken(), workId, { welcome_message: null });
-      setWelcomeMsg(null);
-      invalidateBootstrap(oaId, workId);
-      setEditingWelcome(false);
-      showToast("あいさつメッセージを未設定に戻しました", "success");
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : "解除に失敗しました", "error");
-    } finally {
-      setSavingWelcome(false);
+      setWelcomeSaving(false);
     }
   }
 
@@ -302,7 +323,11 @@ export default function MessagesPage() {
     // Bootstrap レスポンスを各 state に反映する共通処理。
     function applyData(data: import("@/lib/api-client").MessagesBootstrapData) {
       setWorkTitle(data.work.title);
-      setWelcomeMsg(data.work.welcome_message ?? "");
+      {
+        const items = initWelcomeItems(data.work);
+        setWelcomeItems(items);
+        setSavedItems(items);
+      }
       setFollowAction((data.work.follow_action as "auto_start" | "welcome_wait" | "none" | undefined) ?? "auto_start");
       setResumeEnabled(data.work.resume_enabled !== false);
       setMessages(data.messages);
@@ -484,7 +509,7 @@ export default function MessagesPage() {
         </button>
         <button type="button" style={tabStyle("welcome")} onClick={() => setActiveTab("welcome")}>
           共通設定
-          {welcomeMsg?.trim() ? (
+          {savedItems.length > 0 ? (
             <span style={{
               fontSize: 10, fontWeight: 700,
               background: activeTab === "welcome" ? "#dcfce7" : "#f3f4f6",
@@ -562,7 +587,7 @@ export default function MessagesPage() {
                 友だち追加時には何も送信されません。
               </p>
             )}
-            {followAction === "welcome_wait" && !welcomeMsg?.trim() && (
+            {followAction === "welcome_wait" && savedItems.length === 0 && (
               <p style={{ fontSize: 12, color: "#b45309", margin: "12px 0 0", lineHeight: 1.7 }}>
                 あいさつメッセージが未設定（空欄）のため、友だち追加時には何も送信されません。送信したい場合は下であいさつメッセージを設定してください。
               </p>
@@ -578,9 +603,9 @@ export default function MessagesPage() {
             }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <span style={{ fontWeight: 700, fontSize: 14, color: "#111827" }}>
-                  現在のあいさつメッセージ
+                  あいさつメッセージ（最大{WELCOME_MESSAGES_MAX}件）
                 </span>
-                {welcomeMsg?.trim() ? (
+                {savedItems.length > 0 ? (
                   <span style={{
                     fontSize: 11, fontWeight: 700, color: "#166534",
                     background: "#dcfce7", padding: "1px 8px", borderRadius: 10,
@@ -607,85 +632,103 @@ export default function MessagesPage() {
               あいさつメッセージを OFF にしてください。
             </div>
 
-            {editingWelcome ? (
-              /* ── 編集モード（タブ内・画面遷移なし） ── */
-              <>
-                <textarea
-                  value={welcomeDraft}
-                  onChange={(e) => setWelcomeDraft(e.target.value)}
-                  maxLength={2000}
-                  rows={5}
-                  placeholder="例：はじめまして！この物語体験へようこそ。「はじめる」と送ると物語がスタートします。"
-                  style={{
-                    width: "100%", boxSizing: "border-box",
-                    padding: "12px 14px", fontSize: 14, lineHeight: 1.7,
-                    border: "1.5px solid #e5e7eb", borderRadius: 10,
-                    resize: "vertical", color: "#111827",
-                  }}
-                />
-                <p style={{ fontSize: 11, color: "#9ca3af", margin: "6px 0 0" }}>
-                  {welcomeDraft.length} / 2000
-                </p>
-                <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 14 }}>
-                  <button type="button" className="btn btn-ghost" onClick={cancelEditWelcome} disabled={savingWelcome}>
-                    キャンセル
-                  </button>
-                  <button type="button" className="btn btn-primary" onClick={saveWelcome} disabled={savingWelcome || !welcomeDraft.trim()}>
-                    {savingWelcome ? "保存中..." : "保存する"}
-                  </button>
-                </div>
-              </>
-            ) : welcomeMsg?.trim() ? (
-              /* ── 設定済み（プレビュー + 編集 / 未設定に戻す） ── */
-              <>
-                <div style={{
-                  background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 12,
-                  padding: "16px 18px", marginBottom: 16, position: "relative",
-                }}>
-                  <div style={{
-                    fontSize: 10, fontWeight: 700, color: "#16a34a",
-                    letterSpacing: 0.5, marginBottom: 8, textTransform: "uppercase",
-                  }}>
-                    PREVIEW
-                  </div>
-                  <p style={{
-                    fontSize: 14, color: "#111827", margin: 0,
-                    whiteSpace: "pre-wrap", lineHeight: 1.8, wordBreak: "break-all",
-                  }}>
-                    {welcomeMsg}
+            {(() => {
+              const validation = validateWelcomeItems(welcomeItems);
+              const startTrigger = getStartTriggerFromPhases(phases);
+              const dirty = JSON.stringify(welcomeItems) !== JSON.stringify(savedItems);
+              const atMax = welcomeItems.length >= WELCOME_MESSAGES_MAX;
+              return (
+                <>
+                  <p style={{ fontSize: 12, color: "#6b7280", margin: "0 0 12px", lineHeight: 1.7 }}>
+                    友だち追加時、または開始前の案内で送信されるメッセージです。最大{WELCOME_MESSAGES_MAX}件まで設定できます。
                   </p>
-                </div>
-                {canEdit && (
-                  <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-                    <button type="button" className="btn btn-ghost" onClick={clearWelcome} disabled={savingWelcome}>
-                      未設定に戻す
-                    </button>
-                    <button type="button" className="btn btn-primary" onClick={startEditWelcome} disabled={savingWelcome}>
-                      編集する
-                    </button>
+
+                  {welcomeItems.length === 0 ? (
+                    <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 10, padding: "20px", textAlign: "center", marginBottom: 12 }}>
+                      <p style={{ fontWeight: 700, fontSize: 13, color: "#111827", margin: "0 0 4px" }}>あいさつメッセージは送信されません。</p>
+                      <p style={{ fontSize: 12, color: "#6b7280", margin: 0, lineHeight: 1.7 }}>「テキストを追加」または「画像を追加」で設定できます。</p>
+                    </div>
+                  ) : (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 12 }}>
+                      {welcomeItems.map((item, i) => (
+                        <div key={i} style={{ border: "1px solid #e5e7eb", borderRadius: 12, padding: "12px 14px", background: "#fff" }}>
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                            <span style={{ fontSize: 11, fontWeight: 700, color: "#6b7280" }}>
+                              {item.type === "text" ? `テキスト ${i + 1}` : `画像 ${i + 1}`}
+                            </span>
+                            {canEdit && (
+                              <span style={{ display: "inline-flex", gap: 4, alignItems: "center" }}>
+                                <button type="button" onClick={() => moveItem(i, "up")} disabled={i === 0} aria-label="上へ移動" style={reorderBtn(i === 0)}>▲</button>
+                                <button type="button" onClick={() => moveItem(i, "down")} disabled={i === welcomeItems.length - 1} aria-label="下へ移動" style={reorderBtn(i === welcomeItems.length - 1)}>▼</button>
+                                <button type="button" onClick={() => removeItem(i)} aria-label="削除" style={{ ...reorderBtn(false), color: "#dc2626" }}>✕</button>
+                              </span>
+                            )}
+                          </div>
+                          {item.type === "text" ? (
+                            <>
+                              <textarea
+                                value={item.text}
+                                onChange={(e) => updateItem(i, { type: "text", text: e.target.value })}
+                                readOnly={!canEdit}
+                                maxLength={WELCOME_TEXT_MAX}
+                                rows={4}
+                                placeholder="例：はじめまして！この物語体験へようこそ。"
+                                style={{ width: "100%", boxSizing: "border-box", padding: "10px 12px", fontSize: 14, lineHeight: 1.7, border: "1.5px solid #e5e7eb", borderRadius: 10, resize: "vertical", color: "#111827" }}
+                              />
+                              <p style={{ fontSize: 11, color: "#9ca3af", margin: "4px 0 0" }}>{item.text.length} / {WELCOME_TEXT_MAX}</p>
+                            </>
+                          ) : (
+                            <ImageUploadField
+                              value={item.imageUrl}
+                              onChange={(url) => updateItem(i, { type: "image", imageUrl: url })}
+                              readOnly={!canEdit}
+                              previewShape="rect"
+                              previewAlt="あいさつ画像プレビュー"
+                            />
+                          )}
+                          {validation.itemErrors[i] && (
+                            <p style={{ fontSize: 12, color: "#dc2626", margin: "6px 0 0" }}>{validation.itemErrors[i]}</p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {canEdit && (
+                    <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+                      <button type="button" className="btn btn-ghost" onClick={addTextItem} disabled={atMax}>＋ テキストを追加</button>
+                      <button type="button" className="btn btn-ghost" onClick={addImageItem} disabled={atMax}>＋ 画像を追加</button>
+                    </div>
+                  )}
+                  {atMax && (
+                    <p style={{ fontSize: 11, color: "#9ca3af", margin: "0 0 12px" }}>あいさつメッセージは最大{WELCOME_MESSAGES_MAX}件までです。</p>
+                  )}
+
+                  <div style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 8, padding: "10px 14px", marginBottom: 12, fontSize: 12, lineHeight: 1.7 }}>
+                    {startTrigger ? (
+                      <>
+                        <span style={{ color: "#374151" }}>最後のメッセージに「{startTrigger}」の開始クイックリプライが付きます。</span><br />
+                        <span style={{ color: "#6b7280" }}>画像が最後の場合も、その画像に開始クイックリプライが付きます。</span>
+                      </>
+                    ) : (
+                      <span style={{ color: "#b45309" }}>開始キーワードが未設定のため、開始クイックリプライは表示されません。</span>
+                    )}
                   </div>
-                )}
-              </>
-            ) : (
-              /* ── 未設定（このタブで設定開始・画面遷移なし） ── */
-              <div style={{
-                background: "#ffffff", border: "1px solid #e5e7eb",
-                borderRadius: 10, padding: "24px 20px", textAlign: "center",
-              }}>
-                <p style={{ fontWeight: 700, fontSize: 14, color: "#111827", margin: "0 0 6px" }}>
-                  あいさつメッセージが未設定です
-                </p>
-                <p style={{ fontSize: 12, color: "#6b7280", margin: "0 0 16px", lineHeight: 1.7 }}>
-                  あいさつメッセージが未設定のため、友だち追加時には案内文（既定文）のみが送信されます。<br />
-                  ユーザーへの最初の接触なので、独自のあいさつ文を設定することをおすすめします。
-                </p>
-                {canEdit && (
-                  <button type="button" className="btn btn-primary" onClick={startEditWelcome}>
-                    今すぐ設定する
-                  </button>
-                )}
-              </div>
-            )}
+
+                  {welcomeError && (
+                    <p style={{ fontSize: 12, color: "#dc2626", margin: "0 0 12px" }}>{welcomeError}</p>
+                  )}
+
+                  {canEdit && (
+                    <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+                      <button type="button" className="btn btn-primary" onClick={saveWelcomeMessages} disabled={welcomeSaving || !dirty || !validation.ok}>
+                        {welcomeSaving ? "保存中..." : "保存する"}
+                      </button>
+                    </div>
+                  )}
+                </>
+              );
+            })()}
           </div>
           ) : null}
 
