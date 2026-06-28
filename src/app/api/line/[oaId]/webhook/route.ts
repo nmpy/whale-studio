@@ -1756,9 +1756,14 @@ async function handleWebhook(req: NextRequest, oaId: string) {
           return;
         }
         if (decision.action === "send_welcome") {
-          // welcomeMessage が明示設定されている場合のみ。progress は作らず「はじめる」を待つ。
-          console.info(`[line-follow] sent welcome_wait message userId=${uid.slice(0, 8)}`);
-          await replyToLine(e.replyToken, buildWelcomeMessages({ ...work, welcomeMessage: effective.welcomeMessage }, systemSender), oa.channelAccessToken);
+          // welcomeMessage が明示設定されている場合のみ。progress は作らず開始 quick reply を待つ。
+          // 対象作品の startTrigger を取得し、あれば開始 quick reply を付与する（無ければ警告）。
+          const startTrigger = (await getCachedStartPhase(work.id))?.startTrigger?.trim() || null;
+          if (!startTrigger) {
+            console.warn(`[line-follow] welcome_wait: startTrigger 未設定 → 開始 quickReply なし workId=${work.id.slice(0, 8)} userId=${uid.slice(0, 8)}`);
+          }
+          console.info(`[line-follow] sent welcome_wait message userId=${uid.slice(0, 8)} startTriggerQr=${!!startTrigger}`);
+          await replyToLine(e.replyToken, buildWelcomeMessages({ ...work, welcomeMessage: effective.welcomeMessage }, systemSender, startTrigger), oa.channelAccessToken);
           return;
         }
         // auto_start（開始対象あり）: 既存仕様どおりシナリオ自動開始。
@@ -1898,30 +1903,36 @@ type HandlerCommon = {
 };
 
 /**
- * 未開始ユーザー向けのあいさつ＋開始案内メッセージを組み立てる。
- * work.welcomeMessage が設定されている場合はそれを先頭に送り、
- * 続けて「はじめる」開始案内を別吹き出しで添える。
- * welcomeMessage が未設定の場合はシステムデフォルト文のみ。
+ * 未開始ユーザー向けのあいさつメッセージを組み立てる。
+ * work.welcomeMessage が設定されていればそれを、無ければ作品名のあいさつを 1 吹き出しで送る。
+ *
+ * 開始案内は固定文言「『はじめる』と送ってください」を廃止し、対象作品の開始応答キーワード
+ * （startTrigger）がある場合のみ、最後のメッセージに message-action の quick reply として付与する。
+ * 押下すると startTrigger テキストが送信され、既存の startTrigger 照合経路（handleTextEvent）で
+ * 物語が開始する（postback は使わない）。startTrigger が無い場合は quick reply を付けない
+ * （固定「はじめる」を勝手に代用しない）。
  */
 function buildWelcomeMessages(
   work: NonNullable<WorkRecord>,
-  systemSender: LineSender | undefined
+  systemSender: LineSender | undefined,
+  startTrigger?: string | null,
 ): import("@/lib/line").LineMessage[] {
-  const startHint = `「はじめる」と送ってください。`;
+  const body = work.welcomeMessage?.trim()
+    ? work.welcomeMessage.trim()
+    : `「${work.title}」へようこそ。`;
 
-  if (work.welcomeMessage?.trim()) {
-    return [
-      { type: "text", text: work.welcomeMessage.trim(), sender: systemSender },
-      { type: "text", text: startHint,                  sender: systemSender },
-    ];
+  const trig = startTrigger?.trim();
+  if (trig) {
+    const quickReply: import("@/lib/line").LineQuickReply = {
+      items: [{
+        type:   "action",
+        action: { type: "message", label: trig.slice(0, 20), text: trig },
+      }],
+    };
+    return [{ type: "text", text: body, sender: systemSender, quickReply }];
   }
 
-  // フォールバック: welcomeMessage 未設定
-  return [{
-    type:   "text",
-    text:   `「${work.title}」へようこそ。\n準備ができたら「はじめる」と送ってください。`,
-    sender: systemSender,
-  }];
+  return [{ type: "text", text: body, sender: systemSender }];
 }
 
 /**
@@ -3327,11 +3338,15 @@ async function handleContinue({
 
   const progress = await getCachedProgress(userId, work.id);
 
-  // 未開始 — あいさつメッセージ（設定があれば）＋開始案内
+  // 未開始 — あいさつメッセージ（設定があれば）＋ startTrigger 開始 quick reply
   // PR-1: あいさつ文は OA 単位優先 + active Work フォールバック（follow 時と一貫）。
   if (!progress) {
     const effWelcome = resolveFollowSettings(oa, work).welcomeMessage;
-    await replyToLine(replyToken, buildWelcomeMessages({ ...work, welcomeMessage: effWelcome }, systemSender), token);
+    const startTrigger = (await getCachedStartPhase(work.id))?.startTrigger?.trim() || null;
+    if (!startTrigger) {
+      console.warn(`[Webhook] 未開始あいさつ: startTrigger 未設定 → 開始 quickReply なし workId=${work.id.slice(0, 8)} userId=${userId.slice(0, 8)}`);
+    }
+    await replyToLine(replyToken, buildWelcomeMessages({ ...work, welcomeMessage: effWelcome }, systemSender, startTrigger), token);
     return;
   }
 
