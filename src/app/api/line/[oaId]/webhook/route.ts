@@ -67,11 +67,6 @@ import { checkPuzzleAnswerAny, resolveAnswerCandidates, parseAnswerMatchType } f
 import type { MessageTimingConfig } from "@/types";
 import { genRequestId, runWithRequestId, withTiming } from "@/lib/perf";
 
-// あいさつメッセージの待機時間（delaySeconds 最大8秒×最大5件）で webhook 処理が
-// 1通目 reply + 後続 push の sleep により最大 ~32秒ブロックしうるため、関数の最大実行時間を延長する。
-// （既定タイムアウトだと後続 push が未達になる恐れがある。Vercel Pro は最大300s。）
-export const maxDuration = 60;
-
 /**
  * WorkRow から作品単位の演出設定を抽出する。
  * すべて null なら null を返す（= inherit、controller への影響なし）。
@@ -1772,9 +1767,7 @@ async function handleWebhook(req: NextRequest, oaId: string) {
             console.warn(`[line-follow] welcome_wait: startTrigger 未設定 → 開始 quickReply なし workId=${work.id.slice(0, 8)} userId=${uid.slice(0, 8)}`);
           }
           console.info(`[line-follow] sent welcome_wait message userId=${uid.slice(0, 8)} startTriggerQr=${!!startTrigger} items=${welcomeItems.length}`);
-          // 待機時間（delaySeconds→_lagMs）反映のため replyWithLagToLine を使う。
-          // controller は渡さない（welcome は lag のみ・typing/loading 演出なし）。全 0 なら内部で reply 一括。
-          await _replyWithLagToLine(e.replyToken, buildWelcomeMessages({ ...work, welcomeMessage: effective.welcomeMessage }, systemSender, startTrigger, welcomeItems), uid, oa.channelAccessToken);
+          await replyToLine(e.replyToken, buildWelcomeMessages({ ...work, welcomeMessage: effective.welcomeMessage }, systemSender, startTrigger, welcomeItems), oa.channelAccessToken);
           return;
         }
         // auto_start（開始対象あり）: 既存仕様どおりシナリオ自動開始。
@@ -1940,20 +1933,16 @@ function buildWelcomeMessages(
 
   if (items && items.length > 0) {
     // welcomeMessagesJson 由来（最大5件）。text/image を LINE message に変換。
-    // delaySeconds(>0) は _lagMs(ms) として載せる。replyWithLagToLine が 2通目以降の送信前待機に使う
-    // （全 0 なら _lagMs なし → reply 一括の従来挙動）。1通目は reply のため _lagMs は無視される。
-    msgs = items.slice(0, WELCOME_MESSAGES_MAX).map((it) => {
-      const lag = it.delaySeconds && it.delaySeconds > 0 ? { _lagMs: it.delaySeconds * 1000 } : {};
-      return it.type === "image"
+    msgs = items.slice(0, WELCOME_MESSAGES_MAX).map((it) =>
+      it.type === "image"
         ? ({
             type:              "image",
             originalContentUrl: it.imageUrl,
             previewImageUrl:    it.previewImageUrl ?? it.imageUrl,
             sender:             systemSender,
-            ...lag,
           } as import("@/lib/line").LineMessage)
-        : ({ type: "text", text: it.text, sender: systemSender, ...lag } as import("@/lib/line").LineMessage);
-    });
+        : ({ type: "text", text: it.text, sender: systemSender } as import("@/lib/line").LineMessage),
+    );
   } else {
     // 互換: 既存 welcomeMessage（無ければ作品名あいさつ）の単一テキスト。
     const body = work.welcomeMessage?.trim()
@@ -3389,8 +3378,7 @@ async function handleContinue({
     if (!startTrigger) {
       console.warn(`[Webhook] 未開始あいさつ: startTrigger 未設定 → 開始 quickReply なし workId=${work.id.slice(0, 8)} userId=${userId.slice(0, 8)}`);
     }
-    // 待機時間（delaySeconds→_lagMs）反映のため replyWithLagToLine を使う（controller なし）。
-    await _replyWithLagToLine(replyToken, buildWelcomeMessages({ ...work, welcomeMessage: effWelcome }, systemSender, startTrigger, welcomeItems), userId, token);
+    await replyToLine(replyToken, buildWelcomeMessages({ ...work, welcomeMessage: effWelcome }, systemSender, startTrigger, welcomeItems), token);
     return;
   }
 

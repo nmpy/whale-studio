@@ -44,32 +44,19 @@ export interface WelcomeValidationResult {
 /**
  * 保存前のクライアント側 validation（保存 API の zod と同条件）。
  */
-/** 待機時間（秒）の上限。0〜WELCOME_DELAY_MAX_SECONDS の整数。 */
-export const WELCOME_DELAY_MAX_SECONDS = 8;
-
-/** delaySeconds が不正（非整数 / 範囲外）なら理由文言、正常 or 未設定なら null。 */
-function delayError(v: number | undefined): string | null {
-  if (v === undefined) return null;
-  if (!Number.isInteger(v) || v < 0 || v > WELCOME_DELAY_MAX_SECONDS) {
-    return `待機時間は0〜${WELCOME_DELAY_MAX_SECONDS}秒の整数で入力してください`;
-  }
-  return null;
-}
-
 export function validateWelcomeItems(items: WelcomeMessageItem[]): WelcomeValidationResult {
   const itemErrors: (string | null)[] = items.map((it) => {
-    const dErr = delayError(it.delaySeconds);
     if (it.type === "text") {
       if (it.text.trim().length < 1) return "テキストを入力してください";
       if (it.text.length > WELCOME_TEXT_MAX) return `${WELCOME_TEXT_MAX}文字以内で入力してください`;
-      return dErr;
+      return null;
     }
     // image
     if (!isHttps(it.imageUrl)) return "https の画像URLを設定してください";
     if (it.previewImageUrl !== undefined && !isHttps(it.previewImageUrl)) {
       return "プレビュー画像URLは https が必要です";
     }
-    return dErr;
+    return null;
   });
 
   let overall: string | null = null;
@@ -106,17 +93,12 @@ export function buildWelcomeMessagesPayload(
 ): { welcome_messages: WelcomeMessageItem[] } {
   const welcome_messages: WelcomeMessageItem[] = items.map((it) =>
     it.type === "text"
-      ? {
-          type: "text",
-          text: it.text.trim(),
-          ...(it.delaySeconds ? { delaySeconds: it.delaySeconds } : {}),
-        }
+      ? { type: "text", text: it.text.trim() }
       : {
           type: "image",
           imageUrl: it.imageUrl,
           ...(it.previewImageUrl ? { previewImageUrl: it.previewImageUrl } : {}),
           ...(it.altText ? { altText: it.altText } : {}),
-          ...(it.delaySeconds ? { delaySeconds: it.delaySeconds } : {}),
         },
   );
   return { welcome_messages };
