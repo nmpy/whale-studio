@@ -7,6 +7,14 @@ Whale Studio の本番 Supabase project を Sydney (`ap-southeast-2`) から Tok
 
 > Supabase は既存 project のリージョンを直接変更できない。**新規 project を Tokyo に作成 → DB / Auth / Storage をすべて移植 → 環境変数を切り替え → 旧 project を最終削除** の流れで行う。
 
+> ⚠️ **post-incident 訂正サマリ（本手順書の旧版の誤りを反映済み）**
+> 移行後の本番障害対応で判明した正値を先に明記する。本文中の古い記述より以下を優先すること:
+> - **Vercel runtime の `DATABASE_URL` は Transaction Pooler (port `6543`) を使う**。direct/Session Pooler の `5432` を runtime に使うと `EMAXCONNSESSION` で本番が落ちる（migrate 用途とは別）。
+> - 正しい host は **`aws-1-ap-northeast-1.pooler.supabase.com`**（`aws-0` ではない）。fleet 接頭辞・region は Supabase Connect → Transaction pooler の表示値をそのままコピーする。誤ると `tenant/user ... not found` になる。
+> - runtime URL には **`?pgbouncer=true&connection_limit=1&pool_timeout=30`** を必ず付与。
+> - env 変更の反映は Vercel Dashboard の **Redeploy ではなく fresh deploy（空コミット push）**で行う（Redeploy は旧 env snapshot を再利用し反映されないことがある）。
+> - 詳細・正準ルールは `CLAUDE.md` の「Connection strategy」を参照。
+
 ---
 
 ## 現状
@@ -21,7 +29,7 @@ Whale Studio の本番 Supabase project を Sydney (`ap-southeast-2`) から Tok
 ### コード調査結果
 
 - 環境変数のハードコードは **なし**(README プレースホルダーと test stub のみ)
-- `vercel.json` は **存在しない**(=Vercel function region は全リージョン抽選 = `iad1` がデフォルト)
+- `vercel.json` は移行後に **追加済み**(`{ "regions": ["hnd1"] }` = Tokyo function region 固定 + scheduled-messages cron を登録)。本手順書作成時点では存在しなかった。
 - GitHub Actions は Slack 通知 1 つだけで、DB / Supabase には接続していない
 - Prisma migration は PostgreSQL 専用 (`prisma/migrations/migration_lock.toml` で `provider = "postgresql"` 固定)
 - Supabase Storage の bucket `image` を `/api/upload/storage` ルートで使用(LIFF 画像は Cloudinary 経由なので別)
@@ -139,8 +147,9 @@ Whale Studio は Prisma で migration を管理しているので、最も安全
 - 後で migration を追加するときに整合性を保てる
 
 ```bash
-# 新 project の direct (non-pooled) URL を一時的に env にセット
-export DATABASE_URL="postgresql://postgres.<NEW_REF>:<PWD>@aws-0-ap-northeast-1.pooler.supabase.com:5432/postgres"
+# 新 project の Session Pooler URL を一時的に env にセット（migrate 用途・port 5432）
+# host は Connect → Session pooler の値。fleet は aws-1（aws-0 ではない）。この URL は Vercel runtime には使わない。
+export DATABASE_URL="postgresql://postgres.<NEW_REF>:<PWD>@aws-1-ap-northeast-1.pooler.supabase.com:5432/postgres"
 
 # migration を順次適用
 npx prisma migrate deploy
@@ -164,8 +173,8 @@ pg_dump --data-only --no-owner --no-acl \
   -d "$OLD_DB_URL" \
   -f data_only.sql
 
-# 新 project に restore
-NEW_DB_URL="postgresql://postgres.<NEW_REF>:<PWD>@aws-0-ap-northeast-1.pooler.supabase.com:5432/postgres"
+# 新 project に restore（一括 restore 用途・Session Pooler 5432。fleet は aws-1）
+NEW_DB_URL="postgresql://postgres.<NEW_REF>:<PWD>@aws-1-ap-northeast-1.pooler.supabase.com:5432/postgres"
 psql -d "$NEW_DB_URL" -f data_only.sql
 ```
 
@@ -246,14 +255,15 @@ Vercel Dashboard → Project Settings → Environment Variables(Production / Pre
 
 | 変数 | 旧値 | 新値 |
 |---|---|---|
-| `DATABASE_URL` | `postgresql://postgres.<OLD_REF>:<PWD>@aws-0-ap-southeast-2.pooler.supabase.com:5432/postgres` | 新 project の URI(pooler 6543 ではなく direct 5432 推奨) |
+| `DATABASE_URL` | `postgresql://postgres.<OLD_REF>:<PWD>@aws-0-ap-southeast-2.pooler.supabase.com:5432/postgres` (旧 Sydney) | **Transaction Pooler 6543**: `postgresql://postgres.<NEW_REF>:<PWD>@aws-1-ap-northeast-1.pooler.supabase.com:6543/postgres?pgbouncer=true&connection_limit=1&pool_timeout=30`（⚠️ direct/Session の 5432 を runtime に使わない。host fleet は `aws-1`） |
 | `NEXT_PUBLIC_SUPABASE_URL` | `https://<OLD_REF>.supabase.co` | `https://<NEW_REF>.supabase.co` |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | 旧 anon key | 新 anon key |
 | `SUPABASE_SERVICE_ROLE_KEY` | 旧 service-role key | 新 service-role key |
 
-> ⚠️ `NEXT_PUBLIC_*` は **ビルド時に bundle に焼き付く**。値を差し替えたら **必ず再デプロイ**(Redeploy with new env)。
+> ⚠️ `NEXT_PUBLIC_*` は **ビルド時に bundle に焼き付く**。値を差し替えたら **fresh deploy（空コミット push）で反映**する。
+> ⚠️ env 反映に **Vercel Dashboard の Redeploy は使わない**: Redeploy は直前デプロイの **env snapshot を再利用**するため、更新した `DATABASE_URL` / `NEXT_PUBLIC_*` が反映されないことがある（実際に発生）。新しいコミットによる fresh deploy が確実。
 
-> 推奨: 先に新 project の値を Preview env に設定 → Preview ブランチで E2E 確認 → Production に同値を反映 → Production を Redeploy。
+> 推奨: 先に新 project の値を Preview env に設定 → Preview ブランチで E2E 確認 → Production に同値を反映 → **空コミット push で Production を fresh deploy**。
 
 ---
 
@@ -384,7 +394,7 @@ COMMIT;
 10. **新 project に Auth users を流し込み**(ステップ D)
 11. **Storage オブジェクトを新 bucket に再アップロード**(ステップ E)
 12. **DB 内の旧 Storage URL を新 URL に書き換え**
-13. **Vercel 環境変数を新 project の値に差し替え + Redeploy**(Production)
+13. **Vercel 環境変数を新 project の値に差し替え + fresh deploy（空コミット push）**(Production)。Dashboard の Redeploy は env snapshot を再利用するため使わない。`DATABASE_URL` は Transaction Pooler 6543 / `aws-1-ap-northeast-1` を使用
 14. **LINE Messaging API webhook URL を再設定**(URL は同じだが Save し直して webhook 検証を再走らせる)
 15. **動作確認リストを順に PASS**
 
