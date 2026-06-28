@@ -24,8 +24,10 @@ export type FollowDecision =
 export interface FollowDecisionInput {
   /** 作品単位の友だち追加時動作。null/undefined は既定 auto_start。 */
   followAction:   FollowAction | string | null | undefined;
-  /** Work.welcomeMessage（welcome_wait のときに参照）。 */
+  /** Work.welcomeMessage（welcome_wait のときに参照・単一テキスト互換）。 */
   welcomeMessage: string | null | undefined;
+  /** welcomeMessagesJson（複数件・text/image）に有効な item があるか。省略時 false。 */
+  hasWelcomeMessages?: boolean;
   /** auto_start のときに「開始対象（開始フェーズ等）」が存在するか。 */
   hasStartTarget: boolean;
 }
@@ -48,8 +50,10 @@ export function decideFollowBehavior(input: FollowDecisionInput): FollowDecision
   }
 
   if (action === "welcome_wait") {
-    // trim 後に空なら送らない（デフォルト文面へのフォールバックはしない）。
-    if (!input.welcomeMessage || input.welcomeMessage.trim() === "") {
+    // welcomeMessagesJson に有効 item があるか、または welcomeMessage(trim 後 非空) があれば送る。
+    // どちらも無ければ送らない（デフォルト文面へのフォールバックはしない）。
+    const hasSingleWelcome = !!input.welcomeMessage && input.welcomeMessage.trim() !== "";
+    if (!input.hasWelcomeMessages && !hasSingleWelcome) {
       return { action: "skip", reason: "welcomeMessage empty" };
     }
     return { action: "send_welcome", reason: "welcome_wait message" };
