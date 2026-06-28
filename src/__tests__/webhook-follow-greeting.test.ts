@@ -46,6 +46,8 @@ vi.mock("@/lib/event-logger", () => ({ logEvent: vi.fn().mockResolvedValue(undef
 
 const mockReplyToLine        = vi.fn().mockResolvedValue(undefined);
 const mockReplyWithLagToLine = vi.fn().mockResolvedValue(undefined);
+const mockPushToLine         = vi.fn().mockResolvedValue(undefined);
+const mockSleep              = vi.fn().mockResolvedValue(undefined);
 vi.mock("@/lib/line", () => ({
   verifyLineSignature:    vi.fn().mockReturnValue(true),
   isStartCommand:         vi.fn().mockReturnValue(false),
@@ -58,11 +60,18 @@ vi.mock("@/lib/line", () => ({
   buildQuickReply:        vi.fn().mockReturnValue(undefined),
   buildQuickReplyFromItems: vi.fn().mockReturnValue(undefined),
   buildKeywordMessages:   vi.fn().mockReturnValue([{ type: "text", text: "kw-msg" }]),
-  pushToLine:             vi.fn().mockResolvedValue(undefined),
-  sleep:                  vi.fn().mockResolvedValue(undefined),
+  pushToLine:             mockPushToLine,
+  sleep:                  (...a: unknown[]) => mockSleep(...a),
   resolveHeadSendDelayMs: vi.fn().mockReturnValue(0),
   RICHMENU_ACTIONS:       { START: "start", RESET: "reset", CONTINUE: "continue" },
 }));
+
+// あいさつ送信前の loading 演出（PR-B1）。showLoadingAnimation は stub（実 API を叩かない）。
+const mockShowLoadingAnimation = vi.fn().mockResolvedValue(true);
+vi.mock("@/lib/line-read-receipt", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/line-read-receipt")>();
+  return { ...actual, showLoadingAnimation: (...a: unknown[]) => mockShowLoadingAnimation(...a) };
+});
 
 vi.mock("@/lib/runtime", () => ({
   buildRuntimeState: vi.fn().mockResolvedValue({ phase: { id: "p1", messages: [], transitions: [] } }),
@@ -92,10 +101,10 @@ function makeOa(over: Partial<{ welcomeMessage: string | null; followAction: str
     welcomeMessage: null, followAction: null, ...over,
   };
 }
-function makeWork(over: Partial<{ welcomeMessage: string | null; followAction: string; welcomeMessagesJson: unknown }> = {}) {
+function makeWork(over: Partial<{ welcomeMessage: string | null; followAction: string; welcomeMessagesJson: unknown; welcomeLoadingSeconds: number }> = {}) {
   return {
     id: WORK_ID, title: "あいさつ作品", publishStatus: "active", sortOrder: 0,
-    welcomeMessage: null, followAction: "auto_start", systemCharacter: null, welcomeMessagesJson: [], ...over,
+    welcomeMessage: null, followAction: "auto_start", systemCharacter: null, welcomeMessagesJson: [], welcomeLoadingSeconds: 0, ...over,
   };
 }
 function makeStartPhase(startTrigger: string | null) {
@@ -219,7 +228,7 @@ describe("PR-G1: follow あいさつ + startTrigger quick reply", () => {
 //  PR-G2-A: welcomeMessagesJson（複数件 text/image）
 // ─────────────────────────────────────────────
 describe("PR-G2-A: welcomeMessagesJson による複数あいさつ + 画像", () => {
-  function setupWelcomeWait(over: Partial<{ welcomeMessage: string | null; welcomeMessagesJson: unknown }>, startTrigger: string | null = "ぼうけん") {
+  function setupWelcomeWait(over: Partial<{ welcomeMessage: string | null; welcomeMessagesJson: unknown; welcomeLoadingSeconds: number }>, startTrigger: string | null = "ぼうけん") {
     const oa = makeOa({ welcomeMessage: null, followAction: "welcome_wait" });
     mockPrisma.oa.findFirst.mockResolvedValue(oa);
     mockPrisma.work.findFirst.mockResolvedValue(makeWork({ followAction: "welcome_wait", ...over }));
@@ -327,5 +336,58 @@ describe("PR-G2-A: welcomeMessagesJson による複数あいさつ + 画像", ()
     const msgs = welcomeReplyMessages();
     expect(msgs!).toHaveLength(1);
     expect(msgs![0].text).toBe("互換本文");
+  });
+
+  // ── PR-B1: 送信前の入力中演出（welcomeLoadingSeconds）。reply 一括は維持。 ──
+  it("welcomeLoadingSeconds=0 → loading なし・sleep なし・reply 一括", async () => {
+    const oa = setupWelcomeWait({ welcomeMessagesJson: [{ type: "text", text: "A" }], welcomeLoadingSeconds: 0 });
+    await callWebhook(oa.lineOaId, makeFollowBody());
+    expect(mockShowLoadingAnimation).not.toHaveBeenCalled();
+    expect(mockSleep).not.toHaveBeenCalled();
+    expect(mockReplyToLine).toHaveBeenCalled();          // reply 一括で送信
+    expect(welcomeReplyMessages()).toHaveLength(1);
+  });
+
+  it("welcomeLoadingSeconds=3 → showLoadingAnimation(uid,3,token) + sleep(3000) → reply 一括", async () => {
+    const oa = setupWelcomeWait({ welcomeMessagesJson: [
+      { type: "text", text: "A" }, { type: "image", imageUrl: "https://ex.com/a.png" }, { type: "text", text: "B" },
+    ], welcomeLoadingSeconds: 3 });
+    await callWebhook(oa.lineOaId, makeFollowBody());
+    expect(mockShowLoadingAnimation).toHaveBeenCalledTimes(1);
+    expect(mockShowLoadingAnimation.mock.calls[0][0]).toBe(USER_ID);   // chatId=userId
+    expect(mockShowLoadingAnimation.mock.calls[0][1]).toBe(3);          // loadingSeconds
+    expect(mockSleep).toHaveBeenCalledWith(3000);
+    // reply 一括（3件まとめて）・push / replyWithLagToLine は未使用
+    expect(welcomeReplyMessages()).toHaveLength(3);
+    expect(mockPushToLine).not.toHaveBeenCalled();
+    expect(mockReplyWithLagToLine).not.toHaveBeenCalled();
+  });
+
+  it("welcomeLoadingSeconds=8 でも reply 一括・push されない・最後に startTrigger QR", async () => {
+    const oa = setupWelcomeWait({ welcomeMessagesJson: [
+      { type: "text", text: "A" }, { type: "image", imageUrl: "https://ex.com/a.png" },
+    ], welcomeLoadingSeconds: 8 }, "ぼうけん");
+    await callWebhook(oa.lineOaId, makeFollowBody());
+    expect(mockSleep).toHaveBeenCalledWith(8000);
+    const msgs = welcomeReplyMessages();
+    expect(msgs!).toHaveLength(2);
+    expect(msgs![1].quickReply.items[0].action).toEqual({ type: "message", label: "ぼうけん", text: "ぼうけん" });
+    expect(mockPushToLine).not.toHaveBeenCalled();
+  });
+
+  it("loading API が false を返しても reply は継続（sleep も実施）", async () => {
+    mockShowLoadingAnimation.mockResolvedValueOnce(false);
+    const oa = setupWelcomeWait({ welcomeMessagesJson: [{ type: "text", text: "A" }], welcomeLoadingSeconds: 2 });
+    await callWebhook(oa.lineOaId, makeFollowBody());
+    expect(mockSleep).toHaveBeenCalledWith(2000);
+    expect(welcomeReplyMessages()).toHaveLength(1);       // reply 継続
+  });
+
+  it("loading API が例外でも reply は継続（catch・ログのみ）", async () => {
+    mockShowLoadingAnimation.mockRejectedValueOnce(new Error("loading boom"));
+    const oa = setupWelcomeWait({ welcomeMessagesJson: [{ type: "text", text: "A" }], welcomeLoadingSeconds: 2 });
+    await callWebhook(oa.lineOaId, makeFollowBody());
+    expect(mockSleep).toHaveBeenCalledWith(2000);          // 例外でも sleep は実施
+    expect(welcomeReplyMessages()).toHaveLength(1);        // reply 継続
   });
 });

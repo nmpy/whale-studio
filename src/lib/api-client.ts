@@ -592,6 +592,7 @@ export interface MessagesBootstrapData {
     title:               string;
     welcome_message:     string | null;
     welcome_messages:    import("@/lib/welcome-messages").WelcomeMessageItem[];
+    welcome_loading_seconds: number;
     follow_action:       "auto_start" | "welcome_wait" | "none";
     publish_status:      string;
     liff_enabled:        boolean;

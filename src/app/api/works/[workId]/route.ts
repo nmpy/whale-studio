@@ -55,6 +55,7 @@ function toResponse(w: {
   systemCharacterId: string | null;
   welcomeMessage: string | null;
   welcomeMessagesJson?: unknown;
+  welcomeLoadingSeconds?: number | null;
   followAction?: string | null;
   readReceiptMode: string | null; readDelayMs: number | null;
   typingEnabled: boolean | null; typingMinMs: number | null; typingMaxMs: number | null;
@@ -79,6 +80,7 @@ function toResponse(w: {
     system_character_id: w.systemCharacterId,
     welcome_message:     w.welcomeMessage,
     welcome_messages:    parseWelcomeMessages(w.welcomeMessagesJson),
+    welcome_loading_seconds: w.welcomeLoadingSeconds ?? 0,
     follow_action:       (w.followAction as "auto_start" | "welcome_wait" | "none" | undefined) ?? "auto_start",
     // 演出設定
     read_receipt_mode:    (w.readReceiptMode as import("@/types").ReadReceiptMode) ?? null,
@@ -155,6 +157,7 @@ export const PATCH = withAuth<{ workId: string }>(async (req, { params }, user) 
           welcomeMessagesJson: data.welcome_messages,
           welcomeMessage:      data.welcome_messages.find((m) => m.type === "text")?.text ?? null,
         }),
+        ...(data.welcome_loading_seconds !== undefined && { welcomeLoadingSeconds: data.welcome_loading_seconds }),
         ...(data.follow_action       !== undefined && { followAction:       data.follow_action }),
         // 演出設定
         ...(data.read_receipt_mode    !== undefined && { readReceiptMode:    data.read_receipt_mode }),

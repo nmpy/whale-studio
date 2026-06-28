@@ -120,6 +120,9 @@ model Work {
   /// （{type:"text",text} | {type:"image",imageUrl,previewImageUrl?,altText?}）。
   /// 空配列 `[]` のときは従来どおり welcomeMessage（単一テキスト）にフォールバックする（互換）。
   welcomeMessagesJson  Json    @default("[]") @map("welcome_messages_json") @db.JsonB
+  /// あいさつ送信前の「入力中…」演出の待機秒数（0〜8）。0=演出なし（即時 reply）。
+  /// loading API はメッセージ通数を消費しないため、push を使わず reply 一括前提のまま演出できる。
+  welcomeLoadingSeconds Int    @default(0) @map("welcome_loading_seconds")
 
   /// 友だち追加（follow）時の動作（作品単位）:
   ///   "auto_start"    = 友だち追加直後にシナリオを自動開始（既存挙動・既定）。
