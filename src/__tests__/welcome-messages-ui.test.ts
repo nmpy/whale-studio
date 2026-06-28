@@ -25,6 +25,9 @@ describe("initWelcomeItems", () => {
     expect(initWelcomeItems({ welcome_messages: [], welcome_message: "" })).toEqual([]);
     expect(initWelcomeItems({})).toEqual([]);
   });
+  it("全削除後（welcome_messages=[] / welcome_message=null）→ [] が維持される", () => {
+    expect(initWelcomeItems({ welcome_messages: [], welcome_message: null })).toEqual([]);
+  });
 });
 
 describe("validateWelcomeItems", () => {
