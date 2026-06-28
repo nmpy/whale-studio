@@ -156,6 +156,37 @@ describe("PATCH welcome_messages — validation 400", () => {
     const res = await callPatch({ welcome_messages: [{ type: "flex", text: "x" }] });
     expect(res.status).toBe(400);
   });
+
+  it("delaySeconds 9以上 → 400", async () => {
+    const res = await callPatch({ welcome_messages: [{ type: "text", text: "a", delaySeconds: 9 }] });
+    expect(res.status).toBe(400);
+    expect(mockWork.update).not.toHaveBeenCalled();
+  });
+  it("delaySeconds 負数 → 400", async () => {
+    const res = await callPatch({ welcome_messages: [{ type: "text", text: "a", delaySeconds: -1 }] });
+    expect(res.status).toBe(400);
+  });
+  it("delaySeconds 小数 → 400", async () => {
+    const res = await callPatch({ welcome_messages: [{ type: "text", text: "a", delaySeconds: 2.5 }] });
+    expect(res.status).toBe(400);
+  });
+});
+
+describe("PATCH welcome_messages — delaySeconds 正常系", () => {
+  it("delaySeconds 0 / 8 は保存OK、welcomeMessagesJson に格納される", async () => {
+    const res = await callPatch({ welcome_messages: [
+      { type: "text", text: "1通目", delaySeconds: 0 },
+      { type: "image", imageUrl: "https://ex.com/a.png", delaySeconds: 8 },
+    ] });
+    expect(res.status).toBe(200);
+    const json = savedData()!.welcomeMessagesJson as Array<Record<string, unknown>>;
+    expect(json[0]).toMatchObject({ type: "text", text: "1通目", delaySeconds: 0 });
+    expect(json[1]).toMatchObject({ type: "image", imageUrl: "https://ex.com/a.png", delaySeconds: 8 });
+  });
+  it("delaySeconds 未指定でも保存OK", async () => {
+    const res = await callPatch({ welcome_messages: [{ type: "text", text: "a" }] });
+    expect(res.status).toBe(200);
+  });
 });
 
 describe("GET — welcome_messages と welcome_message を返す", () => {
