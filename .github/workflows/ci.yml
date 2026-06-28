@@ -1,0 +1,43 @@
+name: CI
+
+# PR と main への push で型チェック・テストを必須化する（RED のまま merge されないように）。
+# 既存の slack-pr-notify.yml には影響しない（別 workflow）。
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# 同一ブランチで新しい push が来たら古い実行をキャンセルする（無駄実行の削減）。
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  typecheck-test:
+    name: typecheck + test
+    runs-on: ubuntu-latest
+    env:
+      # prisma generate はスキーマの datasource(env "DATABASE_URL") 解決のために値が必要。
+      # 実 DB へは接続しない（generate はクライアント生成のみ）。ダミー値・Secrets 不使用。
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Prisma generate (no DB connection)
+        run: npx prisma generate
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
