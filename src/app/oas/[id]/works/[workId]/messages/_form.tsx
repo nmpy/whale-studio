@@ -1535,7 +1535,7 @@ function QuickReplyEditor({ items, onChange, responseMessages, phases, transitio
                               {(["none", "message", "phase"] as const).map((t) => {
                                 const current  = getQrTransitionType(item);
                                 const isActive = current === t;
-                                const lblMap   = { none: "なし", message: "メッセージのみ", phase: "フェーズ遷移" } as const;
+                                const lblMap   = { none: "なし", message: "指定メッセージ送信", phase: "フェーズ遷移" } as const;
                                 return (
                                   <button
                                     key={t}
@@ -1669,7 +1669,7 @@ function QuickReplyEditor({ items, onChange, responseMessages, phases, transitio
                             )}
                             {getQrTransitionType(item) === "message" && (
                               <div style={{ ...hintText, marginTop: 4 }}>
-                                メッセージ遷移は、選んだメッセージだけを送信します。<strong>別フェーズのメッセージを選んでも、プレイヤーの現在のフェーズは変わりません</strong>。
+                                選んだメッセージから、クイックリプライ・自由入力・終端で止まるまでの<strong>連続メッセージ</strong>を送信します。<strong>別フェーズのメッセージを選んでも、プレイヤーの現在のフェーズは変わりません</strong>。
                                 次のフェーズへ進めたい場合は「フェーズ遷移」を選択してください。
                               </div>
                             )}
