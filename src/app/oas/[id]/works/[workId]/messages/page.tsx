@@ -29,8 +29,8 @@ import { ImageUploadField } from "@/components/ImageUploadField";
 import type { WelcomeMessageItem } from "@/lib/welcome-messages";
 import {
   initWelcomeItems, validateWelcomeItems, moveWelcomeItem,
-  buildWelcomeMessagesPayload, getStartTriggerFromPhases,
-  WELCOME_MESSAGES_MAX, WELCOME_TEXT_MAX,
+  buildWelcomeMessagesPayload, getStartTriggerFromPhases, clampWelcomeLoadingSeconds,
+  WELCOME_MESSAGES_MAX, WELCOME_TEXT_MAX, WELCOME_LOADING_MAX_SECONDS,
 } from "@/lib/welcome-messages-ui";
 
 
@@ -63,6 +63,9 @@ export default function MessagesPage() {
   const [savedItems,   setSavedItems]   = useState<WelcomeMessageItem[]>([]);
   const [welcomeSaving, setWelcomeSaving] = useState(false);
   const [welcomeError,  setWelcomeError]  = useState<string | null>(null);
+  // あいさつ送信前の「入力中…」演出の待機秒数（0〜8・あいさつ全体の設定）。saved は dirty 判定用。
+  const [welcomeLoadingSeconds, setWelcomeLoadingSeconds] = useState(0);
+  const [savedWelcomeLoadingSeconds, setSavedWelcomeLoadingSeconds] = useState(0);
   // 友だち追加（follow）時の動作（作品単位）。Bootstrap の work.follow_action 由来。
   const [followAction,   setFollowAction]   = useState<"auto_start" | "welcome_wait" | "none">("auto_start");
   const [savingFollow,   setSavingFollow]   = useState(false);
@@ -285,10 +288,13 @@ export default function MessagesPage() {
     setWelcomeSaving(true);
     setWelcomeError(null);
     try {
-      const updated = await workApi.update(getDevToken(), workId, buildWelcomeMessagesPayload(welcomeItems));
+      const updated = await workApi.update(getDevToken(), workId, buildWelcomeMessagesPayload(welcomeItems, welcomeLoadingSeconds));
       const next = updated.welcome_messages ?? [];
       setWelcomeItems(next);
       setSavedItems(next);
+      const nextSec = clampWelcomeLoadingSeconds(updated.welcome_loading_seconds ?? 0);
+      setWelcomeLoadingSeconds(nextSec);
+      setSavedWelcomeLoadingSeconds(nextSec);
       invalidateBootstrap(oaId, workId); // 次回再訪で最新取得（stale 防止）
       showToast("あいさつメッセージを保存しました", "success");
     } catch (err) {
@@ -327,6 +333,9 @@ export default function MessagesPage() {
         const items = initWelcomeItems(data.work);
         setWelcomeItems(items);
         setSavedItems(items);
+        const sec = clampWelcomeLoadingSeconds(data.work.welcome_loading_seconds ?? 0);
+        setWelcomeLoadingSeconds(sec);
+        setSavedWelcomeLoadingSeconds(sec);
       }
       setFollowAction((data.work.follow_action as "auto_start" | "welcome_wait" | "none" | undefined) ?? "auto_start");
       setResumeEnabled(data.work.resume_enabled !== false);
@@ -635,7 +644,8 @@ export default function MessagesPage() {
             {(() => {
               const validation = validateWelcomeItems(welcomeItems);
               const startTrigger = getStartTriggerFromPhases(phases);
-              const dirty = JSON.stringify(welcomeItems) !== JSON.stringify(savedItems);
+              const dirty = JSON.stringify(welcomeItems) !== JSON.stringify(savedItems)
+                || welcomeLoadingSeconds !== savedWelcomeLoadingSeconds;
               const atMax = welcomeItems.length >= WELCOME_MESSAGES_MAX;
               return (
                 <>
@@ -703,6 +713,27 @@ export default function MessagesPage() {
                   {atMax && (
                     <p style={{ fontSize: 11, color: "#9ca3af", margin: "0 0 12px" }}>あいさつメッセージは最大{WELCOME_MESSAGES_MAX}件までです。</p>
                   )}
+
+                  {/* あいさつ全体の送信前演出（item ごとではない）。 */}
+                  <div style={{ border: "1px solid #e5e7eb", borderRadius: 10, padding: "12px 14px", marginBottom: 12, background: "#fff" }}>
+                    <label style={{ display: "block", fontSize: 13, fontWeight: 700, color: "#111827", marginBottom: 6 }}>
+                      あいさつ前の入力中表示
+                    </label>
+                    <select
+                      value={welcomeLoadingSeconds}
+                      onChange={(e) => setWelcomeLoadingSeconds(clampWelcomeLoadingSeconds(Number(e.target.value)))}
+                      disabled={!canEdit}
+                      style={{ padding: "6px 10px", fontSize: 13, border: "1px solid #e5e7eb", borderRadius: 8, color: "#111827", background: "#fff" }}
+                    >
+                      {Array.from({ length: WELCOME_LOADING_MAX_SECONDS + 1 }, (_, s) => (
+                        <option key={s} value={s}>{s} 秒</option>
+                      ))}
+                    </select>
+                    <p style={{ fontSize: 11, color: "#9ca3af", margin: "6px 0 0", lineHeight: 1.6 }}>
+                      友だち追加時に「入力中…」を表示してから、あいさつメッセージをまとめて送信します。0秒のときは演出なしで即時送信します。<br />
+                      入力中表示は送信前の演出です（メッセージごとの待機ではありません）。
+                    </p>
+                  </div>
 
                   <div style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 8, padding: "10px 14px", marginBottom: 12, fontSize: 12, lineHeight: 1.7 }}>
                     {startTrigger ? (
