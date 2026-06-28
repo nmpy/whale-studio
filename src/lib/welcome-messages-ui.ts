@@ -132,3 +132,23 @@ export function getStartTriggerFromPhases(
   const t = start?.start_trigger?.trim();
   return t && t.length > 0 ? t : null;
 }
+
+/**
+ * bootstrap の phases から開始フェーズの id を取り出す（無ければ null）。
+ * 共通設定タブから startTrigger を編集する際の phaseApi.update 対象 id に使う。
+ */
+export function getStartPhaseId(
+  phases: { id: string; phase_type: string | null }[],
+): string | null {
+  return phases.find((p) => p.phase_type === "start")?.id ?? null;
+}
+
+/**
+ * 開始クイックリプライ文言（= startTrigger）の保存値を正規化する。
+ * trim・改行除去。空なら null（未設定→QR非表示）。
+ * 文字数上限（API zod の max 200）は呼び出し側で別途チェックする。
+ */
+export function normalizeStartTrigger(v: string): string | null {
+  const t = v.replace(/[\r\n]+/g, " ").trim();
+  return t.length > 0 ? t : null;
+}
