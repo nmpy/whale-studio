@@ -1924,6 +1924,36 @@ function buildWelcomeMessages(
   }];
 }
 
+/**
+ * 「開始意図」(text の はじめる/スタート 等, リッチメニュー START, startTrigger 一致) を受けたときに、
+ * 途中離脱ユーザーへ「途中から再開する / 最初からやり直す」の選択肢を出すべきか判定する共通ヘルパ。
+ *
+ * - 出すべき (= resumeEnabled≠false かつ 未エンディングで進行中) なら sendResumeChoice して true を返す。
+ * - 出さない (新規 / 完了済み / resumeEnabled=false / work・progress なし) 場合は false を返し、
+ *   呼び出し側が従来どおり handleStart / handleStartTrigger（= 最初から開始）に進む。
+ *
+ * 判定ロジックは shouldOfferResumeChoice (src/lib/message-flow.ts) に集約。DB / schema 変更なし。
+ */
+async function maybeOfferResumeChoice(
+  args: { oa: OaRecord; work: WorkRecord; systemSender: LineSender | undefined; replyToken: string },
+  progress: ProgressCached | null,
+): Promise<boolean> {
+  const { oa, work, systemSender, replyToken } = args;
+  if (!work || !progress) return false;
+  const offer = shouldOfferResumeChoice({
+    resumeEnabled:  work.resumeEnabled,
+    hasProgress:    true,
+    reachedEnding:  !!progress.reachedEnding,
+    currentPhaseId: progress.currentPhaseId ?? null,
+  });
+  if (!offer) return false;
+  await sendResumeChoice({
+    oa, work, systemSender, replyToken,
+    workId: work.id, currentPhaseId: progress.currentPhaseId!,
+  });
+  return true;
+}
+
 async function handleTextEvent({
   oa,
   work,
@@ -1970,6 +2000,10 @@ async function handleTextEvent({
       `text="${text.slice(0, 60)}"`,
       `userId=${userId}`,
     );
+    // 途中離脱ユーザー（resumeEnabled≠false・未エンディングで進行中）には再開選択肢を提示する。
+    // 新規 / 完了済み / resumeEnabled=false は従来どおり handleStart（最初から開始）。
+    const progressForStart = await getCachedProgress(userId, work.id);
+    if (await maybeOfferResumeChoice({ oa, work, systemSender, replyToken }, progressForStart)) return;
     await handleStart({ oa, work, systemSender, userId, replyToken, vars });
     return;
   }
@@ -2227,27 +2261,19 @@ async function handleTextEvent({
         `userId=${userId}`,
       );
 
-      // 途中離脱ユーザーには即リセットせず「再開 or やり直し」の選択肢を提示する。
-      // ただし作品設定で resumeEnabled=false の場合は選択肢を出さず、通常の開始
-      // （= 最初からやり直す）に寄せる（undefined は従来挙動 = true 扱い）。
-      const isMidProgress = shouldOfferResumeChoice({
-        resumeEnabled:  work?.resumeEnabled,
-        hasProgress:    progress !== null,
-        reachedEnding:  !!progress?.reachedEnding,
-        currentPhaseId: progress?.currentPhaseId ?? null,
-      });
-
-      if (isMidProgress && progress) {
+      // 途中離脱ユーザーには即リセットせず「再開 or やり直し」の選択肢を提示する（共通ヘルパ）。
+      // resumeEnabled=false / 未開始 / エンディング到達済みは選択肢を出さず、通常の startTrigger 処理
+      // （= 最初からやり直す）に進む（undefined は従来挙動 = true 扱い）。
+      if (await maybeOfferResumeChoice({ oa, work, systemSender, replyToken }, progress)) {
         console.log(
           `[Webhook][STEP] 途中離脱ユーザー検出 → 再開選択肢を提示`,
-          `currentPhaseId=${progress.currentPhaseId}`,
+          `currentPhaseId=${progress?.currentPhaseId}`,
           `userId=${userId}`,
         );
-        await sendResumeChoice({ oa, work, systemSender, replyToken, workId: work.id, currentPhaseId: progress.currentPhaseId! });
         return;
       }
 
-      // 未開始 / エンディング到達済み → 通常の startTrigger 処理（リセット + 開始）
+      // 未開始 / エンディング到達済み / resumeEnabled=false → 通常の startTrigger 処理（リセット + 開始）
       await handleStartTrigger({
         oa, work, systemSender, userId, replyToken, vars,
         startPhase: startPhaseForTrigger,
@@ -2973,7 +2999,21 @@ async function handlePostbackEvent({
   }
 
   switch (data) {
-    case RICHMENU_ACTIONS.START:
+    case RICHMENU_ACTIONS.START: {
+      if (!work) {
+        await replyToLine(replyToken, [{
+          type:   "text",
+          text:   "現在、公開中のシナリオはありません。しばらくお待ちください。",
+          sender: systemSender,
+        }], oa.channelAccessToken);
+        return;
+      }
+      // リッチメニュー「START」: 途中離脱ユーザーには再開選択肢を提示（RESET は明示リセットのため対象外）。
+      const progressForStart = await getCachedProgress(userId, work.id);
+      if (await maybeOfferResumeChoice({ oa, work, systemSender, replyToken }, progressForStart)) break;
+      await handleStart({ oa, work, systemSender, userId, replyToken, vars });
+      break;
+    }
     case RICHMENU_ACTIONS.RESET:
       if (!work) {
         await replyToLine(replyToken, [{
@@ -2983,6 +3023,7 @@ async function handlePostbackEvent({
         }], oa.channelAccessToken);
         return;
       }
+      // 明示リセット: 途中再開の選択肢は出さず、常に最初から開始。
       await handleStart({ oa, work, systemSender, userId, replyToken, vars });
       break;
 
