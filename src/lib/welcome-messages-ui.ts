@@ -99,27 +99,12 @@ export function moveWelcomeItem(
 }
 
 /**
- * 先頭 item（1通目）の delaySeconds を外す。1通目は reply で即時送信されるため待機を持たない（案B）。
- *  - 2件目以降の delaySeconds は保持
- *  - 元配列は破壊しない / 空配列はそのまま
- * 並び替え・削除で先頭に来た item の待機時間を正規化するために使う（保存時にも最終防御として適用）。
- */
-export function dropFirstItemDelay(items: WelcomeMessageItem[]): WelcomeMessageItem[] {
-  return items.map((it, i) => {
-    if (i !== 0 || it.delaySeconds === undefined) return it;
-    const { delaySeconds: _omit, ...rest } = it;
-    return rest as WelcomeMessageItem;
-  });
-}
-
-/**
  * 保存 payload を組み立てる。text は trim、image は imageUrl（＋設定済みの preview/alt のみ）。
- * 先頭 item の delaySeconds は必ず省略する（1通目は即時送信）。
  */
 export function buildWelcomeMessagesPayload(
   items: WelcomeMessageItem[],
 ): { welcome_messages: WelcomeMessageItem[] } {
-  const welcome_messages: WelcomeMessageItem[] = dropFirstItemDelay(items).map((it) =>
+  const welcome_messages: WelcomeMessageItem[] = items.map((it) =>
     it.type === "text"
       ? {
           type: "text",

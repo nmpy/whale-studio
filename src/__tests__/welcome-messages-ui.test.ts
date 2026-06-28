@@ -6,7 +6,6 @@ import {
   initWelcomeItems,
   validateWelcomeItems,
   moveWelcomeItem,
-  dropFirstItemDelay,
   buildWelcomeMessagesPayload,
   getStartTriggerFromPhases,
   WELCOME_TEXT_MAX,
@@ -124,69 +123,14 @@ describe("buildWelcomeMessagesPayload", () => {
   });
   it("delaySeconds(>0) は保持、0/未設定は省略", () => {
     expect(buildWelcomeMessagesPayload([
-      { type: "text", text: "先頭" },
       { type: "text", text: " a ", delaySeconds: 3 },
       { type: "text", text: "b", delaySeconds: 0 },
       { type: "image", imageUrl: "https://ex.com/a.png", delaySeconds: 8 },
     ])).toEqual({ welcome_messages: [
-      { type: "text", text: "先頭" },
       { type: "text", text: "a", delaySeconds: 3 },
       { type: "text", text: "b" },
       { type: "image", imageUrl: "https://ex.com/a.png", delaySeconds: 8 },
     ] });
-  });
-  it("1通目（先頭）の delaySeconds は必ず省略される", () => {
-    expect(buildWelcomeMessagesPayload([
-      { type: "text", text: "1通目", delaySeconds: 5 },
-      { type: "text", text: "2通目", delaySeconds: 2 },
-    ])).toEqual({ welcome_messages: [
-      { type: "text", text: "1通目" },
-      { type: "text", text: "2通目", delaySeconds: 2 },
-    ] });
-  });
-});
-
-describe("dropFirstItemDelay", () => {
-  it("先頭の delaySeconds を外す", () => {
-    expect(dropFirstItemDelay([{ type: "text", text: "a", delaySeconds: 5 }]))
-      .toEqual([{ type: "text", text: "a" }]);
-  });
-  it("2件目以降の delaySeconds は保持", () => {
-    expect(dropFirstItemDelay([
-      { type: "text", text: "a", delaySeconds: 3 },
-      { type: "text", text: "b", delaySeconds: 4 },
-    ])).toEqual([
-      { type: "text", text: "a" },
-      { type: "text", text: "b", delaySeconds: 4 },
-    ]);
-  });
-  it("空配列 OK / 先頭に delay が無ければそのまま", () => {
-    expect(dropFirstItemDelay([])).toEqual([]);
-    expect(dropFirstItemDelay([{ type: "text", text: "a" }])).toEqual([{ type: "text", text: "a" }]);
-  });
-});
-
-describe("moveWelcomeItem + dropFirstItemDelay（1通目正規化）", () => {
-  const items: WelcomeMessageItem[] = [
-    { type: "text", text: "A" },
-    { type: "text", text: "B", delaySeconds: 3 },
-    { type: "text", text: "C", delaySeconds: 5 },
-  ];
-  it("delay 付き item を 1通目に移動すると delay が消える", () => {
-    const moved = moveWelcomeItem(items, 1, "up"); // B(delay3) を先頭へ
-    expect(dropFirstItemDelay(moved)).toEqual([
-      { type: "text", text: "B" },
-      { type: "text", text: "A" },
-      { type: "text", text: "C", delaySeconds: 5 },
-    ]);
-  });
-  it("2通目以降同士の並び替えでは delay 保持", () => {
-    const moved = moveWelcomeItem(items, 1, "down"); // B(delay3) と C(delay5) 入替（どちらも非先頭）
-    expect(dropFirstItemDelay(moved)).toEqual([
-      { type: "text", text: "A" },
-      { type: "text", text: "C", delaySeconds: 5 },
-      { type: "text", text: "B", delaySeconds: 3 },
-    ]);
   });
 });
 
