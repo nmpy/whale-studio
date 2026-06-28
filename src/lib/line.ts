@@ -15,6 +15,7 @@ import type { ReadReceiptController } from "@/lib/line-read-receipt";
 import { showLoadingAnimation, resolveCmsLoadingPlan } from "@/lib/line-read-receipt";
 import { resolveDisplayQrItems } from "@/lib/hint-qr";
 import { buildPuzzleHintPostbackData } from "@/lib/puzzle-hint";
+import { buildQuickReplyPostbackData, quickReplyItemHasDestination } from "@/lib/quick-reply-postback";
 import { buildFlexSendParts, type FlexContents } from "@/lib/flex";
 import { normalizeCarouselContent, buildCarouselFlex } from "@/lib/carousel";
 import { recordPuzzleDeliveries } from "@/lib/puzzle-history";
@@ -1062,9 +1063,11 @@ export function buildQuickReply(labels: string[]): LineQuickReply {
 
 /**
  * QuickReplyItem[] から LineQuickReply を生成する共通ヘルパー。
- * - action: "text" / "next" / "hint" → message アクション（タップ時にテキスト送信）
- * - action: "url"                     → uri アクション（URL を開く）
- * - action: "custom"                  → message アクション（postback は未対応のため text で代替）
+ * - action: "text" / "next" / "custom" → 送信先（target_message_id / response_message_id /
+ *     target_phase_id）を持ち qrPostbackSourceMessageId 指定時は **postback**（action=quick_reply）。
+ *     それ以外（送信先なし or 未指定）は message アクション（タップ時にラベル送信＝既存互換）。
+ * - action: "url"                       → uri アクション（URL を開く）
+ * - action: "hint"                      → sourceMessageId 指定時は puzzle_hint postback、未指定は message
  * - items が空の場合は undefined を返す
  */
 export function buildQuickReplyFromItems(
@@ -1079,15 +1082,26 @@ export function buildQuickReplyFromItems(
      * hintIndex は resolveDisplayQrItems の hint 並び順（= resolveHintItems）と一致する。
      */
     sourceMessageId?: string;
+    /**
+     * 指定時、**送信先を持つ通常 QR**（text/next/custom かつ target_message_id /
+     * response_message_id / target_phase_id のいずれかを持つ）を **postback**
+     * （action=quick_reply&sourceMessageId=<this>&qrIndex=<index>）として出力する。
+     * qrIndex は **items 内の元 index**（= 呼び出し側が渡す resolveDisplayQrItems 出力の index）。
+     * webhook 側は resolveQuickReplyItem(row, qrIndex) で同じ index を引き当て、ラベル一致に
+     * 依存せず正しい送信先へ解決する（同名 QR が複数あっても取り違えない）。
+     * 送信先を持たない純フリーテキスト QR は対象外（= message action のまま・keyword/transition に委ねる）。
+     */
+    qrPostbackSourceMessageId?: string;
   },
 ): LineQuickReply | undefined {
   if (!items || items.length === 0) return undefined;
 
   let hintIdx = 0; // hint アイテムの出現順 index（postback hintIndex 用）。非 hint では増えない。
   const lineItems: LineQuickReplyItem[] = items
-    .filter((item) => item.enabled !== false)   // enabled=false のアイテムを除外
+    .map((item, qrIndex) => ({ item, qrIndex }))  // qrIndex = items 内の元 index（filter/slice 前）
+    .filter(({ item }) => item.enabled !== false) // enabled=false のアイテムを除外
     .slice(0, QUICK_REPLY_MAX)
-    .flatMap((item): LineQuickReplyItem[] => {
+    .flatMap(({ item, qrIndex }): LineQuickReplyItem[] => {
       const label = item.label.slice(0, 20);
       if (item.action === "url") {
         // destination_id がある場合は resolved URL を優先
@@ -1118,6 +1132,19 @@ export function buildQuickReplyFromItems(
       }
       // text / next / custom → value 優先、なければ label
       const text = item.value?.trim() || item.label;
+      // 送信先を持つ通常 QR は postback 化（解決キー = sourceMessageId + qrIndex・ラベル非依存）。
+      // displayText には従来の送信テキストを入れ、LINE 上は「次へ」を送ったように見せる（見た目不変）。
+      if (opts?.qrPostbackSourceMessageId && quickReplyItemHasDestination(item)) {
+        return [{
+          type: "action",
+          action: {
+            type:        "postback",
+            label,
+            data:        buildQuickReplyPostbackData(opts.qrPostbackSourceMessageId, qrIndex),
+            displayText: text,
+          },
+        }];
+      }
       return [{ type: "action", action: { type: "message", label, text } }];
     });
 
@@ -1205,8 +1232,12 @@ export function buildPhaseMessages(
       incorrectQuickReplies: msg.incorrect_quick_replies,
     });
     const msgQr = visibleQrItems.length
-      // 問題（puzzle）のヒント QR は postback 化（messageId + hintIndex で解決）。非 puzzle は従来通り。
-      ? buildQuickReplyFromItems(visibleQrItems, msg.kind === "puzzle" ? { sourceMessageId: msg.id } : undefined)
+      // 送信先を持つ通常 QR は postback 化（sourceMessageId + qrIndex で解決・同名 QR の取り違え防止）。
+      // 問題（puzzle）のヒント QR は puzzle_hint postback（messageId + hintIndex）も併せて付与。
+      ? buildQuickReplyFromItems(visibleQrItems, {
+          qrPostbackSourceMessageId: msg.id,
+          ...(msg.kind === "puzzle" ? { sourceMessageId: msg.id } : {}),
+        })
       : undefined;
     return convertMessageToLine({
       id:        msg.id,
@@ -1483,8 +1514,12 @@ export function buildKeywordMessages(
     });
     const msgQr: LineQuickReply | undefined =
       displayQrItems.length
-        // 問題（puzzle）のヒント QR は postback 化（messageId + hintIndex）。再表示（問題に戻る）経路でも同様。
-        ? buildQuickReplyFromItems(displayQrItems, msg.kind === "puzzle" ? { sourceMessageId: msg.id } : undefined)
+        // 送信先を持つ通常 QR は postback 化（sourceMessageId + qrIndex）。同名 QR の取り違え防止。
+        // 問題（puzzle）のヒント QR は puzzle_hint postback（messageId + hintIndex）も併せて付与。
+        ? buildQuickReplyFromItems(displayQrItems, {
+            qrPostbackSourceMessageId: msg.id,
+            ...(msg.kind === "puzzle" ? { sourceMessageId: msg.id } : {}),
+          })
         : undefined;
 
     // 共通変換ヘルパー（buildPhaseMessages と同一ロジック）

@@ -51,6 +51,7 @@ import { isFreeInputPrompt } from "@/lib/free-input";
 import { decideFollowBehavior, resolveFollowSettings } from "@/lib/follow-action";
 import { parseWelcomeMessages, WELCOME_MESSAGES_MAX, type WelcomeMessageItem } from "@/lib/welcome-messages";
 import { resolveQrBranchDelivery } from "@/lib/qr-branch";
+import { parseQuickReplyPostback, resolveQuickReplyItem } from "@/lib/quick-reply-postback";
 import { parseFrontier, selectQrScope } from "@/lib/qr-frontier";
 import { applyFreeInputPostEffect } from "@/lib/frontier-effect";
 import { handleBeaconEvent, type LineBeaconEvent } from "@/lib/beacon";
@@ -2027,6 +2028,200 @@ async function maybeOfferResumeChoice(
   return true;
 }
 
+/**
+ * QR 分岐の送信（response_message / target_message / target_phase）を実行する共通処理。
+ * text event（QR ラベル手入力 / 旧 message action QR）と postback（action=quick_reply）の両方から
+ * 呼び出し、同じ送信経路（5通以内 reply / 6通以上 push・自由入力 post-effect・フェーズ遷移）を共有する。
+ * 送信して完了したら true、何も送れずフォールスルーすべきとき（qrMsgs 空）は false を返す。
+ */
+async function deliverQrBranch(args: {
+  matchedQrItem: import("@/types").QuickReplyItem;
+  oa:            OaRecord;
+  work:          NonNullable<WorkRecord>;
+  progress:      ProgressCached | null;
+  systemSender:  LineSender | undefined;
+  userId:        string;
+  replyToken:    string;
+  token:         string;
+  vars:          import("@/lib/line").PlaceholderVars;
+  /** perf ログ用の起点時刻（呼び出し元イベントの t0）。 */
+  startedAt:     number;
+}): Promise<boolean> {
+  const { matchedQrItem, oa, work, progress, systemSender, userId, replyToken, token, vars, startedAt: t0e } = args;
+  console.log(`[Webhook][STEP] qrItem マッチ userId=${userId}`,
+    `response_message_id=${matchedQrItem.response_message_id?.slice(0, 8) ?? "none"}`,
+    `target_type=${matchedQrItem.target_type ?? "none"}`,
+    `target_message_id=${matchedQrItem.target_message_id?.slice(0, 8) ?? "none"}`,
+    `target_phase_id=${matchedQrItem.target_phase_id?.slice(0, 8) ?? "none"}`,
+  );
+
+  // Step 2 用の DB セレクト（buildMessageChain に渡す形式）
+  // Phase 2c hotfix: 演出設定 (lagMs / readReceiptMode / typingEnabled 等) も fetch する。
+  // これがないと response_message の per-message timing が runtime まで届かない。
+  const MSG_SELECT = {
+    id: true, messageType: true, body: true, assetUrl: true,
+    altText: true, flexPayloadJson: true, quickReplies: true,
+    nextMessageId: true, sortOrder: true,
+    // 問題（puzzle）のヒント QR 合成用（target_message_id → puzzle で必須）
+    kind: true, hintMode: true, incorrectQuickReplies: true,
+    imageActionType: true, imageActionText: true, imageActionUrl: true,
+    imageActionLiffPageId: true, imageActionPostbackData: true,
+    // 自由入力受付フラグ (buildMessageChain で chain walk 停止判定に使う)
+    freeInputEnabled: true,
+    // 演出設定 (Phase 2c)
+    lagMs: true,
+    readReceiptMode: true, readDelayMs: true,
+    typingEnabled: true, typingMinMs: true, typingMaxMs: true,
+    loadingEnabled: true, loadingThresholdMs: true,
+    loadingMinSeconds: true, loadingMaxSeconds: true,
+    character: { select: { name: true, iconImageUrl: true } },
+  } as const;
+
+  const qrMsgs: import("@/lib/line").LineMessage[] = [];
+  // 自由入力受付モード用: 実際にユーザーへ送信される全メッセージ ID
+  const qrSentIds: string[] = [];
+
+  // ── QR 分岐の送信仕様 ──
+  //  target_message_id（target_type="message"）が設定されている場合は、
+  //  「target chain」を正として送る = response_message_id のチェーンを target より前に
+  //  自動で割り込ませない。これにより管理画面で「入力 → あっ」と設定したとおり
+  //  「入力 → target → target の nextMessageId chain」の順で届く。
+  //  target_message_id が無い場合は従来どおり response_message_id のチェーンを送る（既存互換）。
+  //  （target_phase_id 遷移は別パス。response は従来どおり Step 3b の前段で送られる）
+  const qrBranch = resolveQrBranchDelivery(matchedQrItem);
+  const hasMessageTarget = !qrBranch.sendResponseChain;
+
+  // 解決結果を構造化ログに残す（PII / 本文は出さない）。
+  console.info("[line:qr-branch:resolved]", JSON.stringify({
+    oaId: oa.id,
+    workId: work.id,
+    itemLabel: matchedQrItem.label ?? null,
+    responseMessageId: matchedQrItem.response_message_id ?? null,
+    targetMessageId: matchedQrItem.target_message_id ?? null,
+    targetPhaseId: matchedQrItem.target_phase_id ?? null,
+    selectedRootMessageId: qrBranch.selectedRootMessageId,
+    mode: qrBranch.mode,
+  }));
+
+  // ── Step 2: 応答メッセージ（返す内容）──
+  //  target_message_id がある場合は送らない（target chain を正とするため）。
+  if (!hasMessageTarget && matchedQrItem.response_message_id) {
+    try {
+      const respMsg = await prisma.message.findUnique({
+        where: { id: matchedQrItem.response_message_id, isActive: true },
+        select: MSG_SELECT,
+      });
+      if (respMsg) {
+        const { messages: chain, chainIds } = await buildMessageChain(respMsg, vars);
+        qrMsgs.push(...chain);
+        qrSentIds.push(...chainIds);
+      }
+    } catch (e) {
+      console.warn("[Webhook] qrItem response_message fetch error:", e);
+    }
+  }
+
+  // ── Step 3a: 遷移先メッセージ（フェーズ遷移なし）──
+  if (hasMessageTarget) {
+    try {
+      const targetMsg = await prisma.message.findUnique({
+        where: { id: matchedQrItem.target_message_id, isActive: true },
+        select: MSG_SELECT,
+      });
+      if (targetMsg) {
+        const { messages: chain, chainIds } = await buildMessageChain(targetMsg, vars);
+        qrMsgs.push(...chain);
+        qrSentIds.push(...chainIds);
+      }
+    } catch (e) {
+      console.warn("[Webhook] qrItem target_message fetch error:", e);
+    }
+    if (qrMsgs.length > 0) {
+      const tReplyQrMsg = Date.now();
+      // Phase 2c hotfix: chain (= length > 1) でも per-message timing が効くよう、
+      // replyWithLagToLine 経路に統一する。1 通でも replyWithLagToLine は内部で
+      // replyToLine に委譲するため、挙動差は per-message timing の有無のみ。
+      await replyWithLagToLine(replyToken, qrMsgs, userId, token);
+      // qrItem_message パス: 応答 + 遷移先チェーンの末尾を自由入力候補とする
+      await applyFreeInputPostEffect({
+        sentMessageIds: qrSentIds,
+        oaId: oa.id,
+        route: "qr_target_message",
+        userId,
+        workId:    work.id,
+        progressId: progress?.id,
+      });
+      console.log(`[perf][event] path=qrItem_message total=${Date.now() - t0e}ms reply:${Date.now() - tReplyQrMsg}ms`);
+      return true;
+    }
+    // qrMsgs が空の場合はフォールスルー（keyword/transition へ）
+  }
+
+  // ── Step 3b: 遷移先フェーズ（フェーズ遷移あり）──
+  //  progress が無い場合は phase 更新ができないため安全にスキップ（フォールスルー）。
+  if (matchedQrItem.target_phase_id && progress) {
+    try {
+      const toPhaseRow = await getCachedPhase(matchedQrItem.target_phase_id);
+      if (toPhaseRow) {
+        const isEnding = toPhaseRow.phaseType === "ending";
+        const updated  = await prisma.userProgress.update({
+          where: { id: progress.id },
+          data: {
+            currentPhaseId:   matchedQrItem.target_phase_id,
+            reachedEnding:    isEnding,
+            lastInteractedAt: new Date(),
+          },
+        });
+        await setCachedProgress(updated);
+        fireResumeCompletedIfApplicable(updated, oa.id);
+        const state     = await buildRuntimeState(updated, toPhaseRow);
+        const phaseMsgs = buildPhaseMessages(state.phase, { systemSender, vars });
+        qrMsgs.push(...phaseMsgs);
+        // 遷移後フェーズのメッセージも自由入力候補に含める
+        const phaseMessageIds = state.phase?.messages.map((m) => m.id) ?? [];
+        const tReplyQrPh = Date.now();
+        // 応答chain + 遷移先フェーズの全メッセージを切らずに渡す。
+        // replyWithLagToLine が 5通以下=Reply / 6通以上=Reply+Push に分割するため、
+        // 呼び出し側で slice(0,5) すると 6通目以降が破棄される（通常フェーズ遷移パスと挙動を揃える）。
+        await replyWithLagToLine(replyToken, qrMsgs, userId, token);
+        await applyFreeInputPostEffect({
+          sentMessageIds: [...qrSentIds, ...phaseMessageIds],
+          oaId: oa.id,
+          route: "qr_target_phase",
+          userId,
+          workId:    work.id,
+          progressId: updated.id,
+        });
+        console.log(`[perf][event] path=qrItem_phase total=${Date.now() - t0e}ms reply:${Date.now() - tReplyQrPh}ms`);
+        void switchRichMenuForUser(oa, userId, toPhaseRow.phaseType);
+        return true;
+      }
+    } catch (e) {
+      console.warn("[Webhook] qrItem target_phase transition error:", e);
+      // フォールバック: 通常フローへ
+    }
+  }
+
+  // ── response_message のみ（遷移先なし）──
+  if (qrMsgs.length > 0) {
+    const tReplyQrResp = Date.now();
+    // Phase 2c hotfix: chain 内 per-message timing を効かせるため replyWithLagToLine に変更
+    await replyWithLagToLine(replyToken, qrMsgs, userId, token);
+    await applyFreeInputPostEffect({
+      sentMessageIds: qrSentIds,
+      oaId: oa.id,
+      route: "qr_response",
+      userId,
+      workId:    work.id,
+      progressId: progress?.id,
+    });
+    console.log(`[perf][event] path=qrItem_response total=${Date.now() - t0e}ms reply:${Date.now() - tReplyQrResp}ms`);
+    return true;
+  }
+  // qrMsgs が空（応答メッセージも遷移先も解決できなかった）→ フォールスルー
+  return false;
+}
+
 async function handleTextEvent({
   oa,
   work,
@@ -2432,182 +2627,11 @@ async function handleTextEvent({
   const keywordMatched = currentPhase ? matchKeywordsInMemory(currentPhase.messages, globalKwMsgs, text)                 : [];
   const puzzleResult   = currentPhase ? matchPuzzleFromPhase(currentPhase, text, solvedPuzzleIds, userSegment)           : null;
 
-  // QR マッチ時の送信処理（response_message / target_message / target_phase）を関数化。
-  // 通常フローと「ending 到達後の frontier QR ナビ（案A）」で共用し重複を避ける。
-  // 送信して完了したら true、何も送れずフォールスルーすべきときは false を返す。
-  const deliverMatchedQr = async (matchedQrItem: import("@/types").QuickReplyItem): Promise<boolean> => {
-    console.log(`[Webhook][STEP] qrItem マッチ userId=${userId}`,
-      `response_message_id=${matchedQrItem.response_message_id?.slice(0, 8) ?? "none"}`,
-      `target_type=${matchedQrItem.target_type ?? "none"}`,
-      `target_message_id=${matchedQrItem.target_message_id?.slice(0, 8) ?? "none"}`,
-      `target_phase_id=${matchedQrItem.target_phase_id?.slice(0, 8) ?? "none"}`,
-    );
-
-    // Step 2 用の DB セレクト（buildMessageChain に渡す形式）
-    // Phase 2c hotfix: 演出設定 (lagMs / readReceiptMode / typingEnabled 等) も fetch する。
-    // これがないと response_message の per-message timing が runtime まで届かない。
-    const MSG_SELECT = {
-      id: true, messageType: true, body: true, assetUrl: true,
-      altText: true, flexPayloadJson: true, quickReplies: true,
-      nextMessageId: true, sortOrder: true,
-      // 問題（puzzle）のヒント QR 合成用（target_message_id → puzzle で必須）
-      kind: true, hintMode: true, incorrectQuickReplies: true,
-      imageActionType: true, imageActionText: true, imageActionUrl: true,
-      imageActionLiffPageId: true, imageActionPostbackData: true,
-      // 自由入力受付フラグ (buildMessageChain で chain walk 停止判定に使う)
-      freeInputEnabled: true,
-      // 演出設定 (Phase 2c)
-      lagMs: true,
-      readReceiptMode: true, readDelayMs: true,
-      typingEnabled: true, typingMinMs: true, typingMaxMs: true,
-      loadingEnabled: true, loadingThresholdMs: true,
-      loadingMinSeconds: true, loadingMaxSeconds: true,
-      character: { select: { name: true, iconImageUrl: true } },
-    } as const;
-
-    const qrMsgs: import("@/lib/line").LineMessage[] = [];
-    // 自由入力受付モード用: 実際にユーザーへ送信される全メッセージ ID
-    const qrSentIds: string[] = [];
-
-    // ── QR 分岐の送信仕様 ──
-    //  target_message_id（target_type="message"）が設定されている場合は、
-    //  「target chain」を正として送る = response_message_id のチェーンを target より前に
-    //  自動で割り込ませない。これにより管理画面で「入力 → あっ」と設定したとおり
-    //  「入力 → target → target の nextMessageId chain」の順で届く。
-    //  target_message_id が無い場合は従来どおり response_message_id のチェーンを送る（既存互換）。
-    //  （target_phase_id 遷移は別パス。response は従来どおり Step 3b の前段で送られる）
-    const qrBranch = resolveQrBranchDelivery(matchedQrItem);
-    const hasMessageTarget = !qrBranch.sendResponseChain;
-
-    // 解決結果を構造化ログに残す（PII / 本文は出さない）。
-    console.info("[line:qr-branch:resolved]", JSON.stringify({
-      oaId: oa.id,
-      workId: work.id,
-      itemLabel: matchedQrItem.label ?? null,
-      responseMessageId: matchedQrItem.response_message_id ?? null,
-      targetMessageId: matchedQrItem.target_message_id ?? null,
-      targetPhaseId: matchedQrItem.target_phase_id ?? null,
-      selectedRootMessageId: qrBranch.selectedRootMessageId,
-      mode: qrBranch.mode,
-    }));
-
-    // ── Step 2: 応答メッセージ（返す内容）──
-    //  target_message_id がある場合は送らない（target chain を正とするため）。
-    if (!hasMessageTarget && matchedQrItem.response_message_id) {
-      try {
-        const respMsg = await prisma.message.findUnique({
-          where: { id: matchedQrItem.response_message_id, isActive: true },
-          select: MSG_SELECT,
-        });
-        if (respMsg) {
-          const { messages: chain, chainIds } = await buildMessageChain(respMsg, vars);
-          qrMsgs.push(...chain);
-          qrSentIds.push(...chainIds);
-        }
-      } catch (e) {
-        console.warn("[Webhook] qrItem response_message fetch error:", e);
-      }
-    }
-
-    // ── Step 3a: 遷移先メッセージ（フェーズ遷移なし）──
-    if (hasMessageTarget) {
-      try {
-        const targetMsg = await prisma.message.findUnique({
-          where: { id: matchedQrItem.target_message_id, isActive: true },
-          select: MSG_SELECT,
-        });
-        if (targetMsg) {
-          const { messages: chain, chainIds } = await buildMessageChain(targetMsg, vars);
-          qrMsgs.push(...chain);
-          qrSentIds.push(...chainIds);
-        }
-      } catch (e) {
-        console.warn("[Webhook] qrItem target_message fetch error:", e);
-      }
-      if (qrMsgs.length > 0) {
-        const tReplyQrMsg = Date.now();
-        // Phase 2c hotfix: chain (= length > 1) でも per-message timing が効くよう、
-        // replyWithLagToLine 経路に統一する。1 通でも replyWithLagToLine は内部で
-        // replyToLine に委譲するため、挙動差は per-message timing の有無のみ。
-        await replyWithLagToLine(replyToken, qrMsgs, userId, token);
-        // qrItem_message パス: 応答 + 遷移先チェーンの末尾を自由入力候補とする
-        await applyFreeInputPostEffect({
-          sentMessageIds: qrSentIds,
-          oaId: oa.id,
-          route: "qr_target_message",
-          userId,
-          workId:    work.id,
-          progressId: progress?.id,
-        });
-        console.log(`[perf][event] path=qrItem_message total=${Date.now() - t0e}ms reply:${Date.now() - tReplyQrMsg}ms`);
-        return true;
-      }
-      // qrMsgs が空の場合はフォールスルー（keyword/transition へ）
-    }
-
-    // ── Step 3b: 遷移先フェーズ（フェーズ遷移あり）──
-    if (matchedQrItem.target_phase_id) {
-      try {
-        const toPhaseRow = await getCachedPhase(matchedQrItem.target_phase_id);
-        if (toPhaseRow) {
-          const isEnding = toPhaseRow.phaseType === "ending";
-          const updated  = await prisma.userProgress.update({
-            where: { id: progress.id },
-            data: {
-              currentPhaseId:   matchedQrItem.target_phase_id,
-              reachedEnding:    isEnding,
-              lastInteractedAt: new Date(),
-            },
-          });
-          await setCachedProgress(updated);
-          fireResumeCompletedIfApplicable(updated, oa.id);
-          const state     = await buildRuntimeState(updated, toPhaseRow);
-          const phaseMsgs = buildPhaseMessages(state.phase, { systemSender, vars });
-          qrMsgs.push(...phaseMsgs);
-          // 遷移後フェーズのメッセージも自由入力候補に含める
-          const phaseMessageIds = state.phase?.messages.map((m) => m.id) ?? [];
-          const tReplyQrPh = Date.now();
-          // 応答chain + 遷移先フェーズの全メッセージを切らずに渡す。
-          // replyWithLagToLine が 5通以下=Reply / 6通以上=Reply+Push に分割するため、
-          // 呼び出し側で slice(0,5) すると 6通目以降が破棄される（通常フェーズ遷移パスと挙動を揃える）。
-          await replyWithLagToLine(replyToken, qrMsgs, userId, token);
-          await applyFreeInputPostEffect({
-            sentMessageIds: [...qrSentIds, ...phaseMessageIds],
-            oaId: oa.id,
-            route: "qr_target_phase",
-            userId,
-            workId:    work.id,
-            progressId: updated.id,
-          });
-          console.log(`[perf][event] path=qrItem_phase total=${Date.now() - t0e}ms reply:${Date.now() - tReplyQrPh}ms`);
-          void switchRichMenuForUser(oa, userId, toPhaseRow.phaseType);
-          return true;
-        }
-      } catch (e) {
-        console.warn("[Webhook] qrItem target_phase transition error:", e);
-        // フォールバック: 通常フローへ
-      }
-    }
-
-    // ── response_message のみ（遷移先なし）──
-    if (qrMsgs.length > 0) {
-      const tReplyQrResp = Date.now();
-      // Phase 2c hotfix: chain 内 per-message timing を効かせるため replyWithLagToLine に変更
-      await replyWithLagToLine(replyToken, qrMsgs, userId, token);
-      await applyFreeInputPostEffect({
-        sentMessageIds: qrSentIds,
-        oaId: oa.id,
-        route: "qr_response",
-        userId,
-        workId:    work.id,
-        progressId: progress?.id,
-      });
-      console.log(`[perf][event] path=qrItem_response total=${Date.now() - t0e}ms reply:${Date.now() - tReplyQrResp}ms`);
-      return true;
-    }
-    // qrMsgs が空（応答メッセージも遷移先も解決できなかった）→ フォールスルー
-    return false;
-  };
+  // QR マッチ時の送信処理（response_message / target_message / target_phase）。
+  // 通常フローと「ending 到達後の frontier QR ナビ（案A）」、および postback（action=quick_reply）で
+  // 共通の deliverQrBranch を共用し重複を避ける。送信できれば true、フォールスルー時は false。
+  const deliverMatchedQr = (matchedQrItem: import("@/types").QuickReplyItem): Promise<boolean> =>
+    deliverQrBranch({ matchedQrItem, oa, work, progress, systemSender, userId, replyToken, token, vars, startedAt: t0e });
 
   // ─ エンディング到達済み（startIntent は phase ロード前に処理済み）─
   //   案A: frontier がある場合のみ matchedQrItem を評価し、ending 内 QR ナビ（E→D 等）だけ許可する。
@@ -3051,6 +3075,83 @@ async function handlePostbackEvent({
       }
     } else {
       console.warn(`[Webhook] puzzle_hint: work 未解決 data="${data}"`);
+    }
+    return;
+  }
+
+  // ── 通常 QR postback（quick_reply）: data="action=quick_reply&sourceMessageId=<元msg>&qrIndex=<n>"。
+  //   同一フェーズに同名 QR（「次へ」等）が複数あっても、sourceMessageId + qrIndex で「タップ元 QR」を
+  //   特定し、その QR に紐づく送信先（target_message_id / response_message_id / target_phase_id）へ送る。
+  //   ラベル一致（matchQrItem）に依存しない。不正 data / 元 message 不存在 / 範囲外 / 送信先なしは安全に無視。
+  const qrPostback = parseQuickReplyPostback(data);
+  if (qrPostback) {
+    if (!work) {
+      console.warn(`[Webhook] quick_reply: work 未解決 data="${data}"`);
+      return;
+    }
+    try {
+      const progress = await getCachedProgress(userId, work.id);
+
+      // ── frontier ガード（text 経路 matchQrItem と同じく「現在地の QR のみ有効」）──
+      //   過去 LINE 履歴上の古いボタン（B 表示後の A の「次へ」等）の再タップは無視する。
+      //   frontier=null（レガシー progress）なら従来どおり全体許可（後方互換）。
+      //   現在表示中の QR（例 B）は frontier に含まれるため B→C は通る。
+      const frontier = parseFrontier(progress?.lastSentMessageIds);
+      if (frontier && !frontier.has(qrPostback.sourceMessageId)) {
+        console.log(
+          `[Webhook] quick_reply: frontier 外の古い QR を無視`,
+          `userId=${userId.slice(0, 8)} srcMsgId=${qrPostback.sourceMessageId.slice(0, 8)} idx=${qrPostback.qrIndex}`,
+        );
+        return;
+      }
+
+      // 防御的に workId スコープで元 message を取得（他 work の message を解決しない・puzzle_hint 系と同思想）。
+      const srcMsg = await prisma.message.findFirst({
+        where: { id: qrPostback.sourceMessageId, workId: work.id, isActive: true },
+        select: { id: true, kind: true, hintMode: true, quickReplies: true, incorrectQuickReplies: true },
+      });
+      if (!srcMsg) {
+        console.warn(`[Webhook] quick_reply: 元 message 不存在/非active/別work srcMsgId=${qrPostback.sourceMessageId.slice(0, 8)}`);
+        return;
+      }
+      const item = resolveQuickReplyItem(srcMsg, qrPostback.qrIndex);
+      if (!item) {
+        console.warn(`[Webhook] quick_reply: QR 解決不可（範囲外/disabled/送信先なし）srcMsgId=${qrPostback.sourceMessageId.slice(0, 8)} idx=${qrPostback.qrIndex}`);
+        return;
+      }
+
+      // ── 自由入力受付中の QR タップ（free_input 横取り防止・text 経路と同型）──
+      //   freeInputEnabled プロンプトに付いた送信先付き QR をタップした場合、QR の送信先へ進む前に
+      //   waitingForInput をクリアする。残すと次のユーザー通常テキストが旧プロンプトの自由入力回答として
+      //   誤消費される（リグレッション防止）。新しい送信先 chain に free-input があれば
+      //   deliverQrBranch 内の applyFreeInputPostEffect が改めて waitingForInput を立て直す。
+      if (progress?.waitingForInput) {
+        try {
+          await prisma.userProgress.update({
+            where: { id: progress.id },
+            data:  { waitingForInput: null, lastInteractedAt: new Date() },
+          });
+          await activeCache.delete(CACHE_KEY.progress(userId, work.id));
+          // フォールスルー後の参照整合（deliverQrBranch に渡す progress も同期）。
+          (progress as { waitingForInput: string | null }).waitingForInput = null;
+          console.log(`[diag][qr] free_input skip — quick_reply postback tap userId=${userId.slice(0, 8)} srcMsgId=${qrPostback.sourceMessageId.slice(0, 8)}`);
+        } catch (err) {
+          console.error(`[Webhook][free-input] waitingForInput クリア失敗 (quick_reply postback)`, err);
+        }
+      }
+
+      const delivered = await deliverQrBranch({
+        matchedQrItem: item, oa, work, progress,
+        systemSender, userId, replyToken, token: oa.channelAccessToken, vars,
+        startedAt: Date.now(),
+      });
+      if (delivered) {
+        console.log(`[Webhook][STEP] postback quick_reply → 送信先へ送信 userId=${userId} srcMsgId=${qrPostback.sourceMessageId.slice(0, 8)} idx=${qrPostback.qrIndex}`);
+      } else {
+        console.warn(`[Webhook] quick_reply: 送信先解決できず（qrMsgs 空）srcMsgId=${qrPostback.sourceMessageId.slice(0, 8)} idx=${qrPostback.qrIndex}`);
+      }
+    } catch (e) {
+      console.warn("[Webhook] quick_reply postback エラー:", e);
     }
     return;
   }
