@@ -5,7 +5,7 @@
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { useParams } from "next/navigation";
 import { TLink as Link } from "@/components/TLink";
-import { bootstrapApi, messageApi, workApi, getDevToken } from "@/lib/api-client";
+import { bootstrapApi, messageApi, workApi, phaseApi, getDevToken } from "@/lib/api-client";
 import { getCachedBootstrap, setCachedBootstrap, invalidateBootstrap } from "@/lib/admin-bootstrap-cache";
 import { logAdminPerf, resourceSummary, maskId } from "@/lib/perf-client";
 import { HelpAccordion } from "@/components/HelpAccordion";
@@ -30,6 +30,7 @@ import type { WelcomeMessageItem } from "@/lib/welcome-messages";
 import {
   initWelcomeItems, validateWelcomeItems, moveWelcomeItem,
   buildWelcomeMessagesPayload, getStartTriggerFromPhases, clampWelcomeLoadingSeconds,
+  getStartPhaseId, normalizeStartTrigger,
   WELCOME_MESSAGES_MAX, WELCOME_TEXT_MAX, WELCOME_LOADING_MAX_SECONDS,
 } from "@/lib/welcome-messages-ui";
 
@@ -66,6 +67,9 @@ export default function MessagesPage() {
   // あいさつ送信前の「入力中…」演出の待機秒数（0〜8・あいさつ全体の設定）。saved は dirty 判定用。
   const [welcomeLoadingSeconds, setWelcomeLoadingSeconds] = useState(0);
   const [savedWelcomeLoadingSeconds, setSavedWelcomeLoadingSeconds] = useState(0);
+  // 開始クイックリプライ文言（= start フェーズの startTrigger）。表示label/送信text/開始判定すべて同一。
+  const [welcomeStartTrigger, setWelcomeStartTrigger] = useState("");
+  const [savedWelcomeStartTrigger, setSavedWelcomeStartTrigger] = useState("");
   // 友だち追加（follow）時の動作（作品単位）。Bootstrap の work.follow_action 由来。
   const [followAction,   setFollowAction]   = useState<"auto_start" | "welcome_wait" | "none">("auto_start");
   const [savingFollow,   setSavingFollow]   = useState(false);
@@ -279,25 +283,48 @@ export default function MessagesPage() {
   }
   async function saveWelcomeMessages() {
     if (welcomeSaving) return;
-    const v = validateWelcomeItems(welcomeItems);
-    if (!v.ok) { setWelcomeError(v.overall); return; }
-    // 既存の保存済みあいさつを全削除する場合のみ確認する。
-    if (welcomeItems.length === 0 && savedItems.length > 0) {
-      if (!confirm("あいさつメッセージをすべて削除します。友だち追加時のあいさつは送信されません。よろしいですか？")) return;
+    // あいさつ(Work) と 開始QR文言(Phase.startTrigger) は別エンティティ。dirty なものだけ保存する。
+    const startPhaseId = getStartPhaseId(phases);
+    const welcomeDirty = JSON.stringify(welcomeItems) !== JSON.stringify(savedItems)
+      || welcomeLoadingSeconds !== savedWelcomeLoadingSeconds;
+    const triggerDirty = welcomeStartTrigger !== savedWelcomeStartTrigger;
+
+    if (welcomeDirty) {
+      const v = validateWelcomeItems(welcomeItems);
+      if (!v.ok) { setWelcomeError(v.overall); return; }
+      // 既存の保存済みあいさつを全削除する場合のみ確認する。
+      if (welcomeItems.length === 0 && savedItems.length > 0) {
+        if (!confirm("あいさつメッセージをすべて削除します。友だち追加時のあいさつは送信されません。よろしいですか？")) return;
+      }
     }
+    // 開始QR文言は API 上限 200 文字（LINE label は20文字で表示省略・送信textはフル）。
+    if (triggerDirty && startPhaseId && welcomeStartTrigger.trim().length > 200) {
+      setWelcomeError("開始クイックリプライは200文字以内で入力してください"); return;
+    }
+
     setWelcomeSaving(true);
     setWelcomeError(null);
     try {
-      const updated = await workApi.update(getDevToken(), workId, buildWelcomeMessagesPayload(welcomeItems, welcomeLoadingSeconds));
-      const next = updated.welcome_messages ?? [];
-      setWelcomeItems(next);
-      setSavedItems(next);
-      const nextSec = clampWelcomeLoadingSeconds(updated.welcome_loading_seconds ?? 0);
-      setWelcomeLoadingSeconds(nextSec);
-      setSavedWelcomeLoadingSeconds(nextSec);
+      if (welcomeDirty) {
+        const updated = await workApi.update(getDevToken(), workId, buildWelcomeMessagesPayload(welcomeItems, welcomeLoadingSeconds));
+        const next = updated.welcome_messages ?? [];
+        setWelcomeItems(next);
+        setSavedItems(next);
+        const nextSec = clampWelcomeLoadingSeconds(updated.welcome_loading_seconds ?? 0);
+        setWelcomeLoadingSeconds(nextSec);
+        setSavedWelcomeLoadingSeconds(nextSec);
+      }
+      // 開始QR文言 = start フェーズの startTrigger を更新（start フェーズが無ければスキップ）。
+      if (triggerDirty && startPhaseId) {
+        const ph = await phaseApi.update(getDevToken(), startPhaseId, { start_trigger: normalizeStartTrigger(welcomeStartTrigger) });
+        const nextTrig = ph.start_trigger ?? "";
+        setWelcomeStartTrigger(nextTrig);
+        setSavedWelcomeStartTrigger(nextTrig);
+      }
       invalidateBootstrap(oaId, workId); // 次回再訪で最新取得（stale 防止）
       showToast("あいさつメッセージを保存しました", "success");
     } catch (err) {
+      // 部分成功（work 保存成功 → phase 失敗 等）でも、成功した分は上で saved state へ同期済み＝state は嘘にならない。
       showToast(err instanceof Error ? err.message : "保存に失敗しました", "error");
     } finally {
       setWelcomeSaving(false);
@@ -336,6 +363,10 @@ export default function MessagesPage() {
         const sec = clampWelcomeLoadingSeconds(data.work.welcome_loading_seconds ?? 0);
         setWelcomeLoadingSeconds(sec);
         setSavedWelcomeLoadingSeconds(sec);
+        // 開始クイックリプライ文言（start フェーズの startTrigger）。未設定は ""。
+        const trig = data.phases.find((p) => p.phase_type === "start")?.start_trigger ?? "";
+        setWelcomeStartTrigger(trig);
+        setSavedWelcomeStartTrigger(trig);
       }
       setFollowAction((data.work.follow_action as "auto_start" | "welcome_wait" | "none" | undefined) ?? "auto_start");
       setResumeEnabled(data.work.resume_enabled !== false);
@@ -644,8 +675,11 @@ export default function MessagesPage() {
             {(() => {
               const validation = validateWelcomeItems(welcomeItems);
               const startTrigger = getStartTriggerFromPhases(phases);
+              const startPhaseId = getStartPhaseId(phases);
+              const triggerOver200 = welcomeStartTrigger.trim().length > 200;
               const dirty = JSON.stringify(welcomeItems) !== JSON.stringify(savedItems)
-                || welcomeLoadingSeconds !== savedWelcomeLoadingSeconds;
+                || welcomeLoadingSeconds !== savedWelcomeLoadingSeconds
+                || welcomeStartTrigger !== savedWelcomeStartTrigger;
               const atMax = welcomeItems.length >= WELCOME_MESSAGES_MAX;
               return (
                 <>
@@ -735,6 +769,38 @@ export default function MessagesPage() {
                     </p>
                   </div>
 
+                  {/* 開始クイックリプライ文言（= start フェーズの startTrigger）。表示label/送信text/開始判定すべて同一。 */}
+                  <div style={{ border: "1px solid #e5e7eb", borderRadius: 10, padding: "12px 14px", marginBottom: 12, background: "#fff" }}>
+                    <label style={{ display: "block", fontSize: 13, fontWeight: 700, color: "#111827", marginBottom: 6 }}>
+                      開始クイックリプライ
+                    </label>
+                    <input
+                      type="text"
+                      value={welcomeStartTrigger}
+                      onChange={(e) => setWelcomeStartTrigger(e.target.value.replace(/[\r\n]+/g, " "))}
+                      readOnly={!canEdit || !startPhaseId}
+                      maxLength={200}
+                      placeholder="例: はじめる"
+                      style={{ width: "100%", boxSizing: "border-box", padding: "8px 12px", fontSize: 14, border: "1px solid #e5e7eb", borderRadius: 8, color: "#111827", background: startPhaseId ? "#fff" : "#f3f4f6" }}
+                    />
+                    {!startPhaseId ? (
+                      <p style={{ fontSize: 11, color: "#b45309", margin: "6px 0 0", lineHeight: 1.6 }}>
+                        開始フェーズが未設定のため、ここでは開始クイックリプライを設定できません。
+                      </p>
+                    ) : (
+                      <p style={{ fontSize: 11, color: "#9ca3af", margin: "6px 0 0", lineHeight: 1.6 }}>
+                        友だち追加時のあいさつメッセージの最後に表示される開始ボタンです。プレイヤーがこの文言を送ると、物語が始まります（開始キーワードとしても使われます）。<br />
+                        未設定の場合、あいさつメッセージに開始クイックリプライは表示されません。
+                        {welcomeStartTrigger.trim().length > 20 && (
+                          <><br /><span style={{ color: "#b45309" }}>20文字を超える場合、LINE上のボタン表示では省略されることがあります。</span></>
+                        )}
+                        {triggerOver200 && (
+                          <><br /><span style={{ color: "#dc2626" }}>200文字以内で入力してください。</span></>
+                        )}
+                      </p>
+                    )}
+                  </div>
+
                   <div style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 8, padding: "10px 14px", marginBottom: 12, fontSize: 12, lineHeight: 1.7 }}>
                     {startTrigger ? (
                       <>
@@ -752,7 +818,7 @@ export default function MessagesPage() {
 
                   {canEdit && (
                     <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-                      <button type="button" className="btn btn-primary" onClick={saveWelcomeMessages} disabled={welcomeSaving || !dirty || !validation.ok}>
+                      <button type="button" className="btn btn-primary" onClick={saveWelcomeMessages} disabled={welcomeSaving || !dirty || !validation.ok || triggerOver200}>
                         {welcomeSaving ? "保存中..." : "保存する"}
                       </button>
                     </div>

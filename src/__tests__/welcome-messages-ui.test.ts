@@ -8,6 +8,8 @@ import {
   moveWelcomeItem,
   buildWelcomeMessagesPayload,
   getStartTriggerFromPhases,
+  getStartPhaseId,
+  normalizeStartTrigger,
   clampWelcomeLoadingSeconds,
   WELCOME_TEXT_MAX,
 } from "@/lib/welcome-messages-ui";
@@ -158,5 +160,33 @@ describe("getStartTriggerFromPhases", () => {
   });
   it("start_trigger が空白 → null", () => {
     expect(getStartTriggerFromPhases([{ phase_type: "start", start_trigger: "   " }])).toBeNull();
+  });
+});
+
+describe("getStartPhaseId", () => {
+  it("start フェーズあり → その id", () => {
+    expect(getStartPhaseId([
+      { id: "p-normal", phase_type: "normal" },
+      { id: "p-start", phase_type: "start" },
+      { id: "p-global", phase_type: "global" },
+    ])).toBe("p-start");
+  });
+  it("start フェーズなし → null", () => {
+    expect(getStartPhaseId([{ id: "p1", phase_type: "normal" }])).toBeNull();
+    expect(getStartPhaseId([])).toBeNull();
+  });
+});
+
+describe("normalizeStartTrigger", () => {
+  it("trim される", () => {
+    expect(normalizeStartTrigger("  はじめる  ")).toBe("はじめる");
+  });
+  it("空文字/空白 → null（未設定）", () => {
+    expect(normalizeStartTrigger("")).toBeNull();
+    expect(normalizeStartTrigger("   ")).toBeNull();
+  });
+  it("改行はスペースに正規化（改行不可）", () => {
+    expect(normalizeStartTrigger("はじ\nめる")).toBe("はじ める");
+    expect(normalizeStartTrigger("a\r\nb")).toBe("a b");
   });
 });
