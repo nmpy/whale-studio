@@ -36,6 +36,11 @@ function makeMsg(overrides: Partial<RuntimePhaseMessage> = {}): RuntimePhaseMess
     timing:             null,
     tap_destination_id: null,
     tap_url:            null,
+    image_action_type:          null,
+    image_action_text:          null,
+    image_action_url:           null,
+    image_action_liff_page_id:  null,
+    image_action_postback_data: null,
     character:          null,
     ...overrides,
   };

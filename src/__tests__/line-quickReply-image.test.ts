@@ -59,6 +59,11 @@ describe("buildPhaseMessages — 個別 quickReply", () => {
         timing:            null,
         tap_destination_id: null,
         tap_url:            null,
+        image_action_type: null,
+        image_action_text: null,
+        image_action_url: null,
+        image_action_liff_page_id: null,
+        image_action_postback_data: null,
         character:         null,
       }],
       transitions: [], // 遷移なし → QRなし（個別 QR のみテスト）
@@ -91,6 +96,11 @@ describe("buildPhaseMessages — 個別 quickReply", () => {
         timing:            null,
         tap_destination_id: null,
         tap_url:            null,
+        image_action_type: null,
+        image_action_text: null,
+        image_action_url: null,
+        image_action_liff_page_id: null,
+        image_action_postback_data: null,
         character:         null,
       }],
       transitions: [],
@@ -126,6 +136,11 @@ describe("buildPhaseMessages — 遷移 quickReply", () => {
         timing:            null,
         tap_destination_id: null,
         tap_url:            null,
+        image_action_type: null,
+        image_action_text: null,
+        image_action_url: null,
+        image_action_liff_page_id: null,
+        image_action_postback_data: null,
         character:         null,
       }],
       transitions: [
@@ -149,12 +164,12 @@ describe("buildPhaseMessages — 遷移 quickReply", () => {
         {
           id: "msg-txt", kind: "normal", message_type: "text", body: "本文です",
           asset_url: null, alt_text: null, flex_payload_json: null,
-          quick_replies: null, lag_ms: 0, hint_mode: "always" as const, sort_order: 0, timing: null, tap_destination_id: null, tap_url: null, character: null,
+          quick_replies: null, lag_ms: 0, hint_mode: "always" as const, sort_order: 0, timing: null, tap_destination_id: null, tap_url: null, image_action_type: null, image_action_text: null, image_action_url: null, image_action_liff_page_id: null, image_action_postback_data: null, character: null,
         },
         {
           id: "msg-img", kind: "normal", message_type: "image", body: null,
           asset_url: "https://example.com/img.png", alt_text: null, flex_payload_json: null,
-          quick_replies: null, lag_ms: 0, hint_mode: "always" as const, sort_order: 1, timing: null, tap_destination_id: null, tap_url: null, character: null,
+          quick_replies: null, lag_ms: 0, hint_mode: "always" as const, sort_order: 1, timing: null, tap_destination_id: null, tap_url: null, image_action_type: null, image_action_text: null, image_action_url: null, image_action_liff_page_id: null, image_action_postback_data: null, character: null,
         },
       ],
       transitions: [
@@ -174,13 +189,16 @@ describe("buildPhaseMessages — 遷移 quickReply", () => {
     expect(firstMsg.quickReply).toBeUndefined();
   });
 
-  it("全メッセージに個別 quickReply 設定済みの場合は「続きを選んでください」テキストを追加", () => {
+  it("末尾メッセージが個別 quickReply を持つ場合は遷移ナビを追加しない（ユーザー QR 優先 / LINE は末尾 QR のみ表示）", () => {
+    // 仕様（line.ts: `if (!lastMsg?.quickReply)` ガード, commit f7c8616）:
+    // LINE は最後のメッセージの quickReply のみ表示するため、末尾メッセージが既にユーザー設定の
+    // 個別 QR を持つ場合は、遷移 QR ナビ（「続きを選んでください」）を追加せず、ユーザー QR を優先する。
     const phase = makePhase({
       messages: [{
         id: "msg-img", kind: "normal", message_type: "image", body: null,
         asset_url: "https://example.com/img.png", alt_text: null, flex_payload_json: null,
-        quick_replies: [{ label: "はい", action: "text", value: "はい" }], // 個別 QR あり
-        lag_ms: 0, hint_mode: "always" as const, sort_order: 0, timing: null, tap_destination_id: null, tap_url: null, character: null,
+        quick_replies: [{ label: "はい", action: "text", value: "はい" }], // 個別 QR あり（=末尾メッセージ）
+        lag_ms: 0, hint_mode: "always" as const, sort_order: 0, timing: null, tap_destination_id: null, tap_url: null, image_action_type: null, image_action_text: null, image_action_url: null, image_action_liff_page_id: null, image_action_postback_data: null, character: null,
       }],
       transitions: [
         { id: "t1", label: "次へ", to_phase: { id: "p2", name: "次", phase_type: "normal" }, condition: null, sort_order: 0, set_flags: "{}" },
@@ -189,12 +207,13 @@ describe("buildPhaseMessages — 遷移 quickReply", () => {
 
     const msgs = buildPhaseMessages(phase, {});
 
-    // 画像に個別 QR 設定済み → 遷移 QR を付与するメッセージなし → システムナビ追加
-    expect(msgs).toHaveLength(2);
-    expect(msgs[1].type).toBe("text");
-    const nav = msgs[1] as { type: string; quickReply?: { items: { action: { label?: string } }[] } };
-    expect(nav.quickReply).toBeDefined();
-    expect(nav.quickReply!.items[0].action.label).toBe("次へ");
+    // 末尾メッセージが個別 QR を持つ → 遷移ナビは追加されない（メッセージは 1 件のまま）。
+    expect(msgs).toHaveLength(1);
+    const img = msgs[0] as { type: string; quickReply?: { items: { action: { label?: string } }[] } };
+    // ユーザー設定 QR（はい）が維持され、遷移 QR（次へ）に上書き／置換されない。
+    expect(img.quickReply).toBeDefined();
+    expect(img.quickReply!.items).toHaveLength(1);
+    expect(img.quickReply!.items[0].action.label).toBe("はい");
   });
 });
 

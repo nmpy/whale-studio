@@ -37,7 +37,7 @@ vi.mock("@/lib/rbac", () => ({
   requireRole: (...args: unknown[]) => mockRequireRole(...args),
 }));
 
-const mockCacheDelete = vi.fn(async () => {});
+const mockCacheDelete = vi.fn(async (..._args: unknown[]) => {});
 vi.mock("@/lib/cache", () => ({
   activeCache: { delete: (...args: unknown[]) => mockCacheDelete(...args) },
   CACHE_KEY: {
