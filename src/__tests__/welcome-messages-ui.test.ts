@@ -8,6 +8,7 @@ import {
   moveWelcomeItem,
   buildWelcomeMessagesPayload,
   getStartTriggerFromPhases,
+  clampWelcomeLoadingSeconds,
   WELCOME_TEXT_MAX,
 } from "@/lib/welcome-messages-ui";
 import type { WelcomeMessageItem } from "@/lib/welcome-messages";
@@ -108,6 +109,40 @@ describe("buildWelcomeMessagesPayload", () => {
   });
   it("空配列 → { welcome_messages: [] }", () => {
     expect(buildWelcomeMessagesPayload([])).toEqual({ welcome_messages: [] });
+  });
+
+  // PR-B2: 第2引数（loadingSeconds）で welcome_loading_seconds を含める。
+  it("第2引数 0/3/8 → welcome_loading_seconds を含める", () => {
+    const items: WelcomeMessageItem[] = [{ type: "text", text: "a" }];
+    expect(buildWelcomeMessagesPayload(items, 0))
+      .toEqual({ welcome_messages: [{ type: "text", text: "a" }], welcome_loading_seconds: 0 });
+    expect(buildWelcomeMessagesPayload(items, 3).welcome_loading_seconds).toBe(3);
+    expect(buildWelcomeMessagesPayload(items, 8).welcome_loading_seconds).toBe(8);
+  });
+  it("第2引数で 9/負/小数は clamp（9→8 / -1→0 / 2.7→2）", () => {
+    const items: WelcomeMessageItem[] = [{ type: "text", text: "a" }];
+    expect(buildWelcomeMessagesPayload(items, 9).welcome_loading_seconds).toBe(8);
+    expect(buildWelcomeMessagesPayload(items, -1).welcome_loading_seconds).toBe(0);
+    expect(buildWelcomeMessagesPayload(items, 2.7).welcome_loading_seconds).toBe(2);
+  });
+  it("第2引数 未指定 → welcome_loading_seconds を含まない（従来互換）", () => {
+    const r = buildWelcomeMessagesPayload([{ type: "text", text: "a" }]);
+    expect("welcome_loading_seconds" in r).toBe(false);
+  });
+});
+
+describe("clampWelcomeLoadingSeconds", () => {
+  it("0/8 はそのまま", () => {
+    expect(clampWelcomeLoadingSeconds(0)).toBe(0);
+    expect(clampWelcomeLoadingSeconds(8)).toBe(8);
+  });
+  it("9以上→8 / 負→0 / 小数→floor / 非数→0", () => {
+    expect(clampWelcomeLoadingSeconds(9)).toBe(8);
+    expect(clampWelcomeLoadingSeconds(100)).toBe(8);
+    expect(clampWelcomeLoadingSeconds(-3)).toBe(0);
+    expect(clampWelcomeLoadingSeconds(2.9)).toBe(2);
+    expect(clampWelcomeLoadingSeconds(NaN)).toBe(0);
+    expect(clampWelcomeLoadingSeconds("3" as unknown)).toBe(0);
   });
 });
 

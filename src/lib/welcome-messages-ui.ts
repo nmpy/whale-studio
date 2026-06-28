@@ -85,12 +85,27 @@ export function moveWelcomeItem(
   return next;
 }
 
+/** あいさつ送信前の「入力中…」演出の最大秒数（0〜8）。0=演出なし。 */
+export const WELCOME_LOADING_MAX_SECONDS = 8;
+
+/**
+ * 入力中演出の秒数を [0, WELCOME_LOADING_MAX_SECONDS] の整数に正規化する（UI 表示・保存防御用）。
+ *  非数/負 → 0、小数 → floor、上限超 → clamp。
+ */
+export function clampWelcomeLoadingSeconds(v: unknown): number {
+  if (typeof v !== "number" || !Number.isFinite(v)) return 0;
+  return Math.min(WELCOME_LOADING_MAX_SECONDS, Math.max(0, Math.floor(v)));
+}
+
 /**
  * 保存 payload を組み立てる。text は trim、image は imageUrl（＋設定済みの preview/alt のみ）。
+ * loadingSeconds に number を渡すと welcome_loading_seconds（0〜8 に clamp）を含める。
+ * 未指定なら従来どおり welcome_messages のみ（既存テスト互換）。
  */
 export function buildWelcomeMessagesPayload(
   items: WelcomeMessageItem[],
-): { welcome_messages: WelcomeMessageItem[] } {
+  loadingSeconds?: number,
+): { welcome_messages: WelcomeMessageItem[]; welcome_loading_seconds?: number } {
   const welcome_messages: WelcomeMessageItem[] = items.map((it) =>
     it.type === "text"
       ? { type: "text", text: it.text.trim() }
@@ -101,6 +116,9 @@ export function buildWelcomeMessagesPayload(
           ...(it.altText ? { altText: it.altText } : {}),
         },
   );
+  if (typeof loadingSeconds === "number") {
+    return { welcome_messages, welcome_loading_seconds: clampWelcomeLoadingSeconds(loadingSeconds) };
+  }
   return { welcome_messages };
 }
 
