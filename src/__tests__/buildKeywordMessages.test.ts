@@ -162,7 +162,10 @@ describe("変換 parity: buildKeywordMessages と buildPhaseMessages で同一�
       id: "pm-1", kind: "normal", message_type: "text", body: "テスト", asset_url: null,
       alt_text: null, flex_payload_json: null, quick_replies: null, lag_ms: 0,
       hint_mode: "always", sort_order: 0, timing: null,
-      tap_destination_id: null, tap_url: null, character: null,
+      tap_destination_id: null, tap_url: null,
+      image_action_type: null, image_action_text: null, image_action_url: null,
+      image_action_liff_page_id: null, image_action_postback_data: null,
+      character: null,
       ...overrides,
     };
   }

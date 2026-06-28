@@ -24,33 +24,55 @@ const mockPrisma = {
   richMenu:      { findFirst: vi.fn() },
   phase:         { findFirst: vi.fn(), findUnique: vi.fn() },
   userProgress:  { findUnique: vi.fn(), upsert: vi.fn(), update: vi.fn() },
-  message:       { findMany: vi.fn() },
+  message:       { findMany: vi.fn(), findFirst: vi.fn(), findUnique: vi.fn() },
+  globalCommand: { findMany: vi.fn() },
   tracking:      { findMany: vi.fn() },
   trackingEvent: { findFirst: vi.fn() },
   userTracking:  { upsert: vi.fn() },
 };
 vi.mock("@/lib/prisma", () => ({ prisma: mockPrisma }));
 
-const mockReplyToLine = vi.fn().mockResolvedValue(undefined);
-vi.mock("@/lib/line", () => ({
-  verifyLineSignature:  vi.fn().mockReturnValue(true),
-  isStartCommand:       vi.fn().mockReturnValue(false),
-  isStartIntent:        vi.fn().mockReturnValue(false),
-  isResetCommand:       vi.fn().mockReturnValue(false),
-  isContinueCommand:    vi.fn().mockReturnValue(false),
-  replyToLine:          mockReplyToLine,
-  buildPhaseMessages:   vi.fn().mockReturnValue([{ type: "text", text: "phase-msg" }]),
-  buildQuickReply:      vi.fn().mockReturnValue(undefined),
-  buildKeywordMessages: vi.fn().mockReturnValue([{ type: "text", text: "kw-msg" }]),
-  RICHMENU_ACTIONS:     { START: "start", RESET: "reset", CONTINUE: "continue" },
+// activeCache は always-miss（per-test の prisma モックを使わせ、テスト間のキャッシュ汚染を防ぐ）
+vi.mock("@/lib/cache", () => ({
+  activeCache: {
+    get:    vi.fn().mockResolvedValue(null),
+    set:    vi.fn().mockResolvedValue(undefined),
+    delete: vi.fn().mockResolvedValue(undefined),
+  },
+  TTL: { OA: 0, WORK: 0, PHASE: 0, PROGRESS: 0, GLOBAL_CMD: 0, GLOBAL_KW: 0, START_PHASE: 0, START_MSGS: 0 },
+  CACHE_KEY: {
+    oa: (x: string) => `oa:${x}`, work: (x: string) => `work:${x}`, phase: (x: string) => `phase:${x}`,
+    progress: (u: string, w: string) => `progress:${u}:${w}`, globalCmd: (x: string) => `gc:${x}`,
+    globalKw: (x: string) => `gk:${x}`, startPhase: (x: string) => `sp:${x}`, startMsgs: (x: string) => `sm:${x}`,
+  },
 }));
+vi.mock("@/lib/event-logger", () => ({ logEvent: vi.fn().mockResolvedValue(undefined) }));
 
-vi.mock("@/lib/runtime", () => ({
-  buildRuntimeState: vi.fn().mockResolvedValue({ phase: { id: "p1", messages: [], transitions: [] } }),
-  matchTransition:   vi.fn().mockReturnValue(null),
-  applySetFlags:     vi.fn().mockReturnValue({}),
-  safeParseFlags:    vi.fn().mockReturnValue({}),
-}));
+const mockReplyToLine = vi.fn().mockResolvedValue(undefined);
+const mockReplyWithLagToLine = vi.fn().mockResolvedValue(undefined);
+// 実際の hint 合成・QR ビルダ等を使うため importOriginal で部分モックする。
+// スタブ化するのは signature 検証 / 開始判定 / 送信系（reply）のみ。
+vi.mock("@/lib/line", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/line")>();
+  return {
+    ...actual,
+    verifyLineSignature: vi.fn().mockReturnValue(true),
+    isStartCommand:      vi.fn().mockReturnValue(false),
+    isStartIntent:       vi.fn().mockReturnValue(false),
+    isResetCommand:      vi.fn().mockReturnValue(false),
+    isContinueCommand:   vi.fn().mockReturnValue(false),
+    replyToLine:         mockReplyToLine,
+    replyWithLagToLine:  mockReplyWithLagToLine,
+  };
+});
+
+vi.mock("@/lib/runtime", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/runtime")>();
+  return {
+    ...actual,
+    matchTransition: vi.fn().mockReturnValue(null),
+  };
+});
 
 vi.mock("@/lib/line-richmenu", () => ({
   linkRichMenuToUser: vi.fn().mockResolvedValue(undefined),
@@ -100,12 +122,26 @@ const mockProgress = {
 
 const mockCurrentPhase = {
   id: PHASE_ID, phaseType: "normal",
+  messages: [] as object[],
   transitionsFrom: [],
 };
 
-/** quickReplies を JSON 文字列として持つメッセージを生成する */
+/** quickReplies を JSON 文字列として持つ phase メッセージ配列を生成する */
 function makeMessageWithHint(items: object[]) {
-  return [{ id: "msg-hint-1", quickReplies: JSON.stringify(items) }];
+  return [{ id: "msg-hint-1", kind: "normal", triggerKeyword: null, quickReplies: JSON.stringify(items) }];
+}
+
+/**
+ * hint 用メッセージを currentPhase に載せる。
+ * route は currentPhase（= getCachedPhase → fetchPhaseWithIncludes → prisma.phase.findUnique の
+ * include: messages）の messages を matchHintFromPhase に渡すため、ヒントは phase.findUnique 経由で供給する。
+ */
+function setHintPhase(items: object[]) {
+  mockPrisma.phase.findUnique.mockResolvedValue({
+    ...mockCurrentPhase,
+    messages: makeMessageWithHint(items),
+    transitionsFrom: [],
+  });
 }
 
 function makeWebhookBody(text: string) {
@@ -144,8 +180,10 @@ beforeEach(() => {
   mockPrisma.phase.findFirst.mockResolvedValue(null); // startTrigger なし
   mockPrisma.phase.findUnique.mockResolvedValue(mockCurrentPhase);
   mockPrisma.userProgress.findUnique.mockResolvedValue(mockProgress);
+  mockPrisma.userProgress.update.mockResolvedValue(mockProgress);
   // hint照合用のメッセージ: デフォルトは空（各テストで上書き）
   mockPrisma.message.findMany.mockResolvedValue([]);
+  mockPrisma.globalCommand.findMany.mockResolvedValue([]); // グローバルコマンドなし
 });
 
 // ─────────────────────────────────────────────
@@ -154,18 +192,16 @@ beforeEach(() => {
 
 describe("シナリオ 1: hint_text 設定済み → ヒント本文が返信される", () => {
   it("value='hint1' にマッチして hint_text が replyToLine に渡る", async () => {
-    // message.findMany が hint quick reply を返す（1回目 = hint 照合用）
-    // 2回目以降は通常フロー用（triggerKeyword 照合）
-    mockPrisma.message.findMany
-      .mockResolvedValueOnce(makeMessageWithHint([
+    // hint QR は currentPhase.messages（phase.findUnique の include）経由で供給する
+    setHintPhase([
         {
           label:     "ヒント1",
           action:    "hint",
           value:     "hint1",
           hint_text: "まずは丸の数に注目してみてください。",
         },
-      ]))
-      .mockResolvedValue([]); // triggerKeyword 用 → マッチなし
+    ]);
+    mockPrisma.message.findMany.mockResolvedValue([]); // triggerKeyword 用 → マッチなし
 
     await callWebhook("hint1");
 
@@ -177,16 +213,15 @@ describe("シナリオ 1: hint_text 設定済み → ヒント本文が返信さ
   });
 
   it("label でもマッチする（value 設定なし）", async () => {
-    mockPrisma.message.findMany
-      .mockResolvedValueOnce(makeMessageWithHint([
+    setHintPhase([
         {
           label:     "ヒント",
           action:    "hint",
           // value は省略
           hint_text: "ここに注目してください。",
         },
-      ]))
-      .mockResolvedValue([]);
+    ]);
+    mockPrisma.message.findMany.mockResolvedValue([]);
 
     await callWebhook("ヒント");
 
@@ -195,13 +230,12 @@ describe("シナリオ 1: hint_text 設定済み → ヒント本文が返信さ
   });
 
   it("複数ヒントが設定されていて hint2 に対応するテキストが返る", async () => {
-    mockPrisma.message.findMany
-      .mockResolvedValueOnce(makeMessageWithHint([
+    setHintPhase([
         { label: "ヒント1", action: "hint", value: "hint1", hint_text: "ヒント1の内容です。" },
         { label: "ヒント2", action: "hint", value: "hint2", hint_text: "ヒント2の内容です。より具体的な補助。" },
         { label: "ヒント3", action: "hint", value: "hint3", hint_text: "ヒント3の内容です。ほぼ答え直前。" },
-      ]))
-      .mockResolvedValue([]);
+    ]);
+    mockPrisma.message.findMany.mockResolvedValue([]);
 
     await callWebhook("hint2");
 
@@ -216,11 +250,10 @@ describe("シナリオ 1: hint_text 設定済み → ヒント本文が返信さ
 
 describe("シナリオ 2: hint_text 未設定 → フォールバックメッセージ", () => {
   it("hint_text がない hint QR にマッチするとフォールバックを返す", async () => {
-    mockPrisma.message.findMany
-      .mockResolvedValueOnce(makeMessageWithHint([
+    setHintPhase([
         { label: "ヒント1", action: "hint", value: "hint1" }, // hint_text なし
-      ]))
-      .mockResolvedValue([]);
+    ]);
+    mockPrisma.message.findMany.mockResolvedValue([]);
 
     await callWebhook("hint1");
 
@@ -238,11 +271,10 @@ describe("シナリオ 3: マッチしないテキスト → hint スキップ �
   it("hint QR にマッチしないと matchTransition が呼ばれる", async () => {
     const { matchTransition } = await import("@/lib/runtime");
 
-    mockPrisma.message.findMany
-      .mockResolvedValueOnce(makeMessageWithHint([
+    setHintPhase([
         { label: "ヒント1", action: "hint", value: "hint1", hint_text: "ヒント内容" },
-      ]))
-      .mockResolvedValue([]);
+    ]);
+    mockPrisma.message.findMany.mockResolvedValue([]);
 
     await callWebhook("全然違うテキスト");
 
@@ -257,11 +289,10 @@ describe("シナリオ 3: マッチしないテキスト → hint スキップ �
 
 describe("シナリオ 4: NFKC 正規化でマッチ", () => {
   it("全角 'ｈｉｎｔ１' が半角 'hint1' の QR にマッチする", async () => {
-    mockPrisma.message.findMany
-      .mockResolvedValueOnce(makeMessageWithHint([
+    setHintPhase([
         { label: "ヒント1", action: "hint", value: "hint1", hint_text: "正規化でマッチ！" },
-      ]))
-      .mockResolvedValue([]);
+    ]);
+    mockPrisma.message.findMany.mockResolvedValue([]);
 
     await callWebhook("ｈｉｎｔ１"); // 全角
 
@@ -298,12 +329,11 @@ describe("シナリオ 6: 後方互換 — text/url action は hint 照合に影
   it("action='text' の QR があっても hint 照合されない", async () => {
     const { matchTransition } = await import("@/lib/runtime");
 
-    mockPrisma.message.findMany
-      .mockResolvedValueOnce(makeMessageWithHint([
+    setHintPhase([
         // action="text" なので hint 照合対象外
         { label: "次へ", action: "text", value: "次へ" },
-      ]))
-      .mockResolvedValue([]);
+    ]);
+    mockPrisma.message.findMany.mockResolvedValue([]);
 
     // 「次へ」を送信しても hint として処理されない
     await callWebhook("次へ");
@@ -322,8 +352,7 @@ describe("シナリオ 7: enabled=false のアイテムはスキップされる"
   it("enabled=false の hint QR にマッチしない → matchTransition が呼ばれる", async () => {
     const { matchTransition } = await import("@/lib/runtime");
 
-    mockPrisma.message.findMany
-      .mockResolvedValueOnce(makeMessageWithHint([
+    setHintPhase([
         {
           label:     "ヒント1",
           action:    "hint",
@@ -331,8 +360,8 @@ describe("シナリオ 7: enabled=false のアイテムはスキップされる"
           hint_text: "このヒントは無効です",
           enabled:   false, // 無効
         },
-      ]))
-      .mockResolvedValue([]);
+    ]);
+    mockPrisma.message.findMany.mockResolvedValue([]);
 
     await callWebhook("hint1");
 
@@ -341,12 +370,11 @@ describe("シナリオ 7: enabled=false のアイテムはスキップされる"
   });
 
   it("enabled=true と enabled=false が混在するとき有効なほうのみマッチする", async () => {
-    mockPrisma.message.findMany
-      .mockResolvedValueOnce(makeMessageWithHint([
+    setHintPhase([
         { label: "ヒント1", action: "hint", value: "hint1", hint_text: "無効ヒント", enabled: false },
         { label: "ヒント2", action: "hint", value: "hint2", hint_text: "有効ヒントの内容です。" /* enabled 未設定=有効 */ },
-      ]))
-      .mockResolvedValue([]);
+    ]);
+    mockPrisma.message.findMany.mockResolvedValue([]);
 
     await callWebhook("hint2");
 
@@ -361,8 +389,7 @@ describe("シナリオ 7: enabled=false のアイテムはスキップされる"
 
 describe("シナリオ 8: hint_followup が設定されていると 2 通目が送られる", () => {
   it("hint_followup が設定されているとき replyToLine に 2 件渡る", async () => {
-    mockPrisma.message.findMany
-      .mockResolvedValueOnce(makeMessageWithHint([
+    setHintPhase([
         {
           label:          "ヒント1",
           action:         "hint",
@@ -370,8 +397,8 @@ describe("シナリオ 8: hint_followup が設定されていると 2 通目が�
           hint_text:      "まずは色に注目してみてください。",
           hint_followup:  "もっとヒントが欲しいときは「ヒント②」を押してね！",
         },
-      ]))
-      .mockResolvedValue([]);
+    ]);
+    mockPrisma.message.findMany.mockResolvedValue([]);
 
     await callWebhook("hint1");
 
@@ -383,8 +410,7 @@ describe("シナリオ 8: hint_followup が設定されていると 2 通目が�
   });
 
   it("hint_followup が空文字や undefined のとき 1 通のみ送られる", async () => {
-    mockPrisma.message.findMany
-      .mockResolvedValueOnce(makeMessageWithHint([
+    setHintPhase([
         {
           label:     "ヒント1",
           action:    "hint",
@@ -392,8 +418,8 @@ describe("シナリオ 8: hint_followup が設定されていると 2 通目が�
           hint_text: "ヒント本文のみ。",
           // hint_followup なし
         },
-      ]))
-      .mockResolvedValue([]);
+    ]);
+    mockPrisma.message.findMany.mockResolvedValue([]);
 
     await callWebhook("hint1");
 

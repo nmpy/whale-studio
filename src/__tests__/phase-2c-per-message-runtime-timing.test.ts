@@ -13,7 +13,7 @@ import { describe, it, expect } from "vitest";
 import { buildPhaseMessages, buildKeywordMessages, type LineTextMessage } from "@/lib/line";
 import { ReadReceiptController } from "@/lib/line-read-receipt";
 import { moveQuickReplyToTail } from "@/lib/quick-reply-tail";
-import type { RuntimePhase, MessageTimingConfig } from "@/types";
+import type { RuntimePhase, RuntimePhaseMessage, MessageTimingConfig } from "@/types";
 
 // ──────────────────────────────────────────────────────────
 // テストデータ
@@ -44,7 +44,7 @@ const TIMING_MSG1: MessageTimingConfig = {
 };
 
 // 共通: ベースの RuntimePhaseMessage プロパティ (全フィールド埋め)
-function baseMsg(id: string, body: string, timing: MessageTimingConfig | null) {
+function baseMsg(id: string, body: string, timing: MessageTimingConfig | null): RuntimePhaseMessage {
   return {
     id,
     kind: "normal",

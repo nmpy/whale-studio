@@ -38,7 +38,7 @@ vi.mock("@/lib/auth", () => ({
 }));
 
 const mockRequireRole = vi.fn();
-const mockGetOaIdFromWorkId = vi.fn(async () => "oa-1");
+const mockGetOaIdFromWorkId = vi.fn(async (..._args: unknown[]) => "oa-1");
 
 vi.mock("@/lib/rbac", () => ({
   requireRole:        (...args: unknown[]) => mockRequireRole(...args),

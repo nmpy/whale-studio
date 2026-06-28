@@ -33,14 +33,14 @@ vi.mock("@/lib/auth", () => ({
 }));
 
 const mockRequireRole       = vi.fn();
-const mockGetOaIdFromWorkId = vi.fn(async () => "oa-1");
+const mockGetOaIdFromWorkId = vi.fn(async (..._args: unknown[]) => "oa-1");
 
 vi.mock("@/lib/rbac", () => ({
   requireRole:       (...args: unknown[]) => mockRequireRole(...args),
   getOaIdFromWorkId: (...args: unknown[]) => mockGetOaIdFromWorkId(...args),
 }));
 
-const mockCacheDelete = vi.fn(async () => {});
+const mockCacheDelete = vi.fn(async (..._args: unknown[]) => {});
 vi.mock("@/lib/cache", () => ({
   activeCache: {
     delete: (...args: unknown[]) => mockCacheDelete(...args),
@@ -174,7 +174,7 @@ describe("PATCH /api/messages/reorder", () => {
       { params: {} } as never,
     );
 
-    const deletedKeys = mockCacheDelete.mock.calls.map((c: string[]) => c[0]);
+    const deletedKeys = mockCacheDelete.mock.calls.map((c: unknown[]) => c[0]);
     expect(deletedKeys).toContain("phase:p1");
     expect(deletedKeys).toContain("phase:p2");
     expect(deletedKeys).toContain("startMsgs:p1");
@@ -193,7 +193,7 @@ describe("PATCH /api/messages/reorder", () => {
       makeReq({ work_id: "w1", message_ids: ["m1", "m2"] }) as never,
       { params: {} } as never,
     );
-    const deletedKeys = mockCacheDelete.mock.calls.map((c: string[]) => c[0]);
+    const deletedKeys = mockCacheDelete.mock.calls.map((c: unknown[]) => c[0]);
     expect(deletedKeys).toContain("globalKw:w1");
   });
 });

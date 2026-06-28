@@ -21,15 +21,35 @@ const mockPrisma = {
   richMenu:      { findFirst: vi.fn() },
   phase:         { findFirst: vi.fn(), findUnique: vi.fn() },
   userProgress:  { findUnique: vi.fn(), upsert: vi.fn(), update: vi.fn(), create: vi.fn() },
-  message:       { findMany: vi.fn() },
+  message:       { findMany: vi.fn(), findFirst: vi.fn(), findUnique: vi.fn() },
+  globalCommand: { findMany: vi.fn() },
   tracking:      { findMany: vi.fn() },
   trackingEvent: { findFirst: vi.fn() },
   userTracking:  { upsert: vi.fn() },
 };
 vi.mock("@/lib/prisma", () => ({ prisma: mockPrisma }));
 
+// activeCache は always-miss（per-test の prisma モックを使わせ、テスト間のキャッシュ汚染を防ぐ）
+vi.mock("@/lib/cache", () => ({
+  activeCache: {
+    get:    vi.fn().mockResolvedValue(null),
+    set:    vi.fn().mockResolvedValue(undefined),
+    delete: vi.fn().mockResolvedValue(undefined),
+  },
+  TTL: { OA: 0, WORK: 0, PHASE: 0, PROGRESS: 0, GLOBAL_CMD: 0, GLOBAL_KW: 0, START_PHASE: 0, START_MSGS: 0 },
+  CACHE_KEY: {
+    oa: (x: string) => `oa:${x}`, work: (x: string) => `work:${x}`, phase: (x: string) => `phase:${x}`,
+    progress: (u: string, w: string) => `progress:${u}:${w}`, globalCmd: (x: string) => `gc:${x}`,
+    globalKw: (x: string) => `gk:${x}`, startPhase: (x: string) => `sp:${x}`, startMsgs: (x: string) => `sm:${x}`,
+  },
+}));
+vi.mock("@/lib/event-logger", () => ({ logEvent: vi.fn().mockResolvedValue(undefined) }));
+
 // LINE ユーティリティ — 実際の buildQuickReplyFromItems / buildKeywordMessages を使う
 const mockReplyToLine = vi.fn().mockResolvedValue(undefined);
+// handleStartTrigger は start メッセージ送信を replyWithLagToLine に統一しているため、
+// reply payload の検証はこちらで捕捉する（内容の検証は従来どおり）。
+const mockReplyWithLagToLine = vi.fn().mockResolvedValue(undefined);
 vi.mock("@/lib/line", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/line")>();
   return {
@@ -39,6 +59,7 @@ vi.mock("@/lib/line", async (importOriginal) => {
     isResetCommand:      vi.fn().mockReturnValue(false),
     isContinueCommand:   vi.fn().mockReturnValue(false),
     replyToLine:         mockReplyToLine,
+    replyWithLagToLine:  mockReplyWithLagToLine,
     buildPhaseMessages:  actual.buildPhaseMessages,
     buildKeywordMessages: actual.buildKeywordMessages,
     buildQuickReply:     actual.buildQuickReply,
@@ -171,6 +192,7 @@ beforeEach(() => {
   mockPrisma.phase.findUnique.mockResolvedValue({ phaseType: "normal" });
   mockPrisma.userProgress.findUnique.mockResolvedValue(null);
   mockPrisma.userProgress.upsert.mockResolvedValue(mockUpsertResult);
+  mockPrisma.globalCommand.findMany.mockResolvedValue([]); // グローバルコマンドなし
 });
 
 // ─────────────────────────────────────────────
@@ -197,9 +219,9 @@ describe("シナリオ 1: kind=start メッセージの quickReplies が LINE re
 
     await callWebhook(START_TRIGGER);
 
-    expect(mockReplyToLine).toHaveBeenCalledOnce();
+    expect(mockReplyWithLagToLine).toHaveBeenCalledOnce();
 
-    const [, messages] = mockReplyToLine.mock.calls[0];
+    const [, messages] = mockReplyWithLagToLine.mock.calls[0];
     // LINE message が送信されていること
     expect(messages.length).toBeGreaterThan(0);
 
@@ -239,8 +261,8 @@ describe("シナリオ 1: kind=start メッセージの quickReplies が LINE re
 
     await callWebhook(START_TRIGGER);
 
-    expect(mockReplyToLine).toHaveBeenCalledOnce();
-    const [, messages] = mockReplyToLine.mock.calls[0];
+    expect(mockReplyWithLagToLine).toHaveBeenCalledOnce();
+    const [, messages] = mockReplyWithLagToLine.mock.calls[0];
     const textMsgs = messages.filter((m: any) => m.type === "text");
     const lastText = textMsgs[textMsgs.length - 1];
     expect(lastText?.quickReply).toBeUndefined();
@@ -283,8 +305,8 @@ describe("シナリオ 2: kind=start 0件フォールバック時も quickReply 
 
     await callWebhook(START_TRIGGER);
 
-    expect(mockReplyToLine).toHaveBeenCalledOnce();
-    const [, messages] = mockReplyToLine.mock.calls[0];
+    expect(mockReplyWithLagToLine).toHaveBeenCalledOnce();
+    const [, messages] = mockReplyWithLagToLine.mock.calls[0];
     const textMsgs = messages.filter((m: any) => m.type === "text");
     const lastText = textMsgs[textMsgs.length - 1];
     expect(lastText).toBeDefined();
