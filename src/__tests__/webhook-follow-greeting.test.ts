@@ -92,10 +92,10 @@ function makeOa(over: Partial<{ welcomeMessage: string | null; followAction: str
     welcomeMessage: null, followAction: null, ...over,
   };
 }
-function makeWork(over: Partial<{ welcomeMessage: string | null; followAction: string }> = {}) {
+function makeWork(over: Partial<{ welcomeMessage: string | null; followAction: string; welcomeMessagesJson: unknown }> = {}) {
   return {
     id: WORK_ID, title: "あいさつ作品", publishStatus: "active", sortOrder: 0,
-    welcomeMessage: null, followAction: "auto_start", systemCharacter: null, ...over,
+    welcomeMessage: null, followAction: "auto_start", systemCharacter: null, welcomeMessagesJson: [], ...over,
   };
 }
 function makeStartPhase(startTrigger: string | null) {
@@ -212,5 +212,120 @@ describe("PR-G1: follow あいさつ + startTrigger quick reply", () => {
     // あいさつ本文（welcomeMessage）の reply ではない
     const msgs = welcomeReplyMessages();
     if (msgs) expect(msgs.some((m) => m.text === "ようこそ！")).toBe(false);
+  });
+});
+
+// ─────────────────────────────────────────────
+//  PR-G2-A: welcomeMessagesJson（複数件 text/image）
+// ─────────────────────────────────────────────
+describe("PR-G2-A: welcomeMessagesJson による複数あいさつ + 画像", () => {
+  function setupWelcomeWait(over: Partial<{ welcomeMessage: string | null; welcomeMessagesJson: unknown }>, startTrigger: string | null = "ぼうけん") {
+    const oa = makeOa({ welcomeMessage: null, followAction: "welcome_wait" });
+    mockPrisma.oa.findFirst.mockResolvedValue(oa);
+    mockPrisma.work.findFirst.mockResolvedValue(makeWork({ followAction: "welcome_wait", ...over }));
+    mockPrisma.phase.findFirst.mockResolvedValue(makeStartPhase(startTrigger));
+    return oa;
+  }
+
+  it("welcomeMessagesJson 空 + 既存 welcomeMessage あり → 既存と同じ 1件 text（互換）", async () => {
+    const oa = setupWelcomeWait({ welcomeMessage: "ようこそ！", welcomeMessagesJson: [] });
+    await callWebhook(oa.lineOaId, makeFollowBody());
+    const msgs = welcomeReplyMessages();
+    expect(msgs!).toHaveLength(1);
+    expect(msgs![0].type).toBe("text");
+    expect(msgs![0].text).toBe("ようこそ！");
+  });
+
+  it("welcomeMessagesJson 空 + welcomeMessage なし → 無送信", async () => {
+    const oa = setupWelcomeWait({ welcomeMessage: null, welcomeMessagesJson: [] });
+    await callWebhook(oa.lineOaId, makeFollowBody());
+    expect(welcomeReplyMessages()).toBeNull();
+  });
+
+  it("JSON text 1件 → text 1件", async () => {
+    const oa = setupWelcomeWait({ welcomeMessagesJson: [{ type: "text", text: "JSON本文" }] });
+    await callWebhook(oa.lineOaId, makeFollowBody());
+    const msgs = welcomeReplyMessages();
+    expect(msgs!).toHaveLength(1);
+    expect(msgs![0].text).toBe("JSON本文");
+  });
+
+  it("JSON text 複数件 → 順序維持で全件", async () => {
+    const oa = setupWelcomeWait({ welcomeMessagesJson: [
+      { type: "text", text: "1通目" }, { type: "text", text: "2通目" }, { type: "text", text: "3通目" },
+    ] });
+    await callWebhook(oa.lineOaId, makeFollowBody());
+    const msgs = welcomeReplyMessages();
+    expect(msgs!.map((m) => m.text)).toEqual(["1通目", "2通目", "3通目"]);
+  });
+
+  it("JSON image 1件 → LINE image message（originalContentUrl / previewImageUrl）", async () => {
+    const oa = setupWelcomeWait({ welcomeMessagesJson: [{ type: "image", imageUrl: "https://ex.com/a.png" }] });
+    await callWebhook(oa.lineOaId, makeFollowBody());
+    const msgs = welcomeReplyMessages();
+    expect(msgs!).toHaveLength(1);
+    expect(msgs![0].type).toBe("image");
+    expect(msgs![0].originalContentUrl).toBe("https://ex.com/a.png");
+    expect(msgs![0].previewImageUrl).toBe("https://ex.com/a.png"); // 省略時は imageUrl 流用
+  });
+
+  it("text + image 混在 → 順序どおり変換", async () => {
+    const oa = setupWelcomeWait({ welcomeMessagesJson: [
+      { type: "text", text: "やあ" }, { type: "image", imageUrl: "https://ex.com/a.png" },
+    ] });
+    await callWebhook(oa.lineOaId, makeFollowBody());
+    const msgs = welcomeReplyMessages();
+    expect(msgs![0].type).toBe("text");
+    expect(msgs![0].text).toBe("やあ");
+    expect(msgs![1].type).toBe("image");
+    expect(msgs![1].originalContentUrl).toBe("https://ex.com/a.png");
+  });
+
+  it("最大5件（6件相当を与えても5件に収まる）", async () => {
+    const six = Array.from({ length: 6 }, (_, i) => ({ type: "text" as const, text: `t${i + 1}` }));
+    const oa = setupWelcomeWait({ welcomeMessagesJson: six });
+    await callWebhook(oa.lineOaId, makeFollowBody());
+    const msgs = welcomeReplyMessages();
+    expect(msgs!).toHaveLength(5);
+  });
+
+  it("startTrigger あり → 最後のメッセージに QR、なし → QR なし", async () => {
+    // startTrigger あり
+    let oa = setupWelcomeWait({ welcomeMessagesJson: [{ type: "text", text: "A" }, { type: "text", text: "B" }] }, "ぼうけん");
+    await callWebhook(oa.lineOaId, makeFollowBody());
+    let msgs = welcomeReplyMessages();
+    expect(msgs![0].quickReply).toBeUndefined();
+    expect(msgs![1].quickReply.items[0].action).toEqual({ type: "message", label: "ぼうけん", text: "ぼうけん" });
+
+    vi.clearAllMocks();
+    // beforeEach 相当の最低限再設定
+    mockPrisma.work.findMany.mockResolvedValue([]);
+    mockPrisma.richMenu.findFirst.mockResolvedValue(null);
+    mockPrisma.message.findMany.mockResolvedValue([]);
+    mockPrisma.globalCommand.findMany.mockResolvedValue([]);
+    mockPrisma.userProgress.findUnique.mockResolvedValue(null);
+    // startTrigger なし
+    oa = setupWelcomeWait({ welcomeMessagesJson: [{ type: "text", text: "A" }] }, null);
+    await callWebhook(oa.lineOaId, makeFollowBody());
+    msgs = welcomeReplyMessages();
+    expect(msgs![0].quickReply).toBeUndefined();
+  });
+
+  it("最後が image でも QR は image メッセージに付与される", async () => {
+    const oa = setupWelcomeWait({ welcomeMessagesJson: [
+      { type: "text", text: "やあ" }, { type: "image", imageUrl: "https://ex.com/a.png" },
+    ] }, "ぼうけん");
+    await callWebhook(oa.lineOaId, makeFollowBody());
+    const msgs = welcomeReplyMessages();
+    expect(msgs![1].type).toBe("image");
+    expect(msgs![1].quickReply.items[0].action).toEqual({ type: "message", label: "ぼうけん", text: "ぼうけん" });
+  });
+
+  it("不正 JSON（非配列）→ 既存 welcomeMessage に fallback", async () => {
+    const oa = setupWelcomeWait({ welcomeMessage: "互換本文", welcomeMessagesJson: "{not json" });
+    await callWebhook(oa.lineOaId, makeFollowBody());
+    const msgs = welcomeReplyMessages();
+    expect(msgs!).toHaveLength(1);
+    expect(msgs![0].text).toBe("互換本文");
   });
 });

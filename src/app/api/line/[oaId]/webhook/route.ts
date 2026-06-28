@@ -49,6 +49,7 @@ import { buildPuzzleHintPostbackData, parsePuzzleHintPostback, resolveHintItems 
 import { shouldOfferResumeChoice } from "@/lib/message-flow";
 import { isFreeInputPrompt } from "@/lib/free-input";
 import { decideFollowBehavior, resolveFollowSettings } from "@/lib/follow-action";
+import { parseWelcomeMessages, WELCOME_MESSAGES_MAX, type WelcomeMessageItem } from "@/lib/welcome-messages";
 import { resolveQrBranchDelivery } from "@/lib/qr-branch";
 import { parseFrontier, selectQrScope } from "@/lib/qr-frontier";
 import { applyFreeInputPostEffect } from "@/lib/frontier-effect";
@@ -1737,6 +1738,8 @@ async function handleWebhook(req: NextRequest, oaId: string) {
     //   - resume_enabled には触れない。実行（送信/開始）ロジックは不変。
     const effective = resolveFollowSettings(oa, work);
     const followAction = effective.followAction;
+    // あいさつ（複数件・text/image）。空（または不正）なら welcomeMessage にフォールバック。
+    const welcomeItems = parseWelcomeMessages(work.welcomeMessagesJson);
     // 送信判断は純関数 decideFollowBehavior に一本化する。
     // 未設定・空文字・空白のみ・開始対象なしのときは「何も送らない」(デフォルト文面は送らない)。
     await Promise.allSettled(
@@ -1748,6 +1751,7 @@ async function handleWebhook(req: NextRequest, oaId: string) {
         const decision = decideFollowBehavior({
           followAction,
           welcomeMessage: effective.welcomeMessage,
+          hasWelcomeMessages: welcomeItems.length > 0,
           hasStartTarget,
         });
 
@@ -1762,8 +1766,8 @@ async function handleWebhook(req: NextRequest, oaId: string) {
           if (!startTrigger) {
             console.warn(`[line-follow] welcome_wait: startTrigger 未設定 → 開始 quickReply なし workId=${work.id.slice(0, 8)} userId=${uid.slice(0, 8)}`);
           }
-          console.info(`[line-follow] sent welcome_wait message userId=${uid.slice(0, 8)} startTriggerQr=${!!startTrigger}`);
-          await replyToLine(e.replyToken, buildWelcomeMessages({ ...work, welcomeMessage: effective.welcomeMessage }, systemSender, startTrigger), oa.channelAccessToken);
+          console.info(`[line-follow] sent welcome_wait message userId=${uid.slice(0, 8)} startTriggerQr=${!!startTrigger} items=${welcomeItems.length}`);
+          await replyToLine(e.replyToken, buildWelcomeMessages({ ...work, welcomeMessage: effective.welcomeMessage }, systemSender, startTrigger, welcomeItems), oa.channelAccessToken);
           return;
         }
         // auto_start（開始対象あり）: 既存仕様どおりシナリオ自動開始。
@@ -1889,6 +1893,9 @@ type WorkRecord = {
   /** 途中再開機能の有効/無効（作品単位）。false のとき再開選択肢を出さず最初から開始に寄せる。
    *  runtime の work は full row (fetchActiveWork) なのでこの列を保持する。undefined は従来=true 扱い。 */
   resumeEnabled?: boolean;
+  /** あいさつメッセージ（複数件・text/image）の JSON。runtime の work は full row なので保持する。
+   *  Prisma Json 型のため unknown 相当。parseWelcomeMessages で安全に正規化する。 */
+  welcomeMessagesJson?: unknown;
 } | null;
 
 // handleTextEvent / handlePostbackEvent / handleStart / handleContinue で共通使用
@@ -1904,35 +1911,59 @@ type HandlerCommon = {
 
 /**
  * 未開始ユーザー向けのあいさつメッセージを組み立てる。
- * work.welcomeMessage が設定されていればそれを、無ければ作品名のあいさつを 1 吹き出しで送る。
+ *
+ * 優先順位:
+ *  1. items（welcomeMessagesJson 由来・最大5件の text/image）があればそれを送る。
+ *  2. 無ければ welcomeMessage（単一テキスト）を 1 吹き出し（互換）。
+ *  3. どちらも無ければ作品名のあいさつ 1 吹き出し（送信可否は呼び出し側 decideFollowBehavior が判定）。
  *
  * 開始案内は固定文言「『はじめる』と送ってください」を廃止し、対象作品の開始応答キーワード
- * （startTrigger）がある場合のみ、最後のメッセージに message-action の quick reply として付与する。
- * 押下すると startTrigger テキストが送信され、既存の startTrigger 照合経路（handleTextEvent）で
- * 物語が開始する（postback は使わない）。startTrigger が無い場合は quick reply を付けない
- * （固定「はじめる」を勝手に代用しない）。
+ * （startTrigger）がある場合のみ、**最後のメッセージ**（text/image いずれも quickReply 可）に
+ * message-action の quick reply として付与する。押下すると startTrigger テキストが送信され、既存の
+ * startTrigger 照合経路（handleTextEvent）で物語が開始する（postback は使わない）。startTrigger が
+ * 無い場合は quick reply を付けない（固定「はじめる」を勝手に代用しない）。
  */
 function buildWelcomeMessages(
   work: NonNullable<WorkRecord>,
   systemSender: LineSender | undefined,
   startTrigger?: string | null,
+  items?: WelcomeMessageItem[],
 ): import("@/lib/line").LineMessage[] {
-  const body = work.welcomeMessage?.trim()
-    ? work.welcomeMessage.trim()
-    : `「${work.title}」へようこそ。`;
+  let msgs: import("@/lib/line").LineMessage[];
 
+  if (items && items.length > 0) {
+    // welcomeMessagesJson 由来（最大5件）。text/image を LINE message に変換。
+    msgs = items.slice(0, WELCOME_MESSAGES_MAX).map((it) =>
+      it.type === "image"
+        ? ({
+            type:              "image",
+            originalContentUrl: it.imageUrl,
+            previewImageUrl:    it.previewImageUrl ?? it.imageUrl,
+            sender:             systemSender,
+          } as import("@/lib/line").LineMessage)
+        : ({ type: "text", text: it.text, sender: systemSender } as import("@/lib/line").LineMessage),
+    );
+  } else {
+    // 互換: 既存 welcomeMessage（無ければ作品名あいさつ）の単一テキスト。
+    const body = work.welcomeMessage?.trim()
+      ? work.welcomeMessage.trim()
+      : `「${work.title}」へようこそ。`;
+    msgs = [{ type: "text", text: body, sender: systemSender }];
+  }
+
+  // startTrigger があれば最後のメッセージ（text/image 問わず quickReply 可）に QR を付与。
   const trig = startTrigger?.trim();
-  if (trig) {
+  if (trig && msgs.length > 0) {
     const quickReply: import("@/lib/line").LineQuickReply = {
       items: [{
         type:   "action",
         action: { type: "message", label: trig.slice(0, 20), text: trig },
       }],
     };
-    return [{ type: "text", text: body, sender: systemSender, quickReply }];
+    (msgs[msgs.length - 1] as { quickReply?: import("@/lib/line").LineQuickReply }).quickReply = quickReply;
   }
 
-  return [{ type: "text", text: body, sender: systemSender }];
+  return msgs;
 }
 
 /**
@@ -3342,11 +3373,12 @@ async function handleContinue({
   // PR-1: あいさつ文は OA 単位優先 + active Work フォールバック（follow 時と一貫）。
   if (!progress) {
     const effWelcome = resolveFollowSettings(oa, work).welcomeMessage;
+    const welcomeItems = parseWelcomeMessages(work.welcomeMessagesJson);
     const startTrigger = (await getCachedStartPhase(work.id))?.startTrigger?.trim() || null;
     if (!startTrigger) {
       console.warn(`[Webhook] 未開始あいさつ: startTrigger 未設定 → 開始 quickReply なし workId=${work.id.slice(0, 8)} userId=${userId.slice(0, 8)}`);
     }
-    await replyToLine(replyToken, buildWelcomeMessages({ ...work, welcomeMessage: effWelcome }, systemSender, startTrigger), token);
+    await replyToLine(replyToken, buildWelcomeMessages({ ...work, welcomeMessage: effWelcome }, systemSender, startTrigger, welcomeItems), token);
     return;
   }
 
