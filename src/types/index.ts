@@ -163,6 +163,8 @@ export interface Work {
   welcome_message: string | null;
   /** あいさつメッセージ（複数件・text/image、最大5件）。GET/PATCH 応答（toResponse）で返る。 */
   welcome_messages?: import("@/lib/welcome-messages").WelcomeMessageItem[];
+  /** あいさつ送信前の「入力中…」演出の待機秒数（0〜8）。0=演出なし。 */
+  welcome_loading_seconds?: number;
   /**
    * 友だち追加（follow）時の動作（作品単位）。
    * "auto_start"（既定・友だち追加直後に自動開始）/ "welcome_wait"（あいさつを送り「はじめる」を待つ）/ "none"（何もしない）。
@@ -453,6 +455,8 @@ export interface UpdateWorkBody {
   welcome_message?: string | null;
   /** あいさつメッセージ（複数件・text/image、最大5件）。空配列で全削除。welcome_message も同期される。 */
   welcome_messages?: import("@/lib/welcome-messages").WelcomeMessageItem[];
+  /** あいさつ送信前の「入力中…」演出の待機秒数（0〜8）。0=演出なし。未指定は変更なし。 */
+  welcome_loading_seconds?: number;
   /** 友だち追加時の動作。"auto_start" | "welcome_wait" | "none"。 */
   follow_action?: "auto_start" | "welcome_wait" | "none";
   // 演出デフォルト設定

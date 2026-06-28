@@ -88,4 +88,17 @@ describe("messages bootstrap GET — welcome_messages 返却", () => {
     const body = await res.json();
     expect(body.data.work.welcome_messages).toEqual([]);
   });
+
+  it("welcome_loading_seconds が返る（PR-B1）", async () => {
+    mockWork.findUnique.mockResolvedValue(makeWork({ welcomeLoadingSeconds: 4 }));
+    const res = await callGet();
+    const body = await res.json();
+    expect(body.data.work.welcome_loading_seconds).toBe(4);
+  });
+  it("welcomeLoadingSeconds 未設定 → welcome_loading_seconds は 0", async () => {
+    mockWork.findUnique.mockResolvedValue(makeWork({}));
+    const res = await callGet();
+    const body = await res.json();
+    expect(body.data.work.welcome_loading_seconds).toBe(0);
+  });
 });

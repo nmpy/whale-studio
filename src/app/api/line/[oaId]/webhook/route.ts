@@ -62,10 +62,15 @@ import { getPlanAccessState, FEATURE } from "@/lib/constants/plans";
 import { logEvent } from "@/lib/event-logger";
 import { activeCache, TTL, CACHE_KEY } from "@/lib/cache";
 import { linkRichMenuToUser } from "@/lib/line-richmenu";
-import { ReadReceiptController, calcReadDelayByTextLength } from "@/lib/line-read-receipt";
+import { ReadReceiptController, calcReadDelayByTextLength, showLoadingAnimation } from "@/lib/line-read-receipt";
 import { checkPuzzleAnswerAny, resolveAnswerCandidates, parseAnswerMatchType } from "@/lib/puzzle-answer";
 import type { MessageTimingConfig } from "@/types";
 import { genRequestId, runWithRequestId, withTiming } from "@/lib/perf";
+
+// あいさつ送信前の「入力中…」演出（welcomeLoadingSeconds 最大8秒）で webhook が
+// reply 前に最大8秒ブロックしうるため、安全マージンとして関数の最大実行時間を延長する。
+// （push 分割ではない＝reply 一括前提。Vercel Pro は最大300s。）
+export const maxDuration = 60;
 
 /**
  * WorkRow から作品単位の演出設定を抽出する。
@@ -1766,7 +1771,9 @@ async function handleWebhook(req: NextRequest, oaId: string) {
           if (!startTrigger) {
             console.warn(`[line-follow] welcome_wait: startTrigger 未設定 → 開始 quickReply なし workId=${work.id.slice(0, 8)} userId=${uid.slice(0, 8)}`);
           }
-          console.info(`[line-follow] sent welcome_wait message userId=${uid.slice(0, 8)} startTriggerQr=${!!startTrigger} items=${welcomeItems.length}`);
+          console.info(`[line-follow] sent welcome_wait message userId=${uid.slice(0, 8)} startTriggerQr=${!!startTrigger} items=${welcomeItems.length} loadingSec=${work.welcomeLoadingSeconds ?? 0}`);
+          // 送信前の「入力中…」演出（welcomeLoadingSeconds>0 のとき）。reply 一括は維持。
+          await applyWelcomeLoading(work.welcomeLoadingSeconds, uid, oa.channelAccessToken);
           await replyToLine(e.replyToken, buildWelcomeMessages({ ...work, welcomeMessage: effective.welcomeMessage }, systemSender, startTrigger, welcomeItems), oa.channelAccessToken);
           return;
         }
@@ -1896,6 +1903,8 @@ type WorkRecord = {
   /** あいさつメッセージ（複数件・text/image）の JSON。runtime の work は full row なので保持する。
    *  Prisma Json 型のため unknown 相当。parseWelcomeMessages で安全に正規化する。 */
   welcomeMessagesJson?: unknown;
+  /** あいさつ送信前の「入力中…」演出の待機秒数（0〜8）。0=演出なし。full row なので保持する。 */
+  welcomeLoadingSeconds?: number | null;
 } | null;
 
 // handleTextEvent / handlePostbackEvent / handleStart / handleContinue で共通使用
@@ -1923,6 +1932,28 @@ type HandlerCommon = {
  * startTrigger 照合経路（handleTextEvent）で物語が開始する（postback は使わない）。startTrigger が
  * 無い場合は quick reply を付けない（固定「はじめる」を勝手に代用しない）。
  */
+/**
+ * あいさつ送信前の「入力中…」演出（PR-B1）。welcomeLoadingSeconds(1〜8) のとき、
+ * loading アニメーション（メッセージ通数を消費しない）を表示し、設定秒だけ待ってから reply する。
+ *  - 0/未設定 → 何もしない（即時 reply＝従来挙動）。
+ *  - loading API が失敗（false/例外）しても reply は止めない（ログのみ）。sleep は設定どおり実施。
+ *  - push は使わない。reply 一括のまま。
+ */
+async function applyWelcomeLoading(
+  welcomeLoadingSeconds: number | null | undefined,
+  userId: string,
+  channelAccessToken: string,
+): Promise<void> {
+  const sec = welcomeLoadingSeconds ?? 0;
+  if (sec <= 0 || !userId) return;
+  try {
+    await showLoadingAnimation(userId, sec, channelAccessToken);
+  } catch (err) {
+    console.warn(`[welcome-loading] showLoadingAnimation failed userId=${userId.slice(0, 8)}: ${err instanceof Error ? err.message : String(err)}`);
+  }
+  await sleep(sec * 1000);
+}
+
 function buildWelcomeMessages(
   work: NonNullable<WorkRecord>,
   systemSender: LineSender | undefined,
@@ -3378,6 +3409,8 @@ async function handleContinue({
     if (!startTrigger) {
       console.warn(`[Webhook] 未開始あいさつ: startTrigger 未設定 → 開始 quickReply なし workId=${work.id.slice(0, 8)} userId=${userId.slice(0, 8)}`);
     }
+    // 送信前の「入力中…」演出（welcomeLoadingSeconds>0 のとき）。reply 一括は維持。
+    await applyWelcomeLoading(work.welcomeLoadingSeconds, userId, token);
     await replyToLine(replyToken, buildWelcomeMessages({ ...work, welcomeMessage: effWelcome }, systemSender, startTrigger, welcomeItems), token);
     return;
   }

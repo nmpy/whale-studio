@@ -176,3 +176,43 @@ describe("GET — welcome_messages と welcome_message を返す", () => {
     expect(body.data.welcome_message).toBe("互換本文");
   });
 });
+
+describe("PATCH / GET welcome_loading_seconds（PR-B1）", () => {
+  /** 直近の update に渡された data を返す */
+  const lastData = () => mockWork.update.mock.calls.at(-1)?.[0]?.data as Record<string, unknown>;
+  it("0 / 8 は保存OK、welcomeLoadingSeconds に格納される", async () => {
+    let res = await callPatch({ welcome_loading_seconds: 0 });
+    expect(res.status).toBe(200);
+    expect(lastData().welcomeLoadingSeconds).toBe(0);
+    res = await callPatch({ welcome_loading_seconds: 8 });
+    expect(res.status).toBe(200);
+    expect(lastData().welcomeLoadingSeconds).toBe(8);
+  });
+  it("未指定なら welcomeLoadingSeconds を変更しない", async () => {
+    const res = await callPatch({ follow_action: "none" });
+    expect(res.status).toBe(200);
+    expect("welcomeLoadingSeconds" in savedData()!).toBe(false);
+  });
+  it("9以上 / 負数 / 小数 → 400", async () => {
+    for (const v of [9, -1, 2.5]) {
+      const res = await callPatch({ welcome_loading_seconds: v });
+      expect(res.status).toBe(400);
+    }
+  });
+  it("GET 応答に welcome_loading_seconds が返る", async () => {
+    mockWork.findUnique.mockResolvedValue(existingWork({
+      welcomeLoadingSeconds: 5,
+      _count: { characters: 0, phases: 0, messages: 0, userProgress: 0 },
+    }));
+    const { GET } = await import("@/app/api/works/[workId]/route");
+    const req = new Request(`http://localhost/api/works/${WORK_ID}`, { method: "GET" });
+    const res = await GET(req as Parameters<typeof GET>[0], { params: { workId: WORK_ID } });
+    const body = await res.json();
+    expect(body.data.welcome_loading_seconds).toBe(5);
+  });
+  it("welcomeLoadingSeconds 未設定(null) → 0 を返す", async () => {
+    const res = await callPatch({ welcome_loading_seconds: 0 });
+    const body = await res.json();
+    expect(body.data.welcome_loading_seconds).toBe(0);
+  });
+});

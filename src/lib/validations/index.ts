@@ -131,6 +131,8 @@ export const updateWorkSchema = z.object({
    * undefined（省略）は変更なし。
    */
   welcome_messages:    z.array(welcomeMessageItemSchema).max(5).optional(),
+  /** あいさつ送信前の「入力中…」演出の待機秒数（0〜8 の整数）。0=演出なし。未指定は変更なし。 */
+  welcome_loading_seconds: z.number().int().min(0).max(8).optional(),
   /** 友だち追加時の動作。"auto_start" | "welcome_wait" | "none"。 */
   follow_action:       z.enum(["auto_start", "welcome_wait", "none"]).optional(),
   // ── 演出デフォルト設定 ──
