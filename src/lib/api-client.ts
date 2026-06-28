@@ -591,6 +591,7 @@ export interface MessagesBootstrapData {
     oa_id:               string;
     title:               string;
     welcome_message:     string | null;
+    welcome_messages:    import("@/lib/welcome-messages").WelcomeMessageItem[];
     follow_action:       "auto_start" | "welcome_wait" | "none";
     publish_status:      string;
     liff_enabled:        boolean;

@@ -449,6 +449,8 @@ export interface UpdateWorkBody {
    * 未開始ユーザーへの導入文。未設定ならシステムデフォルト文を使用。
    */
   welcome_message?: string | null;
+  /** あいさつメッセージ（複数件・text/image、最大5件）。空配列で全削除。welcome_message も同期される。 */
+  welcome_messages?: import("@/lib/welcome-messages").WelcomeMessageItem[];
   /** 友だち追加時の動作。"auto_start" | "welcome_wait" | "none"。 */
   follow_action?: "auto_start" | "welcome_wait" | "none";
   // 演出デフォルト設定
