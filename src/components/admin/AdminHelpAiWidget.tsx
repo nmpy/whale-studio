@@ -225,18 +225,39 @@ export function AdminHelpAiWidget() {
         </div>
       )}
 
-      {/* 起動ボタン（右下固定） */}
+      {/* 起動ボタン（右下固定）。閉じている時は視認性重視で大きめ・目立つ。開いている時は控えめな「閉じる」。 */}
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        style={{
-          marginLeft: "auto", display: "block",
-          background: "#2F6F5E", color: "#fff", border: "none",
-          borderRadius: 24, padding: "10px 16px", fontSize: 13, fontWeight: 700,
-          boxShadow: "0 4px 14px rgba(0,0,0,0.20)", cursor: "pointer",
-        }}
+        aria-label={open ? "ヘルプを閉じる" : "AIに質問する"}
+        style={
+          open
+            ? {
+                // 開いている時は控えめ（パネルの × でも閉じられる）
+                marginLeft: "auto", display: "flex", alignItems: "center", justifyContent: "center",
+                background: "#6b7280", color: "#fff", border: "none",
+                borderRadius: 20, height: 40, padding: "0 16px", fontSize: 13, fontWeight: 700,
+                boxShadow: "0 3px 10px rgba(0,0,0,0.18)", cursor: "pointer", whiteSpace: "nowrap",
+              }
+            : {
+                // 閉じている時は大きく・目立たせて「ここで質問できる」と分かるように
+                marginLeft: "auto", display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                background: "#2F6F5E", color: "#fff", border: "none",
+                borderRadius: 28, height: 54, minWidth: 140, padding: "0 22px",
+                fontSize: 15.5, fontWeight: 700, lineHeight: 1, whiteSpace: "nowrap",
+                boxShadow: "0 6px 20px rgba(47,111,94,0.42), 0 2px 6px rgba(0,0,0,0.18)",
+                cursor: "pointer",
+              }
+        }
       >
-        {open ? "閉じる" : "💬 AIに質問"}
+        {open ? (
+          "閉じる"
+        ) : (
+          <>
+            <span aria-hidden style={{ fontSize: 19, lineHeight: 1 }}>💬</span>
+            <span>AIに質問</span>
+          </>
+        )}
       </button>
     </div>
   );
