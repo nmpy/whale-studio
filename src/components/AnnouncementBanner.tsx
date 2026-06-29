@@ -8,6 +8,7 @@
 import { useState, useEffect } from "react";
 import { ANNOUNCEMENTS as FALLBACK_ANNOUNCEMENTS } from "@/data/announcements";
 import { getAuthHeaders } from "@/lib/api-client";
+import { normalizeAnnouncementLimit, DEFAULT_ANNOUNCEMENT_DISPLAY_LIMIT } from "@/lib/announcement-display";
 
 // ── 型 ────────────────────────────────────────────────────────────────────
 export type AnnouncementType = "update" | "bugfix" | "known_issue" | "info";
@@ -182,6 +183,20 @@ export function AnnouncementBanner({ canPost = false }: { canPost?: boolean }) {
   const [loaded,        setLoaded]        = useState(false);
   const [activeTab, setActiveTab]   = useState<AnnouncementType | "all" | "important">("all");
   const [collapsed, setCollapsed]   = useState(false);
+  // /oas での最大表示件数（StudioSetting 由来）。取得失敗時は既定 3 にフォールバック。
+  const [displayLimit, setDisplayLimit] = useState<number>(DEFAULT_ANNOUNCEMENT_DISPLAY_LIMIT);
+
+  // 表示件数設定を取得（失敗しても /oas を落とさず既定 3 のまま）。
+  useEffect(() => {
+    fetch("/api/announcement-settings", { headers: { ...getAuthHeaders() } })
+      .then((r) => (r.ok ? (r.json() as Promise<{ data?: { display_limit?: unknown } }>) : null))
+      .then((j) => {
+        if (j?.data?.display_limit !== undefined) {
+          setDisplayLimit(normalizeAnnouncementLimit(j.data.display_limit));
+        }
+      })
+      .catch(() => { /* 既定 3 のまま */ });
+  }, []);
 
   // GET /api/announcements から取得（失敗時は静的フォールバック）
   useEffect(() => {
@@ -210,17 +225,18 @@ export function AnnouncementBanner({ canPost = false }: { canPost?: boolean }) {
   // ローディング中は何も表示しない（レイアウトシフト防止）
   if (!loaded) return null;
 
-  // フィルタリング
+  // フィルタリング（ユーザー向け表示は新しい日付順を優先＝important ピン留めしない）
   const filtered = announcements
     .filter((a) => {
       if (activeTab === "all")       return true;
       if (activeTab === "important") return a.important;
       return a.type === activeTab;
     })
-    .sort((a, b) => {
-      if (a.important !== b.important) return a.important ? -1 : 1;
-      return b.date.localeCompare(a.date);
-    });
+    .sort((a, b) => b.date.localeCompare(a.date));
+
+  // /oas では設定件数分のみ表示し、超過時のみ「もっとみる」で /announcements へ誘導する。
+  const visible = filtered.slice(0, displayLimit);
+  const hasMore = filtered.length > displayLimit;
 
   const importantCount = announcements.filter((a) => a.important).length;
 
@@ -375,13 +391,28 @@ export function AnnouncementBanner({ canPost = false }: { canPost?: boolean }) {
                 </div>
               ) : (
                 <div>
-                  {filtered.map((item, i) => (
+                  {visible.map((item, i) => (
                     <AnnouncementRow
                       key={item.id}
                       item={item}
-                      isLast={i === filtered.length - 1}
+                      isLast={i === visible.length - 1 && !hasMore}
                     />
                   ))}
+                  {/* 公開済みが表示件数を超える場合のみ「もっとみる」→ /announcements 一覧へ */}
+                  {hasMore && (
+                    <div style={{ padding: "12px 16px", textAlign: "center", borderTop: "1px solid var(--color-border-soft, #f0f0f0)" }}>
+                      <a
+                        href="/announcements"
+                        style={{
+                          fontSize: 12, fontWeight: 600,
+                          color: "var(--color-primary, #2F6F5E)",
+                          textDecoration: "none",
+                        }}
+                      >
+                        もっとみる（全{filtered.length}件）
+                      </a>
+                    </div>
+                  )}
                 </div>
               )}
             </>

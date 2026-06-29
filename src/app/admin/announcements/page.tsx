@@ -98,6 +98,23 @@ async function deleteAnnouncement(id: string): Promise<void> {
   if (!r.ok) throw new Error("削除に失敗しました");
 }
 
+// 表示件数設定（/oas のお知らせ最大表示件数）。GET は表示用 API、PATCH は admin API。
+async function fetchDisplayLimit(): Promise<number> {
+  const r = await fetch("/api/announcement-settings", { headers: authHeaders() });
+  if (!r.ok) throw new Error("表示件数の取得に失敗しました");
+  return (await r.json()).data.display_limit as number;
+}
+
+async function saveDisplayLimit(displayLimit: number): Promise<number> {
+  const r = await fetch("/api/admin/announcement-settings", {
+    method: "PATCH",
+    headers: authHeaders(),
+    body: JSON.stringify({ display_limit: displayLimit }),
+  });
+  if (!r.ok) throw new Error("表示件数の保存に失敗しました");
+  return (await r.json()).data.display_limit as number;
+}
+
 // ── フォームモーダル ──────────────────────────────────────────────────────
 function AnnouncementModal({
   initial,
@@ -299,6 +316,9 @@ export default function AdminAnnouncementsPage() {
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState<string | null>(null);
   const [modal,   setModal]   = useState<{ open: true; item?: Announcement } | null>(null);
+  // /oas のお知らせ最大表示件数（1〜10・既定3）。入力は文字列で保持し保存時に数値化。
+  const [displayLimit, setDisplayLimit] = useState<string>("3");
+  const [savingLimit,  setSavingLimit]  = useState(false);
   const { showToast } = useToast();
 
   const load = useCallback(async () => {
@@ -314,6 +334,24 @@ export default function AdminAnnouncementsPage() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  // 表示件数設定の読み込み（失敗しても画面は落とさず既定3のまま）。
+  useEffect(() => {
+    fetchDisplayLimit().then((n) => setDisplayLimit(String(n))).catch(() => { /* 既定3 */ });
+  }, []);
+
+  async function handleSaveLimit() {
+    setSavingLimit(true);
+    try {
+      const saved = await saveDisplayLimit(Number(displayLimit));
+      setDisplayLimit(String(saved));
+      showToast(`表示件数を ${saved} 件に保存しました`, "success");
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "保存に失敗しました", "error");
+    } finally {
+      setSavingLimit(false);
+    }
+  }
 
   async function handleSave(data: {
     type: AnnouncementType; title: string; body: string;
@@ -372,6 +410,36 @@ export default function AdminAnnouncementsPage() {
           ＋ お知らせを追加
         </button>
       </div>
+
+      {/* ── アカウントリストのお知らせ表示件数設定 ── */}
+      <section className="card" style={{ padding: "16px 20px", marginBottom: 24 }}>
+        <label style={{ display: "block", fontSize: 13, fontWeight: 700, color: "var(--text-primary)", marginBottom: 4 }}>
+          アカウントリストのお知らせ表示件数
+        </label>
+        <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "0 0 10px", lineHeight: 1.6 }}>
+          アカウントリスト画面（/oas）に表示するお知らせの最大件数です。件数を超えるお知らせは「もっとみる」から一覧で閲覧できます。
+        </p>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <select
+            value={displayLimit}
+            onChange={(e) => setDisplayLimit(e.target.value)}
+            disabled={savingLimit}
+            style={{ padding: "6px 10px", fontSize: 13, borderRadius: 6, border: "1px solid var(--color-border-default, #e5e5e5)" }}
+          >
+            {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
+              <option key={n} value={String(n)}>{n} 件</option>
+            ))}
+          </select>
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={handleSaveLimit}
+            disabled={savingLimit}
+          >
+            {savingLimit ? "保存中..." : "保存"}
+          </button>
+        </div>
+      </section>
 
       {error && (
         <div className="alert alert-error" style={{ marginBottom: 16 }}>

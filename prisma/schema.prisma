@@ -1064,6 +1064,18 @@ model AdminAnnouncement {
   @@map("admin_announcements")
 }
 
+/// スタジオ全体の単一グローバル設定（singleton: id="singleton" の 1 行を upsert で運用）。
+/// 今回は /oas のお知らせ最大表示件数を保持する。今後のグローバル設定もここに追加する。
+model StudioSetting {
+  id                       String   @id @default("singleton")
+  /// /oas（アカウントリスト）のお知らせ最大表示件数。null=未設定（既定 3 で扱う）。許容 1〜10。
+  announcementDisplayLimit Int?     @map("announcement_display_limit")
+  createdAt                DateTime @default(now()) @map("created_at")
+  updatedAt                DateTime @updatedAt      @map("updated_at")
+
+  @@map("studio_settings")
+}
+
 model AdminDocument {
   id          String   @id @default(uuid())
   title       String
