@@ -34,7 +34,7 @@ function stub(title: string): MessagesBootstrapData {
     phases: [],
     transitions: [],
     role: "owner",
-    permissions: { can_edit: true, is_owner: true, is_admin: true, is_viewer: false },
+    permissions: { can_edit: true, can_manage: true, is_owner: true, is_admin: true, is_viewer: false },
     counts: { messages: 0, phases: 0, transitions: 0 },
   };
 }

@@ -210,10 +210,10 @@ export const PUT = withAuth(async (req: NextRequest, _ctx, user) => {
     const removedIds = input.removed_message_ids ?? [];
     const detachedIds = input.detached_message_ids ?? [];
 
-    // 認可: 実体削除を含むなら owner、内容更新 / 切り離し（非破壊）のみなら tester。
+    // 認可: 実体削除を含むなら editor、内容更新 / 切り離し（非破壊）のみなら tester。
     const oaId = await getOaIdFromWorkId(input.work_id);
     if (!oaId) return badRequest("work_id に該当する作品が見つかりません");
-    const role = removedIds.length > 0 ? "owner" : "tester";
+    const role = removedIds.length > 0 ? "editor" : "tester";
     const check = await requireRole(oaId, user.id, role);
     if (!check.ok) return check.response;
 

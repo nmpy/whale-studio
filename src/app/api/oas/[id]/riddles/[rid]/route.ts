@@ -125,9 +125,10 @@ export const PATCH = withRole<{ id: string; rid: string }>(
   }
 );
 
+// 謎の削除は editor 以上に緩和（作品配下コンテンツの削除。作品/OA 削除は別途 owner 限定）。
 export const DELETE = withRole<{ id: string; rid: string }>(
   ({ params }) => params.id,
-  'owner',
+  'editor',
   async (_req, { params }) => {
     try {
       const riddle = await findRiddle(params.id, params.rid);

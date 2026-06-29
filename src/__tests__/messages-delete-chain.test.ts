@@ -166,7 +166,7 @@ describe("DELETE /api/messages/:id chain cascade", () => {
     expect(deletedIds).toEqual(["m1"]);
   });
 
-  it("認可: owner でなければ 403 を返し、削除は走らない", async () => {
+  it("認可: editor 未満なら 403 を返し、削除は走らない（削除は editor 以上）", async () => {
     mockRequireRole.mockResolvedValue({
       ok: false,
       response: new Response(JSON.stringify({ success: false }), { status: 403 }),
@@ -179,6 +179,7 @@ describe("DELETE /api/messages/:id chain cascade", () => {
     const { DELETE } = await import("@/app/api/messages/[id]/route");
     const res = await DELETE(makeReq() as never, { params: { id: "m1" } } as never);
     expect((res as Response).status).toBe(403);
+    expect(mockRequireRole).toHaveBeenCalledWith("oa1", "user-1", "editor");
     expect(mockTransaction).not.toHaveBeenCalled();
   });
 

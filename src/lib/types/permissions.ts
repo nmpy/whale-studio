@@ -162,22 +162,23 @@ export const PERMISSION_MATRIX: Record<Permission, Role[]> = {
   'message:read':      ['owner', 'admin', 'editor', 'tester', 'viewer'],
   'message:create':    ['owner', 'admin', 'editor', 'tester'],
   'message:update':    ['owner', 'admin', 'editor', 'tester'],
-  'message:delete':    ['owner', 'admin'],
+  // 削除は editor 以上（作品配下コンテンツの削除を制作者に許可）。tester/viewer は不可。
+  'message:delete':    ['owner', 'admin', 'editor'],
 
   'riddle:read':       ['owner', 'admin', 'editor', 'tester', 'viewer'],
   'riddle:create':     ['owner', 'admin', 'editor', 'tester'],
   'riddle:update':     ['owner', 'admin', 'editor', 'tester'],
-  'riddle:delete':     ['owner', 'admin'],
+  'riddle:delete':     ['owner', 'admin', 'editor'],
 
   'character:read':    ['owner', 'admin', 'editor', 'tester', 'viewer'],
   'character:create':  ['owner', 'admin', 'editor', 'tester'],
   'character:update':  ['owner', 'admin', 'editor', 'tester'],
-  'character:delete':  ['owner', 'admin'],
+  'character:delete':  ['owner', 'admin', 'editor'],
 
   'phase:read':        ['owner', 'admin', 'editor', 'tester', 'viewer'],
   'phase:create':      ['owner', 'admin', 'editor', 'tester'],
   'phase:update':      ['owner', 'admin', 'editor', 'tester'],
-  'phase:delete':      ['owner', 'admin'],
+  'phase:delete':      ['owner', 'admin', 'editor'],
 
   'analytics:read':    ['owner', 'admin', 'editor', 'tester', 'viewer'],
 

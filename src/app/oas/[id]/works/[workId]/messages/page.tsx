@@ -56,6 +56,8 @@ export default function MessagesPage() {
   // Bootstrap に集約して初期表示の往復を削減した（preview は UI 専用のため挙動不変）。
   const [role, setRole]                 = useState<Role | null>(null);
   const [canEdit, setCanEdit]           = useState(false);
+  // 削除・並び替え（editor 以上）。tester は create/update のみで不可。
+  const [canManage, setCanManage]       = useState(false);
   const [activeTab, setActiveTab]       = useState<Tab>("messages");
   const [workTitle, setWorkTitle]       = useState("");
   // あいさつメッセージ（複数件・text/image、最大5件）のタブ内インライン編集。
@@ -375,6 +377,7 @@ export default function MessagesPage() {
       setTransitions(data.transitions);
       setRole(data.role);
       setCanEdit(data.permissions.can_edit);
+      setCanManage(data.permissions.can_manage);
     }
 
     const ROUTE = "/oas/[id]/works/[workId]/messages";
@@ -971,6 +974,7 @@ export default function MessagesPage() {
               isExpanded={expandedId === m.id}
               onToggleExpand={() => toggleExpand(m.id)}
               canEdit={canEdit}
+              canManage={canManage}
               busy={busyMessageId === m.id}
               editHref={`/oas/${oaId}/works/${workId}/messages/${m.id}`}
               onDelete={() => handleDeleteMessage(m)}

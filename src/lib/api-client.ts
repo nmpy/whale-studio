@@ -606,10 +606,12 @@ export interface MessagesBootstrapData {
   role:        Role;
   /** UI 表示用に server で算出した権限フラグ（実 role ベース）。 */
   permissions: {
-    can_edit:  boolean;
-    is_owner:  boolean;
-    is_admin:  boolean;
-    is_viewer: boolean;
+    can_edit:   boolean;
+    /** 削除・並び替え（editor 以上）。tester は create/update のみで不可。 */
+    can_manage: boolean;
+    is_owner:   boolean;
+    is_admin:   boolean;
+    is_viewer:  boolean;
   };
   counts: {
     messages:    number;
