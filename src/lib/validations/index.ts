@@ -135,6 +135,12 @@ export const updateWorkSchema = z.object({
   welcome_loading_seconds: z.number().int().min(0).max(8).optional(),
   /** 友だち追加時の動作。"auto_start" | "welcome_wait" | "none"。 */
   follow_action:       z.enum(["auto_start", "welcome_wait", "none"]).optional(),
+  /**
+   * 開始キーワード（任意・最大100文字）。同じ OA に複数作品を公開する場合、ユーザーがこのキーワードを
+   * 送信するとこの作品が開始される。null/空文字で解除、undefined（省略）は変更なし。
+   * 同一 OA の公開中作品間での重複は route 側で検証（Phase.startTrigger とも重複不可）。
+   */
+  start_keyword:       z.string().max(100).optional().nullable(),
   // ── 演出デフォルト設定 ──
   read_receipt_mode:    z.enum(["inherit", "immediate", "delayed", "before_reply"]).optional().nullable(),
   read_delay_ms:        z.number().int().min(0).max(600000).optional().nullable(),

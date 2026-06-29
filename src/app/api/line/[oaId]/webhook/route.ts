@@ -51,6 +51,7 @@ import { isFreeInputPrompt } from "@/lib/free-input";
 import { decideFollowBehavior, resolveFollowSettings } from "@/lib/follow-action";
 import { parseWelcomeMessages, WELCOME_MESSAGES_MAX, type WelcomeMessageItem } from "@/lib/welcome-messages";
 import { resolveQrBranchDelivery } from "@/lib/qr-branch";
+import { matchStartWork, normalizeStartKeyword } from "@/lib/start-keyword";
 import { parseQuickReplyPostback, resolveQuickReplyItem } from "@/lib/quick-reply-postback";
 import { parseFrontier, selectQrScope } from "@/lib/qr-frontier";
 import { applyFreeInputPostEffect } from "@/lib/frontier-effect";
@@ -331,6 +332,82 @@ async function fetchActiveWork(oaId: string) {
   });
 }
 type WorkRow = NonNullable<Awaited<ReturnType<typeof fetchActiveWork>>>;
+
+// ── 多作品（1 OA に複数公開）対応のヘルパー ───────────────────────────────
+// 既存の単一作品パス（fetchActiveWork + work キャッシュ）は一切変更しない。
+// 公開中が複数のときだけ、開始キーワードで作品を解決する。
+
+/** OA の公開中作品を全件取得（単一作品時の fetchActiveWork と同じ include / 並び順）。キャッシュはしない（古い単一Workと混ざらないため・常に最新）。 */
+async function fetchActiveWorks(oaId: string): Promise<WorkRow[]> {
+  return prisma.work.findMany({
+    where:   { oaId, publishStatus: "active" },
+    orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }, { id: "asc" }],
+    include: { systemCharacter: { select: { name: true, iconImageUrl: true } } },
+  });
+}
+
+/** work の systemCharacter から LINE sender を構築（既存ロジックを共通化）。 */
+function buildWorkSystemSender(work: WorkRow | null): LineSender | undefined {
+  return work?.systemCharacter
+    ? {
+        name: work.systemCharacter.name.slice(0, 20),
+        ...(work.systemCharacter.iconImageUrl?.startsWith("https://")
+          ? { iconUrl: work.systemCharacter.iconImageUrl }
+          : {}),
+      }
+    : undefined;
+}
+
+/**
+ * 開始キーワード非一致の通常テキストで「現在進行中の作品」を特定する。
+ *   - 対象 OA の active 作品のみ（activeWorkIds）
+ *   - UserProgress.lineUserId 一致・reachedEnding=false・currentPhaseId != null
+ *   - lastInteractedAt DESC（同値は updatedAt DESC）で 1 件
+ * lineUserId だけの横断検索はしない（必ず activeWorkIds で絞る）。該当なしは null。
+ */
+async function resolveInProgressWorkId(userId: string, activeWorkIds: string[]): Promise<string | null> {
+  if (activeWorkIds.length === 0) return null;
+  const p = await prisma.userProgress.findFirst({
+    where:   { lineUserId: userId, workId: { in: activeWorkIds }, reachedEnding: false, currentPhaseId: { not: null } },
+    orderBy: [{ lastInteractedAt: "desc" }, { updatedAt: "desc" }],
+    select:  { workId: true },
+  });
+  return p?.workId ?? null;
+}
+
+/**
+ * postback の作品を payload 由来で解決する（直近 progress ではなく payload 優先）。
+ * 優先: data.workId（resume_work 含む） → sourceMessageId/messageId → phaseId。
+ * 解決した workId は必ず activeWorkIds（＝この OA の公開中作品）に含まれること（他 OA の id は拒否）。
+ * 解決できない（rich menu 等 workId/messageId/phaseId 無し）→ null（複数公開時は呼び出し側でスキップ）。
+ */
+async function resolvePostbackWorkId(data: string, activeWorkIds: Set<string>): Promise<string | null> {
+  let params: URLSearchParams;
+  try { params = new URLSearchParams(data); } catch { return null; }
+
+  // 1. data.workId（resume_work / 汎用）
+  const directWid = params.get("workId");
+  if (directWid) return activeWorkIds.has(directWid) ? directWid : null; // 他OA/非公開は拒否
+
+  // 2. messageId 由来（quick_reply.sourceMessageId / puzzle_hint.messageId / hint_back_to_puzzle.messageId）
+  const qr = parseQuickReplyPostback(data);
+  const ph = qr ? null : parsePuzzleHintPostback(data);
+  const bp = qr || ph ? null : parseBackToPuzzlePostback(data);
+  const msgId = qr?.sourceMessageId ?? ph?.messageId ?? bp?.messageId ?? null;
+  if (msgId) {
+    const m = await prisma.message.findFirst({ where: { id: msgId, isActive: true }, select: { workId: true } });
+    return m && activeWorkIds.has(m.workId) ? m.workId : null; // 他OAの messageId は拒否
+  }
+
+  // 3. phaseId 由来
+  const phaseId = params.get("phaseId");
+  if (phaseId) {
+    const p = await prisma.phase.findFirst({ where: { id: phaseId }, select: { workId: true } });
+    return p && activeWorkIds.has(p.workId) ? p.workId : null;
+  }
+
+  return null;
+}
 
 /** フェーズ（messages + transitionsFrom）をキャッシュ付きで取得。TTL 内は DB クエリをスキップ */
 async function getCachedPhase(phaseId: string): Promise<PhaseRow | null> {
@@ -1713,6 +1790,13 @@ async function handleWebhook(req: NextRequest, oaId: string) {
       }
     : undefined;
 
+  // ── 6-a2. 多作品（1 OA に複数公開）判定 ──
+  // 公開中作品を全件取得（単一作品時は activeWorks=[work] 同等＝既存パス不変）。
+  // multiWork=true のときだけ、開始キーワードでの作品解決を行う。
+  const activeWorks = await fetchActiveWorks(oa.id);
+  const multiWork = activeWorks.length > 1;
+  const activeWorkIdSet = new Set(activeWorks.map((w) => w.id));
+
   // ── 6-b. ユーザープロフィール一括取得（プレースホルダ置換用）──
   // 全イベントの unique userId を集めてプロフィールを並列フェッチする（5 分キャッシュ）。
   const allEventUserIds = [...new Set([
@@ -1751,6 +1835,26 @@ async function handleWebhook(req: NextRequest, oaId: string) {
     await Promise.allSettled(
       followEvents.map(async (e) => {
         const uid = e.source.userId;
+
+        // ── 複数公開時: 自動開始しない。OA あいさつ（単一テキスト）があれば送るだけ。 ──
+        // どの作品を開始すべきか曖昧なため auto_start せず、開始 quickReply も付けない
+        // （ユーザーは作品ごとの開始キーワードを送って選ぶ）。単一公開時は下の既存ロジック。
+        if (multiWork) {
+          const welcomeText = (effective.welcomeMessage ?? "").trim();
+          if (welcomeText) {
+            await applyWelcomeLoading(work.welcomeLoadingSeconds, uid, oa.channelAccessToken);
+            await replyToLine(
+              e.replyToken,
+              buildWelcomeMessages({ ...work, welcomeMessage: welcomeText }, systemSender, null, []),
+              oa.channelAccessToken,
+            );
+            console.info(`[line-follow] multiWork: sent OA welcome only (no auto_start) userId=${uid.slice(0, 8)}`);
+          } else {
+            console.info(`[line-follow] multiWork: no OA welcome → skip userId=${uid.slice(0, 8)}`);
+          }
+          return;
+        }
+
         // auto_start のときだけ開始対象（開始フェーズ）の有無を確認する。
         const hasStartTarget =
           followAction === "auto_start" ? !!(await getCachedStartPhase(work.id)) : false;
@@ -1809,16 +1913,47 @@ async function handleWebhook(req: NextRequest, oaId: string) {
       ctrl.scheduleLoading(loadingAbort.signal);
 
       return readCtrlStorage.run(ctrl, async () => {
+        const uid  = event.source.userId;
+        const text = event.message.text.trim();
         try {
-          await handleTextEvent({
-            oa,
-            work:         work ?? null,
-            systemSender,
-            userId:       event.source.userId,
-            text:         event.message.text.trim(),
-            replyToken:   event.replyToken,
-            vars:         buildVars(event.source.userId),
-          });
+          if (!multiWork) {
+            // 単一公開（or 0件）。
+            // NEW: Work.startKeyword 一致なら開始（resume 導線維持）。startTrigger / 開始コマンド / キーワード /
+            //   QR 等は従来どおり handleTextEvent 内で処理（後方互換）。startKeyword 未設定なら従来挙動のまま。
+            const single = work ?? null;
+            const skNorm = normalizeStartKeyword(single?.startKeyword);
+            if (single && skNorm && normalizeStartKeyword(text) === skNorm) {
+              console.log(`[Webhook][single] start keyword 一致 → workId=${single.id.slice(0, 8)} userId=${uid.slice(0, 8)}`);
+              await startWorkByKeyword({ oa, work: single, systemSender, userId: uid, replyToken: event.replyToken, vars: buildVars(uid) });
+            } else {
+              await handleTextEvent({
+                oa, work: single, systemSender, userId: uid, text,
+                replyToken: event.replyToken, vars: buildVars(uid),
+              });
+            }
+          } else {
+            // 複数公開: 開始キーワード(Work.startKeyword ∨ 開始フェーズ Phase.startTrigger)を最優先で照合。
+            const candidates = await Promise.all(activeWorks.map(async (w) => ({
+              id: w.id, startKeyword: w.startKeyword, startTrigger: (await getCachedStartPhase(w.id))?.startTrigger ?? null,
+            })));
+            const matched = matchStartWork(text, candidates);
+            if (matched) {
+              // 開始KW一致 → その作品を開始（作品内応答キーワードより優先・resume 導線維持・他作品の進行は消さない）。
+              const startWork = activeWorks.find((w) => w.id === matched.id)!;
+              console.log(`[Webhook][multi] start keyword 一致 → workId=${startWork.id.slice(0, 8)} userId=${uid.slice(0, 8)}`);
+              await startWorkByKeyword({ oa, work: startWork, systemSender: buildWorkSystemSender(startWork), userId: uid, replyToken: event.replyToken, vars: buildVars(uid) });
+            } else {
+              // 非一致 → 進行中作品があればその作品で通常処理。無ければ勝手に開始しない（何もしない）。
+              const inProgressId = await resolveInProgressWorkId(uid, activeWorks.map((w) => w.id));
+              const ipWork = inProgressId ? activeWorks.find((w) => w.id === inProgressId) ?? null : null;
+              if (ipWork) {
+                console.log(`[Webhook][multi] 進行中作品で継続 → workId=${ipWork.id.slice(0, 8)} userId=${uid.slice(0, 8)}`);
+                await handleTextEvent({ oa, work: ipWork, systemSender: buildWorkSystemSender(ipWork), userId: uid, text, replyToken: event.replyToken, vars: buildVars(uid) });
+              } else {
+                console.log(`[Webhook][multi] 開始KW非一致 & 進行中なし → 何もしない userId=${uid.slice(0, 8)} text="${text.slice(0, 40)}"`);
+              }
+            }
+          }
         } catch (err) {
           console.error(
             `[Webhook][ERROR] handleTextEvent 例外`,
@@ -1848,15 +1983,28 @@ async function handleWebhook(req: NextRequest, oaId: string) {
       ctrl.scheduleDelayedRead();
 
       return readCtrlStorage.run(ctrl, async () => {
+        const uid = event.source.userId;
         try {
+          // postback の作品は payload 由来で解決する（直近 progress ではなく workId/messageId/phaseId 優先）。
+          // 単一公開時は既存どおり work を使う（後方互換）。複数公開時に解決できない（rich menu 等）postback は
+          // 誤った作品で処理しないようスキップする。他 OA の id を含む payload は resolvePostbackWorkId が拒否する。
+          let pbWork: WorkRow | null = work ?? null;
+          if (multiWork) {
+            const wid = await resolvePostbackWorkId(event.postback.data, activeWorkIdSet);
+            pbWork = wid ? (activeWorks.find((w) => w.id === wid) ?? null) : null;
+            if (!pbWork) {
+              console.log(`[Webhook][multi] postback 作品解決不可 → スキップ userId=${uid.slice(0, 8)} data="${event.postback.data.slice(0, 60)}"`);
+              return;
+            }
+          }
           await handlePostbackEvent({
             oa,
-            work:         work ?? null,
-            systemSender,
-            userId:       event.source.userId,
+            work:         pbWork,
+            systemSender: multiWork ? buildWorkSystemSender(pbWork) : systemSender,
+            userId:       uid,
             data:         event.postback.data,
             replyToken:   event.replyToken,
-            vars:         buildVars(event.source.userId),
+            vars:         buildVars(uid),
           });
         } catch (err) {
           console.error(
@@ -2026,6 +2174,28 @@ async function maybeOfferResumeChoice(
     workId: work.id, currentPhaseId: progress.currentPhaseId!,
   });
   return true;
+}
+
+/**
+ * 開始キーワード一致時の作品開始（resume 導線を壊さない・既存 startTrigger 経路と同一）。
+ *   1. 対象作品に未完了 progress（resumeEnabled≠false・未エンディング・進行中）があれば「続き/最初から」選択肢を提示して終了。
+ *   2. それ以外（新規 / 完了済み / resumeEnabled=false）は handleStartTrigger で最初から開始。
+ * 開始フェーズが無い作品は handleStart（"準備中" 応答）に委ねる。別作品の progress には触れない。
+ */
+async function startWorkByKeyword(args: {
+  oa: OaRecord; work: NonNullable<WorkRecord>; systemSender: LineSender | undefined;
+  userId: string; replyToken: string; vars: import("@/lib/line").PlaceholderVars;
+}): Promise<void> {
+  const { oa, work, systemSender, userId, replyToken, vars } = args;
+  const startPhase = await getCachedStartPhase(work.id);
+  if (!startPhase) {
+    await handleStart({ oa, work, systemSender, userId, replyToken, vars });
+    return;
+  }
+  const progress = await getCachedProgress(userId, work.id);
+  // 未完了 progress があれば resume 選択肢（resume_work postback）。無条件初期化はしない。
+  if (await maybeOfferResumeChoice({ oa, work, systemSender, replyToken }, progress)) return;
+  await handleStartTrigger({ oa, work, systemSender, userId, replyToken, vars, startPhase });
 }
 
 /**

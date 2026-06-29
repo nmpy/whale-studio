@@ -170,6 +170,8 @@ export interface Work {
    * "auto_start"（既定・友だち追加直後に自動開始）/ "welcome_wait"（あいさつを送り「はじめる」を待つ）/ "none"（何もしない）。
    */
   follow_action?: "auto_start" | "welcome_wait" | "none";
+  /** 開始キーワード（任意）。複数作品を同じ OA で公開する場合、送信でこの作品が開始される。 */
+  start_keyword?: string | null;
   // ── 演出デフォルト設定 ──
   read_receipt_mode: ReadReceiptMode | null;
   read_delay_ms: number | null;
@@ -459,6 +461,8 @@ export interface UpdateWorkBody {
   welcome_loading_seconds?: number;
   /** 友だち追加時の動作。"auto_start" | "welcome_wait" | "none"。 */
   follow_action?: "auto_start" | "welcome_wait" | "none";
+  /** 開始キーワード（任意）。null/空で解除、undefined（省略）は変更なし。 */
+  start_keyword?: string | null;
   // 演出デフォルト設定
   read_receipt_mode?: ReadReceiptMode | null;
   read_delay_ms?: number | null;

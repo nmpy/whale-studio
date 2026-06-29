@@ -124,6 +124,11 @@ model Work {
   /// loading API はメッセージ通数を消費しないため、push を使わず reply 一括前提のまま演出できる。
   welcomeLoadingSeconds Int    @default(0) @map("welcome_loading_seconds")
 
+  /// 開始キーワード（任意・1作品1キーワード）。同じ OA に複数作品を公開する場合、
+  /// ユーザーがこのキーワードを送信するとこの作品が開始される（作品内の応答キーワードより優先）。
+  /// 既存作品は null。正規化後、同一 OA の公開中作品間で重複不可（Phase.startTrigger とも重複不可）。
+  startKeyword String? @map("start_keyword")
+
   /// 友だち追加（follow）時の動作（作品単位）:
   ///   "auto_start"    = 友だち追加直後にシナリオを自動開始（既存挙動・既定）。
   ///   "welcome_wait"  = あいさつメッセージを送り、ユーザーの「はじめる」を待つ（progress は作らない）。
