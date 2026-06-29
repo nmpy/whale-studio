@@ -597,12 +597,25 @@ export default function MessagesPage() {
             <p style={{ fontSize: 12, color: "#6b7280", margin: "0 0 14px", lineHeight: 1.7 }}>
               友だち追加（フォロー）された直後の挙動を作品単位で選べます。
             </p>
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {/* 3択（値は不変）: 並び順 welcome_wait → none → auto_start。各選択肢の意味を説明文で常時表示。 */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               {([
-                { value: "welcome_wait", label: "あいさつメッセージを送って「はじめる」を待つ" },
-                { value: "auto_start",   label: "すぐにシナリオを開始する" },
-                { value: "none",         label: "何もしない" },
-              ] as const).map(({ value, label }) => (
+                {
+                  value: "welcome_wait",
+                  label: "あいさつメッセージを送信する",
+                  desc:  "友だち追加時にあいさつメッセージを送信し、その後、開始応答キーワードや「はじめる」などの操作を待ちます。",
+                },
+                {
+                  value: "none",
+                  label: "あいさつメッセージを送信しない",
+                  desc:  "友だち追加時には何も送信しません。ユーザーが開始応答キーワードを送信したときに作品を開始します。",
+                },
+                {
+                  value: "auto_start",
+                  label: "シナリオをすぐ始める（開始応答キーワードから始める）",
+                  desc:  "友だち追加時に、開始応答キーワードに紐づく開始シナリオを自動で開始します。あいさつメッセージは送信されません。",
+                },
+              ] as const).map(({ value, label, desc }) => (
                 <label key={value} style={{
                   display: "flex", alignItems: "flex-start", gap: 8,
                   fontSize: 13, color: "#374151", cursor: canEdit ? "pointer" : "default",
@@ -616,20 +629,15 @@ export default function MessagesPage() {
                     onChange={() => changeFollowAction(value)}
                     style={{ marginTop: 2 }}
                   />
-                  <span>{label}</span>
+                  <span>
+                    <span style={{ fontWeight: 600 }}>{label}</span>
+                    <span style={{ display: "block", fontSize: 12, color: "#6b7280", marginTop: 2, lineHeight: 1.6 }}>
+                      {desc}
+                    </span>
+                  </span>
                 </label>
               ))}
             </div>
-            {followAction === "auto_start" && (
-              <p style={{ fontSize: 12, color: "#6b7280", margin: "12px 0 0", lineHeight: 1.7 }}>
-                この設定では友だち追加直後に本編が始まるため、あいさつメッセージは送信されません。
-              </p>
-            )}
-            {followAction === "none" && (
-              <p style={{ fontSize: 12, color: "#6b7280", margin: "12px 0 0", lineHeight: 1.7 }}>
-                友だち追加時には何も送信されません。
-              </p>
-            )}
             {followAction === "welcome_wait" && savedItems.length === 0 && (
               <p style={{ fontSize: 12, color: "#b45309", margin: "12px 0 0", lineHeight: 1.7 }}>
                 あいさつメッセージが未設定（空欄）のため、友だち追加時には何も送信されません。送信したい場合は下であいさつメッセージを設定してください。
