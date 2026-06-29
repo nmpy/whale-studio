@@ -173,6 +173,31 @@ export function AdminHelpAiWidget() {
                 AIの回答は補助情報です。重要な設定は画面上の内容を確認してください。
               </p>
             )}
+
+            {/* 回答後も別の機能を質問しやすいよう、本文エリア末尾に質問例チップを再掲する。
+                本文エリア内に置くので縦に伸びても自然にスクロールでき、入力欄/送信ボタンを塞がない。 */}
+            {messages.length > 0 && !loading && (
+              <div style={{ marginTop: 12, paddingTop: 10, borderTop: "1px solid #f0f0f0" }}>
+                <p style={{ fontSize: 11, fontWeight: 700, color: "#6b7280", margin: "0 0 6px" }}>
+                  ほかにも質問できます
+                </p>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {SUGGESTED.map((s) => (
+                    <button key={s} type="button" onClick={() => send(s)} disabled={loading}
+                      style={{ fontSize: 11.5, color: "#2F6F5E", background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 14, padding: "4px 10px", cursor: loading ? "default" : "pointer" }}>
+                      {s}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => { setMessages([]); setError(null); }}
+                  style={{ marginTop: 8, fontSize: 11, color: "#6b7280", background: "none", border: "none", textDecoration: "underline", cursor: "pointer", padding: 0 }}
+                >
+                  最初に戻る
+                </button>
+              </div>
+            )}
           </div>
 
           {/* 入力（form を作らず、Enter は preventDefault + stopPropagation） */}
