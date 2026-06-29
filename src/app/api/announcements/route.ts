@@ -45,10 +45,12 @@ export const GET = withAuth(async (_req: NextRequest) => {
           lte:  now,
         },
       },
+      // ユーザー向け表示は「新しい公開日順」を優先（important ピン留め / sortOrder は使わない）。
+      // 同一 publishedAt 対策に createdAt desc, id desc で安定ソート。
       orderBy: [
-        { important:   "desc" },
-        { sortOrder:   "asc" },
         { publishedAt: "desc" },
+        { createdAt:   "desc" },
+        { id:          "desc" },
       ],
     });
 
