@@ -141,10 +141,12 @@ export const GET = withAuth<{ id: string; workId: string }>(async (_req, { param
         // 現在ユーザーの実 role + UI 表示用の権限フラグ (= 既存 useWorkspaceRole 相当)。
         role,
         permissions: {
-          can_edit:  roleAtLeast(role, "tester"),
-          is_owner:  role === "owner",
-          is_admin:  roleAtLeast(role, "admin"),
-          is_viewer: role === "viewer",
+          can_edit:   roleAtLeast(role, "tester"),
+          // 削除・並び替えは editor 以上（作品配下コンテンツの破壊的/構造的操作）。
+          can_manage: roleAtLeast(role, "editor"),
+          is_owner:   role === "owner",
+          is_admin:   roleAtLeast(role, "admin"),
+          is_viewer:  role === "viewer",
         },
         counts: {
           messages:    messages.length,

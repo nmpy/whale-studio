@@ -39,6 +39,8 @@ export interface MessageCardProps {
   isExpanded: boolean;
   onToggleExpand: () => void;
   canEdit: boolean;
+  /** 削除・並び替え（editor 以上）。tester は編集はできるがこれらは不可。 */
+  canManage: boolean;
   busy: boolean;
   editHref: string;
   onDelete: () => void;
@@ -57,7 +59,7 @@ export interface MessageCardProps {
 export default function MessageCard(props: MessageCardProps) {
   const {
     msg, triggerBadge, warnings, flowInfo, phaseName, isExpanded, onToggleExpand,
-    canEdit, busy, editHref, onDelete, onToggleActive, onReorder, canMoveUp, canMoveDown,
+    canEdit, canManage, busy, editHref, onDelete, onToggleActive, onReorder, canMoveUp, canMoveDown,
     allMessages, transitions, phases, msgById, phaseById,
   } = props;
 
@@ -145,8 +147,8 @@ export default function MessageCard(props: MessageCardProps) {
           </span>
         )}
 
-        {/* ▲▼ 並び替え（既存 handleReorderMessage・DnD は別PR） */}
-        {canEdit && (
+        {/* ▲▼ 並び替え（editor 以上のみ。tester は編集はできるが並び替え不可＝API も editor 必須） */}
+        {canManage && (
           <span style={{ display: "inline-flex", gap: 2 }}>
             <button
               type="button"
@@ -174,8 +176,8 @@ export default function MessageCard(props: MessageCardProps) {
           }}>編集</Link>
         )}
 
-        {/* 削除（既存 handleDeleteMessage = 既存の確認ダイアログを使う） */}
-        {canEdit && (
+        {/* 削除（editor 以上のみ。tester は編集はできるが削除不可＝API も editor 必須） */}
+        {canManage && (
           <button
             type="button"
             onClick={onDelete}

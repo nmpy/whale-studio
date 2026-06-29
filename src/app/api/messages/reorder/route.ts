@@ -46,10 +46,10 @@ export const PATCH = withAuth(async (req: NextRequest, _ctx, user) => {
       return badRequest("message_ids に重複があります");
     }
 
-    // 認可: work から OA を引いて owner 確認
+    // 認可: 表示順変更は editor 以上に緩和（制作者が並び替えできる）。
     const oaId = await getOaIdFromWorkId(work_id);
     if (!oaId) return badRequest("work_id に該当する作品が見つかりません");
-    const check = await requireRole(oaId, user.id, "owner");
+    const check = await requireRole(oaId, user.id, "editor");
     if (!check.ok) return check.response;
 
     // 整合性: 渡された ID がすべて該当 work に属することを検証する。

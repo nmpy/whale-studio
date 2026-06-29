@@ -85,7 +85,7 @@ describe("PATCH /api/messages/reorder", () => {
     });
   });
 
-  it("認可: owner でなければ 403", async () => {
+  it("認可: editor 未満なら 403（並び替えは editor 以上）", async () => {
     mockRequireRole.mockResolvedValue(forbiddenResponse());
     const { PATCH } = await import("@/app/api/messages/reorder/route");
     const res = await PATCH(
@@ -93,6 +93,7 @@ describe("PATCH /api/messages/reorder", () => {
       { params: {} } as never,
     );
     expect((res as Response).status).toBe(403);
+    expect(mockRequireRole).toHaveBeenCalledWith("oa-1", "user-1", "editor");
     expect(mockTransaction).not.toHaveBeenCalled();
   });
 

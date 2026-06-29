@@ -110,7 +110,8 @@ export const DELETE = withAuth<{ id: string }>(async (_req, { params }, user) =>
     });
     if (!existing) return notFound("キャラクター");
 
-    const check = await requireRole(existing.work.oaId, user.id, 'owner');
+    // 作品配下コンテンツの削除は editor 以上に緩和（作品/OA 削除は別途 owner 限定）。
+    const check = await requireRole(existing.work.oaId, user.id, 'editor');
     if (!check.ok) return check.response;
 
     await prisma.character.delete({ where: { id: params.id } });

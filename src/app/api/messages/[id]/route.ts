@@ -438,7 +438,9 @@ export const DELETE = withAuth<{ id: string }>(async (_req, { params }, user) =>
     });
     if (!existing) return notFound("メッセージ");
 
-    const check = await requireRole(existing.work.oaId, user.id, 'owner');
+    // 作品配下コンテンツの削除は editor 以上に緩和（制作者が編集作業の一環で削除できる）。
+    // 作品/OA 削除のような高リスク操作は別途 owner 限定のまま。
+    const check = await requireRole(existing.work.oaId, user.id, 'editor');
     if (!check.ok) return check.response;
 
     // chain continuation を walk して削除対象 ID を集める

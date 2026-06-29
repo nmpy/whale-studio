@@ -4,7 +4,7 @@
  * PUT /api/messages/chain（連続メッセージ一括保存）のユニットテスト。
  *
  * 検証:
- *  1. 認可: 権限なしは 403 / 削除を含むと owner 要求
+ *  1. 認可: 権限なしは 403 / 削除を含むと editor 要求
  *  2. cross-work / head 不一致: 400 / 404
  *  3. 楽観ロック: expected_head_updated_at 不一致 → 409
  *  4. ドメイン検証: 複数 freeInput / 参照されている削除 → 422
@@ -95,13 +95,13 @@ describe("PUT /api/messages/chain", () => {
     expect((res as Response).status).toBe(403);
   });
 
-  it("削除を含む場合は owner 権限を要求する", async () => {
+  it("削除を含む場合は editor 権限を要求する", async () => {
     setWork([
       { id: HEAD, phaseId: "ph-1", sortOrder: 0, nextMessageId: null, updatedAt: new Date() },
       { id: S1, phaseId: "ph-1", sortOrder: 1, nextMessageId: null, updatedAt: new Date() },
     ]);
     await PUT(req({ work_id: WORK, head_id: HEAD, slots: [], removed_message_ids: [S1] }), ctx);
-    expect(mockRequireRole).toHaveBeenCalledWith("oa-1", "user-1", "owner");
+    expect(mockRequireRole).toHaveBeenCalledWith("oa-1", "user-1", "editor");
   });
 
   it("内容更新のみは tester 権限", async () => {
