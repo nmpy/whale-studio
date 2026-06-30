@@ -2,20 +2,36 @@
 
 // src/app/oas/[id]/works/[workId]/messages/new/page.tsx
 
-import { useEffect, useRef, useState } from "react";
-import { useParams } from "next/navigation";
+import { Suspense, useEffect, useRef, useState } from "react";
+import { useParams, useSearchParams } from "next/navigation";
 import { useTesterRouter as useRouter } from "@/hooks/useTesterRouter";
 import { workApi, oaApi, messageApi, getDevToken, ValidationError } from "@/lib/api-client";
 import { useToast } from "@/components/Toast";
 import { MessageForm, EMPTY_MESSAGE_FORM, formStateToMsgBody, type MessageFormState } from "../_form";
 import { submitChainSave, verifyFailedBanner } from "../_chain-submit";
+import { buildMessagesReturnHref } from "../_return-nav";
 
+// useSearchParams() を使うため Suspense 境界でラップする（next build の prerender 要件）。
 export default function NewMessagePage() {
+  return (
+    <Suspense fallback={null}>
+      <NewMessagePageInner />
+    </Suspense>
+  );
+}
+
+function NewMessagePageInner() {
   const params  = useParams<{ id: string; workId: string }>();
   const oaId    = params.id;
   const workId  = params.workId;
   const router  = useRouter();
   const { showToast } = useToast();
+  const searchParams = useSearchParams();
+  // 戻り先（元タブ保持）: returnTo(安全な相対パス) > returnTab(?tab=) > 一覧トップ。
+  const backHref = buildMessagesReturnHref(
+    `/oas/${oaId}/works/${workId}/messages`,
+    { returnTo: searchParams.get("returnTo"), returnTab: searchParams.get("returnTab") },
+  );
 
   const [workTitle, setWorkTitle]   = useState("");
   // LINEプレビュー上部に出す OAタイトル（取得失敗時は作品名→"LINEプレビュー"にフォールバック）。
@@ -103,7 +119,7 @@ export default function NewMessagePage() {
       switch (result.kind) {
         case "ok":
           showToast("メッセージを追加しました", "success");
-          router.push(`/oas/${oaId}/works/${workId}/messages`);
+          router.push(backHref);
           return;
         case "verify-failed":
           setSaveError(verifyFailedBanner(result.mismatches));
@@ -152,6 +168,7 @@ export default function NewMessagePage() {
         isNew={true}
         submitting={submitting}
         onSubmit={handleSubmit}
+        backHref={backHref}
       />
     </>
   );

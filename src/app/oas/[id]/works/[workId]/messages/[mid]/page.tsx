@@ -2,8 +2,8 @@
 
 // src/app/oas/[id]/works/[workId]/messages/[mid]/page.tsx
 
-import { useEffect, useRef, useState } from "react";
-import { useParams } from "next/navigation";
+import { Suspense, useEffect, useRef, useState } from "react";
+import { useParams, useSearchParams } from "next/navigation";
 import { useTesterRouter as useRouter } from "@/hooks/useTesterRouter";
 import { workApi, oaApi, messageApi, getDevToken, UnprocessableError } from "@/lib/api-client";
 import { useToast } from "@/components/Toast";
@@ -17,14 +17,30 @@ import {
 import { loadChainSplit, type ChainMsgRow } from "../_chain-edit";
 import { submitChainSave, verifyFailedBanner } from "../_chain-submit";
 import { findReferrers, REFERRER_KIND_LABEL, type Referrer, type RefMessage } from "../_chain-refs";
+import { buildMessagesReturnHref } from "../_return-nav";
 
+// useSearchParams() を使うため Suspense 境界でラップする（next build の prerender 要件）。
 export default function EditMessagePage() {
+  return (
+    <Suspense fallback={null}>
+      <EditMessagePageInner />
+    </Suspense>
+  );
+}
+
+function EditMessagePageInner() {
   const params    = useParams<{ id: string; workId: string; mid: string }>();
   const oaId      = params.id;
   const workId    = params.workId;
   const messageId = params.mid;
   const router    = useRouter();
   const { showToast } = useToast();
+  const searchParams = useSearchParams();
+  // 戻り先（元タブ保持）: returnTo(安全な相対パス) > returnTab(?tab=) > 一覧トップ。
+  const backHref = buildMessagesReturnHref(
+    `/oas/${oaId}/works/${workId}/messages`,
+    { returnTo: searchParams.get("returnTo"), returnTab: searchParams.get("returnTab") },
+  );
 
   const [workTitle, setWorkTitle]       = useState("");
   // LINEプレビュー上部に出す OAタイトル（取得失敗時は作品名→"LINEプレビュー"にフォールバック）。
@@ -129,7 +145,7 @@ export default function EditMessagePage() {
       switch (result.kind) {
         case "ok":
           showToast("メッセージを保存しました", "success");
-          router.push(`/oas/${oaId}/works/${workId}/messages`);
+          router.push(backHref);
           return;
         case "verify-failed":
           setSaveError(verifyFailedBanner(result.mismatches));
@@ -156,7 +172,7 @@ export default function EditMessagePage() {
     try {
       await messageApi.delete(getDevToken(), messageId);
       showToast("メッセージを削除しました", "success");
-      router.push(`/oas/${oaId}/works/${workId}/messages`);
+      router.push(backHref);
     } catch (err) {
       // 参照中（REFERENCE_GUARD / 422）は成功扱いにせず、削除できない理由＋参照元を表示（#6-4b）。
       if (err instanceof UnprocessableError && err.code === "REFERENCE_GUARD") {
@@ -278,6 +294,7 @@ export default function EditMessagePage() {
         onSubmit={handleSubmit}
         onDelete={handleDelete}
         messageId={messageId}
+        backHref={backHref}
       />
     </>
   );
