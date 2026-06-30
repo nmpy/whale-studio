@@ -2,9 +2,10 @@
 
 // src/app/oas/[id]/works/[workId]/messages/page.tsx
 
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
-import { useParams } from "next/navigation";
+import { Suspense, useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
 import { TLink as Link } from "@/components/TLink";
+import { withReturnTab, isSafeTabToken } from "./_return-nav";
 import { bootstrapApi, messageApi, workApi, phaseApi, getDevToken } from "@/lib/api-client";
 import { getCachedBootstrap, setCachedBootstrap, invalidateBootstrap } from "@/lib/admin-bootstrap-cache";
 import { logAdminPerf, resourceSummary, maskId } from "@/lib/perf-client";
@@ -46,10 +47,22 @@ function reorderBtn(disabled: boolean): CSSProperties {
   };
 }
 
+// useSearchParams() を使うため Suspense 境界でラップする（next build の prerender 要件）。
 export default function MessagesPage() {
+  return (
+    <Suspense fallback={null}>
+      <MessagesPageInner />
+    </Suspense>
+  );
+}
+
+function MessagesPageInner() {
   const params  = useParams<{ id: string; workId: string }>();
   const oaId    = params.id;
   const workId  = params.workId;
+  const router    = useRouter();
+  const pathname  = usePathname();
+  const searchParams = useSearchParams();
   const { showToast } = useToast();
   // role / canEdit は Bootstrap API のレスポンス（実 role）から初期化する。
   // 従来は useWorkspaceRole が /api/oas/[id]/members/me を別途 fetch していたが、
@@ -85,7 +98,17 @@ export default function MessagesPage() {
   const [loadError, setLoadError]       = useState<string | null>(null);
   // 再設計版: フェーズタブの選択（"all" = すべて / phase.id / "__unassigned"）と、
   // 詳細展開中のカード id（単一展開）。旧テーブルの chain 展開 / phase 折りたたみは廃止。
-  const [activePhaseId, setActivePhaseId] = useState<string>("all");
+  // フェーズタブ選択。URL の ?tab= から初期復元（不正値は effectiveId 算出時に "all" へフォールバック）。
+  const [activePhaseId, setActivePhaseId] = useState<string>(() => {
+    const t = searchParams.get("tab");
+    return isSafeTabToken(t) ? t : "all";
+  });
+  // タブ切替: state 更新 + URL(?tab=) 同期（リロード/戻りで復元できるように）。"all" は URL から省く。
+  const onTabChange = useCallback((id: string) => {
+    setActivePhaseId(id);
+    const q = isSafeTabToken(id) && id !== "all" ? `?tab=${encodeURIComponent(id)}` : "";
+    router.replace(`${pathname}${q}`, { scroll: false });
+  }, [router, pathname]);
   const [expandedId, setExpandedId]       = useState<string | null>(null);
   // 操作中の messageId (= 削除/並び替え 進行中の表示用)
   const [busyMessageId, setBusyMessageId] = useState<string | null>(null);
@@ -534,7 +557,7 @@ export default function MessagesPage() {
                 スプレッドシート取り込み
               </Link>
             )}
-            <Link href={`/oas/${oaId}/works/${workId}/messages/new`} className="btn btn-primary">
+            <Link href={withReturnTab(`/oas/${oaId}/works/${workId}/messages/new`, activePhaseId)} className="btn btn-primary">
               ＋ メッセージを追加
             </Link>
           </div>
@@ -923,7 +946,7 @@ export default function MessagesPage() {
 
       {/* ── メッセージ一覧（再設計: フェーズタブ → 警告サマリー → トリガー種別グループ → カード） ── */}
       {messages.length === 0 ? (
-        <EmptyState phaseName="" canEdit={canEdit} addHref={`/oas/${oaId}/works/${workId}/messages/new`} />
+        <EmptyState phaseName="" canEdit={canEdit} addHref={withReturnTab(`/oas/${oaId}/works/${workId}/messages/new`, activePhaseId)} />
       ) : (() => {
         const ALL = "all";
         const UNASSIGNED = "__unassigned";
@@ -995,7 +1018,7 @@ export default function MessagesPage() {
               canEdit={canEdit}
               canManage={canManage}
               busy={busyMessageId === m.id}
-              editHref={`/oas/${oaId}/works/${workId}/messages/${m.id}`}
+              editHref={withReturnTab(`/oas/${oaId}/works/${workId}/messages/${m.id}`, activePhaseId)}
               onDelete={() => handleDeleteMessage(m)}
               onToggleActive={() => handleToggleActive(m)}
               onReorder={(dir) => handleReorderMessage(m, dir, groupHeads)}
@@ -1012,13 +1035,13 @@ export default function MessagesPage() {
 
         return (
           <>
-            <PhaseTabs tabs={tabs} activeId={effectiveId} onChange={setActivePhaseId} />
+            <PhaseTabs tabs={tabs} activeId={effectiveId} onChange={onTabChange} />
             {warningCount > 0 && <WarningSummaryBar count={warningCount} />}
             {effectiveId !== ALL && (
               <PhaseFilterBar
                 phaseName={activeTabName}
                 count={filtered.length}
-                onClear={() => setActivePhaseId(ALL)}
+                onClear={() => onTabChange(ALL)}
               />
             )}
             {aggWarnPhaseNames.length > 0 && (
@@ -1031,7 +1054,7 @@ export default function MessagesPage() {
               <EmptyState
                 phaseName={effectiveId === ALL ? "" : activeTabName}
                 canEdit={canEdit}
-                addHref={`/oas/${oaId}/works/${workId}/messages/new`}
+                addHref={withReturnTab(`/oas/${oaId}/works/${workId}/messages/new`, activePhaseId)}
               />
             ) : effectiveId === ALL ? (
               // 「すべて」: トリガー種別グループ（応答→QR→チェックイン→その他→条件なし）。各群内は送信順。

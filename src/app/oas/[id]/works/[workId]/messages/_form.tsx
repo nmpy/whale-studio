@@ -819,6 +819,8 @@ interface MessageFormProps {
   onDelete?:   () => void;
   /** 編集中メッセージの ID（新規作成時は undefined） */
   messageId?:  string;
+  /** キャンセル/パンくず「メッセージ」の戻り先。未指定時は一覧トップ（元タブ保持用）。 */
+  backHref?:   string;
 }
 
 // ── スタイル定数 ──────────────────────────────────────────
@@ -4458,8 +4460,10 @@ function SectionAccordion({
 
 export function MessageForm({
   oaId, workId, workTitle, oaTitle, initialForm, isNew,
-  submitting, deleting, onSubmit, onDelete, messageId,
+  submitting, deleting, onSubmit, onDelete, messageId, backHref,
 }: MessageFormProps) {
+  // キャンセル/パンくず「メッセージ」の戻り先（元タブ保持）。未指定時は一覧トップ。
+  const messagesBackHref = backHref ?? `/oas/${oaId}/works/${workId}/messages`;
   const [form, setForm]       = useState<MessageFormState>(initialForm);
   const [error, setError]     = useState<string | null>(null);
   const bodyTextareaRef       = useRef<HTMLTextAreaElement>(null);
@@ -4801,7 +4805,7 @@ export function MessageForm({
             { label: "アカウントリスト", href: "/oas" },
             { label: "作品リスト", href: `/oas/${oaId}/works` },
             ...(workTitle ? [{ label: workTitle, href: `/oas/${oaId}/works/${workId}` }] : []),
-            { label: "メッセージ", href: `/oas/${oaId}/works/${workId}/messages` },
+            { label: "メッセージ", href: messagesBackHref },
             { label: isNew ? "新規作成" : "編集" },
           ]} />
           <h2>{isNew ? "メッセージを追加" : "メッセージを編集"}</h2>
@@ -6680,7 +6684,7 @@ export function MessageForm({
               <div />
             )}
             <div className="msg-action-group">
-              <Link href={`/oas/${oaId}/works/${workId}/messages`} className="btn btn-ghost">
+              <Link href={messagesBackHref} className="btn btn-ghost">
                 キャンセル
               </Link>
               <button type="submit" className="btn btn-primary" disabled={submitting}>
