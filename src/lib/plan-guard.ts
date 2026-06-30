@@ -80,18 +80,25 @@ export async function getCurrentPlanTierForOa(oaId: string): Promise<PlanTier> {
   try {
     const sub = await prisma.subscription.findUnique({
       where:   { oaId },
-      select:  { status: true, grantType: true, trialEndsAt: true, plan: { select: { name: true } } },
+      select:  {
+        status: true, grantType: true, trialEndsAt: true, plan: { select: { name: true } },
+        // 手動上書き（PR3）。Stripe 由来フィールドは触らず読み取りのみ。
+        manualPlanTier: true, manualStartsAt: true, manualEndsAt: true, manualDisabledAt: true,
+      },
     });
     if (!sub) return mapPlanNameToTier(null);
-    // β版 / トライアルの実効ティアを純ロジックで判定 (= UI と同じ subscription-grant を共有):
-    //   - grantType="beta"  → 無期限・plan(pro)=Pro Max 相当
-    //   - grantType="trial" → trialEndsAt 内は plan(pro)、失効後は basic
-    //   - それ以外          → status が full access のとき plan の tier、それ以外 basic
+    // 実効ティアを純ロジックで判定 (= UI と同じ subscription-grant を共有):
+    //   解決順: 有効な手動上書き > beta/trial > Stripe/通常(status full access) > basic
+    //   - manual_* が全 null の既存 Subscription は従来挙動と完全一致。
     return effectiveTierFromSub({
-      status:      sub.status,
-      grantType:   sub.grantType,
-      trialEndsAt: sub.trialEndsAt,
-      planName:    sub.plan?.name ?? null,
+      status:           sub.status,
+      grantType:        sub.grantType,
+      trialEndsAt:      sub.trialEndsAt,
+      planName:         sub.plan?.name ?? null,
+      manualPlanTier:   sub.manualPlanTier,
+      manualStartsAt:   sub.manualStartsAt,
+      manualEndsAt:     sub.manualEndsAt,
+      manualDisabledAt: sub.manualDisabledAt,
     });
   } catch (err) {
     // DB エラー時は最低プラン扱い (= 機能を不用意に開放しない)

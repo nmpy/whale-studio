@@ -8,6 +8,8 @@ import {
   effectiveTierFromSub,
   grantDisplayKind,
   formatTrialEndDate,
+  manualOverrideTier,
+  isManualOverrideActive,
 } from "@/lib/subscription-grant";
 
 const NOW = new Date("2026-06-12T00:00:00.000Z").getTime();
@@ -78,5 +80,66 @@ describe("formatTrialEndDate", () => {
     expect(formatTrialEndDate(FUTURE)).toBe("2026/06/19");
     expect(formatTrialEndDate(null)).toBeNull();
     expect(formatTrialEndDate(undefined)).toBeNull();
+  });
+});
+
+// ── 手動上書き（manual override・PR3）─────────────────────────────
+describe("manualOverrideTier / isManualOverrideActive", () => {
+  it("有効な手動上書き（期限内・未無効化）→ その tier", () => {
+    const sub = { status: "active", manualPlanTier: "pro" };
+    expect(manualOverrideTier(sub, NOW)).toBe("pro");
+    expect(isManualOverrideActive(sub, NOW)).toBe(true);
+  });
+  it("manualDisabledAt があれば無効（null 返す）", () => {
+    expect(manualOverrideTier({ status: "active", manualPlanTier: "pro", manualDisabledAt: PAST }, NOW)).toBeNull();
+  });
+  it("manual_ends_at === now は無効（now < ends 条件）", () => {
+    const ends = new Date(NOW).toISOString();
+    expect(manualOverrideTier({ status: "active", manualPlanTier: "pro", manualEndsAt: ends }, NOW)).toBeNull();
+  });
+  it("manual_starts_at === now は有効（now >= starts 条件）", () => {
+    const starts = new Date(NOW).toISOString();
+    expect(manualOverrideTier({ status: "active", manualPlanTier: "pro", manualStartsAt: starts }, NOW)).toBe("pro");
+  });
+  it("開始前（manual_starts_at 未来）は無効", () => {
+    expect(manualOverrideTier({ status: "active", manualPlanTier: "pro", manualStartsAt: FUTURE }, NOW)).toBeNull();
+  });
+  it("不正な manualPlanTier は無効扱い（null）", () => {
+    expect(manualOverrideTier({ status: "active", manualPlanTier: "ultra" }, NOW)).toBeNull();
+    expect(manualOverrideTier({ status: "active", manualPlanTier: "" }, NOW)).toBeNull();
+  });
+  it("delegated も有効な PlanTier", () => {
+    expect(manualOverrideTier({ status: "active", manualPlanTier: "delegated" }, NOW)).toBe("delegated");
+  });
+});
+
+describe("effectiveTierFromSub: 解決順 manual > beta/trial > Stripe > basic", () => {
+  it("手動上書きは Stripe active より優先", () => {
+    expect(effectiveTierFromSub({ status: "active", planName: "standard", manualPlanTier: "pro" }, NOW)).toBe("pro");
+  });
+  it("手動無効化 → Stripe active があれば Stripe tier に戻る", () => {
+    expect(effectiveTierFromSub({ status: "active", planName: "standard", manualPlanTier: "pro", manualDisabledAt: PAST }, NOW)).toBe("standard");
+  });
+  it("手動期限切れ → Stripe active があれば Stripe tier に戻る", () => {
+    expect(effectiveTierFromSub({ status: "active", planName: "standard", manualPlanTier: "pro", manualEndsAt: PAST }, NOW)).toBe("standard");
+  });
+  it("不正な manual + Stripe active → Stripe tier に戻る（basic 固定にしない）", () => {
+    expect(effectiveTierFromSub({ status: "active", planName: "standard", manualPlanTier: "ultra" }, NOW)).toBe("standard");
+  });
+  it("不正な manual + Stripe なし + beta → beta(pro) に戻る", () => {
+    expect(effectiveTierFromSub({ status: "active", planName: "pro", grantType: "beta", manualPlanTier: "ultra" }, NOW)).toBe("pro");
+  });
+  it("不正な manual + 他に有効なものなし（canceled）→ basic", () => {
+    expect(effectiveTierFromSub({ status: "canceled", planName: "pro", manualPlanTier: "ultra" }, NOW)).toBe("basic");
+  });
+  it("manual_* 全 null は従来挙動と完全一致（beta=pro / trial期限内=pro / trial失効=basic / canceled=basic）", () => {
+    expect(effectiveTierFromSub({ status: "active", planName: "pro", grantType: "beta" }, NOW)).toBe("pro");
+    expect(effectiveTierFromSub({ status: "trialing", planName: "pro", grantType: "trial", trialEndsAt: FUTURE }, NOW)).toBe("pro");
+    expect(effectiveTierFromSub({ status: "trialing", planName: "pro", grantType: "trial", trialEndsAt: PAST }, NOW)).toBe("basic");
+    expect(effectiveTierFromSub({ status: "canceled", planName: "pro" }, NOW)).toBe("basic");
+    expect(effectiveTierFromSub({ status: "active", planName: "standard" }, NOW)).toBe("standard");
+  });
+  it("手動無効化 + Stripe なし + beta なし → basic", () => {
+    expect(effectiveTierFromSub({ status: "canceled", planName: "pro", manualPlanTier: "pro", manualDisabledAt: PAST }, NOW)).toBe("basic");
   });
 });

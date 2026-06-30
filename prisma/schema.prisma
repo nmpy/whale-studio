@@ -1335,6 +1335,23 @@ model Subscription {
   /// トライアル終了日時（grantType="trial" のみ）。null=期限なし（β版/通常）。
   /// feature gate の期限判定はこの値を正とする（currentPeriodEnd ではない）。
   trialEndsAt        DateTime? @map("trial_ends_at")
+
+  /// 手動上書き（manual override・Stripe 非連動・PR3）。
+  /// 運営が OA 単位で付与する手動プラン。Stripe 由来フィールド（externalId / status /
+  /// currentPeriodStart / currentPeriodEnd / planId）とは完全に分離し、Stripe webhook はここを一切触らない。
+  /// すべて null のとき従来挙動と完全一致。プラン解決順: manual が beta/trial / Stripe / basic より優先。
+  /// manualPlanTier は PlanTier 文字列（basic|standard|plus|pro|delegated）。不正値は読み取り時に無効扱い。
+  manualPlanTier         String?   @map("manual_plan_tier")
+  /// 付与元種別。"manual"（運営手動）/ "corporate_contract"（法人契約）。
+  manualSource           String?   @map("manual_source")
+  manualStartsAt         DateTime? @map("manual_starts_at")
+  manualEndsAt           DateTime? @map("manual_ends_at")
+  /// 手動上書きの無効化日時（null=有効）。無効化すると Stripe/grant/basic へフォールバック。
+  manualDisabledAt       DateTime? @map("manual_disabled_at")
+  manualNote             String?   @map("manual_note")
+  /// 手動上書きを設定したユーザー（= 最初に手動付与した運営者。詳細な変更履歴は PR4 の操作ログで扱う）。
+  manualCreatedByUserId  String?   @map("manual_created_by_user_id")
+
   createdAt          DateTime  @default(now()) @map("created_at")
   updatedAt          DateTime  @updatedAt @map("updated_at")
   oa                 Oa        @relation(fields: [oaId], references: [id], onDelete: Cascade)

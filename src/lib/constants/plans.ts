@@ -78,6 +78,11 @@ export type PlanTier = typeof PLAN_TIER[keyof typeof PLAN_TIER];
  *  「最小プラン」を返すため delegated を末尾に置いても必要プラン表示は pro のまま正しい。 */
 export const PLAN_TIER_ORDER: readonly PlanTier[] = ["basic", "standard", "plus", "pro", "delegated"];
 
+/** 任意の値が有効な PlanTier かを判定する（手動上書きの検証等に使う）。 */
+export function isPlanTier(value: unknown): value is PlanTier {
+  return typeof value === "string" && (PLAN_TIER_ORDER as readonly string[]).includes(value);
+}
+
 /** ユーザー向け表示名 (= UI 文言用)。内部キーから分離して別変更を許容する。 */
 export const PLAN_LABELS: Record<PlanTier, string> = {
   basic:     "Basic",
