@@ -14,6 +14,7 @@ import { validateImport } from "@/lib/spreadsheet-import/validate";
 import { buildPreview } from "@/lib/spreadsheet-import/preview";
 import { applyImport } from "@/lib/spreadsheet-import/apply";
 import { checkImportFile } from "@/lib/spreadsheet-import/file-guard";
+import { isSpreadsheetImportEnabled } from "@/lib/spreadsheet-import/ui-text";
 import type { ExistingData, ImportPreview } from "@/lib/spreadsheet-import/types";
 
 export const dynamic = "force-dynamic";
@@ -53,6 +54,9 @@ async function loadExisting(workId: string): Promise<ExistingData> {
 
 export const POST = withAuth<{ id: string; workId: string }>(async (req: NextRequest, { params }, user) => {
   try {
+    // feature flag OFF 時は API も閉じる（UI 非表示と整合・直叩き防止）。認証/権限は維持。
+    if (!isSpreadsheetImportEnabled()) return notFound("ページ");
+
     const oaId = params.id;
     const { workId } = params;
 

@@ -1,7 +1,7 @@
 // src/__tests__/spreadsheet-import-route.test.ts
 // 取り込み API（POST /api/oas/[id]/works/[workId]/import/spreadsheet）の検証:
 // 権限・他作品拒否・apply時の再バリデーション・transaction・logEvent。
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
 const mockPrisma = {
   work:       { findFirst: vi.fn() },
@@ -48,6 +48,7 @@ async function callRoute(mode: string, file: File | null) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.stubEnv("NEXT_PUBLIC_ENABLE_SPREADSHEET_IMPORT", "true"); // PR3: route は flag ON 前提で従来動作
   mockRequireRole.mockResolvedValue({ ok: true, role: "editor", status: "active" });
   mockPrisma.work.findFirst.mockResolvedValue({ id: "work-1" });
   mockPrisma.character.findMany.mockResolvedValue([]);
@@ -55,6 +56,21 @@ beforeEach(() => {
   mockPrisma.message.findMany.mockResolvedValue([]);
   mockPrisma.transition.findMany.mockResolvedValue([]);
   mockPrisma.$transaction.mockImplementation((cb: (tx: unknown) => Promise<unknown>) => cb({}));
+});
+afterEach(() => vi.unstubAllEnvs());
+
+describe("feature flag ガード", () => {
+  it("flag OFF は validate でも 404（API 直叩きを閉じる）", async () => {
+    vi.stubEnv("NEXT_PUBLIC_ENABLE_SPREADSHEET_IMPORT", "false");
+    const res = await callRoute("validate", await xlsx({}));
+    expect(res.status).toBe(404);
+  });
+  it("flag OFF は apply でも 404・applyImport 未呼び出し", async () => {
+    vi.stubEnv("NEXT_PUBLIC_ENABLE_SPREADSHEET_IMPORT", "false");
+    const res = await callRoute("apply", await xlsx({}));
+    expect(res.status).toBe(404);
+    expect(mockApply).not.toHaveBeenCalled();
+  });
 });
 
 describe("権限 / スコープ", () => {
