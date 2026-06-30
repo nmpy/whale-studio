@@ -38,6 +38,7 @@ interface WorkForm {
   description:    string;
   publish_status: PublishStatus;
   sort_order:     number;
+  start_keyword:  string;
 }
 
 // ── ローカル共通: 必須マーク (= Phase 2.1 /account と同じパターンを重複定義) ──
@@ -72,10 +73,12 @@ export default function WorkEditPage() {
   const [workErrors, setWorkErrors]   = useState<Record<string, string[]>>({});
   const [savingWork, setSavingWork]   = useState(false);
   const [duplicating, setDuplicating] = useState(false);
+  // 同一 OA に公開中作品が複数あるか（開始キーワード未設定時の警告用）。
+  const [multiActivePublished, setMultiActivePublished] = useState(false);
 
   // ── データ読み込み ──────────────────────────────
   // 演出デフォルト設定 (read_receipt_mode 等) はメッセージ単位に統一済 (= 継承モード廃止)
-  // のため、ここでは title / description / publish_status / sort_order のみ復元する。
+  // のため、ここでは title / description / publish_status / sort_order / start_keyword を復元する。
   const loadWork = useCallback(async () => {
     try {
       const w = await workApi.get(getDevToken(), workId);
@@ -84,11 +87,17 @@ export default function WorkEditPage() {
         description:    w.description ?? "",
         publish_status: w.publish_status,
         sort_order:     w.sort_order,
+        start_keyword:  w.start_keyword ?? "",
       });
+      // 同一 OA の公開中作品が複数あるかを判定（開始キーワード未設定の警告に使う）。失敗しても致命的でない。
+      try {
+        const actives = await workApi.list(getDevToken(), oaId, { publish_status: "active" });
+        setMultiActivePublished(actives.length > 1);
+      } catch { /* 警告判定は任意。取得失敗時は警告を出さないだけ。 */ }
     } catch (e) {
       setLoadError(e instanceof Error ? e.message : "作品の読み込みに失敗しました");
     }
-  }, [workId]);
+  }, [workId, oaId]);
 
   useEffect(() => { loadWork(); }, [loadWork]);
 
@@ -112,6 +121,7 @@ export default function WorkEditPage() {
         description:    workForm.description.trim() || undefined,
         publish_status: workForm.publish_status,
         sort_order:     workForm.sort_order,
+        start_keyword:  workForm.start_keyword.trim() || null,
       });
       showToast("作品情報を保存しました", "success");
     } catch (err) {
@@ -262,6 +272,34 @@ export default function WorkEditPage() {
               maxLength={500}
               readOnly={!canEdit}
             />
+          </div>
+
+          {/* start_keyword（開始キーワード） */}
+          <div className="mb-5">
+            <label htmlFor="work-start-keyword" className="mb-1.5 block text-[13px] font-bold text-ink">
+              開始キーワード
+            </label>
+            <input
+              id="work-start-keyword"
+              type="text"
+              className={compactInputClass + " w-full"}
+              value={workForm!.start_keyword}
+              onChange={(e) => setWorkField("start_keyword", e.target.value)}
+              maxLength={100}
+              placeholder="例：エリーゼ開始"
+              readOnly={!canEdit}
+            />
+            <p className="mt-1.5 text-[12px] leading-relaxed text-ink-3">
+              複数の作品を同じLINE公式アカウントで公開する場合、このキーワードをユーザーが送信すると作品が開始されます。
+            </p>
+            <p className="mt-1 text-[12px] leading-relaxed text-ink-3">
+              開始キーワードは作品内の応答キーワードより優先されます。
+            </p>
+            {multiActivePublished && !workForm!.start_keyword.trim() && (
+              <p className="mt-1.5 text-[12px] font-bold leading-relaxed text-warning">
+                このLINE公式アカウントでは複数の作品が公開中です。開始キーワードが未設定だと、ユーザーがこの作品を開始できない場合があります。
+              </p>
+            )}
           </div>
 
           {/* publish_status (カード型 radio) + sort_order */}

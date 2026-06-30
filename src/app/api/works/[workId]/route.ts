@@ -11,6 +11,7 @@ import { requireRole } from "@/lib/rbac";
 import { updateWorkSchema, formatZodErrors } from "@/lib/validations";
 import { parseLiffHomeSettings } from "@/components/liff/liff-style-helpers";
 import { parseWelcomeMessages } from "@/lib/welcome-messages";
+import { conflictsWithOthers } from "@/lib/start-keyword";
 import { ZodError } from "zod";
 
 /** 既存 liff_home_settings_json に、PATCH で渡されたキーだけをマージする。
@@ -57,6 +58,7 @@ function toResponse(w: {
   welcomeMessagesJson?: unknown;
   welcomeLoadingSeconds?: number | null;
   followAction?: string | null;
+  startKeyword?: string | null;
   readReceiptMode: string | null; readDelayMs: number | null;
   typingEnabled: boolean | null; typingMinMs: number | null; typingMaxMs: number | null;
   loadingEnabled: boolean | null; loadingThresholdMs: number | null;
@@ -82,6 +84,7 @@ function toResponse(w: {
     welcome_messages:    parseWelcomeMessages(w.welcomeMessagesJson),
     welcome_loading_seconds: w.welcomeLoadingSeconds ?? 0,
     follow_action:       (w.followAction as "auto_start" | "welcome_wait" | "none" | undefined) ?? "auto_start",
+    start_keyword:       w.startKeyword ?? null,
     // 演出設定
     read_receipt_mode:    (w.readReceiptMode as import("@/types").ReadReceiptMode) ?? null,
     read_delay_ms:        w.readDelayMs ?? null,
@@ -137,6 +140,28 @@ export const PATCH = withAuth<{ workId: string }>(async (req, { params }, user) 
     const body = await req.json();
     const data = updateWorkSchema.parse(body);
 
+    // ── 開始キーワードの重複バリデーション ──
+    // この作品が公開中（になる）かつ開始キーワードを持つ場合、同一 OA の他の公開中作品の
+    // 開始キーワード候補（startKeyword ∨ 開始フェーズ startTrigger）と重複していたらエラー。
+    const effectivePublish = data.publish_status ?? existing.publishStatus;
+    const effectiveStartKw = data.start_keyword !== undefined ? data.start_keyword : existing.startKeyword;
+    if (effectivePublish === "active" && (effectiveStartKw ?? "").trim()) {
+      const otherActive = await prisma.work.findMany({
+        where:  { oaId: existing.oaId, publishStatus: "active", id: { not: params.workId } },
+        select: { id: true, startKeyword: true },
+      });
+      const others = await Promise.all(otherActive.map(async (w) => {
+        const sp = await prisma.phase.findFirst({
+          where: { workId: w.id, phaseType: "start", isActive: true },
+          select: { startTrigger: true },
+        });
+        return { id: w.id, startKeyword: w.startKeyword, startTrigger: sp?.startTrigger ?? null };
+      }));
+      if (conflictsWithOthers(effectiveStartKw, others)) {
+        return badRequest("開始キーワードが同じOAの公開中の他作品と重複しています。別のキーワードにしてください。");
+      }
+    }
+
     const updated = await prisma.work.update({
       where: { id: params.workId },
       data: {
@@ -159,6 +184,8 @@ export const PATCH = withAuth<{ workId: string }>(async (req, { params }, user) 
         }),
         ...(data.welcome_loading_seconds !== undefined && { welcomeLoadingSeconds: data.welcome_loading_seconds }),
         ...(data.follow_action       !== undefined && { followAction:       data.follow_action }),
+        // 開始キーワード: 空文字は null（解除）に正規化して保存。
+        ...(data.start_keyword       !== undefined && { startKeyword:       (data.start_keyword ?? "").trim() || null }),
         // 演出設定
         ...(data.read_receipt_mode    !== undefined && { readReceiptMode:    data.read_receipt_mode }),
         ...(data.read_delay_ms        !== undefined && { readDelayMs:        data.read_delay_ms }),
