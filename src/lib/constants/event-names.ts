@@ -23,6 +23,8 @@ export const EVENT_NAMES = [
   "resume_choice_shown",    // 「途中から再開する / 最初からやり直す」選択肢を提示したとき
   "resume_choice_selected", // ユーザーがいずれかを選択したとき
   "resume_completed",       // 再開ユーザーがエンディングに到達したとき
+  // ── スプレッドシート取り込み ──
+  "spreadsheet_imported",   // キャラ/フェーズ/メッセージの取り込み apply 成功時
 ] as const;
 
 export type EventName = (typeof EVENT_NAMES)[number];
@@ -180,4 +182,18 @@ export type EventPayloadMap = {
   resume_choice_shown:     ResumeChoiceShownPayload;
   resume_choice_selected:  ResumeChoiceSelectedPayload;
   resume_completed:        ResumeCompletedPayload;
+  spreadsheet_imported:    SpreadsheetImportedPayload;
+};
+
+/** スプレッドシート取り込み(apply 成功)の計測ペイロード。PII/本文は含めない（件数のみ）。 */
+export type SpreadsheetImportedPayload = {
+  workId: string;
+  oaId: string;
+  summary: {
+    characters: { create: number; update: number };
+    phases:     { create: number; update: number };
+    messages:   { create: number; update: number };
+    transitions:{ create: number; update: number };
+  };
+  appliedAt: string;
 };
