@@ -620,6 +620,32 @@ export interface MessagesBootstrapData {
   };
 }
 
+// ────────────────────────────────────────────────
+// Spreadsheet Import API（PR3 UI から PR2 API を呼ぶ）
+// ────────────────────────────────────────────────
+export const spreadsheetImportApi = {
+  /** テンプレート .xlsx を Blob で取得（fetch + getAuthHeaders。<a href> ではトークンが付かないため）。 */
+  async downloadTemplate(oaId: string, workId: string): Promise<Blob> {
+    const res = await fetch(`/api/oas/${oaId}/works/${workId}/import/spreadsheet/template`, {
+      headers: { ...getAuthHeaders() },
+      cache: "no-store",
+    });
+    if (!res.ok) throw new Error("テンプレートのダウンロードに失敗しました");
+    return res.blob();
+  },
+  /** 検証 / 取り込み。multipart で .xlsx を送る。status と JSON 本文をそのまま返す（呼び出し側で判定）。 */
+  async run(oaId: string, workId: string, file: File, mode: "validate" | "apply"): Promise<{ status: number; json: unknown }> {
+    const fd = new FormData();
+    fd.append("file", file);
+    const res = await fetch(`/api/oas/${oaId}/works/${workId}/import/spreadsheet?mode=${mode}`, {
+      method: "POST",
+      headers: { ...getAuthHeaders() }, // Content-Type は FormData が自動設定
+      body: fd,
+    });
+    return { status: res.status, json: await res.json().catch(() => null) };
+  },
+};
+
 export const bootstrapApi = {
   /** GET /api/oas/[oaId]/works/[workId]/messages/bootstrap */
   async messages(token: string, oaId: string, workId: string): Promise<MessagesBootstrapData> {

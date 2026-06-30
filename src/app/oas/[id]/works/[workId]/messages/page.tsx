@@ -524,9 +524,20 @@ export default function MessagesPage() {
           </p>
         </div>
         {activeTab === "messages" && canEdit && (
-          <Link href={`/oas/${oaId}/works/${workId}/messages/new`} className="btn btn-primary">
-            ＋ メッセージを追加
-          </Link>
+          <div style={{ display: "inline-flex", gap: 8 }}>
+            {process.env.NEXT_PUBLIC_ENABLE_SPREADSHEET_IMPORT === "true" && (
+              <Link
+                href={`/oas/${oaId}/works/${workId}/messages/import`}
+                className="btn"
+                title="キャラクター・フェーズ・メッセージを一括登録"
+              >
+                スプレッドシート取り込み
+              </Link>
+            )}
+            <Link href={`/oas/${oaId}/works/${workId}/messages/new`} className="btn btn-primary">
+              ＋ メッセージを追加
+            </Link>
+          </div>
         )}
         {/* あいさつメッセージはタブ内（カード内）で設定・編集・解除する（画面遷移しない）。
             ヘッダーのアカウント情報画面への遷移ボタンは廃止。 */}
