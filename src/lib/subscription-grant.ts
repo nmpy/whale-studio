@@ -10,7 +10,7 @@
 // feature gate の期限判定は **trialEndsAt を正**とする（currentPeriodEnd は使わない）。
 // Stripe には一切連動しない。
 
-import { mapPlanNameToTier, type PlanTier } from "@/lib/constants/plans";
+import { mapPlanNameToTier, isPlanTier, type PlanTier } from "@/lib/constants/plans";
 
 export type GrantType = "beta" | "trial" | null;
 
@@ -23,7 +23,38 @@ export type SubLike = {
   grantType?: string | null;
   trialEndsAt?: Date | string | null;
   planName?: string | null;
+  // ── 手動上書き（manual override・Stripe 非連動・PR3）──
+  // Stripe 由来フィールドとは完全に分離。すべて省略/null なら従来挙動と完全一致。
+  manualPlanTier?: string | null;
+  manualStartsAt?: Date | string | null;
+  manualEndsAt?: Date | string | null;
+  manualDisabledAt?: Date | string | null;
 };
+
+/**
+ * 有効な手動上書きの tier を返す（無効/未設定/不正値なら null＝存在しないものとして扱う）。
+ *   有効条件: manualPlanTier が有効な PlanTier ＆ manualDisabledAt==null
+ *            ＆ (manualStartsAt==null || now>=manualStartsAt) ＆ (manualEndsAt==null || now<manualEndsAt)
+ *   - 境界: now===manualStartsAt は有効 / now===manualEndsAt は無効。
+ *   - 不正な manualPlanTier は「無効扱い」＝null を返す（即 basic 固定にはしない＝呼び出し側でフォールバック）。
+ */
+export function manualOverrideTier(
+  sub: SubLike | null | undefined,
+  now: number = Date.now(),
+): PlanTier | null {
+  if (!sub) return null;
+  const tier = sub.manualPlanTier;
+  if (!isPlanTier(tier)) return null;                 // 未設定/不正値 → 無効扱い
+  if (sub.manualDisabledAt) return null;              // 無効化済み
+  if (sub.manualStartsAt && new Date(sub.manualStartsAt).getTime() > now) return null; // 開始前
+  if (sub.manualEndsAt && new Date(sub.manualEndsAt).getTime() <= now) return null;    // 終了済み
+  return tier;
+}
+
+/** 有効な手動上書きがあるか。 */
+export function isManualOverrideActive(sub: SubLike | null | undefined, now: number = Date.now()): boolean {
+  return manualOverrideTier(sub, now) !== null;
+}
 
 /** β版か。 */
 export function isBeta(grantType: string | null | undefined): boolean {
@@ -54,9 +85,10 @@ export function isTrialExpired(
 
 /**
  * サブスクから「実効プランティア」を決定する。
- *   - トライアル失効 → basic
- *   - status が full access 以外 → basic
- *   - それ以外 → plan.name の tier（β版は plan=pro なので Pro Max 相当）
+ *   解決順: 有効な手動上書き > beta/trial（既存）> Stripe/通常(status full access) > basic
+ *   - 有効な手動上書きがあれば最優先（Stripe active でも手動が勝つ。Stripe フィールドは不変）。
+ *   - 手動が無効/未設定/不正値なら従来ロジックへフォールバック（トライアル失効→basic / full access 以外→basic /
+ *     それ以外→plan.name の tier）。manual_* が全 null のときは従来挙動と完全一致。
  * sub が無い場合は basic。
  */
 export function effectiveTierFromSub(
@@ -64,6 +96,8 @@ export function effectiveTierFromSub(
   now: number = Date.now(),
 ): PlanTier {
   if (!sub) return mapPlanNameToTier(null);
+  const manual = manualOverrideTier(sub, now);
+  if (manual) return manual;                          // 手動上書き最優先（不正値はここで null＝フォールバック）
   if (isTrialExpired(sub.grantType, sub.trialEndsAt, now)) return mapPlanNameToTier(null);
   if (!FULL_ACCESS_STATUSES.has(sub.status)) return mapPlanNameToTier(null);
   return mapPlanNameToTier(sub.planName ?? null);
