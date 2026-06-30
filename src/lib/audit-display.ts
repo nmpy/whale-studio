@@ -31,6 +31,7 @@ export const AUDIT_RESOURCE_LABEL: Record<string, string> = {
   personal_plan:   "プラン権限",
   plan_permission: "プラン権限",
   business_invite: "招待URL発行",
+  studio_invite:   "招待URL発行",
   oa_review:       "OA連携審査",
   audit:           "操作ログ",
 };

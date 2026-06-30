@@ -30,18 +30,36 @@ export function resolveStudioInviteExpiresAt(now: Date): Date {
   return new Date(now.getTime() + STUDIO_INVITE_EXPIRES_IN_DAYS * 24 * 60 * 60 * 1000);
 }
 
-export type StudioInviteState = "active" | "accepted" | "expired" | "revoked" | "none";
+// 招待状態。"accepted" = 単発URL使用済み / "used_up" = 複数回URLが上限到達。
+export type StudioInviteState = "active" | "accepted" | "used_up" | "expired" | "revoked" | "none";
 
-/** 招待レコードの状態を判定する (優先順: none > revoked > accepted > expired > active)。
- *  expiresAt は必須 (= 発行時に必ずセット) のため null を考慮しない。 */
+/**
+ * 招待レコードの状態を判定する。
+ *   優先順: none > revoked(=disabled) > accepted(単発使用済み) > expired > used_up(上限到達) > active
+ *
+ * 後方互換:
+ *   - maxUses/usedCount 省略時は単発(maxUses=1, usedCount=0)として扱う。
+ *   - 旧データ(maxUses=1)は acceptedAt があれば usedCount に関わらず "accepted"(使用済み)。
+ *     → 受諾 route の冪等再アクセス(acceptedByUserId 一致)を従来どおり維持できる。
+ *   - 複数回(maxUses>1)は usedCount >= maxUses で "used_up"。
+ *  expiresAt は必須 (= 発行時に必ずセット) のため null を考慮しない。
+ */
 export function studioInviteState(
-  invite: { acceptedAt: Date | null; revokedAt: Date | null; expiresAt: Date } | null | undefined,
+  invite:
+    | { acceptedAt: Date | null; revokedAt: Date | null; expiresAt: Date; maxUses?: number | null; usedCount?: number | null }
+    | null
+    | undefined,
   now: Date = new Date(),
 ): StudioInviteState {
   if (!invite) return "none";
   if (invite.revokedAt) return "revoked";
-  if (invite.acceptedAt) return "accepted";
+  const max  = invite.maxUses ?? 1;
+  const used = invite.usedCount ?? 0;
+  // 単発(maxUses<=1): acceptedAt or 1回以上使用 → 使用済み(従来の "accepted" を維持・期限より優先)。
+  if (max <= 1 && (invite.acceptedAt != null || used >= 1)) return "accepted";
   if (now > invite.expiresAt) return "expired";
+  // 複数回: 上限到達。
+  if (used >= max) return "used_up";
   return "active";
 }
 
@@ -51,13 +69,29 @@ export const STUDIO_INVITE_ROLES = ["admin", "editor", "tester", "viewer"] as co
 /** 発行可能なプランティア (= PlanTier。課金非連動の grant snapshot)。 */
 export const STUDIO_INVITE_PLAN_TIERS = ["basic", "standard", "plus", "pro", "delegated"] as const;
 
-/** 招待URL発行 API の入力スキーマ。 */
+/** 招待アクション区分(統合招待UI 用)。値の最終確定は PR2(UI)で行う。ここでは緩く受ける。 */
+export const STUDIO_INVITE_ACTIONS = [
+  // 個人
+  "register_user", "member_invite", "register_and_member",
+  // 法人(business OA)
+  "corp_register", "corp_admin_invite", "corp_register_admin",
+  "corp_oa_link", "corp_register_admin_oa",
+] as const;
+export type StudioInviteAction = (typeof STUDIO_INVITE_ACTIONS)[number];
+
+/** 使用上限の上限値(暴発防止)。既定 1。 */
+export const STUDIO_INVITE_MAX_USES_LIMIT = 100;
+
+/** 招待URL発行 API の入力スキーマ。invite_action/email/max_uses は任意(未指定は従来=単発・単純付与)。 */
 export const issueStudioInviteSchema = z.object({
-  oa_id:      z.string().min(1),
-  usage_type: z.enum(["personal", "business"]),
-  plan_tier:  z.enum(STUDIO_INVITE_PLAN_TIERS),
-  role:       z.enum(STUDIO_INVITE_ROLES).default("viewer"),
-  note:       z.string().max(200).optional(),
+  oa_id:         z.string().min(1),
+  usage_type:    z.enum(["personal", "business"]),
+  plan_tier:     z.enum(STUDIO_INVITE_PLAN_TIERS),
+  role:          z.enum(STUDIO_INVITE_ROLES).default("viewer"),
+  note:          z.string().max(200).optional(),
+  invite_action: z.enum(STUDIO_INVITE_ACTIONS).optional(),
+  email:         z.string().email().max(255).optional(),
+  max_uses:      z.number().int().min(1).max(STUDIO_INVITE_MAX_USES_LIMIT).default(1),
 });
 
 /** 平文 token から受諾用 URL を組み立てる (発行直後の表示専用)。 */

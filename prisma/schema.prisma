@@ -985,6 +985,16 @@ model StudioInvite {
   tokenHash        String            @unique @map("token_hash")
   /// 任意メモ(発行先の用途など)。
   note             String?
+  /// 招待アクション区分(統合招待UI 用・任意)。例: register_user / member_invite /
+  /// register_and_member / corp_register / corp_admin_invite / corp_oa_link 等。
+  /// null = 従来の単純付与(usageType + role + planTier)。値の検証は route 側 zod。
+  inviteAction     String?           @map("invite_action")
+  /// 招待先メールアドレス(任意・個人ユーザー登録向けの表示/照合補助)。null = 指定なし。
+  email            String?
+  /// 使用上限。既定 1 (= 従来の単発消費)。
+  maxUses          Int               @default(1) @map("max_uses")
+  /// 使用回数。受諾ごとに +1。usedCount >= maxUses で上限到達。
+  usedCount        Int               @default(0) @map("used_count")
   /// 発行者(Supabase Auth userId / 対象 OA の owner|admin もしくは platform owner)。
   createdByUserId  String            @map("created_by_user_id")
   /// 受諾したユーザー(Supabase Auth userId)。null = 未受諾。
