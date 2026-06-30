@@ -53,6 +53,7 @@ export const POST = withAuth(
         }
         return badRequest(USED_MESSAGE);
       }
+      if (state === "used_up") return badRequest(USED_MESSAGE);
       if (invite.oa.serviceSuspendedAt) {
         return badRequest("このアカウントは現在停止中のため受諾できません");
       }
@@ -74,12 +75,19 @@ export const POST = withAuth(
       }
 
       const now = new Date();
+      const maxUses = invite.maxUses ?? 1;
       let consumed = true;
       await prisma.$transaction(async (tx) => {
-        // 1. 招待を消費（条件付き: 未受諾・未失効のみ）。0 件なら同時受諾されたとみなす。
+        // 1. 招待を消費（条件付き・原子的）。0 件なら同時受諾/上限到達とみなす。
+        //    単発(maxUses<=1): acceptedAt=null を guard に従来の単発消費を維持（旧データ後方互換）。
+        //    複数回(maxUses>1): usedCount<maxUses を guard に上限まで消費。
+        const whereGuard =
+          maxUses <= 1
+            ? { id: invite.id, revokedAt: null, acceptedAt: null }
+            : { id: invite.id, revokedAt: null, usedCount: { lt: maxUses } };
         const res = await tx.studioInvite.updateMany({
-          where: { id: invite.id, acceptedAt: null, revokedAt: null },
-          data:  { acceptedByUserId: user.id, acceptedAt: now },
+          where: whereGuard,
+          data:  { acceptedByUserId: user.id, acceptedAt: now, usedCount: { increment: 1 } },
         });
         if (res.count === 0) { consumed = false; return; }
 
@@ -115,6 +123,19 @@ export const POST = withAuth(
       });
 
       if (!consumed) return badRequest(USED_MESSAGE);
+
+      // 操作ログ（招待URL使用）。失敗してもメイン処理は止めない。
+      await prisma.adminAuditLog.create({
+        data: {
+          actorId:    user.id,
+          action:     "use",
+          resource:   "studio_invite",
+          resourceId: invite.id,
+          detail:     JSON.stringify({
+            oa_id: invite.oaId, role: finalRole, usage_type: invite.usageType, plan_tier: invite.planTier,
+          }),
+        },
+      }).catch(() => {});
 
       return ok({
         oa_id:      invite.oaId,

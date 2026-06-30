@@ -83,6 +83,10 @@ export const GET = withAuth(async (_req: NextRequest, _ctx, user) => {
         role:             inv.role,
         role_label:       ROLE_LABELS[inv.role as Role] ?? inv.role,
         note:             inv.note,
+        invite_action:    inv.inviteAction,
+        email:            inv.email,
+        max_uses:         inv.maxUses,
+        used_count:       inv.usedCount,
         state:            studioInviteState(inv, now),
         created_at:       inv.createdAt,
         expires_at:       inv.expiresAt,
@@ -127,10 +131,27 @@ export const POST = withAuth(async (req: NextRequest, _ctx, user) => {
         role:            data.role,
         tokenHash:       hashStudioInviteToken(token),
         note:            data.note?.trim() ? data.note.trim() : null,
+        inviteAction:    data.invite_action ?? null,
+        email:           data.email?.trim() ? data.email.trim() : null,
+        maxUses:         data.max_uses,
         createdByUserId: user.id,
         expiresAt,
       },
     });
+
+    // 操作ログ（招待URL作成）。失敗してもメイン処理は止めない。
+    await prisma.adminAuditLog.create({
+      data: {
+        actorId:    user.id,
+        action:     "create",
+        resource:   "studio_invite",
+        resourceId: invite.id,
+        detail:     JSON.stringify({
+          oa_id: invite.oaId, usage_type: invite.usageType, plan_tier: invite.planTier,
+          role: invite.role, invite_action: invite.inviteAction, max_uses: invite.maxUses,
+        }),
+      },
+    }).catch(() => {});
 
     // 平文 token は発行直後のレスポンスでのみ返す（再表示不可）。
     return created({

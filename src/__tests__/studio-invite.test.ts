@@ -44,6 +44,22 @@ describe("studio-invite helpers", () => {
     expect(studioInviteState({ acceptedAt: null, revokedAt: null, expiresAt: future }, now)).toBe("active");
   });
 
+  it("状態判定(複数回URL): used_up / 部分使用は active / 単発の後方互換", () => {
+    const now = new Date("2026-06-18T15:00:00Z");
+    const future = new Date("2026-12-31T00:00:00Z");
+    const past = new Date("2026-06-01T00:00:00Z");
+    // 複数回: 上限到達 → used_up
+    expect(studioInviteState({ acceptedAt: now, revokedAt: null, expiresAt: future, maxUses: 3, usedCount: 3 }, now)).toBe("used_up");
+    // 複数回: 部分使用は active（acceptedAt があっても上限未満なら有効）
+    expect(studioInviteState({ acceptedAt: now, revokedAt: null, expiresAt: future, maxUses: 3, usedCount: 1 }, now)).toBe("active");
+    // 複数回: 期限切れは used_up より優先
+    expect(studioInviteState({ acceptedAt: null, revokedAt: null, expiresAt: past, maxUses: 3, usedCount: 1 }, now)).toBe("expired");
+    // 単発(maxUses 省略=1): 旧データ(usedCount 省略)でも acceptedAt があれば accepted（後方互換）
+    expect(studioInviteState({ acceptedAt: past, revokedAt: null, expiresAt: future }, now)).toBe("accepted");
+    // 無効化(revokedAt=disabledAt 相当)は最優先
+    expect(studioInviteState({ acceptedAt: null, revokedAt: now, expiresAt: future, maxUses: 3, usedCount: 1 }, now)).toBe("revoked");
+  });
+
   it("発行入力スキーマ: owner ロールは受け付けない / 正常入力は通る", () => {
     expect(issueStudioInviteSchema.safeParse({ oa_id: "oa-1", usage_type: "business", plan_tier: "basic", role: "owner" }).success).toBe(false);
     const okParse = issueStudioInviteSchema.safeParse({ oa_id: "oa-1", usage_type: "personal", plan_tier: "pro", role: "editor" });
@@ -52,9 +68,10 @@ describe("studio-invite helpers", () => {
 });
 
 // ── API モック ───────────────────────────────────────────
-const mockStudioInvite = { findUnique: vi.fn(), create: vi.fn(), updateMany: vi.fn(), findMany: vi.fn() };
+const mockStudioInvite = { findUnique: vi.fn(), create: vi.fn(), update: vi.fn(), updateMany: vi.fn(), findMany: vi.fn() };
 const mockOa = { findUnique: vi.fn(), update: vi.fn(), findMany: vi.fn() };
 const mockWorkspaceMember = { findUnique: vi.fn(), create: vi.fn(), update: vi.fn(), findMany: vi.fn() };
+const mockAdminAuditLog = { create: vi.fn().mockResolvedValue({}) };
 const mockTx = {
   studioInvite:    { updateMany: vi.fn() },
   oa:              { update: vi.fn() },
@@ -67,6 +84,7 @@ vi.mock("@/lib/prisma", () => ({
     studioInvite:    mockStudioInvite,
     oa:              mockOa,
     workspaceMember: mockWorkspaceMember,
+    adminAuditLog:   mockAdminAuditLog,
     $transaction:    mock$transaction,
   },
 }));
@@ -179,5 +197,60 @@ describe("StudioInvite 受諾 API", () => {
     const createArg = mockTx.workspaceMember.create.mock.calls[0][0];
     expect(createArg.data.role).toBe("editor");
     expect(createArg.data.status).toBe("active");
+    // 消費時に usedCount を +1 する（statusの上限到達判定に使う）。
+    const consumeArg = mockTx.studioInvite.updateMany.mock.calls[0][0];
+    expect(consumeArg.data.usedCount).toEqual({ increment: 1 });
+    // 操作ログ（使用）を記録する。
+    expect(mockAdminAuditLog.create).toHaveBeenCalled();
+    const auditArg = mockAdminAuditLog.create.mock.calls[0][0];
+    expect(auditArg.data.action).toBe("use");
+    expect(auditArg.data.resource).toBe("studio_invite");
+  });
+});
+
+describe("StudioInvite 無効化 / 再有効化 API", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockRequireRole.mockResolvedValue({ ok: true, role: "owner", status: "active" });
+  });
+
+  async function callPatch(action: string, invite: Record<string, unknown> | null) {
+    mockStudioInvite.findUnique.mockResolvedValue(invite);
+    const { PATCH } = await import("@/app/api/admin/studio-invites/[id]/route");
+    const req = new Request("http://localhost/api/admin/studio-invites/inv-1", {
+      method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ action }),
+    });
+    return (PATCH as any)(req, { params: { id: "inv-1" } });
+  }
+
+  it("revoke: revokedAt をセットし操作ログを残す", async () => {
+    const res = await callPatch("revoke", { id: "inv-1", oaId: "oa-1", revokedAt: null });
+    expect(res.status).toBe(200);
+    expect(mockStudioInvite.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: "inv-1" },
+      data: expect.objectContaining({ revokedAt: expect.any(Date) }),
+    }));
+    expect(mockAdminAuditLog.create.mock.calls[0][0].data.action).toBe("revoke");
+  });
+
+  it("enable: revokedAt を null に戻し操作ログを残す", async () => {
+    const res = await callPatch("enable", { id: "inv-1", oaId: "oa-1", revokedAt: new Date() });
+    expect(res.status).toBe(200);
+    expect(mockStudioInvite.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: "inv-1" }, data: { revokedAt: null },
+    }));
+    expect(mockAdminAuditLog.create.mock.calls[0][0].data.action).toBe("enable");
+  });
+
+  it("owner/admin でないユーザーは無効化できない（403）", async () => {
+    mockRequireRole.mockResolvedValue(forbidden());
+    const res = await callPatch("revoke", { id: "inv-1", oaId: "oa-1", revokedAt: null });
+    expect(res.status).toBe(403);
+    expect(mockStudioInvite.update).not.toHaveBeenCalled();
+  });
+
+  it("存在しない招待は 404", async () => {
+    const res = await callPatch("revoke", null);
+    expect(res.status).toBe(404);
   });
 });
