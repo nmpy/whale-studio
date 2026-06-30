@@ -211,6 +211,8 @@ model Character {
   iconColor     String?   @map("icon_color")
   sortOrder     Int       @default(0) @map("sort_order")
   isActive      Boolean   @default(true) @map("is_active")
+  /// スプレッドシート取り込み用の安定キー（work 内 unique）。手動作成データは null。
+  characterKey  String?   @map("character_key")
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
   work          Work      @relation("WorkCharacters", fields: [workId], references: [id], onDelete: Cascade)
@@ -221,6 +223,7 @@ model Character {
   @@index([name])
   @@index([sortOrder])
   @@index([isActive])
+  @@unique([workId, characterKey])
   @@map("characters")
 }
 
@@ -241,6 +244,8 @@ model Phase {
   /// 再開時に送るあらすじテキスト（nullable）。
   /// 途中離脱ユーザーが「途中から再開する」を選んだとき、フェーズ先頭メッセージの前に送信される。
   resumeSummary           String?           @map("resume_summary")
+  /// スプレッドシート取り込み用の安定キー（work 内 unique）。手動作成データは null。
+  phaseKey                String?           @map("phase_key")
   puzzleNextFor           Message[]         @relation("MessageCorrectNextPhase")
   messages                Message[]
   work                    Work              @relation(fields: [workId], references: [id], onDelete: Cascade)
@@ -257,6 +262,7 @@ model Phase {
   @@index([isActive])
   /// perf: Phase 一覧 `WHERE work_id=? ORDER BY sort_order` を sorted index scan に。
   @@index([workId, sortOrder])
+  @@unique([workId, phaseKey])
   @@map("phases")
 }
 
@@ -362,6 +368,8 @@ model Message {
   flexPayloadJson       String?  @map("flex_payload_json")
   sortOrder             Int      @default(0) @map("sort_order")
   isActive              Boolean  @default(true) @map("is_active")
+  /// スプレッドシート取り込み用の安定キー（work 内 unique）。手動作成データは null。
+  messageKey            String?  @map("message_key")
   createdAt             DateTime @default(now()) @map("created_at")
   updatedAt             DateTime @updatedAt @map("updated_at")
   /// メッセージ種別: "start" | "normal" | "response" | "hint" | "puzzle" | "system_notice"
@@ -505,6 +513,7 @@ model Message {
   @@index([workId, sortOrder])
   /// perf: フェーズ詳細でのメッセージ取得 `WHERE work_id=? AND phase_id=? ORDER BY sort_order`。
   @@index([workId, phaseId, sortOrder])
+  @@unique([workId, messageKey])
   @@map("messages")
 }
 
