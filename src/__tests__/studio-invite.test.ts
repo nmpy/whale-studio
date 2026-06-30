@@ -71,6 +71,7 @@ describe("studio-invite helpers", () => {
 const mockStudioInvite = { findUnique: vi.fn(), create: vi.fn(), update: vi.fn(), updateMany: vi.fn(), findMany: vi.fn() };
 const mockOa = { findUnique: vi.fn(), update: vi.fn(), findMany: vi.fn() };
 const mockWorkspaceMember = { findUnique: vi.fn(), create: vi.fn(), update: vi.fn(), findMany: vi.fn() };
+const mockProfile = { findMany: vi.fn().mockResolvedValue([]) };
 const mockAdminAuditLog = { create: vi.fn().mockResolvedValue({}) };
 const mockTx = {
   studioInvite:    { updateMany: vi.fn() },
@@ -84,6 +85,7 @@ vi.mock("@/lib/prisma", () => ({
     studioInvite:    mockStudioInvite,
     oa:              mockOa,
     workspaceMember: mockWorkspaceMember,
+    profile:         mockProfile,
     adminAuditLog:   mockAdminAuditLog,
     $transaction:    mock$transaction,
   },
@@ -144,6 +146,78 @@ describe("StudioInvite 発行 API (RBAC)", () => {
     const diffDays = (capturedExpires!.getTime() - Date.now()) / (24 * 60 * 60 * 1000);
     expect(diffDays).toBeGreaterThan(6.99);
     expect(diffDays).toBeLessThan(7.01);
+  });
+});
+
+describe("StudioInvite 発行 API（統合フィールド）", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockRequireRole.mockResolvedValue({ ok: true, role: "owner", status: "active" });
+    mockOa.findUnique.mockResolvedValue({ id: "oa-1", title: "テストOA", serviceSuspendedAt: null });
+    mockStudioInvite.create.mockImplementation(async ({ data }: any) => ({ id: "inv-1", ...data }));
+  });
+
+  it("invite_action / email / max_uses / expires_in_days を保存できる", async () => {
+    const { POST } = await import("@/app/api/admin/studio-invites/route");
+    const body = {
+      oa_id: "oa-1", usage_type: "personal", plan_tier: "pro", role: "editor",
+      invite_action: "register_and_member", email: "u@example.com", max_uses: 5, expires_in_days: 14,
+    };
+    const res = await (POST as any)(makeReq(body), { params: {} });
+    expect(res.status).toBe(201);
+    const data = mockStudioInvite.create.mock.calls[0][0].data;
+    expect(data.inviteAction).toBe("register_and_member");
+    expect(data.email).toBe("u@example.com");
+    expect(data.maxUses).toBe(5);
+    // expires_in_days=14 が反映されている（約14日後）。
+    const diffDays = (data.expiresAt.getTime() - Date.now()) / (24 * 60 * 60 * 1000);
+    expect(diffDays).toBeGreaterThan(13.99);
+    expect(diffDays).toBeLessThan(14.01);
+    // 作成の操作ログ。
+    expect(mockAdminAuditLog.create.mock.calls[0][0].data.resource).toBe("studio_invite");
+  });
+
+  it("未指定時は従来どおり（max_uses=1 / 7日 / invite_action=null）", async () => {
+    const { POST } = await import("@/app/api/admin/studio-invites/route");
+    const res = await (POST as any)(makeReq(ISSUE_BODY), { params: {} });
+    expect(res.status).toBe(201);
+    const data = mockStudioInvite.create.mock.calls[0][0].data;
+    expect(data.maxUses).toBe(1);
+    expect(data.inviteAction).toBeNull();
+    const diffDays = (data.expiresAt.getTime() - Date.now()) / (24 * 60 * 60 * 1000);
+    expect(diffDays).toBeGreaterThan(6.99);
+    expect(diffDays).toBeLessThan(7.01);
+  });
+});
+
+describe("StudioInvite 一覧 API（GET）", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockOa.findMany
+      .mockResolvedValueOnce([{ id: "oa-1" }])                                          // manageableOaIds: owned
+      .mockResolvedValueOnce([{ id: "oa-1", title: "OA1", usageType: "personal" }]);     // GET: oas
+    mockWorkspaceMember.findMany.mockResolvedValue([]);                                  // memberOf
+    mockStudioInvite.findMany.mockResolvedValue([{
+      id: "inv-1", oaId: "oa-1", usageType: "personal", planTier: "pro", role: "editor",
+      note: null, inviteAction: "member_invite", email: "u@example.com",
+      maxUses: 3, usedCount: 1, acceptedAt: null, revokedAt: null,
+      expiresAt: new Date(Date.now() + 86400000), createdAt: new Date(), createdByUserId: "owner-1",
+    }]);
+    mockProfile.findMany.mockResolvedValue([{ userId: "owner-1", username: "オーナー", firstName: null, lastName: null }]);
+  });
+
+  it("一覧に invite_action / email / max_uses / used_count / state / created_by を返す", async () => {
+    const { GET } = await import("@/app/api/admin/studio-invites/route");
+    const res = await (GET as any)(makeReq(undefined), { params: {} });
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    const inv = (json.data ?? json).invites[0];
+    expect(inv.invite_action).toBe("member_invite");
+    expect(inv.email).toBe("u@example.com");
+    expect(inv.max_uses).toBe(3);
+    expect(inv.used_count).toBe(1);
+    expect(inv.state).toBe("active");      // 部分使用(1/3)は active
+    expect(inv.created_by).toBe("オーナー"); // Profile から解決
   });
 });
 

@@ -14,6 +14,7 @@ import { isPlatformOwner } from "@/lib/platform-admin";
 import { ROLE_LABELS, type Role } from "@/lib/types/permissions";
 import { PLAN_LABELS, type PlanTier } from "@/lib/constants/plans";
 import { usageTypeShortLabel } from "@/lib/usage-type";
+import { resolveAuditActorName } from "@/lib/audit-display";
 import { ZodError } from "zod";
 import {
   generateStudioInviteToken, hashStudioInviteToken,
@@ -70,6 +71,17 @@ export const GET = withAuth(async (_req: NextRequest, _ctx, user) => {
     ]);
     const now = new Date();
     const oaName = new Map(oas.map((o) => [o.id, o.title]));
+
+    // 作成者の表示名を解決（操作ログと同じ Profile ベース）。内部 userId は出さない。
+    const creatorIds = [...new Set(invites.map((inv) => inv.createdByUserId))];
+    const profiles = creatorIds.length
+      ? await prisma.profile.findMany({
+          where:  { userId: { in: creatorIds } },
+          select: { userId: true, username: true, firstName: true, lastName: true },
+        })
+      : [];
+    const creatorName = new Map(profiles.map((p) => [p.userId, resolveAuditActorName(p)]));
+
     return ok({
       oas: oas.map((o) => ({ id: o.id, title: o.title, usage_type: o.usageType })),
       invites: invites.map((inv) => ({
@@ -88,6 +100,7 @@ export const GET = withAuth(async (_req: NextRequest, _ctx, user) => {
         max_uses:         inv.maxUses,
         used_count:       inv.usedCount,
         state:            studioInviteState(inv, now),
+        created_by:       creatorName.get(inv.createdByUserId) ?? "—",
         created_at:       inv.createdAt,
         expires_at:       inv.expiresAt,
         accepted_at:      inv.acceptedAt,
@@ -121,7 +134,7 @@ export const POST = withAuth(async (req: NextRequest, _ctx, user) => {
 
     const now = new Date();
     const token = generateStudioInviteToken();
-    const expiresAt = resolveStudioInviteExpiresAt(now);
+    const expiresAt = resolveStudioInviteExpiresAt(now, data.expires_in_days);
 
     const invite = await prisma.studioInvite.create({
       data: {
