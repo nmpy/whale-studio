@@ -5,9 +5,23 @@
 import { describe, it, expect } from "vitest";
 import {
   INVITE_ACTIONS_BY_SCOPE, INVITE_ACTION_LABELS, inviteActionRequiresRole, scopeUsageType,
-  STUDIO_INVITE_EXPIRES_OPTIONS, studioInviteState, UNIFIED_INVITE_OPTIONS,
+  STUDIO_INVITE_EXPIRES_OPTIONS, studioInviteState, studioInviteLandingShowsAcceptForm, UNIFIED_INVITE_OPTIONS,
 } from "@/lib/studio-invite-ui";
 import { resolveStudioInviteExpiresAt } from "@/lib/studio-invite";
+
+describe("studioInviteLandingShowsAcceptForm（受諾フォームは active のみ表示）", () => {
+  it("active のときだけ受諾フォームを表示する", () => {
+    expect(studioInviteLandingShowsAcceptForm("active")).toBe(true);
+  });
+  it("used_up（上限到達）ではフォームを表示しない", () => {
+    expect(studioInviteLandingShowsAcceptForm("used_up")).toBe(false);
+  });
+  it("accepted / expired / revoked / none / suspended / 未知 でもフォームを表示しない", () => {
+    for (const s of ["accepted", "expired", "revoked", "none", "suspended", "unknown_future", "", null, undefined]) {
+      expect(studioInviteLandingShowsAcceptForm(s as string)).toBe(false);
+    }
+  });
+});
 
 describe("scope → usageType", () => {
   it("個人=personal / 法人=business", () => {
