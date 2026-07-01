@@ -358,9 +358,11 @@ model Message {
   notifyText            String?  @map("notify_text")
   /// 謎 ID（messageType = "riddle" のとき参照する謎）
   riddleId              String?  @map("riddle_id")
-  /// クイックリプライ設定（JSON 配列 / null = 未設定）
-  /// 構造: [{ label, action, value? }]
+  /// クイックリプライ設定（JSON 配列 = QuickReplyItem[] / null = 未設定）
+  /// 各要素: label, action, value?, enabled?, hint_text?, hint_followup?,
+  ///          target_type?("phase"|"message"), target_phase_id?, target_message_id?, response_message_id?
   /// action: "text" | "url" | "next" | "hint" | "custom"
+  /// 送信先つき QR（target 系 / response_message_id あり）は postback 化して解決する（quick-reply-postback.ts）。
   quickReplies          String?  @map("quick_replies")
   /// Flex Message の代替テキスト（messageType = "flex" のとき使用）
   altText               String?  @map("alt_text")

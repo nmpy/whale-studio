@@ -13,9 +13,9 @@ function cellToString(v: unknown): string {
     const o = v as Record<string, unknown>;
     if ("text" in o) return String(o.text ?? "");
     if ("richText" in o && Array.isArray(o.richText)) return (o.richText as { text?: string }[]).map((r) => r.text ?? "").join("");
-    if ("result" in o) return cellToString(o.result);
+    if ("result" in o) return cellToString(o.result);  // 数式セル: 保存済みの計算結果があればそれを使う
     if ("hyperlink" in o) return String(o.hyperlink ?? "");
-    if ("formula" in o) return "";
+    if ("formula" in o) return "";  // 計算結果キャッシュのない数式セルは空欄扱い（README で固定値/プルダウン推奨を明記）
     return String(v);
   }
   if (typeof v === "boolean") return v ? "TRUE" : "FALSE";

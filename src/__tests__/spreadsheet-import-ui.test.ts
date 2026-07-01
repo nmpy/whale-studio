@@ -74,7 +74,7 @@ describe("buildTemplateWorkbook", () => {
     const raw = await parseWorkbook(buf as ArrayBuffer);
     const existing: ExistingData = {
       characterKeys: new Set(), phaseKeys: new Set(), messageKeys: new Set(),
-      phaseTypeByKey: new Map(), existingStartPhase: null, transitionKeys: new Set(),
+      existingStartPhase: null, transitionKeys: new Set(),
     };
     const errors = validateImport(raw, normalizeSheets(raw), existing);
     expect(errors).toEqual([]);
