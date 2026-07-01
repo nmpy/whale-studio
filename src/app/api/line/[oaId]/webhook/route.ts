@@ -54,11 +54,12 @@ import { resolveQrBranchDelivery } from "@/lib/qr-branch";
 import { matchStartWork, normalizeStartKeyword } from "@/lib/start-keyword";
 import { parseQuickReplyPostback, resolveQuickReplyItem } from "@/lib/quick-reply-postback";
 import { parseFrontier, selectQrScope } from "@/lib/qr-frontier";
+import { collectLegacyQrMatches, collectLegacyHintMatches } from "@/lib/legacy-qr-fallback";
+import { normalizeHintQrItems } from "@/lib/hint-qr";
 import { applyFreeInputPostEffect } from "@/lib/frontier-effect";
 import { handleBeaconEvent, type LineBeaconEvent } from "@/lib/beacon";
 import { consumeBeaconArrivalTrigger } from "@/lib/checkin-trigger";
 import { pushToLine as _pushToLine } from "@/lib/line";
-import { normalizeHintQrItems } from "@/lib/hint-qr";
 import { getCurrentPlanTierForOa } from "@/lib/plan-guard";
 import { getPlanAccessState, FEATURE } from "@/lib/constants/plans";
 import { logEvent } from "@/lib/event-logger";
@@ -719,9 +720,14 @@ function matchGlobalCmdInMemory(
 function matchHintFromPhase(
   phase:     PhaseRow,
   inputText: string,
+  logCtx?:   { oaId: string; workId: string },
 ): { hintText: string; hintFollowup?: string; qrItems: import("@/types").QuickReplyItem[]; matchedItem: import("@/types").QuickReplyItem; messageId: string } | null {
   const inputNorm  = normKw(inputText);
   const inputLoose = normKwLoose(inputText);
+
+  // WARN 用の同名候補数（純ロジック・既存走査順と一致 = 下のループの先頭一致と整合）。返却/既存ログは
+  // 下のループが担うため挙動・診断ログは不変。ここでは candidateCount / candidateMessageIds のみ算出する。
+  const fallbackMatches = collectLegacyHintMatches(phase.messages, inputText, { strict: normKw, loose: normKwLoose });
 
   // 診断: フェーズ内の hint QR 候補をログ出力
   let hintCandidateCount = 0;
@@ -764,6 +770,28 @@ function matchHintFromPhase(
           `[cache][hint] マッチ msgId=${msg.id.slice(0, 8)}`,
           `key="${item.value ?? item.label}" hint_text="${hintText.slice(0, 30)}..."`,
         );
+        // 観測ログ（挙動変更なし）: postback ではなくラベル一致 fallback で解決した事実。
+        const label = item.value?.trim() || item.label;
+        console.warn("[webhook] legacy hint fallback used", {
+          oaId:             logCtx?.oaId ?? null,
+          workId:           logCtx?.workId ?? null,
+          phaseId:          phase.id,
+          label,
+          matchedMessageId: msg.id.slice(0, 8),
+          reason:           "missing_postback_payload",
+        });
+        // 同一スコープ内に同名候補が複数（先頭一致では識別できない旧仕様の曖昧性）。
+        if (fallbackMatches.length >= 2) {
+          console.warn("[webhook] legacy hint fallback ambiguous", {
+            oaId:                logCtx?.oaId ?? null,
+            workId:              logCtx?.workId ?? null,
+            phaseId:             phase.id,
+            label,
+            candidateCount:      fallbackMatches.length,
+            candidateMessageIds: fallbackMatches.map((m) => m.messageId.slice(0, 8)),
+            reason:              "multiple_same_label_hint_in_scope",
+          });
+        }
         return { hintText, hintFollowup, qrItems: items, matchedItem: item, messageId: msg.id };
       } else {
         console.log(
@@ -822,9 +850,6 @@ function matchQrItem(
   frontier:  Set<string> | null = null,
   logCtx?:   { oaId: string; workId: string; userId: string },
 ): import("@/types").QuickReplyItem | null {
-  const inputNorm  = normKw(inputText);
-  const inputLoose = normKwLoose(inputText);
-
   // frontier（直近送信 chain の messageId 群）が有れば、その範囲の QR だけを照合する。
   // null（レガシー progress）なら従来どおりフェーズ全体を走査（後方互換）。
   const { scoped, mode } = selectQrScope(phase.messages, frontier);
@@ -837,38 +862,40 @@ function matchQrItem(
     candidateCount:     scoped.length,
   }));
 
-  for (const msg of scoped) {
-    if (!msg.quickReplies) continue;
-    let items: import("@/types").QuickReplyItem[];
-    try {
-      const parsed = JSON.parse(msg.quickReplies);
-      if (!Array.isArray(parsed)) continue;
-      items = parsed as import("@/types").QuickReplyItem[];
-    } catch {
-      continue;
-    }
-    for (const item of items) {
-      if (item.action === "hint") continue;   // ヒントは matchHintFromPhase が処理
-      if (item.enabled === false) continue;
-      // response/target の設定がない QR は通常フロー（keyword/transition）に委ねる
-      if (!item.response_message_id && !item.target_message_id && !item.target_phase_id) continue;
-      const matchKey   = item.value?.trim() || item.label;
-      const matchNorm  = normKw(matchKey);
-      const matchLoose = normKwLoose(matchKey);
-      if (inputNorm === matchNorm || inputLoose === matchLoose) {
-        console.log(
-          `[cache][qrItem] マッチ msgId=${msg.id.slice(0, 8)}`,
-          `key="${matchKey}"`,
-          `response_message_id=${item.response_message_id?.slice(0, 8) ?? "none"}`,
-          `target_type=${item.target_type ?? "none"}`,
-          `target_message_id=${item.target_message_id?.slice(0, 8) ?? "none"}`,
-          `target_phase_id=${item.target_phase_id?.slice(0, 8) ?? "none"}`,
-        );
-        return item;
-      }
-    }
+  // 候補収集は純ロジックに委譲（走査順は既存と同一 = 先頭が既存 return と一致・挙動不変）。
+  const matches = collectLegacyQrMatches(scoped, inputText, { strict: normKw, loose: normKwLoose });
+  if (matches.length === 0) return null;
+  const first = matches[0];
+  console.log(
+    `[cache][qrItem] マッチ msgId=${first.messageId.slice(0, 8)}`,
+    `key="${first.matchKey}"`,
+    `response_message_id=${first.item.response_message_id?.slice(0, 8) ?? "none"}`,
+    `target_type=${first.item.target_type ?? "none"}`,
+    `target_message_id=${first.item.target_message_id?.slice(0, 8) ?? "none"}`,
+    `target_phase_id=${first.item.target_phase_id?.slice(0, 8) ?? "none"}`,
+  );
+  // 観測ログ（挙動変更なし）: postback ではなくラベル一致 fallback で解決した事実。
+  console.warn("[webhook] legacy QR fallback used", {
+    oaId:             logCtx?.oaId ?? null,
+    workId:           logCtx?.workId ?? null,
+    phaseId:          phase.id,
+    label:            first.matchKey,
+    matchedMessageId: first.messageId.slice(0, 8),
+    reason:           "missing_postback_payload",
+  });
+  // 同一スコープ内に同名候補が複数（先頭一致では識別できない旧仕様の曖昧性）。
+  if (matches.length >= 2) {
+    console.warn("[webhook] legacy QR fallback ambiguous", {
+      oaId:                logCtx?.oaId ?? null,
+      workId:              logCtx?.workId ?? null,
+      phaseId:             phase.id,
+      label:               first.matchKey,
+      candidateCount:      matches.length,
+      candidateMessageIds: matches.map((m) => m.messageId.slice(0, 8)),
+      reason:              "multiple_same_label_qr_in_scope",
+    });
   }
-  return null;
+  return first.item;
 }
 
 /**
@@ -2792,7 +2819,7 @@ async function handleTextEvent({
     "not_started" | "in_progress" | "completed";
 
   // DB クエリなしでインメモリ照合
-  const hintResult     = currentPhase ? matchHintFromPhase(currentPhase, text)                                           : null;
+  const hintResult     = currentPhase ? matchHintFromPhase(currentPhase, text, { oaId: oa.id, workId: work.id })          : null;
   const matchedQrItem  = currentPhase ? matchQrItem(currentPhase, text, parseFrontier(progress.lastSentMessageIds), { oaId: oa.id, workId: work.id, userId }) : null;
   const keywordMatched = currentPhase ? matchKeywordsInMemory(currentPhase.messages, globalKwMsgs, text)                 : [];
   const puzzleResult   = currentPhase ? matchPuzzleFromPhase(currentPhase, text, solvedPuzzleIds, userSegment)           : null;
