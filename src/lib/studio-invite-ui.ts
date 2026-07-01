@@ -107,3 +107,13 @@ export function studioInviteState(
   if (used >= max) return "used_up";
   return "active";
 }
+
+/**
+ * 招待受諾ページで「この招待を受け取る」フォームを表示してよいか（純関数）。
+ * 受諾可能なのは "active" のときのみ。accepted / used_up / expired / revoked / none /
+ * suspended などの終端状態や未知状態ではフォームを出さない（安全側）。
+ * 受諾着地ページの state（StudioInviteState ＋ API 由来の "suspended"）を受ける。
+ */
+export function studioInviteLandingShowsAcceptForm(state: string | null | undefined): boolean {
+  return state === "active";
+}

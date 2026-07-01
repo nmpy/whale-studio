@@ -9,9 +9,10 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { getAuthHeaders } from "@/lib/api-client";
+import { studioInviteLandingShowsAcceptForm } from "@/lib/studio-invite-ui";
 
 type ValidateResp = {
-  state: "active" | "accepted" | "expired" | "revoked" | "none" | "suspended";
+  state: "active" | "accepted" | "used_up" | "expired" | "revoked" | "none" | "suspended";
   valid: boolean;
   oa_name?: string;
   usage_type_label?: string;
@@ -133,7 +134,20 @@ export default function StudioInviteLandingPage() {
     );
   }
 
-  if (state === "none" || state === "revoked" || state === "suspended") {
+  if (state === "used_up") {
+    return shell(
+      <>
+        <div style={{ fontSize: 40, marginBottom: 12, textAlign: "center" }}>✅</div>
+        <h1 style={{ fontSize: 17, fontWeight: 700, color: "#374151" }}>この招待は使用済みです</h1>
+        <p style={{ fontSize: 13, color: "#6b7280", marginTop: 12, lineHeight: 1.8 }}>
+          この招待URLは使用上限に達しているため、現在は利用できません。必要な場合は、管理者に新しい招待URLの発行を依頼してください。
+        </p>
+      </>,
+    );
+  }
+
+  // active 以外（none / revoked / suspended / 未知状態）はフォームを出さず「見つかりません」を表示。
+  if (!studioInviteLandingShowsAcceptForm(state)) {
     return shell(
       <>
         <div style={{ fontSize: 40, marginBottom: 12, textAlign: "center" }}>🔍</div>
