@@ -130,6 +130,19 @@ describe("message_with_phase（メッセージ送信＋フェーズ遷移）の 
     expect(body.image_action_phase_id).toBeNull();
   });
 
+  it("save: message に変更した場合は残った phase_id を null 化（orphan cleanup）", () => {
+    const body = additionalSlotToMsgBody(imageSlot({ image_action_type: "message", image_action_text: "調べる", image_action_phase_id: "phase-2" }), main);
+    expect(body.image_action_type).toBe("message");
+    expect(body.image_action_text).toBe("調べる");
+    expect(body.image_action_phase_id).toBeNull();
+  });
+
+  it("save: none（type 未設定）でも残った phase_id を null 化（orphan cleanup）", () => {
+    const body = additionalSlotToMsgBody(imageSlot({ image_action_type: "", image_action_phase_id: "phase-2" }), main);
+    expect(body.image_action_type).toBeNull();
+    expect(body.image_action_phase_id).toBeNull();
+  });
+
   it("save: 非画像メッセージは message_with_phase を保存しない（全て null）", () => {
     const body = additionalSlotToMsgBody({ ...EMPTY_ADDITIONAL_SLOT, message_type: "text", body: "hi", image_action_type: "message_with_phase", image_action_text: "x", image_action_phase_id: "p" }, main);
     expect(body.image_action_type).toBeNull();
