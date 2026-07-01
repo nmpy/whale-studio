@@ -12,7 +12,7 @@ import type { RawSheets, RawRow, ExistingData } from "@/lib/spreadsheet-import/t
 function emptyExisting(over: Partial<ExistingData> = {}): ExistingData {
   return {
     characterKeys: new Set(), phaseKeys: new Set(), messageKeys: new Set(),
-    phaseTypeByKey: new Map(), existingStartPhase: null, transitionKeys: new Set(), ...over,
+    existingStartPhase: null, transitionKeys: new Set(), ...over,
   };
 }
 function row(r: number, cells: Record<string, string>): RawRow {

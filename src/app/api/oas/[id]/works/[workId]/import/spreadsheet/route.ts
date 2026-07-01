@@ -29,11 +29,10 @@ async function loadExisting(workId: string): Promise<ExistingData> {
   ]);
 
   const phaseKeys = new Set<string>();
-  const phaseTypeByKey = new Map<string, string>();
   const idToKey = new Map<string, string>();
   let existingStartPhase: ExistingData["existingStartPhase"] = null;
   for (const p of phases) {
-    if (p.phaseKey) { phaseKeys.add(p.phaseKey); phaseTypeByKey.set(p.phaseKey, p.phaseType); idToKey.set(p.id, p.phaseKey); }
+    if (p.phaseKey) { phaseKeys.add(p.phaseKey); idToKey.set(p.id, p.phaseKey); }
     if (p.phaseType === "start" && !existingStartPhase) existingStartPhase = { phaseKey: p.phaseKey ?? null };
   }
   const transitionKeys = new Set<string>();
@@ -46,7 +45,6 @@ async function loadExisting(workId: string): Promise<ExistingData> {
     characterKeys: new Set(chars.map((c) => c.characterKey!).filter(Boolean)),
     phaseKeys,
     messageKeys: new Set(msgs.map((m) => m.messageKey!).filter(Boolean)),
-    phaseTypeByKey,
     existingStartPhase,
     transitionKeys,
   };

@@ -79,8 +79,6 @@ export type ExistingData = {
   characterKeys: Set<string>;
   phaseKeys: Set<string>;
   messageKeys: Set<string>;
-  /** phase_key → 既存 phaseType（更新時の保持判定用）。 */
-  phaseTypeByKey: Map<string, string>;
   /** 既存の開始フェーズ（phaseType="start"・1件想定）。null=無し。 */
   existingStartPhase: { phaseKey: string | null } | null;
   /** 既存 Transition の `${fromPhaseKey}::${condition}` 集合（fromPhase に key がある分のみ）。preview 用。 */

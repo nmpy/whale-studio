@@ -6,6 +6,7 @@ import { Suspense, useCallback, useEffect, useMemo, useState, type CSSProperties
 import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
 import { TLink as Link } from "@/components/TLink";
 import { withReturnTab, isSafeTabToken } from "./_return-nav";
+import { isSpreadsheetImportEnabled } from "@/lib/spreadsheet-import/ui-text";
 import { bootstrapApi, messageApi, workApi, phaseApi, getDevToken } from "@/lib/api-client";
 import { getCachedBootstrap, setCachedBootstrap, invalidateBootstrap } from "@/lib/admin-bootstrap-cache";
 import { logAdminPerf, resourceSummary, maskId } from "@/lib/perf-client";
@@ -548,7 +549,7 @@ function MessagesPageInner() {
         </div>
         {activeTab === "messages" && canEdit && (
           <div style={{ display: "inline-flex", gap: 8 }}>
-            {process.env.NEXT_PUBLIC_ENABLE_SPREADSHEET_IMPORT === "true" && (
+            {isSpreadsheetImportEnabled() && (
               <Link
                 href={`/oas/${oaId}/works/${workId}/messages/import`}
                 className="btn"
