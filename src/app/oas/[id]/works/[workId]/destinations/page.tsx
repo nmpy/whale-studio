@@ -13,6 +13,7 @@
 import { useState } from "react";
 import { useParams } from "next/navigation";
 import { Breadcrumb } from "@/components/Breadcrumb";
+import { InlineWhaleLoader } from "@/components/ui/InlineWhaleLoader";
 import { useToast } from "@/components/Toast";
 import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
 import { useAccessPreview } from "@/hooks/useAccessPreview";
@@ -63,10 +64,8 @@ export default function DestinationsPage() {
   // ── Loading ────────────────────────────────────
   if (dest.loading || roleLoading) {
     return (
-      <div className="px-6 pb-6" role="status" aria-busy="true">
-        <div className="mb-4 h-6 w-48 animate-pulse rounded-md bg-bg-tint" />
-        <div className="h-48 animate-pulse rounded-card border border-line bg-bg-tint" />
-        <span className="sr-only">読み込み中...</span>
+      <div className="px-6 pb-6">
+        <InlineWhaleLoader minHeight={220} />
       </div>
     );
   }

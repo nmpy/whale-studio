@@ -15,6 +15,7 @@ import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter, usePathname, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Breadcrumb } from "@/components/Breadcrumb";
+import { InlineWhaleLoader } from "@/components/ui/InlineWhaleLoader";
 import { useToast } from "@/components/Toast";
 import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
 import { useAccessPreview } from "@/hooks/useAccessPreview";
@@ -46,8 +47,7 @@ export default function LiffPagesIndexPage() {
     <Suspense
       fallback={
         <div className="p-6">
-          <div className="h-6 w-48 bg-gray-200 rounded-md mb-4 animate-pulse" />
-          <div className="h-48 bg-gray-100 rounded-lg animate-pulse" />
+          <InlineWhaleLoader minHeight={200} />
         </div>
       }
     >
@@ -215,8 +215,7 @@ function LiffPagesIndex() {
   if (loading || roleLoading) {
     return (
       <div className="p-6">
-        <div className="h-6 w-48 bg-gray-200 rounded-md mb-4 animate-pulse" />
-        <div className="h-48 bg-gray-100 rounded-lg animate-pulse" />
+        <InlineWhaleLoader minHeight={200} />
       </div>
     );
   }

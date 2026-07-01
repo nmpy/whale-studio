@@ -17,6 +17,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { Breadcrumb } from "@/components/Breadcrumb";
+import { InlineWhaleLoader } from "@/components/ui/InlineWhaleLoader";
 import { richMenuEditorApi, oaApi, getDevToken } from "@/lib/api-client";
 import { useToast } from "@/components/Toast";
 import type { RichMenuWithAreas } from "@/types";
@@ -167,15 +168,7 @@ export default function RichMenuEditorListPage() {
 
       {/* ── Loading skeleton ── */}
       {loading ? (
-        <div className="flex flex-col gap-3" role="status" aria-busy="true">
-          {[...Array(2)].map((_, i) => (
-            <div
-              key={i}
-              className="h-[100px] animate-pulse rounded-card border border-line bg-bg-tint"
-            />
-          ))}
-          <span className="sr-only">読み込み中...</span>
-        </div>
+        <InlineWhaleLoader minHeight={220} />
       ) : menus.length === 0 ? (
         /* ── Empty state ── */
         <div className="rounded-card border-2 border-dashed border-line-2 bg-bg-tint px-6 py-12 text-center">

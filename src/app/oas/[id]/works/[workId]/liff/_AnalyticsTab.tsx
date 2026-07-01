@@ -6,6 +6,7 @@
 // 計測データがまだ無い（取得失敗 or 0 件）場合は準備中の空状態を出す（新規計測ロジックは実装しない）。
 
 import type { LiffPageSummary, LiffPageAnalyticsSummaryRow } from "@/lib/api-client";
+import { InlineWhaleLoader } from "@/components/ui/InlineWhaleLoader";
 import { METRIC_LABELS, formatPercent, formatCount } from "./_shared";
 
 interface Props {
@@ -17,7 +18,7 @@ interface Props {
 export function AnalyticsTab({ pages, analytics }: Props) {
   // 取得中
   if (analytics === null) {
-    return <div className="h-32 bg-gray-100 rounded-lg animate-pulse" />;
+    return <InlineWhaleLoader minHeight={128} />;
   }
 
   const hasData = Object.keys(analytics).length > 0 && pages.length > 0;
