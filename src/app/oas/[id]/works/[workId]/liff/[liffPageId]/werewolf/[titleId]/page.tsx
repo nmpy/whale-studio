@@ -11,6 +11,7 @@
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { Breadcrumb } from "@/components/Breadcrumb";
+import { InlineWhaleLoader } from "@/components/ui/InlineWhaleLoader";
 import { ViewerBanner } from "@/components/PermissionGuard";
 import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
 import { WerewolfTitleDetailEditor } from "@/components/liff/werewolf/WerewolfTitleDetailEditor";
@@ -30,8 +31,7 @@ export default function WerewolfTitleDetailPage() {
   if (roleLoading) {
     return (
       <div className="p-6">
-        <div className="h-6 w-48 bg-gray-200 rounded-md mb-4 animate-pulse" />
-        <div className="h-48 bg-gray-100 rounded-lg animate-pulse" />
+        <InlineWhaleLoader minHeight={200} />
       </div>
     );
   }
