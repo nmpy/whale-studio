@@ -1004,6 +1004,23 @@ export const uploadApi = {
     });
     return parseResponse(res);
   },
+
+  /**
+   * 外部URLメディアの Content-Type / Content-Length を HEAD で取得する（本体中継なし）。
+   * POST /api/media/probe — JSON { url }
+   * HEAD 非対応/取得不可でも 200 で reachable:false / sizeKnown:false が返る。
+   */
+  async probeMedia(
+    token: string,
+    url:   string
+  ): Promise<{ reachable: boolean; status: number | null; contentType: string | null; mimeType: string | null; sizeKnown: boolean; sizeBytes: number | string | null; error?: string }> {
+    const res = await fetch("/api/media/probe", {
+      method:  "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body:    JSON.stringify({ url }),
+    });
+    return parseResponse(res);
+  },
 };
 
 // ────────────────────────────────────────────────

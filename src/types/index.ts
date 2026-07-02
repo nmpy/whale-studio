@@ -560,6 +560,15 @@ export interface CreateMessageBody {
   kind?: MessageKind;
   body?: string;
   asset_url?: string;
+  // 外部URL参照メディア（asset_media_source="external_url" のときメタのみ保存）
+  asset_media_source?: "upload" | "external_url" | null;
+  asset_preview_url?: string | null;
+  asset_mime_type?: string | null;
+  asset_file_size_bytes?: number | null;
+  asset_duration_ms?: number | null;
+  asset_width?: number | null;
+  asset_height?: number | null;
+  asset_usage?: "line_video" | "liff_playback" | "cms_preview" | null;
   trigger_keyword?: string | null;
   target_segment?: string | null;
   notify_text?: string;
@@ -625,6 +634,15 @@ export interface UpdateMessageBody {
   kind?: MessageKind;
   body?: string | null;
   asset_url?: string | null;
+  // 外部URL参照メディア
+  asset_media_source?: "upload" | "external_url" | null;
+  asset_preview_url?: string | null;
+  asset_mime_type?: string | null;
+  asset_file_size_bytes?: number | null;
+  asset_duration_ms?: number | null;
+  asset_width?: number | null;
+  asset_height?: number | null;
+  asset_usage?: "line_video" | "liff_playback" | "cms_preview" | null;
   trigger_keyword?: string | null;
   target_segment?: string | null;
   notify_text?: string | null;
