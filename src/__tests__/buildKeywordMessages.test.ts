@@ -55,10 +55,27 @@ describe("buildKeywordMessages — 正式対応 type", () => {
     expect(result[0].type).toBe("image");
   });
 
-  it("video + assetUrl → video LINE メッセージ", () => {
-    const result = buildKeywordMessages([makeKwMsg({ messageType: "video", body: null, assetUrl: "https://example.com/vid.mp4" })]);
+  it("video + assetUrl + サムネ → video LINE メッセージ（previewImageUrl はサムネ・mp4 を流用しない）", () => {
+    const result = buildKeywordMessages([makeKwMsg({ messageType: "video", body: null, assetUrl: "https://example.com/vid.mp4", assetPreviewUrl: "https://example.com/thumb.jpg" })]);
     expect(result).toHaveLength(1);
     expect(result[0].type).toBe("video");
+    const vid = result[0] as { originalContentUrl: string; previewImageUrl: string };
+    expect(vid.originalContentUrl).toBe("https://example.com/vid.mp4");
+    expect(vid.previewImageUrl).toBe("https://example.com/thumb.jpg");
+  });
+
+  it("video + assetUrl + サムネ未設定 → LINE video 送信せずリンク誘導テキスト", () => {
+    const result = buildKeywordMessages([makeKwMsg({ messageType: "video", body: null, assetUrl: "https://example.com/vid.mp4" })]);
+    expect(result).toHaveLength(1);
+    expect(result[0].type).toBe("text");
+    const txt = result[0] as { text: string };
+    expect(txt.text).toContain("https://example.com/vid.mp4");
+  });
+
+  it("video + assetUsage=liff_playback → LINE video 送信せずリンク誘導テキスト", () => {
+    const result = buildKeywordMessages([makeKwMsg({ messageType: "video", body: null, assetUrl: "https://example.com/big.mp4", assetPreviewUrl: "https://example.com/thumb.jpg", assetUsage: "liff_playback" })]);
+    expect(result).toHaveLength(1);
+    expect(result[0].type).toBe("text");
   });
 });
 
@@ -176,7 +193,7 @@ describe("変換 parity: buildKeywordMessages と buildPhaseMessages で同一�
   const testCases: { label: string; kwOverrides: Partial<KeywordMessageRecord>; phaseOverrides: Partial<RuntimePhaseMessage>; expectType: string | null }[] = [
     { label: "text+body",       kwOverrides: { messageType: "text", body: "hello" },                                              phaseOverrides: { message_type: "text", body: "hello" },                                              expectType: "text" },
     { label: "image+asset",     kwOverrides: { messageType: "image", body: null, assetUrl: "https://x.com/i.jpg" },               phaseOverrides: { message_type: "image", body: null, asset_url: "https://x.com/i.jpg" },               expectType: "image" },
-    { label: "video+asset",     kwOverrides: { messageType: "video", body: null, assetUrl: "https://x.com/v.mp4" },               phaseOverrides: { message_type: "video", body: null, asset_url: "https://x.com/v.mp4" },               expectType: "video" },
+    { label: "video+asset",     kwOverrides: { messageType: "video", body: null, assetUrl: "https://x.com/v.mp4", assetPreviewUrl: "https://x.com/t.jpg" }, phaseOverrides: { message_type: "video", body: null, asset_url: "https://x.com/v.mp4", asset_preview_url: "https://x.com/t.jpg" }, expectType: "video" },
     { label: "carousel+alt",    kwOverrides: { messageType: "carousel", body: "[{}]", altText: "fallback" },                       phaseOverrides: { message_type: "carousel" as any, body: "[{}]", alt_text: "fallback" },                expectType: "text" },
     { label: "riddle+body",     kwOverrides: { messageType: "riddle", body: "riddle text" },                                       phaseOverrides: { message_type: "riddle" as any, body: "riddle text" },                                expectType: "text" },
     { label: "text+null body",  kwOverrides: { messageType: "text", body: null },                                                  phaseOverrides: { message_type: "text", body: null },                                                  expectType: null },

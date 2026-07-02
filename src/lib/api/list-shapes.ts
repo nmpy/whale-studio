@@ -16,6 +16,7 @@
 // 出力 shape は従来の各 route の `toResponse` と完全に同一（フィールド・型・既定値とも不変）。
 
 import { parseAnswerMatchType, parsePuzzleAnswers } from "@/lib/puzzle-answer";
+import { bigintToJson } from "@/lib/media-validation";
 
 // ── messages ────────────────────────────────────────────────
 
@@ -37,6 +38,9 @@ export function parseQuickReplies(raw: string | null, msgId?: string) {
 export function messageToResponse(m: {
   id: string; workId: string; phaseId: string | null; characterId: string | null;
   messageType: string; kind: string; body: string | null; assetUrl: string | null;
+  assetMediaSource?: string | null; assetPreviewUrl?: string | null; assetMimeType?: string | null;
+  assetFileSizeBytes?: bigint | number | null; assetDurationMs?: number | null;
+  assetWidth?: number | null; assetHeight?: number | null; assetUsage?: string | null;
   triggerKeyword: string | null; targetSegment: string | null;
   notifyText: string | null; riddleId: string | null;
   scheduledMessageSettings?: string | null;
@@ -92,6 +96,14 @@ export function messageToResponse(m: {
     kind:                 m.kind,
     body:                 m.body,
     asset_url:            m.assetUrl,
+    asset_media_source:   m.assetMediaSource ?? null,
+    asset_preview_url:    m.assetPreviewUrl ?? null,
+    asset_mime_type:      m.assetMimeType ?? null,
+    asset_file_size_bytes: bigintToJson(m.assetFileSizeBytes),
+    asset_duration_ms:    m.assetDurationMs ?? null,
+    asset_width:          m.assetWidth ?? null,
+    asset_height:         m.assetHeight ?? null,
+    asset_usage:          m.assetUsage ?? null,
     trigger_keyword:      m.triggerKeyword,
     target_segment:       m.targetSegment,
     notify_text:          m.notifyText,

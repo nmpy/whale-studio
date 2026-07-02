@@ -4,6 +4,41 @@
 import { z } from "zod";
 import { normalizeFlexJson, FLEX_ERRORS } from "@/lib/flex";
 import { MIN_DELAY_MINUTES as SCHED_MIN_DELAY_MINUTES, MAX_DELAY_MINUTES as SCHED_MAX_DELAY_MINUTES } from "@/lib/scheduled-message";
+import { validateMedia, URL_MAX_LENGTH, type MediaUsage } from "@/lib/media-validation";
+
+// 外部URL参照メディア（asset_media_source="external_url"）の用途別サーバ検証を Zod ctx に反映する。
+// error レベルのみを ctx.addIssue で保存ブロックにする（warning はフロントで注意喚起・保存は止めない）。
+function applyMediaIssues(
+  ctx: z.RefinementCtx,
+  val: {
+    message_type?: string;
+    asset_media_source?: string | null;
+    asset_url?: string | null;
+    asset_preview_url?: string | null;
+    asset_mime_type?: string | null;
+    asset_file_size_bytes?: number | null;
+    asset_usage?: string | null;
+  },
+): void {
+  if (val.asset_media_source !== "external_url") return; // 通常アップロードは既存挙動（追加制約なし）。
+  if (val.message_type !== "video" && val.message_type !== "image") return;
+  const issues = validateMedia({
+    mediaKind:        val.message_type === "video" ? "video" : "image",
+    usage:            (val.asset_usage as MediaUsage | null | undefined) ?? null,
+    contentUrl:       val.asset_url ?? null,
+    contentMimeType:  val.asset_mime_type ?? null,
+    contentSizeBytes: val.asset_file_size_bytes ?? null,
+    previewUrl:       val.asset_preview_url ?? null,
+  });
+  for (const issue of issues) {
+    if (issue.level !== "error") continue;
+    const path = issue.field === "preview_url" ? ["asset_preview_url"]
+      : issue.field === "size" ? ["asset_file_size_bytes"]
+      : issue.field === "mime" ? ["asset_mime_type"]
+      : ["asset_url"];
+    ctx.addIssue({ code: "custom", path, message: issue.message });
+  }
+}
 
 // ────────────────────────────────────────────────
 // 共通プリミティブ
@@ -395,6 +430,15 @@ export const createMessageSchema = z.object({
   kind:             z.enum(["start", "normal", "response", "hint", "puzzle", "system_notice"]).default("normal"),
   body:             z.string().max(10000).optional(),
   asset_url:        urlSchema,
+  // ── 外部URL参照メディア（asset_media_source="external_url" のときメタのみ保存。本体は保存しない）──
+  asset_media_source: z.enum(["upload", "external_url"]).optional().nullable(),
+  asset_preview_url:  z.string().url().max(URL_MAX_LENGTH).optional().nullable(),
+  asset_mime_type:    z.string().max(255).optional().nullable(),
+  asset_file_size_bytes: z.number().int().min(0).optional().nullable(),
+  asset_duration_ms:  z.number().int().min(0).optional().nullable(),
+  asset_width:        z.number().int().min(0).optional().nullable(),
+  asset_height:       z.number().int().min(0).optional().nullable(),
+  asset_usage:        z.enum(["line_video", "liff_playback", "cms_preview"]).optional().nullable(),
   trigger_keyword:  z.string().max(200).optional().nullable(),
   target_segment:   z.string().max(100).optional().nullable(),
   notify_text:      z.string().max(500).optional(),
@@ -547,6 +591,8 @@ export const createMessageSchema = z.object({
       }
     }
   }
+  // 外部URL参照メディアの用途別検証（error のみ保存ブロック）。
+  applyMediaIssues(ctx, val);
 });
 
 /**
@@ -562,6 +608,15 @@ export const updateMessageSchema = z.object({
   kind:              z.enum(["start", "normal", "response", "hint", "puzzle", "system_notice"]).optional(),
   body:              z.string().max(10000).optional().nullable(),
   asset_url:         z.string().url().optional().nullable(),
+  // ── 外部URL参照メディア ──
+  asset_media_source: z.enum(["upload", "external_url"]).optional().nullable(),
+  asset_preview_url:  z.string().url().max(URL_MAX_LENGTH).optional().nullable(),
+  asset_mime_type:    z.string().max(255).optional().nullable(),
+  asset_file_size_bytes: z.number().int().min(0).optional().nullable(),
+  asset_duration_ms:  z.number().int().min(0).optional().nullable(),
+  asset_width:        z.number().int().min(0).optional().nullable(),
+  asset_height:       z.number().int().min(0).optional().nullable(),
+  asset_usage:        z.enum(["line_video", "liff_playback", "cms_preview"]).optional().nullable(),
   trigger_keyword:   z.string().max(200).optional().nullable(),
   target_segment:    z.string().max(100).optional().nullable(),
   notify_text:       z.string().max(500).optional().nullable(),
@@ -700,6 +755,9 @@ export const updateMessageSchema = z.object({
         message: "postback アクションには data が必須です" });
     }
   }
+  // 外部URL参照メディアの用途別検証（error のみ保存ブロック）。
+  // 部分更新で message_type / asset_media_source を含まない PATCH は skip される（applyMediaIssues 内で判定）。
+  applyMediaIssues(ctx, val);
 });
 
 export const messageQuerySchema = z.object({

@@ -31,6 +31,7 @@ import { LinkPicker, LinkCopyList, useWorkLinkOptions, type LinkOption } from "@
 import { detectTapMode } from "@/lib/message-destination-utils";
 import { RequiredMark } from "@/components/RequiredMark";
 import { MediaUploadButton } from "@/components/MediaUploadButton";
+import { parseSizeString, resolveVideoFormIssues, videoFormSaveError, resolveVideoUsage } from "@/lib/message-media-form";
 import { FlexPreview } from "@/components/flex/FlexPreview";
 import { Switch } from "@/components/Switch";
 import { destinationApi } from "@/lib/api-client";
@@ -166,6 +167,17 @@ export interface MessageFormState {
   kind:            MessageKind;
   body:            string;
   asset_url:       string;
+  // ── 動画メディアの保存方式・メタ（message_type="video" 用）──
+  /** "" = 既存（アップロード扱い） | "upload" | "external_url" */
+  asset_media_source: string;
+  /** 動画の previewImageUrl 専用サムネ URL（JPEG/PNG）。LINE video 用途では必須。 */
+  asset_preview_url:  string;
+  /** "" = 既存（LINE 動画相当） | "line_video" | "liff_playback" | "cms_preview" */
+  asset_usage:        string;
+  /** probe で取得した MIME（例 "video/mp4"）。取得できなければ ""。 */
+  asset_mime_type:    string;
+  /** probe で取得したサイズ(bytes)。フォーム状態は string（"" = 不明）。保存時に number 化。 */
+  asset_file_size_bytes: string;
   notify_text:     string;
   riddle_id:       string;
   /** 謎(puzzle)カルーセル質問用の旧形式カード（kind="puzzle" のときのみ使用・挙動不変）。 */
@@ -261,6 +273,11 @@ export const EMPTY_MESSAGE_FORM: MessageFormState = {
   kind:            "normal",
   body:            "",
   asset_url:       "",
+  asset_media_source: "",
+  asset_preview_url:  "",
+  asset_usage:        "",
+  asset_mime_type:    "",
+  asset_file_size_bytes: "",
   notify_text:     "",
   riddle_id:       "",
   carousel_items:  [],
@@ -331,6 +348,11 @@ export function msgToFormState(msg: {
   kind?:                 string | null;
   body?:                 string | null;
   asset_url?:            string | null;
+  asset_media_source?:   string | null;
+  asset_preview_url?:    string | null;
+  asset_usage?:          string | null;
+  asset_mime_type?:      string | null;
+  asset_file_size_bytes?: number | string | null;
   notify_text?:          string | null;
   riddle_id?:            string | null;
   quick_replies?:        QuickReplyItem[] | null;
@@ -421,6 +443,11 @@ export function msgToFormState(msg: {
     kind:                  resolvedKind,
     body:                  msg.message_type === "carousel" ? "" : (msg.body ?? ""),
     asset_url:             msg.asset_url       ?? "",
+    asset_media_source:    msg.asset_media_source ?? "",
+    asset_preview_url:     msg.asset_preview_url  ?? "",
+    asset_usage:           msg.asset_usage        ?? "",
+    asset_mime_type:       msg.asset_mime_type    ?? "",
+    asset_file_size_bytes: msg.asset_file_size_bytes != null ? String(msg.asset_file_size_bytes) : "",
     notify_text:           msg.notify_text     ?? "",
     riddle_id:             msg.riddle_id       ?? "",
     carousel_items,
@@ -536,6 +563,17 @@ export function formStateToMsgBody(form: MessageFormState) {
     asset_url:         (!isSystemNotice && (form.message_type === "image" || form.message_type === "video" || form.message_type === "voice"))
       ? form.asset_url || undefined
       : undefined,
+    // 動画メディアのメタ（message_type="video" のときのみ保存。他型は null で明示クリア＝型切替時の残留防止）。
+    // 本体は保存しない（URL とメタのみ）。BigInt 由来は number で送る（PR2 サーバが BigInt 化）。
+    asset_media_source:    !isSystemNotice && form.message_type === "video" ? ((form.asset_media_source || null) as ("upload" | "external_url" | null)) : null,
+    asset_preview_url:     !isSystemNotice && form.message_type === "video" ? (form.asset_preview_url || null) : null,
+    // external_url の動画は用途未選択なら line_video を明示保存する（サーバ検証を効かせる＝UI 既定と一致）。
+    // アップロード/既存は null のまま（後方互換＝送信側は line_video 相当で扱う）。
+    asset_usage:           !isSystemNotice && form.message_type === "video"
+      ? ((form.asset_usage || (form.asset_media_source === "external_url" ? "line_video" : null)) as ("line_video" | "liff_playback" | "cms_preview" | null))
+      : null,
+    asset_mime_type:       !isSystemNotice && form.message_type === "video" ? (form.asset_mime_type || null) : null,
+    asset_file_size_bytes: !isSystemNotice && form.message_type === "video" ? parseSizeString(form.asset_file_size_bytes) : null,
     notify_text:       (!isSystemNotice && form.message_type !== "text")
       ? form.notify_text || undefined
       : undefined,
@@ -787,6 +825,11 @@ export function validateMessageForm(form: MessageFormState, phases: { id: string
   if (form.message_type === "riddle" && !form.riddle_id) {
     return "謎を選択してください";
   }
+  // 外部URL参照の動画メディア検証（サーバ PR2 と整合。external_url のときのみ保存ブロック）。
+  if (form.message_type === "video") {
+    const mediaErr = videoFormSaveError(form);
+    if (mediaErr) return mediaErr;
+  }
   // ここに到達する carousel は通常メッセージ（puzzle は上の puzzle ブロックで検証済み）。
   // 新形式をバックエンドと同じ validateCarousel で検証する。
   if (form.message_type === "carousel") {
@@ -854,6 +897,245 @@ const checkNotice: Record<"warn" | "info" | "muted", React.CSSProperties> = {
   info:  { fontSize: 12, lineHeight: 1.6, fontWeight: 600, padding: "8px 10px", borderRadius: 6, background: "#f0fdf4", border: "1px solid #bbf7d0", color: "#166534" },
   muted: { fontSize: 12, lineHeight: 1.6, padding: "8px 10px", borderRadius: 6, background: "#f8fafc", border: "1px solid #e2e8f0", color: "#475569" },
 };
+
+// エラー（赤）通知スタイル（保存ブロック相当の表示）。
+const errorNotice: React.CSSProperties = {
+  fontSize: 12, lineHeight: 1.6, fontWeight: 600, padding: "8px 10px", borderRadius: 6,
+  background: "#fef2f2", border: "1px solid #fecaca", color: "#b91c1c",
+};
+
+const VIDEO_USAGE_OPTIONS: { value: "line_video" | "liff_playback" | "cms_preview"; label: string; help: string }[] = [
+  { value: "line_video",    label: "LINEトークに動画として送信", help: "mp4・200MB以下・JPEG/PNG サムネイル必須" },
+  { value: "liff_playback", label: "LIFFページ/外部ページで再生", help: "200MB超も可。LINEトークではリンク誘導になります" },
+  { value: "cms_preview",   label: "CMSプレビューのみ",          help: "LINE動画としては送信されません" },
+];
+
+/**
+ * 動画メッセージのメディア設定欄（PR3）。
+ * - メディアソース（アップロード / 外部URL）
+ * - 動画URL（外部URL時は手入力・アップロード時は MediaUploadButton）
+ * - サムネイルURL（LINE video 用途では必須。アップロード動画でも設定可）
+ * - 用途セレクト（line_video / liff_playback / cms_preview）
+ * - サイズ確認（/api/media/probe = HEAD）
+ * - 用途別バリデーション表示（media-validation.ts と整合）
+ * 既存の画像/テキスト等には触れない。
+ */
+function VideoMediaSection({ form, set, oaId, workId }: {
+  form: MessageFormState;
+  set:  <K extends keyof MessageFormState>(k: K, v: MessageFormState[K]) => void;
+  oaId: string;
+  workId: string;
+}) {
+  const [probing, setProbing] = useState(false);
+  const [videoProbeMsg,   setVideoProbeMsg]   = useState<{ level: "warn" | "info" | "muted"; text: string } | null>(null);
+  const [previewProbeMsg, setPreviewProbeMsg] = useState<{ level: "warn" | "info" | "muted"; text: string } | null>(null);
+
+  const source     = form.asset_media_source === "external_url" ? "external_url" : "upload";
+  const isExternal = source === "external_url";
+  const usage      = resolveVideoUsage(form); // "" → line_video 相当
+  const issues     = resolveVideoFormIssues(form);
+  const previewSet = !!form.asset_preview_url.trim();
+
+  async function runProbe(url: string, target: "video" | "preview") {
+    const u = url.trim();
+    const setMsg = target === "video" ? setVideoProbeMsg : setPreviewProbeMsg;
+    if (!u) { setMsg({ level: "warn", text: "URL を入力してください" }); return; }
+    setProbing(true);
+    setMsg(null);
+    try {
+      const token = getDevToken();
+      const res = await uploadApi.probeMedia(token, u);
+      if (target === "video") {
+        // 取得できた mime / size をフォームへ反映（既知のときのみ上書き＝手入力値を尊重）。
+        if (res.mimeType) set("asset_mime_type", res.mimeType);
+        if (res.sizeKnown && res.sizeBytes != null) set("asset_file_size_bytes", String(res.sizeBytes));
+      }
+      if (!res.sizeKnown) {
+        setMsg({ level: "warn", text: `Content-Type: ${res.mimeType ?? "不明"} / サイズ: 取得できませんでした（${res.error === "timeout" ? "タイムアウト" : "HEAD 非対応/Content-Length なし"}）。サイズ不明のまま保存できますが、LINE 仕様の上限超過の可能性があります。` });
+        return;
+      }
+      const bytes = Number(res.sizeBytes);
+      const mb = bytes / 1024 / 1024;
+      const overVideo   = target === "video"   && usage === "line_video" && bytes > 200 * 1024 * 1024;
+      const overPreview = target === "preview" && bytes > 1024 * 1024;
+      const ok = !overVideo && !overPreview;
+      setMsg({
+        level: ok ? "info" : "warn",
+        text: `Content-Type: ${res.mimeType ?? "不明"} / サイズ: ${mb.toFixed(2)} MB`
+          + (overVideo   ? " — LINE動画メッセージの上限 200MB を超えています（このままでは送信できません）" : "")
+          + (overPreview ? " — サムネイルの上限 1MB を超えています" : "")
+          + (ok ? " — LINE 仕様上 OK" : ""),
+      });
+    } catch (e) {
+      setMsg({ level: "warn", text: `サイズ確認に失敗しました（${e instanceof Error ? e.message : "unknown"}）` });
+    } finally {
+      setProbing(false);
+    }
+  }
+
+  const probeBtnStyle: React.CSSProperties = {
+    marginTop: 6, fontSize: 12, padding: "4px 10px", borderRadius: 6,
+    border: "1px solid #cbd5e1", background: "#fff", color: "#334155", cursor: probing ? "default" : "pointer",
+  };
+
+  return (
+    <>
+      {/* ── メディアソース ── */}
+      <div className="form-group">
+        <label style={fieldLabel}>動画の指定方法</label>
+        <div style={{ display: "flex", gap: 16 }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, cursor: "pointer" }}>
+            <input
+              type="radio"
+              name="asset_media_source"
+              checked={source === "upload"}
+              onChange={() => set("asset_media_source", "upload")}
+            />
+            アップロード
+          </label>
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, cursor: "pointer" }}>
+            <input
+              type="radio"
+              name="asset_media_source"
+              checked={source === "external_url"}
+              onChange={() => set("asset_media_source", "external_url")}
+            />
+            外部URL
+          </label>
+        </div>
+        <div style={hintText}>
+          外部URL: 大容量動画を外部ストレージ/CDN に置き、Whale Studio には URL とメタのみ保存します（本体は保存しません）。
+        </div>
+      </div>
+
+      {/* ── 動画URL ── */}
+      <div className="form-group">
+        <label style={fieldLabel} htmlFor="asset_url_video">
+          動画 URL <RequiredMark />
+        </label>
+        <input
+          id="asset_url_video"
+          type="url"
+          className="form-input"
+          value={form.asset_url}
+          onChange={(e) => set("asset_url", e.target.value)}
+          placeholder="https://example.com/video.mp4"
+          style={{ fontFamily: "monospace", fontSize: 13 }}
+        />
+        {/* アップロード選択時のみ直接アップロード（既存挙動）。成功で URL 欄へ反映し source=upload を明示。 */}
+        {source === "upload" && (
+          <MediaUploadButton
+            mediaType="video"
+            oaId={oaId}
+            workId={workId}
+            onUploaded={(url) => { set("asset_url", url); set("asset_media_source", "upload"); }}
+          />
+        )}
+        <div>
+          <button type="button" style={probeBtnStyle} disabled={probing} onClick={() => runProbe(form.asset_url, "video")}>
+            {probing ? "確認中…" : "サイズ確認"}
+          </button>
+        </div>
+        {videoProbeMsg && <div style={{ ...checkNotice[videoProbeMsg.level], marginTop: 6 }}>{videoProbeMsg.text}</div>}
+        {/* 再生確認用プレーヤー（http(s) URL のときのみ）。サムネがあれば poster に使う。 */}
+        {/^https?:\/\//i.test(form.asset_url.trim()) && (
+          <div style={{ marginTop: 10 }}>
+            <div style={hintText}>プレビュー（再生確認）</div>
+            <video
+              key={form.asset_url}
+              src={form.asset_url.trim()}
+              poster={form.asset_preview_url.trim() || undefined}
+              controls
+              preload="metadata"
+              style={{ width: "100%", maxWidth: 320, marginTop: 4, borderRadius: 8, background: "#000" }}
+            >
+              お使いのブラウザは動画の再生に対応していません。
+            </video>
+          </div>
+        )}
+      </div>
+
+      {/* ── サムネイルURL ── */}
+      <div className="form-group">
+        <label style={fieldLabel} htmlFor="asset_preview_url_video">
+          サムネイル画像 URL（LINE動画のプレビュー）{usage === "line_video" ? <RequiredMark /> : <span style={{ color: "#9ca3af", fontWeight: 400 }}>（任意）</span>}
+        </label>
+        <input
+          id="asset_preview_url_video"
+          type="url"
+          className="form-input"
+          value={form.asset_preview_url}
+          onChange={(e) => set("asset_preview_url", e.target.value)}
+          placeholder="https://example.com/thumbnail.jpg"
+          style={{ fontFamily: "monospace", fontSize: 13 }}
+        />
+        <div style={hintText}>
+          LINE動画メッセージの previewImageUrl に使用（JPEG/PNG・最大1MB）。アップロード動画でも設定できます。
+        </div>
+        <div>
+          <button type="button" style={probeBtnStyle} disabled={probing} onClick={() => runProbe(form.asset_preview_url, "preview")}>
+            {probing ? "確認中…" : "サムネのサイズ確認"}
+          </button>
+        </div>
+        {previewProbeMsg && <div style={{ ...checkNotice[previewProbeMsg.level], marginTop: 6 }}>{previewProbeMsg.text}</div>}
+        {/^https?:\/\//i.test(form.asset_preview_url.trim()) && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={form.asset_preview_url.trim()}
+            alt="サムネイルプレビュー"
+            style={{ maxWidth: 160, marginTop: 8, borderRadius: 6, border: "1px solid #e5e7eb" }}
+            onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+          />
+        )}
+      </div>
+
+      {/* ── 用途 ── */}
+      <div className="form-group">
+        <label style={fieldLabel} htmlFor="asset_usage_video">用途</label>
+        <select
+          id="asset_usage_video"
+          className="form-input"
+          value={form.asset_usage || "line_video"}
+          onChange={(e) => set("asset_usage", e.target.value)}
+        >
+          {VIDEO_USAGE_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>{o.label}</option>
+          ))}
+        </select>
+        <div style={hintText}>{VIDEO_USAGE_OPTIONS.find((o) => o.value === usage)?.help}</div>
+      </div>
+
+      {/* ── バリデーション表示（media-validation と整合）──
+           external_url は error を赤（保存ブロック）。upload/既存は保存を止めないため warning 表示に寄せる。 */}
+      {issues.map((iss, i) => {
+        const asError = isExternal && iss.level === "error";
+        return (
+          <div key={`${iss.code}-${i}`} style={{ ...(asError ? errorNotice : checkNotice.warn), marginBottom: 8 }}>
+            {iss.message}
+          </div>
+        );
+      })}
+
+      {/* 既存/アップロード動画で LINE video 用途かつサムネ未設定のときの明示（保存は可・送信はリンク誘導）。 */}
+      {!isExternal && usage === "line_video" && !previewSet && (
+        <div style={{ ...checkNotice.warn, marginBottom: 8 }}>
+          サムネイル未設定のため、この動画は LINE トークでは動画メッセージとして送信されず、リンク誘導になります。
+          LINE動画として送るには、上のサムネイル画像 URL を設定してください（後から追加できます）。
+        </div>
+      )}
+      {usage === "liff_playback" && (
+        <div style={{ ...checkNotice.muted, marginBottom: 8 }}>
+          LIFF再生用途です。LINEトークでは動画メッセージにならず、リンク誘導として扱われます。
+        </div>
+      )}
+      {usage === "cms_preview" && (
+        <div style={{ ...checkNotice.muted, marginBottom: 8 }}>
+          CMSプレビュー用途です。LINE動画としては送信されません。
+        </div>
+      )}
+    </>
+  );
+}
 
 // 長めの補足説明を「詳細」トグルに畳む（UI のみ・既定は閉じる）。
 // 警告/エラーに見えないよう、トグル・本文とも薄いグレー・本文より控えめなサイズにする。
@@ -5618,42 +5900,8 @@ export function MessageForm({
             {/* ── 動画 ── */}
             {mtype === "video" && (
               <>
-                <div className="form-group">
-                  <label style={fieldLabel} htmlFor="asset_url_video">
-                    動画 URL <RequiredMark />
-                  </label>
-                  <input
-                    id="asset_url_video"
-                    type="url"
-                    className="form-input"
-                    value={form.asset_url}
-                    onChange={(e) => set("asset_url", e.target.value)}
-                    placeholder="https://example.com/video.mp4"
-                    style={{ fontFamily: "monospace", fontSize: 13 }}
-                  />
-                  {/* 直接アップロード（成功時に上の URL 欄へ反映）。手入力も引き続き可能。 */}
-                  <MediaUploadButton
-                    mediaType="video"
-                    oaId={oaId}
-                    workId={workId}
-                    onUploaded={(url) => set("asset_url", url)}
-                  />
-                  {/* 再生確認用プレーヤー（http(s) URL のときのみ）。読み込み失敗してもクラッシュしない。 */}
-                  {/^https?:\/\//i.test(form.asset_url.trim()) && (
-                    <div style={{ marginTop: 10 }}>
-                      <div style={hintText}>プレビュー（再生確認）</div>
-                      <video
-                        key={form.asset_url}
-                        src={form.asset_url.trim()}
-                        controls
-                        preload="metadata"
-                        style={{ width: "100%", maxWidth: 320, marginTop: 4, borderRadius: 8, background: "#000" }}
-                      >
-                        お使いのブラウザは動画の再生に対応していません。
-                      </video>
-                    </div>
-                  )}
-                </div>
+                {/* 動画メディア設定（メディアソース/URL/サムネ/用途/サイズ確認/検証） */}
+                <VideoMediaSection form={form} set={set} oaId={oaId} workId={workId} />
                 <div className="form-group" style={{ marginBottom: 0 }}>
                   <label style={fieldLabel} htmlFor="notify_text_video">
                     通知メッセージ（任意）

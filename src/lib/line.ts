@@ -276,7 +276,8 @@ export function resolveHeadSendDelayMs(message: { _lagMs?: number } | null | und
 //   正式対応（専用 LINE 型に変換）:
 //     text      → LineTextMessage   （body 必須）
 //     image     → LineImageMessage  （asset_url 必須）
-//     video     → LineVideoMessage  （asset_url 必須）
+//     video     → LineVideoMessage  （asset_url 必須 + asset_preview_url 必須。previewImageUrl に mp4 は流用しない。
+//                                     asset_usage="liff_playback" / サムネ未設定 → LINE video 送信せずリンク誘導テキスト）
 //   フォールバック（text 代替送信）:
 //     flex / carousel / voice / riddle / 未知型
 //     → alt_text or body をテキスト送信。carousel の body は JSON の可能性があるため alt_text 優先。
@@ -302,6 +303,10 @@ type ConvertibleMessage = {
   mtype:      string;
   body:       string | null;
   asset_url:  string | null;
+  /** 動画の previewImageUrl 専用サムネ URL（JPEG/PNG）。null/未設定なら LINE video は送らない（mp4 を流用しない）。 */
+  asset_preview_url?: string | null;
+  /** メディア用途。"line_video" | "liff_playback" | "cms_preview" | null。liff_playback は LINE video 送信しない。 */
+  asset_usage?: string | null;
   alt_text:   string | null;
   /** Flex Message の contents JSON (messageType="flex" のときのみ使用)。bubble/carousel または flex 全体。 */
   flexPayloadJson?: string | null;
@@ -395,6 +400,8 @@ function convertMessageToLine(
   vars:    PlaceholderVars = {},
 ): LineMessage | null {
   const { id, kind, mtype, body, asset_url, alt_text, flexPayloadJson, sender, quickReply, lagMs, timing } = msg;
+  const assetPreviewUrl = msg.asset_preview_url ?? null;
+  const assetUsage      = msg.asset_usage ?? null;
   const isPuzzle = kind === "puzzle";
 
   /** LINE メッセージ共通フィールドを付与するヘルパー */
@@ -444,7 +451,25 @@ function convertMessageToLine(
     return null;
   }
   if (mtype === "video") {
-    if (asset_url) return attach({ type: "video", originalContentUrl: asset_url, previewImageUrl: asset_url } as LineVideoMessage);
+    if (asset_url) {
+      // LINE video として送るのは「line_video 用途 or 用途未指定(従来)」かつ有効なサムネ URL があるときのみ。
+      // previewImageUrl に mp4 の asset_url を流用しない（LINE 仕様: previewImageUrl は JPEG/PNG・最大1MB）。
+      // サムネ未設定 / liff_playback 用途（200MB 超などで LINE video 不可）は、LINE video を送らず
+      // テキスト＋リンク誘導へ安全にフォールバックする（= 仕様違反の壊れたサムネ送信を防ぐ）。
+      const hasValidPreview = !!assetPreviewUrl && /^https:\/\//i.test(assetPreviewUrl);
+      if (assetUsage !== "liff_playback" && hasValidPreview) {
+        return attach({ type: "video", originalContentUrl: asset_url, previewImageUrl: assetPreviewUrl! } as LineVideoMessage);
+      }
+      if (assetUsage === "liff_playback") {
+        console.info(`[${caller}] video(usage=liff_playback) は LINE video 送信せずリンク誘導 id=${id.slice(0, 8)}`);
+      } else {
+        console.warn(`[${caller}] video の previewImageUrl(サムネ) 未設定/不正のため LINE video 送信せずリンク誘導 id=${id.slice(0, 8)} phase=${phaseId.slice(0, 8)}`);
+      }
+      const base = body || alt_text || "動画はこちらからご覧いただけます";
+      // asset_url が https のときのみリンクを添える（LINE がテキスト中の URL を自動リンク化する）。
+      const guideText = /^https:\/\//i.test(asset_url) ? `${base}\n${asset_url}` : base;
+      return attach({ type: "text", text: replacePlaceholders(truncateText(guideText), vars) } as LineTextMessage);
+    }
     // puzzle の video で asset_url が空 → body or alt_text をテキストフォールバック
     if (isPuzzle) {
       const fb = body || alt_text || "この謎を解いてください";
@@ -1245,6 +1270,8 @@ export function buildPhaseMessages(
       mtype:     msg.message_type as string,
       body:      msg.body,
       asset_url: msg.asset_url,
+      asset_preview_url: msg.asset_preview_url ?? null,
+      asset_usage:       msg.asset_usage ?? null,
       alt_text:  msg.alt_text,
       flexPayloadJson: msg.flex_payload_json,
       imageAction: msg.image_action_type ? {
@@ -1443,6 +1470,10 @@ export type KeywordMessageRecord = {
   messageType:     string;
   body:            string | null;
   assetUrl:        string | null;
+  /** 動画の previewImageUrl 専用サムネ URL（JPEG/PNG）。null なら LINE video 送信しない（mp4 流用しない）。 */
+  assetPreviewUrl?: string | null;
+  /** メディア用途。"line_video" | "liff_playback" | "cms_preview" | null。liff_playback は LINE video 送信しない。 */
+  assetUsage?:     string | null;
   altText:         string | null;
   flexPayloadJson: string | null;
   /** DB の quickReplies カラム（JSON 文字列）。parse して LineQuickReply に変換する */
@@ -1528,6 +1559,8 @@ export function buildKeywordMessages(
       mtype:     msg.messageType as string,
       body:      msg.body,
       asset_url: msg.assetUrl,
+      asset_preview_url: msg.assetPreviewUrl ?? null,
+      asset_usage:       msg.assetUsage ?? null,
       alt_text:  msg.altText,
       flexPayloadJson: msg.flexPayloadJson,
       imageAction: msg.imageActionType ? {

@@ -16,6 +16,7 @@ import type { MessageTimingConfig, ReadReceiptMode } from "@/types";
 // webhook 側 BEACON_MSG_SELECT と同一カラム集合。
 const BEACON_MSG_SELECT = {
   id: true, messageType: true, body: true, assetUrl: true, altText: true, flexPayloadJson: true,
+  assetPreviewUrl: true, assetUsage: true,
   quickReplies: true, nextMessageId: true, sortOrder: true,
   imageActionType: true, imageActionText: true, imageActionUrl: true,
   imageActionLiffPageId: true, imageActionPostbackData: true,

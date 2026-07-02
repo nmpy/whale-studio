@@ -562,6 +562,8 @@ const START_MSG_SELECT = {
   messageType:     true,
   body:            true,
   assetUrl:        true,
+  assetPreviewUrl: true,
+  assetUsage:      true,
   altText:         true,
   flexPayloadJson: true,
   quickReplies:    true,
@@ -633,6 +635,7 @@ async function getCachedStartMsgs(
  */
 const BEACON_MSG_SELECT = {
   id: true, messageType: true, body: true, assetUrl: true, altText: true, flexPayloadJson: true,
+  assetPreviewUrl: true, assetUsage: true,
   quickReplies: true, nextMessageId: true, sortOrder: true,
   // 問題のヒント QR 合成用（beacon target chain 内の puzzle 対応）
   kind: true, hintMode: true, incorrectQuickReplies: true,
@@ -981,6 +984,7 @@ async function buildMessageChain(
         where: { id: current.nextMessageId, isActive: true },
         select: {
           id: true, messageType: true, body: true, assetUrl: true,
+          assetPreviewUrl: true, assetUsage: true,
           altText: true, flexPayloadJson: true, quickReplies: true,
           nextMessageId: true, sortOrder: true,
           // 問題のヒント QR 合成用（chain 内に puzzle が来てもヒントを付ける）
@@ -1031,6 +1035,8 @@ async function buildMessageChain(
     messageType:     r.messageType,
     body:            r.body,
     assetUrl:        r.assetUrl,
+    assetPreviewUrl: (r as { assetPreviewUrl?: string | null }).assetPreviewUrl ?? null,
+    assetUsage:      (r as { assetUsage?: string | null }).assetUsage ?? null,
     altText:         r.altText,
     flexPayloadJson: r.flexPayloadJson,
     quickReplies:    r.quickReplies,
@@ -1068,6 +1074,7 @@ async function buildMessageChain(
 /** ヒント「問題に戻る」で問題を再表示する際の message select（buildMessageChain 互換）。 */
 const BACK_TO_PUZZLE_MSG_SELECT = {
   id: true, messageType: true, body: true, assetUrl: true,
+  assetPreviewUrl: true, assetUsage: true,
   altText: true, flexPayloadJson: true, quickReplies: true,
   nextMessageId: true, sortOrder: true,
   kind: true, hintMode: true, incorrectQuickReplies: true,
@@ -2257,6 +2264,7 @@ async function deliverQrBranch(args: {
   // これがないと response_message の per-message timing が runtime まで届かない。
   const MSG_SELECT = {
     id: true, messageType: true, body: true, assetUrl: true,
+    assetPreviewUrl: true, assetUsage: true,
     altText: true, flexPayloadJson: true, quickReplies: true,
     nextMessageId: true, sortOrder: true,
     // 問題（puzzle）のヒント QR 合成用（target_message_id → puzzle で必須）
@@ -2630,6 +2638,7 @@ async function handleTextEvent({
           where: { id: waiting.nextMessageId, isActive: true },
           select: {
             id: true, messageType: true, body: true, assetUrl: true,
+            assetPreviewUrl: true, assetUsage: true,
             altText: true, flexPayloadJson: true, quickReplies: true,
             nextMessageId: true, sortOrder: true,
             // 問題のヒント QR 合成用（自由入力の次メッセージが puzzle のとき対応）

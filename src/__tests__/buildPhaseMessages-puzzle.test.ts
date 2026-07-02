@@ -90,12 +90,23 @@ describe("A. 正式対応 type の正常変換", () => {
     expect(result[0].type).toBe("image");
   });
 
-  it("video + asset_url → video LINE メッセージ", () => {
+  it("video + asset_url + サムネ → video LINE メッセージ（previewImageUrl はサムネ・mp4 を流用しない）", () => {
     const result = buildPhaseMessages(makePhase([
-      makeMsg({ id: "v1", message_type: "video", body: null, asset_url: "https://example.com/vid.mp4" }),
+      makeMsg({ id: "v1", message_type: "video", body: null, asset_url: "https://example.com/vid.mp4", asset_preview_url: "https://example.com/thumb.jpg" }),
     ]));
     expect(result).toHaveLength(1);
     expect(result[0].type).toBe("video");
+    const vid = result[0] as { originalContentUrl: string; previewImageUrl: string };
+    expect(vid.originalContentUrl).toBe("https://example.com/vid.mp4");
+    expect(vid.previewImageUrl).toBe("https://example.com/thumb.jpg");
+  });
+
+  it("video + asset_url + サムネ未設定 → LINE video 送信せずリンク誘導テキスト", () => {
+    const result = buildPhaseMessages(makePhase([
+      makeMsg({ id: "v2", message_type: "video", body: null, asset_url: "https://example.com/vid.mp4" }),
+    ]));
+    expect(result).toHaveLength(1);
+    expect(result[0].type).toBe("text");
   });
 });
 
