@@ -276,8 +276,9 @@ export function resolveHeadSendDelayMs(message: { _lagMs?: number } | null | und
 //   正式対応（専用 LINE 型に変換）:
 //     text      → LineTextMessage   （body 必須）
 //     image     → LineImageMessage  （asset_url 必須）
-//     video     → LineVideoMessage  （asset_url 必須 + asset_preview_url 必須。previewImageUrl に mp4 は流用しない。
-//                                     asset_usage="liff_playback" / サムネ未設定 → LINE video 送信せずリンク誘導テキスト）
+//     video     → LineVideoMessage  （asset_url 必須。previewImageUrl は 専用サムネ(https)→Cloudinaryフレーム画像
+//                                     →(最後の手段)asset_url の順で解決。mp4 をそのまま previewImageUrl に流用しない。
+//                                     例外: asset_usage="liff_playback" のみ LINE video を送らずリンク誘導テキスト）
 //   フォールバック（text 代替送信）:
 //     flex / carousel / voice / riddle / 未知型
 //     → alt_text or body をテキスト送信。carousel の body は JSON の可能性があるため alt_text 優先。
@@ -385,6 +386,41 @@ export function buildImageActionFlex(args: {
 }
 
 /**
+ * Cloudinary の動画配信URL(/video/upload/…mp4 等) から、フレーム画像(JPEG)の URL を生成する。
+ * LINE video message の previewImageUrl は画像(JPEG/PNG)である必要があるため、専用サムネが無い
+ * アップロード動画では mp4 をそのまま流用せず、この関数で生成した画像URLをサムネに使う。
+ *
+ * 例: https://res.cloudinary.com/<cloud>/video/upload/v123/name.mp4
+ *   → https://res.cloudinary.com/<cloud>/video/upload/so_0,w_1280,c_limit,q_auto/v123/name.jpg
+ * （so_0=先頭フレーム / w_1280,c_limit=長辺制限 / q_auto=品質自動 で previewImageUrl の 1MB 制約に収める）
+ *
+ * Cloudinary の video 配信URLでない、または拡張子が動画でない場合は null を返す（呼び出し元でフォールバック）。
+ */
+export function cloudinaryVideoPosterUrl(videoUrl: string | null | undefined): string | null {
+  if (!videoUrl) return null;
+  const noQuery = videoUrl.trim().split(/[?#]/)[0];
+  const m = noQuery.match(
+    /^(https:\/\/res\.cloudinary\.com\/[^/]+\/video\/upload\/)(.+)\.(mp4|mov|webm|m4v|avi|mkv)$/i,
+  );
+  if (!m) return null;
+  const [, base, rest] = m;
+  return `${base}so_0,w_1280,c_limit,q_auto/${rest}.jpg`;
+}
+
+/**
+ * 動画の previewImageUrl を解決する。
+ *   1. 専用サムネ(https) があればそれを優先
+ *   2. Cloudinary 動画URLなら生成したフレーム画像(JPEG)を使う（mp4 を流用しない）
+ *   3. どちらも不可なら最後の手段として asset_url を使う（従来挙動・非Cloudinary アップロード等）
+ */
+function resolveVideoPreviewUrl(assetUrl: string, dedicatedPreview: string | null | undefined): string {
+  if (dedicatedPreview && /^https:\/\//i.test(dedicatedPreview)) return dedicatedPreview;
+  const poster = cloudinaryVideoPosterUrl(assetUrl);
+  if (poster) return poster;
+  return assetUrl;
+}
+
+/**
  * 単一メッセージを LineMessage に変換する。
  * 変換不能な場合は null を返し、呼び出し元がスキップする。
  *
@@ -452,23 +488,24 @@ function convertMessageToLine(
   }
   if (mtype === "video") {
     if (asset_url) {
-      // LINE video として送るのは「line_video 用途 or 用途未指定(従来)」かつ有効なサムネ URL があるときのみ。
-      // previewImageUrl に mp4 の asset_url を流用しない（LINE 仕様: previewImageUrl は JPEG/PNG・最大1MB）。
-      // サムネ未設定 / liff_playback 用途（200MB 超などで LINE video 不可）は、LINE video を送らず
-      // テキスト＋リンク誘導へ安全にフォールバックする（= 仕様違反の壊れたサムネ送信を防ぐ）。
-      const hasValidPreview = !!assetPreviewUrl && /^https:\/\//i.test(assetPreviewUrl);
-      if (assetUsage !== "liff_playback" && hasValidPreview) {
-        return attach({ type: "video", originalContentUrl: asset_url, previewImageUrl: assetPreviewUrl! } as LineVideoMessage);
-      }
+      // hotfix: アップロード済み動画・通常の動画メッセージは LINE の video message として送る（既存挙動の復旧）。
+      //   previewImageUrl は専用サムネ(JPEG/PNG・https)があればそれを優先し、無ければ従来どおり
+      //   動画 URL(asset_url) を流用する（アップロード済み mp4 は原則 video として直接再生させる）。
+      //   PR #501 でサムネ未設定を text リンク誘導に落としていたが、既存のアップロード動画まで
+      //   URL テキスト化してしまう本番不具合となったため復旧する。
+      // 例外: asset_usage="liff_playback"（外部URL・大容量/200MB 超を LIFF/外部ページで再生する用途）だけは
+      //   LINE video を送らず、テキスト＋リンク誘導にフォールバックする（PR #501 の外部URL/LIFF再生機能を維持）。
       if (assetUsage === "liff_playback") {
         console.info(`[${caller}] video(usage=liff_playback) は LINE video 送信せずリンク誘導 id=${id.slice(0, 8)}`);
-      } else {
-        console.warn(`[${caller}] video の previewImageUrl(サムネ) 未設定/不正のため LINE video 送信せずリンク誘導 id=${id.slice(0, 8)} phase=${phaseId.slice(0, 8)}`);
+        const base = body || alt_text || "動画はこちらからご覧いただけます";
+        // asset_url が https のときのみリンクを添える（LINE がテキスト中の URL を自動リンク化する）。
+        const guideText = /^https:\/\//i.test(asset_url) ? `${base}\n${asset_url}` : base;
+        return attach({ type: "text", text: replacePlaceholders(truncateText(guideText), vars) } as LineTextMessage);
       }
-      const base = body || alt_text || "動画はこちらからご覧いただけます";
-      // asset_url が https のときのみリンクを添える（LINE がテキスト中の URL を自動リンク化する）。
-      const guideText = /^https:\/\//i.test(asset_url) ? `${base}\n${asset_url}` : base;
-      return attach({ type: "text", text: replacePlaceholders(truncateText(guideText), vars) } as LineTextMessage);
+      // previewImageUrl は専用サムネ→Cloudinaryフレーム画像→(最後の手段)asset_url の順で解決する。
+      // mp4 をそのまま previewImageUrl に流用しない（Cloudinary 動画は画像フレームURLを生成）。
+      const preview = resolveVideoPreviewUrl(asset_url, assetPreviewUrl);
+      return attach({ type: "video", originalContentUrl: asset_url, previewImageUrl: preview } as LineVideoMessage);
     }
     // puzzle の video で asset_url が空 → body or alt_text をテキストフォールバック
     if (isPuzzle) {

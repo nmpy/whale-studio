@@ -64,12 +64,16 @@ describe("buildKeywordMessages — 正式対応 type", () => {
     expect(vid.previewImageUrl).toBe("https://example.com/thumb.jpg");
   });
 
-  it("video + assetUrl + サムネ未設定 → LINE video 送信せずリンク誘導テキスト", () => {
-    const result = buildKeywordMessages([makeKwMsg({ messageType: "video", body: null, assetUrl: "https://example.com/vid.mp4" })]);
+  it("video + assetUrl(Cloudinary) + サムネ未設定 → video LINE メッセージ（previewImageUrl は生成画像・mp4流用しない）", () => {
+    const mp4 = "https://res.cloudinary.com/duvd61vx6/video/upload/v1/vid.mp4";
+    const result = buildKeywordMessages([makeKwMsg({ messageType: "video", body: null, assetUrl: mp4 })]);
     expect(result).toHaveLength(1);
-    expect(result[0].type).toBe("text");
-    const txt = result[0] as { text: string };
-    expect(txt.text).toContain("https://example.com/vid.mp4");
+    expect(result[0].type).toBe("video");
+    const vid = result[0] as { originalContentUrl: string; previewImageUrl: string };
+    expect(vid.originalContentUrl).toBe(mp4);
+    // サムネ未設定でも URLテキストに落とさず video を維持。previewImageUrl は生成した画像URL(mp4でない)
+    expect(vid.previewImageUrl).not.toBe(mp4);
+    expect(vid.previewImageUrl.endsWith(".jpg")).toBe(true);
   });
 
   it("video + assetUsage=liff_playback → LINE video 送信せずリンク誘導テキスト", () => {

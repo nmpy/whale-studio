@@ -101,12 +101,17 @@ describe("A. 正式対応 type の正常変換", () => {
     expect(vid.previewImageUrl).toBe("https://example.com/thumb.jpg");
   });
 
-  it("video + asset_url + サムネ未設定 → LINE video 送信せずリンク誘導テキスト", () => {
+  it("video + asset_url(Cloudinary) + サムネ未設定 → video LINE メッセージ（previewImageUrl は生成画像・mp4流用しない）", () => {
+    const mp4 = "https://res.cloudinary.com/duvd61vx6/video/upload/v1/vid.mp4";
     const result = buildPhaseMessages(makePhase([
-      makeMsg({ id: "v2", message_type: "video", body: null, asset_url: "https://example.com/vid.mp4" }),
+      makeMsg({ id: "v2", message_type: "video", body: null, asset_url: mp4 }),
     ]));
     expect(result).toHaveLength(1);
-    expect(result[0].type).toBe("text");
+    expect(result[0].type).toBe("video");
+    const vid = result[0] as { originalContentUrl: string; previewImageUrl: string };
+    expect(vid.originalContentUrl).toBe(mp4);
+    expect(vid.previewImageUrl).not.toBe(mp4);
+    expect(vid.previewImageUrl.endsWith(".jpg")).toBe(true);
   });
 });
 
