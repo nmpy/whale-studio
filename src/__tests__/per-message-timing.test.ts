@@ -94,7 +94,7 @@ describe("msgToAdditionalSlot — Message API response から AdditionalMessageS
     expect(slot.read_delay_ms).toBe("0");  // 数値 0 → 文字列 "0" (= 空文字 inherit と区別)
   });
 
-  it("character_id null → CHAIN_SPEAKER_NONE (= キャラクターを選択しない)", () => {
+  it("character_id null → CHAIN_SPEAKER_NONE (= キャラクターを指定しない)", () => {
     const slot = msgToAdditionalSlot({ id: "m", character_id: null, message_type: "text" });
     expect(slot.character_id).toBe(CHAIN_SPEAKER_NONE);
   });
