@@ -13,6 +13,7 @@ import { describe, it, expect } from "vitest";
 import {
   msgToAdditionalSlot,
   additionalSlotToMsgBody,
+  CHAIN_SPEAKER_NONE,
   type AdditionalMessageSlot,
 } from "@/app/oas/[id]/works/[workId]/messages/_form-helpers";
 
@@ -93,9 +94,9 @@ describe("msgToAdditionalSlot — Message API response から AdditionalMessageS
     expect(slot.read_delay_ms).toBe("0");  // 数値 0 → 文字列 "0" (= 空文字 inherit と区別)
   });
 
-  it("character_id null → 空文字 (= 1 通目を引き継ぐシグナル)", () => {
+  it("character_id null → CHAIN_SPEAKER_NONE (= キャラクターを選択しない)", () => {
     const slot = msgToAdditionalSlot({ id: "m", character_id: null, message_type: "text" });
-    expect(slot.character_id).toBe("");
+    expect(slot.character_id).toBe(CHAIN_SPEAKER_NONE);
   });
 
   it("carousel 型は body を JSON parse して carousel_items に詰める", () => {
