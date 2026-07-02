@@ -135,8 +135,9 @@ export function cacheSize(): number {
 /**
  * Message shape version. RuntimePhaseMessage / KeywordMessageRecord に
  * free_input_enabled / freeInputEnabled が含まれるよう PR #147 (2026-05-31) で v2 に bump。
+ * asset_preview_url / asset_usage（外部URL動画のサムネ・用途）を含めるため v3 に bump。
  */
-const MESSAGE_SHAPE_VERSION = "v2";
+const MESSAGE_SHAPE_VERSION = "v3";
 
 export const CACHE_KEY = {
   oa:         (lineOaId:  string) => `oa:${lineOaId}`,

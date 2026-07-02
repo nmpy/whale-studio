@@ -91,6 +91,7 @@ async function isDuplicateSend(workId: string, lineUserId: string | null, target
 
 const MESSAGE_SELECT = {
   id: true, messageType: true, body: true, assetUrl: true, altText: true,
+  assetPreviewUrl: true, assetUsage: true,
   flexPayloadJson: true, quickReplies: true, nextMessageId: true, sortOrder: true,
   imageActionType: true, imageActionText: true, imageActionUrl: true,
   imageActionLiffPageId: true, imageActionPostbackData: true,
