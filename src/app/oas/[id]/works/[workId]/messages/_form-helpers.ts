@@ -18,6 +18,16 @@ import {
 
 // ── 型定義 (= _form.tsx と共有) ─────────────────────────────
 
+/**
+ * 2通目以降（チェーン）の発話キャラクター選択の UI 内部 sentinel。
+ * slot.character_id の値の意味:
+ *   ""                 = 1通目のキャラクターを引き継ぐ（従来どおり・新規既定）
+ *   CHAIN_SPEAKER_NONE = キャラクターを選択しない（保存時 null = デフォルト表示）
+ *   <characterId>      = 登録済みキャラクターを指定
+ * DB にはこの sentinel を保存しない（additionalSlotToMsgBody で null に変換する）。
+ */
+export const CHAIN_SPEAKER_NONE = "__none__";
+
 export type ExtendedMessageType = "text" | "image" | "video" | "voice" | "carousel" | "riddle" | "flex";
 
 export type MessageKindHelper =
@@ -41,7 +51,7 @@ export interface MessageCarouselCard {
 export interface AdditionalMessageSlot {
   /** 既存メッセージ ID (= 編集モードで chain 復元時に設定される)。空 = 新規 slot */
   existingId?:    string;
-  /** この発話のキャラクター ID (= 空文字なら 1 通目を引き継ぐ) */
+  /** この発話のキャラクター ID。"" = 1通目を引き継ぐ / CHAIN_SPEAKER_NONE = 選択しない(=null保存) / id = 指定 */
   character_id:   string;
   message_type:   ExtendedMessageType;
   body:           string;
@@ -202,7 +212,10 @@ export function msgToAdditionalSlot(msg: {
   }
   return {
     existingId:     msg.id ?? undefined,
-    character_id:   msg.character_id ?? "",
+    // 復元: null = 「キャラクターを選択しない」(sentinel) / id = 指定キャラ。
+    // （空文字 "" = 引き継ぎは新規 slot の初期値であり、DB には null か id しか入らない。
+    //   過去に「引き継ぐ」で保存されたものは実体 id として保存済みのため、そのキャラ選択で復元される。）
+    character_id:   msg.character_id ?? CHAIN_SPEAKER_NONE,
     message_type:   (msg.message_type as ExtendedMessageType) ?? "text",
     body:           msg.message_type === "carousel" ? "" : (msg.body ?? ""),
     asset_url:      msg.asset_url   ?? "",
@@ -308,8 +321,14 @@ export function additionalSlotToMsgBody(
   return {
     work_id:      main.work_id,
     phase_id:     main.phase_id,
-    // slot.character_id が空文字なら main を引き継ぐ
-    character_id: slot.character_id || main.character_id,
+    // 発話キャラクターの三分岐:
+    //   CHAIN_SPEAKER_NONE = 選択しない → null（デフォルト表示）
+    //   "" (空文字)        = 1通目を引き継ぐ → main.character_id（後方互換・従来どおり）
+    //   <characterId>      = 指定キャラ → その id
+    character_id:
+      slot.character_id === CHAIN_SPEAKER_NONE ? null
+      : slot.character_id ? slot.character_id
+      : main.character_id,
     kind:         main.kind,
     message_type: slot.message_type,
     body:
