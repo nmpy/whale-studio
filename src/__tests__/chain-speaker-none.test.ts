@@ -1,9 +1,9 @@
 /**
  * chain-speaker-none.test.ts
  *
- * 2通目以降（チェーン）の発話キャラクター選択に「キャラクターを選択しない」を追加した対応の検証。
+ * 2通目以降（チェーン）の発話キャラクター選択に「キャラクターを指定しない」を追加した対応の検証。
  *   ""                 = 1通目を引き継ぐ（従来・新規既定）
- *   CHAIN_SPEAKER_NONE = 選択しない（保存時 null）
+ *   CHAIN_SPEAKER_NONE = 指定しない（保存時 null）
  *   <characterId>      = 指定キャラ
  */
 import { describe, it, expect } from "vitest";
@@ -26,7 +26,7 @@ describe("additionalSlotToMsgBody — 発話キャラクターの三分岐（保
     expect(body.character_id).toBe("A");
   });
 
-  it("2: 1通目=A / 2通目=選択しない → null を保存", () => {
+  it("2: 1通目=A / 2通目=指定しない → null を保存", () => {
     const body = additionalSlotToMsgBody(slot({ message_type: "text", body: "x", character_id: CHAIN_SPEAKER_NONE }), mainWith("A"));
     expect(body.character_id).toBeNull();
   });
@@ -53,7 +53,7 @@ describe("新規 slot / 復元（msgToAdditionalSlot）", () => {
     expect(EMPTY_ADDITIONAL_SLOT.character_id).toBe("");
   });
 
-  it("6: 編集復元 character_id=null → CHAIN_SPEAKER_NONE（選択しない）", () => {
+  it("6: 編集復元 character_id=null → CHAIN_SPEAKER_NONE（指定しない）", () => {
     const s = msgToAdditionalSlot({ id: "m", character_id: null, message_type: "text" });
     expect(s.character_id).toBe(CHAIN_SPEAKER_NONE);
   });
@@ -63,7 +63,7 @@ describe("新規 slot / 復元（msgToAdditionalSlot）", () => {
     expect(s.character_id).toBe("B");
   });
 
-  it("復元→保存の往復: null → 選択しない → null（値が保たれる）", () => {
+  it("復元→保存の往復: null → 指定しない → null（値が保たれる）", () => {
     const s = msgToAdditionalSlot({ id: "m", character_id: null, message_type: "text", body: "x" });
     const body = additionalSlotToMsgBody(s, mainWith("A"));
     expect(body.character_id).toBeNull();

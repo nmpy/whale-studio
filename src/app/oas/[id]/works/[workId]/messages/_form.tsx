@@ -4102,7 +4102,7 @@ function buildPreviewChain(args: {
       carousel_card_type: s.carousel_card_type,
       carousel_cards:     s.carousel_cards,
       // 発話キャラクターの三分岐（AdditionalMessageBlock / additionalSlotToMsgBody と一致）:
-      //   「選択しない」(sentinel) → キャラなし（デフォルト表示）/ 空文字 → 1通目を引き継ぐ / id → 指定。
+      //   「指定しない」(sentinel) → キャラなし（デフォルト表示）/ 空文字 → 1通目を引き継ぐ / id → 指定。
       character_id:
         s.character_id === CHAIN_SPEAKER_NONE ? "" : (s.character_id || form.character_id),
       quick_replies:      dbRow?.quick_replies ?? [],
@@ -4258,7 +4258,7 @@ function AdditionalMessageBlock({
             onChange={(e) => onChange({ ...slot, character_id: e.target.value })}
           >
             <option value="">— 1通目のキャラクターを引き継ぐ —</option>
-            <option value={CHAIN_SPEAKER_NONE}>— キャラクターを選択しない —</option>
+            <option value={CHAIN_SPEAKER_NONE}>— キャラクターを指定しない —</option>
             {characters.map((ch) => (
               <option key={ch.id} value={ch.id}>{ch.name}</option>
             ))}
