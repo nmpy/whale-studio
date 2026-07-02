@@ -350,6 +350,25 @@ model Message {
   messageType           String   @default("text") @map("message_type")
   body                  String?
   assetUrl              String?  @map("asset_url")
+  /// メディアの保存方式: "upload" | "external_url"。null = 既存（= 従来のアップロード扱い）。
+  /// external_url = 動画/画像本体は外部ストレージ/CDN にあり、Whale Studio は URL とメタのみ保持。
+  assetMediaSource      String?  @map("asset_media_source")
+  /// 動画の previewImageUrl 専用（LINE video は JPEG/PNG・最大1MB のサムネ必須）。
+  /// mp4 の asset_url を previewImageUrl に流用しないため、サムネURLはこの列に保存する。
+  assetPreviewUrl       String?  @map("asset_preview_url")
+  /// メディア本体の MIME タイプ（例: "video/mp4" / "image/jpeg"）。
+  assetMimeType         String?  @map("asset_mime_type")
+  /// メディア本体のファイルサイズ（bytes）。LIFF 大容量(>2GB)も見据え BigInt。API 返却時は string/number に変換する。
+  assetFileSizeBytes    BigInt?  @map("asset_file_size_bytes")
+  /// 動画の尺（ミリ秒）。
+  assetDurationMs       Int?     @map("asset_duration_ms")
+  /// メディアの幅（px）。
+  assetWidth            Int?     @map("asset_width")
+  /// メディアの高さ（px）。
+  assetHeight           Int?     @map("asset_height")
+  /// メディアの用途: "line_video" | "liff_playback" | "cms_preview"。null = 既存（用途未指定）。
+  /// line_video 用途は 200MB 以下 mp4 + サムネ必須。liff_playback は 200MB 超許容だが LINE video としては送らない。
+  assetUsage            String?  @map("asset_usage")
   /// 応答キーワード（Bot がこのキーワードを受信したときに送信する）
   triggerKeyword        String?  @map("trigger_keyword")
   /// 送信対象セグメント（"all" | "not_started" | "in_progress" | "completed"）
