@@ -749,6 +749,10 @@ export interface RuntimePhaseMessage {
   message_type:      MessageType;
   body:              string | null;
   asset_url:         string | null;
+  /** 動画の previewImageUrl 専用サムネ URL（JPEG/PNG）。null なら LINE video 送信しない（mp4 流用しない）。 */
+  asset_preview_url?: string | null;
+  /** メディア用途。"line_video" | "liff_playback" | "cms_preview" | null。liff_playback は LINE video 送信しない。 */
+  asset_usage?:      string | null;
   /** Flex Message 代替テキスト（message_type = "flex" のとき使用） */
   alt_text:          string | null;
   /** Flex Message JSON ペイロード（message_type = "flex" のとき使用） */

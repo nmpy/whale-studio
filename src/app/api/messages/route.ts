@@ -17,6 +17,7 @@ import { activeCache, CACHE_KEY } from "@/lib/cache";
 import { trackOnboardingProgress } from "@/lib/onboarding";
 import { genRequestId, runWithRequestId, withTiming } from "@/lib/perf";
 import { messageToResponse as toResponse } from "@/lib/api/list-shapes";
+import { toBigIntOrNull } from "@/lib/media-validation";
 
 export const dynamic = "force-dynamic";
 
@@ -161,6 +162,14 @@ export const POST = withAuth(async (req, _ctx, user) => {
         kind:               data.kind,
         body:               data.body          ?? null,
         assetUrl:           data.asset_url     ?? null,
+        assetMediaSource:   data.asset_media_source ?? null,
+        assetPreviewUrl:    data.asset_preview_url  ?? null,
+        assetMimeType:      data.asset_mime_type    ?? null,
+        assetFileSizeBytes: toBigIntOrNull(data.asset_file_size_bytes),
+        assetDurationMs:    data.asset_duration_ms  ?? null,
+        assetWidth:         data.asset_width        ?? null,
+        assetHeight:        data.asset_height       ?? null,
+        assetUsage:         data.asset_usage        ?? null,
         triggerKeyword:     data.trigger_keyword ?? null,
         targetSegment:      data.target_segment  ?? null,
         notifyText:         data.notify_text     ?? null,

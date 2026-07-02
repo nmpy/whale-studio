@@ -87,6 +87,7 @@ describe("buildPhaseMessages — 個別 quickReply", () => {
         message_type:      "video",
         body:              null,
         asset_url:         "https://example.com/video.mp4",
+        asset_preview_url: "https://example.com/thumb.jpg",
         alt_text:          null,
         flex_payload_json: null,
         quick_replies:     [{ label: "続ける", action: "text", value: "続ける" }],
@@ -260,6 +261,7 @@ describe("buildKeywordMessages — quickReply", () => {
       messageType:  "video",
       body:         null,
       assetUrl:     "https://example.com/video.mp4",
+      assetPreviewUrl: "https://example.com/thumb.jpg",
       quickReplies: QR_ITEMS_JSON,
     })];
 

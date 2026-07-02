@@ -13,6 +13,7 @@ import { updateMessageSchema, formatZodErrors } from "@/lib/validations";
 import { ZodError } from "zod";
 import { activeCache, CACHE_KEY } from "@/lib/cache";
 import { parseAnswerMatchType, parsePuzzleAnswers } from "@/lib/puzzle-answer";
+import { toBigIntOrNull, bigintToJson } from "@/lib/media-validation";
 import { findExternalReferrers, REFERRER_KIND_LABEL, type RefMessage } from "@/lib/message-refs";
 
 // Next.js の自動 static 化を防ぐ。withAuth が headers/cookies を読むため通常は dynamic 扱いだが
@@ -35,6 +36,9 @@ const MESSAGE_INCLUDE = {
 type PrismaMessageWithRelations = {
   id: string; workId: string; phaseId: string | null; characterId: string | null;
   messageType: string; kind: string; body: string | null; assetUrl: string | null;
+  assetMediaSource: string | null; assetPreviewUrl: string | null; assetMimeType: string | null;
+  assetFileSizeBytes: bigint | null; assetDurationMs: number | null;
+  assetWidth: number | null; assetHeight: number | null; assetUsage: string | null;
   triggerKeyword: string | null; targetSegment: string | null;
   notifyText: string | null; riddleId: string | null;
   quickReplies: string | null; nextMessageId: string | null;
@@ -116,6 +120,14 @@ function toResponse(m: PrismaMessageWithRelations) {
     kind:                  m.kind,
     body:                  m.body,
     asset_url:             m.assetUrl,
+    asset_media_source:    m.assetMediaSource,
+    asset_preview_url:     m.assetPreviewUrl,
+    asset_mime_type:       m.assetMimeType,
+    asset_file_size_bytes: bigintToJson(m.assetFileSizeBytes),
+    asset_duration_ms:     m.assetDurationMs,
+    asset_width:           m.assetWidth,
+    asset_height:          m.assetHeight,
+    asset_usage:           m.assetUsage,
     trigger_keyword:       m.triggerKeyword,
     target_segment:        m.targetSegment,
     notify_text:           m.notifyText,
@@ -302,6 +314,14 @@ export const PATCH = withAuth<{ id: string }>(async (req, { params }, user) => {
         ...(data.kind            !== undefined && { kind:           data.kind }),
         ...(data.body            !== undefined && { body:           data.body }),
         ...(data.asset_url       !== undefined && { assetUrl:       data.asset_url }),
+        ...(data.asset_media_source    !== undefined && { assetMediaSource:   data.asset_media_source }),
+        ...(data.asset_preview_url     !== undefined && { assetPreviewUrl:    data.asset_preview_url }),
+        ...(data.asset_mime_type       !== undefined && { assetMimeType:      data.asset_mime_type }),
+        ...(data.asset_file_size_bytes !== undefined && { assetFileSizeBytes: toBigIntOrNull(data.asset_file_size_bytes) }),
+        ...(data.asset_duration_ms     !== undefined && { assetDurationMs:    data.asset_duration_ms }),
+        ...(data.asset_width           !== undefined && { assetWidth:         data.asset_width }),
+        ...(data.asset_height          !== undefined && { assetHeight:        data.asset_height }),
+        ...(data.asset_usage           !== undefined && { assetUsage:         data.asset_usage }),
         ...(data.trigger_keyword !== undefined && { triggerKeyword: data.trigger_keyword }),
         ...(data.target_segment  !== undefined && { targetSegment:  data.target_segment }),
         ...(data.notify_text     !== undefined && { notifyText:     data.notify_text }),

@@ -186,7 +186,7 @@ export function matchTransition<
  * webhook/cache から再利用できるよう export する。
  */
 export async function fetchPhaseWithIncludes(id: string) {
-  return prisma.phase.findUnique({
+  const phase = await prisma.phase.findUnique({
     where: { id },
     include: {
       messages: {
@@ -211,6 +211,20 @@ export async function fetchPhaseWithIncludes(id: string) {
       },
     },
   });
+  if (!phase) return phase;
+  // assetFileSizeBytes は BigInt。この戻り値は activeCache に格納され得る（webhook）。
+  // Upstash バックエンド時は JSON 直列化されるため BigInt のままだと直列化例外になる。
+  // 実行時に安全な number|null へ正規化する（byte 数は safe integer 内。ランタイム/送信は本値を参照しない）。
+  return {
+    ...phase,
+    messages: phase.messages.map((m) => ({
+      ...m,
+      assetFileSizeBytes:
+        m.assetFileSizeBytes == null ? null
+        : Number.isSafeInteger(Number(m.assetFileSizeBytes)) ? Number(m.assetFileSizeBytes)
+        : null,
+    })),
+  };
 }
 
 /** fetchPhaseWithIncludes の非 null 戻り値型（webhook / cache で共用）*/
@@ -297,6 +311,8 @@ function messageRowToRuntime(
     message_type:      m.messageType as MessageType,
     body:              m.body,
     asset_url:         m.assetUrl,
+    asset_preview_url: m.assetPreviewUrl ?? null,
+    asset_usage:       m.assetUsage      ?? null,
     alt_text:          m.altText         ?? null,
     flex_payload_json: m.flexPayloadJson ?? null,
     quick_replies:     quickReplies,
