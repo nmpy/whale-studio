@@ -4,6 +4,7 @@ import { describe, it, expect } from "vitest";
 import {
   loadChainSplit,
   buildChainSaveBody,
+  resolveBlockAutoTransitionPhaseId,
   chainErrorToMessage,
   sendSlotsForSave,
   type ChainMsgRow,
@@ -68,6 +69,29 @@ describe("loadChainSplit", () => {
   });
 });
 
+describe("resolveBlockAutoTransitionPhaseId — 読み戻しは末尾優先", () => {
+  it("連続なし: head の値を採用", () => {
+    expect(resolveBlockAutoTransitionPhaseId("phaseB", [])).toEqual({ value: "phaseB", conflict: false });
+  });
+  it("連続あり: 末尾スロットの値を採用（head は無視）", () => {
+    const r = resolveBlockAutoTransitionPhaseId("", [slot({ auto_transition_phase_id: "" }), slot({ auto_transition_phase_id: "phaseTail" })]);
+    expect(r).toEqual({ value: "phaseTail", conflict: false });
+  });
+  it("途中のみに値がある既存データ: その値を拾い conflict=false", () => {
+    const r = resolveBlockAutoTransitionPhaseId("", [slot({ auto_transition_phase_id: "mid" }), slot({ auto_transition_phase_id: "" })]);
+    expect(r.value).toBe("mid");
+    expect(r.conflict).toBe(false);
+  });
+  it("複数に矛盾値: 末尾優先で採用しつつ conflict=true", () => {
+    const r = resolveBlockAutoTransitionPhaseId("head", [slot({ auto_transition_phase_id: "tail" })]);
+    expect(r.value).toBe("tail");
+    expect(r.conflict).toBe(true);
+  });
+  it("どこにも値がない: 空・conflict=false", () => {
+    expect(resolveBlockAutoTransitionPhaseId("", [slot({}), slot({})])).toEqual({ value: "", conflict: false });
+  });
+});
+
 describe("buildChainSaveBody", () => {
   it("通常 chain: head + sendSlots を spec 化、応答なし", () => {
     const body = buildChainSaveBody({
@@ -82,6 +106,52 @@ describe("buildChainSaveBody", () => {
     expect(body.slots.map((s) => s.id)).toEqual(["s1", "s2"]);
     expect(body.free_input_response_id).toBeNull();
     expect(body.removed_message_ids).toEqual([]);
+  });
+
+  // ── 送信後の自動フェーズ移動（silent auto-transition）を末尾へ正規化 ──
+  it("Case1 連続なし: head に auto_transition_phase_id が保存される", () => {
+    const body = buildChainSaveBody({
+      workId: "w", headId: "h", headBody: { body: "案内", auto_transition_phase_id: "phaseB" },
+      headFreeInputEnabled: false, headFreeInputNextMessageId: "",
+      sendSlots: [], slotMain, initialSendSlotIds: [],
+    });
+    expect(body.head.auto_transition_phase_id).toBe("phaseB");
+  });
+
+  it("Case2 連続あり: 末尾スロットにのみ保存・head/途中は null", () => {
+    const body = buildChainSaveBody({
+      workId: "w", headId: "h", headBody: { body: "1", auto_transition_phase_id: "phaseB" },
+      headFreeInputEnabled: false, headFreeInputNextMessageId: "",
+      sendSlots: [slot({ existingId: "s1", body: "2" }), slot({ existingId: "s2", body: "3" })],
+      slotMain, initialSendSlotIds: ["s1", "s2"],
+    });
+    expect(body.head.auto_transition_phase_id).toBeNull();
+    expect(body.slots[0].auto_transition_phase_id).toBeNull();       // 途中
+    expect(body.slots[1].auto_transition_phase_id).toBe("phaseB");   // 末尾
+  });
+
+  it("Case3 移動しない: head/全スロットの auto_transition_phase_id が null", () => {
+    const body = buildChainSaveBody({
+      workId: "w", headId: "h", headBody: { body: "1", auto_transition_phase_id: null },
+      headFreeInputEnabled: false, headFreeInputNextMessageId: "",
+      // 既存で途中に値が残っていても解除で全 null になる
+      sendSlots: [slot({ existingId: "s1", auto_transition_phase_id: "old" }), slot({ existingId: "s2" })],
+      slotMain, initialSendSlotIds: ["s1", "s2"],
+    });
+    expect(body.head.auto_transition_phase_id).toBeNull();
+    expect(body.slots[0].auto_transition_phase_id).toBeNull();
+    expect(body.slots[1].auto_transition_phase_id).toBeNull();
+  });
+
+  it("Case4 途中に既存値: 保存時に末尾へ正規化され途中は null", () => {
+    const body = buildChainSaveBody({
+      workId: "w", headId: "h", headBody: { body: "1", auto_transition_phase_id: "phaseB" },
+      headFreeInputEnabled: false, headFreeInputNextMessageId: "",
+      sendSlots: [slot({ existingId: "s1", auto_transition_phase_id: "old-middle" }), slot({ existingId: "s2" })],
+      slotMain, initialSendSlotIds: ["s1", "s2"],
+    });
+    expect(body.slots[0].auto_transition_phase_id).toBeNull();      // 途中の旧値クリア
+    expect(body.slots[1].auto_transition_phase_id).toBe("phaseB");  // 末尾に正規化
   });
 
   it("削除されたスロットが removed_message_ids に入る", () => {

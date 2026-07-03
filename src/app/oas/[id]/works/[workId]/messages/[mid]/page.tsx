@@ -14,7 +14,7 @@ import {
   EMPTY_MESSAGE_FORM,
   type MessageFormState,
 } from "../_form";
-import { loadChainSplit, type ChainMsgRow } from "../_chain-edit";
+import { loadChainSplit, resolveBlockAutoTransitionPhaseId, type ChainMsgRow } from "../_chain-edit";
 import { submitChainSave, verifyFailedBanner } from "../_chain-submit";
 import { findReferrers, REFERRER_KIND_LABEL, type Referrer, type RefMessage } from "../_chain-refs";
 import { buildMessagesReturnHref } from "../_return-nav";
@@ -91,10 +91,17 @@ function EditMessagePageInner() {
         const form = msgToFormState(msg);
         // head 自体が freeInput プロンプトの legacy（next=応答）では応答 id を select に復元。
         const freeInputNextOverride = split.headFreeInputResponseId ?? form.free_input_next_message_id;
+        // 送信後の自動フェーズ移動: UI はブロック全体で1つ。保存は末尾に正規化しているため、
+        // 読み戻しも末尾優先で解決する（途中に値が残る既存データにも対応）。
+        const autoResolved = resolveBlockAutoTransitionPhaseId(form.auto_transition_phase_id, split.sendSlots);
+        if (autoResolved.conflict) {
+          console.warn(`[EditMessagePage] auto_transition_phase_id がブロック内の複数メッセージに存在。末尾優先で表示・次回保存で末尾へ正規化 messageId=${messageId.slice(0, 8)}`);
+        }
         setInitialForm({
           ...form,
           free_input_next_message_id: freeInputNextOverride,
           additionalMessages: split.sendSlots,
+          auto_transition_phase_id: autoResolved.value,
         });
       })
       .catch((e) => setLoadError(e instanceof Error ? e.message : "読み込みに失敗しました"));

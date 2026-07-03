@@ -130,6 +130,29 @@ export type ChainSaveBodyShape = {
   detached_message_ids: string[];
 };
 
+/**
+ * ブロック全体(head + sendSlots)の auto_transition_phase_id を1つに解決する（読み戻し用）。
+ * UI はブロック全体で1つだけ。保存時は末尾に正規化するため、読み戻しも「末尾優先」。
+ * 複数メッセージに値があれば conflict=true（UI は末尾優先で採用し、次回保存で末尾へ正規化される）。
+ */
+export function resolveBlockAutoTransitionPhaseId(
+  headValue: string | null | undefined,
+  sendSlots: AdditionalMessageSlot[],
+): { value: string; conflict: boolean } {
+  const all = [headValue ?? "", ...sendSlots.map((s) => s.auto_transition_phase_id ?? "")]
+    .map((v) => v.trim())
+    .filter(Boolean);
+  const uniq = Array.from(new Set(all));
+  if (uniq.length === 0) return { value: "", conflict: false };
+  // 末尾メッセージ = sendSlots があれば末尾 slot、無ければ head。
+  const tail = sendSlots.length > 0
+    ? (sendSlots[sendSlots.length - 1].auto_transition_phase_id ?? "").trim()
+    : (headValue ?? "").trim();
+  // 末尾に値があれば末尾優先。無ければ（途中のみに値がある既存データ）最後に見つかった値。
+  const value = tail || uniq[uniq.length - 1];
+  return { value, conflict: uniq.length > 1 };
+}
+
 /** 編集 form から PUT /api/messages/chain の body を構築する。 */
 export function buildChainSaveBody(args: BuildChainBodyArgs): ChainSaveBodyShape {
   const norm = (s: string | null | undefined): string | null => (s && s.trim() ? s : null);
@@ -138,6 +161,20 @@ export function buildChainSaveBody(args: BuildChainBodyArgs): ChainSaveBodyShape
     const body = additionalSlotToMsgBody(s, args.slotMain) as Record<string, unknown>;
     return s.existingId ? { ...body, id: s.existingId } : body;
   });
+
+  // ── 送信後の silent 自動フェーズ遷移をチェーン末尾へ正規化 ──
+  // UI はブロック全体で1つ（head の auto_transition_phase_id 経由で渡る）。保存時は
+  // 「メッセージ群をすべて送り終わった直後」に発火させるため、末尾メッセージにのみ値を寄せ、
+  // head / 途中スロットは null にする（途中送信で発火しないため）。空（移動しない）は全 null。
+  // これにより既存データで途中に値が残っていても、保存時に末尾へ正規化 / 解除時に全クリアされる。
+  const autoV = norm(args.headBody.auto_transition_phase_id as string | null | undefined);
+  const headBody: Record<string, unknown> = { ...args.headBody };
+  if (slots.length > 0) {
+    headBody.auto_transition_phase_id = null;
+    slots.forEach((b, i) => { b.auto_transition_phase_id = i === slots.length - 1 ? autoV : null; });
+  } else {
+    headBody.auto_transition_phase_id = autoV;
+  }
 
   // freeInput 応答 id: head が prompt なら head の next、そうでなければ prompt slot の next。
   let freeInputResponseId: string | null;
@@ -160,7 +197,7 @@ export function buildChainSaveBody(args: BuildChainBodyArgs): ChainSaveBodyShape
     work_id:                  args.workId,
     head_id:                  args.headId,
     expected_head_updated_at: args.expectedHeadUpdatedAt ?? null,
-    head:                     args.headBody,
+    head:                     headBody,
     slots,
     free_input_response_id:   freeInputResponseId,
     removed_message_ids,
