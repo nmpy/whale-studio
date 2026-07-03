@@ -6,6 +6,8 @@
 // 完全再現ではなく Whale Studio 管理画面トーンの簡易表現。X ロゴ等は使わない。
 
 import type { XPostStatus } from "@/types";
+import { XPostButton } from "@/components/x-posts/XPostButton";
+import { pickTrackingUrl, type XPostIntentInput } from "@/lib/x-posts/intent";
 
 const STATUS_LABEL: Record<XPostStatus, string> = {
   draft: "下書き", scheduled: "予約", posted: "投稿済み", archived: "アーカイブ",
@@ -22,6 +24,16 @@ export interface XPostPreviewCardProps {
   generatedUrl?: string;
   trackingUrl?: string | null;
   status?: XPostStatus;
+  /**
+   * 「この内容でXに投稿」導線用の保存済みデータ。
+   *   - object: そのデータで手動投稿ボタンを表示（編集中の未保存 state ではなく保存済み値）。
+   *   - null:   ボタンは表示するが無効（savedPostDisabledReason を理由に）。新規・保存前など。
+   *   - undefined: 導線セクション自体を表示しない（従来どおり）。
+   */
+  savedPost?: XPostIntentInput | null;
+  savedPostDisabledReason?: string | null;
+  /** 未保存の変更がある場合に true。保存を促す注意文言を出す。 */
+  unsavedChanges?: boolean;
 }
 
 export function XPostPreviewCard({
@@ -33,6 +45,9 @@ export function XPostPreviewCard({
   generatedUrl = "",
   trackingUrl = null,
   status = "draft",
+  savedPost,
+  savedPostDisabledReason = null,
+  unsavedChanges = false,
 }: XPostPreviewCardProps) {
   // 画像: アップロード画像 > 画像URL の優先順位。
   const displayImage = (uploadedImageUrl || "").trim() || (imageUrl || "").trim();
@@ -102,6 +117,24 @@ export function XPostPreviewCard({
       </div>
       {over && (
         <p className="mt-1 text-[11px] font-semibold text-warn">280文字を超えています。投稿前に調整してください。</p>
+      )}
+
+      {/* 手動投稿導線（保存済みデータで X の投稿作成画面を開く）。プレビュー確認直後に投稿できる。 */}
+      {savedPost !== undefined && (
+        <div className="mt-3 border-t border-line-2 pt-3">
+          <XPostButton
+            post={savedPost ?? {}}
+            label="この内容でXに投稿"
+            className="w-full justify-center"
+            disabledReason={savedPost === null ? savedPostDisabledReason : undefined}
+          />
+          {unsavedChanges && (
+            <p className="mt-1.5 text-[11px] text-warn">未保存の変更があります。保存すると投稿内容に反映されます。</p>
+          )}
+          {savedPost && pickTrackingUrl(savedPost) === "" && (
+            <p className="mt-1.5 text-[11px] text-ink-3">計測URLが未生成のため、クリック計測はできません。</p>
+          )}
+        </div>
       )}
     </div>
   );

@@ -13,6 +13,7 @@ import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
 import { getAuthHeaders } from "@/lib/api-client";
 import { ImageUploadField } from "@/components/ImageUploadField";
 import { XPostPreviewCard } from "@/components/x-posts/XPostPreviewCard";
+import { XPostButton } from "@/components/x-posts/XPostButton";
 import { parseImportFile } from "@/lib/x-posts/file-parse";
 import { buildUtmUrl, parseHashtagsInput } from "@/lib/x-posts/format";
 import type { XPost, XPostStatus, CreateXPostBody, XPostAnalytics, XPostSentiment } from "@/types";
@@ -167,12 +168,16 @@ function XPostsTab({
                   <span>クリック数: <strong>{p.click_count}</strong>（参考値）</span>
                 </div>
               </div>
-              {canEdit && (
-                <div className="flex flex-shrink-0 gap-2">
-                  <button type="button" onClick={() => setEditing(p)} className="btn btn-ghost btn-sm">編集</button>
-                  <button type="button" onClick={() => handleDelete(p)} className="btn btn-ghost btn-sm" style={{ color: "#dc2626" }}>削除</button>
-                </div>
-              )}
+              <div className="flex flex-shrink-0 gap-2">
+                {/* 手動投稿導線（別タブで X の投稿作成画面を開く）。編集権限に依らず表示（データ変更なし）。 */}
+                <XPostButton post={p} />
+                {canEdit && (
+                  <>
+                    <button type="button" onClick={() => setEditing(p)} className="btn btn-ghost btn-sm">編集</button>
+                    <button type="button" onClick={() => handleDelete(p)} className="btn btn-ghost btn-sm" style={{ color: "#dc2626" }}>削除</button>
+                  </>
+                )}
+              </div>
             </div>
           </div>
         ))
@@ -271,6 +276,24 @@ function XPostForm({
   }
 
   const previewImage = uploadedImageUrl.trim() || imageUrl.trim();
+
+  // 「この内容でXに投稿」導線用。編集中の未保存 state ではなく、保存済みデータ(post)を使う。
+  const savedXPost = isNew ? null : {
+    body: post?.body ?? null,
+    hashtags: post?.hashtags ?? [],
+    tracking_url: post?.tracking_url ?? null,
+    generated_url: post?.generated_url ?? null,
+    link_url: post?.link_url ?? null,
+  };
+  const savedXPostDisabledReason = isNew ? "保存するとXに投稿できます" : null;
+  // 未保存判定（簡易）: 投稿テキストに影響する項目のみ比較。true のとき保存を促す注意文言を出す。
+  const xPostUnsaved = !isNew && (
+    body !== (post?.body ?? "") ||
+    JSON.stringify(hashtags) !== JSON.stringify(post?.hashtags ?? []) ||
+    linkUrl !== (post?.link_url ?? "") ||
+    generatedUrl !== (post?.generated_url ?? "") ||
+    title !== (post?.title ?? "")
+  );
   const lbl = "block text-[12px] font-semibold text-ink-2 mb-1";
 
   return (
@@ -405,6 +428,9 @@ function XPostForm({
             generatedUrl={generatedUrl}
             trackingUrl={post?.tracking_url ?? null}
             status={status}
+            savedPost={savedXPost}
+            savedPostDisabledReason={savedXPostDisabledReason}
+            unsavedChanges={xPostUnsaved}
           />
         </div>
       </div>
