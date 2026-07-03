@@ -8,9 +8,9 @@ import { useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { OaHeaderActions } from "@/components/OaHeaderActions";
-import { workApi, oaApi, phaseApi, transitionApi, getDevToken } from "@/lib/api-client";
+import { workApi, oaApi, phaseApi, transitionApi, analyticsApi, getDevToken } from "@/lib/api-client";
 import type { WorkListItem } from "@/lib/api-client";
-import { HelpAccordion } from "@/components/HelpAccordion";
+import type { AnalyticsData } from "@/types";
 import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
 import { useEffectivePlanInfo } from "@/hooks/useEffectivePlanInfo";
 import { useIsMobile } from "@/hooks/useIsMobile";
@@ -27,7 +27,6 @@ import { useAccessPreview } from "@/hooks/useAccessPreview";
 import { StatusBadge } from "@/components/shared";
 import { isSpreadsheetImportEnabled } from "@/lib/spreadsheet-import/ui-text";
 import { computeWorkTopAlerts, hasStartEntry, type WorkTopAlertTone } from "@/lib/work-top-alerts";
-import { computePlayerSummary } from "@/lib/work-top-summary";
 import type { Role } from "@/lib/types/permissions";
 
 // ── ステータス → shared/StatusBadge tone マッピング ───────────────
@@ -95,6 +94,17 @@ export default function WorkHubPage() {
   const [showCreated,      setShowCreated]      = useState(false);
   // tester ロール向けプレビュー後アップグレードカード（dismissable）
   const [showUpgradeCard,  setShowUpgradeCard]  = useState(false);
+  // プレイヤー状況（簡易オーディエンス）。audience 画面と同じ GET /api/analytics を流用（workId スコープ）。
+  const [analytics,        setAnalytics]        = useState<AnalyticsData | null>(null);
+
+  // プレイヤー指標を非ブロッキングで取得（失敗しても作品トップ本体は表示する）。
+  useEffect(() => {
+    let alive = true;
+    analyticsApi.get(getDevToken(), workId)
+      .then((a) => { if (alive) setAnalytics(a); })
+      .catch(() => { if (alive) setAnalytics(null); });
+    return () => { alive = false; };
+  }, [workId]);
 
   // ?created=1 のとき初回バナーを表示
   useEffect(() => {
@@ -207,7 +217,6 @@ export default function WorkHubPage() {
     messages:        work?._count.messages ?? 0,
     basePath,
   });
-  const players = computePlayerSummary(work?.progress_stats);
   // よく使う操作（サイドバーと完全重複する一覧導線は避け、作業開始に直結する操作に絞る・最大4個）。
   // ※「プレビュー」は作品トップのクイック操作からは外す（実機/表示確認は別導線で行う）。
   const quickActions: { label: string; href: string }[] = [
@@ -379,27 +388,16 @@ export default function WorkHubPage() {
         </div>
       )}
 
-      {/* ── 使い方ガイド ── */}
-      <HelpAccordion items={[
-        { title: "この画面でできること", points: [
-          "シナリオを構成するキャラクター・フェーズ・メッセージをまとめて管理できます",
-          "公開ステータスの変更や、プレビュー機能への起点になります",
-        ]},
-        { title: "まず最初に決めること", points: [
-          "1. キャラクターを作成（送信者の名前・アイコン）",
-          "2. フェーズを作成（開始・通常・エンディング）",
-          "3. メッセージを追加してフェーズに紐づける",
-          "4. フェーズ管理で遷移（分岐）を設定する",
-        ]},
-        { title: "注意点", points: [
-          "公開ステータスが「公開中」のときだけ LINE からのメッセージに反応します",
-          "公開前に必ずプレビュー機能でシナリオの動作を確認してください",
-        ]},
-      ]} />
-
-      {/* ── コンテンツ量サマリー ── */}
+      {/* ── 設定状況（コンテンツ量サマリー）── */}
       {work && (
-        <div className="mb-4 overflow-hidden rounded-card border border-line bg-surface shadow-sm">
+        <div className="mb-4">
+        <div className="mb-2 flex items-center gap-2">
+          <span className="flex-shrink-0 whitespace-nowrap text-[10px] font-bold uppercase tracking-wider text-ink-3">
+            設定状況
+          </span>
+          <div aria-hidden="true" className="h-px flex-1 bg-line" />
+        </div>
+        <div className="overflow-hidden rounded-card border border-line bg-surface shadow-sm">
           {/* 構成要素カウント（プレイヤー数は下の「プレイヤー状況」カードに分離）*/}
           <div className="flex flex-wrap gap-3 p-3.5 sm:gap-2.5 sm:px-5 sm:py-4">
             {[
@@ -429,9 +427,13 @@ export default function WorkHubPage() {
           </div>
 
         </div>
+        </div>
       )}
 
-      {/* ── プレイヤー状況（簡易オーディエンス）── */}
+      {/* ── プレイヤー状況（簡易オーディエンス）──
+          指標は audience 画面と同じ GET /api/analytics（analyticsApi.get・workId スコープ）の
+          summary を流用する（作品トップ独自計算にしない）。定義: プレイヤー数 / クリア率(+人数) /
+          離脱率(24h以上未操作) / ヒント使用率(1回以上使用)。 */}
       {work && (
         <div className="mb-6 rounded-card border border-line bg-surface p-4 shadow-sm sm:px-5">
           <div className="mb-3 flex items-center justify-between gap-2">
@@ -441,32 +443,23 @@ export default function WorkHubPage() {
             </Link>
           </div>
 
-          {players.isEmpty ? (
-            <div className="rounded-field border border-dashed border-line bg-bg-tint px-4 py-6 text-center text-[12px] leading-[1.7] text-ink-3">
-              まだプレイヤーはいません。<br className="sm:hidden" />公開後、ここに参加状況が表示されます。
-            </div>
-          ) : (
-            <>
-              {/* 数値サマリー（総 / 進行中 / 完了）*/}
-              <div className="grid grid-cols-3 gap-2 sm:gap-3">
-                {[
-                  { label: "総プレイヤー", value: players.total,      tone: "text-ink" },
-                  { label: "進行中",       value: players.inProgress, tone: "text-sky-ink" },
-                  { label: "完了",         value: players.completed,  tone: "text-brand-ink" },
-                ].map((c) => (
-                  <div key={c.label} className="rounded-field border border-line-2 bg-bg-tint px-3 py-2.5 text-center">
-                    <div className={"font-num text-[22px] font-extrabold leading-none " + c.tone}>{c.value.toLocaleString()}</div>
-                    <div className="mt-1 text-[11px] text-ink-3">{c.label}</div>
-                  </div>
-                ))}
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
+            {[
+              { label: "プレイヤー数", value: analytics ? analytics.summary.total_players.toLocaleString() : "—", note: "" },
+              { label: "クリア率",     value: analytics ? `${analytics.summary.clear_rate}%` : "—",     note: analytics ? `${analytics.summary.total_clears}人クリア` : "" },
+              { label: "離脱率",       value: analytics ? `${analytics.summary.dropout_rate}%` : "—",   note: "24h以上未操作" },
+              { label: "ヒント使用率", value: analytics ? `${analytics.summary.hint_usage_rate}%` : "—", note: "1回以上使用" },
+            ].map((k) => (
+              <div key={k.label} className="rounded-field border border-line-2 bg-bg-tint px-3 py-2.5 text-center">
+                <div className="text-[11px] text-ink-3">{k.label}</div>
+                <div className="mt-1 font-num text-[20px] font-extrabold leading-none text-ink">{k.value}</div>
+                {k.note && <div className="mt-1 text-[10px] leading-tight text-ink-3">{k.note}</div>}
               </div>
-              {/* 補足文（未完了含む一文サマリー）*/}
-              <p className="mt-2.5 text-[11.5px] leading-[1.6] text-ink-2">
-                現在 <strong className="text-ink">{players.inProgress.toLocaleString()}</strong> 人がプレイ中、
-                <strong className="text-ink">{players.completed.toLocaleString()}</strong> 人がエンディングに到達しています
-                （未完了 {players.incomplete.toLocaleString()} 人）。
-              </p>
-            </>
+            ))}
+          </div>
+
+          {analytics && analytics.summary.total_players === 0 && (
+            <p className="mt-2.5 text-[11.5px] text-ink-3">まだプレイヤーはいません。公開後、ここに参加状況が集まります。</p>
           )}
         </div>
       )}

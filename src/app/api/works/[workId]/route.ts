@@ -128,34 +128,14 @@ export const GET = withAuth<{ workId: string }>(async (_req, { params }, user) =
       );
       if (!check.ok) return check.response;
 
-      // プレイヤー進行サマリー（作品トップのダッシュボード用）。list API と同じ定義に揃える:
-      //   completed = reachedEnding=true / in_progress = reachedEnding=false / total = 合計。
-      //   isPreview=false のみ。必ず workId でスコープ（他作品/OA のプレイヤーを混ぜない）。read-only 集計。
-      // 集計失敗（＝進行データ取得不可）でも作品ページ全体を落とさない（0 扱いにフォールバック）。
-      let completed = 0, inProgress = 0;
-      try {
-        const progressGroups = await withTiming("api/works-detail:db:progressGroups", () =>
-          prisma.userProgress.groupBy({
-            by:     ["reachedEnding"],
-            where:  { isPreview: false, workId: params.workId },
-            _count: { _all: true },
-          }),
-        );
-        for (const g of progressGroups ?? []) {
-          if (g.reachedEnding) completed += g._count._all;
-          else                 inProgress += g._count._all;
-        }
-      } catch (aggErr) {
-        console.warn("[api/works-detail] progress groupBy failed (fallback 0):", aggErr);
-      }
-      const total = completed + inProgress;
-
+      // 開始トリガー（開始フェーズ startTrigger）を返す。作品トップの開始判定
+      //   （@/lib/start-keyword: Work.startKeyword ∨ 開始フェーズ startTrigger）に必要。
+      //   ※ プレイヤー指標は作品トップでは既存 GET /api/analytics（audience と同一定義）を流用するため、
+      //     ここでは集計しない（重複 groupBy を持たせない）。phases 未 include でも安全にアクセスする。
       return ok({
         ...toResponse(work),
-        _count: { ...work._count, userProgress: total },
-        // start フェーズが未作成の場合は null（list API と同形）。phases 未 include のケースも安全に。
+        _count: work._count,
         start_trigger: work.phases?.[0]?.startTrigger ?? null,
-        progress_stats: { total, completed, in_progress: inProgress },
       });
     } catch (err) {
       return serverError(err);
