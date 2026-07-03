@@ -9,6 +9,7 @@ import {
   getOutgoingPhaseTargets,
   hasOutgoingTransitionFromPhase,
   analyzePhaseTransitions,
+  getOutgoingPhaseEdges,
   type ScenarioData,
   type MessageLite,
 } from "@/lib/phase-transitions";
@@ -204,5 +205,67 @@ describe("auto_transition_phase_id — メッセージ送信後の silent 自動
     const r = getOutgoingPhaseTargets("p2", d);
     expect(r.validTargets.has("ghost")).toBe(false);
     expect(r.invalidTargets.has("ghost")).toBe(true);
+  });
+});
+
+describe("getOutgoingPhaseEdges — 種別・ラベル付きの分岐表示（判定と同一ソース）", () => {
+  const edges = (msgs: MessageLite[], trans: ScenarioData["transitions"] = [], from = "p1") =>
+    getOutgoingPhaseEdges(from, data(msgs, trans));
+
+  it("明示 transition → transition kind + ラベル", () => {
+    const e = edges([], [{ from_phase_id: "p1", to_phase_id: "p2", label: "次へ" }]);
+    expect(e).toEqual([{ targetPhaseId: "p2", kind: "transition", label: "フェーズ遷移「次へ」" }]);
+  });
+
+  it("クイックリプライ（target_phase）→ quick_reply + 「ラベル」", () => {
+    const e = edges([{ id: "m1", phase_id: "p1", quick_replies: [{ label: "謎を解く", target_phase_id: "p2" }] }]);
+    expect(e[0]).toMatchObject({ targetPhaseId: "p2", kind: "quick_reply", label: "クイックリプライ「謎を解く」" });
+  });
+
+  it("画像タップ（image_action_phase_id）→ image_action", () => {
+    const e = edges([{ id: "m1", phase_id: "p1", image_action_phase_id: "p2" }]);
+    expect(e[0]).toMatchObject({ targetPhaseId: "p2", kind: "image_action", label: "画像タップ" });
+  });
+
+  it("自動遷移（auto_transition_phase_id・normal）→ auto_transition「自動遷移」", () => {
+    const e = edges([{ id: "m1", phase_id: "p1", kind: "normal", auto_transition_phase_id: "p2" }]);
+    expect(e[0]).toMatchObject({ targetPhaseId: "p2", kind: "auto_transition", label: "自動遷移" });
+  });
+
+  it("自動遷移（response + triggerKeyword）→ 応答キーワード「X」ラベル", () => {
+    const e = edges([{ id: "m1", phase_id: "p1", kind: "response", trigger_keyword: "ものがたりのしんじつをしる", auto_transition_phase_id: "p3" }]);
+    expect(e[0]).toMatchObject({ targetPhaseId: "p3", kind: "auto_transition", label: "応答キーワード「ものがたりのしんじつをしる」" });
+  });
+
+  it("謎の正解（correct_next_phase_id）→ puzzle_correct", () => {
+    const e = edges([{ id: "m1", phase_id: "p1", correct_next_phase_id: "p2" }]);
+    expect(e[0]).toMatchObject({ kind: "puzzle_correct", label: "謎の正解", targetPhaseId: "p2" });
+  });
+
+  it("自フェーズ遷移は除外・is_active=false は無視", () => {
+    expect(edges([{ id: "m1", phase_id: "p1", auto_transition_phase_id: "p1" }])).toEqual([]);
+    expect(edges([{ id: "m1", phase_id: "p1", is_active: false, auto_transition_phase_id: "p2" }])).toEqual([]);
+  });
+
+  it("存在しない遷移先は invalid=true", () => {
+    const e = getOutgoingPhaseEdges("p2", data([{ id: "m1", phase_id: "p2", auto_transition_phase_id: "ghost" }]));
+    expect(e[0]).toMatchObject({ targetPhaseId: "ghost", invalid: true });
+  });
+
+  it("複数種別を1フェーズから列挙（QR＋自動遷移）", () => {
+    const e = edges([
+      { id: "m1", phase_id: "p1", quick_replies: [{ label: "A", target_phase_id: "p2" }] },
+      { id: "m2", phase_id: "p1", kind: "normal", auto_transition_phase_id: "p3" },
+    ]);
+    expect(e.map((x) => x.kind).sort()).toEqual(["auto_transition", "quick_reply"]);
+  });
+
+  it("エッジの targetPhaseId 集合は getOutgoingPhaseTargets.validTargets と一致（判定と表示の整合）", () => {
+    const d = data([
+      { id: "m1", phase_id: "p1", quick_replies: [{ label: "A", target_phase_id: "p2" }] },
+      { id: "m2", phase_id: "p1", kind: "normal", auto_transition_phase_id: "p3" },
+    ]);
+    const edgeTargets = new Set(getOutgoingPhaseEdges("p1", d).filter((e) => !e.invalid).map((e) => e.targetPhaseId));
+    expect([...edgeTargets].sort()).toEqual([...getOutgoingPhaseTargets("p1", d).validTargets].sort());
   });
 });
