@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { onboardingApi, getDevToken } from "@/lib/api-client";
 import { Accordion } from "@/components/shared";
+import { SETUP_STEPS, computeSetupProgress } from "@/lib/onboarding-setup";
 
 interface Props {
   oaId:           string;
@@ -14,43 +14,30 @@ interface Props {
   hasTransitions: boolean;
 }
 
-const STEPS: { key: string; label: string; href: string; isPreview?: boolean }[] = [
-  { key: "work",      label: "作品作成",          href: "" },
-  { key: "character", label: "キャラクター作成",   href: "characters" },
-  { key: "phase",     label: "フェーズ作成",       href: "scenario" },
-  { key: "message",   label: "メッセージ追加", href: "messages" },
-  { key: "scenario",  label: "フロー設定",         href: "scenario" },
-  { key: "preview",   label: "プレビュー確認",     href: "preview", isPreview: true },
-];
-
-type StepKey = "work" | "character" | "phase" | "message" | "scenario" | "preview";
-
 /**
  * OnboardingProgress — 作品ハブ上部に表示するセットアップ進捗ステッパー
  *
- * 進捗ロジック:
+ * 進捗ロジック（5ステップ・@/lib/onboarding-setup に集約）:
  *   - work      : 常に true
  *   - character : props.hasCharacters
  *   - phase     : props.hasPhases
  *   - message   : props.hasMessages
  *   - scenario  : props.hasTransitions
- *   - preview   : localStorage "preview-confirmed-{workId}"
  *
+ * ※「プレビュー確認」は実機LINEで確認する運用のため、セットアップステップから削除済み。
  * 全ステップ完了 or ユーザー非表示 → null を返す
  */
 export function OnboardingProgress({
   oaId, workId,
   hasCharacters, hasPhases, hasMessages, hasTransitions,
 }: Props) {
-  const [mounted,     setMounted]     = useState(false);
-  const [dismissed,   setDismissed]   = useState(false);
-  const [hasPreviewed, setHasPreviewed] = useState(false);
+  const [mounted,   setMounted]   = useState(false);
+  const [dismissed, setDismissed] = useState(false);
 
   useEffect(() => {
     setMounted(true);
     try {
       if (localStorage.getItem(`setup-guide-dismissed-${workId}`)) setDismissed(true);
-      if (localStorage.getItem(`preview-confirmed-${workId}`))     setHasPreviewed(true);
     } catch {}
   }, [workId]);
 
@@ -61,22 +48,14 @@ export function OnboardingProgress({
 
   if (!mounted || dismissed) return null;
 
-  const completion: Record<StepKey, boolean> = {
-    work:      true,
-    character: hasCharacters,
-    phase:     hasPhases,
-    message:   hasMessages,
-    scenario:  hasTransitions,
-    preview:   hasPreviewed,
-  };
-
-  const allDone = STEPS.every((s) => completion[s.key as StepKey]);
+  const { completion, doneCount, pct, nextKey, allDone } = computeSetupProgress({
+    hasCharacters, hasPhases, hasMessages, hasTransitions,
+  });
   if (allDone) return null;
 
-  const doneCount = STEPS.filter((s) => completion[s.key as StepKey]).length;
-  const pct       = Math.round((doneCount / STEPS.length) * 100);
-  const nextStep  = STEPS.find((s) => !completion[s.key as StepKey]);
-  const basePath  = `/oas/${oaId}/works/${workId}`;
+  const STEPS    = SETUP_STEPS;
+  const nextStep = STEPS.find((s) => s.key === nextKey) ?? null;
+  const basePath = `/oas/${oaId}/works/${workId}`;
 
   return (
     // 共通 Accordion でラップし、デザインガイド §4「Accordion」+ §6「ヘルプを開きっぱなし NG」に揃える。
@@ -111,14 +90,10 @@ export function OnboardingProgress({
         {/* ステップ一覧 */}
         <div className="flex flex-col" style={{ gap: 4 }}>
           {STEPS.map((step, i) => {
-            const done   = completion[step.key as StepKey];
+            const done   = completion[step.key];
             const isNext = step.key === nextStep?.key;
 
-            const href = step.isPreview
-              ? `/playground?work_id=${workId}&oa_id=${oaId}`
-              : step.href
-                ? `${basePath}/${step.href}`
-                : "";
+            const href = step.href ? `${basePath}/${step.href}` : "";
 
             return (
               <div
@@ -160,13 +135,6 @@ export function OnboardingProgress({
                     href={href}
                     className="flex-shrink-0 font-semibold text-sky-600 bg-sky-100 hover:bg-sky-200 rounded-lg transition-colors"
                     style={{ fontSize: 11, padding: "3px 8px" }}
-                    onClick={() => {
-                      if (step.isPreview) {
-                        try { localStorage.setItem(`preview-confirmed-${workId}`, "1"); } catch {}
-                        // オンボーディング: previewed ステップを記録（fire-and-forget）
-                        onboardingApi.trackStep(getDevToken(), { work_id: workId, oa_id: oaId, step: "previewed" }).catch(() => {});
-                      }
-                    }}
                   >
                     →
                   </Link>
