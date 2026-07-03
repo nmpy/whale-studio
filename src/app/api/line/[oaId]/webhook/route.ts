@@ -2839,6 +2839,60 @@ async function handleTextEvent({
   const deliverMatchedQr = (matchedQrItem: import("@/types").QuickReplyItem): Promise<boolean> =>
     deliverQrBranch({ matchedQrItem, oa, work, progress, systemSender, userId, replyToken, token, vars, startedAt: t0e });
 
+  // triggerKeyword 応答の送信を共通化（通常フロー / reachedEnding 例外 で再利用し、照合・送信ロジックの二重化を避ける）。
+  // 送信できたら true（呼び出し側は return）、変換結果 0 件でフォールスルーなら false（Transition へ）。
+  // ℹ️ キーワード返答は userProgress の進行（currentPhaseId / reachedEnding）を変えない。
+  //    applyFreeInputPostEffect が frontier / 自由入力 / 応答メッセージ側の明示 auto-transition のみ反映する。
+  const deliverKeywordMatched = async (
+    matched: (KeywordMessageRecord & { triggerKeyword: string })[],
+  ): Promise<boolean> => {
+    if (matched.length === 0) return false;
+    console.log(
+      `[Webhook][STEP] triggerKeyword マッチ`,
+      `userId=${userId}`,
+      `messages=${matched.length}件`,
+      matched.map((m) => `id=${m.id.slice(0, 8)} kw="${m.triggerKeyword}" body="${(m.body ?? "").slice(0, 20)}"`).join(" / ")
+    );
+    // nextMessageId チェーンを展開してすべてのメッセージをまとめて返信する
+    const chainedMsgs: import("@/lib/line").LineMessage[] = [];
+    const chainedIds: string[] = [];
+    for (const match of matched) {
+      const { messages: chain, chainIds } = await buildMessageChain(match, vars);
+      chainedMsgs.push(...chain);
+      chainedIds.push(...chainIds);
+    }
+    const msgs = chainedMsgs.length > 0 ? chainedMsgs : buildKeywordMessages(matched, systemSender, vars);
+    const sentIdsForFreeInput = chainedMsgs.length > 0 ? chainedIds : matched.map((m) => m.id);
+    console.log(
+      `[line-webhook:trigger-debug] reason=keyword_matched`,
+      `userId=${userId?.slice(0, 8) ?? "-"}`,
+      `currentPhaseId=${progress.currentPhaseId?.slice(0, 8) ?? "-"}`,
+      `matchedIds=[${matched.map((m) => m.id.slice(0, 8)).join(",")}]`,
+      `matchedKw=[${matched.map((m) => `"${m.triggerKeyword.replace(/\n/g, "\\n")}"`).join(",")}]`,
+      `plannedMsgs=${msgs.length} transport=reply(replyWithLagToLine)`,
+    );
+    if (msgs.length === 0) return false; // 変換結果 0 件（画像URLなし等）→ 呼び出し側で Transition へフォールバック
+    const tReplyKw = Date.now();
+    // Phase 2c hotfix: chain (= length > 1) で per-message timing が効くよう replyWithLagToLine に統一
+    await replyWithLagToLine(replyToken, msgs, userId, token);
+    // 自由入力受付モード: チェーン展開後の全送信メッセージから freeInputEnabled を検出する。
+    await applyFreeInputPostEffect({
+      sentMessageIds: sentIdsForFreeInput,
+      oaId: oa.id,
+      route: "keyword",
+      userId,
+      workId:    work.id,
+      progressId: progress?.id,
+    });
+    console.log(
+      `[perf][event] path=keyword total=${Date.now() - t0e}ms` +
+      ` progress=${progressHit ? "HIT" : "MISS"}:${progressFindMs}ms` +
+      ` phase=${phaseHit ? "hit" : "miss"}` +
+      ` reply:${Date.now() - tReplyKw}ms`,
+    );
+    return true;
+  };
+
   // ─ エンディング到達済み（startIntent は phase ロード前に処理済み）─
   //   案A: frontier がある場合のみ matchedQrItem を評価し、ending 内 QR ナビ（E→D 等）だけ許可する。
   //   frontier=null（レガシー/空）や無関係テキストは従来どおり無視し、
@@ -2847,6 +2901,25 @@ async function handleTextEvent({
     const endingFrontier = parseFrontier(progress.lastSentMessageIds);
     if (endingFrontier && matchedQrItem && (await deliverMatchedQr(matchedQrItem))) {
       console.log(`[Webhook][STEP] エンディング到達済み + frontier QR ナビ実行 userId=${userId}`);
+      return;
+    }
+    // ── 案2: reachedEnding でも「現在(ending)フェーズ内の kind=response 応答キーワード一致」だけは応答を許可 ──
+    //   スコープを厳格に限定する:
+    //     - 既存 keyword 照合(matchKeywordsInMemory・同じ正規化)の結果 keywordMatched を再利用。
+    //     - そのうち「現在の currentPhase に属し」かつ「kind=response」のメッセージだけを対象にする。
+    //       → global keyword / 他フェーズ / kind=normal は対象外（従来どおり無視）。
+    //   応答は進行状態を変えない（reachedEnding は維持）。応答メッセージ側に明示 auto-transition があれば既存仕様に従う。
+    const endingResponseMatched = currentPhase
+      ? keywordMatched.filter((m) =>
+          currentPhase.messages.some((pm) => pm.id === m.id && pm.kind === "response"))
+      : [];
+    if (endingResponseMatched.length > 0 && (await deliverKeywordMatched(endingResponseMatched))) {
+      console.log(
+        `[Webhook][STEP] エンディング到達済み + 現在フェーズ応答キーワード実行`,
+        `userId=${userId}`,
+        `currentPhaseId=${progress.currentPhaseId?.slice(0, 8) ?? "-"}`,
+        `matchedIds=[${endingResponseMatched.map((m) => m.id.slice(0, 8)).join(",")}]`,
+      );
       return;
     }
     console.log(`[Webhook][STEP] エンディング到達済み → 無視 userId=${userId} text="${text.slice(0, 40)}"`);
@@ -2996,58 +3069,11 @@ async function handleTextEvent({
   }
 
   // ─ triggerKeyword 照合 ─
-  // ℹ️ キーワード返答は userProgress を更新しない（進行状態に影響しない）
+  // ℹ️ キーワード返答は userProgress を更新しない（進行状態に影響しない）。
+  //    送信ロジックは deliverKeywordMatched に共通化（reachedEnding 例外と同一経路）。
   if (keywordMatched.length > 0) {
-    console.log(
-      `[Webhook][STEP] triggerKeyword マッチ`,
-      `userId=${userId}`,
-      `messages=${keywordMatched.length}件`,
-      keywordMatched.map((m) => `id=${m.id.slice(0, 8)} kw="${m.triggerKeyword}" body="${(m.body ?? "").slice(0, 20)}"`).join(" / ")
-    );
-    // nextMessageId チェーンを展開してすべてのメッセージをまとめて返信する
-    const chainedMsgs: import("@/lib/line").LineMessage[] = [];
-    const chainedIds: string[] = [];
-    for (const match of keywordMatched) {
-      const { messages: chain, chainIds } = await buildMessageChain(match, vars);
-      chainedMsgs.push(...chain);
-      chainedIds.push(...chainIds);
-    }
-    const msgs = chainedMsgs.length > 0 ? chainedMsgs : buildKeywordMessages(keywordMatched, systemSender, vars);
-    // 送信 ID: チェーンが成立していればチェーン全体、そうでなければ直接マッチ ID
-    const sentIdsForFreeInput = chainedMsgs.length > 0 ? chainedIds : keywordMatched.map((m) => m.id);
-    // 診断ログ（挙動変更なし）: triggerKeyword 一致 → 送信へ。送信予定数と transport(reply) を出す。
-    console.log(
-      `[line-webhook:trigger-debug] reason=keyword_matched`,
-      `userId=${userId?.slice(0, 8) ?? "-"}`,
-      `currentPhaseId=${progress.currentPhaseId?.slice(0, 8) ?? "-"}`,
-      `matchedIds=[${keywordMatched.map((m) => m.id.slice(0, 8)).join(",")}]`,
-      `matchedKw=[${keywordMatched.map((m) => `"${m.triggerKeyword.replace(/\n/g, "\\n")}"`).join(",")}]`,
-      `plannedMsgs=${msgs.length} transport=reply(replyWithLagToLine)`,
-    );
-    if (msgs.length > 0) {
-      const tReplyKw = Date.now();
-      // Phase 2c hotfix: chain (= length > 1) で per-message timing が効くよう replyWithLagToLine に統一
-      await replyWithLagToLine(replyToken, msgs, userId, token);
-      // 自由入力受付モード: チェーン展開後の全送信メッセージから freeInputEnabled を検出する。
-      // チェーン末尾メッセージ ("こんにちは！あなたの名前は？") に freeInputEnabled を立てる
-      // ユースケースを正しくサポートする。
-      await applyFreeInputPostEffect({
-        sentMessageIds: sentIdsForFreeInput,
-        oaId: oa.id,
-        route: "keyword",
-        userId,
-        workId:    work.id,
-        progressId: progress?.id,
-      });
-      console.log(
-        `[perf][event] path=keyword total=${Date.now() - t0e}ms` +
-        ` progress=${progressHit ? "HIT" : "MISS"}:${progressFindMs}ms` +
-        ` phase=${phaseHit ? "hit" : "miss"}` +
-        ` reply:${Date.now() - tReplyKw}ms`,
-      );
-      return;
-    }
-    // メッセージ変換結果が 0 件（画像URLなしなど）の場合は Transition へフォールバック
+    if (await deliverKeywordMatched(keywordMatched)) return;
+    // メッセージ変換結果が 0 件（画像URLなどが無い）の場合は Transition へフォールバック
   }
 
   // ─ パズル照合 ─
