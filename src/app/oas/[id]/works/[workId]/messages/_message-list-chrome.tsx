@@ -32,7 +32,10 @@ export function StickyPhaseTabsBar({
 }) {
   return (
     <div style={{
-      position: "sticky", top: 0, zIndex: 5,
+      // グローバルヘッダー（position:sticky; top:0; height:56px; z-index:200）の直下に吸着させる。
+      // top:0 だとヘッダーの裏に潜って見えなくなるため、ヘッダー高ぶん下げる。
+      // z-index はヘッダー(200)未満・通常カードより上。
+      position: "sticky", top: "var(--admin-header-height, 56px)", zIndex: 50,
       background: "var(--bg, #f5f8f6)",
       borderBottom: "1px solid #E8EBE8",
       boxShadow: "0 3px 6px -4px rgba(0,0,0,0.12)",
