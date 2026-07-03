@@ -1573,7 +1573,10 @@ function QuickReplyEditor({ items, onChange, responseMessages, phases, transitio
           <span style={{ ...sectionHeader, marginBottom: 0, paddingBottom: 0, borderBottom: "none" }}>
             {heading}
           </span>
-          <span style={{ fontSize: 11, color: "#9ca3af", fontWeight: 400 }}>（任意）</span>
+          <span style={{
+            fontSize: 10, fontWeight: 700, background: "var(--color-line-2, #f0f3f1)", color: "var(--color-ink-3, #9aa8a2)",
+            borderRadius: 4, padding: "1px 6px",
+          }}>任意</span>
           {items.length > 0 && (
             <span style={{ fontSize: 10, fontWeight: 700, background: "#06C755", color: "#fff", borderRadius: 10, padding: "1px 7px" }}>
               {enabledCount}/{items.length}件
@@ -6906,7 +6909,10 @@ export function MessageForm({
             title="メッセージ後の遷移（送信直後）"
             optional
             description="このメッセージ群をすべて送信した直後に、入力を待たず指定フェーズへ移動します。"
-            defaultOpen={!!form.auto_transition_phase_id}
+            defaultOpen={false}
+            badge={form.auto_transition_phase_id
+              ? <span style={{ fontSize: 10, fontWeight: 700, background: "#06C755", color: "#fff", borderRadius: 10, padding: "1px 7px" }}>設定済み</span>
+              : undefined}
           >
             <div className="form-group" style={{ marginBottom: 0 }}>
               <label style={fieldLabel} htmlFor="auto_transition_phase_id">移動先フェーズ</label>
