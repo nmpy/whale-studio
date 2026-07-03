@@ -73,6 +73,9 @@ vi.mock("@/lib/line", () => ({
 const ENDING_PHASE_ID = "aee0 end-phase".replace(/\s/g, "");
 const E_ID = "5e768254-e1d1-4aaa-bbbb-000000000001";
 const D_ID = "c28b6d12-d2d2-4bbb-cccc-000000000002";
+// 案2 検証用: エンディング内の kind=response 応答キーワード（R）と、kind=normal 応答キーワード（N・対象外検証）。
+const R_ID = "5e768254-e1d1-4aaa-bbbb-000000000003";
+const N_ID = "5e768254-e1d1-4aaa-bbbb-000000000004";
 
 const mockEndingPhase = {
   id: ENDING_PHASE_ID, phaseType: "ending", name: "エンディング",
@@ -87,6 +90,20 @@ const mockEndingPhase = {
         { label: "ありがとう",   action: "text", value: "ありがとう",   target_type: "message", target_message_id: D_ID },
         { label: "くじらさん…！", action: "text", value: "くじらさん…！", target_type: "message", target_message_id: D_ID },
       ]),
+    },
+    // 案2: エンディング内の応答キーワード（kind=response）。reachedEnding でも一致すれば応答される想定。
+    {
+      id: R_ID, messageType: "text", kind: "response", body: "真実の本文", assetUrl: null,
+      altText: null, flexPayloadJson: null, triggerKeyword: "物語の真実を知る\nものがたりのしんじつをしる", sortOrder: 1,
+      nextMessageId: null, freeInputEnabled: false, freeInputVariableKey: null, freeInputNextMessageId: null,
+      lagMs: null, character: null, quickReplies: null,
+    },
+    // kind=normal の応答キーワード。reachedEnding 例外の対象外（response のみ許可）である検証用。
+    {
+      id: N_ID, messageType: "text", kind: "normal", body: "通常本文", assetUrl: null,
+      altText: null, flexPayloadJson: null, triggerKeyword: "通常キーワード", sortOrder: 2,
+      nextMessageId: null, freeInputEnabled: false, freeInputVariableKey: null, freeInputNextMessageId: null,
+      lagMs: null, character: null, quickReplies: null,
     },
   ],
 };
@@ -210,6 +227,43 @@ describe("案A: reachedEnding でも frontier QR ナビは評価される", () =
   it("5. frontier=[E] + E の QR に一致しないテキスト → 無視", async () => {
     await callWebhook("ありがと");  // value "ありがとう" と不一致
 
+    expect(mockReplyWithLagToLine).not.toHaveBeenCalled();
+  });
+});
+
+describe("案2: reachedEnding でも現在フェーズ内の response 応答キーワードは応答される（スコープ限定）", () => {
+  it("1. 現在(ending)フェーズ内の response キーワード一致 → 応答送信・reachedEnding 維持", async () => {
+    await callWebhook("物語の真実を知る");
+
+    // 無視されず応答が送られる（deliverKeywordMatched → replyWithLagToLine）
+    expect(mockReplyWithLagToLine).toHaveBeenCalledOnce();
+    // reachedEnding=false へ変更する update は無い（進行状態は維持）。
+    const setEndingFalse = mockPrisma.userProgress.update.mock.calls
+      .some((c) => c[0]?.data?.reachedEnding === false);
+    expect(setEndingFalse).toBe(false);
+  });
+
+  it("1b. 表記ゆれ（改行併記のもう一方）でも一致 → 応答送信", async () => {
+    await callWebhook("ものがたりのしんじつをしる");
+    expect(mockReplyWithLagToLine).toHaveBeenCalledOnce();
+  });
+
+  it("2. 現在フェーズの応答キーワードに一致しないテキスト → 従来どおり無視", async () => {
+    const { matchTransition } = await import("@/lib/runtime");
+    await callWebhook("まったく無関係な文");
+
+    expect(mockReplyWithLagToLine).not.toHaveBeenCalled();
+    expect(matchTransition).not.toHaveBeenCalled();
+  });
+
+  it("3. 他フェーズにしかない response キーワード（現在フェーズに無い）→ 無視", async () => {
+    // "なぞいち" は現在(ending)フェーズには存在しない → matchKeywordsInMemory 候補外
+    await callWebhook("なぞいち");
+    expect(mockReplyWithLagToLine).not.toHaveBeenCalled();
+  });
+
+  it("4. 現在フェーズ内でも kind=normal の応答キーワードは対象外（response のみ許可）→ 無視", async () => {
+    await callWebhook("通常キーワード");
     expect(mockReplyWithLagToLine).not.toHaveBeenCalled();
   });
 });
