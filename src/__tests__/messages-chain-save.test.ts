@@ -248,6 +248,46 @@ describe("PUT /api/messages/chain", () => {
     expect(data.lagMs).toBe(200);
   });
 
+  it("auto_transition_phase_id: head で保存される（silent auto-transition・chain routeで永続化）", async () => {
+    setWork([{ id: HEAD, phaseId: "ph-1", sortOrder: 0, nextMessageId: null, updatedAt: new Date() }]);
+    const res = await PUT(req({
+      work_id: WORK, head_id: HEAD,
+      head: { body: "案内", auto_transition_phase_id: S2 },
+      slots: [],
+    }), ctx) as Response;
+    expect(res.status).toBe(200);
+    const headCall = mockMessage.update.mock.calls.find((c) => c[0].where.id === HEAD);
+    if (!headCall) throw new Error("HEAD update not called");
+    expect(headCall[0].data.autoTransitionPhaseId).toBe(S2);
+  });
+
+  it("auto_transition_phase_id: chain child(slot) でも保存される（チェーン末尾用途）", async () => {
+    setWork([
+      { id: HEAD, phaseId: "ph-1", sortOrder: 0, nextMessageId: S1, updatedAt: new Date() },
+      { id: S1, phaseId: "ph-1", sortOrder: 1, nextMessageId: null, updatedAt: new Date() },
+    ]);
+    const res = await PUT(req({
+      work_id: WORK, head_id: HEAD, head: { body: "1" },
+      slots: [{ id: S1, body: "2", auto_transition_phase_id: S2 }],
+    }), ctx) as Response;
+    expect(res.status).toBe(200);
+    const updates = Object.fromEntries(mockMessage.update.mock.calls.map((c) => [c[0].where.id, c[0].data]));
+    expect(updates[S1].autoTransitionPhaseId).toBe(S2);
+  });
+
+  it("auto_transition_phase_id: null で解除される", async () => {
+    setWork([{ id: HEAD, phaseId: "ph-1", sortOrder: 0, nextMessageId: null, updatedAt: new Date() }]);
+    const res = await PUT(req({
+      work_id: WORK, head_id: HEAD,
+      head: { body: "案内", auto_transition_phase_id: null },
+      slots: [],
+    }), ctx) as Response;
+    expect(res.status).toBe(200);
+    const headCall = mockMessage.update.mock.calls.find((c) => c[0].where.id === HEAD);
+    if (!headCall) throw new Error("HEAD update not called");
+    expect(headCall[0].data.autoTransitionPhaseId).toBe(null);
+  });
+
   it("detach: 対象は nextMessageId=null に update され、削除されない（#6-4c）", async () => {
     setWork([
       { id: HEAD, phaseId: "ph-1", sortOrder: 0, nextMessageId: S1, updatedAt: new Date() },

@@ -28,6 +28,34 @@ const main = {
   kind: "normal" as const, sort_order: 0, is_active: true,
 };
 
+describe("auto_transition_phase_id — chain child(slot) の保存・読み戻し", () => {
+  it("msgToAdditionalSlot: auto_transition_phase_id を読み戻す（再編集で保持）", () => {
+    const slot = msgToAdditionalSlot({ message_type: "text", body: "案内", auto_transition_phase_id: "phase-6mon" });
+    expect(slot.auto_transition_phase_id).toBe("phase-6mon");
+  });
+
+  it("msgToAdditionalSlot: null は空文字（移動しない）で復元", () => {
+    const slot = msgToAdditionalSlot({ message_type: "text", body: "案内", auto_transition_phase_id: null });
+    expect(slot.auto_transition_phase_id).toBe("");
+  });
+
+  it("additionalSlotToMsgBody: 設定値を body に含める（message_type 非依存）", () => {
+    const body = additionalSlotToMsgBody({ ...EMPTY_ADDITIONAL_SLOT, message_type: "text", body: "案内", auto_transition_phase_id: "phase-6mon" }, main);
+    expect(body.auto_transition_phase_id).toBe("phase-6mon");
+  });
+
+  it("additionalSlotToMsgBody: 空文字（移動しない）は null で送る", () => {
+    const body = additionalSlotToMsgBody({ ...EMPTY_ADDITIONAL_SLOT, message_type: "text", body: "案内", auto_transition_phase_id: "" }, main);
+    expect(body.auto_transition_phase_id).toBe(null);
+  });
+
+  it("round-trip: msg → slot → body で値が保持される", () => {
+    const slot = msgToAdditionalSlot({ message_type: "image", asset_url: "https://x/a.png", auto_transition_phase_id: "phase-6mon" });
+    const body = additionalSlotToMsgBody(slot, main);
+    expect(body.auto_transition_phase_id).toBe("phase-6mon");
+  });
+});
+
 describe("msgToAdditionalSlot — image_action 読込 + 旧 tap_* 後方互換", () => {
   it("image_action(uri) を持つ slot はそのまま復元", () => {
     const slot = msgToAdditionalSlot({ message_type: "image", image_action_type: "uri", image_action_url: "https://ex.com/" });
