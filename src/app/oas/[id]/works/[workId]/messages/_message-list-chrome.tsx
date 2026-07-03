@@ -3,7 +3,7 @@
 // src/app/oas/[id]/works/[workId]/messages/_message-list-chrome.tsx
 //
 // 再設計版メッセージ一覧の「外枠」小物（handoff 準拠の見た目）。
-//   - PhaseTabs:        すべて / フェーズ名 / 未割当（横スクロール）
+//   - StickyPhaseTabsBar: フェーズタブ（横スクロール）＋「メッセージを追加」を sticky でまとめたバー
 //   - WarningSummaryBar: 警告件数のサマリー
 //   - PhaseFilterBar:   特定フェーズ表示中バー
 //   - EmptyState:       0 件状態
@@ -13,39 +13,67 @@ import { TLink as Link } from "@/components/TLink";
 
 export type PhaseTabItem = { id: string; name: string };
 
-export function PhaseTabs({
-  tabs, activeId, onChange,
+/**
+ * フェーズタブ ＋「メッセージを追加」ボタンを 1 つの sticky 領域にまとめたバー。
+ * 一覧をスクロール中も現在のフェーズと追加導線が常に見えるようにする（導線改善）。
+ * - 左: フェーズタブ（横スクロール）/ 右: 追加ボタン（canEdit のときのみ・幅は縮めない）。
+ * - addHref は呼び出し側で withReturnTab(...) を構築して渡す（tab/returnTab/returnTo は既存挙動を維持）。
+ * - 背景はページ背景色でカードが透けないようにし、下端に境界（border + 薄い影）を付ける。
+ * 送信/保存/遷移などのロジックは持たない（描画のみ）。
+ */
+export function StickyPhaseTabsBar({
+  tabs, activeId, onChange, addHref, canEdit,
 }: {
   tabs: PhaseTabItem[];
   activeId: string;
   onChange: (id: string) => void;
+  addHref: string;
+  canEdit: boolean;
 }) {
   return (
     <div style={{
-      display: "flex", overflowX: "auto", borderBottom: "2px solid #E8EBE8",
-      marginBottom: 16, scrollbarWidth: "none",
+      position: "sticky", top: 0, zIndex: 5,
+      background: "var(--bg, #f5f8f6)",
+      borderBottom: "1px solid #E8EBE8",
+      boxShadow: "0 3px 6px -4px rgba(0,0,0,0.12)",
+      marginBottom: 16, paddingTop: 8,
+      display: "flex", alignItems: "flex-end", gap: 12,
     }}>
-      {tabs.map((p) => {
-        const active = p.id === activeId;
-        return (
-          <button
-            key={p.id}
-            type="button"
-            onClick={() => onChange(p.id)}
-            aria-current={active ? "true" : undefined}
-            style={{
-              padding: "9px 18px", fontSize: 13.5, fontFamily: "inherit",
-              color: active ? "#06A047" : "#949494",
-              fontWeight: active ? 600 : 400,
-              background: "none", border: "none",
-              borderBottom: active ? "2.5px solid #06C755" : "2.5px solid transparent",
-              marginBottom: -2, cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0,
-            }}
-          >
-            {p.name}
-          </button>
-        );
-      })}
+      <div style={{
+        display: "flex", overflowX: "auto", scrollbarWidth: "none",
+        flex: 1, minWidth: 0, borderBottom: "2px solid #E8EBE8", marginBottom: -1,
+      }}>
+        {tabs.map((p) => {
+          const active = p.id === activeId;
+          return (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => onChange(p.id)}
+              aria-current={active ? "true" : undefined}
+              style={{
+                padding: "9px 18px", fontSize: 13.5, fontFamily: "inherit",
+                color: active ? "#06A047" : "#949494",
+                fontWeight: active ? 600 : 400,
+                background: "none", border: "none",
+                borderBottom: active ? "2.5px solid #06C755" : "2.5px solid transparent",
+                marginBottom: -2, cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0,
+              }}
+            >
+              {p.name}
+            </button>
+          );
+        })}
+      </div>
+      {canEdit && (
+        <Link
+          href={addHref}
+          className="btn btn-primary"
+          style={{ flexShrink: 0, whiteSpace: "nowrap", marginBottom: 6 }}
+        >
+          ＋ メッセージを追加
+        </Link>
+      )}
     </div>
   );
 }
