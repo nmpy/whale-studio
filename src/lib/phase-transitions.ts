@@ -51,6 +51,13 @@ export interface MessageLite {
   free_input_next_message_id?:      string | null;
   /** 連続送信の次メッセージ（別フェーズを指していれば遷移） */
   next_message_id?:                 string | null;
+  /**
+   * このメッセージ送信後の silent 自動フェーズ遷移先（PR #507/#509）。
+   * runtime（applyFreeInputPostEffect）が「メッセージ送信直後に次フェーズへ進む」導線として
+   * 扱う設定。連続送信の場合はチェーン末尾メッセージに正規化されて保存される。
+   * → CMS のシナリオ構成アラートでも有効な遷移導線として扱う（実態と一致させる）。
+   */
+  auto_transition_phase_id?:        string | null;
 }
 
 export interface TransitionLite {
@@ -86,6 +93,7 @@ const norm = (s: string) => s.trim().toLowerCase().normalize("NFKC");
  *  - 到着トリガーの遷移先（checkin_trigger_next_phase_id / _next_message_id）
  *  - 自由入力後の応答メッセージ（free_input_next_message_id が別フェーズ）
  *  - 連続送信の next_message_id が別フェーズを指す場合
+ *  - メッセージ送信後の silent 自動フェーズ遷移（auto_transition_phase_id・チェーン末尾含む）
  *
  * 同一フェーズ内を指す遷移は validTargets に含めない（フェーズ外へ進めないため）。
  */
@@ -147,6 +155,9 @@ export function getOutgoingPhaseTargets(phaseId: string, data: ScenarioData): Ou
     addMessageTarget(m.checkin_trigger_next_message_id);
     addMessageTarget(m.free_input_next_message_id);
     addMessageTarget(m.next_message_id);
+    // メッセージ送信後の silent 自動フェーズ遷移（runtime が実際に次フェーズへ進める導線）。
+    // 連続送信ではチェーン末尾メッセージに正規化保存されるため、フェーズ内の全メッセージ走査で拾える。
+    addPhaseTarget(m.auto_transition_phase_id);
   }
 
   return { validTargets: valid, invalidTargets: invalid };

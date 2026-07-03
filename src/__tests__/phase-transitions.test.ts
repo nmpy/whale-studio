@@ -153,3 +153,56 @@ describe("analyzePhaseTransitions", () => {
     expect(r.orphanPhaseIds.size).toBe(0);
   });
 });
+
+describe("auto_transition_phase_id — メッセージ送信後の silent 自動遷移を導線として扱う", () => {
+  it("Case1: メッセージの auto_transition_phase_id が別フェーズ（p1→p2）→ 遷移あり", () => {
+    const d = data([{ id: "m1", phase_id: "p1", auto_transition_phase_id: "p2" }]);
+    expect(getOutgoingPhaseTargets("p1", d).validTargets.has("p2")).toBe(true);
+    expect(hasOutgoingTransitionFromPhase("p1", d)).toBe(true);
+  });
+
+  it("Case1: チェーン末尾メッセージに auto_transition が付いていても拾える（フェーズ内全走査）", () => {
+    // head(next→tail) + tail に auto_transition_phase_id=p2（#509 の末尾正規化を模擬）
+    const d = data([
+      { id: "head", phase_id: "p1", next_message_id: "tail" },
+      { id: "tail", phase_id: "p1", auto_transition_phase_id: "p2" },
+    ]);
+    expect(getOutgoingPhaseTargets("p1", d).validTargets.has("p2")).toBe(true);
+  });
+
+  it("Case1: 「はじまり」に auto_transition→6問 がある → deadEnd 警告を出さない（本件の修正）", () => {
+    const d = data([{ id: "m1", phase_id: "p1", auto_transition_phase_id: "p2" }]);
+    const r = analyzePhaseTransitions(d);
+    expect(r.deadEndPhaseIds.has("p1")).toBe(false);
+  });
+
+  it("Case2: auto_transition の遷移先フェーズ（p2）は orphan 警告を出さない", () => {
+    const d = data([{ id: "m1", phase_id: "p1", auto_transition_phase_id: "p2" }]);
+    const r = analyzePhaseTransitions(d);
+    expect(r.orphanPhaseIds.has("p2")).toBe(false);
+  });
+
+  it("Case3: auto_transition も他導線も無い通常フェーズ → 従来どおり deadEnd 警告", () => {
+    // p2(normal) に auto_transition_phase_id=null・他導線なし
+    const d = data([{ id: "m1", phase_id: "p2", auto_transition_phase_id: null }], [{ from_phase_id: "p1", to_phase_id: "p2" }]);
+    const r = analyzePhaseTransitions(d);
+    expect(r.deadEndPhaseIds.has("p2")).toBe(true);
+  });
+
+  it("同一フェーズを指す auto_transition は導線に数えない（自フェーズ除外）", () => {
+    const d = data([{ id: "m1", phase_id: "p1", auto_transition_phase_id: "p1" }]);
+    expect(getOutgoingPhaseTargets("p1", d).validTargets.size).toBe(0);
+  });
+
+  it("is_active=false のメッセージの auto_transition は無視する", () => {
+    const d = data([{ id: "m1", phase_id: "p1", is_active: false, auto_transition_phase_id: "p2" }]);
+    expect(getOutgoingPhaseTargets("p1", d).validTargets.size).toBe(0);
+  });
+
+  it("存在しないフェーズを指す auto_transition は invalidTargets（有効導線にはしない）", () => {
+    const d = data([{ id: "m1", phase_id: "p2", auto_transition_phase_id: "ghost" }]);
+    const r = getOutgoingPhaseTargets("p2", d);
+    expect(r.validTargets.has("ghost")).toBe(false);
+    expect(r.invalidTargets.has("ghost")).toBe(true);
+  });
+});

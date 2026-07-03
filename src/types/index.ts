@@ -346,6 +346,8 @@ export interface Message {
   /** type="postback": postback data */
   image_action_postback_data: string | null;
   image_action_phase_id: string | null;
+  /** このメッセージ送信後に silent 自動遷移する先フェーズ ID（PR #507/#509・list-shapes/[id] で返却済み） */
+  auto_transition_phase_id: string | null;
   // ── 自由入力受付（このメッセージ送信後にユーザーの次入力を保存する） ──
   /** このメッセージ送信後、次のテキスト入力を変数として保存するか。 */
   free_input_enabled: boolean;
