@@ -6899,31 +6899,36 @@ export function MessageForm({
           {/* ── メッセージ後の遷移（送信直後）── */}
           {/* 「送信後の挙動」の設定。連続メッセージ全体（1通目＋2通目以降）を送り終わった直後に発火する
               ブロック全体で1つの設定として配置する（各スロットには出さない）。保存時にチェーン末尾へ正規化。
+              直上の「送信後に地点到着を待つ（自動進行）」等と同じ SectionAccordion（白カード・任意）に揃える。
               ※ キーワード/QR 起点の旧「遷移を追加」UI（PhaseTransitionsSection）は新UIと紛らわしいため
                 通常メッセージ編集画面では非表示（Transition テーブル・runtime・scenario flow 側は不変）。 */}
-          <div className="form-group" style={{ marginTop: 8, marginBottom: 0 }}>
-            <label style={fieldLabel}>
-              メッセージ後の遷移（送信直後）
-              <span style={{ marginLeft: 6, fontSize: 11, fontWeight: 400, color: "#6b7280" }}>任意</span>
-            </label>
-            <select
-              id="auto_transition_phase_id"
-              className="form-input"
-              style={{ maxWidth: 320, marginTop: 4 }}
-              value={form.auto_transition_phase_id}
-              onChange={(e) => set("auto_transition_phase_id", e.target.value)}
-            >
-              <option value="">移動しない</option>
-              {(phases ?? []).map((p) => (
-                <option key={p.id} value={p.id}>{p.name}</option>
-              ))}
-            </select>
-            <div style={hintText}>
-              このメッセージ群をすべて送信した直後に、プレイヤーの入力やボタン操作を待たず、指定フェーズへ移動します。
-              移動先フェーズの冒頭メッセージは送信されません。「続きを選んでください。」も表示されません。
-              次の入力から、移動先フェーズの応答キーワードが有効になります。
+          <SectionAccordion
+            title="メッセージ後の遷移（送信直後）"
+            optional
+            description="このメッセージ群をすべて送信した直後に、入力を待たず指定フェーズへ移動します。"
+            defaultOpen={!!form.auto_transition_phase_id}
+          >
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label style={fieldLabel} htmlFor="auto_transition_phase_id">移動先フェーズ</label>
+              <select
+                id="auto_transition_phase_id"
+                className="form-input"
+                style={{ maxWidth: 320 }}
+                value={form.auto_transition_phase_id}
+                onChange={(e) => set("auto_transition_phase_id", e.target.value)}
+              >
+                <option value="">移動しない</option>
+                {(phases ?? []).map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+              <div style={hintText}>
+                このメッセージ群をすべて送信した直後に、プレイヤーの入力やボタン操作を待たず、指定フェーズへ移動します。
+                移動先フェーズの冒頭メッセージは送信されません。「続きを選んでください。」も表示されません。
+                次の入力から、移動先フェーズの応答キーワードが有効になります。
+              </div>
             </div>
-          </div>
+          </SectionAccordion>
 
           {/* ── アクションフッター (= sticky で画面下部に固定) ── */}
           {/* スクロール量が多い長いフォームでも、保存ボタンが常に視界に入るようにする。 */}
