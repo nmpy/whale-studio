@@ -7,7 +7,6 @@ import { useEffect, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Breadcrumb } from "@/components/Breadcrumb";
-import { OaHeaderActions } from "@/components/OaHeaderActions";
 import { workApi, oaApi, phaseApi, transitionApi, analyticsApi, getDevToken } from "@/lib/api-client";
 import type { WorkListItem } from "@/lib/api-client";
 import type { AnalyticsData } from "@/types";
@@ -19,10 +18,7 @@ import { ViewerBanner } from "@/components/PermissionGuard";
 import { WorkCreatedGuide }   from "@/components/onboarding/WorkCreatedGuide";
 import { OnboardingProgress } from "@/components/onboarding/OnboardingProgress";
 import { WorkLimitCard } from "@/components/upgrade/WorkLimitCard";
-import {
-  PLAN_DESCRIPTIONS,
-  PLAN_LABELS,
-} from "@/lib/constants/plans";
+import { PLAN_LABELS } from "@/lib/constants/plans";
 import { useAccessPreview } from "@/hooks/useAccessPreview";
 import { StatusBadge } from "@/components/shared";
 import { isSpreadsheetImportEnabled } from "@/lib/spreadsheet-import/ui-text";
@@ -83,7 +79,7 @@ export default function WorkHubPage() {
   //
   // owner が「表示確認モード」で other plan を選んでいる場合は、
   // effectivePlan を使う (= UI 上だけ override される。API には影響しない)。
-  const { effectivePlan: planTier, isPreviewingPlan } = useAccessPreview(oaId);
+  const { effectivePlan: planTier } = useAccessPreview(oaId);
 
   const [oaTitle,          setOaTitle]          = useState("");
   const [work,             setWork]             = useState<WorkListItem | null>(null);
@@ -297,17 +293,7 @@ export default function WorkHubPage() {
           </p>
         )}
         </div>
-
-        {/* OA 単位の共通導線（プラン / 設定）。作品固有アクションとは分けて右上に配置。
-            作品リストと見た目・並びを統一。設定は tester ロールには出さない（既存挙動踏襲）。 */}
-        <div className="flex flex-shrink-0 flex-wrap items-center gap-2">
-          <OaHeaderActions
-            oaId={oaId}
-            planName={planName ?? undefined}
-            source="work_detail"
-            showSettings={role !== "tester"}
-          />
-        </div>
+        {/* 右上の「プラン」「設定」ボタンは廃止し、左サイドバー（利用プラン / アカウント設定）へ集約した。 */}
       </div>
 
       {/* ── 閲覧専用バナー ── */}
@@ -483,21 +469,8 @@ export default function WorkHubPage() {
           </Link>
         ))}
       </div>
-
-      {/* プラン説明文 (= 管理メニュー下部) — 表示確認中は背景を変えて区別 */}
-      <div
-        className={
-          "mt-3.5 rounded-card border px-3.5 py-2.5 text-[12px] leading-[1.7] text-ink-2 " +
-          (isPreviewingPlan
-            ? "border-warn/30 bg-warn-soft"
-            : "border-line bg-bg-tint")
-        }
-      >
-        <span className="mr-2 font-bold text-ink">
-          {isPreviewingPlan ? "表示確認中のプラン" : "現在のプラン"}: {PLAN_LABELS[planTier]}
-        </span>
-        {PLAN_DESCRIPTIONS[planTier]}
-      </div>
+      {/* 下部の「現在のプラン」説明バーは廃止（プラン/権限は上部「状態と注意点」右のチップへ集約、
+          プラン確認/変更は左サイドバー「利用プラン」へ集約）。 */}
     </>
   );
 }
