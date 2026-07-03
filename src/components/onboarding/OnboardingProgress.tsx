@@ -17,14 +17,16 @@ interface Props {
 /**
  * OnboardingProgress — 作品ハブ上部に表示するセットアップ進捗ステッパー
  *
- * 進捗ロジック（5ステップ・@/lib/onboarding-setup に集約）:
+ * 進捗ロジック（4ステップ・@/lib/onboarding-setup に集約）:
  *   - work      : 常に true
  *   - character : props.hasCharacters
  *   - phase     : props.hasPhases
  *   - message   : props.hasMessages
- *   - scenario  : props.hasTransitions
  *
- * ※「プレビュー確認」は実機LINEで確認する運用のため、セットアップステップから削除済み。
+ * ※ セットアップステップから削除済み:
+ *    - 「プレビュー確認」: 実機LINEで確認する運用のため。
+ *    - 「フロー設定」    : 任意タスク扱い（フロー機能そのものは不変）。props.hasTransitions は
+ *                          受け取るが進捗判定には使わない。
  * 全ステップ完了 or ユーザー非表示 → null を返す
  */
 export function OnboardingProgress({
