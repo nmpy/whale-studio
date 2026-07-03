@@ -1,9 +1,20 @@
 // src/lib/work-top-alerts.ts
-// 作品トップ「注意が必要な項目」の判定（純関数・既存データのみから安全に導出）。
-// トーンは優先度で分ける: warning（運用事故につながりうる）/ info（設定推奨・任意）/ success（概ね整っている）。
-// トーンは強すぎない文言にする。CTA href は basePath から組み立てる（新規 API は使わない）。
+// 作品トップ「状態と注意点」の判定（純関数・既存データのみから安全に導出）。
+// トーンは優先度で分ける: warning（運用事故につながりうる）/ info（設定推奨・確認メモ）/ success（概ね整っている）。
+// 文言は強すぎない「確認メモ / 設定ヒント」寄りにする。CTA href は basePath から組み立てる（新規 API は使わない）。
+
+import { startKeywordsOf } from "@/lib/start-keyword";
 
 export type WorkTopAlertTone = "warning" | "info" | "success";
+
+/**
+ * 「プレイヤーが開始できる導線があるか」を runtime と同じ定義で判定する。
+ * = Work.startKeyword ∨ 開始フェーズ Phase.startTrigger（startTrigger 一致で送信される開始演出もこれで発火）。
+ * 作品トップ独自の簡易判定にせず、@/lib/start-keyword の startKeywordsOf を流用する。
+ */
+export function hasStartEntry(input: { startKeyword?: string | null; startTrigger?: string | null }): boolean {
+  return startKeywordsOf({ id: "", startKeyword: input.startKeyword ?? null, startTrigger: input.startTrigger ?? null }).length > 0;
+}
 
 export interface WorkTopAlert {
   key:    string;
@@ -50,7 +61,7 @@ export function computeWorkTopAlerts(input: WorkTopAlertInput): WorkTopAlert[] {
       tone: published ? "warning" : "info",
       title: published ? "公開中ですがメッセージがありません" : "メッセージがありません",
       detail: published
-        ? "このままではプレイヤーに何も届きません。メッセージを追加してください。"
+        ? "公開中ですが、まだ送信するメッセージがありません。追加するとプレイヤーに内容が届きます。"
         : "フェーズに紐づくメッセージを追加すると、プレイヤーに届く内容が作れます。",
       cta: { label: "メッセージを追加する", href: `${basePath}/messages` },
     });
@@ -67,14 +78,13 @@ export function computeWorkTopAlerts(input: WorkTopAlertInput): WorkTopAlert[] {
   }
 
   if (!hasStartTrigger) {
+    // 断定せず「確認メモ」トーン。実際に開始導線がある作品では page 側で hasStartTrigger=true になり出さない。
     alerts.push({
       key: "no_start_trigger",
-      tone: published ? "warning" : "info",
-      title: published ? "公開中ですが開始トリガーが未設定です" : "開始トリガーが未設定です",
-      detail: published
-        ? "プレイヤーがシナリオを開始できません。開始トリガーを設定してください。"
-        : "設定すると公開後の導線が安定します。",
-      cta: { label: "開始トリガーを設定する", href: `${basePath}/scenario` },
+      tone: "info",
+      title: "開始トリガーを確認してください",
+      detail: "開始キーワードや開始フェーズの設定があると、プレイヤーがスムーズに開始できます。必要に応じて設定してください。",
+      cta: { label: "設定を確認する", href: `${basePath}/scenario` },
     });
   }
 
