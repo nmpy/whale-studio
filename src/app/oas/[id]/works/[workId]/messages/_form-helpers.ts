@@ -90,6 +90,8 @@ export interface AdditionalMessageSlot {
   image_action_url:  string;
   /** type="message_with_phase" 用: 遷移先フェーズ ID。 */
   image_action_phase_id: string;
+  /** このメッセージ送信後に silent 自動遷移する先フェーズ ID（""＝移動しない）。チェーン末尾に設定する想定。 */
+  auto_transition_phase_id: string;
   // ── 自由入力受付 (= chain continuation でも freeInput プロンプトに設定可能にする) ──
   // 例: 「{{user_name}}さんにより画像がタップされました」(chain head, freeInput=false)
   //   → 「xxについてどう思う？」(chain continuation, freeInput=true) のような構成。
@@ -143,6 +145,7 @@ export const EMPTY_ADDITIONAL_SLOT: AdditionalMessageSlot = {
   image_action_text: "",
   image_action_url:  "",
   image_action_phase_id: "",
+  auto_transition_phase_id: "",
   // 自由入力受付 (デフォルト OFF)
   free_input_enabled:         false,
   free_input_variable_key:    "",
@@ -186,6 +189,7 @@ export function msgToAdditionalSlot(msg: {
   image_action_text?:        string | null;
   image_action_url?:         string | null;
   image_action_phase_id?:    string | null;
+  auto_transition_phase_id?: string | null;
   tap_url?:                  string | null;
   tap_destination_id?:       string | null;
   // 自由入力受付 (chain continuation でも main message と同様に設定可能)
@@ -255,6 +259,8 @@ export function msgToAdditionalSlot(msg: {
       if (legacyUrl) return { image_action_type: "uri" as const, image_action_text: "", image_action_url: legacyUrl, image_action_phase_id: "" };
       return { image_action_type: "" as const, image_action_text: "", image_action_url: "", image_action_phase_id: "" };
     })(),
+    // 送信後の silent 自動フェーズ遷移（null → 空文字＝移動しない。DB 値があれば復元）。
+    auto_transition_phase_id:   msg.auto_transition_phase_id ?? "",
     // 自由入力受付 (null → false / 空文字。DB 値があれば form state に復元する)
     free_input_enabled:         msg.free_input_enabled         ?? false,
     free_input_variable_key:    msg.free_input_variable_key    ?? "",
@@ -311,6 +317,7 @@ export function additionalSlotToMsgBody(
   image_action_text: string | null;
   image_action_url:  string | null;
   image_action_phase_id: string | null;
+  auto_transition_phase_id: string | null;
   // 自由入力受付 (main message と同形)
   free_input_enabled:         boolean;
   free_input_variable_key:    string | null;
@@ -384,6 +391,8 @@ export function additionalSlotToMsgBody(
       slot.message_type === "image" && slot.image_action_type === "message_with_phase"
         ? (slot.image_action_phase_id.trim() || null)
         : null,
+    // 送信後の silent 自動フェーズ遷移（message_type 非依存。""＝移動しない → null）。
+    auto_transition_phase_id: slot.auto_transition_phase_id.trim() || null,
     // 自由入力受付 (main message と同じ仕様: ON のときのみ key / next を保存)
     free_input_enabled:         !!slot.free_input_enabled,
     free_input_variable_key:    slot.free_input_enabled ? (slot.free_input_variable_key.trim() || null) : null,

@@ -86,6 +86,8 @@ const contentSchema = z.object({
   image_action_liff_page_id:  z.string().uuid().optional().nullable(),
   image_action_postback_data: z.string().max(300).optional().nullable(),
   image_action_phase_id:      z.string().uuid().optional().nullable(),
+  // 送信後の silent 自動フェーズ遷移（入力不要・入場メッセージは送らない）。head/chain child 共通。
+  auto_transition_phase_id:   z.string().uuid().optional().nullable(),
   // 自由入力受付
   free_input_enabled:      z.boolean().optional(),
   free_input_variable_key: z.string().max(100).optional().nullable(),
@@ -167,6 +169,8 @@ function contentToData(c: ContentInput | undefined): Record<string, unknown> {
   set("imageActionLiffPageId", c.image_action_liff_page_id);
   set("imageActionPostbackData", c.image_action_postback_data);
   set("imageActionPhaseId", c.image_action_type === "message_with_phase" ? c.image_action_phase_id : null);
+  // 送信後の silent 自動フェーズ遷移（undefined=据え置き / null=解除 / id=設定）。head/chain child 共通。
+  set("autoTransitionPhaseId", c.auto_transition_phase_id);
   // 自由入力（key のみ。enabled / next は link/正規化が設定）
   set("freeInputVariableKey", c.free_input_variable_key);
   // 演出設定

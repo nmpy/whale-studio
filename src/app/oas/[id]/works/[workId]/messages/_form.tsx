@@ -12,7 +12,6 @@ import { useAccessPreview } from "@/hooks/useAccessPreview";
 import { FEATURE, getPlanAccessState } from "@/lib/constants/plans";
 import { isQrCrossPhaseMessageTarget, resolveQrTargetMessagePhaseId } from "./_qr-transition-check";
 import type { Riddle } from "@/types";
-import { PhaseTransitionsSection } from "./_phase-transitions";
 import { previewQrSend, type QrPreviewMessage } from "./_qr-preview";
 import {
   normalizeCarouselContent, serializeCarouselContent, validateCarousel,
@@ -24,7 +23,6 @@ import { previewChainSend } from "./_chain-send-preview";
 import { moveSlot, insertSlotAt, appendSlot, canMove, canInsertAt, hasFreeInputSlot, appendIndex } from "./_chain-reorder";
 import { ImportPicker } from "./_import-picker";
 import { toImportMessage, insertImportedSlots } from "./_chain-import";
-import { nextTransitionDisabledByPuzzle } from "@/lib/message-flow";
 import { TapDestinationSection } from "@/components/destination/TapDestinationSection";
 import type { TapMode } from "@/components/destination/TapDestinationSection";
 import { LinkPicker, LinkCopyList, useWorkLinkOptions, type LinkOption } from "@/components/destination/LinkPicker";
@@ -4676,6 +4674,29 @@ function AdditionalMessageBlock({
             </>
           )}
         </SectionAccordion>
+
+        {/* 送信後の自動フェーズ移動（silent・チェーン末尾に設定する想定）。旧「遷移を追加」とは別。 */}
+        <div className="form-group" style={{ marginTop: 12, marginBottom: 0 }}>
+          <label style={fieldLabel} htmlFor={`slot-${index}-auto_transition_phase_id`}>
+            自動フェーズ移動（送信直後）
+          </label>
+          <select
+            id={`slot-${index}-auto_transition_phase_id`}
+            className="form-input"
+            style={{ maxWidth: 320 }}
+            value={slot.auto_transition_phase_id}
+            onChange={(e) => onChange({ ...slot, auto_transition_phase_id: e.target.value })}
+          >
+            <option value="">移動しない</option>
+            {(phases ?? []).map((p) => (
+              <option key={p.id} value={p.id}>{p.name}</option>
+            ))}
+          </select>
+          <div style={hintText}>
+            この連続メッセージを送信した直後に、入力を待たず指定フェーズへ移動します（移動先の冒頭メッセージは送りません）。
+            チェーン末尾のメッセージに設定してください。
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -5368,32 +5389,6 @@ export function MessageForm({
                 min={0}
               />
               <div style={hintText}>同じ条件のメッセージが複数ある場合の並び順です（小さい順）</div>
-            </div>
-
-            {/* 送信後の自動フェーズ遷移（silent・入場メッセージは送らない） */}
-            <div className="form-group" style={{ marginBottom: 0, marginTop: 12 }}>
-              <label style={fieldLabel} htmlFor="auto_transition_phase_id">
-                自動フェーズ移動（送信直後）
-              </label>
-              <select
-                id="auto_transition_phase_id"
-                className="form-input"
-                style={{ maxWidth: 320 }}
-                value={form.auto_transition_phase_id}
-                onChange={(e) => set("auto_transition_phase_id", e.target.value)}
-              >
-                <option value="">移動しない</option>
-                {(phases ?? []).map((p) => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
-                ))}
-              </select>
-              <div style={hintText}>
-                このメッセージを送信した直後に、プレイヤーの入力やボタン操作を待たず、指定フェーズへ移動します。
-                移動先フェーズの冒頭メッセージは送信されません。「続きを選んでください。」も表示されません。
-                次の入力から、移動先フェーズの応答キーワードが有効になります。
-                クイックリプライのフェーズ遷移や、キーワードで動く「このメッセージの後の遷移」とは別の設定です。
-                連続メッセージの場合は、基本的にチェーン末尾のメッセージに設定してください。
-              </div>
             </div>
           </SectionAccordion>
 
@@ -6922,28 +6917,33 @@ export function MessageForm({
           )} {/* /isPuzzle 謎の回答設定 */}
 
           {/* ── メッセージ後の遷移（任意）── */}
-          {/* 見出しは常設化し、「遷移設定が消えた」ように見えるのを防ぐ。
-              編集可能な条件（フェーズ所属 & 非 global）では既存 PhaseTransitionsSection を表示。
-              編集不可の条件では本体を出さず、理由を表示する（保存先・送信ロジックは不変）。
-              謎・問題で正解時アクションがフェーズ遷移の場合は、競合するため
-              PhaseTransitionsSection 側で編集不可（グレーアウト）にする（従来どおり・reactive）。 */}
+          {/* 「送信後の挙動」の設定として、送信直後の自動フェーズ移動（silent auto-transition）を配置する。
+              ※ キーワード/QR 起点の旧「遷移を追加」UI（PhaseTransitionsSection）は、新UIと紛らわしいため
+                通常メッセージ編集画面では非表示にする（Transition テーブル・runtime・scenario flow 側は不変）。 */}
           <div className="form-group" style={{ marginTop: 8, marginBottom: 0 }}>
             <label style={fieldLabel}>メッセージ後の遷移（任意）</label>
-            {form.phase_id && form.kind !== "global" ? (
-              <PhaseTransitionsSection
-                oaId={oaId}
-                workId={workId}
-                phaseId={form.phase_id}
-                phases={phases}
-                disabled={nextTransitionDisabledByPuzzle({ isPuzzle, correctAction: form.correct_action })}
-              />
-            ) : (
-              <div style={{ fontSize: 12, color: "#6b7280", lineHeight: 1.8, padding: "10px 14px", border: "1px solid #e5e7eb", borderRadius: 8, background: "#f9fafb" }}>
-                {form.kind === "global"
-                  ? "このメッセージは global（キーワード共通）メッセージのため、特定のフェーズに属さず、メッセージ後のフェーズ遷移は設定できません。"
-                  : "このメッセージはまだフェーズに割り当てられていないため、メッセージ後の遷移は設定できません。フェーズに割り当てると、送信後に次のフェーズへ進める設定ができます。"}
-              </div>
-            )}
+            <div style={{ fontSize: 13, fontWeight: 600, color: "#374151", marginTop: 4 }}>
+              自動フェーズ移動（送信直後）
+            </div>
+            <select
+              id="auto_transition_phase_id"
+              className="form-input"
+              style={{ maxWidth: 320, marginTop: 6 }}
+              value={form.auto_transition_phase_id}
+              onChange={(e) => set("auto_transition_phase_id", e.target.value)}
+            >
+              <option value="">移動しない</option>
+              {(phases ?? []).map((p) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+            <div style={hintText}>
+              このメッセージを送信した直後に、プレイヤーの入力やボタン操作を待たず、指定フェーズへ移動します。
+              移動先フェーズの冒頭メッセージは送信されません。「続きを選んでください。」も表示されません。
+              次の入力から、移動先フェーズの応答キーワードが有効になります。
+              クイックリプライのフェーズ遷移や、キーワードで動く遷移とは別の設定です。
+              連続メッセージの場合は、基本的にチェーン末尾のメッセージに設定してください。
+            </div>
           </div>
 
           {/* ── アクションフッター (= sticky で画面下部に固定) ── */}
