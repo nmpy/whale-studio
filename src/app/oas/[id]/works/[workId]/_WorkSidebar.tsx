@@ -14,57 +14,20 @@
 
 import Link from "next/link";
 import { useParams, usePathname } from "next/navigation";
-
-type Item = {
-  label: string;
-  href: string;
-  /** pathname がこの作品ベースからのどの相対 segment で始まればアクティブか（複数可）。 */
-  activeSegments?: string[];
-  /** ベース完全一致でアクティブ（作品トップ用）。 */
-  exact?: boolean;
-  /** 作品 layout 外（OA 階層）リンク = サイドバー内ではアクティブにならない。 */
-  external?: boolean;
-};
+import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
+import { buildWorkSidebarSections, isSidebarItemActive, type SidebarItem } from "./_work-sidebar-nav";
 
 export default function WorkSidebar() {
   const params = usePathnameParams();
   const pathname = usePathname() ?? "";
+  // アカウント設定（OA 設定）の表示可否は、旧・右上「設定」ボタン（showSettings=role!=="tester"）と同条件。
+  const { isTester } = useWorkspaceRole(params?.id ?? "");
   if (!params) return null;
   const { id: oaId, workId } = params;
   const base = `/oas/${oaId}/works/${workId}`;
 
-  const sections: { heading?: string; items: Item[] }[] = [
-    {
-      items: [
-        { label: "作品トップ", href: base, exact: true },
-        { label: "作品情報", href: `${base}/edit`, activeSegments: ["/edit"] },
-      ],
-    },
-    {
-      heading: "主要機能",
-      items: [
-        { label: "フェーズ",       href: `${base}/scenario`,  activeSegments: ["/scenario", "/phases"] },
-        { label: "キャラクター",   href: `${base}/characters`, activeSegments: ["/characters"] },
-        { label: "メッセージ",     href: `${base}/messages`,   activeSegments: ["/messages"] },
-        { label: "LIFF",          href: `${base}/liff`,       activeSegments: ["/liff"] },
-        { label: "オーディエンス", href: `${base}/audience`,   activeSegments: ["/audience"] },
-        // ロケーションは OA 階層（/oas/[id]/locations）。作品 workId を引き継いで遷移する。
-        { label: "ロケーション",   href: `/oas/${oaId}/locations?workId=${workId}`, external: true },
-      ],
-    },
-    {
-      heading: "その他",
-      items: [
-        { label: "X投稿", href: `${base}/x-posts`, activeSegments: ["/x-posts"] },
-      ],
-    },
-  ];
-
-  const isActive = (it: Item): boolean => {
-    if (it.external) return false;
-    if (it.exact) return pathname === it.href;
-    return (it.activeSegments ?? []).some((seg) => pathname.startsWith(`${base}${seg}`));
-  };
+  const sections = buildWorkSidebarSections({ oaId, workId, isTester });
+  const isActive = (it: SidebarItem): boolean => isSidebarItemActive(it, pathname, base);
 
   return (
     <nav
