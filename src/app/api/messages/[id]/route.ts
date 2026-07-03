@@ -71,6 +71,7 @@ type PrismaMessageWithRelations = {
   imageActionLiffPageId: string | null;
   imageActionPostbackData: string | null;
   imageActionPhaseId: string | null;
+  autoTransitionPhaseId: string | null;
   // 自由入力受付
   freeInputEnabled: boolean;
   freeInputVariableKey: string | null;
@@ -170,6 +171,7 @@ function toResponse(m: PrismaMessageWithRelations) {
     image_action_liff_page_id:  m.imageActionLiffPageId   ?? null,
     image_action_postback_data: m.imageActionPostbackData ?? null,
     image_action_phase_id:      m.imageActionPhaseId      ?? null,
+    auto_transition_phase_id:   m.autoTransitionPhaseId   ?? null,
     // 自由入力受付
     free_input_enabled:         m.freeInputEnabled         ?? false,
     free_input_variable_key:    m.freeInputVariableKey     ?? null,
@@ -375,6 +377,7 @@ export const PATCH = withAuth<{ id: string }>(async (req, { params }, user) => {
         ...(data.image_action_postback_data !== undefined && { imageActionPostbackData: data.image_action_postback_data }),
         // message_with_phase 以外に切り替えたら phase_id は null に寄せる。
         ...(data.image_action_type !== undefined && { imageActionPhaseId: data.image_action_type === "message_with_phase" ? (data.image_action_phase_id ?? null) : null }),
+        ...(data.auto_transition_phase_id !== undefined && { autoTransitionPhaseId: data.auto_transition_phase_id }),
         // 自由入力受付（schema・Zod・form は揃っていたが PATCH data に欠落していた pre-existing bug を修正）
         ...(data.free_input_enabled         !== undefined && { freeInputEnabled:       data.free_input_enabled }),
         ...(data.free_input_variable_key    !== undefined && { freeInputVariableKey:   data.free_input_variable_key }),

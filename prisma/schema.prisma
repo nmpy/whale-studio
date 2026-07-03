@@ -479,6 +479,12 @@ model Message {
   /// LINE payload には載せず（action は message のみ）、webhook 側の遷移解決で参照する。
   imageActionPhaseId      String? @map("image_action_phase_id")
 
+  /// このメッセージ送信完了後に、プレイヤーの入力を待たず silent に遷移する先フェーズ ID（null = 無効）。
+  /// キーワード/QR/postback 起点の遷移とは別物。送信後処理(applyFreeInputPostEffect)で currentPhaseId のみ更新する。
+  /// 遷移先フェーズの入場メッセージは送らない（＝「続きを選んでください。」fallback も出さない）。
+  /// 運用はチェーン末尾のメッセージに設定する想定。
+  autoTransitionPhaseId   String? @map("auto_transition_phase_id")
+
   // ── 自由入力受付（このメッセージ送信後にユーザーの次入力を保存する）──────
   /// true: このメッセージ送信後にユーザーの次のテキスト入力を変数として保存する。
   /// 名前入力 / アンケート自由回答 / 任意テキストの記録 等に使う。
