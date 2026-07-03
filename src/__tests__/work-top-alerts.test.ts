@@ -1,6 +1,6 @@
 // src/__tests__/work-top-alerts.test.ts
 import { describe, it, expect } from "vitest";
-import { computeWorkTopAlerts, type WorkTopAlertInput } from "@/lib/work-top-alerts";
+import { computeWorkTopAlerts, hasStartEntry, type WorkTopAlertInput } from "@/lib/work-top-alerts";
 
 const base = (over: Partial<WorkTopAlertInput> = {}): WorkTopAlertInput => ({
   publishStatus: "draft",
@@ -35,17 +35,19 @@ describe("computeWorkTopAlerts", () => {
     expect(al.title).not.toContain("公開中");
   });
 
-  it("公開中で開始トリガー未設定 → warning", () => {
-    const al = byKey(base({ publishStatus: "active", hasStartTrigger: false }), "no_start_trigger")!;
-    expect(al.tone).toBe("warning");
-    expect(al.title).toContain("公開中");
-    expect(al.cta?.label).toBe("開始トリガーを設定する");
+  it("開始トリガー未設定 → 公開状態に関わらず穏やかな info（確認メモ・断定しない）", () => {
+    for (const publishStatus of ["active", "draft"]) {
+      const al = byKey(base({ publishStatus, hasStartTrigger: false }), "no_start_trigger")!;
+      expect(al.tone).toBe("info");
+      expect(al.title).toBe("開始トリガーを確認してください");
+      // 断定的な NG 文言を含まない
+      expect(al.detail).not.toContain("開始できません");
+      expect(al.detail).not.toContain("シナリオを開始できません");
+    }
   });
 
-  it("非公開で開始トリガー未設定 → info（設定すると安定）", () => {
-    const al = byKey(base({ publishStatus: "draft", hasStartTrigger: false }), "no_start_trigger")!;
-    expect(al.tone).toBe("info");
-    expect(al.detail).toContain("公開後の導線が安定");
+  it("開始トリガー設定済み(hasStartTrigger=true) → no_start_trigger を出さない", () => {
+    expect(byKey(base({ publishStatus: "active", hasStartTrigger: true }), "no_start_trigger")).toBeUndefined();
   });
 
   it("フェーズ0 → warning/info（公開状態でトーンが変わる）", () => {
@@ -66,5 +68,27 @@ describe("computeWorkTopAlerts", () => {
   it("CTA href は basePath から組み立てる", () => {
     const al = byKey(base({ phases: 0, basePath: "/oas/A/works/B" }), "no_phases")!;
     expect(al.cta?.href).toBe("/oas/A/works/B/scenario");
+  });
+});
+
+describe("hasStartEntry — runtime(startKeywordsOf)と同じ開始判定", () => {
+  it("Work.startKeyword がある → true（未設定アラートを出さない側）", () => {
+    expect(hasStartEntry({ startKeyword: "はじめる", startTrigger: null })).toBe(true);
+  });
+  it("開始フェーズ startTrigger がある（=開始演出トリガー）→ true", () => {
+    expect(hasStartEntry({ startKeyword: null, startTrigger: "次へ" })).toBe(true);
+  });
+  it("両方あっても true", () => {
+    expect(hasStartEntry({ startKeyword: "スタート", startTrigger: "次へ" })).toBe(true);
+  });
+  it("どちらも空/空白/null → false（本当に開始導線が無い場合のみ）", () => {
+    expect(hasStartEntry({ startKeyword: null, startTrigger: null })).toBe(false);
+    expect(hasStartEntry({ startKeyword: "", startTrigger: "　" })).toBe(false);
+    expect(hasStartEntry({})).toBe(false);
+  });
+  it("設定済みのとき computeWorkTopAlerts は no_start_trigger を出さない", () => {
+    const has = hasStartEntry({ startKeyword: null, startTrigger: "次へ" });
+    const al = computeWorkTopAlerts(base({ publishStatus: "active", hasStartTrigger: has }));
+    expect(al.find((a) => a.key === "no_start_trigger")).toBeUndefined();
   });
 });

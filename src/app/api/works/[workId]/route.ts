@@ -111,6 +111,13 @@ export const GET = withAuth<{ workId: string }>(async (_req, { params }, user) =
             _count: {
               select: { characters: true, phases: true, messages: true, userProgress: true },
             },
+            // 開始トリガーを持つ start フェーズを1件取得（list API と同仕様）。
+            phases: {
+              where:   { phaseType: "start" },
+              select:  { startTrigger: true },
+              take:    1,
+              orderBy: { sortOrder: "asc" },
+            },
           },
         }),
       );
@@ -121,7 +128,35 @@ export const GET = withAuth<{ workId: string }>(async (_req, { params }, user) =
       );
       if (!check.ok) return check.response;
 
-      return ok({ ...toResponse(work), _count: work._count });
+      // プレイヤー進行サマリー（作品トップのダッシュボード用）。list API と同じ定義に揃える:
+      //   completed = reachedEnding=true / in_progress = reachedEnding=false / total = 合計。
+      //   isPreview=false のみ。必ず workId でスコープ（他作品/OA のプレイヤーを混ぜない）。read-only 集計。
+      // 集計失敗（＝進行データ取得不可）でも作品ページ全体を落とさない（0 扱いにフォールバック）。
+      let completed = 0, inProgress = 0;
+      try {
+        const progressGroups = await withTiming("api/works-detail:db:progressGroups", () =>
+          prisma.userProgress.groupBy({
+            by:     ["reachedEnding"],
+            where:  { isPreview: false, workId: params.workId },
+            _count: { _all: true },
+          }),
+        );
+        for (const g of progressGroups ?? []) {
+          if (g.reachedEnding) completed += g._count._all;
+          else                 inProgress += g._count._all;
+        }
+      } catch (aggErr) {
+        console.warn("[api/works-detail] progress groupBy failed (fallback 0):", aggErr);
+      }
+      const total = completed + inProgress;
+
+      return ok({
+        ...toResponse(work),
+        _count: { ...work._count, userProgress: total },
+        // start フェーズが未作成の場合は null（list API と同形）。phases 未 include のケースも安全に。
+        start_trigger: work.phases?.[0]?.startTrigger ?? null,
+        progress_stats: { total, completed, in_progress: inProgress },
+      });
     } catch (err) {
       return serverError(err);
     }

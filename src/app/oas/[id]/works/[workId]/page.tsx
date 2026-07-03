@@ -26,7 +26,8 @@ import {
 import { useAccessPreview } from "@/hooks/useAccessPreview";
 import { StatusBadge } from "@/components/shared";
 import { isSpreadsheetImportEnabled } from "@/lib/spreadsheet-import/ui-text";
-import { computeWorkTopAlerts, type WorkTopAlertTone } from "@/lib/work-top-alerts";
+import { computeWorkTopAlerts, hasStartEntry, type WorkTopAlertTone } from "@/lib/work-top-alerts";
+import { computePlayerSummary } from "@/lib/work-top-summary";
 import type { Role } from "@/lib/types/permissions";
 
 // ── ステータス → shared/StatusBadge tone マッピング ───────────────
@@ -55,11 +56,12 @@ const ROLE_LABELS: Record<Role, string> = {
   viewer: "閲覧者",
 };
 
-// アラートのトーン別スタイル（赤一色にせず warning / info / success で優先度を分ける）。
-const ALERT_TONE_STYLE: Record<WorkTopAlertTone, { card: string; dot: string; icon: string }> = {
-  warning: { card: "border-warn/30 bg-warn-soft",   dot: "bg-warn",    icon: "⚠" },
-  info:    { card: "border-sky-200 bg-sky-soft",    dot: "bg-sky-500", icon: "ℹ" },
-  success: { card: "border-brand/30 bg-brand-soft", dot: "bg-brand",   icon: "✓" },
+// アラートのトーン別スタイル（赤一色にせず優先度を分ける）。
+// info は「確認メモ / 設定ヒント」寄りに、薄い背景・控えめな枠線で圧を与えない。
+const ALERT_TONE_STYLE: Record<WorkTopAlertTone, { card: string; dot: string; icon: string; iconColor: string }> = {
+  warning: { card: "border-warn/25 bg-warn-soft",  dot: "bg-warn/70",   icon: "⚠", iconColor: "text-white" },
+  info:    { card: "border-line bg-bg-tint",       dot: "bg-ink-3/50",  icon: "ℹ", iconColor: "text-white" },
+  success: { card: "border-line bg-brand-soft/50", dot: "bg-brand/70",  icon: "✓", iconColor: "text-white" },
 };
 
 
@@ -193,22 +195,27 @@ export default function WorkHubPage() {
 
   // ── ダッシュボード派生値（既存データのみ・新規 API なし）──
   const roleLabel = role ? (ROLE_LABELS[role] ?? role) : "—";
+  // 開始導線の有無は runtime と同じ判定（Work.startKeyword ∨ 開始フェーズ startTrigger）。
+  const hasStartTrigger = hasStartEntry({ startKeyword: work?.start_keyword ?? null, startTrigger: work?.start_trigger ?? null });
+  // ヘッダー表示用の開始トリガー文言（設定済みならその値、無ければ null）。
+  const startTriggerDisplay = (work?.start_trigger?.trim() || work?.start_keyword?.trim() || null);
   const alerts = computeWorkTopAlerts({
     publishStatus:   currentStatus,
-    hasStartTrigger: !!work?.start_trigger,
+    hasStartTrigger,
     characters:      work?._count.characters ?? 0,
     phases:          phaseCount,
     messages:        work?._count.messages ?? 0,
     basePath,
   });
-  // よく使う操作（サイドバーと完全重複する一覧導線は避け、作業開始に直結する操作に絞る・最大5個）。
+  const players = computePlayerSummary(work?.progress_stats);
+  // よく使う操作（サイドバーと完全重複する一覧導線は避け、作業開始に直結する操作に絞る・最大4個）。
+  // ※「プレビュー」は作品トップのクイック操作からは外す（実機/表示確認は別導線で行う）。
   const quickActions: { label: string; href: string }[] = [
     { label: "メッセージを追加", href: `${basePath}/messages` },
     { label: "フェーズを追加",   href: `${basePath}/scenario` },
-    { label: "プレビュー",       href: `/playground?work_id=${workId}&oa_id=${oaId}` },
     ...(role !== "tester" ? [{ label: "作品設定", href: `${basePath}/edit` }] : []),
     ...(isSpreadsheetImportEnabled() ? [{ label: "スプレッドシート取込", href: `${basePath}/messages/import` }] : []),
-  ].slice(0, 5);
+  ].slice(0, 4);
 
   // updated_at フォーマット（WorkCard と同形式）
   function formatDate(iso: string) {
@@ -250,16 +257,17 @@ export default function WorkHubPage() {
             <span className="flex-shrink-0 select-none text-[10px] font-bold uppercase tracking-[0.07em] text-ink-3">
               開始トリガー
             </span>
-            {work?.start_trigger ? (
+            {/* runtime と同じ判定（startKeyword ∨ 開始フェーズ startTrigger）。設定済みなら値を表示。 */}
+            {hasStartTrigger && startTriggerDisplay ? (
               <span
                 className="max-w-[140px] overflow-hidden text-ellipsis whitespace-nowrap rounded-full border border-line bg-bg-tint px-2.5 py-0.5 font-mono text-[12px] font-medium text-ink sm:max-w-[260px]"
-                title={work.start_trigger}
+                title={startTriggerDisplay}
               >
-                {work.start_trigger}
+                {startTriggerDisplay}
               </span>
             ) : (
               <span className="inline-flex items-center gap-1 text-[12px] italic text-ink-2">
-                <span aria-hidden="true" className="inline-block h-1.5 w-1.5 flex-shrink-0 rounded-full bg-warn" />
+                <span aria-hidden="true" className="inline-block h-1.5 w-1.5 flex-shrink-0 rounded-full bg-ink-3" />
                 未設定
               </span>
             )}
@@ -352,16 +360,16 @@ export default function WorkHubPage() {
           {alerts.map((a) => {
             const s = ALERT_TONE_STYLE[a.tone];
             return (
-              <div key={a.key} className={"flex items-start gap-2.5 rounded-card border px-3.5 py-2.5 " + s.card}>
-                <span aria-hidden="true" className={"mt-0.5 inline-flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white " + s.dot}>
+              <div key={a.key} className={"flex items-center gap-2.5 rounded-field border px-3 py-2 " + s.card}>
+                <span aria-hidden="true" className={"inline-flex h-3.5 w-3.5 flex-shrink-0 items-center justify-center rounded-full text-[9px] font-bold " + s.dot + " " + s.iconColor}>
                   {s.icon}
                 </span>
                 <div className="min-w-0 flex-1">
-                  <div className="text-[13px] font-bold text-ink">{a.title}</div>
-                  <div className="mt-0.5 text-[12px] leading-[1.6] text-ink-2">{a.detail}</div>
+                  <span className="text-[12.5px] font-semibold text-ink">{a.title}</span>
+                  <span className="ml-1.5 text-[11.5px] leading-[1.5] text-ink-3">{a.detail}</span>
                 </div>
                 {a.cta && (
-                  <Link href={a.cta.href} className="flex-shrink-0 self-center whitespace-nowrap rounded-lg border border-line bg-surface px-2.5 py-1 text-[11px] font-semibold text-ink no-underline transition-colors hover:border-brand/40 hover:text-brand-ink">
+                  <Link href={a.cta.href} className="flex-shrink-0 self-center whitespace-nowrap rounded-lg border border-line bg-surface px-2.5 py-1 text-[11px] font-medium text-ink-2 no-underline transition-colors hover:border-brand/40 hover:text-brand-ink">
                     {a.cta.label}
                   </Link>
                 )}
@@ -389,13 +397,12 @@ export default function WorkHubPage() {
         ]},
       ]} />
 
-      {/* ── カウント表示 ── */}
+      {/* ── コンテンツ量サマリー ── */}
       {work && (
-        <div className="mb-6 overflow-hidden rounded-card border border-line bg-surface shadow-sm">
-          {/* 上段: 構成要素カウント */}
+        <div className="mb-4 overflow-hidden rounded-card border border-line bg-surface shadow-sm">
+          {/* 構成要素カウント（プレイヤー数は下の「プレイヤー状況」カードに分離）*/}
           <div className="flex flex-wrap gap-3 p-3.5 sm:gap-2.5 sm:px-5 sm:py-4">
             {[
-              { label: "プレイヤー",   value: (work.progress_stats?.total ?? 0).toLocaleString(), highlight: (work.progress_stats?.total ?? 0) > 0 },
               { label: "キャラクター", value: work._count.characters.toLocaleString(), highlight: false },
               { label: "フェーズ",     value: phaseCount.toLocaleString(),             highlight: false },
               { label: "メッセージ",   value: work._count.messages.toLocaleString(),   highlight: false },
@@ -421,48 +428,46 @@ export default function WorkHubPage() {
             ))}
           </div>
 
-          {/* 下段: 進行サマリー — プレイヤーが1人以上いる場合のみ表示 */}
-          {(work.progress_stats?.total ?? 0) > 0 && (() => {
-            const completed  = work.progress_stats?.completed   ?? 0;
-            const inProgress = work.progress_stats?.in_progress ?? 0;
-            const needsCheck = inProgress > 0 && completed === 0;
-            return (
-              <div className="flex flex-wrap items-center gap-2 border-t border-line-2 px-3.5 pb-3 pt-2 sm:px-5 sm:pb-3 sm:pt-2">
-                {/* 完了チップ — brand トーン (= WorkCard と同) */}
-                <span
-                  className={
-                    "inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[12px] " +
-                    (completed > 0
-                      ? "border-brand/30 bg-brand-soft text-brand-ink"
-                      : "border-line bg-bg-tint text-ink-3")
-                  }
-                >
-                  <strong className="font-num font-bold">{completed.toLocaleString()}</strong>
-                  <span className={completed > 0 ? "text-brand-ink/85" : "text-ink-3"}>完了</span>
-                </span>
+        </div>
+      )}
 
-                {/* 進行中チップ — gray 系 (= WorkCard と同) */}
-                <span className="inline-flex items-center gap-1 rounded-full border border-line bg-bg-tint px-2.5 py-0.5 text-[12px] text-ink-2">
-                  <span aria-hidden="true" className="inline-block h-1.5 w-1.5 flex-shrink-0 rounded-full bg-ink-3" />
-                  <strong className="font-num font-bold">{inProgress.toLocaleString()}</strong>
-                  <span className="text-ink-3">進行中</span>
-                </span>
+      {/* ── プレイヤー状況（簡易オーディエンス）── */}
+      {work && (
+        <div className="mb-6 rounded-card border border-line bg-surface p-4 shadow-sm sm:px-5">
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <span className="text-[13px] font-bold text-ink">プレイヤー状況</span>
+            <Link href={`${basePath}/audience`} className="whitespace-nowrap text-[11px] font-semibold text-ink-3 no-underline transition-colors hover:text-brand-ink">
+              オーディエンス詳細 ›
+            </Link>
+          </div>
 
-                {/* 「要確認」補助ラベル — WorkCard と同条件・同トーン */}
-                {needsCheck && (
-                  <span className="inline-flex items-center gap-1 rounded-full border border-warn/30 bg-warn-soft px-2 py-0.5 text-[11px] text-warn">
-                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none"
-                      stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
-                      aria-hidden="true">
-                      <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
-                      <line x1="4" y1="22" x2="4" y2="15" />
-                    </svg>
-                    完了者未発生
-                  </span>
-                )}
+          {players.isEmpty ? (
+            <div className="rounded-field border border-dashed border-line bg-bg-tint px-4 py-6 text-center text-[12px] leading-[1.7] text-ink-3">
+              まだプレイヤーはいません。<br className="sm:hidden" />公開後、ここに参加状況が表示されます。
+            </div>
+          ) : (
+            <>
+              {/* 数値サマリー（総 / 進行中 / 完了）*/}
+              <div className="grid grid-cols-3 gap-2 sm:gap-3">
+                {[
+                  { label: "総プレイヤー", value: players.total,      tone: "text-ink" },
+                  { label: "進行中",       value: players.inProgress, tone: "text-sky-ink" },
+                  { label: "完了",         value: players.completed,  tone: "text-brand-ink" },
+                ].map((c) => (
+                  <div key={c.label} className="rounded-field border border-line-2 bg-bg-tint px-3 py-2.5 text-center">
+                    <div className={"font-num text-[22px] font-extrabold leading-none " + c.tone}>{c.value.toLocaleString()}</div>
+                    <div className="mt-1 text-[11px] text-ink-3">{c.label}</div>
+                  </div>
+                ))}
               </div>
-            );
-          })()}
+              {/* 補足文（未完了含む一文サマリー）*/}
+              <p className="mt-2.5 text-[11.5px] leading-[1.6] text-ink-2">
+                現在 <strong className="text-ink">{players.inProgress.toLocaleString()}</strong> 人がプレイ中、
+                <strong className="text-ink">{players.completed.toLocaleString()}</strong> 人がエンディングに到達しています
+                （未完了 {players.incomplete.toLocaleString()} 人）。
+              </p>
+            </>
+          )}
         </div>
       )}
 

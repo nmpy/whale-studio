@@ -514,6 +514,11 @@ export interface WorkListItem extends Work {
    */
   start_trigger: string | null;
   /**
+   * Work.startKeyword（PR #484: 1 OA 複数作品の開始キーワード）。未設定時 null。
+   * runtime の開始判定は startKeyword ∨ start フェーズ startTrigger（@/lib/start-keyword）。
+   */
+  start_keyword?: string | null;
+  /**
    * プレイヤー進行情報（isPreview=false のみ集計）。
    * - total:       総プレイヤー数（= _count.userProgress と同値）
    * - completed:   エンディング到達済み
