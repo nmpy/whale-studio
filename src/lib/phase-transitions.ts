@@ -58,6 +58,12 @@ export interface MessageLite {
    * → CMS のシナリオ構成アラートでも有効な遷移導線として扱う（実態と一致させる）。
    */
   auto_transition_phase_id?:        string | null;
+  /** 画像タップ（message_with_phase）で遷移する先フェーズ（表示ラベル用途にも使う）。 */
+  image_action_phase_id?:           string | null;
+  /** メッセージ種別（表示ラベル用: response の応答キーワード導線などを識別）。 */
+  kind?:                            string | null;
+  /** 応答/開始トリガーのキーワード（表示ラベル用）。 */
+  trigger_keyword?:                 string | null;
 }
 
 export interface TransitionLite {
@@ -166,6 +172,118 @@ export function getOutgoingPhaseTargets(phaseId: string, data: ScenarioData): Ou
 /** 指定フェーズから別フェーズへ進む有効な導線が 1 つでもあるか。 */
 export function hasOutgoingTransitionFromPhase(phaseId: string, data: ScenarioData): boolean {
   return getOutgoingPhaseTargets(phaseId, data).validTargets.size > 0;
+}
+
+// ── フェーズ管理の「条件分岐」表示用: ラベル付きの outgoing edge を集める ──
+//   getOutgoingPhaseTargets と同じ収集元を辿り、遷移の「種別」と「ラベル」を保持して返す。
+//   → 到達性の判定（deadEnd/orphan）と、画面の分岐表示が同じソースになり、仕様ズレが起きにくい。
+
+export type OutgoingEdgeKind =
+  | "transition"       // 明示 transition
+  | "quick_reply"      // クイックリプライ
+  | "image_action"     // 画像タップ
+  | "auto_transition"  // メッセージ送信後の自動遷移（silent auto-transition）
+  | "puzzle_correct"   // 謎/問題の正解後
+  | "checkin"          // 到着トリガー（QR/GPS/Beacon チェックイン）
+  | "free_input"       // 自由入力後の応答
+  | "next_message";    // 連続送信の次メッセージが別フェーズ
+
+export interface OutgoingEdge {
+  targetPhaseId: string;
+  kind:          OutgoingEdgeKind;
+  /** UI 表示ラベル（例: クイックリプライ「謎を解く」/ 自動遷移 / 謎の正解 / 応答キーワード「…」）。 */
+  label:         string;
+  /** 遷移先フェーズが存在しない（削除済み参照など）＝壊れた遷移先。 */
+  invalid?:      boolean;
+}
+
+const KIND_LABEL: Record<OutgoingEdgeKind, string> = {
+  transition:      "フェーズ遷移",
+  quick_reply:     "クイックリプライ",
+  image_action:    "画像タップ",
+  auto_transition: "自動遷移",
+  puzzle_correct:  "謎の正解",
+  checkin:         "到着トリガー",
+  free_input:      "自由入力後",
+  next_message:    "連続送信",
+};
+
+/**
+ * 指定フェーズから「別フェーズへ出ていく」導線を、種別・ラベル付きで列挙する（表示専用）。
+ * 収集元は getOutgoingPhaseTargets と同一（同じ仕様）。同一フェーズ内・重複（同 target×同 kind×同 label）は除外。
+ */
+export function getOutgoingPhaseEdges(phaseId: string, data: ScenarioData): OutgoingEdge[] {
+  const phaseIds = new Set(data.phases.map((p) => p.id));
+  const msgPhase = new Map<string, string | null>(data.messages.map((m) => [m.id, m.phase_id]));
+  const edges: OutgoingEdge[] = [];
+  const seen = new Set<string>();
+
+  // このフェーズ起点の transition ラベル → to_phase（テキスト QR 照合用）
+  const labelMap = new Map<string, string>();
+  for (const t of data.transitions) {
+    if (t.from_phase_id === phaseId && t.label) labelMap.set(norm(t.label), t.to_phase_id);
+  }
+
+  const push = (target: string | null | undefined, kind: OutgoingEdgeKind, label: string) => {
+    if (!target || target === phaseId) return;             // 自フェーズ / 空は除外
+    const invalid = !phaseIds.has(target);
+    const key = `${target}|${kind}|${label}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    edges.push({ targetPhaseId: target, kind, label, ...(invalid ? { invalid: true } : {}) });
+  };
+  // メッセージ id → その所属フェーズが別フェーズなら遷移とみなす
+  const pushMsg = (msgId: string | null | undefined, kind: OutgoingEdgeKind, label: string) => {
+    if (!msgId) return;
+    const tp = msgPhase.get(msgId);
+    if (tp === undefined) return;
+    push(tp, kind, label);
+  };
+
+  const handleQr = (items: QuickReplyLite[] | null | undefined, kind: OutgoingEdgeKind, prefix: string) => {
+    for (const qr of items ?? []) {
+      if (qr.enabled === false) continue;
+      const name = (qr.label?.trim() || qr.value?.trim() || "").trim();
+      const label = name ? `${prefix}「${name}」` : prefix;
+      if (qr.target_phase_id) { push(qr.target_phase_id, kind, label); continue; }
+      if (qr.target_type === "message" && qr.target_message_id) { pushMsg(qr.target_message_id, kind, label); continue; }
+      const textVal = (qr.value?.trim() || qr.label || "").trim();
+      if (textVal) {
+        const matched = labelMap.get(norm(textVal));
+        if (matched) push(matched, kind, label);
+      }
+    }
+  };
+
+  // 1. 明示 transition
+  for (const t of data.transitions) {
+    if (t.from_phase_id === phaseId) push(t.to_phase_id, "transition", t.label?.trim() ? `${KIND_LABEL.transition}「${t.label.trim()}」` : KIND_LABEL.transition);
+  }
+
+  // 2. このフェーズの有効メッセージ由来
+  for (const m of data.messages) {
+    if (m.phase_id !== phaseId) continue;
+    if (m.is_active === false) continue;
+
+    handleQr(m.quick_replies, "quick_reply", KIND_LABEL.quick_reply);
+    handleQr(m.incorrect_quick_replies, "quick_reply", `${KIND_LABEL.quick_reply}（不正解）`);
+
+    push(m.correct_next_phase_id, "puzzle_correct", KIND_LABEL.puzzle_correct);
+    push(m.checkin_trigger_next_phase_id, "checkin", KIND_LABEL.checkin);
+    pushMsg(m.checkin_trigger_next_message_id, "checkin", KIND_LABEL.checkin);
+    pushMsg(m.free_input_next_message_id, "free_input", KIND_LABEL.free_input);
+    pushMsg(m.next_message_id, "next_message", KIND_LABEL.next_message);
+    push(m.image_action_phase_id, "image_action", KIND_LABEL.image_action);
+
+    // 送信後の自動遷移。応答メッセージ（triggerKeyword 付き）なら「応答キーワード「X」」として表示する。
+    if (m.auto_transition_phase_id) {
+      const kw = m.trigger_keyword?.trim();
+      const label = (m.kind === "response" && kw) ? `応答キーワード「${kw.split("\n")[0]}」` : KIND_LABEL.auto_transition;
+      push(m.auto_transition_phase_id, "auto_transition", label);
+    }
+  }
+
+  return edges;
 }
 
 export interface PhaseTransitionWarnings {

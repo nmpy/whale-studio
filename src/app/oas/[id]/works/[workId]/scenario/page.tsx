@@ -8,7 +8,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { TLink as Link } from "@/components/TLink";
 import { workApi, phaseApi, transitionApi, messageApi, getDevToken } from "@/lib/api-client";
-import { analyzePhaseTransitions } from "@/lib/phase-transitions";
+import { analyzePhaseTransitions, getOutgoingPhaseEdges, type OutgoingEdge, type MessageLite } from "@/lib/phase-transitions";
 import type { QuickReplyItem, Message, UpdatePhaseBody } from "@/types";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { HelpAccordion } from "@/components/HelpAccordion";
@@ -77,6 +77,8 @@ export default function ScenarioPage() {
   const [msgQrData, setMsgQrData]     = useState<Record<string, MsgQrEntry[]>>({});
   const [allMessages, setAllMessages] = useState<Message[]>([]);
   const [loading, setLoading]         = useState(true);
+  // 表示切り替え（縦表示 / 横表示）。条件分岐が多い作品は横で全体の流れを確認する。
+  const [viewMode, setViewMode]       = useState<"vertical" | "horizontal">("vertical");
 
   // フェーズ追加フォーム
   const [showAddForm, setShowAddForm] = useState(false);
@@ -164,6 +166,19 @@ export default function ScenarioPage() {
 
   // ── フェーズ追加 ──────────────────────────────────
   const hasStartPhase = phases.some((p) => p.phase_type === "start");
+
+  // 各フェーズの outgoing edge（条件分岐）を、到達性判定と同一ソース（getOutgoingPhaseEdges）で作る。
+  // → 画面の分岐表示が deadEnd/orphan 判定とズレない。表示専用（データは変更しない）。
+  const edgesByPhase = useMemo(() => {
+    const scenario = { phases, transitions, messages: allMessages as unknown as MessageLite[] };
+    const map: Record<string, OutgoingEdge[]> = {};
+    for (const p of phases) map[p.id] = getOutgoingPhaseEdges(p.id, scenario);
+    return map;
+  }, [phases, transitions, allMessages]);
+  const phaseNameById = useMemo(
+    () => Object.fromEntries(phases.map((p) => [p.id, p.name])) as Record<string, string>,
+    [phases],
+  );
 
   async function handleAddPhase(e: React.FormEvent) {
     e.preventDefault();
@@ -277,20 +292,7 @@ export default function ScenarioPage() {
             フェーズの追加・並び替え・軽編集と分岐構造を1画面で管理できます。
           </p>
         </div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          {canEdit && (
-            <button
-              className="btn btn-primary"
-              onClick={() => {
-                setAddForm(EMPTY_PHASE_FORM);
-                setAddErrors({});
-                setShowAddForm((v) => !v);
-              }}
-            >
-              ＋ フェーズを追加
-            </button>
-          )}
-        </div>
+        {/* 「フェーズを追加」は下の sticky タブバーへ移設（メッセージ一覧の sticky と挙動を揃える）。 */}
       </div>
 
       {/* ── フェーズ追加フォーム（インライン） ── */}
@@ -415,10 +417,62 @@ export default function ScenarioPage() {
         ]},
         { title: "フローの読み方", points: [
           "「開始」フェーズから始まり「エンディング」フェーズで終わります",
-          "矢印は遷移条件（正解・不正解など）を表します",
+          "条件バッジ（クイックリプライ / 応答キーワード / 画像タップ / 自動遷移 / 謎の正解 など）が遷移条件を表します",
           "遷移のないフェーズには必ず接続してください",
         ]},
       ]} />
+
+      {/* ── 表示切り替えタブ ＋ フェーズを追加（sticky。グローバルヘッダー直下に吸着）── */}
+      <div
+        style={{
+          position: "sticky",
+          top: "var(--admin-header-height, 56px)",
+          zIndex: 50,
+          background: "var(--bg, #f5f8f6)",
+          borderBottom: "1px solid #E8EBE8",
+          boxShadow: "0 3px 6px -4px rgba(0,0,0,0.12)",
+          marginBottom: 16,
+          paddingTop: 8,
+          display: "flex",
+          alignItems: "flex-end",
+          justifyContent: "space-between",
+          gap: 12,
+          flexWrap: "wrap",
+        }}
+      >
+        <div role="tablist" aria-label="フェーズ表示切り替え" style={{ display: "flex", gap: 4 }}>
+          {([["vertical", "縦表示"], ["horizontal", "横表示"]] as const).map(([mode, label]) => {
+            const active = viewMode === mode;
+            return (
+              <button
+                key={mode}
+                role="tab"
+                aria-selected={active}
+                onClick={() => setViewMode(mode)}
+                style={{
+                  padding: "8px 16px", fontSize: 13.5, fontFamily: "inherit",
+                  color: active ? "#06A047" : "#949494",
+                  fontWeight: active ? 600 : 400,
+                  background: "none", border: "none",
+                  borderBottom: active ? "2.5px solid #06C755" : "2.5px solid transparent",
+                  marginBottom: -1, cursor: "pointer", whiteSpace: "nowrap",
+                }}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
+        {canEdit && (
+          <button
+            className="btn btn-primary"
+            style={{ flexShrink: 0, marginBottom: 6 }}
+            onClick={() => { setAddForm(EMPTY_PHASE_FORM); setAddErrors({}); setShowAddForm((v) => !v); }}
+          >
+            ＋ フェーズを追加
+          </button>
+        )}
+      </div>
 
       {/* ── 初回ガイド（フェーズ未作成時） ── */}
       {!loading && phases.length === 0 && (
@@ -459,12 +513,22 @@ export default function ScenarioPage() {
             )}
           </div>
         </div>
+      ) : viewMode === "horizontal" ? (
+        <HorizontalFlow
+          phases={phases}
+          edgesByPhase={edgesByPhase}
+          phaseNameById={phaseNameById}
+          oaId={oaId}
+          workId={workId}
+        />
       ) : (
         <FlowTree
           phases={phases}
           transitions={transitions}
           msgQrData={msgQrData}
           allMessages={allMessages}
+          edgesByPhase={edgesByPhase}
+          phaseNameById={phaseNameById}
           oaId={oaId}
           workId={workId}
           onReorder={handleReorder}
@@ -494,12 +558,113 @@ interface MsgQrEntry {
   branches: QrBranch[];
 }
 
+// ── 条件分岐（outgoing edge）の表示 ──────────────────────
+// getOutgoingPhaseEdges（到達性判定と同一ソース）の結果を、種別バッジ＋遷移先名で表示する。
+const EDGE_KIND_COLOR: Record<OutgoingEdge["kind"], string> = {
+  transition:      "#2563eb",
+  quick_reply:     "#0891b2",
+  image_action:    "#7c3aed",
+  auto_transition: "#059669",
+  puzzle_correct:  "#dc2626",
+  checkin:         "#d97706",
+  free_input:      "#0d9488",
+  next_message:    "#6b7280",
+};
+
+function PhaseEdgesList({
+  edges, phaseNameById,
+}: { edges: OutgoingEdge[]; phaseNameById: Record<string, string> }) {
+  if (!edges || edges.length === 0) {
+    return <span style={{ fontSize: 11.5, color: "#9ca3af" }}>次のフェーズへの導線なし</span>;
+  }
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+      {edges.map((e, i) => {
+        const color  = EDGE_KIND_COLOR[e.kind] ?? "#6b7280";
+        const target = e.invalid ? "削除済みフェーズ" : (phaseNameById[e.targetPhaseId] ?? "(不明なフェーズ)");
+        return (
+          <div key={`${e.kind}-${e.targetPhaseId}-${i}`} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11.5, flexWrap: "wrap" }}>
+            <span style={{
+              display: "inline-flex", alignItems: "center", padding: "1px 8px", borderRadius: 6,
+              background: color + "14", color, fontWeight: 600, whiteSpace: "nowrap", maxWidth: 240,
+              overflow: "hidden", textOverflow: "ellipsis",
+            }} title={e.label}>
+              {e.label}
+            </span>
+            <span aria-hidden style={{ color: "#9ca3af" }}>→</span>
+            <span style={{ fontWeight: 600, color: e.invalid ? "#ef4444" : "#374151", whiteSpace: "nowrap" }}>
+              {target}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── 横表示（フェーズを横スクロールのカラムで並べ、各フェーズの分岐を接続リストで見せる）──
+function HorizontalFlow({
+  phases, edgesByPhase, phaseNameById, oaId, workId,
+}: {
+  phases: PhaseWithCounts[];
+  edgesByPhase: Record<string, OutgoingEdge[]>;
+  phaseNameById: Record<string, string>;
+  oaId: string;
+  workId: string;
+}) {
+  const sorted = [...phases].sort((a, b) => a.sort_order - b.sort_order);
+  return (
+    <div style={{ overflowX: "auto", paddingBottom: 8 }}>
+      <div style={{ display: "flex", gap: 14, alignItems: "stretch", minWidth: "min-content" }}>
+        {sorted.map((p) => {
+          const meta = PHASE_TYPE_META[p.phase_type];
+          return (
+            <div key={p.id} style={{
+              flex: "0 0 260px", width: 260,
+              display: "flex", flexDirection: "column",
+              border: `1px solid ${meta.border}`, borderRadius: 12, background: "#fff",
+              boxShadow: "0 1px 2px rgba(0,0,0,0.04)", overflow: "hidden",
+            }}>
+              <div style={{ padding: "10px 12px", background: meta.bg, borderBottom: `1px solid ${meta.border}` }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: meta.color, padding: "1px 7px", borderRadius: 20, background: "#fff", border: `1px solid ${meta.border}` }}>
+                    {meta.label}
+                  </span>
+                  {!p.is_active && (
+                    <span style={{ fontSize: 10, fontWeight: 600, color: "#9ca3af", padding: "1px 6px", borderRadius: 20, background: "#f9fafb", border: "1px solid #e5e7eb" }}>無効</span>
+                  )}
+                </div>
+                <div style={{ marginTop: 6, fontWeight: 700, fontSize: 14, color: "#111827", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={p.name}>
+                  {p.name}
+                </div>
+              </div>
+              <div style={{ padding: "10px 12px", flex: 1 }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: "#9ca3af", letterSpacing: "0.04em", marginBottom: 6 }}>遷移先</div>
+                <PhaseEdgesList edges={edgesByPhase[p.id] ?? []} phaseNameById={phaseNameById} />
+              </div>
+              <Link
+                href={`/oas/${oaId}/works/${workId}/phases/${p.id}`}
+                style={{ display: "block", padding: "8px 12px", borderTop: "1px solid #f1f5f9", textDecoration: "none", fontSize: 11.5, fontWeight: 600, color: "#2563eb" }}
+              >
+                詳細を開く ↗
+              </Link>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ── FlowTree ──────────────────────────────────────
 interface FlowTreeProps {
   phases:      PhaseWithCounts[];
   transitions: TransitionWithPhases[];
   msgQrData:   Record<string, MsgQrEntry[]>;
   allMessages: Message[];
+  /** 各フェーズの outgoing edge（条件分岐・到達性判定と同一ソース）。表示専用。 */
+  edgesByPhase:  Record<string, OutgoingEdge[]>;
+  phaseNameById: Record<string, string>;
   oaId:        string;
   workId:      string;
   onReorder:   (phases: PhaseWithCounts[]) => void;
@@ -513,6 +678,7 @@ interface FlowTreeProps {
 
 function FlowTree({
   phases, transitions, msgQrData, allMessages,
+  edgesByPhase, phaseNameById,
   oaId, workId, onReorder, onUpdate, onDuplicate, onDelete,
   canEdit, isOwner, isAdmin,
 }: FlowTreeProps) {
@@ -1022,6 +1188,18 @@ function FlowTree({
                 {/* ── ③ 展開コンテンツ ── */}
                 {isExpanded && (
                   <>
+                    {/* 遷移先（条件分岐）— 到達性判定と同一ソース（getOutgoingPhaseEdges）*/}
+                    <div style={{
+                      borderTop: "1px solid #f3f4f6",
+                      background: "#fbfcfe",
+                      padding: "10px 20px 12px 48px",
+                    }}>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: "#6b7280", marginBottom: 8, letterSpacing: 0.4 }}>
+                        遷移先（条件分岐）
+                      </div>
+                      <PhaseEdgesList edges={edgesByPhase[phase.id] ?? []} phaseNameById={phaseNameById} />
+                    </div>
+
                     {/* 説明 */}
                     {phase.description && (
                       <div style={{
