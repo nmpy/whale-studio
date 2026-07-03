@@ -590,53 +590,47 @@ describe("drainAutoSendableItems", () => {
 
   describe("midChain 孤立メッセージの補償", () => {
 
-    it("response の nextMessageId で参照される normal メッセージも送信される", () => {
+    // hotfix: response/hint head の配下 child は「応答チェーンの中身」であり、
+    // フェーズ入場時に orphan 補償で送ってはいけない（本番なぞいち誤送信の修正）。
+    it("response head の nextMessageId child は自動送信されない（応答チェーンの中身を入場時に送らない）", () => {
       const messages = [
         makeMessage({ id: "m1", sortOrder: 1, kind: "normal", body: "導入" }),
         makeMessage({ id: "m2", sortOrder: 2, kind: "normal", body: "説明" }),
-        // response は自動送信対象外だが、nextMessageId で m4 を参照
+        // response は自動送信対象外。nextMessageId で m4 を参照するが、m4 は入場時に送らない。
         makeMessage({ id: "r1", sortOrder: 3, kind: "response", triggerKeyword: "kw", body: "応答", nextMessageId: "m4" }),
-        // m4 は r1 の nextMessageId で参照 → midChainIds に入る → sorted から除外
-        // しかし r1 は response でチェーン起点にならない → m4 が孤立
-        makeMessage({ id: "m4", sortOrder: 4, kind: "normal", body: "最後のメッセージ" }),
+        makeMessage({ id: "m4", sortOrder: 4, kind: "normal", body: "応答チェーンの続き" }),
       ];
 
       const result = drainAutoSendableItems(messages, "in_progress");
 
-      // m1, m2 は通常送信。r1 はスキップ。m4 は midChain 補償で追加。
-      expect(result).toHaveLength(3);
-      expect(result.map((m) => m.id)).toEqual(["m1", "m2", "m4"]);
+      // m1, m2 のみ送信。r1(response) も m4(その child) も入場時には送られない。
+      expect(result.map((m) => m.id)).toEqual(["m1", "m2"]);
     });
 
-    it("hint の nextMessageId で参照される normal メッセージも送信される", () => {
+    it("hint head の nextMessageId child は自動送信されない", () => {
       const messages = [
         makeMessage({ id: "m1", sortOrder: 1, kind: "normal", body: "テキスト1" }),
         makeMessage({ id: "h1", sortOrder: 2, kind: "hint", body: "ヒント", nextMessageId: "m3" }),
-        makeMessage({ id: "m3", sortOrder: 3, kind: "normal", body: "最終メッセージ" }),
+        makeMessage({ id: "m3", sortOrder: 3, kind: "normal", body: "ヒントチェーンの続き" }),
       ];
 
       const result = drainAutoSendableItems(messages, "in_progress");
 
-      expect(result).toHaveLength(2);
-      expect(result.map((m) => m.id)).toEqual(["m1", "m3"]);
+      expect(result.map((m) => m.id)).toEqual(["m1"]);
     });
 
-    it("midChain 孤立の puzzle も補償で追加される", () => {
+    it("response head 配下の puzzle は自動送信されない（補償対象外）", () => {
       const messages = [
         makeMessage({ id: "m1", sortOrder: 1, kind: "normal", body: "導入" }),
         makeMessage({ id: "r1", sortOrder: 2, kind: "response", triggerKeyword: "kw", nextMessageId: "p1" }),
         makeMessage({ id: "p1", sortOrder: 3, kind: "puzzle", answer: "答え", body: "謎" }),
-        makeMessage({ id: "m4", sortOrder: 4, kind: "normal", body: "パズル後" }),
+        makeMessage({ id: "m4", sortOrder: 4, kind: "normal", body: "独立メッセージ" }),
       ];
 
       const result = drainAutoSendableItems(messages, "in_progress");
 
-      // m1, m4 は sorted から送信。p1 は midChain 補償で追加。
-      // r1 は response のためスキップ。
-      expect(result).toHaveLength(3);
-      expect(result.map((m) => m.id)).toContain("m1");
-      expect(result.map((m) => m.id)).toContain("m4");
-      expect(result.map((m) => m.id)).toContain("p1");
+      // m1, m4 は独立 head として送信。p1 は response(r1)配下のため送られない。
+      expect(result.map((m) => m.id)).toEqual(["m1", "m4"]);
     });
   });
 });
