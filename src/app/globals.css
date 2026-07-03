@@ -86,6 +86,11 @@
    参照しているため、値だけ新パレットに揃えて変数名は維持する。
    段階的に画面 PR で `var(--color-brand)` 等の新トークン参照に置き換えていく。 */
 :root {
+  /* グローバルヘッダー高さ（header .container の height と一致）。
+     sticky なサブヘッダー（例: メッセージ一覧のフェーズタブバー）が
+     ヘッダーの下に吸着できるよう top オフセットに使う。 */
+  --admin-header-height: 56px;
+
   /* Brand (= --color-brand 系と値を揃える) */
   --brand:        #22c55e;
   --brand-dark:   #16a34a;
