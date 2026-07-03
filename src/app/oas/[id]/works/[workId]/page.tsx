@@ -20,14 +20,14 @@ import { WorkCreatedGuide }   from "@/components/onboarding/WorkCreatedGuide";
 import { OnboardingProgress } from "@/components/onboarding/OnboardingProgress";
 import { WorkLimitCard } from "@/components/upgrade/WorkLimitCard";
 import {
-  HUB_CARD_TO_FEATURE,
   PLAN_DESCRIPTIONS,
   PLAN_LABELS,
-  getPlanAccessState,
 } from "@/lib/constants/plans";
 import { useAccessPreview } from "@/hooks/useAccessPreview";
-import { withPreviewParams } from "@/lib/access-preview";
-import { StatusBadge, PlanTag } from "@/components/shared";
+import { StatusBadge } from "@/components/shared";
+import { isSpreadsheetImportEnabled } from "@/lib/spreadsheet-import/ui-text";
+import { computeWorkTopAlerts, type WorkTopAlertTone } from "@/lib/work-top-alerts";
+import type { Role } from "@/lib/types/permissions";
 
 // ── ステータス → shared/StatusBadge tone マッピング ───────────────
 // (= Phase 3.3a でローカル STATUS_META を撤廃、shared/StatusBadge に統合)
@@ -43,88 +43,25 @@ function statusTone(status: string): "active" | "muted" | "warn" {
   return "muted"; // draft / unknown
 }
 
-// ── ハブカード定義 ────────────────────────────────────────
-// Phase 3.3c: per-feature vivid 色 (color / bg) を撤廃 (= ガイド §1.1「brand 緑は主役アクション専用」)。
-// uniform card + hover brand アクセント (= OA settings hub Phase 1.4 と同方針)。
-// key / title / desc / 表示順 / featureKey 連携 (HUB_CARD_TO_FEATURE) は完全維持。
-const HUB_CARDS = [
-  { key: "edit",         title: "作品情報",       desc: "作品名や説明などの基本情報を編集します" },
-  { key: "characters",   title: "キャラクター",   desc: "メッセージ送信者となるキャラクターを管理します" },
-  { key: "messages",     title: "メッセージ",     desc: "フェーズごとに送信するメッセージ・謎チャレンジを管理します" },
-  { key: "scenario",     title: "フェーズ管理",   desc: "フェーズの追加・並び替えと遷移フローを管理します" },
-  { key: "audience",     title: "オーディエンス", desc: "プレイ統計・フロー・セグメントなどを確認します" },
-  { key: "liff",         title: "LIFF設定",       desc: "LIFFページのブロックを追加・編集・並び替えます" },
-  { key: "locations",    title: "現地トリガー",   desc: "QR・GPS・Beaconで現地発火するトリガー（チェックイン）を管理します" },
-  { key: "x-posts",      title: "X投稿管理",      desc: "作品の告知ポスト、投稿URL、クリック計測、CSV分析を管理します" },
-] as const;
+// ── ダッシュボード用ヘルパー ────────────────────────────────
+// 作品トップは「各機能への遷移ハブ」ではなく「状態確認ダッシュボード」。機能一覧の遷移は
+// 左サイドバーが担う（重複回避）。ここでは状態表示・注意アラート・最小限のクイック操作に絞る。
 
-// ── ハブカード / アクションアイコン（SVGで役割を示す） ──────────
-// Phase 3.3c: color 引数を撤廃し currentColor ベースに変更。
-// 親要素の Tailwind text-* class でアイコン色を制御する。
-function HubCardIcon({ cardKey }: { cardKey: string }) {
-  const p = { width: 16, height: 16, viewBox: "0 0 24 24", fill: "none" as const, stroke: "currentColor", strokeWidth: "1.8", strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
-  if (cardKey === "edit") return (
-    <svg {...p} aria-hidden="true">
-      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-    </svg>
-  );
-  if (cardKey === "characters") return (
-    <svg {...p} aria-hidden="true">
-      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-      <circle cx="12" cy="7" r="4"/>
-    </svg>
-  );
-  if (cardKey === "messages") return (
-    <svg {...p} aria-hidden="true">
-      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-    </svg>
-  );
-  if (cardKey === "scenario") return (
-    <svg {...p} aria-hidden="true">
-      <circle cx="18" cy="18" r="3"/>
-      <circle cx="6" cy="6" r="3"/>
-      <path d="M13 6h3a2 2 0 0 1 2 2v7"/>
-      <line x1="6" y1="9" x2="6" y2="21"/>
-    </svg>
-  );
-  if (cardKey === "audience") return (
-    <svg {...p} aria-hidden="true">
-      <line x1="18" y1="20" x2="18" y2="10"/>
-      <line x1="12" y1="20" x2="12" y2="4"/>
-      <line x1="6" y1="20" x2="6" y2="14"/>
-    </svg>
-  );
-  if (cardKey === "liff") return (
-    <svg {...p} aria-hidden="true">
-      <rect x="5" y="2" width="14" height="20" rx="2" ry="2"/>
-      <line x1="12" y1="18" x2="12" y2="18"/>
-    </svg>
-  );
-  if (cardKey === "locations") return (
-    <svg {...p} aria-hidden="true">
-      <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
-      <circle cx="12" cy="10" r="3"/>
-    </svg>
-  );
-  if (cardKey === "destinations") return (
-    <svg {...p} aria-hidden="true">
-      <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
-      <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
-    </svg>
-  );
-  if (cardKey === "preview") return (
-    <svg {...p} aria-hidden="true">
-      <polygon points="5 3 19 12 5 21 5 3"/>
-    </svg>
-  );
-  if (cardKey === "x-posts") return (
-    <svg {...p} aria-hidden="true">
-      <path d="M4 4l16 16M20 4L4 20"/>
-    </svg>
-  );
-  return null;
-}
+const ROLE_LABELS: Record<Role, string> = {
+  owner:  "オーナー",
+  admin:  "管理者",
+  editor: "編集者",
+  tester: "テスター",
+  viewer: "閲覧者",
+};
+
+// アラートのトーン別スタイル（赤一色にせず warning / info / success で優先度を分ける）。
+const ALERT_TONE_STYLE: Record<WorkTopAlertTone, { card: string; dot: string; icon: string }> = {
+  warning: { card: "border-warn/30 bg-warn-soft",   dot: "bg-warn",    icon: "⚠" },
+  info:    { card: "border-sky-200 bg-sky-soft",    dot: "bg-sky-500", icon: "ℹ" },
+  success: { card: "border-brand/30 bg-brand-soft", dot: "bg-brand",   icon: "✓" },
+};
+
 
 // （「次の操作」ショートカット行の削除に伴い、その並び替え/強調ロジック・型・スタイル定義
 //   〔resolveActions / BASE_ACTIONS / ACTION_EMPHASIS_STYLE / ActionKey 等〕も削除した。
@@ -254,6 +191,25 @@ export default function WorkHubPage() {
   const currentStatusLabel = STATUS_LABEL[currentStatus] ?? currentStatus;
   const basePath   = `/oas/${oaId}/works/${workId}`;
 
+  // ── ダッシュボード派生値（既存データのみ・新規 API なし）──
+  const roleLabel = role ? (ROLE_LABELS[role] ?? role) : "—";
+  const alerts = computeWorkTopAlerts({
+    publishStatus:   currentStatus,
+    hasStartTrigger: !!work?.start_trigger,
+    characters:      work?._count.characters ?? 0,
+    phases:          phaseCount,
+    messages:        work?._count.messages ?? 0,
+    basePath,
+  });
+  // よく使う操作（サイドバーと完全重複する一覧導線は避け、作業開始に直結する操作に絞る・最大5個）。
+  const quickActions: { label: string; href: string }[] = [
+    { label: "メッセージを追加", href: `${basePath}/messages` },
+    { label: "フェーズを追加",   href: `${basePath}/scenario` },
+    { label: "プレビュー",       href: `/playground?work_id=${workId}&oa_id=${oaId}` },
+    ...(role !== "tester" ? [{ label: "作品設定", href: `${basePath}/edit` }] : []),
+    ...(isSpreadsheetImportEnabled() ? [{ label: "スプレッドシート取込", href: `${basePath}/messages/import` }] : []),
+  ].slice(0, 5);
+
   // updated_at フォーマット（WorkCard と同形式）
   function formatDate(iso: string) {
     const d = new Date(iso);
@@ -377,6 +333,44 @@ export default function WorkHubPage() {
         />
       )}
 
+      {/* ── 注意が必要な項目（トーン別・強すぎない見た目）── */}
+      {work && (
+        <div className="mb-6 flex flex-col gap-2">
+          <div className="flex items-center gap-2">
+            <span className="flex-shrink-0 whitespace-nowrap text-[10px] font-bold uppercase tracking-wider text-ink-3">
+              状態と注意点
+            </span>
+            <div aria-hidden="true" className="h-px flex-1 bg-line" />
+            {/* 実行プラン / 実権限（既存データ）*/}
+            <span className="inline-flex items-center gap-1 rounded-full border border-line bg-bg-tint px-2.5 py-0.5 text-[11px] text-ink-2">
+              プラン <strong className="text-ink">{PLAN_LABELS[planTier]}</strong>
+            </span>
+            <span className="inline-flex items-center gap-1 rounded-full border border-line bg-bg-tint px-2.5 py-0.5 text-[11px] text-ink-2">
+              権限 <strong className="text-ink">{roleLabel}</strong>
+            </span>
+          </div>
+          {alerts.map((a) => {
+            const s = ALERT_TONE_STYLE[a.tone];
+            return (
+              <div key={a.key} className={"flex items-start gap-2.5 rounded-card border px-3.5 py-2.5 " + s.card}>
+                <span aria-hidden="true" className={"mt-0.5 inline-flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white " + s.dot}>
+                  {s.icon}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="text-[13px] font-bold text-ink">{a.title}</div>
+                  <div className="mt-0.5 text-[12px] leading-[1.6] text-ink-2">{a.detail}</div>
+                </div>
+                {a.cta && (
+                  <Link href={a.cta.href} className="flex-shrink-0 self-center whitespace-nowrap rounded-lg border border-line bg-surface px-2.5 py-1 text-[11px] font-semibold text-ink no-underline transition-colors hover:border-brand/40 hover:text-brand-ink">
+                    {a.cta.label}
+                  </Link>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       {/* ── 使い方ガイド ── */}
       <HelpAccordion items={[
         { title: "この画面でできること", points: [
@@ -472,113 +466,24 @@ export default function WorkHubPage() {
         </div>
       )}
 
-      {/* ── ハブカード（全機能の見取り図） ── */}
-      {/* 上部アクション行との役割分離: ハブカードは機能一覧・補助導線として機能する */}
+      {/* ── よく使う操作（サイドバーと重複しない、作業開始に直結する操作のみ）── */}
       <div className="mb-2.5 flex items-center gap-2">
         <span className="flex-shrink-0 whitespace-nowrap text-[10px] font-bold uppercase tracking-wider text-ink-3">
-          管理メニュー
+          よく使う操作
         </span>
         <div aria-hidden="true" className="h-px flex-1 bg-line" />
       </div>
-
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-[repeat(auto-fill,minmax(270px,1fr))] sm:gap-3.5">
-        {HUB_CARDS.map((card) => {
-          // プランによる利用可否を判定。featureKey が未マップの card は安全側で「許可」扱い (= 制限しない)。
-          const featureKey = HUB_CARD_TO_FEATURE[card.key];
-          const access = featureKey
-            ? getPlanAccessState({ plan: planTier, featureKey })
-            : ({ allowed: true, reason: "allowed", message: "" } as const);
-
-          // カード本体 (= 共通の中身レンダリング)
-          // Phase 3.3c: per-feature 色を撤廃、uniform card + hover brand アクセント
-          const cardBody = (
-            <div
-              className={
-                "group flex h-full items-center gap-3.5 rounded-card border bg-surface px-4 py-4 shadow-sm transition-all " +
-                (access.allowed
-                  ? "cursor-pointer border-line hover:-translate-y-px hover:border-brand/30 hover:shadow-card"
-                  : "cursor-not-allowed border-line bg-bg-tint opacity-70")
-              }
-            >
-              {/* アイコン枠 (= uniform、アイコン色は currentColor で text-* から継承) */}
-              <div
-                className={
-                  "flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md border border-line bg-bg-tint transition-colors " +
-                  (access.allowed ? "text-ink-3 group-hover:bg-brand-soft group-hover:text-brand-ink" : "text-ink-3")
-                }
-              >
-                <HubCardIcon cardKey={card.key} />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div
-                  className={
-                    "mb-0.5 text-[14px] font-bold transition-colors " +
-                    (access.allowed ? "text-ink group-hover:text-brand-ink" : "text-ink-2")
-                  }
-                >
-                  {card.title}
-                </div>
-                <div className="text-[12px] leading-[1.55] text-ink-2 line-clamp-2 min-h-[37px]">
-                  {card.desc}
-                </div>
-                {/* プラン制限がかかっている場合、必要プラン表記を <PlanTag> で表示 */}
-                {!access.allowed && access.reason === "plan_required" && (
-                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                    <PlanTag plan={access.requiredPlanLabel} />
-                    <span className="text-[11px] text-ink-3">で利用できます</span>
-                  </div>
-                )}
-              </div>
-              <span
-                aria-hidden="true"
-                className={
-                  "flex-shrink-0 self-center text-[16px] transition-colors " +
-                  (access.allowed ? "text-ink-3 group-hover:text-brand-ink" : "text-ink-3/40")
-                }
-              >
-                ›
-              </span>
-            </div>
-          );
-
-          // 利用可: 通常通り Link でラップ。
-          // owner の表示確認モード中は previewPlan / previewRole を href に持ち越す
-          // (= 遷移先でも同じ preview 状態を維持するため)。
-          if (access.allowed) {
-            // ロケーションは OA レベルの統合管理（/oas/[id]/locations）へ寄せる。
-            // workId を引き継いで該当作品で絞り込んだ状態で開く。既存の作品スコープ画面
-            // (/oas/[id]/works/[workId]/locations 等) は当面残置（直リンク・既存導線は不変）。
-            const cardBase = card.key === "locations"
-              ? `/oas/${oaId}/locations?workId=${workId}`
-              : `/oas/${oaId}/works/${workId}/${card.key}`;
-            const cardHref = withPreviewParams(cardBase, searchParams);
-            return (
-              <Link
-                key={card.key}
-                href={cardHref}
-                className="block h-full no-underline"
-              >
-                {cardBody}
-              </Link>
-            );
-          }
-
-          // 利用不可: href / onClick を付けず、aria-disabled / tabIndex=-1 で操作不能にする。
-          // クリックさせない (= ユーザーに「使えませんでした」体験をさせない) のがポイント。
-          // role="link" を付けないことで SR でリンク扱いされず、無駄な遷移を促さない。
-          return (
-            <div
-              key={card.key}
-              role="group"
-              aria-disabled={true}
-              aria-label={`${card.title} (${access.reason === "plan_required" ? access.requiredPlanLabel + "プランで利用できます" : "利用できません"})`}
-              tabIndex={-1}
-              className="block h-full no-underline"
-            >
-              {cardBody}
-            </div>
-          );
-        })}
+      <div className="mb-4 flex flex-wrap gap-2">
+        {quickActions.map((a) => (
+          <Link
+            key={a.label}
+            href={a.href}
+            className="inline-flex items-center gap-1.5 rounded-card border border-line bg-surface px-3.5 py-2 text-[13px] font-semibold text-ink no-underline shadow-sm transition-all hover:-translate-y-px hover:border-brand/30 hover:text-brand-ink hover:shadow-card"
+          >
+            {a.label}
+            <span aria-hidden="true" className="text-ink-3">›</span>
+          </Link>
+        ))}
       </div>
 
       {/* プラン説明文 (= 管理メニュー下部) — 表示確認中は背景を変えて区別 */}
