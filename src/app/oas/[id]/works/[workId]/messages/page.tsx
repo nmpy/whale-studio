@@ -22,7 +22,7 @@ import { collectChainContinuationIds, chainLengthFrom, estimateMaxSendUnit, shou
 import { buildResponseKeywordPhaseIndex, findFlexKeywordPhaseIssues } from "./_flex-keyword-check";
 import { analyzeMessageList } from "@/lib/message-flow-status";
 import MessageCard from "./_MessageCard";
-import { PhaseTabs, WarningSummaryBar, PhaseFilterBar, EmptyState, type PhaseTabItem } from "./_message-list-chrome";
+import { StickyPhaseTabsBar, WarningSummaryBar, PhaseFilterBar, EmptyState, type PhaseTabItem } from "./_message-list-chrome";
 import {
   buildTriggerIndexes, classifyTrigger, getMessageWarnings,
   TRIGGER_GROUP_META, ALL_TAB_GROUP_ORDER, type MessageWarningLabel,
@@ -547,19 +547,17 @@ function MessagesPageInner() {
               : "フェーズごとに送信するメッセージを管理します"}
           </p>
         </div>
-        {activeTab === "messages" && canEdit && (
+        {/* 「＋ メッセージを追加」はフェーズタブ横の sticky バー（StickyPhaseTabsBar）へ移設。
+            一覧スクロール中も現在フェーズと追加導線が見えるようにする。
+            ここ（ヘッダー）にはスプレッドシート取り込みのみ残す（追加ボタンの重複を避ける）。 */}
+        {activeTab === "messages" && canEdit && isSpreadsheetImportEnabled() && (
           <div style={{ display: "inline-flex", gap: 8 }}>
-            {isSpreadsheetImportEnabled() && (
-              <Link
-                href={`/oas/${oaId}/works/${workId}/messages/import`}
-                className="btn"
-                title="キャラクター・フェーズ・メッセージを一括登録"
-              >
-                スプレッドシート取り込み
-              </Link>
-            )}
-            <Link href={withReturnTab(`/oas/${oaId}/works/${workId}/messages/new`, activePhaseId)} className="btn btn-primary">
-              ＋ メッセージを追加
+            <Link
+              href={`/oas/${oaId}/works/${workId}/messages/import`}
+              className="btn"
+              title="キャラクター・フェーズ・メッセージを一括登録"
+            >
+              スプレッドシート取り込み
             </Link>
           </div>
         )}
@@ -1036,7 +1034,13 @@ function MessagesPageInner() {
 
         return (
           <>
-            <PhaseTabs tabs={tabs} activeId={effectiveId} onChange={onTabChange} />
+            <StickyPhaseTabsBar
+              tabs={tabs}
+              activeId={effectiveId}
+              onChange={onTabChange}
+              addHref={withReturnTab(`/oas/${oaId}/works/${workId}/messages/new`, activePhaseId)}
+              canEdit={canEdit}
+            />
             {warningCount > 0 && <WarningSummaryBar count={warningCount} />}
             {effectiveId !== ALL && (
               <PhaseFilterBar
