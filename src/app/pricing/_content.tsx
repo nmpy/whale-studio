@@ -639,7 +639,7 @@ export function PricingContent({
       {/* ── 法人プラン (個人利用とは分けて表示、すべて相談導線に一本化) ──
           対象 OA が個人利用 (usageType=personal) のときは非表示。 */}
       {showBusinessPlans && (<>
-      {!embedded && <SectionHeading>法人プラン</SectionHeading>}
+      {!embedded && <SectionHeading>法人利用プラン</SectionHeading>}
       <p className="mb-4 text-[13px] leading-[1.7] text-ink-2">
         {ENTERPRISE_PLAN.description}
         <br />
