@@ -5373,7 +5373,7 @@ export function MessageForm({
             {/* 送信後の自動フェーズ遷移（silent・入場メッセージは送らない） */}
             <div className="form-group" style={{ marginBottom: 0, marginTop: 12 }}>
               <label style={fieldLabel} htmlFor="auto_transition_phase_id">
-                このメッセージ送信後にフェーズを移動する（任意）
+                自動フェーズ移動（送信直後）
               </label>
               <select
                 id="auto_transition_phase_id"
@@ -5382,17 +5382,17 @@ export function MessageForm({
                 value={form.auto_transition_phase_id}
                 onChange={(e) => set("auto_transition_phase_id", e.target.value)}
               >
-                <option value="">移動しない（既定）</option>
+                <option value="">移動しない</option>
                 {(phases ?? []).map((p) => (
                   <option key={p.id} value={p.id}>{p.name}</option>
                 ))}
               </select>
               <div style={hintText}>
-                プレイヤーの入力を待たず、このメッセージの送信後に指定フェーズへ移動します。移動先フェーズの冒頭メッセージは送信されません。
+                このメッセージを送信した直後に、プレイヤーの入力やボタン操作を待たず、指定フェーズへ移動します。
+                移動先フェーズの冒頭メッセージは送信されません。「続きを選んでください。」も表示されません。
                 次の入力から、移動先フェーズの応答キーワードが有効になります。
-              </div>
-              <div style={hintText}>
-                ※ キーワード入力で遷移する「メッセージ後の遷移」とは別の設定です。連続送信の場合はチェーン末尾のメッセージに設定してください。
+                クイックリプライのフェーズ遷移や、キーワードで動く「このメッセージの後の遷移」とは別の設定です。
+                連続メッセージの場合は、基本的にチェーン末尾のメッセージに設定してください。
               </div>
             </div>
           </SectionAccordion>
