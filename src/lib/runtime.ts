@@ -619,12 +619,44 @@ export function drainAutoSendableItems(
   }
 
   // ── midChain 補償: チェーン起点から辿られなかったメッセージを救済 ──
-  // midChainIds に含まれているが visited に入っていない = 親が response/hint 等で
-  // sorted から除外されたため、チェーン起点からも辿られなかったケース。
+  // midChainIds に含まれているが visited に入っていない = チェーン起点(head)からも辿られなかったケース。
   // sortOrder 順に結果に追加する（wait point 判定も適用）。
-  const orphaned = messages
+  //
+  // ただし hotfix: **意図的に自動送信不可とされた head/祖先（kind=response/hint・triggerKeyword付き・
+  // QR分岐先(target_message_id)・segment不一致）の配下の child は救済しない**。
+  // これらは「キーワード/QR/ヒントで初めて送られる導線」の中身であり、フェーズ入場時に
+  // orphan 補償で勝手に送ってはいけない（本番: なぞいち遷移で応答チェーンの子が誤送信された不具合）。
+  // 一方、head が自動送信「可能」なのに startAfterSortOrder（パズル継続）等でスキップされた場合の
+  // child は従来どおり救済する（＝ isAutoSendableMessageNode が true の祖先しか無い場合）。
+  //
+  // 親マップ（child.id → 直近の親 = nextMessageId でつながる元メッセージ）。
+  const parentOf = new Map<string, PhaseRow["messages"][number]>();
+  for (const p of messages) {
+    if (p.nextMessageId) parentOf.set(p.nextMessageId, p);
+  }
+  // 祖先チェーンを nextMessageId で上に辿り、自動送信不可の祖先があるか判定（循環は seen で防ぐ）。
+  const hasBlockedAncestor = (start: PhaseRow["messages"][number]): boolean => {
+    const seen = new Set<string>([start.id]);
+    let cur = parentOf.get(start.id);
+    while (cur && !seen.has(cur.id)) {
+      seen.add(cur.id);
+      if (!isAutoSendableMessageNode(cur, { targetMsgIds, userSegment })) return true;
+      cur = parentOf.get(cur.id);
+    }
+    return false;
+  };
+  const orphanCandidates = messages
     .filter((m) => midChainIds.has(m.id) && !visited.has(m.id))
-    .filter((m) => isAutoSendableMessageNode(m, { targetMsgIds, userSegment }))
+    .filter((m) => isAutoSendableMessageNode(m, { targetMsgIds, userSegment }));
+  const orphanBlocked = orphanCandidates.filter((m) => hasBlockedAncestor(m));
+  if (orphanBlocked.length > 0) {
+    console.log(
+      `[drainAutoSendableItems] orphan救済スキップ(自動送信不可の祖先あり)=${orphanBlocked.length}件`,
+      orphanBlocked.map((m) => `id=${m.id.slice(0, 8)} kind=${m.kind}`).join(" / "),
+    );
+  }
+  const orphaned = orphanCandidates
+    .filter((m) => !hasBlockedAncestor(m))
     .sort((a, b) => a.sortOrder - b.sortOrder);
   for (const m of orphaned) {
     if (m.kind === "response" || m.kind === "hint") continue;
