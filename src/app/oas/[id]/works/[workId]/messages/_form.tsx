@@ -242,6 +242,8 @@ export interface MessageFormState {
   image_action_url:           string;
   /** type="message_with_phase" 用: 遷移先フェーズ ID。 */
   image_action_phase_id:      string;
+  /** このメッセージ送信後に silent 自動遷移する先フェーズ ID（""＝無効）。キーワード遷移とは別物。 */
+  auto_transition_phase_id:   string;
   image_action_liff_page_id:  string;
   image_action_postback_data: string;
   alt_text:                   string;
@@ -321,6 +323,7 @@ export const EMPTY_MESSAGE_FORM: MessageFormState = {
   image_action_text:          "",
   image_action_url:           "",
   image_action_phase_id:      "",
+  auto_transition_phase_id:   "",
   image_action_liff_page_id:  "",
   image_action_postback_data: "",
   alt_text:                   "",
@@ -383,6 +386,7 @@ export function msgToFormState(msg: {
   image_action_text?:         string | null;
   image_action_url?:          string | null;
   image_action_phase_id?:     string | null;
+  auto_transition_phase_id?:  string | null;
   image_action_liff_page_id?: string | null;
   image_action_postback_data?: string | null;
   alt_text?:                  string | null;
@@ -493,6 +497,7 @@ export function msgToFormState(msg: {
     image_action_url:           (msg.image_action_url ?? "")
                                   || (msg.message_type === "image" && !msg.image_action_type ? (msg.tap_url ?? "") : ""),
     image_action_phase_id:      msg.image_action_type === "message_with_phase" ? (msg.image_action_phase_id ?? "") : "",
+    auto_transition_phase_id:   msg.auto_transition_phase_id ?? "",
     image_action_liff_page_id:  msg.image_action_liff_page_id ?? "",
     image_action_postback_data: msg.image_action_postback_data ?? "",
     alt_text:                   msg.alt_text                  ?? "",
@@ -620,6 +625,8 @@ export function formStateToMsgBody(form: MessageFormState) {
       form.message_type === "image" && form.image_action_type === "message_with_phase"
         ? (form.image_action_phase_id.trim() || null)
         : null,
+    // このメッセージ送信後の silent 自動フェーズ遷移（キーワード遷移とは別・入場メッセージは送らない）。
+    auto_transition_phase_id: form.auto_transition_phase_id.trim() || null,
     image_action_liff_page_id:
       form.message_type === "image" && form.image_action_type === "liff"
         ? (form.image_action_liff_page_id || null)
@@ -5361,6 +5368,32 @@ export function MessageForm({
                 min={0}
               />
               <div style={hintText}>同じ条件のメッセージが複数ある場合の並び順です（小さい順）</div>
+            </div>
+
+            {/* 送信後の自動フェーズ遷移（silent・入場メッセージは送らない） */}
+            <div className="form-group" style={{ marginBottom: 0, marginTop: 12 }}>
+              <label style={fieldLabel} htmlFor="auto_transition_phase_id">
+                自動フェーズ移動（送信直後）
+              </label>
+              <select
+                id="auto_transition_phase_id"
+                className="form-input"
+                style={{ maxWidth: 320 }}
+                value={form.auto_transition_phase_id}
+                onChange={(e) => set("auto_transition_phase_id", e.target.value)}
+              >
+                <option value="">移動しない</option>
+                {(phases ?? []).map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+              <div style={hintText}>
+                このメッセージを送信した直後に、プレイヤーの入力やボタン操作を待たず、指定フェーズへ移動します。
+                移動先フェーズの冒頭メッセージは送信されません。「続きを選んでください。」も表示されません。
+                次の入力から、移動先フェーズの応答キーワードが有効になります。
+                クイックリプライのフェーズ遷移や、キーワードで動く「このメッセージの後の遷移」とは別の設定です。
+                連続メッセージの場合は、基本的にチェーン末尾のメッセージに設定してください。
+              </div>
             </div>
           </SectionAccordion>
 

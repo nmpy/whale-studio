@@ -58,9 +58,41 @@ export async function applyFreeInputPostEffect(args: {
       })
     : null;
 
+  // ── silent auto-transition: 送信群に autoTransitionPhaseId を持つメッセージがあれば、
+  //    プレイヤーの入力を待たず currentPhaseId のみ更新する（遷移先の入場メッセージは送らない＝silent）。
+  //    キーワード/QR/postback 起点の遷移とは別物。ここでは phase メッセージの送信は一切行わないため、
+  //    「続きを選んでください。」fallback（buildPhaseMessages）は出ない。
+  //    運用はチェーン末尾に設定する想定。複数あれば sortOrder が最も後ろのものを採用。
+  //    scope 安全性: 遷移先 phase が同一 work のものであることを確認（別 work/OA へは飛ばさない）。
+  let autoTransition: { toPhaseId: string; reachedEnding: boolean; viaMessageId: string } | null = null;
+  const autoTransMsg = await prisma.message.findFirst({
+    where:   { id: { in: args.sentMessageIds }, isActive: true, autoTransitionPhaseId: { not: null } },
+    orderBy: { sortOrder: "desc" },
+    select:  { id: true, autoTransitionPhaseId: true },
+  });
+  if (autoTransMsg?.autoTransitionPhaseId) {
+    const toPhase = await prisma.phase.findUnique({
+      where:  { id: autoTransMsg.autoTransitionPhaseId },
+      select: { id: true, workId: true, phaseType: true },
+    });
+    if (toPhase && toPhase.workId === args.workId) {
+      autoTransition = { toPhaseId: toPhase.id, reachedEnding: toPhase.phaseType === "ending", viaMessageId: autoTransMsg.id };
+    } else {
+      console.warn(
+        `[auto-transition] 遷移先 phase が不正/別work のためスキップ`,
+        `userId=${args.userId.slice(0, 8)} toPhaseId=${autoTransMsg.autoTransitionPhaseId?.slice(0, 8)} work=${args.workId.slice(0, 8)}`,
+      );
+    }
+  }
+
   // frontier は常に更新。waitingForInput は freeInput メッセージがある場合のみ更新（無ければ既存値を保持）。
-  const data: { lastSentMessageIds: string; waitingForInput?: string } = { lastSentMessageIds: frontierJson };
+  // currentPhaseId は autoTransition があるときのみ更新（silent・入場メッセージは送らない）。
+  const data: { lastSentMessageIds: string; waitingForInput?: string; currentPhaseId?: string; reachedEnding?: boolean } = { lastSentMessageIds: frontierJson };
   if (waitingJson !== null) data.waitingForInput = waitingJson;
+  if (autoTransition) {
+    data.currentPhaseId = autoTransition.toPhaseId;
+    data.reachedEnding  = autoTransition.reachedEnding;
+  }
 
   try {
     if (args.progressId) {
@@ -74,6 +106,15 @@ export async function applyFreeInputPostEffect(args: {
       });
     }
     await activeCache.delete(CACHE_KEY.progress(args.userId, args.workId));
+    if (autoTransition) {
+      console.log(
+        `[auto-transition] silent 遷移`,
+        `userId=${args.userId.slice(0, 8)}`,
+        `toPhaseId=${autoTransition.toPhaseId.slice(0, 8)}`,
+        `viaMsg=${autoTransition.viaMessageId.slice(0, 8)}`,
+        `route=${args.route ?? "-"}`,
+      );
+    }
     if (waitingJson) {
       console.log(
         `[Webhook][free-input] waiting セット完了`,

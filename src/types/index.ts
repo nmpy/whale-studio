@@ -618,6 +618,8 @@ export interface CreateMessageBody {
   image_action_liff_page_id?: string | null;
   image_action_postback_data?: string | null;
   image_action_phase_id?: string | null;
+  /** このメッセージ送信後に silent 自動遷移する先フェーズ ID（入力不要・入場メッセージは送らない） */
+  auto_transition_phase_id?: string | null;
   // 自由入力受付
   free_input_enabled?: boolean;
   free_input_variable_key?: string | null;
@@ -692,6 +694,8 @@ export interface UpdateMessageBody {
   image_action_liff_page_id?: string | null;
   image_action_postback_data?: string | null;
   image_action_phase_id?: string | null;
+  /** このメッセージ送信後に silent 自動遷移する先フェーズ ID（入力不要・入場メッセージは送らない） */
+  auto_transition_phase_id?: string | null;
   // 自由入力受付
   free_input_enabled?: boolean;
   free_input_variable_key?: string | null;

@@ -492,6 +492,8 @@ export const createMessageSchema = z.object({
   image_action_postback_data:  z.string().max(300).optional().nullable(),
   // type="message_with_phase" 用: 送信テキスト受信時に遷移する先フェーズ ID。
   image_action_phase_id:       uuidSchema.optional().nullable(),
+  // このメッセージ送信後に silent 自動遷移する先フェーズ ID（入力不要・入場メッセージは送らない）。
+  auto_transition_phase_id:    uuidSchema.optional().nullable(),
   // ── 自由入力受付 ──
   free_input_enabled:         z.boolean().default(false),
   free_input_variable_key:    variableKeySchema.optional().nullable(),
@@ -670,6 +672,7 @@ export const updateMessageSchema = z.object({
   image_action_liff_page_id:   uuidSchema.optional().nullable(),
   image_action_postback_data:  z.string().max(300).optional().nullable(),
   image_action_phase_id:       uuidSchema.optional().nullable(),
+  auto_transition_phase_id:    uuidSchema.optional().nullable(),
   // ── 自由入力受付 ──
   free_input_enabled:         z.boolean().optional(),
   free_input_variable_key:    variableKeySchema.optional().nullable(),
