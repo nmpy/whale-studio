@@ -4674,29 +4674,9 @@ function AdditionalMessageBlock({
             </>
           )}
         </SectionAccordion>
-
-        {/* 送信後の自動フェーズ移動（silent・チェーン末尾に設定する想定）。旧「遷移を追加」とは別。 */}
-        <div className="form-group" style={{ marginTop: 12, marginBottom: 0 }}>
-          <label style={fieldLabel} htmlFor={`slot-${index}-auto_transition_phase_id`}>
-            自動フェーズ移動（送信直後）
-          </label>
-          <select
-            id={`slot-${index}-auto_transition_phase_id`}
-            className="form-input"
-            style={{ maxWidth: 320 }}
-            value={slot.auto_transition_phase_id}
-            onChange={(e) => onChange({ ...slot, auto_transition_phase_id: e.target.value })}
-          >
-            <option value="">移動しない</option>
-            {(phases ?? []).map((p) => (
-              <option key={p.id} value={p.id}>{p.name}</option>
-            ))}
-          </select>
-          <div style={hintText}>
-            この連続メッセージを送信した直後に、入力を待たず指定フェーズへ移動します（移動先の冒頭メッセージは送りません）。
-            チェーン末尾のメッセージに設定してください。
-          </div>
-        </div>
+        {/* 送信後の自動フェーズ移動は「メッセージ群全体で1つ」の設定のため、各スロットには表示しない
+            （途中送信での発火を防ぐ）。設定は下部「メッセージ後の遷移（送信直後）」で行い、保存時に
+            チェーン末尾へ正規化する（buildChainSaveBody）。 */}
       </div>
     </div>
   );
@@ -6916,19 +6896,20 @@ export function MessageForm({
           </SectionAccordion>
           )} {/* /isPuzzle 謎の回答設定 */}
 
-          {/* ── メッセージ後の遷移（任意）── */}
-          {/* 「送信後の挙動」の設定として、送信直後の自動フェーズ移動（silent auto-transition）を配置する。
-              ※ キーワード/QR 起点の旧「遷移を追加」UI（PhaseTransitionsSection）は、新UIと紛らわしいため
-                通常メッセージ編集画面では非表示にする（Transition テーブル・runtime・scenario flow 側は不変）。 */}
+          {/* ── メッセージ後の遷移（送信直後）── */}
+          {/* 「送信後の挙動」の設定。連続メッセージ全体（1通目＋2通目以降）を送り終わった直後に発火する
+              ブロック全体で1つの設定として配置する（各スロットには出さない）。保存時にチェーン末尾へ正規化。
+              ※ キーワード/QR 起点の旧「遷移を追加」UI（PhaseTransitionsSection）は新UIと紛らわしいため
+                通常メッセージ編集画面では非表示（Transition テーブル・runtime・scenario flow 側は不変）。 */}
           <div className="form-group" style={{ marginTop: 8, marginBottom: 0 }}>
-            <label style={fieldLabel}>メッセージ後の遷移（任意）</label>
-            <div style={{ fontSize: 13, fontWeight: 600, color: "#374151", marginTop: 4 }}>
-              自動フェーズ移動（送信直後）
-            </div>
+            <label style={fieldLabel}>
+              メッセージ後の遷移（送信直後）
+              <span style={{ marginLeft: 6, fontSize: 11, fontWeight: 400, color: "#6b7280" }}>任意</span>
+            </label>
             <select
               id="auto_transition_phase_id"
               className="form-input"
-              style={{ maxWidth: 320, marginTop: 6 }}
+              style={{ maxWidth: 320, marginTop: 4 }}
               value={form.auto_transition_phase_id}
               onChange={(e) => set("auto_transition_phase_id", e.target.value)}
             >
@@ -6938,11 +6919,9 @@ export function MessageForm({
               ))}
             </select>
             <div style={hintText}>
-              このメッセージを送信した直後に、プレイヤーの入力やボタン操作を待たず、指定フェーズへ移動します。
+              このメッセージ群をすべて送信した直後に、プレイヤーの入力やボタン操作を待たず、指定フェーズへ移動します。
               移動先フェーズの冒頭メッセージは送信されません。「続きを選んでください。」も表示されません。
               次の入力から、移動先フェーズの応答キーワードが有効になります。
-              クイックリプライのフェーズ遷移や、キーワードで動く遷移とは別の設定です。
-              連続メッセージの場合は、基本的にチェーン末尾のメッセージに設定してください。
             </div>
           </div>
 
