@@ -1335,8 +1335,16 @@ export const trackingApi = {
 // Analytics API
 // ────────────────────────────────────────────────
 export const analyticsApi = {
-  async get(token: string, workId: string): Promise<AnalyticsData> {
-    const res = await fetch(`/api/analytics?work_id=${workId}`, {
+  async get(
+    token: string,
+    workId: string,
+    range?: { range?: string | null; from?: string | null; to?: string | null },
+  ): Promise<AnalyticsData> {
+    const q = new URLSearchParams({ work_id: workId });
+    if (range?.range) q.set("range", range.range);
+    if (range?.from)  q.set("from", range.from);
+    if (range?.to)    q.set("to", range.to);
+    const res = await fetch(`/api/analytics?${q.toString()}`, {
       headers: authHeaders(token),
     });
     return parseResponse(res);

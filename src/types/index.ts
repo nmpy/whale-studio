@@ -1253,6 +1253,8 @@ export interface AnalyticsPlayerDetail {
 
 export interface AnalyticsData {
   work: { id: string; title: string };
+  /** 適用された表示期間（JST 基準・null は無制限）。未指定/全期間は key="all"。 */
+  range?: { key: string; from: string | null; to: string | null };
   summary: AnalyticsSummary;
   realtime: AnalyticsRealtime;
   phase_stats: AnalyticsPhaseStats[];
