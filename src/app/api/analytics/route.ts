@@ -7,6 +7,7 @@ import { ok, badRequest, notFound, serverError } from "@/lib/api-response";
 import { withAuth } from "@/lib/auth";
 import { requireRole } from "@/lib/rbac";
 import { parseAnalyticsRange, isWithinRange } from "@/lib/analytics-range";
+import { applyExclusion } from "@/lib/analytics-exclusion";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -60,7 +61,7 @@ export const GET = withAuth(async (req: NextRequest, _ctx, user) => {
       new Date(),
     );
 
-    const [phases, allProgress] = await Promise.all([
+    const [phases, rawProgress, excludedRows] = await Promise.all([
       prisma.phase.findMany({
         where: { workId: work_id },
         orderBy: { sortOrder: "asc" },
@@ -72,7 +73,17 @@ export const GET = withAuth(async (req: NextRequest, _ctx, user) => {
         where: { workId: work_id, isPreview: false },
         orderBy: { lastInteractedAt: "desc" },
       }),
+      // 分析除外ユーザー（OA 単位）。作品名/プランでなく lineUserId 集合で除外する。
+      prisma.analyticsExcludedUser.findMany({
+        where: { oaId: work.oaId },
+        select: { lineUserId: true },
+      }),
     ]);
+
+    // 除外ユーザーを集計前に取り除く（in-memory・元データ不変）。全指標に一貫適用。
+    //   期間フィルター / isPreview 除外とは独立して合成される。
+    const excludedSet = new Set(excludedRows.map((e) => e.lineUserId));
+    const allProgress = applyExclusion(rawProgress, excludedSet);
 
     // 期間フィルターは「対象期間に参加した（createdAt が期間内の）プレイヤー」を cohort として
     // summary / フェーズ別 / 離脱 / プレイヤー詳細 に適用する。全期間指定時は全 cohort（＝現行と同一）。
@@ -223,6 +234,8 @@ export const GET = withAuth(async (req: NextRequest, _ctx, user) => {
         from: range.from ? range.from.toISOString() : null,
         to:   range.to ? range.to.toISOString() : null,
       },
+      // 分析対象から除外した人数（UI の「除外ユーザー ◯名を除く」表示用）。
+      excluded_count: excludedSet.size,
       summary: {
         total_players:               totalPlayers,
         total_clears:                totalClears,

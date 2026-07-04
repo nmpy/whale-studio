@@ -12,6 +12,8 @@ import {
 } from "@/lib/api-client";
 import { HelpAccordion } from "@/components/HelpAccordion";
 import { useToast } from "@/components/Toast";
+import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
+import { ExclusionModal } from "./_ExclusionModal";
 import type {
   Segment, Tracking, AnalyticsData, AnalyticsPhaseStats, AnalyticsDropoutItem, SegmentAnalytics,
 } from "@/types";
@@ -109,6 +111,7 @@ export default function WorkAudiencePage() {
   const searchParams  = useSearchParams();
   const router        = useRouter();
   const { showToast } = useToast();
+  const { isOwner, isAdmin } = useWorkspaceRole(oaId);
 
   type TabType = "data" | "realtime" | "flow" | "segments" | "tracking";
   const activeTab = (searchParams.get("tab") as TabType) ?? "data";
@@ -146,6 +149,7 @@ export default function WorkAudiencePage() {
   const [segAna,        setSegAna]       = useState<SegmentAnalytics[]>([]);
   const [segAnaLoading, setSegAnaLoading] = useState(false);
   const [autoRefresh,   setAutoRefresh]  = useState(false);
+  const [showExclusion, setShowExclusion] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // ── Loaders ───────────────────────────────────────────────────────────────
@@ -349,6 +353,27 @@ export default function WorkAudiencePage() {
           表示期間：{rangeKey === "custom" ? `${rangeFrom ?? "—"} 〜 ${rangeTo ?? "—"}` : ({ today: "今日", yesterday: "昨日", last_7_days: "直近7日", last_30_days: "直近30日", this_month: "今月", all: "全期間" } as Record<string, string>)[rangeKey] ?? "全期間"}
         </span>
       </div>
+
+      {/* ── 分析対象（除外ユーザー数）＋ 除外ユーザー管理導線 ── */}
+      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, marginBottom: 16, fontSize: 12, color: "#374151" }}>
+        <span>
+          分析対象：{(analytics?.excluded_count ?? 0) > 0
+            ? <>除外ユーザー <strong>{analytics?.excluded_count}</strong> 名を除く</>
+            : <>除外なし</>}
+        </span>
+        <button onClick={() => setShowExclusion(true)}
+          style={{ padding: "5px 12px", fontSize: 12, border: "1px solid #d1d5db", background: "#fff", borderRadius: 8, cursor: "pointer", fontWeight: 600 }}>
+          除外ユーザーを管理
+        </button>
+      </div>
+      {showExclusion && (
+        <ExclusionModal
+          oaId={oaId}
+          canManage={isOwner || isAdmin}
+          onClose={() => setShowExclusion(false)}
+          onChanged={() => loadAnalytics()}
+        />
+      )}
 
       {baseError && (
         <div className="alert alert-error" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>

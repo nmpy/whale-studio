@@ -1255,6 +1255,8 @@ export interface AnalyticsData {
   work: { id: string; title: string };
   /** 適用された表示期間（JST 基準・null は無制限）。未指定/全期間は key="all"。 */
   range?: { key: string; from: string | null; to: string | null };
+  /** 分析対象から除外した lineUserId の件数（OA 単位の除外設定）。 */
+  excluded_count?: number;
   summary: AnalyticsSummary;
   realtime: AnalyticsRealtime;
   phase_stats: AnalyticsPhaseStats[];

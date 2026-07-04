@@ -1351,6 +1351,64 @@ export const analyticsApi = {
   },
 };
 
+// ── 分析除外ユーザー（OA 単位）──────────────────────
+export interface ExclusionCandidateMember {
+  user_id: string;
+  name: string;
+  email: string | null;
+  role: string;
+  line_user_id: string | null;
+  line_user_id_masked: string | null;
+  has_uid: boolean;
+  excluded: boolean;
+  exclusion_id: string | null;
+}
+export interface ManualExclusion {
+  id: string;
+  line_user_id_masked: string;
+  display_name: string | null;
+  note: string | null;
+}
+export interface ExclusionCandidates {
+  members: ExclusionCandidateMember[];
+  manual_exclusions: ManualExclusion[];
+  excluded_count: number;
+}
+
+export const analyticsExclusionApi = {
+  /** 除外モーダル用: 管理ユーザー一覧＋UID/除外状態＋手入力除外一覧。 */
+  async candidates(token: string, oaId: string): Promise<ExclusionCandidates> {
+    const res = await fetch(`/api/oas/${oaId}/analytics-exclusion-candidates`, { headers: authHeaders(token) });
+    return parseResponse(res);
+  },
+  /** メンバーの LINE UID を設定/解除（null で解除）。owner/admin のみ。 */
+  async setMemberUid(token: string, oaId: string, userId: string, lineUserId: string | null): Promise<unknown> {
+    const res = await fetch(`/api/oas/${oaId}/analytics-exclusion-candidates`, {
+      method: "PATCH",
+      headers: { ...authHeaders(token), "Content-Type": "application/json" },
+      body: JSON.stringify({ user_id: userId, line_user_id: lineUserId }),
+    });
+    return parseResponse(res);
+  },
+  /** 除外を追加（lineUserId 必須・memberUserId/displayName/note 任意）。owner/admin のみ。 */
+  async add(token: string, oaId: string, body: { line_user_id: string; member_user_id?: string; display_name?: string; note?: string }): Promise<unknown> {
+    const res = await fetch(`/api/oas/${oaId}/analytics-excluded-users`, {
+      method: "POST",
+      headers: { ...authHeaders(token), "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    return parseResponse(res);
+  },
+  /** 除外を解除（行削除・元データ不変）。owner/admin のみ。 */
+  async remove(token: string, oaId: string, exclusionId: string): Promise<unknown> {
+    const res = await fetch(`/api/oas/${oaId}/analytics-excluded-users/${exclusionId}`, {
+      method: "DELETE",
+      headers: authHeaders(token),
+    });
+    return parseResponse(res);
+  },
+};
+
 export const segmentAnalyticsApi = {
   async list(token: string, oaId: string, workId: string): Promise<SegmentAnalytics[]> {
     const res = await fetch(`/api/analytics/segments?oa_id=${oaId}&work_id=${workId}`, {
