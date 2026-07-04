@@ -11,7 +11,7 @@ import { Button, StatusBadge, buttonClass } from "@/components/shared";
 import { OasViewPreviewBar } from "@/components/OasViewPreviewBar";
 import { canCreateOaInView, isPreviewingOasView, viewingAsOwnerOrAbove, OAS_VIEW_ROLE_LABELS } from "@/lib/oas-preview";
 import { usageTypeShortLabel } from "@/lib/usage-type";
-import { compareByLatestActivity, compareByCreated } from "@/lib/list-sort";
+import { compareByLatestActivity, compareByCreated, sortByLatestActivity } from "@/lib/list-sort";
 import { formatDateTime } from "@/lib/format-datetime";
 import type { Role } from "@/lib/types/permissions";
 
@@ -101,18 +101,27 @@ function WorksCell({
       </Link>
     );
   }
+  // 作品ごとの最終更新（latest_activity_at = 作品配下 Phase/Message/Character/LIFF 等の最新編集）が
+  // 新しい順に並べる（= 最近触った作品が上）。同値は id で安定 tie-break。
+  const sorted = sortByLatestActivity(ws);
   return (
-    <div className="flex flex-col gap-1">
-      {ws.map((w) => (
-        <Link
-          key={w.id}
-          href={`/oas/${oaId}/works/${w.id}`}
-          title={`${w.title} の作品管理へ`}
-          className="inline-flex max-w-full items-center gap-1 text-[13px] font-semibold leading-[1.4] text-ink transition-colors hover:text-brand-ink hover:underline hover:underline-offset-2"
-        >
-          <span className="overflow-hidden text-ellipsis whitespace-nowrap">{w.title}</span>
-          <span className="flex-shrink-0 text-[13px] leading-none text-ink-3">›</span>
-        </Link>
+    <div className="flex flex-col divide-y divide-line/60">
+      {sorted.map((w) => (
+        <div key={w.id} className="flex flex-col gap-0.5 py-1 first:pt-0 last:pb-0">
+          <Link
+            href={`/oas/${oaId}/works/${w.id}`}
+            title={`${w.title} の作品管理へ`}
+            className="inline-flex max-w-full items-center gap-1 text-[13px] font-semibold leading-[1.4] text-ink transition-colors hover:text-brand-ink hover:underline hover:underline-offset-2"
+          >
+            <span className="overflow-hidden text-ellipsis whitespace-nowrap">{w.title}</span>
+            <span className="flex-shrink-0 text-[13px] leading-none text-ink-3">›</span>
+          </Link>
+          {/* 作品ごとの作成日時・最終更新（PC 横並び / モバイル 縦積み）。最終更新は latest_activity_at。 */}
+          <div className="flex flex-col gap-x-3 gap-y-0.5 font-num text-[10px] leading-tight text-ink-3 sm:flex-row sm:flex-wrap">
+            <span>作成 {formatDateTime(w.created_at)}</span>
+            <span>最終更新 {formatDateTime(w.latest_activity_at ?? w.updated_at ?? w.created_at)}</span>
+          </div>
+        </div>
       ))}
     </div>
   );
@@ -479,18 +488,19 @@ export function OaListClient() {
                           </span>
                         </MetaItem>
 
-                        <div className="min-w-[120px] max-w-[280px]">
+                        <div className="min-w-[180px] max-w-[360px] flex-1">
                           <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.06em] text-ink-3 whitespace-nowrap">
-                            作品名
+                            作品（作成 / 最終更新）
                           </div>
                           <WorksCell oaId={oa.id} hasAccess={oa.has_workspace_access} worksMap={worksMap} worksLoading={worksLoading} />
                         </div>
 
-                        <MetaItem label="作成日時">
+                        <MetaItem label="アカウント作成日時">
                           <span className="font-num text-ink-2">{formatDateTime(oa.created_at)}</span>
                         </MetaItem>
 
-                        <MetaItem label="更新日時">
+                        {/* アカウント内の最新活動（配下作品・設定を含む）。並び替え「最終更新が新しい順」の基準と一致。 */}
+                        <MetaItem label="アカウント内最終更新">
                           <span className="font-num text-ink-2">{formatDateTime(oa.latest_activity_at ?? oa.updated_at ?? oa.created_at)}</span>
                         </MetaItem>
                       </div>

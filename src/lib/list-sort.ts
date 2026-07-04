@@ -55,3 +55,14 @@ export function activityTimeOf(x: Activity): number | null {
 export function compareByLatestActivity(a: Activity, b: Activity, dir: "desc" | "asc" = "desc"): number {
   return compareByTime(activityTimeOf(a), activityTimeOf(b), dir);
 }
+
+/**
+ * 最終更新（latest_activity_at ?? updated_at ?? created_at）が新しい順に並べる（非破壊）。
+ * 同値は id で安定 tie-break（表示のちらつき防止）。アカウントカード内の作品行の並びに使う。
+ */
+export function sortByLatestActivity<T extends Activity & { id: string }>(items: T[]): T[] {
+  return [...items].sort((a, b) => {
+    const c = compareByLatestActivity(a, b, "desc");
+    return c !== 0 ? c : a.id.localeCompare(b.id);
+  });
+}
