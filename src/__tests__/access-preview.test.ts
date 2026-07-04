@@ -285,3 +285,27 @@ describe("withPreviewParams", () => {
     expect(withPreviewParams("/foo", undefined)).toBe("/foo");
   });
 });
+
+// ────────────────────────────────────────────────
+// withPreviewParams: 遷移先が明示する query を優先（重複させない）
+// ────────────────────────────────────────────────
+describe("withPreviewParams — 遷移先の明示 query を優先", () => {
+  it("遷移先が既に previewPlan を持つ → 遷移先を優先（現在値で上書きしない・重複キーを作らない）", () => {
+    const out = withPreviewParams("/oas/x?previewPlan=pro", new URLSearchParams("previewPlan=basic"));
+    expect(out).toBe("/oas/x?previewPlan=pro");
+  });
+
+  it("遷移先が previewRole を持ち、現在 previewPlan がある → role は遷移先優先・plan は引き継ぎ", () => {
+    const out = withPreviewParams(
+      "/oas/x?previewRole=viewer",
+      new URLSearchParams("previewPlan=basic&previewRole=owner"),
+    );
+    // 既存 role=viewer を維持しつつ plan=basic を追加
+    expect(out).toBe("/oas/x?previewRole=viewer&previewPlan=basic");
+  });
+
+  it("遷移先の非 preview query は保持したまま preview を引き継ぐ", () => {
+    const out = withPreviewParams("/oas/x/audience?tab=data", new URLSearchParams("previewRole=editor"));
+    expect(out).toBe("/oas/x/audience?tab=data&previewRole=editor");
+  });
+});

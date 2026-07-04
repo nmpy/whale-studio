@@ -193,12 +193,12 @@ export function withPreviewParams(
   const previewRole = searchParams.get("previewRole");
   if (!previewPlan && !previewRole) return pathname;
 
-  const next = new URLSearchParams();
-  if (previewPlan) next.set("previewPlan", previewPlan);
-  if (previewRole) next.set("previewRole", previewRole);
-  const qs = next.toString();
-  if (!qs) return pathname;
-
-  const sep = pathname.includes("?") ? "&" : "?";
-  return `${pathname}${sep}${qs}`;
+  // 遷移先が既に明示している query（他 query / preview query とも）は保持し、
+  // preview key は「遷移先が明示していれば遷移先を優先」する（= 重複キーを作らない）。
+  const [base, existingQs = ""] = pathname.split("?");
+  const target = new URLSearchParams(existingQs);
+  if (previewPlan && !target.has("previewPlan")) target.set("previewPlan", previewPlan);
+  if (previewRole && !target.has("previewRole")) target.set("previewRole", previewRole);
+  const qs = target.toString();
+  return qs ? `${base}?${qs}` : base;
 }
