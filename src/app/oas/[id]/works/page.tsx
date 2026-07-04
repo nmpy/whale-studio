@@ -14,6 +14,7 @@ import { Breadcrumb } from "@/components/Breadcrumb";
 import { WorkCard } from "@/components/WorkCard";
 import { FriendAddSection } from "@/components/FriendAddSection";
 import { oaApi, workApi, friendAddApi, getDevToken, type WorkListItem } from "@/lib/api-client";
+import { compareByUpdatedThenCreated } from "@/lib/list-sort";
 import { OaHeaderActions } from "@/components/OaHeaderActions";
 import type { FriendAddSettings, PublishStatus } from "@/types";
 import { useToast } from "@/components/Toast";
@@ -154,37 +155,38 @@ export default function WorkListPage() {
   const [sortKey, setSortKey] = useState<SortKey>("updated_at_desc");
 
   function sortFn(a: WorkListItem, b: WorkListItem): number {
-    // 第2キー: 同値時は updated_at desc で安定させる
-    const byUpdatedAt = new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
+    // 第2キー: 表示している更新日時（updated_at ?? created_at）で新しい順に安定化。
+    //   日時は Date(ms) 化して比較（文字列比較しない）。null/無効は末尾。最終 tie-break は id。
+    const byUpdatedAt = compareByUpdatedThenCreated(a, b, "desc");
+    const tieId = () => a.id.localeCompare(b.id);
+    const withTie = (cmp: number) => (cmp !== 0 ? cmp : byUpdatedAt !== 0 ? byUpdatedAt : tieId());
 
     switch (sortKey) {
       case "updated_at_desc":
-        return byUpdatedAt;
+        return byUpdatedAt !== 0 ? byUpdatedAt : tieId();
 
-      case "title_asc": {
-        const cmp = a.title.localeCompare(b.title, "ja");
-        return cmp !== 0 ? cmp : byUpdatedAt;
-      }
+      case "title_asc":
+        return withTie(a.title.localeCompare(b.title, "ja"));
 
       case "completed_desc": {
         const ac = a.progress_stats?.completed ?? 0;
         const bc = b.progress_stats?.completed ?? 0;
-        return bc !== ac ? bc - ac : byUpdatedAt;
+        return withTie(bc - ac);
       }
 
       case "in_progress_desc": {
         const aip = a.progress_stats?.in_progress ?? 0;
         const bip = b.progress_stats?.in_progress ?? 0;
-        return bip !== aip ? bip - aip : byUpdatedAt;
+        return withTie(bip - aip);
       }
 
       case "sort_order_asc": {
         const cmp = (a.sort_order ?? 0) - (b.sort_order ?? 0);
-        return cmp !== 0 ? cmp : byUpdatedAt;
+        return cmp !== 0 ? cmp : (byUpdatedAt !== 0 ? byUpdatedAt : tieId());
       }
 
       default:
-        return byUpdatedAt;
+        return byUpdatedAt !== 0 ? byUpdatedAt : tieId();
     }
   }
 
