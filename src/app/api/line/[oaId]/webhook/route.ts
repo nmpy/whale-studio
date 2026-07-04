@@ -53,6 +53,7 @@ import { parseWelcomeMessages, WELCOME_MESSAGES_MAX, type WelcomeMessageItem } f
 import { resolveQrBranchDelivery } from "@/lib/qr-branch";
 import { matchStartWork, normalizeStartKeyword } from "@/lib/start-keyword";
 import { parseQuickReplyPostback, resolveQuickReplyItem } from "@/lib/quick-reply-postback";
+import { isMemberLinkCode, consumeMemberLinkCode } from "@/lib/member-line-link";
 import { parseFrontier, selectQrScope } from "@/lib/qr-frontier";
 import { collectLegacyQrMatches, collectLegacyHintMatches } from "@/lib/legacy-qr-fallback";
 import { normalizeHintQrItems } from "@/lib/hint-qr";
@@ -1665,7 +1666,7 @@ async function handleWebhook(req: NextRequest, oaId: string) {
   // ── 5-a. userId をログ出力（開発時の確認用）+ テストモードフィルタリング ──
   const testModeActive = isTestModeActive();
 
-  const textEvents = rawTextEvents.filter((e) => {
+  const allowedTextEvents = rawTextEvents.filter((e) => {
     const uid = e.source.userId;
     console.info(
       `[Webhook] text message  userId=${uid}  text="${e.message.text.slice(0, 40)}"` +
@@ -1677,6 +1678,29 @@ async function handleWebhook(req: NextRequest, oaId: string) {
     }
     return true;
   });
+
+  // ── 会員 LINE 連携コードの横取り（シナリオ処理より前・完全一致のみ）──
+  //   分析除外用に、管理ユーザー本人が公式 LINE に送った連携コードを処理する。
+  //   完全一致（WS-LINE-LINK-XXXXXXXX）だけを対象にし、それ以外は一切変更しない。
+  //   連携コードイベントは UserProgress を作らず、シナリオ処理（textEvents）にも流さない。
+  const linkCodeEvents = allowedTextEvents.filter((e) => isMemberLinkCode(e.message.text));
+  const textEvents     = allowedTextEvents.filter((e) => !isMemberLinkCode(e.message.text));
+  if (linkCodeEvents.length > 0) {
+    for (const e of linkCodeEvents) {
+      try {
+        const result = await consumeMemberLinkCode({
+          oaId:       oa.id,
+          code:       e.message.text.trim(),
+          lineUserId: e.source.userId,
+          now:        new Date(),
+        });
+        await replyToLine(e.replyToken, [{ type: "text", text: result.message }], oa.channelAccessToken).catch(() => { /* 返信失敗は握りつぶす */ });
+      } catch (err) {
+        console.error(`[Webhook] member link code failed oaId=${oa.id}`, err);
+        await replyToLine(e.replyToken, [{ type: "text", text: "連携処理でエラーが発生しました。時間をおいて再度お試しください。" }], oa.channelAccessToken).catch(() => {});
+      }
+    }
+  }
 
   const postbackEvents = rawPostbackEvents.filter((e) => {
     const uid = e.source.userId;

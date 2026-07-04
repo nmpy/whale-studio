@@ -9,8 +9,8 @@
 //   - 除外の実体は OA 単位 lineUserId（AnalyticsExcludedUser）。元データは削除しない。
 //   - owner/admin のみ操作可能（canManage）。API 側でも認可。
 
-import { useCallback, useEffect, useState } from "react";
-import { analyticsExclusionApi, getDevToken, type ExclusionCandidates } from "@/lib/api-client";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { analyticsExclusionApi, getDevToken, type ExclusionCandidates, type MemberLinkCode } from "@/lib/api-client";
 
 const ROLE_LABEL: Record<string, string> = {
   owner: "オーナー", admin: "管理者", editor: "編集者", tester: "テスター", viewer: "閲覧者",
@@ -31,18 +31,46 @@ export function ExclusionModal({
   const [uidDraft, setUidDraft] = useState<Record<string, string>>({});
   const [manualUid, setManualUid]   = useState("");
   const [manualNote, setManualNote] = useState("");
+  // 本人の LINE 連携コード（発行後に表示）。
+  const [linkCode, setLinkCode] = useState<MemberLinkCode | null>(null);
+  const [copied, setCopied]     = useState(false);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true); setError(null);
     try {
       const d = await analyticsExclusionApi.candidates(getDevToken(), oaId);
       setData(d);
+      // 連携コード表示中に本人の UID が設定済みになったら、コード表示を閉じる（連携完了検知）。
+      if (linkCode && d.members.find((m) => m.user_id === d.me)?.has_uid) {
+        setLinkCode(null);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "読み込みに失敗しました");
     } finally { setLoading(false); }
-  }, [oaId]);
+  }, [oaId, linkCode]);
 
   useEffect(() => { void load(); }, [load]);
+
+  // 連携コード表示中は、UID 設定完了を検知するため一定間隔でポーリングする。
+  useEffect(() => {
+    if (!linkCode) { if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; } return; }
+    pollRef.current = setInterval(() => { void load(); }, 5000);
+    return () => { if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; } };
+  }, [linkCode, load]);
+
+  async function issueLinkCode() {
+    setBusyId("__link__"); setError(null);
+    try {
+      const c = await analyticsExclusionApi.createLinkCode(getDevToken(), oaId);
+      setLinkCode(c); setCopied(false);
+    } catch (e) { setError(e instanceof Error ? e.message : "連携コードの発行に失敗しました"); }
+    finally { setBusyId(null); }
+  }
+  async function copyCode() {
+    if (!linkCode) return;
+    try { await navigator.clipboard.writeText(linkCode.code); setCopied(true); setTimeout(() => setCopied(false), 2000); } catch { /* noop */ }
+  }
 
   const refresh = async () => { await load(); onChanged(); };
 
@@ -109,6 +137,25 @@ export function ExclusionModal({
         </p>
 
         {error && <div style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, padding: "8px 12px", fontSize: 12, color: "#991b1b", marginBottom: 12 }}>{error}</div>}
+
+        {/* 本人の LINE 連携コード表示（発行後） */}
+        {linkCode && (
+          <div style={{ background: "#ecfdf5", border: "1px solid #6ee7b7", borderRadius: 10, padding: "12px 14px", marginBottom: 14 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#065f46", marginBottom: 6 }}>自分のLINEを連携</div>
+            <p style={{ fontSize: 12, color: "#047857", lineHeight: 1.6, marginBottom: 8 }}>
+              下記コードを<strong>この作品のアカウントの公式 LINE</strong>にそのまま送信してください。連携が完了すると、この行の LINE UID が「設定済み」になります（自動で反映）。
+            </p>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <code style={{ fontSize: 15, fontWeight: 700, letterSpacing: 0.5, background: "#fff", border: "1px solid #6ee7b7", borderRadius: 8, padding: "6px 12px", color: "#065f46" }}>{linkCode.code}</code>
+              <button onClick={copyCode} style={{ padding: "5px 12px", fontSize: 12, border: "1px solid #059669", background: "#fff", color: "#059669", borderRadius: 8, cursor: "pointer", fontWeight: 600 }}>{copied ? "コピー済" : "コピー"}</button>
+              <button onClick={() => setLinkCode(null)} style={{ padding: "5px 10px", fontSize: 12, border: "1px solid #d1d5db", background: "#fff", color: "#6b7280", borderRadius: 8, cursor: "pointer" }}>閉じる</button>
+            </div>
+            <div style={{ fontSize: 11, color: "#6b7280", marginTop: 6 }}>
+              有効期限: {new Date(linkCode.expires_at).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo", hour12: false })}（連携完了を確認中…）
+            </div>
+          </div>
+        )}
+
         {loading ? (
           <div style={{ fontSize: 13, color: "#9ca3af", padding: 20, textAlign: "center" }}>読み込み中…</div>
         ) : (
@@ -135,15 +182,27 @@ export function ExclusionModal({
                       <td style={td}>
                         {m.has_uid ? (
                           <span style={{ fontFamily: "monospace", color: "#374151" }}>{m.line_user_id_masked}</span>
-                        ) : canManage ? (
+                        ) : (
                           <span style={{ display: "inline-flex", gap: 4, alignItems: "center", flexWrap: "wrap" }}>
                             <span style={{ color: "#b45309", fontSize: 11 }}>未設定</span>
-                            <input value={uidDraft[m.user_id] ?? ""} onChange={(e) => setUidDraft((p) => ({ ...p, [m.user_id]: e.target.value }))}
-                              placeholder="U から始まる UID" style={{ padding: "3px 6px", fontSize: 11, border: "1px solid #d1d5db", borderRadius: 6, width: 150 }} />
-                            <button onClick={() => saveUid(m.user_id)} disabled={busyId === m.user_id || !(uidDraft[m.user_id] ?? "").trim()}
-                              style={{ padding: "3px 8px", fontSize: 11, border: "1px solid #06C755", background: "#e9f8ef", color: "#06A047", borderRadius: 6, cursor: "pointer" }}>保存</button>
+                            {/* 本人の行: メイン導線「自分のLINEを連携」 */}
+                            {data?.me === m.user_id && (
+                              <button onClick={issueLinkCode} disabled={busyId === "__link__"}
+                                style={{ padding: "3px 10px", fontSize: 11, border: "1px solid #06C755", background: "#06C755", color: "#fff", borderRadius: 6, cursor: "pointer", fontWeight: 700 }}>
+                                自分のLINEを連携
+                              </button>
+                            )}
+                            {/* owner/admin: 補助の手入力 */}
+                            {canManage && (
+                              <>
+                                <input value={uidDraft[m.user_id] ?? ""} onChange={(e) => setUidDraft((p) => ({ ...p, [m.user_id]: e.target.value }))}
+                                  placeholder="手入力 UID" style={{ padding: "3px 6px", fontSize: 11, border: "1px solid #d1d5db", borderRadius: 6, width: 120 }} />
+                                <button onClick={() => saveUid(m.user_id)} disabled={busyId === m.user_id || !(uidDraft[m.user_id] ?? "").trim()}
+                                  style={{ padding: "3px 8px", fontSize: 11, border: "1px solid #d1d5db", background: "#fff", color: "#374151", borderRadius: 6, cursor: "pointer" }}>保存</button>
+                              </>
+                            )}
                           </span>
-                        ) : <span style={{ color: "#b45309", fontSize: 11 }}>未設定</span>}
+                        )}
                       </td>
                     </tr>
                   ))}

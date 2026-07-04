@@ -17,7 +17,7 @@ import { z, ZodError } from "zod";
 export const GET = withRole<{ id: string }>(
   ({ params }) => params.id,
   ["viewer", "tester", "editor", "admin", "owner"],
-  async (_req, { params }) => {
+  async (_req, { params }, user) => {
     try {
       const members = await prisma.workspaceMember.findMany({
         where:  { workspaceId: params.id, status: "active" },
@@ -65,6 +65,7 @@ export const GET = withRole<{ id: string }>(
         }));
 
       return ok({
+        me: user.id, // ログイン中ユーザーの userId（自分の行に「自分のLINEを連携」を出すため）
         members: memberRows,
         manual_exclusions: manualExclusions,
         excluded_count: exclusions.length,

@@ -83,6 +83,7 @@ model Oa {
   liveScripts           LiveScript[]
   liveCues              LiveCue[]
   analyticsExcludedUsers AnalyticsExcludedUser[]
+  memberLineLinkTokens   MemberLineLinkToken[]
 
   @@index([title])
   @@index([publishStatus])
@@ -968,16 +969,42 @@ model WorkspaceMember {
   /// Whale Studio Live のロール（null = Live 権限なし）。studio の role(MemberRole) とは別軸。
   liveRole    LiveRole?    @map("live_role")
   /// この管理ユーザーに紐づく LINE の userId / UID（分析除外用・任意）。
-  /// 制作/運営/テスターが実 LINE で動作確認する場合に owner/admin が設定する。null = 未設定。
+  /// 制作/運営/テスターが実 LINE で動作確認する場合に、本人の LINE 連携（webhook 経由）または
+  /// owner/admin の手入力で設定する。null = 未設定。
+  /// Messaging API webhook の source.userId（= UserProgress.lineUserId と同一 Provider）を保存する。
   lineUserId  String?      @map("line_user_id")
   oa          Oa           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@unique([workspaceId, userId])
+  /// 同一 OA 内で同じ lineUserId を複数メンバーに紐づけない（Postgres は NULL を区別＝未設定は重複可）。
+  @@unique([workspaceId, lineUserId])
   @@index([workspaceId])
   @@index([userId])
   @@index([role])
   @@index([status])
   @@map("workspace_members")
+}
+
+/// 会員（WorkspaceMember）本人が LINE を連携するためのワンタイムトークン。
+/// 本人が対象 OA の公式 LINE に連携コードを送ると、webhook が source.userId を取得して
+/// workspace_members.line_user_id に保存する（Provider 一致を保証）。token は hash 保存・期限付き・one-time。
+model MemberLineLinkToken {
+  id                String    @id @default(uuid())
+  oaId              String    @map("oa_id")
+  workspaceMemberId String    @map("workspace_member_id")
+  /// 連携対象の Supabase userId（= WorkspaceMember.userId）。
+  userId            String    @map("user_id")
+  /// 連携コードの sha256 hash（平文は保存しない）。
+  tokenHash         String    @unique @map("token_hash")
+  expiresAt         DateTime  @map("expires_at")
+  consumedAt        DateTime? @map("consumed_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+  oa                Oa        @relation(fields: [oaId], references: [id], onDelete: Cascade)
+
+  @@index([oaId])
+  @@index([expiresAt])
+  @@map("member_line_link_tokens")
 }
 
 model Invitation {
