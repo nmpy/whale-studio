@@ -5,6 +5,8 @@ import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { ok, badRequest, notFound, serverError } from "@/lib/api-response";
 import { withAuth } from "@/lib/auth";
+import { requireRole } from "@/lib/rbac";
+import { parseAnalyticsRange, isWithinRange } from "@/lib/analytics-range";
 import { z } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -37,7 +39,7 @@ function round1(n: number): number {
   return Math.round(n * 10) / 10;
 }
 
-export const GET = withAuth(async (req: NextRequest) => {
+export const GET = withAuth(async (req: NextRequest, _ctx, user) => {
   try {
     const { searchParams } = new URL(req.url);
     const parsed = querySchema.safeParse({ work_id: searchParams.get("work_id") ?? undefined });
@@ -47,21 +49,41 @@ export const GET = withAuth(async (req: NextRequest) => {
     const work = await prisma.work.findUnique({ where: { id: work_id } });
     if (!work) return notFound("作品");
 
+    // 認可: 作品が属する OA に対する閲覧権限（viewer 以上＝tester 含む）が必須。
+    //   UI だけでなく API 直接アクセスでも他 OA/他作品の分析を読めないようにする。
+    const check = await requireRole(work.oaId, user.id, "viewer");
+    if (!check.ok) return check.response;
+
+    // 表示期間フィルター（JST 基準）。未指定 / 不正は全期間（既定・現行の見え方を維持）。
+    const range = parseAnalyticsRange(
+      { range: searchParams.get("range"), from: searchParams.get("from"), to: searchParams.get("to") },
+      new Date(),
+    );
+
     const [phases, allProgress] = await Promise.all([
       prisma.phase.findMany({
         where: { workId: work_id },
         orderBy: { sortOrder: "asc" },
         select: { id: true, name: true, sortOrder: true },
       }),
+      // 実プレイヤー行動のみを集計対象にする（プレビュー/疑似プレイ isPreview=true は除外）。
+      //   元データは削除しない。where 条件で除外するだけ（解除＝再取得で復帰）。
       prisma.userProgress.findMany({
-        where: { workId: work_id },
+        where: { workId: work_id, isPreview: false },
         orderBy: { lastInteractedAt: "desc" },
       }),
     ]);
 
-    // ヒント使用率: ヒントQRを1回以上タップしたユーザー数 / 総プレイヤー数
+    // 期間フィルターは「対象期間に参加した（createdAt が期間内の）プレイヤー」を cohort として
+    // summary / フェーズ別 / 離脱 / プレイヤー詳細 に適用する。全期間指定時は全 cohort（＝現行と同一）。
+    // realtime（現在プレイ中/本日/直近7日）は "現在の状況" を表すため期間フィルターを掛けない。
+    const cohort = (range.from || range.to)
+      ? allProgress.filter((p) => isWithinRange(p.createdAt, range))
+      : allProgress;
+
+    // ヒント使用率: ヒントQRを1回以上タップしたユーザー数 / 総プレイヤー数（cohort ＝期間内参加者）
     // flags.hint_used === true が webhook によってセットされる
-    const hintUsers = allProgress.filter((p) => {
+    const hintUsers = cohort.filter((p) => {
       try {
         const flags = JSON.parse(p.flags) as Record<string, unknown>;
         return flags?.hint_used === true;
@@ -79,21 +101,21 @@ export const GET = withAuth(async (req: NextRequest) => {
     const phaseOrderMap = new Map(phases.map((p) => [p.id, p.sortOrder]));
     const phaseNameMap  = new Map(phases.map((p) => [p.id, p.name]));
 
-    // ── Summary ──────────────────────────────────────────────
-    const completed       = allProgress.filter((p) => p.reachedEnding);
-    const totalPlayers    = allProgress.length;
+    // ── Summary（cohort ＝対象期間に参加したプレイヤー）──────────
+    const completed       = cohort.filter((p) => p.reachedEnding);
+    const totalPlayers    = cohort.length;
     const totalClears     = completed.length;
     const clearRate       = totalPlayers > 0 ? round1((totalClears / totalPlayers) * 100) : 0;
 
-    const playTimes           = allProgress.map((p) => calcPlayMin(p.createdAt, p.lastInteractedAt));
+    const playTimes           = cohort.map((p) => calcPlayMin(p.createdAt, p.lastInteractedAt));
     const completedPlayTimes  = completed.map((p) => calcPlayMin(p.createdAt, p.lastInteractedAt));
 
-    // ── Realtime ─────────────────────────────────────────────
+    // ── Realtime（"現在の状況"。期間フィルターは掛けず isPreview=false 全体で見る）──
     const currentlyPlaying = allProgress.filter(
       (p) => !p.reachedEnding && now.getTime() - p.lastInteractedAt.getTime() < activeMs
     ).length;
     const startedToday  = allProgress.filter((p) => p.createdAt >= todayStart).length;
-    const clearedToday  = completed.filter((p) => p.lastInteractedAt >= todayStart).length;
+    const clearedToday  = allProgress.filter((p) => p.reachedEnding && p.lastInteractedAt >= todayStart).length;
     const sevenDaysAgo  = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
     const activeLast7d  = allProgress.filter((p) => p.lastInteractedAt >= sevenDaysAgo).length;
 
@@ -101,28 +123,28 @@ export const GET = withAuth(async (req: NextRequest) => {
     const phaseStats = phases.map((phase) => {
       const phaseOrder = phase.sortOrder;
 
-      const reached = allProgress.filter((p) => {
+      const reached = cohort.filter((p) => {
         if (p.reachedEnding) return true;
         const cur = phaseOrderMap.get(p.currentPhaseId ?? "");
         return cur !== undefined && cur >= phaseOrder;
       }).length;
 
-      const currentlyAt = allProgress.filter(
+      const currentlyAt = cohort.filter(
         (p) => !p.reachedEnding && p.currentPhaseId === phase.id
       ).length;
 
-      const cleared = allProgress.filter((p) => {
+      const cleared = cohort.filter((p) => {
         if (p.reachedEnding) return true;
         const cur = phaseOrderMap.get(p.currentPhaseId ?? "");
         return cur !== undefined && cur > phaseOrder;
       }).length;
 
-      const droppedOut = allProgress.filter((p) => {
+      const droppedOut = cohort.filter((p) => {
         if (p.reachedEnding || p.currentPhaseId !== phase.id) return false;
         return now.getTime() - p.lastInteractedAt.getTime() >= dropoutMs;
       }).length;
 
-      const stuck = allProgress.filter((p) => {
+      const stuck = cohort.filter((p) => {
         if (p.reachedEnding || p.currentPhaseId !== phase.id) return false;
         const elapsed = now.getTime() - p.lastInteractedAt.getTime();
         return elapsed >= stuckMs && elapsed < dropoutMs;
@@ -143,7 +165,7 @@ export const GET = withAuth(async (req: NextRequest) => {
 
     // ── Dropout distribution ──────────────────────────────────
     const rawDropout = phases.map((phase) => {
-      const count = allProgress.filter((p) => {
+      const count = cohort.filter((p) => {
         if (p.reachedEnding || p.currentPhaseId !== phase.id) return false;
         return now.getTime() - p.lastInteractedAt.getTime() >= dropoutMs;
       }).length;
@@ -159,7 +181,7 @@ export const GET = withAuth(async (req: NextRequest) => {
     }));
 
     // ── Stuck players ─────────────────────────────────────────
-    const stuckPlayers = allProgress
+    const stuckPlayers = cohort
       .filter((p) => {
         if (p.reachedEnding) return false;
         const elapsed = now.getTime() - p.lastInteractedAt.getTime();
@@ -173,7 +195,7 @@ export const GET = withAuth(async (req: NextRequest) => {
       }));
 
     // ── Player details (最新100件) ────────────────────────────
-    const playerDetails = allProgress.slice(0, 100).map((p) => {
+    const playerDetails = cohort.slice(0, 100).map((p) => {
       const elapsed = now.getTime() - p.lastInteractedAt.getTime();
       let status: "active" | "stuck" | "dropped" | "completed";
       if (p.reachedEnding)         status = "completed";
@@ -195,6 +217,12 @@ export const GET = withAuth(async (req: NextRequest) => {
 
     return ok({
       work: { id: work.id, title: work.title },
+      // 適用された表示期間（UI の「表示期間」ラベルと突き合わせ用）。null = 無制限。
+      range: {
+        key:  range.key,
+        from: range.from ? range.from.toISOString() : null,
+        to:   range.to ? range.to.toISOString() : null,
+      },
       summary: {
         total_players:               totalPlayers,
         total_clears:                totalClears,

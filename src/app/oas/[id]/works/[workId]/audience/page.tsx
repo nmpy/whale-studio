@@ -113,6 +113,23 @@ export default function WorkAudiencePage() {
   type TabType = "data" | "realtime" | "flow" | "segments" | "tracking";
   const activeTab = (searchParams.get("tab") as TabType) ?? "data";
 
+  // 表示期間フィルター（JST 基準）。URL query（range / from / to）で保持。未指定 = 全期間。
+  const rangeKey  = searchParams.get("range") ?? "all";
+  const rangeFrom = searchParams.get("from");
+  const rangeTo   = searchParams.get("to");
+  // 期間フィルターを URL query に反映（既存 query = tab / previewPlan / previewRole 等は保持）。
+  const applyRange = useCallback(
+    (next: { range?: string | null; from?: string | null; to?: string | null }) => {
+      const q = new URLSearchParams(searchParams.toString());
+      const setOrDel = (k: string, v: string | null | undefined) => { if (v) q.set(k, v); else q.delete(k); };
+      if ("range" in next) setOrDel("range", next.range);
+      if ("from"  in next) setOrDel("from",  next.from);
+      if ("to"    in next) setOrDel("to",    next.to);
+      router.replace(`?${q.toString()}`, { scroll: false });
+    },
+    [searchParams, router],
+  );
+
   // ── State ─────────────────────────────────────────────────────────────────
   const [oaTitle,      setOaTitle]      = useState("");
   const [workTitle,    setWorkTitle]    = useState("");
@@ -156,11 +173,11 @@ export default function WorkAudiencePage() {
     setAnaLoading(true);
     setAnaError(null);
     try {
-      setAnalytics(await analyticsApi.get(getDevToken(), workId));
+      setAnalytics(await analyticsApi.get(getDevToken(), workId, { range: rangeKey, from: rangeFrom, to: rangeTo }));
     } catch (e) {
       setAnaError(e instanceof Error ? e.message : "分析データの取得に失敗しました");
     } finally { setAnaLoading(false); }
-  }, [workId]);
+  }, [workId, rangeKey, rangeFrom, rangeTo]);
 
   const loadSegAna = useCallback(async () => {
     setSegAnaLoading(true);
@@ -185,7 +202,10 @@ export default function WorkAudiencePage() {
 
   // ── Handlers ──────────────────────────────────────────────────────────────
   function switchTab(tab: TabType) {
-    router.push(`/oas/${oaId}/works/${workId}/audience?tab=${tab}`);
+    // 既存 query（range/from/to・previewPlan/previewRole 等）を保持したまま tab だけ切り替える。
+    const q = new URLSearchParams(searchParams.toString());
+    q.set("tab", tab);
+    router.push(`/oas/${oaId}/works/${workId}/audience?${q.toString()}`);
   }
 
   async function handleDeleteSegment(id: string, name: string) {
@@ -295,6 +315,40 @@ export default function WorkAudiencePage() {
           "リアルタイムは 30 秒間隔で自動更新できます（自動更新ボタン）",
         ]},
       ]} />
+
+      {/* ── 表示期間フィルター（JST 基準・全指標に反映。既定=全期間）── */}
+      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, marginBottom: 16, padding: "10px 12px", background: "#f8fafc", border: "1px solid #e5e7eb", borderRadius: 10 }}>
+        <span style={{ fontSize: 12, fontWeight: 700, color: "#374151", marginRight: 2 }}>表示期間</span>
+        {([["today","今日"],["yesterday","昨日"],["last_7_days","直近7日"],["last_30_days","直近30日"],["this_month","今月"],["all","全期間"],["custom","カスタム"]] as const).map(([key, label]) => {
+          const active = rangeKey === key;
+          return (
+            <button
+              key={key}
+              onClick={() => (key === "custom" ? applyRange({ range: "custom" }) : applyRange({ range: key === "all" ? null : key, from: null, to: null }))}
+              style={{
+                padding: "5px 12px", fontSize: 12, borderRadius: 999, cursor: "pointer",
+                border: active ? "1.5px solid #06C755" : "1px solid #d1d5db",
+                background: active ? "#e9f8ef" : "#fff",
+                color: active ? "#06A047" : "#374151", fontWeight: active ? 700 : 500, whiteSpace: "nowrap",
+              }}
+            >
+              {label}
+            </button>
+          );
+        })}
+        {rangeKey === "custom" && (
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+            <input type="date" value={rangeFrom ?? ""} onChange={(e) => applyRange({ range: "custom", from: e.target.value || null })}
+              style={{ padding: "4px 8px", fontSize: 12, border: "1px solid #d1d5db", borderRadius: 6 }} aria-label="開始日" />
+            <span style={{ fontSize: 12, color: "#9ca3af" }}>〜</span>
+            <input type="date" value={rangeTo ?? ""} onChange={(e) => applyRange({ range: "custom", to: e.target.value || null })}
+              style={{ padding: "4px 8px", fontSize: 12, border: "1px solid #d1d5db", borderRadius: 6 }} aria-label="終了日" />
+          </span>
+        )}
+        <span style={{ marginLeft: "auto", fontSize: 11, color: "#6b7280", whiteSpace: "nowrap" }}>
+          表示期間：{rangeKey === "custom" ? `${rangeFrom ?? "—"} 〜 ${rangeTo ?? "—"}` : ({ today: "今日", yesterday: "昨日", last_7_days: "直近7日", last_30_days: "直近30日", this_month: "今月", all: "全期間" } as Record<string, string>)[rangeKey] ?? "全期間"}
+        </span>
+      </div>
 
       {baseError && (
         <div className="alert alert-error" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
