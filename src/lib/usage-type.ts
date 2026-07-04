@@ -25,5 +25,16 @@ export function usageTypeShortLabel(value: string | null | undefined): string {
   return value === "business" ? "法人" : "個人";
 }
 
+/** 法人利用か（"business" のときのみ true）。未設定/不明値は個人扱い（false）。 */
+export function isBusinessUsage(value: string | null | undefined): boolean {
+  return value === "business";
+}
+
+/** 料金プラン画面のセクション見出し。法人=「法人利用プラン」/ それ以外=「個人利用プラン」。
+ *  判定情報が欠落（null/unknown）の場合は安全側の「個人利用プラン」にフォールバックする。 */
+export function usageTypePlanHeading(value: string | null | undefined): string {
+  return isBusinessUsage(value) ? "法人利用プラン" : "個人利用プラン";
+}
+
 /** API 入力等で利用区分を検証する zod スキーマ。 */
 export const usageTypeSchema = z.enum(["personal", "business"]);

@@ -42,13 +42,13 @@ describe("遷移先 URL は既存を流用", () => {
   it("作品設定 = 旧作品情報の /edit（不変）", () => {
     expect(item("作品設定")!.href).toBe(`${base}/edit`);
   });
-  it("アカウント設定 = OA 設定 /oas/[id]/settings", () => {
-    expect(item("アカウント設定")!.href).toBe(`/oas/${OA}/settings`);
+  it("アカウント設定 = 作品配下 in-layout（サイドバー維持）", () => {
+    expect(item("アカウント設定")!.href).toBe(`${base}/account-settings`);
+    expect(item("アカウント設定")!.external).toBeUndefined();
   });
-  it("利用プラン = /pricing（buildPricingUrl・oa_id 付き）", () => {
-    const href = item("利用プラン")!.href;
-    expect(href.startsWith("/pricing")).toBe(true);
-    expect(href).toContain(`oa_id=${OA}`);
+  it("利用プラン = 作品配下 in-layout（サイドバー維持）", () => {
+    expect(item("利用プラン")!.href).toBe(`${base}/pricing`);
+    expect(item("利用プラン")!.external).toBeUndefined();
   });
   it("X投稿 = /x-posts", () => {
     expect(item("X投稿")!.href).toBe(`${base}/x-posts`);
@@ -68,9 +68,15 @@ describe("isSidebarItemActive — active 判定", () => {
   it("X投稿: /x-posts 配下で active", () => {
     expect(isSidebarItemActive(item("X投稿")!, `${base}/x-posts/new`, base)).toBe(true);
   });
-  it("external（アカウント設定 / 利用プラン / ロケーション）は常に非active", () => {
-    expect(isSidebarItemActive(item("アカウント設定")!, `/oas/${OA}/settings`, base)).toBe(false);
-    expect(isSidebarItemActive(item("利用プラン")!, "/pricing", base)).toBe(false);
+  it("アカウント設定: /account-settings で active（in-layout でサイドバー維持）", () => {
+    expect(isSidebarItemActive(item("アカウント設定")!, `${base}/account-settings`, base)).toBe(true);
+    expect(isSidebarItemActive(item("アカウント設定")!, base, base)).toBe(false);
+  });
+  it("利用プラン: /pricing で active（in-layout でサイドバー維持）", () => {
+    expect(isSidebarItemActive(item("利用プラン")!, `${base}/pricing`, base)).toBe(true);
+    expect(isSidebarItemActive(item("利用プラン")!, `${base}/edit`, base)).toBe(false);
+  });
+  it("external（ロケーション）は常に非active", () => {
     expect(isSidebarItemActive(item("ロケーション")!, `/oas/${OA}/locations`, base)).toBe(false);
   });
   it("メッセージ: /messages 配下で active", () => {
