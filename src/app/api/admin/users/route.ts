@@ -105,9 +105,15 @@ export const GET = withAuth(async (req, _ctx, user) => {
     }
     const ownedOaIds = Array.from(new Set(ownerMemberships.map((m) => m.workspaceId)));
     const workCountByOa = new Map<string, number>();
+    // 所有 OA の title / usageType（= 編集モーダルの「対象アカウント」select と利用区分の初期値に使う）。
+    const oaInfoById = new Map<string, { id: string; title: string; usageType: string }>();
     if (ownedOaIds.length > 0) {
-      const grouped = await prisma.work.groupBy({ by: ["oaId"], where: { oaId: { in: ownedOaIds } }, _count: { _all: true } });
+      const [grouped, oas] = await Promise.all([
+        prisma.work.groupBy({ by: ["oaId"], where: { oaId: { in: ownedOaIds } }, _count: { _all: true } }),
+        prisma.oa.findMany({ where: { id: { in: ownedOaIds } }, select: { id: true, title: true, usageType: true } }),
+      ]);
       for (const g of grouped) workCountByOa.set(g.oaId, g._count._all);
+      for (const oa of oas) oaInfoById.set(oa.id, { id: oa.id, title: oa.title, usageType: oa.usageType });
     }
 
     // ── 行データ構築 ──
@@ -120,6 +126,11 @@ export const GET = withAuth(async (req, _ctx, user) => {
       const fullName = [prof?.lastName, prof?.firstName].map((s) => s?.trim()).filter(Boolean).join(" ") || null;
       const oaIds = ownedOaIdsByUser.get(u.id) ?? [];
       const workCount = oaIds.reduce((s, oaId) => s + (workCountByOa.get(oaId) ?? 0), 0);
+      // 所有 OA（owner）の一覧。利用区分（個人/法人）の変更対象を選ぶための情報（読み取り専用）。
+      const ownedOas = oaIds
+        .map((oaId) => oaInfoById.get(oaId))
+        .filter((x): x is { id: string; title: string; usageType: string } => !!x)
+        .map((oa) => ({ id: oa.id, title: oa.title, usage_type: oa.usageType }));
       return {
         id:               u.id,
         name:             currentName,
@@ -131,6 +142,7 @@ export const GET = withAuth(async (req, _ctx, user) => {
         last_sign_in_at:  u.last_sign_in_at ?? null,
         oa_count:         oaCountByUser.get(u.id) ?? 0,
         work_count:       workCount,
+        owned_oas:        ownedOas,
       };
     });
 
