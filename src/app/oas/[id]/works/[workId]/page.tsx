@@ -20,6 +20,7 @@ import { OnboardingProgress } from "@/components/onboarding/OnboardingProgress";
 import { WorkLimitCard } from "@/components/upgrade/WorkLimitCard";
 import { PLAN_LABELS } from "@/lib/constants/plans";
 import { useAccessPreview } from "@/hooks/useAccessPreview";
+import { withPreviewParams } from "@/lib/access-preview";
 import { StatusBadge } from "@/components/shared";
 import { isSpreadsheetImportEnabled } from "@/lib/spreadsheet-import/ui-text";
 import { computeWorkTopAlerts, hasStartEntry, type WorkTopAlertTone } from "@/lib/work-top-alerts";
@@ -237,8 +238,8 @@ export default function WorkHubPage() {
       <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
         <Breadcrumb items={[
-          { label: "アカウントリスト", href: "/oas" },
-          { label: "作品リスト",       href: `/oas/${oaId}/works` },
+          { label: "アカウントリスト", href: withPreviewParams("/oas", searchParams) },
+          { label: "作品リスト",       href: withPreviewParams(`/oas/${oaId}/works`, searchParams) },
           ...(work ? [{ label: work.title }] : []),
         ]} />
 
@@ -364,7 +365,7 @@ export default function WorkHubPage() {
                   <span className="ml-1.5 text-[11.5px] leading-[1.5] text-ink-3">{a.detail}</span>
                 </div>
                 {a.cta && (
-                  <Link href={a.cta.href} className="flex-shrink-0 self-center whitespace-nowrap rounded-lg border border-line bg-surface px-2.5 py-1 text-[11px] font-medium text-ink-2 no-underline transition-colors hover:border-brand/40 hover:text-brand-ink">
+                  <Link href={withPreviewParams(a.cta.href, searchParams)} className="flex-shrink-0 self-center whitespace-nowrap rounded-lg border border-line bg-surface px-2.5 py-1 text-[11px] font-medium text-ink-2 no-underline transition-colors hover:border-brand/40 hover:text-brand-ink">
                     {a.cta.label}
                   </Link>
                 )}
@@ -424,7 +425,7 @@ export default function WorkHubPage() {
         <div className="mb-6 rounded-card border border-line bg-surface p-4 shadow-sm sm:px-5">
           <div className="mb-3 flex items-center justify-between gap-2">
             <span className="text-[13px] font-bold text-ink">プレイヤー状況</span>
-            <Link href={`${basePath}/audience`} className="whitespace-nowrap text-[11px] font-semibold text-ink-3 no-underline transition-colors hover:text-brand-ink">
+            <Link href={withPreviewParams(`${basePath}/audience`, searchParams)} className="whitespace-nowrap text-[11px] font-semibold text-ink-3 no-underline transition-colors hover:text-brand-ink">
               オーディエンス詳細 ›
             </Link>
           </div>
@@ -461,7 +462,7 @@ export default function WorkHubPage() {
         {quickActions.map((a) => (
           <Link
             key={a.label}
-            href={a.href}
+            href={withPreviewParams(a.href, searchParams)}
             className="inline-flex items-center gap-1.5 rounded-card border border-line bg-surface px-3.5 py-2 text-[13px] font-semibold text-ink no-underline shadow-sm transition-all hover:-translate-y-px hover:border-brand/30 hover:text-brand-ink hover:shadow-card"
           >
             {a.label}

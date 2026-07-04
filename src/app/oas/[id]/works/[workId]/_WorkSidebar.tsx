@@ -13,13 +13,16 @@
 //     （次PRで追加予定）。SNS は曖昧さ回避のため作品配下の x-posts（X投稿）のみ表示する。
 
 import Link from "next/link";
-import { useParams, usePathname } from "next/navigation";
+import { useParams, usePathname, useSearchParams } from "next/navigation";
 import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
+import { withPreviewParams } from "@/lib/access-preview";
 import { buildWorkSidebarSections, isSidebarItemActive, type SidebarItem } from "./_work-sidebar-nav";
 
 export default function WorkSidebar() {
   const params = usePathnameParams();
   const pathname = usePathname() ?? "";
+  // 表示確認モード（owner 限定・?previewPlan/?previewRole）を遷移後も維持するため query を引き継ぐ。
+  const searchParams = useSearchParams();
   // アカウント設定（OA 設定）の表示可否は、旧・右上「設定」ボタン（showSettings=role!=="tester"）と同条件。
   const { isTester } = useWorkspaceRole(params?.id ?? "");
   if (!params) return null;
@@ -69,7 +72,7 @@ export default function WorkSidebar() {
               return (
                 <li key={it.label}>
                   <Link
-                    href={it.href}
+                    href={withPreviewParams(it.href, searchParams)}
                     aria-current={active ? "page" : undefined}
                     style={{
                       display: "block",

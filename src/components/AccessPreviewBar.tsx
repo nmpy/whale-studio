@@ -64,7 +64,8 @@ export function AccessPreviewBar({ oaId }: AccessPreviewBarProps) {
 
   function pushWithParams(next: URLSearchParams) {
     const q = next.toString();
-    router.push(`${pathname}${q ? `?${q}` : ""}`);
+    // replace + scroll:false: 表示確認の切替で履歴を汚さず・スクロール位置を保つ。
+    router.replace(`${pathname}${q ? `?${q}` : ""}`, { scroll: false });
   }
   function handlePlanChange(value: PlanTier | "") {
     pushWithParams(buildPreviewSearchParams(searchParams, {
