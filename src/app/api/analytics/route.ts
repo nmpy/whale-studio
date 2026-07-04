@@ -61,7 +61,7 @@ export const GET = withAuth(async (req: NextRequest, _ctx, user) => {
       new Date(),
     );
 
-    const [phases, rawProgress, excludedRows] = await Promise.all([
+    const [phases, rawProgress] = await Promise.all([
       prisma.phase.findMany({
         where: { workId: work_id },
         orderBy: { sortOrder: "asc" },
@@ -73,12 +73,19 @@ export const GET = withAuth(async (req: NextRequest, _ctx, user) => {
         where: { workId: work_id, isPreview: false },
         orderBy: { lastInteractedAt: "desc" },
       }),
-      // 分析除外ユーザー（OA 単位）。作品名/プランでなく lineUserId 集合で除外する。
-      prisma.analyticsExcludedUser.findMany({
+    ]);
+
+    // 分析除外ユーザー（OA 単位）を取得。migration 未適用等でテーブルが無い環境でも
+    // analytics 本体を落とさない（除外0件にフォールバック）。lineUserId 集合で除外する。
+    let excludedRows: { lineUserId: string }[] = [];
+    try {
+      excludedRows = await prisma.analyticsExcludedUser.findMany({
         where: { oaId: work.oaId },
         select: { lineUserId: true },
-      }),
-    ]);
+      });
+    } catch (exErr) {
+      console.warn("[api/analytics] analyticsExcludedUser fetch failed (fallback: no exclusion):", exErr);
+    }
 
     // 除外ユーザーを集計前に取り除く（in-memory・元データ不変）。全指標に一貫適用。
     //   期間フィルター / isPreview 除外とは独立して合成される。

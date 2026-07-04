@@ -19,13 +19,17 @@ export const GET = withRole<{ id: string }>(
   ["viewer", "tester", "editor", "admin", "owner"],
   async (_req, { params }) => {
     try {
-      const [members, exclusions] = await Promise.all([
-        prisma.workspaceMember.findMany({
-          where:  { workspaceId: params.id, status: "active" },
-          select: { userId: true, role: true, email: true, lineUserId: true },
-        }),
-        prisma.analyticsExcludedUser.findMany({ where: { oaId: params.id } }),
-      ]);
+      const members = await prisma.workspaceMember.findMany({
+        where:  { workspaceId: params.id, status: "active" },
+        select: { userId: true, role: true, email: true, lineUserId: true },
+      });
+      // migration 未適用でも一覧表示は落とさない（除外0件フォールバック）。
+      let exclusions: Array<{ id: string; lineUserId: string; memberUserId: string | null; displayName: string | null; note: string | null }> = [];
+      try {
+        exclusions = await prisma.analyticsExcludedUser.findMany({ where: { oaId: params.id } });
+      } catch (exErr) {
+        console.warn("[api/analytics-exclusion-candidates] exclusions fetch failed (fallback: none):", exErr);
+      }
 
       const profiles = await prisma.profile.findMany({
         where:  { userId: { in: members.map((m) => m.userId) } },
