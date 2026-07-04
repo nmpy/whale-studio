@@ -14,7 +14,7 @@ import { Breadcrumb } from "@/components/Breadcrumb";
 import { WorkCard } from "@/components/WorkCard";
 import { FriendAddSection } from "@/components/FriendAddSection";
 import { oaApi, workApi, friendAddApi, getDevToken, type WorkListItem } from "@/lib/api-client";
-import { compareByUpdatedThenCreated } from "@/lib/list-sort";
+import { compareByLatestActivity } from "@/lib/list-sort";
 import { OaHeaderActions } from "@/components/OaHeaderActions";
 import type { FriendAddSettings, PublishStatus } from "@/types";
 import { useToast } from "@/components/Toast";
@@ -155,9 +155,10 @@ export default function WorkListPage() {
   const [sortKey, setSortKey] = useState<SortKey>("updated_at_desc");
 
   function sortFn(a: WorkListItem, b: WorkListItem): number {
-    // 第2キー: 表示している更新日時（updated_at ?? created_at）で新しい順に安定化。
+    // 第2キー: 表示している更新日時（latest_activity_at ?? updated_at ?? created_at）で新しい順に安定化。
+    //   latest_activity_at は作品配下（Phase/Message/Character/LIFF）の最新編集も含む。
     //   日時は Date(ms) 化して比較（文字列比較しない）。null/無効は末尾。最終 tie-break は id。
-    const byUpdatedAt = compareByUpdatedThenCreated(a, b, "desc");
+    const byUpdatedAt = compareByLatestActivity(a, b, "desc");
     const tieId = () => a.id.localeCompare(b.id);
     const withTie = (cmp: number) => (cmp !== 0 ? cmp : byUpdatedAt !== 0 ? byUpdatedAt : tieId());
 

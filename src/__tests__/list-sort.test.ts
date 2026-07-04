@@ -6,6 +6,8 @@ import {
   compareByTime,
   compareByUpdatedThenCreated,
   compareByCreated,
+  compareByLatestActivity,
+  activityTimeOf,
 } from "@/lib/list-sort";
 
 const T = {
@@ -109,6 +111,62 @@ describe("最終更新（updated_at ?? created_at）ソート", () => {
     const snapshot = src.map((x) => x.id);
     sortByUpdated(src, "desc");
     expect(src.map((x) => x.id)).toEqual(snapshot);
+  });
+});
+
+describe("最終更新 = latest_activity_at（配下の最新編集を含む）ソート", () => {
+  // latest_activity_at ?? updated_at ?? created_at を基準にする（表示と一致）。
+  const sortByActivity = (
+    items: { id: string; latest_activity_at?: string | null; updated_at?: string | null; created_at?: string | null }[],
+    dir: "desc" | "asc" = "desc",
+  ) => [...items].sort((a, b) => {
+    const c = compareByLatestActivity(a, b, dir);
+    return c !== 0 ? c : a.id.localeCompare(b.id);
+  }).map((x) => x.id);
+
+  it("activityTimeOf は latest_activity_at を最優先（updated/created より）", () => {
+    expect(activityTimeOf({ latest_activity_at: T.new, updated_at: T.old, created_at: T.old }))
+      .toBe(new Date(T.new).getTime());
+    // latest 欠落時は updated、さらに欠落時は created
+    expect(activityTimeOf({ updated_at: T.mid, created_at: T.old })).toBe(new Date(T.mid).getTime());
+    expect(activityTimeOf({ created_at: T.old })).toBe(new Date(T.old).getTime());
+  });
+
+  it("Oa.updatedAt が古くても、配下編集の latest_activity_at が新しければ上位に来る（本件のケース）", () => {
+    // a: アカウント本体は 6/20 更新だが配下を今日(=T.new)編集 → latest_activity_at=T.new
+    // b: 本体も配下も古い
+    const items = [
+      { id: "b", latest_activity_at: T.old,  updated_at: T.old, created_at: T.old },
+      { id: "a", latest_activity_at: T.new,  updated_at: T.mid, created_at: T.old },
+    ];
+    expect(sortByActivity(items, "desc")).toEqual(["a", "b"]);
+  });
+
+  it("最終更新が新しい順 / 古い順", () => {
+    const items = [
+      { id: "a", latest_activity_at: T.old },
+      { id: "b", latest_activity_at: T.new },
+      { id: "c", latest_activity_at: T.mid },
+    ];
+    expect(sortByActivity(items, "desc")).toEqual(["b", "c", "a"]);
+    expect(sortByActivity(items, "asc")).toEqual(["a", "c", "b"]);
+  });
+
+  it("latest_activity_at 欠落は updated→created にフォールバック（表示と一致）", () => {
+    const items = [
+      { id: "x", updated_at: null, created_at: T.new },   // created にフォールバック
+      { id: "y", latest_activity_at: T.old },
+    ];
+    expect(sortByActivity(items, "desc")).toEqual(["x", "y"]);
+  });
+
+  it("同一活動日時でも id で安定", () => {
+    const items = [
+      { id: "c", latest_activity_at: T.mid },
+      { id: "a", latest_activity_at: T.mid },
+      { id: "b", latest_activity_at: T.mid },
+    ];
+    expect(sortByActivity(items, "desc")).toEqual(["a", "b", "c"]);
   });
 });
 
