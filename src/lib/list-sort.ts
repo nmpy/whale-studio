@@ -39,3 +39,19 @@ export function compareByUpdatedThenCreated(a: Dated, b: Dated, dir: "desc" | "a
 export function compareByCreated(a: { created_at?: string | null }, b: { created_at?: string | null }, dir: "desc" | "asc" = "desc"): number {
   return compareByTime(toTimeMs(a.created_at), toTimeMs(b.created_at), dir);
 }
+
+type Activity = { latest_activity_at?: string | null; updated_at?: string | null; created_at?: string | null };
+
+/** 表示する「更新日時」＝配下の最新活動日時（latest_activity_at ?? updated_at ?? created_at）を返す。 */
+export function activityTimeOf(x: Activity): number | null {
+  return toTimeMs(x.latest_activity_at ?? x.updated_at ?? x.created_at);
+}
+
+/**
+ * アカウント/作品一覧の「最終更新」ソート用比較。
+ * 表示している更新日時（latest_activity_at ?? updated_at ?? created_at）で比較する（表示=ソート一致）。
+ * dir 既定 "desc"（最終更新が新しい順）。null/無効は末尾。
+ */
+export function compareByLatestActivity(a: Activity, b: Activity, dir: "desc" | "asc" = "desc"): number {
+  return compareByTime(activityTimeOf(a), activityTimeOf(b), dir);
+}

@@ -359,6 +359,12 @@ async function parseResponse<T>(res: Response): Promise<T> {
 /** GET /api/oas 一覧アイテム（channel_secret / channel_access_token を除く） */
 export interface OaListItem extends Omit<Oa, "channel_secret" | "channel_access_token"> {
   _count:   { works: number };
+  /**
+   * アカウント配下の最新活動日時（ISO）。Oa 自身＋配下 Work/Phase/Message/Character/LIFF/X投稿/
+   * リッチメニューの max(updatedAt)。表示の「更新日時」とソート「最終更新が新しい順」の共通基準。
+   * 子データが無ければ Oa.updatedAt ?? createdAt にフォールバックするため実質 null は出ない。
+   */
+  latest_activity_at?: string;
   /** 利用区分（個人/法人）。owner / platform admin 表示モードでのみ UI に出す。 */
   usage_type: "personal" | "business";
   my_role:  string; // 'owner' | 'admin' | 'editor' | 'viewer' | 'none'
@@ -525,6 +531,11 @@ export interface WorkListItem extends Work {
    * - in_progress: 未完了（total - completed）
    */
   progress_stats: { total: number; completed: number; in_progress: number };
+  /**
+   * 作品配下の最新活動日時（ISO）。work＋配下 Phase/Message/Character/LIFF の max(updatedAt)。
+   * 作品カードの「更新日時」表示・ソートの共通基準。子が無ければ work.updatedAt ?? createdAt。
+   */
+  latest_activity_at?: string;
 }
 
 export const workApi = {

@@ -448,10 +448,11 @@ export function WorkCard({ work, oaId, basePath, role, onDelete, onStatusChange,
         )}
 
         <time
-          dateTime={work.updated_at}
+          dateTime={work.latest_activity_at ?? work.updated_at}
           className="font-num ml-auto self-center text-[11px] text-ink-3"
         >
-          更新日時 {formatDateTime(work.updated_at)}
+          {/* 作品配下（フェーズ/メッセージ/LIFF 等）の最新編集を含む。ソート基準と一致させる。 */}
+          更新日時 {formatDateTime(work.latest_activity_at ?? work.updated_at)}
         </time>
       </div>
 

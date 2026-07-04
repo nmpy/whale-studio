@@ -10,6 +10,7 @@ import { createOaSchema, oaQuerySchema, formatZodErrors } from "@/lib/validation
 import { isPlatformOwner } from "@/lib/platform-admin";
 import { createTesterSubscription } from "@/lib/billing/create-tester-subscription";
 import { genRequestId, runWithRequestId, withTiming } from "@/lib/perf";
+import { fetchOaLatestActivityMap, latestOf } from "@/lib/latest-activity";
 import { ZodError } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -108,6 +109,10 @@ export const GET = withAuth(async (req, _ctx, user) =>
     const memberByOaId = new Map(myMembers.map((m) => [m.workspaceId, m] as const));
     const adminIdentity = process.env.ADMIN_IDENTITY;
 
+    // アカウント配下の「最新活動日時」（Oa 自身＋配下 Work/Phase/Message/Character/LIFF/X投稿/リッチメニュー
+    // の max(updatedAt)）。表示の「更新日時」とソート「最終更新が新しい順」の共通基準にする。bounded 集計。
+    const latestActivityByOa = await fetchOaLatestActivityMap(itemIds);
+
     const rolesMap  = new Map<string, string>();
     const accessMap = new Map<string, boolean>();
     for (const oa of items) {
@@ -143,6 +148,8 @@ export const GET = withAuth(async (req, _ctx, user) =>
       usage_type:           oa.usageType,
       created_at:           oa.createdAt,
       updated_at:           oa.updatedAt,
+      // アカウント配下の最新活動日時。子データが無ければ Oa.updatedAt ?? createdAt にフォールバック。
+      latest_activity_at:   (latestOf(latestActivityByOa.get(oa.id), oa.updatedAt, oa.createdAt) ?? oa.createdAt),
       _count:               oa._count,
       my_role:              rolesMap.get(oa.id) ?? 'none',
       has_workspace_access: accessMap.get(oa.id) ?? false,

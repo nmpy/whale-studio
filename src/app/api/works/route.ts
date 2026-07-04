@@ -9,6 +9,7 @@ import { ok, created, badRequest, notFound, serverError } from "@/lib/api-respon
 import { withAuth } from "@/lib/auth";
 import { requireRole } from "@/lib/rbac";
 import { createWorkSchema, workQuerySchema, formatZodErrors } from "@/lib/validations";
+import { fetchWorkLatestActivityMap, latestOf } from "@/lib/latest-activity";
 import { ZodError } from "zod";
 import { activeCache, CACHE_KEY } from "@/lib/cache";
 import { getCachedOaById } from "@/lib/oa-cache";
@@ -157,6 +158,10 @@ export const GET = withAuth(async (req, _ctx, user) =>
       }
     }
 
+    // 作品配下の「最新活動日時」（work + 配下 Phase/Message/Character/LIFF の max(updatedAt)）。
+    // 作品カードの「更新日時」表示・ソートの共通基準にする。bounded 集計（この OA の workIds のみ）。
+    const workLatest = await fetchWorkLatestActivityMap(works.map((w) => w.id));
+
     return await withTiming("api/works:shape", async () => ok(
       works.map((w) => {
         const ps    = progressMap[w.id] ?? { completed: 0, in_progress: 0 };
@@ -172,6 +177,8 @@ export const GET = withAuth(async (req, _ctx, user) =>
           },
           // start フェーズが未作成の場合は null
           start_trigger: w.phases[0]?.startTrigger ?? null,
+          // 作品配下の最新活動日時。子データが無ければ work.updatedAt ?? createdAt にフォールバック。
+          latest_activity_at: (latestOf(workLatest.get(w.id), w.updatedAt, w.createdAt) ?? w.createdAt),
           progress_stats: {
             total,
             completed:   ps.completed,

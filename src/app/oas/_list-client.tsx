@@ -11,7 +11,7 @@ import { Button, StatusBadge, buttonClass } from "@/components/shared";
 import { OasViewPreviewBar } from "@/components/OasViewPreviewBar";
 import { canCreateOaInView, isPreviewingOasView, viewingAsOwnerOrAbove, OAS_VIEW_ROLE_LABELS } from "@/lib/oas-preview";
 import { usageTypeShortLabel } from "@/lib/usage-type";
-import { compareByUpdatedThenCreated, compareByCreated } from "@/lib/list-sort";
+import { compareByLatestActivity, compareByCreated } from "@/lib/list-sort";
 import { formatDateTime } from "@/lib/format-datetime";
 import type { Role } from "@/lib/types/permissions";
 
@@ -246,11 +246,12 @@ export function OaListClient() {
   }
 
   // アカウント一覧の並び替え（既定: 最終更新が新しい順）。
-  //   - 「最終更新」はカード表示と同じ値（updated_at ?? created_at）を基準に比較する（表示=ソート一致）。
+  //   - 「最終更新」はカード表示と同じ値（latest_activity_at ?? updated_at ?? created_at）で比較（表示=ソート一致）。
+  //     latest_activity_at はアカウント配下（Work/Phase/Message/LIFF/X投稿 等）の最新編集も含む。
   //   - 日時は Date(ms) 化して比較（文字列比較しない）。null/無効な日時は常に末尾。
-  //   - 同値時は updated 降順 → 最後に id で安定 tie-break（表示のちらつき防止・sort は非破壊コピー）。
+  //   - 同値時は最新活動 降順 → 最後に id で安定 tie-break（表示のちらつき防止・sort は非破壊コピー）。
   function oaSortFn(a: OaListItem, b: OaListItem): number {
-    const byUpdated = compareByUpdatedThenCreated(a, b, "desc");
+    const byUpdated = compareByLatestActivity(a, b, "desc");
     const tieId = () => a.id.localeCompare(b.id);
     const withTie = (cmp: number) => (cmp !== 0 ? cmp : byUpdated !== 0 ? byUpdated : tieId());
     switch (sortKey) {
@@ -490,7 +491,7 @@ export function OaListClient() {
                         </MetaItem>
 
                         <MetaItem label="更新日時">
-                          <span className="font-num text-ink-2">{formatDateTime(oa.updated_at ?? oa.created_at)}</span>
+                          <span className="font-num text-ink-2">{formatDateTime(oa.latest_activity_at ?? oa.updated_at ?? oa.created_at)}</span>
                         </MetaItem>
                       </div>
                     </div>
