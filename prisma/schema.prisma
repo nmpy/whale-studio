@@ -82,12 +82,40 @@ model Oa {
   liveImportPresets     LiveImportPreset[]
   liveScripts           LiveScript[]
   liveCues              LiveCue[]
+  analyticsExcludedUsers AnalyticsExcludedUser[]
 
   @@index([title])
   @@index([publishStatus])
   @@index([createdAt])
   @@index([serviceSuspendedAt])
   @@map("oas")
+}
+
+/// オーディエンス分析から除外する LINE ユーザー（制作者/運営/テスターの動作確認データ等）。
+/// OA 単位。元データ(UserProgress 等)は削除せず、集計時に lineUserId を notIn で除外する。
+/// 期間フィルター / isPreview 除外とは独立して機能する。
+model AnalyticsExcludedUser {
+  id              String   @id @default(uuid())
+  oaId            String   @map("oa_id")
+  /// LINE の userId / UID。UI 上は一部マスク表示する運用。
+  lineUserId      String   @map("line_user_id")
+  /// 登録済み管理ユーザー（WorkspaceMember）由来の除外なら、その Supabase userId（監査/表示用・任意）。
+  /// null = 手入力で追加した lineUserId（登録ユーザーに紐づかない）。
+  memberUserId    String?  @map("member_user_id")
+  /// 任意の表示名（手入力 or 登録ユーザー名から補完）。
+  displayName     String?  @map("display_name")
+  /// 管理メモ（任意）。
+  note            String?
+  /// 追加操作を行った Supabase userId（監査用・任意）。
+  createdByUserId String?  @map("created_by_user_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  oa              Oa       @relation(fields: [oaId], references: [id], onDelete: Cascade)
+
+  @@unique([oaId, lineUserId])
+  @@index([oaId])
+  @@index([oaId, memberUserId])
+  @@map("analytics_excluded_users")
 }
 
 model Work {
@@ -939,6 +967,9 @@ model WorkspaceMember {
   role        MemberRole   @default(viewer)
   /// Whale Studio Live のロール（null = Live 権限なし）。studio の role(MemberRole) とは別軸。
   liveRole    LiveRole?    @map("live_role")
+  /// この管理ユーザーに紐づく LINE の userId / UID（分析除外用・任意）。
+  /// 制作/運営/テスターが実 LINE で動作確認する場合に owner/admin が設定する。null = 未設定。
+  lineUserId  String?      @map("line_user_id")
   oa          Oa           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@unique([workspaceId, userId])
