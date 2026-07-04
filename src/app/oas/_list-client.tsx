@@ -11,6 +11,7 @@ import { Button, StatusBadge, buttonClass } from "@/components/shared";
 import { OasViewPreviewBar } from "@/components/OasViewPreviewBar";
 import { canCreateOaInView, isPreviewingOasView, viewingAsOwnerOrAbove, OAS_VIEW_ROLE_LABELS } from "@/lib/oas-preview";
 import { usageTypeShortLabel } from "@/lib/usage-type";
+import { compareByUpdatedThenCreated, compareByCreated } from "@/lib/list-sort";
 import { formatDateTime } from "@/lib/format-datetime";
 import type { Role } from "@/lib/types/permissions";
 
@@ -244,31 +245,30 @@ export function OaListClient() {
     return (worksMap[oaId] ?? []).reduce((sum, w) => sum + (w.progress_stats?.total ?? 0), 0);
   }
 
-  // アカウント一覧の並び替え（既定: 最終更新が新しい順）。同値時は updated_at desc で安定化。
+  // アカウント一覧の並び替え（既定: 最終更新が新しい順）。
+  //   - 「最終更新」はカード表示と同じ値（updated_at ?? created_at）を基準に比較する（表示=ソート一致）。
+  //   - 日時は Date(ms) 化して比較（文字列比較しない）。null/無効な日時は常に末尾。
+  //   - 同値時は updated 降順 → 最後に id で安定 tie-break（表示のちらつき防止・sort は非破壊コピー）。
   function oaSortFn(a: OaListItem, b: OaListItem): number {
-    const byUpdated = new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
+    const byUpdated = compareByUpdatedThenCreated(a, b, "desc");
+    const tieId = () => a.id.localeCompare(b.id);
+    const withTie = (cmp: number) => (cmp !== 0 ? cmp : byUpdated !== 0 ? byUpdated : tieId());
     switch (sortKey) {
       case "updated_at_desc":
-        return byUpdated;
-      case "title_asc": {
-        const cmp = a.title.localeCompare(b.title, "ja");
-        return cmp !== 0 ? cmp : byUpdated;
-      }
-      case "works_desc": {
-        const cmp = (b._count?.works ?? 0) - (a._count?.works ?? 0);
-        return cmp !== 0 ? cmp : byUpdated;
-      }
-      case "players_desc": {
-        const cmp = totalPlayers(b.id) - totalPlayers(a.id);
-        return cmp !== 0 ? cmp : byUpdated;
-      }
+        return byUpdated !== 0 ? byUpdated : tieId();
+      case "title_asc":
+        return withTie(a.title.localeCompare(b.title, "ja"));
+      case "works_desc":
+        return withTie((b._count?.works ?? 0) - (a._count?.works ?? 0));
+      case "players_desc":
+        return withTie(totalPlayers(b.id) - totalPlayers(a.id));
       case "display_order": {
-        // Oa に sort_order が無いため、登録順（作成日時 昇順）を「表示順」とする。
-        const cmp = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
-        return cmp !== 0 ? cmp : byUpdated;
+        // Oa に sort_order が無いため、登録順（作成日時 昇順）を「表示順」とする。null は末尾。
+        const cmp = compareByCreated(a, b, "asc");
+        return cmp !== 0 ? cmp : tieId();
       }
       default:
-        return byUpdated;
+        return byUpdated !== 0 ? byUpdated : tieId();
     }
   }
   const sortedItems = [...items].sort(oaSortFn);

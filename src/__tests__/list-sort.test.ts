@@ -1,0 +1,130 @@
+// src/__tests__/list-sort.test.ts
+// 一覧の日時ソート共通ヘルパー（アカウント一覧 / 作品一覧が使用）の検証。
+import { describe, it, expect } from "vitest";
+import {
+  toTimeMs,
+  compareByTime,
+  compareByUpdatedThenCreated,
+  compareByCreated,
+} from "@/lib/list-sort";
+
+const T = {
+  old:  "2026-01-01T00:00:00.000Z",
+  mid:  "2026-03-15T12:30:00.000Z",
+  new:  "2026-07-04T09:00:00.000Z",
+};
+
+/** 表示日時（updated ?? created）でソートし、id 配列を返す（実画面の tie-break を再現）。 */
+function sortByUpdated(items: { id: string; updated_at?: string | null; created_at?: string | null }[], dir: "desc" | "asc" = "desc") {
+  return [...items].sort((a, b) => {
+    const c = compareByUpdatedThenCreated(a, b, dir);
+    return c !== 0 ? c : a.id.localeCompare(b.id);
+  }).map((x) => x.id);
+}
+
+describe("toTimeMs", () => {
+  it("ISO 文字列 → epoch ms（文字列比較でなく数値）", () => {
+    expect(toTimeMs(T.old)).toBe(new Date(T.old).getTime());
+  });
+  it("null / undefined / 空 / 不正値 → null", () => {
+    expect(toTimeMs(null)).toBeNull();
+    expect(toTimeMs(undefined)).toBeNull();
+    expect(toTimeMs("")).toBeNull();
+    expect(toTimeMs("not-a-date")).toBeNull();
+  });
+});
+
+describe("compareByTime — null は常に末尾", () => {
+  it("desc: 新しい順", () => {
+    expect(compareByTime(2, 1, "desc")).toBeLessThan(0);   // a(2) が先
+    expect(compareByTime(1, 2, "desc")).toBeGreaterThan(0);
+  });
+  it("asc: 古い順", () => {
+    expect(compareByTime(1, 2, "asc")).toBeLessThan(0);    // a(1) が先
+    expect(compareByTime(2, 1, "asc")).toBeGreaterThan(0);
+  });
+  it("null は desc / asc いずれでも末尾（正の値で後ろへ）", () => {
+    expect(compareByTime(null, 1, "desc")).toBe(1);
+    expect(compareByTime(null, 1, "asc")).toBe(1);
+    expect(compareByTime(1, null, "desc")).toBe(-1);
+    expect(compareByTime(1, null, "asc")).toBe(-1);
+    expect(compareByTime(null, null, "desc")).toBe(0);
+  });
+});
+
+describe("最終更新（updated_at ?? created_at）ソート", () => {
+  const items = [
+    { id: "a", updated_at: T.old },
+    { id: "b", updated_at: T.new },
+    { id: "c", updated_at: T.mid },
+  ];
+
+  it("最終更新が新しい順: updated 降順", () => {
+    expect(sortByUpdated(items, "desc")).toEqual(["b", "c", "a"]);
+  });
+
+  it("最終更新が古い順: updated 昇順", () => {
+    expect(sortByUpdated(items, "asc")).toEqual(["a", "c", "b"]);
+  });
+
+  it("updated_at が無い場合は created_at にフォールバック（表示と一致）", () => {
+    const withFallback = [
+      { id: "x", updated_at: null, created_at: T.new },
+      { id: "y", updated_at: T.old, created_at: T.old },
+    ];
+    // x は created=T.new で最新扱い → 新しい順で先頭
+    expect(sortByUpdated(withFallback, "desc")).toEqual(["x", "y"]);
+  });
+
+  it("updated_at も created_at も無い行は新しい順で末尾", () => {
+    const withNull = [
+      { id: "n", updated_at: null, created_at: null },
+      { id: "p", updated_at: T.old },
+      { id: "q", updated_at: T.new },
+    ];
+    expect(sortByUpdated(withNull, "desc")).toEqual(["q", "p", "n"]);
+  });
+
+  it("古い順でも null 行は末尾（先頭に来ない）", () => {
+    const withNull = [
+      { id: "n", updated_at: null, created_at: null },
+      { id: "p", updated_at: T.old },
+      { id: "q", updated_at: T.new },
+    ];
+    expect(sortByUpdated(withNull, "asc")).toEqual(["p", "q", "n"]);
+  });
+
+  it("同一日時でも id で安定（順不同にならない）", () => {
+    const sameTime = [
+      { id: "c", updated_at: T.mid },
+      { id: "a", updated_at: T.mid },
+      { id: "b", updated_at: T.mid },
+    ];
+    expect(sortByUpdated(sameTime, "desc")).toEqual(["a", "b", "c"]);
+    expect(sortByUpdated(sameTime, "asc")).toEqual(["a", "b", "c"]);
+  });
+
+  it("元配列を破壊しない（非破壊コピー前提）", () => {
+    const src = [{ id: "a", updated_at: T.old }, { id: "b", updated_at: T.new }];
+    const snapshot = src.map((x) => x.id);
+    sortByUpdated(src, "desc");
+    expect(src.map((x) => x.id)).toEqual(snapshot);
+  });
+});
+
+describe("作成日時（created_at）ソート", () => {
+  const items = [
+    { id: "a", created_at: T.old },
+    { id: "b", created_at: T.new },
+    { id: "c", created_at: T.mid },
+  ];
+  const byCreated = (dir: "desc" | "asc") =>
+    [...items].sort((a, b) => { const c = compareByCreated(a, b, dir); return c !== 0 ? c : a.id.localeCompare(b.id); }).map((x) => x.id);
+
+  it("作成日時が新しい順: created 降順", () => {
+    expect(byCreated("desc")).toEqual(["b", "c", "a"]);
+  });
+  it("作成日時が古い順: created 昇順", () => {
+    expect(byCreated("asc")).toEqual(["a", "c", "b"]);
+  });
+});
