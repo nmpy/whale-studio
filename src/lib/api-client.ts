@@ -1370,9 +1370,16 @@ export interface ManualExclusion {
   note: string | null;
 }
 export interface ExclusionCandidates {
+  me: string;
   members: ExclusionCandidateMember[];
   manual_exclusions: ManualExclusion[];
   excluded_count: number;
+}
+export interface MemberLinkCode {
+  code: string;
+  prefix: string;
+  expires_at: string;
+  instructions: string;
 }
 
 export const analyticsExclusionApi = {
@@ -1403,6 +1410,14 @@ export const analyticsExclusionApi = {
   async remove(token: string, oaId: string, exclusionId: string): Promise<unknown> {
     const res = await fetch(`/api/oas/${oaId}/analytics-excluded-users/${exclusionId}`, {
       method: "DELETE",
+      headers: authHeaders(token),
+    });
+    return parseResponse(res);
+  },
+  /** 本人の LINE 連携ワンタイムコードを発行（本人の UID 登録用）。 */
+  async createLinkCode(token: string, oaId: string): Promise<MemberLinkCode> {
+    const res = await fetch(`/api/oas/${oaId}/member-line-link`, {
+      method: "POST",
       headers: authHeaders(token),
     });
     return parseResponse(res);
