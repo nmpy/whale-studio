@@ -150,6 +150,8 @@ export default function WorkAudiencePage() {
   const [segAnaLoading, setSegAnaLoading] = useState(false);
   const [autoRefresh,   setAutoRefresh]  = useState(false);
   const [showExclusion, setShowExclusion] = useState(false);
+  // 「表示条件」パネルはデフォルト閉じ（KPI をより上に見せる）。閉じていても現在条件の要約を表示。
+  const [showConditions, setShowConditions] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // ── Loaders ───────────────────────────────────────────────────────────────
@@ -320,55 +322,76 @@ export default function WorkAudiencePage() {
         ]},
       ]} />
 
-      {/* ── 分析条件パネル（期間・更新・分析対象・除外管理を1つの白カードに集約）──
-          JST 期間フィルター / 更新 / OA単位の除外表示ともロジックは不変。まとまりを出すための見た目のみ。 */}
-      <div style={{ marginBottom: 20, border: "1px solid #e5e7eb", borderRadius: 12, background: "#fff", boxShadow: "0 1px 2px rgba(0,0,0,0.04)", overflow: "hidden" }}>
-        {/* 上段: 見出し＋補足（左） / 期間セレクト＋更新（右） */}
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "flex-start", justifyContent: "space-between", padding: "14px 16px" }}>
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: 14, fontWeight: 800, color: "#111827" }}>分析条件</div>
-            <p style={{ fontSize: 12, color: "#6b7280", marginTop: 2, lineHeight: 1.6 }}>期間と除外ユーザーを指定して、集計対象を調整できます。</p>
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-            <label htmlFor="aud-range" style={{ fontSize: 12, color: "#6b7280" }}>表示期間</label>
-            <select id="aud-range"
-              value={rangeKey}
-              onChange={(e) => { const v = e.target.value; applyRange(v === "custom" ? { range: "custom" } : { range: v === "all" ? null : v, from: null, to: null }); }}
-              style={{ padding: "7px 12px", fontSize: 13, border: "1px solid #d1d5db", borderRadius: 6, background: "#fff", color: "#374151", cursor: "pointer" }}
-            >
-              {([["today","今日"],["yesterday","昨日"],["last_7_days","直近7日"],["last_30_days","直近30日"],["this_month","今月"],["all","全期間"],["custom","カスタム"]] as const).map(([key, label]) => (
-                <option key={key} value={key}>{label}</option>
-              ))}
-            </select>
-            {rangeKey === "custom" && (
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                <input type="date" value={rangeFrom ?? ""} onChange={(e) => applyRange({ range: "custom", from: e.target.value || null })}
-                  style={{ padding: "6px 8px", fontSize: 12, border: "1px solid #d1d5db", borderRadius: 6 }} aria-label="開始日" />
-                <span style={{ fontSize: 12, color: "#9ca3af" }}>〜</span>
-                <input type="date" value={rangeTo ?? ""} onChange={(e) => applyRange({ range: "custom", to: e.target.value || null })}
-                  style={{ padding: "6px 8px", fontSize: 12, border: "1px solid #d1d5db", borderRadius: 6 }} aria-label="終了日" />
-              </span>
-            )}
-            <RefreshButton />
-          </div>
-        </div>
+      {/* ── 表示条件パネル（デフォルト閉じのアコーディオン）──
+          JST 期間フィルター / 更新 / OA単位の除外表示ともロジックは不変。まとまり＋省スペースのための見た目のみ。 */}
+      {(() => {
+        const RANGE_LABEL: Record<string, string> = { today: "今日", yesterday: "昨日", last_7_days: "直近7日", last_30_days: "直近30日", this_month: "今月", all: "全期間", custom: "カスタム" };
+        const rangeSummary = rangeKey === "custom" ? `${rangeFrom ?? "—"} 〜 ${rangeTo ?? "—"}` : (RANGE_LABEL[rangeKey] ?? "全期間");
+        const exclSummary = (analytics?.excluded_count ?? 0) > 0 ? `除外ユーザー ${analytics?.excluded_count}人を除く` : "除外ユーザー なし";
+        return (
+          <div style={{ marginBottom: 20, border: "1px solid #e5e7eb", borderRadius: 12, background: "#fff", boxShadow: "0 1px 2px rgba(0,0,0,0.04)", overflow: "hidden" }}>
+            {/* ヘッダー（常時表示・クリックで開閉）: 表示条件 ＋ 現在条件の要約 */}
+            <button type="button" onClick={() => setShowConditions((v) => !v)} aria-expanded={showConditions}
+              style={{ width: "100%", display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, padding: "12px 16px", background: "none", border: "none", cursor: "pointer", textAlign: "left" }}>
+              <span style={{ fontSize: 14, fontWeight: 800, color: "#111827" }}>表示条件</span>
+              {!showConditions && (
+                <span style={{ display: "inline-flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                  <span style={{ fontSize: 12, color: "#374151", background: "#f3f4f6", borderRadius: 6, padding: "2px 8px" }}>{rangeSummary}</span>
+                  <span style={{ fontSize: 12, color: "#6b7280" }}>{exclSummary}</span>
+                </span>
+              )}
+              <span aria-hidden="true" style={{ marginLeft: "auto", fontSize: 12, color: "#9ca3af", transform: showConditions ? "rotate(180deg)" : "none", transition: "transform .15s" }}>▼</span>
+            </button>
 
-        {/* 下段: 分析対象ステータス（左） / 除外ユーザーを管理（右） */}
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", justifyContent: "space-between", padding: "12px 16px", borderTop: "1px solid #eef0f2", background: "#fafafa" }}>
-          <div style={{ fontSize: 13, color: "#374151" }}>
-            <span style={{ fontWeight: 700, marginRight: 8 }}>分析対象</span>
-            <span style={{ color: "#6b7280" }}>
-              {(analytics?.excluded_count ?? 0) > 0
-                ? <>除外ユーザー <strong style={{ color: "#374151" }}>{analytics?.excluded_count}</strong> 人を除く</>
-                : "除外ユーザー なし"}
-            </span>
+            {showConditions && (
+              <>
+                {/* 上段: 補足文（左） / 期間セレクト＋更新（右） */}
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "flex-start", justifyContent: "space-between", padding: "4px 16px 14px", borderTop: "1px solid #f3f4f6" }}>
+                  <p style={{ fontSize: 12, color: "#6b7280", marginTop: 8, lineHeight: 1.6, minWidth: 0 }}>期間と除外ユーザーを指定して、表示する集計対象を調整できます。</p>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <label htmlFor="aud-range" style={{ fontSize: 12, color: "#6b7280" }}>表示期間</label>
+                    <select id="aud-range"
+                      value={rangeKey}
+                      onChange={(e) => { const v = e.target.value; applyRange(v === "custom" ? { range: "custom" } : { range: v === "all" ? null : v, from: null, to: null }); }}
+                      style={{ padding: "7px 12px", fontSize: 13, border: "1px solid #d1d5db", borderRadius: 6, background: "#fff", color: "#374151", cursor: "pointer" }}
+                    >
+                      {([["today","今日"],["yesterday","昨日"],["last_7_days","直近7日"],["last_30_days","直近30日"],["this_month","今月"],["all","全期間"],["custom","カスタム"]] as const).map(([key, label]) => (
+                        <option key={key} value={key}>{label}</option>
+                      ))}
+                    </select>
+                    {rangeKey === "custom" && (
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                        <input type="date" value={rangeFrom ?? ""} onChange={(e) => applyRange({ range: "custom", from: e.target.value || null })}
+                          style={{ padding: "6px 8px", fontSize: 12, border: "1px solid #d1d5db", borderRadius: 6 }} aria-label="開始日" />
+                        <span style={{ fontSize: 12, color: "#9ca3af" }}>〜</span>
+                        <input type="date" value={rangeTo ?? ""} onChange={(e) => applyRange({ range: "custom", to: e.target.value || null })}
+                          style={{ padding: "6px 8px", fontSize: 12, border: "1px solid #d1d5db", borderRadius: 6 }} aria-label="終了日" />
+                      </span>
+                    )}
+                    <RefreshButton />
+                  </div>
+                </div>
+
+                {/* 下段: 分析対象ステータス（左） / 除外ユーザーを管理（右） */}
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", justifyContent: "space-between", padding: "12px 16px", borderTop: "1px solid #eef0f2", background: "#fafafa" }}>
+                  <div style={{ fontSize: 13, color: "#374151" }}>
+                    <span style={{ fontWeight: 700, marginRight: 8 }}>分析対象</span>
+                    <span style={{ color: "#6b7280" }}>
+                      {(analytics?.excluded_count ?? 0) > 0
+                        ? <>除外ユーザー <strong style={{ color: "#374151" }}>{analytics?.excluded_count}</strong> 人を除く</>
+                        : "除外ユーザー なし"}
+                    </span>
+                  </div>
+                  <button onClick={() => setShowExclusion(true)}
+                    style={{ padding: "6px 14px", fontSize: 12, border: "1px solid #d1d5db", background: "#fff", borderRadius: 6, cursor: "pointer", fontWeight: 600, color: "#374151" }}>
+                    除外ユーザーを管理
+                  </button>
+                </div>
+              </>
+            )}
           </div>
-          <button onClick={() => setShowExclusion(true)}
-            style={{ padding: "6px 14px", fontSize: 12, border: "1px solid #d1d5db", background: "#fff", borderRadius: 6, cursor: "pointer", fontWeight: 600, color: "#374151" }}>
-            除外ユーザーを管理
-          </button>
-        </div>
-      </div>
+        );
+      })()}
       {showExclusion && (
         <ExclusionModal
           oaId={oaId}
@@ -390,13 +413,13 @@ export default function WorkAudiencePage() {
       {/* タブ */}
       <div style={{ borderBottom: "1px solid #e5e5e5", marginBottom: 20, display: "flex", gap: 0, overflowX: "auto" }}>
         <button style={tabStyle("data")}     onClick={() => switchTab("data")}>データ分析</button>
-        <button style={tabStyle("realtime")} onClick={() => switchTab("realtime")}>🔴 リアルタイム</button>
-        <button style={tabStyle("flow")}     onClick={() => switchTab("flow")}>🧭 フロー分析</button>
+        <button style={tabStyle("realtime")} onClick={() => switchTab("realtime")}>リアルタイム</button>
+        <button style={tabStyle("flow")}     onClick={() => switchTab("flow")}>フロー分析</button>
         <button style={tabStyle("segments")} onClick={() => switchTab("segments")}>
           セグメント{!baseLoading && <span style={{ fontSize: 11, color: "#9ca3af", marginLeft: 4 }}>({segments.length})</span>}
         </button>
         <button style={tabStyle("tracking")} onClick={() => switchTab("tracking")}>
-          🔗 トラッキング{!baseLoading && <span style={{ fontSize: 11, color: "#9ca3af", marginLeft: 4 }}>({trackings.length})</span>}
+          トラッキング{!baseLoading && <span style={{ fontSize: 11, color: "#9ca3af", marginLeft: 4 }}>({trackings.length})</span>}
         </button>
         <a
           href={`/oas/${params.id}/works/${params.workId}/audience/location-checkins`}
@@ -407,7 +430,7 @@ export default function WorkAudiencePage() {
             color: "#6b7280",
           }}
         >
-          📍 ロケーション
+          ロケーション
         </a>
       </div>
 
@@ -417,23 +440,25 @@ export default function WorkAudiencePage() {
           {/* 更新はページ上部のコントロール行に集約（重複行を削除）*/}
           <AnaErrorBanner />
 
-          {/* KPI カード（PC 4列 / 狭幅は自動で 2〜1 列に折り返し＝モバイルで窮屈にしない）*/}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12 }}>
+          {/* KPI カード（PC 4列 / 狭幅は自動で 2〜1 列に折り返し）。色は管理画面に馴染む落ち着いたトーン
+              （アラート色にせず単色）。プレイヤー数=スレート/クリア率=ブルー/離脱率=ミュートアンバー/
+              ヒント使用率=インディゴ。 */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10 }}>
             <KpiCard label="プレイヤー数"
               value={analytics?.summary.total_players}
-              color="#111827" loading={anaLoading} />
+              color="#334155" loading={anaLoading} />
             <KpiCard label="クリア率"
               value={analytics ? `${analytics.summary.clear_rate}%` : undefined}
-              color={analytics ? (analytics.summary.clear_rate >= 70 ? "#16a34a" : analytics.summary.clear_rate >= 40 ? "#d97706" : "#ef4444") : "#9ca3af"}
+              color={analytics ? "#2563eb" : "#9ca3af"}
               loading={anaLoading}
               note={analytics ? `${analytics.summary.total_clears}人クリア` : undefined} />
             <KpiCard label="離脱率"
               value={analytics ? `${analytics.summary.dropout_rate}%` : undefined}
-              color={analytics ? (analytics.summary.dropout_rate <= 20 ? "#16a34a" : analytics.summary.dropout_rate <= 40 ? "#d97706" : "#ef4444") : "#9ca3af"}
+              color={analytics ? "#b45309" : "#9ca3af"}
               loading={anaLoading} note="24h以上未操作" />
             <KpiCard label="ヒント使用率"
               value={analytics ? `${analytics.summary.hint_usage_rate}%` : undefined}
-              color="#7c3aed" loading={anaLoading} note="1回以上使用" />
+              color={analytics ? "#4f46e5" : "#9ca3af"} loading={anaLoading} note="1回以上使用" />
           </div>
 
           {/* プレイ時間統計 */}
@@ -1110,17 +1135,17 @@ function KpiCard({
   color: string; loading: boolean; note?: string;
 }) {
   return (
-    <div className="card" style={{ textAlign: "center", padding: "20px 16px" }}>
-      <div style={{ fontSize: 12, color: "#9ca3af", fontWeight: 400, marginBottom: 10, letterSpacing: "0.02em" }}>
+    <div className="card" style={{ textAlign: "center", padding: "12px 12px" }}>
+      <div style={{ fontSize: 11, color: "#9ca3af", fontWeight: 400, marginBottom: 6, letterSpacing: "0.02em" }}>
         {label}
       </div>
       {loading ? (
-        <div className="skeleton" style={{ width: 70, height: 36, margin: "0 auto" }} />
+        <div className="skeleton" style={{ width: 56, height: 24, margin: "0 auto" }} />
       ) : (
-        <div style={{ fontSize: 32, fontWeight: 700, color, lineHeight: 1 }}>{value ?? "—"}</div>
+        <div style={{ fontSize: 22, fontWeight: 700, color, lineHeight: 1.1 }}>{value ?? "—"}</div>
       )}
       {note && !loading && (
-        <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 6 }}>{note}</div>
+        <div style={{ fontSize: 10.5, color: "#9ca3af", marginTop: 4 }}>{note}</div>
       )}
     </div>
   );
