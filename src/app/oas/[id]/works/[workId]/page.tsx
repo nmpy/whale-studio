@@ -169,7 +169,7 @@ export default function WorkHubPage() {
 
   if (loading) {
     return (
-      <div className="mb-5 w-full max-w-[720px] rounded-card border border-line bg-surface p-5 shadow-sm">
+      <div className="mb-5 w-full max-w-[720px] rounded-lg border border-line bg-surface p-5 shadow-sm">
         <div className="skeleton mb-2" style={{ width: 200, height: 13, borderRadius: 4 }} />
         <div className="skeleton" style={{ width: 280, height: 22, borderRadius: 4 }} />
       </div>
@@ -185,14 +185,14 @@ export default function WorkHubPage() {
           </h2>
           <Link
             href={withPreviewParams(`/oas/${oaId}/works`, searchParams)}
-            className="inline-flex items-center justify-center rounded-full border border-line bg-surface px-4 py-1.5 text-[12px] font-bold text-ink-2 no-underline transition-colors hover:border-brand hover:bg-brand-mist hover:text-brand-ink"
+            className="inline-flex items-center justify-center rounded-md border border-line bg-surface px-4 py-1.5 text-[12px] font-bold text-ink-2 no-underline transition-colors hover:border-brand hover:bg-brand-mist hover:text-brand-ink"
           >
             ← 作品リストに戻る
           </Link>
         </div>
         <div
           role="alert"
-          className="rounded-field border border-danger/30 bg-danger-soft px-4 py-3 text-[13px] leading-[1.6] text-danger"
+          className="rounded-md border border-danger/30 bg-danger-soft px-4 py-3 text-[13px] leading-[1.6] text-danger"
         >
           {error}
         </div>
@@ -294,7 +294,7 @@ export default function WorkHubPage() {
         <div className="mt-2 flex flex-wrap items-center gap-y-1.5 gap-x-3 text-[12px] text-ink-3">
           {work?.created_at && <span className="font-num">作成：{formatDate(work.created_at)}</span>}
           {work?.updated_at && <span className="font-num">更新：{formatDate(work.updated_at)}</span>}
-          <span className="inline-flex items-center rounded-full bg-sky-soft px-2.5 py-0.5 text-[11px] font-semibold text-sky-ink">
+          <span className="inline-flex items-center rounded-md bg-sky-soft px-2.5 py-0.5 text-[11px] font-semibold text-sky-ink">
             {planDisplayName ?? PLAN_LABELS[planTier]}
           </span>
         </div>
@@ -302,7 +302,7 @@ export default function WorkHubPage() {
         {/* 権限バッジ（pink 系はトークン未定義のためコンポーネントスコープの inline style）*/}
         <div className="mt-2">
           <span
-            className="inline-flex items-center rounded-full px-3 py-1 text-[12px] font-bold"
+            className="inline-flex items-center rounded-md px-3 py-1 text-[12px] font-bold"
             style={{ background: "#fce7f0", color: "#c2477a" }}
           >
             {roleLabel}
@@ -318,7 +318,7 @@ export default function WorkHubPage() {
         {role !== "tester" && (
           <Link
             href={withPreviewParams(`${basePath}/edit`, searchParams)}
-            className="inline-flex flex-shrink-0 items-center justify-center whitespace-nowrap rounded-xl border border-line bg-surface px-4 py-2.5 text-[13px] font-semibold text-ink-2 no-underline shadow-sm transition-colors hover:border-brand/40 hover:bg-brand-mist hover:text-brand-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand"
+            className="inline-flex flex-shrink-0 items-center justify-center whitespace-nowrap rounded-md border border-line bg-surface px-4 py-2.5 text-[13px] font-semibold text-ink-2 no-underline shadow-sm transition-colors hover:border-brand/40 hover:bg-brand-mist hover:text-brand-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand"
           >
             作品設定を開く
           </Link>
@@ -371,7 +371,7 @@ export default function WorkHubPage() {
           {warningAlerts.map((a) => {
             const s = ALERT_TONE_STYLE[a.tone];
             return (
-              <div key={a.key} className={"flex items-center gap-2.5 rounded-field border px-3 py-2 " + s.card}>
+              <div key={a.key} className={"flex items-center gap-2.5 rounded-md border px-3 py-2 " + s.card}>
                 <span aria-hidden="true" className={"inline-flex h-3.5 w-3.5 flex-shrink-0 items-center justify-center rounded-full text-[9px] font-bold " + s.dot + " " + s.iconColor}>
                   {s.icon}
                 </span>
@@ -392,11 +392,11 @@ export default function WorkHubPage() {
 
       {/* ── ① 作品の設定状況 ── */}
       {work && (
-        <section aria-labelledby="card-setup" className="mb-5 rounded-2xl border border-line bg-surface p-4 shadow-sm sm:p-5">
+        <section aria-labelledby="card-setup" className="mb-5 rounded-lg border border-line bg-surface p-4 shadow-sm sm:p-5">
           <h3 id="card-setup" className="mb-3 text-[13px] font-bold text-ink-2">作品の設定状況</h3>
 
           {/* ステータスボックス */}
-          <div className="mb-4 flex items-start gap-2.5 rounded-xl bg-bg-tint px-3.5 py-3">
+          <div className="mb-4 flex items-start gap-2.5 rounded-md bg-bg-tint px-3.5 py-3">
             <span aria-hidden="true" className={"mt-0.5 inline-flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md text-[12px] font-bold text-white " + (setupComplete ? "bg-brand" : "bg-ink-3/60")}>✓</span>
             <div className="min-w-0">
               <div className="text-[13.5px] font-bold text-ink">{setupComplete ? "主要な設定は整っています" : "設定を進めましょう"}</div>
@@ -417,7 +417,7 @@ export default function WorkHubPage() {
               { label: "LIFF",        value: liffCount != null ? liffCount.toLocaleString() : "—" },
               { label: "ロケーション", value: locationCount != null ? locationCount.toLocaleString() : "—" },
             ].map((c) => (
-              <div key={c.label} className="rounded-xl border border-line-2 bg-surface px-2 py-3 text-center">
+              <div key={c.label} className="rounded-md border border-line-2 bg-surface px-2 py-3 text-center">
                 <div className="font-num text-[22px] font-extrabold leading-none text-ink">{c.value}</div>
                 <div className="mt-1.5 text-[11px] text-ink-3">{c.label}</div>
               </div>
@@ -428,11 +428,11 @@ export default function WorkHubPage() {
 
       {/* ── ② プレイヤー状況 ── */}
       {work && (
-        <section aria-labelledby="card-players" className="mb-5 rounded-2xl border border-line bg-surface p-4 shadow-sm sm:p-5">
+        <section aria-labelledby="card-players" className="mb-5 rounded-lg border border-line bg-surface p-4 shadow-sm sm:p-5">
           <div className="mb-3 flex items-center justify-between gap-2">
             <h3 id="card-players" className="text-[13px] font-bold text-ink-2">プレイヤー状況</h3>
             <div className="flex items-center gap-2">
-              <span className="inline-flex items-center rounded-full border border-brand/30 bg-brand-soft px-2.5 py-0.5 text-[11px] font-semibold text-brand-ink">直近7日間</span>
+              <span className="inline-flex items-center rounded-md border border-brand/30 bg-brand-soft px-2.5 py-0.5 text-[11px] font-semibold text-brand-ink">直近7日間</span>
               <Link href={withPreviewParams(`${basePath}/audience`, searchParams)} className="whitespace-nowrap text-[11px] font-semibold text-ink-3 no-underline transition-colors hover:text-brand-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand">
                 詳細 ›
               </Link>
@@ -447,7 +447,7 @@ export default function WorkHubPage() {
               { label: "クリア済み",   value: analytics ? analytics.summary.total_clears.toLocaleString() : "—",   tone: "text-ink" },
               { label: "クリア率",     value: analytics ? `${analytics.summary.clear_rate}%` : "—",                tone: "text-brand-ink" },
             ].map((m) => (
-              <div key={m.label} className="rounded-xl border border-line-2 bg-bg-tint px-2 py-3 text-center">
+              <div key={m.label} className="rounded-md border border-line-2 bg-bg-tint px-2 py-3 text-center">
                 <div className={"font-num text-[24px] font-extrabold leading-none " + m.tone}>{m.value}</div>
                 <div className="mt-1.5 text-[11px] text-ink-3">{m.label}</div>
               </div>
@@ -455,7 +455,7 @@ export default function WorkHubPage() {
           </div>
 
           {/* 直近7日間の簡易棒グラフ（CSSのみ・API の daily_new_players から。取得不可はデータなし）*/}
-          <div className="mt-4 rounded-xl border border-line-2 bg-bg-tint p-3.5">
+          <div className="mt-4 rounded-md border border-line-2 bg-bg-tint p-3.5">
             <div className="mb-2 text-[11px] font-semibold text-ink-3">直近7日間のプレイヤー数</div>
             {daily ? (
               <div className="flex items-end justify-between gap-1.5" role="img"
@@ -482,7 +482,7 @@ export default function WorkHubPage() {
       )}
 
       {/* ── ③ よく使う操作 ── */}
-      <section aria-labelledby="card-quick" className="mb-5 rounded-2xl border border-line bg-surface p-4 shadow-sm sm:p-5">
+      <section aria-labelledby="card-quick" className="mb-5 rounded-lg border border-line bg-surface p-4 shadow-sm sm:p-5">
         <h3 id="card-quick" className="mb-3 text-[13px] font-bold text-ink-2">よく使う操作</h3>
         <div className="flex flex-col divide-y divide-line/60">
           {quickActions.map((a) => (
@@ -501,14 +501,14 @@ export default function WorkHubPage() {
       </section>
 
       {/* ── ④ 主要機能（既存導線を維持・カードデザインのみ寄せる）── */}
-      <section aria-labelledby="card-features" className="mb-4 rounded-2xl border border-line bg-surface p-4 shadow-sm sm:p-5">
+      <section aria-labelledby="card-features" className="mb-4 rounded-lg border border-line bg-surface p-4 shadow-sm sm:p-5">
         <h3 id="card-features" className="mb-3 text-[13px] font-bold text-ink-2">主要機能</h3>
         <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3 sm:gap-3">
           {featureCards.map((f) => (
             <Link
               key={f.label}
               href={withPreviewParams(f.href, searchParams)}
-              className="rounded-xl border border-line-2 bg-surface px-3.5 py-3 no-underline transition-all hover:-translate-y-px hover:border-brand/30 hover:shadow-card focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand"
+              className="rounded-md border border-line-2 bg-surface px-3.5 py-3 no-underline transition-all hover:-translate-y-px hover:border-brand/30 hover:shadow-card focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand"
             >
               <div className="text-[14px] font-bold text-ink">{f.label}</div>
               <div className="mt-1 text-[11.5px] text-ink-3">{f.sub}</div>
