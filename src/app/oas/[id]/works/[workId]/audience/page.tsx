@@ -320,51 +320,55 @@ export default function WorkAudiencePage() {
         ]},
       ]} />
 
-      {/* ── 表示期間フィルター（JST 基準・全指標に反映。既定=全期間）── */}
-      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, marginBottom: 16, padding: "10px 12px", background: "#f8fafc", border: "1px solid #e5e7eb", borderRadius: 10 }}>
-        <span style={{ fontSize: 12, fontWeight: 700, color: "#374151", marginRight: 2 }}>表示期間</span>
-        {([["today","今日"],["yesterday","昨日"],["last_7_days","直近7日"],["last_30_days","直近30日"],["this_month","今月"],["all","全期間"],["custom","カスタム"]] as const).map(([key, label]) => {
-          const active = rangeKey === key;
-          return (
-            <button
-              key={key}
-              onClick={() => (key === "custom" ? applyRange({ range: "custom" }) : applyRange({ range: key === "all" ? null : key, from: null, to: null }))}
-              style={{
-                padding: "5px 12px", fontSize: 12, borderRadius: 999, cursor: "pointer",
-                border: active ? "1.5px solid #06C755" : "1px solid #d1d5db",
-                background: active ? "#e9f8ef" : "#fff",
-                color: active ? "#06A047" : "#374151", fontWeight: active ? 700 : 500, whiteSpace: "nowrap",
-              }}
-            >
-              {label}
-            </button>
-          );
-        })}
-        {rangeKey === "custom" && (
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-            <input type="date" value={rangeFrom ?? ""} onChange={(e) => applyRange({ range: "custom", from: e.target.value || null })}
-              style={{ padding: "4px 8px", fontSize: 12, border: "1px solid #d1d5db", borderRadius: 6 }} aria-label="開始日" />
-            <span style={{ fontSize: 12, color: "#9ca3af" }}>〜</span>
-            <input type="date" value={rangeTo ?? ""} onChange={(e) => applyRange({ range: "custom", to: e.target.value || null })}
-              style={{ padding: "4px 8px", fontSize: 12, border: "1px solid #d1d5db", borderRadius: 6 }} aria-label="終了日" />
+      {/* ── 操作パネル: 表示期間 → 分析対象/除外管理（順序を明確化・1カードに統合）── */}
+      {/* JST 基準の期間フィルター・OA単位の除外表示ともロジックは不変。見た目の統合のみ。 */}
+      <div style={{ marginBottom: 16, border: "1px solid #e5e7eb", borderRadius: 8, background: "#fff", overflow: "hidden" }}>
+        {/* 表示期間（プリセット＋カスタム）*/}
+        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, padding: "12px 14px", background: "#f8fafc" }}>
+          <span style={{ fontSize: 12, fontWeight: 700, color: "#374151", marginRight: 2 }}>表示期間</span>
+          {([["today","今日"],["yesterday","昨日"],["last_7_days","直近7日"],["last_30_days","直近30日"],["this_month","今月"],["all","全期間"],["custom","カスタム"]] as const).map(([key, label]) => {
+            const active = rangeKey === key;
+            return (
+              <button
+                key={key}
+                onClick={() => (key === "custom" ? applyRange({ range: "custom" }) : applyRange({ range: key === "all" ? null : key, from: null, to: null }))}
+                style={{
+                  padding: "5px 12px", fontSize: 12, borderRadius: 6, cursor: "pointer",
+                  border: active ? "1.5px solid #06C755" : "1px solid #d1d5db",
+                  background: active ? "#e9f8ef" : "#fff",
+                  color: active ? "#06A047" : "#374151", fontWeight: active ? 700 : 500, whiteSpace: "nowrap",
+                }}
+              >
+                {label}
+              </button>
+            );
+          })}
+          {rangeKey === "custom" && (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+              <input type="date" value={rangeFrom ?? ""} onChange={(e) => applyRange({ range: "custom", from: e.target.value || null })}
+                style={{ padding: "4px 8px", fontSize: 12, border: "1px solid #d1d5db", borderRadius: 6 }} aria-label="開始日" />
+              <span style={{ fontSize: 12, color: "#9ca3af" }}>〜</span>
+              <input type="date" value={rangeTo ?? ""} onChange={(e) => applyRange({ range: "custom", to: e.target.value || null })}
+                style={{ padding: "4px 8px", fontSize: 12, border: "1px solid #d1d5db", borderRadius: 6 }} aria-label="終了日" />
+            </span>
+          )}
+          <span style={{ marginLeft: "auto", fontSize: 11, color: "#6b7280", whiteSpace: "nowrap" }}>
+            表示期間：{rangeKey === "custom" ? `${rangeFrom ?? "—"} 〜 ${rangeTo ?? "—"}` : ({ today: "今日", yesterday: "昨日", last_7_days: "直近7日", last_30_days: "直近30日", this_month: "今月", all: "全期間" } as Record<string, string>)[rangeKey] ?? "全期間"}
           </span>
-        )}
-        <span style={{ marginLeft: "auto", fontSize: 11, color: "#6b7280", whiteSpace: "nowrap" }}>
-          表示期間：{rangeKey === "custom" ? `${rangeFrom ?? "—"} 〜 ${rangeTo ?? "—"}` : ({ today: "今日", yesterday: "昨日", last_7_days: "直近7日", last_30_days: "直近30日", this_month: "今月", all: "全期間" } as Record<string, string>)[rangeKey] ?? "全期間"}
-        </span>
-      </div>
+        </div>
 
-      {/* ── 分析対象（除外ユーザー数）＋ 除外ユーザー管理導線 ── */}
-      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, marginBottom: 16, fontSize: 12, color: "#374151" }}>
-        <span>
-          分析対象：{(analytics?.excluded_count ?? 0) > 0
-            ? <>除外ユーザー <strong>{analytics?.excluded_count}</strong> 名を除く</>
-            : <>除外なし</>}
-        </span>
-        <button onClick={() => setShowExclusion(true)}
-          style={{ padding: "5px 12px", fontSize: 12, border: "1px solid #d1d5db", background: "#fff", borderRadius: 8, cursor: "pointer", fontWeight: 600 }}>
-          除外ユーザーを管理
-        </button>
+        {/* 分析対象（除外ユーザー数）＋ 除外ユーザー管理導線 */}
+        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, padding: "10px 14px", borderTop: "1px solid #eef0f2", fontSize: 12, color: "#374151" }}>
+          <span>
+            分析対象：{(analytics?.excluded_count ?? 0) > 0
+              ? <>除外ユーザー <strong>{analytics?.excluded_count}</strong> 名を除く</>
+              : <>除外なし</>}
+          </span>
+          <button onClick={() => setShowExclusion(true)}
+            style={{ marginLeft: "auto", padding: "5px 12px", fontSize: 12, border: "1px solid #d1d5db", background: "#fff", borderRadius: 6, cursor: "pointer", fontWeight: 600 }}>
+            除外ユーザーを管理
+          </button>
+        </div>
       </div>
       {showExclusion && (
         <ExclusionModal
@@ -416,8 +420,8 @@ export default function WorkAudiencePage() {
           </div>
           <AnaErrorBanner />
 
-          {/* KPI カード */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
+          {/* KPI カード（PC 4列 / 狭幅は自動で 2〜1 列に折り返し＝モバイルで窮屈にしない）*/}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12 }}>
             <KpiCard label="プレイヤー数"
               value={analytics?.summary.total_players}
               color="#111827" loading={anaLoading} />
@@ -674,8 +678,8 @@ export default function WorkAudiencePage() {
           </div>
           <AnaErrorBanner />
 
-          {/* サマリー */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
+          {/* サマリー（PC 4列 / 狭幅は自動折り返し＝モバイルで縦積み）*/}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12 }}>
             <FlowMiniCard loading={anaLoading} label="総プレイヤー数" value={analytics?.summary.total_players} color="#111827" />
             <FlowMiniCard loading={anaLoading} label="現在プレイ中" value={analytics?.realtime.currently_playing} color="#2563eb" />
             <FlowMiniCard loading={anaLoading} label="クリア率"
