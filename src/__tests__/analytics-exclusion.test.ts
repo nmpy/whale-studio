@@ -62,3 +62,77 @@ describe("applyExclusion — 集計前フィルタ（全指標に一貫適用さ
     expect(kept.map((p) => p.lineUserId)).toEqual(["Uplayer01"]);
   });
 });
+
+import { maskTail, buildPlayerCandidates } from "@/lib/analytics-exclusion";
+
+describe("maskTail — UID を末尾のみ表示（フル露出しない）", () => {
+  it("末尾6桁（既定）", () => {
+    expect(maskTail("Uabcdef123456")).toBe("...123456");
+  });
+  it("短い/空も安全", () => {
+    expect(maskTail("U12")).toBe("...U12");
+    expect(maskTail("")).toBe("...");
+  });
+});
+
+describe("buildPlayerCandidates — 除外候補プレイヤーの組み立て", () => {
+  const D = (s: string) => new Date(s);
+  it("表示名あり→「{名前}（...末尾）」/ 無し→「名前未取得（...末尾）」", () => {
+    const r = buildPlayerCandidates(
+      [{ lineUserId: "Uplayer0001", lastActiveAt: D("2026-07-01T00:00:00Z") }],
+      new Map([["Uplayer0001", "山田花子"]]),
+      new Set(),
+    );
+    expect(r[0].label).toBe("山田花子（...er0001）");
+    const r2 = buildPlayerCandidates([{ lineUserId: "Uplayer0002", lastActiveAt: null }], new Map(), new Set());
+    expect(r2[0].label).toBe("名前未取得（...er0002）");
+  });
+
+  it("空 lineUserId は候補に出さない（fake なし）", () => {
+    const r = buildPlayerCandidates(
+      [{ lineUserId: "", lastActiveAt: null }, { lineUserId: "  ", lastActiveAt: null }, { lineUserId: "Uok000001", lastActiveAt: null }],
+      new Map(), new Set(),
+    );
+    expect(r).toHaveLength(1);
+    expect(r[0].lineUserId).toBe("Uok000001");
+  });
+
+  it("重複 lineUserId は1件に集約", () => {
+    const r = buildPlayerCandidates(
+      [{ lineUserId: "Udup00001", lastActiveAt: D("2026-07-01T00:00:00Z") }, { lineUserId: "Udup00001", lastActiveAt: D("2026-07-02T00:00:00Z") }],
+      new Map(), new Set(),
+    );
+    expect(r).toHaveLength(1);
+  });
+
+  it("既に除外済みは isAlreadyExcluded=true", () => {
+    const r = buildPlayerCandidates(
+      [{ lineUserId: "Uexcluded1", lastActiveAt: null }, { lineUserId: "Uactive001", lastActiveAt: null }],
+      new Map(), new Set(["Uexcluded1"]),
+    );
+    expect(r.find((c) => c.lineUserId === "Uexcluded1")!.isAlreadyExcluded).toBe(true);
+    expect(r.find((c) => c.lineUserId === "Uactive001")!.isAlreadyExcluded).toBe(false);
+  });
+
+  it("ソート: 表示名あり → 最終アクティブ新しい順 → lineUserId", () => {
+    const r = buildPlayerCandidates(
+      [
+        { lineUserId: "Ucccccccc", lastActiveAt: D("2026-07-01T00:00:00Z") }, // 名前なし・古い
+        { lineUserId: "Ubbbbbbbb", lastActiveAt: D("2026-07-05T00:00:00Z") }, // 名前なし・新しい
+        { lineUserId: "Uaaaaaaaa", lastActiveAt: D("2026-06-01T00:00:00Z") }, // 名前あり・最も古いが名前優先
+      ],
+      new Map([["Uaaaaaaaa", "名前あり"]]),
+      new Set(),
+    );
+    expect(r.map((c) => c.lineUserId)).toEqual(["Uaaaaaaaa", "Ubbbbbbbb", "Ucccccccc"]);
+  });
+
+  it("元配列を破壊しない・maskedLineUserId はフル UID を含まない", () => {
+    const rows = [{ lineUserId: "Ufull1234567890abcdef", lastActiveAt: null }];
+    const snap = rows.map((x) => x.lineUserId);
+    const r = buildPlayerCandidates(rows, new Map(), new Set());
+    expect(rows.map((x) => x.lineUserId)).toEqual(snap);
+    expect(r[0].maskedLineUserId).toBe("...abcdef");
+    expect(r[0].maskedLineUserId).not.toContain("Ufull");
+  });
+});

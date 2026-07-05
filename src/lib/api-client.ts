@@ -1369,10 +1369,19 @@ export interface ManualExclusion {
   display_name: string | null;
   note: string | null;
 }
+export interface PlayerCandidate {
+  lineUserId: string;
+  displayName: string | null;
+  label: string;
+  maskedLineUserId: string;
+  isAlreadyExcluded: boolean;
+  lastActiveAt: string | null;
+}
 export interface ExclusionCandidates {
   me: string;
   members: ExclusionCandidateMember[];
   manual_exclusions: ManualExclusion[];
+  player_candidates: PlayerCandidate[];
   excluded_count: number;
 }
 export interface MemberLinkCode {
