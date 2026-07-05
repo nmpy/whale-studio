@@ -320,45 +320,53 @@ export default function WorkAudiencePage() {
         ]},
       ]} />
 
-      {/* ── コントロール行: 左=分析対象/除外管理・右=表示期間ドロップダウン+更新（1行）── */}
-      {/* JST 基準の期間フィルター・OA単位の除外表示ともロジックは不変。見た目の配置のみ。 */}
-      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 12, marginBottom: 16 }}>
-        {/* 左: 分析対象（除外ユーザー数）＋ 除外ユーザー管理 */}
-        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: 13, color: "#374151" }}>
-          <span style={{ fontWeight: 700 }}>分析対象</span>
-          <span style={{ color: "#6b7280" }}>
-            {(analytics?.excluded_count ?? 0) > 0
-              ? <>除外ユーザー <strong style={{ color: "#374151" }}>{analytics?.excluded_count}</strong> 名を除く</>
-              : "除外ユーザー なし"}
-          </span>
-          <button onClick={() => setShowExclusion(true)}
-            style={{ padding: "5px 12px", fontSize: 12, border: "1px solid #d1d5db", background: "#fff", borderRadius: 6, cursor: "pointer", fontWeight: 600, color: "#374151" }}>
-            除外ユーザーを管理
-          </button>
+      {/* ── 分析条件パネル（期間・更新・分析対象・除外管理を1つの白カードに集約）──
+          JST 期間フィルター / 更新 / OA単位の除外表示ともロジックは不変。まとまりを出すための見た目のみ。 */}
+      <div style={{ marginBottom: 20, border: "1px solid #e5e7eb", borderRadius: 12, background: "#fff", boxShadow: "0 1px 2px rgba(0,0,0,0.04)", overflow: "hidden" }}>
+        {/* 上段: 見出し＋補足（左） / 期間セレクト＋更新（右） */}
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "flex-start", justifyContent: "space-between", padding: "14px 16px" }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 14, fontWeight: 800, color: "#111827" }}>分析条件</div>
+            <p style={{ fontSize: 12, color: "#6b7280", marginTop: 2, lineHeight: 1.6 }}>期間と除外ユーザーを指定して、集計対象を調整できます。</p>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <label htmlFor="aud-range" style={{ fontSize: 12, color: "#6b7280" }}>表示期間</label>
+            <select id="aud-range"
+              value={rangeKey}
+              onChange={(e) => { const v = e.target.value; applyRange(v === "custom" ? { range: "custom" } : { range: v === "all" ? null : v, from: null, to: null }); }}
+              style={{ padding: "7px 12px", fontSize: 13, border: "1px solid #d1d5db", borderRadius: 6, background: "#fff", color: "#374151", cursor: "pointer" }}
+            >
+              {([["today","今日"],["yesterday","昨日"],["last_7_days","直近7日"],["last_30_days","直近30日"],["this_month","今月"],["all","全期間"],["custom","カスタム"]] as const).map(([key, label]) => (
+                <option key={key} value={key}>{label}</option>
+              ))}
+            </select>
+            {rangeKey === "custom" && (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                <input type="date" value={rangeFrom ?? ""} onChange={(e) => applyRange({ range: "custom", from: e.target.value || null })}
+                  style={{ padding: "6px 8px", fontSize: 12, border: "1px solid #d1d5db", borderRadius: 6 }} aria-label="開始日" />
+                <span style={{ fontSize: 12, color: "#9ca3af" }}>〜</span>
+                <input type="date" value={rangeTo ?? ""} onChange={(e) => applyRange({ range: "custom", to: e.target.value || null })}
+                  style={{ padding: "6px 8px", fontSize: 12, border: "1px solid #d1d5db", borderRadius: 6 }} aria-label="終了日" />
+              </span>
+            )}
+            <RefreshButton />
+          </div>
         </div>
 
-        {/* 右: 表示期間ドロップダウン ＋ 更新 */}
-        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginLeft: "auto" }}>
-          <label htmlFor="aud-range" style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0 0 0 0)" }}>表示期間</label>
-          <select id="aud-range"
-            value={rangeKey}
-            onChange={(e) => { const v = e.target.value; applyRange(v === "custom" ? { range: "custom" } : { range: v === "all" ? null : v, from: null, to: null }); }}
-            style={{ padding: "7px 12px", fontSize: 13, border: "1px solid #d1d5db", borderRadius: 6, background: "#fff", color: "#374151", cursor: "pointer" }}
-          >
-            {([["today","今日"],["yesterday","昨日"],["last_7_days","直近7日"],["last_30_days","直近30日"],["this_month","今月"],["all","全期間"],["custom","カスタム"]] as const).map(([key, label]) => (
-              <option key={key} value={key}>{label}</option>
-            ))}
-          </select>
-          {rangeKey === "custom" && (
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-              <input type="date" value={rangeFrom ?? ""} onChange={(e) => applyRange({ range: "custom", from: e.target.value || null })}
-                style={{ padding: "6px 8px", fontSize: 12, border: "1px solid #d1d5db", borderRadius: 6 }} aria-label="開始日" />
-              <span style={{ fontSize: 12, color: "#9ca3af" }}>〜</span>
-              <input type="date" value={rangeTo ?? ""} onChange={(e) => applyRange({ range: "custom", to: e.target.value || null })}
-                style={{ padding: "6px 8px", fontSize: 12, border: "1px solid #d1d5db", borderRadius: 6 }} aria-label="終了日" />
+        {/* 下段: 分析対象ステータス（左） / 除外ユーザーを管理（右） */}
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", justifyContent: "space-between", padding: "12px 16px", borderTop: "1px solid #eef0f2", background: "#fafafa" }}>
+          <div style={{ fontSize: 13, color: "#374151" }}>
+            <span style={{ fontWeight: 700, marginRight: 8 }}>分析対象</span>
+            <span style={{ color: "#6b7280" }}>
+              {(analytics?.excluded_count ?? 0) > 0
+                ? <>除外ユーザー <strong style={{ color: "#374151" }}>{analytics?.excluded_count}</strong> 人を除く</>
+                : "除外ユーザー なし"}
             </span>
-          )}
-          <RefreshButton />
+          </div>
+          <button onClick={() => setShowExclusion(true)}
+            style={{ padding: "6px 14px", fontSize: 12, border: "1px solid #d1d5db", background: "#fff", borderRadius: 6, cursor: "pointer", fontWeight: 600, color: "#374151" }}>
+            除外ユーザーを管理
+          </button>
         </div>
       </div>
       {showExclusion && (
