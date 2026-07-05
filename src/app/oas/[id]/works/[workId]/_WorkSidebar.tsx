@@ -47,7 +47,7 @@ export default function WorkSidebar() {
         padding: "16px 12px",
         background: "var(--color-brand-soft, #e9f8ef)",
         border: "1px solid var(--color-brand-soft, #e9f8ef)",
-        borderRadius: 14,
+        borderRadius: 10,
         fontSize: 14,
       }}
     >
@@ -77,7 +77,7 @@ export default function WorkSidebar() {
                     style={{
                       display: "block",
                       padding: "8px 10px",
-                      borderRadius: 8,
+                      borderRadius: 6,
                       textDecoration: "none",
                       fontWeight: active ? 700 : 500,
                       color: active ? "#ffffff" : "var(--color-ink, #1f2a24)",
