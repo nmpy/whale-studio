@@ -1,7 +1,7 @@
 // src/__tests__/analytics-range.test.ts
 // オーディエンス期間フィルターの parse/validate（JST）検証。
 import { describe, it, expect } from "vitest";
-import { parseAnalyticsRange, isWithinRange } from "@/lib/analytics-range";
+import { parseAnalyticsRange, isWithinRange, countDailyNewPlayers, last7JstDayBuckets } from "@/lib/analytics-range";
 
 // 基準時刻: 2026-07-04 05:00 UTC = 2026-07-04 14:00 JST（JST の暦日は 7/4）。
 const NOW = new Date("2026-07-04T05:00:00.000Z");
@@ -90,5 +90,37 @@ describe("isWithinRange", () => {
   });
   it("null 境界は無制限", () => {
     expect(isWithinRange(new Date("2000-01-01T00:00:00Z"), { from: null, to: null })).toBe(true);
+  });
+});
+
+describe("last7JstDayBuckets / countDailyNewPlayers（作品トップ 直近7日棒グラフ）", () => {
+  it("7日分・当日含む・古い順（JST）で日付/曜日を返す", () => {
+    const b = last7JstDayBuckets(NOW); // NOW=2026-07-04 14:00 JST
+    expect(b).toHaveLength(7);
+    expect(b[0].date).toBe("2026-06-28"); // 6日前
+    expect(b[6].date).toBe("2026-07-04"); // 当日（末尾）
+    // 2026-07-04 は土曜
+    expect(b[6].label).toBe("土");
+  });
+
+  it("createdAt を JST 日別に正しくカウント（境界含む・範囲外は0）", () => {
+    const dates = [
+      new Date("2026-07-04T00:00:00+09:00"), // 当日 開始境界
+      new Date("2026-07-04T23:59:59+09:00"), // 当日 終了間際
+      new Date("2026-07-01T12:00:00+09:00"), // 3日前
+      new Date("2026-05-01T12:00:00+09:00"), // 範囲外（7日より前）
+    ];
+    const r = countDailyNewPlayers(dates, NOW);
+    const byDate = Object.fromEntries(r.map((d) => [d.date, d.count]));
+    expect(byDate["2026-07-04"]).toBe(2);
+    expect(byDate["2026-07-01"]).toBe(1);
+    // 範囲外は合計に含まれない
+    expect(r.reduce((s, d) => s + d.count, 0)).toBe(3);
+  });
+
+  it("空配列でも7日分を0で返す（fake を作らない）", () => {
+    const r = countDailyNewPlayers([], NOW);
+    expect(r).toHaveLength(7);
+    expect(r.every((d) => d.count === 0)).toBe(true);
   });
 });

@@ -6,7 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { ok, badRequest, notFound, serverError } from "@/lib/api-response";
 import { withAuth } from "@/lib/auth";
 import { requireRole } from "@/lib/rbac";
-import { parseAnalyticsRange, isWithinRange } from "@/lib/analytics-range";
+import { parseAnalyticsRange, isWithinRange, countDailyNewPlayers } from "@/lib/analytics-range";
 import { applyExclusion } from "@/lib/analytics-exclusion";
 import { z } from "zod";
 
@@ -137,6 +137,10 @@ export const GET = withAuth(async (req: NextRequest, _ctx, user) => {
     const sevenDaysAgo  = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
     const activeLast7d  = allProgress.filter((p) => p.lastInteractedAt >= sevenDaysAgo).length;
 
+    // ── 直近7日間の新規参加者（JST 日別・除外/isPreview 適用済みの allProgress から）──
+    //   作品トップの簡易棒グラフ用。期間フィルターとは独立（常に直近7日）。
+    const dailyNewPlayers = countDailyNewPlayers(allProgress.map((p) => p.createdAt), now);
+
     // ── Per-phase stats ───────────────────────────────────────
     const phaseStats = phases.map((phase) => {
       const phaseOrder = phase.sortOrder;
@@ -243,6 +247,8 @@ export const GET = withAuth(async (req: NextRequest, _ctx, user) => {
       },
       // 分析対象から除外した人数（UI の「除外ユーザー ◯名を除く」表示用）。
       excluded_count: excludedSet.size,
+      // 直近7日間の新規参加者数（JST 日別・作品トップの簡易棒グラフ用）。
+      daily_new_players: dailyNewPlayers,
       summary: {
         total_players:               totalPlayers,
         total_clears:                totalClears,

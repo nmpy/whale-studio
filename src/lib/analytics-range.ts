@@ -104,6 +104,36 @@ export function parseAnalyticsRange(
   }
 }
 
+const WEEKDAY_JA = ["日", "月", "火", "水", "木", "金", "土"];
+
+/** 直近7日間（当日含む・古い順）の JST 日バケット（UTC ミリ秒の [start, end)）。 */
+export function last7JstDayBuckets(now: Date): { date: string; label: string; start: number; end: number }[] {
+  const j = new Date(now.getTime() + JST_OFFSET_MS);
+  const y = j.getUTCFullYear(), m = j.getUTCMonth(), d = j.getUTCDate();
+  const out: { date: string; label: string; start: number; end: number }[] = [];
+  for (let i = 6; i >= 0; i--) {
+    const start = Date.UTC(y, m, d - i, 0, 0, 0, 0) - JST_OFFSET_MS;
+    const end   = start + 24 * 60 * 60 * 1000;
+    const wall  = new Date(start + JST_OFFSET_MS);
+    out.push({
+      date:  `${wall.getUTCFullYear()}-${String(wall.getUTCMonth() + 1).padStart(2, "0")}-${String(wall.getUTCDate()).padStart(2, "0")}`,
+      label: WEEKDAY_JA[wall.getUTCDay()],
+      start, end,
+    });
+  }
+  return out;
+}
+
+/** 直近7日間の JST 日別 新規参加者数（createdAt の配列から集計）。作品トップの簡易棒グラフ用。 */
+export function countDailyNewPlayers(createdAts: Date[], now: Date): { date: string; label: string; count: number }[] {
+  const times = createdAts.map((t) => t.getTime());
+  return last7JstDayBuckets(now).map((b) => ({
+    date: b.date,
+    label: b.label,
+    count: times.filter((t) => t >= b.start && t < b.end).length,
+  }));
+}
+
 /** 時刻 t が range に含まれるか（from/to は inclusive・null は無制限）。 */
 export function isWithinRange(t: Date, range: { from: Date | null; to: Date | null }): boolean {
   if (range.from && t.getTime() < range.from.getTime()) return false;

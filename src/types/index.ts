@@ -1257,6 +1257,8 @@ export interface AnalyticsData {
   range?: { key: string; from: string | null; to: string | null };
   /** 分析対象から除外した lineUserId の件数（OA 単位の除外設定）。 */
   excluded_count?: number;
+  /** 直近7日間の新規参加者数（JST 日別・古い順）。作品トップの簡易棒グラフ用。 */
+  daily_new_players?: { date: string; label: string; count: number }[];
   summary: AnalyticsSummary;
   realtime: AnalyticsRealtime;
   phase_stats: AnalyticsPhaseStats[];
