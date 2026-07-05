@@ -455,7 +455,8 @@ export default function WorkHubPage() {
           </div>
 
           {/* 直近7日間の簡易棒グラフ（CSSのみ・API の daily_new_players から。取得不可はデータなし）*/}
-          <div className="mt-4 rounded-md border border-line-2 bg-bg-tint p-3.5">
+          {/* 角丸は控えめ（四角ベース）: 枠 4px / bar は上端のみ 2px でカプセル状に見せない */}
+          <div className="mt-4 rounded-sm border border-line-2 bg-bg-tint p-3.5">
             <div className="mb-2 text-[11px] font-semibold text-ink-3">直近7日間のプレイヤー数</div>
             {daily ? (
               <div className="flex items-end justify-between gap-1.5" role="img"
@@ -463,7 +464,7 @@ export default function WorkHubPage() {
                 {daily.map((d, i) => (
                   <div key={d.date} className="flex min-w-0 flex-1 flex-col items-center gap-1.5" title={`${d.date} ${d.count}人`}>
                     <div
-                      className={"w-full rounded-md " + (i === daily.length - 1 ? "bg-brand" : "bg-brand/30")}
+                      className={"w-full [border-radius:2px_2px_0_0] " + (i === daily.length - 1 ? "bg-brand" : "bg-brand/30")}
                       style={{ height: Math.round(8 + (d.count / dailyMax) * 44) }}
                     />
                     <span className="text-[10px] text-ink-3">{d.label}</span>
@@ -485,7 +486,8 @@ export default function WorkHubPage() {
       <section aria-labelledby="card-quick" className="mb-5 rounded-lg border border-line bg-surface p-4 shadow-sm sm:p-5">
         <h3 id="card-quick" className="mb-3 text-[13px] font-bold text-ink-2">よく使う操作</h3>
         <div className="flex flex-col divide-y divide-line/60">
-          {quickActions.map((a) => (
+          {/* 画面密度を下げるため表示は最大2件（配列定義は温存・表示時のみ制限）*/}
+          {quickActions.slice(0, 2).map((a) => (
             <Link
               key={a.label}
               href={withPreviewParams(a.href, searchParams)}
