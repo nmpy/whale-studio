@@ -7,7 +7,7 @@ import { useEffect, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Breadcrumb } from "@/components/Breadcrumb";
-import { workApi, oaApi, phaseApi, transitionApi, analyticsApi, getDevToken } from "@/lib/api-client";
+import { workApi, oaApi, phaseApi, transitionApi, analyticsApi, liffConfigApi, locationApi, getDevToken } from "@/lib/api-client";
 import type { WorkListItem } from "@/lib/api-client";
 import type { AnalyticsData } from "@/types";
 import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
@@ -93,6 +93,9 @@ export default function WorkHubPage() {
   const [showUpgradeCard,  setShowUpgradeCard]  = useState(false);
   // プレイヤー状況（簡易オーディエンス）。audience 画面と同じ GET /api/analytics を流用（workId スコープ）。
   const [analytics,        setAnalytics]        = useState<AnalyticsData | null>(null);
+  // LIFF ページ数・ロケーション数（作品単位・非ブロッキング取得。取得不可は null → 「—」表示）。
+  const [liffCount,        setLiffCount]        = useState<number | null>(null);
+  const [locationCount,    setLocationCount]    = useState<number | null>(null);
 
   // プレイヤー指標を非ブロッキングで取得（失敗しても作品トップ本体は表示する）。
   useEffect(() => {
@@ -100,6 +103,14 @@ export default function WorkHubPage() {
     analyticsApi.get(getDevToken(), workId)
       .then((a) => { if (alive) setAnalytics(a); })
       .catch(() => { if (alive) setAnalytics(null); });
+    // LIFF ページ数（fake を入れず、失敗時は null のまま「—」）。
+    liffConfigApi.listPages(getDevToken(), workId)
+      .then((r) => { if (alive) setLiffCount(r.pages?.length ?? 0); })
+      .catch(() => { if (alive) setLiffCount(null); });
+    // ロケーション数（作品スコープ）。
+    locationApi.list(getDevToken(), workId)
+      .then((rows) => { if (alive) setLocationCount(rows.length); })
+      .catch(() => { if (alive) setLocationCount(null); });
     return () => { alive = false; };
   }, [workId]);
 
@@ -173,7 +184,7 @@ export default function WorkHubPage() {
             作品
           </h2>
           <Link
-            href={`/oas/${oaId}/works`}
+            href={withPreviewParams(`/oas/${oaId}/works`, searchParams)}
             className="inline-flex items-center justify-center rounded-full border border-line bg-surface px-4 py-1.5 text-[12px] font-bold text-ink-2 no-underline transition-colors hover:border-brand hover:bg-brand-mist hover:text-brand-ink"
           >
             ← 作品リストに戻る
@@ -204,8 +215,6 @@ export default function WorkHubPage() {
   const roleLabel = role ? (ROLE_LABELS[role] ?? role) : "—";
   // 開始導線の有無は runtime と同じ判定（Work.startKeyword ∨ 開始フェーズ startTrigger）。
   const hasStartTrigger = hasStartEntry({ startKeyword: work?.start_keyword ?? null, startTrigger: work?.start_trigger ?? null });
-  // ヘッダー表示用の開始トリガー文言（設定済みならその値、無ければ null）。
-  const startTriggerDisplay = (work?.start_trigger?.trim() || work?.start_keyword?.trim() || null);
   const alerts = computeWorkTopAlerts({
     publishStatus:   currentStatus,
     hasStartTrigger,
@@ -214,14 +223,40 @@ export default function WorkHubPage() {
     messages:        work?._count.messages ?? 0,
     basePath,
   });
-  // よく使う操作（サイドバーと完全重複する一覧導線は避け、作業開始に直結する操作に絞る・最大4個）。
-  // ※「プレビュー」は作品トップのクイック操作からは外す（実機/表示確認は別導線で行う）。
-  const quickActions: { label: string; href: string }[] = [
-    { label: "メッセージを追加", href: `${basePath}/messages` },
-    { label: "フェーズを追加",   href: `${basePath}/scenario` },
-    ...(role !== "tester" ? [{ label: "作品設定", href: `${basePath}/edit` }] : []),
-    ...(isSpreadsheetImportEnabled() ? [{ label: "スプレッドシート取込", href: `${basePath}/messages/import` }] : []),
-  ].slice(0, 4);
+  // よく使う操作（作業開始に直結する導線。右側にカテゴリを表示。時刻等は取得できないため付けない）。
+  const quickActions: { label: string; category: string; href: string }[] = [
+    { label: "メッセージを追加",   category: "メッセージ",   href: `${basePath}/messages` },
+    { label: "フェーズ管理を確認", category: "フェーズ",     href: `${basePath}/scenario` },
+    { label: "キャラクターを編集", category: "キャラクター", href: `${basePath}/characters` },
+    ...(isSpreadsheetImportEnabled() ? [{ label: "スプレッドシート取込", category: "メッセージ", href: `${basePath}/messages/import` }] : []),
+  ];
+
+  // 主要機能カード（既存導線を維持・カウントは既存データ / 取得不可は「—」）。
+  const featureCards: { label: string; sub: string; href: string }[] = [
+    { label: "フェーズ",       sub: `${phaseCount}フェーズ設定済み`,                       href: `${basePath}/scenario` },
+    { label: "キャラクター",   sub: `${work?._count.characters ?? 0}体登録済み`,           href: `${basePath}/characters` },
+    { label: "メッセージ",     sub: `${work?._count.messages ?? 0}件`,                     href: `${basePath}/messages` },
+    { label: "LIFF",          sub: liffCount != null ? `${liffCount}ページ` : "—",         href: `${basePath}/liff` },
+    { label: "ロケーション",   sub: locationCount != null ? `${locationCount}件` : "—",     href: `/oas/${oaId}/locations?workId=${workId}` },
+    { label: "オーディエンス", sub: analytics ? `${analytics.summary.total_players}人` : "—", href: `${basePath}/audience` },
+  ];
+
+  // 設定状況（既存のオンボーディング判定を再利用。開始トリガーは判定できる場合のみ「設定済み」に含める）。
+  const setupComplete = hasCharacters && hasPhases && hasMessages && hasStartTrigger;
+  const setupDoneList = [
+    "作品作成",
+    hasCharacters && "キャラクター",
+    hasPhases && "フェーズ",
+    hasMessages && "メッセージ",
+    hasStartTrigger && "開始トリガー",
+  ].filter(Boolean).join("・");
+
+  // 状態と注意点は「警告があるときだけ」表示（整っている旨は設定状況カードに集約）。
+  const warningAlerts = alerts.filter((a) => a.tone !== "success");
+
+  // 直近7日間の新規参加者（棒グラフ用・API から。取得不可は null）。
+  const daily = analytics?.daily_new_players ?? null;
+  const dailyMax = daily ? Math.max(1, ...daily.map((d) => d.count)) : 1;
 
   // updated_at フォーマット（WorkCard と同形式）
   function formatDate(iso: string) {
@@ -238,17 +273,16 @@ export default function WorkHubPage() {
       <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
         <Breadcrumb items={[
-          { label: "アカウントリスト", href: withPreviewParams("/oas", searchParams) },
-          { label: "作品リスト",       href: withPreviewParams(`/oas/${oaId}/works`, searchParams) },
+          { label: "TOP",        href: withPreviewParams("/oas", searchParams) },
+          { label: "作品リスト", href: withPreviewParams(`/oas/${oaId}/works`, searchParams) },
           ...(work ? [{ label: work.title }] : []),
         ]} />
 
         {/* タイトル行 */}
-        <div className="mt-1 flex flex-wrap items-center gap-2.5">
-          <h2 className="font-round m-0 overflow-hidden text-ellipsis whitespace-nowrap text-[clamp(20px,4vw,24px)] font-extrabold leading-[1.2] tracking-[-0.02em] text-ink max-w-[200px] sm:max-w-[400px]">
+        <div className="mt-1.5 flex flex-wrap items-center gap-2.5">
+          <h2 className="font-round m-0 overflow-hidden text-ellipsis text-[clamp(22px,4.5vw,30px)] font-extrabold leading-[1.15] tracking-[-0.02em] text-ink max-w-[240px] sm:max-w-[480px]">
             {work?.title ?? "作品"}
           </h2>
-          {/* ステータスバッジ — shared/StatusBadge に統合 (Phase 3.3a) */}
           {work?.publish_status && (
             <StatusBadge tone={statusTone(currentStatus)}>
               {currentStatusLabel}
@@ -256,45 +290,39 @@ export default function WorkHubPage() {
           )}
         </div>
 
-        {/* サブ情報行: 開始トリガー / 最終更新 */}
-        <div className="mt-2 flex flex-wrap items-center gap-y-1.5 gap-x-4">
-          {/* 開始トリガー */}
-          <div className="flex items-center gap-1.5">
-            <span className="flex-shrink-0 select-none text-[10px] font-bold uppercase tracking-[0.07em] text-ink-3">
-              開始トリガー
-            </span>
-            {/* runtime と同じ判定（startKeyword ∨ 開始フェーズ startTrigger）。設定済みなら値を表示。 */}
-            {hasStartTrigger && startTriggerDisplay ? (
-              <span
-                className="max-w-[140px] overflow-hidden text-ellipsis whitespace-nowrap rounded-full border border-line bg-bg-tint px-2.5 py-0.5 font-mono text-[12px] font-medium text-ink sm:max-w-[260px]"
-                title={startTriggerDisplay}
-              >
-                {startTriggerDisplay}
-              </span>
-            ) : (
-              <span className="inline-flex items-center gap-1 text-[12px] italic text-ink-2">
-                <span aria-hidden="true" className="inline-block h-1.5 w-1.5 flex-shrink-0 rounded-full bg-ink-3" />
-                未設定
-              </span>
-            )}
-          </div>
-
-          {/* 最終更新日 */}
-          {work?.updated_at && (
-            <time dateTime={work.updated_at} className="font-num text-[11px] text-ink-3">
-              更新 {formatDate(work.updated_at)}
-            </time>
-          )}
+        {/* メタ情報: 作成 / 更新 / プラン */}
+        <div className="mt-2 flex flex-wrap items-center gap-y-1.5 gap-x-3 text-[12px] text-ink-3">
+          {work?.created_at && <span className="font-num">作成：{formatDate(work.created_at)}</span>}
+          {work?.updated_at && <span className="font-num">更新：{formatDate(work.updated_at)}</span>}
+          <span className="inline-flex items-center rounded-full bg-sky-soft px-2.5 py-0.5 text-[11px] font-semibold text-sky-ink">
+            {planDisplayName ?? PLAN_LABELS[planTier]}
+          </span>
         </div>
 
-        {/* 説明文 */}
+        {/* 権限バッジ（pink 系はトークン未定義のためコンポーネントスコープの inline style）*/}
+        <div className="mt-2">
+          <span
+            className="inline-flex items-center rounded-full px-3 py-1 text-[12px] font-bold"
+            style={{ background: "#fce7f0", color: "#c2477a" }}
+          >
+            {roleLabel}
+          </span>
+        </div>
+
         {work?.description && (
-          <p className="mt-1.5 text-[13px] leading-[1.6] text-ink-2">
-            {work.description}
-          </p>
+          <p className="mt-2 text-[13px] leading-[1.6] text-ink-2">{work.description}</p>
         )}
         </div>
-        {/* 右上の「プラン」「設定」ボタンは廃止し、左サイドバー（利用プラン / アカウント設定）へ集約した。 */}
+
+        {/* 作品設定を開く（既存 /edit へ。preview query 保持。tester には出さない＝既存挙動）*/}
+        {role !== "tester" && (
+          <Link
+            href={withPreviewParams(`${basePath}/edit`, searchParams)}
+            className="inline-flex flex-shrink-0 items-center justify-center whitespace-nowrap rounded-xl border border-line bg-surface px-4 py-2.5 text-[13px] font-semibold text-ink-2 no-underline shadow-sm transition-colors hover:border-brand/40 hover:bg-brand-mist hover:text-brand-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand"
+          >
+            作品設定を開く
+          </Link>
+        )}
       </div>
 
       {/* ── 閲覧専用バナー ── */}
@@ -337,23 +365,10 @@ export default function WorkHubPage() {
         />
       )}
 
-      {/* ── 注意が必要な項目（トーン別・強すぎない見た目）── */}
-      {work && (
-        <div className="mb-6 flex flex-col gap-2">
-          <div className="flex items-center gap-2">
-            <span className="flex-shrink-0 whitespace-nowrap text-[10px] font-bold uppercase tracking-wider text-ink-3">
-              状態と注意点
-            </span>
-            <div aria-hidden="true" className="h-px flex-1 bg-line" />
-            {/* 実行プラン / 実権限（既存データ）*/}
-            <span className="inline-flex items-center gap-1 rounded-full border border-line bg-bg-tint px-2.5 py-0.5 text-[11px] text-ink-2">
-              プラン <strong className="text-ink">{PLAN_LABELS[planTier]}</strong>
-            </span>
-            <span className="inline-flex items-center gap-1 rounded-full border border-line bg-bg-tint px-2.5 py-0.5 text-[11px] text-ink-2">
-              権限 <strong className="text-ink">{roleLabel}</strong>
-            </span>
-          </div>
-          {alerts.map((a) => {
+      {/* ── 状態と注意点（警告があるときだけ・整っている旨は設定状況カードへ集約）── */}
+      {work && warningAlerts.length > 0 && (
+        <div className="mb-5 flex flex-col gap-2">
+          {warningAlerts.map((a) => {
             const s = ALERT_TONE_STYLE[a.tone];
             return (
               <div key={a.key} className={"flex items-center gap-2.5 rounded-field border px-3 py-2 " + s.card}>
@@ -375,103 +390,132 @@ export default function WorkHubPage() {
         </div>
       )}
 
-      {/* ── 設定状況（コンテンツ量サマリー）── */}
+      {/* ── ① 作品の設定状況 ── */}
       {work && (
-        <div className="mb-4">
-        <div className="mb-2 flex items-center gap-2">
-          <span className="flex-shrink-0 whitespace-nowrap text-[10px] font-bold uppercase tracking-wider text-ink-3">
-            設定状況
-          </span>
-          <div aria-hidden="true" className="h-px flex-1 bg-line" />
-        </div>
-        <div className="overflow-hidden rounded-card border border-line bg-surface shadow-sm">
-          {/* 構成要素カウント（プレイヤー数は下の「プレイヤー状況」カードに分離）*/}
-          <div className="flex flex-wrap gap-3 p-3.5 sm:gap-2.5 sm:px-5 sm:py-4">
+        <section aria-labelledby="card-setup" className="mb-5 rounded-2xl border border-line bg-surface p-4 shadow-sm sm:p-5">
+          <h3 id="card-setup" className="mb-3 text-[13px] font-bold text-ink-2">作品の設定状況</h3>
+
+          {/* ステータスボックス */}
+          <div className="mb-4 flex items-start gap-2.5 rounded-xl bg-bg-tint px-3.5 py-3">
+            <span aria-hidden="true" className={"mt-0.5 inline-flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md text-[12px] font-bold text-white " + (setupComplete ? "bg-brand" : "bg-ink-3/60")}>✓</span>
+            <div className="min-w-0">
+              <div className="text-[13.5px] font-bold text-ink">{setupComplete ? "主要な設定は整っています" : "設定を進めましょう"}</div>
+              <p className="mt-0.5 text-[12px] leading-[1.6] text-ink-3">
+                {setupComplete
+                  ? `${setupDoneList}が設定済みです。`
+                  : `${setupDoneList} が設定済みです。残りの項目を左メニューから設定してください。`}
+              </p>
+            </div>
+          </div>
+
+          {/* 数値カード（キャラ/フェーズ/メッセージ/LIFF/ロケーション。取得不可は「—」）*/}
+          <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-5 sm:gap-3">
             {[
-              { label: "キャラクター", value: work._count.characters.toLocaleString(), highlight: false },
-              { label: "フェーズ",     value: phaseCount.toLocaleString(),             highlight: false },
-              { label: "メッセージ",   value: work._count.messages.toLocaleString(),   highlight: false },
-            ].map(({ label, value, highlight }, i, arr) => (
-              <div
-                key={label}
-                className={
-                  "flex items-center gap-2 " +
-                  "sm:pr-5 " +
-                  (i < arr.length - 1 ? "sm:border-r sm:border-line-2" : "")
-                }
-              >
-                <span
-                  className={
-                    "font-num text-[18px] font-extrabold leading-none sm:text-[20px] " +
-                    (highlight ? "text-sky-ink" : "text-ink")
-                  }
-                >
-                  {value}
-                </span>
-                <span className="text-[11px] text-ink-3">{label}</span>
+              { label: "キャラクター", value: work._count.characters.toLocaleString() },
+              { label: "フェーズ",     value: phaseCount.toLocaleString() },
+              { label: "メッセージ",   value: work._count.messages.toLocaleString() },
+              { label: "LIFF",        value: liffCount != null ? liffCount.toLocaleString() : "—" },
+              { label: "ロケーション", value: locationCount != null ? locationCount.toLocaleString() : "—" },
+            ].map((c) => (
+              <div key={c.label} className="rounded-xl border border-line-2 bg-surface px-2 py-3 text-center">
+                <div className="font-num text-[22px] font-extrabold leading-none text-ink">{c.value}</div>
+                <div className="mt-1.5 text-[11px] text-ink-3">{c.label}</div>
               </div>
             ))}
           </div>
-
-        </div>
-        </div>
+        </section>
       )}
 
-      {/* ── プレイヤー状況（簡易オーディエンス）──
-          指標は audience 画面と同じ GET /api/analytics（analyticsApi.get・workId スコープ）の
-          summary を流用する（作品トップ独自計算にしない）。定義: プレイヤー数 / クリア率(+人数) /
-          離脱率(24h以上未操作) / ヒント使用率(1回以上使用)。 */}
+      {/* ── ② プレイヤー状況 ── */}
       {work && (
-        <div className="mb-6 rounded-card border border-line bg-surface p-4 shadow-sm sm:px-5">
+        <section aria-labelledby="card-players" className="mb-5 rounded-2xl border border-line bg-surface p-4 shadow-sm sm:p-5">
           <div className="mb-3 flex items-center justify-between gap-2">
-            <span className="text-[13px] font-bold text-ink">プレイヤー状況</span>
-            <Link href={withPreviewParams(`${basePath}/audience`, searchParams)} className="whitespace-nowrap text-[11px] font-semibold text-ink-3 no-underline transition-colors hover:text-brand-ink">
-              オーディエンス詳細 ›
-            </Link>
+            <h3 id="card-players" className="text-[13px] font-bold text-ink-2">プレイヤー状況</h3>
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center rounded-full border border-brand/30 bg-brand-soft px-2.5 py-0.5 text-[11px] font-semibold text-brand-ink">直近7日間</span>
+              <Link href={withPreviewParams(`${basePath}/audience`, searchParams)} className="whitespace-nowrap text-[11px] font-semibold text-ink-3 no-underline transition-colors hover:text-brand-ink focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand">
+                詳細 ›
+              </Link>
+            </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
+          {/* メトリクス（総プレイヤー / 今日の参加 / クリア済み / クリア率。null は「—」）*/}
+          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4 sm:gap-3">
             {[
-              { label: "プレイヤー数", value: analytics ? analytics.summary.total_players.toLocaleString() : "—", note: "" },
-              { label: "クリア率",     value: analytics ? `${analytics.summary.clear_rate}%` : "—",     note: analytics ? `${analytics.summary.total_clears}人クリア` : "" },
-              { label: "離脱率",       value: analytics ? `${analytics.summary.dropout_rate}%` : "—",   note: "24h以上未操作" },
-              { label: "ヒント使用率", value: analytics ? `${analytics.summary.hint_usage_rate}%` : "—", note: "1回以上使用" },
-            ].map((k) => (
-              <div key={k.label} className="rounded-field border border-line-2 bg-bg-tint px-3 py-2.5 text-center">
-                <div className="text-[11px] text-ink-3">{k.label}</div>
-                <div className="mt-1 font-num text-[20px] font-extrabold leading-none text-ink">{k.value}</div>
-                {k.note && <div className="mt-1 text-[10px] leading-tight text-ink-3">{k.note}</div>}
+              { label: "総プレイヤー", value: analytics ? analytics.summary.total_players.toLocaleString() : "—",  tone: "text-ink" },
+              { label: "今日の参加",   value: analytics ? analytics.realtime.started_today.toLocaleString() : "—", tone: "text-brand-ink" },
+              { label: "クリア済み",   value: analytics ? analytics.summary.total_clears.toLocaleString() : "—",   tone: "text-ink" },
+              { label: "クリア率",     value: analytics ? `${analytics.summary.clear_rate}%` : "—",                tone: "text-brand-ink" },
+            ].map((m) => (
+              <div key={m.label} className="rounded-xl border border-line-2 bg-bg-tint px-2 py-3 text-center">
+                <div className={"font-num text-[24px] font-extrabold leading-none " + m.tone}>{m.value}</div>
+                <div className="mt-1.5 text-[11px] text-ink-3">{m.label}</div>
               </div>
             ))}
+          </div>
+
+          {/* 直近7日間の簡易棒グラフ（CSSのみ・API の daily_new_players から。取得不可はデータなし）*/}
+          <div className="mt-4 rounded-xl border border-line-2 bg-bg-tint p-3.5">
+            <div className="mb-2 text-[11px] font-semibold text-ink-3">直近7日間のプレイヤー数</div>
+            {daily ? (
+              <div className="flex items-end justify-between gap-1.5" role="img"
+                aria-label={"直近7日間の新規プレイヤー数: " + daily.map((d) => `${d.label}曜 ${d.count}人`).join("、")}>
+                {daily.map((d, i) => (
+                  <div key={d.date} className="flex min-w-0 flex-1 flex-col items-center gap-1.5" title={`${d.date} ${d.count}人`}>
+                    <div
+                      className={"w-full rounded-md " + (i === daily.length - 1 ? "bg-brand" : "bg-brand/30")}
+                      style={{ height: Math.round(8 + (d.count / dailyMax) * 44) }}
+                    />
+                    <span className="text-[10px] text-ink-3">{d.label}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="py-2 text-center text-[11.5px] text-ink-3">データがまだありません。</p>
+            )}
           </div>
 
           {analytics && analytics.summary.total_players === 0 && (
             <p className="mt-2.5 text-[11.5px] text-ink-3">まだプレイヤーはいません。公開後、ここに参加状況が集まります。</p>
           )}
-        </div>
+        </section>
       )}
 
-      {/* ── よく使う操作（サイドバーと重複しない、作業開始に直結する操作のみ）── */}
-      <div className="mb-2.5 flex items-center gap-2">
-        <span className="flex-shrink-0 whitespace-nowrap text-[10px] font-bold uppercase tracking-wider text-ink-3">
-          よく使う操作
-        </span>
-        <div aria-hidden="true" className="h-px flex-1 bg-line" />
-      </div>
-      <div className="mb-4 flex flex-wrap gap-2">
-        {quickActions.map((a) => (
-          <Link
-            key={a.label}
-            href={withPreviewParams(a.href, searchParams)}
-            className="inline-flex items-center gap-1.5 rounded-card border border-line bg-surface px-3.5 py-2 text-[13px] font-semibold text-ink no-underline shadow-sm transition-all hover:-translate-y-px hover:border-brand/30 hover:text-brand-ink hover:shadow-card"
-          >
-            {a.label}
-            <span aria-hidden="true" className="text-ink-3">›</span>
-          </Link>
-        ))}
-      </div>
-      {/* 下部の「現在のプラン」説明バーは廃止（プラン/権限は上部「状態と注意点」右のチップへ集約、
-          プラン確認/変更は左サイドバー「利用プラン」へ集約）。 */}
+      {/* ── ③ よく使う操作 ── */}
+      <section aria-labelledby="card-quick" className="mb-5 rounded-2xl border border-line bg-surface p-4 shadow-sm sm:p-5">
+        <h3 id="card-quick" className="mb-3 text-[13px] font-bold text-ink-2">よく使う操作</h3>
+        <div className="flex flex-col divide-y divide-line/60">
+          {quickActions.map((a) => (
+            <Link
+              key={a.label}
+              href={withPreviewParams(a.href, searchParams)}
+              className="group flex items-center gap-2.5 py-2.5 no-underline first:pt-0 last:pb-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand"
+            >
+              <span aria-hidden="true" className="inline-block h-1.5 w-1.5 flex-shrink-0 rounded-full bg-brand/50" />
+              <span className="min-w-0 flex-1 text-[13.5px] font-semibold text-ink transition-colors group-hover:text-brand-ink">{a.label}</span>
+              <span className="flex-shrink-0 text-[11px] text-ink-3">{a.category}</span>
+              <span aria-hidden="true" className="flex-shrink-0 text-ink-3 transition-transform group-hover:translate-x-0.5">›</span>
+            </Link>
+          ))}
+        </div>
+      </section>
+
+      {/* ── ④ 主要機能（既存導線を維持・カードデザインのみ寄せる）── */}
+      <section aria-labelledby="card-features" className="mb-4 rounded-2xl border border-line bg-surface p-4 shadow-sm sm:p-5">
+        <h3 id="card-features" className="mb-3 text-[13px] font-bold text-ink-2">主要機能</h3>
+        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3 sm:gap-3">
+          {featureCards.map((f) => (
+            <Link
+              key={f.label}
+              href={withPreviewParams(f.href, searchParams)}
+              className="rounded-xl border border-line-2 bg-surface px-3.5 py-3 no-underline transition-all hover:-translate-y-px hover:border-brand/30 hover:shadow-card focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand"
+            >
+              <div className="text-[14px] font-bold text-ink">{f.label}</div>
+              <div className="mt-1 text-[11.5px] text-ink-3">{f.sub}</div>
+            </Link>
+          ))}
+        </div>
+      </section>
     </>
   );
 }
