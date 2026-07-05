@@ -320,54 +320,45 @@ export default function WorkAudiencePage() {
         ]},
       ]} />
 
-      {/* ── 操作パネル: 表示期間 → 分析対象/除外管理（順序を明確化・1カードに統合）── */}
-      {/* JST 基準の期間フィルター・OA単位の除外表示ともロジックは不変。見た目の統合のみ。 */}
-      <div style={{ marginBottom: 16, border: "1px solid #e5e7eb", borderRadius: 8, background: "#fff", overflow: "hidden" }}>
-        {/* 表示期間（プリセット＋カスタム）*/}
-        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, padding: "12px 14px", background: "#f8fafc" }}>
-          <span style={{ fontSize: 12, fontWeight: 700, color: "#374151", marginRight: 2 }}>表示期間</span>
-          {([["today","今日"],["yesterday","昨日"],["last_7_days","直近7日"],["last_30_days","直近30日"],["this_month","今月"],["all","全期間"],["custom","カスタム"]] as const).map(([key, label]) => {
-            const active = rangeKey === key;
-            return (
-              <button
-                key={key}
-                onClick={() => (key === "custom" ? applyRange({ range: "custom" }) : applyRange({ range: key === "all" ? null : key, from: null, to: null }))}
-                style={{
-                  padding: "5px 12px", fontSize: 12, borderRadius: 6, cursor: "pointer",
-                  border: active ? "1.5px solid #06C755" : "1px solid #d1d5db",
-                  background: active ? "#e9f8ef" : "#fff",
-                  color: active ? "#06A047" : "#374151", fontWeight: active ? 700 : 500, whiteSpace: "nowrap",
-                }}
-              >
-                {label}
-              </button>
-            );
-          })}
+      {/* ── コントロール行: 左=分析対象/除外管理・右=表示期間ドロップダウン+更新（1行）── */}
+      {/* JST 基準の期間フィルター・OA単位の除外表示ともロジックは不変。見た目の配置のみ。 */}
+      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 12, marginBottom: 16 }}>
+        {/* 左: 分析対象（除外ユーザー数）＋ 除外ユーザー管理 */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: 13, color: "#374151" }}>
+          <span style={{ fontWeight: 700 }}>分析対象</span>
+          <span style={{ color: "#6b7280" }}>
+            {(analytics?.excluded_count ?? 0) > 0
+              ? <>除外ユーザー <strong style={{ color: "#374151" }}>{analytics?.excluded_count}</strong> 名を除く</>
+              : "除外ユーザー なし"}
+          </span>
+          <button onClick={() => setShowExclusion(true)}
+            style={{ padding: "5px 12px", fontSize: 12, border: "1px solid #d1d5db", background: "#fff", borderRadius: 6, cursor: "pointer", fontWeight: 600, color: "#374151" }}>
+            除外ユーザーを管理
+          </button>
+        </div>
+
+        {/* 右: 表示期間ドロップダウン ＋ 更新 */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginLeft: "auto" }}>
+          <label htmlFor="aud-range" style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0 0 0 0)" }}>表示期間</label>
+          <select id="aud-range"
+            value={rangeKey}
+            onChange={(e) => { const v = e.target.value; applyRange(v === "custom" ? { range: "custom" } : { range: v === "all" ? null : v, from: null, to: null }); }}
+            style={{ padding: "7px 12px", fontSize: 13, border: "1px solid #d1d5db", borderRadius: 6, background: "#fff", color: "#374151", cursor: "pointer" }}
+          >
+            {([["today","今日"],["yesterday","昨日"],["last_7_days","直近7日"],["last_30_days","直近30日"],["this_month","今月"],["all","全期間"],["custom","カスタム"]] as const).map(([key, label]) => (
+              <option key={key} value={key}>{label}</option>
+            ))}
+          </select>
           {rangeKey === "custom" && (
             <span style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
               <input type="date" value={rangeFrom ?? ""} onChange={(e) => applyRange({ range: "custom", from: e.target.value || null })}
-                style={{ padding: "4px 8px", fontSize: 12, border: "1px solid #d1d5db", borderRadius: 6 }} aria-label="開始日" />
+                style={{ padding: "6px 8px", fontSize: 12, border: "1px solid #d1d5db", borderRadius: 6 }} aria-label="開始日" />
               <span style={{ fontSize: 12, color: "#9ca3af" }}>〜</span>
               <input type="date" value={rangeTo ?? ""} onChange={(e) => applyRange({ range: "custom", to: e.target.value || null })}
-                style={{ padding: "4px 8px", fontSize: 12, border: "1px solid #d1d5db", borderRadius: 6 }} aria-label="終了日" />
+                style={{ padding: "6px 8px", fontSize: 12, border: "1px solid #d1d5db", borderRadius: 6 }} aria-label="終了日" />
             </span>
           )}
-          <span style={{ marginLeft: "auto", fontSize: 11, color: "#6b7280", whiteSpace: "nowrap" }}>
-            表示期間：{rangeKey === "custom" ? `${rangeFrom ?? "—"} 〜 ${rangeTo ?? "—"}` : ({ today: "今日", yesterday: "昨日", last_7_days: "直近7日", last_30_days: "直近30日", this_month: "今月", all: "全期間" } as Record<string, string>)[rangeKey] ?? "全期間"}
-          </span>
-        </div>
-
-        {/* 分析対象（除外ユーザー数）＋ 除外ユーザー管理導線 */}
-        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 10, padding: "10px 14px", borderTop: "1px solid #eef0f2", fontSize: 12, color: "#374151" }}>
-          <span>
-            分析対象：{(analytics?.excluded_count ?? 0) > 0
-              ? <>除外ユーザー <strong>{analytics?.excluded_count}</strong> 名を除く</>
-              : <>除外なし</>}
-          </span>
-          <button onClick={() => setShowExclusion(true)}
-            style={{ marginLeft: "auto", padding: "5px 12px", fontSize: 12, border: "1px solid #d1d5db", background: "#fff", borderRadius: 6, cursor: "pointer", fontWeight: 600 }}>
-            除外ユーザーを管理
-          </button>
+          <RefreshButton />
         </div>
       </div>
       {showExclusion && (
@@ -415,9 +406,7 @@ export default function WorkAudiencePage() {
       {/* ══ データ分析 ══════════════════════════════════════════════════════════ */}
       {activeTab === "data" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-          <div style={{ display: "flex", justifyContent: "flex-end" }}>
-            <RefreshButton />
-          </div>
+          {/* 更新はページ上部のコントロール行に集約（重複行を削除）*/}
           <AnaErrorBanner />
 
           {/* KPI カード（PC 4列 / 狭幅は自動で 2〜1 列に折り返し＝モバイルで窮屈にしない）*/}
