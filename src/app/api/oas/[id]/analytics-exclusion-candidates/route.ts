@@ -10,7 +10,7 @@ import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { ok, badRequest, notFound, serverError } from "@/lib/api-response";
 import { withRole } from "@/lib/auth";
-import { maskLineUserId } from "@/lib/analytics-exclusion";
+import { maskLineUserId, buildPlayerCandidates } from "@/lib/analytics-exclusion";
 import { z, ZodError } from "zod";
 
 // ── GET（閲覧: viewer 以上）──
@@ -64,10 +64,46 @@ export const GET = withRole<{ id: string }>(
           note: e.note,
         }));
 
+      // ── 除外候補プレイヤー（OA配下の実プレイヤーから。プルダウン用）──
+      //   OA スコープ（work.oaId）で絞る＝他OAは絶対に混ぜない。isPreview=true は既存方針に合わせて除外。
+      //   displayName は LiffSubmission（LINE profile）→ 除外行の displayName の順で best-effort（無ければ null）。
+      //   取得失敗しても一覧本体は落とさない（fallback: 候補なし）。
+      let playerCandidates: ReturnType<typeof buildPlayerCandidates> = [];
+      try {
+        const [progressRows, liffNames] = await Promise.all([
+          prisma.userProgress.groupBy({
+            by:     ["lineUserId"],
+            where:  { isPreview: false, work: { oaId: params.id } },
+            _max:   { lastInteractedAt: true },
+          }),
+          prisma.liffSubmission.findMany({
+            where:   { oaId: params.id, lineUserId: { not: null }, displayName: { not: null } },
+            select:  { lineUserId: true, displayName: true, updatedAt: true },
+            orderBy: { updatedAt: "desc" },
+          }),
+        ]);
+        const nameByUid = new Map<string, string>();
+        for (const s of liffNames) {
+          if (s.lineUserId && s.displayName && !nameByUid.has(s.lineUserId)) nameByUid.set(s.lineUserId, s.displayName);
+        }
+        // 除外行に保存済みの displayName も補完（LiffSubmission に無い分）。
+        for (const e of exclusions) {
+          if (e.displayName && !nameByUid.has(e.lineUserId)) nameByUid.set(e.lineUserId, e.displayName);
+        }
+        playerCandidates = buildPlayerCandidates(
+          progressRows.map((r) => ({ lineUserId: r.lineUserId, lastActiveAt: r._max.lastInteractedAt })),
+          nameByUid,
+          new Set(exclusions.map((e) => e.lineUserId)),
+        );
+      } catch (candErr) {
+        console.warn("[api/analytics-exclusion-candidates] player candidates fetch failed (fallback: none):", candErr);
+      }
+
       return ok({
         me: user.id, // ログイン中ユーザーの userId（自分の行に「自分のLINEを連携」を出すため）
         members: memberRows,
         manual_exclusions: manualExclusions,
+        player_candidates: playerCandidates,
         excluded_count: exclusions.length,
       });
     } catch (err) {

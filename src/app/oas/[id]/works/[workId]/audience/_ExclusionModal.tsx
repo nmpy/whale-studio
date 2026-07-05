@@ -31,6 +31,8 @@ export function ExclusionModal({
   const [uidDraft, setUidDraft] = useState<Record<string, string>>({});
   const [manualUid, setManualUid]   = useState("");
   const [manualNote, setManualNote] = useState("");
+  // 候補プルダウンで選択中の lineUserId。
+  const [selectedUid, setSelectedUid] = useState("");
   // 本人の LINE 連携コード（発行後に表示）。
   const [linkCode, setLinkCode] = useState<MemberLinkCode | null>(null);
   const [copied, setCopied]     = useState(false);
@@ -98,6 +100,23 @@ export function ExclusionModal({
       setUidDraft((p) => ({ ...p, [userId]: "" }));
       await refresh();
     } catch (e) { setError(e instanceof Error ? e.message : "UID の保存に失敗しました"); }
+    finally { setBusyId(null); }
+  }
+
+  // プルダウンで選んだ既存プレイヤーを除外に追加。
+  async function addFromCandidate() {
+    if (!canManage || !selectedUid) return;
+    const cand = (data?.player_candidates ?? []).find((c) => c.lineUserId === selectedUid);
+    if (!cand || cand.isAlreadyExcluded) return;
+    setBusyId("__candidate__");
+    try {
+      await analyticsExclusionApi.add(getDevToken(), oaId, {
+        line_user_id: cand.lineUserId,
+        display_name: cand.displayName ?? undefined,
+      });
+      setSelectedUid("");
+      await refresh();
+    } catch (e) { setError(e instanceof Error ? e.message : "追加に失敗しました"); }
     finally { setBusyId(null); }
   }
 
@@ -213,17 +232,55 @@ export function ExclusionModal({
               </table>
             </div>
 
-            {/* 手入力の除外（補助） */}
-            <div style={{ fontSize: 12, fontWeight: 700, color: "#374151", marginBottom: 6 }}>手入力で除外（登録ユーザーに紐づかない lineUserId）</div>
-            {canManage && (
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginBottom: 10 }}>
-                <input value={manualUid} onChange={(e) => setManualUid(e.target.value)} placeholder="LINE userId（UID）"
-                  style={{ padding: "6px 10px", fontSize: 12, border: "1px solid #d1d5db", borderRadius: 8, flex: "1 1 200px" }} />
-                <input value={manualNote} onChange={(e) => setManualNote(e.target.value)} placeholder="メモ（任意）"
-                  style={{ padding: "6px 10px", fontSize: 12, border: "1px solid #d1d5db", borderRadius: 8, flex: "1 1 160px" }} />
-                <button onClick={addManual} disabled={busyId === "__manual__" || !manualUid.trim()}
-                  style={{ padding: "6px 14px", fontSize: 12, border: "none", background: "#06C755", color: "#fff", borderRadius: 8, fontWeight: 700, cursor: "pointer" }}>追加</button>
-              </div>
+            {/* ── 除外ユーザーを追加（メイン導線: 既存プレイヤーから選択）── */}
+            <div style={{ fontSize: 13, fontWeight: 800, color: "#111827", marginBottom: 6 }}>除外ユーザーを追加</div>
+            <p style={{ fontSize: 11.5, color: "#6b7280", lineHeight: 1.6, marginBottom: 8 }}>
+              選択したユーザーは、オーディエンス分析や作品トップのプレイヤー状況から除外されます。
+            </p>
+            {(() => {
+              const cands = data?.player_candidates ?? [];
+              const selectable = cands.filter((c) => !c.isAlreadyExcluded);
+              if (cands.length === 0) {
+                return <p style={{ fontSize: 12, color: "#9ca3af", marginBottom: 14 }}>候補ユーザーがまだいません</p>;
+              }
+              return (
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginBottom: 16 }}>
+                  <label htmlFor="excl-cand" style={{ fontSize: 12, color: "#374151" }}>ユーザーを選択</label>
+                  <select id="excl-cand" value={selectedUid} onChange={(e) => setSelectedUid(e.target.value)}
+                    disabled={!canManage}
+                    style={{ padding: "7px 10px", fontSize: 12, border: "1px solid #d1d5db", borderRadius: 6, background: "#fff", flex: "1 1 260px", minWidth: 200 }}>
+                    <option value="">除外するユーザーを選択</option>
+                    {cands.map((c) => (
+                      <option key={c.lineUserId} value={c.lineUserId} disabled={c.isAlreadyExcluded}>
+                        {c.label}{c.isAlreadyExcluded ? "（除外済み）" : ""}
+                      </option>
+                    ))}
+                  </select>
+                  <button onClick={addFromCandidate} disabled={!canManage || busyId === "__candidate__" || !selectedUid || selectable.length === 0}
+                    style={{ padding: "7px 16px", fontSize: 12, border: "none", borderRadius: 6, fontWeight: 700, cursor: canManage && selectedUid ? "pointer" : "default",
+                      background: canManage && selectedUid ? "#06C755" : "#cbd5e1", color: "#fff" }}>追加</button>
+                </div>
+              );
+            })()}
+
+            {/* ── LINE UIDを直接入力（補助・候補に出ないユーザー向け）── */}
+            <details style={{ marginBottom: 10 }}>
+              <summary style={{ fontSize: 12, fontWeight: 600, color: "#6b7280", cursor: "pointer" }}>LINE UIDを直接入力</summary>
+              <p style={{ fontSize: 11, color: "#9ca3af", margin: "6px 0 8px" }}>候補に表示されないユーザーを除外したい場合のみ使用してください。</p>
+              {canManage && (
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                  <input value={manualUid} onChange={(e) => setManualUid(e.target.value)} placeholder="LINE userId（UID）"
+                    style={{ padding: "6px 10px", fontSize: 12, border: "1px solid #d1d5db", borderRadius: 6, flex: "1 1 200px" }} />
+                  <input value={manualNote} onChange={(e) => setManualNote(e.target.value)} placeholder="メモ（任意）"
+                    style={{ padding: "6px 10px", fontSize: 12, border: "1px solid #d1d5db", borderRadius: 6, flex: "1 1 160px" }} />
+                  <button onClick={addManual} disabled={busyId === "__manual__" || !manualUid.trim()}
+                    style={{ padding: "6px 14px", fontSize: 12, border: "1px solid #06C755", background: "#fff", color: "#06A047", borderRadius: 6, fontWeight: 700, cursor: "pointer" }}>追加</button>
+                </div>
+              )}
+            </details>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#374151", marginBottom: 6 }}>除外中のユーザー（手入力分）</div>
+            {(data?.manual_exclusions ?? []).length === 0 && (
+              <p style={{ fontSize: 11.5, color: "#9ca3af", marginBottom: 6 }}>手入力の除外はありません。</p>
             )}
             {(data?.manual_exclusions ?? []).length > 0 && (
               <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
