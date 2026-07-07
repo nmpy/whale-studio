@@ -83,3 +83,49 @@ postgresql://postgres.<PROJECT-REF>:<PASSWORD>@aws-1-ap-northeast-1.pooler.supab
 - Claude 等 AI とのやり取りでは **「伏字版」で構造のみ共有**
 - ローカル開発で `.env` / `.env.local` に書く場合も git ignore 済みであることを必ず確認
 - 過去にチャットや log に漏洩した可能性がある場合は password rotation を実施
+
+## Vercel 本番デプロイ運用（自動デプロイ不発時の復旧）
+
+Vercel は GitHub App 連携で main への push を検知して本番デプロイを自動発火する。ごく稀に、その
+push/deployment webhook の**一過性の配信・処理失敗**で、merge commit の本番デプロイが**作られないことがある**
+（実例: PR #554 の squash merge `0c2c912` で 15分以上 GitHub statuses 0件・deploy レコード無し。直前の #553 は
+正常デプロイ済み・#554 の branch preview も生成済みだったため git integration 全体の停止ではなく、当該 commit
+固有の取りこぼし）。以下の手順で確認・復旧する。
+
+### 1. merge 後の確認（毎回）
+- PR merge 後、**1〜2分以内に Vercel の本番 deploy レコードが作成されるか**を確認する。
+  - `gh api repos/nmpy/whale-studio/commits/<merge_sha>/status -q '.statuses[]|"\(.context): \(.state)"'`
+    に `Vercel – whale-studio` が出るか。
+  - もしくは Vercel の deployment 一覧に **main / production の deploy** が当該 sha で現れるか。
+
+### 2. deploy レコードが出ない場合の切り分け（設定不備でないか）
+- GitHub commit status / check が付いているか（**0件なら Vercel がデプロイ自体を作っていない**サイン）。
+- Vercel deploy list に **main の production deploy** があるか。
+- **commit message に skip marker が無いか**（`[skip ci]` / `[vercel skip]` 等）。
+- **`vercel.json` に `ignoreCommand` / ignored build step / git 抑制設定が無いか**（現状は `regions`＋`crons` のみで抑制設定なし）。
+- （参考）commit author/committer/GPG 属性は原因にならない（正常デプロイした commit と同一プロフィールでも発生し得る）。
+
+### 3. 設定不備が無く「deploy レコード自体が作られていない」場合 → 空コミットで fresh deploy を発火
+- **コード変更なしの空コミット**を main に push する（merge 済みコードは既に main にあるので、これで内包した本番デプロイが発火する）。
+
+```
+git checkout main && git pull --ff-only origin main
+git commit --allow-empty -m "chore: trigger production deploy"
+git push origin main
+```
+
+- ⚠️ Vercel Dashboard の **Redeploy は使わない**（env snapshot 再利用のため。新しいコミットによる fresh deploy が確実）。
+
+### 4. 空コミット後の必須確認
+- deploy **state = READY**
+- **aliasError = null**
+- **main sha が空コミットを指している**こと
+- その空コミットが**対象 PR のコードを内包している**こと（`git merge-base --is-ancestor <pr_merge_sha> main` が true）
+- `https://app.whale-studio.app/login` が **200**
+- `https://app.whale-studio.app/oas` が unauth で **307 → /login**
+- runtime / webhook logs に **error が増えていない**こと（`get_runtime_errors` / logs で確認）
+
+### 5. 位置づけ
+- これは**アプリケーションコードの変更ではなく、Vercel GitHub App webhook の一過性取りこぼし時の復旧手順**である。
+  設定不備が原因ではないため恒久対応は不要。確証を得たい場合のみ、GitHub → Settings → GitHub Apps → Vercel →
+  Advanced → **Recent Deliveries** で当該 push 前後の失敗配信を確認する（`gh` からは GitHub App の配信ログは見えない）。
