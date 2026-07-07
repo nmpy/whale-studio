@@ -18,6 +18,7 @@ import { buildPuzzleHintPostbackData } from "@/lib/puzzle-hint";
 import { buildQuickReplyPostbackData, quickReplyItemHasDestination } from "@/lib/quick-reply-postback";
 import { buildFlexSendParts, type FlexContents } from "@/lib/flex";
 import { normalizeCarouselContent, buildCarouselFlex } from "@/lib/carousel";
+import { buildCallRequestFlex } from "@/lib/call-request";
 import { recordPuzzleDeliveries } from "@/lib/puzzle-history";
 
 // ────────────────────────────────────────────────
@@ -518,6 +519,23 @@ function convertMessageToLine(
   }
 
   // ── Flex Message（ユーザーが Simulator で作成した JSON を貼り付け）──
+  // ── 通話リクエスト（flex_payload_json に設定を格納・送信時に uri ボタン付き Flex を生成）──
+  //   LINE の「本物の通話リクエスト」API は使わず、tel:/URL を開く uri action ボタンの Flex を送る。
+  //   設定不正/未入力のときは altText か body でテキストフォールバック（送信ゼロを避ける）。
+  if (mtype === "call_request") {
+    const flex = buildCallRequestFlex(flexPayloadJson, alt_text);
+    if (flex) {
+      return attach({ type: "flex", altText: replacePlaceholders(flex.altText, vars), contents: flex.contents as FlexContents } as LineFlexMessage);
+    }
+    const fb = alt_text || body;
+    if (fb) {
+      console.warn(`[${caller}] call_request 設定が不正/空のためテキストフォールバック id=${id.slice(0, 8)}`);
+      return attach({ type: "text", text: replacePlaceholders(truncateText(fb), vars) } as LineTextMessage);
+    }
+    console.warn(`[${caller}] ⚠️ call_request の設定が空 id=${id.slice(0, 8)} phase=${phaseId.slice(0, 8)}`);
+    return null;
+  }
+
   if (mtype === "flex") {
     const parts = buildFlexSendParts(flexPayloadJson, alt_text);
     if (parts) {

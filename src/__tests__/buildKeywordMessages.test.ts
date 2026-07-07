@@ -221,3 +221,42 @@ describe("変換 parity: buildKeywordMessages と buildPhaseMessages で同一�
     });
   }
 });
+
+// ── 通話リクエスト（message_type="call_request"）──
+describe("call_request: 通話リクエストは uri ボタン付き Flex として送信される", () => {
+  const cfg = {
+    title: "通話リクエスト",
+    body: "必要に応じて、下のボタンから通話を開始してください。",
+    buttonLabel: "電話をかける",
+    callType: "tel",
+    tel: "03-1234-5678",
+    supplement: "",
+  };
+
+  it("tel: Flex の footer ボタン uri が tel: 形式になる", () => {
+    const out = buildKeywordMessages([makeKwMsg({ messageType: "call_request", flexPayloadJson: JSON.stringify(cfg) })]);
+    expect(out).toHaveLength(1);
+    const msg = out[0] as { type: string; altText?: string; contents?: Record<string, unknown> };
+    expect(msg.type).toBe("flex");
+    const footer = msg.contents?.footer as { contents?: { action?: { type?: string; uri?: string; label?: string } }[] };
+    const action = footer?.contents?.[0]?.action;
+    expect(action?.type).toBe("uri");
+    expect(action?.uri).toBe("tel:0312345678");
+    expect(action?.label).toBe("電話をかける");
+  });
+
+  it("line_call_url / url: button uri に入力URLが入る", () => {
+    const line = buildKeywordMessages([makeKwMsg({ messageType: "call_request", flexPayloadJson: JSON.stringify({ ...cfg, callType: "line_call_url", lineCallUrl: "https://line.me/call/abc" }) })]);
+    const lineFooter = (line[0] as { contents?: Record<string, unknown> }).contents?.footer as { contents?: { action?: { uri?: string } }[] };
+    expect(lineFooter?.contents?.[0]?.action?.uri).toBe("https://line.me/call/abc");
+    const url = buildKeywordMessages([makeKwMsg({ messageType: "call_request", flexPayloadJson: JSON.stringify({ ...cfg, callType: "url", url: "https://example.com/x" }) })]);
+    const urlFooter = (url[0] as { contents?: Record<string, unknown> }).contents?.footer as { contents?: { action?: { uri?: string } }[] };
+    expect(urlFooter?.contents?.[0]?.action?.uri).toBe("https://example.com/x");
+  });
+
+  it("設定不正はテキストフォールバック（送信ゼロを避ける）", () => {
+    const out = buildKeywordMessages([makeKwMsg({ messageType: "call_request", flexPayloadJson: JSON.stringify({ ...cfg, callType: "tel", tel: "" }), altText: "通話リクエスト", body: "fallback" })]);
+    // uri 生成不可 → text フォールバック
+    expect((out[0] as { type: string }).type).toBe("text");
+  });
+});

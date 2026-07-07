@@ -20,6 +20,7 @@ export const MESSAGE_TYPE_LABEL: Record<MessageType, string> = {
   carousel: "カルーセル",
   voice:    "ボイス",
   flex:     "Flex Message",
+  call_request: "通話リクエスト",
 };
 
 export const MESSAGE_TYPE_ICON: Record<MessageType, string> = {
@@ -30,6 +31,7 @@ export const MESSAGE_TYPE_ICON: Record<MessageType, string> = {
   carousel: "🎠",
   voice:    "🎙",
   flex:     "🧱",
+  call_request: "📞",
 };
 
 export const PHASE_TYPE_LABEL: Record<string, string> = {

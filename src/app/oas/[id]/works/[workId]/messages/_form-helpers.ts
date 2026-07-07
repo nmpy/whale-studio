@@ -28,7 +28,7 @@ import {
  */
 export const CHAIN_SPEAKER_NONE = "__none__";
 
-export type ExtendedMessageType = "text" | "image" | "video" | "voice" | "carousel" | "riddle" | "flex";
+export type ExtendedMessageType = "text" | "image" | "video" | "voice" | "carousel" | "riddle" | "flex" | "call_request";
 
 export type MessageKindHelper =
   "start" | "normal" | "response" | "hint" | "puzzle" | "global" | "system_notice";
