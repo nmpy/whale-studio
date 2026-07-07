@@ -67,7 +67,7 @@ import { logEvent } from "@/lib/event-logger";
 import { activeCache, TTL, CACHE_KEY } from "@/lib/cache";
 import { linkRichMenuToUser } from "@/lib/line-richmenu";
 import { ReadReceiptController, calcReadDelayByTextLength, showLoadingAnimation } from "@/lib/line-read-receipt";
-import { checkPuzzleAnswerAny, resolveAnswerCandidates, parseAnswerMatchType } from "@/lib/puzzle-answer";
+import { judgePuzzleAnswerAny, checkPuzzleAnswerAny, resolveAnswerCandidates, parseAnswerMatchType } from "@/lib/puzzle-answer";
 import type { MessageTimingConfig } from "@/types";
 import { genRequestId, runWithRequestId, withTiming } from "@/lib/perf";
 
@@ -1370,9 +1370,11 @@ function matchPuzzleFromPhase(
     const candidates = resolveAnswerCandidates(puzzle.answer, puzzle.answers);
     if (candidates.length === 0) continue;
     const matchTypes = parsePuzzleMatchType(puzzle.answerMatchType);
-    if (checkPuzzleAnswerAny(inputText, candidates, matchTypes)) {
+    const judgement = judgePuzzleAnswerAny(inputText, candidates, matchTypes);
+    if (judgement.accepted) {
       console.log(
         `[cache][puzzle] 正解 puzzleId=${puzzle.id.slice(0, 8)}`,
+        `reason=${judgement.reason}`,
         `input="${inputText}" candidates=${candidates.length}件`,
       );
       return {

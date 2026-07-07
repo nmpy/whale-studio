@@ -187,3 +187,176 @@ describe("checkPuzzleAnswerAny", () => {
     expect(checkPuzzleAnswerAny("私はりんごが好き", candidates, ["partial"])).toBe(true);
   });
 });
+
+// ═══════════════════════════════════════════════════════════
+// 部分一致の許容範囲（完全包含 / 長さ別の連続一致率）
+//   仕様: normalizePuzzleAnswerText / isPuzzleAnswerAccepted /
+//         getLongestContiguousOverlapLength / judgePuzzleAnswer
+//   ※ partial（部分一致許容トグル）配下でのみ有効。exact は不変。
+// ═══════════════════════════════════════════════════════════
+import {
+  normalizePuzzleAnswerText,
+  getLongestContiguousOverlapLength,
+  isPuzzleAnswerAccepted,
+  judgePuzzleAnswer,
+  judgePuzzleAnswerAny,
+} from "@/lib/puzzle-answer";
+
+describe("normalizePuzzleAnswerText（回答照合専用の強い正規化）", () => {
+  it("NFKC + 小文字化 + 前後空白削除", () => {
+    expect(normalizePuzzleAnswerText("  ＨＥＬＬＯ  ")).toBe("hello");
+  });
+  it("スペース・改行・タブを除去する", () => {
+    expect(normalizePuzzleAnswerText("a b\tc\nd")).toBe("abcd");
+    expect(normalizePuzzleAnswerText("全角　空白　除去")).toBe("全角空白除去"); // 全角スペース(U+3000)除去
+  });
+  it("比較に不要な記号（、。！？・.,:：-ー 等）を除去する", () => {
+    expect(normalizePuzzleAnswerText("答え、です。！")).toBe("答えです");
+    expect(normalizePuzzleAnswerText("HUMANITY:P2")).toBe("humanityp2");
+    expect(normalizePuzzleAnswerText("東-京ー都")).toBe("東京都");
+  });
+  it("日本語・英数字の本体は残す", () => {
+    expect(normalizePuzzleAnswerText("りんご123abc")).toBe("りんご123abc");
+  });
+  it("空・記号のみは空文字になる", () => {
+    expect(normalizePuzzleAnswerText("")).toBe("");
+    expect(normalizePuzzleAnswerText("。、！ ")).toBe("");
+  });
+});
+
+describe("getLongestContiguousOverlapLength（最長共通連続部分文字列）", () => {
+  it("連続一致の長さを返す（生文字列。正規化前提ではない）", () => {
+    // 生の "オペレーションベル"(ー 含む 9文字) は "オペレーションベルキッシュ" の接頭 9文字
+    expect(getLongestContiguousOverlapLength("オペレーションベル", "オペレーションベルキッシュ")).toBe(9);
+    expect(getLongestContiguousOverlapLength("abcXYZ", "XYZdef")).toBe(3);
+  });
+  it("非連続の寄せ集めは数えない（連続のみ）", () => {
+    // "aXbXc" と "abc" の共通は連続では 1 文字まで（a/b/c は非連続）
+    expect(getLongestContiguousOverlapLength("aXbXc", "abc")).toBe(1);
+  });
+  it("空文字は 0", () => {
+    expect(getLongestContiguousOverlapLength("", "abc")).toBe(0);
+    expect(getLongestContiguousOverlapLength("abc", "")).toBe(0);
+  });
+});
+
+describe("isPuzzleAnswerAccepted — 完全包含は正解", () => {
+  it("正解 鍵 / 入力 答えは鍵です → 正解", () => {
+    expect(isPuzzleAnswerAccepted("答えは鍵です", ["鍵"])).toBe(true);
+  });
+  it("正解 HUMANITY:P2 / 入力 humanity p2 → 正解（小文字化・記号/空白除去で完全包含）", () => {
+    expect(isPuzzleAnswerAccepted("humanity p2", ["HUMANITY:P2"])).toBe(true);
+  });
+  it("正解 東京 / 入力 答えは東京です → 正解", () => {
+    expect(isPuzzleAnswerAccepted("答えは東京です", ["東京"])).toBe(true);
+  });
+  it("自然文（〜だと思います / たぶん〜）でも核心を含めば正解", () => {
+    expect(isPuzzleAnswerAccepted("オペレーションベルキッシュだと思います", ["オペレーションベルキッシュ"])).toBe(true);
+    expect(isPuzzleAnswerAccepted("たぶんオペレーションベルキッシュ", ["オペレーションベルキッシュ"])).toBe(true);
+  });
+});
+
+describe("isPuzzleAnswerAccepted — 短い答え（1〜4文字は完全包含のみ）", () => {
+  it("正解 鍵 / 入力 か → 不正解", () => {
+    expect(isPuzzleAnswerAccepted("か", ["鍵"])).toBe(false);
+  });
+  it("正解 東京 / 入力 東 → 不正解（部分一致は許容しない）", () => {
+    expect(isPuzzleAnswerAccepted("東", ["東京"])).toBe(false);
+  });
+  it("正解 りんご / 入力 り → 不正解", () => {
+    expect(isPuzzleAnswerAccepted("り", ["りんご"])).toBe(false);
+  });
+  it("正解 東京 / 入力 答えは東京です → 正解（完全包含は 1〜4文字でも可）", () => {
+    expect(isPuzzleAnswerAccepted("答えは東京です", ["東京"])).toBe(true);
+  });
+});
+
+describe("isPuzzleAnswerAccepted — 5〜7文字（80% 以上の連続一致）", () => {
+  // 正解 6 文字 → 必要連続 = ceil? 6*0.8=4.8 → 5 文字以上の連続一致で正解
+  it("6文字の答え / 5文字の連続を含む → 正解（5/6=83%）", () => {
+    expect(isPuzzleAnswerAccepted("秘密の合言", ["秘密の合言葉"])).toBe(true);
+  });
+  it("6文字の答え / 4文字の連続しか含まない → 不正解（4/6=67% < 80%）", () => {
+    expect(isPuzzleAnswerAccepted("秘密の合", ["秘密の合言葉"])).toBe(false);
+  });
+  it("5文字の答え / 4文字の連続を含む → 正解（4/5=80%）", () => {
+    expect(isPuzzleAnswerAccepted("パスワードだよ", ["パスワード"])).toBe(true); // 完全包含
+    expect(isPuzzleAnswerAccepted("アイウエ", ["アイウエオ"])).toBe(true); // 4/5=80%
+  });
+  it("5文字の答え / 3文字の連続しか含まない → 不正解（3/5=60% < 80%）", () => {
+    expect(isPuzzleAnswerAccepted("アイウ", ["アイウエオ"])).toBe(false);
+  });
+});
+
+describe("isPuzzleAnswerAccepted — 8文字以上（50% 以上の連続一致）", () => {
+  it("オペレーションベルキッシュ / 入力 オペレーションベル → 正解（正規化後 8/12≈67% ≥ 50%）", () => {
+    // 長音符 ー は正規化で除去されるため 正解=12文字 / 連続一致=8文字。
+    expect(isPuzzleAnswerAccepted("オペレーションベル", ["オペレーションベルキッシュ"])).toBe(true);
+  });
+  it("10文字の答え / 5文字の連続を含む → 正解（5/10=50%）", () => {
+    expect(isPuzzleAnswerAccepted("アイウエオ", ["アイウエオカキクケコ"])).toBe(true);
+  });
+  it("10文字の答え / 4文字の連続しか含まない → 不正解（4/10=40% < 50%）", () => {
+    expect(isPuzzleAnswerAccepted("アイウエ", ["アイウエオカキクケコ"])).toBe(false);
+  });
+});
+
+describe("isPuzzleAnswerAccepted — 非連続一致は NG", () => {
+  it("答えの文字が入力中に散らばっていても連続条件を満たさなければ不正解", () => {
+    // 答え "あいうえおかき"(7文字, 80%=5.6→6連続必要) を 1 文字ずつ分断
+    expect(isPuzzleAnswerAccepted("あXいXうXえXおXかXき", ["あいうえおかき"])).toBe(false);
+    // 8文字以上でも、最長連続が閾値未満なら不正解（10文字・最長連続4 → 4/10=40% < 50%）
+    expect(isPuzzleAnswerAccepted("アイウエXオカキク", ["アイウエオカキクケコ"])).toBe(false);
+  });
+});
+
+describe("isPuzzleAnswerAccepted — 複数候補・別解", () => {
+  it("いずれか 1 候補で条件を満たせば正解", () => {
+    expect(isPuzzleAnswerAccepted("答えはりんごです", ["みかん", "りんご", "ぶどう"])).toBe(true);
+  });
+  it("短い別解（1〜4文字）は完全包含のみ（部分一致は誤判定回避で不許容）", () => {
+    // "京" 単独入力は別解 "東京"(2文字) に対して部分一致にならない
+    expect(isPuzzleAnswerAccepted("京", ["東京", "みやこ"])).toBe(false);
+    // ただし完全包含なら短い別解でも正解
+    expect(isPuzzleAnswerAccepted("答えは東京", ["東京"])).toBe(true);
+  });
+  it("どの候補も満たさなければ不正解", () => {
+    expect(isPuzzleAnswerAccepted("ばなな", ["みかん", "りんご"])).toBe(false);
+  });
+});
+
+describe("judgePuzzleAnswer — 正解理由の判別", () => {
+  it("完全一致 → reason=exact", () => {
+    const j = judgePuzzleAnswer("鍵", ["鍵"]);
+    expect(j).toEqual({ accepted: true, reason: "exact", matchedCandidate: "鍵" });
+  });
+  it("完全包含 → reason=inclusion", () => {
+    const j = judgePuzzleAnswer("答えは鍵です", ["鍵"]);
+    expect(j.accepted).toBe(true);
+    expect(j.reason).toBe("inclusion");
+  });
+  it("部分一致 → reason=partial", () => {
+    const j = judgePuzzleAnswer("オペレーションベル", ["オペレーションベルキッシュ"]);
+    expect(j.accepted).toBe(true);
+    expect(j.reason).toBe("partial");
+  });
+  it("不正解 → reason=null / matchedCandidate=null", () => {
+    expect(judgePuzzleAnswer("東", ["東京"])).toEqual({
+      accepted: false,
+      reason: null,
+      matchedCandidate: null,
+    });
+  });
+});
+
+describe("judgePuzzleAnswerAny — matchTypes 連携", () => {
+  it("exact モードでは完全包含/部分一致を許容しない（従来どおり）", () => {
+    expect(judgePuzzleAnswerAny("答えは鍵です", ["鍵"], ["exact"]).accepted).toBe(false);
+    const j = judgePuzzleAnswerAny("鍵", ["鍵"], ["exact"]);
+    expect(j).toEqual({ accepted: true, reason: "exact", matchedCandidate: "鍵" });
+  });
+  it("partial モードでは新しい許容ルールが効く", () => {
+    expect(judgePuzzleAnswerAny("答えは鍵です", ["鍵"], ["partial"]).accepted).toBe(true);
+    expect(judgePuzzleAnswerAny("オペレーションベル", ["オペレーションベルキッシュ"], ["partial"]).reason).toBe("partial");
+  });
+});
