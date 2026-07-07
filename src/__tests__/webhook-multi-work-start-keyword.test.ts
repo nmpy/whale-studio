@@ -89,8 +89,8 @@ const TRIGGERS: Record<string, string | null> = { [WORK_A]: null, [WORK_B]: null
 
 const mockOa = { id: OA_ID, title: "テストOA", lineOaId: "mwoa", channelId: "c", channelSecret: "s", channelAccessToken: "t", spreadsheetId: null, welcomeMessage: null, followAction: null };
 
-function makeWork(id: string, startKeyword: string | null, startTriggerMode: "keyword" | "free_text" = "keyword") {
-  return { id, title: `作品${id}`, publishStatus: "active", sortOrder: 0, welcomeMessage: null, welcomeMessagesJson: [], welcomeLoadingSeconds: 0, followAction: "auto_start", resumeEnabled: true, startKeyword, startTriggerMode, systemCharacter: null };
+function makeWork(id: string, startKeyword: string | null, startTriggerMode: "keyword" | "free_text" = "keyword", followAction: "auto_start" | "welcome_wait" | "none" = "auto_start") {
+  return { id, title: `作品${id}`, publishStatus: "active", sortOrder: 0, welcomeMessage: null, welcomeMessagesJson: [], welcomeLoadingSeconds: 0, followAction, resumeEnabled: true, startKeyword, startTriggerMode, systemCharacter: null };
 }
 function progressRow(workId: string, over: Record<string, unknown> = {}) {
   return { id: `prog-${workId}`, lineUserId: USER_ID, workId, currentPhaseId: `np-${workId}`, reachedEnding: false, flags: "{}", variables: "{}", waitingForInput: null, lastSentMessageIds: null, lastInteractedAt: new Date(), ...over };
@@ -343,5 +343,26 @@ describe("自由入力で開始（free_text）", () => {
     mockPrisma.userProgress.findFirst.mockResolvedValue(progressRow(WORK_A));
     await call(textBody("こたえ"));
     expect(mockPrisma.userProgress.upsert).not.toHaveBeenCalled(); // free_text で開始（再upsert）しない
+  });
+});
+
+// ── あいさつメッセージ送信設定（welcome_wait）× free_text の end-to-end ──
+describe("あいさつ送信設定 × 自由入力で開始", () => {
+  it("welcome_wait + free_text + 進行中なし + 任意テキスト → 作品開始（あいさつ後の自由入力開始）", async () => {
+    // follow で welcome_wait はあいさつのみ送信し progress を作らない（別テストで担保）。
+    // その後の任意テキストで free_text 作品が開始されることを確認。
+    const a = makeWork(WORK_A, null, "free_text", "welcome_wait");
+    mockPrisma.work.findMany.mockResolvedValue([a]);
+    mockPrisma.work.findFirst.mockResolvedValue(a);
+    await call(textBody("こんにちは")); // あいさつ後にプレイヤーが送る任意テキスト
+    expect(upsertedWorkId()).toBe(WORK_A);
+  });
+
+  it("welcome_wait + keyword + startKeyword一致 → 従来どおり開始（free_text待機に影響されない）", async () => {
+    const a = makeWork(WORK_A, "エリーゼ開始", "keyword", "welcome_wait");
+    mockPrisma.work.findMany.mockResolvedValue([a]);
+    mockPrisma.work.findFirst.mockResolvedValue(a);
+    await call(textBody("エリーゼ開始"));
+    expect(upsertedWorkId()).toBe(WORK_A);
   });
 });

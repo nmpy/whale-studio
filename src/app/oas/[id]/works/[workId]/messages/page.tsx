@@ -89,6 +89,8 @@ function MessagesPageInner() {
   // 友だち追加（follow）時の動作（作品単位）。Bootstrap の work.follow_action 由来。
   const [followAction,   setFollowAction]   = useState<"auto_start" | "welcome_wait" | "none">("auto_start");
   const [savingFollow,   setSavingFollow]   = useState(false);
+  // 開始方法（keyword / free_text）。Bootstrap の work.start_trigger_mode 由来（表示文言の出し分け用・保存はしない）。
+  const [startTriggerMode, setStartTriggerMode] = useState<"keyword" | "free_text">("keyword");
   // 途中再開機能の有効/無効（作品単位デフォルト設定）。Bootstrap の work.resume_enabled 由来。
   const [resumeEnabled, setResumeEnabled] = useState(true);
   const [savingResume, setSavingResume]   = useState(false);
@@ -395,6 +397,7 @@ function MessagesPageInner() {
         setSavedWelcomeStartTrigger(trig);
       }
       setFollowAction((data.work.follow_action as "auto_start" | "welcome_wait" | "none" | undefined) ?? "auto_start");
+      setStartTriggerMode((data.work.start_trigger_mode as "keyword" | "free_text" | undefined) ?? "keyword");
       setResumeEnabled(data.work.resume_enabled !== false);
       setMessages(data.messages);
       setPhases([...data.phases].sort((a, b) => a.sort_order - b.sort_order));
@@ -636,7 +639,10 @@ function MessagesPageInner() {
                 {
                   value: "welcome_wait",
                   label: "あいさつメッセージを送信する",
-                  desc:  "友だち追加時にあいさつメッセージを送信し、その後、開始応答キーワードや「はじめる」などの操作を待ちます。",
+                  // 開始方法で出し分け：free_text は「任意テキストで開始」、keyword は「開始応答キーワード/操作待ち」。
+                  desc:  startTriggerMode === "free_text"
+                    ? "友だち追加時にあいさつメッセージを送信し、その後プレイヤーが任意のテキストを送ると作品を開始します。"
+                    : "友だち追加時にあいさつメッセージを送信し、その後、開始応答キーワードや「はじめる」などの操作を待ちます。",
                 },
                 {
                   value: "none",
@@ -833,8 +839,17 @@ function MessagesPageInner() {
                       </p>
                     ) : (
                       <p style={{ fontSize: 11, color: "#9ca3af", margin: "6px 0 0", lineHeight: 1.6 }}>
-                        友だち追加時のあいさつメッセージの最後に表示される開始ボタンです。プレイヤーがこの文言を送ると、物語が始まります（開始キーワードとしても使われます）。<br />
-                        未設定の場合、あいさつメッセージに開始クイックリプライは表示されません。
+                        {startTriggerMode === "free_text" ? (
+                          <>
+                            友だち追加時のあいさつメッセージの最後に表示される、プレイヤーに入力を促すためのボタンです。<span style={{ color: "#6b7280" }}>自由入力で開始の場合、この文言以外のテキストを送っても作品は開始されます。</span><br />
+                            未設定の場合、あいさつメッセージにボタンは表示されません（ボタンが無くても任意テキストで開始します）。
+                          </>
+                        ) : (
+                          <>
+                            友だち追加時のあいさつメッセージの最後に表示される開始ボタンです。プレイヤーがこの文言を送ると、物語が始まります（開始キーワードとしても使われます）。<br />
+                            未設定の場合、あいさつメッセージに開始クイックリプライは表示されません。
+                          </>
+                        )}
                         {welcomeStartTrigger.trim().length > 20 && (
                           <><br /><span style={{ color: "#b45309" }}>20文字を超える場合、LINE上のボタン表示では省略されることがあります。</span></>
                         )}
@@ -848,9 +863,11 @@ function MessagesPageInner() {
                   <div style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 8, padding: "10px 14px", marginBottom: 12, fontSize: 12, lineHeight: 1.7 }}>
                     {startTrigger ? (
                       <>
-                        <span style={{ color: "#374151" }}>最後のメッセージに「{startTrigger}」の開始クイックリプライが付きます。</span><br />
-                        <span style={{ color: "#6b7280" }}>画像が最後の場合も、その画像に開始クイックリプライが付きます。</span>
+                        <span style={{ color: "#374151" }}>最後のメッセージに「{startTrigger}」の{startTriggerMode === "free_text" ? "候補ボタン" : "開始クイックリプライ"}が付きます。</span><br />
+                        <span style={{ color: "#6b7280" }}>画像が最後の場合も、その画像に{startTriggerMode === "free_text" ? "候補ボタン" : "開始クイックリプライ"}が付きます。</span>
                       </>
+                    ) : startTriggerMode === "free_text" ? (
+                      <span style={{ color: "#6b7280" }}>候補ボタンは未設定です。自由入力で開始のため、ボタンが無くてもプレイヤーの任意テキストで作品が開始します。</span>
                     ) : (
                       <span style={{ color: "#b45309" }}>開始キーワードが未設定のため、開始クイックリプライは表示されません。</span>
                     )}

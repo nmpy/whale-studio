@@ -610,6 +610,7 @@ export interface MessagesBootstrapData {
     welcome_messages:    import("@/lib/welcome-messages").WelcomeMessageItem[];
     welcome_loading_seconds: number;
     follow_action:       "auto_start" | "welcome_wait" | "none";
+    start_trigger_mode:  "keyword" | "free_text";
     publish_status:      string;
     liff_enabled:        boolean;
     resume_enabled:      boolean;
