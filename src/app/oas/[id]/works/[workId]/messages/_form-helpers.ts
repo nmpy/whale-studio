@@ -481,3 +481,43 @@ export function formStateToScheduledSettings(s: ScheduledMessageFormState): {
     hold_chain_until_sent:    s.hold_chain_until_sent,
   };
 }
+
+// ── QR「返す内容（応答メッセージ）」/ 遷移先メッセージ 選択肢 ───────────────
+// 純関数として _form-helpers に置き、候補抽出とラベル生成をテスト可能にする。
+
+/** 選択肢候補メッセージ（QR の応答/遷移先で使う最小フィールド）。 */
+export interface OptionCandidateMessage {
+  id:            string;
+  body:          string | null;
+  kind?:         string | null;
+  message_type?: string | null;
+  phase_id?:     string | null;
+}
+
+/**
+ * QR「返す内容」/ 遷移先メッセージの選択肢ラベル。
+ * 通話リクエストは本文（body）が空で内容が flex_payload_json 側にあるため、
+ * 従来の `body ?? "(本文なし)"` だと「(本文なし)」となり選択肢で識別できなかった。
+ * 種別名（通話リクエスト）で識別できるようにする。他の種別は従来どおり body を表示する
+ * （＝ text / image / video / flex 等の候補表示は変更しない）。
+ */
+export function messageOptionLabel(m: { message_type?: string | null; body: string | null }): string {
+  if (m.message_type === "call_request") {
+    const b = (m.body ?? "").trim();
+    return b ? `通話リクエスト: ${b}` : "通話リクエスト";
+  }
+  return m.body ?? "(本文なし)";
+}
+
+/**
+ * QR Step2「返す内容（応答メッセージ）」の候補を抽出する。
+ * 仕様: 種別=応答（kind="response"）のメッセージのみが候補（編集中メッセージ自身は除外）。
+ *   - message_type では絞らない（call_request も kind="response" なら候補に含める）。
+ *   - kind="normal" の call_request 等は候補外（＝「応答メッセージのみ選択可」仕様の維持）。
+ */
+export function filterResponseMessageCandidates<T extends OptionCandidateMessage>(
+  messages: T[],
+  currentMessageId: string | undefined,
+): T[] {
+  return messages.filter((m) => m.kind === "response" && m.id !== currentMessageId);
+}

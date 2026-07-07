@@ -70,20 +70,7 @@ const PUZZLE_DELIVERY_TYPE_OPTIONS = MESSAGE_TYPE_OPTIONS.filter(
   (opt) => ["text", "image", "video", "carousel"].includes(opt.value)
 );
 
-/**
- * QR「返す内容（応答メッセージ）」/ 遷移先メッセージの選択肢ラベル。
- * 通話リクエストは本文（body）が空で内容が flex_payload_json 側にあるため、
- * 従来の `body ?? "(本文なし)"` だと「(本文なし)」となり選択肢で識別できなかった。
- * 種別名（通話リクエスト）で識別できるようにする。他の種別は従来どおり body を表示する
- * （＝ text / image / video / flex 等の候補表示は変更しない）。
- */
-function messageOptionLabel(m: { message_type?: string | null; body: string | null }): string {
-  if (m.message_type === "call_request") {
-    const b = (m.body ?? "").trim();
-    return b ? `通話リクエスト: ${b}` : "通話リクエスト";
-  }
-  return m.body ?? "(本文なし)";
-}
+// messageOptionLabel / filterResponseMessageCandidates は _form-helpers.ts に集約（純関数・テスト可能）。
 
 /** Flex Message JSON textarea のプレースホルダ（Simulator の最小 bubble 例）。 */
 const FLEX_JSON_PLACEHOLDER = `{
@@ -158,6 +145,8 @@ import {
   SLOT_LAG_SECONDS_MAX,
   clampNewSlotLagMs,
   CHAIN_SPEAKER_NONE,
+  messageOptionLabel,
+  filterResponseMessageCandidates,
   type AdditionalMessageSlot as _AdditionalMessageSlot,
   type ScheduledMessageFormState,
 } from "./_form-helpers";
@@ -6481,7 +6470,7 @@ export function MessageForm({
           <QuickReplyEditor
             items={form.quick_replies}
             onChange={(items) => set("quick_replies", items)}
-            responseMessages={allMessages.filter((m) => m.kind === "response" && m.id !== messageId)}
+            responseMessages={filterResponseMessageCandidates(allMessages, messageId)}
             phases={phases}
             currentPhaseId={form.phase_id || null}
             transitionMessages={allMessages.filter((m) => m.id !== messageId)}

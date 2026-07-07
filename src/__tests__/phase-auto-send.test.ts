@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect, beforeEach } from "vitest";
-import { drainAutoSendableItems, requiresUserInteraction, isAutoSendableMessageNode } from "@/lib/runtime";
+import { drainAutoSendableItems, requiresUserInteraction, isAutoSendableMessageNode, drainKeywordResponseFollowups } from "@/lib/runtime";
 
 // ── テスト用ファクトリ ──────────────────────────
 
@@ -849,5 +849,56 @@ describe("call_request は通常メッセージと同じく自動送信対象（
     const result = drainAutoSendableItems(messages, "in_progress");
     // call_request は通常メッセージとして送信され、puzzle まで送って停止（puzzle 後は送信されない）
     expect(result.map((m) => m.id)).toEqual(["t1", "cr", "pz"]);
+  });
+});
+
+// ── キーワード応答後の後続 auto-send（drainKeywordResponseFollowups）──
+//   keyword response の直後に、同フェーズ・表示順で後ろの auto-sendable head を続けて送る。
+//   call_request 固有ではなく通常 auto-sendable message 全般（text/image/flex/call_request）に効く。
+describe("drainKeywordResponseFollowups: キーワード応答後の後続送信", () => {
+  const CR_JSON = JSON.stringify({ title: "電話して", buttonLabel: "発信", callType: "tel", tel: "0312345678" });
+
+  it("1) 応答(response, sort10)の後に call_request(normal, tk=null, sort20) → 後続に call_request", () => {
+    const resp = makeMessage({ id: "r1", sortOrder: 10, kind: "response", triggerKeyword: "任務" });
+    const cr   = makeMessage({ id: "cr", sortOrder: 20, kind: "normal", messageType: "call_request", body: null, flexPayloadJson: CR_JSON });
+    const followups = drainKeywordResponseFollowups([resp, cr], [10], "in_progress", false);
+    expect(followups.map((m) => m.id)).toEqual(["cr"]);
+  });
+
+  it("2) response(10) → normal text(20) → call_request(30) → 後続は [text, call_request] を sortOrder 順", () => {
+    const resp = makeMessage({ id: "r1", sortOrder: 10, kind: "response", triggerKeyword: "任務" });
+    const txt  = makeMessage({ id: "t1", sortOrder: 20, kind: "normal", body: "続きのテキスト" });
+    const cr   = makeMessage({ id: "cr", sortOrder: 30, kind: "normal", messageType: "call_request", body: null, flexPayloadJson: CR_JSON });
+    const followups = drainKeywordResponseFollowups([resp, txt, cr], [10], "in_progress", false);
+    expect(followups.map((m) => m.id)).toEqual(["t1", "cr"]);
+  });
+
+  it("3) 応答が quick_reply を持つ（responseAwaitsSelection=true）→ 後続を送らない", () => {
+    const resp = makeMessage({ id: "r1", sortOrder: 10, kind: "response", triggerKeyword: "任務" });
+    const cr   = makeMessage({ id: "cr", sortOrder: 20, kind: "normal", messageType: "call_request", body: null, flexPayloadJson: CR_JSON });
+    const followups = drainKeywordResponseFollowups([resp, cr], [10], "in_progress", true);
+    expect(followups).toEqual([]);
+  });
+
+  it("4) 別 triggerKeyword の response(sort20) は後続 drain に巻き込まれない（call_request のみ）", () => {
+    const resp      = makeMessage({ id: "r1", sortOrder: 10, kind: "response", triggerKeyword: "任務" });
+    const otherResp = makeMessage({ id: "r2", sortOrder: 20, kind: "response", triggerKeyword: "別のキーワード" });
+    const cr        = makeMessage({ id: "cr", sortOrder: 30, kind: "normal", messageType: "call_request", body: null, flexPayloadJson: CR_JSON });
+    const followups = drainKeywordResponseFollowups([resp, otherResp, cr], [10], "in_progress", false);
+    expect(followups.map((m) => m.id)).toEqual(["cr"]);
+  });
+
+  it("後続が puzzle の場合は puzzle まで送って停止（既存の入力待ち境界を維持）", () => {
+    const resp = makeMessage({ id: "r1", sortOrder: 10, kind: "response", triggerKeyword: "任務" });
+    const cr   = makeMessage({ id: "cr", sortOrder: 20, kind: "normal", messageType: "call_request", body: null, flexPayloadJson: CR_JSON });
+    const pz   = makeMessage({ id: "pz", sortOrder: 30, kind: "puzzle", answer: "答え", body: "謎" });
+    const after = makeMessage({ id: "t2", sortOrder: 40, kind: "normal", body: "パズル後" });
+    const followups = drainKeywordResponseFollowups([resp, cr, pz, after], [10], "in_progress", false);
+    expect(followups.map((m) => m.id)).toEqual(["cr", "pz"]);
+  });
+
+  it("現在フェーズに属する応答が無い（global keyword のみ）→ 後続なし", () => {
+    const cr = makeMessage({ id: "cr", sortOrder: 20, kind: "normal", messageType: "call_request", body: null, flexPayloadJson: CR_JSON });
+    expect(drainKeywordResponseFollowups([cr], [], "in_progress", false)).toEqual([]);
   });
 });
