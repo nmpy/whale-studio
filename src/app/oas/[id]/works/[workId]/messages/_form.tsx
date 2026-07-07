@@ -5200,17 +5200,10 @@ export function MessageForm({
                 送信タイミング
               </label>
               {isPuzzle ? (
-                <div style={{
-                  padding: "10px 14px",
-                  background: "#f0f9ff",
-                  border: "1px solid #bae6fd",
-                  borderRadius: 6,
-                  fontSize: 12,
-                  color: "#0369a1",
-                  lineHeight: 1.7,
-                }}>
-                  🧩 <strong>謎・問題</strong>は、指定したフェーズにいるユーザーの回答に反応します。同じフェーズ内で完結する問題にも使えます。
-                  正解後に次のフェーズへ進めたい場合だけ、フェーズ遷移を設定してください。
+                // 通常メッセージ側と同じ控えめなヘルプ表現に統一（謎・問題専用の大きな説明ボックスは撤去）。
+                // 有効フェーズは下の「フェーズ」欄で指定する（通常メッセージと同じ操作感）。
+                <div style={hintText}>
+                  指定したフェーズにいるユーザーの回答に反応します。正解後に次へ進めたい場合だけ、フェーズ遷移を設定してください。
                 </div>
               ) : (
                 <>
