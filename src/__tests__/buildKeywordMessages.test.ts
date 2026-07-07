@@ -260,3 +260,43 @@ describe("call_request: 通話リクエストは uri ボタン付き Flex とし
     expect((out[0] as { type: string }).type).toBe("text");
   });
 });
+
+// ────────────────────────────────────────────
+// G. キーワード応答: 末尾メッセージの quickReply が LINE payload に付く
+//    （実機で「分かった」QR が出ない事象の回帰固定。CMS プレビューと実送信の一致）
+// ────────────────────────────────────────────
+describe("G. keyword 応答チェーン末尾の quickReply 付与", () => {
+  it("末尾メッセージに response_message_id 付き QR「分かった」→ 最終 LINE メッセージに postback quickReply が付く", () => {
+    const qr = JSON.stringify([{ label: "分かった", action: "text", response_message_id: "cr-id", enabled: true }]);
+    const out = buildKeywordMessages([
+      makeKwMsg({ id: "r1", body: "応答1", nextMessageId: "r2" }),
+      makeKwMsg({ id: "r2", body: "応答2(末尾)", quickReplies: qr }),
+    ]);
+    expect(out).toHaveLength(2);
+    const last = out[out.length - 1] as { quickReply?: { items: { action: { type: string; label: string } }[] } };
+    expect(last.quickReply).toBeDefined();
+    expect(last.quickReply!.items).toHaveLength(1);
+    // response_message_id を持つため postback 化される（deliverQrBranch で解決）
+    expect(last.quickReply!.items[0].action.type).toBe("postback");
+    expect(last.quickReply!.items[0].action.label).toBe("分かった");
+  });
+
+  it("QR が中間メッセージにあっても moveQuickReplyToTail で最終メッセージへ集約される", () => {
+    const qr = JSON.stringify([{ label: "分かった", action: "text", value: "分かった", enabled: true }]);
+    const out = buildKeywordMessages([
+      makeKwMsg({ id: "r1", body: "応答1(QR)", quickReplies: qr, nextMessageId: "r2" }),
+      makeKwMsg({ id: "r2", body: "応答2(末尾)" }),
+    ]);
+    const last = out[out.length - 1] as { quickReply?: unknown };
+    const mid  = out[0] as { quickReply?: unknown };
+    expect(last.quickReply).toBeDefined();  // 末尾へ集約
+    expect(mid.quickReply).toBeUndefined(); // 中間からは除去
+  });
+
+  it("enabled=false の QR item は実送信で drop（プレビューも同条件で除外し一致させる）", () => {
+    const qr = JSON.stringify([{ label: "分かった", action: "text", response_message_id: "cr-id", enabled: false }]);
+    const out = buildKeywordMessages([makeKwMsg({ id: "r1", body: "応答", quickReplies: qr })]);
+    const last = out[out.length - 1] as { quickReply?: unknown };
+    expect(last.quickReply).toBeUndefined(); // enabled=false → quickReply なし
+  });
+});

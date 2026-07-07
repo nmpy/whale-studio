@@ -3378,12 +3378,14 @@ function PreviewPanel({ chain, characters, riddles, destinations, oaTitle, workT
   // chain 末尾側から最初に QR を持つ bubble のものを表示する（実機プレビュー一致）。
   let tailQR: QuickReplyItem[] = [];
   for (let i = chain.length - 1; i >= 0; i--) {
+    // 実送信（buildQuickReplyFromItems, line.ts:1191）は enabled===false の item を drop する。
+    // プレビューでも同じく除外し、「プレビューには出るが実機に出ない」乖離を無くす。
     const items = resolveDisplayQrItems({
       kind:                  chain[i].kind,
       hintMode:              chain[i].hint_mode,
       quickReplies:          chain[i].quick_replies,
       incorrectQuickReplies: chain[i].incorrect_quick_replies,
-    });
+    }).filter((it) => it.enabled !== false);
     if (items.length > 0) {
       tailQR = items;
       break;
