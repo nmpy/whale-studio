@@ -719,6 +719,33 @@ export function drainAutoSendableItemsFrom(
 }
 
 /**
+ * キーワード応答（kind="response"）送信の直後に続けて送る「後続 auto-sendable メッセージ」を返す。
+ *
+ * 背景: キーワード応答は nextMessageId チェーンしか展開しないため、同一フェーズ・表示順で後ろにある
+ *   独立 head（別の吹き出し。text/image/flex/call_request など）が送られなかった。フェーズ入場や
+ *   puzzle 正解後と同じ drainAutoSendableItems で「応答メッセージの sortOrder より後」を続けて送る。
+ *
+ * 仕様:
+ *   - responseAwaitsSelection=true（応答またはそのチェーン末尾が QR 等でユーザー選択待ち）なら空を返す
+ *     （実機の QR 停止仕様。呼び出し側で送信済み LineMessage に quickReply があるか等で判定して渡す）。
+ *   - matchedInPhaseSortOrders が空（＝現在フェーズに属する応答が無い / global keyword のみ）なら空。
+ *   - startAfterSortOrder = 現在フェーズに属する matched 応答の最大 sortOrder。
+ *   - drainAutoSendableItems により response/hint/別 triggerKeyword/QR分岐先/セグメント不一致 puzzle は除外、
+ *     puzzle / QR 末尾 / trigger で停止（別フェーズは phase-local なので対象外）。純関数。
+ */
+export function drainKeywordResponseFollowups(
+  phaseMessages: PhaseRow["messages"],
+  matchedInPhaseSortOrders: number[],
+  userSegment: UserSegment | undefined,
+  responseAwaitsSelection: boolean,
+): import("@/types").RuntimePhaseMessage[] {
+  if (responseAwaitsSelection) return [];
+  if (matchedInPhaseSortOrders.length === 0) return [];
+  const startAfter = Math.max(...matchedInPhaseSortOrders);
+  return drainAutoSendableItems(phaseMessages, userSegment, startAfter);
+}
+
+/**
  * フェーズのメッセージ一覧から「フェーズ開始時に自動表示すべきメッセージ列」を構築する。
  *
  * 判定基準は **現在ノードの属性** のみ。次ノードの種類（puzzle 等）は参照しない。

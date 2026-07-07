@@ -42,7 +42,7 @@ import {
   sleep, resolveHeadSendDelayMs,
   type LineWebhookBody, type LineEvent, type LineSender, type LineMessage, type KeywordMessageRecord,
 } from "@/lib/line";
-import { buildRuntimeState, matchTransition, applySetFlags, safeParseFlags, safeParseVariables, safeParseWaitingForInput, fetchPhaseWithIncludes, drainAutoSendableItems, type PhaseRow } from "@/lib/runtime";
+import { buildRuntimeState, matchTransition, applySetFlags, safeParseFlags, safeParseVariables, safeParseWaitingForInput, fetchPhaseWithIncludes, drainAutoSendableItems, drainKeywordResponseFollowups, type PhaseRow } from "@/lib/runtime";
 import { matchImageActionPhaseTransition } from "@/lib/image-action-phase";
 import { matchBackToPuzzle, buildBackToPuzzlePostbackData, parseBackToPuzzlePostback } from "@/lib/hint-back-to-puzzle";
 import { buildPuzzleHintPostbackData, parsePuzzleHintPostback, resolveHintItems } from "@/lib/puzzle-hint";
@@ -2956,6 +2956,45 @@ async function handleTextEvent({
       `plannedMsgs=${msgs.length} transport=reply(replyWithLagToLine)`,
     );
     if (msgs.length === 0) return false; // 変換結果 0 件（画像URLなし等）→ 呼び出し側で Transition へフォールバック
+
+    // ── キーワード応答後の後続 auto-send（フェーズ入場 / puzzle 正解後と同じ挙動） ──
+    // buildMessageChain は nextMessageId チェーンしか辿らないため、同一フェーズ・表示順で後ろにある
+    // 独立 head（別の吹き出し）が送られなかった。matchPuzzleFromPhase 正解後の drain（下記 4500 台）と
+    // 同じく drainAutoSendableItems で「応答メッセージの sortOrder より後」の auto-sendable を続けて送る。
+    //   - response/hint/別 triggerKeyword/QR分岐先/セグメント不一致 puzzle は isAutoSendableMessageNode で除外。
+    //   - puzzle / QR 末尾 / trigger は requiresUserInteraction で停止。別フェーズは phase-local なので対象外。
+    //   - reachedEnding では通常 auto-send を抑止する既存仕様に合わせ drain しない。
+    //   - 対象は「現在フェーズに属する」matched のみ（global keyword は phase drain の起点にしない）。
+    //   - 応答メッセージ（またはそのチェーン末尾）が quick_reply を持つ場合はユーザー選択待ちのため後続を送らない
+    //     （＝ 実機の QR 停止仕様。moveQuickReplyToTail 後の最終吹き出しに QR が付く）。
+    if (currentPhase && !progress.reachedEnding) {
+      const responseAwaitsSelection = msgs.some((m) => !!(m as { quickReply?: unknown }).quickReply);
+      const inPhaseSortOrders = matched
+        .map((m) => currentPhase.messages.find((pm) => pm.id === m.id)?.sortOrder)
+        .filter((s): s is number => typeof s === "number");
+      const followups = drainKeywordResponseFollowups(
+        currentPhase.messages, inPhaseSortOrders, userSegment, responseAwaitsSelection,
+      );
+      if (followups.length > 0) {
+        const continuationPhase: import("@/types").RuntimePhase = {
+          id:          currentPhase.id,
+          phase_type:  currentPhase.phaseType as import("@/types").PhaseType,
+          name:        currentPhase.name,
+          description: currentPhase.description,
+          messages:    followups,
+          transitions: null, // 継続送信では遷移 QR を付けない（puzzle 正解後 drain と同仕様）
+        };
+        const followupLineMsgs = buildPhaseMessages(continuationPhase, { systemSender, vars });
+        if (followupLineMsgs.length > 0) {
+          console.log(
+            `[Webhook][keyword] 応答後の自動連続送信 followups=${followups.length}件`,
+            followups.map((m) => `id=${m.id.slice(0, 8)} type=${m.message_type} sort=${m.sort_order}`).join(" / "),
+          );
+          msgs.push(...followupLineMsgs);
+        }
+      }
+    }
+
     const tReplyKw = Date.now();
     // Phase 2c hotfix: chain (= length > 1) で per-message timing が効くよう replyWithLagToLine に統一
     await replyWithLagToLine(replyToken, msgs, userId, token);

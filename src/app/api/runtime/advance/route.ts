@@ -21,7 +21,7 @@ import { prisma } from "@/lib/prisma";
 import { ok, badRequest, notFound, serverError } from "@/lib/api-response";
 import { withAuth } from "@/lib/auth";
 import { advanceScenarioSchema, formatZodErrors } from "@/lib/validations";
-import { buildRuntimeState, matchTransition, applySetFlags, safeParseFlags, fetchPhaseWithIncludes, drainAutoSendableItems } from "@/lib/runtime";
+import { buildRuntimeState, matchTransition, applySetFlags, safeParseFlags, fetchPhaseWithIncludes, drainAutoSendableItems, drainKeywordResponseFollowups } from "@/lib/runtime";
 import { checkPuzzleAnswerAny, resolveAnswerCandidates, parseAnswerMatchType } from "@/lib/puzzle-answer";
 import { ZodError } from "zod";
 
@@ -236,6 +236,23 @@ export const POST = withAuth(async (req, _ctx, user) => {
               cur = fetched ?? undefined;
             }
             depth++;
+          }
+        }
+
+        // ── キーワード応答後の後続 auto-send（webhook deliverKeywordMatched と同じ・preview parity）──
+        // 応答メッセージ（kind=response）の sortOrder より後の同フェーズ auto-sendable を続けて返す。
+        // reachedEnding では通常 auto-send を抑止する既存仕様に合わせ drain しない。
+        // 応答メッセージが quick_reply を持つ場合はユーザー選択待ちのため後続を送らない（QR 停止仕様）。
+        if (matched.length > 0 && responseMessages.length > 0 && !progress.reachedEnding) {
+          const responseAwaitsSelection = responseMessages.some((m) => (m.quick_replies?.length ?? 0) > 0);
+          const phaseRow = await fetchPhaseWithIncludes(progress.currentPhaseId!);
+          if (phaseRow) {
+            const userSegment = (progress.reachedEnding ? "completed" : "in_progress") as
+              "not_started" | "in_progress" | "completed";
+            const followups = drainKeywordResponseFollowups(
+              phaseRow.messages, matched.map((m) => m.sortOrder), userSegment, responseAwaitsSelection,
+            );
+            responseMessages.push(...followups);
           }
         }
       }

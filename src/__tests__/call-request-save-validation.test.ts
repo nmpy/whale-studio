@@ -51,3 +51,20 @@ describe("updateMessageSchema: message_type=call_request を含む更新は payl
     expect(r.success).toBe(true);
   });
 });
+
+describe("call_request を kind=response（応答メッセージ）として作成/保存できる（問題B）", () => {
+  it("6) kind=response + message_type=call_request + 有効 payload → 保存可", () => {
+    const r = createMessageSchema.safeParse({
+      work_id: WORK_ID, kind: "response", message_type: "call_request",
+      trigger_keyword: "でんわ", flex_payload_json: VALID_CFG,
+    });
+    expect(r.success).toBe(true);
+  });
+  it("kind=response でも空 payload の call_request は保存不可", () => {
+    const r = createMessageSchema.safeParse({
+      work_id: WORK_ID, kind: "response", message_type: "call_request",
+      trigger_keyword: "でんわ", flex_payload_json: "",
+    });
+    expect(r.success).toBe(false);
+  });
+});
