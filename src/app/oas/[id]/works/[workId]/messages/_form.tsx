@@ -3024,17 +3024,13 @@ function renderBubbleContent(
     }
     return (
       <div>
-        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6, flexWrap: "wrap" }}>
-          <span style={{
-            fontSize: 10, fontWeight: 700, background: "#fff7ed", color: "#c2410c",
-            border: "1px solid #fed7aa", padding: "1px 7px", borderRadius: 10,
-          }}>
-            🧩 謎チャレンジ
-          </span>
-          {item.puzzle_type && (
+        {/* 「🧩 謎チャレンジ」バッジは実機 LINE には表示されないため、プレビューでは描画しない。
+            謎・問題モードの機能・本文・回答・ヒント・QR プレビューは不変。 */}
+        {item.puzzle_type && (
+          <div style={{ display: "flex", alignItems: "center", marginBottom: 6 }}>
             <span style={{ fontSize: 10, color: "#9ca3af" }}>{item.puzzle_type}</span>
-          )}
-        </div>
+          </div>
+        )}
         {puzzleContentEl}
         {item.answer && (
           <div style={{ fontSize: 10, color: "#9ca3af", marginTop: 5 }}>
@@ -3218,14 +3214,9 @@ function ChainBubbleRow({
 
   return (
     <div>
-      {/* notify_text (テキスト以外) */}
-      {item.message_type !== "text" && item.notify_text && (
-        <div style={{ textAlign: "center", marginBottom: 10, fontSize: 11, color: "rgba(0,0,0,0.4)",
-          background: "rgba(255,255,255,0.45)", borderRadius: 10, padding: "3px 12px",
-          display: "inline-block", marginLeft: "50%", transform: "translateX(-50%)" }}>
-          {item.notify_text}
-        </div>
-      )}
+      {/* notify_text（プッシュ通知/altText 用途）はトーク画面には表示されないため、
+          LINE プレビューには吹き出しとして描画しない（実機表示に合わせる）。
+          入力欄・保存値・送信 payload（notify_text/altText）は不変。 */}
 
       {/* キャラ + 吹き出し */}
       <div style={{ display: "flex", gap: 7, alignItems: "flex-start" }}>
