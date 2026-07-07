@@ -35,6 +35,7 @@ import { Switch } from "@/components/Switch";
 import { destinationApi } from "@/lib/api-client";
 import type { LineDestination } from "@/types";
 import { normalizeFlexJson, prettyFlexJson, FLEX_SIMULATOR_URL, FLEX_ERRORS } from "@/lib/flex";
+import { type CallRequestConfig, buildCallRequestUri, buildCallRequestAltText, validateCallRequestConfig, normalizeCallTel, CALL_REQUEST_LABEL_MAX } from "@/lib/call-request";
 
 // ── 拡張メッセージ種別 ────────────────────────────────────
 
@@ -45,6 +46,7 @@ export type ExtendedMessageType =
   | "video"
   | "carousel"
   | "voice"
+  | "call_request"
   | "flex";
 
 // ── 定数 ────────────────────────────────────────────────
@@ -59,6 +61,7 @@ export const MESSAGE_TYPE_OPTIONS: {
   { value: "video",    label: "動画",         desc: "動画メッセージ" },
   { value: "carousel", label: "カルーセル",   desc: "カルーセルメッセージ" },
   { value: "voice",    label: "ボイス",       desc: "ボイスメッセージ" },
+  { value: "call_request", label: "通話リクエスト", desc: "電話・LINEコールURL・任意URLを開くボタン付きのメッセージ（Flexで送信）" },
   { value: "flex",     label: "Flex Message", desc: "LINE公式のFlex Message Simulatorで作成したJSONを貼り付けて送信できます。" },
 ];
 
@@ -248,6 +251,16 @@ export interface MessageFormState {
   // ── Flex Message (message_type="flex" 用) ──
   /** 貼り付け JSON (bubble/carousel または flex 全体)。編集時は整形済みで復元する。 */
   flex_payload_json:          string;
+  // ── 通話リクエスト (message_type="call_request" 用) ──
+  //   保存時に flex_payload_json（設定 JSON）＋ alt_text に変換する。表示専用の分割フィールド。
+  call_title:                 string;
+  call_body:                  string;
+  call_button_label:          string;
+  call_type:                  "line_call_url" | "tel" | "url";
+  call_line_url:              string;
+  call_tel:                   string;
+  call_url:                   string;
+  call_supplement:            string;
   // ── 演出設定 ──
   // 継承モード廃止。read_receipt_mode は常に "immediate" / "delayed" / "before_reply"
   // のいずれか。typing_enabled / loading_enabled は "true" / "false" のいずれか。
@@ -326,6 +339,15 @@ export const EMPTY_MESSAGE_FORM: MessageFormState = {
   image_action_postback_data: "",
   alt_text:                   "",
   flex_payload_json:          "",
+  // 通話リクエスト初期値（既定文言）。
+  call_title:                 "通話リクエスト",
+  call_body:                  "必要に応じて、下のボタンから通話を開始してください。",
+  call_button_label:          "電話をかける",
+  call_type:                  "line_call_url",
+  call_line_url:              "",
+  call_tel:                   "",
+  call_url:                   "",
+  call_supplement:            "",
   // 演出設定 (= 継承モード廃止: すべて OFF 相当を初期値とする)。
   read_receipt_mode:    "immediate", // = OFF (人為的な既読遅延なし)
   read_delay_ms:        "",
@@ -437,6 +459,12 @@ export function msgToFormState(msg: {
       ? "global"
       : (msg.kind as MessageKind) ?? "normal";
 
+  // 通話リクエスト: 保存された設定 JSON（flex_payload_json）を分割フィールドへ復元。無効なら既定値。
+  const callCfg: Partial<CallRequestConfig> = (() => {
+    if (msg.message_type !== "call_request" || !msg.flex_payload_json) return {};
+    try { return JSON.parse(msg.flex_payload_json) as CallRequestConfig; } catch { return {}; }
+  })();
+
   return {
     trigger_keyword:       msg.trigger_keyword ?? "",
     target_segment:        msg.target_segment  ?? "",
@@ -499,8 +527,18 @@ export function msgToFormState(msg: {
     image_action_liff_page_id:  msg.image_action_liff_page_id ?? "",
     image_action_postback_data: msg.image_action_postback_data ?? "",
     alt_text:                   msg.alt_text                  ?? "",
-    // Flex Message: 保存済み contents JSON を整形して textarea に復元
-    flex_payload_json:          prettyFlexJson(msg.flex_payload_json),
+    // Flex Message: 保存済み contents JSON を整形して textarea に復元。
+    //   call_request は flex_payload_json を設定 JSON として使うため textarea には復元しない。
+    flex_payload_json:          msg.message_type === "call_request" ? "" : prettyFlexJson(msg.flex_payload_json),
+    // 通話リクエスト: 分割フィールドへ復元（未保存/無効は既定文言）。
+    call_title:                 callCfg.title       ?? "通話リクエスト",
+    call_body:                  callCfg.body        ?? "必要に応じて、下のボタンから通話を開始してください。",
+    call_button_label:          callCfg.buttonLabel ?? "電話をかける",
+    call_type:                  callCfg.callType    ?? "line_call_url",
+    call_line_url:              callCfg.lineCallUrl ?? "",
+    call_tel:                   callCfg.tel         ?? "",
+    call_url:                   callCfg.url         ?? "",
+    call_supplement:            callCfg.supplement  ?? "",
     // 自由入力受付
     free_input_enabled:         msg.free_input_enabled         ?? false,
     free_input_variable_key:    msg.free_input_variable_key    ?? "",
@@ -527,6 +565,20 @@ export function msgToFormState(msg: {
     loading_threshold_ms: msg.loading_threshold_ms != null ? String(msg.loading_threshold_ms) : "",
     loading_min_seconds:  msg.loading_min_seconds != null ? String(msg.loading_min_seconds) : "",
     loading_max_seconds:  msg.loading_max_seconds != null ? String(msg.loading_max_seconds) : "",
+  };
+}
+
+/** 通話リクエストの分割フォームフィールドを保存用の CallRequestConfig に変換する。 */
+export function formToCallConfig(form: MessageFormState): CallRequestConfig {
+  return {
+    title:       form.call_title.trim(),
+    body:        form.call_body.trim(),
+    buttonLabel: form.call_button_label.trim(),
+    callType:    form.call_type,
+    lineCallUrl: form.call_type === "line_call_url" ? form.call_line_url.trim() : null,
+    tel:         form.call_type === "tel" ? form.call_tel.trim() : null,
+    url:         form.call_type === "url" ? form.call_url.trim() : null,
+    supplement:  form.call_supplement.trim() || null,
   };
 }
 
@@ -633,15 +685,20 @@ export function formStateToMsgBody(form: MessageFormState) {
       form.message_type === "image" && form.image_action_type === "postback"
         ? (form.image_action_postback_data.trim() || null)
         : null,
-    // alt_text (画像メッセージの Flex 変換 / Flex Message の代替テキストとして使用)
+    // alt_text (画像メッセージの Flex 変換 / Flex Message の代替テキスト / 通話リクエストの altText)
     alt_text:
-      form.message_type === "image"
+      form.message_type === "call_request"
+        ? buildCallRequestAltText(formToCallConfig(form))
+        : form.message_type === "image"
         ? (form.alt_text.trim() || null)
         : (form.alt_text.trim() || null),
     // Flex Message: 貼り付け JSON を contents (bubble/carousel) へ正規化して保存。
+    // 通話リクエスト: 設定 JSON（CallRequestConfig）を flex_payload_json に保存し、送信時に Flex を生成する。
     // 不正な場合は raw を送り、サーバー側 Zod で同じ判定によりエラーにする（client 検証で通常はブロック済み）。
     flex_payload_json:
-      form.message_type === "flex"
+      form.message_type === "call_request"
+        ? JSON.stringify(formToCallConfig(form))
+        : form.message_type === "flex"
         ? (() => {
             const norm = normalizeFlexJson(form.flex_payload_json);
             return norm.ok ? JSON.stringify(norm.value.contents) : (form.flex_payload_json.trim() || null);
@@ -686,6 +743,11 @@ export function validateMessageForm(form: MessageFormState, phases: { id: string
     if (key && !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(key)) {
       return "変数名は半角英数字とアンダースコアで入力してください。先頭に数字は使えません。";
     }
+  }
+  // 通話リクエスト: title/body/buttonLabel/通話先の必須チェック。
+  if (form.message_type === "call_request") {
+    const err = validateCallRequestConfig(formToCallConfig(form));
+    if (err) return err;
   }
   // chain continuation (additional slots) の自由入力受付も同じバリデーションを行う。
   for (let i = 0; i < form.additionalMessages.length; i++) {
@@ -2894,6 +2956,32 @@ function CarouselCardsEditor({ cardType, cards, onChange, disabled = false }: {
 
 const PREVIEW_ELLIPSIS = { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } as const;
 
+/** 管理画面プレビュー: 通話リクエスト Flex カード（実機に近い見た目・ボタンは発信しない）。
+ *  実機と異なる装飾ラベル（例: 種別バッジ）は出さない。 */
+function CallRequestPreview({ configJson }: { configJson: string }) {
+  let cfg: CallRequestConfig | null = null;
+  try { cfg = configJson ? (JSON.parse(configJson) as CallRequestConfig) : null; } catch { cfg = null; }
+  const title      = (cfg?.title ?? "").trim() || "通話リクエスト";
+  const body       = (cfg?.body ?? "").trim();
+  const supplement = (cfg?.supplement ?? "").trim();
+  const label      = (cfg?.buttonLabel ?? "").trim() || "電話をかける";
+  return (
+    <div style={{ width: 220, border: "1px solid #e5e7eb", borderRadius: 10, overflow: "hidden", background: "#fff" }}>
+      <div style={{ padding: "10px 12px 6px", fontWeight: 700, fontSize: 13, color: "#111", wordBreak: "break-word" }}>{title}</div>
+      <div style={{ padding: "0 12px 10px" }}>
+        {body
+          ? <div style={{ fontSize: 12, color: "#333", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{body}</div>
+          : <div style={{ fontSize: 12, color: "#aaa", fontStyle: "italic" }}>本文を入力してください</div>}
+        {supplement && <div style={{ fontSize: 11, color: "#999", marginTop: 6, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{supplement}</div>}
+      </div>
+      <div style={{ padding: "8px 12px", borderTop: "1px solid #f0f0f0" }}>
+        {/* ボタンは見た目のみ（CMS プレビューでは発信しない）*/}
+        <div style={{ background: "#06C755", color: "#fff", textAlign: "center", borderRadius: 8, padding: "8px 0", fontSize: 13, fontWeight: 600 }}>{label}</div>
+      </div>
+    </div>
+  );
+}
+
 /** 管理画面プレビュー: 4 カードタイプを見分けられる横スクロールカード列。 */
 function CarouselCardsPreview({ cardType, cards }: { cardType: CarouselCardType; cards: CarouselCard[] }) {
   if (!cards || cards.length === 0) return <span style={{ color: "#aaa", fontStyle: "italic", fontSize: 12 }}>カードを追加してください</span>;
@@ -3126,6 +3214,9 @@ function renderBubbleContent(
           </div>
         </div>
       );
+    case "call_request":
+      // 通話リクエストの Flex カードを簡易プレビュー（表示のみ・ボタンは発信しない）。
+      return <CallRequestPreview configJson={item.flex_payload_json} />;
     case "carousel":
       // 通常メッセージ carousel は新カードタイプ式プレビュー。
       return <CarouselCardsPreview cardType={item.carousel_card_type} cards={item.carousel_cards} />;
@@ -4078,7 +4169,10 @@ function buildPreviewChain(args: {
     image_action_text:  form.image_action_text,
     image_action_url:   form.image_action_url,
     image_action_phase_id: form.image_action_phase_id,
-    flex_payload_json:  form.flex_payload_json,
+    // call_request はライブ入力（分割フィールド）から設定 JSON を組み立ててプレビューに渡す。
+    flex_payload_json:  form.message_type === "call_request"
+                          ? JSON.stringify(formToCallConfig(form))
+                          : form.flex_payload_json,
   });
   if (form.free_input_enabled) return out;
   if (out.length >= PREVIEW_CHAIN_MAX) return out;
@@ -4268,7 +4362,8 @@ function AdditionalMessageBlock({
         <div className="form-group">
           <label style={fieldLabel}>種別</label>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-            {MESSAGE_TYPE_OPTIONS.map((opt) => (
+            {/* 通話リクエストは連続メッセージ（2通目以降）では選べない（1通目メッセージ専用）。 */}
+            {MESSAGE_TYPE_OPTIONS.filter((o) => o.value !== "call_request").map((opt) => (
               <button
                 key={opt.value}
                 type="button"
@@ -5658,6 +5753,64 @@ export function MessageForm({
                 ))}
               </div>
             </div>
+
+            {/* ── 通話リクエスト ── */}
+            {mtype === "call_request" && (
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label style={fieldLabel} htmlFor="call_title">タイトル <RequiredMark /></label>
+                <input id="call_title" type="text" className="form-input" maxLength={100}
+                  value={form.call_title} onChange={(e) => set("call_title", e.target.value)} placeholder="通話リクエスト" />
+
+                <label style={{ ...fieldLabel, marginTop: 14 }} htmlFor="call_body">本文 <RequiredMark /></label>
+                <textarea id="call_body" className="form-input" rows={3} maxLength={1000}
+                  value={form.call_body} onChange={(e) => set("call_body", e.target.value)}
+                  placeholder="必要に応じて、下のボタンから通話を開始してください。" />
+
+                <label style={{ ...fieldLabel, marginTop: 14 }} htmlFor="call_button_label">ボタンラベル <RequiredMark /></label>
+                <input id="call_button_label" type="text" className="form-input" maxLength={CALL_REQUEST_LABEL_MAX}
+                  value={form.call_button_label} onChange={(e) => set("call_button_label", e.target.value)} placeholder="電話をかける" />
+
+                <label style={{ ...fieldLabel, marginTop: 14 }} htmlFor="call_type">通話先タイプ</label>
+                <select id="call_type" className="form-input" value={form.call_type}
+                  onChange={(e) => set("call_type", e.target.value as "line_call_url" | "tel" | "url")}>
+                  <option value="line_call_url">LINEコールURL</option>
+                  <option value="tel">電話番号</option>
+                  <option value="url">任意URL</option>
+                </select>
+
+                {form.call_type === "line_call_url" && (
+                  <>
+                    <label style={{ ...fieldLabel, marginTop: 14 }} htmlFor="call_line_url">LINEコールURL <RequiredMark /></label>
+                    <input id="call_line_url" type="text" className="form-input" maxLength={2000}
+                      value={form.call_line_url} onChange={(e) => set("call_line_url", e.target.value)}
+                      placeholder="LINE公式アカウント管理画面で発行したLINEコールURLを入力" />
+                    <div style={hintText}>https:// から始まる URL を推奨します。</div>
+                  </>
+                )}
+                {form.call_type === "tel" && (
+                  <>
+                    <label style={{ ...fieldLabel, marginTop: 14 }} htmlFor="call_tel">電話番号 <RequiredMark /></label>
+                    <input id="call_tel" type="text" className="form-input" maxLength={40}
+                      value={form.call_tel} onChange={(e) => set("call_tel", e.target.value)} placeholder="例: 0312345678" />
+                    <div style={hintText}>ハイフン・スペース・括弧は入力できます。送信時は数字（と先頭+）のみの tel: URI に変換されます。</div>
+                  </>
+                )}
+                {form.call_type === "url" && (
+                  <>
+                    <label style={{ ...fieldLabel, marginTop: 14 }} htmlFor="call_url">任意URL <RequiredMark /></label>
+                    <input id="call_url" type="text" className="form-input" maxLength={2000}
+                      value={form.call_url} onChange={(e) => set("call_url", e.target.value)} placeholder="https://..." />
+                    <div style={hintText}>https:// から始まる URL を推奨します。</div>
+                  </>
+                )}
+
+                <label style={{ ...fieldLabel, marginTop: 14 }} htmlFor="call_supplement">補足テキスト（任意）</label>
+                <input id="call_supplement" type="text" className="form-input" maxLength={500}
+                  value={form.call_supplement} onChange={(e) => set("call_supplement", e.target.value)}
+                  placeholder="例: スタッフが対応できない場合があります" />
+                <div style={hintText}>送信時は「電話・LINEコールURL・任意URL を開くボタン付きの Flex Message」として送られます。</div>
+              </div>
+            )}
 
             {/* ── Flex Message ── */}
             {mtype === "flex" && (

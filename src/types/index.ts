@@ -98,7 +98,7 @@ export interface QuickReplyItem {
  * - "text"  … テキストアイコン型（非推奨・既存データ読み取り互換のみ。新規作成は "image" 固定）
  */
 export type IconType      = "image" | "text";
-export type MessageType   = "text" | "image" | "riddle" | "video" | "carousel" | "voice" | "flex";
+export type MessageType   = "text" | "image" | "riddle" | "video" | "carousel" | "voice" | "flex" | "call_request";
 export type PhaseType     = "start" | "normal" | "ending" | "global";
 /** メッセージの役割種別 */
 export type MessageKind   = "start" | "normal" | "response" | "hint" | "puzzle" | "system_notice";

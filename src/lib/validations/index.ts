@@ -3,6 +3,7 @@
 
 import { z } from "zod";
 import { normalizeFlexJson, FLEX_ERRORS } from "@/lib/flex";
+import { validateCallRequestConfig } from "@/lib/call-request";
 import { MIN_DELAY_MINUTES as SCHED_MIN_DELAY_MINUTES, MAX_DELAY_MINUTES as SCHED_MAX_DELAY_MINUTES } from "@/lib/scheduled-message";
 import { validateMedia, URL_MAX_LENGTH, type MediaUsage } from "@/lib/media-validation";
 
@@ -430,7 +431,7 @@ export const createMessageSchema = z.object({
   work_id:          uuidSchema,
   phase_id:         uuidSchema.optional().nullable(),
   character_id:     uuidSchema.optional().nullable(),
-  message_type:     z.enum(["text", "image", "riddle", "video", "carousel", "voice", "flex"]).default("text"),
+  message_type:     z.enum(["text", "image", "riddle", "video", "carousel", "voice", "flex", "call_request"]).default("text"),
   /** メッセージ役割種別: "start" | "normal" | "response" | "hint" | "puzzle" | "system_notice" */
   kind:             z.enum(["start", "normal", "response", "hint", "puzzle", "system_notice"]).default("normal"),
   body:             z.string().max(10000).optional(),
@@ -597,6 +598,15 @@ export const createMessageSchema = z.object({
         ctx.addIssue({ code: "custom", path: ["alt_text"], message: FLEX_ERRORS.emptyAltText });
       }
     }
+    // 通話リクエスト: 設定 JSON（flex_payload_json）が有効か検証（title/body/buttonLabel/通話先）。
+    if (val.message_type === "call_request") {
+      let cfg: unknown = null;
+      try { cfg = val.flex_payload_json ? JSON.parse(val.flex_payload_json) : null; } catch { cfg = null; }
+      const err = validateCallRequestConfig(cfg as Parameters<typeof validateCallRequestConfig>[0]);
+      if (err) {
+        ctx.addIssue({ code: "custom", path: ["flex_payload_json"], message: err });
+      }
+    }
   }
   // 外部URL参照メディアの用途別検証（error のみ保存ブロック）。
   applyMediaIssues(ctx, val);
@@ -610,7 +620,7 @@ export const createMessageSchema = z.object({
 export const updateMessageSchema = z.object({
   phase_id:          uuidSchema.optional().nullable(),
   character_id:      uuidSchema.optional().nullable(),
-  message_type:      z.enum(["text", "image", "riddle", "video", "carousel", "voice", "flex"]).optional(),
+  message_type:      z.enum(["text", "image", "riddle", "video", "carousel", "voice", "flex", "call_request"]).optional(),
   /** メッセージ役割種別 */
   kind:              z.enum(["start", "normal", "response", "hint", "puzzle", "system_notice"]).optional(),
   body:              z.string().max(10000).optional().nullable(),
@@ -715,6 +725,15 @@ export const updateMessageSchema = z.object({
       }
       if (!val.alt_text?.trim()) {
         ctx.addIssue({ code: "custom", path: ["alt_text"], message: FLEX_ERRORS.emptyAltText });
+      }
+    }
+    // 通話リクエスト: 設定 JSON（flex_payload_json）が有効か検証（title/body/buttonLabel/通話先）。
+    if (val.message_type === "call_request") {
+      let cfg: unknown = null;
+      try { cfg = val.flex_payload_json ? JSON.parse(val.flex_payload_json) : null; } catch { cfg = null; }
+      const err = validateCallRequestConfig(cfg as Parameters<typeof validateCallRequestConfig>[0]);
+      if (err) {
+        ctx.addIssue({ code: "custom", path: ["flex_payload_json"], message: err });
       }
     }
   }
