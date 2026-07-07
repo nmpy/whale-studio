@@ -3112,19 +3112,11 @@ function renderBubbleContent(
     }
     return (
       <div>
-        {/* 「🧩 謎チャレンジ」バッジは実機 LINE には表示されないため、プレビューでは描画しない。
-            謎・問題モードの機能・本文・回答・ヒント・QR プレビューは不変。 */}
-        {item.puzzle_type && (
-          <div style={{ display: "flex", alignItems: "center", marginBottom: 6 }}>
-            <span style={{ fontSize: 10, color: "#9ca3af" }}>{item.puzzle_type}</span>
-          </div>
-        )}
+        {/* 「🧩 謎チャレンジ」バッジ・配信形式ラベル（puzzle_type: text/image/...）・
+            「答え: xxx」は実機 LINE には表示されない制作補助表示のため、プレビューでは描画しない
+            （#553 と同方針）。答え表示はプレビュー上のネタバレも防ぐ。
+            謎・問題モードの機能・本文・回答保存・ヒント・QR プレビュー・正誤判定は不変。 */}
         {puzzleContentEl}
-        {item.answer && (
-          <div style={{ fontSize: 10, color: "#9ca3af", marginTop: 5 }}>
-            答え: <span style={{ fontWeight: 600, color: "#6b7280" }}>{item.answer}</span>
-          </div>
-        )}
       </div>
     );
   }
