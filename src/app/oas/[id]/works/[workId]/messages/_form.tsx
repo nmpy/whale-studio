@@ -1874,6 +1874,7 @@ function QuickReplyEditor({ items, onChange, responseMessages, phases, transitio
                             </select>
                             <div style={{ ...hintText, marginTop: 4 }}>
                               クイックリプライタップ直後に返す応答メッセージです。<strong>応答メッセージ（種別=応答）のみ選択できます</strong>。
+                              通話リクエストなどを候補に出すには、対象メッセージの送信タイミングを「応答」にして保存してください。
                               ここでメッセージを返しても、プレイヤーのフェーズはまだ変わりません。
                               フェーズの通常メッセージ・入場メッセージへ進めたい場合は、Step 3 で「フェーズ遷移」を選択してください。
                             </div>
@@ -5304,7 +5305,7 @@ export function MessageForm({
               </label>
               {isPuzzle ? (
                 // 通常メッセージ側と同じ select + hintText 構造。謎・問題の送信タイミングは
-                // 通常（フェーズ遷移時に送信）/ 応答（trigger_keyword 一致時に送信）の2択。
+                // 通常（表示順に自動送信）/ 応答（trigger_keyword 一致時に送信）の2択。
                 // kind は "puzzle" 固定のまま。応答=trigger_keyword を持つ、で表現する（保存値/実行判定は不変）。
                 <>
                   <select
@@ -5318,13 +5319,13 @@ export function MessageForm({
                     }}
                     aria-label="送信タイミング"
                   >
-                    <option value="normal">通常（フェーズ遷移時に送信）</option>
+                    <option value="normal">通常（表示順に自動送信）</option>
                     <option value="response">応答（trigger_keyword 一致時に返信）</option>
                   </select>
                   <div style={hintText}>
                     {puzzleTiming === "response"
                       ? "指定キーワードが入力された時にこの謎・問題を送信します。フェーズ到達時には自動送信されません。送信後は正解するまで後続メッセージを停止します。正解後に次へ進めたい場合だけ、フェーズ遷移を設定してください。"
-                      : "フェーズ到達時にこの謎・問題を送信します。送信後は正解するまで後続メッセージを停止します（後続メッセージは正解後に送信されます）。正解後に次へ進めたい場合だけ、フェーズ遷移を設定してください。"}
+                      : "表示順に自動送信されます（フェーズ開始時など、送信処理が進んだタイミングでこの謎・問題を送信）。送信後は正解するまで後続メッセージを停止します（後続メッセージは正解後に送信されます）。正解後に次へ進めたい場合だけ、フェーズ遷移を設定してください。"}
                   </div>
                 </>
               ) : (
@@ -5340,7 +5341,7 @@ export function MessageForm({
                       if (next === "system_notice") set("message_type", "text");
                     }}
                   >
-                    <option value="normal">通常（フェーズ遷移時に送信）</option>
+                    <option value="normal">通常（表示順に自動送信）</option>
                     <option value="response">応答（trigger_keyword 一致時に返信）</option>
                     <option value="global">共通メッセージ（フェーズ不問・常時反応）</option>
                     <option value="system_notice">システム通知（中央表示・例: ミカさんが入室しました）</option>
@@ -5352,7 +5353,7 @@ export function MessageForm({
                   <div style={hintText}>
                     {form.kind === "start"    && "開始フェーズの startTrigger が一致したとき送信されます。応答キーワードの入力が必要です。フェーズに kind=start のメッセージがない場合は通常メッセージにフォールバックします。"}
                     {form.kind === "response" && "trigger_keyword が一致したときのみ返信します。フェーズは進みません。"}
-                    {form.kind === "normal"   && "フェーズ遷移時またはフェーズ表示時に送信されます。"}
+                    {form.kind === "normal"   && "このフェーズ内で、前のメッセージに続いて表示順に自動送信されます（フェーズ開始時だけでなく、キーワード応答後・正解後・QR選択後など送信処理が進んだタイミングでも、QR/謎などの停止境界に当たるまで順に送られます）。"}
                     {form.kind === "hint"     && "ヒント用メッセージです（将来拡張）。"}
                     {form.kind === "global"   && "どのフェーズにいても反応します（⭐ 全フェーズ共通）。ヒント・ヘルプ・やり直し案内などに使います。キーワードは必須です。"}
                     {form.kind === "system_notice" && "トーク中央に小さく表示されるシステム通知です（例: ミカさんが入室しました、通話が終了しました）。話者アイコン・名前は表示されません。LINE 上では通常テキストとして配信されます。"}
