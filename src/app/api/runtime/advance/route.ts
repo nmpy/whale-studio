@@ -22,7 +22,7 @@ import { ok, badRequest, notFound, serverError } from "@/lib/api-response";
 import { withAuth } from "@/lib/auth";
 import { advanceScenarioSchema, formatZodErrors } from "@/lib/validations";
 import { buildRuntimeState, matchTransition, applySetFlags, safeParseFlags, fetchPhaseWithIncludes, drainAutoSendableItems } from "@/lib/runtime";
-import { checkPuzzleAnswer, parseAnswerMatchType } from "@/lib/puzzle-answer";
+import { checkPuzzleAnswerAny, resolveAnswerCandidates, parseAnswerMatchType } from "@/lib/puzzle-answer";
 import { ZodError } from "zod";
 
 // 回答照合は @/lib/puzzle-answer に共通化済み（webhook と同じロジック）。
@@ -254,15 +254,23 @@ export const POST = withAuth(async (req, _ctx, user) => {
           const puzzles = phaseRow.messages.filter(
             (m) =>
               m.kind === "puzzle" &&
-              m.answer !== null &&
+              // 単一 answer / 複数 answers（別解）のどちらかがあれば対象（webhook と同条件）
+              (m.answer !== null ||
+                (typeof (m as { answers?: string | null }).answers === "string" &&
+                  ((m as { answers?: string | null }).answers as string).length > 0)) &&
               !solvedPuzzleIds.includes(m.id) &&
               (!m.targetSegment || m.targetSegment === userSegment),
           );
 
           for (const puzzle of puzzles) {
-            if (!puzzle.answer) continue;
+            // webhook と同じく単一 answer + 別解 answers を統合して照合（プレビューでも別解/部分一致が効く）
+            const candidates = resolveAnswerCandidates(
+              puzzle.answer,
+              (puzzle as { answers?: string | null }).answers ?? null,
+            );
+            if (candidates.length === 0) continue;
             const matchTypes = parsePuzzleMatchType(puzzle.answerMatchType);
-            if (checkPuzzleAnswer(data.label, puzzle.answer, matchTypes)) {
+            if (checkPuzzleAnswerAny(data.label, candidates, matchTypes)) {
               // ── 正解 ──
               const newSolved = [...solvedPuzzleIds, puzzle.id];
               const flagsWithSolved = { ...currentFlags, solvedPuzzles: newSolved };
