@@ -59,6 +59,7 @@ function toResponse(w: {
   welcomeLoadingSeconds?: number | null;
   followAction?: string | null;
   startKeyword?: string | null;
+  startTriggerMode?: string | null;
   readReceiptMode: string | null; readDelayMs: number | null;
   typingEnabled: boolean | null; typingMinMs: number | null; typingMaxMs: number | null;
   loadingEnabled: boolean | null; loadingThresholdMs: number | null;
@@ -85,6 +86,7 @@ function toResponse(w: {
     welcome_loading_seconds: w.welcomeLoadingSeconds ?? 0,
     follow_action:       (w.followAction as "auto_start" | "welcome_wait" | "none" | undefined) ?? "auto_start",
     start_keyword:       w.startKeyword ?? null,
+    start_trigger_mode:  (w.startTriggerMode as "keyword" | "free_text" | undefined) ?? "keyword",
     // 演出設定
     read_receipt_mode:    (w.readReceiptMode as import("@/types").ReadReceiptMode) ?? null,
     read_delay_ms:        w.readDelayMs ?? null,
@@ -177,6 +179,24 @@ export const PATCH = withAuth<{ workId: string }>(async (req, { params }, user) 
       }
     }
 
+    // ── 「自由入力で開始」(free_text) の重複バリデーション ──
+    // この作品が公開中（になる）かつ free_text で開始する場合、同一 OA の他の公開中作品に
+    // free_text が既にあれば「どの作品を開始するか曖昧」になるためエラー。
+    const effectiveTriggerMode = data.start_trigger_mode ?? existing.startTriggerMode;
+    if (effectivePublish === "active" && effectiveTriggerMode === "free_text") {
+      const otherFreeText = await prisma.work.count({
+        where: {
+          oaId:             existing.oaId,
+          publishStatus:    "active",
+          startTriggerMode: "free_text",
+          id:               { not: params.workId },
+        },
+      });
+      if (otherFreeText > 0) {
+        return badRequest("自由入力で開始できる作品は、1つの公式アカウントにつき1作品までです。どの作品を開始するか曖昧になるため、他の作品の設定を変更してください。");
+      }
+    }
+
     const updated = await prisma.work.update({
       where: { id: params.workId },
       data: {
@@ -201,6 +221,8 @@ export const PATCH = withAuth<{ workId: string }>(async (req, { params }, user) 
         ...(data.follow_action       !== undefined && { followAction:       data.follow_action }),
         // 開始キーワード: 空文字は null（解除）に正規化して保存。
         ...(data.start_keyword       !== undefined && { startKeyword:       (data.start_keyword ?? "").trim() || null }),
+        // 開始方法（keyword / free_text）。省略時は変更なし。
+        ...(data.start_trigger_mode  !== undefined && { startTriggerMode:   data.start_trigger_mode }),
         // 演出設定
         ...(data.read_receipt_mode    !== undefined && { readReceiptMode:    data.read_receipt_mode }),
         ...(data.read_delay_ms        !== undefined && { readDelayMs:        data.read_delay_ms }),

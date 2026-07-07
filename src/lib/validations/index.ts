@@ -176,6 +176,11 @@ export const updateWorkSchema = z.object({
    * 同一 OA の公開中作品間での重複は route 側で検証（Phase.startTrigger とも重複不可）。
    */
   start_keyword:       z.string().max(100).optional().nullable(),
+  /**
+   * 開始方法。"keyword"（既定・startKeyword/startTrigger 一致で開始）| "free_text"（進行中progressなしの
+   * 任意テキストで開始）。undefined（省略）は変更なし。free_text は同一 OA で最大1作品（route 側で検証）。
+   */
+  start_trigger_mode:  z.enum(["keyword", "free_text"]).optional(),
   // ── 演出デフォルト設定 ──
   read_receipt_mode:    z.enum(["inherit", "immediate", "delayed", "before_reply"]).optional().nullable(),
   read_delay_ms:        z.number().int().min(0).max(600000).optional().nullable(),

@@ -11,7 +11,7 @@
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
-const mockWork  = { findUnique: vi.fn(), update: vi.fn(), findMany: vi.fn() };
+const mockWork  = { findUnique: vi.fn(), update: vi.fn(), findMany: vi.fn(), count: vi.fn() };
 const mockPhase = { findFirst: vi.fn() };
 vi.mock("@/lib/prisma", () => ({ prisma: { work: mockWork, phase: mockPhase } }));
 
@@ -33,7 +33,7 @@ function existingWork(over: Record<string, unknown> = {}) {
     publishStatus: "active", sortOrder: 0, liffEnabled: true, liffHomeSettingsJson: {},
     resumeEnabled: true, systemCharacterId: null,
     welcomeMessage: null, welcomeMessagesJson: [], welcomeLoadingSeconds: 0, followAction: "auto_start",
-    startKeyword: null,
+    startKeyword: null, startTriggerMode: "keyword",
     readReceiptMode: null, readDelayMs: null, typingEnabled: null, typingMinMs: null, typingMaxMs: null,
     loadingEnabled: null, loadingThresholdMs: null, loadingMinSeconds: null, loadingMaxSeconds: null,
     createdAt: new Date(), updatedAt: new Date(), ...over,
@@ -55,6 +55,7 @@ beforeEach(() => {
   mockRequireRole.mockResolvedValue({ ok: true, response: null });
   mockWork.findUnique.mockResolvedValue(existingWork());
   mockWork.findMany.mockResolvedValue([]);              // 他の公開中作品なし（デフォルト）
+  mockWork.count.mockResolvedValue(0);                  // 他の free_text 作品なし（デフォルト）
   mockPhase.findFirst.mockResolvedValue(null);          // 他作品の startTrigger なし（デフォルト）
   mockWork.update.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => existingWork(data));
 });
@@ -99,5 +100,44 @@ describe("start_keyword 重複バリデーション", () => {
     expect(findManyArg?.where?.oaId).toBe(OA_ID);
     expect(findManyArg?.where?.publishStatus).toBe("active");
     expect(findManyArg?.where?.id).toEqual({ not: WORK_ID });
+  });
+});
+
+describe("start_trigger_mode = free_text 重複バリデーション", () => {
+  it("公開中 + free_text で、同一OAに他の free_text 公開作品あり → 400（保存しない）", async () => {
+    mockWork.count.mockResolvedValue(1); // 他に free_text の公開中作品が1件
+    const res = await callPatch({ start_trigger_mode: "free_text" });
+    expect(res.status).toBe(400);
+    expect(mockWork.update).not.toHaveBeenCalled();
+  });
+
+  it("公開中 + free_text で、他に free_text 作品なし → 200（保存する）", async () => {
+    mockWork.count.mockResolvedValue(0);
+    const res = await callPatch({ start_trigger_mode: "free_text" });
+    expect(res.status).toBe(200);
+    expect(savedData()?.startTriggerMode).toBe("free_text");
+  });
+
+  it("free_text の重複チェックは oaId スコープ（count に oaId 条件が渡る）", async () => {
+    mockWork.count.mockResolvedValue(0);
+    await callPatch({ start_trigger_mode: "free_text" });
+    const where = mockWork.count.mock.calls[0]?.[0]?.where as Record<string, unknown>;
+    expect(where.oaId).toBe(OA_ID);
+    expect(where.startTriggerMode).toBe("free_text");
+    expect(where.publishStatus).toBe("active");
+  });
+
+  it("keyword に戻す場合は free_text 重複チェックを行わない", async () => {
+    const res = await callPatch({ start_trigger_mode: "keyword" });
+    expect(res.status).toBe(200);
+    expect(mockWork.count).not.toHaveBeenCalled();
+    expect(savedData()?.startTriggerMode).toBe("keyword");
+  });
+
+  it("非公開(draft)で free_text にしても重複チェックしない（公開時のみ検証）", async () => {
+    mockWork.findUnique.mockResolvedValue(existingWork({ publishStatus: "draft" }));
+    const res = await callPatch({ start_trigger_mode: "free_text" });
+    expect(res.status).toBe(200);
+    expect(mockWork.count).not.toHaveBeenCalled();
   });
 });

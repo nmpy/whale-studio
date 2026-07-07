@@ -39,6 +39,7 @@ interface WorkForm {
   publish_status: PublishStatus;
   sort_order:     number;
   start_keyword:  string;
+  start_trigger_mode: "keyword" | "free_text";
 }
 
 // ── ローカル共通: 必須マーク (= Phase 2.1 /account と同じパターンを重複定義) ──
@@ -88,6 +89,7 @@ export default function WorkEditPage() {
         publish_status: w.publish_status,
         sort_order:     w.sort_order,
         start_keyword:  w.start_keyword ?? "",
+        start_trigger_mode: w.start_trigger_mode ?? "keyword",
       });
       // 同一 OA の公開中作品が複数あるかを判定（開始キーワード未設定の警告に使う）。失敗しても致命的でない。
       try {
@@ -122,6 +124,7 @@ export default function WorkEditPage() {
         publish_status: workForm.publish_status,
         sort_order:     workForm.sort_order,
         start_keyword:  workForm.start_keyword.trim() || null,
+        start_trigger_mode: workForm.start_trigger_mode,
       });
       showToast("作品情報を保存しました", "success");
     } catch (err) {
@@ -274,10 +277,35 @@ export default function WorkEditPage() {
             />
           </div>
 
+          {/* 開始方法（keyword / free_text） */}
+          <div className="mb-5">
+            <label htmlFor="work-start-trigger-mode" className="mb-1.5 block text-[13px] font-bold text-ink">
+              開始方法
+            </label>
+            <select
+              id="work-start-trigger-mode"
+              className={compactInputClass + " w-full"}
+              value={workForm!.start_trigger_mode}
+              onChange={(e) => setWorkField("start_trigger_mode", e.target.value as "keyword" | "free_text")}
+              disabled={!canEdit}
+            >
+              <option value="keyword">キーワードで開始</option>
+              <option value="free_text">自由入力で開始</option>
+            </select>
+            <p className="mt-1.5 text-[12px] leading-relaxed text-ink-3">
+              {workForm!.start_trigger_mode === "free_text"
+                ? "プレイヤーが任意のテキストを送信した時点で、この作品を開始します（入力内容は問いません）。1つの公式アカウント内で複数作品に設定すると開始対象が曖昧になるため、基本的に1作品のみで使用してください。進行中のプレイヤーには発動しません。"
+                : "開始キーワード（下）または開始フェーズのトリガーが一致したときに、この作品を開始します。"}
+            </p>
+          </div>
+
           {/* start_keyword（開始キーワード） */}
           <div className="mb-5">
             <label htmlFor="work-start-keyword" className="mb-1.5 block text-[13px] font-bold text-ink">
               開始キーワード
+              {workForm!.start_trigger_mode === "free_text" && (
+                <span className="ml-2 text-[11px] font-normal text-ink-3">（自由入力で開始のときは任意）</span>
+              )}
             </label>
             <input
               id="work-start-keyword"
@@ -295,7 +323,7 @@ export default function WorkEditPage() {
             <p className="mt-1 text-[12px] leading-relaxed text-ink-3">
               開始キーワードは作品内の応答キーワードより優先されます。
             </p>
-            {multiActivePublished && !workForm!.start_keyword.trim() && (
+            {multiActivePublished && !workForm!.start_keyword.trim() && workForm!.start_trigger_mode !== "free_text" && (
               <p className="mt-1.5 text-[12px] font-bold leading-relaxed text-warning">
                 このLINE公式アカウントでは複数の作品が公開中です。開始キーワードが未設定だと、ユーザーがこの作品を開始できない場合があります。
               </p>

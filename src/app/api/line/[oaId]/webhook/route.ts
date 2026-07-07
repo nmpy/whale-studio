@@ -51,7 +51,7 @@ import { isFreeInputPrompt } from "@/lib/free-input";
 import { decideFollowBehavior, resolveFollowSettings } from "@/lib/follow-action";
 import { parseWelcomeMessages, WELCOME_MESSAGES_MAX, type WelcomeMessageItem } from "@/lib/welcome-messages";
 import { resolveQrBranchDelivery } from "@/lib/qr-branch";
-import { matchStartWork, normalizeStartKeyword } from "@/lib/start-keyword";
+import { matchStartWork, normalizeStartKeyword, resolveFreeTextStartWork } from "@/lib/start-keyword";
 import { parseQuickReplyPostback, resolveQuickReplyItem } from "@/lib/quick-reply-postback";
 import { isMemberLinkCode, consumeMemberLinkCode } from "@/lib/member-line-link";
 import { parseFrontier, selectQrScope } from "@/lib/qr-frontier";
@@ -1993,10 +1993,25 @@ async function handleWebhook(req: NextRequest, oaId: string) {
               console.log(`[Webhook][single] start keyword 一致 → workId=${single.id.slice(0, 8)} userId=${uid.slice(0, 8)}`);
               await startWorkByKeyword({ oa, work: single, systemSender, userId: uid, replyToken: event.replyToken, vars: buildVars(uid) });
             } else {
-              await handleTextEvent({
-                oa, work: single, systemSender, userId: uid, text,
-                replyToken: event.replyToken, vars: buildVars(uid),
-              });
+              // 開始KW非一致。進行中 progress が無く、free_text 開始が有効な作品がちょうど1件なら開始。
+              //   進行中がある場合は handleTextEvent（＝謎回答/ヒント/応答キーワード等の既存処理）に委ねる。
+              const ftRes = resolveFreeTextStartWork(activeWorks);
+              const ftInProgress = ftRes.status === "start"
+                ? await resolveInProgressWorkId(uid, activeWorks.map((w) => w.id))
+                : null;
+              if (ftRes.status === "start" && !ftInProgress) {
+                const ftWork = activeWorks.find((w) => w.id === ftRes.workId) ?? single;
+                console.log(`[Webhook][single] free_text 開始 → workId=${ftRes.workId.slice(0, 8)} userId=${uid.slice(0, 8)} reason="free_text_start_trigger"`);
+                await startWorkByKeyword({ oa, work: ftWork!, systemSender, userId: uid, replyToken: event.replyToken, vars: buildVars(uid) });
+              } else {
+                if (ftRes.status === "ambiguous") {
+                  console.warn(`[Webhook][single] free_text 開始せず（複数候補で曖昧） userId=${uid.slice(0, 8)} reason="free_text_start_ambiguous" candidates=[${ftRes.workIds.map((id) => id.slice(0, 8)).join(",")}]`);
+                }
+                await handleTextEvent({
+                  oa, work: single, systemSender, userId: uid, text,
+                  replyToken: event.replyToken, vars: buildVars(uid),
+                });
+              }
             }
           } else {
             // 複数公開: 開始キーワード(Work.startKeyword ∨ 開始フェーズ Phase.startTrigger)を最優先で照合。
@@ -2017,7 +2032,18 @@ async function handleWebhook(req: NextRequest, oaId: string) {
                 console.log(`[Webhook][multi] 進行中作品で継続 → workId=${ipWork.id.slice(0, 8)} userId=${uid.slice(0, 8)}`);
                 await handleTextEvent({ oa, work: ipWork, systemSender: buildWorkSystemSender(ipWork), userId: uid, text, replyToken: event.replyToken, vars: buildVars(uid) });
               } else {
-                console.log(`[Webhook][multi] 開始KW非一致 & 進行中なし → 何もしない userId=${uid.slice(0, 8)} text="${text.slice(0, 40)}"`);
+                // 開始KW非一致 & 進行中なし（ここに来た時点で in-progress 作品なし）。
+                // free_text 開始が有効な作品がちょうど1件なら開始。複数なら曖昧なので開始しない。
+                const ftRes = resolveFreeTextStartWork(activeWorks);
+                if (ftRes.status === "start") {
+                  const ftWork = activeWorks.find((w) => w.id === ftRes.workId)!;
+                  console.log(`[Webhook][multi] free_text 開始 → workId=${ftWork.id.slice(0, 8)} userId=${uid.slice(0, 8)} reason="free_text_start_trigger"`);
+                  await startWorkByKeyword({ oa, work: ftWork, systemSender: buildWorkSystemSender(ftWork), userId: uid, replyToken: event.replyToken, vars: buildVars(uid) });
+                } else if (ftRes.status === "ambiguous") {
+                  console.warn(`[Webhook][multi] free_text 開始せず（複数候補で曖昧） userId=${uid.slice(0, 8)} reason="free_text_start_ambiguous" candidates=[${ftRes.workIds.map((id) => id.slice(0, 8)).join(",")}]`);
+                } else {
+                  console.log(`[Webhook][multi] 開始KW非一致 & 進行中なし → 何もしない userId=${uid.slice(0, 8)} text="${text.slice(0, 40)}"`);
+                }
               }
             }
           }
