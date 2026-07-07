@@ -35,6 +35,7 @@ import { withAuth } from "@/lib/auth";
 import { requireRole, getOaIdFromWorkId } from "@/lib/rbac";
 import { activeCache, CACHE_KEY } from "@/lib/cache";
 import { quickReplyItemSchema, scheduledMessageSettingsSchema } from "@/lib/validations";
+import { validateCallRequestConfig } from "@/lib/call-request";
 import { planChainSave, type ChainSaveSpec, type WorkMessageRef } from "@/lib/chain-plan";
 
 export const dynamic = "force-dynamic";
@@ -50,7 +51,7 @@ const contentSchema = z.object({
   target_segment:   z.string().max(100).optional().nullable(),
   phase_id:         z.string().uuid().optional().nullable(),
   character_id:     z.string().uuid().optional().nullable(),
-  message_type:     z.enum(["text", "image", "riddle", "video", "carousel", "voice", "flex"]).optional(),
+  message_type:     z.enum(["text", "image", "riddle", "video", "carousel", "voice", "flex", "call_request"]).optional(),
   kind:             z.enum(["start", "normal", "response", "hint", "puzzle", "system_notice"]).optional(),
   body:             z.string().max(10000).optional().nullable(),
   asset_url:        z.string().url().optional().nullable(),
@@ -119,6 +120,25 @@ const chainSaveSchema = z.object({
   removed_message_ids:       z.array(z.string().uuid()).optional(),
   /** chain から外す（実体は残し nextMessageId=null）。非破壊・参照ガード対象外。 */
   detached_message_ids:      z.array(z.string().uuid()).optional(),
+}).superRefine((val, ctx) => {
+  // 通話リクエストは 1 通目（head）専用。連続メッセージ（slots=2通目以降）には設定できない。
+  val.slots.forEach((s, i) => {
+    if (s.message_type === "call_request") {
+      ctx.addIssue({
+        code: "custom", path: ["slots", i, "message_type"],
+        message: "通話リクエストは1通目（先頭メッセージ）専用です。連続メッセージ（2通目以降）には設定できません。",
+      });
+    }
+  });
+  // head が通話リクエストなら設定 JSON（flex_payload_json）が有効か検証（title/body/buttonLabel/通話先）。
+  if (val.head?.message_type === "call_request") {
+    let cfg: unknown = null;
+    try { cfg = val.head.flex_payload_json ? JSON.parse(val.head.flex_payload_json) : null; } catch { cfg = null; }
+    const err = validateCallRequestConfig(cfg as Parameters<typeof validateCallRequestConfig>[0]);
+    if (err) {
+      ctx.addIssue({ code: "custom", path: ["head", "flex_payload_json"], message: err });
+    }
+  }
 });
 
 type ContentInput = z.infer<typeof contentSchema>;
