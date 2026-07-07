@@ -806,3 +806,48 @@ describe("謎・問題の入場送信仕様（正解ゲート・回帰固定）"
     expect(drainAutoSendableItems([respPuzzle, text]).map((m) => m.id)).toEqual(["text"]);
   });
 });
+
+// ── 通話リクエスト（message_type="call_request"）は通常メッセージと同じ扱い ──
+//   自動送信判定は kind ベース（message_type では除外しない）。call_request は puzzle のような
+//   入力待ちではないため requiresUserInteraction=false で連続送信を止めない。
+//   （送信レンダリングは buildPhaseMessages-puzzle.test.ts の call_request ケースで検証）
+describe("call_request は通常メッセージと同じく自動送信対象（message_type で除外しない）", () => {
+  const ctx = { targetMsgIds: new Set<string>() };
+  const CR_JSON = JSON.stringify({ title: "電話して", buttonLabel: "発信", callType: "tel", tel: "0312345678" });
+
+  it("1) triggerKeyword=null の call_request はフェーズ入場で sortOrder 順に自動送信される", () => {
+    const m = makeMessage({ id: "cr", kind: "normal", messageType: "call_request", body: null, flexPayloadJson: CR_JSON, triggerKeyword: null });
+    expect(isAutoSendableMessageNode(m, ctx)).toBe(true);
+    expect(requiresUserInteraction(m)).toBe(false); // puzzle/QR/trigger ではないので連続送信を止めない
+  });
+
+  it("2) text → call_request → text の並びで call_request はスキップされない", () => {
+    const messages = [
+      makeMessage({ id: "t1", sortOrder: 1, kind: "normal", body: "前テキスト" }),
+      makeMessage({ id: "cr", sortOrder: 2, kind: "normal", messageType: "call_request", body: null, flexPayloadJson: CR_JSON }),
+      makeMessage({ id: "t2", sortOrder: 3, kind: "normal", body: "後テキスト" }),
+    ];
+    const result = drainAutoSendableItems(messages, "in_progress");
+    expect(result.map((m) => m.id)).toEqual(["t1", "cr", "t2"]);
+  });
+
+  it("3) triggerKeyword ありの call_request は入場時に自動送信されない（キーワード応答扱い）", () => {
+    const cr   = makeMessage({ id: "cr", sortOrder: 1, kind: "normal", messageType: "call_request", body: null, flexPayloadJson: CR_JSON, triggerKeyword: "でんわ" });
+    const text = makeMessage({ id: "t1", sortOrder: 2, kind: "normal", body: "通常" });
+    // triggerKeyword を持つため入場自動送信からは除外（= キーワード入力時に buildKeywordMessages で送信される）
+    expect(isAutoSendableMessageNode(cr, ctx)).toBe(false);
+    expect(drainAutoSendableItems([cr, text]).map((m) => m.id)).toEqual(["t1"]);
+  });
+
+  it("4) puzzle の入場停止・回帰: text → call_request → puzzle は [text, call_request, puzzle] で puzzle 停止（既存挙動不変）", () => {
+    const messages = [
+      makeMessage({ id: "t1", sortOrder: 1, kind: "normal", body: "導入" }),
+      makeMessage({ id: "cr", sortOrder: 2, kind: "normal", messageType: "call_request", body: null, flexPayloadJson: CR_JSON }),
+      makeMessage({ id: "pz", sortOrder: 3, kind: "puzzle", answer: "答え", body: "謎" }),
+      makeMessage({ id: "t2", sortOrder: 4, kind: "normal", body: "パズル後（送信されない）" }),
+    ];
+    const result = drainAutoSendableItems(messages, "in_progress");
+    // call_request は通常メッセージとして送信され、puzzle まで送って停止（puzzle 後は送信されない）
+    expect(result.map((m) => m.id)).toEqual(["t1", "cr", "pz"]);
+  });
+});

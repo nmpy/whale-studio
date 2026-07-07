@@ -472,6 +472,31 @@ describe("E. 統合パイプライン（drain → build）", () => {
     // carousel puzzle は alt_text でフォールバック
     expect((lineMessages[1] as { text: string }).text).toContain("カルーセル謎");
   });
+
+  // ── 通話リクエスト（call_request）はフェーズ入場で通常メッセージと同じく送信される ──
+  //    drain（自動送信対象に含む）→ build（flex_payload_json から uri ボタン付き Flex に変換）。
+  it("text → call_request（通常メッセージ）→ drain 2件 → build で text + flex", async () => {
+    const { drainAutoSendableItems } = await import("@/lib/runtime");
+    const CR_JSON = JSON.stringify({ title: "電話して", buttonLabel: "発信", callType: "tel", tel: "0312345678" });
+
+    const msgs = [
+      makeDbMsg({ id: "m1", sortOrder: 0, body: "導入テキスト" }),
+      makeDbMsg({
+        id: "cr", sortOrder: 1, kind: "normal",
+        messageType: "call_request", body: null, flexPayloadJson: CR_JSON,
+      }),
+    ];
+
+    const drained = drainAutoSendableItems(msgs as any, "in_progress");
+    // call_request は自動送信対象から除外されない
+    expect(drained.map((m) => m.id)).toEqual(["m1", "cr"]);
+
+    const lineMessages = buildPhaseMessages(makePhase(drained));
+    expect(lineMessages).toHaveLength(2);
+    expect(lineMessages[0].type).toBe("text");
+    // 通話リクエストは flex（uri ボタン付き）として送信される（未対応型で落ちない）
+    expect(lineMessages[1].type).toBe("flex");
+  });
 });
 
 // ────────────────────────────────────────────

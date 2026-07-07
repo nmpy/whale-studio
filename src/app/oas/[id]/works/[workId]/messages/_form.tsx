@@ -70,6 +70,21 @@ const PUZZLE_DELIVERY_TYPE_OPTIONS = MESSAGE_TYPE_OPTIONS.filter(
   (opt) => ["text", "image", "video", "carousel"].includes(opt.value)
 );
 
+/**
+ * QR「返す内容（応答メッセージ）」/ 遷移先メッセージの選択肢ラベル。
+ * 通話リクエストは本文（body）が空で内容が flex_payload_json 側にあるため、
+ * 従来の `body ?? "(本文なし)"` だと「(本文なし)」となり選択肢で識別できなかった。
+ * 種別名（通話リクエスト）で識別できるようにする。他の種別は従来どおり body を表示する
+ * （＝ text / image / video / flex 等の候補表示は変更しない）。
+ */
+function messageOptionLabel(m: { message_type?: string | null; body: string | null }): string {
+  if (m.message_type === "call_request") {
+    const b = (m.body ?? "").trim();
+    return b ? `通話リクエスト: ${b}` : "通話リクエスト";
+  }
+  return m.body ?? "(本文なし)";
+}
+
 /** Flex Message JSON textarea のプレースホルダ（Simulator の最小 bubble 例）。 */
 const FLEX_JSON_PLACEHOLDER = `{
   "type": "bubble",
@@ -1504,11 +1519,11 @@ interface QuickReplyEditorProps {
   items:    QuickReplyItem[];
   onChange: (items: QuickReplyItem[]) => void;
   /** kind=response メッセージ一覧（全フェーズ対象・フェーズ名付き表示） */
-  responseMessages?: { id: string; body: string | null; phase_id?: string | null }[];
+  responseMessages?: { id: string; body: string | null; message_type?: string; phase_id?: string | null }[];
   /** 全フェーズ一覧（フェーズ名表示用） */
   phases?: { id: string; name: string; phase_type: string }[];
   /** 遷移先メッセージ一覧（全フェーズ対象・フェーズ名付き表示） */
-  transitionMessages?: { id: string; body: string | null; kind: string; phase_id?: string | null }[];
+  transitionMessages?: { id: string; body: string | null; message_type?: string; kind: string; phase_id?: string | null }[];
   /** ヒントQRのキャラクター選択用（hint_character_id） */
   characters?: Character[];
   /** destination 統合用 */
@@ -1860,8 +1875,7 @@ function QuickReplyEditor({ items, onChange, responseMessages, phases, transitio
                                 .map((m) => {
                                   const phase  = (phases ?? []).find((p) => p.id === m.phase_id);
                                   const prefix = phase ? `[${phase.name}] ` : "";
-                                  const body   = m.body ?? "(本文なし)";
-                                  const full   = prefix + body;
+                                  const full   = prefix + messageOptionLabel(m);
                                   return (
                                     <option key={m.id} value={m.id}>
                                       {full.length > 50 ? full.slice(0, 50) + "…" : full}
@@ -1979,8 +1993,7 @@ function QuickReplyEditor({ items, onChange, responseMessages, phases, transitio
                                     .map((m) => {
                                       const phase  = (phases ?? []).find((p) => p.id === m.phase_id);
                                       const prefix = phase ? `[${phase.name}] ` : "";
-                                      const body   = m.body ?? "(本文なし)";
-                                      const full   = prefix + body;
+                                      const full   = prefix + messageOptionLabel(m);
                                       return (
                                         <option key={m.id} value={m.id}>
                                           {full.length > 50 ? full.slice(0, 50) + "…" : full}
