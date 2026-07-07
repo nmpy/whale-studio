@@ -353,4 +353,36 @@ describe("PUT /api/messages/chain", () => {
     const res = await PUT(req({ work_id: WORK, head_id: HEAD, head: { body: "x" }, slots: [{ id: S1, body: "y" }] }), ctx) as Response;
     expect(res.status).toBe(500);
   });
+
+  // ── 通話リクエスト（call_request）: head 許可・slot 不許可・設定検証（hotfix #554）──
+  const CALL_CFG = JSON.stringify({ title: "通話リクエスト", body: "本文", buttonLabel: "電話をかける", callType: "tel", tel: "03-1234-5678" });
+
+  it("head が通話リクエスト（有効設定）は 200（enum に call_request 追加済み）", async () => {
+    setWork([{ id: HEAD, phaseId: "ph-1", sortOrder: 0, nextMessageId: null, updatedAt: new Date() }]);
+    const res = await PUT(req({ work_id: WORK, head_id: HEAD, head: { message_type: "call_request", flex_payload_json: CALL_CFG, alt_text: "通話リクエスト" }, slots: [] }), ctx) as Response;
+    expect(res.status).toBe(200);
+  });
+
+  it("連続メッセージ(slot)の通話リクエストは 400（1通目専用）", async () => {
+    setWork([
+      { id: HEAD, phaseId: "ph-1", sortOrder: 0, nextMessageId: null, updatedAt: new Date() },
+      { id: S1, phaseId: "ph-1", sortOrder: 1, nextMessageId: null, updatedAt: new Date() },
+    ]);
+    const res = await PUT(req({ work_id: WORK, head_id: HEAD, head: { body: "1通目" }, slots: [{ id: S1, message_type: "call_request", flex_payload_json: CALL_CFG }] }), ctx) as Response;
+    expect(res.status).toBe(400);
+    expect(await res.text()).toContain("通話リクエストは1通目");
+  });
+
+  it("head 通話リクエストで通話先未入力なら 400（設定検証）", async () => {
+    setWork([{ id: HEAD, phaseId: "ph-1", sortOrder: 0, nextMessageId: null, updatedAt: new Date() }]);
+    const bad = JSON.stringify({ title: "t", body: "b", buttonLabel: "l", callType: "tel", tel: "" });
+    const res = await PUT(req({ work_id: WORK, head_id: HEAD, head: { message_type: "call_request", flex_payload_json: bad }, slots: [] }), ctx) as Response;
+    expect(res.status).toBe(400);
+  });
+
+  it("既存種別（text）の head は引き続き 200（回帰）", async () => {
+    setWork([{ id: HEAD, phaseId: "ph-1", sortOrder: 0, nextMessageId: null, updatedAt: new Date() }]);
+    const res = await PUT(req({ work_id: WORK, head_id: HEAD, head: { message_type: "text", body: "本文" }, slots: [] }), ctx) as Response;
+    expect(res.status).toBe(200);
+  });
 });
