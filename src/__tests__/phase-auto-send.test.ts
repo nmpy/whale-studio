@@ -739,3 +739,30 @@ describe("puzzle 送信タイミング: triggerKeyword 有無で自動送信/キ
     expect(isAutoSendableMessageNode(b, ctx)).toBe(false);
   });
 });
+
+// ── 自由入力応答(B=freeInputNextMessageId)は入場自動送信から除外する ──
+//   B は freeInput プロンプト(A)の応答で、自由入力を受けた次回入力でのみ送るべき。
+//   これを除外しないと、開始フェーズ入場（free_text/startKeyword/startTrigger 開始・通常遷移）で
+//   A と一緒に B まで送られてしまう（本 issue の原因）。
+describe("freeInputNextMessageId(自由入力応答) は auto-send から除外", () => {
+  beforeEach(() => resetCounter());
+
+  it("プロンプト A（freeInputEnabled, freeInputNextMessageId=B）入場時は A のみ、B は送らない", () => {
+    const a = makeMessage({ id: "A", sortOrder: 1, kind: "normal", freeInputEnabled: true, freeInputNextMessageId: "B" });
+    const b = makeMessage({ id: "B", sortOrder: 2, kind: "normal" }); // 自由入力後に送る応答
+    const result = drainAutoSendableItems([a, b]);
+    const ids = result.map((m) => m.id);
+    expect(ids).toContain("A");
+    expect(ids).not.toContain("B");
+  });
+
+  it("通常入場メッセージ A' と freeInput プロンプト P(→応答 B) が同居しても、B だけ除外（A' と P は送る）", () => {
+    const aPrime = makeMessage({ id: "Aprime", sortOrder: 1, kind: "normal" });                                  // 入場通常メッセージ
+    const p      = makeMessage({ id: "P", sortOrder: 2, kind: "normal", freeInputEnabled: true, freeInputNextMessageId: "B" });
+    const b      = makeMessage({ id: "B", sortOrder: 3, kind: "normal" });                                        // 自由入力応答
+    const result = drainAutoSendableItems([aPrime, p, b]);
+    const ids = result.map((m) => m.id);
+    expect(ids).toEqual(expect.arrayContaining(["Aprime", "P"]));
+    expect(ids).not.toContain("B");
+  });
+});
