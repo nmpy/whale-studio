@@ -901,4 +901,27 @@ describe("drainKeywordResponseFollowups: キーワード応答後の後続送信
     const cr = makeMessage({ id: "cr", sortOrder: 20, kind: "normal", messageType: "call_request", body: null, flexPayloadJson: CR_JSON });
     expect(drainKeywordResponseFollowups([cr], [], "in_progress", false)).toEqual([]);
   });
+
+  // 本番再現（真因の回帰固定）: 応答より前に「QR 付き normal head + そのチェーン子」がある構成。
+  //   継続 drain（startAfter=応答sortOrder）で、その QR 付き head のチェーン子が orphan 救済で
+  //   混入すると buildPhaseMessages が QR で停止し call_request が届かなくなっていた。
+  //   → orphan 救済は startAfter 指定時に行わないため、後続には call_request のみが入る。
+  it("本番再現: [QR付きnormal(sort1)→chain子] / response(sort3,任務?) / call_request(sort4) で応答後は call_request のみ", () => {
+    const qrJson = JSON.stringify([{ label: "選ぶ", action: "text", value: "選ぶ" }]);
+    const messages = [
+      // sort1: QR 付き normal head → チェーン子（tail に QR）
+      makeMessage({ id: "b2", sortOrder: 1, kind: "normal", body: "選択して", nextMessageId: "b2c1" }),
+      makeMessage({ id: "b2c1", sortOrder: 1, kind: "normal", body: "続き", nextMessageId: "b2c2" }),
+      makeMessage({ id: "b2c2", sortOrder: 1, kind: "normal", body: "末尾(QR)", quickReplies: qrJson }),
+      // sort3: 応答（任務?）→ チェーン子2件（応答テキスト2件・midchain）
+      makeMessage({ id: "resp", sortOrder: 3, kind: "response", triggerKeyword: "任務?", body: "応答1", nextMessageId: "rc1" }),
+      makeMessage({ id: "rc1", sortOrder: 0, kind: "response", body: "応答2(CIA司令官)", nextMessageId: "rc2" }),
+      makeMessage({ id: "rc2", sortOrder: 0, kind: "response", body: "応答3(手がかり)" }),
+      // sort4: 独立 head の通話リクエスト（通常送信・tk=null）
+      makeMessage({ id: "cr", sortOrder: 4, kind: "normal", messageType: "call_request", body: null, flexPayloadJson: CR_JSON }),
+    ];
+    const followups = drainKeywordResponseFollowups(messages, [3], "in_progress", false);
+    // QR 付き別導線(b2/b2c1/b2c2)は混入せず、後続は call_request のみ
+    expect(followups.map((m) => m.id)).toEqual(["cr"]);
+  });
 });

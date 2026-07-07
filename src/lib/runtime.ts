@@ -521,6 +521,8 @@ export function drainAutoSendableItems(
   /** PR-SER2（案A）: hold 停止が起きたら held を書き込む参照引数。戻り値の型は変えない。
    *  resumeFromMessageId = hold ノードの nextMessageId（後続チェーン・PR-SER3 worker が再開）。 */
   holdOut?: { held?: { messageId: string; resumeFromMessageId: string | null } },
+  /** true のとき midChain orphan 補償を行わない（キーワード応答後の継続 drain 用。上の詳細コメント参照）。 */
+  skipOrphanRescue?: boolean,
 ): import("@/types").RuntimePhaseMessage[] {
   // 1. QR の target_message_id ＋ 自由入力後の応答(freeInputNextMessageId) を収集
   //    どちらも「後から（QRタップ／自由入力受付後）にのみ送る」メッセージなので、
@@ -635,6 +637,17 @@ export function drainAutoSendableItems(
   // 一方、head が自動送信「可能」なのに startAfterSortOrder（パズル継続）等でスキップされた場合の
   // child は従来どおり救済する（＝ isAutoSendableMessageNode が true の祖先しか無い場合）。
   //
+  // ⚠️ skipOrphanRescue=true（= キーワード応答後の継続 drain）では orphan 補償を行わない。
+  //    キーワード応答は応答チェーンを buildMessageChain で別途送信済みで、drain は「応答の sortOrder より後の
+  //    独立 head」だけを続けて送りたい。ここで orphan 補償を行うと、startAfter より前の別 head（例: QR 付き
+  //    normal head）のチェーン子まで救済され、buildPhaseMessages がその QR で停止して本来送るべき後続 head
+  //    （例: call_request）が届かなくなる（本番: キーワード応答後に通話リクエストが届かない不具合の真因）。
+  //    ※ パズル正解後の継続（skipOrphanRescue=false）はパズル自身のチェーン子を救済する必要があるため従来どおり。
+  if (skipOrphanRescue) {
+    logResult();
+    return result;
+  }
+
   // 親マップ（child.id → 直近の親 = nextMessageId でつながる元メッセージ）。
   const parentOf = new Map<string, PhaseRow["messages"][number]>();
   for (const p of messages) {
@@ -742,7 +755,9 @@ export function drainKeywordResponseFollowups(
   if (responseAwaitsSelection) return [];
   if (matchedInPhaseSortOrders.length === 0) return [];
   const startAfter = Math.max(...matchedInPhaseSortOrders);
-  return drainAutoSendableItems(phaseMessages, userSegment, startAfter);
+  // skipOrphanRescue=true: 応答チェーンは別送信済み。startAfter より前の別 head（QR 付き等）の
+  // チェーン子を orphan 補償で拾わないようにする（本番: 応答後に通話リクエストが届かない不具合の真因）。
+  return drainAutoSendableItems(phaseMessages, userSegment, startAfter, undefined, true);
 }
 
 /**
