@@ -5201,19 +5201,20 @@ export function MessageForm({
               </label>
               {isPuzzle ? (
                 // 通常メッセージ側と同じ select + hintText 構造に揃える。
-                // 謎・問題は種別が固定のため 1 項目のみの表示専用 select（form.kind 等の保存値には紐づけない）。
-                // 「フェーズ遷移時」ではなく「回答時に反応」の意味のラベルにして誤解を防ぐ。
+                // 謎・問題は kind="puzzle" が種別スロットを占有し、問題メッセージ自体の送信は「フェーズ遷移時」の
+                // 1 種類のみ。よって表示専用の 1 項目 select（form.kind 等の保存値には紐づけない）。
+                // 「指定フェーズ内の回答に反応」は送信タイミングの選択肢ではなく、下の補足文で説明する。
                 <>
                   <select
                     className="form-input"
-                    value="puzzle_answer"
+                    value="puzzle_normal"
                     onChange={() => { /* 表示専用（謎・問題は種別固定・保存値は不変） */ }}
                     aria-label="送信タイミング"
                   >
-                    <option value="puzzle_answer">指定フェーズ内の回答に反応</option>
+                    <option value="puzzle_normal">通常（フェーズ遷移時に送信）</option>
                   </select>
                   <div style={hintText}>
-                    指定したフェーズにいるユーザーの回答に反応します。正解後に次へ進めたい場合だけ、フェーズ遷移を設定してください。
+                    この問題メッセージ自体の送信タイミングを選びます。送信後は、指定したフェーズにいるユーザーの回答に反応します。正解後に次へ進めたい場合だけ、フェーズ遷移を設定してください。
                   </div>
                 </>
               ) : (
@@ -5232,9 +5233,11 @@ export function MessageForm({
                     <option value="normal">通常（フェーズ遷移時に送信）</option>
                     <option value="start">開始演出（startTrigger 一致時に送信）</option>
                     <option value="response">応答（trigger_keyword 一致時に返信）</option>
-                    <option value="hint">ヒント（将来拡張）</option>
                     <option value="global">共通メッセージ（フェーズ不問・常時反応）</option>
                     <option value="system_notice">システム通知（中央表示・例: ミカさんが入室しました）</option>
+                    {/* 「ヒント（将来拡張）」は選択肢から撤去（ヒントはヒントクイックリプライで実装済み）。
+                        既存データに kind="hint" が保存されている場合のみ表示専用で復元し、保存値を壊さない。 */}
+                    {form.kind === "hint" && <option value="hint">ヒント（将来拡張）</option>}
                   </select>
                   <div style={hintText}>
                     {form.kind === "start"    && "開始フェーズの startTrigger が一致したとき送信されます。応答キーワードの入力が必要です。フェーズに kind=start のメッセージがない場合は通常メッセージにフォールバックします。"}
