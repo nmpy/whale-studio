@@ -727,6 +727,16 @@ function MessagesPageInner() {
               const startTrigger = getStartTriggerFromPhases(phases);
               const startPhaseId = getStartPhaseId(phases);
               const triggerOver200 = welcomeStartTrigger.trim().length > 200;
+              // 設定不整合の検出（UI 補助のみ・runtime 挙動は変えない）:
+              //   開始トリガーが自由入力 かつ 開始QRが設定済み かつ
+              //   開始フェーズに「開始QRと同じ triggerKeyword を持つ応答/謎メッセージ」がある場合、
+              //   その入力は作品開始として消費され、応答キーワードとしては扱われない。
+              const startQrTrim = welcomeStartTrigger.trim();
+              const freeTextStartConflict = startTriggerMode === "free_text" && startQrTrim.length > 0 && messages.some(
+                (m) => m.phase?.phase_type === "start"
+                  && (m.kind === "response" || m.kind === "puzzle")
+                  && (m.trigger_keyword ?? "").split("\n").map((s) => s.trim()).filter(Boolean).includes(startQrTrim),
+              );
               const dirty = JSON.stringify(welcomeItems) !== JSON.stringify(savedItems)
                 || welcomeLoadingSeconds !== savedWelcomeLoadingSeconds
                 || welcomeStartTrigger !== savedWelcomeStartTrigger;
@@ -736,6 +746,33 @@ function MessagesPageInner() {
                   <p style={{ fontSize: 12, color: "#6b7280", margin: "0 0 12px", lineHeight: 1.7 }}>
                     友だち追加時、または開始前の案内で送信されるメッセージです。最大{WELCOME_MESSAGES_MAX}件まで設定できます。
                   </p>
+
+                  {/* 開始トリガーが自由入力のときの注意（UI 補助のみ・runtime 挙動は不変）*/}
+                  {startTriggerMode === "free_text" && (
+                    <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 10, padding: "10px 14px", marginBottom: 12, fontSize: 12, color: "#1e40af", lineHeight: 1.7 }}>
+                      開始トリガーが「自由入力」の場合、プレイヤーが送信した任意のテキストで作品が開始されます。
+                      あいさつメッセージのクイックリプライは開始を促すためのボタンとして表示されますが、
+                      <strong>開始後フェーズ内の応答キーワードとしては扱われない場合があります。</strong>
+                      <br />
+                      開始直後に特定の応答メッセージを送信したい場合は、次のいずれかを設定してください。
+                      <br />
+                      ・開始後フェーズの通常メッセージとして配置する
+                      <br />
+                      ・開始トリガーを「キーワード」に変更する（作品設定）
+                      <br />
+                      ・開始後にプレイヤーへ再度入力を促す
+                    </div>
+                  )}
+
+                  {/* 設定不整合の警告（開始QR文言が開始後フェーズの応答/謎キーワードと一致）*/}
+                  {freeTextStartConflict && (
+                    <div style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 10, padding: "10px 14px", marginBottom: 12, fontSize: 12, color: "#92400e", lineHeight: 1.7 }}>
+                      ⚠️ 開始トリガーが「自由入力」のため、あいさつメッセージの開始クイックリプライ「{startQrTrim}」は
+                      <strong>作品開始として扱われます。</strong>
+                      開始後フェーズ内の同じ応答キーワードを送信したい場合は、そのメッセージを通常メッセージにするか、
+                      開始トリガーを「キーワード」に変更してください（作品設定）。
+                    </div>
+                  )}
 
                   {welcomeItems.length === 0 ? (
                     <div style={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 10, padding: "20px", textAlign: "center", marginBottom: 12 }}>
@@ -841,12 +878,12 @@ function MessagesPageInner() {
                       <p style={{ fontSize: 11, color: "#9ca3af", margin: "6px 0 0", lineHeight: 1.6 }}>
                         {startTriggerMode === "free_text" ? (
                           <>
-                            友だち追加時のあいさつメッセージの最後に表示される、プレイヤーに入力を促すためのボタンです。<span style={{ color: "#6b7280" }}>自由入力で開始の場合、この文言以外のテキストを送っても作品は開始されます。</span><br />
-                            未設定の場合、あいさつメッセージにボタンは表示されません（ボタンが無くても任意テキストで開始します）。
+                            友だち追加時のあいさつメッセージの最後に表示される、作品開始を促すためのボタンです。<span style={{ color: "#6b7280" }}>開始トリガーが「自由入力」の場合、このボタンの文言を送信すると作品は開始されますが、開始後フェーズ内の応答キーワードとしては自動的に再利用されません。</span><br />
+                            未設定の場合、あいさつメッセージにボタンは表示されません（自由入力で開始のため、ボタンが無くても任意テキストで開始します）。
                           </>
                         ) : (
                           <>
-                            友だち追加時のあいさつメッセージの最後に表示される開始ボタンです。プレイヤーがこの文言を送ると、物語が始まります（開始キーワードとしても使われます）。<br />
+                            友だち追加時のあいさつメッセージの最後に表示される、作品開始を促すためのボタンです。<span style={{ color: "#6b7280" }}>開始トリガーが「キーワード」の場合、このボタンの文言は開始キーワードと一致させることを推奨します。</span><br />
                             未設定の場合、あいさつメッセージに開始クイックリプライは表示されません。
                           </>
                         )}
