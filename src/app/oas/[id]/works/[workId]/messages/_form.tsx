@@ -5231,12 +5231,12 @@ export function MessageForm({
                     }}
                   >
                     <option value="normal">通常（フェーズ遷移時に送信）</option>
-                    <option value="start">開始演出（startTrigger 一致時に送信）</option>
                     <option value="response">応答（trigger_keyword 一致時に返信）</option>
                     <option value="global">共通メッセージ（フェーズ不問・常時反応）</option>
                     <option value="system_notice">システム通知（中央表示・例: ミカさんが入室しました）</option>
-                    {/* 「ヒント（将来拡張）」は選択肢から撤去（ヒントはヒントクイックリプライで実装済み）。
-                        既存データに kind="hint" が保存されている場合のみ表示専用で復元し、保存値を壊さない。 */}
+                    {/* 「開始演出」「ヒント（将来拡張）」は送信タイミングの選択肢から撤去（ヒントはヒントQRで実装済み）。
+                        既存データに kind="start" / kind="hint" が保存されている場合のみ表示専用で復元し、保存値を壊さない。 */}
+                    {form.kind === "start" && <option value="start">開始演出（startTrigger 一致時に送信）</option>}
                     {form.kind === "hint" && <option value="hint">ヒント（将来拡張）</option>}
                   </select>
                   <div style={hintText}>
