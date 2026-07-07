@@ -14,6 +14,7 @@ import {
   buildCallRequestAltText,
   buildCallRequestFlex,
   validateCallRequestConfig,
+  classifyCallRequestConfig,
   CALL_REQUEST_LABEL_MAX,
   type CallRequestConfig,
 } from "@/lib/call-request";
@@ -132,5 +133,30 @@ describe("buildCallRequestFlex", () => {
     expect(buildCallRequestFlex(JSON.stringify({ ...base, lineCallUrl: "" }), null)).toBeNull();
     expect(buildCallRequestFlex("not-json", null)).toBeNull();
     expect(buildCallRequestFlex(null, null)).toBeNull();
+  });
+});
+
+describe("classifyCallRequestConfig（保存済み設定の健全性分類）", () => {
+  it("null/空文字/空白のみ → empty", () => {
+    expect(classifyCallRequestConfig(null)).toBe("empty");
+    expect(classifyCallRequestConfig(undefined)).toBe("empty");
+    expect(classifyCallRequestConfig("")).toBe("empty");
+    expect(classifyCallRequestConfig("   ")).toBe("empty");
+  });
+  it("壊れた JSON → invalid_json", () => {
+    expect(classifyCallRequestConfig("not-json")).toBe("invalid_json");
+    expect(classifyCallRequestConfig("{title:")).toBe("invalid_json");
+  });
+  it("JSON だが必須/通話先不足 → invalid_config", () => {
+    // 通話先（lineCallUrl）が空
+    expect(classifyCallRequestConfig(JSON.stringify({ ...base, lineCallUrl: "" }))).toBe("invalid_config");
+    // タイトル空
+    expect(classifyCallRequestConfig(JSON.stringify({ ...base, title: "" }))).toBe("invalid_config");
+    // 空オブジェクト
+    expect(classifyCallRequestConfig("{}")).toBe("invalid_config");
+  });
+  it("送信可能な設定 → ok", () => {
+    expect(classifyCallRequestConfig(JSON.stringify(base))).toBe("ok");
+    expect(classifyCallRequestConfig(JSON.stringify({ ...base, callType: "tel", tel: "03-1234-5678", lineCallUrl: "" }))).toBe("ok");
   });
 });

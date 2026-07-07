@@ -497,6 +497,34 @@ describe("E. 統合パイプライン（drain → build）", () => {
     // 通話リクエストは flex（uri ボタン付き）として送信される（未対応型で落ちない）
     expect(lineMessages[1].type).toBe("flex");
   });
+
+  it("call_request の flex_payload_json が空/null（alt_text/body も空）→ 送信対象から drop される", async () => {
+    const { drainAutoSendableItems } = await import("@/lib/runtime");
+    const msgs = [
+      makeDbMsg({ id: "m1", sortOrder: 0, body: "導入" }),
+      // 壊れた/空の通話リクエスト（実機に無言で送られない事象の再現）
+      makeDbMsg({ id: "cr", sortOrder: 1, kind: "normal", messageType: "call_request", body: null, altText: null, flexPayloadJson: null }),
+    ];
+    const drained = drainAutoSendableItems(msgs as any, "in_progress");
+    // drain 自体は除外しない（message_type で切らない）
+    expect(drained.map((m) => m.id)).toEqual(["m1", "cr"]);
+    // build 時に Flex 生成不能 + alt_text/body 空 → cr は drop（m1 のみ送信）
+    const lineMessages = buildPhaseMessages(makePhase(drained));
+    expect(lineMessages).toHaveLength(1);
+    expect(lineMessages[0].type).toBe("text");
+  });
+
+  it("call_request の flex_payload_json が不正でも alt_text があればテキストフォールバックで送信（drop しない）", async () => {
+    const { drainAutoSendableItems } = await import("@/lib/runtime");
+    const msgs = [
+      makeDbMsg({ id: "cr", sortOrder: 0, kind: "normal", messageType: "call_request", body: null, altText: "通話のご案内", flexPayloadJson: "not-json" }),
+    ];
+    const drained = drainAutoSendableItems(msgs as any, "in_progress");
+    const lineMessages = buildPhaseMessages(makePhase(drained));
+    expect(lineMessages).toHaveLength(1);
+    expect(lineMessages[0].type).toBe("text");
+    expect((lineMessages[0] as { text: string }).text).toContain("通話のご案内");
+  });
 });
 
 // ────────────────────────────────────────────

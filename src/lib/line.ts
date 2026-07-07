@@ -18,7 +18,7 @@ import { buildPuzzleHintPostbackData } from "@/lib/puzzle-hint";
 import { buildQuickReplyPostbackData, quickReplyItemHasDestination } from "@/lib/quick-reply-postback";
 import { buildFlexSendParts, type FlexContents } from "@/lib/flex";
 import { normalizeCarouselContent, buildCarouselFlex } from "@/lib/carousel";
-import { buildCallRequestFlex } from "@/lib/call-request";
+import { buildCallRequestFlex, classifyCallRequestConfig } from "@/lib/call-request";
 import { recordPuzzleDeliveries } from "@/lib/puzzle-history";
 
 // ────────────────────────────────────────────────
@@ -527,12 +527,21 @@ function convertMessageToLine(
     if (flex) {
       return attach({ type: "flex", altText: replacePlaceholders(flex.altText, vars), contents: flex.contents as FlexContents } as LineFlexMessage);
     }
+    // Flex を生成できない = 保存済み設定が空/不正 → 原因を分類してログ（本番で原因特定できる粒度・PII なし）。
+    const reason = classifyCallRequestConfig(flexPayloadJson);
     const fb = alt_text || body;
     if (fb) {
-      console.warn(`[${caller}] call_request 設定が不正/空のためテキストフォールバック id=${id.slice(0, 8)}`);
+      console.warn(
+        `[${caller}] ⚠️ call_request の Flex を生成できずテキストフォールバック（設定 ${reason}） ` +
+        `id=${id.slice(0, 8)} type=call_request phase=${phaseId.slice(0, 8)}`,
+      );
       return attach({ type: "text", text: replacePlaceholders(truncateText(fb), vars) } as LineTextMessage);
     }
-    console.warn(`[${caller}] ⚠️ call_request の設定が空 id=${id.slice(0, 8)} phase=${phaseId.slice(0, 8)}`);
+    // alt_text/body も無い → 送信対象から drop。実機に無言で送られない事象の唯一の drop 点なので明示ログ。
+    console.warn(
+      `[${caller}] ⚠️ call_request が送信できず drop（設定 ${reason}・alt_text/body も空） ` +
+      `id=${id.slice(0, 8)} type=call_request phase=${phaseId.slice(0, 8)}`,
+    );
     return null;
   }
 
