@@ -81,3 +81,31 @@ export function conflictsWithOthers(
   if (!k) return false;
   return others.some((w) => startKeywordsOf(w).includes(k));
 }
+
+// ── 「自由入力で開始」(startTriggerMode="free_text") の解決 ────────────────────
+
+/** free_text 開始の候補（active 作品）。id と開始方法のみで判定する（純関数用）。 */
+export interface FreeTextStartCandidate {
+  id: string;
+  startTriggerMode?: string | null;
+}
+
+/** free_text 開始の解決結果。start=対象1件 / ambiguous=複数で開始不可 / none=対象なし。 */
+export type FreeTextStartResolution =
+  | { status: "start";     workId:  string }
+  | { status: "ambiguous"; workIds: string[] }
+  | { status: "none" };
+
+/**
+ * 同一 OA の公開中作品から free_text 開始対象を解決する（純関数・副作用なし）。
+ *   - startTriggerMode="free_text" の作品がちょうど1件 → start（その作品）
+ *   - 2件以上 → ambiguous（曖昧なので開始しない・ログ用に workIds を返す）
+ *   - 0件 → none
+ * ※ 呼び出し側で「進行中 progress が無い」「開始キーワードに非一致」を先に確認すること。
+ */
+export function resolveFreeTextStartWork(works: FreeTextStartCandidate[]): FreeTextStartResolution {
+  const ft = works.filter((w) => w.startTriggerMode === "free_text");
+  if (ft.length === 1) return { status: "start", workId: ft[0].id };
+  if (ft.length >= 2)  return { status: "ambiguous", workIds: ft.map((w) => w.id) };
+  return { status: "none" };
+}

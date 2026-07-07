@@ -158,6 +158,12 @@ model Work {
   /// 既存作品は null。正規化後、同一 OA の公開中作品間で重複不可（Phase.startTrigger とも重複不可）。
   startKeyword String? @map("start_keyword")
 
+  /// 開始方法（作品単位）:
+  ///   "keyword"   = 既定。startKeyword / 開始フェーズ startTrigger の一致で開始（従来挙動）。
+  ///   "free_text" = 進行中 progress が無いプレイヤーの任意テキスト送信で開始（内容は問わない）。
+  /// 既存作品は default("keyword") で完全後方互換。同一 OA で free_text は最大1作品（保存時に検証）。
+  startTriggerMode String @default("keyword") @map("start_trigger_mode")
+
   /// 友だち追加（follow）時の動作（作品単位）:
   ///   "auto_start"    = 友だち追加直後にシナリオを自動開始（既存挙動・既定）。
   ///   "welcome_wait"  = あいさつメッセージを送り、ユーザーの「はじめる」を待つ（progress は作らない）。

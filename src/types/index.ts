@@ -172,6 +172,8 @@ export interface Work {
   follow_action?: "auto_start" | "welcome_wait" | "none";
   /** 開始キーワード（任意）。複数作品を同じ OA で公開する場合、送信でこの作品が開始される。 */
   start_keyword?: string | null;
+  /** 開始方法。"keyword"（既定）| "free_text"（進行中progressなしの任意テキストで開始）。既存作品は keyword。 */
+  start_trigger_mode?: "keyword" | "free_text";
   // ── 演出デフォルト設定 ──
   read_receipt_mode: ReadReceiptMode | null;
   read_delay_ms: number | null;
@@ -465,6 +467,8 @@ export interface UpdateWorkBody {
   follow_action?: "auto_start" | "welcome_wait" | "none";
   /** 開始キーワード（任意）。null/空で解除、undefined（省略）は変更なし。 */
   start_keyword?: string | null;
+  /** 開始方法。"keyword" | "free_text"。undefined（省略）は変更なし。free_text は同一 OA で最大1作品。 */
+  start_trigger_mode?: "keyword" | "free_text";
   // 演出デフォルト設定
   read_receipt_mode?: ReadReceiptMode | null;
   read_delay_ms?: number | null;

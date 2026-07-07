@@ -5,6 +5,7 @@ import {
   matchStartWork,
   findStartKeywordConflicts,
   conflictsWithOthers,
+  resolveFreeTextStartWork,
 } from "@/lib/start-keyword";
 
 describe("normalizeStartKeyword", () => {
@@ -103,5 +104,44 @@ describe("findStartKeywordConflicts / conflictsWithOthers", () => {
     const others = [{ id: "B", startKeyword: "森の手紙", startTrigger: null }];
     expect(conflictsWithOthers("", others)).toBe(false);
     expect(conflictsWithOthers(null, others)).toBe(false);
+  });
+});
+
+describe("resolveFreeTextStartWork — 自由入力で開始の解決（純関数）", () => {
+  it("free_text がちょうど1件 → start（その作品）", () => {
+    const works = [
+      { id: "A", startTriggerMode: "keyword" },
+      { id: "B", startTriggerMode: "free_text" },
+      { id: "C", startTriggerMode: "keyword" },
+    ];
+    expect(resolveFreeTextStartWork(works)).toEqual({ status: "start", workId: "B" });
+  });
+
+  it("free_text が2件以上 → ambiguous（開始しない・workIds を返す）", () => {
+    const works = [
+      { id: "A", startTriggerMode: "free_text" },
+      { id: "B", startTriggerMode: "free_text" },
+      { id: "C", startTriggerMode: "keyword" },
+    ];
+    expect(resolveFreeTextStartWork(works)).toEqual({ status: "ambiguous", workIds: ["A", "B"] });
+  });
+
+  it("free_text が0件 → none", () => {
+    const works = [
+      { id: "A", startTriggerMode: "keyword" },
+      { id: "B", startTriggerMode: undefined },
+      { id: "C", startTriggerMode: null },
+    ];
+    expect(resolveFreeTextStartWork(works)).toEqual({ status: "none" });
+  });
+
+  it("空配列 → none", () => {
+    expect(resolveFreeTextStartWork([])).toEqual({ status: "none" });
+  });
+
+  it("keyword 作品は free_text 判定に含めない（既定 keyword は無影響）", () => {
+    const works = [{ id: "A", startTriggerMode: "keyword" }, { id: "B", startTriggerMode: "free_text" }];
+    const r = resolveFreeTextStartWork(works);
+    expect(r).toEqual({ status: "start", workId: "B" });
   });
 });
