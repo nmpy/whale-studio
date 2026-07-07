@@ -5200,11 +5200,22 @@ export function MessageForm({
                 送信タイミング
               </label>
               {isPuzzle ? (
-                // 通常メッセージ側と同じ控えめなヘルプ表現に統一（謎・問題専用の大きな説明ボックスは撤去）。
-                // 有効フェーズは下の「フェーズ」欄で指定する（通常メッセージと同じ操作感）。
-                <div style={hintText}>
-                  指定したフェーズにいるユーザーの回答に反応します。正解後に次へ進めたい場合だけ、フェーズ遷移を設定してください。
-                </div>
+                // 通常メッセージ側と同じ select + hintText 構造に揃える。
+                // 謎・問題は種別が固定のため 1 項目のみの表示専用 select（form.kind 等の保存値には紐づけない）。
+                // 「フェーズ遷移時」ではなく「回答時に反応」の意味のラベルにして誤解を防ぐ。
+                <>
+                  <select
+                    className="form-input"
+                    value="puzzle_answer"
+                    onChange={() => { /* 表示専用（謎・問題は種別固定・保存値は不変） */ }}
+                    aria-label="送信タイミング"
+                  >
+                    <option value="puzzle_answer">指定フェーズ内の回答に反応</option>
+                  </select>
+                  <div style={hintText}>
+                    指定したフェーズにいるユーザーの回答に反応します。正解後に次へ進めたい場合だけ、フェーズ遷移を設定してください。
+                  </div>
+                </>
               ) : (
                 <>
                   <select
