@@ -257,14 +257,28 @@ export default function WorkHubPage() {
 
   // ── オンボーディング/警告の表示制御 ─────────────────────────
   // 作品トップのオンボーディングは「作品の設定状況」カードに一本化する。
-  // 作成直後に上部の大きなオンボーディングカード + 警告群を大量表示すると情報過多・圧迫感が出るため、
+  // 作成直後に上部の大きなオンボーディングカード + 警告群を大量表示すると情報過多・圧迫感が出るため:
   //   1) 上部オンボーディングカード（WorkCreatedGuide / OnboardingProgress）は常に非表示（設定状況カードへ集約）。
-  //   2) 警告群は「まだ作り始めた段階」では出さず、主要コンテンツ（キャラ・フェーズ・メッセージ）が
-  //      一通り揃った段階でのみ表示する（＝ 既存オンボーディング進捗ロジック allDone を再利用）。
-  // allDone は開始トリガーを含めないため、揃った後の「開始トリガー未設定」等の運用警告は表示される。
+  //   2) 警告群は「完全な新規空作品」では隠し、制作が進んだ／公開運用に近い段階でのみ表示する。
+  //      まとめてゲートせず alert.key ごとに「初期状態として隠すか」を判定する（他要素の有無で分岐）。
+  //      公開中判定・警告文言・href は computeWorkTopAlerts 側のまま。ここは表示可否のみ。
   const showLegacyTopGuidance = false;
+  // 「開始トリガー未設定」は主要コンテンツ（キャラ・フェーズ・メッセージ）が揃った後に出す。
+  // = 既存オンボーディング進捗 allDone（開始トリガーは含めない）を再利用。
   const coreSetupComplete = computeSetupProgress({ hasCharacters, hasPhases, hasMessages }).allDone;
-  const showOperationalWarnings = coreSetupComplete && warningAlerts.length > 0;
+  const visibleWarningAlerts = warningAlerts.filter((a) => {
+    switch (a.key) {
+      // 完全な空作品では非表示。他の制作要素があるのに欠けている場合のみ表示。
+      case "no_characters":    return hasPhases || hasMessages;
+      case "no_phases":        return hasCharacters || hasMessages;
+      // キャラ＋フェーズありでメッセージ無し（公開中は warning 文言 / 非公開は info 文言＝既存判定）。
+      case "no_messages":      return hasCharacters && hasPhases;
+      // キャラ＋フェーズ＋メッセージが揃った後に表示。
+      case "no_start_trigger": return coreSetupComplete;
+      // 想定外の key は安全側（隠さない）。
+      default:                 return true;
+    }
+  });
 
   // 直近7日間の新規参加者（棒グラフ用・API から。取得不可は null）。
   const daily = analytics?.daily_new_players ?? null;
@@ -381,11 +395,11 @@ export default function WorkHubPage() {
       ))}
 
       {/* ── 状態と注意点 ──
-          「まだ作り始めた段階」では出さず、主要コンテンツが一通り揃った段階でのみ表示する
-          （coreSetupComplete）。整っている旨は設定状況カードへ集約。 */}
-      {work && showOperationalWarnings && (
+          「完全な新規空作品」では出さず、alert.key ごとに他の制作要素の有無で表示可否を分ける
+          （visibleWarningAlerts）。整っている旨は設定状況カードへ集約。 */}
+      {work && visibleWarningAlerts.length > 0 && (
         <div className="mb-5 flex flex-col gap-2">
-          {warningAlerts.map((a) => {
+          {visibleWarningAlerts.map((a) => {
             const s = ALERT_TONE_STYLE[a.tone];
             return (
               <div key={a.key} className={"flex items-center gap-2.5 rounded-md border px-3 py-2 " + s.card}>
