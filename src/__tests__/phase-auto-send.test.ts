@@ -766,3 +766,43 @@ describe("freeInputNextMessageId(自由入力応答) は auto-send から除外"
     expect(ids).not.toContain("B");
   });
 });
+
+// ── 謎・問題の「正解ゲート」仕様の回帰固定（runtime 仕様は変更しない）──
+//   通常送信 puzzle(triggerKeyword=null) は入場時に送信してチェーン停止。後続は正解後に startAfter で送る。
+//   応答型 puzzle(triggerKeyword あり) は入場時に自動送信されない（PR #547）。
+describe("謎・問題の入場送信仕様（正解ゲート・回帰固定）", () => {
+  const ctx = { targetMsgIds: new Set<string>() };
+
+  it("Test1: puzzle(sort0, tk=null) → text(sort1) 入場は [puzzle] のみ（後続は停止）", () => {
+    const puzzle = makeMessage({ id: "puzzle", sortOrder: 0, kind: "puzzle", answer: "答え", triggerKeyword: null });
+    const text   = makeMessage({ id: "text", sortOrder: 1, kind: "normal" });
+    const r = drainAutoSendableItems([puzzle, text]);
+    expect(r.map((m) => m.id)).toEqual(["puzzle"]);
+  });
+
+  it("Test2: text(0) → puzzle(1,tk=null) → text(2) 入場は [text, puzzle]（puzzle 後続は停止）", () => {
+    const t1 = makeMessage({ id: "t1", sortOrder: 0, kind: "normal" });
+    const pz = makeMessage({ id: "pz", sortOrder: 1, kind: "puzzle", answer: "答え", triggerKeyword: null });
+    const t2 = makeMessage({ id: "t2", sortOrder: 2, kind: "normal" });
+    const r = drainAutoSendableItems([t1, pz, t2]);
+    expect(r.map((m) => m.id)).toEqual(["t1", "pz"]);
+  });
+
+  it("Test3: 正解後 startAfterSortOrder=puzzle.sortOrder で後続 text が送られる（二重送信なし）", () => {
+    const puzzle = makeMessage({ id: "puzzle", sortOrder: 0, kind: "puzzle", answer: "答え", triggerKeyword: null });
+    const text   = makeMessage({ id: "text", sortOrder: 1, kind: "normal" });
+    // 入場: [puzzle] のみ
+    expect(drainAutoSendableItems([puzzle, text]).map((m) => m.id)).toEqual(["puzzle"]);
+    // 正解後: puzzle.sortOrder(0) より後 → [text]（puzzle は再送しない＝二重送信なし）
+    const cont = drainAutoSendableItems([puzzle, text], undefined, 0);
+    expect(cont.map((m) => m.id)).toEqual(["text"]);
+  });
+
+  it("Test4: 応答型 puzzle(triggerKeyword あり) は入場時に自動送信されない（isAutoSendable=false）", () => {
+    const respPuzzle = makeMessage({ id: "rp", sortOrder: 0, kind: "puzzle", answer: "答え", triggerKeyword: "なぞ" });
+    const text       = makeMessage({ id: "text", sortOrder: 1, kind: "normal" });
+    expect(isAutoSendableMessageNode(respPuzzle, ctx)).toBe(false);
+    // 入場は応答型 puzzle を除外し text のみ（= これが「text だけ出て puzzle skip」に見える設定不整合の再現）
+    expect(drainAutoSendableItems([respPuzzle, text]).map((m) => m.id)).toEqual(["text"]);
+  });
+});
