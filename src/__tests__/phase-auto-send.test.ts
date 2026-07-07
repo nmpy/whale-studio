@@ -710,3 +710,32 @@ describe("isAutoSendableMessageNode", () => {
     expect(isAutoSendableMessageNode(m, { ...emptyCtx, userSegment: "in_progress" })).toBe(true);
   });
 });
+
+// ── 案C: 謎・問題（kind="puzzle"）の送信タイミング（通常 vs 応答）──
+//   応答 = triggerKeyword あり → 自動送信されずキーワード起動（isAutoSendableMessageNode=false）
+//   通常 = triggerKeyword なし → フェーズ遷移時に自動送信（isAutoSendableMessageNode=true）
+//   kind は "puzzle" のまま（回答判定・ヒント QR 等の実行判定は不変）。
+describe("puzzle 送信タイミング: triggerKeyword 有無で自動送信/キーワード起動を分ける", () => {
+  const ctx = { targetMsgIds: new Set<string>() };
+
+  it("通常（triggerKeyword なし）の puzzle はフェーズ遷移時に自動送信対象", () => {
+    const m = makeMessage({ id: "pz-normal", kind: "puzzle", answer: "こたえ", triggerKeyword: null });
+    expect(isAutoSendableMessageNode(m, ctx)).toBe(true);
+    // puzzle は送信後に必ず入力待ち（回答/ヒント）で停止する
+    expect(requiresUserInteraction(m)).toBe(true);
+  });
+
+  it("応答（triggerKeyword あり）の puzzle は自動送信されず、キーワード入力待ち", () => {
+    const m = makeMessage({ id: "pz-resp", kind: "puzzle", answer: "こたえ", triggerKeyword: "なぞいち" });
+    // triggerKeyword を持つため自動送信対象から除外（= キーワード起動）
+    expect(isAutoSendableMessageNode(m, ctx)).toBe(false);
+    expect(requiresUserInteraction(m)).toBe(true);
+  });
+
+  it("同一フェーズに複数の応答 puzzle があっても、各々キーワード起動対象（自動送信されない）", () => {
+    const a = makeMessage({ id: "pz-a", kind: "puzzle", answer: "A", triggerKeyword: "なぞいち" });
+    const b = makeMessage({ id: "pz-b", kind: "puzzle", answer: "B", triggerKeyword: "なぞに" });
+    expect(isAutoSendableMessageNode(a, ctx)).toBe(false);
+    expect(isAutoSendableMessageNode(b, ctx)).toBe(false);
+  });
+});

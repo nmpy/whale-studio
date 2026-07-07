@@ -4768,6 +4768,14 @@ export function MessageForm({
   const isPuzzle = form.kind === "puzzle";
   const isSystemNotice = form.kind === "system_notice";
 
+  // 謎・問題の送信タイミング（kind は "puzzle" 固定のまま、trigger_keyword の有無で表現）。
+  //   normal   = trigger_keyword なし（フェーズ遷移時に自動送信）
+  //   response = trigger_keyword あり（フェーズ内でキーワード一致時に問題を送信）
+  // 既存メッセージ編集時は trigger_keyword の有無で初期化。応答選択の維持のため state で保持する。
+  const [puzzleTiming, setPuzzleTiming] = useState<"normal" | "response">(
+    initialForm.trigger_keyword?.trim() ? "response" : "normal",
+  );
+
   // プラン制限: ロケーション関連機能（送信後に地点到着を待つ）は location feature 許可プラン
   // （Pro Max / 委託）でのみ表示する。ロケーション管理画面（/locations）と同じ判定基準。
   // 取得中はデフォルト basic（= 非許可）になるため安全側で非表示。判定不能も非表示。
@@ -4952,6 +4960,11 @@ export function MessageForm({
     e.preventDefault();
     const err = validateMessageForm(form, phases.map((p) => ({ id: p.id })));
     if (err) { setError(err); return; }
+    // 謎・問題で「応答（キーワードで送信）」を選んだ場合は応答キーワード必須。
+    if (isPuzzle && puzzleTiming === "response" && !form.trigger_keyword.trim()) {
+      setError("応答（trigger_keyword で送信）を選んだ場合は、応答キーワードを入力してください");
+      return;
+    }
     setError(null);
 
     // 応答メッセージの場合: QR連携ラベルを trigger_keyword にマージして保存
@@ -5200,18 +5213,23 @@ export function MessageForm({
                 送信タイミング
               </label>
               {isPuzzle ? (
-                // 通常メッセージ側と同じ select + hintText 構造に揃える。
-                // 謎・問題は kind="puzzle" が種別スロットを占有し、問題メッセージ自体の送信は「フェーズ遷移時」の
-                // 1 種類のみ。よって表示専用の 1 項目 select（form.kind 等の保存値には紐づけない）。
-                // 「指定フェーズ内の回答に反応」は送信タイミングの選択肢ではなく、下の補足文で説明する。
+                // 通常メッセージ側と同じ select + hintText 構造。謎・問題の送信タイミングは
+                // 通常（フェーズ遷移時に送信）/ 応答（trigger_keyword 一致時に送信）の2択。
+                // kind は "puzzle" 固定のまま。応答=trigger_keyword を持つ、で表現する（保存値/実行判定は不変）。
                 <>
                   <select
                     className="form-input"
-                    value="puzzle_normal"
-                    onChange={() => { /* 表示専用（謎・問題は種別固定・保存値は不変） */ }}
+                    value={puzzleTiming}
+                    onChange={(e) => {
+                      const v = e.target.value as "normal" | "response";
+                      setPuzzleTiming(v);
+                      // 通常に戻したら trigger_keyword をクリア（＝フェーズ遷移時の自動送信に戻す）。
+                      if (v === "normal") set("trigger_keyword", "");
+                    }}
                     aria-label="送信タイミング"
                   >
-                    <option value="puzzle_normal">通常（フェーズ遷移時に送信）</option>
+                    <option value="normal">通常（フェーズ遷移時に送信）</option>
+                    <option value="response">応答（trigger_keyword 一致時に返信）</option>
                   </select>
                   <div style={hintText}>
                     この問題メッセージ自体の送信タイミングを選びます。送信後は、指定したフェーズにいるユーザーの回答に反応します。正解後に次へ進めたい場合だけ、フェーズ遷移を設定してください。
@@ -5268,12 +5286,12 @@ export function MessageForm({
               )}
             </div>
 
-            {/* 応答キーワード（puzzle は不要） */}
-            {!isPuzzle && (
+            {/* 応答キーワード（通常メッセージ全般 ＋ 謎・問題で「応答」を選んだ場合）*/}
+            {(!isPuzzle || puzzleTiming === "response") && (
             <div className="form-group">
               <label style={fieldLabel}>
                 応答キーワード
-                {(form.kind === "response" || form.kind === "global" || form.kind === "start") && (
+                {(form.kind === "response" || form.kind === "global" || form.kind === "start" || (isPuzzle && puzzleTiming === "response")) && (
                   <span style={{ fontSize: 10, fontWeight: 700, background: "#fef2f2", color: "#dc2626", borderRadius: 4, padding: "1px 6px", marginLeft: 6 }}>必須</span>
                 )}
               </label>
@@ -5285,9 +5303,10 @@ export function MessageForm({
                 allMessagesForLink={allMessages}
               />
               <div style={{ ...hintText, marginTop: 6 }}>
-                {form.kind === "start"  && "開始演出の場合、このキーワードで演出を開始します。"}
-                {form.kind === "global" && "どのフェーズでも反応します。キーワードは必須です。"}
-                {form.kind !== "start" && form.kind !== "global" && "複数設定可。いずれかに一致したとき返信します。この応答キーワードは、下で指定した「フェーズ」にいるときだけ反応します（どのフェーズでも反応させたい場合は種別を「共通」に）。"}
+                {isPuzzle       && "このキーワードを、指定した「フェーズ」にいるユーザーが送信するとこの問題メッセージが送信されます。同一フェーズ内に複数の問題がある場合、キーワードで呼び分けられます。"}
+                {!isPuzzle && form.kind === "start"  && "開始演出の場合、このキーワードで演出を開始します。"}
+                {!isPuzzle && form.kind === "global" && "どのフェーズでも反応します。キーワードは必須です。"}
+                {!isPuzzle && form.kind !== "start" && form.kind !== "global" && "複数設定可。いずれかに一致したとき返信します。この応答キーワードは、下で指定した「フェーズ」にいるときだけ反応します（どのフェーズでも反応させたい場合は種別を「共通」に）。"}
               </div>
             </div>
             )}

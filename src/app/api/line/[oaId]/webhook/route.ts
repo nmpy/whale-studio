@@ -1248,9 +1248,12 @@ function matchKeywordsInMemory(
   const inputNorm  = normKw(inputText);
   const inputLoose = normKwLoose(inputText);
 
-  // フェーズ内のキーワードメッセージ（triggerKeyword あり / kind ≠ start・puzzle・system_notice）
+  // フェーズ内のキーワードメッセージ（triggerKeyword あり / kind ≠ start・system_notice）。
+  // 謎・問題（kind="puzzle"）も triggerKeyword を持てば「応答（キーワードで問題を送信）」として対象にする。
+  // ※ フェーズスコープのみ。global（共通・phaseId=null）の謎・問題は回答バインドが曖昧なため対象外
+  //   （getCachedGlobalKwMsgs 側は puzzle 除外のまま）。
   const phaseCandidates = phaseMessages
-    .filter((m) => m.triggerKeyword !== null && m.kind !== "start" && m.kind !== "puzzle" && m.kind !== "system_notice");
+    .filter((m) => m.triggerKeyword !== null && m.kind !== "start" && m.kind !== "system_notice");
   const phaseKwMsgs = phaseCandidates
     .map((m) => ({
       id:              m.id,
@@ -1270,6 +1273,12 @@ function matchKeywordsInMemory(
       imageActionPostbackData: m.imageActionPostbackData ?? null,
       // 自由入力受付フラグ (buildMessageChain の chain walk 停止判定に必要)
       freeInputEnabled:        m.freeInputEnabled        ?? null,
+      // 謎・問題（kind="puzzle"）をキーワード送信する場合の描画用。
+      // buildKeywordMessages が kind/hintMode/incorrectQuickReplies を読み、ヒント QR と
+      // sourceMessageId（回答追跡）を合成する。通常メッセージでは kind に応じて no-op。
+      kind:                  m.kind ?? null,
+      hintMode:              (m as { hintMode?: string | null }).hintMode ?? null,
+      incorrectQuickReplies: (m as { incorrectQuickReplies?: string | null }).incorrectQuickReplies ?? null,
       // 演出設定 (Phase 2c) — PhaseRow.messages は include で全カラム取得済み
       lagMs:           m.lagMs ?? null,
       timing:          buildKeywordTiming(m),
