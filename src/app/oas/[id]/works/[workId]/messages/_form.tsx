@@ -3182,10 +3182,11 @@ function renderBubbleContent(
       );
     }
     case "riddle":
+      // 「謎チャレンジ」ラベルは実機 LINE には表示されない制作側ラベルのため、プレビューでは描画しない
+      // （#553 の puzzle バッジ・notify bubble 削除と同方針）。謎タイトル表示・選択ロジックは不変。
       return (
         <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
           <div>
-            <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 2 }}>謎チャレンジ</div>
             <div style={{ fontSize: 13, fontWeight: 600, color: "#111" }}>
               {selectedRiddle
                 ? selectedRiddle.title
