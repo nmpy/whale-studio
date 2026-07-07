@@ -522,9 +522,15 @@ export function drainAutoSendableItems(
    *  resumeFromMessageId = hold ノードの nextMessageId（後続チェーン・PR-SER3 worker が再開）。 */
   holdOut?: { held?: { messageId: string; resumeFromMessageId: string | null } },
 ): import("@/types").RuntimePhaseMessage[] {
-  // 1. QR の target_message_id を収集
+  // 1. QR の target_message_id ＋ 自由入力後の応答(freeInputNextMessageId) を収集
+  //    どちらも「後から（QRタップ／自由入力受付後）にのみ送る」メッセージなので、
+  //    フェーズ入場時の自動送信対象から除外する。
+  //    ※ 自由入力応答(B)は freeInput プロンプト(A)の freeInputNextMessageId でのみ参照される独立ノード。
+  //      これを除外しないと、開始フェーズ入場（free_text/startKeyword/startTrigger 開始や通常遷移）で
+  //      入場メッセージ A と同時に応答 B まで送られてしまう（B は自由入力を受けた次回入力でのみ送るべき）。
   const targetMsgIds = new Set<string>();
   for (const m of messages) {
+    if (m.freeInputNextMessageId) targetMsgIds.add(m.freeInputNextMessageId);
     if (!m.quickReplies) continue;
     try {
       const items = JSON.parse(m.quickReplies) as QuickReplyItem[];
