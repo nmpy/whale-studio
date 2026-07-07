@@ -5053,11 +5053,15 @@ export function MessageForm({
     }
     setError(null);
 
+    // 通常送信の謎・問題（送信タイミング=通常）は trigger_keyword を持たない。
+    //   万一 UI 操作で残留していても、保存時に null 化して「応答型 puzzle 扱いで入場スキップ」を防ぐ。
+    let submitForm = (isPuzzle && puzzleTiming === "normal" && form.trigger_keyword.trim())
+      ? { ...form, trigger_keyword: "" }
+      : form;
     // 応答メッセージの場合: QR連携ラベルを trigger_keyword にマージして保存
-    let submitForm = form;
-    if (form.kind === "response" && messageId) {
+    if (submitForm.kind === "response" && messageId) {
       const norm = (s: string) => s.trim().toLowerCase().normalize("NFKC");
-      const manual = form.trigger_keyword.split("\n").map((k) => k.trim()).filter(Boolean);
+      const manual = submitForm.trigger_keyword.split("\n").map((k) => k.trim()).filter(Boolean);
       const linked = allMessages
         .flatMap((m) => (m.quick_replies ?? []))
         .filter((qr) => qr.response_message_id === messageId && qr.label.trim())
@@ -5065,7 +5069,7 @@ export function MessageForm({
         .filter((l, i, arr) => arr.indexOf(l) === i) // dedup linked
         .filter((l) => !manual.some((e) => norm(e) === norm(l))); // exclude already-manual
       if (linked.length > 0) {
-        submitForm = { ...form, trigger_keyword: [...manual, ...linked].join("\n") };
+        submitForm = { ...submitForm, trigger_keyword: [...manual, ...linked].join("\n") };
       }
     }
 
@@ -5253,6 +5257,11 @@ export function MessageForm({
                     onClick={() => {
                       if (cat.value === "puzzle" && !isPuzzle) {
                         set("kind", "puzzle");
+                        // 謎・問題は既定で「通常送信（フェーズ到達時に送信）」。
+                        // 応答メッセージ等から切替えたときの trigger_keyword 残留を持ち越さない
+                        // （残留すると「応答型 puzzle」扱いで入場時にスキップされ、後続テキストだけ出て見える不具合になる）。
+                        set("trigger_keyword", "");
+                        setPuzzleTiming("normal");
                       } else if (cat.value === "normal" && isPuzzle) {
                         set("kind", "normal");
                       }
@@ -5318,7 +5327,9 @@ export function MessageForm({
                     <option value="response">応答（trigger_keyword 一致時に返信）</option>
                   </select>
                   <div style={hintText}>
-                    この問題メッセージ自体の送信タイミングを選びます。送信後は、指定したフェーズにいるユーザーの回答に反応します。正解後に次へ進めたい場合だけ、フェーズ遷移を設定してください。
+                    {puzzleTiming === "response"
+                      ? "指定キーワードが入力された時にこの謎・問題を送信します。フェーズ到達時には自動送信されません。送信後は正解するまで後続メッセージを停止します。正解後に次へ進めたい場合だけ、フェーズ遷移を設定してください。"
+                      : "フェーズ到達時にこの謎・問題を送信します。送信後は正解するまで後続メッセージを停止します（後続メッセージは正解後に送信されます）。正解後に次へ進めたい場合だけ、フェーズ遷移を設定してください。"}
                   </div>
                 </>
               ) : (
