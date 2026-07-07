@@ -378,6 +378,21 @@ async function resolveInProgressWorkId(userId: string, activeWorkIds: string[]):
 }
 
 /**
+ * このユーザーが対象 OA の active 作品に「何らかの UserProgress を持つか」を返す。
+ * 未完了(reachedEnding=false)・完了(reachedEnding=true) を問わず1件でもあれば true。
+ * free_text 開始は「完全新規（＝progress が一切ない）」ユーザーに限定するためのゲートに使う
+ * （クリア済みユーザーが感想/雑談を送っただけで再スタートしないようにする）。
+ */
+async function hasAnyProgressInActiveWorks(userId: string, activeWorkIds: string[]): Promise<boolean> {
+  if (activeWorkIds.length === 0) return false;
+  const p = await prisma.userProgress.findFirst({
+    where:  { lineUserId: userId, workId: { in: activeWorkIds } },
+    select: { id: true },
+  });
+  return p !== null;
+}
+
+/**
  * postback の作品を payload 由来で解決する（直近 progress ではなく payload 優先）。
  * 優先: data.workId（resume_work 含む） → sourceMessageId/messageId → phaseId。
  * 解決した workId は必ず activeWorkIds（＝この OA の公開中作品）に含まれること（他 OA の id は拒否）。
@@ -1993,18 +2008,20 @@ async function handleWebhook(req: NextRequest, oaId: string) {
               console.log(`[Webhook][single] start keyword 一致 → workId=${single.id.slice(0, 8)} userId=${uid.slice(0, 8)}`);
               await startWorkByKeyword({ oa, work: single, systemSender, userId: uid, replyToken: event.replyToken, vars: buildVars(uid) });
             } else {
-              // 開始KW非一致。進行中 progress が無く、free_text 開始が有効な作品がちょうど1件なら開始。
-              //   進行中がある場合は handleTextEvent（＝謎回答/ヒント/応答キーワード等の既存処理）に委ねる。
+              // 開始KW非一致。free_text 開始は「完全新規（この OA に progress が一切ない）」ユーザーに限定。
+              //   進行中/クリア済みなど progress がある場合は handleTextEvent（＝謎回答/ヒント/応答KW等の既存処理）に委ねる。
               const ftRes = resolveFreeTextStartWork(activeWorks);
-              const ftInProgress = ftRes.status === "start"
-                ? await resolveInProgressWorkId(uid, activeWorks.map((w) => w.id))
-                : null;
-              if (ftRes.status === "start" && !ftInProgress) {
+              const ftHasProgress = ftRes.status === "start"
+                ? await hasAnyProgressInActiveWorks(uid, activeWorks.map((w) => w.id))
+                : true;
+              if (ftRes.status === "start" && !ftHasProgress) {
                 const ftWork = activeWorks.find((w) => w.id === ftRes.workId) ?? single;
                 console.log(`[Webhook][single] free_text 開始 → workId=${ftRes.workId.slice(0, 8)} userId=${uid.slice(0, 8)} reason="free_text_start_trigger"`);
                 await startWorkByKeyword({ oa, work: ftWork!, systemSender, userId: uid, replyToken: event.replyToken, vars: buildVars(uid) });
               } else {
-                if (ftRes.status === "ambiguous") {
+                if (ftRes.status === "start" && ftHasProgress) {
+                  console.log(`[Webhook][single] free_text 開始せず（既存progressあり=新規ではない） userId=${uid.slice(0, 8)} reason="free_text_start_skipped_existing_progress"`);
+                } else if (ftRes.status === "ambiguous") {
                   console.warn(`[Webhook][single] free_text 開始せず（複数候補で曖昧） userId=${uid.slice(0, 8)} reason="free_text_start_ambiguous" candidates=[${ftRes.workIds.map((id) => id.slice(0, 8)).join(",")}]`);
                 }
                 await handleTextEvent({
@@ -2033,12 +2050,18 @@ async function handleWebhook(req: NextRequest, oaId: string) {
                 await handleTextEvent({ oa, work: ipWork, systemSender: buildWorkSystemSender(ipWork), userId: uid, text, replyToken: event.replyToken, vars: buildVars(uid) });
               } else {
                 // 開始KW非一致 & 進行中なし（ここに来た時点で in-progress 作品なし）。
-                // free_text 開始が有効な作品がちょうど1件なら開始。複数なら曖昧なので開始しない。
+                // free_text 開始は「完全新規（この OA に progress が一切ない）」ユーザーに限定する。
+                //   → クリア済み(reachedEnding=true)ユーザーの感想/雑談で再スタートしない。
                 const ftRes = resolveFreeTextStartWork(activeWorks);
                 if (ftRes.status === "start") {
-                  const ftWork = activeWorks.find((w) => w.id === ftRes.workId)!;
-                  console.log(`[Webhook][multi] free_text 開始 → workId=${ftWork.id.slice(0, 8)} userId=${uid.slice(0, 8)} reason="free_text_start_trigger"`);
-                  await startWorkByKeyword({ oa, work: ftWork, systemSender: buildWorkSystemSender(ftWork), userId: uid, replyToken: event.replyToken, vars: buildVars(uid) });
+                  const hasProgress = await hasAnyProgressInActiveWorks(uid, activeWorks.map((w) => w.id));
+                  if (!hasProgress) {
+                    const ftWork = activeWorks.find((w) => w.id === ftRes.workId)!;
+                    console.log(`[Webhook][multi] free_text 開始 → workId=${ftWork.id.slice(0, 8)} userId=${uid.slice(0, 8)} reason="free_text_start_trigger"`);
+                    await startWorkByKeyword({ oa, work: ftWork, systemSender: buildWorkSystemSender(ftWork), userId: uid, replyToken: event.replyToken, vars: buildVars(uid) });
+                  } else {
+                    console.log(`[Webhook][multi] free_text 開始せず（既存progressあり=新規ではない） userId=${uid.slice(0, 8)} reason="free_text_start_skipped_existing_progress"`);
+                  }
                 } else if (ftRes.status === "ambiguous") {
                   console.warn(`[Webhook][multi] free_text 開始せず（複数候補で曖昧） userId=${uid.slice(0, 8)} reason="free_text_start_ambiguous" candidates=[${ftRes.workIds.map((id) => id.slice(0, 8)).join(",")}]`);
                 } else {

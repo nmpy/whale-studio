@@ -366,3 +366,50 @@ describe("あいさつ送信設定 × 自由入力で開始", () => {
     expect(upsertedWorkId()).toBe(WORK_A);
   });
 });
+
+// ── free_text 開始は「完全新規（この OA に progress が一切ない）」ユーザー限定 ──
+describe("free_text 開始: クリア済み/既存progressユーザーには発動しない", () => {
+  // resolveInProgressWorkId(reachedEnding=false 条件)=進行中なし / hasAnyProgress(条件なし)=progressあり を再現
+  function withCompletedProgress() {
+    mockPrisma.userProgress.findFirst.mockImplementation((args: { where?: { reachedEnding?: boolean } }) =>
+      Promise.resolve(args?.where?.reachedEnding === false ? null : { id: "prog-done" }));
+  }
+
+  it("クリア済み(reachedEnding=true) + 任意テキスト → free_text 開始しない（再スタートしない）", async () => {
+    const a = makeWork(WORK_A, null, "free_text", "welcome_wait");
+    mockPrisma.work.findMany.mockResolvedValue([a]);
+    mockPrisma.work.findFirst.mockResolvedValue(a);
+    withCompletedProgress();
+    setProgressByWork({ [WORK_A]: progressRow(WORK_A, { reachedEnding: true, currentPhaseId: "ep-A" }) });
+    await call(textBody("面白かったです！"));   // クリア後の感想
+    expect(mockPrisma.userProgress.upsert).not.toHaveBeenCalled();
+  });
+
+  it("クリア済み(複数公開) + 任意テキスト → free_text 開始しない", async () => {
+    const works = [makeWork(WORK_A, "エリーゼ開始"), makeWork(WORK_B, null, "free_text")];
+    mockPrisma.work.findMany.mockResolvedValue(works);
+    mockPrisma.work.findFirst.mockResolvedValue(works[0]);
+    withCompletedProgress();
+    await call(textBody("感想を送ります"));
+    expect(mockPrisma.userProgress.upsert).not.toHaveBeenCalled();
+  });
+
+  it("クリア済み + startKeyword一致 → 既存仕様どおり開始できる（明示開始は維持）", async () => {
+    const works = [makeWork(WORK_A, "エリーゼ開始"), makeWork(WORK_B, null, "free_text")];
+    mockPrisma.work.findMany.mockResolvedValue(works);
+    mockPrisma.work.findFirst.mockResolvedValue(works[0]);
+    // A はクリア済み（getCachedProgress=findUnique）。startKeyword で明示開始 → fresh start。
+    setProgressByWork({ [WORK_A]: progressRow(WORK_A, { reachedEnding: true, currentPhaseId: null }) });
+    await call(textBody("エリーゼ開始"));
+    expect(upsertedWorkId()).toBe(WORK_A);
+  });
+
+  it("完全新規（progress一切なし） + 任意テキスト → free_text 開始する", async () => {
+    const a = makeWork(WORK_A, null, "free_text", "welcome_wait");
+    mockPrisma.work.findMany.mockResolvedValue([a]);
+    mockPrisma.work.findFirst.mockResolvedValue(a);
+    // findFirst は default で null（progress なし）＝完全新規
+    await call(textBody("はじめまして"));
+    expect(upsertedWorkId()).toBe(WORK_A);
+  });
+});
