@@ -61,6 +61,7 @@ import { applyFreeInputPostEffect } from "@/lib/frontier-effect";
 import { handleBeaconEvent, type LineBeaconEvent } from "@/lib/beacon";
 import { consumeBeaconArrivalTrigger } from "@/lib/checkin-trigger";
 import { pushToLine as _pushToLine } from "@/lib/line";
+import { moveQuickReplyToTail } from "@/lib/quick-reply-tail";
 import { getCurrentPlanTierForOa } from "@/lib/plan-guard";
 import { getPlanAccessState, FEATURE } from "@/lib/constants/plans";
 import { logEvent } from "@/lib/event-logger";
@@ -2994,6 +2995,29 @@ async function handleTextEvent({
         }
       }
     }
+
+    // 複数 match の chain を concat した後・followup を push した後は、QR が末尾以外の吹き出しに
+    // 残る可能性がある（LINE は最終メッセージの quickReply のみ表示）。最終 msgs 全体で末尾へ集約する。
+    // buildKeywordMessages 内でも chain 単位で moveQuickReplyToTail 済みだが、concat/followup を跨いだ
+    // 集約はここでしか行えない（＝ 応答末尾の「分かった」QR が実機で出ない事象の保険）。
+    moveQuickReplyToTail(msgs);
+
+    // 診断ログ（PII なし）: 実送信 payload の各メッセージに quickReply が付いているか・item のラベル/action。
+    // 「CMS プレビューには QR が出るが実機に出ない」調査用。keyword 応答経路で QR が落ちていないか可視化する。
+    console.info("[line:kw:qr-diag]", JSON.stringify({
+      userIdPrefix: userId?.slice(0, 8) ?? null,
+      count: msgs.length,
+      messages: msgs.map((m, i) => {
+        const qr = (m as { quickReply?: { items?: { action?: { type?: string; label?: string; data?: string } }[] } }).quickReply;
+        return {
+          i,
+          type: (m as { type?: string }).type ?? null,
+          hasQuickReply: !!qr,
+          qrItems: qr?.items?.map((it) => ({ action: it.action?.type ?? null, label: it.action?.label ?? null })) ?? null,
+          isLast: i === msgs.length - 1,
+        };
+      }),
+    }));
 
     const tReplyKw = Date.now();
     // Phase 2c hotfix: chain (= length > 1) で per-message timing が効くよう replyWithLagToLine に統一
