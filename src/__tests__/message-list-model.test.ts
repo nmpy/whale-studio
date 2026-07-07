@@ -88,6 +88,11 @@ describe("getMessageWarnings — 既存5警告を1つも落とさない", () => 
     expect(isHardWarning("連続5通超")).toBe(true);
     expect(isHardWarning("キーワード未設定")).toBe(false);
   });
+  it("callRequestUnsendable → 「通話リクエスト未設定」を追加（hard・実機非送信のため）", () => {
+    expect(getMessageWarnings({ chainLen: 1, chainLimit: 5, callRequestUnsendable: true })).toEqual(["通話リクエスト未設定"]);
+    expect(getMessageWarnings({ chainLen: 1, chainLimit: 5, callRequestUnsendable: false })).toEqual([]);
+    expect(isHardWarning("通話リクエスト未設定")).toBe(true);
+  });
 });
 
 describe("freeInputChainPositions — 自由入力の位置を表示用に分解（表示専用）", () => {

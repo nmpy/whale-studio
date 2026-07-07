@@ -79,7 +79,8 @@ export type MessageWarningLabel =
   | "遷移先未設定"
   | "未接続"
   | "連続5通超"
-  | "Flexキーワード警告";
+  | "Flexキーワード警告"
+  | "通話リクエスト未設定";
 
 /** カードに常時表示する警告ラベルを集約する（既存の導線状態 / 連続 / Flex 判定結果を渡すだけ）。
  *  既存で見えていた警告を1つも落とさないための単一の集約点。 */
@@ -90,6 +91,7 @@ export function getMessageWarnings(args: {
   chainLen: number;          // chainLengthFrom(messages, id)
   chainLimit: number;        // LINE_REPLY_MAX (5)
   hasFlexIssue?: boolean;    // findFlexKeywordPhaseIssues(...).length > 0
+  callRequestUnsendable?: boolean; // call_request で送信可能な flex_payload_json が無い
 }): MessageWarningLabel[] {
   const w: MessageWarningLabel[] = [];
   if (args.missingKeyword) w.push("キーワード未設定");
@@ -97,12 +99,14 @@ export function getMessageWarnings(args: {
   if (args.unreferenced) w.push("未接続");
   if (args.chainLen > args.chainLimit) w.push("連続5通超");
   if (args.hasFlexIssue) w.push("Flexキーワード警告");
+  if (args.callRequestUnsendable) w.push("通話リクエスト未設定");
   return w;
 }
 
-/** 赤（hard）で出す警告か。それ以外は橙（soft）。 */
+/** 赤（hard）で出す警告か。それ以外は橙（soft）。
+ *  通話リクエスト未設定は「実機に送信されない」ため hard 扱い（未接続・連続5通超と同格）。 */
 export function isHardWarning(w: MessageWarningLabel): boolean {
-  return w === "未接続" || w === "連続5通超";
+  return w === "未接続" || w === "連続5通超" || w === "通話リクエスト未設定";
 }
 
 /**

@@ -27,6 +27,7 @@ import {
   buildTriggerIndexes, classifyTrigger, getMessageWarnings,
   TRIGGER_GROUP_META, ALL_TAB_GROUP_ORDER, type MessageWarningLabel,
 } from "./_message-list-model";
+import { classifyCallRequestConfig } from "@/lib/call-request";
 import { ImageUploadField } from "@/components/ImageUploadField";
 import type { WelcomeMessageItem } from "@/lib/welcome-messages";
 import {
@@ -138,9 +139,14 @@ function MessagesPageInner() {
       const flexIssues = m.message_type === "flex"
         ? findFlexKeywordPhaseIssues({ flexJson: m.flex_payload_json, flexMessagePhaseId: m.phase?.id ?? null, index: kwPhaseIndex })
         : [];
+      // 通話リクエストは送信内容が flex_payload_json 側にあるため、空/不正だと実機に無言で送られない。
+      // 保存済みデータの健全性を一覧カードで警告する（新規保存は create/update validation で防止済み）。
+      const callRequestUnsendable = m.message_type === "call_request"
+        && classifyCallRequestConfig(m.flex_payload_json) !== "ok";
       map.set(m.id, getMessageWarnings({
         missingKeyword: info?.missingKeyword, hasBrokenLink: info?.hasBrokenLink, unreferenced: info?.unreferenced,
         chainLen: chainLengthFrom(messages, m.id), chainLimit: LINE_REPLY_MAX, hasFlexIssue: flexIssues.length > 0,
+        callRequestUnsendable,
       }));
     }
     return map;

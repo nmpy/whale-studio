@@ -97,6 +97,29 @@ export function validateCallRequestConfig(cfg: Partial<CallRequestConfig> | null
   return null;
 }
 
+/**
+ * flex_payload_json（保存済みの通話リクエスト設定）の状態を分類する。
+ *   - "empty"         : 未設定（null/空文字）
+ *   - "invalid_json"  : JSON として壊れている
+ *   - "invalid_config": JSON だが必須項目/通話先が不足（validateCallRequestConfig で NG）
+ *   - "ok"            : 送信可能（Flex を生成できる）
+ * CMS 警告表示（保存済みデータの健全性）と送信時 drop の理由分類の両方から使う純関数。
+ */
+export type CallRequestConfigStatus = "ok" | "empty" | "invalid_json" | "invalid_config";
+
+export function classifyCallRequestConfig(
+  configJson: string | null | undefined,
+): CallRequestConfigStatus {
+  if (!configJson || !configJson.trim()) return "empty";
+  let cfg: unknown;
+  try {
+    cfg = JSON.parse(configJson);
+  } catch {
+    return "invalid_json";
+  }
+  return validateCallRequestConfig(cfg as Partial<CallRequestConfig>) ? "invalid_config" : "ok";
+}
+
 /** LINE Flex（bubble）を生成する。設定 JSON（flex_payload_json）と alt_text から。無効なら null。 */
 export function buildCallRequestFlex(
   configJson: string | null | undefined,
