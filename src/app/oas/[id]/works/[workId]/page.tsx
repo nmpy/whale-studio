@@ -24,6 +24,7 @@ import { withPreviewParams } from "@/lib/access-preview";
 import { StatusBadge } from "@/components/shared";
 import { isSpreadsheetImportEnabled } from "@/lib/spreadsheet-import/ui-text";
 import { computeWorkTopAlerts, hasStartEntry, type WorkTopAlertTone } from "@/lib/work-top-alerts";
+import { computeSetupProgress } from "@/lib/onboarding-setup";
 import type { Role } from "@/lib/types/permissions";
 
 // ── ステータス → shared/StatusBadge tone マッピング ───────────────
@@ -254,6 +255,17 @@ export default function WorkHubPage() {
   // 状態と注意点は「警告があるときだけ」表示（整っている旨は設定状況カードに集約）。
   const warningAlerts = alerts.filter((a) => a.tone !== "success");
 
+  // ── オンボーディング/警告の表示制御 ─────────────────────────
+  // 作品トップのオンボーディングは「作品の設定状況」カードに一本化する。
+  // 作成直後に上部の大きなオンボーディングカード + 警告群を大量表示すると情報過多・圧迫感が出るため、
+  //   1) 上部オンボーディングカード（WorkCreatedGuide / OnboardingProgress）は常に非表示（設定状況カードへ集約）。
+  //   2) 警告群は「まだ作り始めた段階」では出さず、主要コンテンツ（キャラ・フェーズ・メッセージ）が
+  //      一通り揃った段階でのみ表示する（＝ 既存オンボーディング進捗ロジック allDone を再利用）。
+  // allDone は開始トリガーを含めないため、揃った後の「開始トリガー未設定」等の運用警告は表示される。
+  const showLegacyTopGuidance = false;
+  const coreSetupComplete = computeSetupProgress({ hasCharacters, hasPhases, hasMessages }).allDone;
+  const showOperationalWarnings = coreSetupComplete && warningAlerts.length > 0;
+
   // 直近7日間の新規参加者（棒グラフ用・API から。取得不可は null）。
   const daily = analytics?.daily_new_players ?? null;
   const dailyMax = daily ? Math.max(1, ...daily.map((d) => d.count)) : 1;
@@ -340,11 +352,14 @@ export default function WorkHubPage() {
       )}
 
       {/* ══ オンボーディング UI ══════════════════════════════
-          優先順位:
-            1. 作成直後バナー（?created=1）— WorkCreatedGuide
-            2. 初回進捗ステッパー          — OnboardingProgress
+          作品トップのオンボーディングは「作品の設定状況」カードへ一本化する。
+          上部の大きなオンボーディングカード（WorkCreatedGuide / OnboardingProgress）は
+          作成直後の情報過多・設定状況カードとの二重表示を避けるため常に非表示にする。
+          （showLegacyTopGuidance を true に戻せば従来の優先順で復帰:
+             1. 作成直後バナー（?created=1）— WorkCreatedGuide
+             2. 初回進捗ステッパー          — OnboardingProgress）
       ══════════════════════════════════════════════════════ */}
-      {showCreated && work ? (
+      {showLegacyTopGuidance && (showCreated && work ? (
         <WorkCreatedGuide
           oaId={oaId}
           workId={workId}
@@ -363,10 +378,12 @@ export default function WorkHubPage() {
           hasMessages={hasMessages}
           hasTransitions={hasTransitions}
         />
-      )}
+      ))}
 
-      {/* ── 状態と注意点（警告があるときだけ・整っている旨は設定状況カードへ集約）── */}
-      {work && warningAlerts.length > 0 && (
+      {/* ── 状態と注意点 ──
+          「まだ作り始めた段階」では出さず、主要コンテンツが一通り揃った段階でのみ表示する
+          （coreSetupComplete）。整っている旨は設定状況カードへ集約。 */}
+      {work && showOperationalWarnings && (
         <div className="mb-5 flex flex-col gap-2">
           {warningAlerts.map((a) => {
             const s = ALERT_TONE_STYLE[a.tone];
