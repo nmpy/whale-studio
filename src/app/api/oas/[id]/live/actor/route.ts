@@ -241,6 +241,12 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
         name:               t.name,
         reservation_number: t.reservationNumber,
         memo:               t.memo,
+        // PR2b-0: 予約/部屋情報（スタッフ優先表示に使用）
+        reserved_at:        t.reservedAt,
+        purchaser_name:     t.purchaserName,
+        group_type:         t.groupType,
+        room_number:        t.roomNumber,
+        ticket_id:          t.ticketId,
         created_at:         t.createdAt,
         updated_at:         t.updatedAt,
       })),

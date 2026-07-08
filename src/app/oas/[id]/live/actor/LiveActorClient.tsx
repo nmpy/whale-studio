@@ -18,6 +18,8 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { liveTeamGroupTypeLabel } from "@/lib/live-team";
+import { isParticipantStalled, formatRelativeTime } from "@/lib/live-stall";
 import {
   type LiveSession,
   type LiveParticipant,
@@ -596,9 +598,10 @@ export function LiveActorClient({
   const [previewActorId, setPreviewActorId] = useState<string>("");
   const [activePreview, setActivePreview] = useState<{ actor_id: string; actor_display_name: string } | null>(null);
 
-  const fetchAll = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  const fetchAll = useCallback(async (opts?: { silent?: boolean }) => {
+    // silent: ポーリング更新。ローディング表示やエラーバナーをちらつかせず、
+    //         最後に取得できたデータを保持する（当日運営中の視認性を優先）。
+    if (!opts?.silent) { setLoading(true); setError(null); }
     try {
       const qs = new URLSearchParams();
       if (selectedSessionId) qs.set("sessionId", selectedSessionId);
@@ -629,13 +632,30 @@ export function LiveActorClient({
         setSelectedSessionId(nearest?.id ?? scopedSessions[0].id);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "取得に失敗しました");
+      if (!opts?.silent) setError(err instanceof Error ? err.message : "取得に失敗しました");
     } finally {
-      setLoading(false);
+      if (!opts?.silent) setLoading(false);
     }
   }, [oaId, selectedSessionId, canPreview, previewActorId, lockedWorkId]);
 
   useEffect(() => { void fetchAll(); }, [fetchAll]);
+
+  // PR2b-2: active 公演中のみ 4 秒間隔で自動更新（当日スタッフが手動再読込せず進行を追える）。
+  // silent 更新なのでローディング/エラーはちらつかない。ended/draft では止める。
+  const selectedSessionForPoll = sessions.find((s) => s.id === selectedSessionId);
+  const pollActive = selectedSessionForPoll?.status === "active";
+  useEffect(() => {
+    if (!pollActive) return;
+    const iv = setInterval(() => { void fetchAll({ silent: true }); }, 4000);
+    return () => clearInterval(iv);
+  }, [pollActive, fetchAll]);
+
+  // PR2b-2: 相対時刻 / 停滞判定を定期再計算するための時計（30秒刻み）。データ取得とは独立。
+  const [nowMs, setNowMs] = useState<number>(() => Date.now());
+  useEffect(() => {
+    const iv = setInterval(() => setNowMs(Date.now()), 30_000);
+    return () => clearInterval(iv);
+  }, []);
 
   // ── 担当 participant 判定 + 並び替え ──
   const linkedToMe = myActorIds.length > 0;
@@ -1041,11 +1061,34 @@ export function LiveActorClient({
                       }}
                     >
                       <span style={{ width: 12, color: "#6b7280" }}>{isTeamCollapsed ? "▶" : "▼"}</span>
+                      {/* PR2b-2 スタッフ優先表示 #1 部屋番号（最も目立たせる） */}
+                      {team?.room_number && (
+                        <span style={{
+                          fontSize: 12, fontWeight: 800, color: "#065f46",
+                          background: "#d1fae5", padding: "1px 8px", borderRadius: 6,
+                        }}>
+                          部屋 {team.room_number}
+                        </span>
+                      )}
                       <span>{teamLabel}</span>
+                      {/* #2 グループ種別 */}
+                      {team?.group_type && (
+                        <span style={{ fontSize: 11, color: "#4338ca", background: "#e0e7ff", padding: "1px 6px", borderRadius: 999, fontWeight: 700 }}>
+                          {liveTeamGroupTypeLabel(team.group_type)}
+                        </span>
+                      )}
                       <span style={{ fontSize: 11, color: "#6b7280", fontWeight: 400 }}>
                         ({list.length})
                       </span>
                     </button>
+                    {/* #3 購入者名 / 予約番号 / チケットID（照合・トラブル確認用） */}
+                    {team && (team.purchaser_name || team.reservation_number || team.ticket_id) && (
+                      <div style={{ fontSize: 11, color: "#6b7280", display: "flex", gap: 10, flexWrap: "wrap", paddingLeft: 20, marginTop: -2 }}>
+                        {team.purchaser_name && <span>購入者: <strong style={{ color: "#374151" }}>{team.purchaser_name}</strong></span>}
+                        {team.reservation_number && <span>予約: {team.reservation_number}</span>}
+                        {team.ticket_id && <span>チケット: {team.ticket_id}</span>}
+                      </div>
+                    )}
                     {!isTeamCollapsed && (
                       <div style={{ display: "grid", gap: 10 }}>
                         {list.map((p) => {
@@ -1072,9 +1115,34 @@ export function LiveActorClient({
                                   {isPCollapsed ? "▶" : "▼"}
                                 </span>
                                 <span style={{ fontWeight: 600 }}>{p.display_name ?? "(無名)"}</span>
-                                <span style={{ fontSize: 10, color: "#9ca3af" }}>
-                                  {PARTICIPANT_STATUS_LABEL[p.status]}
+                                {/* PR2b-2 #4 現在フェーズ名（今どこまで進んでいるか） */}
+                                <span style={{ fontSize: 11, color: "#1d4ed8", fontWeight: 600 }}>
+                                  {p.current_phase_name ?? p.current_step ?? "—"}
                                 </span>
+                                {/* #7 完了 / それ以外の状態 */}
+                                {p.status === "completed" ? (
+                                  <span style={{ fontSize: 10, fontWeight: 700, background: "#e0e7ff", color: "#3730a3", padding: "1px 6px", borderRadius: 999 }}>
+                                    完了
+                                  </span>
+                                ) : (
+                                  <span style={{ fontSize: 10, color: "#9ca3af" }}>
+                                    {PARTICIPANT_STATUS_LABEL[p.status]}
+                                  </span>
+                                )}
+                                {/* #5 最終アクション時刻 + #6 停滞検知（lastSeenAt から導出） */}
+                                {(() => {
+                                  const stalled = isParticipantStalled(p.status, p.last_seen_at, nowMs);
+                                  return (
+                                    <span style={{
+                                      fontSize: 10, fontWeight: stalled ? 700 : 400,
+                                      color: stalled ? "#991b1b" : "#9ca3af",
+                                      background: stalled ? "#fee2e2" : "transparent",
+                                      padding: stalled ? "1px 6px" : 0, borderRadius: 999,
+                                    }}>
+                                      {stalled ? "⚠ 停滞 " : ""}{formatRelativeTime(p.last_seen_at, nowMs)}
+                                    </span>
+                                  );
+                                })()}
                                 {assignedParticipantIds.has(p.id) && (
                                   <span
                                     style={{
