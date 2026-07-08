@@ -8,6 +8,7 @@ import { ZodError } from "zod";
 import { activeCache, CACHE_KEY } from "@/lib/cache";
 import { invalidateOaCacheById } from "@/lib/oa-cache";
 import { isLiveEnabled } from "@/lib/live";
+import { normalizeOaMode } from "@/lib/oa-mode";
 import { genRequestId, runWithRequestId, withTiming } from "@/lib/perf";
 
 // ── GET /api/oas/:id ─────────────────────────────
@@ -43,6 +44,7 @@ export const GET = withRole<{ id: string }>(
         rich_menu_id:         oa.richMenuId          ?? null,
         spreadsheet_id:       oa.spreadsheetId       ?? null,
         usage_type:           oa.usageType,
+        mode:                 normalizeOaMode((oa as { mode?: string | null }).mode),
         service_suspended_at: oa.serviceSuspendedAt  ?? null,
         live_enabled,
         created_at:           oa.createdAt,
@@ -82,6 +84,7 @@ export const PATCH = withRole<{ id: string }>(
           // publish_status とは独立。webhook が serviceSuspendedAt 非 null を見て早期 bail out する。
           ...(data.service_suspended    !== undefined && { serviceSuspendedAt: data.service_suspended ? new Date() : null }),
           ...(data.usage_type           !== undefined && { usageType: data.usage_type }),
+          ...(data.mode                 !== undefined && { mode: data.mode }),
         },
       });
 
@@ -103,6 +106,7 @@ export const PATCH = withRole<{ id: string }>(
         rich_menu_id:         updated.richMenuId          ?? null,
         spreadsheet_id:       updated.spreadsheetId       ?? null,
         usage_type:           updated.usageType,
+        mode:                 normalizeOaMode((updated as { mode?: string | null }).mode),
         service_suspended_at: updated.serviceSuspendedAt  ?? null,
         created_at:           updated.createdAt,
         updated_at:           updated.updatedAt,
