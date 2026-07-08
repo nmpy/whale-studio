@@ -2495,6 +2495,12 @@ type PreviewResult = {
     team_name: string | null;
     current_step: string | null;
     memo: string | null;
+    // PR2b-0b: team レベル項目
+    reserved_at: string | null;
+    purchaser_name: string | null;
+    group_type: string | null;
+    room_number: string | null;
+    ticket_id: string | null;
     warnings: string[];
   }>;
   total_rows: number;
@@ -2508,6 +2514,7 @@ type ApplyResult = {
   skipped: number;
   overwritten: number;
   duplicated: number;
+  teams_created?: number;
   errors: { row_index: number; message: string }[];
   file_warnings: string[];
 };
@@ -2970,8 +2977,12 @@ function ImportSection({
                     <tr style={{ background: "#f3f4f6", color: "#6b7280" }}>
                       <th style={{ padding: "4px 6px", textAlign: "left" }}>row</th>
                       <th style={{ padding: "4px 6px", textAlign: "left" }}>display_name</th>
-                      <th style={{ padding: "4px 6px", textAlign: "left" }}>reservation</th>
-                      <th style={{ padding: "4px 6px", textAlign: "left" }}>date / time</th>
+                      <th style={{ padding: "4px 6px", textAlign: "left" }}>予約番号</th>
+                      <th style={{ padding: "4px 6px", textAlign: "left" }}>チケットID</th>
+                      <th style={{ padding: "4px 6px", textAlign: "left" }}>部屋</th>
+                      <th style={{ padding: "4px 6px", textAlign: "left" }}>種別</th>
+                      <th style={{ padding: "4px 6px", textAlign: "left" }}>購入者</th>
+                      <th style={{ padding: "4px 6px", textAlign: "left" }}>予約日時</th>
                       <th style={{ padding: "4px 6px", textAlign: "left" }}>team_name</th>
                       <th style={{ padding: "4px 6px", textAlign: "left" }}>current_step</th>
                       <th style={{ padding: "4px 6px", textAlign: "left" }}>warnings</th>
@@ -2983,7 +2994,11 @@ function ImportSection({
                         <td style={{ padding: "4px 6px" }}>{i + 1}</td>
                         <td style={{ padding: "4px 6px" }}>{r.display_name ?? "—"}</td>
                         <td style={{ padding: "4px 6px" }}>{r.reservation_number ?? "—"}</td>
-                        <td style={{ padding: "4px 6px" }}>{r.date ?? "—"} {r.time ?? ""}</td>
+                        <td style={{ padding: "4px 6px" }}>{r.ticket_id ?? "—"}</td>
+                        <td style={{ padding: "4px 6px" }}>{r.room_number ?? "—"}</td>
+                        <td style={{ padding: "4px 6px" }}>{r.group_type ? liveTeamGroupTypeLabel(r.group_type) : "—"}</td>
+                        <td style={{ padding: "4px 6px" }}>{r.purchaser_name ?? "—"}</td>
+                        <td style={{ padding: "4px 6px" }}>{r.reserved_at ? formatDateTime(r.reserved_at) : "—"}</td>
                         <td style={{ padding: "4px 6px" }}>{r.team_name ?? "—"}</td>
                         <td style={{ padding: "4px 6px" }}>{r.current_step ?? "—"}</td>
                         <td style={{ padding: "4px 6px", color: r.warnings.length > 0 ? "#92400e" : "#9ca3af" }}>
@@ -3010,15 +3025,20 @@ function ImportSection({
                         style={{ ...inputStyle, maxWidth: 220 }}
                       >
                         <option value="">— マップしない —</option>
-                        <option value="display_name">display_name</option>
+                        <option value="display_name">display_name (氏名)</option>
                         <option value="email">email</option>
                         <option value="line_user_id">line_user_id</option>
-                        <option value="reservation_number">reservation_number</option>
+                        <option value="reservation_number">予約番号 (reservation_number)</option>
+                        <option value="ticket_id">チケットID (ticket_id)</option>
+                        <option value="room_number">部屋番号 (room_number)</option>
+                        <option value="group_type">グループ種別 (group_type)</option>
+                        <option value="purchaser_name">購入者名 (purchaser_name)</option>
+                        <option value="reserved_at">公演予約日時 (reserved_at)</option>
                         <option value="__date">参加日 (date)</option>
                         <option value="__time">開始時間 (time)</option>
-                        <option value="team_name">team_name</option>
+                        <option value="team_name">team_name (チーム名)</option>
                         <option value="current_step">current_step (= phase 名)</option>
-                        <option value="memo">memo</option>
+                        <option value="memo">メモ (memo)</option>
                         <option value="status">status</option>
                       </select>
                     </div>
@@ -3032,7 +3052,8 @@ function ImportSection({
           {/* 結果サマリ */}
           {result && (
             <div style={{ background: "#ecfdf5", color: "#065f46", padding: 10, borderRadius: 8, fontSize: 12 }}>
-              取込完了: 作成 {result.created} / skip {result.skipped} / 上書き {result.overwritten} / 重複新規 {result.duplicated}
+              取込完了: 参加者 作成 {result.created} / skip {result.skipped} / 上書き {result.overwritten} / 重複新規 {result.duplicated}
+              {typeof result.teams_created === "number" && ` / チーム作成 ${result.teams_created}`}
               {result.errors.length > 0 && (
                 <ul style={{ color: "#991b1b", marginTop: 6 }}>
                   {result.errors.map((e, i) => <li key={i}>row {e.row_index + 1}: {e.message}</li>)}
