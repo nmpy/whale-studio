@@ -23,6 +23,21 @@ export function liveTeamGroupTypeLabel(v: string | null | undefined): string {
   return isLiveTeamGroupType(v) ? LIVE_TEAM_GROUP_TYPE_LABELS[v] : "-";
 }
 
+/**
+ * CSV/手入力の表記ゆれを内部値へ正規化（PR2b-0b）。
+ *   4人 / 4名 / four / 4 → "four"
+ *   2人 / 2名 / two  / 2 → "two"
+ * 解釈できない場合は null（呼び出し側で warning 表示）。
+ */
+export function normalizeGroupType(input: string | null | undefined): LiveTeamGroupType | null {
+  if (input == null) return null;
+  const s = String(input).trim().toLowerCase();
+  if (s === "") return null;
+  if (/^(4人|4名|four|4)$/.test(s)) return "four";
+  if (/^(2人|2名|two|2)$/.test(s)) return "two";
+  return null;
+}
+
 // ── 予約/部屋情報の共通スキーマ片（create/patch で再利用） ──
 // すべて任意。日時は ISO 文字列（route 側で Date へ変換）。
 export const liveTeamReservationFields = {

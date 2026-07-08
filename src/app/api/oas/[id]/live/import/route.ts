@@ -49,6 +49,7 @@ import { Buffer } from "node:buffer";
 import { prisma } from "@/lib/prisma";
 import { ok, badRequest, notFound, serverError } from "@/lib/api-response";
 import { authorizeLive } from "@/lib/live-auth";
+import { normalizeGroupType, type LiveTeamGroupType } from "@/lib/live-team";
 import Papa from "papaparse";
 import iconv from "iconv-lite";
 
@@ -73,7 +74,13 @@ type InternalField =
   | "team_name"
   | "current_step"
   | "memo"
-  | "status";
+  | "status"
+  // PR2b-0b: LiveTeam（部屋/グループ/予約）レベルの項目
+  | "reserved_at"
+  | "purchaser_name"
+  | "group_type"
+  | "room_number"
+  | "ticket_id";
 
 const DEFAULT_HEADER_MAP: Record<string, InternalField> = {};
 const HEADER_PATTERNS: Array<[RegExp, InternalField]> = [
@@ -81,6 +88,12 @@ const HEADER_PATTERNS: Array<[RegExp, InternalField]> = [
   [/^(メール|メールアドレス|email|e-?mail)$/i,                            "email"],
   [/^(LINE\s*ID|lineUserId|line_user_id|line)$/i,                         "line_user_id"],
   [/^(予約番号|注文番号|reservationNumber|reservation_number|order_id)$/i, "reservation_number"],
+  // PR2b-0b: team レベルの列（表記ゆれ吸収）。※ anchored なので team_name の "グループ" とは衝突しない。
+  [/^(公演予約日時|予約日時|開始日時|reserved_at|reservedAt)$/i,            "reserved_at"],
+  [/^(購入者名|購入者|代表者名|purchaser_name|purchaser|purchaserName)$/i,  "purchaser_name"],
+  [/^(グループ種別|人数|部屋種別|group_type|groupType)$/i,                  "group_type"],
+  [/^(部屋番号|部屋|room_number|room|roomNumber)$/i,                       "room_number"],
+  [/^(チケットID|チケットid|チケット番号|ticket_id|ticketId|ticket)$/i,     "ticket_id"],
   [/^(参加日|公演日|date|scheduled_date|参加日付)$/i,                       "__date"],
   [/^(開始時間|公演時間|time|start_time|時間)$/i,                          "__time"],
   [/^(チーム|チーム名|team|team_name|グループ)$/i,                          "team_name"],
@@ -152,6 +165,14 @@ function normalizeDateTime(dateStr: string, timeStr: string): Date | null {
   return d;
 }
 
+/** 単一列の「公演予約日時」を JST の Date に。空欄は null（"YYYY-MM-DD HH:mm" / ISO / 日付のみ 可）。 */
+function parseReservedAt(input: string): Date | null {
+  const t = input.trim();
+  if (!t) return null;
+  const parts = t.split(/[ T]+/);
+  return normalizeDateTime(parts[0], parts[1] ?? "");
+}
+
 type ParsedRow = {
   raw:               Record<string, string>;
   display_name:      string | null;
@@ -165,6 +186,12 @@ type ParsedRow = {
   memo:              string | null;
   status:            string | null;
   scheduledAt:       Date | null;
+  // PR2b-0b: team レベル項目
+  reservedAt:        Date | null;
+  purchaser_name:    string | null;
+  group_type:        LiveTeamGroupType | null;
+  room_number:       string | null;
+  ticket_id:         string | null;
   warnings:          string[];
 };
 
@@ -296,6 +323,17 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     if (date && !scheduledAt) {
       warnings.push(`参加日 "${date}" / 開始時間 "${time ?? ""}" のパースに失敗`);
     }
+    // PR2b-0b: team レベル項目のパース + 表記ゆれ吸収
+    const rawGroup = get("group_type");
+    const group_type = normalizeGroupType(rawGroup);
+    if (rawGroup && !group_type) {
+      warnings.push(`グループ種別 "${rawGroup}" は 2人/4人 として解釈できません(未設定として扱います)`);
+    }
+    const rawReserved = get("reserved_at");
+    const reservedAt = rawReserved ? parseReservedAt(rawReserved) : null;
+    if (rawReserved && !reservedAt) {
+      warnings.push(`公演予約日時 "${rawReserved}" のパースに失敗`);
+    }
     return {
       raw,
       display_name:       get("display_name"),
@@ -309,6 +347,11 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       memo:               get("memo"),
       status:             get("status"),
       scheduledAt,
+      reservedAt,
+      purchaser_name:     get("purchaser_name"),
+      group_type,
+      room_number:        get("room_number"),
+      ticket_id:          get("ticket_id"),
       warnings,
     };
   });
@@ -337,6 +380,12 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         team_name:          r.team_name,
         current_step:       r.current_step,
         memo:               r.memo,
+        // PR2b-0b: team レベル項目
+        reserved_at:        r.reservedAt,
+        purchaser_name:     r.purchaser_name,
+        group_type:         r.group_type,
+        room_number:        r.room_number,
+        ticket_id:          r.ticket_id,
         warnings:           r.warnings,
       })),
       total_rows:         rows.length,
@@ -359,6 +408,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   }
 
   // 2. チーム解決用のヘルパー
+  let teamsCreated = 0; // PR2b-0b: 取込で新規作成した LiveTeam 数
   const teamCacheBySession = new Map<string, LiveTeamCache>();
   type LiveTeamCache = {
     byName: Map<string, string>;            // teamName → teamId
@@ -366,6 +416,16 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     nextAutoIndex: number;                  // by_4 自動採番カウンタ
     autoBucket: { teamId: string; count: number } | null;
   };
+
+  // PR2b-0b: 行から LiveTeam の予約/部屋情報を組み立てる（team 新規作成時に反映。既存 team は変更しない）。
+  const teamFieldsFromRow = (row: ParsedRow) => ({
+    reservedAt:    row.reservedAt,
+    purchaserName: row.purchaser_name,
+    groupType:     row.group_type,
+    roomNumber:    row.room_number,
+    ticketId:      row.ticket_id,
+    ...(row.memo ? { memo: row.memo } : {}),
+  });
 
   const createSessionFor = async (dt: Date): Promise<string> => {
     const k = minuteKey(dt);
@@ -409,9 +469,10 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       const cached = cache.byName.get(row.team_name);
       if (cached) return cached;
       const created = await prisma.liveTeam.create({
-        data: { oaId: params.id, liveSessionId: sessionId, name: row.team_name },
+        data: { oaId: params.id, liveSessionId: sessionId, name: row.team_name, ...teamFieldsFromRow(row) },
         select: { id: true },
       });
+      teamsCreated += 1;
       cache.byName.set(row.team_name, created.id);
       return created.id;
     }
@@ -426,9 +487,11 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
           liveSessionId:     sessionId,
           name,
           reservationNumber: row.reservation_number,
+          ...teamFieldsFromRow(row),
         },
         select: { id: true },
       });
+      teamsCreated += 1;
       cache.byReservation.set(row.reservation_number, created.id);
       cache.byName.set(name, created.id);
       return created.id;
@@ -441,6 +504,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
           data: { oaId: params.id, liveSessionId: sessionId, name },
           select: { id: true },
         });
+        teamsCreated += 1;
         cache.autoBucket = { teamId: created.id, count: 0 };
         cache.nextAutoIndex += 1;
         cache.byName.set(name, created.id);
@@ -461,9 +525,15 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   try {
     for (let idx = 0; idx < rows.length; idx++) {
       const r = rows[idx];
-      if (!r.display_name) { skipped += 1; continue; }
+      const hasName = !!r.display_name;
+      const hasTeamInfo = !!(
+        r.reservation_number || r.team_name || r.ticket_id ||
+        r.purchaser_name || r.room_number || r.group_type || r.reservedAt
+      );
+      // 氏名も team 情報も無い空行はスキップ
+      if (!hasName && !hasTeamInfo) { skipped += 1; continue; }
 
-      // session 解決
+      // session 解決（team/participant いずれも session が必要）
       let sessionId: string;
       if (r.scheduledAt) {
         sessionId = await createSessionFor(r.scheduledAt);
@@ -484,6 +554,17 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
           sessionId = f.id;
         }
       }
+
+      // チーム解決 + 予約/部屋情報の反映（PR2b-0b）。
+      // 予約名簿（氏名なし・予約/部屋情報のみ）でも team を作れるよう、氏名の有無に依らず解決する。
+      // ただし by_4/none は氏名なし行では team 化しない（グループ同定ができないため）。
+      let teamId: string | null = null;
+      if (hasName || options.teaming === "by_reservation" || options.teaming === "by_team_name_column") {
+        teamId = await resolveTeamId(sessionId, r);
+      }
+
+      // 参加者行の作成は氏名が必須（team は上で作成/補完済み）。
+      if (!r.display_name) { skipped += 1; continue; }
 
       // dedup 判定
       let existing: { id: string } | null = null;
@@ -522,9 +603,6 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         if (r.status && allowed.has(r.status.toLowerCase())) return r.status.toLowerCase() as "waiting" | "active" | "stuck" | "completed" | "dropped";
         return undefined;
       })();
-
-      // チーム解決
-      const teamId = await resolveTeamId(sessionId, r);
 
       // memo に email を保持 (= legacy 互換 / 検索可能化)
       const memoParts: string[] = [];
@@ -572,6 +650,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     skipped,
     overwritten,
     duplicated,
+    teams_created: teamsCreated,
     errors,
     file_warnings: fileWarnings,
   });

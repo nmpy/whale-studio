@@ -6,7 +6,7 @@
 import { describe, it, expect } from "vitest";
 import {
   LIVE_TEAM_GROUP_TYPES, LIVE_TEAM_GROUP_TYPE_LABELS,
-  isLiveTeamGroupType, liveTeamGroupTypeLabel,
+  isLiveTeamGroupType, liveTeamGroupTypeLabel, normalizeGroupType,
   createLiveTeamSchema, patchLiveTeamSchema, toLiveTeamResponse,
 } from "@/lib/live-team";
 
@@ -31,6 +31,26 @@ describe("isLiveTeamGroupType / liveTeamGroupTypeLabel", () => {
     expect(liveTeamGroupTypeLabel("two")).toBe("2人");
     expect(liveTeamGroupTypeLabel(null)).toBe("-");
     expect(liveTeamGroupTypeLabel("bogus")).toBe("-");
+  });
+});
+
+describe("normalizeGroupType（CSV 表記ゆれ吸収・PR2b-0b）", () => {
+  it("4人系は four", () => {
+    for (const v of ["4人", "4名", "four", "FOUR", "4", " 4人 "]) {
+      expect(normalizeGroupType(v)).toBe("four");
+    }
+  });
+  it("2人系は two", () => {
+    for (const v of ["2人", "2名", "two", "TWO", "2", " two "]) {
+      expect(normalizeGroupType(v)).toBe("two");
+    }
+  });
+  it("解釈不能・空・null は null", () => {
+    expect(normalizeGroupType("3人")).toBeNull();
+    expect(normalizeGroupType("グループ")).toBeNull();
+    expect(normalizeGroupType("")).toBeNull();
+    expect(normalizeGroupType(null)).toBeNull();
+    expect(normalizeGroupType(undefined)).toBeNull();
   });
 });
 
