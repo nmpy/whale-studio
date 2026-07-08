@@ -5,42 +5,13 @@
 // 認可: live admin 集合 (= authorizeLive)
 
 import type { NextRequest } from "next/server";
-import { z, ZodError } from "zod";
+import { ZodError } from "zod";
 import { prisma } from "@/lib/prisma";
 import { ok, created, badRequest, notFound, serverError } from "@/lib/api-response";
 import { authorizeLive } from "@/lib/live-auth";
+import { createLiveTeamSchema, toLiveTeamResponse } from "@/lib/live-team";
 
 export const dynamic = "force-dynamic";
-
-const createTeamSchema = z.object({
-  name:               z.string().min(1, "name は必須です").max(120),
-  reservation_number: z.string().max(120).optional().nullable(),
-  memo:               z.string().max(2000).optional().nullable(),
-});
-
-type TeamRow = {
-  id: string;
-  oaId: string;
-  liveSessionId: string;
-  name: string;
-  reservationNumber: string | null;
-  memo: string | null;
-  createdAt: Date;
-  updatedAt: Date;
-};
-
-function toResponse(t: TeamRow) {
-  return {
-    id:                 t.id,
-    oa_id:              t.oaId,
-    live_session_id:    t.liveSessionId,
-    name:               t.name,
-    reservation_number: t.reservationNumber,
-    memo:               t.memo,
-    created_at:         t.createdAt,
-    updated_at:         t.updatedAt,
-  };
-}
 
 async function ensureSessionBelongsToOa(sessionId: string, oaId: string) {
   return prisma.liveSession.findFirst({
@@ -65,7 +36,7 @@ export async function GET(
       orderBy: { createdAt: "asc" },
       take:    500,
     });
-    return ok({ teams: teams.map(toResponse) });
+    return ok({ teams: teams.map(toLiveTeamResponse) });
   } catch (err) {
     return serverError(err);
   }
@@ -83,7 +54,7 @@ export async function POST(
 
   try {
     const body = await req.json();
-    const data = createTeamSchema.parse(body);
+    const data = createLiveTeamSchema.parse(body);
     const team = await prisma.liveTeam.create({
       data: {
         oaId:              params.id,
@@ -91,9 +62,14 @@ export async function POST(
         name:              data.name,
         reservationNumber: data.reservation_number ?? null,
         memo:              data.memo ?? null,
+        reservedAt:        data.reserved_at ? new Date(data.reserved_at) : null,
+        purchaserName:     data.purchaser_name ?? null,
+        groupType:         data.group_type ?? null,
+        roomNumber:        data.room_number ?? null,
+        ticketId:          data.ticket_id ?? null,
       },
     });
-    return created(toResponse(team));
+    return created(toLiveTeamResponse(team));
   } catch (err) {
     if (err instanceof ZodError) {
       return badRequest(err.errors[0]?.message ?? "入力が不正です");
