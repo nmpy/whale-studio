@@ -17,6 +17,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { LIVE_TEAM_GROUP_TYPES, liveTeamGroupTypeLabel } from "@/lib/live-team";
+import { isParticipantStalled, formatRelativeTime } from "@/lib/live-stall";
 
 type LiveSession = {
   id: string;
@@ -290,6 +291,7 @@ function ParticipantRow({
   onAssignmentChanged,
   teamList,
   phaseList,
+  nowMs,
 }: {
   participant: LiveParticipant;
   oaId: string;
@@ -301,6 +303,7 @@ function ParticipantRow({
   onAssignmentChanged: () => void;
   teamList: LiveTeam[];
   phaseList: PhaseSummary[];
+  nowMs: number;
 }) {
   const [editing, setEditing] = useState(false);
   const [draftName,   setDraftName]   = useState(participant.display_name ?? "");
@@ -408,6 +411,22 @@ function ParticipantRow({
             <span style={{ fontSize: 10, color: "#9ca3af", marginLeft: 4 }}>(phase)</span>
           )}
         </td>
+        {/* PR2b-2: 最終アクション時刻 + 停滞検知（lastSeenAt から導出） */}
+        <td style={{ padding: "8px 6px", fontSize: 11 }}>
+          {(() => {
+            const stalled = isParticipantStalled(participant.status, participant.last_seen_at, nowMs);
+            return (
+              <span style={{
+                fontWeight: stalled ? 700 : 400,
+                color: stalled ? "#991b1b" : "#6b7280",
+                background: stalled ? "#fee2e2" : "transparent",
+                padding: stalled ? "1px 6px" : 0, borderRadius: 999,
+              }}>
+                {stalled ? "⚠ 停滞 " : ""}{formatRelativeTime(participant.last_seen_at, nowMs)}
+              </span>
+            );
+          })()}
+        </td>
         <td style={{ padding: "8px 6px", color: "#374151", fontSize: 12 }}>
           {teamName ?? <span style={{ color: "#9ca3af" }}>—</span>}
         </td>
@@ -437,7 +456,7 @@ function ParticipantRow({
 
   return (
     <tr style={{ borderBottom: "1px solid #f3f4f6", background: "#f9fafb" }}>
-      <td colSpan={9} style={{ padding: "10px 6px" }}>
+      <td colSpan={10} style={{ padding: "10px 6px" }}>
         <div style={{ display: "grid", gap: 8 }}>
           <div style={{ display: "grid", gap: 8, gridTemplateColumns: "1fr 1fr 1fr 1fr" }}>
             <label style={{ fontSize: 11, color: "#374151" }}>
@@ -823,9 +842,9 @@ export function LiveAdminClient({
     }
   }, [oaId, fetchSessions]);
 
-  const fetchChildren = useCallback(async (sessionId: string) => {
-    setLoadingChildren(true);
-    setError(null);
+  const fetchChildren = useCallback(async (sessionId: string, opts?: { silent?: boolean }) => {
+    // silent: ポーリング更新（ローディング/エラーをちらつかせない）。
+    if (!opts?.silent) { setLoadingChildren(true); setError(null); }
     try {
       const [pr, er, asr, ir, tr] = await Promise.all([
         fetch(`/api/oas/${oaId}/live/sessions/${sessionId}/participants`, { credentials: "include" }),
@@ -850,9 +869,9 @@ export function LiveAdminClient({
       setInstructions(ij?.data?.instructions ?? []);
       setTeams(tj?.data?.teams ?? []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "取得に失敗しました");
+      if (!opts?.silent) setError(err instanceof Error ? err.message : "取得に失敗しました");
     } finally {
-      setLoadingChildren(false);
+      if (!opts?.silent) setLoadingChildren(false);
     }
   }, [oaId]);
 
@@ -963,6 +982,21 @@ export function LiveAdminClient({
       setPhases([]);
     }
   }, [effectiveWorkId, fetchPhases]);
+
+  // PR2b-2: active 公演中のみ 4 秒間隔で participants/events 等を silent 自動更新。
+  const pollActive = selectedSession?.status === "active";
+  useEffect(() => {
+    if (!pollActive || !selectedSessionId) return;
+    const iv = setInterval(() => { void fetchChildren(selectedSessionId, { silent: true }); }, 4000);
+    return () => clearInterval(iv);
+  }, [pollActive, selectedSessionId, fetchChildren]);
+
+  // PR2b-2: 相対時刻 / 停滞判定用の時計（30秒刻み）。
+  const [nowMs, setNowMs] = useState<number>(() => Date.now());
+  useEffect(() => {
+    const iv = setInterval(() => setNowMs(Date.now()), 30_000);
+    return () => clearInterval(iv);
+  }, []);
 
   // ── セッション作成 ──
   const [newSessionName, setNewSessionName] = useState("");
@@ -1424,6 +1458,7 @@ export function LiveAdminClient({
                     <th style={{ padding: "8px 6px" }}>表示名</th>
                     <th style={{ padding: "8px 6px" }}>状態</th>
                     <th style={{ padding: "8px 6px" }}>フェーズ/ステップ</th>
+                    <th style={{ padding: "8px 6px" }}>最終アクション</th>
                     <th style={{ padding: "8px 6px" }}>チーム</th>
                     <th style={{ padding: "8px 6px" }}>予約番号</th>
                     <th style={{ padding: "8px 6px" }}>メモ</th>
@@ -1443,6 +1478,7 @@ export function LiveAdminClient({
                       assignments={assignments}
                       teamList={teams}
                       phaseList={phases}
+                      nowMs={nowMs}
                       onSaved={() => selectedSessionId && void fetchChildren(selectedSessionId)}
                       onError={(msg) => setError(msg)}
                       onAssignmentChanged={() => selectedSessionId && void fetchChildren(selectedSessionId)}

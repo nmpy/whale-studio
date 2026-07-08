@@ -43,7 +43,7 @@ export type LiveParticipant = {
   updated_at: string;
 };
 
-// Phase 2-G: チーム
+// Phase 2-G: チーム / PR2b-0: 予約/部屋情報
 export type LiveTeam = {
   id: string;
   oa_id: string;
@@ -51,6 +51,12 @@ export type LiveTeam = {
   name: string;
   reservation_number: string | null;
   memo: string | null;
+  // PR2b-0: 予約/部屋情報（すべて任意）
+  reserved_at?: string | null;
+  purchaser_name?: string | null;
+  group_type?: string | null; // "two" | "four"
+  room_number?: string | null;
+  ticket_id?: string | null;
   created_at: string;
   updated_at: string;
 };
