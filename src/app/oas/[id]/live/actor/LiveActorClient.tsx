@@ -20,6 +20,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { liveTeamGroupTypeLabel } from "@/lib/live-team";
 import { isParticipantStalled, formatRelativeTime } from "@/lib/live-stall";
+import { PhaseMoveButton, type PhaseChoice } from "../_PhaseMoveButton";
 import {
   type LiveSession,
   type LiveParticipant,
@@ -151,6 +152,7 @@ function ParticipantCard({
   teamName,
   oaId,
   sessionId,
+  phases,
   onMutated,
   onError,
 }: {
@@ -162,6 +164,7 @@ function ParticipantCard({
   teamName: string | null;
   oaId: string;
   sessionId: string;
+  phases: PhaseChoice[];
   onMutated: () => void;
   onError: (msg: string) => void;
 }) {
@@ -372,6 +375,19 @@ function ParticipantCard({
         <button onClick={() => { setStatusOpen((v) => !v); setNoteOpen(false); setAlertOpen(false); }} style={buttonSecondary} disabled={busy !== null}>
           状態更新
         </button>
+        {/* PR4-1: 実フェーズ移動（lineUserId 紐づき済みのみ・確認モーダルあり） */}
+        <PhaseMoveButton
+          oaId={oaId}
+          sessionId={sessionId}
+          participantId={participant.id}
+          participantLabel={participant.display_name ?? (teamName ? `${teamName} の参加者` : "(無名の参加者)")}
+          currentPhaseName={participant.current_phase_name ?? participant.current_step ?? null}
+          phases={phases}
+          onDone={onMutated}
+          onError={onError}
+          disabled={!participant.line_user_id}
+          disabledReason="LINE ユーザーと紐づいていない参加者はフェーズ移動できません（予約番号入力で紐づけてください）"
+        />
       </div>
 
       {/* ── メモ入力 ── */}
@@ -583,6 +599,7 @@ export function LiveActorClient({
   const [myActorIds, setMyActorIds] = useState<string[]>([]);
   // Phase 2-G:
   const [teams, setTeams] = useState<LiveTeam[]>([]);
+  const [phases, setPhases] = useState<PhaseChoice[]>([]);
   // Phase 2-I.3: LiveScript は廃止 (= LiveCue に一本化)。state は cues のみ。
   const [cues, setCues] = useState<LiveCue[]>([]);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
@@ -624,6 +641,7 @@ export function LiveActorClient({
       setInstructions(data.instructions ?? []);
       setMyActorIds(data.my_actor_ids ?? []);
       setTeams(data.teams ?? []);
+      setPhases(data.phases ?? []);
       setCues(data.cues ?? []);
       setActivePreview(data.preview ?? null);
       // Phase 2-I.3: 初回ロード時は現在時刻に最も近い session を自動選択
@@ -1165,6 +1183,7 @@ export function LiveActorClient({
                                   teamName={team?.name ?? null}
                                   oaId={oaId}
                                   sessionId={selectedSessionId}
+                                  phases={phases}
                                   onMutated={() => void fetchAll()}
                                   onError={(msg) => setError(msg)}
                                 />

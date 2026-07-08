@@ -2273,6 +2273,8 @@ enum LiveEventType {
   actor_contacted
   note_added
   alert
+  /// PR4-1: スタッフが実 UserProgress のフェーズを移動した操作ログ
+  staff_phase_move
 }
 
 /// Live セッション（= 一回の実イベント / 例: "2026/06/10 12:00回"）。
