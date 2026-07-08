@@ -798,6 +798,24 @@ export function LiveAdminClient({
     }
   }, [oaId, selectedSessionId]);
 
+  // 公演 lifecycle: status を draft→active→ended へ切替える（PR2a）。
+  // active な公演にだけ以降の Runtime→Live 同期が束ねられる（同期本体は PR2b）。
+  const changeSessionStatus = useCallback(async (sessionId: string, status: "draft" | "active" | "ended") => {
+    setError(null);
+    try {
+      const res = await fetch(`/api/oas/${oaId}/live/sessions/${sessionId}`, {
+        method:      "PATCH",
+        headers:     { "Content-Type": "application/json" },
+        credentials: "include",
+        body:        JSON.stringify({ status }),
+      });
+      if (!res.ok) throw new Error(`公演ステータスの更新に失敗しました (HTTP ${res.status})`);
+      await fetchSessions();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "公演ステータスの更新に失敗しました");
+    }
+  }, [oaId, fetchSessions]);
+
   const fetchChildren = useCallback(async (sessionId: string) => {
     setLoadingChildren(true);
     setError(null);
@@ -1293,6 +1311,35 @@ export function LiveAdminClient({
               );
             })}
           </ul>
+
+          {/* 選択中の公演の lifecycle 操作（PR2a: 開始/終了）。
+              active な公演にだけ以降の Runtime→Live 同期が束ねられる。 */}
+          {selectedSession && (
+            <div
+              style={{
+                marginTop: 10, padding: "8px 12px", borderRadius: 10,
+                background: "#f9fafb", border: "1px solid #e5e7eb",
+                display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
+              }}
+            >
+              <span style={{ fontSize: 12, fontWeight: 600, color: "#374151" }}>
+                「{selectedSession.name}」の状態
+              </span>
+              <select
+                value={selectedSession.status}
+                onChange={(e) => void changeSessionStatus(selectedSession.id, e.target.value as "draft" | "active" | "ended")}
+                style={{ fontSize: 12, padding: "5px 8px", borderRadius: 8, border: "1px solid #d1d5db", background: "#fff" }}
+                aria-label="公演の状態"
+              >
+                <option value="draft">下書き</option>
+                <option value="active">進行中（当日運営を開始）</option>
+                <option value="ended">終了</option>
+              </select>
+              <span style={{ fontSize: 11, color: "#9ca3af" }}>
+                進行中にすると当日の進行同期・監視の対象になります。
+              </span>
+            </div>
+          )}
           </>
         )}
       </section>
