@@ -2356,6 +2356,12 @@ model LiveTeam {
   name              String
   reservationNumber String?  @map("reservation_number")
   memo              String?
+  /// PR2b-0: 現地公演運営（Operation Belkish）の予約/部屋情報を Team 側に寄せる。すべて任意。
+  reservedAt        DateTime? @map("reserved_at")     /// 公演予約日時
+  purchaserName     String?   @map("purchaser_name")  /// 購入者名（トラブル時確認・名簿照合）
+  groupType         String?   @map("group_type")      /// "two" | "four"（表示: 2人 / 4人）。TEXT で将来拡張可
+  roomNumber        String?   @map("room_number")     /// 部屋番号（手動紐付け・"A-1" 等も可）
+  ticketId          String?   @map("ticket_id")       /// チケットID（照合・PR2b 照合キー候補）
   createdAt         DateTime @default(now()) @map("created_at")
   updatedAt         DateTime @updatedAt @map("updated_at")
 
@@ -2365,6 +2371,7 @@ model LiveTeam {
 
   @@index([liveSessionId, createdAt])
   @@index([liveSessionId, reservationNumber])
+  @@index([liveSessionId, ticketId])
   @@index([oaId])
   @@map("live_teams")
 }

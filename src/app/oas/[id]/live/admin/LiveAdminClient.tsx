@@ -16,6 +16,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import { LIVE_TEAM_GROUP_TYPES, liveTeamGroupTypeLabel } from "@/lib/live-team";
 
 type LiveSession = {
   id: string;
@@ -56,6 +57,12 @@ type LiveTeam = {
   name: string;
   reservation_number: string | null;
   memo: string | null;
+  // PR2b-0: 予約/部屋情報（すべて任意）
+  reserved_at: string | null;
+  purchaser_name: string | null;
+  group_type: string | null; // "two" | "four"
+  room_number: string | null;
+  ticket_id: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -2307,6 +2314,12 @@ function TeamsSection({
   const [name, setName] = useState("");
   const [reservation, setReservation] = useState("");
   const [memo, setMemo] = useState("");
+  // PR2b-0: 予約/部屋情報
+  const [purchaserName, setPurchaserName] = useState("");
+  const [reservedAt, setReservedAt] = useState("");   // datetime-local 値
+  const [groupType, setGroupType] = useState("");     // "" | "two" | "four"
+  const [roomNumber, setRoomNumber] = useState("");
+  const [ticketId, setTicketId] = useState("");
   const [busy, setBusy] = useState(false);
   const [deleteBusyId, setDeleteBusyId] = useState<string | null>(null);
 
@@ -2323,6 +2336,12 @@ function TeamsSection({
           name:               name.trim(),
           reservation_number: reservation.trim() || null,
           memo:               memo.trim() || null,
+          purchaser_name:     purchaserName.trim() || null,
+          // datetime-local ("YYYY-MM-DDTHH:mm") → ISO。空なら送らない。
+          reserved_at:        reservedAt ? new Date(reservedAt).toISOString() : null,
+          group_type:         groupType || null,
+          room_number:        roomNumber.trim() || null,
+          ticket_id:          ticketId.trim() || null,
         }),
       });
       if (!res.ok) {
@@ -2330,6 +2349,7 @@ function TeamsSection({
         throw new Error(j?.error?.message ?? `チーム追加に失敗しました (HTTP ${res.status})`);
       }
       setName(""); setReservation(""); setMemo("");
+      setPurchaserName(""); setReservedAt(""); setGroupType(""); setRoomNumber(""); setTicketId("");
       onChanged();
     } catch (err) {
       onError(err instanceof Error ? err.message : "チーム追加に失敗しました");
@@ -2360,10 +2380,24 @@ function TeamsSection({
 
   return (
     <section style={{ ...card, marginBottom: 16 }}>
-      {sectionTitle("チーム")}
-      <form onSubmit={handleAdd} style={{ display: "grid", gap: 8, gridTemplateColumns: "1fr 1fr 2fr auto", marginBottom: 12 }}>
-        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="チーム名 (例: チーム A / ペア 1)" style={inputStyle} disabled={busy} />
+      {sectionTitle("チーム（部屋 / グループ）")}
+      {/* 現地公演運営（Operation Belkish）: 予約/部屋情報を Team に持たせる。すべて任意（チーム名のみ必須）。 */}
+      <form onSubmit={handleAdd} style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(3, 1fr)", marginBottom: 12 }}>
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="チーム名 (必須・例: チーム A / ペア 1)" style={inputStyle} disabled={busy} />
+        <input value={roomNumber} onChange={(e) => setRoomNumber(e.target.value)} placeholder="部屋番号 (任意・例: A-1)" style={inputStyle} disabled={busy} />
+        <select value={groupType} onChange={(e) => setGroupType(e.target.value)} style={inputStyle} disabled={busy} aria-label="グループ種別">
+          <option value="">グループ種別 (任意)</option>
+          {LIVE_TEAM_GROUP_TYPES.map((g) => (
+            <option key={g} value={g}>{liveTeamGroupTypeLabel(g)}</option>
+          ))}
+        </select>
+        <input value={purchaserName} onChange={(e) => setPurchaserName(e.target.value)} placeholder="購入者名 (任意)" style={inputStyle} disabled={busy} />
         <input value={reservation} onChange={(e) => setReservation(e.target.value)} placeholder="予約番号 (任意)" style={inputStyle} disabled={busy} />
+        <input value={ticketId} onChange={(e) => setTicketId(e.target.value)} placeholder="チケットID (任意)" style={inputStyle} disabled={busy} />
+        <label style={{ fontSize: 11, color: "#6b7280", display: "flex", flexDirection: "column", gap: 2 }}>
+          公演予約日時 (任意)
+          <input type="datetime-local" value={reservedAt} onChange={(e) => setReservedAt(e.target.value)} style={inputStyle} disabled={busy} />
+        </label>
         <input value={memo} onChange={(e) => setMemo(e.target.value)} placeholder="メモ (任意)" style={inputStyle} disabled={busy} />
         <button type="submit" style={buttonPrimary} disabled={busy || !name.trim()}>
           {busy ? "追加中…" : "追加"}
@@ -2373,11 +2407,17 @@ function TeamsSection({
       {teams.length === 0 ? (
         <p style={{ fontSize: 13, color: "#6b7280" }}>チームがまだありません。</p>
       ) : (
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+        <div style={{ overflowX: "auto" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, whiteSpace: "nowrap" }}>
           <thead>
             <tr style={{ textAlign: "left", color: "#6b7280", borderBottom: "1px solid #e5e7eb" }}>
               <th style={{ padding: "8px 6px" }}>チーム名</th>
+              <th style={{ padding: "8px 6px" }}>部屋番号</th>
+              <th style={{ padding: "8px 6px" }}>グループ種別</th>
+              <th style={{ padding: "8px 6px" }}>購入者名</th>
+              <th style={{ padding: "8px 6px" }}>公演予約日時</th>
               <th style={{ padding: "8px 6px" }}>予約番号</th>
+              <th style={{ padding: "8px 6px" }}>チケットID</th>
               <th style={{ padding: "8px 6px" }}>メモ</th>
               <th style={{ padding: "8px 6px" }}></th>
             </tr>
@@ -2386,8 +2426,13 @@ function TeamsSection({
             {teams.map((t) => (
               <tr key={t.id} style={{ borderBottom: "1px solid #f3f4f6" }}>
                 <td style={{ padding: "8px 6px", color: "#111827" }}>{t.name}</td>
+                <td style={{ padding: "8px 6px", color: "#374151" }}>{t.room_number ?? "—"}</td>
+                <td style={{ padding: "8px 6px", color: "#374151" }}>{t.group_type ? liveTeamGroupTypeLabel(t.group_type) : "—"}</td>
+                <td style={{ padding: "8px 6px", color: "#374151" }}>{t.purchaser_name ?? "—"}</td>
+                <td style={{ padding: "8px 6px", color: "#374151" }}>{t.reserved_at ? formatDateTime(t.reserved_at) : "—"}</td>
                 <td style={{ padding: "8px 6px", color: "#374151" }}>{t.reservation_number ?? "—"}</td>
-                <td style={{ padding: "8px 6px", color: "#374151", maxWidth: 320, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={t.memo ?? undefined}>
+                <td style={{ padding: "8px 6px", color: "#374151" }}>{t.ticket_id ?? "—"}</td>
+                <td style={{ padding: "8px 6px", color: "#374151", maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis" }} title={t.memo ?? undefined}>
                   {t.memo ?? "—"}
                 </td>
                 <td style={{ padding: "8px 6px" }}>
@@ -2399,6 +2444,7 @@ function TeamsSection({
             ))}
           </tbody>
         </table>
+        </div>
       )}
     </section>
   );
