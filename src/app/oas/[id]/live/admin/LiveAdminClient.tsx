@@ -18,6 +18,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { LIVE_TEAM_GROUP_TYPES, liveTeamGroupTypeLabel } from "@/lib/live-team";
 import { isParticipantStalled, formatRelativeTime } from "@/lib/live-stall";
+import { PhaseMoveButton } from "../_PhaseMoveButton";
 
 type LiveSession = {
   id: string;
@@ -446,9 +447,24 @@ function ParticipantRow({
           {participant.line_user_id ?? <span style={{ color: "#9ca3af" }}>—</span>}
         </td>
         <td style={{ padding: "8px 6px" }}>
-          <button type="button" onClick={handleStartEdit} style={buttonSecondary}>
-            編集
-          </button>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <button type="button" onClick={handleStartEdit} style={buttonSecondary}>
+              編集
+            </button>
+            {/* PR4-1: 実フェーズ移動（lineUserId 紐づき済みのみ・確認モーダルあり） */}
+            <PhaseMoveButton
+              oaId={oaId}
+              sessionId={sessionId}
+              participantId={participant.id}
+              participantLabel={participant.display_name ?? (teamName ? `${teamName} の参加者` : "(無名の参加者)")}
+              currentPhaseName={participant.current_phase_name ?? participant.current_step ?? null}
+              phases={phaseList}
+              onDone={onSaved}
+              onError={onError}
+              disabled={!participant.line_user_id}
+              disabledReason="LINE ユーザーと紐づいていない参加者はフェーズ移動できません（予約番号入力で紐づけてください）"
+            />
+          </div>
         </td>
       </tr>
     );

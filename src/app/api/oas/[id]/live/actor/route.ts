@@ -64,6 +64,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
       teams,
       scripts,
       cues,
+      phases,
     ] = await Promise.all([
       prisma.liveSession.findMany({
         where:   { oaId: params.id },
@@ -128,6 +129,15 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
         orderBy: [{ priority: "desc" }, { sortOrder: "asc" }, { createdAt: "asc" }],
         take:    500,
       }),
+      // PR4-1: スタッフのフェーズ移動用に、選択公演の作品のフェーズ一覧を返す。
+      scopedWorkId
+        ? prisma.phase.findMany({
+            where:   { workId: scopedWorkId },
+            select:  { id: true, name: true, phaseType: true, sortOrder: true },
+            orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+            take:    500,
+          })
+        : Promise.resolve([] as { id: string; name: string; phaseType: string; sortOrder: number }[]),
     ]);
 
     const lastContactByPid = new Map<string, Date | null>();
@@ -266,6 +276,13 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
         is_active:  c.isActive,
         created_at: c.createdAt,
         updated_at: c.updatedAt,
+      })),
+      // PR4-1: スタッフのフェーズ移動 選択用
+      phases: phases.map((p) => ({
+        id:         p.id,
+        name:       p.name,
+        phase_type: p.phaseType,
+        sort_order: p.sortOrder,
       })),
       my_actor_ids: myActorIds,
       // Phase 2-J: Owner Actor Preview Mode の状態
