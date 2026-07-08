@@ -58,6 +58,7 @@ import { parseFrontier, selectQrScope } from "@/lib/qr-frontier";
 import { collectLegacyQrMatches, collectLegacyHintMatches } from "@/lib/legacy-qr-fallback";
 import { normalizeHintQrItems } from "@/lib/hint-qr";
 import { applyFreeInputPostEffect } from "@/lib/frontier-effect";
+import { linkReservationToLiveTeam, syncLiveParticipantProgress } from "@/lib/live-sync";
 import { handleBeaconEvent, type LineBeaconEvent } from "@/lib/beacon";
 import { consumeBeaconArrivalTrigger } from "@/lib/checkin-trigger";
 import { pushToLine as _pushToLine } from "@/lib/line";
@@ -2464,6 +2465,8 @@ async function deliverQrBranch(args: {
         });
         await setCachedProgress(updated);
         fireResumeCompletedIfApplicable(updated, oa.id);
+        // PR2b-1: Runtime→Live 進行同期（QR フェーズ遷移）
+        void syncLiveParticipantProgress({ oaId: oa.id, lineUserId: updated.lineUserId, workId: updated.workId, currentPhaseId: updated.currentPhaseId, isEnding }).catch(() => {});
         const state     = await buildRuntimeState(updated, toPhaseRow);
         const phaseMsgs = buildPhaseMessages(state.phase, { systemSender, vars });
         qrMsgs.push(...phaseMsgs);
@@ -2708,6 +2711,11 @@ async function handleTextEvent({
         console.error(`[Webhook][free-input] DB 更新失敗 userId=${userId} err=`, err);
         // 失敗しても LINE に応答は返したいので fallthrough しない (= 静かに ack)
       }
+
+      // PR2b-1: Runtime→Live 予約リンク。free_input の入力値を active 公演の
+      // LiveTeam.reservationNumber / ticketId と照合して LiveParticipant を紐づけ/作成する。
+      // 非 Live OA は内部で即 return。fire-and-forget（配信を絶対に壊さない）。
+      void linkReservationToLiveTeam({ oaId: oa.id, lineUserId: userId, workId: work.id, input: text }).catch(() => {});
 
       console.log(
         `[Webhook][free-input] 受付完了`,
@@ -3168,6 +3176,8 @@ async function handleTextEvent({
           });
           await setCachedProgress(updated);
           fireResumeCompletedIfApplicable(updated, oa.id);
+          // PR2b-1: Runtime→Live 進行同期（画像タップ フェーズ遷移）
+          void syncLiveParticipantProgress({ oaId: oa.id, lineUserId: updated.lineUserId, workId: updated.workId, currentPhaseId: updated.currentPhaseId, isEnding }).catch(() => {});
           const state     = await buildRuntimeState(updated, toPhaseRow);
           const phaseMsgs = buildPhaseMessages(state.phase, { systemSender, vars });
           const phaseMessageIds = state.phase?.messages.map((m) => m.id) ?? [];
@@ -3372,6 +3382,8 @@ async function handleTextEvent({
   // write-through: 更新後の progress をキャッシュに反映（次の read が最新値を返すため）
   await setCachedProgress(updated);
   fireResumeCompletedIfApplicable(updated, oa.id);
+  // PR2b-1: Runtime→Live 進行同期（メイン transition）
+  void syncLiveParticipantProgress({ oaId: oa.id, lineUserId: updated.lineUserId, workId: updated.workId, currentPhaseId: updated.currentPhaseId, isEnding }).catch(() => {});
 
   // プリフェッチ済みフェーズを渡すことで buildRuntimeState の追加クエリを省略
   const state = await buildRuntimeState(updated, toPhaseRow);
@@ -4558,6 +4570,8 @@ async function handlePuzzleCorrect({
         // write-through: パズル正解遷移後のキャッシュを更新
         await setCachedProgress(updated);
         fireResumeCompletedIfApplicable(updated, oa.id);
+        // PR2b-1: Runtime→Live 進行同期（パズル正解 フェーズ遷移）
+        void syncLiveParticipantProgress({ oaId: oa.id, lineUserId: updated.lineUserId, workId: updated.workId, currentPhaseId: updated.currentPhaseId, isEnding }).catch(() => {});
         console.log(
           `[Webhook][puzzle] 遷移 → phaseId=${nextPhase.id.slice(0, 8)}`,
           `phaseType=${nextPhase.phaseType}`,

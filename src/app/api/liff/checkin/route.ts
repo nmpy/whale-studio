@@ -17,6 +17,7 @@ import { applySetFlags, evaluateCondition } from "@/lib/runtime";
 import { isWithinRadius } from "@/lib/geo";
 import { logAttemptDeduped } from "@/lib/checkin-attempt";
 import { consumeCheckinTrigger } from "@/lib/checkin-trigger";
+import { syncLiveParticipantProgress } from "@/lib/live-sync";
 import { ZodError } from "zod";
 import type { CheckinSuccess, CheckinCooldown, CheckinOutOfRange, CheckinMethod, StampInfo } from "@/types";
 
@@ -250,6 +251,9 @@ export async function POST(req: NextRequest) {
         data: { currentPhaseId: newPhaseId, reachedEnding, flags: JSON.stringify(newFlags), lastInteractedAt: new Date() },
       }),
     ]);
+
+    // PR2b-1: Runtime→Live 進行同期（現地チェックインでの進行）。fire-and-forget・非 Live OA は即 return。
+    void syncLiveParticipantProgress({ oaId: work.oaId, lineUserId: data.line_user_id, workId: data.work_id, currentPhaseId: newPhaseId, isEnding: reachedEnding }).catch(() => {});
 
     // ── 送信後の待機トリガー（地点到着で自動進行）の消化 ──
     // メッセージA 送信時に「この地点の検知待ち」に武装されているユーザーのみ next メッセージを送信し、
