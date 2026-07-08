@@ -46,6 +46,11 @@ model Oa {
   /// Phase2 で追加済みの enum BusinessUsageType を再利用する。既存 OA は default = personal。
   /// 法人招待リンク (business_invite_links.usage_type) とは別物（自動連携はしない）。
   usageType             BusinessUsageType      @default(personal) @map("usage_type")
+  /// 運用モード（OA単位）。"messaging"(配信) | "content"(LINE上の謎解き/体験) | "live"(現地公演運営)。
+  /// 加算的サーフェス: 既存 OA は default="content" で挙動不変。mode="live" のとき /oas トップで
+  /// Live Mode を前面化する（Live 実体アクセスは従来どおり OaEntitlement/canAccessLive で保護）。
+  /// enum ではなく TEXT+default（start_trigger_mode と同方針・ゼロダウンタイムな ADD COLUMN）。
+  mode                  String                 @default("content") @map("mode")
   /// あいさつメッセージ（OA単位）。友だち追加時に送る文面。null = OA未設定 →
   /// 実行時は active Work の welcome_message にフォールバック（移行期互換・PR-1）。
   welcomeMessage        String?                @map("welcome_message")

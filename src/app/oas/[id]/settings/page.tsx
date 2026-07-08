@@ -13,6 +13,7 @@ import { Breadcrumb } from "@/components/Breadcrumb";
 import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
 import { ViewerBanner } from "@/components/PermissionGuard";
 import { QuotaUsageCard } from "./_quota-usage-card";
+import { normalizeOaMode, DEFAULT_OA_MODE, OA_MODE_DESCRIPTIONS, type OaMode } from "@/lib/oa-mode";
 
 /** ハブに並べる機能カード定義。
  *  Phase 1.4 で per-feature の vivid color を削除し、見た目を uniform に揃える
@@ -43,12 +44,17 @@ export default function OaSettingsPage() {
   const { role, isOwner, isAdmin, liveAccess } = useWorkspaceRole(oaId);
   const [oaTitle,        setOaTitle]        = useState<string>("");
   const [usageType,      setUsageType]      = useState<string | null>(null);
+  const [mode,           setMode]           = useState<OaMode>(DEFAULT_OA_MODE);
   const [billingSuccess, setBillingSuccess] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     oaApi.get(getDevToken(), oaId)
-      .then((oa) => { setOaTitle(oa.title); setUsageType(oa.usage_type ?? "personal"); })
+      .then((oa) => {
+        setOaTitle(oa.title);
+        setUsageType(oa.usage_type ?? "personal");
+        setMode(normalizeOaMode((oa as { mode?: string | null }).mode));
+      })
       .catch(() => {});
   }, [oaId]);
 
@@ -75,6 +81,25 @@ export default function OaSettingsPage() {
   return (
     <>
       <ViewerBanner role={role} />
+
+      {/* ── Live Mode サーフェス（加算的）──
+          mode="live" かつ Live アクセス可のとき、現地公演運営の導線を前面化する。
+          既存カードは隠さない（mode は導線の出し分けのみ）。Live 実体は canAccessLive で保護済み。 */}
+      {mode === "live" && liveAccess && (
+        <Link
+          href={`/oas/${oaId}/live`}
+          className="mb-5 flex items-center gap-3 rounded-lg border border-brand/30 bg-brand-soft px-4 py-3.5 no-underline transition-colors hover:border-brand/50"
+        >
+          <span aria-hidden className="text-[20px]">🎭</span>
+          <div className="min-w-0 flex-1">
+            <div className="text-[13.5px] font-bold text-brand-ink">Live Mode（現地公演運営）を開く</div>
+            <p className="mt-0.5 text-[12px] leading-[1.6] text-brand-ink/85">
+              {OA_MODE_DESCRIPTIONS.live} for Admin / Staff / Player の運営コンソールへ。
+            </p>
+          </div>
+          <span aria-hidden className="flex-shrink-0 text-[13px] text-brand-ink/70">›</span>
+        </Link>
+      )}
 
       {/* ── Stripe Checkout 完了バナー ── */}
       {billingSuccess && (

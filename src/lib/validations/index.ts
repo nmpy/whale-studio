@@ -86,6 +86,8 @@ export const updateOaSchema = createOaSchema.partial().omit({ publish_status: tr
   service_suspended: z.boolean().optional(),
   /** 利用区分（個人/法人）。owner のみ編集可（PATCH /api/oas/[id] は owner gate）。 */
   usage_type: z.enum(["personal", "business"]).optional(),
+  /** 運用モード（messaging/content/live）。owner のみ編集可。導線出し分け用（加算的・機能は隠さない）。 */
+  mode: z.enum(["messaging", "content", "live"]).optional(),
 });
 
 /**
