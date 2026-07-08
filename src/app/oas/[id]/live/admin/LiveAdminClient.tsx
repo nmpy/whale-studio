@@ -1144,6 +1144,30 @@ export function LiveAdminClient({
         )}
       </section>
 
+      {/* まず公演を作る導線（公演が1件も無いと、参加者/チーム/監視などの操作は全て非表示のため、
+          「作品は選べるのにボタンが反応しない」ように見える。最初の一手を明示する）。 */}
+      {selectedWorkId && !loadingSessions && sessions.length === 0 && (
+        <div
+          style={{
+            marginBottom: 12, padding: "10px 14px", borderRadius: 10,
+            background: "#eff6ff", border: "1px solid #bfdbfe",
+            display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap",
+          }}
+        >
+          <span style={{ fontSize: 13, color: "#1e3a8a", flex: 1, minWidth: 200 }}>
+            まず <strong>公演（Live セッション）</strong> を作成してください。作成すると、参加者・チーム（部屋）・
+            指示・監視などが使えるようになります。
+          </span>
+          <button
+            type="button"
+            onClick={() => setActiveTab("session")}
+            style={buttonPrimary}
+          >
+            → 公演を作成
+          </button>
+        </div>
+      )}
+
       {/* ── タブナビ (Phase 2-I.2) ── */}
       <nav style={{ display: "flex", gap: 4, borderBottom: "1px solid #e5e7eb", marginBottom: 12, overflowX: "auto" }}>
         {([
@@ -1222,6 +1246,11 @@ export function LiveAdminClient({
         {!selectedWorkId && (
           <p style={{ fontSize: 11, color: "#92400e", margin: "0 0 8px" }}>
             ※ 新規セッション作成には対象作品の選択が必要です(既存セッションの編集には影響しません)。
+          </p>
+        )}
+        {selectedWorkId && !newSessionName.trim() && (
+          <p style={{ fontSize: 11, color: "#6b7280", margin: "0 0 8px" }}>
+            公演名（例: 2026/06/15 12:00回）を入力すると「作成」ボタンが押せます。
           </p>
         )}
 
