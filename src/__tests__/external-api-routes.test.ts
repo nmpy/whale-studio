@@ -28,7 +28,12 @@ import { GET as phasesGET } from "@/app/api/external/v1/works/[workId]/phases/ro
 import { GET as phaseLinksGET } from "@/app/api/external/v1/works/[workId]/phase-links/route";
 
 const API_KEY = "test-secret-key-1234567890";
-const BASE = "https://test.whale-studio.app";
+// external links の既定 canonical origin（WHALE_EXTERNAL_PUBLIC_BASE_URL 未設定時）
+const CANON = "https://app.whale-studio.app";
+// 専用 env で上書きする場合の値
+const OVERRIDE = "https://preview.example.com";
+// 共有 env の値（external links からは参照されない = 無視されることを検証する用）
+const VERCEL = "https://whale-studio.vercel.app";
 
 function makeReq(key?: string): NextRequest {
   const headers = new Headers();
@@ -39,6 +44,7 @@ function makeReq(key?: string): NextRequest {
 const ENV_KEYS = [
   "WHALE_EXTERNAL_API_KEY",
   "WHALE_EXTERNAL_OA_IDS",
+  "WHALE_EXTERNAL_PUBLIC_BASE_URL",
   "NEXT_PUBLIC_BASE_URL",
   "NEXT_PUBLIC_APP_URL",
 ] as const;
@@ -48,8 +54,11 @@ beforeEach(() => {
   for (const k of ENV_KEYS) saved[k] = process.env[k];
   process.env.WHALE_EXTERNAL_API_KEY = API_KEY;
   process.env.WHALE_EXTERNAL_OA_IDS = "oa-1";
-  process.env.NEXT_PUBLIC_BASE_URL = BASE;
-  delete process.env.NEXT_PUBLIC_APP_URL;
+  // 既定は WHALE_EXTERNAL_PUBLIC_BASE_URL 未設定（= canonical にフォールバック）
+  delete process.env.WHALE_EXTERNAL_PUBLIC_BASE_URL;
+  // 共有 env はあえて vercel.app にしておき、external links がこれを無視することを検証する
+  process.env.NEXT_PUBLIC_BASE_URL = VERCEL;
+  process.env.NEXT_PUBLIC_APP_URL = VERCEL;
   mockPrisma.work.findMany.mockReset();
   mockPrisma.work.findUnique.mockReset();
   mockPrisma.phase.findMany.mockReset();
@@ -181,7 +190,8 @@ describe("GET /api/external/v1/works/:workId/phase-links", () => {
     expect(res.status).toBe(404);
   });
 
-  it("adminUrl はフェーズ単位 / liveAdminUrl・liveActorUrl は作品単位", async () => {
+  it("既定は canonical(app.whale-studio.app) / 共有env(vercel.app)は無視 / adminUrl=フェーズ単位・liveAdminUrl/liveActorUrl=作品単位", async () => {
+    // beforeEach で NEXT_PUBLIC_BASE_URL / NEXT_PUBLIC_APP_URL = vercel.app・WHALE_EXTERNAL_PUBLIC_BASE_URL 未設定
     mockPrisma.work.findUnique.mockResolvedValue({
       id: "w1", oaId: "oa-1", title: "作品1", publishStatus: "active",
     });
@@ -194,23 +204,54 @@ describe("GET /api/external/v1/works/:workId/phase-links", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
 
-    // 作品単位リンク
+    // 作品単位リンク（canonical。共有 env の vercel.app が混ざらないこと）
     expect(body.data.links).toEqual({
-      scenarioUrl:  `${BASE}/oas/oa-1/works/w1/scenario`,
-      liveAdminUrl: `${BASE}/oas/oa-1/live/admin?workId=w1`,
-      liveActorUrl: `${BASE}/oas/oa-1/live/actor?workId=w1`,
+      scenarioUrl:  `${CANON}/oas/oa-1/works/w1/scenario`,
+      liveAdminUrl: `${CANON}/oas/oa-1/live/admin?workId=w1`,
+      liveActorUrl: `${CANON}/oas/oa-1/live/actor?workId=w1`,
     });
+    // 共有 env の値が絶対に混入しないこと
+    const linksStr = JSON.stringify(body.data.links);
+    expect(linksStr).not.toContain(VERCEL);
 
     // フェーズ単位リンク（adminUrl に phaseId を含む・フェーズごとに異なる）
     const [a, b] = body.data.phases;
     expect(Object.keys(a).sort()).toEqual(["adminUrl", "id", "key", "name", "order"].sort());
-    expect(a.adminUrl).toBe(`${BASE}/oas/oa-1/works/w1/phases/p1`);
-    expect(b.adminUrl).toBe(`${BASE}/oas/oa-1/works/w1/phases/p2`);
+    expect(a.adminUrl).toBe(`${CANON}/oas/oa-1/works/w1/phases/p1`);
+    expect(b.adminUrl).toBe(`${CANON}/oas/oa-1/works/w1/phases/p2`);
     expect(a.adminUrl).not.toEqual(b.adminUrl);
 
     // 存在しないフェーズ別 Staff URL は返さない
     expect(a).not.toHaveProperty("staffUrl");
     expect(a).not.toHaveProperty("liveAdminUrl");
     expect(a).not.toHaveProperty("liveActorUrl");
+  });
+
+  it("WHALE_EXTERNAL_PUBLIC_BASE_URL 設定時はその値が優先される", async () => {
+    process.env.WHALE_EXTERNAL_PUBLIC_BASE_URL = OVERRIDE;
+    mockPrisma.work.findUnique.mockResolvedValue({
+      id: "w1", oaId: "oa-1", title: "作品1", publishStatus: "active",
+    });
+    mockPrisma.phase.findMany.mockResolvedValue([
+      { id: "p1", phaseKey: "intro", name: "序章", sortOrder: 0 },
+    ]);
+
+    const res = await phaseLinksGET(makeReq(API_KEY), ctx("w1"));
+    const body = await res.json();
+    expect(body.data.links.scenarioUrl).toBe(`${OVERRIDE}/oas/oa-1/works/w1/scenario`);
+    expect(body.data.phases[0].adminUrl).toBe(`${OVERRIDE}/oas/oa-1/works/w1/phases/p1`);
+  });
+
+  it("末尾スラッシュ付き WHALE_EXTERNAL_PUBLIC_BASE_URL は正規化される", async () => {
+    process.env.WHALE_EXTERNAL_PUBLIC_BASE_URL = `${OVERRIDE}/`;
+    mockPrisma.work.findUnique.mockResolvedValue({
+      id: "w1", oaId: "oa-1", title: "作品1", publishStatus: "active",
+    });
+    mockPrisma.phase.findMany.mockResolvedValue([]);
+
+    const res = await phaseLinksGET(makeReq(API_KEY), ctx("w1"));
+    const body = await res.json();
+    // 二重スラッシュにならない
+    expect(body.data.links.scenarioUrl).toBe(`${OVERRIDE}/oas/oa-1/works/w1/scenario`);
   });
 });

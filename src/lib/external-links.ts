@@ -21,17 +21,25 @@ function normalize(v: string | null | undefined): string | null {
   return t.length > 0 ? t : null;
 }
 
+/** 外部連携 API のリンク生成専用の canonical 既定 origin。 */
+const EXTERNAL_CANONICAL_BASE_URL = "https://app.whale-studio.app";
+
 /**
- * リンクのベース origin を解決する。
- * 既存慣習（src/lib/liff/config.ts 等）と同じ優先順:
- *   NEXT_PUBLIC_APP_URL → NEXT_PUBLIC_BASE_URL → 既定 https://app.whale-studio.app
+ * リンクのベース origin を解決する（外部連携 API 専用）。
+ *
+ * 優先順:
+ *   1. WHALE_EXTERNAL_PUBLIC_BASE_URL（外部連携 API 専用の任意 env。Preview 等で別ドメインを返したい時のみ設定）
+ *   2. 既定 https://app.whale-studio.app（canonical）
+ *
+ * ⚠️ 共有 env（NEXT_PUBLIC_APP_URL / NEXT_PUBLIC_BASE_URL）は **意図的に参照しない**。
+ *    それらは LINE 配信 / LIFF / Stripe / consent / 招待リンク等でも使われるため、
+ *    外部 API のリンクを canonical に固定しつつ blast radius を外部 API のみに限定する。
  * 末尾スラッシュは除去する。
  */
 export function getExternalBaseUrl(): string {
   const origin =
-    normalize(process.env.NEXT_PUBLIC_APP_URL) ??
-    normalize(process.env.NEXT_PUBLIC_BASE_URL) ??
-    "https://app.whale-studio.app";
+    normalize(process.env.WHALE_EXTERNAL_PUBLIC_BASE_URL) ??
+    EXTERNAL_CANONICAL_BASE_URL;
   return origin.replace(/\/$/, "");
 }
 
