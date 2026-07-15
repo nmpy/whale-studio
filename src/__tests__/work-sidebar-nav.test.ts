@@ -32,9 +32,14 @@ describe("buildWorkSidebarSections — セクション構成", () => {
     expect(sec("その他")!.items.map((i) => i.label)).toEqual(["X投稿", "利用プラン"]);
   });
 
-  it("主要機能は従来どおり6項目", () => {
+  it("主要機能は7項目（ビーコンを含む）", () => {
     expect(sec("主要機能")!.items.map((i) => i.label))
-      .toEqual(["フェーズ", "キャラクター", "メッセージ", "LIFF", "オーディエンス", "ロケーション"]);
+      .toEqual(["フェーズ", "キャラクター", "メッセージ", "LIFF", "オーディエンス", "ロケーション", "ビーコン"]);
+  });
+
+  it("ビーコン = 作品配下 /beacons（in-layout）", () => {
+    expect(item("ビーコン")!.href).toBe(`${base}/beacons`);
+    expect(item("ビーコン")!.external).toBeUndefined();
   });
 });
 
@@ -81,5 +86,12 @@ describe("isSidebarItemActive — active 判定", () => {
   });
   it("メッセージ: /messages 配下で active", () => {
     expect(isSidebarItemActive(item("メッセージ")!, `${base}/messages/abc`, base)).toBe(true);
+  });
+  it("ビーコン: /beacons・/beacons/new・/beacons/[id]/edit 配下で active", () => {
+    const b = item("ビーコン")!;
+    expect(isSidebarItemActive(b, `${base}/beacons`, base)).toBe(true);
+    expect(isSidebarItemActive(b, `${base}/beacons/new`, base)).toBe(true);
+    expect(isSidebarItemActive(b, `${base}/beacons/bcn1/edit`, base)).toBe(true);
+    expect(isSidebarItemActive(b, `${base}/audience`, base)).toBe(false);
   });
 });
