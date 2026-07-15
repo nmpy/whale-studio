@@ -16,6 +16,7 @@ import { PlanRequiredCard } from "@/components/PlanRequiredCard";
 import { CHECKIN_OUTCOME_META, checkinOutcomeLabel, type UnifiedLogRow, type LocationLogKind } from "@/lib/location-log";
 import { BEACON_OUTCOME_META, beaconOutcomeLabel } from "@/lib/beacon-utils";
 import { InlineWhaleLoader } from "@/components/ui/InlineWhaleLoader";
+import { withWorkId } from "../../_lib/work-context";
 
 const inputCls = "rounded-field border border-line bg-surface px-2.5 py-1.5 text-[12px] text-ink outline-none focus:border-brand";
 
@@ -138,7 +139,7 @@ export default function LocationLogsPage() {
           {planAccess.allowed && (
             <a href={exportHref} className="text-[12px] font-semibold text-brand-ink underline" download>ログをCSVでエクスポート</a>
           )}
-          <Link href={`/oas/${oaId}/locations${ambientWorkId ? `?workId=${encodeURIComponent(ambientWorkId)}` : ""}`} className="text-[12px] font-semibold text-brand-ink underline">現地トリガーへ</Link>
+          <Link href={withWorkId(`/oas/${oaId}/locations`, ambientWorkId)} className="text-[12px] font-semibold text-brand-ink underline">現地トリガーへ</Link>
         </div>
       </div>
 

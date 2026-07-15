@@ -7,6 +7,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { getAuthHeaders } from "@/lib/api-client";
+import { withWorkId } from "../_lib/work-context";
 
 type Summary = {
   locationCount: number; gpsPointCount: number; qrPointCount: number; beaconTriggerCount: number;
@@ -33,8 +34,7 @@ export function SummaryCards({ oaId, workIdFilter }: { oaId: string; workIdFilte
       .catch(() => setFailed(true));
   }, [oaId]);
 
-  const wq = workIdFilter ? `&workId=${encodeURIComponent(workIdFilter)}` : "";
-  const logs = (q: string) => `/oas/${oaId}/locations/logs?${q}${wq}`.replace("?&", "?");
+  const logs = (q: string) => withWorkId(`/oas/${oaId}/locations/logs${q ? `?${q}` : ""}`, workIdFilter);
 
   if (failed) return null; // 集計失敗時は黙ってカード非表示（一覧は表示される）
 

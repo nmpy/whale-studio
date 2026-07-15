@@ -6,6 +6,7 @@
 import { useParams, useSearchParams } from "next/navigation";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { OaBeaconForm, type OaBeaconFormValue } from "../_oa-beacon-form";
+import { withWorkId } from "../../../_lib/work-context";
 
 export default function NewBeaconPage() {
   const params = useParams();
@@ -33,7 +34,7 @@ export default function NewBeaconPage() {
       <Breadcrumb
         items={[
           { label: "アカウントリスト", href: "/oas" },
-          { label: "Beaconチェックイン", href: `/oas/${oaId}/locations/beacons` },
+          { label: "Beaconチェックイン", href: withWorkId(`/oas/${oaId}/locations/beacons`, workId) },
           { label: "新規作成" },
         ]}
       />

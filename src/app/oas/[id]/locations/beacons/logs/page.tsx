@@ -11,6 +11,7 @@ import { Button } from "@/components/shared";
 import { getAuthHeaders, getDevToken, workApi } from "@/lib/api-client";
 import { beaconOutcomeLabel, BEACON_OUTCOME_META } from "@/lib/beacon-utils";
 import { InlineWhaleLoader } from "@/components/ui/InlineWhaleLoader";
+import { withWorkId } from "../../../_lib/work-context";
 
 type LogRow = {
   id: string;
@@ -49,7 +50,6 @@ export default function BeaconLogsPage() {
   const sp = useSearchParams();
   // 作品コンテキスト（?workId=）を戻り先リンクにも引き継ぐ（共通サイドバー維持のため）。フィルタ挙動は不変。
   const ambientWorkId = sp.get("workId");
-  const workQ = ambientWorkId ? `workId=${encodeURIComponent(ambientWorkId)}` : "";
 
   const [works, setWorks] = useState<{ id: string; title: string }[]>([]);
   const [rows, setRows] = useState<LogRow[] | null>(null);
@@ -105,8 +105,8 @@ export default function BeaconLogsPage() {
       <div className="mb-4 flex items-center justify-between">
         <h1 className="font-round text-[clamp(18px,3.5vw,22px)] font-extrabold tracking-[-0.02em] text-ink">ビーコン発火ログ</h1>
         <div className="flex items-center gap-3">
-          <Link href={`/oas/${oaId}/locations/logs?type=beacon${workQ ? `&${workQ}` : ""}`} className="text-[12px] font-semibold text-brand-ink underline">統合ログを見る</Link>
-          <Link href={`/oas/${oaId}/locations/beacons${workQ ? `?${workQ}` : ""}`} className="text-[12px] font-semibold text-brand-ink underline">一覧へ戻る</Link>
+          <Link href={withWorkId(`/oas/${oaId}/locations/logs?type=beacon`, ambientWorkId)} className="text-[12px] font-semibold text-brand-ink underline">統合ログを見る</Link>
+          <Link href={withWorkId(`/oas/${oaId}/locations/beacons`, ambientWorkId)} className="text-[12px] font-semibold text-brand-ink underline">一覧へ戻る</Link>
         </div>
       </div>
 
