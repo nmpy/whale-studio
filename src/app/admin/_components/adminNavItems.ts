@@ -40,6 +40,7 @@ export const ADMIN_NAV_ITEMS: readonly AdminNavItem[] = [
   { href: "/admin/hub-actions",   label: "ハブ操作分析",      desc: "ハブ画面の操作イベントを分析",                            color: "#8b5cf6", platformOnly: false },
   { href: "/admin/resume",        label: "再開分析",          desc: "再開導線の利用状況を分析",                                color: "#ec4899", platformOnly: false },
   { href: "/admin/audit",         label: "操作ログ",          desc: "管理操作の履歴を確認",                                    color: "#059669", platformOnly: false },
+  { href: "/admin/api",           label: "API連携",           desc: "外部システムから作品・フェーズ情報を参照するためのAPI仕様を確認します", color: "#4f46e5", platformOnly: false },
 
   // ── platform admin 専用（運営） ──
   { href: "/admin/policies",                  label: "規約管理",            desc: "利用規約・プライバシーポリシーの編集と同意履歴を管理",   color: "#7c3aed", platformOnly: true },
