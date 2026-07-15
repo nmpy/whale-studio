@@ -146,9 +146,9 @@ export function OaBeaconList({
                     {isPlatformAdmin && (
                       <Button type="button" variant="ghost" size="sm" onClick={() => setTestTarget(t)}>テスト発火</Button>
                     )}
-                    <Link href={`/oas/${oaId}/locations/beacons/logs?hwid=${encodeURIComponent(t.hwid)}`} className={buttonClass({ variant: "ghost", size: "sm" })}>ログ</Link>
+                    <Link href={`/oas/${oaId}/locations/beacons/logs?hwid=${encodeURIComponent(t.hwid)}${workIdFilter ? `&workId=${encodeURIComponent(workIdFilter)}` : ""}`} className={buttonClass({ variant: "ghost", size: "sm" })}>ログ</Link>
                     {!readOnly && (
-                      <Link href={`/oas/${oaId}/locations/beacons/${t.id}/edit`} className={buttonClass({ variant: "ghost", size: "sm" })}>編集</Link>
+                      <Link href={`/oas/${oaId}/locations/beacons/${t.id}/edit${workIdFilter ? `?workId=${encodeURIComponent(workIdFilter)}` : ""}`} className={buttonClass({ variant: "ghost", size: "sm" })}>編集</Link>
                     )}
                   </div>
                 </div>

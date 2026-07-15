@@ -58,6 +58,8 @@ export default function LocationLogsPage() {
   const params = useParams();
   const oaId = params.id as string;
   const sp = useSearchParams();
+  // 作品コンテキスト（?workId=）を「現地トリガーへ」戻りリンクに引き継ぐ（共通サイドバー維持）。フィルタ挙動は不変。
+  const ambientWorkId = sp.get("workId");
 
   const { effectivePlan, loading: planLoading } = useAccessPreview(oaId);
   const planAccess = getPlanAccessState({ plan: effectivePlan, featureKey: FEATURE.location });
@@ -136,7 +138,7 @@ export default function LocationLogsPage() {
           {planAccess.allowed && (
             <a href={exportHref} className="text-[12px] font-semibold text-brand-ink underline" download>ログをCSVでエクスポート</a>
           )}
-          <Link href={`/oas/${oaId}/locations`} className="text-[12px] font-semibold text-brand-ink underline">現地トリガーへ</Link>
+          <Link href={`/oas/${oaId}/locations${ambientWorkId ? `?workId=${encodeURIComponent(ambientWorkId)}` : ""}`} className="text-[12px] font-semibold text-brand-ink underline">現地トリガーへ</Link>
         </div>
       </div>
 

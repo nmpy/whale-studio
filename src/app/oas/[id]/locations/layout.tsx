@@ -18,8 +18,14 @@ export default function LocationsLayout({ children }: { children: React.ReactNod
   const workId = useSearchParams().get("workId");
   const pathname = usePathname() ?? "";
 
-  // workId が無い＝OA 全体表示。従来どおりサイドバーなしで素通し（既存挙動を変えない）。
-  if (!workId) return <>{children}</>;
+  // 印刷ページ（/locations/print）はシェルを適用しない。
+  //   印刷ページ独自の @media print は header/footer のみ非表示で、サイドバー <nav> や
+  //   シェルの marginInline/flex を印刷用にリセットしていない。印刷出力を壊さないため、
+  //   print ルートは共通シェルで包まず、従来どおり単独レイアウトで描画する（§印刷対応）。
+  const isPrint = pathname.endsWith("/print") || pathname.includes("/locations/print");
+
+  // workId が無い、または印刷ページ → 従来どおりサイドバーなしで素通し（既存挙動を変えない）。
+  if (!workId || isPrint) return <>{children}</>;
 
   // ビーコン配下（/locations/beacons...）は "beacons"、それ以外の現地トリガー画面は "locations"。
   const activeKey = pathname.includes("/locations/beacons") ? "beacons" : "locations";

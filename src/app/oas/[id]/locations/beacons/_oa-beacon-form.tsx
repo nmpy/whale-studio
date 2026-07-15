@@ -8,7 +8,7 @@
 // （メッセージは作品に属するため）。
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { getAuthHeaders, getDevToken, workApi } from "@/lib/api-client";
 import { Button } from "@/components/shared";
 
@@ -84,6 +84,11 @@ export function OaBeaconForm({
   initial: OaBeaconFormValue;
 }) {
   const router = useRouter();
+  // 作品コンテキスト（?workId=）を保存/削除/キャンセルの戻り先にも引き継ぐ。
+  //   引き継がないと一覧に戻った時点で共通サイドバーが消える（workId でシェル表示が決まるため）。
+  //   ここで参照するのは URL の workId のみ。保存・削除の API 呼び出しや紐づけ作品(v.work_id)は変更しない。
+  const ambientWorkId = useSearchParams().get("workId");
+  const beaconsListHref = `/oas/${oaId}/locations/beacons${ambientWorkId ? `?workId=${encodeURIComponent(ambientWorkId)}` : ""}`;
   const [v, setV] = useState<OaBeaconFormValue>(initial);
   const [works, setWorks] = useState<WorkOption[]>([]);
   const [messages, setMessages] = useState<MessageOption[]>([]);
@@ -170,7 +175,7 @@ export function OaBeaconForm({
         setSaving(false);
         return;
       }
-      router.push(`/oas/${oaId}/locations/beacons`);
+      router.push(beaconsListHref);
       router.refresh();
     } catch {
       setError("通信エラーが発生しました");
@@ -193,7 +198,7 @@ export function OaBeaconForm({
         setDeleting(false);
         return;
       }
-      router.push(`/oas/${oaId}/locations/beacons`);
+      router.push(beaconsListHref);
       router.refresh();
     } catch {
       setError("通信エラーが発生しました");
@@ -329,7 +334,7 @@ export function OaBeaconForm({
         <Button type="submit" variant="primary" disabled={!canSubmit}>
           {saving ? "保存中…" : mode === "create" ? "作成" : "保存"}
         </Button>
-        <Button type="button" variant="ghost" onClick={() => router.push(`/oas/${oaId}/locations/beacons`)}>キャンセル</Button>
+        <Button type="button" variant="ghost" onClick={() => router.push(beaconsListHref)}>キャンセル</Button>
         {mode === "edit" && (
           <Button type="button" variant="danger" onClick={onDelete} disabled={deleting} className="ml-auto">
             {deleting ? "削除中…" : "削除"}
