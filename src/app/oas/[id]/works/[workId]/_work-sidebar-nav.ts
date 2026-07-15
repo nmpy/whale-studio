@@ -41,6 +41,8 @@ export function buildWorkSidebarSections(args: { oaId: string; workId: string; i
         { label: "オーディエンス", href: `${base}/audience`,   activeSegments: ["/audience"] },
         // ロケーションは OA 階層（/oas/[id]/locations）。作品 workId を引き継いで遷移する。
         { label: "ロケーション",   href: `/oas/${oaId}/locations?workId=${workId}`, external: true },
+        // ビーコン（作品配下 /beacons・new / [id]/edit も同項目でアクティブ）。プランゲートなし＝ページ側の既存ガードに委ねる。
+        { label: "ビーコン",       href: `${base}/beacons`,     activeSegments: ["/beacons"] },
       ],
     },
     {
