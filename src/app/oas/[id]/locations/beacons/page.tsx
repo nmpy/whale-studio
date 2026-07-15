@@ -16,6 +16,7 @@ import { getPlanAccessState, FEATURE } from "@/lib/constants/plans";
 import { PlanRequiredCard } from "@/components/PlanRequiredCard";
 import { OaBeaconList } from "./_oa-beacon-list";
 import { InlineWhaleLoader } from "@/components/ui/InlineWhaleLoader";
+import { withWorkId } from "../../_lib/work-context";
 
 export default function OaBeaconsPage() {
   const params = useParams();
@@ -35,7 +36,7 @@ export default function OaBeaconsPage() {
       <Breadcrumb
         items={[
           { label: "アカウントリスト", href: "/oas" },
-          { label: "現地トリガー", href: `/oas/${oaId}/locations${workIdFilter ? `?workId=${encodeURIComponent(workIdFilter)}` : ""}` },
+          { label: "現地トリガー", href: withWorkId(`/oas/${oaId}/locations`, workIdFilter) },
           { label: "Beaconチェックイン" },
         ]}
       />
@@ -49,7 +50,7 @@ export default function OaBeaconsPage() {
           </p>
         </div>
         {!readOnly && planAccess.allowed && !planLoading && (
-          <Link href={`/oas/${oaId}/locations/beacons/new${workIdFilter ? `?workId=${encodeURIComponent(workIdFilter)}` : ""}`} className={buttonClass({ variant: "primary", size: "md" })}>
+          <Link href={withWorkId(`/oas/${oaId}/locations/beacons/new`, workIdFilter)} className={buttonClass({ variant: "primary", size: "md" })}>
             ＋ ビーコンを追加
           </Link>
         )}

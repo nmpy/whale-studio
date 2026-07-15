@@ -15,6 +15,7 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { getAuthHeaders } from "@/lib/api-client";
+import { withWorkId } from "../../_lib/work-context";
 
 export default function LocationResolverPage() {
   const params = useParams();
@@ -52,7 +53,7 @@ export default function LocationResolverPage() {
       {error ? (
         <>
           <div className="rounded-card border border-danger/30 bg-danger-soft px-4 py-3 text-[13px] text-danger">{error}</div>
-          <Link href={`/oas/${oaId}/locations`} className="mt-4 inline-block text-[13px] font-semibold text-brand-ink underline">
+          <Link href={withWorkId(`/oas/${oaId}/locations`, searchParams.get("workId"))} className="mt-4 inline-block text-[13px] font-semibold text-brand-ink underline">
             ← 現地トリガーへ戻る
           </Link>
         </>

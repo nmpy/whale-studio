@@ -14,6 +14,7 @@ import { buildLiffCheckinUrl } from "@/lib/liff/config";
 import { buttonClass } from "@/components/shared";
 import { requiresGps, includesQr } from "@/lib/checkin-mode";
 import { InlineWhaleLoader } from "@/components/ui/InlineWhaleLoader";
+import { withWorkId } from "../_lib/work-context";
 
 type Checkpoint = {
   id: string;
@@ -178,7 +179,7 @@ export function CheckpointList({
                     {includesQr(c.checkin_mode) && (
                       <Link href={`/oas/${oaId}/locations/print?workId=${c.work_id}`} className={buttonClass({ variant: "ghost", size: "sm" })}>QR印刷</Link>
                     )}
-                    <Link href={`/oas/${oaId}/locations/${c.id}`} className={buttonClass({ variant: "ghost", size: "sm" })}>
+                    <Link href={withWorkId(`/oas/${oaId}/locations/${c.id}`, workIdFilter)} className={buttonClass({ variant: "ghost", size: "sm" })}>
                       {readOnly ? "分析" : "編集 / 分析"}
                     </Link>
                   </div>

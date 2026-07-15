@@ -20,6 +20,7 @@ import { PlanRequiredCard } from "@/components/PlanRequiredCard";
 import { CheckpointList } from "./_checkpoint-list";
 import { SummaryCards } from "./_summary-cards";
 import { InlineWhaleLoader } from "@/components/ui/InlineWhaleLoader";
+import { withWorkId } from "../_lib/work-context";
 
 export default function OaLocationsPage() {
   const params = useParams();
@@ -44,7 +45,7 @@ export default function OaLocationsPage() {
           </p>
         </div>
         <Link
-          href={`/oas/${oaId}/locations/logs${workIdFilter ? `?workId=${encodeURIComponent(workIdFilter)}` : ""}`}
+          href={withWorkId(`/oas/${oaId}/locations/logs`, workIdFilter)}
           className={buttonClass({ variant: "ghost", size: "sm" })}
         >
           ログを見る
@@ -93,7 +94,7 @@ export default function OaLocationsPage() {
                 </p>
               </div>
               {!readOnly && (
-                <Link href={`/oas/${oaId}/locations/new${workIdFilter ? `?workId=${encodeURIComponent(workIdFilter)}` : ""}`} className={buttonClass({ variant: "primary", size: "sm" })}>
+                <Link href={withWorkId(`/oas/${oaId}/locations/new`, workIdFilter)} className={buttonClass({ variant: "primary", size: "sm" })}>
                   ＋ チェックインポイントを追加
                 </Link>
               )}
@@ -105,7 +106,7 @@ export default function OaLocationsPage() {
           <section className="mb-8">
             <h2 className="mb-2 font-round text-[16px] font-bold text-ink">Beaconチェックイン</h2>
             <Link
-              href={`/oas/${oaId}/locations/beacons${workIdFilter ? `?workId=${encodeURIComponent(workIdFilter)}` : ""}`}
+              href={withWorkId(`/oas/${oaId}/locations/beacons`, workIdFilter)}
               className="group flex items-center gap-3.5 rounded-card border border-line bg-surface px-4 py-4 no-underline transition-all hover:-translate-y-px hover:border-brand/30 hover:shadow-card"
             >
               <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-md border border-line bg-bg-tint text-[18px]">📡</div>

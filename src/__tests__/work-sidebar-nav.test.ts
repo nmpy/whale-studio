@@ -1,6 +1,6 @@
 // src/__tests__/work-sidebar-nav.test.ts
 import { describe, it, expect } from "vitest";
-import { buildWorkSidebarSections, isSidebarItemActive } from "@/app/oas/[id]/works/[workId]/_work-sidebar-nav";
+import { buildWorkSidebarSections, isSidebarItemActive } from "@/app/oas/[id]/_lib/work-sidebar-nav";
 
 const OA = "oa1", WORK = "wk1";
 const base = `/oas/${OA}/works/${WORK}`;
@@ -37,9 +37,20 @@ describe("buildWorkSidebarSections — セクション構成", () => {
       .toEqual(["フェーズ", "キャラクター", "メッセージ", "LIFF", "オーディエンス", "ロケーション", "ビーコン"]);
   });
 
-  it("ビーコン = 作品配下 /beacons（in-layout）", () => {
-    expect(item("ビーコン")!.href).toBe(`${base}/beacons`);
+  it("ビーコン = OA 階層 canonical /locations/beacons?workId=（実在 URL・workId 引き継ぎ）", () => {
+    expect(item("ビーコン")!.href).toBe(`/oas/${OA}/locations/beacons?workId=${WORK}`);
+    // external ではない（後方互換 /works/[workId]/beacons の pathname 判定を残すため）。
     expect(item("ビーコン")!.external).toBeUndefined();
+  });
+  it("ロケーション = OA 階層 canonical /locations?workId=（external・workId 引き継ぎ）", () => {
+    expect(item("ロケーション")!.href).toBe(`/oas/${OA}/locations?workId=${WORK}`);
+    expect(item("ロケーション")!.external).toBe(true);
+  });
+  it("全項目に一意な key が付与されている", () => {
+    const keys = allItems().map((i) => i.key);
+    expect(new Set(keys).size).toBe(keys.length);
+    expect(keys).toContain("beacons");
+    expect(keys).toContain("locations");
   });
 });
 
@@ -87,11 +98,48 @@ describe("isSidebarItemActive — active 判定", () => {
   it("メッセージ: /messages 配下で active", () => {
     expect(isSidebarItemActive(item("メッセージ")!, `${base}/messages/abc`, base)).toBe(true);
   });
-  it("ビーコン: /beacons・/beacons/new・/beacons/[id]/edit 配下で active", () => {
+  it("ビーコン: 後方互換 /works/[workId]/beacons 配下で active（pathname 判定）", () => {
     const b = item("ビーコン")!;
     expect(isSidebarItemActive(b, `${base}/beacons`, base)).toBe(true);
     expect(isSidebarItemActive(b, `${base}/beacons/new`, base)).toBe(true);
     expect(isSidebarItemActive(b, `${base}/beacons/bcn1/edit`, base)).toBe(true);
     expect(isSidebarItemActive(b, `${base}/audience`, base)).toBe(false);
+  });
+});
+
+// OA 階層の現地トリガー画面（pathname から作品ベースを判定できない）は activeKey で判定する。
+describe("isSidebarItemActive — OA 階層 activeKey 判定", () => {
+  const loc = item("ロケーション")!;
+  const bcn = item("ビーコン")!;
+  const oaPath = `/oas/${OA}/locations`; // pathname は OA 階層（base とは無関係）
+
+  it('/locations?workId= → activeKey="locations" で ロケーション のみ active', () => {
+    expect(isSidebarItemActive(loc, oaPath, base, "locations")).toBe(true);
+    expect(isSidebarItemActive(bcn, oaPath, base, "locations")).toBe(false);
+  });
+
+  it('/locations/beacons?workId= → activeKey="beacons" で ビーコン のみ active', () => {
+    const p = `${oaPath}/beacons`;
+    expect(isSidebarItemActive(bcn, p, base, "beacons")).toBe(true);
+    expect(isSidebarItemActive(loc, p, base, "beacons")).toBe(false);
+  });
+
+  it("beacons 配下（new / [id]/edit / logs）でも activeKey=beacons で ビーコン active・ロケーションと同時に active にならない", () => {
+    for (const p of [`${oaPath}/beacons/new`, `${oaPath}/beacons/bcn1/edit`, `${oaPath}/beacons/logs`]) {
+      expect(isSidebarItemActive(bcn, p, base, "beacons")).toBe(true);
+      expect(isSidebarItemActive(loc, p, base, "beacons")).toBe(false);
+    }
+  });
+
+  it("activeKey 指定時は external でもキー一致で active（ロケーションは external だが activeKey で active）", () => {
+    expect(loc.external).toBe(true);
+    expect(isSidebarItemActive(loc, oaPath, base, "locations")).toBe(true);
+  });
+
+  it("activeKey 指定時、作品トップ等の pathname 判定は無効化され key 一致のみで判定", () => {
+    const top = item("作品トップ")!;
+    // pathname が base 完全一致でも、activeKey が別なら active にしない（key で判定）。
+    expect(isSidebarItemActive(top, base, base, "locations")).toBe(false);
+    expect(isSidebarItemActive(top, base, base, "top")).toBe(true);
   });
 });

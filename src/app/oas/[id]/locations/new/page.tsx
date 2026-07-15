@@ -10,6 +10,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { locationApi, workApi, getDevToken } from "@/lib/api-client";
 import { LocationForm } from "../../works/[workId]/locations/_form";
+import { withWorkId } from "../../_lib/work-context";
 
 export default function OaNewLocationPage() {
   const params = useParams();
@@ -34,7 +35,7 @@ export default function OaNewLocationPage() {
     setError(null);
     try {
       await locationApi.create(getDevToken(), { work_id: workId, ...formData } as Parameters<typeof locationApi.create>[1]);
-      router.push(`/oas/${oaId}/locations?workId=${workId}`);
+      router.push(withWorkId(`/oas/${oaId}/locations`, workId));
     } catch (err) {
       setError(err instanceof Error ? err.message : "作成に失敗しました");
     } finally {
@@ -47,7 +48,7 @@ export default function OaNewLocationPage() {
       <Breadcrumb
         items={[
           { label: "アカウントリスト", href: "/oas" },
-          { label: "現地トリガー", href: `/oas/${oaId}/locations` },
+          { label: "現地トリガー", href: withWorkId(`/oas/${oaId}/locations`, queryWorkId) },
           { label: "新規作成" },
         ]}
       />

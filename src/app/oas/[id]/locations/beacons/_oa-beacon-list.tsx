@@ -11,6 +11,7 @@ import { Button, buttonClass } from "@/components/shared";
 import { beaconOutcomeLabel } from "@/lib/beacon-utils";
 import { TestFireModal } from "./_test-fire-modal";
 import { InlineWhaleLoader } from "@/components/ui/InlineWhaleLoader";
+import { withWorkId } from "../../_lib/work-context";
 
 type Trigger = {
   id: string;
@@ -146,9 +147,9 @@ export function OaBeaconList({
                     {isPlatformAdmin && (
                       <Button type="button" variant="ghost" size="sm" onClick={() => setTestTarget(t)}>テスト発火</Button>
                     )}
-                    <Link href={`/oas/${oaId}/locations/beacons/logs?hwid=${encodeURIComponent(t.hwid)}`} className={buttonClass({ variant: "ghost", size: "sm" })}>ログ</Link>
+                    <Link href={withWorkId(`/oas/${oaId}/locations/beacons/logs?hwid=${encodeURIComponent(t.hwid)}`, workIdFilter)} className={buttonClass({ variant: "ghost", size: "sm" })}>ログ</Link>
                     {!readOnly && (
-                      <Link href={`/oas/${oaId}/locations/beacons/${t.id}/edit`} className={buttonClass({ variant: "ghost", size: "sm" })}>編集</Link>
+                      <Link href={withWorkId(`/oas/${oaId}/locations/beacons/${t.id}/edit`, workIdFilter)} className={buttonClass({ variant: "ghost", size: "sm" })}>編集</Link>
                     )}
                   </div>
                 </div>

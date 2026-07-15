@@ -11,6 +11,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { locationApi, workApi, getDevToken, fetchOaLiffId } from "@/lib/api-client";
 import { buildLiffCheckinUrl } from "@/lib/liff/config";
 import type { LocationWithTransition } from "@/types";
+import { withWorkId } from "../../_lib/work-context";
 
 export default function OaLocationsPrintPage() {
   const params = useParams();
@@ -52,7 +53,7 @@ export default function OaLocationsPrintPage() {
   if (!workId) {
     return (
       <div style={{ maxWidth: 640, margin: "0 auto", padding: "40px 16px" }}>
-        <BreadcrumbLike oaId={oaId} />
+        <BreadcrumbLike oaId={oaId} workId={workId} />
         <h1 className="mb-3 font-round text-[20px] font-extrabold text-ink">QR 一括印刷</h1>
         <p className="mb-3 text-[12px] text-ink-3">印刷する作品を選択してください（QR は作品ごとに発行されます）。</p>
         <select
@@ -74,7 +75,7 @@ export default function OaLocationsPrintPage() {
           このOAの LIFF ID が未設定のため印刷用 QR を生成できません。<br />
           <Link href={`/oas/${oaId}/account`} style={{ color: "#2563eb", textDecoration: "underline" }}>設定 → アカウント情報（LIFF設定）</Link> で LIFF ID を設定してください。
         </div>
-        <Link href={`/oas/${oaId}/locations?workId=${workId}`} style={{ display: "inline-block", marginTop: 16, fontSize: 14, color: "#2563eb" }}>
+        <Link href={withWorkId(`/oas/${oaId}/locations`, workId)} style={{ display: "inline-block", marginTop: 16, fontSize: 14, color: "#2563eb" }}>
           ← 現地トリガーへ戻る
         </Link>
       </div>
@@ -85,7 +86,7 @@ export default function OaLocationsPrintPage() {
     <>
       <div className="print-hide" style={{ maxWidth: 700, margin: "0 auto", padding: "24px 16px" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
-          <Link href={`/oas/${oaId}/locations?workId=${workId}`} style={{ fontSize: 14, color: "#2563eb", textDecoration: "none" }}>← 戻る</Link>
+          <Link href={withWorkId(`/oas/${oaId}/locations`, workId)} style={{ fontSize: 14, color: "#2563eb", textDecoration: "none" }}>← 戻る</Link>
           <button onClick={() => window.print()} style={{ padding: "8px 20px", background: "#2563eb", color: "#fff", border: "none", borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: "pointer" }}>
             印刷する
           </button>
@@ -139,12 +140,12 @@ export default function OaLocationsPrintPage() {
   );
 }
 
-function BreadcrumbLike({ oaId }: { oaId: string }) {
+function BreadcrumbLike({ oaId, workId }: { oaId: string; workId: string }) {
   return (
     <div className="mb-4 text-[12px] text-ink-3">
       <Link href="/oas" className="text-ink-3 underline">アカウントリスト</Link>
       <span className="mx-1">›</span>
-      <Link href={`/oas/${oaId}/locations`} className="text-ink-3 underline">現地トリガー</Link>
+      <Link href={withWorkId(`/oas/${oaId}/locations`, workId)} className="text-ink-3 underline">現地トリガー</Link>
       <span className="mx-1">›</span>
       <span className="text-ink">QR 印刷</span>
     </div>

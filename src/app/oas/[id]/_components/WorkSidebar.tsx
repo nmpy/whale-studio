@@ -1,36 +1,44 @@
 "use client";
 
-// src/app/oas/[id]/works/[workId]/_WorkSidebar.tsx
+// src/app/oas/[id]/_components/WorkSidebar.tsx
 //
-// 作品配下（/oas/[id]/works/[workId]/*）専用の左サイドバー。
-//   - 既存導線（AppHeader / パンくず / ハブカード / 各ページ本体）はそのままに、
-//     作品配下の主要機能への**付加的な**導線をまとめて見やすくするだけのコンポーネント。
-//   - データ取得なし（リンクは useParams の id / workId から生成）。新規 API / DB / 権限ロジックは無し。
-//   - アクティブ表示は usePathname ベース（/messages 配下 → メッセージ 等）。
+// 作品コンテキストの左サイドバー（作品配下ページ + workId 付き OA 階層現地トリガー画面で共有）。
+//   - 既存導線（AppHeader / パンくず / 各ページ本体）はそのままに、作品配下の主要機能への
+//     **付加的な**導線をまとめて見やすくするだけのコンポーネント。
+//   - データ取得なし（リンクは oaId / workId から生成）。新規 API / DB / 権限ロジックは無し。
+//   - workId は通常 route params（作品配下）から。OA 階層 locations 画面では `workIdOverride`（searchParams 由来）を渡す。
+//   - アクティブ表示は pathname ベース。ただし pathname から作品ベースを判定できない OA 階層画面では
+//     呼び出し側が `activeKey`（"locations" / "beacons" 等）を明示する。
 //   - 権限/プランの可否は **各ページ側の既存ガード**が引き続き担保する（ここでは導線を消さない）。
-//
-// 注: アカウント階層リンク（アカウント情報 / リッチメニュー / メンバー管理 / 利用プラン）は本PR範囲外
-//     （次PRで追加予定）。SNS は曖昧さ回避のため作品配下の x-posts（X投稿）のみ表示する。
 
 import Link from "next/link";
 import { useParams, usePathname, useSearchParams } from "next/navigation";
 import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
 import { withPreviewParams } from "@/lib/access-preview";
-import { buildWorkSidebarSections, isSidebarItemActive, type SidebarItem } from "./_work-sidebar-nav";
+import { buildWorkSidebarSections, isSidebarItemActive, type SidebarItem } from "../_lib/work-sidebar-nav";
 
-export default function WorkSidebar() {
-  const params = usePathnameParams();
+export default function WorkSidebar({
+  workIdOverride,
+  activeKey,
+}: {
+  /** OA 階層（locations）画面で searchParams 由来の workId を渡す。作品配下では省略（route params を使う）。 */
+  workIdOverride?: string;
+  /** OA 階層画面で明示するアクティブキー（"locations" / "beacons"）。作品配下では省略（pathname 判定）。 */
+  activeKey?: string | null;
+}) {
+  const p = useParams<{ id?: string; workId?: string }>();
+  const oaId = p?.id;
+  const workId = workIdOverride ?? p?.workId;
   const pathname = usePathname() ?? "";
   // 表示確認モード（owner 限定・?previewPlan/?previewRole）を遷移後も維持するため query を引き継ぐ。
   const searchParams = useSearchParams();
   // アカウント設定（OA 設定）の表示可否は、旧・右上「設定」ボタン（showSettings=role!=="tester"）と同条件。
-  const { isTester } = useWorkspaceRole(params?.id ?? "");
-  if (!params) return null;
-  const { id: oaId, workId } = params;
+  const { isTester } = useWorkspaceRole(oaId ?? "");
+  if (!oaId || !workId) return null;
   const base = `/oas/${oaId}/works/${workId}`;
 
   const sections = buildWorkSidebarSections({ oaId, workId, isTester });
-  const isActive = (it: SidebarItem): boolean => isSidebarItemActive(it, pathname, base);
+  const isActive = (it: SidebarItem): boolean => isSidebarItemActive(it, pathname, base, activeKey);
 
   return (
     <nav
@@ -70,7 +78,7 @@ export default function WorkSidebar() {
             {sec.items.map((it) => {
               const active = isActive(it);
               return (
-                <li key={it.label}>
+                <li key={it.key}>
                   <Link
                     href={withPreviewParams(it.href, searchParams)}
                     aria-current={active ? "page" : undefined}
@@ -101,11 +109,4 @@ export default function WorkSidebar() {
       <style>{`.ws-side-link:hover{background:var(--color-brand-mist,#f4fbf7);}`}</style>
     </nav>
   );
-}
-
-/** useParams を型安全に取り出す（id / workId が揃わなければ null）。 */
-function usePathnameParams(): { id: string; workId: string } | null {
-  const p = useParams<{ id?: string; workId?: string }>();
-  if (!p?.id || !p?.workId) return null;
-  return { id: p.id, workId: p.workId };
 }

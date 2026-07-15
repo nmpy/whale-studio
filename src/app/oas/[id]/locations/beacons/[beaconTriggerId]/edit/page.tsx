@@ -3,11 +3,12 @@
 // src/app/oas/[id]/locations/beacons/[beaconTriggerId]/edit/page.tsx — ビーコントリガー編集
 
 import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { getAuthHeaders } from "@/lib/api-client";
 import { OaBeaconForm, type OaBeaconFormValue, isoToLocalInput, type BeaconActionType } from "../../_oa-beacon-form";
 import { InlineWhaleLoader } from "@/components/ui/InlineWhaleLoader";
+import { withWorkId } from "../../../../_lib/work-context";
 
 type TriggerResponse = {
   id: string; name: string; hwid: string; work_id: string | null;
@@ -21,6 +22,7 @@ export default function EditBeaconPage() {
   const params = useParams();
   const oaId = params.id as string;
   const beaconId = params.beaconTriggerId as string;
+  const workId = useSearchParams().get("workId");
 
   const [initial, setInitial] = useState<OaBeaconFormValue | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -63,7 +65,7 @@ export default function EditBeaconPage() {
       <Breadcrumb
         items={[
           { label: "アカウントリスト", href: "/oas" },
-          { label: "Beaconチェックイン", href: `/oas/${oaId}/locations/beacons` },
+          { label: "Beaconチェックイン", href: withWorkId(`/oas/${oaId}/locations/beacons`, workId) },
           { label: "編集" },
         ]}
       />
