@@ -99,18 +99,10 @@ export function SingleOaDashboard({
 
   return (
     <>
-      {/* ── 1. ページヘッダー ── */}
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <h2 className="font-round text-[20px] font-extrabold tracking-[-0.01em] text-ink">アカウント</h2>
-          <span className="inline-flex min-w-[24px] items-center justify-center rounded-full border border-line bg-surface px-2 py-0.5 text-[12px] font-bold text-ink-2">1</span>
-        </div>
-        {canCreateOa && (
-          <Link href="/oas/new" className={buttonClass({ variant: "primary", size: "sm" })}>＋ アカウントを追加</Link>
-        )}
-      </div>
+      {/* タイトル行（アカウント + 件数 + 追加）は親のアカウント一覧が共通で表示するため、
+          ここには置かない（1件時も 0件/複数件と同じヘッダーを共有＝デザイン統合）。 */}
 
-      {/* ── 2. アカウント概要カード ── */}
+      {/* ── アカウント概要カード ── */}
       <section className="mb-5 rounded-card border border-line bg-surface p-5 shadow-sm sm:p-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           {/* 左: 基本情報 */}
