@@ -11,8 +11,10 @@ import { getServerUser } from "@/lib/supabase/server";
 import { isPlatformOwner } from "@/lib/platform-admin";
 import { AnnouncementBanner } from "@/components/AnnouncementBanner";
 import { getOwnerDashboard, normalizePeriod, accountColor } from "@/lib/owner-dashboard/aggregate";
+import { getOwnerActivity } from "@/lib/owner-dashboard/activity";
 import { PeriodSelect } from "./_period-select";
 import { ErrorRateCard } from "./_error-rate-card";
+import { ActivitySection } from "./_activity-section";
 
 export const dynamic = "force-dynamic";
 
@@ -48,7 +50,11 @@ export default async function OwnerDashboardPage({ searchParams }: { searchParam
   if (!isPlatformOwner(user.id)) redirect("/admin/announcements");
 
   const period = normalizePeriod(searchParams?.period);
-  const data = await getOwnerDashboard(period, new Date());
+  // 横断アクティビティ（期間非依存の「最新8件」）はサマリー集計と並列実行する。
+  const [data, activity] = await Promise.all([
+    getOwnerDashboard(period, new Date()),
+    getOwnerActivity(),
+  ]);
   const { summary, daily, accountBreakdown, accountTable, errorBreakdown } = data;
 
   const chartMax = Math.max(1, ...daily.map((d) => d.count));
@@ -190,6 +196,9 @@ export default async function OwnerDashboardPage({ searchParams }: { searchParam
           </table>
         )}
       </section>
+
+      {/* 全アカウント横断アクティビティ（直近8件・期間非依存） */}
+      <ActivitySection items={activity} />
     </div>
   );
 }
