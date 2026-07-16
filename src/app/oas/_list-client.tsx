@@ -38,33 +38,6 @@ function statusTone(s: string): "active" | "muted" | "warn" {
   return "muted"; // draft / unknown
 }
 
-/* ── アカウント頭文字アバタータイル（アカウント別に安定した淡色・決定論的） ── */
-const AVATAR_PALETTE: { bg: string; color: string }[] = [
-  { bg: "#e1f0f4", color: "#2b7f9b" },
-  { bg: "#f3e9df", color: "#b06a2c" },
-  { bg: "#f7e3ec", color: "#c04f80" },
-  { bg: "#e6f6ec", color: "#178a48" },
-  { bg: "#efeafa", color: "#7a4fd0" },
-];
-function avatarColor(id: string): { bg: string; color: string } {
-  let h = 0;
-  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
-  return AVATAR_PALETTE[h % AVATAR_PALETTE.length];
-}
-function Avatar({ id, title, size }: { id: string; title: string; size: number }) {
-  const c = avatarColor(id);
-  const initial = (title?.trim()?.charAt(0) || "?").toUpperCase();
-  return (
-    <div
-      aria-hidden="true"
-      className="flex flex-shrink-0 items-center justify-center font-round font-extrabold"
-      style={{ width: size, height: size, borderRadius: Math.round(size * 0.26), background: c.bg, color: c.color, fontSize: Math.round(size * 0.42) }}
-    >
-      {initial}
-    </div>
-  );
-}
-
 /* ── 利用区分ピル（区分表示可否は呼び出し側で判定） ── */
 function UsageTypePill({ usageType }: { usageType: OaListItem["usage_type"] }) {
   return (
@@ -135,7 +108,6 @@ function SkeletonList() {
       {[0, 1, 2].map((i) => (
         <div key={i} className="rounded-card border border-line bg-surface p-5 shadow-sm">
           <div className="flex items-center gap-4">
-            <div className="skeleton" style={{ width: 44, height: 44, borderRadius: 12 }} />
             <div className="min-w-0 flex-1">
               <div className="skeleton mb-2" style={{ width: 180 + i * 30, height: 16, borderRadius: 4 }} />
               <div className="skeleton" style={{ width: 120, height: 11, borderRadius: 4 }} />
@@ -185,9 +157,8 @@ function AccountListItem({
           aria-expanded={open}
           aria-controls={panelId}
           onClick={() => setOpen((v) => !v)}
-          className="flex min-w-0 flex-1 items-center gap-4 text-left"
+          className="flex min-w-0 flex-1 items-center text-left"
         >
-          <Avatar id={oa.id} title={oa.title} size={44} />
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               <h3 className="font-round overflow-hidden text-ellipsis whitespace-nowrap text-[15px] font-bold leading-[1.3] text-ink">{oa.title}</h3>
@@ -446,15 +417,6 @@ export function OaListClient() {
               );
             })}
           </div>
-
-          {/* アカウント追加プロンプト（作成可能なときのみ・href は現行 /oas/new） */}
-          {canCreateOa && (
-            <Link href="/oas/new" className="mt-3 flex flex-col items-center gap-1.5 rounded-card border-2 border-dashed border-line bg-surface px-6 py-6 text-center no-underline transition-colors hover:border-brand/50 hover:bg-brand-mist">
-              <span className="text-[14px] font-bold text-ink">アカウントを追加</span>
-              <span className="text-[12px] text-ink-3">新しいLINE公式アカウントを登録して作品を管理できます</span>
-              <span className={buttonClass({ variant: "primary", size: "sm", className: "mt-1" })}>＋ アカウントを追加</span>
-            </Link>
-          )}
 
           {/* ページネーション */}
           {meta && meta.pages > 1 && (

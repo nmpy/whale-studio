@@ -95,7 +95,6 @@ export function SingleOaDashboard({
   const worksHref = `/oas/${oa.id}/works`;
   const worksNewHref = `/oas/${oa.id}/works/new`;
   const settingsHref = `/oas/${oa.id}/settings`;
-  const initial = (oa.title?.trim()?.charAt(0) || "?").toUpperCase();
 
   return (
     <>
@@ -106,13 +105,7 @@ export function SingleOaDashboard({
       <section className="mb-5 rounded-card border border-line bg-surface p-5 shadow-sm sm:p-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           {/* 左: 基本情報 */}
-          <div className="flex min-w-0 flex-1 items-start gap-3.5">
-            <div
-              aria-hidden="true"
-              className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl bg-brand-soft font-round text-[20px] font-extrabold text-brand-ink"
-            >
-              {initial}
-            </div>
+          <div className="flex min-w-0 flex-1 items-start">
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
                 <h1 className="font-round overflow-hidden text-ellipsis whitespace-nowrap text-[18px] font-extrabold leading-[1.3] text-ink">{oa.title}</h1>
