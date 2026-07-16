@@ -5,7 +5,7 @@
 // フェーズ追加・D&D並び替え・インライン軽編集を統合
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams, useRouter } from "next/navigation";
 import { TLink as Link } from "@/components/TLink";
 import { workApi, phaseApi, transitionApi, messageApi, getDevToken } from "@/lib/api-client";
 import { analyzePhaseTransitions, getOutgoingPhaseEdges, type OutgoingEdge, type MessageLite } from "@/lib/phase-transitions";
@@ -18,6 +18,7 @@ import type { PhaseWithCounts, TransitionWithPhases, PhaseType } from "@/types";
 // ノードビューは UI 導線を削除済み (2026 整理)。`_node-graph.tsx` 本体は復活可能性のため残置。
 import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
 import { ViewerBanner } from "@/components/PermissionGuard";
+import { PhaseFlowView } from "./_flow-view";
 
 // ── フェーズ種別メタ ──────────────────────────────
 const PHASE_TYPE_META: Record<PhaseType, { label: string; color: string; bg: string; border: string }> = {
@@ -70,6 +71,28 @@ export default function ScenarioPage() {
   const workId  = params.workId;
   const { showToast } = useToast();
   const { role, canEdit, isOwner, isAdmin } = useWorkspaceRole(oaId);
+
+  // ── 一覧 / フロー 表示切替（?view= で状態保持。既定 list・後方互換）──
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const view: "list" | "flow" = searchParams.get("view") === "flow" ? "flow" : "list";
+  const scenarioBase = `/oas/${oaId}/works/${workId}/scenario`;
+  function setView(next: "list" | "flow") {
+    const q = new URLSearchParams(searchParams.toString());
+    if (next === "flow") q.set("view", "flow"); else q.delete("view");
+    const qs = q.toString();
+    router.replace(qs ? `${scenarioBase}?${qs}` : scenarioBase, { scroll: false });
+  }
+  function openAddForm() {
+    setAddForm(EMPTY_PHASE_FORM); setAddErrors({}); setShowAddForm(true);
+    if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+  // フロー画面の削除は既存の削除処理（handleDeletePhase）を再利用する（別処理は作らない）。
+  function confirmDeletePhase(phaseId: string, name: string) {
+    if (typeof window !== "undefined" && window.confirm(`フェーズ「${name}」を削除しますか？\nこの操作は取り消せません。`)) {
+      void handleDeletePhase(phaseId);
+    }
+  }
 
   const [workTitle, setWorkTitle]     = useState("");
   const [phases, setPhases]           = useState<PhaseWithCounts[]>([]);
@@ -440,28 +463,57 @@ export default function ScenarioPage() {
           flexWrap: "wrap",
         }}
       >
-        <div role="tablist" aria-label="フェーズ表示切り替え" style={{ display: "flex", gap: 4 }}>
-          {([["vertical", "縦表示"], ["horizontal", "横表示"]] as const).map(([mode, label]) => {
-            const active = viewMode === mode;
-            return (
-              <button
-                key={mode}
-                role="tab"
-                aria-selected={active}
-                onClick={() => setViewMode(mode)}
-                style={{
-                  padding: "8px 16px", fontSize: 13.5, fontFamily: "inherit",
-                  color: active ? "#06A047" : "#949494",
-                  fontWeight: active ? 600 : 400,
-                  background: "none", border: "none",
-                  borderBottom: active ? "2.5px solid #06C755" : "2.5px solid transparent",
-                  marginBottom: -1, cursor: "pointer", whiteSpace: "nowrap",
-                }}
-              >
-                {label}
-              </button>
-            );
-          })}
+        <div style={{ display: "flex", alignItems: "flex-end", gap: 14, flexWrap: "wrap" }}>
+          {/* 一覧 / フロー 表示切替（新規）── ?view= で状態保持 */}
+          <div role="tablist" aria-label="表示切り替え" style={{ display: "flex", gap: 4 }}>
+            {([["list", "一覧"], ["flow", "フロー"]] as const).map(([v, label]) => {
+              const active = view === v;
+              return (
+                <button
+                  key={v}
+                  role="tab"
+                  aria-selected={active}
+                  onClick={() => setView(v)}
+                  style={{
+                    padding: "8px 16px", fontSize: 13.5, fontFamily: "inherit",
+                    color: active ? "#06A047" : "#949494",
+                    fontWeight: active ? 700 : 400,
+                    background: "none", border: "none",
+                    borderBottom: active ? "2.5px solid #06C755" : "2.5px solid transparent",
+                    marginBottom: -1, cursor: "pointer", whiteSpace: "nowrap",
+                  }}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+          {/* 一覧ツリーのレイアウト（縦/横）── 一覧表示のときのみ */}
+          {view === "list" && (
+            <div role="tablist" aria-label="一覧のレイアウト" style={{ display: "flex", gap: 4 }}>
+              {([["vertical", "縦表示"], ["horizontal", "横表示"]] as const).map(([mode, label]) => {
+                const active = viewMode === mode;
+                return (
+                  <button
+                    key={mode}
+                    role="tab"
+                    aria-selected={active}
+                    onClick={() => setViewMode(mode)}
+                    style={{
+                      padding: "8px 14px", fontSize: 12.5, fontFamily: "inherit",
+                      color: active ? "#06A047" : "#949494",
+                      fontWeight: active ? 600 : 400,
+                      background: "none", border: "none",
+                      borderBottom: active ? "2px solid #06C755" : "2px solid transparent",
+                      marginBottom: -1, cursor: "pointer", whiteSpace: "nowrap",
+                    }}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
         {canEdit && (
           <button
@@ -513,6 +565,19 @@ export default function ScenarioPage() {
             )}
           </div>
         </div>
+      ) : view === "flow" ? (
+        <PhaseFlowView
+          phases={phases}
+          transitions={transitions}
+          oaId={oaId}
+          workId={workId}
+          canEdit={canEdit}
+          loading={loading}
+          error={null}
+          onRetry={loadAll}
+          onAddPhase={openAddForm}
+          onDeletePhase={confirmDeletePhase}
+        />
       ) : viewMode === "horizontal" ? (
         <HorizontalFlow
           phases={phases}
