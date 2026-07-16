@@ -13,6 +13,8 @@ import { canCreateOaInView, isPreviewingOasView, viewingAsOwnerOrAbove, OAS_VIEW
 import { usageTypeShortLabel } from "@/lib/usage-type";
 import { compareByLatestActivity, compareByCreated, sortByLatestActivity } from "@/lib/list-sort";
 import { formatDateTime } from "@/lib/format-datetime";
+import { SingleOaDashboard } from "./_single-oa-dashboard";
+import { isSingleAccountView } from "@/lib/oa-dashboard";
 import type { Role } from "@/lib/types/permissions";
 
 // ── 定数 ─────────────────────────────────────────────────────────────────
@@ -283,6 +285,11 @@ export function OaListClient() {
   }
   const sortedItems = [...items].sort(oaSortFn);
 
+  // アクセス可能アカウントがちょうど 1 件のときは専用ダッシュボードを表示（選択のための一覧ではなく概要画面）。
+  // 0 件 / 2 件以上は従来どおり（空状態 / 一覧）。読み込み中・エラー時は一覧側の skeleton / error を使う。
+  const single = !loading && !error && isSingleAccountView(items.length, meta?.total);
+  const singleOa = single ? items[0] : null;
+
   return (
     <>
       {/* ── 表示確認モード (= platform owner 限定 / UI 表示専用) ── */}
@@ -291,6 +298,23 @@ export function OaListClient() {
         previewViewRole={previewViewRole}
         onChange={setPreviewViewRole}
       />
+
+      {singleOa ? (
+        <>
+          {/* お知らせは 0/1/複数件で同一条件（canPost=actAsOwner）で表示する。1件時も消さない。 */}
+          <div className="mb-5">
+            <AnnouncementBanner canPost={actAsOwner} />
+          </div>
+          <SingleOaDashboard
+            oa={singleOa}
+            canCreateOa={canCreateOa}
+            isOwner={singleOa.my_role === "owner" && actAsOwner}
+            showUsageType={ownerOrAboveView || (!isPlatformOwner && singleOa.my_role === "owner")}
+            onDelete={handleDelete}
+          />
+        </>
+      ) : (
+      <>
 
       {/* ── ページヘッダー（「＋ アカウントを追加」のみ。旧 h2「アカウント管理」見出しは削除） ── */}
       {canCreateOa && (
@@ -565,6 +589,8 @@ export function OaListClient() {
             </div>
           )}
         </>
+      )}
+      </>
       )}
 
       {/* ── 表示確認中バナー (= owner 以外の視点を確認中) ── */}

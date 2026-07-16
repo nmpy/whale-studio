@@ -393,6 +393,24 @@ export interface OaListMeta {
   pages: number;
 }
 
+/** GET /api/oas/:id/dashboard — 単一アカウント ダッシュボードの集約データ。 */
+export interface OaDashboard {
+  mode: string; // "content" | "messaging" | "live"
+  kpis: {
+    total_players: number;
+    /** 今日 初めて参加した distinct プレイヤー数（＝新規参加。「今日アクティブ」ではない）。 */
+    today_new_players: number;
+    cleared: number;
+    clear_rate_pct: number;
+  };
+  /** 直近7日（当日含む・古い順・JST）の日別 新規プレイヤー数。 */
+  daily: { date: string; label: string; count: number }[];
+  works: { id: string; title: string; created_at: string; updated_at: string; latest_activity_at: string }[];
+  works_total: number;
+  /** 実ログのみ・新しい順・最大10件。 */
+  activity: import("./activity-feed").ActivityItem[];
+}
+
 // ────────────────────────────────────────────────
 // Rich Menu Editor API（カスタムリッチメニュー管理）
 // ────────────────────────────────────────────────
@@ -469,6 +487,12 @@ export const oaApi = {
 
   async get(token: string, id: string): Promise<Oa & { _count: { works: number } }> {
     const res = await fetch(`/api/oas/${id}`, { headers: authHeaders(token) });
+    return parseResponse(res);
+  },
+
+  /** 単一アカウント ダッシュボードの集約データ（KPI / 直近7日 / 作品 / アクティビティ）。 */
+  async dashboard(token: string, id: string): Promise<OaDashboard> {
+    const res = await fetch(`/api/oas/${id}/dashboard`, { headers: authHeaders(token) });
     return parseResponse(res);
   },
 
