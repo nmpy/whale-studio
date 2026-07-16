@@ -30,6 +30,8 @@ export type AdminNavItem = {
 };
 
 export const ADMIN_NAV_ITEMS: readonly AdminNavItem[] = [
+  // ── プラットフォームオーナー横断（platform admin のみ）──
+  { href: "/admin/dashboard", label: "スタジオ全体ダッシュボード", desc: "全アカウント横断の状況・プレイヤー・失敗率を俯瞰", color: "#178a48", platformOnly: true },
   // ── 全管理ユーザー（platform admin / workspace owner）に表示 ──
   { href: "/admin/oa-onboarding",  label: "OA連携審査",        desc: "新規ユーザーの LINE 公式アカウント連携申請を承認 / 差し戻し", color: "#06C755", platformOnly: false },
   { href: "/admin/studio-invites", label: "招待URL発行",       desc: "利用区分・プラン権限・ロールを指定して招待URLを発行（有効期限7日）",   color: "#0d9488", platformOnly: false },
