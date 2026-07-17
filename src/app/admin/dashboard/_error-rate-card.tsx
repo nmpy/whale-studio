@@ -1,6 +1,7 @@
 "use client";
 
 // エラー/失敗率カード（クリックで詳細パネルを開閉）。button + aria-expanded でアクセシブルに。
+import Link from "next/link";
 import { useState } from "react";
 import { accountColor } from "@/lib/owner-dashboard/account-color";
 import type { OwnerDashboardData } from "@/lib/owner-dashboard/aggregate";
@@ -41,8 +42,8 @@ export function ErrorRateCard({
               <span className="text-[13px] font-bold" style={{ color: "#a8433b" }}>エラー / 失敗の内訳</span>
               <span className="rounded-full px-2 py-0.5 text-[11px] font-bold" style={{ background: "#fdeeed", color: "#c2564d" }}>{periodLabel} · 全{errorBreakdown.total}件</span>
             </div>
-            {/* エラーログ画面（/admin/error-log）は Phase 2 で追加予定。未実装ルートへの有効リンクは張らない。 */}
-            <span aria-disabled="true" title="Phase 2 で追加予定" className="cursor-default text-[12px] font-semibold text-ink-3">エラーログ（Phase 2で追加予定）</span>
+            {/* エラーログ画面（/admin/error-log・Phase 2）への導線。 */}
+            <Link href="/admin/error-log" className="text-[12px] font-semibold text-brand-ink hover:underline">エラーログを見る ›</Link>
           </div>
           {errorBreakdown.rows.length === 0 ? (
             <p className="py-4 text-center text-[13px] text-ink-3">対象期間にエラー / 失敗はありません</p>

@@ -89,6 +89,7 @@ model Oa {
   liveCues              LiveCue[]
   analyticsExcludedUsers AnalyticsExcludedUser[]
   memberLineLinkTokens   MemberLineLinkToken[]
+  errorLogResolutions    ErrorLogResolution[]
 
   @@index([title])
   @@index([publishStatus])
@@ -1234,6 +1235,35 @@ model AdminAuditLog {
   @@index([resource])
   @@index([createdAt])
   @@map("admin_audit_logs")
+}
+
+/// スタジオ全体エラーログ（Phase 2）の「解決状態」を横断的に保持するテーブル。
+///   - 既存の失敗ログ 3 種（BeaconEventLog / CheckinAttempt / ScheduledLineMessage）自体は変更しない。
+///     それぞれに resolvedAt を生やさず、(source, sourceId) で対象ログを指す 1 行として解決状態を表現する。
+///   - 状態表現: 行が存在 = 解決済み / 行が無い = 未解決 / 再オープン = 行を削除。
+///     nullable 状態を持たず「未解決」の検索が明確（LEFT JOIN で r.source IS NULL）。
+///   - resolvedByUserId / resolvedAt を最小限の監査情報として保持する（別途 AdminAuditLog にも記録）。
+///   - source は内部安定値: "beacon_event" | "checkin_attempt" | "scheduled_line_message"（画面には出さない）。
+model ErrorLogResolution {
+  id               String   @id @default(uuid())
+  /// 対象ログの種別（内部安定値）。"beacon_event" | "checkin_attempt" | "scheduled_line_message"。
+  source           String
+  /// 対象ログの主キー（各ログテーブルの id）。
+  sourceId         String   @map("source_id")
+  /// 対象ログから導出したアカウント。クライアント入力は信用せずサーバーで対象ログから取得する。
+  oaId             String   @map("oa_id")
+  resolvedAt       DateTime @map("resolved_at")
+  /// 解決操作を行った platform owner の Supabase userId（最小監査）。
+  resolvedByUserId String   @map("resolved_by_user_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  oa Oa @relation(fields: [oaId], references: [id], onDelete: Cascade)
+
+  @@unique([source, sourceId])
+  @@index([oaId, resolvedAt])
+  @@index([resolvedAt])
+  @@map("error_log_resolutions")
 }
 
 /// アプリ操作ユーザー記録
