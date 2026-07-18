@@ -18,6 +18,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { accountColor } from "./account-color";
+import { getFailureMetrics } from "./failure-metrics";
 
 export type DashboardPeriod = "7d" | "30d" | "month";
 
@@ -81,8 +82,6 @@ export interface OwnerDashboardData {
     latestActivityAt: string | null; href: string;
   }[];
 }
-
-const FAIL_CHECKIN = { status: { not: "success" } as const };
 
 async function safe<T>(p: Promise<T>, fallback: T): Promise<T> {
   try { return await p; } catch { return fallback; }
@@ -160,37 +159,20 @@ export async function getOwnerDashboard(period: DashboardPeriod, now: Date): Pro
     })
     .sort((a, b) => (b.players - a.players) || a.oaId.localeCompare(b.oaId));
 
-  // ── 失敗/エラー（期間内・構造化ログ）──
+  // ── 失敗/エラー（期間内・構造化ログ）── 定義は failure-metrics へ集約（Phase 2 エラーログと共有）
   const workIds = works.map((w) => w.id);
-  const hasWorks = workIds.length > 0;
-  const [
-    beaconFail, beaconTotal, checkinFail, checkinTotal, schedFail, schedTotal,
-    beaconFailByOa, schedFailByOa, checkinFailByWork,
-  ] = await Promise.all([
-    safe(prisma.beaconEventLog.count({ where: { actionStatus: "failed", createdAt: { gte: pStart } } }), 0),
-    safe(prisma.beaconEventLog.count({ where: { createdAt: { gte: pStart } } }), 0),
-    hasWorks ? safe(prisma.checkinAttempt.count({ where: { workId: { in: workIds }, ...FAIL_CHECKIN, createdAt: { gte: pStart } } }), 0) : Promise.resolve(0),
-    hasWorks ? safe(prisma.checkinAttempt.count({ where: { workId: { in: workIds }, createdAt: { gte: pStart } } }), 0) : Promise.resolve(0),
-    safe(prisma.scheduledLineMessage.count({ where: { status: "failed", updatedAt: { gte: pStart } } }), 0),
-    safe(prisma.scheduledLineMessage.count({ where: { status: { in: ["failed", "sent"] }, updatedAt: { gte: pStart } } }), 0),
-    safe(prisma.beaconEventLog.groupBy({ by: ["oaId"], where: { actionStatus: "failed", createdAt: { gte: pStart } }, _count: { _all: true } }), [] as { oaId: string; _count: { _all: number } }[]),
-    safe(prisma.scheduledLineMessage.groupBy({ by: ["oaId"], where: { status: "failed", updatedAt: { gte: pStart } }, _count: { _all: true } }), [] as { oaId: string; _count: { _all: number } }[]),
-    hasWorks ? safe(prisma.checkinAttempt.groupBy({ by: ["workId"], where: { workId: { in: workIds }, ...FAIL_CHECKIN, createdAt: { gte: pStart } }, _count: { _all: true } }), [] as { workId: string; _count: { _all: number } }[]) : Promise.resolve([] as { workId: string; _count: { _all: number } }[]),
-  ]);
-
-  const failCount = beaconFail + checkinFail + schedFail;
-  const procCount = beaconTotal + checkinTotal + schedTotal;
-  const failureRatePct = procCount > 0 ? Math.round((failCount / procCount) * 1000) / 10 : 0;
+  const fm = await getFailureMetrics(pStart, workIds);
+  const failCount = fm.failCount;
 
   // 原因別×アカウント別の内訳（表示名に変換）
   const causeRows: { oaId: string; accountName: string; cause: string; count: number }[] = [];
   const nameOf = (oaId: string) => oaById.get(oaId)?.title ?? "不明なアカウント";
-  for (const r of beaconFailByOa) causeRows.push({ oaId: r.oaId, accountName: nameOf(r.oaId), cause: "Beacon 検知", count: r._count._all });
-  for (const r of schedFailByOa) causeRows.push({ oaId: r.oaId, accountName: nameOf(r.oaId), cause: "メッセージ送信", count: r._count._all });
+  for (const r of fm.beaconFailByOa) causeRows.push({ oaId: r.oaId, accountName: nameOf(r.oaId), cause: "Beacon 検知", count: r.count });
+  for (const r of fm.schedFailByOa) causeRows.push({ oaId: r.oaId, accountName: nameOf(r.oaId), cause: "メッセージ送信", count: r.count });
   const checkinByOa = new Map<string, number>();
-  for (const r of checkinFailByWork) {
+  for (const r of fm.checkinFailByWork) {
     const oaId = workById.get(r.workId)?.oaId;
-    if (oaId) checkinByOa.set(oaId, (checkinByOa.get(oaId) ?? 0) + r._count._all);
+    if (oaId) checkinByOa.set(oaId, (checkinByOa.get(oaId) ?? 0) + r.count);
   }
   for (const [oaId, count] of checkinByOa) causeRows.push({ oaId, accountName: nameOf(oaId), cause: "現地チェックイン", count });
   causeRows.sort((a, b) => b.count - a.count || a.oaId.localeCompare(b.oaId));
@@ -201,7 +183,7 @@ export async function getOwnerDashboard(period: DashboardPeriod, now: Date): Pro
 
   return {
     period,
-    summary: { accounts, publishedAccounts, totalPlayers, totalWorks, publishedWorks, joinedToday, joinedYesterday, clearRatePct, failureRatePct, failCount, procCount },
+    summary: { accounts, publishedAccounts, totalPlayers, totalWorks, publishedWorks, joinedToday, joinedYesterday, clearRatePct, failureRatePct: fm.failureRatePct, failCount, procCount: fm.procCount },
     errorBreakdown,
     daily,
     accountBreakdown,
