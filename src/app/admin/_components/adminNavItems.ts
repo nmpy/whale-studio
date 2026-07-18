@@ -30,8 +30,9 @@ export type AdminNavItem = {
 };
 
 export const ADMIN_NAV_ITEMS: readonly AdminNavItem[] = [
+  // スタジオ全体ダッシュボードは /oas トップ（アカウント一覧の上部）へ移設したため、独立ナビ項目は置かない
+  // （サイドバー下部の「← アカウントリストへ」(/oas) が導線を兼ねる）。
   // ── プラットフォームオーナー横断（platform admin のみ）──
-  { href: "/admin/dashboard", label: "スタジオ全体ダッシュボード", desc: "全アカウント横断の状況・プレイヤー・失敗率を俯瞰", color: "#178a48", platformOnly: true },
   { href: "/admin/error-log", label: "エラーログ", desc: "全アカウント横断の失敗ログを確認・解決 / 再オープン", color: "#c2564d", platformOnly: true },
   // ── 全管理ユーザー（platform admin / workspace owner）に表示 ──
   { href: "/admin/oa-onboarding",  label: "OA連携審査",        desc: "新規ユーザーの LINE 公式アカウント連携申請を承認 / 差し戻し", color: "#06C755", platformOnly: false },
