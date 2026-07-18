@@ -4,8 +4,8 @@
 import { withAuth } from "@/lib/auth";
 import { isPlatformOwner } from "@/lib/platform-admin";
 import { ok, forbidden, badRequest, unprocessable, serverError } from "@/lib/api-response";
-import { prisma } from "@/lib/prisma";
 import { resolveError, isValidSource } from "@/lib/owner-error-log/resolve-service";
+import { writeErrorLogAudit } from "@/lib/owner-error-log/audit";
 
 export const dynamic = "force-dynamic";
 
@@ -25,10 +25,7 @@ export const POST = withAuth(async (req, _ctx, user) => {
       return unprocessable("対象の失敗ログが見つからないか、失敗状態ではありません", "NOT_RESOLVABLE");
     }
 
-    await prisma.adminAuditLog.create({
-      data: { actorId: user.id, action: "update", resource: "error_log", resourceId: sourceId,
-        detail: JSON.stringify({ op: "resolve", source, oaId: res.oaId }) },
-    }).catch(() => {});
+    await writeErrorLogAudit({ actorId: user.id, operation: "resolve", source, sourceId, detail: { oaId: res.oaId } });
 
     return ok({ isResolved: true, resolvedAt: res.resolvedAt });
   } catch (err) {
