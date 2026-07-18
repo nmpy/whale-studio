@@ -66,6 +66,15 @@ describe("buildTicketLiffUrl / maskTicketId", () => {
     expect(m.endsWith("23")).toBe(true);
     expect(m).toContain("*");
   });
+  it("Unicode / 絵文字を含む ID でも例外を投げず、中間をマスクする", () => {
+    expect(() => maskTicketId("🎫🎟️チケット番号2026😀")).not.toThrow();
+    const m = maskTicketId("🎫🎟️チケット番号2026😀");
+    expect(typeof m).toBe("string");
+    expect(m).toContain("*");
+    expect(m).not.toBe("🎫🎟️チケット番号2026😀"); // 素通しではない
+    // 全角のみの短くない ID もマスクされる
+    expect(maskTicketId("あいうえおかきくけ")).toContain("*");
+  });
 });
 
 describe("pickMatchingTeam（reservationNumber 主 → ticketId フォールバック・矛盾/曖昧は拒否）", () => {

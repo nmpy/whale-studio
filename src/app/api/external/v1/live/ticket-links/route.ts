@@ -1,6 +1,7 @@
 // POST /api/external/v1/live/ticket-links
 //   外部チケットサイト（ESCAPE.ID 等）が予約完了メールへ埋め込む「専用 LIFF URL」を発行する。
-//   認証: 既存 External API の共通ガード requireExternalApiKey（x-whale-api-key ↔ WHALE_EXTERNAL_API_KEY）を再利用。
+//   認証: write 専用ガード requireExternalWriteApiKey（x-whale-api-key ↔ WHALE_EXTERNAL_WRITE_API_KEY）。
+//         read API（works/phases）用の WHALE_EXTERNAL_API_KEY とは別キーで read/write を分離（P2-b）。
 //         対象 OA は WHALE_EXTERNAL_OA_IDS allowlist（scope.allowsOa）でテナント境界を検証する。
 //   Phase 1: token 発行 + tokenHash 保存 + LIFF URL 生成のみ（LINE 連携・LiveParticipant には触れない）。
 //
@@ -14,7 +15,7 @@ import { NextRequest } from "next/server";
 import { z, ZodError } from "zod";
 import { prisma } from "@/lib/prisma";
 import { ok, badRequest, notFound, unprocessable, serverError } from "@/lib/api-response";
-import { requireExternalApiKey } from "@/lib/external-auth";
+import { requireExternalWriteApiKey } from "@/lib/external-auth";
 import { getLiffIdForUrlGeneration } from "@/lib/liff/config";
 import { generateTicketToken, hashTicketToken, resolveTicketExpiresAt, buildTicketLiffUrl } from "@/lib/live-ticket-link";
 
@@ -29,7 +30,8 @@ const bodySchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
-  const auth = requireExternalApiKey(req);
+  // mint は書き込み操作のため、read 用キーとは分離した write 専用キーを要求する（P2-b）。
+  const auth = requireExternalWriteApiKey(req);
   if (!auth.ok) return auth.response;
   const { scope } = auth;
 

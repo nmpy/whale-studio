@@ -1,10 +1,10 @@
-# Whale Studio 外部連携 API（第一段階・読み取り専用）
+# Whale Studio 外部連携 API（read + Live ticket-link mint）
 
-外部システム（ウズプロ等）から Whale Studio の **作品・フェーズ情報** と **管理/Live(Staff) 画面へのリンク** を取得するための API。
+外部システム（ウズプロ / ESCAPE.ID 等）から Whale Studio の **作品・フェーズ情報** と **管理/Live(Staff) 画面へのリンク** を取得し、加えて **予約完了メール用の専用 LIFF URL を発行（mint）** するための API。
 
-- **ステータス**: 本番稼働中（PR #574 + PR #575）
-- **第一段階の範囲**: **読み取り系・リンク取得系のみ**。
-  プレイヤー進行状態の変更 / フェーズ移動 / LINE 送信は **行わない**（将来の別段階で検討）。
+- **ステータス**: read は本番稼働中（PR #574 + PR #575）。write（Live ticket-link mint）は Live ticket-link Phase 1/2 で追加。
+- **範囲**: **読み取り系・リンク取得系**（works / phases / phase-links）＋ **Live ticket-link mint**（write・別キー `WHALE_EXTERNAL_WRITE_API_KEY`）。
+  プレイヤー進行状態の変更 / フェーズ移動 / LINE 送信は **行わない**。
 - ベースパス: `/api/external/v1`
 - 本番ホスト: `https://app.whale-studio.app`
 
@@ -14,14 +14,17 @@
 
 ## エンドポイント一覧
 
-すべて `GET`・読み取り専用・`x-whale-api-key` ヘッダー必須。
+read API はすべて `GET`・`x-whale-api-key` ヘッダー必須。加えて write の mint API（`POST`）がある。
 成功レスポンスは既存慣習の `{ "success": true, "data": ... }` エンベロープ。**payload キーは camelCase**。
 
-| メソッド | パス | 用途 |
-|---|---|---|
-| GET | `/api/external/v1/works` | allowlist 内 OA の **active 作品**一覧 |
-| GET | `/api/external/v1/works/:workId/phases` | 指定作品のフェーズ一覧（非 global のみ） |
-| GET | `/api/external/v1/works/:workId/phase-links` | 作品単位リンク + フェーズ単位 `adminUrl` |
+| メソッド | パス | 用途 | 照合キー |
+|---|---|---|---|
+| GET | `/api/external/v1/works` | allowlist 内 OA の **active 作品**一覧 | `WHALE_EXTERNAL_API_KEY`（read） |
+| GET | `/api/external/v1/works/:workId/phases` | 指定作品のフェーズ一覧（非 global のみ） | `WHALE_EXTERNAL_API_KEY`（read） |
+| GET | `/api/external/v1/works/:workId/phase-links` | 作品単位リンク + フェーズ単位 `adminUrl` | `WHALE_EXTERNAL_API_KEY`（read） |
+| POST | `/api/external/v1/live/ticket-links` | Live ticket-link **mint**（予約完了メール用の専用 LIFF URL 発行） | `WHALE_EXTERNAL_WRITE_API_KEY`（write） |
+
+> mint（write）はヘッダー名こそ `x-whale-api-key` だが照合先が **read と別の env**。詳細は下記「認証 →（write API 認証）」を参照。
 
 ### GET /api/external/v1/works
 
@@ -94,6 +97,10 @@ allowlist 内 OA の `publishStatus="active"` 作品のみ返す。
 
 ## 認証
 
+read（works / phases / phase-links）と write（Live ticket-link mint）で **キーを分離**する。ヘッダーはどちらも `x-whale-api-key`、照合先の env が異なる。
+
+### read API 認証（works / phases / phase-links）
+
 - 必須ヘッダー: **`x-whale-api-key`**
 - サーバは env **`WHALE_EXTERNAL_API_KEY`** と **定数時間比較**する（sha256 ダイジェスト化して長さリークも回避）。
 - 既存の Supabase Auth (`withAuth`) / RBAC とは **独立した別系統**。所有関係・既存認証には干渉しない。
@@ -104,6 +111,22 @@ allowlist 内 OA の `publishStatus="active"` 作品のみ返す。
 | `x-whale-api-key` 欠落 | **401** |
 | `x-whale-api-key` 不一致 | **401** |
 | 一致 | **200**（allowlist スコープ付き） |
+
+### write API 認証（`POST /api/external/v1/live/ticket-links` = Live ticket-link mint）
+
+- 必須ヘッダー: **`x-whale-api-key`**（read と同じヘッダー名）。
+- サーバは read とは **別の env `WHALE_EXTERNAL_WRITE_API_KEY`** と **定数時間比較**する。
+- **read 用 `WHALE_EXTERNAL_API_KEY` では mint を認証できない**（write キーへ read キーはフォールバックしない）。
+- 認証成功後も、対象 OA は下記 `WHALE_EXTERNAL_OA_IDS` allowlist による **認可が引き続き必要**（allowlist 外は存在秘匿の 404）。
+
+| 状態 | レスポンス |
+|---|---|
+| `WHALE_EXTERNAL_WRITE_API_KEY` 未設定 | **503**（fail closed。設定するまで mint は使えない） |
+| `x-whale-api-key` 欠落 | **401** |
+| `x-whale-api-key` 不一致（read キーを送った場合を含む） | **401** |
+| 一致 かつ allowlist 内 | **200** |
+
+> ⚠️ `WHALE_EXTERNAL_WRITE_API_KEY` は read 用とは **別値**（十分に長いランダム値）。実値はドキュメント / commit / log / PR に **一切書かない**。
 
 ---
 
@@ -159,11 +182,12 @@ allowlist 内 OA の `publishStatus="active"` 作品のみ返す。
 
 | env | 必須 | 未設定時の挙動 | 用途 |
 |---|---|---|---|
-| `WHALE_EXTERNAL_API_KEY` | **必須** | **503**（fail closed） | `x-whale-api-key` の照合キー。十分に長いランダム値。 |
-| `WHALE_EXTERNAL_OA_IDS` | 実質必須 | **空集合＝何も返さない**（deny all） | 外部公開してよい OA の allowlist（カンマ区切り）。 |
+| `WHALE_EXTERNAL_API_KEY` | **必須** | **503**（fail closed） | **read** API（works / phases / phase-links）の `x-whale-api-key` 照合キー。十分に長いランダム値。 |
+| `WHALE_EXTERNAL_WRITE_API_KEY` | **write 利用時 必須** | **503**（fail closed。mint のみ） | **write** API（Live ticket-link mint）の照合キー。read 用とは**別値**。read キーへフォールバックしない。 |
+| `WHALE_EXTERNAL_OA_IDS` | 実質必須 | **空集合＝何も返さない**（deny all） | 外部公開してよい OA の allowlist（カンマ区切り・read/write 共通）。 |
 | `WHALE_EXTERNAL_PUBLIC_BASE_URL` | 任意 | **`https://app.whale-studio.app`**（canonical） | links の base origin。Preview 等で別ドメインを返す時のみ設定。 |
 
-> `WHALE_EXTERNAL_API_KEY` の値・OA のシークレット類はドキュメント/commit/log に書かない。
+> `WHALE_EXTERNAL_API_KEY` / `WHALE_EXTERNAL_WRITE_API_KEY` の値・OA のシークレット類はドキュメント/commit/log に書かない。
 
 ---
 
@@ -222,6 +246,23 @@ curl -s -H "x-whale-api-key: $KEY" "$BASE/api/external/v1/works/$WID/phases" | j
 curl -s -H "x-whale-api-key: $KEY" "$BASE/api/external/v1/works/$WID/phase-links" | jq '.data.links'
 
 unset KEY
+```
+
+write（mint）例 — read とは **別キー**（`WHALE_EXTERNAL_WRITE_API_KEY`）を使う:
+
+```bash
+BASE=https://app.whale-studio.app
+read -rs WKEY; echo   # ← Production の WHALE_EXTERNAL_WRITE_API_KEY を貼付（画面非表示）→ Enter
+
+# 予約完了メール用の専用 LIFF URL を発行（body は実装準拠: workId / reservationNumber 必須, ticketId / expiresInDays 任意）
+curl -s -X POST "$BASE/api/external/v1/live/ticket-links" \
+  -H "x-whale-api-key: ${WKEY}" \
+  -H "content-type: application/json" \
+  -d '{"workId":"<WORK_ID>","reservationNumber":"<RESERVATION_NUMBER>","ticketId":"<TICKET_ID>"}' | jq
+# → 200: { "success": true, "data": { "url": "https://liff.line.me/<liffId>/ticket?t=<token>", "tokenRecordId": "...", "expiresAt": "..." } }
+
+# read キー（$KEY）では mint は 401 / write キー未設定なら 503
+unset WKEY
 ```
 
 認証・スコープ別:

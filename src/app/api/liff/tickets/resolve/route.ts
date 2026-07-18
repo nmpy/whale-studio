@@ -10,6 +10,7 @@ import { z, ZodError } from "zod";
 import { prisma } from "@/lib/prisma";
 import { ok, badRequest, serverError } from "@/lib/api-response";
 import { hashTicketToken, ticketTokenState, pickMatchingTeam, maskTicketId } from "@/lib/live-ticket-link";
+import { getLiffIdForOa } from "@/lib/liff/config";
 
 export const dynamic = "force-dynamic";
 
@@ -67,11 +68,18 @@ export async function POST(req: NextRequest) {
     }
     await prisma.liveTicketLinkToken.updateMany({ where: { id: rec.id }, data: { liveSessionId: team.liveSessionId, teamId: team.id } });
 
-    const work = await prisma.work.findUnique({ where: { id: rec.workId }, select: { title: true } });
+    const [work, oa] = await Promise.all([
+      prisma.work.findUnique({ where: { id: rec.workId }, select: { title: true } }),
+      // liffId は「専用 LIFF URL の path」に既に露出している公開値。Phase 2 で LIFF SDK を init するため返す。
+      // 認証情報でも秘匿情報でもない（期限切れ・失効の常時拒否など Phase 1 のセキュリティ仕様は不変）。
+      prisma.oa.findUnique({ where: { id: rec.oaId }, select: { liffId: true } }),
+    ]);
     const scheduledAt = session?.startsAt ?? team.reservedAt ?? null;
 
     // 表示用の最小情報のみ（tokenHash / 生ID / reservationNumber / 生 ticketId / 個人情報 は返さない）。
     return ok({
+      // 公開値のみ: 当該 OA の LIFF ID（LIFF URL に既に含まれる）。SDK 初期化用。
+      liffId: getLiffIdForOa(oa),
       ticket: {
         maskedTicketId: maskTicketId(rec.ticketId ?? rec.reservationNumber),
         workTitle:      work?.title ?? "",

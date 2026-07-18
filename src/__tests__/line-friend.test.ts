@@ -1,0 +1,75 @@
+// src/__tests__/line-friend.test.ts
+// getOaFriendStatus（bot/profile の 200/404/401/403/429/5xx/通信失敗の意味づけ）と
+// buildLineAddFriendUrl（正規化・Open Redirect 耐性）のテスト。
+import { describe, it, expect, vi } from "vitest";
+import { getOaFriendStatus, buildLineAddFriendUrl } from "@/lib/line-friend";
+
+function fetchWithStatus(status: number): typeof fetch {
+  return vi.fn(async () => ({ status }) as Response) as unknown as typeof fetch;
+}
+function fetchThrows(): typeof fetch {
+  return vi.fn(async () => { throw new Error("network"); }) as unknown as typeof fetch;
+}
+
+describe("getOaFriendStatus", () => {
+  it("200 → friend", async () => {
+    expect(await getOaFriendStatus("U1", "tok", { fetchImpl: fetchWithStatus(200) })).toEqual({ kind: "friend" });
+  });
+  it("404 → not_friend（未追加 or ブロック・区別しない）", async () => {
+    expect(await getOaFriendStatus("U1", "tok", { fetchImpl: fetchWithStatus(404) })).toEqual({ kind: "not_friend" });
+  });
+  it("401 / 403 → config_error（未追加として扱わない）", async () => {
+    expect(await getOaFriendStatus("U1", "tok", { fetchImpl: fetchWithStatus(401) })).toEqual({ kind: "config_error", status: 401 });
+    expect(await getOaFriendStatus("U1", "tok", { fetchImpl: fetchWithStatus(403) })).toEqual({ kind: "config_error", status: 403 });
+  });
+  it("429 / 5xx → unavailable（再試行可能）", async () => {
+    expect(await getOaFriendStatus("U1", "tok", { fetchImpl: fetchWithStatus(429) })).toEqual({ kind: "unavailable", status: 429 });
+    expect(await getOaFriendStatus("U1", "tok", { fetchImpl: fetchWithStatus(500) })).toEqual({ kind: "unavailable", status: 500 });
+    expect(await getOaFriendStatus("U1", "tok", { fetchImpl: fetchWithStatus(503) })).toEqual({ kind: "unavailable", status: 503 });
+  });
+  it("通信失敗 → unavailable（恒久状態を変えない・再試行可能）", async () => {
+    expect(await getOaFriendStatus("U1", "tok", { fetchImpl: fetchThrows() })).toEqual({ kind: "unavailable", status: null });
+  });
+  it("uid / token 不備は判定不能（unavailable）で未追加と誤認しない", async () => {
+    const spy = fetchWithStatus(200);
+    expect(await getOaFriendStatus("", "tok", { fetchImpl: spy })).toEqual({ kind: "unavailable", status: null });
+    expect(await getOaFriendStatus("U1", "", { fetchImpl: spy })).toEqual({ kind: "unavailable", status: null });
+    expect(spy).not.toHaveBeenCalled();
+  });
+});
+
+describe("buildLineAddFriendUrl（正規化・Open Redirect 耐性）", () => {
+  it("Basic ID（@なし/あり）から line.me 固定 URL を生成", () => {
+    expect(buildLineAddFriendUrl("613zlngs")).toBe("https://line.me/R/ti/p/@613zlngs");
+    expect(buildLineAddFriendUrl("@613zlngs")).toBe("https://line.me/R/ti/p/@613zlngs");
+  });
+  it("前後空白除去・先頭@重複を正規化", () => {
+    expect(buildLineAddFriendUrl("  @613zlngs  ")).toBe("https://line.me/R/ti/p/@613zlngs");
+    expect(buildLineAddFriendUrl("@@abc")).toBe("https://line.me/R/ti/p/@abc");
+  });
+  it("空・null・@のみは null", () => {
+    expect(buildLineAddFriendUrl("")).toBeNull();
+    expect(buildLineAddFriendUrl("   ")).toBeNull();
+    expect(buildLineAddFriendUrl(null)).toBeNull();
+    expect(buildLineAddFriendUrl(undefined)).toBeNull();
+    expect(buildLineAddFriendUrl("@")).toBeNull();
+  });
+  it("改行・制御文字を含む値は null", () => {
+    expect(buildLineAddFriendUrl("abc\ndef")).toBeNull();
+    expect(buildLineAddFriendUrl("abc\tdef")).toBeNull();
+    expect(buildLineAddFriendUrl("abc\u0000")).toBeNull();
+  });
+  it("charset 外（URL 断片注入・任意 URL）は受理しない = null", () => {
+    expect(buildLineAddFriendUrl("abc def")).toBeNull();
+    expect(buildLineAddFriendUrl("abc/../evil")).toBeNull();
+    expect(buildLineAddFriendUrl("abc?x=1")).toBeNull();
+    expect(buildLineAddFriendUrl("evil.com/@x")).toBeNull();
+    expect(buildLineAddFriendUrl("javascript:alert(1)")).toBeNull();
+    expect(buildLineAddFriendUrl("@a b")).toBeNull();
+  });
+  it("生成 URL のドメインは常に line.me に固定", () => {
+    const url = buildLineAddFriendUrl("gogo._-123");
+    expect(url).not.toBeNull();
+    expect(new URL(url!).host).toBe("line.me");
+  });
+});

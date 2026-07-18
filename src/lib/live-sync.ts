@@ -15,6 +15,7 @@
 import { prisma } from "@/lib/prisma";
 import { activeCache, CACHE_KEY, TTL } from "@/lib/cache";
 import { matchKeysEqual, normalizeMatchKey } from "@/lib/live-match-key";
+import { upsertLiveTeamParticipant } from "@/lib/live-participant-link";
 
 // OaEntitlement.featureKey（@/lib/live の LIVE_FEATURE_KEY と同値）。
 // 注: @/lib/live は React の cache() をモジュールロード時に使うため webhook 経路（テスト環境）に
@@ -86,38 +87,16 @@ export async function linkReservationToLiveTeam(args: {
 
     const now = new Date();
 
-    // 既に同 session に同 lineUserId の participant がいれば再利用（重複作成しない）。
-    const existing = await prisma.liveParticipant.findFirst({
-      where:  { liveSessionId: team.liveSessionId, lineUserId },
-      select: { id: true, status: true },
+    // find-or-create は共通コア（upsertLiveTeamParticipant）へ集約。
+    // displayName を渡さない = 従来の webhook 自己申告照合と完全に同挙動（回帰なし）。
+    // Phase 2 のチケットリンク連携（team 直指定・定員つき）も同じコアを使う。
+    const { participantId } = await upsertLiveTeamParticipant(prisma, {
+      oaId,
+      liveSessionId: team.liveSessionId,
+      teamId:        team.id,
+      lineUserId,
+      now,
     });
-
-    let participantId: string;
-    if (existing) {
-      await prisma.liveParticipant.update({
-        where: { id: existing.id },
-        data: {
-          teamId:     team.id,
-          lastSeenAt: now,
-          // dropped/completed は尊重。それ以外は active に。
-          ...(existing.status === "dropped" || existing.status === "completed" ? {} : { status: "active" }),
-        },
-      });
-      participantId = existing.id;
-    } else {
-      const created = await prisma.liveParticipant.create({
-        data: {
-          oaId,
-          liveSessionId: team.liveSessionId,
-          teamId:        team.id,
-          lineUserId,
-          status:        "active",
-          lastSeenAt:    now,
-        },
-        select: { id: true },
-      });
-      participantId = created.id;
-    }
 
     await prisma.liveEventLog.create({
       data: {
