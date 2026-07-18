@@ -21,6 +21,7 @@ import { Suspense } from "react";
 import { usePathname } from "next/navigation";
 import AppHeader from "@/components/AppHeader";
 import { AccessPreviewBar } from "@/components/AccessPreviewBar";
+import { isWideContentRoute } from "@/lib/content-width";
 
 function isBareLayoutRoute(pathname: string | null): boolean {
   if (!pathname) return false;
@@ -75,7 +76,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </Suspense>
       )}
       <main>
-        <div className="container">{children}</div>
+        {/* /oas（アカウント一覧トップ＝ダッシュボード同居）だけ幅を 1200px へ拡張。
+            それ以外は共通 .container(980px) のまま（グローバルは変更しない）。 */}
+        <div className={isWideContentRoute(pathname) ? "container container-wide" : "container"}>{children}</div>
       </main>
     </>
   );
