@@ -90,6 +90,7 @@ model Oa {
   analyticsExcludedUsers AnalyticsExcludedUser[]
   memberLineLinkTokens   MemberLineLinkToken[]
   errorLogResolutions    ErrorLogResolution[]
+  liveTicketLinkTokens   LiveTicketLinkToken[]
 
   @@index([title])
   @@index([publishStatus])
@@ -1264,6 +1265,41 @@ model ErrorLogResolution {
   @@index([oaId, resolvedAt])
   @@index([resolvedAt])
   @@map("error_log_resolutions")
+}
+
+/// Live Mode: 予約完了メールの「専用 LIFF URL」から LINE 連携するためのチケットリンクトークン（Phase 1）。
+///   - team(LiveTeam) 単位。同じ URL を team の複数メンバーが使う（one-time 消費ではない）。
+///     実際の LINE ↔ チケットの紐付けは LiveParticipant を正とし、本テーブルは URL 発行/照合用。
+///   - 平文トークンは保存せず tokenHash(sha256 hex) のみ保存。生 ticketId は URL に載せない。
+///   - liveSessionId / teamId は mint 時点で未確定のことがあるため plain column（遅延解決用・FK は張らず graceful lookup）。
+///   - 照合キーは reservationNumber（主）＋ ticketId（任意・フォールバック）。matchKeysEqual で正規化照合。
+model LiveTicketLinkToken {
+  id                String    @id @default(uuid())
+  oaId              String    @map("oa_id")
+  workId            String    @map("work_id")
+  /// チケットサイト由来の予約番号（照合主キー）。
+  reservationNumber String    @map("reservation_number")
+  /// チケットID（任意・フォールバック照合キー）。
+  ticketId          String?   @map("ticket_id")
+  /// 遅延解決で確定する LiveSession / LiveTeam（未解決時は null）。FK は張らず graceful lookup。
+  liveSessionId     String?   @map("live_session_id")
+  teamId            String?   @map("team_id")
+  /// 平文 token の sha256 hex(64 char)。平文は保存しない。
+  tokenHash         String    @unique @map("token_hash")
+  expiresAt         DateTime  @map("expires_at")
+  /// 最初に resolve（LIFF 表示）された日時。
+  firstOpenedAt     DateTime? @map("first_opened_at")
+  /// 最初に正常連携された日時 / 最後に正常連携された日時（Phase 2 で更新。one-time 消費ではない）。
+  firstUsedAt       DateTime? @map("first_used_at")
+  lastUsedAt        DateTime? @map("last_used_at")
+  revokedAt         DateTime? @map("revoked_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+  oa                Oa        @relation(fields: [oaId], references: [id], onDelete: Cascade)
+
+  @@index([oaId, expiresAt])
+  @@index([oaId, workId, reservationNumber])
+  @@map("live_ticket_link_tokens")
 }
 
 /// アプリ操作ユーザー記録
