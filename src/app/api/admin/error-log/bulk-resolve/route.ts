@@ -5,8 +5,8 @@
 import { withAuth } from "@/lib/auth";
 import { isPlatformOwner } from "@/lib/platform-admin";
 import { ok, forbidden, badRequest, serverError } from "@/lib/api-response";
-import { prisma } from "@/lib/prisma";
 import { resolveError, isValidSource } from "@/lib/owner-error-log/resolve-service";
+import { writeErrorLogAudit } from "@/lib/owner-error-log/audit";
 
 export const dynamic = "force-dynamic";
 
@@ -40,10 +40,8 @@ export const POST = withAuth(async (req, _ctx, user) => {
       if (res.ok) { resolved++; auditOaIds.add(res.oaId); } else { skipped++; }
     }
 
-    await prisma.adminAuditLog.create({
-      data: { actorId: user.id, action: "update", resource: "error_log", resourceId: null,
-        detail: JSON.stringify({ op: "bulk_resolve", requested: items.length, resolved, skipped, oaIds: [...auditOaIds] }) },
-    }).catch(() => {});
+    await writeErrorLogAudit({ actorId: user.id, operation: "bulk_resolve",
+      detail: { requested: items.length, resolved, skipped, oaIds: [...auditOaIds] } });
 
     return ok({ resolved, skipped });
   } catch (err) {

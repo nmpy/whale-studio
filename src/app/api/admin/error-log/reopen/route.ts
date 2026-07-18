@@ -4,8 +4,8 @@
 import { withAuth } from "@/lib/auth";
 import { isPlatformOwner } from "@/lib/platform-admin";
 import { ok, forbidden, badRequest, serverError } from "@/lib/api-response";
-import { prisma } from "@/lib/prisma";
 import { reopenError, isValidSource } from "@/lib/owner-error-log/resolve-service";
+import { writeErrorLogAudit } from "@/lib/owner-error-log/audit";
 
 export const dynamic = "force-dynamic";
 
@@ -23,10 +23,7 @@ export const POST = withAuth(async (req, _ctx, user) => {
     const res = await reopenError(source, sourceId);
     if (!res.ok) return badRequest("source / sourceId が不正です");
 
-    await prisma.adminAuditLog.create({
-      data: { actorId: user.id, action: "delete", resource: "error_log", resourceId: sourceId,
-        detail: JSON.stringify({ op: "reopen", source, oaId: res.oaId }) },
-    }).catch(() => {});
+    await writeErrorLogAudit({ actorId: user.id, operation: "reopen", source, sourceId, detail: { oaId: res.oaId } });
 
     return ok({ isResolved: false });
   } catch (err) {
