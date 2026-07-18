@@ -58,7 +58,7 @@ export function ActivitySection({ items }: { items: OwnerActivityItem[] }) {
                   <td className="px-2 py-2.5">
                     <span className={"inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-bold " + ACTIVITY_TONE_CLASS[meta.tone]}>{meta.label}</span>
                   </td>
-                  <td className="px-5 py-2.5"><span className="block max-w-[420px] overflow-hidden text-ellipsis whitespace-nowrap text-ink-2">{a.title}{a.detail ? ` · ${a.detail}` : ""}</span></td>
+                  <td className="px-5 py-2.5"><span className="block max-w-[640px] overflow-hidden text-ellipsis whitespace-nowrap text-ink-2">{a.title}{a.detail ? ` · ${a.detail}` : ""}</span></td>
                 </tr>
               );
             })}

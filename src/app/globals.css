@@ -199,6 +199,12 @@ a:hover { color: var(--brand-dark); text-decoration: underline; }
 /* ── レイアウト ──────────────────────────────────────────────────────── */
 .container { max-width: 980px; margin: 0 auto; padding: 0 24px; }
 
+/* /oas（アカウント一覧トップ＝スタジオ全体ダッシュボード同居）だけコンテンツ幅を広げる。
+   .container に land した上で max-width のみ 1200px へ拡張（中央寄せ・左右 padding=24px は共通のまま）。
+   AppShell が /oas 完全一致のときだけ .container-wide を付与するため、他ページ(980px)には影響しない。
+   box-sizing:border-box のため 1200px は padding 込み＝1240px viewport でも横スクロールしない。 */
+.container-wide { max-width: 1200px; }
+
 /* CMS 用 <main> の上下余白。
  *
  * 旧: `main { padding: 28px 0 48px }` を unlayered で書いていたため、

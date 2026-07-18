@@ -12,6 +12,7 @@ import {
   ADMIN_DASHBOARD_NON_OWNER_DEST,
 } from "@/app/admin/dashboard/redirect-target";
 import { normalizePeriod } from "@/lib/owner-dashboard/aggregate";
+import { isWideContentRoute } from "@/lib/content-width";
 
 describe("ownerDashboardRedirectTarget — /oas（period 維持）", () => {
   it("period 指定は維持して /oas?period= へ", () => {
@@ -60,6 +61,57 @@ describe("/admin/dashboard redirect ページは横断集計を実行しない",
     expect(src).toContain("getServerUser");
     expect(src).toContain("isPlatformOwner");
     expect(src).toContain("resolveAdminDashboardDestination");
+  });
+});
+
+describe("isWideContentRoute — /oas だけ wide(1200px)・他ページに漏れない", () => {
+  it("/oas 完全一致のみ wide", () => {
+    expect(isWideContentRoute("/oas")).toBe(true);
+  });
+  it("/oas 配下・新規作成・その他管理画面は wide にしない（980px 維持）", () => {
+    for (const p of [
+      "/oas/new", "/oas/abc12345", "/oas/abc12345/works",
+      "/admin/error-log", "/admin/dashboard", "/admin/announcements",
+      "/login", "/", "/liff", "/whale/in-ice", null, undefined,
+    ]) {
+      expect(isWideContentRoute(p)).toBe(false);
+    }
+  });
+});
+
+describe("AppShell — wide 指定は /oas 判定に基づき、グローバル .container は不変", () => {
+  it("AppShell は isWideContentRoute で container-wide を出し分ける", () => {
+    const src = readFileSync("src/components/AppShell.tsx", "utf8");
+    expect(src).toContain("isWideContentRoute(pathname)");
+    expect(src).toContain("container container-wide");
+  });
+  it("globals.css の .container(980px) は変更せず、.container-wide(1200px) を追加", () => {
+    const css = readFileSync("src/app/globals.css", "utf8");
+    expect(css).toContain(".container { max-width: 980px;");
+    expect(css).toContain(".container-wide { max-width: 1200px; }");
+  });
+});
+
+describe("/oas ページ構成 — ダッシュボード上・一覧下・サマリー表非表示・お知らせは一覧側のみ", () => {
+  const src = readFileSync("src/app/oas/page.tsx", "utf8");
+  it("platform owner 判定はサーバー（getServerUser + isPlatformOwner）", () => {
+    expect(src).toContain("getServerUser");
+    expect(src).toContain("isPlatformOwner");
+  });
+  it("owner のみ横断集計（getOwnerDashboard/Activity を条件下で実行）", () => {
+    expect(src).toContain("getOwnerDashboard");
+    expect(src).toContain("getOwnerActivity");
+    expect(src).toContain("if (isOwner)");
+  });
+  it("ダッシュボードは showAccountSummary=false・accountListHref=null で描画", () => {
+    expect(src).toContain("showAccountSummary={false}");
+    expect(src).toContain("accountListHref={null}");
+  });
+  it("OaListClient は常に描画（owner/非owner とも一覧を表示）", () => {
+    expect(src).toContain("<OaListClient />");
+  });
+  it("お知らせ帯（AnnouncementBanner）はページ側に持たない（OaListClient 内で1回）", () => {
+    expect(src).not.toContain("AnnouncementBanner");
   });
 });
 
