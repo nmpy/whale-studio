@@ -1621,6 +1621,7 @@ export function LiveAdminClient({
                 oaId={oaId}
                 sessionId={selectedSessionId}
                 teams={teams}
+                participants={participants}
                 onChanged={() => selectedSessionId && void fetchChildren(selectedSessionId)}
                 onError={(msg) => setError(msg)}
               />
@@ -2350,16 +2351,30 @@ function InstructionRow({
 // ─────────────────────────────────────────────────────────────────────────────
 // TeamsSection — チーム管理 (Phase 2-G / セッション単位)
 // ─────────────────────────────────────────────────────────────────────────────
+/** team の LINE 連携人数（DISTINCT line_user_id）と定員（group_type 由来）を集計する。生 lineUserId は返さない。 */
+function summarizeTeamLink(teamId: string, groupType: string | null, participants: LiveParticipant[]) {
+  const linked = participants.filter((p) => p.team_id === teamId && p.line_user_id);
+  // DISTINCT line_user_id（重複レコードは 1 人）。status は先勝ちで代表表示。
+  const byUser = new Map<string, LiveParticipant["status"]>();
+  for (const p of linked) {
+    if (p.line_user_id && !byUser.has(p.line_user_id)) byUser.set(p.line_user_id, p.status);
+  }
+  const capacity = groupType === "two" ? 2 : groupType === "four" ? 4 : null;
+  return { count: byUser.size, capacity, statuses: Array.from(byUser.values()) };
+}
+
 function TeamsSection({
   oaId,
   sessionId,
   teams,
+  participants,
   onChanged,
   onError,
 }: {
   oaId: string;
   sessionId: string;
   teams: LiveTeam[];
+  participants: LiveParticipant[];
   onChanged: () => void;
   onError: (msg: string) => void;
 }) {
@@ -2466,6 +2481,7 @@ function TeamsSection({
               <th style={{ padding: "8px 6px" }}>チーム名</th>
               <th style={{ padding: "8px 6px" }}>部屋番号</th>
               <th style={{ padding: "8px 6px" }}>グループ種別</th>
+              <th style={{ padding: "8px 6px" }}>LINE連携</th>
               <th style={{ padding: "8px 6px" }}>購入者名</th>
               <th style={{ padding: "8px 6px" }}>公演予約日時</th>
               <th style={{ padding: "8px 6px" }}>予約番号</th>
@@ -2480,6 +2496,22 @@ function TeamsSection({
                 <td style={{ padding: "8px 6px", color: "#111827" }}>{t.name}</td>
                 <td style={{ padding: "8px 6px", color: "#374151" }}>{t.room_number ?? "—"}</td>
                 <td style={{ padding: "8px 6px", color: "#374151" }}>{t.group_type ? liveTeamGroupTypeLabel(t.group_type) : "—"}</td>
+                <td style={{ padding: "8px 6px", color: "#374151" }}>{(() => {
+                  // 当日運営が「あと何人連携できるか」を確認する用途。生 line_user_id は出さない。
+                  const s = summarizeTeamLink(t.id, t.group_type, participants);
+                  return (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                      <span style={{ fontWeight: 600, color: s.capacity != null && s.count >= s.capacity ? "#b45309" : "#111827" }}>
+                        {s.count}{s.capacity != null ? ` / ${s.capacity}人` : ""}
+                      </span>
+                      {s.statuses.map((st, i) => (
+                        <span key={i} style={{ fontSize: 11, color: "#6b7280", whiteSpace: "nowrap" }}>
+                          ・LINE連携済み {PARTICIPANT_STATUS_LABEL[st]}
+                        </span>
+                      ))}
+                    </div>
+                  );
+                })()}</td>
                 <td style={{ padding: "8px 6px", color: "#374151" }}>{t.purchaser_name ?? "—"}</td>
                 <td style={{ padding: "8px 6px", color: "#374151" }}>{t.reserved_at ? formatDateTime(t.reserved_at) : "—"}</td>
                 <td style={{ padding: "8px 6px", color: "#374151" }}>{t.reservation_number ?? "—"}</td>

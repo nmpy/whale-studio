@@ -30,6 +30,7 @@ const resolveReq = (body: unknown) => req("http://localhost/api/liff/tickets/res
 beforeEach(() => {
   vi.clearAllMocks();
   process.env.WHALE_EXTERNAL_API_KEY = KEY;
+  process.env.WHALE_EXTERNAL_WRITE_API_KEY = KEY; // mint は write 専用キーを要求（P2-b）
   process.env.WHALE_EXTERNAL_OA_IDS = "oa1";
   mp.$transaction.mockImplementation(async (fn: (tx: typeof mp) => unknown) => fn(mp));
   mp.liveTicketLinkToken.updateMany.mockResolvedValue({ count: 0 });
@@ -87,6 +88,20 @@ describe("mint API", () => {
     const res = await mintPost(mintReq({ workId: "w1", reservationNumber: "R-100" }));
     expect(res.status).toBe(422);
   });
+  it("write キー未設定は 503（fail-closed・read キーへフォールバックしない）", async () => {
+    ok();
+    delete process.env.WHALE_EXTERNAL_WRITE_API_KEY;
+    const res = await mintPost(mintReq({ workId: "w1", reservationNumber: "R-100" }));
+    expect(res.status).toBe(503);
+    expect(mp.liveTicketLinkToken.create).not.toHaveBeenCalled();
+  });
+  it("read キーで write API は叩けない（write キーと不一致 → 401）", async () => {
+    ok();
+    process.env.WHALE_EXTERNAL_WRITE_API_KEY = "different-write-key";
+    const res = await mintPost(mintReq({ workId: "w1", reservationNumber: "R-100" }, { "x-whale-api-key": KEY }));
+    expect(res.status).toBe(401);
+    expect(mp.liveTicketLinkToken.create).not.toHaveBeenCalled();
+  });
 });
 
 describe("resolve API", () => {
@@ -98,6 +113,7 @@ describe("resolve API", () => {
     mp.liveSession.findMany.mockResolvedValue([{ id: "s1", name: "公演A", startsAt: new Date("2026-08-20T09:00:00Z") }]);
     mp.liveTeam.findMany.mockResolvedValue([{ id: "t1", reservationNumber: "R-100", ticketId: "BEL-123456", liveSessionId: "s1", reservedAt: null, groupType: "four" }]);
     mp.work.findUnique.mockResolvedValue({ title: "作品X" });
+    mp.oa.findUnique.mockResolvedValue({ liffId: "oa-liff" });
     mp.liveTicketLinkToken.updateMany.mockResolvedValue({ count: 1 });
   };
 
@@ -108,6 +124,7 @@ describe("resolve API", () => {
     const json = await res.json();
     expect(res.status).toBe(200);
     expect(json.data.ticket).toMatchObject({ maskedTicketId: "BEL-****56", workTitle: "作品X", groupType: "four", status: "available" });
+    expect(json.data.liffId).toBe("oa-liff"); // SDK init 用の公開 liffId を返す
     const body = JSON.stringify(json);
     expect(body).not.toContain("R-100");        // reservationNumber を返さない
     expect(body).not.toContain("BEL-123456");   // 生 ticketId を返さない
@@ -141,5 +158,24 @@ describe("resolve API", () => {
     const res = await resolvePost(resolveReq({ token: "z".repeat(43) }));
     expect(res.status).toBe(409);
     expect((await res.json()).error.code).toBe("WORK_NOT_ACTIVE");
+  });
+  it("どのチームにも一致しなければ TICKET_NOT_FOUND(404)", async () => {
+    mp.liveTicketLinkToken.findUnique.mockResolvedValue(baseToken);
+    setActive();
+    mp.liveTeam.findMany.mockResolvedValue([{ id: "tX", reservationNumber: "R-999", ticketId: "OTHER", liveSessionId: "s1", reservedAt: null, groupType: "two" }]);
+    const res = await resolvePost(resolveReq({ token: "z".repeat(43) }));
+    expect(res.status).toBe(404);
+    expect((await res.json()).error.code).toBe("TICKET_NOT_FOUND");
+  });
+  it("複数チームが同一予約番号で曖昧なら TICKET_NOT_FOUND(404)（先頭を勝手に採用しない）", async () => {
+    mp.liveTicketLinkToken.findUnique.mockResolvedValue({ ...baseToken, ticketId: null });
+    setActive();
+    mp.liveTeam.findMany.mockResolvedValue([
+      { id: "t1", reservationNumber: "R-100", ticketId: null, liveSessionId: "s1", reservedAt: null, groupType: "two" },
+      { id: "t2", reservationNumber: "R-100", ticketId: null, liveSessionId: "s1", reservedAt: null, groupType: "two" },
+    ]);
+    const res = await resolvePost(resolveReq({ token: "z".repeat(43) }));
+    expect(res.status).toBe(404);
+    expect((await res.json()).error.code).toBe("TICKET_NOT_FOUND");
   });
 });

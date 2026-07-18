@@ -99,3 +99,30 @@ export function requireExternalApiKey(req: NextRequest): ExternalAuthResult {
 
   return { ok: true, scope: resolveScope() };
 }
+
+/**
+ * 外部連携 **書き込み** API（現状: チケットリンク mint のみ）専用の APIキー認証ガード。
+ *
+ * 読み取り API（works / phases / phase-links）が使う `WHALE_EXTERNAL_API_KEY` とは**別のキー**
+ * `WHALE_EXTERNAL_WRITE_API_KEY` を要求し、read/write の権限を分離する（read キー漏えい時に
+ * トークン発行=書き込みまで奪われないようにする）。
+ *
+ * - `WHALE_EXTERNAL_WRITE_API_KEY` 未設定 → 503（fail closed）。**read キーへフォールバックしない。**
+ * - `x-whale-api-key` 欠落 or 不一致 → 401
+ * - 一致 → `{ ok: true, scope }`（allowlist は read と共通の `WHALE_EXTERNAL_OA_IDS`）
+ *
+ * ※ 本番 env（`WHALE_EXTERNAL_WRITE_API_KEY`）の設定は運用側で行う。未設定の間 mint は 503 になる（安全側）。
+ */
+export function requireExternalWriteApiKey(req: NextRequest): ExternalAuthResult {
+  const expected = normalize(process.env.WHALE_EXTERNAL_WRITE_API_KEY);
+  if (!expected) {
+    return { ok: false, response: configError("WHALE_EXTERNAL_WRITE_API_KEY is not set") };
+  }
+
+  const provided = normalize(req.headers.get("x-whale-api-key"));
+  if (!provided || !safeEqual(provided, expected)) {
+    return { ok: false, response: unauthorized() };
+  }
+
+  return { ok: true, scope: resolveScope() };
+}
