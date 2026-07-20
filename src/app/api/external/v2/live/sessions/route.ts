@@ -1,5 +1,6 @@
-// PUT /api/external/v1/live/sessions
+// PUT /api/external/v2/live/sessions
 //   ウズプロCMS が「匿名の公演参照（externalSessionRef）」で Whale Studio 内の LiveSession を冪等 upsert する。
+//   v2 = 匿名予約モデル専用（v1 の legacy チケットリンク契約とは別バージョン。schema/挙動を共有しない）。
 //   認証: write 専用ガード requireExternalWriteApiKey（x-whale-api-key ↔ WHALE_EXTERNAL_WRITE_API_KEY）+
 //         WHALE_EXTERNAL_OA_IDS allowlist（scope.allowsOa）でテナント境界を検証。
 //

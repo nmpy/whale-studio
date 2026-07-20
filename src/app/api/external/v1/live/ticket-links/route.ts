@@ -1,172 +1,95 @@
-// /api/external/v1/live/ticket-links
-//   POST : 匿名連携（ウズプロCMS）の予約枠に対して LIFF URL / トークンを発行する（発行の正本 = live-ticket-mint）。
-//   GET  : 予約枠のチケットリンク状態を取得する（平文トークン / hash / 個人情報を返さない）。
+// POST /api/external/v1/live/ticket-links
+//   外部チケットサイト（ESCAPE.ID 等）が予約完了メールへ埋め込む「専用 LIFF URL」を発行する。
+//   認証: write 専用ガード requireExternalWriteApiKey（x-whale-api-key ↔ WHALE_EXTERNAL_WRITE_API_KEY）。
+//         read API（works/phases）用の WHALE_EXTERNAL_API_KEY とは別キーで read/write を分離（P2-b）。
+//         対象 OA は WHALE_EXTERNAL_OA_IDS allowlist（scope.allowsOa）でテナント境界を検証する。
+//   Phase 1: token 発行 + tokenHash 保存 + LIFF URL 生成のみ（LINE 連携・LiveParticipant には触れない）。
 //
-//   認証:
-//     POST → requireExternalWriteApiKey（x-whale-api-key ↔ WHALE_EXTERNAL_WRITE_API_KEY）＝書き込み
-//     GET  → requireExternalApiKey（x-whale-api-key ↔ WHALE_EXTERNAL_API_KEY）＝読み取り
-//     いずれも WHALE_EXTERNAL_OA_IDS allowlist（scope.allowsOa）でテナント境界を検証。
-//
-//   新設計: 予約者氏名・メール・ESCAPE.ID チケットID・予約番号・購入日時・チケット種別等の個人情報は
-//           受け取らない（strict schema で未知フィールドを 400 拒否）。匿名参照 externalSessionRef /
-//           externalBookingRef と capacity(2/4) のみ扱う。
-//   セキュリティ: 平文トークンは発行レスポンス URL に一度だけ載る。DB は tokenHash のみ。
-//                APIキー / 平文トークン / tokenHash / body 全体はログ・レスポンスへ出さない。
-//   再送安全: 同一予約枠は常に最新 1 件だけ有効（旧・有効トークンを失効 → 新規発行）。
+// セキュリティ:
+//   - 平文トークンは発行レスポンスの URL に一度だけ載る。DB へは tokenHash(sha256) のみ保存。
+//   - APIキー / 平文トークン / tokenHash / 購入者個人情報 はログ・レスポンスへ出さない。
+//   - 再送（同一 reservationNumber への再発行）は、未失効・期限内の旧トークンを失効させてから新規発行し、
+//     有効な URL が無制限に増えないようにする（平文は復元不可のため同一 URL の再返却はしない）。
 
 import { NextRequest } from "next/server";
 import { z, ZodError } from "zod";
 import { prisma } from "@/lib/prisma";
-import { ok, badRequest, notFound, conflict, unprocessable, serverError } from "@/lib/api-response";
-import { requireExternalApiKey, requireExternalWriteApiKey } from "@/lib/external-auth";
+import { ok, badRequest, notFound, unprocessable, serverError } from "@/lib/api-response";
+import { requireExternalWriteApiKey } from "@/lib/external-auth";
 import { getLiffIdForUrlGeneration } from "@/lib/liff/config";
-import { resolveTicketExpiresAt, ticketTokenState } from "@/lib/live-ticket-link";
-import { findExternalLiveSession } from "@/lib/live-external-session";
-import { mintAnonymousTicketLink } from "@/lib/live-ticket-mint";
+import { generateTicketToken, hashTicketToken, resolveTicketExpiresAt, buildTicketLiffUrl } from "@/lib/live-ticket-link";
 
 export const dynamic = "force-dynamic";
 
-// strict(): 個人情報を含む未知フィールドは 400 で拒否。capacity は 2 / 4 のみ許可。
-const postSchema = z
-  .object({
-    workId:             z.string().min(1).max(100),
-    externalSessionRef: z.string().min(1).max(200),
-    externalBookingRef: z.string().min(1).max(200),
-    capacity:           z.union([z.literal(2), z.literal(4)]),
-  })
-  .strict();
-
-const getSchema = z.object({
-  workId:             z.string().min(1).max(100),
-  externalSessionRef: z.string().min(1).max(200),
-  externalBookingRef: z.string().min(1).max(200),
+const bodySchema = z.object({
+  workId:            z.string().min(1).max(100),
+  reservationNumber: z.string().min(1).max(200),
+  ticketId:          z.string().min(1).max(200).optional(),
+  /** 外部指定の有効期限（日）。resolveTicketExpiresAt 側で許容上限にクランプ。 */
+  expiresInDays:     z.number().int().positive().max(3650).optional(),
 });
 
-/** work → OA を解決し allowlist を検証（存在秘匿のため未許可/不在は一律 404）。 */
-async function resolveWorkOa(workId: string, scope: { allowsOa(oaId: string): boolean }) {
-  const work = await prisma.work.findUnique({ where: { id: workId }, select: { id: true, oaId: true } });
-  if (!work) return null;
-  if (!scope.allowsOa(work.oaId)) return null;
-  return work;
-}
-
 export async function POST(req: NextRequest) {
+  // mint は書き込み操作のため、read 用キーとは分離した write 専用キーを要求する（P2-b）。
   const auth = requireExternalWriteApiKey(req);
   if (!auth.ok) return auth.response;
   const { scope } = auth;
 
   try {
-    const data = postSchema.parse(await req.json());
+    const data = bodySchema.parse(await req.json());
 
-    const work = await resolveWorkOa(data.workId, scope);
+    // 作品 → OA を導出し、allowlist（テナント境界）を検証。
+    const work = await prisma.work.findUnique({
+      where: { id: data.workId },
+      select: { id: true, oaId: true },
+    });
     if (!work) return notFound("作品");
+    if (!scope.allowsOa(work.oaId)) return notFound("作品"); // 存在秘匿のため 404 で統一
 
     const oa = await prisma.oa.findUnique({ where: { id: work.oaId }, select: { id: true, liffId: true } });
     if (!oa) return notFound("アカウント");
     const liffId = getLiffIdForUrlGeneration(oa);
     if (!liffId) return unprocessable("このアカウントの LIFF が未設定です", "LIFF_NOT_CONFIGURED");
 
-    // 匿名の公演セッションは事前同期（PUT /sessions）が前提。未同期なら明示エラー。
-    const session = await findExternalLiveSession(prisma, {
-      oaId: oa.id, workId: work.id, externalSessionRef: data.externalSessionRef,
-    });
-    if (!session) return conflict("対象の公演セッションが未同期です（先に公演セッションを同期してください）");
-
+    // 有効期限: 公演日時(active session の startsAt)が取れれば +3日、無ければ +30日。外部指定は上限クランプ。
     const now = new Date();
-    const expiresAt = resolveTicketExpiresAt({ startsAt: session.startsAt, now });
-
-    // team upsert → 旧トークン失効 → 新トークン発行 を 1 トランザクションで（再送で有効 URL が増えない）。
-    const minted = await prisma.$transaction((tx) =>
-      mintAnonymousTicketLink(tx, {
-        oaId: oa.id,
-        workId: work.id,
-        externalSessionRef: data.externalSessionRef,
-        externalBookingRef: data.externalBookingRef,
-        liveSessionId: session.id,
-        capacity: data.capacity,
-        liffId,
-        expiresAt,
-        now,
-      }),
-    );
-
-    return ok({
-      url:           minted.url,
-      tokenRecordId: minted.tokenRecordId,
-      expiresAt:     minted.expiresAt.toISOString(),
+    const activeSession = await prisma.liveSession.findFirst({
+      where:   { oaId: oa.id, workId: work.id, status: "active" },
+      orderBy: { startsAt: "asc" },
+      select:  { startsAt: true },
     });
-  } catch (err) {
-    if (err instanceof ZodError) return badRequest(err.errors[0]?.message ?? "入力が不正です");
-    return serverError(err);
-  }
-}
-
-export async function GET(req: NextRequest) {
-  const auth = requireExternalApiKey(req);
-  if (!auth.ok) return auth.response;
-  const { scope } = auth;
-
-  try {
-    const url = new URL(req.url);
-    const data = getSchema.parse({
-      workId:             url.searchParams.get("workId") ?? undefined,
-      externalSessionRef: url.searchParams.get("externalSessionRef") ?? undefined,
-      externalBookingRef: url.searchParams.get("externalBookingRef") ?? undefined,
+    const expiresAt = resolveTicketExpiresAt({
+      startsAt:      activeSession?.startsAt ?? null,
+      requestedDays: data.expiresInDays ?? null,
+      now,
     });
 
-    const work = await resolveWorkOa(data.workId, scope);
-    if (!work) return notFound("作品");
+    const token = generateTicketToken();
+    const tokenHash = hashTicketToken(token);
 
-    const session = await findExternalLiveSession(prisma, {
-      oaId: work.oaId, workId: work.id, externalSessionRef: data.externalSessionRef,
-    });
-    if (!session) return notFound("公演セッション");
-
-    const team = await prisma.liveTeam.findFirst({
-      where:  { liveSessionId: session.id, externalBookingRef: data.externalBookingRef },
-      select: { id: true, capacity: true },
-    });
-    if (!team) return notFound("チケットリンク");
-
-    const now = new Date();
-    // 有効トークン（未失効・期限内）があれば active。無ければ最新履歴から revoked/expired を判定。
-    const activeTok = await prisma.liveTicketLinkToken.findFirst({
-      where:   { oaId: work.oaId, workId: work.id, externalSessionRef: data.externalSessionRef, externalBookingRef: data.externalBookingRef, revokedAt: null, expiresAt: { gt: now } },
-      orderBy: { createdAt: "desc" },
-      select:  { expiresAt: true },
-    });
-    let state: "active" | "revoked" | "expired" | "none" = "none";
-    let expiresAt: Date | null = null;
-    if (activeTok) {
-      state = "active";
-      expiresAt = activeTok.expiresAt;
-    } else {
-      const latest = await prisma.liveTicketLinkToken.findFirst({
-        where:   { oaId: work.oaId, workId: work.id, externalSessionRef: data.externalSessionRef, externalBookingRef: data.externalBookingRef },
-        orderBy: { createdAt: "desc" },
-        select:  { expiresAt: true, revokedAt: true },
+    // 再送安全化 + 発行を 1 トランザクションで。旧・有効トークンを失効 → 新規発行。
+    const created = await prisma.$transaction(async (tx) => {
+      await tx.liveTicketLinkToken.updateMany({
+        where: { oaId: oa.id, workId: work.id, reservationNumber: data.reservationNumber, revokedAt: null, expiresAt: { gt: now } },
+        data:  { revokedAt: now },
       });
-      if (latest) {
-        const s = ticketTokenState(latest, now);
-        state = s === "active" ? "active" : s; // active は上で拾うのでここは revoked/expired
-        expiresAt = latest.expiresAt;
-      }
-    }
+      return tx.liveTicketLinkToken.create({
+        data: {
+          oaId:              oa.id,
+          workId:            work.id,
+          reservationNumber: data.reservationNumber,
+          ticketId:          data.ticketId ?? null,
+          tokenHash,
+          expiresAt,
+        },
+        select: { id: true },
+      });
+    });
 
-    // 登録人数は対象 team の LiveParticipant 数（後続 Phase で登録実装。現状は通常 0）。
-    const registrationCount = await prisma.liveParticipant.count({ where: { teamId: team.id } });
-
-    // 平文トークン / tokenHash / LINE UID / 氏名 / メール / ESCAPE.ID チケットID は返さない。
     return ok({
-      link: {
-        externalSessionRef: data.externalSessionRef,
-        externalBookingRef: data.externalBookingRef,
-        state,
-        expiresAt:          expiresAt ? expiresAt.toISOString() : null,
-        capacity:           team.capacity ?? null,
-        registrationCount,
-        sessionStatus:      session.status,
-      },
+      url:           buildTicketLiffUrl(liffId, token),
+      tokenRecordId: created.id,
+      expiresAt:     expiresAt.toISOString(),
     });
   } catch (err) {
     if (err instanceof ZodError) return badRequest(err.errors[0]?.message ?? "入力が不正です");

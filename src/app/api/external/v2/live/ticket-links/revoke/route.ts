@@ -1,5 +1,5 @@
-// POST /api/external/v1/live/ticket-links/revoke
-//   匿名連携（ウズプロCMS）の予約枠に紐づく有効なチケットリンクトークンをすべて失効する。
+// POST /api/external/v2/live/ticket-links/revoke
+//   v2 = 匿名予約モデル専用。匿名連携（ウズプロCMS）の予約枠に紐づく有効なチケットリンクトークンをすべて失効する。
 //   認証: requireExternalWriteApiKey（x-whale-api-key ↔ WHALE_EXTERNAL_WRITE_API_KEY）＋ OA allowlist。
 //
 //   冪等: すでに失効済みでも成功（既存の revokedAt は上書きせず履歴を破壊しない = revokedAt:null のみ更新）。
