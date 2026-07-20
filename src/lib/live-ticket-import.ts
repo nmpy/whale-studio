@@ -8,7 +8,6 @@
 //
 // このモジュール自体は DB / mint に触れない純関数のみ（テスト容易・client/server 両用）。
 
-import { normalizeGroupType } from "@/lib/live-team";
 import { csvCell } from "@/lib/location-log";
 
 /** ESCAPE.ID の取込対象フィールド（内部キー）。email/purchased_at は一時利用＝DB 非保存。 */
@@ -111,22 +110,28 @@ export function buildTicketTeamName(dateStr: string, timeStr: string, ticketId: 
   return head ? `${head} Ticket ${id}` : `Ticket ${id}`;
 }
 
+/** チケット種別の照合用正規化（全角英数→半角・空白/全角空白/改行を除去）。 */
+function normTicketType(s: string | null | undefined): string {
+  return String(s ?? "")
+    .replace(/[！-～]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xfee0))
+    .replace(/[\s　]/g, "");
+}
+
+/** 正式対応表（ベルキッシュ運用: 定員は 2名 or 4名のみ）。 */
+export const GROUP_TYPE_TWO_LABELS = ["2名", "2名券", "2人", "2人券", "2名チケット", "ペア", "ペア券", "ペアチケット"] as const;
+export const GROUP_TYPE_FOUR_LABELS = ["4名", "4名券", "4人", "4人券", "4名チケット"] as const;
+const TWO_SET = new Set(GROUP_TYPE_TWO_LABELS.map(normTicketType));
+const FOUR_SET = new Set(GROUP_TYPE_FOUR_LABELS.map(normTicketType));
+
 /**
- * チケット種別 → groupType（two/four/null）。
- *   1) 既存 normalizeGroupType（"2名"/"two"/2 等の完全一致）を優先。
- *   2) 外れたら種別文字列中の最初の数字を見て 2→two / 4→four（例 "2名券"/"4名様"/"2枚"）。
- *   3) それ以外（"ペア"/"1名"/"3名"/不明）は null（定員なし扱い・警告）。
- * ※ 正式な種別→定員の対応表は運用確定事項（暫定実装）。
+ * チケット種別 → groupType。**正式対応表の完全一致のみ**（部分一致・数字抽出はしない）。
+ * 表にない値（空 / 1名 / 3名 / 5名以上 / "12名券" 等）は null を返し、呼び出し側で validation error にする。
+ * 例: "12名券" は正規化後 "12名券" で表に無いため null（two に誤判定しない）。
  */
 export function resolveTicketGroupType(ticketType: string | null | undefined): "two" | "four" | null {
-  const exact = normalizeGroupType(ticketType);
-  if (exact) return exact;
-  const m = String(ticketType ?? "").match(/(\d+)/);
-  if (m) {
-    const n = Number(m[1]);
-    if (n === 2) return "two";
-    if (n === 4) return "four";
-  }
+  const n = normTicketType(ticketType);
+  if (TWO_SET.has(n)) return "two";
+  if (FOUR_SET.has(n)) return "four";
   return null;
 }
 
@@ -178,9 +183,12 @@ export function normalizeTicketRow(input: TicketRowInput, rowIndex: number): Tic
   if (!ticketId) errors.push("チケットIDが空です");
   if (ticketId.length > 200) errors.push("チケットIDが長すぎます");
 
+  // groupType は正式対応表の完全一致のみ。表に無い/空は validation error（Apply 対象外・groupType=null の team を作らない）。
   const groupType = resolveTicketGroupType(input.ticket_type);
-  if (!groupType && input.ticket_type.trim() !== "") {
-    warnings.push(`チケット種別「${input.ticket_type}」を two/four に判定できません（定員なし扱い）`);
+  if (!groupType) {
+    errors.push(input.ticket_type.trim() === ""
+      ? "チケット種別が空です（2名/4名系のみ対応）"
+      : `対応外のチケット種別「${input.ticket_type}」（2名/4名系のみ対応）`);
   }
 
   const email = input.email.trim();

@@ -4,10 +4,10 @@
 //   Participant は作らない（LIFF 連携時に生成）。既存の参加者 CSV 取込（/live/import）とは完全に独立。
 //
 //   mode=preview: 件数・エラー・発行/skip 予定のみ返す（**URL / token を生成しない**）。
-//   mode=apply:   対象 Session 単位の transaction 内で team upsert + token 発行し、URL を返す。
+//   mode=apply:   対象 Session 単位の transaction 内で team upsert + token 発行（正本=live-ticket-mint）。
 //
 //   セキュリティ: token は hash のみ保存 / 平文 URL・メールは DB 非保存・ログ非出力 /
-//                URL はレスポンス（と UI 生成 CSV）のみ / 他 OA・他 work へ越境しない。
+//                URL はレスポンス（と UI 生成 CSV）のみ / 他 OA・他 work・他 Session へ越境しない。
 
 import { NextRequest } from "next/server";
 import iconv from "iconv-lite";
@@ -16,7 +16,8 @@ import { prisma } from "@/lib/prisma";
 import { ok, badRequest, notFound, unprocessable, serverError } from "@/lib/api-response";
 import { authorizeLive } from "@/lib/live-auth";
 import { getLiffIdForUrlGeneration } from "@/lib/liff/config";
-import { generateTicketToken, hashTicketToken, resolveTicketExpiresAt, buildTicketLiffUrl } from "@/lib/live-ticket-link";
+import { resolveTicketExpiresAt } from "@/lib/live-ticket-link";
+import { revokePriorValidTicketTokens, issueTicketLinkToken } from "@/lib/live-ticket-mint";
 import {
   mapEscapeIdHeaders, extractTicketRow, normalizeTicketRow,
   type EscapeIdField, type TicketRowSpec, type TicketResultRow,
@@ -24,37 +25,38 @@ import {
 
 export const dynamic = "force-dynamic";
 
-const MAX_FILE_BYTES = 5 * 1024 * 1024; // 5MB
-const MAX_ROWS = 2000;                  // 1 取込あたりの上限（transaction 有界化）
-const MAX_CELL = 2000;                  // 1 セル長上限（巨大セル対策）
+// ── 入力上限（正式初期値） ─────────────────────────────
+const MAX_FILE_BYTES = 10 * 1024 * 1024; // 10MB
+const MAX_ROWS = 5000;                    // データ行（ヘッダー除く）
+const MAX_COLS = 100;                     // 列数
+const MAX_CELL = 10000;                   // 1 セル文字数
 
-// ── ファイル解析（この route 専用・既存 import には非依存） ─────────────
+type Parsed = { headers: string[]; rows: Record<string, string>[]; sheetName: string | null; nonEmptySheets: number };
+
 function decodeCsvBuffer(buf: Buffer): string {
-  if (buf.length >= 3 && buf[0] === 0xef && buf[1] === 0xbb && buf[2] === 0xbf) {
-    return buf.slice(3).toString("utf-8");
-  }
+  if (buf.length >= 3 && buf[0] === 0xef && buf[1] === 0xbb && buf[2] === 0xbf) return buf.slice(3).toString("utf-8");
   const asUtf8 = buf.toString("utf-8");
   const repl = (asUtf8.match(/�/g) ?? []).length;
   if (repl > 0 && repl / Math.max(asUtf8.length, 1) > 0.005) return iconv.decode(buf, "Shift_JIS");
   return asUtf8;
 }
 
-function parseCsv(buf: Buffer, filename: string): { headers: string[]; rows: Record<string, string>[] } {
+function parseCsv(buf: Buffer, filename: string): Parsed {
   const text = decodeCsvBuffer(buf);
   const delimiter = filename.toLowerCase().endsWith(".tsv")
     ? "\t"
     : (() => { const head = text.slice(0, 1024); return (head.match(/\t/g) ?? []).length > (head.match(/,/g) ?? []).length ? "\t" : ","; })();
   const parsed = Papa.parse<Record<string, string>>(text, { header: true, delimiter, skipEmptyLines: true });
   const headers = (parsed.meta.fields ?? []).map((h) => String(h));
+  if (headers.length > MAX_COLS) throw new Error("COL_LIMIT");
   const rows = (parsed.data as Record<string, string>[]).map((r) => {
     const o: Record<string, string> = {};
     for (const h of headers) o[h] = String(r[h] ?? "").slice(0, MAX_CELL);
     return o;
   });
-  return { headers, rows };
+  return { headers, rows, sheetName: null, nonEmptySheets: 1 };
 }
 
-/** Excel セル値を素朴な文字列へ（数式は結果・リッチテキスト対応）。 */
 function xlsxCellToString(v: unknown): string {
   if (v == null) return "";
   if (v instanceof Date) return v.toISOString();
@@ -71,22 +73,27 @@ function xlsxCellToString(v: unknown): string {
   return String(v);
 }
 
-async function parseXlsx(buf: Buffer): Promise<{ headers: string[]; rows: Record<string, string>[] }> {
+/** xlsx/xlsm を解析。**最初の表示シートのみ**を対象（暗黙のシート結合はしない）。 */
+async function parseXlsx(buf: Buffer): Promise<Parsed> {
   const ExcelJS = (await import("exceljs")).default;
   const wb = new ExcelJS.Workbook();
   await wb.xlsx.load(buf as unknown as ArrayBuffer);
-  const ws = wb.worksheets[0];
-  if (!ws) return { headers: [], rows: [] };
-  if (ws.rowCount > MAX_ROWS + 1) throw new Error("ROW_LIMIT"); // zip-bomb / 巨大シート対策
+  const sheets = wb.worksheets;
+  const nonEmpty = sheets.filter((ws) => ws.rowCount > 1 || (ws.rowCount === 1 && ws.getRow(1).cellCount > 0));
+  // 対象は「最初の表示シート」（hidden/veryHidden を避ける。無ければ先頭）。
+  const target = sheets.find((ws) => ws.state === "visible") ?? sheets[0];
+  if (!target) return { headers: [], rows: [], sheetName: null, nonEmptySheets: 0 };
+  if (target.rowCount > MAX_ROWS + 1) throw new Error("ROW_LIMIT"); // zip-bomb / 巨大シート対策
+  if (target.columnCount > MAX_COLS) throw new Error("COL_LIMIT");
   const headers: string[] = [];
   const headerByCol: Record<number, string> = {};
-  ws.getRow(1).eachCell({ includeEmpty: false }, (cell, col) => {
+  target.getRow(1).eachCell({ includeEmpty: false }, (cell, col) => {
     const key = xlsxCellToString(cell.value).trim().slice(0, MAX_CELL);
     if (key) { headers.push(key); headerByCol[col] = key; }
   });
   const rows: Record<string, string>[] = [];
-  for (let r = 2; r <= ws.rowCount; r++) {
-    const row = ws.getRow(r);
+  for (let r = 2; r <= target.rowCount; r++) {
+    const row = target.getRow(r);
     const obj: Record<string, string> = {};
     let hasAny = false;
     for (const [colStr, key] of Object.entries(headerByCol)) {
@@ -96,7 +103,7 @@ async function parseXlsx(buf: Buffer): Promise<{ headers: string[]; rows: Record
     }
     if (hasAny) rows.push(obj);
   }
-  return { headers, rows };
+  return { headers, rows, sheetName: String(target.name), nonEmptySheets: nonEmpty.length };
 }
 
 function fileExt(name: string): "xlsx" | "csv" | "unsupported" {
@@ -106,7 +113,12 @@ function fileExt(name: string): "xlsx" | "csv" | "unsupported" {
   return "unsupported";
 }
 
-// ── ハンドラ ───────────────────────────────────────────────
+/** Date を分単位に揃えて比較用文字列に。 */
+function minuteKey(d: Date | null): string | null {
+  if (!d) return null;
+  return new Date(Math.floor(d.getTime() / 60000) * 60000).toISOString();
+}
+
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   const auth = await authorizeLive(req, params.id, "write");
   if (!auth.ok) return auth.response;
@@ -128,11 +140,11 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
     if (mode !== "preview" && mode !== "apply") return badRequest("mode は preview / apply");
     if (!(file instanceof File)) return badRequest("file がありません");
-    if (file.size > MAX_FILE_BYTES) return badRequest("ファイルサイズが大きすぎます（上限 5MB）");
+    if (file.size > MAX_FILE_BYTES) return badRequest("ファイルサイズが大きすぎます（上限 10MB）");
     if (!workId) return badRequest("work_id は必須です");
     if (!sessionId) return badRequest("対象 Session を選択してください（session_id 必須）");
 
-    // テナント境界: work / session が この OA・この work に属することを検証。
+    // テナント境界: work / session が この OA・この work に属することを検証（client の sessionId を無条件に信用しない）。
     const work = await prisma.work.findFirst({ where: { id: workId, oaId }, select: { id: true } });
     if (!work) return badRequest("work_id が OA に紐付いていません");
     const session = await prisma.liveSession.findFirst({
@@ -140,20 +152,21 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       select: { id: true, name: true, status: true, startsAt: true },
     });
     if (!session) return notFound("対象 Session");
+    if (session.status === "ended") return badRequest("終了した Session には取込めません");
 
-    // mint に必要な OA の liffId（未設定なら全行発行不可）。
     const oa = await prisma.oa.findUnique({ where: { id: oaId }, select: { liffId: true } });
     const liffId = getLiffIdForUrlGeneration(oa ?? undefined);
 
-    // 解析（xlsx/csv）。
+    // ── 解析 ──
     const ext = fileExt(file.name);
     if (ext === "unsupported") return badRequest("対応形式は xlsx / xlsm / csv / tsv です");
     const buf = Buffer.from(await file.arrayBuffer());
-    let parsed: { headers: string[]; rows: Record<string, string>[] };
+    let parsed: Parsed;
     try {
       parsed = ext === "xlsx" ? await parseXlsx(buf) : parseCsv(buf, file.name);
     } catch (e) {
       if (e instanceof Error && e.message === "ROW_LIMIT") return badRequest(`行数が上限（${MAX_ROWS}）を超えています。分割してください`);
+      if (e instanceof Error && e.message === "COL_LIMIT") return badRequest(`列数が上限（${MAX_COLS}）を超えています`);
       return badRequest("ファイルを解析できませんでした（xlsx/csv 形式をご確認ください）");
     }
     if (parsed.rows.length === 0) return badRequest("データ行がありません");
@@ -166,18 +179,32 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     const mapping = mapEscapeIdHeaders(parsed.headers, override);
     if (!mapping.ticket_id) return badRequest("システムチケットID の列を特定できませんでした（列マッピングで指定してください）");
 
-    // 行を正規化 + ファイル内 ticketId 重複を検出。
+    // 正規化 + ファイル内 ticketId 重複検出（最初の行のみ候補・2件目以降は重複エラー）。
     const specs: TicketRowSpec[] = parsed.rows.map((row, i) => normalizeTicketRow(extractTicketRow(row, mapping), i + 2));
-    const seen = new Set<string>();
+    const firstRowByTicket = new Map<string, number>();
     for (const s of specs) {
       if (!s.valid) continue;
-      if (seen.has(s.ticketId)) { s.valid = false; s.errors.push("ファイル内でチケットIDが重複しています"); }
-      else seen.add(s.ticketId);
+      const prev = firstRowByTicket.get(s.ticketId);
+      if (prev != null) { s.valid = false; s.errors.push(`ファイル内でチケットIDが重複しています（先に行 ${prev}）`); }
+      else firstRowByTicket.set(s.ticketId, s.rowIndex);
     }
+
+    // 同一 OA・別 Session に同じ ticketId が既存 → 行エラー（自動移動/複製/上書きしない・他 OA は照会しない=境界維持）。
+    const idsForCheck = specs.filter((s) => s.valid).map((s) => s.ticketId);
+    if (idsForCheck.length > 0) {
+      const otherSessionTeams = await prisma.liveTeam.findMany({
+        where:  { oaId, ticketId: { in: idsForCheck }, liveSessionId: { not: sessionId } },
+        select: { ticketId: true },
+      });
+      const otherSet = new Set(otherSessionTeams.map((t) => t.ticketId).filter(Boolean) as string[]);
+      for (const s of specs) {
+        if (s.valid && otherSet.has(s.ticketId)) { s.valid = false; s.errors.push("このチケットIDは別のSessionへ登録済みです"); }
+      }
+    }
+
     const validSpecs = specs.filter((s) => s.valid);
     const validTicketIds = validSpecs.map((s) => s.ticketId);
 
-    // 既存 token（有効）・既存 team を把握（preview/apply 共通の判定材料）。
     const now = new Date();
     const existingValidTokens = validTicketIds.length === 0 ? [] : await prisma.liveTicketLinkToken.findMany({
       where:  { oaId, workId, reservationNumber: { in: validTicketIds }, revokedAt: null, expiresAt: { gt: now } },
@@ -190,16 +217,20 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     });
     const teamExists = new Set(existingTeams.map((t) => t.ticketId).filter(Boolean) as string[]);
 
+    // 公演日時と選択 Session の日時が不一致な行（警告）。
+    const sessionMinute = minuteKey(session.startsAt ?? null);
+    const dateMismatch = (s: TicketRowSpec): boolean => !!(sessionMinute && s.reservedAt && minuteKey(s.reservedAt) !== sessionMinute);
+
     // ── preview: URL / token を生成しない ──
     if (mode === "preview") {
       let issue = 0, skip = 0;
       for (const s of validSpecs) {
-        const reissue = reissueIds.includes(s.ticketId);
-        if (hasValidToken.has(s.ticketId) && !reissue) skip++; else issue++;
+        if (hasValidToken.has(s.ticketId) && !reissueIds.includes(s.ticketId)) skip++; else issue++;
       }
+      const mismatchCount = validSpecs.filter(dateMismatch).length;
       return ok({
         mode: "preview",
-        file: { name: file.name, format: ext, total_rows: parsed.rows.length },
+        file: { name: file.name, format: ext, total_rows: parsed.rows.length, sheet_name: parsed.sheetName, non_empty_sheets: parsed.nonEmptySheets },
         mapping,
         session: { id: session.id, name: session.name, status: session.status, starts_at: session.startsAt?.toISOString() ?? null },
         oa_liff_configured: !!liffId,
@@ -211,14 +242,20 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
           teams_update: validSpecs.filter((s) => teamExists.has(s.ticketId)).length,
           tokens_issue: issue,
           tokens_skip: skip,
+          date_mismatch: mismatchCount,
         },
-        // per-row は最小限（PII/URL を含めない: ticketId / groupType / plan / error のみ）。
+        warnings: {
+          multi_sheet: parsed.nonEmptySheets > 1 ? `非空シートが ${parsed.nonEmptySheets} 枚あります。最初の表示シート「${parsed.sheetName}」のみ処理します。` : null,
+          date_mismatch: mismatchCount > 0 ? `${mismatchCount} 行の公演日時が選択 Session の日時と一致しません。` : null,
+        },
+        // per-row: 行番号 / ticketId / 元のチケット種別 / plan / エラー理由（URL・メールは含めない）。
         rows: specs.map((s) => ({
           rowIndex: s.rowIndex,
           ticketId: s.ticketId,
+          ticketType: s.ticketType,
           groupType: s.groupType,
-          teamName: s.teamName,
           plan: !s.valid ? "error" : (hasValidToken.has(s.ticketId) && !reissueIds.includes(s.ticketId) ? "skip" : "issue"),
+          dateMismatch: s.valid ? dateMismatch(s) : false,
           error: s.errors.join(" / "),
           warnings: s.warnings,
         })),
@@ -228,91 +265,68 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     // ── apply: liffId 必須 ──
     if (!liffId) return unprocessable("このアカウントの LIFF が未設定です（先に LIFF 設定が必要）", "LIFF_NOT_CONFIGURED");
 
-    // 対象 Session 単位の transaction（Session→Team→Token を atomic に）。
     const results: TicketResultRow[] = [];
     const base = (s: TicketRowSpec, extra: Partial<TicketResultRow>): TicketResultRow => ({
       showDate: s.showDate, showTime: s.showTime, purchasedAt: s.purchasedAt, ticketType: s.ticketType,
       userName: s.purchaserName ?? "", email: s.email, ticketId: s.ticketId,
       url: null, expiresAt: null, result: "issued", error: "", ...extra,
     });
-    // 無効行は失敗として先に結果へ。
-    for (const s of specs.filter((x) => !x.valid)) {
-      results.push(base(s, { result: "failed", error: s.errors.join(" / ") }));
-    }
+    // validation error 行は DB 処理前に除外（他の valid 行の取込を妨げない）。
+    for (const s of specs.filter((x) => !x.valid)) results.push(base(s, { result: "failed", error: s.errors.join(" / ") }));
 
     const expiresAt = resolveTicketExpiresAt({ startsAt: session.startsAt ?? null, now });
+    let created = 0, updated = 0, issued = 0, skipped = 0, reissued = 0, applyFailed = 0;
 
-    await prisma.$transaction(async (tx) => {
-      for (const s of validSpecs) {
-        // team upsert（(sessionId, ticketId) 論理キー）。
-        const existing = await tx.liveTeam.findFirst({
-          where: { liveSessionId: sessionId, ticketId: s.ticketId }, select: { id: true },
-        });
-        let teamId: string;
-        const teamData = {
-          reservationNumber: s.reservationNumber,
-          ticketId: s.ticketId,
-          groupType: s.groupType,
-          purchaserName: s.purchaserName,
-          reservedAt: s.reservedAt,
-        };
-        if (existing) {
-          await tx.liveTeam.update({ where: { id: existing.id }, data: teamData });
-          teamId = existing.id;
-        } else {
-          const createdTeam = await tx.liveTeam.create({
-            data: { oaId, liveSessionId: sessionId, name: s.teamName, ...teamData },
-            select: { id: true },
+    try {
+      const txRows: TicketResultRow[] = [];
+      // 対象 Session 単位で valid 行を 1 transaction。予期しない DB エラーで全件 rollback。
+      await prisma.$transaction(async (tx) => {
+        for (const s of validSpecs) {
+          const existing = await tx.liveTeam.findFirst({ where: { liveSessionId: sessionId, ticketId: s.ticketId }, select: { id: true } });
+          const teamData = { reservationNumber: s.reservationNumber, ticketId: s.ticketId, groupType: s.groupType, purchaserName: s.purchaserName, reservedAt: s.reservedAt };
+          let teamId: string;
+          if (existing) { await tx.liveTeam.update({ where: { id: existing.id }, data: teamData }); teamId = existing.id; updated++; }
+          else { const t = await tx.liveTeam.create({ data: { oaId, liveSessionId: sessionId, name: s.teamName, ...teamData }, select: { id: true } }); teamId = t.id; created++; }
+
+          const reissue = reissueIds.includes(s.ticketId);
+          if (hasValidToken.has(s.ticketId) && !reissue) {
+            skipped++;
+            txRows.push(base(s, { result: "skipped", error: "発行済み（URL は再取得不可・再発行が必要）" }));
+            continue;
+          }
+          if (reissue) await revokePriorValidTicketTokens(tx, { oaId, workId, reservationNumber: s.reservationNumber, now });
+          const minted = await issueTicketLinkToken(tx, {
+            oaId, workId, reservationNumber: s.reservationNumber, ticketId: s.ticketId, liffId, expiresAt,
+            liveSessionId: sessionId, teamId,
           });
-          teamId = createdTeam.id;
+          if (reissue) reissued++; else issued++;
+          txRows.push(base(s, { result: "issued", url: minted.url, expiresAt: expiresAt.toISOString() }));
         }
+      });
+      results.push(...txRows);
+    } catch {
+      // 予期しない DB エラー → この Session の valid 行は全件 rollback。PII/token を漏らさない。
+      created = 0; updated = 0; issued = 0; skipped = 0; reissued = 0;
+      applyFailed = validSpecs.length;
+      for (const s of validSpecs) results.push(base(s, { result: "failed", error: "取込処理でエラーが発生しました（この公演の取込はロールバックされました）" }));
+    }
 
-        // token: 発行/skip/再発行。
-        const reissue = reissueIds.includes(s.ticketId);
-        if (hasValidToken.has(s.ticketId) && !reissue) {
-          results.push(base(s, { result: "skipped", error: "発行済み（URL は再取得不可・再発行が必要）" }));
-          continue;
-        }
-        if (reissue) {
-          // 明示再発行: 有効な旧 token を revoke してから新規発行。
-          await tx.liveTicketLinkToken.updateMany({
-            where: { oaId, workId, reservationNumber: s.ticketId, revokedAt: null, expiresAt: { gt: now } },
-            data:  { revokedAt: now },
-          });
-        }
-        const token = generateTicketToken();
-        const tokenHash = hashTicketToken(token);
-        await tx.liveTicketLinkToken.create({
-          data: {
-            oaId, workId, reservationNumber: s.reservationNumber, ticketId: s.ticketId,
-            tokenHash, expiresAt, liveSessionId: sessionId, teamId,
-          },
-          select: { id: true },
-        });
-        results.push(base(s, { result: "issued", url: buildTicketLiffUrl(liffId, token), expiresAt: expiresAt.toISOString() }));
-      }
-    });
-
-    // 元の行順に整列。
-    results.sort((a, b) => {
-      const ai = specs.find((s) => s.ticketId === a.ticketId)?.rowIndex ?? 0;
-      const bi = specs.find((s) => s.ticketId === b.ticketId)?.rowIndex ?? 0;
-      return ai - bi;
-    });
+    results.sort((a, b) => (specs.find((s) => s.ticketId === a.ticketId)?.rowIndex ?? 0) - (specs.find((s) => s.ticketId === b.ticketId)?.rowIndex ?? 0));
 
     return ok({
       mode: "apply",
       session: { id: session.id, name: session.name },
       counts: {
-        issued:  results.filter((r) => r.result === "issued").length,
-        skipped: results.filter((r) => r.result === "skipped").length,
-        failed:  results.filter((r) => r.result === "failed").length,
+        total: parsed.rows.length,
+        valid: validSpecs.length,
+        created, updated, issued, skipped, reissued,
+        validationFailed: specs.length - validSpecs.length,
+        applyFailed,
       },
-      // rows は認証済み管理者にのみ返る。url/email はここ（と UI 生成 CSV）のみ・DB 非保存。
+      // url/email はここ（と UI 生成 CSV）のみ・DB 非保存・ログ非出力。
       rows: results,
     });
   } catch (err) {
-    // serverError は汎用文言のみ（email/token/URL を漏らさない）。
     return serverError(err);
   }
 }

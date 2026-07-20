@@ -36,17 +36,24 @@ describe("mapEscapeIdHeaders", () => {
   });
 });
 
-describe("resolveTicketGroupType", () => {
-  it("完全一致・数字抽出・不明", () => {
-    expect(resolveTicketGroupType("2名")).toBe("two");
-    expect(resolveTicketGroupType("2名券")).toBe("two");   // 数字抽出
-    expect(resolveTicketGroupType("4名様")).toBe("four");
-    expect(resolveTicketGroupType("four")).toBe("four");
-    expect(resolveTicketGroupType("4")).toBe("four");
-    expect(resolveTicketGroupType("ペア")).toBeNull();
-    expect(resolveTicketGroupType("1名")).toBeNull();
-    expect(resolveTicketGroupType("3名")).toBeNull();
-    expect(resolveTicketGroupType("")).toBeNull();
+describe("resolveTicketGroupType（正式対応表・完全一致のみ）", () => {
+  it("two 判定（2名系・ペア系）", () => {
+    for (const s of ["2名", "2名券", "2人", "2人券", "2名チケット", "ペア", "ペア券", "ペアチケット"]) {
+      expect(resolveTicketGroupType(s)).toBe("two");
+    }
+    expect(resolveTicketGroupType("２名券")).toBe("two");   // 全角数字
+    expect(resolveTicketGroupType("  2名券  ")).toBe("two"); // 前後空白
+  });
+  it("four 判定（4名系）", () => {
+    for (const s of ["4名", "4名券", "4人", "4人券", "4名チケット"]) {
+      expect(resolveTicketGroupType(s)).toBe("four");
+    }
+  });
+  it("表に無い値は null（部分一致/数字抽出で誤判定しない）", () => {
+    for (const s of ["", "1名券", "3名券", "5名券", "特別席", "two", "four", "2", "4", "12名券", "4名様"]) {
+      expect(resolveTicketGroupType(s)).toBeNull();
+    }
+    expect(resolveTicketGroupType("12名券")).not.toBe("two"); // 12 を 2 と誤判定しない
     expect(resolveTicketGroupType(null)).toBeNull();
   });
 });
@@ -94,10 +101,16 @@ describe("extractTicketRow / normalizeTicketRow", () => {
     expect(s.valid).toBe(true);
     expect(s.warnings.join()).toContain("メールアドレス");
   });
-  it("不明種別は groupType=null + warning", () => {
+  it("表に無いチケット種別は validation error（Apply 対象外・groupType=null）", () => {
     const s = normalizeTicketRow(extractTicketRow({ ...row, "チケット種別": "特別席" }, mapping), 5);
+    expect(s.valid).toBe(false);
     expect(s.groupType).toBeNull();
-    expect(s.warnings.join()).toContain("判定できません");
+    expect(s.errors.join()).toContain("対応外");
+  });
+  it("チケット種別が空も validation error", () => {
+    const s = normalizeTicketRow(extractTicketRow({ ...row, "チケット種別": "" }, mapping), 6);
+    expect(s.valid).toBe(false);
+    expect(s.errors.join()).toContain("チケット種別");
   });
 });
 

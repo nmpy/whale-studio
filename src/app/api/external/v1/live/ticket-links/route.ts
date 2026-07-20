@@ -17,7 +17,8 @@ import { prisma } from "@/lib/prisma";
 import { ok, badRequest, notFound, unprocessable, serverError } from "@/lib/api-response";
 import { requireExternalWriteApiKey } from "@/lib/external-auth";
 import { getLiffIdForUrlGeneration } from "@/lib/liff/config";
-import { generateTicketToken, hashTicketToken, resolveTicketExpiresAt, buildTicketLiffUrl } from "@/lib/live-ticket-link";
+import { resolveTicketExpiresAt } from "@/lib/live-ticket-link";
+import { revokePriorValidTicketTokens, issueTicketLinkToken } from "@/lib/live-ticket-mint";
 
 export const dynamic = "force-dynamic";
 
@@ -64,31 +65,19 @@ export async function POST(req: NextRequest) {
       now,
     });
 
-    const token = generateTicketToken();
-    const tokenHash = hashTicketToken(token);
-
-    // 再送安全化 + 発行を 1 トランザクションで。旧・有効トークンを失効 → 新規発行。
-    const created = await prisma.$transaction(async (tx) => {
-      await tx.liveTicketLinkToken.updateMany({
-        where: { oaId: oa.id, workId: work.id, reservationNumber: data.reservationNumber, revokedAt: null, expiresAt: { gt: now } },
-        data:  { revokedAt: now },
-      });
-      return tx.liveTicketLinkToken.create({
-        data: {
-          oaId:              oa.id,
-          workId:            work.id,
-          reservationNumber: data.reservationNumber,
-          ticketId:          data.ticketId ?? null,
-          tokenHash,
-          expiresAt,
-        },
-        select: { id: true },
+    // 発行の正本は live-ticket-mint（外部 API / 取込 / 再発行 が同じ関数を使う）。
+    // 再送安全化（旧・有効トークン失効）→ 新規発行を 1 トランザクションで。
+    const minted = await prisma.$transaction(async (tx) => {
+      await revokePriorValidTicketTokens(tx, { oaId: oa.id, workId: work.id, reservationNumber: data.reservationNumber, now });
+      return issueTicketLinkToken(tx, {
+        oaId: oa.id, workId: work.id, reservationNumber: data.reservationNumber,
+        ticketId: data.ticketId ?? null, liffId, expiresAt,
       });
     });
 
     return ok({
-      url:           buildTicketLiffUrl(liffId, token),
-      tokenRecordId: created.id,
+      url:           minted.url,
+      tokenRecordId: minted.tokenRecordId,
       expiresAt:     expiresAt.toISOString(),
     });
   } catch (err) {
