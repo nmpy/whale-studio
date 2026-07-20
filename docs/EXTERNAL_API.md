@@ -22,9 +22,14 @@ read API はすべて `GET`・`x-whale-api-key` ヘッダー必須。加えて w
 | GET | `/api/external/v1/works` | allowlist 内 OA の **active 作品**一覧 | `WHALE_EXTERNAL_API_KEY`（read） |
 | GET | `/api/external/v1/works/:workId/phases` | 指定作品のフェーズ一覧（非 global のみ） | `WHALE_EXTERNAL_API_KEY`（read） |
 | GET | `/api/external/v1/works/:workId/phase-links` | 作品単位リンク + フェーズ単位 `adminUrl` | `WHALE_EXTERNAL_API_KEY`（read） |
-| POST | `/api/external/v1/live/ticket-links` | Live ticket-link **mint**（予約完了メール用の専用 LIFF URL 発行） | `WHALE_EXTERNAL_WRITE_API_KEY`（write） |
+| PUT | `/api/external/v1/live/sessions` | 匿名の公演セッションを冪等 upsert（`externalSessionRef`） | `WHALE_EXTERNAL_WRITE_API_KEY`（write） |
+| POST | `/api/external/v1/live/ticket-links` | 匿名予約枠の LIFF URL / トークン **発行**（`externalBookingRef` / `capacity`） | `WHALE_EXTERNAL_WRITE_API_KEY`（write） |
+| GET | `/api/external/v1/live/ticket-links` | 匿名予約枠のチケットリンク**状態取得**（PII 非返却） | `WHALE_EXTERNAL_API_KEY`（read） |
+| POST | `/api/external/v1/live/ticket-links/revoke` | 匿名予約枠のチケットリンク**失効**（冪等） | `WHALE_EXTERNAL_WRITE_API_KEY`（write） |
 
 > mint（write）はヘッダー名こそ `x-whale-api-key` だが照合先が **read と別の env**。詳細は下記「認証 →（write API 認証）」を参照。
+>
+> ⚠️ **契約変更（匿名連携・新設計）**: `POST /api/external/v1/live/ticket-links` は旧 `{ workId, reservationNumber, ticketId }` から **匿名参照ベース `{ workId, externalSessionRef, externalBookingRef, capacity }`** へ変更。予約者氏名・メール・ESCAPE.ID チケットID・予約番号・購入日時・チケット種別等の**個人情報は受け取らない**（strict schema で未知フィールドは 400）。詳細は下記「匿名連携（ウズプロCMS）Live API」。
 
 ### GET /api/external/v1/works
 
@@ -254,14 +259,24 @@ write（mint）例 — read とは **別キー**（`WHALE_EXTERNAL_WRITE_API_KEY
 BASE=https://app.whale-studio.app
 read -rs WKEY; echo   # ← Production の WHALE_EXTERNAL_WRITE_API_KEY を貼付（画面非表示）→ Enter
 
-# 予約完了メール用の専用 LIFF URL を発行（body は実装準拠: workId / reservationNumber 必須, ticketId / expiresInDays 任意）
+# ① 公演セッションを同期（匿名 externalSessionRef。氏名/メール等は送らない）
+curl -s -X PUT "$BASE/api/external/v1/live/sessions" \
+  -H "x-whale-api-key: ${WKEY}" -H "content-type: application/json" \
+  -d '{"workId":"<WORK_ID>","externalSessionRef":"uzu-session-20260817-1800","startsAt":"2026-08-17T18:00:00+09:00","endsAt":"2026-08-17T21:00:00+09:00"}' | jq
+
+# ② 匿名予約枠の専用 LIFF URL を発行（capacity は 2 / 4 のみ）
 curl -s -X POST "$BASE/api/external/v1/live/ticket-links" \
-  -H "x-whale-api-key: ${WKEY}" \
-  -H "content-type: application/json" \
-  -d '{"workId":"<WORK_ID>","reservationNumber":"<RESERVATION_NUMBER>","ticketId":"<TICKET_ID>"}' | jq
+  -H "x-whale-api-key: ${WKEY}" -H "content-type: application/json" \
+  -d '{"workId":"<WORK_ID>","externalSessionRef":"uzu-session-20260817-1800","externalBookingRef":"uzu-booking-01JXYZ","capacity":4}' | jq
 # → 200: { "success": true, "data": { "url": "https://liff.line.me/<liffId>/ticket?t=<token>", "tokenRecordId": "...", "expiresAt": "..." } }
 
-# read キー（$KEY）では mint は 401 / write キー未設定なら 503
+# ③ 状態取得（read キー） / ④ 失効（write キー・冪等）
+curl -s -H "x-whale-api-key: $KEY" "$BASE/api/external/v1/live/ticket-links?workId=<WORK_ID>&externalSessionRef=uzu-session-20260817-1800&externalBookingRef=uzu-booking-01JXYZ" | jq '.data.link'
+curl -s -X POST "$BASE/api/external/v1/live/ticket-links/revoke" \
+  -H "x-whale-api-key: ${WKEY}" -H "content-type: application/json" \
+  -d '{"workId":"<WORK_ID>","externalSessionRef":"uzu-session-20260817-1800","externalBookingRef":"uzu-booking-01JXYZ"}' | jq
+
+# 個人情報フィールド（reservationNumber/ticketId/email 等）を含めると 400 / read キーで write は 401 / write キー未設定なら 503
 unset WKEY
 ```
 
@@ -291,9 +306,74 @@ curl -s -o /dev/null -w "%{http_code}\n" -H "x-whale-api-key: wrong-key" "$BASE/
 
 ---
 
+## 匿名連携（ウズプロCMS）Live API
+
+ウズプロCMS を予約・個人情報の正本とし、Whale Studio へは **匿名参照ID のみ**を渡して LIFF URL / トークンを扱う新設計。氏名・メール・チケットID 等の個人情報は Whale Studio に送信・保存しない。
+
+### 用語
+
+| 語 | 意味 |
+|---|---|
+| `externalSessionRef` | ウズプロCMS が生成する**匿名の公演参照**（安定 ID）。例: `uzu-session-20260817-1800`。個人情報ではない。 |
+| `externalBookingRef` | ウズプロCMS が生成する**匿名の予約枠参照**（安定 ID）。例: `uzu-booking-01JXYZ`。個人情報ではない。 |
+| `capacity` | 予約枠の定員。**初期対応は `2` / `4` のみ許可**（他値は 400）。正本は `capacity`（`groupType` 互換 2→two/4→four も併記）。 |
+
+> ⚠️ 以下は **送信してはいけない**（strict schema で未知フィールドは 400 拒否）: `purchaserName` / `name` / `email` / `ticketId` / `reservationNumber` / `purchasedAt` / `ticketType` / 電話番号 / 住所 等の個人情報。
+
+### PUT /api/external/v1/live/sessions（公演セッション冪等 upsert）
+
+```json
+{ "workId": "<WORK_ID>", "externalSessionRef": "uzu-session-20260817-1800",
+  "startsAt": "2026-08-17T18:00:00+09:00", "endsAt": "2026-08-17T21:00:00+09:00" }
+```
+- キー `(oaId, workId, externalSessionRef)` で冪等 upsert。初回 `status=draft`。
+- 再送は**日時のみ更新**し status は据え置き（active→draft 降格 / ended 再オープンをしない）。
+- レスポンス: `{ "success": true, "data": { "session": { "id", "externalSessionRef", "status", "startsAt", "endsAt" } } }`（内部 id を返すが、以後の操作は `externalSessionRef` で行える）。
+
+### POST /api/external/v1/live/ticket-links（発行）
+
+```json
+{ "workId": "<WORK_ID>", "externalSessionRef": "uzu-session-20260817-1800",
+  "externalBookingRef": "uzu-booking-01JXYZ", "capacity": 4 }
+```
+- 事前に PUT /sessions で公演セッションを同期しておくこと（未同期は **409**）。
+- 1 トランザクションで「匿名 LiveTeam を upsert（個人情報なし）→ 同一予約枠の旧・有効トークンを失効 → 新トークン発行」。
+- **再送すると旧 URL は失効し、常に最新 1 件だけが有効**。ウズプロCMS は**返却された最新 URL を正本として保存**すること。
+- レスポンス: `{ "success": true, "data": { "url": "https://liff.line.me/<liffId>/ticket?t=<token>", "tokenRecordId": "...", "expiresAt": "..." } }`。
+- **平文 URL / トークンはログ・一般公開領域へ出さない**（DB は tokenHash のみ・レスポンスに一度だけ載る）。
+
+### GET /api/external/v1/live/ticket-links（状態取得）
+
+`?workId=...&externalSessionRef=...&externalBookingRef=...`
+
+```json
+{ "success": true, "data": { "link": {
+  "externalSessionRef": "uzu-session-20260817-1800", "externalBookingRef": "uzu-booking-01JXYZ",
+  "state": "active", "expiresAt": "2026-08-20T09:00:00.000Z",
+  "capacity": 4, "registrationCount": 0, "sessionStatus": "draft" } } }
+```
+- `state`: `active` / `revoked` / `expired`（有効トークンが無ければ最新履歴から判定）。
+- `registrationCount` は対象 team の LiveParticipant 数（登録実装は後続 Phase。現状は通常 0）。
+- **平文トークン / tokenHash / LINE UID / 氏名 / メール / ESCAPE.ID チケットID は返さない。**
+
+### POST /api/external/v1/live/ticket-links/revoke（失効）
+
+```json
+{ "workId": "<WORK_ID>", "externalSessionRef": "uzu-session-20260817-1800", "externalBookingRef": "uzu-booking-01JXYZ" }
+```
+- 対象予約枠の有効トークンをすべて失効（**冪等** — 既に失効済みでも 200。`revokedAt` は上書きせず履歴を保持）。
+- `oaId` / `workId` を条件に含め、**別 OA・別 work のトークンは失効できない**。LiveTeam / LiveSession / LiveParticipant は削除しない。
+
+### LIFF resolve の解決順（新旧互換）
+
+`/api/liff/tickets/resolve` は、トークンに `liveSessionId` / `teamId` があれば**それを直接解決**（整合性検証: team↔session 一致・oaId 一致・workId 矛盾なし）。無い**旧トークン（#588/#589）のみ** 従来の `reservationNumber` / `ticketId` 照合にフォールバックする。匿名 team は `reservationNumber=null` でも解決可能。resolve は従来どおり**表示専用**（LINE 認証・参加登録はしない）。
+
+---
+
 ## 変更履歴
 
 | PR | 内容 |
 |---|---|
 | **#574** | 外部連携 API 新設（`/works`・`/phases`・`/phase-links`）。`x-whale-api-key` 認証 + `WHALE_EXTERNAL_OA_IDS` allowlist（fail closed）。読み取り専用・DB migration なし。 |
 | **#575** | links を canonical `https://app.whale-studio.app` に統一。専用 env `WHALE_EXTERNAL_PUBLIC_BASE_URL`（未設定時 canonical）を導入し、共有 `NEXT_PUBLIC_*` から切り離し。 |
+| **匿名連携 Phase 1** | ウズプロCMS↔Whale Studio の責務境界に沿い、匿名参照（`externalSessionRef` / `externalBookingRef`）+ `capacity` ベースの Live API を追加（PUT `/live/sessions`、POST/GET `/live/ticket-links`、POST `/live/ticket-links/revoke`）。`POST /live/ticket-links` は匿名契約へ**変更**（個人情報を受け取らない・strict 400）。additive migration（`external_session_ref` / `external_booking_ref` / `capacity` + 索引）。resolve は token の `liveSessionId`/`teamId` 優先・legacy fallback 維持。LINE 認証 / 参加登録 / CMS Webhook は未実装（後続 Phase）。 |
