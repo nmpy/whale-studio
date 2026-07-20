@@ -131,6 +131,7 @@ describe("apply（team upsert + token 発行・共通 mint service 経由）", (
     expect(json.data.counts).toMatchObject({ total: 2, valid: 2, created: 2, updated: 0, issued: 2, skipped: 0, reissued: 0, validationFailed: 0, applyFailed: 0 });
     expect(mp.liveTeam.create).toHaveBeenCalledTimes(2);
     expect(mp.liveTeam.create.mock.calls[0][0].data.reservationNumber).toBe("TCK-0001");
+    expect(mp.liveTeam.create.mock.calls[0][0].data.purchaserName).toBeNull(); // 氏名は DB 非保存
     expect(mp.liveParticipant.create).not.toHaveBeenCalled();
     expect(mp.liveTicketLinkToken.create).toHaveBeenCalledTimes(2);
     const tok = mp.liveTicketLinkToken.create.mock.calls[0][0].data;
@@ -139,9 +140,10 @@ describe("apply（team upsert + token 発行・共通 mint service 経由）", (
     expect("url" in tok).toBe(false);
     const issued = json.data.rows.filter((r: { result: string }) => r.result === "issued");
     expect(issued[0].url).toMatch(/^https:\/\/liff\.line\.me\/1234-abcd\/ticket\?t=/);
-    const writes = JSON.stringify([...mp.liveTeam.create.mock.calls, ...mp.liveTicketLinkToken.create.mock.calls]);
-    expect(writes).not.toContain("taro@example.com");
-    expect(writes).not.toContain("liff.line.me");
+    const writes = JSON.stringify([...mp.liveTeam.create.mock.calls, ...mp.liveTeam.update.mock.calls, ...mp.liveTicketLinkToken.create.mock.calls]);
+    expect(writes).not.toContain("taro@example.com"); // メール非保存
+    expect(writes).not.toContain("山田太郎");           // 氏名非保存
+    expect(writes).not.toContain("liff.line.me");      // 平文 URL 非保存
     const logged = [...errSpy.mock.calls, ...logSpy.mock.calls].map((a) => JSON.stringify(a)).join();
     expect(logged).not.toContain("liff.line.me");
     errSpy.mockRestore(); logSpy.mockRestore();

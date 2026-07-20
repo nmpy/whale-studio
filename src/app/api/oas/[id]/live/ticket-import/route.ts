@@ -283,7 +283,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       await prisma.$transaction(async (tx) => {
         for (const s of validSpecs) {
           const existing = await tx.liveTeam.findFirst({ where: { liveSessionId: sessionId, ticketId: s.ticketId }, select: { id: true } });
-          const teamData = { reservationNumber: s.reservationNumber, ticketId: s.ticketId, groupType: s.groupType, purchaserName: s.purchaserName, reservedAt: s.reservedAt };
+          // 氏名・メールは DB 非保存（この取込は purchaserName を null 固定。氏名は結果 CSV 出力にのみ載る）。
+          const teamData = { reservationNumber: s.reservationNumber, ticketId: s.ticketId, groupType: s.groupType, purchaserName: null, reservedAt: s.reservedAt };
           let teamId: string;
           if (existing) { await tx.liveTeam.update({ where: { id: existing.id }, data: teamData }); teamId = existing.id; updated++; }
           else { const t = await tx.liveTeam.create({ data: { oaId, liveSessionId: sessionId, name: s.teamName, ...teamData }, select: { id: true } }); teamId = t.id; created++; }

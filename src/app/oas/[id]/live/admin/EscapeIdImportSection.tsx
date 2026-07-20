@@ -7,7 +7,7 @@
 //   - 【重要】平文 LIFF URL は **React state に保持しない**（useRef のみ・DB 非保存・ログ/監視非送信）。
 //     URL は Apply レスポンス → ref → CSV/コピー のみ。再取得不可（必要なら再発行）。
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { buildTicketResultCsv, type TicketResultRow } from "@/lib/live-ticket-import";
 
 type SessionOpt = { id: string; work_id: string | null; name: string; status: string; starts_at: string | null };
@@ -47,17 +47,24 @@ export function EscapeIdImportSection({
   const [busy, setBusy] = useState(false);
   // 平文 URL 付き結果は state ではなく ref に一時保持（レンダー・監視・永続化の対象外）。
   const urlRowsRef = useRef<TicketResultRow[]>([]);
+  // unmount 時に平文 URL の参照を明示的に破棄（GC 前に到達不能化）。
+  useEffect(() => () => { urlRowsRef.current = []; }, []);
 
   const workSessions = useMemo(
     () => sessions.filter((s) => s.work_id === workId && s.status !== "ended"),
     [sessions, workId],
   );
 
+  // 前回の結果（URL 付き ref を含む）を破棄。Session/ファイル変更・新規実行時に呼ぶ。
+  const clearResults = () => { setPreview(null); setApplied(null); urlRowsRef.current = []; };
+
   const submit = async (mode: "preview" | "apply", reissueIds?: string[]) => {
     if (!workId) { onError("先に対象 work を選択してください"); return; }
     if (!sessionId) { onError("対象 Session を選択してください"); return; }
     if (!file) { onError("ファイルを選択してください"); return; }
     setBusy(true);
+    // 実行開始時に前回結果を破棄（失敗しても古い成功 URL を再ダウンロードできないようにする）。
+    if (mode === "apply") clearResults(); else { setApplied(null); urlRowsRef.current = []; }
     try {
       const fd = new FormData();
       fd.append("file", file);
@@ -101,7 +108,8 @@ export function EscapeIdImportSection({
     if (r?.url) void navigator.clipboard?.writeText(r.url);
   };
 
-  const resetFile = (f: File | null) => { setFile(f); setPreview(null); setApplied(null); urlRowsRef.current = []; };
+  const resetFile = (f: File | null) => { setFile(f); clearResults(); };
+  const onSessionChange = (id: string) => { setSessionId(id); clearResults(); };
 
   return (
     <section style={{ ...box, marginBottom: 16 }}>
@@ -115,7 +123,7 @@ export function EscapeIdImportSection({
       {workSessions.length === 0 ? (
         <p style={{ fontSize: 13, color: "#b45309" }}>この work に選択可能な Session がありません。先に Session を作成してください。</p>
       ) : (
-        <select value={sessionId} onChange={(e) => setSessionId(e.target.value)} style={{ ...btn, cursor: "pointer", minWidth: 320 }} disabled={busy}>
+        <select value={sessionId} onChange={(e) => onSessionChange(e.target.value)} style={{ ...btn, cursor: "pointer", minWidth: 320 }} disabled={busy}>
           <option value="">— Session を選択 —</option>
           {workSessions.map((s) => (
             <option key={s.id} value={s.id}>
