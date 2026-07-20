@@ -16,8 +16,9 @@
 //
 // 参照: [[live-sync]]（webhook 経路の共有元）, live-ticket-link（照合ロジック）
 
-import { Prisma, type LiveParticipantStatus } from "@prisma/client";
+import { Prisma, type LiveParticipantStatus, type LiveOrigin } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { NATIVE_ORIGIN } from "@/lib/live-origin";
 
 /** find-or-create コアを prisma / tx どちらでも受けられるように最小の型で受ける。 */
 type Db = Prisma.TransactionClient | typeof prisma;
@@ -37,6 +38,10 @@ export function teamCapacity(groupType: string | null | undefined): number | nul
  *   - displayName は指定時のみ書き込む（未指定なら従来挙動と完全一致 = webhook 回帰なし）。
  *
  * 呼び出し側で必要なら **事前に対象 team 行をロック**してから呼ぶこと（本関数自体はロックしない）。
+ *
+ * origin: 新規作成時に付与するプロダクト境界（解決した token / 親 Session の origin を継承する）。
+ *   webhook 由来の自己申告連携は既定 NATIVE。LIFF link は解決した token.origin を渡すこと。
+ *   既存 participant の更新時は origin を書き換えない（作成時に確定した正本を維持）。
  */
 export async function upsertLiveTeamParticipant(
   db: Db,
@@ -47,11 +52,14 @@ export async function upsertLiveTeamParticipant(
     lineUserId: string;
     now: Date;
     displayName?: string | null;
+    /** 新規作成時の origin（既定 NATIVE）。解決済み token / 親 Session の origin を継承させる。 */
+    origin?: LiveOrigin;
     /** 呼び出し側で既に取得済みなら渡して二重 findFirst を避ける（同一 tx 内の最適化）。 */
     existing?: { id: string; status: LiveParticipantStatus } | null;
   },
 ): Promise<{ participantId: string; created: boolean; priorStatus: LiveParticipantStatus | null }> {
   const { oaId, liveSessionId, teamId, lineUserId, now, displayName } = args;
+  const origin = args.origin ?? NATIVE_ORIGIN;
 
   const existing = args.existing !== undefined
     ? args.existing
@@ -80,6 +88,7 @@ export async function upsertLiveTeamParticipant(
       liveSessionId,
       teamId,
       lineUserId,
+      origin, // 解決した token / 親 Session の origin を継承（既定 NATIVE）
       status:     "active",
       lastSeenAt: now,
       ...(displayName ? { displayName } : {}),
@@ -130,12 +139,14 @@ export async function linkLineUserToResolvedLiveTeam(args: {
   lineUserId: string;
   displayName?: string | null;
   tokenId: string;
+  /** 解決した token の origin。作成する Participant に継承する（既定 NATIVE）。 */
+  origin?: LiveOrigin;
   /** eventLog / token 由来メタ用。"liff_ticket" 固定運用だが将来拡張のため引数化。 */
   via?: string;
   now?: Date;
 }): Promise<LinkResult> {
   const {
-    oaId, liveSessionId, teamId, groupType, lineUserId, displayName, tokenId,
+    oaId, liveSessionId, teamId, groupType, lineUserId, displayName, tokenId, origin,
     via = "liff_ticket",
   } = args;
   const now = args.now ?? new Date();
@@ -162,7 +173,7 @@ export async function linkLineUserToResolvedLiveTeam(args: {
 
     // (4) find-or-create（共通コア・既取得の existing を渡して二重 find を避ける）。
     const { participantId, created } = await upsertLiveTeamParticipant(tx, {
-      oaId, liveSessionId, teamId, lineUserId, now, displayName, existing,
+      oaId, liveSessionId, teamId, lineUserId, now, displayName, origin, existing,
     });
 
     // (5) 実際に新規作成したときだけ token 日時更新 + checked_in event（冪等再実行では増やさない）。

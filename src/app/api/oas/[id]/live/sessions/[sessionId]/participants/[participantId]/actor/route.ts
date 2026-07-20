@@ -18,6 +18,7 @@ import { z, ZodError } from "zod";
 import { prisma } from "@/lib/prisma";
 import { ok, badRequest, notFound, serverError } from "@/lib/api-response";
 import { authorizeLiveSection } from "@/lib/live-auth";
+import { NATIVE_ORIGIN } from "@/lib/live-origin";
 
 export const dynamic = "force-dynamic";
 
@@ -78,13 +79,13 @@ export async function PATCH(
 
   // session + participant が OA / session 階層に紐付くことを毎回検証 (= 横断アクセス防止)
   const session = await prisma.liveSession.findFirst({
-    where:  { id: params.sessionId, oaId: params.id },
+    where:  { id: params.sessionId, oaId: params.id, origin: NATIVE_ORIGIN },
     select: { id: true, workId: true },
   });
   if (!session) return notFound("LiveSession");
 
   const existing = await prisma.liveParticipant.findFirst({
-    where:  { id: params.participantId, liveSessionId: params.sessionId, oaId: params.id },
+    where:  { id: params.participantId, liveSessionId: params.sessionId, oaId: params.id, origin: NATIVE_ORIGIN },
     select: { id: true },
   });
   if (!existing) return notFound("LiveParticipant");

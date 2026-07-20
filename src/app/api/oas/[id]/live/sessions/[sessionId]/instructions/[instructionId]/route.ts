@@ -9,6 +9,7 @@ import { z, ZodError } from "zod";
 import { prisma } from "@/lib/prisma";
 import { ok, badRequest, notFound, serverError } from "@/lib/api-response";
 import { authorizeLive } from "@/lib/live-auth";
+import { NATIVE_ORIGIN } from "@/lib/live-origin";
 
 export const dynamic = "force-dynamic";
 
@@ -79,7 +80,7 @@ export async function PATCH(
 
     if (data.participant_id) {
       const p = await prisma.liveParticipant.findFirst({
-        where:  { id: data.participant_id, liveSessionId: params.sessionId, oaId: params.id },
+        where:  { id: data.participant_id, liveSessionId: params.sessionId, oaId: params.id, origin: NATIVE_ORIGIN },
         select: { id: true },
       });
       if (!p) return badRequest("participant_id がセッションに紐付いていません");

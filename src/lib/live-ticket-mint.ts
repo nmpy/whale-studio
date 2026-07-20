@@ -13,6 +13,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { generateTicketToken, hashTicketToken, buildTicketLiffUrl } from "@/lib/live-ticket-link";
+import { UZU_PRO_ORIGIN } from "@/lib/live-origin";
 
 type Db = Prisma.TransactionClient | typeof prisma;
 
@@ -57,14 +58,19 @@ export async function upsertAnonymousTeam(
     create: {
       oaId: args.oaId,
       liveSessionId: args.liveSessionId,
+      origin: UZU_PRO_ORIGIN, // 親 UZU_PRO Session 配下の匿名 team（origin 継承）
       externalBookingRef: args.externalBookingRef,
       capacity: args.capacity,
       groupType,
       name: deriveAnonymousTeamName(args.externalBookingRef),
       // 個人情報は保存しない: reservationNumber / ticketId / purchaserName / memo は未設定（null）。
     },
-    select: { id: true },
+    select: { id: true, origin: true },
   });
+  // 不変条件: native team は externalBookingRef を設定しない → 非 null ref の upsert は UZU_PRO のみに一致。
+  if (team.origin !== UZU_PRO_ORIGIN) {
+    throw new Error(`[live-ticket-mint] origin boundary violation: matched non-UZU_PRO team for externalBookingRef`);
+  }
   return { id: team.id };
 }
 
@@ -90,6 +96,7 @@ export async function revokeAnonymousBookingTokens(
   const where: Prisma.LiveTicketLinkTokenWhereInput = {
     oaId: args.oaId,
     workId: args.workId,
+    origin: UZU_PRO_ORIGIN, // external v2 は UZU_PRO のみ（NATIVE token を失効できない）
     externalSessionRef: args.externalSessionRef,
     externalBookingRef: args.externalBookingRef,
     revokedAt: null,
@@ -124,6 +131,7 @@ export async function issueAnonymousTicketToken(
     data: {
       oaId: args.oaId,
       workId: args.workId,
+      origin: UZU_PRO_ORIGIN, // 発行元 UZU_PRO（親 Session/Team の origin を継承）
       reservationNumber: args.externalBookingRef, // schema 互換マップ（外部契約では非公開）
       ticketId: null,
       externalSessionRef: args.externalSessionRef,

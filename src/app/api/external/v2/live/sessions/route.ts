@@ -51,9 +51,9 @@ export async function PUT(req: NextRequest) {
       endsAt:             data.endsAt ? new Date(data.endsAt) : null,
     });
 
+    // 外部契約: 内部主キー（LiveSession.id）は返さない。CMS は externalSessionRef で操作する。
     return ok({
       session: {
-        id:                 session.id,
         externalSessionRef: session.externalSessionRef,
         status:             session.status,
         startsAt:           session.startsAt ? session.startsAt.toISOString() : null,

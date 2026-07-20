@@ -11,8 +11,9 @@
 //   - 再送（同一 oaId + workId + externalSessionRef）は日時のみ更新し status は据え置く。
 //     → active を draft へ戻さない / ended を無条件で再オープンしない。
 
-import { Prisma, LiveSessionStatus } from "@prisma/client";
+import { Prisma, LiveSessionStatus, LiveOrigin } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { UZU_PRO_ORIGIN } from "@/lib/live-origin";
 
 type Db = Prisma.TransactionClient | typeof prisma;
 
@@ -28,6 +29,7 @@ export interface ExternalSessionResult {
   id: string;
   externalSessionRef: string;
   status: LiveSessionStatus;
+  origin: LiveOrigin;
   startsAt: Date | null;
   endsAt: Date | null;
 }
@@ -59,22 +61,29 @@ export async function upsertExternalLiveSession(
     },
     // 再送: 日時のみ更新。status / name は据え置き。
     update: { startsAt: args.startsAt, endsAt: args.endsAt },
-    // 初回: draft で作成。name は匿名（externalSessionRef ベース）。
+    // 初回: draft・origin=UZU_PRO で作成。name は匿名（externalSessionRef ベース）。
     create: {
       oaId: args.oaId,
       workId: args.workId,
       externalSessionRef: args.externalSessionRef,
+      origin: UZU_PRO_ORIGIN,
       name: deriveAnonymousSessionName(args.externalSessionRef),
       status: "draft",
       startsAt: args.startsAt,
       endsAt: args.endsAt,
     },
-    select: { id: true, externalSessionRef: true, status: true, startsAt: true, endsAt: true },
+    select: { id: true, externalSessionRef: true, status: true, origin: true, startsAt: true, endsAt: true },
   });
+  // 不変条件: native は externalSessionRef を設定しない → 非 null ref の upsert は UZU_PRO のみに一致する。
+  // 万一 NATIVE 行に一致した場合は境界違反として拒否（tripwire）。
+  if (session.origin !== UZU_PRO_ORIGIN) {
+    throw new Error(`[live-external-session] origin boundary violation: matched non-UZU_PRO session for externalSessionRef`);
+  }
   return {
     id: session.id,
     externalSessionRef: session.externalSessionRef ?? args.externalSessionRef,
     status: session.status,
+    origin: session.origin,
     startsAt: session.startsAt,
     endsAt: session.endsAt,
   };
@@ -93,14 +102,16 @@ export async function findExternalLiveSession(
       oaId: args.oaId,
       workId: args.workId,
       externalSessionRef: args.externalSessionRef,
+      origin: UZU_PRO_ORIGIN, // external v2 は UZU_PRO のみを扱う（NATIVE は取得できない）
     },
-    select: { id: true, externalSessionRef: true, status: true, startsAt: true, endsAt: true },
+    select: { id: true, externalSessionRef: true, status: true, origin: true, startsAt: true, endsAt: true },
   });
   if (!s) return null;
   return {
     id: s.id,
     externalSessionRef: s.externalSessionRef ?? args.externalSessionRef,
     status: s.status,
+    origin: s.origin,
     startsAt: s.startsAt,
     endsAt: s.endsAt,
   };

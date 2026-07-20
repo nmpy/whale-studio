@@ -62,15 +62,17 @@ describe("v2 PUT /live/sessions", () => {
 
   it("10: 新しい externalSessionRef で draft 作成（冪等 upsert キー）", async () => {
     okWork();
-    mp.liveSession.upsert.mockResolvedValue({ id: "s1", externalSessionRef: "uzu-s-1", status: "draft", startsAt: null, endsAt: null });
+    mp.liveSession.upsert.mockResolvedValue({ id: "s1", externalSessionRef: "uzu-s-1", status: "draft", origin: "UZU_PRO", startsAt: null, endsAt: null });
     const json = await (await sessionsPut(putReq(body))).json();
-    expect(json.data.session).toMatchObject({ id: "s1", externalSessionRef: "uzu-s-1", status: "draft" });
+    // 外部契約: 内部主キー（id）は返さない。externalSessionRef / status のみ。
+    expect(json.data.session).toMatchObject({ externalSessionRef: "uzu-s-1", status: "draft" });
+    expect("id" in json.data.session).toBe(false);
     expect(mp.liveSession.upsert.mock.calls[0][0].where).toEqual({ oaId_workId_externalSessionRef: { oaId: "oa1", workId: "w1", externalSessionRef: "uzu-s-1" } });
     expect(mp.liveSession.create).not.toHaveBeenCalled();
   });
   it("再送は日時のみ更新し status を変更しない（active→draft/ended 再オープン防止）", async () => {
     okWork();
-    mp.liveSession.upsert.mockResolvedValue({ id: "s1", externalSessionRef: "uzu-s-1", status: "active", startsAt: null, endsAt: null });
+    mp.liveSession.upsert.mockResolvedValue({ id: "s1", externalSessionRef: "uzu-s-1", status: "active", origin: "UZU_PRO", startsAt: null, endsAt: null });
     await sessionsPut(putReq(body));
     const update = mp.liveSession.upsert.mock.calls[0][0].update;
     expect("status" in update).toBe(false);
@@ -78,7 +80,7 @@ describe("v2 PUT /live/sessions", () => {
   });
   it("別 OA の externalSessionRef と干渉しない（where に oaId）", async () => {
     okWork();
-    mp.liveSession.upsert.mockResolvedValue({ id: "s1", externalSessionRef: "uzu-s-1", status: "draft", startsAt: null, endsAt: null });
+    mp.liveSession.upsert.mockResolvedValue({ id: "s1", externalSessionRef: "uzu-s-1", status: "draft", origin: "UZU_PRO", startsAt: null, endsAt: null });
     await sessionsPut(putReq(body));
     expect(mp.liveSession.upsert.mock.calls[0][0].where.oaId_workId_externalSessionRef.oaId).toBe("oa1");
   });
@@ -107,8 +109,8 @@ describe("v2 POST /live/ticket-links", () => {
   const ok = () => {
     mp.work.findUnique.mockResolvedValue({ id: "w1", oaId: "oa1" });
     mp.oa.findUnique.mockResolvedValue({ id: "oa1", liffId: "1111-liff" });
-    mp.liveSession.findFirst.mockResolvedValue({ id: "s1", externalSessionRef: "uzu-s-1", status: "draft", startsAt: new Date("2026-08-20T09:00:00Z"), endsAt: null });
-    mp.liveTeam.upsert.mockResolvedValue({ id: "team1" });
+    mp.liveSession.findFirst.mockResolvedValue({ id: "s1", externalSessionRef: "uzu-s-1", status: "draft", origin: "UZU_PRO", startsAt: new Date("2026-08-20T09:00:00Z"), endsAt: null });
+    mp.liveTeam.upsert.mockResolvedValue({ id: "team1", origin: "UZU_PRO" });
     mp.liveTicketLinkToken.create.mockResolvedValue({ id: "tok1" });
   };
 
@@ -116,7 +118,10 @@ describe("v2 POST /live/ticket-links", () => {
     ok();
     const json = await (await linkPost(postReq(validBody))).json();
     expect(json.data.url).toMatch(/^https:\/\/liff\.line\.me\/1111-liff\/ticket\?t=[A-Za-z0-9_-]+$/);
-    expect(json.data.tokenRecordId).toBe("tok1");
+    // 外部契約: 内部主キー（tokenRecordId）は返さない。匿名 ref と URL / expiresAt のみ。
+    expect(json.data).toMatchObject({ externalSessionRef: "uzu-s-1", externalBookingRef: "uzu-b-1" });
+    expect(typeof json.data.expiresAt).toBe("string");
+    expect("tokenRecordId" in json.data).toBe(false);
     expect(mp.liveTeam.upsert.mock.calls[0][0].where).toEqual({ liveSessionId_externalBookingRef: { liveSessionId: "s1", externalBookingRef: "uzu-b-1" } });
     expect(mp.liveTeam.create).not.toHaveBeenCalled();
   });
@@ -181,7 +186,7 @@ describe("v2 GET /live/ticket-links", () => {
   const qs = { workId: "w1", externalSessionRef: "uzu-s-1", externalBookingRef: "uzu-b-1" };
   const setup = () => {
     mp.work.findUnique.mockResolvedValue({ id: "w1", oaId: "oa1" });
-    mp.liveSession.findFirst.mockResolvedValue({ id: "s1", externalSessionRef: "uzu-s-1", status: "draft", startsAt: null, endsAt: null });
+    mp.liveSession.findFirst.mockResolvedValue({ id: "s1", externalSessionRef: "uzu-s-1", status: "draft", origin: "UZU_PRO", startsAt: null, endsAt: null });
     mp.liveTeam.findFirst.mockResolvedValue({ id: "team1", capacity: 4 });
     mp.liveParticipant.count.mockResolvedValue(0);
   };
@@ -202,7 +207,7 @@ describe("v2 GET /live/ticket-links", () => {
     mp.liveTicketLinkToken.findFirst.mockResolvedValueOnce({ expiresAt: new Date(Date.now() + 8.64e7) });
     const json = await (await linkGet(getReq(qs))).json();
     expect(json.data.link.registrationCount).toBe(2);
-    expect(mp.liveParticipant.count).toHaveBeenCalledWith({ where: { teamId: "team1" } });
+    expect(mp.liveParticipant.count).toHaveBeenCalledWith({ where: { teamId: "team1", origin: "UZU_PRO" } });
   });
   it("19: tokenHash/平文/LINE UID/PII を返さない", async () => {
     setup();
@@ -289,6 +294,53 @@ describe("resolve（v2 anonymous token 直接解決）", () => {
   it("revoked/expired は 410（解決に進まない）", async () => {
     mp.liveTicketLinkToken.findUnique.mockResolvedValue({ ...directToken, revokedAt: new Date() });
     expect((await resolvePost(resolveReq({ token: "x".repeat(43) }))).status).toBe(410);
+  });
+});
+
+// ───────── origin 分離（external v2 は UZU_PRO のみを扱う）─────────
+describe("origin 分離（external v2 = UZU_PRO 境界）", () => {
+  // 6: external v2 は NATIVE を get/update/revoke できない（where に origin=UZU_PRO）
+  it("6a: GET/POST は session を origin=UZU_PRO で引く（NATIVE は取得できない）", async () => {
+    // GET
+    mp.work.findUnique.mockResolvedValue({ id: "w1", oaId: "oa1" });
+    mp.liveSession.findFirst.mockResolvedValue({ id: "s1", externalSessionRef: "uzu-s-1", status: "draft", origin: "UZU_PRO", startsAt: null, endsAt: null });
+    mp.liveTeam.findFirst.mockResolvedValue({ id: "team1", capacity: 4 });
+    mp.liveParticipant.count.mockResolvedValue(0);
+    mp.liveTicketLinkToken.findFirst.mockResolvedValueOnce({ expiresAt: new Date(Date.now() + 8.64e7) });
+    await linkGet(getReq({ workId: "w1", externalSessionRef: "uzu-s-1", externalBookingRef: "uzu-b-1" }));
+    expect(mp.liveSession.findFirst.mock.calls[0][0].where.origin).toBe("UZU_PRO");
+    // team gate も origin=UZU_PRO（test 8: UZU_PRO session は NATIVE team を取得できない）
+    expect(mp.liveTeam.findFirst.mock.calls[0][0].where.origin).toBe("UZU_PRO");
+    // token 状態照会も origin=UZU_PRO
+    expect(mp.liveTicketLinkToken.findFirst.mock.calls[0][0].where.origin).toBe("UZU_PRO");
+  });
+  it("6b: revoke は updateMany where に origin=UZU_PRO（NATIVE token を失効できない）", async () => {
+    mp.work.findUnique.mockResolvedValue({ id: "w1", oaId: "oa1" });
+    mp.liveTicketLinkToken.updateMany.mockResolvedValue({ count: 0 });
+    await revokePost(revokeReq({ workId: "w1", externalSessionRef: "uzu-s-1", externalBookingRef: "uzu-b-1" }));
+    expect(mp.liveTicketLinkToken.updateMany.mock.calls[0][0].where.origin).toBe("UZU_PRO");
+  });
+
+  // 11: external v2 レスポンスは内部主キーを一切含まない（id / tokenRecordId / teamId / liveSessionId）
+  it("11a: PUT /sessions レスポンスに内部 ID を含まない", async () => {
+    mp.work.findUnique.mockResolvedValue({ id: "w1", oaId: "oa1" });
+    mp.liveSession.upsert.mockResolvedValue({ id: "SESSION_INTERNAL_ID", externalSessionRef: "uzu-s-1", status: "draft", origin: "UZU_PRO", startsAt: null, endsAt: null });
+    const json = await (await sessionsPut(putReq({ workId: "w1", externalSessionRef: "uzu-s-1", startsAt: "2026-08-17T18:00:00+09:00", endsAt: "2026-08-17T21:00:00+09:00" }))).json();
+    const body = JSON.stringify(json);
+    expect(body).not.toContain("SESSION_INTERNAL_ID");
+    for (const k of ["tokenRecordId", "teamId", "liveSessionId"]) expect(body).not.toContain(k);
+    expect("id" in json.data.session).toBe(false);
+  });
+  it("11b: POST /ticket-links レスポンスに内部 ID を含まない", async () => {
+    mp.work.findUnique.mockResolvedValue({ id: "w1", oaId: "oa1" });
+    mp.oa.findUnique.mockResolvedValue({ id: "oa1", liffId: "1111-liff" });
+    mp.liveSession.findFirst.mockResolvedValue({ id: "SESSION_INTERNAL_ID", externalSessionRef: "uzu-s-1", status: "draft", origin: "UZU_PRO", startsAt: new Date("2026-08-20T09:00:00Z"), endsAt: null });
+    mp.liveTeam.upsert.mockResolvedValue({ id: "TEAM_INTERNAL_ID", origin: "UZU_PRO" });
+    mp.liveTicketLinkToken.create.mockResolvedValue({ id: "TOKEN_INTERNAL_ID" });
+    const json = await (await linkPost(postReq({ workId: "w1", externalSessionRef: "uzu-s-1", externalBookingRef: "uzu-b-1", capacity: 4 }))).json();
+    const body = JSON.stringify(json);
+    for (const v of ["SESSION_INTERNAL_ID", "TEAM_INTERNAL_ID", "TOKEN_INTERNAL_ID"]) expect(body).not.toContain(v);
+    for (const k of ["tokenRecordId", "teamId", "liveSessionId"]) expect(body).not.toContain(k);
   });
 });
 

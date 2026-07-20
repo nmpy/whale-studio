@@ -24,6 +24,7 @@ import { getLiffIdForUrlGeneration } from "@/lib/liff/config";
 import { resolveTicketExpiresAt, ticketTokenState } from "@/lib/live-ticket-link";
 import { findExternalLiveSession } from "@/lib/live-external-session";
 import { mintAnonymousTicketLink } from "@/lib/live-ticket-mint";
+import { UZU_PRO_ORIGIN } from "@/lib/live-origin";
 
 export const dynamic = "force-dynamic";
 
@@ -91,10 +92,12 @@ export async function POST(req: NextRequest) {
       }),
     );
 
+    // 外部契約: 内部主キー（LiveSession/Team/token の id・tokenRecordId）は返さない。匿名 ref と URL のみ。
     return ok({
-      url:           minted.url,
-      tokenRecordId: minted.tokenRecordId,
-      expiresAt:     minted.expiresAt.toISOString(),
+      externalSessionRef: data.externalSessionRef,
+      externalBookingRef: data.externalBookingRef,
+      url:                minted.url,
+      expiresAt:          minted.expiresAt.toISOString(),
     });
   } catch (err) {
     if (err instanceof ZodError) return badRequest(err.errors[0]?.message ?? "入力が不正です");
@@ -124,15 +127,15 @@ export async function GET(req: NextRequest) {
     if (!session) return notFound("公演セッション");
 
     const team = await prisma.liveTeam.findFirst({
-      where:  { liveSessionId: session.id, externalBookingRef: data.externalBookingRef },
+      where:  { liveSessionId: session.id, externalBookingRef: data.externalBookingRef, origin: UZU_PRO_ORIGIN },
       select: { id: true, capacity: true },
     });
     if (!team) return notFound("チケットリンク");
 
     const now = new Date();
-    // 有効トークン（未失効・期限内）があれば active。無ければ最新履歴から revoked/expired を判定。
+    // 有効トークン（未失効・期限内）があれば active。無ければ最新履歴から revoked/expired を判定。origin=UZU_PRO 限定。
     const activeTok = await prisma.liveTicketLinkToken.findFirst({
-      where:   { oaId: work.oaId, workId: work.id, externalSessionRef: data.externalSessionRef, externalBookingRef: data.externalBookingRef, revokedAt: null, expiresAt: { gt: now } },
+      where:   { oaId: work.oaId, workId: work.id, origin: UZU_PRO_ORIGIN, externalSessionRef: data.externalSessionRef, externalBookingRef: data.externalBookingRef, revokedAt: null, expiresAt: { gt: now } },
       orderBy: { createdAt: "desc" },
       select:  { expiresAt: true },
     });
@@ -143,7 +146,7 @@ export async function GET(req: NextRequest) {
       expiresAt = activeTok.expiresAt;
     } else {
       const latest = await prisma.liveTicketLinkToken.findFirst({
-        where:   { oaId: work.oaId, workId: work.id, externalSessionRef: data.externalSessionRef, externalBookingRef: data.externalBookingRef },
+        where:   { oaId: work.oaId, workId: work.id, origin: UZU_PRO_ORIGIN, externalSessionRef: data.externalSessionRef, externalBookingRef: data.externalBookingRef },
         orderBy: { createdAt: "desc" },
         select:  { expiresAt: true, revokedAt: true },
       });
@@ -154,8 +157,8 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // 登録人数は対象 team の LiveParticipant 数（後続 Phase で登録実装。現状は通常 0）。
-    const registrationCount = await prisma.liveParticipant.count({ where: { teamId: team.id } });
+    // 登録人数は対象 team（UZU_PRO）の LiveParticipant 数（後続 Phase で登録実装。現状は通常 0）。
+    const registrationCount = await prisma.liveParticipant.count({ where: { teamId: team.id, origin: UZU_PRO_ORIGIN } });
 
     // 平文トークン / tokenHash / LINE UID / 氏名 / メール / ESCAPE.ID チケットID は返さない。
     return ok({

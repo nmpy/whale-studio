@@ -10,6 +10,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { ok, created, badRequest, notFound, serverError } from "@/lib/api-response";
 import { authorizeLive } from "@/lib/live-auth";
+import { NATIVE_ORIGIN } from "@/lib/live-origin";
 
 export const dynamic = "force-dynamic";
 
@@ -57,9 +58,10 @@ function toResponse(e: EventRow) {
   };
 }
 
+// origin=NATIVE を条件に含め、UZU_PRO 公演配下は native API から 404 相当にする。
 async function ensureSessionBelongsToOa(sessionId: string, oaId: string) {
   return prisma.liveSession.findFirst({
-    where:  { id: sessionId, oaId },
+    where:  { id: sessionId, oaId, origin: NATIVE_ORIGIN },
     select: { id: true },
   });
 }
@@ -103,7 +105,7 @@ export async function POST(
     // participantId が指定された場合、同セッション配下の参加者であることを確認
     if (data.participant_id) {
       const p = await prisma.liveParticipant.findFirst({
-        where:  { id: data.participant_id, liveSessionId: params.sessionId },
+        where:  { id: data.participant_id, liveSessionId: params.sessionId, origin: NATIVE_ORIGIN },
         select: { id: true },
       });
       if (!p) return badRequest("participant_id がセッションに紐付いていません");

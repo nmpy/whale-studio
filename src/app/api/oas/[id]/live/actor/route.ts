@@ -21,6 +21,7 @@ import type { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { ok, serverError } from "@/lib/api-response";
 import { authorizeLiveSection } from "@/lib/live-auth";
+import { NATIVE_ORIGIN } from "@/lib/live-origin";
 
 export const dynamic = "force-dynamic";
 
@@ -40,14 +41,15 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
       auth.via === "live_admin";
     const previewActorId = canPreview ? previewActorIdRaw : null;
 
+    // native 運用画面は NATIVE のみ集計（UZU_PRO の participant / team / session は露出しない）。
     const participantWhere = sessionId
-      ? { oaId: params.id, liveSessionId: sessionId }
-      : { oaId: params.id };
+      ? { oaId: params.id, liveSessionId: sessionId, origin: NATIVE_ORIGIN }
+      : { oaId: params.id, origin: NATIVE_ORIGIN };
 
     // 選択中セッションが work に紐付くか確認 (= scripts / cues のスコープ決定用)
     const selectedSessionForWork = sessionId
       ? await prisma.liveSession.findFirst({
-          where:  { id: sessionId, oaId: params.id },
+          where:  { id: sessionId, oaId: params.id, origin: NATIVE_ORIGIN },
           select: { workId: true },
         })
       : null;
@@ -67,7 +69,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
       phases,
     ] = await Promise.all([
       prisma.liveSession.findMany({
-        where:   { oaId: params.id },
+        where:   { oaId: params.id, origin: NATIVE_ORIGIN },
         orderBy: [{ status: "asc" }, { createdAt: "desc" }],
         include: { work: { select: { id: true, title: true } } },
         take:    50,
@@ -114,7 +116,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
         : Promise.resolve([]),
       sessionId
         ? prisma.liveTeam.findMany({
-            where:   { liveSessionId: sessionId },
+            where:   { liveSessionId: sessionId, origin: NATIVE_ORIGIN },
             orderBy: { createdAt: "asc" },
             take:    200,
           })

@@ -1274,34 +1274,36 @@ model ErrorLogResolution {
 ///   - liveSessionId / teamId は mint 時点で未確定のことがあるため plain column（遅延解決用・FK は張らず graceful lookup）。
 ///   - 照合キーは reservationNumber（主）＋ ticketId（任意・フォールバック）。matchKeysEqual で正規化照合。
 model LiveTicketLinkToken {
-  id                 String    @id @default(uuid())
-  oaId               String    @map("oa_id")
-  workId             String    @map("work_id")
+  id                 String     @id @default(uuid())
+  oaId               String     @map("oa_id")
+  workId             String     @map("work_id")
+  /// 由来（プロダクト境界）。発行元が明示設定（native=NATIVE / external v2=UZU_PRO）。継承元は親 Session/Team。
+  origin             LiveOrigin @default(NATIVE)
   /// チケットサイト由来の予約番号（照合主キー）。
   /// 匿名連携（新設計）では externalBookingRef を互換マップした値が入る（外部契約では reservationNumber は公開しない）。
-  reservationNumber  String    @map("reservation_number")
+  reservationNumber  String     @map("reservation_number")
   /// チケットID（任意・フォールバック照合キー）。匿名連携では保存しない（null）。
-  ticketId           String?   @map("ticket_id")
+  ticketId           String?    @map("ticket_id")
   /// 匿名連携（ウズプロCMS）由来の公演参照 / 予約枠参照。個人情報ではない安定 ID。
   /// 発行時に liveSessionId / teamId を直接確定するため、これらは主に監査・逆引き用途。
-  externalSessionRef String?   @map("external_session_ref")
-  externalBookingRef String?   @map("external_booking_ref")
+  externalSessionRef String?    @map("external_session_ref")
+  externalBookingRef String?    @map("external_booking_ref")
   /// 遅延解決で確定する LiveSession / LiveTeam（未解決時は null）。FK は張らず graceful lookup。
   /// 匿名連携トークンは発行時にこの 2 つを確定する（resolve は reservationNumber 照合より優先）。
-  liveSessionId      String?   @map("live_session_id")
-  teamId             String?   @map("team_id")
+  liveSessionId      String?    @map("live_session_id")
+  teamId             String?    @map("team_id")
   /// 平文 token の sha256 hex(64 char)。平文は保存しない。
-  tokenHash          String    @unique @map("token_hash")
-  expiresAt          DateTime  @map("expires_at")
+  tokenHash          String     @unique @map("token_hash")
+  expiresAt          DateTime   @map("expires_at")
   /// 最初に resolve（LIFF 表示）された日時。
-  firstOpenedAt      DateTime? @map("first_opened_at")
+  firstOpenedAt      DateTime?  @map("first_opened_at")
   /// 最初に正常連携された日時 / 最後に正常連携された日時（Phase 2 で更新。one-time 消費ではない）。
-  firstUsedAt        DateTime? @map("first_used_at")
-  lastUsedAt         DateTime? @map("last_used_at")
-  revokedAt          DateTime? @map("revoked_at")
-  createdAt          DateTime  @default(now()) @map("created_at")
-  updatedAt          DateTime  @updatedAt @map("updated_at")
-  oa                 Oa        @relation(fields: [oaId], references: [id], onDelete: Cascade)
+  firstUsedAt        DateTime?  @map("first_used_at")
+  lastUsedAt         DateTime?  @map("last_used_at")
+  revokedAt          DateTime?  @map("revoked_at")
+  createdAt          DateTime   @default(now()) @map("created_at")
+  updatedAt          DateTime   @updatedAt @map("updated_at")
+  oa                 Oa         @relation(fields: [oaId], references: [id], onDelete: Cascade)
 
   @@index([oaId, expiresAt])
   @@index([oaId, workId, reservationNumber])
@@ -2331,6 +2333,16 @@ enum LiveSessionStatus {
   ended
 }
 
+/// Live 実行レコードの由来（プロダクト境界）。明示保存（externalSessionRef 等の有無で推測しない）。
+///   NATIVE  = LIVE for Whale Studio（native Live 管理画面から作成・管理）
+///   UZU_PRO = for UZU Pro（UZU Pro CMS から /api/external/v2/* 経由で作成・管理）
+/// native Live API/UI は origin=NATIVE のみを扱い、external v2 API は origin=UZU_PRO のみを扱う。
+/// 子（Team/Token/Participant）は親 Session/発行 token の origin を継承し、異 origin の紐付けは禁止。
+enum LiveOrigin {
+  NATIVE
+  UZU_PRO
+}
+
 enum LiveParticipantStatus {
   waiting
   active
@@ -2363,6 +2375,8 @@ model LiveSession {
   /// 匿名連携（ウズプロCMS）由来の安定 ID。個人情報ではない。CMS 側で生成し upsert のキーにする。
   /// 既存セッションは null（backfill しない）。新設計では workId + externalSessionRef を必須入力として扱う。
   externalSessionRef String?           @map("external_session_ref")
+  /// 由来（プロダクト境界）。native Live=NATIVE / external v2=UZU_PRO。実行の親。
+  origin             LiveOrigin        @default(NATIVE)
   name               String
   status             LiveSessionStatus @default(draft)
   startsAt           DateTime?         @map("starts_at")
@@ -2395,6 +2409,8 @@ model LiveParticipant {
   id                String                @id @default(uuid())
   oaId              String                @map("oa_id")
   liveSessionId     String                @map("live_session_id")
+  /// 由来（プロダクト境界）。作成時に Token/Team/Session の origin を検証・継承。
+  origin            LiveOrigin            @default(NATIVE)
   /// Phase 2-G: 同じ回の中で参加者をグループ化する単位 (= LiveTeam 参照)。
   /// onDelete: SetNull で「チームを消しても participant は残す」運用に。
   teamId            String?               @map("team_id")
@@ -2432,24 +2448,26 @@ model LiveParticipant {
 /// 4人1チームを基本として、予約番号ごと or 順番割当 or CSV のチーム名列から作成。
 /// reservationNumber は CSV import で予約番号ごとにチーム化したとき使う dedup key。
 model LiveTeam {
-  id                 String    @id @default(uuid())
-  oaId               String    @map("oa_id")
-  liveSessionId      String    @map("live_session_id")
+  id                 String     @id @default(uuid())
+  oaId               String     @map("oa_id")
+  liveSessionId      String     @map("live_session_id")
+  /// 由来（プロダクト境界）。作成時に親 Session の origin を継承（異 origin 紐付けは禁止）。
+  origin             LiveOrigin @default(NATIVE)
   name               String
-  reservationNumber  String?   @map("reservation_number")
+  reservationNumber  String?    @map("reservation_number")
   /// 匿名連携（ウズプロCMS）由来の予約枠参照。個人情報ではない安定 ID。匿名 team の冪等 upsert キー。
-  externalBookingRef String?   @map("external_booking_ref")
+  externalBookingRef String?    @map("external_booking_ref")
   /// 予約枠の定員（新設計の正本）。初期対応は 2 / 4 のみ許可。既存 team は null。
-  capacity           Int?      @map("capacity")
+  capacity           Int?       @map("capacity")
   memo               String?
   /// PR2b-0: 現地公演運営（Operation Belkish）の予約/部屋情報を Team 側に寄せる。すべて任意。
-  reservedAt         DateTime? @map("reserved_at") /// 公演予約日時
-  purchaserName      String?   @map("purchaser_name") /// 購入者名（トラブル時確認・名簿照合）
-  groupType          String?   @map("group_type") /// "two" | "four"（表示: 2人 / 4人）。TEXT で将来拡張可
-  roomNumber         String?   @map("room_number") /// 部屋番号（手動紐付け・"A-1" 等も可）
-  ticketId           String?   @map("ticket_id") /// チケットID（照合・PR2b 照合キー候補）
-  createdAt          DateTime  @default(now()) @map("created_at")
-  updatedAt          DateTime  @updatedAt @map("updated_at")
+  reservedAt         DateTime?  @map("reserved_at") /// 公演予約日時
+  purchaserName      String?    @map("purchaser_name") /// 購入者名（トラブル時確認・名簿照合）
+  groupType          String?    @map("group_type") /// "two" | "four"（表示: 2人 / 4人）。TEXT で将来拡張可
+  roomNumber         String?    @map("room_number") /// 部屋番号（手動紐付け・"A-1" 等も可）
+  ticketId           String?    @map("ticket_id") /// チケットID（照合・PR2b 照合キー候補）
+  createdAt          DateTime   @default(now()) @map("created_at")
+  updatedAt          DateTime   @updatedAt @map("updated_at")
 
   oa           Oa                @relation(fields: [oaId], references: [id], onDelete: Cascade)
   liveSession  LiveSession       @relation(fields: [liveSessionId], references: [id], onDelete: Cascade)

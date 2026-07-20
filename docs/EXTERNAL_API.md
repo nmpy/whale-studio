@@ -274,7 +274,8 @@ curl -s -X PUT "$BASE/api/external/v2/live/sessions" \
 curl -s -X POST "$BASE/api/external/v2/live/ticket-links" \
   -H "x-whale-api-key: ${WKEY}" -H "content-type: application/json" \
   -d '{"workId":"<WORK_ID>","externalSessionRef":"uzu-session-20260817-1800","externalBookingRef":"uzu-booking-01JXYZ","capacity":4}' | jq
-# → 200: { "success": true, "data": { "url": "https://liff.line.me/<liffId>/ticket?t=<token>", "tokenRecordId": "...", "expiresAt": "..." } }
+# → 200: { "success": true, "data": { "externalSessionRef": "...", "externalBookingRef": "...", "url": "https://liff.line.me/<liffId>/ticket?t=<token>", "expiresAt": "..." } }
+#   （v2 は内部主キー tokenRecordId / LiveSession.id 等を返さない。以後の操作は externalSessionRef / externalBookingRef で行う）
 
 # [v2] ③ 状態取得（read キー） / ④ 失効（write キー・冪等）
 curl -s -H "x-whale-api-key: $KEY" "$BASE/api/external/v2/live/ticket-links?workId=<WORK_ID>&externalSessionRef=uzu-session-20260817-1800&externalBookingRef=uzu-booking-01JXYZ" | jq '.data.link'
@@ -324,6 +325,26 @@ curl -s -o /dev/null -w "%{http_code}\n" -H "x-whale-api-key: wrong-key" "$BASE/
 
 ---
 
+## プロダクト境界（NATIVE / UZU_PRO）と内部ID 非公開
+
+Whale Studio Live の**低レベルな実行機構**（LiveSession / LiveTeam / LiveTicketLinkToken / LiveParticipant、トークン発行・LIFF・LINE 認証・定員ロック・参加登録）は **2 つのプロダクトで共有**される。両者はレコード単位の `origin` 判別子で明確に分離する:
+
+| origin | プロダクト | 作成経路 | System of Record (SoR) |
+|---|---|---|---|
+| `NATIVE` | **LIVE for Whale Studio** | native Live 管理 API/UI（`/api/oas/[id]/live/*`） | Whale Studio |
+| `UZU_PRO` | **for UZU Pro** | external v2 API（`/api/external/v2/live/*`） | **UZU Pro CMS** |
+
+境界ルール:
+- **同一 LINE 公式アカウント（OA）が両方を併用できる**。origin は OA 単位ではなく**実行レコード単位**で由来を明示する（OA を片方へ固定しない）。
+- **origin はクライアントから指定できない**。native 作成 = `NATIVE`、external v2 作成 = `UZU_PRO` に API 層で固定し、子（Team/Token/Participant）は親 Session / 発行 token の origin を継承する。`externalSessionRef` 等の有無で origin を推測しない（origin が正本）。
+- **native Live 管理 API/UI は `origin=NATIVE` のみを扱う**。UZU_PRO 由来レコードは一覧・詳細・更新・削除・export・actor・子リソースのいずれからも**存在を露出せず 404 相当**（条件 = `oaId 一致 かつ origin=NATIVE`）。Whale Studio の native Live 管理画面を UZU Pro の予約 UI にはしない。
+- **external v2 API は `origin=UZU_PRO` のみを扱う**。NATIVE の取得/更新/Team 作成/token 失効はできず、`externalSessionRef`/`externalBookingRef` が偶然一致しても origin を跨いで操作しない（tripwire で境界違反を拒否）。
+- UZU_PRO レコードは通常の Live 管理画面に表示しない（プラットフォーム管理者限定の read-only 監視画面は将来の可能性・本 PR では新設しない）。
+
+### 内部ID 非公開と origin 境界
+
+external v2 の**レスポンスは内部主キーを一切返さない**（`LiveSession.id` / `LiveTeam.id` / `LiveParticipant.id` / `LiveTicketLinkToken.id` / `tokenRecordId`）。外部契約で用いる識別子は**匿名参照のみ**: `externalSessionRef` / `externalBookingRef` / `externalPlayerRef`。UZU Pro CMS は自身が正本として持つこれらの参照で全操作を行う。
+
 ## v2 匿名連携（ウズプロCMS）Live API
 
 **ウズプロCMS が利用する正式 API**。ウズプロCMS を予約・個人情報の正本とし、Whale Studio へは **匿名参照ID のみ**を渡して LIFF URL / トークンを扱う。氏名・メール・チケットID 等の個人情報は Whale Studio に送信・保存しない。
@@ -346,7 +367,7 @@ curl -s -o /dev/null -w "%{http_code}\n" -H "x-whale-api-key: wrong-key" "$BASE/
 ```
 - キー `(oaId, workId, externalSessionRef)` で冪等 upsert。初回 `status=draft`。
 - 再送は**日時のみ更新**し status は据え置き（active→draft 降格 / ended 再オープンをしない）。
-- レスポンス: `{ "success": true, "data": { "session": { "id", "externalSessionRef", "status", "startsAt", "endsAt" } } }`（内部 id を返すが、以後の操作は `externalSessionRef` で行える）。
+- レスポンス: `{ "success": true, "data": { "session": { "externalSessionRef", "status", "startsAt", "endsAt" } } }`。**内部主キー `LiveSession.id` は返さない**（外部契約は `externalSessionRef` のみ・[内部ID 非公開](#内部id-非公開と-origin-境界)）。
 
 ### POST /api/external/v2/live/ticket-links（発行）
 
@@ -357,7 +378,7 @@ curl -s -o /dev/null -w "%{http_code}\n" -H "x-whale-api-key: wrong-key" "$BASE/
 - 事前に PUT /sessions で公演セッションを同期しておくこと（未同期は **409**）。
 - 1 トランザクションで「匿名 LiveTeam を upsert（個人情報なし）→ 同一予約枠の旧・有効トークンを失効 → 新トークン発行」。
 - **再送すると旧 URL は失効し、常に最新 1 件だけが有効**。ウズプロCMS は**返却された最新 URL を正本として保存**すること。
-- レスポンス: `{ "success": true, "data": { "url": "https://liff.line.me/<liffId>/ticket?t=<token>", "tokenRecordId": "...", "expiresAt": "..." } }`。
+- レスポンス: `{ "success": true, "data": { "externalSessionRef": "...", "externalBookingRef": "...", "url": "https://liff.line.me/<liffId>/ticket?t=<token>", "expiresAt": "..." } }`。**内部主キー（`tokenRecordId` / `LiveTeam.id` / `LiveSession.id`）は返さない**（外部契約は匿名参照のみ・[内部ID 非公開](#内部id-非公開と-origin-境界)）。
 - **平文 URL / トークンはログ・一般公開領域へ出さない**（DB は tokenHash のみ・レスポンスに一度だけ載る）。
 
 ### GET /api/external/v2/live/ticket-links（状態取得）
@@ -395,3 +416,4 @@ curl -s -o /dev/null -w "%{http_code}\n" -H "x-whale-api-key: wrong-key" "$BASE/
 | **#574** | 外部連携 API 新設（`/works`・`/phases`・`/phase-links`）。`x-whale-api-key` 認証 + `WHALE_EXTERNAL_OA_IDS` allowlist（fail closed）。読み取り専用・DB migration なし。 |
 | **#575** | links を canonical `https://app.whale-studio.app` に統一。専用 env `WHALE_EXTERNAL_PUBLIC_BASE_URL`（未設定時 canonical）を導入し、共有 `NEXT_PUBLIC_*` から切り離し。 |
 | **匿名連携 Phase 1（v2）** | ウズプロCMS↔Whale Studio の責務境界に沿い、匿名参照（`externalSessionRef` / `externalBookingRef`）+ `capacity` ベースの Live API を **v2 として新設**（PUT `/api/external/v2/live/sessions`、POST/GET `/api/external/v2/live/ticket-links`、POST `/api/external/v2/live/ticket-links/revoke`）。**v1 `POST /live/ticket-links` は現行契約のまま不変**（破壊的変更なし）。v1/v2 は schema 非共有。additive migration（`external_session_ref` / `external_booking_ref` / `capacity` + 索引）。resolve は token の `liveSessionId`/`teamId` 優先・legacy fallback 維持（v1/v2 で分けない）。LINE 認証 / 参加登録 / CMS Webhook は未実装（後続 Phase）。 |
+| **origin 判別子（NATIVE / UZU_PRO）** | Live 実行レコード（LiveSession/LiveTeam/LiveTicketLinkToken/LiveParticipant）に `origin LiveOrigin @default(NATIVE)` を additive 追加。native Live 管理 API（16 経路）は `origin=NATIVE` を条件に含め UZU_PRO を 404 相当に、external v2 は全クエリ/書込で `origin=UZU_PRO` を明示。子は親/token の origin を継承（LIFF resolve/link は両 origin を処理し解決 token の origin を Participant に継承）。external v2 レスポンスから内部主キー（`LiveSession.id`/`LiveTeam.id`/`LiveParticipant.id`/`tokenRecordId`）を除去。既存行は default で NATIVE（backfill SQL なし）。破壊的変更・本番 migration・deploy は含まない。 |
