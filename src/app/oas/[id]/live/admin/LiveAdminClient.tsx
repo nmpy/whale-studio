@@ -19,6 +19,7 @@ import { useCallback, useEffect, useState } from "react";
 import { LIVE_TEAM_GROUP_TYPES, liveTeamGroupTypeLabel } from "@/lib/live-team";
 import { isParticipantStalled, formatRelativeTime } from "@/lib/live-stall";
 import { PhaseMoveButton } from "../_PhaseMoveButton";
+import { EscapeIdImportSection } from "./EscapeIdImportSection";
 
 type LiveSession = {
   id: string;
@@ -788,6 +789,8 @@ export function LiveAdminClient({
 }) {
   const [sessions, setSessions] = useState<LiveSession[]>([]);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
+  // 「チーム・CSV」タブの取込用途: participant=既存参加者CSV / escapeid=ESCAPE.ID 予約一覧（独立コードパス）。
+  const [importKind, setImportKind] = useState<"participant" | "escapeid">("participant");
   const [participants, setParticipants] = useState<LiveParticipant[]>([]);
   const [events, setEvents] = useState<LiveEventLog[]>([]);
   // Phase 2-E: Actors / Assignments / Instructions
@@ -1625,15 +1628,40 @@ export function LiveAdminClient({
                 onChanged={() => selectedSessionId && void fetchChildren(selectedSessionId)}
                 onError={(msg) => setError(msg)}
               />
-              <ImportSection
-                oaId={oaId}
-                workId={effectiveWorkId}
-                onApplied={() => {
-                  void fetchSessions();
-                  if (selectedSessionId) void fetchChildren(selectedSessionId);
-                }}
-                onError={(msg) => setError(msg)}
-              />
+              {/* 取込用途トグル: 既存の参加者CSV / ESCAPE.ID 予約一覧（独立コードパス） */}
+              <div style={{ ...card, marginBottom: 12, display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: "#374151" }}>用途:</span>
+                <label style={{ fontSize: 13, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6 }}>
+                  <input type="radio" name="import-kind" checked={importKind === "participant"} onChange={() => setImportKind("participant")} />
+                  参加者CSV（既存）
+                </label>
+                <label style={{ fontSize: 13, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6 }}>
+                  <input type="radio" name="import-kind" checked={importKind === "escapeid"} onChange={() => setImportKind("escapeid")} />
+                  ESCAPE.ID予約一覧
+                </label>
+              </div>
+              {importKind === "participant" ? (
+                <ImportSection
+                  oaId={oaId}
+                  workId={effectiveWorkId}
+                  onApplied={() => {
+                    void fetchSessions();
+                    if (selectedSessionId) void fetchChildren(selectedSessionId);
+                  }}
+                  onError={(msg) => setError(msg)}
+                />
+              ) : (
+                <EscapeIdImportSection
+                  oaId={oaId}
+                  workId={effectiveWorkId}
+                  sessions={sessions}
+                  onApplied={() => {
+                    void fetchSessions();
+                    if (selectedSessionId) void fetchChildren(selectedSessionId);
+                  }}
+                  onError={(msg) => setError(msg)}
+                />
+              )}
               <section style={{ ...card, marginBottom: 16 }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                   {sectionTitle("CSV エクスポート")}
