@@ -79,7 +79,7 @@ export async function POST(req: NextRequest) {
     const rec = await prisma.liveTicketLinkToken.findUnique({
       where:  { tokenHash },
       select: {
-        id: true, oaId: true, workId: true, reservationNumber: true, ticketId: true,
+        id: true, oaId: true, workId: true, origin: true, reservationNumber: true, ticketId: true,
         liveSessionId: true, teamId: true, expiresAt: true, revokedAt: true,
       },
     });
@@ -205,6 +205,8 @@ export async function POST(req: NextRequest) {
       lineUserId,
       displayName,
       tokenId:       rec.id,
+      // 共有入口: origin で除外せず、解決した token.origin を Participant へ継承する。
+      origin:        rec.origin,
       via:           "liff_ticket",
       now,
     });

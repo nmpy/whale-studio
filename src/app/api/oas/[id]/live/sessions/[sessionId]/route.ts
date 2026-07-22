@@ -15,6 +15,7 @@ import { ZodError } from "zod";
 import { prisma } from "@/lib/prisma";
 import { ok, badRequest, noContent, notFound, serverError } from "@/lib/api-response";
 import { authorizeLive } from "@/lib/live-auth";
+import { NATIVE_ORIGIN } from "@/lib/live-origin";
 import { patchLiveSessionSchema } from "@/lib/live-session-lifecycle";
 
 export const dynamic = "force-dynamic";
@@ -47,13 +48,17 @@ function toResponse(s: SessionRow) {
   };
 }
 
-/** 指定 session が当該 OA に属するか確認して返す（別 OA / 不在は null）。 */
+/**
+ * 指定 session が当該 OA の **NATIVE** Live 公演か確認して返す（別 OA / 不在 / UZU_PRO は null）。
+ * origin=NATIVE を条件に含めるため、UZU_PRO 由来の公演は native API から 404 相当（存在を露出しない）。
+ * findUnique は unique 条件しか取れないため findFirst で origin を絞る。
+ */
 async function findSession(sessionId: string, oaId: string): Promise<SessionRow | null> {
-  const s = await prisma.liveSession.findUnique({
-    where:   { id: sessionId },
+  const s = await prisma.liveSession.findFirst({
+    where:   { id: sessionId, oaId, origin: NATIVE_ORIGIN },
     include: { work: { select: { id: true, title: true } } },
   });
-  if (!s || s.oaId !== oaId) return null;
+  if (!s) return null;
   return s as unknown as SessionRow;
 }
 

@@ -14,6 +14,7 @@ import { z, ZodError } from "zod";
 import { prisma } from "@/lib/prisma";
 import { ok, created, badRequest, serverError } from "@/lib/api-response";
 import { authorizeLive } from "@/lib/live-auth";
+import { NATIVE_ORIGIN } from "@/lib/live-origin";
 
 export const dynamic = "force-dynamic";
 
@@ -59,7 +60,8 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
 
   try {
     const sessions = await prisma.liveSession.findMany({
-      where:   { oaId: params.id },
+      // native Live 一覧は NATIVE のみ。UZU_PRO（external v2 由来）は露出しない。
+      where:   { oaId: params.id, origin: NATIVE_ORIGIN },
       orderBy: { createdAt: "desc" },
       include: { work: { select: { id: true, title: true } } },
       take:    100,
@@ -90,6 +92,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     const session = await prisma.liveSession.create({
       data: {
         oaId:     params.id,
+        origin:   NATIVE_ORIGIN, // native Live 管理から作成 = NATIVE（明示）
         workId:   data.work_id ?? null,
         name:     data.name,
         status:   data.status ?? "draft",

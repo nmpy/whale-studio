@@ -8,85 +8,85 @@ datasource db {
 }
 
 model Oa {
-  id                    String                 @id @default(uuid())
-  title                 String
-  description           String?
-  channelId             String                 @map("channel_id")
-  channelSecret         String                 @map("channel_secret")
-  channelAccessToken    String                 @map("channel_access_token")
+  id                     String                  @id @default(uuid())
+  title                  String
+  description            String?
+  channelId              String                  @map("channel_id")
+  channelSecret          String                  @map("channel_secret")
+  channelAccessToken     String                  @map("channel_access_token")
   /// "draft" | "active" | "paused"
-  publishStatus         String                 @default("draft") @map("publish_status")
+  publishStatus          String                  @default("draft") @map("publish_status")
   /// LINE リッチメニュー ID（LINE API で作成・適用したとき保存する）
-  richMenuId            String?                @map("rich_menu_id")
+  richMenuId             String?                 @map("rich_menu_id")
   /// Google Sheets スプレッドシート ID（設定時は Sheets からシナリオを読み込む）
-  spreadsheetId         String?                @map("spreadsheet_id")
-  createdAt             DateTime               @default(now()) @map("created_at")
-  updatedAt             DateTime               @updatedAt @map("updated_at")
+  spreadsheetId          String?                 @map("spreadsheet_id")
+  createdAt              DateTime                @default(now()) @map("created_at")
+  updatedAt              DateTime                @updatedAt @map("updated_at")
   /// LINE公式アカウントの Basic ID（例: 613zlngs）。Webhook URL の識別子として使う。
   /// channelId（数値の API 認証用）とは別物。LINE Developers「Basic information」で確認できる。
-  lineOaId              String?                @unique @map("line_oa_id")
+  lineOaId               String?                 @unique @map("line_oa_id")
   /// OA オーナーの識別子（Supabase Auth userId）。RBAC で owner 判定に使う。
-  ownerKey              String?                @map("owner_key")
+  ownerKey               String?                 @map("owner_key")
   /// サービス停止日時。null = 稼働中 / 非 null = 停止中（停止された日時を保持）。
   /// 契約終了等で LINE webhook を通常応答させず、署名検証後に
   /// 一律「このアカウントのサービスは終了しました。ご利用ありがとうございました。」
   /// を message event の replyToken に対してのみ返す。
-  serviceSuspendedAt    DateTime?              @map("service_suspended_at")
+  serviceSuspendedAt     DateTime?               @map("service_suspended_at")
   /// LIFF (LINE Front-end Framework) 設定（OA 単位）。
   /// liffId: この OA 専用の LIFF アプリ ID。未設定時は NEXT_PUBLIC_LIFF_ID にフォールバックする。
   ///   解決順: Oa.liffId → process.env.NEXT_PUBLIC_LIFF_ID → 未設定（管理画面/Runtime でエラー表示）。
-  liffId                String?                @map("liff_id")
+  liffId                 String?                 @map("liff_id")
   /// LINE Developers Console で設定した Endpoint URL のメモ（任意・表示確認用）。
   /// 実際の Runtime 挙動には影響しない（推奨値は app の /liff）。
-  liffEndpointUrl       String?                @map("liff_endpoint_url")
+  liffEndpointUrl        String?                 @map("liff_endpoint_url")
   /// QR 読み取り（liff.scanCodeV2）導線を使う想定か（UI 表示フラグ）。
   /// ※ 実際に動かすには LINE Developers Console の LIFF 設定で Scan QR を ON にする必要がある。
-  liffScanQrEnabled     Boolean                @default(false) @map("liff_scan_qr_enabled")
+  liffScanQrEnabled      Boolean                 @default(false) @map("liff_scan_qr_enabled")
   /// 利用区分（個人利用 / 法人利用）。オーナー / platform admin 表示モードでの区別用。
   /// Phase2 で追加済みの enum BusinessUsageType を再利用する。既存 OA は default = personal。
   /// 法人招待リンク (business_invite_links.usage_type) とは別物（自動連携はしない）。
-  usageType             BusinessUsageType      @default(personal) @map("usage_type")
+  usageType              BusinessUsageType       @default(personal) @map("usage_type")
   /// 運用モード（OA単位）。"messaging"(配信) | "content"(LINE上の謎解き/体験) | "live"(現地公演運営)。
   /// 加算的サーフェス: 既存 OA は default="content" で挙動不変。mode="live" のとき /oas トップで
   /// Live Mode を前面化する（Live 実体アクセスは従来どおり OaEntitlement/canAccessLive で保護）。
   /// enum ではなく TEXT+default（start_trigger_mode と同方針・ゼロダウンタイムな ADD COLUMN）。
-  mode                  String                 @default("content") @map("mode")
+  mode                   String                  @default("content") @map("mode")
   /// あいさつメッセージ（OA単位）。友だち追加時に送る文面。null = OA未設定 →
   /// 実行時は active Work の welcome_message にフォールバック（移行期互換・PR-1）。
-  welcomeMessage        String?                @map("welcome_message")
+  welcomeMessage         String?                 @map("welcome_message")
   /// 友だち追加時の動作（OA単位）。"auto_start" | "welcome_wait" | "none"。
   /// null = OA未設定 → 実行時は active Work の follow_action にフォールバック。
-  followAction          String?                @map("follow_action")
-  friendAddSettings     FriendAddSettings?
-  globalCommands        GlobalCommand[]
-  hintLogs              HintLog[]
-  invitations           Invitation[]
-  memberInvites         MemberInvite[]
-  studioInvites         StudioInvite[]
-  liffSubmissions       LiffSubmission[]
-  onboardingEvents      OnboardingEvent[]
-  richMenus             RichMenu[]
-  riddles               Riddle[]               @relation("OaRiddles")
-  segments              Segment[]
-  snsPosts              SnsPost[]
-  xPosts                XPost[]
-  subscription          Subscription?
-  trackings             Tracking[]
-  userTrackings         UserTracking[]
-  works                 Work[]
-  workspaceMembers      WorkspaceMember[]
-  entitlements          OaEntitlement[]
-  liveSessions          LiveSession[]
-  liveParticipants      LiveParticipant[]
-  liveEventLogs         LiveEventLog[]
-  liveActors            LiveActor[]
-  liveActorInvites      LiveActorInvite[]
-  liveAssignments       LiveAssignment[]
-  liveActorInstructions LiveActorInstruction[]
-  liveTeams             LiveTeam[]
-  liveImportPresets     LiveImportPreset[]
-  liveScripts           LiveScript[]
-  liveCues              LiveCue[]
+  followAction           String?                 @map("follow_action")
+  friendAddSettings      FriendAddSettings?
+  globalCommands         GlobalCommand[]
+  hintLogs               HintLog[]
+  invitations            Invitation[]
+  memberInvites          MemberInvite[]
+  studioInvites          StudioInvite[]
+  liffSubmissions        LiffSubmission[]
+  onboardingEvents       OnboardingEvent[]
+  richMenus              RichMenu[]
+  riddles                Riddle[]                @relation("OaRiddles")
+  segments               Segment[]
+  snsPosts               SnsPost[]
+  xPosts                 XPost[]
+  subscription           Subscription?
+  trackings              Tracking[]
+  userTrackings          UserTracking[]
+  works                  Work[]
+  workspaceMembers       WorkspaceMember[]
+  entitlements           OaEntitlement[]
+  liveSessions           LiveSession[]
+  liveParticipants       LiveParticipant[]
+  liveEventLogs          LiveEventLog[]
+  liveActors             LiveActor[]
+  liveActorInvites       LiveActorInvite[]
+  liveAssignments        LiveAssignment[]
+  liveActorInstructions  LiveActorInstruction[]
+  liveTeams              LiveTeam[]
+  liveImportPresets      LiveImportPreset[]
+  liveScripts            LiveScript[]
+  liveCues               LiveCue[]
   analyticsExcludedUsers AnalyticsExcludedUser[]
   memberLineLinkTokens   MemberLineLinkToken[]
   errorLogResolutions    ErrorLogResolution[]
@@ -127,38 +127,38 @@ model AnalyticsExcludedUser {
 }
 
 model Work {
-  id                   String  @id @default(uuid())
+  id                    String  @id @default(uuid())
   /// 公開 URL 用の短縮 ID (10 文字、a-z + 0-9)。DB 主キーは引き続き UUID `id` を使用。
   /// URL に出すときだけこの値を使う。生成は PG 関数 gen_unique_public_id() で自動 (migration 参照)。
-  publicId             String  @unique @default(dbgenerated("gen_unique_public_id('works'::text)")) @map("public_id")
-  oaId                 String  @map("oa_id")
-  title                String
-  description          String?
+  publicId              String  @unique @default(dbgenerated("gen_unique_public_id('works'::text)")) @map("public_id")
+  oaId                  String  @map("oa_id")
+  title                 String
+  description           String?
   /// "draft" | "active" | "paused"
-  publishStatus        String  @default("draft") @map("publish_status")
-  sortOrder            Int     @default(0) @map("sort_order")
+  publishStatus         String  @default("draft") @map("publish_status")
+  sortOrder             Int     @default(0) @map("sort_order")
   /// LIFF プレイヤー機能 (work メニュー + 個別 LIFF ページ) の有効/無効。
   /// false にすると `/liff/w/{publicId}` 系の URL は全て LIFF_DISABLED 応答を返し、
   /// 実機 LIFF アプリからアクセスできなくなる。CMS プレビューは引き続き利用可能。
   /// 既存 work データは default(true) で migrate されるため挙動が変わらない。
-  liffEnabled          Boolean @default(true) @map("liff_enabled")
+  liffEnabled           Boolean @default(true) @map("liff_enabled")
   /// 作品メニューホーム (`/liff/w/{publicId}`) の見出し・説明文・画像など、ホーム全体に紐づく
   /// 任意設定を格納する JSON。キー: { title?, description?, image_url? }。
   /// 未設定 (= 空 `{}`) のときは従来表示（見出し「ホーム」・説明/画像なし）にフォールバックする。
   /// per-page の LiffPageConfig.settingsJson とは別物（ホームは作品単位の概念）。
-  liffHomeSettingsJson Json    @default("{}") @map("liff_home_settings_json") @db.JsonB
+  liffHomeSettingsJson  Json    @default("{}") @map("liff_home_settings_json") @db.JsonB
   /// システムメッセージ（開始/エラー等）送信者として使うキャラクター（任意）
-  systemCharacterId    String? @map("system_character_id")
+  systemCharacterId     String? @map("system_character_id")
   /// あいさつメッセージ。未開始ユーザーが話しかけたときに送信される導入文（任意）。
   /// 未設定の場合はシステムデフォルト文にフォールバックする。
-  welcomeMessage       String? @map("welcome_message")
+  welcomeMessage        String? @map("welcome_message")
   /// あいさつメッセージ（複数件・text/image）。最大5件。要素は WelcomeMessageItem
   /// （{type:"text",text} | {type:"image",imageUrl,previewImageUrl?,altText?}）。
   /// 空配列 `[]` のときは従来どおり welcomeMessage（単一テキスト）にフォールバックする（互換）。
-  welcomeMessagesJson  Json    @default("[]") @map("welcome_messages_json") @db.JsonB
+  welcomeMessagesJson   Json    @default("[]") @map("welcome_messages_json") @db.JsonB
   /// あいさつ送信前の「入力中…」演出の待機秒数（0〜8）。0=演出なし（即時 reply）。
   /// loading API はメッセージ通数を消費しないため、push を使わず reply 一括前提のまま演出できる。
-  welcomeLoadingSeconds Int    @default(0) @map("welcome_loading_seconds")
+  welcomeLoadingSeconds Int     @default(0) @map("welcome_loading_seconds")
 
   /// 開始キーワード（任意・1作品1キーワード）。同じ OA に複数作品を公開する場合、
   /// ユーザーがこのキーワードを送信するとこの作品が開始される（作品内の応答キーワードより優先）。
@@ -261,11 +261,11 @@ model Character {
   messages      Message[]
   worksAsSystem Work[]    @relation("WorkSystemCharacter")
 
+  @@unique([workId, characterKey])
   @@index([workId])
   @@index([name])
   @@index([sortOrder])
   @@index([isActive])
-  @@unique([workId, characterKey])
   @@map("characters")
 }
 
@@ -297,6 +297,7 @@ model Phase {
   liveParticipantsCurrent LiveParticipant[] @relation("LiveParticipantCurrentPhase")
   liveCues                LiveCue[]
 
+  @@unique([workId, phaseKey])
   @@index([workId])
   @@index([phaseType])
   @@index([name])
@@ -304,7 +305,6 @@ model Phase {
   @@index([isActive])
   /// perf: Phase 一覧 `WHERE work_id=? ORDER BY sort_order` を sorted index scan に。
   @@index([workId, sortOrder])
-  @@unique([workId, phaseKey])
   @@map("phases")
 }
 
@@ -525,7 +525,7 @@ model Message {
   /// キーワード/QR/postback 起点の遷移とは別物。送信後処理(applyFreeInputPostEffect)で currentPhaseId のみ更新する。
   /// 遷移先フェーズの入場メッセージは送らない（＝「続きを選んでください。」fallback も出さない）。
   /// 運用はチェーン末尾のメッセージに設定する想定。
-  autoTransitionPhaseId   String? @map("auto_transition_phase_id")
+  autoTransitionPhaseId String? @map("auto_transition_phase_id")
 
   // ── 自由入力受付（このメッセージ送信後にユーザーの次入力を保存する）──────
   /// true: このメッセージ送信後にユーザーの次のテキスト入力を変数として保存する。
@@ -571,6 +571,7 @@ model Message {
   phase                 Phase?           @relation(fields: [phaseId], references: [id])
   work                  Work             @relation(fields: [workId], references: [id], onDelete: Cascade)
 
+  @@unique([workId, messageKey])
   @@index([workId])
   @@index([phaseId])
   @@index([characterId])
@@ -582,7 +583,6 @@ model Message {
   @@index([workId, sortOrder])
   /// perf: フェーズ詳細でのメッセージ取得 `WHERE work_id=? AND phase_id=? ORDER BY sort_order`。
   @@index([workId, phaseId, sortOrder])
-  @@unique([workId, messageKey])
   @@map("messages")
 }
 
@@ -1193,7 +1193,7 @@ model StudioSetting {
   /// /oas（アカウントリスト）のお知らせ最大表示件数。null=未設定（既定 3 で扱う）。許容 1〜10。
   announcementDisplayLimit Int?     @map("announcement_display_limit")
   createdAt                DateTime @default(now()) @map("created_at")
-  updatedAt                DateTime @updatedAt      @map("updated_at")
+  updatedAt                DateTime @updatedAt @map("updated_at")
 
   @@map("studio_settings")
 }
@@ -1274,31 +1274,41 @@ model ErrorLogResolution {
 ///   - liveSessionId / teamId は mint 時点で未確定のことがあるため plain column（遅延解決用・FK は張らず graceful lookup）。
 ///   - 照合キーは reservationNumber（主）＋ ticketId（任意・フォールバック）。matchKeysEqual で正規化照合。
 model LiveTicketLinkToken {
-  id                String    @id @default(uuid())
-  oaId              String    @map("oa_id")
-  workId            String    @map("work_id")
+  id                 String     @id @default(uuid())
+  oaId               String     @map("oa_id")
+  workId             String     @map("work_id")
+  /// 由来（プロダクト境界）。発行元が明示設定（native=NATIVE / external v2=UZU_PRO）。継承元は親 Session/Team。
+  origin             LiveOrigin @default(NATIVE)
   /// チケットサイト由来の予約番号（照合主キー）。
-  reservationNumber String    @map("reservation_number")
-  /// チケットID（任意・フォールバック照合キー）。
-  ticketId          String?   @map("ticket_id")
+  /// 匿名連携（新設計）では externalBookingRef を互換マップした値が入る（外部契約では reservationNumber は公開しない）。
+  reservationNumber  String     @map("reservation_number")
+  /// チケットID（任意・フォールバック照合キー）。匿名連携では保存しない（null）。
+  ticketId           String?    @map("ticket_id")
+  /// 匿名連携（ウズプロCMS）由来の公演参照 / 予約枠参照。個人情報ではない安定 ID。
+  /// 発行時に liveSessionId / teamId を直接確定するため、これらは主に監査・逆引き用途。
+  externalSessionRef String?    @map("external_session_ref")
+  externalBookingRef String?    @map("external_booking_ref")
   /// 遅延解決で確定する LiveSession / LiveTeam（未解決時は null）。FK は張らず graceful lookup。
-  liveSessionId     String?   @map("live_session_id")
-  teamId            String?   @map("team_id")
+  /// 匿名連携トークンは発行時にこの 2 つを確定する（resolve は reservationNumber 照合より優先）。
+  liveSessionId      String?    @map("live_session_id")
+  teamId             String?    @map("team_id")
   /// 平文 token の sha256 hex(64 char)。平文は保存しない。
-  tokenHash         String    @unique @map("token_hash")
-  expiresAt         DateTime  @map("expires_at")
+  tokenHash          String     @unique @map("token_hash")
+  expiresAt          DateTime   @map("expires_at")
   /// 最初に resolve（LIFF 表示）された日時。
-  firstOpenedAt     DateTime? @map("first_opened_at")
+  firstOpenedAt      DateTime?  @map("first_opened_at")
   /// 最初に正常連携された日時 / 最後に正常連携された日時（Phase 2 で更新。one-time 消費ではない）。
-  firstUsedAt       DateTime? @map("first_used_at")
-  lastUsedAt        DateTime? @map("last_used_at")
-  revokedAt         DateTime? @map("revoked_at")
-  createdAt         DateTime  @default(now()) @map("created_at")
-  updatedAt         DateTime  @updatedAt @map("updated_at")
-  oa                Oa        @relation(fields: [oaId], references: [id], onDelete: Cascade)
+  firstUsedAt        DateTime?  @map("first_used_at")
+  lastUsedAt         DateTime?  @map("last_used_at")
+  revokedAt          DateTime?  @map("revoked_at")
+  createdAt          DateTime   @default(now()) @map("created_at")
+  updatedAt          DateTime   @updatedAt @map("updated_at")
+  oa                 Oa         @relation(fields: [oaId], references: [id], onDelete: Cascade)
 
   @@index([oaId, expiresAt])
   @@index([oaId, workId, reservationNumber])
+  /// 匿名連携（新設計）の逆引き・監査用。unique にはしない（再発行で複数履歴が残り、最新未失効のみ有効）。
+  @@index([oaId, workId, externalSessionRef, externalBookingRef], map: "live_ticket_link_tokens_ext_refs_idx")
   @@map("live_ticket_link_tokens")
 }
 
@@ -1512,21 +1522,21 @@ model Subscription {
   /// currentPeriodStart / currentPeriodEnd / planId）とは完全に分離し、Stripe webhook はここを一切触らない。
   /// すべて null のとき従来挙動と完全一致。プラン解決順: manual が beta/trial / Stripe / basic より優先。
   /// manualPlanTier は PlanTier 文字列（basic|standard|plus|pro|delegated）。不正値は読み取り時に無効扱い。
-  manualPlanTier         String?   @map("manual_plan_tier")
+  manualPlanTier        String?   @map("manual_plan_tier")
   /// 付与元種別。"manual"（運営手動）/ "corporate_contract"（法人契約）。
-  manualSource           String?   @map("manual_source")
-  manualStartsAt         DateTime? @map("manual_starts_at")
-  manualEndsAt           DateTime? @map("manual_ends_at")
+  manualSource          String?   @map("manual_source")
+  manualStartsAt        DateTime? @map("manual_starts_at")
+  manualEndsAt          DateTime? @map("manual_ends_at")
   /// 手動上書きの無効化日時（null=有効）。無効化すると Stripe/grant/basic へフォールバック。
-  manualDisabledAt       DateTime? @map("manual_disabled_at")
-  manualNote             String?   @map("manual_note")
+  manualDisabledAt      DateTime? @map("manual_disabled_at")
+  manualNote            String?   @map("manual_note")
   /// 手動上書きを設定したユーザー（= 最初に手動付与した運営者。詳細な変更履歴は PR4 の操作ログで扱う）。
-  manualCreatedByUserId  String?   @map("manual_created_by_user_id")
+  manualCreatedByUserId String?   @map("manual_created_by_user_id")
 
-  createdAt          DateTime  @default(now()) @map("created_at")
-  updatedAt          DateTime  @updatedAt @map("updated_at")
-  oa                 Oa        @relation(fields: [oaId], references: [id], onDelete: Cascade)
-  plan               Plan      @relation(fields: [planId], references: [id])
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  oa        Oa       @relation(fields: [oaId], references: [id], onDelete: Cascade)
+  plan      Plan     @relation(fields: [planId], references: [id])
 
   @@index([planId])
   @@index([status])
@@ -2323,6 +2333,16 @@ enum LiveSessionStatus {
   ended
 }
 
+/// Live 実行レコードの由来（プロダクト境界）。明示保存（externalSessionRef 等の有無で推測しない）。
+///   NATIVE  = LIVE for Whale Studio（native Live 管理画面から作成・管理）
+///   UZU_PRO = for UZU Pro（UZU Pro CMS から /api/external/v2/* 経由で作成・管理）
+/// native Live API/UI は origin=NATIVE のみを扱い、external v2 API は origin=UZU_PRO のみを扱う。
+/// 子（Team/Token/Participant）は親 Session/発行 token の origin を継承し、異 origin の紐付けは禁止。
+enum LiveOrigin {
+  NATIVE
+  UZU_PRO
+}
+
 enum LiveParticipantStatus {
   waiting
   active
@@ -2347,19 +2367,24 @@ enum LiveEventType {
 /// Phase 2-G で workId を追加し、各回は特定作品 (Work) に紐付ける運用へ。
 /// startsAt が参加日 + 開始時間の正。
 model LiveSession {
-  id        String            @id @default(uuid())
-  oaId      String            @map("oa_id")
+  id                 String            @id @default(uuid())
+  oaId               String            @map("oa_id")
   /// 紐付く Work (= 作品)。既存セッション互換のため nullable。
   /// 新規セッションは UI 上で必須化する。
-  workId    String?           @map("work_id")
-  name      String
-  status    LiveSessionStatus @default(draft)
-  startsAt  DateTime?         @map("starts_at")
-  endsAt    DateTime?         @map("ends_at")
-  createdAt DateTime          @default(now()) @map("created_at")
-  updatedAt DateTime          @updatedAt @map("updated_at")
-  oa        Oa                @relation(fields: [oaId], references: [id], onDelete: Cascade)
-  work      Work?             @relation(fields: [workId], references: [id], onDelete: SetNull)
+  workId             String?           @map("work_id")
+  /// 匿名連携（ウズプロCMS）由来の安定 ID。個人情報ではない。CMS 側で生成し upsert のキーにする。
+  /// 既存セッションは null（backfill しない）。新設計では workId + externalSessionRef を必須入力として扱う。
+  externalSessionRef String?           @map("external_session_ref")
+  /// 由来（プロダクト境界）。native Live=NATIVE / external v2=UZU_PRO。実行の親。
+  origin             LiveOrigin        @default(NATIVE)
+  name               String
+  status             LiveSessionStatus @default(draft)
+  startsAt           DateTime?         @map("starts_at")
+  endsAt             DateTime?         @map("ends_at")
+  createdAt          DateTime          @default(now()) @map("created_at")
+  updatedAt          DateTime          @updatedAt @map("updated_at")
+  oa                 Oa                @relation(fields: [oaId], references: [id], onDelete: Cascade)
+  work               Work?             @relation(fields: [workId], references: [id], onDelete: SetNull)
 
   participants LiveParticipant[]
   eventLogs    LiveEventLog[]
@@ -2367,6 +2392,9 @@ model LiveSession {
   instructions LiveActorInstruction[]
   teams        LiveTeam[]
 
+  /// 匿名連携の冪等 upsert キー（同一 OA・work 内で externalSessionRef を一意化）。
+  /// nullable 複合 unique: 既存の null 行は Postgres 上「互いに distinct」扱いで衝突しない（backfill 不要）。
+  @@unique([oaId, workId, externalSessionRef], map: "live_sessions_oa_work_external_session_ref_key")
   @@index([oaId, createdAt])
   @@index([oaId, status])
   @@index([workId])
@@ -2381,6 +2409,8 @@ model LiveParticipant {
   id                String                @id @default(uuid())
   oaId              String                @map("oa_id")
   liveSessionId     String                @map("live_session_id")
+  /// 由来（プロダクト境界）。作成時に Token/Team/Session の origin を検証・継承。
+  origin            LiveOrigin            @default(NATIVE)
   /// Phase 2-G: 同じ回の中で参加者をグループ化する単位 (= LiveTeam 参照)。
   /// onDelete: SetNull で「チームを消しても participant は残す」運用に。
   teamId            String?               @map("team_id")
@@ -2418,25 +2448,34 @@ model LiveParticipant {
 /// 4人1チームを基本として、予約番号ごと or 順番割当 or CSV のチーム名列から作成。
 /// reservationNumber は CSV import で予約番号ごとにチーム化したとき使う dedup key。
 model LiveTeam {
-  id                String   @id @default(uuid())
-  oaId              String   @map("oa_id")
-  liveSessionId     String   @map("live_session_id")
-  name              String
-  reservationNumber String?  @map("reservation_number")
-  memo              String?
+  id                 String     @id @default(uuid())
+  oaId               String     @map("oa_id")
+  liveSessionId      String     @map("live_session_id")
+  /// 由来（プロダクト境界）。作成時に親 Session の origin を継承（異 origin 紐付けは禁止）。
+  origin             LiveOrigin @default(NATIVE)
+  name               String
+  reservationNumber  String?    @map("reservation_number")
+  /// 匿名連携（ウズプロCMS）由来の予約枠参照。個人情報ではない安定 ID。匿名 team の冪等 upsert キー。
+  externalBookingRef String?    @map("external_booking_ref")
+  /// 予約枠の定員（新設計の正本）。初期対応は 2 / 4 のみ許可。既存 team は null。
+  capacity           Int?       @map("capacity")
+  memo               String?
   /// PR2b-0: 現地公演運営（Operation Belkish）の予約/部屋情報を Team 側に寄せる。すべて任意。
-  reservedAt        DateTime? @map("reserved_at")     /// 公演予約日時
-  purchaserName     String?   @map("purchaser_name")  /// 購入者名（トラブル時確認・名簿照合）
-  groupType         String?   @map("group_type")      /// "two" | "four"（表示: 2人 / 4人）。TEXT で将来拡張可
-  roomNumber        String?   @map("room_number")     /// 部屋番号（手動紐付け・"A-1" 等も可）
-  ticketId          String?   @map("ticket_id")       /// チケットID（照合・PR2b 照合キー候補）
-  createdAt         DateTime @default(now()) @map("created_at")
-  updatedAt         DateTime @updatedAt @map("updated_at")
+  reservedAt         DateTime?  @map("reserved_at") /// 公演予約日時
+  purchaserName      String?    @map("purchaser_name") /// 購入者名（トラブル時確認・名簿照合）
+  groupType          String?    @map("group_type") /// "two" | "four"（表示: 2人 / 4人）。TEXT で将来拡張可
+  roomNumber         String?    @map("room_number") /// 部屋番号（手動紐付け・"A-1" 等も可）
+  ticketId           String?    @map("ticket_id") /// チケットID（照合・PR2b 照合キー候補）
+  createdAt          DateTime   @default(now()) @map("created_at")
+  updatedAt          DateTime   @updatedAt @map("updated_at")
 
   oa           Oa                @relation(fields: [oaId], references: [id], onDelete: Cascade)
   liveSession  LiveSession       @relation(fields: [liveSessionId], references: [id], onDelete: Cascade)
   participants LiveParticipant[]
 
+  /// 匿名連携の冪等 upsert キー（同一 session 内で externalBookingRef を一意化）。
+  /// nullable 複合 unique: 既存 team は externalBookingRef=null で互いに distinct（backfill 不要）。
+  @@unique([liveSessionId, externalBookingRef], map: "live_teams_session_external_booking_ref_key")
   @@index([liveSessionId, createdAt])
   @@index([liveSessionId, reservationNumber])
   @@index([liveSessionId, ticketId])

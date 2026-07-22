@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
 
     const rec = await prisma.liveTicketLinkToken.findUnique({
       where: { tokenHash },
-      select: { id: true, oaId: true, workId: true, reservationNumber: true, ticketId: true, expiresAt: true, revokedAt: true, firstOpenedAt: true },
+      select: { id: true, oaId: true, workId: true, reservationNumber: true, ticketId: true, liveSessionId: true, teamId: true, expiresAt: true, revokedAt: true, firstOpenedAt: true },
     });
     if (!rec) return ticketError("TOKEN_NOT_FOUND", "チケットが見つかりませんでした", 404);
 
@@ -37,36 +37,66 @@ export async function POST(req: NextRequest) {
     if (state === "revoked") return ticketError("TOKEN_REVOKED", "このチケットURLは無効化されています", 410);
     if (state === "expired") return ticketError("TOKEN_EXPIRED", "このチケットURLの有効期限が切れています", 410);
 
-    // 遅延解決: 対象 OA/Work の active セッション内で LiveTeam を照合。
-    const sessions = await prisma.liveSession.findMany({
-      where:  { oaId: rec.oaId, workId: rec.workId, status: "active" },
-      select: { id: true, name: true, startsAt: true },
-    });
-    if (sessions.length === 0) return ticketError("WORK_NOT_ACTIVE", "この公演はまだ受付を開始していません", 409);
+    // 解決した session / team（新設計 = 直接解決 / legacy = reservationNumber 照合）。
+    let team: { id: string; liveSessionId: string; reservedAt: Date | null; groupType: string | null } | null = null;
+    let session: { id: string; name: string; startsAt: Date | null } | null = null;
 
-    const sessionById = new Map(sessions.map((s) => [s.id, s]));
-    const teams = await prisma.liveTeam.findMany({
-      where:  { liveSessionId: { in: sessions.map((s) => s.id) } },
-      select: { id: true, reservationNumber: true, ticketId: true, liveSessionId: true, reservedAt: true, groupType: true },
-    });
-
-    const match = pickMatchingTeam(teams, { reservationNumber: rec.reservationNumber, ticketId: rec.ticketId });
-    if (match.kind !== "ok") {
-      // ambiguous / conflict は内部データ要因。ユーザーには一律「見つからない」で秘匿しつつ server log に残す。
-      if (match.kind === "ambiguous" || match.kind === "conflict") {
-        console.warn(`[ticket resolve] ${match.kind} tokenId=${rec.id} oa=${rec.oaId.slice(0, 8)}`);
+    if (rec.liveSessionId && rec.teamId) {
+      // 新設計トークン: token に保存された liveSessionId / teamId を直接解決（reservationNumber 照合より優先）。
+      const [t, s] = await Promise.all([
+        prisma.liveTeam.findUnique({ where: { id: rec.teamId }, select: { id: true, liveSessionId: true, reservedAt: true, groupType: true } }),
+        prisma.liveSession.findUnique({ where: { id: rec.liveSessionId }, select: { id: true, oaId: true, workId: true, name: true, startsAt: true } }),
+      ]);
+      // 整合性検証: team/session が存在し、相互に一致し、token の oa/work と矛盾しないこと。
+      const consistent =
+        !!t && !!s &&
+        t.liveSessionId === rec.liveSessionId &&
+        s.id === rec.liveSessionId &&
+        s.oaId === rec.oaId &&
+        (s.workId == null || s.workId === rec.workId);
+      if (!consistent) {
+        console.warn(`[ticket resolve] direct-resolve mismatch tokenId=${rec.id} oa=${rec.oaId.slice(0, 8)}`);
+        return ticketError("TICKET_NOT_FOUND", "チケットを特定できませんでした。運営までお問い合わせください", 404);
       }
-      return ticketError("TICKET_NOT_FOUND", "チケットを特定できませんでした。運営までお問い合わせください", 404);
+      team = { id: t!.id, liveSessionId: t!.liveSessionId, reservedAt: t!.reservedAt, groupType: t!.groupType };
+      session = { id: s!.id, name: s!.name, startsAt: s!.startsAt };
+    } else {
+      // legacy トークン（#588/#589）: 従来どおり active セッション内で reservationNumber / ticketId を照合。
+      const sessions = await prisma.liveSession.findMany({
+        where:  { oaId: rec.oaId, workId: rec.workId, status: "active" },
+        select: { id: true, name: true, startsAt: true },
+      });
+      if (sessions.length === 0) return ticketError("WORK_NOT_ACTIVE", "この公演はまだ受付を開始していません", 409);
+
+      const sessionById = new Map(sessions.map((s) => [s.id, s]));
+      const teams = await prisma.liveTeam.findMany({
+        where:  { liveSessionId: { in: sessions.map((s) => s.id) } },
+        select: { id: true, reservationNumber: true, ticketId: true, liveSessionId: true, reservedAt: true, groupType: true },
+      });
+
+      const match = pickMatchingTeam(teams, { reservationNumber: rec.reservationNumber, ticketId: rec.ticketId });
+      if (match.kind !== "ok") {
+        // ambiguous / conflict は内部データ要因。ユーザーには一律「見つからない」で秘匿しつつ server log に残す。
+        if (match.kind === "ambiguous" || match.kind === "conflict") {
+          console.warn(`[ticket resolve] ${match.kind} tokenId=${rec.id} oa=${rec.oaId.slice(0, 8)}`);
+        }
+        return ticketError("TICKET_NOT_FOUND", "チケットを特定できませんでした。運営までお問い合わせください", 404);
+      }
+      const matched = teams.find((t) => t.id === match.team.id)!;
+      team = { id: matched.id, liveSessionId: matched.liveSessionId, reservedAt: matched.reservedAt, groupType: matched.groupType };
+      session = sessionById.get(matched.liveSessionId) ?? null;
     }
 
-    const team = teams.find((t) => t.id === match.team.id)!;
-    const session = sessionById.get(team.liveSessionId) ?? null;
+    // team はどちらの分岐でも確定済み（失敗時は早期 return）。TS narrowing のためのガード。
+    if (!team) return ticketError("TICKET_NOT_FOUND", "チケットを特定できませんでした。運営までお問い合わせください", 404);
 
     // firstOpenedAt は初回のみ・競合安全（where firstOpenedAt: null）。解決した session/team は冪等に保存。
     if (!rec.firstOpenedAt) {
       await prisma.liveTicketLinkToken.updateMany({ where: { id: rec.id, firstOpenedAt: null }, data: { firstOpenedAt: now } });
     }
-    await prisma.liveTicketLinkToken.updateMany({ where: { id: rec.id }, data: { liveSessionId: team.liveSessionId, teamId: team.id } });
+    if (!rec.liveSessionId || !rec.teamId) {
+      await prisma.liveTicketLinkToken.updateMany({ where: { id: rec.id }, data: { liveSessionId: team.liveSessionId, teamId: team.id } });
+    }
 
     const [work, oa] = await Promise.all([
       prisma.work.findUnique({ where: { id: rec.workId }, select: { title: true } }),

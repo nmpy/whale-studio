@@ -13,6 +13,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { created, badRequest, notFound, serverError } from "@/lib/api-response";
 import { authorizeLiveSection } from "@/lib/live-auth";
+import { NATIVE_ORIGIN } from "@/lib/live-origin";
 
 export const dynamic = "force-dynamic";
 
@@ -44,14 +45,14 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     const data = createEventSchema.parse(body);
 
     const session = await prisma.liveSession.findFirst({
-      where:  { id: data.session_id, oaId: params.id },
+      where:  { id: data.session_id, oaId: params.id, origin: NATIVE_ORIGIN },
       select: { id: true },
     });
     if (!session) return notFound("LiveSession");
 
     if (data.participant_id) {
       const p = await prisma.liveParticipant.findFirst({
-        where:  { id: data.participant_id, liveSessionId: data.session_id },
+        where:  { id: data.participant_id, liveSessionId: data.session_id, origin: NATIVE_ORIGIN },
         select: { id: true },
       });
       if (!p) return badRequest("participant_id がセッションに紐付いていません");

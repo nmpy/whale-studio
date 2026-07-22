@@ -9,6 +9,7 @@ import { z, ZodError } from "zod";
 import { prisma } from "@/lib/prisma";
 import { ok, created, badRequest, notFound, serverError } from "@/lib/api-response";
 import { authorizeLive } from "@/lib/live-auth";
+import { NATIVE_ORIGIN } from "@/lib/live-origin";
 
 export const dynamic = "force-dynamic";
 
@@ -61,9 +62,10 @@ function toResponse(p: ParticipantRow) {
   };
 }
 
+// origin=NATIVE を条件に含め、UZU_PRO 公演配下は native API から 404 相当にする。
 async function ensureSessionBelongsToOa(sessionId: string, oaId: string) {
   return prisma.liveSession.findFirst({
-    where:  { id: sessionId, oaId },
+    where:  { id: sessionId, oaId, origin: NATIVE_ORIGIN },
     select: { id: true, workId: true },
   });
 }
@@ -80,7 +82,7 @@ export async function GET(
 
   try {
     const participants = await prisma.liveParticipant.findMany({
-      where:   { liveSessionId: params.sessionId },
+      where:   { liveSessionId: params.sessionId, origin: NATIVE_ORIGIN },
       orderBy: { createdAt: "asc" },
       include: { currentPhase: { select: { id: true, name: true } } },
       take:    500,
@@ -108,7 +110,7 @@ export async function POST(
     // teamId / currentPhaseId の整合性検証
     if (data.team_id) {
       const t = await prisma.liveTeam.findFirst({
-        where:  { id: data.team_id, liveSessionId: params.sessionId },
+        where:  { id: data.team_id, liveSessionId: params.sessionId, origin: NATIVE_ORIGIN },
         select: { id: true },
       });
       if (!t) return badRequest("team_id がセッションに紐付いていません");
@@ -128,6 +130,7 @@ export async function POST(
       data: {
         oaId:               params.id,
         liveSessionId:      params.sessionId,
+        origin:             NATIVE_ORIGIN, // native 公演配下の participant = NATIVE（親 Session の origin を継承）
         teamId:             data.team_id ?? null,
         displayName:        data.display_name ?? null,
         lineUserId:         data.line_user_id ?? null,

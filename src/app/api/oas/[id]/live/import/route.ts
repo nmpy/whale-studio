@@ -49,6 +49,7 @@ import { Buffer } from "node:buffer";
 import { prisma } from "@/lib/prisma";
 import { ok, badRequest, notFound, serverError } from "@/lib/api-response";
 import { authorizeLive } from "@/lib/live-auth";
+import { NATIVE_ORIGIN } from "@/lib/live-origin";
 import { normalizeGroupType, type LiveTeamGroupType } from "@/lib/live-team";
 import Papa from "papaparse";
 import iconv from "iconv-lite";
@@ -398,7 +399,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   // 1. scheduledAt → セッション解決 (= 既存 LiveSession.startsAt と分単位一致 / なければ作成)
   const sessionByMinuteKey = new Map<string, string>(); // "yyyy-mm-ddThh:mm" → sessionId
   const existingSessions = await prisma.liveSession.findMany({
-    where:  { oaId: params.id, workId: options.work_id },
+    // import は native Live 取込。NATIVE の公演のみ再利用対象にする（UZU_PRO 公演には取込まない）。
+    where:  { oaId: params.id, workId: options.work_id, origin: NATIVE_ORIGIN },
     select: { id: true, startsAt: true },
   });
   for (const s of existingSessions) {
@@ -433,7 +435,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     if (cached) return cached;
     const name = `${dt.getFullYear()}/${String(dt.getMonth() + 1).padStart(2, "0")}/${String(dt.getDate()).padStart(2, "0")} ${String(dt.getHours()).padStart(2, "0")}:${String(dt.getMinutes()).padStart(2, "0")}回`;
     const created = await prisma.liveSession.create({
-      data: { oaId: params.id, workId: options.work_id, name, startsAt: dt },
+      data: { oaId: params.id, origin: NATIVE_ORIGIN, workId: options.work_id, name, startsAt: dt },
       select: { id: true },
     });
     sessionByMinuteKey.set(k, created.id);
@@ -444,7 +446,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     let cache = teamCacheBySession.get(sessionId);
     if (cache) return cache;
     const teams = await prisma.liveTeam.findMany({
-      where:  { liveSessionId: sessionId },
+      where:  { liveSessionId: sessionId, origin: NATIVE_ORIGIN },
       select: { id: true, name: true, reservationNumber: true },
     });
     cache = {
@@ -469,7 +471,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       const cached = cache.byName.get(row.team_name);
       if (cached) return cached;
       const created = await prisma.liveTeam.create({
-        data: { oaId: params.id, liveSessionId: sessionId, name: row.team_name, ...teamFieldsFromRow(row) },
+        data: { oaId: params.id, origin: NATIVE_ORIGIN, liveSessionId: sessionId, name: row.team_name, ...teamFieldsFromRow(row) },
         select: { id: true },
       });
       teamsCreated += 1;
@@ -484,6 +486,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       const created = await prisma.liveTeam.create({
         data: {
           oaId:              params.id,
+          origin:            NATIVE_ORIGIN,
           liveSessionId:     sessionId,
           name,
           reservationNumber: row.reservation_number,
@@ -501,7 +504,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       if (!cache.autoBucket || cache.autoBucket.count >= 4) {
         const name = `チーム ${cache.nextAutoIndex}`;
         const created = await prisma.liveTeam.create({
-          data: { oaId: params.id, liveSessionId: sessionId, name },
+          data: { oaId: params.id, origin: NATIVE_ORIGIN, liveSessionId: sessionId, name },
           select: { id: true },
         });
         teamsCreated += 1;
@@ -541,14 +544,14 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         // scheduledAt 無しのデータは「workId 紐付けの未スケジュール回」を 1 つ作る
         // = 既存の workId 紐付き / startsAt=null セッションを再利用
         const fallback = await prisma.liveSession.findFirst({
-          where:  { oaId: params.id, workId: options.work_id, startsAt: null },
+          where:  { oaId: params.id, workId: options.work_id, startsAt: null, origin: NATIVE_ORIGIN },
           select: { id: true },
         });
         if (fallback) {
           sessionId = fallback.id;
         } else {
           const f = await prisma.liveSession.create({
-            data: { oaId: params.id, workId: options.work_id, name: `${work.title} (未スケジュール)` },
+            data: { oaId: params.id, origin: NATIVE_ORIGIN, workId: options.work_id, name: `${work.title} (未スケジュール)` },
             select: { id: true },
           });
           sessionId = f.id;
@@ -572,6 +575,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         existing = await prisma.liveParticipant.findFirst({
           where: {
             liveSessionId:     sessionId,
+            origin:            NATIVE_ORIGIN,
             reservationNumber: r.reservation_number,
             displayName:       r.display_name,
           },
@@ -581,6 +585,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         existing = await prisma.liveParticipant.findFirst({
           where: {
             liveSessionId: sessionId,
+            origin:        NATIVE_ORIGIN,
             displayName:   r.display_name,
             memo:          { contains: `email: ${r.email}` },
           },
@@ -612,6 +617,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
       const data = {
         oaId:               params.id,
+        origin:             NATIVE_ORIGIN, // import は native Live 取込 = NATIVE
         liveSessionId:      sessionId,
         teamId,
         displayName:        r.display_name,

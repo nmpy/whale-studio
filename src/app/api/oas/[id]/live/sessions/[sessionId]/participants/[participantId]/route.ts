@@ -9,6 +9,7 @@ import { z, ZodError } from "zod";
 import { prisma } from "@/lib/prisma";
 import { ok, badRequest, notFound, serverError } from "@/lib/api-response";
 import { authorizeLive } from "@/lib/live-auth";
+import { NATIVE_ORIGIN } from "@/lib/live-origin";
 
 export const dynamic = "force-dynamic";
 
@@ -80,13 +81,13 @@ export async function PATCH(
   if (!auth.ok) return auth.response;
 
   const session = await prisma.liveSession.findFirst({
-    where:  { id: params.sessionId, oaId: params.id },
+    where:  { id: params.sessionId, oaId: params.id, origin: NATIVE_ORIGIN },
     select: { id: true, workId: true },
   });
   if (!session) return notFound("LiveSession");
 
   const existing = await prisma.liveParticipant.findFirst({
-    where:  { id: params.participantId, liveSessionId: params.sessionId, oaId: params.id },
+    where:  { id: params.participantId, liveSessionId: params.sessionId, oaId: params.id, origin: NATIVE_ORIGIN },
     select: { id: true },
   });
   if (!existing) return notFound("LiveParticipant");
@@ -97,7 +98,7 @@ export async function PATCH(
 
     if (data.team_id) {
       const t = await prisma.liveTeam.findFirst({
-        where:  { id: data.team_id, liveSessionId: params.sessionId },
+        where:  { id: data.team_id, liveSessionId: params.sessionId, origin: NATIVE_ORIGIN },
         select: { id: true },
       });
       if (!t) return badRequest("team_id がセッションに紐付いていません");

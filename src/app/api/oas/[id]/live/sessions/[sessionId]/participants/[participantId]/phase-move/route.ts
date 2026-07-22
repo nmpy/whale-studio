@@ -17,6 +17,7 @@ import { z, ZodError } from "zod";
 import { prisma } from "@/lib/prisma";
 import { ok, badRequest, notFound, serverError } from "@/lib/api-response";
 import { authorizeLiveSection } from "@/lib/live-auth";
+import { NATIVE_ORIGIN } from "@/lib/live-origin";
 import { fetchPhaseWithIncludes, buildRuntimeState } from "@/lib/runtime";
 import { buildPhaseMessages, pushToLine, type LineSender, type PlaceholderVars } from "@/lib/line";
 import { applyFreeInputPostEffect } from "@/lib/frontier-effect";
@@ -62,7 +63,7 @@ export async function POST(
   try {
     // 1. participant（当該 session/OA・lineUserId 紐づき済みのみ）
     const participant = await prisma.liveParticipant.findFirst({
-      where:  { id: params.participantId, liveSessionId: params.sessionId, oaId: params.id },
+      where:  { id: params.participantId, liveSessionId: params.sessionId, oaId: params.id, origin: NATIVE_ORIGIN },
       select: { id: true, lineUserId: true, currentPhaseId: true },
     });
     if (!participant) return notFound("LiveParticipant");
@@ -72,7 +73,7 @@ export async function POST(
 
     // 2. session（workId 解決）
     const session = await prisma.liveSession.findFirst({
-      where:  { id: params.sessionId, oaId: params.id },
+      where:  { id: params.sessionId, oaId: params.id, origin: NATIVE_ORIGIN },
       select: { id: true, workId: true },
     });
     if (!session) return notFound("LiveSession");

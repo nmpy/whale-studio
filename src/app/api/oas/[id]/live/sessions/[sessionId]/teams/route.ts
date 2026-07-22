@@ -9,13 +9,15 @@ import { ZodError } from "zod";
 import { prisma } from "@/lib/prisma";
 import { ok, created, badRequest, notFound, serverError } from "@/lib/api-response";
 import { authorizeLive } from "@/lib/live-auth";
+import { NATIVE_ORIGIN } from "@/lib/live-origin";
 import { createLiveTeamSchema, toLiveTeamResponse } from "@/lib/live-team";
 
 export const dynamic = "force-dynamic";
 
+// origin=NATIVE を条件に含め、UZU_PRO 公演配下は native API から 404 相当にする。
 async function ensureSessionBelongsToOa(sessionId: string, oaId: string) {
   return prisma.liveSession.findFirst({
-    where:  { id: sessionId, oaId },
+    where:  { id: sessionId, oaId, origin: NATIVE_ORIGIN },
     select: { id: true },
   });
 }
@@ -32,7 +34,7 @@ export async function GET(
 
   try {
     const teams = await prisma.liveTeam.findMany({
-      where:   { liveSessionId: params.sessionId },
+      where:   { liveSessionId: params.sessionId, origin: NATIVE_ORIGIN },
       orderBy: { createdAt: "asc" },
       take:    500,
     });
@@ -59,6 +61,7 @@ export async function POST(
       data: {
         oaId:              params.id,
         liveSessionId:     params.sessionId,
+        origin:            NATIVE_ORIGIN, // native 公演配下の team = NATIVE（親 Session の origin を継承）
         name:              data.name,
         reservationNumber: data.reservation_number ?? null,
         memo:              data.memo ?? null,

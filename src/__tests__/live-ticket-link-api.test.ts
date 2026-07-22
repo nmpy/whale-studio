@@ -179,3 +179,26 @@ describe("resolve API", () => {
     expect((await res.json()).error.code).toBe("TICKET_NOT_FOUND");
   });
 });
+
+// v1 契約の後方互換ガード（v2 分離後も origin/main と同一契約であること）。
+describe("v1 mint 後方互換ガード", () => {
+  const ok = () => {
+    mp.work.findUnique.mockResolvedValue({ id: "w1", oaId: "oa1" });
+    mp.oa.findUnique.mockResolvedValue({ id: "oa1", liffId: "1111-liff" });
+    mp.liveSession.findFirst.mockResolvedValue({ startsAt: new Date("2026-08-20T09:00:00Z") });
+    mp.liveTicketLinkToken.create.mockResolvedValue({ id: "tok1" });
+  };
+  it("ticketId 省略でも発行できる（任意項目）", async () => {
+    ok();
+    const res = await mintPost(mintReq({ workId: "w1", reservationNumber: "R-200" }));
+    expect(res.status).toBe(200);
+    expect(mp.liveTicketLinkToken.create.mock.calls[0][0].data.ticketId).toBeNull();
+    expect(mp.liveTicketLinkToken.create.mock.calls[0][0].data.reservationNumber).toBe("R-200");
+  });
+  it("v2 匿名 body（reservationNumber なし）は v1 では 400（契約を弱めない）", async () => {
+    ok();
+    const res = await mintPost(mintReq({ workId: "w1", externalSessionRef: "uzu-s-1", externalBookingRef: "uzu-b-1", capacity: 4 }));
+    expect(res.status).toBe(400);
+    expect(mp.liveTicketLinkToken.create).not.toHaveBeenCalled();
+  });
+});

@@ -34,7 +34,7 @@ function req(body: unknown): NextRequest {
 const TOK = "x".repeat(43);
 
 const recActive = {
-  id: "tok1", oaId: "oa1", workId: "w1", reservationNumber: "R-100", ticketId: "BEL-123456",
+  id: "tok1", oaId: "oa1", workId: "w1", origin: "UZU_PRO" as "NATIVE" | "UZU_PRO", reservationNumber: "R-100", ticketId: "BEL-123456",
   liveSessionId: null as string | null, teamId: null as string | null,
   expiresAt: new Date(Date.now() + 86400000), revokedAt: null as Date | null,
 };
@@ -191,5 +191,29 @@ describe("link API — 連携・定員・期限", () => {
     expect(res.status).toBe(404);
     expect((await res.json()).error.code).toBe("TICKET_NOT_FOUND");
     expect(mLink.link).not.toHaveBeenCalled();
+  });
+});
+
+describe("link API — origin 継承（共有入口・token lookup は origin で絞らない）", () => {
+  // 9: LIFF link は NATIVE / UZU_PRO 両方の token を解決する（token 検索に origin フィルタを付けない）
+  it("9: token lookup の where は { tokenHash } のみ（origin キーを含めない）", async () => {
+    setHappy();
+    await linkPost(req({ token: TOK, accessToken: "x" }));
+    const where = mp.liveTicketLinkToken.findUnique.mock.calls[0][0].where;
+    expect(Object.keys(where)).toEqual(["tokenHash"]);
+    expect("origin" in where).toBe(false);
+  });
+  // 10: Participant は解決した token.origin を継承する（UZU_PRO token → origin: UZU_PRO で連携）
+  it("10: UZU_PRO token は origin=UZU_PRO を連携関数へ渡す", async () => {
+    setHappy();
+    mp.liveTicketLinkToken.findUnique.mockResolvedValue({ ...recActive, origin: "UZU_PRO" });
+    await linkPost(req({ token: TOK, accessToken: "x" }));
+    expect(mLink.link).toHaveBeenCalledWith(expect.objectContaining({ origin: "UZU_PRO" }));
+  });
+  it("10b: NATIVE token は origin=NATIVE を連携関数へ渡す（継承）", async () => {
+    setHappy();
+    mp.liveTicketLinkToken.findUnique.mockResolvedValue({ ...recActive, origin: "NATIVE" });
+    await linkPost(req({ token: TOK, accessToken: "x" }));
+    expect(mLink.link).toHaveBeenCalledWith(expect.objectContaining({ origin: "NATIVE" }));
   });
 });

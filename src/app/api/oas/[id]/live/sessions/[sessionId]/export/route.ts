@@ -14,6 +14,7 @@ import type { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { notFound, serverError } from "@/lib/api-response";
 import { authorizeLive } from "@/lib/live-auth";
+import { NATIVE_ORIGIN } from "@/lib/live-origin";
 import Papa from "papaparse";
 
 export const dynamic = "force-dynamic";
@@ -50,7 +51,7 @@ export async function GET(
   if (!auth.ok) return auth.response;
 
   const session = await prisma.liveSession.findFirst({
-    where:  { id: params.sessionId, oaId: params.id },
+    where:  { id: params.sessionId, oaId: params.id, origin: NATIVE_ORIGIN },
     select: { id: true, name: true, startsAt: true },
   });
   if (!session) return notFound("LiveSession");
@@ -58,7 +59,7 @@ export async function GET(
   try {
     const [participants, assignments, actors, instructions, lastContacts] = await Promise.all([
       prisma.liveParticipant.findMany({
-        where:   { liveSessionId: params.sessionId },
+        where:   { liveSessionId: params.sessionId, origin: NATIVE_ORIGIN },
         orderBy: { createdAt: "asc" },
         include: {
           team:         { select: { name: true } },

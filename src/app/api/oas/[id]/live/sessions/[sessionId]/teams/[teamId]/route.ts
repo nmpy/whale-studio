@@ -9,13 +9,15 @@ import { ZodError } from "zod";
 import { prisma } from "@/lib/prisma";
 import { ok, badRequest, noContent, notFound, serverError } from "@/lib/api-response";
 import { authorizeLive } from "@/lib/live-auth";
+import { NATIVE_ORIGIN } from "@/lib/live-origin";
 import { patchLiveTeamSchema, toLiveTeamResponse } from "@/lib/live-team";
 
 export const dynamic = "force-dynamic";
 
+// origin=NATIVE を条件に含め、UZU_PRO team は native API から 404 相当（編集/削除も不可）。
 async function findTeam(teamId: string, sessionId: string, oaId: string) {
   return prisma.liveTeam.findFirst({
-    where:  { id: teamId, liveSessionId: sessionId, oaId },
+    where:  { id: teamId, liveSessionId: sessionId, oaId, origin: NATIVE_ORIGIN },
     select: { id: true },
   });
 }
