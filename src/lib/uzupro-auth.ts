@@ -1,25 +1,23 @@
 // src/lib/uzupro-auth.ts
 // for ウズプロ API/ページの共通ガード（authorizeLive を踏襲）。
 //
-// 通過条件:
+// 通過条件（3 条件の AND）:
 //   - 認証済み（未ログインは 401）
-//   - UzuProGrant 保有 かつ 当該 OA の active メンバー
-// ⚠️ platform owner でも Grant が無ければ通さない（spec §5・迂回不可）。作品(OA)アクセスの判定
-//    （getWorkspaceRole）は platform owner を全 OA owner 扱いする既存短絡を使うが、Grant は別途必須。
-// 露出最小化のため、権限なし/OA 不在はすべて 404 に揃える（存在を露出しない）。
+//   - Work.uzuProEnabled = true かつ UzuProGrant 保有 かつ 当該 OA の active メンバー（canAccessUzuPro）
+// ⚠️ platform owner でも Grant が無ければ通さない（迂回不可）。作品(OA)アクセスの判定は
+//    getWorkspaceRole の既存短絡を使うが、Grant と Work 有効化は別途必須。
+// 露出最小化のため、権限なし/OA・Work 不在/無効はすべて 404 に揃える（存在を露出しない）。
 
 import type { NextRequest, NextResponse } from "next/server";
 import { NextResponse as Res } from "next/server";
-import { prisma } from "@/lib/prisma";
 import { getAuthUser } from "@/lib/auth";
-import { getWorkspaceRole } from "@/lib/rbac";
-import { hasUzuProGrant } from "@/lib/uzupro";
+import { canAccessUzuPro } from "@/lib/uzupro";
 
 export type UzuProAuthOk = {
   ok: true;
   user: { id: string; email?: string };
   /** 判定根拠（ログ用） */
-  via: "oa_member_granted";
+  via: "work_enabled_member_granted";
 };
 export type UzuProAuthFail = { ok: false; response: NextResponse };
 
@@ -31,12 +29,13 @@ function notFoundResponse(): NextResponse {
 }
 
 /**
- * for ウズプロ API の共通ガード。ページ/Server Action/API のいずれからも呼べる。
- * 失敗時は適切なステータスの NextResponse を返す。成功時は user / via を返す。
+ * for ウズプロ API の共通ガード。**workId を必須**とし、3 条件（Work有効化 + Grant + active member）を
+ * canAccessUzuPro で判定する。ページ/Server Action/API のいずれからも呼べる。
  */
 export async function authorizeUzuPro(
   req: NextRequest,
   oaId: string,
+  workId: string,
 ): Promise<UzuProAuthOk | UzuProAuthFail> {
   const user = await getAuthUser(req);
   if (!user) {
@@ -49,16 +48,9 @@ export async function authorizeUzuPro(
     };
   }
 
-  const oa = await prisma.oa.findUnique({ where: { id: oaId }, select: { id: true } });
-  if (!oa) return { ok: false, response: notFoundResponse() };
-
-  // Grant は platform owner でも必須（迂回不可）。
-  if (!(await hasUzuProGrant(user.id))) {
+  // 3 条件（Work.uzuProEnabled + Grant + active member）を一括判定。1 つでも欠ければ 404。
+  if (!(await canAccessUzuPro(oaId, user.id, workId))) {
     return { ok: false, response: notFoundResponse() };
   }
-  const info = await getWorkspaceRole(oaId, user.id);
-  if (info && info.status === "active") {
-    return { ok: true, user, via: "oa_member_granted" };
-  }
-  return { ok: false, response: notFoundResponse() };
+  return { ok: true, user, via: "work_enabled_member_granted" };
 }

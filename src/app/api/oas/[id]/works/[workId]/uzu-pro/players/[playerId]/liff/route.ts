@@ -21,7 +21,7 @@ export async function POST(
   req: NextRequest,
   { params }: { params: { id: string; workId: string; playerId: string } },
 ) {
-  const auth = await authorizeUzuPro(req, params.id);
+  const auth = await authorizeUzuPro(req, params.id, params.workId);
   if (!auth.ok) return auth.response;
 
   // テナント境界: 当該 OA + 当該 work のプレイヤーのみ（他作品/他 OA は存在を露出せず 404）。

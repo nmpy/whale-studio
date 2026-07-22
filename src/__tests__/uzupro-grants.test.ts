@@ -10,6 +10,8 @@ const { mp } = vi.hoisted(() => ({
   mp: {
     uzuProGrant: { findMany: vi.fn(), upsert: vi.fn(), deleteMany: vi.fn() },
     adminAuditLog: { create: vi.fn() },
+    // POST/DELETE は recordUzuProActivity（実物）経由で uzuProActivityLog.create を呼ぶ。
+    uzuProActivityLog: { create: vi.fn() },
   },
 }));
 vi.mock("@/lib/prisma", () => ({ prisma: mp }));
@@ -71,6 +73,10 @@ describe("uzu-pro-grants (platform owner)", () => {
     expect(mp.adminAuditLog.create.mock.calls[0][0].data).toMatchObject({
       actorId: "platform-owner", action: "create", resource: "uzu_pro_grant", resourceId: "u1",
     });
+    // for ウズプロ活動ログにも grant_granted を記録（PII を含まない）
+    expect(mp.uzuProActivityLog.create.mock.calls[0][0].data).toMatchObject({
+      actorUserId: "platform-owner", action: "grant_granted", targetType: "grant", targetId: "u1",
+    });
   });
 
   it("POST: userId 欠落は 400（upsert しない）", async () => {
@@ -97,6 +103,10 @@ describe("uzu-pro-grants (platform owner)", () => {
     expect(mp.uzuProGrant.deleteMany.mock.calls[0][0].where).toEqual({ userId: "u1" });
     expect(mp.adminAuditLog.create.mock.calls[0][0].data).toMatchObject({
       actorId: "platform-owner", action: "delete", resource: "uzu_pro_grant", resourceId: "u1",
+    });
+    // for ウズプロ活動ログにも grant_revoked を記録
+    expect(mp.uzuProActivityLog.create.mock.calls[0][0].data).toMatchObject({
+      actorUserId: "platform-owner", action: "grant_revoked", targetType: "grant", targetId: "u1",
     });
   });
 

@@ -17,11 +17,12 @@ import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { useTesterRouter as useRouter } from "@/hooks/useTesterRouter";
 import { TLink as Link } from "@/components/TLink";
-import { workApi, getDevToken } from "@/lib/api-client";
+import { workApi, getDevToken, getAuthHeaders } from "@/lib/api-client";
 import { useToast } from "@/components/Toast";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import type { PublishStatus } from "@/types";
 import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
+import { useUzuProWorkAccess } from "@/hooks/useUzuProWorkAccess";
 import { ViewerBanner } from "@/components/PermissionGuard";
 import { Button, buttonClass } from "@/components/shared";
 
@@ -66,9 +67,12 @@ export default function WorkEditPage() {
   const oaId    = params.id;
   const workId  = params.workId;
   const { role, canEdit } = useWorkspaceRole(oaId);
+  // for UZU-Pro 設定セクション用（この作品固有の access / grant / 有効化状態）。
+  const uzuPro  = useUzuProWorkAccess(oaId, workId);
   const router  = useRouter();
   const { showToast } = useToast();
 
+  const [uzuProSaving, setUzuProSaving] = useState(false);
   const [workForm, setWorkForm]       = useState<WorkForm | null>(null);
   const [loadError, setLoadError]     = useState<string | null>(null);
   const [workErrors, setWorkErrors]   = useState<Record<string, string[]>>({});
@@ -146,6 +150,35 @@ export default function WorkEditPage() {
     } catch (err) {
       showToast(err instanceof Error ? err.message : "複製に失敗しました", "error");
       setDuplicating(false);
+    }
+  }
+
+  // ── for UZU-Pro 有効/無効トグル ───────────────────
+  // PATCH /uzu-pro/enable。server が権限を再検証するため、403 はトーストで握る
+  // （client 表示だけの制御にはしない）。成功後は access を再取得して反映する。
+  async function handleToggleUzuPro() {
+    if (uzuProSaving) return;
+    const next = !uzuPro.workEnabled;
+    const confirmMsg = next
+      ? "有効化すると作品に for UZU-Pro のメニューが表示されます。よろしいですか？"
+      : "無効化すると for UZU-Pro のメニューが非表示になります。\n発行済み LIFF URL 等が利用できなくなる可能性があります。\nプレイヤー / 連携データは削除されません。\n\n無効化しますか？";
+    if (!confirm(confirmMsg)) return;
+    setUzuProSaving(true);
+    try {
+      const res = await fetch(`/api/oas/${oaId}/works/${workId}/uzu-pro/enable`, {
+        method:  "PATCH",
+        headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
+        body:    JSON.stringify({ enabled: next }),
+      });
+      if (res.status === 403) { showToast("権限がありません", "error"); return; }
+      if (!res.ok) { showToast("for UZU-Pro の設定更新に失敗しました", "error"); return; }
+      showToast(next ? "for UZU-Pro を有効にしました" : "for UZU-Pro を無効にしました", "success");
+      uzuPro.refetch();
+      router.refresh();
+    } catch {
+      showToast("for UZU-Pro の設定更新に失敗しました", "error");
+    } finally {
+      setUzuProSaving(false);
     }
   }
 
@@ -405,6 +438,90 @@ export default function WorkEditPage() {
             </Button>
           </div>
         </form>
+      </div>
+
+      {/* ══ for UZU-Pro 設定 ══ */}
+      {/* この作品固有の for UZU-Pro 有効化状態と、自分の利用権限（UzuProGrant）を区別して表示する。 */}
+      {/* 他ユーザーの Grant / プレイヤー情報は一切出さない（表示は本人の boolean のみ）。 */}
+      <div className="mt-6 w-full max-w-[640px] rounded-card border border-line bg-surface p-5 shadow-sm sm:p-6">
+        <SectionHeading>for UZU-Pro</SectionHeading>
+
+        {uzuPro.loading ? (
+          <div className="mb-2">
+            <div className="skeleton mb-2" style={{ width: 180, height: 14, borderRadius: 4 }} />
+            <div className="skeleton" style={{ width: 220, height: 14, borderRadius: 4 }} />
+          </div>
+        ) : (
+          <>
+            {/* ── 状態表示（区別して表示）── */}
+            <dl className="mb-4 flex flex-col gap-2.5">
+              <div className="flex items-center gap-2">
+                <dt className="text-[13px] text-ink-2">for UZU-Pro</dt>
+                <dd
+                  className={
+                    "rounded-full px-2.5 py-0.5 text-[12px] font-bold " +
+                    (uzuPro.workEnabled
+                      ? "bg-brand-soft text-brand"
+                      : "bg-bg-tint text-ink-3")
+                  }
+                >
+                  {uzuPro.workEnabled ? "有効" : "無効"}
+                </dd>
+              </div>
+              <div className="flex items-center gap-2">
+                <dt className="text-[13px] text-ink-2">自分の利用権限（UzuProGrant）</dt>
+                <dd
+                  className={
+                    "rounded-full px-2.5 py-0.5 text-[12px] font-bold " +
+                    (uzuPro.granted
+                      ? "bg-brand-soft text-brand"
+                      : "bg-bg-tint text-ink-3")
+                  }
+                >
+                  {uzuPro.granted ? "あり" : "なし"}
+                </dd>
+              </div>
+            </dl>
+
+            {!uzuPro.granted && (
+              <p className="mb-4 rounded-field border border-line bg-bg-tint px-3 py-2 text-[12px] leading-relaxed text-ink-2">
+                利用するには platform owner による権限付与が必要です。
+              </p>
+            )}
+
+            {/* ── トグル（canManage=true のときのみ操作可能。false は読み取り専用）── */}
+            {uzuPro.canManage ? (
+              <div className="flex flex-col gap-2 border-t border-line-2 pt-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <span className="text-[13px] font-bold text-ink">for UZU-Pro を有効にする</span>
+                  <Button
+                    type="button"
+                    variant={uzuPro.workEnabled ? "ghost" : "primary"}
+                    size="md"
+                    disabled={uzuProSaving}
+                    aria-busy={uzuProSaving || undefined}
+                    onClick={handleToggleUzuPro}
+                  >
+                    {uzuProSaving && <span className="spinner" aria-hidden="true" />}
+                    {uzuProSaving
+                      ? "更新中..."
+                      : uzuPro.workEnabled
+                        ? "無効にする"
+                        : "有効にする"}
+                  </Button>
+                </div>
+                <p className="text-[12px] leading-relaxed text-ink-3">
+                  有効化すると、この作品に for UZU-Pro のメニューが表示されます。無効化しても
+                  プレイヤー / 連携データは削除されません。
+                </p>
+              </div>
+            ) : (
+              <p className="border-t border-line-2 pt-4 text-[12px] leading-relaxed text-ink-3">
+                有効/無効の切り替えは owner のみ操作できます（閲覧のみ）。
+              </p>
+            )}
+          </>
+        )}
       </div>
     </>
   );
