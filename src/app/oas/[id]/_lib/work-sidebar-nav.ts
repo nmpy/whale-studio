@@ -82,7 +82,9 @@ export function buildWorkSidebarSections(args: {
       ? [{
           heading: "FOR ウズプロ",
           items: [
-            { key: "uzupro-player", label: "プレイヤー", href: `${base}/uzu-pro/player`, activeSegments: ["/uzu-pro"] },
+            // 連携状況 = for UZU Pro のランディング。各項目は自分のパスでのみ active（相互干渉させない）。
+            { key: "uzupro-status", label: "連携状況", href: `${base}/uzu-pro/status`, activeSegments: ["/uzu-pro/status"] },
+            { key: "uzupro-player", label: "プレイヤー", href: `${base}/uzu-pro/player`, activeSegments: ["/uzu-pro/player"] },
           ],
         } as SidebarSection]
       : []),
