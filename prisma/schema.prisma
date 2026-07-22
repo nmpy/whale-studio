@@ -2840,6 +2840,13 @@ enum UzuProLiffStatus {
   error
 }
 
+/// LINE User ID の連携元。LIFF = プレイヤー LIFF 経由の自動紐づけ、MANUAL = 管理画面からの手動登録
+/// （LIFF 利用不可時の緊急運用）。未連携時は null。
+enum UzuProLineLinkSource {
+  LIFF
+  MANUAL
+}
+
 /// 同期リクエストの処理状態（Idempotency-Key + 成否記録）。
 enum UzuProSyncStatus {
   received
@@ -2910,6 +2917,8 @@ model UzuProPlayer {
   /// PR2 で設定（PR1 では常に null）。
   lineUserId       String?            @map("line_user_id")
   linkedAt         DateTime?          @map("linked_at")
+  /// LINE 連携元（LIFF 自動 / MANUAL 手動）。未連携は null。監査・UI バッジ用。
+  lineLinkSource   UzuProLineLinkSource? @map("line_link_source")
   createdAt        DateTime           @default(now()) @map("created_at")
   updatedAt        DateTime           @updatedAt @map("updated_at")
 

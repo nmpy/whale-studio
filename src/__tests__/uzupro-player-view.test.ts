@@ -31,6 +31,7 @@ function player(over: Partial<Record<string, unknown>> = {}) {
     playerIndex: 1,
     status: "active",
     lineUserId: null,
+    lineLinkSource: null,
     linkedAt: null,
     liffLinks: [],
     ...over,
@@ -83,6 +84,23 @@ describe("getUzuProPlayerView — LINE 連携状態（マスク表示）", () =>
     expect(row.linkedAt).toBe(linkedAt.toISOString());
     // View Model 全体を文字列化しても生 UID は現れない。
     expect(JSON.stringify(view)).not.toContain(rawUid);
+  });
+
+  it("連携元（lineLinkSource）を行に反映する（LIFF / MANUAL / 未連携=null）", async () => {
+    mp.findMany.mockResolvedValue([
+      booking({
+        players: [
+          player({ id: "p1", playerIndex: 1, lineUserId: "U_liff", lineLinkSource: "LIFF", liffLinks: [issuedLink] }),
+          player({ id: "p2", playerIndex: 2, lineUserId: "U_man", lineLinkSource: "MANUAL", liffLinks: [] }),
+          player({ id: "p3", playerIndex: 3, lineUserId: null, lineLinkSource: null, liffLinks: [] }),
+        ],
+      }),
+    ]);
+    const rows = (await getUzuProPlayerView({ oaId: "oa1", workId: "w1" })).bookings.flatMap((b) => b.players);
+    expect(rows.find((r) => r.playerIndex === 1)?.lineLinkSource).toBe("LIFF");
+    expect(rows.find((r) => r.playerIndex === 2)?.lineLinkSource).toBe("MANUAL");
+    // 未連携は source を出さない（null）。
+    expect(rows.find((r) => r.playerIndex === 3)?.lineLinkSource).toBeNull();
   });
 
   it("未連携プレイヤーの行は lineLinkedMaskedId=null・linkedAt=null", async () => {

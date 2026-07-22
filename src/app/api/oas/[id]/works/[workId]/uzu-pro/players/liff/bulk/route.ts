@@ -9,7 +9,7 @@
 import type { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { ok, unprocessable } from "@/lib/api-response";
-import { authorizeUzuPro } from "@/lib/uzupro-auth";
+import { authorizeUzuProManager } from "@/lib/uzupro-auth";
 import { issueLiffForPlayer } from "@/lib/uzupro/liff";
 import { recordUzuProActivity } from "@/lib/uzupro/activity";
 import { resolveTicketExpiresAt } from "@/lib/live-ticket-link";
@@ -25,7 +25,7 @@ export async function POST(
   req: NextRequest,
   { params }: { params: { id: string; workId: string } },
 ) {
-  const auth = await authorizeUzuPro(req, params.id, params.workId);
+  const auth = await authorizeUzuProManager(req, params.id, params.workId);
   if (!auth.ok) return auth.response;
 
   // 当該 OA が存在することは authorizeUzuPro が保証するが、work の帰属確認のため

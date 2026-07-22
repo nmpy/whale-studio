@@ -141,10 +141,10 @@ export async function bindPlayerLineUser(args: {
     });
     if (dup) return { kind: "conflict_booking_duplicate" as const };
 
-    // 条件付き更新（compare-and-set: lineUserId=null のときのみ）。
+    // 条件付き更新（compare-and-set: lineUserId=null のときのみ）。連携元は LIFF。
     const upd = await tx.uzuProPlayer.updateMany({
       where: { id: playerId, lineUserId: null },
-      data: { lineUserId, linkedAt: now },
+      data: { lineUserId, linkedAt: now, lineLinkSource: "LIFF" },
     });
     if (upd.count !== 1) {
       // ロック下では通常起きないが、防御的に再判定。
@@ -158,5 +158,132 @@ export async function bindPlayerLineUser(args: {
       data: { status: "linked", linkedAt: now, openedAt: now },
     });
     return { kind: "linked" as const };
+  });
+}
+
+// ─────────────────────────── 手動登録 / 手動解除（LIFF 管理者・緊急運用） ───────────────────────────
+// LIFF が利用できない緊急時に、管理画面から対象プレイヤーへ LINE User ID を直接登録/解除する。
+// LIFF 経由(bindPlayerLineUser)と同じ整合性制約を維持する:
+//   - Player→Booking→Work をサーバー側で解決（クライアント申告の workId/bookingId は信用しない）。
+//   - 予約行 + 作品行を FOR UPDATE でロックし、Work.uzuProEnabled を書き込み直前に再検証（TOCTOU）。
+//   - 冪等（同一 UID 再登録）/ 別 UID 競合 / 同一予約内重複 を LIFF と同一ルールで判定。
+//   - 既存 UID の直接上書きはしない（別 UID へは「手動解除 → 手動登録」の 2 段階）。
+
+export type ManualLinkResult =
+  | { kind: "linked" }
+  | { kind: "already_linked_same" }
+  | { kind: "conflict_other_account" }
+  | { kind: "conflict_booking_duplicate" }
+  | { kind: "work_disabled" }
+  | { kind: "player_not_found" };
+
+/**
+ * 管理画面からの LINE User ID 手動登録。playerId から関連(Booking/Work)を解決し、
+ * LIFF bind と同じ並行制御・整合性で MANUAL 連携を保存する。lineUserId は route 側で形式検証済みの値。
+ */
+export async function manualLinkPlayerLineUser(args: {
+  oaId: string;
+  workId: string;
+  playerId: string;
+  lineUserId: string;
+  now?: Date;
+}): Promise<ManualLinkResult> {
+  const { oaId, workId, playerId, lineUserId } = args;
+  const now = args.now ?? new Date();
+
+  // クライアント申告の workId/bookingId は信用せず、player から関連を解決する。
+  const resolved = await prisma.uzuProPlayer.findFirst({
+    where: { id: playerId, oaId, booking: { workId } },
+    select: { id: true, bookingId: true },
+  });
+  if (!resolved) return { kind: "player_not_found" };
+  const bookingId = resolved.bookingId;
+
+  return prisma.$transaction(async (tx) => {
+    // 予約行 + 作品行を直列化（LIFF bind と同じロック順序で並行安全）。
+    await tx.$queryRaw`SELECT id FROM uzu_pro_bookings WHERE id = ${bookingId} FOR UPDATE`;
+    const [work] = await tx.$queryRaw<Array<{ uzu_pro_enabled: boolean }>>`
+      SELECT uzu_pro_enabled FROM works WHERE id = ${workId} FOR UPDATE`;
+    if (!work || work.uzu_pro_enabled !== true) return { kind: "work_disabled" as const };
+
+    // テナント境界 + 現在値（ロック後）。念のため booking→work 帰属も再確認。
+    const player = await tx.uzuProPlayer.findFirst({
+      where: { id: playerId, oaId, bookingId, booking: { workId } },
+      select: { lineUserId: true },
+    });
+    if (!player) return { kind: "player_not_found" as const };
+
+    // 冪等: 同一プレイヤー・同一 UID（値は変えない。source は既存を尊重し上書きしない）。
+    if (player.lineUserId === lineUserId) return { kind: "already_linked_same" as const };
+    // 上書き禁止: 別 UID が既に紐づいている（解除→登録の 2 段階を要求）。
+    if (player.lineUserId && player.lineUserId !== lineUserId) return { kind: "conflict_other_account" as const };
+
+    // 同一予約内で同じ UID が別プレイヤーに紐づいていないか（ロック下で確認）。
+    const dup = await tx.uzuProPlayer.findFirst({
+      where: { bookingId, lineUserId, id: { not: playerId } },
+      select: { id: true },
+    });
+    if (dup) return { kind: "conflict_booking_duplicate" as const };
+
+    // 条件付き更新（compare-and-set: lineUserId=null のときのみ）。連携元は MANUAL。
+    const upd = await tx.uzuProPlayer.updateMany({
+      where: { id: playerId, lineUserId: null },
+      data: { lineUserId, linkedAt: now, lineLinkSource: "MANUAL" },
+    });
+    if (upd.count !== 1) {
+      const p2 = await tx.uzuProPlayer.findFirst({ where: { id: playerId, oaId }, select: { lineUserId: true } });
+      if (p2?.lineUserId === lineUserId) return { kind: "already_linked_same" as const };
+      return { kind: "conflict_other_account" as const };
+    }
+    return { kind: "linked" as const };
+  });
+}
+
+export type ManualUnlinkResult =
+  | { kind: "unlinked" }
+  | { kind: "already_unlinked" }
+  | { kind: "player_not_found" };
+
+/**
+ * 管理画面からの LINE User ID 手動解除。LINE User ID のみ解除し、LIFF URL 自体は
+ * 自動再発行・自動失効させない（URL・tokenHash は不変）。ただし表示整合のため、当該プレイヤーの
+ * status="linked" の LIFF リンクは "issued"（発行済み・URL は有効なまま）へ戻す（revoke ではない）。
+ */
+export async function manualUnlinkPlayerLineUser(args: {
+  oaId: string;
+  workId: string;
+  playerId: string;
+}): Promise<ManualUnlinkResult> {
+  const { oaId, workId, playerId } = args;
+
+  const resolved = await prisma.uzuProPlayer.findFirst({
+    where: { id: playerId, oaId, booking: { workId } },
+    select: { id: true, bookingId: true },
+  });
+  if (!resolved) return { kind: "player_not_found" };
+  const bookingId = resolved.bookingId;
+
+  return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM uzu_pro_bookings WHERE id = ${bookingId} FOR UPDATE`;
+
+    const player = await tx.uzuProPlayer.findFirst({
+      where: { id: playerId, oaId, bookingId },
+      select: { lineUserId: true },
+    });
+    if (!player) return { kind: "player_not_found" as const };
+    // 冪等: 既に未連携なら何もしない。
+    if (!player.lineUserId) return { kind: "already_unlinked" as const };
+
+    // LINE 連携のみ解除（LIFF URL は失効/再発行しない）。
+    await tx.uzuProPlayer.updateMany({
+      where: { id: playerId, oaId },
+      data: { lineUserId: null, linkedAt: null, lineLinkSource: null },
+    });
+    // 表示整合: linked リンクを issued へ戻す（URL は有効なまま = 再連携可能）。revoke はしない。
+    await tx.uzuProLiffLink.updateMany({
+      where: { playerId, oaId, status: "linked" },
+      data: { status: "issued", linkedAt: null },
+    });
+    return { kind: "unlinked" as const };
   });
 }

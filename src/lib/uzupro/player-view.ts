@@ -42,6 +42,8 @@ export interface UzuProPlayerRow {
   lineLinked: boolean;
   /** LINE UID のマスク表示（例 "U1234••••••••ABCD"）。未連携は null。生値は載せない。 */
   lineLinkedMaskedId: string | null;
+  /** LINE 連携元（LIFF 自動 / 手動登録）。未連携は null。UI バッジ用。 */
+  lineLinkSource: "LIFF" | "MANUAL" | null;
   /** LINE 連携日時（ISO / UTC）。未連携は null。表示は JST。 */
   linkedAt: Date | string | null;
   bookingStatus: string;
@@ -134,6 +136,7 @@ type RawPlayer = {
   playerIndex: number;
   status: string;
   lineUserId: string | null;
+  lineLinkSource: "LIFF" | "MANUAL" | null;
   linkedAt: Date | string | null;
   liffLinks: RawLink[];
 };
@@ -220,6 +223,7 @@ export async function getUzuProPlayerView({
           playerIndex: true,
           status: true,
           lineUserId: true,
+          lineLinkSource: true,
           linkedAt: true,
           liffLinks: { select: { status: true, issuedAt: true } },
         },
@@ -273,6 +277,7 @@ export async function getUzuProPlayerView({
         liffStatus: deriveLiffState(p.liffLinks),
         lineLinked: p.lineUserId != null,
         lineLinkedMaskedId: p.lineUserId ? maskLineUserId(p.lineUserId) : null,
+        lineLinkSource: p.lineUserId != null ? p.lineLinkSource ?? null : null,
         linkedAt: p.lineUserId != null ? toIso(p.linkedAt) : null,
         bookingStatus: b.status,
         lastSyncedAt: toIso(b.syncedAt),
