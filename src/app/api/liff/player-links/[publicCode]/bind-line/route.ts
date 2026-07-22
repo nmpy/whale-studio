@@ -92,6 +92,12 @@ export async function POST(req: NextRequest, { params }: { params: { publicCode:
     });
 
     switch (result.kind) {
+      case "work_disabled":
+        // 書き込み直前の再検証で作品が for UZU Pro 無効だった。
+        // 外部レスポンスは「利用できないリンク」に一般化（作品無効の事実・内部IDを漏らさない）。
+        // status/コード は既存の公開リンク無効時仕様に統一（410 / not_found）。
+        await safeActivity({ oaId: link.oaId, action: "line_link_failed", playerId: link.playerId, bookingId: link.bookingId, reason: "work_disabled" });
+        return resp(410, { status: "not_found" });
       case "linked":
         await safeActivity({ oaId: link.oaId, action: "line_link_succeeded", playerId: link.playerId, bookingId: link.bookingId, maskedUid });
         return resp(200, { status: "linked" });

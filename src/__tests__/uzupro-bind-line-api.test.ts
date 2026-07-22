@@ -185,6 +185,46 @@ describe("POST bind-line — 紐づけ結果", () => {
     expect(json.status).toBe("conflict_booking_duplicate");
     assertNoLeak(json);
   });
+
+  // 書き込み直前再検証（GET 後に管理者が作品を無効化 → POST）: bind が work_disabled を返す。
+  it("work_disabled（書き込み直前に作品無効）→ 410 not_found に一般化（作品無効を露出しない）", async () => {
+    resolveOk();
+    verifyOk();
+    bindPlayerLineUser.mockResolvedValue({ kind: "work_disabled" });
+    const res = await POST(req({ idToken: ID_TOKEN }), ctx());
+    // 既存の公開リンク無効時仕様に統一（410 / not_found）。
+    expect(res.status).toBe(410);
+    const json = await res.json();
+    expect(json.status).toBe("not_found");
+    // レスポンスに「作品無効」「workId」「disabled」等の手掛かりを出さない。
+    const raw = JSON.stringify(json).toLowerCase();
+    expect(raw).not.toContain("work");
+    expect(raw).not.toContain("disabled");
+    expect(raw).not.toContain("uzu");
+    assertNoLeak(json);
+    // 監査ログは内部用（reason=work_disabled）だが、フル UID は含めない。
+    const calls = recordUzuProActivity.mock.calls as unknown as Array<
+      [unknown, { action?: string; detail?: { reason?: string } }]
+    >;
+    const logged = calls.find((c) => c[1]?.action === "line_link_failed");
+    expect(logged).toBeTruthy();
+    expect(logged?.[1]?.detail?.reason).toBe("work_disabled");
+    expect(JSON.stringify(recordUzuProActivity.mock.calls)).not.toContain(UID);
+  });
+
+  // work_disabled の外部レスポンスは「本当に存在しないリンク」と byte 単位で区別できない（item 10）。
+  it("work_disabled の 410 本文は not_found 応答と同一（区別不能）", async () => {
+    resolveOk();
+    verifyOk();
+    bindPlayerLineUser.mockResolvedValue({ kind: "work_disabled" });
+    const disabled = await (await POST(req({ idToken: ID_TOKEN }), ctx())).json();
+    vi.clearAllMocks();
+    channelIdFromLiffId.mockReturnValue("1656565252");
+    // 「本当に存在しない/失効/期限切れ」リンク: resolve が not_found を返す経路。
+    resolveUzuProPlayerLink.mockResolvedValue({ kind: "not_found" });
+    const missing = await (await POST(req({ idToken: ID_TOKEN }), ctx())).json();
+    expect(disabled).toEqual(missing);
+  });
 });
 
 describe("GET player-link resolve", () => {
@@ -221,5 +261,17 @@ describe("GET player-link resolve", () => {
     const res = await GET(new NextRequest(`http://localhost/api/liff/player-links/bad`), ctx("bad"));
     expect((await res.json()).data).toEqual({ state: "not_found", liffId: null });
     expect(resolveUzuProPlayerLink).not.toHaveBeenCalled();
+  });
+
+  // 作品無効は resolve が not_found に一般化する（line-link 側で検証済み）。GET 応答は「本当に存在しない」
+  // リンクと同一で、作品無効・liffId・内部ID を一切出さない（item 2 / 10）。
+  it("作品無効（resolve→not_found）→ GET は state:not_found・liffId:null（存在しないリンクと同一）", async () => {
+    resolveUzuProPlayerLink.mockResolvedValue({ kind: "not_found" });
+    const res = await GET(new NextRequest(`http://localhost/api/liff/player-links/${CODE}`), ctx());
+    const json = await res.json();
+    expect(json.data).toEqual({ state: "not_found", liffId: null });
+    const raw = JSON.stringify(json).toLowerCase();
+    expect(raw).not.toContain("work");
+    expect(raw).not.toContain("disabled");
   });
 });

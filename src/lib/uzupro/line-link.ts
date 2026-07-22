@@ -45,15 +45,25 @@ export async function resolveUzuProPlayerLink(
       status: true,
       expiresAt: true,
       revokedAt: true,
-      player: { select: { bookingId: true } },
+      // 対象作品の for UZU Pro 有効状態（実行時利用停止の判定）まで解決する。
+      player: {
+        select: {
+          bookingId: true,
+          booking: { select: { work: { select: { uzuProEnabled: true } } } },
+        },
+      },
       oa: { select: { liffId: true } },
     },
   });
   if (!link) return { kind: "not_found" };
+  // 作品が for UZU Pro 無効 = 発行済み URL も実行時に利用停止（DB のリンクは失効させない）。
+  // 関連データ欠損（booking / work が無い）も含め、存在推測させないため not_found に一般化する。
+  //   → レスポンスから「作品が無効化されている事実」を特定できない（存在しない/失効/期限切れと同一化）。
+  if (link.player?.booking?.work?.uzuProEnabled !== true) return { kind: "not_found" };
   if (link.revokedAt || link.status === "revoked") return { kind: "revoked" };
   if (link.status === "error") return { kind: "revoked" }; // 生成失敗リンクは利用不可（失効相当）
   if (link.expiresAt && link.expiresAt.getTime() <= now.getTime()) return { kind: "expired" };
-  // issued / linked のみ利用可。
+  // issued / linked かつ 作品有効 のみ利用可。
   return {
     kind: "ok",
     linkId: link.id,
@@ -68,7 +78,9 @@ export type BindPlayerLineResult =
   | { kind: "linked" }
   | { kind: "already_linked_same" }
   | { kind: "conflict_other_account" }
-  | { kind: "conflict_booking_duplicate" };
+  | { kind: "conflict_booking_duplicate" }
+  /// 書き込み直前の再検証で対象作品が for UZU Pro 無効だった（実行時利用停止）。
+  | { kind: "work_disabled" };
 
 /**
  * 対象プレイヤーへ LINE User ID を紐づける。予約行を FOR UPDATE で直列化して並行安全に処理する。
@@ -88,6 +100,19 @@ export async function bindPlayerLineUser(args: {
   return prisma.$transaction(async (tx) => {
     // 予約単位で直列化（同一予約内の並行 bind を排他）。別予約は競合しない。
     await tx.$queryRaw`SELECT id FROM uzu_pro_bookings WHERE id = ${bookingId} FOR UPDATE`;
+
+    // 書き込み直前の再検証（TOCTOU 対策）: 対象作品行を FOR UPDATE でロックし、for UZU Pro
+    // 有効状態を最新のコミット値で確認する。GET 時に有効でも、bind 送信までに管理者が無効化した
+    // 場合は無効作品へ LINE User ID を保存しない（= 古い LIFF 画面からの遅延送信を排除）。
+    //   FOR UPDATE により、無効化(work.update)と本 bind は works 行で直列化される。
+    const bk = await tx.uzuProBooking.findFirst({
+      where: { id: bookingId, oaId },
+      select: { workId: true },
+    });
+    if (!bk) return { kind: "work_disabled" as const }; // 関連欠損も一般化して停止
+    const [work] = await tx.$queryRaw<Array<{ uzu_pro_enabled: boolean }>>`
+      SELECT uzu_pro_enabled FROM works WHERE id = ${bk.workId} FOR UPDATE`;
+    if (!work || work.uzu_pro_enabled !== true) return { kind: "work_disabled" as const };
 
     // テナント境界 + 現在値（ロック後に読む）。
     const player = await tx.uzuProPlayer.findFirst({

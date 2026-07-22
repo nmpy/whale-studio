@@ -33,7 +33,8 @@ describe.skipIf(!RUN)("uzupro line-link live-DB integration", () => {
       data: { title: "itest-link", channelId: "c", channelSecret: "s", channelAccessToken: "a", liffId: "1656565252-abcd" },
     });
     oaId = oa.id;
-    const work = await prisma.work.create({ data: { oaId, title: "w" } });
+    // 既定の作品は for UZU Pro 有効（多くのケースが「有効前提」の並行/一意検証）。
+    const work = await prisma.work.create({ data: { oaId, title: "w", uzuProEnabled: true } });
     workId = work.id;
     const s = await prisma.liveSession.create({
       data: { oaId, workId, name: "sess", origin: "UZU_PRO", externalSessionRef: "ext-s-link", startsAt: new Date("2026-08-01T10:00:00Z") },
@@ -150,5 +151,91 @@ describe.skipIf(!RUN)("uzupro line-link live-DB integration", () => {
   it("resolve: 未知コードは not_found", async () => {
     const r = await resolveUzuProPlayerLink(prisma, generateTicketToken());
     expect(r.kind).toBe("not_found");
+  });
+
+  // ─────────────── Work.uzuProEnabled による実行時利用停止（PR #595 追従） ───────────────
+  const setWorkEnabled = (enabled: boolean) =>
+    prisma.work.update({ where: { id: workId }, data: { uzuProEnabled: enabled } });
+
+  describe("Work.uzuProEnabled 実行時判定", () => {
+    afterAll(async () => {
+      // 後続に影響しないよう有効へ戻す。
+      await setWorkEnabled(true);
+    });
+
+    it("有効＋有効リンク → resolve ok（利用可能）", async () => {
+      const { players } = await mkBooking("we-enabled", 1);
+      await setWorkEnabled(true);
+      expect((await resolveUzuProPlayerLink(prisma, players[0].publicCode)).kind).toBe("ok");
+    });
+
+    it("無効 → resolve not_found（発行済みリンクも実行時利用停止・DB は失効させない）", async () => {
+      const { players } = await mkBooking("we-disabled", 1);
+      const p = players[0];
+      await setWorkEnabled(false);
+      expect((await resolveUzuProPlayerLink(prisma, p.publicCode)).kind).toBe("not_found");
+      // リンクの DB 状態は失効させない（status=issued / revokedAt=null のまま）。
+      const link = await prisma.uzuProLiffLink.findUnique({
+        where: { id: p.linkId }, select: { status: true, revokedAt: true },
+      });
+      expect(link?.status).toBe("issued");
+      expect(link?.revokedAt).toBeNull();
+    });
+
+    it("無効中の bind → work_disabled、lineUserId/linkedAt/status を変更しない", async () => {
+      const { players } = await mkBooking("we-bind-disabled", 1);
+      const p = players[0];
+      await setWorkEnabled(false);
+      const r = await bind(p, uid("wd"));
+      expect(r.kind).toBe("work_disabled");
+      const row = await playerRow(p.playerId);
+      expect(row?.lineUserId).toBeNull();
+      expect(row?.linkedAt).toBeNull();
+      const link = await prisma.uzuProLiffLink.findUnique({
+        where: { id: p.linkId }, select: { status: true, linkedAt: true },
+      });
+      expect(link?.status).toBe("issued");
+      expect(link?.linkedAt).toBeNull();
+    });
+
+    it("GET で有効→ その後無効化→ bind（書き込み直前再検証）→ work_disabled で保存しない", async () => {
+      const { players } = await mkBooking("we-toctou", 1);
+      const p = players[0];
+      await setWorkEnabled(true);
+      // 1) LIFF ページ相当（GET/resolve）では有効。
+      expect((await resolveUzuProPlayerLink(prisma, p.publicCode)).kind).toBe("ok");
+      // 2) 管理者が作品を無効化。
+      await setWorkEnabled(false);
+      // 3) 古い画面から bind 送信 → 書き込み直前の再検証で停止。
+      expect((await bind(p, uid("toctou"))).kind).toBe("work_disabled");
+      expect((await playerRow(p.playerId))?.lineUserId).toBeNull();
+    });
+
+    it("再有効化 → 期限内・未失効リンクは再び利用可能・bind 成功", async () => {
+      const { players } = await mkBooking("we-reenable", 1);
+      const p = players[0];
+      await setWorkEnabled(false);
+      expect((await resolveUzuProPlayerLink(prisma, p.publicCode)).kind).toBe("not_found");
+      await setWorkEnabled(true);
+      expect((await resolveUzuProPlayerLink(prisma, p.publicCode)).kind).toBe("ok");
+      expect((await bind(p, uid("reen"))).kind).toBe("linked");
+      expect((await playerRow(p.playerId))?.lineUserId).toBe(uid("reen"));
+    });
+
+    it("revoked は Work 有効でも利用不可（revoked が返る）", async () => {
+      const { players } = await mkBooking("we-revoked", 1);
+      const p = players[0];
+      await setWorkEnabled(true);
+      await prisma.uzuProLiffLink.update({ where: { id: p.linkId }, data: { revokedAt: new Date(), status: "revoked" } });
+      expect((await resolveUzuProPlayerLink(prisma, p.publicCode)).kind).toBe("revoked");
+    });
+
+    it("期限切れは Work 有効でも利用不可（expired が返る）", async () => {
+      const { players } = await mkBooking("we-expired", 1);
+      const p = players[0];
+      await setWorkEnabled(true);
+      await prisma.uzuProLiffLink.update({ where: { id: p.linkId }, data: { expiresAt: new Date("2000-01-01T00:00:00Z") } });
+      expect((await resolveUzuProPlayerLink(prisma, p.publicCode)).kind).toBe("expired");
+    });
   });
 });
