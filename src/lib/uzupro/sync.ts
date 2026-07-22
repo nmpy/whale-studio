@@ -195,6 +195,14 @@ export async function syncUzuProBooking(
     results.push({ playerIndex: s.playerIndex, outcome: "cancelled" });
   }
 
+  // 7. 減員/キャンセルされたプレイヤーの有効(issued) LIFF リンクを失効する（利用不可化）。
+  //    同一 tx 内で原子的に。cancelled になった全プレイヤー（予約キャンセル / 減員の両経路）を対象。
+  //    復帰時は旧リンクが revoked のままなので「再発行が必要」（旧リンクは自動再有効化しない）。
+  await tx.uzuProLiffLink.updateMany({
+    where: { status: "issued", player: { bookingId: booking.id, status: "cancelled" } },
+    data: { status: "revoked", revokedAt: input.now },
+  });
+
   return {
     applied: true,
     bookingCreated,

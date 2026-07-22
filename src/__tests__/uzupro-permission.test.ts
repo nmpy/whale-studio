@@ -3,7 +3,7 @@
 // for ウズプロ（UZU_PRO）の権限判定 + サイドバー出し分けの検証。
 //   - getUzuProAccess / canAccessUzuPro（@/lib/uzupro）:
 //       アクセス条件 = 「per-user grant 保有 かつ 対象 OA の active メンバー」。
-//       platform owner は grant/membership に関わらず常に許可。
+//       platform owner でも Grant が無ければ access false（迂回不可・spec §5）。
 //   - buildWorkSidebarSections: uzuProAccess=false で「FOR ウズプロ」非表示、true で表示（href 検証）。
 //
 // vi.mock factory はファイル先頭へ巻き上げられ、uzupro.ts の static import 評価より先に走る。
@@ -75,15 +75,22 @@ describe("getUzuProAccess / canAccessUzuPro — 権限判定", () => {
     expect(await canAccessUzuPro(OA, USER)).toBe(true);
   });
 
-  it("(d) platform owner → grant / membership 行が無くても常に access true", async () => {
+  it("(d) platform owner でも Grant 無しなら access false（迂回不可・spec §5）", async () => {
     h.state.platformOwner = true;
     noGrant();
-    notMember();
+    activeMember();
+    expect(await getUzuProAccess(OA, USER)).toEqual({ granted: false, access: false });
+    expect(await canAccessUzuPro(OA, USER)).toBe(false);
+    // Grant 必須なので UzuProGrant を必ず参照する（isPlatformOwner 短絡で迂回しない）
+    expect(h.mockUzuProGrant.findUnique).toHaveBeenCalled();
+  });
+
+  it("(d2) platform owner + Grant + active メンバー → access true", async () => {
+    h.state.platformOwner = true;
+    grantRow();
+    activeMember();
     expect(await getUzuProAccess(OA, USER)).toEqual({ granted: true, access: true });
     expect(await canAccessUzuPro(OA, USER)).toBe(true);
-    // owner は grant / role の DB を引かずに短絡する
-    expect(h.mockUzuProGrant.findUnique).not.toHaveBeenCalled();
-    expect(h.mockGetWorkspaceRole).not.toHaveBeenCalled();
   });
 
   it("userId が空なら常に false", async () => {

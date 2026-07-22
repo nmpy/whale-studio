@@ -16,6 +16,7 @@ const { mp } = vi.hoisted(() => ({
     uzuProSyncRequest: { create: vi.fn(), update: vi.fn() },
     uzuProBooking: { findUnique: vi.fn(), upsert: vi.fn() },
     uzuProPlayer: { findUnique: vi.fn(), upsert: vi.fn(), findMany: vi.fn(), update: vi.fn() },
+    uzuProLiffLink: { updateMany: vi.fn() },
     uzuProActivityLog: { create: vi.fn() },
     $transaction: vi.fn(),
   },
@@ -65,6 +66,7 @@ function setupNewBooking() {
   mp.uzuProPlayer.findUnique.mockResolvedValue(null); // 各プレイヤー新規
   mp.uzuProPlayer.upsert.mockResolvedValue({ id: "PLAYER_INTERNAL_ID" });
   mp.uzuProPlayer.findMany.mockResolvedValue([]); // straggler なし
+  mp.uzuProLiffLink.updateMany.mockResolvedValue({ count: 0 }); // cancelled プレイヤーの LIFF 失効（既定 0 件）
   mp.uzuProActivityLog.create.mockResolvedValue({ id: "log1" });
 }
 
@@ -255,6 +257,9 @@ describe("syncUzuProBooking（mock tx 直接）", () => {
         upsert: vi.fn().mockResolvedValue({ id: "p1" }),
         findMany: vi.fn().mockResolvedValue([]),
         update: vi.fn().mockResolvedValue({}),
+      },
+      uzuProLiffLink: {
+        updateMany: vi.fn().mockResolvedValue({ count: 0 }),
       },
       ...over,
     } as unknown as Prisma.TransactionClient;

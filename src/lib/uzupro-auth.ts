@@ -3,14 +3,15 @@
 //
 // 通過条件:
 //   - 認証済み（未ログインは 401）
-//   - platform owner、または（UzuProGrant 保有 かつ 当該 OA の active メンバー）
+//   - UzuProGrant 保有 かつ 当該 OA の active メンバー
+// ⚠️ platform owner でも Grant が無ければ通さない（spec §5・迂回不可）。作品(OA)アクセスの判定
+//    （getWorkspaceRole）は platform owner を全 OA owner 扱いする既存短絡を使うが、Grant は別途必須。
 // 露出最小化のため、権限なし/OA 不在はすべて 404 に揃える（存在を露出しない）。
 
 import type { NextRequest, NextResponse } from "next/server";
 import { NextResponse as Res } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getAuthUser } from "@/lib/auth";
-import { isPlatformOwner } from "@/lib/platform-admin";
 import { getWorkspaceRole } from "@/lib/rbac";
 import { hasUzuProGrant } from "@/lib/uzupro";
 
@@ -18,7 +19,7 @@ export type UzuProAuthOk = {
   ok: true;
   user: { id: string; email?: string };
   /** 判定根拠（ログ用） */
-  via: "platform_admin" | "oa_member_granted";
+  via: "oa_member_granted";
 };
 export type UzuProAuthFail = { ok: false; response: NextResponse };
 
@@ -51,10 +52,7 @@ export async function authorizeUzuPro(
   const oa = await prisma.oa.findUnique({ where: { id: oaId }, select: { id: true } });
   if (!oa) return { ok: false, response: notFoundResponse() };
 
-  if (isPlatformOwner(user.id)) {
-    return { ok: true, user, via: "platform_admin" };
-  }
-
+  // Grant は platform owner でも必須（迂回不可）。
   if (!(await hasUzuProGrant(user.id))) {
     return { ok: false, response: notFoundResponse() };
   }
