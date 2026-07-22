@@ -91,6 +91,9 @@ model Oa {
   memberLineLinkTokens   MemberLineLinkToken[]
   errorLogResolutions    ErrorLogResolution[]
   liveTicketLinkTokens   LiveTicketLinkToken[]
+  uzuProBookings         UzuProBooking[]
+  uzuProPlayers          UzuProPlayer[]
+  uzuProLiffLinks        UzuProLiffLink[]
 
   @@index([title])
   @@index([publishStatus])
@@ -229,6 +232,7 @@ model Work {
   liveScripts           LiveScript[]
   liveCues              LiveCue[]
   xPosts                XPost[]
+  uzuProBookings        UzuProBooking[]
   oa                    Oa                     @relation(fields: [oaId], references: [id], onDelete: Cascade)
   systemCharacter       Character?             @relation("WorkSystemCharacter", fields: [systemCharacterId], references: [id])
 
@@ -2391,6 +2395,7 @@ model LiveSession {
   assignments  LiveAssignment[]
   instructions LiveActorInstruction[]
   teams        LiveTeam[]
+  uzuProBookings UzuProBooking[]
 
   /// 匿名連携の冪等 upsert キー（同一 OA・work 内で externalSessionRef を一意化）。
   /// nullable 複合 unique: 既存の null 行は Postgres 上「互いに distinct」扱いで衝突しない（backfill 不要）。
@@ -2801,4 +2806,190 @@ enum BusinessInviteApplicationStatus {
   pending
   approved
   rejected
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// for ウズプロ（プレイヤー単位・UZU Pro CMS 正本）— PR1 基盤
+//   - 公演/回は LiveSession(origin=UZU_PRO) を再利用（#591 の team/capacity 版 v2 とは別系統で併存）。
+//   - 個人情報（氏名/メール/電話/住所/備考）は一切保持しない。匿名 ref と状態のみ。
+//   - LIFF はプレイヤー単位で発行（可変人数）。1 プレイヤー 1 有効リンク。
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// 予約状態（画面: 予約確定/キャンセル待ち/キャンセル/参加済み）。
+enum UzuProBookingStatus {
+  confirmed
+  waitlist
+  cancelled
+  attended
+}
+
+/// プレイヤー枠の状態（有効/取消）。取消は同期での人数減・キャンセル反映。
+enum UzuProPlayerStatus {
+  active
+  cancelled
+}
+
+/// LIFF リンク状態。未発行 = 行が存在しない。linked は PR2 で使用。
+enum UzuProLiffStatus {
+  issued
+  revoked
+  linked
+  error
+}
+
+/// 同期リクエストの処理状態（Idempotency-Key + 成否記録）。
+enum UzuProSyncStatus {
+  received
+  processed
+  failed
+}
+
+/// for ウズプロ機能の利用権限（per-user grant）。プラットフォームオーナーのみ付与/解除でき、
+/// アクセス条件 = このグラント保有 かつ 対象作品(OA)へのアクセス権限。付与/解除は AdminAuditLog に記録。
+model UzuProGrant {
+  id        String   @id @default(uuid())
+  /// Supabase Auth userId（既存運用に合わせ FK なしの String）。
+  userId    String   @unique @map("user_id")
+  /// 付与したプラットフォームオーナーの userId（最小監査）。
+  grantedBy String   @map("granted_by")
+  /// 任意メモ（個人情報は書かない運用）。
+  note      String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([userId])
+  @@map("uzu_pro_grants")
+}
+
+/// for ウズプロの予約（匿名 booking）。1 予約に複数プレイヤー（可変長）。個人情報は保持しない。
+model UzuProBooking {
+  id                String              @id @default(uuid())
+  oaId              String              @map("oa_id")
+  workId            String              @map("work_id")
+  /// 公演/回（LiveSession, origin=UZU_PRO）。同期時に upsert 済みの session を参照。
+  liveSessionId     String              @map("live_session_id")
+  /// CMS 生成の匿名予約 ID（個人情報ではない安定 ID）。冪等 upsert キー。
+  externalBookingId String              @map("external_booking_id")
+  /// 予約人数（可変・固定値で閉じない）。プレイヤー行数と整合させる。
+  participantCount  Int                 @map("participant_count")
+  status            UzuProBookingStatus @default(confirmed)
+  /// 同期元(CMS)の更新日時。巻き戻り防止（古い sourceUpdatedAt では上書きしない）。
+  sourceUpdatedAt   DateTime            @map("source_updated_at")
+  /// Whale Studio が同期を反映した日時。
+  syncedAt          DateTime            @map("synced_at")
+  createdAt         DateTime            @default(now()) @map("created_at")
+  updatedAt         DateTime            @updatedAt @map("updated_at")
+
+  oa          Oa             @relation(fields: [oaId], references: [id], onDelete: Cascade)
+  work        Work           @relation(fields: [workId], references: [id], onDelete: Cascade)
+  liveSession LiveSession    @relation(fields: [liveSessionId], references: [id], onDelete: Cascade)
+  players     UzuProPlayer[]
+
+  /// 冪等 upsert キー（テナント+作品内で外部予約 ID 一意）。
+  @@unique([oaId, workId, externalBookingId], map: "uzu_pro_bookings_oa_work_ext_booking_key")
+  @@index([oaId, workId])
+  @@index([liveSessionId])
+  @@index([workId, status])
+  @@map("uzu_pro_bookings")
+}
+
+/// for ウズプロのプレイヤー（予約内の 1 参加者枠）。同期時に生成（LINE 連携前から存在）。個人情報は保持しない。
+model UzuProPlayer {
+  id               String             @id @default(uuid())
+  oaId             String             @map("oa_id")
+  bookingId        String             @map("booking_id")
+  /// CMS 生成の匿名プレイヤー ID（任意）。
+  externalPlayerId String?            @map("external_player_id")
+  /// 外部チケット ID（任意・個人情報ではない）。来る場合は per-OA で一意扱い。
+  externalTicketId String?            @map("external_ticket_id")
+  /// 予約内のプレイヤー番号（1..N）。(bookingId, playerIndex) が主要同期キー。
+  playerIndex      Int                @map("player_index")
+  status           UzuProPlayerStatus @default(active)
+  /// PR2 で設定（PR1 では常に null）。
+  lineUserId       String?            @map("line_user_id")
+  linkedAt         DateTime?          @map("linked_at")
+  createdAt        DateTime           @default(now()) @map("created_at")
+  updatedAt        DateTime           @updatedAt @map("updated_at")
+
+  oa        Oa               @relation(fields: [oaId], references: [id], onDelete: Cascade)
+  booking   UzuProBooking    @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  liffLinks UzuProLiffLink[]
+
+  /// 予約内プレイヤー番号の一意（主要同期キー・冪等）。
+  @@unique([bookingId, playerIndex], map: "uzu_pro_players_booking_index_key")
+  /// 外部チケット ID が来る場合の per-OA 一意（nullable 複合 = 複数 null は distinct）。
+  @@unique([oaId, externalTicketId], map: "uzu_pro_players_oa_ext_ticket_key")
+  @@index([oaId])
+  @@index([bookingId])
+  @@index([status])
+  @@map("uzu_pro_players")
+}
+
+/// プレイヤー単位の LIFF リンク（推測不可トークン）。1 プレイヤー 1 有効(issued)リンク。
+/// 平文トークンは保存せず tokenHash(sha256 hex)のみ。個人情報は埋め込まない。
+/// 「1 プレイヤー 1 有効」は部分 UNIQUE INDEX（migration SQL, WHERE status='issued'）+ 行ロックで保証。
+model UzuProLiffLink {
+  id        String           @id @default(uuid())
+  oaId      String           @map("oa_id")
+  playerId  String           @map("player_id")
+  /// sha256(平文トークン) hex。平文は DB に保存しない。
+  tokenHash String           @unique @map("token_hash")
+  status    UzuProLiffStatus @default(issued)
+  expiresAt DateTime?        @map("expires_at")
+  issuedAt  DateTime         @default(now()) @map("issued_at")
+  revokedAt DateTime?        @map("revoked_at")
+  openedAt  DateTime?        @map("opened_at")
+  linkedAt  DateTime?        @map("linked_at")
+  createdAt DateTime         @default(now()) @map("created_at")
+  updatedAt DateTime         @updatedAt @map("updated_at")
+
+  oa     Oa           @relation(fields: [oaId], references: [id], onDelete: Cascade)
+  player UzuProPlayer @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@index([playerId, status])
+  @@index([oaId])
+  @@map("uzu_pro_liff_links")
+}
+
+/// 同期リクエストの冪等化（Idempotency-Key）+ 成否記録。reserve-first（create → P2002 で重複検知）。
+model UzuProSyncRequest {
+  id                String           @id @default(uuid())
+  /// クライアント指定 Idempotency-Key（ヘッダ）。重複再送検知に使う。
+  idempotencyKey    String           @unique @map("idempotency_key")
+  /// 相関用 requestId（ログ用）。
+  requestId         String?          @map("request_id")
+  oaId              String?          @map("oa_id")
+  workId            String?          @map("work_id")
+  externalBookingId String?          @map("external_booking_id")
+  status            UzuProSyncStatus @default(received)
+  /// 失敗理由（個人情報を含めない）。
+  error             String?
+  receivedAt        DateTime         @default(now()) @map("received_at")
+  processedAt       DateTime?        @map("processed_at")
+
+  @@index([oaId, workId])
+  @@index([status])
+  @@map("uzu_pro_sync_requests")
+}
+
+/// for ウズプロ機能のアクティビティログ（PII 非保存）。sync / LIFF 操作を記録。
+/// 権限付与/解除は platform owner 操作のため AdminAuditLog に記録する（このテーブルには入れない）。
+model UzuProActivityLog {
+  id          String   @id @default(uuid())
+  oaId        String?  @map("oa_id")
+  workId      String?  @map("work_id")
+  /// 操作者 userId（外部同期など人手でない場合は null）。
+  actorUserId String?  @map("actor_user_id")
+  /// "sync_success" | "sync_failure" | "liff_issue" | "liff_bulk_issue" | "liff_revoke" | "liff_reissue" | "line_link"(PR2)
+  action      String
+  /// 対象種別 "booking" | "player" | "liff_link" | "sync"
+  targetType  String?  @map("target_type")
+  targetId    String?  @map("target_id")
+  /// 補足（JSON 文字列・個人情報を含めない: 件数・状態・ref のみ）。
+  detail      String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([oaId, workId, createdAt])
+  @@index([action, createdAt])
+  @@map("uzu_pro_activity_logs")
 }

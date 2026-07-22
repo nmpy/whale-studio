@@ -25,8 +25,14 @@ export type SidebarItem = {
 
 export type SidebarSection = { heading?: string; items: SidebarItem[] };
 
-export function buildWorkSidebarSections(args: { oaId: string; workId: string; isTester: boolean }): SidebarSection[] {
-  const { oaId, workId, isTester } = args;
+export function buildWorkSidebarSections(args: {
+  oaId: string;
+  workId: string;
+  isTester: boolean;
+  /** for ウズプロ を開ける（アクセス権限保有）ときのみ「FOR ウズプロ」セクションを出す。既定 false（非表示）。 */
+  uzuProAccess?: boolean;
+}): SidebarSection[] {
+  const { oaId, workId, isTester, uzuProAccess = false } = args;
   const base = `/oas/${oaId}/works/${workId}`;
   const q = `?workId=${encodeURIComponent(workId)}`;
 
@@ -70,6 +76,16 @@ export function buildWorkSidebarSections(args: { oaId: string; workId: string; i
         { key: "pricing", label: "利用プラン", href: `${base}/pricing`, activeSegments: ["/pricing"] },
       ],
     },
+    // for ウズプロ（隠し上位機能）。アクセス権限を持つユーザーにのみ露出する。
+    // 未保有ユーザーには section ごと出さない。実際の強制は常にサーバー側ガードが担保する。
+    ...(uzuProAccess
+      ? [{
+          heading: "FOR ウズプロ",
+          items: [
+            { key: "uzupro-player", label: "プレイヤー", href: `${base}/uzu-pro/player`, activeSegments: ["/uzu-pro"] },
+          ],
+        } as SidebarSection]
+      : []),
   ];
 }
 
