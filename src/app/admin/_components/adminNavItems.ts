@@ -52,6 +52,7 @@ export const ADMIN_NAV_ITEMS: readonly AdminNavItem[] = [
   { href: "/admin/users",                     label: "ユーザー",            desc: "Whale Studio に登録したユーザーの一覧・検索",            color: "#3b82f6", platformOnly: true },
   { href: "/admin/personal-plan-permissions", label: "個人プラン権限",      desc: "個人プランの権限を OA ごとに設定",                        color: "#f59e0b", platformOnly: true },
   { href: "/admin/business-invite-links",     label: "法人プラン権限",      desc: "法人向け招待リンクの発行・管理",                          color: "#db2777", platformOnly: true },
+  { href: "/admin/uzu-pro-grants",            label: "ウズプロ権限",        desc: "ウズプロ（上位機能）を利用できるユーザーを userId 単位で付与・解除", color: "#9333ea", platformOnly: true },
 ] as const;
 
 /** isPlatform に応じて表示すべきナビ項目を返す（FV・サイドバー共通の表示条件）。 */

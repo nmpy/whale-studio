@@ -14,6 +14,7 @@
 import Link from "next/link";
 import { useParams, usePathname, useSearchParams } from "next/navigation";
 import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
+import { useUzuProWorkAccess } from "@/hooks/useUzuProWorkAccess";
 import { withPreviewParams } from "@/lib/access-preview";
 import { buildWorkSidebarSections, isSidebarItemActive, type SidebarItem } from "../_lib/work-sidebar-nav";
 
@@ -33,13 +34,15 @@ export default function WorkSidebar({
   // 表示確認モード（owner 限定・?previewPlan/?previewRole）を遷移後も維持するため query を引き継ぐ。
   const searchParams = useSearchParams();
   // アカウント設定（OA 設定）の表示可否は、旧・右上「設定」ボタン（showSettings=role!=="tester"）と同条件。
-  // for ウズプロ の可否（uzuProAccess）はサイドバー「FOR ウズプロ」の表示制御にのみ使う。
-  // 実際の認可は各ページ側の既存サーバーガードが担保する（ここでは導線の出し分けのみ）。
-  const { isTester, uzuProAccess } = useWorkspaceRole(oaId ?? "");
+  const { isTester } = useWorkspaceRole(oaId ?? "");
+  // for ウズプロ の可否（access）はこの作品固有。server が 3 条件（workEnabled ∧ granted ∧ member）を
+  // 算出した結果が true のときだけサイドバー「FOR ウズプロ」を出す。実際の認可は各ページ側の既存
+  // サーバーガードが担保する（ここでは導線の出し分けのみ）。
+  const { access } = useUzuProWorkAccess(oaId ?? "", workId ?? "");
   if (!oaId || !workId) return null;
   const base = `/oas/${oaId}/works/${workId}`;
 
-  const sections = buildWorkSidebarSections({ oaId, workId, isTester, uzuProAccess });
+  const sections = buildWorkSidebarSections({ oaId, workId, isTester, uzuProAccess: access });
   const isActive = (it: SidebarItem): boolean => isSidebarItemActive(it, pathname, base, activeKey);
 
   return (

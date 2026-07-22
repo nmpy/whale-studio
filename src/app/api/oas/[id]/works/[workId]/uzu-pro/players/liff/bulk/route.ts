@@ -25,7 +25,7 @@ export async function POST(
   req: NextRequest,
   { params }: { params: { id: string; workId: string } },
 ) {
-  const auth = await authorizeUzuPro(req, params.id);
+  const auth = await authorizeUzuPro(req, params.id, params.workId);
   if (!auth.ok) return auth.response;
 
   // 当該 OA が存在することは authorizeUzuPro が保証するが、work の帰属確認のため

@@ -41,7 +41,6 @@ type MeResponse = {
     live_role?: LiveRole | null;
     live_access?: boolean;
     uzu_pro_granted?: boolean;
-    uzu_pro_access?: boolean;
   };
 };
 const inflight = new Map<string, Promise<MeResponse>>();
@@ -78,8 +77,6 @@ export interface WorkspaceRoleState {
   liveAccess: boolean;
   /** for ウズプロ 利用権限グラントを保有するか（platform owner は true） */
   uzuProGranted: boolean;
-  /** この OA で for ウズプロ を開けるか（サイドバー「FOR ウズプロ」表示の判定に使う） */
-  uzuProAccess: boolean;
 }
 
 export function useWorkspaceRole(workspaceId: string): WorkspaceRoleState {
@@ -89,7 +86,6 @@ export function useWorkspaceRole(workspaceId: string): WorkspaceRoleState {
   const [liveRole,    setLiveRole]    = useState<LiveRole | null>(null);
   const [liveAccess,  setLiveAccess]  = useState(false);
   const [uzuProGranted, setUzuProGranted] = useState(false);
-  const [uzuProAccess,  setUzuProAccess]  = useState(false);
 
   // mount フラグ。fetch 完了時点で unmount されていれば setState を抑止する。
   const mountedRef = useRef(true);
@@ -119,7 +115,6 @@ export function useWorkspaceRole(workspaceId: string): WorkspaceRoleState {
       setLiveRole(data.live_role ?? null);
       setLiveAccess(data.live_access === true);
       setUzuProGranted(data.uzu_pro_granted === true);
-      setUzuProAccess(data.uzu_pro_access === true);
     }
 
     // cache hit があれば即時描画（loading フラッシュ・遷移ごとの再取得待ちを消す）。
@@ -180,6 +175,5 @@ export function useWorkspaceRole(workspaceId: string): WorkspaceRoleState {
     liveRole,
     liveAccess,
     uzuProGranted,
-    uzuProAccess,
   };
 }
