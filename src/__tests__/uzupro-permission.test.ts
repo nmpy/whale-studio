@@ -113,13 +113,19 @@ describe("buildWorkSidebarSections — FOR ウズプロ の出し分け", () => 
     expect(uzuSection(false)).toBeUndefined();
   });
 
-  it("uzuProAccess=true → FOR ウズプロ セクションに プレイヤー（href = {base}/uzu-pro/player）", () => {
+  it("uzuProAccess=true → 連携状況（ランディング）→ プレイヤー の順で表示", () => {
     const sec = uzuSection(true);
     expect(sec).toBeDefined();
-    expect(sec!.items.map((i) => i.label)).toEqual(["プレイヤー"]);
-    const it0 = sec!.items[0];
-    expect(it0.key).toBe("uzupro-player");
-    expect(it0.href).toBe(`/oas/${OA}/works/wk1/uzu-pro/player`);
-    expect(it0.activeSegments).toEqual(["/uzu-pro"]);
+    expect(sec!.items.map((i) => i.label)).toEqual(["連携状況", "プレイヤー"]);
+
+    const [status, player] = sec!.items;
+    // 連携状況（新規・ランディング）
+    expect(status.key).toBe("uzupro-status");
+    expect(status.href).toBe(`/oas/${OA}/works/wk1/uzu-pro/status`);
+    expect(status.activeSegments).toEqual(["/uzu-pro/status"]);
+    // プレイヤー（既存導線が壊れない: href 不変・自分のパスで active）
+    expect(player.key).toBe("uzupro-player");
+    expect(player.href).toBe(`/oas/${OA}/works/wk1/uzu-pro/player`);
+    expect(player.activeSegments).toEqual(["/uzu-pro/player"]);
   });
 });
