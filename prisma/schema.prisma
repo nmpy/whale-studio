@@ -2852,8 +2852,7 @@ model UzuProGrant {
   userId    String   @unique @map("user_id")
   /// 付与したプラットフォームオーナーの userId（最小監査）。
   grantedBy String   @map("granted_by")
-  /// 任意メモ（個人情報は書かない運用）。
-  note      String?
+  // 自由記述欄は持たない（PII 保存を構造的に不可能にする）。付与/解除は AdminAuditLog に最小記録。
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 

@@ -4,8 +4,8 @@
 // DELETE /api/admin/uzu-pro-grants?userId=... — 権限解除（冪等）
 //
 // 認可は platform owner のみ（isPlatformOwner）。workspace owner も通す withPlatformAdmin は使わない。
-// userId は Supabase の user id（氏名/メール等の PII ではない）。note 以外は返さない。
-// 付与/解除は運営操作のため AdminAuditLog に記録する（UzuProActivityLog ではない）。
+// userId は Supabase の user id（氏名/メール等の PII ではない）。自由記述欄（note 等）は持たない = PII 保存不可。
+// 付与/解除は運営操作のため AdminAuditLog に必要最小限（actorId/action/resource/resourceId=userId/日時）だけ記録する。
 
 import { prisma } from "@/lib/prisma";
 import { ok, created, badRequest, forbidden, serverError } from "@/lib/api-response";
@@ -19,7 +19,7 @@ export const GET = withAuth(async (_req, _ctx, user) => {
   if (!isPlatformOwner(user.id)) return forbidden();
   try {
     const grants = await prisma.uzuProGrant.findMany({
-      select:  { userId: true, grantedBy: true, note: true, createdAt: true },
+      select:  { userId: true, grantedBy: true, createdAt: true },
       orderBy: { createdAt: "desc" },
     });
     return ok({ grants });
@@ -28,10 +28,10 @@ export const GET = withAuth(async (_req, _ctx, user) => {
   }
 });
 
+// strict(): userId 以外の未知キー（note 等の自由記述・PII を含みうる）は 400 で拒否する。
 const postSchema = z
   .object({
     userId: z.string().min(1, "userId は必須です"),
-    note:   z.string().optional(),
   })
   .strict();
 
@@ -39,12 +39,12 @@ export const POST = withAuth(async (req, _ctx, user) => {
   if (!isPlatformOwner(user.id)) return forbidden();
   try {
     const body = await req.json().catch(() => ({}));
-    const { userId, note } = postSchema.parse(body);
+    const { userId } = postSchema.parse(body);
 
     await prisma.uzuProGrant.upsert({
       where:  { userId },
-      create: { userId, grantedBy: user.id, note },
-      update: { grantedBy: user.id, note },
+      create: { userId, grantedBy: user.id },
+      update: { grantedBy: user.id },
     });
 
     await prisma.adminAuditLog.create({

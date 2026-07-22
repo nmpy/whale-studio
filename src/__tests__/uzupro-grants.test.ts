@@ -49,7 +49,7 @@ beforeEach(() => {
 
 describe("uzu-pro-grants (platform owner)", () => {
   it("GET: 一覧を createdAt desc で返す（PII フィールドは select しない）", async () => {
-    mp.uzuProGrant.findMany.mockResolvedValue([{ userId: "u1", grantedBy: "platform-owner", note: null, createdAt: new Date() }]);
+    mp.uzuProGrant.findMany.mockResolvedValue([{ userId: "u1", grantedBy: "platform-owner", createdAt: new Date() }]);
     const res = await GET(getReq(), { params: {} } as never);
     const json = await res.json();
     expect(res.status).toBe(200);
@@ -60,19 +60,28 @@ describe("uzu-pro-grants (platform owner)", () => {
   it("POST: upsert で付与し AdminAuditLog に create を書く", async () => {
     mp.uzuProGrant.upsert.mockResolvedValue({ userId: "u1" });
     mp.adminAuditLog.create.mockResolvedValue({});
-    const res = await POST(postReq({ userId: "u1", note: "vip" }), { params: {} } as never);
+    const res = await POST(postReq({ userId: "u1" }), { params: {} } as never);
     const json = await res.json();
     expect(res.status).toBe(201);
     expect(json.data).toEqual({ userId: "u1" });
     expect(mp.uzuProGrant.upsert.mock.calls[0][0].where).toEqual({ userId: "u1" });
-    expect(mp.uzuProGrant.upsert.mock.calls[0][0].create).toMatchObject({ userId: "u1", grantedBy: "platform-owner", note: "vip" });
+    expect(mp.uzuProGrant.upsert.mock.calls[0][0].create).toEqual({ userId: "u1", grantedBy: "platform-owner" });
+    // 自由記述欄を保存しない: create/update に note 等の PII フィールドが含まれない
+    expect("note" in mp.uzuProGrant.upsert.mock.calls[0][0].create).toBe(false);
     expect(mp.adminAuditLog.create.mock.calls[0][0].data).toMatchObject({
       actorId: "platform-owner", action: "create", resource: "uzu_pro_grant", resourceId: "u1",
     });
   });
 
   it("POST: userId 欠落は 400（upsert しない）", async () => {
-    const res = await POST(postReq({ note: "x" }), { params: {} } as never);
+    const res = await POST(postReq({}), { params: {} } as never);
+    expect(res.status).toBe(400);
+    expect(mp.uzuProGrant.upsert).not.toHaveBeenCalled();
+    expect(mp.adminAuditLog.create).not.toHaveBeenCalled();
+  });
+
+  it("POST: 自由記述の未知キー（note 等の PII 欄）は strict で 400（保存しない）", async () => {
+    const res = await POST(postReq({ userId: "u1", note: "山田太郎 090-xxxx" }), { params: {} } as never);
     expect(res.status).toBe(400);
     expect(mp.uzuProGrant.upsert).not.toHaveBeenCalled();
     expect(mp.adminAuditLog.create).not.toHaveBeenCalled();

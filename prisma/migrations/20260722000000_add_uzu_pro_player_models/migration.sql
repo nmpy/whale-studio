@@ -19,7 +19,6 @@ CREATE TABLE "uzu_pro_grants" (
     "id" TEXT NOT NULL,
     "user_id" TEXT NOT NULL,
     "granted_by" TEXT NOT NULL,
-    "note" TEXT,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL,
 
