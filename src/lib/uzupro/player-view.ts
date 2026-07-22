@@ -13,6 +13,7 @@
 //   - フィルタ（すべて任意）は取得後に純粋関数で適用（テスト可能・prisma 方言に依存しない）。
 
 import { prisma } from "@/lib/prisma";
+import { maskLineUserId } from "@/lib/mask";
 
 /** LIFF 状態（liffLinks から導出した表示値）。 */
 export type UzuProLiffState = "linked" | "issued" | "revoked" | "error" | "unissued";
@@ -39,6 +40,10 @@ export interface UzuProPlayerRow {
   playerStatus: "active" | "cancelled";
   liffStatus: UzuProLiffState;
   lineLinked: boolean;
+  /** LINE UID のマスク表示（例 "U1234••••••••ABCD"）。未連携は null。生値は載せない。 */
+  lineLinkedMaskedId: string | null;
+  /** LINE 連携日時（ISO / UTC）。未連携は null。表示は JST。 */
+  linkedAt: Date | string | null;
   bookingStatus: string;
   /** 予約の同期日時（ISO / UTC）。表示は JST。 */
   lastSyncedAt: string | null;
@@ -129,6 +134,7 @@ type RawPlayer = {
   playerIndex: number;
   status: string;
   lineUserId: string | null;
+  linkedAt: Date | string | null;
   liffLinks: RawLink[];
 };
 type RawBooking = {
@@ -214,6 +220,7 @@ export async function getUzuProPlayerView({
           playerIndex: true,
           status: true,
           lineUserId: true,
+          linkedAt: true,
           liffLinks: { select: { status: true, issuedAt: true } },
         },
       },
@@ -265,6 +272,8 @@ export async function getUzuProPlayerView({
         playerStatus: p.status === "cancelled" ? ("cancelled" as const) : ("active" as const),
         liffStatus: deriveLiffState(p.liffLinks),
         lineLinked: p.lineUserId != null,
+        lineLinkedMaskedId: p.lineUserId ? maskLineUserId(p.lineUserId) : null,
+        linkedAt: p.lineUserId != null ? toIso(p.linkedAt) : null,
         bookingStatus: b.status,
         lastSyncedAt: toIso(b.syncedAt),
       }))

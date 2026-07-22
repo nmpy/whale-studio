@@ -242,7 +242,21 @@ function BookingRows({
               <td className="px-2 py-3 text-right font-num text-ink-2">{p.playerIndex}</td>
               <td className="px-2 py-3"><Chip tone={liff.tone}>{liff.label}</Chip></td>
               <td className="px-2 py-3">
-                {p.lineLinked ? <Chip tone="green">連携済み</Chip> : <span className="text-[11px] text-ink-3">未連携</span>}
+                {p.lineLinked ? (
+                  <div className="flex flex-col gap-0.5">
+                    <span className="flex items-center gap-1.5">
+                      <Chip tone="green">連携済み</Chip>
+                      {p.lineLinkedMaskedId && (
+                        <span className="font-num text-[11px] text-ink-3">{p.lineLinkedMaskedId}</span>
+                      )}
+                    </span>
+                    {p.linkedAt && (
+                      <span className="font-num text-[10px] text-ink-3">{formatDateTime(p.linkedAt)}</span>
+                    )}
+                  </div>
+                ) : (
+                  <span className="text-[11px] text-ink-3">未連携</span>
+                )}
               </td>
               <td className="px-2 py-3">{bookingChip(p.bookingStatus)}</td>
               <td className="whitespace-nowrap px-2 py-3 font-num text-ink-3">{formatDateTime(p.lastSyncedAt)}</td>

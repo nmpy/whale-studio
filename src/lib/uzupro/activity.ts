@@ -17,8 +17,11 @@ export type UzuProAction =
   | "liff_bulk_issue"
   | "liff_revoke"
   | "liff_reissue"
-  /// PR2 で使用（LINE User ID 紐づけ）
-  | "line_link";
+  /// LINE User ID 紐づけ（PR2）。既存 snake_case 命名規則に合わせる。
+  | "line_link_succeeded"
+  | "line_link_idempotent"
+  | "line_link_conflict"
+  | "line_link_failed";
 
 export type UzuProTargetType = "booking" | "player" | "liff_link" | "sync";
 

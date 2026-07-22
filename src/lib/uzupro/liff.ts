@@ -17,9 +17,14 @@ import { generateTicketToken, hashTicketToken } from "@/lib/live-ticket-link";
 
 type Db = Prisma.TransactionClient | typeof prisma;
 
-/** for ウズプロ用の LIFF URL（#591 の /ticket 経路とは別。ルートに ?t=）。PR2 で /api/liff/uzu-pro/link が消費。 */
+/**
+ * for ウズプロ用の LIFF URL（#591 の /ticket 経路とは別・専用 path /uzu-pro）。
+ * LIFF SDK は path 部を liff.state として endpoint(/liff) に付与し、/liff/uzu-pro?t=... へ dispatch される。
+ * → プレイヤー連携ページ src/app/liff/uzu-pro/page.tsx が ?t=(公開コード) を読んで LINE 連携を行う。
+ * 公開コード(平文トークン)以外の内部ID/個人情報は URL に含めない。
+ */
 export function buildUzuProLiffUrl(liffId: string, token: string): string {
-  return `https://liff.line.me/${liffId}?t=${token}`;
+  return `https://liff.line.me/${liffId}/uzu-pro?t=${token}`;
 }
 
 export type IssueLiffResult =

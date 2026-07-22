@@ -31,6 +31,7 @@ function player(over: Partial<Record<string, unknown>> = {}) {
     playerIndex: 1,
     status: "active",
     lineUserId: null,
+    linkedAt: null,
     liffLinks: [],
     ...over,
   };
@@ -59,6 +60,40 @@ describe("getUzuProPlayerView — PII フリー", () => {
     }
     // 生 lineUserId も露出しない。
     expect(json).not.toContain("U_secret");
+  });
+});
+
+describe("getUzuProPlayerView — LINE 連携状態（マスク表示）", () => {
+  it("連携済みプレイヤーの行は masked ID（生値でない）と linkedAt を持つ", async () => {
+    const rawUid = "U1234567890abcdefABCD";
+    const linkedAt = new Date("2026-07-05T03:00:00Z");
+    mp.findMany.mockResolvedValue([
+      booking({
+        players: [
+          player({ id: "p1", playerIndex: 1, lineUserId: rawUid, linkedAt, liffLinks: [issuedLink] }),
+        ],
+      }),
+    ]);
+    const view = await getUzuProPlayerView({ oaId: "oa1", workId: "w1" });
+    const row = view.bookings.flatMap((b) => b.players)[0];
+    expect(row.lineLinked).toBe(true);
+    // マスクされている（ドットを含む・生値と一致しない）。
+    expect(row.lineLinkedMaskedId).toContain("•");
+    expect(row.lineLinkedMaskedId).not.toBe(rawUid);
+    expect(row.linkedAt).toBe(linkedAt.toISOString());
+    // View Model 全体を文字列化しても生 UID は現れない。
+    expect(JSON.stringify(view)).not.toContain(rawUid);
+  });
+
+  it("未連携プレイヤーの行は lineLinkedMaskedId=null・linkedAt=null", async () => {
+    mp.findMany.mockResolvedValue([
+      booking({ players: [player({ id: "p1", lineUserId: null, linkedAt: null, liffLinks: [] })] }),
+    ]);
+    const view = await getUzuProPlayerView({ oaId: "oa1", workId: "w1" });
+    const row = view.bookings.flatMap((b) => b.players)[0];
+    expect(row.lineLinked).toBe(false);
+    expect(row.lineLinkedMaskedId).toBeNull();
+    expect(row.linkedAt).toBeNull();
   });
 });
 
