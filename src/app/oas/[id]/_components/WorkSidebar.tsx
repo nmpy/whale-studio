@@ -33,11 +33,13 @@ export default function WorkSidebar({
   // 表示確認モード（owner 限定・?previewPlan/?previewRole）を遷移後も維持するため query を引き継ぐ。
   const searchParams = useSearchParams();
   // アカウント設定（OA 設定）の表示可否は、旧・右上「設定」ボタン（showSettings=role!=="tester"）と同条件。
-  const { isTester } = useWorkspaceRole(oaId ?? "");
+  // for ウズプロ の可否（uzuProAccess）はサイドバー「FOR ウズプロ」の表示制御にのみ使う。
+  // 実際の認可は各ページ側の既存サーバーガードが担保する（ここでは導線の出し分けのみ）。
+  const { isTester, uzuProAccess } = useWorkspaceRole(oaId ?? "");
   if (!oaId || !workId) return null;
   const base = `/oas/${oaId}/works/${workId}`;
 
-  const sections = buildWorkSidebarSections({ oaId, workId, isTester });
+  const sections = buildWorkSidebarSections({ oaId, workId, isTester, uzuProAccess });
   const isActive = (it: SidebarItem): boolean => isSidebarItemActive(it, pathname, base, activeKey);
 
   return (
