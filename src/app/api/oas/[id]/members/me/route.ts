@@ -6,7 +6,7 @@ import { withRole } from "@/lib/auth";
 import { ok, notFound, serverError } from "@/lib/api-response";
 import { prisma } from "@/lib/prisma";
 import { isLiveEnabled, getLiveRole, canAccessLive } from "@/lib/live";
-import { getUzuProAccess } from "@/lib/uzupro";
+import { hasUzuProGrant } from "@/lib/uzupro";
 import { genRequestId, runWithRequestId, withTiming } from "@/lib/perf";
 
 export const GET = withRole<{ id: string }>(
@@ -35,12 +35,12 @@ export const GET = withRole<{ id: string }>(
             ]))
           : [null, false];
 
-        // for ウズプロ: ナビ表示の出し分けに使う。
-        // 権限なしユーザーには露出しない (= uzu_pro_granted=false / uzu_pro_access=false)。
-        // 実際の強制は常にサーバー側ガード（canAccessUzuPro / authorizeUzuPro）が行う。
-        const { granted: uzu_pro_granted, access: uzu_pro_access } = await withTiming(
-          "api/members-me:uzupro:access",
-          () => getUzuProAccess(params.id, user.id),
+        // for ウズプロ: per-user の Grant 保有のみ返す（OA 単位）。
+        // アクセス可否は作品単位（Work.uzuProEnabled + Grant + member）のため、ナビ表示は
+        // 作品単位 API /oas/[id]/works/[workId]/uzu-pro/access で判定する（members/me では返さない）。
+        const uzu_pro_granted = await withTiming(
+          "api/members-me:uzupro:granted",
+          () => hasUzuProGrant(user.id),
         );
 
         return ok({
@@ -51,7 +51,6 @@ export const GET = withRole<{ id: string }>(
           live_role,
           live_access,
           uzu_pro_granted,
-          uzu_pro_access,
         });
       } catch (err) {
         return serverError(err);

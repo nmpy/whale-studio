@@ -24,7 +24,7 @@ export default async function UzuProLayout({
       `/login?next=${encodeURIComponent(`/oas/${params.id}/works/${params.workId}/uzu-pro/player`)}`,
     );
   }
-  if (!(await canAccessUzuPro(params.id, user.id))) {
+  if (!(await canAccessUzuPro(params.id, user.id, params.workId))) {
     notFound();
   }
   return <>{children}</>;

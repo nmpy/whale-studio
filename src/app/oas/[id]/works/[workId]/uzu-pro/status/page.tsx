@@ -59,7 +59,7 @@ export default async function UzuProStatusPage({
     redirect(`/login?next=${encodeURIComponent(`/oas/${params.id}/works/${params.workId}/uzu-pro/status`)}`);
   }
   // 多層防御: layout で強制済みだが Server 側でも再確認（存在露出しないため 404）。
-  if (!(await canAccessUzuPro(params.id, user.id))) notFound();
+  if (!(await canAccessUzuPro(params.id, user.id, params.workId))) notFound();
 
   // スコープ検証: work が対象 OA に属することを確認（URL の workId 差し替え対策）。
   const work = await prisma.work.findFirst({

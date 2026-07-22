@@ -11,6 +11,7 @@ import { prisma } from "@/lib/prisma";
 import { ok, created, badRequest, forbidden, serverError } from "@/lib/api-response";
 import { withAuth } from "@/lib/auth";
 import { isPlatformOwner } from "@/lib/platform-admin";
+import { recordUzuProActivity } from "@/lib/uzupro/activity";
 import { z, ZodError } from "zod";
 
 export const dynamic = "force-dynamic";
@@ -50,6 +51,10 @@ export const POST = withAuth(async (req, _ctx, user) => {
     await prisma.adminAuditLog.create({
       data: { actorId: user.id, action: "create", resource: "uzu_pro_grant", resourceId: userId },
     });
+    await recordUzuProActivity(prisma, {
+      actorUserId: user.id, action: "grant_granted", targetType: "grant", targetId: userId,
+      detail: { targetUserId: userId },
+    });
 
     return created({ userId });
   } catch (err) {
@@ -73,6 +78,10 @@ export const DELETE = withAuth(async (req, _ctx, user) => {
 
     await prisma.adminAuditLog.create({
       data: { actorId: user.id, action: "delete", resource: "uzu_pro_grant", resourceId: userId },
+    });
+    await recordUzuProActivity(prisma, {
+      actorUserId: user.id, action: "grant_revoked", targetType: "grant", targetId: userId,
+      detail: { targetUserId: userId, revoked: count > 0 },
     });
 
     return ok({ userId, revoked: count > 0 });

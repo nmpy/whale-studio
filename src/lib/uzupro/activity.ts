@@ -21,9 +21,15 @@ export type UzuProAction =
   | "line_link_succeeded"
   | "line_link_idempotent"
   | "line_link_conflict"
-  | "line_link_failed";
+  | "line_link_failed"
+  /// 作品単位の for UZU Pro 有効化 / 無効化（owner / platform owner 操作）
+  | "work_enabled"
+  | "work_disabled"
+  /// UzuProGrant 付与 / 解除（platform owner 操作）
+  | "grant_granted"
+  | "grant_revoked";
 
-export type UzuProTargetType = "booking" | "player" | "liff_link" | "sync";
+export type UzuProTargetType = "booking" | "player" | "liff_link" | "sync" | "work" | "grant";
 
 /**
  * PII を含めない前提の監査ログを書き込む。

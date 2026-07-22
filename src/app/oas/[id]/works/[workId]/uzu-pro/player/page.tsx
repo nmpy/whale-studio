@@ -41,7 +41,7 @@ export default async function UzuProPlayerPage({
     redirect(`/login?next=${encodeURIComponent(`/oas/${params.id}/works/${params.workId}/uzu-pro/player`)}`);
   }
   // 多層防御: layout で強制済みだが Server 側でも再確認（存在露出しないため 404）。
-  if (!(await canAccessUzuPro(params.id, user.id))) notFound();
+  if (!(await canAccessUzuPro(params.id, user.id, params.workId))) notFound();
 
   const work = await prisma.work.findFirst({
     where: { id: params.workId, oaId: params.id },
