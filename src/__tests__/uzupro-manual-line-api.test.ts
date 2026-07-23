@@ -101,6 +101,67 @@ describe("POST manual link — バリデーション", () => {
   });
 });
 
+describe("POST manual link — LINE User ID 形式（^U[0-9a-fA-F]{32}$）", () => {
+  beforeEach(authOk);
+  const HEX32 = "0123456789abcdefABCDEF0123456789"; // 32 桁 hex（大小混在）
+
+  it("U + 32桁hex は成功（service へ渡る・400 でない）", async () => {
+    manualLinkPlayerLineUser.mockResolvedValue({ kind: "linked" });
+    const id = "U" + HEX32;
+    const res = await post({ lineUserId: id, lineUserIdConfirm: id, reason: "r" });
+    expect(res.status).toBe(200);
+    expect(manualLinkPlayerLineUser).toHaveBeenCalledTimes(1);
+    expect(manualLinkPlayerLineUser.mock.calls[0][0].lineUserId).toBe(id);
+  });
+
+  it("前後空白は trim 後に成功", async () => {
+    manualLinkPlayerLineUser.mockResolvedValue({ kind: "linked" });
+    const id = "U" + HEX32;
+    const res = await post({ lineUserId: `  ${id} `, lineUserIdConfirm: `\t${id}\n`, reason: " r " });
+    expect(res.status).toBe(200);
+    // service へは trim 済みの値が渡る。
+    expect(manualLinkPlayerLineUser.mock.calls[0][0].lineUserId).toBe(id);
+  });
+
+  it("31桁 → 400（桁不足）", async () => {
+    const id = "U" + HEX32.slice(0, 31);
+    const res = await post({ lineUserId: id, lineUserIdConfirm: id, reason: "r" });
+    expect(res.status).toBe(400);
+    expect(manualLinkPlayerLineUser).not.toHaveBeenCalled();
+  });
+
+  it("33桁 → 400（桁超過）", async () => {
+    const id = "U" + HEX32 + "a";
+    const res = await post({ lineUserId: id, lineUserIdConfirm: id, reason: "r" });
+    expect(res.status).toBe(400);
+    expect(manualLinkPlayerLineUser).not.toHaveBeenCalled();
+  });
+
+  it("U 無し → 400", async () => {
+    const id = "V" + HEX32; // 先頭が U でない
+    const res = await post({ lineUserId: id, lineUserIdConfirm: id, reason: "r" });
+    expect(res.status).toBe(400);
+    expect(manualLinkPlayerLineUser).not.toHaveBeenCalled();
+  });
+
+  it("前後に余分な文字 → 400（^ / $ アンカーで全体一致のみ）", async () => {
+    const core = "U" + HEX32;
+    for (const bad of [`x${core}`, `${core}x`, `${core}-1`, `U${core}`]) {
+      vi.clearAllMocks(); authOk();
+      const res = await post({ lineUserId: bad, lineUserIdConfirm: bad, reason: "r" });
+      expect(res.status).toBe(400);
+      expect(manualLinkPlayerLineUser).not.toHaveBeenCalled();
+    }
+  });
+
+  it("非 hex 文字（g）を含む → 400", async () => {
+    const id = "U" + "g".repeat(32);
+    const res = await post({ lineUserId: id, lineUserIdConfirm: id, reason: "r" });
+    expect(res.status).toBe(400);
+    expect(manualLinkPlayerLineUser).not.toHaveBeenCalled();
+  });
+});
+
 describe("POST manual link — 結果マッピング", () => {
   beforeEach(authOk);
 

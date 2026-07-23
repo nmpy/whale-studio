@@ -57,6 +57,7 @@ describe.skipIf(!RUN)("uzupro manual line-link live-DB integration", () => {
   }
   const mlink = (p: PF, uid: string) => manualLinkPlayerLineUser({ oaId, workId, playerId: p.playerId, lineUserId: uid });
   const munlink = (p: PF) => manualUnlinkPlayerLineUser({ oaId, workId, playerId: p.playerId });
+  const bind = (p: PF, uid: string) => bindPlayerLineUser({ linkId: p.linkId, playerId: p.playerId, bookingId: p.bookingId, oaId, lineUserId: uid });
   const uid = (label: string) => `U${label}`.padEnd(33, "0");
   const row = (id: string) => prisma.uzuProPlayer.findUnique({ where: { id }, select: { lineUserId: true, linkedAt: true, lineLinkSource: true } });
   const setWork = (enabled: boolean) => prisma.work.update({ where: { id: workId }, data: { uzuProEnabled: enabled } });
@@ -149,6 +150,33 @@ describe.skipIf(!RUN)("uzupro manual line-link live-DB integration", () => {
     expect(link?.status).toBe("issued");
     expect(link?.revokedAt).toBeNull();
     expect(link?.tokenHash).toBe(hashTicketToken(p.publicCode));
+  });
+
+  it("LIFF 連携済み(source=LIFF)へ同一 UID の手動登録 → 冪等成功、source は LIFF のまま（MANUAL へ変えない）", async () => {
+    const [p] = await mkBooking("m-liff-idem", 1);
+    const u = uid("liffidem");
+    expect((await bind(p, u)).kind).toBe("linked");
+    expect((await row(p.playerId))?.lineLinkSource).toBe("LIFF");
+    // 同一 UID を手動登録 → 冪等成功。source は LIFF を維持（上書きしない）。
+    expect((await mlink(p, u)).kind).toBe("already_linked_same");
+    const r = await row(p.playerId);
+    expect(r?.lineUserId).toBe(u);
+    expect(r?.lineLinkSource).toBe("LIFF");
+  });
+
+  it("解除後の LIFF 再連携 → source=LIFF（MANUAL 残存なし）", async () => {
+    const [p] = await mkBooking("m-reliff", 1);
+    // 手動登録(MANUAL) → 解除(すべて null) → LIFF 再連携(LIFF)。
+    expect((await mlink(p, uid("mm"))).kind).toBe("linked");
+    expect((await row(p.playerId))?.lineLinkSource).toBe("MANUAL");
+    expect((await munlink(p)).kind).toBe("unlinked");
+    const cleared = await row(p.playerId);
+    expect(cleared?.lineUserId).toBeNull();
+    expect(cleared?.linkedAt).toBeNull();
+    expect(cleared?.lineLinkSource).toBeNull();
+    // LIFF 再連携 → source は LIFF。
+    expect((await bind(p, uid("lf2"))).kind).toBe("linked");
+    expect((await row(p.playerId))?.lineLinkSource).toBe("LIFF");
   });
 
   it("並行: 同一プレイヤーへ異なる 10 UID → ちょうど 1 linked、他 conflict_other_account", async () => {
