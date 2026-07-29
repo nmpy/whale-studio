@@ -11,6 +11,7 @@
 import { useState, type ReactNode } from "react";
 import type { LiffPageConfigSettings, SurveyItem } from "@/types";
 import { liffRootClass } from "./liff-style-helpers";
+import { LineRegisterReportButton } from "./LineRegisterReportButton";
 import {
   LiffActionButton,
   LiffEmptyState,
@@ -122,10 +123,20 @@ export function SurveyRenderer({ config, preview, lineUserId }: Props) {
         {/* 説明文（config.description）は LiffSinglePageRenderer のページ見出し側で 1 度だけ表示する。
             ここで再表示すると二重になるため出さない（document.title は LINE 上部バー）。 */}
         {completed ? (
-          <div className="bg-[color:var(--liff-surface)] border border-[color:var(--liff-border)] rounded-[16px] px-5 py-7 text-center">
-            <p className="text-3xl mb-3 text-[color:var(--liff-line-green)]">✓</p>
-            <p className="text-[15px] leading-[1.8] whitespace-pre-wrap" style={{ letterSpacing: "0.02em" }}>{thanksMessage}</p>
-          </div>
+          config.settings_json.survey_line_register_report ? (
+            // opt-in: 回答保存成功後に LINE への「登録完了報告」導線を出す（固定文言）。
+            <div className="bg-[color:var(--liff-surface)] border border-[color:var(--liff-border)] rounded-[16px] px-5 py-7 text-center">
+              <p className="text-3xl mb-3 text-[color:var(--liff-line-green)]">✓</p>
+              <h3 className="text-[17px] font-bold leading-snug mb-2">エージェント情報を受け付けました。</h3>
+              <p className="text-[14px] leading-[1.8] text-[color:var(--liff-secondary-text)]">最後に、下のボタンから登録完了を本部へ報告してください。</p>
+              <LineRegisterReportButton preview={preview} />
+            </div>
+          ) : (
+            <div className="bg-[color:var(--liff-surface)] border border-[color:var(--liff-border)] rounded-[16px] px-5 py-7 text-center">
+              <p className="text-3xl mb-3 text-[color:var(--liff-line-green)]">✓</p>
+              <p className="text-[15px] leading-[1.8] whitespace-pre-wrap" style={{ letterSpacing: "0.02em" }}>{thanksMessage}</p>
+            </div>
+          )
         ) : items.length === 0 ? (
           <LiffEmptyState text="（アンケート項目が登録されていません）" />
         ) : (
