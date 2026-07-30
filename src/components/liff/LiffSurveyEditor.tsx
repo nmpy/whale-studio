@@ -6,7 +6,7 @@
 // radio / checkbox の場合は options（改行区切り入力）を編集できる。
 
 import { useMemo, useState } from "react";
-import type { LiffPageConfigSettings, SurveyInputType, SurveyItem } from "@/types";
+import type { LiffPageConfigSettings, SurveyCompletionAction, SurveyInputType, SurveyItem } from "@/types";
 
 interface Props {
   settings: LiffPageConfigSettings;
@@ -94,6 +94,103 @@ export function LiffSurveyEditor({ settings, readOnly, onChange }: Props) {
           placeholder="例: 送信しました。ご協力ありがとうございました。"
           maxLength={500}
         />
+      </div>
+
+      {/* ── 回答後の設定 ─────────────────────────── */}
+      <div className="border-t border-gray-100 pt-4 space-y-3">
+        <h3 className="text-xs font-semibold text-gray-700">回答後の設定</h3>
+
+        {/* 複数回答を許可 */}
+        <label className="flex items-start gap-2 text-sm text-gray-700">
+          <input
+            type="checkbox"
+            className={`${checkboxCls} mt-0.5`}
+            checked={settings.survey_allow_multiple ?? false}
+            onChange={(e) => onChange({ survey_allow_multiple: e.target.checked })}
+            disabled={readOnly}
+          />
+          <span>
+            複数回の回答を許可する
+            <span className="block text-xs text-gray-400 mt-0.5">
+              OFF のとき、回答済みのユーザーにはフォームを表示せず「回答済みメッセージ」を表示します（既存アンケートは OFF）。
+            </span>
+          </span>
+        </label>
+
+        {/* 回答済みメッセージ */}
+        <div>
+          <label className={labelCls}>回答済みメッセージ（任意）</label>
+          <textarea
+            className={`${inputCls} min-h-[64px] resize-y`}
+            value={settings.survey_already_answered_message ?? ""}
+            onChange={(e) => onChange({ survey_already_answered_message: e.target.value })}
+            disabled={readOnly}
+            placeholder="このアンケートは回答済みです。"
+            maxLength={500}
+            rows={2}
+          />
+          <p className="text-[11px] text-gray-400 mt-1">未設定のときは「このアンケートは回答済みです。」を表示します。</p>
+        </div>
+
+        {/* 完了後ボタンを表示 */}
+        <label className="flex items-start gap-2 text-sm text-gray-700">
+          <input
+            type="checkbox"
+            className={`${checkboxCls} mt-0.5`}
+            checked={settings.survey_completion_button_enabled ?? false}
+            onChange={(e) => onChange({ survey_completion_button_enabled: e.target.checked })}
+            disabled={readOnly}
+          />
+          <span>
+            完了後にボタンを表示する
+            <span className="block text-xs text-gray-400 mt-0.5">送信完了画面・回答済み画面の両方に表示します。</span>
+          </span>
+        </label>
+
+        {/* ボタン詳細（表示 ON のときのみ） */}
+        {(settings.survey_completion_button_enabled ?? false) && (
+          <div className="pl-6 space-y-3">
+            <div>
+              <label className={labelCls}>ボタン文言</label>
+              <input
+                className={inputCls}
+                value={settings.survey_completion_button_label ?? ""}
+                onChange={(e) => onChange({ survey_completion_button_label: e.target.value })}
+                disabled={readOnly}
+                placeholder="例: ホームに戻る"
+                maxLength={40}
+              />
+            </div>
+            <div>
+              <label className={labelCls}>ボタンの動作</label>
+              <select
+                className={inputCls}
+                value={settings.survey_completion_button_action ?? "liff_home"}
+                onChange={(e) => onChange({ survey_completion_button_action: e.target.value as SurveyCompletionAction })}
+                disabled={readOnly}
+              >
+                <option value="liff_home">LIFF ホームへ移動</option>
+                <option value="open_url">指定 URL を開く</option>
+                <option value="close">LIFF を閉じる</option>
+              </select>
+            </div>
+            {(settings.survey_completion_button_action ?? "liff_home") === "open_url" && (
+              <div>
+                <label className={labelCls}>遷移先 URL</label>
+                <input
+                  className={inputCls}
+                  type="url"
+                  value={settings.survey_completion_button_url ?? ""}
+                  onChange={(e) => onChange({ survey_completion_button_url: e.target.value })}
+                  disabled={readOnly}
+                  placeholder="https://example.com/next"
+                  maxLength={2000}
+                />
+                <p className="text-[11px] text-gray-400 mt-1">http / https のみ。未入力・不正な URL のときボタンは表示されません。</p>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       <ul className="flex flex-col gap-3">

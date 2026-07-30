@@ -1728,6 +1728,25 @@ export interface LiffPageConfigSettings {
   /** Survey 送信完了時に表示するテキスト */
   survey_thanks_message?: string;
 
+  // ── Survey 回答後の挙動（完了画面 / 再アクセス時） ───────────
+  /**
+   * 複数回の回答を許可するか。
+   *   true  = 回答済みでもフォームを表示し何度でも回答可。
+   *   false/未設定 = 回答済みならフォームを出さず「回答済み画面」を表示（既存アンケートの
+   *   意図しない重複回答を防ぐため既定は false 相当＝undefined を false として扱う）。
+   */
+  survey_allow_multiple?: boolean;
+  /** 回答済みユーザーに表示するメッセージ。未設定はシステム既定（`このアンケートは回答済みです。`）。 */
+  survey_already_answered_message?: string;
+  /** 送信完了画面・回答済み画面に「完了後ボタン」を表示するか。 */
+  survey_completion_button_enabled?: boolean;
+  /** 完了後ボタンの文言。未設定は action ごとの既定文言。 */
+  survey_completion_button_label?: string;
+  /** 完了後ボタンの動作（LIFF ホームへ移動 / 指定 URL を開く / LIFF を閉じる）。 */
+  survey_completion_button_action?: SurveyCompletionAction;
+  /** `open_url` のときの遷移先 URL（http/https のみ）。 */
+  survey_completion_button_url?: string;
+
   // ── Contact（お問い合わせ）モード設定 ───────────────────────
   //   すべて任意。未設定でも安全に動く（resolveContactConfig が既定値を補う）。
   /** 問い合わせ種別の選択肢。空配列/未設定なら種別欄を表示しない。 */
@@ -1799,6 +1818,9 @@ export interface FaqItem {
 
 /** Survey 入力種別 */
 export type SurveyInputType = "text" | "textarea" | "radio" | "checkbox";
+
+/** Survey 完了後ボタンの動作。 */
+export type SurveyCompletionAction = "liff_home" | "open_url" | "close";
 
 /** Survey 1 質問 */
 export interface SurveyItem {
