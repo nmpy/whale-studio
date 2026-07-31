@@ -9,7 +9,8 @@
 //     - キー無しで再送された場合も、状態と uzuSyncedAt の設定は同じ値を書くだけなので二重反映にならない。
 //     - ERROR は uzuSyncedAt を進めない（次回の差分取得で再試行できるようにする）。
 //
-//   個人情報は受け取らない。strict schema で未知フィールドを 400 拒否する。
+//   ESCAPE.ID 由来の個人情報（本名/購入者名/メール等）や OCR データは受け取らない。
+//   strict schema で未知フィールドを 400 拒否する。
 
 import { NextRequest } from "next/server";
 import { z, ZodError } from "zod";

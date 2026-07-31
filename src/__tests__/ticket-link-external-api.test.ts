@@ -6,7 +6,8 @@
  * 検証観点:
  *   - APIキーなし/不一致 → 401（fail closed）
  *   - allowlist 外 OA / 不在 work → 404（存在秘匿）
- *   - 取得レスポンスに PII（購入者名 / OCR 原文 / 会場 / 公演名）が含まれない
+ *   - 取得レスポンスに ESCAPE.ID 由来の個人情報 / OCR データ（購入者名 / OCR 原文 / 会場 / 公演名）を露出しない
+ *     （lineUserId / lineDisplayName / コードネームは CMS 連携に必要な最小限として意図的に返す）
  *   - カーソルページング（has_more / next_cursor）
  *   - 同期結果の状態反映（LINKED / CONFLICT / NO_CHANGE）
  *   - ERROR は uzuSyncedAt を進めない（次回再試行できる）
@@ -133,7 +134,7 @@ describe("GET /api/external/v2/uzu-pro/ticket-links", () => {
     expect(res.status).toBe(400);
   });
 
-  it("必要最小限の項目のみ返し、PII を含めない", async () => {
+  it("CMS 連携に必要な最小限のみ返し、ESCAPE.ID 由来の個人情報や OCR データを露出しない", async () => {
     mockPrisma.ticketLink.findMany.mockResolvedValue([makeLink("tl-1")]);
     const res = await ticketLinksGET(getReq(`?workId=${WORK_ID}`, READ_KEY));
     const body = await res.json();
@@ -154,7 +155,8 @@ describe("GET /api/external/v2/uzu-pro/ticket-links", () => {
       updatedAt:         "2026-08-01T00:00:00.000Z",
     });
 
-    // 購入者名・OCR 原文・会場・公演名は返さない。
+    // ESCAPE.ID 由来の個人情報（購入者名）と OCR データ（原文/会場/公演名）は返さない。
+    // lineUserId / lineDisplayName / codeNames は上の toEqual で「返すこと」を検証済み。
     const serialized = JSON.stringify(body);
     for (const leak of ["purchaserName", "ocrRawText", "venue", "performanceTitle"]) {
       expect(serialized).not.toContain(leak);
@@ -220,7 +222,7 @@ describe("POST /api/external/v2/uzu-pro/ticket-links/sync-result", () => {
     expect(res.status).toBe(401);
   });
 
-  it("未知フィールドは 400（PII 混入を構造的に拒否）", async () => {
+  it("未知フィールドは 400（ESCAPE.ID 由来の個人情報の混入を構造的に拒否）", async () => {
     const res = await syncResultPOST(
       postReq({ workId: WORK_ID, results: [{ whaleTicketLinkId: "tl-1", result: "LINKED", purchaserName: "山田" }] }, WRITE_KEY),
     );

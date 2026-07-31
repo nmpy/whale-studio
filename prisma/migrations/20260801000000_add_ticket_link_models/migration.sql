@@ -1,7 +1,8 @@
 -- チケット連携 (Ticket Link) の基盤テーブル。
 -- additive・非破壊: 新規 enum / 新規テーブル / 新規 index のみ。既存テーブル・既存行は一切変更しない。
---   PII 方針: 恒久保存は line_user_id / line_display_name / code_name のみ。
---   OCR 原文・購入者名等は ticket_link_drafts に expires_at 付きで一時保持し、確定/期限で破棄する。
+--   個人情報: 恒久保存は line_user_id / line_display_name / code_name のみ（CMS 連携に必要な最小限）。
+--   OCR 原文・購入者名等は ticket_link_drafts にのみ保持する。expires_at は期限情報であり、
+--   実データの削除処理は PR4 で実装する（本 migration は土台のみ）。
 
 -- CreateEnum
 CREATE TYPE "TicketLinkStatus" AS ENUM ('PENDING_UZU_BOOKING', 'LINKED', 'CONFLICT', 'REVOKED');

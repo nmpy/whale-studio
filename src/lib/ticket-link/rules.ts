@@ -5,7 +5,10 @@
 
 import type { TicketLinkStatus, TicketLinkDraftStatus } from "@prisma/client";
 
-/** 一時ドラフト（OCR 原文・購入者名等の PII を含む）の保持時間。確定 or 期限で本文を破棄する。 */
+/**
+ * 一時ドラフト（OCR 原文・購入者名等を含む）の保持時間。
+ * ここでは期限の基準値のみを定義する。実データの削除処理は PR4 で実装する。
+ */
 export const TICKET_LINK_DRAFT_TTL_HOURS = 24;
 
 /** AI 抽出の再試行上限（無限リトライ防止）。 */

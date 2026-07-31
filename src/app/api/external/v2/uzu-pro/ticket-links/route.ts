@@ -5,7 +5,10 @@
 //         WHALE_EXTERNAL_OA_IDS allowlist（scope.allowsOa）でテナント境界を検証。fail closed。
 //
 //   返す情報は「予約と LINE を突き合わせるのに必要な最小限」だけ。
-//   OCR 原文 / 購入者名 / 公演名 / 会場 は **返さない**（そもそも TicketLink に保存していない）。
+//   lineUserId / lineDisplayName / コードネームは CMS 連携に必要なため意図的に含める
+//   （認証 + 作品権限を検証済みの UZU Pro CMS にのみ返る）。
+//   ESCAPE.ID 由来の本名・購入者名・メールアドレス、OCR 原文、画像、公演会場は **返さない**
+//   （そもそも TicketLink に保存していない）。
 //   内部主キーのうち外部へ出すのは whaleTicketLinkId（同期結果の宛先）のみ。
 //
 //   取得条件: 対象作品 / 未同期のみ / 更新日時以降 / カーソルページング / 最大取得件数。
