@@ -6,6 +6,8 @@ import { normalizeFlexJson, FLEX_ERRORS } from "@/lib/flex";
 import { validateCallRequestConfig } from "@/lib/call-request";
 import { MIN_DELAY_MINUTES as SCHED_MIN_DELAY_MINUTES, MAX_DELAY_MINUTES as SCHED_MAX_DELAY_MINUTES } from "@/lib/scheduled-message";
 import { validateMedia, URL_MAX_LENGTH, type MediaUsage } from "@/lib/media-validation";
+import { validateCompletionButtonSettings } from "@/lib/liff/survey-completion";
+import type { LiffPageConfigSettings } from "@/types";
 
 // 外部URL参照メディア（asset_media_source="external_url"）の用途別サーバ検証を Zod ctx に反映する。
 // error レベルのみを ctx.addIssue で保存ブロックにする（warning はフロントで注意喚起・保存は止めない）。
@@ -1609,6 +1611,11 @@ export function validatePublishRequirements(args: {
       errors.push("ヘッダーロゴ URL は http:// または https:// で始めてください");
     }
   }
+
+  // Survey の「完了後ボタン」設定（有効時のみ検証。runtime 側は resolveCompletionButton が
+  // 不正設定を show=false にして安全側に倒すが、公開時は保存前に気づけるようにする）。
+  const completionButton = validateCompletionButtonSettings(s as LiffPageConfigSettings);
+  if (!completionButton.ok) errors.push(...completionButton.errors);
 
   function walk(blockType: string, title: string | null, settings: unknown, depth: number, label: string) {
     if (blockType === "accordion") {

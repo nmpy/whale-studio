@@ -7,6 +7,7 @@
 
 import { useMemo, useState } from "react";
 import type { LiffPageConfigSettings, SurveyCompletionAction, SurveyInputType, SurveyItem } from "@/types";
+import { SURVEY_COMPLETION_LABEL_MAX, SURVEY_COMPLETION_MESSAGE_MAX } from "@/lib/liff/survey-completion";
 
 interface Props {
   settings: LiffPageConfigSettings;
@@ -177,7 +178,7 @@ export function LiffSurveyEditor({ settings, readOnly, onChange }: Props) {
                 onChange={(e) => onChange({ survey_completion_button_label: e.target.value })}
                 disabled={readOnly}
                 placeholder="例: ホームに戻る"
-                maxLength={40}
+                maxLength={SURVEY_COMPLETION_LABEL_MAX}
               />
             </div>
             <div>
@@ -190,9 +191,27 @@ export function LiffSurveyEditor({ settings, readOnly, onChange }: Props) {
               >
                 <option value="liff_home">LIFF ホームへ移動</option>
                 <option value="open_url">指定 URL を開く</option>
+                <option value="send_line_message">LINE へメッセージを送信</option>
                 <option value="close">LIFF を閉じる</option>
               </select>
             </div>
+            {(settings.survey_completion_button_action ?? "liff_home") === "send_line_message" && (
+              <div>
+                <label className={labelCls}>メッセージ送信文言</label>
+                <textarea
+                  className={`${inputCls} min-h-[64px] resize-y`}
+                  value={settings.survey_completion_button_message ?? ""}
+                  onChange={(e) => onChange({ survey_completion_button_message: e.target.value })}
+                  disabled={readOnly}
+                  placeholder="例: 参加を申し込みます"
+                  maxLength={SURVEY_COMPLETION_MESSAGE_MAX}
+                  rows={2}
+                />
+                <p className="text-[11px] text-gray-400 mt-1">
+                  ボタン文言とは別に、LINE トークへ実際に送信されるテキストです（ボタン面には表示されません）。未入力のときボタンは表示されません。
+                </p>
+              </div>
+            )}
             {(settings.survey_completion_button_action ?? "liff_home") === "open_url" && (
               <div>
                 <label className={labelCls}>遷移先 URL</label>

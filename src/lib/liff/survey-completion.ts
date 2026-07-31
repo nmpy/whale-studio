@@ -13,10 +13,16 @@ export const SURVEY_ALREADY_ANSWERED_DEFAULT = "このアンケートは回答�
 
 /** action ごとのボタン既定文言（CMS 未設定時）。 */
 const ACTION_DEFAULT_LABEL: Record<SurveyCompletionAction, string> = {
-  liff_home: "ホームに戻る",
-  open_url:  "次へ進む",
-  close:     "とじる",
+  liff_home:         "ホームに戻る",
+  open_url:          "次へ進む",
+  send_line_message: "LINE でメッセージを送信",
+  close:             "とじる",
 };
+
+/** ボタン文言の最大長（CMS 入力欄の maxLength と一致させる）。 */
+export const SURVEY_COMPLETION_LABEL_MAX = 40;
+/** 送信メッセージの最大長。LINE のテキストメッセージ上限より十分小さい実用値。 */
+export const SURVEY_COMPLETION_MESSAGE_MAX = 300;
 
 export interface ResolvedCompletionButton {
   show:   boolean;
@@ -24,6 +30,9 @@ export interface ResolvedCompletionButton {
   action: SurveyCompletionAction;
   /** action="open_url" のときの安全な遷移先（http/https）。それ以外 / 無効なら null。 */
   url:    string | null;
+  /** action="send_line_message" のときに LINE へ送るテキスト。それ以外 / 未設定なら null。
+   *  ボタン面には出さない（表示は label、送信は message）。 */
+  message: string | null;
 }
 
 /** http / https のみ許可（javascript: 等を弾く）。 */
@@ -53,6 +62,7 @@ export function resolveAlreadyAnsweredMessage(settings: LiffPageConfigSettings |
  * 完了後ボタン設定を解決する。
  *  - 無効(enabled=false/未設定) は show=false。
  *  - action="open_url" は安全な url が無ければ show=false（誤導線・不正 URL を出さない）。
+ *  - action="send_line_message" は送信文言が空/空白のみなら show=false（空メッセージを送らない）。
  *  - label 未設定は action ごとの既定文言。
  */
 export function resolveCompletionButton(
@@ -61,10 +71,50 @@ export function resolveCompletionButton(
   const s = settings ?? {};
   const action = (s.survey_completion_button_action ?? "liff_home") as SurveyCompletionAction;
   const url = isSafeExternalUrl(s.survey_completion_button_url) ? s.survey_completion_button_url!.trim() : null;
+  const trimmedMessage = (s.survey_completion_button_message ?? "").trim();
+  const message = action === "send_line_message" && trimmedMessage.length > 0 ? trimmedMessage : null;
   const label = (s.survey_completion_button_label ?? "").trim() || ACTION_DEFAULT_LABEL[action] || "OK";
   const enabled = s.survey_completion_button_enabled === true;
-  const show = enabled && (action !== "open_url" || url !== null);
-  return { show, label, action, url };
+  const show =
+    enabled &&
+    (action !== "open_url" || url !== null) &&
+    (action !== "send_line_message" || message !== null);
+  return { show, label, action, url, message };
+}
+
+/**
+ * 完了後ボタン設定の妥当性チェック（CMS 保存時に使う。runtime 側は resolveCompletionButton が
+ * show=false にして安全側に倒すため、ここは「保存前に気づかせる」ためのもの）。
+ * ボタン無効（enabled≠true）のときは何も検証しない（下書き途中の設定を邪魔しない）。
+ */
+export function validateCompletionButtonSettings(
+  settings: LiffPageConfigSettings | null | undefined,
+): { ok: true } | { ok: false; errors: string[] } {
+  const s = settings ?? {};
+  if (s.survey_completion_button_enabled !== true) return { ok: true };
+
+  const errors: string[] = [];
+  const action = (s.survey_completion_button_action ?? "liff_home") as SurveyCompletionAction;
+
+  const label = (s.survey_completion_button_label ?? "").trim();
+  if (label.length > SURVEY_COMPLETION_LABEL_MAX) {
+    errors.push(`完了後ボタンの文言は ${SURVEY_COMPLETION_LABEL_MAX} 文字以内で入力してください`);
+  }
+
+  if (action === "open_url" && !isSafeExternalUrl(s.survey_completion_button_url)) {
+    errors.push("完了後ボタンの遷移先 URL は http:// または https:// で入力してください");
+  }
+
+  if (action === "send_line_message") {
+    const message = (s.survey_completion_button_message ?? "").trim();
+    if (message.length === 0) {
+      errors.push("完了後ボタンで送信するメッセージを入力してください");
+    } else if (message.length > SURVEY_COMPLETION_MESSAGE_MAX) {
+      errors.push(`完了後ボタンで送信するメッセージは ${SURVEY_COMPLETION_MESSAGE_MAX} 文字以内で入力してください`);
+    }
+  }
+
+  return errors.length === 0 ? { ok: true } : { ok: false, errors };
 }
 
 /**

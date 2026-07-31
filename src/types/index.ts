@@ -1748,10 +1748,16 @@ export interface LiffPageConfigSettings {
   survey_completion_button_enabled?: boolean;
   /** 完了後ボタンの文言。未設定は action ごとの既定文言。 */
   survey_completion_button_label?: string;
-  /** 完了後ボタンの動作（LIFF ホームへ移動 / 指定 URL を開く / LIFF を閉じる）。 */
+  /** 完了後ボタンの動作（LIFF ホームへ移動 / 指定 URL を開く / LINE へメッセージ送信 / LIFF を閉じる）。 */
   survey_completion_button_action?: SurveyCompletionAction;
   /** `open_url` のときの遷移先 URL（http/https のみ）。 */
   survey_completion_button_url?: string;
+  /**
+   * `send_line_message` のときに LINE トークへ送信するテキスト。
+   * ボタンの文言（`survey_completion_button_label`）とは別物で、
+   * 送信されるのは常にこちら。ボタン面には表示しない。
+   */
+  survey_completion_button_message?: string;
 
   // ── Contact（お問い合わせ）モード設定 ───────────────────────
   //   すべて任意。未設定でも安全に動く（resolveContactConfig が既定値を補う）。
@@ -1826,7 +1832,7 @@ export interface FaqItem {
 export type SurveyInputType = "text" | "textarea" | "radio" | "checkbox";
 
 /** Survey 完了後ボタンの動作。 */
-export type SurveyCompletionAction = "liff_home" | "open_url" | "close";
+export type SurveyCompletionAction = "liff_home" | "open_url" | "send_line_message" | "close";
 
 /** Survey 1 質問 */
 export interface SurveyItem {

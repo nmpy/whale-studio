@@ -7,7 +7,10 @@ import {
   isMultipleAllowed,
   isSafeExternalUrl,
   deriveLiffHomeHref,
+  validateCompletionButtonSettings,
   SURVEY_ALREADY_ANSWERED_DEFAULT,
+  SURVEY_COMPLETION_LABEL_MAX,
+  SURVEY_COMPLETION_MESSAGE_MAX,
 } from "@/lib/liff/survey-completion";
 import type { LiffPageConfigSettings } from "@/types";
 
@@ -77,6 +80,123 @@ describe("resolveCompletionButton", () => {
   it("label 設定時はそれを使う（trim）", () => {
     const r = resolveCompletionButton(S({ survey_completion_button_enabled: true, survey_completion_button_label: "  次へ  " }));
     expect(r.label).toBe("次へ");
+  });
+
+  // ── send_line_message（label と message を分離して保持する） ──────
+  it("send_line_message: message があれば show=true・label と message を別々に返す", () => {
+    const r = resolveCompletionButton(S({
+      survey_completion_button_enabled: true,
+      survey_completion_button_action:  "send_line_message",
+      survey_completion_button_label:   "参加する",
+      survey_completion_button_message: "  参加を申し込みます  ",
+    }));
+    expect(r).toMatchObject({
+      show:    true,
+      action:  "send_line_message",
+      label:   "参加する",
+      message: "参加を申し込みます", // trim される
+    });
+    expect(r.message).not.toBe(r.label); // label は送信文言ではない
+  });
+
+  it("send_line_message: 既定文言は「LINE でメッセージを送信」（label 未設定時）", () => {
+    const r = resolveCompletionButton(S({
+      survey_completion_button_enabled: true,
+      survey_completion_button_action:  "send_line_message",
+      survey_completion_button_message: "送ります",
+    }));
+    expect(r.label).toBe("LINE でメッセージを送信");
+  });
+
+  it("send_line_message: message 未設定/空白のみ は show=false（空メッセージを送らない）", () => {
+    const base = { survey_completion_button_enabled: true, survey_completion_button_action: "send_line_message" } as const;
+    expect(resolveCompletionButton(S({ ...base })).show).toBe(false);
+    expect(resolveCompletionButton(S({ ...base, survey_completion_button_message: "   " })).show).toBe(false);
+    // label だけ設定しても送信文言の代わりにはならない
+    expect(resolveCompletionButton(S({ ...base, survey_completion_button_label: "参加する" })).show).toBe(false);
+  });
+
+  it("send_line_message 以外の action では message=null（他 action へ漏らさない）", () => {
+    const r = resolveCompletionButton(S({
+      survey_completion_button_enabled: true,
+      survey_completion_button_action:  "close",
+      survey_completion_button_message: "送らないで",
+    }));
+    expect(r).toMatchObject({ show: true, action: "close", message: null });
+  });
+
+  it("既存 action は非回帰（message フィールドは null で追加されるだけ）", () => {
+    expect(resolveCompletionButton(S({ survey_completion_button_enabled: true })).message).toBeNull();
+    expect(resolveCompletionButton(S({
+      survey_completion_button_enabled: true,
+      survey_completion_button_action:  "open_url",
+      survey_completion_button_url:     "https://example.com",
+    })).message).toBeNull();
+  });
+});
+
+describe("validateCompletionButtonSettings", () => {
+  it("ボタン無効（未設定 / false）のときは検証しない", () => {
+    expect(validateCompletionButtonSettings(undefined).ok).toBe(true);
+    expect(validateCompletionButtonSettings(S({})).ok).toBe(true);
+    expect(validateCompletionButtonSettings(S({
+      survey_completion_button_enabled: false,
+      survey_completion_button_action:  "send_line_message", // 未入力でも無効ならエラーにしない
+    })).ok).toBe(true);
+  });
+
+  it("send_line_message: 送信文言が未入力 / 空白のみ はエラー", () => {
+    const r1 = validateCompletionButtonSettings(S({
+      survey_completion_button_enabled: true,
+      survey_completion_button_action:  "send_line_message",
+    }));
+    expect(r1.ok).toBe(false);
+    if (!r1.ok) expect(r1.errors.join()).toContain("送信するメッセージ");
+
+    const r2 = validateCompletionButtonSettings(S({
+      survey_completion_button_enabled: true,
+      survey_completion_button_action:  "send_line_message",
+      survey_completion_button_message: "   ",
+    }));
+    expect(r2.ok).toBe(false);
+  });
+
+  it("send_line_message: 送信文言があれば ok", () => {
+    expect(validateCompletionButtonSettings(S({
+      survey_completion_button_enabled: true,
+      survey_completion_button_action:  "send_line_message",
+      survey_completion_button_message: "参加を申し込みます",
+    })).ok).toBe(true);
+  });
+
+  it("最大長超過はエラー（label / message）", () => {
+    const longLabel = validateCompletionButtonSettings(S({
+      survey_completion_button_enabled: true,
+      survey_completion_button_label:   "あ".repeat(SURVEY_COMPLETION_LABEL_MAX + 1),
+    }));
+    expect(longLabel.ok).toBe(false);
+
+    const longMessage = validateCompletionButtonSettings(S({
+      survey_completion_button_enabled: true,
+      survey_completion_button_action:  "send_line_message",
+      survey_completion_button_message: "あ".repeat(SURVEY_COMPLETION_MESSAGE_MAX + 1),
+    }));
+    expect(longMessage.ok).toBe(false);
+  });
+
+  it("open_url: URL 未設定 / 不正はエラー、正しい URL は ok（既存 action 非回帰）", () => {
+    const base = { survey_completion_button_enabled: true, survey_completion_button_action: "open_url" } as const;
+    expect(validateCompletionButtonSettings(S({ ...base })).ok).toBe(false);
+    expect(validateCompletionButtonSettings(S({ ...base, survey_completion_button_url: "javascript:x" })).ok).toBe(false);
+    expect(validateCompletionButtonSettings(S({ ...base, survey_completion_button_url: "https://example.com" })).ok).toBe(true);
+  });
+
+  it("liff_home / close は追加入力なしで ok", () => {
+    expect(validateCompletionButtonSettings(S({ survey_completion_button_enabled: true })).ok).toBe(true);
+    expect(validateCompletionButtonSettings(S({
+      survey_completion_button_enabled: true,
+      survey_completion_button_action:  "close",
+    })).ok).toBe(true);
   });
 });
 
