@@ -10,17 +10,23 @@
 //   2. 対象 Work            … URL の workId（UUID/publicId）から DB 解決
 //   3. 対象 OA              … Work → Oa（クライアント指定の oaId は見ない）
 //   4. LIFF ID / チャネル    … Oa.liffId / Oa.channelId（DB 上の対応のみを正とする）
-//   5. ユーザー ↔ OA の対応  … getOaFriendStatus（対象 OA の channelAccessToken で /v2/bot/profile）
-//                              200 でなければ続行しない。= このトークンのユーザーが当該 OA の
-//                              友だちであることを Messaging チャネル側で確認する
-//   6. Work のチケット連携設定 … 有効でなければ 404 相当（存在秘匿）
+//   5. トークンの発行先チャネル … verifyTokenIssuedForOaChannel。
+//                              LINE の oauth2/v2.1/verify が返す client_id と、
+//                              Oa.liffId から導いた LINE Login チャネル ID の一致を確認する。
+//                              = 別チャネルで発行された有効トークンの流用を防ぐ。
+//   6. ユーザー ↔ OA の対応  … getOaFriendStatus（対象 OA の channelAccessToken で /v2/bot/profile）
+//                              200 でなければ続行しない。
+//   7. Work のチケット連携設定 … 有効でなければ 404 相当（存在秘匿）
 //
-// verifyLiffAccessToken 単体は「LINE ユーザー本人性」しか保証しないため、
-// 5 の friend 判定を組み合わせて「この OA の LIFF から来たユーザー」へ束縛する。
+// 再監査メモ:
+//   verifyLiffAccessToken は /v2/profile を叩くだけで発行先チャネルを検証しない。
+//   getOaFriendStatus も「友だちか」しか見ないため、トークンがこの LIFF 用である保証にならない。
+//   そのため 5 の strict 検証を追加した（共通関数は変更していない）。
 
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { verifyLiffAccessToken } from "@/lib/liff/session";
 import { getOaFriendStatus } from "@/lib/line-friend";
+import { verifyTokenIssuedForOaChannel } from "@/lib/ticket-link/token-channel";
 import { readTicketLinkSettings, isManualInputAvailable } from "@/lib/ticket-link/settings";
 import type { TicketLinkSettings } from "@/types";
 
@@ -31,6 +37,8 @@ export type TicketLinkAuthFailure =
   | { kind: "not_found" }
   /** OA の友だちでない（= この OA の導線から来ていない）。 */
   | { kind: "friend_required" }
+  /** 別チャネルで発行されたトークン、または発行先を判定できない。 */
+  | { kind: "channel_mismatch" }
   /** OA 側の LINE 設定不備。ユーザーの問題ではない。 */
   | { kind: "oa_config_error" }
   /** 一時的な通信失敗。 */
@@ -98,7 +106,16 @@ export async function authenticateTicketLinkRequest(
     return { ok: false, failure: { kind: "not_found" } };
   }
 
-  // 5) ユーザー ↔ OA の対応を Messaging チャネル側で確認する。
+  // 5) トークンの発行先チャネルが対象 OA の LIFF チャネルと一致するか（strict / fail closed）。
+  const bind = await verifyTokenIssuedForOaChannel(input.accessToken, work.oa.liffId, {
+    fetchImpl: input.fetchImpl,
+  });
+  if (bind.kind === "token_invalid") return { ok: false, failure: { kind: "unauthorized" } };
+  if (bind.kind === "unavailable")   return { ok: false, failure: { kind: "unavailable" } };
+  // channel_mismatch / expected_channel_unknown はどちらも「この LIFF 用と確認できない」。
+  if (bind.kind !== "ok")            return { ok: false, failure: { kind: "channel_mismatch" } };
+
+  // 6) ユーザー ↔ OA の対応を Messaging チャネル側で確認する。
   const friend = await getOaFriendStatus(verified.lineUserId, work.oa.channelAccessToken, {
     fetchImpl: input.fetchImpl,
   });
@@ -148,6 +165,9 @@ export function authFailureMessage(f: TicketLinkAuthFailure): string {
       return "LINE連携に失敗しました。もう一度開き直してください。";
     case "friend_required":
       return "この機能を利用するには、公式アカウントを友だち追加してください。";
+    case "channel_mismatch":
+      // 技術的詳細は出さない（攻撃者に手掛かりを与えない）。
+      return "LINE連携に失敗しました。公式アカウントのメニューから開き直してください。";
     case "oa_config_error":
       return "現在ご利用いただけません。運営からの案内をお待ちください。";
     case "unavailable":
@@ -163,6 +183,7 @@ export function authFailureStatus(f: TicketLinkAuthFailure): number {
   switch (f.kind) {
     case "unauthorized":     return 401;
     case "friend_required":  return 403;
+    case "channel_mismatch": return 401;
     case "not_found":        return 404;
     case "oa_config_error":  return 503;
     case "unavailable":      return 503;

@@ -5,15 +5,17 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const { mockVerify, mockFriend } = vi.hoisted(() => ({
+const { mockVerify, mockFriend, mockBind } = vi.hoisted(() => ({
   mockVerify: vi.fn(),
   mockFriend: vi.fn(),
+  mockBind: vi.fn(),
 }));
 vi.mock("@/lib/liff/session", () => ({
   verifyLiffAccessToken: mockVerify,
   LIFF_SESSION_USER_ERROR: "LINE連携に失敗しました。もう一度開き直してください。",
 }));
 vi.mock("@/lib/line-friend", () => ({ getOaFriendStatus: mockFriend }));
+vi.mock("@/lib/ticket-link/token-channel", () => ({ verifyTokenIssuedForOaChannel: mockBind }));
 
 import {
   authenticateTicketLinkRequest,
@@ -48,6 +50,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockVerify.mockResolvedValue({ ok: true, lineUserId: "U1", displayName: "たろう" });
   mockFriend.mockResolvedValue({ kind: "friend" });
+  mockBind.mockResolvedValue({ kind: "ok", clientId: "1234567890" });
 });
 
 describe("authenticateTicketLinkRequest", () => {
@@ -134,6 +137,39 @@ describe("authenticateTicketLinkRequest", () => {
   });
 });
 
+describe("発行先チャネルの束縛（strict）", () => {
+  it("別チャネル発行のトークンは拒否する（流用防止）", async () => {
+    mockBind.mockResolvedValue({ kind: "channel_mismatch" });
+    const r = await authenticateTicketLinkRequest(makeDb(WORK), { accessToken: "t", workIdOrPublicId: "w1" });
+    expect(r).toMatchObject({ ok: false, failure: { kind: "channel_mismatch" } });
+    // チャネル不一致なら friend 判定まで進まない。
+    expect(mockFriend).not.toHaveBeenCalled();
+  });
+
+  it("期待チャネルを判定できない場合も fail closed", async () => {
+    mockBind.mockResolvedValue({ kind: "expected_channel_unknown" });
+    const r = await authenticateTicketLinkRequest(makeDb(WORK), { accessToken: "t", workIdOrPublicId: "w1" });
+    expect(r).toMatchObject({ ok: false, failure: { kind: "channel_mismatch" } });
+  });
+
+  it("検証は対象 OA の liffId に対して行う", async () => {
+    await authenticateTicketLinkRequest(makeDb(WORK), { accessToken: "t", workIdOrPublicId: "w1" });
+    expect(mockBind).toHaveBeenCalledWith("t", "liff-1", expect.anything());
+  });
+
+  it("トークン無効は unauthorized", async () => {
+    mockBind.mockResolvedValue({ kind: "token_invalid" });
+    const r = await authenticateTicketLinkRequest(makeDb(WORK), { accessToken: "t", workIdOrPublicId: "w1" });
+    expect(r).toMatchObject({ ok: false, failure: { kind: "unauthorized" } });
+  });
+
+  it("チャネル不一致の文言は技術的詳細を出さない", () => {
+    const msg = authFailureMessage({ kind: "channel_mismatch" });
+    expect(msg).not.toMatch(/channel|client_id|liff/i);
+    expect(authFailureStatus({ kind: "channel_mismatch" })).toBe(401);
+  });
+});
+
 describe("assertTicketLinkPageBelongsToWork", () => {
   it("対象 Work に属する公開ページのみ true", async () => {
     const db = makeDb(WORK, { id: "p1" });
@@ -157,7 +193,7 @@ describe("失敗の外部表現", () => {
   });
 
   it("文言に予約・他ユーザーの情報を含めない", () => {
-    for (const kind of ["unauthorized", "not_found", "friend_required", "oa_config_error", "unavailable"] as const) {
+    for (const kind of ["unauthorized", "not_found", "friend_required", "channel_mismatch", "oa_config_error", "unavailable"] as const) {
       const msg = authFailureMessage({ kind } as never);
       expect(msg).not.toMatch(/予約番号|U[0-9a-f]{8}/);
       expect(msg.length).toBeGreaterThan(0);
