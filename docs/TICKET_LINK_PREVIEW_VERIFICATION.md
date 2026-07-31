@@ -4,6 +4,10 @@
 **ブラウザ自動テスト基盤が存在しない**（`vitest` の `environment` は `node`）。
 そのため UI は API・純関数テストでカバーし、画面の確認は本手順の**手動確認**で行う。
 
+環境の構築手順（Preview 専用 DB / 検証用 OA・LINE Login・LIFF の作成）は
+[`TICKET_LINK_VERIFICATION_ENVIRONMENT.md`](./TICKET_LINK_VERIFICATION_ENVIRONMENT.md) を参照。
+本書は「用意できた環境で何を確認するか」だけを扱う。
+
 確認は **ご本人が Preview へログインして**実施してください。
 パスワード・セッショントークン・Cookie を第三者や AI へ共有する必要はありません（要求もしません）。
 
