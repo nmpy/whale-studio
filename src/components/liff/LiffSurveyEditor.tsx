@@ -96,6 +96,24 @@ export function LiffSurveyEditor({ settings, readOnly, onChange }: Props) {
         />
       </div>
 
+      <div>
+        <label className="flex items-start gap-2 text-sm text-gray-700">
+          <input
+            type="checkbox"
+            className={`${checkboxCls} mt-0.5`}
+            checked={settings.survey_line_register_report ?? false}
+            onChange={(e) => onChange({ survey_line_register_report: e.target.checked })}
+            disabled={readOnly}
+          />
+          <span>
+            回答完了後に「登録完了を報告する」ボタンを表示する
+            <span className="block text-xs text-gray-400 mt-0.5">
+              押下すると LINE トークへ「エージェント登録を完了しました。」を送信します（LINE 側で自動応答のキーワードに使えます）。
+            </span>
+          </span>
+        </label>
+      </div>
+
       <ul className="flex flex-col gap-3">
         {items.map((item, idx) => (
           <li key={item.id ?? idx} className="border border-gray-200 rounded-lg p-3 flex flex-col gap-2">
