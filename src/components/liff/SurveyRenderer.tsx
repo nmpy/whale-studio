@@ -8,9 +8,11 @@
 // LiffChoiceRow) に集約。1 設問 = カード（Q バッジ + 設問文 + 右ヒント）+ children に control。
 // ※ payload / validate() / submit / preview / completed は不変（UI 構造のみの差し替え）。
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import type { LiffPageConfigSettings, SurveyItem } from "@/types";
 import { liffRootClass } from "./liff-style-helpers";
+import { SurveyCompletionButton } from "./SurveyCompletionButton";
+import { isMultipleAllowed, resolveAlreadyAnsweredMessage } from "@/lib/liff/survey-completion";
 import { LineRegisterReportButton } from "./LineRegisterReportButton";
 import {
   LiffActionButton,
@@ -51,11 +53,46 @@ function itemKey(item: SurveyItem, idx: number): string {
 export function SurveyRenderer({ config, preview, lineUserId }: Props) {
   const items = config.settings_json.survey_items ?? [];
   const thanksMessage = config.settings_json.survey_thanks_message?.trim() || "送信しました。ご回答ありがとうございました。";
+  const allowMultiple = isMultipleAllowed(config.settings_json);
+  const alreadyAnsweredMessage = resolveAlreadyAnsweredMessage(config.settings_json);
 
   const [answers, setAnswers] = useState<AnswerMap>({});
   const [submitting, setSubmitting] = useState(false);
   const [completed, setCompleted] = useState(false);
+  const [alreadyAnswered, setAlreadyAnswered] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // 再アクセス時の回答済み判定（サーバーの回答データで判定・localStorage 非依存）。
+  //   複数回答不可 かつ LINE ユーザー特定可 かつ page 特定可 のときのみ問い合わせる。
+  //   判定できない/失敗時はフォームを表示し、送信時に POST 側 409 を最終防波堤とする。
+  const needAnsweredCheck = !preview && !!lineUserId && !!config.page_id && !allowMultiple;
+  const [checkingAnswered, setCheckingAnswered] = useState(needAnsweredCheck);
+
+  useEffect(() => {
+    if (!needAnsweredCheck) {
+      setCheckingAnswered(false);
+      return;
+    }
+    setCheckingAnswered(true); // lineUserId が遅れて届いた場合もフォームを一瞬出さずに判定する
+    let cancelled = false;
+    (async () => {
+      try {
+        const url = `/api/liff/works/${config.work_id}/survey-responses`
+          + `?page_id=${encodeURIComponent(config.page_id!)}`
+          + `&line_user_id=${encodeURIComponent(lineUserId!)}`;
+        const res = await fetch(url);
+        const json = await res.json();
+        if (!cancelled && json?.success && json.data?.answered === true) {
+          setAlreadyAnswered(true);
+        }
+      } catch {
+        // 判定失敗時はフォームを表示（送信時の POST 側 409 で二重回答は防止）。
+      } finally {
+        if (!cancelled) setCheckingAnswered(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [needAnsweredCheck, config.work_id, config.page_id, lineUserId]);
 
   const setAnswer = (key: string, value: string | string[]) => {
     setAnswers((prev) => ({ ...prev, [key]: value }));
@@ -105,6 +142,11 @@ export function SurveyRenderer({ config, preview, lineUserId }: Props) {
       });
       const json = await res.json();
       if (!json.success) {
+        // 送信直前に他経路で回答済みになった / 競合送信 → 回答済み画面へ（重複登録しない）。
+        if (res.status === 409 || json.error?.code === "ALREADY_ANSWERED") {
+          setAlreadyAnswered(true);
+          return;
+        }
         setError(json.error?.message ?? "送信に失敗しました");
         return;
       }
@@ -122,19 +164,32 @@ export function SurveyRenderer({ config, preview, lineUserId }: Props) {
       <main className="liff-player-main pt-5 pb-24 flex flex-col gap-4">
         {/* 説明文（config.description）は LiffSinglePageRenderer のページ見出し側で 1 度だけ表示する。
             ここで再表示すると二重になるため出さない（document.title は LINE 上部バー）。 */}
-        {completed ? (
+        {checkingAnswered ? (
+          <div className="px-5 py-7 text-center text-[14px] text-[color:var(--liff-secondary-text)]">読み込み中...</div>
+        ) : alreadyAnswered ? (
+          // 回答済み画面: フォームは出さず、回答済みメッセージ + 完了後ボタン。
+          // 「登録完了報告」(#596) は回答保存成功時の導線なので、回答済み画面には出さない。
+          <div className="bg-[color:var(--liff-surface)] border border-[color:var(--liff-border)] rounded-[16px] px-5 py-7 text-center">
+            <p className="text-[15px] leading-[1.8] whitespace-pre-wrap" style={{ letterSpacing: "0.02em" }}>{alreadyAnsweredMessage}</p>
+            <SurveyCompletionButton settings={config.settings_json} preview={preview} />
+          </div>
+        ) : completed ? (
           config.settings_json.survey_line_register_report ? (
             // opt-in: 回答保存成功後に LINE への「登録完了報告」導線を出す（固定文言）。
+            // 完了後ボタン（別 opt-in）も併せて表示できる（未設定なら null を返すので従来どおり）。
             <div className="bg-[color:var(--liff-surface)] border border-[color:var(--liff-border)] rounded-[16px] px-5 py-7 text-center">
               <p className="text-3xl mb-3 text-[color:var(--liff-line-green)]">✓</p>
               <h3 className="text-[17px] font-bold leading-snug mb-2">エージェント情報を受け付けました。</h3>
               <p className="text-[14px] leading-[1.8] text-[color:var(--liff-secondary-text)]">最後に、下のボタンから登録完了を本部へ報告してください。</p>
               <LineRegisterReportButton preview={preview} />
+              <SurveyCompletionButton settings={config.settings_json} preview={preview} />
             </div>
           ) : (
+            // 送信完了画面: 送信完了メッセージ + 完了後ボタン。
             <div className="bg-[color:var(--liff-surface)] border border-[color:var(--liff-border)] rounded-[16px] px-5 py-7 text-center">
               <p className="text-3xl mb-3 text-[color:var(--liff-line-green)]">✓</p>
               <p className="text-[15px] leading-[1.8] whitespace-pre-wrap" style={{ letterSpacing: "0.02em" }}>{thanksMessage}</p>
+              <SurveyCompletionButton settings={config.settings_json} preview={preview} />
             </div>
           )
         ) : items.length === 0 ? (

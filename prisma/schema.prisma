@@ -1904,6 +1904,7 @@ model LiffPageConfig {
   blocks         LiffPageBlock[]
   werewolfTitles WerewolfTitle[]
   submissions    LiffSubmission[]
+  surveyResponses LiffSurveyResponse[]
   work           Work             @relation(fields: [workId], references: [id], onDelete: Cascade)
 
   @@index([workId])
@@ -1953,14 +1954,25 @@ model LiffEventLog {
 model LiffSurveyResponse {
   id          String   @id @default(uuid())
   workId      String   @map("work_id")
+  /// どのアンケートページ（LiffPageConfig, pageType=survey）への回答か。
+  /// 既存行は null（移行前は未記録）。回答済み判定のクエリキーに使う。
+  liffPageConfigId String? @map("liff_page_config_id")
   lineUserId  String?  @map("line_user_id")
   answersJson Json     @map("answers_json") @db.JsonB
   submittedAt DateTime @default(now()) @map("submitted_at")
-  work        Work     @relation(fields: [workId], references: [id], onDelete: Cascade)
+  /// 重複回答防止キー = `${liffPageConfigId}:${lineUserId}`。
+  /// 複数回答許可(survey_allow_multiple=true) / 匿名(lineUserId 無し) / 旧経路(pageId 無し) は null。
+  /// PostgreSQL の UNIQUE は NULL を重複扱いしないため、null は無制限・非 null のみ一意
+  ///   ＝競合送信(同時 POST)は DB 側で 1 件だけ通り、残りは P2002 → 409 に変換する。
+  dedupeKey   String?  @unique @map("dedupe_key")
+  work        Work            @relation(fields: [workId], references: [id], onDelete: Cascade)
+  liffPage    LiffPageConfig? @relation(fields: [liffPageConfigId], references: [id], onDelete: SetNull)
 
   @@index([workId])
   @@index([lineUserId])
   @@index([submittedAt])
+  /// 回答済み判定用（同一アンケート×同一 LINE ユーザー）。
+  @@index([liffPageConfigId, lineUserId])
   @@map("liff_survey_responses")
 }
 
