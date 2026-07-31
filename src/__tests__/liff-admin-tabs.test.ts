@@ -54,10 +54,16 @@ describe("isValidLiffAdminTab", () => {
 });
 
 describe("LIFF_ADMIN_TABS", () => {
-  it("6 タブ（home / detail / standalone / survey / faq / analytics）の順で定義されている", () => {
+  it("7 タブ（home / detail / standalone / survey / faq / ticket_link / analytics）の順で定義されている", () => {
     expect(LIFF_ADMIN_TABS.map((t) => t.key)).toEqual([
-      "home", "detail", "standalone", "survey", "faq", "analytics",
+      "home", "detail", "standalone", "survey", "faq", "ticket_link", "analytics",
     ]);
+  });
+
+  it("チケット連携タブが追加され、ラベルが日本語である", () => {
+    const tab = LIFF_ADMIN_TABS.find((t) => t.key === "ticket_link");
+    expect(tab?.label).toBe("チケット連携");
+    expect(tab?.description.length).toBeGreaterThan(0);
   });
 
   it("survey / faq タブが含まれ、既存 4 タブの key は不変", () => {

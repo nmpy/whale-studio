@@ -9,6 +9,7 @@ export type LiffAdminTab =
   | "standalone"
   | "survey"
   | "faq"
+  | "ticket_link"
   | "analytics";
 
 export const LIFF_ADMIN_TABS: Array<{
@@ -42,6 +43,11 @@ export const LIFF_ADMIN_TABS: Array<{
     description: "作品のよくある質問（Q&A・表示順・表示/非表示）を編集できます。既存の FAQ ページがあればそれを編集します。",
   },
   {
+    key: "ticket_link",
+    label: "チケット連携",
+    description: "予約番号とLINEアカウントを連携する機能の設定です。チケット種別・参加人数・報告ボタンを設定し、プレイヤー向けページを公開できます。",
+  },
+  {
     key: "analytics",
     label: "計測",
     description: "LIFFページの閲覧数や利用状況を確認できる機能です。",
@@ -69,7 +75,7 @@ export function resolveLiffAdminTab(value: string | null | undefined): LiffAdmin
  */
 export function findDesignatedLiffPage<T extends { page_type: string; publish_status?: string }>(
   pages: readonly T[] | null | undefined,
-  pageType: "survey" | "faq",
+  pageType: "survey" | "faq" | "ticket_link",
 ): T | null {
   if (!Array.isArray(pages)) return null;
   // archived を除外した該当 page_type（配列順 = createdAt asc を維持）。
