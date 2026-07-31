@@ -94,6 +94,8 @@ model Oa {
   uzuProBookings         UzuProBooking[]
   uzuProPlayers          UzuProPlayer[]
   uzuProLiffLinks        UzuProLiffLink[]
+  ticketLinks            TicketLink[]
+  ticketLinkDrafts       TicketLinkDraft[]
 
   @@index([title])
   @@index([publishStatus])
@@ -236,6 +238,8 @@ model Work {
   liveCues              LiveCue[]
   xPosts                XPost[]
   uzuProBookings        UzuProBooking[]
+  ticketLinks           TicketLink[]
+  ticketLinkDrafts      TicketLinkDraft[]
   oa                    Oa                     @relation(fields: [oaId], references: [id], onDelete: Cascade)
   systemCharacter       Character?             @relation("WorkSystemCharacter", fields: [systemCharacterId], references: [id])
 
@@ -3006,4 +3010,170 @@ model UzuProActivityLog {
   @@index([oaId, workId, createdAt])
   @@index([action, createdAt])
   @@map("uzu_pro_activity_logs")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// チケット連携 (Ticket Link)
+//
+//   LINE 公式アカウントへ来たプレイヤーと、ESCAPE.ID 由来の予約を「予約番号」で紐付ける。
+//   正本は UZU Pro CMS 側（本名 / 正式な予約番号 / 公演 / 日時 / チケット種別 / 予約人数）。
+//   Whale Studio 側は「LINE と予約番号を結ぶのに最小限必要な情報」だけを持つ。
+//
+//   PII 方針（既存 for ウズプロ設計を踏襲）:
+//     - 恒久保存する PII は lineUserId / lineDisplayName / コードネームのみ。
+//     - OCR 原文・購入者名・公演名・会場は TicketLinkDraft に **一時的にのみ** 保持し、
+//       確定 or 期限到達で削除する（TicketLink へは持ち越さない）。
+//     - ESCAPE.ID の本名マスターは Whale 側の値で絶対に上書きしない（CMS 内に閉じる）。
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// チケット連携の状態。CONFLICT は自動上書きせず運営確認に回すための状態。
+enum TicketLinkStatus {
+  /// UZU Pro CMS に該当予約がまだ無い（Excel 取込前）。拒否せず保持し、後追い同期で解決する。
+  PENDING_UZU_BOOKING
+  /// CMS の予約と照合済み。
+  LINKED
+  /// 別 LINE ユーザーが同一予約番号を登録した等。プレイヤーへは予約の存在を開示しない。
+  CONFLICT
+  /// 運営が無効化した。
+  REVOKED
+}
+
+/// 確定前ドラフト（画像/テキスト受信 〜 プレイヤー確定）の状態。一時データの寿命管理に使う。
+enum TicketLinkDraftStatus {
+  RECEIVED
+  EXTRACTING
+  NEEDS_REVIEW
+  CONFIRMED
+  FAILED
+  EXPIRED
+}
+
+/// 登録元。どの経路で入ってきたかを監査・分析のために保持する。
+enum TicketLinkSource {
+  LINE_IMAGE
+  LIFF_IMAGE
+  LINE_TEXT
+  LIFF_MANUAL
+}
+
+/// CMS 側「Whale連携確認」の 1 件あたり同期結果。
+enum TicketLinkSyncResult {
+  LINKED
+  PENDING_BOOKING
+  CONFLICT
+  NO_CHANGE
+  ERROR
+}
+
+/// 確定前の一時ドラフト。OCR 原文・購入者名などの PII を **期限付きで** 保持する唯一の場所。
+/// expiresAt 経過後は本文（extractedPayload / ocrRawText / imageStorageKey）を破棄する。
+model TicketLinkDraft {
+  id       String                @id @default(uuid())
+  oaId     String                @map("oa_id")
+  /// 対象作品。LINE 経由の受信時点では未確定のことがあるため nullable。
+  workId   String?               @map("work_id")
+  /// LINE userId は OA スコープ込みで扱う（全 OA 共通の一意 ID として扱わない）。
+  lineUserId String              @map("line_user_id")
+  source   TicketLinkSource
+  /// LINE message.id / webhook event id。再配信の重複解析を防ぐ冪等キー。
+  sourceMessageId String?        @unique @map("source_message_id")
+  status   TicketLinkDraftStatus @default(RECEIVED)
+  /// 一時画像の保存キー（推測不可能・公開 URL にしない）。削除時に null 化する。
+  imageStorageKey String?        @map("image_storage_key")
+  /// OCR 原文（PII を含む）。構造化結果とは分けて保持し、ログには出さない。
+  ocrRawText      String?        @map("ocr_raw_text")
+  /// スキーマ検証済みの構造化抽出結果（confidence 付き）。AI レスポンスをそのまま入れない。
+  extractedPayload Json?         @map("extracted_payload") @db.JsonB
+  /// プレイヤーが確認・修正した後の内容。確定時に TicketLink へ最小項目だけ写す。
+  confirmedPayload Json?         @map("confirmed_payload") @db.JsonB
+  /// 確認用 LIFF URL のトークン sha256 hex。平文は保存しない。対象 LINE ユーザーへバインドする。
+  tokenHash       String?        @unique @map("token_hash")
+  /// AI 抽出のリトライ回数（上限付き・無限リトライ防止）。
+  attemptCount    Int            @default(0) @map("attempt_count")
+  /// 一時データの保持期限。到達後は本文を破棄する（TICKET_LINK_DRAFT_TTL_HOURS）。
+  expiresAt       DateTime       @map("expires_at")
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+
+  oa   Oa    @relation(fields: [oaId], references: [id], onDelete: Cascade)
+  work Work? @relation(fields: [workId], references: [id], onDelete: SetNull)
+
+  @@index([oaId, lineUserId, status])
+  @@index([status, expiresAt])
+  @@map("ticket_link_drafts")
+}
+
+/// 確定済みのチケット連携。CMS へ渡すのはこのレコードの最小項目のみ。
+model TicketLink {
+  id         String   @id @default(uuid())
+  oaId       String   @map("oa_id")
+  workId     String   @map("work_id")
+  lineUserId String   @map("line_user_id")
+  /// LINE 登録名（表示・突合の補助）。本名ではない。
+  lineDisplayName String? @map("line_display_name")
+  /// 正規化済み予約番号（NFKC / 全角→半角 / ハイフン統一 / 空白除去）。照合キー。
+  normalizedReservationNumber String @map("normalized_reservation_number")
+  /// プレイヤーが入力/読み取った原文。表示・監査用（照合には normalized を使う）。
+  reservationNumberRaw String? @map("reservation_number_raw")
+  /// チケット種別（作品設定 or CMS 由来の表示名）。
+  ticketType String? @map("ticket_type")
+  /// 参加人数。名称から推測せず、作品設定 or 取込データの値を使う。
+  participantCount Int @map("participant_count")
+  source TicketLinkSource
+  status TicketLinkStatus @default(PENDING_UZU_BOOKING)
+  /// プレイヤーが最終確認した日時（= 本登録成立）。
+  confirmedAt DateTime  @map("confirmed_at")
+  /// CMS 側が同期を反映した日時。null = 未同期（差分取得の対象）。
+  uzuSyncedAt DateTime? @map("uzu_synced_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  oa      Oa                   @relation(fields: [oaId], references: [id], onDelete: Cascade)
+  work    Work                 @relation(fields: [workId], references: [id], onDelete: Cascade)
+  members TicketLinkMember[]
+  syncLogs TicketLinkSyncLog[]
+
+  /// 「有効な連携は 1 予約番号につき 1 件」は **部分 UNIQUE INDEX**（migration SQL,
+  /// WHERE status IN ('PENDING_UZU_BOOKING','LINKED')）で担保する。
+  /// CONFLICT / REVOKED 行は併存させ、競合の事実を消さずに残す。
+  @@index([oaId, workId, normalizedReservationNumber])
+  @@index([oaId, lineUserId])
+  @@index([workId, status])
+  /// 差分取得（updatedAt カーソル）用。
+  @@index([workId, updatedAt])
+  @@map("ticket_links")
+}
+
+/// 予約人数分のコードネーム。memberIndex は 1..participantCount。
+model TicketLinkMember {
+  id           String   @id @default(uuid())
+  ticketLinkId String   @map("ticket_link_id")
+  memberIndex  Int      @map("member_index")
+  codeName     String   @map("code_name")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  ticketLink TicketLink @relation(fields: [ticketLinkId], references: [id], onDelete: Cascade)
+
+  @@unique([ticketLinkId, memberIndex], map: "ticket_link_members_link_index_key")
+  @@index([ticketLinkId])
+  @@map("ticket_link_members")
+}
+
+/// CMS「Whale連携確認」の同期結果履歴。個人情報は入れない（件数・状態・エラーコードのみ）。
+model TicketLinkSyncLog {
+  id           String               @id @default(uuid())
+  ticketLinkId String               @map("ticket_link_id")
+  /// CMS 側の作品/プロジェクト識別子（外部 ID）。
+  uzuWorkId    String?              @map("uzu_work_id")
+  result       TicketLinkSyncResult
+  /// 失敗理由コード（PII を含めない）。
+  errorCode    String?              @map("error_code")
+  syncedAt     DateTime             @default(now()) @map("synced_at")
+
+  ticketLink TicketLink @relation(fields: [ticketLinkId], references: [id], onDelete: Cascade)
+
+  @@index([ticketLinkId, syncedAt])
+  @@index([result, syncedAt])
+  @@map("ticket_link_sync_logs")
 }

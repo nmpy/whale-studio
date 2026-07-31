@@ -1,0 +1,113 @@
+// src/lib/ticket-link/reservation-number.ts
+//
+// 予約番号（ESCAPE.ID）の正規化・抽出・マスク表示。DOM 非依存・純関数のみ（テスト対象）。
+//
+// 実フォーマット: 数字のみ + ハイフン区切り（例 `123-456`）。
+//   運用で全角入力・異体ハイフン・空白区切りが混ざるため、照合前に必ず正規化する。
+//
+// 設計方針:
+//   - 正規化は「表記ゆれの吸収」だけを行い、桁の補完や推測は一切しない。
+//   - 正規表現だけで最終確定しない（抽出は候補列挙まで。確定はプレイヤーの確認操作で行う）。
+//   - 一般会話を誤ってチケット連携として扱わないため、日付/時刻/電話番号らしき並びは候補から外す。
+//   - UZU Pro CMS 側の保存値（PlayerBooking.externalBookingId）は変更しない。
+//     照合は「両システムで同じ正規化関数を通した値どうし」で比較する。
+
+/** 正規化後に許容する予約番号の形。数字グループ 2 つをハイフンで繋いだ形のみ。 */
+const CANONICAL = /^\d{2,8}-\d{2,8}$/;
+
+/**
+ * 予約番号を照合キーへ正規化する。
+ *
+ * 手順: NFKC（全角数字→半角） → ハイフン類を `-` へ統一 → 数字間の空白を `-` へ → 残余空白除去。
+ * 期待する形（数字-数字）に一致しない場合は **null**（= 予約番号として扱わない）。
+ *
+ * 例: `１２３－４５６` / `123 456` / `123ー456` / ` 123-456 ` → いずれも `123-456`
+ */
+export function normalizeReservationNumber(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+
+  let s = raw.normalize("NFKC");
+
+  // ハイフンとして使われがちな文字を `-` に寄せる。
+  s = s.replace(/[‐‑‒–—―−ー－﹣]/g, "-");
+
+  // 「数字 空白 数字」の区切りをハイフンとみなす（`123 456` → `123-456`）。
+  s = s.replace(/(\d)[\s　]+(\d)/g, "$1-$2");
+
+  // 残った空白（前後・内部）は除去する。
+  s = s.replace(/[\s　]/g, "");
+
+  // 連続ハイフンは 1 つに畳む（`123--456` のような打ち間違いを吸収）。
+  s = s.replace(/-{2,}/g, "-");
+
+  // 前後のハイフンは区切りではないので落とす。
+  s = s.replace(/^-+|-+$/g, "");
+
+  return CANONICAL.test(s) ? s : null;
+}
+
+/** 正規化済みの形かどうか（サーバ側の再検証用）。 */
+export function isNormalizedReservationNumber(value: string): boolean {
+  return CANONICAL.test(value);
+}
+
+/**
+ * 日付・時刻・電話番号らしき並びを予約番号候補から除外する。
+ * 誤検知（一般会話・別用途テキスト）を減らすためのガード。
+ */
+function looksLikeNonReservation(candidate: string): boolean {
+  const [left, right] = candidate.split("-");
+
+  // 西暦らしき 4 桁（19xx / 20xx）で始まる = 日付の可能性が高い。
+  if (/^(19|20)\d{2}$/.test(left)) return true;
+
+  // 月日らしき組（左 1-2 桁 かつ 右 1-2 桁 で暦の範囲に収まる）。
+  const l = Number(left);
+  const r = Number(right);
+  if (left.length <= 2 && right.length <= 2 && l >= 1 && l <= 12 && r >= 1 && r <= 31) return true;
+
+  // 電話番号らしき長さ（合計 10 桁以上）。
+  if (left.length + right.length >= 10) return true;
+
+  return false;
+}
+
+/**
+ * 自由文から予約番号候補を列挙する（重複排除・出現順）。
+ *
+ * `予約番号は123-456です` のように前後へ文章が付くケースを想定する。
+ * **候補が 1 件のときだけ**呼び出し側で自動確定してよい。0 件 / 複数件は手動入力へ誘導する。
+ */
+export function extractReservationNumberCandidates(text: string | null | undefined): string[] {
+  if (!text) return [];
+
+  const normalizedText = text
+    .normalize("NFKC")
+    .replace(/[‐‑‒–—―−ー－﹣]/g, "-");
+
+  // 数字グループ - 数字グループ。前後が数字/ハイフンでない位置のみ拾う。
+  const matches = normalizedText.match(/(?<![\d-])\d{2,8}-\d{2,8}(?![\d-])/g) ?? [];
+
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const m of matches) {
+    const normalized = normalizeReservationNumber(m);
+    if (!normalized) continue;
+    if (looksLikeNonReservation(normalized)) continue;
+    if (seen.has(normalized)) continue;
+    seen.add(normalized);
+    out.push(normalized);
+  }
+  return out;
+}
+
+/**
+ * 画面表示用のマスク。全桁を常時表示しない（例 `123-456` → `123-***`）。
+ * ハイフンが無い/想定外の形でも、先頭 3 文字だけ残して伏せる。
+ */
+export function maskReservationNumber(value: string | null | undefined): string {
+  if (!value) return "—";
+  const idx = value.indexOf("-");
+  if (idx > 0) return `${value.slice(0, idx)}-***`;
+  return `${value.slice(0, 3)}***`;
+}
