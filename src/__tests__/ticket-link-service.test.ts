@@ -324,3 +324,72 @@ describe("confirmTicketLink — 競合（別ユーザー）", () => {
     expect(JSON.stringify(draftUpdate.mock.calls)).not.toContain("山田太郎");
   });
 });
+
+describe("名前（購入者名）の保存範囲", () => {
+  const NAME = "山田太郎";
+
+  it("TicketLink 本体へ名前を書き込まない", async () => {
+    const tx = makeTx();
+    await confirmTicketLink(tx, BASE);
+    const arg = (tx as never as { ticketLink: { create: ReturnType<typeof vi.fn> } }).ticketLink.create.mock.calls[0][0];
+    expect(JSON.stringify(arg)).not.toContain(NAME);
+    // 列としても存在しないこと（purchaserName 相当のキーを持たない）。
+    expect(Object.keys(arg.data)).not.toContain("purchaserName");
+  });
+
+  it("TicketLinkMember へ名前を書き込まない（コードネームのみ）", async () => {
+    const tx = makeTx();
+    await confirmTicketLink(tx, BASE);
+    const arg = (tx as never as { ticketLink: { create: ReturnType<typeof vi.fn> } }).ticketLink.create.mock.calls[0][0];
+    for (const m of arg.data.members.create) {
+      expect(Object.keys(m).sort()).toEqual(["codeName", "memberIndex"]);
+      expect(m.codeName).not.toBe(NAME);
+    }
+  });
+
+  it("確定後のドラフト JSON payload に名前が残らない", async () => {
+    const tx = makeTx();
+    await confirmTicketLink(tx, BASE);
+    const upd = (tx as never as { ticketLinkDraft: { update: ReturnType<typeof vi.fn> } }).ticketLinkDraft.update.mock.calls[0][0];
+    expect(JSON.stringify(upd.data.confirmedPayload)).not.toContain(NAME);
+    // 参照用の ticketLinkId だけを残す。
+    expect(Object.keys(upd.data.confirmedPayload)).toEqual(["ticketLinkId"]);
+  });
+
+  it("確定後のドラフト専用列（ocrRawText / extractedPayload）もクリアする", async () => {
+    const tx = makeTx();
+    await confirmTicketLink(tx, BASE);
+    const upd = (tx as never as { ticketLinkDraft: { update: ReturnType<typeof vi.fn> } }).ticketLinkDraft.update.mock.calls[0][0];
+    expect(upd.data.ocrRawText).toBeNull();
+    expect(upd.data.extractedPayload).toBeDefined();
+  });
+
+  it("同一ユーザー再登録（既存を返す経路）でも名前を破棄する", async () => {
+    const tx = makeTx({
+      ticketLink: {
+        findFirst: vi.fn().mockResolvedValue({ id: "tl-1", status: "PENDING_UZU_BOOKING", lineUserId: "U1" }),
+        findUnique: vi.fn(), create: vi.fn(), update: vi.fn(),
+      },
+    });
+    await confirmTicketLink(tx, BASE);
+    const calls = (tx as never as { ticketLinkDraft: { update: ReturnType<typeof vi.fn> } }).ticketLinkDraft.update.mock.calls;
+    expect(JSON.stringify(calls)).not.toContain(NAME);
+  });
+
+  it("競合経路でも名前を破棄する", async () => {
+    const tx = makeTx({
+      ticketLink: {
+        findFirst: vi.fn()
+          .mockResolvedValueOnce({ id: "tl-other", status: "LINKED", lineUserId: "U-OTHER" })
+          .mockResolvedValueOnce(null),
+        findUnique: vi.fn(), create: vi.fn().mockResolvedValue({ id: "c" }), update: vi.fn(),
+      },
+    });
+    await confirmTicketLink(tx, BASE);
+    const calls = (tx as never as { ticketLinkDraft: { update: ReturnType<typeof vi.fn> } }).ticketLinkDraft.update.mock.calls;
+    expect(JSON.stringify(calls)).not.toContain(NAME);
+    // 競合レコードにも名前を載せない。
+    const created = (tx as never as { ticketLink: { create: ReturnType<typeof vi.fn> } }).ticketLink.create.mock.calls[0][0];
+    expect(JSON.stringify(created)).not.toContain(NAME);
+  });
+});
