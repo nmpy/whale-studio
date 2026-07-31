@@ -39,7 +39,8 @@ interface Config {
   manualInputAvailable: boolean;
   imageInputAvailable: boolean;
   ticketTypes: TicketTypeOption[];
-  report: { enabled: boolean; label: string };
+  workTitle: string | null;
+  report: { enabled: boolean; label: string; message: string };
   completionMessage: string;
   performanceDateTimeText: string;
   draft: { id: string; step: string | null; ticketTypeKey: string | null } | null;
@@ -49,16 +50,14 @@ interface Config {
 interface Props {
   /** 作品識別子（UUID / publicId）。 */
   workId: string;
-  /** 作品名（対象公演の固定表示に使う）。 */
-  workTitle: string;
+  /** 作品名（config API から取得できないときのフォールバック）。 */
+  workTitle?: string;
   /** CMS プレビュー時は API を叩かず、実送信もしない。 */
   preview?: boolean;
   /** テスト用: LIFF アクセストークン取得の差し替え。 */
   getAccessToken?: () => Promise<string | null>;
   /** テスト用: fetch 差し替え。 */
   fetchImpl?: typeof fetch;
-  /** LINE へ送る報告本文（設定値）。label とは別物。 */
-  reportMessage?: string | null;
 }
 
 async function defaultGetAccessToken(): Promise<string | null> {
@@ -72,7 +71,7 @@ async function defaultGetAccessToken(): Promise<string | null> {
 }
 
 export function TicketLinkRenderer({
-  workId, workTitle, preview, getAccessToken, fetchImpl, reportMessage,
+  workId, workTitle: workTitleProp, preview, getAccessToken, fetchImpl,
 }: Props) {
   const doFetch = fetchImpl ?? fetch;
   const tokenFn = getAccessToken ?? defaultGetAccessToken;
@@ -134,6 +133,7 @@ export function TicketLinkRenderer({
   }, [preview, loadConfig]);
 
   const selectedType = config?.ticketTypes.find((t) => t.ticketTypeKey === ticketTypeKey) ?? null;
+  const workTitle = config?.workTitle ?? workTitleProp ?? "この作品";
 
   if (loading) return <LiffLoadingState />;
   if (loadError) return <LiffErrorState message={loadError} />;
@@ -151,7 +151,7 @@ export function TicketLinkRenderer({
         {config.report.enabled && (
           <TicketLinkReportButton
             label={config.report.label}
-            message={reportMessage ?? config.report.label}
+            message={config.report.message}
             preview={preview}
           />
         )}

@@ -47,6 +47,8 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ workId: st
     const { ctx: a } = auth;
     const now = new Date();
 
+    const work = await prisma.work.findUnique({ where: { id: a.workId }, select: { title: true } });
+
     // 既存の連携（この LINE ユーザー × この作品）。複数予約を許容するため配列で返す。
     const links = await prisma.ticketLink.findMany({
       where: { oaId: a.oaId, workId: a.workId, lineUserId: a.lineUserId, status: { not: "REVOKED" } },
@@ -80,9 +82,12 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ workId: st
         ticketTypeLabel:  t.ticketTypeLabel,
         participantCount: t.participantCount,
       })),
+      workTitle: work?.title ?? null,
       report: {
         enabled: a.settings.reportButtonEnabled,
         label:   a.settings.reportButtonLabel,
+        // 送信本文。プレイヤー端末から liff.sendMessages で送るため必要。
+        message: a.settings.reportMessage,
       },
       completionMessage: a.settings.completionMessage,
       performanceDateTimeText: PERFORMANCE_DATETIME_PENDING,
