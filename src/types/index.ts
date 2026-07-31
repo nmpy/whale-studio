@@ -1727,6 +1727,12 @@ export interface LiffPageConfigSettings {
   survey_items?: SurveyItem[];
   /** Survey 送信完了時に表示するテキスト */
   survey_thanks_message?: string;
+  /**
+   * 回答保存成功後の完了画面に「登録完了を報告する」ボタンを表示し、押下で LINE トークへ
+   * 固定メッセージ（`エージェント登録を完了しました。`）を liff.sendMessages で送信する（MVP・opt-in）。
+   * 未設定/false の既存アンケートは従来どおり送信完了メッセージのみ（挙動不変）。
+   */
+  survey_line_register_report?: boolean;
 
   // ── Survey 回答後の挙動（完了画面 / 再アクセス時） ───────────
   /**

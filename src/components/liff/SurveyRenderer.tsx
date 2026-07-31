@@ -13,6 +13,7 @@ import type { LiffPageConfigSettings, SurveyItem } from "@/types";
 import { liffRootClass } from "./liff-style-helpers";
 import { SurveyCompletionButton } from "./SurveyCompletionButton";
 import { isMultipleAllowed, resolveAlreadyAnsweredMessage } from "@/lib/liff/survey-completion";
+import { LineRegisterReportButton } from "./LineRegisterReportButton";
 import {
   LiffActionButton,
   LiffEmptyState,
@@ -167,17 +168,30 @@ export function SurveyRenderer({ config, preview, lineUserId }: Props) {
           <div className="px-5 py-7 text-center text-[14px] text-[color:var(--liff-secondary-text)]">読み込み中...</div>
         ) : alreadyAnswered ? (
           // 回答済み画面: フォームは出さず、回答済みメッセージ + 完了後ボタン。
+          // 「登録完了報告」(#596) は回答保存成功時の導線なので、回答済み画面には出さない。
           <div className="bg-[color:var(--liff-surface)] border border-[color:var(--liff-border)] rounded-[16px] px-5 py-7 text-center">
             <p className="text-[15px] leading-[1.8] whitespace-pre-wrap" style={{ letterSpacing: "0.02em" }}>{alreadyAnsweredMessage}</p>
             <SurveyCompletionButton settings={config.settings_json} preview={preview} />
           </div>
         ) : completed ? (
-          // 送信完了画面: 送信完了メッセージ + 完了後ボタン。
-          <div className="bg-[color:var(--liff-surface)] border border-[color:var(--liff-border)] rounded-[16px] px-5 py-7 text-center">
-            <p className="text-3xl mb-3 text-[color:var(--liff-line-green)]">✓</p>
-            <p className="text-[15px] leading-[1.8] whitespace-pre-wrap" style={{ letterSpacing: "0.02em" }}>{thanksMessage}</p>
-            <SurveyCompletionButton settings={config.settings_json} preview={preview} />
-          </div>
+          config.settings_json.survey_line_register_report ? (
+            // opt-in: 回答保存成功後に LINE への「登録完了報告」導線を出す（固定文言）。
+            // 完了後ボタン（別 opt-in）も併せて表示できる（未設定なら null を返すので従来どおり）。
+            <div className="bg-[color:var(--liff-surface)] border border-[color:var(--liff-border)] rounded-[16px] px-5 py-7 text-center">
+              <p className="text-3xl mb-3 text-[color:var(--liff-line-green)]">✓</p>
+              <h3 className="text-[17px] font-bold leading-snug mb-2">エージェント情報を受け付けました。</h3>
+              <p className="text-[14px] leading-[1.8] text-[color:var(--liff-secondary-text)]">最後に、下のボタンから登録完了を本部へ報告してください。</p>
+              <LineRegisterReportButton preview={preview} />
+              <SurveyCompletionButton settings={config.settings_json} preview={preview} />
+            </div>
+          ) : (
+            // 送信完了画面: 送信完了メッセージ + 完了後ボタン。
+            <div className="bg-[color:var(--liff-surface)] border border-[color:var(--liff-border)] rounded-[16px] px-5 py-7 text-center">
+              <p className="text-3xl mb-3 text-[color:var(--liff-line-green)]">✓</p>
+              <p className="text-[15px] leading-[1.8] whitespace-pre-wrap" style={{ letterSpacing: "0.02em" }}>{thanksMessage}</p>
+              <SurveyCompletionButton settings={config.settings_json} preview={preview} />
+            </div>
+          )
         ) : items.length === 0 ? (
           <LiffEmptyState text="（アンケート項目が登録されていません）" />
         ) : (
