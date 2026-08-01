@@ -23,7 +23,13 @@
 | `20260801000001_add_ticket_link_manual_flow` | **適用済み**（2026-07-31 16:48Z） |
 
 Preview は Production と同一 DB を参照する（Preview から本番作品 ID を解決できることで実証済み）。
-したがって Preview で本フローを実行できる。
+したがって **DB 的には** Preview で本フローを実行できる。
+
+ただし Preview URL は Vercel Deployment Protection 配下で、**LIFF ブラウザからは開けない見込み**。
+LIFF 実機確認には `https://whale-studio-staging.vercel.app`（**Protection なし・固定URL** と実測済み）を
+使うことを推奨する。staging は現在 `DATABASE_URL` 未設定のため、
+[`TICKET_LINK_VERIFICATION_ENVIRONMENT.md`](./TICKET_LINK_VERIFICATION_ENVIRONMENT.md) の手順で
+専用DB・全migration（81本）・seed・初期ユーザーを用意する必要がある。
 
 > ⚠️ **バックアップに関する注意（重要）**
 > 上記 migration は、Supabase ダッシュボード上の PITR・自動バックアップの利用可否を**未確認のまま**、
@@ -88,8 +94,9 @@ URL: `{PreviewURL}/oas/{oaId}/works/{workId}/liff?tab=ticket_link`
 ## 2. LIFF 実機確認
 
 対象 OA を**友だち追加済み**の検証用 LINE アカウントで行う（友だちでないと 403）。
-Preview を LIFF として開くには、Preview を指す**検証用 LIFF アプリ**が必要。
-本番 LIFF の endpoint URL・本番 OA 設定は変更しないこと。
+LIFF として開くには、検証用 LINE Login チャネル配下の**検証用 LIFF アプリ**が必要
+（endpoint は staging の固定URLを推奨）。検証用 LINE 環境の有無は**未確認**で、
+LINE Developers Console での確認が必要。本番 LIFF の endpoint URL・本番 OA 設定は変更しないこと。
 
 | # | 操作 | 期待結果 |
 |---|---|---|
