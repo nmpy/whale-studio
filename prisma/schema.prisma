@@ -3041,6 +3041,15 @@ enum TicketLinkStatus {
   REVOKED
 }
 
+/// 手動登録フローのステップ。status（寿命管理）とは別軸で「どこまで進んだか」を持つ。
+/// UI の見た目ではなくこの値でサーバー側が順序を強制する（飛ばし進行を防ぐ）。
+enum TicketLinkDraftStep {
+  MANUAL_INPUT
+  TICKET_REVIEW
+  CODE_NAMES
+  FINAL_REVIEW
+}
+
 /// 確定前ドラフト（画像/テキスト受信 〜 プレイヤー確定）の状態。一時データの寿命管理に使う。
 enum TicketLinkDraftStatus {
   RECEIVED
@@ -3081,6 +3090,8 @@ model TicketLinkDraft {
   /// LINE message.id / webhook event id。再配信の重複解析を防ぐ冪等キー。
   sourceMessageId String?        @unique @map("source_message_id")
   status   TicketLinkDraftStatus @default(RECEIVED)
+  /// 手動登録フローの進捗。null = 画像/テキスト経路（PR4）。順序強制に使う。
+  step     TicketLinkDraftStep?
   /// 一時画像の保存キー（推測不可能・公開 URL にしない）。削除時に null 化する。
   imageStorageKey String?        @map("image_storage_key")
   /// OCR 原文（PII を含む）。構造化結果とは分けて保持し、ログには出さない。
@@ -3118,9 +3129,13 @@ model TicketLink {
   normalizedReservationNumber String @map("normalized_reservation_number")
   /// プレイヤーが入力/読み取った原文。表示・監査用（照合には normalized を使う）。
   reservationNumberRaw String? @map("reservation_number_raw")
-  /// チケット種別（作品設定 or CMS 由来の表示名）。
+  /// チケット種別の安定キー（作品設定 TicketLinkTicketTypeSetting.ticketTypeKey）。
+  /// 表示名ではなくこのキーで種別を同定する。確定時のスナップショット。
+  ticketTypeKey String? @map("ticket_type_key")
+  /// **確定時の**チケット種別表示名スナップショット。
+  /// 設定側のラベルを後から変更・削除しても、登録済みの表示が変わらないようにここへ焼き込む。
   ticketType String? @map("ticket_type")
-  /// 参加人数。名称から推測せず、作品設定 or 取込データの値を使う。
+  /// **確定時の**参加人数スナップショット。名称から推測せず、確定時点の作品設定値を焼き込む。
   participantCount Int @map("participant_count")
   source TicketLinkSource
   status TicketLinkStatus @default(PENDING_UZU_BOOKING)

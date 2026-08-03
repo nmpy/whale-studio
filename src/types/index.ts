@@ -431,6 +431,41 @@ export interface LiffHomeSettings {
   /** ホームメニューの表示モード。"list" = 縦並びリスト / "card"(既定/未設定) = 2列カードグリッド。
    *  未設定の既存作品は "card" 扱いで従来表示を維持する。 */
   home_menu_layout: "card" | "list";
+  /** チケット連携の作品単位設定。**未設定でも既存 JSON は壊れない**（省略可・既定は無効）。 */
+  ticket_link?: TicketLinkSettings;
+}
+
+/**
+ * チケット種別の作品設定。ESCAPE.ID 予約データの複製ではなく、
+ * LIFF の入力候補と「コードネーム入力欄の数」を決めるための設定として扱う。
+ */
+export interface TicketLinkTicketTypeSetting {
+  /** 同一 Work 内で一意な安定キー。UI 表示ではなくこの値で種別を同定する。 */
+  ticketTypeKey:    string;
+  /** プレイヤーへ表示する名称。 */
+  ticketTypeLabel:  string;
+  /** 参加人数。**名称からは絶対に推測せず**この値だけを使う。 */
+  participantCount: number;
+  enabled:          boolean;
+  sortOrder:        number;
+}
+
+/** チケット連携の作品単位設定。未設定時は fail closed（機能を公開しない）。 */
+export interface TicketLinkSettings {
+  /** 機能全体の有効/無効。既定 false。 */
+  enabled:             boolean;
+  /** 手動入力導線の有効/無効。既定 false。 */
+  manualInputEnabled:  boolean;
+  /** 画像登録の有効/無効。**PR2 では常に無効扱い**（将来用フィールド）。 */
+  imageInputEnabled:   boolean;
+  ticketTypes:         TicketLinkTicketTypeSetting[];
+  /** 登録完了画面の報告ボタン。 */
+  reportButtonEnabled: boolean;
+  reportButtonLabel:   string;
+  /** LINE トークへ送る本文。label とは別フィールド（混同しないこと）。 */
+  reportMessage:       string;
+  /** 登録完了画面の案内文。 */
+  completionMessage:   string;
 }
 
 export interface UpdateWorkBody {
@@ -1370,7 +1405,7 @@ export type VisibilityCondition = "always" | "before_start" | "in_progress" | "c
  *
  *  DB は `pageType String @default("default")` で enum ではないため、新 pageType 追加に
  *  Prisma migration は不要 (werewolf 用の専用テーブル migration は別で持つ)。 */
-export type LiffPageType = "default" | "hint" | "faq" | "survey" | "location" | "character" | "werewolf" | "contact" | "puzzle";
+export type LiffPageType = "default" | "hint" | "faq" | "survey" | "location" | "character" | "werewolf" | "contact" | "puzzle" | "ticket_link";
 
 /** 旧データ互換用。ストレージから読んだ値を正規化する。 */
 export function normalizeLiffPageType(value: string | null | undefined): LiffPageType {
@@ -1378,7 +1413,7 @@ export function normalizeLiffPageType(value: string | null | undefined): LiffPag
   if (
     value === "hint" || value === "faq" || value === "survey" ||
     value === "location" || value === "character" || value === "werewolf" ||
-    value === "contact" || value === "puzzle"
+    value === "contact" || value === "puzzle" || value === "ticket_link"
   ) return value;
   return "default";
 }

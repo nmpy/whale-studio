@@ -21,6 +21,7 @@ import { normalizeLiffPageType } from "@/types";
 import { HintSiteRenderer, type HintSiteBlock } from "./HintSiteRenderer";
 import { FaqRenderer } from "./FaqRenderer";
 import { SurveyRenderer } from "./SurveyRenderer";
+import { TicketLinkRenderer } from "./TicketLinkRenderer";
 import { ContactRenderer } from "./ContactRenderer";
 import { LocationHistoryRenderer } from "./LocationHistoryRenderer";
 import { CharacterRenderer, type CharacterRendererBlock } from "./CharacterRenderer";
@@ -231,6 +232,8 @@ function ActivePageContent({
           }}
         />
       );
+    case "ticket_link":
+      return <TicketLinkRenderer workId={workId} preview={preview} />;
     case "contact":
       return (
         <ContactRenderer
