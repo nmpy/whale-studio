@@ -3,14 +3,18 @@
 // src/components/liff/LiffSinglePageViewer.tsx
 //
 // `/liff/w/[workPublicId]/p/[pagePublicId]` の個別ページ表示用 wrapper。
-//   - useLiffSDK で LIFF SDK を初期化
+//   - **対象 Work の OA に紐づく Oa.liffId** で LIFF SDK を初期化（useWorkScopedLiff）
 //   - /api/liff/works/[workId]/pages/[pageId] を fetch
 //   - LiffSinglePageRenderer に渡す
 //   - "戻る" ボタンは router.push でメニューホームへ
+//
+// survey / faq / default / ticket_link はすべてこの 1 経路を通るため、
+// ページ種別によらず同じ per-OA 解決が適用される。
 
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useLiffSDK } from "@/hooks/useLiffSDK";
+import { useWorkScopedLiff } from "@/hooks/useWorkScopedLiff";
+import { RUNTIME_LIFF_NOT_CONFIGURED_MESSAGE } from "@/lib/liff/runtime-liff-id";
 import { LiffSinglePageRenderer, type LiffSinglePage } from "./LiffSinglePageRenderer";
 import type { LiffRenderContext } from "./LiffRenderer";
 import type { CharacterInfo } from "./renderers";
@@ -44,7 +48,8 @@ interface PageApiResponse {
 }
 
 export function LiffSinglePageViewer({ workId, pageId, workPublicId }: Props) {
-  const liff = useLiffSDK();
+  // NEXT_PUBLIC_LIFF_ID（全 OA 共通）ではなく、対象 Work の OA の liffId で初期化する。
+  const { liff, notConfigured: liffNotConfigured } = useWorkScopedLiff(workId);
   const router = useRouter();
   const searchParams = useSearchParams();
   const isPreview = searchParams?.get("preview") === "1";
@@ -107,6 +112,20 @@ export function LiffSinglePageViewer({ workId, pageId, workPublicId }: Props) {
       dedupeKey:  `page_view:${workId}:${page.id}:${liff.lineUserId ?? "anon"}`,
     });
   }, [page, isPreview, liff.lineUserId, workId]);
+
+  // LIFF ID を決められない（Oa.liffId も env も未設定）ときは、
+  // 誤った ID で初期化せず設定エラーを出す。無限ローディングにしない。
+  if (liffNotConfigured) {
+    return (
+      <div className="min-h-screen bg-[color:var(--liff-background)] flex items-center justify-center p-4">
+        <div className="bg-[color:var(--liff-surface)] rounded-[18px] px-4 py-6 border border-[color:var(--liff-border)] text-center max-w-sm w-full">
+          <p className="text-4xl mb-3">😢</p>
+          <h2 className="text-[16px] font-bold text-[color:var(--liff-primary-text)] mb-2">表示できません</h2>
+          <p className="text-[14px] text-[color:var(--liff-secondary-text)]">{RUNTIME_LIFF_NOT_CONFIGURED_MESSAGE}</p>
+        </div>
+      </div>
+    );
+  }
 
   if (liff.loading || loading) {
     return (

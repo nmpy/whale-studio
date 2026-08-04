@@ -29,12 +29,22 @@ export interface LiffSDKState {
 /**
  * LIFF SDK を初期化し、ログイン状態とプロフィールを取得する。
  *
- * @param liffId - LIFF アプリ ID（未指定なら NEXT_PUBLIC_LIFF_ID を使用）
+ * @param liffId - 初期化に使う LIFF アプリ ID。3 状態を区別する:
+ *   - `string`    … その LIFF ID で init する（OA 固有ページはこれを使う）
+ *   - `null`      … **解決待ち**。init を実行せず、liffId が確定するまで待つ。
+ *                   誤った LIFF ID での仮初期化 → 再初期化を防ぐための状態。
+ *   - `undefined` … **レガシー経路専用**。NEXT_PUBLIC_LIFF_ID へフォールバックする。
+ *                   OA 固有ページ（/liff/w 配下）からは使わないこと。
+ *                   env は全 OA 共通のため、対象 OA と別プロバイダーのログインチャネルで
+ *                   init され、lineUserId が対象 OA で解決できなくなる（友だち判定が 404 になる）。
  *
  * @example
- * const { lineUserId, isInClient, ready, error } = useLiffSDK();
+ * // レガシー（/liff/r/[slotToken] など env 依存のまま残す経路）
+ * const liff = useLiffSDK();
+ * // OA 固有ページ: config API で解決してから渡す（未解決の間は null）
+ * const liff = useLiffSDK(resolvedLiffId);
  */
-export function useLiffSDK(liffId?: string): LiffSDKState {
+export function useLiffSDK(liffId?: string | null): LiffSDKState {
   const [state, setState] = useState<LiffSDKState>({
     ready: false,
     loading: true,
@@ -48,9 +58,13 @@ export function useLiffSDK(liffId?: string): LiffSDKState {
   const initialized = useRef(false);
 
   useEffect(() => {
+    // liffId === null は「まだ解決できていない」。init せずに待つ（誤 ID での仮初期化を防ぐ）。
+    // 解決後に string が渡ると、この effect が再実行されて初めて init する。
+    if (liffId === null) return;
     if (initialized.current) return;
     initialized.current = true;
 
+    // undefined のときだけ env へフォールバックする（レガシー経路専用）。
     const id = liffId ?? process.env.NEXT_PUBLIC_LIFF_ID;
 
     if (!id) {

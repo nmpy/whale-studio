@@ -3,7 +3,7 @@
 // src/components/liff/LiffMenuHomeViewer.tsx
 //
 // `/liff/w/[workPublicId]` 系のメニューホーム外側 wrapper。
-//   - useLiffSDK で LIFF SDK を初期化
+//   - **対象 Work の OA に紐づく Oa.liffId** で LIFF SDK を初期化（useWorkScopedLiff）
 //   - /api/liff/works/[workId]/menu を fetch (preview=1 サポート)
 //   - LiffMenuHomeRenderer に渡す
 //
@@ -12,7 +12,8 @@
 
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { useLiffSDK } from "@/hooks/useLiffSDK";
+import { useWorkScopedLiff } from "@/hooks/useWorkScopedLiff";
+import { RUNTIME_LIFF_NOT_CONFIGURED_MESSAGE } from "@/lib/liff/runtime-liff-id";
 import { LiffMenuHomeRenderer, type LiffMenuHomePage } from "./LiffMenuHomeRenderer";
 import { LiffLoadingState, LiffErrorState } from "./ui";
 
@@ -43,7 +44,8 @@ interface MenuApiResponse {
 }
 
 export function LiffMenuHomeViewer({ workId, workPublicId }: Props) {
-  const liff = useLiffSDK();
+  // NEXT_PUBLIC_LIFF_ID（全 OA 共通）ではなく、対象 Work の OA の liffId で初期化する。
+  const { liff, notConfigured: liffNotConfigured } = useWorkScopedLiff(workId);
   const searchParams = useSearchParams();
   const isPreview = searchParams?.get("preview") === "1";
 
@@ -86,6 +88,12 @@ export function LiffMenuHomeViewer({ workId, workPublicId }: Props) {
     if (typeof document === "undefined" || !data) return;
     document.title = data.home_header_title?.trim() || data.work_title || "LIFF";
   }, [data]);
+
+  // LIFF ID を決められない（Oa.liffId も env も未設定）ときは、
+  // 誤った ID で初期化せず設定エラーを出す。無限ローディングにしない。
+  if (liffNotConfigured) {
+    return <LiffErrorState message={RUNTIME_LIFF_NOT_CONFIGURED_MESSAGE} fullScreen />;
+  }
 
   if (liff.loading || loading) {
     return <LiffLoadingState fullScreen />;
