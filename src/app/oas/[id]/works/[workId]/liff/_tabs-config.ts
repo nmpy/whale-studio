@@ -85,3 +85,20 @@ export function findDesignatedLiffPage<T extends { page_type: string; publish_st
   // published を優先（最古）、無ければ最古の非 archived（= draft 等）、それも無ければ null。
   return candidates.find((p) => p.publish_status === "published") ?? candidates[0] ?? null;
 }
+
+/**
+ * 「公開 / 非公開」トグルで送るリクエスト body を組み立てる純関数。
+ *
+ * publish_status だけを更新すると、DB 上は publish_status="published" のまま
+ * is_enabled=false が残り、プレイヤー向けページ取得 API（is_enabled=true を要求）が
+ * 404 LIFF_DISABLED を返す。CMS 上は「公開中」に見えるため気づきにくい。
+ * → 2 つを **必ず同時に**揃えることで、この不整合を構造的に発生させない。
+ *
+ * 現在が published のときのみ非公開へ。それ以外（draft / archived / 未設定）は公開へ倒す。
+ */
+export function buildLiffPagePublishPatch(
+  currentPublishStatus: string | null | undefined,
+): { publish_status: "published" | "draft"; is_enabled: boolean } {
+  const next = currentPublishStatus === "published" ? "draft" : "published";
+  return { publish_status: next, is_enabled: next === "published" };
+}

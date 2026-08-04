@@ -13,7 +13,7 @@ import { buttonClass } from "@/components/shared";
 import { useToast } from "@/components/Toast";
 import { liffConfigApi, getDevToken, type LiffPageSummary } from "@/lib/api-client";
 import type { TicketLinkSettings, TicketLinkTicketTypeSetting } from "@/types";
-import { findDesignatedLiffPage } from "./_tabs-config";
+import { findDesignatedLiffPage, buildLiffPagePublishPatch } from "./_tabs-config";
 
 const MAX_PARTICIPANTS = 20;
 
@@ -176,11 +176,13 @@ export function TicketLinkTab({ workId, pages, isReadOnly, onSaved }: Props) {
   const togglePublish = useCallback(async () => {
     if (!designated || creatingPage) return;
     setCreatingPage(true);
-    const next = designated.publish_status === "published" ? "draft" : "published";
+    // publish_status と is_enabled を必ず同時に更新する。
+    // 片方だけだと「CMS は公開中／プレイヤー側は 404 LIFF_DISABLED」の不整合になる。
+    const patch = buildLiffPagePublishPatch(designated.publish_status);
     try {
-      await liffConfigApi.updatePage(getDevToken(), workId, designated.id, { publish_status: next });
+      await liffConfigApi.updatePage(getDevToken(), workId, designated.id, patch);
       onSaved();
-      showToast(next === "published" ? "ページを公開しました" : "ページを非公開にしました", "success");
+      showToast(patch.publish_status === "published" ? "ページを公開しました" : "ページを非公開にしました", "success");
     } catch {
       showToast("更新に失敗しました", "error");
     } finally {
