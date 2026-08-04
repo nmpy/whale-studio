@@ -18,7 +18,8 @@ import { TicketLinkReportButton } from "./TicketLinkReportButton";
 import {
   normalizeReservationNumber,
   formatReservationNumberInput,
-  isCompleteReservationNumberInput,
+  parseTicketLinkReservationNumberInput,
+  ticketLinkReservationNumberErrorMessage,
   RESERVATION_NUMBER_MAX_LENGTH,
 } from "@/lib/ticket-link/reservation-number";
 
@@ -281,18 +282,26 @@ export function TicketLinkRenderer({
         <p className="mb-1 text-sm font-medium">予約番号</p>
         <LiffTextInput
           value={reservationNumber}
-          // 数字だけを受け取り、4 桁目からハイフンを自動挿入する（表示・state とも整形後の値）。
+          // 数字だけを表示へ残し、4 桁目からハイフンを自動挿入する。
+          // ただし**不正文字を黙って捨てない**: 生値に許可外の文字が含まれていたら
+          // エラー状態を立て、次に正しい入力を行うまで送信できないようにする。
           onChange={(e) => {
-            setReservationNumber(formatReservationNumberInput(e.target.value));
-            setReservationNumberError(null); // 入力中はエラーを消す
+            const rawValue = e.target.value;
+            setReservationNumber(formatReservationNumberInput(rawValue));
+            const parsed = parseTicketLinkReservationNumberInput(rawValue);
+            setReservationNumberError(
+              !parsed.ok && parsed.reason === "invalid_character"
+                ? ticketLinkReservationNumberErrorMessage("invalid_character")
+                : null, // 入力途中（incomplete/invalid_format）は blur / 送信まで出さない
+            );
           }}
           // 入力が終わった時点でだけ形式エラーを出す（入力途中の "1" や "123-4" では出さない）。
           onBlur={() => {
+            // 不正文字エラーは表示値からは復元できないため、既に立っていれば維持する。
+            if (reservationNumberError) return;
             if (reservationNumber.length === 0) { setReservationNumberError(null); return; }
-            const complete =
-              isCompleteReservationNumberInput(reservationNumber) &&
-              !!normalizeReservationNumber(reservationNumber);
-            setReservationNumberError(complete ? null : "予約番号は数字6桁で入力してください。");
+            const parsed = parseTicketLinkReservationNumberInput(reservationNumber);
+            setReservationNumberError(parsed.ok ? null : ticketLinkReservationNumberErrorMessage(parsed.reason));
           }}
           placeholder="123-456"
           inputMode="numeric"
@@ -315,14 +324,15 @@ export function TicketLinkRenderer({
               setFormError(null);
               // クライアント側でも正規化・形式検証する（サーバーでも再検証される）。
               if (!ticketTypeKey) { setFormError("チケット種別を選択してください。"); return; }
-              // 送信値は必ず正規化後（例 "123-456"）。表示だけ整形して生値を送らない。
-              const normalizedReservationNumber = isCompleteReservationNumberInput(reservationNumber)
-                ? normalizeReservationNumber(reservationNumber)
-                : null;
-              if (!normalizedReservationNumber) {
-                setReservationNumberError("予約番号は数字6桁で入力してください。");
+              // 不正文字エラーが残っている間は送信しない（黙って正常値として確定させない）。
+              if (reservationNumberError) { setFormError("予約番号を確認してください。"); return; }
+              // 送信値は必ず厳格な正規形（例 "123-456"）。表示だけ整形して生値を送らない。
+              const parsedReservationNumber = parseTicketLinkReservationNumberInput(reservationNumber);
+              if (!parsedReservationNumber.ok) {
+                setReservationNumberError(ticketLinkReservationNumberErrorMessage(parsedReservationNumber.reason));
                 setFormError("予約番号の形式が正しくありません。"); return;
               }
+              const normalizedReservationNumber = parsedReservationNumber.normalized;
               setBusy(true);
               const r = await post("/draft", {
                 ticketTypeKey,

@@ -11,7 +11,7 @@
 
 import { Prisma } from "@prisma/client";
 import type { TicketLinkDraftStep, PrismaClient } from "@prisma/client";
-import { normalizeReservationNumber } from "@/lib/ticket-link/reservation-number";
+import { parseTicketLinkReservationNumberInput } from "@/lib/ticket-link/reservation-number";
 import { validateCodeNames, TICKET_LINK_DRAFT_TTL_HOURS } from "@/lib/ticket-link/rules";
 import { resolveTicketTypeByKey } from "@/lib/ticket-link/settings";
 import type { TicketLinkSettings } from "@/types";
@@ -129,11 +129,15 @@ export async function confirmTicketLink(tx: Db, input: ConfirmInput): Promise<Co
     return { kind: "invalid", code: "INVALID_TICKET_TYPE", message: "選択されたチケット種別は現在ご利用いただけません。" };
   }
 
-  // 予約番号はサーバー側で再正規化・再検証する
-  const normalized = normalizeReservationNumber(payload.normalizedReservationNumber ?? payload.reservationNumberRaw);
-  if (!normalized) {
+  // 予約番号はサーバー側で再正規化・再検証する（ticket_link は 3 桁-3 桁の 6 桁のみ）。
+  // ドラフトが古い/改竄された場合でも、確定時にここで厳格条件を満たさないものは保存しない。
+  const reparsed = parseTicketLinkReservationNumberInput(
+    payload.normalizedReservationNumber ?? payload.reservationNumberRaw,
+  );
+  if (!reparsed.ok) {
     return { kind: "invalid", code: "INVALID_RESERVATION_NUMBER", message: "予約番号の形式が正しくありません。" };
   }
+  const normalized = reparsed.normalized;
 
   // 5) コードネームをサーバー側で再検証。件数は参加人数と完全一致であること。
   const codeNames = Array.isArray(payload.codeNames) ? payload.codeNames : [];

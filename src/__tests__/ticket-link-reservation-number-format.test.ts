@@ -16,6 +16,8 @@ import {
   normalizeReservationNumber,
   isNormalizedReservationNumber,
   isCompleteReservationNumberInput,
+  parseTicketLinkReservationNumberInput,
+  ticketLinkReservationNumberErrorMessage,
   RESERVATION_NUMBER_MAX_LENGTH,
 } from "@/lib/ticket-link/reservation-number";
 
@@ -175,5 +177,93 @@ describe("isCompleteReservationNumberInput — 6 桁完了判定", () => {
     for (const v of ["", "1", "12", "123", "123-4", "123-45", null, undefined]) {
       expect(isCompleteReservationNumberInput(v)).toBe(false);
     }
+  });
+});
+
+describe("parseTicketLinkReservationNumberInput — ticket_link 専用の厳格判定", () => {
+  it("許可された表現はすべて 123-456 に正規化される", () => {
+    for (const v of ["123456", "123-456", "123 456", "123　456", "１２３４５６", "１２３－４５６", "123ー456", " 123-456 "]) {
+      const r = parseTicketLinkReservationNumberInput(v);
+      expect(r.ok).toBe(true);
+      if (r.ok) { expect(r.normalized).toBe("123-456"); expect(r.formatted).toBe("123-456"); }
+    }
+  });
+
+  it("英字・不正記号は invalid_character として拒否（数字だけ抜くと6桁でも通さない）", () => {
+    for (const v of ["abc123def456", "123a456", "123/456", "123_456", "123.456", "#123456", "123456円"]) {
+      const r = parseTicketLinkReservationNumberInput(v);
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.reason).toBe("invalid_character");
+    }
+  });
+
+  it("文字種は正しいが 6 桁以上で 3-3 にならないものは invalid_format", () => {
+    for (const v of ["1234-56", "12-3456", "1234567", "12345678", "12345678-1234"]) {
+      const r = parseTicketLinkReservationNumberInput(v);
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.reason).toBe("invalid_format");
+    }
+  });
+
+  it("数字が 6 桁未満なら incomplete（区切りの有無を問わない）", () => {
+    // "12-34" は区切り付きだが数字は 4 桁 → 入力途中として扱う（文言は「数字6桁で入力してください」）。
+    for (const v of ["", "  ", "1", "12", "123", "123-4", "123-45", "12-34"]) {
+      const r = parseTicketLinkReservationNumberInput(v);
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.reason).toBe("incomplete");
+    }
+  });
+
+  it("いずれの拒否理由でも ok=false のため送信されない（12-34 / 123-45 を含む）", () => {
+    for (const v of ["12-34", "123-45", "1234-56", "abc123def456", "123/456"]) {
+      expect(parseTicketLinkReservationNumberInput(v).ok).toBe(false);
+    }
+  });
+
+  it("null / undefined は incomplete", () => {
+    expect(parseTicketLinkReservationNumberInput(null)).toEqual({ ok: false, reason: "incomplete" });
+    expect(parseTicketLinkReservationNumberInput(undefined)).toEqual({ ok: false, reason: "incomplete" });
+  });
+
+  it("エラー文言は理由ごとに出し分ける（内部情報を含めない）", () => {
+    expect(ticketLinkReservationNumberErrorMessage("invalid_character")).toContain("数字とハイフンのみ");
+    expect(ticketLinkReservationNumberErrorMessage("invalid_format")).toContain("数字6桁");
+    expect(ticketLinkReservationNumberErrorMessage("incomplete")).toContain("数字6桁");
+  });
+});
+
+describe("不正文字は「削除して6桁」でも送信できない", () => {
+  it("abc123def456 は表示整形すると 123-456 になるが、厳格判定は拒否する", () => {
+    expect(formatReservationNumberInput("abc123def456")).toBe("123-456"); // 表示だけは数字が残る
+    const r = parseTicketLinkReservationNumberInput("abc123def456");      // 生値の判定は拒否
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.reason).toBe("invalid_character");
+  });
+});
+
+describe("ticket_link 以外の経路（共通 CANONICAL）は壊さない", () => {
+  it("normalizeReservationNumber は 3-3 以外も従来どおり受理し続ける", () => {
+    expect(normalizeReservationNumber("12-34")).toBe("12-34");
+    expect(normalizeReservationNumber("12345678-1234")).toBe("12345678-1234");
+  });
+  it("厳格判定は ticket_link 専用で、共通関数の戻り値を変えない", () => {
+    expect(normalizeReservationNumber("123456")).toBe("123-456");
+    expect(parseTicketLinkReservationNumberInput("12-34").ok).toBe(false);
+    expect(normalizeReservationNumber("12-34")).toBe("12-34"); // 共通側は据え置き
+  });
+});
+
+describe("confirm 処理と draft API が同じ厳格条件を共有する", () => {
+  // confirmTicketLink / draft route はいずれも parseTicketLinkReservationNumberInput を通す。
+  // ここでは「確定処理へ渡りうる値」を同じ関数で判定し、条件が一致することを固定する。
+  it("ドラフトに不正値が残っていても確定条件を満たさない", () => {
+    for (const stored of ["abc123def456", "123/456", "12-34", "123-45", "1234-56", "1234567"]) {
+      expect(parseTicketLinkReservationNumberInput(stored).ok).toBe(false);
+    }
+  });
+  it("正規形は確定条件を満たす", () => {
+    const r = parseTicketLinkReservationNumberInput("123-456");
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.normalized).toBe("123-456");
   });
 });

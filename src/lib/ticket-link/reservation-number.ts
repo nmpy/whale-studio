@@ -57,6 +57,75 @@ export function isCompleteReservationNumberInput(value: string | null | undefine
   return value.normalize("NFKC").replace(/\D/g, "").length === RESERVATION_NUMBER_DIGITS;
 }
 
+// ─── ticket_link 手動入力 専用の厳格判定 ───────────────────────────────────
+//
+// 共通の normalizeReservationNumber / CANONICAL は、Live Mode（#588/#589）や
+// 外部連携など**他経路の既存フォーマット**（例 `12-34`）も受理する必要があるため
+// 緩いままにする。ticket_link の手動入力だけは「数字 6 桁を 3-3 で区切る」形に固定したい。
+// そこで専用の純関数を分けて、クライアント / draft API / 確定処理で共有する。
+
+/** ticket_link 手動入力で**入力を許可する文字**（半角/全角数字・ハイフン異体字・半角/全角空白）。 */
+const TICKET_LINK_ALLOWED_CHARS = /^[0-9０-９‐‑‒–—―−ー－﹣\-\s　]*$/;
+
+/** ticket_link 手動入力の最終正規形。3 桁-3 桁のみ。 */
+const TICKET_LINK_CANONICAL = /^\d{3}-\d{3}$/;
+
+export type TicketLinkReservationNumberParseResult =
+  /** 正規形まで確定できた。normalized を保存・照合・外部連携に使う。 */
+  | { ok: true; normalized: string; formatted: string }
+  /**
+   * 失敗理由:
+   *   incomplete        … 数字が 6 桁に満たない（入力途中）
+   *   invalid_character … 数字・ハイフン・空白以外を含む（英字 / 記号など）
+   *   invalid_format    … 文字種は正しいが 3-3 の 6 桁にならない（例 `12-34` / `1234567`）
+   */
+  | { ok: false; reason: "incomplete" | "invalid_character" | "invalid_format" };
+
+/**
+ * ticket_link 手動入力の予約番号を厳格に解析する。
+ *
+ * **不正文字を黙って捨てない。** 数字だけを抜き出すと 6 桁になる入力（例 `abc123def456`）でも
+ * invalid_character として拒否する。クライアントを迂回した直接 POST でも同じ関数で弾く。
+ *
+ *   "123456" / "123-456" / "123 456" / "１２３－４５６" → ok "123-456"
+ *   "12345"        → incomplete
+ *   "abc123def456" / "123/456" / "123_456" / "123456円" → invalid_character
+ *   "12-34" / "1234-56" / "1234567"                     → invalid_format
+ */
+export function parseTicketLinkReservationNumberInput(
+  raw: string | null | undefined,
+): TicketLinkReservationNumberParseResult {
+  const s = (raw ?? "").trim();
+  if (s.length === 0) return { ok: false, reason: "incomplete" };
+
+  // 1) 文字種チェック（正規化前の生値で判定する。数字以外を落とす前に弾くため）
+  if (!TICKET_LINK_ALLOWED_CHARS.test(s)) return { ok: false, reason: "invalid_character" };
+
+  // 2) 共通の正規化（NFKC / ハイフン統一 / 空白区切り / 6 桁補完）を再利用
+  const normalized = normalizeReservationNumber(s);
+
+  // 3) ticket_link は 3-3 の 6 桁のみ
+  if (!normalized || !TICKET_LINK_CANONICAL.test(normalized)) {
+    const digits = s.normalize("NFKC").replace(/\D/g, "");
+    if (digits.length < RESERVATION_NUMBER_DIGITS) return { ok: false, reason: "incomplete" };
+    return { ok: false, reason: "invalid_format" };
+  }
+
+  return { ok: true, normalized, formatted: normalized };
+}
+
+/** 解析失敗の理由 → ユーザー向け文言（内部情報は出さない）。 */
+export function ticketLinkReservationNumberErrorMessage(
+  reason: "incomplete" | "invalid_character" | "invalid_format",
+): string {
+  switch (reason) {
+    case "invalid_character": return "予約番号には数字とハイフンのみ入力できます。";
+    case "invalid_format":    return "予約番号は数字6桁（例 123-456）で入力してください。";
+    case "incomplete":
+    default:                  return "予約番号は数字6桁で入力してください。";
+  }
+}
+
 /**
  * 予約番号を照合キーへ正規化する。
  *
