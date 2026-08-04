@@ -8,11 +8,24 @@
 //
 // Runtime（/liff 配下のページ）は liff.init({ liffId }) の前にこれを呼んで liffId を解決する想定。
 // 他の /api/liff/* と同様に認証なし。lineUserId 等の秘匿情報は扱わない（公開設定のみ）。
+//
+// workId / pageId / locationId は **UUID / publicId のどちらでも**受け付ける。
+// LIFF 短縮 URL（/liff/w/[workPublicId]/p/[pagePublicId] や /liff/c/[workPublicId]/[locationPublicId]）は
+// publicId しか持たないため、UUID 限定だと OA を解決できず liffId が返せない。
+// 他の /api/liff/* と同じ resolver（public-id-resolver）を使って揃える。
+//
+// 返す値は公開情報のみ（liffId は LIFF URL に露出する公開識別子）。
+// channelSecret / channelAccessToken / lineUserId / 個人情報は**返さない**。
 
 import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { ok, badRequest, notFound, serverError } from "@/lib/api-response";
 import { getLiffIdForOa, getLiffIdSource } from "@/lib/liff/config";
+import {
+  findWorkByIdOrPublicId,
+  findLiffPageConfigByIdOrPublicId,
+  findLocationByIdOrPublicId,
+} from "@/lib/public-id-resolver";
 
 export const dynamic = "force-dynamic";
 
@@ -29,22 +42,35 @@ export async function GET(req: NextRequest) {
     }
 
     // 対象 work を解決（feature 判定で gps location を引くため workId も保持する）。
+    // workId / pageId / locationId は UUID / publicId の両方を受け付ける。
+    // resolvedWorkId / resolvedLocation は以降の DB 参照で使うため **必ず UUID 実体**に正規化する。
     let resolvedOaId: string | null = oaId;
-    let resolvedWorkId: string | null = workId;
+    let resolvedWorkId: string | null = null;
+    let resolvedLocation: { id: string; workId: string; gpsEnabled: boolean; isActive: boolean } | null = null;
 
-    if (!resolvedOaId) {
-      if (workId) {
-        const w = await prisma.work.findUnique({ where: { id: workId }, select: { oaId: true } });
-        resolvedOaId = w?.oaId ?? null;
-      } else if (locationId) {
-        const loc = await prisma.location.findUnique({ where: { id: locationId }, select: { workId: true, work: { select: { oaId: true } } } });
-        resolvedOaId  = loc?.work?.oaId ?? null;
-        resolvedWorkId = resolvedWorkId ?? loc?.workId ?? null;
-      } else if (pageId) {
-        const pg = await prisma.liffPageConfig.findUnique({ where: { id: pageId }, select: { workId: true, work: { select: { oaId: true } } } });
-        resolvedOaId  = pg?.work?.oaId ?? null;
-        resolvedWorkId = resolvedWorkId ?? pg?.workId ?? null;
+    if (workId) {
+      const w = await findWorkByIdOrPublicId(workId);
+      resolvedWorkId = w?.id ?? null;
+      if (!resolvedOaId) resolvedOaId = w?.oaId ?? null;
+    }
+
+    if (locationId) {
+      const loc = await findLocationByIdOrPublicId(locationId);
+      if (loc) {
+        resolvedLocation = { id: loc.id, workId: loc.workId, gpsEnabled: loc.gpsEnabled, isActive: loc.isActive };
+        resolvedWorkId = resolvedWorkId ?? loc.workId;
       }
+    }
+
+    if (pageId && (!resolvedOaId || !resolvedWorkId)) {
+      const pg = await findLiffPageConfigByIdOrPublicId(pageId);
+      if (pg) resolvedWorkId = resolvedWorkId ?? pg.workId;
+    }
+
+    // ここまでで OA が未確定なら、確定した workId から引く（location / page 経由の場合）。
+    if (!resolvedOaId && resolvedWorkId) {
+      const w = await prisma.work.findUnique({ where: { id: resolvedWorkId }, select: { oaId: true } });
+      resolvedOaId = w?.oaId ?? null;
     }
 
     if (!resolvedOaId) return notFound("OA");
@@ -58,10 +84,10 @@ export async function GET(req: NextRequest) {
     const liffId = getLiffIdForOa(oa);
 
     // gpsCheckin: locationId が gpsEnabled、または work に gpsEnabled な active location があれば true。
+    // location は上で UUID / publicId を解決済み（resolvedLocation）なので再取得しない。
     let gpsCheckin = false;
     if (locationId) {
-      const loc = await prisma.location.findUnique({ where: { id: locationId }, select: { gpsEnabled: true, isActive: true } });
-      gpsCheckin = !!(loc?.gpsEnabled && loc.isActive);
+      gpsCheckin = !!(resolvedLocation?.gpsEnabled && resolvedLocation.isActive);
     } else if (resolvedWorkId) {
       const cnt = await prisma.location.count({ where: { workId: resolvedWorkId, gpsEnabled: true, isActive: true } });
       gpsCheckin = cnt > 0;
