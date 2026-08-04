@@ -15,7 +15,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { LiffActionButton, LiffTextInput, LiffLoadingState, LiffErrorState } from "./ui";
 import { TicketLinkReportButton } from "./TicketLinkReportButton";
-import { normalizeReservationNumber } from "@/lib/ticket-link/reservation-number";
+import {
+  normalizeReservationNumber,
+  formatReservationNumberInput,
+  parseTicketLinkReservationNumberInput,
+  ticketLinkReservationNumberErrorMessage,
+  RESERVATION_NUMBER_MAX_LENGTH,
+} from "@/lib/ticket-link/reservation-number";
 
 type Step = "choice" | "manual" | "review" | "codeNames" | "final" | "done";
 
@@ -87,6 +93,8 @@ export function TicketLinkRenderer({
   const [ticketTypeKey, setTicketTypeKey] = useState("");
   const [purchaserName, setPurchaserName] = useState("");
   const [reservationNumber, setReservationNumber] = useState("");
+  // 予約番号のエラーは「入力途中」では出さない。blur / 送信時にだけ立てる。
+  const [reservationNumberError, setReservationNumberError] = useState<string | null>(null);
   const [codeNames, setCodeNames] = useState<string[]>([]);
   const [draftId, setDraftId] = useState<string | null>(null);
   const [doneState, setDoneState] = useState<{ statusLabel: string; alreadyRegistered: boolean } | null>(null);
@@ -274,10 +282,37 @@ export function TicketLinkRenderer({
         <p className="mb-1 text-sm font-medium">予約番号</p>
         <LiffTextInput
           value={reservationNumber}
-          onChange={(e) => setReservationNumber(e.target.value)}
+          // 数字だけを表示へ残し、4 桁目からハイフンを自動挿入する。
+          // ただし**不正文字を黙って捨てない**: 生値に許可外の文字が含まれていたら
+          // エラー状態を立て、次に正しい入力を行うまで送信できないようにする。
+          onChange={(e) => {
+            const rawValue = e.target.value;
+            setReservationNumber(formatReservationNumberInput(rawValue));
+            const parsed = parseTicketLinkReservationNumberInput(rawValue);
+            setReservationNumberError(
+              !parsed.ok && parsed.reason === "invalid_character"
+                ? ticketLinkReservationNumberErrorMessage("invalid_character")
+                : null, // 入力途中（incomplete/invalid_format）は blur / 送信まで出さない
+            );
+          }}
+          // 入力が終わった時点でだけ形式エラーを出す（入力途中の "1" や "123-4" では出さない）。
+          onBlur={() => {
+            // 不正文字エラーは表示値からは復元できないため、既に立っていれば維持する。
+            if (reservationNumberError) return;
+            if (reservationNumber.length === 0) { setReservationNumberError(null); return; }
+            const parsed = parseTicketLinkReservationNumberInput(reservationNumber);
+            setReservationNumberError(parsed.ok ? null : ticketLinkReservationNumberErrorMessage(parsed.reason));
+          }}
           placeholder="123-456"
           inputMode="numeric"
+          autoComplete="off"
+          maxLength={RESERVATION_NUMBER_MAX_LENGTH}
+          error={!!reservationNumberError}
+          aria-describedby={reservationNumberError ? "reservation-number-error" : undefined}
         />
+        {reservationNumberError && (
+          <p id="reservation-number-error" className="text-sm text-red-600">{reservationNumberError}</p>
+        )}
 
         {formError && <p className="text-sm text-red-600">{formError}</p>}
 
@@ -289,11 +324,21 @@ export function TicketLinkRenderer({
               setFormError(null);
               // クライアント側でも正規化・形式検証する（サーバーでも再検証される）。
               if (!ticketTypeKey) { setFormError("チケット種別を選択してください。"); return; }
-              if (!normalizeReservationNumber(reservationNumber)) {
+              // 不正文字エラーが残っている間は送信しない（黙って正常値として確定させない）。
+              if (reservationNumberError) { setFormError("予約番号を確認してください。"); return; }
+              // 送信値は必ず厳格な正規形（例 "123-456"）。表示だけ整形して生値を送らない。
+              const parsedReservationNumber = parseTicketLinkReservationNumberInput(reservationNumber);
+              if (!parsedReservationNumber.ok) {
+                setReservationNumberError(ticketLinkReservationNumberErrorMessage(parsedReservationNumber.reason));
                 setFormError("予約番号の形式が正しくありません。"); return;
               }
+              const normalizedReservationNumber = parsedReservationNumber.normalized;
               setBusy(true);
-              const r = await post("/draft", { ticketTypeKey, purchaserName, reservationNumber });
+              const r = await post("/draft", {
+                ticketTypeKey,
+                purchaserName,
+                reservationNumber: normalizedReservationNumber,
+              });
               setBusy(false);
               if (!r.ok) { setFormError(r.json.error?.message ?? "入力内容を確認してください。"); return; }
               const d = r.json.data as { draftId: string; participantCount: number };

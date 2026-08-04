@@ -16,7 +16,10 @@ import {
   authFailureStatus,
 } from "@/lib/ticket-link/auth";
 import { resolveTicketTypeByKey } from "@/lib/ticket-link/settings";
-import { normalizeReservationNumber } from "@/lib/ticket-link/reservation-number";
+import {
+  parseTicketLinkReservationNumberInput,
+  ticketLinkReservationNumberErrorMessage,
+} from "@/lib/ticket-link/reservation-number";
 import {
   canAdvanceStep,
   draftExpiresAt,
@@ -62,9 +65,14 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ workId: st
     const ticketType = resolveTicketTypeByKey(a.settings, body.ticketTypeKey);
     if (!ticketType) return badRequest("選択されたチケット種別は現在ご利用いただけません。");
 
-    // 予約番号はサーバー側でも正規化 + 形式検証（クライアント検証だけに依存しない）。
-    const normalized = normalizeReservationNumber(body.reservationNumber);
-    if (!normalized) return badRequest("予約番号の形式が正しくありません。");
+    // 予約番号はサーバー側でも厳格に正規化 + 形式検証（クライアント検証だけに依存しない）。
+    // ticket_link 手動入力は 3 桁-3 桁の 6 桁のみ。不正文字は数字だけ抜き出さず拒否する
+    // （クライアントを迂回した直接 POST でも不正値を保存・照合・外部連携へ流さない）。
+    const parsedReservationNumber = parseTicketLinkReservationNumberInput(body.reservationNumber);
+    if (!parsedReservationNumber.ok) {
+      return badRequest(ticketLinkReservationNumberErrorMessage(parsedReservationNumber.reason));
+    }
+    const normalized = parsedReservationNumber.normalized;
 
     const now = new Date();
     const payload: ManualDraftPayload = {
