@@ -395,6 +395,52 @@ describe("画面4: 登録受付完了", () => {
   });
 });
 
+describe("見出しブロック: 全ステップで header 要素を使わない（globals.css の header ルール回避）", () => {
+  it("画面1 / 1-4 / 2-4 / 3-4 / 4-4 / 完了 のいずれにも header が出ない", async () => {
+    const f = makeFetch();
+    const { container } = renderScreen(f.impl);
+
+    await screen.findByRole("button", { name: "手動で入力" });
+    expect(container.querySelector("header")).toBeNull();          // 画面1
+
+    await fillForm("123456", "private_2");
+    expect(screen.getByText("1 / 4")).toBeTruthy();
+    expect(screen.getByText("チケット情報をご入力ください。")).toBeTruthy();
+    expect(container.querySelector("header")).toBeNull();          // 1/4
+
+    fireEvent.click(btn("この内容で進む"));
+    await screen.findByText("2 / 4");
+    expect(screen.getByText(/以下の内容をご確認ください。/)).toBeTruthy();
+    expect(container.querySelector("header")).toBeNull();          // 2/4
+
+    fireEvent.click(btn("この内容で進む"));
+    await screen.findByText("3 / 4");
+    expect(screen.getByText("参加される方のコードネームをご入力ください。")).toBeTruthy();
+    expect(container.querySelector("header")).toBeNull();          // 3/4
+
+    fireEvent.click(btn("登録内容を確認する"));
+    await screen.findByText("4 / 4");
+    expect(screen.getByText(/以下の内容で登録します。/)).toBeTruthy();
+    expect(container.querySelector("header")).toBeNull();          // 4/4
+
+    fireEvent.click(btn("この内容で登録"));
+    await screen.findByText("チケット連携を受け付けました");
+    expect(container.querySelector("header")).toBeNull();          // 完了画面
+  });
+
+  it("見出しブロックの余白と階層は従来どおり（mb-5 の div に h2）", async () => {
+    const f = makeFetch();
+    const { container } = renderScreen(f.impl);
+    await fillForm("123456", "private_1");
+
+    const root = container.querySelector("h2")!.closest("div.mb-5") as HTMLElement;
+    expect(root.tagName).toBe("DIV");
+    expect(root.querySelector("h2")!.textContent).toBe("チケット連携");
+    // ステップ番号は見出しと同じ行に残っている
+    expect(root.textContent).toContain("1 / 4");
+  });
+});
+
 describe("読み込み失敗", () => {
   it("config が取れないときは永続ローディングにせずエラーを出す", async () => {
     const f = makeFetch({

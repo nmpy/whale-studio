@@ -351,35 +351,28 @@ describe("コントラスト（白背景に載る緑）", () => {
   });
 });
 
-// ─── タイトル / 説明ブロックのシャドウ打ち消し ────────────────────────────────
+// ─── タイトル / 説明ブロックのフラット化 ──────────────────────────────────────
+//
+// 見え方（影 / 罫線 / sticky / 半透明背景 / blur）は DOM 構造で担保する。
+// 実際の描画検証は liff-single-page-chrome.test.tsx（jsdom + computed style）が行う。
 
-describe("タイトル / 説明ブロックはフラット（globals.css の header 影を打ち消す）", () => {
-  const css = () => readFileSync(new URL("../app/liff/liff-font.css", import.meta.url), "utf8");
-
-  it("liff-font.css に .liff-tl-heading の box-shadow: none がある", () => {
-    expect(css()).toMatch(
-      /\.liff-font\s+\.liff-tl-heading\s*\{[\s\S]{0,120}?box-shadow\s*:\s*none/,
-    );
-  });
-
-  it("要素セレクタ header より高い specificity で当てている（記述順に依存しない）", () => {
-    // globals.css の `header {}` は (0,0,1)。`.liff-font .liff-tl-heading` は (0,2,0) で必ず勝つ。
-    const m = css().match(/([^\n{]*\.liff-tl-heading[^\n{]*)\{([^}]*)\}/);
-    expect(m?.[1]).toContain(".liff-font");
-    expect(m?.[1]).toContain(".liff-tl-heading");
-    expect(m?.[2]).toMatch(/box-shadow\s*:\s*none/);
-  });
-
-  it("globals.css は変更していない（CMS ヘッダー等に影響させない）", () => {
-    const globals = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
-    // 影の発生源はそのまま残っている＝打ち消しは LIFF 側でスコープしている
-    expect(globals).toMatch(/header\s*\{[\s\S]{0,300}?box-shadow\s*:\s*var\(--shadow-sm\)/);
+describe("タイトル / 説明ブロックはフラット", () => {
+  it("打ち消し用の liff-tl-heading が CSS から消えている", () => {
+    // globals.css の `header {}` から要素ごと切り離したため、打ち消し CSS は不要になった。
+    // （DOM 側の検証は liff-single-page-chrome.test.tsx が担当する）
+    const css = readFileSync(new URL("../app/liff/liff-font.css", import.meta.url), "utf8");
+    expect(css).not.toContain("liff-tl-heading");
   });
 
   it("カードと CTA には影を足していない", () => {
     expect(TL_CARD).not.toContain("shadow");
     expect(TL_CTA_PRIMARY).not.toContain("shadow");
     expect(TL_CTA_NEUTRAL).not.toContain("shadow");
+  });
+
+  it("globals.css は変更していない（影の発生源はそのまま = CMS 側に影響なし）", () => {
+    const globals = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
+    expect(globals).toMatch(/header\s*\{[\s\S]{0,300}?box-shadow\s*:\s*var\(--shadow-sm\)/);
   });
 });
 
