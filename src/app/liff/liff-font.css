@@ -366,3 +366,16 @@
   padding-right: 36px;
   cursor: pointer;
 }
+
+/* === チケット連携のタイトル / 説明ブロックをフラットにする =====================
+ *
+ * globals.css の `header { … box-shadow: var(--shadow-sm); … }`（line 226 付近）は
+ * **unlayered** なため、Tailwind の `shadow-none`（@layer utilities）では打ち消せない。
+ * `.liff-player-main` / `.liff-tl-input` と同じ事情で、specificity (0,2,0) の専用 class を当てる
+ * （要素セレクタ `header` は (0,0,1) なので、CSS の記述順に関係なくこちらが勝つ）。
+ *
+ * 対象はチケット連携の見出しブロックのみ。globals.css は変更しないため、
+ * CMS の実ヘッダーや他 page_type（例: WerewolfRoleViewer の sticky ヘッダー）には影響しない。 */
+.liff-font .liff-tl-heading {
+  box-shadow: none;
+}

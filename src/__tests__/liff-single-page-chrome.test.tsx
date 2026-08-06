@@ -66,6 +66,8 @@ describe("他の page_type: ページ見出しと Powered by は親側が描画�
 
       expect(container.querySelector(".liff-ticket-link-page")).toBeNull();
       expect(container.querySelector(".liff-tl-input")).toBeNull();
+      // 見出しの影打ち消し class も ticket_link 限定（他 page_type の header には付けない）
+      expect(container.querySelector(".liff-tl-heading")).toBeNull();
       // ルート背景は従来クラスのまま（モバイル白への差し替えは ticket_link 限定）
       expect(root.className).toContain("bg-[color:var(--liff-background)]");
       expect(root.className).not.toContain("bg-[color:var(--liff-surface)]");
@@ -83,6 +85,17 @@ describe("ticket_link: 見出しと Powered by が二重表示されない", () 
     // 親側の見出しブロックは描画されない（renderer 側のシェルが担当する）
     expect(container.querySelector(".liff-player-main h2")).toBeNull();
     expect(container.querySelector(".liff-ticket-link-page")).not.toBeNull();
+  });
+
+  it("見出しブロックは影打ち消し class を持つ（globals.css の header 影対策）", () => {
+    const { container } = renderPage(makePage({ page_type: "ticket_link", title: "チケット連携" }));
+
+    const heading = container.querySelector("header.liff-tl-heading");
+    expect(heading).not.toBeNull();
+    // 見出しは header 要素のまま（余白・配置・文言は変えていない）
+    expect(heading?.tagName).toBe("HEADER");
+    expect(heading?.className).toContain("mb-5");
+    expect(heading?.querySelector("h2")?.textContent).toBe("チケット連携");
   });
 
   it("page.title 未設定でも既定文言「チケット連携」を 1 回だけ出す", () => {

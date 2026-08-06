@@ -351,6 +351,38 @@ describe("コントラスト（白背景に載る緑）", () => {
   });
 });
 
+// ─── タイトル / 説明ブロックのシャドウ打ち消し ────────────────────────────────
+
+describe("タイトル / 説明ブロックはフラット（globals.css の header 影を打ち消す）", () => {
+  const css = () => readFileSync(new URL("../app/liff/liff-font.css", import.meta.url), "utf8");
+
+  it("liff-font.css に .liff-tl-heading の box-shadow: none がある", () => {
+    expect(css()).toMatch(
+      /\.liff-font\s+\.liff-tl-heading\s*\{[\s\S]{0,120}?box-shadow\s*:\s*none/,
+    );
+  });
+
+  it("要素セレクタ header より高い specificity で当てている（記述順に依存しない）", () => {
+    // globals.css の `header {}` は (0,0,1)。`.liff-font .liff-tl-heading` は (0,2,0) で必ず勝つ。
+    const m = css().match(/([^\n{]*\.liff-tl-heading[^\n{]*)\{([^}]*)\}/);
+    expect(m?.[1]).toContain(".liff-font");
+    expect(m?.[1]).toContain(".liff-tl-heading");
+    expect(m?.[2]).toMatch(/box-shadow\s*:\s*none/);
+  });
+
+  it("globals.css は変更していない（CMS ヘッダー等に影響させない）", () => {
+    const globals = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
+    // 影の発生源はそのまま残っている＝打ち消しは LIFF 側でスコープしている
+    expect(globals).toMatch(/header\s*\{[\s\S]{0,300}?box-shadow\s*:\s*var\(--shadow-sm\)/);
+  });
+
+  it("カードと CTA には影を足していない", () => {
+    expect(TL_CARD).not.toContain("shadow");
+    expect(TL_CTA_PRIMARY).not.toContain("shadow");
+    expect(TL_CTA_NEUTRAL).not.toContain("shadow");
+  });
+});
+
 // ─── F-4: iOS のフォーカス時自動ズーム対策 ──────────────────────────────────
 
 describe("タッチ端末での入力欄フォントサイズ", () => {
