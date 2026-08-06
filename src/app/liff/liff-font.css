@@ -81,6 +81,13 @@
   --liff-ui-green-pressed:  #06A047;                       /* Pressed（filled ボタン押下。旧 --liff-line-green-press=#05B14C とは別系統） */
   --liff-ui-disabled-bg:    #F2F4F6;
   --liff-ui-disabled-text:  #B0B4BA;
+  /* 箱型入力（チケット連携画面）の境界線。下線入力の --liff-ui-input-border より一段濃い。 */
+  --liff-ui-input-box-border: #DDE3E8;
+  /* 「運営確認待ち」等のステータスバッジ（薄いオレンジ）。
+   * text は 12px bold でも AA を満たすよう bg に対して 4.5:1 以上に落としてある。 */
+  --liff-ui-warning-bg:     #FEF9EC;
+  --liff-ui-warning-text:   #A0620F;
+  --liff-ui-warning-border: #F0DBB0;
 
   /* === Typography tokens ===
    * --liff-font-stack を 1 か所で切り替えることで、フォントを変更できる。
@@ -252,4 +259,93 @@
   margin-right: auto;
   padding-left: 16px;
   padding-right: 16px;
+}
+
+/* === チケット連携 (ticket_link) 画面のページ高さ =============================
+ *
+ * LINE アプリ内ブラウザでは 100vh がアドレスバー分ずれるため dvh を優先し、
+ * 未対応環境では vh へフォールバックする（同名プロパティの二重宣言＝後勝ち）。
+ *
+ * - モバイル: 画面全体を白い LIFF ページとして使う（横幅いっぱい）
+ * - 640px 以上: 1 枚の縦長カードとして中央に置き、上下に 24px ずつ余白を取る
+ *   （カードの max-width / 枠線 / 影は Tailwind 側で当てる）
+ *
+ * `.liff-font` 配下に限定するため CMS 側には影響しない。 */
+.liff-font .liff-ticket-link-page {
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+@media (min-width: 640px) {
+  .liff-font .liff-ticket-link-page {
+    min-height: calc(100vh - 48px);
+    min-height: calc(100dvh - 48px);
+  }
+}
+
+/* CMS プレビューは端末枠（375x720 相当）の中で描画されるため、
+ * ビューポート基準の高さを使わず固定値にする。 */
+.liff-font .liff-ticket-link-page.liff-ticket-link-page--preview {
+  min-height: 600px;
+}
+
+/* === チケット連携 (ticket_link) の箱型入力 ===================================
+ *
+ * なぜ Tailwind ではなく専用 class なのか:
+ *   globals.css の `input[type="text"], select, textarea { … }`（line 575 付近）は
+ *   **unlayered** なため、Tailwind の `@layer utilities`（border/rounded/px 等）を
+ *   常に上書きしてしまう。`.liff-player-main` を追加したときと同じ事情。
+ *   ここでは specificity (0,2,0) の専用 class で当て直す（globals は変更しない＝
+ *   CMS 側のフォームに影響を出さない）。
+ *
+ * 仕様: 高さ 50px / 角丸 8px / 薄いグレー枠 / フォーカスで緑リング。
+ * エラーは色だけでなく必ず文言も併記する（renderer 側で担保）。 */
+.liff-font .liff-tl-input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 50px;
+  padding: 12px 14px;
+  border: 1px solid var(--liff-ui-input-box-border, #DDE3E8);
+  border-radius: 8px;
+  font-size: 15px;
+  line-height: 1.5;
+  background: var(--liff-surface, #FFFFFF);
+  color: var(--liff-primary-text, #1F2329);
+  box-shadow: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.liff-font .liff-tl-input::placeholder {
+  color: var(--liff-tertiary-text, #8C8C8C);
+}
+
+/* 未選択の select は placeholder 相当の色にする。 */
+.liff-font .liff-tl-input--placeholder {
+  color: var(--liff-tertiary-text, #8C8C8C);
+}
+
+/* フォーカスリングは消さない（アウトラインの代わりに視認できる ring を出す）。 */
+.liff-font .liff-tl-input:focus,
+.liff-font .liff-tl-input:focus-visible {
+  outline: none;
+  border-color: var(--liff-line-green, #06C755);
+  box-shadow: 0 0 0 3px rgba(6, 199, 85, 0.18);
+}
+
+.liff-font .liff-tl-input--error {
+  border-color: var(--liff-danger, #E22B2B);
+}
+
+.liff-font .liff-tl-input--error:focus,
+.liff-font .liff-tl-input--error:focus-visible {
+  border-color: var(--liff-danger, #E22B2B);
+  box-shadow: 0 0 0 3px rgba(226, 43, 43, 0.18);
+}
+
+/* select はネイティブ矢印を消し、右端に自前のシェブロンを重ねる分の余白を取る。 */
+.liff-font select.liff-tl-input {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 36px;
+  cursor: pointer;
 }
