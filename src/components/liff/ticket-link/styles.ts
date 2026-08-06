@@ -45,24 +45,41 @@ export const TL_READONLY_FIELD =
 /** ラベル。 */
 export const TL_LABEL = "block text-[13.5px] font-medium leading-[1.6] text-[color:var(--liff-primary-text,#1F2329)]";
 
-/** 「必須」バッジ（色だけでなく文言でも必須を示す）。 */
+/**
+ * 「必須」バッジ（色だけでなく文言でも必須を示す）。
+ *
+ * ブランドグリーン #06C755 は白背景に対して 2.26:1 しかなく、11.5px のテキストとしては
+ * WCAG 1.4.3（4.5:1）を満たさない。文字用には濃色の --liff-ui-green-strong(#057A36, 5.46:1)
+ * を使う（面や CTA の塗りは従来どおり #06C755 のまま＝ブランドの印象は保つ）。
+ */
 export const TL_REQUIRED_BADGE =
-  "text-[11.5px] font-bold leading-none text-[color:var(--liff-line-green,#06C755)]";
+  "text-[11.5px] font-bold leading-none text-[color:var(--liff-ui-green-strong,#057A36)]";
 
 /** 入力欄直下のエラー文言。 */
 export const TL_FIELD_ERROR = "text-[12.5px] leading-[1.6] text-[color:var(--liff-danger,#E22B2B)]";
 
 // ─── ボタン ─────────────────────────────────────────────────────────────────
 
+/**
+ * ボタン共通。**フォーカスリングの色は含めない**。
+ * `focus-visible:ring-[color:…]` を基本と variant の両方に置くと同一ユーティリティ族の衝突になり、
+ * className の並び順ではなく Tailwind の生成順で勝敗が決まる。色は必ず variant 側だけが持つ。
+ */
 const CTA_BASE =
   "w-full min-h-[52px] px-4 rounded-[8px] text-[15px] font-bold leading-[1.4] " +
   "inline-flex items-center justify-center text-center transition-colors " +
-  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 " +
-  "focus-visible:ring-[color:var(--liff-line-green,#06C755)]";
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2";
+
+/**
+ * フォーカスリングの緑。白（ring-offset）に対して 3.43:1 で WCAG 2.4.11 / 1.4.11 を満たす。
+ * 塗りに使う #06C755 は 2.26:1 で指標としては不足するため、リングにだけ濃い方を使う。
+ */
+const FOCUS_RING_GREEN = "focus-visible:ring-[color:var(--liff-ui-green-pressed,#06A047)]";
 
 /** メイン CTA（グリーン塗り）。 */
 export const TL_CTA_PRIMARY =
   CTA_BASE +
+  " " + FOCUS_RING_GREEN +
   " text-white bg-[color:var(--liff-line-green,#06C755)] border border-[color:var(--liff-line-green,#06C755)] " +
   "active:bg-[color:var(--liff-ui-green-pressed,#06A047)] active:border-[color:var(--liff-ui-green-pressed,#06A047)] " +
   "disabled:opacity-60 disabled:cursor-not-allowed disabled:active:bg-[color:var(--liff-line-green,#06C755)]";
@@ -70,14 +87,15 @@ export const TL_CTA_PRIMARY =
 /** 閉じるなどの中立ボタン（白背景 + 薄いボーダー + 黒文字）。 */
 export const TL_CTA_NEUTRAL =
   CTA_BASE +
+  " focus-visible:ring-[color:var(--liff-primary-text,#1F2329)]" +
   " text-[color:var(--liff-primary-text,#1F2329)] bg-[color:var(--liff-surface,#fff)] " +
   "border border-[color:var(--liff-ui-input-box-border,#DDE3E8)] " +
-  "active:bg-[color:var(--liff-surface-subtle,#FAFAFA)] " +
-  "focus-visible:ring-[color:var(--liff-primary-text,#1F2329)]";
+  "active:bg-[color:var(--liff-surface-subtle,#FAFAFA)]";
 
-/** 未提供機能の無効ボタン（hover / active 表現を出さない）。 */
+/** 未提供機能の無効ボタン（hover / active 表現を出さない）。disabled のためフォーカスは受けない。 */
 export const TL_CTA_DISABLED =
   CTA_BASE +
+  " focus-visible:ring-[color:var(--liff-primary-text,#1F2329)]" +
   " cursor-not-allowed bg-[color:var(--liff-ui-disabled-bg,#F2F4F6)] " +
   "text-[color:var(--liff-ui-disabled-text,#B0B4BA)] " +
   "border border-[color:var(--liff-ui-input-box-border,#DDE3E8)]";
@@ -87,7 +105,7 @@ export const TL_TEXT_BUTTON =
   "w-full min-h-[44px] inline-flex items-center justify-center text-center " +
   "text-[14px] leading-[1.4] text-[color:var(--liff-secondary-text,#5B6168)] " +
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:rounded-[6px] " +
-  "focus-visible:ring-[color:var(--liff-line-green,#06C755)] " +
+  FOCUS_RING_GREEN + " " +
   "disabled:opacity-60 disabled:cursor-not-allowed";
 
 // ─── カード / バッジ ────────────────────────────────────────────────────────
@@ -96,6 +114,23 @@ export const TL_TEXT_BUTTON =
 export const TL_CARD =
   "rounded-[10px] border border-[color:var(--liff-ui-card-border,#eef2f5)] " +
   "bg-[color:var(--liff-surface,#fff)] overflow-hidden";
+
+/**
+ * API エラーの枠付きメッセージ（最終確認画面）。
+ *
+ * **TL_CARD と合成してはいけない。** TL_CARD は
+ * `border-[color:var(--liff-ui-card-border,#eef2f5)]` を持つため、赤枠を後から足すと
+ * 同一ユーティリティ族の衝突になり、className の並び順ではなく Tailwind の生成順で
+ * 勝敗が決まる（実測では card-border が後に出力され、薄いグレーが勝っていた）。
+ * この定数は border-color を **1 つだけ**持ち、単独で使う。
+ *
+ * 色だけに依存させないため、呼び出し側で role="alert" と文言を必ず併用すること。
+ */
+export const TL_ERROR_BOX =
+  "rounded-[10px] border border-[color:var(--liff-danger,#E22B2B)] " +
+  "bg-[color:var(--liff-surface,#fff)] px-4 py-3 " +
+  "whitespace-pre-line break-words [overflow-wrap:anywhere] " +
+  "text-[12.5px] leading-[1.7] text-[color:var(--liff-danger,#E22B2B)]";
 
 /** カード内の 1 行（左 = 項目名 / 右 = 値）。行間に薄い区切り線を入れる。 */
 export const TL_CARD_ROW =
@@ -114,5 +149,6 @@ export const TL_CARD_ROW_VALUE =
 export const TL_STATUS_BADGE =
   "inline-flex items-center rounded-[4px] px-2 py-1 text-[12px] font-bold leading-[1.3] " +
   "bg-[color:var(--liff-ui-warning-bg,#FEF9EC)] " +
-  "text-[color:var(--liff-ui-warning-text,#B9761A)] " +
+  // fallback は CSS 変数と同値に揃える（#B9761A では帯に対して 3.55:1 で AA 未達だった）。
+  "text-[color:var(--liff-ui-warning-text,#A0620F)] " +
   "border border-[color:var(--liff-ui-warning-border,#F0DBB0)]";

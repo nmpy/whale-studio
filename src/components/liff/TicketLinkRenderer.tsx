@@ -41,7 +41,7 @@ import {
 } from "./ticket-link";
 import {
   TL_INPUT, TL_INPUT_NORMAL, TL_INPUT_ERROR, TL_SELECT, TL_SELECT_PLACEHOLDER, TL_READONLY_FIELD,
-  TL_CTA_DISABLED, TL_CARD,
+  TL_CTA_DISABLED, TL_ERROR_BOX,
 } from "./ticket-link/styles";
 import { cx } from "./ui/tokens";
 import {
@@ -686,12 +686,8 @@ export function TicketLinkRenderer({
       footer={
         <TicketLinkActions>
           {formError && (
-            <p
-              className={cx(TL_CARD, "mb-3 whitespace-pre-line px-4 py-3 text-[12.5px] leading-[1.7]",
-                "border-[color:var(--liff-danger,#E22B2B)] text-[color:var(--liff-danger,#E22B2B)]")}
-              role="alert"
-              aria-live="assertive"
-            >
+            // 枠線色は TL_ERROR_BOX が単独で持つ（TL_CARD と合成すると border-color が競合する）。
+            <p className={cx(TL_ERROR_BOX, "mb-3")} role="alert" aria-live="assertive">
               {formError}
             </p>
           )}

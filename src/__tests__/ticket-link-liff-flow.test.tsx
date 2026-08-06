@@ -182,8 +182,31 @@ describe("画面2: チケット情報入力", () => {
     renderScreen(f.impl);
     await fillForm();
     for (const label of [/チケット種別/, /お名前/, /予約番号/]) {
-      expect(screen.getByLabelText(label).getAttribute("aria-required")).toBe("true");
+      const el = screen.getByLabelText(label);
+      expect(el.getAttribute("aria-required")).toBe("true");
+      expect(el.hasAttribute("required")).toBe(true);
     }
+  });
+
+  it("お名前未入力のエラーは aria で欄に紐付き、その欄へフォーカスが移る", async () => {
+    const f = makeFetch();
+    renderScreen(f.impl);
+    await screen.findByRole("button", { name: "手動で入力" });
+    fireEvent.click(btn("手動で入力"));
+    fireEvent.change(screen.getByLabelText(/チケット種別/), { target: { value: "private_1" } });
+    fireEvent.change(screen.getByLabelText(/予約番号/), { target: { value: "123456" } });
+    fireEvent.click(btn("この内容で進む"));
+
+    const name = await screen.findByLabelText(/お名前/);
+    expect(name.getAttribute("aria-invalid")).toBe("true");
+    expect(name.getAttribute("aria-describedby")).toBe("ticket-link-name-error");
+    expect(document.getElementById("ticket-link-name-error")?.textContent)
+      .toBe("お名前を入力してください。");
+    expect(document.activeElement).toBe(name);
+    // 入力し直すとエラー状態が解ける
+    fireEvent.change(name, { target: { value: "なみぽよ" } });
+    expect(name.hasAttribute("aria-invalid")).toBe(false);
+    expect(name.hasAttribute("aria-describedby")).toBe(false);
   });
 });
 
@@ -294,6 +317,28 @@ describe("画面3: 登録内容の確認", () => {
     await screen.findByText("チケット連携を登録できませんでした。時間をおいて再度お試しください。");
     expect(screen.queryByText("チケット連携を受け付けました")).toBeNull();
     expect(screen.getByText("4 / 4")).toBeTruthy();
+
+    // 支援技術へ通知される（色だけに依存しない）
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).toBe("チケット連携を登録できませんでした。時間をおいて再度お試しください。");
+    expect(alert.getAttribute("aria-live")).toBe("assertive");
+  });
+
+  it("API エラーの枠線は danger 一色で、カード枠線色と競合しない", async () => {
+    const f = makeFetch({
+      "/confirm": () => ({
+        ok: false, status: 500,
+        json: async () => ({ success: false, error: { message: "登録できませんでした。" } }),
+      }) as unknown as Response,
+    });
+    await goToFinal(f);
+    fireEvent.click(btn("この内容で登録"));
+
+    const alert = await screen.findByRole("alert");
+    const borderColors = alert.className.match(/border-\[color:[^\]]+\]/g) ?? [];
+    // border-color ユーティリティは 1 つだけ = Tailwind の生成順に勝敗が左右されない
+    expect(borderColors).toEqual(["border-[color:var(--liff-danger,#E22B2B)]"]);
+    expect(alert.className).not.toContain("--liff-ui-card-border");
   });
 
   it("API がエラー文言を返した場合はそれを優先する", async () => {

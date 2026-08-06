@@ -83,6 +83,10 @@
   --liff-ui-disabled-text:  #B0B4BA;
   /* 箱型入力（チケット連携画面）の境界線。下線入力の --liff-ui-input-border より一段濃い。 */
   --liff-ui-input-box-border: #DDE3E8;
+  /* 白背景に載せる「緑の文字」用。ブランドの #06C755 は白に対して 2.26:1 しかなく
+   * 小さいテキストでは AA(4.5:1) を満たさないため、文字にはこの濃色を使う（5.46:1）。
+   * 面（CTA の塗り）は従来どおり --liff-line-green のまま。 */
+  --liff-ui-green-strong:   #057A36;
   /* 「運営確認待ち」等のステータスバッジ（薄いオレンジ）。
    * text は 12px bold でも AA を満たすよう bg に対して 4.5:1 以上に落としてある。 */
   --liff-ui-warning-bg:     #FEF9EC;
@@ -324,12 +328,25 @@
   color: var(--liff-tertiary-text, #8C8C8C);
 }
 
-/* フォーカスリングは消さない（アウトラインの代わりに視認できる ring を出す）。 */
+/* タッチ端末では 16px 未満の input にフォーカスすると iOS Safari / WKWebView が
+ * ページを自動ズームする（viewport の maximum-scale で禁止するのはピンチズームまで
+ * 奪うため採らない）。coarse pointer のときだけ 16px へ上げる。
+ * line-height 1.5 なので 16*1.5 + padding 24 + border 2 = 50px となり min-height と一致し、
+ * 欄の高さ・下部ボタン位置は変わらない。 */
+@media (pointer: coarse) {
+  .liff-font .liff-tl-input {
+    font-size: 16px;
+  }
+}
+
+/* フォーカスリングは消さない（アウトラインの代わりに視認できる ring を出す）。
+ * 色はブランドの #06C755(白に対し 2.26:1) ではなく --liff-ui-green-pressed(#06A047, 3.43:1)
+ * を使い、WCAG 2.4.11 / 1.4.11 の 3:1 を満たす。 */
 .liff-font .liff-tl-input:focus,
 .liff-font .liff-tl-input:focus-visible {
   outline: none;
-  border-color: var(--liff-line-green, #06C755);
-  box-shadow: 0 0 0 3px rgba(6, 199, 85, 0.18);
+  border-color: var(--liff-ui-green-pressed, #06A047);
+  box-shadow: 0 0 0 3px rgba(6, 160, 71, 0.22);
 }
 
 .liff-font .liff-tl-input--error {

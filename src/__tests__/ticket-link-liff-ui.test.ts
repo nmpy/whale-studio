@@ -24,8 +24,10 @@ import {
 } from "@/components/liff/ticket-link/flow";
 import {
   TL_INPUT, TL_INPUT_ERROR, TL_SELECT, TL_READONLY_FIELD, TL_CTA_PRIMARY, TL_CTA_NEUTRAL,
-  TL_CTA_DISABLED, TL_TEXT_BUTTON, TL_CARD_ROW_VALUE, TL_STATUS_BADGE,
+  TL_CTA_DISABLED, TL_TEXT_BUTTON, TL_CARD, TL_CARD_ROW_VALUE, TL_STATUS_BADGE,
+  TL_ERROR_BOX, TL_REQUIRED_BADGE,
 } from "@/components/liff/ticket-link/styles";
+import { LIFF_UNDERLINE_INPUT } from "@/components/liff/ui/tokens";
 import { readTicketLinkSettings, enabledTicketTypes, resolveTicketTypeByKey } from "@/lib/ticket-link/settings";
 import { PERFORMANCE_DATETIME_PENDING, playerFacingStatusLabel } from "@/lib/ticket-link/settings";
 
@@ -242,6 +244,154 @@ describe("class 断片（デザイン要件）", () => {
     expect(TL_STATUS_BADGE).toContain("--liff-ui-warning-text");
     expect(TL_STATUS_BADGE).toContain("--liff-ui-warning-border");
     expect(TL_STATUS_BADGE).toContain("inline-flex"); // 横幅は内容に合わせる
+    // fallback 値は CSS 変数と同値（ズレると変数未定義時に AA を割る）
+    expect(TL_STATUS_BADGE).toContain("#A0620F");
+  });
+});
+
+// ─── F-1: エラーボックスの枠線が他の border-color と競合しない ─────────────────
+
+describe("API エラー表示の枠線（TL_CARD と合成しない）", () => {
+  /** クラス文字列から border-color 系ユーティリティだけを取り出す。 */
+  const borderColorUtilities = (cls: string) => cls.match(/border-\[color:[^\]]+\]/g) ?? [];
+
+  it("エラー専用クラスは danger の border-color を持つ", () => {
+    expect(borderColorUtilities(TL_ERROR_BOX)).toEqual([
+      "border-[color:var(--liff-danger,#E22B2B)]",
+    ]);
+  });
+
+  it("エラー専用クラスにカード枠線色が混ざっていない", () => {
+    expect(TL_ERROR_BOX).not.toContain("--liff-ui-card-border");
+  });
+
+  it("border-color を 1 つしか持たないので Tailwind の生成順に依存しない", () => {
+    // 同一ユーティリティ族が 2 つ以上あると className の並び順ではなく生成順で勝敗が決まる。
+    expect(borderColorUtilities(TL_ERROR_BOX)).toHaveLength(1);
+    // 逆に通常カードは従来どおりカード枠線色を 1 つだけ持つ（見た目を変えていない）
+    expect(borderColorUtilities(TL_CARD)).toEqual([
+      "border-[color:var(--liff-ui-card-border,#eef2f5)]",
+    ]);
+  });
+
+  it("エラー文言はテキスト色でも danger を示し、長文でも折り返す", () => {
+    expect(TL_ERROR_BOX).toContain("text-[color:var(--liff-danger,#E22B2B)]");
+    expect(TL_ERROR_BOX).toContain("whitespace-pre-line");
+    expect(TL_ERROR_BOX).toContain("break-words");
+    expect(TL_ERROR_BOX).toContain("[overflow-wrap:anywhere]");
+    // 旧実装の padding / 文字サイズを失っていない
+    expect(TL_ERROR_BOX).toContain("px-4");
+    expect(TL_ERROR_BOX).toContain("py-3");
+    expect(TL_ERROR_BOX).toContain("text-[12.5px]");
+  });
+});
+
+// ─── F-2: コントラスト ────────────────────────────────────────────────────────
+
+describe("コントラスト（白背景に載る緑）", () => {
+  /** WCAG 2.x の相対輝度とコントラスト比。 */
+  function contrast(hexA: string, hexB: string): number {
+    const lum = (hex: string) => {
+      const h = hex.replace("#", "");
+      const ch = [0, 2, 4].map((i) => {
+        const c = parseInt(h.slice(i, i + 2), 16) / 255;
+        return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+      });
+      return 0.2126 * ch[0] + 0.7152 * ch[1] + 0.0722 * ch[2];
+    };
+    const [hi, lo] = [lum(hexA), lum(hexB)].sort((a, b) => b - a);
+    return (hi + 0.05) / (lo + 0.05);
+  }
+
+  it("計算関数そのものが正しい（既知値で検証）", () => {
+    expect(contrast("#FFFFFF", "#000000")).toBeCloseTo(21, 1);
+    expect(contrast("#FFFFFF", "#FFFFFF")).toBeCloseTo(1, 5);
+  });
+
+  it("「必須」バッジはブランド緑 #06C755 を文字色に使わない（白に対し 2.26:1 で AA 未達）", () => {
+    expect(contrast("#06C755", "#FFFFFF")).toBeLessThan(4.5);
+    expect(TL_REQUIRED_BADGE).not.toContain("#06C755");
+    expect(TL_REQUIRED_BADGE).not.toContain("--liff-line-green");
+  });
+
+  it("「必須」バッジは濃色 #057A36 を使い、白背景で 4.5:1 以上", () => {
+    expect(TL_REQUIRED_BADGE).toContain("--liff-ui-green-strong");
+    expect(TL_REQUIRED_BADGE).toContain("#057A36");
+    expect(contrast("#057A36", "#FFFFFF")).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it("ボタンのフォーカスリングは green-pressed #06A047 を使い、白に対し 3:1 以上", () => {
+    expect(contrast("#06A047", "#FFFFFF")).toBeGreaterThanOrEqual(3);
+    for (const c of [TL_CTA_PRIMARY, TL_TEXT_BUTTON]) {
+      expect(c).toContain("focus-visible:ring-[color:var(--liff-ui-green-pressed,#06A047)]");
+      expect(c).not.toContain("focus-visible:ring-[color:var(--liff-line-green,#06C755)]");
+    }
+  });
+
+  it("フォーカスリング色は 1 つだけ（基本と variant で二重に持たない）", () => {
+    const ringColors = (cls: string) => cls.match(/focus-visible:ring-\[color:[^\]]+\]/g) ?? [];
+    for (const c of [TL_CTA_PRIMARY, TL_CTA_NEUTRAL, TL_CTA_DISABLED, TL_TEXT_BUTTON]) {
+      expect(ringColors(c)).toHaveLength(1);
+    }
+  });
+
+  it("入力欄のフォーカス枠も green-pressed を使う（liff-font.css）", () => {
+    const css = readFileSync(new URL("../app/liff/liff-font.css", import.meta.url), "utf8");
+    expect(css).toMatch(
+      /\.liff-font\s+\.liff-tl-input:focus[\s\S]{0,200}?border-color\s*:\s*var\(\s*--liff-ui-green-pressed/,
+    );
+    // 旧色は残っていない
+    expect(css).not.toMatch(
+      /\.liff-font\s+\.liff-tl-input:focus[\s\S]{0,200}?border-color\s*:\s*var\(\s*--liff-line-green/,
+    );
+  });
+
+  it("ステータスバッジは帯に対して 4.5:1 以上（既存を維持）", () => {
+    expect(contrast("#A0620F", "#FEF9EC")).toBeGreaterThanOrEqual(4.5);
+  });
+});
+
+// ─── F-4: iOS のフォーカス時自動ズーム対策 ──────────────────────────────────
+
+describe("タッチ端末での入力欄フォントサイズ", () => {
+  const css = () => readFileSync(new URL("../app/liff/liff-font.css", import.meta.url), "utf8");
+
+  it("coarse pointer では 16px（iOS の自動ズームを避ける）", () => {
+    expect(css()).toMatch(
+      /@media\s*\(\s*pointer\s*:\s*coarse\s*\)\s*\{[\s\S]{0,200}?\.liff-font\s+\.liff-tl-input\s*\{[\s\S]{0,120}?font-size\s*:\s*16px/,
+    );
+  });
+
+  it("ベース宣言は 15px のまま（デスクトップの見た目を変えない）", () => {
+    expect(css()).toMatch(
+      /\.liff-font\s+\.liff-tl-input\s*\{[\s\S]{0,300}?font-size\s*:\s*15px/,
+    );
+  });
+
+  it("16px 化は ticket_link の入力欄だけを対象にする", () => {
+    const media = css().match(
+      /@media\s*\(\s*pointer\s*:\s*coarse\s*\)\s*\{[\s\S]*?\n\}/,
+    )?.[0] ?? "";
+    expect(media).toContain(".liff-tl-input");
+    // 素の input / select / textarea を巻き込まない（既存 LIFF 画面への影響を出さない）
+    expect(media).not.toMatch(/(^|[\s{,])(input|select|textarea)\s*[,{]/);
+  });
+
+  it("既存の下線入力（他 LIFF 画面）は 14px のまま", () => {
+    expect(LIFF_UNDERLINE_INPUT).toContain("text-[14px]");
+    expect(LIFF_UNDERLINE_INPUT).not.toContain("liff-tl-input");
+  });
+
+  it("ピンチズームを禁止していない（maximum-scale / user-scalable を足していない）", () => {
+    // viewport meta を出しうるのは layout 側のみ。CSS はコメントで言及するだけなので対象外。
+    const layout = readFileSync(new URL("../app/layout.tsx", import.meta.url), "utf8");
+    const liffLayout = readFileSync(new URL("../app/liff/layout.tsx", import.meta.url), "utf8");
+    for (const src of [layout, liffLayout]) {
+      expect(src).not.toContain("maximum-scale");
+      expect(src).not.toContain("user-scalable");
+    }
+    // CSS 側でも @viewport 等でズームを封じていない
+    expect(css()).not.toMatch(/@(-\w+-)?viewport/);
   });
 });
 
