@@ -100,6 +100,21 @@ export function LiffSinglePageRenderer({
   const settings = page.settings_json;
   const showCredit = shouldShowWhaleStudioCredit(settings);
 
+  // ticket_link は 1 画面が「本文 + 下部操作エリア + フッター」で完結する縦長カード構成のため、
+  // ページ見出しと Powered by を renderer 側のシェルが自前で描画する（親では二重に出さない）。
+  // 他の page_type には影響しない。
+  const ownsPageChrome = pageType === "ticket_link";
+
+  // ticket_link のシェルは高さに 100dvh を使い、この親は min-h-screen(=100vh) を使う。
+  // iOS Safari / LINE アプリ内ブラウザではツールバー表示中に 100dvh < 100vh となるため、
+  // 内容の短い画面では白いシェルの下に親の薄い背景が帯状に覗いてしまう。
+  // モバイルでは親も白にして下端まで白を連続させ、sm 以上（中央カード表示）でのみ
+  // 従来の外側背景へ戻す。base と sm: は別 variant なので Tailwind が必ず sm: を後に出力し、
+  // 生成順に依存しない。他の page_type は従来どおり。
+  const rootBackgroundClass = ownsPageChrome
+    ? "bg-[color:var(--liff-surface)] sm:bg-[color:var(--liff-background)]"
+    : "bg-[color:var(--liff-background)]";
+
   // document.title を「作品名」と同期 (= メニューホームと同じ文字列)
   useEffect(() => {
     if (typeof document === "undefined") return;
@@ -119,12 +134,12 @@ export function LiffSinglePageRenderer({
 
   return (
     <LiffPlayerProvider value={playerCtxValue}>
-      <div className={`liff-font ${liffRootClass(settings)} min-h-screen bg-[color:var(--liff-background)] text-[color:var(--liff-primary-text)]`}>
+      <div className={`liff-font ${liffRootClass(settings)} min-h-screen ${rootBackgroundClass} text-[color:var(--liff-primary-text)]`}>
         {/* 独自ヘッダー・「ホームに戻る」ボタンは廃止（実機 LINE ヘッダーと二重化するため）。
             本文はページタイトル → 説明 → ブロックから自然に始まる。 */}
 
         {/* ページタイトル — LiffPageConfig.title をそのまま使う (固定文言は出さない) */}
-        {page.title && (
+        {!ownsPageChrome && page.title && (
           <div className="liff-player-main pt-3 pb-2">
             <h2 className="text-[20px] font-bold leading-snug">{page.title}</h2>
             {page.description && (
@@ -161,7 +176,7 @@ export function LiffSinglePageRenderer({
           />
         )}
 
-        {showCredit && <LiffStudioFooter />}
+        {!ownsPageChrome && showCredit && <LiffStudioFooter />}
       </div>
     </LiffPlayerProvider>
   );
@@ -233,7 +248,17 @@ function ActivePageContent({
         />
       );
     case "ticket_link":
-      return <TicketLinkRenderer workId={workId} preview={preview} />;
+      // タイトル / 説明 / Powered by は TicketLinkRenderer 側のシェルが 1 か所で描画する
+      // （下部操作エリアより下にフッターが来る構成にするため）。親側では出さない。
+      return (
+        <TicketLinkRenderer
+          workId={workId}
+          preview={preview}
+          pageTitle={page.title}
+          pageDescription={page.description}
+          showCredit={shouldShowWhaleStudioCredit(settings)}
+        />
+      );
     case "contact":
       return (
         <ContactRenderer
