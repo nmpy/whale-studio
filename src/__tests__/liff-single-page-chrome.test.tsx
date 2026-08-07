@@ -66,6 +66,8 @@ describe("他の page_type: ページ見出しと Powered by は親側が描画�
 
       expect(container.querySelector(".liff-ticket-link-page")).toBeNull();
       expect(container.querySelector(".liff-tl-input")).toBeNull();
+      // 打ち消し用 class はもう存在しない（要素を div にして発生源から切り離したため）
+      expect(container.querySelector(".liff-tl-heading")).toBeNull();
       // ルート背景は従来クラスのまま（モバイル白への差し替えは ticket_link 限定）
       expect(root.className).toContain("bg-[color:var(--liff-background)]");
       expect(root.className).not.toContain("bg-[color:var(--liff-surface)]");
@@ -117,5 +119,79 @@ describe("ticket_link: モバイルで下端まで白背景が続く（100vh と
     // 高さ指定は親が min-h-screen、子シェルが 100dvh。親子で同じプロパティを二重に持たない
     expect(root.className).toContain("min-h-screen");
     expect(root.className).not.toContain("min-h-[100dvh]");
+  });
+});
+
+// globals.css の実物と同じ宣言。これを注入した状態でも見出しブロックが影響を受けないことを見る。
+// （jsdom は要素セレクタ + 単純プロパティなら getComputedStyle に反映する）
+const GLOBAL_HEADER_RULE = `header {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: saturate(180%) blur(8px);
+  border-bottom: 1px solid #f0f3f1;
+  position: sticky;
+  top: 0;
+  z-index: 200;
+  box-shadow: 0 1px 4px rgba(15,26,46,.06), 0 1px 2px rgba(15,26,46,.04);
+}`;
+
+describe("ticket_link: タイトル / 説明ブロックはフラット（globals.css の header ルールを受けない）", () => {
+  /** 見出しブロックのルート要素（mb-5 は当ブロック専用）。 */
+  function headingRoot(container: HTMLElement): HTMLElement {
+    const h2 = container.querySelector("h2");
+    expect(h2).not.toBeNull();
+    const root = h2!.closest("div.mb-5");
+    expect(root).not.toBeNull();
+    return root as HTMLElement;
+  }
+
+  function renderWithGlobalHeaderRule() {
+    const style = document.createElement("style");
+    style.textContent = GLOBAL_HEADER_RULE;
+    document.head.appendChild(style);
+    const r = renderPage(makePage({ page_type: "ticket_link", title: "チケット連携" }));
+    return { ...r, style };
+  }
+
+  it("ルート要素は header ではなく div（発生源から切り離している）", () => {
+    const { container } = renderWithGlobalHeaderRule();
+    expect(headingRoot(container).tagName).toBe("DIV");
+    // ticket_link のシェル配下に header 要素そのものが無い
+    expect(container.querySelector("header")).toBeNull();
+  });
+
+  it("影 / 罫線 / sticky / 半透明背景 / blur のいずれも適用されない", () => {
+    const { container } = renderWithGlobalHeaderRule();
+    const cs = getComputedStyle(headingRoot(container));
+
+    // jsdom は未指定プロパティを空文字で返すため、既定値も許容する
+    expect(["", "none"]).toContain(cs.boxShadow);
+    expect(["", "0px", "medium"]).toContain(cs.borderBottomWidth);
+    expect(["", "static"]).toContain(cs.position);
+    expect(["", "auto"]).toContain(cs.zIndex);
+    expect(cs.backgroundColor).not.toBe("rgba(255, 255, 255, 0.85)");
+    // backdrop-filter は jsdom が扱わないため computed では判定できない。
+    // 要素が header でないこと（上のテスト）で漏れ全体を断ち切っており、
+    // 実ブラウザでの computed 値は PR の検証結果に記載している。
+    expect(["", undefined]).toContain(cs.getPropertyValue("backdrop-filter"));
+  });
+
+  it("同じルールが header 要素には効く＝テストが実効性を持つ", () => {
+    const style = document.createElement("style");
+    style.textContent = GLOBAL_HEADER_RULE;
+    document.head.appendChild(style);
+    const probe = document.createElement("header");
+    document.body.appendChild(probe);
+    const cs = getComputedStyle(probe);
+    expect(cs.position).toBe("sticky");
+    expect(cs.boxShadow).not.toBe("");
+    expect(cs.borderBottomWidth).toBe("1px");
+    probe.remove();
+  });
+
+  it("余白・見出し文言・階層は従来どおり", () => {
+    const { container } = renderWithGlobalHeaderRule();
+    const root = headingRoot(container);
+    expect(root.className).toContain("mb-5");
+    expect(root.querySelector("h2")?.textContent).toBe("チケット連携");
   });
 });
