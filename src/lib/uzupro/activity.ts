@@ -29,7 +29,10 @@ export type UzuProAction =
   | "ticket_link_revoke"
   /// チケット連携の内容修正（旧を REVOKED + 新規作成の replacement / PR-C）。
   /// 単純解除と区別するため専用 action にする。
-  | "ticket_link_replace";
+  | "ticket_link_replace"
+  /// Work ↔ UZU Pro Project の対応設定 / 解除（owner / platform owner 操作）
+  | "work_project_link_set"
+  | "work_project_link_cleared";
 
 export type UzuProTargetType = "booking" | "player" | "liff_link" | "sync" | "work" | "grant" | "ticket_link";
 

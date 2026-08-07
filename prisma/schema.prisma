@@ -150,6 +150,9 @@ model Work {
   /// for UZU Pro（作品単位の有効化）。既定 false。owner / platform owner のみ変更可。
   /// 無効化してもプレイヤー/リンク/同期データは削除しない（アクセス判定のみに影響）。
   uzuProEnabled         Boolean @default(false) @map("uzu_pro_enabled")
+  /// 連携先 UZU Pro CMS の Project UUID。未設定(null)なら UZU への連携イベントを送らない。
+  /// env の手動転記を避け、Work と UZU Project の対応をデータとして保持する（nullable / additive）。
+  uzuProjectId          String? @map("uzu_project_id")
   /// 作品メニューホーム (`/liff/w/{publicId}`) の見出し・説明文・画像など、ホーム全体に紐づく
   /// 任意設定を格納する JSON。キー: { title?, description?, image_url? }。
   /// 未設定 (= 空 `{}`) のときは従来表示（見出し「ホーム」・説明/画像なし）にフォールバックする。
@@ -3194,4 +3197,43 @@ model TicketLinkSyncLog {
   @@index([ticketLinkId, syncedAt])
   @@index([result, syncedAt])
   @@map("ticket_link_sync_logs")
+}
+
+/// UZU Pro CMS へ送る連携イベントの送信キュー（transactional outbox）。
+///
+/// 業務データ更新（LiveParticipant / LiveEventLog）と同一 transaction で作成し、
+/// 「Whale では連携済みだが UZU へ送るイベントが存在しない」状態を作らない。
+/// HTTP 送信は transaction の外で cron worker が行う。
+model UzuOutboxEvent {
+  id     String @id @default(uuid())
+  oaId   String @map("oa_id")
+  workId String @map("work_id")
+  /// 送信先 UZU Project UUID（envelope.projectId）。作成時の Work.uzuProjectId を固定保存する。
+  uzuProjectId String @map("uzu_project_id")
+  /// envelope.eventType（例: player_line.linked）
+  eventType String @map("event_type")
+  /// 送信 payload（envelope.payload 相当）。個人情報は LINE UID / 表示名のみ。
+  payloadJson Json @map("payload_json")
+  /// 同一業務イベントの重複作成を防ぐ。再リンク等の正当な別イベントは別キーになるよう構成する。
+  idempotencyKey String @unique @map("idempotency_key")
+
+  /// pending → sending → sent / failed
+  status  String @default("pending")
+  attempt Int    @default(0)
+  /// 次に送信を試みる時刻（指数バックオフ）
+  nextAttemptAt DateTime @default(now()) @map("next_attempt_at")
+  /// sending に遷移した時刻（滞留検知用）
+  claimedAt DateTime? @map("claimed_at")
+  sentAt    DateTime? @map("sent_at")
+  /// 恒久失敗の理由コード（HTTP 4xx / 上限到達 等）。秘密値は入れない。
+  lastErrorCode String? @map("last_error_code")
+  lastError     String? @map("last_error")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([status, nextAttemptAt])
+  @@index([oaId, workId])
+  @@index([status, claimedAt])
+  @@map("uzu_outbox_events")
 }

@@ -73,6 +73,11 @@ export default function WorkEditPage() {
   const { showToast } = useToast();
 
   const [uzuProSaving, setUzuProSaving] = useState(false);
+  // UZU Pro CMS の Project 対応（Work.uzuProjectId）。canManage のときだけ取得・編集する。
+  const [uzuProjectId, setUzuProjectId]           = useState<string | null>(null);
+  const [uzuProjectInput, setUzuProjectInput]     = useState("");
+  const [uzuProjectSaving, setUzuProjectSaving]   = useState(false);
+  const [uzuProjectError, setUzuProjectError]     = useState<string | null>(null);
   const [workForm, setWorkForm]       = useState<WorkForm | null>(null);
   const [loadError, setLoadError]     = useState<string | null>(null);
   const [workErrors, setWorkErrors]   = useState<Record<string, string[]>>({});
@@ -179,6 +184,52 @@ export default function WorkEditPage() {
       showToast("for UZU-Pro の設定更新に失敗しました", "error");
     } finally {
       setUzuProSaving(false);
+    }
+  }
+
+  // ── UZU Pro Project 対応の取得（canManage のときのみ）───────────────
+  const loadUzuProjectLink = useCallback(async () => {
+    if (!uzuPro.canManage) return;
+    try {
+      const res = await fetch(`/api/oas/${oaId}/works/${workId}/uzu-pro/project-link`, { headers: getAuthHeaders() });
+      if (!res.ok) return;
+      const json = await res.json();
+      const v: string | null = json?.data?.uzuProjectId ?? null;
+      setUzuProjectId(v);
+      setUzuProjectInput(v ?? "");
+    } catch { /* 表示用の取得失敗は致命的でない */ }
+  }, [oaId, workId, uzuPro.canManage]);
+
+  useEffect(() => { loadUzuProjectLink(); }, [loadUzuProjectLink]);
+
+  // ── UZU Pro Project 対応の保存 / 解除 ──────────────────────────────
+  // UUID 形式のみ検証する（UZU 側に実在するかは問い合わせない）。
+  // 誤設定は UZU 受信時に projectId ↔ Connector(oaId/workId) で再検証され TENANT_MISMATCH になる。
+  async function saveUzuProjectLink(next: string | null) {
+    if (uzuProjectSaving) return;
+    setUzuProjectError(null);
+    if (next === null) {
+      if (!confirm("UZU Pro との対応を解除します。\n以後この作品の LINE 連携は UZU Pro へ送信されません。\n（送信済みデータ・プレイヤー情報は削除されません）\n\n解除しますか？")) return;
+    }
+    setUzuProjectSaving(true);
+    try {
+      const res = await fetch(`/api/oas/${oaId}/works/${workId}/uzu-pro/project-link`, {
+        method:  "PATCH",
+        headers: { ...getAuthHeaders(), "Content-Type": "application/json" },
+        body:    JSON.stringify({ uzuProjectId: next }),
+      });
+      if (res.status === 403) { showToast("権限がありません", "error"); return; }
+      if (res.status === 400) { setUzuProjectError("UUID 形式で入力してください"); return; }
+      if (!res.ok) { showToast("UZU Pro Project の設定に失敗しました", "error"); return; }
+      const json = await res.json();
+      const saved: string | null = json?.data?.uzuProjectId ?? null;
+      setUzuProjectId(saved);
+      setUzuProjectInput(saved ?? "");
+      showToast(saved ? "UZU Pro Project を設定しました" : "UZU Pro Project の対応を解除しました", "success");
+    } catch {
+      showToast("UZU Pro Project の設定に失敗しました", "error");
+    } finally {
+      setUzuProjectSaving(false);
     }
   }
 
@@ -487,6 +538,85 @@ export default function WorkEditPage() {
               <p className="mb-4 rounded-field border border-line bg-bg-tint px-3 py-2 text-[12px] leading-relaxed text-ink-2">
                 利用するには platform owner による権限付与が必要です。
               </p>
+            )}
+
+            {/* ── UZU Pro Project 対応（canManage のときのみ表示・編集）──────── */}
+            {/* 誤設定検知のため OA ID / Work ID / UZU Project ID を並べて表示する。 */}
+            {/* この 3 つは UZU 側 Connector 設定（oaId / workId）と突き合わせる値そのもの。 */}
+            {uzuPro.canManage && (
+              <div className="mb-4 flex flex-col gap-3 border-t border-line-2 pt-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-[13px] font-bold text-ink">UZU Pro Project の対応</span>
+                  <span
+                    className={
+                      "rounded-full px-2.5 py-0.5 text-[12px] font-bold " +
+                      (uzuProjectId ? "bg-brand-soft text-brand" : "bg-bg-tint text-ink-3")
+                    }
+                  >
+                    {uzuProjectId ? "設定済み" : "未設定"}
+                  </span>
+                </div>
+
+                <dl className="flex flex-col gap-1.5 rounded-field border border-line bg-bg-tint px-3 py-2">
+                  <div className="flex flex-wrap items-baseline gap-2">
+                    <dt className="text-[12px] text-ink-2">Whale OA ID</dt>
+                    <dd className="break-all font-mono text-[12px] text-ink">{oaId}</dd>
+                  </div>
+                  <div className="flex flex-wrap items-baseline gap-2">
+                    <dt className="text-[12px] text-ink-2">Whale Work ID</dt>
+                    <dd className="break-all font-mono text-[12px] text-ink">{workId}</dd>
+                  </div>
+                  <div className="flex flex-wrap items-baseline gap-2">
+                    <dt className="text-[12px] text-ink-2">UZU Project ID</dt>
+                    <dd className="break-all font-mono text-[12px] text-ink">{uzuProjectId ?? "—"}</dd>
+                  </div>
+                </dl>
+
+                <p className="text-[12px] leading-relaxed text-ink-2">
+                  UZU Pro CMS 側のコネクタ設定に登録した OA ID / Work ID と、上の値が一致している必要があります。
+                  未設定の間は、この作品の LINE 連携は UZU Pro へ送信されません。
+                </p>
+
+                <div className="flex flex-col gap-2">
+                  <label className="text-[12px] text-ink-2" htmlFor="uzu-project-id">
+                    UZU Project ID（UUID）
+                  </label>
+                  <input
+                    id="uzu-project-id"
+                    type="text"
+                    inputMode="text"
+                    autoComplete="off"
+                    className={compactInputClass + " w-full font-mono"}
+                    placeholder="00000000-0000-0000-0000-000000000000"
+                    value={uzuProjectInput}
+                    disabled={uzuProjectSaving}
+                    onChange={(e) => { setUzuProjectInput(e.target.value); setUzuProjectError(null); }}
+                  />
+                  {uzuProjectError && (
+                    <p className="text-[12px] text-danger">{uzuProjectError}</p>
+                  )}
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      variant="primary"
+                      size="md"
+                      disabled={uzuProjectSaving || uzuProjectInput.trim() === "" || uzuProjectInput.trim() === (uzuProjectId ?? "")}
+                      onClick={() => saveUzuProjectLink(uzuProjectInput.trim())}
+                    >
+                      {uzuProjectSaving ? "保存中…" : "保存"}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="md"
+                      disabled={uzuProjectSaving || !uzuProjectId}
+                      onClick={() => saveUzuProjectLink(null)}
+                    >
+                      対応を解除
+                    </Button>
+                  </div>
+                </div>
+              </div>
             )}
 
             {/* ── トグル（canManage=true のときのみ操作可能。false は読み取り専用）── */}
