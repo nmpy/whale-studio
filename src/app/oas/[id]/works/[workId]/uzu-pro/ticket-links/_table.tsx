@@ -2,9 +2,10 @@
 
 // for ウズプロ ＞ チケット連携一覧テーブル（**read-only**）。
 //   - View Model のみ受け取る。生 DB モデル・LINE UID・内部主キーの業務表示はしない。
-//   - 操作は「連携を解除」のみ（PR-B）。編集 / 承認 / 状態の任意変更は持たない。
-//     解除は行の控えめなテキストボタン → 確認ダイアログを経由し、押しただけでは変更しない。
-//     REVOKED 行には解除導線を出さない（履歴としての閲覧は維持）。
+//   - 操作は「内容を修正」（PR-C）と「連携を解除」（PR-B）のみ。承認 / 状態の任意変更は持たない。
+//     いずれも行の控えめなテキストボタン → 確認ダイアログを経由し、押しただけでは変更しない。
+//     REVOKED 行には操作導線を出さない（terminal・履歴としての閲覧は維持）。
+//     修正は既存行の上書きではなく replacement（旧 REVOKED + 新規 PENDING）。
 //   - 予約番号は照合キーとしてフル表示する（この画面は for ウズプロ権限を通過した運営のみ）。
 //   - 項目が多いため横スクロールさせる。内容が単純に切れて見えなくならないよう
 //     ラッパに overflow-x-auto を置き、各セルは意味に応じて nowrap / 折り返しを使い分ける。
@@ -14,7 +15,9 @@ import { formatDateTime } from "@/lib/format-datetime";
 import { ACTIVITY_TONE_CLASS, type ActivityTone } from "@/lib/activity-feed";
 import type { TicketLinkAdminRow } from "@/lib/uzupro/ticket-link-view";
 import type { TicketLinkStatus } from "@prisma/client";
+import type { TicketLinkTicketTypeSetting } from "@/types";
 import { TicketLinkRevokeDialog } from "./_revoke-dialog";
+import { TicketLinkEditDialog } from "./_edit-dialog";
 
 /** 既存 enum → 表示トーン。状態は色だけでなくラベル文字でも判別できる。 */
 const STATUS_TONE: Record<TicketLinkStatus, ActivityTone> = {
@@ -39,13 +42,20 @@ export function TicketLinkTable({
   rows,
   oaId,
   workId,
+  ticketTypes,
 }: {
   rows: TicketLinkAdminRow[];
   oaId: string;
   workId: string;
+  /** 作品設定の**有効な**チケット種別。修正ダイアログの選択肢・人数の正。 */
+  ticketTypes: TicketLinkTicketTypeSetting[];
 }) {
   // 解除確認ダイアログの対象行（null = 閉じている）。
   const [target, setTarget] = useState<TicketLinkAdminRow | null>(null);
+  // 修正ダイアログの対象行（null = 閉じている）。
+  const [editTarget, setEditTarget] = useState<TicketLinkAdminRow | null>(null);
+  // 有効なチケット種別が 1 件も無いと人数を確定できないため修正させない（fail closed）。
+  const canEdit = ticketTypes.length > 0;
 
   if (rows.length === 0) {
     return (
@@ -149,18 +159,34 @@ export function TicketLinkTable({
                 )}
               </td>
 
-              {/* 操作: 解除のみ。既に無効な行には出さない（履歴として閲覧だけ残す）。 */}
+              {/* 操作: 修正 / 解除。既に無効な行には出さない（terminal・履歴として閲覧だけ残す）。 */}
               <td className={TD + " text-right"}>
                 {r.status === "REVOKED" ? (
                   <span className="text-[11px] text-ink-3">—</span>
                 ) : (
-                  <button
-                    type="button"
-                    onClick={() => setTarget(r)}
-                    className="rounded-lg border border-line px-2 py-1 text-[11px] font-semibold text-ink-3 hover:border-danger/40 hover:text-danger"
-                  >
-                    連携を解除
-                  </button>
+                  <div className="flex justify-end gap-1.5">
+                    <button
+                      type="button"
+                      disabled={!canEdit}
+                      title={canEdit ? undefined : "チケット種別が設定されていないため修正できません"}
+                      onClick={() => setEditTarget(r)}
+                      className={
+                        "rounded-lg border border-line px-2 py-1 text-[11px] font-semibold " +
+                        (canEdit
+                          ? "text-ink-3 hover:border-brand/40 hover:text-brand-ink"
+                          : "cursor-not-allowed text-ink-3 opacity-50")
+                      }
+                    >
+                      内容を修正
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setTarget(r)}
+                      className="rounded-lg border border-line px-2 py-1 text-[11px] font-semibold text-ink-3 hover:border-danger/40 hover:text-danger"
+                    >
+                      連携を解除
+                    </button>
+                  </div>
                 )}
               </td>
             </tr>
@@ -174,6 +200,16 @@ export function TicketLinkTable({
           workId={workId}
           row={target}
           onClose={() => setTarget(null)}
+        />
+      )}
+
+      {editTarget && (
+        <TicketLinkEditDialog
+          oaId={oaId}
+          workId={workId}
+          row={editTarget}
+          ticketTypes={ticketTypes}
+          onClose={() => setEditTarget(null)}
         />
       )}
     </div>
