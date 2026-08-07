@@ -84,8 +84,13 @@ export function TicketLinkTable({ rows }: { rows: TicketLinkAdminRow[] }) {
                 )}
               </td>
 
-              <td className={TD + " max-w-[220px] whitespace-normal break-words"}>
-                {r.ticketType ?? "—"}
+              {/* td の max-width は table-layout:auto では効かないため、内側の block で幅を決める。
+                  max だけだと他列に押されて過度に圧縮されるので min も併せて指定する
+                  （min が無いと短い種別名まで不必要に折り返す）。 */}
+              <td className={TD}>
+                <div className="min-w-[150px] max-w-[220px] whitespace-normal break-words [overflow-wrap:anywhere]">
+                  {r.ticketType ?? "—"}
+                </div>
               </td>
 
               <td className={TD}>
@@ -93,23 +98,25 @@ export function TicketLinkTable({ rows }: { rows: TicketLinkAdminRow[] }) {
               </td>
 
               {/* 人数分を縦に並べる。長いコードネームでも崩れないよう折り返す。 */}
-              <td className={TD + " max-w-[240px] whitespace-normal"}>
-                {r.codeNames.length === 0 ? (
-                  "—"
-                ) : (
-                  <ul className="space-y-0.5">
-                    {r.codeNames.map((c, i) => (
-                      <li key={i} className="break-words [overflow-wrap:anywhere]">
-                        <span className="text-ink-3">・</span>{c}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                {r.codeNames.length !== r.participantCount && (
-                  <span className="mt-0.5 block text-[11px] text-warn">
-                    登録 {r.codeNames.length} / {r.participantCount} 名
-                  </span>
-                )}
+              <td className={TD}>
+                <div className="min-w-[130px] max-w-[240px] whitespace-normal">
+                  {r.codeNames.length === 0 ? (
+                    "—"
+                  ) : (
+                    <ul className="space-y-0.5">
+                      {r.codeNames.map((c, i) => (
+                        <li key={i} className="break-words [overflow-wrap:anywhere]">
+                          <span className="text-ink-3">・</span>{c}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {r.codeNames.length !== r.participantCount && (
+                    <span className="mt-0.5 block text-[11px] text-warn">
+                      登録 {r.codeNames.length} / {r.participantCount} 名
+                    </span>
+                  )}
+                </div>
               </td>
 
               <td className={TD}>{SOURCE_LABEL[r.source] ?? r.source}</td>
