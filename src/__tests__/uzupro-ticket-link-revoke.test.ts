@@ -138,40 +138,16 @@ describe("冪等性", () => {
     expect(r).toEqual({ kind: "already_revoked" });
   });
 
-  it("count=0 でも最終状態を読み直して判定する（無条件に already_revoked にしない）", async () => {
-    mp.updateMany.mockResolvedValue({ count: 0 });
-    // 1 回目 = 対象取得、2 回目 = 最終状態の読み直し
-    mp.findFirst
-      .mockResolvedValueOnce({ id: "tl-1", status: "PENDING_UZU_BOOKING" })
-      .mockResolvedValueOnce({ status: "REVOKED" });
-    expect(await revokeTicketLink(prisma, INPUT)).toEqual({ kind: "already_revoked" });
-    expect(mp.findFirst).toHaveBeenCalledTimes(2);
-  });
-
-  it("count=0 かつ行が消えていれば not_found（already_revoked と誤判定しない）", async () => {
-    mp.updateMany.mockResolvedValue({ count: 0 });
-    mp.findFirst
-      .mockResolvedValueOnce({ id: "tl-1", status: "PENDING_UZU_BOOKING" })
-      .mockResolvedValueOnce(null);
-    expect(await revokeTicketLink(prisma, INPUT)).toEqual({ kind: "not_found" });
-  });
-
-  it("count=0 かつ REVOKED でないなら成功扱いにしない", async () => {
-    mp.updateMany.mockResolvedValue({ count: 0 });
-    mp.findFirst
-      .mockResolvedValueOnce({ id: "tl-1", status: "PENDING_UZU_BOOKING" })
-      .mockResolvedValueOnce({ status: "LINKED" });
-    expect(await revokeTicketLink(prisma, INPUT)).toEqual({ kind: "invalid_transition", currentStatus: "LINKED" });
-  });
-
-  it("DB エラーは already_revoked に化けず throw される", async () => {
-    mp.updateMany.mockRejectedValue(new Error("db down"));
-    await expect(revokeTicketLink(prisma, INPUT)).rejects.toThrow("db down");
-  });
-
-  it("更新条件に status: { not: REVOKED } を含む（競合時に二重更新しない）", async () => {
+  it("更新条件は読んだ status との compare-and-swap（not REVOKED だけで更新しない）", async () => {
+    mp.findFirst.mockResolvedValue({ id: "tl-1", status: "PENDING_UZU_BOOKING" });
     await revokeTicketLink(prisma, INPUT);
-    expect(mp.updateMany.mock.calls[0][0].where.status).toEqual({ not: "REVOKED" });
+    const where = mp.updateMany.mock.calls[0][0].where;
+    // 読んだ status そのものを条件にする
+    expect(where.status).toBe("PENDING_UZU_BOOKING");
+    // 「REVOKED 以外なら何でも」では更新しない
+    expect(where.status).not.toEqual({ not: "REVOKED" });
+    // 境界条件も同時に効かせる
+    expect(where).toMatchObject({ id: "tl-1", oaId: "oa-1", workId: "w-1" });
   });
 
   it("二重実行しても REVOKED のまま（2 回目は更新なし）", async () => {
@@ -284,5 +260,97 @@ describe("原子性（status 更新と ActivityLog を同一トランザクシ�
   it("actorUserId は引数のセッション値がそのまま記録される", async () => {
     await revokeTicketLinkAtomic({ ...INPUT, actorUserId: "u-session" });
     expect(mp.activityCreate.mock.calls[0][0].data.actorUserId).toBe("u-session");
+  });
+});
+
+describe("並行 status 更新との競合（CMS 照合結果との TOCTOU）", () => {
+  it("読んだ後に LINKED へ変わったら、stale な PENDING を条件に更新しない", async () => {
+    // 1 周目: PENDING を読む → CAS 失敗（実際は LINKED に変わっている）
+    // 2 周目: LINKED を読み直して CAS 成功
+    mp.findFirst
+      .mockResolvedValueOnce({ id: "tl-1", status: "PENDING_UZU_BOOKING" })
+      .mockResolvedValueOnce({ id: "tl-1", status: "LINKED" });
+    mp.updateMany
+      .mockResolvedValueOnce({ count: 0 })
+      .mockResolvedValueOnce({ count: 1 });
+
+    const r = await revokeTicketLink(prisma, INPUT);
+
+    // stale な PENDING を previousStatus にしない
+    expect(r).toEqual({ kind: "revoked", previousStatus: "LINKED" });
+    expect(mp.updateMany.mock.calls[0][0].where.status).toBe("PENDING_UZU_BOOKING");
+    expect(mp.updateMany.mock.calls[1][0].where.status).toBe("LINKED");
+  });
+
+  it("CAS 再試行は 1 回まで（無制限に retry しない）", async () => {
+    mp.updateMany.mockResolvedValue({ count: 0 });
+    mp.findFirst.mockResolvedValue({ id: "tl-1", status: "LINKED" });
+    const r = await revokeTicketLink(prisma, INPUT);
+    // 更新は 2 回まで。3 回目は撃たない。
+    expect(mp.updateMany).toHaveBeenCalledTimes(2);
+    // 成功扱いにせず conflict
+    expect(r).toEqual({ kind: "conflict", currentStatus: "LINKED" });
+  });
+
+  it("CAS 失敗後に REVOKED なら already_revoked（更新しない）", async () => {
+    mp.findFirst
+      .mockResolvedValueOnce({ id: "tl-1", status: "PENDING_UZU_BOOKING" })
+      .mockResolvedValueOnce({ id: "tl-1", status: "REVOKED" });
+    mp.updateMany.mockResolvedValue({ count: 0 });
+    const r = await revokeTicketLink(prisma, INPUT);
+    expect(r).toEqual({ kind: "already_revoked" });
+    expect(mp.updateMany).toHaveBeenCalledTimes(1);
+  });
+
+  it("CAS 失敗後に行が無ければ not_found", async () => {
+    mp.findFirst
+      .mockResolvedValueOnce({ id: "tl-1", status: "PENDING_UZU_BOOKING" })
+      .mockResolvedValueOnce(null);
+    mp.updateMany.mockResolvedValue({ count: 0 });
+    expect(await revokeTicketLink(prisma, INPUT)).toEqual({ kind: "not_found" });
+  });
+
+  it("DB error は競合として扱わず throw する（conflict / already_revoked に化けない）", async () => {
+    mp.updateMany.mockRejectedValue(new Error("db down"));
+    await expect(revokeTicketLink(prisma, INPUT)).rejects.toThrow("db down");
+    // 握りつぶして再試行しない
+    expect(mp.updateMany).toHaveBeenCalledTimes(1);
+  });
+
+  it("findFirst の DB error も競合扱いしない", async () => {
+    mp.findFirst.mockRejectedValue(new Error("read failed"));
+    await expect(revokeTicketLink(prisma, INPUT)).rejects.toThrow("read failed");
+  });
+});
+
+describe("ActivityLog.detail.from は CAS で一致した直前 status", () => {
+  it("競合で status が動いた場合、記録されるのは最初の読み取り値ではなく実際の直前 status", async () => {
+    mp.findFirst
+      .mockResolvedValueOnce({ id: "tl-1", status: "PENDING_UZU_BOOKING" })
+      .mockResolvedValueOnce({ id: "tl-1", status: "LINKED" });
+    mp.updateMany
+      .mockResolvedValueOnce({ count: 0 })
+      .mockResolvedValueOnce({ count: 1 });
+
+    await revokeTicketLinkAtomic({ ...INPUT, actorUserId: "u-1" });
+
+    const detail = JSON.parse(mp.activityCreate.mock.calls[0][0].data.detail);
+    expect(detail).toMatchObject({ from: "LINKED", to: "REVOKED" });
+    expect(detail.from).not.toBe("PENDING_UZU_BOOKING");
+  });
+
+  it("競合が無ければ読んだ status がそのまま from になる", async () => {
+    mp.findFirst.mockResolvedValue({ id: "tl-1", status: "CONFLICT" });
+    await revokeTicketLinkAtomic({ ...INPUT, actorUserId: "u-1" });
+    expect(JSON.parse(mp.activityCreate.mock.calls[0][0].data.detail))
+      .toMatchObject({ from: "CONFLICT", to: "REVOKED" });
+  });
+
+  it("conflict で終わった場合は ActivityLog を書かない", async () => {
+    mp.updateMany.mockResolvedValue({ count: 0 });
+    mp.findFirst.mockResolvedValue({ id: "tl-1", status: "LINKED" });
+    const r = await revokeTicketLinkAtomic({ ...INPUT, actorUserId: "u-1" });
+    expect(r.kind).toBe("conflict");
+    expect(mp.activityCreate).not.toHaveBeenCalled();
   });
 });

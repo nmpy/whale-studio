@@ -11,6 +11,8 @@
 //
 // 原子性: status 更新と UzuProActivityLog の作成は同一トランザクション。
 //       履歴だけ欠ける / status だけ変わる部分成功を作らない。
+// 並行更新: 更新は compare-and-swap（読んだ status を where に入れる）。CMS 照合結果の
+//       反映と競合した場合は成功扱いにせず 409 を返す（詳細は ticket-link-revoke.ts）。
 // 予約実体（UZU Pro CMS 側の予約）には一切触れない。Whale Studio に予約実体は無い。
 // ログ・エラー文言に予約番号 / 氏名 / コードネーム / LINE UID を出さない。
 
@@ -50,6 +52,11 @@ export async function POST(
 
       case "invalid_transition":
         return conflict("現在の状態からは解除できません");
+
+      case "conflict":
+        // 並行更新（CMS 照合結果の反映など）で CAS が上限まで外れた。
+        // 成功扱いにせず、最新状態を見てから操作し直してもらう。
+        return conflict("他の処理と競合しました。画面を更新して、もう一度お試しください。");
 
       case "not_found":
       default:

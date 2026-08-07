@@ -207,3 +207,44 @@ describe("原子性（status 更新と監査ログを同一トランザクショ
     expect(mp.deleteMany).not.toHaveBeenCalled();
   });
 });
+
+describe("並行 status 更新との競合", () => {
+  it("読んだ status との CAS で更新する（stale 値で上書きしない）", async () => {
+    allow();
+    mp.findFirst.mockResolvedValue({ id: "tl-1", status: "LINKED" });
+    await POST(req(), { params: PARAMS });
+    expect(mp.updateMany.mock.calls[0][0].where.status).toBe("LINKED");
+  });
+
+  it("CAS が上限まで外れたら 409（成功として返さない・ログも書かない）", async () => {
+    allow();
+    mp.findFirst.mockResolvedValue({ id: "tl-1", status: "LINKED" });
+    mp.updateMany.mockResolvedValue({ count: 0 });
+    const res = await POST(req(), { params: PARAMS });
+    expect(res.status).toBe(409);
+    expect(mp.activityCreate).not.toHaveBeenCalled();
+    // 再試行は有限（初回 + 1 回）
+    expect(mp.updateMany).toHaveBeenCalledTimes(2);
+  });
+
+  it("競合で status が動いた場合、監査ログの from は実際の直前 status", async () => {
+    allow();
+    mp.findFirst
+      .mockResolvedValueOnce({ id: "tl-1", status: "PENDING_UZU_BOOKING" })
+      .mockResolvedValueOnce({ id: "tl-1", status: "LINKED" });
+    mp.updateMany
+      .mockResolvedValueOnce({ count: 0 })
+      .mockResolvedValueOnce({ count: 1 });
+    const res = await POST(req(), { params: PARAMS });
+    expect(res.status).toBe(200);
+    expect(JSON.parse(mp.activityCreate.mock.calls[0][0].data.detail))
+      .toMatchObject({ from: "LINKED", to: "REVOKED" });
+  });
+
+  it("DB error は 409 ではなく 500（競合と取り違えない）", async () => {
+    allow();
+    mp.updateMany.mockRejectedValue(new Error("db down"));
+    const res = await POST(req(), { params: PARAMS });
+    expect(res.status).toBe(500);
+  });
+});

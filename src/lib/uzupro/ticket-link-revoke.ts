@@ -13,6 +13,14 @@
 //   - **status 更新と ActivityLog 作成は同一トランザクションで行う**（revokeTicketLinkAtomic）。
 //     ActivityLog を「解除履歴」として正式に使うため、
 //     「status だけ REVOKED / 履歴だけ無い」という部分成功を許容しない。
+//   - 更新は **compare-and-swap**（読んだ status を where に入れる）。
+//     UZU Pro CMS の照合結果（/api/external/v2/uzu-pro/ticket-links/sync-result）が
+//     同じ行の status を LINKED / CONFLICT / PENDING_UZU_BOOKING へ動かすため、
+//     「読んだ後 update する前に status が変わる」competition は実際に起こり得る。
+//     `status: { not: "REVOKED" }` だけで更新すると、ActivityLog.detail.from に
+//     stale な読み取り値が残る（実際の直前 status と食い違う）。
+//     既存の CAS イディオム（checkin-trigger.ts の atomic claim、
+//     live-participant-link.ts の `firstUsedAt: null` 条件付き更新）に合わせる。
 //
 // 状態遷移は既存の canTransitionLink に従う。REVOKED は終端のため
 // 「REVOKED → REVOKED」は遷移として許可されないが、それは失敗ではなく冪等の成功として扱う。
@@ -25,6 +33,12 @@ import { recordUzuProActivity } from "@/lib/uzupro/activity";
 
 type Db = Prisma.TransactionClient | typeof prisma;
 
+/**
+ * CAS（compare-and-swap）の試行上限。初回 + 再判定 1 回のみ。
+ * 並行更新が続く場合に無限ループしないよう、明示的に有限にする。
+ */
+const MAX_REVOKE_CAS_ATTEMPTS = 2;
+
 export type RevokeOutcome =
   /** REVOKED へ変更した。 */
   | { kind: "revoked"; previousStatus: TicketLinkStatus }
@@ -33,7 +47,9 @@ export type RevokeOutcome =
   /** 対象が無い / 別 OA・別作品だった。存在を露出しないため呼び出し側は 404 にする。 */
   | { kind: "not_found" }
   /** 現在の状態からは REVOKED へ遷移できない（既存 rules 上は発生しない想定）。 */
-  | { kind: "invalid_transition"; currentStatus: TicketLinkStatus };
+  | { kind: "invalid_transition"; currentStatus: TicketLinkStatus }
+  /** 解除は可能だが、並行更新で CAS が上限まで外れた。再操作を促す（成功扱いにしない）。 */
+  | { kind: "conflict"; currentStatus: TicketLinkStatus };
 
 export interface RevokeInput {
   /** URL 由来。これ単体では対象を確定させない。 */
@@ -52,42 +68,57 @@ export interface RevokeInput {
 export async function revokeTicketLink(db: Db, input: RevokeInput): Promise<RevokeOutcome> {
   const { ticketLinkId, oaId, workId } = input;
 
-  // id 単体ではなく oaId + workId も条件に含める。
-  // 別 OA / 別作品の id を渡されても 1 件も引けない（= not_found）。
-  const link = await db.ticketLink.findFirst({
-    where: { id: ticketLinkId, oaId, workId },
-    select: { id: true, status: true },
-  });
-  if (!link) return { kind: "not_found" };
+  // CAS が外れた場合の再判定は 1 回まで（= 読み直し + CAS を最大 2 周）。
+  // 無制限 retry はしない。上限を超えたら成功扱いにせず conflict を返す。
+  for (let attempt = 0; attempt < MAX_REVOKE_CAS_ATTEMPTS; attempt += 1) {
+    // id 単体ではなく oaId + workId も条件に含める。
+    // 別 OA / 別作品の id を渡されても 1 件も引けない（= not_found）。
+    const link = await db.ticketLink.findFirst({
+      where: { id: ticketLinkId, oaId, workId },
+      select: { id: true, status: true },
+    });
+    if (!link) return { kind: "not_found" };
 
-  // 冪等: 既に解除済みなら何も変えずに成功扱い（再実行で updatedAt を動かさない）。
-  if (link.status === "REVOKED") return { kind: "already_revoked" };
+    // 冪等: 既に解除済みなら何も変えずに成功扱い（再実行で updatedAt を動かさない）。
+    if (link.status === "REVOKED") return { kind: "already_revoked" };
 
-  if (!canTransitionLink(link.status, "REVOKED")) {
-    return { kind: "invalid_transition", currentStatus: link.status };
+    if (!canTransitionLink(link.status, "REVOKED")) {
+      return { kind: "invalid_transition", currentStatus: link.status };
+    }
+
+    // compare-and-swap: **今読んだ status から変わっていない行だけ**を REVOKED にする。
+    // 境界条件（oaId / workId）も同時に効かせる（多層防御）。
+    const updated = await db.ticketLink.updateMany({
+      where: { id: link.id, oaId, workId, status: link.status },
+      data: { status: "REVOKED" },
+    });
+
+    if (updated.count > 0) {
+      // CAS が一致した = 更新直前の status は必ず link.status。
+      // よって previousStatus（= ActivityLog.detail.from）は stale になり得ない。
+      return { kind: "revoked", previousStatus: link.status };
+    }
+
+    // count 0 = 「where に一致する行が無かった」だけ。DB エラーは throw されるのでここには来ない
+    // （= 通信断・制約違反などを競合と誤認しない）。
+    // 読んでから update までに status が変わった / 行が消えた / 境界外へ動いた、のいずれか。
+    // 次の周回で最新状態を読み直して分類し直す。
   }
 
-  // 更新も同じ境界条件で行う（findFirst と update の間に別 OA へ移ることは無いが、多層防御）。
-  const updated = await db.ticketLink.updateMany({
-    where: { id: link.id, oaId, workId, status: { not: "REVOKED" } },
-    data: { status: "REVOKED" },
+  // 上限到達。ここで無理に更新せず、最新状態だけ確認して分類する。
+  const after = await db.ticketLink.findFirst({
+    where: { id: ticketLinkId, oaId, workId },
+    select: { status: true },
   });
-
-  if (updated.count === 0) {
-    // count 0 = 「where に一致する行が無かった」だけ。DB エラーは throw されるのでここには来ない。
-    // それでも "同時に解除された" と "行が消えた/境界外へ動いた" を取り違えないよう、
-    // 最終状態を読み直して判定する（count 0 を無条件に already_revoked としない）。
-    const after = await db.ticketLink.findFirst({
-      where: { id: link.id, oaId, workId },
-      select: { status: true },
-    });
-    if (!after) return { kind: "not_found" };
-    if (after.status === "REVOKED") return { kind: "already_revoked" };
-    // REVOKED でないのに更新できていない = 想定外。成功扱いにせず衝突として返す。
+  if (!after) return { kind: "not_found" };
+  if (after.status === "REVOKED") return { kind: "already_revoked" };
+  if (!canTransitionLink(after.status, "REVOKED")) {
     return { kind: "invalid_transition", currentStatus: after.status };
   }
-
-  return { kind: "revoked", previousStatus: link.status };
+  // 解除自体は可能なのに CAS が続けて外れている（= 短時間に status が動き続けている）。
+  // 既存 CAS（checkin-trigger の atomic claim）と同じく再試行を重ねず処理を降り、
+  // 運営に再操作を促す。成功扱いにはしない。
+  return { kind: "conflict", currentStatus: after.status };
 }
 
 /**
