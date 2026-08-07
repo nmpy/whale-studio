@@ -18,9 +18,11 @@ const mp = vi.hoisted(() => ({
   delete: vi.fn(),
   deleteMany: vi.fn(),
   activityCreate: vi.fn(),
+  txCalls: vi.fn(),
 }));
-vi.mock("@/lib/prisma", () => ({
-  prisma: {
+const txClient = vi.hoisted(() => ({}));
+vi.mock("@/lib/prisma", () => {
+  const client = {
     ticketLink: {
       findFirst: mp.findFirst,
       updateMany: mp.updateMany,
@@ -29,11 +31,19 @@ vi.mock("@/lib/prisma", () => ({
       deleteMany: mp.deleteMany,
     },
     uzuProActivityLog: { create: mp.activityCreate },
-  },
-}));
+    // interactive transaction を再現する。コールバックが throw したら
+    // そのまま伝播させる（= 実 DB では巻き戻る）。
+    $transaction: (fn: (tx: unknown) => unknown) => {
+      mp.txCalls();
+      return fn(client);
+    },
+  };
+  Object.assign(txClient, client);
+  return { prisma: client };
+});
 
 import { prisma } from "@/lib/prisma";
-import { revokeTicketLink, recordTicketLinkRevoked } from "@/lib/uzupro/ticket-link-revoke";
+import { revokeTicketLink, recordTicketLinkRevoked, revokeTicketLinkAtomic } from "@/lib/uzupro/ticket-link-revoke";
 
 const INPUT = { ticketLinkId: "tl-1", oaId: "oa-1", workId: "w-1" };
 
@@ -119,10 +129,44 @@ describe("冪等性", () => {
     expect(mp.updateMany).not.toHaveBeenCalled();
   });
 
-  it("同時実行で先に解除済みなら（count=0）already_revoked へ倒す", async () => {
+  it("同時実行で先に解除済みなら（count=0 + 再読込で REVOKED）already_revoked へ倒す", async () => {
     mp.updateMany.mockResolvedValue({ count: 0 });
+    mp.findFirst
+      .mockResolvedValueOnce({ id: "tl-1", status: "PENDING_UZU_BOOKING" })
+      .mockResolvedValueOnce({ status: "REVOKED" });
     const r = await revokeTicketLink(prisma, INPUT);
     expect(r).toEqual({ kind: "already_revoked" });
+  });
+
+  it("count=0 でも最終状態を読み直して判定する（無条件に already_revoked にしない）", async () => {
+    mp.updateMany.mockResolvedValue({ count: 0 });
+    // 1 回目 = 対象取得、2 回目 = 最終状態の読み直し
+    mp.findFirst
+      .mockResolvedValueOnce({ id: "tl-1", status: "PENDING_UZU_BOOKING" })
+      .mockResolvedValueOnce({ status: "REVOKED" });
+    expect(await revokeTicketLink(prisma, INPUT)).toEqual({ kind: "already_revoked" });
+    expect(mp.findFirst).toHaveBeenCalledTimes(2);
+  });
+
+  it("count=0 かつ行が消えていれば not_found（already_revoked と誤判定しない）", async () => {
+    mp.updateMany.mockResolvedValue({ count: 0 });
+    mp.findFirst
+      .mockResolvedValueOnce({ id: "tl-1", status: "PENDING_UZU_BOOKING" })
+      .mockResolvedValueOnce(null);
+    expect(await revokeTicketLink(prisma, INPUT)).toEqual({ kind: "not_found" });
+  });
+
+  it("count=0 かつ REVOKED でないなら成功扱いにしない", async () => {
+    mp.updateMany.mockResolvedValue({ count: 0 });
+    mp.findFirst
+      .mockResolvedValueOnce({ id: "tl-1", status: "PENDING_UZU_BOOKING" })
+      .mockResolvedValueOnce({ status: "LINKED" });
+    expect(await revokeTicketLink(prisma, INPUT)).toEqual({ kind: "invalid_transition", currentStatus: "LINKED" });
+  });
+
+  it("DB エラーは already_revoked に化けず throw される", async () => {
+    mp.updateMany.mockRejectedValue(new Error("db down"));
+    await expect(revokeTicketLink(prisma, INPUT)).rejects.toThrow("db down");
   });
 
   it("更新条件に status: { not: REVOKED } を含む（競合時に二重更新しない）", async () => {
@@ -187,5 +231,58 @@ describe("REVOKED 後のプレイヤー向け LIFF 挙動（既存仕様の再�
   it("マスク仕様には触れていない", () => {
     const revoke = read("../lib/uzupro/ticket-link-revoke.ts");
     expect(revoke).not.toContain("maskReservationNumber");
+  });
+});
+
+describe("原子性（status 更新と ActivityLog を同一トランザクションで行う）", () => {
+  it("$transaction の中で status 更新と ActivityLog 作成を実行する", async () => {
+    const r = await revokeTicketLinkAtomic({ ...INPUT, actorUserId: "u-1" });
+    expect(r).toEqual({ kind: "revoked", previousStatus: "PENDING_UZU_BOOKING" });
+    // トランザクションが 1 回開かれ、その中で両方が呼ばれている
+    expect(mp.txCalls).toHaveBeenCalledTimes(1);
+    expect(mp.updateMany).toHaveBeenCalledTimes(1);
+    expect(mp.activityCreate).toHaveBeenCalledTimes(1);
+  });
+
+  it("正常時は status 更新と ActivityLog がそれぞれ 1 回だけ", async () => {
+    await revokeTicketLinkAtomic({ ...INPUT, actorUserId: "u-1" });
+    expect(mp.updateMany).toHaveBeenCalledTimes(1);
+    expect(mp.activityCreate).toHaveBeenCalledTimes(1);
+  });
+
+  it("ActivityLog の作成が失敗したらトランザクションごと失敗する（部分成功にしない）", async () => {
+    mp.activityCreate.mockRejectedValue(new Error("log write failed"));
+    // コールバックの throw がそのまま伝播する = 実 DB では status 更新も巻き戻る
+    await expect(revokeTicketLinkAtomic({ ...INPUT, actorUserId: "u-1" })).rejects.toThrow("log write failed");
+    expect(mp.txCalls).toHaveBeenCalledTimes(1);
+  });
+
+  it("status 更新 → ActivityLog の順で呼ばれる（ログ先行で書かない）", async () => {
+    const order: string[] = [];
+    mp.updateMany.mockImplementation(async () => { order.push("update"); return { count: 1 }; });
+    mp.activityCreate.mockImplementation(async () => { order.push("log"); return {}; });
+    await revokeTicketLinkAtomic({ ...INPUT, actorUserId: "u-1" });
+    expect(order).toEqual(["update", "log"]);
+  });
+
+  it("既に REVOKED なら status 更新も ActivityLog も書かない（冪等維持）", async () => {
+    mp.findFirst.mockResolvedValue({ id: "tl-1", status: "REVOKED" });
+    const r = await revokeTicketLinkAtomic({ ...INPUT, actorUserId: "u-1" });
+    expect(r).toEqual({ kind: "already_revoked" });
+    expect(mp.updateMany).not.toHaveBeenCalled();
+    expect(mp.activityCreate).not.toHaveBeenCalled();
+  });
+
+  it("not_found でも何も書き込まない", async () => {
+    mp.findFirst.mockResolvedValue(null);
+    const r = await revokeTicketLinkAtomic({ ...INPUT, actorUserId: "u-1" });
+    expect(r).toEqual({ kind: "not_found" });
+    expect(mp.updateMany).not.toHaveBeenCalled();
+    expect(mp.activityCreate).not.toHaveBeenCalled();
+  });
+
+  it("actorUserId は引数のセッション値がそのまま記録される", async () => {
+    await revokeTicketLinkAtomic({ ...INPUT, actorUserId: "u-session" });
+    expect(mp.activityCreate.mock.calls[0][0].data.actorUserId).toBe("u-session");
   });
 });

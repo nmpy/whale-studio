@@ -19,9 +19,10 @@ const mp = vi.hoisted(() => ({
   delete: vi.fn(),
   deleteMany: vi.fn(),
   activityCreate: vi.fn(),
+  txCalls: vi.fn(),
 }));
-vi.mock("@/lib/prisma", () => ({
-  prisma: {
+vi.mock("@/lib/prisma", () => {
+  const client = {
     ticketLink: {
       findFirst: mp.findFirst,
       updateMany: mp.updateMany,
@@ -29,8 +30,15 @@ vi.mock("@/lib/prisma", () => ({
       deleteMany: mp.deleteMany,
     },
     uzuProActivityLog: { create: mp.activityCreate },
-  },
-}));
+    // interactive transaction を再現する。status 更新と ActivityLog 作成は
+    // このコールバック内で完結し、throw はそのまま伝播する（= 実 DB では巻き戻る）。
+    $transaction: (fn: (tx: unknown) => unknown) => {
+      mp.txCalls();
+      return fn(client);
+    },
+  };
+  return { prisma: client };
+});
 
 const auth = vi.hoisted(() => ({ authorizeUzuPro: vi.fn() }));
 vi.mock("@/lib/uzupro-auth", () => ({ authorizeUzuPro: auth.authorizeUzuPro }));
@@ -165,5 +173,37 @@ describe("情報露出", () => {
     expect(select.reservationNumberRaw).toBeUndefined();
     expect(select.lineUserId).toBeUndefined();
     expect(select.lineDisplayName).toBeUndefined();
+  });
+});
+
+describe("原子性（status 更新と監査ログを同一トランザクションで行う）", () => {
+  it("解除は $transaction を 1 回だけ開き、その中で両方を書く", async () => {
+    allow();
+    const res = await POST(req(), { params: PARAMS });
+    expect(res.status).toBe(200);
+    expect(mp.txCalls).toHaveBeenCalledTimes(1);
+    expect(mp.updateMany).toHaveBeenCalledTimes(1);
+    expect(mp.activityCreate).toHaveBeenCalledTimes(1);
+  });
+
+  it("監査ログの書き込みが失敗したら 200 を返さない（部分成功を成功として返さない）", async () => {
+    allow();
+    mp.activityCreate.mockRejectedValue(new Error("log write failed"));
+    const res = await POST(req(), { params: PARAMS });
+    // トランザクションごと失敗 → status も REVOKED にならない
+    expect(res.status).toBe(500);
+    // 内部エラー詳細をクライアントへ出さない
+    expect(JSON.stringify(await res.json())).not.toContain("log write failed");
+  });
+
+  it("already_revoked では $transaction 内で 1 件も write しない", async () => {
+    allow();
+    mp.findFirst.mockResolvedValue({ id: "tl-1", status: "REVOKED" });
+    const res = await POST(req(), { params: PARAMS });
+    expect(res.status).toBe(200);
+    expect(mp.updateMany).not.toHaveBeenCalled();
+    expect(mp.activityCreate).not.toHaveBeenCalled();
+    expect(mp.delete).not.toHaveBeenCalled();
+    expect(mp.deleteMany).not.toHaveBeenCalled();
   });
 });

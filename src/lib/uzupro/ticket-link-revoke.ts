@@ -10,6 +10,9 @@
 //   - 既に REVOKED のレコードへの再実行は **冪等**（何も変えず成功扱い）。
 //   - 履歴は既存の `UzuProActivityLog` に残す（schema 変更なし）。
 //     detail には PII を入れない（件数・状態・遷移元のみ。予約番号・氏名・LINE UID は入れない）。
+//   - **status 更新と ActivityLog 作成は同一トランザクションで行う**（revokeTicketLinkAtomic）。
+//     ActivityLog を「解除履歴」として正式に使うため、
+//     「status だけ REVOKED / 履歴だけ無い」という部分成功を許容しない。
 //
 // 状態遷移は既存の canTransitionLink に従う。REVOKED は終端のため
 // 「REVOKED → REVOKED」は遷移として許可されないが、それは失敗ではなく冪等の成功として扱う。
@@ -69,8 +72,20 @@ export async function revokeTicketLink(db: Db, input: RevokeInput): Promise<Revo
     where: { id: link.id, oaId, workId, status: { not: "REVOKED" } },
     data: { status: "REVOKED" },
   });
-  // 同時実行で先に解除された場合は 0 件。冪等に成功扱いへ倒す。
-  if (updated.count === 0) return { kind: "already_revoked" };
+
+  if (updated.count === 0) {
+    // count 0 = 「where に一致する行が無かった」だけ。DB エラーは throw されるのでここには来ない。
+    // それでも "同時に解除された" と "行が消えた/境界外へ動いた" を取り違えないよう、
+    // 最終状態を読み直して判定する（count 0 を無条件に already_revoked としない）。
+    const after = await db.ticketLink.findFirst({
+      where: { id: link.id, oaId, workId },
+      select: { status: true },
+    });
+    if (!after) return { kind: "not_found" };
+    if (after.status === "REVOKED") return { kind: "already_revoked" };
+    // REVOKED でないのに更新できていない = 想定外。成功扱いにせず衝突として返す。
+    return { kind: "invalid_transition", currentStatus: after.status };
+  }
 
   return { kind: "revoked", previousStatus: link.status };
 }
@@ -91,5 +106,34 @@ export async function recordTicketLinkRevoked(
     targetType: "ticket_link",
     targetId: args.ticketLinkId,
     detail: { from: args.previousStatus, to: "REVOKED" },
+  });
+}
+
+/**
+ * 解除と履歴書き込みを **同一トランザクション**で行う。
+ *
+ * ActivityLog を解除履歴として正式に使うため、
+ * 「status だけ REVOKED になり履歴が残らない」部分成功を作らない。
+ * 履歴の作成に失敗した場合はトランザクションごと巻き戻り、status も REVOKED にならない。
+ *
+ * 冪等性は revokeTicketLink 側の判定をそのまま維持する:
+ *   already_revoked / not_found / invalid_transition では **何も書き込まない**（ログも作らない）。
+ */
+export async function revokeTicketLinkAtomic(
+  args: RevokeInput & { actorUserId: string },
+): Promise<RevokeOutcome> {
+  const { actorUserId, ...input } = args;
+  return prisma.$transaction(async (tx) => {
+    const outcome = await revokeTicketLink(tx, input);
+    if (outcome.kind === "revoked") {
+      await recordTicketLinkRevoked(tx, {
+        oaId: input.oaId,
+        workId: input.workId,
+        actorUserId,
+        ticketLinkId: input.ticketLinkId,
+        previousStatus: outcome.previousStatus,
+      });
+    }
+    return outcome;
   });
 }

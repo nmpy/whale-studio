@@ -9,14 +9,15 @@
 // クライアント値の不信用: body は受け取らない。oaId / workId は URL params だが
 //       authorizeUzuPro を通過した値のみを DB 条件に使い、actorUserId はセッションから取る。
 //
+// 原子性: status 更新と UzuProActivityLog の作成は同一トランザクション。
+//       履歴だけ欠ける / status だけ変わる部分成功を作らない。
 // 予約実体（UZU Pro CMS 側の予約）には一切触れない。Whale Studio に予約実体は無い。
 // ログ・エラー文言に予約番号 / 氏名 / コードネーム / LINE UID を出さない。
 
 import type { NextRequest } from "next/server";
-import { prisma } from "@/lib/prisma";
 import { ok, notFound, conflict, serverError } from "@/lib/api-response";
 import { authorizeUzuPro } from "@/lib/uzupro-auth";
-import { revokeTicketLink, recordTicketLinkRevoked } from "@/lib/uzupro/ticket-link-revoke";
+import { revokeTicketLinkAtomic } from "@/lib/uzupro/ticket-link-revoke";
 
 export const dynamic = "force-dynamic";
 
@@ -28,24 +29,19 @@ export async function POST(
   if (!auth.ok) return auth.response;
 
   try {
-    const outcome = await revokeTicketLink(prisma, {
+    // status 更新と履歴（UzuProActivityLog）は同一トランザクション。
+    // 履歴の書き込みに失敗した場合は解除ごと巻き戻る（部分成功を作らない）。
+    const outcome = await revokeTicketLinkAtomic({
       ticketLinkId: params.ticketLinkId,
       // 認可を通過した値のみを境界条件に使う。
       oaId: params.id,
       workId: params.workId,
+      // actor はセッション由来（クライアント値を使わない）。
+      actorUserId: auth.user.id,
     });
 
     switch (outcome.kind) {
       case "revoked":
-        // 履歴は既存 UzuProActivityLog へ（PII を含めない）。
-        // ログ書き込みの失敗で解除自体を巻き戻さないため、更新とは分けて実行する。
-        await recordTicketLinkRevoked(prisma, {
-          oaId: params.id,
-          workId: params.workId,
-          actorUserId: auth.user.id,
-          ticketLinkId: params.ticketLinkId,
-          previousStatus: outcome.previousStatus,
-        });
         return ok({ status: "revoked" });
 
       case "already_revoked":
