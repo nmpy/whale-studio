@@ -25,11 +25,13 @@ export type UzuProAction =
   /// UzuProGrant 付与 / 解除（platform owner 操作）
   | "grant_granted"
   | "grant_revoked"
+  /// チケット連携の解除（for ウズプロ管理画面からの運営操作 / PR-B）
+  | "ticket_link_revoke"
   /// Work ↔ UZU Pro Project の対応設定 / 解除（owner / platform owner 操作）
   | "work_project_link_set"
   | "work_project_link_cleared";
 
-export type UzuProTargetType = "booking" | "player" | "liff_link" | "sync" | "work" | "grant";
+export type UzuProTargetType = "booking" | "player" | "liff_link" | "sync" | "work" | "grant" | "ticket_link";
 
 /**
  * PII を含めない前提の監査ログを書き込む。

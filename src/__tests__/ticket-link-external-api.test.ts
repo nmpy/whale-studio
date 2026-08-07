@@ -20,7 +20,7 @@ import type { NextRequest } from "next/server";
 const { mockPrisma } = vi.hoisted(() => ({
   mockPrisma: {
     work:              { findUnique: vi.fn() },
-    ticketLink:        { findMany: vi.fn(), findFirst: vi.fn(), update: vi.fn() },
+    ticketLink:        { findMany: vi.fn(), findFirst: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
     ticketLinkSyncLog: { create: vi.fn() },
     uzuProSyncRequest: { create: vi.fn(), update: vi.fn() },
     uzuProActivityLog: { create: vi.fn() },
@@ -94,6 +94,10 @@ beforeEach(() => {
   mockPrisma.uzuProSyncRequest.update.mockResolvedValue({});
   mockPrisma.ticketLinkSyncLog.create.mockResolvedValue({});
   mockPrisma.ticketLink.update.mockResolvedValue({});
+  // once キュー・implementation をテスト間で持ち越さない。
+  mockPrisma.ticketLink.findFirst.mockReset();
+  mockPrisma.ticketLink.updateMany.mockReset();
+  mockPrisma.ticketLink.updateMany.mockResolvedValue({ count: 1 });
   mockPrisma.uzuProActivityLog.create.mockResolvedValue({});
 });
 
@@ -236,15 +240,15 @@ describe("POST /api/external/v2/uzu-pro/ticket-links/sync-result", () => {
 
     expect(res.status).toBe(200);
     expect(body.data.applied).toBe(1);
-    const data = mockPrisma.ticketLink.update.mock.calls[0][0].data;
-    expect(data.status).toBe("LINKED");
-    expect(data.uzuSyncedAt).toBeInstanceOf(Date);
+    // [0] = status の CAS、[1] = uzuSyncedAt（status 非依存）
+    expect(mockPrisma.ticketLink.updateMany.mock.calls[0][0].data.status).toBe("LINKED");
+    expect(mockPrisma.ticketLink.updateMany.mock.calls[1][0].data.uzuSyncedAt).toBeInstanceOf(Date);
   });
 
   it("CONFLICT を反映する（自動上書きしない状態へ）", async () => {
     mockPrisma.ticketLink.findFirst.mockResolvedValue({ id: "tl-1", status: "PENDING_UZU_BOOKING" });
     await syncResultPOST(postReq(okBody([{ whaleTicketLinkId: "tl-1", result: "CONFLICT" }]), WRITE_KEY));
-    expect(mockPrisma.ticketLink.update.mock.calls[0][0].data.status).toBe("CONFLICT");
+    expect(mockPrisma.ticketLink.updateMany.mock.calls[0][0].data.status).toBe("CONFLICT");
   });
 
   it("ERROR は uzuSyncedAt を進めない（次回再試行できる）", async () => {
@@ -255,22 +259,30 @@ describe("POST /api/external/v2/uzu-pro/ticket-links/sync-result", () => {
     const body = await res.json();
 
     expect(body.data.errors).toBe(1);
-    expect(mockPrisma.ticketLink.update).not.toHaveBeenCalled();
+    expect(mockPrisma.ticketLink.updateMany).not.toHaveBeenCalled();
     expect(mockPrisma.ticketLinkSyncLog.create.mock.calls[0][0].data.errorCode).toBe("BOOKING_NOT_FOUND");
   });
 
   it("NO_CHANGE は状態を変えず同期済みにする", async () => {
     mockPrisma.ticketLink.findFirst.mockResolvedValue({ id: "tl-1", status: "LINKED" });
     await syncResultPOST(postReq(okBody([{ whaleTicketLinkId: "tl-1", result: "NO_CHANGE" }]), WRITE_KEY));
-    const data = mockPrisma.ticketLink.update.mock.calls[0][0].data;
-    expect(data.status).toBeUndefined();
-    expect(data.uzuSyncedAt).toBeInstanceOf(Date);
+    const calls = mockPrisma.ticketLink.updateMany.mock.calls;
+    expect(calls).toHaveLength(1);
+    expect(calls[0][0].data.status).toBeUndefined();
+    expect(calls[0][0].data.uzuSyncedAt).toBeInstanceOf(Date);
   });
 
   it("REVOKED は同期結果で復活しない（不正遷移を弾く）", async () => {
     mockPrisma.ticketLink.findFirst.mockResolvedValue({ id: "tl-1", status: "REVOKED" });
-    await syncResultPOST(postReq(okBody([{ whaleTicketLinkId: "tl-1", result: "LINKED" }]), WRITE_KEY));
-    expect(mockPrisma.ticketLink.update.mock.calls[0][0].data.status).toBeUndefined();
+    const res = await syncResultPOST(postReq(okBody([{ whaleTicketLinkId: "tl-1", result: "LINKED" }]), WRITE_KEY));
+    // status を書く updateMany は 1 件も無い（uzuSyncedAt のみ）
+    for (const c of mockPrisma.ticketLink.updateMany.mock.calls) {
+      expect(c[0].data.status).toBeUndefined();
+    }
+    // 既存挙動: uzuSyncedAt は進め、syncLog は残し、applied として数える
+    expect(mockPrisma.ticketLink.updateMany.mock.calls[0][0].data.uzuSyncedAt).toBeInstanceOf(Date);
+    expect(mockPrisma.ticketLinkSyncLog.create).toHaveBeenCalledTimes(1);
+    expect((await res.json()).data.applied).toBe(1);
   });
 
   it("対象 work 外の id は反映しない", async () => {
@@ -279,7 +291,7 @@ describe("POST /api/external/v2/uzu-pro/ticket-links/sync-result", () => {
     const body = await res.json();
 
     expect(body.data.notFound).toBe(1);
-    expect(mockPrisma.ticketLink.update).not.toHaveBeenCalled();
+    expect(mockPrisma.ticketLink.updateMany).not.toHaveBeenCalled();
   });
 
   it("同一 Idempotency-Key の再送は replay（二重反映しない）", async () => {
@@ -294,7 +306,145 @@ describe("POST /api/external/v2/uzu-pro/ticket-links/sync-result", () => {
 
     expect(res.status).toBe(200);
     expect(body.data.idempotent_replay).toBe(true);
-    expect(mockPrisma.ticketLink.update).not.toHaveBeenCalled();
+    expect(mockPrisma.ticketLink.updateMany).not.toHaveBeenCalled();
+  });
+
+  describe("解除（REVOKED）との並行更新 — REVOKED は terminal", () => {
+    const linked = () => okBody([{ whaleTicketLinkId: "tl-1", result: "LINKED" }]);
+
+    /**
+     * 実 DB の compare-and-swap を最小再現する。
+     * revokeAfterFirstRead: sync-result が status を読んだ直後（update 前）に
+     * 運営の解除が確定した、という並びを作る。
+     */
+    function simulateDb(initial: string, opts: { revokeAfterFirstRead?: boolean } = {}) {
+      const db = { status: initial };
+      let reads = 0;
+      mockPrisma.ticketLink.findFirst.mockImplementation(async () => {
+        reads += 1;
+        const snapshot = { id: "tl-1", status: db.status };
+        if (reads === 1 && opts.revokeAfterFirstRead) db.status = "REVOKED";
+        return snapshot;
+      });
+      mockPrisma.ticketLink.updateMany.mockImplementation(
+        async (a: { where: { status?: string }; data: { status?: string } }) => {
+          if (!a.data.status) return { count: 1 };              // uzuSyncedAt は status 非依存
+          if (a.where.status !== db.status) return { count: 0 }; // CAS 不一致 = 競合
+          db.status = a.data.status;
+          return { count: 1 };
+        },
+      );
+      return db;
+    }
+
+    it("read 後・update 直前に REVOKED へ変わったら復活させない", async () => {
+      const db = simulateDb("PENDING_UZU_BOOKING", { revokeAfterFirstRead: true });
+      await syncResultPOST(postReq(linked(), WRITE_KEY));
+
+      expect(db.status).toBe("REVOKED");
+      // stale な PENDING を条件にした CAS は撃つが、成立しない
+      const statusWrites = mockPrisma.ticketLink.updateMany.mock.calls.filter((c) => c[0].data.status);
+      expect(statusWrites[0][0].where.status).toBe("PENDING_UZU_BOOKING");
+      // 最新が REVOKED と判明した後は status を撃ち直さない
+      expect(statusWrites.some((c) => c[0].where.status === "REVOKED")).toBe(false);
+    });
+
+    it.each(["LINKED", "CONFLICT", "PENDING_BOOKING"] as const)(
+      "result=%s でも REVOKED は復活しない",
+      async (result) => {
+        const db = simulateDb("PENDING_UZU_BOOKING", { revokeAfterFirstRead: true });
+        await syncResultPOST(postReq(okBody([{ whaleTicketLinkId: "tl-1", result }]), WRITE_KEY));
+        expect(db.status).toBe("REVOKED");
+      },
+    );
+
+    it("race で REVOKED を検知した場合の意味は「最初から REVOKED」と揃う", async () => {
+      simulateDb("PENDING_UZU_BOOKING", { revokeAfterFirstRead: true });
+      const res = await syncResultPOST(postReq(linked(), WRITE_KEY));
+      const body = await res.json();
+
+      // 既存の「最初から REVOKED」と同じ: uzuSyncedAt は進む / syncLog は残る / applied
+      expect(res.status).toBe(200);
+      expect(body.data.applied).toBe(1);
+      expect(body.data.errors).toBe(0);
+      expect(mockPrisma.ticketLinkSyncLog.create).toHaveBeenCalledTimes(1);
+      expect(mockPrisma.ticketLink.updateMany.mock.calls.some((c) => c[0].data.uzuSyncedAt)).toBe(true);
+    });
+
+    it("競合が無ければ通常どおり反映される（PENDING → LINKED / CONFLICT）", async () => {
+      const a = simulateDb("PENDING_UZU_BOOKING");
+      await syncResultPOST(postReq(linked(), WRITE_KEY));
+      expect(a.status).toBe("LINKED");
+
+      const b = simulateDb("PENDING_UZU_BOOKING");
+      await syncResultPOST(postReq(okBody([{ whaleTicketLinkId: "tl-1", result: "CONFLICT" }]), WRITE_KEY));
+      expect(b.status).toBe("CONFLICT");
+    });
+
+    it("race で別の non-REVOKED へ変わった場合は stale 値で更新せず、最新 status で再判定する", async () => {
+      // PENDING を読む → 実際は CONFLICT へ動いていた → CONFLICT → LINKED は許可なので CAS 再試行
+      mockPrisma.ticketLink.findFirst
+        .mockResolvedValueOnce({ id: "tl-1", status: "PENDING_UZU_BOOKING" })
+        .mockResolvedValueOnce({ status: "CONFLICT" });
+      mockPrisma.ticketLink.updateMany
+        .mockResolvedValueOnce({ count: 0 })
+        .mockResolvedValue({ count: 1 });
+
+      const res = await syncResultPOST(postReq(linked(), WRITE_KEY));
+
+      const statusWrites = mockPrisma.ticketLink.updateMany.mock.calls.filter((c) => c[0].data.status);
+      expect(statusWrites).toHaveLength(2);
+      expect(statusWrites[0][0].where.status).toBe("PENDING_UZU_BOOKING");
+      expect(statusWrites[1][0].where.status).toBe("CONFLICT"); // 最新 status で CAS
+      expect((await res.json()).data.applied).toBe(1);
+    });
+
+    it("CAS 再試行は 1 回まで（無制限に retry しない）", async () => {
+      mockPrisma.ticketLink.findFirst
+        .mockResolvedValueOnce({ id: "tl-1", status: "PENDING_UZU_BOOKING" })
+        .mockResolvedValue({ status: "CONFLICT" });
+      mockPrisma.ticketLink.updateMany.mockResolvedValue({ count: 0 }); // 常に競合
+
+      await syncResultPOST(postReq(linked(), WRITE_KEY));
+
+      const statusWrites = mockPrisma.ticketLink.updateMany.mock.calls.filter((c) => c[0].data.status);
+      expect(statusWrites).toHaveLength(2); // 初回 + 再判定 1 回で打ち切る
+    });
+
+    it("最新 status が既に target と同値なら撃ち直さない（別の同期が先に適用済み）", async () => {
+      // PENDING を読む → 実際は既に LINKED。target === observed なので status は no-op。
+      mockPrisma.ticketLink.findFirst
+        .mockResolvedValueOnce({ id: "tl-1", status: "PENDING_UZU_BOOKING" })
+        .mockResolvedValueOnce({ status: "LINKED" });
+      mockPrisma.ticketLink.updateMany
+        .mockResolvedValueOnce({ count: 0 })
+        .mockResolvedValue({ count: 1 });
+
+      const res = await syncResultPOST(postReq(linked(), WRITE_KEY));
+
+      const statusWrites = mockPrisma.ticketLink.updateMany.mock.calls.filter((c) => c[0].data.status);
+      expect(statusWrites).toHaveLength(1); // 再評価で no-op → 撃ち直さない
+      // 既存の no-op 挙動と同じく uzuSyncedAt は進み、applied として数える
+      expect(mockPrisma.ticketLink.updateMany.mock.calls.some((c) => c[0].data.uzuSyncedAt)).toBe(true);
+      expect((await res.json()).data.applied).toBe(1);
+    });
+
+    it("DB error を CAS 競合として扱わない（500 になり、status を撃ち直さない）", async () => {
+      mockPrisma.ticketLink.findFirst.mockResolvedValue({ id: "tl-1", status: "PENDING_UZU_BOOKING" });
+      mockPrisma.ticketLink.updateMany.mockRejectedValue(new Error("db down"));
+
+      const res = await syncResultPOST(postReq(linked(), WRITE_KEY));
+
+      expect(res.status).toBe(500);
+      expect(mockPrisma.ticketLink.updateMany).toHaveBeenCalledTimes(1);
+    });
+
+    it("revoke と sync-result の競合: 最終 status は REVOKED のまま", async () => {
+      const db = simulateDb("PENDING_UZU_BOOKING", { revokeAfterFirstRead: true });
+      await syncResultPOST(postReq(linked(), WRITE_KEY));
+      // PR-B の revoke が勝ち、sync-result は上書きしない
+      expect(db.status).toBe("REVOKED");
+    });
   });
 
   it("allowlist 外の OA は 404", async () => {

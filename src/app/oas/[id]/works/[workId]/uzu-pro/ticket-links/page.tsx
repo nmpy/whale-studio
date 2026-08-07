@@ -5,8 +5,9 @@
 //     LIFF 管理タブの「チケット連携」は設定編集であり別責務（そちらは触らない）。
 //   - 認可は layout.tsx で強制済みだが、多層防御でここでも canAccessUzuPro を再確認。
 //     さらに work が対象 OA に属することを findFirst で検証（URL の workId 差し替え対策）。
-//   - **書き込み口を持たない。** 承認 / 状態変更 / 解除は追加しない。
-//     「UZU Pro 照合待ち」の解除は CMS の pull → sync-result が担う既存設計のまま。
+//   - 書き込みは「連携を解除」（status → REVOKED）のみ（PR-B）。
+//     承認 / LINKED への任意変更は持たない。「UZU Pro 照合待ち」の解除は
+//     CMS の pull → sync-result が担う既存設計のまま。
 //   - 予約番号はこの画面でのみフル表示する（ESCAPE.ID / UZU Pro CMS / Whale Studio の照合キー）。
 //     プレイヤー向け API は従来どおりマスクのまま。LINE UID / 内部主キーは表示しない。
 
@@ -94,16 +95,14 @@ export default async function UzuProTicketLinksPage({
         <span className="inline-flex items-center rounded-full bg-brand-soft px-2.5 py-0.5 text-[12px] font-bold text-brand-ink">
           for ウズプロ
         </span>
-        <span className="inline-flex items-center rounded-full bg-line-2 px-2.5 py-0.5 text-[11px] font-bold text-ink-2">
-          閲覧のみ
-        </span>
+
       </div>
 
       <p className="mb-4 text-[12px] leading-[1.8] text-ink-3">
         LINE からプレイヤーが登録したチケット連携の一覧です。予約番号は照合のためフル表示しています
         （プレイヤー画面ではマスク表示のままです）。
         <br />
-        状態の更新は UZU Pro CMS 側の予約照合（連携取得 → 照合 → 結果反映）で行われます。この画面からの変更はできません。
+        状態の更新は UZU Pro CMS 側の予約照合（連携取得 → 照合 → 結果反映）で行われます。この画面では連携の解除のみ行えます。
       </p>
 
       {/* 状態別サマリ（フィルタ非適用の全件） */}
@@ -124,7 +123,7 @@ export default async function UzuProTicketLinksPage({
         />
       </div>
 
-      <TicketLinkTable rows={view.rows} />
+      <TicketLinkTable rows={view.rows} oaId={params.id} workId={params.workId} />
 
       {/* ページネーション（既存 /oas 一覧と同じ表現） */}
       {view.pages > 1 && (

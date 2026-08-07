@@ -1892,27 +1892,27 @@ model CheckinAttempt {
 // ────────────────────────────────────────────────
 
 model LiffPageConfig {
-  id              String               @id @default(uuid())
+  id             String           @id @default(uuid())
   /// 公開 URL 用の短縮 ID (10 文字、a-z + 0-9)。LIFF プレイヤー URL で使う。
-  publicId        String               @unique @default(dbgenerated("gen_unique_public_id('liff_page_configs'::text)")) @map("public_id")
-  workId          String               @map("work_id")
-  isEnabled       Boolean              @default(false) @map("is_enabled")
+  publicId       String           @unique @default(dbgenerated("gen_unique_public_id('liff_page_configs'::text)")) @map("public_id")
+  workId         String           @map("work_id")
+  isEnabled      Boolean          @default(false) @map("is_enabled")
   /// 一覧表示や公開ページのタイトル。最大 10 文字（バリデーション側で制御）。
-  title           String?
-  description     String?
+  title          String?
+  description    String?
   /// "default" | "hint" | "faq" | "survey" | "location"。旧 "hint_site" は "hint" として正規化。
-  pageType        String               @default("default") @map("page_type")
+  pageType       String           @default("default") @map("page_type")
   /// "draft" | "published" | "archived"
-  publishStatus   String               @default("draft") @map("publish_status")
+  publishStatus  String           @default("draft") @map("publish_status")
   /// ページ全体の設定（ヘッダー / テーマ / シェアボタン / 各モード固有設定など）。詳細は LiffPageConfigSettings 型を参照。
-  settingsJson    Json                 @default("{}") @map("settings_json") @db.JsonB
-  createdAt       DateTime             @default(now()) @map("created_at")
-  updatedAt       DateTime             @updatedAt @map("updated_at")
-  blocks          LiffPageBlock[]
-  werewolfTitles  WerewolfTitle[]
-  submissions     LiffSubmission[]
+  settingsJson   Json             @default("{}") @map("settings_json") @db.JsonB
+  createdAt      DateTime         @default(now()) @map("created_at")
+  updatedAt      DateTime         @updatedAt @map("updated_at")
+  blocks         LiffPageBlock[]
+  werewolfTitles WerewolfTitle[]
+  submissions    LiffSubmission[]
   surveyResponses LiffSurveyResponse[]
-  work            Work                 @relation(fields: [workId], references: [id], onDelete: Cascade)
+  work           Work             @relation(fields: [workId], references: [id], onDelete: Cascade)
 
   @@index([workId])
   @@index([pageType])
@@ -1959,21 +1959,21 @@ model LiffEventLog {
 /// LIFF Survey モードの回答を 1 回 1 行で保存する。
 /// answersJson は質問 id をキー、回答値（string | string[]）を value にもつオブジェクト。
 model LiffSurveyResponse {
-  id               String          @id @default(uuid())
-  workId           String          @map("work_id")
+  id          String   @id @default(uuid())
+  workId      String   @map("work_id")
   /// どのアンケートページ（LiffPageConfig, pageType=survey）への回答か。
   /// 既存行は null（移行前は未記録）。回答済み判定のクエリキーに使う。
-  liffPageConfigId String?         @map("liff_page_config_id")
-  lineUserId       String?         @map("line_user_id")
-  answersJson      Json            @map("answers_json") @db.JsonB
-  submittedAt      DateTime        @default(now()) @map("submitted_at")
+  liffPageConfigId String? @map("liff_page_config_id")
+  lineUserId  String?  @map("line_user_id")
+  answersJson Json     @map("answers_json") @db.JsonB
+  submittedAt DateTime @default(now()) @map("submitted_at")
   /// 重複回答防止キー = `${liffPageConfigId}:${lineUserId}`。
   /// 複数回答許可(survey_allow_multiple=true) / 匿名(lineUserId 無し) / 旧経路(pageId 無し) は null。
   /// PostgreSQL の UNIQUE は NULL を重複扱いしないため、null は無制限・非 null のみ一意
   ///   ＝競合送信(同時 POST)は DB 側で 1 件だけ通り、残りは P2002 → 409 に変換する。
-  dedupeKey        String?         @unique @map("dedupe_key")
-  work             Work            @relation(fields: [workId], references: [id], onDelete: Cascade)
-  liffPage         LiffPageConfig? @relation(fields: [liffPageConfigId], references: [id], onDelete: SetNull)
+  dedupeKey   String?  @unique @map("dedupe_key")
+  work        Work            @relation(fields: [workId], references: [id], onDelete: Cascade)
+  liffPage    LiffPageConfig? @relation(fields: [liffPageConfigId], references: [id], onDelete: SetNull)
 
   @@index([workId])
   @@index([lineUserId])
@@ -2412,11 +2412,11 @@ model LiveSession {
   oa                 Oa                @relation(fields: [oaId], references: [id], onDelete: Cascade)
   work               Work?             @relation(fields: [workId], references: [id], onDelete: SetNull)
 
-  participants   LiveParticipant[]
-  eventLogs      LiveEventLog[]
-  assignments    LiveAssignment[]
-  instructions   LiveActorInstruction[]
-  teams          LiveTeam[]
+  participants LiveParticipant[]
+  eventLogs    LiveEventLog[]
+  assignments  LiveAssignment[]
+  instructions LiveActorInstruction[]
+  teams        LiveTeam[]
   uzuProBookings UzuProBooking[]
 
   /// 匿名連携の冪等 upsert キー（同一 OA・work 内で externalSessionRef を一意化）。
@@ -3083,34 +3083,34 @@ enum TicketLinkSyncResult {
 /// 確定前の一時ドラフト。OCR 原文・購入者名などの PII を **期限付きで** 保持する唯一の場所。
 /// expiresAt 経過後は本文（extractedPayload / ocrRawText / imageStorageKey）を破棄する。
 model TicketLinkDraft {
-  id               String                @id @default(uuid())
-  oaId             String                @map("oa_id")
+  id       String                @id @default(uuid())
+  oaId     String                @map("oa_id")
   /// 対象作品。LINE 経由の受信時点では未確定のことがあるため nullable。
-  workId           String?               @map("work_id")
+  workId   String?               @map("work_id")
   /// LINE userId は OA スコープ込みで扱う（全 OA 共通の一意 ID として扱わない）。
-  lineUserId       String                @map("line_user_id")
-  source           TicketLinkSource
+  lineUserId String              @map("line_user_id")
+  source   TicketLinkSource
   /// LINE message.id / webhook event id。再配信の重複解析を防ぐ冪等キー。
-  sourceMessageId  String?               @unique @map("source_message_id")
-  status           TicketLinkDraftStatus @default(RECEIVED)
+  sourceMessageId String?        @unique @map("source_message_id")
+  status   TicketLinkDraftStatus @default(RECEIVED)
   /// 手動登録フローの進捗。null = 画像/テキスト経路（PR4）。順序強制に使う。
-  step             TicketLinkDraftStep?
+  step     TicketLinkDraftStep?
   /// 一時画像の保存キー（推測不可能・公開 URL にしない）。削除時に null 化する。
-  imageStorageKey  String?               @map("image_storage_key")
+  imageStorageKey String?        @map("image_storage_key")
   /// OCR 原文（PII を含む）。構造化結果とは分けて保持し、ログには出さない。
-  ocrRawText       String?               @map("ocr_raw_text")
+  ocrRawText      String?        @map("ocr_raw_text")
   /// スキーマ検証済みの構造化抽出結果（confidence 付き）。AI レスポンスをそのまま入れない。
-  extractedPayload Json?                 @map("extracted_payload") @db.JsonB
+  extractedPayload Json?         @map("extracted_payload") @db.JsonB
   /// プレイヤーが確認・修正した後の内容。確定時に TicketLink へ最小項目だけ写す。
-  confirmedPayload Json?                 @map("confirmed_payload") @db.JsonB
+  confirmedPayload Json?         @map("confirmed_payload") @db.JsonB
   /// 確認用 LIFF URL のトークン sha256 hex。平文は保存しない。対象 LINE ユーザーへバインドする。
-  tokenHash        String?               @unique @map("token_hash")
+  tokenHash       String?        @unique @map("token_hash")
   /// AI 抽出のリトライ回数（上限付き・無限リトライ防止）。
-  attemptCount     Int                   @default(0) @map("attempt_count")
+  attemptCount    Int            @default(0) @map("attempt_count")
   /// 一時データの保持期限。到達後は本文を破棄する（TICKET_LINK_DRAFT_TTL_HOURS）。
-  expiresAt        DateTime              @map("expires_at")
-  createdAt        DateTime              @default(now()) @map("created_at")
-  updatedAt        DateTime              @updatedAt @map("updated_at")
+  expiresAt       DateTime       @map("expires_at")
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
 
   oa   Oa    @relation(fields: [oaId], references: [id], onDelete: Cascade)
   work Work? @relation(fields: [workId], references: [id], onDelete: SetNull)
@@ -3122,36 +3122,36 @@ model TicketLinkDraft {
 
 /// 確定済みのチケット連携。CMS へ渡すのはこのレコードの最小項目のみ。
 model TicketLink {
-  id                          String           @id @default(uuid())
-  oaId                        String           @map("oa_id")
-  workId                      String           @map("work_id")
-  lineUserId                  String           @map("line_user_id")
+  id         String   @id @default(uuid())
+  oaId       String   @map("oa_id")
+  workId     String   @map("work_id")
+  lineUserId String   @map("line_user_id")
   /// LINE 登録名（表示・突合の補助）。本名ではない。
-  lineDisplayName             String?          @map("line_display_name")
+  lineDisplayName String? @map("line_display_name")
   /// 正規化済み予約番号（NFKC / 全角→半角 / ハイフン統一 / 空白除去）。照合キー。
-  normalizedReservationNumber String           @map("normalized_reservation_number")
+  normalizedReservationNumber String @map("normalized_reservation_number")
   /// プレイヤーが入力/読み取った原文。表示・監査用（照合には normalized を使う）。
-  reservationNumberRaw        String?          @map("reservation_number_raw")
+  reservationNumberRaw String? @map("reservation_number_raw")
   /// チケット種別の安定キー（作品設定 TicketLinkTicketTypeSetting.ticketTypeKey）。
   /// 表示名ではなくこのキーで種別を同定する。確定時のスナップショット。
-  ticketTypeKey               String?          @map("ticket_type_key")
+  ticketTypeKey String? @map("ticket_type_key")
   /// **確定時の**チケット種別表示名スナップショット。
   /// 設定側のラベルを後から変更・削除しても、登録済みの表示が変わらないようにここへ焼き込む。
-  ticketType                  String?          @map("ticket_type")
+  ticketType String? @map("ticket_type")
   /// **確定時の**参加人数スナップショット。名称から推測せず、確定時点の作品設定値を焼き込む。
-  participantCount            Int              @map("participant_count")
-  source                      TicketLinkSource
-  status                      TicketLinkStatus @default(PENDING_UZU_BOOKING)
+  participantCount Int @map("participant_count")
+  source TicketLinkSource
+  status TicketLinkStatus @default(PENDING_UZU_BOOKING)
   /// プレイヤーが最終確認した日時（= 本登録成立）。
-  confirmedAt                 DateTime         @map("confirmed_at")
+  confirmedAt DateTime  @map("confirmed_at")
   /// CMS 側が同期を反映した日時。null = 未同期（差分取得の対象）。
-  uzuSyncedAt                 DateTime?        @map("uzu_synced_at")
-  createdAt                   DateTime         @default(now()) @map("created_at")
-  updatedAt                   DateTime         @updatedAt @map("updated_at")
+  uzuSyncedAt DateTime? @map("uzu_synced_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
 
-  oa       Oa                  @relation(fields: [oaId], references: [id], onDelete: Cascade)
-  work     Work                @relation(fields: [workId], references: [id], onDelete: Cascade)
-  members  TicketLinkMember[]
+  oa      Oa                   @relation(fields: [oaId], references: [id], onDelete: Cascade)
+  work    Work                 @relation(fields: [workId], references: [id], onDelete: Cascade)
+  members TicketLinkMember[]
   syncLogs TicketLinkSyncLog[]
 
   /// 「有効な連携は 1 予約番号につき 1 件」は **部分 UNIQUE INDEX**（migration SQL,
@@ -3205,29 +3205,29 @@ model TicketLinkSyncLog {
 /// 「Whale では連携済みだが UZU へ送るイベントが存在しない」状態を作らない。
 /// HTTP 送信は transaction の外で cron worker が行う。
 model UzuOutboxEvent {
-  id             String @id @default(uuid())
-  oaId           String @map("oa_id")
-  workId         String @map("work_id")
+  id     String @id @default(uuid())
+  oaId   String @map("oa_id")
+  workId String @map("work_id")
   /// 送信先 UZU Project UUID（envelope.projectId）。作成時の Work.uzuProjectId を固定保存する。
-  uzuProjectId   String @map("uzu_project_id")
+  uzuProjectId String @map("uzu_project_id")
   /// envelope.eventType（例: player_line.linked）
-  eventType      String @map("event_type")
+  eventType String @map("event_type")
   /// 送信 payload（envelope.payload 相当）。個人情報は LINE UID / 表示名のみ。
-  payloadJson    Json   @map("payload_json")
+  payloadJson Json @map("payload_json")
   /// 同一業務イベントの重複作成を防ぐ。再リンク等の正当な別イベントは別キーになるよう構成する。
   idempotencyKey String @unique @map("idempotency_key")
 
   /// pending → sending → sent / failed
-  status        String    @default("pending")
-  attempt       Int       @default(0)
+  status  String @default("pending")
+  attempt Int    @default(0)
   /// 次に送信を試みる時刻（指数バックオフ）
-  nextAttemptAt DateTime  @default(now()) @map("next_attempt_at")
+  nextAttemptAt DateTime @default(now()) @map("next_attempt_at")
   /// sending に遷移した時刻（滞留検知用）
-  claimedAt     DateTime? @map("claimed_at")
-  sentAt        DateTime? @map("sent_at")
+  claimedAt DateTime? @map("claimed_at")
+  sentAt    DateTime? @map("sent_at")
   /// 恒久失敗の理由コード（HTTP 4xx / 上限到達 等）。秘密値は入れない。
-  lastErrorCode String?   @map("last_error_code")
-  lastError     String?   @map("last_error")
+  lastErrorCode String? @map("last_error_code")
+  lastError     String? @map("last_error")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
