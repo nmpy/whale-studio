@@ -24,7 +24,10 @@ export type UzuProAction =
   | "work_disabled"
   /// UzuProGrant 付与 / 解除（platform owner 操作）
   | "grant_granted"
-  | "grant_revoked";
+  | "grant_revoked"
+  /// Work ↔ UZU Pro Project の対応設定 / 解除（owner / platform owner 操作）
+  | "work_project_link_set"
+  | "work_project_link_cleared";
 
 export type UzuProTargetType = "booking" | "player" | "liff_link" | "sync" | "work" | "grant";
 
