@@ -107,6 +107,53 @@ describe("解除処理（PR-B）の情報露出", () => {
   });
 });
 
+describe("内容を修正（PR-C）の情報露出", () => {
+  const replace = read("../lib/uzupro/ticket-link-replace.ts");
+  const route = read("../app/api/oas/[id]/works/[workId]/uzu-pro/ticket-links/[ticketLinkId]/replace/route.ts");
+  const dialog = read("../app/oas/[id]/works/[workId]/uzu-pro/ticket-links/_edit-dialog.tsx");
+
+  it("console へ出力しない", () => {
+    for (const src of [replace, route, dialog]) {
+      expect(src).not.toMatch(/console\.(log|info|warn|error)/);
+    }
+  });
+
+  it("物理削除しない（delete を含まない）", () => {
+    for (const src of [replace, route]) {
+      expect(src).not.toMatch(/ticketLink\.delete/);
+      expect(src).not.toMatch(/deleteMany/);
+    }
+  });
+
+  it("監査ログの detail に予約番号 / コードネーム / LINE UID を入れない", () => {
+    const detail = replace.slice(replace.indexOf("detail: {"), replace.indexOf("replacementStatus"));
+    for (const bad of ["normalized", "codeName", "lineUserId", "lineDisplayName"]) {
+      expect(detail).not.toContain(bad);
+    }
+  });
+
+  it("修正ダイアログは予約番号を URL / クエリへ載せない", () => {
+    // 予約番号は body で送る。URL に含めない。
+    expect(dialog).not.toMatch(/\?[^"'`]*reservation/i);
+    expect(dialog).toMatch(/method:\s*"POST"/);
+  });
+
+  it("修正ダイアログは LINE UID / 表示名を扱わない", () => {
+    // コメント文の言及で落ちないよう、コメントを除いた実コードで判定する。
+    const code = dialog.replace(/\/\/.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "");
+    for (const bad of ["lineUserId", "lineDisplayName"]) {
+      expect(code).not.toContain(bad);
+    }
+  });
+
+  it("LIFF 側のマスク仕様（maskReservationNumber）を変更しない", () => {
+    // 管理画面はフル値、プレイヤー向けはマスクのまま。PR-C はどちらにも触れない。
+    for (const src of [replace, route, dialog]) {
+      expect(src).not.toContain("maskReservationNumber");
+    }
+  });
+});
+
 describe("管理画面 UI", () => {
   const page = read("../app/oas/[id]/works/[workId]/uzu-pro/ticket-links/page.tsx");
   const filters = read("../app/oas/[id]/works/[workId]/uzu-pro/ticket-links/_filters.tsx");
@@ -130,8 +177,26 @@ describe("管理画面 UI", () => {
     expect(dialog).not.toMatch(/method:\s*"DELETE"/);
   });
 
-  it("REVOKED 行には解除導線を出さない（履歴として閲覧は維持）", () => {
+  it("REVOKED 行には操作導線を出さない（履歴として閲覧は維持）", () => {
     expect(table).toMatch(/r\.status === "REVOKED"/);
+  });
+
+  it("non-REVOKED 行に「内容を修正」と「連携を解除」の 2 操作を出す", () => {
+    expect(table).toContain("内容を修正");
+    expect(table).toContain("連携を解除");
+  });
+
+  it("修正ダイアログは予約番号を現在値で prefill しない", () => {
+    const dialog = read("../app/oas/[id]/works/[workId]/uzu-pro/ticket-links/_edit-dialog.tsx");
+    // useState("") で開始し、row.reservationNumber を初期値に使わない。
+    expect(dialog).toMatch(/useState\(""\);\s*$/m);
+    expect(dialog).not.toMatch(/useState\(\s*row\.reservationNumber/);
+  });
+
+  it("人数は自由入力させない（コードネーム欄以外の数値 input を持たない）", () => {
+    const dialog = read("../app/oas/[id]/works/[workId]/uzu-pro/ticket-links/_edit-dialog.tsx");
+    expect(dialog).not.toMatch(/type="number"/);
+    expect(dialog).not.toContain("setParticipantCount");
   });
 
   it("解除ダイアログは予約番号を URL / ログへ出さない", () => {

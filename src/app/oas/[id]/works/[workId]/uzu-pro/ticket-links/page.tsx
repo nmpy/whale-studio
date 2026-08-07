@@ -5,9 +5,10 @@
 //     LIFF 管理タブの「チケット連携」は設定編集であり別責務（そちらは触らない）。
 //   - 認可は layout.tsx で強制済みだが、多層防御でここでも canAccessUzuPro を再確認。
 //     さらに work が対象 OA に属することを findFirst で検証（URL の workId 差し替え対策）。
-//   - 書き込みは「連携を解除」（status → REVOKED）のみ（PR-B）。
+//   - 書き込みは「連携を解除」（PR-B）と「内容を修正」（PR-C）のみ。
 //     承認 / LINKED への任意変更は持たない。「UZU Pro 照合待ち」の解除は
 //     CMS の pull → sync-result が担う既存設計のまま。
+//     修正は既存行を上書きせず replacement（旧 REVOKED + 新規 PENDING）で表現する。
 //   - 予約番号はこの画面でのみフル表示する（ESCAPE.ID / UZU Pro CMS / Whale Studio の照合キー）。
 //     プレイヤー向け API は従来どおりマスクのまま。LINE UID / 内部主キーは表示しない。
 
@@ -20,6 +21,7 @@ import {
   parseTicketLinkFilters,
   TICKET_LINK_STATUS_LABEL,
 } from "@/lib/uzupro/ticket-link-view";
+import { enabledTicketTypes, readTicketLinkSettings } from "@/lib/ticket-link/settings";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { TicketLinkFilters } from "./_filters";
 import { TicketLinkTable } from "./_table";
@@ -68,9 +70,13 @@ export default async function UzuProTicketLinksPage({
   // スコープ検証: work が対象 OA に属することを確認（URL の workId 差し替え対策）。
   const work = await prisma.work.findFirst({
     where: { id: params.workId, oaId: params.id },
-    select: { title: true },
+    select: { title: true, liffHomeSettingsJson: true },
   });
   if (!work) notFound();
+
+  // 「内容を修正」の参加人数は作品設定を唯一の正とする（クライアントに人数を決めさせない）。
+  // 無効化済みの種別は選択肢に出さない（既存 resolveTicketTypeByKey と同じ fail closed）。
+  const ticketTypes = enabledTicketTypes(readTicketLinkSettings(work.liffHomeSettingsJson));
 
   const sp = searchParams ?? {};
   const filters = parseTicketLinkFilters(sp);
@@ -102,7 +108,9 @@ export default async function UzuProTicketLinksPage({
         LINE からプレイヤーが登録したチケット連携の一覧です。予約番号は照合のためフル表示しています
         （プレイヤー画面ではマスク表示のままです）。
         <br />
-        状態の更新は UZU Pro CMS 側の予約照合（連携取得 → 照合 → 結果反映）で行われます。この画面では連携の解除のみ行えます。
+        状態の更新は UZU Pro CMS 側の予約照合（連携取得 → 照合 → 結果反映）で行われます。この画面では連携の解除と内容の修正のみ行えます。
+        <br />
+        内容を修正すると、現在の連携を無効にして修正内容で新しい連携を作成します（変更前の内容は履歴として残ります）。
       </p>
 
       {/* 状態別サマリ（フィルタ非適用の全件） */}
@@ -123,7 +131,7 @@ export default async function UzuProTicketLinksPage({
         />
       </div>
 
-      <TicketLinkTable rows={view.rows} oaId={params.id} workId={params.workId} />
+      <TicketLinkTable rows={view.rows} oaId={params.id} workId={params.workId} ticketTypes={ticketTypes} />
 
       {/* ページネーション（既存 /oas 一覧と同じ表現） */}
       {view.pages > 1 && (

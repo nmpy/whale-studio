@@ -43,6 +43,8 @@ export interface TicketLinkAdminRow {
   statusLabel: string;
   /** 確定時のチケット種別表示名スナップショット。 */
   ticketType: string | null;
+  /** 確定時のチケット種別キー。修正ダイアログの初期選択に使う（PII ではない）。 */
+  ticketTypeKey: string | null;
   participantCount: number;
   /** **フル値**（この画面は照合キーとして必要）。 */
   reservationNumber: string;
@@ -134,6 +136,7 @@ export async function getTicketLinkAdminView({
         id: true,
         status: true,
         ticketType: true,
+        ticketTypeKey: true,
         participantCount: true,
         normalizedReservationNumber: true,
         reservationNumberRaw: true,
@@ -168,6 +171,7 @@ export async function getTicketLinkAdminView({
         status: r.status,
         statusLabel: TICKET_LINK_STATUS_LABEL[r.status],
         ticketType: r.ticketType,
+        ticketTypeKey: r.ticketTypeKey,
         participantCount: r.participantCount,
         reservationNumber: r.normalizedReservationNumber,
         normalizedReservationNumber: r.normalizedReservationNumber,
