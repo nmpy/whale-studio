@@ -15,6 +15,7 @@
 import { prisma } from "@/lib/prisma";
 import { activeCache, CACHE_KEY, TTL } from "@/lib/cache";
 import { matchKeysEqual, normalizeMatchKey } from "@/lib/live-match-key";
+import { enqueueUzuEvent, playerLineLinkedKey, UZU_EVENT_TYPES } from "@/lib/uzu-outbox";
 import { upsertLiveTeamParticipant } from "@/lib/live-participant-link";
 
 // OaEntitlement.featureKey（@/lib/live の LIVE_FEATURE_KEY と同値）。
@@ -87,27 +88,58 @@ export async function linkReservationToLiveTeam(args: {
 
     const now = new Date();
 
-    // find-or-create は共通コア（upsertLiveTeamParticipant）へ集約。
-    // displayName を渡さない = 従来の webhook 自己申告照合と完全に同挙動（回帰なし）。
-    // Phase 2 のチケットリンク連携（team 直指定・定員つき）も同じコアを使う。
-    const { participantId } = await upsertLiveTeamParticipant(prisma, {
-      oaId,
-      liveSessionId: team.liveSessionId,
-      teamId:        team.id,
-      lineUserId,
-      now,
-    });
+    // 連携先 UZU Project（未設定なら UZU へは送らない＝既存挙動のまま）。
+    const work = await prisma.work.findUnique({ where: { id: workId }, select: { uzuProjectId: true } });
+    const uzuProjectId = work?.uzuProjectId ?? null;
+    // UZU 側は予約番号で照合するため、CSV 由来の team.reservationNumber を正とする。
+    // ticketId だけで一致した（予約番号が無い）team は UZU へ送れないため送信しない。
+    const reservationNumber = team.reservationNumber;
 
-    await prisma.liveEventLog.create({
-      data: {
+    // ---- transactional outbox --------------------------------------------
+    // 業務データ更新（LiveParticipant / LiveEventLog）と outbox 作成を**同一 transaction**にする。
+    // 「Whale では連携済みだが UZU へ送るイベントが存在しない」状態を作らない。
+    // HTTP 送信は transaction の外で cron worker が行う。
+    await prisma.$transaction(async (tx) => {
+      // find-or-create は共通コア（upsertLiveTeamParticipant）へ集約。
+      // displayName を渡さない = 従来の webhook 自己申告照合と完全に同挙動（回帰なし）。
+      const { participantId } = await upsertLiveTeamParticipant(tx, {
         oaId,
         liveSessionId: team.liveSessionId,
-        participantId,
-        type:          "checked_in",
-        title:         via === "reservation" ? "予約番号でチェックイン" : "チケットIDでチェックイン",
-        detail:        input,
-        payload:       { via, matched_team_id: team.id },
-      },
+        teamId:        team.id,
+        lineUserId,
+        now,
+      });
+
+      await tx.liveEventLog.create({
+        data: {
+          oaId,
+          liveSessionId: team.liveSessionId,
+          participantId,
+          type:          "checked_in",
+          title:         via === "reservation" ? "予約番号でチェックイン" : "チケットIDでチェックイン",
+          detail:        input,
+          payload:       { via, matched_team_id: team.id },
+        },
+      });
+
+      if (uzuProjectId && reservationNumber) {
+        await enqueueUzuEvent(tx, {
+          oaId,
+          workId,
+          uzuProjectId,
+          eventType:      UZU_EVENT_TYPES.playerLineLinked,
+          idempotencyKey: playerLineLinkedKey({ participantId, teamId: team.id, lineUserId }),
+          payload: {
+            reservationNumber,
+            lineUserId,
+            lineDisplayName: null,
+            oaId,
+            workId,
+            matchedVia:      via,
+          },
+          now,
+        });
+      }
     });
   } catch {
     // 同期失敗は握りつぶす（配信を壊さない）。
