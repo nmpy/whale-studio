@@ -83,6 +83,30 @@ describe("管理画面 View Model（for ウズプロ）", () => {
   });
 });
 
+describe("解除処理（PR-B）の情報露出", () => {
+  const revoke = read("../lib/uzupro/ticket-link-revoke.ts");
+  const route = read("../app/api/oas/[id]/works/[workId]/uzu-pro/ticket-links/[ticketLinkId]/revoke/route.ts");
+
+  it("解除ロジックは予約番号 / LINE UID を select しない", () => {
+    expect(revoke).not.toMatch(/normalizedReservationNumber:\s*true/);
+    expect(revoke).not.toMatch(/lineUserId:\s*true/);
+    expect(revoke).not.toMatch(/lineDisplayName:\s*true/);
+  });
+
+  it("物理削除しない（delete を含まない）", () => {
+    for (const src of [revoke, route]) {
+      expect(src).not.toMatch(/ticketLink\.delete/);
+      expect(src).not.toMatch(/deleteMany/);
+    }
+  });
+
+  it("console へ出力しない", () => {
+    for (const src of [revoke, route]) {
+      expect(src).not.toMatch(/console\.(log|info|warn|error)/);
+    }
+  });
+});
+
 describe("管理画面 UI", () => {
   const page = read("../app/oas/[id]/works/[workId]/uzu-pro/ticket-links/page.tsx");
   const filters = read("../app/oas/[id]/works/[workId]/uzu-pro/ticket-links/_filters.tsx");
@@ -94,12 +118,28 @@ describe("管理画面 UI", () => {
     expect(page).toContain("notFound()");
   });
 
-  it("承認 / 状態変更 / 解除の口を持たない（read-only）", () => {
+  it("承認 / 任意の状態変更は持たない（解除のみ・PR-B）", () => {
     for (const src of [page, filters, table]) {
-      expect(src).not.toMatch(/method:\s*["'](POST|PATCH|PUT|DELETE)["']/);
       expect(src).not.toContain("approve");
-      expect(src).not.toContain("unlink");
+      // 一覧・フィルタ自体は書き込みしない
+      expect(src).not.toMatch(/method:\s*["'](PATCH|PUT|DELETE)["']/);
     }
+    // 解除ダイアログだけが POST する（DELETE は使わない = 物理削除しない）
+    const dialog = read("../app/oas/[id]/works/[workId]/uzu-pro/ticket-links/_revoke-dialog.tsx");
+    expect(dialog).toMatch(/method:\s*"POST"/);
+    expect(dialog).not.toMatch(/method:\s*"DELETE"/);
+  });
+
+  it("REVOKED 行には解除導線を出さない（履歴として閲覧は維持）", () => {
+    expect(table).toMatch(/r\.status === "REVOKED"/);
+  });
+
+  it("解除ダイアログは予約番号を URL / ログへ出さない", () => {
+    const dialog = read("../app/oas/[id]/works/[workId]/uzu-pro/ticket-links/_revoke-dialog.tsx");
+    // URL に載るのは ticketLink の id のみ
+    expect(dialog).toMatch(/ticket-links\/\$\{encodeURIComponent\(row\.id\)\}\/revoke/);
+    expect(dialog).not.toMatch(/console\.(log|info|warn|error)/);
+    expect(dialog).not.toMatch(/reservationNumber[^}]*(\?|&)/); // query string へ載せない
   });
 
   it("URL クエリに予約番号の行データを埋め込まない（検索語のみ）", () => {
