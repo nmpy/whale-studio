@@ -2,15 +2,19 @@
 
 // for ウズプロ ＞ チケット連携一覧テーブル（**read-only**）。
 //   - View Model のみ受け取る。生 DB モデル・LINE UID・内部主キーの業務表示はしない。
-//   - 編集 / 状態変更 / 解除 / 承認の操作は**持たない**（PR-A は閲覧専用）。
+//   - 操作は「連携を解除」のみ（PR-B）。編集 / 承認 / 状態の任意変更は持たない。
+//     解除は行の控えめなテキストボタン → 確認ダイアログを経由し、押しただけでは変更しない。
+//     REVOKED 行には解除導線を出さない（履歴としての閲覧は維持）。
 //   - 予約番号は照合キーとしてフル表示する（この画面は for ウズプロ権限を通過した運営のみ）。
 //   - 項目が多いため横スクロールさせる。内容が単純に切れて見えなくならないよう
 //     ラッパに overflow-x-auto を置き、各セルは意味に応じて nowrap / 折り返しを使い分ける。
 
+import { useState } from "react";
 import { formatDateTime } from "@/lib/format-datetime";
 import { ACTIVITY_TONE_CLASS, type ActivityTone } from "@/lib/activity-feed";
 import type { TicketLinkAdminRow } from "@/lib/uzupro/ticket-link-view";
 import type { TicketLinkStatus } from "@prisma/client";
+import { TicketLinkRevokeDialog } from "./_revoke-dialog";
 
 /** 既存 enum → 表示トーン。状態は色だけでなくラベル文字でも判別できる。 */
 const STATUS_TONE: Record<TicketLinkStatus, ActivityTone> = {
@@ -31,7 +35,18 @@ const SOURCE_LABEL: Record<string, string> = {
 const TH = "whitespace-nowrap px-3 py-2 text-left text-[11px] font-bold text-ink-3";
 const TD = "whitespace-nowrap px-3 py-2.5 align-top text-[12px] text-ink-2";
 
-export function TicketLinkTable({ rows }: { rows: TicketLinkAdminRow[] }) {
+export function TicketLinkTable({
+  rows,
+  oaId,
+  workId,
+}: {
+  rows: TicketLinkAdminRow[];
+  oaId: string;
+  workId: string;
+}) {
+  // 解除確認ダイアログの対象行（null = 閉じている）。
+  const [target, setTarget] = useState<TicketLinkAdminRow | null>(null);
+
   if (rows.length === 0) {
     return (
       <div className="rounded-[14px] border border-line bg-surface px-6 py-12 text-center shadow-sm">
@@ -45,7 +60,7 @@ export function TicketLinkTable({ rows }: { rows: TicketLinkAdminRow[] }) {
 
   return (
     <div className="overflow-x-auto rounded-[14px] border border-line bg-surface shadow-sm">
-      <table className="w-full min-w-[1080px] border-collapse">
+      <table className="w-full min-w-[1200px] border-collapse">
         <thead>
           <tr className="border-b border-line bg-line-2/40">
             <th scope="col" className={TH}>状態</th>
@@ -58,6 +73,9 @@ export function TicketLinkTable({ rows }: { rows: TicketLinkAdminRow[] }) {
             <th scope="col" className={TH}>確定日時</th>
             <th scope="col" className={TH}>更新日時</th>
             <th scope="col" className={TH}>CMS 同期</th>
+            <th scope="col" className={TH}>
+              <span className="sr-only">操作</span>
+            </th>
           </tr>
         </thead>
         <tbody>
@@ -130,10 +148,34 @@ export function TicketLinkTable({ rows }: { rows: TicketLinkAdminRow[] }) {
                   <span className="text-ink-3">未同期</span>
                 )}
               </td>
+
+              {/* 操作: 解除のみ。既に無効な行には出さない（履歴として閲覧だけ残す）。 */}
+              <td className={TD + " text-right"}>
+                {r.status === "REVOKED" ? (
+                  <span className="text-[11px] text-ink-3">—</span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setTarget(r)}
+                    className="rounded-lg border border-line px-2 py-1 text-[11px] font-semibold text-ink-3 hover:border-danger/40 hover:text-danger"
+                  >
+                    連携を解除
+                  </button>
+                )}
+              </td>
             </tr>
           ))}
         </tbody>
       </table>
+
+      {target && (
+        <TicketLinkRevokeDialog
+          oaId={oaId}
+          workId={workId}
+          row={target}
+          onClose={() => setTarget(null)}
+        />
+      )}
     </div>
   );
 }

@@ -9,6 +9,16 @@
 //     - キー無しで再送された場合も、状態と uzuSyncedAt の設定は同じ値を書くだけなので二重反映にならない。
 //     - ERROR は uzuSyncedAt を進めない（次回の差分取得で再試行できるようにする）。
 //
+//   並行更新:
+//     - status の更新は compare-and-swap（読んだ status を where に入れる）。
+//       運営の「チケット連携を解除」(REVOKED) と競合しても、解除済み連携を
+//       LINKED / CONFLICT / PENDING_UZU_BOOKING へ復活させない。
+//       REVOKED は terminal（canTransitionLink(REVOKED, *) === false）であり、
+//       その既存規則を「読んだ後・update する前」に解除された場合にも成立させる。
+//     - 競合を検知した場合の意味は「最初から REVOKED だった場合」と揃える
+//       （status は no-op / uzuSyncedAt は進める / syncLog は残す / applied として数える）。
+//       race 専用の新しいエラー仕様は作らない。
+//
 //   ESCAPE.ID 由来の個人情報（本名/購入者名/メール等）や OCR データは受け取らない。
 //   strict schema で未知フィールドを 400 拒否する。
 
@@ -41,6 +51,12 @@ const bodySchema = z
     results: z.array(resultSchema).min(1).max(500),
   })
   .strict();
+
+/**
+ * status CAS の試行上限。初回 + 最新 status での再判定 1 回のみ。
+ * 並行更新が続く場合に無限ループしないよう明示的に有限にする（revoke 側と同方針）。
+ */
+const MAX_SYNC_CAS_ATTEMPTS = 2;
 
 /** 同期結果 → 連携状態。NO_CHANGE / ERROR は状態を動かさない。 */
 function targetStatusFor(result: string): TicketLinkStatus | null {
@@ -106,22 +122,50 @@ export async function POST(req: NextRequest) {
       if (!link) { counts.notFound += 1; continue; }
 
       const target = targetStatusFor(r.result);
-      const nextStatus =
-        target && target !== link.status && canTransitionLink(link.status, target) ? target : null;
 
       // ERROR は同期済みにしない（次回の差分取得で再試行させる）。
       const markSynced = r.result !== "ERROR";
 
-      await prisma.$transaction(async (tx) => {
-        if (nextStatus || markSynced) {
-          await tx.ticketLink.update({
-            where: { id: link.id },
-            data: {
-              ...(nextStatus ? { status: nextStatus } : {}),
-              ...(markSynced ? { uzuSyncedAt: now } : {}),
-            },
+      const statusApplied = await prisma.$transaction(async (tx) => {
+        // status は **id だけで update しない**。読んだ status を where に含める CAS にする。
+        // そうしないと「PENDING を読む → 運営が REVOKED へ解除 → id 指定で LINKED に更新」で
+        // 解除済み連携が復活する。
+        let observed: TicketLinkStatus = link.status;
+        let applied = false;
+
+        for (let attempt = 0; attempt < MAX_SYNC_CAS_ATTEMPTS; attempt += 1) {
+          // 遷移可否は **常に最新の observed** に対して評価する（stale な初回読み取り値で判定しない）。
+          // REVOKED は LINK_TRANSITIONS が空なので、ここで必ず nextStatus = null になる。
+          const nextStatus =
+            target && target !== observed && canTransitionLink(observed, target) ? target : null;
+          // 遷移不可 / 既に同値 → status は触らない（既存の no-op と同じ）。
+          if (!nextStatus) break;
+
+          const updated = await tx.ticketLink.updateMany({
+            where: { id: link.id, workId: work.id, status: observed },
+            data:  { status: nextStatus },
+          });
+          if (updated.count > 0) { applied = true; break; }
+
+          // count 0 = 「where に一致する行が無かった」だけ。
+          // DB エラーは throw されるのでここには来ない（= 通信断等を競合と取り違えない）。
+          const after = await tx.ticketLink.findFirst({
+            where:  { id: link.id, workId: work.id },
+            select: { status: true },
+          });
+          if (!after) break;
+          observed = after.status; // 次の周回で最新 status に対して再評価する
+        }
+
+        // uzuSyncedAt は status に依存しない「この時刻の同期結果を受け取った」記録。
+        // 最初から REVOKED だった場合の既存挙動と同じく、status が no-op でも進める。
+        if (markSynced) {
+          await tx.ticketLink.updateMany({
+            where: { id: link.id, workId: work.id },
+            data:  { uzuSyncedAt: now },
           });
         }
+
         await tx.ticketLinkSyncLog.create({
           data: {
             ticketLinkId: link.id,
@@ -131,10 +175,13 @@ export async function POST(req: NextRequest) {
             syncedAt:     now,
           },
         });
+        return applied;
       });
 
+      // 集計の意味は据え置き（markSynced === (result !== "ERROR") なので、
+      // 非 ERROR は status が no-op でも applied。最初から REVOKED の場合と同じ）。
       if (r.result === "ERROR") counts.errors += 1;
-      else if (nextStatus || markSynced) counts.applied += 1;
+      else if (statusApplied || markSynced) counts.applied += 1;
       else counts.skipped += 1;
     }
 
