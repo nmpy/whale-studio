@@ -211,12 +211,12 @@ describe("buildWorkSidebarSections — FOR ウズプロ の出し分け", () => 
     expect(uzuSection(false)).toBeUndefined();
   });
 
-  it("uzuProAccess=true → 連携状況（ランディング）→ プレイヤー の順で表示", () => {
+  it("uzuProAccess=true → 連携状況（ランディング）→ プレイヤー → チケット連携 の順で表示", () => {
     const sec = uzuSection(true);
     expect(sec).toBeDefined();
-    expect(sec!.items.map((i) => i.label)).toEqual(["連携状況", "プレイヤー"]);
+    expect(sec!.items.map((i) => i.label)).toEqual(["連携状況", "プレイヤー", "チケット連携"]);
 
-    const [status, player] = sec!.items;
+    const [status, player, ticketLinks] = sec!.items;
     // 連携状況（新規・ランディング）
     expect(status.key).toBe("uzupro-status");
     expect(status.href).toBe(`/oas/${OA}/works/wk1/uzu-pro/status`);
@@ -225,5 +225,9 @@ describe("buildWorkSidebarSections — FOR ウズプロ の出し分け", () => 
     expect(player.key).toBe("uzupro-player");
     expect(player.href).toBe(`/oas/${OA}/works/wk1/uzu-pro/player`);
     expect(player.activeSegments).toEqual(["/uzu-pro/player"]);
+    // チケット連携（read-only の運用画面。LIFF タブ側の設定編集とは別責務）
+    expect(ticketLinks.key).toBe("uzupro-ticket-links");
+    expect(ticketLinks.href).toBe(`/oas/${OA}/works/wk1/uzu-pro/ticket-links`);
+    expect(ticketLinks.activeSegments).toEqual(["/uzu-pro/ticket-links"]);
   });
 });

@@ -143,3 +143,45 @@ describe("isSidebarItemActive — OA 階層 activeKey 判定", () => {
     expect(isSidebarItemActive(top, base, base, "top")).toBe(true);
   });
 });
+
+// ── FOR ウズプロ セクション（アクセス権限保有時のみ） ───────────────────────────
+describe("FOR ウズプロ セクション", () => {
+  const buildUzu = (uzuProAccess: boolean) =>
+    buildWorkSidebarSections({ oaId: OA, workId: WORK, isTester: false, uzuProAccess });
+  const uzuSection = (access: boolean) => buildUzu(access).find((s) => s.heading === "FOR ウズプロ");
+
+  it("権限なしではセクションごと出さない", () => {
+    expect(uzuSection(false)).toBeUndefined();
+    expect(buildUzu(false).flatMap((s) => s.items).some((i) => i.label === "チケット連携")).toBe(false);
+  });
+
+  it("権限ありなら 連携状況 / プレイヤー / チケット連携 の 3 項目", () => {
+    expect(uzuSection(true)!.items.map((i) => i.label)).toEqual([
+      "連携状況", "プレイヤー", "チケット連携",
+    ]);
+  });
+
+  it("チケット連携の遷移先は for ウズプロ配下（LIFF 設定タブとは別）", () => {
+    const it_ = uzuSection(true)!.items.find((i) => i.label === "チケット連携")!;
+    expect(it_.href).toBe(`${base}/uzu-pro/ticket-links`);
+    expect(it_.key).toBe("uzupro-ticket-links");
+    expect(it_.external).toBeUndefined();
+  });
+
+  it("チケット連携は自分のパスでのみ active（他の for ウズプロ項目と干渉しない）", () => {
+    const items = uzuSection(true)!.items;
+    const ticket = items.find((i) => i.label === "チケット連携")!;
+    const status = items.find((i) => i.label === "連携状況")!;
+    const player = items.find((i) => i.label === "プレイヤー")!;
+
+    expect(isSidebarItemActive(ticket, `${base}/uzu-pro/ticket-links`, base)).toBe(true);
+    expect(isSidebarItemActive(status, `${base}/uzu-pro/ticket-links`, base)).toBe(false);
+    expect(isSidebarItemActive(player, `${base}/uzu-pro/ticket-links`, base)).toBe(false);
+    expect(isSidebarItemActive(ticket, `${base}/uzu-pro/player`, base)).toBe(false);
+  });
+
+  it("key は全体で一意のまま", () => {
+    const keys = buildUzu(true).flatMap((s) => s.items).map((i) => i.key);
+    expect(new Set(keys).size).toBe(keys.length);
+  });
+});
