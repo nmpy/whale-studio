@@ -211,6 +211,169 @@ describe("GET /api/external/v2/uzu-pro/ticket-links", () => {
     expect(body.meta.has_more).toBe(false);
     expect(body.meta.next_cursor).toBeNull();
   });
+
+  // ── ID 指定フィルタ（追加パラメータ） ──────────────────────────────────────
+  //
+  // CMS が「一度同期結果を返したが未解決のまま」の連携を後から直接引き直すための経路。
+  // 既存条件（作品 / status / unsyncedOnly / updatedSince）は一切緩めない。
+
+  describe("ids フィルタ", () => {
+    const whereOf = () => mockPrisma.ticketLink.findMany.mock.calls[0][0].where;
+    const argsOf = () => mockPrisma.ticketLink.findMany.mock.calls[0][0];
+
+    it("ids を送らない既存リクエストは従来どおり（id 条件を付けない）", async () => {
+      mockPrisma.ticketLink.findMany.mockResolvedValue([]);
+      await ticketLinksGET(getReq(`?workId=${WORK_ID}`, READ_KEY));
+
+      expect(whereOf().id).toBeUndefined();
+      expect(whereOf().uzuSyncedAt).toBeNull();
+      expect(argsOf().take).toBe(50 + 1); // DEFAULT_LIMIT のまま
+    });
+
+    it("ids=1件 でその ID だけに絞る", async () => {
+      mockPrisma.ticketLink.findMany.mockResolvedValue([makeLink("tl-1")]);
+      const res = await ticketLinksGET(getReq(`?workId=${WORK_ID}&ids=tl-1`, READ_KEY));
+      const body = await res.json();
+
+      expect(whereOf().id).toEqual({ in: ["tl-1"] });
+      expect(body.data.map((d: { whaleTicketLinkId: string }) => d.whaleTicketLinkId)).toEqual(["tl-1"]);
+    });
+
+    it("ids=複数 で指定分だけに絞る（繰り返しクエリ）", async () => {
+      mockPrisma.ticketLink.findMany.mockResolvedValue([]);
+      await ticketLinksGET(getReq(`?workId=${WORK_ID}&ids=tl-1&ids=tl-2&ids=tl-3`, READ_KEY));
+
+      expect(whereOf().id).toEqual({ in: ["tl-1", "tl-2", "tl-3"] });
+    });
+
+    it("重複 ID は正規化して重複行を作らない", async () => {
+      mockPrisma.ticketLink.findMany.mockResolvedValue([makeLink("tl-1")]);
+      const res = await ticketLinksGET(getReq(`?workId=${WORK_ID}&ids=tl-1&ids=tl-1&ids=tl-2`, READ_KEY));
+      const body = await res.json();
+
+      expect(whereOf().id).toEqual({ in: ["tl-1", "tl-2"] });
+      expect(body.data).toHaveLength(1);
+    });
+
+    it("ID 指定でも作品スコープを緩めない（別作品の ID は返らない）", async () => {
+      mockPrisma.ticketLink.findMany.mockResolvedValue([]);
+      await ticketLinksGET(getReq(`?workId=${WORK_ID}&ids=tl-of-other-work`, READ_KEY));
+
+      // workId が AND され続けるため、別作品の ID を渡しても一致しない。
+      expect(whereOf().workId).toBe(WORK_ID);
+      expect(whereOf().id).toEqual({ in: ["tl-of-other-work"] });
+    });
+
+    it("allowlist 外の OA では ID 指定でもクエリまで到達しない", async () => {
+      mockPrisma.work.findUnique.mockResolvedValue({ id: WORK_ID, oaId: "oa-other" });
+      const res = await ticketLinksGET(getReq(`?workId=${WORK_ID}&ids=tl-1`, READ_KEY));
+
+      expect(res.status).toBe(404);
+      expect(mockPrisma.ticketLink.findMany).not.toHaveBeenCalled();
+    });
+
+    it("ID 指定は unsyncedOnly を自動で無効化しない（既定では未同期条件が残る）", async () => {
+      mockPrisma.ticketLink.findMany.mockResolvedValue([]);
+      await ticketLinksGET(getReq(`?workId=${WORK_ID}&ids=tl-1`, READ_KEY));
+
+      expect(whereOf().uzuSyncedAt).toBeNull();
+    });
+
+    it("unsyncedOnly=false + ids なら同期済みの ID でも引ける（再読取りの本丸）", async () => {
+      mockPrisma.ticketLink.findMany.mockResolvedValue([makeLink("tl-1")]);
+      const res = await ticketLinksGET(
+        getReq(`?workId=${WORK_ID}&unsyncedOnly=false&ids=tl-1`, READ_KEY),
+      );
+      const body = await res.json();
+
+      expect(whereOf().uzuSyncedAt).toBeUndefined();
+      expect(whereOf().id).toEqual({ in: ["tl-1"] });
+      expect(body.data).toHaveLength(1);
+    });
+
+    it("ID 指定でも status 制限は維持する（REVOKED を復活させない）", async () => {
+      mockPrisma.ticketLink.findMany.mockResolvedValue([]);
+      await ticketLinksGET(getReq(`?workId=${WORK_ID}&unsyncedOnly=false&ids=tl-revoked`, READ_KEY));
+
+      expect(whereOf().status).toEqual({ in: ["PENDING_UZU_BOOKING", "LINKED", "CONFLICT"] });
+    });
+
+    it("ID 指定でも updatedSince は併用できる（条件を緩めない）", async () => {
+      mockPrisma.ticketLink.findMany.mockResolvedValue([]);
+      await ticketLinksGET(
+        getReq(`?workId=${WORK_ID}&ids=tl-1&updatedSince=2026-08-01T00:00:00%2B09:00`, READ_KEY),
+      );
+      expect(whereOf().updatedAt).toHaveProperty("gt");
+      expect(whereOf().id).toEqual({ in: ["tl-1"] });
+    });
+
+    it("上限ちょうど（100件）は受理する", async () => {
+      mockPrisma.ticketLink.findMany.mockResolvedValue([]);
+      const ids = Array.from({ length: 100 }, (_, i) => `ids=tl-${i}`).join("&");
+      const res = await ticketLinksGET(getReq(`?workId=${WORK_ID}&${ids}`, READ_KEY));
+
+      expect(res.status).toBe(200);
+      expect(whereOf().id.in).toHaveLength(100);
+    });
+
+    it("上限超過（101件）は 400", async () => {
+      const ids = Array.from({ length: 101 }, (_, i) => `ids=tl-${i}`).join("&");
+      const res = await ticketLinksGET(getReq(`?workId=${WORK_ID}&${ids}`, READ_KEY));
+
+      expect(res.status).toBe(400);
+      expect(mockPrisma.ticketLink.findMany).not.toHaveBeenCalled();
+    });
+
+    it("重複を並べて上限を回避できない（正規化前の件数で判定する）", async () => {
+      const ids = Array.from({ length: 101 }, () => "ids=tl-same").join("&");
+      const res = await ticketLinksGET(getReq(`?workId=${WORK_ID}&${ids}`, READ_KEY));
+      expect(res.status).toBe(400);
+    });
+
+    it("空文字の ID は 400", async () => {
+      const res = await ticketLinksGET(getReq(`?workId=${WORK_ID}&ids=`, READ_KEY));
+      expect(res.status).toBe(400);
+      expect(mockPrisma.ticketLink.findMany).not.toHaveBeenCalled();
+    });
+
+    it("指定した ID は 1 応答で返し切る（ページ外へ押し出さない）", async () => {
+      // ids 指定時は limit/cursor を使わず take = ids.length + 1 になる。
+      mockPrisma.ticketLink.findMany.mockResolvedValue([makeLink("tl-1"), makeLink("tl-2")]);
+      const res = await ticketLinksGET(
+        // limit=1 / cursor つきでも ID 指定側が優先される。
+        getReq(`?workId=${WORK_ID}&unsyncedOnly=false&limit=1&cursor=tl-0&ids=tl-1&ids=tl-2`, READ_KEY),
+      );
+      const body = await res.json();
+
+      expect(argsOf().take).toBe(3); // ids.length + 1
+      expect(argsOf().cursor).toBeUndefined();
+      expect(argsOf().skip).toBeUndefined();
+      expect(body.data).toHaveLength(2);
+      expect(body.meta.has_more).toBe(false);
+      expect(body.meta.next_cursor).toBeNull();
+    });
+
+    it("存在しない ID を混ぜても、見つかった分だけ返る", async () => {
+      mockPrisma.ticketLink.findMany.mockResolvedValue([makeLink("tl-1")]);
+      const res = await ticketLinksGET(
+        getReq(`?workId=${WORK_ID}&unsyncedOnly=false&ids=tl-1&ids=tl-missing`, READ_KEY),
+      );
+      const body = await res.json();
+
+      expect(res.status).toBe(200);
+      expect(body.data.map((d: { whaleTicketLinkId: string }) => d.whaleTicketLinkId)).toEqual(["tl-1"]);
+    });
+
+    it("ID 指定でも ESCAPE.ID 由来の個人情報を返さない", async () => {
+      mockPrisma.ticketLink.findMany.mockResolvedValue([makeLink("tl-1")]);
+      const res = await ticketLinksGET(getReq(`?workId=${WORK_ID}&ids=tl-1`, READ_KEY));
+      const serialized = JSON.stringify(await res.json());
+
+      for (const leak of ["購入者", "purchaserName", "ocr", "venue"]) {
+        expect(serialized).not.toContain(leak);
+      }
+    });
+  });
 });
 
 describe("POST /api/external/v2/uzu-pro/ticket-links/sync-result", () => {
