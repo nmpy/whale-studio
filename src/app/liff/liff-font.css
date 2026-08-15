@@ -43,6 +43,14 @@
   --liff-danger:            #E22B2B;
   --liff-danger-press:      #C42323;
 
+  /* アクセント色まわりの「文字色」トークン [color_mode 対応]。
+   * 既定値は現行の見た目と完全に一致させてある（= 未設定ページは 1px も変わらない）。
+   *   --liff-on-accent   : 塗りつぶし CTA（filled ボタン）の上に載る文字色。従来 `text-white` 固定だった。
+   *   --liff-accent-text : outline ボタン等「面ではなく文字」に使うアクセント色。従来 --liff-line-green と同値。
+   * ダーク / セピア等では面と文字でコントラスト要件が逆転するため、この 2 つを別々に差し替える。 */
+  --liff-on-accent:         #FFFFFF;
+  --liff-accent-text:       var(--liff-line-green);
+
   /* === バナー(warning ブロック)用の淡い tone 配色 [PR-BLK4a] ===
    * player 専用。背景はかなり淡く、accent はアイコン用の控えめな色。admin/CMS では使わない。 */
   --liff-banner-warning-bg:     #FEF9EC;   /* 注意: 薄いクリーム */
@@ -159,6 +167,69 @@
     "Hiragino Mincho Pro",
     "MS PMincho",
     serif;
+}
+
+/* === フォントテーマ (現行仕様: settings_json.font_theme) ===
+ *
+ * ページ設定の `font_theme` に応じて renderer root（= liffRootClass）に付くクラス。
+ * "default" は class なし＝ `.liff-font` の既定 stack (LINE Seed JP) がそのまま効く。
+ *
+ * specificity は既存 `.liff-font--*` と同じ単一クラス (0,1,0) に揃えている。
+ * これにより下の `.liff-home-font--* .liff-font` (0,2,0)（＝作品ホームのフォント指定）が
+ * 従来どおりページ別指定より優先される、という既存の優先順位を変えない。
+ *
+ * 実フォント本体は layout.tsx / LiffPreview.tsx で @fontsource から読み込む
+ * （OS にフォントが無い端末でも視覚差が出るようにするため）。 */
+
+/* ゴシック: 読みやすい標準ゴシック。Noto Sans JP を同梱ロード。 */
+.liff-font-theme--gothic {
+  --liff-font-stack:
+    "Noto Sans JP",
+    "Noto Sans CJK JP",
+    -apple-system,
+    BlinkMacSystemFont,
+    "Hiragino Kaku Gothic ProN",
+    "Yu Gothic",
+    system-ui,
+    sans-serif;
+}
+
+/* 丸ゴシック: やわらかい印象。iOS/macOS はヒラギノ丸ゴ、その他は M PLUS Rounded 1c（同梱）。 */
+.liff-font-theme--rounded {
+  --liff-font-stack:
+    "Hiragino Maru Gothic ProN",
+    "Hiragino Maru Gothic Pro",
+    "M PLUS Rounded 1c",
+    "Rounded Mplus 1c",
+    "Segoe UI",
+    system-ui,
+    sans-serif;
+}
+
+/* クラシック: 物語 / 世界観向けの明朝。Noto Serif JP を同梱ロード。 */
+.liff-font-theme--classic {
+  --liff-font-stack:
+    "Noto Serif JP",
+    "Yu Mincho",
+    "YuMincho",
+    "Hiragino Mincho ProN",
+    "Hiragino Mincho Pro",
+    "MS PMincho",
+    serif;
+}
+
+/* モダン: OS 標準のシステムフォント。余計な癖がなく端末に馴染む。 */
+.liff-font-theme--modern {
+  --liff-font-stack:
+    -apple-system,
+    BlinkMacSystemFont,
+    "Helvetica Neue",
+    "Segoe UI",
+    "Hiragino Sans",
+    "Noto Sans CJK JP",
+    "Noto Sans JP",
+    system-ui,
+    sans-serif;
 }
 
 /* === 旧 font_family 互換 (deprecated) ===
@@ -400,4 +471,301 @@
   -webkit-appearance: none;
   padding-right: 36px;
   cursor: pointer;
+}
+
+/* ============================================================================
+ * カラーモード (settings_json.color_mode)
+ * ============================================================================
+ *
+ * renderer root（= `liffRootClass(settings)`）に `.liff-color-mode-*` が付く。
+ * 中身は「`.liff-font` が定義しているデザイントークンの上書き」だけ。
+ * 新しい色を直書きせず必ずトークン経由にすることで、
+ * トークンを参照している既存 renderer / ui 部品がまとめて追従する。
+ *
+ * 重要（後方互換）:
+ *   - "light"（既定・未設定）は **class を付けない**。よってこのセクションは一切効かず、
+ *     既存ページの見た目は 1px も変わらない。
+ *   - specificity は `.liff-font` と同じ (0,1,0) なので、
+ *     **必ず `.liff-font { }` ブロックより後ろ**に置くこと（後勝ちで上書きする）。
+ *   - モードを追加するときは types.ts の LiffColorMode / validations / CMS select /
+ *     liff-style-helpers.colorModeClass も揃えること。
+ */
+
+/* ── dark: ディープ・ボルドー（濃い赤黒 + ピンク寄りアクセント） ────────── */
+.liff-color-mode-dark {
+  color-scheme: dark;
+
+  --liff-background:        #1A0E12;
+  --liff-surface:           #2A141A;
+  --liff-surface-subtle:    #331A21;
+  --liff-border:            #3B1E26;
+  --liff-border-strong:     #4E2731;
+
+  --liff-primary-text:      #F7EBEE;
+  --liff-secondary-text:    #D6B9C1;
+  --liff-tertiary-text:     #A98D95;
+
+  --liff-header-bg:         #2A141A;
+  --liff-header-text:       #F7EBEE;
+  --liff-header-border:     #3B1E26;
+
+  /* アクセント（= 従来 LINE グリーンだったトークン）をボルドー/ピンク系に差し替える。
+   * 面は白文字が AA を満たす濃さ、文字は暗い面で AA を満たす明るさ、と役割で分ける。 */
+  --liff-line-green:        #C2445F;
+  --liff-line-green-press:  #A6374F;
+  --liff-on-accent:         #FFFFFF;
+  --liff-accent-text:       #F0B9C8;
+
+  --liff-ui-card-border:    #3B1E26;
+  --liff-ui-input-border:   #3B1E26;
+  --liff-ui-input-box-border: #4E2731;
+  --liff-ui-green-soft:     #3B1E26;
+  --liff-ui-green-pressed:  #A6374F;
+  --liff-ui-green-strong:   #F0B9C8;
+  --liff-ui-disabled-bg:    #2E1A20;
+  --liff-ui-disabled-text:  #8B7079;
+
+  --liff-danger:            #C2445F;
+  --liff-danger-press:      #A6374F;
+
+  --liff-banner-warning-bg:     #3A2C16;
+  --liff-banner-warning-accent: #E8B04A;
+  --liff-banner-info-bg:        #182742;
+  --liff-banner-info-accent:    #9BBBE8;
+  --liff-banner-danger-bg:      #3B1A21;
+  --liff-banner-danger-accent:  #F2708A;
+
+  --liff-ui-warning-bg:     #3A2C16;
+  --liff-ui-warning-text:   #F2CE92;
+  --liff-ui-warning-border: #5B4522;
+
+  --liff-card-shadow:       0 2px 10px rgba(0, 0, 0, 0.45);
+  --liff-ui-card-shadow:    0 1px 3px rgba(0, 0, 0, 0.45);
+}
+
+/* ── system: OS の prefers-color-scheme に追従 ────────────────────────────
+ * light のときは何も上書きしない（= 既定の白ベース）。
+ * dark のときだけ上の `.liff-color-mode-dark` と **同一内容** を当てる。
+ * CSS には mixin が無いため意図的な重複。片方だけ直さないこと。 */
+@media (prefers-color-scheme: dark) {
+  .liff-color-mode-system {
+    color-scheme: dark;
+
+    --liff-background:        #1A0E12;
+    --liff-surface:           #2A141A;
+    --liff-surface-subtle:    #331A21;
+    --liff-border:            #3B1E26;
+    --liff-border-strong:     #4E2731;
+
+    --liff-primary-text:      #F7EBEE;
+    --liff-secondary-text:    #D6B9C1;
+    --liff-tertiary-text:     #A98D95;
+
+    --liff-header-bg:         #2A141A;
+    --liff-header-text:       #F7EBEE;
+    --liff-header-border:     #3B1E26;
+
+    --liff-line-green:        #C2445F;
+    --liff-line-green-press:  #A6374F;
+    --liff-on-accent:         #FFFFFF;
+    --liff-accent-text:       #F0B9C8;
+
+    --liff-ui-card-border:    #3B1E26;
+    --liff-ui-input-border:   #3B1E26;
+    --liff-ui-input-box-border: #4E2731;
+    --liff-ui-green-soft:     #3B1E26;
+    --liff-ui-green-pressed:  #A6374F;
+    --liff-ui-green-strong:   #F0B9C8;
+    --liff-ui-disabled-bg:    #2E1A20;
+    --liff-ui-disabled-text:  #8B7079;
+
+    --liff-danger:            #C2445F;
+    --liff-danger-press:      #A6374F;
+
+    --liff-banner-warning-bg:     #3A2C16;
+    --liff-banner-warning-accent: #E8B04A;
+    --liff-banner-info-bg:        #182742;
+    --liff-banner-info-accent:    #9BBBE8;
+    --liff-banner-danger-bg:      #3B1A21;
+    --liff-banner-danger-accent:  #F2708A;
+
+    --liff-ui-warning-bg:     #3A2C16;
+    --liff-ui-warning-text:   #F2CE92;
+    --liff-ui-warning-border: #5B4522;
+
+    --liff-card-shadow:       0 2px 10px rgba(0, 0, 0, 0.45);
+    --liff-ui-card-shadow:    0 1px 3px rgba(0, 0, 0, 0.45);
+  }
+}
+
+/* ── bordeaux: ボルドー × アイボリー（明るいまま世界観を出すライト系） ──── */
+.liff-color-mode-bordeaux {
+  --liff-background:        #FAF6F1;
+  --liff-surface:           #FFFFFF;
+  --liff-surface-subtle:    #F7EFE9;
+  --liff-border:            #EFE2DA;
+  --liff-border-strong:     #E0CCC4;
+
+  --liff-primary-text:      #3A2126;
+  --liff-secondary-text:    #6B4A50;
+  --liff-tertiary-text:     #A99A8C;
+
+  --liff-header-bg:         #FFFFFF;
+  --liff-header-text:       #3A2126;
+  --liff-header-border:     #EFE2DA;
+
+  --liff-line-green:        #6E1B2E;
+  --liff-line-green-press:  #4E1220;
+  --liff-on-accent:         #FFFFFF;
+  --liff-accent-text:       #6E1B2E;
+
+  --liff-ui-card-border:    #EFE2DA;
+  --liff-ui-input-border:   #EFE2DA;
+  --liff-ui-input-box-border: #E0CCC4;
+  --liff-ui-green-soft:     #F2E6E3;
+  --liff-ui-green-pressed:  #4E1220;
+  --liff-ui-green-strong:   #6E1B2E;
+
+  /* 既定の #E22B2B はこの地色では浮くため、同系の深い赤に寄せる（役割は変えない）。 */
+  --liff-danger:            #B3261E;
+  --liff-danger-press:      #8E1D17;
+
+  --liff-card-shadow:       0 2px 10px rgba(78, 18, 32, 0.06);
+  --liff-ui-card-shadow:    0 1px 3px rgba(78, 18, 32, 0.06);
+}
+
+/* ── sepia: 生成り / 茶系の暖色テーマ ─────────────────────────────────── */
+.liff-color-mode-sepia {
+  --liff-background:        #F3EADA;
+  --liff-surface:           #FBF5EA;
+  --liff-surface-subtle:    #EFE4D2;
+  --liff-border:            #E0D2BC;
+  --liff-border-strong:     #CDBBA0;
+
+  --liff-primary-text:      #3F3327;
+  --liff-secondary-text:    #6B5B47;
+  --liff-tertiary-text:     #8A7960;
+
+  --liff-header-bg:         #FBF5EA;
+  --liff-header-text:       #3F3327;
+  --liff-header-border:     #E0D2BC;
+
+  --liff-line-green:        #8C3A2E;
+  --liff-line-green-press:  #6E2C22;
+  --liff-on-accent:         #FFFFFF;
+  --liff-accent-text:       #8C3A2E;
+
+  --liff-ui-card-border:    #E0D2BC;
+  --liff-ui-input-border:   #E0D2BC;
+  --liff-ui-input-box-border: #CDBBA0;
+  --liff-ui-green-soft:     #EFDFD3;
+  --liff-ui-green-pressed:  #6E2C22;
+  --liff-ui-green-strong:   #8C3A2E;
+  --liff-ui-disabled-bg:    #E8DDC9;
+  --liff-ui-disabled-text:  #A2937C;
+
+  --liff-danger:            #A32B1F;
+  --liff-danger-press:      #852117;
+
+  --liff-card-shadow:       0 2px 10px rgba(63, 51, 39, 0.07);
+  --liff-ui-card-shadow:    0 1px 3px rgba(63, 51, 39, 0.07);
+}
+
+/* ── 暗色テーマ用セーフティネット ──────────────────────────────────────
+ *
+ * 一部の古い renderer はトークンではなく Tailwind の固定色ユーティリティ
+ * (`bg-white` / `text-gray-700` 等) を直書きしている。暗い地色のモードでは
+ * それらだけが白いまま取り残されて読めなくなるため、**そのモードの中でだけ**
+ * 対応するトークンへ読み替える。
+ *
+ * light / bordeaux（明るい地色）には当てない = 既存の見た目に影響しない。
+ * このファイルは unlayered なので、`@layer utilities` の Tailwind 実体より強い。 */
+.liff-color-mode-dark .bg-white,
+.liff-color-mode-sepia .bg-white,
+.liff-color-mode-system .bg-white { background-color: var(--liff-surface); }
+
+.liff-color-mode-dark .bg-gray-50,
+.liff-color-mode-dark .bg-gray-100,
+.liff-color-mode-sepia .bg-gray-50,
+.liff-color-mode-sepia .bg-gray-100,
+.liff-color-mode-system .bg-gray-50,
+.liff-color-mode-system .bg-gray-100 { background-color: var(--liff-surface-subtle); }
+
+.liff-color-mode-dark .text-gray-900,
+.liff-color-mode-dark .text-gray-800,
+.liff-color-mode-dark .text-gray-700,
+.liff-color-mode-sepia .text-gray-900,
+.liff-color-mode-sepia .text-gray-800,
+.liff-color-mode-sepia .text-gray-700,
+.liff-color-mode-system .text-gray-900,
+.liff-color-mode-system .text-gray-800,
+.liff-color-mode-system .text-gray-700 { color: var(--liff-primary-text); }
+
+.liff-color-mode-dark .text-gray-600,
+.liff-color-mode-dark .text-gray-500,
+.liff-color-mode-sepia .text-gray-600,
+.liff-color-mode-sepia .text-gray-500,
+.liff-color-mode-system .text-gray-600,
+.liff-color-mode-system .text-gray-500 { color: var(--liff-secondary-text); }
+
+.liff-color-mode-dark .text-gray-400,
+.liff-color-mode-sepia .text-gray-400,
+.liff-color-mode-system .text-gray-400 { color: var(--liff-tertiary-text); }
+
+.liff-color-mode-dark .border-gray-100,
+.liff-color-mode-dark .border-gray-200,
+.liff-color-mode-dark .border-gray-300,
+.liff-color-mode-sepia .border-gray-100,
+.liff-color-mode-sepia .border-gray-200,
+.liff-color-mode-sepia .border-gray-300,
+.liff-color-mode-system .border-gray-100,
+.liff-color-mode-system .border-gray-200,
+.liff-color-mode-system .border-gray-300 { border-color: var(--liff-border); }
+
+/* 暗色テーマでのフォーム要素。
+ *
+ * globals.css は **unlayered** で `input[type="text"], select, textarea { background: #fff }`
+ * を持っており（specificity (0,1,1)）、これが LIFF 配下にも漏れてくる。
+ * Tailwind の `bg-transparent` は @layer utilities なので打ち消せず、
+ * 暗い地色のモードでは入力欄だけ真っ白に残ってしまう。
+ *
+ * `.liff-font.liff-color-mode-*` を重ねて (0,2,1) にし、globals より確実に強くする。
+ * 明るいモード（light / bordeaux）には当てない = 既存の見た目に影響しない。 */
+.liff-font.liff-color-mode-dark input,
+.liff-font.liff-color-mode-dark select,
+.liff-font.liff-color-mode-dark textarea,
+.liff-font.liff-color-mode-sepia input,
+.liff-font.liff-color-mode-sepia select,
+.liff-font.liff-color-mode-sepia textarea,
+.liff-font.liff-color-mode-system input,
+.liff-font.liff-color-mode-system select,
+.liff-font.liff-color-mode-system textarea {
+  background: var(--liff-surface);
+  color: var(--liff-primary-text);
+  border-color: var(--liff-ui-input-box-border);
+}
+
+.liff-font.liff-color-mode-dark input::placeholder,
+.liff-font.liff-color-mode-dark textarea::placeholder,
+.liff-font.liff-color-mode-sepia input::placeholder,
+.liff-font.liff-color-mode-sepia textarea::placeholder,
+.liff-font.liff-color-mode-system input::placeholder,
+.liff-font.liff-color-mode-system textarea::placeholder {
+  color: var(--liff-tertiary-text);
+}
+
+/* focus 時の緑リング（globals.css の `input:focus { box-shadow: 0 0 0 3px rgba(6,199,85,.14) }`）も
+ * テーマのアクセント色に寄せる。色以外（太さ・形）は変えない。 */
+.liff-font.liff-color-mode-dark input:focus,
+.liff-font.liff-color-mode-dark select:focus,
+.liff-font.liff-color-mode-dark textarea:focus,
+.liff-font.liff-color-mode-sepia input:focus,
+.liff-font.liff-color-mode-sepia select:focus,
+.liff-font.liff-color-mode-sepia textarea:focus,
+.liff-font.liff-color-mode-system input:focus,
+.liff-font.liff-color-mode-system select:focus,
+.liff-font.liff-color-mode-system textarea:focus {
+  background: var(--liff-surface);
+  border-color: var(--liff-line-green);
+  box-shadow: 0 0 0 3px var(--liff-ui-green-soft);
 }

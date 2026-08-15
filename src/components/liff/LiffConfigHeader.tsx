@@ -6,8 +6,12 @@
 // 入力欄の onChange は API を直接呼ばず、すべて onLocalChange (= draft 更新) に集約する。
 // 実 API 保存は最下部「すべての変更を保存」(useLiffConfig.saveAll = 一括保存) に任せる。
 
-import type { LiffPageConfig, LiffPageConfigSettings, LiffPageType, LiffPublishStatus } from "@/types";
+import type {
+  LiffColorMode, LiffFontTheme,
+  LiffPageConfig, LiffPageConfigSettings, LiffPageType, LiffPublishStatus,
+} from "@/types";
 import { normalizeLiffPageType } from "@/types";
+import { resolveColorMode, resolveFontTheme } from "./liff-style-helpers";
 import { LiffFaqEditor } from "./LiffFaqEditor";
 import { LiffHintSearchEditor } from "./LiffHintSearchEditor";
 import { LiffSurveyEditor } from "./LiffSurveyEditor";
@@ -47,6 +51,15 @@ export function LiffConfigHeader({
 
   const updateSetting = (key: keyof LiffPageConfigSettings, value: unknown) => {
     onLocalChange({ settings_json: { ...settings, [key]: value } });
+  };
+
+  // フォントは font_theme に一本化する。旧 font_preset / font_family が残っていると
+  // 「読み込み時のフォールバック」として解決順に混ざり、後から見て何が効いているのか
+  // 分からなくなるため、font_theme を保存するタイミングで旧キーを落とす。
+  // （既存データを一括変換はしない = ページを編集して保存したときだけ整理される）
+  const handleFontThemeChange = (next: LiffFontTheme) => {
+    const { font_preset: _dropPreset, font_family: _dropFamily, ...rest } = settings;
+    onLocalChange({ settings_json: { ...rest, font_theme: next } });
   };
 
   // 公開状態の変更は LINE プレイヤーから即時影響を受けるため、必ず確認ダイアログを挟む。
@@ -195,24 +208,39 @@ export function LiffConfigHeader({
           />
         </div>
 
-        {/* 5-6. フォント / 説明文の配置 */}
+        {/* 5-7. フォント / カラーモード / 説明文の配置 */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label className={labelCls}>フォント</label>
             <select
               className={inputCls}
-              value={settings.font_preset ?? (settings.font_family === "mincho" ? "serif" : "line_seed_jp")}
-              onChange={(e) =>
-                updateSetting("font_preset", e.target.value as "line_seed_jp" | "system_sans" | "noto_sans_jp" | "serif")
-              }
+              value={resolveFontTheme(settings)}
+              onChange={(e) => handleFontThemeChange(e.target.value as LiffFontTheme)}
               disabled={readOnly}
             >
-              <option value="line_seed_jp">LINE Seed JP（既定）</option>
-              <option value="system_sans">System Sans</option>
-              <option value="noto_sans_jp">Noto Sans JP</option>
-              <option value="serif">Serif（明朝）</option>
+              <option value="default">既定（LINE Seed JP）</option>
+              <option value="gothic">ゴシック（読みやすい標準）</option>
+              <option value="rounded">丸ゴシック（やわらかい）</option>
+              <option value="classic">クラシック（明朝・物語向け）</option>
+              <option value="modern">モダン（すっきり）</option>
             </select>
-            <p className="text-[11px] text-gray-400 mt-1">LIFF 画面全体の本文フォントです。未設定は LINE Seed JP。</p>
+            <p className="text-[11px] text-gray-400 mt-1">LIFF 画面全体の本文フォントです。未設定は既定（LINE Seed JP）。</p>
+          </div>
+          <div>
+            <label className={labelCls}>カラーモード</label>
+            <select
+              className={inputCls}
+              value={resolveColorMode(settings)}
+              onChange={(e) => updateSetting("color_mode", e.target.value as LiffColorMode)}
+              disabled={readOnly}
+            >
+              <option value="light">ライト（既定）</option>
+              <option value="dark">ダーク（ディープ・ボルドー）</option>
+              <option value="bordeaux">ボルドー × アイボリー</option>
+              <option value="sepia">セピア（暖色）</option>
+              <option value="system">システム（端末の設定に追従）</option>
+            </select>
+            <p className="text-[11px] text-gray-400 mt-1">LIFF 画面全体の配色です。未設定はライト（現行の白ベース）。</p>
           </div>
           <div>
             <label className={labelCls}>説明文の配置</label>

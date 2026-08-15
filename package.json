@@ -19,7 +19,9 @@
   },
   "dependencies": {
     "@fontsource/line-seed-jp": "^5.2.2",
+    "@fontsource/m-plus-rounded-1c": "^5.3.0",
     "@fontsource/noto-sans-jp": "^5.2.9",
+    "@fontsource/noto-serif-jp": "^5.3.0",
     "@googlemaps/js-api-loader": "^2.1.1",
     "@line/liff": "^2.28.0",
     "@prisma/client": "^5.14.0",

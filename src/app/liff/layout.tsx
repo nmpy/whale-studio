@@ -17,6 +17,15 @@ import "@fontsource/line-seed-jp/700.css";
 // 未ロードだと OS にフォントが無い端末でシステムフォントへフォールバックし「効かない」ように見える）。
 import "@fontsource/noto-sans-jp/400.css";
 import "@fontsource/noto-sans-jp/700.css";
+// font_theme="rounded" / "classic" 用。noto-sans-jp と同じ理由で同梱する
+// （OS に丸ゴシック / 明朝が無い端末ではフォールバックして「効かない」ように見えるため）。
+// @fontsource の CSS は @font-face 宣言だけで、実ファイルは実際に使われたときにしか
+// ダウンロードされない（unicode-range で subset 分割されている）ため、
+// 他テーマを選んでいるページの表示コストは増えない。
+import "@fontsource/m-plus-rounded-1c/400.css";
+import "@fontsource/m-plus-rounded-1c/700.css";
+import "@fontsource/noto-serif-jp/400.css";
+import "@fontsource/noto-serif-jp/700.css";
 import "./liff-font.css";
 
 export default function LiffLayout({ children }: { children: React.ReactNode }) {

@@ -76,20 +76,24 @@ const ACTION_BASE =
 
 const ACTION_VARIANT: Record<LiffActionVariant, string> = {
   // Filled = primary。塗り #06C755 / 押下 = --liff-ui-green-pressed(#06A047)。
+  // 文字色は --liff-on-accent（既定 #fff = 従来の text-white と同値）。
+  // color_mode で塗りの明度が変わったときに、文字色だけ差し替えられるようにしている。
   filled:
-    "text-white bg-[color:var(--liff-line-green,#06C755)] border border-[color:var(--liff-line-green,#06C755)] " +
+    "text-[color:var(--liff-on-accent,#fff)] bg-[color:var(--liff-line-green,#06C755)] border border-[color:var(--liff-line-green,#06C755)] " +
     "active:bg-[color:var(--liff-ui-green-pressed,#06A047)] active:border-[color:var(--liff-ui-green-pressed,#06A047)]",
   // Outline = secondary。緑枠 + 白背景。押下面 = --liff-ui-green-soft(#E8F9EE)。
+  // 文字は --liff-accent-text（既定は --liff-line-green と同値 = 従来と同じ見た目）。
+  // 暗色モードでは「面の色」と「文字の色」で必要な明度が逆になるため、この 2 つを分けている。
   outline:
-    "text-[color:var(--liff-line-green,#06C755)] bg-[color:var(--liff-surface,#fff)] border border-[color:var(--liff-line-green,#06C755)] " +
+    "text-[color:var(--liff-accent-text,#06C755)] bg-[color:var(--liff-surface,#fff)] border border-[color:var(--liff-line-green,#06C755)] " +
     "active:bg-[color:var(--liff-ui-green-soft,#E8F9EE)]",
   // Neutral = カード内の副次アクション（次の段階を開く 等）。ブランド色を使わない控えめな箱型。
   neutral:
     "text-[color:var(--liff-primary-text,#1F2329)] bg-[color:var(--liff-surface,#fff)] border border-[color:var(--liff-border,#eef2f5)] " +
     "active:bg-[color:var(--liff-surface-subtle,#FAFAFA)]",
-  // Danger = 取り消せない開示の実行ボタン。
+  // Danger = 取り消せない開示の実行ボタン。文字色は filled と同じ --liff-on-accent。
   danger:
-    "text-white bg-[color:var(--liff-danger,#E22B2B)] border border-[color:var(--liff-danger,#E22B2B)] " +
+    "text-[color:var(--liff-on-accent,#fff)] bg-[color:var(--liff-danger,#E22B2B)] border border-[color:var(--liff-danger,#E22B2B)] " +
     "active:bg-[color:var(--liff-danger-press,#C42323)] active:border-[color:var(--liff-danger-press,#C42323)]",
   // Danger Outline = その手前の「確認へ進む」ボタン。赤枠 + 赤文字 + 白背景。
   dangerOutline:
