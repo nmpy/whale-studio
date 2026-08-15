@@ -118,6 +118,13 @@ describe("初期画面 — 検索するまで情報を増やさない", () => {
     }
   });
 
+  it("入力欄の注記が、実装が吸収する差分だけを説明している", () => {
+    renderPage();
+    expect(screen.getByText("ひらがな・カタカナ・全角・半角の違いは判定に影響しません。")).toBeTruthy();
+    // 漢字↔読み仮名は吸収しないので、旧文言（「漢字の違いは…」）が残っていないこと。
+    expect(html()).not.toContain("漢字");
+  });
+
   it("質問ツリーの選択肢も、押すまでは DOM に無い", () => {
     renderPage();
     expect(html()).not.toContain(SECRET.guideOption);

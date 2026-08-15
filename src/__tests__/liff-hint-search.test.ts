@@ -26,6 +26,7 @@ import { redactPlayerSettings, PLAYER_REDACTED_SETTINGS_KEYS } from "@/lib/liff/
 import { openedStatusText } from "@/components/liff/hint-search/opened-store";
 import { liffPageConfigSettingsSchema } from "@/lib/validations";
 import { normalizeLiffPageType } from "@/types";
+import { HINT_SEARCH_COPY } from "@/components/liff/hint-search/copy";
 
 // ── テスト用のヒントデータ ────────────────────────────────────
 const ENTRIES_RAW = [
@@ -180,6 +181,75 @@ describe("searchHintEntries — 一致条件", () => {
   it("internal_title は検索対象に含めない（内部シナリオ名から漏らさない）", () => {
     expect(labelsOf("S.I.R.E.N")).toEqual([]);
     expect(labelsOf("P7")).toEqual([]);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────
+// 表記ゆれをどこまで吸収するか（＝ UI の注記が約束してよい範囲）
+//
+// 初期画面の注記「ひらがな・カタカナ・全角・半角の違いは判定に影響しません。」が
+// 実装と食い違わないよう、吸収する差分／しない差分をここで固定する。
+// 漢字と読み仮名は **吸収しない**。運用は keywords / aliases への複数登録で行う
+// （辞書・形態素解析・外部検索ライブラリは導入しない方針）。
+// ─────────────────────────────────────────────────────────────────
+describe("表記ゆれの吸収範囲 — UI 注記との整合", () => {
+  const kanjiOnly = normalizeHintSearchEntries([
+    { id: "k", search_result_label: "机について", keywords: ["机"], hints: [{ level: 1, body: "x" }] },
+  ]);
+  const both = normalizeHintSearchEntries([
+    // 運用対応: 漢字表記と読み仮名の両方を登録する
+    { id: "b", search_result_label: "机について", keywords: ["机", "つくえ"], aliases: ["デスク"], hints: [{ level: 1, body: "x" }] },
+  ]);
+  const hit = (entries: typeof kanjiOnly, q: string) => searchHintEntries(entries, q).length;
+
+  it("注記に「漢字」を含めない（実装が漢字↔かなを吸収しないため）", () => {
+    expect(HINT_SEARCH_COPY.inputNote).not.toContain("漢字");
+    expect(HINT_SEARCH_COPY.inputNote).toBe("ひらがな・カタカナ・全角・半角の違いは判定に影響しません。");
+  });
+
+  it("漢字表記のみ登録 → 同じ漢字で HIT する", () => {
+    expect(hit(kanjiOnly, "机")).toBe(1);
+  });
+
+  it("漢字表記のみ登録 → 読み仮名では HIT しない（吸収しないことを明示）", () => {
+    expect(hit(kanjiOnly, "つくえ")).toBe(0);
+    expect(hit(kanjiOnly, "ツクエ")).toBe(0);
+  });
+
+  it("漢字と読み仮名を両方 keywords 登録すれば、どちらでも HIT する", () => {
+    expect(hit(both, "机")).toBe(1);
+    expect(hit(both, "つくえ")).toBe(1);
+    expect(hit(both, "ツクエ")).toBe(1);   // カタカナ差はここで吸収される
+    expect(hit(both, "デスク")).toBe(1);   // aliases 経由
+  });
+
+  it("ひらがな / カタカナ差は吸収される", () => {
+    const e = normalizeHintSearchEntries([
+      { id: "x", search_result_label: "キーボードについて", keywords: ["キーボード"], hints: [{ level: 1, body: "y" }] },
+    ]);
+    expect(hit(e, "キーボード")).toBe(1);
+    expect(hit(e, "きーぼーど")).toBe(1);
+  });
+
+  it("全角 / 半角差は吸収される（英数字・カナ・スペース）", () => {
+    const e = normalizeHintSearchEntries([
+      { id: "x", search_result_label: "PC1 について", keywords: ["PC1", "キーボード"], hints: [{ level: 1, body: "y" }] },
+    ]);
+    // 全角英数字 → 半角
+    expect(hit(e, "ＰＣ１")).toBe(1);
+    expect(hit(e, "PC1")).toBe(1);
+    // 半角カナ → 全角カナ
+    expect(hit(e, "ｷｰﾎﾞｰﾄﾞ")).toBe(1);
+    // 全角スペース区切りでも分割される
+    expect(hit(e, "ＰＣ１　キーボード")).toBe(1);
+  });
+
+  it("大文字 / 小文字差も吸収される（注記では触れていないが実装済み）", () => {
+    const e = normalizeHintSearchEntries([
+      { id: "x", search_result_label: "Keyboard", aliases: ["KEYBOARD"], hints: [{ level: 1, body: "y" }] },
+    ]);
+    expect(hit(e, "keyboard")).toBe(1);
+    expect(hit(e, "KeYbOaRd")).toBe(1);
   });
 });
 

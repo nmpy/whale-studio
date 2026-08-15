@@ -10,7 +10,11 @@ export const HINT_SEARCH_COPY = {
   pageDescription:  "お困りの内容にあてはまるキーワードをご入力ください。該当するヒントのみを表示します。",
   inputLabel:       "お困りの内容を入力してください",
   inputPlaceholder: "例：さがしているものの名前",
-  inputNote:        "ひらがな・カタカナ・漢字の違いは判定に影響しません。",
+  // 検索の正規化が **実際に吸収する差分だけ** を書くこと。
+  // normalizeHintSearchText = NFKC（全角英数→半角 / 半角カナ→全角カナ）+ 小文字化 + カタカナ→ひらがな。
+  // 漢字と読み仮名（机 ↔ つくえ）は吸収しないので、ここに「漢字」と書いてはいけない。
+  // 漢字表記と読み仮名の両方を当てたい場合は、CMS 側で keywords / aliases に両方登録して運用する。
+  inputNote:        "ひらがな・カタカナ・全角・半角の違いは判定に影響しません。",
   submit:           "ヒントを探す",
   searching:        "検索中...",
   openedListLink:   "これまでに見たヒント",
