@@ -92,9 +92,12 @@ const ACTION_VARIANT: Record<LiffActionVariant, string> = {
     "text-[color:var(--liff-primary-text,#1F2329)] bg-[color:var(--liff-surface,#fff)] border border-[color:var(--liff-border,#eef2f5)] " +
     "active:bg-[color:var(--liff-surface-subtle,#FAFAFA)]",
   // Danger = 取り消せない開示の実行ボタン。文字色は filled と同じ --liff-on-accent。
+  // 面は --liff-danger-surface（既定は --liff-danger と同値＝従来の見た目のまま）。
+  // 暗色テーマでは「文字用の明るい赤」と「白文字が乗る濃い赤」を分ける必要があるため、
+  // 面だけ別トークンを参照する。文字・枠線として使う側は従来どおり --liff-danger。
   danger:
-    "text-[color:var(--liff-on-accent,#fff)] bg-[color:var(--liff-danger,#E22B2B)] border border-[color:var(--liff-danger,#E22B2B)] " +
-    "active:bg-[color:var(--liff-danger-press,#C42323)] active:border-[color:var(--liff-danger-press,#C42323)]",
+    "text-[color:var(--liff-on-accent,#fff)] bg-[color:var(--liff-danger-surface,#E22B2B)] border border-[color:var(--liff-danger-surface,#E22B2B)] " +
+    "active:bg-[color:var(--liff-danger-surface-press,#C42323)] active:border-[color:var(--liff-danger-surface-press,#C42323)]",
   // Danger Outline = その手前の「確認へ進む」ボタン。赤枠 + 赤文字 + 白背景。
   dangerOutline:
     "text-[color:var(--liff-danger,#E22B2B)] bg-[color:var(--liff-surface,#fff)] border border-[color:var(--liff-danger,#E22B2B)] " +

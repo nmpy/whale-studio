@@ -16,6 +16,7 @@ import {
   liffRootClass,
 } from "@/components/liff/liff-style-helpers";
 import { liffPageConfigSettingsSchema } from "@/lib/validations";
+import { LIFF_TEXT } from "@/components/liff/ui/tokens";
 import type { LiffPageConfigSettings } from "@/types";
 
 const S = (o: Record<string, unknown>): LiffPageConfigSettings => o as LiffPageConfigSettings;
@@ -199,6 +200,53 @@ function declarations(body: string): string[] {
     .filter(Boolean);
 }
 
+
+/** CSS 中の全 selector を列挙する（@media 等の at-rule prelude は除く）。 */
+function selectorsOf(css: string): string[] {
+  const out: string[] = [];
+  for (const chunk of css.replace(/\/\*[\s\S]*?\*\//g, "").split("}")) {
+    const i = chunk.indexOf("{");
+    if (i < 0) continue;
+    const sel = chunk.slice(0, i).trim().split("\n").map((l) => l.trim()).join(" ");
+    if (!sel || sel.startsWith("@")) continue;
+    out.push(sel);
+  }
+  return out;
+}
+
+/**
+ * `.liff-color-mode-system` を含む rule のうち、
+ * `@media (prefers-color-scheme: dark)` ブロックの外にあるものを返す。
+ * 波括弧の深さを数えて media block の範囲を判定する。
+ */
+function systemRulesOutsideDarkMedia(css: string): string[] {
+  const src = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  const bad: string[] = [];
+  let depth = 0;
+  let darkMediaDepth = -1;
+  let buf = "";
+  for (let i = 0; i < src.length; i++) {
+    const ch = src[i];
+    if (ch === "{") {
+      const prelude = buf.trim().replace(/\s+/g, " ");
+      buf = "";
+      depth++;
+      if (prelude.startsWith("@media") && /prefers-color-scheme\s*:\s*dark/.test(prelude)) {
+        if (darkMediaDepth < 0) darkMediaDepth = depth;
+      } else if (prelude.includes("liff-color-mode-system") && darkMediaDepth < 0) {
+        bad.push(prelude);
+      }
+    } else if (ch === "}") {
+      if (darkMediaDepth === depth) darkMediaDepth = -1;
+      depth--;
+      buf = "";
+    } else {
+      buf += ch;
+    }
+  }
+  return bad;
+}
+
 describe("liff-font.css の契約", () => {
   it("fontThemeClass が返す class がすべて CSS に定義されている", () => {
     for (const t of ["gothic", "rounded", "classic", "modern"] as const) {
@@ -229,6 +277,80 @@ describe("liff-font.css の契約", () => {
     expect(dark).not.toBeNull();
     expect(system).not.toBeNull();
     expect(declarations(system!)).toEqual(declarations(dark!));
+  });
+
+  // ── F1 回帰テスト ──────────────────────────────────────────────
+  // `.liff-color-mode-system` を含む rule が 1 つでも
+  // @media (prefers-color-scheme: dark) の外にあると、OS が light のときにも発火し
+  // 「system + OS light」が「light」と一致しなくなる。CSS を構文的に走査して検出する。
+  it("system 用の rule は 1 つ残らず prefers-color-scheme: dark の中にある", () => {
+    const outside = systemRulesOutsideDarkMedia(CSS);
+    expect(outside).toEqual([]);
+  });
+
+  it("dark / sepia のセーフティネットは system と混ぜて宣言されていない", () => {
+    // 同じ selector list に system を混ぜると、media query で切り分けられなくなる。
+    for (const sel of selectorsOf(CSS)) {
+      if (!sel.includes("liff-color-mode-system")) continue;
+      expect(sel.includes("liff-color-mode-dark") || sel.includes("liff-color-mode-sepia")).toBe(false);
+    }
+  });
+
+  it("フォントテーマの webfont は layout.tsx で常時 import されていない（遅延ロード）", () => {
+    const layout = readFileSync(join(process.cwd(), "src/app/liff/layout.tsx"), "utf8");
+    expect(layout).not.toContain("m-plus-rounded-1c");
+    expect(layout).not.toContain("noto-serif-jp");
+    // 既定フォントは従来どおり常時ロードする
+    expect(layout).toContain("line-seed-jp");
+    expect(layout).toContain("noto-sans-jp");
+
+    const preview = readFileSync(join(process.cwd(), "src/components/liff/LiffPreview.tsx"), "utf8");
+    expect(preview).not.toContain("m-plus-rounded-1c");
+    expect(preview).not.toContain("noto-serif-jp");
+  });
+
+  it("rounded / classic の webfont は専用の遅延ロード component だけが import する", () => {
+    const rounded = readFileSync(join(process.cwd(), "src/components/liff/fonts/LiffFontRounded.tsx"), "utf8");
+    const classic = readFileSync(join(process.cwd(), "src/components/liff/fonts/LiffFontClassic.tsx"), "utf8");
+    expect(rounded).toContain("@fontsource/m-plus-rounded-1c/400.css");
+    expect(rounded).toContain("@fontsource/m-plus-rounded-1c/700.css");
+    expect(classic).toContain("@fontsource/noto-serif-jp/400.css");
+    expect(classic).toContain("@fontsource/noto-serif-jp/700.css");
+  });
+
+  it("rounded の font stack は同梱フォントを先頭に置く（端末間で字形を揃えるため）", () => {
+    const decls = declarations(ruleBody(CSS, ".liff-font-theme--rounded {")!);
+    const stack = decls[0].replace(/\s+/g, " ");
+    const mplus = stack.indexOf('"M PLUS Rounded 1c"');
+    const hiragino = stack.indexOf('"Hiragino Maru Gothic ProN"');
+    expect(mplus).toBeGreaterThan(-1);
+    expect(hiragino).toBeGreaterThan(-1);
+    expect(mplus).toBeLessThan(hiragino);
+  });
+
+  it("header h1 の reset 値は LIFF_TEXT.pageTitle と一致している（ドリフト防止）", () => {
+    // globals.css の `header h1 { font-size:15px; font-weight:800 }` が unlayered で漏れるため、
+    // LIFF スコープでは utility と同じ値を CSS 側にも明示している。両者がズレると見出しが崩れる。
+    const decls = declarations(ruleBody(CSS, ".liff-font header h1 {")!);
+    const size = decls.find((d) => d.startsWith("font-size:"))!.split(":")[1].trim();
+    const weight = decls.find((d) => d.startsWith("font-weight:"))!.split(":")[1].trim();
+
+    const px = LIFF_TEXT.pageTitle.match(/text-\[(\d+)px\]/)![1];
+    expect(size).toBe(`${px}px`);
+
+    const TAILWIND_WEIGHT: Record<string, string> = {
+      "font-normal": "400", "font-medium": "500", "font-semibold": "600", "font-bold": "700",
+    };
+    const cls = Object.keys(TAILWIND_WEIGHT).find((c) => LIFF_TEXT.pageTitle.includes(c))!;
+    expect(weight).toBe(TAILWIND_WEIGHT[cls]);
+  });
+
+  it("globals.css の header 漏れ対策は LIFF スコープ内に閉じている", () => {
+    expect(CSS).toContain(".liff-font header {");
+    // `header { … }` のような素の element selector を足していないこと
+    for (const sel of selectorsOf(CSS)) {
+      if (/(^|,)\s*header\b/.test(sel)) throw new Error(`LIFF スコープ外の header selector: ${sel}`);
+    }
   });
 
   it("暗色モードは色トークンだけを上書きし、レイアウト系トークンには触れていない", () => {

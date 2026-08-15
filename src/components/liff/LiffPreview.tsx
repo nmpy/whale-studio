@@ -13,17 +13,15 @@
 //   - 個別ページの「戻る」ボタンでメニューホームに戻る
 //
 // 管理画面ルートでは LIFF レイアウトの CSS がロードされていないため、ここで明示的に import する。
-// プレビューでも各フォントテーマを実フォントで確認できるよう同梱する
-// （プレイヤー側 src/app/liff/layout.tsx と同じセットにしておくこと。
-//   片方だけ足すと「プレビューでは変わるのに実機で変わらない」等のズレになる）。
+// プレビューでも既定フォントを実フォントで確認できるよう同梱する
+// （プレイヤー側 src/app/liff/layout.tsx と同じセットにしておくこと）。
+// rounded / classic は player と同様に遅延ロード。プレビューが描画する
+// LiffMenuHomeRenderer / LiffSinglePageRenderer が LiffFontThemeAssets を持つため、
+// テーマを切り替えた瞬間に必要な CSS だけが追加で読まれる。
 import "@fontsource/line-seed-jp/400.css";
 import "@fontsource/line-seed-jp/700.css";
 import "@fontsource/noto-sans-jp/400.css";
 import "@fontsource/noto-sans-jp/700.css";
-import "@fontsource/m-plus-rounded-1c/400.css";
-import "@fontsource/m-plus-rounded-1c/700.css";
-import "@fontsource/noto-serif-jp/400.css";
-import "@fontsource/noto-serif-jp/700.css";
 import "@/app/liff/liff-font.css";
 
 import { useEffect, useState, useMemo } from "react";

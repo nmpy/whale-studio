@@ -72,6 +72,15 @@ describe("LiffPageShell — root class への反映", () => {
   });
 });
 
+describe("LiffPageHeader — semantics", () => {
+  it("見出しは <header> のまま（globals.css の漏れは liff-font.css の reset で解決する）", async () => {
+    const { LiffPageHeader } = await import("@/components/liff/ui/LiffPageHeader");
+    const { container } = render(<LiffPageHeader title="タイトル" description="説明" />);
+    expect(container.querySelector("header")).not.toBeNull();
+    expect(container.querySelector("header h1")?.textContent).toBe("タイトル");
+  });
+});
+
 describe("FaqRenderer — 既存 renderer にも同じ経路で届く", () => {
   const config = (settings: LiffPageConfigSettings): LiffPageConfig =>
     ({

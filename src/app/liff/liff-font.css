@@ -40,8 +40,15 @@
   --liff-card-radius:       18px;
   --liff-card-shadow:       0 2px 10px rgba(31, 64, 92, 0.05);
 
+  /* --liff-danger は「危険を表す色」そのもの＝**文字・枠線**に使う正準値。
+   * 塗りつぶし（danger ボタンの面）は --liff-danger-surface を使う。
+   * 明色テーマでは両者とも同値なので、既存の見た目は一切変わらない。
+   * 暗色テーマでは「面は白文字が乗る濃さ」「文字は暗い面で読める明るさ」と要件が逆になるため、
+   * ここを分けておくことでモード側の上書きだけで両立できる。 */
   --liff-danger:            #E22B2B;
   --liff-danger-press:      #C42323;
+  --liff-danger-surface:       var(--liff-danger);
+  --liff-danger-surface-press: var(--liff-danger-press);
 
   /* アクセント色まわりの「文字色」トークン [color_mode 対応]。
    * 既定値は現行の見た目と完全に一致させてある（= 未設定ページは 1px も変わらない）。
@@ -178,8 +185,13 @@
  * これにより下の `.liff-home-font--* .liff-font` (0,2,0)（＝作品ホームのフォント指定）が
  * 従来どおりページ別指定より優先される、という既存の優先順位を変えない。
  *
- * 実フォント本体は layout.tsx / LiffPreview.tsx で @fontsource から読み込む
- * （OS にフォントが無い端末でも視覚差が出るようにするため）。 */
+ * 実フォント本体の読み込み:
+ *   - default(LINE Seed JP) / gothic(Noto Sans JP) は layout.tsx が常時 import する。
+ *   - rounded(M PLUS Rounded 1c) / classic(Noto Serif JP) は
+ *     components/liff/fonts/LiffFontThemeAssets が **そのテーマのページでだけ** 遅延ロードする
+ *     （日本語 fontsource は @font-face が 126 個あり、常時 import すると全 LIFF ページの
+ *       CSS が gzip +129KB になるため）。
+ *   - modern はシステムフォントなので追加ロードなし。 */
 
 /* ゴシック: 読みやすい標準ゴシック。Noto Sans JP を同梱ロード。 */
 .liff-font-theme--gothic {
@@ -194,14 +206,17 @@
     sans-serif;
 }
 
-/* 丸ゴシック: やわらかい印象。iOS/macOS はヒラギノ丸ゴ、その他は M PLUS Rounded 1c（同梱）。 */
+/* 丸ゴシック: やわらかい印象。
+ * iOS / Android / LINE WebView で **できるだけ同じ字形**にするため、同梱する
+ * M PLUS Rounded 1c を先頭に置く（ヒラギノ丸ゴは非対応環境向けのフォールバック）。
+ * webfont の転送は rounded を選んだページだけ（LiffFontThemeAssets が遅延ロード）。 */
 .liff-font-theme--rounded {
   --liff-font-stack:
-    "Hiragino Maru Gothic ProN",
-    "Hiragino Maru Gothic Pro",
     "M PLUS Rounded 1c",
     "Rounded Mplus 1c",
-    "Segoe UI",
+    "Hiragino Maru Gothic ProN",
+    "Hiragino Maru Gothic Pro",
+    "Yu Gothic",
     system-ui,
     sans-serif;
 }
@@ -525,8 +540,12 @@
   --liff-ui-disabled-bg:    #2E1A20;
   --liff-ui-disabled-text:  #8B7079;
 
-  --liff-danger:            #C2445F;
-  --liff-danger-press:      #A6374F;
+  /* 文字・枠線用。カード面 #2A141A に対して 7.4:1（AA 達成）。 */
+  --liff-danger:            #F58A8A;
+  --liff-danger-press:      #E06E6E;
+  /* 塗り面用。白文字に対して 6.4:1。文字用の明るいサーモンとは別値にする。 */
+  --liff-danger-surface:       #A6374F;
+  --liff-danger-surface-press: #8E2E42;
 
   --liff-banner-warning-bg:     #3A2C16;
   --liff-banner-warning-accent: #E8B04A;
@@ -579,8 +598,10 @@
     --liff-ui-disabled-bg:    #2E1A20;
     --liff-ui-disabled-text:  #8B7079;
 
-    --liff-danger:            #C2445F;
-    --liff-danger-press:      #A6374F;
+    --liff-danger:            #F58A8A;
+    --liff-danger-press:      #E06E6E;
+    --liff-danger-surface:       #A6374F;
+    --liff-danger-surface-press: #8E2E42;
 
     --liff-banner-warning-bg:     #3A2C16;
     --liff-banner-warning-accent: #E8B04A;
@@ -608,7 +629,7 @@
 
   --liff-primary-text:      #3A2126;
   --liff-secondary-text:    #6B4A50;
-  --liff-tertiary-text:     #A99A8C;
+  --liff-tertiary-text:     #7D6A60;   /* 旧 #A99A8C は地色 #FAF6F1 に対し 2.54:1 で AA 未満だった */
 
   --liff-header-bg:         #FFFFFF;
   --liff-header-text:       #3A2126;
@@ -679,48 +700,42 @@
  * 対応するトークンへ読み替える。
  *
  * light / bordeaux（明るい地色）には当てない = 既存の見た目に影響しない。
- * このファイルは unlayered なので、`@layer utilities` の Tailwind 実体より強い。 */
+ * このファイルは unlayered なので、`@layer utilities` の Tailwind 実体より強い。
+ *
+ * ⚠️ `system` は **必ず @media (prefers-color-scheme: dark) の中だけ**で当てること。
+ *    media query の外に置くと OS が light のときにも発火し、
+ *    「color_mode=system + OS light」が「color_mode=light」と一致しなくなる。 */
+
+/* --- dark / sepia（常に暗色 or 暖色地）--- */
 .liff-color-mode-dark .bg-white,
-.liff-color-mode-sepia .bg-white,
-.liff-color-mode-system .bg-white { background-color: var(--liff-surface); }
+.liff-color-mode-sepia .bg-white { background-color: var(--liff-surface); }
 
 .liff-color-mode-dark .bg-gray-50,
 .liff-color-mode-dark .bg-gray-100,
 .liff-color-mode-sepia .bg-gray-50,
-.liff-color-mode-sepia .bg-gray-100,
-.liff-color-mode-system .bg-gray-50,
-.liff-color-mode-system .bg-gray-100 { background-color: var(--liff-surface-subtle); }
+.liff-color-mode-sepia .bg-gray-100 { background-color: var(--liff-surface-subtle); }
 
 .liff-color-mode-dark .text-gray-900,
 .liff-color-mode-dark .text-gray-800,
 .liff-color-mode-dark .text-gray-700,
 .liff-color-mode-sepia .text-gray-900,
 .liff-color-mode-sepia .text-gray-800,
-.liff-color-mode-sepia .text-gray-700,
-.liff-color-mode-system .text-gray-900,
-.liff-color-mode-system .text-gray-800,
-.liff-color-mode-system .text-gray-700 { color: var(--liff-primary-text); }
+.liff-color-mode-sepia .text-gray-700 { color: var(--liff-primary-text); }
 
 .liff-color-mode-dark .text-gray-600,
 .liff-color-mode-dark .text-gray-500,
 .liff-color-mode-sepia .text-gray-600,
-.liff-color-mode-sepia .text-gray-500,
-.liff-color-mode-system .text-gray-600,
-.liff-color-mode-system .text-gray-500 { color: var(--liff-secondary-text); }
+.liff-color-mode-sepia .text-gray-500 { color: var(--liff-secondary-text); }
 
 .liff-color-mode-dark .text-gray-400,
-.liff-color-mode-sepia .text-gray-400,
-.liff-color-mode-system .text-gray-400 { color: var(--liff-tertiary-text); }
+.liff-color-mode-sepia .text-gray-400 { color: var(--liff-tertiary-text); }
 
 .liff-color-mode-dark .border-gray-100,
 .liff-color-mode-dark .border-gray-200,
 .liff-color-mode-dark .border-gray-300,
 .liff-color-mode-sepia .border-gray-100,
 .liff-color-mode-sepia .border-gray-200,
-.liff-color-mode-sepia .border-gray-300,
-.liff-color-mode-system .border-gray-100,
-.liff-color-mode-system .border-gray-200,
-.liff-color-mode-system .border-gray-300 { border-color: var(--liff-border); }
+.liff-color-mode-sepia .border-gray-300 { border-color: var(--liff-border); }
 
 /* 暗色テーマでのフォーム要素。
  *
@@ -736,10 +751,7 @@
 .liff-font.liff-color-mode-dark textarea,
 .liff-font.liff-color-mode-sepia input,
 .liff-font.liff-color-mode-sepia select,
-.liff-font.liff-color-mode-sepia textarea,
-.liff-font.liff-color-mode-system input,
-.liff-font.liff-color-mode-system select,
-.liff-font.liff-color-mode-system textarea {
+.liff-font.liff-color-mode-sepia textarea {
   background: var(--liff-surface);
   color: var(--liff-primary-text);
   border-color: var(--liff-ui-input-box-border);
@@ -748,9 +760,7 @@
 .liff-font.liff-color-mode-dark input::placeholder,
 .liff-font.liff-color-mode-dark textarea::placeholder,
 .liff-font.liff-color-mode-sepia input::placeholder,
-.liff-font.liff-color-mode-sepia textarea::placeholder,
-.liff-font.liff-color-mode-system input::placeholder,
-.liff-font.liff-color-mode-system textarea::placeholder {
+.liff-font.liff-color-mode-sepia textarea::placeholder {
   color: var(--liff-tertiary-text);
 }
 
@@ -761,11 +771,83 @@
 .liff-font.liff-color-mode-dark textarea:focus,
 .liff-font.liff-color-mode-sepia input:focus,
 .liff-font.liff-color-mode-sepia select:focus,
-.liff-font.liff-color-mode-sepia textarea:focus,
-.liff-font.liff-color-mode-system input:focus,
-.liff-font.liff-color-mode-system select:focus,
-.liff-font.liff-color-mode-system textarea:focus {
+.liff-font.liff-color-mode-sepia textarea:focus {
   background: var(--liff-surface);
   border-color: var(--liff-line-green);
   box-shadow: 0 0 0 3px var(--liff-ui-green-soft);
+}
+
+/* --- system: OS が dark のときだけ、上と同じ読み替えを当てる ---
+ * OS が light のときはこのブロックごと無効なので、`light` と完全に同じ計算値になる。 */
+@media (prefers-color-scheme: dark) {
+  .liff-color-mode-system .bg-white { background-color: var(--liff-surface); }
+
+  .liff-color-mode-system .bg-gray-50,
+  .liff-color-mode-system .bg-gray-100 { background-color: var(--liff-surface-subtle); }
+
+  .liff-color-mode-system .text-gray-900,
+  .liff-color-mode-system .text-gray-800,
+  .liff-color-mode-system .text-gray-700 { color: var(--liff-primary-text); }
+
+  .liff-color-mode-system .text-gray-600,
+  .liff-color-mode-system .text-gray-500 { color: var(--liff-secondary-text); }
+
+  .liff-color-mode-system .text-gray-400 { color: var(--liff-tertiary-text); }
+
+  .liff-color-mode-system .border-gray-100,
+  .liff-color-mode-system .border-gray-200,
+  .liff-color-mode-system .border-gray-300 { border-color: var(--liff-border); }
+
+  .liff-font.liff-color-mode-system input,
+  .liff-font.liff-color-mode-system select,
+  .liff-font.liff-color-mode-system textarea {
+    background: var(--liff-surface);
+    color: var(--liff-primary-text);
+    border-color: var(--liff-ui-input-box-border);
+  }
+
+  .liff-font.liff-color-mode-system input::placeholder,
+  .liff-font.liff-color-mode-system textarea::placeholder {
+    color: var(--liff-tertiary-text);
+  }
+
+  .liff-font.liff-color-mode-system input:focus,
+  .liff-font.liff-color-mode-system select:focus,
+  .liff-font.liff-color-mode-system textarea:focus {
+    background: var(--liff-surface);
+    border-color: var(--liff-line-green);
+    box-shadow: 0 0 0 3px var(--liff-ui-green-soft);
+  }
+}
+
+/* ── globals.css の `header { … }` 漏れ対策（LIFF スコープ限定）──────────
+ *
+ * globals.css は unlayered で `header { background: rgba(255,255,255,.85);
+ * backdrop-filter: …; border-bottom: 1px solid …; position: sticky; z-index: 200;
+ * box-shadow: … }` を持ち、CMS のグローバルヘッダー用の見た目が LIFF 配下の
+ * `<header>`（例: LiffPageHeader のページ見出し）にも漏れてくる。
+ * Tailwind utilities は @layer 内なので打ち消せない。
+ *
+ * `<header>` という semantics は保ったまま、**globals が実際に指定している property だけ**を
+ * LIFF スコープで初期値へ戻す（不要な reset は増やさない）。
+ * `top` は position が static になれば無効なので指定しない。 */
+.liff-font header {
+  background: transparent;
+  backdrop-filter: none;
+  border-bottom: 0;
+  position: static;
+  box-shadow: none;
+  z-index: auto;
+}
+
+/* globals.css は `header h1 { font-size: 15px; font-weight: 800 }` も持っており、これも漏れる。
+ * Tailwind utilities は @layer utilities にあるため、unlayered なこのルールには勝てず、
+ * LIFF のページ見出し（LiffPageHeader の h1）が 15px/800 で描画されてしまう。
+ *
+ * `inherit` や `revert` では utility の値には戻せない（layer が specificity より優先されるため）。
+ * そこで ui/tokens.ts の LIFF_TEXT.pageTitle と同じ値をここで明示する。
+ * 値がズレないよう、liff-theme-settings.test.ts で両者の一致を自動検証している。 */
+.liff-font header h1 {
+  font-size: 20px;   /* = LIFF_TEXT.pageTitle の text-[20px] */
+  font-weight: 500;  /* = LIFF_TEXT.pageTitle の font-medium */
 }
