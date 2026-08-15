@@ -34,7 +34,7 @@ describe("buildWorkSidebarSections — セクション構成", () => {
 
   it("主要機能は7項目（ビーコンを含む）", () => {
     expect(sec("主要機能")!.items.map((i) => i.label))
-      .toEqual(["フェーズ", "キャラクター", "メッセージ", "LIFF", "オーディエンス", "ロケーション", "ビーコン"]);
+      .toEqual(["フェーズ", "キャラクター", "応答メッセージ", "LIFF", "オーディエンス", "ロケーション", "ビーコン"]);
   });
 
   it("ビーコン = OA 階層 canonical /locations/beacons?workId=（実在 URL・workId 引き継ぎ）", () => {
@@ -95,8 +95,8 @@ describe("isSidebarItemActive — active 判定", () => {
   it("external（ロケーション）は常に非active", () => {
     expect(isSidebarItemActive(item("ロケーション")!, `/oas/${OA}/locations`, base)).toBe(false);
   });
-  it("メッセージ: /messages 配下で active", () => {
-    expect(isSidebarItemActive(item("メッセージ")!, `${base}/messages/abc`, base)).toBe(true);
+  it("応答メッセージ: /messages 配下で active", () => {
+    expect(isSidebarItemActive(item("応答メッセージ")!, `${base}/messages/abc`, base)).toBe(true);
   });
   it("ビーコン: 後方互換 /works/[workId]/beacons 配下で active（pathname 判定）", () => {
     const b = item("ビーコン")!;

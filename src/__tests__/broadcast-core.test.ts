@@ -39,6 +39,8 @@ beforeEach(() => {
   mockPrisma.analyticsExcludedUser.findMany.mockResolvedValue([]);
   mockPrisma.userTracking.findMany.mockResolvedValue([]);
   mockPrisma.broadcastRecipient.createMany.mockResolvedValue({ count: 0 });
+  // 既定では claim(pending → sending) に成功する。並行テストでは個別に上書きする。
+  mockPrisma.broadcastRecipient.updateMany.mockResolvedValue({ count: 1 });
 });
 
 // ══════════════════════════════════════════════════════════════════
@@ -352,6 +354,93 @@ describe("processBroadcastChunk", () => {
     expect(finalStatusOf(3, 0)).toBe("sent");
     expect(finalStatusOf(0, 3)).toBe("failed");
     expect(finalStatusOf(2, 1)).toBe("partial_failed");
+  });
+
+  // ── ケース C: process が同時に 2 回呼ばれても同じ宛先に二重送信しない ──
+  it("push の前に pending → sending を CAS で claim する", async () => {
+    mockPrisma.broadcast.findFirst.mockResolvedValue(sending);
+    mockPrisma.broadcastRecipient.findMany.mockResolvedValue([{ id: "r1", lineUserId: U(1) }]);
+    mockPushToLine.mockResolvedValue({ ok: true, status: 200 });
+    counts(1, 0, 0);
+
+    await processBroadcastChunk({ oaId: "oa1", broadcastId: "b1" });
+
+    // claim は push より前に、status:"pending" を条件にして実行されていること
+    const claimCall = mockPrisma.broadcastRecipient.updateMany.mock.calls
+      .find((c) => c[0]?.data?.status === "sending");
+    expect(claimCall).toBeDefined();
+    expect(claimCall![0].where).toEqual({ id: "r1", status: "pending" });
+    expect(mockPrisma.broadcastRecipient.updateMany.mock.invocationCallOrder[0])
+      .toBeLessThan(mockPushToLine.mock.invocationCallOrder[0]);
+  });
+
+  it("claim に負けた宛先には push しない（並行 process の二重送信防止）", async () => {
+    mockPrisma.broadcast.findFirst.mockResolvedValue(sending);
+    mockPrisma.broadcastRecipient.findMany.mockResolvedValue([
+      { id: "r1", lineUserId: U(1) }, { id: "r2", lineUserId: U(2) },
+    ]);
+    // r1 は他 process が先に取った（count=0）。r2 は自分が取れた（count=1）。
+    mockPrisma.broadcastRecipient.updateMany
+      .mockResolvedValueOnce({ count: 0 })   // 滞留 claim の回収（先頭で必ず 1 回走る）
+      .mockResolvedValueOnce({ count: 0 })   // r1 の claim → 失敗
+      .mockResolvedValueOnce({ count: 1 });  // r2 の claim → 成功
+    mockPushToLine.mockResolvedValue({ ok: true, status: 200 });
+    counts(1, 0, 0);
+
+    const r = await processBroadcastChunk({ oaId: "oa1", broadcastId: "b1" });
+
+    expect(mockPushToLine).toHaveBeenCalledTimes(1);
+    expect(mockPushToLine).toHaveBeenCalledWith(U(2), expect.anything(), "tok");
+    expect(r).toMatchObject({ skipped: 1, sent: 1, processed: 1 });
+  });
+
+  it("in-flight(sending) が残っている間は完了扱いにしない", async () => {
+    mockPrisma.broadcast.findFirst.mockResolvedValue(sending);
+    mockPrisma.broadcastRecipient.findMany.mockResolvedValue([]);
+    counts(1, 0, 3); // remaining は pending + sending の合算
+    const r = await processBroadcastChunk({ oaId: "oa1", broadcastId: "b1" });
+    expect(r).toMatchObject({ hasMore: true, status: "sending" });
+    // 残件のカウントに sending を含めていること
+    const remainingCall = mockPrisma.broadcastRecipient.count.mock.calls[2][0];
+    expect(remainingCall.where.status).toEqual({ in: ["pending", "sending"] });
+  });
+
+  it("中断した claim（sending のまま古い行）は pending に戻して再開できる", async () => {
+    mockPrisma.broadcast.findFirst.mockResolvedValue(sending);
+    mockPrisma.broadcastRecipient.findMany.mockResolvedValue([]);
+    counts(0, 0, 0);
+    await processBroadcastChunk({ oaId: "oa1", broadcastId: "b1" });
+
+    const reclaim = mockPrisma.broadcastRecipient.updateMany.mock.calls[0][0];
+    expect(reclaim.where).toMatchObject({ broadcastId: "b1", status: "sending" });
+    expect(reclaim.where.updatedAt).toHaveProperty("lt"); // 古い行だけが対象
+    expect(reclaim.data).toEqual({ status: "pending" });
+  });
+
+  // ── ケース A / B: reload・離脱後に残りだけを処理する ──
+  it("再開時は pending だけを取り出す（sent には再送しない）", async () => {
+    mockPrisma.broadcast.findFirst.mockResolvedValue(sending);
+    mockPrisma.broadcastRecipient.findMany.mockResolvedValue([{ id: "r51", lineUserId: U(51) }]);
+    mockPushToLine.mockResolvedValue({ ok: true, status: 200 });
+    counts(51, 0, 0);
+
+    const r = await processBroadcastChunk({ oaId: "oa1", broadcastId: "b1" });
+
+    // 取得条件が status:"pending" のみ = 送信済みは母集合に入らない
+    expect(mockPrisma.broadcastRecipient.findMany.mock.calls[0][0].where)
+      .toEqual({ broadcastId: "b1", status: "pending" });
+    expect(mockPushToLine).toHaveBeenCalledTimes(1);
+    expect(mockPushToLine).toHaveBeenCalledWith(U(51), expect.anything(), "tok");
+    expect(r).toMatchObject({ sent: 1, hasMore: false, status: "sent" });
+  });
+
+  it("全件 sent 済みなら再実行しても 1 通も送らない", async () => {
+    mockPrisma.broadcast.findFirst.mockResolvedValue(sending);
+    mockPrisma.broadcastRecipient.findMany.mockResolvedValue([]); // pending なし
+    counts(100, 0, 0);
+    const r = await processBroadcastChunk({ oaId: "oa1", broadcastId: "b1" });
+    expect(mockPushToLine).not.toHaveBeenCalled();
+    expect(r).toMatchObject({ processed: 0, sent: 0, hasMore: false, status: "sent" });
   });
 });
 

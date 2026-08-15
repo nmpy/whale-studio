@@ -16,8 +16,14 @@ import { parseBroadcastContent, toLineMessages } from "./content";
 /** 1 回の process 呼び出しで送る最大件数。 */
 export const BROADCAST_CHUNK_SIZE = 50;
 
+/**
+ * claim("sending") したまま動きが無い宛先を pending へ戻すまでの時間。
+ * process が push 前後で落ちた場合の復旧用。実行中の行は updatedAt が新しいため対象外。
+ */
+export const STALE_CLAIM_MS = 5 * 60 * 1000;
+
 export type ProcessResult =
-  | { ok: true; processed: number; sent: number; failed: number; hasMore: boolean; status: string }
+  | { ok: true; processed: number; sent: number; failed: number; skipped: number; hasMore: boolean; status: string }
   | { ok: false; reason: "not_found" | "not_sending" | "invalid_content" | "no_token" };
 
 /** 配信結果から最終 status を決める。 */
@@ -54,6 +60,19 @@ export async function processBroadcastChunk(args: {
 
   const messages = toLineMessages(content);
 
+  // ── 中断した claim の回収 ────────────────────────────────────
+  // process が claim 直後（push 前後）に落ちると "sending" のまま残る。
+  // 一定時間動きが無い行だけ pending に戻して再開できるようにする。
+  // 実行中の行は updatedAt が新しいため回収対象にならない。
+  await prisma.broadcastRecipient.updateMany({
+    where: {
+      broadcastId,
+      status:    "sending",
+      updatedAt: { lt: new Date(Date.now() - STALE_CLAIM_MS) },
+    },
+    data: { status: "pending" },
+  });
+
   const pending = await prisma.broadcastRecipient.findMany({
     where: { broadcastId, status: "pending" },
     select: { id: true, lineUserId: true },
@@ -63,8 +82,24 @@ export async function processBroadcastChunk(args: {
 
   let sent = 0;
   let failed = 0;
+  let skipped = 0;
 
   for (const r of pending) {
+    // ── 宛先単位の atomic claim ──────────────────────────────
+    // findMany は「読んだ時点のスナップショット」でしかないため、process が並行実行されると
+    // 2 つのリクエストが同じ pending 行を読み得る。そのまま push すると二重送信になる。
+    // そこで push の**前に** status を pending → sending へ CAS で確定させ、
+    // count===1 を取れたリクエストだけが送信する（負けた側は skip）。
+    // where に status:"pending" を含めるため、同じ行を 2 回 claim することはできない。
+    const claim = await prisma.broadcastRecipient.updateMany({
+      where: { id: r.id, status: "pending" },
+      data:  { status: "sending" },
+    });
+    if (claim.count !== 1) {
+      skipped++; // 並行する別の process が先に取った
+      continue;
+    }
+
     // pushToLine は例外を投げず {ok,status} を返す（ネットワークエラーも ok:false）。
     const res = await pushToLine(r.lineUserId, messages, token);
 
@@ -96,7 +131,9 @@ export async function processBroadcastChunk(args: {
   const [successCount, failureCount, remaining] = await Promise.all([
     prisma.broadcastRecipient.count({ where: { broadcastId, status: "sent" } }),
     prisma.broadcastRecipient.count({ where: { broadcastId, status: "failed" } }),
-    prisma.broadcastRecipient.count({ where: { broadcastId, status: "pending" } }),
+    // 未処理 = pending + 他の process が claim 中(sending)。
+    // in-flight を残件に含めることで、並行実行中に片方が先に「完了」と確定させてしまうのを防ぐ。
+    prisma.broadcastRecipient.count({ where: { broadcastId, status: { in: ["pending", "sending"] } } }),
   ]);
 
   const hasMore = remaining > 0;
@@ -112,8 +149,8 @@ export async function processBroadcastChunk(args: {
   });
 
   console.log(hasMore ? "[line:broadcast:progress]" : "[line:broadcast:complete]", JSON.stringify({
-    broadcastId, oaId, processed: pending.length, successCount, failureCount, remaining, status,
+    broadcastId, oaId, processed: pending.length - skipped, skipped, successCount, failureCount, remaining, status,
   }));
 
-  return { ok: true, processed: pending.length, sent, failed, hasMore, status };
+  return { ok: true, processed: pending.length - skipped, sent, failed, skipped, hasMore, status };
 }

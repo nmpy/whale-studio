@@ -7,6 +7,13 @@
 //   ここは既存テーブルを **読むだけ** で、UserProgress / Segment / UserTracking を
 //   一切書き換えない。既存 Audience 画面 / Segment 画面の仕様も変更しない。
 //
+// 既存 Audience との source of truth の共有:
+//   /api/analytics（Audience 画面の人数）は
+//     userProgress WHERE workId AND isPreview=false → applyExclusion(analytics_excluded_users)
+//   という集合を数えている。配信の「全体」も **同じ条件・同じ除外ヘルパー**を使い、
+//   そこに OA 単位の user_trackings を足して OA スコープへ広げたものにしている。
+//   （Audience は作品単位、配信は OA 単位という違いだけで、母集合の定義は共有する）
+//
 // なぜ UserProgress + UserTracking なのか:
 //   Whale Studio には「OA の友だち台帳」テーブルが存在しない（follow webhook は
 //   トラッキング帰属のみでレコードを作らない）。OA 単位で LINE ユーザー ID を
@@ -17,6 +24,10 @@
 //   **その OA の全友だちではない**。UI 側でもその旨を明示すること。
 
 import { prisma } from "@/lib/prisma";
+// 既存 Audience / analytics と **同じ除外ヘルパー**を使う。
+// 「Whale Studio が把握しているユーザー」の定義が Audience 画面と配信で将来乖離しないよう、
+// 除外ロジックは新規にコピーせず既存 read-only helper を再利用する。
+import { applyExclusion } from "@/lib/analytics-exclusion";
 
 /** 配信対象の指定方法。 */
 export type BroadcastTarget =
@@ -79,10 +90,14 @@ async function resolveAll(oaId: string): Promise<string[]> {
     excludedLineUserIdsOfOa(oaId),
   ]);
 
+  // 除外は既存 Audience と同じ applyExclusion を通す（定義の乖離を防ぐ）
+  const kept = applyExclusion([...progress, ...trackings], excluded);
+
   const set = new Set<string>();
-  for (const r of [...progress, ...trackings]) {
-    if (!isSendableLineUserId(r.lineUserId)) continue; // null / 空 / テスト ID を除外
-    if (excluded.has(r.lineUserId)) continue;
+  for (const r of kept) {
+    // 配信固有の追加条件: 実際に push できる LINE userId だけを残す
+    // （テスト用の任意 ID / 空 / null は Audience 集計では無害だが、push すると失敗するため除外）
+    if (!isSendableLineUserId(r.lineUserId)) continue;
     set.add(r.lineUserId); // Set が dedupe を保証する
   }
   return [...set].sort();
@@ -124,9 +139,8 @@ async function resolveSegment(oaId: string, segmentId: string, workId: string): 
   ]);
 
   const set = new Set<string>();
-  for (const p of progress) {
+  for (const p of applyExclusion(progress, excluded)) {
     if (!isSendableLineUserId(p.lineUserId)) continue;
-    if (excluded.has(p.lineUserId)) continue;
     set.add(p.lineUserId);
   }
   return [...set].sort();

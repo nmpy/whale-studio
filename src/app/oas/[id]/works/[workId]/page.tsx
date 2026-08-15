@@ -226,17 +226,17 @@ export default function WorkHubPage() {
   });
   // よく使う操作（作業開始に直結する導線。右側にカテゴリを表示。時刻等は取得できないため付けない）。
   const quickActions: { label: string; category: string; href: string }[] = [
-    { label: "メッセージを追加",   category: "メッセージ",   href: `${basePath}/messages` },
+    { label: "応答メッセージを追加", category: "応答メッセージ", href: `${basePath}/messages` },
     { label: "フェーズ管理を確認", category: "フェーズ",     href: `${basePath}/scenario` },
     { label: "キャラクターを編集", category: "キャラクター", href: `${basePath}/characters` },
-    ...(isSpreadsheetImportEnabled() ? [{ label: "スプレッドシート取込", category: "メッセージ", href: `${basePath}/messages/import` }] : []),
+    ...(isSpreadsheetImportEnabled() ? [{ label: "スプレッドシート取込", category: "応答メッセージ", href: `${basePath}/messages/import` }] : []),
   ];
 
   // 主要機能カード（既存導線を維持・カウントは既存データ / 取得不可は「—」）。
   const featureCards: { label: string; sub: string; href: string }[] = [
     { label: "フェーズ",       sub: `${phaseCount}フェーズ設定済み`,                       href: `${basePath}/scenario` },
     { label: "キャラクター",   sub: `${work?._count.characters ?? 0}体登録済み`,           href: `${basePath}/characters` },
-    { label: "メッセージ",     sub: `${work?._count.messages ?? 0}件`,                     href: `${basePath}/messages` },
+    { label: "応答メッセージ", sub: `${work?._count.messages ?? 0}件`,                     href: `${basePath}/messages` },
     { label: "LIFF",          sub: liffCount != null ? `${liffCount}ページ` : "—",         href: `${basePath}/liff` },
     { label: "ロケーション",   sub: locationCount != null ? `${locationCount}件` : "—",     href: `/oas/${oaId}/locations?workId=${workId}` },
     { label: "オーディエンス", sub: analytics ? `${analytics.summary.total_players}人` : "—", href: `${basePath}/audience` },
@@ -444,7 +444,7 @@ export default function WorkHubPage() {
             {[
               { label: "キャラクター", value: work._count.characters.toLocaleString() },
               { label: "フェーズ",     value: phaseCount.toLocaleString() },
-              { label: "メッセージ",   value: work._count.messages.toLocaleString() },
+              { label: "応答メッセージ", value: work._count.messages.toLocaleString() },
               { label: "LIFF",        value: liffCount != null ? liffCount.toLocaleString() : "—" },
               { label: "ロケーション", value: locationCount != null ? locationCount.toLocaleString() : "—" },
             ].map((c) => (

@@ -47,7 +47,9 @@ export function buildWorkSidebarSections(args: {
       items: [
         { key: "phases",     label: "フェーズ",       href: `${base}/scenario`,   activeSegments: ["/scenario", "/phases"] },
         { key: "characters", label: "キャラクター",   href: `${base}/characters`, activeSegments: ["/characters"] },
-        { key: "messages",   label: "メッセージ",     href: `${base}/messages`,   activeSegments: ["/messages"] },
+        // 表示名のみ「応答メッセージ」に統一（配信メッセージと取り違えないため）。
+        // key / href / activeSegments は変更しない = ルーティング挙動は従来どおり。
+        { key: "messages",   label: "応答メッセージ", href: `${base}/messages`,   activeSegments: ["/messages"] },
         { key: "liff",       label: "LIFF",          href: `${base}/liff`,       activeSegments: ["/liff"] },
         { key: "audience",   label: "オーディエンス", href: `${base}/audience`,   activeSegments: ["/audience"] },
         // ロケーション（現地トリガー）は OA 階層の canonical ルート。workId を引き継いで遷移する。

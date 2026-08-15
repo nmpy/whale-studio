@@ -490,7 +490,7 @@ function MessagesPageInner() {
       { label: "アカウントリスト", href: "/oas" },
       { label: "作品リスト", href: `/oas/${oaId}/works` },
       ...(workTitle ? [{ label: workTitle, href: `/oas/${oaId}/works/${workId}` }] : []),
-      { label: "メッセージ" },
+      { label: "応答メッセージ" },
     ]} />
   );
 

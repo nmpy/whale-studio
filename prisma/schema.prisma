@@ -3292,7 +3292,8 @@ model BroadcastRecipient {
   broadcastId  String    @map("broadcast_id")
   /// 配信開始時点で snapshot した宛先。以後 Segment 条件が変わっても宛先は動かない。
   lineUserId   String    @map("line_user_id")
-  /// "pending" | "sent" | "failed" | "skipped"
+  /// "pending" | "sending" | "sent" | "failed" | "skipped"
+  /// sending = process が claim 済み（push 実行中）。String 列なので値追加に migration は不要。
   status       String    @default("pending")
   /// LINE Push API の HTTP status（失敗調査用）。
   httpStatus   Int?      @map("http_status")
