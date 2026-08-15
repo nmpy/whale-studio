@@ -1,0 +1,90 @@
+// src/app/api/oas/[id]/broadcasts/[broadcastId]/route.ts
+// GET   /api/oas/:id/broadcasts/:broadcastId — 配信詳細 + 進捗。viewer 以上。
+// PATCH /api/oas/:id/broadcasts/:broadcastId — 下書きの編集。editor 以上・draft のときのみ。
+
+import { withRole } from "@/lib/auth";
+import { ok, badRequest, notFound, conflict, serverError } from "@/lib/api-response";
+import { prisma } from "@/lib/prisma";
+import { ZodError } from "zod";
+import { formatZodErrors } from "@/lib/validations";
+import type { Prisma } from "@prisma/client";
+import {
+  BROADCAST_VIEW_ROLE, BROADCAST_EDIT_ROLE,
+  updateBroadcastSchema, toBroadcastResponse,
+} from "../_shared";
+
+export const dynamic = "force-dynamic";
+type P = { id: string; broadcastId: string };
+
+export const GET = withRole<P>(
+  ({ params }) => params.id,
+  BROADCAST_VIEW_ROLE,
+  async (_req, { params }) => {
+    try {
+      // OA スコープ込みで取得。他 OA の broadcastId を渡されても存在を露出しない。
+      const row = await prisma.broadcast.findFirst({
+        where: { id: params.broadcastId, oaId: params.id },
+      });
+      if (!row) return notFound("配信メッセージ");
+
+      // 失敗した宛先の内訳（調査・再送用）。lineUserId は先頭 8 文字だけ返す。
+      const failed = await prisma.broadcastRecipient.findMany({
+        where:  { broadcastId: row.id, status: "failed" },
+        select: { lineUserId: true, httpStatus: true, errorMessage: true },
+        take:   50,
+      });
+
+      return ok({
+        ...toBroadcastResponse(row),
+        pending_count: await prisma.broadcastRecipient.count({
+          where: { broadcastId: row.id, status: "pending" },
+        }),
+        failed_samples: failed.map((f) => ({
+          line_user_id_prefix: f.lineUserId.slice(0, 8),
+          http_status:         f.httpStatus,
+          error_message:       f.errorMessage,
+        })),
+      });
+    } catch (err) {
+      return serverError(err);
+    }
+  },
+);
+
+export const PATCH = withRole<P>(
+  ({ params }) => params.id,
+  BROADCAST_EDIT_ROLE,
+  async (req, { params }) => {
+    try {
+      const body = updateBroadcastSchema.parse(await req.json());
+
+      const current = await prisma.broadcast.findFirst({
+        where:  { id: params.broadcastId, oaId: params.id },
+        select: { id: true, status: true },
+      });
+      if (!current) return notFound("配信メッセージ");
+      // 送信開始後の内容変更は認めない（送った内容と保存内容が食い違うのを防ぐ）
+      if (current.status !== "draft") {
+        return conflict("配信を開始した後は内容を変更できません");
+      }
+
+      const hasTarget = "target_type" in body;
+      const row = await prisma.broadcast.update({
+        where: { id: current.id },
+        data: {
+          ...(body.name    !== undefined && { name: body.name }),
+          ...(body.content !== undefined && { contentJson: body.content as unknown as Prisma.InputJsonValue }),
+          ...(hasTarget && {
+            targetType:    body.target_type,
+            segmentId:     body.target_type === "segment" ? body.segment_id : null,
+            segmentWorkId: body.target_type === "segment" ? body.work_id     : null,
+          }),
+        },
+      });
+      return ok(toBroadcastResponse(row));
+    } catch (err) {
+      if (err instanceof ZodError) return badRequest("入力内容が不正です", formatZodErrors(err));
+      return serverError(err);
+    }
+  },
+);
