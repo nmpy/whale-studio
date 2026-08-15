@@ -4,8 +4,10 @@
 // 個別の renderer から直接参照されるため、副作用は一切持たないこと。
 
 import type {
+  LiffColorMode,
   LiffFontFamily,
   LiffFontPreset,
+  LiffFontTheme,
   LiffFontWeight,
   LiffHeadingLevel,
   LiffDescriptionAlign,
@@ -88,10 +90,80 @@ export function fontFamilyClass(family: LiffFontFamily | undefined): string {
   return family === "mincho" ? "liff-font--mincho" : "";
 }
 
+// ── フォントテーマ / カラーモード (現行仕様) ──────────────────────────────
+//
+// どちらも settings_json に文字列で入るだけで、DB migration は不要。
+// 「未設定 = 現行既定と完全に同じ見た目」を最優先の不変条件とする。
+
+/** 旧 font_preset の値を新 font_theme の値にマップする（読み取り側変換・data migration なし）。 */
+function legacyFontPresetToTheme(preset: LiffFontPreset | undefined): LiffFontTheme | undefined {
+  switch (preset) {
+    case "noto_sans_jp": return "gothic";
+    case "serif":        return "classic";
+    case "system_sans":  return "modern";
+    case "line_seed_jp": return "default";
+    default:             return undefined;
+  }
+}
+
+const FONT_THEMES: readonly LiffFontTheme[] = ["default", "gothic", "rounded", "classic", "modern"];
+
+/** settings から **最終的に適用するフォントテーマ** を解決する。
+ *  優先順位: font_theme (現行) → font_preset (旧) → font_family (最旧) → "default"。
+ *  不正値・未知値はすべて "default" に倒す（= 現行既定フォント）。 */
+export function resolveFontTheme(settings: LiffPageConfigSettings | undefined): LiffFontTheme {
+  const theme = settings?.font_theme;
+  if (theme && FONT_THEMES.includes(theme)) return theme;
+  // font_preset / font_family は resolveFontPreset が既にフォールバック済み（未設定なら line_seed_jp）。
+  return legacyFontPresetToTheme(resolveFontPreset(settings)) ?? "default";
+}
+
+/** font theme → root クラス名。"default" は既定なので空文字を返す（= 既存 DOM と一致）。 */
+export function fontThemeClass(theme: LiffFontTheme): string {
+  switch (theme) {
+    case "gothic":  return "liff-font-theme--gothic";
+    case "rounded": return "liff-font-theme--rounded";
+    case "classic": return "liff-font-theme--classic";
+    case "modern":  return "liff-font-theme--modern";
+    case "default":
+    default:        return "";
+  }
+}
+
+const COLOR_MODES: readonly LiffColorMode[] = ["light", "dark", "system", "sepia", "bordeaux"];
+
+/** settings から **最終的に適用するカラーモード** を解決する。
+ *  未設定 / 不正値 / 未知値 → "light"（= 現行既定の白ベース）。 */
+export function resolveColorMode(settings: LiffPageConfigSettings | undefined): LiffColorMode {
+  const mode = settings?.color_mode;
+  return mode && COLOR_MODES.includes(mode) ? mode : "light";
+}
+
+/** color mode → root クラス名。"light" は既定なので空文字を返す（= 既存 DOM / 見た目と完全一致）。 */
+export function colorModeClass(mode: LiffColorMode): string {
+  switch (mode) {
+    case "dark":     return "liff-color-mode-dark";
+    case "system":   return "liff-color-mode-system";
+    case "sepia":    return "liff-color-mode-sepia";
+    case "bordeaux": return "liff-color-mode-bordeaux";
+    case "light":
+    default:         return "";
+  }
+}
+
 /** page settings から root クラス文字列を組み立てる。
- *  既存の className と組み合わせて使う想定: `${ROOT_BASE} ${liffRootClass(settings)}` */
+ *  既存の className と組み合わせて使う想定: `${ROOT_BASE} ${liffRootClass(settings)}`
+ *
+ *  返す class:
+ *    - フォント: `.liff-font-theme--*`（旧 `.liff-font--*` は fontPresetClass 側に残置。
+ *      旧 class を併記すると `.liff-home-font--*` との優先順位が変わるため、ここでは新 class のみ返す）
+ *    - カラー : `.liff-color-mode-*`
+ *  どちらも既定値のときは空文字なので、未設定ページの DOM は従来と 1 文字も変わらない。 */
 export function liffRootClass(settings: LiffPageConfigSettings | undefined): string {
-  return fontPresetClass(resolveFontPreset(settings));
+  return [
+    fontThemeClass(resolveFontTheme(settings)),
+    colorModeClass(resolveColorMode(settings)),
+  ].filter(Boolean).join(" ");
 }
 
 /** ヘッダーに表示する文字列を解決する。

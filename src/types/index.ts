@@ -1692,14 +1692,42 @@ export type LiffFontFamily = "gothic" | "mincho";
  *  旧 `font_family` がある場合は gothic→line_seed_jp / mincho→serif にマップ。 */
 export type LiffFontPreset = "line_seed_jp" | "system_sans" | "noto_sans_jp" | "serif";
 
+/** ページ全体のフォントテーマ (CMS「フォント」で選ぶ現行の値)。
+ *
+ *  - "default": 現行既定 (LINE Seed JP)。未設定データもこれとして扱う。
+ *  - "gothic" : 読みやすい標準ゴシック (Noto Sans JP)
+ *  - "rounded": やわらかい丸ゴシック (ヒラギノ丸ゴ / M PLUS Rounded 1c 系)
+ *  - "classic": 物語・世界観向けの明朝 (Noto Serif JP / 游明朝 / ヒラギノ明朝)
+ *  - "modern" : すっきりしたモダン系 (OS システムフォント)
+ *
+ *  旧 `font_preset` / `font_family` しか持たない既存データは読み込み時にマップする
+ *  (`resolveFontTheme`)。DB migration は行わない。 */
+export type LiffFontTheme = "default" | "gothic" | "rounded" | "classic" | "modern";
+
+/** ページ全体のカラーモード。
+ *
+ *  - "light"   : 現行既定 (白ベース / LINE グリーン)。**未設定データと完全に同じ見た目**。
+ *  - "dark"    : ディープ・ボルドー (濃い赤黒背景 + ピンク寄りアクセント)
+ *  - "system"  : OS の prefers-color-scheme に追従 (light ⇔ dark)
+ *  - "sepia"   : 生成り / 茶系の暖色テーマ
+ *  - "bordeaux": ボルドー × アイボリー (薄いピンクベージュ背景 + ボルドー CTA)
+ *
+ *  未指定 / 不正値は renderer 側で "light" として扱う (= 後方互換)。
+ *  値を増やしても既存データに影響しないよう、必ず「未知値 → light」でフォールバックすること。 */
+export type LiffColorMode = "light" | "dark" | "system" | "sepia" | "bordeaux";
+
 /** 本文 description の配置 (左/中央/右)。
  *  未指定 / 不正値は renderer 側で "center" として扱う (LINE Design System 既定)。 */
 export type LiffDescriptionAlign = "left" | "center" | "right";
 
 export interface LiffPageConfigSettings {
-  /** ページ全体のフォントプリセット。未指定は "line_seed_jp"。 */
+  /** ページ全体のフォントテーマ。未指定は font_preset → font_family → "default" の順にフォールバック。 */
+  font_theme?: LiffFontTheme;
+  /** ページ全体のカラーモード。未指定は "light"（= 現行既定の白ベース）。 */
+  color_mode?: LiffColorMode;
+  /** @deprecated `font_theme` を使ってください。旧仕様のフォントプリセット。既存データ互換のため残置。 */
   font_preset?: LiffFontPreset;
-  /** @deprecated 旧仕様。新規データでは font_preset を使う。読み込み時のフォールバック用に残置。 */
+  /** @deprecated 旧仕様。新規データでは font_theme を使う。読み込み時のフォールバック用に残置。 */
   font_family?: LiffFontFamily;
   /** LIFF プレイヤー画面の上部ヘッダーに表示する文言。
    *  例: "チェックイン" / "設定資料" / "ご案内" / "出演者A" / "公演情報"

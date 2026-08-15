@@ -31,6 +31,7 @@ import { WerewolfRenderer } from "./WerewolfRenderer";
 import { LiffRenderer, LiffBlockSections, type LiffBlock, type LiffRenderContext } from "./LiffRenderer";
 import { LiffPlayerProvider } from "./LiffPlayerContext";
 import { liffRootClass, resolveHeaderTitle } from "./liff-style-helpers";
+import { LiffFontThemeAssets } from "./fonts/LiffFontThemeAssets";
 import { LiffStudioFooter, shouldShowWhaleStudioCredit } from "./LiffStudioFooter";
 
 export interface LiffSinglePage {
@@ -140,6 +141,10 @@ export function LiffSinglePageRenderer({
   return (
     <LiffPlayerProvider value={playerCtxValue}>
       <div className={`liff-font ${liffRootClass(settings)} min-h-screen ${rootBackgroundClass} text-[color:var(--liff-primary-text)]`}>
+        {/* font_theme=rounded / classic のときだけ webfont CSS を後から読む（DOM は出力しない）。
+            テーマを持つ個別 renderer はすべてこの component 経由なので、ここ 1 か所で足りる。 */}
+        <LiffFontThemeAssets settings={settings} />
+
         {/* 独自ヘッダー・「ホームに戻る」ボタンは廃止（実機 LINE ヘッダーと二重化するため）。
             本文はページタイトル → 説明 → ブロックから自然に始まる。 */}
 

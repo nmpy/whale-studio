@@ -21,6 +21,10 @@ interface Props {
 export function LiffPageHeader({ title, description, settings, showTitle = true, className }: Props) {
   if ((!title || !showTitle) && !description) return null;
   return (
+    // semantics は <header> のまま維持する。
+    // globals.css の **unlayered** な `header { … }`（白い半透明背景 + sticky + 影）が
+    // LIFF 配下にも漏れる問題は、liff-font.css の `.liff-font header { … }` reset で
+    // LIFF スコープ内に閉じて解決している（この component 側で <div> に逃がさない）。
     <header className={cx("flex flex-col gap-1.5", className)}>
       {showTitle && title && <h1 className={LIFF_TEXT.pageTitle}>{title}</h1>}
       {description && (

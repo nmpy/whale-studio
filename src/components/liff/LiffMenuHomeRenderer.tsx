@@ -25,6 +25,7 @@ import {
   type MenuCard,
   type MenuCardSource,
 } from "./liff-style-helpers";
+import { LiffFontThemeAssets } from "./fonts/LiffFontThemeAssets";
 import { LiffPoweredBy, shouldShowWhaleStudioCredit, LiffEmptyState } from "./ui";
 
 export interface LiffMenuHomePage {
@@ -98,6 +99,9 @@ export function LiffMenuHomeRenderer({
 
   return (
     <div className={`liff-font ${liffRootClass(firstSettings)} min-h-screen bg-[color:var(--liff-background)] text-[color:var(--liff-primary-text)]`}>
+      {/* font_theme=rounded / classic のときだけ webfont CSS を後から読む（DOM は出力しない）。 */}
+      <LiffFontThemeAssets settings={firstSettings} />
+
       {/* ホーム画像（任意）→ 見出し（任意）→ 説明文（任意） の順。
           いずれも未設定なら本ブロックごと描画しない（余白も残さない）。
           画像は横幅いっぱいにしすぎず角丸・縦横比維持で自然に。 */}

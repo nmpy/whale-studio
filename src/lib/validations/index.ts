@@ -1481,7 +1481,13 @@ const surveyItemSchema = z.object({
 
 // ── LIFF ページ設定スキーマ（ヒントサイト用 + FAQ / Survey フィールドを含む） ──
 export const liffPageConfigSettingsSchema = z.object({
-  // フォントプリセット (新)。未指定 / 不正値は renderer 側で "line_seed_jp" 扱い。
+  // フォントテーマ (現行)。未指定 / 不正値は renderer 側で font_preset → font_family → "default" にフォールバック。
+  // 不正値は保存時にここで弾く（catch せず reject する）。読み込み側も resolveFontTheme で防御する。
+  font_theme:           z.enum(["default", "gothic", "rounded", "classic", "modern"]).optional(),
+  // カラーモード。未指定 / 不正値は renderer 側で "light" 扱い（= 現行既定の白ベース）。
+  // 値を追加するときは types.ts の LiffColorMode / liff-font.css / CMS select も揃えること。
+  color_mode:           z.enum(["light", "dark", "system", "sepia", "bordeaux"]).optional(),
+  // @deprecated フォントプリセット (旧)。未指定 / 不正値は renderer 側で "line_seed_jp" 扱い。
   font_preset:          z.enum(["line_seed_jp", "system_sans", "noto_sans_jp", "serif"]).optional(),
   // 旧フォントファミリ (deprecated)。データ互換のため残置。新規 CMS では出さない。
   font_family:          z.enum(["gothic", "mincho"]).optional(),

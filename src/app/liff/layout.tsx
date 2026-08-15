@@ -17,6 +17,10 @@ import "@fontsource/line-seed-jp/700.css";
 // 未ロードだと OS にフォントが無い端末でシステムフォントへフォールバックし「効かない」ように見える）。
 import "@fontsource/noto-sans-jp/400.css";
 import "@fontsource/noto-sans-jp/700.css";
+// font_theme="rounded"(M PLUS Rounded 1c) / "classic"(Noto Serif JP) は **ここでは import しない**。
+// 日本語 fontsource の CSS は @font-face が 126 個あり、常時 import すると
+// テーマを使っていない LIFF ページにも CSS が gzip +129KB 乗ってしまうため。
+// 該当テーマを選んだページでだけ components/liff/fonts/LiffFontThemeAssets が動的に読み込む。
 import "./liff-font.css";
 
 export default function LiffLayout({ children }: { children: React.ReactNode }) {
