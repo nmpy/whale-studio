@@ -1399,13 +1399,17 @@ export type VisibilityCondition = "always" | "before_start" | "in_progress" | "c
  *  - werewolf:  人狼 / 配役閲覧モード (PR Phase 1)。GM がプレイヤーごとに配役カードを
  *               配布するゲーム向け。LiffPageBlock は使わず、専用テーブル
  *               (WerewolfTitle / WerewolfRoleSlot / WerewolfRoleCard) を持つ。
+ *  - hint_search: 検索型ヒントページ。STEP 番号を持たない作品向けに、プレイヤーが困りごとの
+ *               キーワードを自由入力し、該当するヒントだけを表示する。ヒント本体は
+ *               settings_json.hint_search_entries に持ち、検索はサーバー側 API で行う
+ *               (= 未検索のヒントをクライアントへ配らない)。既存 "hint" とは別種別で共存する。
  *
  *  互換性: 旧データの "hint_site" は読み込み時に "hint" として扱う。
  *  Zod (`LIFF_PAGE_TYPES`) では両方を受理し、保存は "hint" に正規化する。
  *
  *  DB は `pageType String @default("default")` で enum ではないため、新 pageType 追加に
  *  Prisma migration は不要 (werewolf 用の専用テーブル migration は別で持つ)。 */
-export type LiffPageType = "default" | "hint" | "faq" | "survey" | "location" | "character" | "werewolf" | "contact" | "puzzle" | "ticket_link";
+export type LiffPageType = "default" | "hint" | "faq" | "survey" | "location" | "character" | "werewolf" | "contact" | "puzzle" | "ticket_link" | "hint_search";
 
 /** 旧データ互換用。ストレージから読んだ値を正規化する。 */
 export function normalizeLiffPageType(value: string | null | undefined): LiffPageType {
@@ -1413,7 +1417,8 @@ export function normalizeLiffPageType(value: string | null | undefined): LiffPag
   if (
     value === "hint" || value === "faq" || value === "survey" ||
     value === "location" || value === "character" || value === "werewolf" ||
-    value === "contact" || value === "puzzle" || value === "ticket_link"
+    value === "contact" || value === "puzzle" || value === "ticket_link" ||
+    value === "hint_search"
   ) return value;
   return "default";
 }
@@ -1757,6 +1762,18 @@ export interface LiffPageConfigSettings {
   /** FAQ モードの Q&A 項目。順序は配列順。空項目はプレイヤー側で非表示。 */
   faq_items?: FaqItem[];
 
+  // ── 検索型ヒント (hint_search) モード設定 ─────
+  /** 検索型ヒントの登録ヒント。順序は配列順。
+   *  ⚠️ ネタバレ防止のため、プレイヤー向け公開 API
+   *  (`GET /api/liff/works/[workId]/pages/[pageId]`) の settings_json からは
+   *  必ず除去して返すこと。検索は専用 API 側でサーバー実行する。 */
+  hint_search_entries?: HintSearchEntry[];
+  /** 「キーワードがわからない場合」の質問1の文言。未設定はシステム既定。 */
+  hint_search_guide_question?: string;
+  /** 「キーワードがわからない場合」の質問ツリー（ルート直下 = 質問1の選択肢）。
+   *  ⚠️ hint_search_entries と同様、公開 API の settings_json からは除去すること。 */
+  hint_search_guide_options?: HintSearchGuideNode[];
+
   // ── Survey モード設定 ───────────────────────
   /** Survey モードの質問項目。順序は配列順。 */
   survey_items?: SurveyItem[];
@@ -1861,6 +1878,58 @@ export interface FaqItem {
   id?: string;
   question: string;
   answer:   string;
+}
+
+/** 検索型ヒント（page_type="hint_search"）の段階ヒント 1 段 */
+export interface HintSearchHintLevel {
+  /** 1 始まりの段階。1 が最も弱いヒント。保存時は配列順で振り直す。 */
+  level: number;
+  body:  string;
+}
+
+/** ヒント段階のネタバレ度。段階番号から自動算出するので保存はしない（表示専用）。 */
+export type HintSpoilerLevel = "low" | "medium" | "high";
+
+/** 検索型ヒント（page_type="hint_search"）の 1 項目
+ *
+ *  内部管理用の名称（internal_title）とプレイヤー表示用の名称（search_result_label /
+ *  list_title）を分離しているのが要点。フェーズ番号や内部シナリオ名は internal_title にだけ
+ *  入れ、プレイヤー向け API / UI には絶対に出さない。 */
+export interface HintSearchEntry {
+  /** クライアントで生成する安定 ID（並び替え / 詳細取得のキー） */
+  id?: string;
+  /** 管理画面だけで使う名称。例: "P7 - S.I.R.E.N施設特定後の次行動"。プレイヤーには出さない。 */
+  internal_title?: string;
+  /** 検索結果に出すプレイヤー向け名称。例: "施設を探している" */
+  search_result_label: string;
+  /** ヒント一覧に出すタイトル。未設定なら search_result_label にフォールバック。 */
+  list_title?: string;
+  /** ヒント詳細の見出し上に小さく出すカテゴリ。例: "持ち物・道具"。任意。 */
+  category_label?: string;
+  /** 検索用キーワード（人物名 / 場所名 / アイテム名など）。UI には表示しない。 */
+  keywords?: string[];
+  /** 表記ゆれ・別名。UI には表示しない。 */
+  aliases?: string[];
+  /** 段階ヒント（配列順 = 開示順）。最大 3 段。 */
+  hints: HintSearchHintLevel[];
+  /** 「答えを見る」で開示する結論。空なら答えボタン自体を出さない。 */
+  answer?: string;
+}
+
+/** 「キーワードがわからない場合」の質問ツリー 1 ノード。
+ *
+ *  ルート直下の要素が質問1の選択肢。選択肢が `options` を持てば次の質問へ進み、
+ *  `hint_id` を持てばそこで該当ヒントを表示する（葉）。 */
+export interface HintSearchGuideNode {
+  id?: string;
+  /** 選択肢ボタンに出す文言。 */
+  label: string;
+  /** この選択肢を選んだ後に出す質問文（options を持つときのみ使う）。 */
+  question?: string;
+  /** 次の選択肢。空 / 未設定なら葉。 */
+  options?: HintSearchGuideNode[];
+  /** 葉のときに表示する hint_search_entries の id。 */
+  hint_id?: string;
 }
 
 /** Survey 入力種別 */

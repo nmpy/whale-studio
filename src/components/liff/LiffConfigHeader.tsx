@@ -9,6 +9,7 @@
 import type { LiffPageConfig, LiffPageConfigSettings, LiffPageType, LiffPublishStatus } from "@/types";
 import { normalizeLiffPageType } from "@/types";
 import { LiffFaqEditor } from "./LiffFaqEditor";
+import { LiffHintSearchEditor } from "./LiffHintSearchEditor";
 import { LiffSurveyEditor } from "./LiffSurveyEditor";
 import { LiffContactEditor } from "./LiffContactEditor";
 import { LiffPuzzleEditor } from "./LiffPuzzleEditor";
@@ -36,6 +37,7 @@ export function LiffConfigHeader({
   const mode = normalizeLiffPageType(config.page_type);
   const isHint = mode === "hint";
   const isFaq = mode === "faq";
+  const isHintSearch = mode === "hint_search";
   const isSurvey = mode === "survey";
   const isContact = mode === "contact";
   const isPuzzle = mode === "puzzle";
@@ -120,6 +122,7 @@ export function LiffConfigHeader({
           >
             <option value="default">デフォルト</option>
             <option value="hint">ヒント</option>
+            <option value="hint_search">ヒント（キーワード検索型）</option>
             <option value="faq">FAQ（よくある質問）</option>
             <option value="survey">アンケート</option>
             <option value="contact">お問い合わせ</option>
@@ -262,6 +265,7 @@ export function LiffConfigHeader({
               : mode === "survey"    ? "例: アンケート"
               : mode === "character" ? "例: キャラクター"
               : mode === "faq"       ? "例: FAQ"
+              : mode === "hint_search" ? "例: ヒント"
               : "例: メニュー"
             }
             maxLength={30}
@@ -269,6 +273,14 @@ export function LiffConfigHeader({
           <p className="text-[11px] text-gray-400 mt-1">未設定時はページ種別の既定名にフォールバック。並び順・表示形式は「LIFF設定 → ホーム」タブで調整できます。</p>
         </div>
       </div>
+
+      {isHintSearch && (
+        <LiffHintSearchEditor
+          settings={settings}
+          readOnly={readOnly}
+          onChange={(patch) => onLocalChange({ settings_json: { ...settings, ...patch } })}
+        />
+      )}
 
       {isFaq && (
         <LiffFaqEditor

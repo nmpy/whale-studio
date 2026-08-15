@@ -293,7 +293,11 @@
   min-height: 600px;
 }
 
-/* === チケット連携 (ticket_link) の箱型入力 ===================================
+/* === 箱型入力（ticket_link / hint_search 共通）===============================
+ *
+ * `.liff-tl-input` は ticket_link 導入時の名前。後から検索型ヒント (hint_search) でも
+ * 同じ意匠が必要になったため、汎用名 `.liff-box-input` を同じルールへ **追加** した
+ * （既存 class 名は残す＝ ticket_link 側の見た目・挙動は不変）。
  *
  * なぜ Tailwind ではなく専用 class なのか:
  *   globals.css の `input[type="text"], select, textarea { … }`（line 575 付近）は
@@ -304,7 +308,8 @@
  *
  * 仕様: 高さ 50px / 角丸 8px / 薄いグレー枠 / フォーカスで緑リング。
  * エラーは色だけでなく必ず文言も併記する（renderer 側で担保）。 */
-.liff-font .liff-tl-input {
+.liff-font .liff-tl-input,
+.liff-font .liff-box-input {
   box-sizing: border-box;
   width: 100%;
   min-height: 50px;
@@ -319,12 +324,14 @@
   transition: border-color 0.15s, box-shadow 0.15s;
 }
 
-.liff-font .liff-tl-input::placeholder {
+.liff-font .liff-tl-input::placeholder,
+.liff-font .liff-box-input::placeholder {
   color: var(--liff-tertiary-text, #8C8C8C);
 }
 
 /* 未選択の select は placeholder 相当の色にする。 */
-.liff-font .liff-tl-input--placeholder {
+.liff-font .liff-tl-input--placeholder,
+.liff-font .liff-box-input--placeholder {
   color: var(--liff-tertiary-text, #8C8C8C);
 }
 
@@ -334,7 +341,8 @@
  * line-height 1.5 なので 16*1.5 + padding 24 + border 2 = 50px となり min-height と一致し、
  * 欄の高さ・下部ボタン位置は変わらない。 */
 @media (pointer: coarse) {
-  .liff-font .liff-tl-input {
+  .liff-font .liff-tl-input,
+  .liff-font .liff-box-input {
     font-size: 16px;
   }
 }
@@ -343,20 +351,47 @@
  * 色はブランドの #06C755(白に対し 2.26:1) ではなく --liff-ui-green-pressed(#06A047, 3.43:1)
  * を使い、WCAG 2.4.11 / 1.4.11 の 3:1 を満たす。 */
 .liff-font .liff-tl-input:focus,
-.liff-font .liff-tl-input:focus-visible {
+.liff-font .liff-tl-input:focus-visible,
+.liff-font .liff-box-input:focus,
+.liff-font .liff-box-input:focus-visible {
   outline: none;
   border-color: var(--liff-ui-green-pressed, #06A047);
   box-shadow: 0 0 0 3px rgba(6, 160, 71, 0.22);
 }
 
-.liff-font .liff-tl-input--error {
+.liff-font .liff-tl-input--error,
+.liff-font .liff-box-input--error {
   border-color: var(--liff-danger, #E22B2B);
 }
 
 .liff-font .liff-tl-input--error:focus,
-.liff-font .liff-tl-input--error:focus-visible {
+.liff-font .liff-tl-input--error:focus-visible,
+.liff-font .liff-box-input--error:focus,
+.liff-font .liff-box-input--error:focus-visible {
   border-color: var(--liff-danger, #E22B2B);
   box-shadow: 0 0 0 3px rgba(226, 43, 43, 0.18);
+}
+
+/* === 検索型ヒント (hint_search) の入力ラベル ================================
+ *
+ * globals.css の unlayered な `label { font-size: 13px; font-weight: 600 }` は
+ * Tailwind の `@layer utilities` を常に上書きしてしまうため、`.liff-box-input` と
+ * 同じ理由で specificity (0,2,0) の専用 class で当て直す。
+ * （globals.css 側は触らない = CMS 側のフォームに影響を出さない） */
+.liff-font .liff-hs-label {
+  display: block;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.5;
+  color: var(--liff-primary-text, #1F2329);
+}
+
+/* 同意チェックのラベルなど、本文トーンで出したい label 用。
+   同 specificity で後勝ちさせるため、必ず .liff-hs-label と併用する。 */
+.liff-font .liff-hs-label--body {
+  display: inline;
+  font-weight: 400;
+  line-height: 1.85;
 }
 
 /* select はネイティブ矢印を消し、右端に自前のシェブロンを重ねる分の余白を取る。 */

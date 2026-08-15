@@ -6,8 +6,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { findWorkByIdOrPublicId, findLiffPageConfigByIdOrPublicId } from "@/lib/public-id-resolver";
+// ネタバレになる設定（検索型ヒントの本文・質問ツリー）は player 向けレスポンスから必ず落とす。
+// 除去対象キーの一覧と実装は lib 側に集約している（テストから直接検証するため）。
+import { redactPlayerSettings } from "@/lib/liff/player-settings";
 
 export const dynamic = "force-dynamic";
+
 
 export async function GET(
   req: NextRequest,
@@ -91,7 +95,7 @@ export async function GET(
         page_type:      config.pageType,
         publish_status: config.publishStatus,
         is_enabled:     config.isEnabled,
-        settings_json:  config.settingsJson,
+        settings_json:  redactPlayerSettings(config.settingsJson),
         characters: characters.map((c) => ({
           id:             c.id,
           name:           c.name,

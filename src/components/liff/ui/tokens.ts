@@ -64,7 +64,9 @@ export const LIFF_UI_FONT_STACK =
 export const LIFF_UI_FONT_STYLE: { fontFamily: string } = { fontFamily: LIFF_UI_FONT_STACK };
 
 // ── 通常アクションボタン（箱型 radius12・Filled / Outline・disabled） ──
-export type LiffActionVariant = "filled" | "outline";
+//   danger / dangerOutline は「取り消せない開示（答えを見る 等）」専用。
+//   通常の CTA には使わない（赤の意味を薄めないため）。
+export type LiffActionVariant = "filled" | "outline" | "neutral" | "danger" | "dangerOutline";
 
 const ACTION_BASE =
   "inline-flex items-center justify-center text-center font-bold rounded-[12px] " +
@@ -81,6 +83,18 @@ const ACTION_VARIANT: Record<LiffActionVariant, string> = {
   outline:
     "text-[color:var(--liff-line-green,#06C755)] bg-[color:var(--liff-surface,#fff)] border border-[color:var(--liff-line-green,#06C755)] " +
     "active:bg-[color:var(--liff-ui-green-soft,#E8F9EE)]",
+  // Neutral = カード内の副次アクション（次の段階を開く 等）。ブランド色を使わない控えめな箱型。
+  neutral:
+    "text-[color:var(--liff-primary-text,#1F2329)] bg-[color:var(--liff-surface,#fff)] border border-[color:var(--liff-border,#eef2f5)] " +
+    "active:bg-[color:var(--liff-surface-subtle,#FAFAFA)]",
+  // Danger = 取り消せない開示の実行ボタン。
+  danger:
+    "text-white bg-[color:var(--liff-danger,#E22B2B)] border border-[color:var(--liff-danger,#E22B2B)] " +
+    "active:bg-[color:var(--liff-danger-press,#C42323)] active:border-[color:var(--liff-danger-press,#C42323)]",
+  // Danger Outline = その手前の「確認へ進む」ボタン。赤枠 + 赤文字 + 白背景。
+  dangerOutline:
+    "text-[color:var(--liff-danger,#E22B2B)] bg-[color:var(--liff-surface,#fff)] border border-[color:var(--liff-danger,#E22B2B)] " +
+    "active:bg-[color:rgba(226,43,43,0.06)]",
 };
 
 /** 通常アクションボタン（箱型）の class を組み立てる（純関数・テスト可）。 */
