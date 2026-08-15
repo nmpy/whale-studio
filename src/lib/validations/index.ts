@@ -7,6 +7,11 @@ import { validateCallRequestConfig } from "@/lib/call-request";
 import { MIN_DELAY_MINUTES as SCHED_MIN_DELAY_MINUTES, MAX_DELAY_MINUTES as SCHED_MAX_DELAY_MINUTES } from "@/lib/scheduled-message";
 import { validateMedia, URL_MAX_LENGTH, type MediaUsage } from "@/lib/media-validation";
 import { validateCompletionButtonSettings } from "@/lib/liff/survey-completion";
+import {
+  HINT_SEARCH_MAX_ENTRIES,
+  HINT_SEARCH_MAX_HINT_LEVELS,
+  HINT_SEARCH_GUIDE_MAX_OPTIONS,
+} from "@/lib/liff/hint-search";
 import type { LiffPageConfigSettings } from "@/types";
 
 // 外部URL参照メディア（asset_media_source="external_url"）の用途別サーバ検証を Zod ctx に反映する。
@@ -1141,7 +1146,7 @@ export const VISIBILITY_CONDITIONS = [
 // LIFF ページ種別。
 // 新しいモード: default / hint / faq / survey / location / character / werewolf
 // 旧データ互換: "hint_site" も受理（保存時に "hint" に正規化される）
-export const LIFF_PAGE_TYPES = ["default", "hint", "faq", "survey", "location", "character", "werewolf", "contact", "puzzle", "ticket_link", "hint_site"] as const;
+export const LIFF_PAGE_TYPES = ["default", "hint", "faq", "survey", "location", "character", "werewolf", "contact", "puzzle", "ticket_link", "hint_search", "hint_site"] as const;
 /** 受け取った page_type を正規化（"hint_site" → "hint"） */
 export function normalizeLiffPageTypeValue(value: string | null | undefined): string {
   if (value === "hint_site") return "hint";
@@ -1425,6 +1430,45 @@ const faqItemSchema = z.object({
   answer:   z.string().max(3000),
 });
 
+// ── 検索型ヒント (page_type="hint_search") 設定 ────────────────
+// 上限は「1 ページ 200 件 / 1 件あたり keywords+aliases 各 50 語 / 段階ヒント 3 段」。
+// 既存 FAQ / Survey と同じく settings_json 内に持つため Prisma migration は不要。
+const hintSearchHintLevelSchema = z.object({
+  level: z.number().int().min(1).max(HINT_SEARCH_MAX_HINT_LEVELS),
+  body:  z.string().max(3000),
+});
+
+const hintSearchEntrySchema = z.object({
+  id:                  z.string().max(64).optional(),
+  internal_title:      z.string().max(200).optional(),
+  search_result_label: z.string().max(200),
+  list_title:          z.string().max(200).optional(),
+  category_label:      z.string().max(100).optional(),
+  keywords:            z.array(z.string().max(100)).max(50).optional(),
+  aliases:             z.array(z.string().max(100)).max(50).optional(),
+  hints:               z.array(hintSearchHintLevelSchema).max(HINT_SEARCH_MAX_HINT_LEVELS),
+  answer:              z.string().max(3000).optional(),
+});
+
+// 質問ツリー（「キーワードがわからない場合」）。Zod は再帰型を直接書けないため lazy + 明示型で組む。
+type HintSearchGuideNodeInput = {
+  id?:       string;
+  label:     string;
+  question?: string;
+  options?:  HintSearchGuideNodeInput[];
+  hint_id?:  string;
+};
+
+const hintSearchGuideNodeSchema: z.ZodType<HintSearchGuideNodeInput> = z.lazy(() =>
+  z.object({
+    id:       z.string().max(64).optional(),
+    label:    z.string().max(120),
+    question: z.string().max(200).optional(),
+    options:  z.array(hintSearchGuideNodeSchema).max(HINT_SEARCH_GUIDE_MAX_OPTIONS).optional(),
+    hint_id:  z.string().max(64).optional(),
+  })
+);
+
 const surveyInputTypeSchema = z.enum(["text", "textarea", "radio", "checkbox"]);
 
 const surveyItemSchema = z.object({
@@ -1468,6 +1512,10 @@ export const liffPageConfigSettingsSchema = z.object({
   share_message:         z.string().max(1000).optional(),
   // FAQ モード
   faq_items:             z.array(faqItemSchema).max(100).optional(),
+  // 検索型ヒント (hint_search) モード
+  hint_search_entries:        z.array(hintSearchEntrySchema).max(HINT_SEARCH_MAX_ENTRIES).optional(),
+  hint_search_guide_question: z.string().max(200).optional(),
+  hint_search_guide_options:  z.array(hintSearchGuideNodeSchema).max(HINT_SEARCH_GUIDE_MAX_OPTIONS).optional(),
   // Survey モード
   survey_items:          z.array(surveyItemSchema).max(50).optional(),
   survey_thanks_message: z.string().max(500).optional(),

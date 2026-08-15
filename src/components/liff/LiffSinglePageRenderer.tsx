@@ -19,6 +19,7 @@ import type {
 } from "@/types";
 import { normalizeLiffPageType } from "@/types";
 import { HintSiteRenderer, type HintSiteBlock } from "./HintSiteRenderer";
+import { HintSearchRenderer } from "./HintSearchRenderer";
 import { FaqRenderer } from "./FaqRenderer";
 import { SurveyRenderer } from "./SurveyRenderer";
 import { TicketLinkRenderer } from "./TicketLinkRenderer";
@@ -102,8 +103,12 @@ export function LiffSinglePageRenderer({
 
   // ticket_link は 1 画面が「本文 + 下部操作エリア + フッター」で完結する縦長カード構成のため、
   // ページ見出しと Powered by を renderer 側のシェルが自前で描画する（親では二重に出さない）。
+  // hint_search も検索 / 結果 / 詳細 / 一覧で見出しが変わるため、同じく renderer 側が見出しを持つ。
   // 他の page_type には影響しない。
-  const ownsPageChrome = pageType === "ticket_link";
+  const ownsPageChrome = pageType === "ticket_link" || pageType === "hint_search";
+
+  // 白背景シェルを敷くのは ticket_link だけ。hint_search は通常のページ背景のまま。
+  const usesSurfaceBackground = pageType === "ticket_link";
 
   // ticket_link のシェルは高さに 100dvh を使い、この親は min-h-screen(=100vh) を使う。
   // iOS Safari / LINE アプリ内ブラウザではツールバー表示中に 100dvh < 100vh となるため、
@@ -111,7 +116,7 @@ export function LiffSinglePageRenderer({
   // モバイルでは親も白にして下端まで白を連続させ、sm 以上（中央カード表示）でのみ
   // 従来の外側背景へ戻す。base と sm: は別 variant なので Tailwind が必ず sm: を後に出力し、
   // 生成順に依存しない。他の page_type は従来どおり。
-  const rootBackgroundClass = ownsPageChrome
+  const rootBackgroundClass = usesSurfaceBackground
     ? "bg-[color:var(--liff-surface)] sm:bg-[color:var(--liff-background)]"
     : "bg-[color:var(--liff-background)]";
 
@@ -245,6 +250,26 @@ function ActivePageContent({
             description:   page.description,
             settings_json: settings,
           }}
+        />
+      );
+    case "hint_search":
+      // 検索型ヒント。見出しは画面（検索 / 結果 / 詳細 / 一覧 / 質問）ごとに変わるため
+      // HintSearchRenderer 側が自前で描画する（親では出さない）。
+      // ヒント本体はページ API に含まれないので、実機では専用 API から都度取得する。
+      // CMS プレビューだけ、編集中の settings をそのまま渡してローカル検索させる。
+      return (
+        <HintSearchRenderer
+          workId={workId}
+          pageId={page.public_id ?? page.id}
+          preview={preview}
+          pageTitle={page.title}
+          pageDescription={page.description}
+          showCredit={shouldShowWhaleStudioCredit(settings)}
+          previewSource={preview ? {
+            entries:       settings?.hint_search_entries,
+            guideOptions:  settings?.hint_search_guide_options,
+            guideQuestion: settings?.hint_search_guide_question,
+          } : undefined}
         />
       );
     case "ticket_link":

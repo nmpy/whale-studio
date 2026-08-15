@@ -192,6 +192,7 @@ export function defaultMenuLabel(pageType: LiffPageType): string {
     case "contact":   return "お問い合わせ";
     case "puzzle":    return "謎・問題";
     case "ticket_link": return "チケット連携";
+    case "hint_search": return "ヒント";
     case "default":   return "メニュー";
   }
 }
@@ -208,6 +209,7 @@ export function defaultMenuIcon(pageType: LiffPageType): string {
     case "contact":   return "✉️";
     case "puzzle":    return "🧩";
     case "ticket_link": return "🎫";
+    case "hint_search": return "🔍";
     case "default":   return "📄";
   }
 }

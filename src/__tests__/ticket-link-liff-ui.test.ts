@@ -381,19 +381,22 @@ describe("タイトル / 説明ブロックはフラット", () => {
 describe("タッチ端末での入力欄フォントサイズ", () => {
   const css = () => readFileSync(new URL("../app/liff/liff-font.css", import.meta.url), "utf8");
 
+  // `.liff-tl-input` は hint_search でも使う汎用名 `.liff-box-input` と同じルールを共有する
+  // （selector を並べているだけで宣言は 1 つ）。セレクタ列の途中でも拾えるようにしている。
+  const BOX_INPUT_SELECTOR = /\.liff-font\s+\.liff-tl-input\s*(?:,\s*\.liff-font\s+\.liff-box-input\s*)?\{/;
+
   it("coarse pointer では 16px（iOS の自動ズームを避ける）", () => {
-    expect(css()).toMatch(
-      /@media\s*\(\s*pointer\s*:\s*coarse\s*\)\s*\{[\s\S]{0,200}?\.liff-font\s+\.liff-tl-input\s*\{[\s\S]{0,120}?font-size\s*:\s*16px/,
-    );
+    const media = css().match(/@media\s*\(\s*pointer\s*:\s*coarse\s*\)\s*\{[\s\S]*?\n\}/)?.[0] ?? "";
+    expect(media).toMatch(BOX_INPUT_SELECTOR);
+    expect(media).toMatch(/font-size\s*:\s*16px/);
   });
 
   it("ベース宣言は 15px のまま（デスクトップの見た目を変えない）", () => {
-    expect(css()).toMatch(
-      /\.liff-font\s+\.liff-tl-input\s*\{[\s\S]{0,300}?font-size\s*:\s*15px/,
-    );
+    const base = css().slice(css().search(BOX_INPUT_SELECTOR));
+    expect(base).toMatch(/^[\s\S]{0,400}?font-size\s*:\s*15px/);
   });
 
-  it("16px 化は ticket_link の入力欄だけを対象にする", () => {
+  it("16px 化は箱型入力（ticket_link / hint_search）だけを対象にする", () => {
     const media = css().match(
       /@media\s*\(\s*pointer\s*:\s*coarse\s*\)\s*\{[\s\S]*?\n\}/,
     )?.[0] ?? "";
