@@ -12,6 +12,9 @@
 //
 // mode:
 //   - "search" : q に一致したヒントの id/label のみ返す。1 件だけなら detail も同梱する。
+//   - "list"   : 全ヒントのプレイヤー向けタイトルだけを返す（本文・答え・キーワード・
+//                internal_title は含まない）。プレイヤーがネタバレ警告に同意した後にだけ
+//                呼ばれる導線で、初期表示では絶対に叩かない。
 //   - "detail" : 指定 id の段階ヒント本文を返す（答え本文は含まない）。
 //   - "answer" : 指定 id の答え本文を返す。プレイヤーが確認画面で明示同意した後にだけ呼ばれる。
 //   - "guide"  : 「キーワードがわからない場合」の質問ツリーを 1 階層だけ返す。
@@ -33,6 +36,7 @@ import {
   resolveGuidePath,
   searchHintEntries,
   toDetail,
+  toListItem,
   toResultItem,
   HINT_SEARCH_GUIDE_DEFAULT_QUESTION,
   HINT_SEARCH_GUIDE_MAX_DEPTH,
@@ -45,6 +49,10 @@ const bodySchema = z.union([
   z.object({
     mode:    z.literal("search"),
     q:       z.string().max(HINT_SEARCH_MAX_QUERY_LENGTH * 20),
+    preview: z.boolean().optional(),
+  }),
+  z.object({
+    mode:    z.literal("list"),
     preview: z.boolean().optional(),
   }),
   z.object({
@@ -117,6 +125,12 @@ export async function POST(
       hint_search_guide_question?: unknown;
     };
     const entries = normalizeHintSearchEntries(settings.hint_search_entries);
+
+    if (body.mode === "list") {
+      // 返すのは id と listTitle（= プレイヤー向け表示名）だけ。
+      // internal_title / keywords / aliases / hints / answer は toListItem が持たない。
+      return NextResponse.json({ success: true, data: { items: entries.map(toListItem) } });
+    }
 
     if (body.mode === "detail" || body.mode === "answer") {
       const entry = entries.find((e) => e.id === body.id);

@@ -11,7 +11,9 @@
 //   1. 初期画面では検索フォーム以外を出さない。ヒントタイトル / 固有名詞 / カテゴリ一覧を一切描画しない。
 //   2. ヒントデータはページ設定 API に含まれない（サーバー側で除去済み）。検索・詳細・答え・質問ツリーは
 //      専用 API を都度叩き、必要な分だけ受け取る。CSS で隠すのではなく「そもそも持っていない」状態にする。
-//   3. 「ヒント一覧」は **自分が開いたヒントだけ**。未開封のタイトルはクライアントにも届かない。
+//   3. 「見たヒント」は **自分が開いたヒントだけ**。未開封のタイトルはクライアントにも届かない。
+//   3'. 「ヒント一覧」(全件) はネタバレ警告ダイアログで明示同意した後にだけ list API を叩く。
+//       初期表示・ダイアログを開いた時点・キャンセル時には 1 件もタイトルを取得しない。
 //   4. ヒント本文は段階ヒントとして 1 段ずつ開示し、結論（答え）は明示同意した後にだけ取得する。
 //   5. 質問ツリーは 1 階層ずつ取得する。選ばなかった枝の内容は届かない。
 //   6. 検索語は POST body で送り、URL / analytics には載せない。
@@ -24,6 +26,7 @@ import type { HintSearchDetail, HintSearchResultItem } from "@/lib/liff/hint-sea
 import { recordLiffEvent } from "@/lib/liff-events";
 import { useLiffPlayerContext } from "./LiffPlayerContext";
 import { LiffStudioFooter } from "./LiffStudioFooter";
+import { LiffConfirmDialog } from "./ui/LiffConfirmDialog";
 import { LIFF_CARD_CLASS, LIFF_TEXT, actionButtonClass, cx } from "./ui/tokens";
 import {
   createApiHintSearchClient,
@@ -54,7 +57,7 @@ interface Props {
 }
 
 /** ヒント詳細へ来た経路。戻り導線の文言と戻り先が変わる。 */
-type DetailOrigin = "search-single" | "results" | "opened" | "guide";
+type DetailOrigin = "search-single" | "results" | "opened" | "all-list" | "guide";
 
 type Screen =
   | { kind: "search" }
@@ -62,6 +65,7 @@ type Screen =
   | { kind: "detail"; detail: HintSearchDetail; origin: DetailOrigin; query: string | null; breadcrumb: string[] }
   | { kind: "answer-confirm"; detail: HintSearchDetail; origin: DetailOrigin; query: string | null; breadcrumb: string[] }
   | { kind: "opened" }
+  | { kind: "all-list"; items: HintSearchResultItem[] }
   | { kind: "guide"; path: number[]; breadcrumb: string[]; question: string; options: Array<{ label: string }> };
 
 type SearchError = { kind: "empty" | "not_found" | "failed"; message: string };
@@ -92,6 +96,8 @@ export function HintSearchRenderer({
   /** 開封履歴（= ヒント一覧の材料）。 */
   const [opened, setOpened] = useState<OpenedHintRecord[]>([]);
   const [answerAgreed, setAnswerAgreed] = useState(false);
+  /** ネタバレ警告ダイアログの開閉。開いただけでは list API を叩かない。 */
+  const [spoilerDialogOpen, setSpoilerDialogOpen] = useState(false);
 
   const inputRef = useRef<HTMLInputElement | null>(null);
   // 連打時に古いレスポンスが新しい結果を上書きしないようにするための世代番号。
@@ -265,12 +271,32 @@ export function HintSearchRenderer({
     }
   }, [pending, client, syncOpened, revealedByHint]);
 
+  /** 全ヒント一覧を取得して表示する。
+   *  ネタバレ警告ダイアログで「それでも一覧を見る」を押したときだけ呼ぶこと。 */
+  const openAllList = useCallback(async () => {
+    const seq = ++requestSeq.current;
+    setPending(true);
+    setError(null);
+    try {
+      const items = await client.list();
+      if (seq !== requestSeq.current) return;
+      setScreen({ kind: "all-list", items });
+    } catch {
+      if (seq !== requestSeq.current) return;
+      setError({ kind: "failed", message: C.failed });
+      setScreen({ kind: "search" });
+    } finally {
+      if (seq === requestSeq.current) setPending(false);
+    }
+  }, [client]);
+
   // ── 画面遷移 ──────────────────────────────────────────
   const backToSearch = useCallback(() => {
     requestSeq.current += 1; // 進行中のリクエストの結果を無効化する
     setPending(false);
     setError(null);
     setAnswerAgreed(false);
+    setSpoilerDialogOpen(false);
     setScreen({ kind: "search" });
   }, []);
 
@@ -279,10 +305,12 @@ export function HintSearchRenderer({
       setScreen({ kind: "results", query: lastResults.query, items: lastResults.items });
       return;
     }
-    if (origin === "opened") { setScreen({ kind: "opened" }); return; }
+    if (origin === "opened")   { setScreen({ kind: "opened" }); return; }
+    // 一覧へ戻るときも一覧を取り直す（タイトルは同意済みなので再取得して問題ない）。
+    if (origin === "all-list") { void openAllList(); return; }
     if (origin === "guide")  { void gotoGuide([]); return; }
     backToSearch();
-  }, [lastResults, gotoGuide, backToSearch]);
+  }, [lastResults, gotoGuide, openAllList, backToSearch]);
 
   // 画面が切り替わったらページ先頭へ戻す（結果 → 詳細 → 一覧の遷移で読み始めがズレないように）。
   useEffect(() => {
@@ -307,6 +335,7 @@ export function HintSearchRenderer({
             pending={pending}
             error={error}
             onOpenedList={() => setScreen({ kind: "opened" })}
+            onOpenAllList={() => setSpoilerDialogOpen(true)}
             onGuide={() => { void gotoGuide([]); }}
           />
         )}
@@ -358,6 +387,15 @@ export function HintSearchRenderer({
           />
         )}
 
+        {screen.kind === "all-list" && (
+          <AllHintListScreen
+            items={screen.items}
+            pending={pending}
+            onSelect={(id) => { void openDetailById(id, "all-list", null); }}
+            onBack={backToSearch}
+          />
+        )}
+
         {screen.kind === "guide" && (
           <GuideScreen
             path={screen.path}
@@ -375,6 +413,19 @@ export function HintSearchRenderer({
       </main>
 
       {showCredit && <LiffStudioFooter />}
+
+      {/* 「ヒント一覧を見る」を押した時点では一覧を表示しない。
+          ここで明示的に了承を取り、「それでも一覧を見る」で初めて list API を叩く。
+          「戻る」はダイアログを閉じるだけで、タイトルを 1 件も取得しない。 */}
+      <LiffConfirmDialog
+        open={spoilerDialogOpen}
+        title={C.dialogTitle}
+        description={C.dialogBody}
+        cancelLabel={C.dialogCancel}
+        confirmLabel={C.dialogConfirm}
+        onCancel={() => setSpoilerDialogOpen(false)}
+        onConfirm={() => { setSpoilerDialogOpen(false); void openAllList(); }}
+      />
     </>
   );
 }
@@ -382,7 +433,7 @@ export function HintSearchRenderer({
 // ── A / B / C / F: 検索画面 ───────────────────────────────────────
 function SearchScreen({
   title, description, inputId, errorId, inputRef, query, onQueryChange, onSubmit,
-  pending, error, onOpenedList, onGuide,
+  pending, error, onOpenedList, onOpenAllList, onGuide,
 }: {
   title: string;
   description: string;
@@ -395,6 +446,7 @@ function SearchScreen({
   pending: boolean;
   error: SearchError | null;
   onOpenedList: () => void;
+  onOpenAllList: () => void;
   onGuide: () => void;
 }) {
   const hasError  = error !== null;
@@ -460,7 +512,12 @@ function SearchScreen({
         </button>
       </form>
 
-      {/* 開封済みヒントへの導線。0 件のときは出さない（見せるものが無いため）。 */}
+      {/* 検索フォームの下は 3 段構え。
+          1. 見たヒント        … 開封済みだけ。ネタバレなしなので緑テキストで少し強め。
+          2. ヒント一覧を見る  … 全件タイトル。ネタバレを含むので secondary テキスト導線に留める
+                                （primary の緑ボタンにはしない）。押しただけでは一覧を出さない。
+          3. キーワードがわからない場合 … 救済導線。
+          0 件のときは「もう一度探す」に集中させるため 1 は出さない。 */}
       {!notFound && (
         <button
           type="button"
@@ -471,8 +528,15 @@ function SearchScreen({
         </button>
       )}
 
-      {/* キーワードが思いつかない人の救済導線。Primary より弱いトーンで最下部に置く。 */}
-      <div className="pt-6">
+      <button
+        type="button"
+        onClick={onOpenAllList}
+        className="min-h-[44px] text-center text-[13px] text-[color:var(--liff-tertiary-text,#8C8C8C)] underline underline-offset-4 active:opacity-70"
+      >
+        {C.openAllListLink}
+      </button>
+
+      <div className="pt-4">
         <button
           type="button"
           onClick={onGuide}
@@ -534,9 +598,10 @@ function DetailScreen({
   onBack: () => void;
 }) {
   const backLabel =
-    origin === "results" ? C.backToResults
-    : origin === "opened" ? C.backToList
-    : origin === "guide"  ? C.guideBackRoot
+    origin === "results"  ? C.backToResults
+    : origin === "opened"   ? C.backToOpened
+    : origin === "all-list" ? C.backToAllList
+    : origin === "guide"    ? C.guideBackRoot
     : C.searchAgain;
 
   return (
@@ -636,7 +701,10 @@ function AnswerConfirmScreen({
   );
 }
 
-// ── ヒント一覧（開封済みのみ）─────────────────────────────────────
+// ── 見たヒント（開封済みのみ）────────────────────────────────────
+//    「ヒント一覧」(= 全件・AllHintListScreen) とは別機能。
+//    材料は端末の開封履歴だけで、未開封ヒントのタイトルはそもそも手元に無い。
+//    ネタバレを含まないので警告ダイアログは挟まない。
 function OpenedListScreen({
   records, pending, onSelect, onBack,
 }: {
@@ -648,19 +716,19 @@ function OpenedListScreen({
   return (
     <>
       <div className="flex flex-col gap-1.5">
-        <h1 className={LIFF_TEXT.pageTitle}>{C.listTitle}</h1>
-        <p className={cx(LIFF_TEXT.secondary, "text-[13px] leading-[1.85]")}>{C.listDescription}</p>
+        <h1 className={LIFF_TEXT.pageTitle}>{C.openedTitle}</h1>
+        <p className={cx(LIFF_TEXT.secondary, "text-[13px] leading-[1.85]")}>{C.openedDescription}</p>
       </div>
 
       {records.length === 0 ? (
         <p className={cx(LIFF_TEXT.secondary, "text-[13px] leading-[1.85] py-4 break-words")}>
-          {C.listEmpty}
+          {C.openedEmpty}
         </p>
       ) : (
         <>
           <div className="flex items-baseline justify-between border-b border-[color:var(--liff-border)] pb-2">
-            <h2 className={LIFF_TEXT.caption}>{C.listSectionLabel}</h2>
-            <p className={LIFF_TEXT.caption}>{C.listCount(records.length)}</p>
+            <h2 className={LIFF_TEXT.caption}>{C.openedSectionLabel}</h2>
+            <p className={LIFF_TEXT.caption}>{C.openedCount(records.length)}</p>
           </div>
           <ul className="flex flex-col">
             {records.map((r) => (
@@ -684,12 +752,59 @@ function OpenedListScreen({
       )}
 
       <section className={cx(LIFF_CARD_CLASS, "px-4 py-3 bg-[color:var(--liff-surface-subtle,#FAFAFA)]")}>
-        <p className={cx(LIFF_TEXT.secondary, "text-[13px] leading-[1.75] break-words")}>{C.listNotice}</p>
+        <p className={cx(LIFF_TEXT.secondary, "text-[13px] leading-[1.75] break-words")}>{C.openedNotice}</p>
       </section>
 
       <button type="button" onClick={onBack} className={actionButtonClass("outline")}>
-        {C.listSearchCta}
+        {C.openedSearchCta}
       </button>
+    </>
+  );
+}
+
+// ── 全ヒント一覧（ネタバレ警告に同意した後にだけ到達する）──────────
+//    ここに並ぶのはサーバーが list API で返した **プレイヤー向け表示タイトルだけ**。
+//    internal_title / 段階ヒント本文 / 答えは含まれない。
+//    行を押すと、その 1 件だけを detail API で取りに行く（全件同時取得はしない）。
+function AllHintListScreen({
+  items, pending, onSelect, onBack,
+}: {
+  items: HintSearchResultItem[];
+  pending: boolean;
+  onSelect: (id: string) => void;
+  onBack: () => void;
+}) {
+  return (
+    <>
+      <div className="flex flex-col gap-1.5">
+        <h1 className={LIFF_TEXT.pageTitle}>{C.allListTitle}</h1>
+        <p className={LIFF_TEXT.caption}>{C.allListNotice}</p>
+      </div>
+
+      {/* 一覧の上下どちらからでも検索へ戻れるようにする（ブラウザバックに依存しない）。 */}
+      <FooterLink label={C.backToSearch} onClick={onBack} />
+
+      {items.length === 0 ? (
+        <p className={cx(LIFF_TEXT.secondary, "text-[13px] leading-[1.85] py-4")}>{C.allListEmpty}</p>
+      ) : (
+        <ul className="flex flex-col">
+          {items.map((item) => (
+            <li key={item.id} className="border-b border-[color:var(--liff-border)]">
+              <button
+                type="button"
+                disabled={pending}
+                onClick={() => onSelect(item.id)}
+                className="w-full min-h-[56px] py-3 flex items-center gap-3 text-left active:bg-[color:var(--liff-surface-subtle,#FAFAFA)] disabled:opacity-50"
+              >
+                <span className={cx(LIFF_TEXT.headerTitle, "min-w-0 flex-1 break-words")}>{item.label}</span>
+                <Chevron />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <FooterLink label={C.backToSearch} onClick={onBack} />
     </>
   );
 }

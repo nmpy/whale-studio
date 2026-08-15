@@ -19,6 +19,7 @@ import {
   searchHintEntries,
   spoilerLevelForHint,
   toDetail,
+  toListItem,
   HINT_SEARCH_MAX_TOKENS,
 } from "@/lib/liff/hint-search";
 import { redactPlayerSettings, PLAYER_REDACTED_SETTINGS_KEYS } from "@/lib/liff/player-settings";
@@ -213,6 +214,45 @@ describe("toDetail — プレイヤーへ渡す形", () => {
     const json = JSON.stringify(toDetail(entries.find((e) => e.id === "e-keyboard")!));
     expect(json).not.toContain("keyword");
     expect(json).not.toContain("きーぼーど");
+  });
+});
+
+describe("toListItem — 全ヒント一覧が返す形", () => {
+  const keyboard = entries.find((e) => e.id === "e-keyboard")!;
+
+  it("id と プレイヤー向け表示タイトル (listTitle) だけを返す", () => {
+    expect(toListItem(keyboard)).toEqual({ id: "e-keyboard", label: "キーボード" });
+  });
+
+  it("internal_title（フェーズ番号 / 内部シナリオ名）を返さない", () => {
+    const json = JSON.stringify(entries.map(toListItem));
+    expect(json).not.toContain("P7");
+    expect(json).not.toContain("S.I.R.E.N");
+    expect(json).not.toContain("internal");
+  });
+
+  it("段階ヒント本文・答えを返さない", () => {
+    const json = JSON.stringify(entries.map(toListItem));
+    expect(json).not.toContain("ヒント1本文");
+    expect(json).not.toContain("ヒント2本文");
+    expect(json).not.toContain("答え本文");
+    expect(json).not.toContain("hints");
+    expect(json).not.toContain("answer");
+  });
+
+  it("検索用キーワード・別名を返さない", () => {
+    const json = JSON.stringify(entries.map(toListItem));
+    expect(json).not.toContain("keyword");
+    expect(json).not.toContain("シャーリ・プラグマトン");
+  });
+
+  it("list_title 未設定のヒントは search_result_label にフォールバックする", () => {
+    expect(toListItem(entries.find((e) => e.id === "e-desk")!).label).toBe("机の下にあるものについて");
+  });
+
+  it("空項目は一覧にも出ない（検索結果と同じ除外規則）", () => {
+    const ids = entries.map(toListItem).map((i) => i.id);
+    expect(ids).toEqual(["e-keyboard", "e-desk", "e-person"]);
   });
 });
 

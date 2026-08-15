@@ -14,6 +14,7 @@ import {
   resolveGuidePath,
   searchHintEntries,
   toDetail,
+  toListItem,
   toResultItem,
   HINT_SEARCH_GUIDE_DEFAULT_QUESTION,
   type HintSearchDetail,
@@ -42,6 +43,12 @@ export interface HintSearchClient {
   detail(id: string): Promise<HintSearchDetail>;
   /** 答え本文。プレイヤーが確認画面で明示同意した後にだけ呼ぶこと。 */
   answer(id: string): Promise<string>;
+  /**
+   * 全ヒントのプレイヤー向けタイトル一覧。
+   * ⚠️ ネタバレ警告ダイアログで「それでも一覧を見る」を押した後にだけ呼ぶこと。
+   *    初期表示・ダイアログ表示・キャンセル時には絶対に呼ばない。
+   */
+  list(): Promise<HintSearchResultItem[]>;
   /** 質問ツリーを 1 階層進める。path=[] がルート（質問1）。 */
   guide(path: number[]): Promise<HintSearchGuideStep>;
 }
@@ -79,6 +86,8 @@ export function createApiHintSearchClient(
       postJson<{ detail: HintSearchDetail }>(url, { mode: "detail", id, preview }).then((d) => d.detail),
     answer: (id) =>
       postJson<{ answer: string }>(url, { mode: "answer", id, preview }).then((d) => d.answer),
+    list:   () =>
+      postJson<{ items: HintSearchResultItem[] }>(url, { mode: "list", preview }).then((d) => d.items),
     guide:  (path) => postJson<HintSearchGuideStep>(url, { mode: "guide", path, preview }),
   };
 }
@@ -116,6 +125,9 @@ export function createLocalHintSearchClient(source: LocalSource): HintSearchClie
       const entry = find(id);
       if (!entry?.answer) throw new Error("答えは登録されていません");
       return entry.answer;
+    },
+    async list() {
+      return entries.map(toListItem);
     },
     async guide(path) {
       const resolved = resolveGuidePath(guideRoot, path);

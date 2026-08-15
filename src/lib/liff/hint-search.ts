@@ -281,6 +281,18 @@ export function toResultItem(entry: NormalizedHintSearchEntry): HintSearchResult
   return { id: entry.id, label: entry.label };
 }
 
+/**
+ * 全ヒント一覧の 1 行。
+ *
+ * 返すのは id と **プレイヤー向け表示タイトル (listTitle)** だけ。
+ * internal_title（フェーズ番号 / 内部シナリオ名 / 管理用メモ）・keywords・aliases・
+ * 段階ヒント本文・答えはいずれも含めない。ネタバレ警告に同意したプレイヤーであっても、
+ * 「どのヒントが存在するか」以上の情報はこの段階では渡さない。
+ */
+export function toListItem(entry: NormalizedHintSearchEntry): HintSearchResultItem {
+  return { id: entry.id, label: entry.listTitle };
+}
+
 export function toDetail(entry: NormalizedHintSearchEntry): HintSearchDetail {
   return {
     id:            entry.id,

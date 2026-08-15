@@ -13,7 +13,7 @@ export const HINT_SEARCH_COPY = {
   inputNote:        "ひらがな・カタカナ・漢字の違いは判定に影響しません。",
   submit:           "ヒントを探す",
   searching:        "検索中...",
-  openedListLink:   "これまでに開いたヒントを見る",
+  openedListLink:   "これまでに見たヒント",
   guideEntryLink:   "キーワードがわからない場合",
 
   // ── 0 件 ──
@@ -56,14 +56,25 @@ export const HINT_SEARCH_COPY = {
   answerCancel:       "やめておく",
   answerHeading:      "答え",
 
-  // ── ヒント一覧（開封済みのみ）──
-  listTitle:        "ヒント一覧",
-  listDescription:  "これまでに開いたヒントは、いつでも見返せます。",
-  listSectionLabel: "開いたヒント",
-  listCount:        (n: number) => `${n}件`,
-  listNotice:       "まだ開いていないヒントは一覧に表示されません。キーワードを入力すると追加されます。",
-  listEmpty:        "まだ開いたヒントはありません。キーワードを入力すると、開いたヒントがここに追加されます。",
-  listSearchCta:    "キーワードを入力して探す",
+  // ── 見たヒント（開封済みのみ・ネタバレ警告なし）──
+  //    ※「ヒント一覧」(= 全件) とは別機能。未開封のヒントは絶対に載せない。
+  openedTitle:        "見たヒント",
+  openedDescription:  "これまでに見たヒントは、いつでも見返せます。",
+  openedSectionLabel: "開いたヒント",
+  openedCount:        (n: number) => `${n}件`,
+  openedNotice:       "まだ見ていないヒントはここに表示されません。キーワードを入力すると追加されます。",
+  openedEmpty:        "まだ見たヒントはありません。キーワードを入力すると、見たヒントがここに追加されます。",
+  openedSearchCta:    "キーワードを入力して探す",
+
+  // ── 全ヒント一覧（ネタバレ警告に同意した後にだけ表示）──
+  openAllListLink:  "ヒント一覧を見る",
+  dialogTitle:      "ヒント一覧を表示しますか？",
+  dialogBody:       "ヒント一覧には今後の展開に関する内容が含まれる可能性があります。ネタバレを含む情報を表示してもよろしいですか？",
+  dialogCancel:     "戻る",
+  dialogConfirm:    "それでも一覧を見る",
+  allListTitle:     "ヒント一覧",
+  allListNotice:    "このページには今後の展開に関する内容が含まれます。",
+  allListEmpty:     "表示できるヒントがありません。",
 
   // ── 質問ツリー（キーワードがわからない場合）──
   guideEyebrow:     (step: number) => `ヒントページ ／ 質問${step}`,
@@ -77,5 +88,6 @@ export const HINT_SEARCH_COPY = {
   backToSearch:     "キーワード入力に戻る",
   searchAgain:      "別のキーワードで探す",
   backToResults:    "検索結果に戻る",
-  backToList:       "ヒント一覧へ戻る",
+  backToOpened:     "見たヒントへ戻る",
+  backToAllList:    "ヒント一覧へ戻る",
 } as const;

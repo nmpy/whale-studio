@@ -32,5 +32,6 @@ export { LiffTextarea } from "./LiffTextarea";
 export type { LiffTextareaProps } from "./LiffTextarea";
 export { LiffActionButton } from "./LiffActionButton";
 export { LiffAccordionCard } from "./LiffAccordionCard";
+export { LiffConfirmDialog } from "./LiffConfirmDialog";
 export { LiffLoadingState, LiffErrorState, LiffEmptyState } from "./LiffStatusState";
 export { LiffPoweredBy, shouldShowWhaleStudioCredit } from "./LiffPoweredBy";

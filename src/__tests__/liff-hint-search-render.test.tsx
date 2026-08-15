@@ -11,9 +11,16 @@
  * preview=true でローカル検索クライアントを使い、実 API を叩かずに状態遷移を通す
  * （検索ロジックはサーバーと同一実装を共有しているため、判定結果は実機と一致する）。
  */
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { HintSearchRenderer } from "@/components/liff/HintSearchRenderer";
+import {
+  normalizeHintSearchEntries,
+  searchHintEntries,
+  toDetail,
+  toListItem,
+  toResultItem,
+} from "@/lib/liff/hint-search";
 
 // 未来の展開を含む「絶対に先出ししてはいけない」文字列。
 const SECRET = {
@@ -240,12 +247,12 @@ describe("複数件一致", () => {
   });
 });
 
-describe("ヒント一覧（開封済みのみ）", () => {
+describe("見たヒント（開封済みのみ）", () => {
   it("何も開いていなければ空状態で、ヒントタイトルは出ない", async () => {
     renderPage();
-    fireEvent.click(screen.getByRole("button", { name: "これまでに開いたヒントを見る" }));
-    expect(await screen.findByRole("heading", { name: "ヒント一覧" })).toBeTruthy();
-    expect(screen.getByText(/まだ開いたヒントはありません/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "これまでに見たヒント" }));
+    expect(await screen.findByRole("heading", { name: "見たヒント" })).toBeTruthy();
+    expect(screen.getByText(/まだ見たヒントはありません/)).toBeTruthy();
     expect(html()).not.toContain(SECRET.listTitle);
     expect(html()).not.toContain(SECRET.hint1);
   });
@@ -255,9 +262,9 @@ describe("ヒント一覧（開封済みのみ）", () => {
     await search("キーボード");
     await screen.findByText(SECRET.hint1);
     fireEvent.click(screen.getByRole("button", { name: "別のキーワードで探す" }));
-    fireEvent.click(await screen.findByRole("button", { name: "これまでに開いたヒントを見る" }));
+    fireEvent.click(await screen.findByRole("button", { name: "これまでに見たヒント" }));
 
-    expect(await screen.findByRole("heading", { name: "ヒント一覧" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "見たヒント" })).toBeTruthy();
     expect(screen.getByText(SECRET.listTitle)).toBeTruthy();
     expect(screen.getByText("ヒント1を表示済 ／ 残り2件")).toBeTruthy();
     // 未開封の他のヒントは一覧にも載らない
@@ -271,11 +278,11 @@ describe("ヒント一覧（開封済みのみ）", () => {
     fireEvent.click(await screen.findByRole("button", { name: "もう少し踏み込んだヒントを見る" }));
     await screen.findByText(SECRET.hint2);
     fireEvent.click(screen.getByRole("button", { name: "別のキーワードで探す" }));
-    fireEvent.click(await screen.findByRole("button", { name: "これまでに開いたヒントを見る" }));
+    fireEvent.click(await screen.findByRole("button", { name: "これまでに見たヒント" }));
     fireEvent.click(await screen.findByRole("button", { name: new RegExp(SECRET.listTitle) }));
 
     expect(await screen.findByText(SECRET.hint2)).toBeTruthy();
-    expect(screen.getByRole("button", { name: "ヒント一覧へ戻る" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "見たヒントへ戻る" })).toBeTruthy();
   });
 });
 
@@ -328,5 +335,208 @@ describe("連打対策", () => {
     await waitFor(() => {
       expect(screen.getAllByText(SECRET.hint1).length).toBe(1);
     });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────
+// 全ヒント一覧（= 「ヒント一覧を見る」導線）
+//
+// ここだけは preview（ローカル検索）ではなく **実機と同じ API 経路** で検証する。
+// 「list API がいつ呼ばれるか / 何を返すか」がネタバレ防止の要件そのものなので、
+// fetch を差し替えてリクエスト本文を直接観測する。
+// レスポンスはサーバー route と同じ純関数 (toListItem / toDetail / …) で組み立て、
+// 「テスト用に都合の良い形」を作らない。
+// ─────────────────────────────────────────────────────────────────
+
+const SERVER_ENTRIES = normalizeHintSearchEntries(PREVIEW_SOURCE.entries);
+
+/** 送信されたリクエスト本文（mode 付き）を時系列で記録する。 */
+let sentBodies: Array<Record<string, unknown>> = [];
+
+function stubApi() {
+  sentBodies = [];
+  vi.stubGlobal("fetch", vi.fn(async (_url: string, init?: RequestInit) => {
+    const body = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
+    sentBodies.push(body);
+
+    const ok = (data: unknown) =>
+      ({ ok: true, json: async () => ({ success: true, data }) }) as unknown as Response;
+
+    switch (body.mode) {
+      case "list":
+        return ok({ items: SERVER_ENTRIES.map(toListItem) });
+      case "search": {
+        const matches = searchHintEntries(SERVER_ENTRIES, String(body.q ?? ""));
+        return ok({
+          items:  matches.map((m) => toResultItem(m.entry)),
+          detail: matches.length === 1 ? toDetail(matches[0].entry) : null,
+        });
+      }
+      case "detail": {
+        const e = SERVER_ENTRIES.find((x) => x.id === body.id);
+        return ok({ detail: e ? toDetail(e) : null });
+      }
+      case "answer": {
+        const e = SERVER_ENTRIES.find((x) => x.id === body.id);
+        return ok({ answer: e?.answer ?? "" });
+      }
+      default:
+        return ok({});
+    }
+  }));
+}
+
+const modesSent = () => sentBodies.map((b) => b.mode);
+
+function renderWithApi() {
+  return render(<HintSearchRenderer workId="w1" pageId="p1" />);
+}
+
+describe("ヒント一覧を見る（全件・ネタバレ警告つき）", () => {
+  beforeEach(() => { stubApi(); });
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  it("初期表示では API を一切叩かず、未開封ヒントのタイトルも DOM に無い", () => {
+    renderWithApi();
+    expect(sentBodies).toEqual([]);
+    expect(html()).not.toContain(SECRET.listTitle);
+    expect(html()).not.toContain("机の下にあるものについて");
+    expect(html()).not.toContain("ある人物について");
+  });
+
+  it("「ヒント一覧を見る」導線がある（primary の緑ボタンではない）", () => {
+    renderWithApi();
+    const link = screen.getByRole("button", { name: "ヒント一覧を見る" });
+    // primary CTA（filled = 緑塗り）と同じ見た目にしない。
+    expect(link.className).not.toContain("bg-[color:var(--liff-line-green,#06C755)]");
+  });
+
+  it("押しただけでは一覧を表示せず、確認ダイアログを出す", async () => {
+    renderWithApi();
+    fireEvent.click(screen.getByRole("button", { name: "ヒント一覧を見る" }));
+
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog.getAttribute("aria-modal")).toBe("true");
+    expect(screen.getByRole("heading", { name: "ヒント一覧を表示しますか？" })).toBeTruthy();
+    expect(screen.getByText("ヒント一覧には今後の展開に関する内容が含まれる可能性があります。ネタバレを含む情報を表示してもよろしいですか？")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "戻る" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "それでも一覧を見る" })).toBeTruthy();
+
+    // ダイアログを開いた時点では list API を呼んでいない = タイトルは手元に無い。
+    expect(modesSent()).not.toContain("list");
+    expect(html()).not.toContain(SECRET.listTitle);
+    expect(html()).not.toContain("机の下にあるものについて");
+  });
+
+  it("「戻る」ではダイアログを閉じるだけで、list API を呼ばない", async () => {
+    renderWithApi();
+    fireEvent.click(screen.getByRole("button", { name: "ヒント一覧を見る" }));
+    fireEvent.click(await screen.findByRole("button", { name: "戻る" }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).toBeNull();
+    });
+    expect(modesSent()).not.toContain("list");
+    expect(sentBodies).toEqual([]);
+    // 一覧は一切表示されず、検索画面のまま。
+    expect(screen.getByRole("heading", { name: "ヒントページ" })).toBeTruthy();
+    expect(html()).not.toContain(SECRET.listTitle);
+  });
+
+  it("ESC でもキャンセル扱いになり、list API を呼ばない", async () => {
+    renderWithApi();
+    fireEvent.click(screen.getByRole("button", { name: "ヒント一覧を見る" }));
+    await screen.findByRole("dialog");
+    fireEvent.keyDown(document, { key: "Escape" });
+
+    await waitFor(() => { expect(screen.queryByRole("dialog")).toBeNull(); });
+    expect(modesSent()).not.toContain("list");
+  });
+
+  it("「それでも一覧を見る」で初めて list API を 1 回だけ呼ぶ", async () => {
+    renderWithApi();
+    fireEvent.click(screen.getByRole("button", { name: "ヒント一覧を見る" }));
+    fireEvent.click(await screen.findByRole("button", { name: "それでも一覧を見る" }));
+
+    expect(await screen.findByRole("heading", { name: "ヒント一覧" })).toBeTruthy();
+    expect(modesSent()).toEqual(["list"]);
+  });
+
+  it("一覧はタイトルのみ。本文・答え・internal_title は返ってきていない", async () => {
+    renderWithApi();
+    fireEvent.click(screen.getByRole("button", { name: "ヒント一覧を見る" }));
+    fireEvent.click(await screen.findByRole("button", { name: "それでも一覧を見る" }));
+    await screen.findByRole("heading", { name: "ヒント一覧" });
+
+    // 注意書き
+    expect(screen.getByText("このページには今後の展開に関する内容が含まれます。")).toBeTruthy();
+    // player-facing title は出る（全件）
+    expect(screen.getByRole("button", { name: new RegExp(SECRET.listTitle) })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /机の下にあるものについて/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /ある人物について/ })).toBeTruthy();
+    // 本文 / 答え / internal_title は 1 文字も無い（初期展開しない）
+    expect(html()).not.toContain(SECRET.hint1);
+    expect(html()).not.toContain(SECRET.hint2);
+    expect(html()).not.toContain(SECRET.answer);
+    expect(html()).not.toContain("P7");
+    expect(html()).not.toContain("S.I.R.E.N");
+  });
+
+  it("一覧から 1 件選ぶと、そのヒントだけ detail API で取得する", async () => {
+    renderWithApi();
+    fireEvent.click(screen.getByRole("button", { name: "ヒント一覧を見る" }));
+    fireEvent.click(await screen.findByRole("button", { name: "それでも一覧を見る" }));
+    fireEvent.click(await screen.findByRole("button", { name: new RegExp(SECRET.listTitle) }));
+
+    expect(await screen.findByText(SECRET.hint1)).toBeTruthy();
+    // list → detail の 2 回だけ。detail は選んだ 1 件分のみ。
+    expect(modesSent()).toEqual(["list", "detail"]);
+    expect(sentBodies[1].id).toBe("e-keyboard");
+    // 他のヒントの本文は取得していない
+    expect(html()).not.toContain("机の下のヒント");
+    expect(html()).not.toContain("人物のヒント");
+    // 段階ヒント / spoiler badge / answer 確認フローは維持されている
+    expect(html()).not.toContain(SECRET.hint2);
+    expect(screen.getByText("ネタバレ度 低")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "答えを見る（ネタバレを含みます）" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "ヒント一覧へ戻る" })).toBeTruthy();
+  });
+
+  it("「見たヒント」と「ヒント一覧」は別導線・別画面", async () => {
+    renderWithApi();
+    // 導線が 2 本並んでいる
+    expect(screen.getByRole("button", { name: "これまでに見たヒント" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "ヒント一覧を見る" })).toBeTruthy();
+
+    // 見たヒント: 確認ダイアログ無しで開き、未開封は載らない（API も叩かない）
+    fireEvent.click(screen.getByRole("button", { name: "これまでに見たヒント" }));
+    expect(await screen.findByRole("heading", { name: "見たヒント" })).toBeTruthy();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(sentBodies).toEqual([]);
+    expect(html()).not.toContain(SECRET.listTitle);
+    expect(html()).not.toContain("机の下にあるものについて");
+
+    // ヒント一覧: 確認ダイアログを経て全件タイトルが出る
+    fireEvent.click(screen.getByRole("button", { name: "キーワードを入力して探す" }));
+    fireEvent.click(await screen.findByRole("button", { name: "ヒント一覧を見る" }));
+    fireEvent.click(await screen.findByRole("button", { name: "それでも一覧を見る" }));
+    expect(await screen.findByRole("heading", { name: "ヒント一覧" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /机の下にあるものについて/ })).toBeTruthy();
+  });
+
+  it("検索で開いたヒントは「見たヒント」に載り、未開封は載らない", async () => {
+    renderWithApi();
+    await search("キーボード");
+    await screen.findByText(SECRET.hint1);
+    fireEvent.click(screen.getByRole("button", { name: "別のキーワードで探す" }));
+    fireEvent.click(await screen.findByRole("button", { name: "これまでに見たヒント" }));
+
+    await screen.findByRole("heading", { name: "見たヒント" });
+    expect(screen.getByText(SECRET.listTitle)).toBeTruthy();
+    // 未開封の 2 件は載らない
+    expect(html()).not.toContain("机の下にあるものについて");
+    expect(html()).not.toContain("ある人物について");
+    // 見たヒントの表示に list API は使わない
+    expect(modesSent()).not.toContain("list");
   });
 });
