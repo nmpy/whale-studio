@@ -85,7 +85,7 @@ describe("active 判定 — 機能カテゴリに一致し、二重 active に�
     [wp("/scenario"), "フェーズ", null],
     [wp("/phases"), "フェーズ", null],
     [wp("/characters"), "キャラクター", null],
-    [wp("/messages"), "メッセージ", null],
+    [wp("/messages"), "応答メッセージ", null],
     [wp("/liff"), "LIFF", null],
     [wp("/audiences"), "オーディエンス", null],
     [wp("/beacons"), "ビーコン", null], // 後方互換 works 配下 beacons

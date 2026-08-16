@@ -68,6 +68,7 @@ model Oa {
   richMenus              RichMenu[]
   riddles                Riddle[]                @relation("OaRiddles")
   segments               Segment[]
+  broadcasts             Broadcast[]
   snsPosts               SnsPost[]
   xPosts                 XPost[]
   subscription           Subscription?
@@ -3236,4 +3237,79 @@ model UzuOutboxEvent {
   @@index([oaId, workId])
   @@index([status, claimedAt])
   @@map("uzu_outbox_events")
+}
+
+// ────────────────────────────────────────────────
+// Broadcast / BroadcastRecipient — 配信メッセージ（新規・応答メッセージとは別機能）
+// ────────────────────────────────────────────────
+//
+// 「配信メッセージ」= 管理者が対象者を指定し、任意のタイミングで LINE push する機能。
+// 「応答メッセージ」(model Message) = ユーザー操作・謎解き進行に応じて返る既存機能。
+//
+// この 2 つは **業務機能として完全に別物**として扱う。共有するのは LINE 送信基盤
+// (lib/line.ts の pushToLine) と OA 認可 / Audience の read-only な問い合わせだけ。
+// 配信の状態・宛先・履歴・結果は、既存 Message / UserProgress 側には一切書かない。
+
+model Broadcast {
+  id              String    @id @default(uuid())
+  oaId            String    @map("oa_id")
+  /// 管理画面で識別するための配信名（LINE 本文には出ない）
+  name            String
+  /// "draft" | "sending" | "sent" | "partial_failed" | "failed" | "cancelled"
+  /// draft → sending の遷移は compare-and-swap で行い、二重配信を防ぐ。
+  status          String    @default("draft")
+  /// "all" | "segment"
+  targetType      String    @map("target_type")
+  /// targetType = "segment" のとき対象 Segment。FK は張らず graceful lookup（Segment 削除で配信履歴を壊さない）。
+  segmentId       String?   @map("segment_id")
+  /// segment 評価に使う作品（Segment の filterType は work スコープで評価されるため）。
+  /// targetType="all" では null。FK は張らない（作品削除で履歴を壊さない）。
+  segmentWorkId   String?   @map("segment_work_id")
+  /// 送信するメッセージ内容（LINE message 配列に変換する前の編集内容）。
+  /// 例: {"kind":"text","text":"..."}。将来の形式追加に備えて JSONB。
+  contentJson     Json      @map("content_json") @db.JsonB
+  /// 配信開始時に snapshot した宛先数。開始前は 0。
+  recipientCount  Int       @default(0) @map("recipient_count")
+  successCount    Int       @default(0) @map("success_count")
+  failureCount    Int       @default(0) @map("failure_count")
+  /// 実行者（Supabase userId・監査用）。
+  createdByUserId String?   @map("created_by_user_id")
+  startedAt       DateTime? @map("started_at")
+  completedAt     DateTime? @map("completed_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  oa         Oa                   @relation(fields: [oaId], references: [id], onDelete: Cascade)
+  recipients BroadcastRecipient[]
+
+  @@index([oaId, createdAt])
+  @@index([oaId, status])
+  @@map("broadcasts")
+}
+
+model BroadcastRecipient {
+  id           String    @id @default(uuid())
+  broadcastId  String    @map("broadcast_id")
+  /// 配信開始時点で snapshot した宛先。以後 Segment 条件が変わっても宛先は動かない。
+  lineUserId   String    @map("line_user_id")
+  /// "pending" | "sending" | "sent" | "failed" | "skipped"
+  /// sending = process が claim 済み（push 実行中）。String 列なので値追加に migration は不要。
+  /// skipped = LINE が受理したか確定できず、retry key(24h) も失効したため自動再送を止めた宛先。
+  ///           手動再送(retryFailedRecipients)の対象にもしない＝勝手に再 push しない。
+  status       String    @default("pending")
+  /// LINE Push API の HTTP status（失敗調査用）。
+  httpStatus   Int?      @map("http_status")
+  /// LINE API のエラーメッセージ（本文・PII は入れない）。
+  errorMessage String?   @map("error_message")
+  sentAt       DateTime? @map("sent_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  broadcast Broadcast @relation(fields: [broadcastId], references: [id], onDelete: Cascade)
+
+  /// 同一配信で同じ宛先を二重に持たない（= 二重送信防止の最終防壁）
+  @@unique([broadcastId, lineUserId])
+  /// worker の未送信 claim 用
+  @@index([broadcastId, status])
+  @@map("broadcast_recipients")
 }

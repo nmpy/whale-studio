@@ -5203,7 +5203,7 @@ export function MessageForm({
             { label: "アカウントリスト", href: "/oas" },
             { label: "作品リスト", href: `/oas/${oaId}/works` },
             ...(workTitle ? [{ label: workTitle, href: `/oas/${oaId}/works/${workId}` }] : []),
-            { label: "メッセージ", href: messagesBackHref },
+            { label: "応答メッセージ", href: messagesBackHref },
             { label: isNew ? "新規作成" : "編集" },
           ]} />
           <h2>{isNew ? "メッセージを追加" : "メッセージを編集"}</h2>

@@ -17,7 +17,7 @@ const fileError = (message: string): ImportError => ({ sheet: "file", row: 0, co
 const SUMMARY_LABELS: { key: keyof ImportSummary; label: string }[] = [
   { key: "characters", label: "キャラクター" },
   { key: "phases", label: "フェーズ" },
-  { key: "messages", label: "メッセージ" },
+  { key: "messages", label: "応答メッセージ" },
   { key: "transitions", label: "遷移" },
 ];
 const ACTION_JP: Record<string, string> = { create: "新規", update: "更新", unchanged: "変更なし", error: "エラー" };
