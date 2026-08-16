@@ -32,6 +32,9 @@ import {
 
 export interface WorkScopedLiffState {
   liff: LiffSDKState;
+  /** 解決済みの LIFF ID。未解決 / 設定エラーのときは null。
+   *  LIFF URL (https://liff.line.me/{liffId}/...) を組み立てる用途で使う。 */
+  liffId: string | null;
   /** config 取得中（liff.init 未実行）。 */
   resolving: boolean;
   /** LIFF ID を決められなかった（init しない）。呼び出し側で設定エラーを表示する。 */
@@ -72,6 +75,7 @@ export function useWorkScopedLiff(workIdOrPublicId: string): WorkScopedLiffState
 
   return {
     liff,
+    liffId:        resolution?.kind === "ready" ? resolution.liffId : null,
     resolving:     resolution === null,
     notConfigured: resolution?.kind === "not_configured",
     isLegacyEnvFallback: resolution?.kind === "ready" && resolution.isLegacyEnvFallback,

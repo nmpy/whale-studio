@@ -9,11 +9,16 @@
 //
 // カードをタップすると `<a href>` で個別ページ URL に遷移する。SPA 内 navigation だが、
 // 実機 LIFF は ブラウザの history を素直に扱うため `<a>` で問題ない。
+//
+// 検索型ヒント (page_type="hint_search") だけは、LINE アプリ内では相対パスではなく
+// **LIFF URL** に遷移する（= LIFF 間遷移。LINE ネイティブの戻るボタンで元の LIFF に戻れる）。
+// 判定と URL 組み立ては buildMenuPageHref に集約している。
 
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useWorkScopedLiff } from "@/hooks/useWorkScopedLiff";
 import { RUNTIME_LIFF_NOT_CONFIGURED_MESSAGE } from "@/lib/liff/runtime-liff-id";
+import { buildMenuPageHref } from "@/lib/liff/menu-href";
 import { LiffMenuHomeRenderer, type LiffMenuHomePage } from "./LiffMenuHomeRenderer";
 import { LiffLoadingState, LiffErrorState } from "./ui";
 
@@ -45,7 +50,7 @@ interface MenuApiResponse {
 
 export function LiffMenuHomeViewer({ workId, workPublicId }: Props) {
   // NEXT_PUBLIC_LIFF_ID（全 OA 共通）ではなく、対象 Work の OA の liffId で初期化する。
-  const { liff, notConfigured: liffNotConfigured } = useWorkScopedLiff(workId);
+  const { liff, liffId, notConfigured: liffNotConfigured } = useWorkScopedLiff(workId);
   const searchParams = useSearchParams();
   const isPreview = searchParams?.get("preview") === "1";
 
@@ -113,13 +118,17 @@ export function LiffMenuHomeViewer({ workId, workPublicId }: Props) {
       homeMenuLayout={data.home_menu_layout}
       preview={isPreview}
       onClose={liff.closeWindow}
-      buildPageHref={(page) => {
-        // 実機: 短縮 URL を組み立てる (publicId があれば優先)
-        if (page.public_id) {
-          return `/liff/w/${workPublicId}/p/${page.public_id}`;
-        }
-        return `/liff/work/${workId}/pages/${page.id}`;
-      }}
+      buildPageHref={(page) =>
+        buildMenuPageHref({
+          pageType:     page.page_type,
+          workId,
+          workPublicId,
+          pageId:       page.id,
+          pagePublicId: page.public_id,
+          liffId,
+          isInClient:   liff.isInClient,
+        })
+      }
     />
   );
 }
