@@ -810,14 +810,43 @@ export async function replyToLine(
  *   - キーの有効期間は初回リクエストから 24 時間
  *   - 再試行してよいのは 500 / timeout のみ（2xx・409・その他 4xx は再試行しない）
  */
+/**
+ * 応答ヘッダを **絶対に例外を投げずに** 読む。
+ *
+ * request id は観測専用であり、取得できるかどうかで送信の成否判定を変えてはいけない。
+ * headers が無い / getter が投げる実装（テストダブル等）でも null を返すだけにする。
+ */
+function headerOrNull(res: Response, name: string): string | null {
+  try { return res.headers?.get(name) ?? null; } catch { return null; }
+}
+
+export interface PushToLineResult {
+  ok: boolean;
+  status?: number;
+  /**
+   * 応答ヘッダ `x-line-request-id`。LINE が各リクエストに発行する識別子で、
+   * 「HTTP 200 なのに実受信しない」ケースを LINE 側まで追跡するために使う。
+   * ヘッダが無い場合は null（**送信の成否判定には一切使わない**）。
+   */
+  requestId?: string | null;
+  /**
+   * 応答ヘッダ `x-line-accepted-request-id`。**409 のときだけ**返る。
+   * 409 の `x-line-request-id` は「却下された再試行」の ID なので、
+   * 実際に受理された送信を辿るにはこちらを見る（LINE 公式仕様）。
+   */
+  acceptedRequestId?: string | null;
+}
+
 export async function pushToLine(
   userId:             string,
   messages:           LineMessage[],
   channelAccessToken: string,
   options?:           { retryKey?: string },
-): Promise<{ ok: boolean; status?: number }> {
+): Promise<PushToLineResult> {
   // 送信結果を返す（成功/失敗を呼出側で判定できるようにする。
   // 既存の `await pushToLine(...)` 呼出は戻り値を無視するため後方互換）。
+  // requestId / acceptedRequestId は **観測専用の追加フィールド**。
+  // 既存 caller は読まないので挙動は変わらない（optional な additive 拡張）。
   if (!userId || messages.length === 0) return { ok: false };
 
   // 謎・問題の出題履歴を記録（push 経路：QR/Beacon/GPS/チェックイン等もここを通る・fire-and-forget）。
@@ -855,9 +884,14 @@ export async function pushToLine(
         status: res.status,
         lineMessage,
       }));
-      return { ok: false, status: res.status };
+      return {
+        ok: false, status: res.status,
+        // 観測用のみ。ヘッダの有無で失敗判定を変えない。
+        requestId:         headerOrNull(res, "x-line-request-id"),
+        acceptedRequestId: headerOrNull(res, "x-line-accepted-request-id"),
+      };
     }
-    return { ok: true, status: res.status };
+    return { ok: true, status: res.status, requestId: headerOrNull(res, "x-line-request-id") };
   } catch (err) {
     console.error("[line:push:failed]", JSON.stringify({
       userId: userId.slice(0, 8),
