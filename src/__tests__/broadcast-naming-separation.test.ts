@@ -101,3 +101,26 @@ describe("配信画面と応答メッセージ画面の相互導線が無いこ�
     }
   });
 });
+
+
+describe("配信詳細 UI — 再送ボタンの条件（J）", () => {
+  const src = read("src/app/oas/[id]/broadcasts/[broadcastId]/page.tsx");
+
+  it("再送ボタンは retryable_failure_count > 0 のときだけ出す（failure_count では判断しない）", () => {
+    expect(src).toContain("row.retryable_failure_count > 0 && (");
+    // failure_count だけを根拠にした活性条件が残っていないこと
+    expect(src).not.toContain("row.failure_count > 0 && (\n                  <button");
+  });
+
+  it("再送可能 / 再送不可の内訳を表示する", () => {
+    expect(src).toContain("再送可能");
+    expect(src).toContain("再送不可");
+    expect(src).toContain("row.non_retryable_failure_count");
+  });
+
+  it("再送対象が timeout / 5xx かつ 24 時間以内であることを利用者に説明する", () => {
+    expect(src).toContain("5xx");
+    expect(src).toContain("24時間");
+    expect(src).toContain("4xx");
+  });
+});

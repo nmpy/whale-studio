@@ -107,7 +107,14 @@ export default function BroadcastDetailPage() {
               <dt className="text-ink-3">成功</dt>
               <dd className="tabular-nums text-ink">{row.success_count.toLocaleString()}</dd>
               <dt className="text-ink-3">失敗</dt>
-              <dd className="tabular-nums text-ink">{row.failure_count.toLocaleString()}</dd>
+              <dd className="tabular-nums text-ink">
+                {row.failure_count.toLocaleString()}
+                {row.failure_count > 0 && (
+                  <span className="ml-2 text-[11px] text-ink-3">
+                    （再送可能 {row.retryable_failure_count.toLocaleString()}件 / 再送不可 {row.non_retryable_failure_count.toLocaleString()}件）
+                  </span>
+                )}
+              </dd>
               <dt className="text-ink-3">未送信</dt>
               <dd className="tabular-nums text-ink">{row.pending_count.toLocaleString()}</dd>
               {row.skipped_count > 0 && (
@@ -127,15 +134,20 @@ export default function BroadcastDetailPage() {
                     {busy ? "処理中…" : "送信の続きを実行"}
                   </button>
                 )}
-                {(row.status === "partial_failed" || row.status === "failed") && row.failure_count > 0 && (
+                {/* 再送可能な失敗が 0 件ならボタンを出さない（failure_count だけを根拠にしない）。 */}
+                {(row.status === "partial_failed" || row.status === "failed") && row.retryable_failure_count > 0 && (
                   <button type="button" className="btn btn-primary" disabled={busy} onClick={handleRetry}>
-                    {busy ? "再送中…" : `失敗した ${row.failure_count.toLocaleString()}件のみ再送`}
+                    {busy ? "再送中…" : `再送可能な ${row.retryable_failure_count.toLocaleString()}件を再送`}
                   </button>
                 )}
               </div>
             )}
             {(row.status === "partial_failed" || row.status === "failed") && (
-              <p className="mt-2 text-[11px] text-ink-3">再送は失敗した宛先だけが対象です。成功済みの宛先へは再送されません。</p>
+              <p className="mt-2 text-[11px] text-ink-3">
+                再送できるのは、通信エラーや LINE 側の一時エラー（5xx）で失敗し、再試行の有効期間（24時間）内にある宛先だけです。
+                宛先やリクエストの不備による失敗（4xx）は、送り直しても結果が変わらないため再送対象になりません。
+                成功済みの宛先へは再送されません。
+              </p>
             )}
             {row.skipped_count > 0 && (
               <p className="mt-2 text-[11px] text-ink-3">

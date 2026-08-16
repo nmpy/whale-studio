@@ -15,7 +15,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { resolveBroadcastAudience, type BroadcastTarget } from "./audience";
-import { RETRY_KEY_TTL_MS, AMBIGUOUS_REASON } from "./processor";
+import { RETRY_KEY_TTL_MS, AMBIGUOUS_REASON, retryableFailureWhere } from "./processor";
 
 export type StartBroadcastResult =
   | { ok: true; recipientCount: number }
@@ -110,23 +110,34 @@ export async function startBroadcast(args: {
  * 失敗した宛先だけを再送対象に戻す。
  * sent / skipped の宛先には絶対に触れない（= 二重送信しない）。
  *
- * 再送可否は LINE の retry key 仕様に合わせて 2 つに分ける:
+ * 再送対象は LINE 公式の retry 方針（Retrying an API request）に合わせる:
  *
- *   - **LINE が受理していないと確定できる失敗**（4xx。ただし 409 は sent 済みなのでここに来ない）
- *     → いつでも安全に再送できる。同じ retry key を使うが、LINE 側に受理記録が無いため
- *       新規リクエストとして扱われても二重配信にならない。
- *   - **受理されたか分からない失敗**（timeout でステータス無し / 5xx）
- *     → 同じ retry key が有効な 24 時間以内なら再送してよい（既に受理済みなら 409 が返る）。
- *       24 時間を過ぎるとキーが失効し、再送は「新規リクエスト」になって二重配信になり得るため
- *       **再送しない**。skipped にして運用者の確認対象にする。
+ *   retryable      = status "failed" かつ (httpStatus が null(timeout) または 5xx)
+ *                    かつ retry key が有効な 24 時間以内
+ *                    → pending に戻して**同じ retry key**で再送する
+ *                      （LINE が既に受理済みなら 409 が返り sent に確定＝二重配信にならない）
+ *   ambiguous 失効 = timeout / 5xx だが retry key の 24 時間を過ぎたもの
+ *                    → 再送すると新規リクエスト扱いになり二重配信になり得るので **skipped**
+ *   non-retryable  = その他 4xx（400 / 401 / 403 / 404 / 429 …）
+ *                    → 公式に "Don't retry. Retries don't change the result." とあるため再送しない。
+ *                      delivery unknown ではないので skipped にはせず、履歴として failed のまま残す
  *
- * 429（レート制限）は受理されていないので再送可能。ここでの再送は運用者の明示操作なので
- * 自動での即時無限リトライにはならない。
+ * 409 は process 側で sent に確定するため、そもそもここには来ない。
+ * sent / skipped には一切触れない。
  */
 export async function retryFailedRecipients(args: {
   oaId: string;
   broadcastId: string;
-}): Promise<{ ok: boolean; requeued: number; skipped?: number; reason?: "not_found" | "not_retryable" }> {
+}): Promise<{
+  ok: boolean;
+  /** pending に戻した件数（timeout / 5xx かつ 24h 以内）。 */
+  requeued: number;
+  /** retry key 失効で自動・手動とも再送しないことにした件数。 */
+  skipped?: number;
+  /** 4xx など、再送しても結果が変わらないため対象外にした件数（failed のまま保持）。 */
+  nonRetryable?: number;
+  reason?: "not_found" | "not_retryable";
+}> {
   const { oaId, broadcastId } = args;
 
   const broadcast = await prisma.broadcast.findFirst({
@@ -142,33 +153,42 @@ export async function retryFailedRecipients(args: {
   const retryKeyDead = new Date(Date.now() - RETRY_KEY_TTL_MS);
 
   const result = await prisma.$transaction(async (tx) => {
-    // (1) 受理不明（httpStatus が null=timeout、または 5xx）かつ retry key 失効 → 再送しない
+    // (1) 受理不明（timeout / 5xx）かつ retry key 失効 → 自動でも手動でも再送しない
     const expired = await tx.broadcastRecipient.updateMany({
       where: {
         broadcastId,
         status:    "failed",
         createdAt: { lt: retryKeyDead },
-        OR: [{ httpStatus: null }, { httpStatus: { gte: 500 } }],
+        ...retryableFailureWhere(),
       },
       data: { status: "skipped", errorMessage: AMBIGUOUS_REASON },
     });
 
-    // (2) 残りの failed を再送対象に戻す（sent / skipped には触れない）
+    // (2) 再送してよいものだけを pending に戻す。
+    //     4xx（400/401/403/404/429 …）はここに入らないため failed のまま残る。
     const res = await tx.broadcastRecipient.updateMany({
-      where: { broadcastId, status: "failed" },
+      where: { broadcastId, status: "failed", ...retryableFailureWhere() },
       data: { status: "pending", httpStatus: null, errorMessage: null },
     });
-    if (res.count === 0) return { requeued: 0, skipped: expired.count };
+
+    // (3) 再送対象外として failed のまま残った件数（4xx など）
+    const nonRetryable = await tx.broadcastRecipient.count({
+      where: { broadcastId, status: "failed" },
+    });
+
+    if (res.count === 0) return { requeued: 0, skipped: expired.count, nonRetryable };
 
     await tx.broadcast.updateMany({
       where: { id: broadcastId, oaId, status: { in: ["partial_failed", "failed"] } },
-      data: { status: "sending", completedAt: null, failureCount: 0 },
+      // failureCount は残った non-retryable 分を保持する（0 にリセットしない）
+      data: { status: "sending", completedAt: null, failureCount: nonRetryable },
     });
-    return { requeued: res.count, skipped: expired.count };
+    return { requeued: res.count, skipped: expired.count, nonRetryable };
   });
 
   console.log("[line:broadcast:retry]", JSON.stringify({
-    broadcastId, oaId, requeued: result.requeued, skippedExpired: result.skipped,
+    broadcastId, oaId,
+    requeued: result.requeued, skippedExpired: result.skipped, nonRetryable: result.nonRetryable,
   }));
-  return { ok: true, requeued: result.requeued, skipped: result.skipped };
+  return { ok: true, requeued: result.requeued, skipped: result.skipped, nonRetryable: result.nonRetryable };
 }

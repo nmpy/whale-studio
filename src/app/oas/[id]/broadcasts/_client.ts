@@ -29,6 +29,10 @@ export interface BroadcastDetailDto extends BroadcastDto {
   pending_count: number;
   /** LINE が受理したか確定できず、自動再送を止めた宛先の件数（要確認）。 */
   skipped_count: number;
+  /** 再送してよい失敗（timeout / 5xx かつ 24h 以内）。再送ボタンの活性はこれで判断する。 */
+  retryable_failure_count: number;
+  /** 4xx など再送しても結果が変わらない失敗。 */
+  non_retryable_failure_count: number;
   failed_samples: { line_user_id_prefix: string; http_status: number | null; error_message: string | null }[];
 }
 
@@ -80,7 +84,7 @@ export const broadcastApi = {
     ),
 
   retry: (oaId: string, id: string) =>
-    call<{ requeued: number; skipped?: number }>(`/api/oas/${oaId}/broadcasts/${id}/retry`, { method: "POST" }),
+    call<{ requeued: number; skipped?: number; nonRetryable?: number }>(`/api/oas/${oaId}/broadcasts/${id}/retry`, { method: "POST" }),
 };
 
 export const BROADCAST_STATUS_LABEL: Record<BroadcastStatus, string> = {

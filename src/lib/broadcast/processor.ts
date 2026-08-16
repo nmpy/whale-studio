@@ -33,6 +33,25 @@ export const RETRY_KEY_TTL_MS = 24 * 60 * 60 * 1000;
 export const AMBIGUOUS_REASON = "delivery status unknown; automatic retry window expired";
 
 /**
+ * LINE 公式の retry 方針（Retrying an API request）に沿った「再試行してよい失敗」の判定。
+ *
+ *   再試行してよい : timeout / ネットワーク失敗（status なし）、LINE server error（5xx）
+ *   再試行しない   : 2xx、409（既受理）、その他 4xx（400/401/403/404/429 …）
+ *                    公式に "Don't retry. Retries don't change the result." と明記されている。
+ *
+ * 429 も 4xx なのでここでは再試行対象にしない。レート制限 / 同一ユーザー送信制限 /
+ * 月間上限など原因の解消が要るケースがあり、同じ操作で無条件に送り直す設計にしない。
+ */
+export function isRetryableFailure(httpStatus: number | null | undefined): boolean {
+  return httpStatus == null || httpStatus >= 500;
+}
+
+/** 上の判定を Prisma の where 条件として表したもの（service と API で同じ定義を使う）。 */
+export function retryableFailureWhere(): { OR: { httpStatus: null | { gte: number } }[] } {
+  return { OR: [{ httpStatus: null }, { httpStatus: { gte: 500 } }] };
+}
+
+/**
  * 宛先に使う retry key。
  * BroadcastRecipient.id は Prisma の @default(uuid())（UUID v4 = hexadecimal UUID）なので
  * LINE の要求形式をそのまま満たす。初回 push・stale recovery・手動再送のいずれでも

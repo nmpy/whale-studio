@@ -12,6 +12,7 @@ import {
   BROADCAST_VIEW_ROLE, BROADCAST_EDIT_ROLE,
   updateBroadcastSchema, toBroadcastResponse,
 } from "../_shared";
+import { RETRY_KEY_TTL_MS, retryableFailureWhere } from "@/lib/broadcast/processor";
 
 export const dynamic = "force-dynamic";
 type P = { id: string; broadcastId: string };
@@ -26,6 +27,16 @@ export const GET = withRole<P>(
         where: { id: params.broadcastId, oaId: params.id },
       });
       if (!row) return notFound("配信メッセージ");
+
+      // 再送してよい失敗の件数（LINE 公式 retry 方針: timeout / 5xx のみ、かつ 24h 以内）。
+      const retryableFailureCount = await prisma.broadcastRecipient.count({
+        where: {
+          broadcastId: row.id,
+          status:      "failed",
+          createdAt:   { gte: new Date(Date.now() - RETRY_KEY_TTL_MS) },
+          ...retryableFailureWhere(),
+        },
+      });
 
       // 失敗した宛先の内訳（調査・再送用）。lineUserId は先頭 8 文字だけ返す。
       const failed = await prisma.broadcastRecipient.findMany({
@@ -43,6 +54,11 @@ export const GET = withRole<P>(
         skipped_count: await prisma.broadcastRecipient.count({
           where: { broadcastId: row.id, status: "skipped" },
         }),
+        // 再送してよい失敗（timeout / 5xx かつ retry key が有効な 24 時間以内）。
+        // UI の「再送」ボタンはこの件数だけを根拠にする（failure_count では判断しない）。
+        retryable_failure_count: retryableFailureCount,
+        // 4xx など再送しても結果が変わらない失敗 + retry key 失効分。
+        non_retryable_failure_count: Math.max(0, row.failureCount - retryableFailureCount),
         failed_samples: failed.map((f) => ({
           line_user_id_prefix: f.lineUserId.slice(0, 8),
           http_status:         f.httpStatus,
