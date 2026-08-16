@@ -27,6 +27,8 @@ export interface BroadcastDto {
 
 export interface BroadcastDetailDto extends BroadcastDto {
   pending_count: number;
+  /** LINE が受理したか確定できず、自動再送を止めた宛先の件数（要確認）。 */
+  skipped_count: number;
   failed_samples: { line_user_id_prefix: string; http_status: number | null; error_message: string | null }[];
 }
 
@@ -78,7 +80,7 @@ export const broadcastApi = {
     ),
 
   retry: (oaId: string, id: string) =>
-    call<{ requeued: number }>(`/api/oas/${oaId}/broadcasts/${id}/retry`, { method: "POST" }),
+    call<{ requeued: number; skipped?: number }>(`/api/oas/${oaId}/broadcasts/${id}/retry`, { method: "POST" }),
 };
 
 export const BROADCAST_STATUS_LABEL: Record<BroadcastStatus, string> = {

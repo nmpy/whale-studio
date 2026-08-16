@@ -797,11 +797,24 @@ export async function replyToLine(
  * LINE Push API を呼び出してメッセージを送信する。
  * 内部フィールド (_lagMs) を除去してから送信する。
  * 失敗してもスローせず、コンソールにエラーを記録するだけにする。
+ *
+ * `options.retryKey` は **additive な任意引数**。渡したときだけ
+ * `X-Line-Retry-Key` ヘッダーを付ける。3 引数で呼ぶ既存の呼び出し
+ * （応答メッセージ / webhook / reply / チェックイン等）は
+ * ヘッダーも挙動も従来どおりで一切変わらない。
+ *
+ * LINE 公式仕様（Retrying an API request）:
+ *   - 値は hexadecimal UUID
+ *   - **初回リクエストから付けないと再試行できない**
+ *   - 同じキーの request が既に受理済みなら 409 Conflict（`x-line-accepted-request-id` が返る）
+ *   - キーの有効期間は初回リクエストから 24 時間
+ *   - 再試行してよいのは 500 / timeout のみ（2xx・409・その他 4xx は再試行しない）
  */
 export async function pushToLine(
   userId:             string,
   messages:           LineMessage[],
   channelAccessToken: string,
+  options?:           { retryKey?: string },
 ): Promise<{ ok: boolean; status?: number }> {
   // 送信結果を返す（成功/失敗を呼出側で判定できるようにする。
   // 既存の `await pushToLine(...)` 呼出は戻り値を無視するため後方互換）。
@@ -824,6 +837,8 @@ export async function pushToLine(
       headers: {
         Authorization:  `Bearer ${channelAccessToken}`,
         "Content-Type": "application/json",
+        // retryKey 未指定（= 既存の 3 引数呼び出し）ではヘッダー自体を付けない。
+        ...(options?.retryKey ? { "X-Line-Retry-Key": options.retryKey } : {}),
       },
       body: JSON.stringify({ to: userId, messages: cleanMessages }),
     });

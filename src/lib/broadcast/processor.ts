@@ -22,13 +22,37 @@ export const BROADCAST_CHUNK_SIZE = 50;
  */
 export const STALE_CLAIM_MS = 5 * 60 * 1000;
 
+/**
+ * LINE の retry key(X-Line-Retry-Key) 有効期間。公式仕様で「初回リクエストから 24 時間」。
+ * これを過ぎると同じキーを送っても **新規リクエスト扱い**になり得るため、
+ * 「LINE が受理したかどうか分からない」宛先を自動で再 push してはいけない。
+ */
+export const RETRY_KEY_TTL_MS = 24 * 60 * 60 * 1000;
+
+/** 送達可否が確定できなくなった宛先に残す理由（内部情報。lineUserId は含めない）。 */
+export const AMBIGUOUS_REASON = "delivery status unknown; automatic retry window expired";
+
+/**
+ * 宛先に使う retry key。
+ * BroadcastRecipient.id は Prisma の @default(uuid())（UUID v4 = hexadecimal UUID）なので
+ * LINE の要求形式をそのまま満たす。初回 push・stale recovery・手動再送のいずれでも
+ * 同じ行に対しては同じ値になるため、追加カラム / migration は不要。
+ */
+export function retryKeyOf(recipientId: string): string {
+  return recipientId;
+}
+
 export type ProcessResult =
   | { ok: true; processed: number; sent: number; failed: number; skipped: number; hasMore: boolean; status: string }
   | { ok: false; reason: "not_found" | "not_sending" | "invalid_content" | "no_token" };
 
-/** 配信結果から最終 status を決める。 */
-export function finalStatusOf(successCount: number, failureCount: number): string {
-  if (failureCount === 0) return "sent";
+/**
+ * 配信結果から最終 status を決める。
+ * skipped（送達可否が確定できず自動再送を止めた宛先）は成功にも失敗にも数えないが、
+ * 運用者の確認が要るため「全件成功」には倒さない。
+ */
+export function finalStatusOf(successCount: number, failureCount: number, skippedCount = 0): string {
+  if (failureCount === 0 && skippedCount === 0) return "sent";
   if (successCount === 0) return "failed";
   return "partial_failed";
 }
@@ -62,16 +86,42 @@ export async function processBroadcastChunk(args: {
 
   // ── 中断した claim の回収 ────────────────────────────────────
   // process が claim 直後（push 前後）に落ちると "sending" のまま残る。
-  // 一定時間動きが無い行だけ pending に戻して再開できるようにする。
-  // 実行中の行は updatedAt が新しいため回収対象にならない。
+  // この行は「LINE が受理したかどうか分からない」状態なので、扱いを 2 つに分ける。
+  const now = Date.now();
+  const staleBefore   = new Date(now - STALE_CLAIM_MS);
+  const retryKeyDead  = new Date(now - RETRY_KEY_TTL_MS);
+
+  // (1) retry key がまだ有効（初回 push から 24h 以内）→ pending に戻して同じ retry key で再 push。
+  //     LINE が既に受理済みなら 409 が返り、下で sent として確定する（＝二重配信にならない）。
+  //     createdAt は snapshot 時刻 = 初回 push より必ず前なので、これを基準にすると
+  //     「まだ有効」と誤判定することはない（安全側）。
   await prisma.broadcastRecipient.updateMany({
     where: {
       broadcastId,
       status:    "sending",
-      updatedAt: { lt: new Date(Date.now() - STALE_CLAIM_MS) },
+      updatedAt: { lt: staleBefore },
+      createdAt: { gte: retryKeyDead },
     },
     data: { status: "pending" },
   });
+
+  // (2) retry key の有効期間を過ぎた ambiguous な行 → **自動で再 push しない**。
+  //     同じキーを送っても新規リクエスト扱いになり得るため、再送は二重配信になり得る。
+  //     failed にすると手動再送で拾われてしまうので skipped にし、運用者の確認対象にする。
+  const expired = await prisma.broadcastRecipient.updateMany({
+    where: {
+      broadcastId,
+      status:    "sending",
+      updatedAt: { lt: staleBefore },
+      createdAt: { lt: retryKeyDead },
+    },
+    data: { status: "skipped", errorMessage: AMBIGUOUS_REASON },
+  });
+  if (expired.count > 0) {
+    console.warn("[line:broadcast:ambiguous-expired]", JSON.stringify({
+      broadcastId, oaId, count: expired.count, reason: AMBIGUOUS_REASON,
+    }));
+  }
 
   const pending = await prisma.broadcastRecipient.findMany({
     where: { broadcastId, status: "pending" },
@@ -101,13 +151,29 @@ export async function processBroadcastChunk(args: {
     }
 
     // pushToLine は例外を投げず {ok,status} を返す（ネットワークエラーも ok:false）。
-    const res = await pushToLine(r.lineUserId, messages, token);
+    // retryKey は **初回 push から**必ず付ける（LINE 仕様: 付けずに送った request は再試行できない）。
+    const res = await pushToLine(r.lineUserId, messages, token, { retryKey: retryKeyOf(r.id) });
 
-    if (res.ok) {
+    // 409 Conflict = 同じ retry key の request を LINE が **既に受理済み**。
+    // 「失敗して未送信」ではないので failed にしてはいけない（再送すると二重配信になる）。
+    // LINE 受理後・DB 更新前に落ちたケースはここで sent として確定する。
+    const alreadyAccepted = !res.ok && res.status === 409;
+
+    if (res.ok || alreadyAccepted) {
       sent++;
+      if (alreadyAccepted) {
+        console.log("[line:broadcast:already-accepted]", JSON.stringify({
+          broadcastId, userId: r.lineUserId.slice(0, 8), status: 409,
+        }));
+      }
       await prisma.broadcastRecipient.update({
         where: { id: r.id },
-        data: { status: "sent", httpStatus: res.status ?? 200, errorMessage: null, sentAt: new Date() },
+        data: {
+          status:       "sent",
+          httpStatus:   res.status ?? 200,
+          errorMessage: alreadyAccepted ? "already accepted by LINE (retry key conflict)" : null,
+          sentAt:       new Date(),
+        },
       });
     } else {
       failed++;
@@ -128,16 +194,17 @@ export async function processBroadcastChunk(args: {
 
   // 集計は「宛先テーブルの実状態」から取り直す。
   // chunk が並行実行されてもカウンタが二重加算されない。
-  const [successCount, failureCount, remaining] = await Promise.all([
+  const [successCount, failureCount, skippedCount, remaining] = await Promise.all([
     prisma.broadcastRecipient.count({ where: { broadcastId, status: "sent" } }),
     prisma.broadcastRecipient.count({ where: { broadcastId, status: "failed" } }),
+    prisma.broadcastRecipient.count({ where: { broadcastId, status: "skipped" } }),
     // 未処理 = pending + 他の process が claim 中(sending)。
     // in-flight を残件に含めることで、並行実行中に片方が先に「完了」と確定させてしまうのを防ぐ。
     prisma.broadcastRecipient.count({ where: { broadcastId, status: { in: ["pending", "sending"] } } }),
   ]);
 
   const hasMore = remaining > 0;
-  const status = hasMore ? "sending" : finalStatusOf(successCount, failureCount);
+  const status = hasMore ? "sending" : finalStatusOf(successCount, failureCount, skippedCount);
 
   await prisma.broadcast.updateMany({
     where: { id: broadcastId, oaId, status: "sending" },
@@ -149,7 +216,7 @@ export async function processBroadcastChunk(args: {
   });
 
   console.log(hasMore ? "[line:broadcast:progress]" : "[line:broadcast:complete]", JSON.stringify({
-    broadcastId, oaId, processed: pending.length - skipped, skipped, successCount, failureCount, remaining, status,
+    broadcastId, oaId, processed: pending.length - skipped, skipped, successCount, failureCount, skippedCount, remaining, status,
   }));
 
   return { ok: true, processed: pending.length - skipped, sent, failed, skipped, hasMore, status };

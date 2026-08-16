@@ -110,6 +110,12 @@ export default function BroadcastDetailPage() {
               <dd className="tabular-nums text-ink">{row.failure_count.toLocaleString()}</dd>
               <dt className="text-ink-3">未送信</dt>
               <dd className="tabular-nums text-ink">{row.pending_count.toLocaleString()}</dd>
+              {row.skipped_count > 0 && (
+                <>
+                  <dt className="text-ink-3">要確認</dt>
+                  <dd className="tabular-nums text-ink">{row.skipped_count.toLocaleString()}</dd>
+                </>
+              )}
               <dt className="text-ink-3">開始</dt><dd className="text-ink">{fmt(row.started_at)}</dd>
               <dt className="text-ink-3">完了</dt><dd className="text-ink">{fmt(row.completed_at)}</dd>
             </dl>
@@ -130,6 +136,12 @@ export default function BroadcastDetailPage() {
             )}
             {(row.status === "partial_failed" || row.status === "failed") && (
               <p className="mt-2 text-[11px] text-ink-3">再送は失敗した宛先だけが対象です。成功済みの宛先へは再送されません。</p>
+            )}
+            {row.skipped_count > 0 && (
+              <p className="mt-2 text-[11px] text-ink-3">
+                「要確認」は、LINE 側で受理されたかどうかが確定できないまま再試行の有効期間（24時間）を過ぎた宛先です。
+                二重配信を避けるため自動再送・手動再送のどちらの対象にもしていません。
+              </p>
             )}
           </Card>
 

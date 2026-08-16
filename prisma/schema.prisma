@@ -3294,6 +3294,8 @@ model BroadcastRecipient {
   lineUserId   String    @map("line_user_id")
   /// "pending" | "sending" | "sent" | "failed" | "skipped"
   /// sending = process が claim 済み（push 実行中）。String 列なので値追加に migration は不要。
+  /// skipped = LINE が受理したか確定できず、retry key(24h) も失効したため自動再送を止めた宛先。
+  ///           手動再送(retryFailedRecipients)の対象にもしない＝勝手に再 push しない。
   status       String    @default("pending")
   /// LINE Push API の HTTP status（失敗調査用）。
   httpStatus   Int?      @map("http_status")

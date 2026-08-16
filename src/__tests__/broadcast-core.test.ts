@@ -29,7 +29,10 @@ import {
 } from "@/lib/broadcast/audience";
 import { parseBroadcastContent, toLineMessages, BROADCAST_TEXT_MAX } from "@/lib/broadcast/content";
 import { startBroadcast, retryFailedRecipients, toBroadcastTarget } from "@/lib/broadcast/service";
-import { processBroadcastChunk, finalStatusOf } from "@/lib/broadcast/processor";
+import {
+  processBroadcastChunk, finalStatusOf, retryKeyOf,
+  RETRY_KEY_TTL_MS, AMBIGUOUS_REASON,
+} from "@/lib/broadcast/processor";
 
 const U = (n: number) => "U" + String(n).padStart(32, "0");
 
@@ -254,9 +257,10 @@ describe("processBroadcastChunk", () => {
     contentJson: { kind: "text", text: "やあ" },
     oa: { channelAccessToken: "tok" },
   };
-  const counts = (sent: number, failed: number, pending: number) => {
+  const counts = (sent: number, failed: number, pending: number, skippedRows = 0) => {
     mockPrisma.broadcastRecipient.count
-      .mockResolvedValueOnce(sent).mockResolvedValueOnce(failed).mockResolvedValueOnce(pending);
+      .mockResolvedValueOnce(sent).mockResolvedValueOnce(failed)
+      .mockResolvedValueOnce(skippedRows).mockResolvedValueOnce(pending);
   };
 
   it("全件成功なら sent で完了する", async () => {
@@ -267,7 +271,9 @@ describe("processBroadcastChunk", () => {
 
     const r = await processBroadcastChunk({ oaId: "oa1", broadcastId: "b1" });
     expect(r).toMatchObject({ ok: true, processed: 1, sent: 1, failed: 0, hasMore: false, status: "sent" });
-    expect(mockPushToLine).toHaveBeenCalledWith(U(1), [{ type: "text", text: "やあ" }], "tok");
+    expect(mockPushToLine).toHaveBeenCalledWith(
+      U(1), [{ type: "text", text: "やあ" }], "tok", { retryKey: "r1" },
+    );
   });
 
   it("一部失敗は partial_failed。宛先ごとに結果を記録する", async () => {
@@ -367,7 +373,7 @@ describe("processBroadcastChunk", () => {
 
     // claim は push より前に、status:"pending" を条件にして実行されていること
     const claimCall = mockPrisma.broadcastRecipient.updateMany.mock.calls
-      .find((c) => c[0]?.data?.status === "sending");
+      .find((c) => c[0]?.data?.status === "sending" && c[0]?.where?.status === "pending");
     expect(claimCall).toBeDefined();
     expect(claimCall![0].where).toEqual({ id: "r1", status: "pending" });
     expect(mockPrisma.broadcastRecipient.updateMany.mock.invocationCallOrder[0])
@@ -381,8 +387,9 @@ describe("processBroadcastChunk", () => {
     ]);
     // r1 は他 process が先に取った（count=0）。r2 は自分が取れた（count=1）。
     mockPrisma.broadcastRecipient.updateMany
-      .mockResolvedValueOnce({ count: 0 })   // 滞留 claim の回収（先頭で必ず 1 回走る）
-      .mockResolvedValueOnce({ count: 0 })   // r1 の claim → 失敗
+      .mockResolvedValueOnce({ count: 0 })   // (1) 滞留 claim の回収
+      .mockResolvedValueOnce({ count: 0 })   // (2) retry key 失効行の停止
+      .mockResolvedValueOnce({ count: 0 })   // r1 の claim → 失敗（他 process が先に取った）
       .mockResolvedValueOnce({ count: 1 });  // r2 の claim → 成功
     mockPushToLine.mockResolvedValue({ ok: true, status: 200 });
     counts(1, 0, 0);
@@ -390,7 +397,7 @@ describe("processBroadcastChunk", () => {
     const r = await processBroadcastChunk({ oaId: "oa1", broadcastId: "b1" });
 
     expect(mockPushToLine).toHaveBeenCalledTimes(1);
-    expect(mockPushToLine).toHaveBeenCalledWith(U(2), expect.anything(), "tok");
+    expect(mockPushToLine).toHaveBeenCalledWith(U(2), expect.anything(), "tok", { retryKey: "r2" });
     expect(r).toMatchObject({ skipped: 1, sent: 1, processed: 1 });
   });
 
@@ -401,7 +408,7 @@ describe("processBroadcastChunk", () => {
     const r = await processBroadcastChunk({ oaId: "oa1", broadcastId: "b1" });
     expect(r).toMatchObject({ hasMore: true, status: "sending" });
     // 残件のカウントに sending を含めていること
-    const remainingCall = mockPrisma.broadcastRecipient.count.mock.calls[2][0];
+    const remainingCall = mockPrisma.broadcastRecipient.count.mock.calls[3][0];
     expect(remainingCall.where.status).toEqual({ in: ["pending", "sending"] });
   });
 
@@ -413,7 +420,8 @@ describe("processBroadcastChunk", () => {
 
     const reclaim = mockPrisma.broadcastRecipient.updateMany.mock.calls[0][0];
     expect(reclaim.where).toMatchObject({ broadcastId: "b1", status: "sending" });
-    expect(reclaim.where.updatedAt).toHaveProperty("lt"); // 古い行だけが対象
+    expect(reclaim.where.updatedAt).toHaveProperty("lt");  // 古い行だけが対象
+    expect(reclaim.where.createdAt).toHaveProperty("gte"); // retry key がまだ有効なものだけ
     expect(reclaim.data).toEqual({ status: "pending" });
   });
 
@@ -430,8 +438,91 @@ describe("processBroadcastChunk", () => {
     expect(mockPrisma.broadcastRecipient.findMany.mock.calls[0][0].where)
       .toEqual({ broadcastId: "b1", status: "pending" });
     expect(mockPushToLine).toHaveBeenCalledTimes(1);
-    expect(mockPushToLine).toHaveBeenCalledWith(U(51), expect.anything(), "tok");
+    expect(mockPushToLine).toHaveBeenCalledWith(U(51), expect.anything(), "tok", { retryKey: "r51" });
     expect(r).toMatchObject({ sent: 1, hasMore: false, status: "sent" });
+  });
+
+  // ══ X-Line-Retry-Key（LINE 受理後の crash による二重配信の防止）══
+  // 公式仕様: 値は hexadecimal UUID / 初回 request から付けないと再試行不可 /
+  //           既受理なら 409 Conflict / 有効期間は初回から 24 時間。
+
+  // A. 初回 push から retry key が付く
+  it("A. 最初の push から X-Line-Retry-Key を付ける", async () => {
+    mockPrisma.broadcast.findFirst.mockResolvedValue(sending);
+    mockPrisma.broadcastRecipient.findMany.mockResolvedValue([{ id: "11111111-2222-4333-8444-555555555555", lineUserId: U(1) }]);
+    mockPushToLine.mockResolvedValue({ ok: true, status: 200 });
+    counts(1, 0, 0);
+
+    await processBroadcastChunk({ oaId: "oa1", broadcastId: "b1" });
+
+    expect(mockPushToLine).toHaveBeenCalledWith(
+      U(1), expect.anything(), "tok",
+      { retryKey: "11111111-2222-4333-8444-555555555555" },
+    );
+  });
+
+  // B. 同じ宛先なら再送でも同じ retry key
+  it("B. 同じ BroadcastRecipient への再 push は同じ retry key になる", async () => {
+    const rid = "11111111-2222-4333-8444-555555555555";
+    expect(retryKeyOf(rid)).toBe(rid);
+    expect(retryKeyOf(rid)).toBe(retryKeyOf(rid)); // 何度呼んでも不変（乱数・時刻に依存しない）
+  });
+
+  // C. 別宛先は別 retry key
+  it("C. 別の BroadcastRecipient は別の retry key になる", async () => {
+    expect(retryKeyOf("aaaaaaaa-1111-4111-8111-111111111111"))
+      .not.toBe(retryKeyOf("bbbbbbbb-2222-4222-8222-222222222222"));
+  });
+
+  // D. LINE 受理 → DB 更新前 crash → stale recovery → 同じ key → 409 → sent 確定
+  it("D. LINE 受理後に落ちた宛先は、再 push の 409 で sent に確定し failed にしない", async () => {
+    mockPrisma.broadcast.findFirst.mockResolvedValue(sending);
+    // stale recovery で pending に戻った同じ行
+    mockPrisma.broadcastRecipient.findMany.mockResolvedValue([{ id: "r1", lineUserId: U(1) }]);
+    mockPushToLine.mockResolvedValue({ ok: false, status: 409 }); // 既に受理済み
+    counts(1, 0, 0);
+
+    const r = await processBroadcastChunk({ oaId: "oa1", broadcastId: "b1" });
+
+    // 409 は成功側に数える（失敗にしない）
+    expect(r).toMatchObject({ sent: 1, failed: 0, status: "sent" });
+    const upd = mockPrisma.broadcastRecipient.update.mock.calls[0][0].data;
+    expect(upd.status).toBe("sent");
+    expect(upd.httpStatus).toBe(409);
+    expect(upd.sentAt).toBeInstanceOf(Date);
+    // 同じ retry key で送っていること
+    expect(mockPushToLine).toHaveBeenCalledWith(U(1), expect.anything(), "tok", { retryKey: "r1" });
+  });
+
+  // F. 24 時間を超えた ambiguous な sending は自動 push しない
+  it("F. retry key 失効後の sending は pending に戻さず skipped にする（自動再 push しない）", async () => {
+    mockPrisma.broadcast.findFirst.mockResolvedValue(sending);
+    mockPrisma.broadcastRecipient.findMany.mockResolvedValue([]);
+    mockPrisma.broadcastRecipient.updateMany
+      .mockResolvedValueOnce({ count: 0 })   // (1) 有効期間内の回収
+      .mockResolvedValueOnce({ count: 2 });  // (2) 失効した ambiguous 行
+    counts(0, 0, 0, 2);
+
+    const r = await processBroadcastChunk({ oaId: "oa1", broadcastId: "b1" });
+
+    const expire = mockPrisma.broadcastRecipient.updateMany.mock.calls[1][0];
+    expect(expire.where).toMatchObject({ broadcastId: "b1", status: "sending" });
+    expect(expire.where.createdAt).toHaveProperty("lt"); // 24h より前
+    expect(expire.data).toEqual({ status: "skipped", errorMessage: AMBIGUOUS_REASON });
+    // 1 通も送らない
+    expect(mockPushToLine).not.toHaveBeenCalled();
+    // 全件成功には倒さない（成功 0 件なので failed。運用者の確認を促す）
+    expect(r).toMatchObject({ status: "failed" });
+  });
+
+  it("F-2. retry key の有効期間は LINE 仕様どおり 24 時間", () => {
+    expect(RETRY_KEY_TTL_MS).toBe(24 * 60 * 60 * 1000);
+  });
+
+  it("F-3. skipped があるだけでも「全件成功」にはしない", () => {
+    expect(finalStatusOf(3, 0, 0)).toBe("sent");
+    expect(finalStatusOf(3, 0, 1)).toBe("partial_failed");
+    expect(finalStatusOf(0, 0, 2)).toBe("failed");
   });
 
   it("全件 sent 済みなら再実行しても 1 通も送らない", async () => {
@@ -452,8 +543,9 @@ describe("retryFailedRecipients — 失敗した宛先だけ再送", () => {
     mockPrisma.broadcast.updateMany.mockResolvedValue({ count: 1 });
 
     const r = await retryFailedRecipients({ oaId: "oa1", broadcastId: "b1" });
-    expect(r).toEqual({ ok: true, requeued: 2 });
-    expect(mockPrisma.broadcastRecipient.updateMany.mock.calls[0][0].where)
+    expect(r).toMatchObject({ ok: true, requeued: 2 });
+    // 2 本目が「failed → pending」（1 本目は retry key 失効分の停止）
+    expect(mockPrisma.broadcastRecipient.updateMany.mock.calls[1][0].where)
       .toEqual({ broadcastId: "b1", status: "failed" });
   });
 
@@ -462,6 +554,38 @@ describe("retryFailedRecipients — 失敗した宛先だけ再送", () => {
     const r = await retryFailedRecipients({ oaId: "oa1", broadcastId: "b1" });
     expect(r).toMatchObject({ ok: false, reason: "not_retryable" });
     expect(mockPrisma.broadcastRecipient.updateMany).not.toHaveBeenCalled();
+  });
+
+  // G. sent は再送対象にならない（where が status:"failed" のみ）
+  it("G. sent の宛先は再送対象に含まれない", async () => {
+    mockPrisma.broadcast.findFirst.mockResolvedValue({ id: "b1", status: "partial_failed" });
+    mockPrisma.broadcastRecipient.updateMany
+      .mockResolvedValueOnce({ count: 0 })  // 失効分の停止
+      .mockResolvedValueOnce({ count: 2 }); // failed → pending
+    mockPrisma.broadcast.updateMany.mockResolvedValue({ count: 1 });
+
+    await retryFailedRecipients({ oaId: "oa1", broadcastId: "b1" });
+
+    for (const call of mockPrisma.broadcastRecipient.updateMany.mock.calls) {
+      expect(call[0].where.status).toBe("failed"); // sent / skipped を対象にしない
+    }
+  });
+
+  it("受理不明(timeout/5xx)かつ retry key 失効の宛先は再送せず skipped にする", async () => {
+    mockPrisma.broadcast.findFirst.mockResolvedValue({ id: "b1", status: "partial_failed" });
+    mockPrisma.broadcastRecipient.updateMany
+      .mockResolvedValueOnce({ count: 3 })  // 失効分 → skipped
+      .mockResolvedValueOnce({ count: 1 }); // 残りを再送
+    mockPrisma.broadcast.updateMany.mockResolvedValue({ count: 1 });
+
+    const r = await retryFailedRecipients({ oaId: "oa1", broadcastId: "b1" });
+
+    const expire = mockPrisma.broadcastRecipient.updateMany.mock.calls[0][0];
+    expect(expire.where.createdAt).toHaveProperty("lt");
+    // timeout(status なし) と 5xx のみが対象。400 等は「LINE 未受理」が確定しているので除外しない
+    expect(expire.where.OR).toEqual([{ httpStatus: null }, { httpStatus: { gte: 500 } }]);
+    expect(expire.data).toEqual({ status: "skipped", errorMessage: AMBIGUOUS_REASON });
+    expect(r).toMatchObject({ ok: true, requeued: 1, skipped: 3 });
   });
 
   it("他 OA の配信は再送できない", async () => {

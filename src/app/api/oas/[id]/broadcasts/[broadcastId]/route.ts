@@ -39,6 +39,10 @@ export const GET = withRole<P>(
         pending_count: await prisma.broadcastRecipient.count({
           where: { broadcastId: row.id, status: "pending" },
         }),
+        // LINE が受理したか確定できず自動再送を止めた宛先（要確認）
+        skipped_count: await prisma.broadcastRecipient.count({
+          where: { broadcastId: row.id, status: "skipped" },
+        }),
         failed_samples: failed.map((f) => ({
           line_user_id_prefix: f.lineUserId.slice(0, 8),
           http_status:         f.httpStatus,
