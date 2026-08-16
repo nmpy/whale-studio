@@ -7,6 +7,8 @@
 // 応答固有の props と結合しているため流用しない（coupling を増やさない）。
 
 import type { ReactNode } from "react";
+import { useState } from "react";
+import { BROADCAST_KIND_LABEL, type BroadcastContentDto } from "./_client";
 
 /**
  * 画面上部に常に出す見出し。
@@ -30,14 +32,96 @@ export function BroadcastPageHeading({ subtitle }: { subtitle?: string }) {
 /** LINE トーク画面での見え方（吹き出し）。送信前の確認用。 */
 export function LinePreview({ text }: { text: string }) {
   return (
+    <PreviewFrame>
+      <div className="max-w-[80%] whitespace-pre-wrap break-words rounded-[18px] bg-white px-3.5 py-2.5 text-[14px] leading-[1.7] text-ink shadow-sm">
+        {text.trim() === "" ? <span className="text-ink-3">（本文が未入力です）</span> : text}
+      </div>
+    </PreviewFrame>
+  );
+}
+
+function PreviewFrame({ children }: { children: ReactNode }) {
+  return (
     <div className="rounded-card border border-line bg-[#8CABD8] p-4">
       <div className="mb-1 text-[10px] font-semibold text-white/80">LINE でのプレビュー</div>
-      <div className="flex justify-start">
-        <div className="max-w-[80%] whitespace-pre-wrap break-words rounded-[18px] bg-white px-3.5 py-2.5 text-[14px] leading-[1.7] text-ink shadow-sm">
-          {text.trim() === "" ? <span className="text-ink-3">（本文が未入力です）</span> : text}
-        </div>
-      </div>
+      <div className="flex justify-start">{children}</div>
     </div>
+  );
+}
+
+/** 読み込めない画像 URL でも画面全体を壊さないプレビュー。 */
+function ImageBubble({ url }: { url: string }) {
+  const [broken, setBroken] = useState(false);
+  if (url.trim() === "") {
+    return (
+      <div className="rounded-[18px] bg-white px-3.5 py-2.5 text-[12px] text-ink-3 shadow-sm">
+        （画像 URL が未入力です）
+      </div>
+    );
+  }
+  if (broken) {
+    return (
+      <div className="max-w-[80%] rounded-[18px] bg-white px-3.5 py-2.5 text-[12px] leading-[1.6] text-ink-3 shadow-sm">
+        画像を読み込めませんでした。URL が https で公開されているか確認してください。
+        <span className="mt-1 block break-all font-mono text-[10px]">{url}</span>
+      </div>
+    );
+  }
+  return (
+    // 外部ホストの任意 URL なので next/image の最適化は通さず素の img を使う
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={url} alt="配信画像のプレビュー" onError={() => setBroken(true)}
+      className="max-h-[240px] max-w-[80%] rounded-[18px] object-contain shadow-sm"
+    />
+  );
+}
+
+/**
+ * 形式に応じたプレビュー。
+ *
+ * Flex は LINE の見た目を Whale 側で完全再現しない（Simulator を再実装しない）。
+ * altText / コンテナ種別 / 整形した JSON を出し、実際の見え方はテスト送信で確認してもらう。
+ */
+export function BroadcastContentPreview({ content }: { content: BroadcastContentDto }) {
+  if (content.kind === "text") return <LinePreview text={content.text} />;
+
+  if (content.kind === "image") {
+    return (
+      <>
+        <PreviewFrame><ImageBubble url={content.previewImageUrl || content.originalContentUrl} /></PreviewFrame>
+        <p className="mt-1 text-[11px] text-ink-3">
+          トーク一覧では小さいプレビュー画像、タップすると元画像が表示されます。
+        </p>
+      </>
+    );
+  }
+
+  const containerType = typeof content.contents?.type === "string" ? content.contents.type : "—";
+  return (
+    <div className="rounded-card border border-line bg-bg px-3 py-3">
+      <dl className="grid grid-cols-[7rem_1fr] gap-y-1.5 text-[12px]">
+        <dt className="text-ink-3">代替テキスト</dt>
+        <dd className="break-words text-ink">{content.altText}</dd>
+        <dt className="text-ink-3">コンテナ</dt>
+        <dd className="text-ink">{containerType}</dd>
+      </dl>
+      <pre className="mt-2 max-h-[280px] overflow-auto rounded-lg border border-line bg-surface p-2 text-[11px] leading-[1.5] text-ink-2">
+{JSON.stringify(content.contents, null, 2)}
+      </pre>
+      <p className="mt-2 text-[11px] leading-[1.5] text-ink-3">
+        Flex の実際の見た目は管理画面では再現していません。<strong>テスト送信で確認してください。</strong>
+      </p>
+    </div>
+  );
+}
+
+/** 一覧・確認画面で使う形式バッジ。 */
+export function ContentKindBadge({ kind }: { kind: BroadcastContentDto["kind"] }) {
+  return (
+    <span className="rounded-full border border-line bg-bg px-2 py-0.5 text-[11px] text-ink-2">
+      {BROADCAST_KIND_LABEL[kind]}
+    </span>
   );
 }
 

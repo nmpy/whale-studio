@@ -3,7 +3,10 @@
 // 配信メッセージ API の共有ヘルパー。**配信専用**（応答メッセージ API とは共有しない）。
 
 import { z } from "zod";
-import { BROADCAST_TEXT_MAX } from "@/lib/broadcast/content";
+import {
+  BROADCAST_TEXT_MAX, BROADCAST_MEDIA_URL_MAX, BROADCAST_ALT_TEXT_MAX,
+  isSendableImageUrl, isBroadcastFlexContainer,
+} from "@/lib/broadcast/content";
 
 /**
  * 権限方針:
@@ -28,10 +31,33 @@ export const broadcastTargetSchema = z.discriminatedUnion("target_type", [
   }),
 ]);
 
-export const broadcastContentSchema = z.object({
-  kind: z.literal("text"),
-  text: z.string().min(1).max(BROADCAST_TEXT_MAX),
-});
+/**
+ * 配信本文。kind による discriminated union。
+ *
+ * 既存の text 形式はそのまま維持する（Production の既存 draft / 履歴と互換）。
+ * 画像 URL と Flex コンテナは、zod の形だけでなく content layer の検証関数
+ * （isSendableImageUrl / isBroadcastFlexContainer）を通す。HTTPS 限定・URL 長・
+ * bubble|carousel・サイズ上限といった LINE 仕様の判定を API 層に複製しないため。
+ */
+export const broadcastContentSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("text"),
+    text: z.string().min(1).max(BROADCAST_TEXT_MAX),
+  }),
+  z.object({
+    kind: z.literal("image"),
+    originalContentUrl: z.string().min(1).max(BROADCAST_MEDIA_URL_MAX)
+      .refine(isSendableImageUrl, "画像 URL は https:// で始まる必要があります"),
+    previewImageUrl: z.string().min(1).max(BROADCAST_MEDIA_URL_MAX)
+      .refine(isSendableImageUrl, "プレビュー画像 URL は https:// で始まる必要があります"),
+  }),
+  z.object({
+    kind: z.literal("flex"),
+    altText: z.string().min(1).max(BROADCAST_ALT_TEXT_MAX),
+    contents: z.unknown()
+      .refine(isBroadcastFlexContainer, "Flex の最上位は bubble または carousel である必要があります"),
+  }),
+]);
 
 export const createBroadcastSchema = z.object({
   name:    z.string().min(1).max(100),

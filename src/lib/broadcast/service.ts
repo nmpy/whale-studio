@@ -21,6 +21,12 @@ export type StartBroadcastResult =
   | { ok: true; recipientCount: number }
   /** 既に開始済み（二重実行）。エラーではなく冪等な no-op として扱う。 */
   | { ok: false; reason: "already_started"; status: string }
+  /**
+   * 検証した draft から内容・対象が変更された（まだ draft のまま）。
+   * already_started とは区別する。status は draft のままで、
+   * 宛先 snapshot も LINE 送信も発生していない。
+   */
+  | { ok: false; reason: "draft_changed" }
   | { ok: false; reason: "not_found" }
   | { ok: false; reason: "empty_audience" };
 
@@ -48,8 +54,16 @@ export function toBroadcastTarget(b: {
 export async function startBroadcast(args: {
   oaId: string;
   broadcastId: string;
+  /**
+   * 呼び出し側が内容を検証した時点の draft revision（Broadcast.updatedAt）。
+   *
+   * 「検証した内容」と「実際に sending になる内容」を一致させるために使う。
+   * 検証中に PATCH で content / target / name のいずれかが変われば updatedAt が
+   * 進むため、この CAS が失敗して start しない。省略時は revision を固定しない。
+   */
+  expectedUpdatedAt?: Date;
 }): Promise<StartBroadcastResult> {
-  const { oaId, broadcastId } = args;
+  const { oaId, broadcastId, expectedUpdatedAt } = args;
 
   // OA スコープ込みで取得（他 OA の配信を触れない）
   const broadcast = await prisma.broadcast.findFirst({
@@ -73,7 +87,11 @@ export async function startBroadcast(args: {
   // 「sending なのに宛先が無い」状態を作らない。
   const claimed = await prisma.$transaction(async (tx) => {
     const res = await tx.broadcast.updateMany({
-      where: { id: broadcastId, oaId, status: "draft" }, // ← CAS の肝
+      // ← CAS の肝。status に加えて、検証した revision も条件に含める
+      where: {
+        id: broadcastId, oaId, status: "draft",
+        ...(expectedUpdatedAt ? { updatedAt: expectedUpdatedAt } : {}),
+      },
       data: {
         status: "sending",
         startedAt,
@@ -96,6 +114,9 @@ export async function startBroadcast(args: {
       where: { id: broadcastId, oaId },
       select: { status: true },
     });
+    // まだ draft のまま負けた = 検証中に内容/対象が更新された（revision 不一致）。
+    // 二重実行（already_started）とは意味が違うので区別する。
+    if (fresh?.status === "draft") return { ok: false, reason: "draft_changed" };
     return { ok: false, reason: "already_started", status: fresh?.status ?? "unknown" };
   }
 

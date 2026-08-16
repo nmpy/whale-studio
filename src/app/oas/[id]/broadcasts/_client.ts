@@ -7,6 +7,22 @@ import { getAuthHeaders } from "@/lib/api-client";
 
 export type BroadcastStatus = "draft" | "sending" | "sent" | "partial_failed" | "failed" | "cancelled";
 
+/** 配信本文。kind で判別する（既存 text 履歴もこの型で読める）。 */
+export type BroadcastContentDto =
+  | { kind: "text"; text: string }
+  | { kind: "image"; originalContentUrl: string; previewImageUrl: string }
+  | { kind: "flex"; altText: string; contents: { type: string; [k: string]: unknown } };
+
+export const BROADCAST_KIND_LABEL: Record<BroadcastContentDto["kind"], string> = {
+  text: "テキスト", image: "画像", flex: "Flex",
+};
+
+/** 保存済み content の形式。未知・破損データでも画面を壊さないため null を返しうる。 */
+export function contentKindOf(c: unknown): BroadcastContentDto["kind"] | null {
+  const k = (c as { kind?: unknown } | null)?.kind;
+  return k === "text" || k === "image" || k === "flex" ? k : null;
+}
+
 export interface BroadcastDto {
   id: string;
   oa_id: string;
@@ -15,7 +31,7 @@ export interface BroadcastDto {
   target_type: "all" | "segment";
   segment_id: string | null;
   segment_work_id: string | null;
-  content: { kind: "text"; text: string };
+  content: BroadcastContentDto;
   recipient_count: number;
   success_count: number;
   failure_count: number;
@@ -59,7 +75,7 @@ export const broadcastApi = {
 
   get: (oaId: string, id: string) => call<BroadcastDetailDto>(`/api/oas/${oaId}/broadcasts/${id}`),
 
-  create: (oaId: string, body: { name: string; content: { kind: "text"; text: string } } & TargetInput) =>
+  create: (oaId: string, body: { name: string; content: BroadcastContentDto } & TargetInput) =>
     call<BroadcastDto>(`/api/oas/${oaId}/broadcasts`, { method: "POST", body: JSON.stringify(body) }),
 
   /** 配信予定人数。件数だけが返る（宛先は返らない）。 */
@@ -69,7 +85,7 @@ export const broadcastApi = {
     }),
 
   /** テスト送信。配信実績（recipient / count）には一切残らない。 */
-  testSend: (oaId: string, body: { line_user_id: string; content: { kind: "text"; text: string } }) =>
+  testSend: (oaId: string, body: { line_user_id: string; content: BroadcastContentDto }) =>
     call<{ sent: boolean; http_status: number | null }>(`/api/oas/${oaId}/broadcasts/test-send`, {
       method: "POST", body: JSON.stringify(body),
     }),
@@ -82,6 +98,20 @@ export const broadcastApi = {
     call<{ processed: number; sent: number; failed: number; has_more: boolean; status: BroadcastStatus }>(
       `/api/oas/${oaId}/broadcasts/${id}/process`, { method: "POST" },
     ),
+
+  /** 配信用の画像アップロード。JPEG / PNG のみ。original と preview の URL が返る。 */
+  uploadImage: async (oaId: string, file: File) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    const res = await fetch(`/api/oas/${oaId}/broadcasts/upload-image`, {
+      method: "POST", headers: { ...getAuthHeaders() }, body: fd,
+    });
+    const json = await res.json().catch(() => null);
+    if (!res.ok || !json?.success) {
+      throw new Error(json?.error?.message ?? `アップロードに失敗しました (HTTP ${res.status})`);
+    }
+    return json.data as { original_content_url: string; preview_image_url: string };
+  },
 
   retry: (oaId: string, id: string) =>
     call<{ requeued: number; skipped?: number; nonRetryable?: number }>(`/api/oas/${oaId}/broadcasts/${id}/retry`, { method: "POST" }),

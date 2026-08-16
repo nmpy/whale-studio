@@ -89,8 +89,13 @@ export const PATCH = withRole<P>(
       }
 
       const hasTarget = "target_type" in body;
-      const row = await prisma.broadcast.update({
-        where: { id: current.id },
+
+      // **write 自体を draft 限定の compare-and-swap にする。**
+      // 上の findFirst で draft だったことは保証にならない（read と write の間に
+      // start が draft → sending を確定させうる）。ここで status を where に含めることで、
+      // 「sending になった後に内容が書き換わる」経路を消す。
+      const updated = await prisma.broadcast.updateMany({
+        where: { id: current.id, oaId: params.id, status: "draft" },
         data: {
           ...(body.name    !== undefined && { name: body.name }),
           ...(body.content !== undefined && { contentJson: body.content as unknown as Prisma.InputJsonValue }),
@@ -101,6 +106,13 @@ export const PATCH = withRole<P>(
           }),
         },
       });
+      if (updated.count !== 1) {
+        // CAS に負けた = この間に配信が開始された
+        return conflict("配信を開始した後は内容を変更できません");
+      }
+
+      const row = await prisma.broadcast.findFirst({ where: { id: current.id, oaId: params.id } });
+      if (!row) return notFound("配信メッセージ");
       return ok(toBroadcastResponse(row));
     } catch (err) {
       if (err instanceof ZodError) return badRequest("入力内容が不正です", formatZodErrors(err));

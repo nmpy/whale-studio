@@ -9,8 +9,8 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
-import { broadcastApi, BROADCAST_STATUS_LABEL, type BroadcastDetailDto } from "../_client";
-import { BroadcastPageHeading, Card, LinePreview, ErrorBanner } from "../_components";
+import { broadcastApi, BROADCAST_STATUS_LABEL, contentKindOf, type BroadcastDetailDto } from "../_client";
+import { BroadcastPageHeading, Card, BroadcastContentPreview, ContentKindBadge, ErrorBanner } from "../_components";
 
 function fmt(d: string | null): string {
   if (!d) return "—";
@@ -161,10 +161,32 @@ export default function BroadcastDetailPage() {
           </Card>
 
           <Card title="送信内容">
-            <div className="mb-3 whitespace-pre-wrap rounded-card border border-line bg-bg px-3 py-2 text-[13px] leading-[1.7] text-ink">
-              {row.content?.text ?? ""}
-            </div>
-            <LinePreview text={row.content?.text ?? ""} />
+            {(() => {
+              const c = row.content;
+              // 未知・破損 content でも履歴画面を壊さない（配信基盤側は parse 失敗として扱う）
+              if (!contentKindOf(c)) {
+                return <p className="text-[12px] text-ink-3">この配信の内容を表示できません（保存形式が不明です）。</p>;
+              }
+              return (
+                <>
+                  <div className="mb-3"><ContentKindBadge kind={c.kind} /></div>
+                  {c.kind === "text" && (
+                    <div className="mb-3 whitespace-pre-wrap rounded-card border border-line bg-bg px-3 py-2 text-[13px] leading-[1.7] text-ink">
+                      {c.text}
+                    </div>
+                  )}
+                  {c.kind === "image" && (
+                    <dl className="mb-3 grid grid-cols-[7rem_1fr] gap-y-1.5 text-[12px]">
+                      <dt className="text-ink-3">元画像</dt>
+                      <dd className="break-all font-mono text-[11px] text-ink-2">{c.originalContentUrl}</dd>
+                      <dt className="text-ink-3">プレビュー</dt>
+                      <dd className="break-all font-mono text-[11px] text-ink-2">{c.previewImageUrl}</dd>
+                    </dl>
+                  )}
+                  <BroadcastContentPreview content={c} />
+                </>
+              );
+            })()}
           </Card>
 
           {row.failed_samples.length > 0 && (

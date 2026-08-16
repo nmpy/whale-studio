@@ -12,6 +12,7 @@ import { z, ZodError } from "zod";
 import { formatZodErrors } from "@/lib/validations";
 import { pushToLine } from "@/lib/line";
 import { parseBroadcastContent, toLineMessages } from "@/lib/broadcast/content";
+import { validateLinePushMessages, needsOfficialValidation } from "@/lib/broadcast/validate";
 import { isSendableLineUserId } from "@/lib/broadcast/audience";
 import { BROADCAST_EDIT_ROLE, broadcastContentSchema } from "../_shared";
 
@@ -41,9 +42,19 @@ export const POST = withRole<{ id: string }>(
       if (!oa) return notFound("OA");
       if (!oa.channelAccessToken) return badRequest("LINE チャネルアクセストークンが未設定です");
 
-      const res = await pushToLine(body.line_user_id, toLineMessages(content), oa.channelAccessToken);
+      const messages = toLineMessages(content);
+
+      // 本配信 start と同じゲートをテスト送信でも通す。
+      // 「テストは通ったのに本配信で弾かれる」「テストで理由の分からない失敗をする」を防ぐ。
+      if (needsOfficialValidation(content.kind)) {
+        const v = await validateLinePushMessages({ messages, channelAccessToken: oa.channelAccessToken });
+        if (!v.ok) return badRequest(v.message);
+      }
+
+      const res = await pushToLine(body.line_user_id, messages, oa.channelAccessToken);
       console.log("[line:broadcast:test-send]", JSON.stringify({
-        oaId: params.id, userId: body.line_user_id.slice(0, 8), ok: res.ok, status: res.status ?? null,
+        oaId: params.id, userId: body.line_user_id.slice(0, 8), kind: content.kind,
+        ok: res.ok, status: res.status ?? null,
       }));
 
       // 配信実績には残さない（Broadcast も BroadcastRecipient も作らない）

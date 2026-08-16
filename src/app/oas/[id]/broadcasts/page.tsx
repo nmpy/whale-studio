@@ -9,7 +9,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { broadcastApi, BROADCAST_STATUS_LABEL, type BroadcastDto } from "./_client";
+import { broadcastApi, BROADCAST_STATUS_LABEL, BROADCAST_KIND_LABEL, contentKindOf, type BroadcastDto } from "./_client";
 import { BroadcastPageHeading, Card, ErrorBanner } from "./_components";
 
 function fmt(d: string | null): string {
@@ -52,6 +52,7 @@ export default function BroadcastListPage() {
               <thead>
                 <tr className="border-b border-line text-left text-ink-3">
                   <th className="py-2 pr-3 font-semibold">配信名</th>
+                  <th className="py-2 pr-3 font-semibold">形式</th>
                   <th className="py-2 pr-3 font-semibold">対象</th>
                   <th className="py-2 pr-3 font-semibold">人数</th>
                   <th className="py-2 pr-3 font-semibold">成功</th>
@@ -68,6 +69,9 @@ export default function BroadcastListPage() {
                       <Link href={`/oas/${oaId}/broadcasts/${b.id}`} className="font-semibold text-brand-ink no-underline hover:underline">
                         {b.name}
                       </Link>
+                    </td>
+                    <td className="py-2 pr-3">
+                      {(() => { const k = contentKindOf(b.content); return k ? BROADCAST_KIND_LABEL[k] : "—"; })()}
                     </td>
                     <td className="py-2 pr-3">{b.target_type === "all" ? "全体" : "セグメント"}</td>
                     <td className="py-2 pr-3 tabular-nums">{b.recipient_count.toLocaleString()}</td>
