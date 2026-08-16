@@ -92,11 +92,12 @@ const PAGE_TYPES_WITH_EXTRA_BLOCKS = new Set<LiffPageType>([
 ]);
 
 export function LiffSinglePageRenderer({
-  workId, workTitle, page, preview = false, lineUserId = null,
+  workId, workTitle, page, preview = false, lineUserId = null, onBack,
   defaultPageCtx = DEFAULT_RENDER_CTX,
 }: Props) {
-  // ※ 独自ヘッダー（作品名バー + 閉じる）と「ホームに戻る」ボタンは、実機の LINE/LIFF
-  //    デフォルトヘッダーと二重化する/冗長なため廃止。onBack / onClose props は後方互換で残すが描画しない。
+  // ※ 独自ヘッダー（作品名バー + 閉じる）は、実機の LINE/LIFF デフォルトヘッダーと
+  //    二重化するため引き続き描画しない。検索型ヒントだけは明示的な要望に合わせ、
+  //    メニューホームへ戻るための最小限の導線を本文上部に表示する。
   //    workTitle は document.title 同期（LINE デフォルトヘッダー表示用）で引き続き使用する。
   const pageType = normalizeLiffPageType(page.page_type);
   const settings = page.settings_json;
@@ -145,8 +146,21 @@ export function LiffSinglePageRenderer({
             テーマを持つ個別 renderer はすべてこの component 経由なので、ここ 1 か所で足りる。 */}
         <LiffFontThemeAssets settings={settings} />
 
-        {/* 独自ヘッダー・「ホームに戻る」ボタンは廃止（実機 LINE ヘッダーと二重化するため）。
-            本文はページタイトル → 説明 → ブロックから自然に始まる。 */}
+        {/* 検索型ヒントだけ、作品トップへ戻れる明示的な導線を出す。
+            onBack は実機では /liff/w/[workPublicId] への遷移、プレビューでは既存の state リセットを担う。 */}
+        {pageType === "hint_search" && (
+          <div className="liff-player-main pt-3">
+            <button
+              type="button"
+              onClick={onBack}
+              className="inline-flex min-h-[44px] items-center gap-1 text-[14px] font-bold text-[color:var(--liff-line-green,#06C755)] active:opacity-70"
+              aria-label="LIFFに戻る"
+            >
+              <span aria-hidden="true">←</span>
+              <span>LIFFに戻る</span>
+            </button>
+          </div>
+        )}
 
         {/* ページタイトル — LiffPageConfig.title をそのまま使う (固定文言は出さない) */}
         {!ownsPageChrome && page.title && (
