@@ -16,6 +16,15 @@ import type { BroadcastLineMessage } from "./content";
 
 const LINE_VALIDATE_PUSH_URL = "https://api.line.me/v2/bot/message/validate/push";
 
+/**
+ * 検証 API のタイムアウト。既存の outbound HTTP（lib/uzu-client.ts の sendEnvelope）と
+ * 同じ AbortController + 10 秒の方式に合わせる。新しい基盤は作らない。
+ *
+ * タイムアウトは「内容が不正」ではなく「判定できなかった」なので unavailable 扱いにし、
+ * sending へは遷移させない。
+ */
+export const VALIDATE_TIMEOUT_MS = 10_000;
+
 export type ValidateResult =
   | { ok: true }
   /** LINE が不正と判断した（HTTP 400）。message は管理者向けに整形済み。 */
@@ -58,11 +67,16 @@ function summarizeLineError(body: string): string {
 export async function validateLinePushMessages(args: {
   messages: BroadcastLineMessage[];
   channelAccessToken: string;
+  timeoutMs?: number;
 }): Promise<ValidateResult> {
   const { messages, channelAccessToken } = args;
   if (messages.length === 0) {
     return { ok: false, reason: "invalid", status: 400, message: "送信するメッセージがありません" };
   }
+
+  const timeoutMs = args.timeoutMs ?? VALIDATE_TIMEOUT_MS;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   let res: Response;
   try {
@@ -72,13 +86,23 @@ export async function validateLinePushMessages(args: {
         Authorization:  `Bearer ${channelAccessToken}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ messages }),
+      body:   JSON.stringify({ messages }),
+      signal: controller.signal,
     });
   } catch (err) {
+    const aborted = err instanceof Error && err.name === "AbortError";
     console.error("[line:broadcast:validate:error]", JSON.stringify({
-      status: null, error: err instanceof Error ? err.message : String(err),
+      status: null, timedOut: aborted,
+      error: aborted ? `timeout ${timeoutMs}ms` : err instanceof Error ? err.message : String(err),
     }));
-    return { ok: false, reason: "unavailable", status: null, message: "LINE の検証 API に接続できませんでした" };
+    return {
+      ok: false, reason: "unavailable", status: null,
+      message: aborted
+        ? "LINE の検証 API がタイムアウトしました。時間をおいて再度お試しください。"
+        : "LINE の検証 API に接続できませんでした",
+    };
+  } finally {
+    clearTimeout(timer);
   }
 
   if (res.ok) return { ok: true };

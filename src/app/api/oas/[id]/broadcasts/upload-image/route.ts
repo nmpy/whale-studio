@@ -14,19 +14,26 @@
 //   - 画像形式は JPEG または PNG のみ
 //   - originalContentUrl は最大 10MB、previewImageUrl は最大 1MB
 //   preview は Cloudinary の変換 URL で生成するため、常に小さい JPEG になる。
+//
+// アップロード上限について:
+//   この経路は multipart を Vercel Function が受けて Cloudinary へ中継するため、
+//   **Vercel の request body 上限 4.5MB** が先に効く。よって Whale Studio 経由の
+//   アップロードは 4MB までとする（upload-limits.ts）。LINE 仕様の 10MB を使いたい
+//   場合は、公開済みの HTTPS URL を直接指定する経路を使う。
 
 import { NextRequest } from "next/server";
 import { v2 as cloudinary } from "cloudinary";
 import { withRole } from "@/lib/auth";
 import { ok, badRequest, serverError } from "@/lib/api-response";
 import { BROADCAST_EDIT_ROLE } from "../_shared";
+import {
+  BROADCAST_UPLOAD_MAX_BYTES, BROADCAST_UPLOAD_ALLOWED_TYPES, BROADCAST_UPLOAD_MAX_LABEL,
+} from "@/lib/broadcast/upload-limits";
 
 export const dynamic = "force-dynamic";
 
-/** LINE の image message が受け付ける形式のみ。WebP / GIF は許可しない。 */
-const ALLOWED_TYPES = ["image/jpeg", "image/png"];
-/** LINE の originalContentUrl 上限に合わせる。 */
-const MAX_BYTES = 10 * 1024 * 1024;
+// 許可形式・サイズ上限は upload-limits.ts に一元化（UI と server で乖離させない）。
+const ALLOWED_TYPES: readonly string[] = BROADCAST_UPLOAD_ALLOWED_TYPES;
 
 /**
  * preview 用の Cloudinary 変換。
@@ -71,8 +78,12 @@ export const POST = withRole<{ id: string }>(
         return badRequest("LINE の画像メッセージで使えるのは JPEG / PNG のみです");
       }
       if (file.size === 0) return badRequest("ファイルが空です");
-      if (file.size > MAX_BYTES) {
-        return badRequest(`画像は 10 MB 以下にしてください（受信: ${(file.size / 1024 / 1024).toFixed(2)} MB）`);
+      if (file.size > BROADCAST_UPLOAD_MAX_BYTES) {
+        // Vercel Functions の request body 上限（4.5MB）より内側に収める。
+        return badRequest(
+          `アップロードできる画像は ${BROADCAST_UPLOAD_MAX_LABEL} 以下です（受信: ${(file.size / 1024 / 1024).toFixed(2)} MB）。` +
+          `より大きい画像は、公開済みの HTTPS URL を直接指定してください。`,
+        );
       }
 
       const arrayBuffer = await file.arrayBuffer();

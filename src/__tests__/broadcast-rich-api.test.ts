@@ -6,7 +6,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { validateLinePushMessages, needsOfficialValidation } from "@/lib/broadcast/validate";
+import { validateLinePushMessages, needsOfficialValidation, VALIDATE_TIMEOUT_MS } from "@/lib/broadcast/validate";
+import {
+  BROADCAST_UPLOAD_MAX_BYTES, BROADCAST_UPLOAD_ALLOWED_TYPES, BROADCAST_UPLOAD_MAX_LABEL,
+} from "@/lib/broadcast/upload-limits";
 import { parseBroadcastContent, toLineMessages } from "@/lib/broadcast/content";
 
 const read = (p: string) => readFileSync(join(process.cwd(), p), "utf8");
@@ -109,6 +112,27 @@ describe("R/S. LINE 公式 validate", () => {
     expect((r as { message: string }).message).not.toContain("<html>");
   });
 
+  it("fetch に明示的な timeout を設定する（既存 uzu-client と同じ 10 秒方式）", async () => {
+    expect(VALIDATE_TIMEOUT_MS).toBe(10_000);
+    fetchMock.mockResolvedValue(res(200, "{}"));
+    await validateLinePushMessages({
+      messages: toLineMessages({ kind: "text", text: "x" }), channelAccessToken: TOKEN });
+    const init = fetchMock.mock.calls[0][1];
+    expect(init.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it("timeout（AbortError）は invalid ではなく unavailable として扱う", async () => {
+    const abort = new Error("The operation was aborted");
+    abort.name = "AbortError";
+    fetchMock.mockRejectedValue(abort);
+    const r = await validateLinePushMessages({
+      messages: toLineMessages({ kind: "flex", altText: "a", contents: bubble }),
+      channelAccessToken: TOKEN, timeoutMs: 5,
+    });
+    expect(r).toMatchObject({ ok: false, reason: "unavailable", status: null });
+    expect((r as { message: string }).message).toContain("タイムアウト");
+  });
+
   it("公式 validate を通すのは image / flex のみ（text 経路に外部依存を足さない）", () => {
     expect(needsOfficialValidation("image")).toBe(true);
     expect(needsOfficialValidation("flex")).toBe(true);
@@ -177,6 +201,22 @@ describe("X–Z / AA. Broadcast 作成と start ゲート", () => {
     expect(start).toContain("needsOfficialValidation");
   });
 
+  it("Fix 3. image / flex で channel token 未設定なら start しない（fail closed）", () => {
+    // トークンの有無で validate を skip して start へ進む分岐を残さない
+    expect(start).not.toMatch(/needsOfficialValidation\([^)]*\)\s*&&\s*current\.oa\.channelAccessToken/);
+    expect(start).toContain("if (!current.oa.channelAccessToken)");
+    expect(start).toContain("LINE チャネルアクセストークンが未設定です");
+    // token チェックは startBroadcast より前
+    expect(start.indexOf("channelAccessToken")).toBeLessThan(start.indexOf("await startBroadcast"));
+  });
+
+  it("Fix 2. 検証した draft revision を start の CAS へ渡す", () => {
+    expect(start).toContain("updatedAt: true");
+    expect(start).toContain("expectedUpdatedAt");
+    expect(start).toContain("draft_changed");
+    expect(start).toContain("確認中に配信内容が更新されました");
+  });
+
   it("Z3. start は既存の CAS / snapshot 実装を書き換えていない", () => {
     const service = readCode("src/lib/broadcast/service.ts");
     expect(service).toContain('status: "draft"');   // CAS 条件
@@ -189,6 +229,24 @@ describe("X–Z / AA. Broadcast 作成と start ゲート", () => {
   it("AA. start 後は content を変更できない（既存の draft 限定 PATCH を維持）", () => {
     expect(detail).toContain('current.status !== "draft"');
     expect(detail).toContain("配信を開始した後は内容を変更できません");
+  });
+
+  it("Fix 2-A. PATCH の write 自体が draft 限定 CAS（read-then-write に依存しない）", () => {
+    expect(detail).toContain("prisma.broadcast.updateMany");
+    expect(detail).toMatch(/where:\s*\{ id: current\.id, oaId: params\.id, status: "draft" \}/);
+    expect(detail).toContain("updated.count !== 1");
+    // 無条件 update（id だけ）で書き戻していない
+    expect(detail).not.toMatch(/prisma\.broadcast\.update\(\{\s*where:\s*\{ id: current\.id \}/);
+  });
+
+  it("Fix 2-B. service の CAS が status と revision の両方を条件にする", () => {
+    const service = readCode("src/lib/broadcast/service.ts");
+    expect(service).toContain("expectedUpdatedAt");
+    expect(service).toContain('id: broadcastId, oaId, status: "draft"');
+    expect(service).toContain("{ updatedAt: expectedUpdatedAt }");
+    // draft のまま負けた場合は already_started と区別する
+    expect(service).toContain('fresh?.status === "draft"');
+    expect(service).toContain('reason: "draft_changed"');
   });
 });
 
@@ -228,13 +286,66 @@ describe("画像アップロード経路（配信専用）", () => {
   });
 
   it("LINE が受け付ける JPEG / PNG のみ許可する（WebP / GIF は不可）", () => {
-    expect(src).toContain('["image/jpeg", "image/png"]');
+    expect(src).toContain("BROADCAST_UPLOAD_ALLOWED_TYPES");
     expect(src).not.toContain("image/webp");
     expect(src).not.toContain("image/gif");
   });
 
-  it("LINE の original 10MB 上限に合わせる", () => {
-    expect(src).toContain("10 * 1024 * 1024");
+  it("Vercel の request body 上限（4.5MB）より内側の 4MB を上限にする", () => {
+    // server-proxy upload なので、4.5MB を超えると route handler に届かず 413 になる
+    expect(BROADCAST_UPLOAD_MAX_BYTES).toBe(4 * 1024 * 1024);
+    expect(BROADCAST_UPLOAD_MAX_BYTES).toBeLessThan(4.5 * 1024 * 1024);
+    expect(BROADCAST_UPLOAD_MAX_LABEL).toBe("4MB");
+  });
+
+  it("server / client が同じ定数を使う（乖離させない）", () => {
+    const ui = readCode("src/app/oas/[id]/broadcasts/new/page.tsx");
+    for (const f of [src, ui]) {
+      expect(f).toContain("BROADCAST_UPLOAD_MAX_BYTES");
+      expect(f).toContain("@/lib/broadcast/upload-limits");
+      // 数値リテラルを各所に散らさない
+      expect(f).not.toContain("10 * 1024 * 1024");
+      expect(f).not.toContain("4 * 1024 * 1024");
+    }
+  });
+
+  it("upload route は 4MB 以下を受け付け、超過は bad request にする", () => {
+    expect(src).toContain("file.size > BROADCAST_UPLOAD_MAX_BYTES");
+    expect(src).toContain("badRequest");
+    // 上限判定より前で弾かない（= 4MB ちょうどは通る）
+    expect(src).not.toContain("file.size >= BROADCAST_UPLOAD_MAX_BYTES");
+  });
+
+  it("UI 側も送信前に形式とサイズを検証する", () => {
+    const ui = readCode("src/app/oas/[id]/broadcasts/new/page.tsx");
+    expect(ui).toContain("file.size > BROADCAST_UPLOAD_MAX_BYTES");
+    expect(ui).toContain("BROADCAST_UPLOAD_ALLOWED_TYPES");
+    // 事前検証はアップロード実行より前
+    expect(ui.indexOf("file.size > BROADCAST_UPLOAD_MAX_BYTES")).toBeLessThan(ui.indexOf("broadcastApi.uploadImage"));
+  });
+
+  it("UI 文言に 10MB のアップロード上限が残っていない", () => {
+    const ui = read("src/app/oas/[id]/broadcasts/new/page.tsx");
+    // 「アップロード」の説明文に 10 MB が出てこないこと
+    const uploadSection = ui.slice(ui.indexOf("画像をアップロード"), ui.indexOf("元画像 URL"));
+    expect(uploadSection).not.toContain("10 MB");
+    expect(uploadSection).not.toContain("10MB");
+    expect(uploadSection).toContain("BROADCAST_UPLOAD_MAX_LABEL");
+  });
+
+  it("手入力の HTTPS URL 経路には 4MB 制限を掛けない（LINE 仕様のまま）", () => {
+    const content = readCode("src/lib/broadcast/content.ts");
+    // content layer は upload 上限を知らない
+    expect(content).not.toContain("BROADCAST_UPLOAD_MAX_BYTES");
+    expect(content).not.toContain("upload-limits");
+    // URL 側の検証は従来どおり https / URL 長のみ
+    expect(content).toContain("BROADCAST_MEDIA_URL_MAX");
+    const shared = readCode("src/app/api/oas/[id]/broadcasts/_shared.ts");
+    expect(shared).not.toContain("BROADCAST_UPLOAD_MAX_BYTES");
+  });
+
+  it("JPEG / PNG のみ（許可形式も共有定数）", () => {
+    expect(BROADCAST_UPLOAD_ALLOWED_TYPES).toEqual(["image/jpeg", "image/png"]);
   });
 
   it("preview は変換 URL で作る（1MB 上限を確実に下回らせる）", () => {

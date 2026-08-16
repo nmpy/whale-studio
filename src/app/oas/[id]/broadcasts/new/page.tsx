@@ -10,6 +10,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { getAuthHeaders } from "@/lib/api-client";
+import {
+  BROADCAST_UPLOAD_MAX_BYTES, BROADCAST_UPLOAD_ALLOWED_TYPES, BROADCAST_UPLOAD_MAX_LABEL,
+} from "@/lib/broadcast/upload-limits";
 import { useWorkspaceRole } from "@/hooks/useWorkspaceRole";
 import { broadcastApi, BROADCAST_KIND_LABEL, type TargetInput, type BroadcastContentDto } from "../_client";
 import {
@@ -143,6 +146,16 @@ export default function NewBroadcastPage() {
   const handleUpload = async (file: File | null | undefined) => {
     if (!file) return;
     setError(null);
+    // server と同じ定数で事前検証する。上限超過は送信前に弾く
+    // （Vercel の request body 上限に当たると route handler まで届かず 413 になるため）。
+    if (!(BROADCAST_UPLOAD_ALLOWED_TYPES as readonly string[]).includes(file.type)) {
+      setError("アップロードできる画像は JPEG / PNG のみです");
+      return;
+    }
+    if (file.size > BROADCAST_UPLOAD_MAX_BYTES) {
+      setError(`アップロードできる画像は ${BROADCAST_UPLOAD_MAX_LABEL} 以下です（選択: ${(file.size / 1024 / 1024).toFixed(2)} MB）。より大きい画像は、公開済みの HTTPS URL を直接指定してください。`);
+      return;
+    }
     setUploading(true);
     try {
       const r = await broadcastApi.uploadImage(oaId, file);
@@ -244,7 +257,8 @@ export default function NewBroadcastPage() {
               <div className="mb-3 rounded-card border border-line bg-bg px-3 py-3">
                 <div className="mb-1 text-[12px] font-semibold text-ink">画像をアップロード</div>
                 <p className="mb-2 text-[11px] leading-[1.5] text-ink-3">
-                  JPEG / PNG・10 MB 以下。アップロードすると元画像とプレビュー画像の URL が自動で入ります。
+                  アップロードできる画像は JPEG / PNG、{BROADCAST_UPLOAD_MAX_LABEL} 以下です。
+                  アップロードすると元画像とプレビュー画像の URL が自動で入ります。
                 </p>
                 <input
                   type="file" accept="image/jpeg,image/png" disabled={uploading}
@@ -268,7 +282,9 @@ export default function NewBroadcastPage() {
               />
               <p className="mt-1 text-[11px] leading-[1.5] text-ink-3">
                 どちらも <strong>https</strong> で公開されている JPEG / PNG が必要です。
-                元画像は 10 MB 以下、プレビュー画像は 1 MB 以下にしてください。
+                すでに公開されている画像を URL で指定する場合は、LINE の仕様どおり
+                元画像 10 MB 以下・プレビュー画像 1 MB 以下が使えます
+                （{BROADCAST_UPLOAD_MAX_LABEL} の制限は Whale Studio からアップロードする場合だけです）。
               </p>
             </>
           )}
