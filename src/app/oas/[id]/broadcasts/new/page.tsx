@@ -104,7 +104,14 @@ export default function NewBroadcastPage() {
     }
   };
 
-  /** 作成 → 開始 → chunk を送り切るまで process を繰り返す。 */
+  /**
+   * 作成 → 開始 → **最初の 1 chunk だけ**即時処理して詳細画面へ。
+   *
+   * 全 chunk をブラウザで回さない。開始時点で宛先 snapshot と status=sending が
+   * 確定しているので、残りは server-side の cron worker が引き継ぐ。
+   * 少人数（1 chunk = 50 件以内）ならこの 1 回で完了し、多人数でも
+   * 管理者はここでブラウザを閉じてよい。
+   */
   const handleSend = async () => {
     if (!target) return;
     setSending(true);
@@ -113,13 +120,12 @@ export default function NewBroadcastPage() {
       const created = await broadcastApi.create(oaId, { name: name.trim(), content: { kind: "text", text }, ...target });
       await broadcastApi.start(oaId, created.id);
 
-      let guard = 0;
-      for (;;) {
+      // 即時フィードバックのための 1 chunk のみ。失敗しても配信は cron が続けるので握りつぶす。
+      try {
         const r = await broadcastApi.process(oaId, created.id);
         setProgress({ sent: r.sent, failed: r.failed });
-        if (!r.has_more) break;
-        if (++guard > 1000) break; // 念のための上限（1000 chunk）
-      }
+      } catch { /* 続きは cron worker が処理する */ }
+
       router.push(`/oas/${oaId}/broadcasts/${created.id}`);
     } catch (e) {
       setError((e as Error).message);
@@ -261,7 +267,8 @@ export default function NewBroadcastPage() {
 
           {progress && (
             <div className="rounded-card border border-line bg-surface px-3 py-2 text-[12px] text-ink-2">
-              送信中… 成功 {progress.sent} / 失敗 {progress.failed}
+              送信を開始しました（成功 {progress.sent} / 失敗 {progress.failed}）。
+              残りはバックグラウンドで続きます。この画面を閉じても配信は継続します。
             </div>
           )}
 
