@@ -11,6 +11,10 @@
     {
       "path": "/api/cron/uzu-outbox",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/broadcast-worker",
+      "schedule": "* * * * *"
     }
   ]
 }

@@ -42,18 +42,16 @@ export default function BroadcastDetailPage() {
     return () => clearInterval(t);
   }, [row?.status, load]);
 
-  /** 失敗した宛先だけを再送する。成功済みには送らない。 */
+  /**
+   * 失敗した宛先だけを再送対象に戻す。成功済みには送らない。
+   * 実際の送信は 1 chunk だけ即時に行い、残りは cron worker が引き継ぐ。
+   */
   const handleRetry = async () => {
     setBusy(true);
     setError(null);
     try {
       await broadcastApi.retry(oaId, broadcastId);
-      let guard = 0;
-      for (;;) {
-        const r = await broadcastApi.process(oaId, broadcastId);
-        if (!r.has_more) break;
-        if (++guard > 1000) break;
-      }
+      try { await broadcastApi.process(oaId, broadcastId); } catch { /* 続きは cron worker */ }
       await load();
     } catch (e) {
       setError((e as Error).message);
@@ -62,17 +60,15 @@ export default function BroadcastDetailPage() {
     }
   };
 
-  /** 送信が途中で止まっている場合に続きを流す（sending のときだけ意味を持つ）。 */
+  /**
+   * 手動で 1 chunk だけ進める（通常は cron worker が自動で処理するので操作不要）。
+   * cron を待たずに今すぐ動かしたいとき用の補助導線。
+   */
   const handleResume = async () => {
     setBusy(true);
     setError(null);
     try {
-      let guard = 0;
-      for (;;) {
-        const r = await broadcastApi.process(oaId, broadcastId);
-        if (!r.has_more) break;
-        if (++guard > 1000) break;
-      }
+      await broadcastApi.process(oaId, broadcastId);
       await load();
     } catch (e) {
       setError((e as Error).message);
@@ -127,11 +123,18 @@ export default function BroadcastDetailPage() {
               <dt className="text-ink-3">完了</dt><dd className="text-ink">{fmt(row.completed_at)}</dd>
             </dl>
 
+            {row.status === "sending" && (
+              <p className="mt-3 rounded-card border border-line bg-bg px-3 py-2 text-[12px] leading-[1.6] text-ink-2">
+                配信処理中です。<strong>この画面を閉じてもバックグラウンドで送信は継続します。</strong>
+                進捗は自動で更新され、あとで開き直しても最新の状態が表示されます。
+              </p>
+            )}
+
             {canSend && (
               <div className="mt-4 flex gap-2">
                 {row.status === "sending" && (
-                  <button type="button" className="btn btn-primary" disabled={busy} onClick={handleResume}>
-                    {busy ? "処理中…" : "送信の続きを実行"}
+                  <button type="button" className="btn btn-ghost" disabled={busy} onClick={handleResume}>
+                    {busy ? "処理中…" : "今すぐ続きを1回分処理"}
                   </button>
                 )}
                 {/* 再送可能な失敗が 0 件ならボタンを出さない（failure_count だけを根拠にしない）。 */}
