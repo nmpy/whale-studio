@@ -6,7 +6,10 @@
 
 import { withRole } from "@/lib/auth";
 import { ok, notFound, conflict, unprocessable, serverError } from "@/lib/api-response";
+import { prisma } from "@/lib/prisma";
 import { startBroadcast } from "@/lib/broadcast/service";
+import { parseBroadcastContent, toLineMessages } from "@/lib/broadcast/content";
+import { validateLinePushMessages, needsOfficialValidation } from "@/lib/broadcast/validate";
 import { BROADCAST_SEND_ROLE } from "../../_shared";
 
 export const dynamic = "force-dynamic";
@@ -16,6 +19,35 @@ export const POST = withRole<{ id: string; broadcastId: string }>(
   BROADCAST_SEND_ROLE,
   async (_req, { params }) => {
     try {
+      // ── 送信前の内容ゲート ──
+      // 宛先を snapshot して sending にした後で全宛先が LINE に弾かれる事故を防ぐため、
+      // draft のうちに内容を検証する。ここで弾いた場合 status は draft のまま
+      // （startBroadcast の CAS / snapshot ロジックには一切触れない）。
+      const current = await prisma.broadcast.findFirst({
+        where:  { id: params.broadcastId, oaId: params.id },
+        select: { status: true, contentJson: true, oa: { select: { channelAccessToken: true } } },
+      });
+      if (!current) return notFound("配信メッセージ");
+
+      if (current.status === "draft") {
+        const content = parseBroadcastContent(current.contentJson);
+        if (!content) return unprocessable("メッセージ内容が不正です", "INVALID_CONTENT");
+
+        // 画像 / Flex は LINE 公式の validate API にも通す（送信はされない）。
+        // text は Production で送信実績のある既存経路なので、新しい外部依存を足さない。
+        if (needsOfficialValidation(content.kind) && current.oa.channelAccessToken) {
+          const v = await validateLinePushMessages({
+            messages: toLineMessages(content),
+            channelAccessToken: current.oa.channelAccessToken,
+          });
+          if (!v.ok) {
+            // invalid = 内容が悪い / unavailable = 判定できなかった。
+            // どちらの場合も sending にはしない（判定できないまま一斉送信しない）。
+            return unprocessable(v.message, v.reason === "invalid" ? "INVALID_CONTENT" : "VALIDATION_UNAVAILABLE");
+          }
+        }
+      }
+
       const r = await startBroadcast({ oaId: params.id, broadcastId: params.broadcastId });
       if (r.ok) return ok({ started: true, recipient_count: r.recipientCount });
 
