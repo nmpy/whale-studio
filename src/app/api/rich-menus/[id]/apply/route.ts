@@ -7,11 +7,16 @@
 //   1. DB から RichMenu + RichMenuArea + OA（channel_access_token）を取得
 //   2. DB のエリア情報から RichMenuConfig を構築
 //   3. applyRichMenuConfig() 共通関数を呼び出す
-//      a. 旧 LINE メニューを削除（line_rich_menu_id があれば）
-//      b. LINE API にメニュー作成
-//      c. imageUrl があれば画像アップロード
-//      d. チャンネルのデフォルトに設定
-//   4. DB の line_rich_menu_id と Oa.richMenuId を更新
+//      a. 旧メニューの実在確認 + 現 default の把握
+//      b. 画像を取得して 1MB / MIME を送信前に検証
+//      c. LINE API にメニュー作成
+//      d. 画像アップロード（失敗は致命的）
+//      e. 新メニューの read-back（存在 + 画像）
+//      f. デフォルトに設定 + read-back
+//      g. persist（= 本 route が渡す DB 更新。失敗時は旧 default へ rollback）
+//      h. 旧メニュー削除（置き換え成功後の cleanup）
+//   ※ 「新メニューが完全に利用可能になるまで旧メニューを削除しない」ため、
+//      DB 更新は applyRichMenuConfig の内側（persist）で行う。
 //
 // エラーハンドリング:
 //   各ステップで失敗した場合、失敗したステップ名と LINE API の実際の
@@ -24,6 +29,7 @@ import { ok, notFound } from "@/lib/api-response";
 import { invalidateOaCacheById } from "@/lib/oa-cache";
 import {
   applyRichMenuConfig,
+  RichMenuApplyError,
 } from "@/lib/line-richmenu";
 import type { RichMenuConfig, RichMenuArea as LineRichMenuArea } from "@/lib/line-richmenu";
 
@@ -79,6 +85,41 @@ function applyError(step: string, err: unknown, status = 500) {
         code:    "APPLY_ERROR",
         step,
         message: `${step}に失敗しました: ${message}`,
+      },
+    },
+    { status }
+  );
+}
+
+/**
+ * apply の失敗を運用者向けに返す。
+ *
+ * RichMenuApplyError なら **一次原因**（例: 画像が 1MB 超）を message に出す。
+ * LINE API の二次エラー（400 "must upload richmenu image before applying it to user"）を
+ * そのまま見せると原因が分からないため。
+ * それ以外は従来の applyError にフォールバックし、既存のレスポンス契約を壊さない。
+ */
+function applyFailure(err: unknown) {
+  if (!(err instanceof RichMenuApplyError)) return applyError("LINE APIへの適用", err);
+
+  console.error(`[apply] stage=${err.stage} 失敗: ${err.message}`, {
+    newRichMenuId: err.newLineRichMenuId ?? null,
+    cleanup:  err.cleanup  ? (err.cleanup.ok  ? "ok" : `failed: ${err.cleanup.error}`)  : "none",
+    rollback: err.rollback ? (err.rollback.attempted ? (err.rollback.ok ? "ok" : `failed: ${err.rollback.error}`) : "skipped") : "none",
+  });
+
+  // 画像の検証エラーは運用者の入力起因なので 400。
+  const status = err.stage === "image_validation" ? 400 : 500;
+  return NextResponse.json(
+    {
+      success: false,
+      error: {
+        code:    "APPLY_ERROR",
+        step:    err.stage,
+        message: err.operatorMessage,
+        // 補償動作の結果は追加情報として返す（primary reason を上書きしない）。
+        cleanup_ok:  err.cleanup?.ok ?? null,
+        rollback_ok: err.rollback?.attempted ? err.rollback.ok : null,
       },
     },
     { status }
@@ -169,9 +210,12 @@ export const POST = withAuth<{ id: string }>(async (_req, { params }) => {
     return applyError("LINE設定の構築", err);
   }
 
-  // ── ステップ 4: LINE API 適用（共通関数） ──
+  // ── ステップ 4: LINE API 適用 + DB 更新 ──
+  // DB 更新は persist として applyRichMenuConfig の内側で実行する。
+  // こうしないと「LINE default = 新 / DB = 旧」になったときに旧 default へ戻せない。
   let lineRichMenuId: string;
   let imageUploaded: boolean;
+  let applyWarnings: string[] | undefined;
   try {
     const result = await applyRichMenuConfig({
       token,
@@ -180,30 +224,33 @@ export const POST = withAuth<{ id: string }>(async (_req, { params }) => {
       oldLineRichMenuId: menu.lineRichMenuId,
       setDefault:        true,
       logPrefix:         "[apply]",
+      persist: async (newId) => {
+        // line_rich_menu_id と Oa.richMenuId は必ず同一 transaction で更新する
+        // （片方だけ更新された状態を作らない）。
+        await prisma.$transaction([
+          prisma.richMenu.update({ where: { id: params.id }, data: { lineRichMenuId: newId } }),
+          prisma.oa.update({ where: { id: menu.oaId }, data: { richMenuId: newId } }),
+        ]);
+        // DB 更新後の read-back: 2 箇所が新 ID で揃っていること。
+        const [dbMenu, dbOa] = await Promise.all([
+          prisma.richMenu.findUnique({ where: { id: params.id }, select: { lineRichMenuId: true } }),
+          prisma.oa.findUnique({ where: { id: menu.oaId }, select: { richMenuId: true } }),
+        ]);
+        if (dbMenu?.lineRichMenuId !== newId || dbOa?.richMenuId !== newId) {
+          throw new Error(
+            `DB read-back 不一致: rich_menus=${dbMenu?.lineRichMenuId ?? "null"} oas=${dbOa?.richMenuId ?? "null"} expected=${newId}`,
+          );
+        }
+        console.log(`[apply] DB 更新完了 lineRichMenuId=${newId}`);
+        // PR #160: Oa.richMenuId を更新したので id ベースの OA cache を invalidate
+        await invalidateOaCacheById(menu.oaId);
+      },
     });
     lineRichMenuId = result.lineRichMenuId;
     imageUploaded  = result.imageUploaded;
+    applyWarnings  = result.warnings;
   } catch (err) {
-    return applyError("LINE APIへの適用", err);
-  }
-
-  // ── ステップ 5: DB 更新（line_rich_menu_id + Oa.richMenuId） ──
-  try {
-    await prisma.$transaction([
-      prisma.richMenu.update({
-        where: { id: params.id },
-        data:  { lineRichMenuId },
-      }),
-      prisma.oa.update({
-        where: { id: menu.oaId },
-        data:  { richMenuId: lineRichMenuId },
-      }),
-    ]);
-    console.log(`[apply] DB 更新完了 lineRichMenuId=${lineRichMenuId}`);
-    // PR #160: Oa.richMenuId を更新したので id ベースの OA cache を invalidate
-    await invalidateOaCacheById(menu.oaId);
-  } catch (err) {
-    return applyError("DB更新", err);
+    return applyFailure(err);
   }
 
   return ok({
@@ -211,5 +258,7 @@ export const POST = withAuth<{ id: string }>(async (_req, { params }) => {
     line_rich_menu_id: lineRichMenuId,
     applied:           true,
     image_uploaded:    imageUploaded,
+    // 旧メニュー削除失敗など、ユーザー影響のない警告（apply 自体は成功）。
+    warnings:          applyWarnings ?? null,
   });
 });
