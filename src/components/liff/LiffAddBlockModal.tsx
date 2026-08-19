@@ -23,9 +23,17 @@ export function LiffAddBlockModal({ saving, onAdd, onClose }: Props) {
         onClick={(e) => e.stopPropagation()}
       >
         <h3 className="text-base font-bold text-gray-900 mb-1">
-          ブロックを追加
+          ページ直下に追加
         </h3>
-        <p className="text-[11px] text-gray-400 mb-4">追加したいブロックを選んでください（全13種）。</p>
+        {/* どの階層に入るのかをここで確定させる。アコーディオンの中に入れたい場合は
+            そのアコーディオンの「＋『◯◯』の中に追加」を使う導線に誘導する。 */}
+        <p className="text-[11px] text-gray-500 mb-1">
+          ページの一番外側（トップレベル）に追加します。
+        </p>
+        <p className="text-[11px] text-gray-400 mb-4">
+          アコーディオンの<span className="font-medium text-gray-500">中</span>に入れたいときは、
+          そのアコーディオンを「編集」して「＋『◯◯』の中に追加」から選んでください。
+        </p>
         {/* PR-BLK1: 01〜13 の番号付きリスト。左=番号 / 中央=ブロック名 / サブ=補足。
             ADDABLE_BLOCK_TYPES の順序がそのまま 01〜13 になる。 */}
         <div className="flex flex-col gap-1.5">

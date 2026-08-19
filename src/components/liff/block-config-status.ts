@@ -9,6 +9,7 @@
 // 必須入力が無くデータ駆動で表示されるもの）は意図的に「未設定」と判定しない（false）。
 
 import type { LiffBlockType } from "@/types";
+import { resolveAccordionItems } from "./accordion-items";
 
 /** 文字列値が「実質的に入力済み」か（trim 後に非空）。 */
 function filled(v: unknown): boolean {
@@ -39,7 +40,9 @@ export function isBlockUnconfigured(
       // ラベル、または遷移先（外部URL / LIFFページ / ロケーション）のいずれかが無い。
       return !filled(s.label) || !(filled(s.url) || filled(s.liff_page_id) || filled(s.location_id));
     case "accordion":
-      return !filled(s.title);
+      // 「複数項目」モード（有効 item が 1 件以上）では renderer が title を描画しないため、
+      // title 未入力でも未設定扱いにしない。子要素モードのときだけタイトルを必須とする。
+      return resolveAccordionItems(s.items).length === 0 && !filled(s.title);
     case "warning":
       return !filled(s.body);
     case "code_reader":
