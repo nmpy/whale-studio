@@ -10,7 +10,8 @@
 import { resolveDestinationUrl } from "./destination-url-builder";
 
 /** DB の LineDestination レコードを API レスポンス形式に変換する。
- *  @param opts.liffId 対象 OA の Oa.liffId（未指定なら liff 型の resolved_url は null）。 */
+ *  @param opts.liffId       対象 OA の Oa.liffId（未指定なら liff 型の resolved_url は null）。
+ *  @param opts.workPublicId 対象 Work の publicId（canonical `/w/{workPublicId}` を組むのに使う）。 */
 export function toDestinationResponse(d: {
   id: string;
   workId: string;
@@ -24,10 +25,11 @@ export function toDestinationResponse(d: {
   isEnabled: boolean;
   createdAt: Date;
   updatedAt: Date;
-}, opts?: { liffId?: string | null }) {
+}, opts?: { liffId?: string | null; workPublicId?: string | null }) {
   return {
     id:                d.id,
     work_id:           d.workId,
+    work_public_id:    opts?.workPublicId ?? null,
     key:               d.key,
     name:              d.name,
     description:       d.description,
@@ -42,6 +44,7 @@ export function toDestinationResponse(d: {
       urlOrPath:       d.urlOrPath,
       queryParamsJson: d.queryParamsJson as Record<string, string>,
       workId:          d.workId,
+      workPublicId:    opts?.workPublicId ?? null,
     }, { liffId: opts?.liffId ?? null }),
     created_at:        d.createdAt,
     updated_at:        d.updatedAt,

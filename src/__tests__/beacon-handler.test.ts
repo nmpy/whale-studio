@@ -36,6 +36,8 @@ function makePrismaMock(opts: {
     urlOrPath: string | null;
     queryParamsJson: Record<string, string>;
     isEnabled: boolean;
+    /** include: { work: { select: { publicId: true } } } の結果。canonical URL 用。 */
+    work?: { publicId: string | null } | null;
   } | null;
 }) {
   const created: Array<Record<string, unknown>> = [];
@@ -299,8 +301,9 @@ describe("handleBeaconEvent", () => {
           destinationType: "liff",
           liffTargetType: null,
           urlOrPath: null,
-          queryParamsJson: {},
+          queryParamsJson: { param1: "sns" },
           isEnabled: true,
+          work: { publicId: "wp0001" },
         },
       });
       const { gw, reply } = makeLineMock();
@@ -315,7 +318,10 @@ describe("handleBeaconEvent", () => {
       expect(result.status).toBe("sent");
       const [, msgs] = reply.mock.calls[0];
       const text = (msgs[0] as { text: string }).text;
-      expect(text).toContain("https://liff.line.me/2010632002-ZzzimCzc?workId=work-1");
+      // canonical: 作品ホーム /w/{workPublicId} + query 維持。?workId= にはしない。
+      expect(text).toContain("https://liff.line.me/2010632002-ZzzimCzc/w/wp0001?param1=sns");
+      expect(text).not.toContain("?workId=");
+      expect(text).not.toContain("/p/");
       expect(text).not.toContain("2010049684");
     } finally {
       if (saved === undefined) delete process.env.NEXT_PUBLIC_LIFF_ID;
@@ -341,6 +347,7 @@ describe("handleBeaconEvent", () => {
           urlOrPath: null,
           queryParamsJson: {},
           isEnabled: true,
+          work: { publicId: "wp0001" },
         },
       });
       const { gw, reply } = makeLineMock();
@@ -362,6 +369,40 @@ describe("handleBeaconEvent", () => {
       if (saved === undefined) delete process.env.NEXT_PUBLIC_LIFF_ID;
       else process.env.NEXT_PUBLIC_LIFF_ID = saved;
     }
+  });
+
+  it("destination(liff) で Work.publicId が無い旧データは legacy /work/{workId} へ落ちる", async () => {
+    const prisma = makePrismaMock({
+      trigger: {
+        ...baseTrigger,
+        actionType: "destination",
+        actionPayload: { destination_id: "dest-liff" },
+      },
+      destination: {
+        id: "dest-liff",
+        workId: "work-1",
+        destinationType: "liff",
+        liffTargetType: null,
+        urlOrPath: null,
+        queryParamsJson: {},
+        isEnabled: true,
+        work: { publicId: null },
+      },
+    });
+    const { gw, reply } = makeLineMock();
+
+    const result = await handleBeaconEvent({
+      prisma: prisma as any,
+      oa: { ...OA, liffId: "2010632002-ZzzimCzc" },
+      event: makeEvent(),
+      line: gw,
+    });
+
+    expect(result.status).toBe("sent");
+    const [, msgs] = reply.mock.calls[0];
+    const text = (msgs[0] as { text: string }).text;
+    expect(text).toContain("https://liff.line.me/2010632002-ZzzimCzc/work/work-1");
+    expect(text).not.toContain("?workId=");
   });
 
   it("不正な action 設定は failed として記録する", async () => {

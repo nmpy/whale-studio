@@ -34,7 +34,10 @@ afterEach(() => {
   else process.env.NEXT_PUBLIC_BASE_URL = savedBase;
 });
 
-const liffDest = (workId: string) => ({ destinationType: "liff", workId });
+const liffDest = (workId: string, workPublicId?: string | null) =>
+  ({ destinationType: "liff", workId, workPublicId });
+/** canonical: 作品ホーム */
+const home = (liffId: string, wp: string) => `https://liff.line.me/${liffId}/w/${wp}`;
 
 describe("Test 1 — env contamination 防止", () => {
   it("NEXT_PUBLIC_LIFF_ID がセットされていても、liffId 未指定なら URL を生成しない", () => {
@@ -80,23 +83,23 @@ describe("Test 2 — OA をまたいだ混線防止", () => {
   it("Work A → Oa.liffId A / Work B → Oa.liffId B が入れ替わらない", () => {
     process.env.NEXT_PUBLIC_LIFF_ID = TEST_CHANNEL_LIFF_ID;
 
-    const a = resolveDestinationUrl(liffDest("work-a"), { liffId: OA_A_LIFF });
-    const b = resolveDestinationUrl(liffDest("work-b"), { liffId: OA_B_LIFF });
+    const a = resolveDestinationUrl(liffDest("work-a", "wpa111"), { liffId: OA_A_LIFF });
+    const b = resolveDestinationUrl(liffDest("work-b", "wpb222"), { liffId: OA_B_LIFF });
 
-    expect(a).toBe(`https://liff.line.me/${OA_A_LIFF}?workId=work-a`);
-    expect(b).toBe(`https://liff.line.me/${OA_B_LIFF}?workId=work-b`);
+    expect(a).toBe(home(OA_A_LIFF, "wpa111"));
+    expect(b).toBe(home(OA_B_LIFF, "wpb222"));
 
     expect(a).not.toContain(OA_B_LIFF);
-    expect(a).not.toContain("work-b");
+    expect(a).not.toContain("wpb222");
     expect(b).not.toContain(OA_A_LIFF);
-    expect(b).not.toContain("work-a");
+    expect(b).not.toContain("wpa111");
   });
 
   it("片方の OA が liffId 未設定でも、もう片方の liffId を借りない", () => {
     process.env.NEXT_PUBLIC_LIFF_ID = TEST_CHANNEL_LIFF_ID;
 
-    const configured = resolveDestinationUrl(liffDest("work-a"), { liffId: OA_A_LIFF });
-    const unconfigured = resolveDestinationUrl(liffDest("work-b"), { liffId: null });
+    const configured = resolveDestinationUrl(liffDest("work-a", "wpa111"), { liffId: OA_A_LIFF });
+    const unconfigured = resolveDestinationUrl(liffDest("work-b", "wpb222"), { liffId: null });
 
     expect(configured).toContain(OA_A_LIFF);
     expect(unconfigured).toBeNull();
@@ -106,12 +109,13 @@ describe("Test 2 — OA をまたいだ混線防止", () => {
 });
 
 describe("Test 3 — 既存挙動の維持（liff 以外は変えない）", () => {
-  it("query_params は従来どおり付与される", () => {
+  it("query_params は canonical path の query として維持される（workId は入れない）", () => {
     const url = resolveDestinationUrl(
-      { destinationType: "liff", workId: "w-1", queryParamsJson: { foo: "bar" } },
+      { destinationType: "liff", workId: "w-1", workPublicId: "wp123", queryParamsJson: { param1: "sns" } },
       { liffId: OA_A_LIFF },
     );
-    expect(url).toBe(`https://liff.line.me/${OA_A_LIFF}?workId=w-1&foo=bar`);
+    expect(url).toBe(`${home(OA_A_LIFF, "wp123")}?param1=sns`);
+    expect(url).not.toContain("workId=");
   });
 
   it("internal_url は baseUrl（アプリ自身の origin）で解決する — liffId 不要", () => {
@@ -127,5 +131,115 @@ describe("Test 3 — 既存挙動の維持（liff 以外は変えない）", () 
 
   it("未知の destinationType は null", () => {
     expect(resolveDestinationUrl({ destinationType: "unknown", workId: "w-1" }, { liffId: OA_A_LIFF })).toBeNull();
+  });
+});
+
+
+describe("Test 4 — canonical work URL", () => {
+  it("workPublicId があれば /w/{workPublicId}（bare にも ?workId= にもしない）", () => {
+    const url = resolveDestinationUrl(liffDest("w-uuid", "abc123"), { liffId: "xxx" });
+    expect(url).toBe("https://liff.line.me/xxx/w/abc123");
+  });
+
+  it("query が無いときは ? を付けない", () => {
+    const url = resolveDestinationUrl(
+      { destinationType: "liff", workId: "w-uuid", workPublicId: "abc123", queryParamsJson: {} },
+      { liffId: "xxx" },
+    );
+    expect(url).toBe("https://liff.line.me/xxx/w/abc123");
+    expect(url).not.toContain("?");
+  });
+});
+
+describe("Test 5 — publicId が無い旧データは legacy UUID route へ", () => {
+  it("workPublicId が null / undefined なら /work/{workId}", () => {
+    for (const wp of [null, undefined]) {
+      const url = resolveDestinationUrl(liffDest("w-uuid", wp), { liffId: OA_A_LIFF });
+      expect(url).toBe(`https://liff.line.me/${OA_A_LIFF}/work/w-uuid`);
+      expect(url).not.toContain("?workId=");
+      // bare LIFF URL ではない
+      expect(url).not.toBe(`https://liff.line.me/${OA_A_LIFF}`);
+    }
+  });
+
+  it("legacy route でも query は維持される", () => {
+    const url = resolveDestinationUrl(
+      { destinationType: "liff", workId: "w-uuid", queryParamsJson: { param1: "sns" } },
+      { liffId: OA_A_LIFF },
+    );
+    expect(url).toBe(`https://liff.line.me/${OA_A_LIFF}/work/w-uuid?param1=sns`);
+  });
+});
+
+describe("Test 6 — 禁止形式を生成しない", () => {
+  const cases = [
+    { label: "publicId あり", dest: liffDest("w-uuid", "abc123") },
+    { label: "publicId なし", dest: liffDest("w-uuid") },
+    { label: "query あり", dest: { destinationType: "liff", workId: "w-uuid", workPublicId: "abc123", queryParamsJson: { a: "1" } } },
+  ];
+
+  it("?workId= / ?work_id= を含まない", () => {
+    for (const c of cases) {
+      const url = resolveDestinationUrl(c.dest, { liffId: OA_A_LIFF }) ?? "";
+      expect(url, c.label).not.toContain("?workId=");
+      expect(url, c.label).not.toContain("?work_id=");
+    }
+  });
+
+  it("bare LIFF URL（liffId 直下・path なし）にならない", () => {
+    for (const c of cases) {
+      const url = resolveDestinationUrl(c.dest, { liffId: OA_A_LIFF }) ?? "";
+      expect(/^https:\/\/liff\.line\.me\/[^/?]+\/?$/.test(url), c.label).toBe(false);
+    }
+  });
+
+  it("page 情報が無いので /p/... を捏造しない", () => {
+    for (const c of cases) {
+      const url = resolveDestinationUrl(c.dest, { liffId: OA_A_LIFF }) ?? "";
+      expect(url, c.label).not.toContain("/p/");
+    }
+  });
+});
+
+describe("Test 7 — URL エンコード", () => {
+  it("query 値の記号・日本語・空白がエンコードされる", () => {
+    const url = resolveDestinationUrl(
+      { destinationType: "liff", workId: "w", workPublicId: "wp",
+        queryParamsJson: { q: "a b&c=d", jp: "謎解き" } },
+      { liffId: "xxx" },
+    );
+    expect(url).toBe("https://liff.line.me/xxx/w/wp?q=a+b%26c%3Dd&jp=%E8%AC%8E%E8%A7%A3%E3%81%8D");
+    // 復元できること（= 二重エンコードしていない）
+    const parsed = new URL(url!);
+    expect(parsed.searchParams.get("q")).toBe("a b&c=d");
+    expect(parsed.searchParams.get("jp")).toBe("謎解き");
+    expect(parsed.pathname).toBe("/xxx/w/wp");
+  });
+
+  it("値が空文字の query も落とさない（既存挙動の維持）", () => {
+    const url = resolveDestinationUrl(
+      { destinationType: "liff", workId: "w", workPublicId: "wp", queryParamsJson: { empty: "" } },
+      { liffId: "xxx" },
+    );
+    expect(url).toBe("https://liff.line.me/xxx/w/wp?empty=");
+  });
+});
+
+describe("Test 8 — snake_case（API 形式）でも canonical", () => {
+  it("work_public_id を使って /w/{work_public_id} になる", () => {
+    const url = resolveDestinationUrlFromApi(
+      { destination_type: "liff", work_id: "w-uuid", work_public_id: "abc123", query_params_json: { param1: "sns" } },
+      { liffId: OA_B_LIFF },
+    );
+    expect(url).toBe(`https://liff.line.me/${OA_B_LIFF}/w/abc123?param1=sns`);
+    expect(url).not.toContain("?workId=");
+  });
+
+  it("work_public_id が無ければ legacy /work/{work_id}", () => {
+    const url = resolveDestinationUrlFromApi(
+      { destination_type: "liff", work_id: "w-uuid" },
+      { liffId: OA_B_LIFF },
+    );
+    expect(url).toBe(`https://liff.line.me/${OA_B_LIFF}/work/w-uuid`);
   });
 });

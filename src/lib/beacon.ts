@@ -128,8 +128,10 @@ async function buildActionMessages(
     case "destination": {
       const destinationId = typeof payload.destination_id === "string" ? payload.destination_id : null;
       if (!destinationId) return null;
+      // work.publicId も同時に取る（canonical `/w/{workPublicId}` 用。追加クエリを増やさない）。
       const dest = await prisma.lineDestination.findUnique({
-        where: { id: destinationId },
+        where:   { id: destinationId },
+        include: { work: { select: { publicId: true } } },
       });
       if (!dest || !dest.isEnabled) return null;
       // liff 型の URL は**この OA の Oa.liffId** で組む（env の共通 LIFF は使わない）。
@@ -141,6 +143,7 @@ async function buildActionMessages(
         urlOrPath:       dest.urlOrPath,
         queryParamsJson: dest.queryParamsJson as Record<string, string>,
         workId:          dest.workId,
+        workPublicId:    dest.work?.publicId ?? null,
       }, { liffId: getLiffIdForUrlGeneration(oa) });
       if (!url) return null;
       const text = typeof payload.text === "string" && payload.text.trim()

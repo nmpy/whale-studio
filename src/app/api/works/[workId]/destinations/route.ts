@@ -18,14 +18,17 @@ import { ZodError } from "zod";
 
 export const dynamic = "force-dynamic";
 
-/** URL 生成用に対象 OA の Oa.liffId を引く（env fallback なし）。
+/** URL 生成用に「対象 OA の Oa.liffId」と「対象 Work の publicId」を 1 回で引く。
  *  destination の resolved_url は運用者がリッチメニューへ保存するため、
- *  誤 OA の LIFF が混入しないよう必ずこの経路で解決する。 */
-async function liffIdForOa(oaId: string): Promise<string | null> {
-  const oa = await prisma.oa.findUnique({ where: { id: oaId }, select: { liffId: true } });
-  return getLiffIdForUrlGeneration(oa);
+ *  LIFF ID は必ず Work → OA → Oa.liffId の経路で解決する（env fallback なし）。
+ *  Work は 1 リクエスト内で共通なので、行ごとに引かない（N+1 を作らない）。 */
+async function urlContextForWork(workId: string): Promise<{ liffId: string | null; workPublicId: string | null }> {
+  const work = await prisma.work.findUnique({
+    where:  { id: workId },
+    select: { publicId: true, oa: { select: { liffId: true } } },
+  });
+  return { liffId: getLiffIdForUrlGeneration(work?.oa), workPublicId: work?.publicId ?? null };
 }
-
 
 // ── GET ─────────────────────────────────────────
 export const GET = withAuth(async (req, ctx, user) => {
@@ -37,17 +40,17 @@ export const GET = withAuth(async (req, ctx, user) => {
     const check = await requireRole(oaId, user.id, "viewer");
     if (!check.ok) return check.response;
 
-    const [destinations, usageCounts, liffId] = await Promise.all([
+    const [destinations, usageCounts, urlCtx] = await Promise.all([
       prisma.lineDestination.findMany({
         where: { workId },
         orderBy: [{ createdAt: "asc" }],
       }),
       getDestinationUsageCounts(workId),
-      liffIdForOa(oaId),
+      urlContextForWork(workId),
     ]);
 
     return ok(destinations.map((d) => ({
-      ...toDestinationResponse(d, { liffId }),
+      ...toDestinationResponse(d, urlCtx),
       usage_count: usageCounts[d.id] ?? 0,
     })));
   } catch (err) {
@@ -94,7 +97,7 @@ export const POST = withAuth(async (req, ctx, user) => {
       },
     });
 
-    return created(toDestinationResponse(dest, { liffId: await liffIdForOa(oaId) }));
+    return created(toDestinationResponse(dest, await urlContextForWork(workId)));
   } catch (err) {
     if (err instanceof ZodError) {
       return badRequest("入力内容に誤りがあります", formatZodErrors(err));

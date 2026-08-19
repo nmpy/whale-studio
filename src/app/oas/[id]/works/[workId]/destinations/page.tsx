@@ -201,6 +201,7 @@ export default function DestinationsPage() {
       {showModal && (
         <DestinationFormModal
           workId={workId}
+          workPublicId={dest.workPublicId}
           liffId={oaLiffId}
           saving={dest.saving}
           editingDestination={editingDest}

@@ -18,6 +18,22 @@
 // ※ `baseUrl`（internal_url 用）の env フォールバックは残している。
 //   これはアプリ自身の origin であって OA ごとに変わる識別子ではないため、
 //   別 OA の URL が混入する余地がない。liffId とは性質が違うので分けて扱う。
+//
+// ## URL の path は用途別の canonical route を使う
+//
+// 旧実装は `https://liff.line.me/{liffId}?workId={uuid}` を生成していたが、これは
+// **LIFF runtime の契約と一致せず動作しない**:
+//   - `/liff` は `work_id`（snake_case）を読む。`workId`（camelCase）は読まれない
+//   - そもそも `/liff` はチェックイン専用入口で `location_id` も必須。
+//     足りないと MISSING_PARAMS の案内画面になる
+// LineDestination は Work スコープ（page 参照を持たない）なので、canonical は
+// **作品ホーム** `/w/{workPublicId}`（publicId の無い旧データのみ `/work/{workId}`）。
+// URL 組み立ては既存の buildWorkHomeLiffUrl を再利用し、ここで重複実装しない。
+//
+// page を特定できないデータから `/p/{pagePublicId}` を捏造してはいけない
+// （最初の published page 等を推測で採用するのも禁止）。
+
+import { buildWorkHomeLiffUrl } from "@/lib/liff/public-urls";
 
 /**
  * destination レコードから LINE に設定すべき resolved URL を生成する。
@@ -33,6 +49,8 @@ export function resolveDestinationUrl(
     urlOrPath?: string | null;
     queryParamsJson?: Record<string, string> | unknown;
     workId: string;
+    /** Work の公開 URL 用短縮 ID。canonical な `/w/{workPublicId}` を組むのに使う。 */
+    workPublicId?: string | null;
   },
   opts?: {
     /** 対象 OA の Oa.liffId。未設定/null なら liff 型は生成不能（null）になる。 */
@@ -49,8 +67,21 @@ export function resolveDestinationUrl(
     case "liff": {
       // Oa.liffId が解決できないときは「生成不能」。env の共通 LIFF で代用しない。
       if (!liffId) return null;
-      const params = new URLSearchParams({ workId: dest.workId, ...qp });
-      return `https://liff.line.me/${liffId}?${params.toString()}`;
+
+      // canonical: 作品ホーム。publicId があれば /w/{workPublicId}、無ければ旧 /work/{workId}。
+      // bare `https://liff.line.me/{liffId}` や `?workId=` には落とさない。
+      const base = buildWorkHomeLiffUrl({
+        liffId,
+        workPublicId: dest.workPublicId,
+        workId:       dest.workId,
+      });
+      if (!base) return null;
+
+      // query_params は従来どおりそのまま引き継ぐ（空文字の値も落とさない）。
+      // workId は path が作品を表すので query には入れない。
+      const params = new URLSearchParams(qp);
+      const qs = params.toString();
+      return qs ? `${base}?${qs}` : base;
     }
 
     case "internal_url": {
@@ -93,6 +124,7 @@ export function resolveDestinationUrlFromApi(
     url_or_path?: string | null;
     query_params_json?: Record<string, string>;
     work_id: string;
+    work_public_id?: string | null;
   },
   opts?: { liffId?: string | null; baseUrl?: string }
 ): string | null {
@@ -103,6 +135,7 @@ export function resolveDestinationUrlFromApi(
       urlOrPath: dest.url_or_path,
       queryParamsJson: dest.query_params_json,
       workId: dest.work_id,
+      workPublicId: dest.work_public_id,
     },
     opts
   );
