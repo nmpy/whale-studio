@@ -217,9 +217,20 @@ async function parseLineResponse<T = unknown>(res: Response): Promise<T> {
   return JSON.parse(text) as T;
 }
 
+import {
+  RICH_MENU_IMAGE_MAX_BYTES,
+  RICH_MENU_IMAGE_MIME_TYPES,
+  RICH_MENU_IMAGE_MAX_LABEL,
+  formatBytesAsMb,
+  type RichMenuImageMimeType,
+} from "@/lib/constants/richmenu";
+
 // ────────────────────────────────────────────────
 // 公開 API 関数
 // ────────────────────────────────────────────────
+
+// 画像制約は client からも参照するため独立モジュールに置いてある。ここでは再 export する。
+export { RICH_MENU_IMAGE_MAX_BYTES, RICH_MENU_IMAGE_MIME_TYPES } from "@/lib/constants/richmenu";
 
 /**
  * リッチメニューを LINE に登録し、richMenuId を返す。
@@ -239,21 +250,23 @@ export async function createRichMenu(
   return data.richMenuId;
 }
 
+
 /**
- * PNG バイナリをリッチメニューにアップロードする。
- * LINE 要件: PNG/JPEG, 最大 1 MB。
+ * 画像バイナリをリッチメニューにアップロードする。
+ * LINE 要件: PNG/JPEG, 最大 1 MB（RICH_MENU_IMAGE_MAX_BYTES）。
  */
 export async function uploadRichMenuImage(
   channelAccessToken: string,
   richMenuId: string,
-  pngBuffer: Buffer
+  imageBuffer: Buffer,
+  mimeType: string = "image/png"
 ): Promise<void> {
   const res = await lineRequest(
     "POST",
     `${LINE_API_DATA_BASE}/richmenu/${richMenuId}/content`,
     channelAccessToken,
-    pngBuffer,
-    "image/png"
+    imageBuffer,
+    mimeType
   );
   await parseLineResponse(res);
 }
@@ -272,6 +285,43 @@ export async function setDefaultRichMenu(
     channelAccessToken
   );
   await parseLineResponse(res);
+}
+
+/**
+ * チャンネル全体のデフォルトリッチメニュー ID を取得する。
+ * 未設定なら null（LINE は 404 + "no default richmenu" を返す）。
+ *
+ * setDefault の 200 だけを成功根拠にせず、実際に反映されたかを read-back するために使う。
+ */
+export async function getDefaultRichMenuId(
+  channelAccessToken: string
+): Promise<string | null> {
+  const res = await lineRequest(
+    "GET",
+    `${LINE_API_BASE}/user/all/richmenu`,
+    channelAccessToken
+  );
+  if (res.status === 404) return null; // no default richmenu
+  const data = await parseLineResponse<{ richMenuId?: string }>(res);
+  return data.richMenuId ?? null;
+}
+
+/**
+ * リッチメニューの画像がアップロード済みかを確認する。
+ *
+ * 画像未アップロードのメニューは default 化できない（LINE が 400 を返す）。
+ * 「upload API が 200 だった」だけでなく、実際に content が引けることを確かめる。
+ */
+export async function richMenuImageExists(
+  channelAccessToken: string,
+  richMenuId: string
+): Promise<boolean> {
+  const res = await lineRequest(
+    "GET",
+    `${LINE_API_DATA_BASE}/richmenu/${richMenuId}/content`,
+    channelAccessToken
+  );
+  return res.ok;
 }
 
 /**
@@ -385,26 +435,154 @@ export async function applyBasicRichMenu(
 // カスタムリッチメニュー共通適用ロジック
 // ────────────────────────────────────────────────
 
+/** apply のどの段で失敗したか。ログ / エラーレスポンスの step に使う。 */
+export type RichMenuApplyStage =
+  | "image_validation"
+  | "image_fetch"
+  | "create"
+  | "image_upload"
+  | "verify_new"
+  | "set_default"
+  | "verify_default"
+  | "persist";
+
+/** 補償動作（cleanup / rollback）の結果。primary error を上書きしないため戻り値で持ち回る。 */
+export interface RichMenuCompensation {
+  attempted: boolean;
+  ok:        boolean;
+  error?:    string;
+}
+
+/**
+ * apply の失敗を、運用者に見せる文言と失敗段を持たせて表す。
+ *
+ * LINE API の二次エラー（例: 400 "must upload richmenu image before applying it to user"）を
+ * そのまま出すと原因が分からないため、一次原因（例: 画像が 1MB 超）を operatorMessage に載せる。
+ */
+export class RichMenuApplyError extends Error {
+  readonly stage:      RichMenuApplyStage;
+  /** CMS の運用者に見せる一次原因。 */
+  readonly operatorMessage: string;
+  /** 新メニューの後始末結果（best-effort）。 */
+  readonly cleanup?:   RichMenuCompensation;
+  /** 旧 default へ戻す補償の結果。 */
+  readonly rollback?:  RichMenuCompensation;
+  readonly newLineRichMenuId?: string | null;
+
+  constructor(args: {
+    stage: RichMenuApplyStage;
+    operatorMessage: string;
+    message?: string;
+    cause?: unknown;
+    cleanup?: RichMenuCompensation;
+    rollback?: RichMenuCompensation;
+    newLineRichMenuId?: string | null;
+  }) {
+    super(args.message ?? args.operatorMessage, { cause: args.cause });
+    this.name = "RichMenuApplyError";
+    this.stage = args.stage;
+    this.operatorMessage = args.operatorMessage;
+    this.cleanup = args.cleanup;
+    this.rollback = args.rollback;
+    this.newLineRichMenuId = args.newLineRichMenuId ?? null;
+  }
+}
+
 export interface ApplyRichMenuResult {
   lineRichMenuId: string;
   imageUploaded:  boolean;
+  /** 置き換え前の LINE メニュー ID（DB が持っていた値）。 */
+  oldLineRichMenuId?: string | null;
+  /** 旧メニューを最後の cleanup で削除できたか。 */
+  oldMenuDeleted?:    boolean;
+  /** DB が指す旧 ID が LINE 上に存在しなかった（過去の失敗による stale 参照）。 */
+  oldMenuMissingOnLine?: boolean;
+  /** 致命的でない警告（旧メニュー削除失敗など）。apply 自体は成功。 */
+  warnings?: string[];
+}
+
+/** 外部 I/O の差し替え口。既定は本物の LINE API 実装。failure-path をテストするために使う。 */
+export interface RichMenuApplyDeps {
+  createRichMenu:      (token: string, config: RichMenuConfig) => Promise<string>;
+  uploadRichMenuImage: (token: string, richMenuId: string, buf: Buffer, mimeType: string) => Promise<void>;
+  setDefaultRichMenu:  (token: string, richMenuId: string) => Promise<void>;
+  getDefaultRichMenuId:(token: string) => Promise<string | null>;
+  richMenuExists:      (token: string, richMenuId: string) => Promise<boolean>;
+  richMenuImageExists: (token: string, richMenuId: string) => Promise<boolean>;
+  deleteRichMenu:      (token: string, richMenuId: string) => Promise<void>;
+  /** 画像 URL から本体を取る。size / mime の検証はこの外で行う。 */
+  fetchImage:          (url: string) => Promise<{ buffer: Buffer; mimeType: string }>;
+}
+
+const defaultDeps: RichMenuApplyDeps = {
+  createRichMenu,
+  uploadRichMenuImage: (t, id, buf, mime) => uploadRichMenuImage(t, id, buf, mime),
+  setDefaultRichMenu,
+  getDefaultRichMenuId,
+  richMenuExists: async (t, id) => (await getRichMenuStatus(t, id)) !== null,
+  richMenuImageExists,
+  deleteRichMenu,
+  fetchImage: async (url) => {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`画像の取得に失敗しました (HTTP ${res.status})`);
+    const ct = res.headers.get("content-type") ?? "";
+    const mimeType = ct.includes("png") ? "image/png" : ct.includes("jpeg") || ct.includes("jpg") ? "image/jpeg" : ct;
+    return { buffer: Buffer.from(await res.arrayBuffer()), mimeType };
+  },
+};
+
+/** best-effort の後始末。失敗しても throw せず結果を返す（primary error を隠さない）。 */
+async function compensate(
+  label: string,
+  prefix: string,
+  fn: () => Promise<void>,
+): Promise<RichMenuCompensation> {
+  try {
+    await fn();
+    console.log(`${prefix} ${label} ok`);
+    return { attempted: true, ok: true };
+  } catch (e) {
+    const error = e instanceof Error ? e.message : String(e);
+    // secondary error。primary error を上書きしないよう戻り値に載せるだけ。
+    console.warn(`${prefix} ${label} 失敗（secondary）: ${error}`);
+    return { attempted: true, ok: false, error };
+  }
 }
 
 /**
  * RichMenuConfig（DB または Sheets から構築済み）を LINE に登録・適用する共通関数。
  *
- * 処理フロー:
- *   1. oldLineRichMenuId があれば旧メニューを LINE から削除（失敗は無視）
- *   2. LINE API にメニューを登録 → lineRichMenuId 取得
- *   3. imageUrl があれば画像を fetch してアップロード（失敗は非致命的）
- *   4. setDefault = true（デフォルト）であれば全ユーザーへ適用
+ * ## 順序（2026-08-19 の本番障害を受けて変更）
  *
- * @param params.token              チャンネルアクセストークン
- * @param params.config             LINE RichMenuConfig
- * @param params.imageUrl           背景画像 URL（null/undefined = スキップ）
- * @param params.oldLineRichMenuId  既存 LINE メニュー ID（あれば削除）
- * @param params.setDefault         デフォルト設定するか（デフォルト: true）
- * @param params.logPrefix          ログ識別子（例: "[apply]" / "[sync]"）
+ * 旧実装は **最初に旧メニューを削除**し、**画像アップロード失敗を console.warn で無視**して
+ * default 化へ進んでいた。その結果、画像が 1MB 超（3.09MB）だったケースで
+ *
+ *   旧 delete → 新 create → 画像 413（warn のみ）→ setDefault 400 → route が 500
+ *   → DB 更新に到達せず
+ *
+ * となり、**LINE default = なし / DB = 既に削除済みの ID** という状態が固定された。
+ * 利用者にリッチメニューが表示されなくなった。
+ *
+ * 現在の順序:
+ *
+ *   1. 旧メニューが LINE に存在するか確認（stale 参照なら以後 delete を試みない）
+ *      + 現在の LINE default を保持（rollback 用）
+ *   2. 画像を取得して **サイズ / MIME を送信前に検証**（1MB 超はここで確定的に失敗させる）
+ *   3. 新メニュー create
+ *   4. 画像 upload —— **失敗は致命的**。ここで中断し、新メニューを cleanup する
+ *   5. 新メニューの read-back（存在 + 画像あり）
+ *   6. setDefault
+ *   7. default の read-back（setDefault の 200 だけを根拠にしない）
+ *   8. persist（DB 更新。呼び出し側が渡した場合のみ。ここで失敗したら旧 default へ rollback）
+ *   9. 旧メニュー delete —— **置き換え成功を確認したあとの cleanup**
+ *
+ * 外部 API と DB を ACID にはできないので、狙いは
+ * 「安全な順序 + 補償動作 + read-back 検証」であって transaction ではない。
+ *
+ * **新メニューが完全に利用可能になるまで、利用中の旧メニューは絶対に削除しない。**
+ *
+ * @param params.persist DB 更新。setDefault + read-back の成功後に呼ばれる。
+ *                       失敗したら旧 default へ戻し、新メニューを cleanup してから throw する。
  */
 export async function applyRichMenuConfig(params: {
   token:              string;
@@ -413,71 +591,231 @@ export async function applyRichMenuConfig(params: {
   oldLineRichMenuId?: string | null;
   setDefault?:        boolean;
   logPrefix?:         string;
+  persist?:           (lineRichMenuId: string) => Promise<void>;
+  deps?:              Partial<RichMenuApplyDeps>;
 }): Promise<ApplyRichMenuResult> {
   const prefix = params.logPrefix ?? "[applyRichMenuConfig]";
   const setDefault = params.setDefault !== false; // デフォルト true
+  const d: RichMenuApplyDeps = { ...defaultDeps, ...params.deps };
+  const warnings: string[] = [];
+  const oldId = params.oldLineRichMenuId ?? null;
 
-  // ── 1. 旧メニュー削除 ──
-  if (params.oldLineRichMenuId) {
-    console.log(`${prefix} 旧メニュー削除: ${params.oldLineRichMenuId}`);
+  const log = (stage: RichMenuApplyStage | "start" | "done", fields: Record<string, unknown>) => {
+    // structured / grep 可能な 1 行ログ。token 等の秘匿情報は絶対に含めない。
+    console.log(`${prefix} stage=${stage} ${Object.entries(fields)
+      .filter(([, v]) => v !== undefined)
+      .map(([k, v]) => `${k}=${typeof v === "string" ? v : JSON.stringify(v)}`)
+      .join(" ")}`);
+  };
+
+  // ── 1. 旧メニューの実在確認 + 現 default の把握（reconciliation / rollback 準備） ──
+  //     DB が指す ID が LINE から消えていることがある（過去の apply 途中失敗）。
+  //     その場合に delete を試みても意味がないので、事前に分けておく。
+  let oldMenuMissingOnLine = false;
+  if (oldId) {
     try {
-      await deleteRichMenu(params.token, params.oldLineRichMenuId);
+      const exists = await d.richMenuExists(params.token, oldId);
+      oldMenuMissingOnLine = !exists;
     } catch (e) {
-      console.warn(`${prefix} 旧メニュー削除スキップ（既に削除済み？）:`, e);
+      // 確認できないときは「存在するかもしれない」に倒す（消しに行かない側が安全）。
+      warnings.push(`旧メニューの存在確認に失敗: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
-
-  // ── 2. 新メニュー登録 ──
-  console.log(`${prefix} LINE API: メニュー登録 size=${params.config.size.width}x${params.config.size.height} areas=${params.config.areas.length}`);
-  const lineRichMenuId = await createRichMenu(params.token, params.config);
-  console.log(`${prefix} LINE API: 登録成功 lineRichMenuId=${lineRichMenuId}`);
-
-  // ── 3. 画像アップロード ──
-  let imageUploaded = false;
-  if (params.imageUrl) {
-    console.log(`${prefix} 画像アップロード: ${params.imageUrl}`);
-    try {
-      const imgRes = await fetch(params.imageUrl);
-      if (!imgRes.ok) {
-        console.warn(`${prefix} 画像 fetch 失敗 HTTP ${imgRes.status}: ${params.imageUrl}`);
-      } else {
-        const buf      = Buffer.from(await imgRes.arrayBuffer());
-        const ct       = imgRes.headers.get("content-type") ?? "image/jpeg";
-        const mimeType = ct.includes("png") ? "image/png" : "image/jpeg";
-        const uploadRes = await fetch(
-          `${LINE_API_DATA_BASE}/richmenu/${lineRichMenuId}/content`,
-          {
-            method:  "POST",
-            headers: {
-              Authorization:  `Bearer ${params.token}`,
-              "Content-Type": mimeType,
-            },
-            body: buf,
-          }
-        );
-        if (!uploadRes.ok) {
-          console.warn(
-            `${prefix} 画像アップロード失敗 HTTP ${uploadRes.status}:`,
-            await uploadRes.text()
-          );
-        } else {
-          imageUploaded = true;
-          console.log(`${prefix} 画像アップロード成功`);
-        }
-      }
-    } catch (imgErr) {
-      console.warn(`${prefix} 画像アップロード例外（非致命的）:`, imgErr);
-    }
-  } else {
-    console.log(`${prefix} 画像なし（スキップ）`);
-  }
-
-  // ── 4. デフォルト設定 ──
+  let previousDefaultId: string | null = null;
   if (setDefault) {
-    console.log(`${prefix} デフォルト設定: ${lineRichMenuId}`);
-    await setDefaultRichMenu(params.token, lineRichMenuId);
-    console.log(`${prefix} デフォルト設定完了`);
+    try {
+      previousDefaultId = await d.getDefaultRichMenuId(params.token);
+    } catch (e) {
+      warnings.push(`現在の default 取得に失敗: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+  log("start", { oldRichMenuId: oldId ?? "none", oldMenuMissingOnLine, previousDefaultId: previousDefaultId ?? "none",
+                 setDefault, areas: params.config.areas.length,
+                 size: `${params.config.size.width}x${params.config.size.height}` });
+
+  // ── 2. 画像を取得して送信前に検証（1MB 超 / 非対応 MIME はここで確定的に失敗） ──
+  let image: { buffer: Buffer; mimeType: string } | null = null;
+  if (params.imageUrl) {
+    try {
+      image = await d.fetchImage(params.imageUrl);
+    } catch (e) {
+      log("image_fetch", { result: "error" });
+      throw new RichMenuApplyError({
+        stage: "image_fetch",
+        operatorMessage: "リッチメニュー画像を取得できませんでした。画像を再アップロードしてください。",
+        cause: e,
+      });
+    }
+    log("image_validation", { bytes: image.buffer.byteLength, mimeType: image.mimeType,
+                              limitBytes: RICH_MENU_IMAGE_MAX_BYTES });
+    if (image.buffer.byteLength > RICH_MENU_IMAGE_MAX_BYTES) {
+      const mb = formatBytesAsMb(image.buffer.byteLength);
+      throw new RichMenuApplyError({
+        stage: "image_validation",
+        operatorMessage:
+          `リッチメニュー画像は${RICH_MENU_IMAGE_MAX_LABEL}以下にしてください（現在 ${mb}MB）。` +
+          `LINE公式アカウントのリッチメニュー画像は${RICH_MENU_IMAGE_MAX_LABEL}が上限です。`,
+      });
+    }
+    if (!RICH_MENU_IMAGE_MIME_TYPES.includes(image.mimeType as RichMenuImageMimeType)) {
+      throw new RichMenuApplyError({
+        stage: "image_validation",
+        operatorMessage: `リッチメニュー画像は PNG または JPEG にしてください（現在 ${image.mimeType || "不明"}）。`,
+      });
+    }
   }
 
-  return { lineRichMenuId, imageUploaded };
+  // ── 3. 新メニュー create（失敗 → 旧 default / DB はそのまま） ──
+  let lineRichMenuId: string;
+  try {
+    lineRichMenuId = await d.createRichMenu(params.token, params.config);
+  } catch (e) {
+    log("create", { result: "error" });
+    throw new RichMenuApplyError({
+      stage: "create",
+      operatorMessage: "リッチメニューの作成に失敗しました。時間をおいて再度お試しください。",
+      cause: e,
+    });
+  }
+  log("create", { result: "ok", newRichMenuId: lineRichMenuId });
+
+  /** 新メニューを片付けてから throw する（旧 default は触らない）。 */
+  const failAfterCreate = async (stage: RichMenuApplyStage, operatorMessage: string, cause?: unknown): Promise<never> => {
+    const cleanup = await compensate("新メニュー cleanup", prefix,
+      () => d.deleteRichMenu(params.token, lineRichMenuId));
+    log(stage, { result: "error", newRichMenuId: lineRichMenuId, cleanup: cleanup.ok ? "ok" : "failed" });
+    throw new RichMenuApplyError({ stage, operatorMessage, cause, cleanup, newLineRichMenuId: lineRichMenuId });
+  };
+
+  // ── 4. 画像 upload（失敗は致命的。ここから setDefault へ進ませない） ──
+  let imageUploaded = false;
+  if (image) {
+    try {
+      await d.uploadRichMenuImage(params.token, lineRichMenuId, image.buffer, image.mimeType);
+      imageUploaded = true;
+    } catch (e) {
+      await failAfterCreate("image_upload",
+        "リッチメニュー画像のアップロードに失敗しました。画像サイズ（1MB以下）と形式（PNG / JPEG）を確認してください。", e);
+    }
+    log("image_upload", { result: "ok", bytes: image.buffer.byteLength });
+  } else {
+    log("image_upload", { result: "skipped", reason: "no_image" });
+  }
+
+  // ── 5. 新メニューの read-back（存在 + 画像あり）。画像なしのメニューは default 化できない ──
+  try {
+    const exists = await d.richMenuExists(params.token, lineRichMenuId);
+    if (!exists) {
+      await failAfterCreate("verify_new", "作成したリッチメニューが LINE 上で確認できませんでした。再度お試しください。");
+    }
+    if (image) {
+      const hasImage = await d.richMenuImageExists(params.token, lineRichMenuId);
+      if (!hasImage) {
+        await failAfterCreate("verify_new",
+          "リッチメニュー画像が LINE 上で確認できませんでした。画像サイズ（1MB以下）と形式（PNG / JPEG）を確認してください。");
+      }
+    }
+  } catch (e) {
+    if (e instanceof RichMenuApplyError) throw e;
+    await failAfterCreate("verify_new", "リッチメニューの確認に失敗しました。時間をおいて再度お試しください。", e);
+  }
+  log("verify_new", { result: "ok", newRichMenuId: lineRichMenuId, imageUploaded });
+
+  // ── 6-7. default 適用 + read-back ──
+  if (setDefault) {
+    try {
+      await d.setDefaultRichMenu(params.token, lineRichMenuId);
+    } catch (e) {
+      await failAfterCreate("set_default",
+        "リッチメニューの適用（デフォルト設定）に失敗しました。旧メニューはそのまま維持されています。", e);
+    }
+    log("set_default", { result: "ok", newRichMenuId: lineRichMenuId });
+
+    // setDefault の 200 だけを成功根拠にしない。
+    let appliedId: string | null = null;
+    try {
+      appliedId = await d.getDefaultRichMenuId(params.token);
+    } catch (e) {
+      warnings.push(`default の read-back に失敗: ${e instanceof Error ? e.message : String(e)}`);
+    }
+    if (appliedId !== null && appliedId !== lineRichMenuId) {
+      // 反映されていない。旧 default へ戻して新メニューを片付ける。
+      const rollback = await restoreDefault(d, params.token, previousDefaultId, prefix);
+      const cleanup = await compensate("新メニュー cleanup", prefix,
+        () => d.deleteRichMenu(params.token, lineRichMenuId));
+      log("verify_default", { result: "mismatch", expected: lineRichMenuId, actual: appliedId ?? "none",
+                              rollback: rollback.ok ? "ok" : "failed", cleanup: cleanup.ok ? "ok" : "failed" });
+      throw new RichMenuApplyError({
+        stage: "verify_default",
+        operatorMessage: "リッチメニューの適用が LINE 側で確認できませんでした。旧メニューを維持しています。",
+        message: `default mismatch: expected=${lineRichMenuId} actual=${appliedId ?? "none"}`,
+        rollback, cleanup, newLineRichMenuId: lineRichMenuId,
+      });
+    }
+    log("verify_default", { result: "ok", defaultRichMenuId: appliedId ?? "unverified" });
+  }
+
+  // ── 8. DB 更新（呼び出し側が persist を渡した場合のみ） ──
+  //     ここで失敗すると「LINE default = 新 / DB = 旧」になるため、旧 default へ戻す。
+  if (params.persist) {
+    try {
+      await params.persist(lineRichMenuId);
+    } catch (e) {
+      const rollback = setDefault
+        ? await restoreDefault(d, params.token, previousDefaultId, prefix)
+        : { attempted: false, ok: false };
+      const cleanup = await compensate("新メニュー cleanup", prefix,
+        () => d.deleteRichMenu(params.token, lineRichMenuId));
+      log("persist", { result: "error", newRichMenuId: lineRichMenuId,
+                       rollback: rollback.attempted ? (rollback.ok ? "ok" : "failed") : "skipped",
+                       cleanup: cleanup.ok ? "ok" : "failed" });
+      throw new RichMenuApplyError({
+        stage: "persist",
+        operatorMessage: rollback.attempted && !rollback.ok
+          ? "リッチメニューの保存に失敗し、旧メニューへの復帰も失敗しました。運営に連絡してください。"
+          : "リッチメニューの保存に失敗しました。旧メニューを維持しています。",
+        cause: e, rollback, cleanup, newLineRichMenuId: lineRichMenuId,
+      });
+    }
+    log("persist", { result: "ok", newRichMenuId: lineRichMenuId });
+  }
+
+  // ── 9. 旧メニュー delete（置き換え成功を確認したあとの cleanup） ──
+  //     ここでの失敗はユーザー影響なし。apply 自体は成功として返す。
+  let oldMenuDeleted = false;
+  if (oldId && oldId !== lineRichMenuId) {
+    if (oldMenuMissingOnLine) {
+      log("done", { oldMenuDelete: "skipped", reason: "not_on_line", oldRichMenuId: oldId });
+    } else {
+      const del = await compensate(`旧メニュー削除 ${oldId}`, prefix,
+        () => d.deleteRichMenu(params.token, oldId));
+      oldMenuDeleted = del.ok;
+      if (!del.ok) warnings.push(`旧リッチメニューの削除に失敗しました（表示への影響はありません）: ${del.error}`);
+    }
+  }
+
+  log("done", { result: "ok", newRichMenuId: lineRichMenuId, oldRichMenuId: oldId ?? "none",
+                oldMenuDeleted, imageUploaded, warnings: warnings.length });
+
+  return { lineRichMenuId, imageUploaded, oldLineRichMenuId: oldId, oldMenuDeleted,
+           oldMenuMissingOnLine, warnings: warnings.length ? warnings : undefined };
+}
+
+/** 旧 default へ戻す補償動作。旧 ID が無ければ何もしない（default を解除はしない）。 */
+async function restoreDefault(
+  d: RichMenuApplyDeps,
+  token: string,
+  previousDefaultId: string | null,
+  prefix: string,
+): Promise<RichMenuCompensation> {
+  if (!previousDefaultId) {
+    // 元から default が無かった場合は「戻す先」が無い。解除もしない（余計な変更をしない）。
+    console.warn(`${prefix} rollback スキップ: 旧 default が無い`);
+    return { attempted: false, ok: false };
+  }
+  return compensate(`旧 default へ復帰 ${previousDefaultId}`, prefix, async () => {
+    const exists = await d.richMenuExists(token, previousDefaultId);
+    if (!exists) throw new Error(`旧 default が LINE 上に存在しない: ${previousDefaultId}`);
+    await d.setDefaultRichMenu(token, previousDefaultId);
+  });
 }

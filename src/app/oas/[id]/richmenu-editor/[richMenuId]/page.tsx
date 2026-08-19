@@ -7,6 +7,7 @@ import { Breadcrumb } from "@/components/Breadcrumb";
 import { useToast } from "@/components/Toast";
 import { resolveDestinationUrlFromApi } from "@/lib/destination-url-builder";
 import { ImageUploadField } from "@/components/ImageUploadField";
+import { RICH_MENU_IMAGE_MAX_BYTES, RICH_MENU_IMAGE_MAX_LABEL } from "@/lib/constants/richmenu";
 import type { RichMenuWithAreas, RichMenuArea, CreateRichMenuAreaBody, RichMenuSize, LineDestination } from "@/types";
 
 // ────────────────────────────────────────────────
@@ -777,6 +778,9 @@ export default function RichMenuEditorPage() {
                 <span style={{ fontWeight: 600, color: "#374151", display: "block", marginBottom: 4 }}>
                   リッチメニュー画像
                 </span>
+                {/* リッチメニュー画像は LINE 側の上限が 1MB（CMS 全体の 5MB とは別）。
+                    ここで弾かないと、保存はできるのに「適用」で必ず失敗する。
+                    サーバー側（applyRichMenuConfig）でも同じ上限を検証している。 */}
                 <ImageUploadField
                   value={imageUrl}
                   onChange={(next) => setImageUrl(next)}
@@ -784,8 +788,12 @@ export default function RichMenuEditorPage() {
                   previewMaxHeight={140}
                   placeholder="https://example.com/menu.png"
                   urlInputCollapsibleLabel="URLで指定する"
-                  supportedFormatsText={`PNG / JPEG。推奨サイズ ${size === "full" ? "2500×1686" : "2500×843"}px（最大 5MB）`}
-                  errors={{ uploadFailed: "画像のアップロードに失敗しました。時間をおいて再度お試しください。" }}
+                  clientMaxBytes={RICH_MENU_IMAGE_MAX_BYTES}
+                  supportedFormatsText={`PNG / JPEG。推奨サイズ ${size === "full" ? "2500×1686" : "2500×843"}px（最大 ${RICH_MENU_IMAGE_MAX_LABEL}）。LINE公式アカウントのリッチメニュー画像は${RICH_MENU_IMAGE_MAX_LABEL}以下です`}
+                  errors={{
+                    tooLarge: `リッチメニュー画像は${RICH_MENU_IMAGE_MAX_LABEL}以下にしてください。LINE公式アカウントのリッチメニュー画像は${RICH_MENU_IMAGE_MAX_LABEL}が上限です。`,
+                    uploadFailed: "画像のアップロードに失敗しました。時間をおいて再度お試しください。",
+                  }}
                 />
 
                 {/* 画像の実寸から推定したサイズが選択中サイズと食い違う場合の警告（クリックで切替）。 */}
