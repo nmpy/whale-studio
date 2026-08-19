@@ -62,3 +62,41 @@ export function buildWorkHomeLiffUrl(args: {
   if (args.workId)       return `https://liff.line.me/${id}/work/${args.workId}`;
   return "";
 }
+
+/** 管理画面「実機で確認する」の LIFF ページ用 sub-path。
+ *  Endpoint URL = `{BASE}/liff` を前提にするため `/liff` は含めない。
+ *  publicId が揃えば短縮 `/w/{wp}/p/{pp}`、無ければ旧 `/work/{w}/pages/{p}`。 */
+export function buildLiffPageSubPath(args: {
+  workId: string;
+  workPublicId?: string | null;
+  pageId?: string | null;
+  pagePublicId?: string | null;
+}): string {
+  const { workId, workPublicId, pageId, pagePublicId } = args;
+  if (workPublicId && pagePublicId) return `/w/${workPublicId}/p/${pagePublicId}`;
+  if (workPublicId)                 return `/w/${workPublicId}`;
+  if (pageId)                       return `/work/${workId}/pages/${pageId}`;
+  return `/work/${workId}`;
+}
+
+/** 個別 LIFF ページを **LINE アプリで開く** 実機 LIFF URL。
+ *  形式: `https://liff.line.me/{liffId}{subpath}`。
+ *
+ *  liffId は **必ず対象 OA の Oa.liffId** を渡すこと。
+ *  `process.env.NEXT_PUBLIC_LIFF_ID` への fallback は**しない**（この関数も呼び出し側も）。
+ *  理由（本番障害・D.O.T）: NEXT_PUBLIC_LIFF_ID はテスト用ログインチャネルの LIFF を指しており、
+ *  そこから生成した URL をリッチメニューに保存すると、プレイヤーが**別 OA の同意画面**を踏み、
+ *  そのチャネルにリンクされた別公式アカウントを友だち追加してしまう。
+ *
+ *  liffId 不在なら空文字（誤った ID で URL を作らない）。 */
+export function buildLiffPageDeviceUrl(args: {
+  liffId?: string | null;
+  workId: string;
+  workPublicId?: string | null;
+  pageId?: string | null;
+  pagePublicId?: string | null;
+}): string {
+  const id = args.liffId?.trim();
+  if (!id || !args.workId) return "";
+  return `https://liff.line.me/${id}${buildLiffPageSubPath(args)}`;
+}
