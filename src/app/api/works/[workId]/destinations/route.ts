@@ -12,10 +12,20 @@ import { requirePlanFeature } from "@/lib/plan-guard";
 import { FEATURE } from "@/lib/constants/plans";
 import { createDestinationSchema, formatZodErrors } from "@/lib/validations";
 import { toDestinationResponse } from "@/lib/destination-utils";
+import { getLiffIdForUrlGeneration } from "@/lib/liff/config";
 import { getDestinationUsageCounts } from "@/lib/destination-usage-utils";
 import { ZodError } from "zod";
 
 export const dynamic = "force-dynamic";
+
+/** URL 生成用に対象 OA の Oa.liffId を引く（env fallback なし）。
+ *  destination の resolved_url は運用者がリッチメニューへ保存するため、
+ *  誤 OA の LIFF が混入しないよう必ずこの経路で解決する。 */
+async function liffIdForOa(oaId: string): Promise<string | null> {
+  const oa = await prisma.oa.findUnique({ where: { id: oaId }, select: { liffId: true } });
+  return getLiffIdForUrlGeneration(oa);
+}
+
 
 // ── GET ─────────────────────────────────────────
 export const GET = withAuth(async (req, ctx, user) => {
@@ -27,16 +37,17 @@ export const GET = withAuth(async (req, ctx, user) => {
     const check = await requireRole(oaId, user.id, "viewer");
     if (!check.ok) return check.response;
 
-    const [destinations, usageCounts] = await Promise.all([
+    const [destinations, usageCounts, liffId] = await Promise.all([
       prisma.lineDestination.findMany({
         where: { workId },
         orderBy: [{ createdAt: "asc" }],
       }),
       getDestinationUsageCounts(workId),
+      liffIdForOa(oaId),
     ]);
 
     return ok(destinations.map((d) => ({
-      ...toDestinationResponse(d),
+      ...toDestinationResponse(d, { liffId }),
       usage_count: usageCounts[d.id] ?? 0,
     })));
   } catch (err) {
@@ -83,7 +94,7 @@ export const POST = withAuth(async (req, ctx, user) => {
       },
     });
 
-    return created(toDestinationResponse(dest));
+    return created(toDestinationResponse(dest, { liffId: await liffIdForOa(oaId) }));
   } catch (err) {
     if (err instanceof ZodError) {
       return badRequest("入力内容に誤りがあります", formatZodErrors(err));

@@ -10,8 +10,9 @@
 // 削除 confirm 文言・toast 文言・add/update/remove/toggleEnabled・editingDest/showModal
 // 遷移ロジック・テンプレ 4 button の key/文言/onClick も完全維持。
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
+import { fetchOaLiffId } from "@/lib/api-client";
 import { Breadcrumb } from "@/components/Breadcrumb";
 import { InlineWhaleLoader } from "@/components/ui/InlineWhaleLoader";
 import { useToast } from "@/components/Toast";
@@ -52,6 +53,18 @@ export default function DestinationsPage() {
   // owner の「表示確認モード」を反映するため effectivePlan を使う。
   const { effectivePlan: planTier, loading: planLoading } = useAccessPreview(oaId);
   const planAccess = getPlanAccessState({ plan: planTier, featureKey: FEATURE.destinations });
+
+  // プレビューの liff URL 生成用に対象 OA の Oa.liffId を解決する（env fallback なし）。
+  // 既存の正規ヘルパー fetchOaLiffId を再利用し、独自の解決経路は増やさない。
+  const [oaLiffId, setOaLiffId] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    if (!oaId) { setOaLiffId(null); return; }
+    fetchOaLiffId(oaId)
+      .then((id) => { if (!cancelled) setOaLiffId(id?.trim() || null); })
+      .catch(() => { if (!cancelled) setOaLiffId(null); });
+    return () => { cancelled = true; };
+  }, [oaId]);
 
   const dest = useDestinations(workId, {
     onSuccess: (msg) => showToast(msg, "success"),
@@ -188,6 +201,7 @@ export default function DestinationsPage() {
       {showModal && (
         <DestinationFormModal
           workId={workId}
+          liffId={oaLiffId}
           saving={dest.saving}
           editingDestination={editingDest}
           onSave={async (data, editingId) => {

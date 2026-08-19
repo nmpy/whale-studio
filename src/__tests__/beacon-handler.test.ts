@@ -282,6 +282,88 @@ describe("handleBeaconEvent", () => {
     expect((msgs[0] as { text: string }).text).toContain("圏内に入りました");
   });
 
+  it("destination(liff) は OA の Oa.liffId で URL を組む（env の共通 LIFF を使わない）", async () => {
+    // env にテスト用 LIFF が入っていても混入してはいけない。
+    const saved = process.env.NEXT_PUBLIC_LIFF_ID;
+    process.env.NEXT_PUBLIC_LIFF_ID = "2010049684-aJNy8Ljv";
+    try {
+      const prisma = makePrismaMock({
+        trigger: {
+          ...baseTrigger,
+          actionType: "destination",
+          actionPayload: { destination_id: "dest-liff" },
+        },
+        destination: {
+          id: "dest-liff",
+          workId: "work-1",
+          destinationType: "liff",
+          liffTargetType: null,
+          urlOrPath: null,
+          queryParamsJson: {},
+          isEnabled: true,
+        },
+      });
+      const { gw, reply } = makeLineMock();
+
+      const result = await handleBeaconEvent({
+        prisma: prisma as any,
+        oa: { ...OA, liffId: "2010632002-ZzzimCzc" },
+        event: makeEvent(),
+        line: gw,
+      });
+
+      expect(result.status).toBe("sent");
+      const [, msgs] = reply.mock.calls[0];
+      const text = (msgs[0] as { text: string }).text;
+      expect(text).toContain("https://liff.line.me/2010632002-ZzzimCzc?workId=work-1");
+      expect(text).not.toContain("2010049684");
+    } finally {
+      if (saved === undefined) delete process.env.NEXT_PUBLIC_LIFF_ID;
+      else process.env.NEXT_PUBLIC_LIFF_ID = saved;
+    }
+  });
+
+  it("destination(liff) で Oa.liffId 未設定なら送信しない（env へ落ちない）", async () => {
+    const saved = process.env.NEXT_PUBLIC_LIFF_ID;
+    process.env.NEXT_PUBLIC_LIFF_ID = "2010049684-aJNy8Ljv";
+    try {
+      const prisma = makePrismaMock({
+        trigger: {
+          ...baseTrigger,
+          actionType: "destination",
+          actionPayload: { destination_id: "dest-liff" },
+        },
+        destination: {
+          id: "dest-liff",
+          workId: "work-1",
+          destinationType: "liff",
+          liffTargetType: null,
+          urlOrPath: null,
+          queryParamsJson: {},
+          isEnabled: true,
+        },
+      });
+      const { gw, reply } = makeLineMock();
+
+      const result = await handleBeaconEvent({
+        prisma: prisma as any,
+        oa: { ...OA, liffId: null },
+        event: makeEvent(),
+        line: gw,
+      });
+
+      // 誤った LIFF URL を送るのではなく、設定不足として送信しない。
+      expect(result.status).toBe("failed");
+      const sentTexts = reply.mock.calls.flatMap(([, msgs]) =>
+        (msgs as { text?: string }[]).map((m) => m.text ?? ""));
+      expect(sentTexts.join("\n")).not.toContain("2010049684");
+      expect(sentTexts.join("\n")).not.toContain("liff.line.me");
+    } finally {
+      if (saved === undefined) delete process.env.NEXT_PUBLIC_LIFF_ID;
+      else process.env.NEXT_PUBLIC_LIFF_ID = saved;
+    }
+  });
+
   it("不正な action 設定は failed として記録する", async () => {
     const prisma = makePrismaMock({
       trigger: { ...baseTrigger, actionType: "send_message", actionPayload: { text: "" } },

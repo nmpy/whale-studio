@@ -447,9 +447,15 @@ function RichMenuDestinationSelect({ oaId, value, onChange }: {
             <span style={{ fontSize: 11, fontWeight: 500, color: "#374151" }}>{selected.name}</span>
             <code style={{ fontSize: 10, background: "#e5e7eb", color: "#6b7280", padding: "1px 4px", borderRadius: 3 }}>{selected.key}</code>
           </div>
-          {resolvedUrl && (
+          {resolvedUrl ? (
             <p style={{ fontSize: 10, color: "#9ca3af", wordBreak: "break-all" }}>{resolvedUrl}</p>
-          )}
+          ) : selected.destination_type === "liff" ? (
+            /* Oa.liffId 未設定。env の共通 LIFF で代用せず、設定不足として明示する。
+               ここで誤った LIFF URL を出すと、そのままリッチメニューへ保存され本番に焼き付く。 */
+            <p style={{ fontSize: 10, color: "#b45309", wordBreak: "break-all" }}>
+              このLINE公式アカウントにはLIFFが設定されていません。設定 → LIFF設定 から登録してください。
+            </p>
+          ) : null}
         </div>
       )}
       <p style={{ fontSize: 10, color: "#9ca3af", marginTop: 4 }}>

@@ -14,6 +14,8 @@ import type { DestinationType, LiffTargetType } from "@/types";
 
 interface Props {
   workId: string;
+  /** 対象 OA の Oa.liffId。null/未指定なら liff 型は「LIFF未設定」を表示する（env fallback しない）。 */
+  liffId?: string | null;
   destinationType: DestinationType;
   liffTargetType?: LiffTargetType | null;
   urlOrPath?: string | null;
@@ -21,7 +23,7 @@ interface Props {
 }
 
 export function DestinationUrlPreview({
-  workId, destinationType, liffTargetType, urlOrPath, queryParams,
+  workId, liffId, destinationType, liffTargetType, urlOrPath, queryParams,
 }: Props) {
   // 空キーを除外してURL生成
   const cleanParams: Record<string, string> = {};
@@ -35,11 +37,11 @@ export function DestinationUrlPreview({
     urlOrPath,
     queryParamsJson: cleanParams,
     workId,
-  });
+  }, { liffId });
 
   if (!resolved) {
     const reason = destinationType === "liff"
-      ? "NEXT_PUBLIC_LIFF_ID が未設定です"
+      ? "このLINE公式アカウントにはLIFFが設定されていません。設定 → LIFF設定 から登録してください。"
       : destinationType === "internal_url"
       ? "パスを入力してください"
       : "URLを入力してください";

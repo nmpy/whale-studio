@@ -13,6 +13,7 @@ import type { PrismaClient } from "@prisma/client";
 import { normalizeBeaconHwid, InvalidBeaconHwidError } from "@/lib/beacon-hwid";
 import type { LineMessage } from "@/lib/line";
 import { resolveDestinationUrl } from "@/lib/destination-url-builder";
+import { getLiffIdForUrlGeneration } from "@/lib/liff/config";
 
 // ────────────────────────────────────────────────
 // 型
@@ -38,6 +39,12 @@ export type LineBeaconEvent = {
 export type BeaconOaContext = {
   id: string;
   channelAccessToken: string;
+  /**
+   * この OA の LIFF アプリ ID（Oa.liffId）。destination(liff) の URL 生成に使う。
+   * env の共通 LIFF へフォールバックしない（別 OA の LIFF URL を送らないため）。
+   * 未設定なら liff 型 destination は URL 生成不能として送信をスキップする。
+   */
+  liffId?: string | null;
   /** OA サービス停止中（Oa.serviceSuspendedAt）。非 null なら送信しない。 */
   serviceSuspendedAt?: Date | null;
   /**
@@ -92,6 +99,7 @@ type PrismaLike = Pick<PrismaClient, "beaconTrigger" | "beaconEventLog" | "lineD
  */
 async function buildActionMessages(
   prisma: PrismaLike,
+  oa: Pick<BeaconOaContext, "liffId">,
   trigger: {
     actionType: string;
     actionPayload: unknown;
@@ -124,13 +132,16 @@ async function buildActionMessages(
         where: { id: destinationId },
       });
       if (!dest || !dest.isEnabled) return null;
+      // liff 型の URL は**この OA の Oa.liffId** で組む（env の共通 LIFF は使わない）。
+      // destination は必ずこの OA 配下の Work に属するので、oa.liffId が正しい正本。
+      // 解決できなければ resolveDestinationUrl が null を返し、下の !url で送信しない。
       const url = resolveDestinationUrl({
         destinationType: dest.destinationType,
         liffTargetType:  dest.liffTargetType,
         urlOrPath:       dest.urlOrPath,
         queryParamsJson: dest.queryParamsJson as Record<string, string>,
         workId:          dest.workId,
-      });
+      }, { liffId: getLiffIdForUrlGeneration(oa) });
       if (!url) return null;
       const text = typeof payload.text === "string" && payload.text.trim()
         ? `${payload.text.trim()}\n${url}`
@@ -379,7 +390,7 @@ export async function handleBeaconEvent(args: {
   // ── 7. アクション実行 ──
   let messages: LineMessage[] | null;
   try {
-    messages = await buildActionMessages(prisma, {
+    messages = await buildActionMessages(prisma, oa, {
       actionType:    trig.actionType,
       actionPayload: trig.actionPayload,
       workId:        trig.workId,

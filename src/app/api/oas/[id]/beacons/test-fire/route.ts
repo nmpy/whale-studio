@@ -41,7 +41,7 @@ export const POST = withAuth<{ id: string; beaconId?: string }>(async (req, ctx,
 
     const oa = await prisma.oa.findUnique({
       where: { id: oaId },
-      select: { id: true, title: true, channelAccessToken: true, serviceSuspendedAt: true },
+      select: { id: true, title: true, channelAccessToken: true, serviceSuspendedAt: true, liffId: true },
     });
     if (!oa) return notFound("OA");
 
@@ -71,6 +71,8 @@ export const POST = withAuth<{ id: string; beaconId?: string }>(async (req, ctx,
         serviceSuspendedAt: oa.serviceSuspendedAt,
         // 疑似発火は platform admin 専用のため、プランによる制限はかけない（platform admin は常に Pro 相当）。
         planAllowed: true,
+        // destination(liff) の URL 生成用。本番 webhook と同じ経路を通す。
+        liffId: oa.liffId,
       },
       event,
       isTest: true,
