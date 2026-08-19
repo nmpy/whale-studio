@@ -2272,6 +2272,8 @@ export type LiffTargetType = "work_main" | "custom";
 export interface LineDestination {
   id:                string;
   work_id:           string;
+  /** Work の公開URL用短縮ID。canonical `/w/{work_public_id}` を組むのに使う（API が返す）。 */
+  work_public_id?:   string | null;
   key:               string;
   name:              string;
   description:       string | null;

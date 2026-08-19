@@ -17,6 +17,8 @@ export interface UseDestinationsReturn {
   loading: boolean;
   saving: boolean;
   workTitle: string;
+  /** Work の公開URL用短縮ID。canonical `/w/{workPublicId}` の生成に使う。 */
+  workPublicId: string | null;
 
   add: (data: DestinationFormData) => Promise<boolean>;
   update: (id: string, data: DestinationFormData) => Promise<boolean>;
@@ -45,6 +47,8 @@ export function useDestinations(
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [workTitle, setWorkTitle] = useState("");
+  // 既存の workApi.get 結果から取る（追加リクエストは発生しない）。
+  const [workPublicId, setWorkPublicId] = useState<string | null>(null);
 
   const token = getDevToken();
   const { onSuccess, onError } = opts;
@@ -57,6 +61,7 @@ export function useDestinations(
       ]);
       setDestinations(dests);
       setWorkTitle(work.title);
+      setWorkPublicId(work.public_id ?? null);
     } catch {
       onError?.("読み込みに失敗しました");
     } finally {
@@ -131,7 +136,7 @@ export function useDestinations(
   }, [token, workId, reload, onError]);
 
   return {
-    destinations, loading, saving, workTitle,
+    destinations, loading, saving, workTitle, workPublicId,
     add, update, remove, toggleEnabled, reload,
   };
 }

@@ -42,6 +42,10 @@ const compactInputClass =
 
 interface Props {
   workId: string;
+  /** Work の公開URL用短縮ID。プレビューの canonical URL 生成に使う。 */
+  workPublicId?: string | null;
+  /** 対象 OA の Oa.liffId。プレビューの liff URL 生成に使う（env fallback しない）。 */
+  liffId?: string | null;
   saving: boolean;
   /** 編集時は既存データ。新規なら null */
   editingDestination: LineDestination | null;
@@ -49,7 +53,7 @@ interface Props {
   onClose: () => void;
 }
 
-export function DestinationFormModal({ workId, saving, editingDestination, onSave, onClose }: Props) {
+export function DestinationFormModal({ workId, workPublicId, liffId, saving, editingDestination, onSave, onClose }: Props) {
   const isEditing = !!editingDestination;
 
   // ── Form state ──
@@ -296,6 +300,8 @@ export function DestinationFormModal({ workId, saving, editingDestination, onSav
           {/* リアルタイム URL プレビュー */}
           <DestinationUrlPreview
             workId={workId}
+            workPublicId={workPublicId}
+            liffId={liffId}
             destinationType={destType}
             liffTargetType={destType === "liff" ? liffTarget : null}
             urlOrPath={destType !== "liff" ? urlOrPath : null}

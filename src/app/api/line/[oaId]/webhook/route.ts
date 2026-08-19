@@ -1776,6 +1776,8 @@ async function handleWebhook(req: NextRequest, oaId: string) {
             channelAccessToken: oa.channelAccessToken,
             serviceSuspendedAt: oa.serviceSuspendedAt,
             planAllowed: beaconPlanAllowed,
+            // destination(liff) の URL 生成用。env の共通 LIFF へ落とさないため必ず渡す。
+            liffId: oa.liffId,
           },
           event,
           resolveMessage: ({ messageId }) => loadBeaconMessageChain(messageId, oa.title ?? ""),
