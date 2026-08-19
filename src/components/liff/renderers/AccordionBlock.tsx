@@ -16,6 +16,7 @@ import { trackHintSiteEvent } from "@/lib/liff-analytics";
 import { recordLiffEvent } from "@/lib/liff-events";
 import { useLiffPlayerContext } from "@/components/liff/LiffPlayerContext";
 import { resolveAccordionItems, type AccordionItem } from "../accordion-items";
+import { accordionDepthStyle } from "../accordion-depth-style";
 import { HeadingBlock } from "./HeadingBlock";
 import { TextBlock } from "./TextBlock";
 import { WarningBlock } from "./WarningBlock";
@@ -36,6 +37,13 @@ import { DividerBlock } from "./DividerBlock";
 //   - 旧 settings.variant (default / dark / purple) は受け取りつつ無視
 //
 // 親 renderer 側で複数 accordion を縦に並べると、border-bottom が罫線として連続する。
+//
+// ネスト表現 (PR: accordion-nesting-ux):
+//   depth はこれまで analytics にしか渡っておらず className に一切使われていなかったため、
+//   「A の中の B」と「A の隣の B」が完全に同じ見た目になっていた。
+//   accordionDepthStyle(depth) で インデント + 縦ガイド線 + 見出しサイズ差 を与えて解消する。
+//   DOM 構造は変えない = 子 accordion は親 <button> の子孫ではなく、親パネル div 内の兄弟。
+//   （button in button を作らないための不変条件。テストで固定している）
 
 interface Props {
   title?: string | null;
@@ -49,7 +57,7 @@ interface Props {
 export function AccordionBlock(props: Props) {
   const items = resolveAccordionItems(props.settings.items);
   if (items.length > 0) {
-    return <AccordionMulti items={items} blockId={props.blockId} />;
+    return <AccordionMulti items={items} depth={props.depth ?? 1} blockId={props.blockId} />;
   }
   return <AccordionSingle {...props} />;
 }
@@ -59,6 +67,11 @@ function AccordionSingle({ title, settings, depth = 1, blockId }: Props) {
   const id = blockId || reactId;
   const playerCtx = useLiffPlayerContext();
   const headingText = settings.title?.trim() || title?.trim() || "";
+  const style = accordionDepthStyle(depth);
+  // 見出しレベルは depth に追従させる (L1=h3 / L2=h4 / L3=h5)。
+  // ページ = h2 (LiffSinglePageRenderer)、ブロック = h3 が既存の規約なので、
+  // accordion L1 は h3 のまま。ネストした分だけ 1 段下げる = ページ全体の outline を崩さない。
+  const Heading = style.headingTag;
 
   const [open, setOpen] = useState<boolean>(!!settings.default_open);
 
@@ -93,38 +106,45 @@ function AccordionSingle({ title, settings, depth = 1, blockId }: Props) {
   return (
     // 外側カード枠を持たない。border-bottom のみで隣接 accordion と区切る。
     // 開閉中も大きさが変わらないよう、本文 padding-top/bottom は固定値。
-    <section className="border-b border-[color:var(--liff-border)]">
-      <h3 className="m-0">
+    <section className={style.section}>
+      <Heading className="m-0">
         <button
           id={headerId}
           type="button"
           aria-expanded={open}
           aria-controls={panelId}
           onClick={toggle}
-          className="w-full flex items-center justify-between gap-3 text-left min-h-[60px] py-3 transition-colors active:bg-[color:var(--liff-surface-subtle)]"
+          className={`w-full flex items-center justify-between gap-3 text-left transition-colors active:bg-[color:var(--liff-surface-subtle)] ${style.header}`}
         >
-          <span className="text-[16px] font-bold leading-snug break-words flex-1 min-w-0 text-[color:var(--liff-primary-text)]">
+          <span className={`leading-snug break-words flex-1 min-w-0 text-[color:var(--liff-primary-text)] ${style.title}`}>
             {headingText || "（タイトル未設定）"}
           </span>
           <Chevron open={open} />
         </button>
-      </h3>
+      </Heading>
 
-      {open && (
-        <div
-          id={panelId}
-          role="region"
-          aria-labelledby={headerId}
-          className="pt-1 pb-5 flex flex-col gap-4"
-        >
-          {(settings.children ?? []).map((child, idx) => (
-            <NestedRenderer key={child.id ?? idx} child={child} depth={depth + 1} />
-          ))}
-          {(!settings.children || settings.children.length === 0) && (
-            <p className="text-[13px] text-[color:var(--liff-tertiary-text)]">（中身は未設定です）</p>
-          )}
-        </div>
-      )}
+      {/* 子孫を常時 mount したまま hidden で隠す = 親を閉じて開き直しても
+          子/孫の開閉 state が保持される（従来は {open && …} で unmount → リセットされていた）。
+          常時 mount の副作用は事前に監査済み:
+            - ImageBlock は loading="lazy"。display:none 配下は読み込まれない
+            - ButtonLinkBlock / 子 accordion の計測は click / toggle 時のみで mount 時に発火しない
+            - video / iframe / audio は accordion の子要素になり得ない（NestedRenderer に case が無い）
+          hidden 属性は Tailwind の display ユーティリティに負けるため、
+          閉じている間は panel の class（flex を含む）自体を外す。 */}
+      <div
+        id={panelId}
+        role="region"
+        aria-labelledby={headerId}
+        hidden={!open}
+        className={open ? style.panel : undefined}
+      >
+        {(settings.children ?? []).map((child, idx) => (
+          <NestedRenderer key={child.id ?? idx} child={child} depth={depth + 1} />
+        ))}
+        {(!settings.children || settings.children.length === 0) && (
+          <p className="text-[13px] text-[color:var(--liff-tertiary-text)]">（中身は未設定です）</p>
+        )}
+      </div>
     </section>
   );
 }
@@ -133,46 +153,54 @@ function AccordionSingle({ title, settings, depth = 1, blockId }: Props) {
 // 有効 item を縦に並べる。各 item は single と同じ見た目（border-bottom + 60px ヘッダ +
 // chevron）で、それぞれ独立に開閉（1つ開いても他は閉じない）。v1 は body=plain text のみ。
 // title / children は表示しない。分析イベント・排他 open・並び替えは後続。
-function AccordionMulti({ items, blockId }: { items: AccordionItem[]; blockId?: string }) {
+function AccordionMulti({ items, depth, blockId }: { items: AccordionItem[]; depth: number; blockId?: string }) {
   const reactId = useId();
   const baseId = blockId || reactId;
   return (
     <>
       {items.map((item, idx) => (
-        <AccordionItemRow key={idx} item={item} baseId={`${baseId}-${idx}`} />
+        <AccordionItemRow key={idx} item={item} depth={depth} baseId={`${baseId}-${idx}`} />
       ))}
     </>
   );
 }
 
-function AccordionItemRow({ item, baseId }: { item: AccordionItem; baseId: string }) {
+function AccordionItemRow({ item, depth, baseId }: { item: AccordionItem; depth: number; baseId: string }) {
   const [open, setOpen] = useState(false);
+  const style = accordionDepthStyle(depth);
+  const Heading = style.headingTag;
   const panelId  = `acc-panel-${baseId}`;
   const headerId = `acc-header-${baseId}`;
   return (
-    <section className="border-b border-[color:var(--liff-border)]">
-      <h3 className="m-0">
+    <section className={style.section}>
+      <Heading className="m-0">
         <button
           id={headerId}
           type="button"
           aria-expanded={open}
           aria-controls={panelId}
           onClick={() => setOpen((o) => !o)}
-          className="w-full flex items-center justify-between gap-3 text-left min-h-[60px] py-3 transition-colors active:bg-[color:var(--liff-surface-subtle)]"
+          className={`w-full flex items-center justify-between gap-3 text-left transition-colors active:bg-[color:var(--liff-surface-subtle)] ${style.header}`}
         >
-          <span className="text-[16px] font-bold leading-snug break-words flex-1 min-w-0 text-[color:var(--liff-primary-text)]">
+          <span className={`leading-snug break-words flex-1 min-w-0 text-[color:var(--liff-primary-text)] ${style.title}`}>
             {item.title.trim() || "（タイトル未設定）"}
           </span>
           <Chevron open={open} />
         </button>
-      </h3>
-      {open && (
-        <div id={panelId} role="region" aria-labelledby={headerId} className="pt-1 pb-5">
-          <p className="text-[14px] leading-[1.7] whitespace-pre-wrap break-words text-[color:var(--liff-primary-text)]">
-            {item.body}
-          </p>
-        </div>
-      )}
+      </Heading>
+      {/* items は本文が plain text 1 つだけなので、children 側のような入れ子は起きない。
+          open state 維持の方針だけ AccordionSingle と揃える。 */}
+      <div
+        id={panelId}
+        role="region"
+        aria-labelledby={headerId}
+        hidden={!open}
+        className={open ? "pt-1 pb-5" : undefined}
+      >
+        <p className="text-[14px] leading-[1.7] whitespace-pre-wrap break-words text-[color:var(--liff-primary-text)]">
+          {item.body}
+        </p>
+      </div>
     </section>
   );
 }

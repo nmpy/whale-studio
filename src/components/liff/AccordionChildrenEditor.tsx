@@ -2,16 +2,34 @@
 
 // src/components/liff/AccordionChildrenEditor.tsx
 // accordion ブロックの children を編集するインライン UI（再帰）
+//
+// このエディタの各インスタンスは「ある 1 つの accordion の children 配列」だけを受け持ち、
+// 変更は onChange で親へ返す（recursive immutable update）。
+// 親を指す path / parentId を自分で持たないため、階層をまたぐ取り違えが構造的に起きない。
+//
+// PR (accordion-nesting-ux) での変更点:
+//   - 追加ボタンに **追加先の accordion 名** を出す（「＋『ヒント1』の中に追加」）。
+//     ページ直下へ追加する導線（LiffAddBlockModal）と取り違えないようにするため。
+//   - 縦ガイド線 + インデントで「どの accordion の中身か」を視覚化する。
+//   - ネスト上限に達している場合、エラーを出してから気付くのではなく
+//     **追加ボタンの時点で disabled + 理由表示**にする。
+//     ただし上限に達しても text / image 等は追加できる（制限は accordion だけ）。
+//   - 削除確認に子孫数を出す。
 
 import { useState } from "react";
 import type { LiffBlockType, NestedLiffBlock, AccordionSettings } from "@/types";
 import { LIFF_MAX_ACCORDION_DEPTH } from "@/lib/validations";
 import { BLOCK_TYPE_REGISTRY } from "./block-type-registry";
 import { BlockSettingsForm } from "./block-settings-forms";
+import { countNestedBlocks } from "./accordion-tree";
+import { accordionEditorIndentClass } from "./accordion-depth-style";
 
+// accordion の子として追加できるブロック。
+// text ではなく free_text を使う（root の ADDABLE_BLOCK_TYPES と揃える。text は legacy 扱い）。
+// 既存の nested "text" ブロックは NestedRenderer / registry 側で従来どおり描画・編集できる。
 const NESTED_BLOCK_TYPES: LiffBlockType[] = [
   "heading",
-  "text",
+  "free_text",
   "warning",
   "image",
   "button_link",
@@ -24,14 +42,27 @@ function genId(): string {
   return `c_${Math.random().toString(36).slice(2)}_${Date.now()}`;
 }
 
+/** 子要素の表示名（削除確認・追加ボタンのラベルに使う）。 */
+function childLabel(item: NestedLiffBlock): string {
+  const entry = BLOCK_TYPE_REGISTRY[item.block_type];
+  if (item.block_type === "accordion") {
+    const s = (item.settings_json ?? {}) as AccordionSettings;
+    const t = s.title?.trim() || item.title?.trim();
+    if (t) return t;
+  }
+  return item.title?.trim() || entry?.label || item.block_type;
+}
+
 interface Props {
   items: NestedLiffBlock[];
   depth: number;
+  /** 追加先を明示するための、この children を持つ accordion の名前。 */
+  parentLabel: string;
   readOnly?: boolean;
   onChange: (next: NestedLiffBlock[]) => void;
 }
 
-export function AccordionChildrenEditor({ items, depth, readOnly, onChange }: Props) {
+export function AccordionChildrenEditor({ items, depth, parentLabel, readOnly, onChange }: Props) {
   const canNestAccordion = depth < LIFF_MAX_ACCORDION_DEPTH;
 
   const updateAt = (idx: number, patch: Partial<NestedLiffBlock>) => {
@@ -39,7 +70,18 @@ export function AccordionChildrenEditor({ items, depth, readOnly, onChange }: Pr
     onChange(next);
   };
   const removeAt = (idx: number) => {
-    if (!confirm("このブロックを削除しますか？")) return;
+    const target = items[idx];
+    const label = childLabel(target);
+    // 子孫がある場合だけ件数を出す（tree 構造上、親を消せば中身も消えるため）。
+    const descendants =
+      target.block_type === "accordion"
+        ? countNestedBlocks(((target.settings_json ?? {}) as AccordionSettings).children)
+        : 0;
+    const message =
+      descendants > 0
+        ? `「${label}」と、その中の ${descendants} 項目を削除します。よろしいですか？`
+        : `「${label}」を削除しますか？`;
+    if (!confirm(message)) return;
     onChange(items.filter((_, i) => i !== idx));
   };
   const moveItem = (idx: number, dir: "up" | "down") => {
@@ -68,9 +110,12 @@ export function AccordionChildrenEditor({ items, depth, readOnly, onChange }: Pr
   };
 
   return (
-    <div className="space-y-2">
+    // 縦ガイド線 + インデントで「ここは parentLabel の中身」を示す。
+    <div className={`space-y-2 border-l-2 border-gray-200 ${accordionEditorIndentClass(depth)}`}>
       {items.length === 0 && (
-        <p className="text-xs text-gray-400 px-1">子要素がまだありません。</p>
+        <p className="text-xs text-gray-400">
+          「{parentLabel}」の中はまだ空です。
+        </p>
       )}
       {items.map((child, idx) => (
         <ChildItem
@@ -79,7 +124,6 @@ export function AccordionChildrenEditor({ items, depth, readOnly, onChange }: Pr
           index={idx}
           total={items.length}
           depth={depth}
-          canNestAccordion={canNestAccordion}
           readOnly={readOnly}
           onUpdate={(patch) => updateAt(idx, patch)}
           onRemove={() => removeAt(idx)}
@@ -89,23 +133,35 @@ export function AccordionChildrenEditor({ items, depth, readOnly, onChange }: Pr
       ))}
 
       {!readOnly && (
-        <div className="flex flex-wrap gap-1.5 pt-1">
-          {NESTED_BLOCK_TYPES.map((t) => {
-            const entry = BLOCK_TYPE_REGISTRY[t];
-            const disabled = t === "accordion" && !canNestAccordion;
-            return (
-              <button
-                key={t}
-                type="button"
-                onClick={() => addChild(t)}
-                disabled={disabled}
-                title={disabled ? `accordion は最大 ${LIFF_MAX_ACCORDION_DEPTH} 階層までです` : undefined}
-                className="px-2.5 py-1 text-[11px] bg-brand-soft border border-brand/30 rounded-md text-brand-ink hover:bg-brand-mist disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                + {entry.icon} {entry.label}
-              </button>
-            );
-          })}
+        <div className="pt-1.5">
+          {/* 追加先を必ず名前で示す。ページ直下への追加 (LiffAddBlockModal) と混同させない。 */}
+          <p className="text-[11px] font-medium text-gray-600 mb-1">
+            ＋「{parentLabel}」の中に追加
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {NESTED_BLOCK_TYPES.map((t) => {
+              const entry = BLOCK_TYPE_REGISTRY[t];
+              const disabled = t === "accordion" && !canNestAccordion;
+              return (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => addChild(t)}
+                  disabled={disabled}
+                  className="px-2.5 py-1 text-[11px] bg-brand-soft border border-brand/30 rounded-md text-brand-ink hover:bg-brand-mist disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  + {entry.icon} {entry.label}
+                </button>
+              );
+            })}
+          </div>
+          {/* 上限は「保存しようとしてエラー」ではなく、この時点で理由まで見えるようにする。 */}
+          {!canNestAccordion && (
+            <p className="text-[11px] text-amber-600 mt-1">
+              アコーディオンは最大 {LIFF_MAX_ACCORDION_DEPTH} 階層までのため、ここには追加できません。
+              テキストや画像は追加できます。
+            </p>
+          )}
         </div>
       )}
     </div>
@@ -113,14 +169,13 @@ export function AccordionChildrenEditor({ items, depth, readOnly, onChange }: Pr
 }
 
 function ChildItem({
-  item, index, total, depth, canNestAccordion, readOnly,
+  item, index, total, depth, readOnly,
   onUpdate, onRemove, onMove, onDuplicate,
 }: {
   item: NestedLiffBlock;
   index: number;
   total: number;
   depth: number;
-  canNestAccordion: boolean;
   readOnly?: boolean;
   onUpdate: (patch: Partial<NestedLiffBlock>) => void;
   onRemove: () => void;
@@ -183,15 +238,15 @@ function ChildItem({
 
           {isAccordion && (
             <div className="border-t border-gray-200 pt-2 mt-2">
+              {/* 上限の案内は「その children を実際に受け持つエディタ」側が出す。
+                  ここ（親側）の canNestAccordion は 1 階層ずれるため使わない。 */}
               <p className="text-[11px] text-gray-500 mb-1.5">
-                ↳ accordion の子要素（現在 L{depth + 1}）
-                {!canNestAccordion && (
-                  <span className="ml-1 text-amber-600">最大ネスト深度に到達済み</span>
-                )}
+                ↳ 「{childLabel(item)}」の中身（L{depth + 1}）
               </p>
               <AccordionChildrenEditor
                 items={accSettings.children ?? []}
                 depth={depth + 1}
+                parentLabel={childLabel(item)}
                 readOnly={readOnly}
                 onChange={(next) =>
                   onUpdate({

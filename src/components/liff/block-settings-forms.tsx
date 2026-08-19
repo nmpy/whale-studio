@@ -3,6 +3,7 @@
 // src/components/liff/block-settings-forms.tsx
 // ブロックタイプごとの設定フォーム
 
+import { useState } from "react";
 import type { ReactNode } from "react";
 import type {
   LiffBlockType,
@@ -987,15 +988,33 @@ export function CodeReaderForm({ settings, onChange, readOnly }: FieldProps<Code
 }
 
 import { AccordionChildrenEditor } from "./AccordionChildrenEditor";
+import { resolveAccordionMode } from "./accordion-tree";
+import { resolveAccordionItems } from "./accordion-items";
 
 export function AccordionForm({ settings, onChange, readOnly }: FieldProps<AccordionSettings>) {
-  // PR-BLK4d: 複数項目（multi）。最大5件。1件以上入れると multi 表示になり、title/子要素は表示されない。
+  // 中身の持ち方は「子要素（children）」と「複数項目（items）」の 2 モードがあり、
+  // renderer は items が 1 件でもあると title / children を一切描画しない（AccordionBlock の分岐）。
+  // 以前は両方のエディタを同じフォームに並べていたため、items を足すと children が
+  // 黙って画面から消えた。ここではモードを排他にして、その事故を構造的に起こせなくする。
+  //
+  // 既定・推奨は children。items は legacy（本番実データでの使用は 0 件）だが、
+  // 既存データを編集できなくならないようモード自体は残す。
+  const effectiveItems = resolveAccordionItems(settings.items);
+  const savedMode = resolveAccordionMode(settings);
+  const childrenCount = settings.children?.length ?? 0;
+  // 保存済みデータからモードを決める。どちらも空のときだけ、UI 上で切り替えられる。
+  const [uiMode, setUiMode] = useState<"children" | "items">(savedMode);
+  const mode = childrenCount > 0 ? "children" : effectiveItems.length > 0 ? "items" : uiMode;
+
   const items = settings.items ?? [];
   const setItems = (next: NonNullable<AccordionSettings["items"]>) => onChange({ ...settings, items: next });
   const addItem = () => setItems([...items, { title: "", body: "" }]);
   const removeItem = (i: number) => setItems(items.filter((_, idx) => idx !== i));
   const updateItem = (i: number, patch: { title?: string; body?: string }) =>
     setItems(items.map((it, idx) => (idx === i ? { ...it, ...patch } : it)));
+
+  // 追加先を名前で示すためのラベル。未入力なら種別名で代替する。
+  const parentLabel = (settings.title ?? "").trim() || "このアコーディオン";
 
   return (
     <div className="space-y-3">
@@ -1009,7 +1028,9 @@ export function AccordionForm({ settings, onChange, readOnly }: FieldProps<Accor
           disabled={readOnly}
           placeholder="例: 1st STAGE.（無料エリア）"
         />
-        {!(settings.title ?? "").trim() && <Help>※ 未入力です。見出しになるタイトルを入力してください。</Help>}
+        {!(settings.title ?? "").trim() && mode === "children" && (
+          <Help>※ 未入力です。見出しになるタイトルを入力してください。</Help>
+        )}
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div>
@@ -1037,63 +1058,103 @@ export function AccordionForm({ settings, onChange, readOnly }: FieldProps<Accor
         </label>
       </div>
 
+      {/* モード切替。同時利用を禁止するため、中身が入っている側からは切り替えられない。 */}
       <div>
-        <label className={labelClass}>子要素</label>
-        <AccordionChildrenEditor
-          items={settings.children ?? []}
-          depth={1}
-          readOnly={readOnly}
-          onChange={(next) => onChange({ ...settings, children: next })}
-        />
-      </div>
-
-      {/* PR-BLK4d: 複数項目（任意・最大5件）。1件以上入れると multi 表示になる。 */}
-      <div>
-        <label className={labelClass}>複数項目（任意・最大5件）</label>
-        <Help>項目を1件以上入れると、その項目リスト（各項目が個別に開閉）として表示されます。この場合、上の「タイトル」と「子要素」は表示されません。各項目は見出しと本文（テキスト）のみです。</Help>
-        <div className="space-y-2">
-          {items.map((item, idx) => (
-            <div key={idx} className="border border-gray-200 rounded-lg p-2 space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-gray-500">項目 {idx + 1}</span>
-                <button
-                  type="button"
-                  onClick={() => removeItem(idx)}
-                  disabled={readOnly}
-                  className="text-xs text-red-600 hover:underline disabled:text-gray-400"
-                >
-                  削除
-                </button>
-              </div>
-              <input
-                className={inputClass}
-                value={item.title ?? ""}
-                onChange={(e) => updateItem(idx, { title: e.target.value })}
-                disabled={readOnly}
-                placeholder="見出し（例: Q. ヒントはどこ？）"
-              />
-              <textarea
-                className={inputClass}
-                rows={3}
-                value={item.body ?? ""}
-                onChange={(e) => updateItem(idx, { body: e.target.value })}
-                disabled={readOnly}
-                placeholder="本文"
-              />
-            </div>
-          ))}
-        </div>
-        {items.length < 5 && (
+        <label className={labelClass}>中身の作り方</label>
+        <div className="flex gap-1.5">
           <button
             type="button"
-            onClick={addItem}
-            disabled={readOnly}
-            className="mt-2 text-sm text-brand hover:underline disabled:text-gray-400"
+            onClick={() => setUiMode("children")}
+            disabled={readOnly || effectiveItems.length > 0}
+            title={effectiveItems.length > 0 ? "複数項目をすべて削除すると切り替えられます" : undefined}
+            className={`px-3 py-1.5 text-xs rounded-md border transition-colors disabled:cursor-not-allowed ${
+              mode === "children"
+                ? "bg-brand-soft border-brand/40 text-brand-ink font-medium"
+                : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-40"
+            }`}
           >
-            ＋ 項目を追加
+            子要素（推奨）
           </button>
-        )}
+          <button
+            type="button"
+            onClick={() => setUiMode("items")}
+            disabled={readOnly || childrenCount > 0}
+            title={childrenCount > 0 ? "子要素をすべて削除すると切り替えられます" : undefined}
+            className={`px-3 py-1.5 text-xs rounded-md border transition-colors disabled:cursor-not-allowed ${
+              mode === "items"
+                ? "bg-brand-soft border-brand/40 text-brand-ink font-medium"
+                : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-40"
+            }`}
+          >
+            複数項目（簡易）
+          </button>
+        </div>
+        <Help>
+          {mode === "children"
+            ? "テキスト・画像・さらにアコーディオンなどを入れ子にできます。階層を作りたい場合はこちら。"
+            : "見出しと本文だけの項目リストです。この場合、上の「タイトル」と「子要素」は表示されません。"}
+        </Help>
       </div>
+
+      {mode === "children" ? (
+        <div>
+          <label className={labelClass}>子要素</label>
+          <AccordionChildrenEditor
+            items={settings.children ?? []}
+            depth={1}
+            parentLabel={parentLabel}
+            readOnly={readOnly}
+            onChange={(next) => onChange({ ...settings, children: next })}
+          />
+        </div>
+      ) : (
+        <div>
+          <label className={labelClass}>複数項目（最大5件）</label>
+          <Help>各項目は見出しと本文（テキスト）のみです。入れ子にはできません。</Help>
+          <div className="space-y-2">
+            {items.map((item, idx) => (
+              <div key={idx} className="border border-gray-200 rounded-lg p-2 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-gray-500">項目 {idx + 1}</span>
+                  <button
+                    type="button"
+                    onClick={() => removeItem(idx)}
+                    disabled={readOnly}
+                    className="text-xs text-red-600 hover:underline disabled:text-gray-400"
+                  >
+                    削除
+                  </button>
+                </div>
+                <input
+                  className={inputClass}
+                  value={item.title ?? ""}
+                  onChange={(e) => updateItem(idx, { title: e.target.value })}
+                  disabled={readOnly}
+                  placeholder="見出し（例: Q. ヒントはどこ？）"
+                />
+                <textarea
+                  className={inputClass}
+                  rows={3}
+                  value={item.body ?? ""}
+                  onChange={(e) => updateItem(idx, { body: e.target.value })}
+                  disabled={readOnly}
+                  placeholder="本文"
+                />
+              </div>
+            ))}
+          </div>
+          {items.length < 5 && (
+            <button
+              type="button"
+              onClick={addItem}
+              disabled={readOnly}
+              className="mt-2 text-sm text-brand hover:underline disabled:text-gray-400"
+            >
+              ＋ 項目を追加
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
