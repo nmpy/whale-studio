@@ -77,3 +77,48 @@ describe("buildLiffPageDeviceUrl", () => {
     expect(buildLiffPageDeviceUrl({ liffId: DOT_LIFF_ID, workId: "" })).toBe("");
   });
 });
+
+/**
+ * 恒久ルール（Whale Studio 全体）:
+ *   Work → その Work に紐づく OA → Oa.liffId → 生成 URL
+ * の経路のみを使い、OA をまたいで LIFF ID が混線しないこと。
+ * 新しい LIFF URL 生成機能を追加するときも、この 2 本を必ず満たすこと。
+ */
+describe("作品別 LIFF URL の非混線（恒久ルール）", () => {
+  const WORK_A = { liffId: "2010632002-ZzzimCzc", workId: "w-a", workPublicId: "q6v7188co7", pagePublicId: "k4sn8iz3i3" };
+  const WORK_B = { liffId: "2010342756-WWXmBJ7w", workId: "w-b", workPublicId: "j6bk7g05zl", pagePublicId: "pua9ns1cn3" };
+
+  it("Work A → OA A の liffId / Work B → OA B の liffId が入れ替わらない", () => {
+    const a = buildLiffPageDeviceUrl(WORK_A);
+    const b = buildLiffPageDeviceUrl(WORK_B);
+
+    expect(a).toBe(`https://liff.line.me/${WORK_A.liffId}/w/${WORK_A.workPublicId}/p/${WORK_A.pagePublicId}`);
+    expect(b).toBe(`https://liff.line.me/${WORK_B.liffId}/w/${WORK_B.workPublicId}/p/${WORK_B.pagePublicId}`);
+
+    // 相手側の liffId / publicId が混入しないこと。
+    expect(a).not.toContain(WORK_B.liffId);
+    expect(a).not.toContain(WORK_B.workPublicId);
+    expect(b).not.toContain(WORK_A.liffId);
+    expect(b).not.toContain(WORK_A.workPublicId);
+  });
+
+  it("env にテスト LIFF ID があっても、どちらの作品の URL にも混入しない", () => {
+    process.env.NEXT_PUBLIC_LIFF_ID = TEST_CHANNEL_LIFF_ID;
+
+    for (const w of [WORK_A, WORK_B]) {
+      const url = buildLiffPageDeviceUrl(w);
+      expect(url).toContain(w.liffId);
+      expect(url).not.toContain(TEST_CHANNEL_LIFF_ID);
+      expect(url).not.toContain("2010049684");
+    }
+  });
+
+  it("片方の OA が liffId 未設定でも、もう片方の liffId を借りない（空文字）", () => {
+    process.env.NEXT_PUBLIC_LIFF_ID = TEST_CHANNEL_LIFF_ID;
+
+    const unconfigured = buildLiffPageDeviceUrl({ ...WORK_B, liffId: null });
+    expect(unconfigured).toBe("");
+    expect(unconfigured).not.toContain(WORK_A.liffId);
+    expect(unconfigured).not.toContain(TEST_CHANNEL_LIFF_ID);
+  });
+});
