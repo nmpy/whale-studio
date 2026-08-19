@@ -223,6 +223,7 @@ export default function LiffPageEditor() {
             <div className="mt-6">
               <Accordion title="実機で確認する" defaultOpen={false}>
                 <LiffDevicePreviewLinks
+                  oaId={oaId}
                   workId={workId}
                   workPublicId={config.work_public_id}
                   pageId={config.id}

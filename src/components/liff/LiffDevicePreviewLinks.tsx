@@ -9,12 +9,20 @@
 //      使えない可能性があるが、LIFF SDK 初期化に失敗しても画面が真っ白にならないよう、
 //      レンダラー側で graceful fallback している。
 //
-//   2) 実機 LIFF URL — `https://liff.line.me/{LIFF_ID}/work/{workId}/pages/{pageId}`
+//   2) 実機 LIFF URL — `https://liff.line.me/{Oa.liffId}/work/{workId}/pages/{pageId}`
 //      LINE アプリ内ブラウザで開いて UID 取得 / 位置情報 / shareTargetPicker などを含む
 //      本番動作を確認するためのもの。
 //      ※ LINE Developers 側の Endpoint URL は `${BASE}/liff` のように LIFF プレイヤー用
 //        入口に向けておくこと。Endpoint URL がルート (/) や `/oas` のように管理画面側に
 //        向いていると、LIFF アプリを開いたときに Whale Studio 本体が開いてしまう。
+//
+// 実機 LIFF URL の liffId は **対象 OA の Oa.liffId のみ**を使う（fetchOaLiffId）。
+// `NEXT_PUBLIC_LIFF_ID` への env fallback は**しない**。
+// 理由（本番障害・D.O.T）: env の値はテスト用 LINE Login チャネルの LIFF を指しており、
+// ここで生成した URL を運用者がリッチメニューへ貼ると、プレイヤーが初回起動時に
+// **別 OA の同意画面**を踏み、そのチャネルにリンクされた別公式アカウントを友だち追加してしまう。
+// 「実機で確認」の URL はそのままリッチメニューへコピーされる前提なので、
+// 誤った ID を出すより「未設定」と表示する方が安全。
 //
 // ベース URL の解決:
 //   - `process.env.NEXT_PUBLIC_BASE_URL` を最優先 (本番 / Vercel Preview 共通の規約)
@@ -34,8 +42,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { buttonClass } from "@/components/shared";
+import { fetchOaLiffId } from "@/lib/api-client";
+import { buildLiffPageSubPath, buildLiffPageDeviceUrl } from "@/lib/liff/public-urls";
 
 interface Props {
+  /** 対象 OA の DB 内部 ID (UUID)。実機 LIFF URL は **この OA の Oa.liffId** で生成する。 */
+  oaId: string;
   /** Work の DB 内部 ID (UUID)。URL 生成自体には publicId を優先する */
   workId: string;
   /** Work の公開 URL 用短縮 ID。指定があれば URL に publicId を使う (短縮 URL)。 */
@@ -58,46 +70,46 @@ function buildBaseUrl(): string {
   return "";
 }
 
-/** LIFF アプリの sub-path 部分。LINE Developers の Endpoint URL に付与される相対パス。
- *  Endpoint URL = `${BASE}/liff` を想定しているので、ここでは `/liff` を含めない。
- *  short URL: publicId が指定されていれば /w/{wp}/p/{pp} を使う、無ければ旧 /work/{w}/pages/{p}。 */
-function buildLiffSubPath(args: {
-  workId: string; workPublicId?: string; pageId?: string; pagePublicId?: string;
-}): string {
-  const { workId, workPublicId, pageId, pagePublicId } = args;
-  if (workPublicId && pagePublicId) return `/w/${workPublicId}/p/${pagePublicId}`;
-  if (workPublicId)                  return `/w/${workPublicId}`;
-  if (pageId)                        return `/work/${workId}/pages/${pageId}`;
-  return `/work/${workId}`;
-}
-
 /** ブラウザ用 URL (BASE 込み)。同じく publicId 優先。 */
 function buildBrowserPath(args: {
   workId: string; workPublicId?: string; pageId?: string; pagePublicId?: string;
 }): string {
-  return `/liff${buildLiffSubPath(args)}`;
+  return `/liff${buildLiffPageSubPath(args)}`;
 }
 
-export function LiffDevicePreviewLinks({ workId, workPublicId, pageId, pagePublicId, publishStatus, embedded = false }: Props) {
+export function LiffDevicePreviewLinks({ oaId, workId, workPublicId, pageId, pagePublicId, publishStatus, embedded = false }: Props) {
   const [baseUrl, setBaseUrl] = useState("");
   const [copied, setCopied] = useState<string | null>(null);
+  /** 対象 OA の Oa.liffId。null = 未設定（env fallback は使わない）。 */
+  const [liffId, setLiffId] = useState<string | null>(null);
+  /** liffId の取得が完了したか。false のうちは「未設定」警告を出さない（取得中の誤表示防止）。 */
+  const [liffIdLoaded, setLiffIdLoaded] = useState(false);
 
   // SSR では window が無いので mount 後に解決する
   useEffect(() => {
     setBaseUrl(buildBaseUrl());
   }, []);
 
-  const liffId = process.env.NEXT_PUBLIC_LIFF_ID?.trim() || "";
+  // 実機 LIFF URL 用の liffId は対象 OA から取得する（env fallback なし）。
+  useEffect(() => {
+    let cancelled = false;
+    setLiffIdLoaded(false);
+    if (!oaId) { setLiffId(null); setLiffIdLoaded(true); return; }
+    fetchOaLiffId(oaId)
+      .then((id) => { if (!cancelled) { setLiffId(id?.trim() || null); setLiffIdLoaded(true); } })
+      .catch(() => { if (!cancelled) { setLiffId(null); setLiffIdLoaded(true); } });
+    return () => { cancelled = true; };
+  }, [oaId]);
 
   const browserUrlExplicit = useMemo(() => {
     if (!baseUrl) return "";
     return `${baseUrl}${buildBrowserPath({ workId, workPublicId, pageId, pagePublicId })}`;
   }, [baseUrl, workId, workPublicId, pageId, pagePublicId]);
 
-  const liffUrl = useMemo(() => {
-    if (!liffId) return "";
-    return `https://liff.line.me/${liffId}${buildLiffSubPath({ workId, workPublicId, pageId, pagePublicId })}`;
-  }, [liffId, workId, workPublicId, pageId, pagePublicId]);
+  const liffUrl = useMemo(
+    () => buildLiffPageDeviceUrl({ liffId, workId, workPublicId, pageId, pagePublicId }),
+    [liffId, workId, workPublicId, pageId, pagePublicId],
+  );
 
   const isLocalhost = baseUrl.startsWith("http://localhost") || baseUrl.startsWith("http://127.0.0.1");
   const isPublished = publishStatus === "published";
@@ -162,7 +174,11 @@ export function LiffDevicePreviewLinks({ workId, workPublicId, pageId, pagePubli
       />
 
       {/* ── 実機 LIFF URL ── */}
-      {liffId ? (
+      {!liffIdLoaded ? (
+        <div className="border border-gray-200 rounded-lg p-3 text-[12px] text-gray-500">
+          実機 LIFF URL を取得中…
+        </div>
+      ) : liffId ? (
         <UrlRow
           label="実機 LIFF URL"
           helpText="LINE アプリ内ブラウザで開く。LINE UID / プロフィール / shareTargetPicker など本番動作を確認できる。"
@@ -174,7 +190,9 @@ export function LiffDevicePreviewLinks({ workId, workPublicId, pageId, pagePubli
         />
       ) : (
         <div className="border border-amber-200 bg-amber-50 rounded-lg p-3 text-[12px] text-amber-800 leading-relaxed">
-          <strong>LIFF ID 未設定</strong>: 実機 LIFF URL を発行するには <code className="text-[10px] bg-white border border-amber-200 px-1 rounded">NEXT_PUBLIC_LIFF_ID</code> を環境変数に設定してください。
+          <strong>LIFF ID 未設定</strong>: 実機 LIFF URL を発行するには、この公式アカウント専用の LIFF ID を
+          <strong>設定 → LIFF設定</strong> に登録してください（この URL はリッチメニューにも使われるため、
+          他アカウントの LIFF ID は使えません）。
           設定後、LINE Developers の Endpoint URL を{" "}
           <code className="text-[10px] bg-white border border-amber-200 px-1 rounded">{baseUrl}/liff</code>
           {" "}にすると、LIFF アプリから本ページを開けるようになります。
