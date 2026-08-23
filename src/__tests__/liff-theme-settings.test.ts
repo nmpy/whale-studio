@@ -13,6 +13,10 @@ import {
   fontThemeClass,
   resolveColorMode,
   colorModeClass,
+  resolveFontScale,
+  fontScaleClass,
+  resolveFontWeightLevel,
+  fontWeightLevelClass,
   liffRootClass,
 } from "@/components/liff/liff-style-helpers";
 import { liffPageConfigSettingsSchema } from "@/lib/validations";
@@ -176,7 +180,7 @@ describe("保存バリデーション (liffPageConfigSettingsSchema)", () => {
 // helpers が返す class 名と liff-font.css の定義がズレると「保存できるのに見た目が変わらない」
 // という気付きにくい不具合になるため、CSS を実ファイルから読んで突き合わせる。
 
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
 const CSS = readFileSync(join(process.cwd(), "src/app/liff/liff-font.css"), "utf8");
@@ -255,7 +259,7 @@ describe("liff-font.css の契約", () => {
   });
 
   it("colorModeClass が返す class がすべて CSS に定義されている", () => {
-    for (const m of ["dark", "sepia", "bordeaux"] as const) {
+    for (const m of ["dark", "sepia", "bordeaux", "terminal"] as const) {
       expect(CSS).toContain(`.${colorModeClass(m)} {`);
     }
     // system は prefers-color-scheme: dark の media query 内にだけ定義される
@@ -266,7 +270,7 @@ describe("liff-font.css の契約", () => {
   it("カラーモードのブロックは .liff-font より後ろにある（同 specificity で後勝ちさせるため）", () => {
     const base = CSS.indexOf(".liff-font {");
     expect(base).toBeGreaterThanOrEqual(0);
-    for (const sel of [".liff-color-mode-dark {", ".liff-color-mode-sepia {", ".liff-color-mode-bordeaux {"]) {
+    for (const sel of [".liff-color-mode-dark {", ".liff-color-mode-sepia {", ".liff-color-mode-bordeaux {", ".liff-color-mode-terminal {"]) {
       expect(CSS.indexOf(sel)).toBeGreaterThan(base);
     }
   });
@@ -354,10 +358,12 @@ describe("liff-font.css の契約", () => {
   });
 
   it("暗色モードは色トークンだけを上書きし、レイアウト系トークンには触れていない", () => {
-    const dark = declarations(ruleBody(CSS, ".liff-color-mode-dark {")!);
     const forbidden = ["--liff-gutter", "--liff-button-height", "--liff-card-radius", "--liff-ui-card-radius", "--liff-font-stack"];
-    for (const prop of forbidden) {
-      expect(dark.some((d) => d.startsWith(`${prop}:`))).toBe(false);
+    for (const sel of [".liff-color-mode-dark {", ".liff-color-mode-terminal {"]) {
+      const decls = declarations(ruleBody(CSS, sel)!);
+      for (const prop of forbidden) {
+        expect(decls.some((d) => d.startsWith(`${prop}:`))).toBe(false);
+      }
     }
   });
 
@@ -366,6 +372,189 @@ describe("liff-font.css の契約", () => {
       const decls = declarations(ruleBody(CSS, `.${fontThemeClass(t)} {`)!);
       expect(decls.length).toBe(1);
       expect(decls[0].startsWith("--liff-font-stack:")).toBe(true);
+    }
+  });
+});
+
+
+// ════════════════════════════════════════════════════════════════════════
+// ターミナル（黒 × 電子グリーン）/ 文字サイズ / 文字の太さ
+// ════════════════════════════════════════════════════════════════════════
+
+describe("terminal カラーモード", () => {
+  it("resolveColorMode / colorModeClass が terminal を返す", () => {
+    expect(resolveColorMode(S({ color_mode: "terminal" }))).toBe("terminal");
+    expect(colorModeClass("terminal")).toBe("liff-color-mode-terminal");
+  });
+
+  it("保存バリデーションを通る", () => {
+    expect(liffPageConfigSettingsSchema.safeParse({ color_mode: "terminal" }).success).toBe(true);
+  });
+
+  it("暗色セーフティネット（bg-white / text-gray-* / 入力欄）の対象に入っている", () => {
+    // 暗い地色で Tailwind 直書きの白 / グレーが取り残されると本文が読めなくなる。
+    const sels = selectorsOf(CSS).filter((s) => s.includes("liff-color-mode-terminal"));
+    for (const needle of [".bg-white", ".text-gray-700", ".border-gray-200", "input", "textarea"]) {
+      expect(sels.some((s) => s.includes(needle))).toBe(true);
+    }
+  });
+
+  it("背景レイヤー（走査線 / 格子）はトークン経由で、.liff-font が参照している", () => {
+    const decls = declarations(ruleBody(CSS, ".liff-color-mode-terminal {")!);
+    expect(decls.some((d) => d.startsWith("--liff-backdrop-image:"))).toBe(true);
+    // 参照側: 既定は none = 他モードの見た目に影響しない
+    expect(CSS).toContain("background-image: var(--liff-backdrop-image, none);");
+  });
+
+  it("塗り面の文字色（--liff-on-accent）を明示している（明るい緑に白文字を載せない）", () => {
+    const decls = declarations(ruleBody(CSS, ".liff-color-mode-terminal {")!);
+    expect(decls.some((d) => d.startsWith("--liff-on-accent:"))).toBe(true);
+  });
+});
+
+describe("resolveFontScale / fontScaleClass", () => {
+  it("未設定・空・不正値はすべて md（= 現行と同じ大きさ）", () => {
+    expect(resolveFontScale(undefined)).toBe("md");
+    expect(resolveFontScale({})).toBe("md");
+    expect(resolveFontScale(S({ font_scale: "huge" }))).toBe("md");
+    expect(resolveFontScale(S({ font_scale: 2 }))).toBe("md");
+    expect(resolveFontScale(S({ font_scale: null }))).toBe("md");
+  });
+
+  it("指定した値をそのまま返す", () => {
+    for (const v of ["sm", "md", "lg", "xl"] as const) {
+      expect(resolveFontScale(S({ font_scale: v }))).toBe(v);
+    }
+  });
+
+  it("md は class なし（既存 DOM と 1 文字も変わらない）", () => {
+    expect(fontScaleClass("md")).toBe("");
+    expect(fontScaleClass("sm")).toBe("liff-font-size--sm");
+    expect(fontScaleClass("lg")).toBe("liff-font-size--lg");
+    expect(fontScaleClass("xl")).toBe("liff-font-size--xl");
+  });
+
+  it("保存バリデーション: 正しい値は通り、不正値は弾く", () => {
+    expect(liffPageConfigSettingsSchema.safeParse({ font_scale: "lg" }).success).toBe(true);
+    expect(liffPageConfigSettingsSchema.safeParse({ font_scale: "huge" }).success).toBe(false);
+  });
+});
+
+describe("resolveFontWeightLevel / fontWeightLevelClass", () => {
+  it("未設定・空・不正値はすべて normal（= 現行と同じ太さ）", () => {
+    expect(resolveFontWeightLevel(undefined)).toBe("normal");
+    expect(resolveFontWeightLevel({})).toBe("normal");
+    expect(resolveFontWeightLevel(S({ font_weight_level: "black" }))).toBe("normal");
+    expect(resolveFontWeightLevel(S({ font_weight_level: 700 }))).toBe("normal");
+  });
+
+  it("normal は class なし", () => {
+    expect(fontWeightLevelClass("normal")).toBe("");
+    expect(fontWeightLevelClass("light")).toBe("liff-font-weight--light");
+    expect(fontWeightLevelClass("bold")).toBe("liff-font-weight--bold");
+  });
+
+  it("ブロック単位の font_weight とは独立（別キー）", () => {
+    // TextSettings.font_weight は "medium" 等を取る別概念。混線していないことを固定する。
+    expect(resolveFontWeightLevel(S({ font_weight: "medium" }))).toBe("normal");
+  });
+
+  it("保存バリデーション: 正しい値は通り、不正値は弾く", () => {
+    expect(liffPageConfigSettingsSchema.safeParse({ font_weight_level: "bold" }).success).toBe(true);
+    expect(liffPageConfigSettingsSchema.safeParse({ font_weight_level: "black" }).success).toBe(false);
+  });
+});
+
+describe("liffRootClass — サイズ / 太さの合成", () => {
+  it("すべて既定なら空文字（= 既存ページの DOM は変わらない）", () => {
+    expect(liffRootClass(undefined)).toBe("");
+    expect(liffRootClass(S({ font_scale: "md", font_weight_level: "normal" }))).toBe("");
+  });
+
+  it("4 つの設定が同時に載る", () => {
+    const cls = liffRootClass(S({
+      font_theme: "gothic", color_mode: "terminal", font_scale: "lg", font_weight_level: "bold",
+    }));
+    expect(cls).toContain("liff-font-theme--gothic");
+    expect(cls).toContain("liff-color-mode-terminal");
+    expect(cls).toContain("liff-font-size--lg");
+    expect(cls).toContain("liff-font-weight--bold");
+  });
+});
+
+/** ディレクトリを再帰的に辿って .ts / .tsx を列挙する（px ドリフト検出用）。 */
+function walk(dir: string): string[] {
+  const out: string[] = [];
+  for (const e of readdirSync(dir, { withFileTypes: true })) {
+    const full = join(dir, e.name);
+    if (e.isDirectory()) out.push(...walk(full));
+    else if (/\.tsx?$/.test(e.name)) out.push(full);
+  }
+  return out;
+}
+
+/** 「文字サイズ / 文字の太さ」セクション以降の CSS（既定値ブロックの scoping 用）。 */
+const SIZE_SECTION = CSS.slice(CSS.indexOf("文字サイズ (settings_json.font_scale)"));
+
+describe("liff-font.css の契約 — サイズ / 太さ", () => {
+  it("fontScaleClass / fontWeightLevelClass が返す class がすべて CSS に定義されている", () => {
+    for (const v of ["sm", "lg", "xl"] as const) expect(CSS).toContain(`.${fontScaleClass(v)} {`);
+    for (const v of ["light", "bold"] as const) expect(CSS).toContain(`.${fontWeightLevelClass(v)} {`);
+  });
+
+  it("既定値は倍率 1・Tailwind と同じ font-weight（未設定ページが変わらない根拠）", () => {
+    const base = declarations(ruleBody(SIZE_SECTION, ".liff-font {")!);
+    expect(base).toContain("--liff-fs-mul: 1");
+    for (const [prop, w] of [
+      ["--liff-fw-normal", "400"], ["--liff-fw-medium", "500"],
+      ["--liff-fw-semibold", "600"], ["--liff-fw-bold", "700"],
+    ] as const) {
+      // 既定ブロック（.liff-font）に Tailwind と同値で入っていること
+      expect(base).toContain(`${prop}: ${w}`);
+    }
+  });
+
+  it("サイズ / 太さの class は .liff-font より後ろにある（同 specificity で後勝ちさせるため）", () => {
+    const base = CSS.indexOf(".liff-font {");
+    for (const sel of [
+      ".liff-font-size--sm {", ".liff-font-size--lg {", ".liff-font-size--xl {",
+      ".liff-font-weight--light {", ".liff-font-weight--bold {",
+    ]) {
+      expect(CSS.indexOf(sel)).toBeGreaterThan(base);
+    }
+  });
+
+  it("Tailwind の font-* utility をトークン経由に読み替えている", () => {
+    for (const [cls, token] of [
+      ["font-normal", "--liff-fw-normal"], ["font-medium", "--liff-fw-medium"],
+      ["font-semibold", "--liff-fw-semibold"], ["font-bold", "--liff-fw-bold"],
+    ] as const) {
+      expect(CSS).toContain(`.liff-font .${cls}`);
+      expect(new RegExp(`font-weight: var\\(${token}[,)]`).test(CSS)).toBe(true);
+    }
+  });
+
+  it("LIFF 配下で使われている text-[Npx] は 1 つ残らず倍率 calc に読み替えられている", () => {
+    // ドリフト検出: 新しい px を renderer に書いたのに CSS へ追加し忘れると、
+    // その文字だけ拡縮に追従しない（見出しと本文の比率が崩れる）。
+    const used = new Set<string>();
+    for (const dir of ["src/components/liff", "src/app/liff"]) {
+      for (const f of walk(join(process.cwd(), dir))) {
+        const src = readFileSync(f, "utf8");
+        for (const m of src.matchAll(/text-\[([0-9.]+)px\]/g)) used.add(m[1]);
+      }
+    }
+    expect(used.size).toBeGreaterThan(0);
+    const missing = [...used].filter((px) => {
+      const sel = `.liff-font .text-\\[${px.replace(".", "\\.")}px\\]`;
+      return !CSS.includes(sel) || !CSS.includes(`calc(${px}px * var(--liff-fs-mul, 1))`);
+    });
+    expect(missing).toEqual([]);
+  });
+
+  it("Tailwind v4 の名前付きサイズ (text-sm 等) も倍率に追従する", () => {
+    for (const t of ["--text-xs", "--text-sm", "--text-base", "--text-lg", "--text-xl", "--text-3xl"]) {
+      expect(new RegExp(`${t}:\\s*calc\\(`).test(CSS)).toBe(true);
     }
   });
 });

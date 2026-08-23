@@ -692,6 +692,75 @@
   --liff-ui-card-shadow:    0 1px 3px rgba(63, 51, 39, 0.07);
 }
 
+/* ── terminal: 黒 × 電子グリーン（諜報機関の端末画面トーン）────────────
+ *
+ * 「体験するスパイ映画」のような硬質な世界観向け。地色はほぼ黒、文字は蛍光グリーン。
+ * アクセントの塗り面は明るいグリーン + 暗い文字（= 端末の反転表示）にしている。
+ *
+ * 走査線 / 格子は --liff-backdrop-image（`.liff-font` が background-image で参照）に
+ * 閉じてあり、レイアウトトークンには触れない。 */
+.liff-color-mode-terminal {
+  color-scheme: dark;
+
+  --liff-background:        #050A07;
+  --liff-surface:           #0B1410;
+  --liff-surface-subtle:    #101B15;
+  --liff-border:            #1E3A2C;
+  --liff-border-strong:     #2E5A43;
+
+  --liff-primary-text:      #CFFFE3;
+  --liff-secondary-text:    #7FD8A6;
+  --liff-tertiary-text:     #4FA97A;
+
+  --liff-header-bg:         #08110C;
+  --liff-header-text:       #CFFFE3;
+  --liff-header-border:     #1E3A2C;
+
+  /* 塗り面は蛍光グリーン、その上の文字は地色に近い暗色（端末の反転表示）。
+   * 文字として使う緑は暗い面で AA を満たす明るさに分ける。 */
+  --liff-line-green:        #00E187;
+  --liff-line-green-press:  #00B76D;
+  --liff-on-accent:         #04140C;
+  --liff-accent-text:       #45F5A6;
+
+  --liff-ui-card-border:    #1E3A2C;
+  --liff-ui-input-border:   #1E3A2C;
+  --liff-ui-input-box-border: #2E5A43;
+  --liff-ui-green-soft:     #0E2A1C;
+  --liff-ui-green-pressed:  #00B76D;
+  --liff-ui-green-strong:   #45F5A6;
+  --liff-ui-disabled-bg:    #121C16;
+  --liff-ui-disabled-text:  #5E7A6A;
+
+  /* 文字・枠線用。カード面 #0B1410 に対して 7.9:1（AA 達成）。 */
+  --liff-danger:            #FF8A8A;
+  --liff-danger-press:      #E76F6F;
+  /* 塗り面用。白ではなく --liff-on-accent は乗らないため、白文字前提の濃さにする。 */
+  --liff-danger-surface:       #A02020;
+  --liff-danger-surface-press: #7E1919;
+
+  --liff-banner-warning-bg:     #2A2410;
+  --liff-banner-warning-accent: #E8C24A;
+  --liff-banner-info-bg:        #0E2436;
+  --liff-banner-info-accent:    #86C4F0;
+  --liff-banner-danger-bg:      #2C1414;
+  --liff-banner-danger-accent:  #FF8A8A;
+
+  --liff-ui-warning-bg:     #2A2410;
+  --liff-ui-warning-text:   #EBD79A;
+  --liff-ui-warning-border: #463B18;
+
+  --liff-card-shadow:       0 2px 12px rgba(0, 0, 0, 0.6);
+  --liff-ui-card-shadow:    0 1px 3px rgba(0, 0, 0, 0.6);
+
+  /* 走査線（横 3px 周期）+ 縦の格子 + 上端のグロー。
+   * どれも alpha を極小にして、本文の可読性を落とさない範囲の「気配」に留める。 */
+  --liff-backdrop-image:
+    repeating-linear-gradient(0deg, rgba(0, 225, 135, 0.035) 0 1px, transparent 1px 3px),
+    repeating-linear-gradient(90deg, rgba(0, 225, 135, 0.022) 0 1px, transparent 1px 44px),
+    radial-gradient(140% 90% at 50% -10%, rgba(0, 225, 135, 0.10), transparent 62%);
+}
+
 /* ── 暗色テーマ用セーフティネット ──────────────────────────────────────
  *
  * 一部の古い renderer はトークンではなく Tailwind の固定色ユーティリティ
@@ -700,42 +769,55 @@
  * 対応するトークンへ読み替える。
  *
  * light / bordeaux（明るい地色）には当てない = 既存の見た目に影響しない。
+ * dark / sepia / terminal（暗色・暖色地）が対象。
  * このファイルは unlayered なので、`@layer utilities` の Tailwind 実体より強い。
  *
  * ⚠️ `system` は **必ず @media (prefers-color-scheme: dark) の中だけ**で当てること。
  *    media query の外に置くと OS が light のときにも発火し、
  *    「color_mode=system + OS light」が「color_mode=light」と一致しなくなる。 */
 
-/* --- dark / sepia（常に暗色 or 暖色地）--- */
+/* --- dark / sepia / terminal（常に暗色 or 暖色地）--- */
 .liff-color-mode-dark .bg-white,
-.liff-color-mode-sepia .bg-white { background-color: var(--liff-surface); }
+.liff-color-mode-sepia .bg-white,
+.liff-color-mode-terminal .bg-white { background-color: var(--liff-surface); }
 
 .liff-color-mode-dark .bg-gray-50,
 .liff-color-mode-dark .bg-gray-100,
 .liff-color-mode-sepia .bg-gray-50,
-.liff-color-mode-sepia .bg-gray-100 { background-color: var(--liff-surface-subtle); }
+.liff-color-mode-sepia .bg-gray-100,
+.liff-color-mode-terminal .bg-gray-50,
+.liff-color-mode-terminal .bg-gray-100 { background-color: var(--liff-surface-subtle); }
 
 .liff-color-mode-dark .text-gray-900,
 .liff-color-mode-dark .text-gray-800,
 .liff-color-mode-dark .text-gray-700,
 .liff-color-mode-sepia .text-gray-900,
 .liff-color-mode-sepia .text-gray-800,
-.liff-color-mode-sepia .text-gray-700 { color: var(--liff-primary-text); }
+.liff-color-mode-sepia .text-gray-700,
+.liff-color-mode-terminal .text-gray-900,
+.liff-color-mode-terminal .text-gray-800,
+.liff-color-mode-terminal .text-gray-700 { color: var(--liff-primary-text); }
 
 .liff-color-mode-dark .text-gray-600,
 .liff-color-mode-dark .text-gray-500,
 .liff-color-mode-sepia .text-gray-600,
-.liff-color-mode-sepia .text-gray-500 { color: var(--liff-secondary-text); }
+.liff-color-mode-sepia .text-gray-500,
+.liff-color-mode-terminal .text-gray-600,
+.liff-color-mode-terminal .text-gray-500 { color: var(--liff-secondary-text); }
 
 .liff-color-mode-dark .text-gray-400,
-.liff-color-mode-sepia .text-gray-400 { color: var(--liff-tertiary-text); }
+.liff-color-mode-sepia .text-gray-400,
+.liff-color-mode-terminal .text-gray-400 { color: var(--liff-tertiary-text); }
 
 .liff-color-mode-dark .border-gray-100,
 .liff-color-mode-dark .border-gray-200,
 .liff-color-mode-dark .border-gray-300,
 .liff-color-mode-sepia .border-gray-100,
 .liff-color-mode-sepia .border-gray-200,
-.liff-color-mode-sepia .border-gray-300 { border-color: var(--liff-border); }
+.liff-color-mode-sepia .border-gray-300,
+.liff-color-mode-terminal .border-gray-100,
+.liff-color-mode-terminal .border-gray-200,
+.liff-color-mode-terminal .border-gray-300 { border-color: var(--liff-border); }
 
 /* 暗色テーマでのフォーム要素。
  *
@@ -751,7 +833,10 @@
 .liff-font.liff-color-mode-dark textarea,
 .liff-font.liff-color-mode-sepia input,
 .liff-font.liff-color-mode-sepia select,
-.liff-font.liff-color-mode-sepia textarea {
+.liff-font.liff-color-mode-sepia textarea,
+.liff-font.liff-color-mode-terminal input,
+.liff-font.liff-color-mode-terminal select,
+.liff-font.liff-color-mode-terminal textarea {
   background: var(--liff-surface);
   color: var(--liff-primary-text);
   border-color: var(--liff-ui-input-box-border);
@@ -760,7 +845,9 @@
 .liff-font.liff-color-mode-dark input::placeholder,
 .liff-font.liff-color-mode-dark textarea::placeholder,
 .liff-font.liff-color-mode-sepia input::placeholder,
-.liff-font.liff-color-mode-sepia textarea::placeholder {
+.liff-font.liff-color-mode-sepia textarea::placeholder,
+.liff-font.liff-color-mode-terminal input::placeholder,
+.liff-font.liff-color-mode-terminal textarea::placeholder {
   color: var(--liff-tertiary-text);
 }
 
@@ -771,7 +858,10 @@
 .liff-font.liff-color-mode-dark textarea:focus,
 .liff-font.liff-color-mode-sepia input:focus,
 .liff-font.liff-color-mode-sepia select:focus,
-.liff-font.liff-color-mode-sepia textarea:focus {
+.liff-font.liff-color-mode-sepia textarea:focus,
+.liff-font.liff-color-mode-terminal input:focus,
+.liff-font.liff-color-mode-terminal select:focus,
+.liff-font.liff-color-mode-terminal textarea:focus {
   background: var(--liff-surface);
   border-color: var(--liff-line-green);
   box-shadow: 0 0 0 3px var(--liff-ui-green-soft);
@@ -850,4 +940,103 @@
 .liff-font header h1 {
   font-size: 20px;   /* = LIFF_TEXT.pageTitle の text-[20px] */
   font-weight: 500;  /* = LIFF_TEXT.pageTitle の font-medium */
+}
+
+
+/* ============================================================================
+ * 文字サイズ (settings_json.font_scale) / 文字の太さ (settings_json.font_weight_level)
+ * ============================================================================
+ *
+ * renderer root（= `liffRootClass(settings)`）に `.liff-font-size--*` /
+ * `.liff-font-weight--*` が付く。中身は **倍率 / 太さのトークンを差し替えるだけ**。
+ *
+ * 重要（後方互換）:
+ *   - 既定 ("md" / "normal") は **class を付けない**。倍率 1・太さは現行値なので、
+ *     計算後の値は 1px / 1 段も変わらない（= 既存ページの見た目は完全に不変）。
+ *   - `.liff-font-size--*` は `.liff-font` と同じ (0,1,0) で **同一要素**に付くため、
+ *     必ず下の既定値ブロックより **後ろ** に置くこと（後勝ちで上書きする）。
+ *   - 値を増やすときは types.ts の LiffFontScale / LiffFontWeightLevel、
+ *     validations、CMS select、liff-style-helpers も揃えること。
+ */
+
+/* ── 既定値（倍率 1 / 現行の太さ）───────────────────────────────────── */
+.liff-font {
+  /* 文字サイズの倍率。すべての font-size をこの値で掛ける。 */
+  --liff-fs-mul: 1;
+
+  /* font-weight のロール。Tailwind の font-* utility をこの値へ読み替える。
+   * 同梱フォント (LINE Seed JP / Noto Sans JP) は 400 と 700 しか読み込んでいないため、
+   * 中間値 (500/600) は CSS フォントマッチングで 400 / 700 に丸められる。
+   * システムフォント (font_theme="modern" 等) では中間値がそのまま効く。 */
+  --liff-fw-normal:   400;
+  --liff-fw-medium:   500;
+  --liff-fw-semibold: 600;
+  --liff-fw-bold:     700;
+
+  /* カラーモードが敷く背景レイヤー（格子・走査線など）。既定は none = 従来どおり。 */
+  background-image: var(--liff-backdrop-image, none);
+}
+
+/* Tailwind v4 の名前付きサイズ (text-xs / text-sm / …) は theme 変数経由なので、
+ * 変数だけ差し替えれば line-height（unitless 比率）は自動で追従する。
+ * `leading-*` を併記している箇所も --tw-leading が優先されるため壊れない。 */
+.liff-font {
+  --text-xs:   calc(0.75rem  * var(--liff-fs-mul, 1));
+  --text-sm:   calc(0.875rem * var(--liff-fs-mul, 1));
+  --text-base: calc(1rem     * var(--liff-fs-mul, 1));
+  --text-lg:   calc(1.125rem * var(--liff-fs-mul, 1));
+  --text-xl:   calc(1.25rem  * var(--liff-fs-mul, 1));
+  --text-2xl:  calc(1.5rem   * var(--liff-fs-mul, 1));
+  --text-3xl:  calc(1.875rem * var(--liff-fs-mul, 1));
+}
+
+/* Tailwind の arbitrary value (`text-[14px]`) は px 直書きなので、
+ * LIFF スコープ内でだけ calc へ読み替える。倍率 1 のときは同値。
+ * ここに並ぶ px は LIFF 配下で実際に使われている値の全集合
+ * （liff-theme-settings.test.ts が grep で突き合わせてドリフトを検出する）。 */
+.liff-font .text-\[9px\] { font-size: calc(9px * var(--liff-fs-mul, 1)); }
+.liff-font .text-\[10px\] { font-size: calc(10px * var(--liff-fs-mul, 1)); }
+.liff-font .text-\[11px\] { font-size: calc(11px * var(--liff-fs-mul, 1)); }
+.liff-font .text-\[11\.5px\] { font-size: calc(11.5px * var(--liff-fs-mul, 1)); }
+.liff-font .text-\[12px\] { font-size: calc(12px * var(--liff-fs-mul, 1)); }
+.liff-font .text-\[12\.5px\] { font-size: calc(12.5px * var(--liff-fs-mul, 1)); }
+.liff-font .text-\[13px\] { font-size: calc(13px * var(--liff-fs-mul, 1)); }
+.liff-font .text-\[13\.5px\] { font-size: calc(13.5px * var(--liff-fs-mul, 1)); }
+.liff-font .text-\[14px\] { font-size: calc(14px * var(--liff-fs-mul, 1)); }
+.liff-font .text-\[15px\] { font-size: calc(15px * var(--liff-fs-mul, 1)); }
+.liff-font .text-\[15\.5px\] { font-size: calc(15.5px * var(--liff-fs-mul, 1)); }
+.liff-font .text-\[16px\] { font-size: calc(16px * var(--liff-fs-mul, 1)); }
+.liff-font .text-\[17px\] { font-size: calc(17px * var(--liff-fs-mul, 1)); }
+.liff-font .text-\[18px\] { font-size: calc(18px * var(--liff-fs-mul, 1)); }
+.liff-font .text-\[19px\] { font-size: calc(19px * var(--liff-fs-mul, 1)); }
+.liff-font .text-\[20px\] { font-size: calc(20px * var(--liff-fs-mul, 1)); }
+.liff-font .text-\[26px\] { font-size: calc(26px * var(--liff-fs-mul, 1)); }
+.liff-font .text-\[28px\] { font-size: calc(28px * var(--liff-fs-mul, 1)); }
+
+/* 倍率。小数は端末上で丸められるため、そのまま指定してよい。 */
+.liff-font-size--sm { --liff-fs-mul: 0.93; }   /* 本文 14px → 約 13px */
+.liff-font-size--lg { --liff-fs-mul: 1.08; }   /* 本文 14px → 約 15px */
+.liff-font-size--xl { --liff-fs-mul: 1.16; }   /* 本文 14px → 約 16px */
+
+/* ── 文字の太さ ───────────────────────────────────────────────────────
+ * Tailwind の font-* utility を token 経由にする。既定値は utility と同値。 */
+.liff-font .font-normal   { font-weight: var(--liff-fw-normal, 400); }
+.liff-font .font-medium   { font-weight: var(--liff-fw-medium, 500); }
+.liff-font .font-semibold { font-weight: var(--liff-fw-semibold, 600); }
+.liff-font .font-bold     { font-weight: var(--liff-fw-bold, 700); }
+
+/* 細め: 補助見出し・ラベル（medium/semibold）の太さを落とす。本文は 400 のまま。 */
+.liff-font-weight--light {
+  --liff-fw-normal:   400;
+  --liff-fw-medium:   400;
+  --liff-fw-semibold: 500;
+  --liff-fw-bold:     600;
+}
+
+/* 太め: 本文まで 1 段上げる。暗い地色（terminal / dark）で細い字が沈むときに使う。 */
+.liff-font-weight--bold {
+  --liff-fw-normal:   600;
+  --liff-fw-medium:   600;
+  --liff-fw-semibold: 700;
+  --liff-fw-bold:     800;
 }

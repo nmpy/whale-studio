@@ -7,8 +7,10 @@ import type {
   LiffColorMode,
   LiffFontFamily,
   LiffFontPreset,
+  LiffFontScale,
   LiffFontTheme,
   LiffFontWeight,
+  LiffFontWeightLevel,
   LiffHeadingLevel,
   LiffDescriptionAlign,
   LiffPageConfigSettings,
@@ -130,7 +132,7 @@ export function fontThemeClass(theme: LiffFontTheme): string {
   }
 }
 
-const COLOR_MODES: readonly LiffColorMode[] = ["light", "dark", "system", "sepia", "bordeaux"];
+const COLOR_MODES: readonly LiffColorMode[] = ["light", "dark", "system", "sepia", "bordeaux", "terminal"];
 
 /** settings から **最終的に適用するカラーモード** を解決する。
  *  未設定 / 不正値 / 未知値 → "light"（= 現行既定の白ベース）。 */
@@ -146,8 +148,55 @@ export function colorModeClass(mode: LiffColorMode): string {
     case "system":   return "liff-color-mode-system";
     case "sepia":    return "liff-color-mode-sepia";
     case "bordeaux": return "liff-color-mode-bordeaux";
+    case "terminal": return "liff-color-mode-terminal";
     case "light":
     default:         return "";
+  }
+}
+
+// ── 文字サイズ / 文字の太さ (ページ全体) ───────────────────────────────
+//
+// どちらも settings_json に文字列で入るだけで DB migration は不要。
+// 「未設定 = 現行既定と完全に同じ見た目（= class なし）」を不変条件とする。
+
+const FONT_SCALES: readonly LiffFontScale[] = ["sm", "md", "lg", "xl"];
+
+/** settings から **最終的に適用する文字サイズ倍率** を解決する。
+ *  未設定 / 不正値 / 未知値 → "md"（= 現行と同じ大きさ）。 */
+export function resolveFontScale(settings: LiffPageConfigSettings | undefined): LiffFontScale {
+  const scale = settings?.font_scale;
+  return scale && FONT_SCALES.includes(scale) ? scale : "md";
+}
+
+/** font scale → root クラス名。"md" は既定なので空文字を返す（= 既存 DOM と一致）。 */
+export function fontScaleClass(scale: LiffFontScale): string {
+  switch (scale) {
+    case "sm": return "liff-font-size--sm";
+    case "lg": return "liff-font-size--lg";
+    case "xl": return "liff-font-size--xl";
+    case "md":
+    default:   return "";
+  }
+}
+
+const FONT_WEIGHT_LEVELS: readonly LiffFontWeightLevel[] = ["light", "normal", "bold"];
+
+/** settings から **最終的に適用する文字の太さ** を解決する。
+ *  未設定 / 不正値 / 未知値 → "normal"（= 現行と同じ太さ）。 */
+export function resolveFontWeightLevel(
+  settings: LiffPageConfigSettings | undefined,
+): LiffFontWeightLevel {
+  const level = settings?.font_weight_level;
+  return level && FONT_WEIGHT_LEVELS.includes(level) ? level : "normal";
+}
+
+/** font weight level → root クラス名。"normal" は既定なので空文字を返す。 */
+export function fontWeightLevelClass(level: LiffFontWeightLevel): string {
+  switch (level) {
+    case "light": return "liff-font-weight--light";
+    case "bold":  return "liff-font-weight--bold";
+    case "normal":
+    default:      return "";
   }
 }
 
@@ -158,11 +207,15 @@ export function colorModeClass(mode: LiffColorMode): string {
  *    - フォント: `.liff-font-theme--*`（旧 `.liff-font--*` は fontPresetClass 側に残置。
  *      旧 class を併記すると `.liff-home-font--*` との優先順位が変わるため、ここでは新 class のみ返す）
  *    - カラー : `.liff-color-mode-*`
- *  どちらも既定値のときは空文字なので、未設定ページの DOM は従来と 1 文字も変わらない。 */
+ *    - サイズ : `.liff-font-size--*`（`--liff-fs-mul` を差し替える）
+ *    - 太さ   : `.liff-font-weight--*`（`--liff-fw-*` を差し替える）
+ *  すべて既定値のときは空文字なので、未設定ページの DOM は従来と 1 文字も変わらない。 */
 export function liffRootClass(settings: LiffPageConfigSettings | undefined): string {
   return [
     fontThemeClass(resolveFontTheme(settings)),
     colorModeClass(resolveColorMode(settings)),
+    fontScaleClass(resolveFontScale(settings)),
+    fontWeightLevelClass(resolveFontWeightLevel(settings)),
   ].filter(Boolean).join(" ");
 }
 
