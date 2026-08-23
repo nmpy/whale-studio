@@ -705,16 +705,18 @@
   --liff-background:        #050A07;
   --liff-surface:           #0B1410;
   --liff-surface-subtle:    #101B15;
-  --liff-border:            #1E3A2C;
-  --liff-border-strong:     #2E5A43;
+  /* 罫線・区切り・ガイド線は「装飾」なのでグリーンをはっきり出す。 */
+  --liff-border:            #2C6B49;
+  --liff-border-strong:     #3E8F63;
 
-  --liff-primary-text:      #CFFFE3;
-  --liff-secondary-text:    #7FD8A6;
-  --liff-tertiary-text:     #4FA97A;
+  /* 本文は白。緑は装飾（罫線 / アクセント）側に寄せ、読む文字は白〜ニュートラルにする。 */
+  --liff-primary-text:      #FFFFFF;
+  --liff-secondary-text:    #B6C9BF;
+  --liff-tertiary-text:     #7F9488;
 
   --liff-header-bg:         #08110C;
-  --liff-header-text:       #CFFFE3;
-  --liff-header-border:     #1E3A2C;
+  --liff-header-text:       #FFFFFF;
+  --liff-header-border:     #2C6B49;
 
   /* 塗り面は蛍光グリーン、その上の文字は地色に近い暗色（端末の反転表示）。
    * 文字として使う緑は暗い面で AA を満たす明るさに分ける。 */
@@ -723,9 +725,11 @@
   --liff-on-accent:         #04140C;
   --liff-accent-text:       #45F5A6;
 
-  --liff-ui-card-border:    #1E3A2C;
-  --liff-ui-input-border:   #1E3A2C;
-  --liff-ui-input-box-border: #2E5A43;
+  /* カードの外周線は出さない（本文・アコーディオンを四角く囲まない）。
+   * 面の色 (--liff-surface #0B1410) と地色 (#050A07) の差だけでカードを表現する。 */
+  --liff-ui-card-border:    transparent;
+  --liff-ui-input-border:   #2C6B49;
+  --liff-ui-input-box-border: #3E8F63;
   --liff-ui-green-soft:     #0E2A1C;
   --liff-ui-green-pressed:  #00B76D;
   --liff-ui-green-strong:   #45F5A6;
@@ -1040,3 +1044,42 @@
   --liff-fw-semibold: 700;
   --liff-fw-bold:     800;
 }
+
+/* ── 見出し系（ページタイトル / アコーディオン見出し / 見出しブロック）──────
+ *
+ * 本文系（`--liff-fs-mul` / `--liff-fw-*`）とは別の倍率・太さで動かすためのグループ。
+ * DOM 側のマーカー class:
+ *   .liff-h-title            … ページタイトル (LiffSinglePageRenderer の h2 / 20px・bold)
+ *   .liff-h-acc--1|2|3       … アコーディオン見出し (16/15/14px・bold/semibold/semibold)
+ *   .liff-h-blk--1..5        … 見出しブロック (19/17/16/15/13px・太さはブロック側の選択)
+ *
+ * ここに書く px / weight は **各 renderer が持っている現行値と同値**。既定倍率は 1、
+ * 既定の太さも同値なので、設定していないページの計算値は 1px も変わらない。
+ * 上の `.liff-font .text-\[Npx\]`（本文系の倍率）と同 specificity (0,2,0) なので、
+ * **必ずその後ろ**に置いて後勝ちさせること（見出しが本文倍率に引っ張られないため）。
+ * 見出しブロックの太さは font-* utility との複合 (0,3,0) で当て、
+ * ブロック側の「太字 / 中太 / 通常」の相対関係を保ったまま段階だけずらす。 */
+.liff-font .liff-h-title   { font-size: calc(20px * var(--liff-heading-mul, 1)); font-weight: var(--liff-heading-fw, 700); }
+.liff-font .liff-h-acc--1  { font-size: calc(16px * var(--liff-heading-mul, 1)); font-weight: var(--liff-heading-fw, 700); }
+.liff-font .liff-h-acc--2  { font-size: calc(15px * var(--liff-heading-mul, 1)); font-weight: var(--liff-heading-fw-sub, 600); }
+.liff-font .liff-h-acc--3  { font-size: calc(14px * var(--liff-heading-mul, 1)); font-weight: var(--liff-heading-fw-sub, 600); }
+
+.liff-font .liff-h-blk--1  { font-size: calc(19px * var(--liff-heading-mul, 1)); }
+.liff-font .liff-h-blk--2  { font-size: calc(17px * var(--liff-heading-mul, 1)); }
+.liff-font .liff-h-blk--3  { font-size: calc(16px * var(--liff-heading-mul, 1)); }
+.liff-font .liff-h-blk--4  { font-size: calc(15px * var(--liff-heading-mul, 1)); }
+.liff-font .liff-h-blk--5  { font-size: calc(13px * var(--liff-heading-mul, 1)); }
+
+.liff-font .liff-h-blk.font-bold     { font-weight: var(--liff-heading-fw, 700); }
+.liff-font .liff-h-blk.font-semibold { font-weight: var(--liff-heading-fw-sub, 600); }
+.liff-font .liff-h-blk.font-normal   { font-weight: var(--liff-fw-normal, 400); }
+
+/* 見出しの倍率。既定 (md) は class が付かない = var 未定義 = fallback 1。 */
+.liff-heading-size--sm { --liff-heading-mul: 0.93; }
+.liff-heading-size--lg { --liff-heading-mul: 1.08; }
+.liff-heading-size--xl { --liff-heading-mul: 1.16; }
+
+/* 見出しの太さ。主見出し (--liff-heading-fw) と副見出し (--liff-heading-fw-sub) を
+ * 1 段ずらして持ち、階層の差が潰れないようにする。 */
+.liff-heading-weight--light { --liff-heading-fw: 600; --liff-heading-fw-sub: 500; }
+.liff-heading-weight--bold { --liff-heading-fw: 800; --liff-heading-fw-sub: 700; }

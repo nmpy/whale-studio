@@ -18,6 +18,11 @@
 //
 // 副作用なし。window / document / React に依存しない。
 
+// 見出し系のページ設定（heading_scale / heading_weight）を効かせるためのマーカー class:
+//   `liff-h-acc liff-h-acc--<depth>` を title に付ける。サイズ / 太さの正準値は
+//   ここの text-[Npx] / font-* のままで、liff-font.css 側が同値の calc / var に読み替える
+//   （既定倍率 1・既定太さは同値なので、設定していないページの見た目は変わらない）。
+
 /** 見出しタグ。ページは h2（LiffSinglePageRenderer）、ブロックは h3 が既存の規約。
  *  accordion L1 はブロック相当なので h3 から始め、ネストごとに 1 段下げる。 */
 export type AccordionHeadingTag = "h3" | "h4" | "h5";
@@ -56,7 +61,7 @@ const STYLES: Record<1 | 2 | 3, AccordionDepthStyle> = {
   1: {
     section:    `border-b ${BORDER}`,
     header:     "min-h-[60px] py-3",
-    title:      "text-[16px] font-bold",
+    title:      "liff-h-acc liff-h-acc--1 text-[16px] font-bold",
     panel:      `${PANEL_BASE} pt-1 pb-5 pl-3`,
     headingTag: "h3",
   },
@@ -64,7 +69,7 @@ const STYLES: Record<1 | 2 | 3, AccordionDepthStyle> = {
   2: {
     section:    `border-b ${BORDER}`,
     header:     "min-h-[52px] py-2.5",
-    title:      "text-[15px] font-semibold",
+    title:      "liff-h-acc liff-h-acc--2 text-[15px] font-semibold",
     panel:      `${PANEL_BASE} pt-1 pb-4 pl-2.5`,
     headingTag: "h4",
   },
@@ -72,7 +77,7 @@ const STYLES: Record<1 | 2 | 3, AccordionDepthStyle> = {
   3: {
     section:    `border-b ${BORDER}`,
     header:     "min-h-[46px] py-2",
-    title:      "text-[14px] font-semibold",
+    title:      "liff-h-acc liff-h-acc--3 text-[14px] font-semibold",
     panel:      `${PANEL_BASE} pt-1 pb-4 pl-2.5`,
     headingTag: "h5",
   },

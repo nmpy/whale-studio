@@ -165,7 +165,7 @@ export function LiffSinglePageRenderer({
         {/* ページタイトル — LiffPageConfig.title をそのまま使う (固定文言は出さない) */}
         {!ownsPageChrome && page.title && (
           <div className="liff-player-main pt-3 pb-2">
-            <h2 className="text-[20px] font-bold leading-snug">{page.title}</h2>
+            <h2 className="liff-h-title text-[20px] font-bold leading-snug">{page.title}</h2>
             {page.description && (
               <p className="mt-1 text-[13px] leading-[1.7] text-[color:var(--liff-secondary-text)] break-words whitespace-pre-line">{page.description}</p>
             )}

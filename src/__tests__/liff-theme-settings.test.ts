@@ -17,8 +17,14 @@ import {
   fontScaleClass,
   resolveFontWeightLevel,
   fontWeightLevelClass,
+  resolveHeadingScale,
+  headingScaleClass,
+  resolveHeadingWeightLevel,
+  headingWeightLevelClass,
   liffRootClass,
 } from "@/components/liff/liff-style-helpers";
+import { headingSizeClass } from "@/components/liff/liff-style-helpers";
+import { accordionDepthStyle } from "@/components/liff/accordion-depth-style";
 import { liffPageConfigSettingsSchema } from "@/lib/validations";
 import { LIFF_TEXT } from "@/components/liff/ui/tokens";
 import type { LiffPageConfigSettings } from "@/types";
@@ -406,6 +412,21 @@ describe("terminal カラーモード", () => {
     expect(CSS).toContain("background-image: var(--liff-backdrop-image, none);");
   });
 
+  it("本文は白・罫線は緑・カード外周線は出さない（実機フィードバック反映）", () => {
+    const decls = declarations(ruleBody(CSS, ".liff-color-mode-terminal {")!);
+    expect(decls).toContain("--liff-primary-text: #FFFFFF");
+    expect(decls).toContain("--liff-ui-card-border: transparent");
+    // 罫線は装飾としてグリーンを出す（地色に沈む暗さにしない）
+    const border = decls.find((d) => d.startsWith("--liff-border:"))!;
+    expect(border).toBe("--liff-border: #2C6B49");
+  });
+
+  it("資料集シートの外周線はトークン経由（暗色テーマで白い線が残らない）", () => {
+    const src = readFileSync(join(process.cwd(), "src/components/liff/LiffRenderer.tsx"), "utf8");
+    expect(src).not.toContain("border-[#eef2f5]");
+    expect(src).toContain("border-[color:var(--liff-ui-card-border,#eef2f5)]");
+  });
+
   it("塗り面の文字色（--liff-on-accent）を明示している（明るい緑に白文字を載せない）", () => {
     const decls = declarations(ruleBody(CSS, ".liff-color-mode-terminal {")!);
     expect(decls.some((d) => d.startsWith("--liff-on-accent:"))).toBe(true);
@@ -556,5 +577,79 @@ describe("liff-font.css の契約 — サイズ / 太さ", () => {
     for (const t of ["--text-xs", "--text-sm", "--text-base", "--text-lg", "--text-xl", "--text-3xl"]) {
       expect(new RegExp(`${t}:\\s*calc\\(`).test(CSS)).toBe(true);
     }
+  });
+});
+
+describe("見出し系 (heading_scale / heading_weight) — 本文系と分けて指定できる", () => {
+  it("未設定なら本文系にフォールバックする（見出し/本文を分ける前と同じ見た目）", () => {
+    expect(resolveHeadingScale(undefined)).toBe("md");
+    expect(resolveHeadingScale(S({ font_scale: "xl" }))).toBe("xl");
+    expect(resolveHeadingWeightLevel(S({ font_weight_level: "bold" }))).toBe("bold");
+  });
+
+  it("指定があれば本文系より優先される", () => {
+    expect(resolveHeadingScale(S({ font_scale: "xl", heading_scale: "sm" }))).toBe("sm");
+    expect(resolveHeadingWeightLevel(S({ font_weight_level: "bold", heading_weight: "light" }))).toBe("light");
+  });
+
+  it("不正値は本文系 → 既定へ落ちる", () => {
+    expect(resolveHeadingScale(S({ heading_scale: "giant" }))).toBe("md");
+    expect(resolveHeadingWeightLevel(S({ heading_weight: 900 }))).toBe("normal");
+  });
+
+  it("md / normal は class なし（既存 DOM 不変）", () => {
+    expect(headingScaleClass("md")).toBe("");
+    expect(headingWeightLevelClass("normal")).toBe("");
+    expect(liffRootClass(S({ heading_scale: "md", heading_weight: "normal" }))).toBe("");
+  });
+
+  it("root class に本文系と見出し系が別々に載る", () => {
+    const cls = liffRootClass(S({ font_scale: "sm", heading_scale: "xl", heading_weight: "bold" }));
+    expect(cls).toContain("liff-font-size--sm");
+    expect(cls).toContain("liff-heading-size--xl");
+    expect(cls).toContain("liff-heading-weight--bold");
+  });
+
+  it("保存バリデーションを通る / 不正値は弾く", () => {
+    expect(liffPageConfigSettingsSchema.safeParse({ heading_scale: "lg", heading_weight: "bold" }).success).toBe(true);
+    expect(liffPageConfigSettingsSchema.safeParse({ heading_scale: "giant" }).success).toBe(false);
+    expect(liffPageConfigSettingsSchema.safeParse({ heading_weight: "black" }).success).toBe(false);
+  });
+});
+
+describe("liff-font.css の契約 — 見出し系", () => {
+  it("マーカー class の px / 太さは renderer 側の現行値と一致している（ドリフト防止）", () => {
+    // ページタイトル: LiffSinglePageRenderer の h2
+    const page = readFileSync(join(process.cwd(), "src/components/liff/LiffSinglePageRenderer.tsx"), "utf8");
+    const titleCls = page.match(/liff-h-title[^"]*"/)![0];
+    expect(titleCls).toContain("text-[20px]");
+    expect(titleCls).toContain("font-bold");
+    expect(CSS).toContain(".liff-font .liff-h-title   { font-size: calc(20px * var(--liff-heading-mul, 1)); font-weight: var(--liff-heading-fw, 700); }");
+
+    // アコーディオン見出し: accordion-depth-style の title
+    for (const [depth, px, weight] of [[1, "16", "700"], [2, "15", "600"], [3, "14", "600"]] as const) {
+      const style = accordionDepthStyle(depth);
+      expect(style.title).toContain(`liff-h-acc--${depth}`);
+      expect(style.title).toContain(`text-[${px}px]`);
+      const rule = ruleBody(CSS, `.liff-font .liff-h-acc--${depth}`)!;
+      expect(rule).toContain(`calc(${px}px * var(--liff-heading-mul, 1))`);
+      expect(rule).toContain(weight);
+    }
+
+    // 見出しブロック: headingSizeClass の px と一致
+    for (const level of [1, 2, 3, 4, 5] as const) {
+      const px = headingSizeClass(level).match(/text-\[(\d+)px\]/)![1];
+      const rule = ruleBody(CSS, `.liff-font .liff-h-blk--${level}`)!;
+      expect(rule).toContain(`calc(${px}px * var(--liff-heading-mul, 1))`);
+    }
+  });
+
+  it("見出し系の rule は本文系の px 読み替えより後ろにある（後勝ちで倍率が分かれる）", () => {
+    expect(CSS.indexOf(".liff-font .liff-h-title")).toBeGreaterThan(CSS.indexOf(".liff-font .text-\\[14px\\]"));
+  });
+
+  it("headingScaleClass / headingWeightLevelClass が返す class がすべて CSS に定義されている", () => {
+    for (const v of ["sm", "lg", "xl"] as const) expect(CSS).toContain(`.${headingScaleClass(v)} {`);
+    for (const v of ["light", "bold"] as const) expect(CSS).toContain(`.${headingWeightLevelClass(v)} {`);
   });
 });

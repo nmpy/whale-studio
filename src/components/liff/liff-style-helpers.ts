@@ -179,6 +179,26 @@ export function fontScaleClass(scale: LiffFontScale): string {
   }
 }
 
+/** settings から **見出し系に適用する文字サイズ倍率** を解決する。
+ *  優先順位: heading_scale → font_scale（本文系）→ "md"。
+ *  未指定時に font_scale へ倒すことで、見出し／本文を分ける前のページの見た目が変わらない。 */
+export function resolveHeadingScale(settings: LiffPageConfigSettings | undefined): LiffFontScale {
+  const scale = settings?.heading_scale;
+  if (scale && FONT_SCALES.includes(scale)) return scale;
+  return resolveFontScale(settings);
+}
+
+/** heading scale → root クラス名。"md" は既定なので空文字を返す。 */
+export function headingScaleClass(scale: LiffFontScale): string {
+  switch (scale) {
+    case "sm": return "liff-heading-size--sm";
+    case "lg": return "liff-heading-size--lg";
+    case "xl": return "liff-heading-size--xl";
+    case "md":
+    default:   return "";
+  }
+}
+
 const FONT_WEIGHT_LEVELS: readonly LiffFontWeightLevel[] = ["light", "normal", "bold"];
 
 /** settings から **最終的に適用する文字の太さ** を解決する。
@@ -200,6 +220,26 @@ export function fontWeightLevelClass(level: LiffFontWeightLevel): string {
   }
 }
 
+/** settings から **見出し系に適用する文字の太さ** を解決する。
+ *  優先順位: heading_weight → font_weight_level（本文系）→ "normal"。 */
+export function resolveHeadingWeightLevel(
+  settings: LiffPageConfigSettings | undefined,
+): LiffFontWeightLevel {
+  const level = settings?.heading_weight;
+  if (level && FONT_WEIGHT_LEVELS.includes(level)) return level;
+  return resolveFontWeightLevel(settings);
+}
+
+/** heading weight level → root クラス名。"normal" は既定なので空文字を返す。 */
+export function headingWeightLevelClass(level: LiffFontWeightLevel): string {
+  switch (level) {
+    case "light": return "liff-heading-weight--light";
+    case "bold":  return "liff-heading-weight--bold";
+    case "normal":
+    default:      return "";
+  }
+}
+
 /** page settings から root クラス文字列を組み立てる。
  *  既存の className と組み合わせて使う想定: `${ROOT_BASE} ${liffRootClass(settings)}`
  *
@@ -207,8 +247,10 @@ export function fontWeightLevelClass(level: LiffFontWeightLevel): string {
  *    - フォント: `.liff-font-theme--*`（旧 `.liff-font--*` は fontPresetClass 側に残置。
  *      旧 class を併記すると `.liff-home-font--*` との優先順位が変わるため、ここでは新 class のみ返す）
  *    - カラー : `.liff-color-mode-*`
- *    - サイズ : `.liff-font-size--*`（`--liff-fs-mul` を差し替える）
- *    - 太さ   : `.liff-font-weight--*`（`--liff-fw-*` を差し替える）
+ *    - サイズ : `.liff-font-size--*`（本文系 = `--liff-fs-mul`）
+ *               `.liff-heading-size--*`（見出し系 = `--liff-heading-mul`）
+ *    - 太さ   : `.liff-font-weight--*`（本文系 = `--liff-fw-*`）
+ *               `.liff-heading-weight--*`（見出し系 = `--liff-heading-fw*`）
  *  すべて既定値のときは空文字なので、未設定ページの DOM は従来と 1 文字も変わらない。 */
 export function liffRootClass(settings: LiffPageConfigSettings | undefined): string {
   return [
@@ -216,6 +258,8 @@ export function liffRootClass(settings: LiffPageConfigSettings | undefined): str
     colorModeClass(resolveColorMode(settings)),
     fontScaleClass(resolveFontScale(settings)),
     fontWeightLevelClass(resolveFontWeightLevel(settings)),
+    headingScaleClass(resolveHeadingScale(settings)),
+    headingWeightLevelClass(resolveHeadingWeightLevel(settings)),
   ].filter(Boolean).join(" ");
 }
 

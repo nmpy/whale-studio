@@ -13,6 +13,7 @@ import type {
 import { normalizeLiffPageType } from "@/types";
 import {
   resolveColorMode, resolveFontScale, resolveFontTheme, resolveFontWeightLevel,
+  resolveHeadingScale, resolveHeadingWeightLevel,
 } from "./liff-style-helpers";
 import { LiffFaqEditor } from "./LiffFaqEditor";
 import { LiffHintSearchEditor } from "./LiffHintSearchEditor";
@@ -210,7 +211,7 @@ export function LiffConfigHeader({
           />
         </div>
 
-        {/* 5-9. フォント / カラーモード / 文字サイズ / 文字の太さ / 説明文の配置 */}
+        {/* 5-11. フォント / カラーモード / 本文・見出しの大きさと太さ / 説明文の配置 */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label className={labelCls}>フォント</label>
@@ -246,35 +247,65 @@ export function LiffConfigHeader({
             <p className="text-[11px] text-gray-400 mt-1">LIFF 画面全体の配色です。未設定はライト（現行の白ベース）。</p>
           </div>
           <div>
-            <label className={labelCls}>文字サイズ</label>
+            <label className={labelCls}>本文の大きさ</label>
             <select
               className={inputCls}
               value={resolveFontScale(settings)}
               onChange={(e) => updateSetting("font_scale", e.target.value as LiffFontScale)}
               disabled={readOnly}
             >
-              <option value="sm">小さめ（本文 約13px）</option>
-              <option value="md">標準（既定・本文 14px）</option>
-              <option value="lg">大きめ（本文 約15px）</option>
-              <option value="xl">特大（本文 約16px）</option>
+              <option value="sm">小さめ（約13px）</option>
+              <option value="md">標準（既定・14px）</option>
+              <option value="lg">大きめ（約15px）</option>
+              <option value="xl">特大（約16px）</option>
             </select>
-            <p className="text-[11px] text-gray-400 mt-1">見出し・本文・注釈の比率を保ったまま全体を拡大 / 縮小します。</p>
+            <p className="text-[11px] text-gray-400 mt-1">本文テキスト・説明文・注釈など、見出し以外の文字の大きさです。</p>
           </div>
           <div>
-            <label className={labelCls}>文字の太さ</label>
+            <label className={labelCls}>本文の太さ</label>
             <select
               className={inputCls}
               value={resolveFontWeightLevel(settings)}
               onChange={(e) => updateSetting("font_weight_level", e.target.value as LiffFontWeightLevel)}
               disabled={readOnly}
             >
-              <option value="light">細め（見出し・ラベルを軽く）</option>
+              <option value="light">細め</option>
               <option value="normal">標準（既定）</option>
-              <option value="bold">太め（本文まで太く）</option>
+              <option value="bold">太め</option>
             </select>
             <p className="text-[11px] text-gray-400 mt-1">
-              ページ全体の太さです。同梱フォント（LINE Seed JP / ゴシック）は 400・700 の 2 種類のため、
-              中間の太さは近い方に丸められます。
+              同梱フォント（LINE Seed JP / ゴシック）は 400・700 の 2 種類のため、中間の太さは近い方に丸められます。
+            </p>
+          </div>
+          <div>
+            <label className={labelCls}>見出しの大きさ</label>
+            <select
+              className={inputCls}
+              value={resolveHeadingScale(settings)}
+              onChange={(e) => updateSetting("heading_scale", e.target.value as LiffFontScale)}
+              disabled={readOnly}
+            >
+              <option value="sm">小さめ</option>
+              <option value="md">標準（既定）</option>
+              <option value="lg">大きめ</option>
+              <option value="xl">特大</option>
+            </select>
+            <p className="text-[11px] text-gray-400 mt-1">ページタイトル・アコーディオンの見出し・見出しブロックの大きさです。</p>
+          </div>
+          <div>
+            <label className={labelCls}>見出しの太さ</label>
+            <select
+              className={inputCls}
+              value={resolveHeadingWeightLevel(settings)}
+              onChange={(e) => updateSetting("heading_weight", e.target.value as LiffFontWeightLevel)}
+              disabled={readOnly}
+            >
+              <option value="light">細め</option>
+              <option value="normal">標準（既定）</option>
+              <option value="bold">太め</option>
+            </select>
+            <p className="text-[11px] text-gray-400 mt-1">
+              階層差（親見出し / 子見出し）は保ったまま、段階だけずらします。見出しブロックの個別指定はその中での相対指定になります。
             </p>
           </div>
           <div>

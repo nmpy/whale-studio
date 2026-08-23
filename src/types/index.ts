@@ -1754,11 +1754,18 @@ export interface LiffPageConfigSettings {
   font_theme?: LiffFontTheme;
   /** ページ全体のカラーモード。未指定は "light"（= 現行既定の白ベース）。 */
   color_mode?: LiffColorMode;
-  /** ページ全体の文字サイズ倍率。未指定は "md"（= 現行と同じ大きさ）。 */
+  /** 本文系（本文テキスト・説明文・補助テキストなど見出し以外）の文字サイズ倍率。
+   *  未指定は "md"（= 現行と同じ大きさ）。 */
   font_scale?: LiffFontScale;
-  /** ページ全体の文字の太さ。未指定は "normal"（= 現行と同じ太さ）。
+  /** 本文系の文字の太さ。未指定は "normal"（= 現行と同じ太さ）。
    *  ブロック単位の font_weight とは独立（こちらが土台、ブロック側は個別指定）。 */
   font_weight_level?: LiffFontWeightLevel;
+  /** 見出し系（ページタイトル / アコーディオン見出し / 見出しブロック）の文字サイズ倍率。
+   *  未指定は font_scale にフォールバックする（= 本文と同じ倍率。従来の挙動と一致）。 */
+  heading_scale?: LiffFontScale;
+  /** 見出し系の文字の太さ。未指定は font_weight_level にフォールバックする。
+   *  見出しブロックの個別指定（太字 / 中太 / 通常）は、この段階の中での相対指定として残る。 */
+  heading_weight?: LiffFontWeightLevel;
   /** @deprecated `font_theme` を使ってください。旧仕様のフォントプリセット。既存データ互換のため残置。 */
   font_preset?: LiffFontPreset;
   /** @deprecated 旧仕様。新規データでは font_theme を使う。読み込み時のフォールバック用に残置。 */

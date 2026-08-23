@@ -176,7 +176,9 @@ export function LiffBlockSections({
 
   return (
     <main className="liff-player-main pt-3 pb-8">
-      <div className="rounded-[20px] border border-[#eef2f5] bg-[color:var(--liff-surface,#fff)] shadow-[0_6px_20px_rgba(31,64,92,0.06)] px-5 py-4">
+      {/* 外周線はトークン経由。light では従来と同値 (--liff-ui-card-border = --liff-border = #eef2f5)。
+          暗色テーマでは地色に合った線色になり、terminal では transparent = 枠を出さない。 */}
+      <div className="rounded-[20px] border border-[color:var(--liff-ui-card-border,#eef2f5)] bg-[color:var(--liff-surface,#fff)] shadow-[0_6px_20px_rgba(31,64,92,0.06)] px-5 py-4">
         {visibleBlocks.length === 0 ? (
           <p className="text-center text-[color:var(--liff-tertiary-text)] py-12 text-sm">
             表示する項目がありません
