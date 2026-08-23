@@ -113,3 +113,52 @@ describe("FaqRenderer — 既存 renderer にも同じ経路で届く", () => {
     expect(rootClass(container)).toContain("liff-font-theme--classic");
   });
 });
+
+describe("文字サイズ / 文字の太さ / terminal — root class への反映", () => {
+  it("未設定ならサイズ・太さの class も付かない（既存ページの DOM 不変）", () => {
+    const { container } = render(<LiffPageShell settings={undefined}>本文</LiffPageShell>);
+    const cls = rootClass(container);
+    expect(cls).not.toMatch(/liff-font-size--/);
+    expect(cls).not.toMatch(/liff-font-weight--/);
+  });
+
+  it("font_scale / font_weight_level / color_mode=terminal が同時に載る", () => {
+    const { container } = render(
+      <LiffPageShell settings={S({ color_mode: "terminal", font_scale: "xl", font_weight_level: "bold" })}>
+        本文
+      </LiffPageShell>,
+    );
+    const cls = rootClass(container);
+    expect(cls).toContain("liff-color-mode-terminal");
+    expect(cls).toContain("liff-font-size--xl");
+    expect(cls).toContain("liff-font-weight--bold");
+  });
+
+  it("既定値を明示保存しても class は増えない（md / normal）", () => {
+    const { container } = render(
+      <LiffPageShell settings={S({ font_scale: "md", font_weight_level: "normal" })}>本文</LiffPageShell>,
+    );
+    const cls = rootClass(container);
+    expect(cls).not.toMatch(/liff-font-size--|liff-font-weight--/);
+  });
+
+  it("不正値は既定（class なし）に落ちる", () => {
+    const { container } = render(
+      <LiffPageShell settings={S({ font_scale: "giant", font_weight_level: 900 })}>本文</LiffPageShell>,
+    );
+    const cls = rootClass(container);
+    expect(cls).not.toMatch(/liff-font-size--|liff-font-weight--/);
+  });
+
+  it("既存 renderer (FaqRenderer) にも同じ経路で届く", () => {
+    const config = {
+      id: "p1", page_type: "faq", title: "よくある質問", description: null,
+      settings_json: { faq_items: [{ question: "Q1", answer: "A1" }], color_mode: "terminal", font_scale: "lg" },
+    } as unknown as LiffPageConfig;
+    const { container } = render(<FaqRenderer config={config} />);
+    expect(screen.getByText("Q1")).toBeTruthy();
+    const cls = rootClass(container);
+    expect(cls).toContain("liff-color-mode-terminal");
+    expect(cls).toContain("liff-font-size--lg");
+  });
+});

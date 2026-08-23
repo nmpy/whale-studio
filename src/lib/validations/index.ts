@@ -1486,7 +1486,11 @@ export const liffPageConfigSettingsSchema = z.object({
   font_theme:           z.enum(["default", "gothic", "rounded", "classic", "modern"]).optional(),
   // カラーモード。未指定 / 不正値は renderer 側で "light" 扱い（= 現行既定の白ベース）。
   // 値を追加するときは types.ts の LiffColorMode / liff-font.css / CMS select も揃えること。
-  color_mode:           z.enum(["light", "dark", "system", "sepia", "bordeaux"]).optional(),
+  color_mode:           z.enum(["light", "dark", "system", "sepia", "bordeaux", "terminal"]).optional(),
+  // ページ全体の文字サイズ倍率 / 文字の太さ。未指定 / 不正値は renderer 側で "md" / "normal" 扱い
+  // （= 現行と同じ見た目）。値を追加するときは types.ts / liff-font.css / CMS select も揃えること。
+  font_scale:           z.enum(["sm", "md", "lg", "xl"]).optional(),
+  font_weight_level:    z.enum(["light", "normal", "bold"]).optional(),
   // @deprecated フォントプリセット (旧)。未指定 / 不正値は renderer 側で "line_seed_jp" 扱い。
   font_preset:          z.enum(["line_seed_jp", "system_sans", "noto_sans_jp", "serif"]).optional(),
   // 旧フォントファミリ (deprecated)。データ互換のため残置。新規 CMS では出さない。

@@ -1711,10 +1711,39 @@ export type LiffFontTheme = "default" | "gothic" | "rounded" | "classic" | "mode
  *  - "system"  : OS の prefers-color-scheme に追従 (light ⇔ dark)
  *  - "sepia"   : 生成り / 茶系の暖色テーマ
  *  - "bordeaux": ボルドー × アイボリー (薄いピンクベージュ背景 + ボルドー CTA)
+ *  - "terminal": ターミナル (黒 × 電子グリーン)。スパイ / 諜報機関の端末画面のトーン。
  *
  *  未指定 / 不正値は renderer 側で "light" として扱う (= 後方互換)。
  *  値を増やしても既存データに影響しないよう、必ず「未知値 → light」でフォールバックすること。 */
-export type LiffColorMode = "light" | "dark" | "system" | "sepia" | "bordeaux";
+export type LiffColorMode = "light" | "dark" | "system" | "sepia" | "bordeaux" | "terminal";
+
+/** ページ全体の文字サイズ倍率 (CMS「文字サイズ」で選ぶ値)。
+ *
+ *  実装は「px を直接書き換える」のではなく、root に付く class が
+ *  `--liff-fs-mul` (倍率) を差し替え、liff-font.css 側で
+ *  各 font-size を `calc(<既存px> * var(--liff-fs-mul))` に読み替える方式。
+ *  これにより見出し / 本文 / 補助テキストの**比率を保ったまま**全体が拡縮する。
+ *
+ *  - "sm": 0.93 倍 (本文 14px → 約 13px)
+ *  - "md": 1 倍。**未設定データと完全に同じ見た目**（既定）
+ *  - "lg": 1.08 倍 (本文 14px → 約 15px)
+ *  - "xl": 1.16 倍 (本文 14px → 約 16px)
+ *
+ *  未指定 / 不正値は renderer 側で "md" として扱う。 */
+export type LiffFontScale = "sm" | "md" | "lg" | "xl";
+
+/** ページ全体の文字の太さ (CMS「文字の太さ」で選ぶ値)。
+ *
+ *  ブロック単位の `font_weight` (HeadingSettings / TextSettings) とは別物。
+ *  こちらはページ全体の font-weight ロール (normal / medium / semibold / bold) を
+ *  まとめて 1 段階ずらす。root class が `--liff-fw-*` を差し替える方式。
+ *
+ *  - "light" : 補助見出し・ラベルの太さを落として軽い印象にする
+ *  - "normal": 現行既定。**未設定データと完全に同じ見た目**
+ *  - "bold"  : 本文まで太くしてコントラストを上げる（暗色テーマで読みやすくなる）
+ *
+ *  未指定 / 不正値は renderer 側で "normal" として扱う。 */
+export type LiffFontWeightLevel = "light" | "normal" | "bold";
 
 /** 本文 description の配置 (左/中央/右)。
  *  未指定 / 不正値は renderer 側で "center" として扱う (LINE Design System 既定)。 */
@@ -1725,6 +1754,11 @@ export interface LiffPageConfigSettings {
   font_theme?: LiffFontTheme;
   /** ページ全体のカラーモード。未指定は "light"（= 現行既定の白ベース）。 */
   color_mode?: LiffColorMode;
+  /** ページ全体の文字サイズ倍率。未指定は "md"（= 現行と同じ大きさ）。 */
+  font_scale?: LiffFontScale;
+  /** ページ全体の文字の太さ。未指定は "normal"（= 現行と同じ太さ）。
+   *  ブロック単位の font_weight とは独立（こちらが土台、ブロック側は個別指定）。 */
+  font_weight_level?: LiffFontWeightLevel;
   /** @deprecated `font_theme` を使ってください。旧仕様のフォントプリセット。既存データ互換のため残置。 */
   font_preset?: LiffFontPreset;
   /** @deprecated 旧仕様。新規データでは font_theme を使う。読み込み時のフォールバック用に残置。 */
@@ -2272,8 +2306,6 @@ export type LiffTargetType = "work_main" | "custom";
 export interface LineDestination {
   id:                string;
   work_id:           string;
-  /** Work の公開URL用短縮ID。canonical `/w/{work_public_id}` を組むのに使う（API が返す）。 */
-  work_public_id?:   string | null;
   key:               string;
   name:              string;
   description:       string | null;
