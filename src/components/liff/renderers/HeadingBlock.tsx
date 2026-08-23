@@ -28,7 +28,9 @@ export function HeadingBlock({
   const sizeCls = headingSizeClass(level);
   const weightCls = headingWeightClass(settings);
   const colorCls = "text-[color:var(--liff-primary-text)]";
-  const baseCls = `${sizeCls} ${weightCls} ${align} ${colorCls} break-words`;
+  // liff-h-blk--<level> は見出し系ページ設定（heading_scale / heading_weight）のマーカー。
+  // sizeCls / weightCls の値はそのままで、liff-font.css が同値の calc / var へ読み替える。
+  const baseCls = `liff-h-blk liff-h-blk--${level} ${sizeCls} ${weightCls} ${align} ${colorCls} break-words`;
 
   // 見出しは letter-spacing をやや詰め、本文 (0.02em) とコントラストを付ける。
   // PR-BLK3: 見出しの行間を読みやすく（既存サイズ/太さ/配置は不変）。
