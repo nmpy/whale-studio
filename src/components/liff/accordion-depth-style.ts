@@ -18,7 +18,10 @@
 //
 // 副作用なし。window / document / React に依存しない。
 
-// 見出し系のページ設定（heading_scale / heading_weight）を効かせるためのマーカー class:
+// ページ設定を効かせるためのマーカー class:
+//   title  → `liff-h-acc liff-h-acc--<depth>`（heading_scale / heading_weight）
+//   header → `liff-acc-h liff-acc-h--<depth>`（layout_density: 項目の高さ）
+//   panel  → `liff-acc-p liff-acc-p--<depth>`（layout_density: 本文側の余白）
 //   `liff-h-acc liff-h-acc--<depth>` を title に付ける。サイズ / 太さの正準値は
 //   ここの text-[Npx] / font-* のままで、liff-font.css 側が同値の calc / var に読み替える
 //   （既定倍率 1・既定太さは同値なので、設定していないページの見た目は変わらない）。
@@ -60,25 +63,25 @@ const STYLES: Record<1 | 2 | 3, AccordionDepthStyle> = {
   //      パネルにだけガイド線とわずかなインデントが増える。
   1: {
     section:    `border-b ${BORDER}`,
-    header:     "min-h-[60px] py-3",
+    header:     "liff-acc-h liff-acc-h--1 min-h-[60px] py-3",
     title:      "liff-h-acc liff-h-acc--1 text-[16px] font-bold",
-    panel:      `${PANEL_BASE} pt-1 pb-5 pl-3`,
+    panel:      `liff-acc-p liff-acc-p--1 ${PANEL_BASE} pt-1 pb-5 pl-3`,
     headingTag: "h3",
   },
   // L2 — 親アコーディオンの中。
   2: {
     section:    `border-b ${BORDER}`,
-    header:     "min-h-[52px] py-2.5",
+    header:     "liff-acc-h liff-acc-h--2 min-h-[52px] py-2.5",
     title:      "liff-h-acc liff-h-acc--2 text-[15px] font-semibold",
-    panel:      `${PANEL_BASE} pt-1 pb-4 pl-2.5`,
+    panel:      `liff-acc-p liff-acc-p--2 ${PANEL_BASE} pt-1 pb-4 pl-2.5`,
     headingTag: "h4",
   },
   // L3 — 現行の保存上限。ここに更に accordion は入れられないが、text / image は入る。
   3: {
     section:    `border-b ${BORDER}`,
-    header:     "min-h-[46px] py-2",
+    header:     "liff-acc-h liff-acc-h--3 min-h-[46px] py-2",
     title:      "liff-h-acc liff-h-acc--3 text-[14px] font-semibold",
-    panel:      `${PANEL_BASE} pt-1 pb-4 pl-2.5`,
+    panel:      `liff-acc-p liff-acc-p--3 ${PANEL_BASE} pt-1 pb-4 pl-2.5`,
     headingTag: "h5",
   },
 };

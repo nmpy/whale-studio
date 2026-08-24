@@ -21,14 +21,27 @@
 
 import dynamic from "next/dynamic";
 import type { LiffPageConfigSettings } from "@/types";
-import { resolveFontTheme } from "../liff-style-helpers";
+import { resolveFontTheme, resolveFontWeightLevel } from "../liff-style-helpers";
 
 const LiffFontRounded = dynamic(() => import("./LiffFontRounded"), { ssr: false });
 const LiffFontClassic = dynamic(() => import("./LiffFontClassic"), { ssr: false });
 
+// 「本文の太さ = 細め」を選んだページだけが読む Light(300) ウェイト。
+// 既定テーマ (LINE Seed JP) は 300 を持たないため対象外（liff-font.css の該当節参照）。
+const LiffFontGothicLight  = dynamic(() => import("./LiffFontGothicLight"),  { ssr: false });
+const LiffFontRoundedLight = dynamic(() => import("./LiffFontRoundedLight"), { ssr: false });
+const LiffFontClassicLight = dynamic(() => import("./LiffFontClassicLight"), { ssr: false });
+
 export function LiffFontThemeAssets({ settings }: { settings?: LiffPageConfigSettings | null }) {
   const theme = resolveFontTheme(settings ?? undefined);
-  if (theme === "rounded") return <LiffFontRounded />;
-  if (theme === "classic") return <LiffFontClassic />;
-  return null;
+  const light = resolveFontWeightLevel(settings ?? undefined) === "light";
+  return (
+    <>
+      {theme === "rounded" && <LiffFontRounded />}
+      {theme === "classic" && <LiffFontClassic />}
+      {light && theme === "gothic"  && <LiffFontGothicLight />}
+      {light && theme === "rounded" && <LiffFontRoundedLight />}
+      {light && theme === "classic" && <LiffFontClassicLight />}
+    </>
+  );
 }

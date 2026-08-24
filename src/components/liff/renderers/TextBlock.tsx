@@ -20,7 +20,7 @@ export function TextBlock({ title, settings }: { title?: string | null; settings
         </p>
       )}
       <p
-        className={`text-[15px] leading-[1.85] whitespace-pre-wrap break-words text-[color:var(--liff-primary-text)] ${weightCls}`}
+        className={`liff-body-text text-[15px] leading-[1.85] whitespace-pre-wrap break-words text-[color:var(--liff-primary-text)] ${weightCls}`}
         style={{ letterSpacing: "0.01em" }}
       >
         {settings.body || ""}

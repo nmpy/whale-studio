@@ -1083,3 +1083,36 @@
  * 1 段ずらして持ち、階層の差が潰れないようにする。 */
 .liff-heading-weight--light { --liff-heading-fw: 600; --liff-heading-fw-sub: 500; }
 .liff-heading-weight--bold { --liff-heading-fw: 800; --liff-heading-fw-sub: 700; }
+
+/* ── 余白の詰め具合 (settings_json.layout_density) ─────────────────────────
+ *
+ * root に `.liff-density--compact` が付いたときだけ、
+ * アコーディオン 1 項目の高さ / 本文側の余白 / ブロック間の区切り余白 / 本文行間を詰める。
+ * 既定 ("normal") は class が付かない = このセクションは一切効かない（既存ページ不変）。
+ *
+ * 値は renderer の Tailwind class を上書きする (0,2,0)。DOM 構造・階層表現には触れない。 */
+.liff-density--compact .liff-acc-h--1 { min-height: 44px; padding-top: 8px;  padding-bottom: 8px; }
+.liff-density--compact .liff-acc-h--2 { min-height: 40px; padding-top: 6px;  padding-bottom: 6px; }
+.liff-density--compact .liff-acc-h--3 { min-height: 36px; padding-top: 5px;  padding-bottom: 5px; }
+
+.liff-density--compact .liff-acc-p--1 { padding-top: 0; padding-bottom: 14px; gap: 12px; }
+.liff-density--compact .liff-acc-p--2 { padding-top: 0; padding-bottom: 12px; gap: 10px; }
+.liff-density--compact .liff-acc-p--3 { padding-top: 0; padding-bottom: 12px; gap: 10px; }
+
+.liff-density--compact .liff-block-sep { padding-bottom: 14px; margin-bottom: 14px; }
+
+.liff-density--compact .liff-body-text { line-height: 1.7; }
+
+/* ── 本文を細くできるフォント（LINE Seed JP 以外）────────────────────────
+ *
+ * 「本文の太さ = 細め」は `--liff-fw-normal: 400`（= 変化なし）が既定。
+ * 同梱の LINE Seed JP は 100 / 400 / 700 / 800 しか無く、300 を指定すると
+ * CSS のフォントマッチングで **100 (Thin)** まで落ちてしまうため、既定テーマでは下げない。
+ *
+ * 300 を持つテーマ（ゴシック / 丸ゴシック / クラシック）と、300 が実在する
+ * システムフォント（モダン）でだけ本文を 300 にする。
+ * webfont 本体は LiffFontThemeAssets が「細めを選んだページ」でだけ遅延ロードする。 */
+.liff-font-theme--gothic.liff-font-weight--light,
+.liff-font-theme--rounded.liff-font-weight--light,
+.liff-font-theme--classic.liff-font-weight--light,
+.liff-font-theme--modern.liff-font-weight--light { --liff-fw-normal: 300; }

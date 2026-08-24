@@ -11,6 +11,7 @@ import type {
   LiffFontTheme,
   LiffFontWeight,
   LiffFontWeightLevel,
+  LiffLayoutDensity,
   LiffHeadingLevel,
   LiffDescriptionAlign,
   LiffPageConfigSettings,
@@ -240,6 +241,22 @@ export function headingWeightLevelClass(level: LiffFontWeightLevel): string {
   }
 }
 
+const LAYOUT_DENSITIES: readonly LiffLayoutDensity[] = ["normal", "compact"];
+
+/** settings から **最終的に適用する余白の詰め具合** を解決する。
+ *  未設定 / 不正値 / 未知値 → "normal"（= 現行と同じ余白）。 */
+export function resolveLayoutDensity(
+  settings: LiffPageConfigSettings | undefined,
+): LiffLayoutDensity {
+  const d = settings?.layout_density;
+  return d && LAYOUT_DENSITIES.includes(d) ? d : "normal";
+}
+
+/** layout density → root クラス名。"normal" は既定なので空文字を返す。 */
+export function layoutDensityClass(density: LiffLayoutDensity): string {
+  return density === "compact" ? "liff-density--compact" : "";
+}
+
 /** page settings から root クラス文字列を組み立てる。
  *  既存の className と組み合わせて使う想定: `${ROOT_BASE} ${liffRootClass(settings)}`
  *
@@ -251,6 +268,7 @@ export function headingWeightLevelClass(level: LiffFontWeightLevel): string {
  *               `.liff-heading-size--*`（見出し系 = `--liff-heading-mul`）
  *    - 太さ   : `.liff-font-weight--*`（本文系 = `--liff-fw-*`）
  *               `.liff-heading-weight--*`（見出し系 = `--liff-heading-fw*`）
+ *    - 余白   : `.liff-density--compact`（項目高さ・行間・ブロック間の余白を詰める）
  *  すべて既定値のときは空文字なので、未設定ページの DOM は従来と 1 文字も変わらない。 */
 export function liffRootClass(settings: LiffPageConfigSettings | undefined): string {
   return [
@@ -260,6 +278,7 @@ export function liffRootClass(settings: LiffPageConfigSettings | undefined): str
     fontWeightLevelClass(resolveFontWeightLevel(settings)),
     headingScaleClass(resolveHeadingScale(settings)),
     headingWeightLevelClass(resolveHeadingWeightLevel(settings)),
+    layoutDensityClass(resolveLayoutDensity(settings)),
   ].filter(Boolean).join(" ");
 }
 

@@ -7,13 +7,13 @@
 // 実 API 保存は最下部「すべての変更を保存」(useLiffConfig.saveAll = 一括保存) に任せる。
 
 import type {
-  LiffColorMode, LiffFontScale, LiffFontTheme, LiffFontWeightLevel,
+  LiffColorMode, LiffFontScale, LiffFontTheme, LiffFontWeightLevel, LiffLayoutDensity,
   LiffPageConfig, LiffPageConfigSettings, LiffPageType, LiffPublishStatus,
 } from "@/types";
 import { normalizeLiffPageType } from "@/types";
 import {
   resolveColorMode, resolveFontScale, resolveFontTheme, resolveFontWeightLevel,
-  resolveHeadingScale, resolveHeadingWeightLevel,
+  resolveHeadingScale, resolveHeadingWeightLevel, resolveLayoutDensity,
 } from "./liff-style-helpers";
 import { LiffFaqEditor } from "./LiffFaqEditor";
 import { LiffHintSearchEditor } from "./LiffHintSearchEditor";
@@ -211,7 +211,7 @@ export function LiffConfigHeader({
           />
         </div>
 
-        {/* 5-11. フォント / カラーモード / 本文・見出しの大きさと太さ / 説明文の配置 */}
+        {/* 5-12. フォント / カラーモード / 本文・見出しの大きさと太さ / 余白 / 説明文の配置 */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label className={labelCls}>フォント</label>
@@ -274,7 +274,8 @@ export function LiffConfigHeader({
               <option value="bold">太め</option>
             </select>
             <p className="text-[11px] text-gray-400 mt-1">
-              同梱フォント（LINE Seed JP / ゴシック）は 400・700 の 2 種類のため、中間の太さは近い方に丸められます。
+              「細め」で本文を細くできるのは<strong>ゴシック / 丸ゴシック / クラシック / モダン</strong>を選んだときです。
+              既定（LINE Seed JP）は 400 より軽い字面を持たないため、本文の太さは変わりません。
             </p>
           </div>
           <div>
@@ -306,6 +307,21 @@ export function LiffConfigHeader({
             </select>
             <p className="text-[11px] text-gray-400 mt-1">
               階層差（親見出し / 子見出し）は保ったまま、段階だけずらします。見出しブロックの個別指定はその中での相対指定になります。
+            </p>
+          </div>
+          <div>
+            <label className={labelCls}>余白</label>
+            <select
+              className={inputCls}
+              value={resolveLayoutDensity(settings)}
+              onChange={(e) => updateSetting("layout_density", e.target.value as LiffLayoutDensity)}
+              disabled={readOnly}
+            >
+              <option value="normal">標準（既定）</option>
+              <option value="compact">コンパクト（項目を詰める）</option>
+            </select>
+            <p className="text-[11px] text-gray-400 mt-1">
+              アコーディオン 1 項目の高さ・本文の行間・ブロック間の余白を詰めます。階層のインデントは変わりません。
             </p>
           </div>
           <div>
