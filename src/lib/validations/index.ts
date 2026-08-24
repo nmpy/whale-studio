@@ -1495,6 +1495,8 @@ export const liffPageConfigSettingsSchema = z.object({
   // 未指定は本文系 (font_scale / font_weight_level) にフォールバックする。
   heading_scale:        z.enum(["sm", "md", "lg", "xl"]).optional(),
   heading_weight:       z.enum(["light", "normal", "bold"]).optional(),
+  // 余白の詰め具合。未指定 / 不正値は renderer 側で "normal" 扱い（= 現行と同じ余白）。
+  layout_density:       z.enum(["normal", "compact"]).optional(),
   // @deprecated フォントプリセット (旧)。未指定 / 不正値は renderer 側で "line_seed_jp" 扱い。
   font_preset:          z.enum(["line_seed_jp", "system_sans", "noto_sans_jp", "serif"]).optional(),
   // 旧フォントファミリ (deprecated)。データ互換のため残置。新規 CMS では出さない。

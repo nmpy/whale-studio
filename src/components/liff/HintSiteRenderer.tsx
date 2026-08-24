@@ -100,7 +100,7 @@ export function HintSiteRenderer({ config, preview }: Props) {
                 ? ""
                 : isLast
                   ? "pb-2"
-                  : "pb-6 mb-6 border-b border-[color:var(--liff-border)]";
+                  : "liff-block-sep pb-6 mb-6 border-b border-[color:var(--liff-border)]";
               return (
                 <div key={b.id} className={sectionCls}>
                   <BlockSwitch block={b} />

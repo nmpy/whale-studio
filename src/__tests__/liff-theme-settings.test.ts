@@ -21,6 +21,8 @@ import {
   headingScaleClass,
   resolveHeadingWeightLevel,
   headingWeightLevelClass,
+  resolveLayoutDensity,
+  layoutDensityClass,
   liffRootClass,
 } from "@/components/liff/liff-style-helpers";
 import { headingSizeClass } from "@/components/liff/liff-style-helpers";
@@ -651,5 +653,76 @@ describe("liff-font.css の契約 — 見出し系", () => {
   it("headingScaleClass / headingWeightLevelClass が返す class がすべて CSS に定義されている", () => {
     for (const v of ["sm", "lg", "xl"] as const) expect(CSS).toContain(`.${headingScaleClass(v)} {`);
     for (const v of ["light", "bold"] as const) expect(CSS).toContain(`.${headingWeightLevelClass(v)} {`);
+  });
+});
+
+describe("余白 (layout_density)", () => {
+  it("未設定・不正値は normal（= 現行と同じ余白・class なし）", () => {
+    expect(resolveLayoutDensity(undefined)).toBe("normal");
+    expect(resolveLayoutDensity(S({ layout_density: "tight" }))).toBe("normal");
+    expect(layoutDensityClass("normal")).toBe("");
+    expect(liffRootClass(S({ layout_density: "normal" }))).toBe("");
+  });
+
+  it("compact は root class に出る / 保存できる", () => {
+    expect(layoutDensityClass("compact")).toBe("liff-density--compact");
+    expect(liffRootClass(S({ layout_density: "compact" }))).toBe("liff-density--compact");
+    expect(liffPageConfigSettingsSchema.safeParse({ layout_density: "compact" }).success).toBe(true);
+    expect(liffPageConfigSettingsSchema.safeParse({ layout_density: "tight" }).success).toBe(false);
+  });
+
+  it("compact が上書きする対象のマーカー class が renderer 側に存在する（ドリフト防止）", () => {
+    const acc = readFileSync(join(process.cwd(), "src/components/liff/accordion-depth-style.ts"), "utf8");
+    for (const d of [1, 2, 3] as const) {
+      expect(accordionDepthStyle(d).header).toContain(`liff-acc-h--${d}`);
+      expect(accordionDepthStyle(d).panel).toContain(`liff-acc-p--${d}`);
+      expect(CSS).toContain(`.liff-density--compact .liff-acc-h--${d}`);
+      expect(CSS).toContain(`.liff-density--compact .liff-acc-p--${d}`);
+    }
+    expect(acc).toContain("layout_density");
+    for (const f of ["src/components/liff/LiffRenderer.tsx", "src/components/liff/HintSiteRenderer.tsx"]) {
+      expect(readFileSync(join(process.cwd(), f), "utf8")).toContain("liff-block-sep");
+    }
+    expect(readFileSync(join(process.cwd(), "src/components/liff/renderers/TextBlock.tsx"), "utf8"))
+      .toContain("liff-body-text");
+    expect(CSS).toContain(".liff-density--compact .liff-block-sep");
+    expect(CSS).toContain(".liff-density--compact .liff-body-text");
+  });
+
+  it("compact は余白系プロパティだけを上書きする（色・階層インデントには触れない）", () => {
+    const allowed = /^(min-height|padding-top|padding-bottom|gap|margin-bottom|line-height):/;
+    for (const sel of selectorsOf(CSS)) {
+      if (!sel.includes("liff-density--compact")) continue;
+      for (const d of declarations(ruleBody(CSS, sel + " {")!)) {
+        expect(d).toMatch(allowed);
+      }
+    }
+  });
+});
+
+describe("本文の「細め」— 300 を持つテーマだけ下げる", () => {
+  it("既定 (LINE Seed JP) の細めは 400 のまま（300 指定だと Thin 100 に落ちるため）", () => {
+    const light = declarations(ruleBody(CSS, ".liff-font-weight--light {")!);
+    expect(light).toContain("--liff-fw-normal: 400");
+  });
+
+  it("gothic / rounded / classic / modern の細めだけ 300 に下げる", () => {
+    const sel = selectorsOf(CSS).find((x) => x.includes("liff-font-theme--gothic.liff-font-weight--light"))!;
+    expect(sel).toBeTruthy();
+    for (const t of ["rounded", "classic", "modern"]) {
+      expect(sel).toContain(`liff-font-theme--${t}.liff-font-weight--light`);
+    }
+    // 宣言は 1 行（本文ウェイトのみ）。書体や色には触れない。
+    const body = ruleBody(CSS, ".liff-font-theme--modern.liff-font-weight--light {")!;
+    expect(declarations(body)).toEqual(["--liff-fw-normal: 300"]);
+  });
+
+  it("Light webfont は専用の遅延ロード component だけが import する", () => {
+    const base = join(process.cwd(), "src/components/liff/fonts");
+    expect(readFileSync(join(base, "LiffFontGothicLight.tsx"), "utf8")).toContain("@fontsource/noto-sans-jp/300.css");
+    expect(readFileSync(join(base, "LiffFontRoundedLight.tsx"), "utf8")).toContain("@fontsource/m-plus-rounded-1c/300.css");
+    expect(readFileSync(join(base, "LiffFontClassicLight.tsx"), "utf8")).toContain("@fontsource/noto-serif-jp/300.css");
+    // 常時ロードには混ぜない（細めを選んでいないページの CSS を増やさない）
+    expect(readFileSync(join(process.cwd(), "src/app/liff/layout.tsx"), "utf8")).not.toContain("/300.css");
   });
 });

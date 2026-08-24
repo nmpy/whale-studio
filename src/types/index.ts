@@ -1745,6 +1745,14 @@ export type LiffFontScale = "sm" | "md" | "lg" | "xl";
  *  未指定 / 不正値は renderer 側で "normal" として扱う。 */
 export type LiffFontWeightLevel = "light" | "normal" | "bold";
 
+/** ページ全体の余白の詰め具合（行間・項目の高さ）。
+ *
+ *  - "normal" : 現行既定。**未設定データと完全に同じ見た目**
+ *  - "compact": アコーディオン 1 項目の高さ・本文の行間・ブロック間の余白を詰める
+ *
+ *  未指定 / 不正値は renderer 側で "normal" として扱う。 */
+export type LiffLayoutDensity = "normal" | "compact";
+
 /** 本文 description の配置 (左/中央/右)。
  *  未指定 / 不正値は renderer 側で "center" として扱う (LINE Design System 既定)。 */
 export type LiffDescriptionAlign = "left" | "center" | "right";
@@ -1763,6 +1771,8 @@ export interface LiffPageConfigSettings {
   /** 見出し系（ページタイトル / アコーディオン見出し / 見出しブロック）の文字サイズ倍率。
    *  未指定は font_scale にフォールバックする（= 本文と同じ倍率。従来の挙動と一致）。 */
   heading_scale?: LiffFontScale;
+  /** ページ全体の余白の詰め具合。未指定は "normal"（= 現行と同じ余白）。 */
+  layout_density?: LiffLayoutDensity;
   /** 見出し系の文字の太さ。未指定は font_weight_level にフォールバックする。
    *  見出しブロックの個別指定（太字 / 中太 / 通常）は、この段階の中での相対指定として残る。 */
   heading_weight?: LiffFontWeightLevel;

@@ -195,7 +195,7 @@ export function LiffBlockSections({
               ? ""
               : isLast
                 ? "pb-1"
-                : "pb-5 mb-5 border-b border-[color:var(--liff-border)]";
+                : "liff-block-sep pb-5 mb-5 border-b border-[color:var(--liff-border)]";
             return (
               <div key={block.id} className={sectionCls}>
                 <RenderBlock block={block} ctx={ctx} preview={preview} />
