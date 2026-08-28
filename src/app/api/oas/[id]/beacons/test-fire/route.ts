@@ -79,7 +79,7 @@ export const POST = withAuth<{ id: string; beaconId?: string }>(async (req, ctx,
       ignoreLimits: data.ignore_limits ?? false,
       resolveMessage: ({ messageId }) => loadBeaconMessageChain(messageId, oa.title ?? ""),
       line: {
-        reply: (token, msgs) => replyToLine(token, msgs, oa.channelAccessToken),
+        reply: async (token, msgs) => { await replyToLine(token, msgs, oa.channelAccessToken); },
         push:  async (uid, msgs) => { await pushToLine(uid, msgs, oa.channelAccessToken); },
       },
     });

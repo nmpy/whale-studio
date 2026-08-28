@@ -1782,7 +1782,7 @@ async function handleWebhook(req: NextRequest, oaId: string) {
           event,
           resolveMessage: ({ messageId }) => loadBeaconMessageChain(messageId, oa.title ?? ""),
           line: {
-            reply: (token, msgs) => _replyToLine(token, msgs, oa.channelAccessToken),
+            reply: async (token, msgs) => { await _replyToLine(token, msgs, oa.channelAccessToken); },
             push:  async (uid, msgs) => { await _pushToLine(uid, msgs, oa.channelAccessToken); },
           },
           // 送信後の待機トリガー(地点到着で自動進行)の消化（本番 webhook 経路のみ）。
