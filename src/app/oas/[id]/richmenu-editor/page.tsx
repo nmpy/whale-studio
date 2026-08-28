@@ -88,7 +88,12 @@ export default function RichMenuEditorListPage() {
   }
 
   async function handleApply(menuId: string) {
-    if (!confirm("このリッチメニューを LINE に適用しますか？\n現在のデフォルトメニューと置き換わります。")) return;
+    if (!confirm(
+      "このリッチメニューを LINE に適用しますか？\n\n" +
+      "・このチャンネルのデフォルトメニューと置き換わります\n" +
+      "・LINE公式アカウントマネージャー側で設定したメニューがある場合、そちらより優先して表示されます\n" +
+      "・トーク画面に再入室したときに反映されます（最大1分程度）"
+    )) return;
     setApplying(menuId);
     try {
       await richMenuEditorApi.apply(getDevToken(), menuId);
@@ -102,7 +107,14 @@ export default function RichMenuEditorListPage() {
   }
 
   async function handleDelete(menuId: string, menuName: string) {
-    if (!confirm(`「${menuName}」を削除しますか？`)) return;
+    // LINE 適用済みかどうかで結果が大きく違うので、削除前に何が起きるかを明示する。
+    const applied = menus.find((m) => m.id === menuId)?.line_rich_menu_id;
+    const appliedNote = applied
+      ? "\n\nこのメニューは LINE に適用済みです。LINE 側のリッチメニューとデフォルト設定も削除されます。" +
+        "\n削除後は、LINE公式アカウントマネージャー側で設定したメニューがあればそちらが表示され、" +
+        "なければリッチメニューは表示されなくなります。"
+      : "";
+    if (!confirm(`「${menuName}」を削除しますか？${appliedNote}`)) return;
     setDeleting(menuId);
     try {
       await richMenuEditorApi.delete(getDevToken(), menuId);
@@ -207,7 +219,7 @@ export default function RichMenuEditorListPage() {
               <div className="min-w-0 flex-1">
                 <div className="mb-1 flex flex-wrap items-center gap-2.5">
                   <span className="text-[15px] font-bold text-ink">{menu.name}</span>
-                  {menu.line_rich_menu_id && (
+                  {menu.line_rich_menu_id ? (
                     <span
                       className="rounded-full px-2 py-0.5 text-[11px] font-semibold"
                       style={{
@@ -217,6 +229,19 @@ export default function RichMenuEditorListPage() {
                       }}
                     >
                       LINE 適用済み
+                    </span>
+                  ) : (
+                    /* 「作っただけで LINE には反映されていない」状態を明示する。
+                       これが分からず「登録したのに反映されない」と誤認する事故があった。 */
+                    <span
+                      className="rounded-full px-2 py-0.5 text-[11px] font-semibold"
+                      style={{
+                        background:   "#fffbeb",
+                        color:        "#b45309",
+                        border:       "1px solid #fcd34d",
+                      }}
+                    >
+                      未適用 — LINE には反映されていません
                     </span>
                   )}
                 </div>

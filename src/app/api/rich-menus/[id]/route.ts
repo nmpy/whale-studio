@@ -3,9 +3,12 @@
 // PATCH  /api/rich-menus/:id — 更新（areas を指定した場合は全置換）
 // DELETE /api/rich-menus/:id — 削除
 
+import { NextResponse } from "next/server";
 import { withAuth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { ok, noContent, badRequest, notFound, serverError } from "@/lib/api-response";
+import { invalidateOaCacheById } from "@/lib/oa-cache";
+import { deleteRichMenuFromLine } from "@/lib/line-richmenu";
 import { updateRichMenuSchema, formatZodErrors } from "@/lib/validations";
 import { ZodError } from "zod";
 
@@ -164,11 +167,63 @@ export const PATCH = withAuth<{ id: string }>(async (req, { params }) => {
 });
 
 // ── DELETE /api/rich-menus/:id ───────────────────────────
+//
+// LINE 側 → DB の順で削除する。
+//
+// 旧実装は DB レコードだけを削除していたため、LINE 側にはリッチメニュー本体も
+// デフォルト設定も残り、「CMS で削除したのに LINE アプリには古いリッチメニューが
+// 表示され続ける」状態になっていた（D.O.T / 2026-08 で実際に発生。CMS 上は削除済みに
+// 見えるので、運用者からは原因が分からない）。
+//
+// LINE 側の削除に失敗した場合は DB を変更せずに 502 を返し、
+// 「DB だけ成功して不整合」を構造的に起こさない（= apply 側 #622 と同じ方針）。
 export const DELETE = withAuth<{ id: string }>(async (_req, { params }) => {
   try {
-    const existing = await prisma.richMenu.findUnique({ where: { id: params.id } });
+    const existing = await prisma.richMenu.findUnique({
+      where:   { id: params.id },
+      include: { oa: { select: { channelAccessToken: true, richMenuId: true } } },
+    });
     if (!existing) return notFound("リッチメニュー");
-    await prisma.richMenu.delete({ where: { id: params.id } });
+
+    // ── 1. LINE 側の後始末（デフォルト解除 → メニュー削除）──
+    if (existing.lineRichMenuId) {
+      try {
+        await deleteRichMenuFromLine({
+          token:          existing.oa.channelAccessToken,
+          lineRichMenuId: existing.lineRichMenuId,
+          logPrefix:      `[rich-menus DELETE ${params.id}]`,
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error("[rich-menus DELETE] LINE 側の削除に失敗:", err);
+        return NextResponse.json(
+          {
+            success: false,
+            error: {
+              code:    "LINE_DELETE_ERROR",
+              message: `LINE 側のリッチメニュー削除に失敗したため、削除を中止しました: ${message}`,
+            },
+          },
+          { status: 502 }
+        );
+      }
+    }
+
+    // ── 2. DB 削除 + Oa.richMenuId の dangling 解消 ──
+    //     Oa.richMenuId が削除対象を指したままだと、DB 内に存在しない LINE ID への
+    //     参照が残る（D.O.T で実際に残っていた）。
+    const clearOaPointer =
+      existing.lineRichMenuId !== null &&
+      existing.oa.richMenuId === existing.lineRichMenuId;
+
+    await prisma.$transaction([
+      prisma.richMenu.delete({ where: { id: params.id } }),
+      ...(clearOaPointer
+        ? [prisma.oa.update({ where: { id: existing.oaId }, data: { richMenuId: null } })]
+        : []),
+    ]);
+    if (clearOaPointer) await invalidateOaCacheById(existing.oaId);
+
     return noContent();
   } catch (err) {
     return serverError(err);

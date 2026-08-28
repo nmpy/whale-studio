@@ -376,6 +376,105 @@ export async function getRichMenuStatus(
 }
 
 /**
+ * 現在のデフォルトリッチメニューの「所有者まで含めた」状態を取得する。
+ *
+ * `getDefaultRichMenuId()` は 404 のみを null に畳むため、403 では throw する。
+ * LINE ではデフォルトリッチメニューを **Messaging API** と
+ * **LINE Official Account Manager** のどちらでも設定でき、後者が保持している場合
+ * この API は 403 (`the richmenu is owned by another channel`) を返す。
+ * その場合 Messaging API 側からは取得も解除もできないため、**触ってはいけない**。
+ *
+ * 削除時に「解除してよいデフォルトか」を判断するために使う。
+ *
+ * @see https://developers.line.biz/ja/reference/messaging-api/#get-default-rich-menu-id
+ */
+export type DefaultRichMenuState =
+  /** Messaging API で設定したデフォルトが存在する */
+  | { kind: "ours"; richMenuId: string }
+  /** デフォルト未設定 (404) */
+  | { kind: "none" }
+  /** OA Manager 等、別チャネルがデフォルトを保持している (403)。こちらからは操作不可 */
+  | { kind: "other-channel" };
+
+export async function getDefaultRichMenuState(
+  channelAccessToken: string
+): Promise<DefaultRichMenuState> {
+  const res = await lineRequest(
+    "GET",
+    `${LINE_API_BASE}/user/all/richmenu`,
+    channelAccessToken
+  );
+  if (res.status === 404) return { kind: "none" };
+  if (res.status === 403) return { kind: "other-channel" };
+  const data = await parseLineResponse<{ richMenuId?: string }>(res);
+  return data.richMenuId
+    ? { kind: "ours", richMenuId: data.richMenuId }
+    : { kind: "none" };
+}
+
+export interface DeleteRichMenuFromLineResult {
+  /** このメニューがデフォルトだったため解除したか */
+  defaultCancelled: boolean;
+  /** LINE 側に既に存在せず 404 だったか（＝冪等に成功扱い） */
+  alreadyAbsent: boolean;
+}
+
+/**
+ * リッチメニューを LINE 側から取り除く（デフォルト解除 → メニュー削除）。
+ *
+ * CMS の「削除」から呼ぶ。DB レコードだけを消すと LINE 側にはメニュー本体も
+ * デフォルト設定も残り、「CMS で削除したのに LINE アプリには古いリッチメニューが
+ * 表示され続ける」状態になる（D.O.T / 2026-08 で実際に発生）。
+ * **DB を消す前に必ずこちらを成功させること。**
+ *
+ * 意図的にやらないこと:
+ *   - **per-user リンクの一括解除はしない**。ユーザー単位のリッチメニュー切替
+ *     (`linkRichMenuToUser` / visible_phase) は正式仕様であり、デフォルトの
+ *     更新とは意味が違う。リンク済みユーザーには、LINE の仕様どおり
+ *     「トーク画面に再入室したとき」に削除が反映される。
+ *   - **OA Manager 側のデフォルトには触らない**（403 = other-channel なら解除をスキップ）。
+ *   - **別メニューがデフォルトのときに解除しない**（無関係なメニューを巻き込まない）。
+ *
+ * @throws LINE API がエラーを返した場合。呼び出し側は DB を変更せずに中断すること。
+ */
+export async function deleteRichMenuFromLine(params: {
+  token:          string;
+  lineRichMenuId: string;
+  logPrefix?:     string;
+}): Promise<DeleteRichMenuFromLineResult> {
+  const prefix = params.logPrefix ?? "[deleteRichMenuFromLine]";
+
+  // ── 1. このメニューがデフォルトなら解除する ──
+  let defaultCancelled = false;
+  const current = await getDefaultRichMenuState(params.token);
+  if (current.kind === "ours" && current.richMenuId === params.lineRichMenuId) {
+    await cancelDefaultRichMenu(params.token);
+    defaultCancelled = true;
+  }
+  console.log(
+    `${prefix} default=${current.kind}${current.kind === "ours" ? `:${current.richMenuId}` : ""} ` +
+    `cancelled=${defaultCancelled}`
+  );
+
+  // ── 2. メニュー本体を削除する ──
+  const res = await lineRequest(
+    "DELETE",
+    `${LINE_API_BASE}/richmenu/${params.lineRichMenuId}`,
+    params.token
+  );
+  const alreadyAbsent = res.status === 404;
+  if (!res.ok && !alreadyAbsent) {
+    // parseLineResponse が LINE のエラーメッセージ付きで throw する
+    await parseLineResponse(res);
+  }
+  console.log(
+    `${prefix} deleted ${params.lineRichMenuId} (${alreadyAbsent ? "already_absent" : "ok"})`
+  );
+
+  return { defaultCancelled, alreadyAbsent };
+}
+
+/**
  * 特定ユーザーにリッチメニューをリンクする。
  * ユーザーが特定のフェーズに進んだときに呼び出す。
  */
