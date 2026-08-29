@@ -18,6 +18,8 @@ export const CAROUSEL_CARD_TYPES: CarouselCardType[] = ["product", "location", "
 export const CAROUSEL_MAX_CARDS = 5;
 export const DEFAULT_CARD_TYPE: CarouselCardType = "product";
 export const DEFAULT_PRICE_CURRENCY = "¥";
+/** LINE のアクション label 上限。CMS 側の入力制限にも使う。 */
+export const CAROUSEL_ACTION_LABEL_MAX = 20;
 
 /** カード共通のアクション。url のとき url、text のとき text を使う（label は必須）。 */
 export interface CarouselAction {
@@ -186,8 +188,20 @@ export function validateCarousel(content: CarouselMessageContent): string | null
     const n = i + 1;
     const a = c.action;
     if (!a || !str(a.label).trim()) return `カード${n}: アクションラベルを入力してください。`;
-    if (a.type === "url"  && !str(a.url).trim())  return `カード${n}: URL を入力してください。`;
+    if (a.type === "url") {
+      const url = str(a.url).trim();
+      if (!url) return `カード${n}: URL を入力してください。`;
+      // 形式を見ないと URL 欄に本文を貼っても保存できてしまい、送信時に
+      // LINE がカルーセル全体を 400 で拒否する（= 1枚も届かない）。
+      // 画像タップアクションの検証（_form.tsx）と同じ基準に揃える。
+      if (!/^https?:\/\//i.test(url)) {
+        return `カード${n}: URL は http:// または https:// から始まるものを指定してください。`;
+      }
+    }
     if (a.type === "text" && !str(a.text).trim()) return `カード${n}: 送信テキストを入力してください。`;
+    if (str(a.label).trim().length > CAROUSEL_ACTION_LABEL_MAX) {
+      return `カード${n}: ボタンのラベルは${CAROUSEL_ACTION_LABEL_MAX}文字以内で入力してください。`;
+    }
 
     if (content.cardType === "product"  && !str(c.title).trim()) return `カード${n}: タイトルを入力してください。`;
     if (content.cardType === "location" && !str(c.title).trim()) return `カード${n}: タイトルを入力してください。`;
@@ -214,15 +228,36 @@ const HERO_ASPECT: Record<CarouselCardType, string> = {
   image:    "1.51:1",
 };
 
-/** action が有効（label + url/text）なら Flex action を返す。無効なら null。 */
+/**
+ * LINE の uri アクションが受け付けるスキーム。
+ * @see https://developers.line.biz/ja/reference/messaging-api/#uri-action
+ */
+const URI_ACTION_SCHEME_RE = /^(https?|line|tel):/i;
+
+/**
+ * action が有効（label + url/text）なら Flex action を返す。無効なら null。
+ *
+ * ここで弾かないと LINE API がメッセージ**全体**を 400 で拒否し、
+ * カード 1 枚の不備で 5 枚すべてが届かなくなる（D.O.T / 2026-08 で発生。
+ * URL 欄に説明文が貼られており、カルーセル全体が送信されなかった）。
+ * アクションだけを落として、カードの画像・本文は届ける。
+ */
 function toFlexAction(a: CarouselAction | undefined): FlexNode | null {
   if (!a || !str(a.label).trim()) return null;
+  // label 超過も 400 の原因になるため、送信可能な長さに詰める。
+  const label = a.label.slice(0, CAROUSEL_ACTION_LABEL_MAX);
   if (a.type === "text") {
     const text = str(a.text).trim();
-    return text ? { type: "message", label: a.label, text } : null;
+    return text ? { type: "message", label, text } : null;
   }
   const uri = str(a.url).trim();
-  return uri ? { type: "uri", label: a.label, uri } : null;
+  if (!uri) return null;
+  if (!URI_ACTION_SCHEME_RE.test(uri)) {
+    // 例: URL 欄に本文を貼ってしまったケース。ここで落とさないと全体が 400 になる。
+    console.warn(`[carousel] uri アクションのスキームが不正のためアクションを除外: ${uri.slice(0, 40)}`);
+    return null;
+  }
+  return { type: "uri", label, uri };
 }
 
 const txt = (text: string, opts: FlexNode = {}): FlexNode => ({ type: "text", text, wrap: true, ...opts });

@@ -738,17 +738,62 @@ export function isStartIntent(text: string): boolean {
 // Reply API
 // ────────────────────────────────────────────────
 
+/** reply / push の送信結果。失敗を呼び出し側の集計に載せるために返す。 */
+export interface LineSendResult {
+  ok:      boolean;
+  status:  number | null;
+  /** LINE が返したエラー本文（先頭のみ）。運用ログ用。 */
+  error?:  string;
+}
+
+/**
+ * 送信失敗を「どのメッセージの、どのプロパティが原因か」まで含めて 1 行で出す。
+ *
+ * 背景: reply が 400 で拒否されても `[LINE Reply] HTTP 400` が出るだけで、
+ * サマリは `failures:[]` のまま成功に見えていた。運用者は Vercel のログを
+ * 直接読まない限り「届いていない」ことにすら気づけない
+ * （D.O.T のカルーセルが 3 回とも 400 で消えていた / 2026-08）。
+ * LINE の details[].property と CMS の messageId を並べて出し、
+ * どの設定を直せばよいかをログだけで特定できるようにする。
+ */
+function logDeliveryFailure(args: {
+  route:    "reply" | "push";
+  status:   number | null;
+  body:     string;
+  messages: LineMessage[];
+}): void {
+  let lineMessage: string | null = null;
+  let details: { message?: string; property?: string }[] = [];
+  try {
+    const parsed = JSON.parse(args.body) as { message?: string; details?: typeof details };
+    lineMessage = parsed.message ?? null;
+    details = Array.isArray(parsed.details) ? parsed.details : [];
+  } catch { /* JSON でなければ本文をそのまま error に載せる */ }
+
+  console.error("[line:delivery:failure]", JSON.stringify({
+    route:        args.route,
+    status:       args.status,
+    lineMessage,
+    details:      details.map((d) => ({ message: d.message, property: d.property })),
+    messageCount: args.messages.length,
+    types:        args.messages.map((m) => m.type),
+    // CMS 上のメッセージへ辿れるようにする（どの設定を直すべきかの起点）
+    sourceMessageIds: args.messages.map((m) => m._sourceMessageId ?? null),
+    rawBody:      lineMessage === null ? args.body.slice(0, 300) : undefined,
+  }));
+}
+
 /**
  * LINE Reply API を呼び出してメッセージを送信する。
- * 失敗してもスローせず、コンソールにエラーを記録するだけにする
+ * 失敗してもスローせず、結果を返す
  * （Webhook は常に 200 を返す必要があるため）。
  */
 export async function replyToLine(
   replyToken: string,
   messages: LineMessage[],
   channelAccessToken: string
-): Promise<void> {
-  if (!replyToken || messages.length === 0) return;
+): Promise<LineSendResult> {
+  if (!replyToken || messages.length === 0) return { ok: true, status: null };
 
   // 最大 LINE_MSG_MAX 件に切り詰める
   const sliced = messages.slice(0, LINE_MSG_MAX);
@@ -783,9 +828,14 @@ export async function replyToLine(
     if (!res.ok) {
       const body = await res.text().catch(() => "(読み取り不能)");
       console.error(`[LINE Reply] HTTP ${res.status}:`, body);
+      logDeliveryFailure({ route: "reply", status: res.status, body, messages: sliced });
+      return { ok: false, status: res.status, error: body.slice(0, 500) };
     }
+    return { ok: true, status: res.status };
   } catch (err) {
     console.error("[LINE Reply] ネットワークエラー:", err);
+    logDeliveryFailure({ route: "reply", status: null, body: String(err), messages: sliced });
+    return { ok: false, status: null, error: String(err) };
   }
 }
 
@@ -1007,16 +1057,29 @@ export async function replyWithLagToLine(
       messageCount: messages.length,
     }));
 
-    await replyToLine(replyToken, messages, channelAccessToken);
+    const replyResult = await replyToLine(replyToken, messages, channelAccessToken);
+    // reply が 400 等で拒否された場合、以前はサマリが failures:[] のままで
+    // 「送れた」ように見えていた。失敗を必ず集計に載せる。
+    const replyFailed = replyResult?.ok === false;
     console.info("[line:reply-lag:summary]", JSON.stringify({
       strategy:   messages.length === 1 ? "reply_one" : "reply_all",
       reason:     loadingInfo.shown ? "cms_loading_head" : "no_timing_effect",
       replyTotal: messages.length,
+      replyOk:    replyFailed ? 0 : messages.length,
+      replyFail:  replyFailed ? messages.length : 0,
       pushTotal:  0,
       pushOk:     0,
       pushFail:   0,
-      failures:   [],
+      failures:   replyFailed
+        ? [{ route: "reply", status: replyResult?.status ?? null,
+             msgIds: messages.map((m) => m._sourceMessageId ?? null) }]
+        : [],
     }));
+    if (replyFailed) {
+      console.error(
+        `[replyWithLagToLine] ⚠️ reply 送信失敗 status=${replyResult?.status ?? "-"} msgs=${messages.length}件 → ユーザーには1通も届いていない`,
+      );
+    }
     console.log(`[replyWithLagToLine] strategy=${messages.length === 1 ? "reply_one" : "reply_all"} reply=${messages.length} push=0 total=${messages.length}`);
     return;
   }
@@ -1035,7 +1098,8 @@ export async function replyWithLagToLine(
     await applyHeadCmsLoading(replyBatch[0], userId, channelAccessToken, is1to1, sleepFn);
   }
 
-  await replyToLine(replyToken, replyBatch, channelAccessToken);
+  const replyResult = await replyToLine(replyToken, replyBatch, channelAccessToken);
+  const replyFailed = replyResult?.ok === false;
 
   if (controller && pushRest.length > 0) {
     controller.abortPendingLoading();
@@ -1044,7 +1108,15 @@ export async function replyWithLagToLine(
 
   let pushOk = 0;
   let pushFail = 0;
-  const pushFailures: { idx: number; msgId: string | null; status: number | null }[] = [];
+  const pushFailures: { route?: string; idx: number; msgId: string | null; status: number | null }[] = [];
+  if (replyFailed) {
+    // reply バッチ（先頭〜5通）が丸ごと届いていない。push の失敗と同じ土俵に載せる。
+    replyBatch.forEach((m, i) => pushFailures.push({
+      route: "reply", idx: i + 1,
+      msgId: m._sourceMessageId ?? null,
+      status: replyResult?.status ?? null,
+    }));
+  }
 
   for (let i = 0; i < pushRest.length; i++) {
     const msg = pushRest[i];
@@ -1084,13 +1156,20 @@ export async function replyWithLagToLine(
     strategy,
     reason:     needsSequentialPush ? "preserve_message_order_and_timing" : "line_reply_limit_5",
     replyTotal: replyBatch.length,
+    replyOk:    replyFailed ? 0 : replyBatch.length,
+    replyFail:  replyFailed ? replyBatch.length : 0,
     pushTotal:  pushRest.length,
     pushOk,
     pushFail,
     failures:   pushFailures,
   }));
 
-  console.log(`[replyWithLagToLine] strategy=${strategy} reply=${replyBatch.length} push=${pushRest.length}(ok=${pushOk}/fail=${pushFail}) total=${messages.length}`);
+  if (replyFailed) {
+    console.error(
+      `[replyWithLagToLine] ⚠️ reply 送信失敗 status=${replyResult?.status ?? "-"} msgs=${replyBatch.length}件 → 先頭バッチが届いていない`,
+    );
+  }
+  console.log(`[replyWithLagToLine] strategy=${strategy} reply=${replyBatch.length}(fail=${replyFailed ? replyBatch.length : 0}) push=${pushRest.length}(ok=${pushOk}/fail=${pushFail}) total=${messages.length}`);
 }
 
 /** [diag] LineMessage の識別用に内部 id を取り出す。
