@@ -69,14 +69,57 @@ const variableKeySchema = z.string()
 // ────────────────────────────────────────────────
 // OA
 // ────────────────────────────────────────────────
+/**
+ * LINE チャネル資格情報のバリデーション。
+ *
+ * 以前は `.min(1)` だけだったため、**Webhook URL を Access Token 欄に貼っても保存できた**。
+ * 実際に 1 アカウント（【QA】Account / 2026-05-14 作成）が
+ * `channel_access_token = "https://.../api/line/<basicId>/webhook"` の状態で保存され、
+ * その OA の LINE API 呼び出しが全て 401 になっていた。
+ * 保存時点では何のエラーも出ないため、後から原因を特定するのが難しい。
+ *
+ * 値の正しさ自体は LINE に問い合わせないと分からないが、
+ * **明らかに別物を貼った場合**（URL / 空白混入 / 桁数違い）はここで確定的に弾く。
+ */
+
+/** Channel access token（長期トークンは 172 文字。base64 系の文字のみ）。 */
+const channelAccessTokenSchema = z.string()
+  .min(1, "Access Tokenは必須です")
+  .refine((v) => !/^https?:\/\//.test(v), {
+    message: "Access Token に URL が入力されています。LINE Developers の「チャネルアクセストークン」を貼り付けてください（Webhook URL ではありません）。",
+  })
+  .refine((v) => !/\s/.test(v), {
+    message: "Access Token に空白や改行が含まれています。前後の余分な文字を取り除いてください。",
+  })
+  .refine((v) => /^[A-Za-z0-9+/=_.-]+$/.test(v), {
+    message: "Access Token に使用できない文字が含まれています。値をそのまま貼り付け直してください。",
+  })
+  .refine((v) => v.length >= 100, {
+    message: "Access Token が短すぎます。LINE のチャネルアクセストークン（長期）は 100 文字以上です。値が途中で切れていないか確認してください。",
+  });
+
+/** Channel secret は 32 桁の 16 進数。 */
+const channelSecretSchema = z.string()
+  .min(1, "Channel Secretは必須です")
+  .refine((v) => /^[0-9a-f]{32}$/.test(v.trim()), {
+    message: "Channel Secret の形式が正しくありません（32 桁の英数字）。LINE Developers の「チャネルシークレット」を確認してください。",
+  });
+
+/** Channel ID は数値のみ（例: 2009623906）。 */
+const channelIdSchema = z.string()
+  .min(1, "Channel IDは必須です")
+  .refine((v) => /^\d+$/.test(v.trim()), {
+    message: "Channel ID は数字のみです。Basic ID（@から始まる ID）ではなく、LINE Developers の「チャネル ID」を入力してください。",
+  });
+
 export const createOaSchema = z.object({
   title:                z.string().min(1, "作品名は必須です").max(100, "作品名は100文字以内で入力してください"),
   description:          z.string().max(500).optional(),
-  channel_id:           z.string().min(1, "Channel IDは必須です"),
+  channel_id:           channelIdSchema,
   // LINE OA Basic ID（例: 613zlngs）。Webhook URL の [oaId] 部分として使う。@ は含まない。
   line_oa_id:           z.string().max(50).optional(),
-  channel_secret:       z.string().min(1, "Channel Secretは必須です"),
-  channel_access_token: z.string().min(1, "Access Tokenは必須です"),
+  channel_secret:       channelSecretSchema,
+  channel_access_token: channelAccessTokenSchema,
   publish_status:       z.enum(["draft", "active", "paused"]).default("draft"),
 });
 
