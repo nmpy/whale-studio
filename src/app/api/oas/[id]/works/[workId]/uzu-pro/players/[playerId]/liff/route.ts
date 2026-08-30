@@ -1,7 +1,7 @@
 // src/app/api/oas/[id]/works/[workId]/uzu-pro/players/[playerId]/liff/route.ts
 // POST /api/oas/:id/works/:workId/uzu-pro/players/:playerId/liff — プレイヤー個別の LIFF リンク発行。
 //
-// 認可: authorizeUzuPro（platform owner / grant 保有 active メンバー）。権限なし/OA 不在は 404。
+// 認可: authorizeUzuProManager（canAccessUzuPro=3条件 AND LIFF 管理者 allowlist）。権限なし/OA 不在/管理者非該当は 404。
 // テナント境界: player は当該 OA + 当該 work に属するもののみ操作可（他作品/他OAは 404）。
 // 発行の正本は issueLiffForPlayer（$transaction 内で呼ぶ）。未発行のみ発行（reissue=false）。
 // 平文 URL は「issued」時のレスポンスに一度だけ載る（DB には保存しない）。
@@ -9,7 +9,7 @@
 import type { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { ok, notFound, conflict, unprocessable } from "@/lib/api-response";
-import { authorizeUzuPro } from "@/lib/uzupro-auth";
+import { authorizeUzuProManager } from "@/lib/uzupro-auth";
 import { issueLiffForPlayer } from "@/lib/uzupro/liff";
 import { recordUzuProActivity } from "@/lib/uzupro/activity";
 import { resolveTicketExpiresAt } from "@/lib/live-ticket-link";
@@ -21,7 +21,7 @@ export async function POST(
   req: NextRequest,
   { params }: { params: { id: string; workId: string; playerId: string } },
 ) {
-  const auth = await authorizeUzuPro(req, params.id, params.workId);
+  const auth = await authorizeUzuProManager(req, params.id, params.workId);
   if (!auth.ok) return auth.response;
 
   // テナント境界: 当該 OA + 当該 work のプレイヤーのみ（他作品/他 OA は存在を露出せず 404）。

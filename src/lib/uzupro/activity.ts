@@ -17,8 +17,18 @@ export type UzuProAction =
   | "liff_bulk_issue"
   | "liff_revoke"
   | "liff_reissue"
-  /// PR2 で使用（LINE User ID 紐づけ）
-  | "line_link"
+  /// LINE User ID 紐づけ（PR2）。既存 snake_case 命名規則に合わせる。
+  | "line_link_succeeded"
+  | "line_link_idempotent"
+  | "line_link_conflict"
+  | "line_link_failed"
+  /// LINE User ID 手動登録/解除（LIFF 利用不可時の緊急運用・LIFF 管理者のみ）。
+  | "line_manual_link_succeeded"
+  | "line_manual_link_idempotent"
+  | "line_manual_link_conflict"
+  | "line_manual_link_failed"
+  | "line_manual_unlinked"
+  | "line_manual_unlink_failed"
   /// 作品単位の for UZU Pro 有効化 / 無効化（owner / platform owner 操作）
   | "work_enabled"
   | "work_disabled"

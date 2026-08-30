@@ -16,11 +16,14 @@ export function UzuProPlayerActionsBar({
   workId,
   workTitle,
   bulk,
+  canManage,
 }: {
   oaId: string;
   workId: string;
   workTitle: string;
   bulk: UzuProBulkTargets;
+  /** LIFF 管理者のみ一括発行可。false の場合はボタン自体を描画しない（API でも強制）。 */
+  canManage: boolean;
 }) {
   const router = useRouter();
   const { showToast } = useToast();
@@ -29,6 +32,9 @@ export function UzuProPlayerActionsBar({
 
   const { target, excludedCancelled, excludedIssued } = bulk;
   const excludedTotal = excludedCancelled + excludedIssued;
+
+  // 権限のないユーザーには一括発行導線を出さない（サーバー側 authorizeUzuProManager でも拒否）。
+  if (!canManage) return null;
 
   async function run() {
     if (busy || target === 0) return;

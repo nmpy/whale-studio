@@ -1,12 +1,12 @@
 // src/__tests__/uzupro-liff.test.ts
 // for ウズプロ プレイヤー LIFF 発行ルート（個別 / 再発行 / 一括）の挙動検証:
 //   (a) 個別発行は url を返し issueLiffForPlayer を reissue:false で呼ぶ
-//   (b) UZU_PRO access なし（authorizeUzuPro fail 404）→ 404 で発行しない
+//   (b) UZU_PRO access なし（authorizeUzuProManager fail 404）→ 404 で発行しない
 //   (c) 別作品/別 OA のプレイヤー（findFirst=null）→ 404
 //   (d) キャンセル済みプレイヤー（skipped_cancelled）→ 409
 //   (e) 一括は「active かつ未発行」のみ対象（where 検証）+ 集計を返す
 //   (f) 再発行は reissue:true で呼ぶ
-// authorizeUzuPro / issueLiffForPlayer / liff config / activity / prisma は mock。
+// authorizeUzuProManager / issueLiffForPlayer / liff config / activity / prisma は mock。
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -19,8 +19,8 @@ const { mp } = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/prisma", () => ({ prisma: mp }));
 
-const { authorizeUzuPro } = vi.hoisted(() => ({ authorizeUzuPro: vi.fn() }));
-vi.mock("@/lib/uzupro-auth", () => ({ authorizeUzuPro }));
+const { authorizeUzuProManager } = vi.hoisted(() => ({ authorizeUzuProManager: vi.fn() }));
+vi.mock("@/lib/uzupro-auth", () => ({ authorizeUzuProManager }));
 
 const { issueLiffForPlayer } = vi.hoisted(() => ({
   issueLiffForPlayer: vi.fn((_tx?: unknown, _args?: unknown): unknown => undefined),
@@ -49,7 +49,7 @@ const req = (path: string) => new NextRequest(`http://localhost${path}`, { metho
 const indCtx = { params: { id: OA, workId: WORK, playerId: PLAYER } } as never;
 const bulkCtx = { params: { id: OA, workId: WORK } } as never;
 
-const authOk = () => authorizeUzuPro.mockResolvedValue({ ok: true, user: { id: "actor1" }, via: "platform_admin" });
+const authOk = () => authorizeUzuProManager.mockResolvedValue({ ok: true, user: { id: "actor1" }, via: "liff_manager" });
 const playerActive = () =>
   mp.uzuProPlayer.findFirst.mockResolvedValue({ id: PLAYER, status: "active", booking: { liveSession: { startsAt: null } } });
 
@@ -86,7 +86,7 @@ describe("個別 LIFF 発行", () => {
   });
 
   it("(b) UZU_PRO access なし → 404 で発行しない", async () => {
-    authorizeUzuPro.mockResolvedValue({ ok: false, response: NextResponse.json({ success: false }, { status: 404 }) });
+    authorizeUzuProManager.mockResolvedValue({ ok: false, response: NextResponse.json({ success: false }, { status: 404 }) });
     const res = await individualPost(req(`/api/oas/${OA}/works/${WORK}/uzu-pro/players/${PLAYER}/liff`), indCtx);
     expect(res.status).toBe(404);
     expect(mp.uzuProPlayer.findFirst).not.toHaveBeenCalled();
@@ -189,7 +189,7 @@ describe("LIFF 一括発行", () => {
   });
 
   it("UZU_PRO access なし → 404 で findMany しない", async () => {
-    authorizeUzuPro.mockResolvedValue({ ok: false, response: NextResponse.json({ success: false }, { status: 404 }) });
+    authorizeUzuProManager.mockResolvedValue({ ok: false, response: NextResponse.json({ success: false }, { status: 404 }) });
     const res = await bulkPost(req(`/api/oas/${OA}/works/${WORK}/uzu-pro/players/liff/bulk`), bulkCtx);
     expect(res.status).toBe(404);
     expect(mp.uzuProPlayer.findMany).not.toHaveBeenCalled();

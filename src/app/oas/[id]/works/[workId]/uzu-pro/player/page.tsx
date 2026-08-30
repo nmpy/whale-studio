@@ -8,6 +8,7 @@ import { notFound, redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getServerUser } from "@/lib/supabase/server";
 import { canAccessUzuPro } from "@/lib/uzupro";
+import { isAuthorizedLiffManager } from "@/lib/uzupro/liff-manager";
 import { getUzuProPlayerView, parsePlayerFilters } from "@/lib/uzupro/player-view";
 import { formatDateTime } from "@/lib/format-datetime";
 import { Breadcrumb } from "@/components/Breadcrumb";
@@ -49,6 +50,9 @@ export default async function UzuProPlayerPage({
   });
   if (!work) notFound();
 
+  // LIFF 発行・LINE 手動操作は allowlist の LIFF 管理者のみ（UI は非表示、API でも強制）。
+  const canManageLiff = isAuthorizedLiffManager(user.id);
+
   const filters = parsePlayerFilters(searchParams ?? {});
   const view = await getUzuProPlayerView({ oaId: params.id, workId: params.workId, filters });
   const { summary, bookings, sessions, bulk, lastSyncedAt, syncStatus } = view;
@@ -85,7 +89,7 @@ export default async function UzuProPlayerPage({
         </span>
 
         <div className="ml-auto">
-          <UzuProPlayerActionsBar oaId={params.id} workId={params.workId} workTitle={work.title} bulk={bulk} />
+          <UzuProPlayerActionsBar oaId={params.id} workId={params.workId} workTitle={work.title} bulk={bulk} canManage={canManageLiff} />
         </div>
       </div>
 
@@ -110,7 +114,7 @@ export default async function UzuProPlayerPage({
 
       {/* 本体 */}
       <div className="mt-4">
-        <UzuProPlayerTable oaId={params.id} workId={params.workId} bookings={bookings} />
+        <UzuProPlayerTable oaId={params.id} workId={params.workId} bookings={bookings} canManage={canManageLiff} />
       </div>
     </div>
   );
