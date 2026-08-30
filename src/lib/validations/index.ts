@@ -1540,6 +1540,8 @@ export const liffPageConfigSettingsSchema = z.object({
   heading_weight:       z.enum(["light", "normal", "bold"]).optional(),
   // 余白の詰め具合。未指定 / 不正値は renderer 側で "normal" 扱い（= 現行と同じ余白）。
   layout_density:       z.enum(["normal", "compact"]).optional(),
+  // 画面上部の「ホームに戻る」導線。未指定はページ種別ごとの既定（hint_search のみ表示）。
+  home_back_button:     z.enum(["show", "hide"]).optional(),
   // @deprecated フォントプリセット (旧)。未指定 / 不正値は renderer 側で "line_seed_jp" 扱い。
   font_preset:          z.enum(["line_seed_jp", "system_sans", "noto_sans_jp", "serif"]).optional(),
   // 旧フォントファミリ (deprecated)。データ互換のため残置。新規 CMS では出さない。

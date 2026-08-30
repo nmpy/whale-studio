@@ -16,6 +16,7 @@ import type {
   LiffDescriptionAlign,
   LiffPageConfigSettings,
   LiffPageType,
+  LiffHomeBackVisibility,
   HeadingSettings,
   TextSettings,
 } from "@/types";
@@ -519,4 +520,21 @@ export function buildMenuCards(pages: MenuCardSource[]): MenuCard[] {
       order,
       cardStyle: settings?.menu_card_style === "compact" ? "compact" as const : "card" as const,
     }));
+}
+
+/** ページ種別ごとの「ホームに戻る」導線の**既定値**。
+ *  未設定データの見た目を変えないため、従来ハードコードされていた挙動をそのまま写している
+ *  (= 検索型ヒントだけ導線あり / 他は LINE 標準ヘッダーと二重化させないため導線なし)。 */
+export function defaultHomeBackButton(pageType: LiffPageType): LiffHomeBackVisibility {
+  return pageType === "hint_search" ? "show" : "hide";
+}
+
+/** settings から **「ホームに戻る」導線の表示有無** を解決する。
+ *  未設定 / 不正値 / 未知値 → `defaultHomeBackButton(pageType)`（= 従来どおりの見た目）。 */
+export function resolveHomeBackButton(
+  settings: LiffPageConfigSettings | undefined,
+  pageType: LiffPageType,
+): LiffHomeBackVisibility {
+  const v = settings?.home_back_button;
+  return v === "show" || v === "hide" ? v : defaultHomeBackButton(pageType);
 }

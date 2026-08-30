@@ -30,7 +30,7 @@ import { PuzzleRenderer } from "./PuzzleRenderer";
 import { WerewolfRenderer } from "./WerewolfRenderer";
 import { LiffRenderer, LiffBlockSections, type LiffBlock, type LiffRenderContext } from "./LiffRenderer";
 import { LiffPlayerProvider } from "./LiffPlayerContext";
-import { liffRootClass, resolveHeaderTitle } from "./liff-style-helpers";
+import { liffRootClass, resolveHeaderTitle, resolveHomeBackButton } from "./liff-style-helpers";
 import { LiffFontThemeAssets } from "./fonts/LiffFontThemeAssets";
 import { LiffStudioFooter, shouldShowWhaleStudioCredit } from "./LiffStudioFooter";
 
@@ -102,6 +102,8 @@ export function LiffSinglePageRenderer({
   const pageType = normalizeLiffPageType(page.page_type);
   const settings = page.settings_json;
   const showCredit = shouldShowWhaleStudioCredit(settings);
+  // 「ホームに戻る」導線を出すか。未設定はページ種別ごとの既定にフォールバックする。
+  const showHomeBack = resolveHomeBackButton(settings, pageType) === "show";
 
   // ticket_link は 1 画面が「本文 + 下部操作エリア + フッター」で完結する縦長カード構成のため、
   // ページ見出しと Powered by を renderer 側のシェルが自前で描画する（親では二重に出さない）。
@@ -146,18 +148,20 @@ export function LiffSinglePageRenderer({
             テーマを持つ個別 renderer はすべてこの component 経由なので、ここ 1 か所で足りる。 */}
         <LiffFontThemeAssets settings={settings} />
 
-        {/* 検索型ヒントだけ、作品トップへ戻れる明示的な導線を出す。
+        {/* 作品のメニューホームへ戻る導線。表示有無は settings_json.home_back_button で選ぶ。
+            未設定なら従来どおり検索型ヒントだけ表示（= 既存ページの見た目は不変）。
+            文言は "ホームに戻る"。旧 "LIFFに戻る" は "LIFF" がプレイヤーに通じないため改称した。
             onBack は実機では /liff/w/[workPublicId] への遷移、プレビューでは既存の state リセットを担う。 */}
-        {pageType === "hint_search" && (
+        {showHomeBack && (
           <div className="liff-player-main pt-3">
             <button
               type="button"
               onClick={onBack}
               className="inline-flex min-h-[44px] items-center gap-1 text-[14px] font-bold text-[color:var(--liff-line-green,#06C755)] active:opacity-70"
-              aria-label="LIFFに戻る"
+              aria-label="ホームに戻る"
             >
               <span aria-hidden="true">←</span>
-              <span>LIFFに戻る</span>
+              <span>ホームに戻る</span>
             </button>
           </div>
         )}

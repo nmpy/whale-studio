@@ -1757,7 +1757,24 @@ export type LiffLayoutDensity = "normal" | "compact";
  *  未指定 / 不正値は renderer 側で "center" として扱う (LINE Design System 既定)。 */
 export type LiffDescriptionAlign = "left" | "center" | "right";
 
+/** プレイヤー画面上部に出す「ホームに戻る」導線の表示有無。
+ *
+ *  「ホーム」= 作品のメニューホーム `/liff/w/[workPublicId]`。
+ *  旧文言は "LIFFに戻る" だったが、"LIFF" はプレイヤーには通じない用語のため改称した。
+ *
+ *  - "show": 表示する
+ *  - "hide": 表示しない
+ *
+ *  未指定 / 不正値は **ページ種別ごとの既定** にフォールバックする
+ *  (= hint_search のみ "show"、他は "hide"。`resolveHomeBackButton` を参照)。
+ *  これにより既存データの見た目は一切変わらない。 */
+export type LiffHomeBackVisibility = "show" | "hide";
+
 export interface LiffPageConfigSettings {
+  /** 画面上部の「ホームに戻る」導線（= 作品のメニューホームへ）の表示有無。
+   *  未指定はページ種別ごとの既定にフォールバックする（hint_search のみ表示 / 他は非表示）。
+   *  解決は `resolveHomeBackButton(settings, pageType)`。 */
+  home_back_button?: LiffHomeBackVisibility;
   /** ページ全体のフォントテーマ。未指定は font_preset → font_family → "default" の順にフォールバック。 */
   font_theme?: LiffFontTheme;
   /** ページ全体のカラーモード。未指定は "light"（= 現行既定の白ベース）。 */
