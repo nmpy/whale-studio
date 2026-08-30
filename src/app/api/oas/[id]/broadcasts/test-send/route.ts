@@ -52,9 +52,12 @@ export const POST = withRole<{ id: string }>(
       }
 
       const res = await pushToLine(body.line_user_id, messages, oa.channelAccessToken);
+      // Test Send は Broadcast / BroadcastRecipient を作らない（配信実績に残さない）ため、
+      // 保存先の行が無い。request id は調査用の識別子なのでログにだけ残す。
       console.log("[line:broadcast:test-send]", JSON.stringify({
         oaId: params.id, userId: body.line_user_id.slice(0, 8), kind: content.kind,
         ok: res.ok, status: res.status ?? null,
+        requestId: res.requestId ?? null,
       }));
 
       // 配信実績には残さない（Broadcast も BroadcastRecipient も作らない）

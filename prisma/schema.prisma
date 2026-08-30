@@ -3301,6 +3301,13 @@ model BroadcastRecipient {
   httpStatus   Int?      @map("http_status")
   /// LINE API のエラーメッセージ（本文・PII は入れない）。
   errorMessage String?   @map("error_message")
+  /// LINE 送信リクエスト識別子（応答ヘッダ x-line-request-id）。
+  /// 「HTTP 200 なのに実受信しない」調査を LINE 側まで追跡するための識別子。
+  /// 命名は ScheduledLineMessage.lineRequestId に合わせる。
+  lineRequestId String?  @map("line_request_id")
+  /// retry key 衝突（409）時に LINE が返す、**既に受理済みの**リクエスト識別子
+  /// （応答ヘッダ x-line-accepted-request-id）。どの送信が実際に受理されたかを辿るために残す。
+  lineAcceptedRequestId String? @map("line_accepted_request_id")
   sentAt       DateTime? @map("sent_at")
   createdAt    DateTime  @default(now()) @map("created_at")
   updatedAt    DateTime  @updatedAt @map("updated_at")

@@ -183,6 +183,7 @@ export async function processBroadcastChunk(args: {
       if (alreadyAccepted) {
         console.log("[line:broadcast:already-accepted]", JSON.stringify({
           broadcastId, userId: r.lineUserId.slice(0, 8), status: 409,
+          acceptedRequestId: res.acceptedRequestId ?? null,
         }));
       }
       await prisma.broadcastRecipient.update({
@@ -192,12 +193,19 @@ export async function processBroadcastChunk(args: {
           httpStatus:   res.status ?? 200,
           errorMessage: alreadyAccepted ? "already accepted by LINE (retry key conflict)" : null,
           sentAt:       new Date(),
+          // ── observability only ──
+          // LINE の応答ヘッダを記録するだけ。status 遷移・集計・retry 判定には使わない。
+          // 409 では x-line-request-id は「却下された再試行」の ID で、実際に受理された
+          // 送信は x-line-accepted-request-id 側なので、両方を分けて残す（LINE 公式仕様）。
+          lineRequestId:         res.requestId ?? null,
+          lineAcceptedRequestId: res.acceptedRequestId ?? null,
         },
       });
     } else {
       failed++;
       console.warn("[line:broadcast:recipient-failed]", JSON.stringify({
         broadcastId, userId: r.lineUserId.slice(0, 8), status: res.status ?? null,
+        requestId: res.requestId ?? null,
       }));
       await prisma.broadcastRecipient.update({
         where: { id: r.id },
@@ -206,6 +214,9 @@ export async function processBroadcastChunk(args: {
           httpStatus: res.status ?? null,
           // 本文・PII は入れない。HTTP status だけを残す。
           errorMessage: res.status ? `LINE push failed (HTTP ${res.status})` : "LINE push failed",
+          // 失敗時も request id は調査に使えるので残す（判定には使わない）。
+          lineRequestId:         res.requestId ?? null,
+          lineAcceptedRequestId: res.acceptedRequestId ?? null,
         },
       });
     }

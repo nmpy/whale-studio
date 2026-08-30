@@ -35,9 +35,14 @@ describe("pushToLine — 既存 caller への非影響（H）", () => {
     expect(headersOfLastCall()["X-Line-Retry-Key"]).toBeUndefined();
   });
 
-  it("3 引数呼び出しの戻り値契約は従来どおり { ok, status }", async () => {
+  it("3 引数呼び出しの ok / status は従来どおり（observability の追加フィールドのみ増える）", async () => {
     const r = await pushToLine(U, MSG, "tok");
-    expect(r).toEqual({ ok: true, status: 200 });
+    expect(r).toMatchObject({ ok: true, status: 200 });
+    // 追加されたのは観測用フィールドだけで、判定に使う ok / status は不変。
+    // このテストダブルは headers を持たないため request id は取得できず null になる
+    // （= ヘッダが取れなくても送信は成功のまま）。
+    expect(r.requestId ?? null).toBeNull();
+    expect(Object.keys(r).sort()).toEqual(["ok", "requestId", "status"]);
   });
 });
 
@@ -51,6 +56,8 @@ describe("pushToLine — 配信メッセージからの呼び出し", () => {
   it("409 は ok:false / status:409 として呼び出し側へ返る（配信側で sent 相当に確定できる）", async () => {
     fetchMock.mockResolvedValue({ ok: false, status: 409, text: async () => "{}" });
     const r = await pushToLine(U, MSG, "tok", { retryKey: "k" });
-    expect(r).toEqual({ ok: false, status: 409 });
+    expect(r).toMatchObject({ ok: false, status: 409 });
+    // 409 でも判定に使うのは status のみ。request id は観測用の追加フィールド。
+    expect(Object.keys(r).sort()).toEqual(["acceptedRequestId", "ok", "requestId", "status"]);
   });
 });
