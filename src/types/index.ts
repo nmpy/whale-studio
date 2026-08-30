@@ -1770,6 +1770,19 @@ export type LiffDescriptionAlign = "left" | "center" | "right";
  *  これにより既存データの見た目は一切変わらない。 */
 export type LiffHomeBackVisibility = "show" | "hide";
 
+/** アコーディオン見出し行の上下の余白（＝ 1 項目の高さ）。
+ *
+ *  対象はヘッダー行 (`.liff-acc-h--<depth>`) の min-height / padding だけ。
+ *  本文パネル (`.liff-acc-p`) と階層のインデント・ガイド線には触れない。
+ *
+ *  - "normal": 現行既定と同値
+ *  - "narrow": 詰める
+ *  - "wide"  : 広げる
+ *
+ *  未指定は class を出さないので `layout_density` の結果がそのまま残る（= 現行どおり）。
+ *  明示指定した場合は `layout_density` より **こちらが優先** する（より具体的な指定のため）。 */
+export type LiffAccordionHeaderSpacing = "narrow" | "normal" | "wide";
+
 export interface LiffPageConfigSettings {
   /** 画面上部の「ホームに戻る」導線（= 作品のメニューホームへ）の表示有無。
    *  未指定はページ種別ごとの既定にフォールバックする（hint_search のみ表示 / 他は非表示）。
@@ -1788,6 +1801,14 @@ export interface LiffPageConfigSettings {
   /** 見出し系（ページタイトル / アコーディオン見出し / 見出しブロック）の文字サイズ倍率。
    *  未指定は font_scale にフォールバックする（= 本文と同じ倍率。従来の挙動と一致）。 */
   heading_scale?: LiffFontScale;
+  /** アコーディオン見出し**だけ**の文字サイズ倍率。
+   *  未指定は heading_scale にフォールバックする（= 見出しと同じ倍率。従来の挙動と一致）。
+   *  指定するとページタイトル / 見出しブロックは動かさずにアコーディオン見出しだけ拡縮できる。
+   *  （ページタイトルだけを切り出す title_scale と同じ考え方の、アコーディオン版。） */
+  accordion_title_scale?: LiffFontScale;
+  /** アコーディオン見出し行の上下の余白（= 1 項目の高さ）。未指定は layout_density の結果のまま。
+   *  明示指定した場合は layout_density より優先する。本文パネルの余白は変わらない。 */
+  accordion_header_spacing?: LiffAccordionHeaderSpacing;
   /** ページ全体の余白の詰め具合。未指定は "normal"（= 現行と同じ余白）。 */
   layout_density?: LiffLayoutDensity;
   /** 見出し系の文字の太さ。未指定は font_weight_level にフォールバックする。

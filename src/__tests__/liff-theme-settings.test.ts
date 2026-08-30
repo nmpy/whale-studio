@@ -634,7 +634,10 @@ describe("liff-font.css の契約 — 見出し系", () => {
       expect(style.title).toContain(`liff-h-acc--${depth}`);
       expect(style.title).toContain(`text-[${px}px]`);
       const rule = ruleBody(CSS, `.liff-font .liff-h-acc--${depth}`)!;
-      expect(rule).toContain(`calc(${px}px * var(--liff-heading-mul, 1))`);
+      // アコーディオン見出しだけは accordion_title_scale で切り出せるため、内側にもう 1 段
+      // var を挟む。未設定なら --liff-acc-title-mul は未定義 ⇒ --liff-heading-mul に
+      // フォールバックするので、既存ページの計算値は従来と同じ。
+      expect(rule).toContain(`calc(${px}px * var(--liff-acc-title-mul, var(--liff-heading-mul, 1)))`);
       expect(rule).toContain(weight);
     }
 

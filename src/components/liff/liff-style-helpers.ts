@@ -16,6 +16,7 @@ import type {
   LiffDescriptionAlign,
   LiffPageConfigSettings,
   LiffPageType,
+  LiffAccordionHeaderSpacing,
   LiffHomeBackVisibility,
   HeadingSettings,
   TextSettings,
@@ -201,6 +202,54 @@ export function headingScaleClass(scale: LiffFontScale): string {
   }
 }
 
+/** settings から **アコーディオン見出しだけの文字サイズ倍率** を解決する。
+ *  未設定 / 不正値 → `undefined`（= 見出し系 heading_scale の結果をそのまま使う）。
+ *
+ *  `resolveHeadingScale` のように「解決済みの値」を返さず undefined を返すのは、
+ *  「未設定なら root class を出さない」= 既存ページの DOM を 1 文字も変えない、という
+ *  このモジュール共通の後方互換ルールを守るため。CSS 側が
+ *  `var(--liff-acc-title-mul, var(--liff-heading-mul, 1))` で連鎖させる。 */
+export function resolveAccordionTitleScale(
+  settings: LiffPageConfigSettings | undefined,
+): LiffFontScale | undefined {
+  const scale = settings?.accordion_title_scale;
+  return scale && FONT_SCALES.includes(scale) ? scale : undefined;
+}
+
+/** アコーディオン見出し倍率 → root クラス名。
+ *  未設定 (undefined) だけが空文字。"md" は「見出しに追従せず等倍で固定する」という
+ *  明示指定なので、他の段階と同じく class を出す（ここが headingScaleClass と違う点）。 */
+export function accordionTitleScaleClass(scale: LiffFontScale | undefined): string {
+  switch (scale) {
+    case "sm": return "liff-acc-title--sm";
+    case "md": return "liff-acc-title--md";
+    case "lg": return "liff-acc-title--lg";
+    case "xl": return "liff-acc-title--xl";
+    default:   return "";
+  }
+}
+
+/** settings から **アコーディオン見出し行の上下余白** を解決する。
+ *  未設定 / 不正値 → `undefined`（= layout_density の結果をそのまま使う）。 */
+export function resolveAccordionHeaderSpacing(
+  settings: LiffPageConfigSettings | undefined,
+): LiffAccordionHeaderSpacing | undefined {
+  const v = settings?.accordion_header_spacing;
+  return v === "narrow" || v === "normal" || v === "wide" ? v : undefined;
+}
+
+/** アコーディオン見出し行の余白 → root クラス名。
+ *  未設定 (undefined) だけが空文字。"normal" は「layout_density=compact でも詰めない」
+ *  という明示指定なので class を出す。 */
+export function accordionHeaderSpacingClass(v: LiffAccordionHeaderSpacing | undefined): string {
+  switch (v) {
+    case "narrow": return "liff-acc-head--narrow";
+    case "normal": return "liff-acc-head--normal";
+    case "wide":   return "liff-acc-head--wide";
+    default:       return "";
+  }
+}
+
 const FONT_WEIGHT_LEVELS: readonly LiffFontWeightLevel[] = ["light", "normal", "bold"];
 
 /** settings から **最終的に適用する文字の太さ** を解決する。
@@ -280,6 +329,8 @@ export function liffRootClass(settings: LiffPageConfigSettings | undefined): str
     headingScaleClass(resolveHeadingScale(settings)),
     headingWeightLevelClass(resolveHeadingWeightLevel(settings)),
     layoutDensityClass(resolveLayoutDensity(settings)),
+    accordionTitleScaleClass(resolveAccordionTitleScale(settings)),
+    accordionHeaderSpacingClass(resolveAccordionHeaderSpacing(settings)),
   ].filter(Boolean).join(" ");
 }
 

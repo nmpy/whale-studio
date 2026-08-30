@@ -9,12 +9,14 @@
 import type {
   LiffColorMode, LiffFontScale, LiffFontTheme, LiffFontWeightLevel, LiffLayoutDensity,
   LiffPageConfig, LiffPageConfigSettings, LiffPageType, LiffPublishStatus,
+  LiffAccordionHeaderSpacing,
 } from "@/types";
 import { normalizeLiffPageType } from "@/types";
 import {
   resolveColorMode, resolveFontScale, resolveFontTheme, resolveFontWeightLevel,
   resolveHeadingScale, resolveHeadingWeightLevel, resolveLayoutDensity,
   resolveHomeBackButton, defaultHomeBackButton,
+  resolveAccordionTitleScale, resolveAccordionHeaderSpacing,
 } from "./liff-style-helpers";
 import { LiffFaqEditor } from "./LiffFaqEditor";
 import { LiffHintSearchEditor } from "./LiffHintSearchEditor";
@@ -293,6 +295,50 @@ export function LiffConfigHeader({
               <option value="xl">特大</option>
             </select>
             <p className="text-[11px] text-gray-400 mt-1">ページタイトル・アコーディオンの見出し・見出しブロックの大きさです。</p>
+          </div>
+          <div>
+            <label className={labelCls}>アコーディオン見出しの大きさ</label>
+            <select
+              className={inputCls}
+              // 未設定は "" (= 見出しの大きさに合わせる)。他の項目と違い「未設定」自体が選択肢。
+              value={resolveAccordionTitleScale(settings) ?? ""}
+              onChange={(e) => {
+                const v = e.target.value;
+                updateSetting("accordion_title_scale", v === "" ? undefined : (v as LiffFontScale));
+              }}
+              disabled={readOnly}
+            >
+              <option value="">「見出しの大きさ」に合わせる（既定）</option>
+              <option value="sm">小さめ</option>
+              <option value="md">標準で固定</option>
+              <option value="lg">大きめ</option>
+              <option value="xl">特大</option>
+            </select>
+            <p className="text-[11px] text-gray-400 mt-1">
+              アコーディオンの見出し<strong>だけ</strong>の大きさです。ページタイトル・見出しブロックは動きません。
+              「標準で固定」は、上の「見出しの大きさ」を変えてもアコーディオンだけ等倍に留めたいときに使います。
+            </p>
+          </div>
+          <div>
+            <label className={labelCls}>アコーディオン見出しの余白</label>
+            <select
+              className={inputCls}
+              value={resolveAccordionHeaderSpacing(settings) ?? ""}
+              onChange={(e) => {
+                const v = e.target.value;
+                updateSetting("accordion_header_spacing", v === "" ? undefined : (v as LiffAccordionHeaderSpacing));
+              }}
+              disabled={readOnly}
+            >
+              <option value="">「余白の詰め具合」に従う（既定）</option>
+              <option value="narrow">詰める</option>
+              <option value="normal">標準で固定</option>
+              <option value="wide">広げる</option>
+            </select>
+            <p className="text-[11px] text-gray-400 mt-1">
+              アコーディオン 1 項目の見出し行の高さ（上下の余白）です。本文側の余白と階層のインデント・ガイド線は変わりません。
+              指定すると「余白の詰め具合」より優先します。
+            </p>
           </div>
           <div>
             <label className={labelCls}>見出しの太さ</label>

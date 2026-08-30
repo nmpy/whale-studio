@@ -1538,6 +1538,9 @@ export const liffPageConfigSettingsSchema = z.object({
   // 未指定は本文系 (font_scale / font_weight_level) にフォールバックする。
   heading_scale:        z.enum(["sm", "md", "lg", "xl"]).optional(),
   heading_weight:       z.enum(["light", "normal", "bold"]).optional(),
+  // アコーディオン見出しだけの倍率 / 見出し行の上下余白。未指定は heading_scale / layout_density に従う。
+  accordion_title_scale:    z.enum(["sm", "md", "lg", "xl"]).optional(),
+  accordion_header_spacing: z.enum(["narrow", "normal", "wide"]).optional(),
   // 余白の詰め具合。未指定 / 不正値は renderer 側で "normal" 扱い（= 現行と同じ余白）。
   layout_density:       z.enum(["normal", "compact"]).optional(),
   // 画面上部の「ホームに戻る」導線。未指定はページ種別ごとの既定（hint_search のみ表示）。

@@ -1060,9 +1060,9 @@
  * 見出しブロックの太さは font-* utility との複合 (0,3,0) で当て、
  * ブロック側の「太字 / 中太 / 通常」の相対関係を保ったまま段階だけずらす。 */
 .liff-font .liff-h-title   { font-size: calc(20px * var(--liff-heading-mul, 1)); font-weight: var(--liff-heading-fw, 700); }
-.liff-font .liff-h-acc--1  { font-size: calc(16px * var(--liff-heading-mul, 1)); font-weight: var(--liff-heading-fw, 700); }
-.liff-font .liff-h-acc--2  { font-size: calc(15px * var(--liff-heading-mul, 1)); font-weight: var(--liff-heading-fw-sub, 600); }
-.liff-font .liff-h-acc--3  { font-size: calc(14px * var(--liff-heading-mul, 1)); font-weight: var(--liff-heading-fw-sub, 600); }
+.liff-font .liff-h-acc--1  { font-size: calc(16px * var(--liff-acc-title-mul, var(--liff-heading-mul, 1))); font-weight: var(--liff-heading-fw, 700); }
+.liff-font .liff-h-acc--2  { font-size: calc(15px * var(--liff-acc-title-mul, var(--liff-heading-mul, 1))); font-weight: var(--liff-heading-fw-sub, 600); }
+.liff-font .liff-h-acc--3  { font-size: calc(14px * var(--liff-acc-title-mul, var(--liff-heading-mul, 1))); font-weight: var(--liff-heading-fw-sub, 600); }
 
 .liff-font .liff-h-blk--1  { font-size: calc(19px * var(--liff-heading-mul, 1)); }
 .liff-font .liff-h-blk--2  { font-size: calc(17px * var(--liff-heading-mul, 1)); }
@@ -1102,6 +1102,46 @@
 .liff-density--compact .liff-block-sep { padding-bottom: 14px; margin-bottom: 14px; }
 
 .liff-density--compact .liff-body-text { line-height: 1.7; }
+
+/* ── アコーディオン見出しだけの文字サイズ (settings_json.accordion_title_scale) ────
+ *
+ * 見出し系の倍率 `--liff-heading-mul` はページタイトル / アコーディオン見出し /
+ * 見出しブロックの 3 つを一緒に動かす。ここはアコーディオン見出しだけを切り出すための
+ * 内側の倍率で、上の `.liff-h-acc--*` が
+ *   calc(Npx * var(--liff-acc-title-mul, var(--liff-heading-mul, 1)))
+ * と連鎖して読む。
+ *
+ * 未設定ならこの class は付かない ⇒ var 未定義 ⇒ `--liff-heading-mul` にフォールバック
+ * ⇒ 既存ページの計算値は 1px も変わらない。
+ * `--md` を用意しているのは「見出しに追従せず等倍で固定する」という明示指定のため
+ * (見出しを lg にしてもアコーディオンだけ等倍のまま、という指定ができる)。 */
+.liff-acc-title--sm { --liff-acc-title-mul: 0.93; }
+.liff-acc-title--md { --liff-acc-title-mul: 1; }
+.liff-acc-title--lg { --liff-acc-title-mul: 1.08; }
+.liff-acc-title--xl { --liff-acc-title-mul: 1.16; }
+
+/* ── アコーディオン見出し行の上下余白 (settings_json.accordion_header_spacing) ─────
+ *
+ * 対象はヘッダー行 (`.liff-acc-h--*`) の min-height / padding だけ。
+ * 本文パネル (`.liff-acc-p`)・インデント・縦ガイド線には触れないので、階層表現は保たれる。
+ *
+ * `.liff-density--compact .liff-acc-h--*` と同 specificity (0,2,0) なので、
+ * **このセクションを density の後ろに置いて後勝ちさせている**
+ * (= 両方指定したときはアコーディオン側の具体的な指定が勝つ)。順序を入れ替えないこと。
+ *
+ * `--normal` は現行既定と同値。「density=compact でもアコーディオンだけ詰めない」を
+ * 表現するために必要なので、既定値と同じでも class を出す。 */
+.liff-acc-head--narrow .liff-acc-h--1 { min-height: 44px; padding-top: 8px;  padding-bottom: 8px; }
+.liff-acc-head--narrow .liff-acc-h--2 { min-height: 40px; padding-top: 6px;  padding-bottom: 6px; }
+.liff-acc-head--narrow .liff-acc-h--3 { min-height: 36px; padding-top: 5px;  padding-bottom: 5px; }
+
+.liff-acc-head--normal .liff-acc-h--1 { min-height: 60px; padding-top: 12px; padding-bottom: 12px; }
+.liff-acc-head--normal .liff-acc-h--2 { min-height: 52px; padding-top: 10px; padding-bottom: 10px; }
+.liff-acc-head--normal .liff-acc-h--3 { min-height: 46px; padding-top: 8px;  padding-bottom: 8px; }
+
+.liff-acc-head--wide .liff-acc-h--1 { min-height: 72px; padding-top: 18px; padding-bottom: 18px; }
+.liff-acc-head--wide .liff-acc-h--2 { min-height: 64px; padding-top: 16px; padding-bottom: 16px; }
+.liff-acc-head--wide .liff-acc-h--3 { min-height: 58px; padding-top: 14px; padding-bottom: 14px; }
 
 /* ── 本文を細くできるフォント（LINE Seed JP 以外）────────────────────────
  *
