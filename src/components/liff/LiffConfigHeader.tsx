@@ -14,6 +14,7 @@ import { normalizeLiffPageType } from "@/types";
 import {
   resolveColorMode, resolveFontScale, resolveFontTheme, resolveFontWeightLevel,
   resolveHeadingScale, resolveHeadingWeightLevel, resolveLayoutDensity,
+  resolveHomeBackButton, defaultHomeBackButton,
 } from "./liff-style-helpers";
 import { LiffFaqEditor } from "./LiffFaqEditor";
 import { LiffHintSearchEditor } from "./LiffHintSearchEditor";
@@ -337,6 +338,33 @@ export function LiffConfigHeader({
               <option value="right">右寄せ</option>
             </select>
             <p className="text-[11px] text-gray-400 mt-1">description テキストの揃え。未設定は中央寄せ。</p>
+          </div>
+          <div>
+            <label className={labelCls}>「ホームに戻る」ボタン</label>
+            {/* ここだけ select ではなくラジオ。ページ種別によって既定が違う（検索型ヒントのみ表示）ため、
+                どちらが既定かをその場で読めるようにしている。 */}
+            <div className="flex items-center gap-4 mt-1">
+              {(["show", "hide"] as const).map((v) => (
+                <label key={v} className="inline-flex items-center gap-1.5 text-sm text-gray-700 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="home_back_button"
+                    value={v}
+                    checked={resolveHomeBackButton(settings, mode) === v}
+                    onChange={() => updateSetting("home_back_button", v)}
+                    disabled={readOnly}
+                  />
+                  <span>
+                    {v === "show" ? "表示する" : "表示しない"}
+                    {defaultHomeBackButton(mode) === v && "（既定）"}
+                  </span>
+                </label>
+              ))}
+            </div>
+            <p className="text-[11px] text-gray-400 mt-1">
+              プレイヤー画面の上部に出す「← ホームに戻る」導線です。押すと作品のメニューホームに移動します。
+              <strong>ホームに何も登録していない場合は「表示しない」</strong>にしてください（空のページに飛んでしまうため）。
+            </p>
           </div>
         </div>
 
