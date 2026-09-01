@@ -203,6 +203,29 @@ export function headingScaleClass(scale: LiffFontScale): string {
   }
 }
 
+/** settings から **ページタイトルだけの文字サイズ倍率** を解決する。
+ *  未設定 / 不正値 → `undefined`（= 見出し系 heading_scale の結果をそのまま使う）。
+ *  `resolveAccordionTitleScale` と同じ構造（未設定なら class を出さない）。 */
+export function resolveTitleScale(
+  settings: LiffPageConfigSettings | undefined,
+): LiffFontScale | undefined {
+  const scale = settings?.title_scale;
+  return scale && FONT_SCALES.includes(scale) ? scale : undefined;
+}
+
+/** ページタイトル倍率 → root クラス名。
+ *  未設定 (undefined) だけが空文字。"md" は「見出しに追従せず等倍で固定する」という
+ *  明示指定なので class を出す（accordionTitleScaleClass と同じ考え方）。 */
+export function titleScaleClass(scale: LiffFontScale | undefined): string {
+  switch (scale) {
+    case "sm": return "liff-title-size--sm";
+    case "md": return "liff-title-size--md";
+    case "lg": return "liff-title-size--lg";
+    case "xl": return "liff-title-size--xl";
+    default:   return "";
+  }
+}
+
 /** settings から **アコーディオン見出しだけの文字サイズ倍率** を解決する。
  *  未設定 / 不正値 → `undefined`（= 見出し系 heading_scale の結果をそのまま使う）。
  *
@@ -330,6 +353,7 @@ export function liffRootClass(settings: LiffPageConfigSettings | undefined): str
     headingScaleClass(resolveHeadingScale(settings)),
     headingWeightLevelClass(resolveHeadingWeightLevel(settings)),
     layoutDensityClass(resolveLayoutDensity(settings)),
+    titleScaleClass(resolveTitleScale(settings)),
     accordionTitleScaleClass(resolveAccordionTitleScale(settings)),
     accordionHeaderSpacingClass(resolveAccordionHeaderSpacing(settings)),
     blockDividerClass(resolveBlockDivider(settings)),

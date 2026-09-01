@@ -1820,6 +1820,11 @@ export interface LiffPageConfigSettings {
    *  未指定は heading_scale にフォールバックする（= 見出しと同じ倍率。従来の挙動と一致）。
    *  指定するとページタイトル / 見出しブロックは動かさずにアコーディオン見出しだけ拡縮できる。
    *  （ページタイトルだけを切り出す title_scale と同じ考え方の、アコーディオン版。） */
+  /** ページタイトル**だけ**の文字サイズ倍率。
+   *  未指定は heading_scale にフォールバックする（= 見出しと同じ倍率。従来の挙動と一致）。
+   *  指定するとアコーディオン見出し / 見出しブロックは動かさずにタイトルだけ拡縮できる。
+   *  （`accordion_title_scale` のページタイトル版。構造は同じ。） */
+  title_scale?: LiffFontScale;
   accordion_title_scale?: LiffFontScale;
   /** アコーディオン見出し行の上下の余白（= 1 項目の高さ）。未指定は layout_density の結果のまま。
    *  明示指定した場合は layout_density より優先する。本文パネルの余白は変わらない。 */
