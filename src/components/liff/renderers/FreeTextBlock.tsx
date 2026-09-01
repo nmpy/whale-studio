@@ -9,7 +9,7 @@ export function FreeTextBlock({ title, settings }: { title?: string | null; sett
   return (
     <div className={`${settings.align === "center" ? "text-center" : "text-left"}`}>
       {title && (
-        <h3 className="text-[16px] font-bold text-[color:var(--liff-primary-text)] mb-2 break-words">
+        <h3 className="text-[16px] font-bold text-[color:var(--liff-heading-color,var(--liff-primary-text))] mb-2 break-words">
           {title}
         </h3>
       )}
@@ -20,7 +20,7 @@ export function FreeTextBlock({ title, settings }: { title?: string | null; sett
         </p>
       ) : (
         <p
-          className={`text-[14px] leading-[1.85] whitespace-pre-wrap text-[color:var(--liff-primary-text)] break-words ${
+          className={`liff-body-text text-[14px] leading-[1.85] whitespace-pre-wrap text-[color:var(--liff-body-color,var(--liff-primary-text))] break-words ${
             settings.emphasis === "strong" ? "font-bold" : ""
           }`}
         >

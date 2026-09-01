@@ -1545,6 +1545,9 @@ export const liffPageConfigSettingsSchema = z.object({
   accordion_header_spacing: z.enum(["narrow", "normal", "wide"]).optional(),
   // ブロック間の横線 / アコーディオン 1 項目ごとの行区切り線。未指定は "show"（= 現行どおり表示）。
   // 場所ごとの余白。未指定は "normal"（= 現行どおり）。
+  // 見出し / 本文の文字色。未指定は "default"（= カラーモードの既定色）。
+  heading_color:        z.enum(["default", "white", "red", "green"]).optional(),
+  body_color:           z.enum(["default", "white", "red", "green"]).optional(),
   page_margin_x:        z.enum(["narrow", "normal", "wide"]).optional(),
   block_gap:            z.enum(["narrow", "normal", "wide"]).optional(),
   block_divider:        z.enum(["show", "hide"]).optional(),

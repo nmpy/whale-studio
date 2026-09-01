@@ -116,7 +116,7 @@ function AccordionSingle({ title, settings, depth = 1, blockId }: Props) {
           onClick={toggle}
           className={`w-full flex items-center justify-between gap-3 text-left transition-colors active:bg-[color:var(--liff-surface-subtle)] ${style.header}`}
         >
-          <span className={`leading-snug break-words flex-1 min-w-0 text-[color:var(--liff-primary-text)] ${style.title}`}>
+          <span className={`leading-snug break-words flex-1 min-w-0 text-[color:var(--liff-heading-color,var(--liff-primary-text))] ${style.title}`}>
             {headingText || "（タイトル未設定）"}
           </span>
           <Chevron open={open} />
@@ -182,7 +182,7 @@ function AccordionItemRow({ item, depth, baseId }: { item: AccordionItem; depth:
           onClick={() => setOpen((o) => !o)}
           className={`w-full flex items-center justify-between gap-3 text-left transition-colors active:bg-[color:var(--liff-surface-subtle)] ${style.header}`}
         >
-          <span className={`leading-snug break-words flex-1 min-w-0 text-[color:var(--liff-primary-text)] ${style.title}`}>
+          <span className={`leading-snug break-words flex-1 min-w-0 text-[color:var(--liff-heading-color,var(--liff-primary-text))] ${style.title}`}>
             {item.title.trim() || "（タイトル未設定）"}
           </span>
           <Chevron open={open} />
@@ -197,7 +197,7 @@ function AccordionItemRow({ item, depth, baseId }: { item: AccordionItem; depth:
         hidden={!open}
         className={open ? "pt-1 pb-5" : undefined}
       >
-        <p className="text-[14px] leading-[1.7] whitespace-pre-wrap break-words text-[color:var(--liff-primary-text)]">
+        <p className="text-[14px] leading-[1.7] whitespace-pre-wrap break-words text-[color:var(--liff-body-color,var(--liff-primary-text))]">
           {item.body}
         </p>
       </div>

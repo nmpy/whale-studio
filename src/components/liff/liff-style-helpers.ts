@@ -19,6 +19,7 @@ import type {
   LiffAccordionHeaderSpacing,
   LiffDividerVisibility,
   LiffSpacingLevel,
+  LiffTextColor,
   LiffHomeBackVisibility,
   HeadingSettings,
   TextSettings,
@@ -365,6 +366,8 @@ export function liffRootClass(settings: LiffPageConfigSettings | undefined): str
     titleScaleClass(resolveTitleScale(settings)),
     accordionTitleScaleClass(resolveAccordionTitleScale(settings)),
     accordionHeaderSpacingClass(resolveAccordionHeaderSpacing(settings)),
+    headingColorClass(resolveHeadingColor(settings)),
+    bodyColorClass(resolveBodyColor(settings)),
     pageMarginXClass(resolvePageMarginX(settings)),
     blockGapClass(resolveBlockGap(settings)),
     blockDividerClass(resolveBlockDivider(settings)),
@@ -689,5 +692,44 @@ export function blockGapClass(level: LiffSpacingLevel): string {
     case "wide":   return "liff-gap--wide";
     case "normal":
     default:       return "";
+  }
+}
+
+const TEXT_COLORS: readonly LiffTextColor[] = ["default", "white", "red", "green"];
+
+/** 未設定 / 不正値 / 未知値 → "default"（= カラーモードの既定文字色）。 */
+function resolveTextColor(v: LiffTextColor | undefined): LiffTextColor {
+  return v && TEXT_COLORS.includes(v) ? v : "default";
+}
+
+/** settings から **見出し系の文字色** を解決する。未設定 → "default"。 */
+export function resolveHeadingColor(settings: LiffPageConfigSettings | undefined): LiffTextColor {
+  return resolveTextColor(settings?.heading_color);
+}
+
+/** 見出しの文字色 → root クラス名。"default" は既定なので空文字を返す。 */
+export function headingColorClass(color: LiffTextColor): string {
+  switch (color) {
+    case "white": return "liff-heading-color--white";
+    case "red":   return "liff-heading-color--red";
+    case "green": return "liff-heading-color--green";
+    case "default":
+    default:      return "";
+  }
+}
+
+/** settings から **本文系の文字色** を解決する。未設定 → "default"。 */
+export function resolveBodyColor(settings: LiffPageConfigSettings | undefined): LiffTextColor {
+  return resolveTextColor(settings?.body_color);
+}
+
+/** 本文の文字色 → root クラス名。"default" は既定なので空文字を返す。 */
+export function bodyColorClass(color: LiffTextColor): string {
+  switch (color) {
+    case "white": return "liff-body-color--white";
+    case "red":   return "liff-body-color--red";
+    case "green": return "liff-body-color--green";
+    case "default":
+    default:      return "";
   }
 }

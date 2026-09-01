@@ -9,7 +9,7 @@
 import type {
   LiffColorMode, LiffFontScale, LiffFontTheme, LiffFontWeightLevel, LiffLayoutDensity,
   LiffPageConfig, LiffPageConfigSettings, LiffPageType, LiffPublishStatus,
-  LiffAccordionHeaderSpacing, LiffDividerVisibility, LiffSpacingLevel,
+  LiffAccordionHeaderSpacing, LiffDividerVisibility, LiffSpacingLevel, LiffTextColor,
 } from "@/types";
 import { normalizeLiffPageType } from "@/types";
 import {
@@ -20,6 +20,7 @@ import {
   resolveBlockDivider, resolveAccordionDivider,
   resolveTitleScale, pageOwnsChrome,
   resolvePageMarginX, resolveBlockGap,
+  resolveHeadingColor, resolveBodyColor,
 } from "./liff-style-helpers";
 import { LiffFaqEditor } from "./LiffFaqEditor";
 import { LiffHintSearchEditor } from "./LiffHintSearchEditor";
@@ -368,6 +369,42 @@ export function LiffConfigHeader({
             <p className="text-[11px] text-gray-400 mt-1">
               アコーディオン 1 項目の見出し行の高さ（上下の余白）です。本文側の余白と階層のインデント・ガイド線は変わりません。
               指定すると「余白の詰め具合」より優先します。
+            </p>
+          </div>
+          <div>
+            <label className={labelCls}>見出しの色</label>
+            <select
+              className={inputCls}
+              value={resolveHeadingColor(settings)}
+              onChange={(e) => updateSetting("heading_color", e.target.value as LiffTextColor)}
+              disabled={readOnly}
+            >
+              <option value="default">既定（カラーモードに従う）</option>
+              <option value="white">白</option>
+              <option value="red">赤</option>
+              <option value="green">緑</option>
+            </select>
+            <p className="text-[11px] text-gray-400 mt-1">
+              ページタイトル・アコーディオンの見出し・見出しブロックの色です。
+              赤 / 緑は背景の明暗に合わせて自動で濃さが変わります。
+              <strong>白は明るい背景のカラーモードでは読めなくなります</strong>のでご注意ください。
+            </p>
+          </div>
+          <div>
+            <label className={labelCls}>本文の色</label>
+            <select
+              className={inputCls}
+              value={resolveBodyColor(settings)}
+              onChange={(e) => updateSetting("body_color", e.target.value as LiffTextColor)}
+              disabled={readOnly}
+            >
+              <option value="default">既定（カラーモードに従う）</option>
+              <option value="white">白</option>
+              <option value="red">赤</option>
+              <option value="green">緑</option>
+            </select>
+            <p className="text-[11px] text-gray-400 mt-1">
+              本文ブロック・アコーディオンの本文の色です。赤 / 緑は背景の明暗に合わせて自動で濃さが変わります。
             </p>
           </div>
           <div>
