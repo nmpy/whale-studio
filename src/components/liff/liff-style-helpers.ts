@@ -18,6 +18,7 @@ import type {
   LiffPageType,
   LiffAccordionHeaderSpacing,
   LiffDividerVisibility,
+  LiffSpacingLevel,
   LiffHomeBackVisibility,
   HeadingSettings,
   TextSettings,
@@ -364,6 +365,8 @@ export function liffRootClass(settings: LiffPageConfigSettings | undefined): str
     titleScaleClass(resolveTitleScale(settings)),
     accordionTitleScaleClass(resolveAccordionTitleScale(settings)),
     accordionHeaderSpacingClass(resolveAccordionHeaderSpacing(settings)),
+    pageMarginXClass(resolvePageMarginX(settings)),
+    blockGapClass(resolveBlockGap(settings)),
     blockDividerClass(resolveBlockDivider(settings)),
     accordionDividerClass(resolveAccordionDivider(settings)),
   ].filter(Boolean).join(" ");
@@ -650,4 +653,41 @@ export function resolveAccordionDivider(
 /** アコーディオン行区切り線の表示有無 → root クラス名。"show" は既定なので空文字を返す。 */
 export function accordionDividerClass(v: LiffDividerVisibility): string {
   return v === "hide" ? "liff-acc-divider--hide" : "";
+}
+
+const SPACING_LEVELS: readonly LiffSpacingLevel[] = ["narrow", "normal", "wide"];
+
+/** 未設定 / 不正値 / 未知値 → "normal"（= 現行どおりの余白）。 */
+function resolveSpacing(v: LiffSpacingLevel | undefined): LiffSpacingLevel {
+  return v && SPACING_LEVELS.includes(v) ? v : "normal";
+}
+
+/** settings から **画面左右の余白** を解決する。未設定 → "normal"。 */
+export function resolvePageMarginX(settings: LiffPageConfigSettings | undefined): LiffSpacingLevel {
+  return resolveSpacing(settings?.page_margin_x);
+}
+
+/** 画面左右の余白 → root クラス名。"normal" は既定なので空文字を返す。 */
+export function pageMarginXClass(level: LiffSpacingLevel): string {
+  switch (level) {
+    case "narrow": return "liff-margin-x--narrow";
+    case "wide":   return "liff-margin-x--wide";
+    case "normal":
+    default:       return "";
+  }
+}
+
+/** settings から **ブロック同士の縦の間隔** を解決する。未設定 → "normal"。 */
+export function resolveBlockGap(settings: LiffPageConfigSettings | undefined): LiffSpacingLevel {
+  return resolveSpacing(settings?.block_gap);
+}
+
+/** ブロック間の間隔 → root クラス名。"normal" は既定なので空文字を返す。 */
+export function blockGapClass(level: LiffSpacingLevel): string {
+  switch (level) {
+    case "narrow": return "liff-gap--narrow";
+    case "wide":   return "liff-gap--wide";
+    case "normal":
+    default:       return "";
+  }
 }

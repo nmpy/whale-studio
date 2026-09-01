@@ -1796,6 +1796,17 @@ export type LiffAccordionHeaderSpacing = "narrow" | "normal" | "wide";
  *  - "hide": 横線を消す（ブロック間の余白はそのまま残る）
  *
  *  未指定 / 不正値は renderer 側で "show" として扱う。 */
+/** 余白の段階（狭い / 標準 / 広い）。
+ *
+ *  `page_margin_x`（画面左右）/ `block_gap`（ブロック同士の縦の間隔）で共通に使う。
+ *
+ *  - "narrow": 詰める
+ *  - "normal": 現行既定。**未設定データと完全に同じ見た目**
+ *  - "wide"  : ゆったり
+ *
+ *  未指定 / 不正値は renderer 側で "normal" として扱う。 */
+export type LiffSpacingLevel = "narrow" | "normal" | "wide";
+
 export type LiffDividerVisibility = "show" | "hide";
 
 export interface LiffPageConfigSettings {
@@ -1838,6 +1849,11 @@ export interface LiffPageConfigSettings {
   accordion_divider?: LiffDividerVisibility;
   /** ページ全体の余白の詰め具合。未指定は "normal"（= 現行と同じ余白）。 */
   layout_density?: LiffLayoutDensity;
+  /** 画面左右の余白（.liff-player-main の左右 padding）。未指定は "normal"（= 現行と同じ 16px）。 */
+  page_margin_x?: LiffSpacingLevel;
+  /** ブロック同士の縦の間隔（.liff-block-sep の上下 padding / margin）。未指定は "normal"（= 現行どおり）。
+   *  layout_density="compact" と両方指定した場合は **こちらが優先**する（より具体的な指定のため）。 */
+  block_gap?: LiffSpacingLevel;
   /** 見出し系の文字の太さ。未指定は font_weight_level にフォールバックする。
    *  見出しブロックの個別指定（太字 / 中太 / 通常）は、この段階の中での相対指定として残る。 */
   heading_weight?: LiffFontWeightLevel;
