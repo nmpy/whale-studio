@@ -1059,7 +1059,7 @@
  * **必ずその後ろ**に置いて後勝ちさせること（見出しが本文倍率に引っ張られないため）。
  * 見出しブロックの太さは font-* utility との複合 (0,3,0) で当て、
  * ブロック側の「太字 / 中太 / 通常」の相対関係を保ったまま段階だけずらす。 */
-.liff-font .liff-h-title   { font-size: calc(20px * var(--liff-heading-mul, 1)); font-weight: var(--liff-heading-fw, 700); }
+.liff-font .liff-h-title   { font-size: calc(20px * var(--liff-title-mul, var(--liff-heading-mul, 1))); font-weight: var(--liff-heading-fw, 700); }
 .liff-font .liff-h-acc--1  { font-size: calc(16px * var(--liff-acc-title-mul, var(--liff-heading-mul, 1))); font-weight: var(--liff-heading-fw, 700); }
 .liff-font .liff-h-acc--2  { font-size: calc(15px * var(--liff-acc-title-mul, var(--liff-heading-mul, 1))); font-weight: var(--liff-heading-fw-sub, 600); }
 .liff-font .liff-h-acc--3  { font-size: calc(14px * var(--liff-acc-title-mul, var(--liff-heading-mul, 1))); font-weight: var(--liff-heading-fw-sub, 600); }
@@ -1119,6 +1119,18 @@
 .liff-acc-title--md { --liff-acc-title-mul: 1; }
 .liff-acc-title--lg { --liff-acc-title-mul: 1.08; }
 .liff-acc-title--xl { --liff-acc-title-mul: 1.16; }
+
+/* ── ページタイトルだけの文字サイズ (settings_json.title_scale) ─────────────
+ *
+ * `accordion_title_scale` と同じ構造のページタイトル版。`.liff-h-title` が
+ *   calc(20px * var(--liff-title-mul, var(--liff-heading-mul, 1)))
+ * と連鎖して読むので、未設定ならこの class は付かず `--liff-heading-mul` に倒れる
+ * ⇒ 既存ページの計算値は 1px も変わらない。
+ * `--md` は「見出しを大きくしてもタイトルだけ等倍で固定する」明示指定のため用意する。 */
+.liff-title-size--sm { --liff-title-mul: 0.93; }
+.liff-title-size--md { --liff-title-mul: 1; }
+.liff-title-size--lg { --liff-title-mul: 1.08; }
+.liff-title-size--xl { --liff-title-mul: 1.16; }
 
 /* ── アコーディオン見出し行の上下余白 (settings_json.accordion_header_spacing) ─────
  *

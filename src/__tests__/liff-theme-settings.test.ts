@@ -626,7 +626,9 @@ describe("liff-font.css の契約 — 見出し系", () => {
     const titleCls = page.match(/liff-h-title[^"]*"/)![0];
     expect(titleCls).toContain("text-[20px]");
     expect(titleCls).toContain("font-bold");
-    expect(CSS).toContain(".liff-font .liff-h-title   { font-size: calc(20px * var(--liff-heading-mul, 1)); font-weight: var(--liff-heading-fw, 700); }");
+    // ページタイトルは title_scale で切り出せるため、内側にもう 1 段 var を挟む。
+    // 未設定なら --liff-title-mul は未定義 ⇒ --liff-heading-mul にフォールバックする。
+    expect(CSS).toContain(".liff-font .liff-h-title   { font-size: calc(20px * var(--liff-title-mul, var(--liff-heading-mul, 1))); font-weight: var(--liff-heading-fw, 700); }");
 
     // アコーディオン見出し: accordion-depth-style の title
     for (const [depth, px, weight] of [[1, "16", "700"], [2, "15", "600"], [3, "14", "600"]] as const) {

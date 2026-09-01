@@ -18,6 +18,7 @@ import {
   resolveHomeBackButton, defaultHomeBackButton,
   resolveAccordionTitleScale, resolveAccordionHeaderSpacing,
   resolveBlockDivider, resolveAccordionDivider,
+  resolveTitleScale, pageOwnsChrome,
 } from "./liff-style-helpers";
 import { LiffFaqEditor } from "./LiffFaqEditor";
 import { LiffHintSearchEditor } from "./LiffHintSearchEditor";
@@ -297,6 +298,33 @@ export function LiffConfigHeader({
             </select>
             <p className="text-[11px] text-gray-400 mt-1">ページタイトル・アコーディオンの見出し・見出しブロックの大きさです。</p>
           </div>
+          {/* ticket_link / hint_search は renderer が自前の見出しを持ち、ページタイトルの h2 を
+              描画しない = title_scale が効かない。効かない項目は出さない。 */}
+          {!pageOwnsChrome(mode) && (
+          <div>
+            <label className={labelCls}>ページタイトルの大きさ</label>
+            <select
+              className={inputCls}
+              // 未設定は "" (= 見出しの大きさに合わせる)。accordion_title_scale と同じ扱い。
+              value={resolveTitleScale(settings) ?? ""}
+              onChange={(e) => {
+                const v = e.target.value;
+                updateSetting("title_scale", v === "" ? undefined : (v as LiffFontScale));
+              }}
+              disabled={readOnly}
+            >
+              <option value="">「見出しの大きさ」に合わせる（既定）</option>
+              <option value="sm">小さめ</option>
+              <option value="md">標準で固定</option>
+              <option value="lg">大きめ</option>
+              <option value="xl">特大</option>
+            </select>
+            <p className="text-[11px] text-gray-400 mt-1">
+              ページタイトル<strong>だけ</strong>の大きさです。アコーディオン見出し・見出しブロックは動きません。
+              「標準で固定」は、上の「見出しの大きさ」を変えてもタイトルだけ等倍に留めたいときに使います。
+            </p>
+          </div>
+          )}
           <div>
             <label className={labelCls}>アコーディオン見出しの大きさ</label>
             <select
