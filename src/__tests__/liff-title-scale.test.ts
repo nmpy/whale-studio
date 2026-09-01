@@ -16,6 +16,7 @@ import {
   titleScaleClass,
   resolveAccordionTitleScale,
   liffRootClass,
+  pageOwnsChrome,
 } from "@/components/liff/liff-style-helpers";
 import { liffPageConfigSettingsSchema } from "@/lib/validations";
 import type { LiffPageConfigSettings } from "@/types";
@@ -89,6 +90,29 @@ describe("accordion_title_scale と独立している", () => {
     const line = CSS.split("\n").find((l) => l.includes(".liff-font .liff-h-title   {"))!;
     expect(line).toContain("--liff-title-mul");
     expect(line).not.toContain("--liff-acc-title-mul");
+  });
+});
+
+// ticket_link / hint_search は renderer が自前の見出しを持ち、ページタイトルの h2 を
+// 描画しない。そこでは title_scale が効かないので、CMS でも項目を出さない。
+// renderer 側の描画条件と CMS 側の表示条件が同じ関数を見ていることを固定する。
+describe("効かないページ種別では項目を出さない", () => {
+  it("pageOwnsChrome が true = ページタイトルが描画されない種別", () => {
+    expect(pageOwnsChrome("ticket_link")).toBe(true);
+    expect(pageOwnsChrome("hint_search")).toBe(true);
+  });
+
+  it("それ以外の種別はページタイトルを描画する = title_scale が効く", () => {
+    for (const t of ["default", "hint", "faq", "survey", "location", "character", "werewolf", "contact", "puzzle"] as const) {
+      expect(pageOwnsChrome(t)).toBe(false);
+    }
+  });
+
+  it("renderer 側が同じ判定関数を使っている（ロジックのドリフト防止）", () => {
+    const src = readFileSync(join(process.cwd(), "src/components/liff/LiffSinglePageRenderer.tsx"), "utf8");
+    expect(src).toContain("pageOwnsChrome(pageType)");
+    // 判定を再実装していないこと
+    expect(src).not.toContain('pageType === "ticket_link" || pageType === "hint_search"');
   });
 });
 

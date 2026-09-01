@@ -30,7 +30,7 @@ import { PuzzleRenderer } from "./PuzzleRenderer";
 import { WerewolfRenderer } from "./WerewolfRenderer";
 import { LiffRenderer, LiffBlockSections, type LiffBlock, type LiffRenderContext } from "./LiffRenderer";
 import { LiffPlayerProvider } from "./LiffPlayerContext";
-import { liffRootClass, resolveHeaderTitle, resolveHomeBackButton } from "./liff-style-helpers";
+import { liffRootClass, pageOwnsChrome, resolveHeaderTitle, resolveHomeBackButton } from "./liff-style-helpers";
 import { LiffFontThemeAssets } from "./fonts/LiffFontThemeAssets";
 import { LiffStudioFooter, shouldShowWhaleStudioCredit } from "./LiffStudioFooter";
 
@@ -109,7 +109,7 @@ export function LiffSinglePageRenderer({
   // ページ見出しと Powered by を renderer 側のシェルが自前で描画する（親では二重に出さない）。
   // hint_search も検索 / 結果 / 詳細 / 一覧で見出しが変わるため、同じく renderer 側が見出しを持つ。
   // 他の page_type には影響しない。
-  const ownsPageChrome = pageType === "ticket_link" || pageType === "hint_search";
+  const ownsPageChrome = pageOwnsChrome(pageType);
 
   // 白背景シェルを敷くのは ticket_link だけ。hint_search は通常のページ背景のまま。
   const usesSurfaceBackground = pageType === "ticket_link";

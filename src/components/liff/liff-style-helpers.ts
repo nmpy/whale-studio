@@ -203,6 +203,14 @@ export function headingScaleClass(scale: LiffFontScale): string {
   }
 }
 
+/** その page_type が「ページ見出し・フッターを renderer 側が自前で持つ」種別かどうか。
+ *  true の種別ではページタイトルの h2 (`.liff-h-title`) が描画されないため、
+ *  `title_scale` は効かない（CMS 側でも項目を出さない判断に使う）。
+ *  LiffSinglePageRenderer の描画条件と同じ定義をここ 1 か所に置き、両者のドリフトを防ぐ。 */
+export function pageOwnsChrome(pageType: LiffPageType): boolean {
+  return pageType === "ticket_link" || pageType === "hint_search";
+}
+
 /** settings から **ページタイトルだけの文字サイズ倍率** を解決する。
  *  未設定 / 不正値 → `undefined`（= 見出し系 heading_scale の結果をそのまま使う）。
  *  `resolveAccordionTitleScale` と同じ構造（未設定なら class を出さない）。 */
