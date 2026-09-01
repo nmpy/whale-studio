@@ -17,6 +17,7 @@ import type {
   LiffPageConfigSettings,
   LiffPageType,
   LiffAccordionHeaderSpacing,
+  LiffDividerVisibility,
   LiffHomeBackVisibility,
   HeadingSettings,
   TextSettings,
@@ -331,6 +332,8 @@ export function liffRootClass(settings: LiffPageConfigSettings | undefined): str
     layoutDensityClass(resolveLayoutDensity(settings)),
     accordionTitleScaleClass(resolveAccordionTitleScale(settings)),
     accordionHeaderSpacingClass(resolveAccordionHeaderSpacing(settings)),
+    blockDividerClass(resolveBlockDivider(settings)),
+    accordionDividerClass(resolveAccordionDivider(settings)),
   ].filter(Boolean).join(" ");
 }
 
@@ -588,4 +591,31 @@ export function resolveHomeBackButton(
 ): LiffHomeBackVisibility {
   const v = settings?.home_back_button;
   return v === "show" || v === "hide" ? v : defaultHomeBackButton(pageType);
+}
+
+/** settings から **ブロック間の横線の表示有無** を解決する。
+ *  未設定 / 不正値 / 未知値 → "show"（= 現行どおり表示）。 */
+export function resolveBlockDivider(
+  settings: LiffPageConfigSettings | undefined,
+): LiffDividerVisibility {
+  return settings?.block_divider === "hide" ? "hide" : "show";
+}
+
+/** 横線の表示有無 → root クラス名。"show" は既定なので空文字を返す。 */
+export function blockDividerClass(v: LiffDividerVisibility): string {
+  return v === "hide" ? "liff-divider--hide" : "";
+}
+
+/** settings から **アコーディオン 1 項目ごとの行区切り線の表示有無** を解決する。
+ *  未設定 / 不正値 / 未知値 → "show"（= 現行どおり表示）。
+ *  `block_divider`（ブロック間の線）とは独立に効く。 */
+export function resolveAccordionDivider(
+  settings: LiffPageConfigSettings | undefined,
+): LiffDividerVisibility {
+  return settings?.accordion_divider === "hide" ? "hide" : "show";
+}
+
+/** アコーディオン行区切り線の表示有無 → root クラス名。"show" は既定なので空文字を返す。 */
+export function accordionDividerClass(v: LiffDividerVisibility): string {
+  return v === "hide" ? "liff-acc-divider--hide" : "";
 }

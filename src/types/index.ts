@@ -1783,6 +1783,21 @@ export type LiffHomeBackVisibility = "show" | "hide";
  *  明示指定した場合は `layout_density` より **こちらが優先** する（より具体的な指定のため）。 */
 export type LiffAccordionHeaderSpacing = "narrow" | "normal" | "wide";
 
+/** ブロック同士の区切り線（横線）の表示有無。
+ *
+ *  `block_divider` の対象は「ブロックとブロックの間に自動で入る横線」
+ *  (`.liff-block-sep` の border-bottom)。
+ *  `accordion_divider` の対象はアコーディオン 1 項目ごとの行区切り線
+ *  (`.liff-acc-sec` の border-bottom)。
+ *  どちらでも、ユーザーが明示的に置く「区切り線ブロック」(DividerBlock) と、
+ *  階層を示す縦のガイド線は対象外で、常に表示される。
+ *
+ *  - "show": 現行既定。**未設定データと完全に同じ見た目**
+ *  - "hide": 横線を消す（ブロック間の余白はそのまま残る）
+ *
+ *  未指定 / 不正値は renderer 側で "show" として扱う。 */
+export type LiffDividerVisibility = "show" | "hide";
+
 export interface LiffPageConfigSettings {
   /** 画面上部の「ホームに戻る」導線（= 作品のメニューホームへ）の表示有無。
    *  未指定はページ種別ごとの既定にフォールバックする（hint_search のみ表示 / 他は非表示）。
@@ -1809,6 +1824,13 @@ export interface LiffPageConfigSettings {
   /** アコーディオン見出し行の上下の余白（= 1 項目の高さ）。未指定は layout_density の結果のまま。
    *  明示指定した場合は layout_density より優先する。本文パネルの余白は変わらない。 */
   accordion_header_spacing?: LiffAccordionHeaderSpacing;
+  /** ブロック同士の区切り線（横線）の表示有無。未指定は "show"（= 現行どおり表示）。
+   *  消しても余白は残る。「区切り線ブロック」は対象外。 */
+  block_divider?: LiffDividerVisibility;
+  /** アコーディオン 1 項目ごとの行区切り線（横線）の表示有無。未指定は "show"（= 現行どおり表示）。
+   *  `block_divider`（ブロック間の線）とは独立。
+   *  階層を示す**縦のガイド線**は対象外で、常に表示される（消すとネスト構造が読めなくなるため）。 */
+  accordion_divider?: LiffDividerVisibility;
   /** ページ全体の余白の詰め具合。未指定は "normal"（= 現行と同じ余白）。 */
   layout_density?: LiffLayoutDensity;
   /** 見出し系の文字の太さ。未指定は font_weight_level にフォールバックする。

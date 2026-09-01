@@ -55,6 +55,11 @@ export function clampAccordionDepth(depth: unknown): 1 | 2 | 3 {
 
 const BORDER = "border-[color:var(--liff-border)]";
 
+// section に付くマーカー class (`liff-acc-sec` / `liff-acc-sec--<depth>`)。
+// header の `liff-acc-h` / panel の `liff-acc-p` と同じ役割で、
+// liff-font.css から「行区切りの横線」だけを狙って消せるようにするためのフック
+// (settings_json.accordion_divider)。見た目そのものはここでは変えない。
+
 /** 本文パネル共通: 縦ガイド線 + 子要素の縦方向 gap。 */
 const PANEL_BASE = `flex flex-col gap-4 border-l ${BORDER}`;
 
@@ -62,7 +67,7 @@ const STYLES: Record<1 | 2 | 3, AccordionDepthStyle> = {
   // L1 — ページ直下。従来の見た目を維持する（既存ページの印象を変えないため）。
   //      パネルにだけガイド線とわずかなインデントが増える。
   1: {
-    section:    `border-b ${BORDER}`,
+    section:    `liff-acc-sec liff-acc-sec--1 border-b ${BORDER}`,
     header:     "liff-acc-h liff-acc-h--1 min-h-[60px] py-3",
     title:      "liff-h-acc liff-h-acc--1 text-[16px] font-bold",
     panel:      `liff-acc-p liff-acc-p--1 ${PANEL_BASE} pt-1 pb-5 pl-3`,
@@ -70,7 +75,7 @@ const STYLES: Record<1 | 2 | 3, AccordionDepthStyle> = {
   },
   // L2 — 親アコーディオンの中。
   2: {
-    section:    `border-b ${BORDER}`,
+    section:    `liff-acc-sec liff-acc-sec--2 border-b ${BORDER}`,
     header:     "liff-acc-h liff-acc-h--2 min-h-[52px] py-2.5",
     title:      "liff-h-acc liff-h-acc--2 text-[15px] font-semibold",
     panel:      `liff-acc-p liff-acc-p--2 ${PANEL_BASE} pt-1 pb-4 pl-2.5`,
@@ -78,7 +83,7 @@ const STYLES: Record<1 | 2 | 3, AccordionDepthStyle> = {
   },
   // L3 — 現行の保存上限。ここに更に accordion は入れられないが、text / image は入る。
   3: {
-    section:    `border-b ${BORDER}`,
+    section:    `liff-acc-sec liff-acc-sec--3 border-b ${BORDER}`,
     header:     "liff-acc-h liff-acc-h--3 min-h-[46px] py-2",
     title:      "liff-h-acc liff-h-acc--3 text-[14px] font-semibold",
     panel:      `liff-acc-p liff-acc-p--3 ${PANEL_BASE} pt-1 pb-4 pl-2.5`,

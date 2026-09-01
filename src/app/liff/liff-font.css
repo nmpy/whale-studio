@@ -1143,6 +1143,31 @@
 .liff-acc-head--wide .liff-acc-h--2 { min-height: 64px; padding-top: 16px; padding-bottom: 16px; }
 .liff-acc-head--wide .liff-acc-h--3 { min-height: 58px; padding-top: 14px; padding-bottom: 14px; }
 
+/* ── ブロック間の横線 (settings_json.block_divider) ────────────────────────
+ *
+ * renderer は各ブロックを `.liff-block-sep ... border-b` で包んでおり、その
+ * border-bottom が「ブロックとブロックの間の横線」になっている。
+ * "hide" のときだけ線幅を 0 にする（余白 = pb/mb はそのまま残す）。
+ *
+ * 対象外（常に表示される）:
+ *   - 区切り線ブロック (DividerBlock) … ユーザーが明示的に置いた線なので消さない
+ *   - アコーディオンの行区切り線     … 別設定 (accordion_divider) で独立に選ぶ
+ *
+ * "show"（既定）は class が付かない = 既存ページの DOM も計算値も不変。 */
+.liff-divider--hide .liff-block-sep { border-bottom-width: 0; }
+
+/* ── アコーディオンの行区切り線 (settings_json.accordion_divider) ──────────
+ *
+ * アコーディオン 1 項目 (= `.liff-acc-sec`) の下端に入る横線を消す。
+ * block_divider（ブロック間の線）とは独立した設定。
+ *
+ * ⚠️ 階層を示す**縦のガイド線**（パネルの border-left）は対象外。
+ *    あれがネスト構造の表現そのものなので、ここでは絶対に触らない。
+ *
+ * 高さ・余白（liff-acc-h / liff-acc-p）にも触れない = 線幅だけを 0 にする。
+ * "show"（既定）は class が付かない = 既存ページの計算値も不変。 */
+.liff-acc-divider--hide .liff-acc-sec { border-bottom-width: 0; }
+
 /* ── 本文を細くできるフォント（LINE Seed JP 以外）────────────────────────
  *
  * 「本文の太さ = 細め」は `--liff-fw-normal: 400`（= 変化なし）が既定。

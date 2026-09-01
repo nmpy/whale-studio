@@ -9,7 +9,7 @@
 import type {
   LiffColorMode, LiffFontScale, LiffFontTheme, LiffFontWeightLevel, LiffLayoutDensity,
   LiffPageConfig, LiffPageConfigSettings, LiffPageType, LiffPublishStatus,
-  LiffAccordionHeaderSpacing,
+  LiffAccordionHeaderSpacing, LiffDividerVisibility,
 } from "@/types";
 import { normalizeLiffPageType } from "@/types";
 import {
@@ -17,6 +17,7 @@ import {
   resolveHeadingScale, resolveHeadingWeightLevel, resolveLayoutDensity,
   resolveHomeBackButton, defaultHomeBackButton,
   resolveAccordionTitleScale, resolveAccordionHeaderSpacing,
+  resolveBlockDivider, resolveAccordionDivider,
 } from "./liff-style-helpers";
 import { LiffFaqEditor } from "./LiffFaqEditor";
 import { LiffHintSearchEditor } from "./LiffHintSearchEditor";
@@ -338,6 +339,37 @@ export function LiffConfigHeader({
             <p className="text-[11px] text-gray-400 mt-1">
               アコーディオン 1 項目の見出し行の高さ（上下の余白）です。本文側の余白と階層のインデント・ガイド線は変わりません。
               指定すると「余白の詰め具合」より優先します。
+            </p>
+          </div>
+          <div>
+            <label className={labelCls}>ブロック間の横線</label>
+            <select
+              className={inputCls}
+              value={resolveBlockDivider(settings)}
+              onChange={(e) => updateSetting("block_divider", e.target.value as LiffDividerVisibility)}
+              disabled={readOnly}
+            >
+              <option value="show">表示する（既定）</option>
+              <option value="hide">表示しない</option>
+            </select>
+            <p className="text-[11px] text-gray-400 mt-1">
+              ブロックとブロックの間に自動で入る横線です。消しても余白は残ります。「区切り線ブロック」は対象外です。
+            </p>
+          </div>
+          <div>
+            <label className={labelCls}>アコーディオンの横線</label>
+            <select
+              className={inputCls}
+              value={resolveAccordionDivider(settings)}
+              onChange={(e) => updateSetting("accordion_divider", e.target.value as LiffDividerVisibility)}
+              disabled={readOnly}
+            >
+              <option value="show">表示する（既定）</option>
+              <option value="hide">表示しない</option>
+            </select>
+            <p className="text-[11px] text-gray-400 mt-1">
+              アコーディオン 1 項目ごとの行区切り線です。項目の高さ・余白は変わりません。
+              階層を示す<strong>縦のガイド線</strong>は消えません（消すとネスト構造が読めなくなるため）。
             </p>
           </div>
           <div>
