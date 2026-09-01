@@ -1544,6 +1544,9 @@ export const liffPageConfigSettingsSchema = z.object({
   accordion_title_scale:    z.enum(["sm", "md", "lg", "xl"]).optional(),
   accordion_header_spacing: z.enum(["narrow", "normal", "wide"]).optional(),
   // ブロック間の横線 / アコーディオン 1 項目ごとの行区切り線。未指定は "show"（= 現行どおり表示）。
+  // 場所ごとの余白。未指定は "normal"（= 現行どおり）。
+  page_margin_x:        z.enum(["narrow", "normal", "wide"]).optional(),
+  block_gap:            z.enum(["narrow", "normal", "wide"]).optional(),
   block_divider:        z.enum(["show", "hide"]).optional(),
   accordion_divider:    z.enum(["show", "hide"]).optional(),
   // 余白の詰め具合。未指定 / 不正値は renderer 側で "normal" 扱い（= 現行と同じ余白）。

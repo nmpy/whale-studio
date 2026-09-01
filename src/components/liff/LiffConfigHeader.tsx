@@ -9,7 +9,7 @@
 import type {
   LiffColorMode, LiffFontScale, LiffFontTheme, LiffFontWeightLevel, LiffLayoutDensity,
   LiffPageConfig, LiffPageConfigSettings, LiffPageType, LiffPublishStatus,
-  LiffAccordionHeaderSpacing, LiffDividerVisibility,
+  LiffAccordionHeaderSpacing, LiffDividerVisibility, LiffSpacingLevel,
 } from "@/types";
 import { normalizeLiffPageType } from "@/types";
 import {
@@ -19,6 +19,7 @@ import {
   resolveAccordionTitleScale, resolveAccordionHeaderSpacing,
   resolveBlockDivider, resolveAccordionDivider,
   resolveTitleScale, pageOwnsChrome,
+  resolvePageMarginX, resolveBlockGap,
 } from "./liff-style-helpers";
 import { LiffFaqEditor } from "./LiffFaqEditor";
 import { LiffHintSearchEditor } from "./LiffHintSearchEditor";
@@ -367,6 +368,38 @@ export function LiffConfigHeader({
             <p className="text-[11px] text-gray-400 mt-1">
               アコーディオン 1 項目の見出し行の高さ（上下の余白）です。本文側の余白と階層のインデント・ガイド線は変わりません。
               指定すると「余白の詰め具合」より優先します。
+            </p>
+          </div>
+          <div>
+            <label className={labelCls}>画面左右の余白</label>
+            <select
+              className={inputCls}
+              value={resolvePageMarginX(settings)}
+              onChange={(e) => updateSetting("page_margin_x", e.target.value as LiffSpacingLevel)}
+              disabled={readOnly}
+            >
+              <option value="narrow">狭い</option>
+              <option value="normal">標準（既定）</option>
+              <option value="wide">広い</option>
+            </select>
+            <p className="text-[11px] text-gray-400 mt-1">
+              本文の左右の余白です（既定 16px）。狭くすると 1 行に入る文字数が増えます。
+            </p>
+          </div>
+          <div>
+            <label className={labelCls}>ブロック間の余白</label>
+            <select
+              className={inputCls}
+              value={resolveBlockGap(settings)}
+              onChange={(e) => updateSetting("block_gap", e.target.value as LiffSpacingLevel)}
+              disabled={readOnly}
+            >
+              <option value="narrow">狭い</option>
+              <option value="normal">標準（既定）</option>
+              <option value="wide">広い</option>
+            </select>
+            <p className="text-[11px] text-gray-400 mt-1">
+              ブロックとブロックの縦の間隔です。指定すると「余白の詰め具合」より優先します。
             </p>
           </div>
           <div>

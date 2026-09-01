@@ -347,8 +347,10 @@
   max-width: 448px;
   margin-left: auto;
   margin-right: auto;
-  padding-left: 16px;
-  padding-right: 16px;
+  /* 画面左右の余白。root の `.liff-margin-x--*` がトークンを差し替える。
+   * 未設定ページは fallback の 16px = 従来と完全に同じ。 */
+  padding-left: var(--liff-page-pad-x, 16px);
+  padding-right: var(--liff-page-pad-x, 16px);
 }
 
 /* === チケット連携 (ticket_link) 画面のページ高さ =============================
@@ -1179,6 +1181,28 @@
  * 高さ・余白（liff-acc-h / liff-acc-p）にも触れない = 線幅だけを 0 にする。
  * "show"（既定）は class が付かない = 既存ページの計算値も不変。 */
 .liff-acc-divider--hide .liff-acc-sec { border-bottom-width: 0; }
+
+/* ── 余白 (settings_json.page_margin_x / block_gap) ────────────────────────
+ *
+ * layout_density（標準 / コンパクト）が「全体を一括で詰める」のに対し、
+ * こちらは **場所ごとに 狭い / 標準 / 広い** を選ぶ。2 つとも独立。
+ *
+ * 不変条件: どちらも "normal" は class が付かない = 既存ページの計算値と完全に一致。
+ *   - 画面左右 : `.liff-player-main` の padding が `--liff-page-pad-x`（fallback 16px）を読む
+ *   - ブロック間: 下の `.liff-gap--*` が `.liff-block-sep` の Tailwind 値を上書き
+ *
+ * ⚠️ `.liff-gap--*` は `.liff-density--compact .liff-block-sep` より **後ろ**に置くこと。
+ *    同 specificity (0,2,0) なので後勝ちになり、両方指定されたときは
+ *    より具体的な block_gap の指定が勝つ（types.ts に明記した優先順位と一致させる）。 */
+
+/* 画面左右 — .liff-player-main の padding が読むトークンを差し替える。 */
+.liff-margin-x--narrow { --liff-page-pad-x: 10px; }
+.liff-margin-x--wide { --liff-page-pad-x: 26px; }
+
+/* ブロック同士の縦の間隔 — renderer は `.liff-block-sep pb-5 mb-5`(既定ページ) /
+ * `pb-6 mb-6`(ヒントサイト) を付けており、その Tailwind 値を上書きする。 */
+.liff-gap--narrow .liff-block-sep { padding-bottom: 12px; margin-bottom: 12px; }
+.liff-gap--wide .liff-block-sep { padding-bottom: 32px; margin-bottom: 32px; }
 
 /* ── 本文を細くできるフォント（LINE Seed JP 以外）────────────────────────
  *
