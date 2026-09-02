@@ -1436,6 +1436,34 @@
 .liff-gap--narrow .liff-block-sep { padding-bottom: 12px; margin-bottom: 12px; }
 .liff-gap--wide .liff-block-sep { padding-bottom: 32px; margin-bottom: 32px; }
 
+/* ── ページ上下の余白 (settings_json.page_margin_y) ────────────────────────
+ *
+ * 本文コンテナの上下 padding。page_type ごとに現行値が違う
+ * (default 12/32px・hint 24/96px・faq/survey/contact 20/96px・hint_search 16/40px) ため、
+ * 絶対値で揃えず **現行値に倍率を掛ける**。page_type ごとの意図的な差が保たれる。
+ *
+ * 当て先は `.liff-page-body`（各 renderer の本文コンテナ 1 つだけに付くマーカー）。
+ * `.liff-player-main` を直接狙うと、戻る導線・ページタイトルなど同じ class を持つ
+ * 別要素にも当たって上下余白が多重に変わるため、専用マーカーに限定している。
+ *
+ * faq / survey / contact など「専用コンテンツ + 追加ブロック」の page_type では
+ * 本文コンテナが 2 つ並ぶ（専用 renderer の分と、追加ブロック用 LiffRenderer の分）。
+ * どちらも同じ倍率で拡縮するので、ページ全体の余白の比率が保たれる（意図した挙動）。
+ *
+ * 倍率が未設定なら calc(<現行px> * 1) = 現行値そのもの ⇒ 既存ページは 1px も動かない。
+ * ⚠️ renderer 側の pt-/pb- を変えたらここの px も合わせること（テストでドリフト検出）。 */
+.liff-font .liff-page-body.pt-3 { padding-top: calc(12px * var(--liff-page-y-mul, 1)); }
+.liff-font .liff-page-body.pt-4 { padding-top: calc(16px * var(--liff-page-y-mul, 1)); }
+.liff-font .liff-page-body.pt-5 { padding-top: calc(20px * var(--liff-page-y-mul, 1)); }
+.liff-font .liff-page-body.pt-6 { padding-top: calc(24px * var(--liff-page-y-mul, 1)); }
+
+.liff-font .liff-page-body.pb-8  { padding-bottom: calc(32px * var(--liff-page-y-mul, 1)); }
+.liff-font .liff-page-body.pb-10 { padding-bottom: calc(40px * var(--liff-page-y-mul, 1)); }
+.liff-font .liff-page-body.pb-24 { padding-bottom: calc(96px * var(--liff-page-y-mul, 1)); }
+
+.liff-margin-y--narrow { --liff-page-y-mul: 0.5; }
+.liff-margin-y--wide { --liff-page-y-mul: 1.75; }
+
 /* ── 本文を細くできるフォント（LINE Seed JP 以外）────────────────────────
  *
  * 「本文の太さ = 細め」は `--liff-fw-normal: 400`（= 変化なし）が既定。

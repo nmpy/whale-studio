@@ -20,7 +20,7 @@ import {
   resolveAccordionTitleScale, resolveAccordionHeaderSpacing,
   resolveBlockDivider, resolveAccordionDivider,
   resolveTitleScale, pageOwnsChrome,
-  resolvePageMarginX, resolveBlockGap,
+  resolvePageMarginX, resolveBlockGap, resolvePageMarginY,
   resolveHeadingColor, resolveBodyColor,
   resolveCharacterSize, resolveCharacterPosition, resolveCharacterRendering, resolveCharacterFixed,
 } from "./liff-style-helpers";
@@ -538,6 +538,23 @@ export function LiffConfigHeader({
             </select>
             <p className="text-[11px] text-gray-400 mt-1">
               ブロックとブロックの縦の間隔です。指定すると「余白の詰め具合」より優先します。
+            </p>
+          </div>
+          <div>
+            <label className={labelCls}>ページ上下の余白</label>
+            <select
+              className={inputCls}
+              value={resolvePageMarginY(settings)}
+              onChange={(e) => updateSetting("page_margin_y", e.target.value as LiffSpacingLevel)}
+              disabled={readOnly}
+            >
+              <option value="narrow">狭い</option>
+              <option value="normal">標準（既定）</option>
+              <option value="wide">広い</option>
+            </select>
+            <p className="text-[11px] text-gray-400 mt-1">
+              本文の一番上と一番下の余白です。ページ種別ごとの現行値に倍率を掛けるので、
+              <strong>種別ごとの差はそのまま</strong>に詰める / 広げるができます。
             </p>
           </div>
           <div>

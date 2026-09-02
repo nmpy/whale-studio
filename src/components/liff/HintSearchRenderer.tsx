@@ -321,7 +321,7 @@ export function HintSearchRenderer({
 
   return (
     <>
-      <main className="liff-player-main flex flex-col gap-5 pt-4 pb-10">
+      <main className="liff-player-main liff-page-body flex flex-col gap-5 pt-4 pb-10">
         {screen.kind === "search" && (
           <SearchScreen
             title={title}

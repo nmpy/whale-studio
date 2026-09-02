@@ -50,7 +50,7 @@ export function FaqRenderer({ config, preview }: { config: FaqRendererConfig; pr
   return (
     <div className={`liff-font ${liffRootClass(config.settings_json)} min-h-screen bg-[color:var(--liff-background)] text-[color:var(--liff-primary-text)]`}>
       {/* 画面内ヘッダーは廃止。document.title (= LIFF 上部バー) で文脈表現する。 */}
-      <main className="liff-player-main pt-5 pb-24 flex flex-col gap-4">
+      <main className="liff-player-main liff-page-body pt-5 pb-24 flex flex-col gap-4">
         {/* 説明文（config.description）は LiffSinglePageRenderer のページ見出し側で 1 度だけ表示する。
             ここで再表示すると二重になるため出さない（document.title は LINE 上部バー）。 */}
         {items.length === 0 ? (

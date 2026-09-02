@@ -383,6 +383,7 @@ export function liffRootClass(settings: LiffPageConfigSettings | undefined): str
     bodyColorClass(resolveBodyColor(settings)),
     pageMarginXClass(resolvePageMarginX(settings)),
     blockGapClass(resolveBlockGap(settings)),
+    pageMarginYClass(resolvePageMarginY(settings)),
     blockDividerClass(resolveBlockDivider(settings)),
     accordionDividerClass(resolveAccordionDivider(settings)),
   ].filter(Boolean).join(" ");
@@ -824,4 +825,19 @@ export function characterRootClass(settings: LiffPageConfigSettings | undefined)
     // 固定表示は本文の上に浮かせる運用なので、余白確保の class は付けない
     resolveCharacterFixed(settings) ? "" : `liff-character-on--${side}`,
   ].filter(Boolean).join(" ");
+}
+
+/** settings から **ページ上下の余白** を解決する。未設定 → "normal"。 */
+export function resolvePageMarginY(settings: LiffPageConfigSettings | undefined): LiffSpacingLevel {
+  return resolveSpacing(settings?.page_margin_y);
+}
+
+/** ページ上下の余白 → root クラス名。"normal" は既定なので空文字を返す。 */
+export function pageMarginYClass(level: LiffSpacingLevel): string {
+  switch (level) {
+    case "narrow": return "liff-margin-y--narrow";
+    case "wide":   return "liff-margin-y--wide";
+    case "normal":
+    default:       return "";
+  }
 }
