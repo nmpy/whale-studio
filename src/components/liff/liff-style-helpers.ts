@@ -20,6 +20,9 @@ import type {
   LiffDividerVisibility,
   LiffSpacingLevel,
   LiffTextColor,
+  LiffCharacterPosition,
+  LiffCharacterRendering,
+  LiffCharacterSize,
   LiffHomeBackVisibility,
   HeadingSettings,
   TextSettings,
@@ -732,4 +735,83 @@ export function bodyColorClass(color: LiffTextColor): string {
     case "default":
     default:      return "";
   }
+}
+
+// ── ページ隅のキャラクター画像 ─────────────────────────────────────────
+//
+// 「character_url が無ければ何も描画しない」を最優先の不変条件とする
+// （= 既存ページの DOM は 1 要素も増えない）。
+// 見た目に関わる 3 つ（サイズ / 配置 / 補間）は URL がある場合のみ意味を持つ。
+
+/** settings からキャラクター画像 URL を解決する。空文字 / 空白のみ / 非文字列は null。 */
+export function resolveCharacterUrl(settings: LiffPageConfigSettings | undefined): string | null {
+  const u = settings?.character_url;
+  return typeof u === "string" && u.trim() !== "" ? u.trim() : null;
+}
+
+const CHARACTER_SIZES: readonly LiffCharacterSize[] = ["sm", "md", "lg"];
+
+/** キャラクター画像のサイズ。未設定 / 不正値 → "md"（72px）。 */
+export function resolveCharacterSize(
+  settings: LiffPageConfigSettings | undefined,
+): LiffCharacterSize {
+  const v = settings?.character_size;
+  return v && CHARACTER_SIZES.includes(v) ? v : "md";
+}
+
+/** キャラクター画像の配置。未設定 / 不正値 → "top_right"。 */
+export function resolveCharacterPosition(
+  settings: LiffPageConfigSettings | undefined,
+): LiffCharacterPosition {
+  return settings?.character_position === "top_left" ? "top_left" : "top_right";
+}
+
+/** キャラクター画像の補間。未設定 / 不正値 → "pixelated"（ドット絵向け）。 */
+export function resolveCharacterRendering(
+  settings: LiffPageConfigSettings | undefined,
+): LiffCharacterRendering {
+  return settings?.character_rendering === "smooth" ? "smooth" : "pixelated";
+}
+
+/** キャラクター画像を画面に固定するか。未設定 / 不正値 → false。 */
+export function resolveCharacterFixed(settings: LiffPageConfigSettings | undefined): boolean {
+  return settings?.character_fixed === true;
+}
+
+/** キャラクター画像の外側レイヤーに付く class 文字列。 */
+export function characterLayerClass(fixed: boolean): string {
+  return `liff-character-layer${fixed ? " liff-character-layer--fixed" : ""}`;
+}
+
+/** キャラクター画像 <img> に付く class 文字列。
+ *  サイズは **root 側** (`characterRootClass`) が `--liff-character-size` として持つ。
+ *  画像の幅とページタイトル側の余白確保が同じ値を読む必要があるため。 */
+export function characterImageClass(
+  position: LiffCharacterPosition,
+  rendering: LiffCharacterRendering,
+): string {
+  return [
+    "liff-character",
+    position === "top_left" ? "liff-character--left" : "liff-character--right",
+    rendering === "smooth" ? "liff-character--smooth" : "liff-character--pixelated",
+  ].join(" ");
+}
+
+/** renderer root に付けるキャラクター用 class 文字列。
+ *
+ *  画像が未設定なら空文字（= 既存ページの root DOM は 1 文字も変わらない）。
+ *
+ *  この class が担うのは 2 つ:
+ *    1. `--liff-character-size` の提供（画像の幅 と 下の余白確保 が同じ値を読む）
+ *    2. ページタイトル / 説明文の**キャラ側に余白を作り、文字がキャラの下に潜らないようにする**
+ *       固定表示 (`character_fixed`) のときは画面に浮くだけなので余白は作らない。 */
+export function characterRootClass(settings: LiffPageConfigSettings | undefined): string {
+  if (!resolveCharacterUrl(settings)) return "";
+  const side = resolveCharacterPosition(settings) === "top_left" ? "left" : "right";
+  return [
+    "liff-character-on",
+    `liff-character-size--${resolveCharacterSize(settings)}`,
+    // 固定表示は本文の上に浮かせる運用なので、余白確保の class は付けない
+    resolveCharacterFixed(settings) ? "" : `liff-character-on--${side}`,
+  ].filter(Boolean).join(" ");
 }

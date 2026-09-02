@@ -30,7 +30,8 @@ import { PuzzleRenderer } from "./PuzzleRenderer";
 import { WerewolfRenderer } from "./WerewolfRenderer";
 import { LiffRenderer, LiffBlockSections, type LiffBlock, type LiffRenderContext } from "./LiffRenderer";
 import { LiffPlayerProvider } from "./LiffPlayerContext";
-import { liffRootClass, pageOwnsChrome, resolveHeaderTitle, resolveHomeBackButton } from "./liff-style-helpers";
+import { characterRootClass, liffRootClass, pageOwnsChrome, resolveHeaderTitle, resolveHomeBackButton } from "./liff-style-helpers";
+import { LiffPageCharacter } from "./LiffPageCharacter";
 import { LiffFontThemeAssets } from "./fonts/LiffFontThemeAssets";
 import { LiffStudioFooter, shouldShowWhaleStudioCredit } from "./LiffStudioFooter";
 
@@ -143,10 +144,22 @@ export function LiffSinglePageRenderer({
 
   return (
     <LiffPlayerProvider value={playerCtxValue}>
-      <div className={`liff-font ${liffRootClass(settings)} min-h-screen ${rootBackgroundClass} text-[color:var(--liff-primary-text)]`}>
+      <div className={[
+        "liff-font",
+        liffRootClass(settings),
+        // キャラクター用の class。画像が未設定なら空文字 = 既存ページの root は不変。
+        characterRootClass(settings),
+        "min-h-screen",
+        rootBackgroundClass,
+        "text-[color:var(--liff-primary-text)]",
+      ].filter(Boolean).join(" ")}>
         {/* font_theme=rounded / classic のときだけ webfont CSS を後から読む（DOM は出力しない）。
             テーマを持つ個別 renderer はすべてこの component 経由なので、ここ 1 か所で足りる。 */}
         <LiffFontThemeAssets settings={settings} />
+
+        {/* ページ隅の装飾キャラクター。character_url が無ければ何も描画しない。
+            高さ 0 + pointer-events: none のレイヤーなので、本文の位置は一切変わらない。 */}
+        <LiffPageCharacter settings={settings} />
 
         {/* 作品のメニューホームへ戻る導線。表示有無は settings_json.home_back_button で選ぶ。
             未設定なら従来どおり検索型ヒントだけ表示（= 既存ページの見た目は不変）。

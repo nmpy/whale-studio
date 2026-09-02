@@ -1546,6 +1546,14 @@ export const liffPageConfigSettingsSchema = z.object({
   // ブロック間の横線 / アコーディオン 1 項目ごとの行区切り線。未指定は "show"（= 現行どおり表示）。
   // 場所ごとの余白。未指定は "normal"（= 現行どおり）。
   // 見出し / 本文の文字色。未指定は "default"（= カラーモードの既定色）。
+  // ページ隅のキャラクター画像。character_url が空 / 未設定なら renderer は何も描画しない。
+  // URL は既存の header_logo_url と同じく「URL 形式 or 空文字」を許可する。
+  character_url:        z.string().url().optional().or(z.literal("")),
+  character_size:       z.enum(["sm", "md", "lg"]).optional(),
+  character_position:   z.enum(["top_right", "top_left"]).optional(),
+  character_fixed:      z.boolean().optional(),
+  character_rendering:  z.enum(["pixelated", "smooth"]).optional(),
+  character_alt:        z.string().max(120).optional(),
   heading_color:        z.enum(["default", "white", "red", "green"]).optional(),
   body_color:           z.enum(["default", "white", "red", "green"]).optional(),
   page_margin_x:        z.enum(["narrow", "normal", "wide"]).optional(),
