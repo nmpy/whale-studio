@@ -54,8 +54,6 @@ export function LiffConfigHeader({
   const isHint = mode === "hint";
   const isFaq = mode === "faq";
   const isHintSearch = mode === "hint_search";
-  // キャラクター詳細は URL が入っているときだけ出す（未設定なら描画されないため）。
-  const resolveCharacterUrlSet = (settings.character_url ?? "").trim() !== "";
   const isSurvey = mode === "survey";
   const isContact = mode === "contact";
   const isPuzzle = mode === "puzzle";
@@ -385,93 +383,6 @@ export function LiffConfigHeader({
               指定すると「余白の詰め具合」より優先します。
             </p>
           </div>
-          {/* ページ隅のキャラクター画像。URL が空なら renderer は何も描画しないので、
-              サイズ / 配置などの詳細は URL が入っているときだけ出す。 */}
-          <div className="sm:col-span-2">
-            <label className={labelCls}>キャラクター画像の URL</label>
-            <input
-              type="url"
-              className={inputCls}
-              value={settings.character_url ?? ""}
-              onChange={(e) => updateSetting("character_url", e.target.value)}
-              placeholder="https://res.cloudinary.com/..."
-              disabled={readOnly}
-            />
-            <p className="text-[11px] text-gray-400 mt-1">
-              ページ上部の隅に置く装飾画像です。本文の位置は変わらず、画像の下のボタンもそのまま押せます。
-              未入力なら何も表示しません。<strong>ドット絵は表示サイズに近い小さめ（32〜96px 程度）</strong>で用意してください。
-            </p>
-          </div>
-          {resolveCharacterUrlSet && (
-            <>
-              <div>
-                <label className={labelCls}>キャラクターの大きさ</label>
-                <select
-                  className={inputCls}
-                  value={resolveCharacterSize(settings)}
-                  onChange={(e) => updateSetting("character_size", e.target.value as LiffCharacterSize)}
-                  disabled={readOnly}
-                >
-                  <option value="sm">小（48px）</option>
-                  <option value="md">中（72px・既定）</option>
-                  <option value="lg">大（96px）</option>
-                </select>
-              </div>
-              <div>
-                <label className={labelCls}>キャラクターの配置</label>
-                <select
-                  className={inputCls}
-                  value={resolveCharacterPosition(settings)}
-                  onChange={(e) => updateSetting("character_position", e.target.value as LiffCharacterPosition)}
-                  disabled={readOnly}
-                >
-                  <option value="top_right">右上（既定）</option>
-                  <option value="top_left">左上</option>
-                </select>
-                <p className="text-[11px] text-gray-400 mt-1">
-                  ページタイトルの反対側に置くと文字と重なりません。
-                </p>
-              </div>
-              <div>
-                <label className={labelCls}>画像の拡大縮小</label>
-                <select
-                  className={inputCls}
-                  value={resolveCharacterRendering(settings)}
-                  onChange={(e) => updateSetting("character_rendering", e.target.value as LiffCharacterRendering)}
-                  disabled={readOnly}
-                >
-                  <option value="pixelated">ドット絵向け（既定）</option>
-                  <option value="smooth">なめらか（写真・イラスト）</option>
-                </select>
-              </div>
-              <div>
-                <label className={labelCls}>スクロール時の固定</label>
-                <select
-                  className={inputCls}
-                  value={resolveCharacterFixed(settings) ? "fixed" : "scroll"}
-                  onChange={(e) => updateSetting("character_fixed", e.target.value === "fixed")}
-                  disabled={readOnly}
-                >
-                  <option value="scroll">一緒にスクロールする（既定）</option>
-                  <option value="fixed">画面に固定する</option>
-                </select>
-                <p className="text-[11px] text-gray-400 mt-1">
-                  固定すると実機 LIFF の <strong>LINE 標準ヘッダーと重なる可能性</strong>があります。
-                </p>
-              </div>
-              <div className="sm:col-span-2">
-                <label className={labelCls}>画像の説明（代替テキスト）</label>
-                <input
-                  type="text"
-                  className={inputCls}
-                  value={settings.character_alt ?? ""}
-                  onChange={(e) => updateSetting("character_alt", e.target.value)}
-                  placeholder="未入力なら装飾として扱います"
-                  disabled={readOnly}
-                />
-              </div>
-            </>
-          )}
           <div>
             <label className={labelCls}>見出しの色</label>
             <select
@@ -664,6 +575,99 @@ export function LiffConfigHeader({
 
         {/* シェアボタン設定は廃止（LIFF プレイヤーのシェアボタンも表示しない）。
             既存 settings.share_enabled / share_message は無視（後方互換・非破壊）。 */}
+      </div>
+
+      {/* ページ隅のキャラクター画像 — 画像を設定したときだけ LIFF に表示される。
+          未設定なら renderer は DOM を一切出さない（= 既存ページに影響なし）。 */}
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 mb-6 space-y-4">
+        <h2 className="text-sm font-semibold text-gray-900">キャラクター画像</h2>
+        <p className="text-[11px] text-gray-400 -mt-2">
+          ページの隅に置く装飾用の画像です。本文のレイアウトは動かず、画像の下にあるボタンも普通にタップできます。
+          未設定なら表示されません。
+        </p>
+
+        <ImageUploadField
+          value={settings.character_url}
+          onChange={(url) => updateSetting("character_url", url)}
+          label="画像"
+          readOnly={readOnly}
+          previewMaxHeight={120}
+          previewAlt="キャラクター画像プレビュー"
+          urlInputCollapsibleLabel="URL を直接入力する"
+        />
+
+        {settings.character_url ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className={labelCls}>大きさ</label>
+              <select
+                className={inputCls}
+                value={resolveCharacterSize(settings)}
+                onChange={(e) => updateSetting("character_size", e.target.value as LiffCharacterSize)}
+                disabled={readOnly}
+              >
+                <option value="sm">小（48px）</option>
+                <option value="md">中（既定・72px）</option>
+                <option value="lg">大（96px）</option>
+              </select>
+            </div>
+            <div>
+              <label className={labelCls}>配置</label>
+              <select
+                className={inputCls}
+                value={resolveCharacterPosition(settings)}
+                onChange={(e) => updateSetting("character_position", e.target.value as LiffCharacterPosition)}
+                disabled={readOnly}
+              >
+                <option value="top_right">右上（既定）</option>
+                <option value="top_left">左上</option>
+              </select>
+            </div>
+            <div>
+              <label className={labelCls}>画質（拡大縮小のしかた）</label>
+              <select
+                className={inputCls}
+                value={resolveCharacterRendering(settings)}
+                onChange={(e) => updateSetting("character_rendering", e.target.value as LiffCharacterRendering)}
+                disabled={readOnly}
+              >
+                <option value="pixelated">ドット絵（既定・輪郭をぼかさない）</option>
+                <option value="smooth">なめらか（写真・イラスト向け）</option>
+              </select>
+              <p className="text-[11px] text-gray-400 mt-1">
+                「ドット絵」が効くのは拡大するときです。大きい画像を縮小して置く場合はギザつくので「なめらか」を選んでください
+                （元画像を 32〜96px 程度で用意するのが最もきれいです）。
+              </p>
+            </div>
+            <div>
+              <label className={labelCls}>代替テキスト（任意）</label>
+              <input
+                className={inputCls}
+                value={settings.character_alt ?? ""}
+                onChange={(e) => updateSetting("character_alt", e.target.value)}
+                disabled={readOnly}
+                placeholder="例: 案内役のドットちゃん"
+                maxLength={200}
+              />
+              <p className="text-[11px] text-gray-400 mt-1">未入力なら装飾扱いになり、読み上げの対象外になります。</p>
+            </div>
+            <div className="sm:col-span-2">
+              <div className="flex items-center gap-2.5">
+                <Switch
+                  checked={settings.character_fixed === true}
+                  onChange={(v) => updateSetting("character_fixed", v)}
+                  disabled={readOnly}
+                  ariaLabel="スクロールしても固定表示する"
+                />
+                <span className="text-sm text-gray-700">スクロールしても固定表示する</span>
+              </div>
+              <p className="text-[11px] text-amber-600 mt-1">
+                ⚠️ 実機の LINE は画面上部に標準ヘッダー（閉じる / 戻る）を出し、その高さは端末によって変わります。
+                固定表示にすると重なる可能性があるため、既定は OFF（コンテンツと一緒にスクロール）です。
+              </p>
+            </div>
+          </div>
+        ) : null}
       </div>
 
       {/* ホームに表示する — 表示有無(トグル) + カード名のみ。並び順・絵文字は「LIFF設定 → ホーム」タブで管理する。

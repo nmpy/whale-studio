@@ -1553,7 +1553,7 @@ export const liffPageConfigSettingsSchema = z.object({
   character_position:   z.enum(["top_right", "top_left"]).optional(),
   character_fixed:      z.boolean().optional(),
   character_rendering:  z.enum(["pixelated", "smooth"]).optional(),
-  character_alt:        z.string().max(120).optional(),
+  character_alt:        z.string().max(200).optional(),
   heading_color:        z.enum(["default", "white", "red", "green"]).optional(),
   body_color:           z.enum(["default", "white", "red", "green"]).optional(),
   page_margin_x:        z.enum(["narrow", "normal", "wide"]).optional(),
