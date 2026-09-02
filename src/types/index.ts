@@ -1802,7 +1802,8 @@ export type LiffAccordionHeaderSpacing = "narrow" | "normal" | "wide";
  *  未指定 / 不正値は renderer 側で "show" として扱う。 */
 /** 余白の段階（狭い / 標準 / 広い）。
  *
- *  `page_margin_x`（画面左右）/ `block_gap`（ブロック同士の縦の間隔）で共通に使う。
+ *  `page_margin_x`（画面左右）/ `block_gap`（ブロック同士の縦の間隔）/
+ *  `page_margin_y`（ページ上下）で共通に使う。
  *
  *  - "narrow": 詰める
  *  - "normal": 現行既定。**未設定データと完全に同じ見た目**
@@ -1890,6 +1891,11 @@ export interface LiffPageConfigSettings {
   /** ブロック同士の縦の間隔（.liff-block-sep の上下 padding / margin）。未指定は "normal"（= 現行どおり）。
    *  layout_density="compact" と両方指定した場合は **こちらが優先**する（より具体的な指定のため）。 */
   block_gap?: LiffSpacingLevel;
+  /** ページ上下の余白（本文コンテナの上下 padding）。未指定は "normal"（= 現行と同じ）。
+   *  page_type ごとに現行値が違う（default 12/32px・hint 24/96px 等）ため、
+   *  絶対値で揃えるのではなく **現行値に倍率を掛ける**（narrow ×0.5 / wide ×1.75）。
+   *  これで page_type ごとの意図的な差を保ったまま、詰める / 広げるができる。 */
+  page_margin_y?: LiffSpacingLevel;
   /** 見出し系（ページタイトル / アコーディオン見出し / 見出しブロック）の文字色。
    *  未指定は "default"（= カラーモードの既定色）。 */
   heading_color?: LiffTextColor;

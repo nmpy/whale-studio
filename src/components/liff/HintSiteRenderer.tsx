@@ -79,7 +79,7 @@ export function HintSiteRenderer({ config, preview }: Props) {
           ロゴ表示の旧 settings.header_logo_url は CMS で残してあるが、現状は描画していない。
           将来必要なら本文先頭の画像ブロックで代替できる。 */}
       <div>
-        <main className="liff-player-main pt-6 pb-24">
+        <main className="liff-player-main liff-page-body pt-6 pb-24">
           {/* ページタイトル h2 は廃止。ヘッダー文言 (header_title or work_title) で文脈表現。 */}
           {config.description && (
             <p className={`text-[14px] leading-relaxed text-[color:var(--liff-secondary-text)] whitespace-pre-wrap break-words pb-6 mb-6 border-b border-[color:var(--liff-border)] ${liffDescriptionAlignClass(settings)}`}>

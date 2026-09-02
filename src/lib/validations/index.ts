@@ -1558,6 +1558,7 @@ export const liffPageConfigSettingsSchema = z.object({
   body_color:           z.enum(["default", "white", "red", "green"]).optional(),
   page_margin_x:        z.enum(["narrow", "normal", "wide"]).optional(),
   block_gap:            z.enum(["narrow", "normal", "wide"]).optional(),
+  page_margin_y:        z.enum(["narrow", "normal", "wide"]).optional(),
   block_divider:        z.enum(["show", "hide"]).optional(),
   accordion_divider:    z.enum(["show", "hide"]).optional(),
   // 余白の詰め具合。未指定 / 不正値は renderer 側で "normal" 扱い（= 現行と同じ余白）。
