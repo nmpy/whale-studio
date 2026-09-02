@@ -299,14 +299,14 @@ export function LiffConfigHeader({
               onChange={(e) => updateSetting("heading_scale", e.target.value as LiffFontScale)}
               disabled={readOnly}
             >
-              <option value="xs">さらに小さめ</option>
+              <option value="xs">さらに小さめ（タイトル約17px）</option>
               <option value="sm">小さめ</option>
-              <option value="md">標準（既定）</option>
+              <option value="md">標準（既定・タイトル20px）</option>
               <option value="lg">大きめ</option>
               <option value="xl">特大</option>
-              <option value="xxl">超特大</option>
+              <option value="xxl">超特大（タイトル約26px）</option>
             </select>
-            <p className="text-[11px] text-gray-400 mt-1">ページタイトル・アコーディオンの見出し・見出しブロックの大きさです。</p>
+            <p className="text-[11px] text-gray-400 mt-1">ページタイトル・アコーディオンの見出し・見出しブロックの大きさです（比率を保ったまま一括で拡縮します）。</p>
           </div>
           {/* ticket_link / hint_search は renderer が自前の見出しを持ち、ページタイトルの h2 を
               描画しない = title_scale が効かない。効かない項目は出さない。 */}
@@ -323,17 +323,16 @@ export function LiffConfigHeader({
               }}
               disabled={readOnly}
             >
-              <option value="">「見出しの大きさ」に合わせる（既定）</option>
-              <option value="xs">さらに小さめ</option>
-              <option value="sm">小さめ</option>
-              <option value="md">標準で固定</option>
-              <option value="lg">大きめ</option>
-              <option value="xl">特大</option>
-              <option value="xxl">超特大</option>
+              <option value="">見出しに合わせる（既定）</option>
+              <option value="xs">さらに小さめ（約17px）</option>
+              <option value="sm">小さめ（約19px）</option>
+              <option value="md">標準（20px）</option>
+              <option value="lg">大きめ（約22px）</option>
+              <option value="xl">特大（約23px）</option>
+              <option value="xxl">超特大（約26px）</option>
             </select>
             <p className="text-[11px] text-gray-400 mt-1">
-              ページタイトル<strong>だけ</strong>の大きさです。アコーディオン見出し・見出しブロックは動きません。
-              「標準で固定」は、上の「見出しの大きさ」を変えてもタイトルだけ等倍に留めたいときに使います。
+              ページタイトル<strong>だけ</strong>の大きさです。「見出しに合わせる」以外を選ぶと、アコーディオン見出し・見出しブロックは動かさずタイトルだけ拡縮します。
             </p>
           </div>
           )}
@@ -349,13 +348,13 @@ export function LiffConfigHeader({
               }}
               disabled={readOnly}
             >
-              <option value="">「見出しの大きさ」に合わせる（既定）</option>
-              <option value="xs">さらに小さめ</option>
-              <option value="sm">小さめ</option>
-              <option value="md">標準で固定</option>
-              <option value="lg">大きめ</option>
-              <option value="xl">特大</option>
-              <option value="xxl">超特大</option>
+              <option value="">見出しに合わせる（既定）</option>
+              <option value="xs">さらに小さめ（約14px）</option>
+              <option value="sm">小さめ（約15px）</option>
+              <option value="md">標準（16px）</option>
+              <option value="lg">大きめ（約17px）</option>
+              <option value="xl">特大（約19px）</option>
+              <option value="xxl">超特大（約21px）</option>
             </select>
             <p className="text-[11px] text-gray-400 mt-1">
               アコーディオンの見出し<strong>だけ</strong>の大きさです。ページタイトル・見出しブロックは動きません。
@@ -427,16 +426,14 @@ export function LiffConfigHeader({
               onChange={(e) => updateSetting("page_margin_x", e.target.value as LiffSpacingLevel)}
               disabled={readOnly}
             >
-              <option value="narrow">狭い</option>
-              <option value="normal">標準（既定）</option>
-              <option value="wide">広い</option>
+              <option value="narrow">狭い（10px）</option>
+              <option value="normal">標準（既定・16px）</option>
+              <option value="wide">広い（26px）</option>
             </select>
-            <p className="text-[11px] text-gray-400 mt-1">
-              本文の左右の余白です（既定 16px）。狭くすると 1 行に入る文字数が増えます。
-            </p>
+            <p className="text-[11px] text-gray-400 mt-1">本文が画面の左右端からどれだけ離れるかです。</p>
           </div>
           <div>
-            <label className={labelCls}>ブロック間の余白</label>
+            <label className={labelCls}>ブロックの間隔</label>
             <select
               className={inputCls}
               value={resolveBlockGap(settings)}
@@ -448,7 +445,7 @@ export function LiffConfigHeader({
               <option value="wide">広い</option>
             </select>
             <p className="text-[11px] text-gray-400 mt-1">
-              ブロックとブロックの縦の間隔です。指定すると「余白の詰め具合」より優先します。
+              見出し・本文・アコーディオンなど、ブロック同士の縦の間隔です。「余白」も指定した場合はこちらが優先します。
             </p>
           </div>
           <div>
