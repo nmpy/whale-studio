@@ -117,7 +117,7 @@ function legacyFontPresetToTheme(preset: LiffFontPreset | undefined): LiffFontTh
   }
 }
 
-const FONT_THEMES: readonly LiffFontTheme[] = ["default", "gothic", "rounded", "classic", "modern"];
+const FONT_THEMES: readonly LiffFontTheme[] = ["default", "gothic", "rounded", "classic", "modern", "dot"];
 
 /** settings から **最終的に適用するフォントテーマ** を解決する。
  *  優先順位: font_theme (現行) → font_preset (旧) → font_family (最旧) → "default"。
@@ -136,12 +136,13 @@ export function fontThemeClass(theme: LiffFontTheme): string {
     case "rounded": return "liff-font-theme--rounded";
     case "classic": return "liff-font-theme--classic";
     case "modern":  return "liff-font-theme--modern";
+    case "dot":     return "liff-font-theme--dot";
     case "default":
     default:        return "";
   }
 }
 
-const COLOR_MODES: readonly LiffColorMode[] = ["light", "dark", "system", "sepia", "bordeaux", "terminal"];
+const COLOR_MODES: readonly LiffColorMode[] = ["light", "dark", "system", "sepia", "bordeaux", "terminal", "dot"];
 
 /** settings から **最終的に適用するカラーモード** を解決する。
  *  未設定 / 不正値 / 未知値 → "light"（= 現行既定の白ベース）。 */
@@ -158,6 +159,7 @@ export function colorModeClass(mode: LiffColorMode): string {
     case "sepia":    return "liff-color-mode-sepia";
     case "bordeaux": return "liff-color-mode-bordeaux";
     case "terminal": return "liff-color-mode-terminal";
+    case "dot":      return "liff-color-mode-dot";
     case "light":
     default:         return "";
   }

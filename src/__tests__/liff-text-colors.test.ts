@@ -119,8 +119,10 @@ describe("2 つは独立している", () => {
 
 // 赤 / 緑は地色の明暗でコントラストが破綻するため、暗色モードでだけ明るい値に差し替える。
 describe("暗色モードでの文字色パレット読み替え", () => {
-  it("dark / terminal では赤・緑が明るい値になる", () => {
-    const rule = CSS.match(/\.liff-color-mode-dark,\s*\n\.liff-color-mode-terminal \{[^}]*\}/)![0];
+  it("暗色モード（dark / terminal / dot）では赤・緑が明るい値になる", () => {
+    // 暗色モードが増えたらこのセレクタ群にも追加する（dot は #636 で追加済み）。
+    const rule = CSS.match(/\.liff-color-mode-dark,[\s\S]*?\{[^}]*--liff-text-red[^}]*\}/)![0];
+    expect(rule).toContain(".liff-color-mode-terminal");
     expect(rule).toContain("--liff-text-red:   #FF6B6B");
     expect(rule).toContain("--liff-text-green: #3BE07A");
   });
