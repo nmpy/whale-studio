@@ -237,6 +237,7 @@ export function LiffConfigHeader({
               <option value="rounded">丸ゴシック（やわらかい）</option>
               <option value="classic">クラシック（明朝・物語向け）</option>
               <option value="modern">モダン（すっきり）</option>
+              <option value="dot">ドット（8bit / レトロゲーム風）</option>
             </select>
             <p className="text-[11px] text-gray-400 mt-1">LIFF 画面全体の本文フォントです。未設定は既定（LINE Seed JP）。</p>
           </div>
@@ -253,6 +254,7 @@ export function LiffConfigHeader({
               <option value="bordeaux">ボルドー × アイボリー</option>
               <option value="sepia">セピア（暖色）</option>
               <option value="terminal">ターミナル（黒 × 電子グリーン）</option>
+              <option value="dot">ドット（黒背景）</option>
               <option value="system">システム（端末の設定に追従）</option>
             </select>
             <p className="text-[11px] text-gray-400 mt-1">LIFF 画面全体の配色です。未設定はライト（現行の白ベース）。</p>

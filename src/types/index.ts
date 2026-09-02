@@ -1702,7 +1702,7 @@ export type LiffFontPreset = "line_seed_jp" | "system_sans" | "noto_sans_jp" | "
  *
  *  旧 `font_preset` / `font_family` しか持たない既存データは読み込み時にマップする
  *  (`resolveFontTheme`)。DB migration は行わない。 */
-export type LiffFontTheme = "default" | "gothic" | "rounded" | "classic" | "modern";
+export type LiffFontTheme = "default" | "gothic" | "rounded" | "classic" | "modern" | "dot";
 
 /** ページ全体のカラーモード。
  *
@@ -1712,10 +1712,12 @@ export type LiffFontTheme = "default" | "gothic" | "rounded" | "classic" | "mode
  *  - "sepia"   : 生成り / 茶系の暖色テーマ
  *  - "bordeaux": ボルドー × アイボリー (薄いピンクベージュ背景 + ボルドー CTA)
  *  - "terminal": ターミナル (黒 × 電子グリーン)。スパイ / 諜報機関の端末画面のトーン。
+ *  - "dot"     : ドット (純黒 × 白)。走査線などの装飾を持たない素の黒地。
+ *                見出し / 本文の色を `heading_color` / `body_color` で 赤・白・緑 から選ぶ前提のモード。
  *
  *  未指定 / 不正値は renderer 側で "light" として扱う (= 後方互換)。
  *  値を増やしても既存データに影響しないよう、必ず「未知値 → light」でフォールバックすること。 */
-export type LiffColorMode = "light" | "dark" | "system" | "sepia" | "bordeaux" | "terminal";
+export type LiffColorMode = "light" | "dark" | "system" | "sepia" | "bordeaux" | "terminal" | "dot";
 
 /** ページ全体の文字サイズ倍率 (CMS「文字サイズ」で選ぶ値)。
  *

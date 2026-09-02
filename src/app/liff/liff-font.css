@@ -243,6 +243,22 @@
     serif;
 }
 
+/* ドット調 (DotGothic16)。OS 内蔵の代替が無いため webfont 必須。
+ * 等幅前提の字形なので letter-spacing を少し広げる。 */
+.liff-font-theme--dot {
+  --liff-font-stack:
+    "DotGothic16",
+    "MS Gothic",
+    "Osaka-Mono",
+    monospace;
+}
+
+.liff-font.liff-font-theme--dot {
+  letter-spacing: 0.04em;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: geometricPrecision;
+}
+
 /* モダン: OS 標準のシステムフォント。余計な癖がなく端末に馴染む。 */
 .liff-font-theme--modern {
   --liff-font-stack:
@@ -777,6 +793,62 @@
     radial-gradient(140% 90% at 50% -10%, rgba(0, 225, 135, 0.10), transparent 62%);
 }
 
+/* ── ドット (純黒 × 白) ────────────────────────────────────────────────
+ * terminal と違い走査線などの装飾は持たない素の黒地。
+ * 見出し / 本文の色を heading_color / body_color で選ぶ前提のモード。 */
+.liff-color-mode-dot {
+  color-scheme: dark;
+
+  --liff-background:        #000000;
+  --liff-surface:           #0D0D0D;
+  --liff-surface-subtle:    #171717;
+  --liff-border:            #3A3A3A;
+  --liff-border-strong:     #5A5A5A;
+
+  --liff-primary-text:      #FFFFFF;
+  --liff-secondary-text:    #C6C6C6;
+  --liff-tertiary-text:     #909090;
+
+  --liff-header-bg:         #000000;
+  --liff-header-text:       #FFFFFF;
+  --liff-header-border:     #3A3A3A;
+
+  --liff-line-green:        #2BD96B;
+  --liff-line-green-press:  #22B457;
+  --liff-on-accent:         #06140B;
+  --liff-accent-text:       #5BE68F;
+
+  --liff-ui-card-border:    #2A2A2A;
+  --liff-ui-input-border:   #3A3A3A;
+  --liff-ui-input-box-border: #5A5A5A;
+  --liff-ui-green-soft:     #10251A;
+  --liff-ui-green-pressed:  #22B457;
+  --liff-ui-green-strong:   #5BE68F;
+  --liff-ui-disabled-bg:    #1A1A1A;
+  --liff-ui-disabled-text:  #6E6E6E;
+
+  /* 文字・枠線用。カード面 #0D0D0D に対して 6.8:1（AA 達成）。 */
+  --liff-danger:            #FF7B7B;
+  --liff-danger-press:      #E86363;
+  /* 塗り面用（白文字が乗る前提の濃さ）。 */
+  --liff-danger-surface:       #A31D1D;
+  --liff-danger-surface-press: #7F1616;
+
+  --liff-banner-warning-bg:     #2A2410;
+  --liff-banner-warning-accent: #E8C24A;
+  --liff-banner-info-bg:        #10202E;
+  --liff-banner-info-accent:    #86C4F0;
+  --liff-banner-danger-bg:      #2C1414;
+  --liff-banner-danger-accent:  #FF7B7B;
+
+  --liff-ui-warning-bg:     #2A2410;
+  --liff-ui-warning-text:   #EBD79A;
+  --liff-ui-warning-border: #463B18;
+
+  --liff-card-shadow:       0 2px 12px rgba(0, 0, 0, 0.7);
+  --liff-ui-card-shadow:    0 1px 3px rgba(0, 0, 0, 0.7);
+}
+
 /* ── 暗色テーマ用セーフティネット ──────────────────────────────────────
  *
  * 一部の古い renderer はトークンではなく Tailwind の固定色ユーティリティ
@@ -804,7 +876,8 @@
  * light / bordeaux / sepia（明るい地色）には当てない = 既存の見た目に影響しない。
  * `system` は必ず @media (prefers-color-scheme: dark) の中だけで当てること。 */
 .liff-color-mode-dark,
-.liff-color-mode-terminal {
+.liff-color-mode-terminal,
+.liff-color-mode-dot {
   --liff-text-red:   #FF6B6B;   /* 黒地 #000 に対して 5.9:1 */
   --liff-text-green: #3BE07A;   /* 黒地 #000 に対して 10.9:1 */
 }
@@ -903,14 +976,17 @@
 .liff-character-on--right .liff-h-title, .liff-character-on--right .liff-h-title ~ p { padding-right: calc(var(--liff-character-size, 72px) + 12px); }
 .liff-character-on--left .liff-h-title, .liff-character-on--left .liff-h-title ~ p { padding-left: calc(var(--liff-character-size, 72px) + 12px); }
 
-.liff-color-mode-terminal .bg-white { background-color: var(--liff-surface); }
+.liff-color-mode-terminal .bg-white,
+.liff-color-mode-dot .bg-white { background-color: var(--liff-surface); }
 
 .liff-color-mode-dark .bg-gray-50,
 .liff-color-mode-dark .bg-gray-100,
 .liff-color-mode-sepia .bg-gray-50,
 .liff-color-mode-sepia .bg-gray-100,
 .liff-color-mode-terminal .bg-gray-50,
-.liff-color-mode-terminal .bg-gray-100 { background-color: var(--liff-surface-subtle); }
+.liff-color-mode-terminal .bg-gray-100,
+.liff-color-mode-dot .bg-gray-50,
+.liff-color-mode-dot .bg-gray-100 { background-color: var(--liff-surface-subtle); }
 
 .liff-color-mode-dark .text-gray-900,
 .liff-color-mode-dark .text-gray-800,
@@ -920,18 +996,24 @@
 .liff-color-mode-sepia .text-gray-700,
 .liff-color-mode-terminal .text-gray-900,
 .liff-color-mode-terminal .text-gray-800,
-.liff-color-mode-terminal .text-gray-700 { color: var(--liff-primary-text); }
+.liff-color-mode-terminal .text-gray-700,
+.liff-color-mode-dot .text-gray-900,
+.liff-color-mode-dot .text-gray-800,
+.liff-color-mode-dot .text-gray-700 { color: var(--liff-primary-text); }
 
 .liff-color-mode-dark .text-gray-600,
 .liff-color-mode-dark .text-gray-500,
 .liff-color-mode-sepia .text-gray-600,
 .liff-color-mode-sepia .text-gray-500,
 .liff-color-mode-terminal .text-gray-600,
-.liff-color-mode-terminal .text-gray-500 { color: var(--liff-secondary-text); }
+.liff-color-mode-terminal .text-gray-500,
+.liff-color-mode-dot .text-gray-600,
+.liff-color-mode-dot .text-gray-500 { color: var(--liff-secondary-text); }
 
 .liff-color-mode-dark .text-gray-400,
 .liff-color-mode-sepia .text-gray-400,
-.liff-color-mode-terminal .text-gray-400 { color: var(--liff-tertiary-text); }
+.liff-color-mode-terminal .text-gray-400,
+.liff-color-mode-dot .text-gray-400 { color: var(--liff-tertiary-text); }
 
 .liff-color-mode-dark .border-gray-100,
 .liff-color-mode-dark .border-gray-200,
@@ -941,7 +1023,10 @@
 .liff-color-mode-sepia .border-gray-300,
 .liff-color-mode-terminal .border-gray-100,
 .liff-color-mode-terminal .border-gray-200,
-.liff-color-mode-terminal .border-gray-300 { border-color: var(--liff-border); }
+.liff-color-mode-terminal .border-gray-300,
+.liff-color-mode-dot .border-gray-100,
+.liff-color-mode-dot .border-gray-200,
+.liff-color-mode-dot .border-gray-300 { border-color: var(--liff-border); }
 
 /* 暗色テーマでのフォーム要素。
  *
@@ -960,7 +1045,10 @@
 .liff-font.liff-color-mode-sepia textarea,
 .liff-font.liff-color-mode-terminal input,
 .liff-font.liff-color-mode-terminal select,
-.liff-font.liff-color-mode-terminal textarea {
+.liff-font.liff-color-mode-terminal textarea,
+.liff-font.liff-color-mode-dot input,
+.liff-font.liff-color-mode-dot select,
+.liff-font.liff-color-mode-dot textarea {
   background: var(--liff-surface);
   color: var(--liff-primary-text);
   border-color: var(--liff-ui-input-box-border);
@@ -971,7 +1059,9 @@
 .liff-font.liff-color-mode-sepia input::placeholder,
 .liff-font.liff-color-mode-sepia textarea::placeholder,
 .liff-font.liff-color-mode-terminal input::placeholder,
-.liff-font.liff-color-mode-terminal textarea::placeholder {
+.liff-font.liff-color-mode-terminal textarea::placeholder,
+.liff-font.liff-color-mode-dot input::placeholder,
+.liff-font.liff-color-mode-dot textarea::placeholder {
   color: var(--liff-tertiary-text);
 }
 
@@ -985,7 +1075,10 @@
 .liff-font.liff-color-mode-sepia textarea:focus,
 .liff-font.liff-color-mode-terminal input:focus,
 .liff-font.liff-color-mode-terminal select:focus,
-.liff-font.liff-color-mode-terminal textarea:focus {
+.liff-font.liff-color-mode-terminal textarea:focus,
+.liff-font.liff-color-mode-dot input:focus,
+.liff-font.liff-color-mode-dot select:focus,
+.liff-font.liff-color-mode-dot textarea:focus {
   background: var(--liff-surface);
   border-color: var(--liff-line-green);
   box-shadow: 0 0 0 3px var(--liff-ui-green-soft);

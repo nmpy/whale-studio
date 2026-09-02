@@ -1526,10 +1526,10 @@ const surveyItemSchema = z.object({
 export const liffPageConfigSettingsSchema = z.object({
   // フォントテーマ (現行)。未指定 / 不正値は renderer 側で font_preset → font_family → "default" にフォールバック。
   // 不正値は保存時にここで弾く（catch せず reject する）。読み込み側も resolveFontTheme で防御する。
-  font_theme:           z.enum(["default", "gothic", "rounded", "classic", "modern"]).optional(),
+  font_theme:           z.enum(["default", "gothic", "rounded", "classic", "modern", "dot"]).optional(),
   // カラーモード。未指定 / 不正値は renderer 側で "light" 扱い（= 現行既定の白ベース）。
   // 値を追加するときは types.ts の LiffColorMode / liff-font.css / CMS select も揃えること。
-  color_mode:           z.enum(["light", "dark", "system", "sepia", "bordeaux", "terminal"]).optional(),
+  color_mode:           z.enum(["light", "dark", "system", "sepia", "bordeaux", "terminal", "dot"]).optional(),
   // ページ全体の文字サイズ倍率 / 文字の太さ。未指定 / 不正値は renderer 側で "md" / "normal" 扱い
   // （= 現行と同じ見た目）。値を追加するときは types.ts / liff-font.css / CMS select も揃えること。
   font_scale:           z.enum(["sm", "md", "lg", "xl"]).optional(),

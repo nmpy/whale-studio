@@ -11,7 +11,7 @@
 // 設計上の約束:
 //   - default / gothic / modern（= LINE Seed JP / Noto Sans JP / システムフォント）は
 //     /liff/layout.tsx が常時 import 済みなので、ここでは何もロードしない。
-//   - rounded / classic だけ next/dynamic で別チャンクを取りに行く。
+//   - rounded / classic / dot だけ next/dynamic で別チャンクを取りに行く。
 //   - `ssr: false` にしてあるので SSR では何も出力されず、hydration mismatch が起きない。
 //     どちらの分岐でも DOM 出力は null なので、描画結果にも差は出ない。
 //   - 同じチャンクは webpack 側で 1 度しか評価されない（= <link> の重複挿入は起きない）。
@@ -25,6 +25,8 @@ import { resolveFontTheme, resolveFontWeightLevel } from "../liff-style-helpers"
 
 const LiffFontRounded = dynamic(() => import("./LiffFontRounded"), { ssr: false });
 const LiffFontClassic = dynamic(() => import("./LiffFontClassic"), { ssr: false });
+// ドット字形は OS 内蔵の代替が無いため、dot テーマは必ずこの webfont を要する。
+const LiffFontDot     = dynamic(() => import("./LiffFontDot"),     { ssr: false });
 
 // 「本文の太さ = 細め」を選んだページだけが読む Light(300) ウェイト。
 // 既定テーマ (LINE Seed JP) は 300 を持たないため対象外（liff-font.css の該当節参照）。
@@ -39,6 +41,7 @@ export function LiffFontThemeAssets({ settings }: { settings?: LiffPageConfigSet
     <>
       {theme === "rounded" && <LiffFontRounded />}
       {theme === "classic" && <LiffFontClassic />}
+      {theme === "dot"     && <LiffFontDot />}
       {light && theme === "gothic"  && <LiffFontGothicLight />}
       {light && theme === "rounded" && <LiffFontRoundedLight />}
       {light && theme === "classic" && <LiffFontClassicLight />}
