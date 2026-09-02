@@ -822,6 +822,87 @@
 .liff-body-color--red { --liff-body-color: var(--liff-text-red); }
 .liff-body-color--green { --liff-body-color: var(--liff-text-green); }
 
+/* ── ページ隅のキャラクター画像 (settings_json.character_*) ────────────────
+ *
+ * 装飾レイヤー。`character_url` を設定したページにだけ DOM が出る（renderer 側で判定）。
+ *
+ * レイアウトへの影響をゼロにするための作り:
+ *   - レイヤーは height: 0。通常フローの高さを持たないので本文が下がらない。
+ *   - pointer-events: none。キャラの下のボタン / リンクのタップを吸わない。
+ *   - 内側の inner がコンテンツ列（max-width 448px + 左右 padding）と同じ寸法を持ち、
+ *     img はその右端 / 左端に absolute で貼り付く。
+ *     padding は `--liff-page-pad-x` を読むので「画面左右の余白」の設定に追従する。 */
+.liff-character-layer {
+  position: relative;
+  z-index: 1;
+  height: 0;
+  pointer-events: none;
+}
+
+/* 固定表示。実機 LIFF の LINE 標準ヘッダーと重なりうるため既定では使わない。 */
+.liff-character-layer--fixed {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 30;
+}
+
+.liff-character-inner {
+  box-sizing: border-box;
+  position: relative;
+  height: 0;
+  max-width: 448px;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: var(--liff-page-pad-x, 16px);
+  padding-right: var(--liff-page-pad-x, 16px);
+}
+
+.liff-character {
+  position: absolute;
+  top: 8px;
+  /* サイズは root 側 `.liff-character-size--*` が持つトークンを継承して読む。
+   * 下のタイトル余白確保 (.liff-character-on--*) と必ず同じ値になるようにするため。 */
+  width: var(--liff-character-size, 72px);
+  height: auto;
+  display: block;
+}
+
+/* 固定表示のときだけ、ノッチ端末の safe-area 分だけ上端を下げる。 */
+.liff-character-layer--fixed .liff-character {
+  top: max(8px, env(safe-area-inset-top));
+}
+
+.liff-character--right { right: var(--liff-page-pad-x, 16px); }
+.liff-character--left { left: var(--liff-page-pad-x, 16px); }
+
+.liff-character-size--sm { --liff-character-size: 48px; }
+.liff-character-size--md { --liff-character-size: 72px; }
+.liff-character-size--lg { --liff-character-size: 96px; }
+
+/* ドット絵は補間するとドット感が消えるため既定は pixelated。
+ * ただし効くのは**拡大**時。大きい画像を縮小するとギザつくので、その場合は smooth を選ぶ。 */
+.liff-character--pixelated {
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: pixelated;
+}
+.liff-character--smooth { image-rendering: auto; }
+
+/* キャラが本文に被らないよう、ページタイトルと説明文のキャラ側に余白を作る。
+ *
+ * キャラは高さ 0 のレイヤーに absolute で置くため、何もしないと**文字の上に重なる**。
+ * そこでタイトル行だけ画像幅ぶん（+ 12px の間隔）を空け、テキストが手前で折り返すようにする。
+ *
+ * 対象をタイトル / 説明文に限っているのは、ページ全体に余白を入れると
+ * 本文の折り返し幅まで変わってしまうため（キャラはページ上部にしか居ない）。
+ *
+ * `character_fixed` のときはこの class を付けない（画面に浮かせる運用なので余白を作らない）。
+ * ⚠️ ページタイトルが空のページでは余白を作る対象が無く、先頭ブロックに重なりうる。
+ *    その場合はサイズを小さくするか、反対側に配置して回避する。 */
+.liff-character-on--right .liff-h-title, .liff-character-on--right .liff-h-title ~ p { padding-right: calc(var(--liff-character-size, 72px) + 12px); }
+.liff-character-on--left .liff-h-title, .liff-character-on--left .liff-h-title ~ p { padding-left: calc(var(--liff-character-size, 72px) + 12px); }
+
 .liff-color-mode-terminal .bg-white { background-color: var(--liff-surface); }
 
 .liff-color-mode-dark .bg-gray-50,

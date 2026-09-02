@@ -1822,6 +1822,23 @@ export type LiffSpacingLevel = "narrow" | "normal" | "wide";
  *  未指定 / 不正値は renderer 側で "default" として扱う。 */
 export type LiffTextColor = "default" | "white" | "red" | "green";
 
+/** ページ隅に置くキャラクター画像のサイズ。
+ *  - "sm": 48px / "md": 72px（既定）/ "lg": 96px（いずれも幅。高さは縦横比を保つ） */
+export type LiffCharacterSize = "sm" | "md" | "lg";
+
+/** キャラクター画像の配置。未指定は "top_right"。 */
+export type LiffCharacterPosition = "top_right" | "top_left";
+
+/** キャラクター画像の拡大縮小時の補間。
+ *
+ *  - "pixelated": ドット絵向け。輪郭を補間せずドットのまま出す（既定）。
+ *                 ⚠️ 効果があるのは**拡大**時。大きい画像を縮小すると逆にギザつくため、
+ *                 元画像は表示サイズに近い小さめ（32〜96px 程度）で用意すること。
+ *  - "smooth"   : 通常の補間。写真・イラストを縮小して置く場合はこちら。
+ *
+ *  未指定 / 不正値は renderer 側で "pixelated" として扱う。 */
+export type LiffCharacterRendering = "pixelated" | "smooth";
+
 export type LiffDividerVisibility = "show" | "hide";
 
 export interface LiffPageConfigSettings {
@@ -1875,6 +1892,24 @@ export interface LiffPageConfigSettings {
   /** 本文系（本文ブロック / アコーディオン本文）の文字色。
    *  未指定は "default"（= カラーモードの既定色）。 */
   body_color?: LiffTextColor;
+
+  // ── ページ隅のキャラクター画像 ────────────────────────────────
+  // 装飾レイヤーとして描画する（高さ 0 のレイヤーに absolute 配置 + pointer-events: none）。
+  // 本文のレイアウトを一切押し下げず、タップも吸わない。
+  // character_url が空 / 未設定なら **何も描画しない**（= 既存ページの DOM は不変）。
+  /** キャラクター画像の URL。未設定 / 空なら非表示。 */
+  character_url?: string;
+  /** キャラクター画像のサイズ。未指定は "md"（72px）。 */
+  character_size?: LiffCharacterSize;
+  /** キャラクター画像の配置。未指定は "top_right"。 */
+  character_position?: LiffCharacterPosition;
+  /** スクロールしても画面に固定するか。未指定は false（= コンテンツと一緒に流れる）。
+   *  true にすると実機 LIFF の LINE 標準ヘッダーと重なる可能性があるため既定は false。 */
+  character_fixed?: boolean;
+  /** 拡大縮小時の補間。未指定は "pixelated"（ドット絵向け）。 */
+  character_rendering?: LiffCharacterRendering;
+  /** 画像の代替テキスト。未設定なら装飾扱い（alt="" + aria-hidden）。 */
+  character_alt?: string;
   /** 見出し系の文字の太さ。未指定は font_weight_level にフォールバックする。
    *  見出しブロックの個別指定（太字 / 中太 / 通常）は、この段階の中での相対指定として残る。 */
   heading_weight?: LiffFontWeightLevel;
