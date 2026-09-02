@@ -91,7 +91,24 @@ describe("color_mode = dot", () => {
   });
 
   // terminal に当てている Tailwind 上書きは dot にも要る（当て漏れると白背景が残る）。
-  it("terminal と同じ Tailwind 上書きが dot にも当たっている", () => {
+  //
+  // 移植時に実際に 3 回落とし穴を踏んだので、代表 3 つの抜き取りではなく
+  // 「terminal にあって dot に無いセレクタ」を全数で 0 件にする形で固定する。
+  // 疑似クラス (:focus / ::placeholder) や、複数セレクタ群の最終行が
+  // 1 行完結ルールになっている箇所を取りこぼしやすい。
+  it("terminal 用セレクタは 1 つ残らず dot にも用意されている（全数）", () => {
+    const pick = (mode: string) =>
+      new Set(
+        [...CSS.matchAll(new RegExp(`\\.liff-(?:font\\.)?liff-color-mode-${mode}[^,{]*`, "g"))]
+          .map((m) => m[0].replace(`liff-color-mode-${mode}`, "MODE").trim())
+          // パレット定義（子孫セレクタを持たない）は各モード固有なので対象外
+          .filter((x) => x !== ".MODE" && x !== ".liff-font.MODE"),
+      );
+    const missing = [...pick("terminal")].filter((x) => !pick("dot").has(x));
+    expect(missing, `dot に当て漏れ: ${missing.join(" / ")}`).toEqual([]);
+  });
+
+  it("代表的な上書きが dot に当たっている", () => {
     for (const sel of [".bg-white", ".text-gray-900", ".border-gray-200"]) {
       const t = CSS.includes(`.liff-color-mode-terminal ${sel}`);
       const d = CSS.includes(`.liff-color-mode-dot ${sel}`);
