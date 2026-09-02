@@ -22,6 +22,16 @@
   --liff-header-border:     #EAEAEA;     /* ヘッダー下の薄い罫線 (旧 #E6E8EB → 更に薄く) */
 
   --liff-primary-text:      #1F2329;     /* 本文・見出しの基本色 */
+
+  /* 見出し / 本文の文字色。既定はどちらも本文色そのままなので、
+   * `.liff-heading-color--*` / `.liff-body-color--*` が付いたときだけ差し替わる。 */
+  --liff-heading-color: var(--liff-primary-text);
+  --liff-body-color:    var(--liff-primary-text);
+
+  /* 文字色パレット。赤 / 緑は明るい地色向けの濃い値が既定（暗色モードで差し替える）。 */
+  --liff-text-white: #FFFFFF;
+  --liff-text-red:   #C62828;   /* 白地に対して 5.9:1 */
+  --liff-text-green: #057A36;   /* 白地に対して 5.5:1 */
   --liff-secondary-text:    #5B6168;     /* やや補助 */
   --liff-tertiary-text:     #8C8C8C;     /* 補足テキスト */
 
@@ -785,6 +795,33 @@
 /* --- dark / sepia / terminal（常に暗色 or 暖色地）--- */
 .liff-color-mode-dark .bg-white,
 .liff-color-mode-sepia .bg-white,
+/* ── 文字色パレットの暗色モード読み替え ────────────────────────────────
+ *
+ * `heading_color` / `body_color` の赤・緑は、明るい地色向けの濃い値が既定。
+ * 黒〜暗色地ではその濃さだと沈んで読めないため、**そのモードの中でだけ**
+ * 発色の良い明るい値へ差し替える（白は共通で #FFFFFF）。
+ *
+ * light / bordeaux / sepia（明るい地色）には当てない = 既存の見た目に影響しない。
+ * `system` は必ず @media (prefers-color-scheme: dark) の中だけで当てること。 */
+.liff-color-mode-dark,
+.liff-color-mode-terminal {
+  --liff-text-red:   #FF6B6B;   /* 黒地 #000 に対して 5.9:1 */
+  --liff-text-green: #3BE07A;   /* 黒地 #000 に対して 10.9:1 */
+}
+
+/* ── 見出し / 本文の文字色（settings_json.heading_color / body_color）───
+ *
+ * root（= liffRootClass）に付くクラスがトークンだけを差し替える。
+ * 実際に色を読むのは HeadingBlock / TextBlock / AccordionBlock / .liff-h-title。
+ * "default" は class を付けない = 従来どおりカラーモードの既定文字色。 */
+.liff-heading-color--white { --liff-heading-color: var(--liff-text-white); }
+.liff-heading-color--red { --liff-heading-color: var(--liff-text-red); }
+.liff-heading-color--green { --liff-heading-color: var(--liff-text-green); }
+
+.liff-body-color--white { --liff-body-color: var(--liff-text-white); }
+.liff-body-color--red { --liff-body-color: var(--liff-text-red); }
+.liff-body-color--green { --liff-body-color: var(--liff-text-green); }
+
 .liff-color-mode-terminal .bg-white { background-color: var(--liff-surface); }
 
 .liff-color-mode-dark .bg-gray-50,
@@ -876,6 +913,12 @@
 /* --- system: OS が dark のときだけ、上と同じ読み替えを当てる ---
  * OS が light のときはこのブロックごと無効なので、`light` と完全に同じ計算値になる。 */
 @media (prefers-color-scheme: dark) {
+  /* 文字色パレット（赤 / 緑）も OS が dark のときだけ明るい値へ。 */
+  .liff-color-mode-system {
+    --liff-text-red:   #FF6B6B;
+    --liff-text-green: #3BE07A;
+  }
+
   .liff-color-mode-system .bg-white { background-color: var(--liff-surface); }
 
   .liff-color-mode-system .bg-gray-50,
@@ -1062,6 +1105,13 @@
  * 見出しブロックの太さは font-* utility との複合 (0,3,0) で当て、
  * ブロック側の「太字 / 中太 / 通常」の相対関係を保ったまま段階だけずらす。 */
 .liff-font .liff-h-title   { font-size: calc(20px * var(--liff-title-mul, var(--liff-heading-mul, 1))); font-weight: var(--liff-heading-fw, 700); }
+
+/* ページタイトル（LiffSinglePageRenderer の h2）は Tailwind の色クラスを持たず、
+ * root の text-[color:var(--liff-primary-text)] を継承している。
+ * 見出し色を効かせるため、ここだけ CSS 側で色を当てる (0,2,0 > 継承)。
+ * 直前の大きさ / 太さの宣言とは意図的に別 rule にしてある
+ * ＝ px・太さのドリフト検出テストの対象文字列を変えないため。 */
+.liff-font .liff-h-title { color: var(--liff-heading-color, var(--liff-primary-text)); }
 .liff-font .liff-h-acc--1  { font-size: calc(16px * var(--liff-acc-title-mul, var(--liff-heading-mul, 1))); font-weight: var(--liff-heading-fw, 700); }
 .liff-font .liff-h-acc--2  { font-size: calc(15px * var(--liff-acc-title-mul, var(--liff-heading-mul, 1))); font-weight: var(--liff-heading-fw-sub, 600); }
 .liff-font .liff-h-acc--3  { font-size: calc(14px * var(--liff-acc-title-mul, var(--liff-heading-mul, 1))); font-weight: var(--liff-heading-fw-sub, 600); }

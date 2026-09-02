@@ -1807,6 +1807,21 @@ export type LiffAccordionHeaderSpacing = "narrow" | "normal" | "wide";
  *  未指定 / 不正値は renderer 側で "normal" として扱う。 */
 export type LiffSpacingLevel = "narrow" | "normal" | "wide";
 
+/** 見出し / 本文テキストの文字色（ページ全体）。
+ *
+ *  - "default": 現行既定。カラーモードの `--liff-primary-text` をそのまま使う。
+ *               **未設定データと完全に同じ見た目**。
+ *  - "white"  : 白
+ *  - "red"    : 赤
+ *  - "green"  : 緑
+ *
+ *  モードには依存しない（どのカラーモードでも同じトークンを差し替える）が、
+ *  赤 / 緑は地色の明暗に合わせてトークン側の値が切り替わる（暗色モードでは明るい値）。
+ *  明るい地色のモードで "white" を選ぶと読めなくなるため、CMS 側で注意書きを出している。
+ *
+ *  未指定 / 不正値は renderer 側で "default" として扱う。 */
+export type LiffTextColor = "default" | "white" | "red" | "green";
+
 export type LiffDividerVisibility = "show" | "hide";
 
 export interface LiffPageConfigSettings {
@@ -1854,6 +1869,12 @@ export interface LiffPageConfigSettings {
   /** ブロック同士の縦の間隔（.liff-block-sep の上下 padding / margin）。未指定は "normal"（= 現行どおり）。
    *  layout_density="compact" と両方指定した場合は **こちらが優先**する（より具体的な指定のため）。 */
   block_gap?: LiffSpacingLevel;
+  /** 見出し系（ページタイトル / アコーディオン見出し / 見出しブロック）の文字色。
+   *  未指定は "default"（= カラーモードの既定色）。 */
+  heading_color?: LiffTextColor;
+  /** 本文系（本文ブロック / アコーディオン本文）の文字色。
+   *  未指定は "default"（= カラーモードの既定色）。 */
+  body_color?: LiffTextColor;
   /** 見出し系の文字の太さ。未指定は font_weight_level にフォールバックする。
    *  見出しブロックの個別指定（太字 / 中太 / 通常）は、この段階の中での相対指定として残る。 */
   heading_weight?: LiffFontWeightLevel;

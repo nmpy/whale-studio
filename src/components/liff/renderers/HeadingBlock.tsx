@@ -27,7 +27,9 @@ export function HeadingBlock({
   const level = clampLevel(settings.level);
   const sizeCls = headingSizeClass(level);
   const weightCls = headingWeightClass(settings);
-  const colorCls = "text-[color:var(--liff-primary-text)]";
+  // 見出し系の文字色。`heading_color` 未設定時は --liff-primary-text へフォールバックする
+  // （= カラーモードの既定文字色 = 従来の見た目）。
+  const colorCls = "text-[color:var(--liff-heading-color,var(--liff-primary-text))]";
   // liff-h-blk--<level> は見出し系ページ設定（heading_scale / heading_weight）のマーカー。
   // sizeCls / weightCls の値はそのままで、liff-font.css が同値の calc / var へ読み替える。
   const baseCls = `liff-h-blk liff-h-blk--${level} ${sizeCls} ${weightCls} ${align} ${colorCls} break-words`;
