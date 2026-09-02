@@ -38,6 +38,10 @@ export interface WorkScopedLiffState {
   notConfigured: boolean;
   /** Oa.liffId が無く env へフォールバックした（レガシー Work）。運用可視化用。 */
   isLegacyEnvFallback: boolean;
+  /** LIFF URL (https://liff.line.me/{liffId}/...) 組み立て専用の LIFF ID。
+   *  **Oa.liffId で解決できたときだけ** string。env フォールバック時は null。
+   *  （env は NEXT_PUBLIC_LIFF_ID = テスト用チャネルなので、URL にすると混線する） */
+  liffIdForUrl: string | null;
 }
 
 /**
@@ -75,5 +79,11 @@ export function useWorkScopedLiff(workIdOrPublicId: string): WorkScopedLiffState
     resolving:     resolution === null,
     notConfigured: resolution?.kind === "not_configured",
     isLegacyEnvFallback: resolution?.kind === "ready" && resolution.isLegacyEnvFallback,
+    // LIFF URL (https://liff.line.me/{liffId}/...) を組み立てる用途の LIFF ID。
+    // ⚠️ **source="oa" のときだけ** 返す。env フォールバック (NEXT_PUBLIC_LIFF_ID) は
+    //    テスト用チャネルの LIFF なので、これで URL を作るとプレイヤーが別 OA の
+    //    LIFF に飛ぶ（= 混線）。init 自体は互換のため env でも通すが、URL 生成には使わない。
+    liffIdForUrl:
+      resolution?.kind === "ready" && resolution.source === "oa" ? resolution.liffId : null,
   };
 }

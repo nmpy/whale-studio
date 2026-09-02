@@ -13,6 +13,7 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useWorkScopedLiff } from "@/hooks/useWorkScopedLiff";
+import { buildMenuPageHref } from "@/lib/liff/menu-href";
 import { RUNTIME_LIFF_NOT_CONFIGURED_MESSAGE } from "@/lib/liff/runtime-liff-id";
 import { LiffMenuHomeRenderer, type LiffMenuHomePage } from "./LiffMenuHomeRenderer";
 import { LiffLoadingState, LiffErrorState } from "./ui";
@@ -45,7 +46,7 @@ interface MenuApiResponse {
 
 export function LiffMenuHomeViewer({ workId, workPublicId }: Props) {
   // NEXT_PUBLIC_LIFF_ID（全 OA 共通）ではなく、対象 Work の OA の liffId で初期化する。
-  const { liff, notConfigured: liffNotConfigured } = useWorkScopedLiff(workId);
+  const { liff, liffIdForUrl, notConfigured: liffNotConfigured } = useWorkScopedLiff(workId);
   const searchParams = useSearchParams();
   const isPreview = searchParams?.get("preview") === "1";
 
@@ -113,13 +114,19 @@ export function LiffMenuHomeViewer({ workId, workPublicId }: Props) {
       homeMenuLayout={data.home_menu_layout}
       preview={isPreview}
       onClose={liff.closeWindow}
-      buildPageHref={(page) => {
-        // 実機: 短縮 URL を組み立てる (publicId があれば優先)
-        if (page.public_id) {
-          return `/liff/w/${workPublicId}/p/${page.public_id}`;
-        }
-        return `/liff/work/${workId}/pages/${page.id}`;
-      }}
+      // 検索型ヒントは LINE アプリ内でだけ LIFF URL に遷移する（= LIFF 間遷移。
+      // LINE ネイティブの戻るボタンで元の画面に戻れる）。判定は buildMenuPageHref に集約。
+      buildPageHref={(page) =>
+        buildMenuPageHref({
+          pageType:     page.page_type,
+          workId,
+          workPublicId,
+          pageId:       page.id,
+          pagePublicId: page.public_id,
+          liffIdForUrl,
+          isInClient:   liff.isInClient,
+        })
+      }
     />
   );
 }
