@@ -39,12 +39,7 @@ export const metadata: Metadata = {
   },
 };
 
-export default function WhaleInIceLayout({ children }: { children: React.ReactNode }) {
-  return (
-    <div className={`${notoSerifJP.variable} whale-in-ice-root`}>
-      {/* 専用トークンは module CSS 風にここで宣言。Tailwind v4 utilities と併用しても干渉しない。
-          .whale-in-ice-root に閉じこめるため、SaaS / LIFF への副作用ゼロ。 */}
-      <style>{`
+const IN_ICE_CSS = `
         .whale-in-ice-root {
           --ice-ink:           #08111E;
           --ice-deep:          #0B1A2E;
@@ -83,7 +78,19 @@ export default function WhaleInIceLayout({ children }: { children: React.ReactNo
         @media (prefers-reduced-motion: reduce) {
           .whale-in-ice-root .ice-fade-up { animation: none; }
         }
-      `}</style>
+`;
+
+export default function WhaleInIceLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <div className={`${notoSerifJP.variable} whale-in-ice-root`}>
+      {/* 専用トークンは module CSS 風にここで宣言。Tailwind v4 utilities と併用しても干渉しない。
+          .whale-in-ice-root に閉じこめるため、SaaS / LIFF への副作用ゼロ。 */}
+      {/* ⚠️ children ではなく dangerouslySetInnerHTML で流し込むこと。
+          JSX の子要素として CSS を書くと SSR 時に " が &quot;、' が &#x27; へ
+          HTML エスケープされ、クライアント側の生文字列と食い違って
+          hydration mismatch になる（ページ全体がクライアント再描画に落ちる）。
+          中身は自前の静的な CSS 文字列で、外部入力は一切混ざらない。 */}
+      <style dangerouslySetInnerHTML={{ __html: IN_ICE_CSS }} />
       {children}
     </div>
   );
