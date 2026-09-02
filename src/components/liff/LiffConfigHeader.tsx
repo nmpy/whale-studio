@@ -267,10 +267,12 @@ export function LiffConfigHeader({
               onChange={(e) => updateSetting("font_scale", e.target.value as LiffFontScale)}
               disabled={readOnly}
             >
+              <option value="xs">さらに小さめ（約12px）</option>
               <option value="sm">小さめ（約13px）</option>
               <option value="md">標準（既定・14px）</option>
               <option value="lg">大きめ（約15px）</option>
               <option value="xl">特大（約16px）</option>
+              <option value="xxl">超特大（約18px）</option>
             </select>
             <p className="text-[11px] text-gray-400 mt-1">本文テキスト・説明文・注釈など、見出し以外の文字の大きさです。</p>
           </div>
@@ -299,10 +301,12 @@ export function LiffConfigHeader({
               onChange={(e) => updateSetting("heading_scale", e.target.value as LiffFontScale)}
               disabled={readOnly}
             >
+              <option value="xs">さらに小さめ</option>
               <option value="sm">小さめ</option>
               <option value="md">標準（既定）</option>
               <option value="lg">大きめ</option>
               <option value="xl">特大</option>
+              <option value="xxl">超特大</option>
             </select>
             <p className="text-[11px] text-gray-400 mt-1">ページタイトル・アコーディオンの見出し・見出しブロックの大きさです。</p>
           </div>
@@ -322,10 +326,12 @@ export function LiffConfigHeader({
               disabled={readOnly}
             >
               <option value="">「見出しの大きさ」に合わせる（既定）</option>
+              <option value="xs">さらに小さめ</option>
               <option value="sm">小さめ</option>
               <option value="md">標準で固定</option>
               <option value="lg">大きめ</option>
               <option value="xl">特大</option>
+              <option value="xxl">超特大</option>
             </select>
             <p className="text-[11px] text-gray-400 mt-1">
               ページタイトル<strong>だけ</strong>の大きさです。アコーディオン見出し・見出しブロックは動きません。
@@ -346,10 +352,12 @@ export function LiffConfigHeader({
               disabled={readOnly}
             >
               <option value="">「見出しの大きさ」に合わせる（既定）</option>
+              <option value="xs">さらに小さめ</option>
               <option value="sm">小さめ</option>
               <option value="md">標準で固定</option>
               <option value="lg">大きめ</option>
               <option value="xl">特大</option>
+              <option value="xxl">超特大</option>
             </select>
             <p className="text-[11px] text-gray-400 mt-1">
               アコーディオンの見出し<strong>だけ</strong>の大きさです。ページタイトル・見出しブロックは動きません。

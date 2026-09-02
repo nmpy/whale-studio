@@ -1237,9 +1237,11 @@
 .liff-font .text-\[28px\] { font-size: calc(28px * var(--liff-fs-mul, 1)); }
 
 /* 倍率。小数は端末上で丸められるため、そのまま指定してよい。 */
+.liff-font-size--xs { --liff-fs-mul: 0.85; }   /* 本文 14px → 約 12px */
 .liff-font-size--sm { --liff-fs-mul: 0.93; }   /* 本文 14px → 約 13px */
 .liff-font-size--lg { --liff-fs-mul: 1.08; }   /* 本文 14px → 約 15px */
-.liff-font-size--xl { --liff-fs-mul: 1.16; }   /* 本文 14px → 約 16px */
+.liff-font-size--xl { --liff-fs-mul: 1.16; }
+.liff-font-size--xxl { --liff-fs-mul: 1.30; }   /* 本文 14px → 約 18px */   /* 本文 14px → 約 16px */
 
 /* ── 文字の太さ ───────────────────────────────────────────────────────
  * Tailwind の font-* utility を token 経由にする。既定値は utility と同値。 */
@@ -1301,9 +1303,11 @@
 .liff-font .liff-h-blk.font-normal   { font-weight: var(--liff-fw-normal, 400); }
 
 /* 見出しの倍率。既定 (md) は class が付かない = var 未定義 = fallback 1。 */
+.liff-heading-size--xs { --liff-heading-mul: 0.85; }   /* ページタイトル 20px → 17px */
 .liff-heading-size--sm { --liff-heading-mul: 0.93; }
 .liff-heading-size--lg { --liff-heading-mul: 1.08; }
 .liff-heading-size--xl { --liff-heading-mul: 1.16; }
+.liff-heading-size--xxl { --liff-heading-mul: 1.30; }   /* ページタイトル 20px → 26px */
 
 /* 見出しの太さ。主見出し (--liff-heading-fw) と副見出し (--liff-heading-fw-sub) を
  * 1 段ずらして持ち、階層の差が潰れないようにする。 */
@@ -1341,10 +1345,12 @@
  * ⇒ 既存ページの計算値は 1px も変わらない。
  * `--md` を用意しているのは「見出しに追従せず等倍で固定する」という明示指定のため
  * (見出しを lg にしてもアコーディオンだけ等倍のまま、という指定ができる)。 */
+.liff-acc-title--xs { --liff-acc-title-mul: 0.85; }   /* アコーディオン見出し 16px → 約 14px */
 .liff-acc-title--sm { --liff-acc-title-mul: 0.93; }
 .liff-acc-title--md { --liff-acc-title-mul: 1; }
 .liff-acc-title--lg { --liff-acc-title-mul: 1.08; }
 .liff-acc-title--xl { --liff-acc-title-mul: 1.16; }
+.liff-acc-title--xxl { --liff-acc-title-mul: 1.30; }   /* アコーディオン見出し 16px → 約 21px */
 
 /* ── ページタイトルだけの文字サイズ (settings_json.title_scale) ─────────────
  *
@@ -1353,10 +1359,12 @@
  * と連鎖して読むので、未設定ならこの class は付かず `--liff-heading-mul` に倒れる
  * ⇒ 既存ページの計算値は 1px も変わらない。
  * `--md` は「見出しを大きくしてもタイトルだけ等倍で固定する」明示指定のため用意する。 */
+.liff-title-size--xs { --liff-title-mul: 0.85; }   /* 20px → 17px */
 .liff-title-size--sm { --liff-title-mul: 0.93; }
 .liff-title-size--md { --liff-title-mul: 1; }
 .liff-title-size--lg { --liff-title-mul: 1.08; }
 .liff-title-size--xl { --liff-title-mul: 1.16; }
+.liff-title-size--xxl { --liff-title-mul: 1.30; }   /* 20px → 26px */
 
 /* ── アコーディオン見出し行の上下余白 (settings_json.accordion_header_spacing) ─────
  *

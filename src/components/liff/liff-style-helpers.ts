@@ -170,7 +170,7 @@ export function colorModeClass(mode: LiffColorMode): string {
 // どちらも settings_json に文字列で入るだけで DB migration は不要。
 // 「未設定 = 現行既定と完全に同じ見た目（= class なし）」を不変条件とする。
 
-const FONT_SCALES: readonly LiffFontScale[] = ["sm", "md", "lg", "xl"];
+const FONT_SCALES: readonly LiffFontScale[] = ["xs", "sm", "md", "lg", "xl", "xxl"];
 
 /** settings から **最終的に適用する文字サイズ倍率** を解決する。
  *  未設定 / 不正値 / 未知値 → "md"（= 現行と同じ大きさ）。 */
@@ -182,9 +182,11 @@ export function resolveFontScale(settings: LiffPageConfigSettings | undefined): 
 /** font scale → root クラス名。"md" は既定なので空文字を返す（= 既存 DOM と一致）。 */
 export function fontScaleClass(scale: LiffFontScale): string {
   switch (scale) {
+    case "xs": return "liff-font-size--xs";
     case "sm": return "liff-font-size--sm";
     case "lg": return "liff-font-size--lg";
     case "xl": return "liff-font-size--xl";
+    case "xxl": return "liff-font-size--xxl";
     case "md":
     default:   return "";
   }
@@ -202,9 +204,11 @@ export function resolveHeadingScale(settings: LiffPageConfigSettings | undefined
 /** heading scale → root クラス名。"md" は既定なので空文字を返す。 */
 export function headingScaleClass(scale: LiffFontScale): string {
   switch (scale) {
+    case "xs": return "liff-heading-size--xs";
     case "sm": return "liff-heading-size--sm";
     case "lg": return "liff-heading-size--lg";
     case "xl": return "liff-heading-size--xl";
+    case "xxl": return "liff-heading-size--xxl";
     case "md":
     default:   return "";
   }
@@ -233,10 +237,12 @@ export function resolveTitleScale(
  *  明示指定なので class を出す（accordionTitleScaleClass と同じ考え方）。 */
 export function titleScaleClass(scale: LiffFontScale | undefined): string {
   switch (scale) {
+    case "xs": return "liff-title-size--xs";
     case "sm": return "liff-title-size--sm";
     case "md": return "liff-title-size--md";
     case "lg": return "liff-title-size--lg";
     case "xl": return "liff-title-size--xl";
+    case "xxl": return "liff-title-size--xxl";
     default:   return "";
   }
 }
@@ -260,10 +266,12 @@ export function resolveAccordionTitleScale(
  *  明示指定なので、他の段階と同じく class を出す（ここが headingScaleClass と違う点）。 */
 export function accordionTitleScaleClass(scale: LiffFontScale | undefined): string {
   switch (scale) {
+    case "xs": return "liff-acc-title--xs";
     case "sm": return "liff-acc-title--sm";
     case "md": return "liff-acc-title--md";
     case "lg": return "liff-acc-title--lg";
     case "xl": return "liff-acc-title--xl";
+    case "xxl": return "liff-acc-title--xxl";
     default:   return "";
   }
 }

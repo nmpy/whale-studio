@@ -1726,13 +1726,15 @@ export type LiffColorMode = "light" | "dark" | "system" | "sepia" | "bordeaux" |
  *  各 font-size を `calc(<既存px> * var(--liff-fs-mul))` に読み替える方式。
  *  これにより見出し / 本文 / 補助テキストの**比率を保ったまま**全体が拡縮する。
  *
- *  - "sm": 0.93 倍 (本文 14px → 約 13px)
- *  - "md": 1 倍。**未設定データと完全に同じ見た目**（既定）
- *  - "lg": 1.08 倍 (本文 14px → 約 15px)
- *  - "xl": 1.16 倍 (本文 14px → 約 16px)
+ *  - "xs" : 0.85 倍 (本文 14px → 約 12px / 見出し 20px → 17px)
+ *  - "sm" : 0.93 倍 (本文 14px → 約 13px)
+ *  - "md" : 1 倍。**未設定データと完全に同じ見た目**（既定）
+ *  - "lg" : 1.08 倍 (本文 14px → 約 15px)
+ *  - "xl" : 1.16 倍 (本文 14px → 約 16px)
+ *  - "xxl": 1.30 倍 (本文 14px → 約 18px / 見出し 20px → 26px)
  *
  *  未指定 / 不正値は renderer 側で "md" として扱う。 */
-export type LiffFontScale = "sm" | "md" | "lg" | "xl";
+export type LiffFontScale = "xs" | "sm" | "md" | "lg" | "xl" | "xxl";
 
 /** ページ全体の文字の太さ (CMS「文字の太さ」で選ぶ値)。
  *
